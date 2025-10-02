@@ -112,6 +112,10 @@ npm run preview
 - Modern JavaScript (ES6+)
 - Functional components with hooks
 
+### VS Code Configuration
+
+This project includes VS Code workspace settings (`.vscode/settings.json`) that disable CSS validation to prevent linting errors with Tailwind CSS directives. The `@tailwind` directives are processed by PostCSS during build and don't need CSS validation.
+
 ### Available Scripts
 
 - `npm run dev` - Start development server
