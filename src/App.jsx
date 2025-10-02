@@ -1,5 +1,97 @@
 import { useState, useEffect, useRef } from 'react'
 import { parse } from 'exifr'
+import { uploadPhotoToServer } from './api.js'
+// Utility: Get or create a guaranteed local folder (default: C:\Users\<User>\working)
+async function getLocalWorkingFolder(customPath) {
+  // Default to C:\Users\<User>\working if no custom path provided
+  const user = (window.navigator.userName || window.navigator.user || 'User');
+  const defaultPath = `C:\\Users\\${user}\\working`;
+  // File System Access API does not allow direct path, so prompt user to select
+  try {
+    const dirHandle = await window.showDirectoryPicker({
+      id: 'local-working-folder',
+      startIn: 'desktop' // closest to local, not OneDrive
+    });
+    return dirHandle;
+  } catch (error) {
+    throw new Error('Failed to access local working folder. Please select a local directory.');
+  }
+}
+
+// Utility: Save photo file to local folder, preserving metadata
+async function savePhotoFileToLocalFolder(photo, workingDirHandle) {
+  try {
+    // Permission check for writing
+    const perm = await ensurePermission(workingDirHandle, 'readwrite');
+    if (perm !== 'granted') throw new Error('Permission denied for working folder.');
+    // Guard against overwrite: generate unique filename
+    let targetName = photo.filename;
+    let suffix = 1;
+    while (true) {
+      try {
+        await workingDirHandle.getFileHandle(targetName);
+        // Exists, try next
+        const dotIdx = photo.filename.lastIndexOf('.');
+        const base = dotIdx > 0 ? photo.filename.slice(0, dotIdx) : photo.filename;
+        const ext = dotIdx > 0 ? photo.filename.slice(dotIdx) : '';
+        targetName = `${base}(${suffix})${ext}`;
+        suffix++;
+      } catch {
+        break;
+      }
+    }
+    // Create file and write original file data (preserves EXIF/XMP)
+    const fileHandle = await workingDirHandle.getFileHandle(targetName, { create: true });
+    const permFile = await ensurePermission(fileHandle, 'readwrite');
+    if (permFile !== 'granted') throw new Error(`Permission denied for file: ${targetName}`);
+    const writable = await fileHandle.createWritable();
+    // Write the original file's ArrayBuffer directly (no re-encoding, preserves metadata)
+    const fileData = await photo.file.arrayBuffer();
+    await writable.write(fileData);
+    await writable.close();
+    return targetName;
+  } catch (error) {
+    throw new Error(`Error saving photo: ${photo.filename}. ${error.message}`);
+  }
+}
+
+// Utility: Extract date from filename (YYYYMMDD or YYYY-MM-DD)
+function extractDateFromFilename(filename) {
+  const patterns = [
+    /([12]\d{3})(\d{2})(\d{2})/, // YYYYMMDD
+    /([12]\d{3})-(\d{2})-(\d{2})/, // YYYY-MM-DD
+  ];
+  for (const re of patterns) {
+    const match = filename.match(re);
+    if (match) {
+      const [_, y, m, d] = match;
+      const dateStr = `${y}-${m}-${d}`;
+      const date = new Date(dateStr);
+      if (!isNaN(date)) return date;
+    }
+  }
+  return null;
+}
+
+// Utility: Show toast message for errors/warnings
+function Toast({ message, onClose }) {
+  if (!message) return null;
+  return (
+    <div className="fixed bottom-4 right-4 bg-red-500 text-white px-4 py-2 rounded shadow-lg z-50">
+      {message}
+      <button className="ml-4 text-white underline" onClick={onClose}>Dismiss</button>
+    </div>
+  );
+}
+
+// Utility: Permission check/request for File System Access API
+async function ensurePermission(handle, mode = 'read') {
+  if (!handle || typeof handle.queryPermission !== 'function') return 'unknown';
+  let perm = await handle.queryPermission({ mode });
+  if (perm === 'granted') return 'granted';
+  perm = await handle.requestPermission({ mode });
+  return perm;
+}
 
 function App() {
   const [currentFolder, setCurrentFolder] = useState('')
@@ -11,6 +103,9 @@ function App() {
   const [endDate, setEndDate] = useState('')
   const [isCopying, setIsCopying] = useState(false)
   const [copyStatus, setCopyStatus] = useState('')
+  const [toastMsg, setToastMsg] = useState('')
+  const [copyProgress, setCopyProgress] = useState(0)
+  const [copyAbortController, setCopyAbortController] = useState(null)
   const folderInputRef = useRef(null)
 
   const imageExtensions = ['.jpg', '.jpeg', '.png', '.gif', '.heic', '.bmp', '.tiff', '.webp']
@@ -66,34 +161,21 @@ function App() {
     for await (const [name, handle] of dirHandle.entries()) {
       if (handle.kind === 'file') {
         try {
-          // Get the File first to inspect MIME type as a fallback
-          const file = await handle.getFile()
-          const ext = name.toLowerCase().substring(name.lastIndexOf('.'))
-          const isImageByExt = imageExtensions.includes(ext)
-          const isImageByType = file.type && file.type.startsWith('image/')
-
+          // Permission check before reading
+          const perm = await ensurePermission(handle, 'read');
+          if (perm !== 'granted') {
+            setToastMsg(`Permission denied for file: ${name}`);
+            continue;
+          }
+          const file = await handle.getFile();
+          const ext = name.toLowerCase().substring(name.lastIndexOf('.'));
+          const isImageByExt = imageExtensions.includes(ext);
+          const isImageByType = file.type && file.type.startsWith('image/');
           if (isImageByExt || isImageByType) {
-            // Determine permissions where possible (File System Access API handles)
-            let privilege = 'unknown'
-            try {
-              if (typeof handle.queryPermission === 'function') {
-                const rw = await handle.queryPermission({ mode: 'readwrite' })
-                if (rw === 'granted') {
-                  privilege = 'read/write'
-                } else {
-                  const r = await handle.queryPermission({ mode: 'read' })
-                  privilege = r === 'granted' ? 'read' : 'none'
-                }
-              }
-            } catch (permErr) {
-              // Non-fatal: leave privilege as unknown
-              console.warn('Permission check failed for', name, permErr)
-            }
-
-            files.push({ file, privilege })
+            files.push({ file, privilege: perm === 'granted' ? 'read' : 'none' });
           }
         } catch (error) {
-          console.error('Error getting file from directory handle:', name, error)
+          setToastMsg(`Error reading file: ${name}`);
         }
       }
     }
@@ -158,45 +240,48 @@ function App() {
 
   const processImageFile = async (file, privilege = 'unknown', originalDateOverride = null) => {
     try {
-      let exifData = null
-      let dateTaken = new Date(file.lastModified)
-      let gpsData = 'none'
-
-      // Try to parse EXIF data, but don't fail if it doesn't work
+      let exifData = null;
+      let dateTaken = null;
+      let gpsData = 'none';
+      let errorMsg = '';
+      // Robust EXIF parse with fallback
       try {
-        exifData = await parse(file)
+        exifData = await parse(file);
       } catch (exifError) {
-        console.warn(`EXIF parsing failed for ${file.name}:`, exifError.message)
-        // Continue with file modification date
+        errorMsg = `EXIF parsing failed for ${file.name}`;
       }
-
-      if (exifData?.DateTimeOriginal) {
-        dateTaken = new Date(exifData.DateTimeOriginal)
-      } else if (originalDateOverride) {
+      // Fallback order: XMP, EXIF, lastModified, filename, unknown
+      if (exifData) {
+        dateTaken = exifData.DateTimeOriginal || exifData.CreateDate || exifData.ModifyDate || null;
+      }
+      if (!dateTaken && originalDateOverride) {
         try {
-          const d = new Date(originalDateOverride)
-          if (!isNaN(d)) dateTaken = d
-        } catch {
-          // ignore
-        }
+          const d = new Date(originalDateOverride);
+          if (!isNaN(d)) dateTaken = d;
+        } catch {}
       }
-
-      // Extract GPS data
+      if (!dateTaken) {
+        dateTaken = file.lastModified ? new Date(file.lastModified) : null;
+      }
+      if (!dateTaken) {
+        dateTaken = extractDateFromFilename(file.name);
+      }
+      if (!dateTaken || isNaN(dateTaken)) {
+        dateTaken = 'unknown';
+        errorMsg = errorMsg || `No valid date found for ${file.name}`;
+      }
+      // GPS extraction
       if (exifData?.GPSLatitude && exifData?.GPSLongitude) {
-        const lat = exifData.GPSLatitude
-        const lon = exifData.GPSLongitude
-        const latRef = exifData.GPSLatitudeRef || 'N'
-        const lonRef = exifData.GPSLongitudeRef || 'E'
-        
-        // Convert DMS to decimal degrees
-        const latDecimal = convertDMSToDecimal(lat, latRef)
-        const lonDecimal = convertDMSToDecimal(lon, lonRef)
-        
-        gpsData = `${latDecimal.toFixed(4)}° ${latRef}, ${lonDecimal.toFixed(4)}° ${lonRef}`
+        const lat = exifData.GPSLatitude;
+        const lon = exifData.GPSLongitude;
+        const latRef = exifData.GPSLatitudeRef || 'N';
+        const lonRef = exifData.GPSLongitudeRef || 'E';
+        const latDecimal = convertDMSToDecimal(lat, latRef);
+        const lonDecimal = convertDMSToDecimal(lon, lonRef);
+        gpsData = `${latDecimal.toFixed(4)}° ${latRef}, ${lonDecimal.toFixed(4)}° ${lonRef}`;
       }
-
-      const blobUrl = URL.createObjectURL(file)
-
+      const blobUrl = URL.createObjectURL(file);
+      if (errorMsg) setToastMsg(errorMsg);
       return {
         id: Math.random().toString(36),
         file,
@@ -205,10 +290,10 @@ function App() {
         blobUrl,
         filename: file.name,
         privilege
-      }
+      };
     } catch (error) {
-      console.error('Error processing file:', file.name, error)
-      return null
+      setToastMsg(`Error processing file: ${file.name}`);
+      return null;
     }
   }
 
@@ -295,75 +380,52 @@ function App() {
     }
 
     try {
-      setIsCopying(true)
-      setCopyStatus('Requesting folder access...')
-
-      // Request permission to create working folder
-      const dirHandle = await window.showDirectoryPicker({
-        startIn: 'documents',
-        mode: 'readwrite'
-      })
-
-      // Create working folder
-      const workingFolderName = `PhotoWorking_${new Date().toISOString().split('T')[0]}`
-      const workingDirHandle = await dirHandle.getDirectoryHandle(workingFolderName, { create: true })
-
-      setCopyStatus(`Copying ${filteredPhotos.length} photos...`)
-
-  let copiedCount = 0
-  const meta = {}
-  for (const photo of filteredPhotos) {
-        console.log('Attempting to copy:', photo.filename, 'Size:', photo.file.size)
+      setIsCopying(true);
+      setCopyStatus('Uploading photos to server...');
+      setCopyProgress(0);
+      // AbortController for cancellation
+      const abortController = new AbortController();
+      setCopyAbortController(abortController);
+      
+      let copiedCount = 0;
+      for (let i = 0; i < filteredPhotos.length; i++) {
+        if (abortController.signal.aborted) {
+          setCopyStatus('Upload cancelled.');
+          break;
+        }
+        const photo = filteredPhotos[i];
         try {
-          // Create file in working directory
-          const fileHandle = await workingDirHandle.getFileHandle(photo.filename, { create: true })
-          const writable = await fileHandle.createWritable()
-          
-          // Use the original file data directly instead of blob URL
-          const fileData = await photo.file.arrayBuffer()
-          
-          await writable.write(fileData)
-          await writable.close()
-          
-          copiedCount++
-          console.log('Successfully copied:', photo.filename)
-          setCopyStatus(`Copied ${copiedCount} of ${filteredPhotos.length} photos...`)
-          try {
-            meta[photo.filename] = (photo.dateTaken instanceof Date) ? photo.dateTaken.toISOString() : new Date(photo.dateTaken).toISOString()
-          } catch {
-            // ignore metadata issues
+          const result = await uploadPhotoToServer(photo.file);
+          if (result.success) {
+            copiedCount++;
+            setCopyProgress(Math.round(((i + 1) / filteredPhotos.length) * 100));
+            setCopyStatus(`Uploaded ${copiedCount} of ${filteredPhotos.length} photos...`);
+          } else {
+            setToastMsg(`Failed to upload ${photo.filename}`);
           }
         } catch (error) {
-          console.error('Error copying file:', photo.filename, error)
-          setCopyStatus(`Error copying ${photo.filename}: ${error.message}`)
-          // Continue with other files instead of stopping
+          setToastMsg(`Error uploading ${photo.filename}: ${error.message}`);
+        }
+        // Add small delay between uploads to prevent server overload
+        if (i < filteredPhotos.length - 1) {
+          await new Promise(resolve => setTimeout(resolve, 100));
         }
       }
-
-      // write metadata mapping original filenames to original dates
-      try {
-        const metaHandle = await workingDirHandle.getFileHandle('.photo_meta.json', { create: true })
-        const metaWritable = await metaHandle.createWritable()
-        await metaWritable.write(JSON.stringify(meta))
-        await metaWritable.close()
-      } catch (metaErr) {
-        console.warn('Failed to write metadata file:', metaErr)
-      }
-
-      setCopyStatus(`Successfully copied ${copiedCount} photos to "${workingFolderName}" folder (originals preserved)`)
-      
-      // Automatically switch to viewing the working folder
-      await switchToWorkingFolder(workingDirHandle, workingFolderName)
+      setCopyStatus(`Successfully uploaded ${copiedCount} photos to server working directory.`);
     } catch (error) {
-      console.error('Error creating working folder:', error)
-      setCopyStatus('Failed to create working folder. File System Access API may not be supported.')
+      setToastMsg(error.message);
+      setCopyStatus('Failed to upload photos.');
     } finally {
-      setIsCopying(false)
+      setIsCopying(false);
+      setCopyAbortController(null);
+      setCopyProgress(0);
     }
   }
 
   return (
     <div className="h-screen flex flex-col bg-gray-100">
+      {/* Toast for errors/warnings */}
+      <Toast message={toastMsg} onClose={() => setToastMsg('')} />
       {/* Control Panel */}
       <div className="bg-white shadow-md p-4 flex flex-wrap items-center gap-4">
         <button
@@ -377,13 +439,24 @@ function App() {
           disabled={isCopying || filteredPhotos.length === 0}
           className="bg-green-500 hover:bg-green-700 disabled:bg-gray-400 text-white font-bold py-2 px-4 rounded ml-4"
         >
-          {isCopying ? 'Copying...' : 'Copy to Working'}
+          {isCopying ? 'Uploading...' : 'Upload to Server'}
         </button>
+          {isCopying && (
+            <button
+              onClick={() => copyAbortController && copyAbortController.abort()}
+              className="bg-red-500 hover:bg-red-700 text-white font-bold py-2 px-4 rounded ml-2"
+            >
+              Cancel Copy
+            </button>
+          )}
         {copyStatus && (
           <div className="text-sm text-gray-600 ml-2">
             {copyStatus}
           </div>
         )}
+          {isCopying && (
+            <div className="text-sm text-blue-600 ml-2">Progress: {copyProgress}%</div>
+          )}
         {currentFolder && (
           <div className="text-sm font-medium text-blue-600 ml-4">
             📁 Viewing: {currentFolder}

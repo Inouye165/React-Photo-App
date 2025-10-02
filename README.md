@@ -1,29 +1,47 @@
 # React Photo Filtering App
 
-A full-screen React application for dynamically filtering and browsing photos by date range using Vite and Tailwind CSS.
+A full-screen React application for dynamically filtering and browsing photos by date range with Node.js backend for automatic file storage.
 
 ## Features
 
+### Frontend
 - **Smart Folder Selection**: Opens directly in your Pictures folder (Chromium browsers) or uses native folder picker
 - **Automatic Image Detection**: Automatically filters and displays supported image formats (.jpg, .jpeg, .png, .gif, .heic, .bmp, .tiff, .webp)
-- **EXIF Date Extraction**: Reads photo metadata to determine the accurate date taken
+- **Robust EXIF Fallback**: Handles EXIF parsing errors gracefully with multiple date extraction methods
 - **Dynamic Date Filtering**: Real-time filtering with instant list updates based on start and end date inputs
 - **Chronological Sorting**: Photos displayed in chronological order (oldest to newest)
 - **GPS Location Display**: Shows GPS coordinates from photo metadata or "none" if unavailable
-- **Copy to Working Folder**: Copy filtered photos to a timestamped working directory
-- **List View**: Clean, detailed list format showing filename, date taken, and GPS location
+- **Server Upload**: Upload filtered photos to backend server for automatic local storage
+- **List View**: Clean, detailed list format showing filename, date taken, GPS location, and privileges
 - **Photo Counter**: Shows filtered count vs total photos
-- **React Hooks**: Modern React with hooks for state management
-- **Vite Build**: Fast development and build process
+- **Privilege Detection**: Shows file privileges (read/write/none/unknown) for each photo
+- **Debug UI for Filtered-Out Files**: Toggle to view files excluded by date filter for troubleshooting
+- **Error Toast Messages**: User-friendly error notifications for upload failures
+- **Progress Tracking**: Real-time upload progress with cancellation support
+
+### Backend Server
+- **Automatic File Storage**: Saves uploaded photos to configurable local directory (`C:/Users/<username>/working` by default)
+- **Metadata Preservation**: Preserves original EXIF/XMP data without re-encoding
+- **Duplicate Handling**: Automatically generates unique filenames to prevent overwrites
+- **Robust Error Handling**: Graceful permission and disk error management
+- **File Validation**: Accepts all image types with size limits (50MB per file)
+- **CORS Support**: Configured for local React frontend communication
 
 ## Technical Stack
 
+### Frontend
 - **React 19**: Latest React with modern hooks
 - **Vite**: Fast build tool and dev server
 - **Tailwind CSS**: Utility-first CSS framework
-- **EXIF.js**: Library for reading photo metadata
+- **EXIF.js (exifr)**: Library for reading photo metadata
 - **File System Access API**: Modern browser API for folder selection
 - **ESLint**: Code linting and formatting
+
+### Backend
+- **Node.js**: JavaScript runtime for server
+- **Express**: Web framework for REST API
+- **Multer**: Middleware for handling multipart/form-data file uploads
+- **CORS**: Cross-origin resource sharing support
 
 ## File Structure
 
@@ -32,12 +50,17 @@ photo-app/
 ├── public/
 ├── src/
 │   ├── App.jsx          # Main application component with photo filtering logic
+│   ├── api.js           # Backend API communication utilities
 │   ├── index.css        # Tailwind CSS imports
 │   └── main.jsx         # React entry point
+├── server/              # Backend Node.js server
+│   ├── server.js        # Express server with upload endpoints
+│   ├── package.json     # Server dependencies
+│   └── README.md        # Server documentation
 ├── tailwind.config.js   # Tailwind configuration
 ├── postcss.config.js    # PostCSS configuration
 ├── vite.config.js       # Vite configuration
-├── package.json         # Dependencies and scripts
+├── package.json         # Frontend dependencies and scripts
 └── README.md            # This documentation
 ```
 
@@ -57,19 +80,32 @@ photo-app/
    cd React-Photo-App
    ```
 
-2. Install dependencies:
+2. Install frontend dependencies:
    ```bash
    npm install
    ```
 
+3. Install backend dependencies:
+   ```bash
+   cd server
+   npm install
+   cd ..
+   ```
+
 ### Development
 
-Start the development server:
-```bash
-npm run dev
-```
+1. Start the backend server:
+   ```bash
+   cd server
+   npm start
+   ```
+   Server will run on `http://localhost:3001`
 
-The application will be available at `http://localhost:5173`
+2. Start the frontend development server (in new terminal):
+   ```bash
+   npm run dev
+   ```
+   Frontend will be available at `http://localhost:5173`
 
 ### Build
 
