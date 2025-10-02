@@ -1,14 +1,16 @@
-# Dynamic Photo Filtering UI
+# React Photo Filtering App
 
-A full-screen React application for dynamically filtering photos by date range using Vite and Tailwind CSS.
+A full-screen React application for dynamically filtering and browsing photos by date range using Vite and Tailwind CSS.
 
 ## Features
 
-- **Folder Selection**: Select a local folder containing photos using the native file explorer
+- **Smart Folder Selection**: Opens directly in your Pictures folder (Chromium browsers) or uses native folder picker
 - **Automatic Image Detection**: Automatically filters and displays supported image formats (.jpg, .jpeg, .png, .gif, .heic, .bmp, .tiff, .webp)
-- **EXIF Date Extraction**: Reads photo metadata to determine the date taken
-- **Dynamic Date Filtering**: Real-time filtering based on start and end date inputs
-- **Responsive Grid Layout**: Clean, responsive thumbnail grid using Tailwind CSS
+- **EXIF Date Extraction**: Reads photo metadata to determine the accurate date taken
+- **Dynamic Date Filtering**: Real-time filtering with instant list updates based on start and end date inputs
+- **Chronological Sorting**: Photos displayed in chronological order (oldest to newest)
+- **List View**: Clean, detailed list format showing filename, date taken, and file size
+- **Photo Counter**: Shows filtered count vs total photos
 - **React Hooks**: Modern React with hooks for state management
 - **Vite Build**: Fast development and build process
 
@@ -18,6 +20,7 @@ A full-screen React application for dynamically filtering photos by date range u
 - **Vite**: Fast build tool and dev server
 - **Tailwind CSS**: Utility-first CSS framework
 - **EXIF.js**: Library for reading photo metadata
+- **File System Access API**: Modern browser API for folder selection
 - **ESLint**: Code linting and formatting
 
 ## File Structure
@@ -26,7 +29,7 @@ A full-screen React application for dynamically filtering photos by date range u
 photo-app/
 ├── public/
 ├── src/
-│   ├── App.jsx          # Main application component
+│   ├── App.jsx          # Main application component with photo filtering logic
 │   ├── index.css        # Tailwind CSS imports
 │   └── main.jsx         # React entry point
 ├── tailwind.config.js   # Tailwind configuration
@@ -42,10 +45,16 @@ photo-app/
 
 - Node.js (v18 or higher)
 - npm or yarn
+- Modern web browser (Chrome, Edge recommended for full features)
 
 ### Installation
 
-1. Clone or download the project files
+1. Clone the repository:
+   ```bash
+   git clone https://github.com/Inouye165/React-Photo-App.git
+   cd React-Photo-App
+   ```
+
 2. Install dependencies:
    ```bash
    npm install
@@ -75,25 +84,24 @@ npm run preview
 ## Usage
 
 1. Open the application in a modern web browser
-2. Click "Select Photos Folder" to choose a directory containing photos
-3. The application will automatically scan and display thumbnails of all supported image files
+2. Click "Select Photos Folder" - the folder picker will open in your Pictures folder (on supported browsers)
+3. The application will scan and display all supported image files in chronological order
 4. Use the "Start Date" and "End Date" inputs to filter photos by date taken
-5. Filtering happens instantly as you change the dates
+5. The list updates instantly as you change dates, showing the filtered count
 
 ## Browser Compatibility
 
-- Modern browsers with support for:
-  - File API
-  - `webkitdirectory` attribute
-  - ES6+ JavaScript features
-  - React 19
+- **Full Support**: Chrome, Edge (File System Access API - opens in Pictures folder)
+- **Basic Support**: Firefox, Safari (standard folder picker)
+- **Requirements**: File API, ES6+ JavaScript, React 19
 
 ## Limitations
 
-- Due to browser security restrictions, this application only works with locally selected files
+- Due to browser security restrictions, only works with locally selected files
 - Large folders may take time to process initially
 - EXIF data reading depends on photo metadata being present
-- Fallback to file modification date if EXIF date is unavailable
+- Falls back to file modification date if EXIF date is unavailable
+- File System Access API requires user gesture and HTTPS in production
 
 ## Development
 
@@ -102,6 +110,7 @@ npm run preview
 - ESLint configuration for consistent code style
 - React hooks best practices
 - Modern JavaScript (ES6+)
+- Functional components with hooks
 
 ### Available Scripts
 
@@ -110,11 +119,24 @@ npm run preview
 - `npm run lint` - Run ESLint
 - `npm run preview` - Preview production build
 
+## Contributing
+
+1. Fork the repository
+2. Create a feature branch
+3. Make your changes
+4. Run tests and linting
+5. Submit a pull request
+
+## License
+
+This project is open source and available under the [MIT License](LICENSE).
+
 ## Future Enhancements
 
 - Add search functionality by filename
-- Implement sorting options (date, filename, etc.)
+- Implement additional sorting options
 - Add zoom/view full-size images
 - Export filtered photo list
 - Add keyboard shortcuts for navigation
-# React-Photo-App
+- Add photo preview thumbnails
+- Support for more image formats
