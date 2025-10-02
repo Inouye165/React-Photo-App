@@ -9,7 +9,9 @@ A full-screen React application for dynamically filtering and browsing photos by
 - **EXIF Date Extraction**: Reads photo metadata to determine the accurate date taken
 - **Dynamic Date Filtering**: Real-time filtering with instant list updates based on start and end date inputs
 - **Chronological Sorting**: Photos displayed in chronological order (oldest to newest)
-- **List View**: Clean, detailed list format showing filename, date taken, and file size
+- **GPS Location Display**: Shows GPS coordinates from photo metadata or "none" if unavailable
+- **Copy to Working Folder**: Copy filtered photos to a timestamped working directory
+- **List View**: Clean, detailed list format showing filename, date taken, and GPS location
 - **Photo Counter**: Shows filtered count vs total photos
 - **React Hooks**: Modern React with hooks for state management
 - **Vite Build**: Fast development and build process
@@ -88,6 +90,15 @@ npm run preview
 3. The application will scan and display all supported image files in chronological order
 4. Use the "Start Date" and "End Date" inputs to filter photos by date taken
 5. The list updates instantly as you change dates, showing the filtered count
+6. Click "Copy to Working" to copy all filtered photos to a new timestamped folder in your Documents directory
+
+## Copy to Working Feature
+
+- **Automatic Folder Creation**: Creates a folder named `PhotoWorking_YYYY-MM-DD` in your Documents
+- **Filtered Photos Only**: Only copies photos that match your current date filter
+- **Progress Updates**: Shows real-time progress during copying
+- **File System Access**: Uses modern browser APIs for direct file system access
+- **Browser Support**: Requires Chromium-based browsers (Chrome, Edge) for full functionality
 
 ## Browser Compatibility
 
