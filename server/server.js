@@ -3,6 +3,8 @@ const fs = require('fs');
 const os = require('os');
 const crypto = require('crypto');
 const exifr = require('exifr');
+const sharp = require('sharp');
+const { exec } = require('child_process');
 
 const PORT = process.env.PORT || 3001;
 const DEFAULT_WORKING_DIR = path.join(os.homedir(), 'working');
@@ -19,41 +21,100 @@ function hashFileSync(filePath) {
   return crypto.createHash('sha256').update(fileBuffer).digest('hex');
 }
 
+const THUMB_DIR = path.join(WORKING_DIR, '.thumbnails');
+if (!fs.existsSync(THUMB_DIR)) {
+  fs.mkdirSync(THUMB_DIR, { recursive: true });
+}
+
+async function generateThumbnail(filePath, hash) {
+  const thumbPath = path.join(THUMB_DIR, `${hash}.jpg`);
+  if (fs.existsSync(thumbPath)) return thumbPath;
+  try {
+    await sharp(filePath)
+      .resize(120, 120, { fit: 'inside' })
+      .jpeg({ quality: 70 })
+      .toFile(thumbPath);
+    return thumbPath;
+  } catch (err) {
+    console.error('Sharp thumbnail generation failed for', filePath, err.message || err);
+    // Fallback for HEIC/HEIF: try ImageMagick if available
+    const ext = path.extname(filePath).toLowerCase();
+    if (ext === '.heic' || ext === '.heif') {
+      const tmpJpg = path.join(THUMB_DIR, `${hash}.tmp.jpg`);
+      // Try ImageMagick `magick` command to convert+resize directly
+      const cmd = `magick "${filePath}" -strip -resize 120x120 -quality 70 "${tmpJpg}"`;
+      try {
+        await new Promise((resolve, reject) => {
+          exec(cmd, { windowsHide: true }, (error, stdout, stderr) => {
+            if (error) return reject(new Error(stderr || stdout || error.message));
+            resolve();
+          });
+        });
+        // Move tmpJpg to thumbPath
+        fs.renameSync(tmpJpg, thumbPath);
+        return thumbPath;
+      } catch (convErr) {
+        console.error('Fallback conversion failed for', filePath, convErr.message || convErr);
+        // cleanup tmp if exists
+        try { if (fs.existsSync(tmpJpg)) fs.unlinkSync(tmpJpg); } catch (e) {}
+        return null;
+      }
+    }
+    return null;
+  }
+}
+
+async function ensureAllThumbnails(db) {
+  const files = fs.readdirSync(WORKING_DIR);
+  for (const filename of files) {
+    const filePath = path.join(WORKING_DIR, filename);
+    if (!fs.statSync(filePath).isFile()) continue;
+    const row = await new Promise((resolve, reject) => {
+      db.get('SELECT * FROM photos WHERE filename = ?', [filename], (err, row) => {
+        if (err) reject(err); else resolve(row);
+      });
+    });
+    if (row && row.hash) {
+      await generateThumbnail(filePath, row.hash);
+    }
+  }
+}
+
+// Update ensureAllFilesHashed to also generate thumbnails
 async function ensureAllFilesHashed(db) {
   const files = fs.readdirSync(WORKING_DIR);
   for (const filename of files) {
     const filePath = path.join(WORKING_DIR, filename);
     if (!fs.statSync(filePath).isFile()) continue;
-    // Check if in DB
     const row = await new Promise((resolve, reject) => {
       db.get('SELECT * FROM photos WHERE filename = ?', [filename], (err, row) => {
         if (err) reject(err); else resolve(row);
       });
     });
     if (!row) {
-      // Not in DB, ingest
       await ingestPhoto(db, filePath, filename, 'working');
       continue;
     }
     if (!row.hash) {
-      // In DB but missing hash, compute and update
       const hash = hashFileSync(filePath);
       db.run('UPDATE photos SET hash = ? WHERE id = ?', [hash, row.id]);
+      await generateThumbnail(filePath, hash);
+    } else {
+      await generateThumbnail(filePath, row.hash);
     }
   }
 }
 
+// Update ingestPhoto to generate thumbnail after hashing
 async function ingestPhoto(db, filePath, filename, state = 'working') {
   try {
     const hash = hashFileSync(filePath);
-    // Check for duplicate by hash
     const existing = await new Promise((resolve, reject) => {
       db.get('SELECT id FROM photos WHERE hash = ?', [hash], (err, row) => {
         if (err) reject(err); else resolve(row);
       });
     });
     if (existing) {
-      // Remove duplicate file
       fs.unlinkSync(filePath);
       console.log(`Duplicate file skipped: ${filename}`);
       return { duplicate: true, hash };
@@ -65,6 +126,7 @@ async function ingestPhoto(db, filePath, filename, state = 'working') {
       `INSERT OR REPLACE INTO photos (filename, state, metadata, hash, created_at, updated_at) VALUES (?, ?, ?, ?, ?, ?)`,
       [filename, state, metaStr, hash, now, now]
     );
+    await generateThumbnail(filePath, hash);
     return { duplicate: false, hash };
   } catch (err) {
     console.error('Metadata/hash extraction failed for', filename, err);
@@ -103,6 +165,7 @@ async function migrateAndStartServer() {
   });
   // Ensure all files are hashed
   await ensureAllFilesHashed(db);
+  await ensureAllThumbnails(db);
 
   // --- Express app and routes ---
   const express = require('express');
@@ -155,7 +218,8 @@ async function migrateAndStartServer() {
         state: row.state,
         metadata: JSON.parse(row.metadata || '{}'),
         hash: row.hash,
-        url: `/working/${row.filename}`
+        url: `/working/${row.filename}`,
+        thumbnail: row.hash ? `/thumbnails/${row.hash}.jpg` : null
       })) });
     });
   });
@@ -186,6 +250,9 @@ async function migrateAndStartServer() {
     console.log(`Created inprogress directory: ${INPROGRESS_DIR}`);
   }
   app.use('/inprogress', express.static(INPROGRESS_DIR));
+
+  // --- Serve thumbnails ---
+  app.use('/thumbnails', express.static(THUMB_DIR));
 
   // --- State transition endpoint ---
   app.patch('/photos/:id/state', express.json(), (req, res) => {

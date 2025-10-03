@@ -2,30 +2,28 @@
 
 A full-screen React application for dynamically filtering and browsing photos by date range with Node.js backend for automatic file storage.
 
-## Features
+## Key Features (2025 Update)
 
-### Frontend
-- **Smart Folder Selection**: Opens directly in your Pictures folder (Chromium browsers) or uses native folder picker
-- **Automatic Image Detection**: Automatically filters and displays supported image formats (.jpg, .jpeg, .png, .gif, .heic, .bmp, .tiff, .webp)
-- **Robust EXIF Fallback**: Handles EXIF parsing errors gracefully with multiple date extraction methods
-- **Dynamic Date Filtering**: Real-time filtering with instant list updates based on start and end date inputs
-- **Chronological Sorting**: Photos displayed in chronological order (oldest to newest)
-- **GPS Location Display**: Shows GPS coordinates from photo metadata or "none" if unavailable
-- **Server Upload**: Upload filtered photos to backend server for automatic local storage
-- **List View**: Clean, detailed list format showing filename, date taken, GPS location, and privileges
-- **Photo Counter**: Shows filtered count vs total photos
-- **Privilege Detection**: Shows file privileges (read/write/none/unknown) for each photo
-- **Debug UI for Filtered-Out Files**: Toggle to view files excluded by date filter for troubleshooting
-- **Error Toast Messages**: User-friendly error notifications for upload failures
-- **Progress Tracking**: Real-time upload progress with cancellation support
+- **Backend-driven workflow:** All photo management, metadata, and permissions are handled by the backend server. The React app fetches and displays everything from backend APIs.
+- **Folder picker & date filter:** Select a local folder, filter photos by date (using EXIF/file dates), and upload only the filtered files to the backend.
+- **Hash-based deduplication:** Every file is hashed (SHA-256) on upload/ingest. Duplicate files (by content) are automatically skipped. The UI shows the last 5 digits of each file's hash.
+- **Privileges column:** The app displays actual file system privileges (read/write/execute) for each photo as reported by the backend.
+- **Automatic DB migration:** The backend automatically upgrades the database schema (e.g., adds missing columns) on startup, with no data loss.
+- **Robust error handling:** All errors and upload messages are shown in a prominent toast at the top of the app.
 
-### Backend Server
-- **Automatic File Storage**: Saves uploaded photos to configurable local directory (`C:/Users/<username>/working` by default)
-- **Metadata Preservation**: Preserves original EXIF/XMP data without re-encoding
-- **Duplicate Handling**: Automatically generates unique filenames to prevent overwrites
-- **Robust Error Handling**: Graceful permission and disk error management
-- **File Validation**: Accepts all image types with size limits (50MB per file)
-- **CORS Support**: Configured for local React frontend communication
+## Usage (2025)
+
+1. Start the backend server (`cd server && npm start`).
+2. Start the frontend (`npm run dev`).
+3. In the app, click "Select Folder for Upload" to pick a local folder.
+4. Filter/select photos by date, then upload to the backend.
+5. The backend view shows all photos, metadata, privileges, and hash info. No duplicates are stored.
+
+## File Hashing & Deduplication
+
+- Every photo is hashed (SHA-256) on upload or server start.
+- If a file with the same hash already exists, it is skipped (not re-uploaded or re-indexed).
+- The UI shows a ✔ and the last 5 digits of the hash for each photo.
 
 ## Technical Stack
 
@@ -161,33 +159,4 @@ npm run preview
 
 ### VS Code Configuration
 
-This project includes VS Code workspace settings (`.vscode/settings.json`) that disable CSS validation to prevent linting errors with Tailwind CSS directives. The `@tailwind` directives are processed by PostCSS during build and don't need CSS validation.
-
-### Available Scripts
-
-- `npm run dev` - Start development server
-- `npm run build` - Build for production
-- `npm run lint` - Run ESLint
-- `npm run preview` - Preview production build
-
-## Contributing
-
-1. Fork the repository
-2. Create a feature branch
-3. Make your changes
-4. Run tests and linting
-5. Submit a pull request
-
-## License
-
-This project is open source and available under the [MIT License](LICENSE).
-
-## Future Enhancements
-
-- Add search functionality by filename
-- Implement additional sorting options
-- Add zoom/view full-size images
-- Export filtered photo list
-- Add keyboard shortcuts for navigation
-- Add photo preview thumbnails
-- Support for more image formats
+This project includes VS Code workspace settings (`.vscode/settings.json`) that disable CSS validation to prevent linting errors with Tailwind CSS directives. The `@tailwind`

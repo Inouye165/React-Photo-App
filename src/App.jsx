@@ -1,6 +1,6 @@
 import { useState, useEffect, useRef } from 'react'
 import { parse } from 'exifr'
-import { uploadPhotoToServer } from './api.js'
+import { uploadPhotoToServer, checkPrivilege, getPhotos, updatePhotoState } from './api.js'
 // Utility: Get or create a guaranteed local folder (default: C:\Users\<User>\working)
 async function getLocalWorkingFolder(customPath) {
   // Default to C:\Users\<User>\working if no custom path provided
@@ -77,9 +77,18 @@ function extractDateFromFilename(filename) {
 function Toast({ message, onClose }) {
   if (!message) return null;
   return (
-    <div className="fixed bottom-4 right-4 bg-red-500 text-white px-4 py-2 rounded shadow-lg z-50">
-      {message}
-      <button className="ml-4 text-white underline" onClick={onClose}>Dismiss</button>
+    <div className="fixed top-32 right-4 bg-amber-500 text-white px-3 py-2 rounded-md shadow-lg z-40 max-w-sm text-sm">
+      <div className="flex items-start gap-2">
+        <span className="text-amber-100">⚠️</span>
+        <div className="flex-1">{message}</div>
+        <button 
+          className="text-amber-100 hover:text-white font-bold ml-2" 
+          onClick={onClose}
+          title="Dismiss"
+        >
+          ×
+        </button>
+      </div>
     </div>
   );
 }
@@ -94,480 +103,257 @@ async function ensurePermission(handle, mode = 'read') {
 }
 
 function App() {
-  const [currentFolder, setCurrentFolder] = useState('')
-  const [photos, setPhotos] = useState([])
-  const [filteredPhotos, setFilteredPhotos] = useState([])
-  const [filteredOutPhotos, setFilteredOutPhotos] = useState([])
-  const [showFilteredOut, setShowFilteredOut] = useState(false)
-  const [startDate, setStartDate] = useState('')
-  const [endDate, setEndDate] = useState('')
-  const [isCopying, setIsCopying] = useState(false)
-  const [copyStatus, setCopyStatus] = useState('')
-  const [toastMsg, setToastMsg] = useState('')
-  const [copyProgress, setCopyProgress] = useState(0)
-  const [copyAbortController, setCopyAbortController] = useState(null)
-  const folderInputRef = useRef(null)
+  const [photos, setPhotos] = useState([]);
+  const [loading, setLoading] = useState(true);
+  const [toastMsg, setToastMsg] = useState('');
+  const [uploading, setUploading] = useState(false);
+  const [selectedFiles, setSelectedFiles] = useState([]);
+  const [localPhotos, setLocalPhotos] = useState([]);
+  const [startDate, setStartDate] = useState('');
+  const [endDate, setEndDate] = useState('');
+  const [showLocalPicker, setShowLocalPicker] = useState(false);
+  const [privilegesMap, setPrivilegesMap] = useState({});
 
-  const imageExtensions = ['.jpg', '.jpeg', '.png', '.gif', '.heic', '.bmp', '.tiff', '.webp']
-
-  // Filter and sort photos when dates change
+  // Fetch backend photos on load
   useEffect(() => {
-    const start = startDate ? new Date(startDate + 'T00:00:00') : null
-    const end = endDate ? new Date(endDate + 'T23:59:59') : null
+    async function fetchPhotos() {
+      setLoading(true);
+      try {
+        const res = await getPhotos();
+        const backendOrigin = 'http://localhost:3001';
+        const photosWithFullUrls = (res.photos || []).map(p => ({
+          ...p,
+          url: p.url && p.url.startsWith('/') ? `${backendOrigin}${p.url}` : p.url,
+          thumbnail: p.thumbnail && p.thumbnail.startsWith('/') ? `${backendOrigin}${p.thumbnail}` : p.thumbnail
+        }));
+        setPhotos(photosWithFullUrls);
+      } catch (err) {
+        setToastMsg('Failed to fetch photos from backend.');
+      } finally {
+        setLoading(false);
+      }
+    }
+    fetchPhotos();
+  }, []);
 
-    const filtered = photos.filter(photo => {
-      const photoDate = new Date(photo.dateTaken)
-      
-      if (start && photoDate < start) return false
-      if (end && photoDate > end) return false
-      return true
-    })
+  // Fetch privileges for all backend photos
+  useEffect(() => {
+    async function fetchPrivileges() {
+      const map = {};
+      for (const photo of photos) {
+        try {
+          const res = await checkPrivilege(photo.filename);
+          if (res.success && res.privileges) {
+            const privArr = [];
+            if (res.privileges.read) privArr.push('read');
+            if (res.privileges.write) privArr.push('write');
+            if (res.privileges.execute) privArr.push('execute');
+            map[photo.id] = privArr.join('/');
+          } else {
+            map[photo.id] = 'none';
+          }
+        } catch {
+          map[photo.id] = 'error';
+        }
+      }
+      setPrivilegesMap(map);
+    }
+    if (photos.length > 0) fetchPrivileges();
+  }, [photos]);
 
-    // Also compute which photos were excluded by the date filter for debugging
-    const filteredOut = photos.filter(photo => {
-      const photoDate = new Date(photo.dateTaken)
-      if (start && photoDate < start) return true
-      if (end && photoDate > end) return true
-      return false
-    })
-
-    // Sort by date taken (chronological order)
-    filtered.sort((a, b) => new Date(a.dateTaken) - new Date(b.dateTaken))
-
-    setFilteredPhotos(filtered)
-    setFilteredOutPhotos(filteredOut)
-  }, [photos, endDate, startDate])
-
+  // Folder picker handler
   const handleSelectFolder = async () => {
     try {
-      // Use File System Access API if available (Chromium browsers)
       if ('showDirectoryPicker' in window) {
-        const dirHandle = await window.showDirectoryPicker({
-          startIn: 'pictures'
-        });
-        await processDirectoryHandle(dirHandle);
+        const dirHandle = await window.showDirectoryPicker();
+        const files = [];
+        for await (const [name, handle] of dirHandle.entries()) {
+          if (handle.kind === 'file') {
+            const file = await handle.getFile();
+            let exifDate = null;
+            try {
+              const exif = await parse(file);
+              exifDate = exif?.DateTimeOriginal || exif?.CreateDate || exif?.ModifyDate || null;
+            } catch {}
+            files.push({ file, name, exifDate, lastModified: file.lastModified });
+          }
+        }
+        setLocalPhotos(files);
+        setShowLocalPicker(true);
       } else {
-        // Fallback to input method
-        folderInputRef.current?.click();
+        setToastMsg('Your browser does not support folder picking.');
       }
-    } catch (error) {
-      console.error('Error selecting folder:', error);
+    } catch (err) {
+      setToastMsg('Error selecting folder.');
     }
   };
 
-  const processDirectoryHandle = async (dirHandle) => {
-    const files = [];
+  // Date filter for local photos
+  const filteredLocalPhotos = localPhotos.filter(p => {
+    if (!startDate && !endDate) return true;
+    let date = p.exifDate ? new Date(p.exifDate) : new Date(p.lastModified);
+    if (startDate && date < new Date(startDate)) return false;
+    if (endDate && date > new Date(endDate + 'T23:59:59')) return false;
+    return true;
+  });
 
-    for await (const [name, handle] of dirHandle.entries()) {
-      if (handle.kind === 'file') {
-        try {
-          // Permission check before reading
-          const perm = await ensurePermission(handle, 'read');
-          if (perm !== 'granted') {
-            setToastMsg(`Permission denied for file: ${name}`);
-            continue;
-          }
-          const file = await handle.getFile();
-          const ext = name.toLowerCase().substring(name.lastIndexOf('.'));
-          const isImageByExt = imageExtensions.includes(ext);
-          const isImageByType = file.type && file.type.startsWith('image/');
-          if (isImageByExt || isImageByType) {
-            files.push({ file, privilege: perm === 'granted' ? 'read' : 'none' });
-          }
-        } catch (error) {
-          setToastMsg(`Error reading file: ${name}`);
-        }
-      }
-    }
-
-    const processedPhotos = []
-
-    for (const entry of files) {
-      try {
-        const photo = await processImageFile(entry.file, entry.privilege)
-        if (photo) processedPhotos.push(photo)
-      } catch (error) {
-        console.error('Error processing file:', entry.file.name, error)
-      }
-    }
-
-    setPhotos(processedPhotos)
-  };
-
-  const handleFolderChange = async (event) => {
-    const files = Array.from(event.target.files)
-    const imageFiles = files.filter(file => {
-      const ext = file.name.toLowerCase().substring(file.name.lastIndexOf('.'))
-      return imageExtensions.includes(ext)
-    })
-
-    const processedPhotos = []
-
-    for (const file of imageFiles) {
-      console.log('Processing file:', file.name, 'Size:', file.size, 'Type:', file.type)
-      try {
-        // Files from an <input> don't expose handles/permissions, mark as unknown
-        const photo = await processImageFile(file, 'unknown')
-        if (photo) {
-          processedPhotos.push(photo)
-          console.log('Successfully processed:', file.name)
-        } else {
-          console.warn('Failed to process:', file.name)
-        }
-      } catch (error) {
-        console.error('Error processing file:', file.name, error)
-      }
-    }
-
-    console.log('Total processed photos:', processedPhotos.length)
-    setPhotos(processedPhotos)
-  }
-
-  const convertDMSToDecimal = (dms, ref) => {
-    const degrees = dms[0] || 0
-    const minutes = dms[1] || 0
-    const seconds = dms[2] || 0
-    
-    let decimal = degrees + minutes / 60 + seconds / 3600
-    
-    // Apply reference (N/S for latitude, E/W for longitude)
-    if (ref === 'S' || ref === 'W') {
-      decimal = -decimal
-    }
-    
-    return decimal
-  }
-
-  const processImageFile = async (file, privilege = 'unknown', originalDateOverride = null) => {
+  // Handle upload of filtered local photos
+  const handleUploadFiltered = async () => {
+    if (filteredLocalPhotos.length === 0) return;
+    setUploading(true);
     try {
-      let exifData = null;
-      let dateTaken = null;
-      let gpsData = 'none';
-      let errorMsg = '';
-      // Robust EXIF parse with fallback
-      try {
-        exifData = await parse(file);
-      } catch (exifError) {
-        errorMsg = `EXIF parsing failed for ${file.name}`;
+      for (const p of filteredLocalPhotos) {
+        await uploadPhotoToServer(p.file);
       }
-      // Fallback order: XMP, EXIF, lastModified, filename, unknown
-      if (exifData) {
-        dateTaken = exifData.DateTimeOriginal || exifData.CreateDate || exifData.ModifyDate || null;
-      }
-      if (!dateTaken && originalDateOverride) {
-        try {
-          const d = new Date(originalDateOverride);
-          if (!isNaN(d)) dateTaken = d;
-        } catch {}
-      }
-      if (!dateTaken) {
-        dateTaken = file.lastModified ? new Date(file.lastModified) : null;
-      }
-      if (!dateTaken) {
-        dateTaken = extractDateFromFilename(file.name);
-      }
-      if (!dateTaken || isNaN(dateTaken)) {
-        dateTaken = 'unknown';
-        errorMsg = errorMsg || `No valid date found for ${file.name}`;
-      }
-      // GPS extraction
-      if (exifData?.GPSLatitude && exifData?.GPSLongitude) {
-        const lat = exifData.GPSLatitude;
-        const lon = exifData.GPSLongitude;
-        const latRef = exifData.GPSLatitudeRef || 'N';
-        const lonRef = exifData.GPSLongitudeRef || 'E';
-        const latDecimal = convertDMSToDecimal(lat, latRef);
-        const lonDecimal = convertDMSToDecimal(lon, lonRef);
-        gpsData = `${latDecimal.toFixed(4)}° ${latRef}, ${lonDecimal.toFixed(4)}° ${lonRef}`;
-      }
-      const blobUrl = URL.createObjectURL(file);
-      if (errorMsg) setToastMsg(errorMsg);
-      return {
-        id: Math.random().toString(36),
-        file,
-        dateTaken,
-        gpsData,
-        blobUrl,
-        filename: file.name,
-        privilege
-      };
-    } catch (error) {
-      setToastMsg(`Error processing file: ${file.name}`);
-      return null;
-    }
-  }
-
-  const switchToWorkingFolder = async (workingDirHandle, folderName) => {
-    try {
-      const files = []
-
-      // Attempt to read metadata file that maps original filenames to original dates
-      let metaMap = {}
-      try {
-        const metaHandle = await workingDirHandle.getFileHandle('.photo_meta.json')
-        const metaFile = await metaHandle.getFile()
-        const text = await metaFile.text()
-        metaMap = JSON.parse(text || '{}')
-      } catch {
-        // no metadata file, continue
-      }
-
-      // Read all files from the working directory and attempt to detect privileges
-      for await (const [name, handle] of workingDirHandle.entries()) {
-        if (handle.kind === 'file') {
-          try {
-            const file = await handle.getFile()
-            const ext = name.toLowerCase().substring(name.lastIndexOf('.'))
-            const isImageByExt = imageExtensions.includes(ext)
-            const isImageByType = file.type && file.type.startsWith('image/')
-
-            if (isImageByExt || isImageByType) {
-              let privilege = 'unknown'
-              try {
-                if (typeof handle.queryPermission === 'function') {
-                  const rw = await handle.queryPermission({ mode: 'readwrite' })
-                  if (rw === 'granted') {
-                    privilege = 'read/write'
-                  } else {
-                    const r = await handle.queryPermission({ mode: 'read' })
-                    privilege = r === 'granted' ? 'read' : 'none'
-                  }
-                }
-              } catch (permErr) {
-                console.warn('Permission check failed for working folder file', name, permErr)
-              }
-
-              const originalDateOverride = metaMap[name] || null
-              files.push({ file, privilege, originalDateOverride })
-            }
-          } catch (error) {
-            console.error('Error getting file from working folder:', name, error)
-          }
-        }
-      }
-
-      // Process the files (same as original folder processing)
-      const processedPhotos = []
-      for (const entry of files) {
-        const file = entry.file
-        const privilege = entry.privilege || 'unknown'
-        console.log('Processing working folder file:', file.name, 'Size:', file.size, 'privilege:', privilege)
-        try {
-          const photo = await processImageFile(file, privilege, entry.originalDateOverride)
-          if (photo) {
-            processedPhotos.push(photo)
-            console.log('Successfully processed working folder file:', file.name)
-          }
-        } catch (error) {
-          console.error('Error processing working folder file:', file.name, error)
-        }
-      }
-
-      console.log('Working folder processed photos:', processedPhotos.length)
-      setPhotos(processedPhotos)
-      setCurrentFolder(folderName)
-      setCopyStatus(`Now viewing working folder: ${folderName}`)
-    } catch (error) {
-      console.error('Error switching to working folder:', error)
-      setCopyStatus('Error switching to working folder view')
-    }
-  }
-
-  const handleCopyToWorking = async () => {
-    if (filteredPhotos.length === 0) {
-      setCopyStatus('No photos to copy')
-      return
-    }
-
-    try {
-      setIsCopying(true);
-      setCopyStatus('Uploading photos to server...');
-      setCopyProgress(0);
-      // AbortController for cancellation
-      const abortController = new AbortController();
-      setCopyAbortController(abortController);
-      
-      let copiedCount = 0;
-      for (let i = 0; i < filteredPhotos.length; i++) {
-        if (abortController.signal.aborted) {
-          setCopyStatus('Upload cancelled.');
-          break;
-        }
-        const photo = filteredPhotos[i];
-        try {
-          const result = await uploadPhotoToServer(photo.file);
-          if (result.success) {
-            copiedCount++;
-            setCopyProgress(Math.round(((i + 1) / filteredPhotos.length) * 100));
-            setCopyStatus(`Uploaded ${copiedCount} of ${filteredPhotos.length} photos...`);
-          } else {
-            setToastMsg(`Failed to upload ${photo.filename}`);
-          }
-        } catch (error) {
-          setToastMsg(`Error uploading ${photo.filename}: ${error.message}`);
-        }
-        // Add small delay between uploads to prevent server overload
-        if (i < filteredPhotos.length - 1) {
-          await new Promise(resolve => setTimeout(resolve, 100));
-        }
-      }
-      setCopyStatus(`Successfully uploaded ${copiedCount} photos to server working directory.`);
-    } catch (error) {
-      setToastMsg(error.message);
-      setCopyStatus('Failed to upload photos.');
+      setToastMsg('Upload complete!');
+      setLocalPhotos([]);
+      setShowLocalPicker(false);
+      // Refresh backend list
+      const res = await getPhotos();
+      setPhotos(res.photos || []);
+    } catch (err) {
+      setToastMsg('Upload failed.');
     } finally {
-      setIsCopying(false);
-      setCopyAbortController(null);
-      setCopyProgress(0);
+      setUploading(false);
     }
-  }
+  };
+
+  // Move photo to inprogress
+  const handleMoveToInprogress = async (id) => {
+    try {
+      await updatePhotoState(id, 'inprogress');
+      const res = await getPhotos();
+      setPhotos(res.photos || []);
+    } catch (err) {
+      setToastMsg('Failed to move photo to inprogress.');
+    }
+  };
 
   return (
     <div className="h-screen flex flex-col bg-gray-100">
-      {/* Toast for errors/warnings */}
-      <Toast message={toastMsg} onClose={() => setToastMsg('')} />
-      {/* Control Panel */}
+      {/* Toast at top center */}
+      <div className="fixed top-6 left-1/2 transform -translate-x-1/2 z-50">
+        <Toast message={toastMsg} onClose={() => setToastMsg('')} />
+      </div>
       <div className="bg-white shadow-md p-4 flex flex-wrap items-center gap-4">
+        <div className="text-lg font-bold">Photo App (Backend View)</div>
         <button
           onClick={handleSelectFolder}
-          className="bg-blue-500 hover:bg-blue-700 text-white font-bold py-2 px-4 rounded"
+          className="bg-blue-500 hover:bg-blue-700 text-white font-bold py-2 px-4 rounded ml-2"
         >
-          Select Photos Folder
+          Select Folder for Upload
         </button>
-        <button
-          onClick={handleCopyToWorking}
-          disabled={isCopying || filteredPhotos.length === 0}
-          className="bg-green-500 hover:bg-green-700 disabled:bg-gray-400 text-white font-bold py-2 px-4 rounded ml-4"
-        >
-          {isCopying ? 'Uploading...' : 'Upload to Server'}
-        </button>
-          {isCopying && (
-            <button
-              onClick={() => copyAbortController && copyAbortController.abort()}
-              className="bg-red-500 hover:bg-red-700 text-white font-bold py-2 px-4 rounded ml-2"
-            >
-              Cancel Copy
-            </button>
-          )}
-        {copyStatus && (
-          <div className="text-sm text-gray-600 ml-2">
-            {copyStatus}
-          </div>
+        {showLocalPicker && (
+          <>
+            <div className="flex items-center gap-2 ml-4">
+              <label htmlFor="startDate" className="text-sm font-medium">Start Date:</label>
+              <input
+                type="date"
+                id="startDate"
+                value={startDate}
+                onChange={e => setStartDate(e.target.value)}
+                className="border border-gray-300 rounded px-2 py-1"
+              />
+              <label htmlFor="endDate" className="text-sm font-medium ml-2">End Date:</label>
+              <input
+                type="date"
+                id="endDate"
+                value={endDate}
+                onChange={e => setEndDate(e.target.value)}
+                className="border border-gray-300 rounded px-2 py-1"
+              />
+              <button
+                onClick={handleUploadFiltered}
+                disabled={uploading || filteredLocalPhotos.length === 0}
+                className="bg-green-500 hover:bg-green-700 text-white font-bold py-2 px-4 rounded ml-2"
+              >
+                {uploading ? 'Uploading...' : `Upload ${filteredLocalPhotos.length} Photos`}
+              </button>
+              <button
+                onClick={() => { setShowLocalPicker(false); setLocalPhotos([]); }}
+                className="bg-gray-300 hover:bg-gray-400 text-gray-800 px-2 py-1 rounded ml-2"
+              >
+                Cancel
+              </button>
+            </div>
+          </>
         )}
-          {isCopying && (
-            <div className="text-sm text-blue-600 ml-2">Progress: {copyProgress}%</div>
-          )}
-        {currentFolder && (
-          <div className="text-sm font-medium text-blue-600 ml-4">
-            📁 Viewing: {currentFolder}
-          </div>
-        )}
-        <input
-          ref={folderInputRef}
-          type="file"
-          webkitdirectory="true"
-          multiple
-          onChange={handleFolderChange}
-          className="hidden"
-        />
-        <div className="flex items-center gap-2">
-          <label htmlFor="startDate" className="text-sm font-medium">Start Date:</label>
-          <input
-            type="date"
-            id="startDate"
-            value={startDate}
-            onChange={(e) => setStartDate(e.target.value)}
-            className="border border-gray-300 rounded px-2 py-1"
-          />
-        </div>
-        <div className="flex items-center gap-2">
-          <label htmlFor="endDate" className="text-sm font-medium">End Date:</label>
-          <input
-            type="date"
-            id="endDate"
-            value={endDate}
-            onChange={(e) => setEndDate(e.target.value)}
-            className="border border-gray-300 rounded px-2 py-1"
-          />
-        </div>
-        <div className="flex items-center gap-2">
-          <button
-            onClick={() => { setStartDate(''); setEndDate('') }}
-            className="bg-gray-200 hover:bg-gray-300 text-gray-800 px-2 py-1 rounded text-sm"
-          >
-            Clear Date Filters
-          </button>
-          <button
-            onClick={() => setShowFilteredOut(prev => !prev)}
-            className="bg-gray-100 hover:bg-gray-200 text-gray-800 px-2 py-1 rounded text-sm"
-          >
-            Toggle Filtered-Out ({filteredOutPhotos.length})
-          </button>
-        </div>
       </div>
-
-      {/* Photo List */}
-      <div className="flex-1 overflow-auto p-4">
-        <div className="bg-white rounded-lg shadow-md">
-          {filteredPhotos.length > 0 && (
-            <div className="border-b border-gray-200 px-4 py-2 bg-gray-50 font-medium text-sm">
-                  <div className="grid grid-cols-12 gap-4">
-                    <div className="col-span-5 md:col-span-4 lg:col-span-3">Filename</div>
-                    <div className="col-span-2 md:col-span-2 lg:col-span-2">Date Taken</div>
-                    <div className="col-span-3 md:col-span-3 lg:col-span-4">GPS Location</div>
-                    <div className="col-span-2 md:col-span-2 lg:col-span-3">Privileges</div>
-                  </div>
-            </div>
-          )}
-          <div className="divide-y divide-gray-200">
-            {filteredPhotos.map(photo => (
-              <div key={photo.id} className="px-4 py-3 hover:bg-gray-50">
-                <div className="grid grid-cols-12 gap-4 text-sm">
-                  <div className="col-span-5 md:col-span-4 lg:col-span-3 font-medium text-gray-900 truncate">
-                    {photo.filename}
-                  </div>
-                  <div className="col-span-2 md:col-span-2 lg:col-span-2 text-gray-600">
-                    {photo.dateTaken.toLocaleDateString()} {photo.dateTaken.toLocaleTimeString()}
-                  </div>
-                  <div className="col-span-3 md:col-span-3 lg:col-span-4 text-gray-600 truncate">
-                    {photo.gpsData}
-                  </div>
-                  <div className="col-span-2 md:col-span-2 lg:col-span-3 text-gray-600">
-                    {photo.privilege}
-                  </div>
+      {showLocalPicker && (
+        <div className="p-4">
+          <div className="bg-white rounded shadow p-4 mb-4">
+            <div className="font-medium mb-2">Photos to Upload ({filteredLocalPhotos.length}):</div>
+            <div className="grid grid-cols-4 gap-4">
+              {filteredLocalPhotos.map((p, i) => (
+                <div key={i} className="border rounded p-2 flex flex-col items-center">
+                  <div className="truncate w-full text-xs mb-1">{p.name}</div>
+                  <div className="text-xs text-gray-500 mb-1">{p.exifDate ? new Date(p.exifDate).toLocaleString() : new Date(p.lastModified).toLocaleString()}</div>
+                  <img src={URL.createObjectURL(p.file)} alt={p.name} className="max-h-24 rounded" />
                 </div>
-              </div>
-            ))}
-          </div>
-          {filteredPhotos.length > 0 && (
-            <div className="px-4 py-2 bg-gray-50 border-t text-sm text-gray-600">
-              Showing {filteredPhotos.length} of {photos.length} photos
-            </div>
-          )}
-        </div>
-        {filteredPhotos.length === 0 && photos.length > 0 && (
-          <div className="text-center text-gray-500 mt-8">
-            No photos match the selected date range.
-          </div>
-        )}
-        {showFilteredOut && filteredOutPhotos.length > 0 && (
-          <div className="mt-4 bg-white p-2 rounded shadow-sm text-sm">
-            <div className="font-medium mb-2">Filtered out files ({filteredOutPhotos.length}):</div>
-            <div className="max-h-40 overflow-auto">
-              {filteredOutPhotos.map(p => (
-                <div key={p.id} className="py-1 border-b">{p.filename} — {p.dateTaken.toLocaleString()}</div>
               ))}
             </div>
           </div>
-        )}
-        {photos.length === 0 && (
-          <div className="text-center text-gray-500 mt-8">
-            Select a folder to view photos.
-          </div>
-        )}
+        </div>
+      )}
+      <div className="flex-1 overflow-auto p-4">
+        <div className="bg-white rounded-lg shadow-md">
+          {loading ? (
+            <div className="p-8 text-center text-gray-500">Loading photos...</div>
+          ) : photos.length === 0 ? (
+            <div className="p-8 text-center text-gray-500">No photos found in backend.</div>
+          ) : (
+            <div>
+              <div className="border-b border-gray-200 px-4 py-2 bg-gray-50 font-medium text-sm">
+                <div className="grid grid-cols-14 gap-4">
+                  <div className="col-span-2">Preview</div>
+                  <div className="col-span-2">Filename</div>
+                  <div className="col-span-3">Date Taken</div>
+                  <div className="col-span-2">State</div>
+                  <div className="col-span-2">Privileges</div>
+                  <div className="col-span-1">Hash</div>
+                  <div className="col-span-2">Actions</div>
+                </div>
+              </div>
+              <div className="divide-y divide-gray-200">
+                {photos.map(photo => (
+                  <div key={photo.id} className="px-4 py-3 hover:bg-gray-50">
+                    <div className="grid grid-cols-14 gap-4 text-sm items-center">
+                      <div className="col-span-2">
+                        {photo.thumbnail ? (
+                          <img src={photo.thumbnail} alt={photo.filename} className="max-h-20 rounded shadow bg-white" />
+                        ) : (
+                          <div className="w-20 h-20 flex items-center justify-center bg-gray-200 text-gray-400 rounded shadow">No Thumb</div>
+                        )}
+                      </div>
+                      <div className="col-span-2 font-medium text-gray-900 truncate">{photo.filename}</div>
+                      <div className="col-span-3 text-gray-600">
+                        {photo.metadata.DateTimeOriginal || photo.metadata.CreateDate || 'Unknown'}
+                      </div>
+                      <div className="col-span-2 text-gray-600">{photo.state}</div>
+                      <div className="col-span-2 text-gray-600">{privilegesMap[photo.id] || '...'}</div>
+                      <div className="col-span-1 text-green-700 font-mono text-xs">
+                        {photo.hash ? <span title={photo.hash}>✔ {photo.hash.slice(-5)}</span> : '...'}
+                      </div>
+                      <div className="col-span-2">
+                        {photo.state === 'working' && (
+                          <button
+                            onClick={() => handleMoveToInprogress(photo.id)}
+                            className="bg-green-500 hover:bg-green-700 text-white px-3 py-1 rounded"
+                          >
+                            Move to Inprogress
+                          </button>
+                        )}
+                      </div>
+                    </div>
+                  </div>
+                ))}
+              </div>
+            </div>
+          )}
+        </div>
       </div>
     </div>
-  )
+  );
 }
 
-export default App
+export default App;

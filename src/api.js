@@ -1,3 +1,4 @@
+
 // Utility to upload photo to backend server
 export async function uploadPhotoToServer(file, serverUrl = 'http://localhost:3001/upload') {
   const formData = new FormData();
@@ -12,4 +13,37 @@ export async function uploadPhotoToServer(file, serverUrl = 'http://localhost:30
   } catch (error) {
     throw new Error('Error uploading photo: ' + error.message);
   }
+}
+
+// Utility to check file/folder privileges via backend
+export async function checkPrivilege(relPath, serverUrl = 'http://localhost:3001/privilege') {
+  try {
+    const response = await fetch(serverUrl, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ relPath })
+    });
+    if (!response.ok) throw new Error('Privilege check failed');
+    return await response.json();
+  } catch (error) {
+    throw new Error('Error checking privilege: ' + error.message);
+  }
+}
+
+// Fetch all photos and metadata from backend
+export async function getPhotos(serverUrl = 'http://localhost:3001/photos') {
+  const response = await fetch(serverUrl);
+  if (!response.ok) throw new Error('Failed to fetch photos');
+  return await response.json();
+}
+
+// Update photo state (move to inprogress/working)
+export async function updatePhotoState(id, state, serverUrl = 'http://localhost:3001/photos/') {
+  const response = await fetch(`${serverUrl}${id}/state`, {
+    method: 'PATCH',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ state })
+  });
+  if (!response.ok) throw new Error('Failed to update photo state');
+  return await response.json();
 }
