@@ -243,6 +243,25 @@ function App() {
         >
           Select Folder for Upload
         </button>
+        <button
+          onClick={async () => {
+            try {
+              const res = await getPhotos('http://localhost:3001/photos?state=inprogress');
+              const backendOrigin = 'http://localhost:3001';
+              const photosWithFullUrls = (res.photos || []).map(p => ({
+                ...p,
+                url: p.url && p.url.startsWith('/') ? `${backendOrigin}${p.url}` : p.url,
+                thumbnail: p.thumbnail && p.thumbnail.startsWith('/') ? `${backendOrigin}${p.thumbnail}` : p.thumbnail
+              }));
+              setPhotos(photosWithFullUrls);
+            } catch (err) {
+              setToastMsg('Failed to fetch inprogress photos');
+            }
+          }}
+          className="bg-yellow-500 hover:bg-yellow-700 text-white font-bold py-2 px-4 rounded ml-2"
+        >
+          View Inprogress
+        </button>
         {showLocalPicker && (
           <>
             <div className="flex items-center gap-2 ml-4">
@@ -329,7 +348,7 @@ function App() {
                       <div className="col-span-3 text-gray-600">
                         {photo.metadata.DateTimeOriginal || photo.metadata.CreateDate || 'Unknown'}
                       </div>
-                      <div className="col-span-2 text-gray-600">{photo.state}</div>
+                      <div className="col-span-2 text-gray-600">{photo.state === 'working' ? 'staged' : photo.state}</div>
                       <div className="col-span-2 text-gray-600">{privilegesMap[photo.id] || '...'}</div>
                       <div className="col-span-1 text-green-700 font-mono text-xs">
                         {photo.hash ? <span title={photo.hash}>✔ {photo.hash.slice(-5)}</span> : '...'}

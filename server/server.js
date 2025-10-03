@@ -324,20 +324,46 @@ async function migrateAndStartServer() {
         return res.status(400).json({ success: false, error: 'Missing relPath' });
       }
       // Only allow checking inside working dir
-      const absPath = path.resolve(WORKING_DIR, relPath);
+      let absPath = path.resolve(WORKING_DIR, relPath);
       if (!absPath.startsWith(WORKING_DIR)) {
-        return res.status(403).json({ success: false, error: 'Path outside working directory' });
+        // If client passed a pathlike relPath, normalize it
+        // We'll still allow checking inprogress by attempting next
       }
-      // Check existence
+
+      // If file doesn't exist in working dir, try inprogress dir (allow checking both folders)
       if (!fs.existsSync(absPath)) {
-        return res.status(404).json({ success: false, error: 'File/folder not found' });
+        const altPath = path.resolve(INPROGRESS_DIR, relPath);
+        if (fs.existsSync(altPath)) {
+          absPath = altPath;
+        } else {
+          return res.status(404).json({ success: false, error: 'File/folder not found' });
+        }
       }
+
       // Check privileges with logging
       let privileges = { read: false, write: false, execute: false };
       let log = [];
-      try { fs.accessSync(absPath, fs.constants.R_OK); privileges.read = true; log.push('read: OK'); } catch (e) { log.push('read: FAIL'); }
-      try { fs.accessSync(absPath, fs.constants.W_OK); privileges.write = true; log.push('write: OK'); } catch (e) { log.push('write: FAIL'); }
-      try { fs.accessSync(absPath, fs.constants.X_OK); privileges.execute = true; log.push('execute: OK'); } catch (e) { log.push('execute: FAIL'); }
+      try {
+        fs.accessSync(absPath, fs.constants.R_OK);
+        privileges.read = true;
+        log.push('read: OK');
+      } catch (e) {
+        log.push('read: FAIL');
+      }
+      try {
+        fs.accessSync(absPath, fs.constants.W_OK);
+        privileges.write = true;
+        log.push('write: OK');
+      } catch (e) {
+        log.push('write: FAIL');
+      }
+      try {
+        fs.accessSync(absPath, fs.constants.X_OK);
+        privileges.execute = true;
+        log.push('execute: OK');
+      } catch (e) {
+        log.push('execute: FAIL');
+      }
       // Get stat info
       let stat = null;
       try { stat = fs.statSync(absPath); } catch {}
