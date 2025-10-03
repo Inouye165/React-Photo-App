@@ -333,7 +333,7 @@ function App() {
                   <div className="col-span-2">Actions</div>
                 </div>
               </div>
-              <div className="divide-y divide-gray-200">
+              <div className="divide-y divide-gray-200 table-row-compact">
                 {photos.map(photo => (
                   <div key={photo.id} className="px-4 py-3 hover:bg-gray-50">
                     <div className="grid grid-cols-14 gap-4 text-sm items-center">

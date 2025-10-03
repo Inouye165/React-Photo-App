@@ -1,3 +1,14 @@
 @tailwind base;
 @tailwind components;
 @tailwind utilities;
+
+/* UI: slightly smaller base font for denser list view */
+html, body {
+  font-size: 13px;
+}
+
+/* Make table rows more compact */
+.table-row-compact > div {
+  padding-top: 0.25rem;
+  padding-bottom: 0.25rem;
+}
