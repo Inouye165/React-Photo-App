@@ -206,7 +206,14 @@ async function migrateAndStartServer() {
 
   // --- API: List all photos and metadata (include hash) ---
   app.get('/photos', (req, res) => {
-    db.all('SELECT id, filename, state, metadata, hash FROM photos', [], (err, rows) => {
+    const state = req.query.state;
+    let sql = 'SELECT id, filename, state, metadata, hash FROM photos';
+    const params = [];
+    if (state === 'working' || state === 'inprogress') {
+      sql += ' WHERE state = ?';
+      params.push(state);
+    }
+    db.all(sql, params, (err, rows) => {
       if (err) {
         return res.status(500).json({ success: false, error: err.message });
       }
@@ -319,6 +326,7 @@ async function migrateAndStartServer() {
   // Privilege check endpoint
   app.post('/privilege', async (req, res) => {
     try {
+      console.log('Incoming /privilege request from', req.ip, 'body=', req.body);
       const { relPath } = req.body;
       if (!relPath) {
         return res.status(400).json({ success: false, error: 'Missing relPath' });
