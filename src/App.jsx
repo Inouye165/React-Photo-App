@@ -113,13 +113,15 @@ function App() {
   const [endDate, setEndDate] = useState('');
   const [showLocalPicker, setShowLocalPicker] = useState(false);
   const [privilegesMap, setPrivilegesMap] = useState({});
+  const [showInprogress, setShowInprogress] = useState(false);
 
-  // Fetch backend photos on load
+  // Fetch backend photos on load or when view toggles
   useEffect(() => {
     async function fetchPhotos() {
       setLoading(true);
       try {
-        const res = await getPhotos();
+        const endpoint = showInprogress ? 'http://localhost:3001/photos?state=inprogress' : 'http://localhost:3001/photos?state=working';
+        const res = await getPhotos(endpoint);
         const backendOrigin = 'http://localhost:3001';
         const photosWithFullUrls = (res.photos || []).map(p => ({
           ...p,
@@ -134,7 +136,7 @@ function App() {
       }
     }
     fetchPhotos();
-  }, []);
+  }, [showInprogress]);
 
   // Fetch privileges for all backend photos
   useEffect(() => {
@@ -218,12 +220,20 @@ function App() {
     }
   };
 
-  // Move photo to inprogress
+  // Move photo to inprogress (refresh current view)
   const handleMoveToInprogress = async (id) => {
     try {
       await updatePhotoState(id, 'inprogress');
-      const res = await getPhotos();
-      setPhotos(res.photos || []);
+      // Refresh current view
+      const endpoint = showInprogress ? 'http://localhost:3001/photos?state=inprogress' : 'http://localhost:3001/photos?state=working';
+      const res = await getPhotos(endpoint);
+      const backendOrigin = 'http://localhost:3001';
+      const photosWithFullUrls = (res.photos || []).map(p => ({
+        ...p,
+        url: p.url && p.url.startsWith('/') ? `${backendOrigin}${p.url}` : p.url,
+        thumbnail: p.thumbnail && p.thumbnail.startsWith('/') ? `${backendOrigin}${p.thumbnail}` : p.thumbnail
+      }));
+      setPhotos(photosWithFullUrls);
     } catch (err) {
       setToastMsg('Failed to move photo to inprogress.');
     }
@@ -244,23 +254,10 @@ function App() {
           Select Folder for Upload
         </button>
         <button
-          onClick={async () => {
-            try {
-              const res = await getPhotos('http://localhost:3001/photos?state=inprogress');
-              const backendOrigin = 'http://localhost:3001';
-              const photosWithFullUrls = (res.photos || []).map(p => ({
-                ...p,
-                url: p.url && p.url.startsWith('/') ? `${backendOrigin}${p.url}` : p.url,
-                thumbnail: p.thumbnail && p.thumbnail.startsWith('/') ? `${backendOrigin}${p.thumbnail}` : p.thumbnail
-              }));
-              setPhotos(photosWithFullUrls);
-            } catch (err) {
-              setToastMsg('Failed to fetch inprogress photos');
-            }
-          }}
+          onClick={() => setShowInprogress(prev => !prev)}
           className="bg-yellow-500 hover:bg-yellow-700 text-white font-bold py-2 px-4 rounded ml-2"
         >
-          View Inprogress
+          {showInprogress ? 'View Staged' : 'View Inprogress'}
         </button>
         {showLocalPicker && (
           <>
