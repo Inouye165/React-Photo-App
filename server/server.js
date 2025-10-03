@@ -79,12 +79,19 @@ async function ensureAllThumbnails(db) {
   }
 }
 
-// Update ensureAllFilesHashed to also generate thumbnails
+const ALLOWED_IMAGE_EXTENSIONS = ['.jpg', '.jpeg', '.png', '.gif', '.heic', '.bmp', '.tiff', '.webp'];
+
+// Update ensureAllFilesHashed to enforce only images in working dir
 async function ensureAllFilesHashed(db) {
   const files = fs.readdirSync(WORKING_DIR);
   for (const filename of files) {
     const filePath = path.join(WORKING_DIR, filename);
     if (!fs.statSync(filePath).isFile()) continue;
+    const ext = path.extname(filename).toLowerCase();
+    if (!ALLOWED_IMAGE_EXTENSIONS.includes(ext)) {
+      console.error(`Non-image file found in working directory: ${filename}. Stopping server.`);
+      process.exit(1);
+    }
     const row = await new Promise((resolve, reject) => {
       db.get('SELECT * FROM photos WHERE filename = ?', [filename], (err, row) => {
         if (err) reject(err); else resolve(row);
@@ -135,7 +142,7 @@ async function ingestPhoto(db, filePath, filename, state = 'working') {
 
 async function migrateAndStartServer() {
   const sqlite3 = require('sqlite3').verbose();
-  const db = new sqlite3.Database(path.join(WORKING_DIR, 'photos.db'));
+  const db = new sqlite3.Database(path.join(__dirname, 'photos.db'));
   // Ensure table exists
   await new Promise((resolve, reject) => {
     db.run(`CREATE TABLE IF NOT EXISTS photos (
@@ -213,10 +220,13 @@ async function migrateAndStartServer() {
       sql += ' WHERE state = ?';
       params.push(state);
     }
+    console.log('SQL:', sql, 'params:', params);
     db.all(sql, params, (err, rows) => {
       if (err) {
         return res.status(500).json({ success: false, error: err.message });
       }
+      // Prevent caching so frontend always gets fresh filtered results
+      res.set('Cache-Control', 'no-store');
       res.json({ success: true, photos: rows.map(row => ({
         id: row.id,
         filename: row.filename,
