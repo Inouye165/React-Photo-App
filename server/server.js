@@ -30,19 +30,19 @@ async function generateThumbnail(filePath, hash) {
   const thumbPath = path.join(THUMB_DIR, `${hash}.jpg`);
   if (fs.existsSync(thumbPath)) return thumbPath;
   try {
+    // Reduced size by 25%: original 120 -> now 90
     await sharp(filePath)
-      .resize(120, 120, { fit: 'inside' })
+      .resize(90, 90, { fit: 'inside' })
       .jpeg({ quality: 70 })
       .toFile(thumbPath);
     return thumbPath;
   } catch (err) {
     console.error('Sharp thumbnail generation failed for', filePath, err.message || err);
-    // Fallback for HEIC/HEIF: try ImageMagick if available
     const ext = path.extname(filePath).toLowerCase();
     if (ext === '.heic' || ext === '.heif') {
       const tmpJpg = path.join(THUMB_DIR, `${hash}.tmp.jpg`);
-      // Try ImageMagick `magick` command to convert+resize directly
-      const cmd = `magick "${filePath}" -strip -resize 120x120 -quality 70 "${tmpJpg}"`;
+      // Use ImageMagick to convert and resize to 90x90
+      const cmd = `magick "${filePath}" -strip -resize 90x90 -quality 70 "${tmpJpg}"`;
       try {
         await new Promise((resolve, reject) => {
           exec(cmd, { windowsHide: true }, (error, stdout, stderr) => {
@@ -50,12 +50,10 @@ async function generateThumbnail(filePath, hash) {
             resolve();
           });
         });
-        // Move tmpJpg to thumbPath
         fs.renameSync(tmpJpg, thumbPath);
         return thumbPath;
       } catch (convErr) {
         console.error('Fallback conversion failed for', filePath, convErr.message || convErr);
-        // cleanup tmp if exists
         try { if (fs.existsSync(tmpJpg)) fs.unlinkSync(tmpJpg); } catch (e) {}
         return null;
       }
@@ -75,7 +73,8 @@ async function ensureAllThumbnails(db) {
       });
     });
     if (row && row.hash) {
-      await generateThumbnail(filePath, row.hash);
+      // generateThumbnail may be slow; run but don't block other files
+      generateThumbnail(filePath, row.hash).catch(e => console.error('Thumbnail gen error:', e));
     }
   }
 }
@@ -165,7 +164,6 @@ async function migrateAndStartServer() {
   });
   // Ensure all files are hashed
   await ensureAllFilesHashed(db);
-  await ensureAllThumbnails(db);
 
   // --- Express app and routes ---
   const express = require('express');
@@ -362,11 +360,16 @@ async function migrateAndStartServer() {
     }
   });
 
+  // Start server
   app.listen(PORT, () => {
     console.log(`Photo upload server running on port ${PORT}`);
     console.log(`Working directory: ${WORKING_DIR}`);
     console.log(`Health check: http://localhost:${PORT}/health`);
   });
+
+  // Generate thumbnails asynchronously after server start (do not block startup)
+  ensureAllThumbnails(db).catch(err => console.error('ensureAllThumbnails failed:', err));
+
 }
 
 migrateAndStartServer();

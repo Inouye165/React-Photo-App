@@ -17,16 +17,29 @@ export async function uploadPhotoToServer(file, serverUrl = 'http://localhost:30
 
 // Utility to check file/folder privileges via backend
 export async function checkPrivilege(relPath, serverUrl = 'http://localhost:3001/privilege') {
-  try {
-    const response = await fetch(serverUrl, {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ relPath })
-    });
-    if (!response.ok) throw new Error('Privilege check failed');
-    return await response.json();
-  } catch (error) {
-    throw new Error('Error checking privilege: ' + error.message);
+  const maxAttempts = 3;
+  const delayMs = 250;
+  for (let attempt = 1; attempt <= maxAttempts; attempt++) {
+    try {
+      const response = await fetch(serverUrl, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ relPath })
+      });
+      if (response.ok) return await response.json();
+      // If 404 or 5xx, retry a few times
+      if (attempt < maxAttempts) {
+        await new Promise(r => setTimeout(r, delayMs * attempt));
+        continue;
+      }
+      throw new Error('Privilege check failed: ' + response.status);
+    } catch (error) {
+      if (attempt < maxAttempts) {
+        await new Promise(r => setTimeout(r, delayMs * attempt));
+        continue;
+      }
+      throw new Error('Error checking privilege: ' + error.message);
+    }
   }
 }
 

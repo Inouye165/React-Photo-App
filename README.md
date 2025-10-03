@@ -165,3 +165,11 @@ This project includes VS Code workspace settings (`.vscode/settings.json`) that 
 
 - **Automatic thumbnail generation**: The backend generates thumbnails for every image in the `working` folder and serves them from `/thumbnails/<hash>.jpg` so the frontend can display fast previews without re-reading original files.
 - **HEIC/HEIF support and fallback**: Thumbnails are generated with `sharp` when possible. If `sharp`/libvips lacks HEIF/HEIC support, the server will attempt a fallback conversion using ImageMagick (the `magick` command) to create thumbnails. Install ImageMagick with HEIF delegates on your system to enable the fallback.
+
+## Open TODOs
+
+- **Add WebSocket/SSE for live photo state and thumbnail updates** — push notifications when files change or thumbnails are created.
+- **Make thumbnail generation asynchronous and cache-optimized** — generate thumbnails in background workers and avoid blocking startup.
+- **Add client-side content-hash check to avoid uploading duplicates** — compute file hash in browser and skip uploads if server already has the hash.
+- **Add filename search and full-size preview modal in frontend** — quick search, sort, and modal for viewing images at full resolution.
+- **Add automated tests and CI pipeline for build and linting** — ensure stability with unit tests and GitHub Actions.
