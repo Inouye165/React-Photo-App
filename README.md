@@ -155,7 +155,8 @@ npm run preview
 - File System Access API requires user gesture and HTTPS in production
 
 ## Open TODOs
-- **If a file fails AI processing (shows 'AI processing failed'), use the /debug/reset-ai-retry endpoint to reset its retry count, then click 'Recheck Inprogress AI' to retry processing.**
+- **Resize and compress all images before sending to OpenAI Vision API to reduce costs. (Convert to JPEG, max 1024x1024, quality 70–80.)**
+- If a file fails AI processing (shows 'AI processing failed'), use the /debug/reset-ai-retry endpoint to reset its retry count, then click 'Recheck Inprogress AI' to retry processing.
 - Add WebSocket/SSE for live photo state and thumbnail updates — push notifications when files change or thumbnails are created.
 - Make thumbnail generation asynchronous and cache-optimized — generate thumbnails in background workers and avoid blocking startup.
 - Add client-side content-hash check to avoid uploading duplicates — compute file hash in browser and skip uploads if server already has the hash.
