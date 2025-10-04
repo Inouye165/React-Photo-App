@@ -56,3 +56,6 @@ public/*.map
 # Ignore lock files (optional, if you want to allow only one lock file)
 # yarn.lock
 # package-lock.json
+
+# Ignore SQLite database
+server/photos.db

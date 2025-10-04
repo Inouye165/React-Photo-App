@@ -11,11 +11,53 @@ const openai = new OpenAI({ apiKey: process.env.OPENAI_API_KEY });
 
 const PORT = process.env.PORT || 3001;
 const DEFAULT_WORKING_DIR = path.join(os.homedir(), 'working');
-const WORKING_DIR = process.env.PHOTO_WORKING_DIR || DEFAULT_WORKING_DIR;
+const WORKING_DIR_PATH_FILE = path.join(__dirname, 'working_dir_path.txt');
+
+function getNonEmptyDir(dir) {
+  return fs.existsSync(dir) && fs.readdirSync(dir).length > 0;
+}
+
+function findOrCreateWorkingDir() {
+  // 1. If path file exists, use it
+  if (fs.existsSync(WORKING_DIR_PATH_FILE)) {
+    const saved = fs.readFileSync(WORKING_DIR_PATH_FILE, 'utf-8').trim();
+    if (saved && fs.existsSync(saved)) return saved;
+  }
+  // 2. If env override, use it (and persist)
+  if (process.env.PHOTO_WORKING_DIR) {
+    fs.writeFileSync(WORKING_DIR_PATH_FILE, process.env.PHOTO_WORKING_DIR);
+    return process.env.PHOTO_WORKING_DIR;
+  }
+  // 3. If default does not exist or is empty, use it
+  if (!fs.existsSync(DEFAULT_WORKING_DIR) || !getNonEmptyDir(DEFAULT_WORKING_DIR)) {
+    if (!fs.existsSync(DEFAULT_WORKING_DIR)) fs.mkdirSync(DEFAULT_WORKING_DIR, { recursive: true });
+    fs.writeFileSync(WORKING_DIR_PATH_FILE, DEFAULT_WORKING_DIR);
+    return DEFAULT_WORKING_DIR;
+  }
+  // 4. If default exists and is not empty, find a new unique folder
+  let idx = 1;
+  let candidate;
+  do {
+    candidate = path.join(os.homedir(), `working-${idx}`);
+    idx++;
+  } while (fs.existsSync(candidate) && getNonEmptyDir(candidate));
+  fs.mkdirSync(candidate, { recursive: true });
+  fs.writeFileSync(WORKING_DIR_PATH_FILE, candidate);
+  return candidate;
+}
+
+const WORKING_DIR = findOrCreateWorkingDir();
 
 if (!fs.existsSync(WORKING_DIR)) {
   fs.mkdirSync(WORKING_DIR, { recursive: true });
   console.log(`Created working directory: ${WORKING_DIR}`);
+}
+
+// --- Inprogress directory setup (moved up for early availability) ---
+const INPROGRESS_DIR = path.join(WORKING_DIR, '..', 'inprogress');
+if (!fs.existsSync(INPROGRESS_DIR)) {
+  fs.mkdirSync(INPROGRESS_DIR, { recursive: true });
+  console.log(`Created inprogress directory: ${INPROGRESS_DIR}`);
 }
 
 // --- Helper: Compute SHA-256 hash of a file ---
@@ -161,6 +203,44 @@ async function migratePhotoTable(db) {
   });
 }
 
+// Remove DB records for missing files in working dir
+async function cleanupMissingFiles(db, workingDir) {
+  return new Promise((resolve, reject) => {
+    db.all('SELECT id, filename FROM photos WHERE state = "working"', async (err, rows) => {
+      if (err) return reject(err);
+      let removed = 0;
+      for (const row of rows) {
+        const filePath = path.join(workingDir, row.filename);
+        if (!fs.existsSync(filePath)) {
+          db.run('DELETE FROM photos WHERE id = ?', [row.id]);
+          removed++;
+        }
+      }
+      if (removed > 0) console.log(`[CLEANUP] Removed ${removed} DB records for missing files in working dir.`);
+      resolve();
+    });
+  });
+}
+
+// Remove DB records for missing files in inprogress dir
+async function cleanupMissingInprogressFiles(db, inprogressDir) {
+  return new Promise((resolve, reject) => {
+    db.all('SELECT id, filename FROM photos WHERE state = "inprogress"', async (err, rows) => {
+      if (err) return reject(err);
+      let removed = 0;
+      for (const row of rows) {
+        const filePath = path.join(inprogressDir, row.filename);
+        if (!fs.existsSync(filePath)) {
+          db.run('DELETE FROM photos WHERE id = ?', [row.id]);
+          removed++;
+        }
+      }
+      if (removed > 0) console.log(`[CLEANUP] Removed ${removed} DB records for missing files in inprogress dir.`);
+      resolve();
+    });
+  });
+}
+
 async function migrateAndStartServer() {
   const sqlite3 = require('sqlite3').verbose();
   const db = new sqlite3.Database(path.join(__dirname, 'photos.db'));
@@ -194,6 +274,9 @@ async function migrateAndStartServer() {
   await migratePhotoTable(db);
   // Ensure all files are hashed
   await ensureAllFilesHashed(db);
+  // Cleanup DB records for missing files
+  await cleanupMissingFiles(db, WORKING_DIR);
+  await cleanupMissingInprogressFiles(db, INPROGRESS_DIR);
   await processAllUnprocessedInprogress(db);
 
   // --- Express app and routes ---
@@ -286,11 +369,6 @@ async function migrateAndStartServer() {
   app.use('/working', express.static(WORKING_DIR));
 
   // --- Inprogress directory setup ---
-  const INPROGRESS_DIR = path.join(WORKING_DIR, '..', 'inprogress');
-  if (!fs.existsSync(INPROGRESS_DIR)) {
-    fs.mkdirSync(INPROGRESS_DIR, { recursive: true });
-    console.log(`Created inprogress directory: ${INPROGRESS_DIR}`);
-  }
   app.use('/inprogress', express.static(INPROGRESS_DIR));
 
   // --- Serve thumbnails ---
@@ -621,7 +699,7 @@ async function processAllUnprocessedInprogress(db) {
         console.log(`[RECHECK] Skipping ${row.filename} (already has valid AI metadata)`);
         continue;
       }
-      const filePath = path.join(path.join(WORKING_DIR, '..', 'inprogress'), row.filename);
+      const filePath = path.join(INPROGRESS_DIR, row.filename);
       if (fs.existsSync(filePath)) {
         console.log(`[RECHECK] Processing AI metadata for ${row.filename}`);
         await updatePhotoAIMetadata(db, row, filePath);
