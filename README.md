@@ -1,6 +1,6 @@
 # React Photo Filtering App
 
-A full-screen React application for dynamically filtering and browsing photos by date range with Node.js backend for automatic file storage.
+A full-screen React application for dynamically filtering and browsing photos by date range, with a Node.js backend for automatic file storage, deduplication, and AI-powered metadata extraction.
 
 ## Key Features (2025 Update)
 
@@ -10,6 +10,8 @@ A full-screen React application for dynamically filtering and browsing photos by
 - **Privileges column:** The app displays actual file system privileges (read/write/execute) for each photo as reported by the backend.
 - **Automatic DB migration:** The backend automatically upgrades the database schema (e.g., adds missing columns) on startup, with no data loss.
 - **Robust error handling:** All errors and upload messages are shown in a prominent toast at the top of the app.
+- **AI-powered captions and descriptions:** The backend uses OpenAI Vision to generate captions, descriptions, and keywords for each photo, including HEIC/HEIF files.
+- **HEIC/HEIF support:** Both thumbnails and AI processing support HEIC/HEIF files, with ImageMagick fallback if sharp/libvips lacks support.
 
 ## Usage (2025)
 
@@ -18,6 +20,7 @@ A full-screen React application for dynamically filtering and browsing photos by
 3. In the app, click "Select Folder for Upload" to pick a local folder.
 4. Filter/select photos by date, then upload to the backend.
 5. The backend view shows all photos, metadata, privileges, and hash info. No duplicates are stored.
+6. If a file fails AI processing (shows 'AI processing failed'), POST to `/debug/reset-ai-retry` and click "Recheck Inprogress AI" to retry.
 
 ## File Hashing & Deduplication
 
@@ -31,7 +34,7 @@ A full-screen React application for dynamically filtering and browsing photos by
 - **React 19**: Latest React with modern hooks
 - **Vite**: Fast build tool and dev server
 - **Tailwind CSS**: Utility-first CSS framework
-- **EXIF.js (exifr)**: Library for reading photo metadata
+- **exifr**: Library for reading photo metadata
 - **File System Access API**: Modern browser API for folder selection
 - **ESLint**: Code linting and formatting
 
@@ -40,6 +43,8 @@ A full-screen React application for dynamically filtering and browsing photos by
 - **Express**: Web framework for REST API
 - **Multer**: Middleware for handling multipart/form-data file uploads
 - **CORS**: Cross-origin resource sharing support
+- **Sharp**: Image processing (with fallback to ImageMagick for HEIC/HEIF)
+- **ImageMagick**: Fallback for HEIC/HEIF conversion if sharp/libvips lacks support
 
 ## File Structure
 
@@ -65,10 +70,10 @@ photo-app/
 ## Getting Started
 
 ### Prerequisites
-
 - Node.js (v18 or higher)
 - npm or yarn
 - Modern web browser (Chrome, Edge recommended for full features)
+- [ImageMagick](https://imagemagick.org/) installed and available in your system PATH (for HEIC/HEIF support)
 
 ### Installation
 
@@ -120,59 +125,18 @@ npm run preview
 ## Usage
 
 1. Open the application in a modern web browser
-2. Click "Select Photos Folder" - the folder picker will open in your Pictures folder (on supported browsers)
+2. Click "Select Folder for Upload" - the folder picker will open in your Pictures folder (on supported browsers)
 3. The application will scan and display all supported image files in chronological order
 4. Use the "Start Date" and "End Date" inputs to filter photos by date taken
 5. The list updates instantly as you change dates, showing the filtered count
-6. Click "Copy to Working" to copy all filtered photos to a new timestamped folder in your Documents directory
-
-## Copy to Working Feature
-
-- **Automatic Folder Creation**: Creates a folder named `PhotoWorking_YYYY-MM-DD` in your Documents
-- **Filtered Photos Only**: Only copies photos that match your current date filter
-- **Progress Updates**: Shows real-time progress during copying
-- **File System Access**: Uses modern browser APIs for direct file system access
-- **Browser Support**: Requires Chromium-based browsers (Chrome, Edge) for full functionality
-
-## Browser Compatibility
-
-- **Full Support**: Chrome, Edge (File System Access API - opens in Pictures folder)
-- **Basic Support**: Firefox, Safari (standard folder picker)
-- **Requirements**: File API, ES6+ JavaScript, React 19
-
-## Limitations
-
-- Due to browser security restrictions, only works with locally selected files
-- Large folders may take time to process initially
-- EXIF data reading depends on photo metadata being present
-- Falls back to file modification date if EXIF date is unavailable
-- File System Access API requires user gesture and HTTPS in production
-
-## Development
-
-### Code Quality
-
-- ESLint configuration for consistent code style
-- React hooks best practices
-- Modern JavaScript (ES6+)
-- Functional components with hooks
-
-### VS Code Configuration
-
-This project includes VS Code workspace settings (`.vscode/settings.json`) that disable CSS validation to prevent linting errors with Tailwind CSS directives. The `@tailwind`
+6. Click "Upload" to send filtered photos to the backend
+7. The backend view shows all photos, metadata, privileges, and hash info
+8. If a file fails AI processing (shows 'AI processing failed'), POST to `/debug/reset-ai-retry` and click "Recheck Inprogress AI" to retry
 
 ## Thumbnails
 
 - **Automatic thumbnail generation**: The backend generates thumbnails for every image in the `working` folder and serves them from `/thumbnails/<hash>.jpg` so the frontend can display fast previews without re-reading original files.
 - **HEIC/HEIF support and fallback**: Thumbnails are generated with `sharp` when possible. If `sharp`/libvips lacks HEIF/HEIC support, the server will attempt a fallback conversion using ImageMagick (the `magick` command) to create thumbnails. Install ImageMagick with HEIF delegates on your system to enable the fallback.
-
-## Open TODOs
-
-- **Add WebSocket/SSE for live photo state and thumbnail updates** — push notifications when files change or thumbnails are created.
-- **Make thumbnail generation asynchronous and cache-optimized** — generate thumbnails in background workers and avoid blocking startup.
-- **Add client-side content-hash check to avoid uploading duplicates** — compute file hash in browser and skip uploads if server already has the hash.
-- **Add filename search and full-size preview modal in frontend** — quick search, sort, and modal for viewing images at full resolution.
-- **Add automated tests and CI pipeline for build and linting** — ensure stability with unit tests and GitHub Actions.
 
 ## HEIC/HEIF AI Processing Support
 - HEIC/HEIF files are now supported for AI processing. If the backend cannot convert HEIC using sharp, it will automatically use ImageMagick as a fallback.
@@ -182,3 +146,18 @@ This project includes VS Code workspace settings (`.vscode/settings.json`) that 
 ## Troubleshooting
 - If you see errors like 'bad seek' or 'compression format not built in' for HEIC files, make sure ImageMagick is installed and available in your system PATH.
 - If a file repeatedly fails AI processing, check the backend logs for details.
+
+## Limitations
+- Due to browser security restrictions, only works with locally selected files
+- Large folders may take time to process initially
+- EXIF data reading depends on photo metadata being present
+- Falls back to file modification date if EXIF date is unavailable
+- File System Access API requires user gesture and HTTPS in production
+
+## Open TODOs
+- **If a file fails AI processing (shows 'AI processing failed'), use the /debug/reset-ai-retry endpoint to reset its retry count, then click 'Recheck Inprogress AI' to retry processing.**
+- Add WebSocket/SSE for live photo state and thumbnail updates — push notifications when files change or thumbnails are created.
+- Make thumbnail generation asynchronous and cache-optimized — generate thumbnails in background workers and avoid blocking startup.
+- Add client-side content-hash check to avoid uploading duplicates — compute file hash in browser and skip uploads if server already has the hash.
+- Add filename search and full-size preview modal in frontend — quick search, sort, and modal for viewing images at full resolution.
+- Add automated tests and CI pipeline for build and linting — ensure stability with unit tests and GitHub Actions.
