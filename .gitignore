@@ -1,2 +1,58 @@
 .env
 server/.env
+node_modules/
+# Dependency directories
+server/node_modules/
+
+# Logs
+logs
+*.log
+npm-debug.log*
+yarn-debug.log*
+yarn-error.log*
+
+# OS generated files
+.DS_Store
+Thumbs.db
+
+# Build output
+/dist
+/build
+server/dist
+server/build
+
+# Editor directories and files
+.vscode/
+.idea/
+*.sublime-workspace
+*.sublime-project
+
+# Test coverage
+coverage/
+
+# Misc
+*.tgz
+*.swp
+*.bak
+*.tmp
+
+# Ignore SQLite DB and backups
+server/photos.db
+server/photos.db-journal
+server/*.sqlite
+server/*.sqlite-journal
+
+# Ignore environment and secret files
+.env.*
+server/.env.*
+
+# Ignore local config
+*.local.js
+*.local.json
+
+# Ignore frontend build artifacts
+public/*.map
+
+# Ignore lock files (optional, if you want to allow only one lock file)
+# yarn.lock
+# package-lock.json
