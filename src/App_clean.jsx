@@ -1,8 +1,6 @@
-import React, { useState, useEffect, useRef } from 'react'
-import ReactDOM from 'react-dom'
+import { useState, useEffect, useRef } from 'react'
 import { parse } from 'exifr'
-import { uploadPhotoToServer, checkPrivilege, getPhotos, updatePhotoState, recheckInprogressPhotos, updatePhotoCaption } from './api.js'
-import EditPage from './EditPage'
+import { uploadPhotoToServer, checkPrivilege, getPhotos, updatePhotoState, recheckInprogressPhotos } from './api.js'
 
 // Utility: Get or create a guaranteed local folder (default: C:\Users\<User>\working)
 async function getLocalWorkingFolder(customPath) {
@@ -129,8 +127,6 @@ function App() {
   const [rechecking, setRechecking] = useState(false);
   const [editingPhoto, setEditingPhoto] = useState(null);
   const [showFinished, setShowFinished] = useState(false);
-  const lastActiveElementRef = useRef(null);
-  const [useFullPageEditor, setUseFullPageEditor] = useState(true);
 
   const workingDirHandleRef = useRef(null);
   
@@ -139,8 +135,7 @@ function App() {
     const endpoint = showFinished ? 'finished' : (showInprogress ? 'inprogress' : 'working');
     const loadPhotos = async () => {
       try {
-        const serverUrl = `http://localhost:3001/photos?state=${endpoint}`;
-        const res = await getPhotos(serverUrl);
+        const res = await getPhotos(endpoint);
         const backendOrigin = 'http://localhost:3001';
         const photosWithFullUrls = (res.photos || []).map(p => ({
           ...p,
@@ -231,7 +226,7 @@ function App() {
       }
       setToastMsg(`Successfully uploaded ${filteredLocalPhotos.length} photos`);
       // Refresh the photo list
-      const res = await getPhotos('http://localhost:3001/photos?state=working');
+      const res = await getPhotos();
       const backendOrigin = 'http://localhost:3001';
       const photosWithFullUrls = (res.photos || []).map(p => ({
         ...p,
@@ -255,8 +250,7 @@ function App() {
       setToastMsg('Photo moved to inprogress');
       // Refresh photos
       const endpoint = showFinished ? 'finished' : (showInprogress ? 'inprogress' : 'working');
-      const serverUrl = `http://localhost:3001/photos?state=${endpoint}`;
-      const res = await getPhotos(serverUrl);
+      const res = await getPhotos(endpoint);
       const backendOrigin = 'http://localhost:3001';
       const photosWithFullUrls = (res.photos || []).map(p => ({
         ...p,
@@ -270,146 +264,10 @@ function App() {
   };
 
   // Handle edit photo
-  const handleEditPhoto = (photo, openFullPage = false) => {
-    // remember the element that opened the editor so we can restore focus later
-    try { lastActiveElementRef.current = document.activeElement; } catch (e) {}
-    setUseFullPageEditor(openFullPage || useFullPageEditor);
+  const handleEditPhoto = (photo) => {
+    console.log('Edit photo clicked:', photo);
     setEditingPhoto(photo);
   };
-
-  // Open a minimal edit UI in a new browser tab/window. The new tab will postMessage
-  // updates (caption, markFinished) back to this opener window which will then
-  // perform state updates and backend calls.
-  const openEditorInNewTab = (photo) => {
-    const displayUrl = `http://localhost:3001/display/${photo.state}/${photo.filename}`;
-    const id = photo.id;
-    const caption = (photo.caption || '').replace(/</g, '&lt;').replace(/>/g, '&gt;');
-    const html = `<!doctype html>
-    <html>
-    <head>
-      <meta charset="utf-8" />
-      <title>Edit ${photo.filename}</title>
-      <meta name="viewport" content="width=device-width,initial-scale=1" />
-      <style>
-        body{font-family:Arial,Helvetica,sans-serif;margin:0;padding:16px;background:#fff;color:#111}
-        .container{max-width:900px;margin:0 auto}
-        img{max-width:100%;height:auto;border:1px solid #ddd;padding:8px;background:#f9f9f9}
-        textarea{width:100%;min-height:120px;margin-top:8px;padding:8px;font-size:14px}
-        .controls{margin-top:12px;display:flex;gap:8px}
-        button{padding:8px 12px;font-size:14px;cursor:pointer}
-      </style>
-    </head>
-    <body>
-      <div class="container">
-        <h1>Edit: ${photo.filename}</h1>
-        <div>
-          <img src="${displayUrl}" alt="${photo.filename}" />
-        </div>
-        <div>
-          <label for="caption"><strong>Caption</strong></label>
-          <textarea id="caption">${caption}</textarea>
-        </div>
-        <div class="controls">
-          <button id="saveBtn">Save (to app)</button>
-          <button id="markBtn">Mark as Finished</button>
-          <button id="closeBtn">Close</button>
-        </div>
-        <div id="status" style="margin-top:12px;color:#666"></div>
-      </div>
-
-        <script>
-        const id = ${JSON.stringify(id)};
-        const saveBtn = document.getElementById('saveBtn');
-        const markBtn = document.getElementById('markBtn');
-        const closeBtn = document.getElementById('closeBtn');
-        const status = document.getElementById('status');
-        saveBtn.addEventListener('click', () => {
-          const caption = document.getElementById('caption').value;
-          try {
-            if (window.opener && !window.opener.closed) {
-              window.opener.postMessage({ type: 'updateCaption', id, caption }, '*');
-              status.textContent = 'Saved locally in app.';
-            } else {
-              status.textContent = 'Opener not available; cannot save to app.';
-            }
-          } catch (e) { status.textContent = 'Save failed: ' + e.message; }
-        });
-        // Listen for acknowledgements from opener
-        window.addEventListener('message', (ev) => {
-          const m = ev.data || {};
-          if (m.type === 'markFinishedAck' && m.id === id) {
-            if (m.success) {
-              status.textContent = 'Marked finished successfully. Closing...';
-              setTimeout(() => window.close(), 700);
-            } else {
-              status.textContent = 'Mark finished failed: ' + (m.error || 'unknown');
-            }
-          } else if (m.type === 'updateCaptionAck' && m.id === id) {
-            status.textContent = m.success ? 'Saved in app.' : 'Save failed.';
-          }
-        });
-        markBtn.addEventListener('click', () => {
-          try {
-            if (window.opener && !window.opener.closed) {
-              window.opener.postMessage({ type: 'markFinished', id }, '*');
-              status.textContent = 'Requested mark as finished.';
-            } else {
-              status.textContent = 'Opener not available; cannot mark finished.';
-            }
-          } catch (e) { status.textContent = 'Request failed: ' + e.message; }
-        });
-        closeBtn.addEventListener('click', () => { window.close(); });
-      </script>
-    </body>
-    </html>`;
-
-    const w = window.open('', '_blank');
-    if (!w) {
-      // Popup blocked; fallback to in-app full-page editor so user can still edit
-      try {
-        setUseFullPageEditor(true);
-        setEditingPhoto(photo);
-      } catch (e) {
-        alert('Popup blocked and cannot open in-app editor. Please allow popups.');
-      }
-      return;
-    }
-    w.document.open();
-    w.document.write(html);
-    w.document.close();
-  };
-
-  // Listen for messages from edit tabs/windows
-  React.useEffect(() => {
-    const onMessage = async (ev) => {
-      const msg = ev.data || {};
-      if (!msg.type) return;
-      // ev.source is the window object of the sender (the editor tab)
-      const source = ev.source;
-      if (msg.type === 'updateCaption') {
-        const { id, caption } = msg;
-        let ok = true;
-        try {
-          await updatePhotoCaption(id, caption);
-        } catch (e) {
-          ok = false;
-          console.error('Failed to persist caption to backend:', e.message || e);
-        }
-        setPhotos(prev => prev.map(p => p.id === id ? { ...p, caption } : p));
-        try { if (source && source.postMessage) source.postMessage({ type: 'updateCaptionAck', id, success: ok }, '*'); } catch (e) {}
-      } else if (msg.type === 'markFinished') {
-        const { id } = msg;
-        try {
-          await handleMoveToFinished(id);
-          try { if (source && source.postMessage) source.postMessage({ type: 'markFinishedAck', id, success: true }, '*'); } catch (e) {}
-        } catch (err) {
-          try { if (source && source.postMessage) source.postMessage({ type: 'markFinishedAck', id, success: false, error: err.message }, '*'); } catch (e) {}
-        }
-      }
-    };
-    window.addEventListener('message', onMessage);
-    return () => window.removeEventListener('message', onMessage);
-  }, []);
 
   // Handle move to finished
   const handleMoveToFinished = async (id) => {
@@ -419,8 +277,7 @@ function App() {
       setEditingPhoto(null);
       // Refresh photos
       const endpoint = showFinished ? 'finished' : (showInprogress ? 'inprogress' : 'working');
-      const serverUrl = `http://localhost:3001/photos?state=${endpoint}`;
-      const res = await getPhotos(serverUrl);
+      const res = await getPhotos(endpoint);
       const backendOrigin = 'http://localhost:3001';
       const photosWithFullUrls = (res.photos || []).map(p => ({
         ...p,
@@ -456,77 +313,23 @@ function App() {
   };
 
   // Photo Editing Modal Component
-  const PhotoEditingModal = ({ photo, onClose, onFinished, restoreFocusRef }) => {
+  const PhotoEditingModal = ({ photo, onClose, onFinished }) => {
     if (!photo) return null;
-
-    // Disable body scroll when modal is open and trap focus inside the modal
-    React.useEffect(() => {
-      const prev = document.body.style.overflow;
-      document.body.style.overflow = 'hidden';
-      const onKey = (e) => { if (e.key === 'Escape') onClose(); };
-      window.addEventListener('keydown', onKey);
-
-      // Focus trap: keep focus within modal
-      const focusableSelector = 'a[href], area[href], input:not([disabled]), select:not([disabled]), textarea:not([disabled]), button:not([disabled]), [tabindex]:not([tabindex="-1"])';
-      const modalNode = document.getElementById('photo-editing-modal');
-      let firstFocusable = null;
-      let lastFocusable = null;
-      if (modalNode) {
-        const nodes = modalNode.querySelectorAll(focusableSelector);
-        if (nodes.length > 0) {
-          firstFocusable = nodes[0];
-          lastFocusable = nodes[nodes.length - 1];
-          try { firstFocusable.focus(); } catch (e) {}
-        }
-      }
-
-      const onKeyTrap = (e) => {
-        if (e.key !== 'Tab') return;
-        if (!firstFocusable || !lastFocusable) return;
-        if (e.shiftKey && document.activeElement === firstFocusable) {
-          e.preventDefault();
-          lastFocusable.focus();
-        } else if (!e.shiftKey && document.activeElement === lastFocusable) {
-          e.preventDefault();
-          firstFocusable.focus();
-        }
-      };
-      window.addEventListener('keydown', onKeyTrap);
-
-      return () => {
-        document.body.style.overflow = prev;
-        window.removeEventListener('keydown', onKey);
-        window.removeEventListener('keydown', onKeyTrap);
-      };
-    }, [onClose, photo]);
-
-    const displayUrl = `http://localhost:3001/display/${photo.state}/${photo.filename}`;
-
-    const modalContent = (
-      <div id="photo-editing-modal" className="fixed inset-0 bg-black bg-opacity-75 flex items-center justify-center z-[200000]" role="dialog" aria-modal="true" aria-label={`Edit ${photo.filename}`}>
-        <div className="bg-white rounded-lg shadow-2xl max-w-6xl w-full max-h-[95vh] m-4 overflow-hidden flex flex-col">
+    
+    return (
+      <div className="fixed inset-0 bg-black bg-opacity-75 flex items-center justify-center z-50 p-4">
+        <div className="bg-white rounded-lg shadow-2xl max-w-6xl w-full max-h-[95vh] overflow-hidden flex flex-col">
           <div className="flex justify-between items-center p-6 border-b bg-gray-50">
             <h2 className="text-xl font-bold text-gray-800">Edit Photo: {photo.filename}</h2>
-            <div className="flex items-center gap-3">
-              <button
-                onClick={() => window.open(displayUrl, '_blank')}
-                className="bg-indigo-600 text-white px-3 py-1 rounded text-sm hover:bg-indigo-700"
-              >
-                Open Full
-              </button>
-              <button 
-                onClick={() => {
-                  onClose();
-                  try { if (restoreFocusRef && restoreFocusRef.current) restoreFocusRef.current.focus(); } catch (e) {}
-                }}
-                className="text-gray-400 hover:text-gray-600 text-2xl font-bold leading-none"
-              >
-                ×
-              </button>
-            </div>
+            <button 
+              onClick={onClose}
+              className="text-gray-400 hover:text-gray-600 text-2xl font-bold leading-none"
+            >
+              ×
+            </button>
           </div>
           
-          <div className="flex-1 overflow-y-auto p-6" tabIndex={-1}>
+          <div className="flex-1 overflow-y-auto p-6">
             <div className="grid grid-cols-1 lg:grid-cols-2 gap-8">
               {/* Photo display */}
               <div className="flex flex-col space-y-4">
@@ -535,6 +338,10 @@ function App() {
                     src={`http://localhost:3001/display/${photo.state}/${photo.filename}`} 
                     alt={photo.filename}
                     className="w-full h-auto max-h-96 object-contain rounded shadow-lg"
+                    onError={(e) => {
+                      console.error('Image failed to load:', `http://localhost:3001/display/${photo.state}/${photo.filename}`);
+                    }}
+                    onLoad={() => console.log('Image loaded successfully:', `http://localhost:3001/display/${photo.state}/${photo.filename}`)}
                   />
                 </div>
                 <div className="text-sm text-gray-600 bg-white p-3 rounded border">
@@ -588,23 +395,13 @@ function App() {
           {/* Action buttons */}
           <div className="flex justify-end space-x-4 p-6 border-t bg-gray-50">
             <button
-              onClick={() => {
-                onClose();
-                try { if (restoreFocusRef && restoreFocusRef.current) restoreFocusRef.current.focus(); } catch (e) {}
-              }}
+              onClick={onClose}
               className="bg-gray-500 hover:bg-gray-700 text-white font-bold py-2 px-6 rounded"
             >
               Close
             </button>
             <button
-              onClick={async () => {
-                try {
-                  await onFinished(photo.id);
-                } catch (e) {
-                  // onFinished should handle errors itself
-                }
-                try { if (restoreFocusRef && restoreFocusRef.current) restoreFocusRef.current.focus(); } catch (e) {}
-              }}
+              onClick={() => onFinished(photo.id)}
               className="bg-green-500 hover:bg-green-700 text-white font-bold py-2 px-6 rounded"
             >
               Mark as Finished
@@ -613,41 +410,17 @@ function App() {
         </div>
       </div>
     );
-
-    return ReactDOM.createPortal(modalContent, document.body);
   };
 
-  // ...existing code...
-
   return (
-    <div
-      className="h-screen flex flex-col bg-gray-100"
-      aria-hidden={editingPhoto ? 'true' : 'false'}
-      style={{ pointerEvents: editingPhoto ? 'none' : 'auto' }}
-      id="main-app-container"
-    >
-      {/* Photo Editing Modal or Full-page Editor */}
-      {editingPhoto && useFullPageEditor ? (
-        // Lazy load EditPage to keep file small
-        <EditPage 
-          photo={editingPhoto}
+    <div className="h-screen flex flex-col bg-gray-100">
+      {/* Photo Editing Modal */}
+      {editingPhoto && (
+        <PhotoEditingModal 
+          photo={editingPhoto} 
           onClose={() => setEditingPhoto(null)}
-          onFinished={async (id) => { await handleMoveToFinished(id); setEditingPhoto(null); }}
-          onSave={async (updated) => {
-            // Update local photos array
-            setPhotos(prev => prev.map(p => p.id === updated.id ? { ...p, ...updated } : p));
-            setEditingPhoto(null);
-          }}
+          onFinished={handleMoveToFinished}
         />
-      ) : (
-        editingPhoto && (
-          <PhotoEditingModal 
-            photo={editingPhoto} 
-            onClose={() => setEditingPhoto(null)}
-            onFinished={handleMoveToFinished}
-            restoreFocusRef={lastActiveElementRef}
-          />
-        )
       )}
       
       {/* Toast at top center */}
@@ -798,7 +571,7 @@ function App() {
                         )}
                         {photo.state === 'inprogress' && (
                           <button
-                            onClick={() => { openEditorInNewTab(photo); }}
+                            onClick={() => handleEditPhoto(photo)}
                             className="bg-blue-500 hover:bg-blue-700 text-white px-2 py-1 rounded text-xs"
                           >
                             Edit

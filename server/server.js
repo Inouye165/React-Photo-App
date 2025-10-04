@@ -60,6 +60,12 @@ if (!fs.existsSync(INPROGRESS_DIR)) {
   console.log(`Created inprogress directory: ${INPROGRESS_DIR}`);
 }
 
+const FINISHED_DIR = path.join(WORKING_DIR, '..', 'finished');
+if (!fs.existsSync(FINISHED_DIR)) {
+  fs.mkdirSync(FINISHED_DIR, { recursive: true });
+  console.log(`Created finished directory: ${FINISHED_DIR}`);
+}
+
 // --- Helper: Compute SHA-256 hash of a file ---
 function hashFileSync(filePath) {
   const fileBuffer = fs.readFileSync(filePath);
@@ -172,10 +178,12 @@ async function ingestPhoto(db, filePath, filename, state = 'working') {
     }
     const metadata = await exifr.parse(filePath, { tiff: true, ifd0: true, exif: true, gps: true, xmp: true, icc: true, iptc: true });
     const metaStr = JSON.stringify(metadata || {});
+    const fileStats = fs.statSync(filePath);
+    const fileSize = fileStats.size;
     const now = new Date().toISOString();
     db.run(
-      `INSERT OR REPLACE INTO photos (filename, state, metadata, hash, created_at, updated_at) VALUES (?, ?, ?, ?, ?, ?)`,
-      [filename, state, metaStr, hash, now, now]
+      `INSERT OR REPLACE INTO photos (filename, state, metadata, hash, file_size, created_at, updated_at) VALUES (?, ?, ?, ?, ?, ?, ?)`,
+      [filename, state, metaStr, hash, fileSize, now, now]
     );
     await generateThumbnail(filePath, hash);
     return { duplicate: false, hash };
@@ -198,7 +206,73 @@ async function migratePhotoTable(db) {
       if (!colNames.includes('description')) tasks.push(addCol('description', 'TEXT'));
       if (!colNames.includes('keywords')) tasks.push(addCol('keywords', 'TEXT'));
       if (!colNames.includes('ai_retry_count')) tasks.push(addCol('ai_retry_count', 'INTEGER DEFAULT 0'));
+      if (!colNames.includes('file_size')) tasks.push(addCol('file_size', 'INTEGER'));
       Promise.all(tasks).then(resolve).catch(reject);
+    });
+  });
+}
+
+// Backfill file sizes for existing records that don't have them
+async function backfillFileSizes(db) {
+  return new Promise((resolve, reject) => {
+    db.all('SELECT id, filename, state FROM photos WHERE file_size IS NULL OR file_size = 0', async (err, rows) => {
+      if (err) return reject(err);
+      if (rows.length === 0) {
+        console.log('[BACKFILL] No files need file size backfill.');
+        return resolve(rows.length);
+      }
+      console.log(`[BACKFILL] Backfilling file sizes for ${rows.length} records...`);
+      let updated = 0;
+      for (const row of rows) {
+        try {
+          const getDir = (state) => {
+            switch(state) {
+              case 'working': return WORKING_DIR;
+              case 'inprogress': return INPROGRESS_DIR;
+              case 'finished': return FINISHED_DIR;
+              default: return WORKING_DIR;
+            }
+          };
+          const dir = getDir(row.state);
+          const filePath = path.join(dir, row.filename);
+          if (fs.existsSync(filePath)) {
+            const stats = fs.statSync(filePath);
+            db.run('UPDATE photos SET file_size = ? WHERE id = ?', [stats.size, row.id]);
+            updated++;
+          } else {
+            console.log(`[BACKFILL] File not found for backfill: ${filePath}`);
+          }
+        } catch (error) {
+          console.error(`[BACKFILL] Error getting file size for ${row.filename}:`, error.message);
+        }
+      }
+      console.log(`[BACKFILL] Updated file sizes for ${updated} records.`);
+      resolve(updated);
+    });
+  });
+}
+
+// Backfill file sizes for existing records that don't have them
+async function backfillFileSizes(db) {
+  return new Promise((resolve, reject) => {
+    db.all('SELECT id, filename, state FROM photos WHERE file_size IS NULL', async (err, rows) => {
+      if (err) return reject(err);
+      let updated = 0;
+      for (const row of rows) {
+        const fileDir = row.state === 'working' ? WORKING_DIR : INPROGRESS_DIR;
+        const filePath = path.join(fileDir, row.filename);
+        if (fs.existsSync(filePath)) {
+          try {
+            const fileStats = fs.statSync(filePath);
+            db.run('UPDATE photos SET file_size = ? WHERE id = ?', [fileStats.size, row.id]);
+            updated++;
+          } catch (err) {
+            console.error(`Failed to get file size for ${row.filename}:`, err);
+          }
+        }
+      }
+      if (updated > 0) console.log(`[MIGRATION] Updated file sizes for ${updated} records.`);
+      resolve();
     });
   });
 }
@@ -272,6 +346,8 @@ async function migrateAndStartServer() {
   });
   // Migration: ensure 'caption', 'description', 'keywords' columns exist
   await migratePhotoTable(db);
+  // Backfill file sizes for existing records
+  await backfillFileSizes(db);
   // Ensure all files are hashed
   await ensureAllFilesHashed(db);
   // Cleanup DB records for missing files
@@ -285,10 +361,8 @@ async function migrateAndStartServer() {
   const cors = require('cors');
   const app = express();
 
-  app.use(cors({
-    origin: 'http://localhost:5173',
-    credentials: true
-  }));
+  // Allow cross-origin requests from local dev servers (keep permissive for development)
+  app.use(cors());
   app.use(express.json());
 
   // Multer setup
@@ -321,9 +395,9 @@ async function migrateAndStartServer() {
   // --- API: List all photos and metadata (include hash) ---
   app.get('/photos', (req, res) => {
     const state = req.query.state;
-    let sql = 'SELECT id, filename, state, metadata, hash, caption, description, keywords FROM photos';
+    let sql = 'SELECT id, filename, state, metadata, hash, file_size, caption, description, keywords FROM photos';
     const params = [];
-    if (state === 'working' || state === 'inprogress') {
+    if (state === 'working' || state === 'inprogress' || state === 'finished') {
       sql += ' WHERE state = ?';
       params.push(state);
     }
@@ -340,10 +414,11 @@ async function migrateAndStartServer() {
         state: row.state,
         metadata: JSON.parse(row.metadata || '{}'),
         hash: row.hash,
+        file_size: row.file_size,
         caption: row.caption,
         description: row.description,
         keywords: row.keywords,
-        url: `/working/${row.filename}`,
+        url: `/${row.state}/${row.filename}`,
         thumbnail: row.hash ? `/thumbnails/${row.hash}.jpg` : null
       })) });
     });
@@ -371,22 +446,99 @@ async function migrateAndStartServer() {
   // --- Inprogress directory setup ---
   app.use('/inprogress', express.static(INPROGRESS_DIR));
 
+  // --- Finished directory setup ---
+  app.use('/finished', express.static(FINISHED_DIR));
+
   // --- Serve thumbnails ---
   app.use('/thumbnails', express.static(THUMB_DIR));
+
+  // --- Convert and serve images for display (HEIC -> JPEG) ---
+  app.get('/display/:state/:filename', async (req, res) => {
+    const { state, filename } = req.params;
+    
+    // Get directory based on state
+    const getDir = (state) => {
+      switch(state) {
+        case 'working': return WORKING_DIR;
+        case 'inprogress': return INPROGRESS_DIR;
+        case 'finished': return FINISHED_DIR;
+        default: return WORKING_DIR;
+      }
+    };
+    
+    const dir = getDir(state);
+    const filePath = path.join(dir, filename);
+    
+    if (!fs.existsSync(filePath)) {
+      return res.status(404).send('File not found');
+    }
+    
+    const ext = path.extname(filename).toLowerCase();
+    
+    // If it's already JPG/PNG/etc, serve directly
+    if (['.jpg', '.jpeg', '.png', '.gif', '.webp'].includes(ext)) {
+      return res.sendFile(filePath);
+    }
+    
+    // Convert HEIC/HEIF to JPEG for browser display
+    if (['.heic', '.heif'].includes(ext)) {
+      try {
+        // Try sharp first
+        const jpegBuffer = await sharp(filePath).jpeg({ quality: 90 }).toBuffer();
+        res.set('Content-Type', 'image/jpeg');
+        return res.send(jpegBuffer);
+      } catch (err) {
+        console.error('[DISPLAY] Sharp conversion failed for', filePath, err);
+        // Fallback to ImageMagick
+        const tmpJpg = filePath + '.tmp-display.jpg';
+        const cmd = `magick "${filePath}" -strip -quality 90 "${tmpJpg}"`;
+        try {
+          await new Promise((resolve, reject) => {
+            exec(cmd, { windowsHide: true }, (error, stdout, stderr) => {
+              if (error) return reject(new Error(stderr || stdout || error.message));
+              resolve();
+            });
+          });
+          res.sendFile(tmpJpg, (err) => {
+            // Clean up temp file after sending
+            try { fs.unlinkSync(tmpJpg); } catch (e) {}
+            if (err) console.error('[DISPLAY] Error sending converted file:', err);
+          });
+        } catch (convErr) {
+          console.error('[DISPLAY] ImageMagick conversion failed for', filePath, convErr);
+          return res.status(500).send('Unable to convert image for display');
+        }
+      }
+    } else {
+      // Unsupported format
+      return res.status(415).send('Unsupported image format');
+    }
+  });
 
   // --- State transition endpoint ---
   app.patch('/photos/:id/state', express.json(), (req, res) => {
     const { id } = req.params;
     const { state } = req.body;
-    if (!['working', 'inprogress'].includes(state)) {
+    if (!['working', 'inprogress', 'finished'].includes(state)) {
       return res.status(400).json({ success: false, error: 'Invalid state' });
     }
     db.get('SELECT * FROM photos WHERE id = ?', [id], (err, row) => {
       if (err || !row) {
         return res.status(404).json({ success: false, error: 'Photo not found' });
       }
-      const srcDir = row.state === 'working' ? WORKING_DIR : INPROGRESS_DIR;
-      const destDir = state === 'working' ? WORKING_DIR : INPROGRESS_DIR;
+      
+      // Helper function to get directory based on state
+      const getDir = (state) => {
+        switch(state) {
+          case 'working': return WORKING_DIR;
+          case 'inprogress': return INPROGRESS_DIR;
+          case 'finished': return FINISHED_DIR;
+          default: return WORKING_DIR;
+        }
+      };
+      
+      const srcDir = getDir(row.state);
+      const destDir = getDir(state);
       const srcPath = path.join(srcDir, row.filename);
       const destPath = path.join(destDir, row.filename);
       if (!fs.existsSync(srcPath)) {
@@ -415,6 +567,22 @@ async function migrateAndStartServer() {
       } catch (err) {
         res.status(500).json({ success: false, error: err.message });
       }
+    });
+  });
+
+  // --- Caption update endpoint ---
+  app.patch('/photos/:id/caption', express.json(), (req, res) => {
+    const { id } = req.params;
+    const { caption } = req.body;
+    if (typeof caption !== 'string') {
+      return res.status(400).json({ success: false, error: 'Invalid caption' });
+    }
+    db.get('SELECT id FROM photos WHERE id = ?', [id], (err, row) => {
+      if (err || !row) return res.status(404).json({ success: false, error: 'Photo not found' });
+      db.run('UPDATE photos SET caption = ?, updated_at = ? WHERE id = ?', [caption, new Date().toISOString(), id], function(updateErr) {
+        if (updateErr) return res.status(500).json({ success: false, error: updateErr.message });
+        res.json({ success: true });
+      });
     });
   });
 
@@ -558,12 +726,46 @@ async function migrateAndStartServer() {
 // Helper: Generate caption, description, keywords for a photo using OpenAI Vision
 async function processPhotoAI({ filePath, metadata, gps, device }) {
   if (!process.env.OPENAI_API_KEY) throw new Error('OPENAI_API_KEY not set in .env');
-  // Compose prompt
-  let prompt = `You are an expert photo analyst. Given the image and metadata, generate:\n- A short, human-friendly caption (max 10 words)\n- A detailed description (covering people, animals, plants, weather, lighting, time of day, device, selfie detection, and location-based names for rivers, waterfalls, geysers, pools, cliffs, mountains, etc. Use GPS and EXIF if available)\n- A comma-separated list of keywords (for search)\n\nMetadata:`;
-  if (device) prompt += ` Device: ${device}.`;
-  if (gps) prompt += ` GPS: ${gps}.`;
+  
+  // Extract and format date/time from EXIF
+  let dateTimeInfo = '';
+  if (metadata) {
+    const dateOriginal = metadata.DateTimeOriginal || metadata.CreateDate || metadata.DateTime;
+    if (dateOriginal) {
+      try {
+        const date = new Date(dateOriginal);
+        const options = { 
+          weekday: 'long', 
+          year: 'numeric', 
+          month: 'long', 
+          day: 'numeric',
+          hour: 'numeric',
+          minute: '2-digit',
+          hour12: true
+        };
+        dateTimeInfo = date.toLocaleDateString('en-US', options);
+      } catch (e) {
+        dateTimeInfo = dateOriginal; // fallback to raw date if parsing fails
+      }
+    }
+  }
+  
+  // Compose prompt with new requirements
+  let prompt = `You are an expert photo analyst. Given the image and metadata, generate:\n- A short, human-friendly caption (max 10 words)\n- A detailed description that MUST include the date and time naturally in the text (covering people, animals, plants, weather, lighting, time of day, selfie detection, and location-based names for rivers, waterfalls, geysers, pools, cliffs, mountains, etc.)\n- A comma-separated list of keywords (for search) that MUST include GPS coordinates and camera device information if available\n\nMetadata:`;
+  
+  if (dateTimeInfo) prompt += ` Date/Time: ${dateTimeInfo}.`;
   if (metadata) prompt += ` EXIF: ${JSON.stringify(metadata)}.`;
-  prompt += '\nRespond in JSON with keys: caption, description, keywords.';
+  
+  prompt += `\n\nIMPORTANT INSTRUCTIONS:
+1. DESCRIPTION: Must naturally incorporate the date and time information (e.g., "This sunny afternoon photo taken on Tuesday, March 15th, 2024 at 2:30 PM shows...")
+2. KEYWORDS: Must include GPS coordinates (if available) and camera device information (e.g., "iPhone 15 Pro, GPS:37.7749,-122.4194, sunset, beach")
+3. Do NOT put GPS or device info in the description - only in keywords
+
+Respond in JSON with keys: caption, description, keywords.`;
+  
+  // Add GPS and device to context for keywords
+  if (device) prompt += `\nDevice Info: ${device}`;
+  if (gps) prompt += `\nGPS Info: ${gps}`;
 
   // Convert HEIC/HEIF to JPEG if needed
   let imageBuffer, imageMime;

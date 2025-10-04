@@ -66,3 +66,13 @@ export async function recheckInprogressPhotos(serverUrl = 'http://localhost:3001
   if (!res.ok) throw new Error('Failed to trigger recheck');
   return await res.json();
 }
+
+export async function updatePhotoCaption(id, caption, serverUrl = 'http://localhost:3001') {
+  const res = await fetch(`${serverUrl}/photos/${id}/caption`, {
+    method: 'PATCH',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ caption })
+  });
+  if (!res.ok) throw new Error('Failed to update caption');
+  return await res.json();
+}
