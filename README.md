@@ -173,3 +173,12 @@ This project includes VS Code workspace settings (`.vscode/settings.json`) that 
 - **Add client-side content-hash check to avoid uploading duplicates** — compute file hash in browser and skip uploads if server already has the hash.
 - **Add filename search and full-size preview modal in frontend** — quick search, sort, and modal for viewing images at full resolution.
 - **Add automated tests and CI pipeline for build and linting** — ensure stability with unit tests and GitHub Actions.
+
+## HEIC/HEIF AI Processing Support
+- HEIC/HEIF files are now supported for AI processing. If the backend cannot convert HEIC using sharp, it will automatically use ImageMagick as a fallback.
+- If a file fails AI processing (shows 'AI processing failed'), you can reset its retry count by POSTing to `/debug/reset-ai-retry` and then clicking 'Recheck Inprogress AI' in the frontend to retry processing.
+- For new HEIC files, no manual intervention is needed.
+
+## Troubleshooting
+- If you see errors like 'bad seek' or 'compression format not built in' for HEIC files, make sure ImageMagick is installed and available in your system PATH.
+- If a file repeatedly fails AI processing, check the backend logs for details.

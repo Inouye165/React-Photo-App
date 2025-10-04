@@ -1,6 +1,6 @@
 import { useState, useEffect, useRef } from 'react'
 import { parse } from 'exifr'
-import { uploadPhotoToServer, checkPrivilege, getPhotos, updatePhotoState } from './api.js'
+import { uploadPhotoToServer, checkPrivilege, getPhotos, updatePhotoState, recheckInprogressPhotos } from './api.js'
 // Utility: Get or create a guaranteed local folder (default: C:\Users\<User>\working)
 async function getLocalWorkingFolder(customPath) {
   // Default to C:\Users\<User>\working if no custom path provided
@@ -114,6 +114,7 @@ function App() {
   const [showLocalPicker, setShowLocalPicker] = useState(false);
   const [privilegesMap, setPrivilegesMap] = useState({});
   const [showInprogress, setShowInprogress] = useState(false);
+  const [rechecking, setRechecking] = useState(false);
 
   // Fetch backend photos on load or when view toggles
   useEffect(() => {
@@ -239,6 +240,29 @@ function App() {
     }
   };
 
+  // Handler for rechecking inprogress photos
+  const handleRecheckInprogress = async () => {
+    setRechecking(true);
+    try {
+      const res = await recheckInprogressPhotos();
+      setToastMsg(res.message || 'Recheck triggered.');
+    } catch (err) {
+      // Try to extract error message from backend response if available
+      let msg = 'Failed to trigger recheck.';
+      if (err && err.response) {
+        try {
+          const data = await err.response.json();
+          msg = data.error || msg;
+        } catch {}
+      } else if (err && err.message) {
+        msg = err.message;
+      }
+      setToastMsg(msg);
+    } finally {
+      setRechecking(false);
+    }
+  };
+
   return (
     <div className="h-screen flex flex-col bg-gray-100">
       {/* Toast at top center */}
@@ -258,6 +282,13 @@ function App() {
           className="bg-yellow-500 hover:bg-yellow-700 text-white font-bold py-2 px-4 rounded ml-2"
         >
           {showInprogress ? 'View Staged' : 'View Inprogress'}
+        </button>
+        <button
+          onClick={handleRecheckInprogress}
+          disabled={rechecking}
+          className="bg-purple-500 hover:bg-purple-700 text-white font-bold py-2 px-4 rounded ml-2"
+        >
+          {rechecking ? 'Rechecking...' : 'Recheck Inprogress AI'}
         </button>
         {showLocalPicker && (
           <>
@@ -361,6 +392,14 @@ function App() {
                         )}
                       </div>
                     </div>
+                    {/* AI metadata row */}
+                    {(photo.caption || photo.description || photo.keywords) && (
+                      <div className="mt-2 ml-4 p-2 bg-gray-50 rounded border border-gray-200 text-xs text-gray-700">
+                        {photo.caption && <div><span className="font-semibold">Caption:</span> {photo.caption}</div>}
+                        {photo.description && <div className="mt-1"><span className="font-semibold">Description:</span> {photo.description}</div>}
+                        {photo.keywords && <div className="mt-1"><span className="font-semibold">Keywords:</span> {photo.keywords}</div>}
+                      </div>
+                    )}
                   </div>
                 ))}
               </div>

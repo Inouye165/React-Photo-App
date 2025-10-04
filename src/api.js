@@ -60,3 +60,9 @@ export async function updatePhotoState(id, state, serverUrl = 'http://localhost:
   if (!response.ok) throw new Error('Failed to update photo state');
   return await response.json();
 }
+
+export async function recheckInprogressPhotos(serverUrl = 'http://localhost:3001/photos/recheck-inprogress') {
+  const res = await fetch(serverUrl, { method: 'POST' });
+  if (!res.ok) throw new Error('Failed to trigger recheck');
+  return await res.json();
+}
