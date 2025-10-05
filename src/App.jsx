@@ -584,11 +584,12 @@ function App() {
             <div className="grid grid-cols-1 lg:grid-cols-2 gap-8">
               {/* Photo display */}
               <div className="flex flex-col space-y-4">
-                <div className="bg-gray-50 rounded-lg p-4">
+                <div className="bg-gray-50 rounded-lg px-2 py-3">
                   <img 
                     src={`http://localhost:3001/display/${photo.state}/${photo.filename}`} 
                     alt={photo.filename}
-                    className="w-full h-auto max-h-96 object-contain rounded shadow-lg"
+                    className="h-auto max-h-96 object-contain rounded shadow-lg"
+                    style={{maxWidth: '98%'}}
                   />
                 </div>
                 <div className="text-sm text-gray-600 bg-white p-3 rounded border">
@@ -802,12 +803,12 @@ function App() {
           <div className="bg-white rounded-lg shadow-md h-full p-6">
             <div className="flex items-start h-full gap-4" style={{height: 'calc(100vh - 140px)'}}>
                   {/* Left: Image */}
-                  <div className="w-3/5 bg-gray-100 rounded overflow-hidden flex items-center justify-center p-3" style={{maxHeight: '100%'}}>
+                  <div className="w-3/5 bg-gray-100 rounded overflow-hidden flex items-center justify-center px-2 py-3" style={{maxHeight: '100%'}}>
                     <img
                       src={`http://localhost:3001/display/${selectedPhoto.state}/${selectedPhoto.filename}`}
                       alt={selectedPhoto.filename}
                       className="max-h-full object-contain"
-                      style={{maxWidth: '86%', height: 'auto'}}
+                      style={{maxWidth: '98%', height: 'auto'}}
                     />
                   </div>
 
