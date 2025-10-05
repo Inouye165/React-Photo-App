@@ -128,6 +128,10 @@ function App() {
   const [showInprogress, setShowInprogress] = useState(false);
   const [rechecking, setRechecking] = useState(false);
   const [editingPhoto, setEditingPhoto] = useState(null);
+  const [editedCaption, setEditedCaption] = useState('');
+  const [editedDescription, setEditedDescription] = useState('');
+  const [editedKeywords, setEditedKeywords] = useState('');
+  const [selectedPhoto, setSelectedPhoto] = useState(null);
   const [showFinished, setShowFinished] = useState(false);
   const lastActiveElementRef = useRef(null);
   const [useFullPageEditor, setUseFullPageEditor] = useState(true);
@@ -161,27 +165,62 @@ function App() {
   // Load privileges after photos are loaded
   useEffect(() => {
     const loadPrivileges = async () => {
+      // initialize to Loading so UI shows progress
+      const initial = {};
+      for (const p of photos) initial[p.id] = 'Loading...';
+      setPrivilegesMap(initial);
+
       const map = {};
       for (const photo of photos) {
         try {
           const res = await checkPrivilege(photo.filename);
-          if (res && res.privilege) {
+          // support shapes: { privileges: { read, write, execute } }
+          // { privilege: { canRead, canWrite, canExecute } }
+          // or legacy flat { canRead, canWrite, canExecute }
+          const privObj = res && (
+            res.privileges ||
+            res.privilege ||
+            ((res.canRead || res.canWrite || res.canExecute) ? res : null)
+          );
+          // normalize server 'privileges' shape: { read, write, execute } -> canRead/canWrite/canExecute
+          if (privObj && privObj.read !== undefined) {
+            privObj.canRead = privObj.read;
+            privObj.canWrite = privObj.write;
+            privObj.canExecute = privObj.execute;
+          }
+          if (privObj) {
             const privArr = [];
-            if (res.privilege.canRead) privArr.push('R');
-            if (res.privilege.canWrite) privArr.push('W');
-            if (res.privilege.canExecute) privArr.push('X');
-            map[photo.id] = privArr.length > 0 ? privArr.join('') : 'None';
+            if (privObj.canRead) privArr.push('R');
+            if (privObj.canWrite) privArr.push('W');
+            if (privObj.canExecute) privArr.push('X');
+            map[photo.id] = privArr.length > 0 ? privArr.join('') : '?';
           } else {
+            // keep previous fallback symbol to make regressions obvious
+            console.debug('checkPrivilege returned unexpected shape for', photo.filename, res);
             map[photo.id] = '?';
           }
         } catch (error) {
-          map[photo.id] = 'Error';
+          console.warn('Privilege check failed for', photo.filename, error);
+          map[photo.id] = 'Err';
         }
+        // update progressively so user sees results as they arrive
+        setPrivilegesMap(prev => ({ ...prev, [photo.id]: map[photo.id] }));
       }
-      setPrivilegesMap(map);
     };
     if (photos.length > 0) loadPrivileges();
   }, [photos]);
+
+  // Manual retry for privileges
+  const retryPrivileges = async () => {
+    try {
+      const res = await getPhotos('http://localhost:3001/photos?state=working');
+      // trigger the effect by updating photos state (or simply call the loader)
+      setPhotos(prev => [...prev]);
+      setToastMsg('Retrying privileges...');
+    } catch (e) {
+      setToastMsg('Cannot retry privileges: backend not available');
+    }
+  };
 
   // Handle folder selection
   const handleSelectFolder = async () => {
@@ -273,9 +312,21 @@ function App() {
   const handleEditPhoto = (photo, openFullPage = false) => {
     // remember the element that opened the editor so we can restore focus later
     try { lastActiveElementRef.current = document.activeElement; } catch (e) {}
-    setUseFullPageEditor(openFullPage || useFullPageEditor);
+    // Default to in-app editor unless openFullPage=true
+    setUseFullPageEditor(Boolean(openFullPage));
     setEditingPhoto(photo);
+    // Also set selectedPhoto so the two-column view is shown for the photo being edited
+    try { setSelectedPhoto(photo); } catch (e) {}
   };
+
+  // keep editable fields synced when editingPhoto changes
+  useEffect(() => {
+    if (editingPhoto) {
+      setEditedCaption(editingPhoto.caption || '');
+      setEditedDescription(editingPhoto.description || '');
+      setEditedKeywords(editingPhoto.keywords || '');
+    }
+  }, [editingPhoto]);
 
   // Open a minimal edit UI in a new browser tab/window. The new tab will postMessage
   // updates (caption, markFinished) back to this opener window which will then
@@ -622,8 +673,6 @@ function App() {
   return (
     <div
       className="h-screen flex flex-col bg-gray-100"
-      aria-hidden={editingPhoto ? 'true' : 'false'}
-      style={{ pointerEvents: editingPhoto ? 'none' : 'auto' }}
       id="main-app-container"
     >
       {/* Photo Editing Modal or Full-page Editor */}
@@ -745,81 +794,182 @@ function App() {
       )}
 
       <div className="flex-1 overflow-auto p-4">
-        <div className="bg-white rounded-lg shadow-md">
-          {loading ? (
-            <div className="p-8 text-center text-gray-500">Loading photos...</div>
-          ) : photos.length === 0 ? (
-            <div className="p-8 text-center text-gray-500">No photos found in backend.</div>
-          ) : (
-            <div>
-              <div className="border-b border-gray-200 px-4 py-2 bg-gray-50 font-medium text-sm">
-                <div className="grid grid-cols-15 gap-4">
-                  <div className="col-span-2">Preview</div>
-                  <div className="col-span-2">Filename</div>
-                  <div className="col-span-3">Date Taken</div>
-                  <div className="col-span-1">Size</div>
-                  <div className="col-span-2">State</div>
-                  <div className="col-span-2">Privileges</div>
-                  <div className="col-span-1">Hash</div>
-                  <div className="col-span-2">Actions</div>
+        {/* If a photo is selected open single-page viewer; otherwise show list */}
+        {selectedPhoto ? (
+          <div className="bg-white rounded-lg shadow-md h-full p-6">
+            <div className="flex items-start h-full gap-6">
+              {/* Left: Image */}
+              <div className="w-2/3 bg-gray-100 rounded overflow-hidden flex items-center justify-center" style={{minHeight: '60vh'}}>
+                <img
+                  src={`http://localhost:3001/display/${selectedPhoto.state}/${selectedPhoto.filename}`}
+                  alt={selectedPhoto.filename}
+                  className="w-full h-full object-contain"
+                />
+              </div>
+
+              {/* Right: Top (caption/description/keywords) and Bottom (AI chat placeholder) */}
+              <div className="w-1/3 flex flex-col h-[70vh]">
+                <div className="mb-4">
+                  <div className="flex items-center justify-between mb-3">
+                    <div>
+                      <h2 className="text-xl font-semibold">{selectedPhoto.filename}</h2>
+                      <div className="text-sm text-gray-500">{selectedPhoto.metadata?.DateTimeOriginal || ''}</div>
+                    </div>
+                    <div className="flex items-center gap-2">
+                      <button onClick={() => { setSelectedPhoto(null); setEditingPhoto(null); }} className="px-3 py-1 bg-gray-200 rounded">Back</button>
+                      <button onClick={() => handleEditPhoto(selectedPhoto, false)} className="px-3 py-1 bg-blue-600 text-white rounded">Edit</button>
+                    </div>
+                  </div>
+
+                  <div className="space-y-3">
+                    <div>
+                      <h3 className="font-semibold">Caption</h3>
+                      {editingPhoto && editingPhoto.id === selectedPhoto.id && !useFullPageEditor ? (
+                        <textarea value={editedCaption} onChange={(e) => setEditedCaption(e.target.value)} className="mt-1 p-2 bg-gray-50 rounded w-full min-h-[48px]" />
+                      ) : (
+                        <div className="mt-1 p-3 bg-gray-50 rounded text-gray-700 min-h-[48px]">{selectedPhoto.caption || <span className="text-gray-400">No caption</span>}</div>
+                      )}
+                    </div>
+
+                    <div>
+                      <h3 className="font-semibold">Description</h3>
+                      {editingPhoto && editingPhoto.id === selectedPhoto.id && !useFullPageEditor ? (
+                        <textarea value={editedDescription} onChange={(e) => setEditedDescription(e.target.value)} className="mt-1 p-2 bg-gray-50 rounded w-full min-h-[48px]" />
+                      ) : (
+                        <div className="mt-1 p-3 bg-gray-50 rounded text-gray-700 min-h-[48px]">{selectedPhoto.description || <span className="text-gray-400">No description</span>}</div>
+                      )}
+                    </div>
+
+                    <div>
+                      <h3 className="font-semibold">Keywords</h3>
+                      {editingPhoto && editingPhoto.id === selectedPhoto.id && !useFullPageEditor ? (
+                        <input value={editedKeywords} onChange={(e) => setEditedKeywords(e.target.value)} className="mt-1 p-2 bg-gray-50 rounded w-full" />
+                      ) : (
+                        <div className="mt-1 p-3 bg-gray-50 rounded text-gray-700 min-h-[36px]">{selectedPhoto.keywords || <span className="text-gray-400">No keywords</span>}</div>
+                      )}
+                    </div>
+                  </div>
+                </div>
+
+                <div className="flex-1 bg-white border rounded p-3 flex flex-col">
+                  <div className="flex items-center justify-between mb-2">
+                    <h3 className="font-semibold">AI Agent</h3>
+                    <div className="text-xs text-gray-500">Placeholder</div>
+                  </div>
+                  <div className="h-full bg-gray-50 rounded p-3 overflow-auto text-sm text-gray-700 flex-1">
+                    <p className="text-gray-400">AI chat agent placeholder. Integrate agent UI here (messages, input box, actions).</p>
+                    <div className="mt-3 text-xs text-gray-500">Example:
+                      <ul className="list-disc ml-5">
+                        <li>Ask: "Generate alt text for this image"</li>
+                        <li>Ask: "Suggest 5 keywords"</li>
+                      </ul>
+                    </div>
+                  </div>
+
+                  {editingPhoto && editingPhoto.id === selectedPhoto.id && !useFullPageEditor && (
+                    <div className="mt-3 flex gap-2 justify-end">
+                      <button onClick={() => { setEditingPhoto(null); }} className="px-3 py-1 bg-gray-200 rounded">Close</button>
+                      <button onClick={async () => {
+                        try {
+                          if (editedCaption !== (selectedPhoto.caption || '')) {
+                            await updatePhotoCaption(selectedPhoto.id, editedCaption);
+                          }
+                          // update local state
+                          setPhotos(prev => prev.map(p => p.id === selectedPhoto.id ? { ...p, caption: editedCaption, description: editedDescription, keywords: editedKeywords } : p));
+                          setEditingPhoto(null);
+                          setToastMsg('Saved in app');
+                        } catch (e) {
+                          setToastMsg('Save failed: ' + (e.message || e));
+                        }
+                      }} className="px-3 py-1 bg-blue-600 text-white rounded">Save</button>
+                      <button onClick={async () => {
+                        try {
+                          await handleMoveToFinished(selectedPhoto.id);
+                        } catch (e) { setToastMsg('Mark finished failed'); }
+                      }} className="px-3 py-1 bg-green-600 text-white rounded">Mark as Finished</button>
+                    </div>
+                  )}
                 </div>
               </div>
-              <div className="divide-y divide-gray-200 table-row-compact">
-                {photos.map(photo => (
-                  <div key={photo.id} className="px-4 py-3 hover:bg-gray-50">
-                    <div className="grid grid-cols-15 gap-4 text-sm items-center">
-                      <div className="col-span-2">
-                        {photo.thumbnail ? (
-                          <img src={photo.thumbnail} alt={photo.filename} className="max-h-20 rounded shadow bg-white" />
-                        ) : (
-                          <div className="w-20 h-20 flex items-center justify-center bg-gray-200 text-gray-400 rounded shadow">No Thumb</div>
-                        )}
-                      </div>
-                      <div className="col-span-2 font-medium text-gray-900 truncate">{photo.filename}</div>
-                      <div className="col-span-3 text-gray-600">
-                        {photo.metadata.DateTimeOriginal || photo.metadata.CreateDate || 'Unknown'}
-                      </div>
-                      <div className="col-span-1 text-gray-600 text-xs">
-                        {formatFileSize(photo.file_size)}
-                      </div>
-                      <div className="col-span-2 text-gray-600">{photo.state === 'working' ? 'staged' : photo.state}</div>
-                      <div className="col-span-2 text-gray-600">{privilegesMap[photo.id] || '...'}</div>
-                      <div className="col-span-1 text-green-700 font-mono text-xs">
-                        {photo.hash ? <span title={photo.hash}>✔ {photo.hash.slice(-5)}</span> : '...'}
-                      </div>
-                      <div className="col-span-2 flex gap-2">
-                        {photo.state === 'working' && (
-                          <button
-                            onClick={() => handleMoveToInprogress(photo.id)}
-                            className="bg-green-500 hover:bg-green-700 text-white px-2 py-1 rounded text-xs"
-                          >
-                            Move to Inprogress
-                          </button>
-                        )}
-                        {photo.state === 'inprogress' && (
-                          <button
-                            onClick={() => { openEditorInNewTab(photo); }}
-                            className="bg-blue-500 hover:bg-blue-700 text-white px-2 py-1 rounded text-xs"
-                          >
-                            Edit
-                          </button>
-                        )}
-                      </div>
-                    </div>
-                    {/* AI metadata row */}
-                    {(photo.caption || photo.description || photo.keywords) && (
-                      <div className="mt-2 ml-4 p-2 bg-gray-50 rounded border border-gray-200 text-xs text-gray-700">
-                        {photo.caption && <div><span className="font-semibold">Caption:</span> {photo.caption}</div>}
-                        {photo.description && <div className="mt-1"><span className="font-semibold">Description:</span> {photo.description}</div>}
-                        {photo.keywords && <div className="mt-1"><span className="font-semibold">Keywords:</span> {photo.keywords}</div>}
-                      </div>
-                    )}
-                  </div>
-                ))}
-              </div>
             </div>
-          )}
-        </div>
+          </div>
+        ) : (
+          <div className="bg-white rounded-lg shadow-md">
+            {loading ? (
+              <div className="p-8 text-center text-gray-500">Loading photos...</div>
+            ) : photos.length === 0 ? (
+              <div className="p-8 text-center text-gray-500">No photos found in backend.</div>
+            ) : (
+              <div>
+                <div className="border-b border-gray-200 px-4 py-2 bg-gray-50 font-medium text-sm">
+                  <div className="grid grid-cols-15 gap-4">
+                    <div className="col-span-2">Preview</div>
+                    <div className="col-span-2">Filename</div>
+                    <div className="col-span-3">Date Taken</div>
+                    <div className="col-span-1">Size</div>
+                    <div className="col-span-2">State</div>
+                    <div className="col-span-2">Privileges</div>
+                    <div className="col-span-1">Hash</div>
+                    <div className="col-span-2">Actions</div>
+                  </div>
+                </div>
+                <div className="divide-y divide-gray-200 table-row-compact">
+                  {photos.map(photo => (
+                    <div key={photo.id} className="px-4 py-3 hover:bg-gray-50 cursor-pointer" onClick={() => setSelectedPhoto(photo)}>
+                      <div className="grid grid-cols-15 gap-4 text-sm items-center">
+                        <div className="col-span-2">
+                          {photo.thumbnail ? (
+                            <img src={photo.thumbnail} alt={photo.filename} className="max-h-20 rounded shadow bg-white" />
+                          ) : (
+                            <div className="w-20 h-20 flex items-center justify-center bg-gray-200 text-gray-400 rounded shadow">No Thumb</div>
+                          )}
+                        </div>
+                        <div className="col-span-2 font-medium text-gray-900 truncate">{photo.filename}</div>
+                        <div className="col-span-3 text-gray-600">
+                          {photo.metadata.DateTimeOriginal || photo.metadata.CreateDate || 'Unknown'}
+                        </div>
+                        <div className="col-span-1 text-gray-600 text-xs">
+                          {formatFileSize(photo.file_size)}
+                        </div>
+                        <div className="col-span-2 text-gray-600">{photo.state === 'working' ? 'staged' : photo.state}</div>
+                        <div className="col-span-2 text-gray-600">{privilegesMap[photo.id] || '...'}</div>
+                        <div className="col-span-1 text-green-700 font-mono text-xs">
+                          {photo.hash ? <span title={photo.hash}>✔ {photo.hash.slice(-5)}</span> : '...'}
+                        </div>
+                        <div className="col-span-2 flex gap-2">
+                          {photo.state === 'working' && (
+                            <button
+                              onClick={(e) => { e.stopPropagation(); handleMoveToInprogress(photo.id); }}
+                              className="bg-green-500 hover:bg-green-700 text-white px-2 py-1 rounded text-xs"
+                            >
+                              Move to Inprogress
+                            </button>
+                          )}
+                          {photo.state === 'inprogress' && (
+                            <button
+                              onClick={(e) => { e.stopPropagation(); handleEditPhoto(photo, false); }}
+                              className="bg-blue-500 hover:bg-blue-700 text-white px-2 py-1 rounded text-xs"
+                            >
+                              Edit
+                            </button>
+                          )}
+                        </div>
+                      </div>
+                      {/* AI metadata row */}
+                      {(photo.caption || photo.description || photo.keywords) && (
+                        <div className="mt-2 ml-4 p-2 bg-gray-50 rounded border border-gray-200 text-xs text-gray-700">
+                          {photo.caption && <div><span className="font-semibold">Caption:</span> {photo.caption}</div>}
+                          {photo.description && <div className="mt-1"><span className="font-semibold">Description:</span> {photo.description}</div>}
+                          {photo.keywords && <div className="mt-1"><span className="font-semibold">Keywords:</span> {photo.keywords}</div>}
+                        </div>
+                      )}
+                    </div>
+                  ))}
+                </div>
+              </div>
+            )}
+          </div>
+        )}
       </div>
     </div>
   );

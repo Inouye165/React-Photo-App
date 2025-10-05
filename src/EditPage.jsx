@@ -12,6 +12,13 @@ export default function EditPage({ photo, onClose, onSave, onFinished }) {
 
   const displayUrl = `http://localhost:3001/display/${photo.state}/${photo.filename}`
 
+  // Lock background scroll while this full-page editor is open
+  useEffect(() => {
+    const prev = document.body.style.overflow;
+    try { document.body.style.overflow = 'hidden'; } catch (e) {}
+    return () => { try { document.body.style.overflow = prev || ''; } catch (e) {} };
+  }, []);
+
   const handleSave = async () => {
     setSaving(true)
     try {
@@ -26,7 +33,7 @@ export default function EditPage({ photo, onClose, onSave, onFinished }) {
   }
 
   return (
-    <div className="fixed inset-0 bg-white z-50 overflow-auto p-6">
+    <div className="fixed inset-0 bg-white z-[200000] overflow-auto p-6">
       <div className="max-w-5xl mx-auto">
         <div className="flex items-center justify-between mb-4">
           <h1 className="text-2xl font-bold">Edit Photo — {photo.filename}</h1>
