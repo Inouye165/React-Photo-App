@@ -1,0 +1,43 @@
+import React from "react";
+
+// Receives photos array and any needed props
+const PhotoGallery = ({ photos, onPhotoClick, handleMoveToInprogress, handleEditPhoto, privilegesMap, formatFileSize }) => (
+  <div className="photo-gallery">
+    {photos.map((photo) => (
+      <div key={photo.id || photo.name} className="px-4 py-3 hover:bg-gray-50">
+        <div className="grid grid-cols-15 gap-4 text-sm items-center">
+          <div className="col-span-2">
+            {photo.thumbnail ? (
+              <img src={photo.thumbnail} alt={photo.filename} className="max-h-20 rounded shadow bg-white" />
+            ) : (
+              <div className="w-20 h-20 flex items-center justify-center bg-gray-200 text-gray-400 rounded shadow">No Thumb</div>
+            )}
+          </div>
+          <div className="col-span-2 font-medium text-gray-900 truncate">{photo.filename || photo.name}</div>
+          <div className="col-span-3 text-gray-600">{(photo.metadata && (photo.metadata.DateTimeOriginal || photo.metadata.CreateDate)) || 'Unknown'}</div>
+          <div className="col-span-1 text-gray-600 text-xs">{formatFileSize ? formatFileSize(photo.file_size) : ''}</div>
+          <div className="col-span-2 text-gray-600">{photo.state === 'working' ? 'staged' : photo.state}</div>
+          <div className="col-span-2 text-gray-600">{(privilegesMap && privilegesMap[photo.id]) || '...'}</div>
+          <div className="col-span-1 text-green-700 font-mono text-xs">{photo.hash ? <span title={photo.hash}>✔ {photo.hash.slice(-5)}</span> : '...'}</div>
+          <div className="col-span-2 flex gap-2">
+            {photo.state === 'working' && (
+              <button onClick={() => handleMoveToInprogress && handleMoveToInprogress(photo.id)} className="bg-green-500 hover:bg-green-700 text-white px-2 py-1 rounded text-xs">Move to Inprogress</button>
+            )}
+            {photo.state === 'inprogress' && (
+              <button onClick={(e) => { e.stopPropagation(); handleEditPhoto && handleEditPhoto(photo); }} className="bg-blue-500 hover:bg-blue-700 text-white px-2 py-1 rounded text-xs">Edit</button>
+            )}
+          </div>
+        </div>
+        {(photo.caption || photo.description || photo.keywords) && (
+          <div className="mt-2 ml-4 p-2 bg-gray-50 rounded border border-gray-200 text-xs text-gray-700">
+            {photo.caption && <div><span className="font-semibold">Caption:</span> {photo.caption}</div>}
+            {photo.description && <div className="mt-1"><span className="font-semibold">Description:</span> {photo.description}</div>}
+            {photo.keywords && <div className="mt-1"><span className="font-semibold">Keywords:</span> {photo.keywords}</div>}
+          </div>
+        )}
+      </div>
+    ))}
+  </div>
+);
+
+export default PhotoGallery;

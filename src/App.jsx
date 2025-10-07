@@ -133,6 +133,7 @@ function App() {
   const [editedKeywords, setEditedKeywords] = useState('');
   const [selectedPhoto, setSelectedPhoto] = useState(null);
   const [showFinished, setShowFinished] = useState(false);
+  const [toolbarDebugMsg, setToolbarDebugMsg] = useState('');
   const lastActiveElementRef = useRef(null);
   const [useFullPageEditor, setUseFullPageEditor] = useState(true);
 
@@ -152,6 +153,8 @@ function App() {
           thumbnail: p.thumbnail ? `${backendOrigin}/thumbnails/${p.thumbnail.split('/').pop()}` : null
         }));
         setPhotos(photosWithFullUrls);
+        // small visual confirmation for debugging
+        setToastMsg(`Loaded ${photosWithFullUrls.length} photos (${endpoint})`);
       } catch (error) {
         console.error('Error loading photos:', error);
         setToastMsg('Error loading photos from backend');
@@ -196,7 +199,7 @@ function App() {
             map[photo.id] = privArr.length > 0 ? privArr.join('') : '?';
           } else {
             // keep previous fallback symbol to make regressions obvious
-            console.debug('checkPrivilege returned unexpected shape for', photo.filename, res);
+            console.log('checkPrivilege returned unexpected shape for', photo.filename, res);
             map[photo.id] = '?';
           }
         } catch (error) {
@@ -266,7 +269,7 @@ function App() {
     setUploading(true);
     try {
       for (const p of filteredLocalPhotos) {
-        await uploadPhotoToServer(p.file, p.name);
+        await uploadPhotoToServer(p.file);
       }
       setToastMsg(`Successfully uploaded ${filteredLocalPhotos.length} photos`);
       // Refresh the photo list
@@ -557,8 +560,8 @@ function App() {
     const displayUrl = `http://localhost:3001/display/${photo.state}/${photo.filename}`;
 
     const modalContent = (
-      <div id="photo-editing-modal" className="fixed inset-0 bg-black bg-opacity-75 flex items-center justify-center z-[200000]" role="dialog" aria-modal="true" aria-label={`Edit ${photo.filename}`}>
-        <div className="bg-white rounded-lg shadow-2xl max-w-6xl w-full max-h-[95vh] m-4 overflow-hidden flex flex-col">
+      <div id="photo-editing-modal" className="fixed inset-0 bg-black bg-opacity-75 flex items-center justify-center z-[200000] pointer-events-none" role="dialog" aria-modal="true" aria-label={`Edit ${photo.filename}`}>
+        <div className="bg-white rounded-lg shadow-2xl max-w-6xl w-full max-h-[95vh] m-4 overflow-hidden flex flex-col pointer-events-auto">
           <div className="flex justify-between items-center p-6 border-b bg-gray-50">
             <h2 className="text-xl font-bold text-gray-800">Edit Photo: {photo.filename}</h2>
             <div className="flex items-center gap-3">
@@ -717,19 +720,19 @@ function App() {
           Select Folder for Upload
         </button>
         <button
-          onClick={() => {setShowInprogress(false); setShowFinished(false);}}
+          onClick={() => { console.log('[TOOLBAR] View Staged clicked'); setToolbarDebugMsg('View Staged clicked'); setShowInprogress(false); setShowFinished(false); }}
           className={`font-bold py-2 px-4 rounded ml-2 ${!showInprogress && !showFinished ? 'bg-green-500 hover:bg-green-700' : 'bg-gray-500 hover:bg-gray-700'} text-white`}
         >
           View Staged
         </button>
         <button
-          onClick={() => {setShowInprogress(true); setShowFinished(false);}}
+          onClick={() => { console.log('[TOOLBAR] View Inprogress clicked'); setToolbarDebugMsg('View Inprogress clicked'); setShowInprogress(true); setShowFinished(false); }}
           className={`font-bold py-2 px-4 rounded ml-2 ${showInprogress ? 'bg-yellow-500 hover:bg-yellow-700' : 'bg-gray-500 hover:bg-gray-700'} text-white`}
         >
           View Inprogress
         </button>
         <button
-          onClick={() => {setShowInprogress(false); setShowFinished(true);}}
+          onClick={() => { console.log('[TOOLBAR] View Finished clicked'); setToolbarDebugMsg('View Finished clicked'); setShowInprogress(false); setShowFinished(true); }}
           className={`font-bold py-2 px-4 rounded ml-2 ${showFinished ? 'bg-blue-500 hover:bg-blue-700' : 'bg-gray-500 hover:bg-gray-700'} text-white`}
         >
           View Finished
@@ -797,6 +800,10 @@ function App() {
         </div>
       )}
 
+      {/* Toolbar debug indicator */}
+      {toolbarDebugMsg && (
+        <div className="fixed top-20 right-6 z-50 bg-black text-white text-sm px-3 py-1 rounded shadow">{toolbarDebugMsg}</div>
+      )}
       <div className="flex-1 overflow-auto p-4">
         {/* If a photo is selected open single-page viewer; otherwise show list */}
         {selectedPhoto ? (

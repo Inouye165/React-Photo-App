@@ -467,7 +467,8 @@ async function migrateAndStartServer() {
     };
     
     const dir = getDir(state);
-    const filePath = path.join(dir, filename);
+  const filePath = path.join(dir, filename);
+  console.log('[PHOTO SERVE] Full file path:', filePath);
     
     if (!fs.existsSync(filePath)) {
       return res.status(404).send('File not found');

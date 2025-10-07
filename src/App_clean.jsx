@@ -1,4 +1,6 @@
 import { useState, useEffect, useRef } from 'react'
+import PhotoUploadForm from './PhotoUploadForm'
+import PhotoGallery from './PhotoGallery'
 import { parse } from 'exifr'
 import { uploadPhotoToServer, checkPrivilege, getPhotos, updatePhotoState, recheckInprogressPhotos } from './api.js'
 
@@ -127,6 +129,7 @@ function App() {
   const [rechecking, setRechecking] = useState(false);
   const [editingPhoto, setEditingPhoto] = useState(null);
   const [showFinished, setShowFinished] = useState(false);
+  const [toolbarDebugMsg, setToolbarDebugMsg] = useState('');
 
   const workingDirHandleRef = useRef(null);
   
@@ -143,6 +146,8 @@ function App() {
           thumbnail: p.thumbnail ? `${backendOrigin}/thumbnails/${p.thumbnail.split('/').pop()}` : null
         }));
         setPhotos(photosWithFullUrls);
+        // small visual confirmation for debugging
+        setToastMsg(`Loaded ${photosWithFullUrls.length} photos (${endpoint})`);
       } catch (error) {
         console.error('Error loading photos:', error);
         setToastMsg('Error loading photos from backend');
@@ -222,7 +227,7 @@ function App() {
     setUploading(true);
     try {
       for (const p of filteredLocalPhotos) {
-        await uploadPhotoToServer(p.file, p.name);
+        await uploadPhotoToServer(p.file);
       }
       setToastMsg(`Successfully uploaded ${filteredLocalPhotos.length} photos`);
       // Refresh the photo list
@@ -317,8 +322,8 @@ function App() {
     if (!photo) return null;
     
     return (
-      <div className="fixed inset-0 bg-black bg-opacity-75 flex items-center justify-center z-50 p-4">
-        <div className="bg-white rounded-lg shadow-2xl max-w-6xl w-full max-h-[95vh] overflow-hidden flex flex-col">
+      <div className="fixed inset-0 bg-black bg-opacity-75 flex items-center justify-center z-50 p-4 pointer-events-none">
+        <div className="bg-white rounded-lg shadow-2xl max-w-6xl w-full max-h-[95vh] overflow-hidden flex flex-col pointer-events-auto">
           <div className="flex justify-between items-center p-6 border-b bg-gray-50">
             <h2 className="text-xl font-bold text-gray-800">Edit Photo: {photo.filename}</h2>
             <button 
@@ -437,19 +442,19 @@ function App() {
           Select Folder for Upload
         </button>
         <button
-          onClick={() => {setShowInprogress(false); setShowFinished(false);}}
+          onClick={() => { console.log('[TOOLBAR] View Staged clicked'); setToolbarDebugMsg('View Staged clicked'); setShowInprogress(false); setShowFinished(false); }}
           className={`font-bold py-2 px-4 rounded ml-2 ${!showInprogress && !showFinished ? 'bg-green-500 hover:bg-green-700' : 'bg-gray-500 hover:bg-gray-700'} text-white`}
         >
           View Staged
         </button>
         <button
-          onClick={() => {setShowInprogress(true); setShowFinished(false);}}
+          onClick={() => { console.log('[TOOLBAR] View Inprogress clicked'); setToolbarDebugMsg('View Inprogress clicked'); setShowInprogress(true); setShowFinished(false); }}
           className={`font-bold py-2 px-4 rounded ml-2 ${showInprogress ? 'bg-yellow-500 hover:bg-yellow-700' : 'bg-gray-500 hover:bg-gray-700'} text-white`}
         >
           View Inprogress
         </button>
         <button
-          onClick={() => {setShowInprogress(false); setShowFinished(true);}}
+          onClick={() => { console.log('[TOOLBAR] View Finished clicked'); setToolbarDebugMsg('View Finished clicked'); setShowInprogress(false); setShowFinished(true); }}
           className={`font-bold py-2 px-4 rounded ml-2 ${showFinished ? 'bg-blue-500 hover:bg-blue-700' : 'bg-gray-500 hover:bg-gray-700'} text-white`}
         >
           View Finished
@@ -467,57 +472,23 @@ function App() {
 
       {/* Local Photos Selection Modal */}
       {showLocalPicker && (
-        <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-40">
-          <div className="bg-white rounded-lg shadow-xl max-w-6xl w-full max-h-[90vh] overflow-auto m-4">
-            <div className="p-4 border-b flex justify-between items-center">
-              <h2 className="text-xl font-bold">Select Photos to Upload</h2>
-              <button
-                onClick={() => setShowLocalPicker(false)}
-                className="text-gray-500 hover:text-gray-700 text-xl font-bold"
-              >
-                ×
-              </button>
-            </div>
-            <div className="p-4">
-              <div className="mb-4 flex gap-4 items-center">
-                <input
-                  type="date"
-                  value={startDate}
-                  onChange={(e) => setStartDate(e.target.value)}
-                  className="border rounded px-2 py-1"
-                  placeholder="Start Date"
-                />
-                <input
-                  type="date"
-                  value={endDate}
-                  onChange={(e) => setEndDate(e.target.value)}
-                  className="border rounded px-2 py-1"
-                  placeholder="End Date"
-                />
-                <button
-                  onClick={handleUploadFiltered}
-                  disabled={uploading || filteredLocalPhotos.length === 0}
-                  className="bg-green-500 hover:bg-green-700 text-white font-bold py-2 px-4 rounded disabled:opacity-50"
-                >
-                  {uploading ? `Uploading...` : `Upload ${filteredLocalPhotos.length} Photos`}
-                </button>
-              </div>
-              <div className="font-medium mb-2">Photos to Upload ({filteredLocalPhotos.length}):</div>
-              <div className="grid grid-cols-4 gap-4">
-                {filteredLocalPhotos.map((p, i) => (
-                  <div key={i} className="border rounded p-2 flex flex-col items-center">
-                    <div className="truncate w-full text-xs mb-1">{p.name}</div>
-                    <div className="text-xs text-gray-500 mb-1">{p.exifDate ? new Date(p.exifDate).toLocaleString() : new Date(p.lastModified).toLocaleString()}</div>
-                    <img src={URL.createObjectURL(p.file)} alt={p.name} className="max-h-24 rounded" />
-                  </div>
-                ))}
-              </div>
-            </div>
-          </div>
-        </div>
+        <PhotoUploadForm
+          startDate={startDate}
+          endDate={endDate}
+          setStartDate={setStartDate}
+          setEndDate={setEndDate}
+          uploading={uploading}
+          filteredLocalPhotos={filteredLocalPhotos}
+          handleUploadFiltered={handleUploadFiltered}
+          setShowLocalPicker={setShowLocalPicker}
+        />
       )}
 
       <div className="flex-1 overflow-auto p-4">
+        {/* Toolbar debug indicator */}
+        {toolbarDebugMsg && (
+          <div className="fixed top-20 right-6 z-50 bg-black text-white text-sm px-3 py-1 rounded shadow">{toolbarDebugMsg}</div>
+        )}
         <div className="bg-white rounded-lg shadow-md">
           {loading ? (
             <div className="p-8 text-center text-gray-500">Loading photos...</div>
@@ -537,59 +508,14 @@ function App() {
                   <div className="col-span-2">Actions</div>
                 </div>
               </div>
-              <div className="divide-y divide-gray-200 table-row-compact">
-                {photos.map(photo => (
-                  <div key={photo.id} className="px-4 py-3 hover:bg-gray-50">
-                    <div className="grid grid-cols-15 gap-4 text-sm items-center">
-                      <div className="col-span-2">
-                        {photo.thumbnail ? (
-                          <img src={photo.thumbnail} alt={photo.filename} className="max-h-20 rounded shadow bg-white" />
-                        ) : (
-                          <div className="w-20 h-20 flex items-center justify-center bg-gray-200 text-gray-400 rounded shadow">No Thumb</div>
-                        )}
-                      </div>
-                      <div className="col-span-2 font-medium text-gray-900 truncate">{photo.filename}</div>
-                      <div className="col-span-3 text-gray-600">
-                        {photo.metadata.DateTimeOriginal || photo.metadata.CreateDate || 'Unknown'}
-                      </div>
-                      <div className="col-span-1 text-gray-600 text-xs">
-                        {formatFileSize(photo.file_size)}
-                      </div>
-                      <div className="col-span-2 text-gray-600">{photo.state === 'working' ? 'staged' : photo.state}</div>
-                      <div className="col-span-2 text-gray-600">{privilegesMap[photo.id] || '...'}</div>
-                      <div className="col-span-1 text-green-700 font-mono text-xs">
-                        {photo.hash ? <span title={photo.hash}>✔ {photo.hash.slice(-5)}</span> : '...'}
-                      </div>
-                      <div className="col-span-2 flex gap-2">
-                        {photo.state === 'working' && (
-                          <button
-                            onClick={() => handleMoveToInprogress(photo.id)}
-                            className="bg-green-500 hover:bg-green-700 text-white px-2 py-1 rounded text-xs"
-                          >
-                            Move to Inprogress
-                          </button>
-                        )}
-                        {photo.state === 'inprogress' && (
-                          <button
-                            onClick={() => handleEditPhoto(photo)}
-                            className="bg-blue-500 hover:bg-blue-700 text-white px-2 py-1 rounded text-xs"
-                          >
-                            Edit
-                          </button>
-                        )}
-                      </div>
-                    </div>
-                    {/* AI metadata row */}
-                    {(photo.caption || photo.description || photo.keywords) && (
-                      <div className="mt-2 ml-4 p-2 bg-gray-50 rounded border border-gray-200 text-xs text-gray-700">
-                        {photo.caption && <div><span className="font-semibold">Caption:</span> {photo.caption}</div>}
-                        {photo.description && <div className="mt-1"><span className="font-semibold">Description:</span> {photo.description}</div>}
-                        {photo.keywords && <div className="mt-1"><span className="font-semibold">Keywords:</span> {photo.keywords}</div>}
-                      </div>
-                    )}
-                  </div>
-                ))}
-              </div>
+              <PhotoGallery
+                photos={photos}
+                privilegesMap={privilegesMap}
+                formatFileSize={formatFileSize}
+                handleMoveToInprogress={handleMoveToInprogress}
+                handleEditPhoto={handleEditPhoto}
+                onPhotoClick={handleEditPhoto}
+              />
             </div>
           )}
         </div>

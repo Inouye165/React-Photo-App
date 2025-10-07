@@ -162,3 +162,14 @@ npm run preview
 - Add client-side content-hash check to avoid uploading duplicates — compute file hash in browser and skip uploads if server already has the hash.
 - Add filename search and full-size preview modal in frontend — quick search, sort, and modal for viewing images at full resolution.
 - Add automated tests and CI pipeline for build and linting — ensure stability with unit tests and GitHub Actions.
+
+## Progress saved (work-in-progress)
+
+- Modularized gallery and upload UI into `src/PhotoGallery.jsx` and `src/PhotoUploadForm.jsx`.
+- Fixed upload callsites to use the backend upload endpoint and added upload/fetch logging.
+- Made the edit modal allow clicks to reach the toolbar, added visual and console debugging helpers.
+- Remaining issue: while the UI click handlers fire, the app does not visually switch from edit modal to the staged/inprogress list because the edit UI still covers the list; further work needed to either close the modal automatically or animate/swap the content view.
+
+Commit message used: "Save progress: modularize gallery/upload, fix upload calls, add debug and modal pointer-event fixes; remaining modal overlay visibility issue"
+
+If you want the cleaned app to be the mounted entry, change `src/main.jsx` to import `App_clean.jsx` instead of `App.jsx`.

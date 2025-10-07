@@ -3,6 +3,7 @@
 export async function uploadPhotoToServer(file, serverUrl = 'http://localhost:3001/upload') {
   const formData = new FormData();
   formData.append('photo', file, file.name);
+  console.log('[UPLOAD] target:', serverUrl, 'file.name:', file && file.name);
   try {
     const response = await fetch(serverUrl, {
       method: 'POST',
@@ -44,9 +45,24 @@ export async function checkPrivilege(relPath, serverUrl = 'http://localhost:3001
 }
 
 // Fetch all photos and metadata from backend
-export async function getPhotos(serverUrl = 'http://localhost:3001/photos') {
-  const response = await fetch(serverUrl);
-  if (!response.ok) throw new Error('Failed to fetch photos');
+export async function getPhotos(serverUrlOrEndpoint = 'http://localhost:3001/photos') {
+  // Accept either a full URL or a short endpoint/state token like 'working'|'inprogress'|'finished'
+  let url = serverUrlOrEndpoint;
+  if (!/^https?:\/\//i.test(serverUrlOrEndpoint)) {
+    // If it's a simple state token, build the photos endpoint
+    if (['working', 'inprogress', 'finished'].includes(serverUrlOrEndpoint)) {
+      url = `http://localhost:3001/photos?state=${serverUrlOrEndpoint}`;
+    } else if (serverUrlOrEndpoint.startsWith('photos')) {
+      // handle values like 'photos?state=working' or 'photos'
+      url = `http://localhost:3001/${serverUrlOrEndpoint}`;
+    } else {
+      // fallback to default photos endpoint
+      url = 'http://localhost:3001/photos';
+    }
+  }
+  console.log('[GET PHOTOS] fetching', url);
+  const response = await fetch(url);
+  if (!response.ok) throw new Error('Failed to fetch photos: ' + response.status);
   return await response.json();
 }
 
