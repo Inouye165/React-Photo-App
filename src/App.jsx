@@ -3,6 +3,7 @@ import ReactDOM from 'react-dom'
 import { parse } from 'exifr'
 import { uploadPhotoToServer, checkPrivilege, getPhotos, updatePhotoState, recheckInprogressPhotos, updatePhotoCaption } from './api.js'
 import EditPage from './EditPage'
+import Toolbar from './Toolbar'
 
 // Utility: Get or create a guaranteed local folder (default: C:\Users\<User>\working)
 async function getLocalWorkingFolder(customPath) {
@@ -133,7 +134,6 @@ function App() {
   const [editedKeywords, setEditedKeywords] = useState('');
   const [selectedPhoto, setSelectedPhoto] = useState(null);
   const [showFinished, setShowFinished] = useState(false);
-  const [toolbarDebugMsg, setToolbarDebugMsg] = useState('');
   const lastActiveElementRef = useRef(null);
   const [useFullPageEditor, setUseFullPageEditor] = useState(true);
 
@@ -153,8 +153,7 @@ function App() {
           thumbnail: p.thumbnail ? `${backendOrigin}/thumbnails/${p.thumbnail.split('/').pop()}` : null
         }));
         setPhotos(photosWithFullUrls);
-        // small visual confirmation for debugging
-        setToastMsg(`Loaded ${photosWithFullUrls.length} photos (${endpoint})`);
+  // removed visual confirmation toast
       } catch (error) {
         console.error('Error loading photos:', error);
         setToastMsg('Error loading photos from backend');
@@ -294,7 +293,6 @@ function App() {
   const handleMoveToInprogress = async (id) => {
     try {
       await updatePhotoState(id, 'inprogress');
-      setToastMsg('Photo moved to inprogress');
       // Refresh photos
       const endpoint = showFinished ? 'finished' : (showInprogress ? 'inprogress' : 'working');
       const serverUrl = `http://localhost:3001/photos?state=${endpoint}`;
@@ -561,7 +559,7 @@ function App() {
 
     const modalContent = (
       <div id="photo-editing-modal" className="fixed inset-0 bg-black bg-opacity-75 flex items-center justify-center z-[200000] pointer-events-none" role="dialog" aria-modal="true" aria-label={`Edit ${photo.filename}`}>
-        <div className="bg-white rounded-lg shadow-2xl max-w-6xl w-full max-h-[95vh] m-4 overflow-hidden flex flex-col pointer-events-auto">
+        <div className="bg-white rounded-lg shadow-2xl max-w-6xl w-full max-h-[95vh] m-4 overflow-auto flex flex-col pointer-events-auto">
           <div className="flex justify-between items-center p-6 border-b bg-gray-50">
             <h2 className="text-xl font-bold text-gray-800">Edit Photo: {photo.filename}</h2>
             <div className="flex items-center gap-3">
@@ -584,15 +582,14 @@ function App() {
           </div>
           
           <div className="flex-1 overflow-y-auto p-6" tabIndex={-1}>
-            <div className="grid grid-cols-1 lg:grid-cols-2 gap-8">
+            <div className="grid grid-cols-1 lg:grid-cols-[2fr_3fr] gap-8">
               {/* Photo display */}
               <div className="flex flex-col space-y-4">
-                <div className="bg-gray-50 rounded-lg px-2 py-3">
+                <div className="bg-gray-50 rounded-lg px-2 py-3 flex items-center justify-center overflow-auto">
                   <img 
                     src={`http://localhost:3001/display/${photo.state}/${photo.filename}`} 
                     alt={photo.filename}
-                    className="h-auto max-h-96 object-contain rounded shadow-lg"
-                    style={{maxWidth: '98%'}}
+                    className="max-w-full w-auto h-auto max-h-[80vh] object-contain rounded shadow-lg"
                   />
                 </div>
                 <div className="text-sm text-gray-600 bg-white p-3 rounded border">
@@ -711,66 +708,34 @@ function App() {
         <Toast message={toastMsg} onClose={() => setToastMsg('')} />
       </div>
 
-      <div className="bg-white shadow-md p-4 flex flex-wrap items-center gap-4">
-        <div className="text-lg font-bold">Photo App (Backend View)</div>
-        <button
-          onClick={handleSelectFolder}
-          className="bg-blue-500 hover:bg-blue-700 text-white font-bold py-2 px-4 rounded ml-2"
-        >
-          Select Folder for Upload
-        </button>
-        <button
-          onClick={() => { 
-            console.log('[TOOLBAR] View Staged clicked'); 
-            setToolbarDebugMsg('View Staged clicked'); 
-            setShowInprogress(false); 
-            setShowFinished(false); 
-            setEditingPhoto(null); 
-            setSelectedPhoto(null); 
-            setUseFullPageEditor(false); // ensure modal closes
-          }}
-          className={`font-bold py-2 px-4 rounded ml-2 ${!showInprogress && !showFinished ? 'bg-green-500 hover:bg-green-700' : 'bg-gray-500 hover:bg-gray-700'} text-white`}
-        >
-          View Staged
-        </button>
-        <button
-          onClick={() => { 
-            console.log('[TOOLBAR] View Inprogress clicked'); 
-            setToolbarDebugMsg('View Inprogress clicked'); 
-            setShowInprogress(true); 
-            setShowFinished(false); 
-            setEditingPhoto(null); 
-            setSelectedPhoto(null); 
-            setUseFullPageEditor(false); // ensure modal closes
-          }}
-          className={`font-bold py-2 px-4 rounded ml-2 ${showInprogress ? 'bg-yellow-500 hover:bg-yellow-700' : 'bg-gray-500 hover:bg-gray-700'} text-white`}
-        >
-          View Inprogress
-        </button>
-        <button
-          onClick={() => { 
-            console.log('[TOOLBAR] View Finished clicked'); 
-            setToolbarDebugMsg('View Finished clicked'); 
-            setShowInprogress(false); 
-            setShowFinished(true); 
-            setEditingPhoto(null); 
-            setSelectedPhoto(null); 
-            setUseFullPageEditor(false); // ensure modal closes
-          }}
-          className={`font-bold py-2 px-4 rounded ml-2 ${showFinished ? 'bg-blue-500 hover:bg-blue-700' : 'bg-gray-500 hover:bg-gray-700'} text-white`}
-        >
-          View Finished
-        </button>
-        {showInprogress && (
-          <button
-            onClick={handleRecheckInprogress}
-            disabled={rechecking}
-            className="bg-purple-500 hover:bg-purple-700 text-white font-bold py-2 px-4 rounded disabled:opacity-50"
-          >
-            {rechecking ? 'Rechecking...' : 'Recheck AI'}
-          </button>
-        )}
-      </div>
+      <Toolbar
+        onSelectFolder={handleSelectFolder}
+        onViewStaged={() => {
+          setShowInprogress(false);
+          setShowFinished(false);
+          setEditingPhoto(null);
+          setSelectedPhoto(null);
+          setUseFullPageEditor(false);
+        }}
+        onViewInprogress={() => {
+          setShowInprogress(true);
+          setShowFinished(false);
+          setEditingPhoto(null);
+          setSelectedPhoto(null);
+          setUseFullPageEditor(false);
+        }}
+        onViewFinished={() => {
+          setShowInprogress(false);
+          setShowFinished(true);
+          setEditingPhoto(null);
+          setSelectedPhoto(null);
+          setUseFullPageEditor(false);
+        }}
+        showInprogress={showInprogress}
+        showFinished={showFinished}
+        onRecheck={handleRecheckInprogress}
+        rechecking={rechecking}
+      />
 
       {/* Local Photos Selection Modal */}
       {showLocalPicker && (
@@ -824,22 +789,18 @@ function App() {
         </div>
       )}
 
-      {/* Toolbar debug indicator */}
-      {toolbarDebugMsg && (
-        <div className="fixed top-20 right-6 z-50 bg-black text-white text-sm px-3 py-1 rounded shadow">{toolbarDebugMsg}</div>
-      )}
       <div className="flex-1 overflow-auto p-4">
         {/* If a photo is selected open single-page viewer; otherwise show list */}
         {selectedPhoto ? (
           <div className="bg-white rounded-lg shadow-md h-full p-6">
             <div className="flex items-start h-full gap-4" style={{height: 'calc(100vh - 140px)'}}>
                   {/* Left: Image */}
-                  <div className="w-3/5 bg-gray-100 rounded overflow-hidden flex items-center justify-center px-2 py-3" style={{maxHeight: '100%'}}>
+                  <div className="w-2/5 bg-gray-100 rounded overflow-auto flex items-center justify-center px-2 py-3" style={{maxHeight: '100%'}}>
                     <img
                       src={`http://localhost:3001/display/${selectedPhoto.state}/${selectedPhoto.filename}`}
                       alt={selectedPhoto.filename}
-                      className="max-h-full object-contain"
-                      style={{maxWidth: '98%', height: 'auto'}}
+                      className="max-h-full max-w-full object-contain"
+                      style={{width: 'auto', height: 'auto'}}
                     />
                   </div>
 
@@ -847,7 +808,7 @@ function App() {
                   <div className="mx-3" style={{width: '3px', backgroundColor: '#e5e7eb', height: '100%'}} />
 
                 {/* Right: Top (caption/description/keywords) and Bottom (AI chat placeholder) */}
-                <aside className="w-2/5 bg-white rounded shadow-sm border p-8 flex flex-col" style={{maxHeight: '100%', borderLeft: '1px solid #e5e7eb'}}>
+                <aside className="w-3/5 bg-white rounded shadow-sm border p-8 flex flex-col" style={{maxHeight: '100%', borderLeft: '1px solid #e5e7eb'}}>
                 <header className="mb-3">
                   <h2 className="text-lg font-semibold">{selectedPhoto.filename}</h2>
                   <div className="text-xs text-gray-500">{selectedPhoto.metadata?.DateTimeOriginal || ''}</div>

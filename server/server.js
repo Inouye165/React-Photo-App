@@ -689,7 +689,7 @@ async function migrateAndStartServer() {
     try {
       console.log('[RECHECK] /photos/recheck-inprogress endpoint called');
       processAllUnprocessedInprogress(db);
-      res.json({ success: true, message: 'Recheck triggered for inprogress files.' });
+      res.json({ success: true });
     } catch (err) {
       console.error('[RECHECK] Failed to trigger recheck for inprogress files:', err);
       res.status(500).json({ success: false, error: err.message });

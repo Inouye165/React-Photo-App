@@ -252,7 +252,6 @@ function App() {
   const handleMoveToInprogress = async (id) => {
     try {
       await updatePhotoState(id, 'inprogress');
-      setToastMsg('Photo moved to inprogress');
       // Refresh photos
       const endpoint = showFinished ? 'finished' : (showInprogress ? 'inprogress' : 'working');
       const res = await getPhotos(endpoint);
@@ -372,33 +371,28 @@ function App() {
                   </div>
                 )}
                 
-                {photo.keywords && (
-                  <div>
-                    <h3 className="font-semibold text-lg text-gray-800">Keywords</h3>
-                    <p className="text-gray-700 bg-gray-50 p-3 rounded">{photo.keywords}</p>
-                  </div>
-                )}
-                
-                {photo.metadata && (
-                  <div>
-                    <h3 className="font-semibold text-lg text-gray-800">EXIF Data</h3>
-                    <div className="text-sm text-gray-600 bg-gray-50 p-3 rounded max-h-40 overflow-y-auto">
-                      {photo.metadata.DateTimeOriginal && <p><strong>Date Taken:</strong> {photo.metadata.DateTimeOriginal}</p>}
-                      {photo.metadata.Make && <p><strong>Camera:</strong> {photo.metadata.Make} {photo.metadata.Model}</p>}
-                      {photo.metadata.LensModel && <p><strong>Lens:</strong> {photo.metadata.LensModel}</p>}
-                      {photo.metadata.FNumber && <p><strong>Aperture:</strong> f/{photo.metadata.FNumber}</p>}
-                      {photo.metadata.ExposureTime && <p><strong>Shutter:</strong> {photo.metadata.ExposureTime}s</p>}
-                      {photo.metadata.ISO && <p><strong>ISO:</strong> {photo.metadata.ISO}</p>}
-                      {photo.metadata.FocalLength && <p><strong>Focal Length:</strong> {photo.metadata.FocalLength}mm</p>}
-                    </div>
-                  </div>
-                )}
-              </div>
-            </div>
-          </div>
-          
-          {/* Action buttons */}
-          <div className="flex justify-end space-x-4 p-6 border-t bg-gray-50">
+                  <Toolbar
+                    onSelectFolder={handleSelectFolder}
+                    onViewStaged={() => {
+                      setShowInprogress(false);
+                      setShowFinished(false);
+                      setEditingPhoto(null);
+                    }}
+                    onViewInprogress={() => {
+                      setShowInprogress(true);
+                      setShowFinished(false);
+                      setEditingPhoto(null);
+                    }}
+                    onViewFinished={() => {
+                      setShowInprogress(false);
+                      setShowFinished(true);
+                      setEditingPhoto(null);
+                    }}
+                    showInprogress={showInprogress}
+                    showFinished={showFinished}
+                    onRecheck={handleRecheckInprogress}
+                    rechecking={rechecking}
+                  />
             <button
               onClick={onClose}
               className="bg-gray-500 hover:bg-gray-700 text-white font-bold py-2 px-6 rounded"
@@ -477,15 +471,6 @@ function App() {
         >
           View Finished
         </button>
-        {showInprogress && (
-          <button
-            onClick={handleRecheckInprogress}
-            disabled={rechecking}
-            className="bg-purple-500 hover:bg-purple-700 text-white font-bold py-2 px-4 rounded disabled:opacity-50"
-          >
-            {rechecking ? 'Rechecking...' : 'Recheck AI'}
-          </button>
-        )}
       </div>
 
       {/* Local Photos Selection Modal */}
