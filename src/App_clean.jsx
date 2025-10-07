@@ -442,19 +442,37 @@ function App() {
           Select Folder for Upload
         </button>
         <button
-          onClick={() => { console.log('[TOOLBAR] View Staged clicked'); setToolbarDebugMsg('View Staged clicked'); setShowInprogress(false); setShowFinished(false); }}
+          onClick={() => { 
+            console.log('[TOOLBAR] View Staged clicked'); 
+            setToolbarDebugMsg('View Staged clicked'); 
+            setShowInprogress(false); 
+            setShowFinished(false); 
+            setEditingPhoto(null); // auto-close edit modal
+          }}
           className={`font-bold py-2 px-4 rounded ml-2 ${!showInprogress && !showFinished ? 'bg-green-500 hover:bg-green-700' : 'bg-gray-500 hover:bg-gray-700'} text-white`}
         >
           View Staged
         </button>
         <button
-          onClick={() => { console.log('[TOOLBAR] View Inprogress clicked'); setToolbarDebugMsg('View Inprogress clicked'); setShowInprogress(true); setShowFinished(false); }}
+          onClick={() => { 
+            console.log('[TOOLBAR] View Inprogress clicked'); 
+            setToolbarDebugMsg('View Inprogress clicked'); 
+            setShowInprogress(true); 
+            setShowFinished(false); 
+            setEditingPhoto(null); // auto-close edit modal
+          }}
           className={`font-bold py-2 px-4 rounded ml-2 ${showInprogress ? 'bg-yellow-500 hover:bg-yellow-700' : 'bg-gray-500 hover:bg-gray-700'} text-white`}
         >
           View Inprogress
         </button>
         <button
-          onClick={() => { console.log('[TOOLBAR] View Finished clicked'); setToolbarDebugMsg('View Finished clicked'); setShowInprogress(false); setShowFinished(true); }}
+          onClick={() => { 
+            console.log('[TOOLBAR] View Finished clicked'); 
+            setToolbarDebugMsg('View Finished clicked'); 
+            setShowInprogress(false); 
+            setShowFinished(true); 
+            setEditingPhoto(null); // auto-close edit modal
+          }}
           className={`font-bold py-2 px-4 rounded ml-2 ${showFinished ? 'bg-blue-500 hover:bg-blue-700' : 'bg-gray-500 hover:bg-gray-700'} text-white`}
         >
           View Finished
