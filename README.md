@@ -1,6 +1,9 @@
 # React Photo Filtering App
 
-A full-screen React application for dynamically filtering and browsing photos by date range, with a Node.js backend for automatic file storage, deduplication, and AI-powered metadata extraction.
+
+A full-screen React application for filtering, browsing, and uploading photos by date range, with a Node.js Express backend for file storage, deduplication, and AI-powered metadata extraction.
+
+**Author:** Ron Inouye
 
 ## Key Features (2025 Update)
 
@@ -12,6 +15,7 @@ A full-screen React application for dynamically filtering and browsing photos by
 - **Robust error handling:** All errors and upload messages are shown in a prominent toast at the top of the app.
 - **AI-powered captions and descriptions:** The backend uses OpenAI Vision to generate captions, descriptions, and keywords for each photo, including HEIC/HEIF files.
 - **HEIC/HEIF support:** Both thumbnails and AI processing support HEIC/HEIF files, with ImageMagick fallback if sharp/libvips lacks support.
+- **Upload panel:** The photo upload panel now fills the viewport under the toolbar, with a compact file list and flush-edge layout. No large image previews; file list shows filename, date, size, and type.
 
 ## Usage (2025)
 
@@ -21,6 +25,7 @@ A full-screen React application for dynamically filtering and browsing photos by
 4. Filter/select photos by date, then upload to the backend.
 5. The backend view shows all photos, metadata, privileges, and hash info. No duplicates are stored.
 6. If a file fails AI processing (shows 'AI processing failed'), POST to `/debug/reset-ai-retry` and click "Recheck Inprogress AI" to retry.
+7. The upload panel is now flush with the viewport edges, matching other views. The file list is compact and readable.
 
 ## File Hashing & Deduplication
 
@@ -37,6 +42,7 @@ A full-screen React application for dynamically filtering and browsing photos by
 - **exifr**: Library for reading photo metadata
 - **File System Access API**: Modern browser API for folder selection
 - **ESLint**: Code linting and formatting
+   - **PhotoUploadForm.jsx**: Upload panel with compact file list, flush-edge layout
 
 ### Backend
 - **Node.js**: JavaScript runtime for server
@@ -167,9 +173,8 @@ npm run preview
 
 - Modularized gallery and upload UI into `src/PhotoGallery.jsx` and `src/PhotoUploadForm.jsx`.
 - Fixed upload callsites to use the backend upload endpoint and added upload/fetch logging.
-- Made the edit modal allow clicks to reach the toolbar, added visual and console debugging helpers.
-- Remaining issue: while the UI click handlers fire, the app does not visually switch from edit modal to the staged/inprogress list because the edit UI still covers the list; further work needed to either close the modal automatically or animate/swap the content view.
-
-Commit message used: "Save progress: modularize gallery/upload, fix upload calls, add debug and modal pointer-event fixes; remaining modal overlay visibility issue"
+- Upload panel now fills the viewport under the toolbar, with a compact file list and flush-edge layout. No large image previews; file list shows filename, date, size, and type.
+- Server skips non-image files (e.g., desktop.ini) and logs them, instead of exiting. HEIC/HEIF support confirmed with ImageMagick fallback.
+- Remaining open items: CSS grid for thumbnails, live updates, search, and automated tests.
 
 If you want the cleaned app to be the mounted entry, change `src/main.jsx` to import `App_clean.jsx` instead of `App.jsx`.
