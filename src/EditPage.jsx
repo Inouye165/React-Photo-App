@@ -2,10 +2,14 @@ import React, { useState, useEffect } from 'react'
 
 export default function EditPage({ photo, onClose, onSave, onFinished }) {
   const [caption, setCaption] = useState(photo?.caption || '')
+  const [description, setDescription] = useState(photo?.description || '')
+  const [keywords, setKeywords] = useState(photo?.keywords || '')
   const [saving, setSaving] = useState(false)
 
   useEffect(() => {
     setCaption(photo?.caption || '')
+    setDescription(photo?.description || '')
+    setKeywords(photo?.keywords || '')
   }, [photo])
 
   // Lock background scroll while this full-page editor is open
@@ -23,7 +27,7 @@ export default function EditPage({ photo, onClose, onSave, onFinished }) {
     setSaving(true)
     try {
       // Minimal: update locally via onSave. Backend persist not implemented here.
-      const updated = { ...photo, caption };
+      const updated = { ...photo, caption, description, keywords };
       await onSave(updated)
     } catch (e) {
       console.error('Save failed', e)
@@ -36,27 +40,26 @@ export default function EditPage({ photo, onClose, onSave, onFinished }) {
     <div
       className="bg-white overflow-hidden flex flex-col"
       style={{
-        margin: '0 16px 16px 16px',
-        height: 'calc(100vh - 112px)',
+        height: '100%',
         boxSizing: 'border-box',
         borderRadius: '8px',
         border: '2px solid #4a5568',
         boxShadow: '0 2px 10px rgba(0,0,0,0.16)',
       }}
     >
-      {/* Header with buttons */}
-      <div className="flex items-center justify-between p-4 border-b">
-        <h1 className="text-2xl font-bold">Edit Photo — {photo.filename}</h1>
+      {/* Header with buttons - compact */}
+      <div className="flex items-center justify-between px-4 py-2 border-b">
+        <h1 className="text-lg font-bold">Edit Photo — {photo.filename}</h1>
         <div className="flex gap-2">
-          <button onClick={onClose} className="px-3 py-1 bg-gray-200 rounded hover:bg-gray-300">Back</button>
-          <button onClick={() => { onFinished(photo.id); }} className="px-3 py-1 bg-green-600 text-white rounded hover:bg-green-700">Mark as Finished</button>
+          <button onClick={onClose} className="px-3 py-1 text-sm bg-gray-200 rounded hover:bg-gray-300">Back</button>
+          <button onClick={() => { onFinished(photo.id); }} className="px-3 py-1 text-sm bg-green-600 text-white rounded hover:bg-green-700">Mark as Finished</button>
         </div>
       </div>
 
-      {/* 2-column layout: Image left, metadata/form right */}
-      <div className="flex-1 flex overflow-hidden">
+      {/* 2-column layout with right side split into top/bottom panels */}
+      <div className="flex-1 flex overflow-hidden" style={{ gap: '7px', padding: '7px 7px 7px 7px', backgroundColor: 'white' }}>
         {/* Left column: Image (50%) */}
-        <div className="w-1/2 bg-gray-50 flex items-center justify-center p-4 overflow-auto">
+        <div className="w-1/2 flex items-center justify-center p-4 overflow-auto rounded border" style={{ backgroundColor: '#f5f5f5' }}>
           <img
             src={displayUrl}
             alt={photo.filename}
@@ -64,27 +67,60 @@ export default function EditPage({ photo, onClose, onSave, onFinished }) {
           />
         </div>
 
-        {/* Right column: Metadata and form (50%) */}
-        <div className="w-1/2 flex flex-col p-6 overflow-auto border-l">
-          <div className="border rounded p-4 mb-4 bg-gray-50">
-            <h3 className="font-semibold mb-2">Metadata</h3>
-            <div className="text-sm text-gray-700 space-y-1">
-              <p><strong>File Size:</strong> {photo.file_size}</p>
-              <p><strong>State:</strong> {photo.state}</p>
-              <p><strong>Hash:</strong> {photo.hash || 'N/A'}</p>
+        {/* Right column: Split into top (metadata/form) and bottom (chat) - (50%) */}
+        <div className="w-1/2 flex flex-col" style={{ gap: '7px' }}>
+          {/* Top right: Metadata and form (50% of right side) */}
+          <div className="h-1/2 flex flex-col p-6 overflow-auto rounded border" style={{ backgroundColor: '#f5f5f5' }}>
+            <div className="border rounded p-3 mb-3 bg-gray-50">
+              <h3 className="font-semibold mb-2 text-sm">Metadata</h3>
+              <div className="text-xs text-gray-700 space-y-1">
+                <p><strong>File Size:</strong> {photo.file_size}</p>
+                <p><strong>State:</strong> {photo.state}</p>
+                <p><strong>Hash:</strong> <span className="font-mono text-[10px]">{photo.hash || 'N/A'}</span></p>
+              </div>
+            </div>
+            
+            <div className="mb-2">
+              <label className="block font-semibold mb-1 text-sm">Caption</label>
+              <textarea 
+                className="w-full border rounded p-2 text-sm" 
+                rows={2}
+                value={caption} 
+                onChange={e => setCaption(e.target.value)} 
+              />
+            </div>
+            
+            <div className="mb-2 flex-1">
+              <label className="block font-semibold mb-1 text-sm">Description</label>
+              <textarea 
+                className="w-full border rounded p-2 text-sm h-full min-h-[60px]" 
+                value={description} 
+                onChange={e => setDescription(e.target.value)} 
+              />
+            </div>
+            
+            <div className="mb-3">
+              <label className="block font-semibold mb-1 text-sm">Keywords</label>
+              <input 
+                type="text"
+                className="w-full border rounded p-2 text-sm" 
+                value={keywords} 
+                onChange={e => setKeywords(e.target.value)} 
+              />
+            </div>
+            
+            <div className="flex gap-2">
+              <button onClick={handleSave} disabled={saving} className="px-3 py-1.5 text-sm bg-blue-600 text-white rounded hover:bg-blue-700 disabled:opacity-50">{saving ? 'Saving...' : 'Save'}</button>
+              <button onClick={onClose} className="px-3 py-1.5 text-sm bg-gray-200 rounded hover:bg-gray-300">Cancel</button>
             </div>
           </div>
-          <div className="mb-4 flex-1">
-            <label className="block font-semibold mb-2">Caption</label>
-            <textarea 
-              className="w-full border rounded p-2 h-32" 
-              value={caption} 
-              onChange={e => setCaption(e.target.value)} 
-            />
-          </div>
-          <div className="flex gap-2">
-            <button onClick={handleSave} disabled={saving} className="px-4 py-2 bg-blue-600 text-white rounded hover:bg-blue-700 disabled:opacity-50">{saving ? 'Saving...' : 'Save'}</button>
-            <button onClick={onClose} className="px-4 py-2 bg-gray-200 rounded hover:bg-gray-300">Cancel</button>
+
+          {/* Bottom right: Chat placeholder (50% of right side) */}
+          <div className="h-1/2 flex flex-col p-6 rounded border" style={{ backgroundColor: '#f5f5f5' }}>
+            <h3 className="font-semibold mb-2 text-sm">AI Chat (Coming Soon)</h3>
+            <div className="flex-1 border rounded p-3 bg-white text-sm text-gray-500 flex items-center justify-center">
+              Chat interface will appear here
+            </div>
           </div>
         </div>
       </div>

@@ -685,23 +685,9 @@ function App() {
         left: 0,
         right: 0,
         bottom: 0,
-        paddingTop: '96px'
+        paddingTop: '72px'
       }}
     >
-      {/* Photo Editing Full-page Editor */}
-      {editingPhoto && (
-        <EditPage 
-          photo={editingPhoto}
-          onClose={() => setEditingPhoto(null)}
-          onFinished={async (id) => { await handleMoveToFinished(id); setEditingPhoto(null); }}
-          onSave={async (updated) => {
-            // Update local photos array
-            setPhotos(prev => prev.map(p => p.id === updated.id ? { ...p, ...updated } : p));
-            setEditingPhoto(null);
-          }}
-        />
-      )}
-      
       {/* Toast at top center */}
       <div className="fixed top-6 left-1/2 transform -translate-x-1/2 z-50">
         <Toast message={toastMsg} onClose={() => setToastMsg('')} />
@@ -751,9 +737,22 @@ function App() {
         />
       )}
 
-      <div className="flex-1 overflow-auto" style={{ padding: '16px' }}>
-        {/* If a photo is selected open single-page viewer; otherwise show list */}
-        {selectedPhoto ? (
+      <div className="flex-1 overflow-auto" style={{ padding: '8px 16px 16px 16px' }}>
+        {/* Show EditPage when editing, otherwise show photo list */}
+        {editingPhoto ? (
+          <EditPage 
+            photo={editingPhoto}
+            onClose={() => setEditingPhoto(null)}
+            onFinished={async (id) => { await handleMoveToFinished(id); setEditingPhoto(null); }}
+            onSave={async (updated) => {
+              setPhotos(prev => prev.map(p => p.id === updated.id ? { ...p, ...updated } : p));
+              setEditingPhoto(null);
+            }}
+          />
+        ) : (
+          <>
+            {/* If a photo is selected open single-page viewer; otherwise show list */}
+            {selectedPhoto ? (
           <div className="bg-white rounded-lg shadow-md h-full p-6">
             <div className="flex items-start h-full gap-4" style={{height: 'calc(100vh - 140px)'}}>
                   {/* Left: Image */}
@@ -923,6 +922,8 @@ function App() {
               </div>
             )}
           </div>
+        )}
+          </>
         )}
       </div>
     </div>
