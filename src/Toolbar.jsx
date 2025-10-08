@@ -12,21 +12,28 @@ export default function Toolbar({
 }) {
   return (
     <nav
+      role="navigation"
+      aria-label="Main toolbar"
       style={{
+        position: 'fixed',
+        top: 16,
+        left: 16,
+        right: 16,
+        zIndex: 50, // keep above modals/overlays (modals use z-40)
         display: "flex",
         alignItems: "center",
         justifyContent: "space-between",
         background: "#2d3748", // dark blue-gray
         color: "#fff",
         padding: "12px 24px",
-        margin: "16px",
+        margin: 0,
         borderRadius: "8px",
         border: "2px solid #4a5568",
-        boxShadow: "0 2px 8px rgba(0,0,0,0.08)",
+        boxShadow: "0 2px 10px rgba(0,0,0,0.16)",
       }}
     >
       <div style={{ display: "flex", alignItems: "center", gap: "12px" }}>
-        <span style={{ fontWeight: "bold", fontSize: "1.1rem", marginRight: "20px" }}>
+        <span style={{ fontWeight: "bold", fontSize: "1.1rem", marginRight: "20px" }} tabIndex={-1}>
           Photo App (Backend View)
         </span>
         <button onClick={onSelectFolder}>Select Folder for Upload</button>

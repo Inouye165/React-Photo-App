@@ -17,33 +17,59 @@ function getNonEmptyDir(dir) {
   return fs.existsSync(dir) && fs.readdirSync(dir).length > 0;
 }
 
+// Expand environment variables and ~ in a path string
+function expandPath(p) {
+  if (!p) return p;
+  // Replace ~ with homedir
+  if (p.startsWith('~')) p = path.join(os.homedir(), p.slice(1));
+  // Expand %ENV% on Windows
+  p = p.replace(/%([^%]+)%/g, (_, n) => process.env[n] || '');
+  // Expand ${ENV} style
+  p = p.replace(/\$\{([^}]+)\}/g, (_, n) => process.env[n] || '');
+  return p;
+}
+
+// Try to detect a OneDrive Pictures working folder for the current or other users
+function detectOneDriveWorking() {
+  const candidates = [];
+  // Common current-user OneDrive Pictures path
+  candidates.push(path.join(os.homedir(), 'OneDrive', 'Pictures', 'yellowstone 2025', 'working'));
+  // Also check generic Pictures\working
+  candidates.push(path.join(os.homedir(), 'OneDrive', 'Pictures', 'working'));
+  // Check OneDrive - Personal variant (some locales)
+  candidates.push(path.join(os.homedir(), 'OneDrive - Personal', 'Pictures', 'yellowstone 2025', 'working'));
+
+  for (const c of candidates) {
+    if (fs.existsSync(c) && fs.statSync(c).isDirectory()) return c;
+  }
+  return null;
+}
+
 function findOrCreateWorkingDir() {
-  // 1. If path file exists, use it
+  // 1. If path file exists, use it (but expand env vars)
   if (fs.existsSync(WORKING_DIR_PATH_FILE)) {
-    const saved = fs.readFileSync(WORKING_DIR_PATH_FILE, 'utf-8').trim();
+    let saved = fs.readFileSync(WORKING_DIR_PATH_FILE, 'utf-8').trim();
+    saved = expandPath(saved);
     if (saved && fs.existsSync(saved)) return saved;
   }
   // 2. If env override, use it (and persist)
   if (process.env.PHOTO_WORKING_DIR) {
-    fs.writeFileSync(WORKING_DIR_PATH_FILE, process.env.PHOTO_WORKING_DIR);
-    return process.env.PHOTO_WORKING_DIR;
+    const p = expandPath(process.env.PHOTO_WORKING_DIR);
+    fs.writeFileSync(WORKING_DIR_PATH_FILE, p);
+    return p;
   }
-  // 3. If default does not exist or is empty, use it
-  if (!fs.existsSync(DEFAULT_WORKING_DIR) || !getNonEmptyDir(DEFAULT_WORKING_DIR)) {
-    if (!fs.existsSync(DEFAULT_WORKING_DIR)) fs.mkdirSync(DEFAULT_WORKING_DIR, { recursive: true });
-    fs.writeFileSync(WORKING_DIR_PATH_FILE, DEFAULT_WORKING_DIR);
-    return DEFAULT_WORKING_DIR;
+
+  // 3. Prefer OneDrive Pictures working folder if present
+  const oneDrive = detectOneDriveWorking();
+  if (oneDrive) {
+    fs.writeFileSync(WORKING_DIR_PATH_FILE, oneDrive);
+    return oneDrive;
   }
-  // 4. If default exists and is not empty, find a new unique folder
-  let idx = 1;
-  let candidate;
-  do {
-    candidate = path.join(os.homedir(), `working-${idx}`);
-    idx++;
-  } while (fs.existsSync(candidate) && getNonEmptyDir(candidate));
-  fs.mkdirSync(candidate, { recursive: true });
-  fs.writeFileSync(WORKING_DIR_PATH_FILE, candidate);
-  return candidate;
+
+  // 4. If default does not exist, create it and persist
+  if (!fs.existsSync(DEFAULT_WORKING_DIR)) fs.mkdirSync(DEFAULT_WORKING_DIR, { recursive: true });
+  fs.writeFileSync(WORKING_DIR_PATH_FILE, DEFAULT_WORKING_DIR);
+  return DEFAULT_WORKING_DIR;
 }
 
 const WORKING_DIR = findOrCreateWorkingDir();
@@ -135,13 +161,15 @@ const ALLOWED_IMAGE_EXTENSIONS = ['.jpg', '.jpeg', '.png', '.gif', '.heic', '.bm
 // Update ensureAllFilesHashed to enforce only images in working dir
 async function ensureAllFilesHashed(db) {
   const files = fs.readdirSync(WORKING_DIR);
+  const ignored = [];
   for (const filename of files) {
     const filePath = path.join(WORKING_DIR, filename);
     if (!fs.statSync(filePath).isFile()) continue;
     const ext = path.extname(filename).toLowerCase();
     if (!ALLOWED_IMAGE_EXTENSIONS.includes(ext)) {
-      console.error(`Non-image file found in working directory: ${filename}. Stopping server.`);
-      process.exit(1);
+      // Log and skip non-image files (desktop.ini, thumbs.db, etc.) rather than exiting
+      ignored.push(filename);
+      continue;
     }
     const row = await new Promise((resolve, reject) => {
       db.get('SELECT * FROM photos WHERE filename = ?', [filename], (err, row) => {
@@ -159,6 +187,10 @@ async function ensureAllFilesHashed(db) {
     } else {
       await generateThumbnail(filePath, row.hash);
     }
+  }
+  if (ignored.length > 0) {
+    console.log('[WORKING DIR] Ignored non-image files:', ignored.join(', '));
+    console.log('[WORKING DIR] To avoid these messages, remove or hide non-image files (e.g., desktop.ini, thumbs.db) from the working directory.');
   }
 }
 
@@ -406,9 +438,35 @@ async function migrateAndStartServer() {
       if (err) {
         return res.status(500).json({ success: false, error: err.message });
       }
+
+      // Helper function to get directory based on state
+      const getDir = (state) => {
+        switch(state) {
+          case 'working': return WORKING_DIR;
+          case 'inprogress': return INPROGRESS_DIR;
+          case 'finished': return FINISHED_DIR;
+          default: return WORKING_DIR;
+        }
+      };
+
+      // Filter out photos whose files no longer exist and clean up DB
+      const filteredRows = [];
+      for (const row of rows) {
+        const dir = getDir(row.state);
+        const filePath = path.join(dir, row.filename);
+        if (fs.existsSync(filePath)) {
+          filteredRows.push(row);
+        } else {
+          // Remove from DB since file is missing
+          db.run('DELETE FROM photos WHERE id = ?', [row.id], (deleteErr) => {
+            if (deleteErr) console.error('Error deleting missing photo from DB:', deleteErr);
+          });
+        }
+      }
+
       // Prevent caching so frontend always gets fresh filtered results
       res.set('Cache-Control', 'no-store');
-      res.json({ success: true, photos: rows.map(row => ({
+      res.json({ success: true, photos: filteredRows.map(row => ({
         id: row.id,
         filename: row.filename,
         state: row.state,
@@ -449,8 +507,41 @@ async function migrateAndStartServer() {
   // --- Finished directory setup ---
   app.use('/finished', express.static(FINISHED_DIR));
 
-  // --- Serve thumbnails ---
-  app.use('/thumbnails', express.static(THUMB_DIR));
+  // --- Serve thumbnails (generate on demand if missing) ---
+  app.get('/thumbnails/:name', async (req, res) => {
+    try {
+      const name = req.params.name;
+      const thumbPath = path.join(THUMB_DIR, name);
+      if (fs.existsSync(thumbPath)) return res.sendFile(thumbPath);
+      // Try to derive hash from name (expecting <hash>.jpg)
+      const hash = path.basename(name, path.extname(name));
+      // Attempt to find original file by matching hash in DB
+      db.get('SELECT filename, state FROM photos WHERE hash = ?', [hash], async (err, row) => {
+        if (err || !row) return res.status(404).send('Thumbnail not found');
+        const getDir = (state) => {
+          switch(state) {
+            case 'working': return WORKING_DIR;
+            case 'inprogress': return INPROGRESS_DIR;
+            case 'finished': return FINISHED_DIR;
+            default: return WORKING_DIR;
+          }
+        };
+        const origPath = path.join(getDir(row.state), row.filename);
+        if (!fs.existsSync(origPath)) return res.status(404).send('Original file missing');
+        try {
+          const gen = await generateThumbnail(origPath, hash);
+          if (gen && fs.existsSync(gen)) return res.sendFile(gen);
+          return res.status(500).send('Thumbnail generation failed');
+        } catch (genErr) {
+          console.error('Thumbnail generation on-demand failed for', origPath, genErr);
+          return res.status(500).send('Thumbnail generation failed');
+        }
+      });
+    } catch (e) {
+      console.error('Thumbnail route error', e);
+      res.status(500).send('Server error');
+    }
+  });
 
   // --- Convert and serve images for display (HEIC -> JPEG) ---
   app.get('/display/:state/:filename', async (req, res) => {
