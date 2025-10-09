@@ -1,9 +1,11 @@
 import React, { useState, useEffect } from 'react'
+import ImageCanvasEditor from './ImageCanvasEditor'
 
 export default function EditPage({ photo, onClose, onSave, onFinished }) {
   const [caption, setCaption] = useState(photo?.caption || '')
   const [description, setDescription] = useState(photo?.description || '')
   const [keywords, setKeywords] = useState(photo?.keywords || '')
+  const [textStyle, setTextStyle] = useState(photo?.textStyle || null)
   const [saving, setSaving] = useState(false)
   const [showMetadata, setShowMetadata] = useState(false)
 
@@ -11,6 +13,7 @@ export default function EditPage({ photo, onClose, onSave, onFinished }) {
     setCaption(photo?.caption || '')
     setDescription(photo?.description || '')
     setKeywords(photo?.keywords || '')
+    setTextStyle(photo?.textStyle || null)
   }, [photo])
 
   // Lock background scroll while this full-page editor is open
@@ -28,12 +31,34 @@ export default function EditPage({ photo, onClose, onSave, onFinished }) {
     setSaving(true)
     try {
       // Minimal: update locally via onSave. Backend persist not implemented here.
-      const updated = { ...photo, caption, description, keywords };
+      const updated = { ...photo, caption, description, keywords, textStyle };
       await onSave(updated)
     } catch (e) {
       console.error('Save failed', e)
     } finally {
       setSaving(false)
+    }
+  }
+
+  const handleCanvasSave = async (dataURL, newTextStyle) => {
+    console.log('Canvas saved with caption overlay!');
+    setSaving(true);
+    try {
+      // Save the text styling for persistence
+      setTextStyle(newTextStyle);
+      
+      // Update the photo with the new text style
+      const updated = { ...photo, caption, description, keywords, textStyle: newTextStyle };
+      await onSave(updated);
+      
+      // TODO: Send dataURL to backend to save the captioned image file
+      // For now, we're just persisting the text position/style
+      alert('Caption position and styling saved!');
+    } catch (e) {
+      console.error('Canvas save failed', e);
+      alert('Failed to save caption styling');
+    } finally {
+      setSaving(false);
     }
   }
 
@@ -59,12 +84,13 @@ export default function EditPage({ photo, onClose, onSave, onFinished }) {
 
       {/* 2-column layout with right side split into top/bottom panels */}
       <div className="flex-1 flex overflow-hidden" style={{ gap: '7px', padding: '7px 7px 7px 7px', backgroundColor: 'white' }}>
-        {/* Left column: Image (50%) */}
-        <div className="w-1/2 flex items-center justify-center p-4 overflow-auto rounded border" style={{ backgroundColor: '#f5f5f5' }}>
-          <img
-            src={displayUrl}
-            alt={photo.filename}
-            className="max-w-full max-h-full object-contain"
+        {/* Left column: Interactive Canvas Editor (50%) */}
+        <div className="w-1/2 rounded border overflow-hidden" style={{ backgroundColor: '#f5f5f5' }}>
+          <ImageCanvasEditor 
+            imageUrl={displayUrl}
+            caption={caption}
+            textStyle={textStyle}
+            onSave={handleCanvasSave}
           />
         </div>
 

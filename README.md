@@ -16,6 +16,7 @@ A full-screen React application for filtering, browsing, and uploading photos by
 - **AI-powered captions and descriptions:** The backend uses OpenAI Vision to generate captions, descriptions, and keywords for each photo, including HEIC/HEIF files.
 - **HEIC/HEIF support:** Both thumbnails and AI processing support HEIC/HEIF files, with ImageMagick fallback if sharp/libvips lacks support.
 - **Upload panel:** The photo upload panel now fills the viewport under the toolbar, with a compact file list and flush-edge layout. No large image previews; file list shows filename, date, size, and type.
+- **Interactive Canvas Editor:** Edit photos with an interactive canvas that allows you to position captions directly on images. Drag text to reposition, customize font size and color, and save your layout preferences. Text styling persists across editing sessions.
 
 ## Usage (2025)
 
@@ -41,8 +42,11 @@ A full-screen React application for filtering, browsing, and uploading photos by
 - **Tailwind CSS**: Utility-first CSS framework
 - **exifr**: Library for reading photo metadata
 - **File System Access API**: Modern browser API for folder selection
+- **react-konva**: Canvas library for interactive image editing with draggable text overlays
 - **ESLint**: Code linting and formatting
    - **PhotoUploadForm.jsx**: Upload panel with compact file list, flush-edge layout
+   - **ImageCanvasEditor.jsx**: Interactive canvas editor for positioning captions on images
+   - **EditPage.jsx**: Photo editing interface with canvas, metadata forms, and AI chat placeholder
 
 ### Backend
 - **Node.js**: JavaScript runtime for server
@@ -58,19 +62,24 @@ A full-screen React application for filtering, browsing, and uploading photos by
 photo-app/
 ├── public/
 ├── src/
-│   ├── App.jsx          # Main application component with photo filtering logic
-│   ├── api.js           # Backend API communication utilities
-│   ├── index.css        # Tailwind CSS imports
-│   └── main.jsx         # React entry point
-├── server/              # Backend Node.js server
-│   ├── server.js        # Express server with upload endpoints
-│   ├── package.json     # Server dependencies
-│   └── README.md        # Server documentation
-├── tailwind.config.js   # Tailwind configuration
-├── postcss.config.js    # PostCSS configuration
-├── vite.config.js       # Vite configuration
-├── package.json         # Frontend dependencies and scripts
-└── README.md            # This documentation
+│   ├── App.jsx                # Main application component with photo filtering logic
+│   ├── EditPage.jsx           # Photo editing interface with canvas and metadata forms
+│   ├── ImageCanvasEditor.jsx  # Interactive canvas for positioning captions on images
+│   ├── PhotoUploadForm.jsx    # Upload panel with compact file list
+│   ├── PhotoGallery.jsx       # Photo gallery display component
+│   ├── Toolbar.jsx            # Fixed navigation toolbar
+│   ├── api.js                 # Backend API communication utilities
+│   ├── index.css              # Tailwind CSS imports
+│   └── main.jsx               # React entry point
+├── server/                     # Backend Node.js server
+│   ├── server.js              # Express server with upload endpoints
+│   ├── package.json           # Server dependencies
+│   └── README.md              # Server documentation
+├── tailwind.config.js         # Tailwind configuration
+├── postcss.config.js          # PostCSS configuration
+├── vite.config.js             # Vite configuration
+├── package.json               # Frontend dependencies and scripts
+└── README.md                  # This documentation
 ```
 
 ## Getting Started
@@ -137,7 +146,12 @@ npm run preview
 5. The list updates instantly as you change dates, showing the filtered count
 6. Click "Upload" to send filtered photos to the backend
 7. The backend view shows all photos, metadata, privileges, and hash info
-8. If a file fails AI processing (shows 'AI processing failed'), POST to `/debug/reset-ai-retry` and click "Recheck Inprogress AI" to retry
+8. Click on a photo to edit it - the interactive canvas editor allows you to position captions on the image:
+   - Drag the text to reposition it anywhere on the image
+   - Use the controls to adjust font size and color
+   - Edit the caption text directly in the editor
+   - Click "Save Captioned Image" to persist your text positioning and styling
+9. If a file fails AI processing (shows 'AI processing failed'), POST to `/debug/reset-ai-retry` and click "Recheck Inprogress AI" to retry
 
 ## Thumbnails
 
@@ -175,6 +189,7 @@ npm run preview
 - Fixed upload callsites to use the backend upload endpoint and added upload/fetch logging.
 - Upload panel now fills the viewport under the toolbar, with a compact file list and flush-edge layout. No large image previews; file list shows filename, date, size, and type.
 - Server skips non-image files (e.g., desktop.ini) and logs them, instead of exiting. HEIC/HEIF support confirmed with ImageMagick fallback.
-- Remaining open items: CSS grid for thumbnails, live updates, search, and automated tests.
+- **NEW: Interactive canvas editor implemented** - `ImageCanvasEditor.jsx` provides drag-and-drop text positioning on images with font size/color controls. Text styling persists across editing sessions.
+- Remaining open items: CSS grid for thumbnails, live updates, search, automated tests, and backend captioned image file export.
 
 If you want the cleaned app to be the mounted entry, change `src/main.jsx` to import `App_clean.jsx` instead of `App.jsx`.
