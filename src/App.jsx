@@ -120,6 +120,8 @@ function App() {
   const [photos, setPhotos] = useState([]);
   const [loading, setLoading] = useState(true);
   const [toastMsg, setToastMsg] = useState('');
+  // message shown in the toolbar (persists until reload or cleared)
+  const [toolbarMessage, setToolbarMessage] = useState('');
   const [uploading, setUploading] = useState(false);
   const [selectedFiles, setSelectedFiles] = useState([]);
   const [localPhotos, setLocalPhotos] = useState([]);
@@ -273,7 +275,7 @@ function App() {
       for (const p of filteredLocalPhotos) {
         await uploadPhotoToServer(p.file);
       }
-      setToastMsg(`Successfully uploaded ${filteredLocalPhotos.length} photos`);
+      setToolbarMessage(`Successfully uploaded ${filteredLocalPhotos.length} photos`);
       // Refresh the photo list
       const res = await getPhotos('http://localhost:3001/photos?state=working');
       const backendOrigin = 'http://localhost:3001';
@@ -730,6 +732,8 @@ function App() {
             setToastMsg('Please select a photo first');
           }
         }}
+        toolbarMessage={toolbarMessage}
+        onClearToolbarMessage={() => setToolbarMessage('')}
       />
 
       {/* Metadata Modal */}

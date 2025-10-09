@@ -9,7 +9,10 @@ export default function Toolbar({
   showFinished,
   onRecheck,
   rechecking,
-  onShowMetadata
+  onShowMetadata,
+  // new: a small persistent message area in the toolbar
+  toolbarMessage,
+  onClearToolbarMessage
 }) {
   return (
     <nav
@@ -73,7 +76,13 @@ export default function Toolbar({
           {rechecking ? "Rechecking..." : "Recheck AI"}
         </button>
       </div>
-      <div style={{ marginLeft: "auto" }}>
+      <div style={{ marginLeft: "auto", display: 'flex', alignItems: 'center', gap: '12px' }}>
+        {toolbarMessage ? (
+          <div style={{ display: 'flex', alignItems: 'center', gap: '8px', background: '#f6ad55', color: '#1f2937', padding: '6px 10px', borderRadius: '6px', fontSize: '0.95rem' }} role="status" aria-live="polite">
+            <span>{toolbarMessage}</span>
+            <button onClick={onClearToolbarMessage} title="Dismiss" style={{ background: 'transparent', border: 'none', fontSize: '1rem', cursor: 'pointer', color: '#1f2937' }}>×</button>
+          </div>
+        ) : null}
         <button
           style={{
             background: "#4a5568",
