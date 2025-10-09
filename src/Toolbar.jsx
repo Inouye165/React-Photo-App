@@ -8,7 +8,8 @@ export default function Toolbar({
   showInprogress,
   showFinished,
   onRecheck,
-  rechecking
+  rechecking,
+  onShowMetadata
 }) {
   return (
     <nav
@@ -40,6 +41,20 @@ export default function Toolbar({
         <button onClick={onViewStaged}>View Staged</button>
         <button onClick={onViewInprogress}>View Inprogress</button>
         <button onClick={onViewFinished}>View Finished</button>
+        <button
+          onClick={onShowMetadata}
+          style={{
+            background: "#475569",
+            color: "#fff",
+            border: "none",
+            borderRadius: "6px",
+            padding: "8px 16px",
+            fontWeight: "bold",
+            cursor: "pointer",
+          }}
+        >
+          Show Metadata
+        </button>
         <button
           onClick={onRecheck}
           disabled={rechecking}

@@ -137,6 +137,8 @@ function App() {
   const [showFinished, setShowFinished] = useState(false);
   const lastActiveElementRef = useRef(null);
   const [useFullPageEditor, setUseFullPageEditor] = useState(true);
+  const [showMetadataModal, setShowMetadataModal] = useState(false);
+  const [metadataPhoto, setMetadataPhoto] = useState(null);
 
   const workingDirHandleRef = useRef(null);
   
@@ -720,7 +722,39 @@ function App() {
         showFinished={showFinished}
         onRecheck={handleRecheckInprogress}
         rechecking={rechecking}
+        onShowMetadata={() => {
+          if (selectedPhoto || editingPhoto) {
+            setMetadataPhoto(selectedPhoto || editingPhoto);
+            setShowMetadataModal(true);
+          } else {
+            setToastMsg('Please select a photo first');
+          }
+        }}
       />
+
+      {/* Metadata Modal */}
+      {showMetadataModal && metadataPhoto && (
+        <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center" style={{ zIndex: 100 }}>
+          <div className="bg-white rounded-lg p-6 max-w-2xl w-full m-4 shadow-2xl">
+            <div className="flex items-center justify-between mb-4">
+              <h2 className="text-xl font-bold">Photo Metadata</h2>
+              <button onClick={() => setShowMetadataModal(false)} className="text-2xl text-gray-500 hover:text-gray-700">&times;</button>
+            </div>
+            <div className="space-y-2 text-sm">
+              <p><strong>Filename:</strong> {metadataPhoto.filename}</p>
+              <p><strong>File Size:</strong> {metadataPhoto.file_size}</p>
+              <p><strong>State:</strong> {metadataPhoto.state}</p>
+              <p><strong>Hash:</strong> <span className="font-mono text-xs break-all">{metadataPhoto.hash || 'N/A'}</span></p>
+              {metadataPhoto.metadata?.DateTimeOriginal && (
+                <p><strong>Date Taken:</strong> {metadataPhoto.metadata.DateTimeOriginal}</p>
+              )}
+            </div>
+            <div className="mt-6 flex justify-end">
+              <button onClick={() => setShowMetadataModal(false)} className="px-4 py-2 bg-gray-200 rounded hover:bg-gray-300">Close</button>
+            </div>
+          </div>
+        </div>
+      )}
 
       {/* Local Photos Selection Modal (centralized component) */}
       {showLocalPicker && (

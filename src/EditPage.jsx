@@ -5,6 +5,7 @@ export default function EditPage({ photo, onClose, onSave, onFinished }) {
   const [description, setDescription] = useState(photo?.description || '')
   const [keywords, setKeywords] = useState(photo?.keywords || '')
   const [saving, setSaving] = useState(false)
+  const [showMetadata, setShowMetadata] = useState(false)
 
   useEffect(() => {
     setCaption(photo?.caption || '')
@@ -70,16 +71,7 @@ export default function EditPage({ photo, onClose, onSave, onFinished }) {
         {/* Right column: Split into top (metadata/form) and bottom (chat) - (50%) */}
         <div className="w-1/2 flex flex-col" style={{ gap: '7px' }}>
           {/* Top right: Metadata and form (50% of right side) */}
-          <div className="h-1/2 flex flex-col p-6 overflow-auto rounded border" style={{ backgroundColor: '#f5f5f5' }}>
-            <div className="border rounded p-3 mb-3 bg-gray-50">
-              <h3 className="font-semibold mb-2 text-sm">Metadata</h3>
-              <div className="text-xs text-gray-700 space-y-1">
-                <p><strong>File Size:</strong> {photo.file_size}</p>
-                <p><strong>State:</strong> {photo.state}</p>
-                <p><strong>Hash:</strong> <span className="font-mono text-[10px]">{photo.hash || 'N/A'}</span></p>
-              </div>
-            </div>
-            
+          <div className="h-1/2 flex flex-col p-6 overflow-y-auto overflow-x-hidden rounded border" style={{ backgroundColor: '#f5f5f5' }}>
             <div className="mb-2">
               <label className="block font-semibold mb-1 text-sm">Caption</label>
               <textarea 
@@ -90,10 +82,11 @@ export default function EditPage({ photo, onClose, onSave, onFinished }) {
               />
             </div>
             
-            <div className="mb-2 flex-1">
+            <div className="mb-2">
               <label className="block font-semibold mb-1 text-sm">Description</label>
               <textarea 
-                className="w-full border rounded p-2 text-sm h-full min-h-[60px]" 
+                className="w-full border rounded p-2 text-sm" 
+                rows={4}
                 value={description} 
                 onChange={e => setDescription(e.target.value)} 
               />
@@ -101,11 +94,12 @@ export default function EditPage({ photo, onClose, onSave, onFinished }) {
             
             <div className="mb-3">
               <label className="block font-semibold mb-1 text-sm">Keywords</label>
-              <input 
-                type="text"
-                className="w-full border rounded p-2 text-sm" 
+              <textarea 
+                className="w-full border rounded p-2 text-sm resize-none overflow-hidden" 
+                rows={2}
                 value={keywords} 
-                onChange={e => setKeywords(e.target.value)} 
+                onChange={e => setKeywords(e.target.value)}
+                style={{ whiteSpace: 'pre-wrap', wordWrap: 'break-word' }}
               />
             </div>
             
