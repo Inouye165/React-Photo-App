@@ -1,17 +1,9 @@
 const path = require('path');
 const fs = require('fs');
 const os = require('os');
-const crypto = require('crypto');
-const exifr = require('exifr');
-const sharp = require('sharp');
-const { exec } = require('child_process');
-const { promisify } = require('util');
-const execPromise = promisify(exec);
 require('dotenv').config({ path: path.join(__dirname, '.env') });
-const OpenAI = require('openai');
-const openai = new OpenAI({ apiKey: process.env.OPENAI_API_KEY });
 
-const { DEFAULT_WORKING_DIR, WORKING_DIR, INPROGRESS_DIR, FINISHED_DIR, THUMB_DIR, expandPath, detectOneDriveWorking } = require('./config/paths');
+const { WORKING_DIR, INPROGRESS_DIR, FINISHED_DIR, THUMB_DIR } = require('./config/paths');
 
 const { openDb, migrate, migratePhotoTable } = require('./db/index');
 const { backfillFileSizes, cleanupMissingFiles, cleanupMissingInprogressFiles } = require('./db/maintenance');
