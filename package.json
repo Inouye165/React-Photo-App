@@ -6,6 +6,8 @@
   "scripts": {
     "dev": "vite",
     "build": "vite build",
+  "check-privilege": "node scripts/check-privilege.cjs",
+  "integration-test": "node scripts/integration-test.cjs",
     "lint": "eslint .",
     "preview": "vite preview"
   },

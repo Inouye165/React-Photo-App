@@ -22,10 +22,13 @@ export async function checkPrivilege(relPath, serverUrl = 'http://localhost:3001
   const delayMs = 250;
   for (let attempt = 1; attempt <= maxAttempts; attempt++) {
     try {
+      const body = JSON.stringify({ relPath });
+      // Log outgoing body so we can detect client-side escaping/formatting issues
+      console.log('[API] checkPrivilege ->', serverUrl, 'body:', body);
       const response = await fetch(serverUrl, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ relPath })
+        body
       });
       if (response.ok) return await response.json();
       // If 404 or 5xx, retry a few times

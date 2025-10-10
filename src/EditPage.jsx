@@ -30,11 +30,25 @@ export default function EditPage({ photo, onClose, onSave, onFinished }) {
   const handleSave = async () => {
     setSaving(true)
     try {
-      // Minimal: update locally via onSave. Backend persist not implemented here.
+      // Save metadata to backend
+      const response = await fetch(`http://localhost:3001/photos/${photo.id}/metadata`, {
+        method: 'PATCH',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ caption, description, keywords, textStyle })
+      });
+      
+      if (!response.ok) {
+        throw new Error('Failed to save metadata');
+      }
+      
+      // Update local state
       const updated = { ...photo, caption, description, keywords, textStyle };
-      await onSave(updated)
+      await onSave(updated);
+      
+      alert('Metadata saved successfully!');
     } catch (e) {
-      console.error('Save failed', e)
+      console.error('Save failed', e);
+      alert('Failed to save metadata: ' + e.message);
     } finally {
       setSaving(false)
     }
@@ -44,19 +58,38 @@ export default function EditPage({ photo, onClose, onSave, onFinished }) {
     console.log('Canvas saved with caption overlay!');
     setSaving(true);
     try {
-      // Save the text styling for persistence
+      // Save the text styling locally
       setTextStyle(newTextStyle);
+      
+      // Send captioned image to backend
+      const response = await fetch('http://localhost:3001/save-captioned-image', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          photoId: photo.id,
+          dataURL,
+          caption,
+          description,
+          keywords,
+          textStyle: newTextStyle
+        })
+      });
+      
+      if (!response.ok) {
+        throw new Error('Failed to save captioned image');
+      }
+      
+      const result = await response.json();
+      console.log('Captioned image saved:', result);
       
       // Update the photo with the new text style
       const updated = { ...photo, caption, description, keywords, textStyle: newTextStyle };
       await onSave(updated);
       
-      // TODO: Send dataURL to backend to save the captioned image file
-      // For now, we're just persisting the text position/style
-      alert('Caption position and styling saved!');
+      alert(`Captioned image saved to inprogress as ${result.filename}`);
     } catch (e) {
       console.error('Canvas save failed', e);
-      alert('Failed to save caption styling');
+      alert('Failed to save captioned image: ' + e.message);
     } finally {
       setSaving(false);
     }
