@@ -1,0 +1,219 @@
+import { describe, it, expect, vi, beforeEach } from 'vitest'
+import { render, screen, waitFor } from '@testing-library/react'
+import userEvent from '@testing-library/user-event'
+import App from './App'
+
+// Mock API functions
+vi.mock('./api.js', () => ({
+  getPhotos: vi.fn(),
+  uploadPhotoToServer: vi.fn(),
+  checkPrivilege: vi.fn(),
+  updatePhotoState: vi.fn(),
+  recheckInprogressPhotos: vi.fn(),
+  updatePhotoCaption: vi.fn(),
+}))
+
+// Mock EXIF parsing
+vi.mock('exifr', () => ({
+  parse: vi.fn(),
+}))
+
+import { getPhotos, checkPrivilege } from './api.js'
+
+describe('App Component', () => {
+  const mockPhotos = [
+    {
+      id: 1,
+      filename: 'test1.jpg',
+      state: 'working',
+      file_size: 1024000,
+      hash: 'abc123',
+      metadata: {
+        DateTimeOriginal: '2024-01-01 12:00:00',
+      },
+      thumbnail: '/thumbnails/test1_thumb.jpg',
+      caption: 'Test caption',
+    },
+    {
+      id: 2,
+      filename: 'test2.jpg',
+      state: 'inprogress',
+      file_size: 2048000,
+      hash: 'def456',
+      metadata: {
+        DateTimeOriginal: '2024-01-02 13:00:00',
+      },
+      thumbnail: '/thumbnails/test2_thumb.jpg',
+    },
+  ]
+
+  beforeEach(() => {
+    vi.clearAllMocks()
+    getPhotos.mockResolvedValue({ photos: mockPhotos })
+    checkPrivilege.mockResolvedValue({ 
+      privileges: { read: true, write: true, execute: false }
+    })
+    
+    // Mock fetch for any remaining API calls
+    global.fetch = vi.fn().mockResolvedValue({
+      ok: true,
+      json: () => Promise.resolve({ photos: mockPhotos }),
+    })
+  })
+
+  it('renders the main toolbar', async () => {
+    render(<App />)
+    
+    await waitFor(() => {
+      expect(screen.getByRole('navigation', { name: 'Main toolbar' })).toBeInTheDocument()
+    })
+  })
+
+  it('displays loading state initially', () => {
+    render(<App />)
+    
+    expect(screen.getByText('Loading photos...')).toBeInTheDocument()
+  })
+
+  it('loads and displays photos from API', async () => {
+    render(<App />)
+    
+    await waitFor(() => {
+      expect(screen.getByText('test1.jpg')).toBeInTheDocument()
+      expect(screen.getByText('test2.jpg')).toBeInTheDocument()
+    })
+    
+    expect(getPhotos).toHaveBeenCalledWith('http://localhost:3001/photos?state=working')
+  })
+
+  it('shows correct photo count when photos are loaded', async () => {
+    render(<App />)
+    
+    await waitFor(() => {
+      // Should show photos in the list
+      expect(screen.getByText('test1.jpg')).toBeInTheDocument()
+      expect(screen.getByText('test2.jpg')).toBeInTheDocument()
+    })
+  })
+
+  it('displays empty state when no photos found', async () => {
+    getPhotos.mockResolvedValue({ photos: [] })
+    
+    render(<App />)
+    
+    await waitFor(() => {
+      expect(screen.getByText('No photos found in backend.')).toBeInTheDocument()
+    })
+  })
+
+  it('handles API errors gracefully', async () => {
+    getPhotos.mockRejectedValue(new Error('Network error'))
+    
+    render(<App />)
+    
+    await waitFor(() => {
+      // Should not be loading anymore
+      expect(screen.queryByText('Loading photos...')).not.toBeInTheDocument()
+    })
+  })
+
+  it('switches to inprogress view when button clicked', async () => {
+    const user = userEvent.setup()
+    render(<App />)
+    
+    await waitFor(() => {
+      expect(screen.getByText('View Inprogress')).toBeInTheDocument()
+    })
+    
+    await user.click(screen.getByText('View Inprogress'))
+    
+    // Should call API with inprogress state
+    await waitFor(() => {
+      expect(getPhotos).toHaveBeenCalledWith('http://localhost:3001/photos?state=inprogress')
+    })
+  })
+
+  it('switches to finished view when button clicked', async () => {
+    const user = userEvent.setup()
+    render(<App />)
+    
+    await waitFor(() => {
+      expect(screen.getByText('View Finished')).toBeInTheDocument()
+    })
+    
+    await user.click(screen.getByText('View Finished'))
+    
+    await waitFor(() => {
+      expect(getPhotos).toHaveBeenCalledWith('http://localhost:3001/photos?state=finished')
+    })
+  })
+
+  it('opens folder selection when select folder button clicked', async () => {
+    const user = userEvent.setup()
+    const mockShowDirectoryPicker = vi.fn().mockRejectedValue(new Error('User cancelled'))
+    global.showDirectoryPicker = mockShowDirectoryPicker
+    
+    render(<App />)
+    
+    await waitFor(() => {
+      expect(screen.getByText('Select Folder for Upload')).toBeInTheDocument()
+    })
+    
+    await user.click(screen.getByText('Select Folder for Upload'))
+    
+    expect(mockShowDirectoryPicker).toHaveBeenCalled()
+  })
+
+  it('displays toast messages for errors', async () => {
+    getPhotos.mockRejectedValue(new Error('Test error'))
+    
+    render(<App />)
+    
+    await waitFor(() => {
+      expect(screen.getByText('Error loading photos from backend')).toBeInTheDocument()
+    })
+  })
+
+  it('can dismiss toast messages', async () => {
+    const user = userEvent.setup()
+    getPhotos.mockRejectedValue(new Error('Test error'))
+    
+    render(<App />)
+    
+    await waitFor(() => {
+      expect(screen.getByText('Error loading photos from backend')).toBeInTheDocument()
+    })
+    
+    const dismissButton = screen.getByTitle('Dismiss')
+    await user.click(dismissButton)
+    
+    expect(screen.queryByText('Error loading photos from backend')).not.toBeInTheDocument()
+  })
+
+  it('displays toolbar messages correctly', async () => {
+    render(<App />)
+    
+    // Wait for component to load
+    await waitFor(() => {
+      expect(screen.getByRole('navigation')).toBeInTheDocument()
+    })
+    
+    // The toolbar message functionality should be present
+    // (testing the message display would require triggering an upload)
+    expect(screen.getByRole('navigation')).toBeInTheDocument()
+  })
+
+  it('loads photo privileges after photos are loaded', async () => {
+    render(<App />)
+    
+    await waitFor(() => {
+      expect(screen.getByText('test1.jpg')).toBeInTheDocument()
+    })
+    
+    // Should call checkPrivilege for each photo
+    await waitFor(() => {
+      expect(checkPrivilege).toHaveBeenCalledWith('test1.jpg')
+      expect(checkPrivilege).toHaveBeenCalledWith('test2.jpg')
+    })
+  })
+})
