@@ -9,7 +9,47 @@ module.exports = function createPrivilegeRouter(paths) {
   router.post('/privilege', (req, res) => {
     try {
       if (typeof req.body === 'string') return res.status(400).json({ success: false, error: 'Invalid JSON body' });
-      const { relPath } = req.body || {};
+      const { relPath, filenames } = req.body || {};
+
+      // Check if batch request
+      if (filenames && Array.isArray(filenames)) {
+        const results = {};
+        for (const filename of filenames) {
+          try {
+            // Normalize and try working dir first
+            let absPath = path.resolve(WORKING_DIR, filename);
+            if (!absPath.startsWith(WORKING_DIR)) {
+              absPath = path.resolve(WORKING_DIR, filename);
+            }
+
+            if (!fs.existsSync(absPath)) {
+              const alt = path.resolve(INPROGRESS_DIR, filename);
+              if (fs.existsSync(alt)) absPath = alt;
+            }
+
+            if (!fs.existsSync(absPath)) {
+              results[filename] = 'Not Found';
+              continue;
+            }
+
+            const privileges = { read: false, write: false, execute: false };
+            try { fs.accessSync(absPath, fs.constants.R_OK); privileges.read = true; } catch (e) {}
+            try { fs.accessSync(absPath, fs.constants.W_OK); privileges.write = true; } catch (e) {}
+            try { fs.accessSync(absPath, fs.constants.X_OK); privileges.execute = true; } catch (e) {}
+
+            const privArr = [];
+            if (privileges.read) privArr.push('R');
+            if (privileges.write) privArr.push('W');
+            if (privileges.execute) privArr.push('X');
+            results[filename] = privArr.length > 0 ? privArr.join('') : '?';
+          } catch (err) {
+            results[filename] = 'Err';
+          }
+        }
+        return res.json({ success: true, privileges: results });
+      }
+
+      // Single file request (backward compatibility)
       if (!relPath) return res.status(400).json({ success: false, error: 'Missing relPath' });
 
       // Normalize and try working dir first

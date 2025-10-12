@@ -1,4 +1,6 @@
-import '@testing-library/jest-dom'
+import '@testing-library/jest-dom/vitest'
+import { vi, afterEach } from 'vitest'
+import { cleanup } from '@testing-library/react'
 
 // Mock window.showDirectoryPicker for File System Access API tests
 global.showDirectoryPicker = vi.fn()
@@ -18,3 +20,6 @@ global.ResizeObserver = vi.fn().mockImplementation(() => ({
 
 // Mock HTMLCanvasElement.getContext for image processing
 HTMLCanvasElement.prototype.getContext = vi.fn()
+
+// Cleanup after each test case
+afterEach(cleanup)

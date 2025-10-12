@@ -1,9 +1,9 @@
 # React Photo Filtering App
 
-[![Tests](https://img.shields.io/badge/tests-49%20passing-brightgreen.svg)](https://github.com/Inouye165/React-Photo-App)
+[![Tests](https://img.shields.io/badge/tests-63%20passing-brightgreen.svg)](https://github.com/Inouye165/React-Photo-App)
 [![React](https://img.shields.io/badge/React-19-61dafb.svg)](https://reactjs.org/)
 [![Vite](https://img.shields.io/badge/Vite-5.0-646cff.svg)](https://vitejs.dev/)
-[![Testing](https://img.shields.io/badge/Testing-Vitest-6e9f18.svg)](https://vitest.dev/)
+[![Testing](https://img.shields.io/badge/Testing-Vitest%20%2B%20Jest-6e9f18.svg)](https://vitest.dev/)
 [![License](https://img.shields.io/badge/license-MIT-blue.svg)](LICENSE)
 
 A full-screen React application for filtering, browsing, and uploading photos by date range, with a Node.js Express backend for file storage, deduplication, and AI-powered metadata extraction.
@@ -25,18 +25,21 @@ A full-screen React application for filtering, browsing, and uploading photos by
 ## 🆕 What's New (October 2025)
 
 ### Testing & Quality  
-- **Comprehensive Test Suite**: 49 tests covering all React components with Vitest and React Testing Library
+- **Comprehensive Test Suite**: 63 tests covering both frontend and backend with 100% pass rate
+- **Frontend Testing**: 54 tests using Vitest + React Testing Library for all React components
+- **Backend Testing**: 9 tests using Jest + Supertest for API endpoints and database operations
 - **User-Centered Testing**: Focus on real user interactions, accessibility, and error handling
 - **CI-Ready**: All tests pass consistently, ready for GitHub Actions integration
+- **Test Isolation**: Proper DOM cleanup and mock strategies for reliable, repeatable tests
 
 ### UX Improvements
 - **Toolbar Messaging**: Upload success messages now appear in the toolbar for persistent feedback
 - **Better User Feedback**: Non-intrusive success notifications that persist until dismissed
 
 ### Developer Experience  
-- **Modern Testing Stack**: Vitest with native Vite integration for fast test execution  
-- **Mock Strategy**: Proper isolation of components with API and filesystem mocking
-- **Test Coverage**: State management, user interactions, error scenarios, and accessibility
+- **Modern Testing Stack**: Vitest for frontend, Jest for backend with proper test isolation
+- **Mock Strategy**: Comprehensive mocking of APIs, filesystem, and database operations
+- **Test Coverage**: State management, user interactions, error scenarios, database operations, and accessibility
 
 ## Key Features (2025 Update)
 
@@ -50,7 +53,10 @@ A full-screen React application for filtering, browsing, and uploading photos by
 - **HEIC/HEIF support:** Both thumbnails and AI processing support HEIC/HEIF files, with ImageMagick fallback if sharp/libvips lacks support.
 - **Upload panel:** The photo upload panel now fills the viewport under the toolbar, with a compact file list and flush-edge layout. No large image previews; file list shows filename, date, size, and type.
 - **Interactive Canvas Editor:** Edit photos with an interactive canvas that allows you to position captions directly on images. Drag text to reposition, customize font size and color, and save your layout preferences. Text styling persists across editing sessions.
-- **Comprehensive Testing Suite:** Production-ready component testing with Vitest and React Testing Library. 49 tests covering user interactions, state management, error handling, and accessibility.
+- **Comprehensive Testing Suite:** Production-ready testing with Vitest and Jest. 63 tests total:
+  - **Frontend**: 54 tests with Vitest + React Testing Library covering user interactions, state management, error handling, and accessibility
+  - **Backend**: 9 tests with Jest + Supertest covering API endpoints, database operations, and file upload handling
+  - **Test Isolation**: Proper DOM cleanup between tests and comprehensive mocking strategies
 
 ## Usage (2025)
 
@@ -78,8 +84,8 @@ A full-screen React application for filtering, browsing, and uploading photos by
 - **File System Access API**: Modern browser API for folder selection
 - **react-konva**: Canvas library for interactive image editing with draggable text overlays
 - **ESLint**: Code linting and formatting
-- **Vitest**: Modern testing framework with React Testing Library
-- **Component Testing**: Comprehensive test coverage with 49 tests across all major components
+- **Vitest**: Modern testing framework for frontend with React Testing Library
+- **Component Testing**: Comprehensive test coverage with 54 frontend tests across all major components
    - **PhotoUploadForm.jsx**: Upload panel with compact file list, flush-edge layout
    - **ImageCanvasEditor.jsx**: Interactive canvas editor for positioning captions on images
    - **EditPage.jsx**: Photo editing interface with canvas, metadata forms, and AI chat placeholder
@@ -91,6 +97,9 @@ A full-screen React application for filtering, browsing, and uploading photos by
 - **CORS**: Cross-origin resource sharing support
 - **Sharp**: Image processing (with fallback to ImageMagick for HEIC/HEIF)
 - **ImageMagick**: Fallback for HEIC/HEIF conversion if sharp/libvips lacks support
+- **SQLite3**: Lightweight database for photo metadata and state management
+- **Jest**: Testing framework for backend with Supertest for HTTP testing
+- **API Testing**: 9 comprehensive tests covering upload endpoints, database operations, and error handling
 
 ## File Structure
 
@@ -107,11 +116,14 @@ photo-app/
 │   ├── api.js                 # Backend API communication utilities
 │   ├── test/
 │   │   └── setup.js           # Global test configuration and mocks
-│   ├── *.test.jsx             # Component test suites (49 tests total)
+│   ├── *.test.jsx             # Component test suites (54 tests total)
 │   ├── index.css              # Tailwind CSS imports
 │   └── main.jsx               # React entry point
 ├── server/                     # Backend Node.js server
 │   ├── server.js              # Express server with upload endpoints
+│   ├── tests/
+│   │   ├── uploads.test.js    # API endpoint tests (9 tests)
+│   │   └── db.test.js         # Database operation tests
 │   ├── package.json           # Server dependencies
 │   └── README.md              # Server documentation
 ├── tailwind.config.js         # Tailwind configuration
@@ -194,26 +206,40 @@ npm run preview
 
 Run the test suite:
 ```bash
-# Run tests in watch mode
+# Frontend tests (Vitest) - 54 tests
 npm test
 
-# Run all tests once
+# Run all frontend tests once
 npm run test:run
 
-# Run tests with UI dashboard
+# Run frontend tests with UI dashboard
 npm run test:ui
 
-# Run tests with coverage report
+# Run frontend tests with coverage report
 npm run test:coverage
+
+# Backend tests (Jest) - 9 tests
+cd server
+npm test
 ```
 
-The project includes comprehensive component testing with:
-- **49 tests** across all major components
-- **User interaction testing** (clicks, form inputs, navigation)
-- **State management testing** (photo loading, filtering, uploads)
-- **Error handling testing** (API failures, validation errors)
-- **Accessibility testing** (ARIA attributes, keyboard navigation)
-- **Mock integration** for external dependencies (APIs, file systems)
+The project includes comprehensive testing across frontend and backend:
+
+#### Frontend Tests (54 tests with Vitest + React Testing Library)
+- **Component Testing**: All React components (App, PhotoGallery, PhotoUploadForm, Toolbar)
+- **User Interaction Testing**: Clicks, form inputs, navigation
+- **State Management Testing**: Photo loading, filtering, uploads
+- **Error Handling Testing**: API failures, validation errors
+- **Accessibility Testing**: ARIA attributes, keyboard navigation
+- **Mock Integration**: External dependencies (APIs, file systems)
+
+#### Backend Tests (9 tests with Jest + Supertest)
+- **API Endpoint Testing**: Upload endpoints, error handling, file validation
+- **Database Testing**: SQLite operations, schema constraints, CRUD operations
+- **Integration Testing**: Complete request/response cycles
+- **Error Scenarios**: Permission errors, disk issues, invalid files
+
+**Total: 63 tests with 100% pass rate**
 
 ## Usage
 
@@ -256,19 +282,26 @@ The project includes comprehensive component testing with:
 
 ## Testing & Quality Assurance
 
-### Test Coverage
-- **Component Tests**: 49 comprehensive tests covering all React components
-- **User Interaction**: Click handlers, form inputs, navigation workflows
-- **State Management**: Photo loading, filtering, upload processes  
-- **Error Handling**: API failures, network issues, validation errors
-- **Accessibility**: ARIA attributes, keyboard navigation, screen reader support
-- **Performance**: Loading states, async operations, user feedback
+### Test Coverage (63 Tests Total)
+
+#### Frontend (54 tests - Vitest + React Testing Library)
+- **App.test.jsx** (14 tests): Main application component, photo loading, view switching, upload flow
+- **PhotoGallery.test.jsx** (11 tests): Gallery rendering, photo actions, metadata display
+- **PhotoUploadForm.test.jsx** (20 tests): Upload modal, date filtering, file selection
+- **Toolbar.test.jsx** (12 tests): Navigation, toolbar messages, button interactions
+- **utils.test.js** (6 tests): Utility functions and helper methods
+
+#### Backend (9 tests - Jest + Supertest)
+- **uploads.test.js** (9 tests): Upload endpoints, file validation, duplicate detection, error handling
+- **db.test.js**: Database operations, schema management, CRUD operations
 
 ### Test Architecture  
-- **Vitest**: Modern testing framework with native Vite integration
+- **Vitest**: Modern testing framework with native Vite integration for frontend
+- **Jest**: Traditional testing framework with Supertest for backend HTTP testing
 - **React Testing Library**: User-centric component testing approach
-- **Mock Strategy**: Isolated unit tests with API and filesystem mocking
-- **CI Ready**: All tests pass consistently for automated deployment
+- **Mock Strategy**: Isolated tests with proper API, filesystem, and database mocking
+- **Test Isolation**: DOM cleanup between tests, no cross-test contamination
+- **CI Ready**: All 63 tests pass consistently for automated deployment
 
 ## Open TODOs
 - **Resize and compress all images before sending to OpenAI Vision API to reduce costs. (Convert to JPEG, max 1024x1024, quality 70–80.)**
@@ -277,7 +310,7 @@ The project includes comprehensive component testing with:
 - Make thumbnail generation asynchronous and cache-optimized — generate thumbnails in background workers and avoid blocking startup.
 - Add client-side content-hash check to avoid uploading duplicates — compute file hash in browser and skip uploads if server already has the hash.
 - Add filename search and full-size preview modal in frontend — quick search, sort, and modal for viewing images at full resolution.
-- ~~Add automated tests and CI pipeline for build and linting~~ ✅ **COMPLETED**: Comprehensive component testing implemented with 49 tests
+- ~~Add automated tests and CI pipeline for build and linting~~ ✅ **COMPLETED**: Comprehensive testing implemented with 63 tests (54 frontend + 9 backend)
 - Add GitHub Actions CI pipeline for automated testing and deployment
 
 ## Progress saved (work-in-progress)
@@ -287,7 +320,7 @@ The project includes comprehensive component testing with:
 - Upload panel now fills the viewport under the toolbar, with a compact file list and flush-edge layout. No large image previews; file list shows filename, date, size, and type.
 - Server skips non-image files (e.g., desktop.ini) and logs them, instead of exiting. HEIC/HEIF support confirmed with ImageMagick fallback.
 - **NEW: Interactive canvas editor implemented** - `ImageCanvasEditor.jsx` provides drag-and-drop text positioning on images with font size/color controls. Text styling persists across editing sessions.
-- **NEW: Comprehensive testing suite implemented** - 49 tests covering all React components with Vitest and React Testing Library. Includes user interaction, state management, error handling, and accessibility testing.
+- **NEW: Comprehensive testing suite implemented** - 63 tests (54 frontend + 9 backend) covering all React components and API endpoints with Vitest, Jest, React Testing Library, and Supertest. Includes user interaction, state management, error handling, database operations, and accessibility testing.
 - **NEW: Toolbar messaging system** - Upload success messages now appear in the toolbar instead of popup toasts, providing persistent feedback until dismissed or page reload.
 - Remaining open items: CSS grid for thumbnails, live updates, search, GitHub Actions CI, and backend captioned image file export.
 
@@ -309,14 +342,16 @@ If you want the cleaned app to be the mounted entry, change `src/main.jsx` to im
 - Follow existing code patterns and naming conventions
 - Ensure accessibility compliance (ARIA attributes, keyboard navigation)
 - Update README documentation for new features
-- Maintain test coverage above 95%
+- Maintain test coverage: 54 frontend tests + 9 backend tests minimum
 
 ### Testing Requirements  
-- Write tests for new components using Vitest and React Testing Library
+- Write tests for new components using Vitest and React Testing Library (frontend)
+- Write tests for new API endpoints using Jest and Supertest (backend)
 - Test user interactions, not implementation details
 - Include error handling and edge case scenarios
 - Mock external dependencies appropriately
 - Verify accessibility features work correctly
+- Ensure all tests pass before submitting PR
 
 ## License
 

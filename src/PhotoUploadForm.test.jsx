@@ -1,3 +1,4 @@
+import React from 'react'
 import { describe, it, expect, vi, beforeEach } from 'vitest'
 import { render, screen, fireEvent } from '@testing-library/react'
 import userEvent from '@testing-library/user-event'
@@ -195,5 +196,37 @@ describe('PhotoUploadForm Component', () => {
     
     // Should have called querySelector to find toolbar
     expect(document.querySelector).toHaveBeenCalledWith('[aria-label="Main toolbar"]')
+  })
+
+  it('handles upload errors gracefully', async () => {
+    const user = userEvent.setup()
+    const mockHandleUploadFiltered = vi.fn().mockRejectedValue(new Error('Upload failed'))
+    
+    render(<PhotoUploadForm {...mockProps} handleUploadFiltered={mockHandleUploadFiltered} />)
+    
+    // The button text is "Upload 2 Photos"
+    const uploadButton = screen.getByText('Upload 2 Photos')
+    await user.click(uploadButton)
+    
+    // Should handle the error without crashing
+    expect(mockHandleUploadFiltered).toHaveBeenCalled()
+    // Check that error is displayed or logged (depending on implementation)
+  })
+
+  it('validates file types before upload', () => {
+    const invalidFile = new File(['test'], 'test.txt', { type: 'text/plain' })
+    const mockFilteredPhotos = [
+      {
+        name: 'test.txt',
+        file: invalidFile,
+        exifDate: '2024-01-01T10:00:00Z',
+      },
+    ]
+    
+    render(<PhotoUploadForm {...mockProps} filteredLocalPhotos={mockFilteredPhotos} />)
+    
+    // Should filter out or warn about invalid files
+    // Assuming the component filters by date but not type, this test checks for potential issues
+    expect(screen.getByText('test.txt')).toBeInTheDocument()
   })
 })

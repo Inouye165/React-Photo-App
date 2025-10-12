@@ -48,6 +48,25 @@ export async function checkPrivilege(relPath, serverUrl = `${API_BASE_URL}/privi
   }
 }
 
+// Utility to check privileges for multiple files in batch
+export async function checkPrivilegesBatch(filenames, serverUrl = `${API_BASE_URL}/privilege`) {
+  try {
+    const body = JSON.stringify({ filenames });
+    console.log('[API] checkPrivilegesBatch ->', serverUrl, 'filenames:', filenames.length);
+    const response = await fetch(serverUrl, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body
+    });
+    if (!response.ok) throw new Error('Batch privilege check failed: ' + response.status);
+    const result = await response.json();
+    if (!result.success) throw new Error('Batch privilege check error: ' + result.error);
+    return result.privileges; // { filename: 'RWX', ... }
+  } catch (error) {
+    throw new Error('Error checking privileges batch: ' + error.message);
+  }
+}
+
 // Fetch all photos and metadata from backend
 export async function getPhotos(serverUrlOrEndpoint = `${API_BASE_URL}/photos`) {
   // Accept either a full URL or a short endpoint/state token like 'working'|'inprogress'|'finished'

@@ -1,7 +1,7 @@
 import React, { useState, useEffect, useRef } from 'react'
 import ReactDOM from 'react-dom'
 import { parse } from 'exifr'
-import { uploadPhotoToServer, checkPrivilege, getPhotos, updatePhotoState, recheckInprogressPhotos, updatePhotoCaption } from './api.js'
+import { uploadPhotoToServer, checkPrivilege, checkPrivilegesBatch, getPhotos, updatePhotoState, recheckInprogressPhotos, updatePhotoCaption } from './api.js'
 import EditPage from './EditPage'
 import Toolbar from './Toolbar'
 import PhotoUploadForm from './PhotoUploadForm'
@@ -172,49 +172,65 @@ function App() {
   // Load privileges after photos are loaded
   useEffect(() => {
     const loadPrivileges = async () => {
+      if (photos.length === 0) return;
+
       // initialize to Loading so UI shows progress
       const initial = {};
       for (const p of photos) initial[p.id] = 'Loading...';
       setPrivilegesMap(initial);
 
-      const map = {};
-      for (const photo of photos) {
-        try {
-          const res = await checkPrivilege(photo.filename);
-          // support shapes: { privileges: { read, write, execute } }
-          // { privilege: { canRead, canWrite, canExecute } }
-          // or legacy flat { canRead, canWrite, canExecute }
-          const privObj = res && (
-            res.privileges ||
-            res.privilege ||
-            ((res.canRead || res.canWrite || res.canExecute) ? res : null)
-          );
-          // normalize server 'privileges' shape: { read, write, execute } -> canRead/canWrite/canExecute
-          if (privObj && privObj.read !== undefined) {
-            privObj.canRead = privObj.read;
-            privObj.canWrite = privObj.write;
-            privObj.canExecute = privObj.execute;
-          }
-          if (privObj) {
-            const privArr = [];
-            if (privObj.canRead) privArr.push('R');
-            if (privObj.canWrite) privArr.push('W');
-            if (privObj.canExecute) privArr.push('X');
-            map[photo.id] = privArr.length > 0 ? privArr.join('') : '?';
+      // Collect all filenames
+      const filenames = photos.map(photo => photo.filename);
+
+      try {
+        const privilegesMap = await checkPrivilegesBatch(filenames);
+        // privilegesMap is { filename: 'RWX', ... }
+        // But we need to map by photo.id
+        const map = {};
+        for (const photo of photos) {
+          const privStr = privilegesMap[photo.filename];
+          if (privStr) {
+            map[photo.id] = privStr;
           } else {
-            // keep previous fallback symbol to make regressions obvious
-            console.log('checkPrivilege returned unexpected shape for', photo.filename, res);
             map[photo.id] = '?';
           }
-        } catch (error) {
-          console.warn('Privilege check failed for', photo.filename, error);
-          map[photo.id] = 'Err';
         }
-        // update progressively so user sees results as they arrive
-        setPrivilegesMap(prev => ({ ...prev, [photo.id]: map[photo.id] }));
+        setPrivilegesMap(map);
+      } catch (error) {
+        console.warn('Batch privilege check failed:', error);
+        // Fallback to individual checks if batch fails
+        const map = {};
+        for (const photo of photos) {
+          try {
+            const res = await checkPrivilege(photo.filename);
+            const privObj = res && (
+              res.privileges ||
+              res.privilege ||
+              ((res.canRead || res.canWrite || res.canExecute) ? res : null)
+            );
+            if (privObj && privObj.read !== undefined) {
+              privObj.canRead = privObj.read;
+              privObj.canWrite = privObj.write;
+              privObj.canExecute = privObj.execute;
+            }
+            if (privObj) {
+              const privArr = [];
+              if (privObj.canRead) privArr.push('R');
+              if (privObj.canWrite) privArr.push('W');
+              if (privObj.canExecute) privArr.push('X');
+              map[photo.id] = privArr.length > 0 ? privArr.join('') : '?';
+            } else {
+              map[photo.id] = '?';
+            }
+          } catch (err) {
+            console.warn('Privilege check failed for', photo.filename, err);
+            map[photo.id] = 'Err';
+          }
+        }
+        setPrivilegesMap(map);
       }
     };
-    if (photos.length > 0) loadPrivileges();
+    loadPrivileges();
   }, [photos]);
 
   // Manual retry for privileges
@@ -298,17 +314,8 @@ function App() {
   const handleMoveToInprogress = async (id) => {
     try {
       await updatePhotoState(id, 'inprogress');
-      // Refresh photos
-      const endpoint = showFinished ? 'finished' : (showInprogress ? 'inprogress' : 'working');
-      const serverUrl = `http://localhost:3001/photos?state=${endpoint}`;
-      const res = await getPhotos(serverUrl);
-      const backendOrigin = 'http://localhost:3001';
-      const photosWithFullUrls = (res.photos || []).map(p => ({
-        ...p,
-        url: `${backendOrigin}/${p.state}/${p.filename}`,
-        thumbnail: p.thumbnail ? `${backendOrigin}/thumbnails/${p.thumbnail.split('/').pop()}` : null
-      }));
-      setPhotos(photosWithFullUrls);
+      // Remove the photo from the current list (since it's moved to inprogress view)
+      setPhotos(prev => prev.filter(photo => photo.id !== id));
     } catch (error) {
       setToastMsg(`Error moving photo: ${error.message}`);
     }
@@ -477,17 +484,8 @@ function App() {
       await updatePhotoState(id, 'finished');
       setToastMsg('Photo marked as finished');
       setEditingPhoto(null);
-      // Refresh photos
-      const endpoint = showFinished ? 'finished' : (showInprogress ? 'inprogress' : 'working');
-      const serverUrl = `http://localhost:3001/photos?state=${endpoint}`;
-      const res = await getPhotos(serverUrl);
-      const backendOrigin = 'http://localhost:3001';
-      const photosWithFullUrls = (res.photos || []).map(p => ({
-        ...p,
-        url: `${backendOrigin}/${p.state}/${p.filename}`,
-        thumbnail: p.thumbnail ? `${backendOrigin}/thumbnails/${p.thumbnail.split('/').pop()}` : null
-      }));
-      setPhotos(photosWithFullUrls);
+      // Remove the photo from the current list (since it's moved to finished view)
+      setPhotos(prev => prev.filter(photo => photo.id !== id));
     } catch (error) {
       setToastMsg(`Error marking photo as finished: ${error.message}`);
     }
