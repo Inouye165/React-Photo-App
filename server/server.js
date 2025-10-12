@@ -15,6 +15,7 @@ const createUploadsRouter = require('./routes/uploads');
 const createDebugRouter = require('./routes/debug');
 const createHealthRouter = require('./routes/health');
 const createPrivilegeRouter = require('./routes/privilege');
+const { createUploadMiddleware } = require('./media/uploader');
 
 const PORT = process.env.PORT || 3001;
 
@@ -67,32 +68,8 @@ async function startServer() {
   }));
   app.use(express.urlencoded({ limit: '50mb', extended: true }));
 
-  // Multer setup
-  const storage = multer.diskStorage({
-    destination: function (req, file, cb) { cb(null, WORKING_DIR); },
-    filename: function (req, file, cb) {
-      let filename = file.originalname;
-      let counter = 1;
-      while (fs.existsSync(path.join(WORKING_DIR, filename))) {
-        const ext = path.extname(file.originalname);
-        const basename = path.basename(file.originalname, ext);
-        filename = `${basename}(${counter})${ext}`;
-        counter++;
-      }
-      cb(null, filename);
-    }
-  });
-  const upload = multer({
-    storage: storage,
-    limits: { fileSize: 50 * 1024 * 1024 },
-    fileFilter: (req, file, cb) => {
-      const imageExtensions = ['.jpg', '.jpeg', '.png', '.gif', '.heic', '.bmp', '.tiff', '.webp'];
-      const ext = require('path').extname(file.originalname).toLowerCase();
-      if (file.mimetype && file.mimetype.startsWith('image/')) cb(null, true);
-      else if (imageExtensions.includes(ext)) cb(null, true);
-      else cb(new Error('Only image files are allowed'), false);
-    }
-  });
+  // Create upload middleware using centralized configuration
+  const upload = createUploadMiddleware(WORKING_DIR);
 
 
 
