@@ -1,5 +1,6 @@
-import { describe, it, expect, vi, beforeEach } from 'vitest'
+import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest'
 import { render, screen, waitFor } from '@testing-library/react'
+import { act } from 'react'
 import userEvent from '@testing-library/user-event'
 import App from './App'
 
@@ -59,24 +60,51 @@ describe('App Component', () => {
       ok: true,
       json: () => Promise.resolve({ photos: mockPhotos }),
     })
+
+    // Mock console.error to suppress expected error logs in tests
+    vi.spyOn(console, 'error').mockImplementation(() => {})
+  })
+
+  afterEach(() => {
+    // Restore console.error after each test
+    console.error.mockRestore?.()
   })
 
   it('renders the main toolbar', async () => {
-    render(<App />)
+    await act(async () => {
+      render(<App />)
+    })
     
     await waitFor(() => {
       expect(screen.getByRole('navigation', { name: 'Main toolbar' })).toBeInTheDocument()
     })
   })
 
-  it('displays loading state initially', () => {
-    render(<App />)
+  it('displays loading state initially', async () => {
+    // Create a promise that won't resolve immediately
+    let resolvePromise
+    const delayedPromise = new Promise((resolve) => {
+      resolvePromise = resolve
+    })
+    getPhotos.mockReturnValue(delayedPromise)
     
+    await act(async () => {
+      render(<App />)
+    })
+    
+    // Check loading state before promise resolves
     expect(screen.getByText('Loading photos...')).toBeInTheDocument()
+    
+    // Resolve the promise and wait for update
+    await act(async () => {
+      resolvePromise({ photos: mockPhotos })
+    })
   })
 
   it('loads and displays photos from API', async () => {
-    render(<App />)
+    await act(async () => {
+      render(<App />)
+    })
     
     await waitFor(() => {
       expect(screen.getByText('test1.jpg')).toBeInTheDocument()
@@ -87,7 +115,9 @@ describe('App Component', () => {
   })
 
   it('shows correct photo count when photos are loaded', async () => {
-    render(<App />)
+    await act(async () => {
+      render(<App />)
+    })
     
     await waitFor(() => {
       // Should show photos in the list
@@ -99,7 +129,9 @@ describe('App Component', () => {
   it('displays empty state when no photos found', async () => {
     getPhotos.mockResolvedValue({ photos: [] })
     
-    render(<App />)
+    await act(async () => {
+      render(<App />)
+    })
     
     await waitFor(() => {
       expect(screen.getByText('No photos found in backend.')).toBeInTheDocument()
@@ -109,7 +141,9 @@ describe('App Component', () => {
   it('handles API errors gracefully', async () => {
     getPhotos.mockRejectedValue(new Error('Network error'))
     
-    render(<App />)
+    await act(async () => {
+      render(<App />)
+    })
     
     await waitFor(() => {
       // Should not be loading anymore
@@ -119,7 +153,9 @@ describe('App Component', () => {
 
   it('switches to inprogress view when button clicked', async () => {
     const user = userEvent.setup()
-    render(<App />)
+    await act(async () => {
+      render(<App />)
+    })
     
     await waitFor(() => {
       expect(screen.getByText('View Inprogress')).toBeInTheDocument()
@@ -135,7 +171,9 @@ describe('App Component', () => {
 
   it('switches to finished view when button clicked', async () => {
     const user = userEvent.setup()
-    render(<App />)
+    await act(async () => {
+      render(<App />)
+    })
     
     await waitFor(() => {
       expect(screen.getByText('View Finished')).toBeInTheDocument()
@@ -153,7 +191,9 @@ describe('App Component', () => {
     const mockShowDirectoryPicker = vi.fn().mockRejectedValue(new Error('User cancelled'))
     global.showDirectoryPicker = mockShowDirectoryPicker
     
-    render(<App />)
+    await act(async () => {
+      render(<App />)
+    })
     
     await waitFor(() => {
       expect(screen.getByText('Select Folder for Upload')).toBeInTheDocument()
@@ -167,7 +207,9 @@ describe('App Component', () => {
   it('displays toast messages for errors', async () => {
     getPhotos.mockRejectedValue(new Error('Test error'))
     
-    render(<App />)
+    await act(async () => {
+      render(<App />)
+    })
     
     await waitFor(() => {
       expect(screen.getByText('Error loading photos from backend')).toBeInTheDocument()
@@ -178,7 +220,9 @@ describe('App Component', () => {
     const user = userEvent.setup()
     getPhotos.mockRejectedValue(new Error('Test error'))
     
-    render(<App />)
+    await act(async () => {
+      render(<App />)
+    })
     
     await waitFor(() => {
       expect(screen.getByText('Error loading photos from backend')).toBeInTheDocument()
@@ -191,7 +235,9 @@ describe('App Component', () => {
   })
 
   it('displays toolbar messages correctly', async () => {
-    render(<App />)
+    await act(async () => {
+      render(<App />)
+    })
     
     // Wait for component to load
     await waitFor(() => {
@@ -204,7 +250,9 @@ describe('App Component', () => {
   })
 
   it('loads photo privileges after photos are loaded', async () => {
-    render(<App />)
+    await act(async () => {
+      render(<App />)
+    })
     
     await waitFor(() => {
       expect(screen.getByText('test1.jpg')).toBeInTheDocument()

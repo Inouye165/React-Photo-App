@@ -1,5 +1,6 @@
 const path = require('path');
-const fs = require('fs');
+const fs = require('fs').promises;
+const fsSync = require('fs');
 const sharp = require('sharp');
 const { exec } = require('child_process');
 const { promisify } = require('util');
@@ -9,14 +10,19 @@ const exifr = require('exifr');
 
 const ALLOWED_IMAGE_EXTENSIONS = ['.jpg', '.jpeg', '.png', '.gif', '.heic', '.bmp', '.tiff', '.webp'];
 
-function hashFileSync(filePath) {
-  const buf = fs.readFileSync(filePath);
+async function hashFile(filePath) {
+  const buf = await fs.readFile(filePath);
   return crypto.createHash('sha256').update(buf).digest('hex');
 }
 
 async function generateThumbnail(filePath, hash, thumbDir) {
   const thumbPath = path.join(thumbDir, `${hash}.jpg`);
-  if (fs.existsSync(thumbPath)) return thumbPath;
+  try {
+    await fs.access(thumbPath);
+    return thumbPath;
+  } catch {
+    // File doesn't exist, continue with generation
+  }
   try {
     // Reduced size by 25%: original 120 -> now 90
     await sharp(filePath)
@@ -38,11 +44,14 @@ async function generateThumbnail(filePath, hash, thumbDir) {
             resolve();
           });
         });
-        fs.renameSync(tmpJpg, thumbPath);
+        await fs.rename(tmpJpg, thumbPath);
         return thumbPath;
       } catch (convErr) {
         console.error('Fallback conversion failed for', filePath, convErr.message || convErr);
-        try { if (fs.existsSync(tmpJpg)) fs.unlinkSync(tmpJpg); } catch (e) {}
+        try { 
+          await fs.access(tmpJpg);
+          await fs.unlink(tmpJpg);
+        } catch (e) {}
         return null;
       }
     }
@@ -54,7 +63,8 @@ async function convertHeicToJpegBuffer(filePath, quality = 90) {
   const ext = path.extname(filePath).toLowerCase();
   if (ext !== '.heic' && ext !== '.heif') {
     // If already JPEG/PNG, read as buffer
-    return fs.readFileSync(filePath);
+    // TODO: Future cleanup - make this async as well
+    return fsSync.readFileSync(filePath);
   }
   try {
     console.log('[CONVERT] Attempting HEIC->JPEG conversion for', filePath);
@@ -74,23 +84,27 @@ async function convertHeicToJpegBuffer(filePath, quality = 90) {
           resolve();
         });
       });
-      const buffer = fs.readFileSync(tmpJpg);
+      const buffer = await fs.readFile(tmpJpg);
       console.log('[CONVERT] ImageMagick conversion successful for', filePath, 'buffer size:', buffer.length);
-      fs.unlinkSync(tmpJpg);
+      await fs.unlink(tmpJpg);
       return buffer;
     } catch (convErr) {
       console.error('[CONVERT] ImageMagick fallback conversion failed for', filePath, convErr);
-      try { if (fs.existsSync(tmpJpg)) fs.unlinkSync(tmpJpg); } catch (e) {}
+      try { 
+        await fs.access(tmpJpg);
+        await fs.unlink(tmpJpg);
+      } catch (e) {}
       throw convErr;
     }
   }
 }
 
 async function ensureAllThumbnails(db, WORKING_DIR, THUMB_DIR) {
-  const files = fs.readdirSync(WORKING_DIR);
+  const files = await fs.readdir(WORKING_DIR);
   for (const filename of files) {
     const filePath = path.join(WORKING_DIR, filename);
-    if (!fs.statSync(filePath).isFile()) continue;
+    const stats = await fs.stat(filePath);
+    if (!stats.isFile()) continue;
     const row = await new Promise((resolve, reject) => {
       db.get('SELECT * FROM photos WHERE filename = ?', [filename], (err, row) => {
         if (err) reject(err); else resolve(row);
@@ -104,11 +118,12 @@ async function ensureAllThumbnails(db, WORKING_DIR, THUMB_DIR) {
 }
 
 async function ensureAllFilesHashed(db, WORKING_DIR, THUMB_DIR) {
-  const files = fs.readdirSync(WORKING_DIR);
+  const files = await fs.readdir(WORKING_DIR);
   const ignored = [];
   for (const filename of files) {
     const filePath = path.join(WORKING_DIR, filename);
-    if (!fs.statSync(filePath).isFile()) continue;
+    const stats = await fs.stat(filePath);
+    if (!stats.isFile()) continue;
     const ext = path.extname(filename).toLowerCase();
     if (!ALLOWED_IMAGE_EXTENSIONS.includes(ext)) {
       // Log and skip non-image files (desktop.ini, thumbs.db, etc.) rather than exiting
@@ -125,7 +140,7 @@ async function ensureAllFilesHashed(db, WORKING_DIR, THUMB_DIR) {
       continue;
     }
     if (!row.hash) {
-      const hash = hashFileSync(filePath);
+      const hash = await hashFile(filePath);
       db.run('UPDATE photos SET hash = ? WHERE id = ?', [hash, row.id]);
       await generateThumbnail(filePath, hash, THUMB_DIR);
     } else {
@@ -140,20 +155,20 @@ async function ensureAllFilesHashed(db, WORKING_DIR, THUMB_DIR) {
 
 async function ingestPhoto(db, filePath, filename, state, thumbDir) {
   try {
-    const hash = hashFileSync(filePath);
+    const hash = await hashFile(filePath);
     const existing = await new Promise((resolve, reject) => {
       db.get('SELECT id FROM photos WHERE hash = ?', [hash], (err, row) => {
         if (err) reject(err); else resolve(row);
       });
     });
     if (existing) {
-      fs.unlinkSync(filePath);
+      await fs.unlink(filePath);
       console.log(`Duplicate file skipped: ${filename}`);
       return { duplicate: true, hash };
     }
     const metadata = await exifr.parse(filePath, { tiff: true, ifd0: true, exif: true, gps: true, xmp: true, icc: true, iptc: true });
     const metaStr = JSON.stringify(metadata || {});
-    const fileStats = fs.statSync(filePath);
+    const fileStats = await fs.stat(filePath);
     const fileSize = fileStats.size;
     const now = new Date().toISOString();
     db.run(
