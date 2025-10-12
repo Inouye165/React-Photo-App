@@ -189,8 +189,8 @@ module.exports = function createPhotosRouter({ db }, paths) {
           res.set('Content-Type', 'image/jpeg');
           return res.send(jpegBuffer);
         } catch (err) {
-          console.error('[DISPLAY] Conversion failed for', filePath, err);
-          return res.status(500).send('Unable to convert image for display');
+          console.error('[DISPLAY] HEIC conversion failed for', filePath, err.message || err);
+          return res.status(500).send('Unable to convert HEIC image for display');
         }
       } else {
         // Unsupported format

@@ -3,6 +3,7 @@ import { Stage, Layer, Image as KonvaImage, Text as KonvaText } from 'react-konv
 
 export default function ImageCanvasEditor({ imageUrl, caption, textStyle, onSave }) {
   const [image, setImage] = useState(null);
+  const [imageError, setImageError] = useState(null);
   const [dimensions, setDimensions] = useState({ width: 0, height: 0, scale: 1 });
   const [textProps, setTextProps] = useState({
     x: textStyle?.x ?? 50,
@@ -21,12 +22,16 @@ export default function ImageCanvasEditor({ imageUrl, caption, textStyle, onSave
 
   // Load image and calculate dimensions
   useEffect(() => {
+    setImageError(null);
+    setImage(null);
+    
     const img = new window.Image();
     img.crossOrigin = 'anonymous';
     img.src = imageUrl;
     
     img.onload = () => {
       setImage(img);
+      setImageError(null);
       
       // Calculate dimensions to fit container while maintaining aspect ratio
       const container = containerRef.current;
@@ -61,6 +66,12 @@ export default function ImageCanvasEditor({ imageUrl, caption, textStyle, onSave
           }));
         }
       }
+    };
+    
+    img.onerror = () => {
+      console.error('Failed to load image:', imageUrl);
+      setImageError('Failed to load image. HEIC format may not be supported for editing.');
+      setImage(null);
     };
   }, [imageUrl, textStyle]);
 
@@ -105,6 +116,20 @@ export default function ImageCanvasEditor({ imageUrl, caption, textStyle, onSave
       });
     }
   };
+
+  if (imageError) {
+    return (
+      <div ref={containerRef} className="w-full h-full flex flex-col items-center justify-center bg-gray-100 p-4">
+        <div className="text-center">
+          <p className="text-red-600 font-semibold mb-2">⚠️ Image Loading Error</p>
+          <p className="text-gray-700 text-sm mb-4">{imageError}</p>
+          <p className="text-gray-600 text-xs">
+            Unable to load image for editing. Please try again or contact support.
+          </p>
+        </div>
+      </div>
+    );
+  }
 
   if (!image || !dimensions.width) {
     return (

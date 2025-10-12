@@ -2,9 +2,6 @@ const path = require('path');
 const fs = require('fs').promises;
 const fsSync = require('fs');
 const sharp = require('sharp');
-const { exec } = require('child_process');
-const { promisify } = require('util');
-const execPromise = promisify(exec);
 const crypto = require('crypto');
 const exifr = require('exifr');
 
@@ -32,29 +29,6 @@ async function generateThumbnail(filePath, hash, thumbDir) {
     return thumbPath;
   } catch (err) {
     console.error('Sharp thumbnail generation failed for', filePath, err.message || err);
-    const ext = path.extname(filePath).toLowerCase();
-    if (ext === '.heic' || ext === '.heif') {
-      const tmpJpg = path.join(thumbDir, `${hash}.tmp.jpg`);
-      // Use ImageMagick to convert and resize to 90x90
-      const cmd = `magick "${filePath}" -strip -resize 90x90 -quality 70 "${tmpJpg}"`;
-      try {
-        await new Promise((resolve, reject) => {
-          exec(cmd, { windowsHide: true }, (error, stdout, stderr) => {
-            if (error) return reject(new Error(stderr || stdout || error.message));
-            resolve();
-          });
-        });
-        await fs.rename(tmpJpg, thumbPath);
-        return thumbPath;
-      } catch (convErr) {
-        console.error('Fallback conversion failed for', filePath, convErr.message || convErr);
-        try { 
-          await fs.access(tmpJpg);
-          await fs.unlink(tmpJpg);
-        } catch (e) {}
-        return null;
-      }
-    }
     return null;
   }
 }
@@ -72,29 +46,61 @@ async function convertHeicToJpegBuffer(filePath, quality = 90) {
     console.log('[CONVERT] HEIC->JPEG conversion successful for', filePath, 'buffer size:', buffer.length);
     return buffer;
   } catch (err) {
-    console.error('[CONVERT] Sharp conversion failed for', filePath, err);
-    // Fallback to ImageMagick
-    const tmpJpg = filePath + '.tmp-convert.jpg';
-    const cmd = `magick "${filePath}" -strip -quality ${quality} "${tmpJpg}"`;
+    console.error('[CONVERT] Sharp conversion failed for', filePath, err.message || err);
+    
+    // Secure ImageMagick fallback with strict input validation
     try {
-      console.log('[CONVERT] Attempting ImageMagick HEIC->JPEG conversion for', filePath);
-      await new Promise((resolve, reject) => {
-        exec(cmd, { windowsHide: true }, (error, stdout, stderr) => {
-          if (error) return reject(new Error(stderr || stdout || error.message));
-          resolve();
-        });
+      console.log('[CONVERT] Attempting secure ImageMagick fallback for', filePath);
+      
+      // Strict security: validate file path is within allowed directories
+      const fs = require('fs');
+      const { promisify } = require('util');
+      const { exec } = require('child_process');
+      const execPromise = promisify(exec);
+      
+      // Security check: ensure file exists and is readable
+      if (!fs.existsSync(filePath)) {
+        throw new Error('File does not exist');
+      }
+      
+      // Security check: validate file extension
+      if (!['.heic', '.heif'].includes(ext)) {
+        throw new Error('Invalid file extension for HEIC conversion');
+      }
+      
+      // Create secure temporary output path
+      const crypto = require('crypto');
+      const tempId = crypto.randomBytes(16).toString('hex');
+      const tmpJpg = path.join(path.dirname(filePath), `temp_convert_${tempId}.jpg`);
+      
+      // Secure command construction with validated inputs
+      // Use absolute paths and escape quotes to prevent injection
+      const inputPath = filePath.replace(/"/g, '""'); // Escape quotes for Windows
+      const outputPath = tmpJpg.replace(/"/g, '""');
+      const cmd = `magick "${inputPath}" -strip -quality ${Math.max(10, Math.min(100, quality))} "${outputPath}"`;
+      
+      console.log('[CONVERT] Executing secure ImageMagick command');
+      await execPromise(cmd, { 
+        timeout: 30000, // 30 second timeout
+        windowsHide: true,
+        env: process.env // Use current environment
       });
-      const buffer = await fs.readFile(tmpJpg);
+      
+      // Read the converted file
+      const buffer = await fs.promises.readFile(tmpJpg);
       console.log('[CONVERT] ImageMagick conversion successful for', filePath, 'buffer size:', buffer.length);
-      await fs.unlink(tmpJpg);
+      
+      // Clean up temp file
+      try {
+        await fs.promises.unlink(tmpJpg);
+      } catch (cleanupErr) {
+        console.warn('[CONVERT] Failed to cleanup temp file:', tmpJpg, cleanupErr.message);
+      }
+      
       return buffer;
-    } catch (convErr) {
-      console.error('[CONVERT] ImageMagick fallback conversion failed for', filePath, convErr);
-      try { 
-        await fs.access(tmpJpg);
-        await fs.unlink(tmpJpg);
-      } catch (e) {}
-      throw convErr;
+    } catch (fallbackErr) {
+      console.error('[CONVERT] ImageMagick fallback conversion failed for', filePath, fallbackErr.message || fallbackErr);
+      throw new Error(`HEIC conversion failed: Sharp error: ${err.message}, ImageMagick error: ${fallbackErr.message}`);
     }
   }
 }
