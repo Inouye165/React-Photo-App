@@ -164,6 +164,20 @@ photo-app/
    ```
    Frontend will be available at `http://localhost:5173`
 
+### Environment Configuration
+
+The frontend uses environment variables for configuration:
+
+- `VITE_API_URL`: Base URL for the backend API (default: `http://localhost:3001`)
+
+To override for production or different environments, create a `.env` file in the root directory:
+
+```bash
+VITE_API_URL=https://your-production-api.com
+```
+
+This allows easy deployment to different environments without code changes.
+
 ### Build
 
 Build for production:
