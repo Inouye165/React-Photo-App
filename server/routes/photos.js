@@ -34,18 +34,17 @@ module.exports = function createPhotosRouter({ db }, paths) {
   });
 
   // --- API: List all photos and metadata (include hash) ---
-  router.get('/photos', (req, res) => {
-    const state = req.query.state;
-    let sql = 'SELECT id, filename, state, metadata, hash, file_size, caption, description, keywords, text_style, edited_filename FROM photos';
-    const params = [];
-    if (state === 'working' || state === 'inprogress' || state === 'finished') {
-      sql += ' WHERE state = ?';
-      params.push(state);
-    }
-    db.all(sql, params, (err, rows) => {
-      if (err) {
-        return res.status(500).json({ success: false, error: err.message });
+  router.get('/photos', async (req, res) => {
+    try {
+      const state = req.query.state;
+      let sql = 'SELECT id, filename, state, metadata, hash, file_size, caption, description, keywords, text_style, edited_filename FROM photos';
+      const params = [];
+      if (state === 'working' || state === 'inprogress' || state === 'finished') {
+        sql += ' WHERE state = ?';
+        params.push(state);
       }
+      
+      const rows = await dbAll(sql, params);
 
       // Helper function to get directory based on state
       const getDir = (state) => {
@@ -57,19 +56,27 @@ module.exports = function createPhotosRouter({ db }, paths) {
         }
       };
 
-      // Filter out photos whose files no longer exist and clean up DB
+      // Collect IDs of missing files and filter results
       const filteredRows = [];
+      const missingIds = [];
+      
       for (const row of rows) {
         const dir = getDir(row.state);
         const filePath = path.join(dir, row.filename);
         if (fs.existsSync(filePath)) {
           filteredRows.push(row);
         } else {
-          // Remove from DB since file is missing
-          db.run('DELETE FROM photos WHERE id = ?', [row.id], (deleteErr) => {
-            if (deleteErr) console.error('Error deleting missing photo from DB:', deleteErr);
-          });
+          // Collect ID of missing file for batch deletion
+          missingIds.push(row.id);
         }
+      }
+
+      // Perform batch delete for all missing photos
+      if (missingIds.length > 0) {
+        const placeholders = missingIds.map(() => '?').join(', ');
+        const deleteSql = `DELETE FROM photos WHERE id IN (${placeholders})`;
+        const result = await dbRun(deleteSql, missingIds);
+        console.log(`Deleted ${missingIds.length} missing photos from DB`);
       }
 
       // Prevent caching so frontend always gets fresh filtered results
@@ -99,7 +106,10 @@ module.exports = function createPhotosRouter({ db }, paths) {
           thumbnail: row.hash ? `/thumbnails/${row.hash}.jpg` : null
         };
       }) });
-    });
+    } catch (err) {
+      console.error('Error in /photos endpoint:', err);
+      res.status(500).json({ success: false, error: err.message });
+    }
   });
 
   // --- Serve thumbnails (generate on demand if missing) ---
