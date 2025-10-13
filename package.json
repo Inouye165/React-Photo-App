@@ -10,8 +10,8 @@
     "test:ui": "vitest --ui",
     "test:run": "vitest run",
     "test:coverage": "vitest --coverage",
-  "check-privilege": "node scripts/check-privilege.cjs",
-  "integration-test": "node scripts/integration-test.cjs",
+    "check-privilege": "node scripts/check-privilege.cjs",
+    "integration-test": "node scripts/integration-test.cjs",
     "lint": "eslint .",
     "preview": "vite preview"
   },
@@ -29,6 +29,7 @@
   "devDependencies": {
     "@eslint/js": "^9.36.0",
     "@tailwindcss/postcss": "^4.1.14",
+    "@testing-library/dom": "^10.4.1",
     "@testing-library/jest-dom": "^6.9.1",
     "@testing-library/react": "^16.3.0",
     "@testing-library/user-event": "^14.6.1",
