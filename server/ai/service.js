@@ -11,6 +11,73 @@ const OpenAI = require('openai');
 const openai = new OpenAI({ apiKey: process.env.OPENAI_API_KEY });
 const { convertHeicToJpegBuffer } = require('../media/image');
 
+// Helper: convert feet to meters
+function feetToMeters(feet) {
+  return Math.max(1, Math.round(feet * 0.3048));
+}
+
+// Helper: reverse geocode via Nominatim to get address/place info
+async function nominatimReverse(lat, lon) {
+  try {
+    const url = `https://nominatim.openstreetmap.org/reverse?format=json&lat=${encodeURIComponent(lat)}&lon=${encodeURIComponent(lon)}&zoom=18&addressdetails=1`;
+    const res = await fetch(url, {
+      headers: {
+        'User-Agent': process.env.NOMINATIM_USER_AGENT || 'React-Photo-App/1.0 (your-email@example.com)'
+      }
+    });
+    if (!res.ok) return null;
+    const data = await res.json();
+    return data;
+  } catch (err) {
+    return null;
+  }
+}
+
+// Helper: query Overpass API for named features within radius (meters)
+async function overpassNearby(lat, lon, radiusMeters = 50) {
+  try {
+    // Query nodes/ways/rels with a name tag within radius
+    const q = `[
+out:json][timeout:25];(node(around:${radiusMeters},${lat},${lon})["name"];way(around:${radiusMeters},${lat},${lon})["name"];rel(around:${radiusMeters},${lat},${lon})["name"];);out center;`;
+    const url = 'https://overpass-api.de/api/interpreter';
+    const res = await fetch(url, {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/x-www-form-urlencoded',
+        'User-Agent': process.env.NOMINATIM_USER_AGENT || 'React-Photo-App/1.0 (your-email@example.com)'
+      },
+      body: `data=${encodeURIComponent(q)}`
+    });
+    if (!res.ok) return null;
+    const data = await res.json();
+    const names = new Set();
+    if (data.elements && Array.isArray(data.elements)) {
+      for (const el of data.elements) {
+        if (el.tags && el.tags.name) names.add(el.tags.name);
+      }
+    }
+    return Array.from(names);
+  } catch (err) {
+    return null;
+  }
+}
+
+// High-level geolocation helper: given gps string "lat,lon" and radiusFeet, return nearby place names and reverse lookup
+async function geolocateNearby(gpsString, radiusFeet = 50) {
+  if (!gpsString) return { address: null, nearby: [] };
+  const [latStr, lonStr] = gpsString.split(',').map(s => s && s.trim());
+  if (!latStr || !lonStr) return { address: null, nearby: [] };
+  const lat = parseFloat(latStr);
+  const lon = parseFloat(lonStr);
+  if (Number.isNaN(lat) || Number.isNaN(lon)) return { address: null, nearby: [] };
+  const radiusMeters = feetToMeters(radiusFeet);
+  const [addr, nearby] = await Promise.all([
+    nominatimReverse(lat, lon),
+    overpassNearby(lat, lon, radiusMeters)
+  ]);
+  return { address: addr, nearby: nearby || [] };
+}
+
 // Helper: Generate caption, description, keywords for a photo using OpenAI Vision
 async function processPhotoAI({ filePath, metadata, gps, device }) {
   if (!process.env.OPENAI_API_KEY) throw new Error('OPENAI_API_KEY not set in .env');
@@ -38,8 +105,8 @@ async function processPhotoAI({ filePath, metadata, gps, device }) {
     }
   }
 
-  // Compose prompt with new requirements
-  let prompt = `You are an expert photo analyst. Given the image and metadata, generate:\n- A short, human-friendly caption (max 10 words)\n- A detailed description that MUST include the date and time naturally in the text (covering people, animals, plants, weather, lighting, time of day, selfie detection, and location-based names for rivers, waterfalls, geysers, pools, cliffs, mountains, etc.)\n- A comma-separated list of keywords (for search) that MUST include GPS coordinates and camera device information if available\n\nMetadata:`;
+    // Compose prompt with expanded requirements: ask for places, animals, focused description, and extensive keywords
+    let prompt = `You are an expert photo analyst. Given the image and metadata, generate the following in JSON (keys: caption, description, keywords, places, animals):\n\n- caption: A short, human-friendly caption (max 10 words).\n- description: A focused, detailed description that MUST include the date and time naturally in the text and cover relevant visual elements (people, animals with breed/type if identifiable, plants, weather, lighting, time of day, and notable geographic or man-made landmarks). Make the description as long as necessary to be informative but do NOT add extraneous information not supported by the image.\n- places: An array of any pinpointable place/facility/site names visible or strongly implied in the image (e.g., restaurant name, park name, waterfall name, mountain peak, river name, hotel, store, historical site). If none can be confidently determined, return an empty array.\n- animals: An array of objects for animals detected with fields {type, breed (if identifiable), confidence (0-1)}; return an empty array if no animals.\n- keywords: A comma-separated, extensive set of search keywords that MUST include GPS coordinates (if available), camera device information (if available), place names (if any), animal breed/type (if any), and other descriptive tags (e.g., sunset, long-exposure, portrait, travel, hiking).\n\nMetadata:`;
 
   if (dateTimeInfo) prompt += ` Date/Time: ${dateTimeInfo}.`;
   if (metadata) prompt += ` EXIF: ${JSON.stringify(metadata)}.`;
@@ -52,8 +119,25 @@ async function processPhotoAI({ filePath, metadata, gps, device }) {
 Respond in JSON with keys: caption, description, keywords.`;
 
   // Add GPS and device to context for keywords
-  if (device) prompt += `\nDevice Info: ${device}`;
-  if (gps) prompt += `\nGPS Info: ${gps}`;
+    prompt += `\nDevice Info: ${device}`;
+    if (gps) prompt += `\nGPS Info: ${gps}`;
+
+  // If GPS provided, enrich prompt with nearby place names using geolocation lookups
+  let geoContext = null;
+  if (gps) {
+    try {
+      geoContext = await geolocateNearby(gps, 50); // 50 feet radius
+      if (geoContext && geoContext.address) {
+        const displayName = geoContext.address.display_name || null;
+        if (displayName) prompt += `\nReverse geocode: ${displayName}`;
+      }
+      if (geoContext && Array.isArray(geoContext.nearby) && geoContext.nearby.length > 0) {
+        prompt += `\nNearby named features within 50ft: ${geoContext.nearby.join(', ')}`;
+      }
+    } catch (e) {
+      // ignore geolocation failures
+    }
+  }
 
   // Convert HEIC/HEIF to JPEG if needed
   let imageBuffer, imageMime;
@@ -76,12 +160,12 @@ Respond in JSON with keys: caption, description, keywords.`;
   ];
   let response;
   try {
-    response = await openai.chat.completions.create({
-      model: 'gpt-4o',
-      messages,
-      max_tokens: 1024,
-      temperature: 0.3
-    });
+      response = await openai.chat.completions.create({
+        model: 'gpt-4o',
+        messages,
+        max_tokens: 1500,
+        temperature: 0.25
+      });
   } catch (err) {
     throw err;
   }
@@ -95,6 +179,40 @@ Respond in JSON with keys: caption, description, keywords.`;
   } catch (e) {
     result.description = response.choices[0].message.content;
   }
+    // Normalize fields and ensure keywords include GPS and device and any places/animals
+    result.caption = (result.caption || '').trim();
+    result.description = (result.description || '').trim();
+    result.keywords = (result.keywords || '').trim();
+
+    // If places array provided, append to keywords if not present
+    if (Array.isArray(result.places) && result.places.length > 0) {
+      const missingPlaces = result.places.filter(p => p && !result.keywords.includes(p));
+      if (missingPlaces.length > 0) {
+        result.keywords = result.keywords ? (result.keywords + ', ' + missingPlaces.join(', ')) : missingPlaces.join(', ');
+      }
+    }
+
+    // If animals array provided, append type/breed to keywords if not present
+    if (Array.isArray(result.animals) && result.animals.length > 0) {
+      const animalTags = result.animals.flatMap(a => {
+        const parts = [];
+        if (a.type) parts.push(a.type);
+        if (a.breed) parts.push(a.breed);
+        return parts;
+      }).filter(Boolean);
+      const missingAnimals = animalTags.filter(t => !result.keywords.includes(t));
+      if (missingAnimals.length > 0) {
+        result.keywords = result.keywords ? (result.keywords + ', ' + missingAnimals.join(', ')) : missingAnimals.join(', ');
+      }
+    }
+
+    // Ensure GPS and device info are present in keywords if provided in context
+    if (gps && !result.keywords.includes('GPS') && !result.keywords.includes(gps)) {
+      result.keywords = result.keywords ? (result.keywords + `, GPS:${gps}`) : `GPS:${gps}`;
+    }
+    if (device && !result.keywords.includes(device)) {
+      result.keywords = result.keywords ? (result.keywords + `, ${device}`) : device;
+    }
   return result;
 }
 
