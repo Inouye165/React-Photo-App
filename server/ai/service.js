@@ -1,82 +1,11 @@
 const path = require('path');
 const fs = require('fs');
-const crypto = require('crypto');
-const exifr = require('exifr');
-const sharp = require('sharp');
-const { exec } = require('child_process');
-const { promisify } = require('util');
-const execPromise = promisify(exec);
 require('dotenv').config({ path: path.join(__dirname, '..', '.env') });
-const OpenAI = require('openai');
-const openai = new OpenAI({ apiKey: process.env.OPENAI_API_KEY });
+// LangChain-friendly helper: local EXIF extractor tool
+const { extractExif } = require('./langchain/exifTool');
+const { geolocate } = require('./langchain/geolocateTool');
+const { buildPrompt, parseOutputToJSON } = require('./langchain/promptTemplate');
 const { convertHeicToJpegBuffer } = require('../media/image');
-
-// Helper: convert feet to meters
-function feetToMeters(feet) {
-  return Math.max(1, Math.round(feet * 0.3048));
-}
-
-// Helper: reverse geocode via Nominatim to get address/place info
-async function nominatimReverse(lat, lon) {
-  try {
-    const url = `https://nominatim.openstreetmap.org/reverse?format=json&lat=${encodeURIComponent(lat)}&lon=${encodeURIComponent(lon)}&zoom=18&addressdetails=1`;
-    const res = await fetch(url, {
-      headers: {
-        'User-Agent': process.env.NOMINATIM_USER_AGENT || 'React-Photo-App/1.0 (your-email@example.com)'
-      }
-    });
-    if (!res.ok) return null;
-    const data = await res.json();
-    return data;
-  } catch (err) {
-    return null;
-  }
-}
-
-// Helper: query Overpass API for named features within radius (meters)
-async function overpassNearby(lat, lon, radiusMeters = 50) {
-  try {
-    // Query nodes/ways/rels with a name tag within radius
-    const q = `[
-out:json][timeout:25];(node(around:${radiusMeters},${lat},${lon})["name"];way(around:${radiusMeters},${lat},${lon})["name"];rel(around:${radiusMeters},${lat},${lon})["name"];);out center;`;
-    const url = 'https://overpass-api.de/api/interpreter';
-    const res = await fetch(url, {
-      method: 'POST',
-      headers: {
-        'Content-Type': 'application/x-www-form-urlencoded',
-        'User-Agent': process.env.NOMINATIM_USER_AGENT || 'React-Photo-App/1.0 (your-email@example.com)'
-      },
-      body: `data=${encodeURIComponent(q)}`
-    });
-    if (!res.ok) return null;
-    const data = await res.json();
-    const names = new Set();
-    if (data.elements && Array.isArray(data.elements)) {
-      for (const el of data.elements) {
-        if (el.tags && el.tags.name) names.add(el.tags.name);
-      }
-    }
-    return Array.from(names);
-  } catch (err) {
-    return null;
-  }
-}
-
-// High-level geolocation helper: given gps string "lat,lon" and radiusFeet, return nearby place names and reverse lookup
-async function geolocateNearby(gpsString, radiusFeet = 50) {
-  if (!gpsString) return { address: null, nearby: [] };
-  const [latStr, lonStr] = gpsString.split(',').map(s => s && s.trim());
-  if (!latStr || !lonStr) return { address: null, nearby: [] };
-  const lat = parseFloat(latStr);
-  const lon = parseFloat(lonStr);
-  if (Number.isNaN(lat) || Number.isNaN(lon)) return { address: null, nearby: [] };
-  const radiusMeters = feetToMeters(radiusFeet);
-  const [addr, nearby] = await Promise.all([
-    nominatimReverse(lat, lon),
-    overpassNearby(lat, lon, radiusMeters)
-  ]);
-  return { address: addr, nearby: nearby || [] };
-}
 
 // Helper: Generate caption, description, keywords for a photo using OpenAI Vision
 async function processPhotoAI({ filePath, metadata, gps, device }) {
@@ -84,6 +13,17 @@ async function processPhotoAI({ filePath, metadata, gps, device }) {
 
   // Extract and format date/time from EXIF
   let dateTimeInfo = '';
+  // If metadata wasn't passed in, extract it from the file as the first pipeline step
+  if (!metadata || (typeof metadata === 'object' && Object.keys(metadata).length === 0)) {
+    try {
+      // extractExif is small and non-fatal; if it fails we proceed with empty metadata
+      // this makes it easy to convert this step to a LangChain Tool later
+       
+      metadata = await extractExif(filePath) || {};
+    } catch {
+      metadata = {};
+    }
+  }
   if (metadata) {
     const dateOriginal = metadata.DateTimeOriginal || metadata.CreateDate || metadata.DateTime;
     if (dateOriginal) {
@@ -99,45 +39,35 @@ async function processPhotoAI({ filePath, metadata, gps, device }) {
           hour12: true
         };
         dateTimeInfo = date.toLocaleDateString('en-US', options);
-      } catch (e) {
+      } catch {
         dateTimeInfo = dateOriginal; // fallback to raw date if parsing fails
       }
     }
   }
 
-    // Compose prompt with expanded requirements: ask for places, animals, focused description, and extensive keywords
-    let prompt = `You are an expert photo analyst. Given the image and metadata, generate the following in JSON (keys: caption, description, keywords, places, animals):\n\n- caption: A short, human-friendly caption (max 10 words).\n- description: A focused, detailed description that MUST include the date and time naturally in the text and cover relevant visual elements (people, animals with breed/type if identifiable, plants, weather, lighting, time of day, and notable geographic or man-made landmarks). Make the description as long as necessary to be informative but do NOT add extraneous information not supported by the image.\n- places: An array of any pinpointable place/facility/site names visible or strongly implied in the image (e.g., restaurant name, park name, waterfall name, mountain peak, river name, hotel, store, historical site). If none can be confidently determined, return an empty array.\n- animals: An array of objects for animals detected with fields {type, breed (if identifiable), confidence (0-1)}; return an empty array if no animals.\n- keywords: A comma-separated, extensive set of search keywords that MUST include GPS coordinates (if available), camera device information (if available), place names (if any), animal breed/type (if any), and other descriptive tags (e.g., sunset, long-exposure, portrait, travel, hiking).\n\nMetadata:`;
-
-  if (dateTimeInfo) prompt += ` Date/Time: ${dateTimeInfo}.`;
-  if (metadata) prompt += ` EXIF: ${JSON.stringify(metadata)}.`;
-
-  prompt += `\n\nIMPORTANT INSTRUCTIONS:
-1. DESCRIPTION: Must naturally incorporate the date and time information (e.g., "This sunny afternoon photo taken on Tuesday, March 15th, 2024 at 2:30 PM shows...")
-2. KEYWORDS: Must include GPS coordinates (if available) and camera device information (e.g., "iPhone 15 Pro, GPS:37.7749,-122.4194, sunset, beach")
-3. Do NOT put GPS or device info in the description - only in keywords
-
-Respond in JSON with keys: caption, description, keywords.`;
-
-  // Add GPS and device to context for keywords
-    prompt += `\nDevice Info: ${device}`;
-    if (gps) prompt += `\nGPS Info: ${gps}`;
-
-  // If GPS provided, enrich prompt with nearby place names using geolocation lookups
-  let geoContext = null;
-  if (gps) {
-    try {
-      geoContext = await geolocateNearby(gps, 50); // 50 feet radius
-      if (geoContext && geoContext.address) {
-        const displayName = geoContext.address.display_name || null;
-        if (displayName) prompt += `\nReverse geocode: ${displayName}`;
+    // If gps not passed, try to derive it from metadata
+    if (!gps) {
+      try {
+        if (metadata && metadata.GPSLatitude && metadata.GPSLongitude) {
+          gps = `${metadata.GPSLatitude},${metadata.GPSLongitude}`;
+        }
+      } catch {
+        // ignore
       }
-      if (geoContext && Array.isArray(geoContext.nearby) && geoContext.nearby.length > 0) {
-        prompt += `\nNearby named features within 50ft: ${geoContext.nearby.join(', ')}`;
-      }
-    } catch (e) {
-      // ignore geolocation failures
     }
-  }
+
+    // Enrich with geolocation lookups if GPS available
+    let geoContext = null;
+    if (gps) {
+      try {
+        geoContext = await geolocate({ gpsString: gps, radiusFeet: 50, userAgent: process.env.NOMINATIM_USER_AGENT });
+      } catch {
+        geoContext = null;
+      }
+    }
+
+    // Build prompt via centralized template helper
+    const prompt = buildPrompt({ dateTimeInfo, metadata, device, gps, geoContext });
 
   // Convert HEIC/HEIF to JPEG if needed
   let imageBuffer, imageMime;
@@ -158,25 +88,24 @@ Respond in JSON with keys: caption, description, keywords.`;
       { type: 'image_url', image_url: { url: imageDataUri } }
     ]}
   ];
+  // Route LLM call through a LangChain-friendly adapter to make future swaps easier
+  const { runChain } = require('./langchain/chainAdapter');
   let response;
   try {
-      response = await openai.chat.completions.create({
-        model: 'gpt-4o',
-        messages,
-        max_tokens: 1500,
-        temperature: 0.25
-      });
+    // pass filePath/metadata/gps/device so the simpleChain (if enabled) can
+    // construct messages from the file directly. The OpenAI path ignores
+    // these extra args and uses the provided `messages` as-is.
+    response = await runChain({ messages, model: 'gpt-4o', max_tokens: 1500, temperature: 0.25, filePath, metadata, gps, device });
   } catch (err) {
     throw err;
   }
-  // Try to parse JSON from response
+  // Try to parse JSON from response using the centralized parser
   let result = { caption: '', description: '', keywords: '' };
   try {
     const content = response.choices[0].message.content;
-    const match = content.match(/\{[\s\S]*\}/);
-    if (match) result = JSON.parse(match[0]);
-    else result.description = content;
-  } catch (e) {
+    const parsed = parseOutputToJSON(content);
+    if (parsed) result = parsed; else result.description = content;
+  } catch {
     result.description = response.choices[0].message.content;
   }
     // Normalize fields and ensure keywords include GPS and device and any places/animals
@@ -207,12 +136,26 @@ Respond in JSON with keys: caption, description, keywords.`;
     }
 
     // Ensure GPS and device info are present in keywords if provided in context
-    if (gps && !result.keywords.includes('GPS') && !result.keywords.includes(gps)) {
+    // Check for various GPS formats: "GPS:", "GPS coordinates", or the actual coordinates
+    const hasGPS = result.keywords.includes('GPS') ||
+                   result.keywords.includes(gps) ||
+                   /\d+\.\d+,\s*-\d+\.\d+/.test(result.keywords); // latitude,longitude pattern
+
+    if (gps && !hasGPS) {
       result.keywords = result.keywords ? (result.keywords + `, GPS:${gps}`) : `GPS:${gps}`;
     }
     if (device && !result.keywords.includes(device)) {
       result.keywords = result.keywords ? (result.keywords + `, ${device}`) : device;
     }
+
+    // Append the AI method used to keywords for transparency
+    if (response._ctx && response._ctx.method) {
+      const methodTag = `AI:${response._ctx.method}`;
+      if (!result.keywords.includes(methodTag)) {
+        result.keywords = result.keywords ? (result.keywords + `, ${methodTag}`) : methodTag;
+      }
+    }
+
   return result;
 }
 
@@ -231,14 +174,14 @@ async function updatePhotoAIMetadata(db, photoRow, filePath) {
     let ai;
     try {
       ai = await processPhotoAI({ filePath, metadata: meta, gps, device });
-    } catch (err) {
+    } catch {
       db.run('UPDATE photos SET ai_retry_count = ? WHERE id = ?', [retryCount + 1, photoRow.id]);
       return null;
     }
     db.run('UPDATE photos SET caption = ?, description = ?, keywords = ?, ai_retry_count = ? WHERE id = ?',
       [ai.caption, ai.description, ai.keywords, 0, photoRow.id]);
     return ai;
-  } catch (err) {
+  } catch {
     return null;
   }
 }
@@ -249,12 +192,12 @@ function isAIFailed(val) {
 
 // On server start, process all inprogress photos missing AI metadata or with retry count < 2
 async function processAllUnprocessedInprogress(db, INPROGRESS_DIR) {
-  return new Promise((resolve, reject) => {
+  return new Promise((resolve, _reject) => {
     db.all(
       'SELECT * FROM photos WHERE state = ? AND (caption IS NULL OR description IS NULL OR keywords IS NULL OR ai_retry_count < 2)',
       ['inprogress'],
       async (err, rows) => {
-        if (err) return reject(err);
+        if (err) return _reject(err);
         console.log(`[RECHECK] Found ${rows.length} inprogress files needing AI processing`);
         for (const row of rows) {
           if (
@@ -269,7 +212,7 @@ async function processAllUnprocessedInprogress(db, INPROGRESS_DIR) {
           const filePath = path.join(INPROGRESS_DIR, row.filename);
           if (fs.existsSync(filePath)) {
             console.log(`[RECHECK] Processing AI metadata for ${row.filename}`);
-            // eslint-disable-next-line no-await-in-loop
+             
             await updatePhotoAIMetadata(db, row, filePath);
           } else {
             console.log(`[RECHECK] File not found for ${row.filename} at ${filePath}`);

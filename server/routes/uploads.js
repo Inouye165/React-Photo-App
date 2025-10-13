@@ -1,13 +1,9 @@
 const express = require('express');
-const path = require('path');
-const fs = require('fs');
-const crypto = require('crypto');
-const exifr = require('exifr');
 const { ingestPhoto } = require('../media/image');
 const { createUploadMiddleware } = require('../media/uploader');
 
 module.exports = function createUploadsRouter({ db }, paths) {
-  const { WORKING_DIR, INPROGRESS_DIR, THUMB_DIR } = paths;
+  const { WORKING_DIR } = paths;
   const router = express.Router();
 
   // Create upload middleware using centralized configuration
@@ -23,8 +19,14 @@ module.exports = function createUploadsRouter({ db }, paths) {
       if (result.duplicate) {
         return res.json({ success: false, duplicate: true, hash: result.hash, message: 'Duplicate file skipped.' });
       }
+      if (result.hash === null) {
+        // ingestPhoto failed - clean up the uploaded file
+        const fs = require('fs').promises;
+        try { await fs.unlink(req.file.path); } catch {}
+        return res.status(500).json({ success: false, error: 'Failed to process image file' });
+      }
       res.json({ success: true, filename: req.file.filename, hash: result.hash });
-    } catch (error) {
+    } catch {
       res.status(500).json({ success: false, error: 'Failed to save file' });
     }
   });

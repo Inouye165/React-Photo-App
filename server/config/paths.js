@@ -5,10 +5,6 @@ const os = require('os');
 const DEFAULT_WORKING_DIR = path.join(os.homedir(), 'working');
 const WORKING_DIR_PATH_FILE = path.join(__dirname, '..', 'working_dir_path.txt');
 
-function getNonEmptyDir(dir) {
-  return fs.existsSync(dir) && fs.readdirSync(dir).length > 0;
-}
-
 // Expand environment variables and ~ in a path string
 function expandPath(p) {
   if (!p) return p;

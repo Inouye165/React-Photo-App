@@ -1,21 +1,25 @@
 const path = require('path');
-const fs = require('fs');
-const os = require('os');
 require('dotenv').config({ path: path.join(__dirname, '.env') });
+
+// Global safety: log uncaught exceptions and unhandled rejections instead of letting Node crash
+process.on('unhandledRejection', (reason, promise) => {
+  console.error('UnhandledRejection at:', promise, 'reason:', reason);
+});
+process.on('uncaughtException', (err) => {
+  console.error('UncaughtException:', err);
+});
 
 const { WORKING_DIR, INPROGRESS_DIR, FINISHED_DIR, THUMB_DIR } = require('./config/paths');
 
-const { openDb, migrate, migratePhotoTable } = require('./db/index');
+const { openDb, migrate } = require('./db/index');
 const { backfillFileSizes, cleanupMissingFiles, cleanupMissingInprogressFiles } = require('./db/maintenance');
-const { generateThumbnail, ensureAllThumbnails, ensureAllFilesHashed, ingestPhoto } = require('./media/image');
-const { copyExifMetadata } = require('./media/exif');
-const { processPhotoAI, updatePhotoAIMetadata, processAllUnprocessedInprogress } = require('./ai/service');
+const { ensureAllThumbnails, ensureAllFilesHashed } = require('./media/image');
+const { processAllUnprocessedInprogress } = require('./ai/service');
 const createPhotosRouter = require('./routes/photos');
 const createUploadsRouter = require('./routes/uploads');
 const createDebugRouter = require('./routes/debug');
 const createHealthRouter = require('./routes/health');
 const createPrivilegeRouter = require('./routes/privilege');
-const { createUploadMiddleware } = require('./media/uploader');
 
 const PORT = process.env.PORT || 3001;
 
@@ -63,13 +67,13 @@ async function startServer() {
   app.use(express.json({
     limit: '50mb',
     verify: (req, res, buf) => {
-      try { req.rawBody = buf.toString(); } catch (e) { req.rawBody = undefined; }
+      try { req.rawBody = buf.toString(); } catch { req.rawBody = undefined; }
     }
   }));
   app.use(express.urlencoded({ limit: '50mb', extended: true }));
 
   // Create upload middleware using centralized configuration
-  const upload = createUploadMiddleware(WORKING_DIR);
+  // const upload = createUploadMiddleware(WORKING_DIR); // Not used
 
 
 
@@ -108,7 +112,7 @@ async function startServer() {
 
 
   // Error handling middleware
-  app.use((error, req, res, next) => {
+  app.use((error, req, res, _next) => {
     // No attempt to repair malformed JSON here; let body-parser return errors so clients send valid JSON.
 
     if (error instanceof multer.MulterError) {

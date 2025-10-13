@@ -10,11 +10,16 @@
     "test:watch": "jest --watch"
   },
   "dependencies": {
+    "@langchain/community": "^0.3.57",
+    "@langchain/core": "^0.3.78",
+    "@langchain/openai": "^0.6.16",
     "cors": "^2.8.5",
     "exiftool-vendored": "^31.1.0",
     "exiftool-vendored.exe": "^13.38.0",
     "express": "^4.18.2",
     "multer": "^1.4.5-lts.1",
+    "node-fetch": "^3.3.1",
+    "photo-app": "file:..",
     "sharp": "^0.34.4"
   },
   "devDependencies": {

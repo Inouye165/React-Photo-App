@@ -8,7 +8,7 @@ function openDb(dbPath = path.join(__dirname, '..', 'photos.db')) {
 
 async function migrate(db) {
   // Ensure table exists
-  await new Promise((resolve, reject) => {
+  await new Promise((resolve, _reject) => {
     db.run(`CREATE TABLE IF NOT EXISTS photos (
       id INTEGER PRIMARY KEY AUTOINCREMENT,
       filename TEXT UNIQUE,
@@ -20,9 +20,9 @@ async function migrate(db) {
     )`, resolve);
   });
   // Migration: ensure 'hash' column exists
-  await new Promise((resolve, reject) => {
+  await new Promise((resolve, _reject) => {
     db.all("PRAGMA table_info(photos)", (err, columns) => {
-      if (err) return reject(err);
+      if (err) return _reject(err);
       const hasHash = columns.some(col => col.name === 'hash');
       if (!hasHash) {
         db.run('ALTER TABLE photos ADD COLUMN hash TEXT', () => {
@@ -38,9 +38,9 @@ async function migrate(db) {
 }
 
 async function migratePhotoTable(db) {
-  await new Promise((resolve, reject) => {
+  await new Promise((resolve, _reject) => {
     db.all("PRAGMA table_info(photos)", (err, columns) => {
-      if (err) return reject(err);
+      if (err) return _reject(err);
       const colNames = columns.map(col => col.name);
       const addCol = (name, type) =>
         new Promise(res => db.run(`ALTER TABLE photos ADD COLUMN ${name} ${type}`, () => res()));
@@ -52,7 +52,7 @@ async function migratePhotoTable(db) {
       if (!colNames.includes('edited_filename')) tasks.push(addCol('edited_filename', 'TEXT'));
       if (!colNames.includes('ai_retry_count')) tasks.push(addCol('ai_retry_count', 'INTEGER DEFAULT 0'));
       if (!colNames.includes('file_size')) tasks.push(addCol('file_size', 'INTEGER'));
-      Promise.all(tasks).then(resolve).catch(reject);
+      Promise.all(tasks).then(resolve).catch(_reject);
     });
   });
 }

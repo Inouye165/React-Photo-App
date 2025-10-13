@@ -2,11 +2,15 @@ import js from '@eslint/js'
 import globals from 'globals'
 import reactHooks from 'eslint-plugin-react-hooks'
 import reactRefresh from 'eslint-plugin-react-refresh'
-import { defineConfig, globalIgnores } from 'eslint/config'
+import { defineConfig } from 'eslint/config'
 
 export default defineConfig([
-  globalIgnores(['dist']),
   {
+    // Ignores for the entire project
+    ignores: ['dist', 'node_modules', 'server_head_backup.js', 'server/server_head_backup.js'],
+  },
+  {
+    // Configuration for frontend files
     files: ['**/*.{js,jsx}'],
     extends: [
       js.configs.recommended,
@@ -14,16 +18,59 @@ export default defineConfig([
       reactRefresh.configs.vite,
     ],
     languageOptions: {
-      ecmaVersion: 2020,
-      globals: globals.browser,
+      // Use 'latest' for a modern syntax across the board
+      ecmaVersion: 'latest',
+      // Assume files are ES modules for frontend
+      sourceType: 'module', 
+      globals: {
+        ...globals.browser,
+      },
       parserOptions: {
-        ecmaVersion: 'latest',
         ecmaFeatures: { jsx: true },
-        sourceType: 'module',
       },
     },
     rules: {
-      'no-unused-vars': ['error', { varsIgnorePattern: '^[A-Z_]' }],
+      // Ignore variables starting with an underscore
+      'no-unused-vars': ['error', { argsIgnorePattern: '^_', varsIgnorePattern: '^_' }],
+    },
+  },
+  {
+    // Configuration for backend files
+    files: ['server/**/*.js', 'scripts/**/*.js'],
+    ignores: ['server/server_head_backup.js', 'server/tests/**/*.js'],
+    languageOptions: {
+      ecmaVersion: 'latest',
+      // Assume files are scripts (CommonJS) for Node.js backend
+      sourceType: 'script',
+      globals: {
+        ...globals.node,
+      },
+    },
+    rules: {
+      'no-undef': 'error',
+      'no-unused-vars': ['error', { argsIgnorePattern: '^_', varsIgnorePattern: '^_' }],
+      'no-console': 'off',
+      'no-empty': 'off',
+      'no-useless-catch': 'off',
+    },
+  },
+  {
+    // Configuration for test files
+    files: ['**/*.test.js', '**/*.spec.js'],
+    languageOptions: {
+      ecmaVersion: 'latest',
+      sourceType: 'script',
+      // Use both node and jest globals
+      globals: {
+        ...globals.node,
+        ...globals.jest,
+      },
+    },
+    rules: {
+      'no-undef': 'error',
+      'no-unused-vars': ['error', { argsIgnorePattern: '^_' }],
+      'no-console': 'off',
+      'no-redeclare': 'off',
     },
   },
 ])

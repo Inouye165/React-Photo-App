@@ -33,16 +33,16 @@ module.exports = function createPrivilegeRouter(paths) {
             }
 
             const privileges = { read: false, write: false, execute: false };
-            try { fs.accessSync(absPath, fs.constants.R_OK); privileges.read = true; } catch (e) {}
-            try { fs.accessSync(absPath, fs.constants.W_OK); privileges.write = true; } catch (e) {}
-            try { fs.accessSync(absPath, fs.constants.X_OK); privileges.execute = true; } catch (e) {}
+            try { fs.accessSync(absPath, fs.constants.R_OK); privileges.read = true; } catch { /* ignore */ }
+            try { fs.accessSync(absPath, fs.constants.W_OK); privileges.write = true; } catch { /* ignore */ }
+            try { fs.accessSync(absPath, fs.constants.X_OK); privileges.execute = true; } catch { /* ignore */ }
 
             const privArr = [];
             if (privileges.read) privArr.push('R');
             if (privileges.write) privArr.push('W');
             if (privileges.execute) privArr.push('X');
             results[filename] = privArr.length > 0 ? privArr.join('') : '?';
-          } catch (err) {
+          } catch {
             results[filename] = 'Err';
           }
         }
@@ -68,12 +68,12 @@ module.exports = function createPrivilegeRouter(paths) {
 
       const privileges = { read: false, write: false, execute: false };
       const log = [];
-      try { fs.accessSync(absPath, fs.constants.R_OK); privileges.read = true; log.push('read: OK'); } catch (e) { log.push('read: FAIL'); }
-      try { fs.accessSync(absPath, fs.constants.W_OK); privileges.write = true; log.push('write: OK'); } catch (e) { log.push('write: FAIL'); }
-      try { fs.accessSync(absPath, fs.constants.X_OK); privileges.execute = true; log.push('execute: OK'); } catch (e) { log.push('execute: FAIL'); }
+      try { fs.accessSync(absPath, fs.constants.R_OK); privileges.read = true; log.push('read: OK'); } catch { log.push('read: FAIL'); }
+      try { fs.accessSync(absPath, fs.constants.W_OK); privileges.write = true; log.push('write: OK'); } catch { log.push('write: FAIL'); }
+      try { fs.accessSync(absPath, fs.constants.X_OK); privileges.execute = true; log.push('execute: OK'); } catch { log.push('execute: FAIL'); }
 
       let stat = null;
-      try { stat = fs.statSync(absPath); } catch (e) {}
+      try { stat = fs.statSync(absPath); } catch {}
 
       return res.json({ success: true, absPath, privileges, log, stat: stat ? { isFile: stat.isFile(), isDirectory: stat.isDirectory(), mode: stat.mode, size: stat.size, mtime: stat.mtime } : null });
     } catch (err) {

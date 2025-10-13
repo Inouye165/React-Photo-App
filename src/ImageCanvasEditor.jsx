@@ -70,7 +70,7 @@ export default function ImageCanvasEditor({ imageUrl, caption, textStyle, onSave
     
     img.onerror = () => {
       console.error('Failed to load image:', imageUrl);
-      setImageError('Failed to load image. HEIC format may not be supported for editing.');
+      setImageError('Failed to load image for editing. It may be an unsupported format or conversion failed.');
       setImage(null);
     };
   }, [imageUrl, textStyle]);

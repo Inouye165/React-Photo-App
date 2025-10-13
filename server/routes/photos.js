@@ -9,7 +9,6 @@ const { copyExifMetadata } = require('../media/exif');
 const { exec } = require('child_process');
 const { promisify } = require('util');
 const execPromise = promisify(exec);
-const crypto = require('crypto');
 
 module.exports = function createPhotosRouter({ db }, paths) {
   const { WORKING_DIR, INPROGRESS_DIR, FINISHED_DIR, THUMB_DIR } = paths;
@@ -75,7 +74,7 @@ module.exports = function createPhotosRouter({ db }, paths) {
       if (missingIds.length > 0) {
         const placeholders = missingIds.map(() => '?').join(', ');
         const deleteSql = `DELETE FROM photos WHERE id IN (${placeholders})`;
-        const result = await dbRun(deleteSql, missingIds);
+        await dbRun(deleteSql, missingIds);
         console.log(`Deleted ${missingIds.length} missing photos from DB`);
       }
 
@@ -142,8 +141,8 @@ module.exports = function createPhotosRouter({ db }, paths) {
           return res.status(500).send('Thumbnail generation failed');
         }
       });
-    } catch (e) {
-      console.error('Thumbnail route error', e);
+    } catch (_e) {
+      console.error('Thumbnail route error', _e);
       res.status(500).send('Server error');
     }
   });
@@ -239,9 +238,7 @@ module.exports = function createPhotosRouter({ db }, paths) {
       if (newTextStyleJson) {
         try {
           parsedTextStyle = JSON.parse(newTextStyleJson);
-        } catch (parseErr) {
-          console.warn('Failed to parse text_style after update for photo', id, parseErr.message);
-        }
+        } catch { console.warn('Failed to parse text_style after update for photo', id); }
       }
 
       res.json({
@@ -261,8 +258,8 @@ module.exports = function createPhotosRouter({ db }, paths) {
 
   // --- Revert edited image endpoint ---
   router.patch('/photos/:id/revert', express.json(), async (req, res) => {
+    const { id } = req.params;
     try {
-      const { id } = req.params;
       const row = await dbGet('SELECT * FROM photos WHERE id = ?', [id]);
       if (!row) {
         return res.status(404).json({ success: false, error: 'Photo not found' });
@@ -347,7 +344,7 @@ module.exports = function createPhotosRouter({ db }, paths) {
     if (!dataUrlMatch) return res.status(400).json({ success: false, error: 'Unsupported data URL format' });
     const base64Data = dataUrlMatch[2];
     let imageBuffer;
-    try { imageBuffer = Buffer.from(base64Data, 'base64'); } catch (e) { return res.status(400).json({ success: false, error: 'Unable to decode image data' }); }
+    try { imageBuffer = Buffer.from(base64Data, 'base64'); } catch { return res.status(400).json({ success: false, error: 'Unable to decode image data' }); }
     if (!imageBuffer || imageBuffer.length === 0) return res.status(400).json({ success: false, error: 'Image data is empty' });
 
     try {
@@ -383,11 +380,11 @@ module.exports = function createPhotosRouter({ db }, paths) {
       try { fs.chmodSync(destPath, 0o666); } catch (permErr) { console.warn('Failed to adjust permissions for', destPath, permErr.message); }
 
       // Copy EXIF from source and remove orientation tag
-      try { await copyExifMetadata(sourcePath, destPath); } catch (e) { console.warn('Failed to copy EXIF:', e && e.message); }
+      try { await copyExifMetadata(sourcePath, destPath); } catch (_e) { console.warn('Failed to copy EXIF:', _e && _e.message); }
       try {
         const exiftoolBin = path.join(__dirname, '..', 'node_modules', 'exiftool-vendored.exe', 'bin', 'exiftool.exe');
         await execPromise(`"${exiftoolBin}" -Orientation= -overwrite_original "${destPath}"`, { windowsHide: true, timeout: 10000 });
-      } catch (e) { console.warn('Failed to remove EXIF orientation:', e && e.message); }
+      } catch (_e) { console.warn('Failed to remove EXIF orientation:', _e && _e.message); }
 
       let metadata = {};
       try { metadata = await exifr.parse(destPath, { tiff: true, ifd0: true, exif: true, gps: true, xmp: true, icc: true, iptc: true }) || {}; } catch (metaErr) { console.warn('Failed to parse metadata for', destPath, metaErr && metaErr.message); }
@@ -409,7 +406,7 @@ module.exports = function createPhotosRouter({ db }, paths) {
 
       let parsedTextStyle = null;
       if (newTextStyleJson) {
-        try { parsedTextStyle = JSON.parse(newTextStyleJson); } catch (e) { console.warn('Failed to parse text_style after save for photo', photoId); }
+        try { parsedTextStyle = JSON.parse(newTextStyleJson); } catch { console.warn('Failed to parse text_style after save for photo', photoId); }
       }
 
       res.json({
