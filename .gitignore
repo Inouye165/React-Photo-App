@@ -59,3 +59,4 @@ public/*.map
 
 # Ignore SQLite database
 server/photos.db
+server/working_dir_path.txt
