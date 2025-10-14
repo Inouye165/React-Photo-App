@@ -52,6 +52,7 @@ async function migratePhotoTable(db) {
       if (!colNames.includes('edited_filename')) tasks.push(addCol('edited_filename', 'TEXT'));
       if (!colNames.includes('ai_retry_count')) tasks.push(addCol('ai_retry_count', 'INTEGER DEFAULT 0'));
       if (!colNames.includes('file_size')) tasks.push(addCol('file_size', 'INTEGER'));
+      if (!colNames.includes('poi_analysis')) tasks.push(addCol('poi_analysis', 'TEXT'));
       Promise.all(tasks).then(resolve).catch(_reject);
     });
   });

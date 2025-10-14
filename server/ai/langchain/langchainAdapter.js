@@ -8,6 +8,7 @@ try {
   const { exifTool } = require('./exifTool');
   const { geolocateTool } = require('./geolocateTool');
   const { locationDetectiveTool } = require('./locationDetective');
+  const { photoPOIIdentifierTool } = require('./photoPOIIdentifier');
   const { buildPrompt } = require('./promptTemplate');
   const { convertHeicToJpegBuffer } = require('../../media/image');
 
@@ -45,7 +46,20 @@ try {
 
     // GPS / geolocation
     if (!ctx.gps && ctx.metadata && ctx.metadata.GPSLatitude && ctx.metadata.GPSLongitude) {
-      ctx.gps = `${ctx.metadata.GPSLatitude},${ctx.metadata.GPSLongitude}`;
+      console.log('GPS conversion: Raw GPSLatitude:', ctx.metadata.GPSLatitude, 'GPSLongitude:', ctx.metadata.GPSLongitude);
+      // Convert DMS arrays to decimal degrees
+      const latDMS = Array.isArray(ctx.metadata.GPSLatitude) ? ctx.metadata.GPSLatitude : [ctx.metadata.GPSLatitude];
+      const lonDMS = Array.isArray(ctx.metadata.GPSLongitude) ? ctx.metadata.GPSLongitude : [ctx.metadata.GPSLongitude];
+
+      const latDecimal = latDMS[0] + (latDMS[1] || 0) / 60 + (latDMS[2] || 0) / 3600;
+      const lonDecimal = lonDMS[0] + (lonDMS[1] || 0) / 60 + (lonDMS[2] || 0) / 3600;
+
+      // Apply hemisphere signs
+      const latSign = ctx.metadata.GPSLatitudeRef === 'S' ? -1 : 1;
+      const lonSign = ctx.metadata.GPSLongitudeRef === 'W' ? -1 : 1;
+
+      ctx.gps = `${latDecimal * latSign},${lonDecimal * lonSign}`;
+      console.log('GPS conversion: Converted to decimal degrees:', ctx.gps);
     }
     if (ctx.gps) {
       try {
@@ -74,6 +88,43 @@ try {
       ctx.locationAnalysis = null;
     }
 
+    // Advanced POI identification
+    try {
+      // Prepare image data for POI identifier
+      let imageData = '';
+      try {
+        const ext = path.extname(filePath || '').toLowerCase();
+        let imageBuffer;
+        if (ext === '.heic' || ext === '.heif') {
+          imageBuffer = await convertHeicToJpegBuffer(filePath, 90);
+        } else if (filePath && fs.existsSync(filePath)) {
+          imageBuffer = fs.readFileSync(filePath);
+        }
+        if (imageBuffer) imageData = imageBuffer.toString('base64');
+      } catch {
+        imageData = '';
+      }
+
+      if (imageData && ctx.gps) {
+        const [latitude, longitude] = ctx.gps.split(',').map(coord => coord.trim());
+        console.log('POI identification: GPS coordinates:', ctx.gps, 'parsed as lat:', latitude, 'lng:', longitude);
+        const poiResult = await photoPOIIdentifierTool.invoke({
+          imageData,
+          latitude,
+          longitude,
+          timestamp: ctx.dateTimeInfo
+        });
+        ctx.poiAnalysis = JSON.parse(poiResult);
+        console.log('POI identification successful');
+        console.log('POI analysis result:', JSON.stringify(ctx.poiAnalysis, null, 2));
+      } else {
+        console.log('POI identification skipped: missing imageData or GPS');
+      }
+    } catch (error) {
+      console.error('POI identification failed:', error.message || error);
+      ctx.poiAnalysis = null;
+    }
+
     // Build prompt
     const promptText = buildPrompt({
       dateTimeInfo: ctx.dateTimeInfo || '',
@@ -81,7 +132,8 @@ try {
       device: ctx.device,
       gps: ctx.gps,
       geoContext: ctx.geoContext,
-      locationAnalysis: ctx.locationAnalysis
+      locationAnalysis: ctx.locationAnalysis,
+      poiAnalysis: ctx.poiAnalysis
     });
 
     // Prepare image
@@ -109,6 +161,8 @@ try {
       modelName: model,
       maxTokens: max_tokens,
       temperature,
+      timeout: 30000, // 30 second timeout
+      maxRetries: 2
     });
 
     const message = new HumanMessage({

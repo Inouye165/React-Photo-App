@@ -1,5 +1,5 @@
 // Simple prompt builder for photo analysis. Keeps prompt content centralized so tests and chains can reuse it.
-function buildPrompt({ dateTimeInfo = '', metadata = {}, device = '', gps = '', geoContext = null, locationAnalysis = null }) {
+function buildPrompt({ dateTimeInfo = '', metadata = {}, device = '', gps = '', geoContext = null, locationAnalysis = null, poiAnalysis = null }) {
   let prompt = `You are an expert photo analyst and location detective. Given the image and metadata, generate the following in JSON (keys: caption, description, keywords, places, animals):
 
 CRITICAL LOCATION DETECTION: You MUST identify and prominently feature the EXACT location in the description. Use GPS coordinates, time of day, nearby landmarks, and visual clues to pinpoint specific parks, cities, restaurants, or POIs. If in Yellowstone, identify specific features like geysers, lakes, or trails.
@@ -20,6 +20,18 @@ LOCATION ANALYSIS:`;
     if (locationAnalysis.timeContext) {
       prompt += ` Time Context: ${locationAnalysis.timeContext.timeOfDay} (${locationAnalysis.timeContext.hour}:${String(locationAnalysis.timeContext.minute).padStart(2, '0')}).`;
     }
+  }
+
+  if (poiAnalysis) {
+    prompt += ` POI Analysis: Scene type is ${poiAnalysis.scene_type || 'unknown'}.`;
+    if (poiAnalysis.best_match) {
+      prompt += ` Best match POI: ${poiAnalysis.best_match.name} (confidence: ${poiAnalysis.best_match.confidence}).`;
+    }
+    if (poiAnalysis.poi_list && poiAnalysis.poi_list.length > 0) {
+      const topPOIs = poiAnalysis.poi_list.slice(0, 3).map(poi => `${poi.name} (${poi.distance_miles}mi, ${poi.confidence})`).join(', ');
+      prompt += ` Top POIs: ${topPOIs}.`;
+    }
+    prompt += ` Search radius used: ${poiAnalysis.search_radius_miles} miles.`;
   }
 
   prompt += `\n\nMetadata:`;

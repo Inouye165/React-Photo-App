@@ -35,6 +35,8 @@ describe('PhotoGallery Component', () => {
     photos: mockPhotos,
     onPhotoClick: vi.fn(),
     handleMoveToInprogress: vi.fn(),
+    handleMoveToWorking: vi.fn(),
+    handleDeletePhoto: vi.fn(),
     handleEditPhoto: vi.fn(),
     privilegesMap: { 1: 'read,write', 2: 'read' },
     formatFileSize: vi.fn((size) => `${(size / 1024).toFixed(1)} KB`),
@@ -84,6 +86,8 @@ describe('PhotoGallery Component', () => {
 
     expect(screen.getByText('Move to Inprogress')).toBeInTheDocument()
     expect(screen.getByText('Edit')).toBeInTheDocument()
+    expect(screen.getByText('Move to Staged')).toBeInTheDocument()
+    expect(screen.getByText('Delete')).toBeInTheDocument()
   })
 
   it('calls handleMoveToInprogress when button clicked', async () => {
@@ -104,6 +108,32 @@ describe('PhotoGallery Component', () => {
     await user.click(editButton)
 
     expect(mockProps.handleEditPhoto).toHaveBeenCalledWith(mockPhotos[1])
+  })
+
+  it('calls handleMoveToWorking when move to staged button clicked', async () => {
+    const user = userEvent.setup()
+    render(<PhotoGallery {...mockProps} />)
+
+    const moveToStagedButton = screen.getByText('Move to Staged')
+    await user.click(moveToStagedButton)
+
+    expect(mockProps.handleMoveToWorking).toHaveBeenCalledWith(2)
+  })
+
+  it('calls handleDeletePhoto when delete button clicked', async () => {
+    const user = userEvent.setup()
+    // Mock window.confirm
+    const confirmSpy = vi.spyOn(window, 'confirm').mockReturnValue(true)
+    
+    render(<PhotoGallery {...mockProps} />)
+
+    const deleteButton = screen.getByText('Delete')
+    await user.click(deleteButton)
+
+    expect(confirmSpy).toHaveBeenCalledWith('Are you sure you want to delete this photo? This action cannot be undone.')
+    expect(mockProps.handleDeletePhoto).toHaveBeenCalledWith(2)
+
+    confirmSpy.mockRestore()
   })
 
   it('displays metadata fields when available', () => {

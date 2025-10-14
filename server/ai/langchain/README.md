@@ -18,6 +18,7 @@ The pipeline implements multiple AI processing methods with increasing sophistic
 - **`exifTool.js`** - Extracts EXIF metadata using the `exifr` library
 - **`geolocateTool.js`** - Performs reverse geocoding via Nominatim and finds nearby POIs via Overpass API
 - **`locationDetective.js`** - Expert location identification using GPS proximity (within 500ft), time context, and photo content analysis
+- **`photoPOIIdentifier.js`** - Advanced LangChain node for comprehensive photo POI identification using vision AI and GPS proximity
 - **`promptTemplate.js`** - Centralized prompt building with standardized GPS formatting and location intelligence
 
 #### Adapters (`*Adapter.js` files)
@@ -33,37 +34,83 @@ The pipeline implements multiple AI processing methods with increasing sophistic
 - **POI Database**: Curated database of Yellowstone National Park locations with precise coordinates
 - **Distance Calculation**: Haversine formula for accurate distance measurements
 
+### Advanced Photo POI Identification
+- **Vision-Powered Analysis**: GPT-4V integration for detailed scene understanding
+- **Scene Classification**: Automatic categorization (restaurant, natural landmark, store, transportation, recreation)
+- **Contextual POI Search**: Dynamic search radii based on scene type (0.25 miles for restaurants, 1.0 miles for natural landmarks)
+- **Multi-Factor Ranking**: Combines distance, category match, visual features, and keyword relevance
+- **Confidence Scoring**: High/medium/low confidence levels with detailed relevance explanations
+
 ### Robust Error Handling
 - **Fallback Processing**: Automatic fallback between processing methods
 - **Rate Limiting**: Built-in delays and retry logic for API calls
 - **Validation**: Comprehensive input/output validation and error recovery
 
 ### Standardized Output
-- **GPS Formatting**: Consistent "GPS:{lat},{lng}" format across all methods
+- **GPS Formatting**: Consistent "GPS:{latitude},{longitude}" format across all methods
 - **Structured Metadata**: JSON-structured AI responses with confidence scores
 - **Location Context**: Time-of-day analysis and nearby POI identification
 
-## Usage
+## Photo POI Identifier Node
 
-The pipeline is integrated into the main photo processing service (`../service.js`) and supports three processing modes:
+The `photoPOIIdentifier.js` implements a comprehensive LangChain node for identifying Points of Interest from photos and GPS coordinates.
 
+### Features
+- **Vision AI Analysis**: Uses GPT-4V to analyze photo content and classify scenes
+- **Scene Classification**: Categorizes photos into restaurant, natural landmark, store, transportation, recreation, or other
+- **Dynamic POI Search**: Searches for relevant POIs based on scene type with appropriate search radii
+- **Intelligent Ranking**: Multi-factor scoring combining distance, category match, visual features, and keyword relevance
+- **Structured Output**: Returns detailed JSON with scene analysis, POI rankings, and confidence scores
+
+### Usage
 ```javascript
-// Direct OpenAI processing
-const result1 = await processWithOpenAI(imagePath, metadata);
+const { photoPOIIdentifierTool } = require('./photoPOIIdentifier.js');
 
-// Simple chain processing
-const result2 = await processWithSimpleChain(imagePath, metadata);
+// In LangChain pipeline
+const result = await photoPOIIdentifierTool.invoke({
+  imageData: base64ImageData,
+  latitude: "44.4605",
+  longitude: "-110.8281",
+  timestamp: "2024-01-15T10:30:00Z"
+});
+```
 
-// Full LangChain agent processing
-const result3 = await processWithLangChain(imagePath, metadata);
+### Output Format
+```json
+{
+  "scene_type": "natural_landmark",
+  "scene_description": "outdoor scene showing geyser, steam, thermal, eruption with erupting geyser, hot springs where watching geyser",
+  "search_radius_miles": 1.0,
+  "poi_list": [
+    {
+      "name": "Old Faithful Geyser",
+      "type": "geyser",
+      "distance_miles": 0,
+      "confidence": "high",
+      "coordinates": {"lat": 44.4605, "lng": -110.8281},
+      "relevance_reason": "Very close proximity, Category matches scene type, Visual features match photo content, Has water features"
+    }
+  ],
+  "best_match": {
+    "name": "Old Faithful Geyser",
+    "confidence": "high"
+  },
+  "analysis_confidence": "high"
+}
 ```
 
 ## Configuration
 
+**LangChain is now the default processing method** for advanced AI features including POI identification, location analysis, and multi-step reasoning. All photos will automatically use the full LangChain pipeline unless explicitly disabled.
+
 All AI processing is configured via environment variables:
 - `OPENAI_API_KEY` - Required for all processing methods
-- `AI_PROCESSING_METHOD` - Default method (openai|simplechain|langchain)
+- `USE_LANGCHAIN=false` - Disable LangChain and use basic OpenAI method instead
+- `USE_SIMPLE_CHAIN=true` - Use simple chain processing (overrides LangChain)
+- `AI_PROCESSING_METHOD` - Alternative method selection (openai|simplechain|langchain)
 - `AI_FALLBACK_ENABLED` - Enable automatic fallback on failures
+
+**Default Behavior**: LangChain processing with POI identification, location detective, and enhanced analysis.
 
 ## Development Notes
 

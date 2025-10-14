@@ -279,7 +279,53 @@ module.exports = function createPhotosRouter({ db }, paths) {
     }
   });
 
-  // --- State transition endpoint ---
+  // --- Delete photo endpoint ---
+  router.delete('/photos/:id', (req, res) => {
+    const { id } = req.params;
+    db.get('SELECT * FROM photos WHERE id = ?', [id], (err, row) => {
+      if (err || !row) {
+        return res.status(404).json({ success: false, error: 'Photo not found' });
+      }
+
+      // Helper function to get directory based on state
+      const getDir = (state) => {
+        switch(state) {
+          case 'working': return WORKING_DIR;
+          case 'inprogress': return INPROGRESS_DIR;
+          case 'finished': return FINISHED_DIR;
+          default: return WORKING_DIR;
+        }
+      };
+
+      const dir = getDir(row.state);
+      const filePath = path.join(dir, row.filename);
+
+      // Delete the file if it exists
+      try {
+        if (fs.existsSync(filePath)) {
+          fs.unlinkSync(filePath);
+        }
+
+        // Also delete any edited version
+        if (row.edited_filename) {
+          const editedPath = path.join(INPROGRESS_DIR, row.edited_filename);
+          if (fs.existsSync(editedPath)) {
+            fs.unlinkSync(editedPath);
+          }
+        }
+
+        // Delete from database
+        db.run('DELETE FROM photos WHERE id = ?', [id], function(deleteErr) {
+          if (deleteErr) {
+            return res.status(500).json({ success: false, error: deleteErr.message });
+          }
+          res.json({ success: true, message: 'Photo deleted successfully' });
+        });
+      } catch (err) {
+        res.status(500).json({ success: false, error: err.message });
+      }
+    });
+  });
   router.patch('/photos/:id/state', express.json(), (req, res) => {
     const { id } = req.params;
     const { state } = req.body;

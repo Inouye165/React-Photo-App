@@ -1,11 +1,17 @@
 const path = require('path');
 const fs = require('fs');
 require('dotenv').config({ path: path.join(__dirname, '..', '.env') });
-// LangChain-friendly helper: local EXIF extractor tool
 const { extractExif } = require('./langchain/exifTool');
 const { geolocate } = require('./langchain/geolocateTool');
+const { locationDetectiveTool } = require('./langchain/locationDetective');
+const { photoPOIIdentifierTool } = require('./langchain/photoPOIIdentifier');
 const { buildPrompt, parseOutputToJSON } = require('./langchain/promptTemplate');
 const { convertHeicToJpegBuffer } = require('../media/image');
+
+// Helper function to convert DMS (degrees, minutes, seconds) to decimal degrees
+function dmsToDecimal(degrees, minutes = 0, seconds = 0) {
+  return degrees + (minutes / 60) + (seconds / 3600);
+}
 
 // Helper: Generate caption, description, keywords for a photo using OpenAI Vision
 async function processPhotoAI({ filePath, metadata, gps, device }) {
@@ -49,7 +55,18 @@ async function processPhotoAI({ filePath, metadata, gps, device }) {
     if (!gps) {
       try {
         if (metadata && metadata.GPSLatitude && metadata.GPSLongitude) {
-          gps = `${metadata.GPSLatitude},${metadata.GPSLongitude}`;
+          // Convert DMS arrays to decimal degrees
+          const latDMS = Array.isArray(metadata.GPSLatitude) ? metadata.GPSLatitude : [metadata.GPSLatitude];
+          const lonDMS = Array.isArray(metadata.GPSLongitude) ? metadata.GPSLongitude : [metadata.GPSLongitude];
+
+          const latDecimal = dmsToDecimal(latDMS[0], latDMS[1] || 0, latDMS[2] || 0);
+          const lonDecimal = dmsToDecimal(lonDMS[0], lonDMS[1] || 0, lonDMS[2] || 0);
+
+          // Apply hemisphere signs
+          const latSign = metadata.GPSLatitudeRef === 'S' ? -1 : 1;
+          const lonSign = metadata.GPSLongitudeRef === 'W' ? -1 : 1;
+
+          gps = `${latDecimal * latSign},${lonDecimal * lonSign}`;
         }
       } catch {
         // ignore
@@ -61,13 +78,35 @@ async function processPhotoAI({ filePath, metadata, gps, device }) {
     if (gps) {
       try {
         geoContext = await geolocate({ gpsString: gps, radiusFeet: 50, userAgent: process.env.NOMINATIM_USER_AGENT });
-      } catch {
+      } catch (error) {
+        console.error('Geolocation lookup failed:', error.message || error);
         geoContext = null;
       }
     }
 
-    // Build prompt via centralized template helper
-    const prompt = buildPrompt({ dateTimeInfo, metadata, device, gps, geoContext });
+    // Location detective analysis
+    let locationAnalysis = null;
+    if (gps) {
+      try {
+        const detectiveResult = await locationDetectiveTool.invoke({
+          gpsString: gps,
+          dateTimeInfo: dateTimeInfo,
+          description: '', // Will be filled by AI
+          keywords: '', // Will be filled by AI
+          geoContext: geoContext
+        });
+        locationAnalysis = JSON.parse(detectiveResult);
+      } catch (error) {
+        console.error('Location detective analysis failed:', error.message || error);
+        locationAnalysis = null;
+      }
+    }
+
+    // Initialize poiAnalysis for buildPrompt (will be null for LangChain path)
+    let poiAnalysis = null;
+
+    // Build prompt via centralized template helper (updated with POI analysis)
+    const prompt = buildPrompt({ dateTimeInfo, metadata, device, gps, geoContext, locationAnalysis, poiAnalysis });
 
   // Convert HEIC/HEIF to JPEG if needed
   let imageBuffer, imageMime;
@@ -79,6 +118,24 @@ async function processPhotoAI({ filePath, metadata, gps, device }) {
     imageBuffer = fs.readFileSync(filePath);
     imageMime = ext === '.png' ? 'image/png' : 'image/jpeg';
   }
+
+    // Advanced POI identification (moved after imageBuffer is created)
+    if (gps && imageBuffer) {
+      try {
+        const imageData = imageBuffer.toString('base64');
+        const [latitude, longitude] = gps.split(',').map(coord => coord.trim());
+        const poiResult = await photoPOIIdentifierTool.invoke({
+          imageData,
+          latitude,
+          longitude,
+          timestamp: dateTimeInfo
+        });
+        poiAnalysis = JSON.parse(poiResult);
+      } catch (error) {
+        console.error('POI identification failed:', error);
+        poiAnalysis = null;
+      }
+    }
   const imageBase64 = imageBuffer.toString('base64');
   const imageDataUri = `data:${imageMime};base64,${imageBase64}`;
 
@@ -97,17 +154,30 @@ async function processPhotoAI({ filePath, metadata, gps, device }) {
     // these extra args and uses the provided `messages` as-is.
     response = await runChain({ messages, model: 'gpt-4o', max_tokens: 1500, temperature: 0.25, filePath, metadata, gps, device });
   } catch (err) {
+    console.error('AI processing failed:', err.message || err);
     throw err;
   }
+
+  // Add our analysis context to the response
+  if (!response._ctx) response._ctx = {};
+  response._ctx.geoContext = geoContext;
+  response._ctx.locationAnalysis = locationAnalysis;
+  // Attach POI analysis to context (from direct path or LangChain path)
+  response._ctx.poiAnalysis = poiAnalysis;
   // Try to parse JSON from response using the centralized parser
   let result = { caption: '', description: '', keywords: '' };
   try {
     const content = response.choices[0].message.content;
     const parsed = parseOutputToJSON(content);
     if (parsed) result = parsed; else result.description = content;
-  } catch {
+  } catch (error) {
+    console.error('Failed to parse AI response:', error.message || error);
+    console.error('Raw response content:', response.choices[0].message.content);
     result.description = response.choices[0].message.content;
   }
+
+  console.log('AI processing result before POI attachment:', JSON.stringify(result, null, 2));
+  console.log('POI analysis from context:', JSON.stringify(response._ctx.poiAnalysis, null, 2));
     // Normalize fields and ensure keywords include GPS and device and any places/animals
     result.caption = (result.caption || '').trim();
     result.description = (result.description || '').trim();
@@ -156,6 +226,28 @@ async function processPhotoAI({ filePath, metadata, gps, device }) {
       }
     }
 
+    // Include POI analysis results in the response
+    if (response._ctx && response._ctx.poiAnalysis) {
+      result.poiAnalysis = response._ctx.poiAnalysis;
+
+      // Add POI information to keywords if available
+      const poiAnalysis = response._ctx.poiAnalysis;
+      if (poiAnalysis.best_match && poiAnalysis.best_match.name) {
+        const poiTag = `POI:${poiAnalysis.best_match.name}`;
+        if (!result.keywords.includes(poiTag)) {
+          result.keywords = result.keywords ? (result.keywords + `, ${poiTag}`) : poiTag;
+        }
+      }
+
+      // Add scene type to keywords
+      if (poiAnalysis.scene_type && poiAnalysis.scene_type !== 'other') {
+        const sceneTag = `Scene:${poiAnalysis.scene_type}`;
+        if (!result.keywords.includes(sceneTag)) {
+          result.keywords = result.keywords ? (result.keywords + `, ${sceneTag}`) : sceneTag;
+        }
+      }
+    }
+
   return result;
 }
 
@@ -163,25 +255,44 @@ async function processPhotoAI({ filePath, metadata, gps, device }) {
 async function updatePhotoAIMetadata(db, photoRow, filePath) {
   try {
     const meta = JSON.parse(photoRow.metadata || '{}');
-    const gps = meta.GPSLatitude && meta.GPSLongitude ? `${meta.GPSLatitude},${meta.GPSLongitude}` : '';
+    
+    // Convert DMS GPS coordinates to decimal degrees
+    let gps = '';
+    if (meta.GPSLatitude && meta.GPSLongitude) {
+      const latDMS = Array.isArray(meta.GPSLatitude) ? meta.GPSLatitude : [meta.GPSLatitude];
+      const lonDMS = Array.isArray(meta.GPSLongitude) ? meta.GPSLongitude : [meta.GPSLongitude];
+      
+      const latDecimal = latDMS[0] + (latDMS[1] || 0) / 60 + (latDMS[2] || 0) / 3600;
+      const lonDecimal = lonDMS[0] + (lonDMS[1] || 0) / 60 + (lonDMS[2] || 0) / 3600;
+      
+      // Apply hemisphere signs
+      const latSign = meta.GPSLatitudeRef === 'S' ? -1 : 1;
+      const lonSign = meta.GPSLongitudeRef === 'W' ? -1 : 1;
+      
+      gps = `${latDecimal * latSign},${lonDecimal * lonSign}`;
+    }
+    
     const device = meta.Make && meta.Model ? `${meta.Make} ${meta.Model}` : '';
     const retryCount = photoRow.ai_retry_count || 0;
     if (retryCount >= 5) {
-      db.run('UPDATE photos SET caption = ?, description = ?, keywords = ?, ai_retry_count = ? WHERE id = ?',
-        ['AI processing failed', 'AI processing failed', '', retryCount, photoRow.id]);
+      console.error(`AI processing failed permanently for ${photoRow.filename} after ${retryCount} retries`);
+      db.run('UPDATE photos SET caption = ?, description = ?, keywords = ?, ai_retry_count = ?, poi_analysis = ? WHERE id = ?',
+        ['AI processing failed', 'AI processing failed', '', retryCount, null, photoRow.id]);
       return null;
     }
     let ai;
     try {
       ai = await processPhotoAI({ filePath, metadata: meta, gps, device });
-    } catch {
+    } catch (error) {
+      console.error(`AI processing failed for ${photoRow.filename} (attempt ${retryCount + 1}):`, error.message || error);
       db.run('UPDATE photos SET ai_retry_count = ? WHERE id = ?', [retryCount + 1, photoRow.id]);
       return null;
     }
-    db.run('UPDATE photos SET caption = ?, description = ?, keywords = ?, ai_retry_count = ? WHERE id = ?',
-      [ai.caption, ai.description, ai.keywords, 0, photoRow.id]);
+    db.run('UPDATE photos SET caption = ?, description = ?, keywords = ?, ai_retry_count = ?, poi_analysis = ? WHERE id = ?',
+      [ai.caption, ai.description, ai.keywords, 0, JSON.stringify(ai.poiAnalysis || null), photoRow.id]);
     return ai;
-  } catch {
+  } catch (error) {
+    console.error(`Unexpected error in updatePhotoAIMetadata for ${photoRow.filename}:`, error.message || error);
     return null;
   }
 }

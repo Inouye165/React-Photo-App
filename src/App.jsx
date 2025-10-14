@@ -321,6 +321,38 @@ function App() {
     }
   };
 
+  // Handle move back to working (staged)
+  const handleMoveToWorking = async (id) => {
+    try {
+      await updatePhotoState(id, 'working');
+      // Remove the photo from the current list (since it's moved to working view)
+      setPhotos(prev => prev.filter(photo => photo.id !== id));
+    } catch (error) {
+      setToastMsg(`Error moving photo back to staged: ${error.message}`);
+    }
+  };
+
+  // Handle delete photo
+  const handleDeletePhoto = async (id) => {
+    if (!confirm('Are you sure you want to delete this photo? This action cannot be undone.')) {
+      return;
+    }
+    try {
+      const response = await fetch(`http://localhost:3001/photos/${id}`, {
+        method: 'DELETE'
+      });
+      if (!response.ok) {
+        const error = await response.json();
+        throw new Error(error.error || 'Failed to delete photo');
+      }
+      // Remove the photo from the current list
+      setPhotos(prev => prev.filter(photo => photo.id !== id));
+      setToastMsg('Photo deleted successfully');
+    } catch (error) {
+      setToastMsg(`Error deleting photo: ${error.message}`);
+    }
+  };
+
   // Handle edit photo
   const handleEditPhoto = (photo, openFullPage = false) => {
     // remember the element that opened the editor so we can restore focus later
@@ -935,12 +967,26 @@ function App() {
                             </button>
                           )}
                           {photo.state === 'inprogress' && (
-                            <button
-                              onClick={(e) => { e.stopPropagation(); handleEditPhoto(photo, false); }}
-                              className="bg-blue-500 hover:bg-blue-700 text-white px-2 py-1 rounded text-xs"
-                            >
-                              Edit
-                            </button>
+                            <>
+                              <button
+                                onClick={(e) => { e.stopPropagation(); handleEditPhoto(photo, false); }}
+                                className="bg-blue-500 hover:bg-blue-700 text-white px-2 py-1 rounded text-xs"
+                              >
+                                Edit
+                              </button>
+                              <button
+                                onClick={(e) => { e.stopPropagation(); handleMoveToWorking(photo.id); }}
+                                className="bg-yellow-500 hover:bg-yellow-700 text-white px-2 py-1 rounded text-xs"
+                              >
+                                Move to Staged
+                              </button>
+                              <button
+                                onClick={(e) => { e.stopPropagation(); handleDeletePhoto(photo.id); }}
+                                className="bg-red-500 hover:bg-red-700 text-white px-2 py-1 rounded text-xs"
+                              >
+                                Delete
+                              </button>
+                            </>
                           )}
                         </div>
                       </div>

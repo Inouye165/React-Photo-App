@@ -18,50 +18,35 @@ if (useSimple) {
   }
 }
 
-// Optional LangChain adapter. Enable with USE_LANGCHAIN=true in .env. This
-// attempts to call the tiny adapter wrapper; if that fails, the code will
-// gracefully fall back to the simpleChain or OpenAI client.
-let useLangChain = (process.env.USE_LANGCHAIN || 'false').toLowerCase() === 'true';
+// LangChain is now REQUIRED for processing - no fallbacks allowed
+// Set USE_LANGCHAIN=false to disable LangChain (will throw error)
+let useLangChain = (process.env.USE_LANGCHAIN !== 'false') && !useSimple;
 let runLangChain;
 if (useLangChain) {
   try {
     ({ runLangChain } = require('./langchainAdapter'));
   } catch (e) {
-    console.warn('Failed to load LangChain adapter, falling back', e && (e.message || e));
-    useLangChain = false;
+    console.error('CRITICAL: Failed to load LangChain adapter - LangChain is required for processing', e && (e.message || e));
+    throw new Error('LangChain adapter failed to load - cannot proceed without LangChain');
   }
 }
 
 async function runChain({ messages, model = 'gpt-4o', max_tokens = 1500, temperature = 0.25, // additional args are ignored by simple chain
   // allow passing filePath/metadata for simpleChain mode
   filePath, metadata, gps, device } = {}) {
-  // If LangChain adapter enabled, prefer it first
-  if (useLangChain) {
-    try {
-      const lcResp = await runLangChain({ messages, model, filePath, metadata, gps, device });
-      return lcResp;
-    } catch (lcErr) {
-      console.warn('LangChain adapter failed, falling back', lcErr && (lcErr.message || lcErr));
-      // fallthrough to other paths
-    }
+  // LangChain is REQUIRED - no fallbacks allowed
+  if (!useLangChain) {
+    throw new Error('LangChain is required for processing but is disabled. Set USE_LANGCHAIN=true or remove USE_LANGCHAIN=false from environment.');
   }
 
-  if (useSimple) {
-    // runSimpleChain returns { messages, ctx }
-    const out = await runSimpleChain({ filePath, metadata, gps, device });
-    // Now call OpenAI with the generated messages so the response is a real
-    // completion. Attach the chain context as `_ctx` for downstream use.
-    if (!process.env.OPENAI_API_KEY) throw new Error('OPENAI_API_KEY not set');
-    const response = await openai.chat.completions.create({ model, messages: out.messages, max_tokens, temperature });
-    // attach ctx for debugging/inspection
-    response._ctx = { ...out.ctx, method: 'simplechain' };
-    return response;
+  console.log('ChainAdapter: Using REQUIRED LangChain path');
+  try {
+    const lcResp = await runLangChain({ messages, model, filePath, metadata, gps, device });
+    return lcResp;
+  } catch (lcErr) {
+    console.error('CRITICAL: LangChain processing failed - no fallbacks available', lcErr && (lcErr.message || lcErr));
+    throw new Error(`LangChain processing failed: ${lcErr.message || lcErr}`);
   }
-
-  if (!process.env.OPENAI_API_KEY) throw new Error('OPENAI_API_KEY not set');
-  const response = await openai.chat.completions.create({ model, messages, max_tokens, temperature });
-  response._ctx = { method: 'openai' };
-  return response;
 }
 
 module.exports = { runChain };
