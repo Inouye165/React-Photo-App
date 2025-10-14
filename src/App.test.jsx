@@ -24,6 +24,11 @@ vi.mock('exifr', () => ({
   parse: vi.fn(),
 }))
 
+// Mock ImageCanvasEditor to avoid react-konva issues
+vi.mock('./ImageCanvasEditor', () => ({
+  default: ({ onSave }) => React.createElement('div', { 'data-testid': 'image-canvas-editor' }, React.createElement('button', { onClick: () => onSave({ textStyle: {} }) }, 'Save'))
+}))
+
 import { getPhotos, checkPrivilege, uploadPhotoToServer } from './api.js'
 
 describe('App Component', () => {

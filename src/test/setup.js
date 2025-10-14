@@ -1,6 +1,14 @@
 import '@testing-library/jest-dom/vitest'
 import { vi, afterEach } from 'vitest'
 import { cleanup } from '@testing-library/react'
+import React from 'react'
+
+vi.mock('react-konva', () => ({
+  Stage: ({ children, ...props }) => React.createElement('div', { 'data-testid': 'konva-stage', ...props }, children),
+  Layer: ({ children, ...props }) => React.createElement('div', { 'data-testid': 'konva-layer', ...props }, children),
+  Image: ({ ...props }) => React.createElement('img', { 'data-testid': 'konva-image', ...props }),
+  Text: ({ text, ...props }) => React.createElement('div', { 'data-testid': 'konva-text', ...props }, text),
+}))
 
 // Mock window.showDirectoryPicker for File System Access API tests
 global.showDirectoryPicker = vi.fn()
