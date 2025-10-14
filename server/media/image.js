@@ -3,13 +3,13 @@ const fs = require('fs').promises;
 const fsSync = require('fs');
 const sharp = require('sharp');
 const exifr = require('exifr');
-const crypto = require('crypto');
+const nodeCrypto = require('crypto');
 
 const ALLOWED_IMAGE_EXTENSIONS = ['.jpg', '.jpeg', '.png', '.gif', '.heic', '.bmp', '.tiff', '.webp'];
 
 async function hashFile(filePath) {
   const buf = await fs.readFile(filePath);
-  return crypto.createHash('sha256').update(buf).digest('hex');
+  return nodeCrypto.createHash('sha256').update(buf).digest('hex');
 }
 
 // Concurrency limiter for HEIC->JPEG ImageMagick fallbacks
@@ -103,7 +103,7 @@ async function convertHeicToJpegBuffer(filePath, quality = 90) {
       }
 
       // Create secure temporary output path
-      const tempId = crypto.randomBytes(16).toString('hex');
+      const tempId = nodeCrypto.randomBytes(16).toString('hex');
       const tmpJpg = path.join(path.dirname(filePath), `temp_convert_${tempId}.jpg`);
 
       // Secure command construction with validated inputs

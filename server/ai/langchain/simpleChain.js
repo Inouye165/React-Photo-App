@@ -29,7 +29,7 @@ async function geolocateTool(ctx) {
   return ctx;
 }
 
-async function locationDetectiveTool(ctx) {
+async function locationDetectiveToolFn(ctx) {
   try {
     // Use the LangChain tool if available, otherwise fallback to basic analysis
     if (typeof locationDetectiveTool !== 'undefined' && locationDetectiveTool.invoke) {
@@ -89,7 +89,7 @@ async function runSimpleChain({ filePath, metadata = {}, gps = '', device = '' }
   // Run tools in order
   await exifTool(ctx);
   await geolocateTool(ctx);
-  await locationDetectiveTool(ctx);
+  await locationDetectiveToolFn(ctx);
   await promptTool(ctx);
   await imageEmbedTool(ctx);
 

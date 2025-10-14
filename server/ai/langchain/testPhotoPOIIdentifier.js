@@ -1,7 +1,5 @@
 // Test script for Photo POI Identifier
 const { PhotoPOIIdentifierNode } = require('./photoPOIIdentifier.js');
-const fs = require('fs');
-const path = require('path');
 
 async function testPhotoPOIIdentifier() {
   console.log('Testing Photo POI Identifier...\n');

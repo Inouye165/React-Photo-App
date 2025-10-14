@@ -406,10 +406,10 @@ class PhotoPOIIdentifierNode {
     return CONFIG.category_specific_radius[sceneType] || CONFIG.default_search_radius_miles;
   }
 
-  rankPOIs(pois, sceneAnalysis, userLocation) {
+  rankPOIs(pois, sceneAnalysis, _userLocation) {
     return pois.map(poi => {
-      const score = this.calculatePOIScore(poi, sceneAnalysis);
-      const confidence = this.calculateConfidence(score);
+      const _score = this.calculatePOIScore(poi, sceneAnalysis);
+      const confidence = this.calculateConfidence(_score);
 
       return {
         name: poi.name,
@@ -417,7 +417,7 @@ class PhotoPOIIdentifierNode {
         distance_miles: Math.round(poi.distance_miles * 100) / 100,
         confidence: confidence,
         coordinates: { lat: poi.lat, lng: poi.lng },
-        relevance_reason: this.generateRelevanceReason(poi, sceneAnalysis, score)
+        relevance_reason: this.generateRelevanceReason(poi, sceneAnalysis, _score)
       };
     }).sort((a, b) => {
       // Sort by confidence first, then by distance
@@ -462,7 +462,7 @@ class PhotoPOIIdentifierNode {
     return 'low';
   }
 
-  generateRelevanceReason(poi, sceneAnalysis, score) {
+  generateRelevanceReason(poi, sceneAnalysis, _score) {
     const reasons = [];
 
     if (poi.distance_miles < 0.1) reasons.push('Very close proximity');

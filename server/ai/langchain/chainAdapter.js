@@ -1,22 +1,11 @@
-const OpenAI = require('openai');
+const _OpenAI = require('openai');
 const path = require('path');
 require('dotenv').config({ path: path.join(__dirname, '..', '..', '.env') });
-const openai = new OpenAI({ apiKey: process.env.OPENAI_API_KEY });
 
 // Optional simple chain implemented locally to allow an incremental LangChain
 // migration without pulling in the LangChain SDK yet. Enable with
 // USE_SIMPLE_CHAIN=true in .env to exercise the scaffold.
 let useSimple = (process.env.USE_SIMPLE_CHAIN || 'false').toLowerCase() === 'true';
-let runSimpleChain;
-if (useSimple) {
-  try {
-    ({ runSimpleChain } = require('./simpleChain'));
-  } catch (e) {
-    // If the simple chain fails to load, fall back to native OpenAI path
-    console.warn('Failed to load simpleChain, falling back to OpenAI client', e && (e.message || e));
-    useSimple = false;
-  }
-}
 
 // LangChain is now REQUIRED for processing - no fallbacks allowed
 // Set USE_LANGCHAIN=false to disable LangChain (will throw error)
@@ -31,7 +20,7 @@ if (useLangChain) {
   }
 }
 
-async function runChain({ messages, model = 'gpt-4o', max_tokens = 1500, temperature = 0.25, // additional args are ignored by simple chain
+async function runChain({ messages, model = 'gpt-4o', _max_tokens = 1500, _temperature = 0.25, // additional args are ignored by simple chain
   // allow passing filePath/metadata for simpleChain mode
   filePath, metadata, gps, device } = {}) {
   // LangChain is REQUIRED - no fallbacks allowed
