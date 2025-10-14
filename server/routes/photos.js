@@ -9,6 +9,7 @@ const { copyExifMetadata } = require('../media/exif');
 const { exec } = require('child_process');
 const { promisify } = require('util');
 const execPromise = promisify(exec);
+const { exiftool } = require('exiftool-vendored');
 
 module.exports = function createPhotosRouter({ db }, paths) {
   const { WORKING_DIR, INPROGRESS_DIR, FINISHED_DIR, THUMB_DIR } = paths;
@@ -428,7 +429,7 @@ module.exports = function createPhotosRouter({ db }, paths) {
       // Copy EXIF from source and remove orientation tag
       try { await copyExifMetadata(sourcePath, destPath); } catch (_e) { console.warn('Failed to copy EXIF:', _e && _e.message); }
       try {
-        const exiftoolBin = path.join(__dirname, '..', 'node_modules', 'exiftool-vendored.exe', 'bin', 'exiftool.exe');
+        const exiftoolBin = exiftool;
         await execPromise(`"${exiftoolBin}" -Orientation= -overwrite_original "${destPath}"`, { windowsHide: true, timeout: 10000 });
       } catch (_e) { console.warn('Failed to remove EXIF orientation:', _e && _e.message); }
 
