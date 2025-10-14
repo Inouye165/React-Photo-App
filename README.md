@@ -1,12 +1,12 @@
 # React Photo Filtering App
 
-[![Tests](https://img.shields.io/badge/tests-63%20passing-brightgreen.svg)](https://github.com/Inouye165/React-Photo-App)
+[![Tests](https://img.shields.io/badge/tests-66%20passing-brightgreen.svg)](https://github.com/Inouye165/React-Photo-App)
 [![React](https://img.shields.io/badge/React-19-61dafb.svg)](https://reactjs.org/)
 [![Vite](https://img.shields.io/badge/Vite-5.0-646cff.svg)](https://vitejs.dev/)
 [![Testing](https://img.shields.io/badge/Testing-Vitest%20%2B%20Jest-6e9f18.svg)](https://vitest.dev/)
 [![License](https://img.shields.io/badge/license-MIT-blue.svg)](LICENSE)
 
-A full-screen React application for filtering, browsing, and uploading photos by date range, with a Node.js Express backend for file storage, deduplication, and AI-powered metadata extraction.
+A full-screen React application for filtering, browsing, and uploading photos by date range, with a Node.js Express backend for file storage, deduplication, and AI-powered metadata extraction. Features comprehensive testing with 66 tests and robust HEIC/HEIF support.
 
 **Author:** Ron Inouye
 
@@ -25,16 +25,23 @@ A full-screen React application for filtering, browsing, and uploading photos by
 ## 🆕 What's New (October 2025)
 
 ### Testing & Quality  
-- **Comprehensive Test Suite**: 63 tests covering both frontend and backend with 100% pass rate
+- **Comprehensive Test Suite**: 66 tests covering both frontend and backend with 100% pass rate
 - **Frontend Testing**: 54 tests using Vitest + React Testing Library for all React components
 - **Backend Testing**: 9 tests using Jest + Supertest for API endpoints and database operations
+- **E2E Testing**: Full end-to-end test for upload workflow
 - **User-Centered Testing**: Focus on real user interactions, accessibility, and error handling
 - **CI-Ready**: All tests pass consistently, ready for GitHub Actions integration
 - **Test Isolation**: Proper DOM cleanup and mock strategies for reliable, repeatable tests
 
+### Image Processing Improvements
+- **Optimized HEIC Logging**: Reduced noise in conversion logs - only logs errors when both Sharp and ImageMagick fail
+- **Smart Fallback**: Silent failover from Sharp to ImageMagick for HEIC files with unsupported codecs
+- **Clean Console Output**: Error messages only appear when action is needed
+
 ### UX Improvements
 - **Toolbar Messaging**: Upload success messages now appear in the toolbar for persistent feedback
 - **Better User Feedback**: Non-intrusive success notifications that persist until dismissed
+- **Fixed Edit Button**: Edit functionality properly wired with delete confirmation dialogs
 
 ### Developer Experience  
 - **Modern Testing Stack**: Vitest for frontend, Jest for backend with proper test isolation
@@ -53,9 +60,10 @@ A full-screen React application for filtering, browsing, and uploading photos by
 - **HEIC/HEIF support:** Both thumbnails and AI processing support HEIC/HEIF files, with ImageMagick fallback if sharp/libvips lacks support.
 - **Upload panel:** The photo upload panel now fills the viewport under the toolbar, with a compact file list and flush-edge layout. No large image previews; file list shows filename, date, size, and type.
 - **Interactive Canvas Editor:** Edit photos with an interactive canvas that allows you to position captions directly on images. Drag text to reposition, customize font size and color, and save your layout preferences. Text styling persists across editing sessions.
-- **Comprehensive Testing Suite:** Production-ready testing with Vitest and Jest. 63 tests total:
+- **Comprehensive Testing Suite:** Production-ready testing with Vitest and Jest. 66 tests total:
   - **Frontend**: 54 tests with Vitest + React Testing Library covering user interactions, state management, error handling, and accessibility
   - **Backend**: 9 tests with Jest + Supertest covering API endpoints, database operations, and file upload handling
+  - **E2E**: Full end-to-end test for complete upload workflow
   - **Test Isolation**: Proper DOM cleanup between tests and comprehensive mocking strategies
 
 ## Usage (2025)
@@ -226,11 +234,12 @@ npm test
 The project includes comprehensive testing across frontend and backend:
 
 #### Frontend Tests (54 tests with Vitest + React Testing Library)
-- **Component Testing**: All React components (App, PhotoGallery, PhotoUploadForm, Toolbar)
-- **User Interaction Testing**: Clicks, form inputs, navigation
+- **Component Testing**: All React components (App, PhotoGallery, PhotoUploadForm, Toolbar, EditPage)
+- **User Interaction Testing**: Clicks, form inputs, navigation, drag-and-drop
 - **State Management Testing**: Photo loading, filtering, uploads
 - **Error Handling Testing**: API failures, validation errors
 - **Accessibility Testing**: ARIA attributes, keyboard navigation
+- **E2E Testing**: Complete upload workflow from folder selection to backend storage
 - **Mock Integration**: External dependencies (APIs, file systems)
 
 #### Backend Tests (9 tests with Jest + Supertest)
@@ -239,7 +248,7 @@ The project includes comprehensive testing across frontend and backend:
 - **Integration Testing**: Complete request/response cycles
 - **Error Scenarios**: Permission errors, disk issues, invalid files
 
-**Total: 63 tests with 100% pass rate**
+**Total: 66 tests with 100% pass rate**
 
 ## Usage
 
@@ -268,8 +277,10 @@ The project includes comprehensive testing across frontend and backend:
 - For new HEIC files, no manual intervention is needed.
 
 ## Troubleshooting
-- If you see errors like 'bad seek' or 'compression format not built in' for HEIC files, make sure ImageMagick is installed and available in your system PATH.
-- If a file repeatedly fails AI processing, check the backend logs for details.
+- **HEIC/HEIF 'bad seek' errors**: These are expected when Sharp can't decode certain HEIC variants. The system automatically falls back to ImageMagick - no action needed.
+- **ImageMagick not found**: Make sure ImageMagick is installed and available in your system PATH for HEIC/HEIF fallback support.
+- **AI processing failures**: Check the backend logs. You can reset retry counts via `/debug/reset-ai-retry` and click 'Recheck Inprogress AI'.
+- **Test failures**: Run `npm test` to see detailed error messages. Ensure all dependencies are installed and environment is properly configured.
 
 ## Known Limitations
 
@@ -282,11 +293,12 @@ The project includes comprehensive testing across frontend and backend:
 
 ## Testing & Quality Assurance
 
-### Test Coverage (63 Tests Total)
+### Test Coverage (66 Tests Total)
 
 #### Frontend (54 tests - Vitest + React Testing Library)
 - **App.test.jsx** (14 tests): Main application component, photo loading, view switching, upload flow
-- **PhotoGallery.test.jsx** (11 tests): Gallery rendering, photo actions, metadata display
+- **App.e2e.test.jsx** (1 test): End-to-end upload workflow testing
+- **PhotoGallery.test.jsx** (13 tests): Gallery rendering, photo actions, metadata display, edit/delete functionality
 - **PhotoUploadForm.test.jsx** (20 tests): Upload modal, date filtering, file selection
 - **Toolbar.test.jsx** (12 tests): Navigation, toolbar messages, button interactions
 - **utils.test.js** (6 tests): Utility functions and helper methods
@@ -320,8 +332,10 @@ The project includes comprehensive testing across frontend and backend:
 - Upload panel now fills the viewport under the toolbar, with a compact file list and flush-edge layout. No large image previews; file list shows filename, date, size, and type.
 - Server skips non-image files (e.g., desktop.ini) and logs them, instead of exiting. HEIC/HEIF support confirmed with ImageMagick fallback.
 - **NEW: Interactive canvas editor implemented** - `ImageCanvasEditor.jsx` provides drag-and-drop text positioning on images with font size/color controls. Text styling persists across editing sessions.
-- **NEW: Comprehensive testing suite implemented** - 63 tests (54 frontend + 9 backend) covering all React components and API endpoints with Vitest, Jest, React Testing Library, and Supertest. Includes user interaction, state management, error handling, database operations, and accessibility testing.
+- **NEW: Comprehensive testing suite implemented** - 66 tests (54 frontend + 9 backend + 1 E2E) covering all React components and API endpoints with Vitest, Jest, React Testing Library, and Supertest. Includes user interaction, state management, error handling, database operations, and accessibility testing.
 - **NEW: Toolbar messaging system** - Upload success messages now appear in the toolbar instead of popup toasts, providing persistent feedback until dismissed or page reload.
+- **NEW: Optimized HEIC conversion logging** - Reduced console noise by only logging errors when both Sharp and ImageMagick fail. Silent fallback for expected codec limitations.
+- **FIXED: Photo editing workflow** - Edit button properly wired with `handleEditPhoto` prop, delete confirmation dialogs now work correctly.
 - Remaining open items: CSS grid for thumbnails, live updates, search, GitHub Actions CI, and backend captioned image file export.
 
 If you want the cleaned app to be the mounted entry, change `src/main.jsx` to import `App_clean.jsx` instead of `App.jsx`.
@@ -342,7 +356,8 @@ If you want the cleaned app to be the mounted entry, change `src/main.jsx` to im
 - Follow existing code patterns and naming conventions
 - Ensure accessibility compliance (ARIA attributes, keyboard navigation)
 - Update README documentation for new features
-- Maintain test coverage: 54 frontend tests + 9 backend tests minimum
+- Maintain test coverage: 66 tests minimum (54 frontend + 9 backend + E2E)
+- Keep console output clean - only log actionable errors
 
 ### Testing Requirements  
 - Write tests for new components using Vitest and React Testing Library (frontend)

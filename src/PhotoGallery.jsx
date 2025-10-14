@@ -1,7 +1,7 @@
 import React from "react";
 
 // Receives photos array and any needed props
-const PhotoGallery = ({ photos, onPhotoClick, handleMoveToInprogress, handleMoveToWorking, handleDeletePhoto, privilegesMap, formatFileSize }) => (
+const PhotoGallery = ({ photos, onPhotoClick, handleMoveToInprogress, handleMoveToWorking, handleDeletePhoto, handleEditPhoto, privilegesMap, formatFileSize }) => (
   <div className="photo-gallery">
     {photos.map((photo) => (
       <div key={photo.id || photo.name} className="px-4 py-3 hover:bg-gray-50">
@@ -27,7 +27,7 @@ const PhotoGallery = ({ photos, onPhotoClick, handleMoveToInprogress, handleMove
               <>
                 <button onClick={(e) => { e.stopPropagation(); handleEditPhoto && handleEditPhoto(photo); }} className="bg-blue-500 hover:bg-blue-700 text-white px-2 py-1 rounded text-xs">Edit</button>
                 <button onClick={(e) => { e.stopPropagation(); handleMoveToWorking && handleMoveToWorking(photo.id); }} className="bg-yellow-500 hover:bg-yellow-700 text-white px-2 py-1 rounded text-xs">Move to Staged</button>
-                <button onClick={(e) => { e.stopPropagation(); handleDeletePhoto && handleDeletePhoto(photo.id); }} className="bg-red-500 hover:bg-red-700 text-white px-2 py-1 rounded text-xs">Delete</button>
+                <button onClick={(e) => { e.stopPropagation(); if (window.confirm('Are you sure you want to delete this photo? This action cannot be undone.')) { handleDeletePhoto && handleDeletePhoto(photo.id); } }} className="bg-red-500 hover:bg-red-700 text-white px-2 py-1 rounded text-xs">Delete</button>
               </>
             )}
           </div>
