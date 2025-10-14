@@ -69,7 +69,8 @@ try {
           userAgent: process.env.NOMINATIM_USER_AGENT
         });
         ctx.geoContext = JSON.parse(geoResult);
-      } catch {
+      } catch (error) {
+        console.error('LangChain: Geolocation lookup failed:', error.message || error);
         ctx.geoContext = null;
       }
     }
@@ -84,7 +85,8 @@ try {
         geoContext: ctx.geoContext
       });
       ctx.locationAnalysis = JSON.parse(detectiveResult);
-    } catch {
+    } catch (error) {
+      console.error('LangChain: Location detective analysis failed:', error.message || error);
       ctx.locationAnalysis = null;
     }
 
