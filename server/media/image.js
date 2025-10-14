@@ -82,11 +82,11 @@ async function convertHeicToJpegBuffer(filePath, quality = 90) {
     console.log('[CONVERT] HEIC->JPEG conversion successful for', filePath, 'buffer size:', buffer.length);
     return buffer;
   } catch (err) {
-    console.error('[CONVERT] Sharp conversion failed for', filePath, err.message || err);
+    // Don't log Sharp errors as errors - fallback to ImageMagick is expected for some HEIC variants
+    console.log('[CONVERT] Sharp conversion not supported, trying ImageMagick fallback for', filePath);
 
     // Secure ImageMagick fallback with strict input validation and concurrency limiting
     try {
-      console.log('[CONVERT] Attempting secure ImageMagick fallback for', filePath);
       const fsLocal = require('fs');
       const { promisify } = require('util');
       const { exec } = require('child_process');
