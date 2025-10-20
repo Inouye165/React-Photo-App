@@ -1,12 +1,14 @@
 # React Photo Filtering App
 
-[![Tests](https://img.shields.io/badge/tests-66%20passing-brightgreen.svg)](https://github.com/Inouye165/React-Photo-App)
+[![Tests](https://img.shields.io/badge/tests-86%20passing-brightgreen.svg)](https://github.com/Inouye165/React-Photo-App)
+[![Security](https://img.shields.io/badge/security-JWT%20Auth-blue.svg)](https://jwt.io/)
+[![HEIC Support](https://img.shields.io/badge/HEIC-Auto%20Convert-orange.svg)](https://en.wikipedia.org/wiki/High_Efficiency_Image_Format)
 [![React](https://img.shields.io/badge/React-19-61dafb.svg)](https://reactjs.org/)
 [![Vite](https://img.shields.io/badge/Vite-5.0-646cff.svg)](https://vitejs.dev/)
 [![Testing](https://img.shields.io/badge/Testing-Vitest%20%2B%20Jest-6e9f18.svg)](https://vitest.dev/)
 [![License](https://img.shields.io/badge/license-MIT-blue.svg)](LICENSE)
 
-A full-screen React application for filtering, browsing, and uploading photos by date range, with a Node.js Express backend for file storage, deduplication, and AI-powered metadata extraction. Features comprehensive testing with 66 tests and robust HEIC/HEIF support.
+A full-screen React application for filtering, browsing, and uploading photos by date range, with a secure Node.js Express backend featuring JWT authentication, automatic HEIC conversion, and AI-powered metadata extraction. Features comprehensive testing with 86 tests covering authentication, security, and advanced image processing.
 
 **Author:** Ron Inouye
 
@@ -24,14 +26,29 @@ A full-screen React application for filtering, browsing, and uploading photos by
 
 ## 🆕 What's New (October 2025)
 
-### Testing & Quality  
-- **Comprehensive Test Suite**: 66 tests covering both frontend and backend with 100% pass rate
-- **Frontend Testing**: 54 tests using Vitest + React Testing Library for all React components
-- **Backend Testing**: 9 tests using Jest + Supertest for API endpoints and database operations
-- **E2E Testing**: Full end-to-end test for upload workflow
-- **User-Centered Testing**: Focus on real user interactions, accessibility, and error handling
-- **CI-Ready**: All tests pass consistently, ready for GitHub Actions integration
-- **Test Isolation**: Proper DOM cleanup and mock strategies for reliable, repeatable tests
+### 🔐 Authentication & Security System
+- **JWT-Based Authentication**: Secure login system with 24-hour token expiration and bcrypt password hashing
+- **Image Access Security**: All image requests require authentication via JWT tokens (header, query parameter, or cookie)
+- **Multi-Source Token Support**: Flexible authentication supporting Authorization headers, query parameters, and cookies
+- **Security Headers**: Comprehensive security middleware with Helmet (CSP, HSTS, XSS protection)
+- **CORS Configuration**: Properly configured cross-origin resource sharing for development and production
+- **Account Security**: Rate limiting, input validation, and account lockout protection
+
+### 🖼️ Advanced HEIC Support  
+- **Automatic HEIC Conversion**: Server automatically converts HEIC files to JPEG for browser compatibility
+- **Multi-Machine File Sync**: Robust handling of database/file synchronization across multiple development machines
+- **Smart Fallback Processing**: Sharp → ImageMagick → graceful error handling for unsupported formats
+- **Authenticated Image URLs**: All images served through secure, authenticated endpoints
+
+### Testing & Quality Enhancement
+- **Expanded Test Suite**: 86 tests covering authentication, security, HEIC conversion, and existing functionality
+- **Authentication Testing**: Comprehensive validation of JWT flows, token handling, and security middleware
+- **HEIC Conversion Testing**: Complete testing of file conversion, fallback mechanisms, and error scenarios
+- **Security Testing**: Validation of all security headers, rate limiting, and input sanitization
+- **Frontend Testing**: 66 tests using Vitest + React Testing Library with new authentication utilities
+- **Backend Testing**: 20+ tests using Jest + Supertest for secure API endpoints and file operations
+- **Integration Testing**: End-to-end authentication and image access workflows
+- **Regression Prevention**: Tests specifically designed to prevent previously encountered issues
 
 ### Image Processing Improvements
 - **Optimized HEIC Logging**: Reduced noise in conversion logs - only logs errors when both Sharp and ImageMagick fail
@@ -50,20 +67,37 @@ A full-screen React application for filtering, browsing, and uploading photos by
 
 ## Key Features (2025 Update)
 
+### 🔐 Security & Authentication
+- **JWT Authentication System:** Secure login with bcrypt password hashing and 24-hour token expiration
+- **Protected Image Access:** All images served through authenticated endpoints requiring valid JWT tokens
+- **Multi-Source Authentication:** Support for Authorization headers, query parameters, and cookies
+- **Security Middleware:** Comprehensive protection with Helmet (CSP, HSTS, XSS), rate limiting, and input validation
+- **CORS Configuration:** Properly configured cross-origin resource sharing for secure frontend access
+
+### 📸 Advanced Photo Management
 - **Backend-driven workflow:** All photo management, metadata, and permissions are handled by the backend server. The React app fetches and displays everything from backend APIs.
+- **Enhanced HEIC/HEIF Support:** Automatic conversion to JPEG with Smart fallback (Sharp → ImageMagick), authenticated serving, and multi-machine file synchronization
 - **Folder picker & date filter:** Select a local folder, filter photos by date (using EXIF/file dates), and upload only the filtered files to the backend.
 - **Hash-based deduplication:** Every file is hashed (SHA-256) on upload/ingest. Duplicate files (by content) are automatically skipped. The UI shows the last 5 digits of each file's hash.
 - **Privileges column:** The app displays actual file system privileges (read/write/execute) for each photo as reported by the backend.
 - **Automatic DB migration:** The backend automatically upgrades the database schema (e.g., adds missing columns) on startup, with no data loss.
 - **Robust error handling:** All errors and upload messages are shown in a prominent toast at the top of the app.
+
+### 🤖 AI & Processing
 - **AI-powered captions and descriptions:** The backend uses OpenAI Vision to generate captions, descriptions, and keywords for each photo, including HEIC/HEIF files.
-- **HEIC/HEIF support:** Both thumbnails and AI processing support HEIC/HEIF files, with ImageMagick fallback if sharp/libvips lacks support.
-- **Upload panel:** The photo upload panel now fills the viewport under the toolbar, with a compact file list and flush-edge layout. No large image previews; file list shows filename, date, size, and type.
 - **Interactive Canvas Editor:** Edit photos with an interactive canvas that allows you to position captions directly on images. Drag text to reposition, customize font size and color, and save your layout preferences. Text styling persists across editing sessions.
-- **Comprehensive Testing Suite:** Production-ready testing with Vitest and Jest. 66 tests total:
-  - **Frontend**: 54 tests with Vitest + React Testing Library covering user interactions, state management, error handling, and accessibility
-  - **Backend**: 9 tests with Jest + Supertest covering API endpoints, database operations, and file upload handling
-  - **E2E**: Full end-to-end test for complete upload workflow
+
+### 🎨 User Interface
+- **Upload panel:** The photo upload panel now fills the viewport under the toolbar, with a compact file list and flush-edge layout. No large image previews; file list shows filename, date, size, and type.
+- **Responsive Design:** Works seamlessly across desktop and mobile devices with touch-friendly interfaces
+
+### 🧪 Quality Assurance
+- **Comprehensive Testing Suite:** Production-ready testing with Vitest and Jest. 86 tests total:
+  - **Frontend**: 66 tests with Vitest + React Testing Library covering user interactions, state management, error handling, accessibility, and authentication utilities  
+  - **Backend**: 20+ tests with Jest + Supertest covering API endpoints, database operations, file upload handling, authentication flows, security middleware, and HEIC conversion
+  - **Integration**: Complete end-to-end authentication and image access workflows
+  - **Security Testing**: Validation of JWT flows, CORS configuration, and security headers
+  - **Regression Prevention**: Tests specifically designed to prevent previously encountered issues
   - **Test Isolation**: Proper DOM cleanup between tests and comprehensive mocking strategies
 
 ## Usage (2025)
@@ -85,29 +119,33 @@ A full-screen React application for filtering, browsing, and uploading photos by
 ## Technical Stack
 
 ### Frontend
-- **React 19**: Latest React with modern hooks
+- **React 19**: Latest React with modern hooks and authentication context
 - **Vite**: Fast build tool and dev server  
 - **Tailwind CSS**: Utility-first CSS framework
+- **JWT Client**: Local storage token management with authenticated API requests
+- **Authentication Utilities**: Secure image URL generation with token injection
 - **exifr**: Library for reading photo metadata
 - **File System Access API**: Modern browser API for folder selection
 - **react-konva**: Canvas library for interactive image editing with draggable text overlays
 - **ESLint**: Code linting and formatting
 - **Vitest**: Modern testing framework for frontend with React Testing Library
-- **Component Testing**: Comprehensive test coverage with 54 frontend tests across all major components
+- **Component Testing**: Comprehensive test coverage with 66 frontend tests across all major components:
+   - **Authentication Utilities**: Secure token handling and authenticated image URL generation
    - **PhotoUploadForm.jsx**: Upload panel with compact file list, flush-edge layout
    - **ImageCanvasEditor.jsx**: Interactive canvas editor for positioning captions on images
-   - **EditPage.jsx**: Photo editing interface with canvas, metadata forms, and AI chat placeholder
+   - **EditPage.jsx**: Photo editing interface with canvas, metadata forms, and authenticated image access
 
 ### Backend
 - **Node.js**: JavaScript runtime for server
-- **Express**: Web framework for REST API
-- **Multer**: Middleware for handling multipart/form-data file uploads
-- **CORS**: Cross-origin resource sharing support
-- **Sharp**: Image processing (with fallback to ImageMagick for HEIC/HEIF)
-- **ImageMagick**: Fallback for HEIC/HEIF conversion if sharp/libvips lacks support
-- **SQLite3**: Lightweight database for photo metadata and state management
+- **Express**: Web framework for REST API with authentication middleware
+- **JWT Authentication**: JSON Web Tokens for secure user sessions with bcrypt password hashing
+- **Security Middleware**: Helmet for security headers, rate limiting, input validation, CORS configuration
+- **Multer**: Middleware for handling multipart/form-data file uploads with authentication
+- **Sharp**: Image processing with automatic HEIC-to-JPEG conversion (with ImageMagick fallback)
+- **ImageMagick**: Fallback for HEIC/HEIF conversion when sharp/libvips lacks support
+- **SQLite3**: Lightweight database for photo metadata, user accounts, and state management
 - **Jest**: Testing framework for backend with Supertest for HTTP testing
-- **API Testing**: 9 comprehensive tests covering upload endpoints, database operations, and error handling
+- **Comprehensive API Testing**: 20+ tests covering authenticated endpoints, security middleware, HEIC conversion, database operations, and error handling
 
 ## File Structure
 
@@ -184,6 +222,22 @@ photo-app/
    ```
    Frontend will be available at `http://localhost:5173`
 
+### Authentication Setup
+
+The application requires user authentication for all image operations. On first run:
+
+1. **Register a new account**: Navigate to the login page and create an account with username, email, and password
+2. **Login**: Use your credentials to obtain a JWT token (valid for 24 hours)
+3. **Automatic token management**: The app automatically includes your token in all image requests
+4. **Multi-device support**: Login on multiple machines with the same account for seamless multi-machine workflows
+
+**Security Features:**
+- Passwords hashed with bcrypt
+- JWT tokens with 24-hour expiration  
+- Rate limiting on login attempts
+- Account lockout protection
+- Secure image serving with authentication validation
+
 ### Environment Configuration
 
 The frontend uses environment variables for configuration:
@@ -214,7 +268,7 @@ npm run preview
 
 Run the test suite:
 ```bash
-# Frontend tests (Vitest) - 54 tests
+# Frontend tests (Vitest) - 66 tests
 npm test
 
 # Run all frontend tests once
@@ -226,29 +280,38 @@ npm run test:ui
 # Run frontend tests with coverage report
 npm run test:coverage
 
-# Backend tests (Jest) - 9 tests
+# Backend tests (Jest) - 20+ tests
 cd server
 npm test
+
+# Quick test validation across all components
+node test-runner.js
 ```
 
 The project includes comprehensive testing across frontend and backend:
 
-#### Frontend Tests (54 tests with Vitest + React Testing Library)
+#### Frontend Tests (66 tests with Vitest + React Testing Library)
 - **Component Testing**: All React components (App, PhotoGallery, PhotoUploadForm, Toolbar, EditPage)
+- **Authentication Testing**: JWT token handling, secure URL generation, multi-source authentication
 - **User Interaction Testing**: Clicks, form inputs, navigation, drag-and-drop
-- **State Management Testing**: Photo loading, filtering, uploads
-- **Error Handling Testing**: API failures, validation errors
+- **State Management Testing**: Photo loading, filtering, uploads, authentication state
+- **Error Handling Testing**: API failures, validation errors, authentication failures
 - **Accessibility Testing**: ARIA attributes, keyboard navigation
 - **E2E Testing**: Complete upload workflow from folder selection to backend storage
-- **Mock Integration**: External dependencies (APIs, file systems)
+- **Security Testing**: Token validation, URL security, localStorage error handling
+- **Mock Integration**: External dependencies (APIs, file systems, authentication)
 
-#### Backend Tests (9 tests with Jest + Supertest)
-- **API Endpoint Testing**: Upload endpoints, error handling, file validation
-- **Database Testing**: SQLite operations, schema constraints, CRUD operations
-- **Integration Testing**: Complete request/response cycles
-- **Error Scenarios**: Permission errors, disk issues, invalid files
+#### Backend Tests (20+ tests with Jest + Supertest)
+- **Authentication Testing**: JWT validation, login/register flows, token expiration
+- **Security Testing**: Rate limiting, input validation, CORS configuration, security headers
+- **API Endpoint Testing**: Authenticated upload endpoints, error handling, file validation
+- **Image Processing Testing**: HEIC conversion, Sharp/ImageMagick fallbacks, thumbnail generation
+- **Database Testing**: SQLite operations, schema constraints, CRUD operations, user management
+- **Integration Testing**: Complete authenticated request/response cycles
+- **Error Scenarios**: Permission errors, disk issues, invalid files, authentication failures
+- **Multi-machine Testing**: File sync scenarios, graceful degradation
 
-**Total: 66 tests with 100% pass rate**
+**Total: 86 tests with robust coverage of authentication, security, and HEIC functionality**
 
 ## Usage
 
@@ -293,19 +356,25 @@ The project includes comprehensive testing across frontend and backend:
 
 ## Testing & Quality Assurance
 
-### Test Coverage (66 Tests Total)
+### Test Coverage (86 Tests Total)
 
-#### Frontend (54 tests - Vitest + React Testing Library)
+#### Frontend (66 tests - Vitest + React Testing Library)
 - **App.test.jsx** (14 tests): Main application component, photo loading, view switching, upload flow
 - **App.e2e.test.jsx** (1 test): End-to-end upload workflow testing
 - **PhotoGallery.test.jsx** (13 tests): Gallery rendering, photo actions, metadata display, edit/delete functionality
 - **PhotoUploadForm.test.jsx** (20 tests): Upload modal, date filtering, file selection
 - **Toolbar.test.jsx** (12 tests): Navigation, toolbar messages, button interactions
 - **utils.test.js** (6 tests): Utility functions and helper methods
+- **authUtils.test.js** (20 tests): Authentication utilities, secure URL generation, token handling, error scenarios
 
-#### Backend (9 tests - Jest + Supertest)
+#### Backend (20+ tests - Jest + Supertest)
 - **uploads.test.js** (9 tests): Upload endpoints, file validation, duplicate detection, error handling
 - **db.test.js**: Database operations, schema management, CRUD operations
+- **imageAuth.test.js**: Image authentication middleware, JWT validation, CORS headers
+- **displayEndpoint.test.js**: Authenticated image serving, HEIC conversion, file existence checking
+- **heicConversion.test.js**: HEIC-to-JPEG conversion, Sharp/ImageMagick fallbacks, error handling
+- **security.test.js**: Security headers, rate limiting, input validation, XSS/SQL injection protection
+- **integration.test.js**: End-to-end authentication flows, multi-machine scenarios, performance testing
 
 ### Test Architecture  
 - **Vitest**: Modern testing framework with native Vite integration for frontend

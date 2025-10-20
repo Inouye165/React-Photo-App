@@ -1,4 +1,5 @@
 import React from "react";
+import { useAuth } from './contexts/AuthContext';
 
 export default function Toolbar({
   onViewStaged,
@@ -14,6 +15,18 @@ export default function Toolbar({
   toolbarMessage,
   onClearToolbarMessage
 }) {
+  const { isAuthenticated, user, logout } = useAuth();
+
+  const handleAuthAction = () => {
+    if (isAuthenticated) {
+      logout();
+    } else {
+      // If not authenticated, the AuthWrapper should handle showing the login form
+      // We could also trigger a refresh or redirect here
+      window.location.reload();
+    }
+  };
+
   return (
     <nav
       role="navigation"
@@ -83,19 +96,60 @@ export default function Toolbar({
             <button onClick={onClearToolbarMessage} title="Dismiss" style={{ background: 'transparent', border: 'none', fontSize: '1rem', cursor: 'pointer', color: '#1f2937' }}>×</button>
           </div>
         ) : null}
-        <button
-          style={{
-            background: "#4a5568",
-            color: "#fff",
-            border: "none",
-            borderRadius: "6px",
-            padding: "8px 16px",
-            fontWeight: "bold",
-            cursor: "pointer",
-          }}
-        >
-          Login
-        </button>
+        {isAuthenticated ? (
+          <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
+            <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
+              <div 
+                style={{
+                  width: '28px',
+                  height: '28px',
+                  background: '#4f46e5',
+                  borderRadius: '50%',
+                  display: 'flex',
+                  alignItems: 'center',
+                  justifyContent: 'center',
+                  fontSize: '12px',
+                  fontWeight: 'bold'
+                }}
+              >
+                {user?.username?.charAt(0).toUpperCase() || 'U'}
+              </div>
+              <span style={{ fontSize: '0.9rem', opacity: '0.9' }}>
+                {user?.username}
+              </span>
+            </div>
+            <button
+              onClick={handleAuthAction}
+              style={{
+                background: "#dc2626",
+                color: "#fff",
+                border: "none",
+                borderRadius: "6px",
+                padding: "8px 16px",
+                fontWeight: "bold",
+                cursor: "pointer",
+              }}
+              title="Sign out"
+            >
+              Logout
+            </button>
+          </div>
+        ) : (
+          <button
+            onClick={handleAuthAction}
+            style={{
+              background: "#4f46e5",
+              color: "#fff",
+              border: "none",
+              borderRadius: "6px",
+              padding: "8px 16px",
+              fontWeight: "bold",
+              cursor: "pointer",
+            }}
+          >
+            Login
+          </button>
+        )}
       </div>
     </nav>
   );

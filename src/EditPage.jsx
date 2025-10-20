@@ -1,7 +1,10 @@
 import React, { useState, useEffect } from 'react'
 import ImageCanvasEditor from './ImageCanvasEditor'
+import { useAuth } from './contexts/AuthContext'
+import { createAuthenticatedImageUrl } from './utils/auth.js'
 
 export default function EditPage({ photo, onClose, onSave, onFinished }) {
+  const { token } = useAuth()
   const [caption, setCaption] = useState(photo?.caption || '')
   const [description, setDescription] = useState(photo?.description || '')
   const [keywords, setKeywords] = useState(photo?.keywords || '')
@@ -25,7 +28,7 @@ export default function EditPage({ photo, onClose, onSave, onFinished }) {
 
   if (!photo) return null
 
-  const displayUrl = `http://localhost:3001/display/${photo.state}/${photo.filename}`
+  const displayUrl = createAuthenticatedImageUrl(`http://localhost:3001/display/${photo.state}/${photo.filename}`)
 
   const handleSave = async () => {
     setSaving(true)
@@ -33,7 +36,10 @@ export default function EditPage({ photo, onClose, onSave, onFinished }) {
       // Save metadata to backend
       const response = await fetch(`http://localhost:3001/photos/${photo.id}/metadata`, {
         method: 'PATCH',
-        headers: { 'Content-Type': 'application/json' },
+        headers: { 
+          'Content-Type': 'application/json',
+          'Authorization': `Bearer ${token}`
+        },
         body: JSON.stringify({ caption, description, keywords, textStyle })
       });
       
@@ -64,7 +70,10 @@ export default function EditPage({ photo, onClose, onSave, onFinished }) {
       // Send captioned image to backend
       const response = await fetch('http://localhost:3001/save-captioned-image', {
         method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
+        headers: { 
+          'Content-Type': 'application/json',
+          'Authorization': `Bearer ${token}`
+        },
         body: JSON.stringify({
           photoId: photo.id,
           dataURL,
