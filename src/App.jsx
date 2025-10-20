@@ -5,16 +5,7 @@ import { uploadPhotoToServer, checkPrivilege, checkPrivilegesBatch, getPhotos, u
 import EditPage from './EditPage'
 import Toolbar from './Toolbar'
 import PhotoUploadForm from './PhotoUploadForm'
-
-// Utility: Create authenticated image URLs
-function createAuthenticatedImageUrl(baseUrl) {
-  const token = localStorage.getItem('authToken');
-  if (!token) return baseUrl;
-  
-  const url = new URL(baseUrl);
-  url.searchParams.set('token', token);
-  return url.toString();
-}
+import { createAuthenticatedImageUrl } from './utils/auth.js'
 
 // Utility: Get or create a guaranteed local folder (default: C:\Users\<User>\working)
 async function getLocalWorkingFolder(customPath) {

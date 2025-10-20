@@ -1,6 +1,7 @@
 import React, { useState, useEffect } from 'react'
 import ImageCanvasEditor from './ImageCanvasEditor'
 import { useAuth } from './contexts/AuthContext'
+import { createAuthenticatedImageUrl } from './utils/auth.js'
 
 export default function EditPage({ photo, onClose, onSave, onFinished }) {
   const { token } = useAuth()
@@ -10,16 +11,6 @@ export default function EditPage({ photo, onClose, onSave, onFinished }) {
   const [textStyle, setTextStyle] = useState(photo?.textStyle || null)
   const [saving, setSaving] = useState(false)
   const [showMetadata, setShowMetadata] = useState(false)
-
-  // Create authenticated image URL
-  const createAuthenticatedImageUrl = (path) => {
-    const baseUrl = `http://localhost:3001${path}`
-    if (token) {
-      const separator = path.includes('?') ? '&' : '?'
-      return `${baseUrl}${separator}token=${encodeURIComponent(token)}`
-    }
-    return baseUrl
-  }
 
   useEffect(() => {
     setCaption(photo?.caption || '')
@@ -37,7 +28,7 @@ export default function EditPage({ photo, onClose, onSave, onFinished }) {
 
   if (!photo) return null
 
-  const displayUrl = createAuthenticatedImageUrl(`/display/${photo.state}/${photo.filename}`)
+  const displayUrl = createAuthenticatedImageUrl(`http://localhost:3001/display/${photo.state}/${photo.filename}`)
 
   const handleSave = async () => {
     setSaving(true)
