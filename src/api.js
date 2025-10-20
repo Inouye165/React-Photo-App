@@ -1,3 +1,22 @@
+// Utility to get auth headers for API requests
+function getAuthHeaders() {
+  const token = localStorage.getItem('authToken');
+  return {
+    'Content-Type': 'application/json',
+    ...(token && { 'Authorization': `Bearer ${token}` })
+  };
+}
+
+// Utility to handle auth errors and redirect to login
+function handleAuthError(response) {
+  if (response.status === 401 || response.status === 403) {
+    // Token expired or invalid, clear it and reload page to trigger login
+    localStorage.removeItem('authToken');
+    window.location.reload();
+    return true;
+  }
+  return false;
+}
 
 // Utility to upload photo to backend server
 const API_BASE_URL = import.meta.env.VITE_API_URL || 'http://localhost:3001';
@@ -5,11 +24,21 @@ export async function uploadPhotoToServer(file, serverUrl = `${API_BASE_URL}/upl
   const formData = new FormData();
   formData.append('photo', file, file.name);
   console.log('[UPLOAD] target:', serverUrl, 'file.name:', file && file.name);
+  
+  const token = localStorage.getItem('authToken');
+  const headers = {};
+  if (token) {
+    headers['Authorization'] = `Bearer ${token}`;
+  }
+  
   try {
     const response = await fetch(serverUrl, {
       method: 'POST',
+      headers,
       body: formData,
     });
+    
+    if (handleAuthError(response)) return;
     if (!response.ok) throw new Error('Upload failed');
     return await response.json();
   } catch (error) {
@@ -28,9 +57,10 @@ export async function checkPrivilege(relPath, serverUrl = `${API_BASE_URL}/privi
       console.log('[API] checkPrivilege ->', serverUrl, 'body:', body);
       const response = await fetch(serverUrl, {
         method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
+        headers: getAuthHeaders(),
         body
       });
+      if (handleAuthError(response)) return;
       if (response.ok) return await response.json();
       // If 404 or 5xx, retry a few times
       if (attempt < maxAttempts) {
@@ -55,9 +85,10 @@ export async function checkPrivilegesBatch(filenames, serverUrl = `${API_BASE_UR
     console.log('[API] checkPrivilegesBatch ->', serverUrl, 'filenames:', filenames.length);
     const response = await fetch(serverUrl, {
       method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
+      headers: getAuthHeaders(),
       body
     });
+    if (handleAuthError(response)) return;
     if (!response.ok) throw new Error('Batch privilege check failed: ' + response.status);
     const result = await response.json();
     if (!result.success) throw new Error('Batch privilege check error: ' + result.error);
@@ -84,7 +115,10 @@ export async function getPhotos(serverUrlOrEndpoint = `${API_BASE_URL}/photos`) 
     }
   }
   console.log('[GET PHOTOS] fetching', url);
-  const response = await fetch(url);
+  const response = await fetch(url, {
+    headers: getAuthHeaders()
+  });
+  if (handleAuthError(response)) return;
   if (!response.ok) throw new Error('Failed to fetch photos: ' + response.status);
   return await response.json();
 }
@@ -93,15 +127,20 @@ export async function getPhotos(serverUrlOrEndpoint = `${API_BASE_URL}/photos`) 
 export async function updatePhotoState(id, state, serverUrl = `${API_BASE_URL}/photos/`) {
   const response = await fetch(`${serverUrl}${id}/state`, {
     method: 'PATCH',
-    headers: { 'Content-Type': 'application/json' },
+    headers: getAuthHeaders(),
     body: JSON.stringify({ state })
   });
+  if (handleAuthError(response)) return;
   if (!response.ok) throw new Error('Failed to update photo state');
   return await response.json();
 }
 
 export async function recheckInprogressPhotos(serverUrl = `${API_BASE_URL}/photos/recheck-inprogress`) {
-  const res = await fetch(serverUrl, { method: 'POST' });
+  const res = await fetch(serverUrl, { 
+    method: 'POST',
+    headers: getAuthHeaders()
+  });
+  if (handleAuthError(res)) return;
   if (!res.ok) throw new Error('Failed to trigger recheck');
   return await res.json();
 }
@@ -109,9 +148,10 @@ export async function recheckInprogressPhotos(serverUrl = `${API_BASE_URL}/photo
 export async function updatePhotoCaption(id, caption, serverUrl = `${API_BASE_URL}`) {
   const res = await fetch(`${serverUrl}/photos/${id}/caption`, {
     method: 'PATCH',
-    headers: { 'Content-Type': 'application/json' },
+    headers: getAuthHeaders(),
     body: JSON.stringify({ caption })
   });
+  if (handleAuthError(res)) return;
   if (!res.ok) throw new Error('Failed to update caption');
   return await res.json();
 }

@@ -20,6 +20,9 @@ const createUploadsRouter = require('./routes/uploads');
 const createDebugRouter = require('./routes/debug');
 const createHealthRouter = require('./routes/health');
 const createPrivilegeRouter = require('./routes/privilege');
+const createAuthRouter = require('./routes/auth');
+const { configureSecurity, validateRequest, securityErrorHandler } = require('./middleware/security');
+const { authenticateToken } = require('./middleware/auth');
 
 const PORT = process.env.PORT || 3001;
 
@@ -60,10 +63,24 @@ async function startServer() {
   const express = require('express');
   const multer = require('multer');
   const cors = require('cors');
+  const cookieParser = require('cookie-parser');
   const app = express();
 
+  // Configure security middleware first
+  configureSecurity(app);
+
+  // Add cookie parser for potential session management
+  app.use(cookieParser());
+
+  // Add request validation middleware
+  app.use(validateRequest);
+
   // Allow cross-origin requests from local dev servers (keep permissive for development)
-  app.use(cors());
+  app.use(cors({
+    origin: ['http://localhost:3000', 'http://localhost:5173'], // Add common React dev server ports
+    credentials: true // Allow cookies to be sent
+  }));
+  
   app.use(express.json({
     limit: '50mb',
     verify: (req, res, buf) => {
@@ -72,28 +89,39 @@ async function startServer() {
   }));
   app.use(express.urlencoded({ limit: '50mb', extended: true }));
 
-  // Create upload middleware using centralized configuration
-  // const upload = createUploadMiddleware(WORKING_DIR); // Not used
+  // Authentication routes (no auth required)
+  app.use(createAuthRouter({ db, dbGet, dbAll, dbRun }));
 
-
-
-
-
-  // --- Serve images statically from working dir ---
-  app.use('/working', express.static(WORKING_DIR));
-
-  // --- Inprogress directory setup ---
-  app.use('/inprogress', express.static(INPROGRESS_DIR));
-
-  // --- Finished directory setup ---
-  app.use('/finished', express.static(FINISHED_DIR));
-
-  // Use modular routers
-  app.use(createPhotosRouter({ db, dbGet, dbAll, dbRun }, { WORKING_DIR, INPROGRESS_DIR, FINISHED_DIR, THUMB_DIR }));
-  app.use(createUploadsRouter({ db, dbGet, dbAll, dbRun }, { WORKING_DIR, INPROGRESS_DIR, THUMB_DIR }));
-  app.use(createDebugRouter({ db }, { INPROGRESS_DIR }));
-  app.use(createPrivilegeRouter({ WORKING_DIR, INPROGRESS_DIR }));
+  // Health check (no auth required)
   app.use(createHealthRouter());
+
+  // --- Protected static file serving ---
+  // Serve images statically from working dir (with authentication)
+  app.use('/working', authenticateToken, express.static(WORKING_DIR));
+  app.use('/inprogress', authenticateToken, express.static(INPROGRESS_DIR));
+  app.use('/finished', authenticateToken, express.static(FINISHED_DIR));
+
+  // Display endpoint for images (with authentication)
+  app.get('/display/:state/:filename', authenticateToken, (req, res) => {
+    const { state, filename } = req.params;
+    let dir;
+    switch(state) {
+      case 'working': dir = WORKING_DIR; break;
+      case 'inprogress': dir = INPROGRESS_DIR; break;
+      case 'finished': dir = FINISHED_DIR; break;
+      default: return res.status(400).json({ success: false, error: 'Invalid state' });
+    }
+    res.sendFile(path.join(dir, filename));
+  });
+
+  // Protected API routes (require authentication)
+  app.use(authenticateToken, createPhotosRouter({ db, dbGet, dbAll, dbRun }, { WORKING_DIR, INPROGRESS_DIR, FINISHED_DIR, THUMB_DIR }));
+  app.use(authenticateToken, createUploadsRouter({ db, dbGet, dbAll, dbRun }, { WORKING_DIR, INPROGRESS_DIR, THUMB_DIR }));
+  app.use(authenticateToken, createDebugRouter({ db }, { INPROGRESS_DIR }));
+  app.use(authenticateToken, createPrivilegeRouter({ WORKING_DIR, INPROGRESS_DIR }));
+
+  // Add security error handling middleware
+  app.use(securityErrorHandler);
 
 
 

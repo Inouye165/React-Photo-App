@@ -7,7 +7,7 @@ function openDb(dbPath = path.join(__dirname, '..', 'photos.db')) {
 }
 
 async function migrate(db) {
-  // Ensure table exists
+  // Ensure photos table exists
   await new Promise((resolve, _reject) => {
     db.run(`CREATE TABLE IF NOT EXISTS photos (
       id INTEGER PRIMARY KEY AUTOINCREMENT,
@@ -19,6 +19,33 @@ async function migrate(db) {
       updated_at TEXT
     )`, resolve);
   });
+  
+  // Ensure users table exists with proper security constraints
+  await new Promise((resolve, _reject) => {
+    db.run(`CREATE TABLE IF NOT EXISTS users (
+      id INTEGER PRIMARY KEY AUTOINCREMENT,
+      username TEXT UNIQUE NOT NULL,
+      email TEXT UNIQUE NOT NULL,
+      password_hash TEXT NOT NULL,
+      role TEXT NOT NULL DEFAULT 'user',
+      is_active BOOLEAN NOT NULL DEFAULT 1,
+      failed_login_attempts INTEGER NOT NULL DEFAULT 0,
+      last_login_attempt TEXT,
+      account_locked_until TEXT,
+      created_at TEXT NOT NULL DEFAULT (datetime('now')),
+      updated_at TEXT NOT NULL DEFAULT (datetime('now'))
+    )`, resolve);
+  });
+  
+  // Create indexes for users table
+  await new Promise((resolve, _reject) => {
+    db.run('CREATE UNIQUE INDEX IF NOT EXISTS idx_users_username ON users(username)', () => {
+      db.run('CREATE UNIQUE INDEX IF NOT EXISTS idx_users_email ON users(email)', () => {
+        db.run('CREATE INDEX IF NOT EXISTS idx_users_role ON users(role)', resolve);
+      });
+    });
+  });
+  
   // Migration: ensure 'hash' column exists
   await new Promise((resolve, _reject) => {
     db.all("PRAGMA table_info(photos)", (err, columns) => {
