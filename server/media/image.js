@@ -4,33 +4,13 @@ const fsSync = require('fs');
 const sharp = require('sharp');
 const exifr = require('exifr');
 const nodeCrypto = require('crypto');
+const heicConvert = require('heic-convert');
 
 const ALLOWED_IMAGE_EXTENSIONS = ['.jpg', '.jpeg', '.png', '.gif', '.heic', '.bmp', '.tiff', '.webp'];
 
 async function hashFile(filePath) {
   const buf = await fs.readFile(filePath);
   return nodeCrypto.createHash('sha256').update(buf).digest('hex');
-}
-
-// Concurrency limiter for HEIC->JPEG ImageMagick fallbacks
-const HEIC_CONCURRENCY = parseInt(process.env.HEIC_CONCURRENCY || '2', 10);
-let heicActive = 0;
-const heicQueue = [];
-async function heicAcquire() {
-  if (heicActive < HEIC_CONCURRENCY) {
-    heicActive += 1;
-    return;
-  }
-  await new Promise((resolve) => heicQueue.push(resolve));
-  heicActive += 1;
-}
-function heicRelease() {
-  heicActive -= 1;
-  if (heicQueue.length > 0) {
-    const next = heicQueue.shift();
-    // wake up next waiter
-    next();
-  }
 }
 
 
@@ -82,81 +62,27 @@ async function convertHeicToJpegBuffer(filePath, quality = 90) {
     console.log('[CONVERT] HEIC->JPEG conversion successful for', filePath, 'buffer size:', buffer.length);
     return buffer;
   } catch (err) {
-    // Don't log Sharp errors as errors - fallback to ImageMagick is expected for some HEIC variants
-    console.log('[CONVERT] Sharp conversion not supported, trying ImageMagick fallback for', filePath);
-
-    // Secure ImageMagick fallback with strict input validation and concurrency limiting
+    // This is the NEW catch block
+    console.log('[CONVERT] Sharp conversion failed, trying heic-convert fallback for', filePath, err.message);
     try {
-      const fsLocal = require('fs');
-      const { promisify } = require('util');
-      const { exec } = require('child_process');
-      const execPromise = promisify(exec);
-
-      // Security check: ensure file exists and is readable
-      if (!fsLocal.existsSync(filePath)) {
-        throw new Error('File does not exist');
-      }
-
-      // Security check: validate file extension
-      if (!['.heic', '.heif'].includes(ext)) {
-        throw new Error('Invalid file extension for HEIC conversion');
-      }
-
-      // Create secure temporary output path
-      const tempId = nodeCrypto.randomBytes(16).toString('hex');
-      const tmpJpg = path.join(path.dirname(filePath), `temp_convert_${tempId}.jpg`);
-
-      // Secure command construction with validated inputs
-      const inputPath = filePath.replace(/"/g, '""'); // Escape quotes for Windows
-      const outputPath = tmpJpg.replace(/"/g, '""');
-      const cmd = `magick "${inputPath}" -strip -quality ${Math.max(10, Math.min(100, quality))} "${outputPath}"`;
-
-      // Acquire HEIC converter slot to limit concurrent ImageMagick processes
-      await heicAcquire();
-      try {
-        console.log('[CONVERT] Executing secure ImageMagick command');
-        await execPromise(cmd, {
-          timeout: 30000, // 30 second timeout
-          windowsHide: true,
-          env: process.env // Use current environment
-        });
-
-        // Read the converted file (top-level `fs` is the promises API)
-        const buffer = await fs.readFile(tmpJpg);
-        console.log('[CONVERT] ImageMagick conversion successful for', filePath, 'buffer size:', buffer.length);
-
-        // Clean up temp file
-        try {
-          await fs.unlink(tmpJpg);
-        } catch (cleanupErr) {
-          console.warn('[CONVERT] Failed to cleanup temp file:', tmpJpg, cleanupErr && (cleanupErr.message || cleanupErr));
-        }
-
-        return buffer;
-      } finally {
-        // Always release slot
-        heicRelease();
-      }
+      // 'fs' at the top of the file is fs.promises
+      const inputBuffer = await fs.readFile(filePath); 
+      const outputBuffer = await heicConvert({
+        buffer: inputBuffer,
+        format: 'JPEG',
+        quality: quality / 100 // heic-convert quality is 0 to 1
+      });
+      console.log('[CONVERT] heic-convert fallback successful for', filePath, 'buffer size:', outputBuffer.length);
+      return outputBuffer;
     } catch (fallbackErr) {
-      console.error('[CONVERT] ImageMagick fallback conversion failed for', filePath, fallbackErr.message || fallbackErr);
-      throw new Error(`HEIC conversion failed: Sharp error: ${err.message}, ImageMagick error: ${fallbackErr.message}`);
+      console.error('[CONVERT] heic-convert fallback conversion FAILED for', filePath, fallbackErr.message || fallbackErr);
+      // Throw a single, clear error
+      throw new Error(`HEIC conversion failed for ${filePath}. Sharp error: ${err.message}, Fallback error: ${fallbackErr.message}`);
     }
   }
 }
 
-// Wait until the HEIC conversion concurrency queue is idle. Resolves when
-// there are no active ImageMagick conversions.
-function awaitHeicIdle(timeoutMs = 5000) {
-  return new Promise((resolve, reject) => {
-    const start = Date.now();
-    const check = () => {
-      if (heicActive === 0 && heicQueue.length === 0) return resolve();
-      if (Date.now() - start > timeoutMs) return reject(new Error('Timeout waiting for HEIC conversions to finish'));
-      setTimeout(check, 50);
-    };
-    check();
-  });
-}
+
 
 async function ensureAllThumbnails(db, WORKING_DIR, THUMB_DIR) {
   const files = await fs.readdir(WORKING_DIR);
@@ -280,4 +206,4 @@ async function ingestPhoto(db, filePath, filename, state, thumbDir) {
   }
 }
 
-module.exports = { generateThumbnail, ensureAllThumbnails, ensureAllFilesHashed, ingestPhoto, convertHeicToJpegBuffer, awaitHeicIdle };
+module.exports = { generateThumbnail, ensureAllThumbnails, ensureAllFilesHashed, ingestPhoto, convertHeicToJpegBuffer };

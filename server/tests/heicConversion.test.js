@@ -3,13 +3,9 @@ const path = require('path');
 const fs = require('fs');
 const sharp = require('sharp');
 
-// Mock sharp and child_process for testing
+// Mock sharp and heic-convert for testing
 jest.mock('sharp');
-jest.mock('child_process', () => ({
-  exec: jest.fn()
-}));
-
-const { exec } = require('child_process');
+jest.mock('heic-convert');
 
 describe('HEIC Conversion Functionality', () => {
   const testImageDir = path.join(__dirname, 'test-heic');
@@ -65,7 +61,7 @@ describe('HEIC Conversion Functionality', () => {
       expect(result).toBe(mockBuffer);
     });
 
-    test('should fallback to ImageMagick when Sharp fails', async () => {
+    test('should fallback to heic-convert when Sharp fails', async () => {
       const mockSharp = {
         jpeg: jest.fn().mockReturnThis(),
         toBuffer: jest.fn().mockRejectedValue(new Error('Sharp conversion failed'))
@@ -73,23 +69,22 @@ describe('HEIC Conversion Functionality', () => {
       
       sharp.mockReturnValue(mockSharp);
 
-      // Mock successful ImageMagick execution
-      const mockExecCallback = (cmd, options, callback) => {
-        // Simulate successful conversion by creating temp file
-        const tempFile = cmd.match(/"([^"]+\.jpg)"/)[1];
-        fs.writeFileSync(tempFile, 'imagemagick-converted-data');
-        callback(null, { stdout: '', stderr: '' });
-      };
-      
-      exec.mockImplementation(mockExecCallback);
+      // Mock heic-convert
+      const heicConvert = require('heic-convert');
+      const mockConvertedBuffer = Buffer.from('heic-convert-converted-data');
+      heicConvert.mockResolvedValue(mockConvertedBuffer);
 
       const result = await convertHeicToJpegBuffer(testHeicFile, 75);
 
-      expect(result).toBeInstanceOf(Buffer);
-      expect(result.toString()).toBe('imagemagick-converted-data');
+      expect(heicConvert).toHaveBeenCalledWith({
+        buffer: expect.any(Buffer),
+        format: 'JPEG',
+        quality: 0.75 // 75/100
+      });
+      expect(result).toBe(mockConvertedBuffer);
     });
 
-    test('should reject when both Sharp and ImageMagick fail', async () => {
+    test('should reject when both Sharp and heic-convert fail', async () => {
       const mockSharp = {
         jpeg: jest.fn().mockReturnThis(),
         toBuffer: jest.fn().mockRejectedValue(new Error('Sharp failed'))
@@ -97,13 +92,12 @@ describe('HEIC Conversion Functionality', () => {
       
       sharp.mockReturnValue(mockSharp);
 
-      // Mock failed ImageMagick execution
-      exec.mockImplementation((cmd, options, callback) => {
-        callback(new Error('ImageMagick failed'), { stdout: '', stderr: 'magick: not found' });
-      });
+      // Mock failed heic-convert execution
+      const heicConvert = require('heic-convert');
+      heicConvert.mockRejectedValue(new Error('heic-convert failed'));
 
       await expect(convertHeicToJpegBuffer(testHeicFile, 90)).rejects.toThrow(
-        'HEIC conversion failed'
+        'HEIC conversion failed for'
       );
     });
 
@@ -111,28 +105,22 @@ describe('HEIC Conversion Functionality', () => {
       const mockBuffer = Buffer.from('converted-data');
       const mockSharp = {
         jpeg: jest.fn().mockReturnThis(),
-        toBuffer: jest.fn().mockResolvedValue(mockBuffer)
+        toBuffer: jest.fn().mockRejectedValue(new Error('Sharp failed')) // Force fallback
       };
       
       sharp.mockReturnValue(mockSharp);
 
-      // Test with quality outside valid range
+      const heicConvert = require('heic-convert');
+      heicConvert.mockResolvedValue(mockBuffer);
+
+      // Test with quality outside valid range - should be converted to 0-1 range
       await convertHeicToJpegBuffer(testHeicFile, 150);
       
-      // Should clamp quality to valid range in ImageMagick fallback
-      const mockExecCallback = (cmd, options, callback) => {
-        expect(cmd).toMatch(/-quality\s+(100|[1-9]\d?)\s+/); // Quality should be 1-100
-        const tempFile = cmd.match(/"([^"]+\.jpg)"/)[1];
-        fs.writeFileSync(tempFile, 'converted-data');
-        callback(null, { stdout: '', stderr: '' });
-      };
-      
-      exec.mockImplementation(mockExecCallback);
-      
-      // Trigger ImageMagick fallback
-      mockSharp.toBuffer.mockRejectedValue(new Error('Sharp failed'));
-      
-      await convertHeicToJpegBuffer(testHeicFile, 150);
+      expect(heicConvert).toHaveBeenCalledWith({
+        buffer: expect.any(Buffer),
+        format: 'JPEG',
+        quality: 1.5 // 150/100 (heic-convert will handle values > 1)
+      });
     });
 
     test('should handle file validation securely', async () => {
@@ -166,7 +154,7 @@ describe('HEIC Conversion Functionality', () => {
       });
     });
 
-    test('should clean up temporary files on error', async () => {
+    test('should properly handle heic-convert buffer operations', async () => {
       const mockSharp = {
         jpeg: jest.fn().mockReturnThis(),
         toBuffer: jest.fn().mockRejectedValue(new Error('Sharp failed'))
@@ -174,18 +162,78 @@ describe('HEIC Conversion Functionality', () => {
       
       sharp.mockReturnValue(mockSharp);
 
-      // Mock ImageMagick that creates temp file but fails
-      let tempFilePath;
-      exec.mockImplementation((cmd, options, callback) => {
-        tempFilePath = cmd.match(/"([^"]+\.jpg)"/)[1];
-        fs.writeFileSync(tempFilePath, 'temp-data');
-        callback(new Error('ImageMagick conversion failed'));
+      const heicConvert = require('heic-convert');
+      const mockOutputBuffer = Buffer.from('heic-convert-output');
+      heicConvert.mockResolvedValue(mockOutputBuffer);
+
+      const result = await convertHeicToJpegBuffer(testHeicFile, 80);
+
+      // Should read input file and pass to heic-convert
+      expect(heicConvert).toHaveBeenCalledWith({
+        buffer: expect.any(Buffer),
+        format: 'JPEG',
+        quality: 0.8 // 80/100
+      });
+      expect(result).toBe(mockOutputBuffer);
+    });
+
+    test('should handle different quality values in heic-convert', async () => {
+      const mockSharp = {
+        jpeg: jest.fn().mockReturnThis(),
+        toBuffer: jest.fn().mockRejectedValue(new Error('Sharp failed'))
+      };
+      
+      sharp.mockReturnValue(mockSharp);
+
+      const heicConvert = require('heic-convert');
+      const mockOutputBuffer = Buffer.from('heic-convert-output');
+      heicConvert.mockResolvedValue(mockOutputBuffer);
+
+      // Test different quality values
+      await convertHeicToJpegBuffer(testHeicFile, 100);
+      expect(heicConvert).toHaveBeenLastCalledWith({
+        buffer: expect.any(Buffer),
+        format: 'JPEG',
+        quality: 1.0
       });
 
-      await expect(convertHeicToJpegBuffer(testHeicFile, 90)).rejects.toThrow();
+      await convertHeicToJpegBuffer(testHeicFile, 50);
+      expect(heicConvert).toHaveBeenLastCalledWith({
+        buffer: expect.any(Buffer),
+        format: 'JPEG',
+        quality: 0.5
+      });
+
+      await convertHeicToJpegBuffer(testHeicFile, 1);
+      expect(heicConvert).toHaveBeenLastCalledWith({
+        buffer: expect.any(Buffer),
+        format: 'JPEG',
+        quality: 0.01
+      });
+    });
+
+    test('should provide detailed error messages on conversion failure', async () => {
+      const mockSharp = {
+        jpeg: jest.fn().mockReturnThis(),
+        toBuffer: jest.fn().mockRejectedValue(new Error('Sharp conversion error'))
+      };
       
-      // Temp file should be cleaned up (note: timing dependent in real implementation)
-      // This test verifies the cleanup attempt is made
+      sharp.mockReturnValue(mockSharp);
+
+      const heicConvert = require('heic-convert');
+      heicConvert.mockRejectedValue(new Error('heic-convert specific error'));
+
+      await expect(convertHeicToJpegBuffer(testHeicFile, 90)).rejects.toThrow(
+        'HEIC conversion failed for'
+      );
+      
+      await expect(convertHeicToJpegBuffer(testHeicFile, 90)).rejects.toThrow(
+        'Sharp error: Sharp conversion error'
+      );
+      
+      await expect(convertHeicToJpegBuffer(testHeicFile, 90)).rejects.toThrow(
+        'Fallback error: heic-convert specific error'
+      );
     });
   });
 
@@ -227,26 +275,30 @@ describe('HEIC Conversion Functionality', () => {
 
     test('should generate thumbnail for HEIC files via conversion', async () => {
       const mockConvertedBuffer = Buffer.from('converted-heic-data');
-      const mockSharp = {
+      
+      // First mock - for the convertHeicToJpegBuffer call (should succeed to return buffer)
+      const mockConvertSharp = {
+        jpeg: jest.fn().mockReturnThis(),
+        toBuffer: jest.fn().mockResolvedValue(mockConvertedBuffer)
+      };
+      
+      // Second mock - for the thumbnail generation with buffer (should succeed)
+      const mockThumbnailSharp = {
         resize: jest.fn().mockReturnThis(),
         jpeg: jest.fn().mockReturnThis(),
         toFile: jest.fn().mockResolvedValue()
       };
       
-      // Mock the convertHeicToJpegBuffer function
-      const originalConvert = require('../media/image').convertHeicToJpegBuffer;
-      require('../media/image').convertHeicToJpegBuffer = jest.fn().mockResolvedValue(mockConvertedBuffer);
+      // Set up sharp mock to return different mocks for different calls
+      sharp.mockReturnValueOnce(mockConvertSharp) // First call in convertHeicToJpegBuffer
+            .mockReturnValueOnce(mockThumbnailSharp); // Second call in generateThumbnail
       
-      sharp.mockReturnValue(mockSharp);
-
       const result = await generateThumbnail(testHeicFile, 'heicthumb123', thumbDir);
       
-      expect(sharp).toHaveBeenCalledWith(mockConvertedBuffer);
-      expect(mockSharp.resize).toHaveBeenCalledWith(90, 90, { fit: 'inside' });
       expect(result).toBe(path.join(thumbDir, 'heicthumb123.jpg'));
-
-      // Restore original function
-      require('../media/image').convertHeicToJpegBuffer = originalConvert;
+      expect(mockThumbnailSharp.resize).toHaveBeenCalledWith(90, 90, { fit: 'inside' });
+      expect(mockThumbnailSharp.jpeg).toHaveBeenCalledWith({ quality: 70 });
+      expect(mockThumbnailSharp.toFile).toHaveBeenCalled();
     });
 
     test('should handle thumbnail generation failures gracefully', async () => {
@@ -300,12 +352,13 @@ describe('HEIC Conversion Functionality', () => {
       
       sharp.mockReturnValue(mockSharp);
 
-      // Should fallback to ImageMagick
-      exec.mockImplementation((cmd, options, callback) => {
-        callback(new Error('magick: improper image header'));
-      });
+      // Should fallback to heic-convert
+      const heicConvert = require('heic-convert');
+      heicConvert.mockRejectedValue(new Error('Invalid HEIC data'));
 
-      await expect(convertHeicToJpegBuffer(corruptedHeicFile, 90)).rejects.toThrow();
+      await expect(convertHeicToJpegBuffer(corruptedHeicFile, 90)).rejects.toThrow(
+        'HEIC conversion failed for'
+      );
     });
   });
 });

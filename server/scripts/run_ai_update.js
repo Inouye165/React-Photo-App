@@ -13,13 +13,6 @@
         console.log('updatePhotoAIMetadata finished');
         db.get('SELECT caption, description, keywords FROM photos WHERE id = ?', [row.id], async (e, r)=>{
           console.log('DB AI fields:', r);
-          // Wait for any pending HEIC/ImageMagick conversions to finish before closing DB
-          try {
-            const { awaitHeicIdle } = require('../media/image');
-            await awaitHeicIdle(10000);
-          } catch (idleErr) {
-            console.warn('awaitHeicIdle warning:', idleErr && (idleErr.message || idleErr));
-          }
           // Close DB cleanly and allow Node to exit naturally
           db.close();
         });
