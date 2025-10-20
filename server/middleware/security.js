@@ -17,7 +17,8 @@ function configureSecurity(app) {
         connectSrc: ["'self'", "http://localhost:3001"],
       },
     },
-    crossOriginEmbedderPolicy: false // Allow image loading from same origin
+    crossOriginEmbedderPolicy: false, // Allow image loading from same origin
+    crossOriginResourcePolicy: { policy: "cross-origin" } // Allow cross-origin resources
   }));
 
   // General rate limiting

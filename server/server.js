@@ -1,4 +1,5 @@
 const path = require('path');
+const fs = require('fs');
 require('dotenv').config({ path: path.join(__dirname, '.env') });
 
 // Global safety: log uncaught exceptions and unhandled rejections instead of letting Node crash
@@ -23,6 +24,7 @@ const createPrivilegeRouter = require('./routes/privilege');
 const createAuthRouter = require('./routes/auth');
 const { configureSecurity, validateRequest, securityErrorHandler } = require('./middleware/security');
 const { authenticateToken } = require('./middleware/auth');
+const { authenticateImageRequest } = require('./middleware/imageAuth');
 
 const PORT = process.env.PORT || 3001;
 
@@ -77,7 +79,7 @@ async function startServer() {
 
   // Allow cross-origin requests from local dev servers (keep permissive for development)
   app.use(cors({
-    origin: ['http://localhost:3000', 'http://localhost:5173'], // Add common React dev server ports
+    origin: ['http://localhost:3000', 'http://localhost:5173', 'http://localhost:5174'], // Add common React dev server ports
     credentials: true // Allow cookies to be sent
   }));
   
@@ -97,12 +99,37 @@ async function startServer() {
 
   // --- Protected static file serving ---
   // Serve images statically from working dir (with authentication)
-  app.use('/working', authenticateToken, express.static(WORKING_DIR));
-  app.use('/inprogress', authenticateToken, express.static(INPROGRESS_DIR));
-  app.use('/finished', authenticateToken, express.static(FINISHED_DIR));
+  app.use('/working', authenticateImageRequest, express.static(WORKING_DIR));
+  app.use('/inprogress', authenticateImageRequest, express.static(INPROGRESS_DIR));
+  app.use('/finished', authenticateImageRequest, express.static(FINISHED_DIR));
+  
+  // Custom thumbnails handler with file existence check
+  app.get('/thumbnails/:filename', authenticateImageRequest, (req, res) => {
+    const { filename } = req.params;
+    const filePath = path.join(THUMB_DIR, filename);
+    
+    // Check if thumbnail exists
+    if (!fs.existsSync(filePath)) {
+      console.log(`Thumbnail not found on this machine: ${filePath}`);
+      return res.status(404).json({ 
+        success: false, 
+        error: 'Thumbnail not found on this machine',
+        filename: filename
+      });
+    }
+    
+    // Set appropriate headers for thumbnail serving
+    res.set({
+      'Cache-Control': 'private, max-age=3600',
+      'Access-Control-Allow-Origin': req.headers.origin || '*',
+      'Access-Control-Allow-Credentials': 'true'
+    });
+    
+    res.sendFile(filePath);
+  });
 
-  // Display endpoint for images (with authentication)
-  app.get('/display/:state/:filename', authenticateToken, (req, res) => {
+  // Display endpoint for images (with flexible authentication)
+  app.get('/display/:state/:filename', authenticateImageRequest, async (req, res) => {
     const { state, filename } = req.params;
     let dir;
     switch(state) {
@@ -111,7 +138,53 @@ async function startServer() {
       case 'finished': dir = FINISHED_DIR; break;
       default: return res.status(400).json({ success: false, error: 'Invalid state' });
     }
-    res.sendFile(path.join(dir, filename));
+    
+    const filePath = path.join(dir, filename);
+    
+    // Check if file exists before trying to serve it
+    if (!fs.existsSync(filePath)) {
+      console.log(`Image not found on this machine: ${filePath}`);
+      return res.status(404).json({ 
+        success: false, 
+        error: 'Image not found on this machine',
+        filename: filename,
+        state: state
+      });
+    }
+    
+    // Set appropriate headers for image serving
+    res.set({
+      'Cache-Control': 'private, max-age=3600',
+      'Access-Control-Allow-Origin': req.headers.origin || '*',
+      'Access-Control-Allow-Credentials': 'true'
+    });
+    
+    // Check if this is a HEIC/HEIF file that needs conversion for browser compatibility
+    const ext = path.extname(filename).toLowerCase();
+    if (ext === '.heic' || ext === '.heif') {
+      try {
+        console.log(`[DISPLAY] Converting HEIC to JPEG for browser display: ${filename}`);
+        const { convertHeicToJpegBuffer } = require('./media/image');
+        const jpegBuffer = await convertHeicToJpegBuffer(filePath, 85); // Higher quality for display
+        
+        res.set({
+          'Content-Type': 'image/jpeg',
+          'Content-Length': jpegBuffer.length
+        });
+        
+        res.send(jpegBuffer);
+      } catch (convErr) {
+        console.error(`[DISPLAY] HEIC conversion failed for ${filename}:`, convErr.message);
+        return res.status(500).json({ 
+          success: false, 
+          error: 'Failed to convert HEIC file for display',
+          filename: filename
+        });
+      }
+    } else {
+      // Serve non-HEIC files directly
+      res.sendFile(filePath);
+    }
   });
 
   // Protected API routes (require authentication)
