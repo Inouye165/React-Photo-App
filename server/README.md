@@ -39,3 +39,24 @@ npm run dev
 - CORS enabled for localhost:5173
 - File size and type validation
 - Preserves original file metadata
+
+## Asynchronous AI Processing
+
+This project uses **BullMQ** and a **Redis** server to process all long-running AI tasks in the background. This ensures the API remains fast and responsive.
+
+### Local Development
+
+1.  **Start Redis:** You must have a Redis server running. The easiest way is with Docker:
+    ```bash
+    docker run -d -p 6379:6379 redis
+    ```
+2.  **Start the Web Server:**
+    ```bash
+    npm run dev
+    ```
+3.  **Start the Worker (in a separate terminal):**
+    ```bash
+    npm run dev:worker
+    ```
+
+You must have both the web server and the worker running for the application to be fully functional.
