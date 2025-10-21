@@ -9,7 +9,7 @@ module.exports = {
     },
     useNullAsDefault: true,
     migrations: {
-      directory: './db/migrations'
+      directory: path.join(__dirname, 'db/migrations')
     },
     // Recommended for SQLite to enforce foreign key constraints
     pool: {
@@ -23,7 +23,7 @@ module.exports = {
     connection: ':memory:',
     useNullAsDefault: true,
     migrations: {
-      directory: './db/migrations'
+      directory: path.join(__dirname, 'db/migrations')
     },
     pool: {
       afterCreate: (conn, cb) => {
@@ -35,7 +35,7 @@ module.exports = {
     client: 'pg',
     connection: process.env.DATABASE_URL, // Example: 'postgres://user:pass@host:5432/dbname'
     migrations: {
-      directory: './db/migrations'
+      directory: path.join(__dirname, 'db/migrations')
     },
     pool: {
       min: 2,
