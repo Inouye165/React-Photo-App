@@ -15,36 +15,17 @@ module.exports = function createPhotosRouter({ db }, paths) {
   const { WORKING_DIR, INPROGRESS_DIR, FINISHED_DIR, THUMB_DIR } = paths;
   const router = express.Router();
 
-  const dbGet = (sql, params = []) => new Promise((resolve, reject) => {
-    db.get(sql, params, (err, row) => {
-      if (err) reject(err); else resolve(row);
-    });
-  });
-
-  const dbRun = (sql, params = []) => new Promise((resolve, reject) => {
-    db.run(sql, params, function(err) {
-      if (err) reject(err); else resolve(this);
-    });
-  });
-
-  const dbAll = (sql, params = []) => new Promise((resolve, reject) => {
-    db.all(sql, params, (err, rows) => {
-      if (err) reject(err); else resolve(rows);
-    });
-  });
-
   // --- API: List all photos and metadata (include hash) ---
   router.get('/photos', async (req, res) => {
     try {
       const state = req.query.state;
-      let sql = 'SELECT id, filename, state, metadata, hash, file_size, caption, description, keywords, text_style, edited_filename FROM photos';
-      const params = [];
+      let query = db('photos').select('id', 'filename', 'state', 'metadata', 'hash', 'file_size', 'caption', 'description', 'keywords', 'text_style', 'edited_filename');
+      
       if (state === 'working' || state === 'inprogress' || state === 'finished') {
-        sql += ' WHERE state = ?';
-        params.push(state);
+        query = query.where({ state });
       }
       
-      const rows = await dbAll(sql, params);
+      const rows = await query;
 
       // Helper function to get directory based on state
       const getDir = (state) => {
@@ -73,9 +54,7 @@ module.exports = function createPhotosRouter({ db }, paths) {
 
       // Perform batch delete for all missing photos
       if (missingIds.length > 0) {
-        const placeholders = missingIds.map(() => '?').join(', ');
-        const deleteSql = `DELETE FROM photos WHERE id IN (${placeholders})`;
-        await dbRun(deleteSql, missingIds);
+        await db('photos').whereIn('id', missingIds).del();
         console.log(`Deleted ${missingIds.length} missing photos from DB`);
       }
 
@@ -118,30 +97,34 @@ module.exports = function createPhotosRouter({ db }, paths) {
       const name = req.params.name;
       const thumbPath = path.join(THUMB_DIR, name);
       if (fs.existsSync(thumbPath)) return res.sendFile(thumbPath);
+      
       // Try to derive hash from name (expecting <hash>.jpg)
       const hash = path.basename(name, path.extname(name));
+      
       // Attempt to find original file by matching hash in DB
-      db.get('SELECT filename, state FROM photos WHERE hash = ?', [hash], async (err, row) => {
-        if (err || !row) return res.status(404).send('Thumbnail not found');
-        const getDir = (state) => {
-          switch(state) {
-            case 'working': return WORKING_DIR;
-            case 'inprogress': return INPROGRESS_DIR;
-            case 'finished': return FINISHED_DIR;
-            default: return WORKING_DIR;
-          }
-        };
-        const origPath = path.join(getDir(row.state), row.filename);
-        if (!fs.existsSync(origPath)) return res.status(404).send('Original file missing');
-        try {
-          const gen = await generateThumbnail(origPath, hash, THUMB_DIR);
-          if (gen && fs.existsSync(gen)) return res.sendFile(gen);
-          return res.status(500).send('Thumbnail generation failed');
-        } catch (genErr) {
-          console.error('Thumbnail generation on-demand failed for', origPath, genErr);
-          return res.status(500).send('Thumbnail generation failed');
+      const row = await db('photos').where({ hash }).select('filename', 'state').first();
+      if (!row) return res.status(404).send('Thumbnail not found');
+      
+      const getDir = (state) => {
+        switch(state) {
+          case 'working': return WORKING_DIR;
+          case 'inprogress': return INPROGRESS_DIR;
+          case 'finished': return FINISHED_DIR;
+          default: return WORKING_DIR;
         }
-      });
+      };
+      
+      const origPath = path.join(getDir(row.state), row.filename);
+      if (!fs.existsSync(origPath)) return res.status(404).send('Original file missing');
+      
+      try {
+        const gen = await generateThumbnail(origPath, hash, THUMB_DIR);
+        if (gen && fs.existsSync(gen)) return res.sendFile(gen);
+        return res.status(500).send('Thumbnail generation failed');
+      } catch (genErr) {
+        console.error('Thumbnail generation on-demand failed for', origPath, genErr);
+        return res.status(500).send('Thumbnail generation failed');
+      }
     } catch (_e) {
       console.error('Thumbnail route error', _e);
       res.status(500).send('Server error');
@@ -281,10 +264,11 @@ module.exports = function createPhotosRouter({ db }, paths) {
   });
 
   // --- Delete photo endpoint ---
-  router.delete('/photos/:id', (req, res) => {
-    const { id } = req.params;
-    db.get('SELECT * FROM photos WHERE id = ?', [id], (err, row) => {
-      if (err || !row) {
+  router.delete('/photos/:id', async (req, res) => {
+    try {
+      const { id } = req.params;
+      const row = await db('photos').where({ id }).first();
+      if (!row) {
         return res.status(404).json({ success: false, error: 'Photo not found' });
       }
 
@@ -302,39 +286,35 @@ module.exports = function createPhotosRouter({ db }, paths) {
       const filePath = path.join(dir, row.filename);
 
       // Delete the file if it exists
-      try {
-        if (fs.existsSync(filePath)) {
-          fs.unlinkSync(filePath);
-        }
-
-        // Also delete any edited version
-        if (row.edited_filename) {
-          const editedPath = path.join(INPROGRESS_DIR, row.edited_filename);
-          if (fs.existsSync(editedPath)) {
-            fs.unlinkSync(editedPath);
-          }
-        }
-
-        // Delete from database
-        db.run('DELETE FROM photos WHERE id = ?', [id], function(deleteErr) {
-          if (deleteErr) {
-            return res.status(500).json({ success: false, error: deleteErr.message });
-          }
-          res.json({ success: true, message: 'Photo deleted successfully' });
-        });
-      } catch (err) {
-        res.status(500).json({ success: false, error: err.message });
+      if (fs.existsSync(filePath)) {
+        fs.unlinkSync(filePath);
       }
-    });
-  });
-  router.patch('/photos/:id/state', express.json(), (req, res) => {
-    const { id } = req.params;
-    const { state } = req.body;
-    if (!['working', 'inprogress', 'finished'].includes(state)) {
-      return res.status(400).json({ success: false, error: 'Invalid state' });
+
+      // Also delete any edited version
+      if (row.edited_filename) {
+        const editedPath = path.join(INPROGRESS_DIR, row.edited_filename);
+        if (fs.existsSync(editedPath)) {
+          fs.unlinkSync(editedPath);
+        }
+      }
+
+      // Delete from database
+      await db('photos').where({ id }).del();
+      res.json({ success: true, message: 'Photo deleted successfully' });
+    } catch (err) {
+      console.error('Delete photo error:', err);
+      res.status(500).json({ success: false, error: err.message });
     }
-    db.get('SELECT * FROM photos WHERE id = ?', [id], (err, row) => {
-      if (err || !row) {
+  });
+  router.patch('/photos/:id/state', express.json(), async (req, res) => {
+    try {
+      const { id } = req.params;
+      const { state } = req.body;
+      if (!['working', 'inprogress', 'finished'].includes(state)) {
+        return res.status(400).json({ success: false, error: 'Invalid state' });
+      }
+      const row = await db('photos').where({ id }).first();
+      if (!row) {
         return res.status(404).json({ success: false, error: 'Photo not found' });
       }
 
@@ -356,29 +336,28 @@ module.exports = function createPhotosRouter({ db }, paths) {
         return res.status(404).json({ success: false, error: 'File not found' });
       }
       // Move or copy file
-      try {
-        if (srcPath !== destPath) {
-          fs.copyFileSync(srcPath, destPath);
-          fs.unlinkSync(srcPath);
-        }
-        // Set permissions: read-only for working, read/write for inprogress
-        if (state === 'working') {
-          fs.chmodSync(destPath, 0o444); // read-only
-        } else {
-          fs.chmodSync(destPath, 0o666); // read/write
-        }
-        db.run('UPDATE photos SET state = ?, updated_at = ? WHERE id = ?', [state, new Date().toISOString(), id]);
-        if (state === 'inprogress') {
-          // Run AI pipeline after state change
-          updatePhotoAIMetadata(db, row, destPath).then(ai => {
-            if (ai) console.log('AI metadata updated for', row.filename);
-          });
-        }
-        res.json({ success: true });
-      } catch (err) {
-        res.status(500).json({ success: false, error: err.message });
+      if (srcPath !== destPath) {
+        fs.copyFileSync(srcPath, destPath);
+        fs.unlinkSync(srcPath);
       }
-    });
+      // Set permissions: read-only for working, read/write for inprogress
+      if (state === 'working') {
+        fs.chmodSync(destPath, 0o444); // read-only
+      } else {
+        fs.chmodSync(destPath, 0o666); // read/write
+      }
+      await db('photos').where({ id }).update({ state, updated_at: new Date().toISOString() });
+      if (state === 'inprogress') {
+        // Run AI pipeline after state change
+        updatePhotoAIMetadata(db, row, destPath).then(ai => {
+          if (ai) console.log('AI metadata updated for', row.filename);
+        });
+      }
+      res.json({ success: true });
+    } catch (err) {
+      console.error('State update error:', err);
+      res.status(500).json({ success: false, error: err.message });
+    }
   });
 
   // --- Save captioned image endpoint ---

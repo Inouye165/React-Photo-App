@@ -21,19 +21,25 @@ module.exports = function createDebugRouter({ db }, paths) {
   });
 
   // Debug endpoint to list all inprogress files in the database
-  router.get('/debug/inprogress', (req, res) => {
-    db.all('SELECT * FROM photos WHERE state = ?', ['inprogress'], (err, rows) => {
-      if (err) return res.status(500).json({ error: err.message });
+  router.get('/debug/inprogress', async (req, res) => {
+    try {
+      const rows = await db('photos').where({ state: 'inprogress' });
       res.json(rows);
-    });
+    } catch (err) {
+      console.error('Debug inprogress error:', err);
+      res.status(500).json({ error: err.message });
+    }
   });
 
   // Debug endpoint to reset ai_retry_count for all HEIC files
-  router.post('/debug/reset-ai-retry', (req, res) => {
-    db.run("UPDATE photos SET ai_retry_count = 0 WHERE filename LIKE '%.HEIC'", function(err) {
-      if (err) return res.status(500).json({ error: err.message });
-      res.json({ updated: this.changes });
-    });
+  router.post('/debug/reset-ai-retry', async (req, res) => {
+    try {
+      const result = await db('photos').where('filename', 'like', '%.HEIC').update({ ai_retry_count: 0 });
+      res.json({ updated: result });
+    } catch (err) {
+      console.error('Reset ai retry error:', err);
+      res.status(500).json({ error: err.message });
+    }
   });
 
   // Debug endpoint to regenerate missing thumbnails
@@ -50,13 +56,7 @@ module.exports = function createDebugRouter({ db }, paths) {
         }
       };
 
-      const dbAll = (sql, params = []) => new Promise((resolve, reject) => {
-        db.all(sql, params, (err, rows) => {
-          if (err) reject(err); else resolve(rows);
-        });
-      });
-
-      const rows = await dbAll('SELECT * FROM photos WHERE hash IS NOT NULL');
+      const rows = await db('photos').whereNotNull('hash');
       
       let missing = 0;
       let generated = 0;

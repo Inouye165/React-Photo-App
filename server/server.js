@@ -12,7 +12,7 @@ process.on('uncaughtException', (err) => {
 
 const { WORKING_DIR, INPROGRESS_DIR, FINISHED_DIR, THUMB_DIR } = require('./config/paths');
 
-const { openDb, migrate } = require('./db/index');
+const db = require('./db/index');
 const { backfillFileSizes, cleanupMissingFiles, cleanupMissingInprogressFiles } = require('./db/maintenance');
 const { ensureAllThumbnails, ensureAllFilesHashed } = require('./media/image');
 const { processAllUnprocessedInprogress } = require('./ai/service');
@@ -49,12 +49,9 @@ const PORT = process.env.PORT || 3001;
 
 
 async function startServer() {
-  const db = openDb();
-  await migrate(db);
-  // provide promise wrappers used by route modules
-  const dbGet = (sql, params = []) => new Promise((resolve, reject) => db.get(sql, params, (e, r) => e ? reject(e) : resolve(r)));
-  const dbAll = (sql, params = []) => new Promise((resolve, reject) => db.all(sql, params, (e, r) => e ? reject(e) : resolve(r)));
-  const dbRun = (sql, params = []) => new Promise((resolve, reject) => db.run(sql, params, function(e) { e ? reject(e) : resolve(this) }));
+  // Run database migrations
+  await db.migrate.latest();
+  
   await backfillFileSizes(db, { WORKING_DIR, INPROGRESS_DIR, FINISHED_DIR });
   await ensureAllFilesHashed(db, WORKING_DIR, THUMB_DIR);
   await cleanupMissingFiles(db, WORKING_DIR);
@@ -92,7 +89,7 @@ async function startServer() {
   app.use(express.urlencoded({ limit: '50mb', extended: true }));
 
   // Authentication routes (no auth required)
-  app.use(createAuthRouter({ db, dbGet, dbAll, dbRun }));
+  app.use(createAuthRouter({ db }));
 
   // Health check (no auth required)
   app.use(createHealthRouter());
@@ -188,8 +185,8 @@ async function startServer() {
   });
 
   // Protected API routes (require authentication)
-  app.use(authenticateToken, createPhotosRouter({ db, dbGet, dbAll, dbRun }, { WORKING_DIR, INPROGRESS_DIR, FINISHED_DIR, THUMB_DIR }));
-  app.use(authenticateToken, createUploadsRouter({ db, dbGet, dbAll, dbRun }, { WORKING_DIR, INPROGRESS_DIR, THUMB_DIR }));
+  app.use(authenticateToken, createPhotosRouter({ db }, { WORKING_DIR, INPROGRESS_DIR, FINISHED_DIR, THUMB_DIR }));
+  app.use(authenticateToken, createUploadsRouter({ db }, { WORKING_DIR, INPROGRESS_DIR, THUMB_DIR }));
   app.use(authenticateToken, createDebugRouter({ db }, { INPROGRESS_DIR }));
   app.use(authenticateToken, createPrivilegeRouter({ WORKING_DIR, INPROGRESS_DIR }));
 

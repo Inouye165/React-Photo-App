@@ -276,8 +276,13 @@ async function updatePhotoAIMetadata(db, photoRow, filePath) {
     const retryCount = photoRow.ai_retry_count || 0;
     if (retryCount >= 5) {
       console.error(`AI processing failed permanently for ${photoRow.filename} after ${retryCount} retries`);
-      db.run('UPDATE photos SET caption = ?, description = ?, keywords = ?, ai_retry_count = ?, poi_analysis = ? WHERE id = ?',
-        ['AI processing failed', 'AI processing failed', '', retryCount, null, photoRow.id]);
+      await db('photos').where({ id: photoRow.id }).update({
+        caption: 'AI processing failed',
+        description: 'AI processing failed',
+        keywords: '',
+        ai_retry_count: retryCount,
+        poi_analysis: null
+      });
       return null;
     }
     let ai;
@@ -285,11 +290,16 @@ async function updatePhotoAIMetadata(db, photoRow, filePath) {
       ai = await processPhotoAI({ filePath, metadata: meta, gps, device });
     } catch (error) {
       console.error(`AI processing failed for ${photoRow.filename} (attempt ${retryCount + 1}):`, error.message || error);
-      db.run('UPDATE photos SET ai_retry_count = ? WHERE id = ?', [retryCount + 1, photoRow.id]);
+      await db('photos').where({ id: photoRow.id }).update({ ai_retry_count: retryCount + 1 });
       return null;
     }
-    db.run('UPDATE photos SET caption = ?, description = ?, keywords = ?, ai_retry_count = ?, poi_analysis = ? WHERE id = ?',
-      [ai.caption, ai.description, ai.keywords, 0, JSON.stringify(ai.poiAnalysis || null), photoRow.id]);
+    await db('photos').where({ id: photoRow.id }).update({
+      caption: ai.caption,
+      description: ai.description,
+      keywords: ai.keywords,
+      ai_retry_count: 0,
+      poi_analysis: JSON.stringify(ai.poiAnalysis || null)
+    });
     return ai;
   } catch (error) {
     console.error(`Unexpected error in updatePhotoAIMetadata for ${photoRow.filename}:`, error.message || error);
@@ -303,36 +313,40 @@ function isAIFailed(val) {
 
 // On server start, process all inprogress photos missing AI metadata or with retry count < 2
 async function processAllUnprocessedInprogress(db, INPROGRESS_DIR) {
-  return new Promise((resolve, _reject) => {
-    db.all(
-      'SELECT * FROM photos WHERE state = ? AND (caption IS NULL OR description IS NULL OR keywords IS NULL OR ai_retry_count < 2)',
-      ['inprogress'],
-      async (err, rows) => {
-        if (err) return _reject(err);
-        console.log(`[RECHECK] Found ${rows.length} inprogress files needing AI processing`);
-        for (const row of rows) {
-          if (
-            !isAIFailed(row.caption) &&
-            !isAIFailed(row.description) &&
-            !isAIFailed(row.keywords) &&
-            (!row.ai_retry_count || row.ai_retry_count < 2)
-          ) {
-            console.log(`[RECHECK] Skipping ${row.filename} (already has valid AI metadata)`);
-            continue;
-          }
-          const filePath = path.join(INPROGRESS_DIR, row.filename);
-          if (fs.existsSync(filePath)) {
-            console.log(`[RECHECK] Processing AI metadata for ${row.filename}`);
-             
-            await updatePhotoAIMetadata(db, row, filePath);
-          } else {
-            console.log(`[RECHECK] File not found for ${row.filename} at ${filePath}`);
-          }
-        }
-        resolve(rows.length);
+  try {
+    const rows = await db('photos')
+      .where({ state: 'inprogress' })
+      .andWhere(function() {
+        this.whereNull('caption')
+          .orWhereNull('description')
+          .orWhereNull('keywords')
+          .orWhere('ai_retry_count', '<', 2);
+      });
+    
+    console.log(`[RECHECK] Found ${rows.length} inprogress files needing AI processing`);
+    for (const row of rows) {
+      if (
+        !isAIFailed(row.caption) &&
+        !isAIFailed(row.description) &&
+        !isAIFailed(row.keywords) &&
+        (!row.ai_retry_count || row.ai_retry_count < 2)
+      ) {
+        console.log(`[RECHECK] Skipping ${row.filename} (already has valid AI metadata)`);
+        continue;
       }
-    );
-  });
+      const filePath = path.join(INPROGRESS_DIR, row.filename);
+      if (fs.existsSync(filePath)) {
+        console.log(`[RECHECK] Processing AI metadata for ${row.filename}`);
+        await updatePhotoAIMetadata(db, row, filePath);
+      } else {
+        console.log(`[RECHECK] File not found for ${row.filename} at ${filePath}`);
+      }
+    }
+    return rows.length;
+  } catch (error) {
+    console.error('[RECHECK] Error processing unprocessed inprogress files:', error);
+    throw error;
+  }
 }
 
 module.exports = { processPhotoAI, updatePhotoAIMetadata, isAIFailed, processAllUnprocessedInprogress };

@@ -93,11 +93,7 @@ async function ensureAllThumbnails(db, WORKING_DIR, THUMB_DIR) {
     const filePath = path.join(WORKING_DIR, filename);
     const stats = await fs.stat(filePath);
     if (!stats.isFile()) continue;
-    const row = await new Promise((resolve, reject) => {
-      db.get('SELECT * FROM photos WHERE filename = ?', [filename], (err, row) => {
-        if (err) reject(err); else resolve(row);
-      });
-    });
+    const row = await db('photos').where({ filename }).first();
     if (row && row.hash) {
       const job = async () => {
         try {
@@ -150,18 +146,14 @@ async function ensureAllFilesHashed(db, WORKING_DIR, THUMB_DIR) {
       console.log(`[STARTUP] Skipping HEIC/HEIF file at startup: ${filename} (set STARTUP_PROCESS_HEIC=true to override)`);
       continue;
     }
-    const row = await new Promise((resolve, reject) => {
-      db.get('SELECT * FROM photos WHERE filename = ?', [filename], (err, row) => {
-        if (err) reject(err); else resolve(row);
-      });
-    });
+    const row = await db('photos').where({ filename }).first();
     if (!row) {
       await ingestPhoto(db, filePath, filename, 'working', THUMB_DIR);
       continue;
     }
     if (!row.hash) {
       const hash = await hashFile(filePath);
-      db.run('UPDATE photos SET hash = ? WHERE id = ?', [hash, row.id]);
+      await db('photos').where({ id: row.id }).update({ hash });
       await generateThumbnail(filePath, hash, THUMB_DIR);
       processedCount++;
     } else {
@@ -178,11 +170,7 @@ async function ensureAllFilesHashed(db, WORKING_DIR, THUMB_DIR) {
 async function ingestPhoto(db, filePath, filename, state, thumbDir) {
   try {
     const hash = await hashFile(filePath);
-    const existing = await new Promise((resolve, reject) => {
-      db.get('SELECT id FROM photos WHERE hash = ?', [hash], (err, row) => {
-        if (err) reject(err); else resolve(row);
-      });
-    });
+    const existing = await db('photos').where({ hash }).select('id').first();
     if (existing) {
       await fs.unlink(filePath);
       console.log(`Duplicate file skipped: ${filename}`);
@@ -193,10 +181,15 @@ async function ingestPhoto(db, filePath, filename, state, thumbDir) {
     const fileStats = await fs.stat(filePath);
     const fileSize = fileStats.size;
     const now = new Date().toISOString();
-    db.run(
-      `INSERT OR REPLACE INTO photos (filename, state, metadata, hash, file_size, created_at, updated_at) VALUES (?, ?, ?, ?, ?, ?, ?)`,
-      [filename, state, metaStr, hash, fileSize, now, now]
-    );
+    await db('photos').insert({
+      filename,
+      state,
+      metadata: metaStr,
+      hash,
+      file_size: fileSize,
+      created_at: now,
+      updated_at: now
+    }).onConflict('filename').merge();
     const td = thumbDir || path.join(__dirname, '..', 'thumbnails');
     await generateThumbnail(filePath, hash, td);
     return { duplicate: false, hash };

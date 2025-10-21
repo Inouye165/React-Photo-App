@@ -1,5 +1,5 @@
 const request = require('supertest');
-const { openDb, migrate } = require('../db/index');
+const { setupTestDb, cleanupTestDb } = require('./test-db');
 const { createUser, getUserByUsername } = require('../middleware/auth');
 
 // Test server setup
@@ -12,38 +12,17 @@ describe('Authentication System', () => {
 
   beforeAll(async () => {
     // Create in-memory database for testing
-    db = openDb(':memory:');
-    await migrate(db);
+    db = await setupTestDb();
     
     // Setup test app
     app = express();
     app.use(express.json());
     
-    const dbGet = (sql, params = []) => new Promise((resolve, reject) => {
-      db.get(sql, params, (err, row) => {
-        if (err) reject(err); else resolve(row);
-      });
-    });
-    
-    const dbAll = (sql, params = []) => new Promise((resolve, reject) => {
-      db.all(sql, params, (err, rows) => {
-        if (err) reject(err); else resolve(rows);
-      });
-    });
-    
-    const dbRun = (sql, params = []) => new Promise((resolve, reject) => {
-      db.run(sql, params, function(err) {
-        if (err) reject(err); else resolve(this);
-      });
-    });
-    
-    app.use(createAuthRouter({ db, dbGet, dbAll, dbRun }));
+    app.use(createAuthRouter({ db }));
   });
 
-  afterAll(() => {
-    if (db) {
-      db.close();
-    }
+  afterAll(async () => {
+    await cleanupTestDb(db);
   });
 
   describe('User Registration', () => {

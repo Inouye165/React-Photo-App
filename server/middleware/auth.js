@@ -114,80 +114,55 @@ function isAccountLocked(user) {
 async function lockAccount(db, userId) {
   const lockoutUntil = new Date(Date.now() + LOCKOUT_TIME_MINUTES * 60 * 1000);
   
-  return new Promise((resolve, reject) => {
-    db.run(
-      'UPDATE users SET account_locked_until = ?, failed_login_attempts = ? WHERE id = ?',
-      [lockoutUntil.toISOString(), MAX_LOGIN_ATTEMPTS, userId],
-      function(err) {
-        if (err) reject(err);
-        else resolve(this);
-      }
-    );
-  });
+  await db('users')
+    .where({ id: userId })
+    .update({
+      account_locked_until: lockoutUntil.toISOString(),
+      failed_login_attempts: MAX_LOGIN_ATTEMPTS
+    });
 }
 
 /**
  * Increment failed login attempts
  */
 async function incrementFailedAttempts(db, userId) {
-  return new Promise((resolve, reject) => {
-    db.run(
-      'UPDATE users SET failed_login_attempts = failed_login_attempts + 1, last_login_attempt = datetime("now") WHERE id = ?',
-      [userId],
-      function(err) {
-        if (err) reject(err);
-        else resolve(this);
-      }
-    );
-  });
+  await db('users')
+    .where({ id: userId })
+    .update({
+      failed_login_attempts: db.raw('failed_login_attempts + 1'),
+      last_login_attempt: new Date()
+    });
 }
 
 /**
  * Reset failed login attempts on successful login
  */
 async function resetFailedAttempts(db, userId) {
-  return new Promise((resolve, reject) => {
-    db.run(
-      'UPDATE users SET failed_login_attempts = 0, account_locked_until = NULL, last_login_attempt = datetime("now") WHERE id = ?',
-      [userId],
-      function(err) {
-        if (err) reject(err);
-        else resolve(this);
-      }
-    );
-  });
+  await db('users')
+    .where({ id: userId })
+    .update({
+      failed_login_attempts: 0,
+      account_locked_until: null,
+      last_login_attempt: new Date()
+    });
 }
 
 /**
  * Get user by username
  */
 async function getUserByUsername(db, username) {
-  return new Promise((resolve, reject) => {
-    db.get(
-      'SELECT * FROM users WHERE username = ? AND is_active = 1',
-      [username],
-      (err, row) => {
-        if (err) reject(err);
-        else resolve(row);
-      }
-    );
-  });
+  return await db('users')
+    .where({ username, is_active: true })
+    .first();
 }
 
 /**
  * Get user by email
  */
 async function getUserByEmail(db, email) {
-  return new Promise((resolve, reject) => {
-    db.get(
-      'SELECT * FROM users WHERE email = ? AND is_active = 1',
-      [email],
-      (err, row) => {
-        if (err) reject(err);
-        else resolve(row);
-      }
-    );
-  });
+  return await db('users')
+    .where({ email, is_active: true })
+    .first();
 }
 
 /**
@@ -197,23 +172,22 @@ async function createUser(db, userData) {
   const { username, email, password, role = 'user' } = userData;
   const passwordHash = await hashPassword(password);
   
-  return new Promise((resolve, reject) => {
-    db.run(
-      'INSERT INTO users (username, email, password_hash, role) VALUES (?, ?, ?, ?)',
-      [username, email, passwordHash, role],
-      function(err) {
-        if (err) {
-          if (err.code === 'SQLITE_CONSTRAINT_UNIQUE') {
-            reject(new Error('Username or email already exists'));
-          } else {
-            reject(err);
-          }
-        } else {
-          resolve({ id: this.lastID, username, email, role });
-        }
-      }
-    );
-  });
+  try {
+    const [userId] = await db('users').insert({
+      username,
+      email,
+      password_hash: passwordHash,
+      role
+    });
+    
+    return { id: userId, username, email, role };
+  } catch (err) {
+    if (err.code === 'SQLITE_CONSTRAINT_UNIQUE' || err.code === '23505') {
+      throw new Error('Username or email already exists');
+    } else {
+      throw err;
+    }
+  }
 }
 
 /**

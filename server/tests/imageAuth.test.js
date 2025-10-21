@@ -3,7 +3,7 @@ const express = require('express');
 const jwt = require('jsonwebtoken');
 const { authenticateImageRequest } = require('../middleware/imageAuth');
 
-const JWT_SECRET = process.env.JWT_SECRET || 'test-secret';
+const JWT_SECRET = process.env.JWT_SECRET || 'fallback-secret-change-in-production';
 
 describe('Image Authentication Middleware', () => {
   let app;
