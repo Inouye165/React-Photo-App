@@ -87,13 +87,23 @@ function validateRequest(req, res, next) {
   const suspiciousPatterns = [
     /\.\.\//g, // Directory traversal
     /<script/gi, // XSS attempts
+    /%3Cscript/gi, // URL-encoded XSS attempts
     /union.*select/gi, // SQL injection attempts
     /exec\(/gi, // Code execution attempts
   ];
 
   const fullUrl = req.originalUrl || req.url;
+  // Also check the decoded URL
+  let decodedUrl = '';
+  try {
+    decodedUrl = decodeURIComponent(fullUrl);
+  } catch (e) {
+    // If decoding fails, stick with original URL
+    decodedUrl = fullUrl;
+  }
+
   for (const pattern of suspiciousPatterns) {
-    if (pattern.test(fullUrl)) {
+    if (pattern.test(fullUrl) || pattern.test(decodedUrl)) {
       console.warn(`Suspicious request detected from ${req.ip}: ${fullUrl}`);
       return res.status(400).json({
         success: false,

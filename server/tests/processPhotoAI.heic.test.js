@@ -1,15 +1,14 @@
 const fs = require('fs');
 const path = require('path');
-const { vi } = require('vitest');
 
 // Mock the convertHeicToJpegBuffer to avoid relying on real ImageMagick/sharp
-vi.mock('../media/image', () => ({
-  convertHeicToJpegBuffer: vi.fn(async (_filePath, _quality) => Buffer.from('fakejpeg')),
+jest.mock('../media/image', () => ({
+  convertHeicToJpegBuffer: jest.fn(async (_filePath, _quality) => Buffer.from('fakejpeg')),
 }));
 
 // Mock the chain adapter to return predictable JSON
-vi.mock('../ai/langchain/chainAdapter', () => ({
-  runChain: vi.fn(async ({ _messages }) => ({
+jest.mock('../ai/langchain/chainAdapter', () => ({
+  runChain: jest.fn(async ({ _messages }) => ({
     choices: [{ message: { content: JSON.stringify({ caption: 'HEIC Test', description: 'desc heic', keywords: 'x,y' }) } }]
   }))
 }));

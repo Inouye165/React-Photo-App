@@ -19,23 +19,27 @@ const {
 module.exports = function createAuthRouter({ db }) {
   const router = express.Router();
 
-  // Rate limiting for auth endpoints
-  const authLimiter = rateLimit({
-    windowMs: 15 * 60 * 1000, // 15 minutes
-    max: 5, // Limit each IP to 5 requests per windowMs
-    message: {
-      success: false,
-      error: 'Too many authentication attempts, please try again later.'
-    },
-    standardHeaders: true,
-    legacyHeaders: false,
+  // Rate limiting for auth endpoints (disabled in test environment)
+  const authLimiter = process.env.NODE_ENV === 'test' ? 
+    (req, res, next) => next() : // Skip rate limiting in tests
+    rateLimit({
+      windowMs: 15 * 60 * 1000, // 15 minutes
+      max: 5, // Limit each IP to 5 requests per windowMs
+      message: {
+        success: false,
+        error: 'Too many authentication attempts, please try again later.'
+      },
+      standardHeaders: true,
+      legacyHeaders: false,
   });
 
-  const registerLimiter = rateLimit({
-    windowMs: 60 * 60 * 1000, // 1 hour
-    max: 3, // Limit each IP to 3 registration attempts per hour
-    message: {
-      success: false,
+  const registerLimiter = process.env.NODE_ENV === 'test' ? 
+    (req, res, next) => next() : // Skip rate limiting in tests
+    rateLimit({
+      windowMs: 60 * 60 * 1000, // 1 hour
+      max: 3, // Limit each IP to 3 registration attempts per hour
+      message: {
+        success: false,
       error: 'Too many registration attempts, please try again later.'
     },
     standardHeaders: true,

@@ -1,12 +1,9 @@
 const fs = require('fs');
 const path = require('path');
 
-// Use Vitest-friendly globals (the repo uses vitest)
-const { vi } = require('vitest');
-
 // We'll test processPhotoAI by mocking the chain adapter to return a predictable response
-vi.mock('../ai/langchain/chainAdapter', () => ({
-  runChain: vi.fn(async ({ _messages }) => ({
+jest.mock('../ai/langchain/chainAdapter', () => ({
+  runChain: jest.fn(async ({ _messages }) => ({
     choices: [{ message: { content: JSON.stringify({ caption: 'Test', description: 'desc', keywords: 'a,b' }) } }],
     _ctx: { method: 'openai' }
   }))

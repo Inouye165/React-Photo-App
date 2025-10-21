@@ -1,8 +1,6 @@
-const { vi } = require('vitest');
-
 // Mock the OpenAI module before requiring the adapter so the constructor used
 // inside the adapter is the mocked one.
-vi.mock('openai', () => {
+jest.mock('openai', () => {
   return function OpenAI() {
     return {
       chat: {
@@ -18,12 +16,21 @@ describe('chainAdapter (simpleChain path)', () => {
   beforeAll(() => {
     // Enable simple chain before loading the adapter
     process.env.USE_SIMPLE_CHAIN = 'true';
+    // Don't set USE_LANGCHAIN=true since that conflicts with USE_SIMPLE_CHAIN
+    // Clear module cache to ensure fresh load with new env vars
+    delete require.cache[require.resolve('../ai/langchain/chainAdapter')];
+  });
+
+  afterAll(() => {
+    delete process.env.USE_SIMPLE_CHAIN;
+    // Clear module cache to reset for other tests
+    delete require.cache[require.resolve('../ai/langchain/chainAdapter')];
   });
 
   it('runs simpleChain and returns OpenAI-like response with _ctx', async () => {
     // Mock the simpleChain implementation used by the adapter
     const simpleChain = require('../ai/langchain/simpleChain');
-    vi.spyOn(simpleChain, 'runSimpleChain').mockResolvedValue({
+    jest.spyOn(simpleChain, 'runSimpleChain').mockResolvedValue({
       messages: [ { role: 'user', content: [ { type: 'text', text: 'dummy prompt' } ] } ],
       ctx: { test: 'context' }
     });

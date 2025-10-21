@@ -1,5 +1,6 @@
 const request = require('supertest');
 const express = require('express');
+const cookieParser = require('cookie-parser');
 const jwt = require('jsonwebtoken');
 const { authenticateImageRequest } = require('../middleware/imageAuth');
 
@@ -26,6 +27,7 @@ describe('Image Authentication Middleware', () => {
 
     // Setup test app
     app = express();
+    app.use(cookieParser()); // Add cookie parser middleware
     app.use('/test-image', authenticateImageRequest, (req, res) => {
       res.json({ success: true, user: req.user });
     });
