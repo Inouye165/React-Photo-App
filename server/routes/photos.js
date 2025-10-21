@@ -3,6 +3,7 @@ const path = require('path');
 const fs = require('fs');
 const { generateThumbnail, convertHeicToJpegBuffer } = require('../media/image');
 const { updatePhotoAIMetadata } = require('../ai/service');
+const { addAIJob, checkRedisAvailable } = require('../queue/index');
 const sharp = require('sharp');
 const exifr = require('exifr');
 const { copyExifMetadata } = require('../media/exif');
@@ -452,6 +453,60 @@ module.exports = function createPhotosRouter({ db }, paths) {
     } catch (error) {
       console.error('Failed to save captioned image for photo', error);
       res.status(500).json({ success: false, error: error.message || 'Failed to save captioned image' });
+    }
+  });
+
+  // --- Run AI processing endpoint ---
+  router.post('/:id/run-ai', async (req, res) => {
+    try {
+      // Re-fetch the photo to ensure it exists
+      const photo = await db('photos').where({ id: req.params.id }).first();
+      if (!photo) {
+        return res.status(404).json({ error: 'Photo not found' });
+      }
+
+      // Check if Redis/queue is available
+      const redisAvailable = await checkRedisAvailable();
+      if (!redisAvailable) {
+        // Fallback to synchronous processing when Redis is not available
+        console.log(`[API] Redis unavailable - processing AI synchronously for photoId: ${photo.id}`);
+        
+        // Determine the correct file path based on photo state
+        const getDir = (state) => {
+          switch(state) {
+            case 'working': return WORKING_DIR;
+            case 'inprogress': return INPROGRESS_DIR;
+            case 'finished': return FINISHED_DIR;
+            default: return WORKING_DIR;
+          }
+        };
+
+        const filePath = path.join(getDir(photo.state), photo.filename);
+        
+        // Process AI synchronously
+        await updatePhotoAIMetadata(db, photo, filePath);
+        
+        return res.status(200).json({
+          message: 'AI processing completed synchronously.',
+          photoId: photo.id,
+        });
+      }
+
+      // Add a job to the queue when Redis is available
+      await addAIJob(photo.id);
+
+      console.log(`[API] Enqueued AI processing for photoId: ${photo.id}`);
+
+      // Respond to the user IMMEDIATELY
+      // 202 Accepted means "Your request is accepted and will be processed"
+      return res.status(202).json({
+        message: 'AI processing has been queued.',
+        photoId: photo.id,
+      });
+
+    } catch (error) {
+      console.error('Error processing AI job:', error);
+      return res.status(500).json({ error: 'Failed to process AI job' });
     }
   });
 

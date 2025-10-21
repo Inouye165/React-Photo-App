@@ -2,18 +2,15 @@ const request = require('supertest');
 const express = require('express');
 
 // Mock the database and media modules
-const { vi } = require('vitest');
-vi.mock('../db/index', () => ({
-  openDb: vi.fn(() => ({})),
+jest.mock('../db/index', () => ({}));
+
+jest.mock('../media/image', () => ({
+  ingestPhoto: jest.fn(),
 }));
 
-vi.mock('../media/image', () => ({
-  ingestPhoto: vi.fn(),
-}));
-
-vi.mock('../media/uploader', () => ({
-  createUploadMiddleware: vi.fn(() => ({
-    single: vi.fn(() => (req, res, next) => {
+jest.mock('../media/uploader', () => ({
+  createUploadMiddleware: jest.fn(() => ({
+    single: jest.fn(() => (req, res, next) => {
       // Mock multer middleware
       req.file = {
         path: '/tmp/test.jpg',
@@ -33,8 +30,8 @@ describe('Uploads Router', () => {
 
   beforeEach(() => {
     dbMock = {};
-    ingestPhotoMock = vi.mocked(require('../media/image').ingestPhoto);
-    createUploadMiddlewareMock = vi.mocked(require('../media/uploader').createUploadMiddleware);
+    ingestPhotoMock = jest.mocked(require('../media/image').ingestPhoto);
+    createUploadMiddlewareMock = jest.mocked(require('../media/uploader').createUploadMiddleware);
   });
 
   const createApp = () => {
@@ -87,7 +84,7 @@ describe('Uploads Router', () => {
   it('should return error when no file uploaded', async () => {
     // Mock middleware to not set req.file
     createUploadMiddlewareMock.mockReturnValueOnce({
-      single: vi.fn(() => (req, res, next) => {
+      single: jest.fn(() => (req, res, next) => {
         // No req.file set
         next();
       }),
@@ -122,7 +119,7 @@ describe('Uploads Router', () => {
   it('should reject non-image files', async () => {
     // Mock middleware to set req.file with invalid mimetype
     createUploadMiddlewareMock.mockReturnValueOnce({
-      single: vi.fn(() => (req, res, next) => {
+      single: jest.fn(() => (req, res, next) => {
         req.file = {
           path: '/tmp/test.txt',
           filename: 'test.txt',

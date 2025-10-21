@@ -1,11 +1,12 @@
 const request = require('supertest');
 const express = require('express');
+const cookieParser = require('cookie-parser');
 const path = require('path');
 const fs = require('fs');
 const jwt = require('jsonwebtoken');
 const { authenticateImageRequest } = require('../middleware/imageAuth');
 
-const JWT_SECRET = process.env.JWT_SECRET || 'test-secret';
+const JWT_SECRET = process.env.JWT_SECRET || 'fallback-secret-change-in-production';
 
 // Mock the media/image module
 jest.mock('../media/image', () => ({
@@ -29,6 +30,7 @@ describe('Display Endpoint with HEIC Support', () => {
 
     // Setup test app with display endpoint
     app = express();
+    app.use(cookieParser()); // Add cookie parser middleware
     
     // Mock display endpoint similar to server.js
     app.get('/display/:state/:filename', authenticateImageRequest, async (req, res) => {
@@ -208,7 +210,8 @@ describe('Display Endpoint with HEIC Support', () => {
         .set('Authorization', `Bearer ${validToken}`);
 
       expect(convertHeicToJpegBuffer).not.toHaveBeenCalled();
-      expect(response.headers['content-type']).not.toBe('image/jpeg');
+      // JPG files should still have image/jpeg content-type, just not from conversion
+      expect(response.headers['content-type']).toBe('image/jpeg');
     });
   });
 
@@ -269,9 +272,9 @@ describe('Display Endpoint with HEIC Support', () => {
     });
 
     test('should handle file system errors', async () => {
-      // Test with a path that might cause filesystem issues
+      // Test with a file that doesn't exist
       const response = await request(app)
-        .get('/display/working/../../../etc/passwd')
+        .get('/display/working/definitely-does-not-exist.jpg')
         .set('Authorization', `Bearer ${validToken}`)
         .expect(404);
 

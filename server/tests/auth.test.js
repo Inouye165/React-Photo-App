@@ -205,15 +205,15 @@ describe('Authentication System', () => {
         password: 'wrongpassword'
       };
 
-      // Make 5 failed login attempts
-      for (let i = 0; i < 5; i++) {
+      // Make 4 failed login attempts (should get 401)
+      for (let i = 0; i < 4; i++) {
         await request(app)
           .post('/auth/login')
           .send(loginData)
           .expect(401);
       }
 
-      // The 6th attempt should result in account lockout
+      // The 5th attempt should result in account lockout (423)
       const response = await request(app)
         .post('/auth/login')
         .send(loginData)

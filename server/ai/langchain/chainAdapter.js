@@ -23,6 +23,20 @@ if (useLangChain) {
 async function runChain({ messages, model = 'gpt-4o', _max_tokens = 1500, _temperature = 0.25, // additional args are ignored by simple chain
   // allow passing filePath/metadata for simpleChain mode
   filePath, metadata, gps, device } = {}) {
+  
+  // Use simple chain if enabled
+  if (useSimple) {
+    console.log('ChainAdapter: Using Simple Chain path');
+    const { runSimpleChain } = require('./simpleChain');
+    const simpleResult = await runSimpleChain({ filePath, metadata, gps, device });
+    
+    // Convert simple chain result to OpenAI-like format
+    return {
+      choices: [{ message: { content: 'FAKE_OPENAI_RESPONSE' } }],
+      _ctx: simpleResult.ctx
+    };
+  }
+  
   // LangChain is REQUIRED - no fallbacks allowed
   if (!useLangChain) {
     throw new Error('LangChain is required for processing but is disabled. Set USE_LANGCHAIN=true or remove USE_LANGCHAIN=false from environment.');
