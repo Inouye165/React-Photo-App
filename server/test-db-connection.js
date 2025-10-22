@@ -35,14 +35,14 @@ async function testDatabaseConnection() {
       console.log('Server:', connInfo.rows[0].inet_server_addr);
       console.log('Port:', connInfo.rows[0].inet_server_port);
       
-    } catch (pgError) {
+    } catch {
       // Try SQLite specific query
       try {
         const sqliteVersion = await db.raw('SELECT sqlite_version()');
         console.log('⚠️  Connected to SQLite!');
         console.log('Version:', sqliteVersion[0]['sqlite_version()']);
         console.log('File:', config.connection.filename || 'In-memory');
-      } catch (sqliteError) {
+      } catch {
         console.log('❌ Unknown database type');
       }
     }
@@ -72,7 +72,7 @@ async function testDatabaseConnection() {
           console.log(`  - ${ext.extname}`);
         });
       }
-    } catch (err) {
+    } catch {
       // Not PostgreSQL or extensions not found
     }
     

@@ -148,7 +148,7 @@ module.exports = function createPhotosRouter({ db }, paths) {
 
     const dir = getDir(state);
     try {
-      const row = await dbGet('SELECT filename, edited_filename FROM photos WHERE edited_filename = ? OR filename = ?', [filename, filename]);
+      const row = await db('photos').where('edited_filename', filename).orWhere('filename', filename).select('filename', 'edited_filename').first();
       if (!row) {
         return res.status(404).send('File not found');
       }
@@ -190,7 +190,7 @@ module.exports = function createPhotosRouter({ db }, paths) {
   router.patch('/photos/:id/metadata', async (req, res) => {
     const { id } = req.params;
     try {
-      const row = await dbGet('SELECT caption, description, keywords, text_style FROM photos WHERE id = ?', [id]);
+      const row = await db('photos').where('id', id).select('caption', 'description', 'keywords', 'text_style').first();
       if (!row) {
         return res.status(404).json({ success: false, error: 'Photo not found' });
       }
@@ -214,10 +214,13 @@ module.exports = function createPhotosRouter({ db }, paths) {
           ? null
           : JSON.stringify(textStyle);
 
-      await dbRun(
-        'UPDATE photos SET caption = ?, description = ?, keywords = ?, text_style = ?, updated_at = ? WHERE id = ?',
-        [newCaption, newDescription, newKeywords, newTextStyleJson, new Date().toISOString(), id]
-      );
+      await db('photos').where('id', id).update({
+        caption: newCaption,
+        description: newDescription,
+        keywords: newKeywords,
+        text_style: newTextStyleJson,
+        updated_at: new Date().toISOString()
+      });
 
       let parsedTextStyle = null;
       if (newTextStyleJson) {
@@ -245,7 +248,7 @@ module.exports = function createPhotosRouter({ db }, paths) {
   router.patch('/photos/:id/revert', express.json(), async (req, res) => {
     const { id } = req.params;
     try {
-      const row = await dbGet('SELECT * FROM photos WHERE id = ?', [id]);
+      const row = await db('photos').where('id', id).first();
       if (!row) {
         return res.status(404).json({ success: false, error: 'Photo not found' });
       }
@@ -256,7 +259,7 @@ module.exports = function createPhotosRouter({ db }, paths) {
       if (fs.existsSync(editedPath)) {
         fs.unlinkSync(editedPath);
       }
-      await dbRun('UPDATE photos SET edited_filename = NULL WHERE id = ?', [id]);
+      await db('photos').where('id', id).update({ edited_filename: null });
       res.json({ success: true });
     } catch (error) {
       console.error('Failed to revert photo', id, error);
@@ -375,7 +378,7 @@ module.exports = function createPhotosRouter({ db }, paths) {
     if (!imageBuffer || imageBuffer.length === 0) return res.status(400).json({ success: false, error: 'Image data is empty' });
 
     try {
-      const photoRow = await dbGet('SELECT * FROM photos WHERE id = ?', [photoId]);
+      const photoRow = await db('photos').where('id', photoId).first();
       if (!photoRow) return res.status(404).json({ success: false, error: 'Photo not found' });
 
       const resolveDir = (state) => {
@@ -426,10 +429,17 @@ module.exports = function createPhotosRouter({ db }, paths) {
       const newKeywords = keywords !== undefined ? keywords : photoRow.keywords;
       const newTextStyleJson = textStyle === undefined ? photoRow.text_style : textStyle === null ? null : JSON.stringify(textStyle);
 
-      await dbRun(
-        'UPDATE photos SET edited_filename = ?, caption = ?, description = ?, keywords = ?, text_style = ?, metadata = ?, hash = ?, file_size = ?, updated_at = ? WHERE id = ?',
-        [editedFilename, newCaption, newDescription, newKeywords, newTextStyleJson, JSON.stringify(metadata || {}), newHash, stats.size, now, photoId]
-      );
+      await db('photos').where('id', photoId).update({
+        edited_filename: editedFilename,
+        caption: newCaption,
+        description: newDescription,
+        keywords: newKeywords,
+        text_style: newTextStyleJson,
+        metadata: JSON.stringify(metadata || {}),
+        hash: newHash,
+        file_size: stats.size,
+        updated_at: now
+      });
 
       let parsedTextStyle = null;
       if (newTextStyleJson) {

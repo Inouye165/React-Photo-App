@@ -27,7 +27,7 @@ describe('HEIC Refactor Validation', () => {
       // Clean up
       try {
         fs.rmSync(testDir, { recursive: true, force: true });
-      } catch (error) {
+      } catch {
         // Ignore cleanup errors
       }
     }

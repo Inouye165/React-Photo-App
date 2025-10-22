@@ -69,7 +69,7 @@ describe('Display Endpoint with HEIC Support', () => {
           });
           
           res.send(jpegBuffer);
-        } catch (convErr) {
+        } catch {
           return res.status(500).json({ 
             success: false, 
             error: 'Failed to convert HEIC file for display',
@@ -95,7 +95,7 @@ describe('Display Endpoint with HEIC Support', () => {
     // Cleanup test files
     try {
       fs.rmSync(testImageDir, { recursive: true, force: true });
-    } catch (error) {
+    } catch {
       // Ignore cleanup errors
     }
   });

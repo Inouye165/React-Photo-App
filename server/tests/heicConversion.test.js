@@ -27,7 +27,7 @@ describe('HEIC Conversion Functionality', () => {
     // Cleanup
     try {
       fs.rmSync(testImageDir, { recursive: true, force: true });
-    } catch (error) {
+    } catch {
       // Ignore cleanup errors
     }
   });

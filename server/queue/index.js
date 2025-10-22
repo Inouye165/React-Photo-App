@@ -1,5 +1,5 @@
 // server/queue/index.js
-const { Queue, Worker } = require('bullmq');
+const { Queue, Worker: BullMQWorker } = require('bullmq');
 const path = require('path');
 
 // Define the Redis connection
@@ -34,7 +34,7 @@ async function initializeQueue() {
       console.log('[QUEUE] Successfully connected to Redis');
 
       // Create the worker
-      aiWorker = new Worker(QUEUE_NAME, async (job) => {
+      aiWorker = new BullMQWorker(QUEUE_NAME, async (job) => {
         const { photoId } = job.data;
         console.log(`[WORKER] Processing AI job for photoId: ${photoId}`);
 

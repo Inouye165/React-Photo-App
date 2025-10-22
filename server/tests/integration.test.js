@@ -11,7 +11,6 @@ const jwt = require('jsonwebtoken');
 let server;
 let app;
 let authToken;
-let testUserId;
 
 const JWT_SECRET = process.env.JWT_SECRET || 'fallback-secret-change-in-production';
 
@@ -141,7 +140,7 @@ beforeAll(async () => {
               error: 'Failed to process malformed HEIC file'
             });
           }
-        } catch (error) {
+        } catch {
           return res.status(500).json({
             success: false,
             error: 'Failed to read HEIC file'
@@ -217,7 +216,6 @@ describe('Full Authentication and Image Access Integration', () => {
   beforeEach(async () => {
     // Reset authentication state
     authToken = null;
-    testUserId = null;
   });
 
   // Add a global beforeEach for all tests that need authentication
@@ -259,7 +257,6 @@ describe('Full Authentication and Image Access Integration', () => {
 
       expect(response.body).toHaveProperty('message', 'User registered successfully');
       expect(response.body).toHaveProperty('userId');
-      testUserId = response.body.userId;
     });
 
     test('should login with correct credentials', async () => {

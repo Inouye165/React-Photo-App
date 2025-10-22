@@ -215,19 +215,19 @@ describe('Security Middleware', () => {
 
   describe('securityErrorHandler', () => {
     beforeEach(() => {
-      app.get('/auth-error', (req, res) => {
+      app.get('/auth-error', (_req, _res) => {
         const error = new Error('Unauthorized');
         error.status = 401;
         throw error;
       });
 
-      app.get('/forbidden-error', (req, res) => {
+      app.get('/forbidden-error', (_req, _res) => {
         const error = new Error('Forbidden');
         error.status = 403;
         throw error;
       });
 
-      app.get('/server-error', (req, res) => {
+      app.get('/server-error', (_req, _res) => {
         const error = new Error('Internal server error');
         error.status = 500;
         throw error;
@@ -236,7 +236,7 @@ describe('Security Middleware', () => {
       app.use(securityErrorHandler);
       
       // Fallback error handler for testing
-      app.use((err, req, res, next) => {
+      app.use((err, _req, res, _next) => {
         res.status(err.status || 500).json({
           success: false,
           error: err.message
@@ -343,7 +343,7 @@ describe('Security Middleware', () => {
       });
 
       // This should be handled by Express's built-in JSON parser
-      const response = await request(app)
+      await request(app)
         .post('/test')
         .set('Content-Type', 'application/json')
         .send('{ invalid json }')

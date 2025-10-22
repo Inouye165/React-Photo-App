@@ -97,7 +97,7 @@ function validateRequest(req, res, next) {
   let decodedUrl = '';
   try {
     decodedUrl = decodeURIComponent(fullUrl);
-  } catch (e) {
+  } catch {
     // If decoding fails, stick with original URL
     decodedUrl = fullUrl;
   }

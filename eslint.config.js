@@ -37,7 +37,7 @@ export default defineConfig([
   {
     // Configuration for backend files
     files: ['server/**/*.js', 'scripts/**/*.js'],
-    ignores: ['server/server_head_backup.js', 'server/tests/**/*.js'],
+    ignores: ['server/server_head_backup.js'],
     languageOptions: {
       ecmaVersion: 'latest',
       // Assume files are scripts (CommonJS) for Node.js backend
@@ -56,7 +56,7 @@ export default defineConfig([
   },
   {
     // Configuration for test files
-    files: ['**/*.test.js', '**/*.spec.js'],
+    files: ['**/*.test.js', '**/*.spec.js', 'server/tests/test-db.js'],
     languageOptions: {
       ecmaVersion: 'latest',
       sourceType: 'script',

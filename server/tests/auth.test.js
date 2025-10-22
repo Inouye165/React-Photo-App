@@ -1,6 +1,6 @@
 const request = require('supertest');
 const { setupTestDb, cleanupTestDb } = require('./test-db');
-const { createUser, getUserByUsername } = require('../middleware/auth');
+const { createUser } = require('../middleware/auth');
 
 // Test server setup
 const express = require('express');
