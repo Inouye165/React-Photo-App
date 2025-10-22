@@ -3,19 +3,21 @@ const path = require('path');
 
 module.exports = {
   development: {
-    client: 'sqlite3',
+    client: 'pg',
     connection: {
-      filename: path.join(__dirname, 'photos.db')
+      host: 'db.xcidibfijzyoyliyclug.supabase.co',
+      port: 5432,
+      user: 'postgres',
+      password: process.env.SUPABASE_DB_PASSWORD || 'Kk83Zws$bSAIemA',
+      database: 'postgres',
+      ssl: { rejectUnauthorized: false }
     },
-    useNullAsDefault: true,
     migrations: {
       directory: path.join(__dirname, 'db/migrations')
     },
-    // Recommended for SQLite to enforce foreign key constraints
     pool: {
-      afterCreate: (conn, cb) => {
-        conn.run('PRAGMA foreign_keys = ON', cb);
-      }
+      min: 2,
+      max: 10
     }
   },
   test: {
@@ -33,7 +35,10 @@ module.exports = {
   },
   production: {
     client: 'pg',
-    connection: process.env.DATABASE_URL, // Example: 'postgres://user:pass@host:5432/dbname'
+    connection: {
+      connectionString: process.env.SUPABASE_DB_URL || process.env.DATABASE_URL,
+      ssl: { rejectUnauthorized: false }
+    },
     migrations: {
       directory: path.join(__dirname, 'db/migrations')
     },
