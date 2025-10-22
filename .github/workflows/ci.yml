@@ -4,7 +4,7 @@ on:
   push:
     branches: [langchain-ai-pipeline, main, feature/supabase-migration]
   pull_request:
-    branches: [langchain-ai-pipeline, main]
+    branches: [langchain-ai-pipeline, main, feature/supabase-migration]
 
 jobs:
   test:
