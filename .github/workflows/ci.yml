@@ -2,9 +2,9 @@ name: CI
 
 on:
   push:
-    branches: [langchain-ai-pipeline]
+    branches: [langchain-ai-pipeline, main, feature/supabase-migration]
   pull_request:
-    branches: [langchain-ai-pipeline]
+    branches: [langchain-ai-pipeline, main]
 
 jobs:
   test:
@@ -21,10 +21,23 @@ jobs:
       - name: Install dependencies
         run: npm ci
 
+      - name: Install server dependencies
+        run: |
+          cd server
+          npm ci
+
       - name: Run lint (server only)
         run: npx eslint "server/**/*.js" --max-warnings=0
 
-      - name: Run tests
+      - name: Run frontend tests
         run: npm run test:run
         env:
+          CI: true
+
+      - name: Run server tests
+        run: |
+          cd server
+          npm test
+        env:
+          NODE_ENV: test
           CI: true
