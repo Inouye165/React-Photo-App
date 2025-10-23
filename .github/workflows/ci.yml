@@ -39,7 +39,7 @@ jobs:
       - name: Run server tests
         run: |
           cd server
-          npm test
+          npm run test:ci
         env:
           NODE_ENV: test
           CI: true
@@ -48,3 +48,5 @@ jobs:
           SUPABASE_SERVICE_ROLE_KEY: test-service-role-key
           DATABASE_URL: postgresql://test:test@localhost:5432/test
           JWT_SECRET: test-jwt-secret-key-for-testing-only
+          # Mock OpenAI key for tests
+          OPENAI_API_KEY: sk-test-key-for-ci

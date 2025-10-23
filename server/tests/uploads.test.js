@@ -1,6 +1,14 @@
 const request = require('supertest');
 const express = require('express');
-const { mockStorageHelpers, mockDbHelpers } = require('./setup');
+
+// Mock knex and supabase before importing
+jest.mock('knex');
+jest.mock('../lib/supabaseClient');
+
+// Import mock helpers directly
+const mockKnex = require('./__mocks__/knex');
+const { mockDbHelpers } = mockKnex;
+const { mockStorageHelpers } = require('./__mocks__/supabase');
 
 // Import the real authentication middleware for testing
 const authenticateToken = require('../middleware/auth').authenticateToken;
@@ -51,9 +59,11 @@ describe('Uploads Router with Supabase Storage', () => {
       next();
     });
     
-    app.use('/uploads', createUploadsRouter({ db: require('../db/index') }));
+    // Use mocked database
+    const mockKnex = require('knex');
+    app.use('/uploads', createUploadsRouter({ db: mockKnex }));
     
-    // Clear mock storage to ensure clean state for each test
+    // Clear mock data to ensure clean state for each test
     mockStorageHelpers.clearMockStorage();
     mockDbHelpers.clearMockData();
   });
@@ -127,14 +137,15 @@ describe('Uploads Router with Supabase Storage', () => {
 
       expect(response.status).toBe(500);
       expect(response.body.success).toBe(false);
-      expect(response.body.error).toBe('Failed to save file');
+      expect(response.body.error).toBe('Failed to upload to storage');
     });
 
     it('should require authentication', async () => {
       // Remove auth middleware
       const unauthApp = express();
       unauthApp.use(express.json());
-      unauthApp.use('/uploads', createUploadsRouter());
+      const mockKnex = require('knex');
+      unauthApp.use('/uploads', createUploadsRouter({ db: mockKnex }));
 
       const response = await request(unauthApp)
         .post('/uploads/upload')

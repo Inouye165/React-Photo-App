@@ -1,5 +1,10 @@
 const request = require('supertest');
-const { setupTestDb, cleanupTestDb } = require('./test-db');
+
+// Mock knex before importing test-db
+jest.mock('knex');
+const mockKnex = require('./__mocks__/knex');
+const { mockDbHelpers } = mockKnex;
+
 const { createUser } = require('../middleware/auth');
 
 // Test server setup
@@ -11,8 +16,8 @@ describe('Authentication System', () => {
   let db;
 
   beforeAll(async () => {
-    // Create in-memory database for testing
-    db = await setupTestDb();
+    // Use mocked database
+    db = mockKnex;
     
     // Setup test app
     app = express();
@@ -22,7 +27,8 @@ describe('Authentication System', () => {
   });
 
   afterAll(async () => {
-    await cleanupTestDb(db);
+    // Clean up mock data
+    mockDbHelpers.clearMockData();
   });
 
   describe('User Registration', () => {

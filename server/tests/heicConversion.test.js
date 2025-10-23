@@ -190,14 +190,15 @@ describe('HEIC Conversion Functionality', () => {
       heicConvert.mockResolvedValue(mockOutputBuffer);
 
       // Test different quality values
-      await convertHeicToJpegBuffer(testHeicFile, 100);
+      const fileBuffer = fs.readFileSync(testHeicFile);
+      await convertHeicToJpegBuffer(fileBuffer, 100);
       expect(heicConvert).toHaveBeenLastCalledWith({
         buffer: expect.any(Buffer),
         format: 'JPEG',
         quality: 1.0
       });
 
-      await convertHeicToJpegBuffer(testHeicFile, 50);
+      await convertHeicToJpegBuffer(fileBuffer, 50);
       expect(heicConvert).toHaveBeenLastCalledWith({
         buffer: expect.any(Buffer),
         format: 'JPEG',
@@ -224,7 +225,7 @@ describe('HEIC Conversion Functionality', () => {
       heicConvert.mockRejectedValue(new Error('heic-convert specific error'));
 
       await expect(convertHeicToJpegBuffer(testHeicFile, 90)).rejects.toThrow(
-        'HEIC conversion failed for'
+        'HEIC conversion failed. Sharp error:'
       );
       
       await expect(convertHeicToJpegBuffer(testHeicFile, 90)).rejects.toThrow(
@@ -357,7 +358,7 @@ describe('HEIC Conversion Functionality', () => {
       heicConvert.mockRejectedValue(new Error('Invalid HEIC data'));
 
       await expect(convertHeicToJpegBuffer(corruptedHeicFile, 90)).rejects.toThrow(
-        'HEIC conversion failed for'
+        'HEIC conversion failed. Sharp error:'
       );
     });
   });

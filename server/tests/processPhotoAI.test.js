@@ -30,7 +30,8 @@ describe('processPhotoAI', () => {
       return;
     }
 
-    const res = await processPhotoAI({ filePath: tmpFile, metadata: {}, gps: '', device: '' });
+    const fileBuffer = fs.readFileSync(tmpFile);
+    const res = await processPhotoAI({ fileBuffer, filename: 'tmp_test.jpg', metadata: {}, gps: '', device: '' });
     expect(res).toBeDefined();
     expect(res.caption).toBe('Test');
     expect(res.description).toBe('desc');

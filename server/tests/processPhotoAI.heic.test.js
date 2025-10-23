@@ -34,7 +34,8 @@ describe('processPhotoAI HEIC path', () => {
       return;
     }
 
-    const res = await processPhotoAI({ filePath: tmpFile, metadata: {}, gps: '', device: '' });
+    const fileBuffer = fs.readFileSync(tmpFile);
+    const res = await processPhotoAI({ fileBuffer, filename: 'tmp_test.heic', metadata: {}, gps: '', device: '' });
     expect(res).toBeDefined();
     expect(res.caption).toBe('HEIC Test');
     expect(res.description).toBe('desc heic');
