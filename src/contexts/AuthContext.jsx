@@ -22,7 +22,7 @@ export const AuthProvider = ({ children }) => {
       const storedToken = localStorage.getItem('authToken');
       if (storedToken) {
         try {
-          const response = await fetch('http://localhost:3001/auth/verify', {
+          const response = await fetch(`${import.meta.env.VITE_API_URL}/auth/verify`, {
             method: 'POST',
             headers: {
               'Authorization': `Bearer ${storedToken}`,
@@ -53,7 +53,7 @@ export const AuthProvider = ({ children }) => {
 
   const login = async (username, password) => {
     try {
-      const response = await fetch('http://localhost:3001/auth/login', {
+  const response = await fetch(`${import.meta.env.VITE_API_URL}/auth/login`, {
         method: 'POST',
         headers: {
           'Content-Type': 'application/json',
@@ -80,7 +80,7 @@ export const AuthProvider = ({ children }) => {
 
   const register = async (username, email, password) => {
     try {
-      const response = await fetch('http://localhost:3001/auth/register', {
+  const response = await fetch(`${import.meta.env.VITE_API_URL}/auth/register`, {
         method: 'POST',
         headers: {
           'Content-Type': 'application/json',
@@ -108,7 +108,7 @@ export const AuthProvider = ({ children }) => {
   const logout = async () => {
     try {
       if (token) {
-        await fetch('http://localhost:3001/auth/logout', {
+  await fetch(`${import.meta.env.VITE_API_URL}/auth/logout`, {
           method: 'POST',
           headers: {
             'Authorization': `Bearer ${token}`,
