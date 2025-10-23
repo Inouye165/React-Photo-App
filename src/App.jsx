@@ -2,16 +2,13 @@ import React, { useState, useEffect, useRef } from 'react'
 import ReactDOM from 'react-dom'
 import { parse } from 'exifr'
 import { uploadPhotoToServer, checkPrivilege, checkPrivilegesBatch, getPhotos, updatePhotoState, recheckInprogressPhotos, updatePhotoCaption } from './api.js'
-import EditPage from './EditPage'
-import Toolbar from './Toolbar'
-import PhotoUploadForm from './PhotoUploadForm'
 import { createAuthenticatedImageUrl } from './utils/auth.js'
 
 // Utility: Get or create a guaranteed local folder (default: C:\Users\<User>\working)
-async function getLocalWorkingFolder(customPath) {
+async function _getLocalWorkingFolder(_customPath) {
   // Default to C:\Users\<User>\working if no custom path provided
   const user = (window.navigator.userName || window.navigator.user || 'User');
-  const defaultPath = `C:\\Users\\${user}\\working`;
+  const _defaultPath = `C:\\Users\\${user}\\working`;
   // File System Access API does not allow direct path, so prompt user to select
   try {
     const dirHandle = await window.showDirectoryPicker({
@@ -19,13 +16,13 @@ async function getLocalWorkingFolder(customPath) {
       startIn: 'desktop' // closest to local, not OneDrive
     });
     return dirHandle;
-  } catch (error) {
+  } catch (_error) {
     throw new Error('Failed to access local working folder. Please select a local directory.');
   }
 }
 
 // Utility: Save photo file to local folder, preserving metadata
-async function savePhotoFileToLocalFolder(photo, workingDirHandle) {
+async function _savePhotoFileToLocalFolder(photo, workingDirHandle) {
   try {
     // Permission check for writing
     const perm = await ensurePermission(workingDirHandle, 'readwrite');
@@ -62,7 +59,7 @@ async function savePhotoFileToLocalFolder(photo, workingDirHandle) {
 }
 
 // Utility: Extract date from filename (YYYYMMDD or YYYY-MM-DD)
-function extractDateFromFilename(filename) {
+function _extractDateFromFilename(filename) {
   const patterns = [
     /([12]\d{3})(\d{2})(\d{2})/, // YYYYMMDD
     /([12]\d{3})-(\d{2})-(\d{2})/, // YYYY-MM-DD
@@ -80,7 +77,7 @@ function extractDateFromFilename(filename) {
 }
 
 // Utility: Show toast message for errors/warnings
-function Toast({ message, onClose }) {
+function _Toast({ message, onClose }) {
   if (!message) return null;
   return (
     <div className="fixed top-32 right-4 bg-amber-500 text-white px-3 py-2 rounded-md shadow-lg z-40 max-w-sm text-sm">
@@ -124,7 +121,7 @@ function App() {
   // message shown in the toolbar (persists until reload or cleared)
   const [toolbarMessage, setToolbarMessage] = useState('');
   const [uploading, setUploading] = useState(false);
-  const [selectedFiles, setSelectedFiles] = useState([]);
+  const [_selectedFiles, _setSelectedFiles] = useState([]);
   const [localPhotos, setLocalPhotos] = useState([]);
   const [startDate, setStartDate] = useState('');
   const [endDate, setEndDate] = useState('');
@@ -235,13 +232,13 @@ function App() {
   }, [photos]);
 
   // Manual retry for privileges
-  const retryPrivileges = async () => {
+  const _retryPrivileges = async () => {
     try {
-      const res = await getPhotos('http://localhost:3001/photos?state=working');
+      const _res = await getPhotos('http://localhost:3001/photos?state=working');
       // trigger the effect by updating photos state (or simply call the loader)
       setPhotos(prev => [...prev]);
       setToastMsg('Retrying privileges...');
-    } catch (e) {
+    } catch (_e) {
       setToastMsg('Cannot retry privileges: backend not available');
     }
   };
@@ -357,12 +354,12 @@ function App() {
   // Handle edit photo
   const handleEditPhoto = (photo, openFullPage = false) => {
     // remember the element that opened the editor so we can restore focus later
-    try { lastActiveElementRef.current = document.activeElement; } catch (e) {}
+    try { lastActiveElementRef.current = document.activeElement; } catch (_e) { /* Focus handling */ }
     // Default to in-app editor unless openFullPage=true
     setUseFullPageEditor(Boolean(openFullPage));
     setEditingPhoto(photo);
     // Also set selectedPhoto so the two-column view is shown for the photo being edited
-    try { setSelectedPhoto(photo); } catch (e) {}
+    try { setSelectedPhoto(photo); } catch (_e) { /* State update error handling */ }
   };
 
   // keep editable fields synced when editingPhoto changes
@@ -377,8 +374,8 @@ function App() {
   // Open a minimal edit UI in a new browser tab/window. The new tab will postMessage
   // updates (caption, markFinished) back to this opener window which will then
   // perform state updates and backend calls.
-  const openEditorInNewTab = (photo) => {
-    const displayUrl = createAuthenticatedImageUrl(`/display/${photo.state}/${photo.filename}`);
+  const _openEditorInNewTab = (photo) => {
+    const _displayUrl = createAuthenticatedImageUrl(`/display/${photo.state}/${photo.filename}`);
     const id = photo.id;
     const caption = (photo.caption || '').replace(/</g, '&lt;').replace(/>/g, '&gt;');
     const html = `<!doctype html>
@@ -496,14 +493,14 @@ function App() {
           console.error('Failed to persist caption to backend:', e.message || e);
         }
         setPhotos(prev => prev.map(p => p.id === id ? { ...p, caption } : p));
-        try { if (source && source.postMessage) source.postMessage({ type: 'updateCaptionAck', id, success: ok }, '*'); } catch (e) {}
+        try { if (source && source.postMessage) source.postMessage({ type: 'updateCaptionAck', id, success: ok }, '*'); } catch (_e) { /* Intentional error suppression */ }
       } else if (msg.type === 'markFinished') {
         const { id } = msg;
         try {
           await handleMoveToFinished(id);
-          try { if (source && source.postMessage) source.postMessage({ type: 'markFinishedAck', id, success: true }, '*'); } catch (e) {}
+          try { if (source && source.postMessage) source.postMessage({ type: 'markFinishedAck', id, success: true }, '*'); } catch (_e) { /* Intentional error suppression */ }
         } catch (err) {
-          try { if (source && source.postMessage) source.postMessage({ type: 'markFinishedAck', id, success: false, error: err.message }, '*'); } catch (e) {}
+          try { if (source && source.postMessage) source.postMessage({ type: 'markFinishedAck', id, success: false, error: err.message }, '*'); } catch (_e) { /* Intentional error suppression */ }
         }
       }
     };
@@ -538,7 +535,7 @@ function App() {
         } else {
           setToastMsg(`Recheck failed: ${error.message}`);
         }
-      } catch (parseError) {
+      } catch (_parseError) {
         setToastMsg(`Recheck failed: ${error.message}`);
       }
     } finally {
@@ -547,7 +544,7 @@ function App() {
   };
 
   // Photo Editing Modal Component
-  const PhotoEditingModal = ({ photo, onClose, onFinished, restoreFocusRef }) => {
+  const _PhotoEditingModal = ({ photo, onClose, onFinished, restoreFocusRef }) => {
     if (!photo) return null;
 
     // Disable body scroll when modal is open and trap focus inside the modal
@@ -567,7 +564,7 @@ function App() {
         if (nodes.length > 0) {
           firstFocusable = nodes[0];
           lastFocusable = nodes[nodes.length - 1];
-          try { firstFocusable.focus(); } catch (e) {}
+          try { firstFocusable.focus(); } catch (_e) { /* Intentional error suppression */ }
         }
       }
 
@@ -608,7 +605,7 @@ function App() {
               <button 
                 onClick={() => {
                   onClose();
-                  try { if (restoreFocusRef && restoreFocusRef.current) restoreFocusRef.current.focus(); } catch (e) {}
+                  try { if (restoreFocusRef && restoreFocusRef.current) restoreFocusRef.current.focus(); } catch (_e) { /* Intentional error suppression */ }
                 }}
                 className="text-gray-400 hover:text-gray-600 text-2xl font-bold leading-none"
               >
@@ -681,7 +678,7 @@ function App() {
             <button
               onClick={() => {
                 onClose();
-                try { if (restoreFocusRef && restoreFocusRef.current) restoreFocusRef.current.focus(); } catch (e) {}
+                try { if (restoreFocusRef && restoreFocusRef.current) restoreFocusRef.current.focus(); } catch (_e) { /* Intentional error suppression */ }
               }}
               className="bg-gray-500 hover:bg-gray-700 text-white font-bold py-2 px-6 rounded"
             >
@@ -694,7 +691,7 @@ function App() {
                 } catch (e) {
                   // onFinished should handle errors itself
                 }
-                try { if (restoreFocusRef && restoreFocusRef.current) restoreFocusRef.current.focus(); } catch (e) {}
+                try { if (restoreFocusRef && restoreFocusRef.current) restoreFocusRef.current.focus(); } catch (_e) { /* Intentional error suppression */ }
               }}
               className="bg-green-500 hover:bg-green-700 text-white font-bold py-2 px-6 rounded"
             >

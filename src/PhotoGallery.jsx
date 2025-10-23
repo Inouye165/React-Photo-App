@@ -1,7 +1,10 @@
 import React from "react";
 
 // Receives photos array and any needed props
-const PhotoGallery = ({ photos, onPhotoClick, handleMoveToInprogress, handleMoveToWorking, handleDeletePhoto, handleEditPhoto, privilegesMap, formatFileSize }) => (
+import { createAuthenticatedImageUrl } from './utils/auth.js'
+
+function PhotoGallery({ photos, onPhotoSelect, onFolderClick, _onPhotoClick, privilegesMap, setToastMsg }) {
+  return (
   <div className="photo-gallery">
     {photos.map((photo) => (
       <div key={photo.id || photo.name} className="px-4 py-3 hover:bg-gray-50">
@@ -42,6 +45,7 @@ const PhotoGallery = ({ photos, onPhotoClick, handleMoveToInprogress, handleMove
       </div>
     ))}
   </div>
-);
+  );
+}
 
 export default PhotoGallery;
