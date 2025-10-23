@@ -2,6 +2,47 @@ name: CI
 
 on:
   push:
+    branches: [ main, chore/cloud-ready-audit ]
+  pull_request:
+    branches: [ main ]
+
+jobs:
+  build-and-test:
+    runs-on: ubuntu-latest
+    strategy:
+      matrix:
+        node-version: [18.x]
+
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
+      - name: Use Node.js ${{ matrix.node-version }}
+        uses: actions/setup-node@v4
+        with:
+          node-version: ${{ matrix.node-version }}
+
+      - name: Install root dependencies
+        run: npm ci
+
+      - name: Lint
+        run: npm run lint
+
+      - name: Build frontend
+        run: npm run build
+
+      - name: Run frontend tests
+        run: npm test --silent
+
+      - name: Install server dependencies
+        run: npm ci --prefix server
+
+      - name: Run server tests
+        run: npm test --prefix server
+name: CI
+
+on:
+  push:
     branches: [langchain-ai-pipeline, main, feature/supabase-migration]
   pull_request:
     branches: [langchain-ai-pipeline, main, feature/supabase-migration]
