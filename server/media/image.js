@@ -1,13 +1,8 @@
-const path = require('path');
-const fs = require('fs').promises;
-const fsSync = require('fs');
 const sharp = require('sharp');
 const exifr = require('exifr');
 const nodeCrypto = require('crypto');
 const heicConvert = require('heic-convert');
 const supabase = require('../lib/supabaseClient');
-
-const ALLOWED_IMAGE_EXTENSIONS = ['.jpg', '.jpeg', '.png', '.gif', '.heic', '.bmp', '.tiff', '.webp'];
 
 async function hashFile(fileBuffer) {
   return nodeCrypto.createHash('sha256').update(fileBuffer).digest('hex');
@@ -56,7 +51,7 @@ async function generateThumbnail(fileBuffer, hash) {
     }
 
     // Upload thumbnail to Supabase Storage
-    const { data, error } = await supabase.storage
+    const { data: _data, error } = await supabase.storage
       .from('photos')
       .upload(thumbnailPath, thumbnailBuffer, {
         contentType: 'image/jpeg',

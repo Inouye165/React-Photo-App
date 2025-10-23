@@ -1,6 +1,5 @@
 // server/queue/index.js
 const { Queue, Worker: BullMQWorker } = require('bullmq');
-const path = require('path');
 
 // Define the Redis connection
 const connection = {

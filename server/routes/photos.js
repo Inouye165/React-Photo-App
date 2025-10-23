@@ -1,16 +1,10 @@
 const express = require('express');
 const path = require('path');
-const fs = require('fs');
-const { generateThumbnail, convertHeicToJpegBuffer } = require('../media/image');
+const { convertHeicToJpegBuffer } = require('../media/image');
 const { updatePhotoAIMetadata } = require('../ai/service');
 const { addAIJob, checkRedisAvailable } = require('../queue/index');
 const sharp = require('sharp');
 const exifr = require('exifr');
-const { copyExifMetadata } = require('../media/exif');
-const { exec } = require('child_process');
-const { promisify } = require('util');
-const execPromise = promisify(exec);
-const { exiftool } = require('exiftool-vendored');
 const supabase = require('../lib/supabaseClient');
 
 module.exports = function createPhotosRouter({ db }) {
@@ -55,7 +49,7 @@ module.exports = function createPhotosRouter({ db }) {
 
         // Thumbnail URL - use display endpoint instead of public URL
         if (row.hash) {
-          const thumbnailPath = `thumbnails/${row.hash}.jpg`;
+          const _thumbnailPath = `thumbnails/${row.hash}.jpg`;
           // Use the display endpoint for thumbnails to ensure authentication works
           thumbnail = `/display/thumbnails/${row.hash}.jpg`;
         }
@@ -245,7 +239,7 @@ module.exports = function createPhotosRouter({ db }) {
 
       // Move file in Supabase Storage if the state is actually changing
       if (row.state !== state) {
-        const { data, error } = await supabase.storage
+        const { data: _data, error } = await supabase.storage
           .from('photos')
           .move(currentPath, newPath);
 
@@ -318,7 +312,7 @@ module.exports = function createPhotosRouter({ db }) {
       
       // Upload edited image to Supabase Storage
       const editedPath = `inprogress/${editedFilename}`;
-      const { data: uploadData, error: uploadError } = await supabase.storage
+      const { data: _uploadData, error: uploadError } = await supabase.storage
         .from('photos')
         .upload(editedPath, orientedBuffer, {
           contentType: 'image/jpeg',

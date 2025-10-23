@@ -10,9 +10,6 @@ const mockKnex = require('./__mocks__/knex');
 const { mockDbHelpers } = mockKnex;
 const { mockStorageHelpers } = require('./__mocks__/supabase');
 
-// Import the real authentication middleware for testing
-const authenticateToken = require('../middleware/auth').authenticateToken;
-
 // Mock JWT for testing
 jest.mock('jsonwebtoken', () => ({
   verify: jest.fn((token, secret, callback) => {

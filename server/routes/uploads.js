@@ -58,7 +58,7 @@ module.exports = function createUploadsRouter({ db }) {
 
       // Upload file to Supabase Storage
       const filePath = `working/${filename}`;
-      const { data: uploadData, error: uploadError } = await supabase.storage
+      const { data: _uploadData, error: uploadError } = await supabase.storage
         .from('photos')
         .upload(filePath, req.file.buffer, {
           contentType: req.file.mimetype,

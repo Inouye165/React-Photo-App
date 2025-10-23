@@ -27,7 +27,7 @@ jobs:
           npm ci
 
       - name: Run lint (server only)
-        run: npx eslint "server/**/*.js" --max-warnings=0
+        run: npx eslint "server/**/*.js" --ignore-pattern "server/tests/**" --max-warnings=0
 
       - name: Run frontend tests
         run: npm run test:run

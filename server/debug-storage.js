@@ -15,7 +15,7 @@ const supabaseService = createClient(process.env.SUPABASE_URL, process.env.SUPAB
 async function testStorage() {
   console.log('\n--- Testing with Anon Key ---');
   try {
-    const { data, error } = await supabaseAnon.storage.from('photos').list('', { limit: 1 });
+    const { data: _data, error } = await supabaseAnon.storage.from('photos').list('', { limit: 1 });
     if (error) {
       console.log('❌ Anon key error:', error.message);
     } else {
@@ -27,7 +27,7 @@ async function testStorage() {
 
   console.log('\n--- Testing with Service Role Key ---');
   try {
-    const { data, error } = await supabaseService.storage.from('photos').list('', { limit: 1 });
+    const { data: _data2, error } = await supabaseService.storage.from('photos').list('', { limit: 1 });
     if (error) {
       console.log('❌ Service key error:', error.message);
     } else {

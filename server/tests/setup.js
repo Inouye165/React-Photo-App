@@ -1,6 +1,7 @@
 /**
  * Test setup file for configuring mocks and test environment
  */
+/* eslint-env jest */
 
 const { mockStorageHelpers } = require('./__mocks__/supabase');
 const { mockDbHelpers } = require('./__mocks__/knex');

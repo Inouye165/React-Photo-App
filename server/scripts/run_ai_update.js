@@ -1,5 +1,4 @@
 (async ()=>{
-  const path = require('path');
   const { openDb, migrate } = require('../db/index');
   const db = openDb();
   await migrate(db);

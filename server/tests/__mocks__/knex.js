@@ -1,6 +1,7 @@
 /**
  * Mock implementation of database connection for testing
  */
+/* eslint-env jest */
 
 const mockPhotos = new Map();
 const mockUsers = new Map();

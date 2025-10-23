@@ -1,5 +1,4 @@
 const path = require('path');
-const fs = require('fs');
 require('dotenv').config({ path: path.join(__dirname, '.env') });
 
 // Global safety: log uncaught exceptions and unhandled rejections instead of letting Node crash

@@ -1,7 +1,5 @@
 const path = require('path');
-const fs = require('fs');
 require('dotenv').config({ path: path.join(__dirname, '..', '.env') });
-const { extractExif } = require('./langchain/exifTool');
 const { geolocate } = require('./langchain/geolocateTool');
 const { locationDetectiveTool } = require('./langchain/locationDetective');
 const { photoPOIIdentifierTool } = require('./langchain/photoPOIIdentifier');

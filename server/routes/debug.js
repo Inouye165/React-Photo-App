@@ -50,7 +50,7 @@ module.exports = function createDebugRouter({ db }) {
       let failed = 0;
       
       for (const row of rows) {
-        const thumbnailPath = `thumbnails/${row.hash}.jpg`;
+        const _thumbnailPath = `thumbnails/${row.hash}.jpg`;
         
         // Check if thumbnail exists in Supabase Storage
         const { data: existingThumbnail } = await supabase.storage

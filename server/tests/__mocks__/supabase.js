@@ -2,6 +2,7 @@
  * Mock implementation of Supabase client for testing
  * This prevents tests from making actual API calls to Supabase
  */
+/* eslint-env jest */
 
 const mockStorageFiles = new Map();
 const mockStorageErrors = new Map();
