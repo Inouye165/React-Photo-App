@@ -1,9 +1,52 @@
 const request = require('supertest');
 
+// Define mock helpers locally to avoid jest.mock interference
+const mockPhotos = new Map();
+const mockUsers = new Map();
+
+const mockDbHelpers = {
+  clearMockData: () => {
+    mockPhotos.clear();
+    mockUsers.clear();
+  },
+  loadDefaultData: () => {
+    mockPhotos.clear();
+    mockUsers.clear();
+  },
+  addMockPhoto: (photo) => {
+    const id = Math.max(...Array.from(mockPhotos.keys()), 0) + 1;
+    const fullPhoto = { id, ...photo };
+    mockPhotos.set(id, fullPhoto);
+    return fullPhoto;
+  },
+  addMockUser: (user) => {
+    const id = Math.max(...Array.from(mockUsers.keys()), 0) + 1;
+    const fullUser = {
+      id,
+      role: 'user',
+      is_active: true,
+      failed_login_attempts: 0,
+      account_locked_until: null,
+      last_login_attempt: null,
+      ...user
+    };
+    mockUsers.set(id, fullUser);
+    return fullUser;
+  },
+  getMockPhotos: () => Array.from(mockPhotos.values()),
+  getMockUsers: () => Array.from(mockUsers.values()),
+  setMockPhotos: (photos) => {
+    mockPhotos.clear();
+    photos.forEach(photo => mockPhotos.set(photo.id, photo));
+  },
+  setMockUsers: (users) => {
+    mockUsers.clear();
+    users.forEach(user => mockUsers.set(user.id, user));
+  }
+};
+
 // Mock knex to use our implementation
-jest.mock('knex', () => {
-  return require('./__mocks__/knex');
-});
+jest.mock('knex');
 
 const { createUser } = require('../middleware/auth');
 
@@ -14,20 +57,15 @@ const createAuthRouter = require('../routes/auth');
 describe('Authentication System', () => {
   let app;
   let db;
-  let mockDbHelpers;
 
   beforeAll(async () => {
-    // Import mock after jest.mock has been set up
-    const mockKnex = require('knex'); // This should now be our mock
-    mockDbHelpers = mockKnex.mockDbHelpers;
-    
     // Use mocked database
-    db = mockKnex;
-    
+    db = require('knex');
+
     // Setup test app
     app = express();
     app.use(express.json());
-    
+
     app.use(createAuthRouter({ db }));
   });
 

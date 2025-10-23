@@ -61,10 +61,14 @@ async function startServer() {
   // Add request validation middleware
   app.use(validateRequest);
 
-  // Configure CORS origins for production
+  // Configure CORS origins
   const allowedOrigins = [];
   if (process.env.CLIENT_ORIGIN) {
     allowedOrigins.push(process.env.CLIENT_ORIGIN);
+  }
+  // Allow localhost origins for development
+  if (process.env.NODE_ENV !== 'production') {
+    allowedOrigins.push('http://localhost:3000', 'http://localhost:5173', 'http://localhost:5174');
   }
   app.use(cors({
     origin: allowedOrigins,
