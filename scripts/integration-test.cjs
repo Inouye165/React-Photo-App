@@ -17,11 +17,6 @@ const TEST_USER = {
   password: 'IntegrationTest123!'
 };
 
-// Pull working dir from server config so we can create a test file there
-const paths = require('../server/config/paths');
-const TEST_FILE_BASE = `test-integration-${Date.now()}.txt`;
-const TEST_FILE_PATH = path.join(paths.WORKING_DIR, TEST_FILE_BASE);
-
 function waitForHealth(timeout = 10000, interval = 200) {
   return new Promise((resolve, reject) => {
     const start = Date.now();
@@ -129,8 +124,8 @@ async function registerAndLogin() {
   return loginResult.body.token;
 }
 
-function postPrivilege(relPath, authToken) {
-  const payload = { relPath };
+function postPrivilege(authToken) {
+  const payload = { relPath: 'test-file.jpg' }; // Dummy path since Supabase Storage is used
   const opts = Object.assign({}, PRIV_URL);
   opts.headers = Object.assign({}, PRIV_URL.headers, { 
     'Content-Length': Buffer.byteLength(JSON.stringify(payload)),
@@ -152,10 +147,6 @@ function postPrivilege(relPath, authToken) {
   });
 
   try {
-    // Create a small dummy file in WORKING_DIR so privilege check has a real target
-    fs.writeFileSync(TEST_FILE_PATH, 'integration-test');
-    console.log('Created test file:', TEST_FILE_PATH);
-    
     await waitForHealth(12000, 200);
     console.log('Server healthy. Authenticating...');
     
@@ -163,24 +154,21 @@ function postPrivilege(relPath, authToken) {
     const authToken = await registerAndLogin();
     
     console.log('Running authenticated privilege check...');
-    const res = await postPrivilege(TEST_FILE_BASE, authToken);
+    const res = await postPrivilege(authToken);
     console.log('Privilege check status:', res.status);
     console.log('Privilege response body:', res.body);
     
     if (res.status === 200 && res.body && res.body.success) {
       console.log('Integration test passed - authentication and privilege check working');
-      try { fs.unlinkSync(TEST_FILE_PATH); console.log('Removed test file'); } catch (e) {}
       srv.kill();
       process.exit(0);
     } else {
       console.error('Integration test failed: unexpected privilege response');
-      try { fs.unlinkSync(TEST_FILE_PATH); } catch (e) {}
       srv.kill();
       process.exit(1);
     }
   } catch (err) {
     console.error('Integration test error:', err && err.message ? err.message : err);
-    try { fs.unlinkSync(TEST_FILE_PATH); } catch (e) {}
     try { srv.kill(); } catch (e) {}
     process.exit(1);
   }
