@@ -7,6 +7,7 @@ const { locationDetectiveTool } = require('./langchain/locationDetective');
 const { photoPOIIdentifierTool } = require('./langchain/photoPOIIdentifier');
 const { buildPrompt, parseOutputToJSON } = require('./langchain/promptTemplate');
 const { convertHeicToJpegBuffer } = require('../media/image');
+const supabase = require('../lib/supabaseClient');
 
 // Helper function to convert DMS (degrees, minutes, seconds) to decimal degrees
 function dmsToDecimal(degrees, minutes = 0, seconds = 0) {
@@ -14,18 +15,17 @@ function dmsToDecimal(degrees, minutes = 0, seconds = 0) {
 }
 
 // Helper: Generate caption, description, keywords for a photo using OpenAI Vision
-async function processPhotoAI({ filePath, metadata, gps, device }) {
+async function processPhotoAI({ fileBuffer, filename, metadata, gps, device }) {
   if (!process.env.OPENAI_API_KEY) throw new Error('OPENAI_API_KEY not set in .env');
 
   // Extract and format date/time from EXIF
   let dateTimeInfo = '';
-  // If metadata wasn't passed in, extract it from the file as the first pipeline step
+  // If metadata wasn't passed in, extract it from the file buffer as the first pipeline step
   if (!metadata || (typeof metadata === 'object' && Object.keys(metadata).length === 0)) {
     try {
-      // extractExif is small and non-fatal; if it fails we proceed with empty metadata
-      // this makes it easy to convert this step to a LangChain Tool later
-       
-      metadata = await extractExif(filePath) || {};
+      // For buffer-based processing, we'll use the metadata from the database
+      // since extractExif expects a file path. This is handled by the caller.
+      metadata = {};
     } catch {
       metadata = {};
     }
@@ -110,12 +110,12 @@ async function processPhotoAI({ filePath, metadata, gps, device }) {
 
   // Convert HEIC/HEIF to JPEG if needed
   let imageBuffer, imageMime;
-  const ext = path.extname(filePath).toLowerCase();
+  const ext = path.extname(filename).toLowerCase();
   if (ext === '.heic' || ext === '.heif') {
-    imageBuffer = await convertHeicToJpegBuffer(filePath, 90);
+    imageBuffer = await convertHeicToJpegBuffer(fileBuffer, 90);
     imageMime = 'image/jpeg';
   } else {
-    imageBuffer = fs.readFileSync(filePath);
+    imageBuffer = fileBuffer;
     imageMime = ext === '.png' ? 'image/png' : 'image/jpeg';
   }
 
@@ -149,10 +149,10 @@ async function processPhotoAI({ filePath, metadata, gps, device }) {
   const { runChain } = require('./langchain/chainAdapter');
   let response;
   try {
-    // pass filePath/metadata/gps/device so the simpleChain (if enabled) can
-    // construct messages from the file directly. The OpenAI path ignores
+    // pass filename/metadata/gps/device so the simpleChain (if enabled) can
+    // construct messages from the file data directly. The OpenAI path ignores
     // these extra args and uses the provided `messages` as-is.
-    response = await runChain({ messages, model: 'gpt-4o', max_tokens: 1500, temperature: 0.25, filePath, metadata, gps, device });
+    response = await runChain({ messages, model: 'gpt-4o', max_tokens: 1500, temperature: 0.25, filename, metadata, gps, device });
   } catch (err) {
     console.error('AI processing failed:', err.message || err);
     throw err;
@@ -252,7 +252,7 @@ async function processPhotoAI({ filePath, metadata, gps, device }) {
 }
 
 // Helper: Update photo AI metadata in DB with retry logic
-async function updatePhotoAIMetadata(db, photoRow, filePath) {
+async function updatePhotoAIMetadata(db, photoRow, storagePath) {
   try {
     const meta = JSON.parse(photoRow.metadata || '{}');
     
@@ -285,14 +285,33 @@ async function updatePhotoAIMetadata(db, photoRow, filePath) {
       });
       return null;
     }
+    
     let ai;
     try {
-      ai = await processPhotoAI({ filePath, metadata: meta, gps, device });
+      // Download file from Supabase Storage
+      const { data: fileData, error } = await supabase.storage
+        .from('photos')
+        .download(storagePath);
+      
+      if (error) {
+        throw new Error(`Failed to download file from storage: ${error.message}`);
+      }
+      
+      const fileBuffer = await fileData.arrayBuffer();
+      
+      ai = await processPhotoAI({ 
+        fileBuffer: Buffer.from(fileBuffer), 
+        filename: photoRow.filename, 
+        metadata: meta, 
+        gps, 
+        device 
+      });
     } catch (error) {
       console.error(`AI processing failed for ${photoRow.filename} (attempt ${retryCount + 1}):`, error.message || error);
       await db('photos').where({ id: photoRow.id }).update({ ai_retry_count: retryCount + 1 });
       return null;
     }
+    
     await db('photos').where({ id: photoRow.id }).update({
       caption: ai.caption,
       description: ai.description,
@@ -312,7 +331,7 @@ function isAIFailed(val) {
 }
 
 // On server start, process all inprogress photos missing AI metadata or with retry count < 2
-async function processAllUnprocessedInprogress(db, INPROGRESS_DIR) {
+async function processAllUnprocessedInprogress(db) {
   try {
     const rows = await db('photos')
       .where({ state: 'inprogress' })
@@ -334,13 +353,10 @@ async function processAllUnprocessedInprogress(db, INPROGRESS_DIR) {
         console.log(`[RECHECK] Skipping ${row.filename} (already has valid AI metadata)`);
         continue;
       }
-      const filePath = path.join(INPROGRESS_DIR, row.filename);
-      if (fs.existsSync(filePath)) {
-        console.log(`[RECHECK] Processing AI metadata for ${row.filename}`);
-        await updatePhotoAIMetadata(db, row, filePath);
-      } else {
-        console.log(`[RECHECK] File not found for ${row.filename} at ${filePath}`);
-      }
+      
+      const storagePath = row.storage_path || `${row.state}/${row.filename}`;
+      console.log(`[RECHECK] Processing AI metadata for ${row.filename} at ${storagePath}`);
+      await updatePhotoAIMetadata(db, row, storagePath);
     }
     return rows.length;
   } catch (error) {

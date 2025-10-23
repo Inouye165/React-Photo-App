@@ -1,18 +1,16 @@
 const express = require('express');
 const { processAllUnprocessedInprogress } = require('../ai/service');
 const { generateThumbnail } = require('../media/image');
-const path = require('path');
-const fs = require('fs');
+const supabase = require('../lib/supabaseClient');
 
-module.exports = function createDebugRouter({ db }, paths) {
-  const { INPROGRESS_DIR } = paths;
+module.exports = function createDebugRouter({ db }) {
   const router = express.Router();
 
   // Add endpoint to recheck/reprocess all inprogress files for AI metadata
   router.post('/photos/recheck-inprogress', (req, res) => {
     try {
       console.log('[RECHECK] /photos/recheck-inprogress endpoint called');
-      processAllUnprocessedInprogress(db, INPROGRESS_DIR);
+      processAllUnprocessedInprogress(db);
       res.json({ success: true });
     } catch (err) {
       console.error('[RECHECK] Failed to trigger recheck for inprogress files:', err);
@@ -45,17 +43,6 @@ module.exports = function createDebugRouter({ db }, paths) {
   // Debug endpoint to regenerate missing thumbnails
   router.post('/debug/regenerate-thumbnails', async (req, res) => {
     try {
-      const { WORKING_DIR, INPROGRESS_DIR, FINISHED_DIR, THUMB_DIR } = paths;
-      
-      const getDir = (state) => {
-        switch(state) {
-          case 'working': return WORKING_DIR;
-          case 'inprogress': return INPROGRESS_DIR;
-          case 'finished': return FINISHED_DIR;
-          default: return WORKING_DIR;
-        }
-      };
-
       const rows = await db('photos').whereNotNull('hash');
       
       let missing = 0;
@@ -63,21 +50,36 @@ module.exports = function createDebugRouter({ db }, paths) {
       let failed = 0;
       
       for (const row of rows) {
-        const thumbPath = path.join(THUMB_DIR, `${row.hash}.jpg`);
+        const thumbnailPath = `thumbnails/${row.hash}.jpg`;
         
-        if (!fs.existsSync(thumbPath)) {
+        // Check if thumbnail exists in Supabase Storage
+        const { data: existingThumbnail } = await supabase.storage
+          .from('photos')
+          .list('thumbnails', { search: `${row.hash}.jpg` });
+        
+        if (!existingThumbnail || existingThumbnail.length === 0) {
           missing++;
-          const filePath = path.join(getDir(row.state), row.filename);
           
-          if (fs.existsSync(filePath)) {
-            try {
-              await generateThumbnail(filePath, row.hash, THUMB_DIR);
-              generated++;
-              console.log(`✅ Generated thumbnail for ${row.filename}`);
-            } catch (error) {
-              failed++;
-              console.error(`❌ Failed to generate thumbnail for ${row.filename}:`, error.message);
-            }
+          // Download the original file and generate thumbnail
+          const storagePath = row.storage_path || `${row.state}/${row.filename}`;
+          const { data: fileData, error } = await supabase.storage
+            .from('photos')
+            .download(storagePath);
+          
+          if (error) {
+            failed++;
+            console.error(`❌ Failed to download ${row.filename} for thumbnail generation:`, error);
+            continue;
+          }
+          
+          try {
+            const fileBuffer = await fileData.arrayBuffer();
+            await generateThumbnail(Buffer.from(fileBuffer), row.hash);
+            generated++;
+            console.log(`✅ Generated thumbnail for ${row.filename}`);
+          } catch (genError) {
+            failed++;
+            console.error(`❌ Failed to generate thumbnail for ${row.filename}:`, genError.message);
           }
         }
       }
@@ -89,6 +91,50 @@ module.exports = function createDebugRouter({ db }, paths) {
     } catch (error) {
       console.error('Error during thumbnail regeneration:', error);
       res.status(500).json({ success: false, error: error.message });
+    }
+  });
+
+  // Test storage connection
+  router.get('/storage', async (req, res) => {
+    try {
+      // Test if we can list files in the bucket
+      const { data, error } = await supabase.storage.from('photos').list('', {
+        limit: 1
+      });
+      
+      if (error) {
+        return res.status(500).json({ success: false, error: error.message, details: error });
+      }
+      
+      // Test if we can create a test file
+      const testContent = Buffer.from('test', 'utf8');
+      const { data: uploadData, error: uploadError } = await supabase.storage
+        .from('photos')
+        .upload('test-file.txt', testContent, {
+          contentType: 'text/plain',
+          upsert: true
+        });
+      
+      if (uploadError) {
+        return res.status(500).json({ 
+          success: false, 
+          error: uploadError.message, 
+          details: uploadError,
+          listWorked: true 
+        });
+      }
+      
+      // Clean up test file
+      await supabase.storage.from('photos').remove(['test-file.txt']);
+      
+      res.json({ 
+        success: true, 
+        message: 'Storage connection and upload test successful', 
+        files: data,
+        uploadPath: uploadData.path
+      });
+    } catch (err) {
+      res.status(500).json({ success: false, error: err.message, stack: err.stack });
     }
   });
 

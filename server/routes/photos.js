@@ -11,16 +11,16 @@ const { exec } = require('child_process');
 const { promisify } = require('util');
 const execPromise = promisify(exec);
 const { exiftool } = require('exiftool-vendored');
+const supabase = require('../lib/supabaseClient');
 
-module.exports = function createPhotosRouter({ db }, paths) {
-  const { WORKING_DIR, INPROGRESS_DIR, FINISHED_DIR, THUMB_DIR } = paths;
+module.exports = function createPhotosRouter({ db }) {
   const router = express.Router();
 
   // --- API: List all photos and metadata (include hash) ---
   router.get('/photos', async (req, res) => {
     try {
       const state = req.query.state;
-      let query = db('photos').select('id', 'filename', 'state', 'metadata', 'hash', 'file_size', 'caption', 'description', 'keywords', 'text_style', 'edited_filename');
+      let query = db('photos').select('id', 'filename', 'state', 'metadata', 'hash', 'file_size', 'caption', 'description', 'keywords', 'text_style', 'edited_filename', 'storage_path');
       
       if (state === 'working' || state === 'inprogress' || state === 'finished') {
         query = query.where({ state });
@@ -28,40 +28,8 @@ module.exports = function createPhotosRouter({ db }, paths) {
       
       const rows = await query;
 
-      // Helper function to get directory based on state
-      const getDir = (state) => {
-        switch(state) {
-          case 'working': return WORKING_DIR;
-          case 'inprogress': return INPROGRESS_DIR;
-          case 'finished': return FINISHED_DIR;
-          default: return WORKING_DIR;
-        }
-      };
-
-      // Collect IDs of missing files and filter results
-      const filteredRows = [];
-      const missingIds = [];
-      
-      for (const row of rows) {
-        const dir = getDir(row.state);
-        const filePath = path.join(dir, row.filename);
-        if (fs.existsSync(filePath)) {
-          filteredRows.push(row);
-        } else {
-          // Collect ID of missing file for batch deletion
-          missingIds.push(row.id);
-        }
-      }
-
-      // Perform batch delete for all missing photos
-      if (missingIds.length > 0) {
-        await db('photos').whereIn('id', missingIds).del();
-        console.log(`Deleted ${missingIds.length} missing photos from DB`);
-      }
-
-      // Prevent caching so frontend always gets fresh filtered results
-      res.set('Cache-Control', 'no-store');
-      res.json({ success: true, photos: filteredRows.map(row => {
+      // Generate public URLs for each photo using Supabase Storage
+      const photosWithUrls = await Promise.all(rows.map(async (row) => {
         let textStyle = null;
         if (row.text_style) {
           try {
@@ -70,6 +38,28 @@ module.exports = function createPhotosRouter({ db }, paths) {
             console.warn('Failed to parse text_style for photo', row.id, parseErr.message);
           }
         }
+
+        // Generate public URLs from Supabase Storage
+        let url = null;
+        let thumbnail = null;
+
+        // Main image URL
+        const imagePath = row.storage_path || `${row.state}/${row.edited_filename || row.filename}`;
+        const { data: imageUrl } = supabase.storage
+          .from('photos')
+          .getPublicUrl(imagePath);
+        
+        if (imageUrl?.publicUrl) {
+          url = imageUrl.publicUrl;
+        }
+
+        // Thumbnail URL - use display endpoint instead of public URL
+        if (row.hash) {
+          const thumbnailPath = `thumbnails/${row.hash}.jpg`;
+          // Use the display endpoint for thumbnails to ensure authentication works
+          thumbnail = `/display/thumbnails/${row.hash}.jpg`;
+        }
+
         return {
           id: row.id,
           filename: row.filename,
@@ -82,107 +72,18 @@ module.exports = function createPhotosRouter({ db }, paths) {
           keywords: row.keywords,
           textStyle,
           editedFilename: row.edited_filename,
-          url: `/${row.state}/${row.edited_filename || row.filename}`,
-          thumbnail: row.hash ? `/thumbnails/${row.hash}.jpg` : null
+          storagePath: row.storage_path,
+          url,
+          thumbnail
         };
-      }) });
+      }));
+
+      // Prevent caching so frontend always gets fresh filtered results
+      res.set('Cache-Control', 'no-store');
+      res.json({ success: true, photos: photosWithUrls });
     } catch (err) {
       console.error('Error in /photos endpoint:', err);
       res.status(500).json({ success: false, error: err.message });
-    }
-  });
-
-  // --- Serve thumbnails (generate on demand if missing) ---
-  router.get('/thumbnails/:name', async (req, res) => {
-    try {
-      const name = req.params.name;
-      const thumbPath = path.join(THUMB_DIR, name);
-      if (fs.existsSync(thumbPath)) return res.sendFile(thumbPath);
-      
-      // Try to derive hash from name (expecting <hash>.jpg)
-      const hash = path.basename(name, path.extname(name));
-      
-      // Attempt to find original file by matching hash in DB
-      const row = await db('photos').where({ hash }).select('filename', 'state').first();
-      if (!row) return res.status(404).send('Thumbnail not found');
-      
-      const getDir = (state) => {
-        switch(state) {
-          case 'working': return WORKING_DIR;
-          case 'inprogress': return INPROGRESS_DIR;
-          case 'finished': return FINISHED_DIR;
-          default: return WORKING_DIR;
-        }
-      };
-      
-      const origPath = path.join(getDir(row.state), row.filename);
-      if (!fs.existsSync(origPath)) return res.status(404).send('Original file missing');
-      
-      try {
-        const gen = await generateThumbnail(origPath, hash, THUMB_DIR);
-        if (gen && fs.existsSync(gen)) return res.sendFile(gen);
-        return res.status(500).send('Thumbnail generation failed');
-      } catch (genErr) {
-        console.error('Thumbnail generation on-demand failed for', origPath, genErr);
-        return res.status(500).send('Thumbnail generation failed');
-      }
-    } catch (_e) {
-      console.error('Thumbnail route error', _e);
-      res.status(500).send('Server error');
-    }
-  });
-
-  // --- Convert and serve images for display (HEIC -> JPEG) ---
-  router.get('/display/:state/:filename', async (req, res) => {
-    const { state, filename } = req.params;
-
-    // Get directory based on state
-    const getDir = (state) => {
-      switch(state) {
-        case 'working': return WORKING_DIR;
-        case 'inprogress': return INPROGRESS_DIR;
-        case 'finished': return FINISHED_DIR;
-        default: return WORKING_DIR;
-      }
-    };
-
-    const dir = getDir(state);
-    try {
-      const row = await db('photos').where('edited_filename', filename).orWhere('filename', filename).select('filename', 'edited_filename').first();
-      if (!row) {
-        return res.status(404).send('File not found');
-      }
-      const actualFilename = row.edited_filename || row.filename;
-      const filePath = path.join(dir, actualFilename);
-
-      if (!fs.existsSync(filePath)) {
-        return res.status(404).send('File not found');
-      }
-
-      const ext = path.extname(actualFilename).toLowerCase();
-
-      // If it's already JPG/PNG/etc, serve directly
-      if (['.jpg', '.jpeg', '.png', '.gif', '.webp'].includes(ext)) {
-        return res.sendFile(filePath);
-      }
-
-      // Convert HEIC/HEIF to JPEG for browser display
-      if (['.heic', '.heif'].includes(ext)) {
-        try {
-          const jpegBuffer = await convertHeicToJpegBuffer(filePath, 90);
-          res.set('Content-Type', 'image/jpeg');
-          return res.send(jpegBuffer);
-        } catch (err) {
-          console.error('[DISPLAY] HEIC conversion failed for', filePath, err.message || err);
-          return res.status(500).send('Unable to convert HEIC image for display');
-        }
-      } else {
-        // Unsupported format
-        return res.status(415).send('Unsupported image format');
-      }
-    } catch (error) {
-      console.error('Display error:', error);
-      res.status(500).send('Server error');
     }
   });
 
@@ -255,10 +156,17 @@ module.exports = function createPhotosRouter({ db }, paths) {
       if (!row.edited_filename) {
         return res.status(400).json({ success: false, error: 'No edited version to revert' });
       }
-      const editedPath = path.join(INPROGRESS_DIR, row.edited_filename);
-      if (fs.existsSync(editedPath)) {
-        fs.unlinkSync(editedPath);
+      
+      // Delete edited file from Supabase Storage
+      const editedPath = `inprogress/${row.edited_filename}`;
+      const { error: deleteError } = await supabase.storage
+        .from('photos')
+        .remove([editedPath]);
+      
+      if (deleteError) {
+        console.warn('Failed to delete edited file from Supabase storage:', deleteError);
       }
+
       await db('photos').where('id', id).update({ edited_filename: null });
       res.json({ success: true });
     } catch (error) {
@@ -276,29 +184,38 @@ module.exports = function createPhotosRouter({ db }, paths) {
         return res.status(404).json({ success: false, error: 'Photo not found' });
       }
 
-      // Helper function to get directory based on state
-      const getDir = (state) => {
-        switch(state) {
-          case 'working': return WORKING_DIR;
-          case 'inprogress': return INPROGRESS_DIR;
-          case 'finished': return FINISHED_DIR;
-          default: return WORKING_DIR;
-        }
-      };
+      // Delete the file from Supabase Storage
+      const filePath = row.storage_path || `${row.state}/${row.filename}`;
+      const { error: deleteError } = await supabase.storage
+        .from('photos')
+        .remove([filePath]);
 
-      const dir = getDir(row.state);
-      const filePath = path.join(dir, row.filename);
-
-      // Delete the file if it exists
-      if (fs.existsSync(filePath)) {
-        fs.unlinkSync(filePath);
+      if (deleteError) {
+        console.warn('Failed to delete file from Supabase storage:', deleteError);
+        // Continue with database deletion even if storage deletion fails
       }
 
       // Also delete any edited version
       if (row.edited_filename) {
-        const editedPath = path.join(INPROGRESS_DIR, row.edited_filename);
-        if (fs.existsSync(editedPath)) {
-          fs.unlinkSync(editedPath);
+        const editedPath = `inprogress/${row.edited_filename}`;
+        const { error: editedDeleteError } = await supabase.storage
+          .from('photos')
+          .remove([editedPath]);
+        
+        if (editedDeleteError) {
+          console.warn('Failed to delete edited file from Supabase storage:', editedDeleteError);
+        }
+      }
+
+      // Delete thumbnail from Supabase Storage
+      if (row.hash) {
+        const thumbnailPath = `thumbnails/${row.hash}.jpg`;
+        const { error: thumbDeleteError } = await supabase.storage
+          .from('photos')
+          .remove([thumbnailPath]);
+        
+        if (thumbDeleteError) {
+          console.warn('Failed to delete thumbnail from Supabase storage:', thumbDeleteError);
         }
       }
 
@@ -322,38 +239,33 @@ module.exports = function createPhotosRouter({ db }, paths) {
         return res.status(404).json({ success: false, error: 'Photo not found' });
       }
 
-      // Helper function to get directory based on state
-      const getDir = (state) => {
-        switch(state) {
-          case 'working': return WORKING_DIR;
-          case 'inprogress': return INPROGRESS_DIR;
-          case 'finished': return FINISHED_DIR;
-          default: return WORKING_DIR;
-        }
-      };
+      // Construct current and new storage paths
+      const currentPath = row.storage_path || `${row.state}/${row.filename}`;
+      const newPath = `${state}/${row.filename}`;
 
-      const srcDir = getDir(row.state);
-      const destDir = getDir(state);
-      const srcPath = path.join(srcDir, row.filename);
-      const destPath = path.join(destDir, row.filename);
-      if (!fs.existsSync(srcPath)) {
-        return res.status(404).json({ success: false, error: 'File not found' });
+      // Move file in Supabase Storage if the state is actually changing
+      if (row.state !== state) {
+        const { data, error } = await supabase.storage
+          .from('photos')
+          .move(currentPath, newPath);
+
+        if (error) {
+          console.error('Supabase move error:', error);
+          return res.status(500).json({ success: false, error: 'Failed to move file in storage' });
+        }
       }
-      // Move or copy file
-      if (srcPath !== destPath) {
-        fs.copyFileSync(srcPath, destPath);
-        fs.unlinkSync(srcPath);
-      }
-      // Set permissions: read-only for working, read/write for inprogress
-      if (state === 'working') {
-        fs.chmodSync(destPath, 0o444); // read-only
-      } else {
-        fs.chmodSync(destPath, 0o666); // read/write
-      }
-      await db('photos').where({ id }).update({ state, updated_at: new Date().toISOString() });
+
+      // Update database record
+      await db('photos').where({ id }).update({ 
+        state, 
+        storage_path: newPath,
+        updated_at: new Date().toISOString() 
+      });
+
       if (state === 'inprogress') {
         // Run AI pipeline after state change
-        updatePhotoAIMetadata(db, row, destPath).then(ai => {
+        // Note: We'll need to update this to work with Supabase storage
+        updatePhotoAIMetadata(db, row, newPath).then(ai => {
           if (ai) console.log('AI metadata updated for', row.filename);
         });
       }
@@ -381,47 +293,56 @@ module.exports = function createPhotosRouter({ db }, paths) {
       const photoRow = await db('photos').where('id', photoId).first();
       if (!photoRow) return res.status(404).json({ success: false, error: 'Photo not found' });
 
-      const resolveDir = (state) => {
-        switch (state) { case 'working': return WORKING_DIR; case 'finished': return FINISHED_DIR; default: return INPROGRESS_DIR; }
-      };
-
-      const possibleSourcePaths = [
-        path.join(resolveDir(photoRow.state), photoRow.filename),
-        path.join(WORKING_DIR, photoRow.filename),
-        path.join(INPROGRESS_DIR, photoRow.filename),
-        path.join(FINISHED_DIR, photoRow.filename),
-      ];
-      const sourcePath = possibleSourcePaths.find(p => fs.existsSync(p));
-      if (!sourcePath) return res.status(404).json({ success: false, error: 'Source file not found on disk' });
-
+      // Generate unique edited filename
       const originalExt = path.extname(photoRow.filename);
       const baseName = path.basename(photoRow.filename, originalExt);
       let editedFilename = `${baseName}-edit.jpg`;
       let counter = 1;
-      while (fs.existsSync(path.join(INPROGRESS_DIR, editedFilename))) {
+      
+      // Check if edited filename exists in Supabase Storage
+      while (true) {
+        const { data: existingFiles } = await supabase.storage
+          .from('photos')
+          .list('inprogress', { search: editedFilename });
+        
+        if (!existingFiles || existingFiles.length === 0) {
+          break;
+        }
+        
         editedFilename = `${baseName}-edit-${counter}.jpg`;
         counter++;
       }
-      const destPath = path.join(INPROGRESS_DIR, editedFilename);
 
       // Save the image buffer as JPEG with rotation applied
       const orientedBuffer = await sharp(imageBuffer).rotate().jpeg({ quality: 90 }).toBuffer();
-      await fs.promises.writeFile(destPath, orientedBuffer);
-      try { fs.chmodSync(destPath, 0o666); } catch (permErr) { console.warn('Failed to adjust permissions for', destPath, permErr.message); }
+      
+      // Upload edited image to Supabase Storage
+      const editedPath = `inprogress/${editedFilename}`;
+      const { data: uploadData, error: uploadError } = await supabase.storage
+        .from('photos')
+        .upload(editedPath, orientedBuffer, {
+          contentType: 'image/jpeg',
+          duplex: false
+        });
 
-      // Copy EXIF from source and remove orientation tag
-      try { await copyExifMetadata(sourcePath, destPath); } catch (_e) { console.warn('Failed to copy EXIF:', _e && _e.message); }
-      try {
-        const exiftoolBin = exiftool;
-        await execPromise(`"${exiftoolBin}" -Orientation= -overwrite_original "${destPath}"`, { windowsHide: true, timeout: 10000 });
-      } catch (_e) { console.warn('Failed to remove EXIF orientation:', _e && _e.message); }
+      if (uploadError) {
+        console.error('Supabase upload error for edited image:', uploadError);
+        return res.status(500).json({ success: false, error: 'Failed to upload edited image to storage' });
+      }
 
+      // Generate metadata from the edited buffer
       let metadata = {};
-      try { metadata = await exifr.parse(destPath, { tiff: true, ifd0: true, exif: true, gps: true, xmp: true, icc: true, iptc: true }) || {}; } catch (metaErr) { console.warn('Failed to parse metadata for', destPath, metaErr && metaErr.message); }
+      try { 
+        metadata = await exifr.parse(orientedBuffer, { 
+          tiff: true, ifd0: true, exif: true, gps: true, xmp: true, icc: true, iptc: true 
+        }) || {}; 
+      } catch (metaErr) { 
+        console.warn('Failed to parse metadata for edited image', metaErr && metaErr.message); 
+      }
 
       // Compute hash and update DB
-      const newHash = crypto.createHash('sha256').update(fs.readFileSync(destPath)).digest('hex');
-      const stats = await fs.promises.stat(destPath);
+      const crypto = require('crypto');
+      const newHash = crypto.createHash('sha256').update(orientedBuffer).digest('hex');
       const now = new Date().toISOString();
 
       const newCaption = caption !== undefined ? caption : photoRow.caption;
@@ -437,7 +358,8 @@ module.exports = function createPhotosRouter({ db }, paths) {
         text_style: newTextStyleJson,
         metadata: JSON.stringify(metadata || {}),
         hash: newHash,
-        file_size: stats.size,
+        file_size: orientedBuffer.length,
+        storage_path: editedPath,
         updated_at: now
       });
 
@@ -457,8 +379,9 @@ module.exports = function createPhotosRouter({ db }, paths) {
         keywords: newKeywords,
         textStyle: parsedTextStyle,
         hash: newHash,
-        fileSize: stats.size,
+        fileSize: orientedBuffer.length,
         metadata,
+        storagePath: editedPath
       });
     } catch (error) {
       console.error('Failed to save captioned image for photo', error);
@@ -481,20 +404,11 @@ module.exports = function createPhotosRouter({ db }, paths) {
         // Fallback to synchronous processing when Redis is not available
         console.log(`[API] Redis unavailable - processing AI synchronously for photoId: ${photo.id}`);
         
-        // Determine the correct file path based on photo state
-        const getDir = (state) => {
-          switch(state) {
-            case 'working': return WORKING_DIR;
-            case 'inprogress': return INPROGRESS_DIR;
-            case 'finished': return FINISHED_DIR;
-            default: return WORKING_DIR;
-          }
-        };
-
-        const filePath = path.join(getDir(photo.state), photo.filename);
+        // Use the storage path for AI processing
+        const storagePath = photo.storage_path || `${photo.state}/${photo.filename}`;
         
-        // Process AI synchronously
-        await updatePhotoAIMetadata(db, photo, filePath);
+        // Process AI synchronously (this will need to be updated to work with Supabase storage)
+        await updatePhotoAIMetadata(db, photo, storagePath);
         
         return res.status(200).json({
           message: 'AI processing completed synchronously.',
@@ -517,6 +431,91 @@ module.exports = function createPhotosRouter({ db }, paths) {
     } catch (error) {
       console.error('Error processing AI job:', error);
       return res.status(500).json({ error: 'Failed to process AI job' });
+    }
+  });
+
+  // --- Display endpoint: Serve images from Supabase Storage ---
+  router.get('/display/:state/:filename', async (req, res) => {
+    try {
+      const { state, filename } = req.params;
+      
+      // Handle thumbnail requests (state = "thumbnails")
+      if (state === 'thumbnails') {
+        const storagePath = `thumbnails/${filename}`;
+        
+        // Download thumbnail directly from Supabase Storage
+        const { data, error } = await supabase.storage
+          .from('photos')
+          .download(storagePath);
+
+        if (error) {
+          console.error('❌ Thumbnail download error:', error);
+          return res.status(404).json({ error: 'Thumbnail not found in storage' });
+        }
+
+        // Convert data to buffer and serve as JPEG
+        const buffer = await data.arrayBuffer();
+        const fileBuffer = Buffer.from(buffer);
+        
+        res.set('Content-Type', 'image/jpeg');
+        res.send(fileBuffer);
+        return;
+      }
+      
+      // Handle regular photo requests
+      // Find the photo in database to get the correct storage path
+      const photo = await db('photos')
+        .where({ filename, state })
+        .orWhere({ edited_filename: filename, state })
+        .first();
+
+      if (!photo) {
+        return res.status(404).json({ error: 'Photo not found' });
+      }
+
+      // Use storage_path if available, otherwise construct from state/filename
+      const storagePath = photo.storage_path || `${state}/${filename}`;
+      
+      // Download the file from Supabase Storage
+      const { data, error } = await supabase.storage
+        .from('photos')
+        .download(storagePath);
+
+      if (error) {
+        console.error('Supabase download error:', error);
+        return res.status(404).json({ error: 'File not found in storage' });
+      }
+
+      // Convert data to buffer
+      const buffer = await data.arrayBuffer();
+      const fileBuffer = Buffer.from(buffer);
+
+      // Set appropriate content type
+      const ext = path.extname(filename).toLowerCase();
+      let contentType = 'image/jpeg'; // default
+      
+      if (ext === '.png') contentType = 'image/png';
+      else if (ext === '.gif') contentType = 'image/gif';
+      else if (ext === '.heic' || ext === '.heif') contentType = 'image/heic';
+
+      // Convert HEIC to JPEG if needed
+      if (ext === '.heic' || ext === '.heif') {
+        try {
+          const jpegBuffer = await convertHeicToJpegBuffer(fileBuffer);
+          res.set('Content-Type', 'image/jpeg');
+          res.send(jpegBuffer);
+        } catch (conversionError) {
+          console.error('HEIC conversion error:', conversionError);
+          res.status(500).json({ error: 'Failed to convert HEIC image' });
+        }
+      } else {
+        res.set('Content-Type', contentType);
+        res.send(fileBuffer);
+      }
+
+    } catch (err) {
+      console.error('Display endpoint error:', err);
+      res.status(500).json({ error: 'Internal server error' });
     }
   });
 

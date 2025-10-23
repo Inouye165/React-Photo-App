@@ -156,7 +156,7 @@ function App() {
         const photosWithFullUrls = (res.photos || []).map(p => ({
           ...p,
           url: createAuthenticatedImageUrl(`${backendOrigin}/display/${p.state}/${p.filename}`),
-          thumbnail: p.thumbnail ? createAuthenticatedImageUrl(`${backendOrigin}/thumbnails/${p.thumbnail.split('/').pop()}`) : null
+          thumbnail: p.thumbnail ? createAuthenticatedImageUrl(`${backendOrigin}${p.thumbnail}`) : null
         }));
         setPhotos(photosWithFullUrls);
   // removed visual confirmation toast
@@ -299,7 +299,7 @@ function App() {
       const photosWithFullUrls = (res.photos || []).map(p => ({
         ...p,
         url: createAuthenticatedImageUrl(`${backendOrigin}/display/${p.state}/${p.filename}`),
-        thumbnail: p.thumbnail ? createAuthenticatedImageUrl(`${backendOrigin}/thumbnails/${p.thumbnail.split('/').pop()}`) : null
+        thumbnail: p.thumbnail ? createAuthenticatedImageUrl(`${backendOrigin}${p.thumbnail}`) : null
       }));
       setPhotos(photosWithFullUrls);
       setLocalPhotos([]);

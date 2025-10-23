@@ -5,101 +5,135 @@ const sharp = require('sharp');
 const exifr = require('exifr');
 const nodeCrypto = require('crypto');
 const heicConvert = require('heic-convert');
+const supabase = require('../lib/supabaseClient');
 
 const ALLOWED_IMAGE_EXTENSIONS = ['.jpg', '.jpeg', '.png', '.gif', '.heic', '.bmp', '.tiff', '.webp'];
 
-async function hashFile(filePath) {
-  const buf = await fs.readFile(filePath);
-  return nodeCrypto.createHash('sha256').update(buf).digest('hex');
+async function hashFile(fileBuffer) {
+  return nodeCrypto.createHash('sha256').update(fileBuffer).digest('hex');
 }
 
 
-async function generateThumbnail(filePath, hash, thumbDir) {
-  const thumbPath = path.join(thumbDir, `${hash}.jpg`);
+async function generateThumbnail(fileBuffer, hash) {
+  const thumbnailPath = `thumbnails/${hash}.jpg`;
+  
   try {
-    await fs.access(thumbPath);
-    return thumbPath;
-  } catch {
-    // File doesn't exist, continue with generation
+    // Check if thumbnail already exists in Supabase Storage
+    const { data: existingThumbnail } = await supabase.storage
+      .from('photos')
+      .list('thumbnails', { search: `${hash}.jpg` });
+    
+    if (existingThumbnail && existingThumbnail.length > 0) {
+      return thumbnailPath; // Thumbnail already exists
+    }
+  } catch (error) {
+    console.warn('Error checking for existing thumbnail:', error);
   }
+
   try {
-    // Reduced size by 25%: original 120 -> now 90
-    const ext = path.extname(filePath).toLowerCase();
-    if (ext === '.heic' || ext === '.heif') {
-      // Convert HEIC/HEIF to JPEG buffer first using the robust converter (sharp -> ImageMagick fallback)
+    // Detect file type from buffer
+    const metadata = await sharp(fileBuffer).metadata();
+    const format = metadata.format;
+    
+    let thumbnailBuffer;
+    if (format === 'heif') {
+      // Convert HEIC/HEIF to JPEG buffer first
       try {
-        const jpegBuffer = await convertHeicToJpegBuffer(filePath, 70);
-        await sharp(jpegBuffer)
+        const jpegBuffer = await convertHeicToJpegBuffer(fileBuffer, 70);
+        thumbnailBuffer = await sharp(jpegBuffer)
           .resize(90, 90, { fit: 'inside' })
           .jpeg({ quality: 70 })
-          .toFile(thumbPath);
+          .toBuffer();
       } catch (convErr) {
-        console.error('Sharp thumbnail generation (via HEIC->JPEG) failed for', filePath, convErr.message || convErr);
+        console.error('Sharp thumbnail generation (via HEIC->JPEG) failed:', convErr.message || convErr);
         return null;
       }
     } else {
-      await sharp(filePath)
+      thumbnailBuffer = await sharp(fileBuffer)
         .resize(90, 90, { fit: 'inside' })
         .jpeg({ quality: 70 })
-        .toFile(thumbPath);
+        .toBuffer();
     }
-    return thumbPath;
+
+    // Upload thumbnail to Supabase Storage
+    const { data, error } = await supabase.storage
+      .from('photos')
+      .upload(thumbnailPath, thumbnailBuffer, {
+        contentType: 'image/jpeg',
+        duplex: false
+      });
+
+    if (error) {
+      console.error('Failed to upload thumbnail to Supabase:', error);
+      return null;
+    }
+
+    return thumbnailPath;
   } catch (err) {
-    console.error('Sharp thumbnail generation failed for', filePath, err.message || err);
+    console.error('Thumbnail generation failed:', err.message || err);
     return null;
   }
 }
 
-async function convertHeicToJpegBuffer(filePath, quality = 90) {
-  const ext = path.extname(filePath).toLowerCase();
-  if (ext !== '.heic' && ext !== '.heif') {
-    // If already JPEG/PNG, read as buffer
-    return fsSync.readFileSync(filePath);
-  }
+async function convertHeicToJpegBuffer(fileBuffer, quality = 90) {
   try {
-    console.log('[CONVERT] Attempting HEIC->JPEG conversion for', filePath);
-    const buffer = await sharp(filePath).jpeg({ quality }).toBuffer();
-    console.log('[CONVERT] HEIC->JPEG conversion successful for', filePath, 'buffer size:', buffer.length);
+    // Check if it's actually a HEIF file
+    const metadata = await sharp(fileBuffer).metadata();
+    if (metadata.format !== 'heif') {
+      // If not HEIF, return as is
+      return fileBuffer;
+    }
+    
+    console.log('[CONVERT] Attempting HEIC->JPEG conversion, buffer size:', fileBuffer.length);
+    const buffer = await sharp(fileBuffer).jpeg({ quality }).toBuffer();
+    console.log('[CONVERT] HEIC->JPEG conversion successful, output size:', buffer.length);
     return buffer;
   } catch (err) {
-    // This is the NEW catch block
-    console.log('[CONVERT] Sharp conversion failed, trying heic-convert fallback for', filePath, err.message);
+    console.log('[CONVERT] Sharp conversion failed, trying heic-convert fallback:', err.message);
     try {
-      // 'fs' at the top of the file is fs.promises
-      const inputBuffer = await fs.readFile(filePath); 
       const outputBuffer = await heicConvert({
-        buffer: inputBuffer,
+        buffer: fileBuffer,
         format: 'JPEG',
         quality: quality / 100 // heic-convert quality is 0 to 1
       });
-      console.log('[CONVERT] heic-convert fallback successful for', filePath, 'buffer size:', outputBuffer.length);
+      console.log('[CONVERT] heic-convert fallback successful, buffer size:', outputBuffer.length);
       return outputBuffer;
     } catch (fallbackErr) {
-      console.error('[CONVERT] heic-convert fallback conversion FAILED for', filePath, fallbackErr.message || fallbackErr);
-      // Throw a single, clear error
-      throw new Error(`HEIC conversion failed for ${filePath}. Sharp error: ${err.message}, Fallback error: ${fallbackErr.message}`);
+      console.error('[CONVERT] heic-convert fallback conversion FAILED:', fallbackErr.message || fallbackErr);
+      throw new Error(`HEIC conversion failed. Sharp error: ${err.message}, Fallback error: ${fallbackErr.message}`);
     }
   }
 }
 
 
 
-async function ensureAllThumbnails(db, WORKING_DIR, THUMB_DIR) {
-  const files = await fs.readdir(WORKING_DIR);
-  // Limit concurrent conversions to avoid spawning too many ImageMagick/sharp processes
+async function ensureAllThumbnails(db) {
+  // Get all photos from database
+  const photos = await db('photos').select('id', 'filename', 'hash', 'state', 'storage_path');
+  
+  // Limit concurrent conversions to avoid spawning too many processes
   const CONCURRENCY_LIMIT = parseInt(process.env.THUMB_CONCURRENCY || '2', 10);
   const queue = [];
-  for (const filename of files) {
-    const filePath = path.join(WORKING_DIR, filename);
-    const stats = await fs.stat(filePath);
-    if (!stats.isFile()) continue;
-    const row = await db('photos').where({ filename }).first();
-    if (row && row.hash) {
+  
+  for (const photo of photos) {
+    if (photo.hash) {
       const job = async () => {
         try {
-          await generateThumbnail(filePath, row.hash, THUMB_DIR);
+          // Download file from Supabase Storage
+          const storagePath = photo.storage_path || `${photo.state}/${photo.filename}`;
+          const { data: fileData, error } = await supabase.storage
+            .from('photos')
+            .download(storagePath);
+          
+          if (error) {
+            console.warn(`Failed to download ${storagePath} for thumbnail generation:`, error);
+            return;
+          }
+          
+          const fileBuffer = await fileData.arrayBuffer();
+          await generateThumbnail(Buffer.from(fileBuffer), photo.hash);
         } catch (e) {
-          console.error('Thumbnail gen error for', filename, e && (e.message || e));
+          console.error('Thumbnail gen error for', photo.filename, e && (e.message || e));
         }
       };
       queue.push(job);
@@ -110,88 +144,40 @@ async function ensureAllThumbnails(db, WORKING_DIR, THUMB_DIR) {
   const workers = new Array(CONCURRENCY_LIMIT).fill(null).map(async () => {
     while (queue.length > 0) {
       const job = queue.shift();
-       
-      await job();
+      if (job) await job();
     }
   });
   await Promise.all(workers);
 }
 
-async function ensureAllFilesHashed(db, WORKING_DIR, THUMB_DIR) {
-  const files = await fs.readdir(WORKING_DIR);
-  const ignored = [];
-  const STARTUP_LIMIT = parseInt(process.env.STARTUP_THUMB_LIMIT || '50', 10);
-  let processedCount = 0;
-  for (const filename of files) {
-    if (processedCount >= STARTUP_LIMIT) {
-      console.log(`[STARTUP] Reached startup processing limit of ${STARTUP_LIMIT} files; skipping remaining files for now.`);
-      break;
-    }
-    const filePath = path.join(WORKING_DIR, filename);
-    const stats = await fs.stat(filePath);
-    if (!stats.isFile()) continue;
-    const ext = path.extname(filename).toLowerCase();
-    if (!ALLOWED_IMAGE_EXTENSIONS.includes(ext)) {
-      // Log and skip non-image files (desktop.ini, thumbs.db, etc.) rather than exiting
-      ignored.push(filename);
-      continue;
-    }
-    // By default, avoid processing HEIC/HEIF files at startup because some environments
-    // (Windows/libvips builds) don't support HEIC and conversions can be expensive
-    // and may spawn ImageMagick processes. To enable startup processing of HEIC files,
-    // set STARTUP_PROCESS_HEIC=true in the server .env.
-    const STARTUP_PROCESS_HEIC = (process.env.STARTUP_PROCESS_HEIC || 'false').toLowerCase() === 'true';
-    if (!STARTUP_PROCESS_HEIC && (ext === '.heic' || ext === '.heif')) {
-      // Skip heic/heif during startup and let thumbnails be generated on-demand or via a separate job
-      console.log(`[STARTUP] Skipping HEIC/HEIF file at startup: ${filename} (set STARTUP_PROCESS_HEIC=true to override)`);
-      continue;
-    }
-    const row = await db('photos').where({ filename }).first();
-    if (!row) {
-      await ingestPhoto(db, filePath, filename, 'working', THUMB_DIR);
-      continue;
-    }
-    if (!row.hash) {
-      const hash = await hashFile(filePath);
-      await db('photos').where({ id: row.id }).update({ hash });
-      await generateThumbnail(filePath, hash, THUMB_DIR);
-      processedCount++;
-    } else {
-      await generateThumbnail(filePath, row.hash, THUMB_DIR);
-      processedCount++;
-    }
-  }
-  if (ignored.length > 0) {
-    console.log('[WORKING DIR] Ignored non-image files:', ignored.join(', '));
-    console.log('[WORKING DIR] To avoid these messages, remove or hide non-image files (e.g., desktop.ini, thumbs.db) from the working directory.');
-  }
-}
-
-async function ingestPhoto(db, filePath, filename, state, thumbDir) {
+async function ingestPhoto(db, storagePath, filename, state, fileBuffer) {
   try {
-    const hash = await hashFile(filePath);
+    const hash = await hashFile(fileBuffer);
     const existing = await db('photos').where({ hash }).select('id').first();
     if (existing) {
-      await fs.unlink(filePath);
       console.log(`Duplicate file skipped: ${filename}`);
       return { duplicate: true, hash };
     }
-    const metadata = await exifr.parse(filePath, { tiff: true, ifd0: true, exif: true, gps: true, xmp: true, icc: true, iptc: true });
+    
+    const metadata = await exifr.parse(fileBuffer, { 
+      tiff: true, ifd0: true, exif: true, gps: true, xmp: true, icc: true, iptc: true 
+    });
     const metaStr = JSON.stringify(metadata || {});
-    const fileStats = await fs.stat(filePath);
-    const fileSize = fileStats.size;
+    const fileSize = fileBuffer.length;
     const now = new Date().toISOString();
+    
     await db('photos').insert({
       filename,
       state,
       metadata: metaStr,
       hash,
       file_size: fileSize,
+      storage_path: storagePath,
       created_at: now,
       updated_at: now
     }).onConflict('filename').merge();
-    const td = thumbDir || path.join(__dirname, '..', 'thumbnails');
-    await generateThumbnail(filePath, hash, td);
+    
+    await generateThumbnail(fileBuffer, hash);
     return { duplicate: false, hash };
   } catch (err) {
     console.error('Metadata/hash extraction failed for', filename, err);
@@ -199,4 +185,4 @@ async function ingestPhoto(db, filePath, filename, state, thumbDir) {
   }
 }
 
-module.exports = { generateThumbnail, ensureAllThumbnails, ensureAllFilesHashed, ingestPhoto, convertHeicToJpegBuffer };
+module.exports = { generateThumbnail, ensureAllThumbnails, ingestPhoto, convertHeicToJpegBuffer };

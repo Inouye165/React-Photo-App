@@ -7,9 +7,10 @@
     if(err||!row){ console.log('No inprogress row found or error', err); db.close(); return; }
     console.log('Found inprogress row:', row.filename);
     const { updatePhotoAIMetadata } = require('../ai/service');
-    const { INPROGRESS_DIR } = require('../config/paths');
     try{
-        await updatePhotoAIMetadata(db, row, path.join(INPROGRESS_DIR, row.filename));
+        // Use storage path instead of local file path
+        const storagePath = row.storage_path || `${row.state}/${row.filename}`;
+        await updatePhotoAIMetadata(db, row, storagePath);
         console.log('updatePhotoAIMetadata finished');
         db.get('SELECT caption, description, keywords FROM photos WHERE id = ?', [row.id], async (e, r)=>{
           console.log('DB AI fields:', r);

@@ -27,7 +27,6 @@ async function initializeQueue() {
       // Lazy load dependencies
       const db = require('../db');
       const { updatePhotoAIMetadata } = require('../ai/service');
-      const { WORKING_DIR, INPROGRESS_DIR, FINISHED_DIR } = require('../config/paths');
 
       aiQueue = new Queue(QUEUE_NAME, { connection });
       redisAvailable = true;
@@ -45,20 +44,11 @@ async function initializeQueue() {
             throw new Error(`Photo with ID ${photoId} not found.`);
           }
 
-          // Determine the correct file path based on photo state
-          const getDir = (state) => {
-            switch(state) {
-              case 'working': return WORKING_DIR;
-              case 'inprogress': return INPROGRESS_DIR;
-              case 'finished': return FINISHED_DIR;
-              default: return WORKING_DIR;
-            }
-          };
-
-          const filePath = path.join(getDir(photo.state), photo.filename);
+          // Use storage path for AI processing
+          const storagePath = photo.storage_path || `${photo.state}/${photo.filename}`;
 
           // Call the existing AI service function
-          await updatePhotoAIMetadata(db, photo, filePath);
+          await updatePhotoAIMetadata(db, photo, storagePath);
 
           console.log(`[WORKER] Successfully processed job for photoId: ${photoId}`);
         } catch (error) {
