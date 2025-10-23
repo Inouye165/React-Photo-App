@@ -1,4 +1,4 @@
-import React from "react";
+import React from 'react';
 import { useAuth } from './contexts/AuthContext';
 
 export default function Toolbar({
@@ -6,8 +6,6 @@ export default function Toolbar({
   onViewInprogress,
   onViewFinished,
   onSelectFolder,
-  showInprogress,
-  showFinished,
   onRecheck,
   rechecking,
   onShowMetadata,

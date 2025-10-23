@@ -6,7 +6,6 @@ jest.mock('knex');
 jest.mock('../lib/supabaseClient');
 
 // Import mock helpers directly - ensure knex mock is properly loaded first
-const mockKnex = require('./__mocks__/knex');
 const { mockDbHelpers } = require('./__mocks__/knex');
 const { mockStorageHelpers } = require('./__mocks__/supabase');
 

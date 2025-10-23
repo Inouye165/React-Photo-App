@@ -1,6 +1,6 @@
 import React from 'react'
 import { describe, it, expect, vi } from 'vitest'
-import { render, screen, fireEvent } from '@testing-library/react'
+import { render, screen } from '@testing-library/react'
 import userEvent from '@testing-library/user-event'
 import PhotoGallery from './PhotoGallery'
 
@@ -33,13 +33,11 @@ describe('PhotoGallery Component', () => {
 
   const mockProps = {
     photos: mockPhotos,
-    onPhotoClick: vi.fn(),
     handleMoveToInprogress: vi.fn(),
     handleMoveToWorking: vi.fn(),
     handleDeletePhoto: vi.fn(),
     handleEditPhoto: vi.fn(),
     privilegesMap: { 1: 'read,write', 2: 'read' },
-    formatFileSize: vi.fn((size) => `${(size / 1024).toFixed(1)} KB`),
   }
 
   it('renders photos correctly', () => {
@@ -63,8 +61,9 @@ describe('PhotoGallery Component', () => {
   it('shows file sizes formatted', () => {
     render(<PhotoGallery {...mockProps} />)
 
-    expect(mockProps.formatFileSize).toHaveBeenCalledWith(1024000)
-    expect(mockProps.formatFileSize).toHaveBeenCalledWith(2048000)
+    // Check that formatted file sizes are displayed in the UI
+    expect(screen.getByText('1000 KB')).toBeInTheDocument()
+    expect(screen.getByText('2 MB')).toBeInTheDocument()
   })
 
   it('displays privileges from map', () => {

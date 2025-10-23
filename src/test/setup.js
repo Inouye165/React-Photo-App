@@ -92,7 +92,7 @@ global.showDirectoryPicker = vi.fn()
 
 // Enhanced fetch mock that returns appropriate responses
 global.fetch = vi.fn().mockImplementation((url, options = {}) => {
-  const method = options.method || 'GET';
+  const _method = options.method || 'GET';
   
   // Handle different API endpoints
   for (const [endpoint, response] of Object.entries(mockApiResponses)) {

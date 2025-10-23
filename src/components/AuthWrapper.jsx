@@ -1,10 +1,10 @@
-import React, { useState } from 'react';
+import { useState } from 'react';
 import { useAuth } from '../contexts/AuthContext';
 import LoginForm from './LoginForm';
 import RegisterForm from './RegisterForm';
 
 const AuthWrapper = ({ children }) => {
-  const { isAuthenticated, loading, user, logout } = useAuth();
+  const { isAuthenticated, loading } = useAuth();
   const [isLoginMode, setIsLoginMode] = useState(true);
 
   if (loading) {

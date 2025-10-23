@@ -1,29 +1,6 @@
 import React from 'react'
 import { render } from '@testing-library/react'
-import { vi } from 'vitest'
-
-// Create a mock AuthContext
-const AuthContext = React.createContext()
-
-// Mock AuthProvider for testing
-const MockAuthProvider = ({ children, mockAuthValues = {} }) => {
-  const defaultValues = {
-    user: null,
-    token: null,
-    loading: false,
-    login: vi.fn(),
-    register: vi.fn(),
-    logout: vi.fn(),
-    isAuthenticated: false,
-    ...mockAuthValues
-  }
-
-  return (
-    <AuthContext.Provider value={defaultValues}>
-      {children}
-    </AuthContext.Provider>
-  )
-}
+import MockAuthProvider from './MockAuthProvider.jsx'
 
 // Helper function to render components with AuthProvider
 export const renderWithAuth = (ui, { mockAuthValues = {}, ...renderOptions } = {}) => {
@@ -54,5 +31,21 @@ export const renderWithAuthenticatedUser = (ui, userOptions = {}) => {
   })
 }
 
-// Re-export everything from @testing-library/react
-export * from '@testing-library/react'
+// Re-export specific utilities from @testing-library/react
+export { 
+  screen, 
+  fireEvent, 
+  waitFor, 
+  act,
+  cleanup,
+  within,
+  getByRole,
+  getByText,
+  getByTestId,
+  queryByRole,
+  queryByText,
+  queryByTestId,
+  findByRole,
+  findByText,
+  findByTestId
+} from '@testing-library/react'

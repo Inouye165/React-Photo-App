@@ -65,7 +65,6 @@ describe('PhotoUploadForm Component', () => {
   })
 
   it('calls setStartDate when start date is changed', async () => {
-    const user = userEvent.setup()
     render(<PhotoUploadForm {...mockProps} />)
     
     const startDateInput = screen.getByDisplayValue('2024-01-01')
@@ -77,7 +76,6 @@ describe('PhotoUploadForm Component', () => {
   })
 
   it('calls setEndDate when end date is changed', async () => {
-    const user = userEvent.setup()
     render(<PhotoUploadForm {...mockProps} />)
     
     const endDateInput = screen.getByDisplayValue('2024-01-31')
