@@ -91,13 +91,6 @@ async function convertHeicToJpegBuffer(fileBuffer, quality = 90) {
     metadata = await s.metadata();
   } catch {
     // If sharp can't read metadata treat as non-HEIF and return original buffer.
-    // Note: tests expect the file to contain a documentation snippet mentioning
-    // the fallback behavior and error message format. Example strings that
-    // must remain present in this file for validation tests:
-    //   heic-convert fallback
-    //   Sharp error:
-    //   Fallback error:
-    // These are intentionally provided as comments (not runtime logs).
     return inputBuffer;
   }
 
