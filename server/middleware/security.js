@@ -5,6 +5,9 @@ const rateLimit = require('express-rate-limit');
  * Configure security middleware
  */
 function configureSecurity(app) {
+  // Get API URL from environment variable, fallback to localhost for development
+  const API_URL = process.env.API_URL || 'http://localhost:3001';
+
   // Helmet for security headers
   app.use(helmet({
     contentSecurityPolicy: {
@@ -12,9 +15,9 @@ function configureSecurity(app) {
         defaultSrc: ["'self'"],
         styleSrc: ["'self'", "'unsafe-inline'", "https://fonts.googleapis.com"],
         fontSrc: ["'self'", "https://fonts.gstatic.com"],
-        imgSrc: ["'self'", "data:", "http://localhost:3001"],
+        imgSrc: ["'self'", "data:", API_URL],
         scriptSrc: ["'self'", "'unsafe-inline'"],
-        connectSrc: ["'self'", "http://localhost:3001"],
+        connectSrc: ["'self'", API_URL],
       },
     },
     crossOriginEmbedderPolicy: false, // Allow image loading from same origin

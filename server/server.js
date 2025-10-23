@@ -61,9 +61,20 @@ async function startServer() {
   // Add request validation middleware
   app.use(validateRequest);
 
-  // Allow cross-origin requests from local dev servers (keep permissive for development)
+  // Configure CORS origins - support both development and production
+  const allowedOrigins = [
+    'http://localhost:3000', 
+    'http://localhost:5173', 
+    'http://localhost:5174'
+  ];
+
+  // Add production frontend URL from environment variable
+  if (process.env.CLIENT_ORIGIN) {
+    allowedOrigins.push(process.env.CLIENT_ORIGIN);
+  }
+
   app.use(cors({
-    origin: ['http://localhost:3000', 'http://localhost:5173', 'http://localhost:5174'], // Add common React dev server ports
+    origin: allowedOrigins,
     credentials: true // Allow cookies to be sent
   }));
   

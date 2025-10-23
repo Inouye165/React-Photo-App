@@ -8,7 +8,7 @@ module.exports = {
       host: 'db.xcidibfijzyoyliyclug.supabase.co',
       port: 5432,
       user: 'postgres',
-      password: process.env.SUPABASE_DB_PASSWORD || 'Kk83Zws$bSAIemA',
+      password: process.env.SUPABASE_DB_PASSWORD,
       database: 'postgres',
       ssl: { rejectUnauthorized: false }
     },

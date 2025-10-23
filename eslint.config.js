@@ -55,22 +55,58 @@ export default defineConfig([
     },
   },
   {
-    // Configuration for test files
-    files: ['**/*.test.js', '**/*.spec.js', 'server/tests/test-db.js'],
+    // Configuration for frontend test files
+    files: ['src/**/*.test.js', 'src/**/*.test.jsx', 'src/**/*.spec.js', 'src/**/*.spec.jsx'],
     languageOptions: {
       ecmaVersion: 'latest',
-      sourceType: 'script',
-      // Use both node and jest globals
+      sourceType: 'module',
       globals: {
-        ...globals.node,
+        ...globals.browser,
         ...globals.jest,
+        global: 'readonly',
+        vi: 'readonly',
+        describe: 'readonly',
+        it: 'readonly',
+        expect: 'readonly',
+        beforeEach: 'readonly',
+        afterEach: 'readonly',
+        beforeAll: 'readonly',
+        afterAll: 'readonly',
+      },
+      parserOptions: {
+        ecmaFeatures: { jsx: true },
       },
     },
     rules: {
       'no-undef': 'error',
-      'no-unused-vars': ['error', { argsIgnorePattern: '^_' }],
+      'no-unused-vars': ['error', { argsIgnorePattern: '^_', varsIgnorePattern: '^_' }],
+      'no-console': 'off',
+      'no-empty': 'off',
+      'react-hooks/rules-of-hooks': 'off',
+      'react-refresh/only-export-components': 'off',
+    },
+  },
+  {
+    // Configuration for backend test files
+    files: ['server/**/*.test.js', 'server/**/*.spec.js', 'server/tests/**/*.js'],
+    languageOptions: {
+      ecmaVersion: 'latest',
+      sourceType: 'script',
+      globals: {
+        ...globals.node,
+        ...globals.jest,
+        beforeEach: 'readonly',
+        afterEach: 'readonly',
+        beforeAll: 'readonly',
+        afterAll: 'readonly',
+      },
+    },
+    rules: {
+      'no-undef': 'error',
+      'no-unused-vars': ['error', { argsIgnorePattern: '^_', varsIgnorePattern: '^_' }],
       'no-console': 'off',
       'no-redeclare': 'off',
+      'no-empty': 'off',
     },
   },
 ])
