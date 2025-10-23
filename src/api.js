@@ -19,7 +19,7 @@ function handleAuthError(response) {
 }
 
 // Utility to upload photo to backend server
-const API_BASE_URL = import.meta.env.VITE_API_URL || 'http://localhost:3001';
+const API_BASE_URL = import.meta.env.VITE_API_URL;
 export async function uploadPhotoToServer(file, serverUrl = `${API_BASE_URL}/upload`) {
   const formData = new FormData();
   formData.append('photo', file, file.name);

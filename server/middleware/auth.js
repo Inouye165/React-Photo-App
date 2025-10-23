@@ -2,7 +2,10 @@ const jwt = require('jsonwebtoken');
 const bcrypt = require('bcryptjs');
 
 // Get JWT secret from environment variable
-const JWT_SECRET = process.env.JWT_SECRET || 'fallback-secret-change-in-production';
+const JWT_SECRET = process.env.JWT_SECRET;
+if (!JWT_SECRET) {
+  throw new Error('JWT_SECRET must be set in environment for production.');
+}
 const JWT_EXPIRES_IN = process.env.JWT_EXPIRES_IN || '24h';
 
 // Account lockout settings
