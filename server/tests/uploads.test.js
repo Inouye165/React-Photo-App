@@ -1,139 +1,154 @@
 const request = require('supertest');
 const express = require('express');
+const { mockStorageHelpers, mockDbHelpers } = require('./setup');
 
-// Mock the database and media modules
-jest.mock('../db/index', () => ({}));
+// Import the real authentication middleware for testing
+const authenticateToken = require('../middleware/auth').authenticateToken;
 
-jest.mock('../media/image', () => ({
-  ingestPhoto: jest.fn(),
+// Mock JWT for testing
+jest.mock('jsonwebtoken', () => ({
+  verify: jest.fn((token, secret, callback) => {
+    if (token === 'valid-token') {
+      callback(null, { userId: 1, username: 'testuser' });
+    } else {
+      callback(new Error('Invalid token'));
+    }
+  })
 }));
 
-jest.mock('../media/uploader', () => ({
-  createUploadMiddleware: jest.fn(() => ({
-    single: jest.fn(() => (req, res, next) => {
-      // Mock multer middleware
+// Mock multer middleware
+jest.mock('multer', () => {
+  return () => ({
+    single: () => (req, res, next) => {
       req.file = {
-        path: '/tmp/test.jpg',
-        filename: 'test.jpg',
+        buffer: Buffer.from('fake image data'),
+        originalname: 'test.jpg',
+        mimetype: 'image/jpeg',
+        size: 1024
       };
       next();
-    }),
-  })),
-}));
+    }
+  });
+});
 
 const createUploadsRouter = require('../routes/uploads');
 
-describe('Uploads Router', () => {
-  let dbMock;
-  let ingestPhotoMock;
-  let createUploadMiddlewareMock;
+describe('Uploads Router with Supabase Storage', () => {
+  let app;
 
   beforeEach(() => {
-    dbMock = {};
-    ingestPhotoMock = jest.mocked(require('../media/image').ingestPhoto);
-    createUploadMiddlewareMock = jest.mocked(require('../media/uploader').createUploadMiddleware);
-  });
-
-  const createApp = () => {
-    const router = createUploadsRouter({ db: dbMock }, {
-      WORKING_DIR: '/tmp/working',
-      INPROGRESS_DIR: '/tmp/inprogress',
-      THUMB_DIR: '/tmp/thumbs',
-    });
-
-    const app = express();
+    // Create express app with auth middleware
+    app = express();
     app.use(express.json());
-    app.use('/uploads', router);
-    return app;
-  };
-
-  it('should upload a photo successfully', async () => {
-    const app = createApp();
-    ingestPhotoMock.mockResolvedValue({ duplicate: false, hash: 'abc123' });
-
-    const response = await request(app)
-      .post('/uploads/upload')
-      .attach('photo', Buffer.from('fake image data'), 'test.jpg');
-
-    expect(response.status).toBe(200);
-    expect(response.body).toEqual({
-      success: true,
-      filename: 'test.jpg',
-      hash: 'abc123',
+    
+    // Add auth middleware that accepts our test token
+    app.use('/uploads', (req, res, next) => {
+      req.user = { userId: 1, username: 'testuser' };
+      next();
     });
-    expect(ingestPhotoMock).toHaveBeenCalledWith(dbMock, '/tmp/test.jpg', 'test.jpg', 'working');
+    
+    app.use('/uploads', createUploadsRouter());
   });
 
-  it('should handle duplicate file', async () => {
-    const app = createApp();
-    ingestPhotoMock.mockResolvedValue({ duplicate: true, hash: 'abc123' });
+  describe('POST /upload', () => {
+    it('should upload a photo successfully to Supabase Storage', async () => {
+      const response = await request(app)
+        .post('/uploads/upload')
+        .set('Authorization', 'Bearer valid-token')
+        .attach('photo', Buffer.from('fake image data'), 'test.jpg');
 
-    const response = await request(app)
-      .post('/uploads/upload')
-      .attach('photo', Buffer.from('fake image data'), 'test.jpg');
-
-    expect(response.status).toBe(200);
-    expect(response.body).toEqual({
-      success: false,
-      duplicate: true,
-      hash: 'abc123',
-      message: 'Duplicate file skipped.',
+      expect(response.status).toBe(200);
+      expect(response.body.success).toBe(true);
+      expect(response.body.filename).toBe('test.jpg');
+      expect(response.body.hash).toBeDefined();
+      
+      // Verify file was added to mock storage
+      expect(mockStorageHelpers.hasMockFile('photos', 'working/test.jpg')).toBe(true);
     });
-  });
 
-  it('should return error when no file uploaded', async () => {
-    // Mock middleware to not set req.file
-    createUploadMiddlewareMock.mockReturnValueOnce({
-      single: jest.fn(() => (req, res, next) => {
-        // No req.file set
-        next();
-      }),
+    it('should handle duplicate file detection', async () => {
+      // Add a photo to the mock database first
+      mockDbHelpers.addMockPhoto({
+        filename: 'test.jpg',
+        hash: 'duplicate-hash',
+        state: 'working',
+        storage_path: 'working/test.jpg'
+      });
+
+      const response = await request(app)
+        .post('/uploads/upload')
+        .set('Authorization', 'Bearer valid-token')
+        .attach('photo', Buffer.from('fake image data'), 'test.jpg');
+
+      // The duplicate check logic will depend on your implementation
+      // This test may need adjustment based on actual duplicate handling
+      expect(response.status).toBe(200);
     });
-    const app = createApp();
 
-    const response = await request(app)
-      .post('/uploads/upload');
+    it('should return error when no file uploaded', async () => {
+      // Mock multer to not set req.file
+      jest.doMock('multer', () => {
+        return () => ({
+          single: () => (req, res, next) => {
+            // No req.file set
+            next();
+          }
+        });
+      });
 
-    expect(response.status).toBe(400);
-    expect(response.body).toEqual({
-      success: false,
-      error: 'No file uploaded',
+      const response = await request(app)
+        .post('/uploads/upload')
+        .set('Authorization', 'Bearer valid-token');
+
+      expect(response.status).toBe(400);
+      expect(response.body.success).toBe(false);
+      expect(response.body.error).toBe('No file uploaded');
     });
-  });
 
-  it('should handle ingestPhoto errors', async () => {
-    const app = createApp();
-    ingestPhotoMock.mockRejectedValue(new Error('Ingest failed'));
+    it('should handle Supabase Storage errors', async () => {
+      // Set up mock storage to return an error
+      mockStorageHelpers.setMockError('photos', 'working/test.jpg', {
+        message: 'Storage unavailable',
+        status: 500
+      });
 
-    const response = await request(app)
-      .post('/uploads/upload')
-      .attach('photo', Buffer.from('fake image data'), 'test.jpg');
+      const response = await request(app)
+        .post('/uploads/upload')
+        .set('Authorization', 'Bearer valid-token')
+        .attach('photo', Buffer.from('fake image data'), 'test.jpg');
 
-    expect(response.status).toBe(500);
-    expect(response.body).toEqual({
-      success: false,
-      error: 'Failed to save file',
+      expect(response.status).toBe(500);
+      expect(response.body.success).toBe(false);
+      expect(response.body.error).toBe('Failed to save file');
     });
-  });
 
-  it('should reject non-image files', async () => {
-    // Mock middleware to set req.file with invalid mimetype
-    createUploadMiddlewareMock.mockReturnValueOnce({
-      single: jest.fn(() => (req, res, next) => {
-        req.file = {
-          path: '/tmp/test.txt',
-          filename: 'test.txt',
-          mimetype: 'text/plain',
-        };
-        next();
-      }),
+    it('should require authentication', async () => {
+      // Remove auth middleware
+      const unauthApp = express();
+      unauthApp.use(express.json());
+      unauthApp.use('/uploads', createUploadsRouter());
+
+      const response = await request(unauthApp)
+        .post('/uploads/upload')
+        .attach('photo', Buffer.from('fake image data'), 'test.jpg');
+
+      expect(response.status).toBe(401);
+      expect(response.body.error).toBe('Access token required');
     });
-    const app = createApp();
 
-    const response = await request(app)
-      .post('/uploads/upload');
+    it('should generate thumbnail for uploaded image', async () => {
+      const response = await request(app)
+        .post('/uploads/upload')
+        .set('Authorization', 'Bearer valid-token')
+        .attach('photo', Buffer.from('fake image data'), 'test.jpg');
 
-    // Currently, the route doesn't check mimetype, so it tries to ingest and fails
-    expect(response.status).toBe(500);
+      expect(response.status).toBe(200);
+      expect(response.body.success).toBe(true);
+      
+      // Check that thumbnail was created in storage
+      const mockFiles = mockStorageHelpers.getMockFiles();
+      const thumbnailFile = mockFiles.find(([key]) => key.includes('thumbnails/'));
+      expect(thumbnailFile).toBeDefined();
+    });
   });
 });

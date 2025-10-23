@@ -33,6 +33,8 @@ jobs:
         run: npm run test:run
         env:
           CI: true
+          # Mock environment variables for testing
+          VITE_API_URL: http://localhost:3001
 
       - name: Run server tests
         run: |
@@ -41,3 +43,8 @@ jobs:
         env:
           NODE_ENV: test
           CI: true
+          # Mock Supabase environment variables for testing
+          SUPABASE_URL: https://test.supabase.co
+          SUPABASE_SERVICE_ROLE_KEY: test-service-role-key
+          DATABASE_URL: postgresql://test:test@localhost:5432/test
+          JWT_SECRET: test-jwt-secret-key-for-testing-only
