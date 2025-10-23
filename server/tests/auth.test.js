@@ -1,9 +1,9 @@
 const request = require('supertest');
 
-// Mock knex before importing test-db
-jest.mock('knex');
-const mockKnex = require('./__mocks__/knex');
-const { mockDbHelpers } = mockKnex;
+// Mock knex to use our implementation
+jest.mock('knex', () => {
+  return require('./__mocks__/knex');
+});
 
 const { createUser } = require('../middleware/auth');
 
@@ -14,8 +14,13 @@ const createAuthRouter = require('../routes/auth');
 describe('Authentication System', () => {
   let app;
   let db;
+  let mockDbHelpers;
 
   beforeAll(async () => {
+    // Import mock after jest.mock has been set up
+    const mockKnex = require('knex'); // This should now be our mock
+    mockDbHelpers = mockKnex.mockDbHelpers;
+    
     // Use mocked database
     db = mockKnex;
     
@@ -24,6 +29,11 @@ describe('Authentication System', () => {
     app.use(express.json());
     
     app.use(createAuthRouter({ db }));
+  });
+
+  beforeEach(() => {
+    // Clear mock data before each test to ensure clean state
+    mockDbHelpers.clearMockData();
   });
 
   afterAll(async () => {

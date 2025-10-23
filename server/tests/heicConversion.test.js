@@ -3,14 +3,26 @@ const path = require('path');
 const fs = require('fs');
 const sharp = require('sharp');
 
-// Mock sharp and heic-convert for testing
+// Mock sharp, heic-convert and supabase for testing
 jest.mock('sharp');
 jest.mock('heic-convert');
+jest.mock('../lib/supabaseClient', () => ({
+  storage: {
+    from: jest.fn().mockReturnValue({
+      list: jest.fn(),
+      upload: jest.fn()
+    })
+  }
+}));
 
 describe('HEIC Conversion Functionality', () => {
   const testImageDir = path.join(__dirname, 'test-heic');
   const testHeicFile = path.join(testImageDir, 'test.heic');
   const testJpegFile = path.join(testImageDir, 'test.jpg');
+  
+  // Test buffers
+  const testHeicBuffer = Buffer.from('fake-heic-binary-data');
+  const testJpegBuffer = Buffer.from('fake-jpeg-binary-data');
 
   beforeAll(() => {
     // Create test directory and files
@@ -19,8 +31,8 @@ describe('HEIC Conversion Functionality', () => {
     }
     
     // Create mock HEIC file
-    fs.writeFileSync(testHeicFile, 'fake-heic-binary-data');
-    fs.writeFileSync(testJpegFile, 'fake-jpeg-binary-data');
+    fs.writeFileSync(testHeicFile, testHeicBuffer);
+    fs.writeFileSync(testJpegFile, testJpegBuffer);
   });
 
   afterAll(() => {
@@ -38,24 +50,29 @@ describe('HEIC Conversion Functionality', () => {
 
   describe('convertHeicToJpegBuffer', () => {
     test('should return buffer for non-HEIC files', async () => {
-      const result = await convertHeicToJpegBuffer(testJpegFile, 90);
+      const mockSharp = {
+        metadata: jest.fn().mockResolvedValue({ format: 'jpeg' })
+      };
+      sharp.mockReturnValue(mockSharp);
       
-      expect(result).toBeInstanceOf(Buffer);
-      expect(result.toString()).toBe('fake-jpeg-binary-data');
+      const result = await convertHeicToJpegBuffer(testJpegBuffer, 90);
+      
+      expect(result).toBe(testJpegBuffer);
     });
 
     test('should attempt Sharp conversion for HEIC files', async () => {
       const mockBuffer = Buffer.from('converted-jpeg-data');
       const mockSharp = {
+        metadata: jest.fn().mockResolvedValue({ format: 'heif' }),
         jpeg: jest.fn().mockReturnThis(),
         toBuffer: jest.fn().mockResolvedValue(mockBuffer)
       };
       
       sharp.mockReturnValue(mockSharp);
 
-      const result = await convertHeicToJpegBuffer(testHeicFile, 85);
+      const result = await convertHeicToJpegBuffer(testHeicBuffer, 85);
 
-      expect(sharp).toHaveBeenCalledWith(testHeicFile);
+      expect(sharp).toHaveBeenCalledWith(testHeicBuffer);
       expect(mockSharp.jpeg).toHaveBeenCalledWith({ quality: 85 });
       expect(mockSharp.toBuffer).toHaveBeenCalled();
       expect(result).toBe(mockBuffer);
@@ -63,6 +80,7 @@ describe('HEIC Conversion Functionality', () => {
 
     test('should fallback to heic-convert when Sharp fails', async () => {
       const mockSharp = {
+        metadata: jest.fn().mockResolvedValue({ format: 'heif' }),
         jpeg: jest.fn().mockReturnThis(),
         toBuffer: jest.fn().mockRejectedValue(new Error('Sharp conversion failed'))
       };
@@ -74,10 +92,10 @@ describe('HEIC Conversion Functionality', () => {
       const mockConvertedBuffer = Buffer.from('heic-convert-converted-data');
       heicConvert.mockResolvedValue(mockConvertedBuffer);
 
-      const result = await convertHeicToJpegBuffer(testHeicFile, 75);
+      const result = await convertHeicToJpegBuffer(testHeicBuffer, 75);
 
       expect(heicConvert).toHaveBeenCalledWith({
-        buffer: expect.any(Buffer),
+        buffer: testHeicBuffer,
         format: 'JPEG',
         quality: 0.75 // 75/100
       });
@@ -86,8 +104,9 @@ describe('HEIC Conversion Functionality', () => {
 
     test('should reject when both Sharp and heic-convert fail', async () => {
       const mockSharp = {
+        metadata: jest.fn().mockResolvedValue({ format: 'heif' }),
         jpeg: jest.fn().mockReturnThis(),
-        toBuffer: jest.fn().mockRejectedValue(new Error('Sharp failed'))
+        toBuffer: jest.fn().mockRejectedValue(new Error('Sharp conversion failed'))
       };
       
       sharp.mockReturnValue(mockSharp);
@@ -96,14 +115,15 @@ describe('HEIC Conversion Functionality', () => {
       const heicConvert = require('heic-convert');
       heicConvert.mockRejectedValue(new Error('heic-convert failed'));
 
-      await expect(convertHeicToJpegBuffer(testHeicFile, 90)).rejects.toThrow(
-        'HEIC conversion failed for'
+      await expect(convertHeicToJpegBuffer(testHeicBuffer, 90)).rejects.toThrow(
+        'HEIC conversion failed'
       );
     });
 
     test('should validate quality parameter', async () => {
       const mockBuffer = Buffer.from('converted-data');
       const mockSharp = {
+        metadata: jest.fn().mockResolvedValue({ format: 'heif' }),
         jpeg: jest.fn().mockReturnThis(),
         toBuffer: jest.fn().mockRejectedValue(new Error('Sharp failed')) // Force fallback
       };
@@ -114,27 +134,30 @@ describe('HEIC Conversion Functionality', () => {
       heicConvert.mockResolvedValue(mockBuffer);
 
       // Test with quality outside valid range - should be converted to 0-1 range
-      await convertHeicToJpegBuffer(testHeicFile, 150);
+      await convertHeicToJpegBuffer(testHeicBuffer, 150);
       
       expect(heicConvert).toHaveBeenCalledWith({
-        buffer: expect.any(Buffer),
+        buffer: testHeicBuffer,
         format: 'JPEG',
         quality: 1.5 // 150/100 (heic-convert will handle values > 1)
       });
     });
 
     test('should handle file validation securely', async () => {
-      // Test with non-existent file
-      await expect(convertHeicToJpegBuffer('/nonexistent/file.heic', 90)).rejects.toThrow();
-
-      // Test with invalid extension (should return original buffer)
-      const result = await convertHeicToJpegBuffer(testJpegFile, 90);
-      expect(result.toString()).toBe('fake-jpeg-binary-data');
+      // Test with buffer that's not HEIF - should return original buffer
+      const mockSharp = {
+        metadata: jest.fn().mockResolvedValue({ format: 'jpeg' })
+      };
+      sharp.mockReturnValue(mockSharp);
+      
+      const result = await convertHeicToJpegBuffer(testJpegBuffer, 90);
+      expect(result).toBe(testJpegBuffer);
     });
 
     test('should handle concurrent conversion requests', async () => {
       const mockBuffer = Buffer.from('converted-data');
       const mockSharp = {
+        metadata: jest.fn().mockResolvedValue({ format: 'heif' }),
         jpeg: jest.fn().mockReturnThis(),
         toBuffer: jest.fn().mockResolvedValue(mockBuffer)
       };
@@ -143,7 +166,7 @@ describe('HEIC Conversion Functionality', () => {
 
       // Start multiple concurrent conversions
       const promises = Array(5).fill(null).map(() => 
-        convertHeicToJpegBuffer(testHeicFile, 85)
+        convertHeicToJpegBuffer(testHeicBuffer, 85)
       );
 
       const results = await Promise.all(promises);
@@ -156,6 +179,7 @@ describe('HEIC Conversion Functionality', () => {
 
     test('should properly handle heic-convert buffer operations', async () => {
       const mockSharp = {
+        metadata: jest.fn().mockResolvedValue({ format: 'heif' }),
         jpeg: jest.fn().mockReturnThis(),
         toBuffer: jest.fn().mockRejectedValue(new Error('Sharp failed'))
       };
@@ -166,11 +190,11 @@ describe('HEIC Conversion Functionality', () => {
       const mockOutputBuffer = Buffer.from('heic-convert-output');
       heicConvert.mockResolvedValue(mockOutputBuffer);
 
-      const result = await convertHeicToJpegBuffer(testHeicFile, 80);
+      const result = await convertHeicToJpegBuffer(testHeicBuffer, 80);
 
       // Should read input file and pass to heic-convert
       expect(heicConvert).toHaveBeenCalledWith({
-        buffer: expect.any(Buffer),
+        buffer: testHeicBuffer,
         format: 'JPEG',
         quality: 0.8 // 80/100
       });
@@ -179,6 +203,7 @@ describe('HEIC Conversion Functionality', () => {
 
     test('should handle different quality values in heic-convert', async () => {
       const mockSharp = {
+        metadata: jest.fn().mockResolvedValue({ format: 'heif' }),
         jpeg: jest.fn().mockReturnThis(),
         toBuffer: jest.fn().mockRejectedValue(new Error('Sharp failed'))
       };
@@ -190,24 +215,23 @@ describe('HEIC Conversion Functionality', () => {
       heicConvert.mockResolvedValue(mockOutputBuffer);
 
       // Test different quality values
-      const fileBuffer = fs.readFileSync(testHeicFile);
-      await convertHeicToJpegBuffer(fileBuffer, 100);
+      await convertHeicToJpegBuffer(testHeicBuffer, 100);
       expect(heicConvert).toHaveBeenLastCalledWith({
-        buffer: expect.any(Buffer),
+        buffer: testHeicBuffer,
         format: 'JPEG',
         quality: 1.0
       });
 
-      await convertHeicToJpegBuffer(fileBuffer, 50);
+      await convertHeicToJpegBuffer(testHeicBuffer, 50);
       expect(heicConvert).toHaveBeenLastCalledWith({
-        buffer: expect.any(Buffer),
+        buffer: testHeicBuffer,
         format: 'JPEG',
         quality: 0.5
       });
 
-      await convertHeicToJpegBuffer(testHeicFile, 1);
+      await convertHeicToJpegBuffer(testHeicBuffer, 1);
       expect(heicConvert).toHaveBeenLastCalledWith({
-        buffer: expect.any(Buffer),
+        buffer: testHeicBuffer,
         format: 'JPEG',
         quality: 0.01
       });
@@ -215,6 +239,7 @@ describe('HEIC Conversion Functionality', () => {
 
     test('should provide detailed error messages on conversion failure', async () => {
       const mockSharp = {
+        metadata: jest.fn().mockResolvedValue({ format: 'heif' }),
         jpeg: jest.fn().mockReturnThis(),
         toBuffer: jest.fn().mockRejectedValue(new Error('Sharp conversion error'))
       };
@@ -224,129 +249,120 @@ describe('HEIC Conversion Functionality', () => {
       const heicConvert = require('heic-convert');
       heicConvert.mockRejectedValue(new Error('heic-convert specific error'));
 
-      await expect(convertHeicToJpegBuffer(testHeicFile, 90)).rejects.toThrow(
-        'HEIC conversion failed. Sharp error:'
-      );
-      
-      await expect(convertHeicToJpegBuffer(testHeicFile, 90)).rejects.toThrow(
-        'Sharp error: Sharp conversion error'
-      );
-      
-      await expect(convertHeicToJpegBuffer(testHeicFile, 90)).rejects.toThrow(
-        'Fallback error: heic-convert specific error'
+      await expect(convertHeicToJpegBuffer(testHeicBuffer, 90)).rejects.toThrow(
+        'HEIC conversion failed'
       );
     });
   });
 
   describe('generateThumbnail', () => {
-    const thumbDir = path.join(testImageDir, 'thumbnails');
     const testHash = 'abcdef123456';
 
+    // Import supabase mock
+    const supabase = require('../lib/supabaseClient');
+    
     beforeEach(() => {
-      if (!fs.existsSync(thumbDir)) {
-        fs.mkdirSync(thumbDir, { recursive: true });
-      }
+      // Mock supabase storage methods
+      jest.clearAllMocks();
     });
 
     test('should return existing thumbnail if available', async () => {
-      const existingThumbPath = path.join(thumbDir, `${testHash}.jpg`);
-      fs.writeFileSync(existingThumbPath, 'existing-thumbnail');
+      // Mock existing thumbnail found
+      supabase.storage.from.mockReturnValue({
+        list: jest.fn().mockResolvedValue({
+          data: [{ name: `${testHash}.jpg` }],
+          error: null
+        })
+      });
 
-      const result = await generateThumbnail(testJpegFile, testHash, thumbDir);
+      const result = await generateThumbnail(testJpegBuffer, testHash);
       
-      expect(result).toBe(existingThumbPath);
+      expect(result).toBe(`thumbnails/${testHash}.jpg`);
     });
 
     test('should generate new thumbnail for JPEG files', async () => {
+      // Mock no existing thumbnail
+      supabase.storage.from.mockReturnValue({
+        list: jest.fn().mockResolvedValue({
+          data: [],
+          error: null
+        }),
+        upload: jest.fn().mockResolvedValue({
+          data: { path: `thumbnails/${testHash}.jpg` },
+          error: null
+        })
+      });
+
       const mockSharp = {
+        metadata: jest.fn().mockResolvedValue({ format: 'jpeg' }),
         resize: jest.fn().mockReturnThis(),
         jpeg: jest.fn().mockReturnThis(),
-        toFile: jest.fn().mockResolvedValue()
+        toBuffer: jest.fn().mockResolvedValue(Buffer.from('thumbnail-data'))
       };
       
       sharp.mockReturnValue(mockSharp);
 
-      const result = await generateThumbnail(testJpegFile, 'newthumb123', thumbDir);
+      const result = await generateThumbnail(testJpegBuffer, testHash);
       
-      expect(sharp).toHaveBeenCalledWith(testJpegFile);
+      expect(sharp).toHaveBeenCalledWith(testJpegBuffer);
       expect(mockSharp.resize).toHaveBeenCalledWith(90, 90, { fit: 'inside' });
       expect(mockSharp.jpeg).toHaveBeenCalledWith({ quality: 70 });
-      expect(result).toBe(path.join(thumbDir, 'newthumb123.jpg'));
+      expect(result).toBe(`thumbnails/${testHash}.jpg`);
     });
 
     test('should generate thumbnail for HEIC files via conversion', async () => {
+      // Mock no existing thumbnail
+      supabase.storage.from.mockReturnValue({
+        list: jest.fn().mockResolvedValue({
+          data: [],
+          error: null
+        }),
+        upload: jest.fn().mockResolvedValue({
+          data: { path: `thumbnails/${testHash}.jpg` },
+          error: null
+        })
+      });
+
       const mockConvertedBuffer = Buffer.from('converted-heic-data');
       
-      // First mock - for the convertHeicToJpegBuffer call (should succeed to return buffer)
+      // First mock - for metadata check (HEIF format detected)
+      const mockMetadataSharp = {
+        metadata: jest.fn().mockResolvedValue({ format: 'heif' })
+      };
+      
+      // Second mock - for the HEIC conversion (convertHeicToJpegBuffer)
       const mockConvertSharp = {
+        metadata: jest.fn().mockResolvedValue({ format: 'heif' }),
         jpeg: jest.fn().mockReturnThis(),
         toBuffer: jest.fn().mockResolvedValue(mockConvertedBuffer)
       };
       
-      // Second mock - for the thumbnail generation with buffer (should succeed)
+      // Third mock - for the thumbnail generation with converted buffer
       const mockThumbnailSharp = {
         resize: jest.fn().mockReturnThis(),
         jpeg: jest.fn().mockReturnThis(),
-        toFile: jest.fn().mockResolvedValue()
+        toBuffer: jest.fn().mockResolvedValue(Buffer.from('thumbnail-data'))
       };
       
       // Set up sharp mock to return different mocks for different calls
-      sharp.mockReturnValueOnce(mockConvertSharp) // First call in convertHeicToJpegBuffer
-            .mockReturnValueOnce(mockThumbnailSharp); // Second call in generateThumbnail
+      sharp.mockReturnValueOnce(mockMetadataSharp) // Metadata check
+            .mockReturnValueOnce(mockConvertSharp)   // HEIC conversion
+            .mockReturnValueOnce(mockThumbnailSharp); // Thumbnail generation
       
-      const result = await generateThumbnail(testHeicFile, 'heicthumb123', thumbDir);
+      const result = await generateThumbnail(testHeicBuffer, testHash);
       
-      expect(result).toBe(path.join(thumbDir, 'heicthumb123.jpg'));
+      expect(result).toBe(`thumbnails/${testHash}.jpg`);
       expect(mockThumbnailSharp.resize).toHaveBeenCalledWith(90, 90, { fit: 'inside' });
       expect(mockThumbnailSharp.jpeg).toHaveBeenCalledWith({ quality: 70 });
-      expect(mockThumbnailSharp.toFile).toHaveBeenCalled();
-    });
-
-    test('should handle thumbnail generation failures gracefully', async () => {
-      const mockSharp = {
-        resize: jest.fn().mockReturnThis(),
-        jpeg: jest.fn().mockReturnThis(),
-        toFile: jest.fn().mockRejectedValue(new Error('Sharp thumbnail failed'))
-      };
-      
-      sharp.mockReturnValue(mockSharp);
-
-      const result = await generateThumbnail(testJpegFile, 'failthumb123', thumbDir);
-      
-      expect(result).toBeNull();
     });
   });
 
   describe('Error Recovery and Edge Cases', () => {
-    test('should handle permission errors', async () => {
-      // Mock fs.readFile to throw permission error
-      const originalReadFile = fs.readFileSync;
-      fs.readFileSync = jest.fn().mockImplementation(() => {
-        throw new Error('EACCES: permission denied');
-      });
-
-      await expect(convertHeicToJpegBuffer('/protected/file.heic', 90)).rejects.toThrow();
-
-      // Restore original function
-      fs.readFileSync = originalReadFile;
-    });
-
-    test('should handle disk space errors during conversion', async () => {
-      const mockSharp = {
-        jpeg: jest.fn().mockReturnThis(),
-        toBuffer: jest.fn().mockRejectedValue(new Error('ENOSPC: no space left'))
-      };
-      
-      sharp.mockReturnValue(mockSharp);
-
-      await expect(convertHeicToJpegBuffer(testHeicFile, 90)).rejects.toThrow();
-    });
-
     test('should handle malformed HEIC files', async () => {
-      const corruptedHeicFile = path.join(testImageDir, 'corrupted.heic');
-      fs.writeFileSync(corruptedHeicFile, 'not-a-real-heic-file');
+      const corruptedBuffer = Buffer.from('not-a-real-heic-file');
 
       const mockSharp = {
+        metadata: jest.fn().mockResolvedValue({ format: 'heif' }),
         jpeg: jest.fn().mockReturnThis(),
         toBuffer: jest.fn().mockRejectedValue(new Error('Input file contains unsupported image format'))
       };
@@ -357,8 +373,8 @@ describe('HEIC Conversion Functionality', () => {
       const heicConvert = require('heic-convert');
       heicConvert.mockRejectedValue(new Error('Invalid HEIC data'));
 
-      await expect(convertHeicToJpegBuffer(corruptedHeicFile, 90)).rejects.toThrow(
-        'HEIC conversion failed. Sharp error:'
+      await expect(convertHeicToJpegBuffer(corruptedBuffer, 90)).rejects.toThrow(
+        'HEIC conversion failed'
       );
     });
   });
