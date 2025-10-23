@@ -10,7 +10,6 @@ export default function EditPage({ photo, onClose, onSave, onFinished }) {
   const [keywords, setKeywords] = useState(photo?.keywords || '')
   const [textStyle, setTextStyle] = useState(photo?.textStyle || null)
   const [saving, setSaving] = useState(false)
-  const [showMetadata, setShowMetadata] = useState(false)
 
   useEffect(() => {
     setCaption(photo?.caption || '')
@@ -22,8 +21,18 @@ export default function EditPage({ photo, onClose, onSave, onFinished }) {
   // Lock background scroll while this full-page editor is open
   useEffect(() => {
     const prev = document.body.style.overflow;
-    try { document.body.style.overflow = 'hidden'; } catch {}
-    return () => { try { document.body.style.overflow = prev || ''; } catch {} };
+    try { 
+      document.body.style.overflow = 'hidden'; 
+    } catch (error) {
+      console.warn('Failed to set body overflow:', error);
+    }
+    return () => { 
+      try { 
+        document.body.style.overflow = prev || ''; 
+      } catch (error) {
+        console.warn('Failed to restore body overflow:', error);
+      }
+    };
   }, []);
 
   if (!photo) return null

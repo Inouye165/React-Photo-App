@@ -4,6 +4,7 @@ import { parse } from 'exifr'
 import { uploadPhotoToServer, checkPrivilege, checkPrivilegesBatch, getPhotos, updatePhotoState, recheckInprogressPhotos, updatePhotoCaption } from './api.js'
 import Toolbar from './Toolbar.jsx'
 import PhotoUploadForm from './PhotoUploadForm.jsx'
+import EditPage from './EditPage.jsx'
 import { createAuthenticatedImageUrl } from './utils/auth.js'
 
 // Utility: Format file size in human-readable format
@@ -469,10 +470,13 @@ function App() {
   // Photo Editing Modal Component
   // eslint-disable-next-line no-unused-vars
   const PhotoEditingModal = ({ photo, onClose, onFinished, restoreFocusRef }) => {
-    if (!photo) return null;
-
     // Disable body scroll when modal is open and trap focus inside the modal
     React.useEffect(() => {
+      // Always run the effect, but conditionally set up the logic
+      if (!photo) {
+        return; // Early return is fine in effect cleanup/setup
+      }
+
       const prev = document.body.style.overflow;
       document.body.style.overflow = 'hidden';
       const onKey = (e) => { if (e.key === 'Escape') onClose(); };
@@ -511,6 +515,8 @@ function App() {
         window.removeEventListener('keydown', onKeyTrap);
       };
     }, [onClose, photo]);
+
+    if (!photo) return null;
 
     const displayUrl = createAuthenticatedImageUrl(`/display/${photo.state}/${photo.filename}`);
 
@@ -672,8 +678,6 @@ function App() {
           setSelectedPhoto(null);
           setUseFullPageEditor(false);
         }}
-        showInprogress={showInprogress}
-        showFinished={showFinished}
         onRecheck={handleRecheckInprogress}
         rechecking={rechecking}
         onShowMetadata={() => {

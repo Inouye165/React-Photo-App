@@ -12,7 +12,7 @@ const PhotoUploadForm = ({
   setShowLocalPicker
   , onReopenFolder
 }) => {
-  const [_previews, setPreviews] = useState({}); // eslint-disable-line no-unused-vars
+  const [_previews, setPreviews] = useState({});
 
   // We no longer create large object URL previews by default to avoid showing
   // huge images in the selection modal. Keep a tiny preview map in case a

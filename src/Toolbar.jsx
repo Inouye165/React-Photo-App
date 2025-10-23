@@ -6,8 +6,6 @@ export default function Toolbar({
   onViewInprogress,
   onViewFinished,
   onSelectFolder,
-  _showInprogress, // eslint-disable-line no-unused-vars
-  _showFinished, // eslint-disable-line no-unused-vars
   onRecheck,
   rechecking,
   onShowMetadata,

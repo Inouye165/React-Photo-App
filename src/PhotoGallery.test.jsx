@@ -33,7 +33,6 @@ describe('PhotoGallery Component', () => {
 
   const mockProps = {
     photos: mockPhotos,
-    onPhotoClick: vi.fn(),
     handleMoveToInprogress: vi.fn(),
     handleMoveToWorking: vi.fn(),
     handleDeletePhoto: vi.fn(),

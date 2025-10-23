@@ -12,9 +12,6 @@ function formatFileSize(bytes) {
 export default function PhotoGallery({ 
   photos, 
   privilegesMap, 
-  _onSelectPhoto, // eslint-disable-line no-unused-vars
-  _onPhotoClick, // Removed, was unused
-  _onMarkFinished, // eslint-disable-line no-unused-vars
   handleMoveToInprogress,
   handleEditPhoto,
   handleMoveToWorking, 

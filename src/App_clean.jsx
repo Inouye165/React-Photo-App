@@ -1,80 +1,17 @@
-import { useState, useEffect, useRef } from 'react'
-import PhotoUploadForm from './PhotoUploadForm'
-import PhotoGallery from './PhotoGallery'
-import { parse } from 'exifr'
-import { uploadPhotoToServer, checkPrivilege, getPhotos, updatePhotoState, recheckInprogressPhotos } from './api.js'
-
-// Utility: Get or create a guaranteed local folder (default: C:\Users\<User>\working)
-async function getLocalWorkingFolder(customPath) {
-  // Default to C:\Users\<User>\working if no custom path provided
-  const user = (window.navigator.userName || window.navigator.user || 'User');
-  const defaultPath = `C:\\Users\\${user}\\working`;
-  // File System Access API does not allow direct path, so prompt user to select
-  try {
-    const dirHandle = await window.showDirectoryPicker({
-      id: 'local-working-folder',
-      startIn: 'desktop' // closest to local, not OneDrive
-    });
-    return dirHandle;
-  } catch (error) {
-    throw new Error('Failed to access local working folder. Please select a local directory.');
-  }
-}
-
-// Utility: Save photo file to local folder, preserving metadata
-async function savePhotoFileToLocalFolder(photo, workingDirHandle) {
-  try {
-    // Permission check for writing
-    const perm = await ensurePermission(workingDirHandle, 'readwrite');
-    if (perm !== 'granted') throw new Error('Permission denied for working folder.');
-    // Guard against overwrite: generate unique filename
-    let targetName = photo.filename;
-    let suffix = 1;
-    while (true) {
-      try {
-        await workingDirHandle.getFileHandle(targetName);
-        // Exists, try next
-        const dotIdx = photo.filename.lastIndexOf('.');
-        const base = dotIdx > 0 ? photo.filename.slice(0, dotIdx) : photo.filename;
-        const ext = dotIdx > 0 ? photo.filename.slice(dotIdx) : '';
-        targetName = `${base}(${suffix})${ext}`;
-        suffix++;
-      } catch {
-        break;
-      }
-    }
-    // Create file and write original file data (preserves EXIF/XMP)
-    const fileHandle = await workingDirHandle.getFileHandle(targetName, { create: true });
-    const permFile = await ensurePermission(fileHandle, 'readwrite');
-    if (permFile !== 'granted') throw new Error(`Permission denied for file: ${targetName}`);
-    const writable = await fileHandle.createWritable();
-    // Write the original file's ArrayBuffer directly (no re-encoding, preserves metadata)
-    const fileData = await photo.file.arrayBuffer();
-    await writable.write(fileData);
-    await writable.close();
-    return targetName;
-  } catch (error) {
-    throw new Error(`Error saving photo: ${photo.filename}. ${error.message}`);
-  }
-}
-
-// Utility: Extract date from filename (YYYYMMDD or YYYY-MM-DD)
-function extractDateFromFilename(filename) {
-  const patterns = [
-    /([12]\d{3})(\d{2})(\d{2})/, // YYYYMMDD
-    /([12]\d{3})-(\d{2})-(\d{2})/, // YYYY-MM-DD
-  ];
-  for (const re of patterns) {
-    const match = filename.match(re);
-    if (match) {
-      const [_, y, m, d] = match;
-      const dateStr = `${y}-${m}-${d}`;
-      const date = new Date(dateStr);
-      if (!isNaN(date)) return date;
-    }
-  }
-  return null;
-}
+import { useState, useEffect, useRef } from 'react';
+import { parse } from 'exifr';
+import {
+  uploadPhotoToServer,
+  checkPrivilege,
+  getPhotos,
+  updatePhotoState,
+  recheckInprogressPhotos,
+  deletePhoto,
+} from './api.js';
+import { createAuthenticatedImageUrl } from './utils/auth.js';
+import Toolbar from './Toolbar.jsx';
+import PhotoGallery from './PhotoGallery.jsx';
+import PhotoUploadForm from './PhotoUploadForm.jsx';
 
 // Utility: Show toast message for errors/warnings
 function Toast({ message, onClose }) {
@@ -96,14 +33,7 @@ function Toast({ message, onClose }) {
   );
 }
 
-// Utility: Permission check/request for File System Access API
-async function ensurePermission(handle, mode = 'read') {
-  if (!handle || typeof handle.queryPermission !== 'function') return 'unknown';
-  let perm = await handle.queryPermission({ mode });
-  if (perm === 'granted') return 'granted';
-  perm = await handle.requestPermission({ mode });
-  return perm;
-}
+
 
 // Utility: Format file size in human-readable format
 function formatFileSize(bytes) {
@@ -119,7 +49,6 @@ function App() {
   const [loading, setLoading] = useState(true);
   const [toastMsg, setToastMsg] = useState('');
   const [uploading, setUploading] = useState(false);
-  const [selectedFiles, setSelectedFiles] = useState([]);
   const [localPhotos, setLocalPhotos] = useState([]);
   const [startDate, setStartDate] = useState('');
   const [endDate, setEndDate] = useState('');
@@ -132,21 +61,30 @@ function App() {
   const [toolbarDebugMsg, setToolbarDebugMsg] = useState('');
 
   const workingDirHandleRef = useRef(null);
-  
+
   // Load photos
   useEffect(() => {
-    const endpoint = showFinished ? 'finished' : (showInprogress ? 'inprogress' : 'working');
+    const endpoint = showFinished
+      ? 'finished'
+      : showInprogress
+      ? 'inprogress'
+      : 'working';
     const loadPhotos = async () => {
       try {
         const res = await getPhotos(endpoint);
         const backendOrigin = 'http://localhost:3001';
-        const photosWithFullUrls = (res.photos || []).map(p => ({
+        const photosWithFullUrls = (res.photos || []).map((p) => ({
           ...p,
-          url: `${backendOrigin}/${p.state}/${p.filename}`,
-          thumbnail: p.thumbnail ? `${backendOrigin}/thumbnails/${p.thumbnail.split('/').pop()}` : null
+          url: createAuthenticatedImageUrl(
+            `${backendOrigin}/display/${p.state}/${p.filename}`,
+          ),
+          thumbnail: p.thumbnail
+            ? createAuthenticatedImageUrl(
+                `${backendOrigin}/thumbnails/${p.thumbnail.split('/').pop()}`,
+              )
+            : null,
         }));
         setPhotos(photosWithFullUrls);
-        // small visual confirmation for debugging
         setToastMsg(`Loaded ${photosWithFullUrls.length} photos (${endpoint})`);
       } catch (error) {
         console.error('Error loading photos:', error);
@@ -174,7 +112,7 @@ function App() {
           } else {
             map[photo.id] = '?';
           }
-        } catch (error) {
+        } catch {
           map[photo.id] = 'Error';
         }
       }
@@ -192,14 +130,18 @@ function App() {
       const dirHandle = await window.showDirectoryPicker();
       const files = [];
       for await (const [name, handle] of dirHandle.entries()) {
-        if (handle.kind === 'file' && /\.(jpg|jpeg|png|gif|heic|heif)$/i.test(name)) {
+        if (
+          handle.kind === 'file' &&
+          /\.(jpg|jpeg|png|gif|heic|heif)$/i.test(name)
+        ) {
           const file = await handle.getFile();
           try {
             // Parse EXIF to get date taken
             const exif = await parse(file);
-            const exifDate = exif?.DateTimeOriginal || exif?.CreateDate || exif?.DateTime;
+            const exifDate =
+              exif?.DateTimeOriginal || exif?.CreateDate || exif?.DateTime;
             files.push({ name, file, exifDate, handle });
-          } catch (e) {
+          } catch {
             files.push({ name, file, exifDate: null, handle });
           }
         }
@@ -213,9 +155,11 @@ function App() {
   };
 
   // Filter local photos by date range
-  const filteredLocalPhotos = localPhotos.filter(p => {
+  const filteredLocalPhotos = localPhotos.filter((p) => {
     if (!startDate && !endDate) return true;
-    const fileDate = p.exifDate ? new Date(p.exifDate) : new Date(p.file.lastModified);
+    const fileDate = p.exifDate
+      ? new Date(p.exifDate)
+      : new Date(p.file.lastModified);
     const start = startDate ? new Date(startDate) : null;
     const end = endDate ? new Date(endDate + 'T23:59:59') : null;
     return (!start || fileDate >= start) && (!end || fileDate <= end);
@@ -231,12 +175,18 @@ function App() {
       }
       setToastMsg(`Successfully uploaded ${filteredLocalPhotos.length} photos`);
       // Refresh the photo list
-      const res = await getPhotos();
+      const res = await getPhotos('working');
       const backendOrigin = 'http://localhost:3001';
-      const photosWithFullUrls = (res.photos || []).map(p => ({
+      const photosWithFullUrls = (res.photos || []).map((p) => ({
         ...p,
-        url: `${backendOrigin}/${p.state}/${p.filename}`,
-        thumbnail: p.thumbnail ? `${backendOrigin}/thumbnails/${p.thumbnail.split('/').pop()}` : null
+        url: createAuthenticatedImageUrl(
+          `${backendOrigin}/display/${p.state}/${p.filename}`,
+        ),
+        thumbnail: p.thumbnail
+          ? createAuthenticatedImageUrl(
+              `${backendOrigin}/thumbnails/${p.thumbnail.split('/').pop()}`,
+            )
+          : null,
       }));
       setPhotos(photosWithFullUrls);
       setLocalPhotos([]);
@@ -252,18 +202,33 @@ function App() {
   const handleMoveToInprogress = async (id) => {
     try {
       await updatePhotoState(id, 'inprogress');
-      // Refresh photos
-      const endpoint = showFinished ? 'finished' : (showInprogress ? 'inprogress' : 'working');
-      const res = await getPhotos(endpoint);
-      const backendOrigin = 'http://localhost:3001';
-      const photosWithFullUrls = (res.photos || []).map(p => ({
-        ...p,
-        url: `${backendOrigin}/${p.state}/${p.filename}`,
-        thumbnail: p.thumbnail ? `${backendOrigin}/thumbnails/${p.thumbnail.split('/').pop()}` : null
-      }));
-      setPhotos(photosWithFullUrls);
+      setPhotos((prev) => prev.filter((photo) => photo.id !== id));
+      setToastMsg('Moved to Inprogress');
     } catch (error) {
       setToastMsg(`Error moving photo: ${error.message}`);
+    }
+  };
+
+  const handleMoveToWorking = async (id) => {
+    try {
+      await updatePhotoState(id, 'working');
+      setPhotos((prev) => prev.filter((photo) => photo.id !== id));
+      setToastMsg('Moved back to Staged');
+    } catch (error) {
+      setToastMsg(`Error moving photo: ${error.message}`);
+    }
+  };
+
+  const handleDeletePhoto = async (id) => {
+    if (!confirm('Are you sure you want to delete this photo? This action cannot be undone.')) {
+      return;
+    }
+    try {
+      await deletePhoto(id);
+      setPhotos((prev) => prev.filter((photo) => photo.id !== id));
+      setToastMsg('Photo deleted');
+    } catch (error) {
+      setToastMsg(`Error deleting photo: ${error.message}`);
     }
   };
 
@@ -279,16 +244,7 @@ function App() {
       await updatePhotoState(id, 'finished');
       setToastMsg('Photo marked as finished');
       setEditingPhoto(null);
-      // Refresh photos
-      const endpoint = showFinished ? 'finished' : (showInprogress ? 'inprogress' : 'working');
-      const res = await getPhotos(endpoint);
-      const backendOrigin = 'http://localhost:3001';
-      const photosWithFullUrls = (res.photos || []).map(p => ({
-        ...p,
-        url: `${backendOrigin}/${p.state}/${p.filename}`,
-        thumbnail: p.thumbnail ? `${backendOrigin}/thumbnails/${p.thumbnail.split('/').pop()}` : null
-      }));
-      setPhotos(photosWithFullUrls);
+      setPhotos((prev) => prev.filter((photo) => photo.id !== id));
     } catch (error) {
       setToastMsg(`Error marking photo as finished: ${error.message}`);
     }
@@ -308,7 +264,7 @@ function App() {
         } else {
           setToastMsg(`Recheck failed: ${error.message}`);
         }
-      } catch (parseError) {
+      } catch {
         setToastMsg(`Recheck failed: ${error.message}`);
       }
     } finally {
@@ -319,80 +275,86 @@ function App() {
   // Photo Editing Modal Component
   const PhotoEditingModal = ({ photo, onClose, onFinished }) => {
     if (!photo) return null;
-    
+
+    const displayUrl = createAuthenticatedImageUrl(
+      `http://localhost:3001/display/${photo.state}/${photo.filename}`,
+    );
+
     return (
       <div className="fixed inset-0 bg-black bg-opacity-75 flex items-center justify-center z-50 p-4 pointer-events-none">
         <div className="bg-white rounded-lg shadow-2xl max-w-6xl w-full max-h-[95vh] overflow-hidden flex flex-col pointer-events-auto">
           <div className="flex justify-between items-center p-6 border-b bg-gray-50">
-            <h2 className="text-xl font-bold text-gray-800">Edit Photo: {photo.filename}</h2>
-            <button 
+            <h2 className="text-xl font-bold text-gray-800">
+              Edit Photo: {photo.filename}
+            </h2>
+            <button
               onClick={onClose}
               className="text-gray-400 hover:text-gray-600 text-2xl font-bold leading-none"
             >
               ×
             </button>
           </div>
-          
+
           <div className="flex-1 overflow-y-auto p-6">
             <div className="grid grid-cols-1 lg:grid-cols-2 gap-8">
               {/* Photo display */}
               <div className="flex flex-col space-y-4">
                 <div className="bg-gray-50 rounded-lg p-4">
-                  <img 
-                    src={`http://localhost:3001/display/${photo.state}/${photo.filename}`} 
+                  <img
+                    src={displayUrl}
                     alt={photo.filename}
                     className="w-full h-auto max-h-96 object-contain rounded shadow-lg"
-                    onError={(e) => {
-                      console.error('Image failed to load:', `http://localhost:3001/display/${photo.state}/${photo.filename}`);
+                    onError={(_e) => { // Prefixed unused variable
+                      console.error('Image failed to load:', displayUrl);
                     }}
-                    onLoad={() => console.log('Image loaded successfully:', `http://localhost:3001/display/${photo.state}/${photo.filename}`)}
+                    onLoad={() =>
+                      console.log('Image loaded successfully:', displayUrl)
+                    }
                   />
                 </div>
                 <div className="text-sm text-gray-600 bg-white p-3 rounded border">
-                  <p><strong>File Size:</strong> {formatFileSize(photo.file_size)}</p>
-                  <p><strong>State:</strong> {photo.state}</p>
-                  <p><strong>Hash:</strong> {photo.hash ? photo.hash.slice(-10) : 'N/A'}</p>
+                  <p>
+                    <strong>File Size:</strong> {formatFileSize(photo.file_size)}
+                  </p>
+                  <p>
+                    <strong>State:</strong> {photo.state}
+                  </p>
+                  <p>
+                    <strong>Hash:</strong>{' '}
+                    {photo.hash ? photo.hash.slice(-10) : 'N/A'}
+                  </p>
                 </div>
               </div>
-            
+
               {/* Photo metadata and AI info */}
               <div className="flex flex-col space-y-4">
                 {photo.caption && (
                   <div>
-                    <h3 className="font-semibold text-lg text-gray-800">Caption</h3>
-                    <p className="text-gray-700 bg-gray-50 p-3 rounded">{photo.caption}</p>
+                    <h3 className="font-semibold text-lg text-gray-800">
+                      Caption
+                    </h3>
+                    <p className="text-gray-700 bg-gray-50 p-3 rounded">
+                      {photo.caption}
+                    </p>
                   </div>
                 )}
-                
+
                 {photo.description && (
                   <div>
-                    <h3 className="font-semibold text-lg text-gray-800">Description</h3>
-                    <p className="text-gray-700 bg-gray-50 p-3 rounded">{photo.description}</p>
+                    <h3 className="font-semibold text-lg text-gray-800">
+                      Description
+                    </h3>
+                    <p className="text-gray-700 bg-gray-50 p-3 rounded">
+                      {photo.description}
+                    </p>
                   </div>
                 )}
-                
-                  <Toolbar
-                    onSelectFolder={handleSelectFolder}
-                    onViewStaged={() => {
-                      setShowInprogress(false);
-                      setShowFinished(false);
-                      setEditingPhoto(null);
-                    }}
-                    onViewInprogress={() => {
-                      setShowInprogress(true);
-                      setShowFinished(false);
-                      setEditingPhoto(null);
-                    }}
-                    onViewFinished={() => {
-                      setShowInprogress(false);
-                      setShowFinished(true);
-                      setEditingPhoto(null);
-                    }}
-                    showInprogress={showInprogress}
-                    showFinished={showFinished}
-                    onRecheck={handleRecheckInprogress}
-                    rechecking={rechecking}
-                  />
+              </div>
+            </div>
+          </div>
+
+          {/* Action buttons */}
+          <div className="flex justify-end space-x-4 p-6 border-t bg-gray-50">
             <button
               onClick={onClose}
               className="bg-gray-500 hover:bg-gray-700 text-white font-bold py-2 px-6 rounded"
@@ -415,63 +377,49 @@ function App() {
     <div className="h-screen flex flex-col bg-gray-100">
       {/* Photo Editing Modal */}
       {editingPhoto && (
-        <PhotoEditingModal 
-          photo={editingPhoto} 
+        <PhotoEditingModal
+          photo={editingPhoto}
           onClose={() => setEditingPhoto(null)}
           onFinished={handleMoveToFinished}
         />
       )}
-      
+
       {/* Toast at top center */}
-      <div className="fixed top-6 left-1/2 transform -translate-x-1/2 z-50">
+      <div className="fixed top-6 left-1/2 transform -translate-x-1/½ z-50">
         <Toast message={toastMsg} onClose={() => setToastMsg('')} />
       </div>
 
-      <div className="bg-white shadow-md p-4 flex flex-wrap items-center gap-4">
-        <div className="text-lg font-bold">Photo App (Backend View)</div>
-        <button
-          onClick={handleSelectFolder}
-          className="bg-blue-500 hover:bg-blue-700 text-white font-bold py-2 px-4 rounded ml-2"
-        >
-          Select Folder for Upload
-        </button>
-        <button
-          onClick={() => { 
-            console.log('[TOOLBAR] View Staged clicked'); 
-            setToolbarDebugMsg('View Staged clicked'); 
-            setShowInprogress(false); 
-            setShowFinished(false); 
-            setEditingPhoto(null); // auto-close edit modal
-          }}
-          className={`font-bold py-2 px-4 rounded ml-2 ${!showInprogress && !showFinished ? 'bg-green-500 hover:bg-green-700' : 'bg-gray-500 hover:bg-gray-700'} text-white`}
-        >
-          View Staged
-        </button>
-        <button
-          onClick={() => { 
-            console.log('[TOOLBAR] View Inprogress clicked'); 
-            setToolbarDebugMsg('View Inprogress clicked'); 
-            setShowInprogress(true); 
-            setShowFinished(false); 
-            setEditingPhoto(null); // auto-close edit modal
-          }}
-          className={`font-bold py-2 px-4 rounded ml-2 ${showInprogress ? 'bg-yellow-500 hover:bg-yellow-700' : 'bg-gray-500 hover:bg-gray-700'} text-white`}
-        >
-          View Inprogress
-        </button>
-        <button
-          onClick={() => { 
-            console.log('[TOOLBAR] View Finished clicked'); 
-            setToolbarDebugMsg('View Finished clicked'); 
-            setShowInprogress(false); 
-            setShowFinished(true); 
-            setEditingPhoto(null); // auto-close edit modal
-          }}
-          className={`font-bold py-2 px-4 rounded ml-2 ${showFinished ? 'bg-blue-500 hover:bg-blue-700' : 'bg-gray-500 hover:bg-gray-700'} text-white`}
-        >
-          View Finished
-        </button>
-      </div>
+      <Toolbar
+        onSelectFolder={handleSelectFolder}
+        onViewStaged={() => {
+          console.log('[TOOLBAR] View Staged clicked');
+          setToolbarDebugMsg('View Staged clicked');
+          setShowInprogress(false);
+          setShowFinished(false);
+          setEditingPhoto(null);
+        }}
+        onViewInprogress={() => {
+          console.log('[TOOLBAR] View Inprogress clicked');
+          setToolbarDebugMsg('View Inprogress clicked');
+          setShowInprogress(true);
+          setShowFinished(false);
+          setEditingPhoto(null);
+        }}
+        onViewFinished={() => {
+          console.log('[TOOLBAR] View Finished clicked');
+          setToolbarDebugMsg('View Finished clicked');
+          setShowInprogress(false);
+          setShowFinished(true);
+          setEditingPhoto(null);
+        }}
+        showInprogress={showInprogress}
+        showFinished={showFinished}
+        onRecheck={handleRecheckInprogress}
+        rechecking={rechecking}
+        toolbarMessage={toolbarDebugMsg}
+        onClearToolbarMessage={() => setToolbarDebugMsg('')}
+        onShowMetadata={() => setToastMsg('Metadata view not implemented yet.')}
+      />
 
       {/* Local Photos Selection Modal */}
       {showLocalPicker && (
@@ -484,19 +432,26 @@ function App() {
           filteredLocalPhotos={filteredLocalPhotos}
           handleUploadFiltered={handleUploadFiltered}
           setShowLocalPicker={setShowLocalPicker}
+          onReopenFolder={handleSelectFolder}
         />
       )}
 
       <div className="flex-1 overflow-auto p-4">
         {/* Toolbar debug indicator */}
         {toolbarDebugMsg && (
-          <div className="fixed top-20 right-6 z-50 bg-black text-white text-sm px-3 py-1 rounded shadow">{toolbarDebugMsg}</div>
+          <div className="fixed top-20 right-6 z-50 bg-black text-white text-sm px-3 py-1 rounded shadow">
+            {toolbarDebugMsg}
+          </div>
         )}
         <div className="bg-white rounded-lg shadow-md">
           {loading ? (
-            <div className="p-8 text-center text-gray-500">Loading photos...</div>
+            <div className="p-8 text-center text-gray-500">
+              Loading photos...
+            </div>
           ) : photos.length === 0 ? (
-            <div className="p-8 text-center text-gray-500">No photos found in backend.</div>
+            <div className="p-8 text-center text-gray-500">
+              No photos found in backend.
+            </div>
           ) : (
             <div>
               <div className="border-b border-gray-200 px-4 py-2 bg-gray-50 font-medium text-sm">
@@ -514,10 +469,10 @@ function App() {
               <PhotoGallery
                 photos={photos}
                 privilegesMap={privilegesMap}
-                formatFileSize={formatFileSize}
                 handleMoveToInprogress={handleMoveToInprogress}
                 handleEditPhoto={handleEditPhoto}
-                onPhotoClick={handleEditPhoto}
+                handleMoveToWorking={handleMoveToWorking}
+                handleDeletePhoto={handleDeletePhoto}
               />
             </div>
           )}

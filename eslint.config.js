@@ -1,5 +1,6 @@
 import js from '@eslint/js'
 import globals from 'globals'
+import react from 'eslint-plugin-react'
 import reactHooks from 'eslint-plugin-react-hooks'
 import reactRefresh from 'eslint-plugin-react-refresh'
 import { defineConfig } from 'eslint/config'
@@ -14,6 +15,7 @@ export default defineConfig([
     files: ['**/*.{js,jsx}'],
     extends: [
       js.configs.recommended,
+      react.configs.flat.recommended,
       reactHooks.configs['recommended-latest'],
       reactRefresh.configs.vite,
     ],
@@ -29,9 +31,20 @@ export default defineConfig([
         ecmaFeatures: { jsx: true },
       },
     },
+    settings: {
+      react: {
+        version: 'detect',
+      },
+    },
     rules: {
       // Ignore variables starting with an underscore
       'no-unused-vars': ['error', { argsIgnorePattern: '^_', varsIgnorePattern: '^_' }],
+      // Turn off React in JSX scope rule for modern React
+      'react/react-in-jsx-scope': 'off',
+      // Turn off prop-types validation for faster development
+      'react/prop-types': 'off',
+      // Allow unescaped entities in JSX
+      'react/no-unescaped-entities': 'off',
     },
   },
   {
@@ -56,7 +69,7 @@ export default defineConfig([
   },
   {
     // Configuration for frontend test files
-    files: ['src/**/*.test.js', 'src/**/*.test.jsx', 'src/**/*.spec.js', 'src/**/*.spec.jsx'],
+    files: ['src/**/*.test.js', 'src/**/*.test.jsx', 'src/**/*.spec.js', 'src/**/*.spec.jsx', 'src/test/**/*.js'],
     languageOptions: {
       ecmaVersion: 'latest',
       sourceType: 'module',
