@@ -8,6 +8,14 @@ This document outlines the environment variables required for production deploym
 
 The following environment variables must be set in your production environment:
 
+#### Supabase Configuration
+- `SUPABASE_URL` - Your Supabase project URL
+- `SUPABASE_ANON_KEY` - Supabase anon public key
+- `SUPABASE_SERVICE_ROLE_KEY` - Supabase service role key (server-side only)
+
+#### OpenAI Configuration
+- `OPENAI_API_KEY` - API key for OpenAI integration
+
 #### Database Configuration
 - `SUPABASE_DB_PASSWORD` - Your Supabase database password (required for development and production)
 - `SUPABASE_DB_URL` or `DATABASE_URL` - Full database connection string for production
@@ -37,6 +45,14 @@ DATABASE_URL=postgresql://user:password@host:port/database
 SUPABASE_URL=https://your-project.supabase.co
 SUPABASE_ANON_KEY=your_supabase_anon_key
 SUPABASE_SERVICE_ROLE_KEY=your_supabase_service_role_key
+
+# Supabase
+SUPABASE_URL=https://your-supabase-url.supabase.co
+SUPABASE_ANON_KEY=your_supabase_anon_key
+SUPABASE_SERVICE_ROLE_KEY=your_supabase_service_role_key
+
+# OpenAI
+OPENAI_API_KEY=your_openai_api_key
 
 # CORS
 CLIENT_ORIGIN=https://www.your-photo-app.com
@@ -97,4 +113,16 @@ SUPABASE_SERVICE_ROLE_KEY=your_supabase_service_role_key
 OPENAI_API_KEY=your_openai_api_key
 JWT_SECRET=your_dev_jwt_secret
 # CLIENT_ORIGIN and API_URL can be omitted for local development
+```
+
+## Frontend Build Variables
+
+The following environment variable is required for the frontend build (Vite):
+
+- `VITE_API_URL` - The public API URL used by the frontend to communicate with the backend
+
+Example usage in `.env` (frontend):
+
+```bash
+VITE_API_URL=https://api.your-photo-app.com
 ```
