@@ -32,7 +32,7 @@ describe('Toolbar Component', () => {
     expect(screen.getByText('View Finished')).toBeInTheDocument()
     expect(screen.getByText('Show Metadata')).toBeInTheDocument()
     expect(screen.getByText('Recheck AI')).toBeInTheDocument()
-    expect(screen.getByText('Login')).toBeInTheDocument()
+    expect(screen.getByText('Logout')).toBeInTheDocument() // Updated to match authenticated mock
   })
 
   it('calls onSelectFolder when select folder button is clicked', async () => {

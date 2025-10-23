@@ -18,7 +18,7 @@ jest.mock('jsonwebtoken', () => ({
 
 // Mock multer middleware
 jest.mock('multer', () => {
-  return () => ({
+  const mockMulter = () => ({
     single: () => (req, res, next) => {
       req.file = {
         buffer: Buffer.from('fake image data'),
@@ -29,6 +29,10 @@ jest.mock('multer', () => {
       next();
     }
   });
+  
+  mockMulter.memoryStorage = () => ({});
+  
+  return mockMulter;
 });
 
 const createUploadsRouter = require('../routes/uploads');
@@ -47,7 +51,11 @@ describe('Uploads Router with Supabase Storage', () => {
       next();
     });
     
-    app.use('/uploads', createUploadsRouter());
+    app.use('/uploads', createUploadsRouter({ db: require('../db/index') }));
+    
+    // Clear mock storage to ensure clean state for each test
+    mockStorageHelpers.clearMockStorage();
+    mockDbHelpers.clearMockData();
   });
 
   describe('POST /upload', () => {

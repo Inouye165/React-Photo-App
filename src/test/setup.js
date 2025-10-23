@@ -42,6 +42,10 @@ const mockApiResponses = {
     success: true,
     filename: 'uploaded.jpg',
     hash: 'upload123'
+  },
+  '/api/privilege/batch': {
+    'test1.jpg': 'RWX',
+    'test2.jpg': 'RWX'
   }
 };
 
@@ -102,6 +106,17 @@ global.fetch = vi.fn().mockImplementation((url, options = {}) => {
         blob: async () => new Blob([JSON.stringify(response)]),
       });
     }
+  }
+  
+  // Handle privilege check batch requests specifically
+  if (url.includes('/api/privilege/batch') || url.includes('privilege')) {
+    return Promise.resolve({
+      ok: true,
+      status: 200,
+      headers: new Headers(),
+      json: async () => mockApiResponses['/api/privilege/batch'],
+      text: async () => JSON.stringify(mockApiResponses['/api/privilege/batch']),
+    });
   }
   
   // Handle image requests (thumbnails, displays)
