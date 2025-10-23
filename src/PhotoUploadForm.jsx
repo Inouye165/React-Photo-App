@@ -12,7 +12,7 @@ const PhotoUploadForm = ({
   setShowLocalPicker
   , onReopenFolder
 }) => {
-  const [previews, setPreviews] = useState({});
+  const [_previews, setPreviews] = useState({}); // eslint-disable-line no-unused-vars
 
   // We no longer create large object URL previews by default to avoid showing
   // huge images in the selection modal. Keep a tiny preview map in case a
@@ -31,11 +31,11 @@ const PhotoUploadForm = ({
     document.body.style.overflow = 'hidden';
 
     // Focus the panel container
-    try { panelRef.current && panelRef.current.focus(); } catch (e) {}
+    try { panelRef.current && panelRef.current.focus(); } catch { /* Ignore focus errors */ }
 
     const onKey = (e) => {
       if (e.key === 'Escape') {
-        try { setShowLocalPicker(false); } catch (err) {}
+        try { setShowLocalPicker(false); } catch { /* Ignore state errors */ }
       }
       if (e.key !== 'Tab') return;
       // Simple focus trap: keep focus inside panel
@@ -70,7 +70,7 @@ const PhotoUploadForm = ({
         panelRef.current.style.bottom = '16px';
         panelRef.current.style.margin = '0';
       }
-    } catch (e) {
+    } catch {
       // ignore
     }
     return () => {

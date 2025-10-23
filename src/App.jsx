@@ -2,81 +2,17 @@ import React, { useState, useEffect, useRef } from 'react'
 import ReactDOM from 'react-dom'
 import { parse } from 'exifr'
 import { uploadPhotoToServer, checkPrivilege, checkPrivilegesBatch, getPhotos, updatePhotoState, recheckInprogressPhotos, updatePhotoCaption } from './api.js'
-import EditPage from './EditPage'
-import Toolbar from './Toolbar'
-import PhotoUploadForm from './PhotoUploadForm'
+import Toolbar from './Toolbar.jsx'
+import PhotoUploadForm from './PhotoUploadForm.jsx'
 import { createAuthenticatedImageUrl } from './utils/auth.js'
 
-// Utility: Get or create a guaranteed local folder (default: C:\Users\<User>\working)
-async function getLocalWorkingFolder(customPath) {
-  // Default to C:\Users\<User>\working if no custom path provided
-  const user = (window.navigator.userName || window.navigator.user || 'User');
-  const defaultPath = `C:\\Users\\${user}\\working`;
-  // File System Access API does not allow direct path, so prompt user to select
-  try {
-    const dirHandle = await window.showDirectoryPicker({
-      id: 'local-working-folder',
-      startIn: 'desktop' // closest to local, not OneDrive
-    });
-    return dirHandle;
-  } catch (error) {
-    throw new Error('Failed to access local working folder. Please select a local directory.');
-  }
-}
-
-// Utility: Save photo file to local folder, preserving metadata
-async function savePhotoFileToLocalFolder(photo, workingDirHandle) {
-  try {
-    // Permission check for writing
-    const perm = await ensurePermission(workingDirHandle, 'readwrite');
-    if (perm !== 'granted') throw new Error('Permission denied for working folder.');
-    // Guard against overwrite: generate unique filename
-    let targetName = photo.filename;
-    let suffix = 1;
-    while (true) {
-      try {
-        await workingDirHandle.getFileHandle(targetName);
-        // Exists, try next
-        const dotIdx = photo.filename.lastIndexOf('.');
-        const base = dotIdx > 0 ? photo.filename.slice(0, dotIdx) : photo.filename;
-        const ext = dotIdx > 0 ? photo.filename.slice(dotIdx) : '';
-        targetName = `${base}(${suffix})${ext}`;
-        suffix++;
-      } catch {
-        break;
-      }
-    }
-    // Create file and write original file data (preserves EXIF/XMP)
-    const fileHandle = await workingDirHandle.getFileHandle(targetName, { create: true });
-    const permFile = await ensurePermission(fileHandle, 'readwrite');
-    if (permFile !== 'granted') throw new Error(`Permission denied for file: ${targetName}`);
-    const writable = await fileHandle.createWritable();
-    // Write the original file's ArrayBuffer directly (no re-encoding, preserves metadata)
-    const fileData = await photo.file.arrayBuffer();
-    await writable.write(fileData);
-    await writable.close();
-    return targetName;
-  } catch (error) {
-    throw new Error(`Error saving photo: ${photo.filename}. ${error.message}`);
-  }
-}
-
-// Utility: Extract date from filename (YYYYMMDD or YYYY-MM-DD)
-function extractDateFromFilename(filename) {
-  const patterns = [
-    /([12]\d{3})(\d{2})(\d{2})/, // YYYYMMDD
-    /([12]\d{3})-(\d{2})-(\d{2})/, // YYYY-MM-DD
-  ];
-  for (const re of patterns) {
-    const match = filename.match(re);
-    if (match) {
-      const [_, y, m, d] = match;
-      const dateStr = `${y}-${m}-${d}`;
-      const date = new Date(dateStr);
-      if (!isNaN(date)) return date;
-    }
-  }
-  return null;
+// Utility: Format file size in human-readable format
+function formatFileSize(bytes) {
+  if (!bytes || bytes === 0) return '0 B';
+  const k = 1024;
+  const sizes = ['B', 'KB', 'MB', 'GB'];
+  const i = Math.floor(Math.log(bytes) / Math.log(k));
+  return parseFloat((bytes / Math.pow(k, i)).toFixed(1)) + ' ' + sizes[i];
 }
 
 // Utility: Show toast message for errors/warnings
@@ -99,23 +35,16 @@ function Toast({ message, onClose }) {
   );
 }
 
-// Utility: Permission check/request for File System Access API
-async function ensurePermission(handle, mode = 'read') {
-  if (!handle || typeof handle.queryPermission !== 'function') return 'unknown';
-  let perm = await handle.queryPermission({ mode });
-  if (perm === 'granted') return 'granted';
-  perm = await handle.requestPermission({ mode });
-  return perm;
-}
 
-// Utility: Format file size in human-readable format
-function formatFileSize(bytes) {
-  if (!bytes || bytes === 0) return '0 B';
-  const k = 1024;
-  const sizes = ['B', 'KB', 'MB', 'GB'];
-  const i = Math.floor(Math.log(bytes) / Math.log(k));
-  return parseFloat((bytes / Math.pow(k, i)).toFixed(1)) + ' ' + sizes[i];
-}
+
+
+
+
+
+
+
+
+
 
 function App() {
   const [photos, setPhotos] = useState([]);
@@ -124,7 +53,7 @@ function App() {
   // message shown in the toolbar (persists until reload or cleared)
   const [toolbarMessage, setToolbarMessage] = useState('');
   const [uploading, setUploading] = useState(false);
-  const [selectedFiles, setSelectedFiles] = useState([]);
+
   const [localPhotos, setLocalPhotos] = useState([]);
   const [startDate, setStartDate] = useState('');
   const [endDate, setEndDate] = useState('');
@@ -235,16 +164,7 @@ function App() {
   }, [photos]);
 
   // Manual retry for privileges
-  const retryPrivileges = async () => {
-    try {
-      const res = await getPhotos('http://localhost:3001/photos?state=working');
-      // trigger the effect by updating photos state (or simply call the loader)
-      setPhotos(prev => [...prev]);
-      setToastMsg('Retrying privileges...');
-    } catch (e) {
-      setToastMsg('Cannot retry privileges: backend not available');
-    }
-  };
+
 
   // Handle folder selection
   const handleSelectFolder = async () => {
@@ -262,7 +182,7 @@ function App() {
             const exif = await parse(file);
             const exifDate = exif?.DateTimeOriginal || exif?.CreateDate || exif?.DateTime;
             files.push({ name, file, exifDate, handle });
-          } catch (e) {
+          } catch {
             files.push({ name, file, exifDate: null, handle });
           }
         }
@@ -357,12 +277,12 @@ function App() {
   // Handle edit photo
   const handleEditPhoto = (photo, openFullPage = false) => {
     // remember the element that opened the editor so we can restore focus later
-    try { lastActiveElementRef.current = document.activeElement; } catch (e) {}
+    try { lastActiveElementRef.current = document.activeElement; } catch { /* Ignore focus errors */ }
     // Default to in-app editor unless openFullPage=true
     setUseFullPageEditor(Boolean(openFullPage));
     setEditingPhoto(photo);
     // Also set selectedPhoto so the two-column view is shown for the photo being edited
-    try { setSelectedPhoto(photo); } catch (e) {}
+    try { setSelectedPhoto(photo); } catch { /* Ignore state update errors */ }
   };
 
   // keep editable fields synced when editingPhoto changes
@@ -377,8 +297,8 @@ function App() {
   // Open a minimal edit UI in a new browser tab/window. The new tab will postMessage
   // updates (caption, markFinished) back to this opener window which will then
   // perform state updates and backend calls.
-  const openEditorInNewTab = (photo) => {
-    const displayUrl = createAuthenticatedImageUrl(`/display/${photo.state}/${photo.filename}`);
+  const _openEditorInNewTab = (photo) => {
+    const _displayUrl = createAuthenticatedImageUrl(`/display/${photo.state}/${photo.filename}`);
     const id = photo.id;
     const caption = (photo.caption || '').replace(/</g, '&lt;').replace(/>/g, '&gt;');
     const html = `<!doctype html>
@@ -469,7 +389,7 @@ function App() {
       try {
         setUseFullPageEditor(true);
         setEditingPhoto(photo);
-      } catch (e) {
+      } catch {
         alert('Popup blocked and cannot open in-app editor. Please allow popups.');
       }
       return;
@@ -496,14 +416,14 @@ function App() {
           console.error('Failed to persist caption to backend:', e.message || e);
         }
         setPhotos(prev => prev.map(p => p.id === id ? { ...p, caption } : p));
-        try { if (source && source.postMessage) source.postMessage({ type: 'updateCaptionAck', id, success: ok }, '*'); } catch (e) {}
+        try { if (source && source.postMessage) source.postMessage({ type: 'updateCaptionAck', id, success: ok }, '*'); } catch { /* Ignore postMessage errors */ }
       } else if (msg.type === 'markFinished') {
         const { id } = msg;
         try {
           await handleMoveToFinished(id);
-          try { if (source && source.postMessage) source.postMessage({ type: 'markFinishedAck', id, success: true }, '*'); } catch (e) {}
+          try { if (source && source.postMessage) source.postMessage({ type: 'markFinishedAck', id, success: true }, '*'); } catch { /* Ignore postMessage errors */ }
         } catch (err) {
-          try { if (source && source.postMessage) source.postMessage({ type: 'markFinishedAck', id, success: false, error: err.message }, '*'); } catch (e) {}
+          try { if (source && source.postMessage) source.postMessage({ type: 'markFinishedAck', id, success: false, error: err.message }, '*'); } catch { /* Ignore postMessage errors */ }
         }
       }
     };
@@ -538,8 +458,8 @@ function App() {
         } else {
           setToastMsg(`Recheck failed: ${error.message}`);
         }
-      } catch (parseError) {
-        setToastMsg(`Recheck failed: ${error.message}`);
+      } catch {
+        setToastMsg(`Recheck failed: Network error`);
       }
     } finally {
       setRechecking(false);
@@ -547,6 +467,7 @@ function App() {
   };
 
   // Photo Editing Modal Component
+  // eslint-disable-next-line no-unused-vars
   const PhotoEditingModal = ({ photo, onClose, onFinished, restoreFocusRef }) => {
     if (!photo) return null;
 
@@ -567,7 +488,7 @@ function App() {
         if (nodes.length > 0) {
           firstFocusable = nodes[0];
           lastFocusable = nodes[nodes.length - 1];
-          try { firstFocusable.focus(); } catch (e) {}
+          try { firstFocusable.focus(); } catch { /* Ignore focus errors */ }
         }
       }
 
@@ -608,7 +529,7 @@ function App() {
               <button 
                 onClick={() => {
                   onClose();
-                  try { if (restoreFocusRef && restoreFocusRef.current) restoreFocusRef.current.focus(); } catch (e) {}
+                  try { if (restoreFocusRef && restoreFocusRef.current) restoreFocusRef.current.focus(); } catch { /* Ignore focus errors */ }
                 }}
                 className="text-gray-400 hover:text-gray-600 text-2xl font-bold leading-none"
               >
@@ -681,7 +602,7 @@ function App() {
             <button
               onClick={() => {
                 onClose();
-                try { if (restoreFocusRef && restoreFocusRef.current) restoreFocusRef.current.focus(); } catch (e) {}
+                try { if (restoreFocusRef && restoreFocusRef.current) restoreFocusRef.current.focus(); } catch { /* Ignore focus errors */ }
               }}
               className="bg-gray-500 hover:bg-gray-700 text-white font-bold py-2 px-6 rounded"
             >
@@ -691,10 +612,10 @@ function App() {
               onClick={async () => {
                 try {
                   await onFinished(photo.id);
-                } catch (e) {
+                } catch {
                   // onFinished should handle errors itself
                 }
-                try { if (restoreFocusRef && restoreFocusRef.current) restoreFocusRef.current.focus(); } catch (e) {}
+                try { if (restoreFocusRef && restoreFocusRef.current) restoreFocusRef.current.focus(); } catch { /* Ignore focus errors */ }
               }}
               className="bg-green-500 hover:bg-green-700 text-white font-bold py-2 px-6 rounded"
             >
@@ -908,7 +829,7 @@ function App() {
                     <button onClick={async () => {
                         try {
                           await handleMoveToFinished(selectedPhoto.id);
-                        } catch (e) { setToastMsg('Mark finished failed'); }
+                        } catch { setToastMsg('Mark finished failed'); }
                       }} className="px-3 py-1 bg-green-600 text-white rounded text-sm">Mark as Finished</button>
                   </div>
                 </div>
