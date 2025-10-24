@@ -7,8 +7,8 @@ import { defineConfig } from 'eslint/config'
 
 export default defineConfig([
   {
-    // Ignores for the entire project
-    ignores: ['dist', 'node_modules', 'server_head_backup.js', 'server/server_head_backup.js'],
+  // Ignores for the entire project
+  ignores: ['dist', 'node_modules'],
   },
   {
     // Configuration for frontend files
@@ -49,8 +49,7 @@ export default defineConfig([
   },
   {
     // Configuration for backend files
-    files: ['server/**/*.js', 'scripts/**/*.js'],
-    ignores: ['server/server_head_backup.js'],
+  files: ['server/**/*.js', 'scripts/**/*.js'],
     languageOptions: {
       ecmaVersion: 'latest',
       // Assume files are scripts (CommonJS) for Node.js backend
