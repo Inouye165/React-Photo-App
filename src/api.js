@@ -155,3 +155,63 @@ export async function updatePhotoCaption(id, caption, serverUrl = `${API_BASE_UR
   if (!res.ok) throw new Error('Failed to update caption');
   return await res.json();
 }
+
+// Start AI processing for a photo (fire-and-forget / returns 202 when queued)
+export async function runAI(photoId, serverUrl = `${API_BASE_URL}`) {
+  const res = await fetch(`${serverUrl}/photos/${photoId}/run-ai`, {
+    method: 'POST',
+    headers: getAuthHeaders()
+  });
+  if (handleAuthError(res)) return;
+  if (!res.ok) {
+    // If server returns 202 it will be ok; other codes considered failure
+    const text = await res.text().catch(() => '');
+    throw new Error('Failed to start AI job: ' + text);
+  }
+  // Some servers return 202 with an empty body which causes res.json() to throw.
+  // Parse JSON if present, otherwise continue. Always dispatch the global event
+  // so the UI can start polling even when the response body is empty.
+  let json = null;
+  try {
+    json = await res.json();
+  } catch {
+    // ignore JSON parse errors (empty body is fine)
+    json = null;
+  }
+
+  try {
+    if (typeof window !== 'undefined' && window.dispatchEvent) {
+      console.debug('[API runAI] dispatching photo:run-ai for', photoId, 'status=', res.status);
+      window.dispatchEvent(new CustomEvent('photo:run-ai', { detail: { photoId } }));
+    }
+    // Also write to localStorage as a cross-window fallback so other tabs/windows
+    // will receive a `storage` event and can start polling as well.
+    try {
+      if (typeof localStorage !== 'undefined' && localStorage.setItem) {
+        localStorage.setItem('photo:run-ai', JSON.stringify({ photoId, ts: Date.now() }));
+      }
+    } catch {
+      // ignore localStorage errors
+      void 0;
+    }
+  } catch (e) {
+    // ignore event dispatch errors but log for debug
+    console.warn('runAI: failed to dispatch event', e && e.message);
+  }
+
+  return json;
+}
+
+// Fetch a single photo by id. Returns { success: true, photo: { ... } } or similar
+export async function getPhoto(photoId, serverUrl = `${API_BASE_URL}`) {
+  const res = await fetch(`${serverUrl}/photos/${photoId}`, {
+    method: 'GET',
+    headers: getAuthHeaders()
+  });
+  if (handleAuthError(res)) return;
+  if (!res.ok) {
+    // allow 404 to bubble up as error
+    throw new Error('Failed to fetch photo: ' + res.status);
+  }
+  return await res.json();
+}

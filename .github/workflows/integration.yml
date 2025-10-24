@@ -25,11 +25,11 @@ jobs:
           restore-keys: |
             ${{ runner.os }}-node-
       - name: Install dependencies
-        run: npm ci
+        run: npm ci --legacy-peer-deps
       - name: Install server dependencies
         run: |
           cd server
-          npm ci
+          npm ci --legacy-peer-deps
       - name: Run integration test
         env:
           PHOTO_WORKING_DIR: ${{ runner.temp }}/photo-working

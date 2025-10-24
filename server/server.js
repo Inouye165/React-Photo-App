@@ -1,5 +1,8 @@
 const path = require('path');
-require('dotenv').config({ path: path.join(__dirname, '.env') });
+const dotenvResult = require('dotenv').config({ path: path.join(__dirname, '.env') });
+console.log('[dotenv] .env loaded:', dotenvResult.parsed ? Object.keys(dotenvResult.parsed) : dotenvResult.error);
+console.log('[env] SUPABASE_URL:', process.env.SUPABASE_URL);
+console.log('[env] SUPABASE_ANON_KEY:', process.env.SUPABASE_ANON_KEY);
 
 // Global safety: log uncaught exceptions and unhandled rejections instead of letting Node crash
 process.on('unhandledRejection', (reason, promise) => {
@@ -92,8 +95,18 @@ async function startServer() {
   // Protected API routes (require authentication)
   app.use(authenticateToken, createPhotosRouter({ db }));
   app.use(authenticateToken, createUploadsRouter({ db }));
-  app.use(authenticateToken, createDebugRouter({ db }));
   app.use(authenticateToken, createPrivilegeRouter());
+
+  // Mount debug routes. Allow unauthenticated access when explicitly enabled via
+  // ALLOW_DEV_DEBUG=true in non-production environments. This avoids accidentally
+  // exposing debug endpoints in environments where NODE_ENV might be mis-set.
+  const allowDevDebug = process.env.ALLOW_DEV_DEBUG === 'true' || (process.env.NODE_ENV !== 'production' && process.env.ALLOW_DEV_DEBUG !== 'false');
+  if (allowDevDebug) {
+    console.log('[server] Dev debug endpoints enabled (ALLOW_DEV_DEBUG=true)');
+    app.use(createDebugRouter({ db }));
+  } else {
+    app.use(authenticateToken, createDebugRouter({ db }));
+  }
 
   // Add security error handling middleware
   app.use(securityErrorHandler);

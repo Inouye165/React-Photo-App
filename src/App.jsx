@@ -1,7 +1,7 @@
 import React, { useState, useEffect, useRef } from 'react'
 import ReactDOM from 'react-dom'
 import { parse } from 'exifr'
-import { uploadPhotoToServer, checkPrivilege, checkPrivilegesBatch, getPhotos, updatePhotoState, recheckInprogressPhotos, updatePhotoCaption } from './api.js'
+import { uploadPhotoToServer, checkPrivilege, checkPrivilegesBatch, getPhotos, updatePhotoState, recheckInprogressPhotos, updatePhotoCaption, getPhoto } from './api.js'
 import Toolbar from './Toolbar.jsx'
 import PhotoUploadForm from './PhotoUploadForm.jsx'
 import EditPage from './EditPage.jsx'
@@ -51,6 +51,8 @@ function App() {
   const [photos, setPhotos] = useState([]);
   const [loading, setLoading] = useState(true);
   const [toastMsg, setToastMsg] = useState('');
+  // Accessible status for screen readers about polling state
+  const [ariaStatus, setAriaStatus] = useState('');
   // message shown in the toolbar (persists until reload or cleared)
   const [toolbarMessage, setToolbarMessage] = useState('');
   const [uploading, setUploading] = useState(false);
@@ -68,6 +70,8 @@ function App() {
   const [editedKeywords, setEditedKeywords] = useState('');
   const [selectedPhoto, setSelectedPhoto] = useState(null);
   const [showFinished, setShowFinished] = useState(false);
+  // Polling state: photo id currently being polled for AI results
+  const [pollingPhotoId, setPollingPhotoId] = useState(null);
   const lastActiveElementRef = useRef(null);
   const [useFullPageEditor, setUseFullPageEditor] = useState(true);
   const [showMetadataModal, setShowMetadataModal] = useState(false);
@@ -260,9 +264,18 @@ function App() {
       return;
     }
     try {
+      const token = localStorage.getItem('authToken');
+      const headers = token ? { Authorization: `Bearer ${token}` } : undefined;
       const response = await fetch(`http://localhost:3001/photos/${id}`, {
-        method: 'DELETE'
+        method: 'DELETE',
+        headers
       });
+      if (response.status === 401 || response.status === 403) {
+        // auth problem — clear token and reload so user can log in again
+        try { localStorage.removeItem('authToken'); } catch { /* ignore */ }
+        window.location.reload();
+        return;
+      }
       if (!response.ok) {
         const error = await response.json();
         throw new Error(error.error || 'Failed to delete photo');
@@ -274,6 +287,130 @@ function App() {
       setToastMsg(`Error deleting photo: ${error.message}`);
     }
   };
+
+
+  // Polling effect: when pollingPhotoId is set, poll every 3 seconds
+  useEffect(() => {
+    if (!pollingPhotoId) return;
+
+    // Best-practice polling: limit attempts to avoid infinite polling
+    const MAX_ATTEMPTS = 40; // every 3s -> ~2 minutes
+    let cancelled = false;
+    let attempts = 0;
+    const attemptsRef = { current: 0 };
+    const backendOrigin = 'http://localhost:3001';
+
+    const enrichPhoto = (p) => ({
+      ...p,
+      url: createAuthenticatedImageUrl(`${backendOrigin}/display/${p.state}/${p.filename}`),
+      thumbnail: p.thumbnail ? createAuthenticatedImageUrl(`${backendOrigin}${p.thumbnail}`) : null
+    });
+
+    const hasAIData = (p) => {
+      if (!p) return false;
+      const c = (p.caption || '').toString().trim();
+      const d = (p.description || '').toString().trim();
+      const k = (p.keywords || '').toString().trim();
+      return Boolean(c || d || k);
+    };
+
+    const checkOnce = async () => {
+      attempts += 1;
+      attemptsRef.current = attempts;
+      try {
+        const res = await getPhoto(pollingPhotoId);
+        if (!res) return;
+        // Normalize response to photo object
+        let updated = null;
+        if (res.photo) updated = res.photo;
+        else if (res.photos && Array.isArray(res.photos)) updated = res.photos.find(x => x.id === pollingPhotoId) || null;
+        else if (res.id || res.filename) updated = res;
+
+        if (!updated) return;
+
+        // Debug: report simple AI fields presence
+        try {
+          console.debug('[App] polling attempt', attemptsRef.current, 'photo', updated.id, 'caption:', !!(updated.caption), 'description:', !!(updated.description), 'keywords:', !!(updated.keywords));
+  } catch { void 0; }
+
+        // Treat job as done when any AI field contains non-empty text
+        if (hasAIData(updated)) {
+          if (cancelled) return;
+          const enriched = enrichPhoto(updated);
+          setPhotos(prev => prev.map(p => p.id === enriched.id ? enriched : p));
+          setPollingPhotoId(null);
+          try { console.debug('[App] polling finished for', enriched.id); } catch { void 0; }
+          setAriaStatus('AI processing completed');
+          setToastMsg('AI processing completed');
+          return;
+        }
+
+        // Timeout handling
+        if (attemptsRef.current >= MAX_ATTEMPTS) {
+          if (cancelled) return;
+          setPollingPhotoId(null);
+          try { console.debug('[App] polling timeout for', pollingPhotoId); } catch { void 0; }
+          setAriaStatus('AI processing timed out');
+          setToastMsg('AI job still running — stopped polling after timeout');
+          return;
+        }
+      } catch (err) {
+        console.warn('Polling getPhoto failed', err);
+        // do not abort on transient errors; let attempts/timeouts handle it
+      }
+    };
+
+    // announce start
+  try { console.debug('[App] start polling for', pollingPhotoId); } catch { void 0; }
+    setAriaStatus('AI processing started');
+
+    // run immediately then set interval
+    checkOnce();
+    const iv = setInterval(checkOnce, 3000);
+    return () => {
+      cancelled = true;
+      clearInterval(iv);
+      setAriaStatus('');
+    };
+  }, [pollingPhotoId]);
+
+  // Listen for global run-ai events so polling starts no matter where runAI was invoked
+  useEffect(() => {
+    const onRunAi = (ev) => {
+      try {
+        try { console.debug('[App] onRunAi event', ev && ev.detail && ev.detail.photoId); } catch { void 0; }
+        const id = ev?.detail?.photoId;
+        if (id) setPollingPhotoId(id);
+      } catch {
+        // ignore
+      }
+    };
+    const onStorage = (ev) => {
+      try {
+        if (!ev || ev.key !== 'photo:run-ai') return;
+        const v = ev.newValue;
+        if (!v) return;
+        const parsed = JSON.parse(v);
+        const id = parsed && parsed.photoId;
+        try { console.debug('[App] storage event photo:run-ai', id); } catch { void 0; }
+        if (id) setPollingPhotoId(id);
+      } catch {
+        // ignore parse errors
+      }
+    };
+    if (typeof window !== 'undefined' && window.addEventListener) {
+      window.addEventListener('photo:run-ai', onRunAi);
+      window.addEventListener('storage', onStorage);
+    }
+    return () => {
+      try {
+        if (typeof window !== 'undefined' && window.removeEventListener) {
+          window.removeEventListener('photo:run-ai', onRunAi);
+          window.removeEventListener('storage', onStorage);
+        }
+  } catch { /* ignore */ }
+    };
+  }, []);
 
   // Handle edit photo
   const handleEditPhoto = (photo, openFullPage = false) => {
@@ -564,25 +701,29 @@ function App() {
             
               {/* Photo metadata and AI info */}
               <div className="flex flex-col space-y-4">
-                {photo.caption && (
-                  <div>
-                    <h3 className="font-semibold text-lg text-gray-800">Caption</h3>
-                    <p className="text-gray-700 bg-gray-50 p-3 rounded">{photo.caption}</p>
+                {(!photo.description || !photo.keywords) ? (
+                  <div className="flex flex-col items-center justify-center py-8">
+                    <svg className="animate-spin h-8 w-8 text-blue-500 mb-2" xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24">
+                      <circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4"></circle>
+                      <path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8v4a4 4 0 00-4 4H4z"></path>
+                    </svg>
+                    <span className="text-gray-500 text-sm">AI is processing this photo...</span>
                   </div>
-                )}
-                
-                {photo.description && (
-                  <div>
-                    <h3 className="font-semibold text-lg text-gray-800">Description</h3>
-                    <p className="text-gray-700 bg-gray-50 p-3 rounded">{photo.description}</p>
-                  </div>
-                )}
-                
-                {photo.keywords && (
-                  <div>
-                    <h3 className="font-semibold text-lg text-gray-800">Keywords</h3>
-                    <p className="text-gray-700 bg-gray-50 p-3 rounded">{photo.keywords}</p>
-                  </div>
+                ) : (
+                  <>
+                    <div>
+                      <h3 className="font-semibold text-lg text-gray-800">Caption</h3>
+                      <p className="text-gray-700 bg-gray-50 p-3 rounded">{photo.caption || <span className="text-gray-400">No caption</span>}</p>
+                    </div>
+                    <div>
+                      <h3 className="font-semibold text-lg text-gray-800">Description</h3>
+                      <p className="text-gray-700 bg-gray-50 p-3 rounded">{photo.description || <span className="text-gray-400">No description</span>}</p>
+                    </div>
+                    <div>
+                      <h3 className="font-semibold text-lg text-gray-800">Keywords</h3>
+                      <p className="text-gray-700 bg-gray-50 p-3 rounded">{photo.keywords || <span className="text-gray-400">No keywords</span>}</p>
+                    </div>
+                  </>
                 )}
                 
                 {photo.metadata && (
@@ -692,6 +833,9 @@ function App() {
         onClearToolbarMessage={() => setToolbarMessage('')}
       />
 
+      {/* Accessible live region for polling status */}
+      <div aria-live="polite" className="sr-only">{ariaStatus}</div>
+
       {/* Metadata Modal */}
       {showMetadataModal && metadataPhoto && (
         <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center" style={{ zIndex: 100 }}>
@@ -783,6 +927,14 @@ function App() {
                     <label className="block text-sm font-medium text-gray-700 mb-1">Description</label>
                     {editingPhoto && editingPhoto.id === selectedPhoto.id && !useFullPageEditor ? (
                       <textarea value={editedDescription} onChange={(e) => setEditedDescription(e.target.value)} className="w-full rounded border p-2 text-sm bg-gray-50" rows={4} />
+                    ) : (!selectedPhoto.description || !selectedPhoto.keywords) ? (
+                      <div className="flex flex-col items-center justify-center py-8">
+                        <svg className="animate-spin h-8 w-8 text-blue-500 mb-2" xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24">
+                          <circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4"></circle>
+                          <path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8v4a4 4 0 00-4 4H4z"></path>
+                        </svg>
+                        <span className="text-gray-500 text-sm">AI is processing this photo...</span>
+                      </div>
                     ) : (
                       <div className="rounded border p-2 bg-gray-50 text-sm text-gray-700">{selectedPhoto.description || <span className="text-gray-400">No description</span>}</div>
                     )}
@@ -792,6 +944,14 @@ function App() {
                     <label className="block text-sm font-medium text-gray-700 mb-1">Keywords</label>
                     {editingPhoto && editingPhoto.id === selectedPhoto.id && !useFullPageEditor ? (
                       <input value={editedKeywords} onChange={(e) => setEditedKeywords(e.target.value)} className="w-full rounded border p-2 text-sm bg-gray-50" />
+                    ) : (!selectedPhoto.description || !selectedPhoto.keywords) ? (
+                      <div className="flex flex-col items-center justify-center py-4">
+                        <svg className="animate-spin h-6 w-6 text-blue-500 mb-2" xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24">
+                          <circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4"></circle>
+                          <path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8v4a4 4 0 00-4 4H4z"></path>
+                        </svg>
+                        <span className="text-gray-500 text-xs">Waiting for AI info...</span>
+                      </div>
                     ) : (
                       <div className="rounded border p-2 bg-gray-50 text-sm text-gray-700">{selectedPhoto.keywords || <span className="text-gray-400">No keywords</span>}</div>
                     )}
@@ -865,11 +1025,20 @@ function App() {
                     <div key={photo.id} className="px-4 py-3 hover:bg-gray-50 cursor-pointer" onClick={() => setSelectedPhoto(photo)}>
                       <div className="grid grid-cols-15 gap-4 text-sm items-center">
                         <div className="col-span-2">
-                          {photo.thumbnail ? (
-                            <img src={photo.thumbnail} alt={photo.filename} className="max-h-20 rounded shadow bg-white" />
-                          ) : (
-                            <div className="w-20 h-20 flex items-center justify-center bg-gray-200 text-gray-400 rounded shadow">No Thumb</div>
-                          )}
+                          <div className="relative inline-block">
+                            {photo.thumbnail ? (
+                              <img src={photo.thumbnail} alt={photo.filename} className="max-h-20 rounded shadow bg-white" />
+                            ) : (
+                              <div className="w-20 h-20 flex items-center justify-center bg-gray-200 text-gray-400 rounded shadow">No Thumb</div>
+                            )}
+                            {/* Spinner overlay when this photo is being polled for AI results */}
+                            {pollingPhotoId === photo.id && (
+                              <div className="absolute inset-0 bg-black bg-opacity-40 flex items-center justify-center rounded">
+                                <div className="w-6 h-6 border-2 border-white border-t-transparent rounded-full animate-spin" aria-hidden="true"></div>
+                                <span className="sr-only">Processing</span>
+                              </div>
+                            )}
+                          </div>
                         </div>
                         <div className="col-span-2 font-medium text-gray-900 truncate">{photo.filename}</div>
                         <div className="col-span-3 text-gray-600">
@@ -914,6 +1083,8 @@ function App() {
                               </button>
                             </>
                           )}
+                          {/* Run AI button (queues AI job and starts polling) */}
+                          {/* AI job is triggered elsewhere; polling starts automatically when runAI is called */}
                         </div>
                       </div>
                       {/* AI metadata row */}
