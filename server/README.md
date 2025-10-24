@@ -63,7 +63,7 @@ You must have both the web server and the worker running for the application to 
 
 ## Environment Variables
 
-This server requires a `.env` file located in the `/server` directory. Create a file named `.env` and copy the template below, filling in your own values.
+This server requires a `.env` file located in the `/server` directory. Copy `server/.env.example` to `server/.env` and fill in your own values. Do NOT commit `server/.env` to source control.
 
 ```text
 # --- Environment ---
