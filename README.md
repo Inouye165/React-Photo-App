@@ -252,6 +252,22 @@ VITE_API_URL=https://your-production-api.com
 
 This allows easy deployment to different environments without code changes.
 
+## Environment Variables (template)
+
+Create a `.env` file at the project root and fill in the values you need. Example:
+
+```text
+# Frontend (Vite)
+VITE_API_URL=http://localhost:3001
+
+# Backend / Server (see server/README.md for full template)
+# PORT=3001
+# JWT_SECRET=your_super_secret_jwt_string
+# OPENAI_API_KEY=sk-your_openai_api_key
+```
+
+Do not commit `.env` to source control. Add it to `.gitignore`.
+
 ### Build
 
 Build for production:
