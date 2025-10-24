@@ -1,14 +1,21 @@
 // Simple prompt builder for photo analysis. Keeps prompt content centralized so tests and chains can reuse it.
 function buildPrompt({ dateTimeInfo = '', metadata = {}, device = '', gps = '', geoContext = null, locationAnalysis = null, poiAnalysis = null }) {
-  let prompt = `You are an expert photo analyst and location detective. Given the image and metadata, generate the following in JSON (keys: caption, description, keywords, places, animals):
+  let prompt = `You are an expert photo analyst and location detective. Your highest priority is to identify and describe the primary focal point of the photo. Given the image and metadata, generate the following in JSON (keys: caption, description, keywords, places, animals):
 
 CRITICAL LOCATION DETECTION: You MUST identify and prominently feature the EXACT location in the description. Use GPS coordinates, time of day, nearby landmarks, and visual clues to pinpoint specific parks, cities, restaurants, or POIs. If in Yellowstone, identify specific features like geysers, lakes, or trails.
 
 - caption: A short, human-friendly caption (max 10 words) that includes the location if identifiable.
-- description: A detailed description that MUST BEGIN WITH THE EXACT LOCATION (park, city, restaurant, landmark name) and time. Include all visual elements, weather, lighting, and specifically name any identifiable places, restaurants, or landmarks visible in the photo.
+- description: A detailed description that MUST BEGIN WITH THE EXACT LOCATION (park, city, restaurant, landmark name) and time. Focus first on the focal subject before describing background context. Include all visual elements, weather, lighting, and specifically name any identifiable places, restaurants, or landmarks visible in the photo.
 - places: An array of specific place/facility/site names that are visible, strongly implied, or can be pinpointed from GPS/time/photo analysis.
 - animals: An array of objects for animals detected with fields {type, breed (if identifiable), confidence (0-1)}; return an empty array if no animals.
 - keywords: A comma-separated, extensive set of search keywords that MUST include GPS coordinates in the format "GPS:{latitude},{longitude}", camera device, specific place names, restaurant names, landmark names, and location context.
+
+FOCAL SUBJECT RULES:
+- If the main subject is a collectible item (e.g., comic book, sports card, toy, memorabilia), identify series/issue/model, estimate condition (mint, very good, etc.), note distinctive traits, and give a reference price range or appraisal estimate using recent market knowledge or best-guess research.
+- If the main subject is a receipt, business document, or menu, extract merchant name, date, total, taxes, tip, line items, and summarize noteworthy purchases or charges.
+- If the subject is food or drink, name the dish or beverage, ingredients, serving style, and any restaurant/location context.
+- If people are the subject, describe attire, activity, and relationships; include demographic context when appropriate while remaining respectful.
+- If scenery dominates and no clear subject exists, identify the location, season, and key natural features.
 
 LOCATION ANALYSIS:`;
 

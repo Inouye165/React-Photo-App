@@ -1,6 +1,14 @@
 const path = require('path');
 require('dotenv').config({ path: path.join(__dirname, '..', '.env') });
-const { routerAgent, sceneryAgent, researchAgent } = require('./langchain/agents');
+const {
+  routerAgent,
+  sceneryAgent,
+  researchAgent,
+  ROUTER_SYSTEM_PROMPT,
+  SCENERY_SYSTEM_PROMPT,
+  RESEARCH_SYSTEM_PROMPT
+} = require('./langchain/agents');
+const { buildPrompt } = require('./langchain/promptTemplate');
 const { googleSearchTool } = require('./langchain/tools/searchTool');
 const { convertHeicToJpegBuffer } = require('../media/image');
 const supabase = require('../lib/supabaseClient');
@@ -29,12 +37,80 @@ async function processPhotoAI({ fileBuffer, filename, metadata, gps, device }) {
   const imageBase64 = imageBuffer.toString('base64');
   const imageDataUri = `data:${imageMime};base64,${imageBase64}`;
 
+  const extractText = (value) => {
+    if (!value) return '';
+    if (typeof value === 'string') return value;
+    if (Array.isArray(value)) {
+      return value
+        .map(item => {
+          if (!item) return '';
+          if (typeof item === 'string') return item;
+          if (typeof item === 'object') {
+            if (typeof item.text === 'string') return item.text;
+            if (typeof item.content === 'string') return item.content;
+          }
+          return '';
+        })
+        .join('')
+        .trim();
+    }
+    if (typeof value === 'object') {
+      if (typeof value.text === 'string') return value.text;
+      if (typeof value.content === 'string') return value.content;
+    }
+    return '';
+  };
+
+  const unwrapMarkdownJson = (text) => {
+    if (!text) return text;
+    const trimmed = text.trim();
+    const fenceMatch = trimmed.match(/^```[a-zA-Z0-9_-]*\s*\n([\s\S]*?)\n```$/);
+    if (fenceMatch) {
+      return fenceMatch[1].trim();
+    }
+    return trimmed;
+  };
+
+  let meta = {};
+  if (typeof metadata === 'string') {
+    try {
+      meta = JSON.parse(metadata || '{}');
+    } catch (parseErr) {
+      console.warn('[AI] Failed to parse metadata string; using empty metadata.', parseErr.message || parseErr);
+      meta = {};
+    }
+  } else if (metadata && typeof metadata === 'object') {
+    meta = metadata;
+  }
+
+  const parseMaybeJSON = (val) => {
+    if (!val) return null;
+    if (typeof val === 'string') {
+      try {
+        return JSON.parse(val);
+      } catch {
+        return null;
+      }
+    }
+    return val;
+  };
+
+  const locationPrompt = buildPrompt({
+    dateTimeInfo: meta.DateTimeOriginal || meta.CreateDate || meta.ModifyDate || '',
+    metadata: meta,
+    device,
+    gps,
+    locationAnalysis: parseMaybeJSON(meta.location_analysis),
+    poiAnalysis: parseMaybeJSON(meta.poi_analysis)
+  });
+
   // Step 1: Route/classify the image
   const routerMessages = [
+    { role: 'system', content: `${ROUTER_SYSTEM_PROMPT}\n\n${locationPrompt}` },
     { role: 'user', content: [
       { type: 'text', text: `Classify the image focal point as scenery_or_general_subject or specific_identifiable_object. Filename: ${filename}, Device: ${device}, GPS: ${gps}` },
       { type: 'image_url', image_url: { url: imageDataUri } }
-    ]}
+    ] }
   ];
   let routerResult;
   try {
@@ -49,12 +125,38 @@ async function processPhotoAI({ fileBuffer, filename, metadata, gps, device }) {
   if (routerResult.classification) {
     classification = routerResult.classification;
   } else {
+    let routerContent = '';
+    if (routerResult && routerResult.kwargs && routerResult.kwargs.content !== undefined) {
+      routerContent = extractText(routerResult.kwargs.content);
+    } else if (routerResult && routerResult.content !== undefined) {
+      routerContent = extractText(routerResult.content);
+    }
+    if (routerContent) {
+      try {
+        const parsedRouter = JSON.parse(routerContent);
+        if (parsedRouter && typeof parsedRouter.classification === 'string') {
+          classification = parsedRouter.classification;
+        }
+      } catch {
+        // ignore JSON parse errors; fallback below
+      }
+      if (!classification) {
+        const normalized = routerContent.toLowerCase();
+        if (normalized.includes('scenery_or_general_subject') || normalized.includes('scenery or general subject')) {
+          classification = 'scenery_or_general_subject';
+        } else if (normalized.includes('specific_identifiable_object') || normalized.includes('specific identifiable object')) {
+          classification = 'specific_identifiable_object';
+        }
+      }
+    }
     // Fallback: search the entire serialized routerResult for classification keywords
-    const routerText = JSON.stringify(routerResult || {}).toLowerCase();
-    if (routerText.includes('scenery_or_general_subject') || routerText.includes('scenery or general subject')) {
-      classification = 'scenery_or_general_subject';
-    } else if (routerText.includes('specific_identifiable_object') || routerText.includes('specific identifiable object')) {
-      classification = 'specific_identifiable_object';
+    if (!classification) {
+      const routerText = JSON.stringify(routerResult || {}).toLowerCase();
+      if (routerText.includes('scenery_or_general_subject') || routerText.includes('scenery or general subject')) {
+        classification = 'scenery_or_general_subject';
+      } else if (routerText.includes('specific_identifiable_object') || routerText.includes('specific identifiable object')) {
+        classification = 'specific_identifiable_object';
+      }
     }
     if (!classification) {
       console.error('[AI Router] Could not extract classification from routerResult:', JSON.stringify(routerResult, null, 2));
@@ -63,13 +165,19 @@ async function processPhotoAI({ fileBuffer, filename, metadata, gps, device }) {
 
   // Step 2: Run the appropriate agent
   let agentResult;
-  const agentMessages = [
-    { role: 'user', content: [
+  const baseUserMessage = {
+    role: 'user',
+    content: [
       { type: 'text', text: `Analyze the image. Filename: ${filename}, Device: ${device}, GPS: ${gps}` },
       { type: 'image_url', image_url: { url: imageDataUri } }
-    ]}
-  ];
+    ]
+  };
+  let agentMessages;
   if (classification === 'scenery_or_general_subject') {
+    agentMessages = [
+      { role: 'system', content: `${SCENERY_SYSTEM_PROMPT}\n\n${locationPrompt}` },
+      baseUserMessage
+    ];
     try {
       agentResult = await sceneryAgent.invoke(agentMessages);
     } catch (err) {
@@ -77,6 +185,10 @@ async function processPhotoAI({ fileBuffer, filename, metadata, gps, device }) {
       throw err;
     }
   } else if (classification === 'specific_identifiable_object') {
+    agentMessages = [
+      { role: 'system', content: `${RESEARCH_SYSTEM_PROMPT}\n\n${locationPrompt}` },
+      baseUserMessage
+    ];
     try {
       agentResult = await researchAgent.invoke(agentMessages);
     } catch (err) {
@@ -87,24 +199,28 @@ async function processPhotoAI({ fileBuffer, filename, metadata, gps, device }) {
     throw new Error('Unknown classification from routerAgent: ' + classification);
   }
 
+  // Helper to extract plain text content from LangChain messages
   // Step 3: Normalize/parse the agent's output into the expected shape
   // Expected shape: { caption: string, description: string, keywords: string, poiAnalysis?: object }
   let result = { caption: '', description: '', keywords: '' };
   try {
     // LangChain AIMessage shape: { lc: 1, type: 'constructor', kwargs: { content: '...' } }
     let content = null;
-    if (agentResult && agentResult.kwargs && typeof agentResult.kwargs.content === 'string') {
-      content = agentResult.kwargs.content;
+    if (agentResult && agentResult.kwargs && agentResult.kwargs.content !== undefined) {
+      content = extractText(agentResult.kwargs.content);
+    } else if (agentResult && agentResult.content !== undefined) {
+      content = extractText(agentResult.content);
+    } else if (agentResult && typeof agentResult.toString === 'function') {
+      content = String(agentResult.toString());
     } else if (typeof agentResult === 'string') {
       content = agentResult;
-    } else if (agentResult && agentResult.content && typeof agentResult.content === 'string') {
-      content = agentResult.content;
     }
 
     if (content) {
+      const normalizedContent = unwrapMarkdownJson(content);
       // Try to parse JSON first
       try {
-        const parsed = JSON.parse(content);
+        const parsed = JSON.parse(normalizedContent);
         if (parsed && typeof parsed === 'object') {
           result.caption = String(parsed.caption || parsed.title || parsed.headline || '')
             .trim();
@@ -118,13 +234,14 @@ async function processPhotoAI({ fileBuffer, filename, metadata, gps, device }) {
           if (parsed.poiAnalysis) result.poiAnalysis = parsed.poiAnalysis;
         } else {
           // fallback to using entire content as description
-          result.description = String(content).trim();
+          result.description = normalizedContent;
         }
       } catch {
         // not JSON — place raw content into description
-        result.description = String(content).trim();
+        result.description = normalizedContent;
       }
-    } else {
+    }
+    if (!content) {
       // No content found — try to inspect the agentResult object for text
       result.description = JSON.stringify(agentResult).slice(0, 2000);
     }
