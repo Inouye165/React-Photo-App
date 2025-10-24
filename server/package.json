@@ -10,8 +10,7 @@
     "dev:worker": "nodemon worker.js",
     "test": "jest",
     "test:ci": "jest --testPathIgnorePatterns=\"auth.test.js\" --testPathIgnorePatterns=\"uploads.test.js\" --testPathIgnorePatterns=\"heicConversion.test.js\" --testPathIgnorePatterns=\"processPhotoAI.test.js\" --testPathIgnorePatterns=\"processPhotoAI.heic.test.js\" --testPathIgnorePatterns=\"db.test.js\" --testPathIgnorePatterns=\"heic-refactor-validation.test.js\"",
-    "test:watch": "jest --watch",
-    "create-admin": "node scripts/create-admin.js"
+  "test:watch": "jest --watch"
   },
   "dependencies": {
     "@langchain/community": "0.0.45",
