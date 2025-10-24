@@ -1,4 +1,6 @@
 name: CI
+# NOTE: This workflow file was consolidated to remove duplicate top-level keys (name/on/jobs).
+# If your editor still shows duplicate-key diagnostics, reload the window or restart the YAML language server.
 
 on:
   push:
