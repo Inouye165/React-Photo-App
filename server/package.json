@@ -14,7 +14,7 @@
     "create-admin": "node scripts/create-admin.js"
   },
   "dependencies": {
-    "@langchain/community": "^0.3.57",
+    "@langchain/community": "0.0.45",
     "@langchain/core": "^0.3.78",
     "@langchain/openai": "^0.6.16",
     "@supabase/supabase-js": "^2.76.1",
@@ -44,7 +44,9 @@
   },
   "jest": {
     "testEnvironment": "node",
-    "setupFilesAfterEnv": ["<rootDir>/tests/setup.js"],
+    "setupFilesAfterEnv": [
+      "<rootDir>/tests/setup.js"
+    ],
     "testPathIgnorePatterns": [
       "<rootDir>/node_modules/",
       "<rootDir>/working/"

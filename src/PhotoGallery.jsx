@@ -48,7 +48,31 @@ export default function PhotoGallery({
               )}
             </div>
           </div>
-          {(photo.caption || photo.description || photo.keywords) && (
+          {/* Debug: log description/keywords for each photo */}
+          {(() => {
+            // eslint-disable-next-line no-console
+            console.debug('[PhotoGallery] photo', photo.id, 'desc:', JSON.stringify(photo.description), 'keywords:', JSON.stringify(photo.keywords));
+            return null;
+          })()}
+
+          {photo.state === 'inprogress' && (
+            (!photo.description || !photo.keywords || photo.description.trim() === '' || photo.keywords.trim() === '') ? (
+              <div className="flex items-center justify-center py-2">
+                <svg className="animate-spin h-5 w-5 text-blue-500 mr-2" xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24">
+                  <circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4"></circle>
+                  <path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8v4a4 4 0 00-4 4H4z"></path>
+                </svg>
+                <span className="text-gray-500 text-xs">AI processing...</span>
+              </div>
+            ) : (photo.caption || photo.description || photo.keywords) && (
+              <div className="mt-2 ml-4 p-2 bg-gray-50 rounded border border-gray-200 text-xs text-gray-700">
+                {photo.caption && <div><span className="font-semibold">Caption:</span> {photo.caption}</div>}
+                {photo.description && <div className="mt-1"><span className="font-semibold">Description:</span> {photo.description}</div>}
+                {photo.keywords && <div className="mt-1"><span className="font-semibold">Keywords:</span> {photo.keywords}</div>}
+              </div>
+            )
+          )}
+          {photo.state !== 'inprogress' && (photo.caption || photo.description || photo.keywords) && (
             <div className="mt-2 ml-4 p-2 bg-gray-50 rounded border border-gray-200 text-xs text-gray-700">
               {photo.caption && <div><span className="font-semibold">Caption:</span> {photo.caption}</div>}
               {photo.description && <div className="mt-1"><span className="font-semibold">Description:</span> {photo.description}</div>}

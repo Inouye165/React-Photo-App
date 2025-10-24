@@ -225,6 +225,7 @@ module.exports = function createPhotosRouter({ db }) {
     try {
       const { id } = req.params;
       const { state } = req.body;
+      const waitForAI = req.query.waitForAI === '1' || req.query.waitForAI === 'true';
       if (!['working', 'inprogress', 'finished'].includes(state)) {
         return res.status(400).json({ success: false, error: 'Invalid state' });
       }
@@ -257,11 +258,28 @@ module.exports = function createPhotosRouter({ db }) {
       });
 
       if (state === 'inprogress') {
-        // Run AI pipeline after state change
-        // Note: We'll need to update this to work with Supabase storage
-        updatePhotoAIMetadata(db, row, newPath).then(ai => {
-          if (ai) console.log('AI metadata updated for', row.filename);
-        });
+        // Run AI pipeline after state change. By default this is enqueued/run async.
+        // When caller supplies ?waitForAI=true, we will perform AI processing synchronously
+        // and return updated metadata in the response (useful for UI flows that need
+        // immediate metadata after moving a photo to inprogress).
+        if (waitForAI) {
+          try {
+            const ai = await updatePhotoAIMetadata(db, row, newPath);
+            if (ai) console.log('AI metadata updated for', row.filename);
+
+            // Re-fetch updated row and return metadata to caller
+            const updated = await db('photos').where({ id }).first();
+            return res.json({ success: true, metadata: { caption: updated.caption, description: updated.description, keywords: updated.keywords } });
+          } catch (aiErr) {
+            console.error('Synchronous AI processing failed for', row.filename, aiErr && aiErr.message);
+            // fall through to async enqueue below
+          }
+        } else {
+          // Fire-and-forget
+          updatePhotoAIMetadata(db, row, newPath).then(ai => {
+            if (ai) console.log('AI metadata updated for', row.filename);
+          }).catch(err => console.error('Async AI processing error:', err && err.message));
+        }
       }
       res.json({ success: true });
     } catch (err) {
