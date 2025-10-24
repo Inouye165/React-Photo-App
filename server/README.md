@@ -60,3 +60,41 @@ This project uses **BullMQ** and a **Redis** server to process all long-running 
     ```
 
 You must have both the web server and the worker running for the application to be fully functional.
+
+## Environment Variables
+
+This server requires a `.env` file located in the `/server` directory. Create a file named `.env` and copy the template below, filling in your own values.
+
+```text
+# --- Environment ---
+# Set to 'production' for production, 'development' or 'test' otherwise
+NODE_ENV=development
+
+# --- Server ---
+# Port the Express server will run on
+PORT=3001
+# The URL of the frontend client for CORS
+CLIENT_ORIGIN=http://localhost:5173
+
+# --- Authentication ---
+# A strong, random string used to sign JWTs
+JWT_SECRET=your_super_secret_jwt_string
+# How long tokens should last (e.g., "24h", "1d", "30m")
+JWT_EXPIRES_IN=24h
+
+# --- Supabase (Database & Storage) ---
+# Your Supabase project URL
+SUPABASE_URL=https://your-project-id.supabase.co
+# Your Supabase project's public anon key
+SUPABASE_ANON_KEY=your_public_anon_key
+# Your Supabase project's service role key (for server-side admin tasks)
+SUPABASE_SERVICE_ROLE_KEY=your_secret_service_role_key
+
+# --- AI Services ---
+# Your OpenAI API key for image analysis
+OPENAI_API_KEY=sk-your_openai_api_key
+
+# --- Debugging ---
+# Set to 'true' in development to allow unauthenticated access to debug routes
+ALLOW_DEV_DEBUG=true
+```

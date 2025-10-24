@@ -1,5 +1,8 @@
 const path = require('path');
 require('dotenv').config({ path: path.join(__dirname, '..', '.env') });
+
+// Fail-fast if OpenAI API key is missing — check at module load time
+if (!process.env.OPENAI_API_KEY) throw new Error('OPENAI_API_KEY not set in .env');
 const {
   routerAgent,
   sceneryAgent,
@@ -16,7 +19,7 @@ const supabase = require('../lib/supabaseClient');
 
 // Helper: Generate caption, description, keywords for a photo using OpenAI Vision
 async function processPhotoAI({ fileBuffer, filename, metadata, gps, device }) {
-  if (!process.env.OPENAI_API_KEY) throw new Error('OPENAI_API_KEY not set in .env');
+  // OPENAI_API_KEY is validated at module load time (fail-fast)
 
 
   // Convert image buffer to base64 and create data URI
