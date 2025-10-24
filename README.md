@@ -410,6 +410,20 @@ The project includes comprehensive testing across frontend and backend:
 - ~~Add automated tests and CI pipeline for build and linting~~ ✅ **COMPLETED**: Comprehensive testing implemented with 63 tests (54 frontend + 9 backend)
 - Add GitHub Actions CI pipeline for automated testing and deployment
 
+### Recommended security & CI TODOs (priority)
+
+- **HUSKY pre-commit secret-scan (HIGH PRIORITY — recommended)**: add Husky and a pre-commit hook that scans staged files for potential secrets (API keys, private keys, tokens) and blocks commits when matches are found. Provide a command to opt-in/install hooks for contributors and document it in the README (example: `npm run prepare` to install Husky hooks). This helps prevent accidental credential commits.
+
+- Update GitHub Actions workflows to use repository secrets and remove any embedded test/placeholder keys from workflow YAMLs. Document required secret names (e.g., `OPENAI_API_KEY`, `SUPABASE_URL`, `SUPABASE_KEY`, `JWT_SECRET`) in `PRODUCTION_SETUP.md` or `server/README.md`.
+
+- Add a CI job to run a secret-scan on PRs (e.g., detect accidentally committed secrets in the diff) and fail the build if sensitive data is found.
+
+- Document a short secret-rotation / incident response procedure in the README (who to notify, how to rotate keys, and how to revoke exposed tokens) and link to it from `PRODUCTION_SETUP.md`.
+
+- Add a small contributor onboarding note describing how to copy `.env.example` to `.env`, where to store secrets (repo secrets for CI), and how to enable Husky locally.
+
+> Note: The Husky pre-commit hook is the recommended first step — it stops secret leaks at the source (dev machines) and is quick to add.
+
 ## Progress saved (work-in-progress)
 
 - Modularized gallery and upload UI into `src/PhotoGallery.jsx` and `src/PhotoUploadForm.jsx`.
