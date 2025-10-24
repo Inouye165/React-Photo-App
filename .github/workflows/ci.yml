@@ -1,6 +1,4 @@
 name: CI
-# NOTE: This workflow file was consolidated to remove duplicate top-level keys (name/on/jobs).
-# If your editor still shows duplicate-key diagnostics, reload the window or restart the YAML language server.
 
 on:
   push:
@@ -9,11 +7,12 @@ on:
     branches: [ main ]
 
 jobs:
-  build-and-test:
+  ci:
     runs-on: ubuntu-latest
     strategy:
       matrix:
-        node-version: [18.x]
+        # Standardize on Node 20.x to match integration.yml
+        node-version: [20.x] 
 
     steps:
       - name: Checkout repository
@@ -24,17 +23,25 @@ jobs:
         with:
           node-version: ${{ matrix.node-version }}
 
-      - name: Cache npm
+      # Use the more efficient caching strategy from integration.yml
+      - name: Cache node modules
         uses: actions/cache@v4
         with:
-          path: ~/.npm
-          key: ${{ runner.os }}-npm-${{ hashFiles('package-lock.json', 'server/package-lock.json') }}
+          path: |
+            ~/.npm
+            node_modules
+            server/node_modules
+          key: ${{ runner.os }}-node-${{ hashFiles('**/package-lock.json') }}
           restore-keys: |
-            ${{ runner.os }}-npm-
+            ${{ runner.os }}-node-
 
       - name: Install root dependencies
         run: npm ci --legacy-peer-deps
 
+      - name: Install server dependencies
+        run: npm ci --legacy-peer-deps --prefix server
+
+      # Run the main lint script from root package.json
       - name: Lint
         run: npm run lint
 
@@ -43,44 +50,13 @@ jobs:
 
       - name: Run frontend tests
         run: npm test --silent
-
-      - name: Install server dependencies
-        run: npm ci --legacy-peer-deps --prefix server
-
-      - name: Run server tests
-        run: npm test --prefix server
-  ci-test:
-    runs-on: ubuntu-latest
-    steps:
-      - name: Checkout repository
-        uses: actions/checkout@v4
-
-      - name: Use Node.js 18
-        uses: actions/setup-node@v4
-        with:
-          node-version: 18
-
-      - name: Install dependencies
-        run: npm ci --legacy-peer-deps
-
-      - name: Install server dependencies
-        run: |
-          cd server
-          npm ci --legacy-peer-deps
-
-      - name: Run lint (server only)
-        run: npx eslint "server/**/*.js" --ignore-pattern "server/tests/**" --max-warnings=0
-
-      - name: Run frontend tests
-        run: npm test --silent
         env:
           CI: true
           VITE_API_URL: http://localhost:3001
 
+      # Run the 'test:ci' script from server/package.json
       - name: Run server tests
-        run: |
-          cd server
-          npm test --silent
+        run: npm run test:ci --prefix server --silent
         env:
           NODE_ENV: test
           CI: true
