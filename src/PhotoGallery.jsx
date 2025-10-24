@@ -50,7 +50,6 @@ export default function PhotoGallery({
           </div>
           {/* Debug: log description/keywords for each photo */}
           {(() => {
-            // eslint-disable-next-line no-console
             console.debug('[PhotoGallery] photo', photo.id, 'desc:', JSON.stringify(photo.description), 'keywords:', JSON.stringify(photo.keywords));
             return null;
           })()}
