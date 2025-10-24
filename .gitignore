@@ -46,6 +46,10 @@ server/*.sqlite-journal
 .env.*
 server/.env.*
 
+# Allow example env files to be committed
+!.env.example
+!server/.env.example
+
 # Ignore local config
 *.local.js
 *.local.json
