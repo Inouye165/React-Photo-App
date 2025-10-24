@@ -9,14 +9,10 @@ const {
   RESEARCH_SYSTEM_PROMPT
 } = require('./langchain/agents');
 const { buildPrompt } = require('./langchain/promptTemplate');
-const { googleSearchTool } = require('./langchain/tools/searchTool');
 const { convertHeicToJpegBuffer } = require('../media/image');
 const supabase = require('../lib/supabaseClient');
 
-// Helper function to convert DMS (degrees, minutes, seconds) to decimal degrees
-function dmsToDecimal(degrees, minutes = 0, seconds = 0) {
-  return degrees + (minutes / 60) + (seconds / 3600);
-}
+
 
 // Helper: Generate caption, description, keywords for a photo using OpenAI Vision
 async function processPhotoAI({ fileBuffer, filename, metadata, gps, device }) {
