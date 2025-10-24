@@ -47,16 +47,7 @@ jobs:
 
       - name: Run server tests
         run: npm test --prefix server
-name: CI
-
-on:
-  push:
-    branches: [langchain-ai-pipeline, main, feature/supabase-migration]
-  pull_request:
-    branches: [langchain-ai-pipeline, main, feature/supabase-migration]
-
-jobs:
-  test:
+  ci-test:
     runs-on: ubuntu-latest
     steps:
       - name: Checkout repository
@@ -79,23 +70,20 @@ jobs:
         run: npx eslint "server/**/*.js" --ignore-pattern "server/tests/**" --max-warnings=0
 
       - name: Run frontend tests
-        run: npm run test:run
+        run: npm test --silent
         env:
           CI: true
-          # Mock environment variables for testing
           VITE_API_URL: http://localhost:3001
 
       - name: Run server tests
         run: |
           cd server
-          npm run test:ci
+          npm test --silent
         env:
           NODE_ENV: test
           CI: true
-          # Mock Supabase environment variables for testing
           SUPABASE_URL: https://test.supabase.co
           SUPABASE_SERVICE_ROLE_KEY: test-service-role-key
           DATABASE_URL: postgresql://test:test@localhost:5432/test
           JWT_SECRET: test-jwt-secret-key-for-testing-only
-          # Mock OpenAI key for tests
           OPENAI_API_KEY: sk-test-key-for-ci
