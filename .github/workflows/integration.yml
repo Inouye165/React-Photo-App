@@ -40,6 +40,8 @@ jobs:
           SUPABASE_SERVICE_ROLE_KEY: test-service-role-key
           DATABASE_URL: postgresql://test:test@localhost:5432/test
           JWT_SECRET: test-jwt-secret-key-for-testing-only
+          # --- ADD THIS LINE ---
+          GOOGLE_API_KEY: sk-test-key-for-ci 
         run: |
           mkdir -p "$PHOTO_WORKING_DIR"
           npm run integration-test
