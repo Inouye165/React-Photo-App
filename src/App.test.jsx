@@ -29,7 +29,7 @@ vi.mock('./ImageCanvasEditor', () => ({
   default: ({ onSave }) => React.createElement('div', { 'data-testid': 'image-canvas-editor' }, React.createElement('button', { onClick: () => onSave({ textStyle: {} }) }, 'Save'))
 }))
 
-import { getPhotos, checkPrivilege, uploadPhotoToServer } from './api.js'
+import { getPhotos, checkPrivilege, uploadPhotoToServer, checkPrivilegesBatch } from './api.js'
 
 describe('App Component', () => {
   const mockPhotos = [
@@ -64,6 +64,18 @@ describe('App Component', () => {
     checkPrivilege.mockResolvedValue({ 
       privileges: { read: true, write: true, execute: false }
     })
+    // Mock checkPrivilegesBatch to return privilege strings for test photos
+    const batchPrivileges = {
+      'test1.jpg': 'RW',
+      'test2.jpg': 'R',
+    };
+    checkPrivilegesBatch.mockImplementation(async (filenames) => {
+      const result = {};
+      for (const name of filenames) {
+        result[name] = batchPrivileges[name] || '?';
+      }
+      return result;
+    });
     
     // Mock fetch for any remaining API calls
     global.fetch = vi.fn().mockResolvedValue({
@@ -268,10 +280,9 @@ describe('App Component', () => {
       expect(screen.getByText('test1.jpg')).toBeInTheDocument()
     })
     
-    // Should call checkPrivilege for each photo
+    // Should call checkPrivilegesBatch with all filenames
     await waitFor(() => {
-      expect(checkPrivilege).toHaveBeenCalledWith('test1.jpg')
-      expect(checkPrivilege).toHaveBeenCalledWith('test2.jpg')
+      expect(checkPrivilegesBatch).toHaveBeenCalledWith(['test1.jpg', 'test2.jpg'])
     })
   })
 

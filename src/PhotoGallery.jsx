@@ -49,10 +49,7 @@ export default function PhotoGallery({
             </div>
           </div>
           {/* Debug: log description/keywords for each photo */}
-          {(() => {
-            console.debug('[PhotoGallery] photo', photo.id, 'desc:', JSON.stringify(photo.description), 'keywords:', JSON.stringify(photo.keywords));
-            return null;
-          })()}
+          {/* Removed noisy console.debug for cleaner test output */}
 
           {photo.state === 'inprogress' && (
             (!photo.description || !photo.keywords || photo.description.trim() === '' || photo.keywords.trim() === '') ? (

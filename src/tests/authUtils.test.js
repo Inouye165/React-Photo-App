@@ -151,24 +151,26 @@ describe('Frontend Authentication Utilities', () => {
   });
 
   describe('Error Handling', () => {
+
     test('should handle localStorage errors gracefully', () => {
+      const warnSpy = vi.spyOn(console, 'warn').mockImplementation(() => {});
       localStorageMock.getItem.mockImplementation(() => {
         throw new Error('localStorage is not available');
       });
-      
       const result = createAuthenticatedImageUrl('http://localhost:3001/display/working/test.jpg');
-      
       expect(result).toBe('http://localhost:3001/display/working/test.jpg');
+      warnSpy.mockRestore();
     });
 
     test('should handle malformed URLs gracefully', () => {
+      const warnSpy = vi.spyOn(console, 'warn').mockImplementation(() => {});
       const testToken = 'test-jwt-token';
       localStorageMock.getItem.mockReturnValue(testToken);
-      
       // This should either work or fail gracefully without crashing
       expect(() => {
         createAuthenticatedImageUrl('not-a-valid-url');
       }).not.toThrow();
+      warnSpy.mockRestore();
     });
 
     test('should handle very long tokens', () => {
