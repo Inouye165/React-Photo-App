@@ -2,6 +2,7 @@ import React, { useState, useEffect } from 'react'
 import ImageCanvasEditor from './ImageCanvasEditor'
 import { useAuth } from './contexts/AuthContext'
 import { createAuthenticatedImageUrl } from './utils/auth.js'
+import useStore from './store.js'
 
 export default function EditPage({ photo, onClose, onSave, onFinished }) {
   const { token } = useAuth()
@@ -34,6 +35,11 @@ export default function EditPage({ photo, onClose, onSave, onFinished }) {
       }
     };
   }, []);
+
+  // Zustand polling flags: support either a Set `pollingPhotoIds` or the legacy `pollingPhotoId`
+  const pollingPhotoIds = useStore(state => state.pollingPhotoIds)
+  const pollingPhotoId = useStore(state => state.pollingPhotoId)
+  const isPolling = (pollingPhotoIds && pollingPhotoIds.has && pollingPhotoIds.has(photo?.id)) || pollingPhotoId === photo?.id
 
   if (!photo) return null
 
@@ -136,7 +142,14 @@ export default function EditPage({ photo, onClose, onSave, onFinished }) {
       {/* 2-column layout with right side split into top/bottom panels */}
       <div className="flex-1 flex overflow-hidden" style={{ gap: '7px', padding: '7px 7px 7px 7px', backgroundColor: 'white' }}>
         {/* Left column: Interactive Canvas Editor (50%) */}
-        <div className="w-1/2 rounded border overflow-hidden" style={{ backgroundColor: '#f5f5f5' }}>
+        <div className="w-1/2 rounded border overflow-hidden relative" style={{ backgroundColor: '#f5f5f5' }}>
+          {/* Spinner overlay when this photo is being polled for AI results */}
+          {isPolling && (
+            <div className="absolute inset-0 bg-black bg-opacity-40 flex items-center justify-center rounded z-50">
+              <div className="w-8 h-8 border-4 border-white border-t-transparent rounded-full animate-spin" aria-hidden="true"></div>
+              <span className="sr-only">Processing...</span>
+            </div>
+          )}
           <ImageCanvasEditor 
             imageUrl={displayUrl}
             caption={caption}
