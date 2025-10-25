@@ -92,10 +92,11 @@ module.exports = function createAuthRouter({ db }) {
   router.post('/auth/login', authLimiter, loginValidation, handleValidationErrors, async (req, res) => {
     try {
       const { username, password } = req.body;
-
+      const clientIp = req.headers['x-forwarded-for'] || req.connection.remoteAddress;
       // Get user by username
       const user = await getUserByUsername(db, username);
       if (!user) {
+        console.warn(`[LOGIN FAIL] User not found: username='${username}' ip='${clientIp}'`);
         return res.status(401).json({
           success: false,
           error: 'Invalid credentials'
@@ -104,6 +105,7 @@ module.exports = function createAuthRouter({ db }) {
 
       // Check if account is locked
       if (isAccountLocked(user)) {
+        console.warn(`[LOGIN FAIL] Account locked: username='${username}' ip='${clientIp}'`);
         return res.status(423).json({
           success: false,
           error: `Account is locked due to too many failed login attempts. Please try again later.`
@@ -115,16 +117,16 @@ module.exports = function createAuthRouter({ db }) {
       if (!isValidPassword) {
         // Increment failed attempts
         await incrementFailedAttempts(db, user.id);
-        
         // Check if we should lock the account
         if (user.failed_login_attempts + 1 >= MAX_LOGIN_ATTEMPTS) {
           await lockAccount(db, user.id);
+          console.warn(`[LOGIN FAIL] Account locked after max attempts: username='${username}' ip='${clientIp}'`);
           return res.status(423).json({
             success: false,
             error: `Account locked due to ${MAX_LOGIN_ATTEMPTS} failed login attempts. Please try again later.`
           });
         }
-
+        console.warn(`[LOGIN FAIL] Invalid password: username='${username}' ip='${clientIp}'`);
         return res.status(401).json({
           success: false,
           error: 'Invalid credentials'
@@ -136,6 +138,9 @@ module.exports = function createAuthRouter({ db }) {
 
       // Generate JWT token
       const token = generateToken(user);
+
+      // Log successful login
+      console.info(`[LOGIN SUCCESS] username='${username}' ip='${clientIp}'`);
 
       // Return success with token
       res.json({

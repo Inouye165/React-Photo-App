@@ -133,7 +133,7 @@ describe('App Component', () => {
       expect(screen.getByText('test2.jpg')).toBeInTheDocument()
     })
     
-    expect(getPhotos).toHaveBeenCalledWith('http://localhost:3001/photos?state=working')
+  expect(getPhotos).toHaveBeenCalledWith('working')
   })
 
   it('shows correct photo count when photos are loaded', async () => {
@@ -187,7 +187,7 @@ describe('App Component', () => {
     
     // Should call API with inprogress state
     await waitFor(() => {
-      expect(getPhotos).toHaveBeenCalledWith('http://localhost:3001/photos?state=inprogress')
+  expect(getPhotos).toHaveBeenCalledWith('inprogress')
     })
   })
 
@@ -204,7 +204,7 @@ describe('App Component', () => {
     await user.click(screen.getByText('View Finished'))
     
     await waitFor(() => {
-      expect(getPhotos).toHaveBeenCalledWith('http://localhost:3001/photos?state=finished')
+  expect(getPhotos).toHaveBeenCalledWith('finished')
     })
   })
 

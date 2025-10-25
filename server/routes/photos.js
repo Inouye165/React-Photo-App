@@ -285,6 +285,9 @@ module.exports = function createPhotosRouter({ db }) {
 
       // Move file in Supabase Storage if the state is actually changing
       if (row.state !== state) {
+        // Log the paths for debugging
+        console.log('[Supabase MOVE] currentPath:', currentPath, 'newPath:', newPath);
+
         const { data: _data, error } = await supabase.storage
           .from('photos')
           .move(currentPath, newPath);

@@ -54,6 +54,12 @@ async function startServer() {
   const cors = require('cors');
   const cookieParser = require('cookie-parser');
   const app = express();
+
+  // Log all incoming requests for debugging (must be after app is created)
+  app.use((req, res, next) => {
+    console.log(`[REQUEST] ${req.method} ${req.originalUrl} from ${req.ip} - headers:`, req.headers);
+    next();
+  });
   // Configure CORS origins early so preflight (OPTIONS) and error responses
   // include the appropriate Access-Control-Allow-* headers before any
   // validation or authentication middleware runs.
@@ -66,7 +72,12 @@ async function startServer() {
   }
   // Allow localhost origins for development
   if (process.env.NODE_ENV !== 'production') {
-    allowedOrigins.push('http://localhost:3000', 'http://localhost:5173', 'http://localhost:5174');
+    allowedOrigins.push(
+      'http://localhost:3000',
+      'http://localhost:5173',
+      'http://localhost:5174',
+      'http://10.0.0.126:5173' // Allow LAN IP for mobile access
+    );
   }
   app.use(cors({
     origin: allowedOrigins,

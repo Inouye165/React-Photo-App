@@ -32,7 +32,8 @@ function resolveApiBaseUrl() {
   if (typeof globalThis !== 'undefined' && typeof globalThis.process !== 'undefined' && globalThis.process.env && globalThis.process.env.VITE_API_URL) {
     return globalThis.process.env.VITE_API_URL;
   }
-  return 'http://localhost:3001';
+  // Use LAN IP for mobile access
+  return 'http://10.0.0.126:3001';
 }
 const API_BASE_URL = resolveApiBaseUrl();
 export async function uploadPhotoToServer(file, serverUrl = `${API_BASE_URL}/upload`) {

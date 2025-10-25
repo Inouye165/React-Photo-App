@@ -1,3 +1,4 @@
+import { logGlobalError } from './utils/globalLog.js';
 import React, { useState, useEffect, useRef, useCallback } from 'react'
 import ReactDOM from 'react-dom'
 import { parse } from 'exifr'
@@ -50,6 +51,22 @@ function Toast({ message, onClose }) {
 
 
 function App() {
+  // Handler for rechecking in-progress photos
+  const handleRecheckInprogress = async () => {
+    setRechecking(true);
+    try {
+      await recheckInprogressPhotos();
+      setToast('Recheck triggered successfully');
+    } catch (error) {
+      setToast(`Recheck failed: ${error.message}`);
+    } finally {
+      setRechecking(false);
+    }
+  };
+  // Add a test log entry on mount to verify log visibility
+  useEffect(() => {
+    logGlobalError('Test log: If you see this, the global log is working!');
+  }, []);
   // Photos and UI are now backed by Zustand store where appropriate
   const photos = useStore(state => state.photos);
   const setPhotos = useStore(state => state.setPhotos);
@@ -92,30 +109,35 @@ function App() {
   // Start global AI polling hook which reacts to changes in store.pollingPhotoId
   useAIPolling()
   
-  // Load photos
+  // Expose global log for debugging
   useEffect(() => {
-    const endpoint = showFinished ? 'finished' : (showInprogress ? 'inprogress' : 'working');
-    const loadPhotos = async () => {
-      try {
-        const serverUrl = `http://localhost:3001/photos?state=${endpoint}`;
-        const res = await getPhotos(serverUrl);
-        const backendOrigin = 'http://localhost:3001';
-        const photosWithFullUrls = (res.photos || []).map(p => ({
-          ...p,
-          url: createAuthenticatedImageUrl(`${backendOrigin}/display/${p.state}/${p.filename}`),
-          thumbnail: p.thumbnail ? createAuthenticatedImageUrl(`${backendOrigin}${p.thumbnail}`) : null
-        }));
-        setPhotos(photosWithFullUrls);
-  // removed visual confirmation toast
-      } catch (error) {
-  console.error('Error loading photos:', error);
+    window.logGlobalError = logGlobalError;
+  }, []);
+  // Load photos
+  const loadPhotos = useCallback(async (stateOverride) => {
+    setLoading(true);
+    try {
+      const endpoint = typeof stateOverride === 'string'
+        ? stateOverride
+        : (showFinished ? 'finished' : (showInprogress ? 'inprogress' : 'working'));
+      const res = await getPhotos(endpoint);
+      const backendOrigin = 'http://localhost:3001';
+      const photosWithFullUrls = (res.photos || []).map(p => ({
+        ...p,
+        url: createAuthenticatedImageUrl(`${backendOrigin}/display/${p.state}/${p.filename}`),
+        thumbnail: p.thumbnail ? createAuthenticatedImageUrl(`${backendOrigin}${p.thumbnail}`) : null
+      }));
+      setPhotos(photosWithFullUrls);
+    } catch (error) {
   setToast('Error loading photos from backend');
-      } finally {
-        setLoading(false);
-      }
-    };
+    } finally {
+      setLoading(false);
+    }
+  }, [showFinished, showInprogress, setPhotos, setToast]);
+
+  useEffect(() => {
     loadPhotos();
-  }, [showInprogress, showFinished, setPhotos, setToast]);
+  }, [showInprogress, showFinished, loadPhotos]);
 
   // Load privileges after photos are loaded
   useEffect(() => {
@@ -127,27 +149,22 @@ function App() {
       for (const p of photos) initial[p.id] = 'Loading...';
       setPrivilegesMap(initial);
 
-      // Collect all filenames
       const filenames = photos.map(photo => photo.filename);
-
+      let map = {};
       try {
-        const privilegesMap = await checkPrivilegesBatch(filenames);
-        // privilegesMap is { filename: 'RWX', ... }
-        // But we need to map by photo.id
-        const map = {};
-        for (const photo of photos) {
-          const privStr = privilegesMap[photo.filename];
-          if (privStr) {
-            map[photo.id] = privStr;
-          } else {
-            map[photo.id] = '?';
+        // Try batch privilege check first
+        const batchResult = await checkPrivilegesBatch(filenames);
+        if (batchResult && typeof batchResult === 'object') {
+          for (const photo of photos) {
+            const priv = batchResult[photo.filename];
+            map[photo.id] = priv || '?';
           }
+          setPrivilegesMap(map);
+          return;
         }
-        setPrivilegesMap(map);
-      } catch (error) {
-        console.warn('Batch privilege check failed:', error);
+  } catch {
         // Fallback to individual checks if batch fails
-        const map = {};
+        map = {};
         for (const photo of photos) {
           try {
             const res = await checkPrivilege(photo.filename);
@@ -231,15 +248,8 @@ function App() {
         await uploadPhotoToServer(p.file);
       }
       setToolbarMessage(`Successfully uploaded ${filteredLocalPhotos.length} photos`);
-      // Refresh the photo list
-      const res = await getPhotos('http://localhost:3001/photos?state=working');
-      const backendOrigin = 'http://localhost:3001';
-      const photosWithFullUrls = (res.photos || []).map(p => ({
-        ...p,
-        url: createAuthenticatedImageUrl(`${backendOrigin}/display/${p.state}/${p.filename}`),
-        thumbnail: p.thumbnail ? createAuthenticatedImageUrl(`${backendOrigin}${p.thumbnail}`) : null
-      }));
-      setPhotos(photosWithFullUrls);
+      // Refresh the photo list for the current tab
+      await loadPhotos();
       setLocalPhotos([]);
       setShowLocalPicker(false);
     } catch (error) {
@@ -256,6 +266,9 @@ function App() {
       if (!res || !res.success) {
         const err = res && res.error
         setToast(`Error moving photo: ${err?.message || 'unknown'}`)
+      } else {
+        // Reload inprogress list if that's the current tab, otherwise reload working
+        await loadPhotos();
       }
     } catch (error) {
       setToast(`Error moving photo: ${error.message}`)
@@ -266,8 +279,7 @@ function App() {
   const handleMoveToWorking = async (id) => {
     try {
       await updatePhotoState(id, 'working');
-      // Remove from current list
-      removePhotoById(id)
+      await loadPhotos();
     } catch (error) {
       setToast(`Error moving photo back to staged: ${error.message}`)
     }
@@ -486,57 +498,48 @@ function App() {
 
   // Listen for messages from edit tabs/windows
   React.useEffect(() => {
-    const onMessage = async (ev) => {
-      const msg = ev.data || {};
-      if (!msg.type) return;
-      // ev.source is the window object of the sender (the editor tab)
-      const source = ev.source;
-      if (msg.type === 'updateCaption') {
-        const { id, caption } = msg;
-        let ok = true;
-        try {
-          await updatePhotoCaption(id, caption);
-        } catch (e) {
-          ok = false;
-          console.error('Failed to persist caption to backend:', e.message || e);
-        }
-        updatePhotoData(id, { caption });
-        try { if (source && source.postMessage) source.postMessage({ type: 'updateCaptionAck', id, success: ok }, '*'); } catch { /* Ignore postMessage errors */ }
-      } else if (msg.type === 'markFinished') {
-        const { id } = msg;
-        try {
-          await handleMoveToFinished(id);
-          try { if (source && source.postMessage) source.postMessage({ type: 'markFinishedAck', id, success: true }, '*'); } catch { /* Ignore postMessage errors */ }
-        } catch (err) {
-          try { if (source && source.postMessage) source.postMessage({ type: 'markFinishedAck', id, success: false, error: err.message }, '*'); } catch { /* Ignore postMessage errors */ }
-        }
-      }
-    };
-    window.addEventListener('message', onMessage);
-    return () => window.removeEventListener('message', onMessage);
-  }, [updatePhotoData, handleMoveToFinished]);
+    const loadPrivileges = async () => {
+      if (photos.length === 0) return;
 
-  // Handle recheck inprogress
-  const handleRecheckInprogress = async () => {
-    setRechecking(true);
-    try {
-      const res = await recheckInprogressPhotos();
-  setToast(res.message || 'Rechecked inprogress photos');
-    } catch (error) {
-      try {
-        if (error.response && error.response.json) {
-          const data = await error.response.json();
-          setToast(`Recheck failed: ${data.error || error.message}`);
-        } else {
-          setToast(`Recheck failed: ${error.message}`);
+      // initialize to Loading so UI shows progress
+      const initial = {};
+      for (const p of photos) initial[p.id] = 'Loading...';
+      setPrivilegesMap(initial);
+
+      // Fallback to individual checks if batch fails
+      const map = {};
+      for (const photo of photos) {
+        try {
+          const res = await checkPrivilege(photo.filename);
+          const privObj = res && (
+            res.privileges ||
+            res.privilege ||
+            ((res.canRead || res.canWrite || res.canExecute) ? res : null)
+          );
+          if (privObj && privObj.read !== undefined) {
+            privObj.canRead = privObj.read;
+            privObj.canWrite = privObj.write;
+            privObj.canExecute = privObj.execute;
+          }
+          if (privObj) {
+            const privArr = [];
+            if (privObj.canRead) privArr.push('R');
+            if (privObj.canWrite) privArr.push('W');
+            if (privObj.canExecute) privArr.push('X');
+            map[photo.id] = privArr.length > 0 ? privArr.join('') : '?';
+          } else {
+            map[photo.id] = '?';
+          }
+        } catch (err) {
+          console.warn('Privilege check failed for', photo.filename, err);
+          map[photo.id] = 'Err';
         }
-      } catch {
-  setToast(`Recheck failed: Network error`);
       }
-    } finally {
-      setRechecking(false);
-    }
-  };
+      setPrivilegesMap(map);
+    };
+    loadPrivileges();
+  }, [photos]);
+// ...existing code...
 
   // Photo Editing Modal Component
   // eslint-disable-next-line no-unused-vars
