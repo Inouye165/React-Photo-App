@@ -437,7 +437,7 @@ The project includes comprehensive testing across frontend and backend:
 - **FIXED: Photo editing workflow** - Edit button properly wired with `handleEditPhoto` prop, delete confirmation dialogs now work correctly.
 - Remaining open items: CSS grid for thumbnails, live updates, search, GitHub Actions CI, and backend captioned image file export.
 
-If you want the cleaned app to be the mounted entry, change `src/main.jsx` to import `App_clean.jsx` instead of `App.jsx`.
+<!-- `App_clean.jsx` has been removed from the repository. Use `src/App.jsx` as the mounted entry. -->
 
 ## Contributing
 
