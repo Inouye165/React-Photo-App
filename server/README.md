@@ -1,3 +1,18 @@
+# Installation Troubleshooting
+
+- If you see dependency errors (e.g., ERESOLVE), use:
+    ```bash
+    npm install --legacy-peer-deps
+    ```
+- If you see missing package errors (e.g., 'Cannot find module'), run:
+    ```bash
+    npm install <package> --legacy-peer-deps
+    ```
+- Always check that all required environment variables are set in your `.env` file (copy from `.env.example`).
+
+# Dependency Verification
+
+All backend dependencies are listed in `server/package.json`. If you encounter a missing package error, please open an issue or PR to add it.
 # Photo App Server
 
 Backend server for the React Photo App that handles file uploads and saves photos to a local working directory.

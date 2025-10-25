@@ -1,3 +1,57 @@
+# Quick Start
+
+1. Clone the repository:
+   ```bash
+   git clone https://github.com/Inouye165/React-Photo-App.git
+   cd React-Photo-App
+   ```
+
+2. Install frontend dependencies (use `--legacy-peer-deps` if you see errors):
+   ```bash
+   npm install --legacy-peer-deps
+   ```
+
+3. Install backend dependencies:
+   ```bash
+   cd server
+   npm install --legacy-peer-deps
+   cd ..
+   ```
+
+4. Copy `.env.example` to `.env` in both the root and `server/` directories and fill in all required values.
+
+5. Start the backend:
+   ```bash
+   cd server
+   npm start
+   ```
+
+6. Start the frontend (in a new terminal):
+   ```bash
+   npm run dev
+   ```
+
+# Troubleshooting
+
+- **Dependency errors:** If you see errors about conflicting dependencies (e.g., ERESOLVE), always use `npm install --legacy-peer-deps`.
+- **Missing libraries:** If you see errors like "Cannot find module 'zustand'" or '@supabase/supabase-js', run `npm install <package> --legacy-peer-deps` in the correct directory (root for frontend, `server/` for backend).
+- **Missing environment variables:** If you see errors about missing environment variables, ensure you have copied `.env.example` to `.env` and filled in all required values in both root and `server/`.
+- **Wrong install directory:** Always run frontend installs in the project root and backend installs in the `server/` directory.
+- **ImageMagick not found:** Make sure ImageMagick is installed and available in your system PATH for HEIC/HEIF fallback support.
+
+# Dependency Verification
+
+All required libraries are listed in the appropriate `package.json` files:
+- Frontend dependencies: `package.json` (project root)
+- Backend dependencies: `server/package.json`
+
+If you encounter a missing package error, please open an issue or PR to add it to the correct `package.json`.
+
+# Environment Variables
+
+- Copy `.env.example` to `.env` in both the root and `server/` directories.
+- Fill in all required values before running the app.
+- Do not commit `.env` files to source control.
 # React Photo Filtering App
 
 [![Tests](https://img.shields.io/badge/tests-86%20passing-brightgreen.svg)](https://github.com/Inouye165/React-Photo-App)
