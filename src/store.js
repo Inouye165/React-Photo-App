@@ -5,7 +5,9 @@ import { updatePhotoState } from './api.js'
 const useStore = create((set) => ({
   photos: [],
   toastMsg: '',
+  // Support both a single legacy polling id and a Set of polling ids for concurrent polling
   pollingPhotoId: null,
+  pollingPhotoIds: new Set(),
 
   // Photos slice
   setPhotos: (photos) => set({ photos }),
@@ -16,12 +18,28 @@ const useStore = create((set) => ({
   setToast: (msg) => set({ toastMsg: msg }),
   setPollingPhotoId: (id) => set({ pollingPhotoId: id }),
 
+  // Manage pollingPhotoIds immutably so Zustand subscribers detect changes
+  addPollingId: (id) => set((state) => {
+    const newSet = new Set(state.pollingPhotoIds || []);
+    newSet.add(id);
+    return { pollingPhotoIds: newSet };
+  }),
+  removePollingId: (id) => set((state) => {
+    const newSet = new Set(state.pollingPhotoIds || []);
+    newSet.delete(id);
+    return { pollingPhotoIds: newSet };
+  }),
+
   // Action: move a photo to inprogress and start polling for AI results
   moveToInprogress: async (id) => {
     try {
       await updatePhotoState(id, 'inprogress')
       // remove locally and set polling trigger
-      set((state) => ({ photos: state.photos.filter(p => p.id !== id), pollingPhotoId: id }))
+      set((state) => {
+        const newSet = new Set(state.pollingPhotoIds || []);
+        newSet.add(id);
+        return { photos: state.photos.filter(p => p.id !== id), pollingPhotoId: id, pollingPhotoIds: newSet };
+      })
       return { success: true }
     } catch (err) {
       set({ toastMsg: `Error moving photo: ${err?.message || err}` })
