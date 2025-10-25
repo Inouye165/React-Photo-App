@@ -82,6 +82,51 @@ module.exports = function createPhotosRouter({ db }) {
   });
 
   // --- Metadata update endpoint ---
+  // --- Single photo fetch endpoint ---
+  router.get('/photos/:id', async (req, res) => {
+    try {
+      const { id } = req.params;
+      const row = await db('photos').where({ id }).first();
+      if (!row) return res.status(404).json({ success: false, error: 'Photo not found' });
+
+      let textStyle = null;
+      if (row.text_style) {
+        try { textStyle = JSON.parse(row.text_style); } catch { textStyle = null; }
+      }
+
+      const imagePath = row.storage_path || `${row.state}/${row.edited_filename || row.filename}`;
+      const { data: imageUrl } = supabase.storage
+        .from('photos')
+        .getPublicUrl(imagePath);
+
+      const url = imageUrl?.publicUrl || null;
+      const thumbnail = row.hash ? `/display/thumbnails/${row.hash}.jpg` : null;
+
+      const photo = {
+        id: row.id,
+        filename: row.filename,
+        state: row.state,
+        metadata: JSON.parse(row.metadata || '{}'),
+        hash: row.hash,
+        file_size: row.file_size,
+        caption: row.caption,
+        description: row.description,
+        keywords: row.keywords,
+        textStyle,
+        editedFilename: row.edited_filename,
+        storagePath: row.storage_path,
+        url,
+        thumbnail
+      };
+
+      res.set('Cache-Control', 'no-store');
+      return res.json({ success: true, photo });
+    } catch (err) {
+      console.error('Error in GET /photos/:id', err);
+      return res.status(500).json({ success: false, error: err.message });
+    }
+  });
+
   router.patch('/photos/:id/metadata', async (req, res) => {
     const { id } = req.params;
     try {

@@ -54,17 +54,12 @@ async function startServer() {
   const cors = require('cors');
   const cookieParser = require('cookie-parser');
   const app = express();
-
-  // Configure security middleware first
-  configureSecurity(app);
-
-  // Add cookie parser for potential session management
-  app.use(cookieParser());
-
-  // Add request validation middleware
-  app.use(validateRequest);
-
-  // Configure CORS origins
+  // Configure CORS origins early so preflight (OPTIONS) and error responses
+  // include the appropriate Access-Control-Allow-* headers before any
+  // validation or authentication middleware runs.
+  // This avoids cases where a validator or auth middleware rejects a
+  // preflight request without sending CORS headers, which causes the
+  // browser to block the request with a CORS error.
   const allowedOrigins = [];
   if (process.env.CLIENT_ORIGIN) {
     allowedOrigins.push(process.env.CLIENT_ORIGIN);
@@ -77,6 +72,16 @@ async function startServer() {
     origin: allowedOrigins,
     credentials: true // Allow cookies to be sent
   }));
+
+  // Configure security middleware after CORS so security headers are
+  // applied to responses that already include CORS headers.
+  configureSecurity(app);
+
+  // Add cookie parser for potential session management
+  app.use(cookieParser());
+
+  // Add request validation middleware
+  app.use(validateRequest);
   
   app.use(express.json({
     limit: '50mb',

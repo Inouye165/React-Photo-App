@@ -1,11 +1,13 @@
-import React, { useState, useEffect, useRef } from 'react'
+import React, { useState, useEffect, useRef, useCallback } from 'react'
 import ReactDOM from 'react-dom'
 import { parse } from 'exifr'
-import { uploadPhotoToServer, checkPrivilege, checkPrivilegesBatch, getPhotos, updatePhotoState, recheckInprogressPhotos, updatePhotoCaption, getPhoto } from './api.js'
+import { uploadPhotoToServer, checkPrivilege, checkPrivilegesBatch, getPhotos, updatePhotoState, recheckInprogressPhotos, updatePhotoCaption } from './api.js'
 import Toolbar from './Toolbar.jsx'
 import PhotoUploadForm from './PhotoUploadForm.jsx'
 import EditPage from './EditPage.jsx'
 import { createAuthenticatedImageUrl } from './utils/auth.js'
+import useStore from './store.js'
+import useAIPolling from './hooks/useAIPolling.jsx'
 
 // Utility: Format file size in human-readable format
 function formatFileSize(bytes) {
@@ -48,11 +50,19 @@ function Toast({ message, onClose }) {
 
 
 function App() {
-  const [photos, setPhotos] = useState([]);
+  // Photos and UI are now backed by Zustand store where appropriate
+  const photos = useStore(state => state.photos);
+  const setPhotos = useStore(state => state.setPhotos);
+  const updatePhotoData = useStore(state => state.updatePhotoData);
+  const removePhotoById = useStore(state => state.removePhotoById);
+  const moveToInprogress = useStore(state => state.moveToInprogress);
+  const pollingPhotoId = useStore(state => state.pollingPhotoId);
+  const setPollingPhotoId = useStore(state => state.setPollingPhotoId);
+  const toastMsg = useStore(state => state.toastMsg);
+  const setToast = useStore(state => state.setToast);
   const [loading, setLoading] = useState(true);
-  const [toastMsg, setToastMsg] = useState('');
-  // Accessible status for screen readers about polling state
-  const [ariaStatus, setAriaStatus] = useState('');
+  // Accessible status for screen readers about polling state (not used by store hook yet)
+  const ariaStatus = '';
   // message shown in the toolbar (persists until reload or cleared)
   const [toolbarMessage, setToolbarMessage] = useState('');
   const [uploading, setUploading] = useState(false);
@@ -71,13 +81,16 @@ function App() {
   const [selectedPhoto, setSelectedPhoto] = useState(null);
   const [showFinished, setShowFinished] = useState(false);
   // Polling state: photo id currently being polled for AI results
-  const [pollingPhotoId, setPollingPhotoId] = useState(null);
+  // pollingPhotoId lives in the store; start polling hook below
   const lastActiveElementRef = useRef(null);
   const [useFullPageEditor, setUseFullPageEditor] = useState(true);
   const [showMetadataModal, setShowMetadataModal] = useState(false);
   const [metadataPhoto, setMetadataPhoto] = useState(null);
 
   const workingDirHandleRef = useRef(null);
+
+  // Start global AI polling hook which reacts to changes in store.pollingPhotoId
+  useAIPolling()
   
   // Load photos
   useEffect(() => {
@@ -95,14 +108,14 @@ function App() {
         setPhotos(photosWithFullUrls);
   // removed visual confirmation toast
       } catch (error) {
-        console.error('Error loading photos:', error);
-        setToastMsg('Error loading photos from backend');
+  console.error('Error loading photos:', error);
+  setToast('Error loading photos from backend');
       } finally {
         setLoading(false);
       }
     };
     loadPhotos();
-  }, [showInprogress, showFinished]);
+  }, [showInprogress, showFinished, setPhotos, setToast]);
 
   // Load privileges after photos are loaded
   useEffect(() => {
@@ -196,7 +209,7 @@ function App() {
       setLocalPhotos(files);
       setShowLocalPicker(true);
     } catch (error) {
-      setToastMsg(`Folder selection failed: ${error.message}`);
+      setToast(`Folder selection failed: ${error.message}`);
     }
   };
 
@@ -230,7 +243,7 @@ function App() {
       setLocalPhotos([]);
       setShowLocalPicker(false);
     } catch (error) {
-      setToastMsg(`Upload failed: ${error.message}`);
+      setToast(`Upload failed: ${error.message}`);
     } finally {
       setUploading(false);
     }
@@ -239,11 +252,13 @@ function App() {
   // Handle move to inprogress
   const handleMoveToInprogress = async (id) => {
     try {
-      await updatePhotoState(id, 'inprogress');
-      // Remove the photo from the current list (since it's moved to inprogress view)
-      setPhotos(prev => prev.filter(photo => photo.id !== id));
+      const res = await moveToInprogress(id)
+      if (!res || !res.success) {
+        const err = res && res.error
+        setToast(`Error moving photo: ${err?.message || 'unknown'}`)
+      }
     } catch (error) {
-      setToastMsg(`Error moving photo: ${error.message}`);
+      setToast(`Error moving photo: ${error.message}`)
     }
   };
 
@@ -251,10 +266,10 @@ function App() {
   const handleMoveToWorking = async (id) => {
     try {
       await updatePhotoState(id, 'working');
-      // Remove the photo from the current list (since it's moved to working view)
-      setPhotos(prev => prev.filter(photo => photo.id !== id));
+      // Remove from current list
+      removePhotoById(id)
     } catch (error) {
-      setToastMsg(`Error moving photo back to staged: ${error.message}`);
+      setToast(`Error moving photo back to staged: ${error.message}`)
     }
   };
 
@@ -281,98 +296,15 @@ function App() {
         throw new Error(error.error || 'Failed to delete photo');
       }
       // Remove the photo from the current list
-      setPhotos(prev => prev.filter(photo => photo.id !== id));
-      setToastMsg('Photo deleted successfully');
+      removePhotoById(id)
+      setToast('Photo deleted successfully')
     } catch (error) {
-      setToastMsg(`Error deleting photo: ${error.message}`);
+      setToast(`Error deleting photo: ${error.message}`)
     }
   };
 
 
-  // Polling effect: when pollingPhotoId is set, poll every 3 seconds
-  useEffect(() => {
-    if (!pollingPhotoId) return;
-
-    // Best-practice polling: limit attempts to avoid infinite polling
-    const MAX_ATTEMPTS = 40; // every 3s -> ~2 minutes
-    let cancelled = false;
-    let attempts = 0;
-    const attemptsRef = { current: 0 };
-    const backendOrigin = 'http://localhost:3001';
-
-    const enrichPhoto = (p) => ({
-      ...p,
-      url: createAuthenticatedImageUrl(`${backendOrigin}/display/${p.state}/${p.filename}`),
-      thumbnail: p.thumbnail ? createAuthenticatedImageUrl(`${backendOrigin}${p.thumbnail}`) : null
-    });
-
-    const hasAIData = (p) => {
-      if (!p) return false;
-      const c = (p.caption || '').toString().trim();
-      const d = (p.description || '').toString().trim();
-      const k = (p.keywords || '').toString().trim();
-      return Boolean(c || d || k);
-    };
-
-    const checkOnce = async () => {
-      attempts += 1;
-      attemptsRef.current = attempts;
-      try {
-        const res = await getPhoto(pollingPhotoId);
-        if (!res) return;
-        // Normalize response to photo object
-        let updated = null;
-        if (res.photo) updated = res.photo;
-        else if (res.photos && Array.isArray(res.photos)) updated = res.photos.find(x => x.id === pollingPhotoId) || null;
-        else if (res.id || res.filename) updated = res;
-
-        if (!updated) return;
-
-        // Debug: report simple AI fields presence
-        try {
-          console.debug('[App] polling attempt', attemptsRef.current, 'photo', updated.id, 'caption:', !!(updated.caption), 'description:', !!(updated.description), 'keywords:', !!(updated.keywords));
-  } catch { void 0; }
-
-        // Treat job as done when any AI field contains non-empty text
-        if (hasAIData(updated)) {
-          if (cancelled) return;
-          const enriched = enrichPhoto(updated);
-          setPhotos(prev => prev.map(p => p.id === enriched.id ? enriched : p));
-          setPollingPhotoId(null);
-          try { console.debug('[App] polling finished for', enriched.id); } catch { void 0; }
-          setAriaStatus('AI processing completed');
-          setToastMsg('AI processing completed');
-          return;
-        }
-
-        // Timeout handling
-        if (attemptsRef.current >= MAX_ATTEMPTS) {
-          if (cancelled) return;
-          setPollingPhotoId(null);
-          try { console.debug('[App] polling timeout for', pollingPhotoId); } catch { void 0; }
-          setAriaStatus('AI processing timed out');
-          setToastMsg('AI job still running — stopped polling after timeout');
-          return;
-        }
-      } catch (err) {
-        console.warn('Polling getPhoto failed', err);
-        // do not abort on transient errors; let attempts/timeouts handle it
-      }
-    };
-
-    // announce start
-  try { console.debug('[App] start polling for', pollingPhotoId); } catch { void 0; }
-    setAriaStatus('AI processing started');
-
-    // run immediately then set interval
-    checkOnce();
-    const iv = setInterval(checkOnce, 3000);
-    return () => {
-      cancelled = true;
-      clearInterval(iv);
-      setAriaStatus('');
-    };
-  }, [pollingPhotoId]);
+  // polling is handled by useAIPolling() which watches store.pollingPhotoId
 
   // Listen for global run-ai events so polling starts no matter where runAI was invoked
   useEffect(() => {
@@ -410,7 +342,7 @@ function App() {
         }
   } catch { /* ignore */ }
     };
-  }, []);
+  }, [setPollingPhotoId]);
 
   // Handle edit photo
   const handleEditPhoto = (photo, openFullPage = false) => {
@@ -537,6 +469,21 @@ function App() {
     w.document.close();
   };
 
+  
+
+  // Handle move to finished
+  const handleMoveToFinished = useCallback(async (id) => {
+    try {
+      await updatePhotoState(id, 'finished');
+      setToast('Photo marked as finished');
+      setEditingPhoto(null);
+      // Remove the photo from the current list (since it's moved to finished view)
+      removePhotoById(id);
+    } catch (error) {
+      setToast(`Error marking photo as finished: ${error.message}`);
+    }
+  }, [removePhotoById, setToast]);
+
   // Listen for messages from edit tabs/windows
   React.useEffect(() => {
     const onMessage = async (ev) => {
@@ -553,7 +500,7 @@ function App() {
           ok = false;
           console.error('Failed to persist caption to backend:', e.message || e);
         }
-        setPhotos(prev => prev.map(p => p.id === id ? { ...p, caption } : p));
+        updatePhotoData(id, { caption });
         try { if (source && source.postMessage) source.postMessage({ type: 'updateCaptionAck', id, success: ok }, '*'); } catch { /* Ignore postMessage errors */ }
       } else if (msg.type === 'markFinished') {
         const { id } = msg;
@@ -567,37 +514,24 @@ function App() {
     };
     window.addEventListener('message', onMessage);
     return () => window.removeEventListener('message', onMessage);
-  }, []);
-
-  // Handle move to finished
-  const handleMoveToFinished = async (id) => {
-    try {
-      await updatePhotoState(id, 'finished');
-      setToastMsg('Photo marked as finished');
-      setEditingPhoto(null);
-      // Remove the photo from the current list (since it's moved to finished view)
-      setPhotos(prev => prev.filter(photo => photo.id !== id));
-    } catch (error) {
-      setToastMsg(`Error marking photo as finished: ${error.message}`);
-    }
-  };
+  }, [updatePhotoData, handleMoveToFinished]);
 
   // Handle recheck inprogress
   const handleRecheckInprogress = async () => {
     setRechecking(true);
     try {
       const res = await recheckInprogressPhotos();
-      setToastMsg(res.message || 'Rechecked inprogress photos');
+  setToast(res.message || 'Rechecked inprogress photos');
     } catch (error) {
       try {
         if (error.response && error.response.json) {
           const data = await error.response.json();
-          setToastMsg(`Recheck failed: ${data.error || error.message}`);
+          setToast(`Recheck failed: ${data.error || error.message}`);
         } else {
-          setToastMsg(`Recheck failed: ${error.message}`);
+          setToast(`Recheck failed: ${error.message}`);
         }
       } catch {
-        setToastMsg(`Recheck failed: Network error`);
+  setToast(`Recheck failed: Network error`);
       }
     } finally {
       setRechecking(false);
@@ -793,7 +727,7 @@ function App() {
     >
       {/* Toast at top center */}
       <div className="fixed top-6 left-1/2 transform -translate-x-1/2 z-50">
-        <Toast message={toastMsg} onClose={() => setToastMsg('')} />
+        <Toast message={toastMsg} onClose={() => setToast('')} />
       </div>
 
       <Toolbar
@@ -826,7 +760,7 @@ function App() {
             setMetadataPhoto(selectedPhoto || editingPhoto);
             setShowMetadataModal(true);
           } else {
-            setToastMsg('Please select a photo first');
+            setToast('Please select a photo first');
           }
         }}
         toolbarMessage={toolbarMessage}
@@ -974,7 +908,7 @@ function App() {
                   </section>
                 </div>
 
-                <div className="sticky bottom-0 bg-white pt-2 -mx-4 px-4 pb-2 border-t">
+                    <div className="sticky bottom-0 bg-white pt-2 -mx-4 px-4 pb-2 border-t">
                   <div className="flex justify-end gap-2">
                     <button onClick={() => { setEditingPhoto(null); }} className="px-3 py-1 bg-gray-100 border rounded text-sm">Close</button>
                     <button onClick={async () => {
@@ -982,18 +916,18 @@ function App() {
                           if (editedCaption !== (selectedPhoto.caption || '')) {
                             await updatePhotoCaption(selectedPhoto.id, editedCaption);
                           }
-                          // update local state
-                          setPhotos(prev => prev.map(p => p.id === selectedPhoto.id ? { ...p, caption: editedCaption, description: editedDescription, keywords: editedKeywords } : p));
-                          setEditingPhoto(null);
-                          setToastMsg('Saved in app');
+                              // update store-backed photo data
+                              updatePhotoData(selectedPhoto.id, { caption: editedCaption, description: editedDescription, keywords: editedKeywords });
+                              setEditingPhoto(null);
+                              setToast('Saved in app');
                         } catch (e) {
-                          setToastMsg('Save failed: ' + (e.message || e));
+                              setToast('Save failed: ' + (e.message || e));
                         }
                       }} className="px-3 py-1 bg-blue-600 text-white rounded text-sm">Save</button>
                     <button onClick={async () => {
                         try {
                           await handleMoveToFinished(selectedPhoto.id);
-                        } catch { setToastMsg('Mark finished failed'); }
+                            } catch { setToast('Mark finished failed'); }
                       }} className="px-3 py-1 bg-green-600 text-white rounded text-sm">Mark as Finished</button>
                   </div>
                 </div>
