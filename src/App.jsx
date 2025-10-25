@@ -140,29 +140,64 @@ function App() {
   }, [showInprogress, showFinished, loadPhotos]);
 
   // Load privileges after photos are loaded
+
+  // Cache the last checked filenames to avoid redundant privilege checks
+  const lastCheckedFilenamesRef = useRef([]);
+
   useEffect(() => {
     const loadPrivileges = async () => {
       if (photos.length === 0) return;
+
+      const filenames = photos.map(photo => photo.filename);
+      // Compare with last checked filenames
+      const prev = lastCheckedFilenamesRef.current;
+      const same =
+        prev.length === filenames.length &&
+        prev.every((f, i) => f === filenames[i]);
+      if (same) return; // No change, skip privilege check
+
+      lastCheckedFilenamesRef.current = filenames;
 
       // initialize to Loading so UI shows progress
       const initial = {};
       for (const p of photos) initial[p.id] = 'Loading...';
       setPrivilegesMap(initial);
 
-      const filenames = photos.map(photo => photo.filename);
       let map = {};
+      let batchSucceeded = false;
       try {
         // Try batch privilege check first
         const batchResult = await checkPrivilegesBatch(filenames);
         if (batchResult && typeof batchResult === 'object') {
+          console.log('[App] Batch privilege mapping: photo filenames:', filenames);
+          console.log('[App] Batch privilege mapping: batchResult keys:', Object.keys(batchResult));
           for (const photo of photos) {
             const priv = batchResult[photo.filename];
-            map[photo.id] = priv || '?';
+            if (typeof priv === 'string') {
+              map[photo.id] = priv;
+            } else if (priv && typeof priv === 'object') {
+              // Convert object privileges to string (RWX)
+              const privArr = [];
+              if (priv.read || priv.canRead) privArr.push('R');
+              if (priv.write || priv.canWrite) privArr.push('W');
+              if (priv.execute || priv.canExecute) privArr.push('X');
+              map[photo.id] = privArr.length > 0 ? privArr.join('') : '?';
+            } else {
+              console.warn('[App] No privilege found for photo:', photo.filename, 'in batchResult:', batchResult);
+              map[photo.id] = '?';
+            }
           }
           setPrivilegesMap(map);
-          return;
+          batchSucceeded = true;
         }
-  } catch {
+      } catch (err) {
+        console.warn('[App] Batch privilege check failed, will fallback to individual checks:', err);
+      }
+      if (batchSucceeded) {
+        console.log('[App] Batch privilege mapping succeeded, skipping fallback.');
+        return;
+      } else {
+        console.warn('[App] Batch privilege mapping did not succeed, running fallback to individual checks.');
         // Fallback to individual checks if batch fails
         map = {};
         for (const photo of photos) {
@@ -496,49 +531,6 @@ function App() {
     }
   }, [removePhotoById, setToast]);
 
-  // Listen for messages from edit tabs/windows
-  React.useEffect(() => {
-    const loadPrivileges = async () => {
-      if (photos.length === 0) return;
-
-      // initialize to Loading so UI shows progress
-      const initial = {};
-      for (const p of photos) initial[p.id] = 'Loading...';
-      setPrivilegesMap(initial);
-
-      // Fallback to individual checks if batch fails
-      const map = {};
-      for (const photo of photos) {
-        try {
-          const res = await checkPrivilege(photo.filename);
-          const privObj = res && (
-            res.privileges ||
-            res.privilege ||
-            ((res.canRead || res.canWrite || res.canExecute) ? res : null)
-          );
-          if (privObj && privObj.read !== undefined) {
-            privObj.canRead = privObj.read;
-            privObj.canWrite = privObj.write;
-            privObj.canExecute = privObj.execute;
-          }
-          if (privObj) {
-            const privArr = [];
-            if (privObj.canRead) privArr.push('R');
-            if (privObj.canWrite) privArr.push('W');
-            if (privObj.canExecute) privArr.push('X');
-            map[photo.id] = privArr.length > 0 ? privArr.join('') : '?';
-          } else {
-            map[photo.id] = '?';
-          }
-        } catch (err) {
-          console.warn('Privilege check failed for', photo.filename, err);
-          map[photo.id] = 'Err';
-        }
-      }
-      setPrivilegesMap(map);
-    };
-    loadPrivileges();
-  }, [photos]);
 // ...existing code...
 
   // Photo Editing Modal Component

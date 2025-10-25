@@ -106,9 +106,10 @@ export async function checkPrivilegesBatch(filenames, serverUrl = `${API_BASE_UR
     });
     if (handleAuthError(response)) return;
     if (!response.ok) throw new Error('Batch privilege check failed: ' + response.status);
-    const result = await response.json();
-    if (!result.success) throw new Error('Batch privilege check error: ' + result.error);
-    return result.privileges; // { filename: 'RWX', ... }
+  const result = await response.json();
+  console.log('[API] checkPrivilegesBatch response:', JSON.stringify(result));
+  if (!result.success) throw new Error('Batch privilege check error: ' + result.error);
+  return result.privileges; // { filename: 'RWX', ... }
   } catch (error) {
     throw new Error('Error checking privileges batch: ' + error.message);
   }
