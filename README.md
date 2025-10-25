@@ -307,41 +307,34 @@ VITE_API_URL=https://your-production-api.com
 This allows easy deployment to different environments without code changes.
 
 ## Environment Variables (template)
-
-Create a `.env` file at the project root and fill in the values you need. Example:
-
+ Copy `.env.example` to `.env` in both the root and `server/` directories.
+ Fill in all required values before running the app.
+ Do not commit `.env` files to source control.
+ **Robust Environment Handling:** The app is designed to work across different machines and CI environments. If an environment variable (like `VITE_API_URL`) is missing, the app will fall back to a safe default (`http://localhost:3001`) and warn you. This prevents crashes when switching between desktop, laptop, or CI.
+ **Tip:** Always check `.env.example` for required variables after pulling new changes or switching machines.
 ```text
 # Frontend (Vite)
-VITE_API_URL=http://localhost:3001
-
-# Backend / Server (see server/README.md for full template)
-# PORT=3001
-# JWT_SECRET=your_super_secret_jwt_string
+ **Dependency errors:** If you see errors about conflicting dependencies (e.g., ERESOLVE), always use `npm install --legacy-peer-deps`.
+ **Missing libraries:** If you see errors like "Cannot find module 'zustand'" or '@supabase/supabase-js', run `npm install <package> --legacy-peer-deps` in the correct directory (root for frontend, `server/` for backend).
+ **Missing environment variables:** If you see errors about missing environment variables, ensure you have copied `.env.example` to `.env` and filled in all required values in both root and `server/`.
+ **Wrong install directory:** Always run frontend installs in the project root and backend installs in the `server/` directory.
+ **ImageMagick not found:** Make sure ImageMagick is installed and available in your system PATH for HEIC/HEIF fallback support.
+ **Environment switching:** If you move between machines (desktop, laptop, CI), always copy `.env.example` to `.env` and review the values. The app will use safe defaults if variables are missing, but some features may require explicit configuration.
+ **Test failures after environment change:** If tests fail after switching machines, check for missing `.env` files, dependency mismatches, or Node.js version differences. Run `npm install` and verify your environment variables.
 # OPENAI_API_KEY=sk-your_openai_api_key
 ```
-
 Do not commit `.env` to source control. Add it to `.gitignore`.
 
 ### Build
 
-Build for production:
 ```bash
 npm run build
 ```
 
 Preview the production build:
 ```bash
-npm run preview
-```
-
-### Testing
-
 Run the test suite:
 ```bash
-# Frontend tests (Vitest) - 66 tests
-npm test
-
-# Run all frontend tests once
 npm run test:run
 
 # Run frontend tests with UI dashboard
