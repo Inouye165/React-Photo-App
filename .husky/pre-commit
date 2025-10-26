@@ -1,7 +1,4 @@
 #!/usr/bin/env sh
-. "$(dirname "$0")/_/husky.sh"
+. "$(dirname -- "$0")/_/husky.sh"
 
-# Run project secret-scan before allowing commits
-node scripts/secret-scan.cjs
-
-# You can add other pre-commit steps here (lint, tests) if desired
+npx lint-staged

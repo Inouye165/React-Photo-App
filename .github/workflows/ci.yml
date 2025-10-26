@@ -11,8 +11,7 @@ jobs:
     runs-on: ubuntu-latest
     strategy:
       matrix:
-        # Standardize on Node 20.x to match integration.yml
-        node-version: [20.x] 
+        node-version: ['20']
 
     steps:
       - name: Checkout repository
@@ -22,6 +21,7 @@ jobs:
         uses: actions/setup-node@v4
         with:
           node-version: ${{ matrix.node-version }}
+          cache: 'npm'
 
       # Use the more efficient caching strategy from integration.yml
       - name: Cache node modules
@@ -35,24 +35,15 @@ jobs:
           restore-keys: |
             ${{ runner.os }}-node-
 
-      - name: Install root dependencies
-        run: npm ci --legacy-peer-deps
+      - name: Install deps (strict)
+        run: npm ci --no-audit --no-fund
 
       - name: Install server dependencies
-        run: npm ci --legacy-peer-deps --prefix server
+        run: npm ci --no-audit --no-fund --prefix server
 
-      - name: Check plain npm ci (non-blocking)
-        run: |
-          # This is a non-blocking check to detect if plain `npm ci` (without --legacy-peer-deps)
-          # would fail for contributors. We do not fail the job here because the repo
-          # currently relies on `--legacy-peer-deps` as a short-term workaround.
-          if npm ci --ignore-scripts; then
-            echo "npm ci without --legacy-peer-deps succeeded"
-          else
-            echo "::warning::npm ci failed without --legacy-peer-deps. Contributors: use 'npm ci --legacy-peer-deps' locally until dependencies are reconciled."
-            # keep this step non-failing so PRs can run; this is an informational warning only
-            exit 0
-          fi
+
+      - name: Verify single OpenAI
+        run: npm ls openai
 
       # Run the main lint script from root package.json
       - name: Lint
