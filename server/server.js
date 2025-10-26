@@ -1,7 +1,5 @@
 const path = require('path');
 require('dotenv').config({ path: path.join(__dirname, '.env') });
-console.log('[env] SUPABASE_URL:', process.env.SUPABASE_URL);
-console.log('[env] SUPABASE_ANON_KEY:', process.env.SUPABASE_ANON_KEY);
 
 // Global safety: log uncaught exceptions and unhandled rejections instead of letting Node crash
 process.on('unhandledRejection', (reason, promise) => {
