@@ -1,6 +1,5 @@
 const path = require('path');
-const dotenvResult = require('dotenv').config({ path: path.join(__dirname, '.env') });
-console.log('[dotenv] .env loaded:', dotenvResult.parsed ? Object.keys(dotenvResult.parsed) : dotenvResult.error);
+require('dotenv').config({ path: path.join(__dirname, '.env') });
 console.log('[env] SUPABASE_URL:', process.env.SUPABASE_URL);
 console.log('[env] SUPABASE_ANON_KEY:', process.env.SUPABASE_ANON_KEY);
 
@@ -55,9 +54,9 @@ async function startServer() {
   const cookieParser = require('cookie-parser');
   const app = express();
 
-  // Log all incoming requests for debugging (must be after app is created)
+  // Log basic incoming request info for debugging (do NOT log headers which may contain secrets)
   app.use((req, res, next) => {
-    console.log(`[REQUEST] ${req.method} ${req.originalUrl} from ${req.ip} - headers:`, req.headers);
+    console.log(`[REQUEST] ${req.method} ${req.originalUrl} from ${req.ip}`);
     next();
   });
   // Configure CORS origins early so preflight (OPTIONS) and error responses
@@ -94,13 +93,14 @@ async function startServer() {
   // Add request validation middleware
   app.use(validateRequest);
   
+  // Limit request body size to mitigate DoS from huge payloads
   app.use(express.json({
-    limit: '50mb',
+    limit: '1mb',
     verify: (req, res, buf) => {
       try { req.rawBody = buf.toString(); } catch { req.rawBody = undefined; }
     }
   }));
-  app.use(express.urlencoded({ limit: '50mb', extended: true }));
+  app.use(express.urlencoded({ limit: '1mb', extended: true }));
 
   // Authentication routes (no auth required)
   app.use(createAuthRouter({ db }));

@@ -27,7 +27,6 @@
     "react": "^19.1.1",
     "react-dom": "^19.1.1",
     "react-konva": "^19.0.10",
-    "sqlite3": "^5.1.7",
     "zustand": "^5.0.8"
   },
   "devDependencies": {
