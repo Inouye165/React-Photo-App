@@ -14,21 +14,33 @@
     "secret-scan": "node scripts/secret-scan.cjs",
     "check-privilege": "node scripts/check-privilege.cjs",
     "integration-test": "node scripts/integration-test.cjs",
-    "lint": "eslint .",
+    "lint": "eslint . --cache",
+    "lint:fix": "eslint . --fix --cache",
+    "lint:server": "eslint server --cache",
+    "lint:web": "eslint src --cache",
     "preview": "vite preview"
   },
+  "lint-staged": {
+    "*.{js,jsx}": "eslint --fix"
+  },
   "dependencies": {
-    "@langchain/community": "^1.0.0",
-    "@langchain/core": "^1.0.0",
-    "@langchain/openai": "^1.0.0",
+    "@langchain/core": "^0.3.0",
+    "@langchain/openai": "^0.3.0",
+    "openai": "^6.3.0",
     "dotenv": "^16.6.1",
     "exifr": "^7.1.3",
     "konva": "^10.0.2",
-    "openai": "^4.104.0",
     "react": "^19.1.1",
     "react-dom": "^19.1.1",
     "react-konva": "^19.0.10",
     "zustand": "^5.0.8"
+  },
+  "overrides": {
+    "openai": "^6.3.0"
+  },
+  "engines": {
+    "node": ">=20.11 <21",
+    "npm": ">=10"
   },
   "devDependencies": {
     "@eslint/js": "^9.36.0",
