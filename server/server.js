@@ -9,6 +9,14 @@ process.on('uncaughtException', (err) => {
   console.error('UncaughtException:', err);
 });
 
+// Log process exit events for debugging transient exits during startup
+process.on('beforeExit', (code) => {
+  console.warn(`[PROCESS] beforeExit code=${code}`);
+});
+process.on('exit', (code) => {
+  console.warn(`[PROCESS] exit code=${code}`);
+});
+
 const db = require('./db/index');
 const createPhotosRouter = require('./routes/photos');
 const createUploadsRouter = require('./routes/uploads');
