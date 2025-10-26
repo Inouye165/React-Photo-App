@@ -8,8 +8,8 @@
     "dev": "nodemon server.js",
     "worker": "node worker.js",
     "dev:worker": "nodemon worker.js",
-    "test": "jest",
-    "test:ci": "jest --testPathIgnorePatterns=\"auth.test.js\" --testPathIgnorePatterns=\"uploads.test.js\" --testPathIgnorePatterns=\"heicConversion.test.js\" --testPathIgnorePatterns=\"processPhotoAI.test.js\" --testPathIgnorePatterns=\"processPhotoAI.heic.test.js\" --testPathIgnorePatterns=\"db.test.js\" --testPathIgnorePatterns=\"heic-refactor-validation.test.js\"",
+  "test": "jest",
+  "test:ci": "jest",
     "test:watch": "jest --watch"
   },
   "dependencies": {
@@ -32,10 +32,8 @@
     "multer": "^1.4.5-lts.1",
     "node-fetch": "^3.3.1",
     "pg": "^8.16.3",
-    "photo-app": "file:..",
     "sharp": "^0.34.4",
-    "sqlite3": "^5.1.7",
-    "zustand": "^5.0.8"
+    "sqlite3": "^5.1.7"
   },
   "devDependencies": {
     "jest": "^29.7.0",
