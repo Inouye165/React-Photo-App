@@ -128,8 +128,8 @@ function App() {
         thumbnail: p.thumbnail ? createAuthenticatedImageUrl(`${backendOrigin}${p.thumbnail}`) : null
       }));
       setPhotos(photosWithFullUrls);
-    } catch (error) {
-  setToast('Error loading photos from backend');
+    } catch (err) {
+      setToast(`Error loading photos from backend: ${err && err.message ? err.message : 'unknown'}`);
     } finally {
       setLoading(false);
     }
@@ -507,35 +507,48 @@ function App() {
       setPrivilegesMap(initial);
 
       // Fallback to individual checks if batch fails
-      const map = {};
-      for (const photo of photos) {
-        try {
-          const res = await checkPrivilege(photo.filename);
-          const privObj = res && (
-            res.privileges ||
-            res.privilege ||
-            ((res.canRead || res.canWrite || res.canExecute) ? res : null)
-          );
-          if (privObj && privObj.read !== undefined) {
-            privObj.canRead = privObj.read;
-            privObj.canWrite = privObj.write;
-            privObj.canExecute = privObj.execute;
-          }
-          if (privObj) {
-            const privArr = [];
-            if (privObj.canRead) privArr.push('R');
-            if (privObj.canWrite) privArr.push('W');
-            if (privObj.canExecute) privArr.push('X');
-            map[photo.id] = privArr.length > 0 ? privArr.join('') : '?';
-          } else {
-            map[photo.id] = '?';
-          }
-        } catch (err) {
-          console.warn('Privilege check failed for', photo.filename, err);
-          map[photo.id] = 'Err';
+      try {
+        const filenames = photos.map(photo => photo.filename);
+        const batchResult = await checkPrivilegesBatch(filenames);
+        const map = {};
+        for (const photo of photos) {
+          const priv = batchResult && batchResult[photo.filename];
+          map[photo.id] = priv || '?';
         }
+        setPrivilegesMap(map);
+      } catch (e) {
+        // If batch fails, fall back to individual checks one-by-one
+        console.warn('Batch privileges failed, falling back to individual checks:', e);
+        const map = {};
+        for (const photo of photos) {
+          try {
+            const res = await checkPrivilege(photo.filename);
+            const privObj = res && (
+              res.privileges ||
+              res.privilege ||
+              ((res.canRead || res.canWrite || res.canExecute) ? res : null)
+            );
+            if (privObj && privObj.read !== undefined) {
+              privObj.canRead = privObj.read;
+              privObj.canWrite = privObj.write;
+              privObj.canExecute = privObj.execute;
+            }
+            if (privObj) {
+              const privArr = [];
+              if (privObj.canRead) privArr.push('R');
+              if (privObj.canWrite) privArr.push('W');
+              if (privObj.canExecute) privArr.push('X');
+              map[photo.id] = privArr.length > 0 ? privArr.join('') : '?';
+            } else {
+              map[photo.id] = '?';
+            }
+          } catch (err2) {
+            console.warn('Privilege check failed for', photo.filename, err2);
+            map[photo.id] = 'Err';
+          }
+        }
+        setPrivilegesMap(map);
       }
-      setPrivilegesMap(map);
     };
     loadPrivileges();
   }, [photos]);

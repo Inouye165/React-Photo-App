@@ -33,19 +33,10 @@ module.exports = function createPhotosRouter({ db }) {
           }
         }
 
-        // Generate public URLs from Supabase Storage
-        let url = null;
+        // The frontend builds its own authenticated URLs, so we don't need to
+        // generate a public Supabase URL here. We just need to provide the
+        // authenticated thumbnail path.
         let thumbnail = null;
-
-        // Main image URL
-        const imagePath = row.storage_path || `${row.state}/${row.edited_filename || row.filename}`;
-        const { data: imageUrl } = supabase.storage
-          .from('photos')
-          .getPublicUrl(imagePath);
-        
-        if (imageUrl?.publicUrl) {
-          url = imageUrl.publicUrl;
-        }
 
         // Thumbnail URL - use display endpoint instead of public URL
         if (row.hash) {
@@ -67,7 +58,7 @@ module.exports = function createPhotosRouter({ db }) {
           textStyle,
           editedFilename: row.edited_filename,
           storagePath: row.storage_path,
-          url,
+          url: null, // Frontend overwrites this with a secure URL
           thumbnail
         };
       }));
@@ -94,12 +85,9 @@ module.exports = function createPhotosRouter({ db }) {
         try { textStyle = JSON.parse(row.text_style); } catch { textStyle = null; }
       }
 
-      const imagePath = row.storage_path || `${row.state}/${row.edited_filename || row.filename}`;
-      const { data: imageUrl } = supabase.storage
-        .from('photos')
-        .getPublicUrl(imagePath);
-
-      const url = imageUrl?.publicUrl || null;
+      // The frontend builds its own authenticated URLs, so we don't need to
+      // generate a public Supabase URL here.
+      const url = null;
       const thumbnail = row.hash ? `/display/thumbnails/${row.hash}.jpg` : null;
 
       const photo = {

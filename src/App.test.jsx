@@ -234,7 +234,7 @@ describe('App Component', () => {
     })
     
     await waitFor(() => {
-      expect(screen.getByText('Error loading photos from backend')).toBeInTheDocument()
+      expect(screen.getByText(/Error loading photos from backend/)).toBeInTheDocument()
     })
   })
 
@@ -247,13 +247,13 @@ describe('App Component', () => {
     })
     
     await waitFor(() => {
-      expect(screen.getByText('Error loading photos from backend')).toBeInTheDocument()
+      expect(screen.getByText(/Error loading photos from backend/)).toBeInTheDocument()
     })
     
     const dismissButton = screen.getByTitle('Dismiss')
     await user.click(dismissButton)
     
-    expect(screen.queryByText('Error loading photos from backend')).not.toBeInTheDocument()
+  expect(screen.queryByText(/Error loading photos from backend/)).not.toBeInTheDocument()
   })
 
   it('displays toolbar messages correctly', async () => {
