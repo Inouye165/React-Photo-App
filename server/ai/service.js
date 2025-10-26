@@ -2,7 +2,18 @@ const path = require('path');
 require('dotenv').config({ path: path.join(__dirname, '..', '.env') });
 
 // Fail-fast if OpenAI API key is missing — check at module load time
-if (!process.env.OPENAI_API_KEY) throw new Error('OPENAI_API_KEY not set in .env');
+// Allow tests to run without an API key by skipping the throw when
+// running under the test environment. This keeps the strict check
+// for development/production while making CI/tests less brittle.
+if (!process.env.OPENAI_API_KEY) {
+  if (process.env.NODE_ENV === 'test') {
+    // In test environment, don't fail-fast. Tests should mock agents
+    // or provide a test key via test setup.
+    console.warn('OPENAI_API_KEY not set — skipping fail-fast in test environment.');
+  } else {
+    throw new Error('OPENAI_API_KEY not set in .env');
+  }
+}
 const {
   routerAgent,
   sceneryAgent,
