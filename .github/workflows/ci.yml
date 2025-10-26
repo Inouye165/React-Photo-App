@@ -41,6 +41,19 @@ jobs:
       - name: Install server dependencies
         run: npm ci --legacy-peer-deps --prefix server
 
+      - name: Check plain npm ci (non-blocking)
+        run: |
+          # This is a non-blocking check to detect if plain `npm ci` (without --legacy-peer-deps)
+          # would fail for contributors. We do not fail the job here because the repo
+          # currently relies on `--legacy-peer-deps` as a short-term workaround.
+          if npm ci --ignore-scripts; then
+            echo "npm ci without --legacy-peer-deps succeeded"
+          else
+            echo "::warning::npm ci failed without --legacy-peer-deps. Contributors: use 'npm ci --legacy-peer-deps' locally until dependencies are reconciled."
+            # keep this step non-failing so PRs can run; this is an informational warning only
+            exit 0
+          fi
+
       # Run the main lint script from root package.json
       - name: Lint
         run: npm run lint
