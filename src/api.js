@@ -272,18 +272,43 @@ export async function getPhoto(photoId, serverUrl = `${API_BASE_URL}`) {
 }
 
 // Simple concurrency limiter to avoid bursting many requests at once
-function createLimiter(maxConcurrency = 6) {
+// Lightweight telemetry for limiter usage. Exported via getApiMetrics().
+const apiMetrics = {
+  totals: { calls: 0 },
+  limiters: {}
+};
+
+export function getApiMetrics() {
+  try {
+    return JSON.parse(JSON.stringify(apiMetrics));
+  } catch {
+    return { totals: { calls: 0 }, limiters: {} };
+  }
+}
+
+// Simple concurrency limiter to avoid bursting many requests at once
+// Adds lightweight telemetry per limiter so we can tune values in dev.
+function createLimiter(maxConcurrency = 6, name = 'default') {
   let active = 0;
   const queue = [];
+  // initialize metrics for this limiter
+  if (!apiMetrics.limiters[name]) {
+    apiMetrics.limiters[name] = { calls: 0, active: 0, queued: 0, maxActiveSeen: 0 };
+  }
   const next = () => {
     if (queue.length === 0) return;
     const fn = queue.shift();
+    apiMetrics.limiters[name].queued = queue.length;
     fn();
   };
   return async function limit(fn) {
+    apiMetrics.totals.calls += 1;
+    apiMetrics.limiters[name].calls += 1;
     return new Promise((resolve, reject) => {
       const run = async () => {
         active += 1;
+        apiMetrics.limiters[name].active = active;
+        if (active > apiMetrics.limiters[name].maxActiveSeen) apiMetrics.limiters[name].maxActiveSeen = active;
         try {
           const r = await fn();
           resolve(r);
@@ -291,10 +316,12 @@ function createLimiter(maxConcurrency = 6) {
           reject(err);
         } finally {
           active -= 1;
+          apiMetrics.limiters[name].active = active;
+          apiMetrics.limiters[name].queued = queue.length;
           next();
         }
       };
-      if (active < maxConcurrency) run(); else queue.push(run);
+      if (active < maxConcurrency) run(); else { queue.push(run); apiMetrics.limiters[name].queued = queue.length; }
     });
   };
 }
