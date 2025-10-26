@@ -71,11 +71,11 @@ export async function checkPrivilege(relPath, serverUrl = `${API_BASE_URL}/privi
       const body = JSON.stringify({ relPath });
       // Log outgoing body so we can detect client-side escaping/formatting issues
       console.log('[API] checkPrivilege ->', serverUrl, 'body:', body);
-      const response = await fetch(serverUrl, {
+      const response = await apiLimiter(() => fetch(serverUrl, {
         method: 'POST',
         headers: getAuthHeaders(),
         body
-      });
+      }));
       if (handleAuthError(response)) return;
       if (response.ok) return await response.json();
       // If 404 or 5xx, retry a few times
@@ -96,20 +96,54 @@ export async function checkPrivilege(relPath, serverUrl = `${API_BASE_URL}/privi
 
 // Utility to check privileges for multiple files in batch
 export async function checkPrivilegesBatch(filenames, serverUrl = `${API_BASE_URL}/privilege`) {
+  // Chunk large batches to avoid triggering server-side rate limits.
+  const CHUNK_SIZE = 12; // reasonable small batch size
+  const maxAttempts = 4;
+  const sleep = (ms) => new Promise(r => setTimeout(r, ms));
+
+  const results = {};
+  // Helper to POST a chunk and handle 429/backoff
+  async function postChunk(chunk, attempt = 1) {
+    try {
+      const body = JSON.stringify({ filenames: chunk });
+      console.log('[API] checkPrivilegesBatch ->', serverUrl, 'filenames:', chunk.length);
+      const response = await apiLimiter(() => fetch(serverUrl, {
+        method: 'POST',
+        headers: getAuthHeaders(),
+        body
+      }));
+      if (handleAuthError(response)) return null;
+      if (response.status === 429) {
+        if (attempt < maxAttempts) {
+          const backoff = 250 * Math.pow(2, attempt - 1);
+          await sleep(backoff);
+          return postChunk(chunk, attempt + 1);
+        }
+        throw new Error('Batch privilege check rate limited: 429');
+      }
+      if (!response.ok) throw new Error('Batch privilege check failed: ' + response.status);
+      const result = await response.json();
+      if (!result.success) throw new Error('Batch privilege check error: ' + result.error);
+      return result.privileges || {};
+    } catch (error) {
+      if (attempt < maxAttempts) {
+        const backoff = 250 * Math.pow(2, attempt - 1);
+        await sleep(backoff);
+        return postChunk(chunk, attempt + 1);
+      }
+      throw error;
+    }
+  }
+
   try {
-    const body = JSON.stringify({ filenames });
-    console.log('[API] checkPrivilegesBatch ->', serverUrl, 'filenames:', filenames.length);
-    const response = await fetch(serverUrl, {
-      method: 'POST',
-      headers: getAuthHeaders(),
-      body
-    });
-    if (handleAuthError(response)) return;
-    if (!response.ok) throw new Error('Batch privilege check failed: ' + response.status);
-  const result = await response.json();
-  console.log('[API] checkPrivilegesBatch response:', JSON.stringify(result));
-  if (!result.success) throw new Error('Batch privilege check error: ' + result.error);
-  return result.privileges; // { filename: 'RWX', ... }
+    for (let i = 0; i < filenames.length; i += CHUNK_SIZE) {
+      const chunk = filenames.slice(i, i + CHUNK_SIZE);
+      const chunkRes = await postChunk(chunk, 1);
+      if (chunkRes && typeof chunkRes === 'object') {
+        Object.assign(results, chunkRes);
+      }
+    }
+    return results;
   } catch (error) {
     throw new Error('Error checking privileges batch: ' + error.message);
   }
@@ -142,32 +176,36 @@ export async function getPhotos(serverUrlOrEndpoint = `${API_BASE_URL}/photos`) 
 
 // Update photo state (move to inprogress/working)
 export async function updatePhotoState(id, state, serverUrl = `${API_BASE_URL}/photos/`) {
-  const response = await fetch(`${serverUrl}${id}/state`, {
-    method: 'PATCH',
-    headers: getAuthHeaders(),
-    body: JSON.stringify({ state })
-  });
+  const doFetch = async () => {
+    return fetch(`${serverUrl}${id}/state`, {
+      method: 'PATCH',
+      headers: getAuthHeaders(),
+      body: JSON.stringify({ state })
+    });
+  };
+
+  const response = await stateUpdateLimiter(() => doFetch());
   if (handleAuthError(response)) return;
   if (!response.ok) throw new Error('Failed to update photo state');
   return await response.json();
 }
 
 export async function recheckInprogressPhotos(serverUrl = `${API_BASE_URL}/photos/recheck-inprogress`) {
-  const res = await fetch(serverUrl, { 
+  const res = await apiLimiter(() => fetch(serverUrl, {
     method: 'POST',
     headers: getAuthHeaders()
-  });
+  }));
   if (handleAuthError(res)) return;
   if (!res.ok) throw new Error('Failed to trigger recheck');
   return await res.json();
 }
 
 export async function updatePhotoCaption(id, caption, serverUrl = `${API_BASE_URL}`) {
-  const res = await fetch(`${serverUrl}/photos/${id}/caption`, {
+  const res = await apiLimiter(() => fetch(`${serverUrl}/photos/${id}/caption`, {
     method: 'PATCH',
     headers: getAuthHeaders(),
     body: JSON.stringify({ caption })
-  });
+  }));
   if (handleAuthError(res)) return;
   if (!res.ok) throw new Error('Failed to update caption');
   return await res.json();
@@ -175,10 +213,10 @@ export async function updatePhotoCaption(id, caption, serverUrl = `${API_BASE_UR
 
 // Start AI processing for a photo (fire-and-forget / returns 202 when queued)
 export async function runAI(photoId, serverUrl = `${API_BASE_URL}`) {
-  const res = await fetch(`${serverUrl}/photos/${photoId}/run-ai`, {
+  const res = await apiLimiter(() => fetch(`${serverUrl}/photos/${photoId}/run-ai`, {
     method: 'POST',
     headers: getAuthHeaders()
-  });
+  }));
   if (handleAuthError(res)) return;
   if (!res.ok) {
     // If server returns 202 it will be ok; other codes considered failure
@@ -232,3 +270,64 @@ export async function getPhoto(photoId, serverUrl = `${API_BASE_URL}`) {
   }
   return await res.json();
 }
+
+// Simple concurrency limiter to avoid bursting many requests at once
+// Lightweight telemetry for limiter usage. Exported via getApiMetrics().
+const apiMetrics = {
+  totals: { calls: 0 },
+  limiters: {}
+};
+
+export function getApiMetrics() {
+  try {
+    return JSON.parse(JSON.stringify(apiMetrics));
+  } catch {
+    return { totals: { calls: 0 }, limiters: {} };
+  }
+}
+
+// Simple concurrency limiter to avoid bursting many requests at once
+// Adds lightweight telemetry per limiter so we can tune values in dev.
+function createLimiter(maxConcurrency = 6, name = 'default') {
+  let active = 0;
+  const queue = [];
+  // initialize metrics for this limiter
+  if (!apiMetrics.limiters[name]) {
+    apiMetrics.limiters[name] = { calls: 0, active: 0, queued: 0, maxActiveSeen: 0 };
+  }
+  const next = () => {
+    if (queue.length === 0) return;
+    const fn = queue.shift();
+    apiMetrics.limiters[name].queued = queue.length;
+    fn();
+  };
+  return async function limit(fn) {
+    apiMetrics.totals.calls += 1;
+    apiMetrics.limiters[name].calls += 1;
+    return new Promise((resolve, reject) => {
+      const run = async () => {
+        active += 1;
+        apiMetrics.limiters[name].active = active;
+        if (active > apiMetrics.limiters[name].maxActiveSeen) apiMetrics.limiters[name].maxActiveSeen = active;
+        try {
+          const r = await fn();
+          resolve(r);
+        } catch (err) {
+          reject(err);
+        } finally {
+          active -= 1;
+          apiMetrics.limiters[name].active = active;
+          apiMetrics.limiters[name].queued = queue.length;
+          next();
+        }
+      };
+      if (active < maxConcurrency) run(); else { queue.push(run); apiMetrics.limiters[name].queued = queue.length; }
+    });
+  };
+}
+
+// Shared API limiter instance (tunable)
+const apiLimiter = createLimiter(6);
+// Dedicated limiter for state-update (PATCH) operations which tend to be the
+// main source of 429s when many photos are moved concurrently.
+const stateUpdateLimiter = createLimiter(2);

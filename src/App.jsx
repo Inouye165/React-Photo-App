@@ -128,8 +128,8 @@ function App() {
         thumbnail: p.thumbnail ? createAuthenticatedImageUrl(`${backendOrigin}${p.thumbnail}`) : null
       }));
       setPhotos(photosWithFullUrls);
-    } catch (error) {
-  setToast('Error loading photos from backend');
+    } catch (err) {
+      setToast(`Error loading photos from backend: ${err && err.message ? err.message : 'unknown'}`);
     } finally {
       setLoading(false);
     }
@@ -531,7 +531,6 @@ function App() {
     }
   }, [removePhotoById, setToast]);
 
-// ...existing code...
 
   // Photo Editing Modal Component
   // eslint-disable-next-line no-unused-vars

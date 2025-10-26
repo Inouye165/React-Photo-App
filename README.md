@@ -6,10 +6,6 @@
    cd React-Photo-App
    ```
 
-2. Install frontend dependencies (use `--legacy-peer-deps` if you see errors):
-   ```bash
-   npm install --legacy-peer-deps
-   ```
 
 3. Install backend dependencies:
    ```bash
@@ -44,6 +40,45 @@
 All required libraries are listed in the appropriate `package.json` files:
 - Frontend dependencies: `package.json` (project root)
 - Backend dependencies: `server/package.json`
+
+   ## 🔐 Security Configuration
+
+   **CRITICAL: Your Supabase storage bucket MUST be private.**
+
+   This application is designed to be secure by serving all images and thumbnails through a server-side authentication endpoint (`/display/...`). This ensures that only logged-in users can access photos.
+
+   If your Supabase **`photos`** storage bucket is left "Public", it creates a major security hole that allows anyone on the internet to access your photos if they guess the URL, bypassing all application-level security.
+
+   **How to Fix:**
+   1.  Go to your project's dashboard at **Supabase.com**.
+   2.  Navigate to the **Storage** section.
+   3.  Find your **`photos`** bucket and click **"Edit bucket"**.
+   4.  Ensure the **"Public bucket"** toggle is **OFF** (unchecked).
+   5.  Save your changes.
+
+   The application will work correctly *only* when the bucket is private.
+
+    ### Developer Hooks & CI secret-scan
+
+    To prevent accidental credential leaks, the repository includes a lightweight secret-scan and a pre-commit hook.
+
+    - Install dev hooks locally (one-time):
+
+       ```powershell
+       # from project root (Windows PowerShell)
+       npm install --legacy-peer-deps
+       npm run prepare
+       ```
+
+    - What this does:
+       - Installs Husky hooks so the `scripts/secret-scan.cjs` runs on every commit and blocks commits that match common secret patterns (OpenAI, Supabase, AWS, GitHub tokens, private key blocks).
+       - CI also runs the same secret-scan on PRs to `main` to catch leaks before merge.
+
+    - If the secret-scan flags a false positive you can:
+       1. Inspect the staged changes and remove the sensitive value before committing.
+       2. Use an environment variable or `.env` (never commit `.env`) instead of inlining secrets.
+
+    - NOTE: If any keys have already been committed or pushed, rotate them immediately. See `SECRET_ROTATION.md` for a short checklist.
 
 If you encounter a missing package error, please open an issue or PR to add it to the correct `package.json`.
 
