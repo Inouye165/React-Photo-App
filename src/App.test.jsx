@@ -191,6 +191,26 @@ describe('App Component', () => {
     })
   })
 
+  it('calls getPhotos exactly once for the selected view when switching', async () => {
+    const user = userEvent.setup()
+    await act(async () => {
+      render(<App />)
+    })
+
+    await waitFor(() => {
+      expect(screen.getByText('View Inprogress')).toBeInTheDocument()
+    })
+
+    // Click to switch to inprogress view
+    await user.click(screen.getByText('View Inprogress'))
+
+    // Ensure exactly one call was made with 'inprogress'
+    await waitFor(() => {
+      const inprogressCalls = getPhotos.mock.calls.filter(c => c[0] === 'inprogress').length
+      expect(inprogressCalls).toBe(1)
+    })
+  })
+
   it('switches to finished view when button clicked', async () => {
     const user = userEvent.setup()
     await act(async () => {

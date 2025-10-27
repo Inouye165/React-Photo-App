@@ -41,7 +41,9 @@ export default function useAIPolling() {
           if (cancelled) return
           updatePhotoData(updated.id, updated)
           setPollingPhotoId(null)
-          setToast('AI processing completed')
+          // Previously we showed a toast here: setToast('AI processing completed')
+          // That message is redundant now that state is updated and UI populates.
+          // Intentionally do not show a toast to avoid duplicate/irrelevant notifications.
           return
         }
 
