@@ -9,6 +9,26 @@ jest.mock('../ai/langchain/chainAdapter', () => ({
   }))
 }));
 
+// Mock the geolocate tool to avoid real network calls during tests
+jest.mock('../ai/langchain/geolocateTool', () => ({
+  geolocate: jest.fn(async () => ({
+    address: null,
+    nearby: [
+      { name: 'Mock Restaurant 1', lat: 44.0, lon: -110.0, tags: { amenity: 'restaurant' } },
+      { name: 'Mock Park', lat: 44.0005, lon: -110.0005, tags: { leisure: 'park' } }
+    ]
+  })),
+  geolocateTool: {
+    invoke: jest.fn(async () => JSON.stringify({
+      address: null,
+      nearby: [
+        { name: 'Mock Restaurant 1', lat: 44.0, lon: -110.0, tags: { amenity: 'restaurant' } },
+        { name: 'Mock Park', lat: 44.0005, lon: -110.0005, tags: { leisure: 'park' } }
+      ]
+    }))
+  }
+}));
+
 const { processPhotoAI } = require('../ai/service');
 
 describe('processPhotoAI', () => {

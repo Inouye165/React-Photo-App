@@ -112,6 +112,7 @@ A full-screen React application for filtering, browsing, and uploading photos by
 - [Testing & Quality Assurance](#testing--quality-assurance)
 - [Troubleshooting](#troubleshooting)
 - [Contributing](#contributing)
+ - [Integration runner (developer tool)](#integration-runner-developer-tool)
 
 ## 🆕 What's New (October 2025)
 
@@ -492,6 +493,18 @@ The project includes comprehensive testing across frontend and backend:
 - ~~Add automated tests and CI pipeline for build and linting~~ ✅ **COMPLETED**: Comprehensive testing implemented with 63 tests (54 frontend + 9 backend)
 - Add GitHub Actions CI pipeline for automated testing and deployment
 
+### UX: Deletion confirmation & success messaging (future TODOs)
+
+- Make the delete confirmation optional via a user preference (localStorage or account setting) so users who find the browser confirm() annoying can disable it.
+- Replace the blocking browser confirm() with a non-blocking modal that includes a "Don't show this again" checkbox and stores the user's preference.
+- Offer an "Undo" pattern: instead of a persistent dismiss-required toast, show a temporary toast with an Undo button (e.g. 5–10s) that restores the deleted item if pressed.
+- Auto-dismiss success toasts after a short configurable timeout (3–5s) to avoid requiring manual dismissal for routine actions.
+- Add a global Settings panel where users can toggle: Confirm on delete (on/off), Success toast auto-dismiss timeout, and Enable Undo for deletes.
+- For bulk deletes, show a stronger confirmation dialog and require explicit acknowledgement (checkbox + button) to prevent accidental data loss.
+- Add telemetry/logging (opt-in) to measure how often users disable confirmations so UX defaults can be adjusted.
+
+These options will make the delete UX less intrusive and provide safer recovery options while preserving protection against accidental deletes.
+
 ### Recommended security & CI TODOs (priority)
 
 - **HUSKY pre-commit secret-scan (HIGH PRIORITY — recommended)**: add Husky and a pre-commit hook that scans staged files for potential secrets (API keys, private keys, tokens) and blocks commits when matches are found. Provide a command to opt-in/install hooks for contributors and document it in the README (example: `npm run prepare` to install Husky hooks). This helps prevent accidental credential commits.
@@ -560,3 +573,9 @@ This project is licensed under the MIT License - see the [LICENSE](LICENSE) file
 - Testing Library community for user-centric testing approaches
 - OpenAI for AI-powered image analysis capabilities
 - Sharp and ImageMagick teams for robust image processing
+
+## Integration runner (developer tool)
+
+There's a small helper script and runner for exercising the backend's photo state workflow locally without requiring external services. It starts the server in test mode, sends a PATCH to the `/photos/:id/state` endpoint, captures server logs, and prints the response.
+
+See `server/scripts/README.md` for usage notes and PowerShell examples.

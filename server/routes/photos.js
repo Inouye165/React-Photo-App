@@ -10,6 +10,40 @@ const supabase = require('../lib/supabaseClient');
 module.exports = function createPhotosRouter({ db }) {
   const router = express.Router();
 
+  // Helper: format storage/external errors into a readable, serializable shape
+  const util = require('util');
+  const INCLUDE_ERROR_DETAILS = process.env.NODE_ENV !== 'production';
+  function formatStorageError(err) {
+    if (!err) return { message: 'Unknown error' };
+    // Pull common fields
+    let message = err.message || err.msg || err.error_description || err.error || (typeof err === 'string' ? err : null);
+    // If message is an object, try to stringify it for readability
+    if (message && typeof message === 'object') {
+      try {
+        message = JSON.stringify(message);
+      } catch {
+        message = util.inspect(message, { depth: 2 });
+      }
+    }
+    const status = err.status || err.statusCode || err.status_code || null;
+    const code = err.code || null;
+
+    // Collect a few helpful details without serializing everything (avoid secrets)
+    const details = {};
+    ['hint', 'details', 'cause', 'path', 'type', 'name'].forEach(k => {
+      if (err[k]) details[k] = err[k];
+    });
+
+  if (message && message !== '{}' && message !== '[]' && message !== '') return { message, status, code, details };
+
+    // Fall back to a safe util.inspect when there is no obvious message
+    try {
+      return { message: util.inspect(err, { depth: 2 }), status, code, details };
+    } catch {
+      return { message: String(err), status, code, details };
+    }
+  }
+
   // --- API: List all photos and metadata (include hash) ---
   router.get('/photos', async (req, res) => {
     try {
@@ -276,13 +310,120 @@ module.exports = function createPhotosRouter({ db }) {
         // Log the paths for debugging
         console.log('[Supabase MOVE] currentPath:', currentPath, 'newPath:', newPath);
 
-        const { data: _data, error } = await supabase.storage
+        const { data: _data, error: moveErrorInitial } = await supabase.storage
           .from('photos')
           .move(currentPath, newPath);
 
-        if (error) {
-          console.error('Supabase move error:', error);
-          return res.status(500).json({ success: false, error: 'Failed to move file in storage' });
+        // Use a mutable variable so we can clear the error after handling
+        // special cases (e.g. destination already exists) to skip fallback logic.
+        let moveError = moveErrorInitial;
+
+        if (moveError) {
+          // Format and log the storage error for easier debugging
+          const formattedError = formatStorageError(moveError);
+          console.error('Supabase move error:', formattedError);
+
+          // Attempt a safe fallback when the source object is missing or move
+          // cannot complete. This will try to download the source and upload it
+          // to the new path, then remove the original. This recovers from
+          // inconsistent storage state (e.g. when db.storage_path points to a
+          // file that isn't present under the expected key).
+          const errMsg = formattedError.message || '';
+          const notFound = formattedError.status === 404 || /not found|no such file|no such object/i.test(errMsg);
+          const alreadyExists = /resource already exists|already exists|file already exists/i.test(errMsg);
+
+          // If the destination already exists, treat the move as successful
+          // from an application perspective: remove the source (best-effort)
+          // and continue to update the database record.
+          if (alreadyExists) {
+            try {
+              const { error: removeErr } = await supabase.storage.from('photos').remove([currentPath]);
+              if (removeErr) console.warn('Failed to remove original after move collision:', removeErr);
+              else console.log('Removed original after move collision:', currentPath);
+            } catch (remErr) {
+              console.warn('Error removing original after move collision:', remErr && remErr.message);
+            }
+            // Clear the move error so downstream logic knows the move was
+            // handled and skips the 'not found' fallback path.
+            moveError = null;
+            // fall through to DB update
+          } else if (!notFound) {
+            // For non-recoverable errors (permissions, network), return 500 with details
+            const payload = { success: false, error: errMsg || 'Failed to move file in storage' };
+            if (INCLUDE_ERROR_DETAILS) payload.error_details = formattedError;
+            return res.status(500).json(payload);
+          }
+
+          // At this point we believe the source may be missing and only then
+          // should we attempt the fallback copy from storage. If the error was
+          // a destination-collision ('already exists'), the branch above will
+          // have handled cleanup and we should NOT attempt this fallback.
+          // Only attempt the fallback copy when the move error still indicates
+          // the source was not found. If we cleared moveError above (alreadyExists
+          // case), skip this fallback entirely.
+          if (notFound && moveError) {
+            console.warn('Supabase move failed, attempting fallback copy. source=', currentPath, 'dest=', newPath, 'err=', errMsg);
+
+            try {
+              // Try to download the source object
+              const { data: downloadData, error: downloadError } = await supabase.storage
+                .from('photos')
+                .download(currentPath);
+
+              if (downloadError) {
+                const formattedDownloadErr = formatStorageError(downloadError);
+                console.error('Fallback download failed for', currentPath, formattedDownloadErr);
+                const payload = { success: false, error: formattedDownloadErr.message || 'Failed to download source during fallback' };
+                if (INCLUDE_ERROR_DETAILS) payload.error_details = formattedDownloadErr;
+                return res.status(500).json(payload);
+              }
+
+              const arrayBuffer = await downloadData.arrayBuffer();
+              const fileBuffer = Buffer.from(arrayBuffer);
+
+              // Infer content type from extension
+              const ext = path.extname(currentPath).toLowerCase();
+              let contentType = 'application/octet-stream';
+              if (ext === '.jpg' || ext === '.jpeg') contentType = 'image/jpeg';
+              else if (ext === '.png') contentType = 'image/png';
+              else if (ext === '.gif') contentType = 'image/gif';
+              else if (ext === '.heic' || ext === '.heif') contentType = 'image/heic';
+
+              // Upload to the new path (use upsert to be tolerant)
+              const { data: _uploadData, error: uploadError } = await supabase.storage
+                .from('photos')
+                .upload(newPath, fileBuffer, {
+                  contentType,
+                  upsert: true,
+                  duplex: false
+                });
+
+              if (uploadError) {
+                const formattedUploadErr = formatStorageError(uploadError);
+                console.error('Fallback upload failed for', newPath, formattedUploadErr);
+                const payload = { success: false, error: formattedUploadErr.message || 'Failed to upload during fallback' };
+                if (INCLUDE_ERROR_DETAILS) payload.error_details = formattedUploadErr;
+                return res.status(500).json(payload);
+              }
+
+              // Try to remove the original if it exists (best-effort)
+              try {
+                const { error: removeErr } = await supabase.storage.from('photos').remove([currentPath]);
+                if (removeErr) console.warn('Failed to remove original after fallback copy:', removeErr);
+              } catch (remErr) {
+                console.warn('Error removing original after fallback copy:', remErr && remErr.message);
+              }
+
+              console.log('Fallback copy succeeded for', currentPath, '->', newPath);
+              // fall-through to database update
+            } catch (fallbackErr) {
+              const formattedFallbackErr = formatStorageError(fallbackErr);
+              console.error('Fallback copy exception for', currentPath, formattedFallbackErr.message || formattedFallbackErr);
+              const payload = { success: false, error: formattedFallbackErr.message || 'Failed fallback copy in storage' };
+              if (INCLUDE_ERROR_DETAILS) payload.error_details = formattedFallbackErr;
+              return res.status(500).json(payload);
+            }
+          }
         }
       }
 

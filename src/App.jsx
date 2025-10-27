@@ -113,13 +113,15 @@ function App() {
   useEffect(() => {
     window.logGlobalError = logGlobalError;
   }, []);
-  // Load photos
-  const loadPhotos = useCallback(async (stateOverride) => {
+  // Load photos. Accept an explicit endpoint so the function identity is stable
+  // (doesn't capture `showInprogress`/`showFinished`) and can be included in
+  // effect dependency arrays without disabling eslint. Callers must pass the
+  // desired endpoint (e.g. 'working', 'inprogress', 'finished'). If omitted,
+  // default to 'working'.
+  const loadPhotos = useCallback(async (endpointOverride) => {
     setLoading(true);
     try {
-      const endpoint = typeof stateOverride === 'string'
-        ? stateOverride
-        : (showFinished ? 'finished' : (showInprogress ? 'inprogress' : 'working'));
+      const endpoint = typeof endpointOverride === 'string' ? endpointOverride : 'working';
       const res = await getPhotos(endpoint);
       const backendOrigin = 'http://localhost:3001';
       const photosWithFullUrls = (res.photos || []).map(p => ({
@@ -133,10 +135,12 @@ function App() {
     } finally {
       setLoading(false);
     }
-  }, [showFinished, showInprogress, setPhotos, setToast]);
+  }, [setPhotos, setToast]);
 
+  // Compute current endpoint from view flags and call loadPhotos with it.
   useEffect(() => {
-    loadPhotos();
+    const endpoint = showFinished ? 'finished' : (showInprogress ? 'inprogress' : 'working');
+    loadPhotos(endpoint);
   }, [showInprogress, showFinished, loadPhotos]);
 
   // Load privileges after photos are loaded
@@ -249,7 +253,10 @@ function App() {
       }
       setToolbarMessage(`Successfully uploaded ${filteredLocalPhotos.length} photos`);
       // Refresh the photo list for the current tab
-      await loadPhotos();
+      {
+        const endpoint = showFinished ? 'finished' : (showInprogress ? 'inprogress' : 'working');
+        await loadPhotos(endpoint);
+      }
       setLocalPhotos([]);
       setShowLocalPicker(false);
     } catch (error) {
@@ -268,7 +275,8 @@ function App() {
         setToast(`Error moving photo: ${err?.message || 'unknown'}`)
       } else {
         // Reload inprogress list if that's the current tab, otherwise reload working
-        await loadPhotos();
+        const endpoint = showFinished ? 'finished' : (showInprogress ? 'inprogress' : 'working');
+        await loadPhotos(endpoint);
       }
     } catch (error) {
       setToast(`Error moving photo: ${error.message}`)
@@ -279,7 +287,10 @@ function App() {
   const handleMoveToWorking = async (id) => {
     try {
       await updatePhotoState(id, 'working');
-      await loadPhotos();
+      {
+        const endpoint = showFinished ? 'finished' : (showInprogress ? 'inprogress' : 'working');
+        await loadPhotos(endpoint);
+      }
     } catch (error) {
       setToast(`Error moving photo back to staged: ${error.message}`)
     }
@@ -498,60 +509,26 @@ function App() {
 
   // Listen for messages from edit tabs/windows
   React.useEffect(() => {
-    const loadPrivileges = async () => {
-      if (photos.length === 0) return;
-
-      // initialize to Loading so UI shows progress
-      const initial = {};
-      for (const p of photos) initial[p.id] = 'Loading...';
-      setPrivilegesMap(initial);
-
-      // Fallback to individual checks if batch fails
+    const onMessage = (ev) => {
       try {
-        const filenames = photos.map(photo => photo.filename);
-        const batchResult = await checkPrivilegesBatch(filenames);
-        const map = {};
-        for (const photo of photos) {
-          const priv = batchResult && batchResult[photo.filename];
-          map[photo.id] = priv || '?';
+        const m = ev.data || {};
+        if (m && m.type === 'updateCaption') {
+          // Update photo caption in store when edit window posts an update
+          updatePhotoData(m.id, { caption: m.caption });
+        } else if (m && m.type === 'markFinished') {
+          // Mark finished acknowledgement will be handled elsewhere; ignore here
         }
-        setPrivilegesMap(map);
-      } catch (e) {
-        // If batch fails, fall back to individual checks one-by-one
-        console.warn('Batch privileges failed, falling back to individual checks:', e);
-        const map = {};
-        for (const photo of photos) {
-          try {
-            const res = await checkPrivilege(photo.filename);
-            const privObj = res && (
-              res.privileges ||
-              res.privilege ||
-              ((res.canRead || res.canWrite || res.canExecute) ? res : null)
-            );
-            if (privObj && privObj.read !== undefined) {
-              privObj.canRead = privObj.read;
-              privObj.canWrite = privObj.write;
-              privObj.canExecute = privObj.execute;
-            }
-            if (privObj) {
-              const privArr = [];
-              if (privObj.canRead) privArr.push('R');
-              if (privObj.canWrite) privArr.push('W');
-              if (privObj.canExecute) privArr.push('X');
-              map[photo.id] = privArr.length > 0 ? privArr.join('') : '?';
-            } else {
-              map[photo.id] = '?';
-            }
-          } catch (err2) {
-            console.warn('Privilege check failed for', photo.filename, err2);
-            map[photo.id] = 'Err';
-          }
-        }
-        setPrivilegesMap(map);
+      } catch {
+        // ignore
       }
     };
-    loadPrivileges();
-  }, [photos]);
+    if (typeof window !== 'undefined' && window.addEventListener) {
+      window.addEventListener('message', onMessage);
+    }
+    return () => {
+      try { if (typeof window !== 'undefined' && window.removeEventListener) window.removeEventListener('message', onMessage); } catch { /* ignore */ }
+    };
+  }, [updatePhotoData]);
 // ...existing code...
 
   // Photo Editing Modal Component

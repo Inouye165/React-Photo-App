@@ -27,11 +27,23 @@ out:json][timeout:25];(node(around:${radiusMeters},${lat},${lon})["name"];way(ar
     });
     if (!res.ok) return [];
     const data = await res.json();
-    const names = new Set();
+    const pois = [];
     if (data.elements && Array.isArray(data.elements)) {
-      for (const el of data.elements) if (el.tags && el.tags.name) names.add(el.tags.name);
+      for (const el of data.elements) {
+        if (el.tags && el.tags.name) {
+          // Determine coordinates: node has lat/lon, way/rel may have center
+          const latVal = el.lat || (el.center && el.center.lat) || null;
+          const lonVal = el.lon || (el.center && el.center.lon) || null;
+          pois.push({
+            name: el.tags.name,
+            lat: latVal,
+            lon: lonVal,
+            tags: el.tags
+          });
+        }
+      }
     }
-    return Array.from(names);
+    return pois;
   } catch {
     return [];
   }

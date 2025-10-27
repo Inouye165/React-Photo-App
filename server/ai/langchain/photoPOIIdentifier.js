@@ -2,6 +2,9 @@
 const { tool } = require('@langchain/core/tools');
 const { z } = require('zod');
 const OpenAI = require('openai');
+// Use real-world POI lookups via OpenStreetMap Overpass/Nominatim
+const { geolocate } = require('./geolocateTool');
+const Fuse = require('fuse.js');
 
 // Configuration constants
 const CONFIG = {
@@ -19,13 +22,18 @@ const CONFIG = {
   vision_model: 'gpt-4o'
 };
 
-// Haversine distance calculation
+// Haversine distance calculation (used to compute real distances to OSM POIs)
 function calculateDistance(lat1, lng1, lat2, lng2) {
+  const aLat = parseFloat(lat1);
+  const aLng = parseFloat(lng1);
+  const bLat = parseFloat(lat2);
+  const bLng = parseFloat(lng2);
+  if (![aLat, aLng, bLat, bLng].every(n => Number.isFinite(n))) return 0;
   const R = 3959; // Earth's radius in miles
-  const dLat = (lat2 - lat1) * Math.PI / 180;
-  const dLng = (lng2 - lng1) * Math.PI / 180;
+  const dLat = (bLat - aLat) * Math.PI / 180;
+  const dLng = (bLng - aLng) * Math.PI / 180;
   const a = Math.sin(dLat/2) * Math.sin(dLat/2) +
-    Math.cos(lat1 * Math.PI / 180) * Math.cos(lat2 * Math.PI / 180) *
+    Math.cos(aLat * Math.PI / 180) * Math.cos(bLat * Math.PI / 180) *
     Math.sin(dLng/2) * Math.sin(dLng/2);
   const c = 2 * Math.atan2(Math.sqrt(a), Math.sqrt(1-a));
   return R * c;
@@ -57,160 +65,105 @@ Analyze this photo carefully and provide a detailed JSON response about what you
 
 IMPORTANT: If you can read any text in the photo (restaurant name, menu items, business signage), include it in "visible_text" and "business_name". Look for distinctive architectural features, logos, or branding that could identify the specific location.`;
 
-// Mock POI database - in production, integrate with Google Places, OSM, etc.
-const MOCK_POI_DATABASE = {
-  // Yellowstone National Park POIs
-  yellowstone: [
-    {
-      name: "Old Faithful Geyser",
-      type: "natural_landmark",
-      category: "geyser",
-      lat: 44.4605,
-      lng: -110.8281,
-      description: "Iconic geyser that erupts regularly",
-      has_water_feature: true,
-      visual_keywords: ["geyser", "steam", "eruption", "thermal", "hot spring"]
-    },
-    {
-      name: "Lake Yellowstone Hotel Dining Room",
-      type: "restaurant",
-      category: "fine_dining",
-      lat: 44.5439,
-      lng: -110.4011,
-      description: "Elegant dining room with lake views",
-      has_water_feature: true,
-      has_mountain_view: true,
-      visual_keywords: ["dining", "tables", "lake", "elegant", "restaurant"]
-    },
-    {
-      name: "Old Faithful Inn Dining Room",
-      type: "restaurant",
-      category: "casual_dining",
-      lat: 44.4594,
-      lng: -110.8300,
-      description: "Rustic dining in historic lodge",
-      visual_keywords: ["lodge", "rustic", "historic", "dining", "inn"]
-    },
-    {
-      name: "Yellowstone Lake",
-      type: "natural_landmark",
-      category: "lake",
-      lat: 44.5400,
-      lng: -110.4000,
-      description: "Large alpine lake in Yellowstone",
-      has_water_feature: true,
-      has_mountain_view: true,
-      visual_keywords: ["lake", "water", "mountains", "shore", "alpine"]
-    },
-    {
-      name: "Grand Canyon of the Yellowstone",
-      type: "natural_landmark",
-      category: "canyon",
-      lat: 44.7417,
-      lng: -110.4994,
-      description: "Spectacular canyon with waterfalls",
-      has_water_feature: true,
-      visual_keywords: ["canyon", "falls", "river", "cliff", "waterfall"]
-    }
-  ],
+// NOTE: The old MOCK_POI_DATABASE and local helper search functions were removed
+// in favor of live Overpass/Nominatim queries via `geolocateTool.geolocate`.
+// This file now performs: (1) Vision Analysis -> (2) Real POI Fetch -> (3) Rank & Match
 
-  // Maui, Hawaii POIs
-  maui: [
-    {
-      name: "Merriman's Maui",
-      type: "restaurant",
-      category: "fine_dining",
-      lat: 20.9986,
-      lng: -156.6673,
-      description: "Renowned fine dining restaurant at Kapalua Bay Hotel",
-      has_ocean_view: true,
-      visual_keywords: ["seafood", "clams", "citrus", "fine dining", "kapalua", "maui", "ocean", "sunset"]
-    },
-    {
-      name: "Mama's Fish House",
-      type: "restaurant",
-      category: "seafood",
-      lat: 20.9271,
-      lng: -156.6933,
-      description: "Iconic oceanfront seafood restaurant in Paia",
-      has_ocean_view: true,
-      visual_keywords: ["seafood", "ocean", "fish", "clams", "tropical", "maui"]
-    },
-    {
-      name: " Lahaina Grill",
-      type: "restaurant",
-      category: "fine_dining",
-      lat: 20.8734,
-      lng: -156.6799,
-      description: "Upscale restaurant in Lahaina with Hawaiian cuisine",
-      has_ocean_view: true,
-      visual_keywords: ["hawaiian", "grill", "ocean", "lahaina", "upscale"]
-    },
-    {
-      name: "Paia Fish Market",
-      type: "restaurant",
-      category: "casual_dining",
-      lat: 20.9297,
-      lng: -156.3667,
-      description: "Casual seafood restaurant in Paia",
-      has_ocean_view: true,
-      visual_keywords: ["fish", "market", "paia", "casual", "seafood"]
-    },
-    {
-      name: "Honolua Store",
-      type: "store",
-      category: "grocery",
-      lat: 21.0158,
-      lng: -156.6458,
-      description: "Local grocery store in Honolua Bay area",
-      has_ocean_view: true,
-      visual_keywords: ["grocery", "store", "local", "honolua", "convenience"]
-    },
-    {
-      name: "Napili Bay",
-      type: "natural_landmark",
-      category: "beach",
-      lat: 20.9967,
-      lng: -156.6672,
-      description: "Beautiful beach in West Maui",
-      has_ocean_view: true,
-      has_water_feature: true,
-      visual_keywords: ["beach", "ocean", "sand", "napili", "swimming"]
-    }
-  ],
+// Helper to normalize OSM tags into app-specific categories
+function normalizePOICategory(tags) {
+  if (!tags) return 'poi';
 
-  // Generic POI patterns for broader matching
-  generic: [
-    {
-      name: "Local Restaurant",
-      type: "restaurant",
-      category: "restaurant",
-      description: "Restaurant establishment",
-      visual_keywords: ["food", "tables", "chairs", "menu", "dining"]
-    },
-    {
-      name: "Local Seafood Restaurant",
-      type: "restaurant",
-      category: "seafood",
-      description: "Seafood restaurant",
-      visual_keywords: ["seafood", "fish", "ocean", "fresh", "marine"]
-    },
-    {
-      name: "Local Park",
-      type: "recreation",
-      category: "park",
-      description: "Public park area",
-      visual_keywords: ["park", "trees", "grass", "bench", "playground"]
-    },
-    {
-      name: "Local Store",
-      type: "store",
-      category: "retail",
-      description: "Retail establishment",
-      visual_keywords: ["shelves", "products", "shopping", "store", "retail"]
+  // 1. Restaurants / Food
+  if (tags.amenity) {
+    if (tags.amenity === 'restaurant' || tags.amenity === 'cafe' || tags.amenity === 'fast_food' || tags.amenity === 'bar' || tags.amenity === 'pub') {
+      return 'restaurant';
     }
-  ]
-};
+  }
+
+  // 2. Stores / Shops
+  if (tags.shop) {
+    return 'store'; // Covers supermarket, convenience, clothes, etc.
+  }
+
+  // 3. Parks / Recreation
+  if (tags.leisure) {
+    if (tags.leisure === 'park' || tags.leisure === 'nature_reserve' || tags.leisure === 'playground' || tags.leisure === 'garden' || tags.leisure === 'fitness_centre') {
+      return 'park';
+    }
+  }
+
+  // 4. Landmarks / Tourism (Man-made)
+  if (tags.tourism) {
+    if (tags.tourism === 'hotel' || tags.tourism === 'museum' || tags.tourism === 'attraction' || tags.tourism === 'viewpoint' || tags.tourism === 'gallery') {
+      return 'landmark';
+    }
+  }
+  if (tags.historic) {
+    if (tags.historic === 'monument' || tags.historic === 'castle' || tags.historic === 'ruins' || tags.historic === 'memorial') {
+      return 'landmark';
+    }
+  }
+
+  // 5. Natural Landmarks
+  if (tags.natural) {
+    if (tags.natural === 'peak' || tags.natural === 'volcano' || tags.natural === 'beach' || tags.natural === 'coastline' || tags.natural === 'geyser' || tags.natural === 'hot_spring') {
+      return 'natural_landmark';
+    }
+  }
+
+  return 'poi'; // Default category
+}
+
+// Helper to match vision analysis (text, keywords) against real POI data
+function performVisionMatching(realPOIs, sceneAnalysis) {
+  if (!sceneAnalysis || (!sceneAnalysis.business_name && (sceneAnalysis.visible_text || []).length === 0 && (sceneAnalysis.search_keywords || []).length === 0)) {
+    // No visual data to match against, return POIs as-is
+    return realPOIs;
+  }
+
+  // 1. Prepare search terms from vision
+  const nameQueries = [sceneAnalysis.business_name, ...(sceneAnalysis.visible_text || [])].filter(Boolean);
+  const keywordQueries = [...(sceneAnalysis.search_keywords || []), ...(sceneAnalysis.visual_elements || [])];
+
+  // 2. Configure Fuse.js for fuzzy name matching
+  const fuse = new Fuse(realPOIs, {
+    keys: ['name'],
+    threshold: 0.4, // 0.0 = perfect match, 1.0 = any match. 0.4 is a good starting point.
+    includeScore: true,
+  });
+
+  // 3. Perform fuzzy search for business names
+  const nameMatches = new Map();
+  if (nameQueries.length > 0) {
+    nameQueries.forEach(query => {
+      const results = fuse.search(query);
+      results.forEach(result => {
+        if (result.score <= 0.4) { // Only accept good matches
+          nameMatches.set(result.item.name, true);
+        }
+      });
+    });
+  }
+
+  // 4. Perform simple keyword matching
+  const keywordMatches = new Map();
+  if (keywordQueries.length > 0) {
+    realPOIs.forEach(poi => {
+      const poiText = [poi.name, ...(poi.visual_keywords || [])].join(' ').toLowerCase();
+      const hasKeywordMatch = keywordQueries.some(kw => poiText.includes(String(kw || '').toLowerCase()));
+      if (hasKeywordMatch) {
+        keywordMatches.set(poi.name, true);
+      }
+    });
+  }
+
+  // 5. Return updated POI list with match flags
+  return realPOIs.map(poi => ({
+    ...poi,
+    business_name_match: nameMatches.has(poi.name) || false,
+    keyword_match: keywordMatches.has(poi.name) || false,
+  }));
+}
 
 class PhotoPOIIdentifierNode {
   constructor(openaiApiKey) {
@@ -324,83 +277,11 @@ class PhotoPOIIdentifierNode {
       natural_features: []
     };
   }
+ 
 
-  searchNearbyPOIs(lat, lng, sceneAnalysis) {
-    const categories = sceneAnalysis.likely_categories || [];
-    const radius = this.getSearchRadius(sceneAnalysis.scene_type);
-
-    const nearbyPOIs = [];
-
-    // Search through all POI databases
-    Object.values(MOCK_POI_DATABASE).forEach(poiList => {
-      poiList.forEach(poi => {
-        const distance = calculateDistance(lat, lng, poi.lat, poi.lng);
-
-        if (distance <= radius) {
-          // Check if POI matches scene analysis
-          const categoryMatch = categories.length > 0 ? categories.some(cat =>
-            poi.category.toLowerCase().includes(cat.toLowerCase()) ||
-            cat.toLowerCase().includes(poi.category.toLowerCase())
-          ) : false; // No category matching if no categories from vision
-
-          const keywordMatch = this.checkKeywordMatch(sceneAnalysis, poi);
-
-          // Check for business name match from visible text
-          const businessNameMatch = this.checkBusinessNameMatch(sceneAnalysis, poi);
-
-          // If vision analysis failed (low confidence), be more permissive and include nearby POIs
-          const visionFailed = sceneAnalysis.confidence === 'low';
-          const shouldInclude = visionFailed || categoryMatch || keywordMatch || businessNameMatch;
-
-          if (shouldInclude) {
-            nearbyPOIs.push({
-              ...poi,
-              distance_miles: distance,
-              category_match: categoryMatch,
-              keyword_match: keywordMatch,
-              business_name_match: businessNameMatch,
-              included_due_to_vision_failure: visionFailed && !categoryMatch && !keywordMatch && !businessNameMatch
-            });
-          }
-        }
-      });
-    });
-
-    return nearbyPOIs;
-  }
-
-  checkKeywordMatch(sceneAnalysis, poi) {
-    const searchKeywords = sceneAnalysis.search_keywords || [];
-    const visualKeywords = sceneAnalysis.visual_elements || [];
-    const poiKeywords = poi.visual_keywords || [];
-
-    const allSearchTerms = [...searchKeywords, ...visualKeywords];
-
-    return allSearchTerms.some(term =>
-      poiKeywords.some(poiKeyword =>
-        poiKeyword.toLowerCase().includes(term.toLowerCase()) ||
-        term.toLowerCase().includes(poiKeyword.toLowerCase())
-      )
-    );
-  }
-
-  checkBusinessNameMatch(sceneAnalysis, poi) {
-    const businessName = sceneAnalysis.business_name;
-    const visibleText = sceneAnalysis.visible_text || [];
-
-    if (!businessName) return false;
-
-    // Check if business name matches POI name
-    const nameMatch = poi.name.toLowerCase().includes(businessName.toLowerCase()) ||
-                     businessName.toLowerCase().includes(poi.name.toLowerCase());
-
-    // Check if business name appears in visible text
-    const textMatch = visibleText.some(text =>
-      text.toLowerCase().includes(businessName.toLowerCase())
-    );
-
-    return nameMatch || textMatch;
-  }
+  // Note: Local keyword and business-name matching logic was intentionally removed.
+  // The ranker now receives POI objects returned from the external `geolocate` tool
+  // and uses the existing `rankPOIs` flow to score and return results.
 
   getSearchRadius(sceneType) {
     return CONFIG.category_specific_radius[sceneType] || CONFIG.default_search_radius_miles;
@@ -502,12 +383,79 @@ class PhotoPOIIdentifierNode {
       };
     }
 
-    try {
-      // Step 2: Search for nearby POIs (always try this)
-      const nearbyPOIs = this.searchNearbyPOIs(latitude, longitude, sceneAnalysis);
 
-      // Step 3: Rank POIs by relevance
-      const rankedPOIs = this.rankPOIs(nearbyPOIs, sceneAnalysis, { lat: latitude, lng: longitude });
+    try {
+      // Step 2: Fetch real-world POIs using the geolocate tool
+      let realPOIs = [];
+      try {
+        // geolocate expects a gpsString like "lat,lon"
+        const gpsString = `${latitude},${longitude}`;
+        const geoData = await geolocate({ gpsString });
+
+        // Format the real POI object array into the object array our ranker expects
+        if (geoData && geoData.nearby) {
+          realPOIs = geoData.nearby.map(p => {
+            // Support both legacy string "name" entries and new object entries
+            if (!p) return null;
+            if (typeof p === 'string') {
+              return {
+                name: p,
+                type: 'poi',
+                category: 'poi',
+                lat: latitude,
+                lng: longitude,
+                distance_miles: 0,
+                visual_keywords: [String(p).toLowerCase()],
+                has_ocean_view: false,
+                has_mountain_view: false,
+                has_water_feature: false,
+                category_match: false,
+                keyword_match: false,
+                business_name_match: false,
+                included_due_to_vision_failure: false
+              };
+            }
+
+            const poiLat = p.lat || (p.center && p.center.lat) || latitude;
+            const poiLon = p.lon || (p.center && p.center.lon) || longitude;
+            const distance = calculateDistance(latitude, longitude, poiLat, poiLon) || 0;
+
+            // Try to infer a category from common OSM tags and normalize it
+            const tags = p.tags || {};
+            const category = normalizePOICategory(tags);
+
+            // Visual keywords: include name and up to a few tag values
+            const tagValues = Object.values(tags || {}).slice(0, 3).map(v => String(v).toLowerCase());
+            const visualKeywords = [String(p.name).toLowerCase(), category, ...tagValues];
+
+            const has_water_feature = (tags && (tags.natural === 'water' || tags.natural === 'beach' || tags.waterway));
+
+            return {
+              name: p.name,
+              type: category,
+              category: category,
+              lat: poiLat,
+              lng: poiLon,
+              distance_miles: distance,
+              visual_keywords: visualKeywords.filter(Boolean),
+              has_ocean_view: (tags && (tags.natural === 'coastline' || tags.natural === 'beach')),
+              has_mountain_view: (tags && (tags.natural === 'peak' || tags.natural === 'volcano')),
+              has_water_feature: !!has_water_feature,
+              // business_name_match and keyword_match will be set after vision matching
+            };
+          }).filter(Boolean);
+        }
+      } catch (geoError) {
+        console.error('Real-time POI lookup failed:', geoError && geoError.message ? geoError.message : geoError);
+        // Continue with empty POI list
+        realPOIs = [];
+      }
+
+  // Step 3: Match visual analysis against real POIs
+  const matchedPOIs = performVisionMatching(realPOIs, sceneAnalysis);
+
+  // Step 4: Rank POIs by relevance using matched POIs
+  const rankedPOIs = this.rankPOIs(matchedPOIs, sceneAnalysis, { lat: latitude, lng: longitude });
 
       // Step 4: Determine best match
       const bestMatch = rankedPOIs.length > 0 ? {
@@ -596,4 +544,4 @@ const photoPOIIdentifierTool = tool(
   }
 );
 
-module.exports = { PhotoPOIIdentifierNode, photoPOIIdentifierTool };
+module.exports = { PhotoPOIIdentifierNode, photoPOIIdentifierTool, performVisionMatching, normalizePOICategory };

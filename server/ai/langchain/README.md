@@ -62,6 +62,12 @@ The `photoPOIIdentifier.js` implements a comprehensive LangChain node for identi
 - **Intelligent Ranking**: Multi-factor scoring combining distance, category match, visual features, and keyword relevance
 - **Structured Output**: Returns detailed JSON with scene analysis, POI rankings, and confidence scores
 
+### Recent Change: Real POI lookups
+
+- The `photoPOIIdentifier` has been refactored to remove the local MOCK_POI_DATABASE.
+- It now calls the `geolocateTool` internally to fetch real-world POI names from OpenStreetMap (Nominatim + Overpass) and converts those into the internal POI shape for ranking against the GPT vision analysis.
+- This makes the POI suggestions dynamic and up-to-date with live OSM data; tests mock the `geolocate` function to avoid network calls in CI.
+
 ### Usage
 ```javascript
 const { photoPOIIdentifierTool } = require('./photoPOIIdentifier.js');

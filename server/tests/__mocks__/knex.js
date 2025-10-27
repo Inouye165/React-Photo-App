@@ -87,7 +87,8 @@ const createTableQuery = (table) => {
       if (Object.keys(query._whereConditions).length > 0) {
         photos = photos.filter(photo => {
           return Object.entries(query._whereConditions).every(([key, value]) => {
-            return photo[key] === value;
+            // Allow loose equality to match numeric DB ids against string params
+            return photo[key] == value;
           });
         });
       }
@@ -100,7 +101,8 @@ const createTableQuery = (table) => {
       if (Object.keys(query._whereConditions).length > 0) {
         photos = photos.filter(photo => {
           return Object.entries(query._whereConditions).every(([key, value]) => {
-            return photo[key] === value;
+            // Allow loose equality to match numeric DB ids against string params
+            return photo[key] == value;
           });
         });
       }
@@ -128,7 +130,8 @@ const createTableQuery = (table) => {
       for (const [id, photo] of Array.from(mockPhotos.entries())) {
         if (Object.keys(query._whereConditions).length > 0) {
           const matches = Object.entries(query._whereConditions).every(([key, value]) => {
-            return photo[key] === value;
+            // Allow loose equality to match numeric DB ids against string params
+            return photo[key] == value;
           });
           if (!matches) continue;
         }
@@ -147,7 +150,8 @@ const createTableQuery = (table) => {
       let deleted = 0;
       for (const [id, photo] of Array.from(mockPhotos.entries())) {
         const matches = Object.entries(query._whereConditions).every(([key, value]) => {
-          return photo[key] === value;
+          // Allow loose equality to match numeric DB ids against string params
+          return photo[key] == value;
         });
         if (matches) {
           mockPhotos.delete(id);
@@ -171,7 +175,8 @@ const createTableQuery = (table) => {
       if (Object.keys(query._whereConditions).length > 0) {
         users = users.filter(user => {
           return Object.entries(query._whereConditions).every(([key, value]) => {
-            return user[key] === value;
+            // Allow loose equality to match numeric DB ids against string params
+            return user[key] == value;
           });
         });
       }
@@ -201,7 +206,8 @@ const createTableQuery = (table) => {
         // Check if this user matches where conditions
         if (Object.keys(query._whereConditions).length > 0) {
           const matches = Object.entries(query._whereConditions).every(([key, value]) => {
-            return user[key] === value;
+            // Allow loose equality to match numeric DB ids against string params
+            return user[key] == value;
           });
 
           if (!matches) continue;

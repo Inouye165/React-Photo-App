@@ -6,11 +6,12 @@
 
 const mockStorageFiles = new Map();
 const mockStorageErrors = new Map();
+const mockMoveErrors = new Map();
 
 const createMockSupabaseClient = () => {
   return {
-    storage: {
-      from: (bucket) => ({
+  storage: {
+  from: (bucket) => ({
         upload: jest.fn().mockImplementation((path, file, options = {}) => {
           const key = `${bucket}/${path}`;
           
@@ -112,6 +113,34 @@ const createMockSupabaseClient = () => {
             error: null
           };
         })
+        ,
+        // Simulate move operation
+        move: jest.fn().mockImplementation((fromPath, toPath) => {
+          const key = `${bucket}/${fromPath}`;
+
+          // If a specific move error is set, return it
+          if (mockMoveErrors.has(key)) {
+            return { data: null, error: mockMoveErrors.get(key) };
+          }
+
+          // If a general storage error is set for the source, return it
+          if (mockStorageErrors.has(key)) {
+            return { data: null, error: mockStorageErrors.get(key) };
+          }
+
+          // If source doesn't exist, return not found
+          if (!mockStorageFiles.has(key)) {
+            return { data: null, error: { message: 'File not found', status: 404 } };
+          }
+
+          // Perform move
+          const fileData = mockStorageFiles.get(key);
+          const destKey = `${bucket}/${toPath}`;
+          mockStorageFiles.set(destKey, { ...fileData, path: toPath });
+          mockStorageFiles.delete(key);
+
+          return { data: { moved: true }, error: null };
+        })
       })
     }
   };
@@ -140,6 +169,12 @@ const mockStorageHelpers = {
   setMockError: (bucket, path, error) => {
     const key = `${bucket}/${path}`;
     mockStorageErrors.set(key, error);
+  },
+  
+  // Set an error specifically for move operations (so download/upload can still work)
+  setMockMoveError: (bucket, path, error) => {
+    const key = `${bucket}/${path}`;
+    mockMoveErrors.set(key, error);
   },
   
   // Get all mock files
