@@ -2,41 +2,7 @@
  * Authentication utilities for the photo app
  */
 
-/**
- * Creates an authenticated image URL by adding the auth token as a query parameter
- * @param {string} baseUrl - The base URL for the image
- * @returns {string} The URL with authentication token added
- */
-export function createAuthenticatedImageUrl(baseUrl) {
-  let token;
-  try {
-    token = localStorage.getItem('authToken');
-  } catch (error) {
-    console.warn('Failed to access localStorage:', error);
-    return baseUrl;
-  }
-  
-  if (!token || token.trim() === '') {
-    return baseUrl;
-  }
-  
-  try {
-    let url;
-    // Handle relative URLs by creating a URL relative to current location
-    if (baseUrl.startsWith('/')) {
-      url = new URL(baseUrl, window.location.origin);
-    } else {
-      url = new URL(baseUrl);
-    }
-    
-    url.searchParams.set('token', token);
-    return url.toString();
-  } catch (error) {
-    // If URL parsing fails, return original URL
-    console.warn('Failed to parse URL for authentication:', baseUrl, error);
-    return baseUrl;
-  }
-}
+// createAuthenticatedImageUrl removed: frontend now uses signed URLs from backend/supabase storage
 
 /**
  * Gets the auth token from localStorage

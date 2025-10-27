@@ -24,11 +24,12 @@ export default function ImageCanvasEditor({ imageUrl, caption, textStyle, onSave
   useEffect(() => {
     setImageError(null);
     setImage(null);
-    
+    const triedInline = { current: false };
+
     const img = new window.Image();
     img.crossOrigin = 'anonymous';
     img.src = imageUrl;
-    
+
     img.onload = () => {
       setImage(img);
       setImageError(null);
@@ -67,8 +68,22 @@ export default function ImageCanvasEditor({ imageUrl, caption, textStyle, onSave
         }
       }
     };
-    
+
     img.onerror = () => {
+      // First attempt failed — try an inline-proxy fallback once. This helps
+      // with cross-origin / signed-url CORS issues by asking the server to
+      // stream the bytes with CORS headers.
+      if (!triedInline.current) {
+        triedInline.current = true;
+        try {
+          const sep = imageUrl.includes('?') ? '&' : '?';
+          img.src = `${imageUrl}${sep}inline=1`;
+          return; // wait for onload/onerror again
+        } catch {
+          // fall through to error state below
+        }
+      }
+
       console.error('Failed to load image:', imageUrl);
       setImageError('Failed to load image for editing. It may be an unsupported format or conversion failed.');
       setImage(null);

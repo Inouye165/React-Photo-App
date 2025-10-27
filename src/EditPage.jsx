@@ -1,7 +1,7 @@
 import React, { useState, useEffect } from 'react'
 import ImageCanvasEditor from './ImageCanvasEditor'
 import { useAuth } from './contexts/AuthContext'
-import { createAuthenticatedImageUrl } from './utils/auth.js'
+// Image URLs are provided by the backend as signed URLs; no helper required
 import useStore from './store.js'
 
 export default function EditPage({ photo, onClose, onSave, onFinished }) {
@@ -43,7 +43,7 @@ export default function EditPage({ photo, onClose, onSave, onFinished }) {
 
   if (!photo) return null
 
-  const displayUrl = createAuthenticatedImageUrl(`http://localhost:3001/display/${photo.state}/${photo.filename}`)
+  const displayUrl = photo.url || null
 
   const handleSave = async () => {
     setSaving(true)

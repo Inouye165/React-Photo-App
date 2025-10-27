@@ -16,6 +16,7 @@ const createDebugRouter = require('./routes/debug');
 const createHealthRouter = require('./routes/health');
 const createPrivilegeRouter = require('./routes/privilege');
 const createAuthRouter = require('./routes/auth');
+const createDisplayRouter = require('./routes/display');
 const { configureSecurity, validateRequest, securityErrorHandler } = require('./middleware/security');
 const { authenticateToken } = require('./middleware/auth');
 
@@ -129,6 +130,14 @@ async function startServer() {
 
   // Health check (no auth required)
   app.use(createHealthRouter());
+
+  // Public display route (no authentication) so <img> tags can fetch images
+  try {
+    app.use(createDisplayRouter({ db }));
+    console.log('[server] Public /display route attached');
+  } catch (attachErr) {
+    console.warn('[server] Failed to attach public display route:', attachErr && attachErr.message ? attachErr.message : attachErr);
+  }
 
   // Protected API routes (require authentication)
   app.use(authenticateToken, createPhotosRouter({ db }));

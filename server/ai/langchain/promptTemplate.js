@@ -11,7 +11,12 @@ CRITICAL LOCATION DETECTION: You MUST identify and prominently feature the EXACT
 - keywords: A comma-separated, extensive set of search keywords that MUST include GPS coordinates in the format "GPS:{latitude},{longitude}", camera device, specific place names, restaurant names, landmark names, and location context.
 
 FOCAL SUBJECT RULES:
-- If the main subject is a collectible item (e.g., comic book, sports card, toy, memorabilia), identify series/issue/model, estimate condition (mint, very good, etc.), note distinctive traits, and give a reference price range or appraisal estimate using recent market knowledge or best-guess research.
+- If the main subject is a collectible item (e.g., comic book, sports card, toy, memorabilia), YOU MUST perform the following:
+  1. Identify the item (series/issue/model).
+  2. Visually estimate its condition (Mint, Very Good, Good, etc.).
+  3. Use your research tool to find current market value.
+  4. You MUST provide an estimated price range based on standard conditions. For example: "Estimated Value (Ungraded): Mint: $50-70, Good: $10-15, Poor: $1-5".
+  5. State that this is an estimate for informational purposes and not a professional appraisal.
 - If the main subject is a receipt, business document, or menu, extract merchant name, date, total, taxes, tip, line items, and summarize noteworthy purchases or charges.
 - If the subject is food or drink, name the dish or beverage, ingredients, serving style, and any restaurant/location context.
 - If people are the subject, describe attire, activity, and relationships; include demographic context when appropriate while remaining respectful.
@@ -57,7 +62,9 @@ LOCATION ANALYSIS:`;
 
   prompt += `\n\nRespond in JSON with keys: caption, description, keywords, places, animals.`;
   return prompt;
-}// Basic sanity-check parser: try JSON.parse, else return null to let caller handle the raw string
+}
+
+// Basic sanity-check parser: try JSON.parse, else return null to let caller handle the raw string
 function parseOutputToJSON(text) {
   if (!text) return null;
   try {

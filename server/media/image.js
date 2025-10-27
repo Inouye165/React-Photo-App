@@ -4,6 +4,7 @@ const nodeCrypto = require('crypto');
 const heicConvert = require('heic-convert');
 const fs = require('fs').promises;
 const supabase = require('../lib/supabaseClient');
+const path = require('path');
 
 async function hashFile(fileBuffer) {
   return nodeCrypto.createHash('sha256').update(fileBuffer).digest('hex');
@@ -191,7 +192,34 @@ async function ingestPhoto(db, storagePath, filename, state, fileBuffer) {
       updated_at: now
     }).onConflict('filename').merge();
     
+    // Generate thumbnail (handles HEIC conversion internally when needed)
     await generateThumbnail(fileBuffer, hash);
+
+    // If this is a HEIC/HEIF image, also create a converted JPEG copy in storage
+    try {
+      const s = sharp(fileBuffer);
+      const metadata = await s.metadata();
+      if (metadata && metadata.format === 'heif') {
+        const baseName = path.basename(filename, path.extname(filename));
+        const convertedPath = `converted/${state}/${baseName}.jpg`;
+        try {
+          const jpegBuffer = await convertHeicToJpegBuffer(fileBuffer, 90);
+          const { error: uploadErr } = await supabase.storage.from('photos').upload(convertedPath, jpegBuffer, {
+            contentType: 'image/jpeg',
+            upsert: true,
+            duplex: false
+          });
+          if (uploadErr) {
+            console.warn('Failed to upload converted JPEG during ingest for', convertedPath, uploadErr);
+          }
+        } catch (convErr) {
+          console.warn('HEIC convert during ingest failed for', filename, convErr && convErr.message ? convErr.message : convErr);
+        }
+      }
+    } catch (err) {
+      // ignore metadata detection errors for conversion step but keep a debug log
+      console.debug && console.debug('ingestPhoto: metadata detection failed', err && err.message ? err.message : err);
+    }
     return { duplicate: false, hash };
   } catch {
     // Metadata/hash extraction failed for file (logging removed)

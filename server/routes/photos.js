@@ -1,11 +1,12 @@
 const express = require('express');
 const path = require('path');
-const { convertHeicToJpegBuffer } = require('../media/image');
 const { updatePhotoAIMetadata } = require('../ai/service');
 const { addAIJob, checkRedisAvailable } = require('../queue/index');
 const sharp = require('sharp');
 const exifr = require('exifr');
 const supabase = require('../lib/supabaseClient');
+
+// Note: formatStorageError is defined inside the router factory for scoped usage
 
 module.exports = function createPhotosRouter({ db }) {
   const router = express.Router();
@@ -67,16 +68,68 @@ module.exports = function createPhotosRouter({ db }) {
           }
         }
 
-        // The frontend builds its own authenticated URLs, so we don't need to
-        // generate a public Supabase URL here. We just need to provide the
-        // authenticated thumbnail path.
-        let thumbnail = null;
+        let signedUrl = null;
+        let thumbnailUrl = null;
+        const EXPIRATION = 3600; // 1 hour
 
-        // Thumbnail URL - use display endpoint instead of public URL
+        // 1. Generate Signed URL or display proxy URL for the main image
+        if (row.storage_path) {
+          try {
+            // If the file is HEIC/HEIF, prefer returning an application display URL
+            // so the browser can render a converted JPEG. Otherwise return a
+            // Supabase signed URL so we can offload bandwidth.
+            const storagePath = row.storage_path;
+            const parts = storagePath.split('/');
+            const statePart = parts.length > 1 ? parts[0] : row.state;
+            const filenamePart = parts.slice(1).join('/');
+            const ext = path.extname(filenamePart).toLowerCase();
+            const isHeic = ext === '.heic' || ext === '.heif';
+
+            if (isHeic) {
+              // If a converted JPEG already exists, return a signed URL to it so
+              // the client (editor) can render immediately without following /display
+              try {
+                const convertedPath = `converted/${statePart}/${filenamePart.replace(/\.[^.]+$/, '')}.jpg`;
+                const { data: convData, error: convErr } = await supabase.storage.from('photos').createSignedUrl(convertedPath, EXPIRATION);
+                if (!convErr && convData && convData.signedUrl) {
+                  signedUrl = convData.signedUrl;
+                } else {
+                  // Fallback to application display URL which will convert on-demand
+                  signedUrl = `/display/${encodeURIComponent(statePart)}/${encodeURIComponent(filenamePart)}`;
+                }
+              } catch {
+                signedUrl = `/display/${encodeURIComponent(statePart)}/${encodeURIComponent(filenamePart)}`;
+              }
+            } else {
+              const { data, error } = await supabase.storage
+                .from('photos')
+                .createSignedUrl(storagePath, EXPIRATION);
+              if (error) {
+                console.error(`Error generating signed URL for ${storagePath}:`, error && error.message ? error.message : error);
+              } else if (data && data.signedUrl) {
+                signedUrl = data.signedUrl;
+              }
+            }
+          } catch (e) {
+            console.error('Exception generating signed URL for', row.storage_path, e && e.message ? e.message : e);
+          }
+        }
+
+        // 2. Generate Signed URL for the thumbnail
         if (row.hash) {
-          const _thumbnailPath = `thumbnails/${row.hash}.jpg`;
-          // Use the display endpoint for thumbnails to ensure authentication works
-          thumbnail = `/display/thumbnails/${row.hash}.jpg`;
+          const thumbnailPath = `thumbnails/${row.hash}.jpg`;
+          try {
+            const { data, error } = await supabase.storage
+              .from('photos')
+              .createSignedUrl(thumbnailPath, EXPIRATION);
+            if (error) {
+              console.error(`Error generating signed URL for ${thumbnailPath}:`, error && error.message ? error.message : error);
+            } else if (data && data.signedUrl) {
+              thumbnailUrl = data.signedUrl;
+            }
+          } catch (e) {
+            console.error('Exception generating signed URL for', thumbnailPath, e && e.message ? e.message : e);
+          }
         }
 
         return {
@@ -92,8 +145,8 @@ module.exports = function createPhotosRouter({ db }) {
           textStyle,
           editedFilename: row.edited_filename,
           storagePath: row.storage_path,
-          url: null, // Frontend overwrites this with a secure URL
-          thumbnail
+          url: signedUrl, // Use the new signed URL
+          thumbnail: thumbnailUrl // Use the new signed thumbnail URL
         };
       }));
 
@@ -119,10 +172,63 @@ module.exports = function createPhotosRouter({ db }) {
         try { textStyle = JSON.parse(row.text_style); } catch { textStyle = null; }
       }
 
-      // The frontend builds its own authenticated URLs, so we don't need to
-      // generate a public Supabase URL here.
-      const url = null;
-      const thumbnail = row.hash ? `/display/thumbnails/${row.hash}.jpg` : null;
+      let signedUrl = null;
+      let thumbnailUrl = null;
+      const EXPIRATION = 3600; // 1 hour
+
+      // Generate signed URL or display proxy URL for main image
+      const storagePath = row.storage_path || `${row.state}/${row.filename}`;
+      if (storagePath) {
+        try {
+          const parts = storagePath.split('/');
+          const statePart = parts.length > 1 ? parts[0] : row.state;
+          const filenamePart = parts.slice(1).join('/');
+          const ext = path.extname(filenamePart).toLowerCase();
+          const isHeic = ext === '.heic' || ext === '.heif';
+
+          if (isHeic) {
+            try {
+              const convertedPath = `converted/${statePart}/${filenamePart.replace(/\.[^.]+$/, '')}.jpg`;
+              const { data: convData, error: convErr } = await supabase.storage.from('photos').createSignedUrl(convertedPath, EXPIRATION);
+              if (!convErr && convData && convData.signedUrl) {
+                signedUrl = convData.signedUrl;
+              } else {
+                signedUrl = `/display/${encodeURIComponent(statePart)}/${encodeURIComponent(filenamePart)}`;
+              }
+            } catch {
+              signedUrl = `/display/${encodeURIComponent(statePart)}/${encodeURIComponent(filenamePart)}`;
+            }
+          } else {
+            const { data, error } = await supabase.storage
+              .from('photos')
+              .createSignedUrl(storagePath, EXPIRATION);
+            if (error) {
+              console.error(`Error generating signed URL for ${storagePath}:`, error && error.message ? error.message : error);
+            } else if (data && data.signedUrl) {
+              signedUrl = data.signedUrl;
+            }
+          }
+        } catch (e) {
+          console.error('Exception generating signed URL for', storagePath, e && e.message ? e.message : e);
+        }
+      }
+
+      // Generate signed URL for thumbnail
+      if (row.hash) {
+        const thumbnailPath = `thumbnails/${row.hash}.jpg`;
+        try {
+          const { data, error } = await supabase.storage
+            .from('photos')
+            .createSignedUrl(thumbnailPath, EXPIRATION);
+          if (error) {
+            console.error(`Error generating signed URL for ${thumbnailPath}:`, error && error.message ? error.message : error);
+          } else if (data && data.signedUrl) {
+            thumbnailUrl = data.signedUrl;
+          }
+        } catch (e) {
+          console.error('Exception generating signed URL for', thumbnailPath, e && e.message ? e.message : e);
+        }
+      }
 
       const photo = {
         id: row.id,
@@ -137,8 +243,8 @@ module.exports = function createPhotosRouter({ db }) {
         textStyle,
         editedFilename: row.edited_filename,
         storagePath: row.storage_path,
-        url,
-        thumbnail
+        url: signedUrl,
+        thumbnail: thumbnailUrl
       };
 
       res.set('Cache-Control', 'no-store');
@@ -623,90 +729,8 @@ module.exports = function createPhotosRouter({ db }) {
     }
   });
 
-  // --- Display endpoint: Serve images from Supabase Storage ---
-  router.get('/display/:state/:filename', async (req, res) => {
-    try {
-      const { state, filename } = req.params;
-      
-      // Handle thumbnail requests (state = "thumbnails")
-      if (state === 'thumbnails') {
-        const storagePath = `thumbnails/${filename}`;
-        
-        // Download thumbnail directly from Supabase Storage
-        const { data, error } = await supabase.storage
-          .from('photos')
-          .download(storagePath);
-
-        if (error) {
-          console.error('❌ Thumbnail download error:', error);
-          return res.status(404).json({ error: 'Thumbnail not found in storage' });
-        }
-
-        // Convert data to buffer and serve as JPEG
-        const buffer = await data.arrayBuffer();
-        const fileBuffer = Buffer.from(buffer);
-        
-        res.set('Content-Type', 'image/jpeg');
-        res.send(fileBuffer);
-        return;
-      }
-      
-      // Handle regular photo requests
-      // Find the photo in database to get the correct storage path
-      const photo = await db('photos')
-        .where({ filename, state })
-        .orWhere({ edited_filename: filename, state })
-        .first();
-
-      if (!photo) {
-        return res.status(404).json({ error: 'Photo not found' });
-      }
-
-      // Use storage_path if available, otherwise construct from state/filename
-      const storagePath = photo.storage_path || `${state}/${filename}`;
-      
-      // Download the file from Supabase Storage
-      const { data, error } = await supabase.storage
-        .from('photos')
-        .download(storagePath);
-
-      if (error) {
-        console.error('Supabase download error:', error);
-        return res.status(404).json({ error: 'File not found in storage' });
-      }
-
-      // Convert data to buffer
-      const buffer = await data.arrayBuffer();
-      const fileBuffer = Buffer.from(buffer);
-
-      // Set appropriate content type
-      const ext = path.extname(filename).toLowerCase();
-      let contentType = 'image/jpeg'; // default
-      
-      if (ext === '.png') contentType = 'image/png';
-      else if (ext === '.gif') contentType = 'image/gif';
-      else if (ext === '.heic' || ext === '.heif') contentType = 'image/heic';
-
-      // Convert HEIC to JPEG if needed
-      if (ext === '.heic' || ext === '.heif') {
-        try {
-          const jpegBuffer = await convertHeicToJpegBuffer(fileBuffer);
-          res.set('Content-Type', 'image/jpeg');
-          res.send(jpegBuffer);
-        } catch (conversionError) {
-          console.error('HEIC conversion error:', conversionError);
-          res.status(500).json({ error: 'Failed to convert HEIC image' });
-        }
-      } else {
-        res.set('Content-Type', contentType);
-        res.send(fileBuffer);
-      }
-
-    } catch (err) {
-      console.error('Display endpoint error:', err);
-      res.status(500).json({ error: 'Internal server error' });
-    }
-  });
-
+  
   return router;
 };
+
+// NOTE: the public /display route has been moved to server/routes/display.js

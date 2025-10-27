@@ -6,7 +6,7 @@ import { uploadPhotoToServer, checkPrivilege, checkPrivilegesBatch, getPhotos, u
 import Toolbar from './Toolbar.jsx'
 import PhotoUploadForm from './PhotoUploadForm.jsx'
 import EditPage from './EditPage.jsx'
-import { createAuthenticatedImageUrl } from './utils/auth.js'
+// Signed URLs from backend now provide direct image URLs. No helper needed.
 import useStore from './store.js'
 import useAIPolling from './hooks/useAIPolling.jsx'
 
@@ -123,13 +123,8 @@ function App() {
     try {
       const endpoint = typeof endpointOverride === 'string' ? endpointOverride : 'working';
       const res = await getPhotos(endpoint);
-      const backendOrigin = 'http://localhost:3001';
-      const photosWithFullUrls = (res.photos || []).map(p => ({
-        ...p,
-        url: createAuthenticatedImageUrl(`${backendOrigin}/display/${p.state}/${p.filename}`),
-        thumbnail: p.thumbnail ? createAuthenticatedImageUrl(`${backendOrigin}${p.thumbnail}`) : null
-      }));
-      setPhotos(photosWithFullUrls);
+      // The API returns full signed URLs for `url` and `thumbnail` now.
+      setPhotos(res.photos || []);
     } catch (err) {
       setToast(`Error loading photos from backend: ${err && err.message ? err.message : 'unknown'}`);
     } finally {
@@ -391,7 +386,7 @@ function App() {
   // updates (caption, markFinished) back to this opener window which will then
   // perform state updates and backend calls.
   const _openEditorInNewTab = (photo) => {
-    const _displayUrl = createAuthenticatedImageUrl(`/display/${photo.state}/${photo.filename}`);
+  const _displayUrl = photo.url;
     const id = photo.id;
     const caption = (photo.caption || '').replace(/</g, '&lt;').replace(/>/g, '&gt;');
     const html = `<!doctype html>
@@ -582,7 +577,7 @@ function App() {
 
     if (!photo) return null;
 
-    const displayUrl = createAuthenticatedImageUrl(`/display/${photo.state}/${photo.filename}`);
+  const displayUrl = photo.url;
 
     const modalContent = (
       <div id="photo-editing-modal" className="fixed inset-0 bg-black bg-opacity-75 flex items-center justify-center z-[200000] pointer-events-none" role="dialog" aria-modal="true" aria-label={`Edit ${photo.filename}`}>
@@ -614,7 +609,7 @@ function App() {
               <div className="flex flex-col space-y-4">
                 <div className="bg-gray-50 rounded-lg px-2 py-3 flex items-center justify-center overflow-auto">
                   <img 
-                    src={createAuthenticatedImageUrl(`/display/${photo.state}/${photo.filename}`)} 
+                    src={photo.url} 
                     alt={photo.filename}
                     className="max-w-full w-auto h-auto max-h-[80vh] object-contain rounded shadow-lg"
                   />
@@ -823,7 +818,7 @@ function App() {
                   {/* Left: Image */}
                   <div className="w-2/5 bg-gray-100 rounded overflow-auto flex items-center justify-center px-2 py-3" style={{maxHeight: '100%'}}>
                     <img
-                      src={createAuthenticatedImageUrl(`/display/${selectedPhoto.state}/${selectedPhoto.filename}`)}
+                      src={selectedPhoto.url}
                       alt={selectedPhoto.filename}
                       className="max-h-full max-w-full object-contain"
                       style={{width: 'auto', height: 'auto'}}
