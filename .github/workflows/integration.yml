@@ -27,9 +27,12 @@ jobs:
       - name: Install dependencies
         run: npm ci --legacy-peer-deps
       - name: Install server dependencies
+        # Remove server node_modules and lockfile so platform-specific native
+        # binaries (e.g. sharp) are fetched for the Linux runner during install.
         run: |
-          cd server
-          npm ci --legacy-peer-deps
+          rm -rf server/node_modules
+          rm -f server/package-lock.json
+          npm install --no-audit --no-fund --prefix server --legacy-peer-deps
       - name: Run integration test
         env:
           PHOTO_WORKING_DIR: ${{ runner.temp }}/photo-working
