@@ -1,6 +1,15 @@
 const path = require('path');
 require('dotenv').config({ path: path.join(__dirname, '.env') });
 
+// Helpful startup logs to make it obvious which DB and Supabase configuration
+// are active when the server starts (useful after checking out older commits).
+const environment = process.env.NODE_ENV || 'development';
+const forcePostgres = process.env.USE_POSTGRES === 'true';
+const autoDetectPostgres = Boolean(process.env.SUPABASE_DB_URL) && process.env.USE_POSTGRES_AUTO_DETECT !== 'false';
+const usingPostgres = environment === 'production' || forcePostgres || autoDetectPostgres;
+console.log(`[server] NODE_ENV=${environment} USE_POSTGRES=${process.env.USE_POSTGRES || ''} USE_POSTGRES_AUTO_DETECT=${process.env.USE_POSTGRES_AUTO_DETECT || ''}`);
+console.log(`[server] Database mode: ${usingPostgres ? 'Postgres (Supabase)' : 'sqlite fallback (dev)'}; SUPABASE_DB_URL=${process.env.SUPABASE_DB_URL ? 'present' : 'missing'}; SUPABASE_KEY=${process.env.SUPABASE_SERVICE_ROLE_KEY ? 'service-role' : (process.env.SUPABASE_ANON_KEY ? 'anon' : 'missing')}`);
+
 // Global safety: log uncaught exceptions and unhandled rejections instead of letting Node crash
 process.on('unhandledRejection', (reason, promise) => {
   console.error('UnhandledRejection at:', promise, 'reason:', reason);
@@ -193,6 +202,29 @@ async function startServer() {
     console.log(`Photo upload server running on port ${PORT}`);
     console.log(`Health check: http://localhost:${PORT}/health`);
   });
+
+  // Non-blocking Supabase connectivity smoke-check: runs once on startup and
+  // logs whether Supabase storage or DB is reachable. This is intentionally
+  // non-blocking so server startup is not delayed by network issues. We also
+  // schedule periodic checks so connectivity problems are surfaced during
+  // longer-running development sessions.
+  (async () => {
+    try {
+      const runSmoke = require('./smoke-supabase');
+      const supabase = require('./lib/supabaseClient');
+      // initial run
+      await runSmoke(supabase);
+
+      // schedule periodic non-blocking checks (every 10 minutes)
+      const intervalMs = Number(process.env.SUPABASE_SMOKE_INTERVAL_MS) || (10 * 60 * 1000);
+      setInterval(() => {
+        // run but don't await here (fire-and-forget; errors are logged inside)
+        runSmoke(supabase).catch((e) => console.warn('[supabase-smoke] periodic check failed:', e && e.message ? e.message : e));
+      }, intervalMs);
+    } catch (err) {
+      console.warn('[supabase-smoke] Skipped or failed to run smoke-check:', err && err.message ? err.message : err);
+    }
+  })();
 
 }
 

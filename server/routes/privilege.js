@@ -5,10 +5,21 @@ module.exports = function createPrivilegeRouter() {
 
   router.post('/privilege', (req, res) => {
     try {
-      // Since we're using Supabase Storage, file privilege checking is no longer applicable
-      // Return a simple response indicating that files are stored remotely
-      res.json({ 
-        success: true, 
+      // Batch check: if 'filenames' is present, return a map keyed by filename
+      if (Array.isArray(req.body.filenames)) {
+        const privilegesMap = {};
+        req.body.filenames.forEach(filename => {
+          // All files get full permissions for now
+          privilegesMap[filename] = 'RWX';
+        });
+        return res.json({
+          success: true,
+          privileges: privilegesMap
+        });
+      }
+      // Single file check (legacy)
+      res.json({
+        success: true,
         message: 'Files are stored in Supabase Storage - privilege checking not applicable',
         privileges: { read: true, write: true, execute: false }
       });

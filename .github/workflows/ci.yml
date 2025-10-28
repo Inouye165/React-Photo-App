@@ -11,8 +11,7 @@ jobs:
     runs-on: ubuntu-latest
     strategy:
       matrix:
-        # Standardize on Node 20.x to match integration.yml
-        node-version: [20.x] 
+        node-version: ['20']
 
     steps:
       - name: Checkout repository
@@ -22,41 +21,53 @@ jobs:
         uses: actions/setup-node@v4
         with:
           node-version: ${{ matrix.node-version }}
+          cache: 'npm'
 
       # Use the more efficient caching strategy from integration.yml
-      - name: Cache node modules
+      - name: Cache npm cache only
+        # Avoid caching/restoring node_modules across platforms because
+        # optional native binaries (rollup native) can be missing when
+        # node_modules were created on a different OS. Cache only the npm
+        # cache directory to speed installs while ensuring fresh platform
+        # native modules are fetched on the runner.
         uses: actions/cache@v4
         with:
           path: |
             ~/.npm
-            node_modules
-            server/node_modules
-          key: ${{ runner.os }}-node-${{ hashFiles('**/package-lock.json') }}
+          key: ${{ runner.os }}-npm-cache-${{ hashFiles('**/package-lock.json') }}
           restore-keys: |
-            ${{ runner.os }}-node-
+            ${{ runner.os }}-npm-cache-
 
-      - name: Install root dependencies
-        run: npm ci --legacy-peer-deps
+      - name: Install deps (strict)
+        run: npm ci --no-audit --no-fund
 
       - name: Install server dependencies
-        run: npm ci --legacy-peer-deps --prefix server
-
-      - name: Check plain npm ci (non-blocking)
+        # Remove server node_modules and lockfile so platform-specific native
+        # binaries (e.g. sharp) are fetched for the Linux runner during install.
         run: |
-          # This is a non-blocking check to detect if plain `npm ci` (without --legacy-peer-deps)
-          # would fail for contributors. We do not fail the job here because the repo
-          # currently relies on `--legacy-peer-deps` as a short-term workaround.
-          if npm ci --ignore-scripts; then
-            echo "npm ci without --legacy-peer-deps succeeded"
-          else
-            echo "::warning::npm ci failed without --legacy-peer-deps. Contributors: use 'npm ci --legacy-peer-deps' locally until dependencies are reconciled."
-            # keep this step non-failing so PRs can run; this is an informational warning only
-            exit 0
-          fi
+          rm -rf server/node_modules
+          rm -f server/package-lock.json
+          npm install --no-audit --no-fund --prefix server
+
+
+      - name: Verify single OpenAI
+        run: npm ls openai
 
       # Run the main lint script from root package.json
       - name: Lint
         run: npm run lint
+
+      - name: Ensure native optional deps
+        # Some optional native packages (rollup native bindings) may be missing
+        # when restoring node_modules from a lockfile created on a different OS.
+        # Remove both any restored node_modules and the root package-lock.json
+        # on the runner, then run a fresh install so npm can fetch
+        # platform-specific optional dependencies (e.g. @rollup/rollup-linux-x64-gnu).
+        # NOTE: this is heavier (no lockfile) but required when optional native
+        # binaries are not present for the runner platform.
+        run: |
+          rm -rf node_modules package-lock.json
+          npm install --no-audit --no-fund
 
       - name: Build frontend
         run: npm run build
