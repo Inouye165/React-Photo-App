@@ -24,16 +24,19 @@ jobs:
           cache: 'npm'
 
       # Use the more efficient caching strategy from integration.yml
-      - name: Cache node modules
+      - name: Cache npm cache only
+        # Avoid caching/restoring node_modules across platforms because
+        # optional native binaries (rollup native) can be missing when
+        # node_modules were created on a different OS. Cache only the npm
+        # cache directory to speed installs while ensuring fresh platform
+        # native modules are fetched on the runner.
         uses: actions/cache@v4
         with:
           path: |
             ~/.npm
-            node_modules
-            server/node_modules
-          key: ${{ runner.os }}-node-${{ hashFiles('**/package-lock.json') }}
+          key: ${{ runner.os }}-npm-cache-${{ hashFiles('**/package-lock.json') }}
           restore-keys: |
-            ${{ runner.os }}-node-
+            ${{ runner.os }}-npm-cache-
 
       - name: Install deps (strict)
         run: npm ci --no-audit --no-fund
