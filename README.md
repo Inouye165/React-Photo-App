@@ -579,3 +579,34 @@ This project is licensed under the MIT License - see the [LICENSE](LICENSE) file
 There's a small helper script and runner for exercising the backend's photo state workflow locally without requiring external services. It starts the server in test mode, sends a PATCH to the `/photos/:id/state` endpoint, captures server logs, and prints the response.
 
 See `server/scripts/README.md` for usage notes and PowerShell examples.
+
+## Supabase & local development (tips)
+
+When running the server locally you have a few safe options to control whether the app uses the local sqlite fallback or connects to your Supabase Postgres instance. These options were added to make switching between machines and commits easier and to provide better diagnostics.
+
+- Use the explicit opt-in flag (temporary for the shell):
+
+```powershell
+$Env:USE_POSTGRES='true'
+npm --prefix server start
+```
+
+- Auto-detect Postgres: the server will prefer Postgres when `SUPABASE_DB_URL` is present in `server/.env`. You can opt-out of this behavior with:
+
+```powershell
+$Env:USE_POSTGRES_AUTO_DETECT='false'
+npm --prefix server start
+```
+
+- Non-blocking smoke-checks: on startup the server runs a harmless Supabase check (lists storage buckets or does a tiny `photos` select) and logs success/failure; periodic checks run every 10 minutes by default. Control the interval with `SUPABASE_SMOKE_INTERVAL_MS` (milliseconds).
+
+- Quick environment verification helper (local):
+
+```powershell
+# from repo root
+node server/check-env.js
+```
+
+This prints which Supabase-related variables are present and exits non-zero if required variables are missing.
+
+Security reminder: never commit `server/.env` or any real service role keys to git. Use repository secrets for CI and rotate keys if they are ever committed or exposed.

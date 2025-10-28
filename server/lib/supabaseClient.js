@@ -1,16 +1,31 @@
+const path = require('path');
 const { createClient } = require('@supabase/supabase-js');
+
+// Ensure environment variables are loaded when this module is required
+// (some entrypoints already load dotenv, but being defensive here avoids
+// issues when the module is required directly in tests or scripts).
+try {
+  require('dotenv').config({ path: path.join(__dirname, '..', '.env') });
+} catch {
+  // ignore - dotenv is optional if envs are set by the environment
+}
 
 // Initialize Supabase client with environment variables
 const supabaseUrl = process.env.SUPABASE_URL;
 const supabaseAnonKey = process.env.SUPABASE_ANON_KEY;
 const supabaseServiceKey = process.env.SUPABASE_SERVICE_ROLE_KEY;
 
-// In test environment, use mock values if environment variables are not set
+// Helper to build a clear message about missing configuration
+function buildMissingMessage(missing) {
+  return (`Missing required Supabase environment variable(s): ${missing.join(', ')}.\n` +
+    'Set them in `server/.env` or export them in your environment. For server-side operations you can provide `SUPABASE_SERVICE_ROLE_KEY` in place of `SUPABASE_ANON_KEY`.');
+}
+
+// In test environment, create a test client (tests may mock this)
 if (process.env.NODE_ENV === 'test') {
   const testUrl = supabaseUrl || 'https://test.supabase.co';
   const testServiceKey = supabaseServiceKey || 'test-service-role-key';
-  
-  // Create Supabase client with service role key for server operations (bypasses RLS)
+
   const supabase = createClient(testUrl, testServiceKey, {
     auth: {
       autoRefreshToken: false,
@@ -20,13 +35,36 @@ if (process.env.NODE_ENV === 'test') {
 
   module.exports = supabase;
 } else {
-  // Production environment - require all environment variables
-  if (!supabaseUrl || !supabaseAnonKey) {
-    throw new Error('Missing required Supabase environment variables: SUPABASE_URL and SUPABASE_ANON_KEY');
+  // For non-test environments require SUPABASE_URL and either an anon key
+  // or a service role key (service role is acceptable for server-side ops).
+  const missing = [];
+  if (!supabaseUrl) missing.push('SUPABASE_URL');
+  if (!supabaseAnonKey && !supabaseServiceKey) missing.push('SUPABASE_ANON_KEY or SUPABASE_SERVICE_ROLE_KEY');
+
+  if (missing.length) {
+    const message = buildMissingMessage(missing);
+    // Log an explanatory error and export a proxy that throws when used.
+    // This gives a clearer runtime error to developers while avoiding an
+    // immediate hard crash at module `require` time in some workflows.
+    console.error('[supabaseClient] ' + message);
+
+    const handler = {
+      get() {
+        throw new Error(message);
+      },
+      apply() {
+        throw new Error(message);
+      }
+    };
+
+    // Export a proxy object that will throw a clear error when any property
+    // is accessed. Many modules expect an object with methods like
+    // `storage.from(...)` so this makes the failure explicit when used.
+  module.exports = new Proxy({}, handler);
   }
 
-  // Use service role key for server-side operations (bypasses RLS)
-  const supabase = createClient(supabaseUrl, supabaseServiceKey || supabaseAnonKey, {
+  const key = supabaseServiceKey || supabaseAnonKey;
+  const supabase = createClient(supabaseUrl, key, {
     auth: {
       autoRefreshToken: false,
       persistSession: false
