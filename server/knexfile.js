@@ -3,21 +3,22 @@ const path = require('path');
 
 module.exports = {
   development: {
-    client: 'pg',
+    // Use a local sqlite3 database for development to avoid sharing the
+    // team's Supabase/Postgres instance. Each developer gets an isolated
+    // file-based DB at server/working/dev.db.
+    client: 'sqlite3',
     connection: {
-      host: 'db.xcidibfijzyoyliyclug.supabase.co',
-      port: 5432,
-      user: 'postgres',
-      password: process.env.SUPABASE_DB_PASSWORD,
-      database: 'postgres',
-      ssl: { rejectUnauthorized: false }
+      filename: path.join(__dirname, 'working', 'dev.db')
     },
+    useNullAsDefault: true,
     migrations: {
       directory: path.join(__dirname, 'db/migrations')
     },
     pool: {
-      min: 2,
-      max: 10
+      afterCreate: (conn, cb) => {
+        // Enable foreign key enforcement for sqlite
+        conn.run('PRAGMA foreign_keys = ON', cb);
+      }
     }
   },
   test: {
