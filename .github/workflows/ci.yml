@@ -42,7 +42,12 @@ jobs:
         run: npm ci --no-audit --no-fund
 
       - name: Install server dependencies
-        run: npm ci --no-audit --no-fund --prefix server
+        # Remove server node_modules and lockfile so platform-specific native
+        # binaries (e.g. sharp) are fetched for the Linux runner during install.
+        run: |
+          rm -rf server/node_modules
+          rm -f server/package-lock.json
+          npm install --no-audit --no-fund --prefix server
 
 
       - name: Verify single OpenAI
