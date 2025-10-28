@@ -55,11 +55,13 @@ jobs:
       - name: Ensure native optional deps
         # Some optional native packages (rollup native bindings) may be missing
         # when restoring node_modules from a lockfile created on a different OS.
-        # Remove any restored node_modules and run a fresh install on the runner
-        # so npm can fetch platform-specific optional dependencies (e.g.
-        # @rollup/rollup-linux-x64-gnu).
+        # Remove both any restored node_modules and the root package-lock.json
+        # on the runner, then run a fresh install so npm can fetch
+        # platform-specific optional dependencies (e.g. @rollup/rollup-linux-x64-gnu).
+        # NOTE: this is heavier (no lockfile) but required when optional native
+        # binaries are not present for the runner platform.
         run: |
-          rm -rf node_modules
+          rm -rf node_modules package-lock.json
           npm install --no-audit --no-fund
 
       - name: Build frontend
