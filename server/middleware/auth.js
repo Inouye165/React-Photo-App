@@ -16,11 +16,25 @@ const LOCKOUT_TIME_MINUTES = 15;
  * Middleware to verify JWT token and authenticate users
  */
 function authenticateToken(req, res, next) {
-  const authHeader = req.headers['authorization'];
-  let token = authHeader && authHeader.split(' ')[1]; // Bearer TOKEN
-  
-  // If no token in header, check query parameters (for image display routes)
-  if (!token && req.query.token) {
+  // Prefer token from httpOnly cookie (set by server on login/register)
+  let token = null;
+  try {
+    if (req && req.cookies && req.cookies.authToken) {
+      token = req.cookies.authToken;
+    }
+  } catch {
+    // ignore cookie access errors
+    token = null;
+  }
+
+  // If no cookie token, fall back to Authorization header
+  if (!token) {
+    const authHeader = req.headers['authorization'];
+    token = authHeader && authHeader.split(' ')[1]; // Bearer TOKEN
+  }
+
+  // If still no token, check query parameters (for image display routes)
+  if (!token && req.query && req.query.token) {
     token = req.query.token;
   }
 

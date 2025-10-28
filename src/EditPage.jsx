@@ -55,7 +55,8 @@ export default function EditPage({ photo, onClose, onSave, onFinished }) {
           'Content-Type': 'application/json',
           'Authorization': `Bearer ${token}`
         },
-        body: JSON.stringify({ caption, description, keywords, textStyle })
+        body: JSON.stringify({ caption, description, keywords, textStyle }),
+        credentials: 'include'
       });
       
       if (!response.ok) {
@@ -96,7 +97,8 @@ export default function EditPage({ photo, onClose, onSave, onFinished }) {
           description,
           keywords,
           textStyle: newTextStyle
-        })
+        }),
+        credentials: 'include'
       });
       
       if (!response.ok) {

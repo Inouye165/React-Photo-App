@@ -341,7 +341,8 @@ function App() {
       const headers = token ? { Authorization: `Bearer ${token}` } : undefined;
       const response = await fetch(`http://localhost:3001/photos/${id}`, {
         method: 'DELETE',
-        headers
+        headers,
+        credentials: 'include'
       });
       if (response.status === 401 || response.status === 403) {
         // auth problem — clear token and reload so user can log in again

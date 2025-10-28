@@ -27,7 +27,8 @@ export const AuthProvider = ({ children }) => {
             headers: {
               'Authorization': `Bearer ${storedToken}`,
               'Content-Type': 'application/json'
-            }
+            },
+            credentials: 'include'
           });
 
           if (response.ok) {
@@ -59,6 +60,7 @@ export const AuthProvider = ({ children }) => {
           'Content-Type': 'application/json',
         },
         body: JSON.stringify({ username, password }),
+        credentials: 'include'
       });
 
       const data = await response.json();
@@ -86,6 +88,7 @@ export const AuthProvider = ({ children }) => {
           'Content-Type': 'application/json',
         },
         body: JSON.stringify({ username, email, password }),
+        credentials: 'include'
       });
 
       const data = await response.json();
@@ -114,6 +117,7 @@ export const AuthProvider = ({ children }) => {
             'Authorization': `Bearer ${token}`,
             'Content-Type': 'application/json',
           },
+          credentials: 'include'
         });
       }
     } catch (error) {
