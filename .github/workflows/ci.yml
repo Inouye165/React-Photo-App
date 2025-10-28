@@ -49,6 +49,13 @@ jobs:
       - name: Lint
         run: npm run lint
 
+      - name: Ensure native optional deps
+        # Some optional native packages (rollup native bindings) may be missing
+        # when restoring node_modules from a lockfile created on a different OS.
+        # Run a fresh install on the runner to fetch platform-specific optional
+        # dependencies before building.
+        run: npm install --no-audit --no-fund
+
       - name: Build frontend
         run: npm run build
 
