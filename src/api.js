@@ -59,6 +59,27 @@ const stateUpdateLimiter = createLimiter(2);
 export function getApiMetrics() { try { return JSON.parse(JSON.stringify(apiMetrics)); } catch { return { totals: { calls: 0 }, limiters: {} }; } }
 
 // --- API functions
+// Centralized login helper
+// NOTE: The repository uses API_BASE_URL as the configured backend origin.
+// The original plan referenced `backendOrigin`; here we use `API_BASE_URL` to
+// satisfy the same intent.
+export async function loginUser(username, password, serverUrl = `${API_BASE_URL}`) {
+  const url = `${serverUrl}/auth/login`;
+  const body = JSON.stringify({ username, password });
+  const response = await fetch(url, { method: 'POST', headers: getAuthHeaders(), body, credentials: 'include' });
+  if (!response.ok) {
+    // Try to parse JSON error body, fall back to status text
+    try {
+      const json = await response.json();
+      const msg = (json && (json.error || json.message)) ? (json.error || json.message) : JSON.stringify(json);
+      throw new Error(msg || `Login failed: ${response.status}`);
+    } catch {
+      throw new Error(response.statusText || `Login failed: ${response.status}`);
+    }
+  }
+  return await response.json();
+}
+
 export async function uploadPhotoToServer(file, serverUrl = `${API_BASE_URL}/upload`) {
   // Use FormData and rely on cookie-based auth (credentials included).
   const form = new FormData(); form.append('photo', file, file.name);
