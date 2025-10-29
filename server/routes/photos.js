@@ -6,6 +6,8 @@ const { addAIJob, checkRedisAvailable } = require('../queue/index');
 const sharp = require('sharp');
 const exifr = require('exifr');
 const supabase = require('../lib/supabaseClient');
+const jwt = require('jsonwebtoken');
+const { authenticateToken, authenticateImageToken } = require('../middleware/auth');
 
 module.exports = function createPhotosRouter({ db }) {
   const router = express.Router();
@@ -45,7 +47,7 @@ module.exports = function createPhotosRouter({ db }) {
   }
 
   // --- API: List all photos and metadata (include hash) ---
-  router.get('/photos', async (req, res) => {
+  router.get('/photos', authenticateToken, async (req, res) => {
     try {
       const state = req.query.state;
       let query = db('photos').select('id', 'filename', 'state', 'metadata', 'hash', 'file_size', 'caption', 'description', 'keywords', 'text_style', 'edited_filename', 'storage_path');
@@ -57,6 +59,7 @@ module.exports = function createPhotosRouter({ db }) {
       const rows = await query;
 
       // Generate public URLs for each photo using Supabase Storage
+      const origin = `${req.protocol}://${req.get('host')}`;
       const photosWithUrls = await Promise.all(rows.map(async (row) => {
         let textStyle = null;
         if (row.text_style) {
@@ -67,16 +70,20 @@ module.exports = function createPhotosRouter({ db }) {
           }
         }
 
-        // The frontend builds its own authenticated URLs, so we don't need to
-        // generate a public Supabase URL here. We just need to provide the
-        // authenticated thumbnail path.
-        let thumbnail = null;
+  // The frontend will receive fully signed URLs below.
 
-        // Thumbnail URL - use display endpoint instead of public URL
-        if (row.hash) {
-          const _thumbnailPath = `thumbnails/${row.hash}.jpg`;
-          // Use the display endpoint for thumbnails to ensure authentication works
-          thumbnail = `/display/thumbnails/${row.hash}.jpg`;
+        // Generate a short-lived token for image access
+        let thumbnailUrl = null;
+        let photoUrl = null;
+        try {
+          const payload = { id: req.user.id, username: req.user.username, photoId: row.id };
+          const shortToken = jwt.sign(payload, process.env.JWT_SECRET, { expiresIn: '5m' });
+          if (row.hash) {
+            thumbnailUrl = `${origin}/display/thumbnails/${row.hash}.jpg?token=${shortToken}`;
+          }
+          photoUrl = `${origin}/display/${row.state}/${row.filename}?token=${shortToken}`;
+        } catch (e) {
+          console.warn('Failed to generate short-lived image token:', e && e.message ? e.message : e);
         }
 
         return {
@@ -92,8 +99,8 @@ module.exports = function createPhotosRouter({ db }) {
           textStyle,
           editedFilename: row.edited_filename,
           storagePath: row.storage_path,
-          url: null, // Frontend overwrites this with a secure URL
-          thumbnail
+          url: photoUrl,
+          thumbnail: thumbnailUrl
         };
       }));
 
@@ -108,7 +115,7 @@ module.exports = function createPhotosRouter({ db }) {
 
   // --- Metadata update endpoint ---
   // --- Single photo fetch endpoint ---
-  router.get('/photos/:id', async (req, res) => {
+  router.get('/photos/:id', authenticateToken, async (req, res) => {
     try {
       const { id } = req.params;
       const row = await db('photos').where({ id }).first();
@@ -119,10 +126,18 @@ module.exports = function createPhotosRouter({ db }) {
         try { textStyle = JSON.parse(row.text_style); } catch { textStyle = null; }
       }
 
-      // The frontend builds its own authenticated URLs, so we don't need to
-      // generate a public Supabase URL here.
-      const url = null;
-      const thumbnail = row.hash ? `/display/thumbnails/${row.hash}.jpg` : null;
+      // Generate short-lived token and full URLs for the client
+      let url = null;
+      let thumbnail = null;
+      try {
+        const origin = `${req.protocol}://${req.get('host')}`;
+        const payload = { id: req.user.id, username: req.user.username, photoId: row.id };
+        const shortToken = jwt.sign(payload, process.env.JWT_SECRET, { expiresIn: '5m' });
+        url = `${origin}/display/${row.state}/${row.filename}?token=${shortToken}`;
+        thumbnail = row.hash ? `${origin}/display/thumbnails/${row.hash}.jpg?token=${shortToken}` : null;
+      } catch (e) {
+        console.warn('Failed to generate short-lived token for photo:', e && e.message ? e.message : e);
+      }
 
       const photo = {
         id: row.id,
@@ -149,7 +164,7 @@ module.exports = function createPhotosRouter({ db }) {
     }
   });
 
-  router.patch('/photos/:id/metadata', async (req, res) => {
+  router.patch('/photos/:id/metadata', authenticateToken, async (req, res) => {
     const { id } = req.params;
     try {
       const row = await db('photos').where('id', id).select('caption', 'description', 'keywords', 'text_style').first();
@@ -207,7 +222,7 @@ module.exports = function createPhotosRouter({ db }) {
   });
 
   // --- Revert edited image endpoint ---
-  router.patch('/photos/:id/revert', express.json(), async (req, res) => {
+  router.patch('/photos/:id/revert', authenticateToken, express.json(), async (req, res) => {
     const { id } = req.params;
     try {
       const row = await db('photos').where('id', id).first();
@@ -237,7 +252,7 @@ module.exports = function createPhotosRouter({ db }) {
   });
 
   // --- Delete photo endpoint ---
-  router.delete('/photos/:id', async (req, res) => {
+  router.delete('/photos/:id', authenticateToken, async (req, res) => {
     try {
       const { id } = req.params;
       const row = await db('photos').where({ id }).first();
@@ -288,7 +303,7 @@ module.exports = function createPhotosRouter({ db }) {
       res.status(500).json({ success: false, error: err.message });
     }
   });
-  router.patch('/photos/:id/state', express.json(), async (req, res) => {
+  router.patch('/photos/:id/state', authenticateToken, express.json(), async (req, res) => {
     try {
       const { id } = req.params;
       const { state } = req.body;
@@ -466,7 +481,7 @@ module.exports = function createPhotosRouter({ db }) {
   });
 
   // --- Save captioned image endpoint ---
-  router.post('/save-captioned-image', async (req, res) => {
+  router.post('/save-captioned-image', authenticateToken, async (req, res) => {
     const { photoId, dataURL, caption, description, keywords, textStyle } = req.body || {};
     if (!photoId) return res.status(400).json({ success: false, error: 'photoId is required' });
     if (typeof dataURL !== 'string' || !dataURL.startsWith('data:')) return res.status(400).json({ success: false, error: 'Invalid image dataURL' });
@@ -579,7 +594,7 @@ module.exports = function createPhotosRouter({ db }) {
   });
 
   // --- Run AI processing endpoint ---
-  router.post('/:id/run-ai', async (req, res) => {
+  router.post('/:id/run-ai', authenticateToken, async (req, res) => {
     try {
       // Re-fetch the photo to ensure it exists
       const photo = await db('photos').where({ id: req.params.id }).first();
@@ -624,7 +639,7 @@ module.exports = function createPhotosRouter({ db }) {
   });
 
   // --- Display endpoint: Serve images from Supabase Storage ---
-  router.get('/display/:state/:filename', async (req, res) => {
+  router.get('/display/:state/:filename', authenticateImageToken, async (req, res) => {
     try {
       const { state, filename } = req.params;
       

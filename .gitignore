@@ -68,4 +68,4 @@ server/working_dir_path.txt
 
 # Ignore test databases
 server/tests/*.db
-server/tests/test.db
+server/tests/test.dbserver/working/dev.db

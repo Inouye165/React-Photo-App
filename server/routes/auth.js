@@ -139,10 +139,24 @@ module.exports = function createAuthRouter({ db }) {
       // Generate JWT token
       const token = generateToken(user);
 
+      // Set httpOnly cookie for the token (transitional: also return token in JSON)
+      try {
+        const cookieOptions = {
+          httpOnly: true,
+          secure: process.env.NODE_ENV === 'production',
+          // In production with cross-site frontends you'll likely need 'None'
+          sameSite: process.env.NODE_ENV === 'production' ? 'None' : 'Lax',
+          maxAge: 24 * 60 * 60 * 1000 // 24 hours
+        };
+        res.cookie('authToken', token, cookieOptions);
+      } catch (e) {
+        console.warn('Failed to set auth cookie:', e && e.message ? e.message : e);
+      }
       // Log successful login
       console.info(`[LOGIN SUCCESS] username='${username}' ip='${clientIp}'`);
 
-      // Return success with token
+      // Return success (token is set as an httpOnly cookie). Also return token in JSON
+      // to support non-browser clients/tests that expect it. Frontend should rely on cookie.
       res.json({
         success: true,
         token,
@@ -200,10 +214,23 @@ module.exports = function createAuthRouter({ db }) {
       // Generate JWT token
       const token = generateToken(newUser);
 
+      // Set httpOnly cookie for the token (transitional: also return token in JSON)
+      try {
+        const cookieOptions = {
+          httpOnly: true,
+          secure: process.env.NODE_ENV === 'production',
+          sameSite: process.env.NODE_ENV === 'production' ? 'None' : 'Lax',
+          maxAge: 24 * 60 * 60 * 1000 // 24 hours
+        };
+        res.cookie('authToken', token, cookieOptions);
+      } catch (e) {
+        console.warn('Failed to set auth cookie on register:', e && e.message ? e.message : e);
+      }
+
       res.status(201).json({
         success: true,
-        message: 'User registered successfully',
         token,
+        message: 'User registered successfully',
         user: {
           id: newUser.id,
           username: newUser.username,
