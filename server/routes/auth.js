@@ -155,7 +155,8 @@ module.exports = function createAuthRouter({ db }) {
       // Log successful login
       console.info(`[LOGIN SUCCESS] username='${username}' ip='${clientIp}'`);
 
-      // Return success with token (also set in cookie above)
+      // Return success (token is set as an httpOnly cookie). Also return token in JSON
+      // to support non-browser clients/tests that expect it. Frontend should rely on cookie.
       res.json({
         success: true,
         token,
@@ -228,8 +229,8 @@ module.exports = function createAuthRouter({ db }) {
 
       res.status(201).json({
         success: true,
-        message: 'User registered successfully',
         token,
+        message: 'User registered successfully',
         user: {
           id: newUser.id,
           username: newUser.username,

@@ -16,49 +16,55 @@ const LOCKOUT_TIME_MINUTES = 15;
  * Middleware to verify JWT token and authenticate users
  */
 function authenticateToken(req, res, next) {
-  // Prefer token from httpOnly cookie (set by server on login/register)
+  // Prefer token from httpOnly cookie for browser clients, but accept
+  // Authorization header (Bearer ...) as a fallback for tests and non-browser clients.
   let token = null;
   try {
-    if (req && req.cookies && req.cookies.authToken) {
-      token = req.cookies.authToken;
-    }
+    if (req && req.cookies && req.cookies.authToken) token = req.cookies.authToken;
   } catch {
-    // ignore cookie access errors
     token = null;
   }
 
-  // If no cookie token, fall back to Authorization header
-  if (!token) {
-    const authHeader = req.headers['authorization'];
-    token = authHeader && authHeader.split(' ')[1]; // Bearer TOKEN
-  }
-
-  // If still no token, check query parameters (for image display routes)
-  if (!token && req.query && req.query.token) {
-    token = req.query.token;
+  if (!token && req && req.headers && req.headers.authorization) {
+    const parts = req.headers.authorization.split(' ');
+    if (parts.length === 2 && /^Bearer$/i.test(parts[0])) {
+      token = parts[1];
+    }
   }
 
   if (!token) {
-    return res.status(401).json({ 
-      success: false, 
-      error: 'Access token required' 
-    });
+    return res.status(401).json({ success: false, error: 'Access token required' });
   }
 
   jwt.verify(token, JWT_SECRET, (err, user) => {
     if (err) {
       if (err.name === 'TokenExpiredError') {
-        return res.status(401).json({ 
-          success: false, 
-          error: 'Token expired' 
-        });
+        return res.status(401).json({ success: false, error: 'Token expired' });
       }
-      return res.status(403).json({ 
-        success: false, 
-        error: 'Invalid token' 
-      });
+      return res.status(403).json({ success: false, error: 'Invalid token' });
     }
-    
+
+    req.user = user;
+    next();
+  });
+}
+
+/**
+ * Middleware to authenticate image display requests from a short-lived token
+ * provided as a query parameter: ?token=SHORT_LIVED_TOKEN
+ */
+function authenticateImageToken(req, res, next) {
+  const token = req.query && req.query.token;
+  if (!token) {
+    return res.status(401).json({ success: false, error: 'Image access token required' });
+  }
+
+  jwt.verify(token, JWT_SECRET, (err, user) => {
+    if (err) {
+      if (err.name === 'TokenExpiredError') return res.status(401).json({ success: false, error: 'Token expired' });
+      return res.status(403).json({ success: false, error: 'Invalid token' });
+    }
+    // Attach minimal user info so downstream handlers can use it if needed
     req.user = user;
     next();
   });
@@ -252,6 +258,7 @@ function validatePassword(password) {
 
 module.exports = {
   authenticateToken,
+  authenticateImageToken,
   requireRole,
   generateToken,
   hashPassword,

@@ -14,37 +14,27 @@ export const useAuth = () => {
 export const AuthProvider = ({ children }) => {
   const [user, setUser] = useState(null);
   const [loading, setLoading] = useState(true);
-  const [token, setToken] = useState(localStorage.getItem('authToken'));
+  // Token is no longer stored in localStorage; auth is cookie-based (httpOnly).
 
   // Check if user is authenticated on app start
   useEffect(() => {
     const checkAuth = async () => {
-      const storedToken = localStorage.getItem('authToken');
-      if (storedToken) {
-        try {
-          const response = await fetch(`${import.meta.env.VITE_API_URL}/auth/verify`, {
-            method: 'POST',
-            headers: {
-              'Authorization': `Bearer ${storedToken}`,
-              'Content-Type': 'application/json'
-            },
-            credentials: 'include'
-          });
-
-          if (response.ok) {
-            const data = await response.json();
-            setUser(data.user);
-            setToken(storedToken);
-          } else {
-            // Token is invalid, remove it
-            localStorage.removeItem('authToken');
-            setToken(null);
-          }
-        } catch (error) {
-          console.error('Auth verification failed:', error);
-          localStorage.removeItem('authToken');
-          setToken(null);
+      try {
+        // Server verifies cookie-based auth and returns user when valid
+        const response = await fetch(`${import.meta.env.VITE_API_URL}/auth/verify`, {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          credentials: 'include'
+        });
+        if (response.ok) {
+          const data = await response.json();
+          setUser(data.user);
+        } else {
+          setUser(null);
         }
+      } catch (error) {
+        console.error('Auth verification failed:', error);
+        setUser(null);
       }
       setLoading(false);
     };
@@ -54,11 +44,9 @@ export const AuthProvider = ({ children }) => {
 
   const login = async (username, password) => {
     try {
-  const response = await fetch(`${import.meta.env.VITE_API_URL}/auth/login`, {
+      const response = await fetch(`${import.meta.env.VITE_API_URL}/auth/login`, {
         method: 'POST',
-        headers: {
-          'Content-Type': 'application/json',
-        },
+        headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ username, password }),
         credentials: 'include'
       });
@@ -69,10 +57,8 @@ export const AuthProvider = ({ children }) => {
         throw new Error(data.error || 'Login failed');
       }
 
+      // Server sets httpOnly cookie; response includes user object only
       setUser(data.user);
-      setToken(data.token);
-      localStorage.setItem('authToken', data.token);
-
       return { success: true, user: data.user };
     } catch (error) {
       console.error('Login error:', error);
@@ -82,11 +68,9 @@ export const AuthProvider = ({ children }) => {
 
   const register = async (username, email, password) => {
     try {
-  const response = await fetch(`${import.meta.env.VITE_API_URL}/auth/register`, {
+      const response = await fetch(`${import.meta.env.VITE_API_URL}/auth/register`, {
         method: 'POST',
-        headers: {
-          'Content-Type': 'application/json',
-        },
+        headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ username, email, password }),
         credentials: 'include'
       });
@@ -97,10 +81,8 @@ export const AuthProvider = ({ children }) => {
         throw new Error(data.error || 'Registration failed');
       }
 
+      // Server sets httpOnly cookie; response includes user object only
       setUser(data.user);
-      setToken(data.token);
-      localStorage.setItem('authToken', data.token);
-
       return { success: true, user: data.user };
     } catch (error) {
       console.error('Registration error:', error);
@@ -110,28 +92,23 @@ export const AuthProvider = ({ children }) => {
 
   const logout = async () => {
     try {
-      if (token) {
-  await fetch(`${import.meta.env.VITE_API_URL}/auth/logout`, {
+      try {
+        await fetch(`${import.meta.env.VITE_API_URL}/auth/logout`, {
           method: 'POST',
-          headers: {
-            'Authorization': `Bearer ${token}`,
-            'Content-Type': 'application/json',
-          },
+          headers: { 'Content-Type': 'application/json' },
           credentials: 'include'
         });
-      }
+  } catch { /* ignore logout errors */ }
     } catch (error) {
       console.error('Logout error:', error);
     } finally {
       setUser(null);
-      setToken(null);
-      localStorage.removeItem('authToken');
+      // token not stored client-side
     }
   };
 
   const value = {
     user,
-    token,
     loading,
     login,
     register,

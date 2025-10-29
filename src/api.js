@@ -4,17 +4,17 @@
 
 // --- Helpers
 function getAuthHeaders() {
-  const token = localStorage.getItem('authToken');
+  // Authentication is handled with httpOnly cookies (credentials: 'include').
+  // Do not rely on localStorage for auth tokens.
   return {
     'Content-Type': 'application/json',
-    ...(token && { Authorization: `Bearer ${token}` }),
   };
 }
 
 function handleAuthError(response) {
   if (!response) return false;
   if (response.status === 401 || response.status === 403) {
-    try { localStorage.removeItem('authToken'); } catch { /* ignore */ }
+    // If cookie-based auth is invalid/expired, refresh the app so user can re-authenticate.
     try { window.location.reload(); } catch { /* ignore */ }
     return true;
   }
@@ -60,9 +60,9 @@ export function getApiMetrics() { try { return JSON.parse(JSON.stringify(apiMetr
 
 // --- API functions
 export async function uploadPhotoToServer(file, serverUrl = `${API_BASE_URL}/upload`) {
+  // Use FormData and rely on cookie-based auth (credentials included).
   const form = new FormData(); form.append('photo', file, file.name);
-  const token = localStorage.getItem('authToken'); const headers = token ? { Authorization: `Bearer ${token}` } : undefined;
-  const res = await fetch(serverUrl, { method: 'POST', headers, body: form, credentials: 'include' });
+  const res = await fetch(serverUrl, { method: 'POST', body: form, credentials: 'include' });
   if (handleAuthError(res)) return; if (!res.ok) throw new Error('Upload failed'); return await res.json();
 }
 

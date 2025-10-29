@@ -1,15 +1,23 @@
 const request = require('supertest');
 const express = require('express');
+const cookieParser = require('cookie-parser');
+const jwt = require('jsonwebtoken');
 
 const createPhotosRouter = require('../routes/photos');
 const db = require('../db/index');
 const { mockStorageHelpers, mockDbHelpers } = require('./setup');
 
 let app;
+let authToken;
 
 beforeEach(() => {
   app = express();
+  app.use(cookieParser());
   app.use(express.json());
+
+  // Create a test auth token and attach to requests via Cookie header below
+  authToken = jwt.sign({ id: 1, username: 'testuser', role: 'user' }, process.env.JWT_SECRET || 'test-jwt-secret-key-for-testing-only', { expiresIn: '1h' });
+
   app.use(createPhotosRouter({ db }));
 });
 
@@ -27,9 +35,10 @@ test('PATCH /photos/:id/state moves photo and triggers fallback copy when move f
   // Force the move operation to fail with a 404 so our fallback copy runs
   mockStorageHelpers.setMockMoveError('photos', photo.storage_path, { message: 'Simulated move failure', status: 404 });
 
-  // Call the endpoint without auth (router mounted directly in test)
+  // Call the endpoint with an auth cookie so authenticateToken passes
   const res = await request(app)
     .patch(`/photos/${photo.id}/state`)
+    .set('Cookie', `authToken=${authToken}`)
     .send({ state: 'inprogress' })
     .expect(200);
 

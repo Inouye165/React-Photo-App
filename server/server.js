@@ -140,7 +140,8 @@ async function startServer() {
   app.use(createHealthRouter());
 
   // Protected API routes (require authentication)
-  app.use(authenticateToken, createPhotosRouter({ db }));
+  // Photos router handles its own authentication for API vs image endpoints
+  app.use(createPhotosRouter({ db }));
   app.use(authenticateToken, createUploadsRouter({ db }));
   app.use(authenticateToken, createPrivilegeRouter());
 
