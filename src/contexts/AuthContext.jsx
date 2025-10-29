@@ -1,5 +1,7 @@
 import { createContext, useContext, useState, useEffect } from 'react';
 import { env } from '../env';
+import * as api from '../api';
+import { setAuthToken } from '../utils/auth';
 
 const AuthContext = createContext();
 
@@ -15,6 +17,7 @@ export const AuthProvider = ({ children }) => {
   const [loading, setLoading] = useState(true);
   const [token, setToken] = useState(() => localStorage.getItem('authToken'));
 
+  // Run once on mount — keep deps empty to avoid repeated verification calls
   useEffect(() => {
     const checkAuth = async () => {
       const storedToken = localStorage.getItem('authToken');
@@ -57,19 +60,17 @@ export const AuthProvider = ({ children }) => {
   const login = async (username, password) => {
     try {
       const API_BASE = env.VITE_API_URL || '';
-      const response = await fetch(`${API_BASE}/auth/login`, {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        credentials: 'include',
-        body: JSON.stringify({ username, password }),
-      });
-
-      const data = await response.json();
-      if (!response.ok) throw new Error(data.error || 'Login failed');
+      const data = await api.loginUser(username, password, API_BASE || undefined);
 
       setUser(data.user);
       setToken(data.token);
-      localStorage.setItem('authToken', data.token);
+      // Keep the legacy helper call for compatibility (no-op in this codebase)
+      try {
+        setAuthToken(data.token);
+      } catch (e) { void e; }
+      // Persist for parts of the app that still read localStorage
+      try { localStorage.setItem('authToken', data.token); } catch (e) { void e; }
+
       return { success: true, user: data.user };
     } catch (err) {
       console.error('Login error:', err);
