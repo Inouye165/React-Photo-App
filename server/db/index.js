@@ -22,11 +22,18 @@ const autoDetectPostgres = Boolean(process.env.SUPABASE_DB_URL) && process.env.U
 let db;
 if (isProduction || forcePostgres || autoDetectPostgres) {
 	// In production, when explicitly requested, or when a DB URL is present,
-	// use the configured Postgres DB (e.g., Supabase)
+	// use the configured Postgres DB (e.g., Supabase).
+	// NOTE: when auto-detecting Postgres in a non-production NODE_ENV we must
+	// ensure we use the production Postgres configuration (not the
+	// development sqlite config). Previously this used `knexConfig[environment]`
+	// which could still select the sqlite dev config even when a SUPABASE_DB_URL
+	// was present. Prefer the 'production' knex config when autoDetectPostgres
+	// or forcePostgres is true and we're not running in production.
 	if (autoDetectPostgres) {
 		console.log('[db] Auto-detect enabled: using Postgres because SUPABASE_DB_URL is present');
 	}
-	db = knex(knexConfig[environment]);
+	const knexEnv = (isProduction) ? environment : 'production';
+	db = knex(knexConfig[knexEnv]);
 } else {
 	// Local dev fallback: use sqlite file under server/working/dev.db so data
 	// persists between restarts (easier than :memory:), and the app can run
