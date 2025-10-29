@@ -229,4 +229,9 @@ async function startServer() {
 
 }
 
-startServer();
+// Start server and ensure any top-level async errors are logged clearly
+startServer().catch((err) => {
+  console.error('startServer failed:', err && (err.stack || err.message || err));
+  // Exit with non-zero so process supervisors notice the failure
+  process.exit(1);
+});
