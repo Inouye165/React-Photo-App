@@ -1,8 +1,7 @@
 import { logGlobalError } from './utils/globalLog.js';
 import React, { useState, useEffect, useRef, useCallback } from 'react'
-import ReactDOM from 'react-dom'
 import { parse } from 'exifr'
-import { uploadPhotoToServer, checkPrivilege, checkPrivilegesBatch, getPhotos, updatePhotoState, recheckInprogressPhotos, updatePhotoCaption } from './api.js'
+import { uploadPhotoToServer, checkPrivilege, checkPrivilegesBatch, getPhotos, updatePhotoState, recheckInprogressPhotos, updatePhotoCaption, deletePhoto } from './api.js'
 import { API_BASE_URL } from './api.js';
 import Toolbar from './Toolbar.jsx'
 import PhotoUploadForm from './PhotoUploadForm.jsx'
@@ -332,24 +331,22 @@ function App() {
       return;
     }
     try {
-      const response = await fetch(`http://localhost:3001/photos/${id}`, {
-        method: 'DELETE',
-        credentials: 'include'
-      });
-      if (response.status === 401 || response.status === 403) {
-        // auth problem — server-side cookie invalid/expired; reload so user can re-authenticate
-        window.location.reload();
-        return;
-      }
-      if (!response.ok) {
-        const error = await response.json();
-        throw new Error(error.error || 'Failed to delete photo');
-      }
+      // Use api.deletePhoto to perform deletion (keeps network logic centralized)
+      await deletePhoto(id);
       // Remove the photo from the current list
-      removePhotoById(id)
-      setToast('Photo deleted successfully')
+      removePhotoById(id);
+      setToast('Photo deleted successfully');
     } catch (error) {
-      setToast(`Error deleting photo: ${error.message}`)
+      // Preserve behavior for auth-related errors if deletePhoto surfaces status
+      try {
+        if (error && (error.status === 401 || error.status === 403)) {
+          window.location.reload();
+          return;
+        }
+      } catch {
+        // ignore
+      }
+      setToast(`Error deleting photo: ${error && error.message ? error.message : error}`);
     }
   };
 
@@ -414,110 +411,7 @@ function App() {
     }
   }, [editingPhoto]);
 
-  // Open a minimal edit UI in a new browser tab/window. The new tab will postMessage
-  // updates (caption, markFinished) back to this opener window which will then
-  // perform state updates and backend calls.
-  const _openEditorInNewTab = (photo) => {
-    const _displayUrl = `${API_BASE_URL}${photo.url}`;
-    const id = photo.id;
-    const caption = (photo.caption || '').replace(/</g, '&lt;').replace(/>/g, '&gt;');
-    const html = `<!doctype html>
-    <html>
-    <head>
-      <meta charset="utf-8" />
-      <title>Edit ${photo.filename}</title>
-      <meta name="viewport" content="width=device-width,initial-scale=1" />
-      <style>
-        body{font-family:Arial,Helvetica,sans-serif;margin:0;padding:16px;background:#fff;color:#111}
-        .container{max-width:900px;margin:0 auto}
-        img{max-width:100%;height:auto;border:1px solid #ddd;padding:8px;background:#f9f9f9}
-        textarea{width:100%;min-height:120px;margin-top:8px;padding:8px;font-size:14px}
-        .controls{margin-top:12px;display:flex;gap:8px}
-        button{padding:8px 12px;font-size:14px;cursor:pointer}
-      </style>
-    </head>
-    <body>
-      <div class="container">
-        <h1>Edit: ${photo.filename}</h1>
-              </div>
 
-              {/* vertical divider between image and data panel */}
-              <div className="w-px bg-gray-200 mx-3" style={{height: '100%'}} />
-
-              <aside className="w-1/3 bg-white rounded shadow-sm border p-4 flex flex-col" style={{maxHeight: '100%'}}>
-        <div>
-          <label for="caption"><strong>Caption</strong></label>
-          <textarea id="caption">${caption}</textarea>
-        </div>
-        <div class="controls">
-          <button id="saveBtn">Save (to app)</button>
-          <button id="markBtn">Mark as Finished</button>
-          <button id="closeBtn">Close</button>
-        </div>
-        <div id="status" style="margin-top:12px;color:#666"></div>
-      </div>
-
-        <script>
-        const id = ${JSON.stringify(id)};
-        const saveBtn = document.getElementById('saveBtn');
-        const markBtn = document.getElementById('markBtn');
-        const closeBtn = document.getElementById('closeBtn');
-        const status = document.getElementById('status');
-        saveBtn.addEventListener('click', () => {
-          const caption = document.getElementById('caption').value;
-          try {
-            if (window.opener && !window.opener.closed) {
-              window.opener.postMessage({ type: 'updateCaption', id, caption }, '*');
-              status.textContent = 'Saved locally in app.';
-            } else {
-              status.textContent = 'Opener not available; cannot save to app.';
-            }
-          } catch (e) { status.textContent = 'Save failed: ' + e.message; }
-        });
-        // Listen for acknowledgements from opener
-        window.addEventListener('message', (ev) => {
-          const m = ev.data || {};
-          if (m.type === 'markFinishedAck' && m.id === id) {
-            if (m.success) {
-              status.textContent = 'Marked finished successfully. Closing...';
-              setTimeout(() => window.close(), 700);
-            } else {
-              status.textContent = 'Mark finished failed: ' + (m.error || 'unknown');
-            }
-          } else if (m.type === 'updateCaptionAck' && m.id === id) {
-            status.textContent = m.success ? 'Saved in app.' : 'Save failed.';
-          }
-        });
-        markBtn.addEventListener('click', () => {
-          try {
-            if (window.opener && !window.opener.closed) {
-              window.opener.postMessage({ type: 'markFinished', id }, '*');
-              status.textContent = 'Requested mark as finished.';
-            } else {
-              status.textContent = 'Opener not available; cannot mark finished.';
-            }
-          } catch (e) { status.textContent = 'Request failed: ' + e.message; }
-        });
-        closeBtn.addEventListener('click', () => { window.close(); });
-      </script>
-    </body>
-    </html>`;
-
-    const w = window.open('', '_blank');
-    if (!w) {
-      // Popup blocked; fallback to in-app full-page editor so user can still edit
-      try {
-        setUseFullPageEditor(true);
-        setEditingPhoto(photo);
-      } catch {
-        alert('Popup blocked and cannot open in-app editor. Please allow popups.');
-      }
-      return;
-    }
-    w.document.open();
-    w.document.write(html);
-    w.document.close();
-  };
 
   
 
@@ -556,181 +450,6 @@ function App() {
       try { if (typeof window !== 'undefined' && window.removeEventListener) window.removeEventListener('message', onMessage); } catch { /* ignore */ }
     };
   }, [updatePhotoData]);
-// ...existing code...
-
-  // Photo Editing Modal Component
-  // eslint-disable-next-line no-unused-vars
-  const PhotoEditingModal = ({ photo, onClose, onFinished, restoreFocusRef }) => {
-    // Disable body scroll when modal is open and trap focus inside the modal
-    React.useEffect(() => {
-      // Always run the effect, but conditionally set up the logic
-      if (!photo) {
-        return; // Early return is fine in effect cleanup/setup
-      }
-
-      const prev = document.body.style.overflow;
-      document.body.style.overflow = 'hidden';
-      const onKey = (e) => { if (e.key === 'Escape') onClose(); };
-      window.addEventListener('keydown', onKey);
-
-      // Focus trap: keep focus within modal
-      const focusableSelector = 'a[href], area[href], input:not([disabled]), select:not([disabled]), textarea:not([disabled]), button:not([disabled]), [tabindex]:not([tabindex="-1"])';
-      const modalNode = document.getElementById('photo-editing-modal');
-      let firstFocusable = null;
-      let lastFocusable = null;
-      if (modalNode) {
-        const nodes = modalNode.querySelectorAll(focusableSelector);
-        if (nodes.length > 0) {
-          firstFocusable = nodes[0];
-          lastFocusable = nodes[nodes.length - 1];
-          try { firstFocusable.focus(); } catch { /* Ignore focus errors */ }
-        }
-      }
-
-      const onKeyTrap = (e) => {
-        if (e.key !== 'Tab') return;
-        if (!firstFocusable || !lastFocusable) return;
-        if (e.shiftKey && document.activeElement === firstFocusable) {
-          e.preventDefault();
-          lastFocusable.focus();
-        } else if (!e.shiftKey && document.activeElement === lastFocusable) {
-          e.preventDefault();
-          firstFocusable.focus();
-        }
-      };
-      window.addEventListener('keydown', onKeyTrap);
-
-      return () => {
-        document.body.style.overflow = prev;
-        window.removeEventListener('keydown', onKey);
-        window.removeEventListener('keydown', onKeyTrap);
-      };
-    }, [onClose, photo]);
-
-    if (!photo) return null;
-
-  const displayUrl = `${API_BASE_URL}${photo.url}`;
-
-    const modalContent = (
-      <div id="photo-editing-modal" className="fixed inset-0 bg-black bg-opacity-75 flex items-center justify-center z-[200000] pointer-events-none" role="dialog" aria-modal="true" aria-label={`Edit ${photo.filename}`}>
-        <div className="bg-white rounded-lg shadow-2xl max-w-6xl w-full max-h-[95vh] m-4 overflow-auto flex flex-col pointer-events-auto">
-          <div className="flex justify-between items-center p-6 border-b bg-gray-50">
-            <h2 className="text-xl font-bold text-gray-800">Edit Photo: {photo.filename}</h2>
-            <div className="flex items-center gap-3">
-              <button
-                onClick={() => window.open(displayUrl, '_blank')}
-                className="bg-indigo-600 text-white px-3 py-1 rounded text-sm hover:bg-indigo-700"
-              >
-                Open Full
-              </button>
-              <button 
-                onClick={() => {
-                  onClose();
-                  try { if (restoreFocusRef && restoreFocusRef.current) restoreFocusRef.current.focus(); } catch { /* Ignore focus errors */ }
-                }}
-                className="text-gray-400 hover:text-gray-600 text-2xl font-bold leading-none"
-              >
-                ×
-              </button>
-            </div>
-          </div>
-          
-          <div className="flex-1 overflow-y-auto p-6" tabIndex={-1}>
-            <div className="grid grid-cols-1 lg:grid-cols-[2fr_3fr] gap-8">
-              {/* Photo display */}
-              <div className="flex flex-col space-y-4">
-                <div className="bg-gray-50 rounded-lg px-2 py-3 flex items-center justify-center overflow-auto">
-                  <img 
-                    src={`${API_BASE_URL}${photo.url}`} 
-                    alt={photo.filename}
-                    className="max-w-full w-auto h-auto max-h-[80vh] object-contain rounded shadow-lg"
-                  />
-                </div>
-                <div className="text-sm text-gray-600 bg-white p-3 rounded border">
-                  <p><strong>File Size:</strong> {formatFileSize(photo.file_size)}</p>
-                  <p><strong>State:</strong> {photo.state}</p>
-                  <p><strong>Hash:</strong> {photo.hash ? photo.hash.slice(-10) : 'N/A'}</p>
-                </div>
-              </div>
-            
-              {/* Photo metadata and AI info */}
-              <div className="flex flex-col space-y-4">
-                {(!photo.description || !photo.keywords) ? (
-                  <div className="flex flex-col items-center justify-center py-8">
-                    <svg className="animate-spin h-8 w-8 text-blue-500 mb-2" xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24">
-                      <circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4"></circle>
-                      <path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8v4a4 4 0 00-4 4H4z"></path>
-                    </svg>
-                    <span className="text-gray-500 text-sm">AI is processing this photo...</span>
-                  </div>
-                ) : (
-                  <>
-                    <div>
-                      <h3 className="font-semibold text-lg text-gray-800">Caption</h3>
-                      <p className="text-gray-700 bg-gray-50 p-3 rounded">{photo.caption || <span className="text-gray-400">No caption</span>}</p>
-                    </div>
-                    <div>
-                      <h3 className="font-semibold text-lg text-gray-800">Description</h3>
-                      <p className="text-gray-700 bg-gray-50 p-3 rounded">{photo.description || <span className="text-gray-400">No description</span>}</p>
-                    </div>
-                    <div>
-                      <h3 className="font-semibold text-lg text-gray-800">Keywords</h3>
-                      <p className="text-gray-700 bg-gray-50 p-3 rounded">{photo.keywords || <span className="text-gray-400">No keywords</span>}</p>
-                    </div>
-                  </>
-                )}
-                
-                {photo.metadata && (
-                  <div>
-                    <h3 className="font-semibold text-lg text-gray-800">EXIF Data</h3>
-                    <div className="text-sm text-gray-600 bg-gray-50 p-3 rounded max-h-40 overflow-y-auto">
-                      {photo.metadata.DateTimeOriginal && <p><strong>Date Taken:</strong> {photo.metadata.DateTimeOriginal}</p>}
-                      {photo.metadata.Make && <p><strong>Camera:</strong> {photo.metadata.Make} {photo.metadata.Model}</p>}
-                      {photo.metadata.LensModel && <p><strong>Lens:</strong> {photo.metadata.LensModel}</p>}
-                      {photo.metadata.FNumber && <p><strong>Aperture:</strong> f/{photo.metadata.FNumber}</p>}
-                      {photo.metadata.ExposureTime && <p><strong>Shutter:</strong> {photo.metadata.ExposureTime}s</p>}
-                      {photo.metadata.ISO && <p><strong>ISO:</strong> {photo.metadata.ISO}</p>}
-                      {photo.metadata.FocalLength && <p><strong>Focal Length:</strong> {photo.metadata.FocalLength}mm</p>}
-                    </div>
-                  </div>
-                )}
-              </div>
-            </div>
-          </div>
-          
-          {/* Action buttons */}
-          <div className="flex justify-end space-x-4 p-6 border-t bg-gray-50">
-            <button
-              onClick={() => {
-                onClose();
-                try { if (restoreFocusRef && restoreFocusRef.current) restoreFocusRef.current.focus(); } catch { /* Ignore focus errors */ }
-              }}
-              className="bg-gray-500 hover:bg-gray-700 text-white font-bold py-2 px-6 rounded"
-            >
-              Close
-            </button>
-            <button
-              onClick={async () => {
-                try {
-                  await onFinished(photo.id);
-                } catch {
-                  // onFinished should handle errors itself
-                }
-                try { if (restoreFocusRef && restoreFocusRef.current) restoreFocusRef.current.focus(); } catch { /* Ignore focus errors */ }
-              }}
-              className="bg-green-500 hover:bg-green-700 text-white font-bold py-2 px-6 rounded"
-            >
-              Mark as Finished
-            </button>
-          </div>
-        </div>
-      </div>
-    );
-
-    return ReactDOM.createPortal(modalContent, document.body);
-  };
-
-  // ...existing code...
 
   return (
     <div

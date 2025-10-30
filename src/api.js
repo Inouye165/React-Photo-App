@@ -171,6 +171,24 @@ export async function updatePhotoCaption(id, caption, serverUrl = `${API_BASE_UR
   if (handleAuthError(res)) return; if (!res.ok) throw new Error('Failed to update caption'); return await res.json();
 }
 
+export async function deletePhoto(id, serverUrl = `${API_BASE_URL}`) {
+  const url = `${serverUrl}/photos/${id}`;
+  const res = await apiLimiter(() => fetch(url, { method: 'DELETE', headers: getAuthHeaders(), credentials: 'include' }));
+  if (handleAuthError(res)) return;
+  if (!res.ok) {
+    // Try to parse error body for a useful message
+    let body = null;
+    try { body = await res.json(); } catch { try { body = await res.text(); } catch { body = null; } }
+    const msg = (body && (body.error || body.message)) ? (body.error || body.message) : (typeof body === 'string' && body.length ? body : res.statusText || `Failed to delete photo: ${res.status}`);
+    const err = new Error(msg);
+    // attach status so callers can detect 401/403 and reload if desired
+    try { err.status = res.status; } catch { /* ignore */ }
+    throw err;
+  }
+  // Return parsed JSON when available, otherwise true
+  try { return await res.json(); } catch { return true; }
+}
+
 export async function runAI(photoId, serverUrl = `${API_BASE_URL}`) {
   const res = await apiLimiter(() => fetch(`${serverUrl}/photos/${photoId}/run-ai`, { method: 'POST', headers: getAuthHeaders(), credentials: 'include' }));
   if (handleAuthError(res)) return; if (!res.ok) { const text = await res.text().catch(() => ''); throw new Error('Failed to start AI job: ' + text); }
