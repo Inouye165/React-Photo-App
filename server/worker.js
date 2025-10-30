@@ -1,3 +1,13 @@
+/**
+ * Worker process entry point.
+ *
+ * Starts the AI worker by delegating to `server/queue/index.js` which
+ * lazily initializes the Redis connection and BullMQ worker. Keeps the
+ * process alive and attempts a graceful shutdown on SIGINT.
+ *
+ * This module intentionally performs minimal logic so the queue module can
+ * be unit tested independently.
+ */
 // server/worker.js
 
 // This file is the entry point for the worker process.

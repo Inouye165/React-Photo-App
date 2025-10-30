@@ -32,7 +32,15 @@ async function initializeQueue() {
       console.log('[QUEUE] Successfully connected to Redis');
 
       // Create the worker
-      aiWorker = new BullMQWorker(QUEUE_NAME, async (job) => {
+      /**
+       * Processor for AI jobs pulled from the queue.
+       *
+       * @param {import('bullmq').Job} job - The job object containing data for processing.
+       * @returns {Promise<void>} Resolves when processing completes successfully.
+       * @throws Will throw when the photo row cannot be found or AI processing fails,
+       * causing the job to be retried according to worker options.
+       */
+      const processor = async (job) => {
         const { photoId } = job.data;
         console.log(`[WORKER] Processing AI job for photoId: ${photoId}`);
 
@@ -54,7 +62,9 @@ async function initializeQueue() {
           console.error(`[WORKER] Job for photoId ${photoId} failed:`, error.message);
           throw error;
         }
-      }, {
+      };
+
+      aiWorker = new BullMQWorker(QUEUE_NAME, processor, {
         connection,
         lockDuration: 300000, // 5 minutes
         concurrency: 2,

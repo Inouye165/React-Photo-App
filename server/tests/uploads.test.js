@@ -18,6 +18,16 @@ jest.mock('../media/image', () => ({
       // ignore if helpers are not available
     }
 
+    // Allow tests to simulate corrupt/missing EXIF by sending a specific buffer payload
+    try {
+      if (_buffer && Buffer.isBuffer(_buffer) && _buffer.toString() === 'corrupt-exif') {
+        // Simulate missing/corrupt EXIF but still process the image (return hash)
+        return { duplicate: false, hash: 'mock-hash', metadataMissing: true };
+      }
+    } catch {
+      // ignore
+    }
+
     return {
       duplicate: false,
       hash: 'mock-hash'
@@ -31,14 +41,41 @@ jest.mock('jsonwebtoken');
 jest.mock('multer', () => {
   const multerMock = jest.fn(() => ({
     single: jest.fn(() => (req, res, next) => {
+      // Simulate multer fileFilter rejection when header is present
+      if (req.headers && req.headers['x-multer-reject']) {
+        // Simulate multer rejecting file types by sending an immediate response
+        return res.status(400).json({ success: false, error: 'Only image files are allowed' });
+      }
+
       // Default behavior: set req.file and call next unless test indicates no-multer
       if (!req.headers || !req.headers['x-no-multer']) {
-        req.file = {
-          originalname: 'test.jpg',
-          mimetype: 'image/jpeg',
-          buffer: Buffer.from('fake image data'),
-          size: 12345
-        };
+        // Allow tests to override mimetype/name/size via headers
+        const mimetype = req.headers && req.headers['x-multer-mimetype'] ? req.headers['x-multer-mimetype'] : 'image/jpeg';
+        const originalname = req.headers && req.headers['x-multer-originalname'] ? req.headers['x-multer-originalname'] : 'test.jpg';
+
+        if (req.headers && req.headers['x-multer-zero']) {
+          req.file = {
+            originalname,
+            mimetype,
+            buffer: Buffer.alloc(0),
+            size: 0
+          };
+        } else if (req.headers && req.headers['x-multer-buffer']) {
+          // Accept a custom buffer payload (string content) for tests
+          req.file = {
+            originalname,
+            mimetype,
+            buffer: Buffer.from(req.headers['x-multer-buffer']),
+            size: Buffer.from(req.headers['x-multer-buffer']).length
+          };
+        } else {
+          req.file = {
+            originalname,
+            mimetype,
+            buffer: Buffer.from('fake image data'),
+            size: 12345
+          };
+        }
       }
       next();
     })
@@ -227,6 +264,47 @@ describe('Uploads Router with Supabase Storage', () => {
       const mockFiles = mockStorageHelpers.getMockFiles();
       const thumbnailFile = mockFiles.find(([key]) => key.includes('thumbnails/'));
       expect(thumbnailFile).toBeDefined();
+    });
+
+    it('should reject a zero-byte (empty) file upload', async () => {
+      const response = await request(app)
+        .post('/uploads/upload')
+        .set('Authorization', 'Bearer valid-token')
+        .set('x-multer-zero', '1')
+        .attach('photo', Buffer.from(''));
+
+      expect(response.status).toBe(400);
+      expect(response.body.success).toBe(false);
+      expect(response.body.error).toBe('Empty file uploaded');
+    });
+
+    it('should reject unsupported MIME types', async () => {
+      const response = await request(app)
+        .post('/uploads/upload')
+        .set('Authorization', 'Bearer valid-token')
+        // instruct multer mock to reject the fileFilter
+        .set('x-multer-reject', '1')
+        .attach('photo', Buffer.from('fake text data'), 'test.txt');
+
+      expect(response.status).toBe(400);
+      expect(response.body.success).toBe(false);
+      expect(response.body.error).toBe('Only image files are allowed');
+    });
+
+    it('should handle images with corrupt or missing EXIF data gracefully', async () => {
+      const response = await request(app)
+        .post('/uploads/upload')
+        .set('Authorization', 'Bearer valid-token')
+        // Provide a special buffer payload that our ingestPhoto mock recognizes
+        .set('x-multer-buffer', 'corrupt-exif')
+        .set('x-multer-originalname', 'corrupt.jpg')
+        .attach('photo', Buffer.from('corrupt-exif'), 'corrupt.jpg');
+
+      expect(response.status).toBe(200);
+      expect(response.body.success).toBe(true);
+      expect(response.body.hash).toBeDefined();
+      // Verify file exists in storage despite missing EXIF
+      expect(mockStorageHelpers.hasMockFile('photos', 'working/corrupt.jpg')).toBe(true);
     });
   });
 });

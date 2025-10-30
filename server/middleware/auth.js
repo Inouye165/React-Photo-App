@@ -16,20 +16,13 @@ const LOCKOUT_TIME_MINUTES = 15;
  * Middleware to verify JWT token and authenticate users
  */
 function authenticateToken(req, res, next) {
-  // Prefer token from httpOnly cookie for browser clients, but accept
-  // Authorization header (Bearer ...) as a fallback for tests and non-browser clients.
+  // Require token from httpOnly cookie only. Do not accept Authorization header
+  // to prevent stolen tokens (e.g., from localStorage via XSS) being reused.
   let token = null;
   try {
     if (req && req.cookies && req.cookies.authToken) token = req.cookies.authToken;
   } catch {
     token = null;
-  }
-
-  if (!token && req && req.headers && req.headers.authorization) {
-    const parts = req.headers.authorization.split(' ');
-    if (parts.length === 2 && /^Bearer$/i.test(parts[0])) {
-      token = parts[1];
-    }
   }
 
   if (!token) {

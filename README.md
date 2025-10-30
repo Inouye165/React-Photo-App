@@ -485,42 +485,73 @@ The project includes comprehensive testing across frontend and backend:
 - **Test Isolation**: DOM cleanup between tests, no cross-test contamination
 - **CI Ready**: All 63 tests pass consistently for automated deployment
 
-## Open TODOs
-- **Resize and compress all images before sending to OpenAI Vision API to reduce costs. (Convert to JPEG, max 1024x1024, quality 70–80.)**
-- If a file fails AI processing (shows 'AI processing failed'), use the /debug/reset-ai-retry endpoint to reset its retry count, then click 'Recheck Inprogress AI' to retry processing.
-- Add WebSocket/SSE for live photo state and thumbnail updates — push notifications when files change or thumbnails are created.
-- Make thumbnail generation asynchronous and cache-optimized — generate thumbnails in background workers and avoid blocking startup.
-- Add client-side content-hash check to avoid uploading duplicates — compute file hash in browser and skip uploads if server already has the hash.
-- Add filename search and full-size preview modal in frontend — quick search, sort, and modal for viewing images at full resolution.
-- ~~Add automated tests and CI pipeline for build and linting~~ ✅ **COMPLETED**: Comprehensive testing implemented with 63 tests (54 frontend + 9 backend)
-- Add GitHub Actions CI pipeline for automated testing and deployment
+## Project TODOs
 
-<!-- Begin: Architecturally important TODOs (added 2025-10-29) -->
-- **[HIGH PRIORITY - COMPLETED] Removed JWT-in-query-params for image URLs and switched to httpOnly cookie sessions.**
-   - Short-lived JWTs embedded in image `?token=...` URLs have been removed; the server now rejects `?token=` query parameters on image endpoints.
-   - The image route `/display/:state/:filename` uses the standard cookie-based authentication middleware; browser clients receive an httpOnly `authToken` cookie on login and must request images from the API origin so the cookie is sent.
-   - Frontend image usage should request `/display/thumbnails/<filename>` (no token param). This prevents token exposure via logs, browser history, or Referer headers.
-   - Implementation details and tests are available on branch `fix/secure-cookie-auth` and PR #24.
+This section is a concise project-facing TODO list. Each item is marked with one of the following statuses:
 
-- **[ARCHITECTURE] Consolidate frontend global state into the existing Zustand store.**
-   - Migrate auth state (user, isAuthenticated, loading) from `src/contexts/AuthContext.jsx` into `src/store.js` (Zustand) and remove localStorage token management.
-   - Move global UI state from `src/App.jsx` (selectedPhoto, editingPhoto, privilegesMap, showInprogress, showLocalPicker, uploading, etc.) into the store so `App.jsx` becomes a thin layout container.
-   - Extract inlined components (notably the `PhotoEditingModal` defined inside `App`) into `src/components/PhotoEditingModal.jsx` and connect them to the Zustand store to avoid redefinition on each render.
+- TODO — planned work that should be implemented.
+- COMPLETED — work already finished.
+- TO BE CONSIDERED — ideas or optional items that require discussion before making them TODOs.
 
-- **[SECURITY] Standardize on httpOnly cookie session strategy; remove localStorage token logic.**
-   - Remove localStorage-stored JWT logic in `AuthContext` and any code paths that attempt to send tokens in `Authorization: Bearer` headers for normal app API calls.
-   - Ensure `src/api.js` continues to use `credentials: 'include'` and document that the frontend should not persist sensitive tokens in localStorage.
+### High priority
+- [COMPLETED] Remove JWT-in-query-params for image URLs and rely on httpOnly cookie sessions (server rejects `?token=` on image endpoints).
 
-- **[SCALABILITY] Remove synchronous AI processing (`?waitForAI=true`) and use only asynchronous queueing.**
-   - Deprecate the `?waitForAI=true` blocking behavior on `PATCH /photos/:id/state` (server-side blocking AI calls can timeout on serverless platforms).
-   - Ensure all AI processing follows the queue pattern (enqueue job, return 202 Accepted) and rely on frontend polling/webhooks to show progress. Update documentation and remove or mark the blocking parameter as deprecated.
+### Architecture & core
+- [TODO] Consolidate frontend global state into `src/store.js` (Zustand): migrate auth slice (user, loading, isAuthenticated), move UI state (selectedPhoto, editingPhoto, uploading), and extract inlined components to `src/components/`.
+- [TODO] Remove synchronous AI processing (`?waitForAI=true`) and enforce async queueing (enqueue job, return 202). Update API docs and remove blocking parameter.
+- [TO BE CONSIDERED] Review and simplify storage move / fallback logic in the backend to reduce brittle edge cases and add tests for failure paths.
 
-- **[MAINTENANCE] Address brittle storage-move fallback complexity and dependency/workarounds.**
-   - Review the storage move/download-then-upload fallback logic in the backend for simplification or clearer error boundaries; add tests around the failure cases if retained.
-   - Replace hardcoded IP fallback (`http://10.0.0.126:3001`) in `src/api.js` with `http://localhost:3001` or a proxy-root (`/`) fallback to avoid brittle developer-specific defaults.
-   - Investigate `npm install --legacy-peer-deps` and `overrides` entries in `package.json` and resolve upstream dependency versions to remove the workaround technical debt.
+### UX
+- [TODO] Replace blocking `window.confirm` dialogs with a non-blocking `ConfirmModal` and provide an optional 'Undo' toast pattern.
+- [TODO] Add filename search and full-size preview modal in frontend.
 
-<!-- End: Architecturally important TODOs -->
+### Performance & reliability
+- [TODO] Resize and compress images before sending to OpenAI Vision API (JPEG, max 1024x1024, quality 70–80).
+- [TODO] Make thumbnail generation asynchronous and cache-optimized (background worker + caching).
+- [TODO] Add client-side content-hash check to avoid uploading duplicates (compute hash in browser and skip upload if server has hash).
+
+### Real-time updates
+- [TODO] Implement Server-Sent Events (SSE) or WebSockets for AI job completion and live thumbnail/state updates. Start with SSE for a simple server→client channel.
+
+### CI / DevOps
+- [TODO] Add GitHub Actions CI pipeline for automated testing, build, and linting (ensure it runs on PRs and push).
+- [TO BE CONSIDERED] Run secret-scanning (gitleaks or similar) on all pushes/PRs in CI — ensure proper rules and exceptions are configured to reduce false positives.
+
+### Tests & robustness
+- [COMPLETED] Add edge-case upload tests (zero-byte files, unsupported MIME types, corrupt/missing EXIF) in `server/tests/uploads.test.js`.
+- [TODO] Expand test vectors (large files, malformed multipart payloads) and add CI checks to run backend tests on PRs.
+
+If you prefer another ordering or want items grouped differently, tell me which items to promote to top priority and I will update this list.
+
+## Future Enhancements (validated)
+
+The following items were reviewed and validated as practical next steps for this repository. Each entry includes a short rationale and suggested next steps.
+
+- State Management Consolidation — AGREED
+   - Rationale: Consolidating global UI and auth state into the existing `Zustand` store (`src/store.js`) reduces the number of providers, centralizes state mutations, and simplifies debugging and testing.
+   - Notes / Cautions: Keep authentication verification behavior (httpOnly cookie verification via the server) intact — do not store sensitive tokens client-side. Move the `AuthContext` effect that calls `/auth/verify` into a store initializer or a small hook that hydrates the store at app start. Avoid introducing SSR-sensitive code into the client-only store.
+   - Suggested next steps: add `auth` slice to `src/store.js`, migrate `user`, `loading`, `isAuthenticated` and `login/register/logout` adapters, update components to read from the store, and remove `src/contexts/AuthContext.jsx` once tests are green.
+
+- Asynchronous Job Notifications — AGREED
+   - Rationale: Replacing polling with a push-based channel yields a more responsive UI and reduces unnecessary client requests. The backend already enqueues AI jobs; once the queue completes processing, a push notification can inform clients immediately.
+   - Recommendation: Start with Server-Sent Events (SSE) for a simple, server→client-only channel. Use WebSockets only if you need bidirectional messages or complex subscriptions. Implement a lightweight SSE endpoint on the server that emits job-complete events (photoId, status, updated metadata), and add a small client hook (`useAIEvents` or similar) to subscribe and update the store.
+   - Suggested next steps: add SSE/WebSocket endpoint, add `useAIEvents` hook, wire to `src/store.js` to update photo metadata on event, add tests for subscription behavior.
+
+- Non-Blocking UX Modals — AGREED
+   - Rationale: Blocking browser dialogs (`window.confirm`) interrupt user flow and are less accessible and customizable than in-app modals. A custom non-blocking modal allows undo/timeout patterns, consistent design, and improved accessibility.
+   - Suggested next steps: create a `ConfirmModal` component and a small modal manager in the global store, replace `window.confirm` uses with a promise-based modal API or a callback-based flow, and add an optional 'Undo' toast for deletions.
+
+- Component Refactoring — NOT ADDED (already covered)
+   - Reason: The repository's existing TODOs and architecture section already recommend extracting inlined components (notably the photo editing modal) and modularizing `src/App.jsx`. This is an agreed architectural direction and is tracked under "Architecturally important TODOs" in this README; no duplicate entry was added here.
+
+- CI/CD & DevOps (secret scanning on push) — NOT ADDED (already covered)
+   - Reason: The README already documents Husky pre-commit secret scanning, CI secret-scan jobs, and recommended GitHub Actions updates in the "Recommended security & CI TODOs" section. The suggested improvement (run gitleaks or similar on every push/PR) is a good practice and is already represented; implementers should ensure the CI job triggers on push/PR and has access to required repository secrets.
+
+- Robustness & Test Coverage — AGREED (and implemented)
+   - Rationale: Explicit tests for edge-case upload scenarios improve long-term robustness. Tests added include: zero-byte file rejection, unsupported MIME type rejection, and handling of corrupt/missing EXIF data. These are now present in `server/tests/uploads.test.js` and associated mocks.
+   - Suggested next steps: keep expanding test vectors (very large files, boundary file size, malformed multi-part uploads) and add CI checks to run the backend test suite on PRs.
+
+If you'd like, I can open a small PR that extracts the `Auth` slice into `src/store.js` (with tests), a follow-up PR to add an SSE endpoint and client hook, or a PR that replaces `window.confirm` calls with a `ConfirmModal` component wired to the global store.
 
 ### UX: Deletion confirmation & success messaging (future TODOs)
 

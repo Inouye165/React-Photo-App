@@ -36,6 +36,11 @@ module.exports = function createUploadsRouter({ db }) {
         return res.status(400).json({ success: false, error: 'No file uploaded' });
       }
 
+      // Reject zero-byte files early
+      if (typeof req.file.size === 'number' && req.file.size === 0) {
+        return res.status(400).json({ success: false, error: 'Empty file uploaded' });
+      }
+
       // Generate unique filename if needed
       let filename = req.file.originalname;
       let counter = 1;

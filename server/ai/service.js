@@ -28,7 +28,29 @@ const supabase = require('../lib/supabaseClient');
 
 
 
-// Helper: Generate caption, description, keywords for a photo using OpenAI Vision
+/**
+ * Generate caption, description and keywords for a photo using OpenAI-based agents.
+ *
+ * This function accepts a single "options" object and will convert HEIC images
+ * to JPEG if necessary, build the inputs expected by the LangChain agents, run
+ * the router to classify the image, run the appropriate analysis agent and
+ * normalize the result into an object containing caption, description and
+ * keywords. It may also include `poiAnalysis` when available.
+ *
+ * @param {Object} options - The processing options.
+ * @param {Buffer} options.fileBuffer - Raw image bytes (Buffer).
+ * @param {string} options.filename - The filename (used to infer mime/extension).
+ * @param {Object|string} [options.metadata] - EXIF/metadata associated with the image. May be a stringified JSON.
+ * @param {string} [options.gps] - Precomputed GPS string (lat,lon) or empty string.
+ * @param {string} [options.device] - Device make/model string.
+ * @returns {Promise<Object>} Resolves with an object: { caption, description, keywords, [poiAnalysis] }.
+ * @throws Will re-throw errors from agent invocations (routerAgent, sceneryAgent, researchAgent) or conversion failures.
+ * @description
+ * The function performs several normalization steps to be robust against
+ * various agent output shapes (strings, arrays, objects with kwargs/content,
+ * or JSON embedded inside markdown code fences). It tries JSON parsing first
+ * and falls back to heuristics if parsing fails.
+ */
 async function processPhotoAI({ fileBuffer, filename, metadata, gps, device }) {
   // OPENAI_API_KEY is validated at module load time (fail-fast)
 
@@ -267,7 +289,23 @@ async function processPhotoAI({ fileBuffer, filename, metadata, gps, device }) {
   return result;
 }
 
-// Helper: Update photo AI metadata in DB with retry logic
+/**
+ * Update AI metadata (caption, description, keywords, poi_analysis) for a
+ * photo row in the database.
+ *
+ * This function will:
+ * - Attempt to download the photo bytes from Supabase storage using the
+ *   provided storagePath.
+ * - Call processPhotoAI to obtain AI-generated metadata.
+ * - Update the photo row with results, manage ai_retry_count and provide
+ *   fallbacks when AI does not return expected fields.
+ *
+ * @param {Object} db - Knex database instance (must support .from/.where/.update/.first).
+ * @param {Object} photoRow - Database row object for the photo (must include id, filename, metadata, ai_retry_count).
+ * @param {string} storagePath - Path in Supabase storage bucket to download the file from.
+ * @returns {Promise<Object|null>} Returns the AI result object on success, or null when processing failed or retried.
+ * @throws Will re-throw unexpected errors only in rare cases; normally returns null on recoverable failures.
+ */
 async function updatePhotoAIMetadata(db, photoRow, storagePath) {
   try {
     const meta = JSON.parse(photoRow.metadata || '{}');
@@ -389,7 +427,18 @@ function isAIFailed(val) {
   return !val || val.trim().toLowerCase() === 'ai processing failed';
 }
 
-// On server start, process all inprogress photos missing AI metadata or with retry count < 2
+/**
+ * Re-check and process all photos in the 'inprogress' state that are missing
+ * AI metadata or have a retry count below threshold.
+ *
+ * This is intended to run at server start to pick up unfinished processing
+ * tasks and will iterate through matching rows and call
+ * `updatePhotoAIMetadata` for each.
+ *
+ * @param {Object} db - Knex database instance.
+ * @returns {Promise<number>} Number of rows found (and attempted) for reprocessing.
+ * @throws Will propagate any database errors encountered while querying.
+ */
 async function processAllUnprocessedInprogress(db) {
   try {
     const rows = await db('photos')

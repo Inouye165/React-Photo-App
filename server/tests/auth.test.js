@@ -52,6 +52,7 @@ const { createUser } = require('../middleware/auth');
 
 // Test server setup
 const express = require('express');
+const cookieParser = require('cookie-parser');
 const createAuthRouter = require('../routes/auth');
 
 describe('Authentication System', () => {
@@ -64,6 +65,7 @@ describe('Authentication System', () => {
 
     // Setup test app
     app = express();
+    app.use(cookieParser());
     app.use(express.json());
 
     app.use(createAuthRouter({ db }));
@@ -214,7 +216,7 @@ describe('Authentication System', () => {
     test('should verify valid token', async () => {
       const response = await request(app)
         .post('/auth/verify')
-        .set('Authorization', `Bearer ${validToken}`)
+        .set('Cookie', [`authToken=${validToken}`])
         .expect(200);
 
       expect(response.body.success).toBe(true);
@@ -234,7 +236,7 @@ describe('Authentication System', () => {
     test('should reject invalid token', async () => {
       const response = await request(app)
         .post('/auth/verify')
-        .set('Authorization', 'Bearer invalid-token')
+        .set('Cookie', ['authToken=invalid-token'])
         .expect(403);
 
       expect(response.body.success).toBe(false);
