@@ -50,9 +50,10 @@ function makeRequest(url, payload = null) {
       res.on('end', () => {
         try {
           const parsed = data ? JSON.parse(data) : {};
-          resolve({ status: res.statusCode, body: parsed });
+          // Include response headers so callers can read Set-Cookie
+          resolve({ status: res.statusCode, body: parsed, headers: res.headers });
         } catch (e) { 
-          resolve({ status: res.statusCode, body: data });
+          resolve({ status: res.statusCode, body: data, headers: res.headers });
         }
       });
     });
@@ -91,8 +92,18 @@ async function registerAndLogin() {
   
   console.log('Login result status:', loginResult.status);
   console.log('Login result body:', loginResult.body);
+  console.log('Login response headers:', loginResult.headers && Object.keys(loginResult.headers));
   
-  if (loginResult.status !== 200 || !loginResult.body.token) {
+  // Extract auth cookie from Set-Cookie header if present
+  let authCookie = null;
+  if (loginResult.headers && loginResult.headers['set-cookie']) {
+    // set-cookie is an array like ['authToken=...; Path=/; HttpOnly', ...]
+    const sc = loginResult.headers['set-cookie'];
+    const found = sc.find(c => c && c.startsWith('authToken='));
+    if (found) authCookie = found.split(';')[0]; // keep only 'authToken=...'
+  }
+
+  if (loginResult.status !== 200 || (!authCookie && !loginResult.body.token)) {
     // If login failed, try creating a user with different credentials
     console.log('Initial login failed, trying to register with unique credentials...');
     const uniqueUser = {
@@ -111,26 +122,44 @@ async function registerAndLogin() {
         password: uniqueUser.password
       });
       
-      if (loginResult2.status === 200 && loginResult2.body.token) {
-        console.log('Login successful with new user');
-        return loginResult2.body.token;
+      if (loginResult2.status === 200) {
+        // try to extract cookie from this response as well
+        let authCookie2 = null;
+        if (loginResult2.headers && loginResult2.headers['set-cookie']) {
+          const sc2 = loginResult2.headers['set-cookie'];
+          const found2 = sc2.find(c => c && c.startsWith('authToken='));
+          if (found2) authCookie2 = found2.split(';')[0];
+        }
+        if (authCookie2) {
+          console.log('Login successful with new user (cookie)');
+          return authCookie2; // return cookie string for subsequent requests
+        }
+        if (loginResult2.body && loginResult2.body.token) {
+          console.log('Login successful with new user (token in body)');
+          return loginResult2.body.token;
+        }
       }
     }
     
     throw new Error(`Login failed: ${loginResult.status} - ${JSON.stringify(loginResult.body)}`);
   }
   
-  console.log('Login successful, got auth token');
-  return loginResult.body.token;
+  console.log('Login successful');
+  // Prefer returning the cookie string (e.g. 'authToken=...') so callers can set Cookie header.
+  return authCookie || (loginResult.body && loginResult.body.token);
 }
 
 function postPrivilege(authToken) {
   const payload = { relPath: 'test-file.jpg' }; // Dummy path since Supabase Storage is used
   const opts = Object.assign({}, PRIV_URL);
-  opts.headers = Object.assign({}, PRIV_URL.headers, { 
-    'Content-Length': Buffer.byteLength(JSON.stringify(payload)),
-    'Authorization': `Bearer ${authToken}`
-  });
+  // If authToken looks like a cookie string (authToken=...), send it as Cookie header.
+  const headersBase = Object.assign({}, PRIV_URL.headers, { 'Content-Length': Buffer.byteLength(JSON.stringify(payload)) });
+  if (typeof authToken === 'string' && authToken.startsWith('authToken=')) {
+    opts.headers = Object.assign({}, headersBase, { 'Cookie': authToken });
+  } else {
+    // Fallback for non-browser clients that still use bearer tokens
+    opts.headers = Object.assign({}, headersBase, { 'Authorization': `Bearer ${authToken}` });
+  }
   
   return makeRequest(opts, payload);
 }
