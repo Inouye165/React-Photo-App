@@ -17,6 +17,7 @@ vi.mock('./api.js', () => ({
   updatePhotoState: vi.fn(),
   recheckInprogressPhotos: vi.fn(),
   updatePhotoCaption: vi.fn(),
+  API_BASE_URL: ''
 }))
 
 // Mock EXIF parsing

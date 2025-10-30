@@ -10,9 +10,11 @@ const jwt = require('jsonwebtoken');
 // For testing, we might need to create a test server instance
 let server;
 let app;
-let authToken;
+let authCookie;
 
 const JWT_SECRET = process.env.JWT_SECRET || 'fallback-secret-change-in-production';
+// Helper to create header tokens for tests where header auth is desired
+const makeToken = (opts) => jwt.sign({ id: 1, username: 'testuser', role: 'user' }, JWT_SECRET, opts || { expiresIn: '1h' });
 
 // Mock file system for test images
 const testImagePath = path.join(process.cwd(), 'test-images');
@@ -82,10 +84,9 @@ beforeAll(async () => {
         JWT_SECRET,
         { expiresIn: '1h' }
       );
-      res.json({
-        message: 'Login successful',
-        token: token
-      });
+      // Set httpOnly cookie to simulate real login session
+      res.cookie('authToken', token, { httpOnly: true, sameSite: 'Lax' });
+      res.json({ message: 'Login successful' });
     } else {
       res.status(401).json({ error: 'Invalid credentials' });
     }
@@ -93,33 +94,34 @@ beforeAll(async () => {
   
   // Mock display endpoint
   app.get('/display/:state/:filename', (req, res) => {
+    // Reject any use of token in query string — this is intentionally
+    // strict: tokens in URLs are insecure and should be disallowed.
+    if (req.query && Object.prototype.hasOwnProperty.call(req.query, 'token')) {
+      return res.status(403).json({ error: 'Token in query parameter is not allowed for image access' });
+    }
+
     let token = null;
-    
+
     // Try to get token from Authorization header
     const authHeader = req.headers.authorization;
     if (authHeader && authHeader.startsWith('Bearer ')) {
       token = authHeader.substring(7);
     }
-    
-    // If no token in header, try query parameter
-    if (!token && req.query.token) {
-      token = req.query.token;
-    }
-    
-    // If no token in query, try cookie
+
+    // If no token in header, try cookie
     if (!token && req.cookies && req.cookies.authToken) {
       token = req.cookies.authToken;
     }
-    
+
     if (!token) {
       return res.status(401).json({ error: 'Access token required for image access' });
     }
-    
+
     try {
       jwt.verify(token, JWT_SECRET);
       const { state, filename } = req.params;
       const filePath = path.join(workingDir, filename);
-      
+
       if (!fs.existsSync(filePath)) {
         return res.status(404).json({ 
           success: false, 
@@ -128,7 +130,7 @@ beforeAll(async () => {
           state: state
         });
       }
-      
+
       // For HEIC files, simulate conversion
       if (filename.toLowerCase().endsWith('.heic') || filename.toLowerCase().endsWith('.heif')) {
         // Check if this is a malformed HEIC file
@@ -146,7 +148,7 @@ beforeAll(async () => {
             error: 'Failed to read HEIC file'
           });
         }
-        
+
         // Return mock JPEG conversion for valid HEIC files
         res.set('Content-Type', 'image/jpeg');
         res.set('Cache-Control', 'private, max-age=3600');
@@ -157,7 +159,7 @@ beforeAll(async () => {
         res.set('X-XSS-Protection', '1; mode=block');
         return res.send(Buffer.from('mock-jpeg-data'));
       }
-      
+
       // For regular images
       res.set('Content-Type', 'image/jpeg');
       res.set('Cache-Control', 'private, max-age=3600');
@@ -166,17 +168,15 @@ beforeAll(async () => {
       res.set('X-Content-Type-Options', 'nosniff');
       res.set('X-Frame-Options', 'DENY');
       res.set('X-XSS-Protection', '1; mode=block');
-      
+
       const imageBuffer = fs.readFileSync(filePath);
       res.send(imageBuffer);
-      
+
     } catch (error) {
       if (error.name === 'TokenExpiredError') {
         return res.status(401).json({ error: 'Token expired' });
       }
-      if (req.headers.authorization === 'Bearer invalid-token') {
-        return res.status(401).json({ error: 'Invalid token' });
-      }
+      // Any other verification error is treated as invalid token (403)
       return res.status(403).json({ error: 'Invalid token' });
     }
   });
@@ -215,12 +215,12 @@ afterAll(async () => {
 describe('Full Authentication and Image Access Integration', () => {
   beforeEach(async () => {
     // Reset authentication state
-    authToken = null;
+    authCookie = null;
   });
 
   // Add a global beforeEach for all tests that need authentication
   const ensureAuthToken = async () => {
-    if (!authToken) {
+    if (!authCookie) {
       // Ensure user exists before trying to login
       await request(app)
         .post('/auth/register')
@@ -231,14 +231,14 @@ describe('Full Authentication and Image Access Integration', () => {
         })
         .catch(() => {}); // Ignore error if user already exists
       
-      // Get auth token
+      // Perform login to receive httpOnly cookie
       const loginResponse = await request(app)
         .post('/auth/login')
         .send({
           username: 'testuser',
           password: 'TestPassword123!'
         });
-      authToken = loginResponse.body.token;
+      authCookie = loginResponse.headers['set-cookie'];
     }
   };
 
@@ -270,9 +270,10 @@ describe('Full Authentication and Image Access Integration', () => {
         .send(loginData)
         .expect(200);
 
-      expect(response.body).toHaveProperty('token');
+      // Login now sets an httpOnly cookie instead of returning the token in the body
       expect(response.body).toHaveProperty('message', 'Login successful');
-      authToken = response.body.token;
+      expect(response.headers['set-cookie']).toBeDefined();
+      authCookie = response.headers['set-cookie'];
     });
 
     test('should reject login with incorrect credentials', async () => {
@@ -309,32 +310,32 @@ describe('Full Authentication and Image Access Integration', () => {
           username: 'testuser',
           password: 'TestPassword123!'
         });
-      authToken = loginResponse.body.token;
+      authCookie = loginResponse.headers['set-cookie'];
     });
 
-    test('should access JPEG image with valid token in header', async () => {
+    test('should access JPEG image with valid auth cookie (login)', async () => {
       const response = await request(app)
         .get('/display/working/test.jpg')
-        .set('Authorization', `Bearer ${authToken}`)
+        .set('Cookie', authCookie)
         .expect(200);
 
       expect(response.headers['content-type']).toMatch(/image/);
       expect(response.body).toBeDefined();
     });
 
-    test('should access JPEG image with valid token in query parameter', async () => {
+    test('should reject access when token is provided via query parameter', async () => {
+      const tempToken = makeToken();
       const response = await request(app)
-        .get(`/display/working/test.jpg?token=${authToken}`)
-        .expect(200);
+        .get(`/display/working/test.jpg?token=${tempToken}`)
+        .expect(403);
 
-      expect(response.headers['content-type']).toMatch(/image/);
-      expect(response.body).toBeDefined();
+      expect(response.body).toHaveProperty('error');
     });
 
     test('should convert HEIC to JPEG automatically', async () => {
       const response = await request(app)
         .get('/display/working/test.heic')
-        .set('Authorization', `Bearer ${authToken}`)
+        .set('Cookie', authCookie)
         .expect(200);
 
       expect(response.headers['content-type']).toBe('image/jpeg');
@@ -352,8 +353,8 @@ describe('Full Authentication and Image Access Integration', () => {
     test('should deny access with invalid token', async () => {
       const response = await request(app)
         .get('/display/working/test.jpg')
-        .set('Authorization', 'Bearer invalid-token')
-        .expect(401);
+        .set('Cookie', ['authToken=invalid-token'])
+        .expect(403);
 
       expect(response.body).toHaveProperty('error');
     });
@@ -368,7 +369,7 @@ describe('Full Authentication and Image Access Integration', () => {
       
       const response = await request(app)
         .get('/display/working/test.jpg')
-        .set('Authorization', `Bearer ${expiredToken}`)
+        .set('Cookie', [`authToken=${expiredToken}`])
         .expect(401);
 
       expect(response.body).toHaveProperty('error');
@@ -377,7 +378,7 @@ describe('Full Authentication and Image Access Integration', () => {
     test('should return 404 for non-existent image with valid auth', async () => {
       const response = await request(app)
         .get('/display/working/nonexistent.jpg')
-        .set('Authorization', `Bearer ${authToken}`)
+        .set('Cookie', authCookie)
         .expect(404);
 
       expect(response.body).toHaveProperty('error', 'Image not found on this machine');
@@ -392,7 +393,7 @@ describe('Full Authentication and Image Access Integration', () => {
     test('should include proper CORS headers for authenticated requests', async () => {
       const response = await request(app)
         .get('/display/working/test.jpg')
-        .set('Authorization', `Bearer ${authToken}`)
+        .set('Cookie', authCookie)
         .set('Origin', 'http://localhost:5173')
         .expect(200);
 
@@ -403,7 +404,7 @@ describe('Full Authentication and Image Access Integration', () => {
     test('should include security headers', async () => {
       const response = await request(app)
         .get('/display/working/test.jpg')
-        .set('Authorization', `Bearer ${authToken}`)
+        .set('Cookie', authCookie)
         .expect(200);
 
       expect(response.headers['x-content-type-options']).toBe('nosniff');
@@ -440,7 +441,7 @@ describe('Full Authentication and Image Access Integration', () => {
 
       const response = await request(app)
         .get('/display/working/test.jpg')
-        .set('Authorization', `Bearer ${authToken}`)
+        .set('Cookie', authCookie)
         .expect(404);
 
       expect(response.body).toHaveProperty('error', 'Image not found on this machine');
@@ -458,7 +459,7 @@ describe('Full Authentication and Image Access Integration', () => {
       // First, verify the image exists and is accessible
       await request(app)
         .get('/display/working/test.jpg')
-        .set('Authorization', `Bearer ${authToken}`)
+        .set('Cookie', authCookie)
         .expect(200);
 
       // Simulate database cleanup would happen here
@@ -475,7 +476,7 @@ describe('Full Authentication and Image Access Integration', () => {
       const requests = Array(5).fill().map(() => 
         request(app)
           .get('/display/working/test.jpg')
-          .set('Authorization', `Bearer ${authToken}`)
+          .set('Cookie', authCookie)
       );
 
       const responses = await Promise.all(requests);
@@ -502,7 +503,7 @@ describe('Full Authentication and Image Access Integration', () => {
 
       const response = await request(app)
         .get('/display/working/large.heic')
-        .set('Authorization', `Bearer ${authToken}`)
+        .set('Cookie', authCookie)
         .expect(200);
 
       expect(response.headers['content-type']).toBe('image/jpeg');
@@ -518,7 +519,7 @@ describe('Full Authentication and Image Access Integration', () => {
 
       const response = await request(app)
         .get('/display/working/malformed.heic')
-        .set('Authorization', `Bearer ${authToken}`)
+        .set('Cookie', authCookie)
         .expect(500);
 
       expect(response.body).toHaveProperty('error');
@@ -538,7 +539,7 @@ describe('Full Authentication and Image Access Integration', () => {
       for (let i = 0; i < 3; i++) {
         const response = await request(app)
           .get('/display/working/test.jpg')
-          .set('Authorization', `Bearer ${authToken}`)
+          .set('Cookie', authCookie)
           .expect(200);
 
         expect(response.headers['content-type']).toMatch(/image/);
@@ -549,21 +550,19 @@ describe('Full Authentication and Image Access Integration', () => {
       // Test header-based auth
       const headerResponse = await request(app)
         .get('/display/working/test.jpg')
-        .set('Authorization', `Bearer ${authToken}`)
+        .set('Authorization', `Bearer ${makeToken()}`)
         .expect(200);
 
-      // Test query parameter auth
-      const queryResponse = await request(app)
-        .get(`/display/working/test.jpg?token=${authToken}`)
-        .expect(200);
+      await request(app)
+        .get(`/display/working/test.jpg?token=${makeToken()}`)
+        .expect(403);
 
-      // Test cookie-based auth (if implemented)
       const cookieResponse = await request(app)
         .get('/display/working/test.jpg')
-        .set('Cookie', `authToken=${authToken}`)
+        .set('Cookie', authCookie)
         .expect(200);
 
-      [headerResponse, queryResponse, cookieResponse].forEach(response => {
+      [headerResponse, cookieResponse].forEach(response => {
         expect(response.headers['content-type']).toMatch(/image/);
       });
     });
@@ -580,8 +579,8 @@ describe('Full Authentication and Image Access Integration', () => {
       
       const response = await request(app)
         .get('/display/working/test.jpg')
-        .set('Authorization', 'Bearer invalid-token')
-        .expect(401);
+        .set('Cookie', ['authToken=invalid-token'])
+        .expect(403);
 
       expect(response.body.error).not.toContain('invalid-token');
     });
@@ -592,7 +591,7 @@ describe('Full Authentication and Image Access Integration', () => {
       
       const response = await request(app)
         .get('/display/working/test.jpg')
-        .set('Authorization', `Bearer ${authToken}`)
+        .set('Cookie', authCookie)
         .expect(200); // Should still work normally
 
       expect(response.headers['content-type']).toMatch(/image/);

@@ -49,26 +49,7 @@ function authenticateToken(req, res, next) {
   });
 }
 
-/**
- * Middleware to authenticate image display requests from a short-lived token
- * provided as a query parameter: ?token=SHORT_LIVED_TOKEN
- */
-function authenticateImageToken(req, res, next) {
-  const token = req.query && req.query.token;
-  if (!token) {
-    return res.status(401).json({ success: false, error: 'Image access token required' });
-  }
 
-  jwt.verify(token, JWT_SECRET, (err, user) => {
-    if (err) {
-      if (err.name === 'TokenExpiredError') return res.status(401).json({ success: false, error: 'Token expired' });
-      return res.status(403).json({ success: false, error: 'Invalid token' });
-    }
-    // Attach minimal user info so downstream handlers can use it if needed
-    req.user = user;
-    next();
-  });
-}
 
 /**
  * Middleware to require specific roles
@@ -258,7 +239,6 @@ function validatePassword(password) {
 
 module.exports = {
   authenticateToken,
-  authenticateImageToken,
   requireRole,
   generateToken,
   hashPassword,

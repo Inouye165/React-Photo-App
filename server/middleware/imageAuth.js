@@ -28,7 +28,10 @@ function authenticateImageRequest(req, res, next) {
 
   // Explicitly deny token in query parameters. Using tokens in URLs
   // is insecure (can leak via referer, logs, browser history).
-  if (req.query && req.query.token) {
+  // Treat presence of the `token` query key as disallowed even if the
+  // value is an empty string. Use `hasOwnProperty`/in operator to
+  // detect the presence rather than truthiness.
+  if (req.query && Object.prototype.hasOwnProperty.call(req.query, 'token')) {
     return res.status(403).json({
       success: false,
       error: 'Token in query parameter is not allowed for image access. Use httpOnly cookie or Authorization header.'

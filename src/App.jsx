@@ -3,6 +3,7 @@ import React, { useState, useEffect, useRef, useCallback } from 'react'
 import ReactDOM from 'react-dom'
 import { parse } from 'exifr'
 import { uploadPhotoToServer, checkPrivilege, checkPrivilegesBatch, getPhotos, updatePhotoState, recheckInprogressPhotos, updatePhotoCaption } from './api.js'
+import { API_BASE_URL } from './api.js';
 import Toolbar from './Toolbar.jsx'
 import PhotoUploadForm from './PhotoUploadForm.jsx'
 import EditPage from './EditPage.jsx'
@@ -417,7 +418,7 @@ function App() {
   // updates (caption, markFinished) back to this opener window which will then
   // perform state updates and backend calls.
   const _openEditorInNewTab = (photo) => {
-  const _displayUrl = photo.url || `${import.meta.env.VITE_API_URL || 'http://localhost:3001'}/display/${photo.state}/${photo.filename}`;
+    const _displayUrl = `${API_BASE_URL}${photo.url}`;
     const id = photo.id;
     const caption = (photo.caption || '').replace(/</g, '&lt;').replace(/>/g, '&gt;');
     const html = `<!doctype html>
@@ -608,7 +609,7 @@ function App() {
 
     if (!photo) return null;
 
-  const displayUrl = photo.url || `${import.meta.env.VITE_API_URL || 'http://localhost:3001'}/display/${photo.state}/${photo.filename}`;
+  const displayUrl = `${API_BASE_URL}${photo.url}`;
 
     const modalContent = (
       <div id="photo-editing-modal" className="fixed inset-0 bg-black bg-opacity-75 flex items-center justify-center z-[200000] pointer-events-none" role="dialog" aria-modal="true" aria-label={`Edit ${photo.filename}`}>
@@ -640,7 +641,7 @@ function App() {
               <div className="flex flex-col space-y-4">
                 <div className="bg-gray-50 rounded-lg px-2 py-3 flex items-center justify-center overflow-auto">
                   <img 
-                    src={photo.url || `${import.meta.env.VITE_API_URL || 'http://localhost:3001'}/display/${photo.state}/${photo.filename}`} 
+                    src={`${API_BASE_URL}${photo.url}`} 
                     alt={photo.filename}
                     className="max-w-full w-auto h-auto max-h-[80vh] object-contain rounded shadow-lg"
                   />
@@ -849,7 +850,7 @@ function App() {
                   {/* Left: Image */}
                   <div className="w-2/5 bg-gray-100 rounded overflow-auto flex items-center justify-center px-2 py-3" style={{maxHeight: '100%'}}>
                         <img
-                          src={selectedPhoto.url || `${import.meta.env.VITE_API_URL || 'http://localhost:3001'}/display/${selectedPhoto.state}/${selectedPhoto.filename}`}
+                          src={`${API_BASE_URL}${selectedPhoto.url}`}
                           alt={selectedPhoto.filename}
                           className="max-h-full max-w-full object-contain"
                           style={{width: 'auto', height: 'auto'}}
@@ -980,7 +981,7 @@ function App() {
                         <div className="col-span-2">
                           <div className="relative inline-block">
                             {photo.thumbnail ? (
-                              <img src={photo.thumbnail} alt={photo.filename} className="max-h-20 rounded shadow bg-white" />
+                              <img src={`${API_BASE_URL}${photo.thumbnail}`} alt={photo.filename} className="max-h-20 rounded shadow bg-white" />
                             ) : (
                               <div className="w-20 h-20 flex items-center justify-center bg-gray-200 text-gray-400 rounded shadow">No Thumb</div>
                             )}

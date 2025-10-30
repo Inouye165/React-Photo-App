@@ -6,8 +6,8 @@ const { addAIJob, checkRedisAvailable } = require('../queue/index');
 const sharp = require('sharp');
 const exifr = require('exifr');
 const supabase = require('../lib/supabaseClient');
-const jwt = require('jsonwebtoken');
-const { authenticateToken, authenticateImageToken } = require('../middleware/auth');
+const { authenticateToken } = require('../middleware/auth');
+const { authenticateImageRequest } = require('../middleware/imageAuth');
 
 module.exports = function createPhotosRouter({ db }) {
   const router = express.Router();
@@ -58,8 +58,7 @@ module.exports = function createPhotosRouter({ db }) {
       
       const rows = await query;
 
-      // Generate public URLs for each photo using Supabase Storage
-      const origin = `${req.protocol}://${req.get('host')}`;
+  // Generate public URLs for each photo using Supabase Storage
       const photosWithUrls = await Promise.all(rows.map(async (row) => {
         let textStyle = null;
         if (row.text_style) {
@@ -72,19 +71,14 @@ module.exports = function createPhotosRouter({ db }) {
 
   // The frontend will receive fully signed URLs below.
 
-        // Generate a short-lived token for image access
+        // Use simple relative paths for images and thumbnails. Image access
+        // is protected by httpOnly cookie-based authentication on /display/*.
         let thumbnailUrl = null;
         let photoUrl = null;
-        try {
-          const payload = { id: req.user.id, username: req.user.username, photoId: row.id };
-          const shortToken = jwt.sign(payload, process.env.JWT_SECRET, { expiresIn: '5m' });
-          if (row.hash) {
-            thumbnailUrl = `${origin}/display/thumbnails/${row.hash}.jpg?token=${shortToken}`;
-          }
-          photoUrl = `${origin}/display/${row.state}/${row.filename}?token=${shortToken}`;
-        } catch (e) {
-          console.warn('Failed to generate short-lived image token:', e && e.message ? e.message : e);
+        if (row.hash) {
+          thumbnailUrl = `/display/thumbnails/${row.hash}.jpg`;
         }
+        photoUrl = `/display/${row.state}/${row.filename}`;
 
         return {
           id: row.id,
@@ -126,18 +120,11 @@ module.exports = function createPhotosRouter({ db }) {
         try { textStyle = JSON.parse(row.text_style); } catch { textStyle = null; }
       }
 
-      // Generate short-lived token and full URLs for the client
+      // Provide relative image URLs; /display/* is protected by the cookie auth middleware.
       let url = null;
       let thumbnail = null;
-      try {
-        const origin = `${req.protocol}://${req.get('host')}`;
-        const payload = { id: req.user.id, username: req.user.username, photoId: row.id };
-        const shortToken = jwt.sign(payload, process.env.JWT_SECRET, { expiresIn: '5m' });
-        url = `${origin}/display/${row.state}/${row.filename}?token=${shortToken}`;
-        thumbnail = row.hash ? `${origin}/display/thumbnails/${row.hash}.jpg?token=${shortToken}` : null;
-      } catch (e) {
-        console.warn('Failed to generate short-lived token for photo:', e && e.message ? e.message : e);
-      }
+      if (row.hash) thumbnail = `/display/thumbnails/${row.hash}.jpg`;
+      url = `/display/${row.state}/${row.filename}`;
 
       const photo = {
         id: row.id,
@@ -639,7 +626,9 @@ module.exports = function createPhotosRouter({ db }) {
   });
 
   // --- Display endpoint: Serve images from Supabase Storage ---
-  router.get('/display/:state/:filename', authenticateImageToken, async (req, res) => {
+  // Use the specialized image authentication middleware which enforces
+  // CORS headers and explicitly rejects token-in-query parameters.
+  router.get('/display/:state/:filename', authenticateImageRequest, async (req, res) => {
     try {
       const { state, filename } = req.params;
       

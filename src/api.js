@@ -30,9 +30,9 @@ function resolveApiBaseUrl() {
   if (typeof globalThis !== 'undefined' && globalThis.process && globalThis.process.env && globalThis.process.env.VITE_API_URL) {
     return globalThis.process.env.VITE_API_URL;
   }
-  return 'http://10.0.0.126:3001';
+  return 'http://localhost:3001';
 }
-const API_BASE_URL = resolveApiBaseUrl();
+export const API_BASE_URL = resolveApiBaseUrl();
 
 // --- Concurrency limiter (small utility used across API calls)
 const apiMetrics = { totals: { calls: 0 }, limiters: {} };

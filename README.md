@@ -120,8 +120,8 @@ A full-screen React application for filtering, browsing, and uploading photos by
 
 ### 🔐 Authentication & Security System
 - **JWT-Based Authentication**: Secure login system with 24-hour token expiration and bcrypt password hashing
-- **Image Access Security**: All image requests require authentication via JWT tokens (header, query parameter, or cookie)
-- **Multi-Source Token Support**: Flexible authentication supporting Authorization headers, query parameters, and cookies
+- **Image Access Security**: All image requests require authentication via an httpOnly cookie (preferred for browser clients) or an Authorization Bearer header. Query-parameter tokens in URLs (for example `?token=...`) are no longer accepted and will be rejected by the server. This prevents token leakage via logs, browser history, or Referer headers.
+- **Session Strategy**: The server favors httpOnly cookie sessions for browser clients; Authorization headers are supported for non-browser clients. Avoid storing tokens in localStorage and never embed them in URLs.
 - **Security Headers**: Comprehensive security middleware with Helmet (CSP, HSTS, XSS protection)
 - **CORS Configuration**: Properly configured cross-origin resource sharing for development and production
 - **Account Security**: Rate limiting, input validation, and account lockout protection
@@ -161,8 +161,8 @@ A full-screen React application for filtering, browsing, and uploading photos by
 
 ### 🔐 Security & Authentication
 - **JWT Authentication System:** Secure login with bcrypt password hashing and 24-hour token expiration
-- **Protected Image Access:** All images served through authenticated endpoints requiring valid JWT tokens
-- **Multi-Source Authentication:** Support for Authorization headers, query parameters, and cookies
+- **Protected Image Access:** All images are served through authenticated endpoints that require a valid session. Browser clients should use the httpOnly cookie-based session (the server sets an `authToken` cookie on login). Non-browser clients may use an Authorization Bearer header.
+- **Session Policy:** Query-parameter tokens are deprecated and rejected by the server. Frontend code should request images from the API origin so the browser sends the httpOnly cookie automatically.
 - **Security Middleware:** Comprehensive protection with Helmet (CSP, HSTS, XSS), rate limiting, and input validation
 - **CORS Configuration:** Properly configured cross-origin resource sharing for secure frontend access
 
@@ -214,8 +214,8 @@ A full-screen React application for filtering, browsing, and uploading photos by
 - **React 19**: Latest React with modern hooks and authentication context
 - **Vite**: Fast build tool and dev server  
 - **Tailwind CSS**: Utility-first CSS framework
-- **JWT Client**: Local storage token management with authenticated API requests
-- **Authentication Utilities**: Secure image URL generation with token injection
+- **Session management**: httpOnly cookie-based sessions for browser clients. Do not store JWTs in localStorage.
+- **Authentication Utilities**: Ensure image and API requests target the API origin (VITE_API_URL) so the browser will include the httpOnly `authToken` cookie (use fetch/axios with `credentials: 'include'`). Do not inject tokens into image URLs.
 - **exifr**: Library for reading photo metadata
 - **File System Access API**: Modern browser API for folder selection
 - **react-konva**: Canvas library for interactive image editing with draggable text overlays
@@ -320,7 +320,7 @@ The application requires user authentication for all image operations. On first 
 
 1. **Register a new account**: Navigate to the login page and create an account with username, email, and password
 2. **Login**: Use your credentials to obtain a JWT token (valid for 24 hours)
-3. **Automatic token management**: The app automatically includes your token in all image requests
+3. **Session cookie**: After login the server sets an httpOnly cookie named `authToken`. The frontend should make API and image requests to the API origin (VITE_API_URL) with credentials included (fetch/axios: `credentials: 'include'`) so the browser sends the cookie automatically. Do not place JWTs in URLs or localStorage.
 4. **Multi-device support**: Login on multiple machines with the same account for seamless multi-machine workflows
 
 **Security Features:**
@@ -494,6 +494,33 @@ The project includes comprehensive testing across frontend and backend:
 - Add filename search and full-size preview modal in frontend — quick search, sort, and modal for viewing images at full resolution.
 - ~~Add automated tests and CI pipeline for build and linting~~ ✅ **COMPLETED**: Comprehensive testing implemented with 63 tests (54 frontend + 9 backend)
 - Add GitHub Actions CI pipeline for automated testing and deployment
+
+<!-- Begin: Architecturally important TODOs (added 2025-10-29) -->
+- **[HIGH PRIORITY - COMPLETED] Removed JWT-in-query-params for image URLs and switched to httpOnly cookie sessions.**
+   - Short-lived JWTs embedded in image `?token=...` URLs have been removed; the server now rejects `?token=` query parameters on image endpoints.
+   - The image route `/display/:state/:filename` uses the standard cookie-based authentication middleware; browser clients receive an httpOnly `authToken` cookie on login and must request images from the API origin so the cookie is sent.
+   - Frontend image usage should request `/display/thumbnails/<filename>` (no token param). This prevents token exposure via logs, browser history, or Referer headers.
+   - Implementation details and tests are available on branch `fix/secure-cookie-auth` and PR #24.
+
+- **[ARCHITECTURE] Consolidate frontend global state into the existing Zustand store.**
+   - Migrate auth state (user, isAuthenticated, loading) from `src/contexts/AuthContext.jsx` into `src/store.js` (Zustand) and remove localStorage token management.
+   - Move global UI state from `src/App.jsx` (selectedPhoto, editingPhoto, privilegesMap, showInprogress, showLocalPicker, uploading, etc.) into the store so `App.jsx` becomes a thin layout container.
+   - Extract inlined components (notably the `PhotoEditingModal` defined inside `App`) into `src/components/PhotoEditingModal.jsx` and connect them to the Zustand store to avoid redefinition on each render.
+
+- **[SECURITY] Standardize on httpOnly cookie session strategy; remove localStorage token logic.**
+   - Remove localStorage-stored JWT logic in `AuthContext` and any code paths that attempt to send tokens in `Authorization: Bearer` headers for normal app API calls.
+   - Ensure `src/api.js` continues to use `credentials: 'include'` and document that the frontend should not persist sensitive tokens in localStorage.
+
+- **[SCALABILITY] Remove synchronous AI processing (`?waitForAI=true`) and use only asynchronous queueing.**
+   - Deprecate the `?waitForAI=true` blocking behavior on `PATCH /photos/:id/state` (server-side blocking AI calls can timeout on serverless platforms).
+   - Ensure all AI processing follows the queue pattern (enqueue job, return 202 Accepted) and rely on frontend polling/webhooks to show progress. Update documentation and remove or mark the blocking parameter as deprecated.
+
+- **[MAINTENANCE] Address brittle storage-move fallback complexity and dependency/workarounds.**
+   - Review the storage move/download-then-upload fallback logic in the backend for simplification or clearer error boundaries; add tests around the failure cases if retained.
+   - Replace hardcoded IP fallback (`http://10.0.0.126:3001`) in `src/api.js` with `http://localhost:3001` or a proxy-root (`/`) fallback to avoid brittle developer-specific defaults.
+   - Investigate `npm install --legacy-peer-deps` and `overrides` entries in `package.json` and resolve upstream dependency versions to remove the workaround technical debt.
+
+<!-- End: Architecturally important TODOs -->
 
 ### UX: Deletion confirmation & success messaging (future TODOs)
 

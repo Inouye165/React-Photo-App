@@ -1,4 +1,5 @@
 import React from 'react';
+import { API_BASE_URL } from './api.js';
 
 // Utility: Format file size in human-readable format
 function formatFileSize(bytes) {
@@ -24,7 +25,7 @@ export default function PhotoGallery({
           <div className="grid grid-cols-15 gap-4 text-sm items-center">
             <div className="col-span-2">
               {photo.thumbnail ? (
-                <img src={photo.thumbnail} alt={photo.filename} className="max-h-20 rounded shadow bg-white" />
+                <img src={`${API_BASE_URL}${photo.thumbnail}`} alt={photo.filename} className="max-h-20 rounded shadow bg-white" />
               ) : (
                 <div className="w-20 h-20 flex items-center justify-center bg-gray-200 text-gray-400 rounded shadow">No Thumb</div>
               )}
