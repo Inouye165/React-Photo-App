@@ -1,7 +1,7 @@
 import React, { useState, useEffect } from 'react'
 import ImageCanvasEditor from './ImageCanvasEditor'
 import { useAuth } from './contexts/AuthContext'
-import { API_BASE_URL } from './api.js'
+import { API_BASE_URL, fetchProtectedBlobUrl, revokeBlobUrl } from './api.js'
 import useStore from './store.js'
 
 export default function EditPage({ photo, onClose, onSave, onFinished }) {
@@ -42,9 +42,36 @@ export default function EditPage({ photo, onClose, onSave, onFinished }) {
   const pollingPhotoId = useStore(state => state.pollingPhotoId)
   const isPolling = (pollingPhotoIds && pollingPhotoIds.has && pollingPhotoIds.has(photo?.id)) || pollingPhotoId === photo?.id
 
-  if (!photo) return null
-
   const displayUrl = `${API_BASE_URL}${photo.url}`
+  const [imageBlobUrl, setImageBlobUrl] = useState(null)
+
+  useEffect(() => {
+    if (!photo || !photo.url) return undefined
+    let mounted = true
+    let currentObjectUrl = null
+
+    ;(async () => {
+      try {
+        const objUrl = await fetchProtectedBlobUrl(displayUrl)
+        if (!mounted) {
+          if (objUrl) revokeBlobUrl(objUrl)
+          return
+        }
+        currentObjectUrl = objUrl
+        setImageBlobUrl(objUrl)
+      } catch (err) {
+        console.error('Failed to fetch protected image', err)
+      }
+    })()
+
+    return () => {
+      mounted = false
+      if (currentObjectUrl) revokeBlobUrl(currentObjectUrl)
+      setImageBlobUrl(null)
+    }
+  }, [displayUrl, photo])
+
+  if (!photo) return null
 
   const handleSave = async () => {
     setSaving(true)
@@ -148,7 +175,7 @@ export default function EditPage({ photo, onClose, onSave, onFinished }) {
             </div>
           )}
           <ImageCanvasEditor 
-            imageUrl={displayUrl}
+            imageUrl={imageBlobUrl || displayUrl}
             caption={caption}
             textStyle={textStyle}
             onSave={handleCanvasSave}

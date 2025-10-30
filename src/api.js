@@ -180,3 +180,25 @@ export async function runAI(photoId, serverUrl = `${API_BASE_URL}`) {
 export async function getPhoto(photoId, serverUrl = `${API_BASE_URL}`) {
   const res = await fetch(`${serverUrl}/photos/${photoId}`, { method: 'GET', headers: getAuthHeaders(), credentials: 'include' }); if (handleAuthError(res)) return; if (!res.ok) throw new Error('Failed to fetch photo: ' + res.status); return await res.json();
 }
+
+/**
+ * Fetch a protected resource (image) using credentials and return a blob URL.
+ * Caller is responsible for revoking the returned URL when no longer needed.
+ * @param {string} url - Full URL to fetch (absolute or relative)
+ * @returns {Promise<string>} - Object URL (URL.createObjectURL(blob))
+ */
+export async function fetchProtectedBlobUrl(url) {
+  const res = await fetch(url, { method: 'GET', credentials: 'include' });
+  if (handleAuthError(res)) return null;
+  if (!res.ok) throw new Error('Failed to fetch protected resource: ' + res.status);
+  const blob = await res.blob();
+  return URL.createObjectURL(blob);
+}
+
+/**
+ * Revoke a previously created blob URL from fetchProtectedBlobUrl
+ * @param {string} objectUrl
+ */
+export function revokeBlobUrl(objectUrl) {
+  try { if (objectUrl) URL.revokeObjectURL(objectUrl); } catch (e) { void e; }
+}
