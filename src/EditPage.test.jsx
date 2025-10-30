@@ -1,5 +1,5 @@
 import React from 'react'
-import { render, waitFor } from '@testing-library/react'
+import { render, waitFor, screen } from '@testing-library/react'
 import { describe, test, expect, vi } from 'vitest'
 
 // Mock the API helper module (use literals inside the factory; vi.mock is hoisted)
@@ -46,5 +46,24 @@ describe('EditPage - protected image blob fetch', () => {
     // unmount should trigger cleanup which revokes the blob URL
     unmount()
     expect(api.revokeBlobUrl).toHaveBeenCalledWith('blob:fake-url')
+  })
+
+  test('shows loading state initially', () => {
+    const photo = { id: 1, url: '/protected/image.jpg', filename: 'image.jpg' }
+    render(<EditPage photo={photo} onClose={() => {}} onSave={() => {}} onFinished={() => {}} />)
+    expect(screen.getByText('Loading image...')).toBeInTheDocument()
+  })
+
+  test('shows error message if blob fetch fails', async () => {
+    // Arrange: mock the API to return null
+    api.fetchProtectedBlobUrl.mockResolvedValueOnce(null)
+    const photo = { id: 1, url: '/protected/image.jpg', filename: 'image.jpg' }
+    const { queryByTestId } = render(<EditPage photo={photo} onClose={() => {}} onSave={() => {}} onFinished={() => {}} />)
+
+    await waitFor(() => {
+      expect(screen.getByText('Failed to load image.')).toBeInTheDocument()
+    })
+
+    expect(queryByTestId('image-canvas-editor')).toBeNull()
   })
 })

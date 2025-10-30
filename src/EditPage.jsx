@@ -44,11 +44,13 @@ export default function EditPage({ photo, onClose, onSave, onFinished }) {
 
   const displayUrl = `${API_BASE_URL}${photo.url}`
   const [imageBlobUrl, setImageBlobUrl] = useState(null)
+  const [fetchError, setFetchError] = useState(false)
 
   useEffect(() => {
     if (!photo || !photo.url) return undefined
     let mounted = true
     let currentObjectUrl = null
+    setFetchError(false)
 
     ;(async () => {
       try {
@@ -58,9 +60,14 @@ export default function EditPage({ photo, onClose, onSave, onFinished }) {
           return
         }
         currentObjectUrl = objUrl
-        setImageBlobUrl(objUrl)
+        if (objUrl) {
+          setImageBlobUrl(objUrl)
+        } else {
+          setFetchError(true)
+        }
       } catch (err) {
         console.error('Failed to fetch protected image', err)
+        if (mounted) setFetchError(true)
       }
     })()
 
@@ -174,12 +181,22 @@ export default function EditPage({ photo, onClose, onSave, onFinished }) {
               <span className="sr-only">Processing...</span>
             </div>
           )}
-          <ImageCanvasEditor 
-            imageUrl={imageBlobUrl || displayUrl}
-            caption={caption}
-            textStyle={textStyle}
-            onSave={handleCanvasSave}
-          />
+          {!imageBlobUrl && !fetchError && (
+            <div className="text-center p-8">Loading image...</div>
+          )}
+
+          {fetchError && (
+            <div className="text-center p-8 text-red-500">Failed to load image.</div>
+          )}
+
+          {imageBlobUrl && (
+            <ImageCanvasEditor 
+              imageUrl={imageBlobUrl}
+              caption={caption}
+              textStyle={textStyle}
+              onSave={handleCanvasSave}
+            />
+          )}
         </div>
 
         {/* Right column: Split into top (metadata/form) and bottom (chat) - (50%) */}
