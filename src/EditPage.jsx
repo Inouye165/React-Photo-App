@@ -1,6 +1,7 @@
 import React, { useState, useEffect } from 'react'
 import ImageCanvasEditor from './ImageCanvasEditor'
 import { useAuth } from './contexts/AuthContext'
+import { API_BASE_URL } from './api.js'
 import useStore from './store.js'
 
 export default function EditPage({ photo, onClose, onSave, onFinished }) {
@@ -43,7 +44,7 @@ export default function EditPage({ photo, onClose, onSave, onFinished }) {
 
   if (!photo) return null
 
-  const displayUrl = photo.url || `${import.meta.env.VITE_API_URL || 'http://localhost:3001'}/display/${photo.state}/${photo.filename}`
+  const displayUrl = `${API_BASE_URL}${photo.url}`
 
   const handleSave = async () => {
     setSaving(true)

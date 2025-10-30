@@ -54,8 +54,9 @@ describe('PhotoGallery Component', () => {
     render(<PhotoGallery {...mockProps} />)
 
     const thumbnails = screen.getAllByAltText(/test/)
-    expect(thumbnails).toHaveLength(2)
-    expect(thumbnails[0]).toHaveAttribute('src', '/thumbnails/test1_thumb.jpg')
+  expect(thumbnails).toHaveLength(2)
+  // src may be prefixed with API_BASE_URL in the app; accept either absolute or relative
+  expect(thumbnails[0].getAttribute('src')).toContain('/thumbnails/test1_thumb.jpg')
   })
 
   it('shows file sizes formatted', () => {

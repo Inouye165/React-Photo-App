@@ -67,12 +67,12 @@ describe('Image Authentication Middleware', () => {
     });
 
     test('should accept valid token in query parameter', async () => {
+      // Query-parameter tokens are no longer accepted; ensure we get 403
       const response = await request(app)
         .get(`/test-image?token=${validToken}`)
-        .expect(200);
+        .expect(403);
 
-      expect(response.body.success).toBe(true);
-      expect(response.body.user.username).toBe('testuser');
+      expect(response.body.success).toBe(false);
     });
 
     test('should accept valid token in cookie', async () => {
@@ -85,22 +85,24 @@ describe('Image Authentication Middleware', () => {
       expect(response.body.user.username).toBe('testuser');
     });
 
-    test('should prioritize Authorization header over query parameter', async () => {
+    test('should reject any request that contains a query token, even if Authorization header is present', async () => {
       const response = await request(app)
         .get(`/test-image?token=invalid-token`)
         .set('Authorization', `Bearer ${validToken}`)
-        .expect(200);
+        .expect(403);
 
-      expect(response.body.success).toBe(true);
+      expect(response.body.success).toBe(false);
+      expect(response.body.error).toMatch(/query parameter is not allowed/i);
     });
 
-    test('should prioritize query parameter over cookie', async () => {
+    test('should reject query parameter even if cookie is present', async () => {
+      // Even with a valid auth cookie, a query token present should be rejected
       const response = await request(app)
         .get(`/test-image?token=${validToken}`)
-        .set('Cookie', ['authToken=invalid-token'])
-        .expect(200);
+        .set('Cookie', [`authToken=${validToken}`])
+        .expect(403);
 
-      expect(response.body.success).toBe(true);
+      expect(response.body.success).toBe(false);
     });
   });
 
@@ -168,7 +170,7 @@ describe('Image Authentication Middleware', () => {
     test('should handle empty query token', async () => {
       const response = await request(app)
         .get('/test-image?token=')
-        .expect(401);
+        .expect(403);
 
       expect(response.body.success).toBe(false);
     });

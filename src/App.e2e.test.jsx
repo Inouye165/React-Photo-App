@@ -42,6 +42,7 @@ vi.mock('./api.js', () => {
     updatePhotoState: vi.fn(),
     recheckInprogressPhotos: vi.fn(async () => ({ message: 'ok' })),
     updatePhotoCaption: vi.fn(),
+    API_BASE_URL: ''
   };
 });
 

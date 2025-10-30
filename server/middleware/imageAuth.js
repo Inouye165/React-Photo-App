@@ -26,9 +26,16 @@ function authenticateImageRequest(req, res, next) {
     token = authHeader.substring(7);
   }
 
-  // If no token in header, try query parameter
-  if (!token && req.query.token) {
-    token = req.query.token;
+  // Explicitly deny token in query parameters. Using tokens in URLs
+  // is insecure (can leak via referer, logs, browser history).
+  // Treat presence of the `token` query key as disallowed even if the
+  // value is an empty string. Use `hasOwnProperty`/in operator to
+  // detect the presence rather than truthiness.
+  if (req.query && Object.prototype.hasOwnProperty.call(req.query, 'token')) {
+    return res.status(403).json({
+      success: false,
+      error: 'Token in query parameter is not allowed for image access. Use httpOnly cookie or Authorization header.'
+    });
   }
 
   // If no token in query, try cookie
