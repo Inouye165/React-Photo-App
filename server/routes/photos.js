@@ -581,7 +581,37 @@ module.exports = function createPhotosRouter({ db }) {
   });
 
   // --- Run AI processing endpoint ---
-  router.post('/:id/run-ai', authenticateToken, async (req, res) => {
+  // --- Recheck AI processing endpoint (single-photo) ---
+  // This mirrors the behavior of /:id/run-ai but provides a dedicated
+  // route for client-side single-photo rechecks.
+  router.post('/photos/:id/recheck-ai', authenticateToken, async (req, res) => {
+    try {
+      // Ensure photo exists
+      const photo = await db('photos').where({ id: req.params.id }).first();
+      if (!photo) {
+        return res.status(404).json({ error: 'Photo not found' });
+      }
+
+      const redisAvailable = await checkRedisAvailable();
+      if (!redisAvailable) {
+        // Fallback to synchronous processing when Redis is not available
+        console.log(`[API] Redis unavailable - processing AI recheck synchronously for photoId: ${photo.id}`);
+        const storagePath = photo.storage_path || `${photo.state}/${photo.filename}`;
+        await updatePhotoAIMetadata(db, photo, storagePath);
+        return res.status(200).json({ message: 'AI recheck completed synchronously.', photoId: photo.id });
+      }
+
+      // Enqueue a job for rechecking AI metadata
+      await addAIJob(photo.id);
+      console.log(`[API] Enqueued AI recheck for photoId: ${photo.id}`);
+      return res.status(202).json({ message: 'AI recheck queued.', photoId: photo.id });
+    } catch (error) {
+      console.error('Error processing AI recheck:', error);
+      return res.status(500).json({ error: 'Failed to process AI recheck' });
+    }
+  });
+
+  router.post('/photos/:id/run-ai', authenticateToken, async (req, res) => {
     try {
       // Re-fetch the photo to ensure it exists
       const photo = await db('photos').where({ id: req.params.id }).first();
@@ -711,6 +741,16 @@ module.exports = function createPhotosRouter({ db }) {
       res.status(500).json({ error: 'Internal server error' });
     }
   });
+
+  // Debug: list registered routes on the photos router to help diagnose missing endpoints
+  try {
+    const routes = (router.stack || []).filter(Boolean).map((s) => {
+      try { return s.route ? (s.route.path || s.route.stack && s.route.stack[0] && s.route.stack[0].method ? s.route.stack[0].method + ' ' + s.route.path : s.route.path) : (s.name || 'middleware'); } catch { return 'unknown'; }
+    });
+    console.log('[routes] photos router routes:', routes);
+  } catch (e) {
+    console.warn('[routes] failed to enumerate photos router routes', e && e.message);
+  }
 
   return router;
 };

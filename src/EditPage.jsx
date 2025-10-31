@@ -4,7 +4,7 @@ import { useAuth } from './contexts/AuthContext'
 import { API_BASE_URL, fetchProtectedBlobUrl, revokeBlobUrl } from './api.js'
 import useStore from './store.js'
 
-export default function EditPage({ photo, onClose, onSave, onFinished }) {
+export default function EditPage({ photo, onClose, onSave, onFinished, onRecheckAI, setToast }) {
   // AuthContext no longer exposes client-side token (httpOnly cookies are used).
   useAuth();
   const [caption, setCaption] = useState(photo?.caption || '')
@@ -12,6 +12,7 @@ export default function EditPage({ photo, onClose, onSave, onFinished }) {
   const [keywords, setKeywords] = useState(photo?.keywords || '')
   const [textStyle, setTextStyle] = useState(photo?.textStyle || null)
   const [saving, setSaving] = useState(false)
+  const [recheckingAI, setRecheckingAI] = useState(false)
 
   useEffect(() => {
     setCaption(photo?.caption || '')
@@ -41,6 +42,10 @@ export default function EditPage({ photo, onClose, onSave, onFinished }) {
   const pollingPhotoIds = useStore(state => state.pollingPhotoIds)
   const pollingPhotoId = useStore(state => state.pollingPhotoId)
   const isPolling = (pollingPhotoIds && pollingPhotoIds.has && pollingPhotoIds.has(photo?.id)) || pollingPhotoId === photo?.id
+
+  // Prefer the setToast passed from parent (App) but fall back to store if not provided
+  const storeSetToast = useStore(state => state.setToast)
+  const toast = typeof setToast === 'function' ? setToast : storeSetToast
 
   const displayUrl = `${API_BASE_URL}${photo.url}`
   const [imageBlobUrl, setImageBlobUrl] = useState(null)
@@ -94,15 +99,15 @@ export default function EditPage({ photo, onClose, onSave, onFinished }) {
       if (!response.ok) {
         throw new Error('Failed to save metadata');
       }
-      
+
       // Update local state
       const updated = { ...photo, caption, description, keywords, textStyle };
       await onSave(updated);
-      
-      alert('Metadata saved successfully!');
+
+      toast({ message: 'Metadata saved successfully!', severity: 'success' });
     } catch (e) {
       console.error('Save failed', e);
-      alert('Failed to save metadata: ' + e.message);
+      toast({ message: 'Failed to save metadata: ' + e.message, severity: 'error' });
     } finally {
       setSaving(false)
     }
@@ -141,10 +146,10 @@ export default function EditPage({ photo, onClose, onSave, onFinished }) {
       const updated = { ...photo, caption, description, keywords, textStyle: newTextStyle };
       await onSave(updated);
       
-      alert(`Captioned image saved to inprogress as ${result.filename}`);
+      toast({ message: `Captioned image saved to inprogress as ${result.filename}`, severity: 'success' });
     } catch (e) {
       console.error('Canvas save failed', e);
-      alert('Failed to save captioned image: ' + e.message);
+      toast({ message: 'Failed to save captioned image: ' + e.message, severity: 'error' });
     } finally {
       setSaving(false);
     }
@@ -166,6 +171,28 @@ export default function EditPage({ photo, onClose, onSave, onFinished }) {
         <h1 className="text-lg font-bold">Edit Photo — {photo.filename}</h1>
         <div className="flex gap-2">
           <button onClick={onClose} className="px-3 py-1 text-sm bg-gray-200 rounded hover:bg-gray-300">Back</button>
+          <button
+            onClick={async () => {
+              try {
+                setRecheckingAI(true)
+                if (typeof onRecheckAI === 'function') {
+                  await onRecheckAI(photo.id)
+                  toast({ message: 'AI recheck started.', severity: 'info' })
+                } else {
+                  toast({ message: 'Recheck handler not available', severity: 'warning' })
+                }
+              } catch (err) {
+                console.error('Recheck failed', err)
+                toast({ message: 'AI recheck failed: ' + (err && err.message ? err.message : err), severity: 'error' })
+              } finally {
+                setRecheckingAI(false)
+              }
+            }}
+            disabled={recheckingAI}
+            className="px-3 py-1 text-sm bg-purple-600 text-white rounded hover:bg-purple-700 disabled:opacity-50"
+          >
+            {recheckingAI ? 'Rechecking...' : 'Recheck AI'}
+          </button>
           <button onClick={() => { onFinished(photo.id); }} className="px-3 py-1 text-sm bg-green-600 text-white rounded hover:bg-green-700">Mark as Finished</button>
         </div>
       </div>

@@ -5,6 +5,7 @@ import { updatePhotoState } from './api.js'
 const useStore = create((set) => ({
   photos: [],
   toastMsg: '',
+  toastSeverity: 'info',
   // Support both a single legacy polling id and a Set of polling ids for concurrent polling
   pollingPhotoId: null,
   pollingPhotoIds: new Set(),
@@ -15,7 +16,14 @@ const useStore = create((set) => ({
   updatePhotoData: (id, newData) => set((state) => ({ photos: state.photos.map(p => p.id === id ? { ...p, ...newData } : p) })),
 
   // UI slice
-  setToast: (msg) => set({ toastMsg: msg }),
+  // setToast accepts either a string (legacy) or an object { message, severity }
+  setToast: (msg) => {
+    if (typeof msg === 'string') return set({ toastMsg: msg });
+    if (!msg) return set({ toastMsg: '' });
+    const message = msg.message || '';
+    const severity = msg.severity || 'info';
+    return set({ toastMsg: message, toastSeverity: severity });
+  },
   setPollingPhotoId: (id) => set({ pollingPhotoId: id }),
 
   // Manage pollingPhotoIds immutably so Zustand subscribers detect changes
