@@ -419,6 +419,11 @@ function App() {
     }
   }, [freshestEditingPhoto]);
 
+  // Debug: log when freshestEditingPhoto changes so we can trace store -> App updates
+  useEffect(() => {
+    try { console.debug('[App] freshestEditingPhoto changed', freshestEditingPhoto && { id: freshestEditingPhoto.id, caption: freshestEditingPhoto.caption, description: freshestEditingPhoto.description && String(freshestEditingPhoto.description).slice(0,200) }); } catch (e) { console.warn('[App] debug log failed', e); }
+  }, [freshestEditingPhoto]);
+
 
 
   

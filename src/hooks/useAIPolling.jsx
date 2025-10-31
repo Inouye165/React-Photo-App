@@ -28,6 +28,7 @@ export default function useAIPolling() {
       attemptsRef.current += 1
       try {
         const res = await getPhoto(pollingPhotoId)
+  try { console.debug('[useAIPolling] getPhoto response for', pollingPhotoId, res && (res.photo || res)); } catch (e) { console.warn('[useAIPolling] debug log failed', e); }
         if (!res) return
         // Normalize to a single photo object
         let updated = null
@@ -39,7 +40,9 @@ export default function useAIPolling() {
 
         if (hasAIData(updated)) {
           if (cancelled) return
+          try { console.debug('[useAIPolling] AI data detected for', updated.id, { caption: updated.caption, description: updated.description && String(updated.description).slice(0,200) }); } catch (e) { console.warn('[useAIPolling] debug log failed', e); }
           updatePhotoData(updated.id, updated)
+          try { console.debug('[useAIPolling] Called updatePhotoData for', updated.id); } catch (e) { console.warn('[useAIPolling] debug log failed', e); }
           setPollingPhotoId(null)
           // Previously we showed a toast here: setToast('AI processing completed')
           // That message is redundant now that state is updated and UI populates.

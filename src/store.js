@@ -16,6 +16,8 @@ const useStore = create((set) => ({
   // Update existing photo data or insert if missing (upsert)
   updatePhotoData: (id, newData) => set((state) => {
     const exists = state.photos.some(p => p.id === id)
+    // Small debug log to help trace updates while debugging client sync
+  try { console.debug('[store] updatePhotoData', { id, exists, newData }); } catch { /* ignore */ }
     if (exists) {
       return { photos: state.photos.map(p => p.id === id ? { ...p, ...newData } : p) }
     }
