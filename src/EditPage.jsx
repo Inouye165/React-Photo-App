@@ -18,16 +18,7 @@ export default function EditPage({ photo, onClose, onSave, onFinished, onRecheck
   const prevPhotoRef = React.useRef(photo)
   const doneTimeoutRef = React.useRef(null)
 
-  // Keep previous photo for comparison when prop changes
-  useEffect(() => {
-    prevPhotoRef.current = photo
-    return () => {
-      if (doneTimeoutRef.current) {
-        clearTimeout(doneTimeoutRef.current)
-        doneTimeoutRef.current = null
-      }
-    }
-  }, [photo])
+  
 
   useEffect(() => {
     setCaption(photo?.caption || '')
@@ -127,6 +118,18 @@ export default function EditPage({ photo, onClose, onSave, onFinished, onRecheck
   }, [isPolling, photo])
 
   
+  
+  // Keep previous photo for comparison when prop changes
+  useEffect(() => {
+    prevPhotoRef.current = photo
+    return () => {
+      // clear timeout on unmount
+      if (doneTimeoutRef.current) {
+        clearTimeout(doneTimeoutRef.current)
+        doneTimeoutRef.current = null
+      }
+    }
+  }, [photo])
 
   if (!photo) return null
 
