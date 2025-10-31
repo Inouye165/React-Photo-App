@@ -13,6 +13,21 @@ export default function EditPage({ photo, onClose, onSave, onFinished, onRecheck
   const [textStyle, setTextStyle] = useState(photo?.textStyle || null)
   const [saving, setSaving] = useState(false)
   const [recheckingAI, setRecheckingAI] = useState(false)
+  // Button visual status: 'idle' | 'in-progress' | 'done' | 'error'
+  const [recheckStatus, setRecheckStatus] = useState('idle')
+  const prevPhotoRef = React.useRef(photo)
+  const doneTimeoutRef = React.useRef(null)
+
+  // Keep previous photo for comparison when prop changes
+  useEffect(() => {
+    prevPhotoRef.current = photo
+    return () => {
+      if (doneTimeoutRef.current) {
+        clearTimeout(doneTimeoutRef.current)
+        doneTimeoutRef.current = null
+      }
+    }
+  }, [photo])
 
   useEffect(() => {
     setCaption(photo?.caption || '')
@@ -82,6 +97,36 @@ export default function EditPage({ photo, onClose, onSave, onFinished, onRecheck
       setImageBlobUrl(null)
     }
   }, [displayUrl, photo])
+
+  // Watch polling state and photo updates to change the recheck button status
+  useEffect(() => {
+    // If polling started for this photo, show in-progress
+    if (isPolling) {
+      // clear any pending done timeout
+      if (doneTimeoutRef.current) {
+        clearTimeout(doneTimeoutRef.current)
+        doneTimeoutRef.current = null
+      }
+      setRecheckStatus('in-progress')
+      return
+    }
+    // polling stopped; if previously was polling, determine if AI updated the photo
+    const prev = prevPhotoRef.current
+    if (prev && (prev.caption !== photo.caption || prev.description !== photo.description || prev.keywords !== photo.keywords)) {
+      // AI updated fields -> mark done briefly then show "Recheck AI again"
+      setRecheckStatus('done')
+      // show 'done' for 2.5s then switch to idle (label 'Recheck AI again')
+      doneTimeoutRef.current = setTimeout(() => {
+        setRecheckStatus('idle')
+        doneTimeoutRef.current = null
+      }, 2500)
+    } else {
+      // No update observed; revert to idle
+      setRecheckStatus('idle')
+    }
+  }, [isPolling, photo])
+
+  
 
   if (!photo) return null
 
@@ -155,6 +200,7 @@ export default function EditPage({ photo, onClose, onSave, onFinished, onRecheck
     }
   }
 
+  
   return (
     <div
       className="bg-white overflow-hidden flex flex-col"
@@ -174,6 +220,8 @@ export default function EditPage({ photo, onClose, onSave, onFinished, onRecheck
           <button
             onClick={async () => {
               try {
+                // immediate visual change
+                setRecheckStatus('in-progress')
                 setRecheckingAI(true)
                 if (typeof onRecheckAI === 'function') {
                   await onRecheckAI(photo.id)
@@ -183,15 +231,23 @@ export default function EditPage({ photo, onClose, onSave, onFinished, onRecheck
                 }
               } catch (err) {
                 console.error('Recheck failed', err)
+                setRecheckStatus('error')
                 toast({ message: 'AI recheck failed: ' + (err && err.message ? err.message : err), severity: 'error' })
               } finally {
                 setRecheckingAI(false)
               }
             }}
-            disabled={recheckingAI}
-            className="px-3 py-1 text-sm bg-purple-600 text-white rounded hover:bg-purple-700 disabled:opacity-50"
+            disabled={recheckingAI || isPolling}
+            className={
+              'px-3 py-1 text-sm rounded disabled:opacity-50 ' + (
+                recheckStatus === 'in-progress' ? 'bg-yellow-500 text-black hover:bg-yellow-600' :
+                recheckStatus === 'done' ? 'bg-green-600 text-white hover:bg-green-700' :
+                recheckStatus === 'error' ? 'bg-red-600 text-white hover:bg-red-700' :
+                'bg-green-600 text-white hover:bg-green-700'
+              )
+            }
           >
-            {recheckingAI ? 'Rechecking...' : 'Recheck AI'}
+            {recheckingAI || recheckStatus === 'in-progress' ? 'Rechecking...' : (recheckStatus === 'done' ? 'Done' : (recheckStatus === 'error' ? 'Error - Retry' : 'Recheck AI'))}
           </button>
           <button onClick={() => { onFinished(photo.id); }} className="px-3 py-1 text-sm bg-green-600 text-white rounded hover:bg-green-700">Mark as Finished</button>
         </div>
@@ -229,39 +285,42 @@ export default function EditPage({ photo, onClose, onSave, onFinished, onRecheck
         {/* Right column: Split into top (metadata/form) and bottom (chat) - (50%) */}
         <div className="w-1/2 flex flex-col" style={{ gap: '7px' }}>
           {/* Top right: Metadata and form (50% of right side) */}
-          <div className="h-1/2 flex flex-col p-6 overflow-y-auto overflow-x-hidden rounded border" style={{ backgroundColor: '#f5f5f5' }}>
+          <div
+            className="h-1/2 flex flex-col p-6 overflow-hidden rounded border"
+            style={{ backgroundColor: '#f5f5f5', minHeight: 0 }}
+          >
             <div className="mb-2">
               <label className="block font-semibold mb-1 text-sm">Caption</label>
-              <textarea 
-                className="w-full border rounded p-2 text-sm" 
+              <textarea
+                className="w-full border rounded p-2 text-sm"
                 rows={2}
-                value={caption} 
-                onChange={e => setCaption(e.target.value)} 
+                value={caption}
+                onChange={e => setCaption(e.target.value)}
               />
             </div>
-            
-            <div className="mb-2">
+
+            <div className="mb-2 flex-1 min-h-0" style={{ display: 'flex', flexDirection: 'column' }}>
               <label className="block font-semibold mb-1 text-sm">Description</label>
-              <textarea 
-                className="w-full border rounded p-2 text-sm" 
-                rows={4}
-                value={description} 
-                onChange={e => setDescription(e.target.value)} 
+              <textarea
+                className="w-full border rounded p-2 text-sm flex-1 min-h-0"
+                value={description}
+                onChange={e => setDescription(e.target.value)}
+                style={{ resize: 'vertical', overflow: 'auto', whiteSpace: 'pre-wrap', wordWrap: 'break-word' }}
               />
             </div>
-            
+
             <div className="mb-3">
               <label className="block font-semibold mb-1 text-sm">Keywords</label>
-              <textarea 
-                className="w-full border rounded p-2 text-sm resize-none overflow-hidden" 
-                rows={2}
-                value={keywords} 
+              <textarea
+                className="w-full border rounded p-2 text-sm resize-none overflow-hidden"
+                rows={1}
+                value={keywords}
                 onChange={e => setKeywords(e.target.value)}
                 style={{ whiteSpace: 'pre-wrap', wordWrap: 'break-word' }}
               />
             </div>
-            
-            <div className="flex gap-2">
+
+            <div className="flex gap-2 mt-auto">
               <button onClick={handleSave} disabled={saving} className="px-3 py-1.5 text-sm bg-blue-600 text-white rounded hover:bg-blue-700 disabled:opacity-50">{saving ? 'Saving...' : 'Save'}</button>
               <button onClick={onClose} className="px-3 py-1.5 text-sm bg-gray-200 rounded hover:bg-gray-300">Cancel</button>
             </div>

@@ -13,7 +13,15 @@ const useStore = create((set) => ({
   // Photos slice
   setPhotos: (photos) => set({ photos }),
   removePhotoById: (id) => set((state) => ({ photos: state.photos.filter(p => p.id !== id) })),
-  updatePhotoData: (id, newData) => set((state) => ({ photos: state.photos.map(p => p.id === id ? { ...p, ...newData } : p) })),
+  // Update existing photo data or insert if missing (upsert)
+  updatePhotoData: (id, newData) => set((state) => {
+    const exists = state.photos.some(p => p.id === id)
+    if (exists) {
+      return { photos: state.photos.map(p => p.id === id ? { ...p, ...newData } : p) }
+    }
+    // Append updated/inserted photo to the list so editors can observe it
+    return { photos: [...state.photos, typeof newData === 'object' ? { ...newData, id } : newData] }
+  }),
 
   // UI slice
   // setToast accepts either a string (legacy) or an object { message, severity }

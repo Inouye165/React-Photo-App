@@ -97,6 +97,10 @@ function App() {
   const [editedCaption, setEditedCaption] = useState('');
   const [editedDescription, setEditedDescription] = useState('');
   const [editedKeywords, setEditedKeywords] = useState('');
+  // Define the freshest photo object by searching the reactive photos array
+  const freshestEditingPhoto = editingPhoto
+    ? photos.find(p => p.id === editingPhoto.id) || editingPhoto
+    : null;
   const [selectedPhoto, setSelectedPhoto] = useState(null);
   const [showFinished, setShowFinished] = useState(false);
   // Polling state: photo id currently being polled for AI results
@@ -407,12 +411,13 @@ function App() {
 
   // keep editable fields synced when editingPhoto changes
   useEffect(() => {
-    if (editingPhoto) {
-      setEditedCaption(editingPhoto.caption || '');
-      setEditedDescription(editingPhoto.description || '');
-      setEditedKeywords(editingPhoto.keywords || '');
+    // Use freshestEditingPhoto so local edit fields update when the global store's photo object is updated by AI polling
+    if (freshestEditingPhoto) {
+      setEditedCaption(freshestEditingPhoto.caption || '');
+      setEditedDescription(freshestEditingPhoto.description || '');
+      setEditedKeywords(freshestEditingPhoto.keywords || '');
     }
-  }, [editingPhoto]);
+  }, [freshestEditingPhoto]);
 
 
 
@@ -552,9 +557,9 @@ function App() {
 
       <div className="flex-1 overflow-auto" style={{ padding: '8px 16px 16px 16px' }}>
         {/* Show EditPage when editing, otherwise show photo list */}
-        {editingPhoto ? (
+        {freshestEditingPhoto ? (
           <EditPage 
-            photo={editingPhoto}
+            photo={freshestEditingPhoto}
             onClose={() => setEditingPhoto(null)}
             onFinished={async (id) => { await handleMoveToFinished(id); setEditingPhoto(null); }}
             onSave={async (updated) => {
