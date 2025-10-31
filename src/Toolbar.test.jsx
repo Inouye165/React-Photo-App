@@ -31,7 +31,8 @@ describe('Toolbar Component', () => {
     expect(screen.getByText('View Inprogress')).toBeInTheDocument()
     expect(screen.getByText('View Finished')).toBeInTheDocument()
     expect(screen.getByText('Show Metadata')).toBeInTheDocument()
-    expect(screen.getByText('Recheck AI')).toBeInTheDocument()
+    // Bulk "Recheck AI" was removed from the toolbar; ensure it's not present
+    expect(screen.queryByText('Recheck AI')).not.toBeInTheDocument()
     expect(screen.getByText('Logout')).toBeInTheDocument() // Updated to match authenticated mock
   })
 
@@ -67,21 +68,8 @@ describe('Toolbar Component', () => {
     expect(mockProps.onViewFinished).toHaveBeenCalledOnce()
   })
 
-  it('shows rechecking state when rechecking is true', () => {
-    render(<Toolbar {...mockProps} rechecking={true} />)
-    
-    const recheckButton = screen.getByText('Rechecking...')
-    expect(recheckButton).toBeInTheDocument()
-    expect(recheckButton).toBeDisabled()
-  })
-
-  it('calls onRecheck when recheck button is clicked and not rechecking', async () => {
-    const user = userEvent.setup()
-    render(<Toolbar {...mockProps} />)
-    
-    await user.click(screen.getByText('Recheck AI'))
-    expect(mockProps.onRecheck).toHaveBeenCalledOnce()
-  })
+  // The toolbar no longer contains a bulk "Recheck AI" action; those behaviors
+  // are tested on the EditPage component where single-photo recheck lives.
 
   it('displays toolbar message when provided', () => {
     const message = 'Successfully uploaded 5 photos'

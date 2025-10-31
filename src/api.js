@@ -166,6 +166,28 @@ export async function recheckInprogressPhotos(serverUrl = `${API_BASE_URL}/photo
   if (handleAuthError(res)) return; if (!res.ok) throw new Error('Failed to trigger recheck'); return await res.json();
 }
 
+export async function recheckPhotoAI(photoId, serverUrl = `${API_BASE_URL}`) {
+  const url = `${serverUrl}/photos/${photoId}/run-ai`;
+  const res = await apiLimiter(() => fetch(url, { method: 'POST', headers: getAuthHeaders(), credentials: 'include' }));
+  if (handleAuthError(res)) return; if (!res.ok) {
+    const text = await res.text().catch(() => '');
+    throw new Error('Failed to trigger photo recheck: ' + (text || res.status));
+  }
+  try {
+    const json = await res.json().catch(() => null);
+    // Notify other windows/tabs that an AI run has been started for this photo
+    try {
+      if (typeof window !== 'undefined' && window.dispatchEvent) {
+        try { window.dispatchEvent(new CustomEvent('photo:run-ai', { detail: { photoId } })); } catch { /* ignore */ }
+      }
+      try { localStorage.setItem('photo:run-ai', JSON.stringify({ photoId, timestamp: Date.now() })); } catch { /* ignore */ }
+    } catch { /* ignore cross-window notify errors */ }
+    return json;
+  } catch {
+    return null;
+  }
+}
+
 export async function updatePhotoCaption(id, caption, serverUrl = `${API_BASE_URL}`) {
   const res = await apiLimiter(() => fetch(`${serverUrl}/photos/${id}/caption`, { method: 'PATCH', headers: getAuthHeaders(), body: JSON.stringify({ caption }), credentials: 'include' }));
   if (handleAuthError(res)) return; if (!res.ok) throw new Error('Failed to update caption'); return await res.json();
@@ -189,11 +211,7 @@ export async function deletePhoto(id, serverUrl = `${API_BASE_URL}`) {
   try { return await res.json(); } catch { return true; }
 }
 
-export async function runAI(photoId, serverUrl = `${API_BASE_URL}`) {
-  const res = await apiLimiter(() => fetch(`${serverUrl}/photos/${photoId}/run-ai`, { method: 'POST', headers: getAuthHeaders(), credentials: 'include' }));
-  if (handleAuthError(res)) return; if (!res.ok) { const text = await res.text().catch(() => ''); throw new Error('Failed to start AI job: ' + text); }
-  try { const json = await res.json().catch(() => null); try { if (typeof window !== 'undefined' && window.dispatchEvent) window.dispatchEvent(new CustomEvent('photo:run-ai', { detail: { photoId } })); } catch (e) { void e; } try { localStorage.setItem('photo:run-ai', JSON.stringify({ photoId, ts: Date.now() })); } catch (e) { void e; } return json; } catch { return null; }
-}
+// runAI client helper intentionally removed; use recheckPhotoAI(photoId) instead.
 
 export async function getPhoto(photoId, serverUrl = `${API_BASE_URL}`) {
   const res = await fetch(`${serverUrl}/photos/${photoId}`, { method: 'GET', headers: getAuthHeaders(), credentials: 'include' }); if (handleAuthError(res)) return; if (!res.ok) throw new Error('Failed to fetch photo: ' + res.status); return await res.json();

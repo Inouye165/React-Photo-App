@@ -6,8 +6,6 @@ export default function Toolbar({
   onViewInprogress,
   onViewFinished,
   onSelectFolder,
-  onRecheck,
-  rechecking,
   onShowMetadata,
   // new: a small persistent message area in the toolbar
   toolbarMessage,
@@ -69,23 +67,7 @@ export default function Toolbar({
         >
           Show Metadata
         </button>
-        <button
-          onClick={onRecheck}
-          disabled={rechecking}
-          style={{
-            marginLeft: "20px",
-            background: rechecking ? "#6b7280" : "#8b5cf6",
-            color: "#fff",
-            border: "none",
-            borderRadius: "6px",
-            padding: "8px 16px",
-            fontWeight: "bold",
-            cursor: rechecking ? "not-allowed" : "pointer",
-            opacity: rechecking ? 0.7 : 1,
-          }}
-        >
-          {rechecking ? "Rechecking..." : "Recheck AI"}
-        </button>
+        
       </div>
       <div style={{ marginLeft: "auto", display: 'flex', alignItems: 'center', gap: '12px' }}>
         {toolbarMessage ? (

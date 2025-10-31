@@ -86,9 +86,6 @@ If you encounter a missing package error, please open an issue or PR to add it t
 
 # Environment Variables
 
-- Copy `.env.example` to `.env` in both the root and `server/` directories.
-- Fill in all required values before running the app.
-- Do not commit `.env` files to source control.
 # React Photo Filtering App
 
 [![Tests](https://img.shields.io/badge/tests-86%20passing-brightgreen.svg)](https://github.com/Inouye165/React-Photo-App)
@@ -105,86 +102,33 @@ A full-screen React application for filtering, browsing, and uploading photos by
 
 ## Table of Contents
 
-- [🆕 What's New](#-whats-new-october-2025)
-- [Key Features](#key-features-2025-update)
-- [Usage](#usage-2025)
-- [Technical Stack](#technical-stack)
-- [File Structure](#file-structure)
-- [Getting Started](#getting-started)
-- [Testing & Quality Assurance](#testing--quality-assurance)
-- [Troubleshooting](#troubleshooting)
-- [Contributing](#contributing)
  - [Integration runner (developer tool)](#integration-runner-developer-tool)
 
 ## 🆕 What's New (October 2025)
 
 ### 🔐 Authentication & Security System
-- **JWT-Based Authentication**: Secure login system with 24-hour token expiration and bcrypt password hashing
-- **Image Access Security**: All image requests require authentication via an httpOnly cookie (preferred for browser clients) or an Authorization Bearer header. Query-parameter tokens in URLs (for example `?token=...`) are no longer accepted and will be rejected by the server. This prevents token leakage via logs, browser history, or Referer headers.
-- **Session Strategy**: The server favors httpOnly cookie sessions for browser clients; Authorization headers are supported for non-browser clients. Avoid storing tokens in localStorage and never embed them in URLs.
-- **Security Headers**: Comprehensive security middleware with Helmet (CSP, HSTS, XSS protection)
-- **CORS Configuration**: Properly configured cross-origin resource sharing for development and production
-- **Account Security**: Rate limiting, input validation, and account lockout protection
 
 ### 🖼️ Advanced HEIC Support  
-- **Automatic HEIC Conversion**: Server automatically converts HEIC files to JPEG for browser compatibility
-- **Multi-Machine File Sync**: Robust handling of database/file synchronization across multiple development machines
-- **Smart Fallback Processing**: Sharp → ImageMagick → graceful error handling for unsupported formats
-- **Authenticated Image URLs**: All images served through secure, authenticated endpoints
 
 ### Testing & Quality Enhancement
-- **Expanded Test Suite**: 86 tests covering authentication, security, HEIC conversion, and existing functionality
-- **Authentication Testing**: Comprehensive validation of JWT flows, token handling, and security middleware
-- **HEIC Conversion Testing**: Complete testing of file conversion, fallback mechanisms, and error scenarios
-- **Security Testing**: Validation of all security headers, rate limiting, and input sanitization
-- **Frontend Testing**: 66 tests using Vitest + React Testing Library with new authentication utilities
-- **Backend Testing**: 20+ tests using Jest + Supertest for secure API endpoints and file operations
-- **Integration Testing**: End-to-end authentication and image access workflows
-- **Regression Prevention**: Tests specifically designed to prevent previously encountered issues
 
 ### Image Processing Improvements
-- **Optimized HEIC Logging**: Reduced noise in conversion logs - only logs errors when both Sharp and ImageMagick fail
-- **Smart Fallback**: Silent failover from Sharp to ImageMagick for HEIC files with unsupported codecs
-- **Clean Console Output**: Error messages only appear when action is needed
 
 ### UX Improvements
-- **Toolbar Messaging**: Upload success messages now appear in the toolbar for persistent feedback
-- **Better User Feedback**: Non-intrusive success notifications that persist until dismissed
-- **Fixed Edit Button**: Edit functionality properly wired with delete confirmation dialogs
 
 ### Developer Experience  
-- **Modern Testing Stack**: Vitest for frontend, Jest for backend with proper test isolation
-- **Mock Strategy**: Comprehensive mocking of APIs, filesystem, and database operations
-- **Test Coverage**: State management, user interactions, error scenarios, database operations, and accessibility
 
 ## Key Features (2025 Update)
 
 ### 🔐 Security & Authentication
-- **JWT Authentication System:** Secure login with bcrypt password hashing and 24-hour token expiration
-- **Protected Image Access:** All images are served through authenticated endpoints that require a valid session. Browser clients should use the httpOnly cookie-based session (the server sets an `authToken` cookie on login). Non-browser clients may use an Authorization Bearer header.
-- **Session Policy:** Query-parameter tokens are deprecated and rejected by the server. Frontend code should request images from the API origin so the browser sends the httpOnly cookie automatically.
-- **Security Middleware:** Comprehensive protection with Helmet (CSP, HSTS, XSS), rate limiting, and input validation
-- **CORS Configuration:** Properly configured cross-origin resource sharing for secure frontend access
 
 ### 📸 Advanced Photo Management
-- **Backend-driven workflow:** All photo management, metadata, and permissions are handled by the backend server. The React app fetches and displays everything from backend APIs.
-- **Enhanced HEIC/HEIF Support:** Automatic conversion to JPEG with Smart fallback (Sharp → ImageMagick), authenticated serving, and multi-machine file synchronization
-- **Folder picker & date filter:** Select a local folder, filter photos by date (using EXIF/file dates), and upload only the filtered files to the backend.
-- **Hash-based deduplication:** Every file is hashed (SHA-256) on upload/ingest. Duplicate files (by content) are automatically skipped. The UI shows the last 5 digits of each file's hash.
-- **Privileges column:** The app displays actual file system privileges (read/write/execute) for each photo as reported by the backend.
-- **Automatic DB migration:** The backend automatically upgrades the database schema (e.g., adds missing columns) on startup, with no data loss.
-- **Robust error handling:** All errors and upload messages are shown in a prominent toast at the top of the app.
 
 ### 🤖 AI & Processing
-- **AI-powered captions and descriptions:** The backend uses OpenAI Vision to generate captions, descriptions, and keywords for each photo, including HEIC/HEIF files.
-- **Interactive Canvas Editor:** Edit photos with an interactive canvas that allows you to position captions directly on images. Drag text to reposition, customize font size and color, and save your layout preferences. Text styling persists across editing sessions.
 
 ### 🎨 User Interface
-- **Upload panel:** The photo upload panel now fills the viewport under the toolbar, with a compact file list and flush-edge layout. No large image previews; file list shows filename, date, size, and type.
-- **Responsive Design:** Works seamlessly across desktop and mobile devices with touch-friendly interfaces
 
 ### 🧪 Quality Assurance
-- **Comprehensive Testing Suite:** Production-ready testing with Vitest and Jest. 86 tests total:
   - **Frontend**: 66 tests with Vitest + React Testing Library covering user interactions, state management, error handling, accessibility, and authentication utilities  
   - **Backend**: 20+ tests with Jest + Supertest covering API endpoints, database operations, file upload handling, authentication flows, security middleware, and HEIC conversion
   - **Integration**: Complete end-to-end authentication and image access workflows
@@ -204,40 +148,16 @@ A full-screen React application for filtering, browsing, and uploading photos by
 
 ## File Hashing & Deduplication
 
-- Every photo is hashed (SHA-256) on upload or server start.
-- If a file with the same hash already exists, it is skipped (not re-uploaded or re-indexed).
-- The UI shows a ✔ and the last 5 digits of the hash for each photo.
 
 ## Technical Stack
 
 ### Frontend
-- **React 19**: Latest React with modern hooks and authentication context
-- **Vite**: Fast build tool and dev server  
-- **Tailwind CSS**: Utility-first CSS framework
-- **Session management**: httpOnly cookie-based sessions for browser clients. Do not store JWTs in localStorage.
-- **Authentication Utilities**: Ensure image and API requests target the API origin (VITE_API_URL) so the browser will include the httpOnly `authToken` cookie (use fetch/axios with `credentials: 'include'`). Do not inject tokens into image URLs.
-- **exifr**: Library for reading photo metadata
-- **File System Access API**: Modern browser API for folder selection
-- **react-konva**: Canvas library for interactive image editing with draggable text overlays
-- **ESLint**: Code linting and formatting
-- **Vitest**: Modern testing framework for frontend with React Testing Library
-- **Component Testing**: Comprehensive test coverage with 66 frontend tests across all major components:
    - **Authentication Utilities**: Secure token handling and authenticated image URL generation
    - **PhotoUploadForm.jsx**: Upload panel with compact file list, flush-edge layout
    - **ImageCanvasEditor.jsx**: Interactive canvas editor for positioning captions on images
    - **EditPage.jsx**: Photo editing interface with canvas, metadata forms, and authenticated image access
 
 ### Backend
-- **Node.js**: JavaScript runtime for server
-- **Express**: Web framework for REST API with authentication middleware
-- **JWT Authentication**: JSON Web Tokens for secure user sessions with bcrypt password hashing
-- **Security Middleware**: Helmet for security headers, rate limiting, input validation, CORS configuration
-- **Multer**: Middleware for handling multipart/form-data file uploads with authentication
-- **Sharp**: Image processing with automatic HEIC-to-JPEG conversion (with ImageMagick fallback)
-- **ImageMagick**: Fallback for HEIC/HEIF conversion when sharp/libvips lacks support
-- **SQLite3**: Lightweight database for photo metadata, user accounts, and state management
-- **Jest**: Testing framework for backend with Supertest for HTTP testing
-- **Comprehensive API Testing**: 20+ tests covering authenticated endpoints, security middleware, HEIC conversion, database operations, and error handling
 
 ## File Structure
 
@@ -274,10 +194,6 @@ photo-app/
 ## Getting Started
 
 ### Prerequisites
-- Node.js (v18 or higher)
-- npm or yarn
-- Modern web browser (Chrome, Edge recommended for full features)
-- [ImageMagick](https://imagemagick.org/) installed and available in your system PATH (for HEIC/HEIF support)
 
 ### Installation
 
@@ -324,17 +240,11 @@ The application requires user authentication for all image operations. On first 
 4. **Multi-device support**: Login on multiple machines with the same account for seamless multi-machine workflows
 
 **Security Features:**
-- Passwords hashed with bcrypt
-- JWT tokens with 24-hour expiration  
-- Rate limiting on login attempts
-- Account lockout protection
-- Secure image serving with authentication validation
 
 ### Environment Configuration
 
 The frontend uses environment variables for configuration:
 
-- `VITE_API_URL`: Base URL for the backend API (default: `http://localhost:3001`)
 
 To override for production or different environments, create a `.env` file in the root directory:
 
@@ -350,7 +260,6 @@ This allows easy deployment to different environments without code changes.
  Do not commit `.env` files to source control.
  **Robust Environment Handling:** The app is designed to work across different machines and CI environments. If an environment variable (like `VITE_API_URL`) is missing, the app will fall back to a safe default (`http://localhost:3001`) and warn you. This prevents crashes when switching between desktop, laptop, or CI.
  **Tip:** Always check `.env.example` for required variables after pulling new changes or switching machines.
-```text
 # Frontend (Vite)
  **Dependency errors:** If you see errors about conflicting dependencies (e.g., ERESOLVE), always use `npm install --legacy-peer-deps`.
  **Missing libraries:** If you see errors like "Cannot find module 'zustand'" or '@supabase/supabase-js', run `npm install <package> --legacy-peer-deps` in the correct directory (root for frontend, `server/` for backend).
@@ -358,7 +267,6 @@ This allows easy deployment to different environments without code changes.
  **Wrong install directory:** Always run frontend installs in the project root and backend installs in the `server/` directory.
  **ImageMagick not found:** Make sure ImageMagick is installed and available in your system PATH for HEIC/HEIF fallback support.
  **Environment switching:** If you move between machines (desktop, laptop, CI), always copy `.env.example` to `.env` and review the values. The app will use safe defaults if variables are missing, but some features may require explicit configuration.
- **Test failures after environment change:** If tests fail after switching machines, check for missing `.env` files, dependency mismatches, or Node.js version differences. Run `npm install` and verify your environment variables.
 # OPENAI_API_KEY=sk-your_openai_api_key
 ```
 Do not commit `.env` to source control. Add it to `.gitignore`.
@@ -366,7 +274,6 @@ Do not commit `.env` to source control. Add it to `.gitignore`.
 ### Build
 
 ```bash
-npm run build
 ```
 
 Preview the production build:
@@ -375,10 +282,6 @@ Run the test suite:
 ```bash
 npm run test:run
 
-# Run frontend tests with UI dashboard
-npm run test:ui
-
-# Run frontend tests with coverage report
 npm run test:coverage
 
 # Backend tests (Jest) - 20+ tests

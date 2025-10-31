@@ -1,7 +1,7 @@
 import { logGlobalError } from './utils/globalLog.js';
 import React, { useState, useEffect, useRef, useCallback } from 'react'
 import { parse } from 'exifr'
-import { uploadPhotoToServer, checkPrivilege, checkPrivilegesBatch, getPhotos, updatePhotoState, recheckInprogressPhotos, updatePhotoCaption, deletePhoto } from './api.js'
+import { uploadPhotoToServer, checkPrivilege, checkPrivilegesBatch, getPhotos, updatePhotoState, recheckPhotoAI, updatePhotoCaption, deletePhoto } from './api.js'
 import { API_BASE_URL } from './api.js';
 import Toolbar from './Toolbar.jsx'
 import PhotoUploadForm from './PhotoUploadForm.jsx'
@@ -50,16 +50,19 @@ function Toast({ message, onClose }) {
 
 
 function App() {
-  // Handler for rechecking in-progress photos
-  const handleRecheckInprogress = async () => {
-    setRechecking(true);
+  // Handler to recheck a single photo's AI on demand (invoked from EditPage)
+  const handleRecheckSinglePhoto = async (photoId) => {
+    // Call the centralized API helper and start polling on success.
     try {
-      await recheckInprogressPhotos();
-      setToast('Recheck triggered successfully');
+      const res = await recheckPhotoAI(photoId);
+      // Provide non-blocking user feedback and start polling for results
+      try { setToast({ message: 'AI recheck initiated. Polling for results...', severity: 'info' }); } catch { try { setToast('AI recheck initiated. Polling for results...'); } catch { /* ignore */ } }
+      try { setPollingPhotoId(photoId); } catch { /* ignore */ }
+      return res;
     } catch (error) {
-      setToast(`Recheck failed: ${error.message}`);
-    } finally {
-      setRechecking(false);
+      try { setToast({ message: `AI recheck failed: ${error && error.message ? error.message : 'unknown'}`, severity: 'error' }); } catch { try { setToast(`AI recheck failed: ${error && error.message ? error.message : 'unknown'}`); } catch { /* ignore */ } }
+      // Re-throw so callers (if any) can observe the failure
+      throw error;
     }
   };
   // Add a test log entry on mount to verify log visibility
@@ -89,7 +92,7 @@ function App() {
   const [showLocalPicker, setShowLocalPicker] = useState(false);
   const [privilegesMap, setPrivilegesMap] = useState({});
   const [showInprogress, setShowInprogress] = useState(false);
-  const [rechecking, setRechecking] = useState(false);
+  
   const [editingPhoto, setEditingPhoto] = useState(null);
   const [editedCaption, setEditedCaption] = useState('');
   const [editedDescription, setEditedDescription] = useState('');
@@ -492,8 +495,7 @@ function App() {
           setSelectedPhoto(null);
           setUseFullPageEditor(false);
         }}
-        onRecheck={handleRecheckInprogress}
-        rechecking={rechecking}
+        
         onShowMetadata={() => {
           if (selectedPhoto || editingPhoto) {
             setMetadataPhoto(selectedPhoto || editingPhoto);
@@ -559,6 +561,8 @@ function App() {
               setPhotos(prev => prev.map(p => p.id === updated.id ? { ...p, ...updated } : p));
               setEditingPhoto(null);
             }}
+            onRecheckAI={handleRecheckSinglePhoto}
+            setToast={setToast}
           />
         ) : (
           <>
