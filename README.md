@@ -230,6 +230,54 @@ photo-app/
    ```
    Frontend will be available at `http://localhost:5173`
 
+## Docker containers
+
+This project uses a small set of optional but recommended Docker containers during development. The only container required by the default codebase is Redis (used by BullMQ for background AI and image-processing jobs). Other containers you may see on your machine (for example `qdrant`, local `photo-ai` services, or other leftover images) are NOT required by this repository unless you have intentionally re-wired the AI/vector-store adapters.
+
+Summary:
+
+- Required (recommended for normal dev):
+   - `redis` / any container exposing port 6379 — used by `server/queue` (BullMQ). When Redis is available the server enqueues AI processing work and the worker processes it in the background. If Redis is not available the server will fall back to synchronous processing (slower and may block requests).
+
+- Optional / Not required by default:
+   - `qdrant` (vector DB) — there are no references to Qdrant in this repo. Start it only if you have custom changes that use a vector DB.
+   - `photo-ai` or other local LLM services — the project uses OpenAI via LangChain by default (`server/ai/langchain/agents.js`). A local `photo-ai` container is only needed if you replaced the OpenAI adapters to call your local model.
+
+Quick commands (PowerShell)
+
+List containers on your machine:
+```powershell
+docker ps -a --format "{{.ID}}\t{{.Names}}\t{{.Image}}\t{{.Status}}\t{{.Ports}}"
+```
+
+Start the recommended Redis container (example used in developer docs):
+```powershell
+# run a lightweight Redis container
+docker run -d --name photo-app-redis -p 6379:6379 redis:7.2-alpine
+
+# if an existing stopped container named `photo-app-redis` already exists, start it instead:
+docker start photo-app-redis
+```
+
+If you want to start all stopped containers on your machine (careful — this may start unrelated services):
+```powershell
+docker start $(docker ps -a -q)
+```
+
+Stop and remove a container when you're done:
+```powershell
+docker stop photo-app-redis
+docker rm photo-app-redis
+```
+
+Notes and recommendations
+
+- Keep a single Redis instance running while developing the app to get background processing and avoid synchronous fallbacks.
+- Do not start unrelated `qdrant` containers unless you intend to add vector DB functionality; they consume memory and are unnecessary for the current codebase.
+- If Redis fails to start, inspect logs with `docker logs photo-app-redis --tail 200` and recreate the container if necessary (`docker rm` then `docker run`).
+
+If you'd like, I can also add a short note to `server/README.md` with the same commands and a link to this top-level README section.
+
 ### Authentication Setup
 
 The application requires user authentication for all image operations. On first run:

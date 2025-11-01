@@ -5,7 +5,8 @@ import { getPhoto } from '../api.js'
 // Hook: poll backend for AI results when store.pollingPhotoId is set
 export default function useAIPolling() {
   const pollingPhotoId = useStore(state => state.pollingPhotoId)
-  const updatePhotoData = useStore(state => state.updatePhotoData)
+  // Use the dedicated updatePhoto action
+  const updatePhoto = useStore(state => state.updatePhoto)
   const setPollingPhotoId = useStore(state => state.setPollingPhotoId)
   const setToast = useStore(state => state.setToast)
   const attemptsRef = useRef(0)
@@ -27,7 +28,9 @@ export default function useAIPolling() {
     const checkOnce = async () => {
       attemptsRef.current += 1
       try {
-        const res = await getPhoto(pollingPhotoId)
+  // Use the new getPhoto signature with cache-busting:
+  const res = await getPhoto(pollingPhotoId, { cacheBuster: Date.now() })
+  try { console.debug('[useAIPolling] getPhoto response for', pollingPhotoId, res && (res.photo || res)); } catch (e) { console.warn('[useAIPolling] debug log failed', e); }
         if (!res) return
         // Normalize to a single photo object
         let updated = null
@@ -39,11 +42,11 @@ export default function useAIPolling() {
 
         if (hasAIData(updated)) {
           if (cancelled) return
-          updatePhotoData(updated.id, updated)
+          try { console.debug('[useAIPolling] AI data detected for', updated.id, { caption: updated.caption, description: updated.description && String(updated.description).slice(0,200) }); } catch (e) { console.warn('[useAIPolling] debug log failed', e); }
+          // Call the dedicated updatePhoto action
+          updatePhoto(updated) 
+          try { console.debug('[useAIPolling] Called updatePhoto for', updated.id); } catch (e) { console.warn('[useAIPolling] debug log failed', e); }
           setPollingPhotoId(null)
-          // Previously we showed a toast here: setToast('AI processing completed')
-          // That message is redundant now that state is updated and UI populates.
-          // Intentionally do not show a toast to avoid duplicate/irrelevant notifications.
           return
         }
 
@@ -74,5 +77,5 @@ export default function useAIPolling() {
       cancelled = true
       clearInterval(iv)
     }
-  }, [pollingPhotoId, updatePhotoData, setPollingPhotoId, setToast])
+  }, [pollingPhotoId, updatePhoto, setPollingPhotoId, setToast])
 }

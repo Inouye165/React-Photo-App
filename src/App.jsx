@@ -51,20 +51,7 @@ function Toast({ message, onClose }) {
 
 function App() {
   // Handler to recheck a single photo's AI on demand (invoked from EditPage)
-  const handleRecheckSinglePhoto = async (photoId) => {
-    // Call the centralized API helper and start polling on success.
-    try {
-      const res = await recheckPhotoAI(photoId);
-      // Provide non-blocking user feedback and start polling for results
-      try { setToast({ message: 'AI recheck initiated. Polling for results...', severity: 'info' }); } catch { try { setToast('AI recheck initiated. Polling for results...'); } catch { /* ignore */ } }
-      try { setPollingPhotoId(photoId); } catch { /* ignore */ }
-      return res;
-    } catch (error) {
-      try { setToast({ message: `AI recheck failed: ${error && error.message ? error.message : 'unknown'}`, severity: 'error' }); } catch { try { setToast(`AI recheck failed: ${error && error.message ? error.message : 'unknown'}`); } catch { /* ignore */ } }
-      // Re-throw so callers (if any) can observe the failure
-      throw error;
-    }
-  };
+  // NOTE: stable definition will be created after store hooks are declared below
   // Add a test log entry on mount to verify log visibility
   useEffect(() => {
     logGlobalError('Test log: If you see this, the global log is working!');
@@ -79,6 +66,22 @@ function App() {
   const setPollingPhotoId = useStore(state => state.setPollingPhotoId);
   const toastMsg = useStore(state => state.toastMsg);
   const setToast = useStore(state => state.setToast);
+  // Handler to recheck a single photo's AI on demand (invoked from EditPage)
+  // Wrapped in useCallback to stabilize its identity across renders and avoid
+  // hook-order issues that can arise from unstable function declarations.
+  const handleRecheckSinglePhoto = useCallback(async (photoId) => {
+    try {
+      const res = await recheckPhotoAI(photoId);
+      // Provide non-blocking user feedback and start polling for results
+      try { setToast({ message: 'AI recheck initiated. Polling for results...', severity: 'info' }); } catch { try { setToast('AI recheck initiated. Polling for results...'); } catch { /* ignore */ } }
+      try { setPollingPhotoId(photoId); } catch { /* ignore */ }
+      return res;
+    } catch (error) {
+      try { setToast({ message: `AI recheck failed: ${error && error.message ? error.message : 'unknown'}`, severity: 'error' }); } catch { try { setToast(`AI recheck failed: ${error && error.message ? error.message : 'unknown'}`); } catch { /* ignore */ } }
+      // Re-throw so callers (if any) can observe the failure
+      throw error;
+    }
+  }, [setToast, setPollingPhotoId]); // Use dependencies used inside
   const [loading, setLoading] = useState(true);
   // Accessible status for screen readers about polling state (not used by store hook yet)
   const ariaStatus = '';
@@ -417,6 +420,11 @@ function App() {
       setEditedDescription(freshestEditingPhoto.description || '');
       setEditedKeywords(freshestEditingPhoto.keywords || '');
     }
+  }, [freshestEditingPhoto]);
+
+  // Debug: log when freshestEditingPhoto changes so we can trace store -> App updates
+  useEffect(() => {
+    try { console.debug('[App] freshestEditingPhoto changed', freshestEditingPhoto && { id: freshestEditingPhoto.id, caption: freshestEditingPhoto.caption, description: freshestEditingPhoto.description && String(freshestEditingPhoto.description).slice(0,200) }); } catch (e) { console.warn('[App] debug log failed', e); }
   }, [freshestEditingPhoto]);
 
 
