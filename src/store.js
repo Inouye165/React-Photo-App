@@ -1,6 +1,12 @@
 import { create } from 'zustand'
 import { updatePhotoState } from './api.js'
 
+const debug = (...args) => {
+  if (typeof console !== 'undefined' && typeof console.debug === 'function') {
+    console.debug(...args)
+  }
+}
+
 // Minimal Zustand store for photos and ui state (polling, toast)
 const useStore = create((set) => ({
   photos: [],
@@ -15,21 +21,42 @@ const useStore = create((set) => ({
   removePhotoById: (id) => set((state) => ({ photos: state.photos.filter(p => p.id !== id) })),
   // Update existing photo data or insert if missing (upsert)
   updatePhotoData: (id, newData) => set((state) => {
-    const exists = state.photos.some(p => p.id === id)
-    // Small debug log to help trace updates while debugging client sync
-  try { console.debug('[store] updatePhotoData', { id, exists, newData }); } catch { /* ignore */ }
+    const normalizeId = (value) => value != null ? String(value) : value;
+    const targetId = normalizeId(id);
+  const exists = state.photos.some(p => normalizeId(p.id) === targetId);
+  debug('[store] updatePhotoData', { id, exists, newData, prePhotos: state.photos });
     if (exists) {
-      return { photos: state.photos.map(p => p.id === id ? { ...p, ...newData } : p) }
+      const out = {
+        photos: state.photos.map(p => {
+          if (normalizeId(p.id) !== targetId) return p;
+          const merged = { ...p, ...newData };
+          merged.id = p.id;
+          debug('[store] merged photo', merged);
+          return merged;
+        })
+      };
+      debug('[store] post-update photos', out.photos);
+      return out;
     }
     // Append updated/inserted photo to the list so editors can observe it
-    return { photos: [...state.photos, typeof newData === 'object' ? { ...newData, id } : newData] }
+    const appended = { photos: [...state.photos, typeof newData === 'object' ? { ...newData, id } : newData] };
+    debug('[store] appending new photo:', appended, 'to', state.photos);
+    return appended;
   }),
   // Replace an existing photo object in the photos array with the full updated object
   updatePhoto: (updatedPhoto) => set((state) => {
-    if (!updatedPhoto || typeof updatedPhoto.id === 'undefined') return {}
-    const photos = state.photos.map(p => p.id === updatedPhoto.id ? updatedPhoto : p)
-    try { console.debug('[store] updatePhoto', { id: updatedPhoto.id }); } catch { /* ignore */ }
-    return { photos }
+    if (!updatedPhoto || typeof updatedPhoto.id === 'undefined') return {};
+    const normalizeId = (value) => value != null ? String(value) : value;
+    const targetId = normalizeId(updatedPhoto.id);
+    const photos = state.photos.map(p => {
+      if (normalizeId(p.id) !== targetId) return p;
+      const merged = { ...p, ...updatedPhoto };
+      merged.id = p.id;
+      debug('[store] updatePhoto merged', { prev: p, next: merged });
+      return merged;
+    });
+    debug('[store] updatePhoto', { id: updatedPhoto.id, photos });
+    return { photos };
   }),
 
   // UI slice

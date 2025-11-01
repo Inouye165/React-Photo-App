@@ -11,6 +11,8 @@ function authenticateImageRequest(req, res, next) {
   const allowedOrigins = getAllowedOrigins();
   const requestOrigin = req.get('Origin');
   const originIsAllowed = !requestOrigin || allowedOrigins.includes(requestOrigin);
+  const fallbackOrigin = allowedOrigins.find(origin => /5173/.test(origin)) || allowedOrigins[0] || null;
+  const originToSet = requestOrigin || fallbackOrigin;
 
   if (!originIsAllowed) {
     return res.status(403).json({
@@ -19,9 +21,11 @@ function authenticateImageRequest(req, res, next) {
     });
   }
 
-  if (requestOrigin) {
-    res.header('Access-Control-Allow-Origin', requestOrigin);
-    res.header('Vary', 'Origin');
+  if (originToSet) {
+    res.header('Access-Control-Allow-Origin', originToSet);
+    if (requestOrigin) {
+      res.header('Vary', 'Origin');
+    }
   }
 
   res.header('Access-Control-Allow-Credentials', 'true');

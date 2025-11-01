@@ -1,0 +1,41 @@
+version: '3.8'
+
+services:
+  # 1. REQUIRED (Recommended) Service: Redis for BullMQ Queue
+  redis:
+    image: redis:7.2-alpine
+    container_name: photo-app-redis
+    volumes:
+      - redis_data:/data 
+    ports:
+      - "6379:6379"
+    restart: unless-stopped
+    command: redis-server --appendonly yes
+
+  # 2. OPTIONAL Service: Qdrant Vector Database
+  qdrant:
+    image: qdrant/qdrant:latest
+    container_name: photo-app-qdrant
+    volumes:
+      - qdrant_data:/qdrant/storage
+    ports:
+      - "6333:6333"
+      - "6334:6334"
+    restart: unless-stopped
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:6333/qdrant/healthz"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+
+  # 3. OPTIONAL Service: Local AI Model Placeholder
+  photo-ai:
+    image: nginx:alpine 
+    container_name: photo-app-local-ai
+    ports:
+      - "8000:80" 
+    restart: on-failure
+    
+volumes:
+  redis_data:
+  qdrant_data:

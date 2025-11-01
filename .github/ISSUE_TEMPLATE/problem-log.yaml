@@ -1,0 +1,54 @@
+name: Engineering Problem/Bug Log
+description: Capture a serious bug/incident with root cause and lessons learned for the PROBLEM_LOG.md
+labels: ['problem-log', 'engineering-log']
+title: '[PROBLEM LOG] : '
+body:
+  - type: input
+    id: date
+    attributes:
+      label: Date Discovered (YYYY-MM-DD)
+      placeholder: "2025-05-01"
+    validations:
+      required: true
+  - type: textarea
+    id: summary
+    attributes:
+      label: Issue Summary
+      description: What happened? What was the user/business/system-facing symptom?
+    validations:
+      required: true
+  - type: textarea
+    id: discovery
+    attributes:
+      label: How Was It Discovered?
+      description: Who found it, and by what trigger, test or report?
+    validations:
+      required: true
+  - type: textarea
+    id: root_cause
+    attributes:
+      label: Root Cause
+      description: What was actually broken/incorrect and why did it happen?
+    validations:
+      required: true
+  - type: textarea
+    id: debug_steps
+    attributes:
+      label: Debugging & Investigation
+      description: What concrete steps led to isolating or verifying the problem?
+    validations:
+      required: true
+  - type: textarea
+    id: fix
+    attributes:
+      label: Solution & Release
+      description: The code/process/test fix, PR link, and when it was released
+    validations:
+      required: true
+  - type: textarea
+    id: learning
+    attributes:
+      label: Lessons for the Future
+      description: Advice for expediting discovery/triage/prevention next time (e.g., better logs, new tests, checklist step)
+    validations:
+      required: true

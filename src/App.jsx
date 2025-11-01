@@ -102,7 +102,7 @@ function App() {
   const [editedKeywords, setEditedKeywords] = useState('');
   // Define the freshest photo object by searching the reactive photos array
   const freshestEditingPhoto = editingPhoto
-    ? photos.find(p => p.id === editingPhoto.id) || editingPhoto
+    ? photos.find(p => String(p.id) === String(editingPhoto.id)) || editingPhoto
     : null;
   const [selectedPhoto, setSelectedPhoto] = useState(null);
   const [showFinished, setShowFinished] = useState(false);
@@ -566,7 +566,8 @@ function App() {
       <div className="flex-1 overflow-auto" style={{ padding: '8px 16px 16px 16px' }}>
         {/* Show EditPage when editing, otherwise show photo list */}
         {freshestEditingPhoto ? (
-          <EditPage 
+          <EditPage
+            key={String(freshestEditingPhoto.id) + ':' + (freshestEditingPhoto.caption || '')}
             photo={freshestEditingPhoto}
             onClose={() => setEditingPhoto(null)}
             onFinished={async (id) => { await handleMoveToFinished(id); setEditingPhoto(null); }}

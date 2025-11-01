@@ -1,5 +1,13 @@
 # Quick Start
 
+---
+
+## Engineering Log
+
+See `PROBLEM_LOG.md` for a chronological log of major bugs or problems found during the development, with root cause, solution, and learnings. This log helps current and future devs troubleshoot more efficiently and avoid prior mistakes.
+
+---
+
 1. Clone the repository:
    ```bash
    git clone https://github.com/Inouye165/React-Photo-App.git
