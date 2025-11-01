@@ -213,8 +213,18 @@ export async function deletePhoto(id, serverUrl = `${API_BASE_URL}`) {
 
 // runAI client helper intentionally removed; use recheckPhotoAI(photoId) instead.
 
-export async function getPhoto(photoId, serverUrl = `${API_BASE_URL}`) {
-  const res = await fetch(`${serverUrl}/photos/${photoId}`, { method: 'GET', headers: getAuthHeaders(), credentials: 'include' }); if (handleAuthError(res)) return; if (!res.ok) throw new Error('Failed to fetch photo: ' + res.status); return await res.json();
+export async function getPhoto(photoId, options = {}, serverUrl = `${API_BASE_URL}`) {
+    let url = `${serverUrl}/photos/${photoId}`;
+    
+    // FIX: Append the cache-buster if provided to force a fresh request
+    if (options.cacheBuster) {
+      url += (url.includes('?') ? '&' : '?') + `_cb=${options.cacheBuster}`;
+    }
+    
+    const res = await fetch(url, { method: 'GET', headers: getAuthHeaders(), credentials: 'include' }); 
+    if (handleAuthError(res)) return; 
+    if (!res.ok) throw new Error('Failed to fetch photo: ' + res.status); 
+    return await res.json();
 }
 
 /**

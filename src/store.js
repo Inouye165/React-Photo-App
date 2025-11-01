@@ -24,6 +24,13 @@ const useStore = create((set) => ({
     // Append updated/inserted photo to the list so editors can observe it
     return { photos: [...state.photos, typeof newData === 'object' ? { ...newData, id } : newData] }
   }),
+  // Replace an existing photo object in the photos array with the full updated object
+  updatePhoto: (updatedPhoto) => set((state) => {
+    if (!updatedPhoto || typeof updatedPhoto.id === 'undefined') return {}
+    const photos = state.photos.map(p => p.id === updatedPhoto.id ? updatedPhoto : p)
+    try { console.debug('[store] updatePhoto', { id: updatedPhoto.id }); } catch { /* ignore */ }
+    return { photos }
+  }),
 
   // UI slice
   // setToast accepts either a string (legacy) or an object { message, severity }

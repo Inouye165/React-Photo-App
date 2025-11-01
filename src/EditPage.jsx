@@ -25,13 +25,19 @@ export default function EditPage({ photo, onClose, onSave, onFinished, onRecheck
 
   
 
-  // Keep the editor fields in sync with the freshest photo object from the store.
+  // Keep the editor fields in sync with the incoming photo prop.
+  // CRITICAL DEBUG LOG: Confirms prop is reactive and update is running
   useEffect(() => {
-    setCaption(sourcePhoto?.caption || '')
-    setDescription(sourcePhoto?.description || '')
-    setKeywords(sourcePhoto?.keywords || '')
-    setTextStyle(sourcePhoto?.textStyle || null)
-  }, [sourcePhoto])
+    console.debug('[EditPage SYNC] Photo prop updated. New Caption:', photo?.caption, 'New ID:', photo?.id);
+
+    setCaption(photo?.caption || '')
+    setDescription(photo?.description || '')
+    setKeywords(photo?.keywords || '')
+    setTextStyle(photo?.textStyle || null)
+
+    // Note: Include all setters in the dependency array if your linter complains,
+    // but for this photo-sync hook, only 'photo' is required for the intended behavior.
+  }, [photo])
 
   // Lock background scroll while this full-page editor is open
   useEffect(() => {
@@ -110,7 +116,15 @@ export default function EditPage({ photo, onClose, onSave, onFinished, onRecheck
     // polling stopped; if previously was polling, determine if AI updated the photo
     const prev = prevPhotoRef.current
     if (prev && (prev.caption !== sourcePhoto?.caption || prev.description !== sourcePhoto?.description || prev.keywords !== sourcePhoto?.keywords)) {
-      // AI updated fields -> mark done briefly then show "Recheck AI again"
+      // AI updated fields -> update form fields immediately then mark done briefly
+      // Force form to reflect latest AI-generated values from the photo prop
+      try {
+        setCaption(sourcePhoto?.caption || '')
+        setDescription(sourcePhoto?.description || '')
+        setKeywords(sourcePhoto?.keywords || '')
+      } catch {
+        // swallow errors from missing values
+      }
       setRecheckStatus('done')
       // show 'done' for 2.5s then switch to idle (label 'Recheck AI again')
       doneTimeoutRef.current = setTimeout(() => {
