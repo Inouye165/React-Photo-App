@@ -4,12 +4,31 @@ import { useAuth } from './contexts/AuthContext'
 import { API_BASE_URL, fetchProtectedBlobUrl, revokeBlobUrl } from './api.js'
 import useStore from './store.js'
 
+const safeDebug = (...args) => {
+  if (typeof console !== 'undefined' && typeof console.debug === 'function') {
+    console.debug(...args)
+  }
+}
+
 export default function EditPage({ photo, onClose, onSave, onFinished, onRecheckAI, setToast }) {
   // AuthContext no longer exposes client-side token (httpOnly cookies are used).
   useAuth();
-  const [caption, setCaption] = useState(photo?.caption || '')
-  const [description, setDescription] = useState(photo?.description || '')
-  const [keywords, setKeywords] = useState(photo?.keywords || '')
+  // Add log at start of EditPage to catch new props
+  safeDebug('[EditPage INIT] photo:', photo);
+  // Prefer the live photo from the global store when available so this editor
+  // always displays the freshest AI-updated content. Fall back to the prop.
+  const reactivePhoto = useStore(state => {
+    const match = state.photos.find(p => String(p.id) === String(photo?.id));
+    safeDebug('[EditPage reactivePhoto selector]', { photoId: photo?.id, foundId: match?.id, found: !!match });
+    return match || photo;
+  })
+
+  const sourcePhoto = reactivePhoto || photo;
+  safeDebug('[EditPage] sourcePhoto resolved', sourcePhoto?.id, sourcePhoto);
+
+  const [caption, setCaption] = useState(sourcePhoto?.caption || '')
+  const [description, setDescription] = useState(sourcePhoto?.description || '')
+  const [keywords, setKeywords] = useState(sourcePhoto?.keywords || '')
   const [textStyle, setTextStyle] = useState(photo?.textStyle || null)
   const [saving, setSaving] = useState(false)
   const [recheckingAI, setRecheckingAI] = useState(false)
@@ -18,23 +37,30 @@ export default function EditPage({ photo, onClose, onSave, onFinished, onRecheck
   const prevPhotoRef = React.useRef(photo)
   const doneTimeoutRef = React.useRef(null)
 
-  // Keep previous photo for comparison when prop changes
-  useEffect(() => {
-    prevPhotoRef.current = photo
-    return () => {
-      if (doneTimeoutRef.current) {
-        clearTimeout(doneTimeoutRef.current)
-        doneTimeoutRef.current = null
-      }
-    }
-  }, [photo])
+  
 
+  // Keep the editor fields in sync with the incoming photo prop.
+  // CRITICAL DEBUG LOG: Confirms prop is reactive and update is running
   useEffect(() => {
-    setCaption(photo?.caption || '')
-    setDescription(photo?.description || '')
-    setKeywords(photo?.keywords || '')
-    setTextStyle(photo?.textStyle || null)
-  }, [photo])
+  safeDebug('[EditPage SYNC] Photo source updated. New Caption:', (sourcePhoto || photo)?.caption, 'New ID:', (sourcePhoto || photo)?.id);
+  safeDebug('[EditPage useEffect sourcePhoto] Triggered: sourcePhoto', sourcePhoto?.id, sourcePhoto);
+
+    const latest = sourcePhoto || photo
+    setCaption(latest?.caption || '')
+    setDescription(latest?.description || '')
+    setKeywords(latest?.keywords || '')
+    setTextStyle(latest?.textStyle || null)
+    // Also log each field
+    safeDebug('[EditPage useEffect - local state sync]', {
+      caption: sourcePhoto?.caption,
+      description: sourcePhoto?.description,
+      keywords: sourcePhoto?.keywords,
+      textStyle: sourcePhoto?.textStyle
+    });
+
+    // Note: Include all setters in the dependency array if your linter complains,
+    // but for this photo-sync hook, only the reactive photo references are required for the intended behavior.
+  }, [photo, sourcePhoto])
 
   // Lock background scroll while this full-page editor is open
   useEffect(() => {
@@ -56,18 +82,18 @@ export default function EditPage({ photo, onClose, onSave, onFinished, onRecheck
   // Zustand polling flags: support either a Set `pollingPhotoIds` or the legacy `pollingPhotoId`
   const pollingPhotoIds = useStore(state => state.pollingPhotoIds)
   const pollingPhotoId = useStore(state => state.pollingPhotoId)
-  const isPolling = (pollingPhotoIds && pollingPhotoIds.has && pollingPhotoIds.has(photo?.id)) || pollingPhotoId === photo?.id
+  const isPolling = (pollingPhotoIds && pollingPhotoIds.has && pollingPhotoIds.has(sourcePhoto?.id)) || pollingPhotoId === sourcePhoto?.id
 
   // Prefer the setToast passed from parent (App) but fall back to store if not provided
   const storeSetToast = useStore(state => state.setToast)
   const toast = typeof setToast === 'function' ? setToast : storeSetToast
 
-  const displayUrl = `${API_BASE_URL}${photo.url}`
+  const displayUrl = `${API_BASE_URL}${sourcePhoto?.url || photo?.url}`
   const [imageBlobUrl, setImageBlobUrl] = useState(null)
   const [fetchError, setFetchError] = useState(false)
 
   useEffect(() => {
-    if (!photo || !photo.url) return undefined
+    if (!sourcePhoto || !sourcePhoto.url) return undefined
     let mounted = true
     let currentObjectUrl = null
     setFetchError(false)
@@ -83,11 +109,15 @@ export default function EditPage({ photo, onClose, onSave, onFinished, onRecheck
         if (objUrl) {
           setImageBlobUrl(objUrl)
         } else {
+          setImageBlobUrl(null)
           setFetchError(true)
         }
       } catch (err) {
         console.error('Failed to fetch protected image', err)
-        if (mounted) setFetchError(true)
+        if (mounted) {
+          setImageBlobUrl(null)
+          setFetchError(true)
+        }
       }
     })()
 
@@ -96,7 +126,7 @@ export default function EditPage({ photo, onClose, onSave, onFinished, onRecheck
       if (currentObjectUrl) revokeBlobUrl(currentObjectUrl)
       setImageBlobUrl(null)
     }
-  }, [displayUrl, photo])
+  }, [displayUrl, sourcePhoto])
 
   // Watch polling state and photo updates to change the recheck button status
   useEffect(() => {
@@ -112,8 +142,13 @@ export default function EditPage({ photo, onClose, onSave, onFinished, onRecheck
     }
     // polling stopped; if previously was polling, determine if AI updated the photo
     const prev = prevPhotoRef.current
-    if (prev && (prev.caption !== photo.caption || prev.description !== photo.description || prev.keywords !== photo.keywords)) {
-      // AI updated fields -> mark done briefly then show "Recheck AI again"
+    safeDebug('[EditPage diff after polling?] prev', prev?.id, prev, 'current', sourcePhoto?.id, sourcePhoto);
+    if (prev && (prev.caption !== sourcePhoto?.caption || prev.description !== sourcePhoto?.description || prev.keywords !== sourcePhoto?.keywords)) {
+      safeDebug('[EditPage Detected AI update! Overwriting local fields]');
+      // Force form to reflect latest AI-generated values from the photo prop
+      setCaption(sourcePhoto?.caption || '')
+      setDescription(sourcePhoto?.description || '')
+      setKeywords(sourcePhoto?.keywords || '')
       setRecheckStatus('done')
       // show 'done' for 2.5s then switch to idle (label 'Recheck AI again')
       doneTimeoutRef.current = setTimeout(() => {
@@ -124,11 +159,23 @@ export default function EditPage({ photo, onClose, onSave, onFinished, onRecheck
       // No update observed; revert to idle
       setRecheckStatus('idle')
     }
-  }, [isPolling, photo])
+  }, [isPolling, sourcePhoto])
 
   
+  
+  // Keep previous photo for comparison when prop changes
+  useEffect(() => {
+    prevPhotoRef.current = sourcePhoto
+    return () => {
+      // clear timeout on unmount
+      if (doneTimeoutRef.current) {
+        clearTimeout(doneTimeoutRef.current)
+        doneTimeoutRef.current = null
+      }
+    }
+  }, [sourcePhoto])
 
-  if (!photo) return null
+  if (!sourcePhoto) return null
 
   const handleSave = async () => {
     setSaving(true)
@@ -214,17 +261,17 @@ export default function EditPage({ photo, onClose, onSave, onFinished, onRecheck
     >
       {/* Header with buttons - compact */}
       <div className="flex items-center justify-between px-4 py-2 border-b">
-        <h1 className="text-lg font-bold">Edit Photo — {photo.filename}</h1>
+  <h1 className="text-lg font-bold">Edit Photo — {sourcePhoto?.filename || photo?.filename}</h1>
         <div className="flex gap-2">
           <button onClick={onClose} className="px-3 py-1 text-sm bg-gray-200 rounded hover:bg-gray-300">Back</button>
           <button
-            onClick={async () => {
+                onClick={async () => {
               try {
                 // immediate visual change
                 setRecheckStatus('in-progress')
                 setRecheckingAI(true)
                 if (typeof onRecheckAI === 'function') {
-                  await onRecheckAI(photo.id)
+                      await onRecheckAI(sourcePhoto?.id || photo.id)
                   toast({ message: 'AI recheck started.', severity: 'info' })
                 } else {
                   toast({ message: 'Recheck handler not available', severity: 'warning' })
@@ -249,7 +296,7 @@ export default function EditPage({ photo, onClose, onSave, onFinished, onRecheck
           >
             {recheckingAI || recheckStatus === 'in-progress' ? 'Rechecking...' : (recheckStatus === 'done' ? 'Done' : (recheckStatus === 'error' ? 'Error - Retry' : 'Recheck AI'))}
           </button>
-          <button onClick={() => { onFinished(photo.id); }} className="px-3 py-1 text-sm bg-green-600 text-white rounded hover:bg-green-700">Mark as Finished</button>
+          <button onClick={() => { onFinished(sourcePhoto?.id || photo.id); }} className="px-3 py-1 text-sm bg-green-600 text-white rounded hover:bg-green-700">Mark as Finished</button>
         </div>
       </div>
 

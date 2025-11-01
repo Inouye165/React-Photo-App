@@ -1,4 +1,5 @@
 const jwt = require('jsonwebtoken');
+const { getAllowedOrigins } = require('../config/allowedOrigins');
 const JWT_SECRET = process.env.JWT_SECRET || 'fallback-secret-change-in-production';
 
 /**
@@ -7,8 +8,26 @@ const JWT_SECRET = process.env.JWT_SECRET || 'fallback-secret-change-in-producti
  * Sets CORS headers for cross-origin image requests
  */
 function authenticateImageRequest(req, res, next) {
-  // Set CORS headers for image requests
-  res.header('Access-Control-Allow-Origin', 'http://localhost:5173');
+  const allowedOrigins = getAllowedOrigins();
+  const requestOrigin = req.get('Origin');
+  const originIsAllowed = !requestOrigin || allowedOrigins.includes(requestOrigin);
+  const fallbackOrigin = allowedOrigins.find(origin => /5173/.test(origin)) || allowedOrigins[0] || null;
+  const originToSet = requestOrigin || fallbackOrigin;
+
+  if (!originIsAllowed) {
+    return res.status(403).json({
+      success: false,
+      error: 'Origin not allowed for image access'
+    });
+  }
+
+  if (originToSet) {
+    res.header('Access-Control-Allow-Origin', originToSet);
+    if (requestOrigin) {
+      res.header('Vary', 'Origin');
+    }
+  }
+
   res.header('Access-Control-Allow-Credentials', 'true');
   res.header('Access-Control-Allow-Headers', 'Origin, X-Requested-With, Content-Type, Accept, Authorization');
   res.header('Access-Control-Allow-Methods', 'GET, POST, OPTIONS, PUT, DELETE');

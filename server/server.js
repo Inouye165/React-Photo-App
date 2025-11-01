@@ -96,21 +96,19 @@ async function startServer() {
   // This avoids cases where a validator or auth middleware rejects a
   // preflight request without sending CORS headers, which causes the
   // browser to block the request with a CORS error.
-  const allowedOrigins = [];
-  if (process.env.CLIENT_ORIGIN) {
-    allowedOrigins.push(process.env.CLIENT_ORIGIN);
-  }
-  // Allow localhost origins for development
-  if (process.env.NODE_ENV !== 'production') {
-    allowedOrigins.push(
-      'http://localhost:3000',
-      'http://localhost:5173',
-      'http://localhost:5174',
-      'http://10.0.0.126:5173' // Allow LAN IP for mobile access
-    );
-  }
+  const { getAllowedOrigins } = require('./config/allowedOrigins');
+  const allowedOrigins = getAllowedOrigins();
   app.use(cors({
-    origin: allowedOrigins,
+    origin: function(origin, callback) {
+      console.log('[CORS DEBUG] Incoming Origin:', origin);
+      if (!origin || allowedOrigins.includes(origin)) {
+        console.log('[CORS DEBUG] Allowing Origin:', origin);
+        callback(null, origin);
+      } else {
+        console.log('[CORS DEBUG] Rejecting Origin:', origin);
+        callback(new Error('Not allowed by CORS'));
+      }
+    },
     credentials: true // Allow cookies to be sent
   }));
 

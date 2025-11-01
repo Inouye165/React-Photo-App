@@ -56,7 +56,8 @@ describe('EditPage - protected image blob fetch', () => {
 
   test('shows error message if blob fetch fails', async () => {
     // Arrange: mock the API to return null
-    api.fetchProtectedBlobUrl.mockResolvedValueOnce(null)
+    const originalImpl = api.fetchProtectedBlobUrl.getMockImplementation?.()
+    api.fetchProtectedBlobUrl.mockImplementation(() => Promise.resolve(null))
     const photo = { id: 1, url: '/protected/image.jpg', filename: 'image.jpg' }
     const { queryByTestId } = render(<EditPage photo={photo} onClose={() => {}} onSave={() => {}} onFinished={() => {}} />)
 
@@ -65,5 +66,12 @@ describe('EditPage - protected image blob fetch', () => {
     })
 
     expect(queryByTestId('image-canvas-editor')).toBeNull()
+
+    // Restore default mock so other tests keep using the success path
+    if (originalImpl) {
+      api.fetchProtectedBlobUrl.mockImplementation(originalImpl)
+    } else {
+      api.fetchProtectedBlobUrl.mockImplementation(() => Promise.resolve('blob:fake-url'))
+    }
   })
 })
