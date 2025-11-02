@@ -1,5 +1,6 @@
 import React from 'react';
 import { API_BASE_URL } from './api.js';
+import { toUrl } from './utils/toUrl.js';
 
 // Utility: Format file size in human-readable format
 function formatFileSize(bytes) {
@@ -25,7 +26,7 @@ export default function PhotoGallery({
           <div className="grid grid-cols-15 gap-4 text-sm items-center">
             <div className="col-span-2">
               {photo.thumbnail ? (
-                <img src={`${API_BASE_URL}${photo.thumbnail}`} alt={photo.filename} className="max-h-20 rounded shadow bg-white" />
+                <img src={toUrl(photo.thumbnail, API_BASE_URL)} alt={photo.filename} className="max-h-20 rounded shadow bg-white" />
               ) : (
                 <div className="w-20 h-20 flex items-center justify-center bg-gray-200 text-gray-400 rounded shadow">No Thumb</div>
               )}
@@ -33,7 +34,7 @@ export default function PhotoGallery({
             <div className="col-span-2 font-medium text-gray-900 truncate">{photo.filename || photo.name}</div>
             <div className="col-span-3 text-gray-600">{(photo.metadata && (photo.metadata.DateTimeOriginal || photo.metadata.CreateDate)) || 'Unknown'}</div>
             <div className="col-span-1 text-gray-600 text-xs">{formatFileSize ? formatFileSize(photo.file_size) : ''}</div>
-            <div className="col-span-2 text-gray-600">{photo.state === 'working' ? 'staged' : photo.state}</div>
+            <div className="col-span-2 text-gray-600">{photo.state === 'working' ? 'working' : photo.state}</div>
             <div className="col-span-2 text-gray-600">{(privilegesMap && privilegesMap[photo.id]) || '...'}</div>
             <div className="col-span-1 text-green-700 font-mono text-xs">{photo.hash ? <span title={photo.hash}>✔ {photo.hash.slice(-5)}</span> : '...'}</div>
             <div className="col-span-2 flex gap-2">
@@ -43,7 +44,7 @@ export default function PhotoGallery({
               {photo.state === 'inprogress' && (
                 <>
                   <button onClick={(e) => { e.stopPropagation(); handleEditPhoto && handleEditPhoto(photo); }} className="bg-blue-500 hover:bg-blue-700 text-white px-2 py-1 rounded text-xs">Edit</button>
-                  <button onClick={(e) => { e.stopPropagation(); handleMoveToWorking && handleMoveToWorking(photo.id); }} className="bg-yellow-500 hover:bg-yellow-700 text-white px-2 py-1 rounded text-xs">Move to Staged</button>
+                  <button onClick={(e) => { e.stopPropagation(); handleMoveToWorking && handleMoveToWorking(photo.id); }} className="bg-yellow-500 hover:bg-yellow-700 text-white px-2 py-1 rounded text-xs">Move to Working</button>
                   <button onClick={(e) => { e.stopPropagation(); if (window.confirm('Are you sure you want to delete this photo? This action cannot be undone.')) { handleDeletePhoto && handleDeletePhoto(photo.id); } }} className="bg-red-500 hover:bg-red-700 text-white px-2 py-1 rounded text-xs">Delete</button>
                 </>
               )}

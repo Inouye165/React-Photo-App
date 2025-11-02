@@ -70,7 +70,7 @@ export default function useAIPolling() {
           if (!cancelled) {
             removePollingId(pollingPhotoId);
             setPollingPhotoId(null);
-            setToast('AI job still running — stopped polling after timeout');
+            setToast({ message: 'AI job still running — stopped polling after timeout', severity: 'warning' });
           }
           return;
         }
@@ -79,7 +79,7 @@ export default function useAIPolling() {
           if (!cancelled) {
             removePollingId(pollingPhotoId);
             setPollingPhotoId(null);
-            setToast('Photo not found — stopped polling');
+            setToast({ message: 'Photo not found — stopped polling', severity: 'warning' });
           }
           return;
         }

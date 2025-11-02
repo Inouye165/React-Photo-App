@@ -50,7 +50,7 @@ export default function Toolbar({
           Photo App (Backend View)
         </span>
         <button onClick={onSelectFolder}>Select Folder for Upload</button>
-        <button onClick={onViewStaged}>View Staged</button>
+  <button onClick={onViewStaged}>View Working</button>
         <button onClick={onViewInprogress}>View Inprogress</button>
         <button onClick={onViewFinished}>View Finished</button>
         <button

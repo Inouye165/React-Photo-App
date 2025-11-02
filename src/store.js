@@ -10,8 +10,7 @@ const debug = (...args) => {
 // Minimal Zustand store for photos and ui state (polling, toast)
 const useStore = create((set) => ({
   photos: [],
-  toastMsg: '',
-  toastSeverity: 'info',
+  toast: { message: '', severity: 'info' },
   // Support both a single legacy polling id and a Set of polling ids for concurrent polling
   pollingPhotoId: null,
   pollingPhotoIds: new Set(),
@@ -23,8 +22,8 @@ const useStore = create((set) => ({
   updatePhotoData: (id, newData) => set((state) => {
     const normalizeId = (value) => value != null ? String(value) : value;
     const targetId = normalizeId(id);
-  const exists = state.photos.some(p => normalizeId(p.id) === targetId);
-  debug('[store] updatePhotoData', { id, exists, newData, prePhotos: state.photos });
+    const exists = state.photos.some(p => normalizeId(p.id) === targetId);
+    debug('[store] updatePhotoData', { id, exists, newData, prePhotos: state.photos });
     if (exists) {
       const out = {
         photos: state.photos.map(p => {
@@ -61,13 +60,16 @@ const useStore = create((set) => ({
 
   // UI slice
   // setToast accepts either a string (legacy) or an object { message, severity }
-  setToast: (msg) => {
-    if (typeof msg === 'string') return set({ toastMsg: msg });
-    if (!msg) return set({ toastMsg: '' });
-    const message = msg.message || '';
-    const severity = msg.severity || 'info';
-    return set({ toastMsg: message, toastSeverity: severity });
-  },
+  setToast: (value) => set((state) => {
+    const base = state.toast || { message: '', severity: 'info' };
+    if (!value) return { toast: { message: '', severity: base.severity || 'info' } };
+    if (typeof value === 'string') {
+      return { toast: { message: value, severity: base.severity || 'info' } };
+    }
+    const message = typeof value.message === 'string' ? value.message : '';
+    const severity = typeof value.severity === 'string' ? value.severity : (base.severity || 'info');
+    return { toast: { message, severity } };
+  }),
   setPollingPhotoId: (id) => set({ pollingPhotoId: id }),
 
   // Manage pollingPhotoIds immutably so Zustand subscribers detect changes
@@ -94,7 +96,7 @@ const useStore = create((set) => ({
       })
       return { success: true }
     } catch (err) {
-      set({ toastMsg: `Error moving photo: ${err?.message || err}` })
+      set({ toast: { message: `Error moving photo: ${err?.message || err}`, severity: 'error' } })
       return { success: false, error: err }
     }
   }

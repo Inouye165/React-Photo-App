@@ -27,7 +27,7 @@ describe('Toolbar Component', () => {
     render(<Toolbar {...mockProps} />)
     
     expect(screen.getByText('Select Folder for Upload')).toBeInTheDocument()
-    expect(screen.getByText('View Staged')).toBeInTheDocument()
+  expect(screen.getByText('View Working')).toBeInTheDocument()
     expect(screen.getByText('View Inprogress')).toBeInTheDocument()
     expect(screen.getByText('View Finished')).toBeInTheDocument()
     expect(screen.getByText('Show Metadata')).toBeInTheDocument()
@@ -44,11 +44,11 @@ describe('Toolbar Component', () => {
     expect(mockProps.onSelectFolder).toHaveBeenCalledOnce()
   })
 
-  it('calls onViewStaged when view staged button is clicked', async () => {
+  it('calls onViewStaged when view working button is clicked', async () => {
     const user = userEvent.setup()
     render(<Toolbar {...mockProps} />)
     
-    await user.click(screen.getByText('View Staged'))
+    await user.click(screen.getByText('View Working'))
     expect(mockProps.onViewStaged).toHaveBeenCalledOnce()
   })
 

@@ -26,8 +26,7 @@ describe('useAIPolling', () => {
       ],
       pollingPhotoId: 107,
       pollingPhotoIds: new Set(),
-      toastMsg: '',
-      toastSeverity: 'info',
+  toast: { message: '', severity: 'info' },
     })
   })
 
@@ -38,8 +37,7 @@ describe('useAIPolling', () => {
       photos: [],
       pollingPhotoId: null,
       pollingPhotoIds: new Set(),
-      toastMsg: '',
-      toastSeverity: 'info',
+  toast: { message: '', severity: 'info' },
     })
   })
 

@@ -46,7 +46,7 @@ describe('PhotoGallery Component', () => {
     expect(screen.getByText('test1.jpg')).toBeInTheDocument()
     expect(screen.getByText('test2.jpg')).toBeInTheDocument()
     expect(screen.getByText('Test caption')).toBeInTheDocument()
-    expect(screen.getByText('staged')).toBeInTheDocument()
+  expect(screen.getByText('working')).toBeInTheDocument()
     expect(screen.getByText('inprogress')).toBeInTheDocument()
   })
 
@@ -86,7 +86,7 @@ describe('PhotoGallery Component', () => {
 
     expect(screen.getByText('Move to Inprogress')).toBeInTheDocument()
     expect(screen.getByText('Edit')).toBeInTheDocument()
-    expect(screen.getByText('Move to Staged')).toBeInTheDocument()
+  expect(screen.getByText('Move to Working')).toBeInTheDocument()
     expect(screen.getByText('Delete')).toBeInTheDocument()
   })
 
@@ -110,12 +110,12 @@ describe('PhotoGallery Component', () => {
     expect(mockProps.handleEditPhoto).toHaveBeenCalledWith(mockPhotos[1])
   })
 
-  it('calls handleMoveToWorking when move to staged button clicked', async () => {
+  it('calls handleMoveToWorking when move to working button clicked', async () => {
     const user = userEvent.setup()
     render(<PhotoGallery {...mockProps} />)
 
-    const moveToStagedButton = screen.getByText('Move to Staged')
-    await user.click(moveToStagedButton)
+    const moveToWorkingButton = screen.getByText('Move to Working')
+    await user.click(moveToWorkingButton)
 
     expect(mockProps.handleMoveToWorking).toHaveBeenCalledWith(2)
   })
