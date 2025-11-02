@@ -1,5 +1,6 @@
 const path = require('path');
 require('dotenv').config({ path: path.join(__dirname, '..', '.env') });
+const sharp = require('sharp');
 const logger = require('../logger');
 
 // Fail-fast if OpenAI API key is missing — check at module load time
@@ -122,6 +123,7 @@ async function invokeAgentWithTools(agent, initialMessages, tools = [], options 
  * @param {Object|string} [options.metadata] - EXIF/metadata associated with the image. May be a stringified JSON.
  * @param {string} [options.gps] - Precomputed GPS string (lat,lon) or empty string.
  * @param {string} [options.device] - Device make/model string.
+ * @param {boolean} [options.isHighAccuracy=false] - When false the image is downscaled to save tokens.
  * @returns {Promise<Object>} Resolves with an object: { caption, description, keywords, [poiAnalysis] }.
  * @throws Will re-throw errors from agent invocations (routerAgent, sceneryAgent, collectibleAgent) or conversion failures.
  * @description
@@ -130,7 +132,7 @@ async function invokeAgentWithTools(agent, initialMessages, tools = [], options 
  * or JSON embedded inside markdown code fences). It tries JSON parsing first
  * and falls back to heuristics if parsing fails.
  */
-async function processPhotoAI({ fileBuffer, filename, metadata, gps, device }) {
+async function processPhotoAI({ fileBuffer, filename, metadata, gps, device, isHighAccuracy = false }) {
   // OPENAI_API_KEY is validated at module load time (fail-fast)
 
 
@@ -144,6 +146,16 @@ async function processPhotoAI({ fileBuffer, filename, metadata, gps, device }) {
   } else {
     imageBuffer = fileBuffer;
     imageMime = ext === '.png' ? 'image/png' : 'image/jpeg';
+  }
+
+  if (!isHighAccuracy) {
+    try {
+      imageBuffer = await sharp(imageBuffer)
+        .resize({ width: 1024, height: 1024, fit: 'inside', withoutEnlargement: true })
+        .toBuffer();
+    } catch (resizeErr) {
+      logger.warn('[AI] Failed to downscale image for fast mode, using original buffer.', resizeErr.message || resizeErr);
+    }
   }
   const imageBase64 = imageBuffer.toString('base64');
   const imageDataUri = `data:${imageMime};base64,${imageBase64}`;
@@ -393,10 +405,13 @@ async function processPhotoAI({ fileBuffer, filename, metadata, gps, device }) {
  * @param {Object} db - Knex database instance (must support .from/.where/.update/.first).
  * @param {Object} photoRow - Database row object for the photo (must include id, filename, metadata, ai_retry_count).
  * @param {string} storagePath - Path in Supabase storage bucket to download the file from.
+ * @param {Object} [options] - Additional processing options.
+ * @param {boolean} [options.isHighAccuracy=false] - When true, skips the fast downscaling pass.
  * @returns {Promise<Object|null>} Returns the AI result object on success, or null when processing failed or retried.
  * @throws Will re-throw unexpected errors only in rare cases; normally returns null on recoverable failures.
  */
-async function updatePhotoAIMetadata(db, photoRow, storagePath) {
+async function updatePhotoAIMetadata(db, photoRow, storagePath, options = {}) {
+  const { isHighAccuracy = false } = options;
   try {
     const meta = JSON.parse(photoRow.metadata || '{}');
     
@@ -448,7 +463,8 @@ async function updatePhotoAIMetadata(db, photoRow, storagePath) {
         filename: photoRow.filename, 
         metadata: meta, 
         gps, 
-        device 
+        device,
+        isHighAccuracy 
       });
     } catch (error) {
   logger.error(`AI processing failed for ${photoRow.filename} (attempt ${retryCount + 1}):`, error.message || error);

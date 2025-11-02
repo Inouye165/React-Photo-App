@@ -598,12 +598,12 @@ module.exports = function createPhotosRouter({ db }) {
         // Fallback to synchronous processing when Redis is not available
         logger.info(`[API] Redis unavailable - processing AI recheck synchronously for photoId: ${photo.id}`);
         const storagePath = photo.storage_path || `${photo.state}/${photo.filename}`;
-        await updatePhotoAIMetadata(db, photo, storagePath);
+        await updatePhotoAIMetadata(db, photo, storagePath, { isHighAccuracy: true });
         return res.status(200).json({ message: 'AI recheck completed synchronously.', photoId: photo.id });
       }
 
       // Enqueue a job for rechecking AI metadata
-      await addAIJob(photo.id);
+      await addAIJob(photo.id, { isHighAccuracy: true });
       logger.info(`[API] Enqueued AI recheck for photoId: ${photo.id}`);
       return res.status(202).json({ message: 'AI recheck queued.', photoId: photo.id });
     } catch (error) {
@@ -630,7 +630,7 @@ module.exports = function createPhotosRouter({ db }) {
         const storagePath = photo.storage_path || `${photo.state}/${photo.filename}`;
         
         // Process AI synchronously (this will need to be updated to work with Supabase storage)
-        await updatePhotoAIMetadata(db, photo, storagePath);
+  await updatePhotoAIMetadata(db, photo, storagePath);
         
         return res.status(200).json({
           message: 'AI processing completed synchronously.',

@@ -42,7 +42,7 @@ async function initializeQueue() {
        * causing the job to be retried according to worker options.
        */
       const processor = async (job) => {
-        const { photoId } = job.data;
+        const { photoId, isHighAccuracy = false } = job.data;
   logger.info(`[WORKER] Processing AI job for photoId: ${photoId}`);
 
         try {
@@ -56,7 +56,7 @@ async function initializeQueue() {
           const storagePath = photo.storage_path || `${photo.state}/${photo.filename}`;
 
           // Call the existing AI service function
-          await updatePhotoAIMetadata(db, photo, storagePath);
+          await updatePhotoAIMetadata(db, photo, storagePath, { isHighAccuracy });
 
           logger.info(`[WORKER] Successfully processed job for photoId: ${photoId}`);
         } catch (error) {
@@ -106,12 +106,13 @@ async function checkRedisAvailable() {
 }
 
 // Export functions to handle queue operations
-const addAIJob = async (photoId) => {
+const addAIJob = async (photoId, jobData = {}) => {
   await initializeQueue();
   if (!redisAvailable || !aiQueue) {
     throw new Error('Queue service unavailable - Redis connection required');
   }
-  return await aiQueue.add('process-photo-ai', { photoId });
+  const payload = { ...jobData, photoId };
+  return await aiQueue.add('process-photo-ai', payload);
 };
 
 // For direct worker usage (worker.js)

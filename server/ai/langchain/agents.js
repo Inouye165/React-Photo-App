@@ -2,6 +2,11 @@
 const { ChatOpenAI } = require('@langchain/openai');
 const { googleSearchTool } = require('./tools/searchTool');
 
+const FAST_MODEL_NAME = process.env.FAST_MODEL || 'gpt-4o';
+const PROD_ANALYST_MODEL_NAME = process.env.PROD_ANALYST_MODEL || 'gpt-4o';
+const isProduction = process.env.NODE_ENV === 'production';
+const analystModelName = isProduction ? PROD_ANALYST_MODEL_NAME : FAST_MODEL_NAME;
+
 const ROUTER_SYSTEM_PROMPT = `You are an expert image classifier. Given an image and its metadata, classify the main focal point as either:\n\n- scenery_or_general_subject: (e.g., landscapes, selfies, generic photos of cows, meals)\n- specific_identifiable_object: (e.g., comic book, car, product box, collectible)\n- receipt: (e.g., store receipt, invoice)\n- food_item: (e.g., plate of food, meal)\n\nRespond with a single key: { "classification": "classification_type" }.`;
 
 // --- UPDATED PROMPT ---
@@ -127,21 +132,21 @@ Guidelines:
 // Router Agent: Classifies image focal point
 // Note: ROUTER_SYSTEM_PROMPT includes 'receipt' and 'food_item' classifications
 const routerAgent = new ChatOpenAI({
-  modelName: 'gpt-4o',
+  modelName: FAST_MODEL_NAME,
   temperature: 0.2,
   maxTokens: 512
 });
 
 // Scenery Agent: Handles scenery, animals, receipts, food based on the complex prompt above
 const sceneryAgent = new ChatOpenAI({
-  modelName: 'gpt-4o',
+  modelName: analystModelName,
   temperature: 0.3,
   maxTokens: 1024
 });
 
 // Collectible Agent: Identifies specific collectibles, validates with research, and estimates value
 const collectibleAgent = new ChatOpenAI({
-  modelName: 'gpt-4o',
+  modelName: analystModelName,
   temperature: 0.25,
   maxTokens: 1400
 }).bindTools([googleSearchTool]);
