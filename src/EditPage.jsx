@@ -4,27 +4,13 @@ import { useAuth } from './contexts/AuthContext'
 import { API_BASE_URL, fetchProtectedBlobUrl, revokeBlobUrl } from './api.js'
 import useStore from './store.js'
 
-const safeDebug = (...args) => {
-  if (typeof console !== 'undefined' && typeof console.debug === 'function') {
-    console.debug(...args)
-  }
-}
-
 export default function EditPage({ photo, onClose, onSave, onFinished, onRecheckAI, setToast }) {
   // AuthContext no longer exposes client-side token (httpOnly cookies are used).
   useAuth();
-  // Add log at start of EditPage to catch new props
-  safeDebug('[EditPage INIT] photo:', photo);
   // Prefer the live photo from the global store when available so this editor
   // always displays the freshest AI-updated content. Fall back to the prop.
-  const reactivePhoto = useStore(state => {
-    const match = state.photos.find(p => String(p.id) === String(photo?.id));
-    safeDebug('[EditPage reactivePhoto selector]', { photoId: photo?.id, foundId: match?.id, found: !!match });
-    return match || photo;
-  })
-
-  const sourcePhoto = reactivePhoto || photo;
-  safeDebug('[EditPage] sourcePhoto resolved', sourcePhoto?.id, sourcePhoto);
+  const reactivePhoto = useStore(state => state.photos.find(p => String(p.id) === String(photo?.id)) || photo)
+  const sourcePhoto = reactivePhoto || photo
 
   const [caption, setCaption] = useState(sourcePhoto?.caption || '')
   const [description, setDescription] = useState(sourcePhoto?.description || '')
@@ -42,21 +28,13 @@ export default function EditPage({ photo, onClose, onSave, onFinished, onRecheck
   // Keep the editor fields in sync with the incoming photo prop.
   // CRITICAL DEBUG LOG: Confirms prop is reactive and update is running
   useEffect(() => {
-  safeDebug('[EditPage SYNC] Photo source updated. New Caption:', (sourcePhoto || photo)?.caption, 'New ID:', (sourcePhoto || photo)?.id);
-  safeDebug('[EditPage useEffect sourcePhoto] Triggered: sourcePhoto', sourcePhoto?.id, sourcePhoto);
+    console.debug('[EditPage SYNC] Photo source updated. New Caption:', (sourcePhoto || photo)?.caption, 'New ID:', (sourcePhoto || photo)?.id);
 
     const latest = sourcePhoto || photo
     setCaption(latest?.caption || '')
     setDescription(latest?.description || '')
     setKeywords(latest?.keywords || '')
     setTextStyle(latest?.textStyle || null)
-    // Also log each field
-    safeDebug('[EditPage useEffect - local state sync]', {
-      caption: sourcePhoto?.caption,
-      description: sourcePhoto?.description,
-      keywords: sourcePhoto?.keywords,
-      textStyle: sourcePhoto?.textStyle
-    });
 
     // Note: Include all setters in the dependency array if your linter complains,
     // but for this photo-sync hook, only the reactive photo references are required for the intended behavior.
@@ -100,7 +78,7 @@ export default function EditPage({ photo, onClose, onSave, onFinished, onRecheck
 
     ;(async () => {
       try {
-        const objUrl = await fetchProtectedBlobUrl(displayUrl)
+  const objUrl = await fetchProtectedBlobUrl(displayUrl)
         if (!mounted) {
           if (objUrl) revokeBlobUrl(objUrl)
           return
@@ -109,15 +87,11 @@ export default function EditPage({ photo, onClose, onSave, onFinished, onRecheck
         if (objUrl) {
           setImageBlobUrl(objUrl)
         } else {
-          setImageBlobUrl(null)
           setFetchError(true)
         }
       } catch (err) {
         console.error('Failed to fetch protected image', err)
-        if (mounted) {
-          setImageBlobUrl(null)
-          setFetchError(true)
-        }
+        if (mounted) setFetchError(true)
       }
     })()
 
@@ -142,13 +116,16 @@ export default function EditPage({ photo, onClose, onSave, onFinished, onRecheck
     }
     // polling stopped; if previously was polling, determine if AI updated the photo
     const prev = prevPhotoRef.current
-    safeDebug('[EditPage diff after polling?] prev', prev?.id, prev, 'current', sourcePhoto?.id, sourcePhoto);
     if (prev && (prev.caption !== sourcePhoto?.caption || prev.description !== sourcePhoto?.description || prev.keywords !== sourcePhoto?.keywords)) {
-      safeDebug('[EditPage Detected AI update! Overwriting local fields]');
+      // AI updated fields -> update form fields immediately then mark done briefly
       // Force form to reflect latest AI-generated values from the photo prop
-      setCaption(sourcePhoto?.caption || '')
-      setDescription(sourcePhoto?.description || '')
-      setKeywords(sourcePhoto?.keywords || '')
+      try {
+        setCaption(sourcePhoto?.caption || '')
+        setDescription(sourcePhoto?.description || '')
+        setKeywords(sourcePhoto?.keywords || '')
+      } catch {
+        // swallow errors from missing values
+      }
       setRecheckStatus('done')
       // show 'done' for 2.5s then switch to idle (label 'Recheck AI again')
       doneTimeoutRef.current = setTimeout(() => {
