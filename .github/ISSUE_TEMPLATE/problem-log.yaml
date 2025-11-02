@@ -52,3 +52,4 @@ body:
       description: Advice for expediting discovery/triage/prevention next time (e.g., better logs, new tests, checklist step)
     validations:
       required: true
+

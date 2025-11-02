@@ -43,3 +43,4 @@ A chronological log of major bugs or problems found in this photo app. Each entr
 ---
 
 (Add new entries below for each major or instructive bug/root cause encountered!)
+
