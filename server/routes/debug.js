@@ -2,6 +2,7 @@ const express = require('express');
 const { processAllUnprocessedInprogress } = require('../ai/service');
 const { generateThumbnail } = require('../media/image');
 const supabase = require('../lib/supabaseClient');
+const logger = require('../logger');
 
 module.exports = function createDebugRouter({ db }) {
   const router = express.Router();
@@ -9,11 +10,11 @@ module.exports = function createDebugRouter({ db }) {
   // Add endpoint to recheck/reprocess all inprogress files for AI metadata
   router.post('/photos/recheck-inprogress', (req, res) => {
     try {
-      console.log('[RECHECK] /photos/recheck-inprogress endpoint called');
+  logger.info('[RECHECK] /photos/recheck-inprogress endpoint called');
       processAllUnprocessedInprogress(db);
       res.json({ success: true });
     } catch (err) {
-      console.error('[RECHECK] Failed to trigger recheck for inprogress files:', err);
+      logger.error('[RECHECK] Failed to trigger recheck for inprogress files:', err);
       res.status(500).json({ success: false, error: err.message });
     }
   });
@@ -24,7 +25,7 @@ module.exports = function createDebugRouter({ db }) {
       const rows = await db('photos').where({ state: 'inprogress' });
       res.json(rows);
     } catch (err) {
-      console.error('Debug inprogress error:', err);
+      logger.error('Debug inprogress error:', err);
       res.status(500).json({ error: err.message });
     }
   });
@@ -35,7 +36,7 @@ module.exports = function createDebugRouter({ db }) {
       const result = await db('photos').where('filename', 'like', '%.HEIC').update({ ai_retry_count: 0 });
       res.json({ updated: result });
     } catch (err) {
-      console.error('Reset ai retry error:', err);
+      logger.error('Reset ai retry error:', err);
       res.status(500).json({ error: err.message });
     }
   });
@@ -68,7 +69,7 @@ module.exports = function createDebugRouter({ db }) {
           
           if (error) {
             failed++;
-            console.error(`❌ Failed to download ${row.filename} for thumbnail generation:`, error);
+            logger.error(`❌ Failed to download ${row.filename} for thumbnail generation:`, error);
             continue;
           }
           
@@ -76,10 +77,10 @@ module.exports = function createDebugRouter({ db }) {
             const fileBuffer = await fileData.arrayBuffer();
             await generateThumbnail(Buffer.from(fileBuffer), row.hash);
             generated++;
-            console.log(`✅ Generated thumbnail for ${row.filename}`);
+            logger.info(`✅ Generated thumbnail for ${row.filename}`);
           } catch (genError) {
             failed++;
-            console.error(`❌ Failed to generate thumbnail for ${row.filename}:`, genError.message);
+            logger.error(`❌ Failed to generate thumbnail for ${row.filename}:`, genError.message);
           }
         }
       }
@@ -89,7 +90,7 @@ module.exports = function createDebugRouter({ db }) {
         summary: { missing, generated, failed }
       });
     } catch (error) {
-      console.error('Error during thumbnail regeneration:', error);
+      logger.error('Error during thumbnail regeneration:', error);
       res.status(500).json({ success: false, error: error.message });
     }
   });

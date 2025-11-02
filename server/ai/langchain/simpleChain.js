@@ -7,6 +7,7 @@ const { buildPrompt } = require('./promptTemplate');
 const { convertHeicToJpegBuffer } = require('../../media/image');
 const fs = require('fs');
 const path = require('path');
+const logger = require('../../logger');
 
 /**
  * A single 'tool' is a function accepting an input object and returning an
@@ -77,7 +78,7 @@ async function imageEmbedTool(ctx) {
  */
 async function runSimpleChain({ filePath, metadata = {}, gps = '', device = '' }) {
   const ctx = { filePath, metadata, gps, device, dateTimeInfo: '' };
-  console.log('[SIMPLE_CHAIN] starting for', filePath);
+  logger.debug('[SIMPLE_CHAIN] starting for', filePath);
   // attempt to parse date from metadata if present
   if (ctx.metadata) {
     const dateOriginal = ctx.metadata.DateTimeOriginal || ctx.metadata.CreateDate || ctx.metadata.DateTime;

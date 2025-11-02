@@ -1,5 +1,6 @@
 const helmet = require('helmet');
 const rateLimit = require('express-rate-limit');
+const logger = require('../logger');
 
 /**
  * Configure security middleware
@@ -107,7 +108,7 @@ function validateRequest(req, res, next) {
 
   for (const pattern of suspiciousPatterns) {
     if (pattern.test(fullUrl) || pattern.test(decodedUrl)) {
-      console.warn(`Suspicious request detected from ${req.ip}: ${fullUrl}`);
+  logger.warn(`Suspicious request detected from ${req.ip}: ${fullUrl}`);
       return res.status(400).json({
         success: false,
         error: 'Invalid request'
@@ -139,12 +140,12 @@ function validateRequest(req, res, next) {
 function securityErrorHandler(err, req, res, next) {
   // Log security-related errors
   if (err.status === 401 || err.status === 403) {
-    console.warn(`Security error from ${req.ip}: ${err.message}`);
+  logger.warn(`Security error from ${req.ip}: ${err.message}`);
   }
 
   // Don't expose internal error details
   if (err.status >= 500) {
-    console.error('Internal security error:', err);
+  logger.error('Internal security error:', err);
     return res.status(500).json({
       success: false,
       error: 'Internal server error'

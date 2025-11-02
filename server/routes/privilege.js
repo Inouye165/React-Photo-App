@@ -1,4 +1,5 @@
 const express = require('express');
+const logger = require('../logger');
 
 module.exports = function createPrivilegeRouter() {
   const router = express.Router();
@@ -24,7 +25,7 @@ module.exports = function createPrivilegeRouter() {
         privileges: { read: true, write: true, execute: false }
       });
     } catch (err) {
-      console.error('Privilege check error:', err);
+      logger.error('Privilege check error:', err);
       return res.status(500).json({ success: false, error: err.message || 'Internal server error' });
     }
   });

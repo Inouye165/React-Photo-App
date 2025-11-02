@@ -15,6 +15,7 @@ const {
   authenticateToken,
   MAX_LOGIN_ATTEMPTS
 } = require('../middleware/auth');
+const logger = require('../logger');
 
 module.exports = function createAuthRouter({ db }) {
   const router = express.Router();
@@ -96,7 +97,7 @@ module.exports = function createAuthRouter({ db }) {
       // Get user by username
       const user = await getUserByUsername(db, username);
       if (!user) {
-        console.warn(`[LOGIN FAIL] User not found: username='${username}' ip='${clientIp}'`);
+        logger.warn(`[LOGIN FAIL] User not found: username='${username}' ip='${clientIp}'`);
         return res.status(401).json({
           success: false,
           error: 'Invalid credentials'
@@ -105,7 +106,7 @@ module.exports = function createAuthRouter({ db }) {
 
       // Check if account is locked
       if (isAccountLocked(user)) {
-        console.warn(`[LOGIN FAIL] Account locked: username='${username}' ip='${clientIp}'`);
+        logger.warn(`[LOGIN FAIL] Account locked: username='${username}' ip='${clientIp}'`);
         return res.status(423).json({
           success: false,
           error: `Account is locked due to too many failed login attempts. Please try again later.`
@@ -120,13 +121,13 @@ module.exports = function createAuthRouter({ db }) {
         // Check if we should lock the account
         if (user.failed_login_attempts + 1 >= MAX_LOGIN_ATTEMPTS) {
           await lockAccount(db, user.id);
-          console.warn(`[LOGIN FAIL] Account locked after max attempts: username='${username}' ip='${clientIp}'`);
+          logger.warn(`[LOGIN FAIL] Account locked after max attempts: username='${username}' ip='${clientIp}'`);
           return res.status(423).json({
             success: false,
             error: `Account locked due to ${MAX_LOGIN_ATTEMPTS} failed login attempts. Please try again later.`
           });
         }
-        console.warn(`[LOGIN FAIL] Invalid password: username='${username}' ip='${clientIp}'`);
+  logger.warn(`[LOGIN FAIL] Invalid password: username='${username}' ip='${clientIp}'`);
         return res.status(401).json({
           success: false,
           error: 'Invalid credentials'
@@ -150,10 +151,10 @@ module.exports = function createAuthRouter({ db }) {
         };
         res.cookie('authToken', token, cookieOptions);
       } catch (e) {
-        console.warn('Failed to set auth cookie:', e && e.message ? e.message : e);
+        logger.warn('Failed to set auth cookie:', e && e.message ? e.message : e);
       }
       // Log successful login
-      console.info(`[LOGIN SUCCESS] username='${username}' ip='${clientIp}'`);
+      logger.info(`[LOGIN SUCCESS] username='${username}' ip='${clientIp}'`);
 
       // Return success (token is set as an httpOnly cookie). Also return token in JSON
       // to support non-browser clients/tests that expect it. Frontend should rely on cookie.
@@ -169,7 +170,7 @@ module.exports = function createAuthRouter({ db }) {
       });
 
     } catch (error) {
-      console.error('Login error:', error);
+      logger.error('Login error:', error);
       res.status(500).json({
         success: false,
         error: 'Internal server error'
@@ -224,7 +225,7 @@ module.exports = function createAuthRouter({ db }) {
         };
         res.cookie('authToken', token, cookieOptions);
       } catch (e) {
-        console.warn('Failed to set auth cookie on register:', e && e.message ? e.message : e);
+        logger.warn('Failed to set auth cookie on register:', e && e.message ? e.message : e);
       }
 
       res.status(201).json({
@@ -240,7 +241,7 @@ module.exports = function createAuthRouter({ db }) {
       });
 
     } catch (error) {
-      console.error('Registration error:', error);
+      logger.error('Registration error:', error);
       if (error.message === 'Username or email already exists') {
         return res.status(409).json({
           success: false,
@@ -313,7 +314,7 @@ module.exports = function createAuthRouter({ db }) {
         }
       });
     } catch (error) {
-      console.error('Profile error:', error);
+      logger.error('Profile error:', error);
       res.status(500).json({
         success: false,
         error: 'Internal server error'

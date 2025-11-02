@@ -2,6 +2,7 @@
 // Run with: node server/scripts/fix_photo_92.js
 
 const db = require('../db/index');
+const logger = require('../logger');
 
 (async function() {
   try {
@@ -11,20 +12,20 @@ const db = require('../db/index');
 
     const row = await db('photos').where({ id }).first();
     if (!row) {
-      console.error('Photo id', id, 'not found in DB');
+      logger.error('Photo id', id, 'not found in DB');
       process.exit(1);
     }
 
-    console.log('Before update:', { id: row.id, state: row.state, storage_path: row.storage_path });
+    logger.info('Before update:', { id: row.id, state: row.state, storage_path: row.storage_path });
 
     await db('photos').where({ id }).update({ state: newState, storage_path: newPath, updated_at: new Date().toISOString() });
 
     const updated = await db('photos').where({ id }).first();
-    console.log('After update:', { id: updated.id, state: updated.state, storage_path: updated.storage_path });
+  logger.info('After update:', { id: updated.id, state: updated.state, storage_path: updated.storage_path });
 
     process.exit(0);
   } catch (err) {
-    console.error('Error updating photo:', err);
+    logger.error('Error updating photo:', err);
     process.exit(1);
   }
 })();

@@ -1,5 +1,6 @@
 const path = require('path');
 const fs = require('fs');
+const logger = require('../logger');
 
 // Backfill file sizes for existing records that don't have them
 async function backfillFileSizes(db, { WORKING_DIR, INPROGRESS_DIR, FINISHED_DIR }) {
@@ -10,11 +11,11 @@ async function backfillFileSizes(db, { WORKING_DIR, INPROGRESS_DIR, FINISHED_DIR
       .select('id', 'filename', 'state');
     
     if (rows.length === 0) {
-      console.log('[BACKFILL] No files need file size backfill.');
+      logger.info('[BACKFILL] No files need file size backfill.');
       return 0;
     }
     
-    console.log(`[BACKFILL] Backfilling file sizes for ${rows.length} records...`);
+    logger.info(`[BACKFILL] Backfilling file sizes for ${rows.length} records...`);
     let updated = 0;
     
     for (const row of rows) {
@@ -34,17 +35,17 @@ async function backfillFileSizes(db, { WORKING_DIR, INPROGRESS_DIR, FINISHED_DIR
           await db('photos').where({ id: row.id }).update({ file_size: stats.size });
           updated++;
         } else {
-          console.log(`[BACKFILL] File not found for backfill: ${filePath}`);
+          logger.warn(`[BACKFILL] File not found for backfill: ${filePath}`);
         }
       } catch (error) {
-        console.error(`[BACKFILL] Error getting file size for ${row.filename}:`, error.message);
+        logger.error(`[BACKFILL] Error getting file size for ${row.filename}:`, error.message);
       }
     }
     
-    console.log(`[BACKFILL] Updated file sizes for ${updated} records.`);
+    logger.info(`[BACKFILL] Updated file sizes for ${updated} records.`);
     return updated;
   } catch (error) {
-    console.error('[BACKFILL] Error during file size backfill:', error);
+    logger.error('[BACKFILL] Error during file size backfill:', error);
     throw error;
   }
 }
@@ -64,11 +65,11 @@ async function cleanupMissingFiles(db, workingDir) {
     }
     
     if (removed > 0) {
-      console.log(`[CLEANUP] Removed ${removed} DB records for missing files in working dir.`);
+      logger.info(`[CLEANUP] Removed ${removed} DB records for missing files in working dir.`);
     }
     return removed;
   } catch (error) {
-    console.error('[CLEANUP] Error during working dir cleanup:', error);
+    logger.error('[CLEANUP] Error during working dir cleanup:', error);
     throw error;
   }
 }
@@ -88,11 +89,11 @@ async function cleanupMissingInprogressFiles(db, inprogressDir) {
     }
     
     if (removed > 0) {
-      console.log(`[CLEANUP] Removed ${removed} DB records for missing files in inprogress dir.`);
+      logger.info(`[CLEANUP] Removed ${removed} DB records for missing files in inprogress dir.`);
     }
     return removed;
   } catch (error) {
-    console.error('[CLEANUP] Error during inprogress dir cleanup:', error);
+    logger.error('[CLEANUP] Error during inprogress dir cleanup:', error);
     throw error;
   }
 }

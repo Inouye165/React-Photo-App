@@ -1,5 +1,6 @@
 const path = require('path');
 require('dotenv').config({ path: path.join(__dirname, '..', '.env') });
+const logger = require('../logger');
 
 // Fail-fast if OpenAI API key is missing — check at module load time
 // Allow tests to run without an API key by skipping the throw when
@@ -9,7 +10,7 @@ if (!process.env.OPENAI_API_KEY) {
   if (process.env.NODE_ENV === 'test') {
     // In test environment, don't fail-fast. Tests should mock agents
     // or provide a test key via test setup.
-    console.warn('OPENAI_API_KEY not set — skipping fail-fast in test environment.');
+  logger.warn('OPENAI_API_KEY not set — skipping fail-fast in test environment.');
   } else {
     throw new Error('OPENAI_API_KEY not set in .env');
   }
@@ -17,14 +18,92 @@ if (!process.env.OPENAI_API_KEY) {
 const {
   routerAgent,
   sceneryAgent,
-  researchAgent,
+  collectibleAgent,
   ROUTER_SYSTEM_PROMPT,
   SCENERY_SYSTEM_PROMPT,
-  RESEARCH_SYSTEM_PROMPT
+  COLLECTIBLE_SYSTEM_PROMPT
 } = require('./langchain/agents');
 const { buildPrompt } = require('./langchain/promptTemplate');
 const { convertHeicToJpegBuffer } = require('../media/image');
 const supabase = require('../lib/supabaseClient');
+const { googleSearchTool } = require('./langchain/tools/searchTool');
+
+const MAX_TOOL_ITERATIONS = 4;
+
+function normalizeToolCalls(rawCalls) {
+  if (!rawCalls) return [];
+  return rawCalls
+    .map((call, idx) => {
+      const id = call.id || call.tool_call_id || `call_${idx}`;
+      const name = call.name || (call.function && call.function.name);
+      if (!name) return null;
+      const rawArgs = call.args ?? (call.function && call.function.arguments) ?? '{}';
+      let parsedArgs;
+      if (typeof rawArgs === 'string') {
+        try {
+          parsedArgs = rawArgs ? JSON.parse(rawArgs) : {};
+        } catch {
+          parsedArgs = rawArgs ? { query: rawArgs } : {};
+        }
+      } else {
+        parsedArgs = rawArgs || {};
+      }
+      return {
+        id,
+        name,
+        rawArgs: typeof rawArgs === 'string' ? rawArgs : JSON.stringify(rawArgs),
+        parsedArgs
+      };
+    })
+    .filter(Boolean);
+}
+
+async function invokeAgentWithTools(agent, initialMessages, tools = [], options = {}) {
+  const history = Array.isArray(initialMessages) ? [...initialMessages] : [];
+  const registry = new Map(tools.map(tool => [tool.name, tool]));
+  const maxIterations = options.maxIterations || MAX_TOOL_ITERATIONS;
+
+  for (let i = 0; i < maxIterations; i += 1) {
+    const response = await agent.invoke(history);
+    const toolCalls = normalizeToolCalls(response?.tool_calls || response?.additional_kwargs?.tool_calls);
+
+    if (!toolCalls.length) {
+      return response;
+    }
+
+    history.push({
+      role: 'assistant',
+      content: response.content,
+      tool_calls: toolCalls.map(call => ({
+        id: call.id,
+        type: 'function',
+        function: {
+          name: call.name,
+          arguments: call.rawArgs
+        }
+      }))
+    });
+
+    for (const call of toolCalls) {
+      const tool = registry.get(call.name);
+      if (!tool) {
+        throw new Error(`Collectible agent requested unsupported tool: ${call.name}`);
+      }
+
+  const result = await tool.invoke(call.parsedArgs);
+  const resultPreview = typeof result === 'string' ? result : JSON.stringify(result);
+  logger.debug('[AI CollectibleAgent] Tool result', call.name, JSON.stringify({ args: call.parsedArgs, result: resultPreview.slice(0, 500) }));
+      history.push({
+        role: 'tool',
+        tool_call_id: call.id,
+        name: call.name,
+        content: result
+      });
+    }
+  }
+
+  throw new Error('Collectible agent exceeded maximum tool iterations');
+}
 
 
 
@@ -44,7 +123,7 @@ const supabase = require('../lib/supabaseClient');
  * @param {string} [options.gps] - Precomputed GPS string (lat,lon) or empty string.
  * @param {string} [options.device] - Device make/model string.
  * @returns {Promise<Object>} Resolves with an object: { caption, description, keywords, [poiAnalysis] }.
- * @throws Will re-throw errors from agent invocations (routerAgent, sceneryAgent, researchAgent) or conversion failures.
+ * @throws Will re-throw errors from agent invocations (routerAgent, sceneryAgent, collectibleAgent) or conversion failures.
  * @description
  * The function performs several normalization steps to be robust against
  * various agent output shapes (strings, arrays, objects with kwargs/content,
@@ -108,7 +187,7 @@ async function processPhotoAI({ fileBuffer, filename, metadata, gps, device }) {
     try {
       meta = JSON.parse(metadata || '{}');
     } catch (parseErr) {
-      console.warn('[AI] Failed to parse metadata string; using empty metadata.', parseErr.message || parseErr);
+  logger.warn('[AI] Failed to parse metadata string; using empty metadata.', parseErr.message || parseErr);
       meta = {};
     }
   } else if (metadata && typeof metadata === 'object') {
@@ -147,9 +226,9 @@ async function processPhotoAI({ fileBuffer, filename, metadata, gps, device }) {
   let routerResult;
   try {
     routerResult = await routerAgent.invoke(routerMessages);
-    console.log('[AI Router] Output:', JSON.stringify(routerResult, null, 2));
+      logger.debug('[AI Router] Output:', JSON.stringify(routerResult, null, 2));
   } catch (err) {
-    console.error('[AI Router] Failed:', err);
+      logger.error('[AI Router] Failed:', err);
     throw err;
   }
   // Extract classification from routerAgent output
@@ -191,7 +270,7 @@ async function processPhotoAI({ fileBuffer, filename, metadata, gps, device }) {
       }
     }
     if (!classification) {
-      console.error('[AI Router] Could not extract classification from routerResult:', JSON.stringify(routerResult, null, 2));
+  logger.error('[AI Router] Could not extract classification from routerResult:', JSON.stringify(routerResult, null, 2));
     }
   }
 
@@ -204,6 +283,16 @@ async function processPhotoAI({ fileBuffer, filename, metadata, gps, device }) {
       { type: 'image_url', image_url: { url: imageDataUri } }
     ]
   };
+  const collectibleUserMessage = {
+    role: 'user',
+    content: [
+      {
+        type: 'text',
+        text: `Perform a high-resolution examination of the collectible. Zoom into patterns, textures, stamps, and micro-markings that prove authenticity. Describe every notable detail before researching provenance and value. Filename: ${filename}, Device: ${device}, GPS: ${gps}`
+      },
+      { type: 'image_url', image_url: { url: imageDataUri } }
+    ]
+  };
   let agentMessages;
   if (classification === 'scenery_or_general_subject') {
     agentMessages = [
@@ -213,18 +302,18 @@ async function processPhotoAI({ fileBuffer, filename, metadata, gps, device }) {
     try {
       agentResult = await sceneryAgent.invoke(agentMessages);
     } catch (err) {
-      console.error('[AI SceneryAgent] Failed:', err);
+  logger.error('[AI SceneryAgent] Failed:', err);
       throw err;
     }
   } else if (classification === 'specific_identifiable_object') {
     agentMessages = [
-      { role: 'system', content: `${RESEARCH_SYSTEM_PROMPT}\n\n${locationPrompt}` },
-      baseUserMessage
+      { role: 'system', content: `${COLLECTIBLE_SYSTEM_PROMPT}\n\n${locationPrompt}` },
+      collectibleUserMessage
     ];
     try {
-      agentResult = await researchAgent.invoke(agentMessages);
+      agentResult = await invokeAgentWithTools(collectibleAgent, agentMessages, [googleSearchTool]);
     } catch (err) {
-      console.error('[AI ResearchAgent] Failed:', err);
+  logger.error('[AI CollectibleAgent] Failed:', err);
       throw err;
     }
   } else {
@@ -264,6 +353,7 @@ async function processPhotoAI({ fileBuffer, filename, metadata, gps, device }) {
           }
           // attach poiAnalysis if present
           if (parsed.poiAnalysis) result.poiAnalysis = parsed.poiAnalysis;
+          if (parsed.collectibleInsights) result.collectibleInsights = parsed.collectibleInsights;
         } else {
           // fallback to using entire content as description
           result.description = normalizedContent;
@@ -278,13 +368,13 @@ async function processPhotoAI({ fileBuffer, filename, metadata, gps, device }) {
       result.description = JSON.stringify(agentResult).slice(0, 2000);
     }
   } catch (err) {
-    console.error('[AI Parser] Failed to normalize agentResult:', err);
+  logger.error('[AI Parser] Failed to normalize agentResult:', err);
     result.description = typeof agentResult === 'string' ? agentResult : JSON.stringify(agentResult);
   }
 
-  console.log('[AI Result] caption:', result.caption);
-  console.log('[AI Result] description (truncated):', (result.description || '').slice(0, 300));
-  console.log('[AI Result] keywords:', result.keywords);
+  logger.info('[AI Result] caption:', result.caption);
+  logger.info('[AI Result] description (truncated):', (result.description || '').slice(0, 300));
+  logger.info('[AI Result] keywords:', result.keywords);
 
   return result;
 }
@@ -329,7 +419,7 @@ async function updatePhotoAIMetadata(db, photoRow, storagePath) {
     const device = meta.Make && meta.Model ? `${meta.Make} ${meta.Model}` : '';
     const retryCount = photoRow.ai_retry_count || 0;
     if (retryCount >= 5) {
-      console.error(`AI processing failed permanently for ${photoRow.filename} after ${retryCount} retries`);
+  logger.error(`AI processing failed permanently for ${photoRow.filename} after ${retryCount} retries`);
       await db('photos').where({ id: photoRow.id }).update({
         caption: 'AI processing failed',
         description: 'AI processing failed',
@@ -361,11 +451,11 @@ async function updatePhotoAIMetadata(db, photoRow, storagePath) {
         device 
       });
     } catch (error) {
-      console.error(`AI processing failed for ${photoRow.filename} (attempt ${retryCount + 1}):`, error.message || error);
+  logger.error(`AI processing failed for ${photoRow.filename} (attempt ${retryCount + 1}):`, error.message || error);
       await db('photos').where({ id: photoRow.id }).update({ ai_retry_count: retryCount + 1 });
       return null;
     }
-      console.log('[AI Update] Retrieved AI result for', photoRow.filename, JSON.stringify({
+  logger.info('[AI Update] Retrieved AI result for', photoRow.filename, JSON.stringify({
         caption: ai && ai.caption,
         description: ai && (ai.description || '').slice(0,200),
         keywords: ai && ai.keywords
@@ -411,14 +501,14 @@ async function updatePhotoAIMetadata(db, photoRow, storagePath) {
 
       // Fetch saved row to confirm
       const saved = await db('photos').where({ id: photoRow.id }).first();
-      console.log('[AI Update] Saved DB values:', {
+  logger.info('[AI Update] Saved DB values:', {
         caption: saved.caption,
         description: (saved.description || '').slice(0,200),
         keywords: saved.keywords
       });
       return ai;
   } catch (error) {
-    console.error(`Unexpected error in updatePhotoAIMetadata for ${photoRow.filename}:`, error.message || error);
+  logger.error(`Unexpected error in updatePhotoAIMetadata for ${photoRow.filename}:`, error.message || error);
     return null;
   }
 }
@@ -450,7 +540,7 @@ async function processAllUnprocessedInprogress(db) {
           .orWhere('ai_retry_count', '<', 2);
       });
     
-    console.log(`[RECHECK] Found ${rows.length} inprogress files needing AI processing`);
+  logger.info(`[RECHECK] Found ${rows.length} inprogress files needing AI processing`);
     for (const row of rows) {
       if (
         !isAIFailed(row.caption) &&
@@ -458,17 +548,17 @@ async function processAllUnprocessedInprogress(db) {
         !isAIFailed(row.keywords) &&
         (!row.ai_retry_count || row.ai_retry_count < 2)
       ) {
-        console.log(`[RECHECK] Skipping ${row.filename} (already has valid AI metadata)`);
+  logger.info(`[RECHECK] Skipping ${row.filename} (already has valid AI metadata)`);
         continue;
       }
       
       const storagePath = row.storage_path || `${row.state}/${row.filename}`;
-      console.log(`[RECHECK] Processing AI metadata for ${row.filename} at ${storagePath}`);
+  logger.info(`[RECHECK] Processing AI metadata for ${row.filename} at ${storagePath}`);
       await updatePhotoAIMetadata(db, row, storagePath);
     }
     return rows.length;
   } catch (error) {
-    console.error('[RECHECK] Error processing unprocessed inprogress files:', error);
+  logger.error('[RECHECK] Error processing unprocessed inprogress files:', error);
     throw error;
   }
 }

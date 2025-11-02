@@ -11,6 +11,7 @@ try {
   const { photoPOIIdentifierTool } = require('./photoPOIIdentifier');
   const { buildPrompt } = require('./promptTemplate');
   const { convertHeicToJpegBuffer } = require('../../media/image');
+  const logger = require('../../logger');
 
   async function runLangChain({ messages: _messages, model = 'gpt-4o', max_tokens = 1500, temperature = 0.25, filePath, metadata = {}, gps = '', device = '' }) {
     const ctx = { filePath, metadata, gps, device, method: 'langchain' };
@@ -46,7 +47,7 @@ try {
 
     // GPS / geolocation
     if (!ctx.gps && ctx.metadata && ctx.metadata.GPSLatitude && ctx.metadata.GPSLongitude) {
-      console.log('GPS conversion: Raw GPSLatitude:', ctx.metadata.GPSLatitude, 'GPSLongitude:', ctx.metadata.GPSLongitude);
+  logger.debug('GPS conversion: Raw GPSLatitude:', ctx.metadata.GPSLatitude, 'GPSLongitude:', ctx.metadata.GPSLongitude);
       // Convert DMS arrays to decimal degrees
       const latDMS = Array.isArray(ctx.metadata.GPSLatitude) ? ctx.metadata.GPSLatitude : [ctx.metadata.GPSLatitude];
       const lonDMS = Array.isArray(ctx.metadata.GPSLongitude) ? ctx.metadata.GPSLongitude : [ctx.metadata.GPSLongitude];
@@ -59,7 +60,7 @@ try {
       const lonSign = ctx.metadata.GPSLongitudeRef === 'W' ? -1 : 1;
 
       ctx.gps = `${latDecimal * latSign},${lonDecimal * lonSign}`;
-      console.log('GPS conversion: Converted to decimal degrees:', ctx.gps);
+  logger.debug('GPS conversion: Converted to decimal degrees:', ctx.gps);
     }
     if (ctx.gps) {
       try {
@@ -70,7 +71,7 @@ try {
         });
         ctx.geoContext = JSON.parse(geoResult);
       } catch (error) {
-        console.error('LangChain: Geolocation lookup failed:', error.message || error);
+  logger.error('LangChain: Geolocation lookup failed:', error.message || error);
         ctx.geoContext = null;
       }
     }
@@ -86,7 +87,7 @@ try {
       });
       ctx.locationAnalysis = JSON.parse(detectiveResult);
     } catch (error) {
-      console.error('LangChain: Location detective analysis failed:', error.message || error);
+  logger.error('LangChain: Location detective analysis failed:', error.message || error);
       ctx.locationAnalysis = null;
     }
 
@@ -109,7 +110,7 @@ try {
 
       if (imageData && ctx.gps) {
         const [latitude, longitude] = ctx.gps.split(',').map(coord => coord.trim());
-        console.log('POI identification: GPS coordinates:', ctx.gps, 'parsed as lat:', latitude, 'lng:', longitude);
+  logger.debug('POI identification: GPS coordinates:', ctx.gps, 'parsed as lat:', latitude, 'lng:', longitude);
         const poiResult = await photoPOIIdentifierTool.invoke({
           imageData,
           latitude,
@@ -117,13 +118,13 @@ try {
           timestamp: ctx.dateTimeInfo
         });
         ctx.poiAnalysis = JSON.parse(poiResult);
-        console.log('POI identification successful');
-        console.log('POI analysis result:', JSON.stringify(ctx.poiAnalysis, null, 2));
+  logger.info('POI identification successful');
+  logger.debug('POI analysis result:', JSON.stringify(ctx.poiAnalysis, null, 2));
       } else {
-        console.log('POI identification skipped: missing imageData or GPS');
+  logger.warn('POI identification skipped: missing imageData or GPS');
       }
     } catch (error) {
-      console.error('POI identification failed:', error.message || error);
+  logger.error('POI identification failed:', error.message || error);
       ctx.poiAnalysis = null;
     }
 
