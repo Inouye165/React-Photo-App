@@ -8,6 +8,7 @@ const exifr = require('exifr');
 const supabase = require('../lib/supabaseClient');
 const { authenticateToken } = require('../middleware/auth');
 const { authenticateImageRequest } = require('../middleware/imageAuth');
+const logger = require('../logger');
 
 module.exports = function createPhotosRouter({ db }) {
   const router = express.Router();
@@ -65,7 +66,7 @@ module.exports = function createPhotosRouter({ db }) {
           try {
             textStyle = JSON.parse(row.text_style);
           } catch (parseErr) {
-            console.warn('Failed to parse text_style for photo', row.id, parseErr.message);
+            logger.warn('Failed to parse text_style for photo', row.id, parseErr.message);
           }
         }
 
@@ -102,7 +103,7 @@ module.exports = function createPhotosRouter({ db }) {
       res.set('Cache-Control', 'no-store');
       res.json({ success: true, photos: photosWithUrls });
     } catch (err) {
-      console.error('Error in /photos endpoint:', err);
+      logger.error('Error in /photos endpoint:', err);
       res.status(500).json({ success: false, error: err.message });
     }
   });
@@ -146,7 +147,7 @@ module.exports = function createPhotosRouter({ db }) {
       res.set('Cache-Control', 'no-store');
       return res.json({ success: true, photo });
     } catch (err) {
-      console.error('Error in GET /photos/:id', err);
+        logger.error('Error in GET /photos/:id', err);
       return res.status(500).json({ success: false, error: err.message });
     }
   });
@@ -190,7 +191,7 @@ module.exports = function createPhotosRouter({ db }) {
       if (newTextStyleJson) {
         try {
           parsedTextStyle = JSON.parse(newTextStyleJson);
-        } catch { console.warn('Failed to parse text_style after update for photo', id); }
+  } catch { logger.warn('Failed to parse text_style after update for photo', id); }
       }
 
       res.json({
@@ -203,7 +204,7 @@ module.exports = function createPhotosRouter({ db }) {
         }
       });
     } catch (error) {
-      console.error('Failed to update metadata for photo', id, error);
+      logger.error('Failed to update metadata for photo', id, error);
       res.status(500).json({ success: false, error: error.message || 'Failed to update metadata' });
     }
   });
@@ -227,13 +228,13 @@ module.exports = function createPhotosRouter({ db }) {
         .remove([editedPath]);
       
       if (deleteError) {
-        console.warn('Failed to delete edited file from Supabase storage:', deleteError);
+        logger.warn('Failed to delete edited file from Supabase storage:', deleteError);
       }
 
       await db('photos').where('id', id).update({ edited_filename: null });
       res.json({ success: true });
     } catch (error) {
-      console.error('Failed to revert photo', id, error);
+      logger.error('Failed to revert photo', id, error);
       res.status(500).json({ success: false, error: error.message || 'Failed to revert' });
     }
   });
@@ -254,7 +255,7 @@ module.exports = function createPhotosRouter({ db }) {
         .remove([filePath]);
 
       if (deleteError) {
-        console.warn('Failed to delete file from Supabase storage:', deleteError);
+        logger.warn('Failed to delete file from Supabase storage:', deleteError);
         // Continue with database deletion even if storage deletion fails
       }
 
@@ -266,7 +267,7 @@ module.exports = function createPhotosRouter({ db }) {
           .remove([editedPath]);
         
         if (editedDeleteError) {
-          console.warn('Failed to delete edited file from Supabase storage:', editedDeleteError);
+          logger.warn('Failed to delete edited file from Supabase storage:', editedDeleteError);
         }
       }
 
@@ -278,7 +279,7 @@ module.exports = function createPhotosRouter({ db }) {
           .remove([thumbnailPath]);
         
         if (thumbDeleteError) {
-          console.warn('Failed to delete thumbnail from Supabase storage:', thumbDeleteError);
+          logger.warn('Failed to delete thumbnail from Supabase storage:', thumbDeleteError);
         }
       }
 
@@ -286,7 +287,7 @@ module.exports = function createPhotosRouter({ db }) {
       await db('photos').where({ id }).del();
       res.json({ success: true, message: 'Photo deleted successfully' });
     } catch (err) {
-      console.error('Delete photo error:', err);
+      logger.error('Delete photo error:', err);
       res.status(500).json({ success: false, error: err.message });
     }
   });
@@ -309,8 +310,8 @@ module.exports = function createPhotosRouter({ db }) {
 
       // Move file in Supabase Storage if the state is actually changing
       if (row.state !== state) {
-        // Log the paths for debugging
-        console.log('[Supabase MOVE] currentPath:', currentPath, 'newPath:', newPath);
+  // Log the paths for debugging
+  logger.info('[Supabase MOVE] currentPath:', currentPath, 'newPath:', newPath);
 
         const { data: _data, error: moveErrorInitial } = await supabase.storage
           .from('photos')
@@ -323,7 +324,7 @@ module.exports = function createPhotosRouter({ db }) {
         if (moveError) {
           // Format and log the storage error for easier debugging
           const formattedError = formatStorageError(moveError);
-          console.error('Supabase move error:', formattedError);
+          logger.error('Supabase move error:', formattedError);
 
           // Attempt a safe fallback when the source object is missing or move
           // cannot complete. This will try to download the source and upload it
@@ -340,10 +341,10 @@ module.exports = function createPhotosRouter({ db }) {
           if (alreadyExists) {
             try {
               const { error: removeErr } = await supabase.storage.from('photos').remove([currentPath]);
-              if (removeErr) console.warn('Failed to remove original after move collision:', removeErr);
-              else console.log('Removed original after move collision:', currentPath);
+              if (removeErr) logger.warn('Failed to remove original after move collision:', removeErr);
+              else logger.info('Removed original after move collision:', currentPath);
             } catch (remErr) {
-              console.warn('Error removing original after move collision:', remErr && remErr.message);
+              logger.warn('Error removing original after move collision:', remErr && remErr.message);
             }
             // Clear the move error so downstream logic knows the move was
             // handled and skips the 'not found' fallback path.
@@ -364,7 +365,7 @@ module.exports = function createPhotosRouter({ db }) {
           // the source was not found. If we cleared moveError above (alreadyExists
           // case), skip this fallback entirely.
           if (notFound && moveError) {
-            console.warn('Supabase move failed, attempting fallback copy. source=', currentPath, 'dest=', newPath, 'err=', errMsg);
+            logger.warn('Supabase move failed, attempting fallback copy. source=', currentPath, 'dest=', newPath, 'err=', errMsg);
 
             try {
               // Try to download the source object
@@ -374,7 +375,7 @@ module.exports = function createPhotosRouter({ db }) {
 
               if (downloadError) {
                 const formattedDownloadErr = formatStorageError(downloadError);
-                console.error('Fallback download failed for', currentPath, formattedDownloadErr);
+                logger.error('Fallback download failed for', currentPath, formattedDownloadErr);
                 const payload = { success: false, error: formattedDownloadErr.message || 'Failed to download source during fallback' };
                 if (INCLUDE_ERROR_DETAILS) payload.error_details = formattedDownloadErr;
                 return res.status(500).json(payload);
@@ -402,7 +403,7 @@ module.exports = function createPhotosRouter({ db }) {
 
               if (uploadError) {
                 const formattedUploadErr = formatStorageError(uploadError);
-                console.error('Fallback upload failed for', newPath, formattedUploadErr);
+                logger.error('Fallback upload failed for', newPath, formattedUploadErr);
                 const payload = { success: false, error: formattedUploadErr.message || 'Failed to upload during fallback' };
                 if (INCLUDE_ERROR_DETAILS) payload.error_details = formattedUploadErr;
                 return res.status(500).json(payload);
@@ -411,16 +412,16 @@ module.exports = function createPhotosRouter({ db }) {
               // Try to remove the original if it exists (best-effort)
               try {
                 const { error: removeErr } = await supabase.storage.from('photos').remove([currentPath]);
-                if (removeErr) console.warn('Failed to remove original after fallback copy:', removeErr);
+                if (removeErr) logger.warn('Failed to remove original after fallback copy:', removeErr);
               } catch (remErr) {
-                console.warn('Error removing original after fallback copy:', remErr && remErr.message);
+                logger.warn('Error removing original after fallback copy:', remErr && remErr.message);
               }
 
-              console.log('Fallback copy succeeded for', currentPath, '->', newPath);
+              logger.info('Fallback copy succeeded for', currentPath, '->', newPath);
               // fall-through to database update
             } catch (fallbackErr) {
               const formattedFallbackErr = formatStorageError(fallbackErr);
-              console.error('Fallback copy exception for', currentPath, formattedFallbackErr.message || formattedFallbackErr);
+              logger.error('Fallback copy exception for', currentPath, formattedFallbackErr.message || formattedFallbackErr);
               const payload = { success: false, error: formattedFallbackErr.message || 'Failed fallback copy in storage' };
               if (INCLUDE_ERROR_DETAILS) payload.error_details = formattedFallbackErr;
               return res.status(500).json(payload);
@@ -444,25 +445,25 @@ module.exports = function createPhotosRouter({ db }) {
         if (waitForAI) {
           try {
             const ai = await updatePhotoAIMetadata(db, row, newPath);
-            if (ai) console.log('AI metadata updated for', row.filename);
+            if (ai) logger.info('AI metadata updated for', row.filename);
 
             // Re-fetch updated row and return metadata to caller
             const updated = await db('photos').where({ id }).first();
             return res.json({ success: true, metadata: { caption: updated.caption, description: updated.description, keywords: updated.keywords } });
           } catch (aiErr) {
-            console.error('Synchronous AI processing failed for', row.filename, aiErr && aiErr.message);
+            logger.error('Synchronous AI processing failed for', row.filename, aiErr && aiErr.message);
             // fall through to async enqueue below
           }
         } else {
           // Fire-and-forget
           updatePhotoAIMetadata(db, row, newPath).then(ai => {
-            if (ai) console.log('AI metadata updated for', row.filename);
-          }).catch(err => console.error('Async AI processing error:', err && err.message));
+            if (ai) logger.info('AI metadata updated for', row.filename);
+          }).catch(err => logger.error('Async AI processing error:', err && err.message));
         }
       }
       res.json({ success: true });
     } catch (err) {
-      console.error('State update error:', err);
+      logger.error('State update error:', err);
       res.status(500).json({ success: false, error: err.message });
     }
   });
@@ -517,7 +518,7 @@ module.exports = function createPhotosRouter({ db }) {
         });
 
       if (uploadError) {
-        console.error('Supabase upload error for edited image:', uploadError);
+        logger.error('Supabase upload error for edited image:', uploadError);
         return res.status(500).json({ success: false, error: 'Failed to upload edited image to storage' });
       }
 
@@ -528,7 +529,7 @@ module.exports = function createPhotosRouter({ db }) {
           tiff: true, ifd0: true, exif: true, gps: true, xmp: true, icc: true, iptc: true 
         }) || {}; 
       } catch (metaErr) { 
-        console.warn('Failed to parse metadata for edited image', metaErr && metaErr.message); 
+        logger.warn('Failed to parse metadata for edited image', metaErr && metaErr.message); 
       }
 
       // Compute hash and update DB
@@ -556,7 +557,7 @@ module.exports = function createPhotosRouter({ db }) {
 
       let parsedTextStyle = null;
       if (newTextStyleJson) {
-        try { parsedTextStyle = JSON.parse(newTextStyleJson); } catch { console.warn('Failed to parse text_style after save for photo', photoId); }
+        try { parsedTextStyle = JSON.parse(newTextStyleJson); } catch { logger.warn('Failed to parse text_style after save for photo', photoId); }
       }
 
       res.json({
@@ -575,7 +576,7 @@ module.exports = function createPhotosRouter({ db }) {
         storagePath: editedPath
       });
     } catch (error) {
-      console.error('Failed to save captioned image for photo', error);
+      logger.error('Failed to save captioned image for photo', error);
       res.status(500).json({ success: false, error: error.message || 'Failed to save captioned image' });
     }
   });
@@ -595,7 +596,7 @@ module.exports = function createPhotosRouter({ db }) {
       const redisAvailable = await checkRedisAvailable();
       if (!redisAvailable) {
         // Fallback to synchronous processing when Redis is not available
-        console.log(`[API] Redis unavailable - processing AI recheck synchronously for photoId: ${photo.id}`);
+        logger.info(`[API] Redis unavailable - processing AI recheck synchronously for photoId: ${photo.id}`);
         const storagePath = photo.storage_path || `${photo.state}/${photo.filename}`;
         await updatePhotoAIMetadata(db, photo, storagePath);
         return res.status(200).json({ message: 'AI recheck completed synchronously.', photoId: photo.id });
@@ -603,10 +604,10 @@ module.exports = function createPhotosRouter({ db }) {
 
       // Enqueue a job for rechecking AI metadata
       await addAIJob(photo.id);
-      console.log(`[API] Enqueued AI recheck for photoId: ${photo.id}`);
+      logger.info(`[API] Enqueued AI recheck for photoId: ${photo.id}`);
       return res.status(202).json({ message: 'AI recheck queued.', photoId: photo.id });
     } catch (error) {
-      console.error('Error processing AI recheck:', error);
+      logger.error('Error processing AI recheck:', error);
       return res.status(500).json({ error: 'Failed to process AI recheck' });
     }
   });
@@ -623,7 +624,7 @@ module.exports = function createPhotosRouter({ db }) {
       const redisAvailable = await checkRedisAvailable();
       if (!redisAvailable) {
         // Fallback to synchronous processing when Redis is not available
-        console.log(`[API] Redis unavailable - processing AI synchronously for photoId: ${photo.id}`);
+        logger.info(`[API] Redis unavailable - processing AI synchronously for photoId: ${photo.id}`);
         
         // Use the storage path for AI processing
         const storagePath = photo.storage_path || `${photo.state}/${photo.filename}`;
@@ -640,7 +641,7 @@ module.exports = function createPhotosRouter({ db }) {
       // Add a job to the queue when Redis is available
       await addAIJob(photo.id);
 
-      console.log(`[API] Enqueued AI processing for photoId: ${photo.id}`);
+  logger.info(`[API] Enqueued AI processing for photoId: ${photo.id}`);
 
       // Respond to the user IMMEDIATELY
       // 202 Accepted means "Your request is accepted and will be processed"
@@ -650,7 +651,7 @@ module.exports = function createPhotosRouter({ db }) {
       });
 
     } catch (error) {
-      console.error('Error processing AI job:', error);
+      logger.error('Error processing AI job:', error);
       return res.status(500).json({ error: 'Failed to process AI job' });
     }
   });
@@ -672,7 +673,7 @@ module.exports = function createPhotosRouter({ db }) {
           .download(storagePath);
 
         if (error) {
-          console.error('❌ Thumbnail download error:', error);
+          logger.error('❌ Thumbnail download error:', error);
           return res.status(404).json({ error: 'Thumbnail not found in storage' });
         }
 
@@ -705,7 +706,7 @@ module.exports = function createPhotosRouter({ db }) {
         .download(storagePath);
 
       if (error) {
-        console.error('Supabase download error:', error);
+        logger.error('Supabase download error:', error);
         return res.status(404).json({ error: 'File not found in storage' });
       }
 
@@ -728,7 +729,7 @@ module.exports = function createPhotosRouter({ db }) {
           res.set('Content-Type', 'image/jpeg');
           res.send(jpegBuffer);
         } catch (conversionError) {
-          console.error('HEIC conversion error:', conversionError);
+          logger.error('HEIC conversion error:', conversionError);
           res.status(500).json({ error: 'Failed to convert HEIC image' });
         }
       } else {
@@ -737,7 +738,7 @@ module.exports = function createPhotosRouter({ db }) {
       }
 
     } catch (err) {
-      console.error('Display endpoint error:', err);
+      logger.error('Display endpoint error:', err);
       res.status(500).json({ error: 'Internal server error' });
     }
   });
@@ -747,9 +748,9 @@ module.exports = function createPhotosRouter({ db }) {
     const routes = (router.stack || []).filter(Boolean).map((s) => {
       try { return s.route ? (s.route.path || s.route.stack && s.route.stack[0] && s.route.stack[0].method ? s.route.stack[0].method + ' ' + s.route.path : s.route.path) : (s.name || 'middleware'); } catch { return 'unknown'; }
     });
-    console.log('[routes] photos router routes:', routes);
+    logger.info('[routes] photos router routes:', routes);
   } catch (e) {
-    console.warn('[routes] failed to enumerate photos router routes', e && e.message);
+    logger.warn('[routes] failed to enumerate photos router routes', e && e.message);
   }
 
   return router;

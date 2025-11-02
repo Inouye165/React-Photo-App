@@ -3,6 +3,7 @@ const { ingestPhoto } = require('../media/image');
 const multer = require('multer');
 const path = require('path');
 const supabase = require('../lib/supabaseClient');
+const logger = require('../logger');
 
 const ALLOWED_IMAGE_EXTENSIONS = ['.jpg', '.jpeg', '.png', '.gif', '.heic', '.bmp', '.tiff', '.webp'];
 
@@ -71,7 +72,7 @@ module.exports = function createUploadsRouter({ db }) {
         });
 
       if (uploadError) {
-        console.error('Supabase upload error:', uploadError);
+        logger.error('Supabase upload error:', uploadError);
         return res.status(500).json({ success: false, error: 'Failed to upload to storage' });
       }
 
@@ -92,7 +93,7 @@ module.exports = function createUploadsRouter({ db }) {
 
       res.json({ success: true, filename: filename, hash: result.hash, path: filePath });
     } catch (error) {
-      console.error('Upload error:', error);
+      logger.error('Upload error:', error);
       res.status(500).json({ success: false, error: 'Failed to save file' });
     }
   });

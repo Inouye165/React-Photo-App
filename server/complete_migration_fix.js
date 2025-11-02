@@ -1,17 +1,18 @@
 // Complete migration fix
 const knex = require('knex');
 const knexConfig = require('./knexfile');
+const logger = require('./logger');
 
 const db = knex(knexConfig.development);
 
 async function completeMigrationFix() {
   try {
-    console.log('Completing migration fix...');
+  logger.info('Completing migration fix...');
     
     // Check which columns exist in photos table
     const columns = await db.raw("PRAGMA table_info(photos)");
     const existingColumns = columns.map(col => col.name);
-    console.log('Existing columns in photos table:', existingColumns);
+  logger.info('Existing columns in photos table:', existingColumns);
     
     // List of columns that should exist after second migration
     const expectedColumns = [
@@ -22,7 +23,7 @@ async function completeMigrationFix() {
     // Add missing columns
     for (const column of expectedColumns) {
       if (!existingColumns.includes(column)) {
-        console.log(`Adding missing column: ${column}`);
+  logger.info(`Adding missing column: ${column}`);
         switch (column) {
           case 'caption':
           case 'description':
@@ -42,7 +43,7 @@ async function completeMigrationFix() {
             break;
         }
       } else {
-        console.log(`Column ${column} already exists`);
+  logger.info(`Column ${column} already exists`);
       }
     }
     
@@ -56,17 +57,17 @@ async function completeMigrationFix() {
         batch: 2,
         migration_time: new Date()
       });
-      console.log('Marked second migration as completed');
+  logger.info('Marked second migration as completed');
     }
     
     // Verify migration status
-    const migrations = await db('knex_migrations').select('*').orderBy('batch');
-    console.log('Current migrations:', migrations);
+  const migrations = await db('knex_migrations').select('*').orderBy('batch');
+  logger.info('Current migrations:', migrations);
     
-    console.log('Migration fix completed successfully!');
+  logger.info('Migration fix completed successfully!');
     
   } catch (error) {
-    console.error('Error completing migration fix:', error);
+    logger.error('Error completing migration fix:', error);
   } finally {
     await db.destroy();
   }

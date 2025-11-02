@@ -1,6 +1,7 @@
 const _OpenAI = require('openai');
 const path = require('path');
 require('dotenv').config({ path: path.join(__dirname, '..', '..', '.env') });
+const logger = require('../../logger');
 
 // Optional simple chain implemented locally to allow an incremental LangChain
 // migration without pulling in the LangChain SDK yet. Enable with
@@ -15,7 +16,7 @@ if (useLangChain) {
   try {
     ({ runLangChain } = require('./langchainAdapter'));
   } catch (e) {
-    console.error('CRITICAL: Failed to load LangChain adapter - LangChain is required for processing', e && (e.message || e));
+    logger.fatal('CRITICAL: Failed to load LangChain adapter - LangChain is required for processing', e && (e.message || e));
     throw new Error('LangChain adapter failed to load - cannot proceed without LangChain');
   }
 }
@@ -26,7 +27,7 @@ async function runChain({ messages, model = 'gpt-4o', _max_tokens = 1500, _tempe
   
   // Use simple chain if enabled
   if (useSimple) {
-    console.log('ChainAdapter: Using Simple Chain path');
+    logger.info('ChainAdapter: Using Simple Chain path');
     const { runSimpleChain } = require('./simpleChain');
     const simpleResult = await runSimpleChain({ filePath, metadata, gps, device });
     
@@ -42,12 +43,12 @@ async function runChain({ messages, model = 'gpt-4o', _max_tokens = 1500, _tempe
     throw new Error('LangChain is required for processing but is disabled. Set USE_LANGCHAIN=true or remove USE_LANGCHAIN=false from environment.');
   }
 
-  console.log('ChainAdapter: Using REQUIRED LangChain path');
+  logger.info('ChainAdapter: Using REQUIRED LangChain path');
   try {
     const lcResp = await runLangChain({ messages, model, filePath, metadata, gps, device });
     return lcResp;
   } catch (lcErr) {
-    console.error('CRITICAL: LangChain processing failed - no fallbacks available', lcErr && (lcErr.message || lcErr));
+    logger.fatal('CRITICAL: LangChain processing failed - no fallbacks available', lcErr && (lcErr.message || lcErr));
     throw new Error(`LangChain processing failed: ${lcErr.message || lcErr}`);
   }
 }

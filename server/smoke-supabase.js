@@ -1,5 +1,7 @@
 // Non-blocking Supabase smoke-check used at server startup.
 // Performs a harmless read (list buckets or a small select) and logs success/failure.
+const logger = require('./logger');
+
 module.exports = async function runSupabaseSmoke(supabaseClient) {
   try {
     // Allow injection for testing; otherwise require the configured client
@@ -14,10 +16,10 @@ module.exports = async function runSupabaseSmoke(supabaseClient) {
     if (supabaseClient && supabaseClient.storage && typeof supabaseClient.storage.listBuckets === 'function') {
       const { data, error } = await supabaseClient.storage.listBuckets();
       if (error) {
-        console.warn('[supabase-smoke] storage.listBuckets returned error:', error.message || error);
+        logger.warn('[supabase-smoke] storage.listBuckets returned error:', error.message || error);
         return false;
       }
-      console.log('[supabase-smoke] Supabase storage reachable — buckets:', Array.isArray(data) ? data.length : 'unknown');
+      logger.info('[supabase-smoke] Supabase storage reachable — buckets:', Array.isArray(data) ? data.length : 'unknown');
       return true;
     }
 
@@ -26,17 +28,17 @@ module.exports = async function runSupabaseSmoke(supabaseClient) {
       const res = await supabaseClient.from('photos').select('id').limit(1);
       const error = res && res.error;
       if (error) {
-        console.warn('[supabase-smoke] db select returned error:', error.message || error);
+        logger.warn('[supabase-smoke] db select returned error:', error.message || error);
         return false;
       }
-      console.log('[supabase-smoke] Supabase DB reachable (photos table OK)');
+      logger.info('[supabase-smoke] Supabase DB reachable (photos table OK)');
       return true;
     }
 
-    console.warn('[supabase-smoke] Supabase client does not expose storage.listBuckets or from(). Skipping smoke-check.');
+    logger.warn('[supabase-smoke] Supabase client does not expose storage.listBuckets or from(). Skipping smoke-check.');
     return false;
   } catch (err) {
-    console.warn('[supabase-smoke] Exception during smoke-check:', err && err.message ? err.message : err);
+    logger.warn('[supabase-smoke] Exception during smoke-check:', err && err.message ? err.message : err);
     return false;
   }
 };

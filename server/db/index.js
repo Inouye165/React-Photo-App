@@ -3,6 +3,7 @@ const knex = require('knex');
 const path = require('path');
 const fs = require('fs');
 const knexConfig = require('../knexfile');
+const logger = require('../logger');
 
 // Determine the environment, defaulting to 'development'
 const environment = process.env.NODE_ENV || 'development';
@@ -30,7 +31,7 @@ if (isProduction || forcePostgres || autoDetectPostgres) {
 	// was present. Prefer the 'production' knex config when autoDetectPostgres
 	// or forcePostgres is true and we're not running in production.
 	if (autoDetectPostgres) {
-		console.log('[db] Auto-detect enabled: using Postgres because SUPABASE_DB_URL is present');
+		logger.info('[db] Auto-detect enabled: using Postgres because SUPABASE_DB_URL is present');
 	}
 	const knexEnv = (isProduction) ? environment : 'production';
 	db = knex(knexConfig[knexEnv]);
@@ -56,12 +57,12 @@ if (isProduction || forcePostgres || autoDetectPostgres) {
 			pool: knexConfig.test && knexConfig.test.pool
 		};
 
-		console.warn('[db] Using sqlite fallback for local development:', sqliteFile);
+		logger.warn('[db] Using sqlite fallback for local development:', sqliteFile);
 		db = knex(sqliteConfig);
 	} catch (err) {
 		// If something goes wrong creating the fallback, fall back to the
 		// original behaviour and let the error surface so it's obvious.
-		console.error('[db] Failed to create sqlite fallback, attempting configured DB:', err.message);
+		logger.error('[db] Failed to create sqlite fallback, attempting configured DB:', err.message);
 		db = knex(knexConfig[environment]);
 	}
 }

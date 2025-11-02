@@ -1,5 +1,6 @@
 const path = require('path');
 require('dotenv').config({ path: path.join(__dirname, '.env') });
+const logger = require('./logger');
 
 // Helpful startup logs to make it obvious which DB and Supabase configuration
 // are active when the server starts (useful after checking out older commits).
@@ -7,15 +8,15 @@ const environment = process.env.NODE_ENV || 'development';
 const forcePostgres = process.env.USE_POSTGRES === 'true';
 const autoDetectPostgres = Boolean(process.env.SUPABASE_DB_URL) && process.env.USE_POSTGRES_AUTO_DETECT !== 'false';
 const usingPostgres = environment === 'production' || forcePostgres || autoDetectPostgres;
-console.log(`[server] NODE_ENV=${environment} USE_POSTGRES=${process.env.USE_POSTGRES || ''} USE_POSTGRES_AUTO_DETECT=${process.env.USE_POSTGRES_AUTO_DETECT || ''}`);
-console.log(`[server] Database mode: ${usingPostgres ? 'Postgres (Supabase)' : 'sqlite fallback (dev)'}; SUPABASE_DB_URL=${process.env.SUPABASE_DB_URL ? 'present' : 'missing'}; SUPABASE_KEY=${process.env.SUPABASE_SERVICE_ROLE_KEY ? 'service-role' : (process.env.SUPABASE_ANON_KEY ? 'anon' : 'missing')}`);
+logger.info(`[server] NODE_ENV=${environment} USE_POSTGRES=${process.env.USE_POSTGRES || ''} USE_POSTGRES_AUTO_DETECT=${process.env.USE_POSTGRES_AUTO_DETECT || ''}`);
+logger.info(`[server] Database mode: ${usingPostgres ? 'Postgres (Supabase)' : 'sqlite fallback (dev)'}; SUPABASE_DB_URL=${process.env.SUPABASE_DB_URL ? 'present' : 'missing'}; SUPABASE_KEY=${process.env.SUPABASE_SERVICE_ROLE_KEY ? 'service-role' : (process.env.SUPABASE_ANON_KEY ? 'anon' : 'missing')}`);
 
 // Global safety: log uncaught exceptions and unhandled rejections instead of letting Node crash
 process.on('unhandledRejection', (reason, promise) => {
-  console.error('UnhandledRejection at:', promise, 'reason:', reason);
+  logger.error('UnhandledRejection at:', promise, 'reason:', reason);
 });
 process.on('uncaughtException', (err) => {
-  console.error('UncaughtException:', err);
+  logger.error('UncaughtException:', err);
 });
 
 const db = require('./db/index');
@@ -69,12 +70,12 @@ async function startServer() {
           updated_at: new Date().toISOString()
         });
         const inserted = await db('photos').where({ filename: seedFilename }).first();
-        console.log('[TEST SEED] Inserted test photo id=', inserted.id, 'filename=', seedFilename);
+        logger.debug('[TEST SEED] Inserted test photo id=', inserted.id, 'filename=', seedFilename);
       } else {
-        console.log('[TEST SEED] Test photo already exists id=', exists.id);
+        logger.debug('[TEST SEED] Test photo already exists id=', exists.id);
       }
     } catch (seedErr) {
-      console.error('Failed to seed test photo:', seedErr && seedErr.message);
+      logger.error('Failed to seed test photo:', seedErr && seedErr.message);
     }
   }
 
@@ -87,7 +88,7 @@ async function startServer() {
 
   // Log basic incoming request info for debugging (do NOT log headers which may contain secrets)
   app.use((req, res, next) => {
-    console.log(`[REQUEST] ${req.method} ${req.originalUrl} from ${req.ip}`);
+    logger.debug(`[REQUEST] ${req.method} ${req.originalUrl} from ${req.ip}`);
     next();
   });
   // Configure CORS origins early so preflight (OPTIONS) and error responses
@@ -100,12 +101,12 @@ async function startServer() {
   const allowedOrigins = getAllowedOrigins();
   app.use(cors({
     origin: function(origin, callback) {
-      console.log('[CORS DEBUG] Incoming Origin:', origin);
+      logger.debug('[CORS DEBUG] Incoming Origin:', origin);
       if (!origin || allowedOrigins.includes(origin)) {
-        console.log('[CORS DEBUG] Allowing Origin:', origin);
+        logger.debug('[CORS DEBUG] Allowing Origin:', origin);
         callback(null, origin);
       } else {
-        console.log('[CORS DEBUG] Rejecting Origin:', origin);
+        logger.debug('[CORS DEBUG] Rejecting Origin:', origin);
         callback(new Error('Not allowed by CORS'));
       }
     },
@@ -148,7 +149,7 @@ async function startServer() {
   // exposing debug endpoints in environments where NODE_ENV might be mis-set.
   const allowDevDebug = process.env.ALLOW_DEV_DEBUG === 'true' || (process.env.NODE_ENV !== 'production' && process.env.ALLOW_DEV_DEBUG !== 'false');
   if (allowDevDebug) {
-    console.log('[server] Dev debug endpoints enabled (ALLOW_DEV_DEBUG=true)');
+  logger.info('[server] Dev debug endpoints enabled (ALLOW_DEV_DEBUG=true)');
     app.use(createDebugRouter({ db }));
   } else {
     app.use(authenticateToken, createDebugRouter({ db }));
@@ -185,7 +186,7 @@ async function startServer() {
         });
       }
     }
-    console.error('Server error:', error);
+  logger.error('Server error:', error);
     res.status(500).json({
       success: false,
       error: error.message || 'Internal server error'
@@ -198,8 +199,8 @@ async function startServer() {
 
   // Start server
   app.listen(PORT, () => {
-    console.log(`Photo upload server running on port ${PORT}`);
-    console.log(`Health check: http://localhost:${PORT}/health`);
+    logger.info(`Photo upload server running on port ${PORT}`);
+    logger.info(`Health check: http://localhost:${PORT}/health`);
   });
 
   // Non-blocking Supabase connectivity smoke-check: runs once on startup and
@@ -218,10 +219,10 @@ async function startServer() {
       const intervalMs = Number(process.env.SUPABASE_SMOKE_INTERVAL_MS) || (10 * 60 * 1000);
       setInterval(() => {
         // run but don't await here (fire-and-forget; errors are logged inside)
-        runSmoke(supabase).catch((e) => console.warn('[supabase-smoke] periodic check failed:', e && e.message ? e.message : e));
+        runSmoke(supabase).catch((e) => logger.warn('[supabase-smoke] periodic check failed:', e && e.message ? e.message : e));
       }, intervalMs);
     } catch (err) {
-      console.warn('[supabase-smoke] Skipped or failed to run smoke-check:', err && err.message ? err.message : err);
+      logger.warn('[supabase-smoke] Skipped or failed to run smoke-check:', err && err.message ? err.message : err);
     }
   })();
 
@@ -229,7 +230,7 @@ async function startServer() {
 
 // Start server and ensure any top-level async errors are logged clearly
 startServer().catch((err) => {
-  console.error('startServer failed:', err && (err.stack || err.message || err));
+  logger.error('startServer failed:', err && (err.stack || err.message || err));
   // Exit with non-zero so process supervisors notice the failure
   process.exit(1);
 });

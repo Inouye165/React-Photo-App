@@ -4,15 +4,16 @@ require('dotenv').config({ path: path.join(__dirname, '.env') });
 
 const db = require('./db/index');
 const bcrypt = require('bcryptjs');
+const logger = require('./logger');
 
 async function createAdminUser() {
   try {
-    console.log('Creating admin user...');
+  logger.info('Creating admin user...');
     
     // Check if admin user already exists
     const existingUser = await db('users').where('username', 'admin').first();
     if (existingUser) {
-      console.log('Admin user already exists!');
+      logger.info('Admin user already exists!');
       return;
     }
     
@@ -29,13 +30,13 @@ async function createAdminUser() {
       failed_login_attempts: 0
     });
     
-    console.log('Admin user created successfully!');
-    console.log('Username: admin');
-    console.log('Password: admin123');
-    console.log('Email: admin@test.com');
+    logger.info('Admin user created successfully!');
+    logger.info('Username: admin');
+    logger.info('Password: admin123');
+    logger.info('Email: admin@test.com');
     
   } catch (error) {
-    console.error('Error creating admin user:', error);
+    logger.error('Error creating admin user:', error);
   } finally {
     await db.destroy();
   }

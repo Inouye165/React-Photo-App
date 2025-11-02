@@ -3,16 +3,17 @@ const { exec } = require('child_process');
 const { promisify } = require('util');
 const execPromise = promisify(exec);
 const { exiftool } = require('exiftool-vendored');
+const logger = require('../logger');
 
 async function copyExifMetadata(sourcePath, destPath) {
   try {
     const exiftoolBin = exiftool;
     const command = `"${exiftoolBin}" -TagsFromFile "${sourcePath}" -all:all -overwrite_original "${destPath}"`;
     await execPromise(command, { windowsHide: true, timeout: 30000 });
-    console.log(`✓ Copied EXIF metadata: ${path.basename(sourcePath)} → ${path.basename(destPath)}`);
+    logger.info(`✓ Copied EXIF metadata: ${path.basename(sourcePath)} → ${path.basename(destPath)}`);
     return true;
   } catch (error) {
-    console.error(`✗ Failed to copy EXIF metadata: ${error.message}`);
+    logger.error(`✗ Failed to copy EXIF metadata: ${error.message}`);
     return false;
   }
 }
@@ -21,10 +22,10 @@ async function removeExifOrientation(destPath) {
   try {
     const exiftoolBin = exiftool;
     await execPromise(`"${exiftoolBin}" -Orientation= -overwrite_original "${destPath}"`, { windowsHide: true, timeout: 10000 });
-    console.log('✓ Removed EXIF orientation from edited file');
+    logger.info('✓ Removed EXIF orientation from edited file');
     return true;
   } catch (error) {
-    console.warn('✗ Failed to remove EXIF orientation:', error.message);
+    logger.warn('✗ Failed to remove EXIF orientation:', error.message);
     return false;
   }
 }

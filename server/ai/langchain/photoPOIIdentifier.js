@@ -4,6 +4,7 @@ const { z } = require('zod');
 const OpenAI = require('openai');
 // Use real-world POI lookups via OpenStreetMap Overpass/Nominatim
 const { geolocate } = require('./geolocateTool');
+const logger = require('../../logger');
 const Fuse = require('fuse.js');
 
 // Configuration constants
@@ -198,7 +199,7 @@ class PhotoPOIIdentifierNode {
       const content = response.choices[0].message.content;
       return this.parseVisionResponse(content);
     } catch (error) {
-      console.error('Vision analysis error:', error);
+        logger.error('Vision analysis error:', error);
       return this.getFallbackAnalysis();
     }
   }
@@ -216,7 +217,7 @@ class PhotoPOIIdentifierNode {
       // Fallback parsing for unstructured response
       return this.parseUnstructuredResponse(content);
     } catch (error) {
-      console.error('JSON parsing error:', error);
+        logger.error('JSON parsing error:', error);
       return this.getFallbackAnalysis();
     }
   }
@@ -368,7 +369,7 @@ class PhotoPOIIdentifierNode {
       // Step 1: Analyze the image (may fail)
       sceneAnalysis = await this.analyzeImage(imageData);
     } catch (error) {
-      console.error('Vision analysis failed, falling back to location-only search:', error.message);
+      logger.error('Vision analysis failed, falling back to location-only search:', error.message);
       // Create a minimal scene analysis for location-based search
       sceneAnalysis = {
         scene_type: 'unknown',
@@ -446,7 +447,7 @@ class PhotoPOIIdentifierNode {
           }).filter(Boolean);
         }
       } catch (geoError) {
-        console.error('Real-time POI lookup failed:', geoError && geoError.message ? geoError.message : geoError);
+          logger.error('Real-time POI lookup failed:', geoError && geoError.message ? geoError.message : geoError);
         // Continue with empty POI list
         realPOIs = [];
       }
@@ -476,7 +477,7 @@ class PhotoPOIIdentifierNode {
       };
 
     } catch (error) {
-      console.error('POI identification error:', error);
+  logger.error('POI identification error:', error);
       return {
         error: error.message,
         scene_type: "unknown",

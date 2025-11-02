@@ -3,6 +3,7 @@ const { spawn } = require('child_process');
 const path = require('path');
 const http = require('http');
 const jwt = require('jsonwebtoken');
+const logger = require('../logger');
 
 const SERVER_DIR = path.join(__dirname, '..');
 const SERVER_ENTRY = path.join(SERVER_DIR, 'server.js');
@@ -60,7 +61,7 @@ function waitForOutput(child, matcher, timeout = 10000) {
 }
 
 async function main() {
-  console.log('[integration-runner] Spawning server in test mode...');
+  logger.info('[integration-runner] Spawning server in test mode...');
 
   const env = Object.assign({}, process.env, {
     NODE_ENV: 'test',
@@ -76,14 +77,14 @@ async function main() {
     stdio: ['ignore', 'pipe', 'pipe']
   });
 
-  child.on('error', (err) => console.error('[integration-runner] Server process error:', err));
-  child.on('exit', (code, sig) => console.log('[integration-runner] Server process exited', code, sig));
+  child.on('error', (err) => logger.error('[integration-runner] Server process error:', err));
+  child.on('exit', (code, sig) => logger.info('[integration-runner] Server process exited', code, sig));
 
   try {
     // Wait for server to announce it's running (or the test seed message)
     await waitForOutput(child, /Photo upload server running on port|\[TEST SEED\]/i, 15000);
   } catch (err) {
-    console.error('[integration-runner] Server failed to start in time:', err.message);
+  logger.error('[integration-runner] Server failed to start in time:', err.message);
     child.kill();
     process.exit(1);
   }
@@ -105,25 +106,25 @@ async function main() {
     }
   };
 
-  console.log('[integration-runner] Sending PATCH /photos/1/state');
+  logger.info('[integration-runner] Sending PATCH /photos/1/state');
 
   const req = http.request(options, (res) => {
     let body = '';
     res.on('data', (chunk) => body += chunk);
     res.on('end', () => {
-      console.log('[integration-runner] Response status:', res.statusCode);
-  try { console.log('[integration-runner] Response body:', JSON.parse(body)); } catch { console.log('[integration-runner] Response body (raw):', body); }
+    logger.info('[integration-runner] Response status:', res.statusCode);
+  try { logger.info('[integration-runner] Response body:', JSON.parse(body)); } catch { logger.info('[integration-runner] Response body (raw):', body); }
 
       // Give server a moment to flush logs, then shut it down
       setTimeout(() => {
-        console.log('[integration-runner] Shutting down server process...');
+  logger.info('[integration-runner] Shutting down server process...');
         child.kill('SIGINT');
       }, 500);
     });
   });
 
   req.on('error', (err) => {
-    console.error('[integration-runner] Request error:', err);
+  logger.error('[integration-runner] Request error:', err);
     child.kill();
   });
 
@@ -132,6 +133,6 @@ async function main() {
 }
 
 main().catch(err => {
-  console.error('[integration-runner] Fatal error:', err);
+  logger.error('[integration-runner] Fatal error:', err);
   process.exit(1);
 });

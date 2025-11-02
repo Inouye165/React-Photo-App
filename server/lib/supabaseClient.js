@@ -1,5 +1,6 @@
 const path = require('path');
 const { createClient } = require('@supabase/supabase-js');
+const logger = require('../logger');
 
 // Ensure environment variables are loaded when this module is required
 // (some entrypoints already load dotenv, but being defensive here avoids
@@ -46,7 +47,7 @@ if (process.env.NODE_ENV === 'test') {
     // Log an explanatory error and export a proxy that throws when used.
     // This gives a clearer runtime error to developers while avoiding an
     // immediate hard crash at module `require` time in some workflows.
-    console.error('[supabaseClient] ' + message);
+  logger.error('[supabaseClient] ' + message);
 
     const handler = {
       get() {
@@ -60,7 +61,7 @@ if (process.env.NODE_ENV === 'test') {
     // Export a proxy object that will throw a clear error when any property
     // is accessed. Many modules expect an object with methods like
     // `storage.from(...)` so this makes the failure explicit when used.
-  module.exports = new Proxy({}, handler);
+    module.exports = new Proxy({}, handler);
   }
 
   const key = supabaseServiceKey || supabaseAnonKey;

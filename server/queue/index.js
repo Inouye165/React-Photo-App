@@ -1,5 +1,6 @@
 // server/queue/index.js
 const { Queue, Worker: BullMQWorker } = require('bullmq');
+const logger = require('../logger');
 
 // Define the Redis connection
 const connection = {
@@ -27,9 +28,9 @@ async function initializeQueue() {
       const db = require('../db');
       const { updatePhotoAIMetadata } = require('../ai/service');
 
-      aiQueue = new Queue(QUEUE_NAME, { connection });
-      redisAvailable = true;
-      console.log('[QUEUE] Successfully connected to Redis');
+  aiQueue = new Queue(QUEUE_NAME, { connection });
+  redisAvailable = true;
+  logger.info('[QUEUE] Successfully connected to Redis');
 
       // Create the worker
       /**
@@ -42,7 +43,7 @@ async function initializeQueue() {
        */
       const processor = async (job) => {
         const { photoId } = job.data;
-        console.log(`[WORKER] Processing AI job for photoId: ${photoId}`);
+  logger.info(`[WORKER] Processing AI job for photoId: ${photoId}`);
 
         try {
           // Re-fetch the photo data
@@ -57,9 +58,9 @@ async function initializeQueue() {
           // Call the existing AI service function
           await updatePhotoAIMetadata(db, photo, storagePath);
 
-          console.log(`[WORKER] Successfully processed job for photoId: ${photoId}`);
+          logger.info(`[WORKER] Successfully processed job for photoId: ${photoId}`);
         } catch (error) {
-          console.error(`[WORKER] Job for photoId ${photoId} failed:`, error.message);
+          logger.error(`[WORKER] Job for photoId ${photoId} failed:`, error.message);
           throw error;
         }
       };
@@ -76,17 +77,17 @@ async function initializeQueue() {
       });
 
       aiWorker.on('completed', (job) => {
-        console.log(`[WORKER] Job ${job.id} (PhotoId: ${job.data.photoId}) completed.`);
+        logger.info(`[WORKER] Job ${job.id} (PhotoId: ${job.data.photoId}) completed.`);
       });
 
       aiWorker.on('failed', (job, err) => {
-        console.log(`[WORKER] Job ${job.id} (PhotoId: ${job.data.photoId}) failed: ${err.message}`);
+        logger.warn(`[WORKER] Job ${job.id} (PhotoId: ${job.data.photoId}) failed: ${err.message}`);
       });
 
-      console.log('[WORKER] AI Worker process started and listening for jobs.');
+      logger.info('[WORKER] AI Worker process started and listening for jobs.');
       
     } catch (error) {
-      console.warn('[QUEUE] Redis not available - queue operations will be disabled:', error.message);
+      logger.warn('[QUEUE] Redis not available - queue operations will be disabled:', error.message);
       redisAvailable = false;
       aiQueue = null;
       aiWorker = null;
