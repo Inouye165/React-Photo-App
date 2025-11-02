@@ -1,4 +1,4 @@
-import React from 'react';
+import React, { useEffect, useRef } from 'react';
 
 const severityStyles = {
   info: {
@@ -23,14 +23,33 @@ const severityStyles = {
   },
 };
 
-export default function Toast({ message, severity = 'info', onClose }) {
+export default function Toast({ message, severity = 'info', onClose, autoDismiss = true, duration = 3500 }) {
+  const timerRef = useRef(null);
+
+  useEffect(() => {
+    if (!message || !autoDismiss || typeof onClose !== 'function') return undefined;
+    timerRef.current = setTimeout(() => {
+      try {
+        onClose();
+      } catch {
+        /* ignore toast close errors */
+      }
+    }, duration);
+    return () => {
+      if (timerRef.current) {
+        clearTimeout(timerRef.current);
+        timerRef.current = null;
+      }
+    };
+  }, [message, autoDismiss, duration, onClose]);
+
   if (!message) return null;
 
   const { icon, container, iconColor } = severityStyles[severity] || severityStyles.info;
 
   return (
-    <div className={`fixed top-32 right-4 ${container} text-white px-3 py-2 rounded-md shadow-lg z-40 max-w-sm text-sm`} role="status" aria-live="polite">
-      <div className="flex items-start gap-2">
+    <div className="fixed bottom-6 right-6 pointer-events-none z-40" role="status" aria-live="polite">
+      <div className={`flex items-start gap-2 ${container} text-white px-3 py-2 rounded-md shadow-lg max-w-sm text-sm pointer-events-auto`}>
         <span className={iconColor} aria-hidden="true">{icon}</span>
         <div className="flex-1">{message}</div>
         <button

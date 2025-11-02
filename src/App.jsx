@@ -118,13 +118,11 @@ function App() {
         paddingTop: '72px',
       }}
     >
-      <div className="fixed top-6 left-1/2 transform -translate-x-1/2 z-50">
-        <Toast
-          message={toast?.message}
-          severity={toast?.severity}
-          onClose={() => setToast({ message: '' })}
-        />
-      </div>
+      <Toast
+        message={toast?.message}
+        severity={toast?.severity}
+        onClose={() => setToast({ message: '' })}
+      />
 
       <Toolbar
         onSelectFolder={handleSelectFolder}
