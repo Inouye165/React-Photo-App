@@ -7,6 +7,37 @@ const PROD_ANALYST_MODEL_NAME = process.env.PROD_ANALYST_MODEL || 'gpt-4o';
 const isProduction = process.env.NODE_ENV === 'production';
 const analystModelName = isProduction ? PROD_ANALYST_MODEL_NAME : FAST_MODEL_NAME;
 
+const AVAILABLE_ANALYST_MODELS = {
+  fast: {
+    key: 'fast',
+    label: 'Fast / Cost-Saving',
+    modelName: FAST_MODEL_NAME
+  },
+  analyst: {
+    key: 'analyst',
+    label: 'High Accuracy',
+    modelName: PROD_ANALYST_MODEL_NAME
+  }
+};
+
+const DEFAULT_ANALYST_MODEL_KEY = isProduction ? 'analyst' : 'fast';
+
+function createAnalystAgents(modelName) {
+  const scenery = new ChatOpenAI({
+    modelName,
+    temperature: 0.3,
+    maxTokens: 1024
+  });
+
+  const collectible = new ChatOpenAI({
+    modelName,
+    temperature: 0.25,
+    maxTokens: 1400
+  }).bindTools([googleSearchTool]);
+
+  return { sceneryAgent: scenery, collectibleAgent: collectible };
+}
+
 const ROUTER_SYSTEM_PROMPT = `You are an expert image classifier. Given an image and its metadata, classify the main focal point as either:\n\n- scenery_or_general_subject: (e.g., landscapes, selfies, generic photos of cows, meals)\n- specific_identifiable_object: (e.g., comic book, car, product box, collectible)\n- receipt: (e.g., store receipt, invoice)\n- food_item: (e.g., plate of food, meal)\n\nRespond with a single key: { "classification": "classification_type" }.`;
 
 // --- UPDATED PROMPT ---
@@ -138,18 +169,7 @@ const routerAgent = new ChatOpenAI({
 });
 
 // Scenery Agent: Handles scenery, animals, receipts, food based on the complex prompt above
-const sceneryAgent = new ChatOpenAI({
-  modelName: analystModelName,
-  temperature: 0.3,
-  maxTokens: 1024
-});
-
-// Collectible Agent: Identifies specific collectibles, validates with research, and estimates value
-const collectibleAgent = new ChatOpenAI({
-  modelName: analystModelName,
-  temperature: 0.25,
-  maxTokens: 1400
-}).bindTools([googleSearchTool]);
+const { sceneryAgent, collectibleAgent } = createAnalystAgents(analystModelName);
 
 module.exports = {
   routerAgent,
@@ -160,6 +180,12 @@ module.exports = {
   COLLECTIBLE_SYSTEM_PROMPT,
   // Backwards compatibility exports
   researchAgent: collectibleAgent,
-  RESEARCH_SYSTEM_PROMPT: COLLECTIBLE_SYSTEM_PROMPT
+  RESEARCH_SYSTEM_PROMPT: COLLECTIBLE_SYSTEM_PROMPT,
+  FAST_MODEL_NAME,
+  PROD_ANALYST_MODEL_NAME,
+  analystModelName,
+  AVAILABLE_ANALYST_MODELS,
+  DEFAULT_ANALYST_MODEL_KEY,
+  createAnalystAgents
 };
 

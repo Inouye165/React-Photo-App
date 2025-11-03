@@ -166,9 +166,24 @@ export async function recheckInprogressPhotos(serverUrl = `${API_BASE_URL}/photo
   if (handleAuthError(res)) return; if (!res.ok) throw new Error('Failed to trigger recheck'); return await res.json();
 }
 
-export async function recheckPhotoAI(photoId, serverUrl = `${API_BASE_URL}`) {
-  const url = `${serverUrl}/photos/${photoId}/run-ai`;
-  const res = await apiLimiter(() => fetch(url, { method: 'POST', headers: getAuthHeaders(), credentials: 'include' }));
+export async function recheckPhotoAI(photoId, options = {}, serverUrl = `${API_BASE_URL}`) {
+  const url = `${serverUrl}/photos/${photoId}/recheck-ai`;
+  const payload = {};
+  if (options && typeof options.modelKey === 'string') payload.modelKey = options.modelKey;
+  if (options && typeof options.modelName === 'string') payload.modelName = options.modelName;
+  if (options && typeof options.isHighAccuracy === 'boolean') payload.isHighAccuracy = options.isHighAccuracy;
+
+  const fetchOptions = {
+    method: 'POST',
+    headers: getAuthHeaders(),
+    credentials: 'include'
+  };
+
+  if (Object.keys(payload).length > 0) {
+    fetchOptions.body = JSON.stringify(payload);
+  }
+
+  const res = await apiLimiter(() => fetch(url, fetchOptions));
   if (handleAuthError(res)) return; if (!res.ok) {
     const text = await res.text().catch(() => '');
     throw new Error('Failed to trigger photo recheck: ' + (text || res.status));
@@ -186,6 +201,16 @@ export async function recheckPhotoAI(photoId, serverUrl = `${API_BASE_URL}`) {
   } catch {
     return null;
   }
+}
+
+export async function getAiModels(serverUrl = `${API_BASE_URL}`) {
+  const url = `${serverUrl}/ai/models`;
+  const res = await apiLimiter(() => fetch(url, { method: 'GET', headers: getAuthHeaders(), credentials: 'include' }));
+  if (handleAuthError(res)) return null;
+  if (!res.ok) throw new Error('Failed to fetch AI models: ' + res.status);
+  const json = await res.json();
+  if (!json || json.success === false) throw new Error(json && json.error ? json.error : 'Failed to fetch AI models');
+  return json;
 }
 
 export async function updatePhotoCaption(id, caption, serverUrl = `${API_BASE_URL}`) {

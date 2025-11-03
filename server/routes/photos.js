@@ -9,9 +9,53 @@ const supabase = require('../lib/supabaseClient');
 const { authenticateToken } = require('../middleware/auth');
 const { authenticateImageRequest } = require('../middleware/imageAuth');
 const logger = require('../logger');
+const {
+  AVAILABLE_ANALYST_MODELS,
+  DEFAULT_ANALYST_MODEL_KEY
+} = require('../ai/langchain/agents');
 
 module.exports = function createPhotosRouter({ db }) {
   const router = express.Router();
+
+  const modelEntries = Object.values(AVAILABLE_ANALYST_MODELS || {});
+  const findModelByKey = (key) => modelEntries.find((entry) => entry.key === key);
+  const findModelByName = (name) => modelEntries.find((entry) => entry.modelName === name);
+  const resolveModelSelection = ({ modelKey, modelName }) => {
+    if (typeof modelName === 'string' && modelName.trim()) {
+      const trimmed = modelName.trim();
+      const match = findModelByName(trimmed);
+      return {
+        key: match ? match.key : null,
+        modelName: trimmed
+      };
+    }
+    if (typeof modelKey === 'string' && modelKey.trim()) {
+      const match = findModelByKey(modelKey.trim());
+      if (match) {
+        return { key: match.key, modelName: match.modelName };
+      }
+    }
+    return null;
+  };
+
+  router.get('/ai/models', authenticateToken, (req, res) => {
+    try {
+      const models = modelEntries.map(({ key, label, modelName }) => ({
+        key,
+        label,
+        modelName,
+        isDefault: key === DEFAULT_ANALYST_MODEL_KEY
+      }));
+      return res.json({
+        success: true,
+        models,
+        defaultModelKey: DEFAULT_ANALYST_MODEL_KEY
+      });
+    } catch (error) {
+      logger.error('Failed to list AI models', error);
+      return res.status(500).json({ success: false, error: 'Failed to list AI models' });
+    }
+  });
 
   // Helper: format storage/external errors into a readable, serializable shape
   const util = require('util');
@@ -91,6 +135,7 @@ module.exports = function createPhotosRouter({ db }) {
           caption: row.caption,
           description: row.description,
           keywords: row.keywords,
+          aiModel: row.ai_model,
           textStyle,
           editedFilename: row.edited_filename,
           storagePath: row.storage_path,
@@ -137,6 +182,7 @@ module.exports = function createPhotosRouter({ db }) {
         caption: row.caption,
         description: row.description,
         keywords: row.keywords,
+        aiModel: row.ai_model,
         textStyle,
         editedFilename: row.edited_filename,
         storagePath: row.storage_path,
@@ -593,19 +639,28 @@ module.exports = function createPhotosRouter({ db }) {
         return res.status(404).json({ error: 'Photo not found' });
       }
 
+      const selection = resolveModelSelection({
+        modelKey: req.body && req.body.modelKey,
+        modelName: req.body && req.body.modelName
+      });
+      const jobOptions = { isHighAccuracy: true };
+      if (selection && selection.modelName) {
+        jobOptions.modelName = selection.modelName;
+      }
+
       const redisAvailable = await checkRedisAvailable();
       if (!redisAvailable) {
         // Fallback to synchronous processing when Redis is not available
         logger.info(`[API] Redis unavailable - processing AI recheck synchronously for photoId: ${photo.id}`);
         const storagePath = photo.storage_path || `${photo.state}/${photo.filename}`;
-        await updatePhotoAIMetadata(db, photo, storagePath, { isHighAccuracy: true });
-        return res.status(200).json({ message: 'AI recheck completed synchronously.', photoId: photo.id });
+        await updatePhotoAIMetadata(db, photo, storagePath, jobOptions);
+        return res.status(200).json({ message: 'AI recheck completed synchronously.', photoId: photo.id, modelName: jobOptions.modelName || null });
       }
 
       // Enqueue a job for rechecking AI metadata
-      await addAIJob(photo.id, { isHighAccuracy: true });
+      await addAIJob(photo.id, jobOptions);
       logger.info(`[API] Enqueued AI recheck for photoId: ${photo.id}`);
-      return res.status(202).json({ message: 'AI recheck queued.', photoId: photo.id });
+      return res.status(202).json({ message: 'AI recheck queued.', photoId: photo.id, modelName: jobOptions.modelName || null });
     } catch (error) {
       logger.error('Error processing AI recheck:', error);
       return res.status(500).json({ error: 'Failed to process AI recheck' });
@@ -620,6 +675,15 @@ module.exports = function createPhotosRouter({ db }) {
         return res.status(404).json({ error: 'Photo not found' });
       }
 
+      const selection = resolveModelSelection({
+        modelKey: req.body && req.body.modelKey,
+        modelName: req.body && req.body.modelName
+      });
+      const jobOptions = {};
+      if (selection && selection.modelName) {
+        jobOptions.modelName = selection.modelName;
+      }
+
       // Check if Redis/queue is available
       const redisAvailable = await checkRedisAvailable();
       if (!redisAvailable) {
@@ -630,16 +694,17 @@ module.exports = function createPhotosRouter({ db }) {
         const storagePath = photo.storage_path || `${photo.state}/${photo.filename}`;
         
         // Process AI synchronously (this will need to be updated to work with Supabase storage)
-  await updatePhotoAIMetadata(db, photo, storagePath);
+  await updatePhotoAIMetadata(db, photo, storagePath, jobOptions);
         
         return res.status(200).json({
           message: 'AI processing completed synchronously.',
           photoId: photo.id,
+          modelName: jobOptions.modelName || null
         });
       }
 
       // Add a job to the queue when Redis is available
-      await addAIJob(photo.id);
+      await addAIJob(photo.id, jobOptions);
 
   logger.info(`[API] Enqueued AI processing for photoId: ${photo.id}`);
 
@@ -648,6 +713,7 @@ module.exports = function createPhotosRouter({ db }) {
       return res.status(202).json({
         message: 'AI processing has been queued.',
         photoId: photo.id,
+        modelName: jobOptions.modelName || null
       });
 
     } catch (error) {

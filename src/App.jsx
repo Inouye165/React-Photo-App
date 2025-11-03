@@ -49,6 +49,8 @@ function App() {
     handleCloseEditor,
     handleMoveToInprogress,
     setPhotos,
+    aiModels,
+    defaultAiModelKey,
   } = usePhotoManagement();
 
   useEffect(() => {
@@ -199,6 +201,8 @@ function App() {
             }}
             onRecheckAI={handleRecheckSinglePhoto}
             setToast={setToast}
+            aiModels={aiModels}
+            defaultModelKey={defaultAiModelKey}
           />
         ) : activePhoto ? (
           <PhotoDetailPanel
@@ -215,15 +219,11 @@ function App() {
             onMarkFinished={async () => {
               await handleMoveToFinished(activePhoto.id);
             }}
-            onRecheckAI={async () => {
-              try {
-                await handleRecheckSinglePhoto(activePhoto.id);
-              } catch {
-                /* toast already reported error */
-              }
-            }}
+            onRecheckAI={handleRecheckSinglePhoto}
             isRechecking={pollingPhotoId === activePhoto.id}
             apiBaseUrl={API_BASE_URL}
+            aiModels={aiModels}
+            defaultModelKey={defaultAiModelKey}
           />
         ) : (
           <PhotoTable

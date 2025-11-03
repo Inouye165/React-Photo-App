@@ -1,4 +1,4 @@
-import React from 'react';
+import React, { useEffect, useMemo, useState } from 'react';
 import { toUrl } from '../utils/toUrl.js';
 
 export default function PhotoDetailPanel({
@@ -16,7 +16,39 @@ export default function PhotoDetailPanel({
   onRecheckAI,
   isRechecking,
   apiBaseUrl,
+  aiModels = [],
+  defaultModelKey = null,
 }) {
+  const modelOptions = useMemo(() => {
+    if (!Array.isArray(aiModels)) return [];
+    return aiModels;
+  }, [aiModels]);
+
+  const initialModelKey = useMemo(() => {
+    const current = photo?.aiModel || null;
+    if (current) {
+      const match = modelOptions.find((option) => option.modelName === current || option.key === current);
+      if (match) return match.key;
+    }
+    if (defaultModelKey && modelOptions.some((option) => option.key === defaultModelKey)) {
+      return defaultModelKey;
+    }
+    return modelOptions[0]?.key || null;
+  }, [modelOptions, photo, defaultModelKey]);
+
+  const [selectedModelKey, setSelectedModelKey] = useState(initialModelKey);
+
+  useEffect(() => {
+    setSelectedModelKey(initialModelKey);
+  }, [initialModelKey]);
+
+  const selectedModelLabel = useMemo(() => {
+    if (!selectedModelKey) return null;
+    const match = modelOptions.find((option) => option.key === selectedModelKey);
+    if (!match) return null;
+    return match.label || match.modelName || selectedModelKey;
+  }, [modelOptions, selectedModelKey]);
+
   if (!photo) return null;
 
   return (
@@ -147,13 +179,36 @@ export default function PhotoDetailPanel({
                 Close
               </button>
               {onRecheckAI && (
-                <button
-                  onClick={onRecheckAI}
-                  className="px-3 py-1 bg-purple-600 text-white rounded text-sm disabled:opacity-60 disabled:cursor-not-allowed"
-                  disabled={isRechecking}
-                >
-                  {isRechecking ? 'Rechecking...' : 'Recheck AI'}
-                </button>
+                <div className="flex items-center gap-2">
+                  {modelOptions.length > 0 && (
+                    <select
+                      value={selectedModelKey || ''}
+                      onChange={(event) => setSelectedModelKey(event.target.value || null)}
+                      disabled={isRechecking}
+                      className="px-2 py-1 text-sm border rounded"
+                    >
+                      {modelOptions.map((option) => (
+                        <option key={option.key || option.modelName} value={option.key || option.modelName}>
+                          {option.label || option.modelName || option.key}
+                        </option>
+                      ))}
+                    </select>
+                  )}
+                  <button
+                    onClick={async () => {
+                      try {
+                        const modelArg = selectedModelKey || undefined;
+                        await onRecheckAI(photo.id, modelArg);
+                      } catch {
+                        /* toast already reported error */
+                      }
+                    }}
+                    className="px-3 py-1 bg-purple-600 text-white rounded text-sm disabled:opacity-60 disabled:cursor-not-allowed"
+                    disabled={isRechecking}
+                  >
+                    {isRechecking ? `Rechecking (${selectedModelLabel || 'Default'})` : `Recheck AI (${selectedModelLabel || 'Default'})`}
+                  </button>
+                </div>
               )}
               <button onClick={onInlineSave} className="px-3 py-1 bg-blue-600 text-white rounded text-sm">
                 Save

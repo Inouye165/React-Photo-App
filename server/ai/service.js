@@ -22,7 +22,9 @@ const {
   collectibleAgent,
   ROUTER_SYSTEM_PROMPT,
   SCENERY_SYSTEM_PROMPT,
-  COLLECTIBLE_SYSTEM_PROMPT
+  COLLECTIBLE_SYSTEM_PROMPT,
+  analystModelName,
+  createAnalystAgents
 } = require('./langchain/agents');
 const { buildPrompt } = require('./langchain/promptTemplate');
 const { convertHeicToJpegBuffer } = require('../media/image');
@@ -124,6 +126,7 @@ async function invokeAgentWithTools(agent, initialMessages, tools = [], options 
  * @param {string} [options.gps] - Precomputed GPS string (lat,lon) or empty string.
  * @param {string} [options.device] - Device make/model string.
  * @param {boolean} [options.isHighAccuracy=false] - When false the image is downscaled to save tokens.
+ * @param {string} [options.modelName] - Optional override for the analyst model (scenery/collectible agents).
  * @returns {Promise<Object>} Resolves with an object: { caption, description, keywords, [poiAnalysis] }.
  * @throws Will re-throw errors from agent invocations (routerAgent, sceneryAgent, collectibleAgent) or conversion failures.
  * @description
@@ -132,8 +135,14 @@ async function invokeAgentWithTools(agent, initialMessages, tools = [], options 
  * or JSON embedded inside markdown code fences). It tries JSON parsing first
  * and falls back to heuristics if parsing fails.
  */
-async function processPhotoAI({ fileBuffer, filename, metadata, gps, device, isHighAccuracy = false }) {
+async function processPhotoAI({ fileBuffer, filename, metadata, gps, device, isHighAccuracy = false, modelName }) {
   // OPENAI_API_KEY is validated at module load time (fail-fast)
+
+  const selectedModelName = modelName || analystModelName;
+  const useDefaultAgents = !modelName || modelName === analystModelName;
+  const { sceneryAgent: activeSceneryAgent, collectibleAgent: activeCollectibleAgent } = useDefaultAgents
+    ? { sceneryAgent, collectibleAgent }
+    : createAnalystAgents(selectedModelName);
 
 
   // Convert image buffer to base64 and create data URI
@@ -312,7 +321,7 @@ async function processPhotoAI({ fileBuffer, filename, metadata, gps, device, isH
       baseUserMessage
     ];
     try {
-      agentResult = await sceneryAgent.invoke(agentMessages);
+  agentResult = await activeSceneryAgent.invoke(agentMessages);
     } catch (err) {
   logger.error('[AI SceneryAgent] Failed:', err);
       throw err;
@@ -323,7 +332,7 @@ async function processPhotoAI({ fileBuffer, filename, metadata, gps, device, isH
       collectibleUserMessage
     ];
     try {
-      agentResult = await invokeAgentWithTools(collectibleAgent, agentMessages, [googleSearchTool]);
+  agentResult = await invokeAgentWithTools(activeCollectibleAgent, agentMessages, [googleSearchTool]);
     } catch (err) {
   logger.error('[AI CollectibleAgent] Failed:', err);
       throw err;
@@ -388,7 +397,7 @@ async function processPhotoAI({ fileBuffer, filename, metadata, gps, device, isH
   logger.info('[AI Result] description (truncated):', (result.description || '').slice(0, 300));
   logger.info('[AI Result] keywords:', result.keywords);
 
-  return result;
+  return { ...result, modelName: selectedModelName };
 }
 
 /**
@@ -407,11 +416,12 @@ async function processPhotoAI({ fileBuffer, filename, metadata, gps, device, isH
  * @param {string} storagePath - Path in Supabase storage bucket to download the file from.
  * @param {Object} [options] - Additional processing options.
  * @param {boolean} [options.isHighAccuracy=false] - When true, skips the fast downscaling pass.
+ * @param {string} [options.modelName] - Optional override for the analyst model.
  * @returns {Promise<Object|null>} Returns the AI result object on success, or null when processing failed or retried.
  * @throws Will re-throw unexpected errors only in rare cases; normally returns null on recoverable failures.
  */
 async function updatePhotoAIMetadata(db, photoRow, storagePath, options = {}) {
-  const { isHighAccuracy = false } = options;
+  const { isHighAccuracy = false, modelName } = options;
   try {
     const meta = JSON.parse(photoRow.metadata || '{}');
     
@@ -464,7 +474,8 @@ async function updatePhotoAIMetadata(db, photoRow, storagePath, options = {}) {
         metadata: meta, 
         gps, 
         device,
-        isHighAccuracy 
+        isHighAccuracy,
+        modelName 
       });
     } catch (error) {
   logger.error(`AI processing failed for ${photoRow.filename} (attempt ${retryCount + 1}):`, error.message || error);
@@ -503,16 +514,31 @@ async function updatePhotoAIMetadata(db, photoRow, storagePath, options = {}) {
         return items.join(', ');
       };
 
-      const keywords = (ai && ai.keywords && String(ai.keywords).trim())
-        ? String(ai.keywords).trim()
-        : generateKeywordsFallback(description);
+      const appendModelKeyword = (baseKeywords, model) => {
+        if (!model) return baseKeywords;
+        const raw = String(baseKeywords || '')
+          .split(',')
+          .map(item => item.trim())
+          .filter(Boolean)
+          .filter(item => !item.toLowerCase().startsWith('model:'));
+        raw.push(`model:${model}`);
+        return raw.join(', ');
+      };
+
+      const keywords = appendModelKeyword(
+        (ai && ai.keywords && String(ai.keywords).trim())
+          ? String(ai.keywords).trim()
+          : generateKeywordsFallback(description),
+        ai && ai.modelName
+      );
 
       await db('photos').where({ id: photoRow.id }).update({
         caption,
         description,
         keywords,
         ai_retry_count: 0,
-        poi_analysis: JSON.stringify((ai && ai.poiAnalysis) || null)
+        poi_analysis: JSON.stringify((ai && ai.poiAnalysis) || null),
+        ai_model: ai && ai.modelName ? ai.modelName : null
       });
 
       // Fetch saved row to confirm

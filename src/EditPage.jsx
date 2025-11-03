@@ -1,10 +1,10 @@
-import React, { useState, useEffect } from 'react'
+import React, { useState, useEffect, useMemo } from 'react'
 import ImageCanvasEditor from './ImageCanvasEditor'
 import { useAuth } from './contexts/AuthContext'
 import { API_BASE_URL, fetchProtectedBlobUrl, revokeBlobUrl } from './api.js'
 import useStore from './store.js'
 
-export default function EditPage({ photo, onClose, onSave, onFinished, onRecheckAI, setToast }) {
+export default function EditPage({ photo, onClose, onSave, onFinished, onRecheckAI, setToast, aiModels = [], defaultModelKey = null }) {
   // AuthContext no longer exposes client-side token (httpOnly cookies are used).
   useAuth();
   // Prefer the live photo from the global store when available so this editor
@@ -22,6 +22,36 @@ export default function EditPage({ photo, onClose, onSave, onFinished, onRecheck
   const [recheckStatus, setRecheckStatus] = useState('idle')
   const prevPhotoRef = React.useRef(photo)
   const doneTimeoutRef = React.useRef(null)
+
+  const modelOptions = useMemo(() => {
+    if (!Array.isArray(aiModels) || aiModels.length === 0) return []
+    return aiModels
+  }, [aiModels])
+
+  const initialModelKey = useMemo(() => {
+    const currentModelName = sourcePhoto?.aiModel || photo?.aiModel || null
+    if (currentModelName) {
+      const match = modelOptions.find((option) => option.modelName === currentModelName || option.key === currentModelName)
+      if (match) return match.key
+    }
+    if (defaultModelKey && modelOptions.some((option) => option.key === defaultModelKey)) {
+      return defaultModelKey
+    }
+    return modelOptions[0]?.key || null
+  }, [modelOptions, sourcePhoto, photo, defaultModelKey])
+
+  const [selectedModelKey, setSelectedModelKey] = useState(initialModelKey)
+
+  useEffect(() => {
+    setSelectedModelKey(initialModelKey)
+  }, [initialModelKey])
+
+  const selectedModelLabel = useMemo(() => {
+    if (!selectedModelKey) return null
+    const match = modelOptions.find((option) => option.key === selectedModelKey)
+    if (!match) return null
+    return match.label || match.modelName || selectedModelKey
+  }, [modelOptions, selectedModelKey])
 
   
 
@@ -241,6 +271,20 @@ export default function EditPage({ photo, onClose, onSave, onFinished, onRecheck
   <h1 className="text-lg font-bold">Edit Photo — {sourcePhoto?.filename || photo?.filename}</h1>
         <div className="flex gap-2">
           <button onClick={onClose} className="px-3 py-1 text-sm bg-gray-200 rounded hover:bg-gray-300">Back</button>
+          {modelOptions.length > 0 && (
+            <select
+              value={selectedModelKey || ''}
+              onChange={(event) => setSelectedModelKey(event.target.value || null)}
+              disabled={recheckingAI || isPolling}
+              className="px-2 py-1 text-sm border rounded"
+            >
+              {modelOptions.map((option) => (
+                <option key={option.key || option.modelName} value={option.key || option.modelName}>
+                  {option.label || option.modelName || option.key}
+                </option>
+              ))}
+            </select>
+          )}
           <button
                 onClick={async () => {
               try {
@@ -248,7 +292,8 @@ export default function EditPage({ photo, onClose, onSave, onFinished, onRecheck
                 setRecheckStatus('in-progress')
                 setRecheckingAI(true)
                 if (typeof onRecheckAI === 'function') {
-                      await onRecheckAI(sourcePhoto?.id || photo.id)
+                      const modelArg = selectedModelKey || undefined
+                      await onRecheckAI(sourcePhoto?.id || photo.id, modelArg)
                   toast({ message: 'AI recheck started.', severity: 'info' })
                 } else {
                   toast({ message: 'Recheck handler not available', severity: 'warning' })
@@ -271,7 +316,13 @@ export default function EditPage({ photo, onClose, onSave, onFinished, onRecheck
               )
             }
           >
-            {recheckingAI || recheckStatus === 'in-progress' ? 'Rechecking...' : (recheckStatus === 'done' ? 'Done' : (recheckStatus === 'error' ? 'Error - Retry' : 'Recheck AI'))}
+            {(() => {
+              const label = selectedModelLabel || 'Default'
+              if (recheckingAI || recheckStatus === 'in-progress') return `Rechecking (${label})`
+              if (recheckStatus === 'done') return `Done (${label})`
+              if (recheckStatus === 'error') return `Error - Retry (${label})`
+              return `Recheck AI (${label})`
+            })()}
           </button>
           <button onClick={() => { onFinished(sourcePhoto?.id || photo.id); }} className="px-3 py-1 text-sm bg-green-600 text-white rounded hover:bg-green-700">Mark as Finished</button>
         </div>

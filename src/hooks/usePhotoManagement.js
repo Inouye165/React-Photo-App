@@ -6,6 +6,7 @@ import {
   updatePhotoCaption,
   deletePhoto,
   API_BASE_URL,
+  getAiModels,
 } from '../api.js';
 import useStore from '../store.js';
 
@@ -29,6 +30,8 @@ function usePhotoManagement() {
   const [editedKeywords, setEditedKeywords] = useState('');
   const [showMetadataModal, setShowMetadataModal] = useState(false);
   const [metadataPhoto, setMetadataPhoto] = useState(null);
+  const [aiModels, setAiModels] = useState([]);
+  const [defaultAiModelKey, setDefaultAiModelKey] = useState(null);
 
   const lastActiveElementRef = useRef(null);
 
@@ -76,6 +79,25 @@ function usePhotoManagement() {
   const refreshPhotos = useCallback(() => {
     loadPhotos(view);
   }, [view, loadPhotos]);
+
+  useEffect(() => {
+    let cancelled = false;
+    (async () => {
+      try {
+        const response = await getAiModels();
+        if (!response || cancelled) return;
+        setAiModels(Array.isArray(response.models) ? response.models : []);
+        setDefaultAiModelKey(response.defaultModelKey || null);
+      } catch (error) {
+        if (!cancelled) {
+          setToast({ message: `Failed to load AI model list: ${error?.message || error}`, severity: 'warning' });
+        }
+      }
+    })();
+    return () => {
+      cancelled = true;
+    };
+  }, [setToast]);
 
   const activePhoto = useMemo(() => {
     if (activePhotoId == null) return null;
@@ -160,10 +182,40 @@ function usePhotoManagement() {
   }, [apiOrigin, updatePhotoData]);
 
   const handleRecheckSinglePhoto = useCallback(
-    async (photoId) => {
+    async (photoId, selection) => {
       try {
-        const response = await recheckPhotoAI(photoId);
-        setToast({ message: 'AI recheck initiated. Polling for results...', severity: 'info' });
+        const requestOptions = {};
+        if (typeof selection === 'string') {
+          requestOptions.modelKey = selection;
+        } else if (selection && typeof selection === 'object') {
+          if (selection.modelKey) requestOptions.modelKey = selection.modelKey;
+          if (selection.modelName) requestOptions.modelName = selection.modelName;
+        }
+        const response = await recheckPhotoAI(photoId, requestOptions);
+
+        const determineLabel = () => {
+          if (requestOptions.modelKey) {
+            const match = aiModels.find((model) => model.key === requestOptions.modelKey);
+            if (match) return match.label || match.modelName;
+          }
+          if (requestOptions.modelName) return requestOptions.modelName;
+          if (response && response.modelName) {
+            const match = aiModels.find((model) => model.modelName === response.modelName);
+            if (match) return match.label || match.modelName;
+            return response.modelName;
+          }
+          if (defaultAiModelKey) {
+            const match = aiModels.find((model) => model.key === defaultAiModelKey);
+            if (match) return match.label || match.modelName;
+          }
+          return null;
+        };
+
+        const label = determineLabel();
+        const message = label
+          ? `AI recheck initiated (model: ${label}). Polling for results...`
+          : 'AI recheck initiated. Polling for results...';
+        setToast({ message, severity: 'info' });
         setPollingPhotoId(photoId);
         return response;
       } catch (error) {
@@ -171,7 +223,7 @@ function usePhotoManagement() {
         throw error;
       }
     },
-    [setToast, setPollingPhotoId],
+    [setToast, setPollingPhotoId, aiModels, defaultAiModelKey],
   );
 
   const handleMoveToFinished = useCallback(
@@ -320,6 +372,8 @@ function usePhotoManagement() {
     setMetadataPhoto,
     pollingPhotoId,
     setPollingPhotoId,
+  aiModels,
+  defaultAiModelKey,
     loadPhotos,
     refreshPhotos,
     isInlineEditing,

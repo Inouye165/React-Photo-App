@@ -42,7 +42,7 @@ async function initializeQueue() {
        * causing the job to be retried according to worker options.
        */
       const processor = async (job) => {
-        const { photoId, isHighAccuracy = false } = job.data;
+        const { photoId, isHighAccuracy = false, modelName } = job.data;
   logger.info(`[WORKER] Processing AI job for photoId: ${photoId}`);
 
         try {
@@ -56,7 +56,7 @@ async function initializeQueue() {
           const storagePath = photo.storage_path || `${photo.state}/${photo.filename}`;
 
           // Call the existing AI service function
-          await updatePhotoAIMetadata(db, photo, storagePath, { isHighAccuracy });
+          await updatePhotoAIMetadata(db, photo, storagePath, { isHighAccuracy, modelName });
 
           logger.info(`[WORKER] Successfully processed job for photoId: ${photoId}`);
         } catch (error) {
