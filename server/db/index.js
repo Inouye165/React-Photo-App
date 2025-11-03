@@ -36,17 +36,27 @@ if (isProduction || forcePostgres || autoDetectPostgres) {
 	const knexEnv = (isProduction) ? environment : 'production';
 	db = knex(knexConfig[knexEnv]);
 } else {
-	// Fail fast: sqlite fallback has been intentionally removed. Running
-	// without Postgres/Supabase configured is considered a broken state.
-	const guidance = [
-		'No Postgres/Supabase configuration detected.',
-		'Set SUPABASE_DB_URL in server/.env (preferred) or set USE_POSTGRES=true to opt in to Postgres for development.',
-		'Local sqlite fallback has been disabled to avoid divergent behavior between environments.'
-	].join(' ');
+	// For test environment we allow the sqlite in-memory fallback so CI and
+	// local test runs can execute without an externally configured
+	// Postgres/Supabase instance. This keeps behavior predictable for tests
+	// while still enforcing Postgres in development/production.
+	if (environment === 'test') {
+		logger.info('[db] Test environment detected: using sqlite in-memory fallback for tests');
+		db = knex(knexConfig.test);
+	} else {
+		// Fail fast: sqlite fallback has been intentionally removed for
+		// non-test environments. Running without Postgres/Supabase configured
+		// is considered a broken state.
+		const guidance = [
+			'No Postgres/Supabase configuration detected.',
+			'Set SUPABASE_DB_URL in server/.env (preferred) or set USE_POSTGRES=true to opt in to Postgres for development.',
+			'Local sqlite fallback has been disabled to avoid divergent behavior between environments.'
+		].join(' ');
 
-	// Log and throw to surface the misconfiguration immediately during startup.
-	logger.error('[db] Fatal configuration error:', guidance);
-	throw new Error('[db] Postgres/Supabase not configured. ' + guidance);
+		// Log and throw to surface the misconfiguration immediately during startup.
+		logger.error('[db] Fatal configuration error:', guidance);
+		throw new Error('[db] Postgres/Supabase not configured. ' + guidance);
+	}
 }
 
 module.exports = db;
