@@ -9,6 +9,20 @@ on:
 jobs:
   ci:
     runs-on: ubuntu-latest
+    services:
+      postgres:
+        image: postgres:15
+        env:
+          POSTGRES_USER: test
+          POSTGRES_PASSWORD: test
+          POSTGRES_DB: test
+        ports:
+          - 5432:5432
+        options: >-
+          --health-cmd pg_isready
+          --health-interval 10s
+          --health-timeout 5s
+          --health-retries 5
     strategy:
       matrix:
         node-version: ['20']
@@ -85,8 +99,10 @@ jobs:
           NODE_ENV: test
           CI: true
           RUN_MIGRATION_VERIFY_TEST: 'true'
+          # Point database envs to the postgres service started by the runner
+          DATABASE_URL: postgresql://test:test@localhost:5432/test
+          SUPABASE_DB_URL: postgresql://test:test@localhost:5432/test
           SUPABASE_URL: https://test.supabase.co
           SUPABASE_SERVICE_ROLE_KEY: test-service-role-key
-          DATABASE_URL: postgresql://test:test@localhost:5432/test
           JWT_SECRET: test-jwt-secret-key-for-testing-only
           OPENAI_API_KEY: sk-test-key-for-ci
