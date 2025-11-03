@@ -35,6 +35,17 @@ Test results:
 
 Root cause: the `server/.env` in the repository is a template and does not contain `SUPABASE_DB_URL` (the script intentionally reads `server/.env`). Ensure your actual server secret file (`server/.env`) contains `SUPABASE_DB_URL=postgresql://...` or set `USE_POSTGRES=true` if you want to use Postgres configured elsewhere.
 
+Server start attempt (2025-11-03T08:52:00-08:00):
+
+- Ran: `npm start` in `server/` to verify startup after changes.
+- Output (masked): server diagnostics printed but startup failed because SUPABASE_DB_URL is missing in `server/.env`.
+- Error: `[db] Postgres/Supabase not configured... Local sqlite fallback has been disabled` (server exits with uncaught exception from `server/db/index.js`).
+
+Action items:
+
+- Add a real `SUPABASE_DB_URL` to `server/.env` (preferred) or set `USE_POSTGRES=true` in `server/.env` and ensure DB credentials are reachable from this machine.
+- After adding the DB URL, re-run `npm run test:db` then `npm start` and report the outputs here; I'll re-run smoke tests and confirm server starts.
+
 Notes and safety:
 
 - No secrets are printed; diagnostics show masked tails only (last 4 chars).
