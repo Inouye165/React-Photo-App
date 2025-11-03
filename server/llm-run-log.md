@@ -14,7 +14,7 @@ Summary of actions planned and executed in this run:
 Scans performed:
 
 - Found `dotenv -e` usages in:
-  - `server/package.json` (start and dev scripts)
+  - `server/package.json` (start and dev scripts). No other `dotenv -e` usages were found across the repo.
 
 Files changed:
 
