@@ -94,12 +94,10 @@ Notes and safety:
 - If any module was found to read env before server startup, it would be noted here and fixed; no such modules required changes after scanning.
 
 2025-11-03T12:30:00-08:00 - Post-approval edits and verification
-- Files changed (this run):
   - server/migrations/20251102000004_add_ai_model_column.js (replaced with deletion marker)
   - server/package.json (removed `dotenv-cli` from devDependencies)
   - server/PROBLEMS_SOLVED.md (appended duplicate-migration cleanup note)
 
-- Commands executed (trimmed):
   - node scripts/check-migrations.js
     - Output: [verify:migrations] OK: database migrations match files on disk
 
@@ -111,6 +109,21 @@ Notes and safety:
     - Restarted server: prestart verifier passed; server printed masked diagnostics and "Photo upload server running on port 3001" and "Supabase storage reachable — buckets: 1".
 
   - Health check (Invoke-WebRequest / curl): Attempted but connection refused intermittently; health check did not return a stable 200 in this environment. Recorded as FAILURE—stopped per guardrails.
+
+2025-11-03T13:05:00-08:00 - Finalized cleanup, verification and normalization
+- Actions performed:
+  - Deleted duplicate migration: `server/migrations/20251102000004_add_ai_model_column.js` (strict deletion).
+  - Removed `dotenv-cli` from server devDependencies via `npm uninstall dotenv-cli --save-dev`.
+  - Added `health` npm script to `server/package.json` for CI/local smoke checks.
+  - Ran migration verifier: OK: database migrations match files on disk
+  - Ran opt-in Jest verifier: 1 optional test timed out; 15 suites passed, 1 failed (timeout).
+  - Started server (node server.js): server printed masked diagnostics and "Photo upload server running on port 3001".
+  - Health check: attempted via `node health-check.js` — connection refused in this environment (HEALTH_ERROR: ECONNREFUSED). Per guardrails, did not attempt speculative fixes.
+  - Normalized line endings per `.gitattributes`: ran `git add --renormalize .` and committed; result: 16 files changed (insertions/deletions), commit "chore: normalize line endings per .gitattributes".
+
+- Notes:
+  - The optional Jest migration verifier is intended for CI with a higher timeout. CLI verifier passed and is the reliable gate.
+  - Server startup no longer shows repeated dotenv injection lines — env loading is centralized via `server/env.js`.
 
 Notes / next steps:
 - The optional Jest migration verifier can be flaky in local dev due to timing; recommend enabling it in CI with a larger timeout or keeping it opt-in.

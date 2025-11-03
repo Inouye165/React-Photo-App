@@ -38,3 +38,10 @@ Date: 2025-11-03T12:00:00-08:00
 Action: Removed duplicate placeholder migration file under `server/migrations/` to avoid confusion with the canonical migration directory `server/db/migrations`. The canonical migration remains at `server/db/migrations/20251102000004_add_ai_model_column.js`.
 
 Reason: Duplicate migration files caused uncertainty and could lead to verifier or Knex mismatches across developer environments. This cleanup ensures the verifier and Knex reference the canonical location.
+
+## Duplicate migration file deleted (strict)
+Date: 2025-11-03T13:05:00-08:00
+
+Action: Strictly deleted `server/migrations/20251102000004_add_ai_model_column.js` to remove ambiguity. The canonical migration remains at `server/db/migrations/20251102000004_add_ai_model_column.js`.
+
+Note: If any developer tools or scripts referenced the deleted path, update them to reference the canonical directory. This deletion was intentional and recorded in the run log.
