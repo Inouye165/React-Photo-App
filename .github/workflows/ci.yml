@@ -84,6 +84,7 @@ jobs:
         env:
           NODE_ENV: test
           CI: true
+          RUN_MIGRATION_VERIFY_TEST: 'true'
           SUPABASE_URL: https://test.supabase.co
           SUPABASE_SERVICE_ROLE_KEY: test-service-role-key
           DATABASE_URL: postgresql://test:test@localhost:5432/test
