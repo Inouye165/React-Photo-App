@@ -1,4 +1,3 @@
-const _OpenAI = require('openai');
 const path = require('path');
 require(path.join(__dirname, '..', '..', 'env'));
 const logger = require('../../logger');
