@@ -30,7 +30,10 @@ Commands executed (local):
 
 Test results:
 
-- `npm run test:db` output: (see run log in commit/PR)
+- `npm run test:db` output (2025-11-03T08:42:10-08:00):
+  - [test-db] Missing SUPABASE_DB_URL in server/.env
+
+Root cause: the `server/.env` in the repository is a template and does not contain `SUPABASE_DB_URL` (the script intentionally reads `server/.env`). Ensure your actual server secret file (`server/.env`) contains `SUPABASE_DB_URL=postgresql://...` or set `USE_POSTGRES=true` if you want to use Postgres configured elsewhere.
 
 Notes and safety:
 
