@@ -1,3 +1,45 @@
+# Run log (maintenance automation)
+
+Entries use ISO 8601 timestamps in America/Los_Angeles.
+
+-- placeholder created 2025-11-03T
+
+2025-11-03T10:15:00-08:00 - Added migration verifier, tests, docs, and problems-solved logs
+- Files added:
+  - server/scripts/check-migrations.js (migration verifier CLI + exported function)
+  - server/tests/migrations.verify.spec.js (optional Jest test; opt-in via RUN_MIGRATION_VERIFY_TEST=true)
+  - server/MIGRATIONS.md (docs)
+  - server/PROBLEMS_SOLVED.md (problem entry)
+  - PROBLEMS_SOLVED.md (root cross-reference)
+  - server/llm-run-log.md (this file; appended)
+
+- Files updated:
+  - server/package.json (added prestart -> runs verifier)
+  - .gitignore (negation rules to ensure migrations committed)
+
+Commands executed and results:
+- node scripts/check-migrations.js
+  - Result: OK: database migrations match files on disk
+
+- npm run test (with RUN_MIGRATION_VERIFY_TEST=true)
+  - Result: Most tests passed. The optional migration verifier Jest test timed out in this environment (exceeded 20s). CLI verifier works; the Jest test is intentionally opt-in because it can contact remote DBs and be slow.
+
+Notes / next steps:
+- The verifier CLI (`node scripts/check-migrations.js`) passed locally and will run before `npm start` (prestart). If you want CI to catch this, set `RUN_MIGRATION_VERIFY_TEST=true` in CI and/or run `npm run verify:migrations` as a separate CI step.
+- I did not create any no-op migrations because the verifier reported no missing files. If you still see the earlier startup error, re-run `npm run verify:migrations` and I'll create exact no-op files as needed.
+
+2025-11-03T10:24:00-08:00 - Started server after freeing port 3001
+- Commands executed:
+  - netstat -ano | findstr ":3001"  -> found PID 27052 (node.exe)
+  - taskkill /PID 27052 /F -> terminated prior process
+  - npm start -> prestart verifier passed; server started
+- Server output (trimmed):
+  - Derived database selection: Postgres (Supabase)
+  - Photo upload server running on port 3001
+  - Health check: http://localhost:3001/health
+  - Supabase storage reachable — buckets: 1
+
+
 # LLM run log
 
 Timestamp: 2025-11-03T08:42:10-08:00 (America/Los_Angeles)

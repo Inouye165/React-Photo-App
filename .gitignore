@@ -69,3 +69,7 @@ server/working_dir_path.txt
 # Ignore test databases
 server/tests/*.db
 server/tests/test.dbserver/working/dev.db
+
+# Ensure migrations are not accidentally ignored
+!server/db/migrations/
+!server/db/migrations/*.js

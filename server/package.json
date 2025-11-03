@@ -5,6 +5,7 @@
   "main": "server.js",
   "scripts": {
   "start": "node server.js",
+  "prestart": "node scripts/check-migrations.js",
   "dev": "nodemon server.js",
     "worker": "node worker.js",
     "dev:worker": "nodemon worker.js",
