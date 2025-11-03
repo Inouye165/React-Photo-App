@@ -45,3 +45,10 @@ Date: 2025-11-03T13:05:00-08:00
 Action: Strictly deleted `server/migrations/20251102000004_add_ai_model_column.js` to remove ambiguity. The canonical migration remains at `server/db/migrations/20251102000004_add_ai_model_column.js`.
 
 Note: If any developer tools or scripts referenced the deleted path, update them to reference the canonical directory. This deletion was intentional and recorded in the run log.
+
+## Reliable health-check added
+Date: 2025-11-03T12:31:20-08:00
+
+Action: Added a retrying health-check script (`server/health-check.js`) and `npm run health` which probe IPv6, IPv4, and localhost with a 10s deadline to make CI and local checks more reliable.
+
+Note: The checker retries for 10s and exits 0 on first HTTP 200. If health fails during a run it is recorded and no speculative fixes are attempted.
