@@ -3,14 +3,18 @@
   "version": "1.0.0",
   "description": "Backend server for photo upload and storage",
   "main": "server.js",
-"scripts": {
-  "start": "dotenv -e ./server/.env -- node server.js",
-  "dev": "dotenv -e ./server/.env -- nodemon server.js",
+  "scripts": {
+    "start": "node server.js",
+    "prestart": "node scripts/check-migrations.js",
+    "dev": "nodemon server.js",
     "worker": "node worker.js",
     "dev:worker": "nodemon worker.js",
-    "test": "jest",
+  "test": "jest",
+  "test:db": "node scripts/test-db-connection.js",
+  "verify:migrations": "node scripts/check-migrations.js",
     "test:ci": "jest",
-    "test:watch": "jest --watch",
+  "test:watch": "jest --watch",
+  "health": "node health-check.js",
     "lint": "eslint . --config ../.eslintrc.cjs",
     "lint:fix": "eslint . --fix --config ../.eslintrc.cjs"
   },
@@ -49,7 +53,6 @@
   },
   "devDependencies": {
     "@eslint/js": "^9.38.0",
-    "dotenv-cli": "^11.0.0",
     "eslint": "^9.38.0",
     "eslint-plugin-react": "^7.37.5",
     "eslint-plugin-react-hooks": "^7.0.1",

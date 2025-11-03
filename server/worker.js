@@ -17,7 +17,7 @@
 const logger = require('./logger');
 
 logger.info('Starting AI Worker...');
-require('dotenv').config(); // Load .env variables
+require('./env'); // centralized, idempotent env loader
 
 // Start the worker
 (async () => {

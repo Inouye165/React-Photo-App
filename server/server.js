@@ -1,5 +1,6 @@
-const path = require('path');
-require('dotenv').config({ path: path.join(__dirname, '.env') });
+// Load server/.env as the very first runtime config to ensure modules
+// that read process.env later see the correct values regardless of CWD.
+require('./env');
 
 // Helpful startup logs to make it obvious which DB and Supabase configuration
 // are active when the server starts (useful after checking out older commits).
@@ -7,8 +8,26 @@ const environment = process.env.NODE_ENV || 'development';
 const forcePostgres = process.env.USE_POSTGRES === 'true';
 const autoDetectPostgres = Boolean(process.env.SUPABASE_DB_URL) && process.env.USE_POSTGRES_AUTO_DETECT !== 'false';
 const usingPostgres = environment === 'production' || forcePostgres || autoDetectPostgres;
-console.log(`[server] NODE_ENV=${environment} USE_POSTGRES=${process.env.USE_POSTGRES || ''} USE_POSTGRES_AUTO_DETECT=${process.env.USE_POSTGRES_AUTO_DETECT || ''}`);
-console.log(`[server] Database mode: ${usingPostgres ? 'Postgres (Supabase)' : 'sqlite fallback (dev)'}; SUPABASE_DB_URL=${process.env.SUPABASE_DB_URL ? 'present' : 'missing'}; SUPABASE_KEY=${process.env.SUPABASE_SERVICE_ROLE_KEY ? 'service-role' : (process.env.SUPABASE_ANON_KEY ? 'anon' : 'missing')}`);
+
+// Helper to mask secrets while showing short hint
+// Mask helper used in diagnostics: show only last 4 chars to identify keys
+// without exposing secrets.
+function maskSecret(value) {
+  if (!value) return '(missing)';
+  return '•••' + String(value).slice(-4);
+}
+
+// Detailed debug output showing which env vars are consulted and what was found.
+console.log('[server] Startup configuration diagnostics:');
+console.log(`[server]  - NODE_ENV = ${environment}`);
+console.log(`[server]  - USE_POSTGRES = ${process.env.USE_POSTGRES || '(unset)'} (forcePostgres=${forcePostgres})`);
+console.log(`[server]  - USE_POSTGRES_AUTO_DETECT = ${process.env.USE_POSTGRES_AUTO_DETECT || '(unset)'} (autoDetectPostgres=${autoDetectPostgres})`);
+console.log(`[server]  - SUPABASE_DB_URL = ${process.env.SUPABASE_DB_URL ? '(present)' : '(missing)'} ${process.env.SUPABASE_DB_URL ? maskSecret(process.env.SUPABASE_DB_URL) : ''}`);
+console.log(`[server]  - SUPABASE_URL = ${process.env.SUPABASE_URL ? '(present)' : '(missing)'} ${process.env.SUPABASE_URL ? maskSecret(process.env.SUPABASE_URL) : ''}`);
+console.log(`[server]  - SUPABASE_SERVICE_ROLE_KEY = ${process.env.SUPABASE_SERVICE_ROLE_KEY ? '(present service-role)' : '(missing)'} ${process.env.SUPABASE_SERVICE_ROLE_KEY ? maskSecret(process.env.SUPABASE_SERVICE_ROLE_KEY) : ''}`);
+console.log(`[server]  - SUPABASE_ANON_KEY = ${process.env.SUPABASE_ANON_KEY ? '(present anon)' : '(missing)'} ${process.env.SUPABASE_ANON_KEY ? maskSecret(process.env.SUPABASE_ANON_KEY) : ''}`);
+console.log(`[server]  - Derived database selection: ${usingPostgres ? 'Postgres (Supabase) — will use production knex config' : 'sqlite fallback (dev) — sqlite fallback would be used if enabled'}`);
+console.log('[server] End diagnostics');
 
 // Global safety: log uncaught exceptions and unhandled rejections instead of letting Node crash
 process.on('unhandledRejection', (reason, promise) => {
@@ -146,6 +165,21 @@ async function startServer() {
   app.use(express.urlencoded({ limit: '1mb', extended: true }));
 
   // Authentication routes (no auth required)
+  // Dev-only diagnostics route (masked). Enabled only when not in production.
+  if (process.env.NODE_ENV !== 'production') {
+    app.get('/__diag/env', (_req, res) => {
+      return res.json({
+        NODE_ENV: process.env.NODE_ENV ?? '(unset)',
+        USE_POSTGRES: !!process.env.USE_POSTGRES,
+        USE_POSTGRES_AUTO_DETECT: !!process.env.USE_POSTGRES_AUTO_DETECT,
+        SUPABASE_DB_URL: !!process.env.SUPABASE_DB_URL,
+        SUPABASE_URL: process.env.SUPABASE_URL ? '•••' + String(process.env.SUPABASE_URL).slice(-4) : '(missing)',
+        SUPABASE_SERVICE_ROLE_KEY: !!process.env.SUPABASE_SERVICE_ROLE_KEY,
+        SUPABASE_ANON_KEY: !!process.env.SUPABASE_ANON_KEY
+      });
+    });
+  }
+
   app.use(createAuthRouter({ db }));
 
   // Health check (no auth required)

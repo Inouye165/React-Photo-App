@@ -3,12 +3,12 @@ const { createClient } = require('@supabase/supabase-js');
 const logger = require('../logger');
 
 // Ensure environment variables are loaded when this module is required
-// (some entrypoints already load dotenv, but being defensive here avoids
-// issues when the module is required directly in tests or scripts).
+// by using the centralized loader. This avoids multiple dotenv.config calls
+// while still allowing scripts to require this file directly.
 try {
-  require('dotenv').config({ path: path.join(__dirname, '..', '.env') });
+  require(path.join(__dirname, '..', 'env'));
 } catch {
-  // ignore - dotenv is optional if envs are set by the environment
+  // ignore - env loader is best-effort
 }
 
 // Initialize Supabase client with environment variables

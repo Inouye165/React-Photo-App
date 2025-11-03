@@ -1,6 +1,5 @@
-const _OpenAI = require('openai');
 const path = require('path');
-require('dotenv').config({ path: path.join(__dirname, '..', '..', '.env') });
+require(path.join(__dirname, '..', '..', 'env'));
 const logger = require('../../logger');
 
 // Optional simple chain implemented locally to allow an incremental LangChain

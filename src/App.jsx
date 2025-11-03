@@ -234,7 +234,7 @@ function App() {
             privilegesMap={privilegesMap}
             pollingPhotoId={pollingPhotoId}
             onSelectPhoto={handleSelectPhoto}
-            onEditPhoto={(photo) => handleEditPhoto(photo, false)}
+            onEditPhoto={(photo) => handleEditPhoto(photo, true)}
             onMoveToInprogress={handleMoveToInprogress}
             onMoveToWorking={handleMoveToWorking}
             onDeletePhoto={handleDeletePhoto}

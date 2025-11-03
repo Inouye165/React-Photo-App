@@ -1,5 +1,5 @@
 const path = require('path');
-require('dotenv').config({ path: path.join(__dirname, '..', '.env') });
+require('../env');
 const logger = require('../logger');
 
 // Fail-fast if OpenAI API key is missing — check at module load time
