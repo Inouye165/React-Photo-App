@@ -92,3 +92,27 @@ Notes and safety:
 
 - No secrets are printed; diagnostics show masked tails only (last 4 chars).
 - If any module was found to read env before server startup, it would be noted here and fixed; no such modules required changes after scanning.
+
+2025-11-03T12:30:00-08:00 - Post-approval edits and verification
+- Files changed (this run):
+  - server/migrations/20251102000004_add_ai_model_column.js (replaced with deletion marker)
+  - server/package.json (removed `dotenv-cli` from devDependencies)
+  - server/PROBLEMS_SOLVED.md (appended duplicate-migration cleanup note)
+
+- Commands executed (trimmed):
+  - node scripts/check-migrations.js
+    - Output: [verify:migrations] OK: database migrations match files on disk
+
+  - RUN_MIGRATION_VERIFY_TEST=true npm test -- --runInBand
+    - Result: Jest run completed; 1 test (migration verifier Jest test) timed out -> 1 failed, 15 passed, 16 total. See tests/migrations.verify.spec.js for optional timeout adjustment. CLI verifier succeeded earlier.
+
+  - npm start (background)
+    - Observed initial EADDRINUSE on port 3001. Found and terminated PID 4408 (node.exe) using port 3001.
+    - Restarted server: prestart verifier passed; server printed masked diagnostics and "Photo upload server running on port 3001" and "Supabase storage reachable — buckets: 1".
+
+  - Health check (Invoke-WebRequest / curl): Attempted but connection refused intermittently; health check did not return a stable 200 in this environment. Recorded as FAILURE—stopped per guardrails.
+
+Notes / next steps:
+- The optional Jest migration verifier can be flaky in local dev due to timing; recommend enabling it in CI with a larger timeout or keeping it opt-in.
+- If you want the duplicate migration file fully deleted (instead of a deletion marker), I can remove it in a separate commit now that CI/maintainers are aware. Approve if you want me to delete it outright.
+

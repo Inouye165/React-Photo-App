@@ -31,3 +31,10 @@ Commands used (PowerShell snippets):
 Status: Resolved
 
 (This file is managed by maintenance scripts — do not commit secrets here.)
+
+## Duplicate migration cleanup
+Date: 2025-11-03T12:00:00-08:00
+
+Action: Removed duplicate placeholder migration file under `server/migrations/` to avoid confusion with the canonical migration directory `server/db/migrations`. The canonical migration remains at `server/db/migrations/20251102000004_add_ai_model_column.js`.
+
+Reason: Duplicate migration files caused uncertainty and could lead to verifier or Knex mismatches across developer environments. This cleanup ensures the verifier and Knex reference the canonical location.

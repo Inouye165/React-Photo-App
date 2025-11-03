@@ -1,6 +1,5 @@
 // Simple script to create an admin user
-const path = require('path');
-require('dotenv').config({ path: path.join(__dirname, '.env') });
+require('./env');
 
 const db = require('./db/index');
 const bcrypt = require('bcryptjs');

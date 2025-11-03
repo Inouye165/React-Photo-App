@@ -1,5 +1,4 @@
-const path = require('path');
-require('dotenv').config({ path: path.join(__dirname, '.env') });
+require('./env');
 const logger = require('./logger');
 
 const needed = [

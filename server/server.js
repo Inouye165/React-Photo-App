@@ -1,6 +1,6 @@
 // Load server/.env as the very first runtime config to ensure modules
 // that read process.env later see the correct values regardless of CWD.
-require('dotenv').config({ path: require('path').join(__dirname, '.env') });
+require('./env');
 
 // Helpful startup logs to make it obvious which DB and Supabase configuration
 // are active when the server starts (useful after checking out older commits).

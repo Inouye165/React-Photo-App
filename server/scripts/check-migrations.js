@@ -11,8 +11,8 @@
 const fs = require('fs');
 const path = require('path');
 const knex = require('knex');
-// Load server .env (non-fatal if missing)
-require('dotenv').config({ path: path.join(__dirname, '..', '.env') });
+// Load server .env via centralized loader
+require(path.join(__dirname, '..', 'env'));
 
 async function verifyMigrations() {
   if (process.env.SKIP_VERIFY_MIGRATIONS === 'true') {
