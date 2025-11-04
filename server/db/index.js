@@ -34,7 +34,31 @@ if (isProduction || forcePostgres || autoDetectPostgres) {
 		logger.info('[db] Auto-detect enabled: using Postgres because SUPABASE_DB_URL is present');
 	}
 	const knexEnv = (isProduction) ? environment : 'production';
-	db = knex(knexConfig[knexEnv]);
+	const config = knexConfig[knexEnv];
+
+	// Handle SSL configuration for Supabase PostgreSQL.
+	// Remove ?sslmode= from connection string and use the ssl object instead
+	// to properly configure certificate validation.
+	if (config.client === 'pg') {
+		if (typeof config.connection === 'string') {
+			// Connection is a plain string, convert to object with SSL config
+			const cs = config.connection.replace(/[?&]sslmode=[^&]+/, '');
+			config.connection = {
+				connectionString: cs,
+				ssl: { rejectUnauthorized: false }
+			};
+		} else if (config.connection && config.connection.connectionString) {
+			// Connection is already an object, clean up connection string
+			config.connection.connectionString = config.connection.connectionString.replace(/[?&]sslmode=[^&]+/, '');
+			// Ensure SSL config exists
+			if (!config.connection.ssl) {
+				config.connection.ssl = { rejectUnauthorized: false };
+			}
+		}
+	}
+
+	db = knex(config);
+
 } else {
 	// For test environment we allow the sqlite in-memory fallback so CI and
 	// local test runs can execute without an externally configured

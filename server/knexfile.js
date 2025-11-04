@@ -36,9 +36,14 @@ module.exports = {
   },
   production: {
     client: 'pg',
+    // IMPORTANT: Use a plain connection string. SSL is configured via the URL
+    // (e.g., ?sslmode=require) to avoid conflicts with 'pg' defaults.
+    // For Supabase, we need to explicitly disable certificate validation.
     connection: {
       connectionString: process.env.SUPABASE_DB_URL || process.env.DATABASE_URL,
-      ssl: { rejectUnauthorized: false }
+      ssl: {
+        rejectUnauthorized: false
+      }
     },
     migrations: {
       directory: path.join(__dirname, 'db/migrations')
