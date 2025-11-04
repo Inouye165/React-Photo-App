@@ -166,9 +166,15 @@ export async function recheckInprogressPhotos(serverUrl = `${API_BASE_URL}/photo
   if (handleAuthError(res)) return; if (!res.ok) throw new Error('Failed to trigger recheck'); return await res.json();
 }
 
-export async function recheckPhotoAI(photoId, serverUrl = `${API_BASE_URL}`) {
+export async function recheckPhotoAI(photoId, model = null, serverUrl = `${API_BASE_URL}`) {
   const url = `${serverUrl}/photos/${photoId}/run-ai`;
-  const res = await apiLimiter(() => fetch(url, { method: 'POST', headers: getAuthHeaders(), credentials: 'include' }));
+  const body = model ? JSON.stringify({ model }) : null;
+  const opts = { method: 'POST', headers: getAuthHeaders(), credentials: 'include' };
+  if (body) {
+    opts.body = body;
+    opts.headers = { ...opts.headers, 'Content-Type': 'application/json' };
+  }
+  const res = await apiLimiter(() => fetch(url, opts));
   if (handleAuthError(res)) return; if (!res.ok) {
     const text = await res.text().catch(() => '');
     throw new Error('Failed to trigger photo recheck: ' + (text || res.status));

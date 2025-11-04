@@ -23,12 +23,48 @@ const {
   SCENERY_SYSTEM_PROMPT,
   COLLECTIBLE_SYSTEM_PROMPT
 } = require('./langchain/agents');
+// Also import the configured model names so we can record which model was used
+const { ROUTER_MODEL, SCENERY_MODEL, COLLECTIBLE_MODEL } = require('./langchain/agents');
+// Allow per-request model overrides by creating local ChatOpenAI instances
+// when callers supply model names. Import ChatOpenAI here so we can
+// instantiate temporary agents if needed.
+const { ChatOpenAI } = require('@langchain/openai');
 const { buildPrompt } = require('./langchain/promptTemplate');
 const { convertHeicToJpegBuffer } = require('../media/image');
 const supabase = require('../lib/supabaseClient');
 const { googleSearchTool } = require('./langchain/tools/searchTool');
 
 const MAX_TOOL_ITERATIONS = 4;
+
+// Determine API flavor: 'responses' uses OpenAI Responses API schema (input_image),
+// otherwise fall back to 'chat' which expects chat-style message parts with image_url.
+const API_FLAVOR = process.env.USE_RESPONSES_API === 'true' ? 'responses' : 'chat';
+
+function buildVisionContent(flavor, { systemText, userText, imageUrlOrDataUrl, detail = 'high' }) {
+  if (flavor === 'responses') {
+    return [
+      ...(systemText ? [{ role: 'system', content: [{ type: 'input_text', text: systemText }] }] : []),
+      {
+        role: 'user',
+        content: [
+          { type: 'input_text', text: userText },
+          { type: 'input_image', image_url: { url: imageUrlOrDataUrl, detail } }
+        ]
+      }
+    ];
+  }
+  // chat flavor
+  return [
+    ...(systemText ? [{ role: 'system', content: systemText }] : []),
+    {
+      role: 'user',
+      content: [
+        { type: 'text', text: userText },
+        { type: 'image_url', image_url: { url: imageUrlOrDataUrl, detail } }
+      ]
+    }
+  ];
+}
 
 function normalizeToolCalls(rawCalls) {
   if (!rawCalls) return [];
@@ -130,7 +166,7 @@ async function invokeAgentWithTools(agent, initialMessages, tools = [], options 
  * or JSON embedded inside markdown code fences). It tries JSON parsing first
  * and falls back to heuristics if parsing fails.
  */
-async function processPhotoAI({ fileBuffer, filename, metadata, gps, device }) {
+async function processPhotoAI({ fileBuffer, filename, metadata, gps, device }, modelOverrides = {}) {
   // OPENAI_API_KEY is validated at module load time (fail-fast)
 
 
@@ -216,19 +252,42 @@ async function processPhotoAI({ fileBuffer, filename, metadata, gps, device }) {
   });
 
   // Step 1: Route/classify the image
-  const routerMessages = [
-    { role: 'system', content: `${ROUTER_SYSTEM_PROMPT}\n\n${locationPrompt}` },
-    { role: 'user', content: [
-      { type: 'text', text: `Classify the image focal point as scenery_or_general_subject or specific_identifiable_object. Filename: ${filename}, Device: ${device}, GPS: ${gps}` },
-      { type: 'image_url', image_url: { url: imageDataUri } }
-    ] }
-  ];
+  const routerMessages = buildVisionContent(API_FLAVOR, {
+    systemText: `${ROUTER_SYSTEM_PROMPT}\n\n${locationPrompt}`,
+    userText: `Classify the image focal point as scenery_or_general_subject or specific_identifiable_object. Filename: ${filename}, Device: ${device}, GPS: ${gps}`,
+    imageUrlOrDataUrl: imageDataUri,
+    detail: 'high'
+  });
   let routerResult;
   try {
-    routerResult = await routerAgent.invoke(routerMessages);
+    // Use override router model when provided, otherwise use shared routerAgent
+    const routerModelToUse = (modelOverrides && modelOverrides.router) || ROUTER_MODEL;
+    logger.info('[AI Router] Selected model for router step:', { routerModel: routerModelToUse, override: !!(modelOverrides && modelOverrides.router) });
+    const localRouter = modelOverrides && modelOverrides.router
+      ? new ChatOpenAI({ modelName: modelOverrides.router, temperature: 0.2, maxTokens: 512 })
+      : routerAgent;
+    try {
+      if (API_FLAVOR === 'chat') {
+        routerResult = await localRouter.invoke(routerMessages);
+      } else {
+        // Responses API path
+        const OpenAI = (await import('openai')).default;
+        const client = new OpenAI({ apiKey: process.env.OPENAI_API_KEY });
+        const routerResponsesModel = modelOverrides && modelOverrides.router ? modelOverrides.router : ROUTER_MODEL;
+        logger.info('[AI Router] Responses API model selected:', routerResponsesModel);
+        const response = await client.responses.create({ model: routerResponsesModel, input: routerMessages });
+        routerResult = { content: response.output_text || JSON.stringify(response) };
+      }
       logger.debug('[AI Router] Output:', JSON.stringify(routerResult, null, 2));
+    } catch (err) {
+      const msg = String(err && (err.message || err));
+      if (msg.includes('image_url is only supported')) {
+        logger.error('[vision] Schema/model mismatch detected for router: image_url unsupported by chosen model/flavor. Check USE_RESPONSES_API and model selection.');
+      }
+      throw err;
+    }
   } catch (err) {
-      logger.error('[AI Router] Failed:', err);
+    logger.error('[AI Router] Failed:', err);
     throw err;
   }
   // Extract classification from routerAgent output
@@ -276,23 +335,17 @@ async function processPhotoAI({ fileBuffer, filename, metadata, gps, device }) {
 
   // Step 2: Run the appropriate agent
   let agentResult;
-  const baseUserMessage = {
-    role: 'user',
-    content: [
-      { type: 'text', text: `Analyze the image. Filename: ${filename}, Device: ${device}, GPS: ${gps}` },
-      { type: 'image_url', image_url: { url: imageDataUri } }
-    ]
-  };
-  const collectibleUserMessage = {
-    role: 'user',
-    content: [
-      {
-        type: 'text',
-        text: `Perform a high-resolution examination of the collectible. Zoom into patterns, textures, stamps, and micro-markings that prove authenticity. Describe every notable detail before researching provenance and value. Filename: ${filename}, Device: ${device}, GPS: ${gps}`
-      },
-      { type: 'image_url', image_url: { url: imageDataUri } }
-    ]
-  };
+  const baseUserMessage = buildVisionContent(API_FLAVOR, {
+    userText: `Analyze the image. Filename: ${filename}, Device: ${device}, GPS: ${gps}`,
+    imageUrlOrDataUrl: imageDataUri,
+    detail: 'high'
+  }).pop();
+
+  const collectibleUserMessage = buildVisionContent(API_FLAVOR, {
+    userText: `Perform a high-resolution examination of the collectible. Zoom into patterns, textures, stamps, and micro-markings that prove authenticity. Describe every notable detail before researching provenance and value. Filename: ${filename}, Device: ${device}, GPS: ${gps}`,
+    imageUrlOrDataUrl: imageDataUri,
+    detail: 'high'
+  }).pop();
   let agentMessages;
   if (classification === 'scenery_or_general_subject') {
     agentMessages = [
@@ -300,9 +353,32 @@ async function processPhotoAI({ fileBuffer, filename, metadata, gps, device }) {
       baseUserMessage
     ];
     try {
-      agentResult = await sceneryAgent.invoke(agentMessages);
+      try {
+        const localScenery = modelOverrides && modelOverrides.scenery
+          ? new ChatOpenAI({ modelName: modelOverrides.scenery, temperature: 0.3, maxTokens: 1024 })
+          : sceneryAgent;
+            const sceneryModelToUse = (modelOverrides && modelOverrides.scenery) || SCENERY_MODEL;
+            logger.info('[AI Scenery] Selected model for scenery step:', { sceneryModel: sceneryModelToUse, override: !!(modelOverrides && modelOverrides.scenery) });
+        if (API_FLAVOR === 'chat') {
+          agentResult = await localScenery.invoke(agentMessages);
+        } else {
+          const OpenAI = (await import('openai')).default;
+          const client = new OpenAI({ apiKey: process.env.OPENAI_API_KEY });
+          const contentBlocks = agentMessages; // already constructed in responses shape
+          const sceneryResponsesModel = modelOverrides && modelOverrides.scenery ? modelOverrides.scenery : SCENERY_MODEL;
+          logger.info('[AI Scenery] Responses API model selected:', sceneryResponsesModel);
+          const result = await client.responses.create({ model: sceneryResponsesModel, input: contentBlocks });
+          agentResult = { content: result.output_text || JSON.stringify(result) };
+        }
+      } catch (err) {
+        const msg = String(err && (err.message || err));
+        if (msg.includes('image_url is only supported')) {
+          logger.error('[vision] Schema/model mismatch detected for scenery agent: image_url unsupported by chosen model/flavor.');
+        }
+        throw err;
+      }
     } catch (err) {
-  logger.error('[AI SceneryAgent] Failed:', err);
+      logger.error('[AI SceneryAgent] Failed:', err);
       throw err;
     }
   } else if (classification === 'specific_identifiable_object') {
@@ -311,9 +387,28 @@ async function processPhotoAI({ fileBuffer, filename, metadata, gps, device }) {
       collectibleUserMessage
     ];
     try {
-      agentResult = await invokeAgentWithTools(collectibleAgent, agentMessages, [googleSearchTool]);
+      try {
+        // Use a local collectible agent if an override is provided so we can control cost per-request.
+        const collectibleModelToUse = (modelOverrides && modelOverrides.collectible) || COLLECTIBLE_MODEL;
+        logger.info('[AI Collectible] Selected model for collectible step:', { collectibleModel: collectibleModelToUse, override: !!(modelOverrides && modelOverrides.collectible) });
+        const localCollectible = modelOverrides && modelOverrides.collectible
+          ? new ChatOpenAI({ modelName: modelOverrides.collectible, temperature: 0.25, maxTokens: 1400 })
+          : collectibleAgent;
+        if (API_FLAVOR === 'chat') {
+          agentResult = await invokeAgentWithTools(localCollectible, agentMessages, [googleSearchTool]);
+        } else {
+          // Tools/complex function calling not supported in the Responses API path.
+          throw new Error('Collectible agent with external tools is not supported with the Responses API flavor.');
+        }
+      } catch (err) {
+        const msg = String(err && (err.message || err));
+        if (msg.includes('image_url is only supported')) {
+          logger.error('[vision] Schema/model mismatch detected for collectible agent: image_url unsupported by chosen model/flavor.');
+        }
+        throw err;
+      }
     } catch (err) {
-  logger.error('[AI CollectibleAgent] Failed:', err);
+      logger.error('[AI CollectibleAgent] Failed:', err);
       throw err;
     }
   } else {
@@ -376,6 +471,8 @@ async function processPhotoAI({ fileBuffer, filename, metadata, gps, device }) {
   logger.info('[AI Result] description (truncated):', (result.description || '').slice(0, 300));
   logger.info('[AI Result] keywords:', result.keywords);
 
+  // Include the upstream classification so callers can record which branch ran
+  result.classification = classification;
   return result;
 }
 
@@ -396,7 +493,7 @@ async function processPhotoAI({ fileBuffer, filename, metadata, gps, device }) {
  * @returns {Promise<Object|null>} Returns the AI result object on success, or null when processing failed or retried.
  * @throws Will re-throw unexpected errors only in rare cases; normally returns null on recoverable failures.
  */
-async function updatePhotoAIMetadata(db, photoRow, storagePath) {
+async function updatePhotoAIMetadata(db, photoRow, storagePath, modelOverrides = {}) {
   try {
     const meta = JSON.parse(photoRow.metadata || '{}');
     
@@ -449,7 +546,7 @@ async function updatePhotoAIMetadata(db, photoRow, storagePath) {
         metadata: meta, 
         gps, 
         device 
-      });
+      }, modelOverrides);
     } catch (error) {
   logger.error(`AI processing failed for ${photoRow.filename} (attempt ${retryCount + 1}):`, error.message || error);
       await db('photos').where({ id: photoRow.id }).update({ ai_retry_count: retryCount + 1 });
@@ -491,12 +588,43 @@ async function updatePhotoAIMetadata(db, photoRow, storagePath) {
         ? String(ai.keywords).trim()
         : generateKeywordsFallback(description);
 
+      // Append model usage entry to ai_model_history (stored as JSON text)
+      let prevHistory = [];
+      try {
+        if (photoRow.ai_model_history) {
+          prevHistory = typeof photoRow.ai_model_history === 'string'
+            ? JSON.parse(photoRow.ai_model_history || '[]')
+            : photoRow.ai_model_history;
+        }
+      } catch (e) {
+        logger.warn('Failed to parse existing ai_model_history for', photoRow.id, e && e.message);
+        prevHistory = [];
+      }
+
+      const modelEntry = {
+        timestamp: new Date().toISOString(),
+        runType: modelOverrides && Object.keys(modelOverrides).length ? 'recheck' : 'initial',
+        classification: (ai && ai.classification) || null,
+        modelsUsed: {
+          router: (modelOverrides && modelOverrides.router) || ROUTER_MODEL,
+          scenery: (modelOverrides && modelOverrides.scenery) || SCENERY_MODEL,
+          collectible: (modelOverrides && modelOverrides.collectible) || COLLECTIBLE_MODEL
+        },
+        result: {
+          caption,
+          keywords
+        }
+      };
+
+      const newHistory = Array.isArray(prevHistory) ? [...prevHistory, modelEntry] : [modelEntry];
+
       await db('photos').where({ id: photoRow.id }).update({
         caption,
         description,
         keywords,
         ai_retry_count: 0,
-        poi_analysis: JSON.stringify((ai && ai.poiAnalysis) || null)
+        poi_analysis: JSON.stringify((ai && ai.poiAnalysis) || null),
+        ai_model_history: JSON.stringify(newHistory)
       });
 
       // Fetch saved row to confirm

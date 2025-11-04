@@ -217,13 +217,7 @@ function App() {
             onMarkFinished={async () => {
               await handleMoveToFinished(activePhoto.id);
             }}
-            onRecheckAI={async () => {
-              try {
-                await handleRecheckSinglePhoto(activePhoto.id);
-              } catch {
-                /* toast already reported error */
-              }
-            }}
+            onRecheckAI={handleRecheckSinglePhoto}
             isRechecking={pollingPhotoId === activePhoto.id}
             apiBaseUrl={API_BASE_URL}
           />

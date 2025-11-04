@@ -160,9 +160,9 @@ function usePhotoManagement() {
   }, [apiOrigin, updatePhotoData]);
 
   const handleRecheckSinglePhoto = useCallback(
-    async (photoId) => {
+    async (photoId, model = null) => {
       try {
-        const response = await recheckPhotoAI(photoId);
+        const response = await recheckPhotoAI(photoId, model);
         setToast({ message: 'AI recheck initiated. Polling for results...', severity: 'info' });
         setPollingPhotoId(photoId);
         return response;

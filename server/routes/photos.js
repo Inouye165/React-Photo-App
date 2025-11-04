@@ -3,6 +3,7 @@ const path = require('path');
 const { convertHeicToJpegBuffer } = require('../media/image');
 const { updatePhotoAIMetadata } = require('../ai/service');
 const { addAIJob, checkRedisAvailable } = require('../queue/index');
+const { MODEL_ALLOWLIST } = require('../ai/langchain/agents');
 const sharp = require('sharp');
 const exifr = require('exifr');
 const supabase = require('../lib/supabaseClient');
@@ -51,7 +52,7 @@ module.exports = function createPhotosRouter({ db }) {
   router.get('/photos', authenticateToken, async (req, res) => {
     try {
       const state = req.query.state;
-      let query = db('photos').select('id', 'filename', 'state', 'metadata', 'hash', 'file_size', 'caption', 'description', 'keywords', 'text_style', 'edited_filename', 'storage_path');
+  let query = db('photos').select('id', 'filename', 'state', 'metadata', 'hash', 'file_size', 'caption', 'description', 'keywords', 'text_style', 'edited_filename', 'storage_path', 'ai_model_history');
       
       if (state === 'working' || state === 'inprogress' || state === 'finished') {
         query = query.where({ state });
@@ -81,6 +82,8 @@ module.exports = function createPhotosRouter({ db }) {
         }
         photoUrl = `/display/${row.state}/${row.filename}`;
 
+        let parsedHistory = null;
+        try { parsedHistory = row.ai_model_history ? JSON.parse(row.ai_model_history) : null; } catch { parsedHistory = null; }
         return {
           id: row.id,
           filename: row.filename,
@@ -95,7 +98,8 @@ module.exports = function createPhotosRouter({ db }) {
           editedFilename: row.edited_filename,
           storagePath: row.storage_path,
           url: photoUrl,
-          thumbnail: thumbnailUrl
+          thumbnail: thumbnailUrl,
+          aiModelHistory: parsedHistory
         };
       }));
 
@@ -141,7 +145,8 @@ module.exports = function createPhotosRouter({ db }) {
         editedFilename: row.edited_filename,
         storagePath: row.storage_path,
         url,
-        thumbnail
+        thumbnail,
+        aiModelHistory: (() => { try { return row.ai_model_history ? JSON.parse(row.ai_model_history) : null; } catch { return null; } })()
       };
 
       res.set('Cache-Control', 'no-store');
@@ -598,12 +603,31 @@ module.exports = function createPhotosRouter({ db }) {
         // Fallback to synchronous processing when Redis is not available
         logger.info(`[API] Redis unavailable - processing AI recheck synchronously for photoId: ${photo.id}`);
         const storagePath = photo.storage_path || `${photo.state}/${photo.filename}`;
-        await updatePhotoAIMetadata(db, photo, storagePath);
+        // Allow callers to request a different model for this recheck via body or query
+        const modelOverride = req.body && req.body.model ? req.body.model : (req.query && req.query.model ? req.query.model : null);
+        logger.info('[API] /photos/:id/recheck-ai called', { photoId: photo.id, body: req.body, query: req.query, modelOverride });
+        // Validate client-supplied model override against allowlist
+        if (modelOverride && !MODEL_ALLOWLIST.includes(modelOverride)) {
+          return res.status(400).json({ success: false, error: 'Unsupported model override', allowedModels: MODEL_ALLOWLIST });
+        }
+        const modelOverrides = modelOverride ? { router: modelOverride, scenery: modelOverride, collectible: modelOverride } : {};
+        await updatePhotoAIMetadata(db, photo, storagePath, modelOverrides);
         return res.status(200).json({ message: 'AI recheck completed synchronously.', photoId: photo.id });
       }
 
       // Enqueue a job for rechecking AI metadata
-      await addAIJob(photo.id);
+      // If client supplied a model override, attach it to the job so the worker will use it
+      const modelOverride = req.body && req.body.model ? req.body.model : (req.query && req.query.model ? req.query.model : null);
+      logger.info('[API] /photos/:id/run-ai called', { photoId: photo.id, body: req.body, query: req.query, modelOverride });
+      if (modelOverride && !MODEL_ALLOWLIST.includes(modelOverride)) {
+        return res.status(400).json({ success: false, error: 'Unsupported model override', allowedModels: MODEL_ALLOWLIST });
+      }
+      if (modelOverride === 'gpt-image-1') {
+        return res.status(400).json({ success: false, error: 'gpt-image-1 is an image-generation model and cannot be used for text analysis. Choose a vision-analysis model (e.g., gpt-4o-mini).' });
+      }
+      const jobOptions = {};
+      if (modelOverride) jobOptions.modelOverrides = { router: modelOverride, scenery: modelOverride, collectible: modelOverride };
+      await addAIJob(photo.id, jobOptions);
       logger.info(`[API] Enqueued AI recheck for photoId: ${photo.id}`);
       return res.status(202).json({ message: 'AI recheck queued.', photoId: photo.id });
     } catch (error) {
@@ -628,9 +652,14 @@ module.exports = function createPhotosRouter({ db }) {
         
         // Use the storage path for AI processing
         const storagePath = photo.storage_path || `${photo.state}/${photo.filename}`;
-        
+        // Allow caller to override model via body or query
+        const modelOverride = req.body && req.body.model ? req.body.model : (req.query && req.query.model ? req.query.model : null);
+        if (modelOverride && !MODEL_ALLOWLIST.includes(modelOverride)) {
+          return res.status(400).json({ success: false, error: 'Unsupported model override', allowedModels: MODEL_ALLOWLIST });
+        }
+        const modelOverrides = modelOverride ? { router: modelOverride, scenery: modelOverride, collectible: modelOverride } : {};
         // Process AI synchronously (this will need to be updated to work with Supabase storage)
-        await updatePhotoAIMetadata(db, photo, storagePath);
+        await updatePhotoAIMetadata(db, photo, storagePath, modelOverrides);
         
         return res.status(200).json({
           message: 'AI processing completed synchronously.',
@@ -639,7 +668,16 @@ module.exports = function createPhotosRouter({ db }) {
       }
 
       // Add a job to the queue when Redis is available
-      await addAIJob(photo.id);
+      const modelOverride = req.body && req.body.model ? req.body.model : (req.query && req.query.model ? req.query.model : null);
+      if (modelOverride && !MODEL_ALLOWLIST.includes(modelOverride)) {
+        return res.status(400).json({ success: false, error: 'Unsupported model override', allowedModels: MODEL_ALLOWLIST });
+      }
+      if (modelOverride === 'gpt-image-1') {
+        return res.status(400).json({ success: false, error: 'gpt-image-1 is an image-generation model and cannot be used for text analysis. Choose a vision-analysis model (e.g., gpt-4o-mini).' });
+      }
+      const jobOptions = {};
+      if (modelOverride) jobOptions.modelOverrides = { router: modelOverride, scenery: modelOverride, collectible: modelOverride };
+      await addAIJob(photo.id, jobOptions);
 
   logger.info(`[API] Enqueued AI processing for photoId: ${photo.id}`);
 

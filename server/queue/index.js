@@ -42,8 +42,9 @@ async function initializeQueue() {
        * causing the job to be retried according to worker options.
        */
       const processor = async (job) => {
-        const { photoId } = job.data;
-  logger.info(`[WORKER] Processing AI job for photoId: ${photoId}`);
+        const { photoId, modelOverrides } = job.data || {};
+      logger.info(`[WORKER] Processing AI job for photoId: ${photoId}`);
+      logger.info('[WORKER] Job payload modelOverrides:', JSON.stringify(modelOverrides || {}));
 
         try {
           // Re-fetch the photo data
@@ -55,8 +56,8 @@ async function initializeQueue() {
           // Use storage path for AI processing
           const storagePath = photo.storage_path || `${photo.state}/${photo.filename}`;
 
-          // Call the existing AI service function
-          await updatePhotoAIMetadata(db, photo, storagePath);
+          // Call the existing AI service function. Pass along any model overrides
+          await updatePhotoAIMetadata(db, photo, storagePath, modelOverrides);
 
           logger.info(`[WORKER] Successfully processed job for photoId: ${photoId}`);
         } catch (error) {
@@ -106,12 +107,15 @@ async function checkRedisAvailable() {
 }
 
 // Export functions to handle queue operations
-const addAIJob = async (photoId) => {
+const addAIJob = async (photoId, options = {}) => {
   await initializeQueue();
   if (!redisAvailable || !aiQueue) {
     throw new Error('Queue service unavailable - Redis connection required');
   }
-  return await aiQueue.add('process-photo-ai', { photoId });
+  const jobData = { photoId };
+  if (options && options.modelOverrides) jobData.modelOverrides = options.modelOverrides;
+  if (options && options.models) jobData.modelOverrides = options.models;
+  return await aiQueue.add('process-photo-ai', jobData);
 };
 
 // For direct worker usage (worker.js)

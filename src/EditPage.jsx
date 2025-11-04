@@ -3,6 +3,8 @@ import ImageCanvasEditor from './ImageCanvasEditor'
 import { useAuth } from './contexts/AuthContext'
 import { API_BASE_URL, fetchProtectedBlobUrl, revokeBlobUrl } from './api.js'
 import useStore from './store.js'
+import ModelSelect from './components/ModelSelect'
+import { DEFAULT_MODEL } from './config/modelCatalog'
 
 export default function EditPage({ photo, onClose, onSave, onFinished, onRecheckAI, setToast }) {
   // AuthContext no longer exposes client-side token (httpOnly cookies are used).
@@ -22,6 +24,7 @@ export default function EditPage({ photo, onClose, onSave, onFinished, onRecheck
   const [recheckStatus, setRecheckStatus] = useState('idle')
   const prevPhotoRef = React.useRef(photo)
   const doneTimeoutRef = React.useRef(null)
+  const [selectedModel, setSelectedModel] = useState(DEFAULT_MODEL)
 
   
 
@@ -241,38 +244,58 @@ export default function EditPage({ photo, onClose, onSave, onFinished, onRecheck
   <h1 className="text-lg font-bold">Edit Photo — {sourcePhoto?.filename || photo?.filename}</h1>
         <div className="flex gap-2">
           <button onClick={onClose} className="px-3 py-1 text-sm bg-gray-200 rounded hover:bg-gray-300">Back</button>
-          <button
-                onClick={async () => {
-              try {
-                // immediate visual change
-                setRecheckStatus('in-progress')
-                setRecheckingAI(true)
-                if (typeof onRecheckAI === 'function') {
-                      await onRecheckAI(sourcePhoto?.id || photo.id)
-                  toast({ message: 'AI recheck started.', severity: 'info' })
-                } else {
-                  toast({ message: 'Recheck handler not available', severity: 'warning' })
+          <div className="relative inline-block">
+            <button
+              onClick={async () => {
+                try {
+                  // immediate visual change
+                  setRecheckStatus('in-progress')
+                  setRecheckingAI(true)
+                  if (typeof onRecheckAI === 'function') {
+                    // Explicitly pass photo id and null model to request default (cheaper) model
+                    await onRecheckAI(sourcePhoto?.id || photo.id, null)
+                    toast({ message: 'AI recheck started.', severity: 'info' })
+                  } else {
+                    toast({ message: 'Recheck handler not available', severity: 'warning' })
+                  }
+                } catch (err) {
+                  console.error('Recheck failed', err)
+                  setRecheckStatus('error')
+                  toast({ message: 'AI recheck failed: ' + (err && err.message ? err.message : err), severity: 'error' })
+                } finally {
+                  setRecheckingAI(false)
                 }
-              } catch (err) {
-                console.error('Recheck failed', err)
-                setRecheckStatus('error')
-                toast({ message: 'AI recheck failed: ' + (err && err.message ? err.message : err), severity: 'error' })
-              } finally {
-                setRecheckingAI(false)
+              }}
+              disabled={recheckingAI || isPolling}
+              className={
+                'px-3 py-1 text-sm rounded disabled:opacity-50 ' + (
+                  recheckStatus === 'in-progress' ? 'bg-yellow-500 text-black hover:bg-yellow-600' :
+                  recheckStatus === 'done' ? 'bg-green-600 text-white hover:bg-green-700' :
+                  recheckStatus === 'error' ? 'bg-red-600 text-white hover:bg-red-700' :
+                  'bg-green-600 text-white hover:bg-green-700'
+                )
               }
-            }}
-            disabled={recheckingAI || isPolling}
-            className={
-              'px-3 py-1 text-sm rounded disabled:opacity-50 ' + (
-                recheckStatus === 'in-progress' ? 'bg-yellow-500 text-black hover:bg-yellow-600' :
-                recheckStatus === 'done' ? 'bg-green-600 text-white hover:bg-green-700' :
-                recheckStatus === 'error' ? 'bg-red-600 text-white hover:bg-red-700' :
-                'bg-green-600 text-white hover:bg-green-700'
-              )
-            }
-          >
-            {recheckingAI || recheckStatus === 'in-progress' ? 'Rechecking...' : (recheckStatus === 'done' ? 'Done' : (recheckStatus === 'error' ? 'Error - Retry' : 'Recheck AI'))}
-          </button>
+            >
+              {recheckingAI || recheckStatus === 'in-progress' ? 'Rechecking...' : (recheckStatus === 'done' ? 'Done' : (recheckStatus === 'error' ? 'Error - Retry' : 'Recheck AI'))}
+            </button>
+            <button
+              onClick={() => {
+                const model = selectedModel || DEFAULT_MODEL
+                try {
+                  if (typeof onRecheckAI === 'function') onRecheckAI(sourcePhoto?.id || photo.id, model);
+                } catch (err) {
+                  console.warn('recheck failed', err);
+                }
+              }}
+              title="Recheck with selected model"
+              className="ml-1 px-2 py-1 bg-purple-700 text-white rounded text-sm"
+            >
+              ▾
+            </button>
+            <div className="ml-2">
+              <ModelSelect value={selectedModel} onChange={setSelectedModel} compact />
+            </div>
+          </div>
           <button onClick={() => { onFinished(sourcePhoto?.id || photo.id); }} className="px-3 py-1 text-sm bg-green-600 text-white rounded hover:bg-green-700">Mark as Finished</button>
         </div>
       </div>

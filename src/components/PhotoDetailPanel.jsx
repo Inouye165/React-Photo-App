@@ -1,5 +1,7 @@
 import React from 'react';
 import { toUrl } from '../utils/toUrl.js';
+import ModelSelect from './ModelSelect';
+import { DEFAULT_MODEL } from '../config/modelCatalog';
 
 export default function PhotoDetailPanel({
   photo,
@@ -17,6 +19,7 @@ export default function PhotoDetailPanel({
   isRechecking,
   apiBaseUrl,
 }) {
+  const [selectedModel, setSelectedModel] = React.useState(DEFAULT_MODEL);
   if (!photo) return null;
 
   return (
@@ -137,23 +140,46 @@ export default function PhotoDetailPanel({
                   </div>
                 </div>
                 <div className="text-xs text-gray-400 mt-2">Placeholder</div>
+                {photo.aiModelHistory && Array.isArray(photo.aiModelHistory) && (
+                  <div className="mt-3 text-xs text-gray-600">
+                    <div className="font-medium text-sm mb-1">AI model history</div>
+                    <ul className="list-none ml-0 space-y-2">
+                      {photo.aiModelHistory.slice().reverse().map((entry, idx) => (
+                        <li key={idx} className="p-2 bg-white border rounded">
+                          <div className="text-xs text-gray-500">{new Date(entry.timestamp).toLocaleString()}</div>
+                          <div className="text-sm">Run: <span className="font-medium">{entry.runType}</span></div>
+                          <div className="text-sm">Models: <code className="text-xs">{entry.modelsUsed && Object.entries(entry.modelsUsed).map(([k,v])=>`${k}:${v}`).join(', ')}</code></div>
+                          <div className="text-sm">Caption: <span className="text-gray-700">{entry.result && entry.result.caption}</span></div>
+                          <div className="text-sm">Keywords: <span className="text-gray-700">{entry.result && entry.result.keywords}</span></div>
+                        </li>
+                      ))}
+                    </ul>
+                  </div>
+                )}
               </div>
             </section>
           </div>
 
           <div className="sticky bottom-0 bg-white pt-2 -mx-4 px-4 pb-2 border-t">
-            <div className="flex justify-end gap-2 flex-wrap">
+            <div className="flex justify-end gap-2 flex-wrap items-center">
               <button onClick={onClose} className="px-3 py-1 bg-gray-100 border rounded text-sm">
                 Close
               </button>
               {onRecheckAI && (
-                <button
-                  onClick={onRecheckAI}
-                  className="px-3 py-1 bg-purple-600 text-white rounded text-sm disabled:opacity-60 disabled:cursor-not-allowed"
-                  disabled={isRechecking}
-                >
-                  {isRechecking ? 'Rechecking...' : 'Recheck AI'}
-                </button>
+                <div className="flex items-center gap-2">
+                  <ModelSelect value={selectedModel} onChange={setSelectedModel} compact />
+                  <button
+                    onClick={() => {
+                      const model = selectedModel || DEFAULT_MODEL;
+                      try { onRecheckAI(photo.id, model); } catch { /* noop */ }
+                    }}
+                    className="px-3 py-1 bg-purple-600 text-white rounded text-sm disabled:opacity-60 disabled:cursor-not-allowed"
+                    disabled={isRechecking}
+                    title={`Recheck with selected model: ${selectedModel}`}
+                  >
+                    {isRechecking ? 'Rechecking...' : `Recheck AI (${selectedModel})`}
+                  </button>
+                </div>
               )}
               <button onClick={onInlineSave} className="px-3 py-1 bg-blue-600 text-white rounded text-sm">
                 Save

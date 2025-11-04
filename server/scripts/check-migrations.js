@@ -25,7 +25,15 @@ async function verifyMigrations() {
   const isProduction = process.env.NODE_ENV === 'production';
   const forcePostgres = process.env.USE_POSTGRES === 'true' || false;
   const autoDetectPostgres = Boolean(process.env.SUPABASE_DB_URL) && process.env.USE_POSTGRES_AUTO_DETECT !== 'false';
-  const env = (isProduction || forcePostgres || autoDetectPostgres) ? 'production' : (process.env.NODE_ENV || 'development');
+  // During tests (Jest sets NODE_ENV='test') prefer the 'test' knex config even
+  // if SUPABASE_DB_URL is present. This prevents local/CI tests from attempting
+  // to contact a remote Postgres instance unless explicitly requested.
+  let env;
+  if (process.env.NODE_ENV === 'test') {
+    env = 'test';
+  } else {
+    env = (isProduction || forcePostgres || autoDetectPostgres) ? 'production' : (process.env.NODE_ENV || 'development');
+  }
 
   const cfg = knexfile[env];
   if (!cfg) {

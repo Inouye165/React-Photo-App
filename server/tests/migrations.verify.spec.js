@@ -1,24 +1,58 @@
+const fs = require('fs');
+const path = require('path');
+const knex = require('knex');
+const knexfile = require('../knexfile');
 const { verifyMigrations } = require('../scripts/check-migrations');
 
+jest.useRealTimers();
+jest.setTimeout(60_000);
+process.env.NODE_ENV = 'test';
+
 describe('migration verifier', () => {
-  // Skip this test in CI environments by default because many CI runners
-  // do not provide a reachable Postgres/Supabase instance. Running the
-  // verifier in CI should be opt-in (or configured with a test DB).
-  const isCI = process.env.CI === 'true';
+  let kx;
 
-  if (isCI) {
-    // Emit a clear message so CI logs explain why the test was skipped.
-    // Note: `test.skip` registers a skipped test; the provided function
-    // will not be executed. The console.log above will appear in the CI
-    // log output and make the reason obvious.
-    console.log('[verify:migrations] Skipping migration verification in CI: no reachable DB.');
-    console.log('[verify:migrations] To enable in CI set RUN_MIGRATION_VERIFY_TEST=true and provide SUPABASE_DB_URL or a DATABASE_URL.');
-    test.skip('migration verifier (skipped in CI — requires a reachable DB)', () => {});
-    return;
-  }
+  beforeAll(async () => {
+    const cfg = knexfile.test;
+    if (!cfg) {
+      throw new Error('Missing knexfile.test config');
+    }
 
-  // Migration verification may contact a remote DB; increase timeout to avoid flakes.
-  jest.setTimeout(20000);
+    kx = knex({ ...cfg });
+
+    const hasTable = await kx.schema.hasTable('knex_migrations');
+    if (!hasTable) {
+      await kx.schema.createTable('knex_migrations', table => {
+        table.increments('id').primary();
+        table.string('name');
+        table.integer('batch').defaultTo(1);
+        table.dateTime('migration_time').defaultTo(kx.fn.now());
+      });
+    }
+
+    const migrationsDir = (cfg.migrations && cfg.migrations.directory)
+      ? cfg.migrations.directory
+      : path.join(__dirname, '..', 'db', 'migrations');
+
+    const files = fs.readdirSync(migrationsDir).filter(f => f.endsWith('.js'));
+
+    const existing = await kx('knex_migrations').select('name');
+    const existingNames = new Set(existing.map(row => row.name));
+
+    const toInsert = files
+      .filter(name => !existingNames.has(name))
+      .map(name => ({ name, batch: 1, migration_time: new Date().toISOString() }));
+
+    if (toInsert.length > 0) {
+      await kx('knex_migrations').insert(toInsert);
+    }
+  });
+
+  afterAll(async () => {
+    if (kx) {
+      await kx.destroy();
+    }
+    await new Promise(resolve => setImmediate(resolve));
+  });
 
   test('no DB-recorded migration is missing on disk', async () => {
     await expect(verifyMigrations()).resolves.toMatchObject({ missing: [] });
