@@ -38,9 +38,11 @@ jobs:
           PHOTO_WORKING_DIR: ${{ runner.temp }}/photo-working
           NODE_ENV: test
           DB_PATH: ":memory:"
+          ALLOW_SQLITE_FALLBACK: "true"
           # Mock Supabase environment variables for testing
           SUPABASE_URL: https://test.supabase.co
           SUPABASE_SERVICE_ROLE_KEY: test-service-role-key
+          SUPABASE_ANON_KEY: test-anon-key
           DATABASE_URL: postgresql://test:test@localhost:5432/test
           JWT_SECRET: test-jwt-secret-key-for-testing-only
           # --- ADD THESE MOCK KEYS ---
