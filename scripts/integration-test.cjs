@@ -167,9 +167,10 @@ function postPrivilege(authToken) {
 (async function run() {
   // Run database migrations before starting the server
   console.log('Running database migrations...');
-  const migrationProcess = spawn('npm', ['run', 'migrate', '--prefix', 'server'], { 
+  const migrationProcess = spawn('npx', ['knex', 'migrate:latest', '--knexfile', 'server/knexfile.js'], { 
     stdio: 'inherit',
-    shell: true
+    shell: true,
+    env: process.env
   });
   
   await new Promise((resolve, reject) => {
