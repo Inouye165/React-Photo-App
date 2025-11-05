@@ -1,5 +1,29 @@
 # Problem Log
 
+## [2025-11-04 17:10 PST] Unexpected modification of `server/routes/auth.js` after system restart
+
+**Symptoms (first seen):**
+- `server/routes/auth.js` showed as modified in `git status` immediately after shutting down and restarting the laptop
+- `git` printed a warning: "in the working copy of 'server/routes/auth.js', CRLF will be replaced by LF the next time Git touches it"
+- `git diff` revealed lines in the auth rate-limiting logic were different (development limits relaxed to 100 / 20)
+- This made it hard to distinguish intentional code edits from line-ending normalization
+
+**Root Cause:**
+- The working copy used Windows CRLF line endings while the repository enforces LF via `.gitattributes` (`*.js text eol=lf`).
+- When files are saved with CRLF on Windows, Git marks them as modified because it will normalize them to LF on commit.
+- The visible code change (rate-limiting values) was an intentional development edit; the line-ending mismatch made the file appear modified across shutdowns and restarts.
+
+**Fix:**
+- Staged and committed the intentional rate-limiting changes and allowed Git to normalize line endings during the commit.
+- Confirmed the working copy now matches the repository LF setting; file no longer appears as unexpectedly modified after restart.
+
+**Prevention:**
+- Ensure editors respect repository `.gitattributes` (VS Code typically does this automatically). Optionally set `"files.eol": "\n"` in VS Code workspace settings.
+- If line-ending mismatches reappear, run `git add --renormalize .` to normalize all files and commit the normalization.
+- Keep a habit of checking `git status` before and after system restarts if files appear to flip modified.
+
+---
+
 ## [2025-11-04 16:45 PST] Git Line Ending Issues Causing Phantom File Modifications
 
 **Symptoms:**
