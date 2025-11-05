@@ -36,7 +36,8 @@ jobs:
       - name: Run integration test
         env:
           PHOTO_WORKING_DIR: ${{ runner.temp }}/photo-working
-          NODE_ENV: test
+          NODE_ENV: development
+          USE_POSTGRES_AUTO_DETECT: "false"
           DB_PATH: ":memory:"
           ALLOW_SQLITE_FALLBACK: "true"
           # Mock Supabase environment variables for testing
