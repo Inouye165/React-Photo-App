@@ -302,8 +302,10 @@ async function processPhotoAI({ fileBuffer, filename, metadata, gps, device }, m
       routerContent = extractText(routerResult.content);
     }
     if (routerContent) {
+      // Unwrap markdown code fences before parsing
+      const unwrappedContent = unwrapMarkdownJson(routerContent);
       try {
-        const parsedRouter = JSON.parse(routerContent);
+        const parsedRouter = JSON.parse(unwrappedContent);
         if (parsedRouter && typeof parsedRouter.classification === 'string') {
           classification = parsedRouter.classification;
         }
@@ -311,7 +313,7 @@ async function processPhotoAI({ fileBuffer, filename, metadata, gps, device }, m
         // ignore JSON parse errors; fallback below
       }
       if (!classification) {
-        const normalized = routerContent.toLowerCase();
+        const normalized = unwrappedContent.toLowerCase();
         if (normalized.includes('scenery_or_general_subject') || normalized.includes('scenery or general subject')) {
           classification = 'scenery_or_general_subject';
         } else if (normalized.includes('specific_identifiable_object') || normalized.includes('specific identifiable object')) {
@@ -412,7 +414,43 @@ async function processPhotoAI({ fileBuffer, filename, metadata, gps, device }, m
       throw err;
     }
   } else {
-    throw new Error('Unknown classification from routerAgent: ' + classification);
+    // Handle unexpected classifications by mapping them to supported categories
+    // Classifications like 'receipt', 'document', 'text', etc. should use scenery agent
+    logger.warn(`[AI Router] Unexpected classification '${classification}' - mapping to scenery_or_general_subject`);
+    classification = 'scenery_or_general_subject';
+    agentMessages = [
+      { role: 'system', content: `${SCENERY_SYSTEM_PROMPT}\n\n${locationPrompt}` },
+      baseUserMessage
+    ];
+    try {
+      try {
+        const localScenery = modelOverrides && modelOverrides.scenery
+          ? new ChatOpenAI({ modelName: modelOverrides.scenery, temperature: 0.3, maxTokens: 1024 })
+          : sceneryAgent;
+            const sceneryModelToUse = (modelOverrides && modelOverrides.scenery) || SCENERY_MODEL;
+            logger.info('[AI Scenery] Selected model for scenery step (fallback):', { sceneryModel: sceneryModelToUse, override: !!(modelOverrides && modelOverrides.scenery) });
+        if (API_FLAVOR === 'chat') {
+          agentResult = await localScenery.invoke(agentMessages);
+        } else {
+          const OpenAI = (await import('openai')).default;
+          const client = new OpenAI({ apiKey: process.env.OPENAI_API_KEY });
+          const contentBlocks = agentMessages;
+          const sceneryResponsesModel = modelOverrides && modelOverrides.scenery ? modelOverrides.scenery : SCENERY_MODEL;
+          logger.info('[AI Scenery] Responses API model selected (fallback):', sceneryResponsesModel);
+          const result = await client.responses.create({ model: sceneryResponsesModel, input: contentBlocks });
+          agentResult = { content: result.output_text || JSON.stringify(result) };
+        }
+      } catch (err) {
+        const msg = String(err && (err.message || err));
+        if (msg.includes('image_url is only supported')) {
+          logger.error('[vision] Schema/model mismatch detected for scenery agent (fallback): image_url unsupported by chosen model/flavor.');
+        }
+        throw err;
+      }
+    } catch (err) {
+      logger.error('[AI SceneryAgent] Failed (fallback):', err);
+      throw err;
+    }
   }
 
   // Helper to extract plain text content from LangChain messages

@@ -1,7 +1,6 @@
 // Load server/.env as the very first runtime config to ensure modules
 // that read process.env later see the correct values regardless of CWD.
 require('./env');
-
 // Helpful startup logs to make it obvious which DB and Supabase configuration
 // are active when the server starts (useful after checking out older commits).
 const environment = process.env.NODE_ENV || 'development';
@@ -69,40 +68,15 @@ const PORT = process.env.PORT || 3001;
 
 
 
-async function startServer() {
-  // Run database migrations
-  await db.migrate.latest();
-
-  // Seed a test photo when running in test mode so we can exercise routes
-  if (process.env.NODE_ENV === 'test') {
-    try {
-      const seedFilename = 'seed-test.jpg';
-      const exists = await db('photos').where({ filename: seedFilename }).first();
-      if (!exists) {
-        await db('photos').insert({
-          filename: seedFilename,
-          state: 'working',
-          metadata: JSON.stringify({}),
-          storage_path: `working/${seedFilename}`,
-          created_at: new Date().toISOString(),
-          updated_at: new Date().toISOString()
-        });
-        const inserted = await db('photos').where({ filename: seedFilename }).first();
-        console.log('[TEST SEED] Inserted test photo id=', inserted.id, 'filename=', seedFilename);
-      } else {
-        console.log('[TEST SEED] Test photo already exists id=', exists.id);
-      }
-    } catch (seedErr) {
-      console.error('Failed to seed test photo:', seedErr && seedErr.message);
-    }
-  }
-
-  // --- Express app and routes ---
-  const express = require('express');
-  const multer = require('multer');
-  const cors = require('cors');
-  const cookieParser = require('cookie-parser');
-  const app = express();
+// --- Express app and routes ---
+const express = require('express');
+const multer = require('multer');
+const cors = require('cors');
+const cookieParser = require('cookie-parser');
+const app = express();
+module.exports = app;
+  // Export app for Supertest
+  module.exports = app;
 
   // Log basic incoming request info for debugging (do NOT log headers which may contain secrets)
   app.use((req, res, next) => {
@@ -244,7 +218,8 @@ async function startServer() {
 
 
 
-  // Start server
+// Start server only if not in test mode
+if (process.env.NODE_ENV !== 'test') {
   app.listen(PORT, () => {
     console.log(`Photo upload server running on port ${PORT}`);
     console.log(`Health check: http://localhost:${PORT}/health`);
@@ -255,7 +230,7 @@ async function startServer() {
   // non-blocking so server startup is not delayed by network issues. We also
   // schedule periodic checks so connectivity problems are surfaced during
   // longer-running development sessions.
-  (async () => {
+ (async () => {
     try {
       const runSmoke = require('./smoke-supabase');
       const supabase = require('./lib/supabaseClient');
@@ -272,12 +247,4 @@ async function startServer() {
       console.warn('[supabase-smoke] Skipped or failed to run smoke-check:', err && err.message ? err.message : err);
     }
   })();
-
 }
-
-// Start server and ensure any top-level async errors are logged clearly
-startServer().catch((err) => {
-  console.error('startServer failed:', err && (err.stack || err.message || err));
-  // Exit with non-zero so process supervisors notice the failure
-  process.exit(1);
-});

@@ -64,9 +64,22 @@ if (isProduction || forcePostgres || autoDetectPostgres) {
 	// local test runs can execute without an externally configured
 	// Postgres/Supabase instance. This keeps behavior predictable for tests
 	// while still enforcing Postgres in development/production.
-	if (environment === 'test') {
-		logger.info('[db] Test environment detected: using sqlite in-memory fallback for tests');
+	// Also allow sqlite fallback when explicitly enabled via ALLOW_SQLITE_FALLBACK
+	// for integration tests that need the server to listen (NODE_ENV=development).
+	if (environment === 'test' || process.env.ALLOW_SQLITE_FALLBACK === 'true') {
+		logger.info('[db] Using sqlite in-memory fallback (test or explicitly allowed)');
 		db = knex(knexConfig.test);
+		
+		// Auto-run migrations for in-memory databases since they start empty
+		if (knexConfig.test.connection === ':memory:') {
+			logger.info('[db] Running migrations for in-memory database...');
+			db.migrate.latest()
+				.then(() => logger.info('[db] Migrations completed'))
+				.catch(err => {
+					logger.error('[db] Migration error:', err);
+					throw err;
+				});
+		}
 	} else {
 		// Fail fast: sqlite fallback has been intentionally removed for
 		// non-test environments. Running without Postgres/Supabase configured

@@ -1,5 +1,7 @@
 name: CI
 
+# Trigger CI: dummy comment for workflow update
+
 on:
   push:
     branches: [ main, chore/cloud-ready-audit ]
@@ -92,6 +94,9 @@ jobs:
           CI: true
           VITE_API_URL: http://localhost:3001
 
+      - name: Create photo working dir
+        run: mkdir -p server/working/photos
+
       # Run the 'test:ci' script from server/package.json
       - name: Run server tests
         run: npm run test:ci --prefix server --silent
@@ -104,5 +109,25 @@ jobs:
           SUPABASE_DB_URL: postgresql://test:test@localhost:5432/test
           SUPABASE_URL: https://test.supabase.co
           SUPABASE_SERVICE_ROLE_KEY: test-service-role-key
+          SUPABASE_ANON_KEY: test-anon-key
           JWT_SECRET: test-jwt-secret-key-for-testing-only
           OPENAI_API_KEY: sk-test-key-for-ci
+          PHOTO_WORKING_DIR: server/working/photos
+
+      - name: Run integration test
+        env:
+          PHOTO_WORKING_DIR: ${{ runner.temp }}/photo-working
+          NODE_ENV: development
+          USE_POSTGRES_AUTO_DETECT: "false"
+          DB_PATH: ":memory:"
+          ALLOW_SQLITE_FALLBACK: "true"
+          SUPABASE_URL: https://test.supabase.co
+          SUPABASE_SERVICE_ROLE_KEY: test-service-role-key
+          SUPABASE_ANON_KEY: test-anon-key
+          OPENAI_API_KEY: sk-test-key-for-ci
+          GOOGLE_API_KEY: sk-test-key-for-ci
+          GOOGLE_CSE_ID: test-cse-id-for-ci
+          JWT_SECRET: test-jwt-secret-key-for-testing-only
+        run: |
+          mkdir -p "$PHOTO_WORKING_DIR"
+          npm run integration-test

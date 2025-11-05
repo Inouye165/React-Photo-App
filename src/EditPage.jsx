@@ -69,41 +69,62 @@ export default function EditPage({ photo, onClose, onSave, onFinished, onRecheck
   const storeSetToast = useStore(state => state.setToast)
   const toast = typeof setToast === 'function' ? setToast : storeSetToast
 
-  const displayUrl = `${API_BASE_URL}${sourcePhoto?.url || photo?.url}`
+  // Use ?v=hash for cache busting. Prefer hash, fallback to updated_at if needed.
+  // This ensures browsers do not show stale pixels after image bytes change.
+  // If hash is unavailable, updated_at is used as a fallback (may be less reliable).
+  const version = sourcePhoto?.hash || sourcePhoto?.updated_at || '';
+  const displayUrl = `${API_BASE_URL}${sourcePhoto?.url || photo?.url}${version ? `?v=${version}` : ''}`;
   const [imageBlobUrl, setImageBlobUrl] = useState(null)
   const [fetchError, setFetchError] = useState(false)
 
+  // Dev double-fetch guard: only fetch once per image in dev/StrictMode
+  const fetchRanRef = React.useRef({});
   useEffect(() => {
-    if (!sourcePhoto || !sourcePhoto.url) return undefined
-    let mounted = true
-    let currentObjectUrl = null
-    setFetchError(false)
+    if (!sourcePhoto || !sourcePhoto.url) return undefined;
+    let mounted = true;
+    let currentObjectUrl = null;
+    setFetchError(false);
 
-    ;(async () => {
+    const key = displayUrl;
+    const fetchRan = fetchRanRef.current; // Capture ref value in effect scope
+    if (fetchRan[key]) {
+      if (import.meta.env.VITE_DEBUG_IMAGES === 'true') {
+        console.log('[DEBUG_IMAGES] Skipping duplicate fetch for', key);
+      }
+      return;
+    }
+    fetchRan[key] = true;
+    if (import.meta.env.VITE_DEBUG_IMAGES === 'true') {
+      console.log('[DEBUG_IMAGES] Fetching image for', key);
+    }
+
+    (async () => {
       try {
-  const objUrl = await fetchProtectedBlobUrl(displayUrl)
+        const objUrl = await fetchProtectedBlobUrl(displayUrl);
         if (!mounted) {
-          if (objUrl) revokeBlobUrl(objUrl)
-          return
+          if (objUrl) revokeBlobUrl(objUrl);
+          return;
         }
-        currentObjectUrl = objUrl
+        currentObjectUrl = objUrl;
         if (objUrl) {
-          setImageBlobUrl(objUrl)
+          setImageBlobUrl(objUrl);
         } else {
-          setFetchError(true)
+          setFetchError(true);
         }
       } catch (err) {
-        console.error('Failed to fetch protected image', err)
-        if (mounted) setFetchError(true)
+        console.error('Failed to fetch protected image', err);
+        if (mounted) setFetchError(true);
       }
-    })()
+    })();
 
     return () => {
-      mounted = false
-      if (currentObjectUrl) revokeBlobUrl(currentObjectUrl)
-      setImageBlobUrl(null)
-    }
-  }, [displayUrl, sourcePhoto])
+      mounted = false;
+      if (currentObjectUrl) revokeBlobUrl(currentObjectUrl);
+      setImageBlobUrl(null);
+      // Reset guard for next image (safe for this use case)
+      fetchRan[key] = false;
+    };
+  }, [displayUrl, sourcePhoto]);
 
   // Watch polling state and photo updates to change the recheck button status
   useEffect(() => {
