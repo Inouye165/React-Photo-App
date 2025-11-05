@@ -1,5 +1,146 @@
 # Problem Log
 
+## [2025-11-05 20:00 PST] Image Caching Implementation - Knex OR Query Incompatibility
+
+**Symptoms (first seen):**
+- Integration test for cache headers failed with `TypeError: db(...).where(...).orWhere is not a function`
+- Error occurred at `/display/inprogress/:filename` endpoint when querying photos table
+- Request returned 500 Internal Server Error instead of expected 200 with cache headers
+- Test authenticated successfully (no 401) but query execution failed
+
+**Root Cause:**
+- PostgreSQL/Knex does not support chaining `.where({ ... })` directly with `.orWhere({ ... })`
+- The photo lookup query attempted to find photos by either `filename` OR `edited_filename`:
+  ```javascript
+  // This syntax is INVALID in Knex
+  .where({ filename, state })
+  .orWhere({ edited_filename: filename, state })
+  ```
+- In Knex, OR conditions must be wrapped in a callback function to create a proper query group
+- This issue was hidden during initial development because tests weren't exercising the edited_filename fallback path
+
+**Fix:**
+- Refactored query to use callback pattern for OR conditions:
+  ```javascript
+  .where(function() {
+    this.where({ filename, state })
+        .orWhere({ edited_filename: filename, state });
+  })
+  ```
+- This creates a properly grouped WHERE clause: `WHERE (filename = ? AND state = ?) OR (edited_filename = ? AND state = ?)`
+- The callback pattern is the correct Knex approach for complex boolean logic
+
+**Prevention:**
+- When writing Knex queries with OR conditions, always use callback functions for grouping
+- Test all query paths, including fallback conditions like `edited_filename`
+- Review Knex documentation for boolean operators: https://knexjs.org/guide/query-builder.html#where
+- Consider using `.whereIn()` or `.orWhereIn()` for simpler alternatives when checking multiple columns for the same value
+
+**Related Learning:**
+- This same pattern applies to `andWhere()`, `whereNot()`, and other Knex boolean methods
+- SQLite and PostgreSQL have different levels of strictness, but the callback pattern works for both
+- Integration tests with real queries are essential to catch these database-specific issues
+
+---
+
+## [2025-11-05 19:30 PST] Test Authentication Failure - Cookie Name Mismatch
+
+**Symptoms (first seen):**
+- Cache header integration test failed with 401 Unauthorized
+- Valid JWT token was generated and included in request
+- Middleware (`imageAuth.js`) rejected the request despite correct token format
+- Manual curl with same token worked, suggesting test setup issue
+
+**Root Cause:**
+- Test was using incorrect cookie name: `token=${authToken}`
+- Production middleware expects cookie named: `authToken` (not `token`)
+- Investigation of `server/middleware/imageAuth.js` line 60 revealed: `req.cookies.authToken`
+- This was a copy-paste error from an older test template that used a different auth system
+
+**Fix:**
+- Updated Supertest request cookie header from:
+  ```javascript
+  .set('Cookie', `token=${authToken}`)
+  ```
+  To:
+  ```javascript
+  .set('Cookie', `authToken=${authToken}`)
+  ```
+- Test now authenticates successfully and verifies cache headers
+
+**Prevention:**
+- Always cross-reference middleware implementation when setting up authentication in tests
+- Grep for actual cookie name usage: `grep -r "req.cookies" server/middleware/`
+- Document the authentication cookie name in test README or test utilities
+- Consider creating a shared test helper for authentication setup to avoid inconsistencies:
+  ```javascript
+  // Example test utility
+  function authenticateRequest(request, token) {
+    return request.set('Cookie', `authToken=${token}`);
+  }
+  ```
+
+**Related Learning:**
+- Production middleware checks both `Authorization` header AND `authToken` cookie
+- Cookie name was changed during secure authentication refactor (see AUTHENTICATION.md)
+- Other tests in the suite (`auth.test.js`, `imageAuth.test.js`) use the correct cookie name
+- When authentication tests fail with 401, always verify cookie/header names match middleware expectations
+
+---
+
+## [2025-11-05 19:00 PST] Database Method Incompatibility - .del() vs .delete()
+
+**Symptoms (first seen):**
+- Test cleanup code using `.del()` method failed in PostgreSQL environment
+- Error message unclear, but test teardown (`afterAll`) was not completing successfully
+- SQLite tests worked fine, but Supabase/PostgreSQL tests failed
+- This only appeared when running tests against production (Supabase) database
+
+**Root Cause:**
+- Knex.js has inconsistent method naming between database dialects
+- `.del()` is supported in SQLite but NOT in PostgreSQL
+- PostgreSQL requires the more explicit `.delete()` method
+- Our test was written for SQLite-first compatibility:
+  ```javascript
+  // This FAILS in PostgreSQL
+  await db('photos').where({ filename: 'test.jpg' }).del();
+  ```
+
+**Fix:**
+- Changed all cleanup queries to use database-agnostic `.delete()` method:
+  ```javascript
+  // This works in both SQLite AND PostgreSQL
+  await db('photos').where({ filename: 'test.jpg' }).delete();
+  ```
+- Updated test file: `server/tests/display.cache.test.js`
+
+**Prevention:**
+- Always use `.delete()` instead of `.del()` for database-agnostic code
+- Both SQLite and PostgreSQL support `.delete()`, so there's no reason to use `.del()`
+- Add this to code review checklist: check for `.del()` usage
+- Consider ESLint rule to ban `.del()` method calls:
+  ```json
+  {
+    "rules": {
+      "no-restricted-syntax": [
+        "error",
+        {
+          "selector": "MemberExpression[property.name='del']",
+          "message": "Use .delete() instead of .del() for database compatibility"
+        }
+      ]
+    }
+  }
+  ```
+
+**Related Learning:**
+- Knex documentation is SQLite-centric and often shows `.del()` in examples
+- Always test against production database dialect (PostgreSQL) before merging
+- Other database-agnostic methods: `.insert()`, `.update()`, `.select()` work consistently
+- Similar issues exist with database-specific SQL functions (use Knex abstractions when possible)
+
+---
+
 ## [2025-11-04 18:00 PST] Server fails to start after restart - Supabase DNS resolution issues
 
 **Symptoms (first seen):**

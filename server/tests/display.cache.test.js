@@ -1,0 +1,74 @@
+// Minimal supertest for /display/inprogress/:filename cache header
+const request = require('supertest');
+const app = require('../server');
+const jwt = require('jsonwebtoken');
+const db = require('../db/index');
+
+// Mock Supabase storage download
+jest.mock('../lib/supabaseClient', () => ({
+  storage: {
+    from: jest.fn(() => ({
+      download: jest.fn(() => Promise.resolve({
+        data: new Blob([Buffer.from('fake-image-data')]),
+        error: null
+      }))
+    }))
+  }
+}));
+
+describe('GET /display/inprogress/:filename', () => {
+  let authToken;
+  let testPhotoId;
+
+  beforeAll(async () => {
+    // Create a test user and generate a valid JWT token
+    const testUser = {
+      username: 'cache_test_user',
+      password_hash: 'fake_hash_for_test'
+    };
+    
+    // Insert test user (if not exists)
+    try {
+      await db('users').insert(testUser);
+    } catch {
+      // User may already exist, that's okay
+    }
+
+    // Generate a valid JWT token
+    const JWT_SECRET = process.env.JWT_SECRET || 'test-secret-key';
+    authToken = jwt.sign({ username: testUser.username }, JWT_SECRET, { expiresIn: '1h' });
+
+    // Create a test photo in the database
+    const insertResult = await db('photos').insert({
+      filename: 'test_cache_photo.jpg',
+      state: 'inprogress',
+      metadata: '{}',
+      hash: 'test-hash-123',
+      storage_path: 'inprogress/test_cache_photo.jpg',
+      created_at: new Date().toISOString(),
+      updated_at: new Date().toISOString()
+    });
+    
+    // Handle different return values for SQLite vs PostgreSQL
+    testPhotoId = Array.isArray(insertResult) ? insertResult[0] : insertResult;
+  });
+
+  afterAll(async () => {
+    // Clean up test data
+    if (testPhotoId) {
+      await db('photos').where({ id: testPhotoId }).delete();
+    }
+    await db('users').where({ username: 'cache_test_user' }).delete();
+  });
+
+  it('should include Cache-Control header with max-age', async () => {
+    const filename = 'test_cache_photo.jpg';
+    const res = await request(app)
+      .get(`/display/inprogress/${filename}`)
+      .set('Cookie', `authToken=${authToken}`)
+      .expect(200);
+    expect(res.headers['cache-control']).toMatch(/max-age=\d+/);
+    expect(res.headers['cache-control']).toMatch(/public/);
+    expect(res.headers['etag']).toBeDefined();
+  });
+});
