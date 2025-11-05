@@ -12,7 +12,7 @@ const PRIV_URL = { hostname: 'localhost', port: 3001, path: '/privilege', method
 
 // Test user credentials for integration testing
 const TEST_USER = {
-  username: `test${Date.now()}`,
+  username: `test_${Date.now()}`,
   email: `test${Date.now()}@example.com`,
   password: 'IntegrationTest123!'
 };
@@ -107,8 +107,8 @@ async function registerAndLogin() {
     // If login failed, try creating a user with different credentials
     console.log('Initial login failed, trying to register with unique credentials...');
     const uniqueUser = {
-      username: `test-${Date.now()}`,
-      email: `test-${Date.now()}@example.com`,
+      username: `test_${Date.now()}`,
+      email: `test_${Date.now()}@example.com`,
       password: 'IntegrationTest123!'
     };
     
