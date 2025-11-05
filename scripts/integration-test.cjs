@@ -165,27 +165,6 @@ function postPrivilege(authToken) {
 }
 
 (async function run() {
-  // Run database migrations before starting the server
-  console.log('Running database migrations...');
-  const migrationProcess = spawn('npx', ['knex', 'migrate:latest', '--knexfile', 'server/knexfile.js'], { 
-    stdio: 'inherit',
-    shell: true,
-    env: process.env
-  });
-  
-  await new Promise((resolve, reject) => {
-    migrationProcess.on('exit', (code) => {
-      if (code !== 0) {
-        console.error('Migration failed with code', code);
-        reject(new Error(`Migration failed with code ${code}`));
-      } else {
-        console.log('Migrations completed successfully');
-        resolve();
-      }
-    });
-    migrationProcess.on('error', reject);
-  });
-  
   console.log('Starting server...');
   const srv = spawn(SERVER_CMD, SERVER_ARGS, { stdio: ['ignore', 'pipe', 'pipe'] });
 

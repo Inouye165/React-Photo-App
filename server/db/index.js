@@ -69,6 +69,17 @@ if (isProduction || forcePostgres || autoDetectPostgres) {
 	if (environment === 'test' || process.env.ALLOW_SQLITE_FALLBACK === 'true') {
 		logger.info('[db] Using sqlite in-memory fallback (test or explicitly allowed)');
 		db = knex(knexConfig.test);
+		
+		// Auto-run migrations for in-memory databases since they start empty
+		if (knexConfig.test.connection === ':memory:') {
+			logger.info('[db] Running migrations for in-memory database...');
+			db.migrate.latest()
+				.then(() => logger.info('[db] Migrations completed'))
+				.catch(err => {
+					logger.error('[db] Migration error:', err);
+					throw err;
+				});
+		}
 	} else {
 		// Fail fast: sqlite fallback has been intentionally removed for
 		// non-test environments. Running without Postgres/Supabase configured
