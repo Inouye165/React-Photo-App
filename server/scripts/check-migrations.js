@@ -30,7 +30,7 @@ if (typeof process.env.JEST_WORKER_ID !== 'undefined' && preLoadNodeEnv) {
   process.env.NODE_ENV = preLoadNodeEnv;
 }
 
-async function verifyMigrations() {
+async function verifyMigrations(retryAttempt = 0) {
   if (process.env.SKIP_VERIFY_MIGRATIONS === 'true') {
     console.log('[verify:migrations] SKIP_VERIFY_MIGRATIONS=true -> skipping migration verification');
     return { skipped: true };
@@ -128,6 +128,18 @@ async function verifyMigrations() {
     return { missing: [], orphaned };
   } catch (err) {
     await db.destroy();
+    
+    // Retry on DNS/network errors (ENOTFOUND, ECONNREFUSED) up to 3 times with delay
+    const isDnsError = err.code === 'ENOTFOUND' || err.code === 'ECONNREFUSED';
+    const maxRetries = 3;
+    
+    if (isDnsError && retryAttempt < maxRetries) {
+      const delayMs = 2000 * (retryAttempt + 1); // 2s, 4s, 6s
+      console.log(`[verify:migrations] Network error (${err.code}), retrying in ${delayMs}ms (attempt ${retryAttempt + 1}/${maxRetries})...`);
+      await new Promise(resolve => setTimeout(resolve, delayMs));
+      return verifyMigrations(retryAttempt + 1);
+    }
+    
     throw err;
   }
 }
