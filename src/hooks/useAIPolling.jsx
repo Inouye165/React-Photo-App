@@ -47,6 +47,13 @@ export default function useAIPolling() {
       const c = (p.caption || '').toString().trim();
       const d = (p.description || '').toString().trim();
       const k = (p.keywords || '').toString().trim();
+      
+      // Check if AI processing failed permanently
+      const failedMarker = 'ai processing failed';
+      if (c.toLowerCase() === failedMarker || d.toLowerCase() === failedMarker) {
+        return true; // Stop polling - AI failed
+      }
+      
       return (
         (!!c && c !== originalAI.current.caption) ||
         (!!d && d !== originalAI.current.description) ||
@@ -64,6 +71,14 @@ export default function useAIPolling() {
           updatePhoto(updated);
           removePollingId(updated.id);
           setPollingPhotoId(null);
+          
+          // Check if AI processing failed
+          const failedMarker = 'ai processing failed';
+          const caption = (updated.caption || '').toString().toLowerCase();
+          const description = (updated.description || '').toString().toLowerCase();
+          if (caption === failedMarker || description === failedMarker) {
+            setToast({ message: 'AI processing failed for this photo', severity: 'error' });
+          }
           return;
         }
         if (attemptsRef.current >= MAX_ATTEMPTS) {
