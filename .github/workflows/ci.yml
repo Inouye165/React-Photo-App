@@ -92,6 +92,9 @@ jobs:
           CI: true
           VITE_API_URL: http://localhost:3001
 
+      - name: Create photo working dir
+        run: mkdir -p server/working/photos
+
       # Run the 'test:ci' script from server/package.json
       - name: Run server tests
         run: npm run test:ci --prefix server --silent
@@ -106,3 +109,4 @@ jobs:
           SUPABASE_SERVICE_ROLE_KEY: test-service-role-key
           JWT_SECRET: test-jwt-secret-key-for-testing-only
           OPENAI_API_KEY: sk-test-key-for-ci
+          PHOTO_WORKING_DIR: server/working/photos
