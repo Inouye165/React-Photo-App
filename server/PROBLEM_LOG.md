@@ -1,5 +1,39 @@
 # Problem Log
 
+## [2025-11-04 18:00 PST] Server fails to start after restart - Supabase DNS resolution issues
+
+**Symptoms (first seen):**
+- `npm start` fails immediately after laptop/VS Code restart with error: `getaddrinfo ENOTFOUND db.xcidibfijzyoyliyclug.supabase.co`
+- Migration verification script (`check-migrations.js`) cannot connect to Supabase database
+- Error occurs in `prestart` hook before server even starts
+- Server works fine when started directly with `node server.js` (bypasses prestart check)
+- DNS lookup of direct database hostname (`db.xcidibfijzyoyliyclug.supabase.co`) fails initially but works after network fully initializes
+
+**Root Cause:**
+- The `.env` file had duplicate and conflicting `SUPABASE_DB_URL` entries
+- `SUPABASE_DB_URL_MIGRATIONS` was using the direct database hostname (`db.xcidibfijzyoyliyclug.supabase.co`) which has DNS resolution delays after system restart
+- Network/DNS services need a few seconds to fully initialize after laptop restart, but the migration check runs immediately
+- No retry logic existed in the migration checker, so it failed on first DNS error
+
+**Fix:**
+1. **Added retry logic** to `server/scripts/check-migrations.js`:
+   - Retries up to 3 times on `ENOTFOUND` and `ECONNREFUSED` errors
+   - Uses exponential backoff (2s, 4s, 6s delays)
+   - Logs each retry attempt for debugging
+2. **Cleaned up `.env` file**:
+   - Removed duplicate `SUPABASE_DB_URL` entries
+   - Updated both `SUPABASE_DB_URL` and `SUPABASE_DB_URL_MIGRATIONS` to use the pooler hostname (`aws-1-us-east-1.pooler.supabase.com`) which is more reliable
+   - Added comments explaining the URL choices
+
+**Prevention:**
+- The retry logic handles transient DNS issues automatically
+- Using pooler URLs for both runtime and migrations provides more stable DNS resolution
+- If issues persist, can temporarily set `SKIP_VERIFY_MIGRATIONS=true` in `.env` (not recommended for production)
+- Monitor startup logs for retry messages to detect network timing issues
+- Keep `.env` file clean with single definitions of each variable
+
+---
+
 ## [2025-11-04 17:10 PST] Unexpected modification of `server/routes/auth.js` after system restart
 
 **Symptoms (first seen):**
