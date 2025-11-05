@@ -165,6 +165,26 @@ function postPrivilege(authToken) {
 }
 
 (async function run() {
+  // Run database migrations before starting the server
+  console.log('Running database migrations...');
+  const migrationProcess = spawn('npm', ['run', 'migrate', '--prefix', 'server'], { 
+    stdio: 'inherit',
+    shell: true
+  });
+  
+  await new Promise((resolve, reject) => {
+    migrationProcess.on('exit', (code) => {
+      if (code !== 0) {
+        console.error('Migration failed with code', code);
+        reject(new Error(`Migration failed with code ${code}`));
+      } else {
+        console.log('Migrations completed successfully');
+        resolve();
+      }
+    });
+    migrationProcess.on('error', reject);
+  });
+  
   console.log('Starting server...');
   const srv = spawn(SERVER_CMD, SERVER_ARGS, { stdio: ['ignore', 'pipe', 'pipe'] });
 
