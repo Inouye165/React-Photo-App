@@ -1,5 +1,7 @@
 name: CI
 
+# Trigger CI: dummy comment for workflow update
+
 on:
   push:
     branches: [ main, chore/cloud-ready-audit ]
