@@ -20,12 +20,12 @@ const logger = require('../logger');
 module.exports = function createAuthRouter({ db }) {
   const router = express.Router();
 
-  // Rate limiting for auth endpoints (disabled in test environment)
+  // Rate limiting for auth endpoints (disabled in test environment, relaxed in development)
   const authLimiter = process.env.NODE_ENV === 'test' ? 
     (req, res, next) => next() : // Skip rate limiting in tests
     rateLimit({
       windowMs: 15 * 60 * 1000, // 15 minutes
-      max: 5, // Limit each IP to 5 requests per windowMs
+      max: process.env.NODE_ENV === 'development' ? 100 : 5, // More lenient in development for hot reload/strict mode
       message: {
         success: false,
         error: 'Too many authentication attempts, please try again later.'
@@ -38,7 +38,7 @@ module.exports = function createAuthRouter({ db }) {
     (req, res, next) => next() : // Skip rate limiting in tests
     rateLimit({
       windowMs: 60 * 60 * 1000, // 1 hour
-      max: 3, // Limit each IP to 3 registration attempts per hour
+      max: process.env.NODE_ENV === 'development' ? 20 : 3, // More lenient in development
       message: {
         success: false,
       error: 'Too many registration attempts, please try again later.'
