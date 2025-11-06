@@ -185,6 +185,58 @@ Possible solutions:
 
 ---
 
+### Issue #5: Missing File Dependency Resolution (November 6, 2025)
+
+**Timestamp:** 2025-11-06 22:06:30Z  
+**Affected Workflows:** `CI` (test-prod-csp job)  
+**Error Message:**
+```
+Cannot find module 'exifr' from 'media/image.js'
+
+Require stack:
+  media/image.js
+  routes/uploads.js
+  tests/csp.prod.test.js
+```
+
+**Root Cause:**
+1. Server's `package.json` has dependency: `"photo-app": "file:.."`
+2. This creates a file-based dependency on the parent package
+3. When we removed node_modules and package-lock.json in server/ and ran `npm install`
+4. npm tried to install the parent package but couldn't properly resolve its dependencies
+5. Parent package depends on `exifr`, but it wasn't available in server's node_modules
+6. The file:.. dependency resolution failed because parent's node_modules didn't exist
+
+**Fix Applied:**
+- Install root dependencies FIRST using `npm ci` in root directory
+- This ensures parent package has its node_modules populated
+- THEN install server dependencies with platform-specific rebuild
+- Now the `file:..` dependency can properly resolve to the parent's installed modules
+
+**Files Changed:**
+- `.github/workflows/ci.yml` - Added root dependency installation step
+
+**Solution:**
+```yaml
+- name: Install root dependencies first
+  run: npm ci --no-audit --no-fund
+- name: Install server dependencies
+  run: |
+    cd server
+    rm -rf node_modules package-lock.json
+    npm install --no-audit --no-fund
+```
+
+**Why This Works:**
+- Root npm ci installs all dependencies including exifr in root node_modules
+- Server npm install can now resolve `photo-app: file:..` properly
+- File dependency sees parent has valid node_modules
+- Platform-specific packages (sharp) still get rebuilt for Linux
+
+**Commit:** `a14272c`
+
+---
+
 ## Required Dependencies
 
 ### Root Package Dependencies
@@ -522,6 +574,7 @@ ALLOW_SQLITE_FALLBACK=true
 | 2025-11-06 | Jest worker crashes | 10cfec9 | ✅ Fixed |
 | 2025-11-06 | Missing devDependencies | 3779b40 | ✅ Fixed |
 | 2025-11-06 | Sharp platform binaries | 16f4d65 | ✅ Fixed |
+| 2025-11-06 | File dependency resolution (exifr) | a14272c | ✅ Fixed |
 
 ---
 
