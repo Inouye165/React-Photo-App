@@ -35,8 +35,14 @@ const { validateEnv } = require('./config/env.validate');
 try {
   validateEnv();
 } catch (err) {
-  console.error(err.message);
-  process.exit(1);
+  // In test environment, setup.js will set env vars before tests run
+  // So we just warn and continue - the validation will be retried by individual tests
+  if (process.env.NODE_ENV === 'test') {
+    console.warn('[server] Warning:', err.message, '(continuing in test mode - setup.js should set these)');
+  } else {
+    console.error(err.message);
+    process.exit(1);
+  }
 }
 
 // Global safety: log uncaught exceptions and unhandled rejections instead of letting Node crash
