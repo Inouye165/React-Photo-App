@@ -1,12 +1,25 @@
 const request = require('supertest');
 const express = require('express');
 const helmet = require('helmet');
+
+// Mock supabase client before requiring routes that depend on it
+jest.mock('../lib/supabaseClient', () => ({
+  storage: {
+    from: jest.fn(() => ({
+      upload: jest.fn(() => Promise.resolve({ data: {}, error: null }))
+    }))
+  }
+}));
+
 const createUploadsRouter = require('../routes/uploads');
 const mockKnex = {};
 
 describe('CSP in production', () => {
   let app;
+  let originalNodeEnv;
+  
   beforeAll(() => {
+    originalNodeEnv = process.env.NODE_ENV;
     process.env.NODE_ENV = 'production';
     app = express();
     app.use(helmet({
@@ -22,6 +35,10 @@ describe('CSP in production', () => {
       },
     }));
     app.use('/uploads', createUploadsRouter({ db: mockKnex }));
+  });
+  
+  afterAll(() => {
+    process.env.NODE_ENV = originalNodeEnv;
   });
 
   it('should have strict CSP headers in production', async () => {

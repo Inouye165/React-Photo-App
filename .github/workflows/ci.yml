@@ -13,11 +13,6 @@ jobs:
     runs-on: ubuntu-latest
     env:
       NODE_ENV: production
-      SUPABASE_URL: https://test.supabase.co
-      SUPABASE_SERVICE_ROLE_KEY: test-service-role-key
-      SUPABASE_ANON_KEY: test-anon-key
-      JWT_SECRET: test-jwt-secret-key-for-testing-only
-      OPENAI_API_KEY: sk-test-key-for-ci
     steps:
       - uses: actions/checkout@v4
       - uses: actions/setup-node@v4
