@@ -23,7 +23,6 @@ function configureSecurity(app) {
     },
     referrerPolicy: { policy: "no-referrer" },
     crossOriginEmbedderPolicy: false, // Allow image loading from same origin
-    crossOriginResourcePolicy: { policy: "cross-origin" }, // Allow cross-origin resources
     hsts: process.env.NODE_ENV === 'production' ? undefined : false
   }));
 

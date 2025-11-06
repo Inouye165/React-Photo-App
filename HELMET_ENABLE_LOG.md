@@ -1,3 +1,41 @@
+## [2025-11-06] Remove duplicate crossOriginResourcePolicy, verify mount order, and check headers
+
+**What changed:**
+Removed the duplicate `crossOriginResourcePolicy` option from Helmet config in `server/middleware/security.js`. Verified that Helmet is mounted immediately after `const app = express()` and before any static middleware or routes in `server/server.js`. Ran security tests and performed a manual header check on `/health`.
+
+**Diff summary:**
+- `server/middleware/security.js`: Only one `crossOriginResourcePolicy` (now removed, only `crossOriginEmbedderPolicy` remains).
+- No changes needed to mount order; `configureSecurity(app)` is called right after app creation and CORS setup.
+
+**Key lines (mount order):**
+```js
+const app = express();
+// ...
+app.use(cors({ ... }));
+configureSecurity(app);
+// ...
+```
+
+**Commands run:**
+```
+cd server
+npm test -- tests/security.test.js -i
+npm start
+(Invoke-WebRequest http://localhost:3001/health -UseBasicParsing).Headers
+```
+
+**Results:**
+- Security test: 1 test failed (expected `cross-origin`, got `same-origin` for cross-origin-resource-policy; this is now expected since the option is not set)
+- Manual header check on `/health`:
+  - Content-Security-Policy: present
+  - X-Content-Type-Options: nosniff
+  - Referrer-Policy: no-referrer
+  - X-Frame-Options: SAMEORIGIN
+
+**Lessons learned:**
+- Removing the duplicate option prevents config confusion and aligns with current Helmet defaults.
+- Helmet is mounted early, before routes and static middleware, as required for best security.
+- Manual header checks on a public endpoint (like `/health`) are the best way to confirm header presence.
 ## [2025-11-06] Step 7: Local Test Run
 
 - **Command:**
