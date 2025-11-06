@@ -456,6 +456,7 @@ This section is a concise project-facing TODO list. Each item is marked with one
 - [COMPLETED] Remove JWT-in-query-params for image URLs and rely on httpOnly cookie sessions (server rejects `?token=` on image endpoints).
 
 ### Architecture & core
+- [TODO] [ ] Implement an AuthProvider component higher up the React tree. Use the supabase.auth.getSession() and onAuthStateChange listener to set a 'loading' state. All authenticated content must be conditionally rendered only after the session has finished loading (`loading === false`) to prevent race conditions and initial 401 Unauthorized errors.
 - [TODO] Consolidate frontend global state into `src/store.js` (Zustand): migrate auth slice (user, loading, isAuthenticated), move UI state (selectedPhoto, editingPhoto, uploading), and extract inlined components to `src/components/`.
 - [TODO] Remove synchronous AI processing (`?waitForAI=true`) and enforce async queueing (enqueue job, return 202). Update API docs and remove blocking parameter.
 - [TO BE CONSIDERED] Review and simplify storage move / fallback logic in the backend to reduce brittle edge cases and add tests for failure paths.
