@@ -133,6 +133,36 @@ npm start
 
 ---
 
+## [2025-11-06] Env-aware Helmet CSP
+
+**What changed:**
+- Refactored Helmet config in `server/middleware/security.js` to use environment-aware CSP directives.
+- Production: strict CSP (no 'unsafe-inline', no localhost, frame-ancestors 'none').
+- Dev/Test: minimal allowances for DX ('unsafe-inline', localhost for HMR, etc.).
+- Added rationale comment block to code.
+
+**Diff summary:**
+- `server/middleware/security.js`: CSP now branches on `isProd`, directives updated as described.
+
+**Commands run:**
+```
+cd server
+npm test -i
+(Invoke-WebRequest http://localhost:3001/health -UseBasicParsing).Headers.GetEnumerator() | Where-Object { $_.Name -match 'content-security-policy|x-content-type-options|referrer-policy|cross-origin-resource-policy|x-frame-options' } | Sort-Object Name
+```
+
+**Results:**
+- All tests passed (security.test.js expects CORP same-origin).
+- Manual header check in dev: CSP includes 'unsafe-inline' and localhost allowances.
+- (Optional) In prod, CSP drops 'unsafe-inline', localhost; frame-ancestors 'none'.
+
+**Lessons learned:**
+- Environment-aware CSP improves security in production without breaking dev/test workflows.
+- Documenting rationale in code and log helps future maintainers/auditors.
+- Always verify headers and test results after security changes.
+
+---
+
 ## [2025-11-06] Next Steps
 
 - [ ] Add `referrerPolicy` to Helmet config in `server/middleware/security.js`.

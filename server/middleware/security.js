@@ -6,24 +6,29 @@ const logger = require('../logger');
  * Configure security middleware
  */
 function configureSecurity(app) {
-  // Get API URL from environment variable, fallback to localhost for development
-  const API_URL = process.env.API_URL || 'http://localhost:3001';
-
-  // Helmet for security headers
+  /**
+   * Environment-aware Content Security Policy (CSP) for Helmet.
+   * - Production: strict CSP (no 'unsafe-inline', no localhost, frame-ancestors 'none').
+   * - Dev/Test: minimal allowances for DX ('unsafe-inline', localhost for HMR, etc.).
+   * Rationale: Prevent XSS and framing in production, but avoid breaking dev workflows.
+   */
+  const isProd = process.env.NODE_ENV === 'production';
   app.use(helmet({
     contentSecurityPolicy: {
       directives: {
         defaultSrc: ["'self'"],
-        styleSrc: ["'self'", "'unsafe-inline'", "https://fonts.googleapis.com"],
-        fontSrc: ["'self'", "https://fonts.gstatic.com"],
-        imgSrc: ["'self'", "data:", API_URL],
-        scriptSrc: ["'self'", "'unsafe-inline'"],
-        connectSrc: ["'self'", API_URL],
+        imgSrc: ["'self'", 'data:', ...(isProd ? [] : ['http://localhost:3001'])],
+        connectSrc: ["'self'", ...(isProd ? [] : ['http://localhost:3001'])],
+        scriptSrc: ["'self'", ...(isProd ? [] : ["'unsafe-inline'"])],
+        styleSrc: ["'self'", ...(isProd ? [] : ["'unsafe-inline'", 'https://fonts.googleapis.com'])],
+        fontSrc: ["'self'", 'https://fonts.gstatic.com'],
+        frameAncestors: [isProd ? "'none'" : "'self'"],
       },
     },
-    referrerPolicy: { policy: "no-referrer" },
-    crossOriginEmbedderPolicy: false, // Allow image loading from same origin
-    hsts: process.env.NODE_ENV === 'production' ? undefined : false
+    referrerPolicy: { policy: 'no-referrer' },
+    crossOriginEmbedderPolicy: false,
+    crossOriginResourcePolicy: { policy: 'same-origin' }, // Explicit for clarity
+    hsts: isProd,
   }));
 
   // General rate limiting
