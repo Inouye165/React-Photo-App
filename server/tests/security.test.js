@@ -26,6 +26,7 @@ describe('Security Middleware', () => {
       expect(response.headers['x-frame-options']).toBeDefined();
       expect(response.headers['x-content-type-options']).toBe('nosniff');
       expect(response.headers['x-xss-protection']).toBeDefined();
+      expect(response.headers['referrer-policy']).toBe('no-referrer');
     });
 
     test('should set appropriate CSP headers', async () => {

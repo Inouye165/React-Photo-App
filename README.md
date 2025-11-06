@@ -1,5 +1,25 @@
 # Quick Start
 
+## Security headers (Helmet)
+
+This app uses [Helmet](https://helmetjs.github.io/) to set HTTP security headers for the Express backend. Helmet helps protect against XSS, clickjacking, and MIME-sniffing attacks by setting Content Security Policy (CSP), X-Frame-Options, Referrer-Policy, and other headers.
+
+- **Where:** Helmet is mounted early in the Express app (see `server/server.js`), before routes and static files.
+- **CSP:** The Content Security Policy is strict in production, but slightly looser in development to support hot-reload and local API/image proxying.
+- **Headers set:**
+   - `Content-Security-Policy` (CSP)
+   - `X-Content-Type-Options: nosniff`
+   - `Referrer-Policy: no-referrer`
+   - `X-Frame-Options: SAMEORIGIN` or via CSP `frame-ancestors 'none'`
+- **How to verify:**
+   - Run backend tests: `cd server && npm test -- tests/security.test.js -i`
+   - Or start the server and inspect headers on any route (e.g., `/health`).
+   - See `server/tests/security.test.js` for automated header checks.
+
+**Dev note:** If CSP blocks frontend hot-reload or local API calls in development, adjust the CSP in `server/middleware/security.js` (see comments) or set `NODE_ENV=development`.
+
+For more details and a full log of the enablement process, see `HELMET_ENABLE_LOG.md`.
+
 ---
 
 ## Engineering Log
