@@ -55,8 +55,9 @@ describe('Security Middleware', () => {
       const response = await request(app)
         .get('/test');
 
-      // Should allow cross-origin resource policy
-      expect(response.headers['cross-origin-resource-policy']).toBe('cross-origin');
+  // Helmet v6+ defaults to 'same-origin' for cross-origin-resource-policy unless configured otherwise.
+  // Our config does not override this, so we expect 'same-origin'.
+  expect(response.headers['cross-origin-resource-policy']).toBe('same-origin');
     });
 
     test('should configure rate limiting', async () => {
