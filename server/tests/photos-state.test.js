@@ -37,7 +37,7 @@ test('PATCH /photos/:id/state moves photo and triggers fallback copy when move f
 
   // Call the endpoint with an auth cookie so authenticateToken passes
   const res = await request(app)
-    .patch(`/photos/${photo.id}/state`)
+    .patch(`/${photo.id}/state`)
     .set('Cookie', `authToken=${authToken}`)
     .send({ state: 'inprogress' })
     .expect(200);

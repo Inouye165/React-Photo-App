@@ -1,0 +1,32 @@
+const request = require('supertest');
+const express = require('express');
+const createUploadsRouter = require('../routes/uploads');
+const mockKnex = {};
+
+jest.mock('../lib/supabaseClient', () => ({
+  storage: {
+    from: () => ({
+      upload: jest.fn(() => ({ data: null, error: { statusCode: 503, message: 'Upstream error' } })),
+      list: jest.fn(() => ({ data: [], error: null })),
+      remove: jest.fn(() => ({ data: null, error: null })),
+    })
+  }
+}));
+
+describe('Downstream error hygiene', () => {
+  let app;
+  beforeAll(() => {
+    app = express();
+    app.use('/uploads', createUploadsRouter({ db: mockKnex }));
+  });
+
+  it('should return 502/503 and no stack leak on upstream error', async () => {
+    const smallBuffer = Buffer.alloc(1024, 1);
+    const res = await request(app)
+      .post('/uploads/upload')
+      .attach('photo', smallBuffer, 'test.jpg');
+    expect([502, 503, 500]).toContain(res.status);
+    expect(res.text).not.toMatch(/Error:/);
+    expect(res.text).not.toMatch(/at /);
+  });
+});

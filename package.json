@@ -18,7 +18,11 @@
     "lint:fix": "eslint . --fix --cache",
     "lint:server": "eslint server --cache",
     "lint:web": "eslint src --cache",
-    "preview": "vite preview"
+    "preview": "vite preview",
+    "test:e2e": "playwright test",
+    "test:a11y": "playwright test e2e/a11y.*",
+    "test:perf": "k6 run perf/smoke.js",
+    "test:docker:smoke": "node scripts/docker-smoke.js"
   },
   "lint-staged": {
     "*.{js,jsx}": "eslint --fix"

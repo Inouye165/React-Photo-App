@@ -10,15 +10,15 @@ const ALLOWED_IMAGE_EXTENSIONS = ['.jpg', '.jpeg', '.png', '.gif', '.heic', '.bm
 module.exports = function createUploadsRouter({ db }) {
   const router = express.Router();
 
-  // Create upload middleware using memory storage for Supabase
+  // Enforce upload size limit from env (default 10MB)
+  const UPLOAD_MAX_BYTES = Number(process.env.UPLOAD_MAX_BYTES || 10 * 1024 * 1024);
   const upload = multer({
     storage: multer.memoryStorage(),
-    limits: { 
-      fileSize: 50 * 1024 * 1024 // 50MB limit
+    limits: {
+      fileSize: UPLOAD_MAX_BYTES // Configurable upload size limit
     },
     fileFilter: (req, file, cb) => {
       const ext = path.extname(file.originalname).toLowerCase();
-      
       // Accept files with image MIME type or allowed image extensions
       if (file.mimetype && file.mimetype.startsWith('image/')) {
         cb(null, true);
@@ -31,37 +31,42 @@ module.exports = function createUploadsRouter({ db }) {
   });
 
   // --- Ingest on upload (upload to Supabase Storage) ---
-  router.post('/upload', upload.single('photo'), async (req, res) => {
+  router.post('/upload', (req, res, next) => {
+    upload.single('photo')(req, res, function (err) {
+      if (err && err.code === 'LIMIT_FILE_SIZE') {
+        return res.status(413).json({ success: false, error: 'File too large' });
+      }
+      if (err) {
+        // Multer file type error or other
+        return res.status(415).json({ success: false, error: err.message });
+      }
+      next();
+    });
+  }, async (req, res) => {
     try {
       if (!req.file) {
         return res.status(400).json({ success: false, error: 'No file uploaded' });
       }
-
       // Reject zero-byte files early
       if (typeof req.file.size === 'number' && req.file.size === 0) {
         return res.status(400).json({ success: false, error: 'Empty file uploaded' });
       }
-
       // Generate unique filename if needed
       let filename = req.file.originalname;
       let counter = 1;
-      
       // Check if file exists in Supabase Storage
       while (true) {
         const { data: existingFile } = await supabase.storage
           .from('photos')
           .list('working', { search: filename });
-        
         if (!existingFile || existingFile.length === 0) {
           break;
         }
-        
         const ext = path.extname(req.file.originalname);
         const basename = path.basename(req.file.originalname, ext);
         filename = `${basename}(${counter})${ext}`;
         counter++;
       }
-
       // Upload file to Supabase Storage
       const filePath = `working/${filename}`;
       const { data: _uploadData, error: uploadError } = await supabase.storage
@@ -70,27 +75,22 @@ module.exports = function createUploadsRouter({ db }) {
           contentType: req.file.mimetype,
           duplex: false
         });
-
       if (uploadError) {
         logger.error('Supabase upload error:', uploadError);
         return res.status(500).json({ success: false, error: 'Failed to upload to storage' });
       }
-
       // Process the uploaded file (generate metadata, thumbnails, etc.)
       const result = await ingestPhoto(db, filePath, filename, 'working', req.file.buffer);
-      
       if (result.duplicate) {
         // Remove the uploaded file since it's a duplicate
         await supabase.storage.from('photos').remove([filePath]);
         return res.json({ success: false, duplicate: true, hash: result.hash, message: 'Duplicate file skipped.' });
       }
-      
       if (result.hash === null) {
         // ingestPhoto failed - clean up the uploaded file
         await supabase.storage.from('photos').remove([filePath]);
         return res.status(500).json({ success: false, error: 'Failed to process image file' });
       }
-
       res.json({ success: true, filename: filename, hash: result.hash, path: filePath });
     } catch (error) {
       logger.error('Upload error:', error);

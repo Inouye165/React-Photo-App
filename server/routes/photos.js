@@ -49,7 +49,9 @@ module.exports = function createPhotosRouter({ db }) {
   }
 
   // --- API: List all photos and metadata (include hash) ---
-  router.get('/photos', authenticateToken, async (req, res) => {
+  // Router-root: defined here as '/' so mounting at '/photos' results in
+  // final path '/photos'.
+  router.get('/', authenticateToken, async (req, res) => {
     try {
       const state = req.query.state;
   let query = db('photos').select('id', 'filename', 'state', 'metadata', 'hash', 'file_size', 'caption', 'description', 'keywords', 'text_style', 'edited_filename', 'storage_path', 'ai_model_history');
@@ -114,7 +116,7 @@ module.exports = function createPhotosRouter({ db }) {
 
   // --- Metadata update endpoint ---
   // --- Single photo fetch endpoint ---
-  router.get('/photos/:id', authenticateToken, async (req, res) => {
+  router.get('/:id', authenticateToken, async (req, res) => {
     try {
       const { id } = req.params;
       const row = await db('photos').where({ id }).first();
@@ -157,7 +159,7 @@ module.exports = function createPhotosRouter({ db }) {
     }
   });
 
-  router.patch('/photos/:id/metadata', authenticateToken, async (req, res) => {
+  router.patch('/:id/metadata', authenticateToken, async (req, res) => {
     const { id } = req.params;
     try {
       const row = await db('photos').where('id', id).select('caption', 'description', 'keywords', 'text_style').first();
@@ -215,7 +217,7 @@ module.exports = function createPhotosRouter({ db }) {
   });
 
   // --- Revert edited image endpoint ---
-  router.patch('/photos/:id/revert', authenticateToken, express.json(), async (req, res) => {
+  router.patch('/:id/revert', authenticateToken, express.json(), async (req, res) => {
     const { id } = req.params;
     try {
       const row = await db('photos').where('id', id).first();
@@ -245,7 +247,7 @@ module.exports = function createPhotosRouter({ db }) {
   });
 
   // --- Delete photo endpoint ---
-  router.delete('/photos/:id', authenticateToken, async (req, res) => {
+  router.delete('/:id', authenticateToken, async (req, res) => {
     try {
       const { id } = req.params;
       const row = await db('photos').where({ id }).first();
@@ -296,7 +298,7 @@ module.exports = function createPhotosRouter({ db }) {
       res.status(500).json({ success: false, error: err.message });
     }
   });
-  router.patch('/photos/:id/state', authenticateToken, express.json(), async (req, res) => {
+  router.patch('/:id/state', authenticateToken, express.json(), async (req, res) => {
     try {
       const { id } = req.params;
       const { state } = req.body;
@@ -590,7 +592,7 @@ module.exports = function createPhotosRouter({ db }) {
   // --- Recheck AI processing endpoint (single-photo) ---
   // This mirrors the behavior of /:id/run-ai but provides a dedicated
   // route for client-side single-photo rechecks.
-  router.post('/photos/:id/recheck-ai', authenticateToken, async (req, res) => {
+  router.post('/:id/recheck-ai', authenticateToken, async (req, res) => {
     try {
       // Ensure photo exists
       const photo = await db('photos').where({ id: req.params.id }).first();
@@ -636,7 +638,7 @@ module.exports = function createPhotosRouter({ db }) {
     }
   });
 
-  router.post('/photos/:id/run-ai', authenticateToken, async (req, res) => {
+  router.post('/:id/run-ai', authenticateToken, async (req, res) => {
     try {
       // Re-fetch the photo to ensure it exists
       const photo = await db('photos').where({ id: req.params.id }).first();
@@ -697,12 +699,20 @@ module.exports = function createPhotosRouter({ db }) {
   // --- Display endpoint: Serve images from Supabase Storage ---
   // Use the specialized image authentication middleware which enforces
   // CORS headers and explicitly rejects token-in-query parameters.
+  // NOTE: display endpoints were moved to a dedicated router (routes/display.js)
+  // to allow display image URLs to be exposed at '/display/*' while keeping
+  // the photos API mounted under the '/photos' prefix.
+  // For backwards-compatibility when the photos router is mounted at the
+  // application root (some tests mount it directly), re-expose the
+  // '/display/:state/:filename' route here. When the app mounts a dedicated
+  // display router at root, that router will handle '/display/*' in normal
+  // server operation; keeping this here avoids breaking tests that mount the
+  // photos router standalone.
   router.get('/display/:state/:filename', authenticateImageRequest, async (req, res) => {
     try {
       const { state, filename } = req.params;
       const IMAGE_CACHE_MAX_AGE = parseInt(process.env.IMAGE_CACHE_MAX_AGE, 10) || 86400;
 
-      // Handle thumbnail requests (state = "thumbnails")
       if (state === 'thumbnails') {
         const storagePath = `thumbnails/${filename}`;
         const { data, error } = await supabase.storage
@@ -720,7 +730,6 @@ module.exports = function createPhotosRouter({ db }) {
         return;
       }
 
-      // Handle regular photo requests
       const photo = await db('photos')
         .where(function() {
           this.where({ filename, state })
@@ -733,9 +742,8 @@ module.exports = function createPhotosRouter({ db }) {
         return res.status(404).json({ error: 'Photo not found' });
       }
 
-      // Use storage_path if available, otherwise construct from state/filename
       const storagePath = photo.storage_path || `${state}/${filename}`;
-      const { data, error } = await supabase.storage
+      const { data, error} = await supabase.storage
         .from('photos')
         .download(storagePath);
       if (error) {
@@ -751,12 +759,10 @@ module.exports = function createPhotosRouter({ db }) {
       else if (ext === '.gif') contentType = 'image/gif';
       else if (ext === '.heic' || ext === '.heif') contentType = 'image/heic';
 
-      // ETag: use photo.hash if available, else fallback to file size + updated_at
       let etag = photo.hash || (photo.file_size ? `${photo.file_size}` : '') + (photo.updated_at ? `-${photo.updated_at}` : '');
       if (etag) res.set('ETag', etag);
       res.set('Cache-Control', `public, max-age=${IMAGE_CACHE_MAX_AGE}`);
 
-      // Convert HEIC to JPEG if needed
       if (ext === '.heic' || ext === '.heif') {
         try {
           const jpegBuffer = await convertHeicToJpegBuffer(fileBuffer);

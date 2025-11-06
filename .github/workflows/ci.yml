@@ -9,6 +9,17 @@ on:
     branches: [ main ]
 
 jobs:
+  test-prod-csp:
+    runs-on: ubuntu-latest
+    env:
+      NODE_ENV: production
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 20
+      - run: cd server && npm ci
+      - run: cd server && npx jest tests/csp.prod.test.js -i
   ci:
     runs-on: ubuntu-latest
     services:
@@ -131,3 +142,41 @@ jobs:
         run: |
           mkdir -p "$PHOTO_WORKING_DIR"
           npm run integration-test
+  test-a11y-e2e:
+    runs-on: ubuntu-latest
+    timeout-minutes: 12
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with: { node-version: 20 }
+      - run: npm ci
+      - name: Install Playwright Browsers
+        run: npx playwright install --with-deps
+      - name: Start server
+        run: |
+          cd server
+          npm start &
+          npx wait-on http://localhost:3001/health
+      - name: Run Playwright
+        run: npx playwright test
+
+  test-perf-micro:
+    runs-on: ubuntu-latest
+    timeout-minutes: 8
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with: { node-version: 20 }
+      - run: npm ci
+      - run: npm run test:perf
+
+  test-docker-smoke:
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with: { node-version: 20 }
+      - run: npm ci
+      - name: Docker build & smoke
+        run: npm run test:docker:smoke

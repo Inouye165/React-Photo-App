@@ -28,6 +28,17 @@ console.log(`[server]  - SUPABASE_ANON_KEY = ${process.env.SUPABASE_ANON_KEY ? '
 console.log(`[server]  - Derived database selection: ${usingPostgres ? 'Postgres (Supabase) — will use production knex config' : 'sqlite fallback (dev) — sqlite fallback would be used if enabled'}`);
 console.log('[server] End diagnostics');
 
+
+// Validate required environment variables
+
+const { validateEnv } = require('./config/env.validate');
+try {
+  validateEnv();
+} catch (err) {
+  console.error(err.message);
+  process.exit(1);
+}
+
 // Global safety: log uncaught exceptions and unhandled rejections instead of letting Node crash
 process.on('unhandledRejection', (reason, promise) => {
   console.error('UnhandledRejection at:', promise, 'reason:', reason);
@@ -156,12 +167,19 @@ module.exports = app;
 
   app.use(createAuthRouter({ db }));
 
-  // Health check (no auth required)
-  app.use(createHealthRouter());
+  // Health check (no auth required). Mount at '/health' so router-root handlers
+  // defined in `routes/health.js` become available at '/health'.
+  app.use('/health', createHealthRouter());
 
   // Protected API routes (require authentication)
-  // Photos router handles its own authentication for API vs image endpoints
-  app.use(createPhotosRouter({ db }));
+  // Mount a dedicated display router at root so image URLs remain at
+  // '/display/*' while the photos API is mounted under '/photos'.
+  const createDisplayRouter = require('./routes/display');
+  app.use(createDisplayRouter({ db }));
+
+  // Mount photos API under '/photos' so routes like '/' and '/:id' defined
+  // in `routes/photos.js` are accessible at '/photos' and '/photos/:id'.
+  app.use('/photos', createPhotosRouter({ db }));
   app.use(authenticateToken, createUploadsRouter({ db }));
   app.use(authenticateToken, createPrivilegeRouter());
 
@@ -178,6 +196,15 @@ module.exports = app;
 
   // Add security error handling middleware
   app.use(securityErrorHandler);
+
+  // Generic JSON 404 handler: return JSON for all unmatched routes so responses
+  // conform to the OpenAPI contract (tests expect JSON, not HTML).
+  app.use((req, res) => {
+    res.status(404).json({
+      success: false,
+      error: 'Not found'
+    });
+  });
 
 
 

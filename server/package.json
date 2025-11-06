@@ -9,14 +9,18 @@
     "dev": "nodemon server.js",
     "worker": "node worker.js",
     "dev:worker": "nodemon worker.js",
-  "test": "jest",
-  "test:db": "node scripts/test-db-connection.js",
-  "verify:migrations": "node scripts/check-migrations.js",
+    "test": "jest",
+    "test:db": "node scripts/test-db-connection.js",
+    "verify:migrations": "node scripts/check-migrations.js",
     "test:ci": "jest",
-  "test:watch": "jest --watch",
-  "health": "node health-check.js",
+    "test:watch": "jest --watch",
+    "health": "node health-check.js",
     "lint": "eslint . --config ../.eslintrc.cjs",
-    "lint:fix": "eslint . --fix --config ../.eslintrc.cjs"
+    "lint:fix": "eslint . --fix --config ../.eslintrc.cjs",
+    "test:e2e": "playwright test",
+    "test:a11y": "playwright test ../../e2e/a11y.*",
+    "test:perf": "k6 run ../../perf/smoke.js",
+    "test:docker:smoke": "node ../../scripts/docker-smoke.js"
   },
   "dependencies": {
     "@langchain/core": "^0.3.0",
@@ -52,12 +56,15 @@
     "npm": ">=10"
   },
   "devDependencies": {
+    "@axe-core/playwright": "^4.11.0",
     "@eslint/js": "^9.38.0",
+    "@playwright/test": "^1.56.1",
     "eslint": "^9.38.0",
     "eslint-plugin-react": "^7.37.5",
     "eslint-plugin-react-hooks": "^7.0.1",
     "eslint-plugin-react-refresh": "^0.4.24",
     "jest": "^29.7.0",
+    "jest-openapi": "^0.14.2",
     "nodemon": "^3.0.1",
     "supertest": "^6.3.3"
   },
@@ -76,6 +83,14 @@
       "!coverage/**",
       "!tests/**",
       "!working/**"
-    ]
+    ],
+    "coverageThreshold": {
+      "global": {
+        "lines": 60,
+        "statements": 60,
+        "functions": 55,
+        "branches": 45
+      }
+    }
   }
 }
