@@ -18,7 +18,8 @@ jobs:
       - uses: actions/setup-node@v4
         with:
           node-version: 20
-      - run: cd server && npm ci
+      - run: npm ci --ignore-scripts
+      - run: cd server && npm ci --ignore-scripts
       - run: cd server && npx jest tests/csp.prod.test.js -i
   ci:
     runs-on: ubuntu-latest
