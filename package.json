@@ -10,7 +10,7 @@
     "test:ui": "vitest --ui",
     "test:run": "vitest run",
     "test:coverage": "vitest --coverage",
-    "prepare": "node scripts/prepare.cjs",
+    "prepare": "husky install",
     "secret-scan": "node scripts/secret-scan.cjs",
     "check-privilege": "node scripts/check-privilege.cjs",
     "integration-test": "node scripts/integration-test.cjs",

@@ -11,19 +11,16 @@ on:
 jobs:
   test-prod-csp:
     runs-on: ubuntu-latest
+    env:
+      NODE_ENV: production
+      HUSKY: 0
     steps:
       - uses: actions/checkout@v4
       - uses: actions/setup-node@v4
         with:
           node-version: 20
-      - name: Install root dependencies first
-        run: npm ci --no-audit --no-fund
-      - name: Install server dependencies
-        run: |
-          cd server
-          rm -rf node_modules package-lock.json
-          npm install --no-audit --no-fund
-      - run: cd server && NODE_ENV=production npx jest tests/csp.prod.test.js -i
+      - run: cd server && npm ci
+      - run: cd server && npx jest tests/csp.prod.test.js -i
   ci:
     runs-on: ubuntu-latest
     services:
