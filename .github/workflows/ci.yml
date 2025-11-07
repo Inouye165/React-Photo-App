@@ -101,6 +101,8 @@ jobs:
         # NOTE: this is heavier (no lockfile) but required when optional native
         # binaries are not present for the runner platform.
         run: |
+          # FIX: Install patch-package globally for use during postinstall scripts
+          npm install -g patch-package
           rm -rf node_modules package-lock.json
           npm install --no-audit --no-fund
 
