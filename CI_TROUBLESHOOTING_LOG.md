@@ -280,56 +280,67 @@ npm error sh: 1: husky: not found
 - Moving NODE_ENV=production to the test command ensures devDependencies are installed
 - Native bindings are rebuilt for the Linux platform
 
-**Commit:** TBD
+**Commit:** c41e29c, d30047b, 2acd8fe
 
 **Status:** ✅ Fixed
 
 ---
 
-### Issue #7: SQLite3 Native Bindings Missing in Integration Tests (November 7, 2025)
+### Issue #7: SQLite3 & Sharp Native Bindings Missing in Integration Tests (November 7, 2025)
 
 **Timestamp:** 2025-11-07 03:12:53Z  
-**Affected Workflows:** `CI` (ci job integration test), `Integration Test` workflow  
-**Error Message:**
+**Affected Workflows:** `CI` (test-prod-csp and ci integration test), `Integration Test` workflow  
+**Error Messages:**
 ```
+# Sharp error:
+Could not load the "sharp" module using the linux-x64 runtime
+
+# SQLite3 error:
 Could not locate the bindings file. Tried:
- → /home/runner/work/React-Photo-App/React-Photo-App/server/node_modules/sqlite3/build/node_sqlite3.node
  → /home/runner/work/React-Photo-App/React-Photo-App/server/node_modules/sqlite3/lib/binding/node-v115-linux-x64/node_sqlite3.node
-Error: Could not locate the bindings file
 ```
 
 **Root Cause:**
-1. Integration tests use in-memory SQLite (`:memory:`) which requires sqlite3 native bindings
-2. The CI job rebuilds sqlite3 for server tests but this is a separate step
-3. The integration test runs later and needs sqlite3, but bindings may not be properly rebuilt for Linux platform
-4. The Integration Test workflow doesn't have a rebuild step at all
-5. Platform-specific native binaries need to be rebuilt after npm install on Linux
+1. **Primary issue:** `server/.npmrc` contained `ignore-scripts=true` (added to fix husky errors)
+2. This setting applies to ALL npm commands in the server directory, including `npm rebuild`
+3. `ignore-scripts=true` prevents install scripts from running for ALL packages
+4. Sharp and sqlite3 require install scripts to download platform-specific native binaries
+5. Manual `npm rebuild` didn't work because it also respects the ignore-scripts setting
+6. **Secondary issue:** Package-lock.json created on Windows references Windows-specific binaries
+7. Using `npm ci` with Windows lockfile on Linux CI installs wrong platform binaries
 
 **Fix Applied:**
-- Ensure `npm rebuild sqlite3` is run in server directory before integration tests
-- Add rebuild step to Integration Test workflow
+1. **Delete `server/.npmrc`** - The ignore-scripts setting was too aggressive
+2. **Use `HUSKY=0` environment variable** - Already set in workflows, checked by `scripts/prepare.cjs`
+3. **Remove package-lock.json before install** - Ensures fresh platform-specific install
+4. **Use `npm install` instead of `npm ci`** - Allows fetching correct platform binaries
 
 **Files Changed:**
-- `.github/workflows/ci.yml` - Already has rebuild step, but runs before integration test
-- `.github/workflows/integration.yml` - Needs rebuild step added
+- `server/.npmrc` - Deleted (was blocking all install scripts)
+- `.github/workflows/ci.yml` - test-prod-csp and ci jobs updated
+- `.github/workflows/integration.yml` - Updated install process
 
-**Solution for Integration Test workflow:**
+**Solution:**
 ```yaml
-- name: Rebuild sqlite3 native bindings
-  run: cd server && npm rebuild sqlite3
-- name: Run integration test
-  # ... existing env and command
+# Both test-prod-csp and ci jobs now use:
+- name: Install server dependencies
+  # Remove lockfile to get platform-specific binaries
+  run: |
+    rm -rf server/node_modules
+    rm -f server/package-lock.json
+    npm install --no-audit --no-fund --prefix server
 ```
 
 **Why This Works:**
-- Native bindings must be rebuilt after npm install on Linux CI runners
-- The rebuild happens after server dependencies are installed
-- SQLite3 bindings are rebuilt for the correct platform (linux-x64, node v115)
-- Integration tests can now successfully use in-memory SQLite
+- Removing .npmrc allows install scripts to run normally
+- HUSKY=0 env var prevents husky from running in CI (checked by prepare.cjs)
+- Removing package-lock.json forces npm to fetch platform-appropriate binaries
+- Install scripts for sharp and sqlite3 automatically download correct Linux x64 binaries
+- No manual rebuild steps needed - install scripts handle everything
 
-**Commit:** TBD
+**Commit:** c41e29c (initial), d30047b (remove .npmrc), 2acd8fe (fix test-prod-csp)
 
-**Status:** ✅ Fixed
+**Status:** ✅ Fixed - All CI jobs passing
 
 ---
 
@@ -671,8 +682,8 @@ ALLOW_SQLITE_FALLBACK=true
 | 2025-11-06 | Missing devDependencies | 3779b40 | ✅ Fixed |
 | 2025-11-06 | Sharp platform binaries | 16f4d65 | ✅ Fixed |
 | 2025-11-06 | File dependency resolution (exifr) | a14272c | ✅ Fixed |
-| 2025-11-07 | Husky error with --ignore-scripts | TBD | ✅ Fixed |
-| 2025-11-07 | SQLite3 native bindings missing | TBD | ✅ Fixed |
+| 2025-11-07 | Husky error with --ignore-scripts | c41e29c, d30047b, 2acd8fe | ✅ Fixed |
+| 2025-11-07 | SQLite3 & Sharp native bindings | c41e29c, d30047b, 2acd8fe | ✅ Fixed |
 
 ---
 
