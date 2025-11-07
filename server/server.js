@@ -181,6 +181,19 @@ module.exports = app;
   // Mount a dedicated display router at root so image URLs remain at
   // '/display/*' while the photos API is mounted under '/photos'.
   const createDisplayRouter = require('./routes/display');
+  // Middleware to log CSP header for /display/* responses
+  app.use('/display', (req, res, next) => {
+    // After response is sent, log the CSP header
+    res.on('finish', () => {
+      const csp = res.getHeader('content-security-policy');
+      if (csp) {
+        console.log(`[CSP DEBUG] /display: ${req.originalUrl} -> ${csp}`);
+      } else {
+        console.log(`[CSP DEBUG] /display: ${req.originalUrl} -> (no CSP header)`);
+      }
+    });
+    next();
+  });
   app.use(createDisplayRouter({ db }));
 
   // Mount photos API under '/photos' so routes like '/' and '/:id' defined

@@ -72,6 +72,8 @@
 - OpenAPI validation: ensure specs match actual behavior including error responses
 - Vitest configuration: explicitly exclude non-unit test directories (e2e, perf)
 - CI/CD: use conditional job execution for incomplete infrastructure
+- Husky errors in CI: use `.npmrc` with `ignore-scripts=true` in sub-packages to prevent root lifecycle scripts from breaking installs
+- Native modules in CI: ensure native bindings (e.g., `sqlite3`) are rebuilt or installed correctly after dependency install, especially when using `ignore-scripts` or monorepo setups
 - Strict CSP regression test is essential for production security
 - Upload limits and error hygiene prevent resource exhaustion and info leaks
 - Log redaction must be verified to avoid accidental secret exposure

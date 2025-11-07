@@ -17,8 +17,15 @@ function configureSecurity(app) {
     contentSecurityPolicy: {
       directives: {
         defaultSrc: ["'self'"],
-        imgSrc: ["'self'", 'data:', ...(isProd ? [] : ['http://localhost:3001'])],
-        connectSrc: ["'self'", ...(isProd ? [] : ['http://localhost:3001'])],
+        imgSrc: [
+          "'self'",
+          'data:',
+          ...(isProd ? [] : ['http://localhost:3001', 'http://localhost:5173'])
+        ],
+        connectSrc: [
+          "'self'",
+          ...(isProd ? [] : ['http://localhost:3001', 'http://localhost:5173'])
+        ],
         scriptSrc: ["'self'", ...(isProd ? [] : ["'unsafe-inline'"])],
         styleSrc: ["'self'", ...(isProd ? [] : ["'unsafe-inline'", 'https://fonts.googleapis.com'])],
         fontSrc: ["'self'", 'https://fonts.gstatic.com'],
