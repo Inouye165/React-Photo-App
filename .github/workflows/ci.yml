@@ -20,8 +20,13 @@ jobs:
           node-version: 20
       - name: Install root dependencies
         run: npm ci --no-audit --no-fund
-      - name: Install server dependencies  
-        run: cd server && npm ci --no-audit --no-fund
+      - name: Install server dependencies
+        # Remove server node_modules and lockfile so platform-specific native
+        # binaries (e.g. sharp) are fetched for the Linux runner during install.
+        run: |
+          rm -rf server/node_modules
+          rm -f server/package-lock.json
+          npm install --no-audit --no-fund --prefix server
       - name: Run CSP test in production mode
         run: cd server && NODE_ENV=production npx jest tests/csp.prod.test.js -i
   ci:
