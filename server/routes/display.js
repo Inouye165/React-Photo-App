@@ -12,7 +12,9 @@ module.exports = function createDisplayRouter({ db }) {
   // (e.g., app.use(createDisplayRouter({db})) ) so they are available as
   // /display/:state/:filename which the frontend uses for image URLs.
   router.get('/display/:state/:filename', authenticateImageRequest, async (req, res) => {
-    try {
+  // Always set this header for all responses
+  res.set('Cross-Origin-Resource-Policy', 'cross-origin');
+  try {
       const { state, filename } = req.params;
       const IMAGE_CACHE_MAX_AGE = parseInt(process.env.IMAGE_CACHE_MAX_AGE, 10) || 86400;
 
@@ -24,12 +26,14 @@ module.exports = function createDisplayRouter({ db }) {
           .download(storagePath);
         if (error) {
           logger.error('❌ Thumbnail download error:', error, { filename });
+          // Header already set above
           return res.status(404).json({ error: 'Thumbnail not found in storage' });
         }
         const buffer = await data.arrayBuffer();
         const fileBuffer = Buffer.from(buffer);
         res.set('Content-Type', 'image/jpeg');
         res.set('Cache-Control', `public, max-age=${IMAGE_CACHE_MAX_AGE}`);
+        res.set('Cross-Origin-Resource-Policy', 'cross-origin');
         res.send(fileBuffer);
         return;
       }
@@ -44,6 +48,7 @@ module.exports = function createDisplayRouter({ db }) {
 
       if (!photo) {
         logger.error('Display endpoint 404: Photo not found', { filename, state });
+        // Header already set above
         return res.status(404).json({ error: 'Photo not found' });
       }
 
@@ -54,6 +59,7 @@ module.exports = function createDisplayRouter({ db }) {
         .download(storagePath);
       if (error) {
         logger.error('Supabase download error:', error, { filename, state });
+        // Header already set above
         return res.status(404).json({ error: 'File not found in storage' });
       }
 
@@ -75,6 +81,7 @@ module.exports = function createDisplayRouter({ db }) {
         try {
           const jpegBuffer = await convertHeicToJpegBuffer(fileBuffer);
           res.set('Content-Type', 'image/jpeg');
+          res.set('Cross-Origin-Resource-Policy', 'cross-origin');
           res.send(jpegBuffer);
         } catch (conversionError) {
           logger.error('HEIC conversion error:', conversionError, { filename });
@@ -82,11 +89,13 @@ module.exports = function createDisplayRouter({ db }) {
         }
       } else {
         res.set('Content-Type', contentType);
+        res.set('Cross-Origin-Resource-Policy', 'cross-origin');
         res.send(fileBuffer);
       }
 
     } catch (err) {
       logger.error('Display endpoint error:', err, { filename: req?.params?.filename });
+      // Header already set above
       res.status(500).json({ error: 'Internal server error' });
     }
   });
