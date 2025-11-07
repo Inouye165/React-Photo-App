@@ -9,9 +9,12 @@ A chronological log of major bugs or problems found in this photo app. Each entr
 - Resolution (code and/or process fix)
 - Advice for expediting future discovery/fixes
 
----
 
-## 2025-11-01: AI Caption/Metadata Not Appearing Until Hard Refresh
+## TO DO
+
+* [ ] **Code Review Fixes (High Priority):** Address critical security, resilience, and operational issues identified during a recent code review. See [PROFESSIONAL_CODE_REVIEW_LOG.md] for strategy, sub-tasks, and implementation details.
+
+(Add new entries below for each major or instructive bug/root cause encountered!)
 
 **Issue:**
 - After an AI process completed on a photo (Supabase DB updated, backend logs correct), the UI would not visually show new caption/description/keywords until a manual browser hard refresh. Polling logs in React and Zustand state appeared correct, but DOM fields did not update.
