@@ -33,8 +33,8 @@ jobs:
           rm -rf server/node_modules
           rm -f server/package-lock.json
           npm install --no-audit --no-fund --prefix server --legacy-peer-deps
-      - name: Rebuild sqlite3 native bindings
-        run: cd server && npm rebuild sqlite3
+      - name: Rebuild native bindings (sqlite3 and sharp)
+        run: cd server && npm rebuild sqlite3 sharp
       - name: Run integration test
         env:
           PHOTO_WORKING_DIR: ${{ runner.temp }}/photo-working

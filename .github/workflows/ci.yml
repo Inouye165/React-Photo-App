@@ -22,8 +22,8 @@ jobs:
         run: npm ci --no-audit --no-fund
       - name: Install server dependencies
         run: cd server && npm ci --ignore-scripts
-      - name: Rebuild sqlite3 native bindings
-        run: cd server && npm rebuild sqlite3
+      - name: Rebuild native bindings (sqlite3 and sharp)
+        run: cd server && npm rebuild sqlite3 sharp
       - name: Run CSP test in production mode
         run: cd server && NODE_ENV=production npx jest tests/csp.prod.test.js -i
   ci:
@@ -82,10 +82,6 @@ jobs:
           rm -f server/package-lock.json
           npm install --no-audit --no-fund --prefix server
 
-      - name: Rebuild sqlite3 native bindings (server)
-        run: cd server && npm rebuild sqlite3
-
-
       - name: Verify single OpenAI
         run: npm ls openai
 
@@ -133,6 +129,9 @@ jobs:
           JWT_SECRET: test-jwt-secret-key-for-testing-only
           OPENAI_API_KEY: sk-test-key-for-ci
           PHOTO_WORKING_DIR: server/working/photos
+
+      - name: Rebuild sqlite3 for integration test
+        run: cd server && npm rebuild sqlite3
 
       - name: Run integration test
         env:
