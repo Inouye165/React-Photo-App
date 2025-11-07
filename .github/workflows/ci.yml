@@ -20,6 +20,7 @@ jobs:
         with:
           node-version: 20
       - run: cd server && npm ci --ignore-scripts
+      - run: cd server && npm rebuild sqlite3
       - run: cd server && npx jest tests/csp.prod.test.js -i
   ci:
     runs-on: ubuntu-latest
@@ -76,6 +77,9 @@ jobs:
           rm -rf server/node_modules
           rm -f server/package-lock.json
           npm install --no-audit --no-fund --prefix server
+
+      - name: Rebuild sqlite3 native bindings (server)
+        run: cd server && npm rebuild sqlite3
 
 
       - name: Verify single OpenAI
