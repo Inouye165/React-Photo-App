@@ -16,6 +16,7 @@ jest.mock('../ai/langchain/tools/googlePlacesTool', () => {
   };
 });
 
+<<<<<<< HEAD
 jest.mock('../ai/langchain/tools/searchTool', () => ({
   googleSearchTool: {
     invoke: jest.fn().mockResolvedValue(JSON.stringify({ query: '', results: [] }))
@@ -25,6 +26,11 @@ jest.mock('../ai/langchain/tools/searchTool', () => ({
 const { geolocate } = require('../ai/langchain/geolocateTool');
 const { fetchGooglePlaces } = require('../ai/langchain/tools/googlePlacesTool');
 const { PhotoPOIIdentifierNode, normalizeAICategories } = require('../ai/langchain/photoPOIIdentifier');
+=======
+const { geolocate } = require('../ai/langchain/geolocateTool');
+const { fetchGooglePlaces } = require('../ai/langchain/tools/googlePlacesTool');
+const { PhotoPOIIdentifierNode } = require('../ai/langchain/photoPOIIdentifier');
+>>>>>>> 40f27f5 (feat(server): finalize google places integration)
 
 describe('PhotoPOIIdentifier integration with Google Places', () => {
   test('prioritizes Google Places business for restaurant scenes', async () => {
@@ -80,6 +86,7 @@ describe('PhotoPOIIdentifier integration with Google Places', () => {
     expect(result.best_match.name).toBe("Sam's Seafood");
   });
 });
+<<<<<<< HEAD
 
 describe('Category Normalization Regression Test', () => {
   test('should convert unsupported "nature reserve" to "park" to prevent API 400 error', () => {
@@ -102,3 +109,5 @@ describe('Category Normalization Regression Test', () => {
     expect(result.length).toBe(2);
   });
 });
+=======
+>>>>>>> 40f27f5 (feat(server): finalize google places integration)

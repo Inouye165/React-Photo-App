@@ -1,6 +1,7 @@
 const fs = require('fs');
 const path = require('path');
 
+<<<<<<< HEAD
 // This test used to rely on server/.env directly, which is gitignored (secrets).
 // To avoid committing secrets while still validating presence of required keys,
 // we first try to read .env (developer local), and if missing fall back to .env.ci
@@ -21,6 +22,12 @@ describe('Environment configuration', () => {
     } else {
       throw new Error('Neither .env, .env.ci, nor .env.example found for environment key validation');
     }
+=======
+describe('Environment configuration', () => {
+  test('server/.env defines GOOGLE_PLACES_API_KEY', () => {
+    const envPath = path.join(__dirname, '..', '.env');
+    const envContents = fs.readFileSync(envPath, 'utf8');
+>>>>>>> 40f27f5 (feat(server): finalize google places integration)
     expect(envContents).toMatch(/(^|\n)GOOGLE_PLACES_API_KEY=.+/);
   });
 });

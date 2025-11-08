@@ -25,9 +25,128 @@ const { convertHeicToJpegBuffer } = require('../media/image');
 // Hard limit for AI processing file size (20 MB)
 const MAX_AI_FILE_SIZE = 20 * 1024 * 1024;
 const supabase = require('../lib/supabaseClient');
+<<<<<<< HEAD
 const { ROUTER_MODEL, SCENERY_MODEL, COLLECTIBLE_MODEL } = require('./langchain/agents');
 const { googlePlacesTool } = require('./langchain/tools/googlePlacesTool');
 const { app: aiGraph } = require('./langgraph/graph');
+=======
+const { googleSearchTool } = require('./langchain/tools/searchTool');
+const { googlePlacesTool } = require('./langchain/tools/googlePlacesTool');
+
+const MAX_TOOL_ITERATIONS = 4;
+
+// Determine API flavor: 'responses' uses OpenAI Responses API schema (input_image),
+// otherwise fall back to 'chat' which expects chat-style message parts with image_url.
+const API_FLAVOR = process.env.USE_RESPONSES_API === 'true' ? 'responses' : 'chat';
+
+function buildVisionContent(flavor, { systemText, userText, imageUrlOrDataUrl, detail = 'high' }) {
+  if (flavor === 'responses') {
+    return [
+      ...(systemText ? [{ role: 'system', content: [{ type: 'input_text', text: systemText }] }] : []),
+      {
+        role: 'user',
+        content: [
+          { type: 'input_text', text: userText },
+          { type: 'input_image', image_url: { url: imageUrlOrDataUrl, detail } }
+        ]
+      }
+    ];
+  }
+  // chat flavor
+  return [
+    ...(systemText ? [{ role: 'system', content: systemText }] : []),
+    {
+      role: 'user',
+      content: [
+        { type: 'text', text: userText },
+        { type: 'image_url', image_url: { url: imageUrlOrDataUrl, detail } }
+      ]
+    }
+  ];
+}
+
+function normalizeToolCalls(rawCalls) {
+  if (!rawCalls) return [];
+  return rawCalls
+    .map((call, idx) => {
+      const id = call.id || call.tool_call_id || `call_${idx}`;
+      const name = call.name || (call.function && call.function.name);
+      if (!name) return null;
+      const rawArgs = call.args ?? (call.function && call.function.arguments) ?? '{}';
+      let parsedArgs;
+      if (typeof rawArgs === 'string') {
+        try {
+          parsedArgs = rawArgs ? JSON.parse(rawArgs) : {};
+        } catch {
+          parsedArgs = rawArgs ? { query: rawArgs } : {};
+        }
+      } else {
+        parsedArgs = rawArgs || {};
+      }
+      return {
+        id,
+        name,
+        rawArgs: typeof rawArgs === 'string' ? rawArgs : JSON.stringify(rawArgs),
+        parsedArgs
+      };
+    })
+    .filter(Boolean);
+}
+
+async function invokeAgentWithTools(agent, initialMessages, tools = [], options = {}) {
+  const history = Array.isArray(initialMessages) ? [...initialMessages] : [];
+  const registry = new Map(tools.map(tool => [tool.name, tool]));
+  const maxIterations = options.maxIterations || MAX_TOOL_ITERATIONS;
+
+  for (let i = 0; i < maxIterations; i += 1) {
+    const response = await agent.invoke(history);
+    const rawToolCalls =
+      response?.tool_calls ||
+      response?.additional_kwargs?.tool_calls ||
+      response?.kwargs?.tool_calls ||
+      response?.kwargs?.additional_kwargs?.tool_calls;
+
+    const toolCalls = normalizeToolCalls(rawToolCalls);
+
+    if (!toolCalls.length) {
+      return response;
+    }
+
+    history.push({
+      role: 'assistant',
+      content: response.content,
+      tool_calls: toolCalls.map(call => ({
+        id: call.id,
+        type: 'function',
+        function: {
+          name: call.name,
+          arguments: call.rawArgs
+        }
+      }))
+    });
+
+    for (const call of toolCalls) {
+      const tool = registry.get(call.name);
+      if (!tool) {
+        throw new Error(`Agent requested unsupported tool: ${call.name}`);
+      }
+
+      const result = await tool.invoke(call.parsedArgs);
+      const resultPreview = typeof result === 'string' ? result : JSON.stringify(result);
+      logger.debug('[AI Agent] Tool result', call.name, JSON.stringify({ args: call.parsedArgs, result: resultPreview.slice(0, 500) }));
+      history.push({
+        role: 'tool',
+        tool_call_id: call.id,
+        name: call.name,
+        content: result
+      });
+    }
+  }
+
+  throw new Error('Agent exceeded maximum tool iterations');
+}
+
+>>>>>>> 40f27f5 (feat(server): finalize google places integration)
 
 void googlePlacesTool; // ensure tool module loads for downstream consumers
 
@@ -102,8 +221,127 @@ async function processPhotoAI({ fileBuffer, filename, metadata, gps, device }, m
     throw new Error(`AI Graph processing failed: ${finalState.error}`);
   }
 
+<<<<<<< HEAD
   if (!finalState.finalResult) {
     throw new Error('AI Graph finished but produced no finalResult.');
+=======
+  // Step 2: Run the appropriate agent
+  let agentResult;
+  const baseUserMessage = buildVisionContent(API_FLAVOR, {
+    userText: `Analyze the image. Filename: ${filename}, Device: ${device}, GPS: ${gps}`,
+    imageUrlOrDataUrl: imageDataUri,
+    detail: 'high'
+  }).pop();
+
+  const collectibleUserMessage = buildVisionContent(API_FLAVOR, {
+    userText: `Perform a high-resolution examination of the collectible. Zoom into patterns, textures, stamps, and micro-markings that prove authenticity. Describe every notable detail before researching provenance and value. Filename: ${filename}, Device: ${device}, GPS: ${gps}`,
+    imageUrlOrDataUrl: imageDataUri,
+    detail: 'high'
+  }).pop();
+  let agentMessages;
+  if (classification === 'scenery_or_general_subject') {
+    agentMessages = [
+      { role: 'system', content: `${SCENERY_SYSTEM_PROMPT}\n\n${locationPrompt}` },
+      baseUserMessage
+    ];
+    try {
+      try {
+        const localScenery = modelOverrides && modelOverrides.scenery
+          ? new ChatOpenAI({ modelName: modelOverrides.scenery, temperature: 0.3, maxTokens: 1024 })
+          : sceneryAgent;
+            const sceneryModelToUse = (modelOverrides && modelOverrides.scenery) || SCENERY_MODEL;
+            logger.info('[AI Scenery] Selected model for scenery step:', { sceneryModel: sceneryModelToUse, override: !!(modelOverrides && modelOverrides.scenery) });
+        if (API_FLAVOR === 'chat') {
+          agentResult = await invokeAgentWithTools(localScenery, agentMessages, [googlePlacesTool]);
+        } else {
+          const OpenAI = (await import('openai')).default;
+          const client = new OpenAI({ apiKey: process.env.OPENAI_API_KEY });
+          const contentBlocks = agentMessages; // already constructed in responses shape
+          const sceneryResponsesModel = modelOverrides && modelOverrides.scenery ? modelOverrides.scenery : SCENERY_MODEL;
+          logger.info('[AI Scenery] Responses API model selected:', sceneryResponsesModel);
+          const result = await client.responses.create({ model: sceneryResponsesModel, input: contentBlocks });
+          agentResult = { content: result.output_text || JSON.stringify(result) };
+        }
+      } catch (err) {
+        const msg = String(err && (err.message || err));
+        if (msg.includes('image_url is only supported')) {
+          logger.error('[vision] Schema/model mismatch detected for scenery agent: image_url unsupported by chosen model/flavor.');
+        }
+        throw err;
+      }
+    } catch (err) {
+      logger.error('[AI SceneryAgent] Failed:', err);
+      throw err;
+    }
+  } else if (classification === 'specific_identifiable_object') {
+    agentMessages = [
+      { role: 'system', content: `${COLLECTIBLE_SYSTEM_PROMPT}\n\n${locationPrompt}` },
+      collectibleUserMessage
+    ];
+    try {
+      try {
+        // Use a local collectible agent if an override is provided so we can control cost per-request.
+        const collectibleModelToUse = (modelOverrides && modelOverrides.collectible) || COLLECTIBLE_MODEL;
+        logger.info('[AI Collectible] Selected model for collectible step:', { collectibleModel: collectibleModelToUse, override: !!(modelOverrides && modelOverrides.collectible) });
+        const localCollectible = modelOverrides && modelOverrides.collectible
+          ? new ChatOpenAI({ modelName: modelOverrides.collectible, temperature: 0.25, maxTokens: 1400 })
+          : collectibleAgent;
+        if (API_FLAVOR === 'chat') {
+          agentResult = await invokeAgentWithTools(localCollectible, agentMessages, [googleSearchTool]);
+        } else {
+          // Tools/complex function calling not supported in the Responses API path.
+          throw new Error('Collectible agent with external tools is not supported with the Responses API flavor.');
+        }
+      } catch (err) {
+        const msg = String(err && (err.message || err));
+        if (msg.includes('image_url is only supported')) {
+          logger.error('[vision] Schema/model mismatch detected for collectible agent: image_url unsupported by chosen model/flavor.');
+        }
+        throw err;
+      }
+    } catch (err) {
+      logger.error('[AI CollectibleAgent] Failed:', err);
+      throw err;
+    }
+  } else {
+    // Handle unexpected classifications by mapping them to supported categories
+    // Classifications like 'receipt', 'document', 'text', etc. should use scenery agent
+    logger.warn(`[AI Router] Unexpected classification '${classification}' - mapping to scenery_or_general_subject`);
+    classification = 'scenery_or_general_subject';
+    agentMessages = [
+      { role: 'system', content: `${SCENERY_SYSTEM_PROMPT}\n\n${locationPrompt}` },
+      baseUserMessage
+    ];
+    try {
+      try {
+        const localScenery = modelOverrides && modelOverrides.scenery
+          ? new ChatOpenAI({ modelName: modelOverrides.scenery, temperature: 0.3, maxTokens: 1024 })
+          : sceneryAgent;
+            const sceneryModelToUse = (modelOverrides && modelOverrides.scenery) || SCENERY_MODEL;
+            logger.info('[AI Scenery] Selected model for scenery step (fallback):', { sceneryModel: sceneryModelToUse, override: !!(modelOverrides && modelOverrides.scenery) });
+        if (API_FLAVOR === 'chat') {
+          agentResult = await invokeAgentWithTools(localScenery, agentMessages, [googlePlacesTool]);
+        } else {
+          const OpenAI = (await import('openai')).default;
+          const client = new OpenAI({ apiKey: process.env.OPENAI_API_KEY });
+          const contentBlocks = agentMessages;
+          const sceneryResponsesModel = modelOverrides && modelOverrides.scenery ? modelOverrides.scenery : SCENERY_MODEL;
+          logger.info('[AI Scenery] Responses API model selected (fallback):', sceneryResponsesModel);
+          const result = await client.responses.create({ model: sceneryResponsesModel, input: contentBlocks });
+          agentResult = { content: result.output_text || JSON.stringify(result) };
+        }
+      } catch (err) {
+        const msg = String(err && (err.message || err));
+        if (msg.includes('image_url is only supported')) {
+          logger.error('[vision] Schema/model mismatch detected for scenery agent (fallback): image_url unsupported by chosen model/flavor.');
+        }
+        throw err;
+      }
+    } catch (err) {
+      logger.error('[AI SceneryAgent] Failed (fallback):', err);
+      throw err;
+    }
+>>>>>>> 40f27f5 (feat(server): finalize google places integration)
   }
 
   const result = {
