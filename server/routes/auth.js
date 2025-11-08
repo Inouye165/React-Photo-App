@@ -282,7 +282,17 @@ module.exports = function createAuthRouter({ db }) {
     // 1. Add the token to a blacklist
     // 2. Store revoked tokens in a cache (Redis)
     // 3. Use shorter token expiration times
-    
+
+    try {
+      res.clearCookie('authToken', {
+        httpOnly: true,
+        secure: process.env.NODE_ENV === 'production',
+        sameSite: process.env.NODE_ENV === 'production' ? 'None' : 'Lax',
+      });
+    } catch (e) {
+      logger.warn('Failed to clear auth cookie on logout:', e && e.message ? e.message : e);
+    }
+
     res.json({
       success: true,
       message: 'Logged out successfully'

@@ -244,6 +244,31 @@ describe('Authentication System', () => {
     });
   });
 
+  describe('Logout', () => {
+    test('should clear auth cookie and invalidate session immediately', async () => {
+      const agent = request.agent(app);
+
+      await agent
+        .post('/auth/login')
+        .send({
+          username: 'testuser',
+          password: 'TestPassword123!'
+        })
+        .expect(200);
+
+      await agent
+        .post('/auth/logout')
+        .expect(200);
+
+      const verifyResponse = await agent
+        .post('/auth/verify')
+        .expect(401);
+
+      expect(verifyResponse.body.success).toBe(false);
+      expect(verifyResponse.body.error).toBe('Access token required');
+    });
+  });
+
   describe('Account Lockout', () => {
     beforeAll(async () => {
       // Create a test user for lockout testing
