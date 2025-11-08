@@ -10,7 +10,7 @@ if (!process.env.OPENAI_API_KEY) {
   if (process.env.NODE_ENV === 'test') {
     // In test environment, don't fail-fast. Tests should mock agents
     // or provide a test key via test setup.
-  logger.warn('OPENAI_API_KEY not set — skipping fail-fast in test environment.');
+    logger.warn('OPENAI_API_KEY not set — skipping fail-fast in test environment.');
   } else {
     throw new Error('OPENAI_API_KEY not set in .env');
   }
@@ -33,6 +33,7 @@ const { buildPrompt } = require('./langchain/promptTemplate');
 const { convertHeicToJpegBuffer } = require('../media/image');
 const supabase = require('../lib/supabaseClient');
 const { googleSearchTool } = require('./langchain/tools/searchTool');
+const { googlePlacesTool } = require('./langchain/tools/googlePlacesTool');
 const { ensureVisionModel } = require('./modelCapabilities');
 
 const MAX_TOOL_ITERATIONS = 4;
@@ -114,7 +115,13 @@ async function invokeAgentWithTools(agent, initialMessages, tools = [], options 
 
   for (let i = 0; i < maxIterations; i += 1) {
     const response = await agent.invoke(history);
-    const toolCalls = normalizeToolCalls(response?.tool_calls || response?.additional_kwargs?.tool_calls);
+    const rawToolCalls =
+      response?.tool_calls ||
+      response?.additional_kwargs?.tool_calls ||
+      response?.kwargs?.tool_calls ||
+      response?.kwargs?.additional_kwargs?.tool_calls;
+
+    const toolCalls = normalizeToolCalls(rawToolCalls);
 
     if (!toolCalls.length) {
       return response;
@@ -136,12 +143,12 @@ async function invokeAgentWithTools(agent, initialMessages, tools = [], options 
     for (const call of toolCalls) {
       const tool = registry.get(call.name);
       if (!tool) {
-        throw new Error(`Collectible agent requested unsupported tool: ${call.name}`);
+        throw new Error(`Agent requested unsupported tool: ${call.name}`);
       }
 
-  const result = await tool.invoke(call.parsedArgs);
-  const resultPreview = typeof result === 'string' ? result : JSON.stringify(result);
-  logger.debug('[AI CollectibleAgent] Tool result', call.name, JSON.stringify({ args: call.parsedArgs, result: resultPreview.slice(0, 500) }));
+      const result = await tool.invoke(call.parsedArgs);
+      const resultPreview = typeof result === 'string' ? result : JSON.stringify(result);
+      logger.debug('[AI Agent] Tool result', call.name, JSON.stringify({ args: call.parsedArgs, result: resultPreview.slice(0, 500) }));
       history.push({
         role: 'tool',
         tool_call_id: call.id,
@@ -151,7 +158,7 @@ async function invokeAgentWithTools(agent, initialMessages, tools = [], options 
     }
   }
 
-  throw new Error('Collectible agent exceeded maximum tool iterations');
+  throw new Error('Agent exceeded maximum tool iterations');
 }
 
 
@@ -249,7 +256,7 @@ async function processPhotoAI({ fileBuffer, filename, metadata, gps, device }, m
     try {
       meta = JSON.parse(metadata || '{}');
     } catch (parseErr) {
-  logger.warn('[AI] Failed to parse metadata string; using empty metadata.', parseErr.message || parseErr);
+      logger.warn('[AI] Failed to parse metadata string; using empty metadata.', parseErr.message || parseErr);
       meta = {};
     }
   } else if (metadata && typeof metadata === 'object') {
@@ -360,7 +367,7 @@ async function processPhotoAI({ fileBuffer, filename, metadata, gps, device }, m
       }
     }
     if (!classification) {
-  logger.error('[AI Router] Could not extract classification from routerResult:', JSON.stringify(routerResult, null, 2));
+      logger.error('[AI Router] Could not extract classification from routerResult:', JSON.stringify(routerResult, null, 2));
     }
   }
 
@@ -394,7 +401,7 @@ async function processPhotoAI({ fileBuffer, filename, metadata, gps, device }, m
           substitutedToFallback: sceneryModelSelection.substituted
         });
         if (API_FLAVOR === 'chat') {
-          agentResult = await localScenery.invoke(agentMessages);
+          agentResult = await invokeAgentWithTools(localScenery, agentMessages, [googlePlacesTool]);
         } else {
           const OpenAI = (await import('openai')).default;
           const client = new OpenAI({ apiKey: process.env.OPENAI_API_KEY });
@@ -468,7 +475,7 @@ async function processPhotoAI({ fileBuffer, filename, metadata, gps, device }, m
           substitutedToFallback: sceneryModelSelection.substituted
         });
         if (API_FLAVOR === 'chat') {
-          agentResult = await localScenery.invoke(agentMessages);
+          agentResult = await invokeAgentWithTools(localScenery, agentMessages, [googlePlacesTool]);
         } else {
           const OpenAI = (await import('openai')).default;
           const client = new OpenAI({ apiKey: process.env.OPENAI_API_KEY });

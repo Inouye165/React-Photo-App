@@ -1,7 +1,31 @@
 // server/ai/langchain/agents.js
 const { ChatOpenAI } = require('@langchain/openai');
 const { googleSearchTool } = require('./tools/searchTool');
+const { googlePlacesTool } = require('./tools/googlePlacesTool');
 const { ensureVisionModel, getVisionAllowlist, DEFAULT_VISION_MODEL } = require('../modelCapabilities');
+
+if (!ChatOpenAI.prototype.__consoleLoggingPatched) {
+  const originalInvoke = ChatOpenAI.prototype.invoke;
+  ChatOpenAI.prototype.invoke = async function(input, options) {
+    const result = await originalInvoke.call(this, input, options);
+    let printable = null;
+    if (result && result.content !== undefined) {
+      printable = result.content;
+    } else if (result && result.kwargs && result.kwargs.content !== undefined) {
+      printable = result.kwargs.content;
+    } else {
+      printable = result;
+    }
+    try {
+      const serialized = typeof printable === 'string' ? printable : JSON.stringify(printable, null, 2);
+      console.log(`[LLM OUTPUT][${this.modelName || this.model || 'unknown-model'}]`, serialized);
+    } catch (err) {
+      console.log(`[LLM OUTPUT][${this.modelName || this.model || 'unknown-model'}]`, printable, err);
+    }
+    return result;
+  };
+  ChatOpenAI.prototype.__consoleLoggingPatched = true;
+}
 
 const ROUTER_SYSTEM_PROMPT = `You are an expert image classifier. Given an image and its metadata, classify the main focal point as either:\n\n- scenery_or_general_subject: (e.g., landscapes, selfies, generic photos of cows, meals)\n- specific_identifiable_object: (e.g., comic book, car, product box, collectible)\n- receipt: (e.g., store receipt, invoice)\n- food_item: (e.g., plate of food, meal)\n\nRespond with a single key: { "classification": "classification_type" }.`;
 
@@ -24,30 +48,31 @@ You will be given a JSON object containing:
    - Return a JSON object like: \`{ "receipt_details": { "store_name": "...", "total_amount": "...", "date": "..." } }\` (Extract date from metadata.dateTime if not visible on receipt).
 
 **B. IF 'keywords' contains 'food' or similar terms:**
-   - Analyze the "description" for ingredients and food type.
-   - Make an educated guess for the restaurant:
+   - Analyze the "description" for ingredients, preparation style, and food type.
+   - Determine the specific restaurant or vendor:
+     - Compare detected cuisine terms (e.g., "sushi", "tacos", "espresso", "bakery") against the "tags" or category metadata for every item in "nearbyPOIs". A cuisine/tag match counts as a strong alignment.
      - If "bestMatchPOI" exists AND "poiConfidence" is 'high' or 'medium', state "at [bestMatchPOI]".
-     - Else, check if any "nearbyPOIs" strongly match the food type (e.g., photo shows tacos, nearby POI is "Taco Bell"). If a likely match is found, state "likely from [Restaurant Name]".
+     - Else, if a cuisine/tag match is found in "nearbyPOIs", state "likely from [Restaurant Name]" using that POI.
      - Otherwise, state the restaurant is unknown, but mention it's near "[Address Street, City]".
+  - If the selected restaurant sits inside a shopping area (e.g., there is a "shopping_center" POI or a "landuse" of "retail" in "nearbyPOIs" that encompasses the matched restaurant), append "in [Shopping Center Name]" to the location sentence.
+    - The "nearbyPOIs" list fuses high-precision commercial sources (Google Places) with OpenStreetMap data; when a specific business name (e.g., "Sam's Seafood") appears AND matches the cuisine/style in the photo, you MUST use that explicit name in the caption.
    - **Note:** Calorie estimation requires external tools; do not invent calorie counts. Mention this limitation.
-   - Return a JSON object like: \`{ "food_analysis": { "dish_description": "...", "likely_ingredients": ["...", "..."], "likely_restaurant": "...", "calorie_note": "Calorie estimation requires specific nutritional information." } }\`
+  - Return a JSON object like: \`{ "food_analysis": { "dish_description": "...", "likely_ingredients": ["...", "..."], "likely_restaurant": "...", "calorie_note": "Calorie estimation requires specific nutritional information." } }\`
 
 **C. ELSE (Default Scenery/General Subject):**
    - Write a single, compelling narrative paragraph following this structure:
-     1.  **Who/What:** Start with the main subjects from the visual "description".
-     2.  **Animal Focus (If applicable):** If an animal is the main subject and its breed/species is mentioned in the "description" (e.g., "a Golden Retriever", "a Great Blue Heron"):
-         - Identify the breed/species.
-         - Add one brief, interesting fact about it (e.g., "Golden Retrievers are known for their friendly nature", "Great Blue Herons are skilled fish hunters").
-         - Use GPS context if helpful (e.g., "...a Great Blue Heron, a common sight in the wetlands near Concord...").
+     1.  **Who/What:** Start with the main subjects from the visual "description" and call out distinctive natural elements (trees, wildflowers, trail markers) referenced in "keywords".
+     2.  **Wildlife & Botany Focus (If applicable):**
+         - If an animal, bird, or notable plant is highlighted in the "description" or "keywords", identify the species and add one concise, true fact about it.
+         - When trail names, park sections, or tree species are mentioned, incorporate them so the narrative reads like on-the-ground observation.
      3.  **Where (Location):** Determine how to state the location based on "bestMatchPOI" and "poiConfidence":
-         - **IF** "bestMatchPOI" exists AND "poiConfidence" is 'high' or 'medium':
-           - If "bestMatchPOI" is clearly a trail (e.g., "Contra Costa Canal Trail"), state "on the **[bestMatchPOI]**".
-           - If "bestMatchPOI" is a park/open space (e.g., "Lime Ridge Open Space"), state "at **[bestMatchPOI]**". Consider "near the edge of **[bestMatchPOI]**" if visually appropriate.
-           - Otherwise (e.g., a business), state "at **[bestMatchPOI]**".
-         - **ELSE (Low confidence or no POI):** State the location as "near **[Address Street, City]**" using the "location.address". Do NOT mention the low-confidence bestMatchPOI name.
+         - **IF** "bestMatchPOI" exists AND "poiConfidence" is 'high' or 'medium', and it names a specific place (trail, park, landmark, facility, or business):
+           - Use that name as the anchor (e.g., "on the **[bestMatchPOI]**").
+           - Pair it with the correct city/region derived from "location.address" so the sentence explicitly reads "on the [Trail Name] in [City/Region]" or "at [Landmark] in [City/Region]". Prefer the POI name over a generic city.
+         - **ELSE (Low confidence or no POI):** State the location as "near **[Address Street, City]**" using the "location.address". Do NOT surface the low-confidence POI name.
      4.  **Where (Full Address - Conditional):** If you used the specific POI name in step 3, *also* include the full **"address"** (e.g., "...at Lime Ridge Open Space, located near Treat Blvd, Concord, CA..."). If you only used the address in step 3, don't repeat it.
      5.  **When:** Include the full date **and approximate time** (e.g., "morning," "afternoon," "evening" - derive this by parsing the hour from the full ISO timestamp in "metadata.dateTime") from "metadata.dateTime".
-     6.  **Context:** Conclude by weaving in the other visual details, "keywords", and "cameraModel" to set the scene.
+     6.  **Context:** Conclude by weaving in other visual cues, "keywords", and "cameraModel" to deliver a hyper-local sense of place.
    - Return a JSON object like: \`{ "enhanced_description": "The full narrative paragraph." }\`
 
 **Example Output (Default Case - High Confidence POI):**
@@ -158,7 +183,9 @@ const COLLECTIBLE_MODEL = ensureVisionModel(
 const MODEL_ALLOWLIST = Array.from(new Set(getVisionAllowlist([
   ROUTER_MODEL,
   SCENERY_MODEL,
-  COLLECTIBLE_MODEL
+  COLLECTIBLE_MODEL,
+  'gpt-4o',
+  'gpt-4o-mini'
 ]))).sort();
 // Router Agent: Classifies image focal point
 // Note: ROUTER_SYSTEM_PROMPT includes 'receipt' and 'food_item' classifications
@@ -169,11 +196,12 @@ const routerAgent = new ChatOpenAI({
 });
 
 // Scenery Agent: Handles scenery, animals, receipts, food based on the complex prompt above
-const sceneryAgent = new ChatOpenAI({
+const baseSceneryAgent = new ChatOpenAI({
   modelName: SCENERY_MODEL,
   temperature: 0.3,
   maxTokens: 1024
 });
+const sceneryAgent = baseSceneryAgent.bindTools([googlePlacesTool]);
 
 // Collectible Agent: Identifies specific collectibles, validates with research, and estimates value
 const collectibleAgent = new ChatOpenAI({

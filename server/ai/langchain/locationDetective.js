@@ -2,32 +2,6 @@
 const { tool } = require('@langchain/core/tools');
 const { z } = require('zod');
 
-// Mock location database with GPS coordinates - in production, this could connect to Google Places, Yelp, or other POI APIs
-const LOCATION_DATABASE = {
-  // Yellowstone National Park locations with GPS coordinates
-  'yellowstone': {
-    parks: [
-      { name: 'Yellowstone National Park', lat: 44.4280, lng: -110.5885 },
-      { name: 'Old Faithful', lat: 44.4605, lng: -110.8281 },
-      { name: 'Grand Canyon of the Yellowstone', lat: 44.7417, lng: -110.4994 },
-      { name: 'Yellowstone Lake', lat: 44.5400, lng: -110.4000 },
-      { name: 'Mammoth Hot Springs', lat: 44.9707, lng: -110.6987 }
-    ],
-    restaurants: [
-      { name: 'Lake Yellowstone Hotel Dining Room', lat: 44.5439, lng: -110.4011 },
-      { name: 'Old Faithful Inn Dining Room', lat: 44.4594, lng: -110.8300 },
-      { name: 'Grant Village Dining Room', lat: 44.3889, lng: -110.5625 }
-    ],
-    landmarks: [
-      { name: 'Old Faithful Geyser', lat: 44.4605, lng: -110.8281 },
-      { name: 'Lower Falls', lat: 44.7114, lng: -110.4994 },
-      { name: 'Artist Point', lat: 44.7417, lng: -110.4994 },
-      { name: 'Fishing Bridge', lat: 44.5700, lng: -110.4000 },
-      { name: 'Norris Geyser Basin', lat: 44.7267, lng: -110.7011 }
-    ]
-  }
-};
-
 // Calculate distance between two GPS coordinates in feet
 function calculateDistance(lat1, lng1, lat2, lng2) {
   const R = 3959; // Earth's radius in miles
@@ -41,48 +15,14 @@ function calculateDistance(lat1, lng1, lat2, lng2) {
   return distanceMiles * 5280; // Convert to feet
 }
 
-function detectLocationFromGPS(gpsString) {
+function parseGpsString(gpsString) {
   if (!gpsString) return null;
-
-  try {
-    const [lat, lng] = gpsString.split(',').map(coord => parseFloat(coord.trim()));
-
-    // Check all locations in database for proximity (within 500 feet)
-    const nearbyLocations = [];
-    const MAX_DISTANCE_FEET = 500;
-
-    Object.values(LOCATION_DATABASE).forEach(region => {
-      Object.values(region).forEach(locationArray => {
-        locationArray.forEach(location => {
-          if (location.lat && location.lng) {
-            const distance = calculateDistance(lat, lng, location.lat, location.lng);
-            if (distance <= MAX_DISTANCE_FEET) {
-              nearbyLocations.push({
-                ...location,
-                distance: Math.round(distance),
-                type: Object.keys(region).find(key => region[key].includes(location)) || 'unknown'
-              });
-            }
-          }
-        });
-      });
-    });
-
-    if (nearbyLocations.length > 0) {
-      // Sort by distance (closest first)
-      nearbyLocations.sort((a, b) => a.distance - b.distance);
-
-      return {
-        region: 'Yellowstone National Park', // Assuming all current locations are in Yellowstone
-        confidence: 0.9,
-        nearbyLocations: nearbyLocations.slice(0, 5) // Top 5 closest locations
-      };
-    }
-
-    return null;
-  } catch {
-    return null;
-  }
+  const parts = gpsString.split(',').map(value => value && value.trim()).filter(Boolean);
+  if (parts.length < 2) return null;
+  const lat = parseFloat(parts[0]);
+  const lon = parseFloat(parts[1]);
+  if (Number.isNaN(lat) || Number.isNaN(lon)) return null;
+  return { lat, lon };
 }
 
 function detectLocationFromTime(dateTimeInfo) {
@@ -130,7 +70,11 @@ function analyzePhotoContentForLocations(description, keywords, nearbyLocations 
         type: location.type,
         confidence: 0.8,
         distance: location.distance,
-        context: `Within ${location.distance} feet based on GPS and content match`
+        bounds: location.bounds || null,
+        tags: location.tags || {},
+        context: location.distance
+          ? `Within ${location.distance} feet based on GPS and content match`
+          : 'Strong textual match to nearby POI'
       });
     }
   });
@@ -147,22 +91,8 @@ const locationDetectiveTool = tool(
       confidence: 0
     };
 
-    // 1. GPS-based location detection with proximity filtering
-    const gpsLocation = detectLocationFromGPS(gpsString);
+    const gpsCoords = parseGpsString(gpsString);
     let nearbyLocations = [];
-
-    if (gpsLocation) {
-      results.primaryLocation = gpsLocation.region;
-      nearbyLocations = gpsLocation.nearbyLocations;
-      results.nearbyPOIs = nearbyLocations.map(loc => ({
-        name: loc.name,
-        type: loc.type,
-        confidence: 0.7,
-        distance: loc.distance,
-        context: `${gpsLocation.region} - ${loc.distance} feet away`
-      }));
-      results.confidence = Math.max(results.confidence, gpsLocation.confidence);
-    }
 
     // 2. Time-based context
     const timeInfo = detectLocationFromTime(dateTimeInfo);
@@ -170,7 +100,51 @@ const locationDetectiveTool = tool(
       results.timeContext = timeInfo;
     }
 
-    // 3. Photo content analysis (only against GPS-nearby locations)
+    // 3. Nearby POIs supplied via geoContext (typically from geolocate tool)
+    if (geoContext && Array.isArray(geoContext.nearby)) {
+      nearbyLocations = geoContext.nearby
+        .filter(feature => feature && feature.name)
+        .map(feature => {
+          const rawLat = feature.lat != null ? feature.lat : feature.center?.lat;
+          const rawLon = feature.lon != null ? feature.lon : feature.center?.lon;
+          const featureLat = typeof rawLat === 'string' ? parseFloat(rawLat) : rawLat;
+          const featureLon = typeof rawLon === 'string' ? parseFloat(rawLon) : rawLon;
+
+          let distance = null;
+          if (
+            gpsCoords &&
+            featureLat != null && !Number.isNaN(featureLat) &&
+            featureLon != null && !Number.isNaN(featureLon)
+          ) {
+            distance = Math.round(
+              calculateDistance(gpsCoords.lat, gpsCoords.lon, featureLat, featureLon)
+            );
+          }
+
+          const inferredType = feature.category || feature.tags?.amenity || feature.tags?.landuse || 'poi';
+          const distanceConfidence = distance != null && distance <= 500 ? 0.75 : 0.55;
+
+          return {
+            name: feature.name,
+            type: inferredType,
+            distance,
+            bounds: feature.bounds || null,
+            tags: feature.tags || {},
+            source: feature.osmType || 'unknown',
+            confidence: distance != null ? distanceConfidence : 0.5,
+            context: distance != null
+              ? `${distance} feet from provided GPS coordinates`
+              : 'Distance unknown (missing geometry)'
+          };
+        });
+
+      results.nearbyPOIs = [...results.nearbyPOIs, ...nearbyLocations];
+      if (nearbyLocations.length > 0) {
+        results.confidence = Math.max(results.confidence, 0.7);
+      }
+    }
+
+    // 4. Photo content analysis (only against nearby location candidates)
     const contentLocations = analyzePhotoContentForLocations(description, keywords, nearbyLocations);
     results.nearbyPOIs = [...results.nearbyPOIs, ...contentLocations];
 
@@ -181,24 +155,26 @@ const locationDetectiveTool = tool(
 
     results.nearbyPOIs = uniquePOIs;
 
-    // 4. Incorporate reverse geocode data
+    // 5. Incorporate reverse geocode or best-match POI data
+    if (geoContext && geoContext.bestMatchPOI) {
+      const best = geoContext.bestMatchPOI;
+      const bestName = typeof best === 'string' ? best : best.name;
+      const bestConfidence = best && typeof best === 'object' && typeof best.confidence === 'number'
+        ? best.confidence
+        : 0.8;
+
+      if (bestName) {
+        results.primaryLocation = bestName;
+        results.confidence = Math.max(results.confidence, bestConfidence);
+      }
+    }
+
     if (geoContext && geoContext.address) {
       const address = geoContext.address.display_name || '';
       if (address && !results.primaryLocation) {
         results.primaryLocation = address;
         results.confidence = Math.max(results.confidence, 0.8);
       }
-    }
-
-    if (geoContext && Array.isArray(geoContext.nearby)) {
-      geoContext.nearby.forEach(feature => {
-        results.nearbyPOIs.push({
-          name: feature,
-          type: 'nearby',
-          confidence: 0.5,
-          context: 'Nearby feature'
-        });
-      });
     }
 
     return JSON.stringify(results);
