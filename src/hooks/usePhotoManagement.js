@@ -17,8 +17,7 @@ function usePhotoManagement() {
   const moveToInprogress = useStore((state) => state.moveToInprogress);
   const pollingPhotoId = useStore((state) => state.pollingPhotoId);
   const setPollingPhotoId = useStore((state) => state.setPollingPhotoId);
-  const toast = useStore((state) => state.toast);
-  const setToast = useStore((state) => state.setToast);
+  const setBanner = useStore((state) => state.setBanner);
 
   const [loading, setLoading] = useState(true);
   const [view, setView] = useState('working');
@@ -51,8 +50,9 @@ function usePhotoManagement() {
           if (controller.signal.aborted) return;
           setPhotos((response && response.photos) || []);
         } catch (error) {
-          if (controller.signal.aborted) return;
-          setToast({ message: `Error loading photos from backend: ${error?.message || 'unknown'}`, severity: 'error' });
+          if (!controller.signal.aborted) {
+            setBanner({ message: `Error loading photos from backend: ${error?.message || 'unknown'}`, severity: 'error' });
+          }
         } finally {
           if (!controller.signal.aborted) {
             setLoading(false);
@@ -65,7 +65,7 @@ function usePhotoManagement() {
         promise: task,
       };
     },
-    [setPhotos, setToast],
+  [setPhotos, setBanner],
   );
 
   useEffect(() => {
@@ -163,30 +163,30 @@ function usePhotoManagement() {
     async (photoId, model = null) => {
       try {
         const response = await recheckPhotoAI(photoId, model);
-        setToast({ message: 'AI recheck initiated. Polling for results...', severity: 'info' });
+        setBanner({ message: 'AI recheck initiated. Polling for results...', severity: 'info' });
         setPollingPhotoId(photoId);
         return response;
       } catch (error) {
-        setToast({ message: `AI recheck failed: ${error?.message || 'unknown'}`, severity: 'error' });
+        setBanner({ message: `AI recheck failed: ${error?.message || 'unknown'}`, severity: 'error' });
         throw error;
       }
     },
-    [setToast, setPollingPhotoId],
+  [setPollingPhotoId, setBanner],
   );
 
   const handleMoveToFinished = useCallback(
     async (id) => {
       try {
         await updatePhotoState(id, 'finished');
-        setToast({ message: 'Photo marked as finished', severity: 'success' });
+        setBanner({ message: 'Photo marked as finished', severity: 'success' });
         setEditingMode(null);
         setActivePhotoId(null);
         removePhotoById(id);
       } catch (error) {
-        setToast({ message: `Error marking photo as finished: ${error.message}`, severity: 'error' });
+        setBanner({ message: `Error marking photo as finished: ${error?.message || error}`, severity: 'error' });
       }
     },
-    [removePhotoById, setToast],
+  [removePhotoById, setBanner],
   );
 
   const handleMoveToWorking = useCallback(
@@ -195,12 +195,12 @@ function usePhotoManagement() {
         await updatePhotoState(id, 'working');
         const { promise } = loadPhotos(view);
         await promise;
-        setToast({ message: 'Photo moved back to working', severity: 'info' });
+        setBanner({ message: 'Photo moved back to working', severity: 'info' });
       } catch (error) {
-        setToast({ message: `Error moving photo back to working: ${error.message}`, severity: 'error' });
+        setBanner({ message: `Error moving photo back to working: ${error?.message || error}`, severity: 'error' });
       }
     },
-    [loadPhotos, setToast, view],
+  [loadPhotos, view, setBanner],
   );
 
   const handleInlineSave = useCallback(async () => {
@@ -215,11 +215,11 @@ function usePhotoManagement() {
         keywords: editedKeywords,
       });
       setEditingMode(null);
-      setToast({ message: 'Saved in app', severity: 'success' });
+      setBanner({ message: 'Saved in app', severity: 'success' });
     } catch (error) {
-      setToast({ message: `Save failed: ${error?.message || error}`, severity: 'error' });
+      setBanner({ message: `Save failed: ${error?.message || error}`, severity: 'error' });
     }
-  }, [activePhoto, editedCaption, editedDescription, editedKeywords, setToast, updatePhotoData]);
+  }, [activePhoto, editedCaption, editedDescription, editedKeywords, updatePhotoData, setBanner]);
 
   const handleDeletePhoto = useCallback(
     async (id) => {
@@ -227,7 +227,7 @@ function usePhotoManagement() {
       try {
         await deletePhoto(id);
         removePhotoById(id);
-        setToast({ message: 'Photo deleted successfully', severity: 'success' });
+        setBanner({ message: 'Photo deleted successfully', severity: 'success' });
         if (String(activePhotoId) === String(id)) {
           setActivePhotoId(null);
           setEditingMode(null);
@@ -237,10 +237,10 @@ function usePhotoManagement() {
           window.location.reload();
           return;
         }
-        setToast({ message: `Error deleting photo: ${error?.message || error}`, severity: 'error' });
+        setBanner({ message: `Error deleting photo: ${error?.message || error}`, severity: 'error' });
       }
     },
-    [activePhotoId, removePhotoById, setToast],
+  [activePhotoId, removePhotoById, setBanner],
   );
 
   const handleEditPhoto = useCallback((photo, openFullPage = false) => {
@@ -298,8 +298,7 @@ function usePhotoManagement() {
 
   return {
     photos,
-    toast,
-    setToast,
+  // toast, setToast removed
     loading,
     view,
     setView,

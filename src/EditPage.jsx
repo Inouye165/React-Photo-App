@@ -6,7 +6,7 @@ import useStore from './store.js'
 import ModelSelect from './components/ModelSelect'
 import { DEFAULT_MODEL } from './config/modelCatalog'
 
-export default function EditPage({ photo, onClose, onSave, onFinished, onRecheckAI, setToast }) {
+export default function EditPage({ photo, onClose, onSave, onFinished, onRecheckAI }) {
   // AuthContext no longer exposes client-side token (httpOnly cookies are used).
   useAuth();
   // Prefer the live photo from the global store when available so this editor
@@ -65,9 +65,7 @@ export default function EditPage({ photo, onClose, onSave, onFinished, onRecheck
   const pollingPhotoId = useStore(state => state.pollingPhotoId)
   const isPolling = (pollingPhotoIds && pollingPhotoIds.has && pollingPhotoIds.has(sourcePhoto?.id)) || pollingPhotoId === sourcePhoto?.id
 
-  // Prefer the setToast passed from parent (App) but fall back to store if not provided
-  const storeSetToast = useStore(state => state.setToast)
-  const toast = typeof setToast === 'function' ? setToast : storeSetToast
+  // toast logic removed
 
   // Use ?v=hash for cache busting. Prefer hash, fallback to updated_at if needed.
   // This ensures browsers do not show stale pixels after image bytes change.
@@ -197,10 +195,10 @@ export default function EditPage({ photo, onClose, onSave, onFinished, onRecheck
       const updated = { ...photo, caption, description, keywords, textStyle };
       await onSave(updated);
 
-      toast({ message: 'Metadata saved successfully!', severity: 'success' });
+  // toast removed: Metadata saved successfully
     } catch (e) {
       console.error('Save failed', e);
-      toast({ message: 'Failed to save metadata: ' + e.message, severity: 'error' });
+  // toast removed: Failed to save metadata
     } finally {
       setSaving(false)
     }
@@ -239,10 +237,10 @@ export default function EditPage({ photo, onClose, onSave, onFinished, onRecheck
       const updated = { ...photo, caption, description, keywords, textStyle: newTextStyle };
       await onSave(updated);
       
-      toast({ message: `Captioned image saved to inprogress as ${result.filename}`, severity: 'success' });
+  // toast removed: Captioned image saved
     } catch (e) {
       console.error('Canvas save failed', e);
-      toast({ message: 'Failed to save captioned image: ' + e.message, severity: 'error' });
+  // toast removed: Failed to save captioned image
     } finally {
       setSaving(false);
     }
@@ -275,14 +273,14 @@ export default function EditPage({ photo, onClose, onSave, onFinished, onRecheck
                   if (typeof onRecheckAI === 'function') {
                     // Explicitly pass photo id and null model to request default (cheaper) model
                     await onRecheckAI(sourcePhoto?.id || photo.id, null)
-                    toast({ message: 'AI recheck started.', severity: 'info' })
+                    // toast removed: AI recheck started
                   } else {
-                    toast({ message: 'Recheck handler not available', severity: 'warning' })
+                    // toast removed: Recheck handler not available
                   }
                 } catch (err) {
                   console.error('Recheck failed', err)
                   setRecheckStatus('error')
-                  toast({ message: 'AI recheck failed: ' + (err && err.message ? err.message : err), severity: 'error' })
+                  // toast removed: AI recheck failed
                 } finally {
                   setRecheckingAI(false)
                 }

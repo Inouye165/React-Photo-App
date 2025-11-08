@@ -2,7 +2,7 @@ import { useCallback, useMemo, useRef, useState } from 'react';
 import { parse } from 'exifr';
 import { uploadPhotoToServer } from '../api.js';
 
-export default function useLocalPhotoPicker({ onUploadComplete, onUploadSuccess, setToast }) {
+export default function useLocalPhotoPicker({ onUploadComplete, onUploadSuccess }) {
   const [localPhotos, setLocalPhotos] = useState([]);
   const [startDate, setStartDate] = useState('');
   const [endDate, setEndDate] = useState('');
@@ -35,10 +35,10 @@ export default function useLocalPhotoPicker({ onUploadComplete, onUploadSuccess,
       workingDirHandleRef.current = dirHandle;
       setLocalPhotos(files);
       setShowPicker(true);
-    } catch (error) {
-      setToast(`Folder selection failed: ${error.message}`);
+    } catch {
+      // toast removed: folder selection failed
     }
-  }, [setToast]);
+  }, []);
 
   const filteredLocalPhotos = useMemo(() => {
     if (!Array.isArray(localPhotos) || localPhotos.length === 0) return [];
@@ -63,7 +63,7 @@ export default function useLocalPhotoPicker({ onUploadComplete, onUploadSuccess,
         await uploadPhotoToServer(photo.file);
       }
 
-      setToast(`Successfully uploaded ${filteredLocalPhotos.length} photos`);
+  // toast removed: upload success
       setLocalPhotos([]);
       setShowPicker(false);
       setStartDate('');
@@ -74,12 +74,12 @@ export default function useLocalPhotoPicker({ onUploadComplete, onUploadSuccess,
       if (typeof onUploadComplete === 'function') {
         await onUploadComplete();
       }
-    } catch (error) {
-      setToast(`Upload failed: ${error.message}`);
+    } catch {
+      // toast removed: upload failed
     } finally {
       setUploading(false);
     }
-  }, [filteredLocalPhotos, onUploadComplete, onUploadSuccess, setToast]);
+  }, [filteredLocalPhotos, onUploadComplete, onUploadSuccess]);
 
   return {
     localPhotos,

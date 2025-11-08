@@ -247,35 +247,7 @@ describe('App Component', () => {
     expect(mockShowDirectoryPicker).toHaveBeenCalled()
   })
 
-  it('displays toast messages for errors', async () => {
-    getPhotos.mockRejectedValue(new Error('Test error'))
-    
-    await act(async () => {
-      render(<App />)
-    })
-    
-    await waitFor(() => {
-      expect(screen.getByText(/Error loading photos from backend/)).toBeInTheDocument()
-    })
-  })
-
-  it('can dismiss toast messages', async () => {
-    const user = userEvent.setup()
-    getPhotos.mockRejectedValue(new Error('Test error'))
-    
-    await act(async () => {
-      render(<App />)
-    })
-    
-    await waitFor(() => {
-      expect(screen.getByText(/Error loading photos from backend/)).toBeInTheDocument()
-    })
-    
-    const dismissButton = screen.getByTitle('Dismiss')
-    await user.click(dismissButton)
-    
-  expect(screen.queryByText(/Error loading photos from backend/)).not.toBeInTheDocument()
-  })
+  // Toast notification tests removed after toast logic was deleted
 
   it('displays toolbar messages correctly', async () => {
     await act(async () => {

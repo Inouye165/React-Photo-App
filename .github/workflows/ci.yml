@@ -29,6 +29,7 @@ jobs:
           npm install --no-audit --no-fund --prefix server
       - name: Run CSP test in production mode
         run: cd server && NODE_ENV=production npx jest tests/csp.prod.test.js -i
+
   ci:
     runs-on: ubuntu-latest
     services:
@@ -47,7 +48,7 @@ jobs:
           --health-retries 5
     strategy:
       matrix:
-        node-version: ['20']
+        node-version: [ '20' ]
 
     steps:
       - name: Checkout repository
@@ -57,7 +58,7 @@ jobs:
         uses: actions/setup-node@v4
         with:
           node-version: ${{ matrix.node-version }}
-          cache: 'npm'
+          cache: npm
 
       # Use the more efficient caching strategy from integration.yml
       - name: Cache npm cache only
@@ -88,7 +89,6 @@ jobs:
       - name: Verify single OpenAI
         run: npm ls openai
 
-      # Run the main lint script from root package.json
       - name: Lint
         run: npm run lint
 
@@ -118,7 +118,6 @@ jobs:
       - name: Create photo working dir
         run: mkdir -p server/working/photos
 
-      # Run the 'test:ci' script from server/package.json
       - name: Run server tests
         run: npm run test:ci --prefix server --silent
         env:
@@ -152,6 +151,7 @@ jobs:
         run: |
           mkdir -p "$PHOTO_WORKING_DIR"
           npm run integration-test
+
   test-a11y-e2e:
     runs-on: ubuntu-latest
     timeout-minutes: 12
@@ -160,7 +160,8 @@ jobs:
     steps:
       - uses: actions/checkout@v4
       - uses: actions/setup-node@v4
-        with: { node-version: 20 }
+        with:
+          node-version: 20
       - run: npm ci
       - run: cd server && npm ci
       - name: Install Playwright Browsers
@@ -199,7 +200,8 @@ jobs:
     steps:
       - uses: actions/checkout@v4
       - uses: actions/setup-node@v4
-        with: { node-version: 20 }
+        with:
+          node-version: 20
       - name: Install k6
         run: |
           sudo gpg -k
@@ -236,7 +238,8 @@ jobs:
     steps:
       - uses: actions/checkout@v4
       - uses: actions/setup-node@v4
-        with: { node-version: 20 }
+        with:
+          node-version: 20
       - run: npm ci
       - name: Check if Dockerfile exists
         id: check_dockerfile

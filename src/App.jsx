@@ -5,20 +5,22 @@ import Toolbar from './Toolbar.jsx';
 import PhotoUploadForm from './PhotoUploadForm.jsx';
 import EditPage from './EditPage.jsx';
 import useAIPolling from './hooks/useAIPolling.jsx';
-import Toast from './components/Toast.jsx';
 import MetadataModal from './components/MetadataModal.jsx';
 import PhotoTable from './components/PhotoTable.jsx';
 import PhotoDetailPanel from './components/PhotoDetailPanel.jsx';
 import usePhotoPrivileges from './hooks/usePhotoPrivileges.js';
 import useLocalPhotoPicker from './hooks/useLocalPhotoPicker.js';
 import usePhotoManagement from './hooks/usePhotoManagement.js';
+import useStore from './store.js';
 
 function App() {
+  // Global banner notification from Zustand (will be shown inside the Toolbar)
+  const banner = useStore((state) => state.banner);
+  const setBanner = useStore((state) => state.setBanner);
   const [toolbarMessage, setToolbarMessage] = useState('');
   const {
     photos,
-    toast,
-    setToast,
+  // toast, setToast removed
     loading,
     setView,
     setActivePhotoId,
@@ -85,7 +87,6 @@ function App() {
   } = useLocalPhotoPicker({
     onUploadComplete: refreshPhotos,
     onUploadSuccess: (count) => setToolbarMessage(`Successfully uploaded ${count} photos`),
-    setToast,
   });
 
   useEffect(() => {
@@ -115,17 +116,10 @@ function App() {
         left: 0,
         right: 0,
         bottom: 0,
-        paddingTop: '72px',
+        // Provide enough top padding so content starts below fixed toolbar (~60-70px height)
+        paddingTop: '96px',
       }}
     >
-      <div className="fixed top-6 left-1/2 transform -translate-x-1/2 z-50">
-        <Toast
-          message={toast?.message}
-          severity={toast?.severity}
-          onClose={() => setToast({ message: '' })}
-        />
-      </div>
-
       <Toolbar
         onSelectFolder={handleSelectFolder}
         onViewStaged={() => {
@@ -153,13 +147,14 @@ function App() {
           if (activePhoto) {
             setMetadataPhoto(activePhoto);
             setShowMetadataModal(true);
-          } else {
-            setToast({ message: 'Please select a photo first', severity: 'warning' });
           }
         }}
-        toolbarMessage={toolbarMessage}
-        onClearToolbarMessage={() => setToolbarMessage('')}
+        toolbarMessage={toolbarMessage || banner?.message}
+        toolbarSeverity={banner?.severity || 'info'}
+        onClearToolbarMessage={() => { setToolbarMessage(''); setBanner({ message: '' }); }}
       />
+
+      {/* Banner is now displayed inside the Toolbar via toolbarMessage */}
 
       <div aria-live="polite" className="sr-only">
         {toolbarMessage}
@@ -200,7 +195,6 @@ function App() {
               setActivePhotoId(updated.id);
             }}
             onRecheckAI={handleRecheckSinglePhoto}
-            setToast={setToast}
           />
         ) : activePhoto ? (
           <PhotoDetailPanel

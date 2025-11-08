@@ -10,7 +10,7 @@ export default function useAIPolling() {
   const setPollingPhotoId = useStore(state => state.setPollingPhotoId)
   const addPollingId = useStore(state => state.addPollingId)
   const removePollingId = useStore(state => state.removePollingId)
-  const setToast = useStore(state => state.setToast)
+  // setToast removed
   const attemptsRef = useRef(0)
 
   // Save initial AI fields so we can check for actual changes
@@ -77,7 +77,7 @@ export default function useAIPolling() {
           const caption = (updated.caption || '').toString().toLowerCase();
           const description = (updated.description || '').toString().toLowerCase();
           if (caption === failedMarker || description === failedMarker) {
-            setToast({ message: 'AI processing failed for this photo', severity: 'error' });
+            // toast removed: AI processing failed
           }
           return;
         }
@@ -85,7 +85,7 @@ export default function useAIPolling() {
           if (!cancelled) {
             removePollingId(pollingPhotoId);
             setPollingPhotoId(null);
-            setToast({ message: 'AI job still running — stopped polling after timeout', severity: 'warning' });
+            // toast removed: AI job still running
           }
           return;
         }
@@ -94,7 +94,7 @@ export default function useAIPolling() {
           if (!cancelled) {
             removePollingId(pollingPhotoId);
             setPollingPhotoId(null);
-            setToast({ message: 'Photo not found — stopped polling', severity: 'warning' });
+            // toast removed: Photo not found
           }
           return;
         }
@@ -109,5 +109,5 @@ export default function useAIPolling() {
       clearInterval(interval);
       removePollingId(pollingPhotoId);
     };
-  }, [pollingPhotoId, updatePhoto, setPollingPhotoId, addPollingId, removePollingId, setToast]);
+  }, [pollingPhotoId, updatePhoto, setPollingPhotoId, addPollingId, removePollingId]);
 }

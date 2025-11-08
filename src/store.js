@@ -15,6 +15,19 @@ const useStore = create((set) => ({
   pollingPhotoId: null,
   pollingPhotoIds: new Set(),
 
+  // Persistent banner notification (alternative to toast)
+  banner: { message: '', severity: 'info' },
+  setBanner: (value) => set((state) => {
+    const base = state.banner || { message: '', severity: 'info' };
+    if (!value) return { banner: { message: '', severity: base.severity || 'info' } };
+    if (typeof value === 'string') {
+      return { banner: { message: value, severity: base.severity || 'info' } };
+    }
+    const message = typeof value.message === 'string' ? value.message : '';
+    const severity = typeof value.severity === 'string' ? value.severity : (base.severity || 'info');
+    return { banner: { message, severity } };
+  }),
+
   // Photos slice
   setPhotos: (photos) => set({ photos }),
   removePhotoById: (id) => set((state) => ({ photos: state.photos.filter(p => p.id !== id) })),
@@ -96,7 +109,7 @@ const useStore = create((set) => ({
       })
       return { success: true }
     } catch (err) {
-      set({ toast: { message: `Error moving photo: ${err?.message || err}`, severity: 'error' } })
+  // ...toast error removed...
       return { success: false, error: err }
     }
   }

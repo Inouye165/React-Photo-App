@@ -1,6 +1,13 @@
 import React from 'react';
 import { useAuth } from './contexts/AuthContext';
 
+const sevStyles = {
+  info: { bg: '#3b82f6', text: '#f1f5f9' },
+  success: { bg: '#16a34a', text: '#f0fdf4' },
+  warning: { bg: '#f59e0b', text: '#1f2937' },
+  error: { bg: '#dc2626', text: '#fff' },
+};
+
 export default function Toolbar({
   onViewStaged,
   onViewInprogress,
@@ -9,6 +16,7 @@ export default function Toolbar({
   onShowMetadata,
   // new: a small persistent message area in the toolbar
   toolbarMessage,
+  toolbarSeverity = 'info',
   onClearToolbarMessage
 }) {
   const { isAuthenticated, user, logout } = useAuth();
@@ -29,20 +37,19 @@ export default function Toolbar({
       aria-label="Main toolbar"
       style={{
         position: 'fixed',
-        top: 16,
-        left: 16,
-        right: 16,
-        zIndex: 50, // keep above modals/overlays (modals use z-40)
+        top: 0,
+        left: 0,
+        right: 0,
+        zIndex: 60, // higher so it stays above other overlays
         display: "flex",
         alignItems: "center",
         justifyContent: "space-between",
         background: "#2d3748", // dark blue-gray
         color: "#fff",
-        padding: "12px 24px",
+        padding: "14px 28px",
         margin: 0,
-        borderRadius: "8px",
-        border: "2px solid #4a5568",
-        boxShadow: "0 2px 10px rgba(0,0,0,0.16)",
+        borderBottom: "2px solid #4a5568",
+        boxShadow: "0 2px 10px rgba(0,0,0,0.18)",
       }}
     >
       <div style={{ display: "flex", alignItems: "center", gap: "12px" }}>
@@ -71,7 +78,7 @@ export default function Toolbar({
       </div>
       <div style={{ marginLeft: "auto", display: 'flex', alignItems: 'center', gap: '12px' }}>
         {toolbarMessage ? (
-          <div style={{ display: 'flex', alignItems: 'center', gap: '8px', background: '#f6ad55', color: '#1f2937', padding: '6px 10px', borderRadius: '6px', fontSize: '0.95rem' }} role="status" aria-live="polite">
+          <div style={{ display: 'flex', alignItems: 'center', gap: '8px', background: (sevStyles[toolbarSeverity]?.bg || sevStyles.info.bg), color: (sevStyles[toolbarSeverity]?.text || sevStyles.info.text), padding: '6px 10px', borderRadius: '6px', fontSize: '0.95rem' }} role="status" aria-live="polite">
             <span>{toolbarMessage}</span>
             <button onClick={onClearToolbarMessage} title="Dismiss" style={{ background: 'transparent', border: 'none', fontSize: '1rem', cursor: 'pointer', color: '#1f2937' }}>×</button>
           </div>
