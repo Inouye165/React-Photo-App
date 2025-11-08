@@ -33,8 +33,21 @@ const { buildPrompt } = require('./langchain/promptTemplate');
 const { convertHeicToJpegBuffer } = require('../media/image');
 const supabase = require('../lib/supabaseClient');
 const { googleSearchTool } = require('./langchain/tools/searchTool');
+const { ensureVisionModel } = require('./modelCapabilities');
 
 const MAX_TOOL_ITERATIONS = 4;
+
+function resolveVisionModelSelection(overrideValue, fallbackValue, contextLabel) {
+  if (!overrideValue) {
+    return { effective: fallbackValue, requested: null, substituted: false };
+  }
+  const effective = ensureVisionModel(overrideValue, fallbackValue, contextLabel);
+  return {
+    effective,
+    requested: overrideValue,
+    substituted: effective !== overrideValue
+  };
+}
 
 // Determine API flavor: 'responses' uses OpenAI Responses API schema (input_image),
 // otherwise fall back to 'chat' which expects chat-style message parts with image_url.
@@ -184,6 +197,19 @@ async function processPhotoAI({ fileBuffer, filename, metadata, gps, device }, m
   const imageBase64 = imageBuffer.toString('base64');
   const imageDataUri = `data:${imageMime};base64,${imageBase64}`;
 
+  const routerModelSelection = resolveVisionModelSelection(modelOverrides && modelOverrides.router, ROUTER_MODEL, 'router override');
+  const sceneryModelSelection = resolveVisionModelSelection(modelOverrides && modelOverrides.scenery, SCENERY_MODEL, 'scenery override');
+  const collectibleModelSelection = resolveVisionModelSelection(modelOverrides && modelOverrides.collectible, COLLECTIBLE_MODEL, 'collectible override');
+
+  const routerModelToUse = routerModelSelection.effective;
+  const sceneryModelToUse = sceneryModelSelection.effective;
+  const collectibleModelToUse = collectibleModelSelection.effective;
+  const modelsUsed = {
+    router: routerModelToUse,
+    scenery: sceneryModelToUse,
+    collectible: collectibleModelToUse
+  };
+
   const extractText = (value) => {
     if (!value) return '';
     if (typeof value === 'string') return value;
@@ -261,11 +287,14 @@ async function processPhotoAI({ fileBuffer, filename, metadata, gps, device }, m
   let routerResult;
   try {
     // Use override router model when provided, otherwise use shared routerAgent
-    const routerModelToUse = (modelOverrides && modelOverrides.router) || ROUTER_MODEL;
-    logger.info('[AI Router] Selected model for router step:', { routerModel: routerModelToUse, override: !!(modelOverrides && modelOverrides.router) });
-    const localRouter = modelOverrides && modelOverrides.router
-      ? new ChatOpenAI({ modelName: modelOverrides.router, temperature: 0.2, maxTokens: 512 })
-      : routerAgent;
+    logger.info('[AI Router] Selected model for router step:', {
+      routerModel: routerModelToUse,
+      requestedModel: routerModelSelection.requested,
+      substitutedToFallback: routerModelSelection.substituted
+    });
+    const localRouter = routerModelToUse === ROUTER_MODEL
+      ? routerAgent
+      : new ChatOpenAI({ modelName: routerModelToUse, temperature: 0.2, maxTokens: 512 });
     try {
       if (API_FLAVOR === 'chat') {
         routerResult = await localRouter.invoke(routerMessages);
@@ -273,7 +302,7 @@ async function processPhotoAI({ fileBuffer, filename, metadata, gps, device }, m
         // Responses API path
         const OpenAI = (await import('openai')).default;
         const client = new OpenAI({ apiKey: process.env.OPENAI_API_KEY });
-        const routerResponsesModel = modelOverrides && modelOverrides.router ? modelOverrides.router : ROUTER_MODEL;
+        const routerResponsesModel = routerModelToUse;
         logger.info('[AI Router] Responses API model selected:', routerResponsesModel);
         const response = await client.responses.create({ model: routerResponsesModel, input: routerMessages });
         routerResult = { content: response.output_text || JSON.stringify(response) };
@@ -356,18 +385,21 @@ async function processPhotoAI({ fileBuffer, filename, metadata, gps, device }, m
     ];
     try {
       try {
-        const localScenery = modelOverrides && modelOverrides.scenery
-          ? new ChatOpenAI({ modelName: modelOverrides.scenery, temperature: 0.3, maxTokens: 1024 })
-          : sceneryAgent;
-            const sceneryModelToUse = (modelOverrides && modelOverrides.scenery) || SCENERY_MODEL;
-            logger.info('[AI Scenery] Selected model for scenery step:', { sceneryModel: sceneryModelToUse, override: !!(modelOverrides && modelOverrides.scenery) });
+        const localScenery = sceneryModelToUse === SCENERY_MODEL
+          ? sceneryAgent
+          : new ChatOpenAI({ modelName: sceneryModelToUse, temperature: 0.3, maxTokens: 1024 });
+        logger.info('[AI Scenery] Selected model for scenery step:', {
+          sceneryModel: sceneryModelToUse,
+          requestedModel: sceneryModelSelection.requested,
+          substitutedToFallback: sceneryModelSelection.substituted
+        });
         if (API_FLAVOR === 'chat') {
           agentResult = await localScenery.invoke(agentMessages);
         } else {
           const OpenAI = (await import('openai')).default;
           const client = new OpenAI({ apiKey: process.env.OPENAI_API_KEY });
           const contentBlocks = agentMessages; // already constructed in responses shape
-          const sceneryResponsesModel = modelOverrides && modelOverrides.scenery ? modelOverrides.scenery : SCENERY_MODEL;
+          const sceneryResponsesModel = sceneryModelToUse;
           logger.info('[AI Scenery] Responses API model selected:', sceneryResponsesModel);
           const result = await client.responses.create({ model: sceneryResponsesModel, input: contentBlocks });
           agentResult = { content: result.output_text || JSON.stringify(result) };
@@ -391,11 +423,14 @@ async function processPhotoAI({ fileBuffer, filename, metadata, gps, device }, m
     try {
       try {
         // Use a local collectible agent if an override is provided so we can control cost per-request.
-        const collectibleModelToUse = (modelOverrides && modelOverrides.collectible) || COLLECTIBLE_MODEL;
-        logger.info('[AI Collectible] Selected model for collectible step:', { collectibleModel: collectibleModelToUse, override: !!(modelOverrides && modelOverrides.collectible) });
-        const localCollectible = modelOverrides && modelOverrides.collectible
-          ? new ChatOpenAI({ modelName: modelOverrides.collectible, temperature: 0.25, maxTokens: 1400 })
-          : collectibleAgent;
+        logger.info('[AI Collectible] Selected model for collectible step:', {
+          collectibleModel: collectibleModelToUse,
+          requestedModel: collectibleModelSelection.requested,
+          substitutedToFallback: collectibleModelSelection.substituted
+        });
+        const localCollectible = collectibleModelToUse === COLLECTIBLE_MODEL
+          ? collectibleAgent
+          : new ChatOpenAI({ modelName: collectibleModelToUse, temperature: 0.25, maxTokens: 1400 });
         if (API_FLAVOR === 'chat') {
           agentResult = await invokeAgentWithTools(localCollectible, agentMessages, [googleSearchTool]);
         } else {
@@ -424,18 +459,21 @@ async function processPhotoAI({ fileBuffer, filename, metadata, gps, device }, m
     ];
     try {
       try {
-        const localScenery = modelOverrides && modelOverrides.scenery
-          ? new ChatOpenAI({ modelName: modelOverrides.scenery, temperature: 0.3, maxTokens: 1024 })
-          : sceneryAgent;
-            const sceneryModelToUse = (modelOverrides && modelOverrides.scenery) || SCENERY_MODEL;
-            logger.info('[AI Scenery] Selected model for scenery step (fallback):', { sceneryModel: sceneryModelToUse, override: !!(modelOverrides && modelOverrides.scenery) });
+        const localScenery = sceneryModelToUse === SCENERY_MODEL
+          ? sceneryAgent
+          : new ChatOpenAI({ modelName: sceneryModelToUse, temperature: 0.3, maxTokens: 1024 });
+        logger.info('[AI Scenery] Selected model for scenery step (fallback):', {
+          sceneryModel: sceneryModelToUse,
+          requestedModel: sceneryModelSelection.requested,
+          substitutedToFallback: sceneryModelSelection.substituted
+        });
         if (API_FLAVOR === 'chat') {
           agentResult = await localScenery.invoke(agentMessages);
         } else {
           const OpenAI = (await import('openai')).default;
           const client = new OpenAI({ apiKey: process.env.OPENAI_API_KEY });
           const contentBlocks = agentMessages;
-          const sceneryResponsesModel = modelOverrides && modelOverrides.scenery ? modelOverrides.scenery : SCENERY_MODEL;
+          const sceneryResponsesModel = sceneryModelToUse;
           logger.info('[AI Scenery] Responses API model selected (fallback):', sceneryResponsesModel);
           const result = await client.responses.create({ model: sceneryResponsesModel, input: contentBlocks });
           agentResult = { content: result.output_text || JSON.stringify(result) };
@@ -510,6 +548,7 @@ async function processPhotoAI({ fileBuffer, filename, metadata, gps, device }, m
   logger.info('[AI Result] keywords:', result.keywords);
 
   // Include the upstream classification so callers can record which branch ran
+  result.modelsUsed = modelsUsed;
   result.classification = classification;
   return result;
 }
@@ -593,7 +632,8 @@ async function updatePhotoAIMetadata(db, photoRow, storagePath, modelOverrides =
   logger.info('[AI Update] Retrieved AI result for', photoRow.filename, JSON.stringify({
         caption: ai && ai.caption,
         description: ai && (ai.description || '').slice(0,200),
-        keywords: ai && ai.keywords
+    keywords: ai && ai.keywords,
+    modelsUsed: ai && ai.modelsUsed
       }));
 
       // Ensure non-null strings for DB and provide fallbacks when AI doesn't return a caption or keywords
@@ -643,10 +683,10 @@ async function updatePhotoAIMetadata(db, photoRow, storagePath, modelOverrides =
         timestamp: new Date().toISOString(),
         runType: modelOverrides && Object.keys(modelOverrides).length ? 'recheck' : 'initial',
         classification: (ai && ai.classification) || null,
-        modelsUsed: {
-          router: (modelOverrides && modelOverrides.router) || ROUTER_MODEL,
-          scenery: (modelOverrides && modelOverrides.scenery) || SCENERY_MODEL,
-          collectible: (modelOverrides && modelOverrides.collectible) || COLLECTIBLE_MODEL
+        modelsUsed: (ai && ai.modelsUsed) || {
+          router: ROUTER_MODEL,
+          scenery: SCENERY_MODEL,
+          collectible: COLLECTIBLE_MODEL
         },
         result: {
           caption,
