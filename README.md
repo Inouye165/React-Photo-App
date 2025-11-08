@@ -154,6 +154,10 @@ A full-screen React application for filtering, browsing, and uploading photos by
 
 ### 🤖 AI & Processing
 
+- The backend routes every AI operation (router, scenery narrative, collectible appraisal) through OpenAI vision-capable models by default. Overrides are accepted, but they are automatically coerced to a known image-aware model so requests that include `image_url` payloads never hit schema errors again.
+- When we introduce text-only AI workflows in the future, the model selector will branch on the request payload and allow text-only models for those flows. Until that feature lands, assume all jobs carry images and must target a vision model.
+- Processed metadata is written back to the database together with the effective model names so operators can audit which models ran each job.
+
 ### 🎨 User Interface
 
 ### 🧪 Quality Assurance

@@ -1,6 +1,7 @@
 // server/ai/langchain/agents.js
 const { ChatOpenAI } = require('@langchain/openai');
 const { googleSearchTool } = require('./tools/searchTool');
+const { ensureVisionModel, getVisionAllowlist, DEFAULT_VISION_MODEL } = require('../modelCapabilities');
 
 const ROUTER_SYSTEM_PROMPT = `You are an expert image classifier. Given an image and its metadata, classify the main focal point as either:\n\n- scenery_or_general_subject: (e.g., landscapes, selfies, generic photos of cows, meals)\n- specific_identifiable_object: (e.g., comic book, car, product box, collectible)\n- receipt: (e.g., store receipt, invoice)\n- food_item: (e.g., plate of food, meal)\n\nRespond with a single key: { "classification": "classification_type" }.`;
 
@@ -132,31 +133,33 @@ Guidelines:
 // - AI_COLLECTIBLE_MODEL
 // Fallback order for each agent: specific AI_* var -> OPENAI_MODEL -> hardcoded default
 // Default model choices.
-// Router and Scenery agents need vision-capable models because we pass an `image_url`
-// content type to them. Use a cheaper vision mini model where available to keep
-// costs lower during testing while supporting images. Collectible agent remains
-// on a text-capable cheaper model by default.
-// These can still be overridden via environment variables (AI_ROUTER_MODEL, AI_SCENERY_MODEL, AI_COLLECTIBLE_MODEL)
-// Default to cheaper vision-capable minis for routine processing, and a
-// cheaper text model for collectibles. Rechecks can explicitly request
-// the higher-quality 'gpt-4o'. These defaults can be overridden via env vars.
-const ROUTER_MODEL = process.env.AI_ROUTER_MODEL || process.env.OPENAI_MODEL || 'gpt-4o-mini';
-const SCENERY_MODEL = process.env.AI_SCENERY_MODEL || process.env.OPENAI_MODEL || 'gpt-4o-mini';
-const COLLECTIBLE_MODEL = process.env.AI_COLLECTIBLE_MODEL || process.env.OPENAI_MODEL || 'gpt-3.5-turbo';
+// All AI agents require vision-capable models because we send image data in each request.
+// Use a configurable fallback that prefers a cheaper mini vision model when available.
+// These selections can be overridden via environment variables (AI_ROUTER_MODEL, AI_SCENERY_MODEL, AI_COLLECTIBLE_MODEL).
+const ROUTER_MODEL = ensureVisionModel(
+  process.env.AI_ROUTER_MODEL || process.env.OPENAI_MODEL || DEFAULT_VISION_MODEL,
+  DEFAULT_VISION_MODEL,
+  'router agent'
+);
+const SCENERY_MODEL = ensureVisionModel(
+  process.env.AI_SCENERY_MODEL || process.env.OPENAI_MODEL || DEFAULT_VISION_MODEL,
+  DEFAULT_VISION_MODEL,
+  'scenery agent'
+);
+const COLLECTIBLE_MODEL = ensureVisionModel(
+  process.env.AI_COLLECTIBLE_MODEL || process.env.OPENAI_MODEL || DEFAULT_VISION_MODEL,
+  DEFAULT_VISION_MODEL,
+  'collectible agent'
+);
 
 // Small server-side allowlist of models clients are permitted to request via
-// per-request overrides. We include the configured defaults plus a couple
-// common top-model names we allow for rechecks. This prevents accidental
-// selection of incompatible or unknown models from the client UI.
-const MODEL_ALLOWLIST = [
+// per-request overrides. We include the configured defaults plus a curated
+// set of vision-capable variants so the API always receives image-aware models.
+const MODEL_ALLOWLIST = Array.from(new Set(getVisionAllowlist([
   ROUTER_MODEL,
   SCENERY_MODEL,
-  COLLECTIBLE_MODEL,
-  // Allow explicit high-tier recheck model commonly referenced in UI
-  'gpt-4o',
-  // Also allow the mini name explicitly for clients that reference it
-  'gpt-4o-mini'
-];
+  COLLECTIBLE_MODEL
+]))).sort();
 // Router Agent: Classifies image focal point
 // Note: ROUTER_SYSTEM_PROMPT includes 'receipt' and 'food_item' classifications
 const routerAgent = new ChatOpenAI({

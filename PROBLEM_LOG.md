@@ -47,3 +47,29 @@ A chronological log of major bugs or problems found in this photo app. Each entr
 
 (Add new entries below for each major or instructive bug/root cause encountered!)
 
+---
+
+**Issue:**
+- OpenAI vision workers intermittently failed with `Invalid content type. image_url is only supported by certain models` whenever operators overrode the AI model to a text-only variant.
+
+**How Discovered:**
+- Worker logs showed repeated 400 errors during HEIC processing while local overrides were in place; manual retries reproduced on demand.
+
+**Root Cause:**
+- The backend allowed user-selected models that lacked vision support, so LangChain requests included `image_url` parts that the chosen model schema rejected.
+
+**Debug Steps:**
+- Reviewed worker logs and stack traces for failed jobs.
+- Grepped the AI service for `image_url` usage and traced how overrides were threaded through agents.
+- Confirmed model allowlist still contained text-only defaults from earlier releases.
+
+**Resolution:**
+- Added `server/ai/modelCapabilities.js` with helpers to detect/ensure vision-capable models.
+- Wrapped all default and override selections in `ensureVisionModel`, rebuilt the allowlist to vision-only options, and surfaced substitution telemetry in logs/results.
+- Updated history records to capture effective models for future audits.
+
+**Expedite Future Discovery:**
+- Keep the model allowlist constrained to schema-compatible variants and document any exceptions.
+- Alert on repeated schema mismatch errors in worker logs so regressions are caught quickly.
+- When introducing new overrides, run end-to-end HEIC/vision fixtures before promoting the model to operators.
+
