@@ -38,6 +38,9 @@ LOCATION ANALYSIS:`;
       const topPOIs = poiAnalysis.poi_list.slice(0, 3).map(poi => `${poi.name} (${poi.distance_miles}mi, ${poi.confidence})`).join(', ');
       prompt += ` Top POIs: ${topPOIs}.`;
     }
+    if (poiAnalysis.rich_search_context) {
+      prompt += ` External context: ${poiAnalysis.rich_search_context}.`;
+    }
     prompt += ` Search radius used: ${poiAnalysis.search_radius_miles} miles.`;
   }
 

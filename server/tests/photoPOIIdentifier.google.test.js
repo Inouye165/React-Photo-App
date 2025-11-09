@@ -16,6 +16,12 @@ jest.mock('../ai/langchain/tools/googlePlacesTool', () => {
   };
 });
 
+jest.mock('../ai/langchain/tools/searchTool', () => ({
+  googleSearchTool: {
+    invoke: jest.fn().mockResolvedValue(JSON.stringify({ query: '', results: [] }))
+  }
+}));
+
 const { geolocate } = require('../ai/langchain/geolocateTool');
 const { fetchGooglePlaces } = require('../ai/langchain/tools/googlePlacesTool');
 const { PhotoPOIIdentifierNode } = require('../ai/langchain/photoPOIIdentifier');

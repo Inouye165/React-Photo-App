@@ -5,6 +5,7 @@ const OpenAI = require('openai');
 // Use real-world POI lookups via OpenStreetMap Overpass/Nominatim
 const { geolocate } = require('./geolocateTool');
 const { fetchGooglePlaces } = require('./tools/googlePlacesTool');
+const { googleSearchTool } = require('./tools/searchTool');
 const logger = require('../../logger');
 const Fuse = require('fuse.js');
 
@@ -616,30 +617,61 @@ class PhotoPOIIdentifierNode {
         confidence: rankedPOIs[0].confidence
       } : null;
 
+      let finalSearchContext = null;
+      const isNaturalOrRec = sceneAnalysis.scene_type === 'natural_landmark' || sceneAnalysis.scene_type === 'recreation';
+
+      if (bestMatch && bestMatch.confidence === 'low' && isNaturalOrRec) {
+        const baseQuery = `${latitude}, ${longitude}`;
+        const keywordBlock = Array.isArray(sceneAnalysis.search_keywords)
+          ? sceneAnalysis.search_keywords.join(' ')
+          : '';
+        const queryComponents = [baseQuery];
+        if (keywordBlock) queryComponents.push(keywordBlock);
+        queryComponents.push('trail aqueduct "open space"');
+        const query = queryComponents.join(' ').trim();
+
+        try {
+          const rawResponse = await googleSearchTool.invoke({ query, numResults: 4 });
+          const parsed = typeof rawResponse === 'string' ? JSON.parse(rawResponse) : rawResponse;
+          const results = Array.isArray(parsed && parsed.results) ? parsed.results : [];
+          const snippets = results
+            .slice(0, 2)
+            .map(entry => (entry && (entry.snippet || entry.title || '')).trim())
+            .filter(Boolean);
+          if (snippets.length > 0) {
+            finalSearchContext = snippets.join('; ');
+          }
+        } catch (error) {
+          logger.warn('Context search failed:', error && error.message ? error.message : error);
+        }
+      }
+
       // Step 5: Format final output
       return {
         scene_type: sceneAnalysis.scene_type,
         scene_description: sceneAnalysis.confidence === 'low' ? 'location-based analysis only' : this.generateSceneDescription(sceneAnalysis),
-  search_radius_miles: feetToMiles(searchRadiusFeet),
+        search_radius_miles: feetToMiles(searchRadiusFeet),
         poi_list: rankedPOIs,
         best_match: bestMatch,
         analysis_confidence: sceneAnalysis.confidence,
         timestamp: timestamp,
-        search_location: { lat: latitude, lng: longitude }
+        search_location: { lat: latitude, lng: longitude },
+        rich_search_context: finalSearchContext
       };
 
     } catch (error) {
-  logger.error('POI identification error:', error);
+    logger.error('POI identification error:', error);
       return {
         error: error.message,
         scene_type: "unknown",
         scene_description: "Analysis failed",
-  search_radius_miles: feetToMiles(searchRadiusFeet || CONFIG.default_search_radius_feet),
+        search_radius_miles: feetToMiles(searchRadiusFeet || CONFIG.default_search_radius_feet),
         poi_list: [],
         best_match: null,
         analysis_confidence: "low",
         timestamp: timestamp,
-        search_location: { lat: latitude, lng: longitude }
+        search_location: { lat: latitude, lng: longitude },
+        rich_search_context: null
       };
     }
   }

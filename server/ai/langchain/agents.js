@@ -40,6 +40,7 @@ You will be given a JSON object containing:
 - "keywords": A list of visual keywords (e.g., "receipt", "food", "dog", "trail", "park").
 - "metadata": An object with "dateTime" (full ISO timestamp string from EXIF) and "cameraModel".
 - "location": An object with "address" (full street address), "bestMatchPOI" (the specific name of the business, park, trail, or landmark), "poiConfidence" (may be 'high', 'medium', 'low', or absent), and "nearbyPOIs" (a list of other nearby places).
+- "rich_search_context": A string of external web search snippets for specific trail or open space context (may be null or empty).
 
 **Your Task:** Analyze the input, especially the keywords, and follow the appropriate logic:
 
@@ -65,11 +66,14 @@ You will be given a JSON object containing:
      2.  **Wildlife & Botany Focus (If applicable):**
          - If an animal, bird, or notable plant is highlighted in the "description" or "keywords", identify the species and add one concise, true fact about it.
          - When trail names, park sections, or tree species are mentioned, incorporate them so the narrative reads like on-the-ground observation.
-     3.  **Where (Location):** Determine how to state the location based on "bestMatchPOI" and "poiConfidence":
-         - **IF** "bestMatchPOI" exists AND "poiConfidence" is 'high' or 'medium', and it names a specific place (trail, park, landmark, facility, or business):
-           - Use that name as the anchor (e.g., "on the **[bestMatchPOI]**").
-           - Pair it with the correct city/region derived from "location.address" so the sentence explicitly reads "on the [Trail Name] in [City/Region]" or "at [Landmark] in [City/Region]". Prefer the POI name over a generic city.
-         - **ELSE (Low confidence or no POI):** State the location as "near **[Address Street, City]**" using the "location.address". Do NOT surface the low-confidence POI name.
+    3.  **Where (Location):** Determine how to state the location based on available data:
+         - **IF** "rich_search_context" is NOT empty:
+           - Scan the snippets for specific trail, aqueduct, or open space names (e.g., "Contra Costa Canal Trail", "Lime Ridge Open Space").
+           - Use the most specific name found, phrasing it as "on the **[Trail Name]** aqueduct path" or "at **[Open Space Name]**" when appropriate.
+           - Prioritize this contextual name over a low-confidence "bestMatchPOI".
+         - **ELSE IF** "bestMatchPOI" exists AND "poiConfidence" is 'high' or 'medium':
+           - If it is clearly a trail, lead with "on the **[bestMatchPOI]**"; if it is a park or open space, use "at **[bestMatchPOI]**"; otherwise, state "at **[bestMatchPOI]**".
+         - **ELSE (Low confidence, no POI, and no search context):** State the location as "near **[Address Street, City]**" using the "location.address". Do NOT surface a low-confidence POI name.
      4.  **Where (Full Address - Conditional):** If you used the specific POI name in step 3, *also* include the full **"address"** (e.g., "...at Lime Ridge Open Space, located near Treat Blvd, Concord, CA..."). If you only used the address in step 3, don't repeat it.
      5.  **When:** Include the full date **and approximate time** (e.g., "morning," "afternoon," "evening" - derive this by parsing the hour from the full ISO timestamp in "metadata.dateTime") from "metadata.dateTime".
      6.  **Context:** Conclude by weaving in other visual cues, "keywords", and "cameraModel" to deliver a hyper-local sense of place.
