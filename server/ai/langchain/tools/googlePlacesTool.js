@@ -43,7 +43,14 @@ async function fetchGooglePlaces({ gpsString, radiusMeters = 75, typeFilter }) {
   };
 
   if (typeFilter) {
-    requestBody.includedTypes = [typeFilter];
+    const base = typeFilter.toLowerCase();
+    if (base === 'food' || base === 'food_item') {
+      requestBody.includedTypes = ['restaurant', 'cafe', 'bakery'];
+    } else if (base === 'natural_landmark') {
+      requestBody.includedTypes = ['park'];
+    } else {
+      requestBody.includedTypes = [typeFilter];
+    }
   }
 
   const fieldMask = [
