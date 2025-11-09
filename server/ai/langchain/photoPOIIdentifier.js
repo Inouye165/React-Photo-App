@@ -80,6 +80,28 @@ function calculateDistance(lat1, lng1, lat2, lng2) {
   return R * c;
 }
 
+function normalizeAICategories(categories) {
+  if (!Array.isArray(categories)) return [];
+
+  const typeMap = {
+    'nature reserve': 'park',
+    'national forest': 'park',
+    'trail': 'park',
+    'hiking area': 'park',
+    'mountain': 'natural_feature',
+    'river': 'natural_feature',
+    'wildlife sanctuary': 'park'
+  };
+
+  return categories
+    .map(category => {
+      const normalized = String(category ?? '').toLowerCase().trim();
+      return typeMap[normalized] || normalized;
+    })
+    .filter(cat => cat.length > 0)
+    .filter((value, index, self) => self.indexOf(value) === index);
+}
+
 // Vision analysis prompt for photo understanding
 const VISION_ANALYSIS_PROMPT = `You are an expert at identifying locations from photos and GPS data.
 
@@ -89,7 +111,7 @@ Analyze this photo carefully and provide a detailed JSON response about what you
   "scene_type": "restaurant|natural_landmark|store|transportation|recreation|other",
   "confidence": "high|medium|low",
   "visual_elements": ["list", "of", "key", "visual", "features"],
-  "likely_categories": ["specific", "poi", "types", "to", "search"],
+  "likely_categories": ["(One or more specific, supported Google Place API types. If the scene is a natural area like a 'nature reserve' or 'trail', map it to the supported term: 'park', 'national_park', or 'natural_feature'.)"],
   "distinctive_features": ["unique", "identifiers", "for", "this", "location"],
   "has_ocean_view": true/false,
   "has_mountain_view": true/false,
@@ -104,7 +126,7 @@ Analyze this photo carefully and provide a detailed JSON response about what you
   "natural_features": ["mountains", "ocean", "forest", "desert", "etc"]
 }
 
-IMPORTANT: If you can read any text in the photo (restaurant name, menu items, business signage), include it in "visible_text" and "business_name". Look for distinctive architectural features, logos, or branding that could identify the specific location.`;
+IMPORTANT: If you can read any text in the photo (restaurant name, menu items, business signage), include it in "visible_text" and "business_name". When listing "likely_categories", always use supported Google Place types—replace descriptive phrases like "nature reserve" or "hiking trail" with "park", "national_park", or "natural_feature" as appropriate. Look for distinctive architectural features, logos, or branding that could identify the specific location.`;
 
 // NOTE: The old MOCK_POI_DATABASE and local helper search functions were removed
 // in favor of live Overpass/Nominatim queries via `geolocateTool.geolocate`.
@@ -463,6 +485,10 @@ class PhotoPOIIdentifierNode {
         has_mountain_view: false,
         has_water_feature: false
       };
+    }
+
+    if (sceneAnalysis && Array.isArray(sceneAnalysis.likely_categories)) {
+      sceneAnalysis.likely_categories = normalizeAICategories(sceneAnalysis.likely_categories);
     }
 
 
