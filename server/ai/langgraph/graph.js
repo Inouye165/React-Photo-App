@@ -3,7 +3,6 @@ const { AppState } = require('./state');
 const logger = require('../../logger');
 
 const {
-  collectibleAgent,
   COLLECTIBLE_SYSTEM_PROMPT,
   ROUTER_SYSTEM_PROMPT,
   ROUTER_MODEL,
@@ -12,39 +11,11 @@ const {
   SCENERY_SYSTEM_PROMPT,
 } = require('../langchain/agents');
 const { openai } = require('../openaiClient');
-const { ChatOpenAI } = require('@langchain/openai');
 const { PhotoPOIIdentifierNode } = require('../langchain/photoPOIIdentifier');
-const { googleSearchTool } = require('../langchain/tools/searchTool');
 const { buildPrompt, buildVisionContent } = require('../langchain/promptTemplate');
-const { invokeAgentWithTools } = require('../langchain/graphHelpers');
 
 const API_FLAVOR = process.env.USE_RESPONSES_API === 'true' ? 'responses' : 'chat';
 
-function extractContent(response) {
-  if (!response) return '';
-  if (typeof response === 'string') return response;
-  if (Array.isArray(response.content)) {
-    return response.content
-      .map(part => {
-        if (!part) return '';
-        if (typeof part === 'string') return part;
-        if (typeof part === 'object' && typeof part.text === 'string') return part.text;
-        if (typeof part === 'object' && typeof part.content === 'string') return part.content;
-        return '';
-      })
-      .join('');
-  }
-  if (typeof response.content === 'string') {
-    return response.content;
-  }
-  if (response.kwargs && response.kwargs.content !== undefined) {
-    return extractContent({ content: response.kwargs.content });
-  }
-  if (typeof response.toString === 'function') {
-    return String(response.toString());
-  }
-  return '';
-}
 
 function parseJsonFromContent(content) {
   if (!content) return null;
@@ -182,10 +153,11 @@ async function callFallbackSearch(state) {
     const keywords = (sceneAnalysis.search_keywords || ['trail', 'open', 'space']).join(' ');
     const query = `${baseQuery} ${keywords} trail open space aqueduct`.trim();
 
-    logger.info(`[Graph] Running fallback search with query: ${query}`);
-    const searchRaw = await googleSearchTool.invoke({ query });
-    const parsed = typeof searchRaw === 'string' ? parseJsonFromContent(searchRaw) : searchRaw;
-    const results = parsed && Array.isArray(parsed.results) ? parsed.results : [];
+  logger.info(`[Graph] Running fallback search with query: ${query}`);
+  const { runGoogleSearch } = require('../langchain/tools/searchTool');
+  const searchRaw = await runGoogleSearch({ query });
+  const parsed = typeof searchRaw === 'string' ? parseJsonFromContent(searchRaw) : searchRaw;
+  const results = parsed && Array.isArray(parsed.results) ? parsed.results : [];
 
     const rich_search_context = results
       .slice(0, 2)
@@ -274,7 +246,7 @@ async function callCollectible(state = {}) {
     gps: gpsString,
   });
 
-  const agentMessages = [
+  const messages = [
     { role: 'system', content: `${COLLECTIBLE_SYSTEM_PROMPT}\n\n${locationPrompt}` },
     buildVisionContent(API_FLAVOR, {
       userText: 'Perform a high-resolution examination of the collectible.',
@@ -283,16 +255,82 @@ async function callCollectible(state = {}) {
     }).pop(),
   ];
 
+  // OpenAI tool schema for googleSearchTool
+  const googleSearchToolSchema = {
+    type: 'function',
+    function: {
+      name: 'google_collectible_search',
+      description: 'Look up collectibles, identification markers, and recent sale values using Google Custom Search or SerpAPI.',
+      parameters: {
+        type: 'object',
+        properties: {
+          query: { type: 'string', description: 'Search keywords describing the collectible, include maker, era, serials, or distinctive traits.' },
+          numResults: { type: 'integer', minimum: 1, maximum: 8, description: 'Maximum number of results to return.' },
+          siteFilter: { type: 'string', description: 'Optional site filter (domain) to narrow the search, e.g., worthpoint.com.' }
+        },
+        required: ['query']
+      }
+    }
+  };
+
+  async function runGoogleSearchTool(args) {
+    // Import the actual function
+    const { runGoogleSearch } = require('../langchain/tools/searchTool');
+    try {
+      return await runGoogleSearch(args);
+    } catch (err) {
+      return JSON.stringify({ error: err.message || String(err) });
+    }
+  }
+
   try {
-    const collectibleModelToUse = safeModelOverrides.collectible || COLLECTIBLE_MODEL;
-    const localCollectible = safeModelOverrides.collectible
-      ? new ChatOpenAI({ modelName: collectibleModelToUse, temperature: 0.25, maxTokens: 1400 }).bindTools([googleSearchTool])
-      : collectibleAgent;
-
-    const response = await invokeAgentWithTools(localCollectible, agentMessages, [googleSearchTool]);
-    const content = extractContent(response);
-    const finalResult = parseJsonFromContent(content) || null;
-
+    const model = safeModelOverrides.collectible || COLLECTIBLE_MODEL;
+    let chatMessages = [...messages];
+    let toolLoopCount = 0;
+    let finalResult = null;
+  // removed unused lastResponse
+    while (toolLoopCount < 3) { // Prevent infinite loops
+      const response = await openai.chat.completions.create({
+        model,
+        messages: chatMessages,
+        tools: [googleSearchToolSchema],
+        tool_choice: 'auto',
+      });
+      const choice = response.choices && response.choices[0];
+      if (!choice) break;
+      const msg = choice.message;
+      if (msg.tool_calls && msg.tool_calls.length > 0) {
+        // Only support google_collectible_search
+        for (const toolCall of msg.tool_calls) {
+          if (toolCall.function && toolCall.function.name === 'google_collectible_search') {
+            let toolArgs = {};
+            try {
+              toolArgs = JSON.parse(toolCall.function.arguments);
+            } catch {
+              toolArgs = {};
+            }
+            const toolResult = await runGoogleSearchTool(toolArgs);
+            chatMessages.push({
+              role: 'assistant',
+              content: null,
+              tool_calls: [toolCall],
+            });
+            chatMessages.push({
+              role: 'tool',
+              tool_call_id: toolCall.id,
+              content: typeof toolResult === 'string' ? toolResult : JSON.stringify(toolResult),
+            });
+          }
+        }
+        toolLoopCount++;
+        continue;
+      } else {
+        // No tool calls, return the result
+        const content = msg.content;
+        finalResult = parseJsonFromContent(content) || content || null;
+        break;
+      }
+    }
     return { finalResult };
   } catch (error) {
     logger.error('[Graph] Collectible agent failed:', error);
