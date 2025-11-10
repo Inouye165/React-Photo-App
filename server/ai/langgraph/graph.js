@@ -3,14 +3,13 @@ const { AppState } = require('./state');
 const logger = require('../../logger');
 
 const {
-  sceneryAgent,
   collectibleAgent,
-  SCENERY_SYSTEM_PROMPT,
   COLLECTIBLE_SYSTEM_PROMPT,
   ROUTER_SYSTEM_PROMPT,
   ROUTER_MODEL,
   SCENERY_MODEL,
   COLLECTIBLE_MODEL,
+  SCENERY_SYSTEM_PROMPT,
 } = require('../langchain/agents');
 const { openai } = require('../openaiClient');
 const { ChatOpenAI } = require('@langchain/openai');
@@ -229,25 +228,24 @@ async function callNarrator(state = {}) {
     poiConfidence: poiAnalysis?.best_match?.confidence || null,
   });
 
-  const agentMessages = [
-    { role: 'system', content: `${SCENERY_SYSTEM_PROMPT}\n\n${locationPrompt}` },
-    buildVisionContent(API_FLAVOR, {
-      userText: 'Analyze the image and provide the final JSON output.',
-      imageUrlOrDataUrl: `data:${imageMime};base64,${imageBase64}`,
-      detail: 'high',
-    }).pop(),
-  ];
+  // Compose messages for native OpenAI SDK
+  const narratorMessages = buildVisionContent(API_FLAVOR, {
+    systemText: `${SCENERY_SYSTEM_PROMPT}\n\n${locationPrompt}`,
+    userText: 'Analyze the image and provide the final JSON output.',
+    imageUrlOrDataUrl: `data:${imageMime};base64,${imageBase64}`,
+    detail: 'high',
+  });
 
   try {
     const sceneryModelToUse = safeModelOverrides.scenery || SCENERY_MODEL;
-    const localScenery = safeModelOverrides.scenery
-      ? new ChatOpenAI({ modelName: sceneryModelToUse, temperature: 0.3, maxTokens: 1024 })
-      : sceneryAgent;
-
-    const response = await localScenery.invoke(agentMessages);
-    const content = extractContent(response);
+    const response = await openai.chat.completions.create({
+      model: sceneryModelToUse,
+      messages: narratorMessages,
+      max_tokens: 1024,
+      temperature: 0.3,
+    });
+    const content = response.choices?.[0]?.message?.content || '';
     const finalResult = parseJsonFromContent(content) || null;
-
     return { finalResult };
   } catch (error) {
     logger.error('[Graph] Narrator agent failed:', error);
