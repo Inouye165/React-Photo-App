@@ -31,6 +31,9 @@ server/build
 # Test coverage
 coverage/
 
+# Test results
+/test-results/
+
 # Misc
 *.tgz
 *.swp
