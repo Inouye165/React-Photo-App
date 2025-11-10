@@ -25,11 +25,12 @@ const { convertHeicToJpegBuffer } = require('../media/image');
 // Hard limit for AI processing file size (20 MB)
 const MAX_AI_FILE_SIZE = 20 * 1024 * 1024;
 const supabase = require('../lib/supabaseClient');
-const { ROUTER_MODEL, SCENERY_MODEL, COLLECTIBLE_MODEL } = require('./langchain/agents');
-const { googlePlacesTool } = require('./langchain/tools/googlePlacesTool');
+
+
+
 const { app: aiGraph } = require('./langgraph/graph');
 
-void googlePlacesTool; // ensure tool module loads for downstream consumers
+
 
 /**
  * Generate caption, description and keywords for a photo using the LangGraph workflow.
@@ -239,43 +240,16 @@ async function updatePhotoAIMetadata(db, photoRow, storagePath, modelOverrides =
       ? String(ai.keywords).trim()
       : generateKeywordsFallback(description);
 
-    // Append model usage entry to ai_model_history (stored as JSON text)
-    let prevHistory = [];
-    try {
-      if (photoRow.ai_model_history) {
-        prevHistory = typeof photoRow.ai_model_history === 'string'
-          ? JSON.parse(photoRow.ai_model_history || '[]')
-          : photoRow.ai_model_history;
-      }
-    } catch (e) {
-      logger.warn('Failed to parse existing ai_model_history for', photoRow.id, e && e.message);
-      prevHistory = [];
-    }
 
-    const modelEntry = {
-      timestamp: new Date().toISOString(),
-      runType: modelOverrides && Object.keys(modelOverrides).length ? 'recheck' : 'initial',
-      classification: (ai && ai.classification) || null,
-      modelsUsed: {
-        router: (modelOverrides && modelOverrides.router) || ROUTER_MODEL,
-        scenery: (modelOverrides && modelOverrides.scenery) || SCENERY_MODEL,
-        collectible: (modelOverrides && modelOverrides.collectible) || COLLECTIBLE_MODEL
-      },
-      result: {
-        caption,
-        keywords
-      }
-    };
 
-    const newHistory = Array.isArray(prevHistory) ? [...prevHistory, modelEntry] : [modelEntry];
 
+    // Remove model history tracking for now (no model constants)
     await db('photos').where({ id: photoRow.id }).update({
       caption,
       description,
       keywords,
       ai_retry_count: 0,
-      poi_analysis: JSON.stringify((ai && ai.poiAnalysis) || null),
-      ai_model_history: JSON.stringify(newHistory)
+      poi_analysis: JSON.stringify((ai && ai.poiAnalysis) || null)
     });
 
     // Fetch saved row to confirm
@@ -296,6 +270,7 @@ function isAIFailed(val) {
   return !val || val.trim().toLowerCase() === 'ai processing failed';
 }
 
+
 /**
  * Re-check and process all photos in the 'inprogress' state that are missing
  * AI metadata or have a retry count below threshold.
@@ -305,14 +280,12 @@ function isAIFailed(val) {
  * `updatePhotoAIMetadata` for each.
  *
  * @param {Object} db - Knex database instance.
- * @returns {Promise<number>} Number of rows found (and attempted) for reprocessing.
- * @throws Will propagate any database errors encountered while querying.
  */
 async function processAllUnprocessedInprogress(db) {
   try {
     const rows = await db('photos')
-      .where({ state: 'inprogress' })
-      .andWhere(function() {
+      .where('state', 'inprogress')
+      .andWhere(function () {
         this.whereNull('caption')
           .orWhereNull('description')
           .orWhereNull('keywords')

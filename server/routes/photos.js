@@ -3,7 +3,9 @@ const path = require('path');
 const { convertHeicToJpegBuffer } = require('../media/image');
 const { updatePhotoAIMetadata } = require('../ai/service');
 const { addAIJob, checkRedisAvailable } = require('../queue/index');
-const { MODEL_ALLOWLIST } = require('../ai/langchain/agents');
+// const { MODEL_ALLOWLIST } = require('../ai/langchain/agents');
+// LangChain removed: stub allowlist for compatibility
+const MODEL_ALLOWLIST = ['gpt-4-vision-preview', 'gpt-4', 'gpt-3.5-turbo'];
 const sharp = require('sharp');
 const exifr = require('exifr');
 const supabase = require('../lib/supabaseClient');

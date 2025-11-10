@@ -16,11 +16,6 @@ jest.mock('../db/index.js', () => {
   return require('./__mocks__/knex');
 });
 
-// Mock LangChain agents to avoid calling external OpenAI services during tests
-// This loads the manual mock defined in tests/__mocks__/langchainAgents.js
-jest.mock('../ai/langchain/agents', () => {
-  return require('./__mocks__/langchainAgents');
-});
 
 // Mock environment variables for tests
 process.env.NODE_ENV = 'test';
@@ -33,9 +28,10 @@ process.env.JWT_SECRET = 'test-jwt-secret-key-for-testing-only';
 process.env.OPENAI_API_KEY = process.env.OPENAI_API_KEY || 'test-openai-api-key';
 
 // Provide LangSmith defaults so tests do not depend on local .env
-process.env.LANGCHAIN_TRACING_V2 = process.env.LANGCHAIN_TRACING_V2 || 'true';
-process.env.LANGCHAIN_API_KEY = process.env.LANGCHAIN_API_KEY || 'lsv2_test_key_abcdefghijklmnopqrstuvwxyz';
-process.env.LANGCHAIN_PROJECT = process.env.LANGCHAIN_PROJECT || 'photo-app';
+// LangChain environment variables removed.
+// process.env.LANGCHAIN_TRACING_V2 = process.env.LANGCHAIN_TRACING_V2 || 'true';
+// process.env.LANGCHAIN_API_KEY = process.env.LANGCHAIN_API_KEY || 'lsv2_test_key_abcdefghijklmnopqrstuvwxyz';
+// process.env.LANGCHAIN_PROJECT = process.env.LANGCHAIN_PROJECT || 'photo-app';
 
 // Global test setup
 beforeEach(() => {
