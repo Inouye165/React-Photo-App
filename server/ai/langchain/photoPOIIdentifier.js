@@ -1,6 +1,5 @@
 // Photo POI Identifier Node - Advanced LangChain node for photo location identification
-const { tool } = require('@langchain/core/tools');
-const { z } = require('zod');
+// LangChain and zod removed: now a plain Node.js module
 const OpenAI = require('openai');
 // Use real-world POI lookups via OpenStreetMap Overpass/Nominatim
 const { geolocate, GOOGLE_PLACES_RADIUS_METERS } = require('./geolocateTool');
@@ -728,30 +727,12 @@ class PhotoPOIIdentifierNode {
   }
 }
 
-// Create LangChain tool wrapper
-const photoPOIIdentifierTool = tool(
-  async ({ imageData, latitude, longitude, timestamp }) => {
-    const identifier = new PhotoPOIIdentifierNode(process.env.OPENAI_API_KEY);
 
-    const result = await identifier.identifyPOI(
-      imageData,
-      parseFloat(latitude),
-      parseFloat(longitude),
-      timestamp
-    );
+// This module now exports only the plain Node.js class and utility functions.
 
-    return JSON.stringify(result);
-  },
-  {
-    name: 'photo_poi_identifier',
-    description: 'Advanced tool that analyzes photos and GPS coordinates to identify specific Points of Interest (POIs) where the photo was taken. Returns scene classification, nearby POIs ranked by relevance, and best match identification.',
-    schema: z.object({
-      imageData: z.string().describe('Base64 encoded image data'),
-      latitude: z.string().describe('GPS latitude in decimal format'),
-      longitude: z.string().describe('GPS longitude in decimal format'),
-      timestamp: z.string().optional().describe('Photo timestamp (ISO format)')
-    })
-  }
-);
-
-module.exports = { PhotoPOIIdentifierNode, photoPOIIdentifierTool, performVisionMatching, normalizePOICategory, normalizeAICategories };
+module.exports = {
+  PhotoPOIIdentifierNode,
+  performVisionMatching,
+  normalizePOICategory,
+  normalizeAICategories
+};
