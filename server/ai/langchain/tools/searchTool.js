@@ -1,5 +1,4 @@
-const { tool } = require('@langchain/core/tools');
-const { z } = require('zod');
+
 
 const MAX_RESULTS = 8;
 
@@ -95,27 +94,7 @@ async function runGoogleSearch({ query, numResults = 4, siteFilter }) {
 	}));
 }
 
-const googleSearchTool = tool(
-	async ({ query, numResults, siteFilter }) => {
-		const normalizedNumResults = numResults == null ? undefined : numResults;
-		const normalizedSiteFilter = siteFilter == null ? undefined : siteFilter;
-		const results = await runGoogleSearch({ query, numResults: normalizedNumResults, siteFilter: normalizedSiteFilter });
-		return JSON.stringify({
-			query,
-			fetchedAt: new Date().toISOString(),
-			results
-		});
-	},
-	{
-		name: 'google_collectible_search',
-		description: 'Look up collectibles, identification markers, and recent sale values using Google Custom Search or SerpAPI.',
-		schema: z.object({
-			query: z.string().describe('Search keywords describing the collectible, include maker, era, serials, or distinctive traits.'),
-			numResults: z.number().min(1).max(MAX_RESULTS).optional().nullable().describe('Maximum number of results to return.'),
-			siteFilter: z.string().optional().nullable().describe('Optional site filter (domain) to narrow the search, e.g., worthpoint.com.')
-		})
-	}
-);
 
-module.exports = { googleSearchTool, runGoogleSearch };
+// This module now exports only the plain runGoogleSearch function as a Node.js utility.
+module.exports = { runGoogleSearch };
 
