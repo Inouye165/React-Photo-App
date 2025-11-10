@@ -1,12 +1,8 @@
 const fs = require('fs');
 const path = require('path');
 
-// We'll test processPhotoAI by mocking the chain adapter to return a predictable response
-jest.mock('../ai/langchain/chainAdapter', () => ({
-  runChain: jest.fn(async ({ _messages }) => ({
-    choices: [{ message: { content: JSON.stringify({ caption: 'Test', description: 'desc', keywords: 'a,b' }) } }],
-    _ctx: { method: 'openai' }
-  }))
+jest.mock('../ai/langgraph/graph', () => ({
+  app: { invoke: jest.fn() }
 }));
 
 // Mock the geolocate tool to avoid real network calls during tests
@@ -29,6 +25,7 @@ jest.mock('../ai/langchain/geolocateTool', () => ({
   }
 }));
 
+const { app: aiGraph } = require('../ai/langgraph/graph');
 const { processPhotoAI } = require('../ai/service');
 
 describe('processPhotoAI', () => {
@@ -50,12 +47,20 @@ describe('processPhotoAI', () => {
       return;
     }
 
+    aiGraph.invoke.mockResolvedValueOnce({
+      classification: 'scenery_or_general_subject',
+      finalResult: {
+        caption: 'Test',
+        description: 'desc',
+        keywords: 'a,b'
+      }
+    });
+
     const fileBuffer = fs.readFileSync(tmpFile);
     const res = await processPhotoAI({ fileBuffer, filename: 'tmp_test.jpg', metadata: {}, gps: '', device: '' });
     expect(res).toBeDefined();
     expect(res.caption).toBe('Test');
     expect(res.description).toBe('desc');
-    expect(res.keywords).toContain('a,b');
-    expect(res.keywords).toContain('AI:openai');
+    expect(res.keywords).toBe('a,b');
   });
 });

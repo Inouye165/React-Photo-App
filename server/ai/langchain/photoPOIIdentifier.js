@@ -3,25 +3,69 @@ const { tool } = require('@langchain/core/tools');
 const { z } = require('zod');
 const OpenAI = require('openai');
 // Use real-world POI lookups via OpenStreetMap Overpass/Nominatim
-const { geolocate } = require('./geolocateTool');
+const { geolocate, GOOGLE_PLACES_RADIUS_METERS } = require('./geolocateTool');
+const { fetchGooglePlaces } = require('./tools/googlePlacesTool');
+const { googleSearchTool } = require('./tools/searchTool');
 const logger = require('../../logger');
 const Fuse = require('fuse.js');
 
 // Configuration constants
 const CONFIG = {
-  default_search_radius_miles: 0.5,
+  // Default fallback of ~0.5 miles expressed in feet to keep compatibility with existing OSM helpers.
+  default_search_radius_feet: 2640,
   max_pois_to_return: 10,
   min_confidence_threshold: 0.3,
-  category_specific_radius: {
-    restaurant: 0.25,
-    natural_landmark: 1.0,
-    store: 0.25,
-    park: 0.75,
-    aerial_view: 50.0,
-    transportation: 0.5
+  category_specific_radius_feet: {
+    restaurant: 250,
+    store: 250,
+    park: 100,
+    natural_landmark: 100
   },
   vision_model: 'gpt-4o'
 };
+
+function feetToMeters(feet) {
+  return Math.max(1, Math.round(feet * 0.3048));
+}
+
+function feetToMiles(feet) {
+  return feet / 5280;
+}
+
+async function fetchGooglePlacesSafe({ gpsString, radiusMeters, typeFilter }) {
+  try {
+    const results = await fetchGooglePlaces({ gpsString, radiusMeters, typeFilter });
+    console.log('[GooglePlaces] POI results:', JSON.stringify({ gpsString, radiusMeters, typeFilter, results }, null, 2));
+    return results;
+  } catch (error) {
+    logger.warn('Google Places lookup failed or is unavailable:', error && error.message ? error.message : error);
+    console.log('[GooglePlaces] Lookup failed:', error && error.message ? error.message : error);
+    return [];
+  }
+}
+
+function normalizeGooglePlaceCategory(types = []) {
+  if (!Array.isArray(types)) return 'poi';
+  const normalizedTypes = types.map(type => String(type || '').toLowerCase());
+
+  if (normalizedTypes.some(type => ['restaurant', 'cafe', 'bar', 'food', 'meal_takeaway', 'meal_delivery', 'bakery'].includes(type))) {
+    return 'restaurant';
+  }
+
+  if (normalizedTypes.some(type => ['store', 'supermarket', 'grocery_or_supermarket', 'shopping_mall', 'clothing_store', 'department_store', 'convenience_store'].includes(type))) {
+    return 'store';
+  }
+
+  if (normalizedTypes.some(type => ['park', 'campground', 'rv_park', 'tourist_attraction', 'zoo', 'amusement_park', 'aquarium', 'botanical_garden'].includes(type))) {
+    return 'park';
+  }
+
+  if (normalizedTypes.some(type => ['natural_feature', 'point_of_interest', 'establishment'].includes(type))) {
+    return 'natural_landmark';
+  }
+
+  return 'poi';
+}
 
 // Haversine distance calculation (used to compute real distances to OSM POIs)
 function calculateDistance(lat1, lng1, lat2, lng2) {
@@ -40,6 +84,35 @@ function calculateDistance(lat1, lng1, lat2, lng2) {
   return R * c;
 }
 
+function normalizeAICategories(categories) {
+  if (!Array.isArray(categories)) return [];
+
+  const typeMap = {
+    'nature reserve': 'park',
+    'national forest': 'park',
+    'hiking area': 'park',
+    'wildlife sanctuary': 'park'
+  };
+
+  const disallowedGenerics = new Set([
+    'river',
+    'mountain',
+    'hill',
+    'valley',
+    'water',
+    'landscape',
+    'nature'
+  ]);
+
+  return categories
+    .map(category => {
+      const normalized = String(category ?? '').toLowerCase().trim();
+      return typeMap[normalized] || normalized;
+    })
+    .filter(cat => cat.length > 0 && !disallowedGenerics.has(cat))
+    .filter((value, index, self) => self.indexOf(value) === index);
+}
+
 // Vision analysis prompt for photo understanding
 const VISION_ANALYSIS_PROMPT = `You are an expert at identifying locations from photos and GPS data.
 
@@ -49,7 +122,7 @@ Analyze this photo carefully and provide a detailed JSON response about what you
   "scene_type": "restaurant|natural_landmark|store|transportation|recreation|other",
   "confidence": "high|medium|low",
   "visual_elements": ["list", "of", "key", "visual", "features"],
-  "likely_categories": ["specific", "poi", "types", "to", "search"],
+  "likely_categories": ["(One or more specific, supported Google Place API types. If the scene is a natural area like a 'nature reserve' or 'trail', map it to the supported term: 'park', 'national_park', or 'natural_feature'.)"],
   "distinctive_features": ["unique", "identifiers", "for", "this", "location"],
   "has_ocean_view": true/false,
   "has_mountain_view": true/false,
@@ -64,7 +137,7 @@ Analyze this photo carefully and provide a detailed JSON response about what you
   "natural_features": ["mountains", "ocean", "forest", "desert", "etc"]
 }
 
-IMPORTANT: If you can read any text in the photo (restaurant name, menu items, business signage), include it in "visible_text" and "business_name". Look for distinctive architectural features, logos, or branding that could identify the specific location.`;
+IMPORTANT: If you can read any text in the photo (restaurant name, menu items, business signage), include it in "visible_text" and "business_name". When listing "likely_categories", always use supported Google Place types—replace descriptive phrases like "nature reserve" or "hiking trail" with "park", "national_park", or "natural_feature" as appropriate. Look for distinctive architectural features, logos, or branding that could identify the specific location.`;
 
 // NOTE: The old MOCK_POI_DATABASE and local helper search functions were removed
 // in favor of live Overpass/Nominatim queries via `geolocateTool.geolocate`.
@@ -197,9 +270,11 @@ class PhotoPOIIdentifierNode {
       });
 
       const content = response.choices[0].message.content;
+      console.log('[Vision LLM Output]', content);
       return this.parseVisionResponse(content);
     } catch (error) {
         logger.error('Vision analysis error:', error);
+      console.log('[Vision LLM Output] Error during analysis:', error && error.message ? error.message : error);
       return this.getFallbackAnalysis();
     }
   }
@@ -284,8 +359,23 @@ class PhotoPOIIdentifierNode {
   // The ranker now receives POI objects returned from the external `geolocate` tool
   // and uses the existing `rankPOIs` flow to score and return results.
 
-  getSearchRadius(sceneType) {
-    return CONFIG.category_specific_radius[sceneType] || CONFIG.default_search_radius_miles;
+  getSearchRadiusFeet(sceneType) {
+    return CONFIG.category_specific_radius_feet[sceneType] || CONFIG.default_search_radius_feet;
+  }
+
+  deriveGooglePlacesType(sceneAnalysis) {
+    if (!sceneAnalysis) return undefined;
+    const sceneType = sceneAnalysis.scene_type;
+    if (sceneType === 'restaurant') return 'restaurant';
+    if (sceneType === 'store') return 'store';
+    if (sceneType === 'park' || sceneType === 'natural_landmark') return 'park';
+
+    const likely = Array.isArray(sceneAnalysis.likely_categories) ? sceneAnalysis.likely_categories : [];
+    if (likely.includes('restaurant')) return 'restaurant';
+    if (likely.includes('store')) return 'store';
+    if (likely.includes('park') || likely.includes('natural_landmark')) return 'park';
+
+    return undefined;
   }
 
   rankPOIs(pois, sceneAnalysis, _userLocation) {
@@ -299,18 +389,26 @@ class PhotoPOIIdentifierNode {
         distance_miles: Math.round(poi.distance_miles * 100) / 100,
         confidence: confidence,
         coordinates: { lat: poi.lat, lng: poi.lng },
-        relevance_reason: this.generateRelevanceReason(poi, sceneAnalysis, _score)
+        relevance_reason: this.generateRelevanceReason(poi, sceneAnalysis, _score),
+        source: poi.source,
+        google_rating: poi.google_rating ?? null,
+        score: _score
       };
     }).sort((a, b) => {
-      // Sort by confidence first, then by distance
+      // Sort by confidence first, then raw score, then by distance as a final tiebreaker
       const confidenceOrder = { high: 3, medium: 2, low: 1 };
       const confDiff = confidenceOrder[b.confidence] - confidenceOrder[a.confidence];
-      return confDiff !== 0 ? confDiff : a.distance_miles - b.distance_miles;
+      if (confDiff !== 0) return confDiff;
+
+      const scoreDiff = (b.score ?? 0) - (a.score ?? 0);
+      if (scoreDiff !== 0) return scoreDiff;
+
+      return a.distance_miles - b.distance_miles;
     }).slice(0, CONFIG.max_pois_to_return);
   }
 
   calculatePOIScore(poi, sceneAnalysis) {
-    let score = 0;
+  let score = 0;
 
     // Distance score (inverse relationship - closer is better)
     if (poi.distance_miles < 0.1) score += 50;
@@ -334,6 +432,24 @@ class PhotoPOIIdentifierNode {
 
     // Scene type alignment
     if (sceneAnalysis.scene_type === poi.type) score += 25;
+
+    if (poi.source === 'google_places') {
+      let multiplier = 1.1; // slight preference for commercial data even without matches
+
+      if (poi.business_name_match && poi.category_match) {
+        multiplier += 1.3;
+      } else if (poi.business_name_match) {
+        multiplier += 1.0;
+      } else if (poi.category_match) {
+        multiplier += 0.6;
+      }
+
+      score = Math.round(score * multiplier);
+
+      if (typeof poi.google_rating === 'number' && poi.google_rating >= 4.5) {
+        score += 5;
+      }
+    }
 
     return score;
   }
@@ -384,76 +500,131 @@ class PhotoPOIIdentifierNode {
       };
     }
 
+    if (sceneAnalysis && Array.isArray(sceneAnalysis.likely_categories)) {
+      sceneAnalysis.likely_categories = normalizeAICategories(sceneAnalysis.likely_categories);
+    }
+
+    if (sceneAnalysis && (!sceneAnalysis.likely_categories || sceneAnalysis.likely_categories.length === 0)) {
+      sceneAnalysis.likely_categories = ['park'];
+      logger.warn('POI category normalization resulted in an empty list; defaulting to "park" to avoid API error.');
+    }
+
+
+  const searchRadiusFeet = this.getSearchRadiusFeet(sceneAnalysis.scene_type);
+  const searchRadiusMeters = feetToMeters(searchRadiusFeet);
+  const googlePlacesRadiusMeters = Math.max(searchRadiusMeters, GOOGLE_PLACES_RADIUS_METERS);
 
     try {
-      // Step 2: Fetch real-world POIs using the geolocate tool
+      // Step 2: Fetch real-world POIs using both OSM (Overpass/Nominatim) and Google Places
       let realPOIs = [];
       try {
-        // geolocate expects a gpsString like "lat,lon"
         const gpsString = `${latitude},${longitude}`;
-        const geoData = await geolocate({ gpsString });
 
-        // Format the real POI object array into the object array our ranker expects
-        if (geoData && geoData.nearby) {
-          realPOIs = geoData.nearby.map(p => {
-            // Support both legacy string "name" entries and new object entries
-            if (!p) return null;
-            if (typeof p === 'string') {
+        const [geoData, googlePlacesResults] = await Promise.all([
+          geolocate({ gpsString, radiusFeet: searchRadiusFeet }).catch(error => {
+            logger.error('Real-time POI lookup (OSM) failed:', error && error.message ? error.message : error);
+            return null;
+          }),
+          fetchGooglePlacesSafe({ gpsString, radiusMeters: googlePlacesRadiusMeters, typeFilter: this.deriveGooglePlacesType(sceneAnalysis) })
+        ]);
+
+        const osmPOIs = Array.isArray(geoData && geoData.nearby)
+          ? geoData.nearby.map(p => {
+              if (!p) return null;
+              if (typeof p === 'string') {
+                return {
+                  name: p,
+                  type: 'poi',
+                  category: 'poi',
+                  lat: latitude,
+                  lng: longitude,
+                  distance_miles: 0,
+                  visual_keywords: [String(p).toLowerCase()],
+                  has_ocean_view: false,
+                  has_mountain_view: false,
+                  has_water_feature: false,
+                  category_match: false,
+                  keyword_match: false,
+                  business_name_match: false,
+                  included_due_to_vision_failure: false,
+                  source: 'openstreetmap'
+                };
+              }
+
+              const poiLat = p.lat || (p.center && p.center.lat) || latitude;
+              const poiLon = p.lon || (p.center && p.center.lon) || longitude;
+              const distance = calculateDistance(latitude, longitude, poiLat, poiLon) || 0;
+              const tags = p.tags || {};
+              const category = normalizePOICategory(tags);
+              const tagValues = Object.values(tags || {}).slice(0, 3).map(v => String(v).toLowerCase());
+              const visualKeywords = [String(p.name).toLowerCase(), category, ...tagValues];
+              const has_water_feature = (tags && (tags.natural === 'water' || tags.natural === 'beach' || tags.waterway));
+
               return {
-                name: p,
-                type: 'poi',
-                category: 'poi',
-                lat: latitude,
-                lng: longitude,
-                distance_miles: 0,
-                visual_keywords: [String(p).toLowerCase()],
-                has_ocean_view: false,
-                has_mountain_view: false,
-                has_water_feature: false,
-                category_match: false,
-                keyword_match: false,
-                business_name_match: false,
-                included_due_to_vision_failure: false
+                name: p.name,
+                type: category,
+                category,
+                lat: poiLat,
+                lng: poiLon,
+                distance_miles: distance,
+                visual_keywords: visualKeywords.filter(Boolean),
+                has_ocean_view: (tags && (tags.natural === 'coastline' || tags.natural === 'beach')),
+                has_mountain_view: (tags && (tags.natural === 'peak' || tags.natural === 'volcano')),
+                has_water_feature: !!has_water_feature,
+                source: 'openstreetmap'
               };
-            }
+            }).filter(Boolean)
+          : [];
 
-            const poiLat = p.lat || (p.center && p.center.lat) || latitude;
-            const poiLon = p.lon || (p.center && p.center.lon) || longitude;
-            const distance = calculateDistance(latitude, longitude, poiLat, poiLon) || 0;
+        const googlePOIs = (googlePlacesResults || []).map(place => {
+          const placeLat = typeof place.lat === 'number' ? place.lat : latitude;
+          const placeLon = typeof place.lon === 'number' ? place.lon : longitude;
+          const distance = calculateDistance(latitude, longitude, placeLat, placeLon) || 0;
+          const category = normalizeGooglePlaceCategory(place.types || []);
+          const visualKeywords = [String(place.name || '').toLowerCase(), ...(place.types || []).map(type => String(type).toLowerCase())];
 
-            // Try to infer a category from common OSM tags and normalize it
-            const tags = p.tags || {};
-            const category = normalizePOICategory(tags);
+          return {
+            name: place.name,
+            type: category,
+            category,
+            lat: placeLat,
+            lng: placeLon,
+            distance_miles: distance,
+            visual_keywords: visualKeywords.filter(Boolean),
+            has_ocean_view: false,
+            has_mountain_view: false,
+            has_water_feature: false,
+            google_rating: place.rating ?? null,
+            google_user_ratings_total: place.user_ratings_total ?? null,
+            google_business_status: place.business_status || null,
+            source: 'google_places'
+          };
+        }).filter(poi => poi && poi.name);
 
-            // Visual keywords: include name and up to a few tag values
-            const tagValues = Object.values(tags || {}).slice(0, 3).map(v => String(v).toLowerCase());
-            const visualKeywords = [String(p.name).toLowerCase(), category, ...tagValues];
+        const googleNameSet = new Set(googlePOIs.map(poi => (poi.name || '').toLowerCase()));
+        const mergedPOIs = [...googlePOIs];
+        osmPOIs.forEach(poi => {
+          if (!poi || !poi.name) return;
+          const key = poi.name.toLowerCase();
+          if (!googleNameSet.has(key)) {
+            mergedPOIs.push(poi);
+          }
+        });
 
-            const has_water_feature = (tags && (tags.natural === 'water' || tags.natural === 'beach' || tags.waterway));
-
-            return {
-              name: p.name,
-              type: category,
-              category: category,
-              lat: poiLat,
-              lng: poiLon,
-              distance_miles: distance,
-              visual_keywords: visualKeywords.filter(Boolean),
-              has_ocean_view: (tags && (tags.natural === 'coastline' || tags.natural === 'beach')),
-              has_mountain_view: (tags && (tags.natural === 'peak' || tags.natural === 'volcano')),
-              has_water_feature: !!has_water_feature,
-              // business_name_match and keyword_match will be set after vision matching
-            };
-          }).filter(Boolean);
-        }
+        realPOIs = mergedPOIs;
       } catch (geoError) {
-          logger.error('Real-time POI lookup failed:', geoError && geoError.message ? geoError.message : geoError);
+          logger.error('Real-time POI aggregation failed:', geoError && geoError.message ? geoError.message : geoError);
         // Continue with empty POI list
         realPOIs = [];
       }
 
   // Step 3: Match visual analysis against real POIs
-  const matchedPOIs = performVisionMatching(realPOIs, sceneAnalysis);
+  const matchedPOIs = performVisionMatching(realPOIs, sceneAnalysis).map(poi => ({
+    ...poi,
+    category_match: sceneAnalysis && sceneAnalysis.scene_type
+      ? poi.type === sceneAnalysis.scene_type
+      : false
+  }));
 
   // Step 4: Rank POIs by relevance using matched POIs
   const rankedPOIs = this.rankPOIs(matchedPOIs, sceneAnalysis, { lat: latitude, lng: longitude });
@@ -464,30 +635,68 @@ class PhotoPOIIdentifierNode {
         confidence: rankedPOIs[0].confidence
       } : null;
 
+      let finalSearchContext = null;
+      const isNaturalOrRec = sceneAnalysis.scene_type === 'natural_landmark' || sceneAnalysis.scene_type === 'recreation';
+
+  // MODIFIED: Trigger if bestMatch is NULL or confidence is 'low'
+  if ((!bestMatch || bestMatch.confidence === 'low') && isNaturalOrRec) {
+        const baseQuery = `${latitude}, ${longitude}`;
+        const keywordBlock = Array.isArray(sceneAnalysis.search_keywords)
+          ? sceneAnalysis.search_keywords.join(' ')
+          : '';
+        const queryComponents = [baseQuery];
+        if (keywordBlock) queryComponents.push(keywordBlock);
+        queryComponents.push('trail aqueduct "open space"');
+        const query = queryComponents.join(' ').trim();
+
+        try {
+          const rawResponse = await googleSearchTool.invoke({ query, numResults: 4 });
+          const parsed = typeof rawResponse === 'string' ? JSON.parse(rawResponse) : rawResponse;
+          const results = Array.isArray(parsed && parsed.results) ? parsed.results : [];
+          const snippets = results
+            .slice(0, 2)
+            .map(entry => (entry && (entry.snippet || entry.title || '')).trim())
+            .filter(Boolean);
+          if (snippets.length > 0) {
+            finalSearchContext = snippets.join('; ');
+          }
+        } catch (error) {
+          logger.warn('Context search failed:', error && error.message ? error.message : error);
+        }
+      }
+
       // Step 5: Format final output
-      return {
+      const finalResult = {
         scene_type: sceneAnalysis.scene_type,
         scene_description: sceneAnalysis.confidence === 'low' ? 'location-based analysis only' : this.generateSceneDescription(sceneAnalysis),
-        search_radius_miles: this.getSearchRadius(sceneAnalysis.scene_type),
+        search_radius_miles: feetToMiles(searchRadiusFeet),
         poi_list: rankedPOIs,
         best_match: bestMatch,
         analysis_confidence: sceneAnalysis.confidence,
         timestamp: timestamp,
-        search_location: { lat: latitude, lng: longitude }
+        search_location: { lat: latitude, lng: longitude },
+        rich_search_context: finalSearchContext
       };
 
+      logger.info('--- POI IDENTIFIER OUTPUT (For Scenery Agent Input) ---');
+      logger.info(JSON.stringify(finalResult, null, 2));
+      logger.info('---------------------------------------------------------');
+
+      return finalResult;
+
     } catch (error) {
-  logger.error('POI identification error:', error);
+    logger.error('POI identification error:', error);
       return {
         error: error.message,
         scene_type: "unknown",
         scene_description: "Analysis failed",
-        search_radius_miles: CONFIG.default_search_radius_miles,
+        search_radius_miles: feetToMiles(searchRadiusFeet || CONFIG.default_search_radius_feet),
         poi_list: [],
         best_match: null,
         analysis_confidence: "low",
         timestamp: timestamp,
-        search_location: { lat: latitude, lng: longitude }
+        search_location: { lat: latitude, lng: longitude },
+        rich_search_context: null
       };
     }
   }
@@ -545,4 +754,4 @@ const photoPOIIdentifierTool = tool(
   }
 );
 
-module.exports = { PhotoPOIIdentifierNode, photoPOIIdentifierTool, performVisionMatching, normalizePOICategory };
+module.exports = { PhotoPOIIdentifierNode, photoPOIIdentifierTool, performVisionMatching, normalizePOICategory, normalizeAICategories };

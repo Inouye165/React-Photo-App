@@ -38,6 +38,9 @@ LOCATION ANALYSIS:`;
       const topPOIs = poiAnalysis.poi_list.slice(0, 3).map(poi => `${poi.name} (${poi.distance_miles}mi, ${poi.confidence})`).join(', ');
       prompt += ` Top POIs: ${topPOIs}.`;
     }
+    if (poiAnalysis.rich_search_context) {
+      prompt += ` External context: ${poiAnalysis.rich_search_context}.`;
+    }
     prompt += ` Search radius used: ${poiAnalysis.search_radius_miles} miles.`;
   }
 
@@ -57,7 +60,37 @@ LOCATION ANALYSIS:`;
 
   prompt += `\n\nRespond in JSON with keys: caption, description, keywords, places, animals.`;
   return prompt;
-}// Basic sanity-check parser: try JSON.parse, else return null to let caller handle the raw string
+}
+
+const API_FLAVOR = process.env.USE_RESPONSES_API === 'true' ? 'responses' : 'chat';
+
+function buildVisionContent(flavor = API_FLAVOR, { systemText, userText, imageUrlOrDataUrl, detail = 'high' }) {
+  if (flavor === 'responses') {
+    return [
+      ...(systemText ? [{ role: 'system', content: [{ type: 'input_text', text: systemText }] }] : []),
+      {
+        role: 'user',
+        content: [
+          { type: 'input_text', text: userText },
+          { type: 'input_image', image_url: { url: imageUrlOrDataUrl, detail } }
+        ]
+      }
+    ];
+  }
+  // chat flavor
+  return [
+    ...(systemText ? [{ role: 'system', content: systemText }] : []),
+    {
+      role: 'user',
+      content: [
+        { type: 'text', text: userText },
+        { type: 'image_url', image_url: { url: imageUrlOrDataUrl, detail } }
+      ]
+    }
+  ];
+}
+
+// Basic sanity-check parser: try JSON.parse, else return null to let caller handle the raw string
 function parseOutputToJSON(text) {
   if (!text) return null;
   try {
@@ -69,4 +102,4 @@ function parseOutputToJSON(text) {
   }
 }
 
-module.exports = { buildPrompt, parseOutputToJSON };
+module.exports = { buildPrompt, parseOutputToJSON, buildVisionContent };

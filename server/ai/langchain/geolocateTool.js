@@ -1,5 +1,7 @@
 const { tool } = require('@langchain/core/tools');
 
+const GOOGLE_PLACES_RADIUS_METERS = 1200; // ~0.75 miles
+
 function feetToMeters(feet) {
   return Math.max(1, Math.round(feet * 0.3048));
 }
@@ -18,7 +20,16 @@ async function nominatimReverse(lat, lon, userAgent) {
 async function overpassNearby(lat, lon, radiusMeters = 50, userAgent) {
   try {
     const q = `[
-out:json][timeout:25];(node(around:${radiusMeters},${lat},${lon})["name"];way(around:${radiusMeters},${lat},${lon})["name"];rel(around:${radiusMeters},${lat},${lon})["name"];);out center;`;
+out:json][timeout:25];(
+  node(around:${radiusMeters},${lat},${lon})["name"];
+  way(around:${radiusMeters},${lat},${lon})["name"];
+  rel(around:${radiusMeters},${lat},${lon})["name"];
+  node(around:${radiusMeters},${lat},${lon})["amenity"="shopping_center"];
+  way(around:${radiusMeters},${lat},${lon})["amenity"="shopping_center"];
+  rel(around:${radiusMeters},${lat},${lon})["amenity"="shopping_center"];
+  way(around:${radiusMeters},${lat},${lon})["landuse"="retail"];
+  rel(around:${radiusMeters},${lat},${lon})["landuse"="retail"];
+);out center tags bb;`;
     const url = 'https://overpass-api.de/api/interpreter';
     const res = await fetch(url, {
       method: 'POST',
@@ -28,16 +39,23 @@ out:json][timeout:25];(node(around:${radiusMeters},${lat},${lon})["name"];way(ar
     if (!res.ok) return [];
     const data = await res.json();
     const pois = [];
+    const seen = new Set();
     if (data.elements && Array.isArray(data.elements)) {
       for (const el of data.elements) {
         if (el.tags && el.tags.name) {
           // Determine coordinates: node has lat/lon, way/rel may have center
           const latVal = el.lat || (el.center && el.center.lat) || null;
           const lonVal = el.lon || (el.center && el.center.lon) || null;
+          const key = `${el.tags.name}:${latVal ?? ''}:${lonVal ?? ''}`;
+          if (seen.has(key)) continue;
+          seen.add(key);
           pois.push({
             name: el.tags.name,
             lat: latVal,
             lon: lonVal,
+            bounds: el.bounds || null,
+            category: el.tags.amenity || el.tags.landuse || el.tags.leisure || el.tags.shop || el.tags.tourism || null,
+            osmType: el.type,
             tags: el.tags
           });
         }
@@ -94,4 +112,4 @@ const geolocateTool = tool(
   }
 );
 
-module.exports = { geolocate, geolocateTool };
+module.exports = { geolocate, geolocateTool, GOOGLE_PLACES_RADIUS_METERS };
