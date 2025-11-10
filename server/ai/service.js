@@ -57,24 +57,7 @@ async function processPhotoAI({ fileBuffer, filename, metadata, gps, device }, m
     imageMime = ext === '.png' ? 'image/png' : 'image/jpeg';
   }
   const imageBase64 = imageBuffer.toString('base64');
-  const base64Length = imageBase64 ? imageBase64.length : 0;
-  logger.debug(`[Graph Debug] imageBase64 length: ${base64Length}`);
-  logger.info(`[Graph Debug] imageBase64 length: ${base64Length}`);
-  logger.info(`[Graph Debug] First 50 chars of base64: ${imageBase64.substring(0, 50)}`);
-  logger.info(`[Graph Debug] Last 50 chars of base64: ${imageBase64.substring(base64Length - 50)}`);
-  
-  // Validate base64 string
-  const base64Regex = /^[A-Za-z0-9+/]*={0,2}$/;
-  const isValidBase64 = base64Regex.test(imageBase64);
-  logger.info(`[Graph Debug] Base64 validation: ${isValidBase64 ? 'VALID' : 'INVALID'}`);
-  
-  if (!imageBase64 || imageBase64.length < 100) {
-    logger.error('[Graph Debug] imageBase64 string is suspiciously short or empty!', imageBase64);
-  }
-  
-  if (!isValidBase64) {
-    logger.error('[Graph Debug] Base64 string contains invalid characters!');
-  }
+  // Removed excessive base64 logging for security and performance
   logger.debug('[Graph] Prepared image buffer for graph invocation', { filename, imageMime });
   logger.info(`[Graph Debug] imageMime before graph: ${imageMime}`);
 
