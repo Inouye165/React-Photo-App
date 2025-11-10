@@ -1,4 +1,12 @@
 // Simple prompt builder for photo analysis. Keeps prompt content centralized so tests and chains can reuse it.
+
+// Sanitize user input to prevent prompt injection
+function sanitizeString(input) {
+  if (typeof input !== 'string') input = String(input);
+  // Remove dangerous characters and limit length
+  const sanitized = input.replace(/[\n\t"';]/g, ' ').slice(0, 500);
+  return sanitized;
+}
 function buildPrompt({ dateTimeInfo = '', metadata = {}, device = '', gps = '', geoContext = null, locationAnalysis = null, poiAnalysis = null }) {
   let prompt = `You are an expert photo analyst and location detective. Your highest priority is to identify and describe the primary focal point of the photo. Given the image and metadata, generate the following in JSON (keys: caption, description, keywords, places, animals):
 
@@ -44,11 +52,15 @@ LOCATION ANALYSIS:`;
     prompt += ` Search radius used: ${poiAnalysis.search_radius_miles} miles.`;
   }
 
-  prompt += `\n\nMetadata:`;
 
+  prompt += `\n\nMetadata:`;
   if (dateTimeInfo) prompt += ` Date/Time: ${dateTimeInfo}.`;
-  if (metadata && Object.keys(metadata).length) prompt += ` EXIF: ${JSON.stringify(metadata)}.`;
-  prompt += `\nDevice Info: ${device}`;
+  if (metadata && Object.keys(metadata).length) {
+    const sanitizedMetadata = sanitizeString(JSON.stringify(metadata));
+    prompt += ` EXIF: ${sanitizedMetadata}.`;
+  }
+  const sanitizedDevice = sanitizeString(device);
+  prompt += `\nDevice Info: ${sanitizedDevice}`;
   if (gps) prompt += `\nGPS Info: ${gps}`;
 
   if (geoContext && geoContext.address) {

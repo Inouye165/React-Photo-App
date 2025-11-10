@@ -18,6 +18,9 @@ if (!process.env.OPENAI_API_KEY) {
 }
 
 const { convertHeicToJpegBuffer } = require('../media/image');
+
+// Hard limit for AI processing file size (20 MB)
+const MAX_AI_FILE_SIZE = 20 * 1024 * 1024;
 const supabase = require('../lib/supabaseClient');
 const { ROUTER_MODEL, SCENERY_MODEL, COLLECTIBLE_MODEL } = require('./langchain/agents');
 const { googlePlacesTool } = require('./langchain/tools/googlePlacesTool');
@@ -57,24 +60,7 @@ async function processPhotoAI({ fileBuffer, filename, metadata, gps, device }, m
     imageMime = ext === '.png' ? 'image/png' : 'image/jpeg';
   }
   const imageBase64 = imageBuffer.toString('base64');
-  const base64Length = imageBase64 ? imageBase64.length : 0;
-  logger.debug(`[Graph Debug] imageBase64 length: ${base64Length}`);
-  logger.info(`[Graph Debug] imageBase64 length: ${base64Length}`);
-  logger.info(`[Graph Debug] First 50 chars of base64: ${imageBase64.substring(0, 50)}`);
-  logger.info(`[Graph Debug] Last 50 chars of base64: ${imageBase64.substring(base64Length - 50)}`);
-  
-  // Validate base64 string
-  const base64Regex = /^[A-Za-z0-9+/]*={0,2}$/;
-  const isValidBase64 = base64Regex.test(imageBase64);
-  logger.info(`[Graph Debug] Base64 validation: ${isValidBase64 ? 'VALID' : 'INVALID'}`);
-  
-  if (!imageBase64 || imageBase64.length < 100) {
-    logger.error('[Graph Debug] imageBase64 string is suspiciously short or empty!', imageBase64);
-  }
-  
-  if (!isValidBase64) {
-    logger.error('[Graph Debug] Base64 string contains invalid characters!');
-  }
+  // Removed excessive base64 logging for security and performance
   logger.debug('[Graph] Prepared image buffer for graph invocation', { filename, imageMime });
   logger.info(`[Graph Debug] imageMime before graph: ${imageMime}`);
 
@@ -191,8 +177,14 @@ async function updatePhotoAIMetadata(db, photoRow, storagePath, modelOverrides =
         throw new Error(`Failed to download file from storage: ${error.message}`);
       }
       
+      // Enforce OOM safeguard: check file size before processing
+      if (typeof fileData.size === 'number' && fileData.size > MAX_AI_FILE_SIZE) {
+        logger.error(`[AI OOM] File too large for AI processing: ${photoRow.filename} (${fileData.size} bytes)`);
+        throw new Error(`File too large for AI processing: ${fileData.size} bytes (limit: ${MAX_AI_FILE_SIZE})`);
+      }
+
       const fileBuffer = await fileData.arrayBuffer();
-      
+
       ai = await processPhotoAI({ 
         fileBuffer: Buffer.from(fileBuffer), 
         filename: photoRow.filename, 
