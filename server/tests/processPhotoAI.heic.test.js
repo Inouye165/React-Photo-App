@@ -6,13 +6,11 @@ jest.mock('../media/image', () => ({
   convertHeicToJpegBuffer: jest.fn(async (_filePath, _quality) => Buffer.from('fakejpeg')),
 }));
 
-// Mock the chain adapter to return predictable JSON
-jest.mock('../ai/langchain/chainAdapter', () => ({
-  runChain: jest.fn(async ({ _messages }) => ({
-    choices: [{ message: { content: JSON.stringify({ caption: 'HEIC Test', description: 'desc heic', keywords: 'x,y' }) } }]
-  }))
+jest.mock('../ai/langgraph/graph', () => ({
+  app: { invoke: jest.fn() }
 }));
 
+const { app: aiGraph } = require('../ai/langgraph/graph');
 const { processPhotoAI } = require('../ai/service');
 
 describe('processPhotoAI HEIC path', () => {
@@ -34,11 +32,20 @@ describe('processPhotoAI HEIC path', () => {
       return;
     }
 
+    aiGraph.invoke.mockResolvedValueOnce({
+      classification: 'scenery_or_general_subject',
+      finalResult: {
+        caption: 'HEIC Test',
+        description: 'desc heic',
+        keywords: 'x,y'
+      }
+    });
+
     const fileBuffer = fs.readFileSync(tmpFile);
     const res = await processPhotoAI({ fileBuffer, filename: 'tmp_test.heic', metadata: {}, gps: '', device: '' });
     expect(res).toBeDefined();
     expect(res.caption).toBe('HEIC Test');
     expect(res.description).toBe('desc heic');
-    expect(res.keywords).toContain('x,y');
+    expect(res.keywords).toBe('x,y');
   });
 });

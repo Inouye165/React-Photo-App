@@ -24,7 +24,7 @@ jest.mock('../ai/langchain/tools/searchTool', () => ({
 
 const { geolocate } = require('../ai/langchain/geolocateTool');
 const { fetchGooglePlaces } = require('../ai/langchain/tools/googlePlacesTool');
-const { PhotoPOIIdentifierNode } = require('../ai/langchain/photoPOIIdentifier');
+const { PhotoPOIIdentifierNode, normalizeAICategories } = require('../ai/langchain/photoPOIIdentifier');
 
 describe('PhotoPOIIdentifier integration with Google Places', () => {
   test('prioritizes Google Places business for restaurant scenes', async () => {
@@ -78,5 +78,27 @@ describe('PhotoPOIIdentifier integration with Google Places', () => {
     expect(result.poi_list[0].name).toBe("Sam's Seafood");
     expect(result.poi_list[0].source).toBe('google_places');
     expect(result.best_match.name).toBe("Sam's Seafood");
+  });
+});
+
+describe('Category Normalization Regression Test', () => {
+  test('should convert unsupported "nature reserve" to "park" to prevent API 400 error', () => {
+    const categories = ['restaurant', 'nature reserve', 'river', 'park'];
+    const expectedResultContains = ['park', 'restaurant'];
+
+    const result = normalizeAICategories(categories);
+
+    expect(result).toEqual(expect.arrayContaining(expectedResultContains));
+    expect(result).not.toContain('nature reserve');
+  });
+
+  test('should filter out generic terms and handle duplicates correctly', () => {
+    const categories = ['nature reserve', 'mountain', 'restaurant', 'park', 'river', 'restaurant'];
+    const expected = ['park', 'restaurant'];
+
+    const result = normalizeAICategories(categories).sort();
+
+    expect(result).toEqual(expected.sort());
+    expect(result.length).toBe(2);
   });
 });

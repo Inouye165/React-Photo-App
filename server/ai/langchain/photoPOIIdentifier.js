@@ -3,7 +3,7 @@ const { tool } = require('@langchain/core/tools');
 const { z } = require('zod');
 const OpenAI = require('openai');
 // Use real-world POI lookups via OpenStreetMap Overpass/Nominatim
-const { geolocate } = require('./geolocateTool');
+const { geolocate, GOOGLE_PLACES_RADIUS_METERS } = require('./geolocateTool');
 const { fetchGooglePlaces } = require('./tools/googlePlacesTool');
 const { googleSearchTool } = require('./tools/searchTool');
 const logger = require('../../logger');
@@ -34,9 +34,12 @@ function feetToMiles(feet) {
 
 async function fetchGooglePlacesSafe({ gpsString, radiusMeters, typeFilter }) {
   try {
-    return await fetchGooglePlaces({ gpsString, radiusMeters, typeFilter });
+    const results = await fetchGooglePlaces({ gpsString, radiusMeters, typeFilter });
+    console.log('[GooglePlaces] POI results:', JSON.stringify({ gpsString, radiusMeters, typeFilter, results }, null, 2));
+    return results;
   } catch (error) {
     logger.warn('Google Places lookup failed or is unavailable:', error && error.message ? error.message : error);
+    console.log('[GooglePlaces] Lookup failed:', error && error.message ? error.message : error);
     return [];
   }
 }
@@ -87,19 +90,26 @@ function normalizeAICategories(categories) {
   const typeMap = {
     'nature reserve': 'park',
     'national forest': 'park',
-    'trail': 'park',
     'hiking area': 'park',
-    'mountain': 'natural_feature',
-    'river': 'natural_feature',
     'wildlife sanctuary': 'park'
   };
+
+  const disallowedGenerics = new Set([
+    'river',
+    'mountain',
+    'hill',
+    'valley',
+    'water',
+    'landscape',
+    'nature'
+  ]);
 
   return categories
     .map(category => {
       const normalized = String(category ?? '').toLowerCase().trim();
       return typeMap[normalized] || normalized;
     })
-    .filter(cat => cat.length > 0)
+    .filter(cat => cat.length > 0 && !disallowedGenerics.has(cat))
     .filter((value, index, self) => self.indexOf(value) === index);
 }
 
@@ -260,9 +270,11 @@ class PhotoPOIIdentifierNode {
       });
 
       const content = response.choices[0].message.content;
+      console.log('[Vision LLM Output]', content);
       return this.parseVisionResponse(content);
     } catch (error) {
         logger.error('Vision analysis error:', error);
+      console.log('[Vision LLM Output] Error during analysis:', error && error.message ? error.message : error);
       return this.getFallbackAnalysis();
     }
   }
@@ -492,9 +504,15 @@ class PhotoPOIIdentifierNode {
       sceneAnalysis.likely_categories = normalizeAICategories(sceneAnalysis.likely_categories);
     }
 
+    if (sceneAnalysis && (!sceneAnalysis.likely_categories || sceneAnalysis.likely_categories.length === 0)) {
+      sceneAnalysis.likely_categories = ['park'];
+      logger.warn('POI category normalization resulted in an empty list; defaulting to "park" to avoid API error.');
+    }
 
-    const searchRadiusFeet = this.getSearchRadiusFeet(sceneAnalysis.scene_type);
-    const searchRadiusMeters = feetToMeters(searchRadiusFeet);
+
+  const searchRadiusFeet = this.getSearchRadiusFeet(sceneAnalysis.scene_type);
+  const searchRadiusMeters = feetToMeters(searchRadiusFeet);
+  const googlePlacesRadiusMeters = Math.max(searchRadiusMeters, GOOGLE_PLACES_RADIUS_METERS);
 
     try {
       // Step 2: Fetch real-world POIs using both OSM (Overpass/Nominatim) and Google Places
@@ -507,7 +525,7 @@ class PhotoPOIIdentifierNode {
             logger.error('Real-time POI lookup (OSM) failed:', error && error.message ? error.message : error);
             return null;
           }),
-          fetchGooglePlacesSafe({ gpsString, radiusMeters: searchRadiusMeters, typeFilter: this.deriveGooglePlacesType(sceneAnalysis) })
+          fetchGooglePlacesSafe({ gpsString, radiusMeters: googlePlacesRadiusMeters, typeFilter: this.deriveGooglePlacesType(sceneAnalysis) })
         ]);
 
         const osmPOIs = Array.isArray(geoData && geoData.nearby)
@@ -620,7 +638,8 @@ class PhotoPOIIdentifierNode {
       let finalSearchContext = null;
       const isNaturalOrRec = sceneAnalysis.scene_type === 'natural_landmark' || sceneAnalysis.scene_type === 'recreation';
 
-      if (bestMatch && bestMatch.confidence === 'low' && isNaturalOrRec) {
+  // MODIFIED: Trigger if bestMatch is NULL or confidence is 'low'
+  if ((!bestMatch || bestMatch.confidence === 'low') && isNaturalOrRec) {
         const baseQuery = `${latitude}, ${longitude}`;
         const keywordBlock = Array.isArray(sceneAnalysis.search_keywords)
           ? sceneAnalysis.search_keywords.join(' ')
@@ -647,7 +666,7 @@ class PhotoPOIIdentifierNode {
       }
 
       // Step 5: Format final output
-      return {
+      const finalResult = {
         scene_type: sceneAnalysis.scene_type,
         scene_description: sceneAnalysis.confidence === 'low' ? 'location-based analysis only' : this.generateSceneDescription(sceneAnalysis),
         search_radius_miles: feetToMiles(searchRadiusFeet),
@@ -658,6 +677,12 @@ class PhotoPOIIdentifierNode {
         search_location: { lat: latitude, lng: longitude },
         rich_search_context: finalSearchContext
       };
+
+      logger.info('--- POI IDENTIFIER OUTPUT (For Scenery Agent Input) ---');
+      logger.info(JSON.stringify(finalResult, null, 2));
+      logger.info('---------------------------------------------------------');
+
+      return finalResult;
 
     } catch (error) {
     logger.error('POI identification error:', error);
@@ -729,4 +754,4 @@ const photoPOIIdentifierTool = tool(
   }
 );
 
-module.exports = { PhotoPOIIdentifierNode, photoPOIIdentifierTool, performVisionMatching, normalizePOICategory };
+module.exports = { PhotoPOIIdentifierNode, photoPOIIdentifierTool, performVisionMatching, normalizePOICategory, normalizeAICategories };

@@ -1,5 +1,7 @@
 const { tool } = require('@langchain/core/tools');
 
+const GOOGLE_PLACES_RADIUS_METERS = 1200; // ~0.75 miles
+
 function feetToMeters(feet) {
   return Math.max(1, Math.round(feet * 0.3048));
 }
@@ -110,4 +112,4 @@ const geolocateTool = tool(
   }
 );
 
-module.exports = { geolocate, geolocateTool };
+module.exports = { geolocate, geolocateTool, GOOGLE_PLACES_RADIUS_METERS };

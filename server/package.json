@@ -20,12 +20,13 @@
     "test:e2e": "playwright test",
     "test:a11y": "playwright test ../../e2e/a11y.*",
     "test:perf": "k6 run ../../perf/smoke.js",
-  "test:docker:smoke": "node ../../scripts/docker-smoke.js",
-  "prepare": ""
+    "test:docker:smoke": "node ../../scripts/docker-smoke.js",
+    "prepare": ""
   },
   "dependencies": {
-    "@langchain/core": "^0.3.0",
-    "@langchain/openai": "^0.3.0",
+    "@langchain/core": "^1.0.3",
+    "@langchain/langgraph": "^1.0.1",
+    "@langchain/openai": "^1.0.0",
     "@supabase/supabase-js": "^2.76.1",
     "bcryptjs": "^3.0.2",
     "bullmq": "^5.61.0",
