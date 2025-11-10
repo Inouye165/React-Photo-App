@@ -17,6 +17,9 @@ if (!process.env.OPENAI_API_KEY) {
   }
 }
 
+
+// Native OpenAI client (singleton)
+const openai = require('./openaiClient');
 const { convertHeicToJpegBuffer } = require('../media/image');
 
 // Hard limit for AI processing file size (20 MB)
@@ -339,4 +342,10 @@ async function processAllUnprocessedInprogress(db) {
   }
 }
 
-module.exports = { processPhotoAI, updatePhotoAIMetadata, isAIFailed, processAllUnprocessedInprogress };
+module.exports = {
+  processPhotoAI,
+  updatePhotoAIMetadata,
+  isAIFailed,
+  processAllUnprocessedInprogress,
+  openai, // Expose native OpenAI client for downstream consumers
+};

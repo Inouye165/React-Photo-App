@@ -1,5 +1,8 @@
 // server/ai/langchain/agents.js
 const { ChatOpenAI } = require('@langchain/openai');
+// Native OpenAI client (for future use)
+const { openai: _openai } = require('../service');
+// The native OpenAI client is now available as `openai` for future refactors.
 
 if (!ChatOpenAI.prototype.__consoleLoggingPatched) {
   const originalInvoke = ChatOpenAI.prototype.invoke;
