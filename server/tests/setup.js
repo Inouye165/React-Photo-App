@@ -32,6 +32,11 @@ process.env.JWT_SECRET = 'test-jwt-secret-key-for-testing-only';
 // Provide a dummy OpenAI API key for tests so modules that validate at load time do not throw
 process.env.OPENAI_API_KEY = process.env.OPENAI_API_KEY || 'test-openai-api-key';
 
+// Provide LangSmith defaults so tests do not depend on local .env
+process.env.LANGCHAIN_TRACING_V2 = process.env.LANGCHAIN_TRACING_V2 || 'true';
+process.env.LANGCHAIN_API_KEY = process.env.LANGCHAIN_API_KEY || 'lsv2_test_key_abcdefghijklmnopqrstuvwxyz';
+process.env.LANGCHAIN_PROJECT = process.env.LANGCHAIN_PROJECT || 'photo-app';
+
 // Global test setup
 beforeEach(() => {
   // Clear all mocks before each test
