@@ -18,6 +18,9 @@ if (!process.env.OPENAI_API_KEY) {
 }
 
 const { convertHeicToJpegBuffer } = require('../media/image');
+
+// Hard limit for AI processing file size (20 MB)
+const MAX_AI_FILE_SIZE = 20 * 1024 * 1024;
 const supabase = require('../lib/supabaseClient');
 const { ROUTER_MODEL, SCENERY_MODEL, COLLECTIBLE_MODEL } = require('./langchain/agents');
 const { googlePlacesTool } = require('./langchain/tools/googlePlacesTool');
@@ -174,8 +177,14 @@ async function updatePhotoAIMetadata(db, photoRow, storagePath, modelOverrides =
         throw new Error(`Failed to download file from storage: ${error.message}`);
       }
       
+      // Enforce OOM safeguard: check file size before processing
+      if (typeof fileData.size === 'number' && fileData.size > MAX_AI_FILE_SIZE) {
+        logger.error(`[AI OOM] File too large for AI processing: ${photoRow.filename} (${fileData.size} bytes)`);
+        throw new Error(`File too large for AI processing: ${fileData.size} bytes (limit: ${MAX_AI_FILE_SIZE})`);
+      }
+
       const fileBuffer = await fileData.arrayBuffer();
-      
+
       ai = await processPhotoAI({ 
         fileBuffer: Buffer.from(fileBuffer), 
         filename: photoRow.filename, 
