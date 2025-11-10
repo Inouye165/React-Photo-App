@@ -1,8 +1,5 @@
 // server/ai/langchain/agents.js
 const { ChatOpenAI } = require('@langchain/openai');
-const { googleSearchTool } = require('./tools/searchTool');
-const { googlePlacesTool } = require('./tools/googlePlacesTool');
-const { ensureVisionModel, getVisionAllowlist, DEFAULT_VISION_MODEL } = require('../modelCapabilities');
 
 if (!ChatOpenAI.prototype.__consoleLoggingPatched) {
   const originalInvoke = ChatOpenAI.prototype.invoke;
@@ -26,6 +23,9 @@ if (!ChatOpenAI.prototype.__consoleLoggingPatched) {
   };
   ChatOpenAI.prototype.__consoleLoggingPatched = true;
 }
+const { googleSearchTool } = require('./tools/searchTool');
+const { googlePlacesTool } = require('./tools/googlePlacesTool');
+const { ensureVisionModel, getVisionAllowlist, DEFAULT_VISION_MODEL } = require('../modelCapabilities');
 
 const ROUTER_SYSTEM_PROMPT = `You are an expert image classifier. Given an image and its metadata, classify the main focal point as either:\n\n- scenery_or_general_subject: (e.g., landscapes, selfies, generic photos of cows, meals)\n- specific_identifiable_object: (e.g., comic book, car, product box, collectible)\n- receipt: (e.g., store receipt, invoice)\n- food_item: (e.g., plate of food, meal)\n\nRespond with a single key: { "classification": "classification_type" }.`;
 
@@ -34,6 +34,11 @@ const ROUTER_SYSTEM_PROMPT = `You are an expert image classifier. Given an image
 // exact data fields our chain provides (from exifTool, geolocateTool, and photoPOIIdentifier)
 // and handles special cases for receipts, food, animals, and trails/parks. Includes logic for POI confidence.
 const SCENERY_SYSTEM_PROMPT = `You are an expert photo analyst and narrator. Your primary task is to synthesize all available information (visuals, metadata, and location data) into a rich, narrative description or structured analysis depending on the photo's content.
+
+**STRICT NARRATIVE STYLE GUIDELINES:**
+- **TONE:** Write the final paragraph in a professional, narrative, or journalistic style (like a caption from a newspaper article).
+- **FORMATTING:** ABSOLUTELY DO NOT use any Markdown (e.g., **bold**, *italics*, quotes) or special characters in the output description. The text must be plain, flowing prose.
+- **COHERENCE:** The final text must read as a seamless, professional paragraph of natural language, not a list or a hodgepodge of data.
 
 You will be given a JSON object containing:
 - "description": A basic visual description of the photo (may include identified subjects like animal breeds).
@@ -66,24 +71,31 @@ You will be given a JSON object containing:
      2.  **Wildlife & Botany Focus (If applicable):**
          - If an animal, bird, or notable plant is highlighted in the "description" or "keywords", identify the species and add one concise, true fact about it.
          - When trail names, park sections, or tree species are mentioned, incorporate them so the narrative reads like on-the-ground observation.
-    3.  **Where (Location):** Determine how to state the location based on available data:
-         - **IF** "rich_search_context" is NOT empty:
-           - Scan the snippets for specific trail, aqueduct, or open space names (e.g., "Contra Costa Canal Trail", "Lime Ridge Open Space").
-           - Use the most specific name found, phrasing it as "on the **[Trail Name]** aqueduct path" or "at **[Open Space Name]**" when appropriate.
-           - Prioritize this contextual name over a low-confidence "bestMatchPOI".
-         - **ELSE IF** "bestMatchPOI" exists AND "poiConfidence" is 'high' or 'medium':
-           - If it is clearly a trail, lead with "on the **[bestMatchPOI]**"; if it is a park or open space, use "at **[bestMatchPOI]**"; otherwise, state "at **[bestMatchPOI]**".
-         - **ELSE (Low confidence, no POI, and no search context):** State the location as "near **[Address Street, City]**" using the "location.address". Do NOT surface a low-confidence POI name.
-     4.  **Where (Full Address - Conditional):** If you used the specific POI name in step 3, *also* include the full **"address"** (e.g., "...at Lime Ridge Open Space, located near Treat Blvd, Concord, CA..."). If you only used the address in step 3, don't repeat it.
-     5.  **When:** Include the full date **and approximate time** (e.g., "morning," "afternoon," "evening" - derive this by parsing the hour from the full ISO timestamp in "metadata.dateTime") from "metadata.dateTime".
-     6.  **Context:** Conclude by weaving in other visual cues, "keywords", and "cameraModel" to deliver a hyper-local sense of place.
+    3.  **Location Synthesis (Path/POI/City):** Determine the best name for the location based on accuracy and specificity.
+         - **STRICTEST PRIORITY:**
+           - **IF** "rich_search_context" is NOT empty (meaning search found a specific path/trail):
+             - Extract the FULL official name of the most specific regional trail or path (e.g., "Contra Costa Canal Regional Trail").
+             - **MANDATORY USE:** This specific path name MUST be used as the location anchor.
+           - **ELSE IF** "bestMatchPOI" exists AND "poiConfidence" is 'high' or 'medium':
+             - Use the broad POI name (e.g., "Lime Ridge Open Space").
+           - **ELSE (Low/No Confidence):**
+             - Use the most specific part of the address (Street, City, State) for location.
+
+    4.  **Narrative Construction:** Combine the main subject, time, and location into the opening sentence of the article:
+      - **MANDATORY GEO-EXTRACTION:** First, extract the City and State (e.g., "Concord, CA") from the "location.address" field. This MUST be used for the final location context.
+      - **Format (Trail/Path Found):** If a specific path name is found in Step 3, the sentence MUST use the format: "[A/An Subject] was photographed along the [Path/Trail Name] aqueduct path, near [City, State], on the [time] of [Date]."
+      - **Format (POI Found):** If a broad POI name (like "Lime Ridge Open Space") is found, the sentence MUST use the format: "[A/An Subject] was photographed at [POI Name], near [City, State], on the [time] of [Date]."
+      - **Format (No Specific POI/Trail Found):** The sentence MUST use the format: "[A/An Subject] was photographed near [City, State], on the [time] of [Date]."
+      - Derive the time-of-day (morning, afternoon, evening, night) by parsing the hour from "metadata.dateTime" before referencing it in the sentence.
+
+    5.  **Context & Camera Details:** After the opening sentence, continue the paragraph with remaining descriptive details drawn from "description", "keywords", "rich_search_context", and "nearbyPOIs". Explicitly mention the camera model from "metadata.cameraModel" while keeping the prose flowing.
    - Return a JSON object like: \`{ "enhanced_description": "The full narrative paragraph." }\`
 
 **Example Output (Default Case - High Confidence POI):**
-"A Great Blue Heron, a common sight in the wetlands near Concord, stands gracefully at **Lime Ridge Open Space**, located near **Treat Blvd, Concord, CA**, on the afternoon of **September 7, 2025**. The sunlit, dry field provides a serene backdrop... captured on an **iPhone 15 Pro Max**."
+"A Great Blue Heron was photographed at Lime Ridge Open Space, near Concord, CA, on the afternoon of September 7, 2025. The sunlit, dry field provides a serene backdrop with the bird framed against distant oaks, captured on an iPhone 15 Pro Max."
 
 **Example Output (Default Case - Low Confidence POI / No POI):**
-"A dog runs through a grassy field near **San Miguel Rd, Concord, CA**, on the morning of **October 26, 2025**. The golden hues of the grass... captured on a **Pixel 8 Pro**."`;
+"A dog was photographed near San Miguel Rd, Concord, CA, on the morning of October 26, 2025. The golden hues of the grass soften the background as the dog sprints across the clearing, captured on a Pixel 8 Pro."`;
 // --- END OF UPDATE ---
 
 const COLLECTIBLE_SYSTEM_PROMPT = `You are Collectible Curator, a veteran appraiser who specializes in accurately identifying and valuing collectibles across categories (stamps, coins, Pyrex, comics, trading cards, toys, memorabilia, etc.).
