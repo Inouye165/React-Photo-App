@@ -3,16 +3,16 @@ const { AppState } = require('./state');
 const logger = require('../../logger');
 
 const {
-  routerAgent,
   sceneryAgent,
   collectibleAgent,
-  ROUTER_SYSTEM_PROMPT,
   SCENERY_SYSTEM_PROMPT,
   COLLECTIBLE_SYSTEM_PROMPT,
+  ROUTER_SYSTEM_PROMPT,
   ROUTER_MODEL,
   SCENERY_MODEL,
   COLLECTIBLE_MODEL,
 } = require('../langchain/agents');
+const { openai } = require('../openaiClient');
 const { ChatOpenAI } = require('@langchain/openai');
 const { PhotoPOIIdentifierNode } = require('../langchain/photoPOIIdentifier');
 const { googleSearchTool } = require('../langchain/tools/searchTool');
@@ -110,12 +110,15 @@ async function callRouter(state = {}) {
 
   try {
     const routerModelToUse = safeModelOverrides.router || ROUTER_MODEL;
-    const localRouter = safeModelOverrides.router
-      ? new ChatOpenAI({ modelName: routerModelToUse, temperature: 0.2, maxTokens: 512 })
-      : routerAgent;
-
-    const response = await localRouter.invoke(routerMessages);
-    const content = extractContent(response);
+    // routerMessages is already in OpenAI format
+    const response = await openai.chat.completions.create({
+      model: routerModelToUse,
+      messages: routerMessages,
+      max_tokens: 512,
+      temperature: 0.2,
+    });
+    // Native OpenAI SDK: response.choices[0].message.content
+    const content = response.choices?.[0]?.message?.content || '';
     const parsed = parseJsonFromContent(content);
 
     let classification = parsed && typeof parsed.classification === 'string'
