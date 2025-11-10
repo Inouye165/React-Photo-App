@@ -24,9 +24,7 @@
     "prepare": ""
   },
   "dependencies": {
-    "@langchain/core": "^1.0.3",
-    "@langchain/langgraph": "^1.0.1",
-    "@langchain/openai": "^1.0.0",
+    
     "@supabase/supabase-js": "^2.76.1",
     "bcryptjs": "^3.0.2",
     "bullmq": "^5.61.0",
