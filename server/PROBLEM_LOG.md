@@ -1,5 +1,37 @@
 # Problem Log
 
+---
+
+## [2025-11-11] Knex/Supabase Migration Failure - Environment and SSL Issues
+
+**Symptoms:**
+- AI pipeline ran, but server crashed with: `relation "collectibles" does not exist`
+- Migration command (`npx knex migrate:latest`) reported "Already up to date" but collectibles table missing in Supabase
+- Attempts to run migration against production/Postgres failed with SSL certificate error
+
+**Root Cause:**
+1. The default `npx knex migrate:latest` command used the `development` config in `knexfile.js`, which pointed to a local SQLite file, not Supabase.
+2. After updating the config, running `npx knex migrate:latest --env production` failed with:
+   ```
+   error: self-signed certificate in certificate chain
+   ```
+   This is due to Supabase's self-signed SSL certs and Node.js's default strict certificate validation.
+
+**Fix:**
+- Ensured the correct environment and connection string were used for migrations (`SUPABASE_DB_URL` in production config).
+- Bypassed the SSL error for a single migration run by setting the Node.js environment variable to disable certificate validation in PowerShell:
+  ```
+  $env:NODE_TLS_REJECT_UNAUTHORIZED="0"; npx knex migrate:latest --env production
+  ```
+- After running this command, the collectibles table was created in Supabase and the server/AI pipeline worked as expected.
+
+**Prevention:**
+- Always specify the correct environment when running Knex migrations (`--env production` for Supabase/Postgres).
+- For Supabase, use `ssl: { rejectUnauthorized: false }` in Knex config, but if certificate errors persist, temporarily set `NODE_TLS_REJECT_UNAUTHORIZED=0` for migration commands.
+- Confirm table creation in the Supabase dashboard after migrations.
+
+---
+
 ## [2025-11-10] AI Workflow Regression - LangGraph Stub Returned No Results
 
 **Symptoms (first seen):**
