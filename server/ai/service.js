@@ -51,10 +51,10 @@ async function processPhotoAI({ fileBuffer, filename, metadata, gps, device }, m
   let imageBuffer;
   let imageMime;
   const ext = path.extname(filename).toLowerCase();
+  logger.info(`[AI Debug] [processPhotoAI] Starting for filename: ${filename}`);
   if (ext === '.heic' || ext === '.heif') {
     imageBuffer = await convertHeicToJpegBuffer(fileBuffer, 90);
     imageMime = 'image/jpeg';
-
     try {
       const debugPath = path.join(__dirname, 'debug_image.jpg');
       fs.writeFileSync(debugPath, imageBuffer);
@@ -67,9 +67,17 @@ async function processPhotoAI({ fileBuffer, filename, metadata, gps, device }, m
     imageMime = ext === '.png' ? 'image/png' : 'image/jpeg';
   }
   const imageBase64 = imageBuffer.toString('base64');
-  // Removed excessive base64 logging for security and performance
   logger.debug('[Graph] Prepared image buffer for graph invocation', { filename, imageMime });
   logger.info(`[Graph Debug] imageMime before graph: ${imageMime}`);
+  logger.info(`[AI Debug] [processPhotoAI] Invoking aiGraph with input:`, {
+    filename,
+    imageMime,
+    imageBase64Length: imageBase64.length,
+    metadata,
+    gps,
+    device,
+    modelOverrides
+  });
 
   let meta = {};
   if (typeof metadata === 'string') {
@@ -101,12 +109,14 @@ async function processPhotoAI({ fileBuffer, filename, metadata, gps, device }, m
 
   logger.info(`[Graph] Invoking graph for ${filename}...`);
   const finalState = await aiGraph.invoke(initialState);
+  logger.info('[AI Debug] [processPhotoAI] aiGraph.invoke returned:', finalState);
 
   if (finalState.error) {
+    logger.error(`[AI Debug] [processPhotoAI] aiGraph.invoke error: ${finalState.error}`);
     throw new Error(`AI Graph processing failed: ${finalState.error}`);
   }
-
   if (!finalState.finalResult) {
+    logger.error('[AI Debug] [processPhotoAI] aiGraph.invoke finished but produced no finalResult.');
     throw new Error('AI Graph finished but produced no finalResult.');
   }
 
@@ -141,7 +151,14 @@ async function processPhotoAI({ fileBuffer, filename, metadata, gps, device }, m
  */
 async function updatePhotoAIMetadata(db, photoRow, storagePath, modelOverrides = {}) {
   try {
-    const meta = JSON.parse(photoRow.metadata || '{}');
+    logger.info('[AI Debug] [updatePhotoAIMetadata] Called with:', {
+      photoId: photoRow.id,
+      filename: photoRow.filename,
+      storagePath,
+      modelOverrides
+    });
+  const meta = JSON.parse(photoRow.metadata || '{}');
+  logger.info('[AI Debug] [updatePhotoAIMetadata] Parsed metadata:', meta);
     
     // Convert DMS GPS coordinates to decimal degrees
     let gps = '';
@@ -170,28 +187,29 @@ async function updatePhotoAIMetadata(db, photoRow, storagePath, modelOverrides =
         ai_retry_count: retryCount,
         poi_analysis: null
       });
+      logger.info('[AI Debug] [updatePhotoAIMetadata] Marked as permanently failed in DB.');
       return null;
     }
     
     let ai;
     try {
       // Download file from Supabase Storage
+      logger.info('[AI Debug] [updatePhotoAIMetadata] Downloading file from storage:', storagePath);
       const { data: fileData, error } = await supabase.storage
         .from('photos')
         .download(storagePath);
-      
       if (error) {
+        logger.error(`[AI Debug] [updatePhotoAIMetadata] Failed to download file from storage: ${error.message}`);
         throw new Error(`Failed to download file from storage: ${error.message}`);
       }
-      
+      logger.info('[AI Debug] [updatePhotoAIMetadata] File downloaded. Size:', fileData.size);
       // Enforce OOM safeguard: check file size before processing
       if (typeof fileData.size === 'number' && fileData.size > MAX_AI_FILE_SIZE) {
         logger.error(`[AI OOM] File too large for AI processing: ${photoRow.filename} (${fileData.size} bytes)`);
         throw new Error(`File too large for AI processing: ${fileData.size} bytes (limit: ${MAX_AI_FILE_SIZE})`);
       }
-
       const fileBuffer = await fileData.arrayBuffer();
-
+      logger.info('[AI Debug] [updatePhotoAIMetadata] File buffer loaded. Buffer length:', fileBuffer.byteLength);
       ai = await processPhotoAI({ 
         fileBuffer: Buffer.from(fileBuffer), 
         filename: photoRow.filename, 
@@ -199,6 +217,7 @@ async function updatePhotoAIMetadata(db, photoRow, storagePath, modelOverrides =
         gps, 
         device 
       }, modelOverrides);
+      logger.info('[AI Debug] [updatePhotoAIMetadata] processPhotoAI result:', ai);
     } catch (error) {
       logger.error(`AI processing failed for ${photoRow.filename} (attempt ${retryCount + 1}):`, error.message || error);
       if (error && error.stack) {
@@ -247,6 +266,13 @@ async function updatePhotoAIMetadata(db, photoRow, storagePath, modelOverrides =
 
 
     // Remove model history tracking for now (no model constants)
+    logger.info('[AI Debug] [updatePhotoAIMetadata] Writing AI metadata to DB:', {
+      caption,
+      description,
+      keywords,
+      ai_retry_count: 0,
+      poi_analysis: JSON.stringify((ai && ai.poiAnalysis) || null)
+    });
     await db('photos').where({ id: photoRow.id }).update({
       caption,
       description,
@@ -254,7 +280,6 @@ async function updatePhotoAIMetadata(db, photoRow, storagePath, modelOverrides =
       ai_retry_count: 0,
       poi_analysis: JSON.stringify((ai && ai.poiAnalysis) || null)
     });
-
     // Fetch saved row to confirm
     const saved = await db('photos').where({ id: photoRow.id }).first();
     logger.info('[AI Update] Saved DB values:', {
@@ -262,7 +287,8 @@ async function updatePhotoAIMetadata(db, photoRow, storagePath, modelOverrides =
       description: (saved.description || '').slice(0, 200),
       keywords: saved.keywords
     });
-    return ai;
+  logger.info('[AI Debug] [updatePhotoAIMetadata] Returning AI result:', ai);
+  return ai;
   } catch (error) {
     logger.error(`Unexpected error in updatePhotoAIMetadata for ${photoRow.filename}:`, error.message || error);
     return null;

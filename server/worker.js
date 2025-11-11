@@ -14,8 +14,9 @@
 // It imports the worker instance from the queue module,
 // which automatically starts it and connects it to Redis.
 
-const logger = require('./logger');
 
+const logger = require('./logger');
+console.log('[AI Debug] Worker entrypoint reached');
 logger.info('Starting AI Worker...');
 require('./env'); // centralized, idempotent env loader
 

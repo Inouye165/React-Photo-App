@@ -1,5 +1,29 @@
 # Problem Log
 
+## [2025-11-10] AI Workflow Regression - LangGraph Stub Returned No Results
+
+**Symptoms (first seen):**
+- `processPhotoAI` threw `AI Graph finished but produced no finalResult.` for every photo processed.
+- Worker logs showed `classification` stayed `null` and `finalResult` remained empty.
+- After re-running the workflow, the server crashed with `MODULE_NOT_FOUND: '../logger'`.
+
+**Root Cause:**
+- `server/ai/langgraph/graph.js` was still a stub that made a single OpenAI call and never updated the shared state expected by `service.js`.
+- The project lacked `@langchain/langgraph` and `@langchain/core`, preventing a proper StateGraph implementation.
+- The stub imported `../logger.js`, but the real logger lives at `server/logger.js`, causing the runtime module resolution failure once the graph executed.
+
+**Fix:**
+- Installed the missing LangGraph dependencies and replaced the stub with a two-node workflow (`classify_image`, `generate_metadata`) that enforces JSON-mode responses and updates `classification` plus `finalResult`.
+- Corrected the logger import to `../../logger.js` so the workflow can log without crashing.
+- Verified end-to-end: the server now classifies images, generates metadata, and updates the database without retry loops.
+
+**Prevention:**
+- Keep LangGraph workflows aligned with the state schema that downstream services expect before replacing stubs.
+- Track required AI framework dependencies alongside workflow code to avoid runtime module gaps.
+- Double-check relative imports in shared utilities whenever files move within the directory hierarchy.
+
+---
+
 ## [2025-11-05 20:00 PST] Image Caching Implementation - Knex OR Query Incompatibility
 
 **Symptoms (first seen):**
