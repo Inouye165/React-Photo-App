@@ -1,7 +1,10 @@
-import React from 'react';
+
+import React, { useEffect, useState } from 'react';
 import { toUrl } from '../utils/toUrl.js';
+import * as api from '../api';
 import ModelSelect from './ModelSelect';
 import { DEFAULT_MODEL } from '../config/modelCatalog';
+
 
 export default function PhotoDetailPanel({
   photo,
@@ -19,7 +22,63 @@ export default function PhotoDetailPanel({
   isRechecking,
   apiBaseUrl,
 }) {
-  const [selectedModel, setSelectedModel] = React.useState(DEFAULT_MODEL);
+  const [selectedModel, setSelectedModel] = useState(DEFAULT_MODEL);
+  const [collectibles, setCollectibles] = useState([]);
+  const [collectibleNotes, setCollectibleNotes] = useState({});
+  const [savingNotes, setSavingNotes] = useState({});
+  const [creating, setCreating] = useState(false);
+  const [loadingCollectibles, setLoadingCollectibles] = useState(false);
+
+  // Fetch collectibles when photo changes
+  useEffect(() => {
+    if (!photo?.id) return;
+    setLoadingCollectibles(true);
+    api.fetchCollectibles(photo.id)
+      .then((data) => {
+        setCollectibles(data || []);
+        // Initialize notes state
+        const notesObj = {};
+        (data || []).forEach(c => { notesObj[c.id] = c.user_notes || ''; });
+        setCollectibleNotes(notesObj);
+      })
+      .catch(() => setCollectibles([]))
+      .finally(() => setLoadingCollectibles(false));
+  }, [photo?.id]);
+
+  // Handler for editing collectible notes
+  const handleNoteChange = (id, value) => {
+    setCollectibleNotes(notes => ({ ...notes, [id]: value }));
+  };
+
+  // Handler for saving collectible note
+  const handleSaveNote = async (id) => {
+    setSavingNotes(s => ({ ...s, [id]: true }));
+    try {
+      await api.updateCollectible(id, { user_notes: collectibleNotes[id] });
+      // Optionally, refresh collectibles
+      const updated = await api.fetchCollectibles(photo.id);
+      setCollectibles(updated || []);
+    } catch {
+      // Optionally show error
+    } finally {
+      setSavingNotes(s => ({ ...s, [id]: false }));
+    }
+  };
+
+  // Handler for creating a new collectible
+  const handleAddCollectible = async () => {
+    setCreating(true);
+    try {
+      await api.createCollectible(photo.id, { name: 'New Item', user_notes: '' });
+      const updated = await api.fetchCollectibles(photo.id);
+      setCollectibles(updated || []);
+    } catch {
+      // Optionally show error
+    } finally {
+      setCreating(false);
+    }
+  };
+
   if (!photo) return null;
 
   return (
@@ -46,6 +105,63 @@ export default function PhotoDetailPanel({
           </header>
 
           <div className="space-y-4 mb-2" style={{ overflow: 'auto' }}>
+            {/* --- Collectibles Section --- */}
+            <section>
+              <div className="flex items-center justify-between mb-1">
+                <label className="block text-sm font-medium text-gray-700">Collectibles</label>
+                <button
+                  className="px-2 py-1 bg-blue-100 text-blue-700 rounded text-xs border border-blue-200 hover:bg-blue-200 disabled:opacity-60"
+                  onClick={handleAddCollectible}
+                  disabled={creating || loadingCollectibles}
+                >
+                  {creating ? 'Adding...' : 'Add Collectible'}
+                </button>
+              </div>
+              {loadingCollectibles ? (
+                <div className="text-xs text-gray-500 py-2">Loading collectibles...</div>
+              ) : collectibles.length === 0 ? (
+                <div className="text-xs text-gray-400 py-2">No collectibles for this photo.</div>
+              ) : (
+                <div className="space-y-3">
+                  {collectibles.map(collectible => {
+                    let ai = collectible.ai_analysis;
+                    if (typeof ai === 'string') {
+                      try { ai = JSON.parse(ai); } catch { ai = null; }
+                    }
+                    return (
+                      <div key={collectible.id} className="border rounded p-3 bg-gray-50">
+                        <div className="font-semibold text-sm mb-1">{collectible.name}</div>
+                        {ai && (
+                          <div className="mb-2 text-xs text-gray-700">
+                            <div><b>Probable Identity:</b> {ai.probableIdentity || <span className="text-gray-400">N/A</span>}</div>
+                            <div><b>Condition:</b> {ai.conditionAssessment || <span className="text-gray-400">N/A</span>}</div>
+                            {ai.valuation && (
+                              <div><b>Valuation:</b> ${ai.valuation.lowEstimateUSD} - ${ai.valuation.highEstimateUSD}</div>
+                            )}
+                          </div>
+                        )}
+                        <div className="mb-2">
+                          <label className="block text-xs font-medium text-gray-600 mb-1">Notes</label>
+                          <textarea
+                            className="w-full rounded border p-1 text-xs bg-white"
+                            rows={2}
+                            value={collectibleNotes[collectible.id] ?? collectible.user_notes ?? ''}
+                            onChange={e => handleNoteChange(collectible.id, e.target.value)}
+                          />
+                        </div>
+                        <button
+                          className="px-2 py-1 bg-green-600 text-white rounded text-xs disabled:opacity-60"
+                          onClick={() => handleSaveNote(collectible.id)}
+                          disabled={savingNotes[collectible.id]}
+                        >
+                          {savingNotes[collectible.id] ? 'Saving...' : 'Save Note'}
+                        </button>
+                      </div>
+                    );
+                  })}
+                </div>
+              )}
+            </section>
             <section>
               <label className="block text-sm font-medium text-gray-700 mb-1">Caption</label>
               {isInlineEditing ? (

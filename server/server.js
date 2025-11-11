@@ -55,6 +55,9 @@ process.on('uncaughtException', (err) => {
 
 const db = require('./db/index');
 const createPhotosRouter = require('./routes/photos');
+const createCollectiblesRouter = require('./routes/collectibles');
+  // Mount collectibles API under /api
+  // app.use('/api', createCollectiblesRouter({ db }));
 const createUploadsRouter = require('./routes/uploads');
 const createDebugRouter = require('./routes/debug');
 const createHealthRouter = require('./routes/health');
@@ -199,6 +202,7 @@ module.exports = app;
   // Mount photos API under '/photos' so routes like '/' and '/:id' defined
   // in `routes/photos.js` are accessible at '/photos' and '/photos/:id'.
   app.use('/photos', createPhotosRouter({ db }));
+  app.use('/api/collectibles', createCollectiblesRouter({ db })); // <--- ADD THIS LINE HERE
   app.use(authenticateToken, createUploadsRouter({ db }));
   app.use(authenticateToken, createPrivilegeRouter());
 

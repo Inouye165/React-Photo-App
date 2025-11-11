@@ -1,3 +1,52 @@
+// --- Collectibles API ---
+/**
+ * Fetch all collectibles for a given photoId
+ */
+export async function fetchCollectibles(photoId) {
+  const url = `${API_BASE_URL}/photos/${photoId}/collectibles`;
+  const res = await apiLimiter(() => fetch(url, { headers: getAuthHeaders(), credentials: 'include' }));
+  if (handleAuthError(res)) return;
+  if (!res.ok) throw new Error('Failed to fetch collectibles: ' + res.status);
+  const json = await res.json();
+  if (!json.success) throw new Error(json.error || 'Failed to fetch collectibles');
+  return json.collectibles;
+}
+
+/**
+ * Create a new collectible for a photo
+ */
+export async function createCollectible(photoId, data) {
+  const url = `${API_BASE_URL}/photos/${photoId}/collectibles`;
+  const res = await apiLimiter(() => fetch(url, {
+    method: 'POST',
+    headers: getAuthHeaders(),
+    body: JSON.stringify(data),
+    credentials: 'include',
+  }));
+  if (handleAuthError(res)) return;
+  if (!res.ok) throw new Error('Failed to create collectible: ' + res.status);
+  const json = await res.json();
+  if (!json.success) throw new Error(json.error || 'Failed to create collectible');
+  return json.collectible;
+}
+
+/**
+ * Update a collectible's user_notes
+ */
+export async function updateCollectible(collectibleId, data) {
+  const url = `${API_BASE_URL}/collectibles/${collectibleId}`;
+  const res = await apiLimiter(() => fetch(url, {
+    method: 'PATCH',
+    headers: getAuthHeaders(),
+    body: JSON.stringify(data),
+    credentials: 'include',
+  }));
+  if (handleAuthError(res)) return;
+  if (!res.ok) throw new Error('Failed to update collectible: ' + res.status);
+  const json = await res.json();
+  if (!json.success) throw new Error(json.error || 'Failed to update collectible');
+  return json.collectible;
+}
 // Rewritten clean API module (single copy) with small dedupe caches for
 // getPhotos and checkPrivilegesBatch to avoid duplicate network requests
 // during dev (StrictMode) or accidental double-invokes.

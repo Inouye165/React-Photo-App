@@ -1,4 +1,5 @@
 // server/knexfile.js
+require('./env'); // <-- ADDED: Make sure .env variables are loaded
 const path = require('path');
 
 module.exports = {

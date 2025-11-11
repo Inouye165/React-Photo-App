@@ -137,7 +137,7 @@ function normalizeExifDate(value) {
 function buildGpsDate(meta) {
   if (!meta || !meta.GPSDateStamp) return null;
   const dateStamp = String(meta.GPSDateStamp).trim();
-  const dateMatch = dateStamp.match(/^([0-9]{4})[:-]([0-9]{2})[:-]([0-9]{2})$/);
+  const dateMatch = dateStamp.match(/^([0-9]{44})[:-]([0-9]{2})[:-]([0-9]{2})$/);
   if (!dateMatch) return null;
   let hours = '00';
   let minutes = '00';
@@ -460,10 +460,10 @@ async function processPhotoAI({ fileBuffer, filename, metadata, gps, device }, m
  *
  * This function will:
  * - Attempt to download the photo bytes from Supabase storage using the
- *   provided storagePath.
+ * provided storagePath.
  * - Call processPhotoAI to obtain AI-generated metadata.
  * - Update the photo row with results, manage ai_retry_count and provide
- *   fallbacks when AI does not return expected fields.
+ * fallbacks when AI does not return expected fields.
  *
  * @param {Object} db - Knex database instance (must support .from/.where/.update/.first).
  * @param {Object} photoRow - Database row object for the photo (must include id, filename, metadata, ai_retry_count).
@@ -577,24 +577,40 @@ async function updatePhotoAIMetadata(db, photoRow, storagePath, modelOverrides =
     const metadataKeywordParts = buildMetadataKeywordParts(meta, coords);
     keywords = mergeKeywordStrings(keywords, metadataKeywordParts);
 
+    // --- TRANSACTIONAL WRITE: update photos and insert collectible (if any) atomically ---
+    await db.transaction(async trx => {
+      // Determine which "extra" AI data to save. The graph returns *either*
+      // poiAnalysis (for scenery/food) or collectibleInsights (for collectibles).
+      // We save whichever one is present to the 'poi_analysis' JSONB column.
+      const extraData = (ai && ai.collectibleInsights)
+        ? ai.collectibleInsights
+        : (ai && ai.poiAnalysis)
+          ? ai.poiAnalysis
+          : null;
 
+      const dbUpdates = {
+        caption,
+        description,
+        keywords,
+        ai_retry_count: 0,
+        poi_analysis: JSON.stringify(extraData || null)
+      };
+      logger.info('[AI Debug] [updatePhotoAIMetadata] Writing AI metadata to DB (transaction):', dbUpdates);
+      await trx('photos').where({ id: photoRow.id }).update(dbUpdates);
 
-
-    // Remove model history tracking for now (no model constants)
-    logger.info('[AI Debug] [updatePhotoAIMetadata] Writing AI metadata to DB:', {
-      caption,
-      description,
-      keywords,
-      ai_retry_count: 0,
-      poi_analysis: JSON.stringify((ai && ai.poiAnalysis) || null)
+      // If collectibleInsights exists, insert into collectibles table
+      if (ai && ai.collectibleInsights) {
+        const collectibleRow = {
+          photo_id: photoRow.id,
+          name: caption,
+          ai_analysis: JSON.stringify(ai.collectibleInsights),
+          user_notes: ''
+        };
+        await trx('collectibles').insert(collectibleRow);
+        logger.info('[AI Debug] [updatePhotoAIMetadata] Inserted collectible for photo', photoRow.id);
+      }
     });
-    await db('photos').where({ id: photoRow.id }).update({
-      caption,
-      description,
-      keywords,
-      ai_retry_count: 0,
-      poi_analysis: JSON.stringify((ai && ai.poiAnalysis) || null)
-    });
+
     // Fetch saved row to confirm
     const saved = await db('photos').where({ id: photoRow.id }).first();
     logger.info('[AI Update] Saved DB values:', {
@@ -602,8 +618,8 @@ async function updatePhotoAIMetadata(db, photoRow, storagePath, modelOverrides =
       description: (saved.description || '').slice(0, 200),
       keywords: saved.keywords
     });
-  logger.info('[AI Debug] [updatePhotoAIMetadata] Returning AI result:', ai);
-  return ai;
+    logger.info('[AI Debug] [updatePhotoAIMetadata] Returning AI result:', ai);
+    return ai;
   } catch (error) {
     logger.error(`Unexpected error in updatePhotoAIMetadata for ${photoRow.filename}:`, error.message || error);
     return null;

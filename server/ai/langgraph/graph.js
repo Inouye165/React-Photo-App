@@ -1,7 +1,10 @@
 // LangGraph-based implementation
 const { StateGraph, END } = require('@langchain/langgraph');
-// We ONLY need HumanMessage for the specialist agent node
-const { HumanMessage } = require('@langchain/core/messages');
+// We need HumanMessage AND SystemMessage
+const {
+  HumanMessage,
+  SystemMessage,
+} = require('@langchain/core/messages');
 const { openai } = require('../openaiClient');
 const logger = require('../../logger');
 const { AppState } = require('./state');
@@ -12,7 +15,7 @@ const {
   COLLECTIBLE_SYSTEM_PROMPT,
 } = require('../langchain/agents');
 
-// --- Node 1: classify_image (FIXED) ---
+// --- Node 1: classify_image (This node is correct) ---
 async function classify_image(state) {
   try {
     logger.info('[LangGraph] classify_image node invoked');
@@ -70,7 +73,7 @@ async function classify_image(state) {
   }
 }
 
-// --- Node 2: generate_metadata (FIXED) ---
+// --- Node 2: generate_metadata (This node is correct) ---
 async function generate_metadata(state) {
   try {
     logger.info('[LangGraph] generate_metadata node invoked (default/scenery)');
@@ -115,11 +118,15 @@ async function generate_metadata(state) {
     try {
       parsed = JSON.parse(response.choices[0].message.content);
     } catch (e) {
+      // --- ENHANCED LOGGING ---
       logger.error(
-        '[LangGraph] generate_metadata: Failed to parse model response',
-        e,
-        response.choices[0].message.content
+        '[LangGraph] generate_metadata: FAILED TO PARSE AGENT RESPONSE. This often means the agent returned a simple text fallback instead of JSON.',
+        {
+          error: e.message,
+          raw_response: response.choices[0].message.content,
+        }
       );
+      // --- END OF ENHANCEMENT ---
       return {
         ...state,
         error: 'Failed to parse metadata response: ' + e.message,
@@ -135,14 +142,14 @@ async function generate_metadata(state) {
   }
 }
 
-// --- Node 3: handle_collectible (This node was correct) ---
-// This node is DIFFERENT because it calls the LangChain `collectibleAgent`
-// which *does* use `.invoke()` and `HumanMessage`
+// --- Node 3: handle_collectible (FIXED) ---
 async function handle_collectible(state) {
   try {
     logger.info('[LangGraph] handle_collectible node invoked (specialist)');
-    // This agent (from agents.js) is already bound to the googleSearchTool
+
+    // We build a standard array of messages, including the system prompt
     const messages = [
+      new SystemMessage(COLLECTIBLE_SYSTEM_PROMPT),
       new HumanMessage({
         content: [
           {
@@ -163,24 +170,21 @@ async function handle_collectible(state) {
     ];
 
     // Invoke the specialist LANGCHAIN agent
-    const response = await collectibleAgent.invoke(
-      { messages: messages },
-      {
-        configurable: {
-          system_message: COLLECTIBLE_SYSTEM_PROMPT,
-        },
-      }
-    );
+    const response = await collectibleAgent.invoke(messages);
 
     let parsed;
     try {
       parsed = JSON.parse(response.content);
     } catch (e) {
+      // --- ENHANCED LOGGING ---
       logger.error(
-        '[LangGraph] handle_collectible: Failed to parse agent response',
-        e,
-        response.content
+        '[LangGraph] handle_collectible: FAILED TO PARSE AGENT RESPONSE. This often means the agent failed to call a tool (e.g., missing API key) and returned a simple text fallback.',
+        {
+          error: e.message,
+          raw_response: response.content,
+        }
       );
+      // --- END OF ENHANCEMENT ---
       return {
         ...state,
         error: 'Failed to parse collectible agent response: ' + e.message,
@@ -217,12 +221,10 @@ function route_classification(state) {
   return 'generate_metadata';
 }
 
-
-
 // --- Build the LangGraph workflow ---
 const workflow = new StateGraph({
   // Use the Zod schema from your state.js for validation
-  channels: AppState.shape, 
+  channels: AppState.shape, // <-- This fix was correct
 });
 
 // 1. Add all the nodes
