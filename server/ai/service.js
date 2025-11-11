@@ -26,6 +26,328 @@ const { convertHeicToJpegBuffer } = require('../media/image');
 const MAX_AI_FILE_SIZE = 20 * 1024 * 1024;
 const supabase = require('../lib/supabaseClient');
 
+function normalizeDegrees(value) {
+  if (value === null || value === undefined || Number.isNaN(value)) return null;
+  const normalized = ((value % 360) + 360) % 360;
+  return normalized === 360 ? 0 : normalized;
+}
+
+function toNumber(value) {
+  if (value === null || value === undefined) return null;
+  if (typeof value === 'number') {
+    return Number.isNaN(value) ? null : value;
+  }
+  if (typeof value === 'string') {
+    const trimmed = value.trim();
+    if (!trimmed) return null;
+    const parsed = Number(trimmed.replace(/,/g, ''));
+    return Number.isNaN(parsed) ? null : parsed;
+  }
+  if (Array.isArray(value) && value.length === 1) {
+    return toNumber(value[0]);
+  }
+  if (typeof value === 'object') {
+    if ('numerator' in value && 'denominator' in value) {
+      const numerator = toNumber(value.numerator);
+      const denominator = toNumber(value.denominator) || 1;
+      if (numerator === null) return null;
+      return numerator / denominator;
+    }
+    if ('value' in value) {
+      return toNumber(value.value);
+    }
+    const values = Object.values(value);
+    if (values.length === 1) {
+      return toNumber(values[0]);
+    }
+  }
+  return null;
+}
+
+function dmsArrayToDecimal(values, ref) {
+  if (!values) return null;
+  const arr = Array.isArray(values) ? values : Object.values(values);
+  if (!arr.length) return null;
+  const deg = toNumber(arr[0]);
+  if (deg === null) return null;
+  const min = toNumber(arr[1]) || 0;
+  const sec = toNumber(arr[2]) || 0;
+  let decimal = deg + (min / 60) + (sec / 3600);
+  if (ref === 'S' || ref === 'W') {
+    decimal = -Math.abs(decimal);
+  }
+  return decimal;
+}
+
+function extractLatLon(meta) {
+  if (!meta || typeof meta !== 'object') return null;
+  let lat = toNumber(meta.latitude);
+  let lon = toNumber(meta.longitude);
+  if (lat !== null && lon !== null) {
+    return { lat, lon };
+  }
+
+  if (meta.GPSLatitude && meta.GPSLongitude) {
+    lat = dmsArrayToDecimal(meta.GPSLatitude, meta.GPSLatitudeRef);
+    lon = dmsArrayToDecimal(meta.GPSLongitude, meta.GPSLongitudeRef);
+    if (lat !== null && lon !== null) {
+      return { lat, lon };
+    }
+  }
+
+  const nestedSources = [meta.GPS, meta.GPSInfo, meta.Location, meta.Composite];
+  for (const source of nestedSources) {
+    if (source && typeof source === 'object' && source !== meta) {
+      const nested = extractLatLon(source);
+      if (nested) return nested;
+    }
+  }
+
+  return null;
+}
+
+function normalizeExifDate(value) {
+  if (value === null || value === undefined) return null;
+  if (value instanceof Date) {
+    return Number.isNaN(value.getTime()) ? null : value;
+  }
+  if (typeof value === 'number') {
+    const date = new Date(value);
+    return Number.isNaN(date.getTime()) ? null : date;
+  }
+  const str = String(value).trim();
+  if (!str) return null;
+  const parsed = Date.parse(str);
+  if (!Number.isNaN(parsed)) {
+    return new Date(parsed);
+  }
+  const match = str.match(/^([0-9]{4})[:-]([0-9]{2})[:-]([0-9]{2})(?:[ T]([0-9]{1,2}):([0-9]{1,2})(?::([0-9]{1,2}(?:\.[0-9]+)?))?)?$/);
+  if (!match) return null;
+  const [, year, month, day, hour = '0', minute = '0', secondRaw = '0'] = match;
+  const hourStr = hour.padStart(2, '0');
+  const minuteStr = minute.padStart(2, '0');
+  const secondStr = secondRaw.includes('.')
+    ? Number.parseFloat(secondRaw).toFixed(2).padStart(5, '0')
+    : secondRaw.padStart(2, '0');
+  const iso = `${year}-${month}-${day}T${hourStr}:${minuteStr}:${secondStr}`;
+  const isoParsed = Date.parse(`${iso}Z`);
+  return Number.isNaN(isoParsed) ? null : new Date(isoParsed);
+}
+
+function buildGpsDate(meta) {
+  if (!meta || !meta.GPSDateStamp) return null;
+  const dateStamp = String(meta.GPSDateStamp).trim();
+  const dateMatch = dateStamp.match(/^([0-9]{4})[:-]([0-9]{2})[:-]([0-9]{2})$/);
+  if (!dateMatch) return null;
+  let hours = '00';
+  let minutes = '00';
+  let seconds = '00';
+  if (Array.isArray(meta.GPSTimeStamp)) {
+    const [h = 0, m = 0, s = 0] = meta.GPSTimeStamp;
+    const hNum = toNumber(h) || 0;
+    const mNum = toNumber(m) || 0;
+    const sNum = toNumber(s);
+    hours = String(Math.floor(hNum)).padStart(2, '0');
+    minutes = String(Math.floor(mNum)).padStart(2, '0');
+    if (sNum === null) {
+      seconds = '00';
+    } else if (Number.isInteger(sNum)) {
+      seconds = String(sNum).padStart(2, '0');
+    } else {
+      seconds = sNum.toFixed(2);
+    }
+  } else if (meta.GPSTimeStamp) {
+    const parts = String(meta.GPSTimeStamp).split(':');
+    hours = (parts[0] || '0').padStart(2, '0');
+    minutes = (parts[1] || '0').padStart(2, '0');
+    seconds = (parts[2] || '0').padStart(2, '0');
+  }
+  const iso = `${dateMatch[1]}-${dateMatch[2]}-${dateMatch[3]}T${hours}:${minutes}:${seconds}`;
+  const parsed = Date.parse(`${iso}Z`);
+  return Number.isNaN(parsed) ? null : new Date(parsed);
+}
+
+function getBestCaptureDate(meta) {
+  if (!meta || typeof meta !== 'object') return null;
+  const candidates = [
+    meta.DateTimeOriginal,
+    meta.DateTimeDigitized,
+    meta.CreateDate,
+    meta.ModifyDate,
+    meta.CaptureDate,
+    meta.DateCreated,
+  ];
+  for (const candidate of candidates) {
+    const normalized = normalizeExifDate(candidate);
+    if (normalized) return normalized;
+  }
+  return buildGpsDate(meta);
+}
+
+function degreesToCardinal(degrees) {
+  const normalized = normalizeDegrees(degrees);
+  if (normalized === null) return null;
+  const directions = ['N', 'NNE', 'NE', 'ENE', 'E', 'ESE', 'SE', 'SSE', 'S', 'SSW', 'SW', 'WSW', 'W', 'WNW', 'NW', 'NNW'];
+  const index = Math.round(normalized / 22.5) % directions.length;
+  return directions[index];
+}
+
+function getDirectionDegrees(meta) {
+  if (!meta || typeof meta !== 'object') return null;
+  const candidates = [
+    meta.GPSImgDirection,
+    meta.GPSDestBearing,
+    meta.GPSDirection,
+    meta.CameraYawDegree,
+    meta.CameraYaw,
+    meta.GimbalYawDegree,
+    meta.Yaw,
+    meta.CompassHeading && meta.CompassHeading.TrueHeading,
+    meta.CompassHeading && meta.CompassHeading.MagneticHeading,
+    meta.GPS && meta.GPS.GPSImgDirection,
+    meta.GPS && meta.GPS.GPSDirection,
+    meta.GPS && meta.GPS.DestBearing,
+    meta.GPSInfo && meta.GPSInfo.GPSImgDirection,
+    meta.GPSInfo && meta.GPSInfo.GPSDirection,
+  ];
+  for (const candidate of candidates) {
+    const value = toNumber(candidate);
+    if (value !== null) {
+      const normalized = normalizeDegrees(value);
+      if (normalized !== null) return normalized;
+    }
+  }
+  return null;
+}
+
+function getAltitudeMeters(meta) {
+  if (!meta || typeof meta !== 'object') return null;
+  const candidates = [
+    meta.GPSAltitude,
+    meta.RelativeAltitude,
+    meta.GimbalAltitudeDegree,
+    meta.GPSElevation,
+    meta.Altitude,
+  ];
+  for (const candidate of candidates) {
+    const value = toNumber(candidate);
+    if (value !== null) {
+      const ref = toNumber(meta.GPSAltitudeRef);
+      if (ref === 1) {
+        return -Math.abs(value);
+      }
+      return value;
+    }
+  }
+  return null;
+}
+
+function formatFacingDirectionKeyword(directionDegrees) {
+  const normalized = normalizeDegrees(directionDegrees);
+  if (normalized === null) return null;
+  const tolerance = 11.25;
+  const mapping = [
+    { angle: 0, label: 'North' },
+    { angle: 22.5, label: 'North-Northeast' },
+    { angle: 45, label: 'Northeast' },
+    { angle: 67.5, label: 'East-Northeast' },
+    { angle: 90, label: 'East' },
+    { angle: 112.5, label: 'East-Southeast' },
+    { angle: 135, label: 'Southeast' },
+    { angle: 157.5, label: 'South-Southeast' },
+    { angle: 180, label: 'South' },
+    { angle: 202.5, label: 'South-Southwest' },
+    { angle: 225, label: 'Southwest' },
+    { angle: 247.5, label: 'West-Southwest' },
+    { angle: 270, label: 'West' },
+    { angle: 292.5, label: 'West-Northwest' },
+    { angle: 315, label: 'Northwest' },
+    { angle: 337.5, label: 'North-Northwest' },
+  ];
+  let best = null;
+  let bestDiff = Infinity;
+  for (const item of mapping) {
+    const directDiff = Math.abs(normalized - item.angle);
+    const diff = Math.min(directDiff, 360 - directDiff);
+    if (diff <= tolerance && diff < bestDiff) {
+      best = item;
+      bestDiff = diff;
+    }
+  }
+  const degreeStr = normalized.toFixed(2).replace(/\.0+$/, '').replace(/\.$/, '');
+  if (!best) {
+    return `facing bearing (${degreeStr}°)`;
+  }
+  return `facing ${best.label} (${degreeStr}°)`;
+}
+
+function buildMetadataKeywordParts(meta, coordsOverride) {
+  const parts = [];
+  const captureDate = getBestCaptureDate(meta);
+  if (captureDate) {
+    const iso = captureDate.toISOString();
+    parts.push(`date:${iso.slice(0, 10)}`);
+    parts.push(`time:${iso.slice(11, 19)}Z`);
+  } else {
+    parts.push('date:unknown');
+    parts.push('time:unknown');
+  }
+
+  const direction = getDirectionDegrees(meta);
+  if (direction !== null) {
+    const normalized = normalizeDegrees(direction);
+    const directionStr = normalized.toFixed(1).replace(/\.0$/, '');
+    const cardinal = degreesToCardinal(normalized);
+    parts.push(cardinal ? `direction:${cardinal} (${directionStr}°)` : `direction:${directionStr}°`);
+    const facingKeyword = formatFacingDirectionKeyword(normalized);
+    if (facingKeyword) {
+      parts.push(facingKeyword);
+    }
+  } else {
+    parts.push('direction:unknown');
+  }
+
+  let coords = coordsOverride;
+  if (!coords) {
+    coords = extractLatLon(meta);
+  }
+  if (coords && typeof coords.lat === 'number' && typeof coords.lon === 'number') {
+    const latStr = coords.lat.toFixed(6);
+    const lonStr = coords.lon.toFixed(6);
+    parts.push(`gps:${latStr},${lonStr}`);
+  } else {
+    parts.push('gps:unknown');
+  }
+
+  const altitude = getAltitudeMeters(meta);
+  if (altitude !== null) {
+    const altitudeStr = altitude.toFixed(1).replace(/\.0$/, '');
+    parts.push(`altitude:${altitudeStr}m`);
+  } else {
+    parts.push('altitude:unknown');
+  }
+
+  return parts;
+}
+
+function mergeKeywordStrings(existing, additions) {
+  const baseKeywords = typeof existing === 'string'
+    ? existing.split(',').map((item) => item.trim()).filter(Boolean)
+    : [];
+  const seen = new Set(baseKeywords.map((item) => item.toLowerCase()));
+  const result = [...baseKeywords];
+  for (const addition of additions) {
+    const trimmed = (addition || '').trim();
+    if (!trimmed) continue;
+    const key = trimmed.toLowerCase();
+    if (!seen.has(key)) {
+      result.push(trimmed);
+      seen.add(key);
+    }
+  }
+  return result.join(', ');
+}
+
 
 
 
@@ -159,21 +481,11 @@ async function updatePhotoAIMetadata(db, photoRow, storagePath, modelOverrides =
     });
   const meta = JSON.parse(photoRow.metadata || '{}');
   logger.info('[AI Debug] [updatePhotoAIMetadata] Parsed metadata:', meta);
-    
-    // Convert DMS GPS coordinates to decimal degrees
+
+    const coords = extractLatLon(meta);
     let gps = '';
-    if (meta.GPSLatitude && meta.GPSLongitude) {
-      const latDMS = Array.isArray(meta.GPSLatitude) ? meta.GPSLatitude : [meta.GPSLatitude];
-      const lonDMS = Array.isArray(meta.GPSLongitude) ? meta.GPSLongitude : [meta.GPSLongitude];
-      
-      const latDecimal = latDMS[0] + (latDMS[1] || 0) / 60 + (latDMS[2] || 0) / 3600;
-      const lonDecimal = lonDMS[0] + (lonDMS[1] || 0) / 60 + (lonDMS[2] || 0) / 3600;
-      
-      // Apply hemisphere signs
-      const latSign = meta.GPSLatitudeRef === 'S' ? -1 : 1;
-      const lonSign = meta.GPSLongitudeRef === 'W' ? -1 : 1;
-      
-      gps = `${latDecimal * latSign},${lonDecimal * lonSign}`;
+    if (coords && typeof coords.lat === 'number' && typeof coords.lon === 'number') {
+      gps = `${coords.lat.toFixed(6)},${coords.lon.toFixed(6)}`;
     }
     
     const device = meta.Make && meta.Model ? `${meta.Make} ${meta.Model}` : '';
@@ -258,9 +570,12 @@ async function updatePhotoAIMetadata(db, photoRow, storagePath, modelOverrides =
       return items.join(', ');
     };
 
-    const keywords = (ai && ai.keywords && String(ai.keywords).trim())
+    let keywords = (ai && ai.keywords && String(ai.keywords).trim())
       ? String(ai.keywords).trim()
       : generateKeywordsFallback(description);
+
+    const metadataKeywordParts = buildMetadataKeywordParts(meta, coords);
+    keywords = mergeKeywordStrings(keywords, metadataKeywordParts);
 
 
 

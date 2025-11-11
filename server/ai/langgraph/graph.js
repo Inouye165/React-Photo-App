@@ -13,7 +13,7 @@ async function classify_image(state) {
 	try {
 		logger.info('[LangGraph] classify_image node invoked');
 		const prompt =
-			'Classify this image as one of the following categories: scenery, food, receipt, or other. '
+			'Classify this image as one of the following categories: scenery, food, receipt, collectables, health data, or other. '
 			+ 'Return ONLY a JSON object: {"classification": "..."}.';
 		const msg = new HumanMessage({
 			content: [
@@ -53,7 +53,7 @@ async function generate_metadata(state) {
 			`You are a photo archivist. Given the image and the following context, generate a JSON object with three fields:\n` +
 			`caption: A short, one-sentence title for the photo.\n` +
 			`description: A detailed, multi-sentence paragraph describing the visual contents.\n` +
-			`keywords: A comma-separated string of 5-10 relevant keywords. The FIRST keyword must be the classification provided: ${state.classification}.\n` +
+			`keywords: A comma-separated string that begins with the classification provided (${state.classification}) followed by 4-9 descriptive keywords. After the descriptive keywords, append explicit metadata keywords for capture date, capture time, facing direction, GPS coordinates, and altitude. Use the formats date:YYYY-MM-DD, time:HH:MM:SSZ, direction:<cardinal or degrees>, gps:<latitude,longitude>, altitude:<value>m. When a value is missing, use date:unknown, time:unknown, direction:unknown, gps:unknown, or altitude:unknown.\n` +
 			`\nContext:\n` +
 			`classification: ${state.classification}\n` +
 			`metadata: ${JSON.stringify(state.metadata)}\n` +
