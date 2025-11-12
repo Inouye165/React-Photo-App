@@ -204,6 +204,51 @@ export async function getPhotos(serverUrlOrEndpoint = `${API_BASE_URL}/photos`) 
   try { const res = await fetchPromise; return res; } finally { setTimeout(() => { try { globalThis.__getPhotosInflight.delete(key); } catch (e) { void e; } }, TTL); }
 }
 
+export async function fetchModelAllowlist(serverUrl = `${API_BASE_URL}`) {
+  const root = typeof globalThis !== 'undefined' ? globalThis : (typeof window !== 'undefined' ? window : {});
+  const CACHE_KEY = '__photoModelAllowlistCache';
+  const TTL = 60_000;
+  const now = Date.now();
+  const cache = root[CACHE_KEY];
+  if (cache && cache.data && (now - cache.ts) < TTL) {
+    return cache.data;
+  }
+  if (cache && cache.promise) {
+    return cache.promise;
+  }
+
+  const url = `${serverUrl}/photos/models`;
+  const fetchPromise = (async () => {
+    const response = await apiLimiter(() => fetch(url, { method: 'GET', headers: getAuthHeaders(), credentials: 'include' }));
+    if (handleAuthError(response)) {
+      const payload = { models: [], source: 'auth', updatedAt: null };
+      root[CACHE_KEY] = { ts: Date.now(), data: payload };
+      return payload;
+    }
+    if (!response.ok) {
+      throw new Error(`Failed to fetch model allowlist: ${response.status}`);
+    }
+    const json = await response.json().catch(() => ({}));
+    const models = Array.isArray(json.models) ? json.models.filter(item => typeof item === 'string' && item.length > 0) : [];
+    const payload = {
+      models,
+      source: typeof json.source === 'string' ? json.source : 'unknown',
+      updatedAt: typeof json.updatedAt === 'string' ? json.updatedAt : null
+    };
+    root[CACHE_KEY] = { ts: Date.now(), data: payload };
+    return payload;
+  })();
+
+  root[CACHE_KEY] = { ts: now, promise: fetchPromise };
+  try {
+    const result = await fetchPromise;
+    return result;
+  } catch (error) {
+    try { delete root[CACHE_KEY]; } catch { /* ignore */ }
+    throw error;
+  }
+}
+
 export async function updatePhotoState(id, state, serverUrl = `${API_BASE_URL}/photos/`) {
   const doFetch = async () => fetch(`${serverUrl}${id}/state`, { method: 'PATCH', headers: getAuthHeaders(), body: JSON.stringify({ state }), credentials: 'include' });
   const response = await stateUpdateLimiter(() => doFetch());

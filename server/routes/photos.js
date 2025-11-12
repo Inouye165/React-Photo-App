@@ -9,6 +9,7 @@ const logger = require('../logger');
 const openai = new OpenAI();
 const DYNAMIC_MODEL_ALLOWLIST = [];
 const INTERNAL_MODEL_NAMES = ['router', 'scenery', 'collectible'];
+const INTERNAL_MODEL_SET = new Set(INTERNAL_MODEL_NAMES);
 const FALLBACK_MODEL_ALLOWLIST = ['gpt-4o', 'gpt-4-vision-preview', 'gpt-3.5-turbo', 'gpt-5'];
 const ALLOWED_MODEL_PREFIXES = ['gpt-5', 'gpt-4', 'gpt-3.5', 'ft:', 'o1', 'o3'];
 const EXCLUDED_MODEL_SUBSTRINGS = ['embedding', 'vector', 'tts', 'audio', 'whisper', 'dall-e', 'image', 'realtime', 'omni-moderation'];
@@ -17,6 +18,8 @@ const MODEL_ALLOWLIST = DYNAMIC_MODEL_ALLOWLIST;
 // Seed the allowlist with a fallback so routes have sensible defaults before async loading completes.
 const initialFallback = Array.from(new Set([...FALLBACK_MODEL_ALLOWLIST, ...INTERNAL_MODEL_NAMES]));
 DYNAMIC_MODEL_ALLOWLIST.push(...initialFallback);
+let LAST_ALLOWLIST_SOURCE = 'seed';
+let LAST_ALLOWLIST_UPDATED_AT = new Date().toISOString();
 
 async function loadDynamicAllowList() {
   try {
@@ -37,14 +40,20 @@ async function loadDynamicAllowList() {
       const fallbackModels = Array.from(new Set([...FALLBACK_MODEL_ALLOWLIST, ...INTERNAL_MODEL_NAMES]));
       DYNAMIC_MODEL_ALLOWLIST.splice(0, DYNAMIC_MODEL_ALLOWLIST.length, ...fallbackModels);
       logger.warn('[AI Models] OpenAI API returned no eligible models. Using fallback allowlist.');
+      LAST_ALLOWLIST_SOURCE = 'fallback-empty-response';
+      LAST_ALLOWLIST_UPDATED_AT = new Date().toISOString();
       return;
     }
 
     DYNAMIC_MODEL_ALLOWLIST.splice(0, DYNAMIC_MODEL_ALLOWLIST.length, ...uniqueModels);
+    LAST_ALLOWLIST_SOURCE = 'dynamic';
+    LAST_ALLOWLIST_UPDATED_AT = new Date().toISOString();
     logger.info('[AI Models] Loaded dynamic model allowlist', { count: uniqueModels.length, models: uniqueModels });
   } catch (err) {
     const fallbackModels = Array.from(new Set([...FALLBACK_MODEL_ALLOWLIST, ...INTERNAL_MODEL_NAMES]));
     DYNAMIC_MODEL_ALLOWLIST.splice(0, DYNAMIC_MODEL_ALLOWLIST.length, ...fallbackModels);
+    LAST_ALLOWLIST_SOURCE = 'fallback-error';
+    LAST_ALLOWLIST_UPDATED_AT = new Date().toISOString();
     logger.error('[AI Models] Failed to load dynamic model allowlist. Using fallback.', { error: err && err.message, models: fallbackModels });
   }
 }
@@ -156,6 +165,25 @@ module.exports = function createPhotosRouter({ db }) {
     } catch (err) {
       logger.error('Error in /photos endpoint:', err);
       res.status(500).json({ success: false, error: err.message });
+    }
+  });
+
+  router.get('/models', authenticateToken, (req, res) => {
+    try {
+      const filtered = DYNAMIC_MODEL_ALLOWLIST
+        .filter(item => typeof item === 'string' && item.length > 0 && !INTERNAL_MODEL_SET.has(item));
+      const fallbackPublic = FALLBACK_MODEL_ALLOWLIST.filter(item => !INTERNAL_MODEL_SET.has(item));
+      const models = filtered.length > 0 ? filtered : fallbackPublic;
+      res.set('Cache-Control', 'no-store');
+      res.json({
+        success: true,
+        models,
+        source: LAST_ALLOWLIST_SOURCE,
+        updatedAt: LAST_ALLOWLIST_UPDATED_AT
+      });
+    } catch (error) {
+      logger.error('[AI Models] Failed to expose model allowlist', error && error.message ? error : error);
+      res.status(500).json({ success: false, error: 'Failed to load model allowlist' });
     }
   });
 

@@ -17,6 +17,7 @@ vi.mock('./api.js', () => ({
   updatePhotoState: vi.fn(),
   recheckInprogressPhotos: vi.fn(),
   updatePhotoCaption: vi.fn(),
+  fetchModelAllowlist: vi.fn().mockResolvedValue({ models: ['gpt-4o-mini'], source: 'test', updatedAt: null }),
   API_BASE_URL: ''
 }))
 
