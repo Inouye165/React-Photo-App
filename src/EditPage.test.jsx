@@ -6,6 +6,7 @@ import { describe, test, expect, vi } from 'vitest'
 vi.mock('./api.js', () => ({
   fetchProtectedBlobUrl: vi.fn().mockResolvedValue('blob:fake-url'),
   revokeBlobUrl: vi.fn(),
+  fetchModelAllowlist: vi.fn().mockResolvedValue({ models: ['gpt-4o-mini'], source: 'test', updatedAt: null }),
   API_BASE_URL: 'http://api'
 }))
 

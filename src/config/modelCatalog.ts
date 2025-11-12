@@ -1,9 +1,4 @@
-export type ModelId =
-  | "gpt-4o-mini"     // vision: yes
-  | "gpt-4o"          // vision: yes
-  | "o4-mini"         // vision+reasoning (if enabled)
-  | "o3-mini"         // vision+reasoning (if enabled)
-  | "gpt-image-1";    // image generation/editing (image OUT)
+export type ModelId = string;
 
 export interface ModelInfo {
   id: ModelId;
@@ -19,7 +14,7 @@ export interface ModelInfo {
   available?: boolean;
 }
 
-export const MODEL_CATALOG: Record<ModelId, ModelInfo> = {
+export const MODEL_CATALOG: Record<string, ModelInfo> = {
   "gpt-4o-mini": {
     id: "gpt-4o-mini",
     label: "GPT-4o-mini (vision)",
