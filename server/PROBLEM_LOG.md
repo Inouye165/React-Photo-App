@@ -2,6 +2,29 @@
 
 ---
 
+## [2025-11-12] Image Auth Bypass via Authorization Header
+
+**Symptoms:**
+- Image display requests that copied a valid JWT into the `Authorization` header succeeded even when browser cookies were unavailable
+- Security review flagged mismatch between `auth.js` (cookie-only) and `imageAuth.js` (header fallback)
+- Risk of XSS escalation because attacker-controlled scripts could reuse header-based tokens from localStorage/sessionStorage
+
+**Root Cause:**
+- `server/middleware/imageAuth.js` accepted tokens from `Authorization` headers and query strings while other middleware enforced httpOnly cookies
+- Middleware also defaulted to a hard-coded fallback secret when `JWT_SECRET` was undefined, weakening configuration hygiene
+
+**Fix:**
+- Reject any `Authorization` header or `token` query parameter in the image middleware with an explicit 403 response and require the `authToken` cookie
+- Removed the fallback JWT secret so the middleware now throws if `JWT_SECRET` is missing
+- Added regression test ensuring Authorization headers are denied and cookie-based access still works; documentation updated to reflect global cookie-only policy
+
+**Prevention:**
+- Keep authentication middleware consistent—image, API, and worker layers must all rely on the same token source (httpOnly cookie)
+- Document cookie-only expectations so tests and future contributors avoid reintroducing header/query fallbacks
+- Surface configuration mistakes early by refusing to start when `JWT_SECRET` is absent
+
+---
+
 ## [2025-11-11] Knex/Supabase Migration Failure - Environment and SSL Issues
 
 **Symptoms:**
