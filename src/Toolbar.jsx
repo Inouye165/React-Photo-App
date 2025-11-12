@@ -80,7 +80,9 @@ export default function Toolbar({
         {toolbarMessage ? (
           <div style={{ display: 'flex', alignItems: 'center', gap: '8px', background: (sevStyles[toolbarSeverity]?.bg || sevStyles.info.bg), color: (sevStyles[toolbarSeverity]?.text || sevStyles.info.text), padding: '6px 10px', borderRadius: '6px', fontSize: '0.95rem' }} role="status" aria-live="polite">
             <span>{toolbarMessage}</span>
-            <button onClick={onClearToolbarMessage} title="Dismiss" style={{ background: 'transparent', border: 'none', fontSize: '1rem', cursor: 'pointer', color: '#1f2937' }}>×</button>
+            {typeof onClearToolbarMessage === 'function' && (
+              <button onClick={onClearToolbarMessage} title="Dismiss" style={{ background: 'transparent', border: 'none', fontSize: '1rem', cursor: 'pointer', color: '#1f2937' }}>×</button>
+            )}
           </div>
         ) : null}
         {isAuthenticated ? (

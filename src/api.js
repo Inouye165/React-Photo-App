@@ -249,6 +249,23 @@ export async function fetchModelAllowlist(serverUrl = `${API_BASE_URL}`) {
   }
 }
 
+export async function getDependencyStatus(serverUrl = `${API_BASE_URL}`) {
+  const url = `${serverUrl}/photos/dependencies`;
+  const response = await apiLimiter(() => fetch(url, { method: 'GET', headers: getAuthHeaders(), credentials: 'include' }));
+  if (handleAuthError(response)) return null;
+  if (!response.ok) {
+    throw new Error('Failed to fetch dependency status: ' + response.status);
+  }
+  const json = await response.json().catch(() => ({}));
+  const dependencies = (json && typeof json.dependencies === 'object' && json.dependencies !== null)
+    ? json.dependencies
+    : {};
+  return {
+    success: json && json.success !== false,
+    dependencies,
+  };
+}
+
 export async function updatePhotoState(id, state, serverUrl = `${API_BASE_URL}/photos/`) {
   const doFetch = async () => fetch(`${serverUrl}${id}/state`, { method: 'PATCH', headers: getAuthHeaders(), body: JSON.stringify({ state }), credentials: 'include' });
   const response = await stateUpdateLimiter(() => doFetch());

@@ -6,7 +6,7 @@ import useStore from './store.js'
 import ModelSelect from './components/ModelSelect'
 import { DEFAULT_MODEL } from './config/modelCatalog'
 
-export default function EditPage({ photo, onClose, onSave, onFinished, onRecheckAI }) {
+export default function EditPage({ photo, onClose, onSave, onFinished, onRecheckAI, aiReady = true }) {
   // AuthContext no longer exposes client-side token (httpOnly cookies are used).
   useAuth();
   // Prefer the live photo from the global store when available so this editor
@@ -208,10 +208,7 @@ export default function EditPage({ photo, onClose, onSave, onFinished, onRecheck
     console.log('Canvas saved with caption overlay!');
     setSaving(true);
     try {
-      // Save the text styling locally
       setTextStyle(newTextStyle);
-      
-      // Send captioned image to backend
       const response = await fetch('http://localhost:3001/save-captioned-image', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
@@ -225,18 +222,16 @@ export default function EditPage({ photo, onClose, onSave, onFinished, onRecheck
         }),
         credentials: 'include'
       });
-      
+
       if (!response.ok) {
         throw new Error('Failed to save captioned image');
       }
-      
+
       const result = await response.json();
       console.log('Captioned image saved:', result);
-      
-      // Update the photo with the new text style
+
       const updated = { ...photo, caption, description, keywords, textStyle: newTextStyle };
       await onSave(updated);
-      
   // toast removed: Captioned image saved
     } catch (e) {
       console.error('Canvas save failed', e);
@@ -285,20 +280,23 @@ export default function EditPage({ photo, onClose, onSave, onFinished, onRecheck
                   setRecheckingAI(false)
                 }
               }}
-              disabled={recheckingAI || isPolling}
+              disabled={recheckingAI || isPolling || !aiReady}
               className={
-                'px-3 py-1 text-sm rounded disabled:opacity-50 ' + (
+                'px-3 py-1 text-sm rounded disabled:opacity-50 disabled:cursor-not-allowed ' + (
                   recheckStatus === 'in-progress' ? 'bg-yellow-500 text-black hover:bg-yellow-600' :
                   recheckStatus === 'done' ? 'bg-green-600 text-white hover:bg-green-700' :
                   recheckStatus === 'error' ? 'bg-red-600 text-white hover:bg-red-700' :
                   'bg-green-600 text-white hover:bg-green-700'
                 )
               }
+              title={aiReady ? 'Recheck AI with default model' : 'AI services unavailable. Start required containers to re-enable processing.'}
+              aria-disabled={recheckingAI || isPolling || !aiReady}
             >
               {recheckingAI || recheckStatus === 'in-progress' ? 'Rechecking...' : (recheckStatus === 'done' ? 'Done' : (recheckStatus === 'error' ? 'Error - Retry' : 'Recheck AI'))}
             </button>
             <button
               onClick={() => {
+                if (!aiReady) return;
                 const model = selectedModel || DEFAULT_MODEL
                 try {
                   if (typeof onRecheckAI === 'function') onRecheckAI(sourcePhoto?.id || photo.id, model);
@@ -306,13 +304,14 @@ export default function EditPage({ photo, onClose, onSave, onFinished, onRecheck
                   console.warn('recheck failed', err);
                 }
               }}
-              title="Recheck with selected model"
-              className="ml-1 px-2 py-1 bg-purple-700 text-white rounded text-sm"
+              title={aiReady ? 'Recheck with selected model' : 'AI services unavailable. Start required containers to re-enable processing.'}
+              className="ml-1 px-2 py-1 bg-purple-700 text-white rounded text-sm disabled:opacity-50 disabled:cursor-not-allowed"
+              disabled={!aiReady}
             >
               ▾
             </button>
             <div className="ml-2">
-              <ModelSelect value={selectedModel} onChange={setSelectedModel} compact />
+              <ModelSelect value={selectedModel} onChange={setSelectedModel} compact disabled={!aiReady} />
             </div>
           </div>
           <button onClick={() => { onFinished(sourcePhoto?.id || photo.id); }} className="px-3 py-1 text-sm bg-green-600 text-white rounded hover:bg-green-700">Mark as Finished</button>

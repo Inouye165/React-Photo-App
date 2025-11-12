@@ -1,6 +1,6 @@
-﻿import React, { useEffect, useState } from 'react';
+﻿import React, { useCallback, useEffect, useState } from 'react';
 import { logGlobalError } from './utils/globalLog.js';
-import { API_BASE_URL } from './api.js';
+import { API_BASE_URL, getDependencyStatus } from './api.js';
 import Toolbar from './Toolbar.jsx';
 import PhotoUploadForm from './PhotoUploadForm.jsx';
 import EditPage from './EditPage.jsx';
@@ -13,11 +13,15 @@ import useLocalPhotoPicker from './hooks/useLocalPhotoPicker.js';
 import usePhotoManagement from './hooks/usePhotoManagement.js';
 import useStore from './store.js';
 
+const AI_DEPENDENCY_WARNING = 'AI services unavailable. Start required Docker containers to re-enable processing.';
+
 function App() {
   // Global banner notification from Zustand (will be shown inside the Toolbar)
   const banner = useStore((state) => state.banner);
   const setBanner = useStore((state) => state.setBanner);
   const [toolbarMessage, setToolbarMessage] = useState('');
+  const [dependencyWarning, setDependencyWarning] = useState('');
+  const [aiDependenciesReady, setAiDependenciesReady] = useState(true);
   const {
     photos,
   // toast, setToast removed
@@ -69,6 +73,43 @@ function App() {
     };
   }, []);
 
+  useEffect(() => {
+    if (typeof window === 'undefined') return undefined;
+
+    let cancelled = false;
+    let intervalId = null;
+
+    const applyStatus = (queueReady) => {
+      if (cancelled) return;
+      setAiDependenciesReady((prev) => (prev === queueReady ? prev : queueReady));
+      setDependencyWarning((prev) => {
+        const next = queueReady ? '' : AI_DEPENDENCY_WARNING;
+        return prev === next ? prev : next;
+      });
+    };
+
+    const checkStatus = async () => {
+      try {
+        const result = await getDependencyStatus();
+        if (cancelled || !result) return;
+        const queueReady = !(result.dependencies && result.dependencies.aiQueue === false);
+        applyStatus(queueReady);
+      } catch {
+        applyStatus(false);
+      }
+    };
+
+    checkStatus();
+    intervalId = window.setInterval(checkStatus, 30000);
+
+    return () => {
+      cancelled = true;
+      if (intervalId) {
+        window.clearInterval(intervalId);
+      }
+    };
+  }, []);
+
   useAIPolling();
 
   const privilegesMap = usePhotoPrivileges(photos);
@@ -88,6 +129,14 @@ function App() {
     onUploadComplete: refreshPhotos,
     onUploadSuccess: (count) => setToolbarMessage(`Successfully uploaded ${count} photos`),
   });
+
+  const guardedRecheckAI = useCallback(async (photoId, model) => {
+    if (!aiDependenciesReady) {
+      setBanner({ message: AI_DEPENDENCY_WARNING, severity: 'warning' });
+      return null;
+    }
+    return handleRecheckSinglePhoto(photoId, model);
+  }, [aiDependenciesReady, handleRecheckSinglePhoto, setBanner]);
 
   useEffect(() => {
     if (!(import.meta?.env?.DEV)) return;
@@ -149,9 +198,9 @@ function App() {
             setShowMetadataModal(true);
           }
         }}
-        toolbarMessage={toolbarMessage || banner?.message}
-        toolbarSeverity={banner?.severity || 'info'}
-        onClearToolbarMessage={() => { setToolbarMessage(''); setBanner({ message: '' }); }}
+        toolbarMessage={dependencyWarning || toolbarMessage || banner?.message}
+        toolbarSeverity={dependencyWarning ? 'warning' : (banner?.severity || 'info')}
+        onClearToolbarMessage={dependencyWarning ? undefined : () => { setToolbarMessage(''); setBanner({ message: '' }); }}
       />
 
       {/* Banner is now displayed inside the Toolbar via toolbarMessage */}
@@ -194,7 +243,8 @@ function App() {
               setEditingMode(null);
               setActivePhotoId(updated.id);
             }}
-            onRecheckAI={handleRecheckSinglePhoto}
+            onRecheckAI={guardedRecheckAI}
+            aiReady={aiDependenciesReady}
           />
         ) : activePhoto ? (
           <PhotoDetailPanel
@@ -211,9 +261,10 @@ function App() {
             onMarkFinished={async () => {
               await handleMoveToFinished(activePhoto.id);
             }}
-            onRecheckAI={handleRecheckSinglePhoto}
+            onRecheckAI={guardedRecheckAI}
             isRechecking={pollingPhotoId === activePhoto.id}
             apiBaseUrl={API_BASE_URL}
+            aiReady={aiDependenciesReady}
           />
         ) : (
           <PhotoTable

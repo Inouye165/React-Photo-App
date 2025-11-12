@@ -21,6 +21,7 @@ export default function PhotoDetailPanel({
   onRecheckAI,
   isRechecking,
   apiBaseUrl,
+  aiReady = true,
 }) {
   const [selectedModel, setSelectedModel] = useState(DEFAULT_MODEL);
   const [collectibles, setCollectibles] = useState([]);
@@ -283,15 +284,16 @@ export default function PhotoDetailPanel({
               </button>
               {onRecheckAI && (
                 <div className="flex items-center gap-2">
-                  <ModelSelect value={selectedModel} onChange={setSelectedModel} compact />
+                  <ModelSelect value={selectedModel} onChange={setSelectedModel} compact disabled={!aiReady} />
                   <button
                     onClick={() => {
                       const model = selectedModel || DEFAULT_MODEL;
                       try { onRecheckAI(photo.id, model); } catch { /* noop */ }
                     }}
                     className="px-3 py-1 bg-purple-600 text-white rounded text-sm disabled:opacity-60 disabled:cursor-not-allowed"
-                    disabled={isRechecking}
-                    title={`Recheck with selected model: ${selectedModel}`}
+                    disabled={isRechecking || !aiReady}
+                    title={aiReady ? `Recheck with selected model: ${selectedModel}` : 'AI services unavailable. Start required containers to re-enable processing.'}
+                    aria-disabled={isRechecking || !aiReady}
                   >
                     {isRechecking ? 'Rechecking...' : `Recheck AI (${selectedModel})`}
                   </button>
