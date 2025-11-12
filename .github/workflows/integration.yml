@@ -50,6 +50,7 @@ jobs:
           GOOGLE_API_KEY: sk-test-key-for-ci
           GOOGLE_CSE_ID: test-cse-id-for-ci
           OPENAI_API_KEY: sk-test-key-for-ci
+          SERPAPI_API_KEY: ${{ secrets.SERPAPI_API_KEY }}
         run: |
           mkdir -p "$PHOTO_WORKING_DIR"
           npm run integration-test
