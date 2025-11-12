@@ -3,15 +3,58 @@ const path = require('path');
 const { convertHeicToJpegBuffer } = require('../media/image');
 const { updatePhotoAIMetadata } = require('../ai/service');
 const { addAIJob, checkRedisAvailable } = require('../queue/index');
-// const { MODEL_ALLOWLIST } = require('../ai/langchain/agents');
-// LangChain removed: stub allowlist for compatibility
-const MODEL_ALLOWLIST = ['gpt-4-vision-preview', 'gpt-4', 'gpt-3.5-turbo'];
+const OpenAI = require('openai');
+const logger = require('../logger');
+// LangChain removed: dynamic allowlist for compatibility
+const openai = new OpenAI();
+const DYNAMIC_MODEL_ALLOWLIST = [];
+const INTERNAL_MODEL_NAMES = ['router', 'scenery', 'collectible'];
+const FALLBACK_MODEL_ALLOWLIST = ['gpt-4o', 'gpt-4-vision-preview', 'gpt-3.5-turbo', 'gpt-5'];
+const ALLOWED_MODEL_PREFIXES = ['gpt-5', 'gpt-4', 'gpt-3.5', 'ft:', 'o1', 'o3'];
+const EXCLUDED_MODEL_SUBSTRINGS = ['embedding', 'vector', 'tts', 'audio', 'whisper', 'dall-e', 'image', 'realtime', 'omni-moderation'];
+const MODEL_ALLOWLIST = DYNAMIC_MODEL_ALLOWLIST;
+
+// Seed the allowlist with a fallback so routes have sensible defaults before async loading completes.
+const initialFallback = Array.from(new Set([...FALLBACK_MODEL_ALLOWLIST, ...INTERNAL_MODEL_NAMES]));
+DYNAMIC_MODEL_ALLOWLIST.push(...initialFallback);
+
+async function loadDynamicAllowList() {
+  try {
+    if (!process.env.OPENAI_API_KEY) {
+      throw new Error('OPENAI_API_KEY is not configured');
+    }
+
+    const response = await openai.models.list();
+    const dynamicModels = (response?.data || [])
+      .map(model => model?.id)
+      .filter(id => typeof id === 'string' && id.length > 0)
+      .filter(id => ALLOWED_MODEL_PREFIXES.some(prefix => id.startsWith(prefix)))
+      .filter(id => !EXCLUDED_MODEL_SUBSTRINGS.some(substr => id.includes(substr)));
+
+  const uniqueModels = Array.from(new Set([...dynamicModels, ...INTERNAL_MODEL_NAMES]));
+
+    if (dynamicModels.length === 0) {
+      const fallbackModels = Array.from(new Set([...FALLBACK_MODEL_ALLOWLIST, ...INTERNAL_MODEL_NAMES]));
+      DYNAMIC_MODEL_ALLOWLIST.splice(0, DYNAMIC_MODEL_ALLOWLIST.length, ...fallbackModels);
+      logger.warn('[AI Models] OpenAI API returned no eligible models. Using fallback allowlist.');
+      return;
+    }
+
+    DYNAMIC_MODEL_ALLOWLIST.splice(0, DYNAMIC_MODEL_ALLOWLIST.length, ...uniqueModels);
+    logger.info('[AI Models] Loaded dynamic model allowlist', { count: uniqueModels.length, models: uniqueModels });
+  } catch (err) {
+    const fallbackModels = Array.from(new Set([...FALLBACK_MODEL_ALLOWLIST, ...INTERNAL_MODEL_NAMES]));
+    DYNAMIC_MODEL_ALLOWLIST.splice(0, DYNAMIC_MODEL_ALLOWLIST.length, ...fallbackModels);
+    logger.error('[AI Models] Failed to load dynamic model allowlist. Using fallback.', { error: err && err.message, models: fallbackModels });
+  }
+}
+
+loadDynamicAllowList();
 const sharp = require('sharp');
 const exifr = require('exifr');
 const supabase = require('../lib/supabaseClient');
 const { authenticateToken } = require('../middleware/auth');
 const { authenticateImageRequest } = require('../middleware/imageAuth');
-const logger = require('../logger');
 
 module.exports = function createPhotosRouter({ db }) {
   const router = express.Router();
