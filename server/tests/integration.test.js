@@ -546,11 +546,13 @@ describe('Full Authentication and Image Access Integration', () => {
     });
 
     test('should handle token from different sources correctly', async () => {
-      // Test header-based auth
+      // Header-based auth should now be rejected to enforce cookie-only policy
       const headerResponse = await request(app)
         .get('/display/working/test.jpg')
         .set('Authorization', `Bearer ${makeToken()}`)
-        .expect(200);
+        .expect(403);
+
+      expect(headerResponse.body.error).toMatch(/authorization header/i);
 
       await request(app)
         .get(`/display/working/test.jpg?token=${makeToken()}`)
@@ -561,9 +563,7 @@ describe('Full Authentication and Image Access Integration', () => {
         .set('Cookie', authCookie)
         .expect(200);
 
-      [headerResponse, cookieResponse].forEach(response => {
-        expect(response.headers['content-type']).toMatch(/image/);
-      });
+      expect(cookieResponse.headers['content-type']).toMatch(/image/);
     });
   });
 
