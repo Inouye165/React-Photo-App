@@ -187,6 +187,22 @@ module.exports = function createPhotosRouter({ db }) {
     }
   });
 
+  router.get('/dependencies', authenticateToken, async (req, res) => {
+    try {
+      const redisAvailable = await checkRedisAvailable();
+      res.set('Cache-Control', 'no-store');
+      res.json({
+        success: true,
+        dependencies: {
+          aiQueue: Boolean(redisAvailable),
+        },
+      });
+    } catch (error) {
+      logger.error('[Dependencies] Failed to report dependency status', error && error.message ? error : error);
+      res.status(500).json({ success: false, error: 'Failed to determine dependency status' });
+    }
+  });
+
   // --- Metadata update endpoint ---
   // --- Single photo fetch endpoint ---
   router.get('/:id', authenticateToken, async (req, res) => {
