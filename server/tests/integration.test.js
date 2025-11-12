@@ -12,7 +12,7 @@ let server;
 let app;
 let authCookie;
 
-const JWT_SECRET = process.env.JWT_SECRET || 'fallback-secret-change-in-production';
+const JWT_SECRET = process.env.JWT_SECRET;
 // Helper to create header tokens for tests where header auth is desired
 const makeToken = (opts) => jwt.sign({ id: 1, username: 'testuser', role: 'user' }, JWT_SECRET, opts || { expiresIn: '1h' });
 
@@ -94,22 +94,21 @@ beforeAll(async () => {
   
   // Mock display endpoint
   app.get('/display/:state/:filename', (req, res) => {
+    const authHeader = req.headers.authorization;
+    if (typeof authHeader === 'string' && authHeader.trim() !== '') {
+      return res.status(403).json({ error: 'Authorization header is not allowed for image access. Use the secure httpOnly authToken cookie.' });
+    }
+
     // Reject any use of token in query string — this is intentionally
     // strict: tokens in URLs are insecure and should be disallowed.
     if (req.query && Object.prototype.hasOwnProperty.call(req.query, 'token')) {
-      return res.status(403).json({ error: 'Token in query parameter is not allowed for image access' });
+      return res.status(403).json({ error: 'Token in query parameter is not allowed for image access. Use the secure httpOnly authToken cookie.' });
     }
 
     let token = null;
 
-    // Try to get token from Authorization header
-    const authHeader = req.headers.authorization;
-    if (authHeader && authHeader.startsWith('Bearer ')) {
-      token = authHeader.substring(7);
-    }
-
     // If no token in header, try cookie
-    if (!token && req.cookies && req.cookies.authToken) {
+    if (req.cookies && req.cookies.authToken) {
       token = req.cookies.authToken;
     }
 

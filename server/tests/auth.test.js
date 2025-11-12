@@ -55,6 +55,16 @@ const express = require('express');
 const cookieParser = require('cookie-parser');
 const createAuthRouter = require('../routes/auth');
 
+const getAuthCookieFromResponse = (response) => {
+  const setCookie = response.headers['set-cookie'];
+  if (!setCookie) {
+    return null;
+  }
+  const cookies = Array.isArray(setCookie) ? setCookie : [setCookie];
+  const authCookie = cookies.find(cookieStr => typeof cookieStr === 'string' && cookieStr.startsWith('authToken='));
+  return authCookie ? authCookie.split(';')[0] : null;
+};
+
 describe('Authentication System', () => {
   let app;
   let db;
@@ -97,8 +107,11 @@ describe('Authentication System', () => {
       expect(response.body.success).toBe(true);
       expect(response.body.user.username).toBe(userData.username);
       expect(response.body.user.email).toBe(userData.email);
-      expect(response.body.token).toBeDefined();
+      expect(response.body.token).toBeUndefined();
       expect(response.body.user.password_hash).toBeUndefined(); // Should not expose password
+
+      const authCookie = getAuthCookieFromResponse(response);
+      expect(authCookie).toBeTruthy();
     });
 
     test('should reject registration with weak password', async () => {
@@ -164,7 +177,10 @@ describe('Authentication System', () => {
 
       expect(response.body.success).toBe(true);
       expect(response.body.user.username).toBe(loginData.username);
-      expect(response.body.token).toBeDefined();
+      expect(response.body.token).toBeUndefined();
+
+      const authCookie = getAuthCookieFromResponse(response);
+      expect(authCookie).toBeTruthy();
     });
 
     test('should reject login with invalid credentials', async () => {
@@ -199,7 +215,7 @@ describe('Authentication System', () => {
   });
 
   describe('Token Verification', () => {
-    let validToken;
+    let validCookie;
 
     beforeAll(async () => {
       // Get a valid token by logging in
@@ -209,14 +225,17 @@ describe('Authentication System', () => {
           username: 'testuser',
           password: 'TestPassword123!'
         });
-      
-      validToken = loginResponse.body.token;
+
+      validCookie = getAuthCookieFromResponse(loginResponse);
+      if (!validCookie) {
+        throw new Error('Expected auth cookie in login response');
+      }
     });
 
     test('should verify valid token', async () => {
       const response = await request(app)
         .post('/auth/verify')
-        .set('Cookie', [`authToken=${validToken}`])
+        .set('Cookie', [validCookie])
         .expect(200);
 
       expect(response.body.success).toBe(true);

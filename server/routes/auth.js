@@ -140,7 +140,7 @@ module.exports = function createAuthRouter({ db }) {
       // Generate JWT token
       const token = generateToken(user);
 
-      // Set httpOnly cookie for the token (transitional: also return token in JSON)
+      // Set httpOnly cookie for the token
       try {
         const cookieOptions = {
           httpOnly: true,
@@ -156,11 +156,9 @@ module.exports = function createAuthRouter({ db }) {
       // Log successful login
       logger.info(`[LOGIN SUCCESS] username='${username}' ip='${clientIp}'`);
 
-      // Return success (token is set as an httpOnly cookie). Also return token in JSON
-      // to support non-browser clients/tests that expect it. Frontend should rely on cookie.
+      // Return success (token is set as an httpOnly cookie).
       res.json({
         success: true,
-        token,
         user: {
           id: user.id,
           username: user.username,
@@ -215,7 +213,7 @@ module.exports = function createAuthRouter({ db }) {
       // Generate JWT token
       const token = generateToken(newUser);
 
-      // Set httpOnly cookie for the token (transitional: also return token in JSON)
+      // Set httpOnly cookie for the token
       try {
         const cookieOptions = {
           httpOnly: true,
@@ -230,7 +228,6 @@ module.exports = function createAuthRouter({ db }) {
 
       res.status(201).json({
         success: true,
-        token,
         message: 'User registered successfully',
         user: {
           id: newUser.id,

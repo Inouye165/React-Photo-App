@@ -1,6 +1,10 @@
 const jwt = require('jsonwebtoken');
 const { getAllowedOrigins } = require('../config/allowedOrigins');
-const JWT_SECRET = process.env.JWT_SECRET || 'fallback-secret-change-in-production';
+const JWT_SECRET = process.env.JWT_SECRET;
+
+if (!JWT_SECRET) {
+  throw new Error('JWT_SECRET must be set in environment for image authentication.');
+}
 
 /**
  * Middleware to authenticate image requests
@@ -39,10 +43,12 @@ function authenticateImageRequest(req, res, next) {
 
   let token = null;
 
-  // Try to get token from Authorization header
   const authHeader = req.headers['authorization'];
-  if (authHeader && authHeader.startsWith('Bearer ')) {
-    token = authHeader.substring(7);
+  if (typeof authHeader === 'string' && authHeader.trim() !== '') {
+    return res.status(403).json({
+      success: false,
+      error: 'Authorization header is not allowed for image access. Use the secure httpOnly authToken cookie.'
+    });
   }
 
   // Explicitly deny token in query parameters. Using tokens in URLs
@@ -53,12 +59,12 @@ function authenticateImageRequest(req, res, next) {
   if (req.query && Object.prototype.hasOwnProperty.call(req.query, 'token')) {
     return res.status(403).json({
       success: false,
-      error: 'Token in query parameter is not allowed for image access. Use httpOnly cookie or Authorization header.'
+      error: 'Token in query parameter is not allowed for image access. Use the secure httpOnly authToken cookie.'
     });
   }
 
   // If no token in query, try cookie
-  if (!token && req.cookies && req.cookies.authToken) {
+  if (req.cookies && req.cookies.authToken) {
     token = req.cookies.authToken;
   }
 
