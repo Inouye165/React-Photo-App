@@ -39,7 +39,7 @@ async function loadDynamicAllowList() {
     if (dynamicModels.length === 0) {
       const fallbackModels = Array.from(new Set([...FALLBACK_MODEL_ALLOWLIST, ...INTERNAL_MODEL_NAMES]));
       DYNAMIC_MODEL_ALLOWLIST.splice(0, DYNAMIC_MODEL_ALLOWLIST.length, ...fallbackModels);
-      logger.warn('[AI Models] OpenAI API returned no eligible models. Using fallback allowlist.');
+  logger.warn('[AI Models] OpenAI API returned no eligible models. Using fallback allowlist.');
       LAST_ALLOWLIST_SOURCE = 'fallback-empty-response';
       LAST_ALLOWLIST_UPDATED_AT = new Date().toISOString();
       return;
@@ -48,13 +48,13 @@ async function loadDynamicAllowList() {
     DYNAMIC_MODEL_ALLOWLIST.splice(0, DYNAMIC_MODEL_ALLOWLIST.length, ...uniqueModels);
     LAST_ALLOWLIST_SOURCE = 'dynamic';
     LAST_ALLOWLIST_UPDATED_AT = new Date().toISOString();
-    logger.info('[AI Models] Loaded dynamic model allowlist', { count: uniqueModels.length, models: uniqueModels });
+    logger.info('[AI Models] Loaded dynamic model allowlist', { count: uniqueModels.length });
   } catch (err) {
     const fallbackModels = Array.from(new Set([...FALLBACK_MODEL_ALLOWLIST, ...INTERNAL_MODEL_NAMES]));
     DYNAMIC_MODEL_ALLOWLIST.splice(0, DYNAMIC_MODEL_ALLOWLIST.length, ...fallbackModels);
     LAST_ALLOWLIST_SOURCE = 'fallback-error';
     LAST_ALLOWLIST_UPDATED_AT = new Date().toISOString();
-    logger.error('[AI Models] Failed to load dynamic model allowlist. Using fallback.', { error: err && err.message, models: fallbackModels });
+    logger.error('[AI Models] Failed to load dynamic model allowlist. Using fallback.', { error: err && err.message });
   }
 }
 

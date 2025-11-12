@@ -373,7 +373,7 @@ async function processPhotoAI({ fileBuffer, filename, metadata, gps, device }, m
   let imageBuffer;
   let imageMime;
   const ext = path.extname(filename).toLowerCase();
-  logger.info(`[AI Debug] [processPhotoAI] Starting for filename: ${filename}`);
+  logger.debug(`[AI Debug] [processPhotoAI] Starting for filename: ${filename}`);
   if (ext === '.heic' || ext === '.heif') {
     imageBuffer = await convertHeicToJpegBuffer(fileBuffer, 90);
     imageMime = 'image/jpeg';
@@ -390,15 +390,15 @@ async function processPhotoAI({ fileBuffer, filename, metadata, gps, device }, m
   }
   const imageBase64 = imageBuffer.toString('base64');
   logger.debug('[Graph] Prepared image buffer for graph invocation', { filename, imageMime });
-  logger.info(`[Graph Debug] imageMime before graph: ${imageMime}`);
-  logger.info(`[AI Debug] [processPhotoAI] Invoking aiGraph with input:`, {
+  logger.debug(`[Graph Debug] imageMime before graph: ${imageMime}`);
+  logger.debug('[AI Debug] [processPhotoAI] Prepared graph invocation', {
     filename,
     imageMime,
     imageBase64Length: imageBase64.length,
-    metadata,
-    gps,
-    device,
-    modelOverrides
+    hasMetadata: Boolean(metadata && (typeof metadata === 'string' ? metadata.trim().length : Object.keys(metadata || {}).length)),
+    hasGps: Boolean(gps),
+    hasDevice: Boolean(device),
+    modelOverrideKeys: Object.keys(modelOverrides || {})
   });
 
   let meta = {};
@@ -431,7 +431,11 @@ async function processPhotoAI({ fileBuffer, filename, metadata, gps, device }, m
 
   logger.info(`[Graph] Invoking graph for ${filename}...`);
   const finalState = await aiGraph.invoke(initialState);
-  logger.info('[AI Debug] [processPhotoAI] aiGraph.invoke returned:', finalState);
+  logger.debug('[AI Debug] [processPhotoAI] aiGraph.invoke returned', {
+    hasFinalResult: Boolean(finalState && finalState.finalResult),
+    classificationType: finalState && finalState.classification ? finalState.classification.type || null : null,
+    error: finalState && finalState.error ? String(finalState.error).slice(0, 200) : null
+  });
 
   if (finalState.error) {
     logger.error(`[AI Debug] [processPhotoAI] aiGraph.invoke error: ${finalState.error}`);
@@ -473,14 +477,14 @@ async function processPhotoAI({ fileBuffer, filename, metadata, gps, device }, m
  */
 async function updatePhotoAIMetadata(db, photoRow, storagePath, modelOverrides = {}) {
   try {
-    logger.info('[AI Debug] [updatePhotoAIMetadata] Called with:', {
+    logger.debug('[AI Debug] [updatePhotoAIMetadata] Called with', {
       photoId: photoRow.id,
       filename: photoRow.filename,
       storagePath,
-      modelOverrides
+      modelOverrideKeys: Object.keys(modelOverrides || {})
     });
   const meta = JSON.parse(photoRow.metadata || '{}');
-  logger.info('[AI Debug] [updatePhotoAIMetadata] Parsed metadata:', meta);
+  logger.debug('[AI Debug] [updatePhotoAIMetadata] Parsed metadata keys', Object.keys(meta));
 
     const coords = extractLatLon(meta);
     let gps = '';
@@ -506,7 +510,7 @@ async function updatePhotoAIMetadata(db, photoRow, storagePath, modelOverrides =
     let ai;
     try {
       // Download file from Supabase Storage
-      logger.info('[AI Debug] [updatePhotoAIMetadata] Downloading file from storage:', storagePath);
+  logger.debug('[AI Debug] [updatePhotoAIMetadata] Downloading file from storage:', storagePath);
       const { data: fileData, error } = await supabase.storage
         .from('photos')
         .download(storagePath);
@@ -514,7 +518,7 @@ async function updatePhotoAIMetadata(db, photoRow, storagePath, modelOverrides =
         logger.error(`[AI Debug] [updatePhotoAIMetadata] Failed to download file from storage: ${error.message}`);
         throw new Error(`Failed to download file from storage: ${error.message}`);
       }
-      logger.info('[AI Debug] [updatePhotoAIMetadata] File downloaded. Size:', fileData.size);
+  logger.debug('[AI Debug] [updatePhotoAIMetadata] File downloaded. Size:', fileData.size);
       // Enforce OOM safeguard: check file size before processing
       if (typeof fileData.size === 'number' && fileData.size > MAX_AI_FILE_SIZE) {
         logger.error(`[AI OOM] File too large for AI processing: ${photoRow.filename} (${fileData.size} bytes)`);
@@ -529,7 +533,7 @@ async function updatePhotoAIMetadata(db, photoRow, storagePath, modelOverrides =
         gps, 
         device 
       }, modelOverrides);
-      logger.info('[AI Debug] [updatePhotoAIMetadata] processPhotoAI result:', ai);
+  logger.debug('[AI Debug] [updatePhotoAIMetadata] processPhotoAI result keys', ai ? Object.keys(ai) : null);
     } catch (error) {
       logger.error(`AI processing failed for ${photoRow.filename} (attempt ${retryCount + 1}):`, error.message || error);
       if (error && error.stack) {
@@ -595,7 +599,7 @@ async function updatePhotoAIMetadata(db, photoRow, storagePath, modelOverrides =
         ai_retry_count: 0,
         poi_analysis: JSON.stringify(extraData || null)
       };
-      logger.info('[AI Debug] [updatePhotoAIMetadata] Writing AI metadata to DB (transaction):', dbUpdates);
+  logger.debug('[AI Debug] [updatePhotoAIMetadata] Writing AI metadata to DB (transaction).');
       await trx('photos').where({ id: photoRow.id }).update(dbUpdates);
 
       // If collectibleInsights exists, insert into collectibles table
@@ -607,7 +611,7 @@ async function updatePhotoAIMetadata(db, photoRow, storagePath, modelOverrides =
           user_notes: ''
         };
         await trx('collectibles').insert(collectibleRow);
-        logger.info('[AI Debug] [updatePhotoAIMetadata] Inserted collectible for photo', photoRow.id);
+  logger.debug('[AI Debug] [updatePhotoAIMetadata] Inserted collectible for photo', photoRow.id);
       }
     });
 
@@ -618,7 +622,7 @@ async function updatePhotoAIMetadata(db, photoRow, storagePath, modelOverrides =
       description: (saved.description || '').slice(0, 200),
       keywords: saved.keywords
     });
-    logger.info('[AI Debug] [updatePhotoAIMetadata] Returning AI result:', ai);
+    logger.debug('[AI Debug] [updatePhotoAIMetadata] Returning AI result keys', ai ? Object.keys(ai) : null);
     return ai;
   } catch (error) {
     logger.error(`Unexpected error in updatePhotoAIMetadata for ${photoRow.filename}:`, error.message || error);
