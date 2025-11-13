@@ -1,3 +1,29 @@
+// Helper: retry DB operation on transient connection errors
+function isTransientDbError(err) {
+  if (!err) return false;
+  const msg = (err.message || '').toLowerCase();
+  return (
+    msg.includes('connection terminated unexpectedly') ||
+    err.code === 'ECONNRESET' ||
+    err.code === '57P01'
+  );
+}
+
+async function withDbRetry(operation, { retries = 2, delayMs = 150 } = {}) {
+  let lastErr;
+  for (let attempt = 0; attempt <= retries; attempt++) {
+    try {
+      return await operation();
+    } catch (err) {
+      if (!isTransientDbError(err) || attempt === retries) {
+        throw err;
+      }
+      lastErr = err;
+      await new Promise(res => setTimeout(res, delayMs));
+    }
+  }
+  throw lastErr;
+}
 const express = require('express');
 const path = require('path');
 const { convertHeicToJpegBuffer } = require('../media/image');
@@ -110,11 +136,30 @@ module.exports = function createPhotosRouter({ db }) {
     const reqId = Math.random().toString(36).slice(2, 10);
     try {
       const state = req.query.state;
-      let query = db('photos').select('id', 'filename', 'state', 'metadata', 'hash', 'file_size', 'caption', 'description', 'keywords', 'text_style', 'edited_filename', 'storage_path', 'ai_model_history');
-      if (state === 'working' || state === 'inprogress' || state === 'finished') {
-        query = query.where({ state });
-      }
-      const rows = await query;
+      const rows = await withDbRetry(
+        () => {
+          let query = db('photos').select(
+            'id',
+            'filename',
+            'state',
+            'metadata',
+            'hash',
+            'file_size',
+            'caption',
+            'description',
+            'keywords',
+            'text_style',
+            'edited_filename',
+            'storage_path',
+            'ai_model_history'
+          );
+          if (state === 'working' || state === 'inprogress' || state === 'finished') {
+            query = query.where({ state });
+          }
+          return query;
+        },
+        { retries: 2, delayMs: 150 }
+      );
       // Generate public URLs for each photo using Supabase Storage
       const photosWithUrls = await Promise.all(rows.map(async (row) => {
         let textStyle = null;

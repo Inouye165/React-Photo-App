@@ -1,5 +1,6 @@
 #!/usr/bin/env node
 /* Backfill gpsString for photos with stored metadata but missing gpsString */
+// Minor change to trigger CI
 const path = require('path');
 const db = require(path.join(__dirname, '..', 'server', 'db', 'index'));
 const { extractLatLon } = require(path.join(__dirname, '..', 'server', 'ai', 'service'));
