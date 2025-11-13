@@ -23,6 +23,7 @@
     "test:a11y": "playwright test e2e/a11y.*",
     "test:perf": "k6 run perf/smoke.js",
     "test:docker:smoke": "node scripts/docker-smoke.js"
+    ,"backfill:gps": "node scripts/backfill-gps.js"
   },
   "lint-staged": {
     "*.{js,jsx}": "eslint --fix"
