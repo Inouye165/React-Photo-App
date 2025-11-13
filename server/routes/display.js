@@ -32,9 +32,16 @@ module.exports = function createDisplayRouter({ db }) {
           return res.status(404).json({ error: 'Thumbnail not found' });
         }
         const buffer = await data.arrayBuffer();
+        const fileBuffer = Buffer.from(buffer);
+        // ETag for thumbnails: use filename (thumbnails are content-addressed by hash)
+        const etag = filename;
+        res.set('ETag', etag);
         res.set('Content-Type', 'image/jpeg');
         res.set('Cache-Control', `public, max-age=${IMAGE_CACHE_MAX_AGE}`);
-        return res.send(Buffer.from(buffer));
+        if (req.headers['if-none-match'] && req.headers['if-none-match'] === etag) {
+          return res.status(304).end();
+        }
+        return res.send(fileBuffer);
       }
 
       // Originals: strict DB lookup
@@ -76,10 +83,15 @@ module.exports = function createDisplayRouter({ db }) {
       const ext = path.extname(filename).toLowerCase();
 
       // ETag header if hash present
+      let etag = undefined;
       if (photo.hash) {
-        res.set('ETag', photo.hash);
+        etag = photo.hash;
+        res.set('ETag', etag);
       }
       res.set('Cache-Control', `public, max-age=${IMAGE_CACHE_MAX_AGE}`);
+      if (etag && req.headers['if-none-match'] && req.headers['if-none-match'] === etag) {
+        return res.status(304).end();
+      }
 
       // HEIC/HEIF: always convert to JPEG and serve as image/jpeg
       if (ext === '.heic' || ext === '.heif') {
