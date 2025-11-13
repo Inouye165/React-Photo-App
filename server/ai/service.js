@@ -21,6 +21,7 @@ if (!process.env.OPENAI_API_KEY) {
 // Native OpenAI client (singleton)
 const openai = require('./openaiClient');
 const { convertHeicToJpegBuffer } = require('../media/image');
+const exifr = require('exifr');
 
 // Hard limit for AI processing file size (20 MB)
 const MAX_AI_FILE_SIZE = 20 * 1024 * 1024;
@@ -78,32 +79,74 @@ function dmsArrayToDecimal(values, ref) {
   }
   return decimal;
 }
+// Improved extractor: returns { lat, lon, source }
+function extractLatLon(metaRaw) {
+  const DEBUG_GPS = process.env.DEBUG_GPS === '1';
+  function log(...args) { if (DEBUG_GPS) console.log('[GPS]', ...args); }
+  function safeJSON(s) { try { return JSON.parse(s); } catch { return {}; } }
 
-function extractLatLon(meta) {
-  if (!meta || typeof meta !== 'object') return null;
+  const meta = (typeof metaRaw === 'string') ? safeJSON(metaRaw) : (metaRaw || {});
+
+  // 1) Common exifr top-level numeric lat/lon
   let lat = toNumber(meta.latitude);
   let lon = toNumber(meta.longitude);
   if (lat !== null && lon !== null) {
-    return { lat, lon };
+    log('using top-level latitude/longitude', lat, lon);
+    return { lat, lon, source: 'top_level' };
   }
 
-  if (meta.GPSLatitude && meta.GPSLongitude) {
-    lat = dmsArrayToDecimal(meta.GPSLatitude, meta.GPSLatitudeRef);
-    lon = dmsArrayToDecimal(meta.GPSLongitude, meta.GPSLongitudeRef);
-    if (lat !== null && lon !== null) {
-      return { lat, lon };
+  // 2) GPS DMS arrays (common)
+  const GPS = meta.GPS || meta.GPSInfo || meta.gps || {};
+  const latArr = GPS.GPSLatitude || meta.GPSLatitude || null;
+  const lonArr = GPS.GPSLongitude || meta.GPSLongitude || null;
+  const latRef = GPS.GPSLatitudeRef || meta.GPSLatitudeRef || null;
+  const lonRef = GPS.GPSLongitudeRef || meta.GPSLongitudeRef || null;
+  if (latArr && lonArr) {
+    const latDec = dmsArrayToDecimal(latArr, latRef);
+    const lonDec = dmsArrayToDecimal(lonArr, lonRef);
+    if (latDec !== null && lonDec !== null) {
+      log('using DMS arrays', { latArr, latRef, lonArr, lonRef }, '->', latDec, lonDec);
+      return { lat: latDec, lon: lonDec, source: 'exif_gps_dms' };
     }
   }
 
-  const nestedSources = [meta.GPS, meta.GPSInfo, meta.Location, meta.Composite];
+  // 3) Composite-style decimal fields
+  const Composite = meta.Composite || meta.composite || {};
+  lat = toNumber(Composite.GPSLatitude);
+  lon = toNumber(Composite.GPSLongitude);
+  if (lat !== null && lon !== null) {
+    log('using Composite fields', lat, lon);
+    return { lat, lon, source: 'composite' };
+  }
+
+  // 4) Location object with lat/lon or lat/lng
+  const Loc = meta.Location || meta.location || {};
+  lat = toNumber(Loc.lat ?? Loc.latitude);
+  lon = toNumber(Loc.lon ?? Loc.lng ?? Loc.longitude);
+  if (lat !== null && lon !== null) {
+    log('using Location.*', lat, lon);
+    return { lat, lon, source: 'location' };
+  }
+
+  // 5) Signed decimal aliases
+  const latSigned = toNumber(GPS.Latitude || meta.Latitude);
+  const lonSigned = toNumber(GPS.Longitude || meta.Longitude);
+  if (latSigned !== null && lonSigned !== null) {
+    log('using signed Latitude/Longitude', latSigned, lonSigned);
+    return { lat: latSigned, lon: lonSigned, source: 'signed_decimal' };
+  }
+
+  // 6) Recurse into nested sources to catch odd shapes
+  const nestedSources = [meta.GPS, meta.GPSInfo, meta.Location, meta.Composite, meta.composite, meta.location];
   for (const source of nestedSources) {
     if (source && typeof source === 'object' && source !== meta) {
       const nested = extractLatLon(source);
-      if (nested) return nested;
+      if (nested && nested.lat !== null && nested.lon !== null) return nested;
     }
   }
 
-  return null;
+  log('no GPS match for keys:', Object.keys(meta).slice(0, 30));
+  return { lat: null, lon: null, source: 'none' };
 }
 
 function normalizeExifDate(value) {
@@ -259,7 +302,7 @@ function formatFacingDirectionKeyword(directionDegrees) {
     { angle: 202.5, label: 'South-Southwest' },
     { angle: 225, label: 'Southwest' },
     { angle: 247.5, label: 'West-Southwest' },
-    { angle: 270, label: 'West' },
+    { angle: 270, 'label': 'West' },
     { angle: 292.5, label: 'West-Northwest' },
     { angle: 315, label: 'Northwest' },
     { angle: 337.5, label: 'North-Northwest' },
@@ -350,9 +393,6 @@ function mergeKeywordStrings(existing, additions) {
 
 
 
-
-
-
 const { app: aiGraph } = require('./langgraph/graph');
 
 
@@ -413,12 +453,30 @@ async function processPhotoAI({ fileBuffer, filename, metadata, gps, device }, m
     meta = metadata;
   }
 
+  // >>> ADDED: normalize metadata fields the LLM expects (dateTime, cameraModel)
+  const captureDate = getBestCaptureDate(meta);
+  const deviceModel =
+    (meta.Make && meta.Model) ? `${meta.Make} ${meta.Model}` :
+    (meta.Model || meta.Make || null);
+
+  const normalizedForLLM = {
+    ...meta,
+    dateTime: captureDate ? captureDate.toISOString() : null,
+    cameraModel: deviceModel || null,
+  };
+  try {
+    logger.info('[Metadata Debug] Graph metadata payload preview (first 2KB):\n' + JSON.stringify(normalizedForLLM, null, 2).slice(0, 2048));
+  } catch (previewErr) {
+    logger.warn('[Metadata Debug] Failed to stringify graph metadata payload:', previewErr.message || previewErr);
+  }
+  // <<< ADDED
+
   const initialState = {
     filename,
     fileBuffer,
     imageBase64,
     imageMime,
-    metadata: meta,
+    metadata: normalizedForLLM,   // <<< ADDED (was: meta)
     gpsString: gps || null,
     device: device || null,
     modelOverrides: modelOverrides || {},
@@ -428,6 +486,12 @@ async function processPhotoAI({ fileBuffer, filename, metadata, gps, device }, m
     finalResult: null,
     error: null,
   };
+
+  // >>> ADDED: helpful diagnostics to verify what the model receives
+  logger.debug('[Graph] metadata sent to LLM (keys):', Object.keys(normalizedForLLM));
+  logger.debug('[Graph] dateTime sent:', normalizedForLLM.dateTime, 'cameraModel:', normalizedForLLM.cameraModel);
+  logger.info('[GPS] pre-graph gpsString = %s', initialState.gpsString);
+  // <<< ADDED
 
   logger.info(`[Graph] Invoking graph for ${filename}...`);
   const finalState = await aiGraph.invoke(initialState);
@@ -483,13 +547,37 @@ async function updatePhotoAIMetadata(db, photoRow, storagePath, modelOverrides =
       storagePath,
       modelOverrideKeys: Object.keys(modelOverrides || {})
     });
-  const meta = JSON.parse(photoRow.metadata || '{}');
-  logger.debug('[AI Debug] [updatePhotoAIMetadata] Parsed metadata keys', Object.keys(meta));
+    const meta = JSON.parse(photoRow.metadata || '{}');
+    logger.debug('[AI Debug] [updatePhotoAIMetadata] Parsed metadata keys', Object.keys(meta));
+    try {
+      const rawMetaPreview = JSON.stringify(meta, null, 2);
+      logger.info('[Metadata Debug] DB metadata snapshot (first 2KB):\n' + rawMetaPreview.slice(0, 2048));
+    } catch (stringifyErr) {
+      logger.warn('[Metadata Debug] Failed to stringify DB metadata:', stringifyErr.message || stringifyErr);
+    }
 
     const coords = extractLatLon(meta);
     let gps = '';
     if (coords && typeof coords.lat === 'number' && typeof coords.lon === 'number') {
       gps = `${coords.lat.toFixed(6)},${coords.lon.toFixed(6)}`;
+      if (process.env.DEBUG_GPS === '1') {
+        logger.info('[GPS] set gpsString from %s → %s', coords.source, gps);
+      }
+    } else {
+      if (process.env.DEBUG_GPS === '1') {
+        logger.info('[GPS] no coords extracted (source=%s)', coords && coords.source);
+      }
+    }
+    if (process.env.DEBUG_GPS === '1') {
+      logger.info('[GPS] DB metadata GPS fields', {
+        latitude: meta.latitude,
+        longitude: meta.longitude,
+        GPSLatitude: meta.GPSLatitude,
+        GPSLongitude: meta.GPSLongitude,
+        GPSLatitudeRef: meta.GPSLatitudeRef,
+        GPSLongitudeRef: meta.GPSLongitudeRef,
+        nestedKeys: Object.keys(meta.GPS || meta.GPSInfo || {}).slice(0, 20)
+      });
     }
     
     const device = meta.Make && meta.Model ? `${meta.Make} ${meta.Model}` : '';
@@ -510,7 +598,7 @@ async function updatePhotoAIMetadata(db, photoRow, storagePath, modelOverrides =
     let ai;
     try {
       // Download file from Supabase Storage
-  logger.debug('[AI Debug] [updatePhotoAIMetadata] Downloading file from storage:', storagePath);
+      logger.debug('[AI Debug] [updatePhotoAIMetadata] Downloading file from storage:', storagePath);
       const { data: fileData, error } = await supabase.storage
         .from('photos')
         .download(storagePath);
@@ -518,22 +606,49 @@ async function updatePhotoAIMetadata(db, photoRow, storagePath, modelOverrides =
         logger.error(`[AI Debug] [updatePhotoAIMetadata] Failed to download file from storage: ${error.message}`);
         throw new Error(`Failed to download file from storage: ${error.message}`);
       }
-  logger.debug('[AI Debug] [updatePhotoAIMetadata] File downloaded. Size:', fileData.size);
+      logger.debug('[AI Debug] [updatePhotoAIMetadata] File downloaded. Size:', fileData.size);
       // Enforce OOM safeguard: check file size before processing
       if (typeof fileData.size === 'number' && fileData.size > MAX_AI_FILE_SIZE) {
         logger.error(`[AI OOM] File too large for AI processing: ${photoRow.filename} (${fileData.size} bytes)`);
         throw new Error(`File too large for AI processing: ${fileData.size} bytes (limit: ${MAX_AI_FILE_SIZE})`);
       }
-      const fileBuffer = await fileData.arrayBuffer();
-      logger.info('[AI Debug] [updatePhotoAIMetadata] File buffer loaded. Buffer length:', fileBuffer.byteLength);
+      const arrayBuffer = await fileData.arrayBuffer();
+      const fileBuffer = Buffer.from(arrayBuffer);
+      logger.info('[AI Debug] [updatePhotoAIMetadata] File buffer loaded. Buffer length:', fileBuffer.length);
+
+      let freshMeta = null;
+      try {
+        freshMeta = await exifr.parse(fileBuffer, { gps: true, ifd0: true, exif: true, xmp: true, icc: true, tiff: true });
+        logger.info('[Metadata Debug] Fresh EXIF metadata keys (first 30):', Object.keys(freshMeta || {}).slice(0, 30));
+        if (freshMeta && (freshMeta.GPSLatitude || freshMeta.latitude)) {
+          logger.info('[Metadata Debug] Fresh EXIF GPS fields', {
+            GPSLatitude: freshMeta.GPSLatitude,
+            GPSLongitude: freshMeta.GPSLongitude,
+            GPSLatitudeRef: freshMeta.GPSLatitudeRef,
+            GPSLongitudeRef: freshMeta.GPSLongitudeRef,
+            latitude: freshMeta.latitude,
+            longitude: freshMeta.longitude
+          });
+        } else {
+          logger.info('[Metadata Debug] Fresh EXIF GPS fields missing or empty');
+        }
+      } catch (exifrErr) {
+        logger.warn('[Metadata Debug] Failed to parse EXIF from storage file:', exifrErr.message || exifrErr);
+      }
+
+      if (process.env.DEBUG_GPS === '1' && freshMeta) {
+        const freshCoords = extractLatLon(freshMeta);
+        logger.info('[GPS] Fresh EXIF extractLatLon result', freshCoords);
+      }
+
       ai = await processPhotoAI({ 
-        fileBuffer: Buffer.from(fileBuffer), 
+        fileBuffer,
         filename: photoRow.filename, 
         metadata: meta, 
         gps, 
         device 
       }, modelOverrides);
-  logger.debug('[AI Debug] [updatePhotoAIMetadata] processPhotoAI result keys', ai ? Object.keys(ai) : null);
+      logger.debug('[AI Debug] [updatePhotoAIMetadata] processPhotoAI result keys', ai ? Object.keys(ai) : null);
     } catch (error) {
       logger.error(`AI processing failed for ${photoRow.filename} (attempt ${retryCount + 1}):`, error.message || error);
       if (error && error.stack) {
@@ -599,7 +714,7 @@ async function updatePhotoAIMetadata(db, photoRow, storagePath, modelOverrides =
         ai_retry_count: 0,
         poi_analysis: JSON.stringify(extraData || null)
       };
-  logger.debug('[AI Debug] [updatePhotoAIMetadata] Writing AI metadata to DB (transaction).');
+      logger.debug('[AI Debug] [updatePhotoAIMetadata] Writing AI metadata to DB (transaction).');
       await trx('photos').where({ id: photoRow.id }).update(dbUpdates);
 
       // If collectibleInsights exists, insert into collectibles table
@@ -611,7 +726,7 @@ async function updatePhotoAIMetadata(db, photoRow, storagePath, modelOverrides =
           user_notes: ''
         };
         await trx('collectibles').insert(collectibleRow);
-  logger.debug('[AI Debug] [updatePhotoAIMetadata] Inserted collectible for photo', photoRow.id);
+        logger.debug('[AI Debug] [updatePhotoAIMetadata] Inserted collectible for photo', photoRow.id);
       }
     });
 
@@ -685,4 +800,5 @@ module.exports = {
   isAIFailed,
   processAllUnprocessedInprogress,
   openai, // Expose native OpenAI client for downstream consumers
+  extractLatLon,
 };
