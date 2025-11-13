@@ -1,3 +1,29 @@
+# [2025-11-13] Intermittent Supabase/Postgres Connection Error on /photos
+
+**Symptoms:**
+- First one or two requests to `/photos?state=inprogress` failed with:
+  - `Connection Error: Connection ended unexpectedly`
+  - `Error in /photos endpoint: Error: ... Connection terminated unexpectedly`
+- Later requests would succeed, suggesting intermittent DB connectivity or inconsistent SSL/connection config.
+
+**Root Cause (Suspected):**
+- `server/sanity-check-db.js` and all direct Postgres connection points must use `ssl: { rejectUnauthorized: false }` for Supabase.
+- The main app and most scripts were correct, but `sanity-check-db.js` was missing this SSL config.
+- Inconsistent or missing SSL config can cause connection failures, especially on first attempts.
+
+**Fix:**
+- Audited all DB/Supabase connection points (Knex, pg.Client, Supabase client).
+- Added `ssl: { rejectUnauthorized: false }` to `sanity-check-db.js`.
+- Improved error logging in `/photos` endpoint to include request id, query, and error details for future debugging.
+- Verified all diagnostic scripts (`sanity-check-db.js`, `test-db-connection.js`) now pass and use consistent SSL config.
+
+**Prevention:**
+- Always set `ssl: { rejectUnauthorized: false }` for all direct Postgres/Supabase connections.
+- Centralize connection config and audit scripts for consistency after any DB/infra changes.
+- Use improved endpoint logging to quickly diagnose future intermittent or transient DB errors.
+
+**Status:**
+- Fix deployed and tested. Issue is periodic, so monitoring is ongoing. If error recurs, logs will now provide more actionable context.
 # Problem Log
 
 ---

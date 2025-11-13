@@ -7,7 +7,7 @@ if (!url) {
   process.exit(2);
 }
 
-const client = new Client({ connectionString: url });
+const client = new Client({ connectionString: url, ssl: { rejectUnauthorized: false } });
 (async () => {
   try {
     await client.connect();
