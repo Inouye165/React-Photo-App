@@ -1,5 +1,5 @@
 const express = require('express');
-const { processAllUnprocessedInprogress } = require('../ai/service');
+const { processAllUnprocessedInprogress, extractLatLon } = require('../ai/service');
 const { generateThumbnail } = require('../media/image');
 const supabase = require('../lib/supabaseClient');
 const logger = require('../logger');
@@ -27,6 +27,31 @@ module.exports = function createDebugRouter({ db }) {
     } catch (err) {
       logger.error('Debug inprogress error:', err);
       res.status(500).json({ error: err.message });
+    }
+  });
+
+  // Dev endpoint: re-run GPS extraction on a DB row and return coordinates
+  // Enabled only when debug routes are mounted (server checks ALLOW_DEV_DEBUG)
+  router.get('/dev/reextract-gps', async (req, res) => {
+    try {
+      const id = Number(req.query.id);
+      if (!id) return res.status(400).json({ error: 'id is required' });
+      const row = await db('photos').where({ id }).first();
+      if (!row) return res.status(404).json({ error: 'not found' });
+      const meta = (typeof row.metadata === 'string') ? JSON.parse(row.metadata || '{}') : (row.metadata || {});
+      const coords = extractLatLon(meta);
+      return res.json({
+        id: row.id,
+        filename: row.filename,
+        source: coords && coords.source,
+        lat: coords && coords.lat,
+        lon: coords && coords.lon,
+        gpsString: (coords && coords.lat != null && coords.lon != null) ? `${coords.lat.toFixed(6)},${coords.lon.toFixed(6)}` : null,
+        metaKeys: Object.keys(meta || {})
+      });
+    } catch (e) {
+      logger.error('[dev/reextract-gps] error', e);
+      return res.status(500).json({ error: String(e) });
     }
   });
 

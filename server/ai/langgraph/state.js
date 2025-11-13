@@ -39,6 +39,14 @@ const AppState = z.object({
   // --- Utility ---
   // To hold error messages if a step fails
   error: z.string().nullable(),
+    sceneDecision: z
+      .object({
+        chosenLabel: z.string(),
+        rationale: z.string(),
+        confidence: z.union([z.literal('high'), z.literal('medium'), z.literal('low')]),
+      })
+      .nullable()
+      .optional(),
 });
 
 // We must export the type for use in the graph builder

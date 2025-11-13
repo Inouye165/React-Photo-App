@@ -14,6 +14,25 @@ const {
   collectibleAgent,
   COLLECTIBLE_SYSTEM_PROMPT,
 } = require('../langchain/agents');
+const { reverseGeocode, nearbyPlaces } = require('../poi/googlePlaces');
+
+// --- Debug helpers ---
+function accumulateDebugUsage(debugUsage = [], entry = {}) {
+  const next = Array.isArray(debugUsage) ? [...debugUsage] : [];
+  next.push(entry);
+  return next;
+}
+
+function extractUsageFromResponse(response) {
+  try {
+    const usage = response?.usage || null;
+    const model = response?.model || response?.choices?.[0]?.model || null;
+    return { usage, model };
+  } catch {
+    return { usage: null, model: null };
+  }
+}
+
 
 // --- Node 1: classify_image (This node is correct) ---
 async function classify_image(state) {
@@ -85,6 +104,9 @@ async function generate_metadata(state) {
       `\nContext:\n` +
       `classification: ${state.classification}\n` +
       `metadata: ${JSON.stringify(state.metadata)}\n` +
+      `poiAnalysis: ${JSON.stringify(state.poiAnalysis)}\n` +
+      `sceneDecision: ${JSON.stringify(state.sceneDecision)}\n` +
+      `Note: If 'sceneDecision' is present and its confidence is "high" or "medium", prefer using sceneDecision.chosenLabel as the place name or location mention in caption and description. If sceneDecision is absent or confidence is low, do not invent specific POI names; instead use descriptive alternatives.\n` +
       `gps: ${state.gpsString}\n` +
       `device: ${state.device}\n` +
       `\nReturn ONLY a JSON object: {"caption": "...", "description": "...", "keywords": "..."}`;
@@ -200,6 +222,157 @@ async function handle_collectible(state) {
   }
 }
 
+// --- Node: infer_poi (new) ---
+async function infer_poi(state) {
+  let debugUsage = state.debugUsage;
+  try {
+    if (!state.gpsString) {
+      return { ...state, poiAnalysis: null, debugUsage };
+    }
+    const [latStr, lonStr] = String(state.gpsString || '').split(',').map((s) => s && s.trim());
+    const lat = parseFloat(latStr);
+    const lon = parseFloat(lonStr);
+    if (Number.isNaN(lat) || Number.isNaN(lon)) {
+      return { ...state, poiAnalysis: null, debugUsage };
+    }
+
+    const addrRes = await reverseGeocode(lat, lon);
+    const nearby = await nearbyPlaces(lat, lon, 500);
+
+    const priority = ['attraction', 'park', 'trail', 'hotel', 'restaurant', 'store'];
+    let best = null;
+    for (const p of priority) {
+      const found = nearby.find((x) => x.category === p);
+      if (found) { best = found; break; }
+    }
+    if (!best && nearby.length) best = nearby[0];
+
+    const poiAnalysis = {
+      address: addrRes?.address || null,
+      bestMatchPOI: best || null,
+      bestMatchCategory: best?.category || null,
+      poiConfidence: best?.confidence || 'low',
+      nearbyPOIs: nearby,
+    };
+
+    debugUsage = accumulateDebugUsage(debugUsage, {
+      step: 'infer_poi',
+      model: null,
+      usage: null,
+      durationMs: 0,
+      notes: 'Inferred POI from Google Places',
+      request: { systemPrompt: null, userPrompt: `Reverse geocode + nearby search at ${lat},${lon}` },
+      response: poiAnalysis,
+      prompt: `Reverse geocode + nearby search at ${lat},${lon}`,
+    });
+
+    return { ...state, poiAnalysis, debugUsage };
+  } catch (err) {
+    logger.warn('[LangGraph] infer_poi failed', err && err.message ? err.message : err);
+    return { ...state, poiAnalysis: null, debugUsage };
+  }
+}
+
+// --- Node: decide_scene_label (new) ---
+async function decide_scene_label(state) {
+  let debugUsage = state.debugUsage;
+  try {
+    const poi = state.poiAnalysis && state.poiAnalysis.bestMatchPOI ? state.poiAnalysis.bestMatchPOI : null;
+
+    const systemPrompt = 'You are a short-image-tagger assistant. Respond with JSON object {"tags": [..]}.';
+    const userPrompt = 'Provide a short list of descriptive tags (single words) about the image content, like ["geyser","steam","hotel","trail","flower","closeup"]. Return JSON only.';
+
+    const userContent = [
+      { type: 'text', text: userPrompt },
+      { type: 'image_url', image_url: { url: `data:${state.imageMime};base64,${state.imageBase64}`, detail: 'low' } },
+    ];
+
+    const configuredModel = state.modelOverrides?.defaultModel || 'gpt-4o';
+    let tags = [];
+    try {
+      const response = await openai.chat.completions.create({
+        model: configuredModel,
+        messages: [ { role: 'system', content: systemPrompt }, { role: 'user', content: userContent } ],
+        max_tokens: 128,
+        response_format: { type: 'json_object' },
+      });
+
+      const raw = response?.choices?.[0]?.message?.content || '{}';
+      try {
+        const parsed = JSON.parse(raw);
+        tags = Array.isArray(parsed.tags) ? parsed.tags.map((t) => String(t).toLowerCase()) : [];
+      } catch {
+        tags = [];
+      }
+      const durationMs = 0;
+      const { usage, model } = extractUsageFromResponse(response);
+      debugUsage = accumulateDebugUsage(debugUsage, {
+        step: 'decide_scene_label_tagging',
+        model: model || configuredModel,
+        usage,
+        durationMs,
+        notes: 'Image tag extraction',
+        request: { systemPrompt, userPrompt },
+        response: raw,
+        prompt: userPrompt,
+      });
+    } catch {
+      tags = [];
+    }
+
+    const chosenLabelFallback = (state.poiAnalysis && state.poiAnalysis.address) || null;
+    let chosenLabel = null;
+    let rationale = '';
+    let confidence = 'low';
+
+    const nameMatchesOldFaithful = poi && /Old Faithful/i.test(poi.name || '');
+    const hasGeyserTag = tags.some((t) => /geyser|steam|plume|vent|water/.test(t));
+    if (nameMatchesOldFaithful && hasGeyserTag && poi.distanceMeters <= 120) {
+      chosenLabel = poi.name;
+      rationale = 'POI name matched and image tags indicate geyser; close distance';
+      confidence = 'high';
+    } else if (poi && tags.some((t) => /hotel|lodge|inn|building|roof|timber/.test(t)) && poi.category === 'hotel' && poi.distanceMeters <= 200) {
+      chosenLabel = poi.name;
+      rationale = 'Tags indicate lodging and nearby hotel matches';
+      confidence = 'medium';
+    } else if (nameMatchesOldFaithful && tags.some((t) => /flower|plant|macro|closeup/.test(t)) && poi.distanceMeters <= 300) {
+      chosenLabel = `${poi.name} area, Yellowstone National Park`;
+      rationale = 'Macro/flower shot near Old Faithful';
+      confidence = 'medium';
+    } else if (tags.some((t) => /trail|boardwalk|path|walkway/.test(t)) && poi && ['trail','attraction','park'].includes(poi.category)) {
+      chosenLabel = poi.name || chosenLabelFallback;
+      rationale = 'Trail/boardwalk tags and nearby POI';
+      confidence = 'medium';
+    } else if (poi) {
+      chosenLabel = poi.name || chosenLabelFallback;
+      rationale = 'Falling back to nearest POI name or address';
+      confidence = poi.confidence || 'low';
+    } else if (chosenLabelFallback) {
+      chosenLabel = chosenLabelFallback;
+      rationale = 'No POI; using reverse geocode address';
+      confidence = 'low';
+    }
+
+    const sceneDecision = chosenLabel ? { chosenLabel, rationale, confidence } : null;
+
+    debugUsage = accumulateDebugUsage(debugUsage, {
+      step: 'decide_scene_label',
+      model: null,
+      usage: null,
+      durationMs: 0,
+      notes: 'Scene label decision based on POI and tags',
+      request: { systemPrompt: null, userPrompt: `Tags: ${tags.join(',')}` },
+      response: sceneDecision,
+      prompt: `Tags: ${tags.join(',')}`,
+    });
+
+    return { ...state, sceneDecision, debugUsage };
+  } catch (err) {
+    logger.warn('[LangGraph] decide_scene_label failed', err && err.message ? err.message : err);
+    return { ...state, sceneDecision: null, debugUsage };
+  }
+}
+
 // --- Router: Decides which node to call after classification ---
 function route_classification(state) {
   if (state.error) {
@@ -210,11 +383,15 @@ function route_classification(state) {
     return END;
   }
 
-  const classification = state.classification?.toLowerCase();
+  const classification = String(state.classification || '').toLowerCase().trim();
   logger.info(`[LangGraph] Router: Routing based on "${classification}"`);
 
   if (classification === 'collectables') {
     return 'handle_collectible';
+  }
+
+  if (classification === 'scenery' || classification.includes('scenery')) {
+    return 'infer_poi';
   }
 
   // All other classifications go to the default metadata generator
@@ -231,6 +408,8 @@ const workflow = new StateGraph({
 workflow.addNode('classify_image', classify_image);
 workflow.addNode('generate_metadata', generate_metadata);
 workflow.addNode('handle_collectible', handle_collectible);
+workflow.addNode('infer_poi', infer_poi);
+workflow.addNode('decide_scene_label', decide_scene_label);
 
 // 2. Set the entry point
 workflow.setEntryPoint('classify_image');
@@ -242,6 +421,7 @@ workflow.addConditionalEdges(
   {
     // A map of the function's return values to the next node
     generate_metadata: 'generate_metadata',
+    infer_poi: 'infer_poi',
     handle_collectible: 'handle_collectible',
     __end__: END, // Allow the router to end the graph if it returns END
   }
@@ -250,6 +430,8 @@ workflow.addConditionalEdges(
 // 4. Add the final edges
 workflow.addEdge('generate_metadata', END);
 workflow.addEdge('handle_collectible', END);
+workflow.addEdge('infer_poi', 'decide_scene_label');
+workflow.addEdge('decide_scene_label', 'generate_metadata');
 
 // 5. Compile the app
 const app = workflow.compile();

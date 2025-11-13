@@ -28,6 +28,11 @@ console.log(`[server]  - SUPABASE_ANON_KEY = ${process.env.SUPABASE_ANON_KEY ? '
 console.log(`[server]  - Derived database selection: ${usingPostgres ? 'Postgres (Supabase) — will use production knex config' : 'sqlite fallback (dev) — sqlite fallback would be used if enabled'}`);
 console.log('[server] End diagnostics');
 
+// Warn if Google Places key missing — POI lookups will be disabled
+if (!process.env.GOOGLE_PLACES_API_KEY) {
+  console.warn('[POI] GOOGLE_PLACES_API_KEY missing; POI lookups disabled');
+}
+
 
 // Validate required environment variables
 
@@ -112,12 +117,13 @@ module.exports = app;
   const { getAllowedOrigins } = require('./config/allowedOrigins');
   const allowedOrigins = getAllowedOrigins();
   const isDev = process.env.NODE_ENV !== 'production';
+  const debugCors = process.env.DEBUG_CORS === 'true';
   app.use(cors({
     origin: function(origin, callback) {
-      console.log('[CORS DEBUG] Incoming Origin:', origin);
+      if (debugCors) console.debug('[CORS DEBUG] Incoming Origin:', origin);
       // Allow requests with no origin (e.g., server-to-server) or explicit allowed origins
       if (!origin || allowedOrigins.includes(origin)) {
-        console.log('[CORS DEBUG] Allowing Origin:', origin);
+        if (debugCors) console.debug('[CORS DEBUG] Allowing Origin:', origin);
         return callback(null, origin);
       }
 
@@ -126,12 +132,11 @@ module.exports = app;
       if (isDev) {
         const devAllow = /^https?:\/\/(127\.0\.0\.1|localhost|10\.(?:\d+\.){2}\d+|192\.168\.(?:\d+\.)\d+)(:\d+)?$/;
         if (origin && devAllow.test(origin)) {
-          console.log('[CORS DEBUG] Dev allowing Origin:', origin);
+          if (debugCors) console.debug('[CORS DEBUG] Dev allowing Origin:', origin);
           return callback(null, origin);
         }
       }
-
-      console.log('[CORS DEBUG] Rejecting Origin:', origin);
+      if (debugCors) console.debug('[CORS DEBUG] Rejecting Origin:', origin);
       // When origin not allowed, fail the CORS check. Browsers will block the request.
       return callback(new Error('Not allowed by CORS'));
     },

@@ -1,0 +1,142 @@
+const logger = require('../../logger');
+
+const ensureFetch = () => {
+  if (typeof globalThis.fetch === 'function') return globalThis.fetch.bind(globalThis);
+  return async (...args) => {
+    const { default: fetchPolyfill } = await import('node-fetch');
+    return fetchPolyfill(...args);
+  };
+};
+
+const fetchFn = ensureFetch();
+
+const API_KEY = process.env.GOOGLE_PLACES_API_KEY || process.env.GOOGLE_API_KEY;
+let warned = false;
+if (!API_KEY && !warned) {
+  logger.warn('[POI] GOOGLE_PLACES_API_KEY missing; skipping POI lookups');
+  warned = true;
+}
+
+// Simple in-memory TTL cache
+const cache = new Map();
+function cacheSet(key, value, ttlMs = 24 * 60 * 60 * 1000) {
+  const expires = Date.now() + ttlMs;
+  cache.set(key, { value, expires });
+}
+function cacheGet(key) {
+  const entry = cache.get(key);
+  if (!entry) return null;
+  if (Date.now() > entry.expires) {
+    cache.delete(key);
+    return null;
+  }
+  return entry.value;
+}
+
+function toKey(lat, lon, radius) {
+  const lat4 = Number(lat).toFixed(4);
+  const lon4 = Number(lon).toFixed(4);
+  return `${lat4}:${lon4}:${radius}`;
+}
+
+function haversineDistanceMeters(lat1, lon1, lat2, lon2) {
+  const toRad = (v) => (v * Math.PI) / 180;
+  const R = 6371000; // meters
+  const dLat = toRad(lat2 - lat1);
+  const dLon = toRad(lon2 - lon1);
+  const a = Math.sin(dLat / 2) ** 2 + Math.cos(toRad(lat1)) * Math.cos(toRad(lat2)) * Math.sin(dLon / 2) ** 2;
+  const c = 2 * Math.atan2(Math.sqrt(a), Math.sqrt(1 - a));
+  return R * c;
+}
+
+function normalizeCategory(types = []) {
+  const t0 = (types && types.length && types[0]) || '';
+  const lowered = (t0 || '').toLowerCase();
+  if (lowered.includes('park')) return 'park';
+  if (['tourist_attraction', 'natural_feature'].some((x) => types.includes(x))) return 'attraction';
+  if (lowered.includes('lodging')) return 'hotel';
+  if (['restaurant', 'cafe', 'food', 'bar', 'fast_food'].some((x) => types.includes(x))) return 'restaurant';
+  if (['store', 'supermarket', 'convenience_store'].some((x) => types.includes(x))) return 'store';
+  if (/trail|trailhead/i.test(t0)) return 'trail';
+  return t0 || 'unknown';
+}
+
+async function reverseGeocode(lat, lon) {
+  if (!API_KEY) return { address: null };
+  const cacheKey = `regeocode:${toKey(lat, lon, 0)}`;
+  const cached = cacheGet(cacheKey);
+  if (cached) return cached;
+
+  const url = `https://maps.googleapis.com/maps/api/geocode/json?latlng=${encodeURIComponent(lat)},${encodeURIComponent(lon)}&key=${API_KEY}`;
+  try {
+    const res = await fetchFn(url, { method: 'GET' });
+    if (!res.ok) {
+      const text = await res.text();
+      logger.warn('[POI] reverseGeocode failed', { status: res.status, body: text });
+      return { address: null };
+    }
+    const json = await res.json();
+    const addr = Array.isArray(json.results) && json.results[0] ? json.results[0].formatted_address : null;
+    const out = { address: addr };
+    cacheSet(cacheKey, out);
+    return out;
+  } catch (err) {
+    logger.warn('[POI] reverseGeocode exception', err && err.message ? err.message : err);
+    return { address: null };
+  }
+}
+
+async function nearbyPlaces(lat, lon, radius = 500) {
+  if (!API_KEY) return [];
+  const cacheKey = toKey(lat, lon, radius);
+  const cached = cacheGet(cacheKey);
+  if (cached) return cached;
+
+  const params = new URLSearchParams({
+    location: `${lat},${lon}`,
+    radius: String(radius),
+    key: API_KEY,
+  });
+  const url = `https://maps.googleapis.com/maps/api/place/nearbysearch/json?${params.toString()}`;
+  try {
+    const res = await fetchFn(url, { method: 'GET' });
+    if (!res.ok) {
+      const txt = await res.text();
+      logger.warn('[POI] nearbyPlaces failed', { status: res.status, body: txt });
+      return [];
+    }
+    const json = await res.json();
+    const results = Array.isArray(json.results) ? json.results : [];
+    const pois = results.map((r) => {
+      const placeLat = r.geometry?.location?.lat;
+      const placeLon = r.geometry?.location?.lng;
+      const distance = (placeLat && placeLon) ? haversineDistanceMeters(lat, lon, placeLat, placeLon) : undefined;
+      const category = normalizeCategory(r.types || []);
+      const name = r.name || '';
+      const address = r.vicinity || r.formatted_address || null;
+      let confidence = 'low';
+      if (distance !== undefined) {
+        if (distance <= 120) confidence = 'high';
+        else if (distance <= 300) confidence = 'medium';
+      }
+      return {
+        id: r.place_id || `${placeLat}:${placeLon}:${name}`,
+        name,
+        category,
+        lat: placeLat,
+        lon: placeLon,
+        distanceMeters: distance,
+        address,
+        source: 'google',
+        confidence,
+      };
+    });
+    cacheSet(cacheKey, pois);
+    return pois;
+  } catch (err) {
+    logger.warn('[POI] nearbyPlaces exception', err && err.message ? err.message : err);
+    return [];
+  }
+}
+
+module.exports = { reverseGeocode, nearbyPlaces };
