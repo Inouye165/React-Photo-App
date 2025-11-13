@@ -106,17 +106,16 @@ module.exports = function createPhotosRouter({ db }) {
   // Router-root: defined here as '/' so mounting at '/photos' results in
   // final path '/photos'.
   router.get('/', authenticateToken, async (req, res) => {
+    // Add a simple correlation/request id for tracing
+    const reqId = Math.random().toString(36).slice(2, 10);
     try {
       const state = req.query.state;
-  let query = db('photos').select('id', 'filename', 'state', 'metadata', 'hash', 'file_size', 'caption', 'description', 'keywords', 'text_style', 'edited_filename', 'storage_path', 'ai_model_history');
-      
+      let query = db('photos').select('id', 'filename', 'state', 'metadata', 'hash', 'file_size', 'caption', 'description', 'keywords', 'text_style', 'edited_filename', 'storage_path', 'ai_model_history');
       if (state === 'working' || state === 'inprogress' || state === 'finished') {
         query = query.where({ state });
       }
-      
       const rows = await query;
-
-  // Generate public URLs for each photo using Supabase Storage
+      // Generate public URLs for each photo using Supabase Storage
       const photosWithUrls = await Promise.all(rows.map(async (row) => {
         let textStyle = null;
         if (row.text_style) {
@@ -126,9 +125,7 @@ module.exports = function createPhotosRouter({ db }) {
             logger.warn('Failed to parse text_style for photo', row.id, parseErr.message);
           }
         }
-
-  // The frontend will receive fully signed URLs below.
-
+        // The frontend will receive fully signed URLs below.
         // Use simple relative paths for images and thumbnails. Image access
         // is protected by httpOnly cookie-based authentication on /display/*.
         let thumbnailUrl = null;
@@ -137,7 +134,6 @@ module.exports = function createPhotosRouter({ db }) {
           thumbnailUrl = `/display/thumbnails/${row.hash}.jpg`;
         }
         photoUrl = `/display/${row.state}/${row.filename}`;
-
         let parsedHistory = null;
         try { parsedHistory = row.ai_model_history ? JSON.parse(row.ai_model_history) : null; } catch { parsedHistory = null; }
         return {
@@ -158,13 +154,23 @@ module.exports = function createPhotosRouter({ db }) {
           aiModelHistory: parsedHistory
         };
       }));
-
       // Prevent caching so frontend always gets fresh filtered results
       res.set('Cache-Control', 'no-store');
       res.json({ success: true, photos: photosWithUrls });
     } catch (err) {
-      logger.error('Error in /photos endpoint:', err);
-      res.status(500).json({ success: false, error: err.message });
+      // Improved error logging for diagnostics
+      logger.error('[photos] DB error', {
+        reqId,
+        endpoint: '/photos',
+        query: req.query,
+        state: req.query.state,
+        error: {
+          message: err && err.message,
+          code: err && err.code,
+          stack: err && err.stack && err.stack.split('\n').slice(0, 3).join(' | ')
+        }
+      });
+      res.status(500).json({ success: false, error: err.message, reqId });
     }
   });
 
