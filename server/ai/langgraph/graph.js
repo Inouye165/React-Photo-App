@@ -33,6 +33,216 @@ function extractUsageFromResponse(response) {
   }
 }
 
+function needPoi() {
+  return true;
+}
+
+function parseGpsString(gpsString) {
+  if (!gpsString) return null;
+  const [latStr, lonStr] = String(gpsString)
+    .split(',')
+    .map((s) => (s || '').trim())
+    .filter(Boolean);
+  if (!latStr || !lonStr) return null;
+  const lat = Number(latStr);
+  const lon = Number(lonStr);
+  if (!Number.isFinite(lat) || !Number.isFinite(lon)) return null;
+  return { lat, lon };
+}
+
+function parseNumber(value) {
+  if (typeof value === 'number' && Number.isFinite(value)) return value;
+  const num = Number(value);
+  return Number.isFinite(num) ? num : null;
+}
+
+function dmsToDecimal(values, ref) {
+  if (!Array.isArray(values) || values.length < 3) return null;
+  const [deg, min, sec] = values.map(parseNumber);
+  if (!Number.isFinite(deg) || !Number.isFinite(min) || !Number.isFinite(sec)) return null;
+  let decimal = deg + min / 60 + sec / 3600;
+  if (typeof ref === 'string' && ['S', 'W'].includes(ref.toUpperCase())) {
+    decimal *= -1;
+  }
+  return decimal;
+}
+
+function resolveGpsFromMetadata(meta = {}) {
+  const candidatePairs = [
+    { lat: meta.latitude, lon: meta.longitude },
+    { lat: meta.lat, lon: meta.lon },
+    { lat: meta.Latitude, lon: meta.Longitude },
+    { lat: meta?.location?.lat, lon: meta?.location?.lon },
+    { lat: meta?.GPS?.latitude, lon: meta?.GPS?.longitude },
+  ];
+  for (const pair of candidatePairs) {
+    if (pair && pair.lat != null && pair.lon != null) {
+      const lat = parseNumber(pair.lat);
+      const lon = parseNumber(pair.lon);
+      if (lat != null && lon != null) return { lat, lon };
+    }
+  }
+
+  if (Array.isArray(meta.GPSLatitude) && Array.isArray(meta.GPSLongitude)) {
+    const lat = dmsToDecimal(meta.GPSLatitude, meta.GPSLatitudeRef);
+    const lon = dmsToDecimal(meta.GPSLongitude, meta.GPSLongitudeRef);
+    if (lat != null && lon != null) return { lat, lon };
+  }
+  return null;
+}
+
+function parseGpsCoordinates(state) {
+  return parseGpsString(state.gpsString) || resolveGpsFromMetadata(state.metadata || {});
+}
+
+function extractHeading(meta = {}) {
+  const candidates = [
+    meta.heading,
+    meta.Heading,
+    meta.direction,
+    meta.Direction,
+    meta.facingDirection,
+    meta.compassHeading,
+    meta?.GPSImgDirection,
+    meta?.GPSDirection,
+    meta?.GPSDestBearing,
+    meta?.GPS?.GPSImgDirection,
+    meta?.GPSInfo?.GPSImgDirection,
+  ];
+  for (const value of candidates) {
+    const num = parseNumber(value);
+    if (num != null) return num;
+  }
+  return null;
+}
+
+function extractAltitude(meta = {}) {
+  const candidates = [
+    meta.altitude,
+    meta.Altitude,
+    meta.GPSAltitude,
+    meta?.GPS?.GPSAltitude,
+    meta?.GPSInfo?.GPSAltitude,
+  ];
+  for (const value of candidates) {
+    const num = parseNumber(value);
+    if (num != null) return num;
+  }
+  return null;
+}
+
+function extractTimestamp(meta = {}) {
+  const gpsDate = typeof meta.GPSDateStamp === 'string' ? meta.GPSDateStamp.trim() : null;
+  let gpsTime = null;
+  if (Array.isArray(meta.GPSTimeStamp)) {
+    gpsTime = meta.GPSTimeStamp.map((part) => String(part).padStart(2, '0')).join(':');
+  } else if (typeof meta.GPSTimeStamp === 'string') {
+    gpsTime = meta.GPSTimeStamp.trim();
+  }
+  if (gpsDate && gpsTime) {
+    return `${gpsDate} ${gpsTime}`;
+  }
+
+  const candidates = [
+    meta.captureTimestamp,
+    meta.captureTime,
+    meta.DateTimeOriginal,
+    meta.CreateDate,
+    meta.DateCreated,
+    meta.ModifyDate,
+  ];
+  for (const value of candidates) {
+    if (typeof value === 'string' && value.trim()) {
+      return value.trim();
+    }
+  }
+  return null;
+}
+
+function headingToCardinal(degrees) {
+  if (degrees == null || !Number.isFinite(degrees)) return null;
+  const normalized = ((degrees % 360) + 360) % 360;
+  const directions = ['N', 'NNE', 'NE', 'ENE', 'E', 'ESE', 'SE', 'SSE', 'S', 'SSW', 'SW', 'WSW', 'W', 'WNW', 'NW', 'NNW'];
+  const index = Math.round(normalized / 22.5) % directions.length;
+  return directions[index];
+}
+
+function buildLocationIntelDefaults(overrides = {}) {
+  return {
+    city: 'unknown',
+    region: 'unknown',
+    nearest_landmark: 'unknown',
+    nearest_park: 'unknown',
+    nearest_trail: 'unknown',
+    description_addendum: 'No additional location insights available.',
+    ...overrides,
+  };
+}
+
+function sanitizeIntelField(value) {
+  if (value == null) return null;
+  const text = String(value).trim();
+  return text.length ? text : null;
+}
+
+function selectBestNearby(nearby = [], intel = {}) {
+  if (!Array.isArray(nearby)) return null;
+  const priority = ['landmark', 'attraction', 'park', 'trail', 'mountain', 'river'];
+  for (const category of priority) {
+    const found = nearby.find((place) => (place?.category || '').toLowerCase() === category);
+    if (found) return found;
+  }
+  if (sanitizeIntelField(intel.nearest_landmark)) {
+    return {
+      name: intel.nearest_landmark,
+      category: 'landmark',
+      distanceMeters: null,
+    };
+  }
+  return null;
+}
+
+function enrichMetadataWithPoi(parsed, poiAnalysis) {
+  if (!parsed || !poiAnalysis) return parsed;
+  const intel = poiAnalysis.locationIntel || poiAnalysis;
+  if (!intel) return parsed;
+
+  const fields = [
+    { key: 'city', label: 'City' },
+    { key: 'region', label: 'Region' },
+    { key: 'nearest_park', label: 'Nearest park' },
+    { key: 'nearest_trail', label: 'Nearest trail' },
+    { key: 'nearest_landmark', label: 'Nearest landmark' },
+    { key: 'description_addendum', label: 'Notes' },
+  ];
+
+  const descriptionExtras = [];
+  const keywordExtras = [];
+
+  for (const field of fields) {
+    const value = sanitizeIntelField(intel[field.key]);
+    if (value) {
+      descriptionExtras.push(`${field.label}: ${value}`);
+      keywordExtras.push(value);
+    }
+  }
+
+  if (descriptionExtras.length) {
+    const detail = `Location Intelligence: ${descriptionExtras.join(' | ')}`;
+    parsed.description = parsed.description
+      ? `${parsed.description}\n\n${detail}`
+      : detail;
+  }
+
+  if (keywordExtras.length) {
+    parsed.keywords = parsed.keywords
+      ? `${parsed.keywords}, ${keywordExtras.join(', ')}`
+      : keywordExtras.join(', ');
+  }
+
+  return parsed;
+}
+
 
 // --- Node 1: classify_image (This node is correct) ---
 async function classify_image(state) {
@@ -157,6 +367,7 @@ async function generate_metadata(state) {
     logger.info('[LangGraph] generate_metadata: Model returned metadata');
     // Also store the classification in the final result
     parsed.classification = state.classification;
+    parsed = enrichMetadataWithPoi(parsed, state.poiAnalysis);
     return { ...state, finalResult: parsed, error: null };
   } catch (err) {
     logger.error('[LangGraph] generate_metadata: Error', err);
@@ -222,55 +433,143 @@ async function handle_collectible(state) {
   }
 }
 
-// --- Node: infer_poi (new) ---
-async function infer_poi(state) {
+// --- Node: location_intelligence_agent (always-on POI) ---
+async function location_intelligence_agent(state) {
   let debugUsage = state.debugUsage;
+  const metadata = state.metadata || {};
+  const coordinates = parseGpsCoordinates(state);
+  const gpsString = coordinates
+    ? `${coordinates.lat.toFixed(6)},${coordinates.lon.toFixed(6)}`
+    : state.gpsString || null;
+  const heading = extractHeading(metadata);
+  const altitude = extractAltitude(metadata);
+  const timestamp = extractTimestamp(metadata);
+  const headingCardinal = headingToCardinal(heading);
+
+  let reverseResult = null;
+  let nearby = [];
+  if (coordinates) {
+    try {
+      reverseResult = await reverseGeocode(coordinates.lat, coordinates.lon);
+    } catch (err) {
+      logger.warn('[LangGraph] location_intelligence_agent reverse geocode failed', err?.message || err);
+    }
+    try {
+      nearby = await nearbyPlaces(coordinates.lat, coordinates.lon, 800);
+    } catch (err) {
+      logger.warn('[LangGraph] location_intelligence_agent nearbyPlaces failed', err?.message || err);
+    }
+  }
+
+  const structuredContext = {
+    gps_string: gpsString,
+    coordinates,
+    heading_degrees: heading,
+    heading_cardinal: headingCardinal,
+    altitude_meters: altitude,
+    timestamp_utc: timestamp,
+    device: state.device || metadata.CameraModel || metadata.Model || null,
+    reverse_geocode: reverseResult,
+    nearby_places: nearby,
+    metadata_snapshot: {
+      captureDate: metadata.DateTimeOriginal || metadata.CreateDate || metadata.ModifyDate || null,
+      elevation: altitude,
+      heading,
+    },
+  };
+
+  const locationModel = state.modelOverrides?.locationModel || 'gpt-4o-mini';
+  const systemPrompt =
+    'You are the Expert Location Detective. Using ONLY the structured GPS metadata provided, infer the most likely city, region, nearby landmark, park, and trail. ' +
+    'Always respond with a JSON object containing exactly the keys: city, region, nearest_landmark, nearest_park, nearest_trail, description_addendum. ' +
+    'Use descriptive, human-readable names when possible. When information is missing, use the string "unknown". description_addendum should be 1 sentence highlighting unique geographic insight.';
+
+  const userPrompt =
+    'Structured metadata for analysis:\n' +
+    `${JSON.stringify(structuredContext, null, 2)}\n` +
+    'Return ONLY valid JSON with the required keys. Do not include Markdown or explanations.';
+
+  let locationIntel = buildLocationIntelDefaults();
   try {
-    if (!state.gpsString) {
-      return { ...state, poiAnalysis: null, debugUsage };
+    const response = await openai.chat.completions.create({
+      model: locationModel,
+      messages: [
+        { role: 'system', content: systemPrompt },
+        { role: 'user', content: userPrompt },
+      ],
+      max_tokens: 400,
+      response_format: { type: 'json_object' },
+    });
+    const raw = response?.choices?.[0]?.message?.content || '{}';
+    let parsed;
+    try {
+      parsed = JSON.parse(raw);
+    } catch (err) {
+      logger.warn('[LangGraph] location_intelligence_agent JSON parse fallback', err?.message || err);
+      parsed = {};
     }
-    const [latStr, lonStr] = String(state.gpsString || '').split(',').map((s) => s && s.trim());
-    const lat = parseFloat(latStr);
-    const lon = parseFloat(lonStr);
-    if (Number.isNaN(lat) || Number.isNaN(lon)) {
-      return { ...state, poiAnalysis: null, debugUsage };
-    }
-
-    const addrRes = await reverseGeocode(lat, lon);
-    const nearby = await nearbyPlaces(lat, lon, 500);
-
-    const priority = ['attraction', 'park', 'trail', 'hotel', 'restaurant', 'store'];
-    let best = null;
-    for (const p of priority) {
-      const found = nearby.find((x) => x.category === p);
-      if (found) { best = found; break; }
-    }
-    if (!best && nearby.length) best = nearby[0];
-
-    const poiAnalysis = {
-      address: addrRes?.address || null,
-      bestMatchPOI: best || null,
-      bestMatchCategory: best?.category || null,
-      poiConfidence: best?.confidence || 'low',
-      nearbyPOIs: nearby,
-    };
-
-    debugUsage = accumulateDebugUsage(debugUsage, {
-      step: 'infer_poi',
-      model: null,
-      usage: null,
-      durationMs: 0,
-      notes: 'Inferred POI from Google Places',
-      request: { systemPrompt: null, userPrompt: `Reverse geocode + nearby search at ${lat},${lon}` },
-      response: poiAnalysis,
-      prompt: `Reverse geocode + nearby search at ${lat},${lon}`,
+    locationIntel = buildLocationIntelDefaults({
+      city: sanitizeIntelField(parsed.city) || 'unknown',
+      region: sanitizeIntelField(parsed.region) || 'unknown',
+      nearest_landmark: sanitizeIntelField(parsed.nearest_landmark) || 'unknown',
+      nearest_park: sanitizeIntelField(parsed.nearest_park) || 'unknown',
+      nearest_trail: sanitizeIntelField(parsed.nearest_trail) || 'unknown',
+      description_addendum:
+        sanitizeIntelField(parsed.description_addendum) ||
+        'Additional geographic insight unavailable.',
     });
 
-    return { ...state, poiAnalysis, debugUsage };
+    const durationMs = 0;
+    const { usage, model } = extractUsageFromResponse(response);
+    debugUsage = accumulateDebugUsage(debugUsage, {
+      step: 'location_intelligence_agent',
+      model: model || locationModel,
+      usage,
+      durationMs,
+      notes: 'Expert location detective LLM call',
+      request: { systemPrompt, userPrompt },
+      response: locationIntel,
+      prompt: userPrompt,
+    });
   } catch (err) {
-    logger.warn('[LangGraph] infer_poi failed', err && err.message ? err.message : err);
-    return { ...state, poiAnalysis: null, debugUsage };
+    logger.warn('[LangGraph] location_intelligence_agent LLM fallback', err?.message || err);
+    const fallback = buildLocationIntelDefaults({
+      city: sanitizeIntelField(reverseResult?.city) || 'unknown',
+      region: sanitizeIntelField(reverseResult?.region) || sanitizeIntelField(reverseResult?.state) || 'unknown',
+      nearest_landmark: sanitizeIntelField(nearby?.[0]?.name) || 'unknown',
+      nearest_park: sanitizeIntelField(
+        nearby.find((place) => (place?.category || '').toLowerCase() === 'park')?.name
+      ) || 'unknown',
+      nearest_trail: sanitizeIntelField(
+        nearby.find((place) => (place?.category || '').toLowerCase() === 'trail')?.name
+      ) || 'unknown',
+      description_addendum: 'Derived from reverse geocode fallback.',
+    });
+    locationIntel = fallback;
   }
+
+  const bestMatch = selectBestNearby(nearby, locationIntel);
+  const poiAnalysis = {
+    locationIntel,
+    city: locationIntel.city,
+    region: locationIntel.region,
+    nearest_landmark: locationIntel.nearest_landmark,
+    nearest_park: locationIntel.nearest_park,
+    nearest_trail: locationIntel.nearest_trail,
+    description_addendum: locationIntel.description_addendum,
+    heading_degrees: heading,
+    heading_cardinal: headingCardinal,
+    altitude_meters: altitude,
+    timestamp: timestamp,
+    gpsString,
+    address: reverseResult?.address || null,
+    bestMatchPOI: bestMatch || null,
+    bestMatchCategory: bestMatch?.category || null,
+    poiConfidence: bestMatch ? 'medium' : 'low',
+    nearbyPOIs: nearby,
+  };
+
+  return { ...state, poiAnalysis, debugUsage };
 }
 
 // --- Node: decide_scene_label (new) ---
@@ -373,28 +672,24 @@ async function decide_scene_label(state) {
   }
 }
 
-// --- Router: Decides which node to call after classification ---
-function route_classification(state) {
+// --- Router: Decides next node after the location intelligence agent ---
+function route_after_location(state) {
   if (state.error) {
-    logger.error(
-      '[LangGraph] Router: Error detected, ending graph.',
-      state.error
-    );
+    logger.error('[LangGraph] Router: Error detected, ending graph.', state.error);
     return END;
   }
 
   const classification = String(state.classification || '').toLowerCase().trim();
-  logger.info(`[LangGraph] Router: Routing based on "${classification}"`);
+  logger.info(`[LangGraph] Router: Routing after location intel for "${classification}"`);
 
   if (classification === 'collectables') {
     return 'handle_collectible';
   }
 
-  if (classification === 'scenery' || classification.includes('scenery')) {
-    return 'infer_poi';
+  if (needPoi(state) && (classification === 'scenery' || classification.includes('scenery'))) {
+    return 'decide_scene_label';
   }
 
-  // All other classifications go to the default metadata generator
   return 'generate_metadata';
 }
 
@@ -408,29 +703,29 @@ const workflow = new StateGraph({
 workflow.addNode('classify_image', classify_image);
 workflow.addNode('generate_metadata', generate_metadata);
 workflow.addNode('handle_collectible', handle_collectible);
-workflow.addNode('infer_poi', infer_poi);
+workflow.addNode('location_intelligence_agent', location_intelligence_agent);
 workflow.addNode('decide_scene_label', decide_scene_label);
 
 // 2. Set the entry point
 workflow.setEntryPoint('classify_image');
 
-// 3. Add the conditional edges (the router)
+// 3. Wire the flow: classification -> location intelligence -> rest
+workflow.addEdge('classify_image', 'location_intelligence_agent');
+
 workflow.addConditionalEdges(
-  'classify_image', // The node to branch from
-  route_classification, // The function that decides where to go
+  'location_intelligence_agent',
+  route_after_location,
   {
-    // A map of the function's return values to the next node
     generate_metadata: 'generate_metadata',
-    infer_poi: 'infer_poi',
+    decide_scene_label: 'decide_scene_label',
     handle_collectible: 'handle_collectible',
-    __end__: END, // Allow the router to end the graph if it returns END
+    __end__: END,
   }
 );
 
 // 4. Add the final edges
 workflow.addEdge('generate_metadata', END);
 workflow.addEdge('handle_collectible', END);
-workflow.addEdge('infer_poi', 'decide_scene_label');
 workflow.addEdge('decide_scene_label', 'generate_metadata');
 
 // 5. Compile the app
