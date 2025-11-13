@@ -1,3 +1,4 @@
+
 const express = require('express');
 const path = require('path');
 const { convertHeicToJpegBuffer } = require('../media/image');
@@ -8,95 +9,117 @@ const logger = require('../logger');
 module.exports = function createDisplayRouter({ db }) {
   const router = express.Router();
 
-  // Serve images from Supabase Storage. These endpoints are mounted at root
-  // (e.g., app.use(createDisplayRouter({db})) ) so they are available as
-  // /display/:state/:filename which the frontend uses for image URLs.
   router.get('/display/:state/:filename', authenticateImageRequest, async (req, res) => {
-  // Always set this header for all responses
-  res.set('Cross-Origin-Resource-Policy', 'cross-origin');
-  try {
-      const { state, filename } = req.params;
-      const IMAGE_CACHE_MAX_AGE = parseInt(process.env.IMAGE_CACHE_MAX_AGE, 10) || 86400;
+    const reqId = req.id || req.headers['x-request-id'] || null;
+    res.set('Cross-Origin-Resource-Policy', 'cross-origin');
+    const { state, filename } = req.params;
+    const IMAGE_CACHE_MAX_AGE = parseInt(process.env.IMAGE_CACHE_MAX_AGE, 10) || 86400;
 
-      // Handle thumbnail requests (state = "thumbnails")
+    try {
+      // Handle thumbnail requests
       if (state === 'thumbnails') {
         const storagePath = `thumbnails/${filename}`;
-        const { data, error } = await supabase.storage
-          .from('photos')
-          .download(storagePath);
-        if (error) {
-          logger.error('❌ Thumbnail download error:', error, { filename });
-          // Header already set above
-          return res.status(404).json({ error: 'Thumbnail not found in storage' });
+        const { data, error } = await supabase.storage.from('photos').download(storagePath);
+        if (error || !data) {
+          logger.error('Display route error', {
+            reqId,
+            filename,
+            state,
+            storagePath,
+            error: error ? error.message : 'Not found',
+            stack: error ? error.stack : undefined
+          });
+          return res.status(404).json({ error: 'Thumbnail not found' });
         }
         const buffer = await data.arrayBuffer();
-        const fileBuffer = Buffer.from(buffer);
         res.set('Content-Type', 'image/jpeg');
         res.set('Cache-Control', `public, max-age=${IMAGE_CACHE_MAX_AGE}`);
-        res.set('Cross-Origin-Resource-Policy', 'cross-origin');
-        res.send(fileBuffer);
-        return;
+        return res.send(Buffer.from(buffer));
       }
 
-      // Handle regular photo requests
+      // Originals: strict DB lookup
       const photo = await db('photos')
-        .where(function() {
-          this.where({ filename, state })
-              .orWhere({ edited_filename: filename, state });
+        .where(function () {
+          this.where('filename', filename).orWhere('edited_filename', filename);
         })
+        .andWhere('state', state)
         .first();
 
       if (!photo) {
-        logger.error('Display endpoint 404: Photo not found', { filename, state });
-        // Header already set above
+        logger.error('Display route error', {
+          reqId,
+          filename,
+          state,
+          storagePath: null,
+          error: 'Photo not found',
+          stack: null
+        });
         return res.status(404).json({ error: 'Photo not found' });
       }
 
-      // Use storage_path if available, otherwise construct from state/filename
       const storagePath = photo.storage_path || `${state}/${filename}`;
-      const { data, error } = await supabase.storage
-        .from('photos')
-        .download(storagePath);
-      if (error) {
-        logger.error('Supabase download error:', error, { filename, state });
-        // Header already set above
+      const { data, error } = await supabase.storage.from('photos').download(storagePath);
+      if (error || !data) {
+        logger.error('Display route error', {
+          reqId,
+          filename,
+          state,
+          storagePath,
+          error: error ? error.message : 'Not found',
+          stack: error ? error.stack : undefined
+        });
         return res.status(404).json({ error: 'File not found in storage' });
       }
 
       const buffer = await data.arrayBuffer();
       const fileBuffer = Buffer.from(buffer);
       const ext = path.extname(filename).toLowerCase();
-      let contentType = 'image/jpeg';
-      if (ext === '.png') contentType = 'image/png';
-      else if (ext === '.gif') contentType = 'image/gif';
-      else if (ext === '.heic' || ext === '.heif') contentType = 'image/heic';
 
-      // ETag: use photo.hash if available, else fallback to file size + updated_at
-      let etag = photo.hash || (photo.file_size ? `${photo.file_size}` : '') + (photo.updated_at ? `-${photo.updated_at}` : '');
-      if (etag) res.set('ETag', etag);
+      // ETag header if hash present
+      if (photo.hash) {
+        res.set('ETag', photo.hash);
+      }
       res.set('Cache-Control', `public, max-age=${IMAGE_CACHE_MAX_AGE}`);
 
-      // Convert HEIC to JPEG if needed
+      // HEIC/HEIF: always convert to JPEG and serve as image/jpeg
       if (ext === '.heic' || ext === '.heif') {
         try {
           const jpegBuffer = await convertHeicToJpegBuffer(fileBuffer);
           res.set('Content-Type', 'image/jpeg');
-          res.set('Cross-Origin-Resource-Policy', 'cross-origin');
-          res.send(jpegBuffer);
-        } catch (conversionError) {
-          logger.error('HEIC conversion error:', conversionError, { filename });
-          res.status(500).json({ error: 'Failed to convert HEIC image' });
+          return res.send(jpegBuffer);
+        } catch (err) {
+          logger.error('Display route error', {
+            reqId,
+            filename,
+            state,
+            storagePath,
+            error: err.message,
+            stack: err.stack
+          });
+          return res.status(500).json({ error: 'Internal server error' });
         }
-      } else {
-        res.set('Content-Type', contentType);
-        res.set('Cross-Origin-Resource-Policy', 'cross-origin');
-        res.send(fileBuffer);
       }
 
+      // Other types: serve as original
+      let contentType = 'image/jpeg';
+      if (ext === '.png') contentType = 'image/png';
+      else if (ext === '.gif') contentType = 'image/gif';
+      else if (ext === '.webp') contentType = 'image/webp';
+      else if (ext === '.bmp') contentType = 'image/bmp';
+      else if (ext === '.tiff' || ext === '.tif') contentType = 'image/tiff';
+
+      res.set('Content-Type', contentType);
+      return res.send(fileBuffer);
     } catch (err) {
-      logger.error('Display endpoint error:', err, { filename: req?.params?.filename });
-      // Header already set above
-      res.status(500).json({ error: 'Internal server error' });
+      logger.error('Display route error', {
+        reqId,
+        filename,
+        state,
+        storagePath: null,
+        error: err.message,
+        stack: err.stack
+      });
+      return res.status(500).json({ error: 'Internal server error' });
     }
   });
 
