@@ -44,7 +44,34 @@ module.exports = function createDisplayRouter({ db }) {
         return res.send(fileBuffer);
       }
 
-      // Originals: strict DB lookup
+      // Originals: strict DB lookup (use db('photos') for compatibility)
+
+      if (typeof db !== 'function') {
+        logger.error('Display route error', {
+          reqId,
+          filename,
+          state,
+          storagePath: null,
+          error: 'DB instance is not a function',
+          dbType: typeof db,
+          stack: null
+        });
+        return res.status(500).json({ error: 'Internal server error: DB misconfiguration' });
+      }
+
+      // Diagnostic: log type/prototype of db('photos') and db('photos').where(...)
+      let builder, whereResult;
+      try {
+        builder = db('photos');
+        logger.error('DIAG: typeof db(photos)', typeof builder, Object.getPrototypeOf(builder));
+        whereResult = builder.where(function () {
+          this.where('filename', filename).orWhere('edited_filename', filename);
+        });
+        logger.error('DIAG: typeof builder.where(...)', typeof whereResult, Object.getPrototypeOf(whereResult));
+      } catch (e) {
+        logger.error('DIAG: error during builder/where inspection', { error: e.message, stack: e.stack });
+      }
+
       const photo = await db('photos')
         .where(function () {
           this.where('filename', filename).orWhere('edited_filename', filename);
@@ -82,14 +109,15 @@ module.exports = function createDisplayRouter({ db }) {
       const fileBuffer = Buffer.from(buffer);
       const ext = path.extname(filename).toLowerCase();
 
-      // ETag header if hash present
-      let etag = undefined;
-      if (photo.hash) {
-        etag = photo.hash;
-        res.set('ETag', etag);
+      // ETag header: always set, fallback if hash missing
+      let etag = photo.hash;
+      if (!etag) {
+        // Fallback: file size + updated_at + filename (guaranteed unique per version)
+        etag = ((photo.file_size ? String(photo.file_size) : '') + (photo.updated_at ? `-${photo.updated_at}` : '') + `-${filename}`);
       }
+      res.set('ETag', etag);
       res.set('Cache-Control', `public, max-age=${IMAGE_CACHE_MAX_AGE}`);
-      if (etag && req.headers['if-none-match'] && req.headers['if-none-match'] === etag) {
+      if (req.headers['if-none-match'] && req.headers['if-none-match'] === etag) {
         return res.status(304).end();
       }
 

@@ -98,10 +98,8 @@ const express = require('express');
 const multer = require('multer');
 const cors = require('cors');
 const cookieParser = require('cookie-parser');
+
 const app = express();
-module.exports = app;
-  // Export app for Supertest
-  module.exports = app;
 
   // Log basic incoming request info for debugging (do NOT log headers which may contain secrets)
   app.use((req, res, next) => {
@@ -234,6 +232,8 @@ module.exports = app;
     });
   });
 
+
+module.exports = app;
 
 
 
