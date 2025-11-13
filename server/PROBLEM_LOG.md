@@ -1,3 +1,20 @@
+## [2025-11-13] /photos Endpoint Hardened with DB Retry Logic
+
+**Symptoms:**
+- Intermittent `Connection terminated unexpectedly` errors on `/photos` endpoint, especially on first or second request after server start or DB idle period.
+- Error logs showed transient DB connection failures, but subsequent requests would succeed.
+
+**Fix:**
+- Added a retry helper to `server/routes/photos.js` that automatically retries the DB query up to 2 times (with a short delay) if a transient connection error is detected (e.g., "Connection terminated unexpectedly", `ECONNRESET`, or Postgres `57P01`).
+- Only retries on known transient errors; all other errors fail fast and are logged as before.
+- No changes to response shape or mapping logic; only the DB query is retried.
+
+**Prevention:**
+- This retry logic should reduce user-facing errors from brief Supabase/pg connection drops, especially after idle periods or serverless cold starts.
+- Continue to monitor logs for any new or persistent DB errors.
+
+**Status:**
+- Patch deployed. If errors persist, logs will include request id and error context for further diagnosis.
 # [2025-11-13] Intermittent Supabase/Postgres Connection Error on /photos
 
 **Symptoms:**
