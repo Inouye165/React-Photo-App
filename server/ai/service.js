@@ -464,11 +464,6 @@ async function processPhotoAI({ fileBuffer, filename, metadata, gps, device }, m
     dateTime: captureDate ? captureDate.toISOString() : null,
     cameraModel: deviceModel || null,
   };
-  try {
-    logger.info('[Metadata Debug] Graph metadata payload preview (first 2KB):\n' + JSON.stringify(normalizedForLLM, null, 2).slice(0, 2048));
-  } catch (previewErr) {
-    logger.warn('[Metadata Debug] Failed to stringify graph metadata payload:', previewErr.message || previewErr);
-  }
   // <<< ADDED
 
   const initialState = {
@@ -549,12 +544,7 @@ async function updatePhotoAIMetadata(db, photoRow, storagePath, modelOverrides =
     });
     const meta = JSON.parse(photoRow.metadata || '{}');
     logger.debug('[AI Debug] [updatePhotoAIMetadata] Parsed metadata keys', Object.keys(meta));
-    try {
-      const rawMetaPreview = JSON.stringify(meta, null, 2);
-      logger.info('[Metadata Debug] DB metadata snapshot (first 2KB):\n' + rawMetaPreview.slice(0, 2048));
-    } catch (stringifyErr) {
-      logger.warn('[Metadata Debug] Failed to stringify DB metadata:', stringifyErr.message || stringifyErr);
-    }
+
 
     const coords = extractLatLon(meta);
     let gps = '';
@@ -591,7 +581,7 @@ async function updatePhotoAIMetadata(db, photoRow, storagePath, modelOverrides =
         ai_retry_count: retryCount,
         poi_analysis: null
       });
-      logger.info('[AI Debug] [updatePhotoAIMetadata] Marked as permanently failed in DB.');
+      logger.debug('[AI Debug] [updatePhotoAIMetadata] Marked as permanently failed in DB.');
       return null;
     }
     
@@ -614,24 +604,11 @@ async function updatePhotoAIMetadata(db, photoRow, storagePath, modelOverrides =
       }
       const arrayBuffer = await fileData.arrayBuffer();
       const fileBuffer = Buffer.from(arrayBuffer);
-      logger.info('[AI Debug] [updatePhotoAIMetadata] File buffer loaded. Buffer length:', fileBuffer.length);
+      logger.debug('[AI Debug] [updatePhotoAIMetadata] File buffer loaded. Buffer length:', fileBuffer.length);
 
       let freshMeta = null;
       try {
         freshMeta = await exifr.parse(fileBuffer, { gps: true, ifd0: true, exif: true, xmp: true, icc: true, tiff: true });
-        logger.info('[Metadata Debug] Fresh EXIF metadata keys (first 30):', Object.keys(freshMeta || {}).slice(0, 30));
-        if (freshMeta && (freshMeta.GPSLatitude || freshMeta.latitude)) {
-          logger.info('[Metadata Debug] Fresh EXIF GPS fields', {
-            GPSLatitude: freshMeta.GPSLatitude,
-            GPSLongitude: freshMeta.GPSLongitude,
-            GPSLatitudeRef: freshMeta.GPSLatitudeRef,
-            GPSLongitudeRef: freshMeta.GPSLongitudeRef,
-            latitude: freshMeta.latitude,
-            longitude: freshMeta.longitude
-          });
-        } else {
-          logger.info('[Metadata Debug] Fresh EXIF GPS fields missing or empty');
-        }
       } catch (exifrErr) {
         logger.warn('[Metadata Debug] Failed to parse EXIF from storage file:', exifrErr.message || exifrErr);
       }
@@ -657,11 +634,17 @@ async function updatePhotoAIMetadata(db, photoRow, storagePath, modelOverrides =
       await db('photos').where({ id: photoRow.id }).update({ ai_retry_count: retryCount + 1 });
       return null;
     }
-    logger.info('[AI Update] Retrieved AI result for', photoRow.filename, JSON.stringify({
-      caption: ai && ai.caption,
-      description: ai && (ai.description || '').slice(0, 200),
-      keywords: ai && ai.keywords
-    }));
+    const keywordCount = Array.isArray(ai?.keywords)
+      ? ai.keywords.filter(Boolean).length
+      : typeof ai?.keywords === 'string'
+        ? ai.keywords.split(',').map((v) => v.trim()).filter(Boolean).length
+        : 0;
+    logger.info('[AI Update] Retrieved AI result for %s', photoRow.filename, {
+      hasCaption: Boolean(ai?.caption),
+      descriptionLength: typeof ai?.description === 'string' ? ai.description.length : 0,
+      keywordCount,
+      hasPoiAnalysis: Boolean(ai?.poi_analysis),
+    });
 
     // Ensure non-null strings for DB and provide fallbacks when AI doesn't return a caption or keywords
     const description = ai && ai.description ? String(ai.description).trim() : 'AI processing failed';

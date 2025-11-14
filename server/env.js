@@ -14,8 +14,14 @@ if (!process.env.__SERVER_ENV_LOADED) {
     // If dotenv isn't available or load fails, don't crash here; callers
     // should validate required env vars at runtime. Keep a console warn to
     // aid debugging.
-  console.warn('[env] Failed to load server/.env:', err && err.message ? err.message : err);
+    console.warn('[env] Failed to load server/.env:', err && err.message ? err.message : err);
   }
+}
+
+// Normalize Google key aliases so worker code can rely on GOOGLE_MAPS_API_KEY even
+// if only the historical GOOGLE_PLACES_API_KEY value is set.
+if (!process.env.GOOGLE_MAPS_API_KEY && process.env.GOOGLE_PLACES_API_KEY) {
+  process.env.GOOGLE_MAPS_API_KEY = process.env.GOOGLE_PLACES_API_KEY;
 }
 
 module.exports = process.env;

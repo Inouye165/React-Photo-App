@@ -1,3 +1,4 @@
+require('../../env');
 const logger = require('../../logger');
 
 const ensureFetch = () => {
@@ -9,12 +10,34 @@ const ensureFetch = () => {
 };
 
 const fetchFn = ensureFetch();
-
-const API_KEY = process.env.GOOGLE_PLACES_API_KEY || process.env.GOOGLE_API_KEY;
+const allowDevDebug = process.env.ALLOW_DEV_DEBUG === 'true';
+const STATUS_WARN_THROTTLE_MS = Number(process.env.GOOGLE_PLACES_STATUS_WARN_MS) || 5 * 60 * 1000;
+const REQUEST_DENIED_BACKOFF_MS = Number(process.env.GOOGLE_PLACES_DENIED_BACKOFF_MS) || 10 * 60 * 1000;
+const statusHistory = new Map();
+let requestDeniedUntil = 0;
+let lastBackoffNotice = 0;
+const API_KEY =
+  process.env.GOOGLE_MAPS_API_KEY ||
+  process.env.GOOGLE_PLACES_API_KEY ||
+  process.env.GOOGLE_API_KEY;
 let warned = false;
 if (!API_KEY && !warned) {
-  logger.warn('[POI] GOOGLE_PLACES_API_KEY missing; skipping POI lookups');
+  logger.warn('[POI] GOOGLE_MAPS_API_KEY missing; skipping POI lookups');
   warned = true;
+}
+
+function describeKey(key) {
+  if (!key) return '(none)';
+  if (typeof key !== 'string') return '(non-string)';
+  if (key.length <= 8) return `${key}`;
+  const head = key.slice(0, 4);
+  const tail = key.slice(-4);
+  return `${head}…${tail} (${key.length} chars)`;
+}
+
+function redactUrl(url) {
+  if (!API_KEY) return url;
+  return url.replace(API_KEY, '****');
 }
 
 // Simple in-memory TTL cache
@@ -88,6 +111,15 @@ async function reverseGeocode(lat, lon) {
 
 async function nearbyPlaces(lat, lon, radius = 500) {
   if (!API_KEY) return [];
+  if (requestDeniedUntil && Date.now() < requestDeniedUntil) {
+    if (allowDevDebug && Date.now() - lastBackoffNotice > 30_000) {
+      console.warn(
+        '[infer_poi] Skipping Google Places call because last attempt returned REQUEST_DENIED; backoff active'
+      );
+      lastBackoffNotice = Date.now();
+    }
+    return [];
+  }
   const cacheKey = toKey(lat, lon, radius);
   const cached = cacheGet(cacheKey);
   if (cached) return cached;
@@ -98,14 +130,51 @@ async function nearbyPlaces(lat, lon, radius = 500) {
     key: API_KEY,
   });
   const url = `https://maps.googleapis.com/maps/api/place/nearbysearch/json?${params.toString()}`;
+  if (allowDevDebug) {
+    console.log('[infer_poi] About to call Google Places');
+    console.log('[infer_poi] key loaded:', Boolean(API_KEY));
+    console.log('[infer_poi] key fingerprint:', describeKey(API_KEY));
+    console.log('[infer_poi] lat/lon:', lat, lon);
+    console.log('[infer_poi] url (redacted):', `${redactUrl(url)}`);
+  }
   try {
     const res = await fetchFn(url, { method: 'GET' });
     if (!res.ok) {
       const txt = await res.text();
       logger.warn('[POI] nearbyPlaces failed', { status: res.status, body: txt });
+      if (allowDevDebug) {
+        console.error('[infer_poi] Google Places error:', `HTTP ${res.status}`);
+      }
       return [];
     }
     const json = await res.json();
+    if (allowDevDebug) {
+      console.log('[infer_poi] raw places response:', JSON.stringify(json, null, 2));
+    }
+    const status = json?.status || 'OK';
+    const statusIsOk = status === 'OK' || status === 'ZERO_RESULTS';
+    if (!statusIsOk) {
+      const errorMessage = json?.error_message || null;
+      if (status === 'REQUEST_DENIED') {
+        requestDeniedUntil = Date.now() + REQUEST_DENIED_BACKOFF_MS;
+      }
+      const key = `${status}:${errorMessage || ''}`;
+      const lastLogged = statusHistory.get(key) || 0;
+      if (!lastLogged || Date.now() - lastLogged >= STATUS_WARN_THROTTLE_MS) {
+        statusHistory.set(key, Date.now());
+        const suffix = errorMessage ? ` (${errorMessage})` : '';
+        logger.warn(`[POI] Google Places API status ${status}${suffix}`);
+        if (status === 'REQUEST_DENIED') {
+          logger.warn(
+            '[POI] Verify that the configured GOOGLE_MAPS_API_KEY has the Places API enabled with billing and server-side access allowed.'
+          );
+        }
+      }
+      if (allowDevDebug) {
+        console.error('[infer_poi] Google Places status error:', status, errorMessage || '');
+      }
+      return [];
+    }
     const results = Array.isArray(json.results) ? json.results : [];
     const pois = results.map((r) => {
       const placeLat = r.geometry?.location?.lat;
@@ -135,6 +204,9 @@ async function nearbyPlaces(lat, lon, radius = 500) {
     return pois;
   } catch (err) {
     logger.warn('[POI] nearbyPlaces exception', err && err.message ? err.message : err);
+    if (allowDevDebug) {
+      console.error('[infer_poi] Google Places error:', err && err.message ? err.message : err);
+    }
     return [];
   }
 }

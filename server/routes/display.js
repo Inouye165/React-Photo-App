@@ -9,7 +9,7 @@ const logger = require('../logger');
 module.exports = function createDisplayRouter({ db }) {
   const router = express.Router();
 
-  router.get('/display/:state/:filename', authenticateImageRequest, async (req, res) => {
+  router.get('/:state/:filename', authenticateImageRequest, async (req, res) => {
     const reqId = req.id || req.headers['x-request-id'] || null;
     res.set('Cross-Origin-Resource-Policy', 'cross-origin');
     const { state, filename } = req.params;
@@ -57,19 +57,6 @@ module.exports = function createDisplayRouter({ db }) {
           stack: null
         });
         return res.status(500).json({ error: 'Internal server error: DB misconfiguration' });
-      }
-
-      // Diagnostic: log type/prototype of db('photos') and db('photos').where(...)
-      let builder, whereResult;
-      try {
-        builder = db('photos');
-        logger.error('DIAG: typeof db(photos)', typeof builder, Object.getPrototypeOf(builder));
-        whereResult = builder.where(function () {
-          this.where('filename', filename).orWhere('edited_filename', filename);
-        });
-        logger.error('DIAG: typeof builder.where(...)', typeof whereResult, Object.getPrototypeOf(whereResult));
-      } catch (e) {
-        logger.error('DIAG: error during builder/where inspection', { error: e.message, stack: e.stack });
       }
 
       const photo = await db('photos')

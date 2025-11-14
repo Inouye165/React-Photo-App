@@ -11,8 +11,8 @@ export default defineConfig([
   ignores: ['dist', 'node_modules', 'build/', 'coverage/', '*.min.js'],
   },
   {
-    // Configuration for frontend files
-    files: ['**/*.{js,jsx}'],
+    // Configuration for frontend application files
+    files: ['src/**/*.{js,jsx}', 'e2e/**/*.{js,jsx}', 'perf/**/*.{js,jsx}'],
     extends: [
       js.configs.recommended,
       react.configs.flat.recommended,

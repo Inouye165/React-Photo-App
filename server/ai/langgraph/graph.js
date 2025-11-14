@@ -33,8 +33,9 @@ function extractUsageFromResponse(response) {
   }
 }
 
-function needPoi() {
-  return true;
+function needPoi(state) {
+  if (!state) return false;
+  return Boolean(state.poiAnalysis?.gpsString);
 }
 
 function parseGpsString(gpsString) {
@@ -243,6 +244,18 @@ function enrichMetadataWithPoi(parsed, poiAnalysis) {
   return parsed;
 }
 
+function metadataPayloadWithDirection(state) {
+  const base = state.metadata || {};
+  const heading = extractHeading(base);
+  const payload = {
+    ...base,
+    directionDegrees: heading,
+    directionCardinal: headingToCardinal(heading),
+    altitudeMeters: extractAltitude(base),
+  };
+  return payload;
+}
+
 
 // --- Node 1: classify_image (This node is correct) ---
 async function classify_image(state) {
@@ -306,6 +319,7 @@ async function classify_image(state) {
 async function generate_metadata(state) {
   try {
     logger.info('[LangGraph] generate_metadata node invoked (default/scenery)');
+    const metadataForPrompt = metadataPayloadWithDirection(state);
     const prompt =
       `You are a photo archivist. Given the image and the following context, generate a JSON object with three fields:\n` +
       `caption: A short, one-sentence title for the photo.\n` +
@@ -313,7 +327,7 @@ async function generate_metadata(state) {
       `keywords: A comma-separated string that begins with the classification provided (${state.classification}) followed by 4-9 descriptive keywords. After the descriptive keywords, append explicit metadata keywords for capture date, capture time, facing direction, GPS coordinates, and altitude. Use the formats date:YYYY-MM-DD, time:HH:MM:SSZ, direction:<cardinal or degrees>, gps:<latitude,longitude>, altitude:<value>m. When a value is missing, use date:unknown, time:unknown, direction:unknown, gps:unknown, or altitude:unknown.\n` +
       `\nContext:\n` +
       `classification: ${state.classification}\n` +
-      `metadata: ${JSON.stringify(state.metadata)}\n` +
+      `metadata: ${JSON.stringify(metadataForPrompt)}\n` +
       `poiAnalysis: ${JSON.stringify(state.poiAnalysis)}\n` +
       `sceneDecision: ${JSON.stringify(state.sceneDecision)}\n` +
       `Note: If 'sceneDecision' is present and its confidence is "high" or "medium", prefer using sceneDecision.chosenLabel as the place name or location mention in caption and description. If sceneDecision is absent or confidence is low, do not invent specific POI names; instead use descriptive alternatives.\n` +
@@ -446,6 +460,15 @@ async function location_intelligence_agent(state) {
   const timestamp = extractTimestamp(metadata);
   const headingCardinal = headingToCardinal(heading);
 
+  if (!coordinates) {
+    logger.info('[infer_poi] Skipped: no GPS available');
+    return { ...state, poiAnalysis: null, debugUsage };
+  }
+
+  logger.info(
+    `[infer_poi] GPS found: ${coordinates.lat.toFixed(4)},${coordinates.lon.toFixed(4)} — querying Google Places...`
+  );
+
   let reverseResult = null;
   let nearby = [];
   if (coordinates) {
@@ -549,6 +572,13 @@ async function location_intelligence_agent(state) {
   }
 
   const bestMatch = selectBestNearby(nearby, locationIntel);
+  if (bestMatch) {
+    logger.info(
+      `[infer_poi] Found ${nearby.length} nearby POIs. Best match: ${bestMatch.name} (${bestMatch.category || 'unknown'})`
+    );
+  } else {
+    logger.info('[infer_poi] No relevant POIs found, falling back to reverse geocode only.');
+  }
   const poiAnalysis = {
     locationIntel,
     city: locationIntel.city,
@@ -576,8 +606,6 @@ async function location_intelligence_agent(state) {
 async function decide_scene_label(state) {
   let debugUsage = state.debugUsage;
   try {
-    const poi = state.poiAnalysis && state.poiAnalysis.bestMatchPOI ? state.poiAnalysis.bestMatchPOI : null;
-
     const systemPrompt = 'You are a short-image-tagger assistant. Respond with JSON object {"tags": [..]}.';
     const userPrompt = 'Provide a short list of descriptive tags (single words) about the image content, like ["geyser","steam","hotel","trail","flower","closeup"]. Return JSON only.';
 
@@ -619,36 +647,41 @@ async function decide_scene_label(state) {
       tags = [];
     }
 
-    const chosenLabelFallback = (state.poiAnalysis && state.poiAnalysis.address) || null;
+    const categoryPriority = ['attraction', 'park', 'trail', 'hotel', 'restaurant'];
+    const nearby = Array.isArray(state.poiAnalysis?.nearbyPOIs) ? state.poiAnalysis.nearbyPOIs : [];
+    let poiCandidate = null;
+    for (const category of categoryPriority) {
+      const match = nearby.find((place) => (place?.category || '').toLowerCase() === category);
+      if (match) {
+        poiCandidate = match;
+        break;
+      }
+    }
+    if (!poiCandidate && state.poiAnalysis?.bestMatchPOI) {
+      poiCandidate = state.poiAnalysis.bestMatchPOI;
+    }
+
+    const chosenLabelFallback = state.poiAnalysis?.address || null;
     let chosenLabel = null;
     let rationale = '';
     let confidence = 'low';
 
-    const nameMatchesOldFaithful = poi && /Old Faithful/i.test(poi.name || '');
-    const hasGeyserTag = tags.some((t) => /geyser|steam|plume|vent|water/.test(t));
-    if (nameMatchesOldFaithful && hasGeyserTag && poi.distanceMeters <= 120) {
-      chosenLabel = poi.name;
-      rationale = 'POI name matched and image tags indicate geyser; close distance';
-      confidence = 'high';
-    } else if (poi && tags.some((t) => /hotel|lodge|inn|building|roof|timber/.test(t)) && poi.category === 'hotel' && poi.distanceMeters <= 200) {
-      chosenLabel = poi.name;
-      rationale = 'Tags indicate lodging and nearby hotel matches';
-      confidence = 'medium';
-    } else if (nameMatchesOldFaithful && tags.some((t) => /flower|plant|macro|closeup/.test(t)) && poi.distanceMeters <= 300) {
-      chosenLabel = `${poi.name} area, Yellowstone National Park`;
-      rationale = 'Macro/flower shot near Old Faithful';
-      confidence = 'medium';
-    } else if (tags.some((t) => /trail|boardwalk|path|walkway/.test(t)) && poi && ['trail','attraction','park'].includes(poi.category)) {
-      chosenLabel = poi.name || chosenLabelFallback;
-      rationale = 'Trail/boardwalk tags and nearby POI';
-      confidence = 'medium';
-    } else if (poi) {
-      chosenLabel = poi.name || chosenLabelFallback;
-      rationale = 'Falling back to nearest POI name or address';
-      confidence = poi.confidence || 'low';
+    if (poiCandidate && poiCandidate.name) {
+      const category = (poiCandidate.category || 'location').toLowerCase();
+      const categoryIndex = categoryPriority.indexOf(category);
+      const tagSnippet = tags.slice(0, 3).join(', ') || 'general scene tags';
+      chosenLabel = poiCandidate.name;
+      rationale = `Nearest ${category} matches scene tags (${tagSnippet}).`;
+      if (categoryIndex === 0) {
+        confidence = 'high';
+      } else if (categoryIndex >= 1 && categoryIndex <= 2) {
+        confidence = 'medium';
+      } else {
+        confidence = 'low';
+      }
     } else if (chosenLabelFallback) {
       chosenLabel = chosenLabelFallback;
-      rationale = 'No POI; using reverse geocode address';
+      rationale = 'No POI match; using reverse geocode address.';
       confidence = 'low';
     }
 
