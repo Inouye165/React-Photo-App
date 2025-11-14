@@ -109,7 +109,8 @@ async function reverseGeocode(lat, lon) {
   }
 }
 
-async function nearbyPlaces(lat, lon, radius = 500) {
+// 200 feet ≈ 61 meters
+async function nearbyPlaces(lat, lon, radius = 61) {
   if (!API_KEY) return [];
   if (requestDeniedUntil && Date.now() < requestDeniedUntil) {
     if (allowDevDebug && Date.now() - lastBackoffNotice > 30_000) {
@@ -124,11 +125,15 @@ async function nearbyPlaces(lat, lon, radius = 500) {
   const cached = cacheGet(cacheKey);
   if (cached) return cached;
 
+  // Prefer parks, open spaces, museums, etc. for scenery
   const params = new URLSearchParams({
     location: `${lat},${lon}`,
     radius: String(radius),
+    type: 'park|museum|tourist_attraction|natural_feature',
     key: API_KEY,
   });
+  // Google expects only one type per request, but we can try a pipe-separated list for broader matching (some APIs accept this)
+  // If only one type is allowed, use 'park' as primary, or consider making multiple requests for each type if needed.
   const url = `https://maps.googleapis.com/maps/api/place/nearbysearch/json?${params.toString()}`;
   if (allowDevDebug) {
     console.log('[infer_poi] About to call Google Places');
