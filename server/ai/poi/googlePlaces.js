@@ -26,14 +26,7 @@ if (!API_KEY && !warned) {
   warned = true;
 }
 
-function describeKey(key) {
-  if (!key) return '(none)';
-  if (typeof key !== 'string') return '(non-string)';
-  if (key.length <= 8) return `${key}`;
-  const head = key.slice(0, 4);
-  const tail = key.slice(-4);
-  return `${head}…${tail} (${key.length} chars)`;
-}
+
 
 function redactUrl(url) {
   if (!API_KEY) return url;
@@ -138,7 +131,6 @@ async function nearbyPlaces(lat, lon, radius = 61) {
   if (allowDevDebug) {
     console.log('[infer_poi] About to call Google Places');
     console.log('[infer_poi] key loaded:', Boolean(API_KEY));
-    console.log('[infer_poi] key fingerprint:', describeKey(API_KEY));
     console.log('[infer_poi] lat/lon:', lat, lon);
     console.log('[infer_poi] url (redacted):', `${redactUrl(url)}`);
   }
