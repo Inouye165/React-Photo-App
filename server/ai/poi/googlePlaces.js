@@ -1,5 +1,6 @@
 require('../../env');
 const logger = require('../../logger');
+const { haversineDistanceMeters } = require('./geoUtils');
 
 const ensureFetch = () => {
   if (typeof globalThis.fetch === 'function') return globalThis.fetch.bind(globalThis);
@@ -53,16 +54,6 @@ function toKey(lat, lon, radius) {
   const lat4 = Number(lat).toFixed(4);
   const lon4 = Number(lon).toFixed(4);
   return `${lat4}:${lon4}:${radius}`;
-}
-
-function haversineDistanceMeters(lat1, lon1, lat2, lon2) {
-  const toRad = (v) => (v * Math.PI) / 180;
-  const R = 6371000; // meters
-  const dLat = toRad(lat2 - lat1);
-  const dLon = toRad(lon2 - lon1);
-  const a = Math.sin(dLat / 2) ** 2 + Math.cos(toRad(lat1)) * Math.cos(toRad(lat2)) * Math.sin(dLon / 2) ** 2;
-  const c = 2 * Math.atan2(Math.sqrt(a), Math.sqrt(1 - a));
-  return R * c;
 }
 
 function normalizeCategory(types = []) {
@@ -177,8 +168,17 @@ async function nearbyPlaces(lat, lon, radius = 61) {
       const placeLat = r.geometry?.location?.lat;
       const placeLon = r.geometry?.location?.lng;
       const distance = (placeLat && placeLon) ? haversineDistanceMeters(lat, lon, placeLat, placeLon) : undefined;
-      const category = normalizeCategory(r.types || []);
+      const categoryFromTypes = normalizeCategory(r.types || []);
+      let category = categoryFromTypes;
       const name = r.name || '';
+      // Name-based override: treat canal, aqueduct, walkway, path, and trail as 'trail' if not already
+      // This helps surface trails and walkways even if Google Places does not type them as such
+      if (
+        category !== 'trail' &&
+        /trail|trailhead|canal|aqueduct|greenway|walkway|path/i.test(name)
+      ) {
+        category = 'trail';
+      }
       const address = r.vicinity || r.formatted_address || null;
       let confidence = 'low';
       if (distance !== undefined) {
