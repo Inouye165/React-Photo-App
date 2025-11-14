@@ -79,8 +79,10 @@ async function reverseGeocode(lat, lon, opts = {}) {
 
   const url = `https://maps.googleapis.com/maps/api/geocode/json?latlng=${encodeURIComponent(lat)},${encodeURIComponent(lon)}&key=${API_KEY}`;
   const fetchFn = getFetchFn(opts.fetch);
-  try {
-    const res = await fetchFn(url, { method: 'GET' });
+    // Allow tests to run without API key if custom fetch is injected
+    if (!API_KEY && !opts.fetch) return { address: null };
+    try {
+      const res = await fetchFn(url, { method: 'GET' });
     if (!res.ok) {
       const text = await res.text();
       logger.warn('[POI] reverseGeocode failed', { status: res.status, body: text });
@@ -119,7 +121,7 @@ async function nearbyPlaces(lat, lon, radius = 61, opts = {}) {
     location: `${lat},${lon}`,
     radius: String(radius),
     type: 'park|museum|tourist_attraction|natural_feature',
-    key: API_KEY,
+      key: API_KEY || 'test', // dummy value for test
   });
   // Google expects only one type per request, but we can try a pipe-separated list for broader matching (some APIs accept this)
   // If only one type is allowed, use 'park' as primary, or consider making multiple requests for each type if needed.
