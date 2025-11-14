@@ -101,7 +101,8 @@ async function reverseGeocode(lat, lon, opts = {}) {
 
 // 200 feet ≈ 61 meters
 async function nearbyPlaces(lat, lon, radius = 61, opts = {}) {
-  if (!API_KEY) return [];
+  // Allow tests to run without API key if custom fetch is injected
+  if (!API_KEY && !opts.fetch) return [];
   if (requestDeniedUntil && Date.now() < requestDeniedUntil) {
     if (allowDevDebug && Date.now() - lastBackoffNotice > 30_000) {
       console.warn(
