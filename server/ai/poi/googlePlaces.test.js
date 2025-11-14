@@ -7,18 +7,13 @@ describe('googlePlaces POI heuristics', () => {
       geometry: { location: { lat: 37.123, lng: -122.456 } },
       vicinity: 'Walnut Creek, CA',
     }];
-    // Patch fetchFn to avoid network
-    jest.resetModules();
-    const origFetch = global.fetch;
-    global.fetch = async () => ({
+    const fakeFetch = async () => ({
       ok: true,
       json: async () => ({ status: 'OK', results: fakeResult }),
     });
-  // Re-import to bind fetchFn to the global.fetch stub
     const { nearbyPlaces } = require('./googlePlaces');
-    const pois = await nearbyPlaces(37.123, -122.456, 61);
+    const pois = await nearbyPlaces(37.123, -122.456, 61, { fetch: fakeFetch });
     expect(pois[0].category).toBe('trail');
-    global.fetch = origFetch;
   });
 
   it('should not override category if name does not match trail keywords', async () => {
@@ -29,15 +24,12 @@ describe('googlePlaces POI heuristics', () => {
       geometry: { location: { lat: 37.124, lng: -122.457 } },
       vicinity: 'Walnut Creek, CA',
     }];
-    jest.resetModules();
-    const origFetch = global.fetch;
-    global.fetch = async () => ({
+    const fakeFetch = async () => ({
       ok: true,
       json: async () => ({ status: 'OK', results: fakeResult }),
     });
-  const { nearbyPlaces } = require('./googlePlaces');
-    const pois = await nearbyPlaces(37.124, -122.457, 61);
+    const { nearbyPlaces } = require('./googlePlaces');
+    const pois = await nearbyPlaces(37.124, -122.457, 61, { fetch: fakeFetch });
     expect(pois[0].category).toBe('park');
-    global.fetch = origFetch;
   });
 });

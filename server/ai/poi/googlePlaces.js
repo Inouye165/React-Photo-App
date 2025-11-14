@@ -10,7 +10,10 @@ const ensureFetch = () => {
   };
 };
 
-const fetchFn = ensureFetch();
+function getFetchFn(customFetch) {
+  if (customFetch) return customFetch;
+  return ensureFetch();
+}
 const allowDevDebug = process.env.ALLOW_DEV_DEBUG === 'true';
 const STATUS_WARN_THROTTLE_MS = Number(process.env.GOOGLE_PLACES_STATUS_WARN_MS) || 5 * 60 * 1000;
 const REQUEST_DENIED_BACKOFF_MS = Number(process.env.GOOGLE_PLACES_DENIED_BACKOFF_MS) || 10 * 60 * 1000;
@@ -68,13 +71,14 @@ function normalizeCategory(types = []) {
   return t0 || 'unknown';
 }
 
-async function reverseGeocode(lat, lon) {
+async function reverseGeocode(lat, lon, opts = {}) {
   if (!API_KEY) return { address: null };
   const cacheKey = `regeocode:${toKey(lat, lon, 0)}`;
   const cached = cacheGet(cacheKey);
   if (cached) return cached;
 
   const url = `https://maps.googleapis.com/maps/api/geocode/json?latlng=${encodeURIComponent(lat)},${encodeURIComponent(lon)}&key=${API_KEY}`;
+  const fetchFn = getFetchFn(opts.fetch);
   try {
     const res = await fetchFn(url, { method: 'GET' });
     if (!res.ok) {
@@ -94,7 +98,7 @@ async function reverseGeocode(lat, lon) {
 }
 
 // 200 feet ≈ 61 meters
-async function nearbyPlaces(lat, lon, radius = 61) {
+async function nearbyPlaces(lat, lon, radius = 61, opts = {}) {
   if (!API_KEY) return [];
   if (requestDeniedUntil && Date.now() < requestDeniedUntil) {
     if (allowDevDebug && Date.now() - lastBackoffNotice > 30_000) {
@@ -105,6 +109,7 @@ async function nearbyPlaces(lat, lon, radius = 61) {
     }
     return [];
   }
+  const fetchFn = getFetchFn(opts.fetch);
   const cacheKey = toKey(lat, lon, radius);
   const cached = cacheGet(cacheKey);
   if (cached) return cached;
