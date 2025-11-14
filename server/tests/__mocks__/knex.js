@@ -46,6 +46,8 @@ const createMockQuery = () => {
   const query = {
     select: jest.fn().mockReturnThis(),
     where: jest.fn().mockReturnThis(),
+    andWhere: jest.fn().mockReturnThis(),
+    orWhere: jest.fn().mockReturnThis(),
     orderBy: jest.fn().mockReturnThis(),
     limit: jest.fn().mockReturnThis(),
     insert: jest.fn().mockReturnThis(),
@@ -58,14 +60,17 @@ const createMockQuery = () => {
 
   // Store where conditions for complex queries
   query._whereConditions = {};
-  
-  // Override where to track conditions
-  query.where = jest.fn().mockImplementation((conditions) => {
+
+  // Override where/andWhere/orWhere to track conditions
+  const whereImpl = jest.fn(function (conditions) {
     if (typeof conditions === 'object') {
       Object.assign(query._whereConditions, conditions);
     }
     return query;
   });
+  query.where = whereImpl;
+  query.andWhere = whereImpl;
+  query.orWhere = whereImpl;
 
   return query;
 };

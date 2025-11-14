@@ -1,4 +1,6 @@
+require('../../env');
 const logger = require('../../logger');
+const { haversineDistanceMeters } = require('./geoUtils');
 
 const ensureFetch = () => {
   if (typeof globalThis.fetch === 'function') return globalThis.fetch.bind(globalThis);
@@ -8,13 +10,31 @@ const ensureFetch = () => {
   };
 };
 
-const fetchFn = ensureFetch();
-
-const API_KEY = process.env.GOOGLE_PLACES_API_KEY || process.env.GOOGLE_API_KEY;
+function getFetchFn(customFetch) {
+  if (customFetch) return customFetch;
+  return ensureFetch();
+}
+const allowDevDebug = process.env.ALLOW_DEV_DEBUG === 'true';
+const STATUS_WARN_THROTTLE_MS = Number(process.env.GOOGLE_PLACES_STATUS_WARN_MS) || 5 * 60 * 1000;
+const REQUEST_DENIED_BACKOFF_MS = Number(process.env.GOOGLE_PLACES_DENIED_BACKOFF_MS) || 10 * 60 * 1000;
+const statusHistory = new Map();
+let requestDeniedUntil = 0;
+let lastBackoffNotice = 0;
+const API_KEY =
+  process.env.GOOGLE_MAPS_API_KEY ||
+  process.env.GOOGLE_PLACES_API_KEY ||
+  process.env.GOOGLE_API_KEY;
 let warned = false;
 if (!API_KEY && !warned) {
-  logger.warn('[POI] GOOGLE_PLACES_API_KEY missing; skipping POI lookups');
+  logger.warn('[POI] GOOGLE_MAPS_API_KEY missing; skipping POI lookups');
   warned = true;
+}
+
+
+
+function redactUrl(url) {
+  if (!API_KEY) return url;
+  return url.replace(API_KEY, '****');
 }
 
 // Simple in-memory TTL cache
@@ -39,16 +59,6 @@ function toKey(lat, lon, radius) {
   return `${lat4}:${lon4}:${radius}`;
 }
 
-function haversineDistanceMeters(lat1, lon1, lat2, lon2) {
-  const toRad = (v) => (v * Math.PI) / 180;
-  const R = 6371000; // meters
-  const dLat = toRad(lat2 - lat1);
-  const dLon = toRad(lon2 - lon1);
-  const a = Math.sin(dLat / 2) ** 2 + Math.cos(toRad(lat1)) * Math.cos(toRad(lat2)) * Math.sin(dLon / 2) ** 2;
-  const c = 2 * Math.atan2(Math.sqrt(a), Math.sqrt(1 - a));
-  return R * c;
-}
-
 function normalizeCategory(types = []) {
   const t0 = (types && types.length && types[0]) || '';
   const lowered = (t0 || '').toLowerCase();
@@ -61,15 +71,18 @@ function normalizeCategory(types = []) {
   return t0 || 'unknown';
 }
 
-async function reverseGeocode(lat, lon) {
+async function reverseGeocode(lat, lon, opts = {}) {
   if (!API_KEY) return { address: null };
   const cacheKey = `regeocode:${toKey(lat, lon, 0)}`;
   const cached = cacheGet(cacheKey);
   if (cached) return cached;
 
   const url = `https://maps.googleapis.com/maps/api/geocode/json?latlng=${encodeURIComponent(lat)},${encodeURIComponent(lon)}&key=${API_KEY}`;
-  try {
-    const res = await fetchFn(url, { method: 'GET' });
+  const fetchFn = getFetchFn(opts.fetch);
+    // Allow tests to run without API key if custom fetch is injected
+    if (!API_KEY && !opts.fetch) return { address: null };
+    try {
+      const res = await fetchFn(url, { method: 'GET' });
     if (!res.ok) {
       const text = await res.text();
       logger.warn('[POI] reverseGeocode failed', { status: res.status, body: text });
@@ -86,33 +99,94 @@ async function reverseGeocode(lat, lon) {
   }
 }
 
-async function nearbyPlaces(lat, lon, radius = 500) {
-  if (!API_KEY) return [];
+// 200 feet ≈ 61 meters
+async function nearbyPlaces(lat, lon, radius = 61, opts = {}) {
+  // Allow tests to run without API key if custom fetch is injected
+  if (!API_KEY && !opts.fetch) return [];
+  if (requestDeniedUntil && Date.now() < requestDeniedUntil) {
+    if (allowDevDebug && Date.now() - lastBackoffNotice > 30_000) {
+      console.warn(
+        '[infer_poi] Skipping Google Places call because last attempt returned REQUEST_DENIED; backoff active'
+      );
+      lastBackoffNotice = Date.now();
+    }
+    return [];
+  }
+  const fetchFn = getFetchFn(opts.fetch);
   const cacheKey = toKey(lat, lon, radius);
   const cached = cacheGet(cacheKey);
   if (cached) return cached;
 
+  // Prefer parks, open spaces, museums, etc. for scenery
   const params = new URLSearchParams({
     location: `${lat},${lon}`,
     radius: String(radius),
-    key: API_KEY,
+    type: 'park|museum|tourist_attraction|natural_feature',
+      key: API_KEY || 'test', // dummy value for test
   });
+  // Google expects only one type per request, but we can try a pipe-separated list for broader matching (some APIs accept this)
+  // If only one type is allowed, use 'park' as primary, or consider making multiple requests for each type if needed.
   const url = `https://maps.googleapis.com/maps/api/place/nearbysearch/json?${params.toString()}`;
+  if (allowDevDebug) {
+    console.log('[infer_poi] About to call Google Places');
+    console.log('[infer_poi] key loaded:', Boolean(API_KEY));
+    console.log('[infer_poi] lat/lon:', lat, lon);
+    console.log('[infer_poi] url (redacted):', `${redactUrl(url)}`);
+  }
   try {
     const res = await fetchFn(url, { method: 'GET' });
     if (!res.ok) {
       const txt = await res.text();
       logger.warn('[POI] nearbyPlaces failed', { status: res.status, body: txt });
+      if (allowDevDebug) {
+        console.error('[infer_poi] Google Places error:', `HTTP ${res.status}`);
+      }
       return [];
     }
     const json = await res.json();
+    if (allowDevDebug) {
+      console.log('[infer_poi] raw places response:', JSON.stringify(json, null, 2));
+    }
+    const status = json?.status || 'OK';
+    const statusIsOk = status === 'OK' || status === 'ZERO_RESULTS';
+    if (!statusIsOk) {
+      const errorMessage = json?.error_message || null;
+      if (status === 'REQUEST_DENIED') {
+        requestDeniedUntil = Date.now() + REQUEST_DENIED_BACKOFF_MS;
+      }
+      const key = `${status}:${errorMessage || ''}`;
+      const lastLogged = statusHistory.get(key) || 0;
+      if (!lastLogged || Date.now() - lastLogged >= STATUS_WARN_THROTTLE_MS) {
+        statusHistory.set(key, Date.now());
+        const suffix = errorMessage ? ` (${errorMessage})` : '';
+        logger.warn(`[POI] Google Places API status ${status}${suffix}`);
+        if (status === 'REQUEST_DENIED') {
+          logger.warn(
+            '[POI] Verify that the configured GOOGLE_MAPS_API_KEY has the Places API enabled with billing and server-side access allowed.'
+          );
+        }
+      }
+      if (allowDevDebug) {
+        console.error('[infer_poi] Google Places status error:', status, errorMessage || '');
+      }
+      return [];
+    }
     const results = Array.isArray(json.results) ? json.results : [];
     const pois = results.map((r) => {
       const placeLat = r.geometry?.location?.lat;
       const placeLon = r.geometry?.location?.lng;
       const distance = (placeLat && placeLon) ? haversineDistanceMeters(lat, lon, placeLat, placeLon) : undefined;
-      const category = normalizeCategory(r.types || []);
+      const categoryFromTypes = normalizeCategory(r.types || []);
+      let category = categoryFromTypes;
       const name = r.name || '';
+      // Name-based override: treat canal, aqueduct, walkway, path, and trail as 'trail' if not already
+      // This helps surface trails and walkways even if Google Places does not type them as such
+      if (
+        category !== 'trail' &&
+        /trail|trailhead|canal|aqueduct|greenway|walkway|path/i.test(name)
+      ) {
+        category = 'trail';
+      }
       const address = r.vicinity || r.formatted_address || null;
       let confidence = 'low';
       if (distance !== undefined) {
@@ -135,6 +209,9 @@ async function nearbyPlaces(lat, lon, radius = 500) {
     return pois;
   } catch (err) {
     logger.warn('[POI] nearbyPlaces exception', err && err.message ? err.message : err);
+    if (allowDevDebug) {
+      console.error('[infer_poi] Google Places error:', err && err.message ? err.message : err);
+    }
     return [];
   }
 }

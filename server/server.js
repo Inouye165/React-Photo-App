@@ -28,9 +28,9 @@ console.log(`[server]  - SUPABASE_ANON_KEY = ${process.env.SUPABASE_ANON_KEY ? '
 console.log(`[server]  - Derived database selection: ${usingPostgres ? 'Postgres (Supabase) — will use production knex config' : 'sqlite fallback (dev) — sqlite fallback would be used if enabled'}`);
 console.log('[server] End diagnostics');
 
-// Warn if Google Places key missing — POI lookups will be disabled
-if (!process.env.GOOGLE_PLACES_API_KEY) {
-  console.warn('[POI] GOOGLE_PLACES_API_KEY missing; POI lookups disabled');
+// Warn if Google Places/Maps key missing — POI lookups will be disabled
+if (!process.env.GOOGLE_PLACES_API_KEY && !process.env.GOOGLE_MAPS_API_KEY) {
+  console.warn('[POI] GOOGLE_MAPS_API_KEY missing; POI lookups disabled');
 }
 
 
@@ -98,16 +98,8 @@ const express = require('express');
 const multer = require('multer');
 const cors = require('cors');
 const cookieParser = require('cookie-parser');
-const app = express();
-module.exports = app;
-  // Export app for Supertest
-  module.exports = app;
 
-  // Log basic incoming request info for debugging (do NOT log headers which may contain secrets)
-  app.use((req, res, next) => {
-    console.log(`[REQUEST] ${req.method} ${req.originalUrl} from ${req.ip}`);
-    next();
-  });
+const app = express();
   // Configure CORS origins early so preflight (OPTIONS) and error responses
   // include the appropriate Access-Control-Allow-* headers before any
   // validation or authentication middleware runs.
@@ -189,20 +181,7 @@ module.exports = app;
   // Mount a dedicated display router at root so image URLs remain at
   // '/display/*' while the photos API is mounted under '/photos'.
   const createDisplayRouter = require('./routes/display');
-  // Middleware to log CSP header for /display/* responses
-  app.use('/display', (req, res, next) => {
-    // After response is sent, log the CSP header
-    res.on('finish', () => {
-      const csp = res.getHeader('content-security-policy');
-      if (csp) {
-        console.log(`[CSP DEBUG] /display: ${req.originalUrl} -> ${csp}`);
-      } else {
-        console.log(`[CSP DEBUG] /display: ${req.originalUrl} -> (no CSP header)`);
-      }
-    });
-    next();
-  });
-  app.use(createDisplayRouter({ db }));
+  app.use('/display', createDisplayRouter({ db }));
 
   // Mount photos API under '/photos' so routes like '/' and '/:id' defined
   // in `routes/photos.js` are accessible at '/photos' and '/photos/:id'.
@@ -234,6 +213,8 @@ module.exports = app;
     });
   });
 
+
+module.exports = app;
 
 
 

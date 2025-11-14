@@ -44,7 +44,6 @@ async function initializeQueue() {
       const processor = async (job) => {
         const { photoId, modelOverrides } = job.data || {};
       logger.info(`[WORKER] Processing AI job for photoId: ${photoId}`);
-      logger.info('[WORKER] Job payload modelOverrides:', JSON.stringify(modelOverrides || {}));
 
         try {
           // Re-fetch the photo data

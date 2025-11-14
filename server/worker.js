@@ -13,12 +13,14 @@
 // This file is the entry point for the worker process.
 // It imports the worker instance from the queue module,
 // which automatically starts it and connects it to Redis.
-
-
+require('./env'); // centralized, idempotent env loader
 const logger = require('./logger');
 console.log('[AI Debug] Worker entrypoint reached');
 logger.info('Starting AI Worker...');
-require('./env'); // centralized, idempotent env loader
+
+if (process.env.NODE_ENV !== 'production' && !process.env.GOOGLE_MAPS_API_KEY) {
+  console.warn('[AI Worker] GOOGLE_MAPS_API_KEY is missing. Places API will be skipped.');
+}
 
 // Start the worker
 (async () => {
