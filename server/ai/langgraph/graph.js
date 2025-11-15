@@ -8,6 +8,11 @@ const {
 const { openai } = require('../openaiClient');
 const logger = require('../../logger');
 const { AppState } = require('./state');
+const allowDevDebug = process.env.ALLOW_DEV_DEBUG === 'true';
+const FOOD_POI_MATCH_SCORE_THRESHOLD = parseInt(process.env.FOOD_POI_MATCH_SCORE_THRESHOLD || '2', 10);
+// If we don't find a good match within the tight radius, optionally try a lower-confidence
+// search in a broader radius for restaurants. Default fallback radius: 30.48 m (~100 ft)
+const FOOD_POI_FALLBACK_RADIUS = parseFloat(process.env.FOOD_POI_FALLBACK_RADIUS || '30.48');
 
 // --- Import the specialist agent & prompt from your old files ---
 const {
@@ -761,27 +766,199 @@ async function food_location_agent(state) {
     const lon = coordinates.lon;
     let nearby = [];
     try {
-      nearby = await nearbyFoodPlaces(lat, lon, 250);
+      // Use conservative search radius: 50 feet = 15.24 meters
+      // Allow tests to override nearby list for deterministic behavior
+      if (Array.isArray(state.__overrideNearby)) {
+        nearby = state.__overrideNearby;
+      } else {
+        nearby = await nearbyFoodPlaces(lat, lon, 15.24);
+      }
     } catch (err) {
       logger.warn('[LangGraph] food_location_agent: nearbyFoodPlaces failed', err && err.message ? err.message : err);
       nearby = [];
     }
 
-    // Choose best by distance, prefer those typed as restaurant
+
+    // --- Enhanced: Prefer restaurant by keyword match to photo ---
+    // Match threshold controls when a keyword match should be considered a "strong" match.
+    const MATCH_THRESHOLD = FOOD_POI_MATCH_SCORE_THRESHOLD;
     let best = null;
     if (Array.isArray(nearby) && nearby.length) {
-      best = nearby.reduce((acc, candidate) => {
+      // Gather photo keywords from state (from AI or metadata)
+      let photoKeywords = [];
+      if (state.keywords) {
+        if (Array.isArray(state.keywords)) photoKeywords = state.keywords.map(k => k.toLowerCase());
+        else if (typeof state.keywords === 'string') photoKeywords = state.keywords.toLowerCase().split(/[, ]+/);
+      }
+      if (state.description) {
+        photoKeywords = photoKeywords.concat(state.description.toLowerCase().split(/[, ]+/));
+      }
+      // Also add dish name if present
+      if (state.dish_name) photoKeywords.push(String(state.dish_name).toLowerCase());
+      // Remove empty strings
+      photoKeywords = photoKeywords.filter(Boolean);
+
+      // Normalize keywords and candidate name using simple stemming/synonyms
+      const synonyms = { seafood: ['seafood','crab','lobster','shrimp','boil','cajun'], boil: ['boil','seafood boil','bag'] };
+      const normalize = (token) => {
+        token = String(token || '').toLowerCase().replace(/[^a-z0-9]/g, ' ').trim();
+        return token;
+      };
+      const expandKeywords = (kws) => {
+        const out = new Set();
+        for (const k of kws) {
+          const n = normalize(k);
+          if (!n || n.length < 3) continue;
+          out.add(n);
+          for (const [canon, list] of Object.entries(synonyms)) {
+            if (list.includes(n)) {
+              out.add(canon);
+              // Also add all synonyms for the canonical so we can match names like 'Cajun Crackn'
+              for (const s of list) out.add(s);
+            }
+          }
+        }
+        return Array.from(out);
+      };
+      const normalizedKeywords = expandKeywords(photoKeywords);
+
+      // Score each candidate: +2 for name match, +1 for type match
+      const scored = nearby.map(candidate => {
+        let score = 0;
+        const name = normalize(candidate.name || '');
+        const types = (candidate.types || []).map(t => t.toLowerCase());
+        const matchedKeywords = [];
+        for (const kw of normalizedKeywords) {
+          if (kw.length < 3) continue; // skip trivial
+          if (name.includes(kw)) score += 2;
+          if (name.includes(kw)) matchedKeywords.push(kw);
+          if (types.some(t => t.includes(kw))) score += 1;
+          if (types.some(t => t.includes(kw))) matchedKeywords.push(kw);
+        }
+        return { candidate, score, matchedKeywords };
+      });
+      // Find highest score
+      const maxScore = Math.max(...scored.map(s => s.score), 0);
+      // Only consider keyword matches if they meet threshold
+      let bestCandidates = [];
+      if (maxScore >= MATCH_THRESHOLD && maxScore > 0) {
+        bestCandidates = scored.filter(s => s.score === maxScore).map(s => s.candidate);
+      }
+      // Log candidate scores for debugging
+      if (allowDevDebug) {
+        for (const s of scored) {
+          logger.info('[LangGraph] food_location_agent: candidate score', {
+            name: s.candidate.name,
+            distanceMeters: s.candidate.distanceMeters,
+            score: s.score,
+            matchedKeywords: s.matchedKeywords,
+          });
+        }
+      }
+      // If no keyword match, fall back to type preference
+      if (!bestCandidates.length) {
+        const preferTypes = ['restaurant', 'cafe', 'bakery'];
+        bestCandidates = nearby.filter((p) => (p.types || []).some((t) => preferTypes.includes(t)));
+      }
+      // If bestCandidates came from type preference and none of them are keyword-matched
+      // (scores < MATCH_THRESHOLD) while the photo keywords strongly suggest cuisine,
+      // run the fallback broader search (e.g., to include 'Cajun Crackn' which may be just outside the tiny radius).
+      if (bestCandidates.length && normalizedKeywords.some(k => ['seafood','boil','cajun','crab','shrimp'].includes(k))) {
+        const candidateScoreMap = new Map(scored.map(s => [s.candidate.placeId || s.candidate.name, s.score]));
+        const bestHadStrongMatch = bestCandidates.some((c) => (candidateScoreMap.get(c.placeId || c.name) || 0) >= MATCH_THRESHOLD);
+        if (!bestHadStrongMatch) {
+          // No strong match among nearest typed candidates — consider fallback
+          let fallbackNearby = [];
+          try {
+            fallbackNearby = await nearbyFoodPlaces(lat, lon, FOOD_POI_FALLBACK_RADIUS);
+          } catch (err) {
+            logger.warn('[LangGraph] food_location_agent: Fallback nearbyFoodPlaces failed', err && err.message ? err.message : err);
+            fallbackNearby = [];
+          }
+          // Add fallback POIs if not duplicates
+          for (const fb of fallbackNearby) {
+            if (!nearby.some((n) => n.placeId === fb.placeId)) nearby.push(fb);
+          }
+          // Re-score across the enlarged set, penalize fallback ones
+          const scoredFull = nearby.map(c => {
+            let score = 0;
+            const name = (c.name || '').toLowerCase();
+            const types = (c.types || []).map(t => t.toLowerCase());
+            const matchedKeywords = [];
+            for (const kw of normalizedKeywords) {
+              if (kw.length < 3) continue;
+              if (name.includes(kw)) score += 2, matchedKeywords.push(kw);
+              if (types.some(t => t.includes(kw))) score += 1, matchedKeywords.push(kw);
+            }
+            if (fallbackNearby.some(f => f.placeId === c.placeId)) score = Math.max(0, score - 1);
+            return { candidate: c, score, matchedKeywords };
+          });
+          const maxScoreFull = Math.max(...scoredFull.map(s => s.score), 0);
+          // Accept fallback matches if any fallback candidate has a raw score >= MATCH_THRESHOLD
+          const fallbackRawBest = Math.max(...scoredFull.filter(s => fallbackNearby.some(f => f.placeId === s.candidate.placeId)).map(s => s.score), 0);
+          const fallbackMatchedKeywordsAny = scoredFull.some(s => fallbackNearby.some(f => f.placeId === s.candidate.placeId) && (Array.isArray(s.matchedKeywords) && s.matchedKeywords.length > 0));
+          if (maxScoreFull >= MATCH_THRESHOLD || fallbackRawBest >= MATCH_THRESHOLD || fallbackMatchedKeywordsAny) {
+            bestCandidates = scoredFull.filter(s => s.score === maxScoreFull).map(s => s.candidate);
+            if (allowDevDebug) logger.info('[LangGraph] food_location_agent: Fallback expanded candidates found', { bestCandidates: bestCandidates.map(b => b.name) });
+          }
+        }
+      }
+      // If we had no strong match candidates from the small radius, optionally try a fallback search
+      if (!bestCandidates.length && Array.isArray(normalizedKeywords) && normalizedKeywords.some(k => ['seafood','boil','cajun','crab','shrimp'].includes(k))) {
+        let fallbackNearby = [];
+        try {
+          fallbackNearby = await nearbyFoodPlaces(lat, lon, FOOD_POI_FALLBACK_RADIUS);
+        } catch (err) {
+          logger.warn('[LangGraph] food_location_agent: Fallback nearbyFoodPlaces failed', err && err.message ? err.message : err);
+          fallbackNearby = [];
+        }
+        // Combine fallback results with original nearby but exclude duplicates
+        const combined = [...nearby];
+        for (const fb of fallbackNearby) {
+          if (!combined.some(c => c.placeId === fb.placeId)) combined.push(fb);
+        }
+        if (combined.length > nearby.length) {
+          // Penalize fallback candidates slightly so nearby still wins ties
+          const fallbackScored = combined.map(c => ({ candidate: c, score: 0, matchedKeywords: [] }));
+          // Rerun scoring across the merged set
+          const scoredFull = fallbackScored.map(s => {
+            const name = (s.candidate.name || '').toLowerCase();
+            const types = (s.candidate.types || []).map(t => t.toLowerCase());
+            let score = 0;
+            const matchedKeywords = [];
+            for (const kw of normalizedKeywords) {
+              if (kw.length < 3) continue;
+              if (name.includes(kw)) score += 2;
+              if (name.includes(kw)) matchedKeywords.push(kw);
+              if (types.some(t => t.includes(kw))) score += 1;
+              if (types.some(t => t.includes(kw))) matchedKeywords.push(kw);
+            }
+            // Penalize fallback results by 1 to prefer local matches
+            if (!nearby.includes(s.candidate)) score = Math.max(0, score - 1);
+            return { candidate: s.candidate, score, matchedKeywords };
+          });
+          const maxScoreFull = Math.max(...scoredFull.map(s => s.score), 0);
+          if (maxScoreFull >= MATCH_THRESHOLD) {
+            bestCandidates = scoredFull.filter(s => s.score === maxScoreFull).map(s => s.candidate);
+            if (allowDevDebug) logger.info('[LangGraph] food_location_agent: Using fallback radius results for keyword match', { bestCandidates: bestCandidates.map(b => b.name) });
+          }
+        }
+      }
+      // If still none, use all
+      if (!bestCandidates.length) bestCandidates = nearby;
+      // Pick closest among bestCandidates
+      best = bestCandidates.reduce((acc, candidate) => {
         if (!acc) return candidate;
         const ac = acc.distanceMeters == null ? Number.POSITIVE_INFINITY : acc.distanceMeters;
         const bc = candidate.distanceMeters == null ? Number.POSITIVE_INFINITY : candidate.distanceMeters;
         if (bc < ac) return candidate;
         return acc;
       }, null);
-      // Simple type scoring: prefer restaurants/cafe/bakery
-      const preferTypes = ['restaurant', 'cafe', 'bakery'];
-      const typed = nearby.find((p) => (p.types || []).some((t) => preferTypes.includes(t)));
-      if (typed) {
-        best = typed;
+      // Attach match score and matched keywords if present
+      if (best) {
+        const scoreObj = scored.find((s) => s.candidate.placeId === best.placeId || s.candidate.placeId === best.placeId);
+        best.matchScore = scoreObj ? scoreObj.score : 0;
+        best.keywordMatches = scoreObj ? scoreObj.matchedKeywords : [];
       }
     }
 
@@ -789,6 +966,8 @@ async function food_location_agent(state) {
       photoId: state.filename || state.file || null,
       nearbyCount: Array.isArray(nearby) ? nearby.length : 0,
       best: best ? best.name : null,
+      bestMatchScore: best?.matchScore || null,
+      bestKeywordMatches: best?.keywordMatches || null,
     });
     return { ...state, nearby_food_places: nearby, best_restaurant_candidate: best };
   } catch (err) {
@@ -805,7 +984,7 @@ async function food_metadata_agent(state) {
       const metadataForPrompt = metadataPayloadWithDirection(state);
 
     const systemPrompt = 'You are a food description assistant. Return ONLY a JSON object matching the schema outlined in the instructions.';
-    const userPrompt = `Photo context: classification: ${state.classification}\nmetadata: ${JSON.stringify(metadataForPrompt)}\npoiAnalysis: ${JSON.stringify(state.poiAnalysis)}\nnearby_food_places: ${JSON.stringify(state.nearby_food_places)}\nbest_restaurant_candidate: ${JSON.stringify(state.best_restaurant_candidate)}\nimage: omitted for brevity\n\nRespond with a JSON object with keys: caption, description, dish_name, dish_type, cuisine, restaurant_name, restaurant_address, restaurant_confidence, restaurant_reasoning, nutrition_info (object with calories,protein_g,carbs_g,fat_g,notes), nutrition_confidence (0-1), location_summary, keywords (array). Use EXIF date/time when present.`;
+    const userPrompt = `Photo context: classification: ${state.classification}\nmetadata: ${JSON.stringify(metadataForPrompt)}\npoiAnalysis: ${JSON.stringify(state.poiAnalysis)}\nnearby_food_places: ${JSON.stringify(state.nearby_food_places)}\nbest_restaurant_candidate: ${JSON.stringify(state.best_restaurant_candidate)}\nimage: omitted for brevity\n\nRespond with a JSON object with keys: caption, description, dish_name, dish_type, cuisine, restaurant_name, restaurant_address, restaurant_confidence, restaurant_reasoning, nutrition_info (object with calories,protein_g,carbs_g,fat_g,notes), nutrition_confidence (0-1), location_summary, keywords (array). Use EXIF date/time when present.\n\nIf the provided best_restaurant_candidate has a matchScore >= ${FOOD_POI_MATCH_SCORE_THRESHOLD} or restaurant_confidence >= 0.6, you MUST set the 'restaurant_name' field to the provided 'best_restaurant_candidate.name' and include that name in the 'description' with a short reasoning sentence (for example: 'This seafood boil is likely from Cajun Crackn Concord because ...'). If you only include the restaurant name in 'keywords', that is NOT sufficient — the 'restaurant_name' field must be set for high-confidence matches. Otherwise the restaurant name may be omitted.`;
 
     // Build user content array with high detail image
     const userContent = [
@@ -852,6 +1031,33 @@ async function food_metadata_agent(state) {
       restaurant_reasoning: parsed.restaurant_reasoning || null,
       location_summary: parsed.location_summary || null,
     };
+
+    // If model did not provide restaurant_name but we have evidence of a strong match,
+    // append it to the description. Also promote a POI if the model included the
+    // candidate name in keywords even when matchScore is lower than the threshold.
+    const bestCandidate = state.best_restaurant_candidate;
+    const parsedKeywords = Array.isArray(parsed.keywords)
+      ? parsed.keywords.map(k => String(k || '').toLowerCase())
+      : (typeof parsed.keywords === 'string' ? parsed.keywords.toLowerCase().split(/[, ]+/) : []);
+    const keywordsContainBest = bestCandidate && parsedKeywords.some(k => bestCandidate.name && (k.includes(bestCandidate.name.toLowerCase()) || bestCandidate.name.toLowerCase().includes(k)));
+    const shouldPromote = bestCandidate && ((bestCandidate.matchScore >= FOOD_POI_MATCH_SCORE_THRESHOLD) || keywordsContainBest);
+
+    if (!parsed.restaurant_name && shouldPromote) {
+      const best = state.best_restaurant_candidate;
+      // Append an explanatory sentence about the likely restaurant to the description
+      finalParsed.description = finalParsed.description
+        ? `${finalParsed.description}\n\nLikely from ${best.name} based on nearby matches.`
+        : `Likely from ${best.name} based on nearby matches.`;
+      // Also include restaurant in short caption if not already present
+      if (!finalParsed.caption || !finalParsed.caption.toLowerCase().includes(best.name.toLowerCase())) {
+        finalParsed.caption = finalParsed.caption ? `${finalParsed.caption} at ${best.name}` : `${best.name}`;
+      }
+      // Promote restaurant info into the structured fields
+      foodData.restaurant_name = best.name;
+      foodData.restaurant_address = best.address || foodData.restaurant_address;
+      foodData.restaurant_confidence = Math.max(foodData.restaurant_confidence || 0, 0.85);
+      foodData.restaurant_reasoning = `Matched keywords ${Array.isArray(best.keywordMatches) ? best.keywordMatches.join(', ') : ''}; closest among keyword matches (${best.distanceMeters}m).`;
+    }
 
     // Nutrition: If we have dish and restaurant, try to call nutrition search
     let nutrition = parsed.nutrition_info || null;

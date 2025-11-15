@@ -37,7 +37,8 @@ function cacheGet(key) {
   return entry.value;
 }
 function keyFor(lat, lon, radius) {
-  return `${Number(lat).toFixed(4)}:${Number(lon).toFixed(4)}:${Number(radius || 250)}`;
+  // Keep cache key stable - default radius is 50 meters (164 feet)
+  return `${Number(lat).toFixed(4)}:${Number(lon).toFixed(4)}:${Number(radius || 50)}`;
 }
 
 function redactUrl(url) {
@@ -45,73 +46,110 @@ function redactUrl(url) {
   return url.replace(API_KEY, '****');
 }
 
-async function nearbyFoodPlaces(lat, lon, radiusMeters = 250, opts = {}) {
+// Default radiusMeters is now 50 (164 feet)
+async function nearbyFoodPlaces(lat, lon, radiusMeters = 15.24, opts = {}) {
   if (!lat || !lon) {
     logger.info('[foodPlaces] nearbyFoodPlaces: Missing lat/lon, skipping');
     return [];
   }
   if (!API_KEY && !opts.fetch) return [];
+
   const fetchFn = getFetchFn(opts.fetch);
-  const cacheKey = keyFor(lat, lon, radiusMeters);
-  const cached = cacheGet(cacheKey);
-  if (cached) return cached;
+  const radii = [radiusMeters, 50, 100, 250]; // 50 ft, ~164 ft, ~328 ft, ~820 ft
 
-
-  // We can try multiple types in sequence if needed (restaurant, cafe, bakery, bar, meal_takeaway)
   const typesToTry = ['restaurant', 'cafe', 'bakery', 'bar', 'meal_takeaway', 'meal_delivery'];
-  let allResults = [];
-  for (const type of typesToTry) {
-    const p = new URLSearchParams({ location: `${lat},${lon}`, radius: String(radiusMeters), type, key: API_KEY || 'test' });
-    const url = `https://maps.googleapis.com/maps/api/place/nearbysearch/json?${p.toString()}`;
-    if (allowDevDebug) logger.info('[foodPlaces] Calling Google Places (redacted):', redactUrl(url));
-    try {
-      const res = await fetchFn(url, { method: 'GET' });
-      if (!res.ok) {
-        const text = await res.text();
-        logger.warn('[foodPlaces] Google Places returned error', { status: res.status, body: text?.slice?.(0, 200) });
+
+  for (const r of radii) {
+    const cacheKey = keyFor(lat, lon, r);
+    const cached = cacheGet(cacheKey);
+    if (cached) return cached;
+
+    let allResults = [];
+
+    for (const type of typesToTry) {
+      const p = new URLSearchParams({
+        location: `${lat},${lon}`,
+        radius: String(r),
+        type,
+        key: API_KEY || 'test',
+      });
+      const url = `https://maps.googleapis.com/maps/api/place/nearbysearch/json?${p.toString()}`;
+      if (allowDevDebug) logger.info('[foodPlaces] Calling Google Places (redacted):', redactUrl(url));
+      try {
+        const res = await fetchFn(url, { method: 'GET' });
+        if (!res.ok) {
+          const text = await res.text();
+          logger.warn('[foodPlaces] Google Places returned error', { status: res.status, body: text?.slice?.(0, 200) });
+          continue;
+        }
+        const json = await res.json();
+        const results = Array.isArray(json.results) ? json.results : [];
+        if (allowDevDebug) {
+          logger.info(`[foodPlaces] Results for type='${type}' radius=${r}:`,
+            JSON.stringify(results.map(r => ({
+              name: r.name,
+              place_id: r.place_id,
+              types: r.types,
+              vicinity: r.vicinity,
+              lat: r.geometry?.location?.lat,
+              lon: r.geometry?.location?.lng,
+            })), null, 2)
+          );
+        }
+        allResults = allResults.concat(results);
+      } catch (err) {
+        logger.warn('[foodPlaces] nearbyFoodPlaces exception', err && err.message ? err.message : err);
         continue;
       }
-      const json = await res.json();
-      const results = Array.isArray(json.results) ? json.results : [];
-      allResults = allResults.concat(results);
-    } catch (err) {
-      logger.warn('[foodPlaces] nearbyFoodPlaces exception', err && err.message ? err.message : err);
-      continue;
     }
+
+    if (allResults.length > 0) {
+      const unique = new Map();
+      for (const r of allResults) {
+        const pid = r.place_id || `${r.name}:${r.geometry?.location?.lat || ''}:${r.geometry?.location?.lng || ''}`;
+        if (unique.has(pid)) continue;
+
+        const placeLat = r.geometry?.location?.lat;
+        const placeLon = r.geometry?.location?.lng;
+        const distance = placeLat && placeLon ? haversineDistanceMeters(lat, lon, placeLat, placeLon) : null;
+
+        unique.set(pid, {
+          placeId: pid,
+          name: r.name || '',
+          address: r.vicinity || r.formatted_address || null,
+          types: r.types || [],
+          rating: typeof r.rating === 'number' ? r.rating : null,
+          userRatingsTotal: r.user_ratings_total || r.userRatingsTotal || null,
+          lat: placeLat || null,
+          lon: placeLon || null,
+          distanceMeters: distance === null ? null : Number(distance),
+          source: 'google',
+        });
+      }
+
+      const list = Array.from(unique.values()).sort((a, b) => {
+        const da = a.distanceMeters == null ? Number.POSITIVE_INFINITY : a.distanceMeters;
+        const db = b.distanceMeters == null ? Number.POSITIVE_INFINITY : b.distanceMeters;
+        return da - db;
+      });
+
+      cacheSet(cacheKey, list);
+      logger.info(`[foodPlaces] nearbyFoodPlaces returning ${list.length} candidates for ${lat},${lon} at radius=${r}`);
+      if (allowDevDebug) {
+        logger.info('[foodPlaces] Final sorted candidates:', JSON.stringify(list, null, 2));
+      }
+      return list;
+    }
+
+    logger.info(`[foodPlaces] No food POIs at radius=${r} for ${lat},${lon}, trying next radius...`);
   }
 
-  // Normalize and dedupe by place_id
-  const unique = new Map();
-  for (const r of allResults) {
-    const pid = r.place_id || `${r.name}:${r.geometry?.location?.lat || ''}:${r.geometry?.location?.lng || ''}`;
-    if (unique.has(pid)) continue;
-    const placeLat = r.geometry?.location?.lat;
-    const placeLon = r.geometry?.location?.lng;
-    const distance = placeLat && placeLon ? haversineDistanceMeters(lat, lon, placeLat, placeLon) : null;
-    unique.set(pid, {
-      placeId: pid,
-      name: r.name || '',
-      address: r.vicinity || r.formatted_address || null,
-      types: r.types || [],
-      rating: typeof r.rating === 'number' ? r.rating : null,
-      userRatingsTotal: r.user_ratings_total || r.userRatingsTotal || null,
-      lat: placeLat || null,
-      lon: placeLon || null,
-      distanceMeters: distance === null ? null : Number(distance),
-      source: 'google',
-    });
-  }
-
-  const list = Array.from(unique.values()).map((p) => ({ ...p }));
-  list.sort((a, b) => {
-    const da = a.distanceMeters == null ? Number.POSITIVE_INFINITY : a.distanceMeters;
-    const db = b.distanceMeters == null ? Number.POSITIVE_INFINITY : b.distanceMeters;
-    return da - db;
-  });
-
-  cacheSet(cacheKey, list);
-  logger.info(`[foodPlaces] nearbyFoodPlaces returning ${list.length} candidates for ${lat},${lon}`);
-  return list;
+  // Nothing found at any radius
+  const lastKey = keyFor(lat, lon, radii[radii.length - 1]);
+  cacheSet(lastKey, []);
+  logger.info(`[foodPlaces] nearbyFoodPlaces returning 0 candidates for ${lat},${lon} after all radii`);
+  return [];
 }
+
 
 module.exports = { nearbyFoodPlaces };

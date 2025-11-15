@@ -56,4 +56,34 @@ describe('food nodes behavior', () => {
     expect(result.poiAnalysis.food.dish_name).toBe('Grilled Salmon');
     expect(result.poiAnalysis.food.nutrition_info.calories).toBe(500);
   });
+
+  it('promotes POI from keywords to restaurant_name and description', async () => {
+    const state = {
+      filename: 'photo.jpg',
+      imageBase64: 'FAKE',
+      imageMime: 'image/jpeg',
+      classification: 'food',
+      metadata: { DateTimeOriginal: '2025-11-14' },
+      gpsString: '37.123,-122.456',
+      best_restaurant_candidate: { name: 'Cajun Crackn Concord', address: '100 Fish St', matchScore: 1 },
+      nearby_food_places: [],
+      poiAnalysis: {}
+    };
+    // Model returns the POI in keywords only (no restaurant_name). We should promote it.
+    const mockParsed = {
+      caption: 'Crab Boil',
+      description: 'A big bag of seafood',
+      dish_name: 'Crab boil',
+      cuisine: 'Seafood',
+      keywords: ['seafood','cajun crackn']
+    };
+    openai.chat.completions.create.mockResolvedValueOnce({ choices: [{ message: { content: JSON.stringify(mockParsed) } }] });
+    fetchDishNutrition.mockResolvedValueOnce(null);
+
+    const result = await __testing.food_metadata_agent(state);
+    expect(result.finalResult).toBeTruthy();
+    expect(result.poiAnalysis.food.restaurant_name).toBe('Cajun Crackn Concord');
+    expect(result.finalResult.description).toMatch(/Cajun Crackn Concord/);
+    expect(result.finalResult.caption).toMatch(/Cajun Crackn Concord/);
+  });
 });
