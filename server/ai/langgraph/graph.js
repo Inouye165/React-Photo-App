@@ -15,6 +15,8 @@ const {
   COLLECTIBLE_SYSTEM_PROMPT,
 } = require('../langchain/agents');
 const { reverseGeocode, nearbyPlaces } = require('../poi/googlePlaces');
+const { nearbyFoodPlaces } = require('../poi/foodPlaces');
+const { fetchDishNutrition } = require('../food/nutritionSearch');
 const { nearbyTrailsFromOSM } = require('../poi/osmTrails');
 
 // --- Debug helpers ---
@@ -746,6 +748,174 @@ async function decide_scene_label(state) {
   }
 }
 
+// --- Node: food_location_agent (new) ---
+async function food_location_agent(state) {
+  try {
+    logger.info('[LangGraph] food_location_agent: Enter', { photoId: state.filename || state.file || null });
+  const coordinates = parseGpsCoordinates(state);
+    if (!coordinates) {
+      logger.info('[LangGraph] food_location_agent: No GPS coordinates available, skipping food POI lookup');
+      return { ...state, nearby_food_places: [], best_restaurant_candidate: null };
+    }
+    const lat = coordinates.lat;
+    const lon = coordinates.lon;
+    let nearby = [];
+    try {
+      nearby = await nearbyFoodPlaces(lat, lon, 250);
+    } catch (err) {
+      logger.warn('[LangGraph] food_location_agent: nearbyFoodPlaces failed', err && err.message ? err.message : err);
+      nearby = [];
+    }
+
+    // Choose best by distance, prefer those typed as restaurant
+    let best = null;
+    if (Array.isArray(nearby) && nearby.length) {
+      best = nearby.reduce((acc, candidate) => {
+        if (!acc) return candidate;
+        const ac = acc.distanceMeters == null ? Number.POSITIVE_INFINITY : acc.distanceMeters;
+        const bc = candidate.distanceMeters == null ? Number.POSITIVE_INFINITY : candidate.distanceMeters;
+        if (bc < ac) return candidate;
+        return acc;
+      }, null);
+      // Simple type scoring: prefer restaurants/cafe/bakery
+      const preferTypes = ['restaurant', 'cafe', 'bakery'];
+      const typed = nearby.find((p) => (p.types || []).some((t) => preferTypes.includes(t)));
+      if (typed) {
+        best = typed;
+      }
+    }
+
+    logger.info('[LangGraph] food_location_agent: Exit', {
+      photoId: state.filename || state.file || null,
+      nearbyCount: Array.isArray(nearby) ? nearby.length : 0,
+      best: best ? best.name : null,
+    });
+    return { ...state, nearby_food_places: nearby, best_restaurant_candidate: best };
+  } catch (err) {
+    logger.warn('[LangGraph] food_location_agent: Error', err && err.message ? err.message : err);
+    return { ...state, nearby_food_places: [], best_restaurant_candidate: null };
+  }
+}
+
+// --- Node: food_metadata_agent (new) ---
+async function food_metadata_agent(state) {
+  let debugUsage = state.debugUsage;
+  try {
+    logger.info('[LangGraph] food_metadata_agent: Enter', { photoId: state.filename });
+      const metadataForPrompt = metadataPayloadWithDirection(state);
+
+    const systemPrompt = 'You are a food description assistant. Return ONLY a JSON object matching the schema outlined in the instructions.';
+    const userPrompt = `Photo context: classification: ${state.classification}\nmetadata: ${JSON.stringify(metadataForPrompt)}\npoiAnalysis: ${JSON.stringify(state.poiAnalysis)}\nnearby_food_places: ${JSON.stringify(state.nearby_food_places)}\nbest_restaurant_candidate: ${JSON.stringify(state.best_restaurant_candidate)}\nimage: omitted for brevity\n\nRespond with a JSON object with keys: caption, description, dish_name, dish_type, cuisine, restaurant_name, restaurant_address, restaurant_confidence, restaurant_reasoning, nutrition_info (object with calories,protein_g,carbs_g,fat_g,notes), nutrition_confidence (0-1), location_summary, keywords (array). Use EXIF date/time when present.`;
+
+    // Build user content array with high detail image
+    const userContent = [
+      { type: 'text', text: userPrompt },
+      { type: 'image_url', image_url: { url: `data:${state.imageMime};base64,${state.imageBase64}`, detail: 'high' } },
+    ];
+
+    logger.debug('[LangGraph] food_metadata_agent: Prompt (truncated)', userPrompt.slice(0, 1000));
+
+    const configuredModel = state.modelOverrides?.defaultModel || 'gpt-4o-mini';
+    const response = await openai.chat.completions.create({
+      model: configuredModel,
+      messages: [ { role: 'system', content: systemPrompt }, { role: 'user', content: userContent } ],
+      max_tokens: 512,
+      response_format: { type: 'json_object' },
+    });
+    const raw = response?.choices?.[0]?.message?.content || '{}';
+    logger.debug('[LangGraph] food_metadata_agent: Model raw (truncated)', raw.slice(0, 1000));
+
+    let parsed;
+    try {
+      parsed = JSON.parse(raw);
+    } catch (err) {
+      logger.warn('[LangGraph] food_metadata_agent: Failed to parse JSON response', err && err.message ? err.message : err, raw.slice(0, 1000));
+      return { ...state, error: 'Failed to parse food metadata response' };
+    }
+
+    // Ensure we at least set finalResult caption/description/keywords
+    const finalParsed = {
+      caption: parsed.caption || (parsed.dish_name ? parsed.dish_name : (parsed.description ? parsed.description.slice(0, 80) : 'Food photo')),
+      description: parsed.description || parsed.caption || '',
+      keywords: Array.isArray(parsed.keywords) ? parsed.keywords.join(', ') : (parsed.keywords || (parsed.cuisine ? `${parsed.cuisine}` : 'food')),
+      classification: state.classification,
+    };
+
+    // Update poiAnalysis with food-specific fields
+    const foodData = {
+      dish_name: parsed.dish_name || null,
+      dish_type: parsed.dish_type || null,
+      cuisine: parsed.cuisine || null,
+      restaurant_name: parsed.restaurant_name || (state.best_restaurant_candidate ? state.best_restaurant_candidate.name : null),
+      restaurant_address: parsed.restaurant_address || (state.best_restaurant_candidate ? state.best_restaurant_candidate.address : null),
+      restaurant_confidence: parseNumber(parsed.restaurant_confidence) || (state.best_restaurant_candidate ? 0.6 : 0.0),
+      restaurant_reasoning: parsed.restaurant_reasoning || null,
+      location_summary: parsed.location_summary || null,
+    };
+
+    // Nutrition: If we have dish and restaurant, try to call nutrition search
+    let nutrition = parsed.nutrition_info || null;
+    let nutrition_conf = parseNumber(parsed.nutrition_confidence) || 0.0;
+    if (!nutrition && (foodData.restaurant_name || foodData.dish_name)) {
+      try {
+        const searchResult = await fetchDishNutrition({ restaurantName: foodData.restaurant_name, dishName: foodData.dish_name });
+        if (searchResult) {
+          nutrition = searchResult;
+          nutrition_conf = 0.85; // reasonably confident
+          logger.info('[LangGraph] food_metadata_agent: Nutrition lookup success');
+        } else {
+          logger.info('[LangGraph] food_metadata_agent: Nutrition lookup returned no structured data; asking model for estimate');
+          // Ask the model to estimate nutrition if no external data
+          const estimatePrompt = `Estimate nutrition for ${foodData.dish_name || 'the dish'} as a typical single serving. Return JSON: {"calories":number,"protein_g":number,"carbs_g":number,"fat_g":number, "notes":"..."}`;
+          const estimateResp = await openai.chat.completions.create({
+            model: configuredModel,
+            messages: [ { role: 'system', content: 'You are a nutrition estimator. Provide best-effort numeric nutrition information.' }, { role: 'user', content: estimatePrompt } ],
+            max_tokens: 256,
+            response_format: { type: 'json_object' },
+          });
+          try {
+            const estRaw = estimateResp?.choices?.[0]?.message?.content || '{}';
+            const estParsed = JSON.parse(estRaw);
+            nutrition = {
+              calories: parseNumber(estParsed.calories) || null,
+              protein_g: parseNumber(estParsed.protein_g) || null,
+              carbs_g: parseNumber(estParsed.carbs_g) || null,
+              fat_g: parseNumber(estParsed.fat_g) || null,
+              notes: estParsed.notes || 'Estimated values',
+            };
+            nutrition_conf = 0.4; // lower confidence
+          } catch (err) {
+            logger.warn('[LangGraph] food_metadata_agent: Nutrition estimate parsing failed', err && err.message ? err.message : err);
+          }
+        }
+      } catch (err) {
+        logger.warn('[LangGraph] food_metadata_agent: Nutrition search failed', err && err.message ? err.message : err);
+      }
+    }
+
+    // Attach food-specific data into poiAnalysis
+    const poi = { ...(state.poiAnalysis || {}), food: { ...foodData, nutrition_info: nutrition, nutrition_confidence: nutrition_conf } };
+
+    const { usage, model } = extractUsageFromResponse(response);
+    debugUsage = accumulateDebugUsage(debugUsage, {
+      step: 'food_metadata_agent',
+      model: model || configuredModel,
+      usage,
+      durationMs: 0,
+      notes: 'Food metadata LLM call',
+      request: { systemPrompt, userPrompt },
+      response: parsed,
+      prompt: userPrompt,
+    });
+
+    logger.info('[LangGraph] food_metadata_agent: Exit', { photoId: state.filename, dish: parsed.dish_name });
+    return { ...state, finalResult: finalParsed, poiAnalysis: poi, debugUsage, error: null };
+  } catch (err) {
+    logger.warn('[LangGraph] food_metadata_agent: Error', err && err.message ? err.message : err);
+    return { ...state, error: err && err.message ? err.message : String(err) };
+  }
+}
+
 // --- Router: Decides next node after the location intelligence agent ---
 function route_after_location(state) {
   if (state.error) {
@@ -758,6 +928,10 @@ function route_after_location(state) {
 
   if (classification === 'collectables') {
     return 'handle_collectible';
+  }
+
+  if (classification === 'food') {
+    return 'food_location_agent';
   }
 
   if (needPoi(state) && (classification === 'scenery' || classification.includes('scenery'))) {
@@ -779,6 +953,8 @@ workflow.addNode('generate_metadata', generate_metadata);
 workflow.addNode('handle_collectible', handle_collectible);
 workflow.addNode('location_intelligence_agent', location_intelligence_agent);
 workflow.addNode('decide_scene_label', decide_scene_label);
+workflow.addNode('food_location_agent', food_location_agent);
+workflow.addNode('food_metadata_agent', food_metadata_agent);
 
 // 2. Set the entry point
 workflow.setEntryPoint('classify_image');
@@ -793,6 +969,7 @@ workflow.addConditionalEdges(
     generate_metadata: 'generate_metadata',
     decide_scene_label: 'decide_scene_label',
     handle_collectible: 'handle_collectible',
+    food_location_agent: 'food_location_agent',
     __end__: END,
   }
 );
@@ -801,7 +978,9 @@ workflow.addConditionalEdges(
 workflow.addEdge('generate_metadata', END);
 workflow.addEdge('handle_collectible', END);
 workflow.addEdge('decide_scene_label', 'generate_metadata');
+workflow.addEdge('food_location_agent', 'food_metadata_agent');
+workflow.addEdge('food_metadata_agent', END);
 
 // 5. Compile the app
 const app = workflow.compile();
-module.exports = { app };
+module.exports = { app, __testing: { food_location_agent, food_metadata_agent } };
