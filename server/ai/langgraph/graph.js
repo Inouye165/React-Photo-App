@@ -1,4 +1,5 @@
 // LangGraph-based implementation
+// C:\Users\Ron\React-Photo-App\server\ai\langgraph\graph.js
 const { StateGraph, END } = require('@langchain/langgraph');
 // We need HumanMessage AND SystemMessage
 const {
@@ -757,7 +758,7 @@ async function decide_scene_label(state) {
 async function food_location_agent(state) {
   try {
     logger.info('[LangGraph] food_location_agent: Enter', { photoId: state.filename || state.file || null });
-  const coordinates = parseGpsCoordinates(state);
+    const coordinates = parseGpsCoordinates(state);
     if (!coordinates) {
       logger.info('[LangGraph] food_location_agent: No GPS coordinates available, skipping food POI lookup');
       return { ...state, nearby_food_places: [], best_restaurant_candidate: null };
@@ -766,210 +767,45 @@ async function food_location_agent(state) {
     const lon = coordinates.lon;
     let nearby = [];
     try {
-      // Use conservative search radius: 50 feet = 15.24 meters
-      // Allow tests to override nearby list for deterministic behavior
+      // Use a 100ft (30.48m) radius for lookup; keep tests override
       if (Array.isArray(state.__overrideNearby)) {
         nearby = state.__overrideNearby;
       } else {
-        nearby = await nearbyFoodPlaces(lat, lon, 15.24);
+        nearby = await nearbyFoodPlaces(lat, lon, 30.48);
       }
     } catch (err) {
       logger.warn('[LangGraph] food_location_agent: nearbyFoodPlaces failed', err && err.message ? err.message : err);
       nearby = [];
     }
 
-
-    // --- Enhanced: Prefer restaurant by keyword match to photo ---
-    // Match threshold controls when a keyword match should be considered a "strong" match.
-    const MATCH_THRESHOLD = FOOD_POI_MATCH_SCORE_THRESHOLD;
-    let best = null;
-    if (Array.isArray(nearby) && nearby.length) {
-      // Gather photo keywords from state (from AI or metadata)
-      let photoKeywords = [];
-      if (state.keywords) {
-        if (Array.isArray(state.keywords)) photoKeywords = state.keywords.map(k => k.toLowerCase());
-        else if (typeof state.keywords === 'string') photoKeywords = state.keywords.toLowerCase().split(/[, ]+/);
-      }
-      if (state.description) {
-        photoKeywords = photoKeywords.concat(state.description.toLowerCase().split(/[, ]+/));
-      }
-      // Also add dish name if present
-      if (state.dish_name) photoKeywords.push(String(state.dish_name).toLowerCase());
-      // Remove empty strings
-      photoKeywords = photoKeywords.filter(Boolean);
-
-      // Normalize keywords and candidate name using simple stemming/synonyms
-      const synonyms = { seafood: ['seafood','crab','lobster','shrimp','boil','cajun'], boil: ['boil','seafood boil','bag'] };
-      const normalize = (token) => {
-        token = String(token || '').toLowerCase().replace(/[^a-z0-9]/g, ' ').trim();
-        return token;
-      };
-      const expandKeywords = (kws) => {
-        const out = new Set();
-        for (const k of kws) {
-          const n = normalize(k);
-          if (!n || n.length < 3) continue;
-          out.add(n);
-          for (const [canon, list] of Object.entries(synonyms)) {
-            if (list.includes(n)) {
-              out.add(canon);
-              // Also add all synonyms for the canonical so we can match names like 'Cajun Crackn'
-              for (const s of list) out.add(s);
-            }
-          }
-        }
-        return Array.from(out);
-      };
-      const normalizedKeywords = expandKeywords(photoKeywords);
-
-      // Score each candidate: +2 for name match, +1 for type match
-      const scored = nearby.map(candidate => {
-        let score = 0;
-        const name = normalize(candidate.name || '');
-        const types = (candidate.types || []).map(t => t.toLowerCase());
-        const matchedKeywords = [];
-        for (const kw of normalizedKeywords) {
-          if (kw.length < 3) continue; // skip trivial
-          if (name.includes(kw)) score += 2;
-          if (name.includes(kw)) matchedKeywords.push(kw);
-          if (types.some(t => t.includes(kw))) score += 1;
-          if (types.some(t => t.includes(kw))) matchedKeywords.push(kw);
-        }
-        return { candidate, score, matchedKeywords };
-      });
-      // Find highest score
-      const maxScore = Math.max(...scored.map(s => s.score), 0);
-      // Only consider keyword matches if they meet threshold
-      let bestCandidates = [];
-      if (maxScore >= MATCH_THRESHOLD && maxScore > 0) {
-        bestCandidates = scored.filter(s => s.score === maxScore).map(s => s.candidate);
-      }
-      // Log candidate scores for debugging
-      if (allowDevDebug) {
-        for (const s of scored) {
-          logger.info('[LangGraph] food_location_agent: candidate score', {
-            name: s.candidate.name,
-            distanceMeters: s.candidate.distanceMeters,
-            score: s.score,
-            matchedKeywords: s.matchedKeywords,
-          });
-        }
-      }
-      // If no keyword match, fall back to type preference
-      if (!bestCandidates.length) {
-        const preferTypes = ['restaurant', 'cafe', 'bakery'];
-        bestCandidates = nearby.filter((p) => (p.types || []).some((t) => preferTypes.includes(t)));
-      }
-      // If bestCandidates came from type preference and none of them are keyword-matched
-      // (scores < MATCH_THRESHOLD) while the photo keywords strongly suggest cuisine,
-      // run the fallback broader search (e.g., to include 'Cajun Crackn' which may be just outside the tiny radius).
-      if (bestCandidates.length && normalizedKeywords.some(k => ['seafood','boil','cajun','crab','shrimp'].includes(k))) {
-        const candidateScoreMap = new Map(scored.map(s => [s.candidate.placeId || s.candidate.name, s.score]));
-        const bestHadStrongMatch = bestCandidates.some((c) => (candidateScoreMap.get(c.placeId || c.name) || 0) >= MATCH_THRESHOLD);
-        if (!bestHadStrongMatch) {
-          // No strong match among nearest typed candidates — consider fallback
-          let fallbackNearby = [];
-          try {
-            fallbackNearby = await nearbyFoodPlaces(lat, lon, FOOD_POI_FALLBACK_RADIUS);
-          } catch (err) {
-            logger.warn('[LangGraph] food_location_agent: Fallback nearbyFoodPlaces failed', err && err.message ? err.message : err);
-            fallbackNearby = [];
-          }
-          // Add fallback POIs if not duplicates
-          for (const fb of fallbackNearby) {
-            if (!nearby.some((n) => n.placeId === fb.placeId)) nearby.push(fb);
-          }
-          // Re-score across the enlarged set, penalize fallback ones
-          const scoredFull = nearby.map(c => {
-            let score = 0;
-            const name = (c.name || '').toLowerCase();
-            const types = (c.types || []).map(t => t.toLowerCase());
-            const matchedKeywords = [];
-            for (const kw of normalizedKeywords) {
-              if (kw.length < 3) continue;
-              if (name.includes(kw)) score += 2, matchedKeywords.push(kw);
-              if (types.some(t => t.includes(kw))) score += 1, matchedKeywords.push(kw);
-            }
-            if (fallbackNearby.some(f => f.placeId === c.placeId)) score = Math.max(0, score - 1);
-            return { candidate: c, score, matchedKeywords };
-          });
-          const maxScoreFull = Math.max(...scoredFull.map(s => s.score), 0);
-          // Accept fallback matches if any fallback candidate has a raw score >= MATCH_THRESHOLD
-          const fallbackRawBest = Math.max(...scoredFull.filter(s => fallbackNearby.some(f => f.placeId === s.candidate.placeId)).map(s => s.score), 0);
-          const fallbackMatchedKeywordsAny = scoredFull.some(s => fallbackNearby.some(f => f.placeId === s.candidate.placeId) && (Array.isArray(s.matchedKeywords) && s.matchedKeywords.length > 0));
-          if (maxScoreFull >= MATCH_THRESHOLD || fallbackRawBest >= MATCH_THRESHOLD || fallbackMatchedKeywordsAny) {
-            bestCandidates = scoredFull.filter(s => s.score === maxScoreFull).map(s => s.candidate);
-            if (allowDevDebug) logger.info('[LangGraph] food_location_agent: Fallback expanded candidates found', { bestCandidates: bestCandidates.map(b => b.name) });
-          }
-        }
-      }
-      // If we had no strong match candidates from the small radius, optionally try a fallback search
-      if (!bestCandidates.length && Array.isArray(normalizedKeywords) && normalizedKeywords.some(k => ['seafood','boil','cajun','crab','shrimp'].includes(k))) {
-        let fallbackNearby = [];
-        try {
-          fallbackNearby = await nearbyFoodPlaces(lat, lon, FOOD_POI_FALLBACK_RADIUS);
-        } catch (err) {
-          logger.warn('[LangGraph] food_location_agent: Fallback nearbyFoodPlaces failed', err && err.message ? err.message : err);
-          fallbackNearby = [];
-        }
-        // Combine fallback results with original nearby but exclude duplicates
-        const combined = [...nearby];
-        for (const fb of fallbackNearby) {
-          if (!combined.some(c => c.placeId === fb.placeId)) combined.push(fb);
-        }
-        if (combined.length > nearby.length) {
-          // Penalize fallback candidates slightly so nearby still wins ties
-          const fallbackScored = combined.map(c => ({ candidate: c, score: 0, matchedKeywords: [] }));
-          // Rerun scoring across the merged set
-          const scoredFull = fallbackScored.map(s => {
-            const name = (s.candidate.name || '').toLowerCase();
-            const types = (s.candidate.types || []).map(t => t.toLowerCase());
-            let score = 0;
-            const matchedKeywords = [];
-            for (const kw of normalizedKeywords) {
-              if (kw.length < 3) continue;
-              if (name.includes(kw)) score += 2;
-              if (name.includes(kw)) matchedKeywords.push(kw);
-              if (types.some(t => t.includes(kw))) score += 1;
-              if (types.some(t => t.includes(kw))) matchedKeywords.push(kw);
-            }
-            // Penalize fallback results by 1 to prefer local matches
-            if (!nearby.includes(s.candidate)) score = Math.max(0, score - 1);
-            return { candidate: s.candidate, score, matchedKeywords };
-          });
-          const maxScoreFull = Math.max(...scoredFull.map(s => s.score), 0);
-          if (maxScoreFull >= MATCH_THRESHOLD) {
-            bestCandidates = scoredFull.filter(s => s.score === maxScoreFull).map(s => s.candidate);
-            if (allowDevDebug) logger.info('[LangGraph] food_location_agent: Using fallback radius results for keyword match', { bestCandidates: bestCandidates.map(b => b.name) });
-          }
-        }
-      }
-      // If still none, use all
-      if (!bestCandidates.length) bestCandidates = nearby;
-      // Pick closest among bestCandidates
-      best = bestCandidates.reduce((acc, candidate) => {
-        if (!acc) return candidate;
-        const ac = acc.distanceMeters == null ? Number.POSITIVE_INFINITY : acc.distanceMeters;
-        const bc = candidate.distanceMeters == null ? Number.POSITIVE_INFINITY : candidate.distanceMeters;
-        if (bc < ac) return candidate;
-        return acc;
-      }, null);
-      // Attach match score and matched keywords if present
-      if (best) {
-        const scoreObj = scored.find((s) => s.candidate.placeId === best.placeId || s.candidate.placeId === best.placeId);
-        best.matchScore = scoreObj ? scoreObj.score : 0;
-        best.keywordMatches = scoreObj ? scoreObj.matchedKeywords : [];
+    // This node is intentionally a "dumb" finder: return the full set of nearby POIs
+    // and let downstream nodes (food_metadata_agent) decide which is the best match.
+    // Summarize nearby list and log best candidate info for observability
+    const nearbyCount = Array.isArray(nearby) ? nearby.length : 0;
+    let loggingBest = null;
+    if (nearbyCount) {
+      const nearest = nearby.reduce((acc, c) => (!acc || (Number.isFinite(c.distanceMeters) && c.distanceMeters < (acc.distanceMeters || Number.POSITIVE_INFINITY)) ? c : acc), null);
+      if (nearest) {
+        loggingBest = {
+          name: nearest.name,
+          address: nearest.address || nearest.vicinity || null,
+          distanceMeters: nearest.distanceMeters || null,
+          placeId: nearest.placeId || nearest.id || null,
+          source: nearest.source || 'unknown',
+        };
       }
     }
-
-    logger.info('[LangGraph] food_location_agent: Exit', {
+    const exitLog = {
       photoId: state.filename || state.file || null,
-      nearbyCount: Array.isArray(nearby) ? nearby.length : 0,
-      best: best ? best.name : null,
-      bestMatchScore: best?.matchScore || null,
-      bestKeywordMatches: best?.keywordMatches || null,
-    });
-    return { ...state, nearby_food_places: nearby, best_restaurant_candidate: best };
+      nearbyCount,
+      best: loggingBest,
+    };
+    if (allowDevDebug) {
+      // Include candidates only in dev debug mode to avoid noisy logs
+      exitLog.candidates = (nearby || []).map(c => ({ name: c.name, address: c.address || c.vicinity || null, distanceMeters: c.distanceMeters || null, placeId: c.placeId || c.id, source: c.source || 'osm/google' }));
+    }
+    logger.info('[LangGraph] food_location_agent: Exit', exitLog);
+    return { ...state, nearby_food_places: nearby, best_restaurant_candidate: null };
   } catch (err) {
     logger.warn('[LangGraph] food_location_agent: Error', err && err.message ? err.message : err);
     return { ...state, nearby_food_places: [], best_restaurant_candidate: null };
@@ -981,10 +817,18 @@ async function food_metadata_agent(state) {
   let debugUsage = state.debugUsage;
   try {
     logger.info('[LangGraph] food_metadata_agent: Enter', { photoId: state.filename });
-      const metadataForPrompt = metadataPayloadWithDirection(state);
+    const metadataForPrompt = metadataPayloadWithDirection(state);
 
-    const systemPrompt = 'You are a food description assistant. Return ONLY a JSON object matching the schema outlined in the instructions.';
-    const userPrompt = `Photo context: classification: ${state.classification}\nmetadata: ${JSON.stringify(metadataForPrompt)}\npoiAnalysis: ${JSON.stringify(state.poiAnalysis)}\nnearby_food_places: ${JSON.stringify(state.nearby_food_places)}\nbest_restaurant_candidate: ${JSON.stringify(state.best_restaurant_candidate)}\nimage: omitted for brevity\n\nRespond with a JSON object with keys: caption, description, dish_name, dish_type, cuisine, restaurant_name, restaurant_address, restaurant_confidence, restaurant_reasoning, nutrition_info (object with calories,protein_g,carbs_g,fat_g,notes), nutrition_confidence (0-1), location_summary, keywords (array). Use EXIF date/time when present.\n\nIf the provided best_restaurant_candidate has a matchScore >= ${FOOD_POI_MATCH_SCORE_THRESHOLD} or restaurant_confidence >= 0.6, you MUST set the 'restaurant_name' field to the provided 'best_restaurant_candidate.name' and include that name in the 'description' with a short reasoning sentence (for example: 'This seafood boil is likely from Cajun Crackn Concord because ...'). If you only include the restaurant name in 'keywords', that is NOT sufficient — the 'restaurant_name' field must be set for high-confidence matches. Otherwise the restaurant name may be omitted.`;
+  // --- NEW: Get location and time data for the prompt ---
+  const promptPoi = state.poiAnalysis || {};
+  const city = promptPoi.city || (promptPoi.locationIntel ? promptPoi.locationIntel.city : null) || promptPoi.location || promptPoi.region || null;
+  const region = promptPoi.region || (promptPoi.locationIntel ? promptPoi.locationIntel.region : null) || null;
+    const locationString = [city, region].filter(Boolean).join(', '); // e.g., "Concord, CA"
+    const timestamp = extractTimestamp(state.metadata); // e.g., "2025-02-17 21:18:28"
+    // --- END NEW ---
+
+    const systemPrompt = 'You are a professional photo archivist. Your tone is informative, concise, and professional. Return ONLY a JSON object.';
+    const userPrompt = `Photo context:\nclassification: ${state.classification}\nphoto_timestamp: ${timestamp || 'unknown'}\nphoto_location: ${locationString || 'unknown'}\nnearby_food_places: ${JSON.stringify(state.nearby_food_places)}\n\nInstructions:\nYou are an expert food scene analyst. Your job is to identify the dish in the photo and determine the most likely restaurant it came from, using the 'nearby_food_places' list.\n\n1.  **Analyze the Photo:** First, identify the dish (e.g., "Seafood Boil," "Clams," "Pizza," "Burger").\n2.  **Analyze the Candidates:** Look at the 'nearby_food_places' list. This list contains ALL restaurants found within ~100ft of the photo's GPS.\n3.  **Make a Decision:**\n    * If the photo (e.g., a "Seafood Boil") is a **strong logical match** for one of the candidates (e.g., "Cajun Crackn Concord"), you MUST select that candidate.\n    * If there are **multiple logical matches**, choose the most plausible one (e.g., a "Seafood Platter" is more likely from "Merriman's" than a fast-food place).\n    * If there are **NO logical matches** (e.g., photo is "Seafood," list has "Jamba Juice"), you MUST ignore all candidates.\n\n4.  **Generate Content:**\n    * **restaurant_name:** The name of your selected candidate (or null if no match).\n    * **description:** Write a professional, 1-2 sentence archival description.\n        * **If you found a match:** The description MUST include the dish name and the full restaurant name. Example: "A Cajun-style seafood boil enjoyed at Cajun Crackn Concord."\n        * **If you did NOT find a match:** Write a generic description of the dish. Example: "A close-up of a Cajun-style seafood boil."\n        * **Always** try to append the location and date, like: "...in [photo_location] on [photo_timestamp]."\n    * **keywords:** Include the dish, cuisine, and restaurant name (if found).\n\nRespond with a JSON object with keys: caption, description, dish_name, dish_type, cuisine, restaurant_name (string or null), restaurant_address (string or null), restaurant_confidence (0-1), restaurant_reasoning, nutrition_info (object), nutrition_confidence (0-1), location_summary, keywords (array).`;
 
     // Build user content array with high detail image
     const userContent = [
@@ -993,6 +837,23 @@ async function food_metadata_agent(state) {
     ];
 
     logger.debug('[LangGraph] food_metadata_agent: Prompt (truncated)', userPrompt.slice(0, 1000));
+    // Log the actual messages passed to the LLM, but omit the image base64 for safety
+    try {
+      const sanitizedUserContent = userContent.map(item => {
+        if (item.type === 'image_url' && item.image_url) {
+          return { ...item, image_url: { url: `omitted:${state.imageMime || 'unknown'}`, detail: item.image_url.detail } };
+        }
+        return item;
+      });
+      const sanitizedMessages = [{ role: 'system', content: systemPrompt }, { role: 'user', content: sanitizedUserContent }];
+      if (allowDevDebug) {
+        logger.info('[LLM] food_metadata_agent messages (sanitized): %s', JSON.stringify(sanitizedMessages, null, 2));
+      } else {
+        logger.debug('[LLM] food_metadata_agent messages (sanitized): %s', JSON.stringify(sanitizedMessages, null, 2));
+      }
+    } catch (err) {
+      logger.warn('[LLM] food_metadata_agent: Failed to log sanitized messages', err && err.message ? err.message : err);
+    }
 
     const configuredModel = state.modelOverrides?.defaultModel || 'gpt-4o-mini';
     const response = await openai.chat.completions.create({
@@ -1032,31 +893,31 @@ async function food_metadata_agent(state) {
       location_summary: parsed.location_summary || null,
     };
 
-    // If model did not provide restaurant_name but we have evidence of a strong match,
-    // append it to the description. Also promote a POI if the model included the
-    // candidate name in keywords even when matchScore is lower than the threshold.
-    const bestCandidate = state.best_restaurant_candidate;
-    const parsedKeywords = Array.isArray(parsed.keywords)
-      ? parsed.keywords.map(k => String(k || '').toLowerCase())
-      : (typeof parsed.keywords === 'string' ? parsed.keywords.toLowerCase().split(/[, ]+/) : []);
-    const keywordsContainBest = bestCandidate && parsedKeywords.some(k => bestCandidate.name && (k.includes(bestCandidate.name.toLowerCase()) || bestCandidate.name.toLowerCase().includes(k)));
-    const shouldPromote = bestCandidate && ((bestCandidate.matchScore >= FOOD_POI_MATCH_SCORE_THRESHOLD) || keywordsContainBest);
-
-    if (!parsed.restaurant_name && shouldPromote) {
-      const best = state.best_restaurant_candidate;
-      // Append an explanatory sentence about the likely restaurant to the description
-      finalParsed.description = finalParsed.description
-        ? `${finalParsed.description}\n\nLikely from ${best.name} based on nearby matches.`
-        : `Likely from ${best.name} based on nearby matches.`;
-      // Also include restaurant in short caption if not already present
-      if (!finalParsed.caption || !finalParsed.caption.toLowerCase().includes(best.name.toLowerCase())) {
-        finalParsed.caption = finalParsed.caption ? `${finalParsed.caption} at ${best.name}` : `${best.name}`;
-      }
-      // Promote restaurant info into the structured fields
-      foodData.restaurant_name = best.name;
-      foodData.restaurant_address = best.address || foodData.restaurant_address;
-      foodData.restaurant_confidence = Math.max(foodData.restaurant_confidence || 0, 0.85);
-      foodData.restaurant_reasoning = `Matched keywords ${Array.isArray(best.keywordMatches) ? best.keywordMatches.join(', ') : ''}; closest among keyword matches (${best.distanceMeters}m).`;
+    // Instead of promoting a pre-computed best_candidate, the LLM is responsible
+    // for selecting the best POI from nearby_food_places. The model should include
+    // a 'chosen_place_id' in its response pointing to a placeId from nearby_food_places
+    // (or null if uncertain). Use the chosen POI for structured fields if present.
+    const chosenPlaceId = parsed.chosen_place_id || parsed.chosen_placeId || parsed.restaurant_place_id || null;
+    let chosenCandidate = null;
+    if (chosenPlaceId && Array.isArray(state.nearby_food_places)) {
+      chosenCandidate = state.nearby_food_places.find(p => p.placeId === chosenPlaceId || p.place_id === chosenPlaceId) || null;
+    }
+    // If the model set restaurant_name explicitly, prefer that; otherwise, if a
+    // chosenCandidate exists, use its structured data.
+    const parsedRestaurantConfidence = parseNumber(parsed.restaurant_confidence);
+    const impliedConfidence = parsedRestaurantConfidence != null ? parsedRestaurantConfidence : 0.85;
+    if (chosenCandidate && impliedConfidence >= 0.5) {
+      // Accept the model's selected candidate only when it declares at least 0.5 confidence (or unspecified confidence defaults to 0.85)
+      foodData.restaurant_name = parsed.restaurant_name || chosenCandidate.name;
+      foodData.restaurant_address = parsed.restaurant_address || chosenCandidate.address || chosenCandidate.vicinity || foodData.restaurant_address;
+      foodData.restaurant_confidence = impliedConfidence;
+      foodData.restaurant_reasoning = parsed.restaurant_reasoning || `Selected ${chosenCandidate.name} from nearby candidates based on the image and metadata.`;
+    } else if (parsed.restaurant_name) {
+      // model found a restaurant name but did not select a POI; accept the name without an associated POI
+      foodData.restaurant_name = parsed.restaurant_name;
+      foodData.restaurant_address = parsed.restaurant_address || foodData.restaurant_address;
+      foodData.restaurant_confidence = parseNumber(parsed.restaurant_confidence) || (foodData.restaurant_confidence || 0.6);
+      foodData.restaurant_reasoning = parsed.restaurant_reasoning || null;
     }
 
     // Nutrition: If we have dish and restaurant, try to call nutrition search
@@ -1099,8 +960,13 @@ async function food_metadata_agent(state) {
       }
     }
 
-    // Attach food-specific data into poiAnalysis
+    // Attach food-specific data into poiAnalysis and optionally set best_restaurant_candidate
     const poi = { ...(state.poiAnalysis || {}), food: { ...foodData, nutrition_info: nutrition, nutrition_confidence: nutrition_conf } };
+    // Set best_restaurant_candidate based on chosenCandidate (model's pick) if provided and confident
+    let bestCandidateObj = state.best_restaurant_candidate || null;
+    if (chosenCandidate && impliedConfidence >= 0.5) {
+      bestCandidateObj = { ...chosenCandidate, matchScore: null, keywordMatches: [] };
+    }
 
     const { usage, model } = extractUsageFromResponse(response);
     debugUsage = accumulateDebugUsage(debugUsage, {
@@ -1114,8 +980,8 @@ async function food_metadata_agent(state) {
       prompt: userPrompt,
     });
 
-    logger.info('[LangGraph] food_metadata_agent: Exit', { photoId: state.filename, dish: parsed.dish_name });
-    return { ...state, finalResult: finalParsed, poiAnalysis: poi, debugUsage, error: null };
+  logger.info('[LangGraph] food_metadata_agent: Exit', { photoId: state.filename, dish: parsed.dish_name });
+  return { ...state, finalResult: finalParsed, poiAnalysis: poi, best_restaurant_candidate: bestCandidateObj, debugUsage, error: null };
   } catch (err) {
     logger.warn('[LangGraph] food_metadata_agent: Error', err && err.message ? err.message : err);
     return { ...state, error: err && err.message ? err.message : String(err) };

@@ -1,3 +1,4 @@
+// File: c:\Users\Ron\React-Photo-App\server\ai\langgraph\__tests__\food_location_agent_threshold.test.js
 const { __testing } = require('../graph');
 const { food_location_agent } = __testing;
 
@@ -46,11 +47,11 @@ describe('food_location_agent match threshold', () => {
       }
     ];
 
-    state.__overrideNearby = stubbedNearby;
-    const result = await food_location_agent(state);
-    // With threshold 3, the score=2 match should be ignored,
-    // so the agent should pick the nearest (Viaggio)
-    expect(result.best_restaurant_candidate).not.toBeNull();
-    expect(result.best_restaurant_candidate.name).toMatch(/Viaggio/i);
+  state.__overrideNearby = stubbedNearby;
+  const result = await food_location_agent(state);
+  // As a dumb finder, the agent returns the list and does not pick a best candidate
+  expect(result.nearby_food_places).toBeTruthy();
+  expect(result.nearby_food_places.length).toBe(2);
+  expect(result.best_restaurant_candidate).toBeNull();
   });
 });

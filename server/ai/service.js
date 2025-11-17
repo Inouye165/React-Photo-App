@@ -2,6 +2,7 @@ const fs = require('fs');
 const path = require('path');
 require('../env');
 const logger = require('../logger');
+const allowDevDebug = process.env.ALLOW_DEV_DEBUG === 'true';
 
 // Fail-fast if OpenAI API key is missing — check at module load time
 // Allow tests to run without an API key by skipping the throw when
@@ -488,6 +489,17 @@ async function processPhotoAI({ fileBuffer, filename, metadata, gps, device }, m
   logger.info('[GPS] pre-graph gpsString = %s', initialState.gpsString);
   // <<< ADDED
 
+  // Log initial sanitized state for the graph invocation to aid debugging/observability.
+  try {
+    const sanitizedInitial = { ...initialState };
+    // Remove binary or large fields
+    if (sanitizedInitial.fileBuffer) sanitizedInitial.fileBuffer = `[Buffer length: ${sanitizedInitial.fileBuffer.length || 'unknown'}]`;
+    if (sanitizedInitial.imageBase64) sanitizedInitial.imageBase64 = '[omitted]';
+    logger.info('[Graph] Initial state for %s: %s', filename || '<unknown>', JSON.stringify(sanitizedInitial, null, 2));
+  } catch (err) {
+    logger.warn('[Graph] Failed to log initial state for %s', filename, err && err.message ? err.message : err);
+  }
+
   logger.info(`[Graph] Invoking graph for ${filename}...`);
   const finalState = await aiGraph.invoke(initialState);
   logger.debug('[AI Debug] [processPhotoAI] aiGraph.invoke returned', {
@@ -495,6 +507,18 @@ async function processPhotoAI({ fileBuffer, filename, metadata, gps, device }, m
     classificationType: finalState && finalState.classification ? finalState.classification.type || null : null,
     error: finalState && finalState.error ? String(finalState.error).slice(0, 200) : null
   });
+  try {
+    const sanitizedFinal = { ...finalState };
+    if (sanitizedFinal.fileBuffer) sanitizedFinal.fileBuffer = `[Buffer length: ${sanitizedFinal.fileBuffer.length || 'unknown'}]`;
+    if (sanitizedFinal.imageBase64) sanitizedFinal.imageBase64 = '[omitted]';
+    if (allowDevDebug) {
+      logger.info('[Graph] Final state for %s: %s', filename || '<unknown>', JSON.stringify(sanitizedFinal, null, 2));
+    } else {
+      logger.debug('[Graph] Final state for %s: %s', filename || '<unknown>', JSON.stringify(sanitizedFinal, null, 2));
+    }
+  } catch (err) {
+    logger.warn('[Graph] Failed to log final state for %s', filename, err && err.message ? err.message : err);
+  }
 
   if (finalState.error) {
     logger.error(`[AI Debug] [processPhotoAI] aiGraph.invoke error: ${finalState.error}`);

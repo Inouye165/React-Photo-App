@@ -1,3 +1,4 @@
+// File: c:\Users\Ron\React-Photo-App\server\ai\langgraph\__tests__\food_location_agent.test.js
 // Ensure the default threshold is applied when the graph loads
 // Force the default threshold for this test suite and reload modules
 process.env.FOOD_POI_MATCH_SCORE_THRESHOLD = '2';
@@ -42,11 +43,11 @@ describe('food_location_agent', () => {
     ];
 
     // Inject fake nearbyFoodPlaces via override
-    state.__overrideNearby = stubbedNearby;
-    const result = await food_location_agent(state);
-    // result.best_restaurant_candidate should prefer the Cajun (keyword matched)
-    expect(result.best_restaurant_candidate).not.toBeNull();
-    expect(result.best_restaurant_candidate.name).toMatch(/Cajun Crackn/i);
-    expect(result.best_restaurant_candidate.matchScore).toBeGreaterThanOrEqual(2);
+  state.__overrideNearby = stubbedNearby;
+  const result = await food_location_agent(state);
+  // location agent is a dumb finder: it should return the array and not pick a best candidate
+  expect(result.nearby_food_places).toBeTruthy();
+  expect(result.nearby_food_places.length).toBe(2);
+  expect(result.best_restaurant_candidate).toBeNull();
   });
 });

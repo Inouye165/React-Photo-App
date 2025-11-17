@@ -1,3 +1,4 @@
+// File: c:\Users\Ron\React-Photo-App\server\tests\processPhotoAI.test.js
 const fs = require('fs');
 const path = require('path');
 

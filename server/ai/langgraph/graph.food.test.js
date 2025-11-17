@@ -1,3 +1,4 @@
+// File: c:\Users\Ron\React-Photo-App\server\ai\langgraph\graph.food.test.js
 jest.mock('../poi/foodPlaces', () => ({ nearbyFoodPlaces: jest.fn() }));
 jest.mock('../openaiClient', () => ({ openai: { chat: { completions: { create: jest.fn() } } } }));
 jest.mock('../poi/googlePlaces', () => ({ nearbyPlaces: jest.fn(), reverseGeocode: jest.fn() }));
@@ -21,8 +22,8 @@ describe('food nodes behavior', () => {
     const result = await __testing.food_location_agent(state);
     expect(result.nearby_food_places).toBeTruthy();
     expect(result.nearby_food_places.length).toBe(2);
-    expect(result.best_restaurant_candidate).toBeTruthy();
-    expect(result.best_restaurant_candidate.name).toBe('Near Diner');
+    // As a dumb finder, the location agent should not choose a best candidate
+    expect(result.best_restaurant_candidate).toBeNull();
   });
 
   it('food_metadata_agent produces finalResult and attaches food info', async () => {
@@ -65,8 +66,7 @@ describe('food nodes behavior', () => {
       classification: 'food',
       metadata: { DateTimeOriginal: '2025-11-14' },
       gpsString: '37.123,-122.456',
-      best_restaurant_candidate: { name: 'Cajun Crackn Concord', address: '100 Fish St', matchScore: 1 },
-      nearby_food_places: [],
+  nearby_food_places: [{ placeId: 'p_cajun', name: 'Cajun Crackn Concord', address: '100 Fish St' }],
       poiAnalysis: {}
     };
     // Model returns the POI in keywords only (no restaurant_name). We should promote it.
@@ -77,13 +77,76 @@ describe('food nodes behavior', () => {
       cuisine: 'Seafood',
       keywords: ['seafood','cajun crackn']
     };
-    openai.chat.completions.create.mockResolvedValueOnce({ choices: [{ message: { content: JSON.stringify(mockParsed) } }] });
+    // Model chooses the placeId from nearby_food_places
+  const enrichedParsed = { ...mockParsed, caption: 'Crab Boil at Cajun Crackn Concord', description: 'A big bag of seafood, likely from Cajun Crackn Concord', chosen_place_id: 'p_cajun', restaurant_name: 'Cajun Crackn Concord', restaurant_confidence: 0.9 };
+    openai.chat.completions.create.mockResolvedValueOnce({ choices: [{ message: { content: JSON.stringify(enrichedParsed) } }] });
     fetchDishNutrition.mockResolvedValueOnce(null);
-
     const result = await __testing.food_metadata_agent(state);
     expect(result.finalResult).toBeTruthy();
     expect(result.poiAnalysis.food.restaurant_name).toBe('Cajun Crackn Concord');
     expect(result.finalResult.description).toMatch(/Cajun Crackn Concord/);
     expect(result.finalResult.caption).toMatch(/Cajun Crackn Concord/);
+  });
+
+  it('ignores chosen_place_id that is not in nearby_food_places', async () => {
+    const state = {
+      filename: 'photo.jpg',
+      imageBase64: 'FAKE',
+      imageMime: 'image/jpeg',
+      classification: 'food',
+      metadata: { DateTimeOriginal: '2025-11-14' },
+      gpsString: '37.123,-122.456',
+      nearby_food_places: [{ placeId: 'p_cajun', name: 'Cajun Crackn Concord', address: '100 Fish St' }],
+      poiAnalysis: {}
+    };
+    // Model chooses a placeId not in the provided list but with high confidence
+    const mockParsed = {
+      caption: 'Crab Boil at Far Eatery',
+      description: 'A big bag of seafood, likely from Far Eatery',
+      dish_name: 'Crab boil',
+      cuisine: 'Seafood',
+      chosen_place_id: 'p_unknown',
+      restaurant_name: 'Far Eatery',
+      restaurant_confidence: 0.9
+    };
+    openai.chat.completions.create.mockResolvedValueOnce({ choices: [{ message: { content: JSON.stringify(mockParsed) } }] });
+    fetchDishNutrition.mockResolvedValueOnce(null);
+    const result = await __testing.food_metadata_agent(state);
+    expect(result.finalResult).toBeTruthy();
+    // Since chosen_place_id not in nearby list, best_restaurant_candidate should remain null
+    expect(result.best_restaurant_candidate).toBeNull();
+    // But the model can provide a restaurant_name; we'll accept it in structured fields
+    expect(result.poiAnalysis.food.restaurant_name).toBe('Far Eatery');
+  });
+
+  it('ignores low-confidence chosen_place_id', async () => {
+    const state = {
+      filename: 'photo.jpg',
+      imageBase64: 'FAKE',
+      imageMime: 'image/jpeg',
+      classification: 'food',
+      metadata: { DateTimeOriginal: '2025-11-14' },
+      gpsString: '37.123,-122.456',
+      nearby_food_places: [{ placeId: 'p_cajun', name: 'Cajun Crackn Concord', address: '100 Fish St' }],
+      poiAnalysis: {}
+    };
+    // Model chooses the placeId but with low confidence (0.3); should be ignored
+    const mockParsedLowConfidence = {
+      caption: 'Crab Boil',
+      description: 'A big bag of seafood',
+      dish_name: 'Crab boil',
+      cuisine: 'Seafood',
+      chosen_place_id: 'p_cajun',
+      restaurant_name: 'Cajun Crackn Concord',
+      restaurant_confidence: 0.3
+    };
+    openai.chat.completions.create.mockResolvedValueOnce({ choices: [{ message: { content: JSON.stringify(mockParsedLowConfidence) } }] });
+    fetchDishNutrition.mockResolvedValueOnce(null);
+    const result2 = await __testing.food_metadata_agent(state);
+    expect(result2.finalResult).toBeTruthy();
+    // Low confidence chosen candidate should be ignored
+    expect(result2.best_restaurant_candidate).toBeNull();
+    // But LLM-provided restaurant_name can still be used in structured fields
+    expect(result2.poiAnalysis.food.restaurant_name).toBe('Cajun Crackn Concord');
   });
 });

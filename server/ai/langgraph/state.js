@@ -1,3 +1,4 @@
+// File: c:\Users\Ron\React-Photo-App\server\ai\langgraph\state.js
 const { z } = require('zod');
 
 /**

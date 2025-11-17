@@ -1,3 +1,4 @@
+// File: c:\Users\Ron\React-Photo-App\src\components\AiDebugConsole.jsx
 import React, { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 
 const INITIAL_TOTALS = Object.freeze({

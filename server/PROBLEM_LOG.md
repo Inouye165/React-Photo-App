@@ -98,6 +98,7 @@
 
 ---
 
+<!-- File: c:\Users\Ron\React-Photo-App\server\PROBLEM_LOG.md -->
 ## [2025-11-10] AI Workflow Regression - LangGraph Stub Returned No Results
 
 **Symptoms (first seen):**
