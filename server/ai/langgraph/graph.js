@@ -289,6 +289,23 @@ function metadataPayloadWithDirection(state) {
   return payload;
 }
 
+function summarizeMetadataForPrompt(meta = {}) {
+  // Keep only compact, high-signal metadata for LLM prompts to avoid noise
+  return {
+    date: meta.DateTimeOriginal || meta.dateTime || null,
+    gps: meta?.latitude && meta?.longitude ? `${meta.latitude},${meta.longitude}` : null,
+    camera: meta.cameraModel || meta.Make || meta.Model || null,
+    heading: extractHeading(meta) || null,
+    altitude_meters: extractAltitude(meta) || null,
+    // Keep only basic exposure info
+    exposure: {
+      iso: parseNumber(meta.ISO) || null,
+      aperture: parseNumber(meta.FNumber) || null,
+      shutter: meta.ExposureTime || null,
+    }
+  };
+}
+
 
 // --- Node 1: classify_image (This node is correct) ---
 async function classify_image(state) {
@@ -352,7 +369,8 @@ async function classify_image(state) {
 async function generate_metadata(state) {
   try {
     logger.info('[LangGraph] generate_metadata node invoked (default/scenery)');
-    const metadataForPrompt = metadataPayloadWithDirection(state);
+    // Reduce metadata complexity passed to the LLM to minimize prompt noise
+    const metadataForPrompt = summarizeMetadataForPrompt(state.metadata || {});
     const prompt =
       `You are a photo archivist. Given the image and the following context, generate a JSON object with three fields:\n` +
       `caption: A short, one-sentence title for the photo.\n` +
@@ -511,13 +529,148 @@ async function location_intelligence_agent(state) {
     } catch (err) {
       logger.warn('[LangGraph] location_intelligence_agent reverse geocode failed', err?.message || err);
     }
+
+    // Note: Nearby places are loaded below from Google Places. We'll curate the
+    // food-specific candidate list after we obtain the 'nearby' list to avoid
+    // operating on an empty array. Deterministic selection happens below once
+    // 'nearby' is populated.
     try {
-      nearby = await nearbyPlaces(coordinates.lat, coordinates.lon, 800);
+      const classificationLower = (String(state.classification || '') || '').toLowerCase();
+      const skipGenericPoi = classificationLower.includes('food');
+      if (skipGenericPoi) {
+        logger.info('[location_intel] classification=food → skipping generic POI/trails lookups');
+        nearby = [];
+      } else {
+        nearby = await nearbyPlaces(coordinates.lat, coordinates.lon, 800);
+      }
     } catch (err) {
       logger.warn('[LangGraph] location_intelligence_agent nearbyPlaces failed', err?.message || err);
     }
+    
+
+    // --- New: curate food-specific candidate list and deterministic selection
+    // once nearby places are available.
     try {
-      osmTrails = await nearbyTrailsFromOSM(coordinates.lat, coordinates.lon, 2000);
+      const classificationLower = (String(state.classification || '') || '').toLowerCase();
+      const skipGenericPoi = classificationLower.includes('food');
+
+      if (skipGenericPoi) {
+        state.nearby_food_places = [];
+        state.nearby_food_places_curated = [];
+        state.nearby_food_places_raw = [];
+        state.best_restaurant_candidate = null;
+        logger.info('[location_intel] classification=food → skipped POI curation; food_location_agent will perform restaurants lookup');
+      } else {
+        const FOOD_TYPES = ['restaurant', 'cafe', 'bakery', 'bar', 'meal_takeaway', 'meal_delivery'];
+        const MAX_CANDIDATES = Number(process.env.FOOD_CANDIDATE_MAX || 5);
+        const deterministicDistance = Number(process.env.FOOD_DETERMINISTIC_DISTANCE_METERS || 100);
+        const deterministicMinRating = Number(process.env.FOOD_DETERMINISTIC_MIN_RATING || 4.0);
+
+        // Filter to likely food businesses first
+        const foodCandidates = Array.isArray(nearby)
+          ? nearby.filter((p) => Array.isArray(p.types) && p.types.some((t) => FOOD_TYPES.includes(t)))
+          : [];
+
+        // If no typed candidates, try a looser filter based on category
+        const typedCandidates = foodCandidates.length
+          ? foodCandidates
+          : Array.isArray(nearby)
+          ? nearby.filter((p) => (p.category || '').toLowerCase() === 'restaurant')
+          : [];
+
+        const curated = (typedCandidates.length ? typedCandidates : nearby || [])
+          .slice()
+          .sort((a, b) => {
+            const da = Number(a.distanceMeters || Number.POSITIVE_INFINITY);
+            const db = Number(b.distanceMeters || Number.POSITIVE_INFINITY);
+            if (da !== db) return da - db;
+            // If distances equal, prefer higher rating
+            return Number(b.rating || 0) - Number(a.rating || 0);
+          })
+          .slice(0, Math.max(0, Number.isFinite(MAX_CANDIDATES) ? MAX_CANDIDATES : 5));
+
+        // Attach the curated candidate list to the state for the LLM to see
+        // Keep a full (raw) list of nearby candidates and attach a curated
+        // subset for the LLM. This keeps existing behavior for callers that
+        // expect the full list while providing a smaller candidate list for
+        // the model to reason over.
+        state.nearby_food_places = nearby;
+        state.nearby_food_places_curated = curated;
+        state.nearby_food_places_raw = nearby;
+
+        // Also attach structured food POI summary to poiAnalysis so downstream
+        // nodes (including the metadata agent) can find restaurant candidates
+        // in one canonical place. This is used by the LLM prompt and by
+        // deterministic overrides.
+        state.poiAnalysis = { ...(state.poiAnalysis || {}), food: { candidates: nearby, curated: curated } };
+
+        // Deterministic selection: pick the nearest candidate if it's very close and highly rated
+        let preselected = null;
+        if (curated.length > 0) {
+          const top = curated[0];
+          const dist = Number(top.distanceMeters || Number.POSITIVE_INFINITY);
+          const rating = Number(top.rating || 0);
+          if (dist <= deterministicDistance && rating >= deterministicMinRating) {
+            preselected = top;
+          }
+        }
+
+        if (preselected) {
+          state.best_restaurant_candidate = { ...preselected, deterministic: true };
+          // Mirror in poiAnalysis.food for downstream use
+          state.poiAnalysis = { ...(state.poiAnalysis || {}), food: { ...(state.poiAnalysis?.food || {}), best: state.best_restaurant_candidate } };
+        }
+
+        // Deterministic override: if there is exactly one nearby candidate and
+        // it appears to be a high-confidence match, mark it as deterministic so
+        // the metadata agent will lock this restaurant into the final result.
+        try {
+          const best = state.best_restaurant_candidate || null;
+          const nearbyLen = Array.isArray(state.nearby_food_places) ? state.nearby_food_places.length : 0;
+          const src = (best && best.source) || null;
+          const rating = Number(best?.rating || 0);
+          const isHighConfidence =
+            !!best &&
+            nearbyLen === 1 &&
+            (best.confidence === 'high' || (typeof best.restaurant_confidence === 'number' && best.restaurant_confidence >= 0.8) || src === 'google' || rating >= deterministicMinRating);
+          if (isHighConfidence) {
+            state.poiAnalysis = {
+              ...(state.poiAnalysis || {}),
+              food: {
+                ...(state.poiAnalysis?.food || {}),
+                restaurant_name: best.name,
+                restaurant_address: best.address || best.vicinity || null,
+                restaurant_confidence: 1,
+                restaurant_reasoning: state.poiAnalysis?.food?.restaurant_reasoning || 'High-confidence restaurant candidate selected deterministically based on nearby_food_places.',
+                deterministic_restaurant: true,
+              },
+            };
+            // Also ensure the primary best_restaurant_candidate is in sync
+            state.best_restaurant_candidate = { ...best, deterministic: true };
+            logger.info('[LangGraph] food_location_agent: Deterministic restaurant selected', { photoId: state.filename || null, name: best.name });
+          }
+        } catch {
+          // No-op on unexpected structure
+        }
+      }
+    } catch (err) {
+      logger.warn('[LangGraph] food_location_agent: failed to curate candidates', err?.message || err);
+    }
+    
+    try {
+      const classificationLower = (String(state.classification || '') || '').toLowerCase();
+      // Skip expensive OSM trails lookups for food photos — handled by the food agent
+      // Allow multiple categories to be configured, but default only 'food'
+      const OSM_SKIP_CATEGORIES = (process.env.OSM_SKIP_CATEGORIES || 'food').split(',').map(s => s.trim().toLowerCase()).filter(Boolean);
+      const shouldSkipOsm = OSM_SKIP_CATEGORIES.some((c) => classificationLower.includes(c));
+      if (shouldSkipOsm) {
+        logger.info('[LangGraph] location_intelligence_agent skipping OSM trails for food classification');
+        osmTrails = [];
+      } else {
+        // Use configurable default radius for OSM trails; default to a short radius
+        const osmDefaultRadius = Number(process.env.OSM_TRAILS_DEFAULT_RADIUS_METERS || 200);
+        osmTrails = await nearbyTrailsFromOSM(coordinates.lat, coordinates.lon, osmDefaultRadius);
+      }
     } catch (err) {
       logger.warn('[location_intel] OSM trails lookup failed', err?.message || err);
     }
@@ -807,11 +960,97 @@ async function food_location_agent(state) {
       exitLog.candidates = (nearby || []).map(c => ({ name: c.name, address: c.address || c.vicinity || null, distanceMeters: c.distanceMeters || null, placeId: c.placeId || c.id, source: c.source || 'osm/google' }));
     }
     logger.info('[LangGraph] food_location_agent: Exit', exitLog);
-    return { ...state, nearby_food_places: nearby, best_restaurant_candidate: null };
+    // Log a compact summary of food candidates for observability
+    logger.info(`[food_location_agent] candidates=${nearbyCount}, best=${loggingBest ? loggingBest.name : 'none'}`);
+    // Curate and attach a smaller candidate list for the LLM to use. We also
+    // set a deterministic `best_restaurant_candidate` when the nearest
+    // candidate is within a small distance and above a rating threshold.
+    try {
+      const FOOD_TYPES = ['restaurant', 'cafe', 'bakery', 'bar', 'meal_takeaway', 'meal_delivery'];
+      const MAX_CANDIDATES = Number(process.env.FOOD_CANDIDATE_MAX || 5);
+      const deterministicDistance = Number(process.env.FOOD_DETERMINISTIC_DISTANCE_METERS || 100);
+      const deterministicMinRating = Number(process.env.FOOD_DETERMINISTIC_MIN_RATING || 4.0);
+
+      const foodCandidates = Array.isArray(nearby) ? nearby.filter(p => Array.isArray(p.types) && p.types.some(t => FOOD_TYPES.includes(t))) : [];
+      const typedCandidates = foodCandidates.length ? foodCandidates : (Array.isArray(nearby) ? nearby.filter(p => (p.category || '').toLowerCase() === 'restaurant') : []);
+      const curated = (typedCandidates.length ? typedCandidates : nearby || []).slice().sort((a, b) => {
+        const da = Number(a.distanceMeters || Number.POSITIVE_INFINITY);
+        const db = Number(b.distanceMeters || Number.POSITIVE_INFINITY);
+        if (da !== db) return da - db;
+        return Number(b.rating || 0) - Number(a.rating || 0);
+      }).slice(0, Math.max(0, Number.isFinite(MAX_CANDIDATES) ? MAX_CANDIDATES : 5));
+
+      // Keep the full list of nearby places for callers; attach the curated
+      // subset for the LLM while preserving the raw list.
+      state.nearby_food_places = nearby;
+      state.nearby_food_places_curated = curated;
+      state.nearby_food_places_raw = nearby;
+
+      const prevPoi = state.poiAnalysis || {};
+      const prevFood = prevPoi.food || {};
+      const baseFood = { candidates: nearby, curated, raw: nearby };
+
+      // Set deterministic preselection when clear winner is within threshold
+      let deterministicFood = false;
+      if (curated.length > 0) {
+        const top = curated[0];
+        const dist = Number(top.distanceMeters || Number.POSITIVE_INFINITY);
+        const rating = Number(top.rating || 0);
+        if (dist <= deterministicDistance && rating >= deterministicMinRating) {
+          state.best_restaurant_candidate = { ...top, deterministic: true };
+          deterministicFood = true;
+        } else {
+          state.best_restaurant_candidate = null;
+        }
+      } else {
+        state.best_restaurant_candidate = null;
+      }
+
+      const foodSummary = {
+        ...baseFood,
+        best: state.best_restaurant_candidate || prevFood.best || null,
+        restaurant_name: deterministicFood ? state.best_restaurant_candidate?.name || prevFood.restaurant_name || null : prevFood.restaurant_name || null,
+        restaurant_address: deterministicFood ? state.best_restaurant_candidate?.address || state.best_restaurant_candidate?.vicinity || prevFood.restaurant_address || null : prevFood.restaurant_address || null,
+        restaurant_confidence: deterministicFood ? 1 : prevFood.restaurant_confidence || null,
+        restaurant_reasoning: deterministicFood
+          ? prevFood.restaurant_reasoning || 'High-confidence restaurant candidate selected deterministically based on nearby_food_places.'
+          : prevFood.restaurant_reasoning || null,
+        deterministic_restaurant: deterministicFood || prevFood.deterministic_restaurant || false,
+      };
+      state.poiAnalysis = { ...prevPoi, food: foodSummary };
+    } catch (err) {
+      logger.warn('[LangGraph] food_location_agent: curation failed', err && err.message ? err.message : err);
+      state.nearby_food_places = nearby;
+      state.best_restaurant_candidate = null;
+    }
+
+    return {
+      ...state,
+      nearby_food_places: state.nearby_food_places,
+      best_restaurant_candidate: state.best_restaurant_candidate || null,
+      poiAnalysis: state.poiAnalysis || null,
+    };
   } catch (err) {
     logger.warn('[LangGraph] food_location_agent: Error', err && err.message ? err.message : err);
     return { ...state, nearby_food_places: [], best_restaurant_candidate: null };
   }
+}
+
+function ensureRestaurantInDescription(description, restaurantName, photoLocation, photoTimestamp) {
+  const desc = (description || '').trim();
+  const name = (restaurantName || '').trim();
+  if (!name) {
+    return desc || '';
+  }
+  if (desc.toLowerCase().includes(name.toLowerCase())) {
+    return desc;
+  }
+  const locationSuffix = photoLocation ? ` in ${photoLocation}` : '';
+  const timeSuffix = photoTimestamp ? ` on ${photoTimestamp}` : '';
+  if (desc) {
+    return `${desc} This dish was enjoyed at ${name}${locationSuffix}${timeSuffix}.`;
+  }
+  return `A dish enjoyed at ${name}${locationSuffix}${timeSuffix}.`;
 }
 
 // --- Node: food_metadata_agent (new) ---
@@ -830,7 +1069,34 @@ async function food_metadata_agent(state) {
     // --- END NEW ---
 
     const systemPrompt = 'You are a professional photo archivist. Your tone is informative, concise, and professional. Return ONLY a JSON object.';
-    const userPrompt = `Photo context:\nclassification: ${state.classification}\nphoto_timestamp: ${timestamp || 'unknown'}\nphoto_location: ${locationString || 'unknown'}\nmetadata: ${JSON.stringify(metadataForPrompt)}\nnearby_food_places: ${JSON.stringify(state.nearby_food_places)}\n\nInstructions:\nYou are an expert food scene analyst. Your job is to identify the dish in the photo and determine the most likely restaurant it came from, using the 'nearby_food_places' list.\n\n1.  **Analyze the Photo:** First, identify the dish (e.g., "Seafood Boil," "Clams," "Pizza," "Burger").\n2.  **Analyze the Candidates:** Look at the 'nearby_food_places' list. This list contains ALL restaurants found within ~100ft of the photo's GPS.\n3.  **Make a Decision:**\n    * If the photo (e.g., a "Seafood Boil") is a **strong logical match** for one of the candidates (e.g., "Cajun Crackn Concord"), you MUST select that candidate.\n    * If there are **multiple logical matches**, choose the most plausible one (e.g., a "Seafood Platter" is more likely from "Merriman's" than a fast-food place).\n    * If there are **NO logical matches** (e.g., photo is "Seafood," list has "Jamba Juice"), you MUST ignore all candidates.\n\n4.  **Generate Content:**\n    * **restaurant_name:** The name of your selected candidate (or null if no match).\n    * **description:** Write a professional, 1-2 sentence archival description.\n        * **If you found a match:** The description MUST include the dish name and the full restaurant name. Example: "A Cajun-style seafood boil enjoyed at Cajun Crackn Concord."\n        * **If you did NOT find a match:** Write a generic description of the dish. Example: "A close-up of a Cajun-style seafood boil."\n        * **Always** try to append the location and date, like: "...in [photo_location] on [photo_timestamp]."\n    * **keywords:** Include the dish, cuisine, and restaurant name (if found).\n\nRespond with a JSON object with keys: caption, description, dish_name, dish_type, cuisine, restaurant_name (string or null), restaurant_address (string or null), restaurant_confidence (0-1), restaurant_reasoning, nutrition_info (object), nutrition_confidence (0-1), location_summary, keywords (array).`;
+    // Prefer the curated nearby list for the prompt to reduce noisy results from
+    // OSM/trails or very distant POIs. Fall back to the full list if no curated
+    // subset was generated by the earlier node.
+    const nearbyForPrompt =
+      state.nearby_food_places_curated ||
+      state.poiAnalysis?.food?.curated ||
+      state.nearby_food_places ||
+      state.poiAnalysis?.food?.candidates ||
+      [];
+    // `foodMeta`, `deterministicRestaurant`, and lockedRestaurant* should be
+    // available to the logger/sanity checks prior to the LLM call. Compute
+    // them here once so other branches can reference them safely without
+    // hitting the temporal-dead-zone for let/const declarations.
+    const foodMeta = state.poiAnalysis?.food || {};
+    const bestCandidate = state.best_restaurant_candidate || null;
+    const deterministicRestaurant = !!foodMeta?.deterministic_restaurant || !!bestCandidate?.deterministic;
+    const lockedRestaurantName = foodMeta?.restaurant_name || bestCandidate?.name || null;
+    const lockedRestaurantAddress = foodMeta?.restaurant_address || bestCandidate?.address || null;
+    let userPrompt = `Photo context:\nclassification: ${state.classification}\nphoto_timestamp: ${timestamp || 'unknown'}\nphoto_location: ${locationString || 'unknown'}\nmetadata: ${JSON.stringify(metadataForPrompt)}\nnearby_food_places: ${JSON.stringify(nearbyForPrompt)}\n\nInstructions:\nYou are an expert food scene analyst. Your job is to identify the dish in the photo and determine the most likely restaurant it came from, using the 'nearby_food_places' list.\n\n1.  **Analyze the Photo:** First, identify the dish (e.g., "Seafood Boil," "Clams," "Pizza," "Burger").\n2.  **Analyze the Candidates:** Look at the 'nearby_food_places' list. This list contains ALL restaurants found within ~100ft of the photo's GPS.\n3.  **Make a Decision:**\n    * If the photo (e.g., a "Seafood Boil") is a **strong logical match** for one of the candidates (e.g., "Cajun Crackn Concord"), you MUST select that candidate.\n    * If there are **multiple logical matches**, choose the most plausible one (e.g., a "Seafood Platter" is more likely from "Merriman's" than a fast-food place).\n    * If there are **NO logical matches** (e.g., photo is "Seafood," list has "Jamba Juice"), you MUST ignore all candidates.\n\nAdditional rule about restaurants:\n    * If 'deterministic_restaurant' is true in the provided context, you MUST use the 'restaurant_name' and 'restaurant_address' provided in the state and MUST NOT override them. Instead, focus on dish identification and description.\n\n4.  **Generate Content:**\n    * **restaurant_name:** The name of your selected candidate (or null if no match).\n    * **description:** Write a professional, 1-2 sentence archival description.\n        * **If you found a match:** The description MUST include the dish name and the full restaurant name. Example: "A Cajun-style seafood boil enjoyed at Cajun Crackn Concord."\n        * **If you did NOT find a match:** Write a generic description of the dish. Example: "A close-up of a Cajun-style seafood boil."\n        * **Always** try to append the location and date, like: "...in [photo_location] on [photo_timestamp]."\n    * **keywords:** Include the dish, cuisine, and restaurant name (if found).\n\nRespond with a JSON object with keys: caption, description, dish_name, dish_type, cuisine, restaurant_name (string or null), restaurant_address (string or null), restaurant_confidence (0-1), restaurant_reasoning, nutrition_info (object), nutrition_confidence (0-1), location_summary, keywords (array).`;
+    const CRITICAL_RULE_TEXT = '        * **CRITICAL FORMAT RULE:** If `restaurant_name` in your JSON is not null, the description MUST contain the exact `restaurant_name` string verbatim at least once. If it does not, rewrite the description so the restaurant name appears explicitly.';
+    if (!userPrompt.includes('CRITICAL FORMAT RULE')) {
+      const anchor = '        * **Always** try to append the location and date, like: "...in [photo_location] on [photo_timestamp]."\n    * **keywords:** Include the dish, cuisine, and restaurant name (if found).';
+      const replacement = `        * **Always** try to append the location and date, like: "...in [photo_location] on [photo_timestamp]."\n${CRITICAL_RULE_TEXT}\n    * **keywords:** Include the dish, cuisine, and restaurant name (if found).`;
+      userPrompt = userPrompt.replace(anchor, replacement);
+    }
+    // Be defensive: replace any accidental backtick-marked code items that would
+    // otherwise break the template literal when included as text in the prompt.
+    userPrompt = userPrompt.replace(/`deterministic_restaurant`/g, "'deterministic_restaurant'").replace(/`restaurant_name`/g, "'restaurant_name'").replace(/`restaurant_address`/g, "'restaurant_address'");
 
     // Build user content array with high detail image
     const userContent = [
@@ -839,6 +1105,11 @@ async function food_metadata_agent(state) {
     ];
 
     logger.debug('[LangGraph] food_metadata_agent: Prompt (truncated)', userPrompt.slice(0, 1000));
+    // Log a compact summary for debug purposes showing how many candidates
+    // are available to the model and whether a preselected best candidate exists.
+    const nearbyCount = Array.isArray(nearbyForPrompt) ? nearbyForPrompt.length : 0;
+    const bestRestaurant = state.best_restaurant_candidate || state.poiAnalysis?.food?.best || null;
+    logger.info(`[food_metadata_agent] photoId=${state.filename || 'unknown'}, nearby_food_places=${nearbyCount}, best=${bestRestaurant ? bestRestaurant.name : 'none'}, deterministic_restaurant=${deterministicRestaurant}`);
     // Log the actual messages passed to the LLM, but omit the image base64 for safety
     try {
       const sanitizedUserContent = userContent.map(item => {
@@ -895,14 +1166,24 @@ async function food_metadata_agent(state) {
       location_summary: parsed.location_summary || null,
     };
 
+    // Respect deterministic preselection: if poiAnalysis.food indicates a locked
+    // restaurant, we will override the model's restaurant fields after parsing
+    // the LLM output. This keeps the LLM responsible for analyzing the dish
+    // but prevents it from overriding a deterministic restaurant choice.
+    // (foodMeta, deterministicRestaurant, lockedRestaurantName/address are
+    // already computed and available above; do not re-declare them here.)
+
     // Instead of promoting a pre-computed best_candidate, the LLM is responsible
     // for selecting the best POI from nearby_food_places. The model should include
     // a 'chosen_place_id' in its response pointing to a placeId from nearby_food_places
     // (or null if uncertain). Use the chosen POI for structured fields if present.
     const chosenPlaceId = parsed.chosen_place_id || parsed.chosen_placeId || parsed.restaurant_place_id || null;
     let chosenCandidate = null;
-    if (chosenPlaceId && Array.isArray(state.nearby_food_places)) {
-      chosenCandidate = state.nearby_food_places.find(p => p.placeId === chosenPlaceId || p.place_id === chosenPlaceId) || null;
+    if (chosenPlaceId) {
+      const candidateSource = state.nearby_food_places_curated || state.nearby_food_places || [];
+      if (Array.isArray(candidateSource)) {
+        chosenCandidate = candidateSource.find(p => p.placeId === chosenPlaceId || p.place_id === chosenPlaceId) || null;
+      }
     }
     // If the model set restaurant_name explicitly, prefer that; otherwise, if a
     // chosenCandidate exists, use its structured data.
@@ -921,6 +1202,20 @@ async function food_metadata_agent(state) {
       foodData.restaurant_confidence = parseNumber(parsed.restaurant_confidence) || (foodData.restaurant_confidence || 0.6);
       foodData.restaurant_reasoning = parsed.restaurant_reasoning || null;
     }
+
+    // If a deterministic restaurant has been set, override any restaurant
+    // fields from the model with the locked values and mark confidence=1.
+    if (deterministicRestaurant) {
+      foodData.restaurant_name = lockedRestaurantName;
+      foodData.restaurant_address = lockedRestaurantAddress;
+      foodData.restaurant_confidence = 1;
+      foodData.restaurant_reasoning = foodData.restaurant_reasoning || 'Restaurant pre-selected deterministically from nearby_food_places.';
+      foodData.deterministic_restaurant = true;
+    }
+
+    const enforcedDescription = ensureRestaurantInDescription(finalParsed.description, foodData.restaurant_name, locationString, timestamp);
+    finalParsed.description = enforcedDescription;
+    foodData.description = enforcedDescription;
 
     // Nutrition: If we have dish and restaurant, try to call nutrition search
     let nutrition = parsed.nutrition_info || null;
@@ -963,7 +1258,11 @@ async function food_metadata_agent(state) {
     }
 
     // Attach food-specific data into poiAnalysis and optionally set best_restaurant_candidate
-    const poi = { ...(state.poiAnalysis || {}), food: { ...foodData, nutrition_info: nutrition, nutrition_confidence: nutrition_conf } };
+    // Preserve any existing food metadata (for fields like deterministic_restaurant)
+    const poi = {
+      ...(state.poiAnalysis || {}),
+      food: { ...(state.poiAnalysis?.food || {}), ...foodData, nutrition_info: nutrition, nutrition_confidence: nutrition_conf },
+    };
     // Set best_restaurant_candidate based on chosenCandidate (model's pick) if provided and confident
     let bestCandidateObj = state.best_restaurant_candidate || null;
     if (chosenCandidate && impliedConfidence >= 0.5) {
@@ -1057,4 +1356,4 @@ workflow.addEdge('food_metadata_agent', END);
 
 // 5. Compile the app
 const app = workflow.compile();
-module.exports = { app, __testing: { food_location_agent, food_metadata_agent } };
+module.exports = { app, __testing: { food_location_agent, food_metadata_agent, location_intelligence_agent } };
