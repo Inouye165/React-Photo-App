@@ -1,5 +1,5 @@
 // server/queue/index.js
-const { Queue, Worker: BullMQWorker } = require('bullmq');
+const { Queue } = require('bullmq');
 const logger = require('../logger');
 
 // Define the Redis connection
@@ -24,67 +24,30 @@ async function initializeQueue() {
 
   initializationPromise = (async () => {
     try {
-      // Lazy load dependencies
-      const db = require('../db');
-      const { updatePhotoAIMetadata } = require('../ai/service');
+      // Lazy load dependencies required for queue operations (worker needs
+      // these dependencies when it is created in startWorker()). We avoid
+      // requiring them here to prevent creating unused variables.
 
-  aiQueue = new Queue(QUEUE_NAME, { connection });
+    aiQueue = new Queue(QUEUE_NAME, { connection });
   redisAvailable = true;
   logger.info('[QUEUE] Successfully connected to Redis');
+      // NOTE: Do not create the worker here. The worker process should be
+      // started explicitly via `startWorker()` (see worker.js). Creating a
+      // worker during queue initialization results in the server starting a
+      // worker inline when `addAIJob` is called, which can lead to duplicate
+      // workers and log output appearing in the server process. This is
+      // intentionally deferred to allow a separate worker process to be
+      // started by `npm run worker`.
+      // Processor is only used by the worker. Worker instances are created in
+      // `startWorker()` so we leave processor implementation there and avoid
+      // creating or using it in the queue initializer.
 
-      // Create the worker
-      /**
-       * Processor for AI jobs pulled from the queue.
-       *
-       * @param {import('bullmq').Job} job - The job object containing data for processing.
-       * @returns {Promise<void>} Resolves when processing completes successfully.
-       * @throws Will throw when the photo row cannot be found or AI processing fails,
-       * causing the job to be retried according to worker options.
-       */
-      const processor = async (job) => {
-        const { photoId, modelOverrides } = job.data || {};
-      logger.info(`[WORKER] Processing AI job for photoId: ${photoId}`);
+      // leave aiWorker creation to startWorker
 
-        try {
-          // Re-fetch the photo data
-          const photo = await db('photos').where({ id: photoId }).first();
-          if (!photo) {
-            throw new Error(`Photo with ID ${photoId} not found.`);
-          }
+      // Worker event handlers are attached when the worker is created in
+      // startWorker(). Do not attach them here where aiWorker may still be null.
 
-          // Use storage path for AI processing
-          const storagePath = photo.storage_path || `${photo.state}/${photo.filename}`;
-
-          // Call the existing AI service function. Pass along any model overrides
-          await updatePhotoAIMetadata(db, photo, storagePath, modelOverrides);
-
-          logger.info(`[WORKER] Successfully processed job for photoId: ${photoId}`);
-        } catch (error) {
-          logger.error(`[WORKER] Job for photoId ${photoId} failed:`, error.message);
-          throw error;
-        }
-      };
-
-      aiWorker = new BullMQWorker(QUEUE_NAME, processor, {
-        connection,
-        lockDuration: 300000, // 5 minutes
-        concurrency: 2,
-        attempts: 3,
-        backoff: {
-          type: 'exponential',
-          delay: 60000, // 1 minute delay for first retry
-        },
-      });
-
-      aiWorker.on('completed', (job) => {
-        logger.info(`[WORKER] Job ${job.id} (PhotoId: ${job.data.photoId}) completed.`);
-      });
-
-      aiWorker.on('failed', (job, err) => {
-        logger.warn(`[WORKER] Job ${job.id} (PhotoId: ${job.data.photoId}) failed: ${err.message}`);
-      });
-
-      logger.info('[WORKER] AI Worker process started and listening for jobs.');
+      // Worker will log start info when startWorker() is invoked.
       
     } catch (error) {
       logger.warn('[QUEUE] Redis not available - queue operations will be disabled:', error.message);
@@ -120,6 +83,43 @@ const addAIJob = async (photoId, options = {}) => {
 // For direct worker usage (worker.js)
 const startWorker = async () => {
   await initializeQueue();
+
+  // Only create the worker if it doesn't exist yet. This function is the
+  // canonical place to create the worker and allows the worker process to be
+  // started separately from the server process.
+  if (!aiWorker) {
+    const { Worker: BullMQWorker } = require('bullmq');
+    const db = require('../db');
+    const { updatePhotoAIMetadata } = require('../ai/service');
+
+    const processor = async (job) => {
+      const { photoId, modelOverrides } = job.data || {};
+      logger.info(`[WORKER] Processing AI job for photoId: ${photoId}`);
+      try {
+        const photo = await db('photos').where({ id: photoId }).first();
+        if (!photo) throw new Error(`Photo with ID ${photoId} not found.`);
+        const storagePath = photo.storage_path || `${photo.state}/${photo.filename}`;
+        await updatePhotoAIMetadata(db, photo, storagePath, modelOverrides);
+        logger.info(`[WORKER] Successfully processed job for photoId: ${photoId}`);
+      } catch (error) {
+        logger.error(`[WORKER] Job for photoId ${photoId} failed:`, error.message);
+        throw error;
+      }
+    };
+
+    aiWorker = new BullMQWorker(QUEUE_NAME, processor, {
+      connection,
+      lockDuration: 300000,
+      concurrency: 2,
+      attempts: 3,
+      backoff: { type: 'exponential', delay: 60000 },
+    });
+
+    aiWorker.on('completed', (job) => logger.info(`[WORKER] Job ${job.id} (PhotoId: ${job.data.photoId}) completed.`));
+    aiWorker.on('failed', (job, err) => logger.warn(`[WORKER] Job ${job.id} (PhotoId: ${job.data.photoId}) failed: ${err.message}`));
+    logger.info('[WORKER] AI Worker process started and listening for jobs.');
+  }
+
   return { aiWorker, redisAvailable };
 };
 

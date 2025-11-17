@@ -37,4 +37,29 @@ describe('foodPlaces nearbyFoodPlaces', () => {
     expect(pois[0].placeId).toBe('p1');
     expect(pois[1].placeId).toBe('p2');
   });
+
+  it('expands radius up to FOOD_PLACES_MAX_RADIUS_METERS and returns results when available', async () => {
+    const originalStart = process.env.FOOD_PLACES_START_RADIUS_METERS;
+    const originalMax = process.env.FOOD_PLACES_MAX_RADIUS_METERS;
+    process.env.FOOD_PLACES_START_RADIUS_METERS = '50';
+    process.env.FOOD_PLACES_MAX_RADIUS_METERS = '300';
+
+    // Fake fetch returns no results for small radii, and returns a candidate for larger radius
+    const fakeFetch = jest.fn((url) => {
+      const params = new URLSearchParams(url.split('?')[1]);
+      const radius = Number(params.get('radius'));
+      if (radius < 250) {
+        return Promise.resolve({ ok: true, json: async () => ({ results: [] }) });
+      }
+      return Promise.resolve({ ok: true, json: async () => ({ results: [ { place_id: 'p_large', name: 'Far Restaurant', types: ['restaurant'], geometry: { location: { lat: 1, lng: 2 } } } ] }) });
+    });
+
+    const pois = await nearbyFoodPlaces(37.123, -122.456, 15, { fetch: fakeFetch });
+    expect(pois.length).toBeGreaterThan(0);
+    expect(pois[0].placeId).toBe('p_large');
+
+    // Restore env
+    process.env.FOOD_PLACES_START_RADIUS_METERS = originalStart;
+    process.env.FOOD_PLACES_MAX_RADIUS_METERS = originalMax;
+  });
 });

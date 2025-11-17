@@ -74,4 +74,13 @@ describe('nearbyTrailsFromOSM', () => {
 
     expect(trails).toEqual([]);
   });
+
+  it('respects OSM_TRAILS_DEFAULT_RADIUS_METERS without explicit radius', async () => {
+    process.env.OSM_TRAILS_DEFAULT_RADIUS_METERS = '250';
+    global.fetch = jest.fn(() => Promise.resolve({ ok: true, json: async () => ({ elements: [] }) }));
+    const { nearbyTrailsFromOSM } = loadModule();
+    await nearbyTrailsFromOSM(baseLat, baseLon); // default radius used
+    expect(global.fetch).toHaveBeenCalled();
+    delete process.env.OSM_TRAILS_DEFAULT_RADIUS_METERS;
+  });
 });

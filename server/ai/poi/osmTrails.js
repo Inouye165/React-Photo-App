@@ -14,6 +14,9 @@ const ensureFetch = () => {
 
 const fetchFn = ensureFetch();
 const DEFAULT_OVERPASS_ENDPOINT = 'https://overpass-api.de/api/interpreter';
+// Default radius to search for trails (meters). Reduced to prevent excessive queries
+// and to avoid surfacing trails far from the photo GPS. This is configurable via env.
+const DEFAULT_OSM_RADIUS_METERS = Number(process.env.OSM_TRAILS_DEFAULT_RADIUS_METERS || 100);
 const CACHE_TTL_MS = Number(process.env.OSM_CACHE_TTL_MS) || 6 * 60 * 60 * 1000; // 6 hours
 const CACHE_MAX_ENTRIES = Number(process.env.OSM_CACHE_MAX_ENTRIES) || 100;
 const cache = new Map();
@@ -63,7 +66,7 @@ function normalizeElement(element, lat, lon) {
   };
 }
 
-async function nearbyTrailsFromOSM(lat, lon, radiusMeters = 2000) {
+async function nearbyTrailsFromOSM(lat, lon, radiusMeters = DEFAULT_OSM_RADIUS_METERS) {
   if (!Number.isFinite(lat) || !Number.isFinite(lon)) return [];
   const endpoint = process.env.OSM_OVERPASS_ENDPOINT || DEFAULT_OVERPASS_ENDPOINT;
   const cacheKey = toCacheKey(lat, lon, radiusMeters);
