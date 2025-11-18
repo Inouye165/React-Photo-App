@@ -194,7 +194,7 @@ async function main() {
   }
 
   // Build ordered steps from captured data and finalState
-  const knownOrder = ['classify_image','location_intelligence_agent','decide_scene_label','generate_metadata','handle_collectible','food_location_agent','food_metadata_agent'];
+  const knownOrder = ['classify_image','collect_context','location_intelligence_agent','decide_scene_label','generate_metadata','handle_collectible','food_location_agent','food_metadata_agent'];
   const steps = [];
 
   for (const nodeName of knownOrder) {

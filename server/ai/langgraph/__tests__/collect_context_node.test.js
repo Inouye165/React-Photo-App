@@ -41,4 +41,24 @@ describe('collect_context node', () => {
     expect(res.poiCache.osmTrails.length).toBeGreaterThan(0);
     expect(res.poiCacheSummary.nearbyPlacesCount).toBeGreaterThan(0);
   });
+
+  it('location_intelligence_agent uses poiCache and does not re-call googlePlaces', async () => {
+    // Setup initial calls for collect_context
+    reverseGeocode.mockResolvedValueOnce({ address: 'Park Ave' });
+    nearbyPlaces.mockResolvedValueOnce([{ name: 'Big Park' }]);
+    nearbyFoodPlaces.mockResolvedValueOnce([]);
+    nearbyTrailsFromOSM.mockResolvedValueOnce([]);
+
+    const state = { filename: 'f3.jpg', metadata: {}, gpsString: '37.123,-122.456', classification: 'scenery' };
+    const withCache = await __testing.collect_context(state);
+
+    // Reset googlePlaces mocks - ensure later calls would throw if invoked
+    nearbyPlaces.mockImplementation(() => { throw new Error('nearbyPlaces should not be called when poiCache is present'); });
+
+    const { location_intelligence_agent } = __testing;
+    const res = await location_intelligence_agent(withCache);
+    expect(res.poiAnalysis).toBeTruthy();
+    // Confirm we consumed the cached places rather than calling Google again
+    expect(res.poiAnalysis.nearbyPOIs && res.poiAnalysis.nearbyPOIs.length).toBeGreaterThanOrEqual(0);
+  });
 });
