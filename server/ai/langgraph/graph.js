@@ -1059,6 +1059,35 @@ async function food_location_agent(state) {
   }
 }
 
+// --- Node: collect_context (central POI fetch) ---
+async function collect_context(state) {
+  try {
+    logger.info('[LangGraph] collect_context: Enter', { photoId: state.filename });
+    const coordinates = parseGpsCoordinates(state);
+    if (!coordinates) {
+      logger.info('[LangGraph] collect_context: No GPS available, skipping');
+      return { ...state, poiCache: null };
+    }
+    // Always retrieve food-specific places too so downstream nodes don't need to
+    // re-run a separate fetch. This consolidates costs into one call.
+    const { lat, lon } = coordinates;
+    const classification = state.classification || '';
+    const poi = await collectContext({ lat, lon, classification, fetchFood: true });
+    // attach a simple summary for observability
+    const summary = {
+      reverse: !!poi.reverseResult && !!poi.reverseResult.address,
+      nearbyPlacesCount: Array.isArray(poi.nearbyPlaces) ? poi.nearbyPlaces.length : 0,
+      nearbyFoodCount: Array.isArray(poi.nearbyFood) ? poi.nearbyFood.length : 0,
+      osmTrailsCount: Array.isArray(poi.osmTrails) ? poi.osmTrails.length : 0,
+    };
+    logger.info('[LangGraph] collect_context: poiCache summary', { photoId: state.filename, ...summary });
+    return { ...state, poiCache: poi, poiCacheSummary: summary };
+  } catch (err) {
+    logger.warn('[LangGraph] collect_context: Error', err && err.message ? err.message : err);
+    return { ...state, poiCache: null };
+  }
+}
+
 function ensureRestaurantInDescription(description, restaurantName, photoLocation, photoTimestamp) {
   const desc = (description || '').trim();
   const name = (restaurantName || '').trim();
@@ -1351,12 +1380,15 @@ workflow.addNode('location_intelligence_agent', location_intelligence_agent);
 workflow.addNode('decide_scene_label', decide_scene_label);
 workflow.addNode('food_location_agent', food_location_agent);
 workflow.addNode('food_metadata_agent', food_metadata_agent);
+workflow.addNode('collect_context', collect_context);
 
 // 2. Set the entry point
 workflow.setEntryPoint('classify_image');
 
 // 3. Wire the flow: classification -> location intelligence -> rest
-workflow.addEdge('classify_image', 'location_intelligence_agent');
+// Insert a short-circuit node that collects POI once per image and caches it.
+workflow.addEdge('classify_image', 'collect_context');
+workflow.addEdge('collect_context', 'location_intelligence_agent');
 
 workflow.addConditionalEdges(
   'location_intelligence_agent',
@@ -1380,3 +1412,5 @@ workflow.addEdge('food_metadata_agent', END);
 // 5. Compile the app
 const app = workflow.compile();
 module.exports = { app, __testing: { food_location_agent, food_metadata_agent, location_intelligence_agent } };
+// Export the collect_context node for unit testing
+module.exports.__testing.collect_context = collect_context;
