@@ -1072,16 +1072,19 @@ async function collect_context(state) {
     // re-run a separate fetch. This consolidates costs into one call.
     const { lat, lon } = coordinates;
     const classification = state.classification || '';
+    const startMs = Date.now();
     const poi = await collectContext({ lat, lon, classification, fetchFood: true });
+    const durationMs = Date.now() - startMs;
     // attach a simple summary for observability
     const summary = {
       reverse: !!poi.reverseResult && !!poi.reverseResult.address,
       nearbyPlacesCount: Array.isArray(poi.nearbyPlaces) ? poi.nearbyPlaces.length : 0,
       nearbyFoodCount: Array.isArray(poi.nearbyFood) ? poi.nearbyFood.length : 0,
       osmTrailsCount: Array.isArray(poi.osmTrails) ? poi.osmTrails.length : 0,
+      durationMs,
     };
     logger.info('[LangGraph] collect_context: poiCache summary', { photoId: state.filename, ...summary });
-    return { ...state, poiCache: poi, poiCacheSummary: summary };
+    return { ...state, poiCache: poi, poiCacheSummary: summary, poiCacheFetchedAt: new Date().toISOString() };
   } catch (err) {
     logger.warn('[LangGraph] collect_context: Error', err && err.message ? err.message : err);
     return { ...state, poiCache: null };

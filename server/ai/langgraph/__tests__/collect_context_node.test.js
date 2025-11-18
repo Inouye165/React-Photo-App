@@ -22,6 +22,8 @@ describe('collect_context node', () => {
     expect(res.poiCache.nearbyFood).toBeTruthy();
     expect(res.poiCache.nearbyFood.length).toBe(1);
     expect(res.poiCacheSummary.nearbyFoodCount).toBe(1);
+    expect(typeof res.poiCacheSummary.durationMs).toBe('number');
+    expect(res.poiCacheFetchedAt).toBeTruthy();
     // For food classification generic POIs should be skipped
     expect(res.poiCache.nearbyPlaces).toEqual([]);
   });
