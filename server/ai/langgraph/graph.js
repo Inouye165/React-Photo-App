@@ -24,6 +24,7 @@ const { reverseGeocode, nearbyPlaces } = require('../poi/googlePlaces');
 const { nearbyFoodPlaces } = require('../poi/foodPlaces');
 const { fetchDishNutrition } = require('../food/nutritionSearch');
 const { nearbyTrailsFromOSM } = require('../poi/osmTrails');
+const { collectContext } = require('./collect_context');
 
 // --- Debug helpers ---
 function accumulateDebugUsage(debugUsage = [], entry = {}) {
@@ -516,6 +517,15 @@ async function location_intelligence_agent(state) {
     return { ...state, poiAnalysis: null, debugUsage };
   }
 
+  if (!state.poiCache) {
+    try {
+      state.poiCache = await collectContext({ lat: coordinates.lat, lon: coordinates.lon, classification: state.classification, fetchFood: false });
+    } catch (err) {
+      logger.warn('[LangGraph] location_intelligence_agent collectContext failed', err?.message || err);
+      state.poiCache = null;
+    }
+  }
+
   logger.info(
     `[infer_poi] GPS found: ${coordinates.lat.toFixed(4)},${coordinates.lon.toFixed(4)} — querying Google Places...`
   );
@@ -525,7 +535,7 @@ async function location_intelligence_agent(state) {
   let osmTrails = [];
   if (coordinates) {
     try {
-      reverseResult = await reverseGeocode(coordinates.lat, coordinates.lon);
+      reverseResult = state.poiCache?.reverseResult || (await reverseGeocode(coordinates.lat, coordinates.lon));
     } catch (err) {
       logger.warn('[LangGraph] location_intelligence_agent reverse geocode failed', err?.message || err);
     }
@@ -541,7 +551,7 @@ async function location_intelligence_agent(state) {
         logger.info('[location_intel] classification=food → skipping generic POI/trails lookups');
         nearby = [];
       } else {
-        nearby = await nearbyPlaces(coordinates.lat, coordinates.lon, 800);
+        nearby = state.poiCache?.nearbyPlaces || (await nearbyPlaces(coordinates.lat, coordinates.lon, 800));
       }
     } catch (err) {
       logger.warn('[LangGraph] location_intelligence_agent nearbyPlaces failed', err?.message || err);
@@ -669,7 +679,7 @@ async function location_intelligence_agent(state) {
       } else {
         // Use configurable default radius for OSM trails; default to a short radius
         const osmDefaultRadius = Number(process.env.OSM_TRAILS_DEFAULT_RADIUS_METERS || 200);
-        osmTrails = await nearbyTrailsFromOSM(coordinates.lat, coordinates.lon, osmDefaultRadius);
+        osmTrails = state.poiCache?.osmTrails || (await nearbyTrailsFromOSM(coordinates.lat, coordinates.lon, osmDefaultRadius));
       }
     } catch (err) {
       logger.warn('[location_intel] OSM trails lookup failed', err?.message || err);
@@ -926,7 +936,20 @@ async function food_location_agent(state) {
       } else {
         // Use configured fallback radius (in meters) so tests and runtime can
         // easily change the search distance via env var.
-        nearby = await nearbyFoodPlaces(lat, lon, FOOD_POI_FALLBACK_RADIUS);
+        // Prefer a cached value if it exists to avoid extra API calls
+        if (state.poiCache?.nearbyFood) {
+          nearby = state.poiCache.nearbyFood;
+        } else {
+          // Collect food-specific POI data and cache it for the remainder of the run
+          try {
+            const poi = await collectContext({ lat: lat, lon: lon, classification: state.classification, fetchFood: true });
+            state.poiCache = { ...(state.poiCache || {}), ...poi };
+            nearby = poi.nearbyFood || [];
+          } catch (err) {
+            logger.warn('[LangGraph] food_location_agent collectContext failed', err?.message || err);
+            nearby = await nearbyFoodPlaces(lat, lon, FOOD_POI_FALLBACK_RADIUS);
+          }
+        }
       }
     } catch (err) {
       logger.warn('[LangGraph] food_location_agent: nearbyFoodPlaces failed', err && err.message ? err.message : err);
