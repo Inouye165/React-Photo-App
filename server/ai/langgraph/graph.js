@@ -24,6 +24,7 @@ const { reverseGeocode, nearbyPlaces } = require('../poi/googlePlaces');
 const { nearbyFoodPlaces } = require('../poi/foodPlaces');
 const { fetchDishNutrition } = require('../food/nutritionSearch');
 const { nearbyTrailsFromOSM } = require('../poi/osmTrails');
+const { collectContext } = require('./collect_context');
 
 // --- Debug helpers ---
 function accumulateDebugUsage(debugUsage = [], entry = {}) {
@@ -516,6 +517,15 @@ async function location_intelligence_agent(state) {
     return { ...state, poiAnalysis: null, debugUsage };
   }
 
+  if (!state.poiCache) {
+    try {
+      state.poiCache = await collectContext({ lat: coordinates.lat, lon: coordinates.lon, classification: state.classification, fetchFood: false });
+    } catch (err) {
+      logger.warn('[LangGraph] location_intelligence_agent collectContext failed', err?.message || err);
+      state.poiCache = null;
+    }
+  }
+
   logger.info(
     `[infer_poi] GPS found: ${coordinates.lat.toFixed(4)},${coordinates.lon.toFixed(4)} — querying Google Places...`
   );
@@ -525,7 +535,7 @@ async function location_intelligence_agent(state) {
   let osmTrails = [];
   if (coordinates) {
     try {
-      reverseResult = await reverseGeocode(coordinates.lat, coordinates.lon);
+      reverseResult = state.poiCache?.reverseResult || (await reverseGeocode(coordinates.lat, coordinates.lon));
     } catch (err) {
       logger.warn('[LangGraph] location_intelligence_agent reverse geocode failed', err?.message || err);
     }
@@ -541,7 +551,7 @@ async function location_intelligence_agent(state) {
         logger.info('[location_intel] classification=food → skipping generic POI/trails lookups');
         nearby = [];
       } else {
-        nearby = await nearbyPlaces(coordinates.lat, coordinates.lon, 800);
+        nearby = state.poiCache?.nearbyPlaces || (await nearbyPlaces(coordinates.lat, coordinates.lon, 800));
       }
     } catch (err) {
       logger.warn('[LangGraph] location_intelligence_agent nearbyPlaces failed', err?.message || err);
@@ -669,7 +679,7 @@ async function location_intelligence_agent(state) {
       } else {
         // Use configurable default radius for OSM trails; default to a short radius
         const osmDefaultRadius = Number(process.env.OSM_TRAILS_DEFAULT_RADIUS_METERS || 200);
-        osmTrails = await nearbyTrailsFromOSM(coordinates.lat, coordinates.lon, osmDefaultRadius);
+        osmTrails = state.poiCache?.osmTrails || (await nearbyTrailsFromOSM(coordinates.lat, coordinates.lon, osmDefaultRadius));
       }
     } catch (err) {
       logger.warn('[location_intel] OSM trails lookup failed', err?.message || err);
@@ -926,7 +936,20 @@ async function food_location_agent(state) {
       } else {
         // Use configured fallback radius (in meters) so tests and runtime can
         // easily change the search distance via env var.
-        nearby = await nearbyFoodPlaces(lat, lon, FOOD_POI_FALLBACK_RADIUS);
+        // Prefer a cached value if it exists to avoid extra API calls
+        if (state.poiCache?.nearbyFood) {
+          nearby = state.poiCache.nearbyFood;
+        } else {
+          // Collect food-specific POI data and cache it for the remainder of the run
+          try {
+            const poi = await collectContext({ lat: lat, lon: lon, classification: state.classification, fetchFood: true });
+            state.poiCache = { ...(state.poiCache || {}), ...poi };
+            nearby = poi.nearbyFood || [];
+          } catch (err) {
+            logger.warn('[LangGraph] food_location_agent collectContext failed', err?.message || err);
+            nearby = await nearbyFoodPlaces(lat, lon, FOOD_POI_FALLBACK_RADIUS);
+          }
+        }
       }
     } catch (err) {
       logger.warn('[LangGraph] food_location_agent: nearbyFoodPlaces failed', err && err.message ? err.message : err);
@@ -1036,6 +1059,38 @@ async function food_location_agent(state) {
   }
 }
 
+// --- Node: collect_context (central POI fetch) ---
+async function collect_context(state) {
+  try {
+    logger.info('[LangGraph] collect_context: Enter', { photoId: state.filename });
+    const coordinates = parseGpsCoordinates(state);
+    if (!coordinates) {
+      logger.info('[LangGraph] collect_context: No GPS available, skipping');
+      return { ...state, poiCache: null };
+    }
+    // Always retrieve food-specific places too so downstream nodes don't need to
+    // re-run a separate fetch. This consolidates costs into one call.
+    const { lat, lon } = coordinates;
+    const classification = state.classification || '';
+    const startMs = Date.now();
+    const poi = await collectContext({ lat, lon, classification, fetchFood: true });
+    const durationMs = Date.now() - startMs;
+    // attach a simple summary for observability
+    const summary = {
+      reverse: !!poi.reverseResult && !!poi.reverseResult.address,
+      nearbyPlacesCount: Array.isArray(poi.nearbyPlaces) ? poi.nearbyPlaces.length : 0,
+      nearbyFoodCount: Array.isArray(poi.nearbyFood) ? poi.nearbyFood.length : 0,
+      osmTrailsCount: Array.isArray(poi.osmTrails) ? poi.osmTrails.length : 0,
+      durationMs,
+    };
+    logger.info('[LangGraph] collect_context: poiCache summary', { photoId: state.filename, ...summary });
+    return { ...state, poiCache: poi, poiCacheSummary: summary, poiCacheFetchedAt: new Date().toISOString() };
+  } catch (err) {
+    logger.warn('[LangGraph] collect_context: Error', err && err.message ? err.message : err);
+    return { ...state, poiCache: null };
+  }
+}
+
 function ensureRestaurantInDescription(description, restaurantName, photoLocation, photoTimestamp) {
   const desc = (description || '').trim();
   const name = (restaurantName || '').trim();
@@ -1068,7 +1123,8 @@ async function food_metadata_agent(state) {
     const timestamp = extractTimestamp(state.metadata); // e.g., "2025-02-17 21:18:28"
     // --- END NEW ---
 
-    const systemPrompt = 'You are a professional photo archivist. Your tone is informative, concise, and professional. Return ONLY a JSON object.';
+    const { FOOD_METADATA_SYSTEM_PROMPT, FOOD_METADATA_USER_PROMPT, FOOD_METADATA_CRITICAL_RULE_TEXT } = require('../prompts/food_metadata_agent');
+    const systemPrompt = FOOD_METADATA_SYSTEM_PROMPT || 'You are a professional photo archivist. Your tone is informative, concise, and professional. Return ONLY a JSON object.';
     // Prefer the curated nearby list for the prompt to reduce noisy results from
     // OSM/trails or very distant POIs. Fall back to the full list if no curated
     // subset was generated by the earlier node.
@@ -1087,7 +1143,8 @@ async function food_metadata_agent(state) {
     const deterministicRestaurant = !!foodMeta?.deterministic_restaurant || !!bestCandidate?.deterministic;
     const lockedRestaurantName = foodMeta?.restaurant_name || bestCandidate?.name || null;
     const lockedRestaurantAddress = foodMeta?.restaurant_address || bestCandidate?.address || null;
-    let userPrompt = `Photo context:\nclassification: ${state.classification}\nphoto_timestamp: ${timestamp || 'unknown'}\nphoto_location: ${locationString || 'unknown'}\nmetadata: ${JSON.stringify(metadataForPrompt)}\nnearby_food_places: ${JSON.stringify(nearbyForPrompt)}\n\nInstructions:\nYou are an expert food scene analyst. Your job is to identify the dish in the photo and determine the most likely restaurant it came from, using the 'nearby_food_places' list.\n\n1.  **Analyze the Photo:** First, identify the dish (e.g., "Seafood Boil," "Clams," "Pizza," "Burger").\n2.  **Analyze the Candidates:** Look at the 'nearby_food_places' list. This list contains ALL restaurants found within ~100ft of the photo's GPS.\n3.  **Make a Decision:**\n    * If the photo (e.g., a "Seafood Boil") is a **strong logical match** for one of the candidates (e.g., "Cajun Crackn Concord"), you MUST select that candidate.\n    * If there are **multiple logical matches**, choose the most plausible one (e.g., a "Seafood Platter" is more likely from "Merriman's" than a fast-food place).\n    * If there are **NO logical matches** (e.g., photo is "Seafood," list has "Jamba Juice"), you MUST ignore all candidates.\n\nAdditional rule about restaurants:\n    * If 'deterministic_restaurant' is true in the provided context, you MUST use the 'restaurant_name' and 'restaurant_address' provided in the state and MUST NOT override them. Instead, focus on dish identification and description.\n\n4.  **Generate Content:**\n    * **restaurant_name:** The name of your selected candidate (or null if no match).\n    * **description:** Write a professional, 1-2 sentence archival description.\n        * **If you found a match:** The description MUST include the dish name and the full restaurant name. Example: "A Cajun-style seafood boil enjoyed at Cajun Crackn Concord."\n        * **If you did NOT find a match:** Write a generic description of the dish. Example: "A close-up of a Cajun-style seafood boil."\n        * **Always** try to append the location and date, like: "...in [photo_location] on [photo_timestamp]."\n    * **keywords:** Include the dish, cuisine, and restaurant name (if found).\n\nRespond with a JSON object with keys: caption, description, dish_name, dish_type, cuisine, restaurant_name (string or null), restaurant_address (string or null), restaurant_confidence (0-1), restaurant_reasoning, nutrition_info (object), nutrition_confidence (0-1), location_summary, keywords (array).`;
+    let userPrompt = (FOOD_METADATA_USER_PROMPT || '').replace('{classification}', String(state.classification || '')).replace('{photo_timestamp}', String(timestamp || 'unknown')).replace('{photo_location}', String(locationString || 'unknown')).replace('{metadataForPrompt}', JSON.stringify(metadataForPrompt || {})).replace('{nearbyForPrompt}', JSON.stringify(nearbyForPrompt || []));
+    userPrompt = userPrompt.replace('{CRITICAL_RULE_TEXT}', FOOD_METADATA_CRITICAL_RULE_TEXT || '');
     const CRITICAL_RULE_TEXT = '        * **CRITICAL FORMAT RULE:** If `restaurant_name` in your JSON is not null, the description MUST contain the exact `restaurant_name` string verbatim at least once. If it does not, rewrite the description so the restaurant name appears explicitly.';
     if (!userPrompt.includes('CRITICAL FORMAT RULE')) {
       const anchor = '        * **Always** try to append the location and date, like: "...in [photo_location] on [photo_timestamp]."\n    * **keywords:** Include the dish, cuisine, and restaurant name (if found).';
@@ -1328,12 +1385,15 @@ workflow.addNode('location_intelligence_agent', location_intelligence_agent);
 workflow.addNode('decide_scene_label', decide_scene_label);
 workflow.addNode('food_location_agent', food_location_agent);
 workflow.addNode('food_metadata_agent', food_metadata_agent);
+workflow.addNode('collect_context', collect_context);
 
 // 2. Set the entry point
 workflow.setEntryPoint('classify_image');
 
 // 3. Wire the flow: classification -> location intelligence -> rest
-workflow.addEdge('classify_image', 'location_intelligence_agent');
+// Insert a short-circuit node that collects POI once per image and caches it.
+workflow.addEdge('classify_image', 'collect_context');
+workflow.addEdge('collect_context', 'location_intelligence_agent');
 
 workflow.addConditionalEdges(
   'location_intelligence_agent',
@@ -1357,3 +1417,5 @@ workflow.addEdge('food_metadata_agent', END);
 // 5. Compile the app
 const app = workflow.compile();
 module.exports = { app, __testing: { food_location_agent, food_metadata_agent, location_intelligence_agent } };
+// Export the collect_context node for unit testing
+module.exports.__testing.collect_context = collect_context;

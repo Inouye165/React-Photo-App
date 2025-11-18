@@ -24,6 +24,21 @@ const AppState = z.object({
   // --- Step 2: POI & Search Outputs ---
   // The full, rich output from the photoPOIIdentifier tool
   poiAnalysis: z.object().passthrough().nullable(),
+  // Cache of collected POI results to avoid repeating expensive lookups
+  poiCache: z.object().passthrough().nullable(),
+  // Small summary about the cache: counts and timing
+  poiCacheSummary: z
+    .object({
+      reverse: z.boolean().optional(),
+      nearbyPlacesCount: z.number().optional(),
+      nearbyFoodCount: z.number().optional(),
+      osmTrailsCount: z.number().optional(),
+      durationMs: z.number().optional(),
+    })
+    .nullable()
+    .optional(),
+  // Timestamp string for when poiCache was fetched
+  poiCacheFetchedAt: z.string().nullable().optional(),
   // The specific context snippets from the fallback web search
   rich_search_context: z.string().nullable(),
 
