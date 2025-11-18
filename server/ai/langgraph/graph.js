@@ -6,6 +6,11 @@ const {
   HumanMessage,
   SystemMessage,
 } = require('@langchain/core/messages');
+// Prompts are externalized in server/ai/prompts/* for maintainability
+const { CLASSIFY_SYSTEM_PROMPT, CLASSIFY_USER_PROMPT } = require('../prompts/classify_image');
+const { GENERATE_METADATA_SYSTEM_PROMPT, GENERATE_METADATA_USER_PROMPT } = require('../prompts/generate_metadata');
+const { LOCATION_INTEL_SYSTEM_PROMPT, LOCATION_INTEL_USER_PROMPT } = require('../prompts/location_intelligence_agent');
+const { DECIDE_SCENE_SYSTEM_PROMPT, DECIDE_SCENE_USER_PROMPT } = require('../prompts/decide_scene_label');
 const { openai } = require('../openaiClient');
 const logger = require('../../logger');
 const { AppState } = require('./state');
@@ -312,9 +317,7 @@ function summarizeMetadataForPrompt(meta = {}) {
 async function classify_image(state) {
   try {
     logger.info('[LangGraph] classify_image node invoked');
-    const prompt =
-      'Classify this image as one of the following categories: scenery, food, receipt, collectables, health data, or other. ' +
-      'Return ONLY a JSON object: {"classification": "..."}.';
+    const prompt = CLASSIFY_USER_PROMPT;
 
     // Build the plain JS content array directly for the raw OpenAI client
     const userContent = [
@@ -333,7 +336,7 @@ async function classify_image(state) {
       messages: [
         {
           role: 'system',
-          content: 'You are a helpful assistant for image classification.',
+          content: CLASSIFY_SYSTEM_PROMPT,
         },
         { role: 'user', content: userContent }, // <-- Use the plain array
       ],
@@ -372,20 +375,15 @@ async function generate_metadata(state) {
     logger.info('[LangGraph] generate_metadata node invoked (default/scenery)');
     // Reduce metadata complexity passed to the LLM to minimize prompt noise
     const metadataForPrompt = summarizeMetadataForPrompt(state.metadata || {});
-    const prompt =
-      `You are a photo archivist. Given the image and the following context, generate a JSON object with three fields:\n` +
-      `caption: A short, one-sentence title for the photo.\n` +
-      `description: A detailed, multi-sentence paragraph describing the visual contents.\n` +
-      `keywords: A comma-separated string that begins with the classification provided (${state.classification}) followed by 4-9 descriptive keywords. After the descriptive keywords, append explicit metadata keywords for capture date, capture time, facing direction, GPS coordinates, and altitude. Use the formats date:YYYY-MM-DD, time:HH:MM:SSZ, direction:<cardinal or degrees>, gps:<latitude,longitude>, altitude:<value>m. When a value is missing, use date:unknown, time:unknown, direction:unknown, gps:unknown, or altitude:unknown.\n` +
-      `\nContext:\n` +
-      `classification: ${state.classification}\n` +
-      `metadata: ${JSON.stringify(metadataForPrompt)}\n` +
-      `poiAnalysis: ${JSON.stringify(state.poiAnalysis)}\n` +
-      `sceneDecision: ${JSON.stringify(state.sceneDecision)}\n` +
-      `Note: If 'sceneDecision' is present and its confidence is "high" or "medium", prefer using sceneDecision.chosenLabel as the place name or location mention in caption and description. If sceneDecision is absent or confidence is low, do not invent specific POI names; instead use descriptive alternatives.\n` +
-      `gps: ${state.gpsString}\n` +
-      `device: ${state.device}\n` +
-      `\nReturn ONLY a JSON object: {"caption": "...", "description": "...", "keywords": "..."}`;
+    let prompt = GENERATE_METADATA_USER_PROMPT;
+    // Substitute template placeholders with live state content
+    prompt = prompt
+      .replace('{classification}', String(state.classification || ''))
+      .replace('{metadataForPrompt}', JSON.stringify(metadataForPrompt || {}))
+      .replace('{poiAnalysis}', JSON.stringify(state.poiAnalysis || {}))
+      .replace('{sceneDecision}', JSON.stringify(state.sceneDecision || {}))
+      .replace('{gps}', String(state.gpsString || ''))
+      .replace('{device}', String(state.device || ''));
 
     // Build the plain JS content array directly for the raw OpenAI client
     const userContent = [
@@ -404,7 +402,7 @@ async function generate_metadata(state) {
       messages: [
         {
           role: 'system',
-          content: 'You are a helpful assistant for photo metadata extraction.',
+          content: GENERATE_METADATA_SYSTEM_PROMPT,
         },
         { role: 'user', content: userContent }, // <-- Use the plain array
       ],
@@ -705,19 +703,9 @@ async function location_intelligence_agent(state) {
   };
 
   const locationModel = state.modelOverrides?.locationModel || 'gpt-4o-mini';
-  const systemPrompt =
-    'You are the Expert Location Detective. Using ONLY the structured GPS metadata provided, infer the most likely city, region, nearby landmark, park, and trail. ' +
-    'Input fields include reverse-geocoded address details, Google Places nearby POIs (nearby_places), and OSM trail/canal/aqueduct features (nearby_trails_osm). ' +
-    'Always respond with a JSON object containing exactly the keys: city, region, nearest_landmark, nearest_park, nearest_trail, description_addendum. ' +
-    'Use descriptive, human-readable names when possible. When information is missing, use the string "unknown". description_addendum should be 1 sentence highlighting unique geographic insight. ' +
-    'Do not hallucinate or invent locations. Only use the structured metadata, images, and listed nearby POIs/trails to infer locations. If the data is insufficient, return "unknown" for that field rather than fabricating a name. ' +
-    'If nearest_park would otherwise be "unknown" but nearest_landmark clearly refers to an open space, preserve, or park (e.g., contains "Open Space", "Regional Park", "State Park", "City Park", "Preserve", or "Recreation Area"), reuse that name for nearest_park. ' +
-    'When choosing nearest_trail, FIRST look at nearby_trails_osm and prefer a named trail, canal path, or aqueduct walkway there. If nearby_trails_osm is empty or lacks a suitable candidate, fall back to nearby_places entries whose names contain words like "Trail", "Trailhead", "Canal", "Aqueduct", "Greenway", "Walkway", or "Path".';
+  const systemPrompt = LOCATION_INTEL_SYSTEM_PROMPT;
 
-  const userPrompt =
-    'Structured metadata for analysis:\n' +
-    `${JSON.stringify(structuredContext, null, 2)}\n` +
-    'Return ONLY valid JSON with the required keys. Do not include Markdown or explanations.';
+  const userPrompt = LOCATION_INTEL_USER_PROMPT.replace('{structuredContext}', JSON.stringify(structuredContext, null, 2));
 
   let locationIntel = buildLocationIntelDefaults();
   try {
@@ -818,8 +806,8 @@ async function location_intelligence_agent(state) {
 async function decide_scene_label(state) {
   let debugUsage = state.debugUsage;
   try {
-    const systemPrompt = 'You are a short-image-tagger assistant. Respond with JSON object {"tags": [..]}.';
-    const userPrompt = 'Provide a short list of descriptive tags (single words) about the image content, like ["geyser","steam","hotel","trail","flower","closeup"]. Return JSON only.';
+    const systemPrompt = DECIDE_SCENE_SYSTEM_PROMPT;
+    const userPrompt = DECIDE_SCENE_USER_PROMPT;
 
     const userContent = [
       { type: 'text', text: userPrompt },
