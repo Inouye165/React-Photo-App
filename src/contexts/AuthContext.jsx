@@ -21,6 +21,13 @@ export const AuthProvider = ({ children }) => {
     const checkAuth = async () => {
       const API_BASE = env.VITE_API_URL || '';
 
+      // Timeout guard to avoid leaving the UI stuck on 'Loading...' if the
+      // backend doesn't respond. Default timeout can be overridden by
+      // VITE_AUTH_VERIFY_TIMEOUT_MS (milliseconds).
+      const AUTH_VERIFY_TIMEOUT_MS = Number(import.meta.env.VITE_AUTH_VERIFY_TIMEOUT_MS || 5000);
+      const controller = new AbortController();
+      const timeout = setTimeout(() => controller.abort(), AUTH_VERIFY_TIMEOUT_MS);
+
       try {
         // Rely only on the httpOnly cookie sent automatically by the browser
         const response = await fetch(`${API_BASE}/auth/verify`, {
@@ -28,7 +35,10 @@ export const AuthProvider = ({ children }) => {
           credentials: 'include',
           headers: {
             'Content-Type': 'application/json',
+            // Attach abort signal to ensure we don't block forever
+            // if the backend hangs on this endpoint.
           },
+          signal: controller.signal,
         });
 
         if (response.ok) {
@@ -42,6 +52,7 @@ export const AuthProvider = ({ children }) => {
         console.error('Auth verification failed:', err);
         setUser(null);
       } finally {
+        clearTimeout(timeout);
         setLoading(false);
       }
     };

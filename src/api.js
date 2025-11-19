@@ -182,6 +182,18 @@ export async function checkPrivilegesBatch(filenames, serverUrl = `${API_BASE_UR
   try { const res = await promise; return res; } catch (e) { throw new Error('Error checking privileges batch: ' + e.message); }
 }
 
+// Utility: fetch with AbortController and timeout
+async function fetchWithTimeout(resource, options = {}, timeoutMs = 20000) {
+  const controller = new AbortController();
+  const id = setTimeout(() => controller.abort(), timeoutMs);
+  try {
+    const resp = await fetch(resource, { ...options, signal: controller.signal });
+    return resp;
+  } finally {
+    clearTimeout(id);
+  }
+}
+
 export async function getPhotos(serverUrlOrEndpoint = `${API_BASE_URL}/photos`) {
   let url = serverUrlOrEndpoint;
   if (!/^https?:\/\//i.test(serverUrlOrEndpoint)) {
@@ -195,7 +207,8 @@ export async function getPhotos(serverUrlOrEndpoint = `${API_BASE_URL}/photos`) 
   if (cached && (now - cached.ts) < TTL) return cached.promise;
 
   const fetchPromise = (async () => {
-  const response = await fetch(url, { headers: getAuthHeaders(), credentials: 'include' });
+  // Protect UI from indefinite hangs if backend is not responding.
+  const response = await fetchWithTimeout(url, { headers: getAuthHeaders(), credentials: 'include' }, 20000);
     if (handleAuthError(response)) return; if (!response.ok) throw new Error('Failed to fetch photos: ' + response.status);
     return await response.json();
   })();

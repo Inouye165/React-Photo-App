@@ -35,10 +35,7 @@ async function logApiCall(apiName, inputs, outputs, durationMs, extraInfo) {
   console.log('\n');
 }
 
-// --- Copy (verbatim) the classifier prompt from graph.js ---
-const CLASSIFY_PROMPT =
-  'Classify this image as one of the following categories: scenery, food, receipt, collectables, health data, or other. ' +
-  'Return ONLY a JSON object: {"classification": "..."}.';
+const { CLASSIFY_USER_PROMPT, CLASSIFY_SYSTEM_PROMPT } = require('./prompts/classify_image');
 
 async function classify_image(state) {
   // For debugging we will call the model unless classification_override present
@@ -48,14 +45,14 @@ async function classify_image(state) {
   }
 
   const userContent = [
-    { type: 'text', text: CLASSIFY_PROMPT },
+    { type: 'text', text: CLASSIFY_USER_PROMPT },
     { type: 'image_url', image_url: { url: `data:${state.imageMime};base64,${state.imageBase64}`, detail: 'low' } },
   ];
   const start = Date.now();
   const response = await openai.chat.completions.create({
     model: 'gpt-4o-mini',
     messages: [
-      { role: 'system', content: 'You are a helpful assistant for image classification.' },
+      { role: 'system', content: CLASSIFY_SYSTEM_PROMPT },
       { role: 'user', content: userContent },
     ],
     max_tokens: 64,
@@ -70,19 +67,12 @@ async function classify_image(state) {
     void _err;
     parsed = { classification: 'unknown' };
   }
-  await logApiCall('classify_image', { prompt: CLASSIFY_PROMPT }, { response: parsed }, end - start, { rawChoice: out, usage: response.usage });
+  await logApiCall('classify_image', { prompt: CLASSIFY_USER_PROMPT }, { response: parsed }, end - start, { rawChoice: out, usage: response.usage });
   return { ...state, classification: parsed.classification || 'unknown' };
 }
 
 // --- Copy location intelligence system prompt ---
-const LOCATION_SYSTEM_PROMPT =
-  'You are the Expert Location Detective. Using ONLY the structured GPS metadata provided, infer the most likely city, region, nearby landmark, park, and trail. ' +
-  'Input fields include reverse-geocoded address details, Google Places nearby POIs (nearby_places), and OSM trail/canal/aqueduct features (nearby_trails_osm). ' +
-  'Always respond with a JSON object containing exactly the keys: city, region, nearest_landmark, nearest_park, nearest_trail, description_addendum. ' +
-  'Use descriptive, human-readable names when possible. When information is missing, use the string "unknown". description_addendum should be 1 sentence highlighting unique geographic insight. ' +
-  'Do not hallucinate or invent locations. Only use the structured metadata, images, and listed nearby POIs/trails to infer locations. If the data is insufficient, return "unknown" for that field rather than fabricating a name. ' +
-  'If nearest_park would otherwise be "unknown" but nearest_landmark clearly refers to an open space, preserve, or park (e.g., contains "Open Space", "Regional Park", "State Park", "City Park", "Preserve", or "Recreation Area"), reuse that name for nearest_park. ' +
-  'When choosing nearest_trail, FIRST look at nearby_trails_osm and prefer a named trail, canal path, or aqueduct walkway there. If nearby_trails_osm is empty or lacks a suitable candidate, fall back to nearby_places entries whose names contain words like "Trail", "Trailhead", "Canal", "Aqueduct", "Greenway", "Walkway", or "Path".';
+const { LOCATION_INTEL_SYSTEM_PROMPT } = require('./prompts/location_intelligence_agent');
 
 async function location_intelligence_agent(state) {
   // If no GPS available return quickly
@@ -121,11 +111,13 @@ async function location_intelligence_agent(state) {
     console.warn('[DEBUG] OSM lookup failed', err && err.message ? err.message : err);
   }
 
-  const userPrompt = 'Structured metadata for analysis:\n' + JSON.stringify({ gps_string: `${coords.lat},${coords.lon}`, nearby_places: nearby, nearby_trails_osm: osmTrails }, null, 2) + '\nReturn ONLY valid JSON with the required keys. Do not include Markdown or explanations.';
+  const LOCATION_USER_PROMPT = require('./prompts/location_intelligence_agent').LOCATION_INTEL_USER_PROMPT;
+  const userPrompt = LOCATION_USER_PROMPT.replace('{structuredContext}', JSON.stringify({ gps_string: `${coords.lat},${coords.lon}`, nearby_places: nearby, nearby_trails_osm: osmTrails }, null, 2));
 
-  const response = await openai.chat.completions.create({
+    // LOCATION_INTEL_SYSTEM_PROMPT is imported at top of file
+    const response = await openai.chat.completions.create({
     model: 'gpt-4o-mini',
-    messages: [ { role: 'system', content: LOCATION_SYSTEM_PROMPT }, { role: 'user', content: userPrompt } ],
+       messages: [ { role: 'system', content: LOCATION_INTEL_SYSTEM_PROMPT }, { role: 'user', content: userPrompt } ],
     max_tokens: 400,
     response_format: { type: 'json_object' },
   });
@@ -139,7 +131,7 @@ async function location_intelligence_agent(state) {
     parsed = {};
   }
 
-  await logApiCall('location_intelligence_agent', { structuredContext: { coords, reverse, nearby, osmTrails }, prompt: LOCATION_SYSTEM_PROMPT }, { parsed, reverseResult: reverse, nearbyPlaces: nearby, osmTrails }, end - start, { raw });
+    await logApiCall('location_intelligence_agent', { structuredContext: { coords, reverse, nearby, osmTrails }, prompt: LOCATION_INTEL_SYSTEM_PROMPT }, { parsed, reverseResult: reverse, nearbyPlaces: nearby, osmTrails }, end - start, { raw });
 
   const locationIntel = {
     city: parsed.city || (reverse?.city || 'unknown'),
