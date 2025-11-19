@@ -41,7 +41,7 @@ function configureSecurity(app) {
   // General rate limiting
   const generalLimiter = rateLimit({
     windowMs: 15 * 60 * 1000, // 15 minutes
-    max: 100, // Limit each IP to 100 requests per windowMs
+    max: 2000, // Limit each IP to 2000 requests per windowMs
     message: {
       error: 'Too many requests from this IP, please try again later.'
     },
@@ -56,7 +56,7 @@ function configureSecurity(app) {
   // Upload rate limiting
   const uploadLimiter = rateLimit({
     windowMs: 15 * 60 * 1000, // 15 minutes
-    max: 20, // Limit uploads per IP
+    max: 100, // Limit uploads per IP
     message: {
       success: false,
       error: 'Too many upload attempts, please try again later.'
@@ -68,7 +68,7 @@ function configureSecurity(app) {
   // API rate limiting (more strict for API endpoints)
   const apiLimiter = rateLimit({
     windowMs: 15 * 60 * 1000, // 15 minutes
-    max: 50, // Limit API calls per IP
+    max: 1000, // Limit API calls per IP
     message: {
       success: false,
       error: 'Too many API requests, please try again later.'

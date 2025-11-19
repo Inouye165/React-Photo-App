@@ -1,16 +1,35 @@
 const sharp = require('sharp');
+const path = require('path');
+const os = require('os');
 const exifr = require('exifr');
 const nodeCrypto = require('crypto');
 const heicConvert = require('heic-convert');
-const fs = require('fs').promises;
+const fs = require('fs');
+const fsPromises = require('fs').promises;
 const supabase = require('../lib/supabaseClient');
+const { validateSafePath } = require('../utils/pathValidator');
 
-async function hashFile(fileBuffer) {
-  return nodeCrypto.createHash('sha256').update(fileBuffer).digest('hex');
+async function hashFile(input) {
+  if (Buffer.isBuffer(input)) {
+    return nodeCrypto.createHash('sha256').update(input).digest('hex');
+  }
+  // Assume input is a file path
+  return new Promise((resolve, reject) => {
+    const hash = nodeCrypto.createHash('sha256');
+    try {
+      const realPath = validateSafePath(input);
+      const stream = fs.createReadStream(realPath);
+      stream.on('error', reject);
+      stream.on('data', chunk => hash.update(chunk));
+      stream.on('end', () => resolve(hash.digest('hex')));
+    } catch (err) {
+      return reject(err);
+    }
+  });
 }
 
 
-async function generateThumbnail(fileBuffer, hash) {
+async function generateThumbnail(input, hash) {
   const thumbnailPath = `thumbnails/${hash}.jpg`;
   
   try {
@@ -27,15 +46,22 @@ async function generateThumbnail(fileBuffer, hash) {
   }
 
   try {
-    // Detect file type from buffer
-    const metadata = await sharp(fileBuffer).metadata();
+    // Detect file type from buffer/file
+    let sanitizedInput = input;
+    if (typeof input === 'string') {
+      const safeFilename = path.basename(input);
+      const safeDir = os.tmpdir();
+      sanitizedInput = path.join(safeDir, safeFilename);
+    }
+
+    const metadata = await sharp(sanitizedInput).metadata();
     const format = metadata.format;
     
     let thumbnailBuffer;
     if (format === 'heif') {
       // Convert HEIC/HEIF to JPEG buffer first
       try {
-        const jpegBuffer = await convertHeicToJpegBuffer(fileBuffer, 70);
+        const jpegBuffer = await convertHeicToJpegBuffer(sanitizedInput, 70);
         thumbnailBuffer = await sharp(jpegBuffer)
           .resize(90, 90, { fit: 'inside' })
           .jpeg({ quality: 70 })
@@ -45,7 +71,7 @@ async function generateThumbnail(fileBuffer, hash) {
         return null;
       }
     } else {
-      thumbnailBuffer = await sharp(fileBuffer)
+      thumbnailBuffer = await sharp(sanitizedInput)
         .resize(90, 90, { fit: 'inside' })
         .jpeg({ quality: 70 })
         .toBuffer();
@@ -71,14 +97,59 @@ async function generateThumbnail(fileBuffer, hash) {
   }
 }
 
-async function convertHeicToJpegBuffer(fileBuffer, quality = 90) {
-  // Accept either a Buffer or a file path string. If a path is provided, read it into a Buffer.
-  let inputBuffer = fileBuffer;
-  if (typeof fileBuffer === 'string') {
+
+async function convertHeicToJpegBuffer(input, quality = 90) {
+  // Accept either a Buffer or a file path string. If a path is provided, sanitize and read it into a Buffer.
+  let inputBuffer = input;
+  if (typeof input === 'string') {
     try {
-      inputBuffer = await fs.readFile(fileBuffer);
+      // Allow override of allowedDirs, e.g. via env.TEST_IMAGE_DIR or process global for tests
+      let allowedDirs = [
+        path.resolve(__dirname, '../working'),
+        path.resolve(os.tmpdir())
+      ];
+      if (process.env.TEST_IMAGE_DIR) {
+        allowedDirs.push(path.resolve(process.env.TEST_IMAGE_DIR));
+      }
+
+      // Resolve the input path
+      const resolvedPath = path.resolve(input);
+
+      // Pre-check: Ensure resolved path starts with one of the allowed dirs
+      // This prevents passing obviously malicious paths to realpath
+      const preCheckSafe = allowedDirs.some(dir => {
+        const base = dir.endsWith(path.sep) ? dir : dir + path.sep;
+        return resolvedPath === dir || resolvedPath.startsWith(base);
+      });
+
+      if (!preCheckSafe) {
+        throw new Error(`File path ${input} is outside the allowed directories (pre-check)`);
+      }
+
+      // Get the real path (resolves symlinks)
+      const realPath = await fsPromises.realpath(resolvedPath);
+
+      // Resolve allowed directories to their real paths for comparison
+      const realAllowedDirs = await Promise.all(allowedDirs.map(async dir => {
+        try {
+          return await fsPromises.realpath(dir);
+        } catch {
+          return dir;
+        }
+      }));
+      
+      // Explicitly check if the real path starts with any of the allowed directories
+      const isSafe = realAllowedDirs.some(dir => {
+        const base = dir.endsWith(path.sep) ? dir : dir + path.sep;
+        return realPath === dir || realPath.startsWith(base);
+      });
+      
+      if (!isSafe) {
+        throw new Error(`File path ${input} is outside the allowed directories`);
+      }
+
+      inputBuffer = await fsPromises.readFile(realPath);
     } catch (readErr) {
-      // If we can't read the file, surface the error
       throw new Error(`Unable to read file: ${readErr.message}`);
     }
   }
@@ -164,20 +235,36 @@ async function ensureAllThumbnails(db) {
   await Promise.all(workers);
 }
 
-async function ingestPhoto(db, storagePath, filename, state, fileBuffer) {
+async function ingestPhoto(db, storagePath, filename, state, input) {
   try {
-    const hash = await hashFile(fileBuffer);
+    const hash = await hashFile(input);
     const existing = await db('photos').where({ hash }).select('id').first();
     if (existing) {
         // Duplicate file skipped (logging removed)
       return { duplicate: true, hash };
     }
     
-    const metadata = await exifr.parse(fileBuffer, { 
+    let sanitizedInput = input;
+    if (typeof input === 'string') {
+      const safeFilename = path.basename(input);
+      const safeDir = os.tmpdir();
+      sanitizedInput = path.join(safeDir, safeFilename);
+    }
+
+    const metadata = await exifr.parse(sanitizedInput, { 
       tiff: true, ifd0: true, exif: true, gps: true, xmp: true, icc: true, iptc: true 
     });
     const metaStr = JSON.stringify(metadata || {});
-    const fileSize = fileBuffer.length;
+    
+    // Get file size
+    let fileSize = 0;
+    if (Buffer.isBuffer(input)) {
+      fileSize = input.length;
+    } else {
+      const stats = await fsPromises.stat(sanitizedInput);
+      fileSize = stats.size;
+    }
+
     const now = new Date().toISOString();
     
     await db('photos').insert({
@@ -191,7 +278,7 @@ async function ingestPhoto(db, storagePath, filename, state, fileBuffer) {
       updated_at: now
     }).onConflict('filename').merge();
     
-    await generateThumbnail(fileBuffer, hash);
+    await generateThumbnail(input, hash);
     return { duplicate: false, hash };
   } catch {
     // Metadata/hash extraction failed for file (logging removed)

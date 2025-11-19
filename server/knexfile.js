@@ -50,8 +50,8 @@ module.exports = {
       directory: path.join(__dirname, 'db/migrations')
     },
     pool: {
-      min: 2,
-      max: 10
+      min: parseInt(process.env.DB_POOL_MIN || '2', 10),
+      max: parseInt(process.env.DB_POOL_MAX || '20', 10)
     }
   }
 };

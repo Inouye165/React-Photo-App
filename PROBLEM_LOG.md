@@ -12,7 +12,56 @@ A chronological log of major bugs or problems found in this photo app. Each entr
 
 ## TO DO
 
-* [ ] **Code Review Fixes (High Priority):** Address critical security, resilience, and operational issues identified during a recent code review. See [PROFESSIONAL_CODE_REVIEW_LOG.md] for strategy, sub-tasks, and implementation details.
+* [x] **Code Review Fixes (High Priority):** Address critical security, resilience, and operational issues identified during a recent code review. See [PROFESSIONAL_CODE_REVIEW_LOG.md] for strategy, sub-tasks, and implementation details.
+
+## 2025-11-19 - Security & Stability Audit Fixes
+
+**Issue:**
+- A comprehensive code review identified four critical issues:
+    1.  **Security**: `/api/collectibles` route was exposed without authentication.
+    2.  **Configuration**: `README.md` incorrectly suggested SQLite fallback (which was removed), causing confusion.
+    3.  **Race Condition**: File uploads used a "check-then-act" pattern (list then upload), prone to race conditions.
+    4.  **Resource Risk**: AI service downloaded full files into memory before processing, risking OOM on large files.
+
+**How Discovered:**
+- Manual code review and security audit.
+
+**Root Cause:**
+- **Security**: Missing middleware on a specific route mount.
+- **Configuration**: Documentation drift after removing SQLite support.
+- **Race Condition**: Naive implementation of duplicate checking.
+- **Resource Risk**: Using `buffer()` on potentially large downloads instead of streaming.
+
+**Resolution:**
+- **Security**: Applied `authenticateToken` middleware to `/api/collectibles` in `server/server.js`.
+- **Configuration**: Updated `README.md` to explicitly state Postgres requirement and remove SQLite instructions.
+- **Race Condition**: Refactored `server/routes/uploads.js` to use an atomic "upload with `upsert: false`" loop, relying on storage provider error codes for duplicate detection.
+- **Resource Risk**: Refactored `server/ai/service.js` to stream downloads from Supabase and pipe them through `sharp` to resize (max 2048px) and convert to JPEG on-the-fly, significantly reducing memory footprint.
+
+**Expedite Future Discovery:**
+- Use automated security scanning tools to detect unauthenticated routes.
+- Keep documentation in sync with code changes (e.g., via pre-commit checks or strict PR requirements).
+- Prefer atomic operations over "check-then-act" for file system/storage operations.
+- Always prefer streaming for file processing, especially in Node.js environments with limited memory.
+
+**Issue:**
+- Users reported `429 Too Many Requests` errors in the browser console, even when interacting with a single photo.
+- The frontend polling (for AI updates and dependency status) was aggressive enough to trigger the strict default API rate limits (50 requests/15min).
+
+**How Discovered:**
+- User report with browser console logs showing 429 errors on `/photos?state=working` and `/photos/dependencies`.
+
+**Root Cause:**
+- The default API rate limit in `server/middleware/security.js` was set to 50 requests per 15 minutes, which is too low for an app with active polling (every 3s for AI, every 30s for dependencies).
+
+**Resolution:**
+- Increased API rate limit to 1000 requests per 15 minutes.
+- Increased general rate limit to 2000 requests per 15 minutes.
+- Increased upload rate limit to 100 requests per 15 minutes.
+
+**Expedite Future Discovery:**
+- Monitor rate limit hits in production logs.
+- Configure rate limits based on expected traffic patterns, accounting for polling intervals.
 
 (Add new entries below for each major or instructive bug/root cause encountered!)
 

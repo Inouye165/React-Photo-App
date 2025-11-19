@@ -40,7 +40,8 @@ function normalizeLevel(input) {
   if (typeof input === 'number' && Number.isFinite(input)) {
     const entry = Object.entries(LEVEL_PRIORITY).find(([, priority]) => priority === input);
     if (!entry) {
-      throw new Error(`Unknown numeric log level: ${input}`);
+      // Fallback to default level instead of crashing
+      return 'info';
     }
     return entry[0];
   }
@@ -52,7 +53,8 @@ function normalizeLevel(input) {
   const alias = LEVEL_ALIASES[lowered];
   const levelName = alias || lowered;
   if (!Object.prototype.hasOwnProperty.call(LEVEL_PRIORITY, levelName)) {
-    throw new Error(`Unknown log level: ${input}`);
+    // Fallback to default level instead of crashing
+    return 'info';
   }
   return levelName;
 }

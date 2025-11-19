@@ -23,6 +23,9 @@ describe('Display Endpoint with HEIC Support', () => {
   const testImageDir = path.join(__dirname, 'test-images');
 
   beforeAll(() => {
+    // Set env variable so validator allows test image directory
+    process.env.TEST_IMAGE_DIR = testImageDir;
+
     // Create test token
     validToken = jwt.sign(
       { id: 1, username: 'testuser', role: 'user' },
@@ -37,6 +40,21 @@ describe('Display Endpoint with HEIC Support', () => {
     // Mock display endpoint similar to server.js
     app.get('/display/:state/:filename', authenticateImageRequest, async (req, res) => {
       const { state, filename } = req.params;
+
+      // Validate filename does not contain traversal or path components
+      if (
+        typeof filename !== 'string' ||
+        filename.includes('/') ||
+        filename.includes('\\') ||
+        filename.includes('..')
+      ) {
+        return res.status(400).json({
+          success: false,
+          error: 'Invalid filename',
+          filename,
+          state
+        });
+      }
       
       // Simple directory mapping for tests
       const dir = testImageDir;

@@ -23,9 +23,9 @@ if (!process.env.OPENAI_API_KEY) {
 const openai = require('./openaiClient');
 const { convertHeicToJpegBuffer } = require('../media/image');
 const exifr = require('exifr');
+const sharp = require('sharp');
 
 // Hard limit for AI processing file size (20 MB)
-const MAX_AI_FILE_SIZE = 20 * 1024 * 1024;
 const supabase = require('../lib/supabaseClient');
 
 function normalizeDegrees(value) {
@@ -624,24 +624,38 @@ async function updatePhotoAIMetadata(db, photoRow, storagePath, modelOverrides =
     
     let ai;
     try {
-      // Download file from Supabase Storage
-      logger.debug('[AI Debug] [updatePhotoAIMetadata] Downloading file from storage:', storagePath);
-      const { data: fileData, error } = await supabase.storage
+      // Stream and resize file from Supabase Storage to avoid OOM
+      logger.debug('[AI Debug] [updatePhotoAIMetadata] Creating signed URL for streaming:', storagePath);
+      
+      const { data: signedUrlData, error: signedUrlError } = await supabase.storage
         .from('photos')
-        .download(storagePath);
-      if (error) {
-        logger.error(`[AI Debug] [updatePhotoAIMetadata] Failed to download file from storage: ${error.message}`);
-        throw new Error(`Failed to download file from storage: ${error.message}`);
+        .createSignedUrl(storagePath, 60);
+        
+      if (signedUrlError) {
+         throw new Error(`Failed to create signed URL: ${signedUrlError.message}`);
       }
-      logger.debug('[AI Debug] [updatePhotoAIMetadata] File downloaded. Size:', fileData.size);
-      // Enforce OOM safeguard: check file size before processing
-      if (typeof fileData.size === 'number' && fileData.size > MAX_AI_FILE_SIZE) {
-        logger.error(`[AI OOM] File too large for AI processing: ${photoRow.filename} (${fileData.size} bytes)`);
-        throw new Error(`File too large for AI processing: ${fileData.size} bytes (limit: ${MAX_AI_FILE_SIZE})`);
+
+      logger.debug('[AI Debug] [updatePhotoAIMetadata] Fetching stream from signed URL...');
+      const response = await fetch(signedUrlData.signedUrl);
+      if (!response.ok) {
+        throw new Error(`Failed to fetch file stream: ${response.status} ${response.statusText}`);
       }
-      const arrayBuffer = await fileData.arrayBuffer();
-      const fileBuffer = Buffer.from(arrayBuffer);
-      logger.debug('[AI Debug] [updatePhotoAIMetadata] File buffer loaded. Buffer length:', fileBuffer.length);
+
+      // Use sharp to resize on the fly
+      // Resize to max 2048x2048, convert to JPEG, preserve metadata
+      const pipeline = sharp()
+        .resize({ width: 2048, height: 2048, fit: 'inside', withoutEnlargement: true })
+        .withMetadata()
+        .toFormat('jpeg');
+
+      const { Readable } = require('stream');
+      const inputStream = response.body ? Readable.fromWeb(response.body) : null;
+      
+      if (!inputStream) throw new Error('No response body stream');
+
+      const fileBuffer = await inputStream.pipe(pipeline).toBuffer();
+      
+      logger.debug('[AI Debug] [updatePhotoAIMetadata] Resized file buffer loaded. Buffer length:', fileBuffer.length);
 
       let freshMeta = null;
       try {
@@ -655,9 +669,13 @@ async function updatePhotoAIMetadata(db, photoRow, storagePath, modelOverrides =
         logger.info('[GPS] Fresh EXIF extractLatLon result', freshCoords);
       }
 
+      // Pass the resized JPEG buffer. 
+      // We append .jpg to filename so processPhotoAI treats it as JPEG
+      const processedFilename = photoRow.filename + '.processed.jpg';
+
       ai = await processPhotoAI({ 
         fileBuffer,
-        filename: photoRow.filename, 
+        filename: processedFilename, 
         metadata: meta, 
         gps, 
         device 

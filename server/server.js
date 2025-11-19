@@ -186,7 +186,7 @@ const app = express();
   // Mount photos API under '/photos' so routes like '/' and '/:id' defined
   // in `routes/photos.js` are accessible at '/photos' and '/photos/:id'.
   app.use('/photos', createPhotosRouter({ db }));
-  app.use('/api/collectibles', createCollectiblesRouter({ db })); // <--- ADD THIS LINE HERE
+  app.use('/api/collectibles', authenticateToken, createCollectiblesRouter({ db }));
   app.use(authenticateToken, createUploadsRouter({ db }));
   app.use(authenticateToken, createPrivilegeRouter());
 

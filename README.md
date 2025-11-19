@@ -43,6 +43,7 @@ See `PROBLEM_LOG.md` for a chronological log of major bugs or problems found dur
    ```
 
 4. Copy `.env.example` to `.env` in both the root and `server/` directories and fill in all required values.
+   **Note:** You must configure a Postgres database (e.g., Supabase) in `server/.env`. The application requires Postgres and does not support SQLite.
 
 5. Start the backend:
    ```bash
@@ -57,7 +58,7 @@ See `PROBLEM_LOG.md` for a chronological log of major bugs or problems found dur
 
 # Troubleshooting
 
-- **Migrations failing on start:** If you see migration errors during `npm start`, they may contain Postgres-specific SQL that `sqlite3` (the default development DB) does not support. The development `knexfile.js` now defaults to a local sqlite3 database (`server/working/dev.db`). To run migrations against Postgres instead, set `USE_POSTGRES=true` or provide `SUPABASE_DB_URL` in `server/.env`, or run migrations manually against a Postgres instance.
+- **Migrations failing on start:** The application requires a Postgres database. Ensure `SUPABASE_DB_URL` is set correctly in `server/.env`. SQLite is not supported.
 -
 - **Dependency errors:** If you see errors about conflicting dependencies (e.g., ERESOLVE), always use `npm install --legacy-peer-deps`.
 - **Missing libraries:** If you see errors like "Cannot find module 'zustand'" or '@supabase/supabase-js', run `npm install <package> --legacy-peer-deps` in the correct directory (root for frontend, `server/` for backend).
@@ -663,6 +664,37 @@ node server/check-env.js
 
 This prints which Supabase-related variables are present and exits non-zero if required variables are missing.
 
-- Note: The `server/knexfile.js` development environment now defaults to a local sqlite3 database file at `server/working/dev.db`. This means the server will use sqlite by default unless you set `USE_POSTGRES=true` or provide `SUPABASE_DB_URL` (see `server/server.js` for the detection logic and behavior). If you require Postgres-specific features locally, set the opt-in environment variables or run a local Postgres instance for development.
+- Note: The application requires a Postgres database (e.g., Supabase). The local SQLite fallback has been removed to ensure consistency between development and production environments. You must provide `SUPABASE_DB_URL` in `server/.env`.
 
 Security reminder: never commit `server/.env` or any real service role keys to git. Use repository secrets for CI and rotate keys if they are ever committed or exposed.
+
+## Production Deployment
+
+For production environments (e.g., Heroku, Render, Railway, or Docker), the API Server and Background Worker must run as separate processes to ensure scalability and stability.
+
+### Process Types
+
+The project includes a `Procfile` defining the two required process types:
+
+1.  **Web Process (`web`)**:
+    *   Command: `cd server && npm start`
+    *   Role: Serves the API, handles HTTP requests, and enqueues AI jobs.
+    *   **Does NOT** process background jobs.
+
+2.  **Worker Process (`worker`)**:
+    *   Command: `cd server && npm run worker`
+    *   Role: Listens to the Redis queue and processes AI jobs (metadata extraction, etc.).
+    *   **Does NOT** listen on a web port.
+
+### Deployment Steps
+
+1.  **Configure Environment**: Ensure all required environment variables (including `REDIS_HOST`, `REDIS_PORT`, `SUPABASE_URL`, etc.) are set in your production environment.
+2.  **Scale Processes**:
+    *   Scale `web` to at least 1 instance (more for high traffic).
+    *   Scale `worker` to at least 1 instance (more for high background job volume).
+3.  **Redis**: A Redis instance is **required** for the queue to function. Ensure both processes can connect to it.
+
+### Verification
+
+*   **Web Logs**: Should show "Photo upload server running on port..." but **should not** show "[WORKER] AI Worker process started".
+*   **Worker Logs**: Should show "[WORKER] AI Worker process started..." but **should not** show "Photo upload server running on port...".
