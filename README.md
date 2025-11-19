@@ -351,6 +351,12 @@ This allows easy deployment to different environments without code changes.
  **Wrong install directory:** Always run frontend installs in the project root and backend installs in the `server/` directory.
  **ImageMagick not found:** Make sure ImageMagick is installed and available in your system PATH for HEIC/HEIF fallback support.
  **Environment switching:** If you move between machines (desktop, laptop, CI), always copy `.env.example` to `.env` and review the values. The app will use safe defaults if variables are missing, but some features may require explicit configuration.
+# Map keys and map styling
+
+- `VITE_GOOGLE_MAPS_API_KEY` - (Required for Google maps in the front-end) Add a browser key restricted to `http://localhost:5173/*` (or your dev host) and enable the **Maps JavaScript API**. Place this key in the root `.env` and **do not** commit it.
+- `VITE_GOOGLE_MAPS_MAP_ID` - (Optional) Map ID if you're using a custom Google Maps style or `AdvancedMarker` which may require a specific mapId. You can fetch or create this ID in the Google Cloud console under Maps Platform → Map Management → Map IDs.
+
+If `VITE_GOOGLE_MAPS_API_KEY` is missing, the UI will show a fallback OpenStreetMap preview automatically when the selected photo contains GPS coordinates. To get a full Google Maps experience (AdvancedMarker, styled map), set `VITE_GOOGLE_MAPS_API_KEY` and `VITE_GOOGLE_MAPS_MAP_ID`.
 # OPENAI_API_KEY=sk-your_openai_api_key
 ```
 Do not commit `.env` to source control. Add it to `.gitignore`.
