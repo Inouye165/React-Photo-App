@@ -22,8 +22,8 @@
     "test:e2e": "playwright test",
     "test:a11y": "playwright test e2e/a11y.*",
     "test:perf": "k6 run perf/smoke.js",
-    "test:docker:smoke": "node scripts/docker-smoke.js"
-    ,"backfill:gps": "node scripts/backfill-gps.js"
+    "test:docker:smoke": "node scripts/docker-smoke.js",
+    "backfill:gps": "node scripts/backfill-gps.js"
   },
   "lint-staged": {
     "*.{js,jsx}": "eslint --fix"
@@ -31,7 +31,8 @@
   "dependencies": {
     "@langchain/core": "^1.0.3",
     "@langchain/langgraph": "^1.0.1",
-  "@langchain/openai": "^1.1.0",
+    "@langchain/openai": "^1.1.0",
+    "@react-google-maps/api": "^2.20.7",
     "dotenv": "^16.6.1",
     "exifr": "^7.1.3",
     "konva": "^10.0.2",
