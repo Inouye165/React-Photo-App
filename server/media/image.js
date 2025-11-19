@@ -111,10 +111,22 @@ async function convertHeicToJpegBuffer(input, quality = 90) {
       if (process.env.TEST_IMAGE_DIR) {
         allowedDirs.push(path.resolve(process.env.TEST_IMAGE_DIR));
       }
-      const realPath = validateSafePath(input, allowedDirs);
+
+      // Resolve the input path and get the real path (resolves symlinks)
+      const resolvedPath = path.resolve(input);
+      const realPath = await fsPromises.realpath(resolvedPath);
+
+      // Resolve allowed directories to their real paths for comparison
+      const realAllowedDirs = await Promise.all(allowedDirs.map(async dir => {
+        try {
+          return await fsPromises.realpath(dir);
+        } catch {
+          return dir;
+        }
+      }));
       
-      // Redundant check to satisfy CodeQL data flow analysis
-      const isSafe = allowedDirs.some(dir => {
+      // Explicitly check if the real path starts with any of the allowed directories
+      const isSafe = realAllowedDirs.some(dir => {
         const base = dir.endsWith(path.sep) ? dir : dir + path.sep;
         return realPath === dir || realPath.startsWith(base);
       });
