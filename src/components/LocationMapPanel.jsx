@@ -1,5 +1,5 @@
 import React from 'react';
-import { GoogleMap, useJsApiLoader, Marker } from '@react-google-maps/api';
+import { APIProvider, Map, AdvancedMarker, Pin } from '@vis.gl/react-google-maps';
 
 const containerStyle = {
   width: '100%',
@@ -47,11 +47,7 @@ function getPhotoLocation(photo) {
 
 export default function LocationMapPanel({ photo }) {
   const apiKey = import.meta.env.VITE_GOOGLE_MAPS_API_KEY;
-  const { isLoaded, loadError } = useJsApiLoader({
-    id: 'google-map-script',
-    googleMapsApiKey: apiKey || ''
-  });
-
+  
   const location = getPhotoLocation(photo);
   const hasLocation = location != null && !isNaN(location.lat) && !isNaN(location.lng);
   const center = hasLocation ? location : defaultCenter;
@@ -60,22 +56,6 @@ export default function LocationMapPanel({ photo }) {
     return (
       <div className="flex items-center justify-center h-full bg-gray-100 text-gray-500 text-sm p-4 text-center">
         Map configuration missing.
-      </div>
-    );
-  }
-
-  if (loadError) {
-    return (
-      <div className="flex items-center justify-center h-full bg-gray-100 text-red-500 text-sm p-4 text-center">
-        Error loading map.
-      </div>
-    );
-  }
-
-  if (!isLoaded) {
-    return (
-      <div className="flex items-center justify-center h-full bg-gray-100 text-gray-500 text-sm">
-        Loading Map...
       </div>
     );
   }
@@ -89,19 +69,23 @@ export default function LocationMapPanel({ photo }) {
   }
 
   return (
-    <GoogleMap
-      mapContainerStyle={containerStyle}
-      center={center}
-      zoom={15}
-      options={{
-        disableDefaultUI: true,
-        zoomControl: true,
-        streetViewControl: false,
-        mapTypeControl: false,
-        fullscreenControl: false,
-      }}
-    >
-      <Marker position={center} />
-    </GoogleMap>
+    <div style={containerStyle}>
+      <APIProvider apiKey={apiKey}>
+        <Map
+          defaultCenter={center}
+          defaultZoom={15}
+          mapId="DEMO_MAP_ID" // Required for AdvancedMarker
+          disableDefaultUI={true}
+          zoomControl={true}
+          streetViewControl={false}
+          mapTypeControl={false}
+          fullscreenControl={false}
+        >
+          <AdvancedMarker position={center}>
+            <Pin background={'#FBBC04'} glyphColor={'#000'} borderColor={'#000'} />
+          </AdvancedMarker>
+        </Map>
+      </APIProvider>
+    </div>
   );
 }
