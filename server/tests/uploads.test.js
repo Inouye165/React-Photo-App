@@ -7,7 +7,7 @@ const { mockStorageHelpers } = require('./__mocks__/supabase');
 
 // Mock ingestPhoto to avoid real image parsing in tests
 jest.mock('../media/image', () => ({
-  ingestPhoto: jest.fn(async (_db, _filePath, _filename, _state, _buffer) => {
+  ingestPhoto: jest.fn(async (_db, _filePath, _filename, _state, _input) => {
     // Simulate thumbnail generation by adding a thumbnail file to mock storage
     try {
       mockStorageHelpers.addMockFile('photos', `thumbnails/${_filename}`, {
@@ -20,7 +20,17 @@ jest.mock('../media/image', () => ({
 
     // Allow tests to simulate corrupt/missing EXIF by sending a specific buffer payload
     try {
-      if (_buffer && Buffer.isBuffer(_buffer) && _buffer.toString() === 'corrupt-exif') {
+      let content = _input;
+      if (typeof _input === 'string') {
+        // It's a path, read it
+        try {
+          content = require('fs').readFileSync(_input);
+        } catch {
+          // ignore read error
+        }
+      }
+
+      if (content && Buffer.isBuffer(content) && content.toString() === 'corrupt-exif') {
         // Simulate missing/corrupt EXIF but still process the image (return hash)
         return { duplicate: false, hash: 'mock-hash', metadataMissing: true };
       }
@@ -39,6 +49,10 @@ jest.mock('jsonwebtoken');
 
 // Mock multer to return a function that returns an object with single method
 jest.mock('multer', () => {
+  const fs = require('fs');
+  const path = require('path');
+  const os = require('os');
+
   const multerMock = jest.fn(() => ({
     single: jest.fn(() => (req, res, next) => {
       // Simulate multer fileFilter rejection when header is present
@@ -52,36 +66,36 @@ jest.mock('multer', () => {
         // Allow tests to override mimetype/name/size via headers
         const mimetype = req.headers && req.headers['x-multer-mimetype'] ? req.headers['x-multer-mimetype'] : 'image/jpeg';
         const originalname = req.headers && req.headers['x-multer-originalname'] ? req.headers['x-multer-originalname'] : 'test.jpg';
+        
+        // Create a temp file to simulate diskStorage
+        const tempPath = path.join(os.tmpdir(), `test-upload-${Date.now()}-${Math.random()}.tmp`);
+        let fileContent = 'fake image data';
 
         if (req.headers && req.headers['x-multer-zero']) {
-          req.file = {
-            originalname,
-            mimetype,
-            buffer: Buffer.alloc(0),
-            size: 0
-          };
+          fileContent = '';
         } else if (req.headers && req.headers['x-multer-buffer']) {
-          // Accept a custom buffer payload (string content) for tests
-          req.file = {
-            originalname,
-            mimetype,
-            buffer: Buffer.from(req.headers['x-multer-buffer']),
-            size: Buffer.from(req.headers['x-multer-buffer']).length
-          };
-        } else {
-          req.file = {
-            originalname,
-            mimetype,
-            buffer: Buffer.from('fake image data'),
-            size: 12345
-          };
+          fileContent = req.headers['x-multer-buffer']; // Treat as string or buffer
         }
+        
+        fs.writeFileSync(tempPath, fileContent);
+
+        req.file = {
+          originalname,
+          mimetype,
+          path: tempPath,
+          size: Buffer.byteLength(fileContent)
+        };
       }
       next();
     })
   }));
   
   // Add static methods
+  multerMock.diskStorage = jest.fn(() => ({
+    _handleFile: jest.fn(),
+    _removeFile: jest.fn()
+  }));
+  // Keep memoryStorage mock just in case, though we switched to diskStorage
   multerMock.memoryStorage = jest.fn(() => ({
     _handleFile: jest.fn(),
     _removeFile: jest.fn()

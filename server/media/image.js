@@ -2,15 +2,26 @@ const sharp = require('sharp');
 const exifr = require('exifr');
 const nodeCrypto = require('crypto');
 const heicConvert = require('heic-convert');
-const fs = require('fs').promises;
+const fs = require('fs');
+const fsPromises = require('fs').promises;
 const supabase = require('../lib/supabaseClient');
 
-async function hashFile(fileBuffer) {
-  return nodeCrypto.createHash('sha256').update(fileBuffer).digest('hex');
+async function hashFile(input) {
+  if (Buffer.isBuffer(input)) {
+    return nodeCrypto.createHash('sha256').update(input).digest('hex');
+  }
+  // Assume input is a file path
+  return new Promise((resolve, reject) => {
+    const hash = nodeCrypto.createHash('sha256');
+    const stream = fs.createReadStream(input);
+    stream.on('error', reject);
+    stream.on('data', chunk => hash.update(chunk));
+    stream.on('end', () => resolve(hash.digest('hex')));
+  });
 }
 
 
-async function generateThumbnail(fileBuffer, hash) {
+async function generateThumbnail(input, hash) {
   const thumbnailPath = `thumbnails/${hash}.jpg`;
   
   try {
@@ -27,15 +38,15 @@ async function generateThumbnail(fileBuffer, hash) {
   }
 
   try {
-    // Detect file type from buffer
-    const metadata = await sharp(fileBuffer).metadata();
+    // Detect file type from buffer/file
+    const metadata = await sharp(input).metadata();
     const format = metadata.format;
     
     let thumbnailBuffer;
     if (format === 'heif') {
       // Convert HEIC/HEIF to JPEG buffer first
       try {
-        const jpegBuffer = await convertHeicToJpegBuffer(fileBuffer, 70);
+        const jpegBuffer = await convertHeicToJpegBuffer(input, 70);
         thumbnailBuffer = await sharp(jpegBuffer)
           .resize(90, 90, { fit: 'inside' })
           .jpeg({ quality: 70 })
@@ -45,7 +56,7 @@ async function generateThumbnail(fileBuffer, hash) {
         return null;
       }
     } else {
-      thumbnailBuffer = await sharp(fileBuffer)
+      thumbnailBuffer = await sharp(input)
         .resize(90, 90, { fit: 'inside' })
         .jpeg({ quality: 70 })
         .toBuffer();
@@ -71,12 +82,12 @@ async function generateThumbnail(fileBuffer, hash) {
   }
 }
 
-async function convertHeicToJpegBuffer(fileBuffer, quality = 90) {
+async function convertHeicToJpegBuffer(input, quality = 90) {
   // Accept either a Buffer or a file path string. If a path is provided, read it into a Buffer.
-  let inputBuffer = fileBuffer;
-  if (typeof fileBuffer === 'string') {
+  let inputBuffer = input;
+  if (typeof input === 'string') {
     try {
-      inputBuffer = await fs.readFile(fileBuffer);
+      inputBuffer = await fsPromises.readFile(input);
     } catch (readErr) {
       // If we can't read the file, surface the error
       throw new Error(`Unable to read file: ${readErr.message}`);
@@ -164,20 +175,29 @@ async function ensureAllThumbnails(db) {
   await Promise.all(workers);
 }
 
-async function ingestPhoto(db, storagePath, filename, state, fileBuffer) {
+async function ingestPhoto(db, storagePath, filename, state, input) {
   try {
-    const hash = await hashFile(fileBuffer);
+    const hash = await hashFile(input);
     const existing = await db('photos').where({ hash }).select('id').first();
     if (existing) {
         // Duplicate file skipped (logging removed)
       return { duplicate: true, hash };
     }
     
-    const metadata = await exifr.parse(fileBuffer, { 
+    const metadata = await exifr.parse(input, { 
       tiff: true, ifd0: true, exif: true, gps: true, xmp: true, icc: true, iptc: true 
     });
     const metaStr = JSON.stringify(metadata || {});
-    const fileSize = fileBuffer.length;
+    
+    // Get file size
+    let fileSize = 0;
+    if (Buffer.isBuffer(input)) {
+      fileSize = input.length;
+    } else {
+      const stats = await fsPromises.stat(input);
+      fileSize = stats.size;
+    }
+
     const now = new Date().toISOString();
     
     await db('photos').insert({
@@ -191,7 +211,7 @@ async function ingestPhoto(db, storagePath, filename, state, fileBuffer) {
       updated_at: now
     }).onConflict('filename').merge();
     
-    await generateThumbnail(fileBuffer, hash);
+    await generateThumbnail(input, hash);
     return { duplicate: false, hash };
   } catch {
     // Metadata/hash extraction failed for file (logging removed)

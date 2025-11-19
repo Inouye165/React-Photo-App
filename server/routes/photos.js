@@ -746,38 +746,47 @@ module.exports = function createPhotosRouter({ db }) {
         return res.status(404).json({ error: 'Photo not found' });
       }
 
+      let jobEnqueued = false;
       const redisAvailable = await checkRedisAvailable();
-      if (!redisAvailable) {
-        // Fallback to synchronous processing when Redis is not available
-        logger.info(`[API] Redis unavailable - processing AI recheck synchronously for photoId: ${photo.id}`);
-        const storagePath = photo.storage_path || `${photo.state}/${photo.filename}`;
-        // Allow callers to request a different model for this recheck via body or query
-        const modelOverride = req.body && req.body.model ? req.body.model : (req.query && req.query.model ? req.query.model : null);
-        logger.info('[API] /photos/:id/recheck-ai called', { photoId: photo.id, body: req.body, query: req.query, modelOverride });
-        // Validate client-supplied model override against allowlist
-        if (modelOverride && !MODEL_ALLOWLIST.includes(modelOverride)) {
-          return res.status(400).json({ success: false, error: 'Unsupported model override', allowedModels: MODEL_ALLOWLIST });
+
+      if (redisAvailable) {
+        try {
+          // Enqueue a job for rechecking AI metadata
+          // If client supplied a model override, attach it to the job so the worker will use it
+          const modelOverride = req.body && req.body.model ? req.body.model : (req.query && req.query.model ? req.query.model : null);
+          logger.info('[API] /photos/:id/recheck-ai called', { photoId: photo.id, body: req.body, query: req.query, modelOverride });
+          if (modelOverride && !MODEL_ALLOWLIST.includes(modelOverride)) {
+            return res.status(400).json({ success: false, error: 'Unsupported model override', allowedModels: MODEL_ALLOWLIST });
+          }
+          if (modelOverride === 'gpt-image-1') {
+            return res.status(400).json({ success: false, error: 'gpt-image-1 is an image-generation model and cannot be used for text analysis. Choose a vision-analysis model (e.g., gpt-4o-mini).' });
+          }
+          const jobOptions = {};
+          if (modelOverride) jobOptions.modelOverrides = { router: modelOverride, scenery: modelOverride, collectible: modelOverride };
+          await addAIJob(photo.id, jobOptions);
+          logger.info(`[API] Enqueued AI recheck for photoId: ${photo.id}`);
+          jobEnqueued = true;
+        } catch (err) {
+          logger.warn('Queue failed, falling back to sync', err);
         }
-        const modelOverrides = modelOverride ? { router: modelOverride, scenery: modelOverride, collectible: modelOverride } : {};
-        await updatePhotoAIMetadata(db, photo, storagePath, modelOverrides);
-        return res.status(200).json({ message: 'AI recheck completed synchronously.', photoId: photo.id });
       }
 
-      // Enqueue a job for rechecking AI metadata
-      // If client supplied a model override, attach it to the job so the worker will use it
+      if (jobEnqueued) {
+        return res.status(202).json({ message: 'AI recheck queued.', photoId: photo.id });
+      }
+
+      // Fallback to synchronous processing when Redis is not available or queue failed
+      logger.info(`[API] Processing AI recheck synchronously for photoId: ${photo.id}`);
+      const storagePath = photo.storage_path || `${photo.state}/${photo.filename}`;
+      // Allow callers to request a different model for this recheck via body or query
       const modelOverride = req.body && req.body.model ? req.body.model : (req.query && req.query.model ? req.query.model : null);
-      logger.info('[API] /photos/:id/run-ai called', { photoId: photo.id, body: req.body, query: req.query, modelOverride });
+      // Validate client-supplied model override against allowlist
       if (modelOverride && !MODEL_ALLOWLIST.includes(modelOverride)) {
         return res.status(400).json({ success: false, error: 'Unsupported model override', allowedModels: MODEL_ALLOWLIST });
       }
-      if (modelOverride === 'gpt-image-1') {
-        return res.status(400).json({ success: false, error: 'gpt-image-1 is an image-generation model and cannot be used for text analysis. Choose a vision-analysis model (e.g., gpt-4o-mini).' });
-      }
-      const jobOptions = {};
-      if (modelOverride) jobOptions.modelOverrides = { router: modelOverride, scenery: modelOverride, collectible: modelOverride };
-      await addAIJob(photo.id, jobOptions);
-      logger.info(`[API] Enqueued AI recheck for photoId: ${photo.id}`);
-      return res.status(202).json({ message: 'AI recheck queued.', photoId: photo.id });
+      const modelOverrides = modelOverride ? { router: modelOverride, scenery: modelOverride, collectible: modelOverride } : {};
+      await updatePhotoAIMetadata(db, photo, storagePath, modelOverrides);
+      return res.status(200).json({ message: 'AI recheck completed synchronously.', photoId: photo.id });
     } catch (error) {
       logger.error('Error processing AI recheck:', error);
       return res.status(500).json({ error: 'Failed to process AI recheck' });
@@ -792,47 +801,56 @@ module.exports = function createPhotosRouter({ db }) {
         return res.status(404).json({ error: 'Photo not found' });
       }
 
+      let jobEnqueued = false;
       // Check if Redis/queue is available
       const redisAvailable = await checkRedisAvailable();
-      if (!redisAvailable) {
-        // Fallback to synchronous processing when Redis is not available
-        logger.info(`[API] Redis unavailable - processing AI synchronously for photoId: ${photo.id}`);
-        
-        // Use the storage path for AI processing
-        const storagePath = photo.storage_path || `${photo.state}/${photo.filename}`;
-        // Allow caller to override model via body or query
-        const modelOverride = req.body && req.body.model ? req.body.model : (req.query && req.query.model ? req.query.model : null);
-        if (modelOverride && !MODEL_ALLOWLIST.includes(modelOverride)) {
-          return res.status(400).json({ success: false, error: 'Unsupported model override', allowedModels: MODEL_ALLOWLIST });
+
+      if (redisAvailable) {
+        try {
+          // Add a job to the queue when Redis is available
+          const modelOverride = req.body && req.body.model ? req.body.model : (req.query && req.query.model ? req.query.model : null);
+          if (modelOverride && !MODEL_ALLOWLIST.includes(modelOverride)) {
+            return res.status(400).json({ success: false, error: 'Unsupported model override', allowedModels: MODEL_ALLOWLIST });
+          }
+          if (modelOverride === 'gpt-image-1') {
+            return res.status(400).json({ success: false, error: 'gpt-image-1 is an image-generation model and cannot be used for text analysis. Choose a vision-analysis model (e.g., gpt-4o-mini).' });
+          }
+          const jobOptions = {};
+          if (modelOverride) jobOptions.modelOverrides = { router: modelOverride, scenery: modelOverride, collectible: modelOverride };
+          await addAIJob(photo.id, jobOptions);
+
+          logger.info(`[API] Enqueued AI processing for photoId: ${photo.id}`);
+          jobEnqueued = true;
+        } catch (err) {
+          logger.warn('Queue failed, falling back to sync', err);
         }
-        const modelOverrides = modelOverride ? { router: modelOverride, scenery: modelOverride, collectible: modelOverride } : {};
-        // Process AI synchronously (this will need to be updated to work with Supabase storage)
-        await updatePhotoAIMetadata(db, photo, storagePath, modelOverrides);
-        
-        return res.status(200).json({
-          message: 'AI processing completed synchronously.',
+      }
+
+      if (jobEnqueued) {
+        // Respond to the user IMMEDIATELY
+        // 202 Accepted means "Your request is accepted and will be processed"
+        return res.status(202).json({
+          message: 'AI processing has been queued.',
           photoId: photo.id,
         });
       }
 
-      // Add a job to the queue when Redis is available
+      // Fallback to synchronous processing when Redis is not available or queue failed
+      logger.info(`[API] Processing AI synchronously for photoId: ${photo.id}`);
+      
+      // Use the storage path for AI processing
+      const storagePath = photo.storage_path || `${photo.state}/${photo.filename}`;
+      // Allow caller to override model via body or query
       const modelOverride = req.body && req.body.model ? req.body.model : (req.query && req.query.model ? req.query.model : null);
       if (modelOverride && !MODEL_ALLOWLIST.includes(modelOverride)) {
         return res.status(400).json({ success: false, error: 'Unsupported model override', allowedModels: MODEL_ALLOWLIST });
       }
-      if (modelOverride === 'gpt-image-1') {
-        return res.status(400).json({ success: false, error: 'gpt-image-1 is an image-generation model and cannot be used for text analysis. Choose a vision-analysis model (e.g., gpt-4o-mini).' });
-      }
-      const jobOptions = {};
-      if (modelOverride) jobOptions.modelOverrides = { router: modelOverride, scenery: modelOverride, collectible: modelOverride };
-      await addAIJob(photo.id, jobOptions);
-
-  logger.info(`[API] Enqueued AI processing for photoId: ${photo.id}`);
-
-      // Respond to the user IMMEDIATELY
-      // 202 Accepted means "Your request is accepted and will be processed"
-      return res.status(202).json({
-        message: 'AI processing has been queued.',
+      const modelOverrides = modelOverride ? { router: modelOverride, scenery: modelOverride, collectible: modelOverride } : {};
+      // Process AI synchronously (this will need to be updated to work with Supabase storage)
+      await updatePhotoAIMetadata(db, photo, storagePath, modelOverrides);
+      
+      return res.status(200).json({
+        message: 'AI processing completed synchronously.',
         photoId: photo.id,
       });
 

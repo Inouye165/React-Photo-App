@@ -85,5 +85,35 @@ This file cross-references subsystem problem logs.
 - **Page Load Time**: Faster subsequent loads from browser cache
 - **Trade-off**: Up to 1-day staleness for manual storage changes (app edits handled by cache busting)
 
+## Upload Scalability Refactor (2025-11-19)
+
+### Problems Solved
+
+1. **Upload OOM Risk** - `multer.memoryStorage()` buffered entire files into RAM
+   - **Solution**: Switched to `multer.diskStorage()` with temporary file streaming
+   - **Impact**: Server RAM usage is now constant regardless of upload size
+   - **Location**: `server/routes/uploads.js`
+
+2. **Atomic Upload Reliability** - Need to retry uploads on duplicate filename without re-buffering
+   - **Solution**: Implemented retry loop reading from local temp file
+   - **Impact**: Preserved "Race Condition" fix while enabling streaming uploads
+   - **Location**: `server/routes/uploads.js`
+
+3. **Image Processing Flexibility** - `ingestPhoto` required Buffer input
+   - **Solution**: Refactored image processing to accept file paths or Buffers
+   - **Impact**: Allows processing of large files from disk without loading into RAM
+   - **Location**: `server/media/image.js`
+
+### Test Coverage Added
+
+- ✅ Updated `server/tests/uploads.test.js` to mock disk storage and file paths
+- ✅ Verified with `server/tests/heicConversion.test.js` for image processing regression
+
+### Files Changed
+
+- `server/routes/uploads.js`
+- `server/media/image.js`
+- `server/tests/uploads.test.js`
+
 Generated 2025-11-03 by maintenance automation.
 
