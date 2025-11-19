@@ -15,14 +15,21 @@ async function hashFile(input) {
   // Assume input is a file path
   return new Promise((resolve, reject) => {
     const hash = nodeCrypto.createHash('sha256');
-    // Sanitize the input path for CodeQL compliance
-    const safeFilename = path.basename(input);
-    const safeDir = os.tmpdir();
-    const sanitizedPath = path.join(safeDir, safeFilename);
-    const stream = fs.createReadStream(sanitizedPath);
-    stream.on('error', reject);
-    stream.on('data', chunk => hash.update(chunk));
-    stream.on('end', () => resolve(hash.digest('hex')));
+    try {
+      const tmpDir = path.resolve(os.tmpdir());
+      const candidatePath = path.resolve(input);
+      // Optionally, use fs.realpathSync for symlink safety
+      const realPath = fs.realpathSync(candidatePath);
+      if (!realPath.startsWith(tmpDir + path.sep)) {
+        return reject(new Error(`File path ${input} is outside the allowed temp directory`));
+      }
+      const stream = fs.createReadStream(realPath);
+      stream.on('error', reject);
+      stream.on('data', chunk => hash.update(chunk));
+      stream.on('end', () => resolve(hash.digest('hex')));
+    } catch (err) {
+      return reject(err);
+    }
   });
 }
 
@@ -101,13 +108,14 @@ async function convertHeicToJpegBuffer(input, quality = 90) {
   let inputBuffer = input;
   if (typeof input === 'string') {
     try {
-      // Sanitize the input path for CodeQL compliance
-      const safeFilename = path.basename(input);
-      const safeDir = os.tmpdir(); 
-      const sanitizedPath = path.join(safeDir, safeFilename);
-      inputBuffer = await fsPromises.readFile(sanitizedPath);
+      const tmpDir = path.resolve(os.tmpdir());
+      const candidatePath = path.resolve(input);
+      const realPath = await fsPromises.realpath(candidatePath);
+      if (!realPath.startsWith(tmpDir + path.sep)) {
+        throw new Error(`File path ${input} is outside the allowed temp directory`);
+      }
+      inputBuffer = await fsPromises.readFile(realPath);
     } catch (readErr) {
-      // If we can't read the file, surface the error
       throw new Error(`Unable to read file: ${readErr.message}`);
     }
   }

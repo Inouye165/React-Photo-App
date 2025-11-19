@@ -53,10 +53,18 @@ module.exports = function createUploadsRouter({ db }) {
       if (typeof req.file.size === 'number' && req.file.size === 0) {
         // Cleanup empty file if it exists
         if (req.file.path) {
-          const safeFilename = path.basename(req.file.path);
-          const safeDir = os.tmpdir();
-          const sanitizedPath = path.join(safeDir, safeFilename);
-          fs.unlink(sanitizedPath, () => {});
+          try {
+            const tmpDir = path.resolve(os.tmpdir());
+            const candidatePath = path.resolve(req.file.path);
+            const realPath = fs.realpathSync(candidatePath);
+            if (realPath.startsWith(tmpDir + path.sep)) {
+              fs.unlink(realPath, () => {});
+            } else {
+              logger.warn('Attempted cleanup of file outside temp dir:', realPath);
+            }
+          } catch (e) {
+            logger.error('Temp file cleanup failed:', e);
+          }
         }
         return res.status(400).json({ success: false, error: 'Empty file uploaded' });
       }
@@ -76,13 +84,16 @@ module.exports = function createUploadsRouter({ db }) {
           }
           const filePath = `working/${filename}`;
 
-          // Sanitize the file path for CodeQL compliance
-          // We explicitly use os.tmpdir() because that is where Multer is configured to save files
-          const safeFilename = path.basename(req.file.path);
-          const safeDir = os.tmpdir(); 
-          const sanitizedPath = path.join(safeDir, safeFilename);
+          // Strict path validation for CodeQL compliance
+          const tmpDir = path.resolve(os.tmpdir());
+          const candidatePath = path.resolve(req.file.path);
+          const realPath = fs.realpathSync(candidatePath);
+          if (!realPath.startsWith(tmpDir + path.sep)) {
+            logger.error('Attempt to read file outside temp dir:', realPath);
+            return res.status(400).json({ success: false, error: 'Unsafe file path for upload' });
+          }
           // Create a fresh stream for each attempt
-          const fileStream = fs.createReadStream(sanitizedPath);
+          const fileStream = fs.createReadStream(realPath);
 
           const { data: _uploadData, error: uploadError } = await supabase.storage
             .from('photos')
@@ -139,12 +150,16 @@ module.exports = function createUploadsRouter({ db }) {
         // Always clean up the local temp file
         if (req.file && req.file.path) {
           try {
-            const safeFilename = path.basename(req.file.path);
-            const safeDir = os.tmpdir();
-            const sanitizedPath = path.join(safeDir, safeFilename);
-            fs.unlink(sanitizedPath, (err) => {
-              if (err) logger.error(`Failed to delete temp file ${req.file.path}:`, err);
-            });
+            const tmpDir = path.resolve(os.tmpdir());
+            const candidatePath = path.resolve(req.file.path);
+            const realPath = fs.realpathSync(candidatePath);
+            if (realPath.startsWith(tmpDir + path.sep)) {
+              fs.unlink(realPath, (err) => {
+                if (err) logger.error(`Failed to delete temp file ${req.file.path}:`, err);
+              });
+            } else {
+              logger.warn('Attempted cleanup of file outside temp dir:', realPath);
+            }
           } catch (e) {
             logger.error(`Path sanitization failed for temp file cleanup: ${req.file.path}`, e);
           }
