@@ -20,6 +20,11 @@ vi.mock('./ImageCanvasEditor.jsx', () => ({
   default: (props) => React.createElement('div', { 'data-testid': 'image-canvas-editor', 'data-image-url': props.imageUrl })
 }))
 
+// Mock LocationMapPanel to avoid Google Maps API loading in tests
+vi.mock('./components/LocationMapPanel', () => ({
+  default: () => React.createElement('div', { 'data-testid': 'location-map-panel' }, 'Mock Map')
+}))
+
 import EditPage from './EditPage.jsx'
 import * as api from './api.js'
 

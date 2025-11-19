@@ -5,6 +5,7 @@ import { API_BASE_URL, fetchProtectedBlobUrl, revokeBlobUrl } from './api.js'
 import useStore from './store.js'
 import ModelSelect from './components/ModelSelect'
 import { DEFAULT_MODEL } from './config/modelCatalog'
+import LocationMapPanel from './components/LocationMapPanel'
 
 export default function EditPage({ photo, onClose, onSave, onFinished, onRecheckAI, aiReady = true }) {
   // AuthContext no longer exposes client-side token (httpOnly cookies are used).
@@ -391,12 +392,9 @@ export default function EditPage({ photo, onClose, onSave, onFinished, onRecheck
             </div>
           </div>
 
-          {/* Bottom right: Chat placeholder (50% of right side) */}
-          <div className="h-1/2 flex flex-col p-6 rounded border" style={{ backgroundColor: '#f5f5f5' }}>
-            <h3 className="font-semibold mb-2 text-sm">AI Chat (Coming Soon)</h3>
-            <div className="flex-1 border rounded p-3 bg-white text-sm text-gray-500 flex items-center justify-center">
-              Chat interface will appear here
-            </div>
+          {/* Bottom right: Location Map (50% of right side) */}
+          <div className="h-1/2 flex flex-col rounded border overflow-hidden" style={{ backgroundColor: '#f5f5f5' }}>
+            <LocationMapPanel photo={sourcePhoto} />
           </div>
         </div>
       </div>
