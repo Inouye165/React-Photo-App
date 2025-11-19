@@ -491,11 +491,12 @@ async function processPhotoAI({ fileBuffer, filename, metadata, gps, device }, m
 
   // Log initial sanitized state for the graph invocation to aid debugging/observability.
   try {
-    const sanitizedInitial = { ...initialState };
-    // Remove binary or large fields
-    if (sanitizedInitial.fileBuffer) sanitizedInitial.fileBuffer = `[Buffer length: ${sanitizedInitial.fileBuffer.length || 'unknown'}]`;
-    if (sanitizedInitial.imageBase64) sanitizedInitial.imageBase64 = '[omitted]';
-    logger.info('[Graph] Initial state for %s: %s', filename || '<unknown>', JSON.stringify(sanitizedInitial, null, 2));
+  const sanitizedInitial = { ...initialState };
+  // Remove binary or large fields
+  if (sanitizedInitial.fileBuffer) sanitizedInitial.fileBuffer = `[Buffer length: ${sanitizedInitial.fileBuffer.length || 'unknown'}]`;
+  if (sanitizedInitial.imageBase64) sanitizedInitial.imageBase64 = '[omitted]';
+  // Keep logs concise: print keys and a few summary fields instead of full metadata
+  logger.info('[Graph] Initial state for %s: keys=%s classification=%s gps=%s', filename || '<unknown>', Object.keys(sanitizedInitial).join(','), sanitizedInitial.classification || '<none>', sanitizedInitial.gpsString || '<none>');
   } catch (err) {
     logger.warn('[Graph] Failed to log initial state for %s', filename, err && err.message ? err.message : err);
   }
@@ -507,14 +508,26 @@ async function processPhotoAI({ fileBuffer, filename, metadata, gps, device }, m
     classificationType: finalState && finalState.classification ? finalState.classification.type || null : null,
     error: finalState && finalState.error ? String(finalState.error).slice(0, 200) : null
   });
-  try {
+    try {
     const sanitizedFinal = { ...finalState };
     if (sanitizedFinal.fileBuffer) sanitizedFinal.fileBuffer = `[Buffer length: ${sanitizedFinal.fileBuffer.length || 'unknown'}]`;
     if (sanitizedFinal.imageBase64) sanitizedFinal.imageBase64 = '[omitted]';
+    // Keep final state logs compact: only summary fields and counts.
+    const poiSummary = {
+      nearbyPlaces: (sanitizedFinal.poiCache?.nearbyPlaces || []).length,
+      nearbyFood: (sanitizedFinal.poiCache?.nearbyFood || []).length,
+      osmTrails: (sanitizedFinal.poiCache?.osmTrails || []).length,
+    };
+    const finalSummary = {
+      classification: sanitizedFinal.classification || null,
+      hasFinalResult: Boolean(sanitizedFinal.finalResult),
+      finalKeys: sanitizedFinal.finalResult ? Object.keys(sanitizedFinal.finalResult) : [],
+      poiSummary,
+    };
     if (allowDevDebug) {
-      logger.info('[Graph] Final state for %s: %s', filename || '<unknown>', JSON.stringify(sanitizedFinal, null, 2));
+      logger.info('[Graph] Final summary for %s: %s', filename || '<unknown>', JSON.stringify(finalSummary));
     } else {
-      logger.debug('[Graph] Final state for %s: %s', filename || '<unknown>', JSON.stringify(sanitizedFinal, null, 2));
+      logger.debug('[Graph] Final summary for %s: %s', filename || '<unknown>', JSON.stringify(finalSummary));
     }
   } catch (err) {
     logger.warn('[Graph] Failed to log final state for %s', filename, err && err.message ? err.message : err);

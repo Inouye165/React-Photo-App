@@ -451,9 +451,10 @@ async function handle_collectible(state) {
         content: [
           {
             type: 'text',
-            text: `Analyze this collectible image. Available metadata: ${JSON.stringify(
-              state.metadata
-            )}`,
+            // Don't pass full metadata JSON to the specialist (too noisy).
+            // Provide a concise list of metadata keys to give context while
+            // avoiding large or sensitive values.
+            text: `Analyze this collectible image. Metadata keys: ${Object.keys(state.metadata || {}).join(', ')}`,
           },
           {
             type: 'image_url',
@@ -524,9 +525,16 @@ async function location_intelligence_agent(state) {
     }
   }
 
-  logger.info(
-    `[infer_poi] GPS found: ${coordinates.lat.toFixed(4)},${coordinates.lon.toFixed(4)} — querying Google Places...`
-  );
+  // Only log 'querying Google Places' when we actually intend to call nearbyPlaces.
+  const { shouldSkipGenericPoi, isCollectablesClassification } = require('./classification_helpers');
+  const classificationLower = (String(state.classification || '') || '').toLowerCase();
+  const _isCollectables = isCollectablesClassification(classificationLower);
+  const skipGenericPoi = shouldSkipGenericPoi(classificationLower);
+  if (skipGenericPoi) {
+    logger.info(`[infer_poi] GPS found: ${coordinates.lat.toFixed(4)},${coordinates.lon.toFixed(4)} — skipping Google Places due to classification=${classificationLower}`);
+  } else {
+    logger.info(`[infer_poi] GPS found: ${coordinates.lat.toFixed(4)},${coordinates.lon.toFixed(4)} — querying Google Places...`);
+  }
 
   let reverseResult = null;
   let nearby = [];
@@ -543,8 +551,12 @@ async function location_intelligence_agent(state) {
     // operating on an empty array. Deterministic selection happens below once
     // 'nearby' is populated.
     try {
+      const { shouldSkipGenericPoi, isCollectablesClassification } = require('./classification_helpers');
       const classificationLower = (String(state.classification || '') || '').toLowerCase();
-      const skipGenericPoi = classificationLower.includes('food');
+      const _isCollectables = isCollectablesClassification(classificationLower);
+      // Skip generic POI lookups for both food photos (food-specific flow) and
+      // for 'collectables' where POIs are not useful and wasteful.
+      const skipGenericPoi = shouldSkipGenericPoi(classificationLower);
       if (skipGenericPoi) {
         logger.info('[location_intel] classification=food → skipping generic POI/trails lookups');
         nearby = [];
@@ -559,15 +571,17 @@ async function location_intelligence_agent(state) {
     // --- New: curate food-specific candidate list and deterministic selection
     // once nearby places are available.
     try {
+      const { shouldSkipGenericPoi, isCollectablesClassification } = require('./classification_helpers');
       const classificationLower = (String(state.classification || '') || '').toLowerCase();
-      const skipGenericPoi = classificationLower.includes('food');
+      const _isCollectables = isCollectablesClassification(classificationLower);
+      const skipGenericPoi = shouldSkipGenericPoi(classificationLower);
 
       if (skipGenericPoi) {
         state.nearby_food_places = [];
         state.nearby_food_places_curated = [];
         state.nearby_food_places_raw = [];
         state.best_restaurant_candidate = null;
-        logger.info('[location_intel] classification=food → skipped POI curation; food_location_agent will perform restaurants lookup');
+        logger.info('[location_intel] classification=food or collectables → skipped POI curation; food_location_agent will perform restaurants lookup');
       } else {
         const FOOD_TYPES = ['restaurant', 'cafe', 'bakery', 'bar', 'meal_takeaway', 'meal_delivery'];
         const MAX_CANDIDATES = Number(process.env.FOOD_CANDIDATE_MAX || 5);
@@ -1056,12 +1070,14 @@ async function collect_context(state) {
       logger.info('[LangGraph] collect_context: No GPS available, skipping');
       return { ...state, poiCache: null };
     }
-    // Always retrieve food-specific places too so downstream nodes don't need to
-    // re-run a separate fetch. This consolidates costs into one call.
+    // Only retrieve food-specific places when classification suggests food.
+    // For non-food images (e.g., "collectables"), avoid running nearbyFood
+    // queries to reduce external API calls and unexpected food logs.
     const { lat, lon } = coordinates;
     const classification = state.classification || '';
     const startMs = Date.now();
-    const poi = await collectContext({ lat, lon, classification, fetchFood: true });
+    const fetchFood = String(classification || '').toLowerCase().includes('food');
+    const poi = await collectContext({ lat, lon, classification, fetchFood });
     const durationMs = Date.now() - startMs;
     // attach a simple summary for observability
     const summary = {

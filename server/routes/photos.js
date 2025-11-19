@@ -136,7 +136,11 @@ module.exports = function createPhotosRouter({ db }) {
     const reqId = Math.random().toString(36).slice(2, 10);
     try {
       const state = req.query.state;
-      const rows = await withDbRetry(
+      // Protect against long-running DB queries causing the request to hang
+      const DB_QUERY_TIMEOUT_MS = Number(process.env.DB_QUERY_TIMEOUT_MS || 10000);
+
+      const rows = await Promise.race([
+        withDbRetry(
         () => {
           let query = db('photos').select(
             'id',
@@ -159,7 +163,9 @@ module.exports = function createPhotosRouter({ db }) {
           return query;
         },
         { retries: 2, delayMs: 150 }
-      );
+        ),
+        new Promise((_, reject) => setTimeout(() => reject(new Error('DB query timeout')), DB_QUERY_TIMEOUT_MS)),
+      ]);
       // Generate public URLs for each photo using Supabase Storage
       const photosWithUrls = await Promise.all(rows.map(async (row) => {
         let textStyle = null;

@@ -30,4 +30,17 @@ describe('collectContext', () => {
     expect(out.nearbyFood.length).toBeGreaterThan(0);
     expect(out.nearbyFood[0].name).toBe('Tasty');
   });
+
+  it('skips all POI and reverse geocode for collectables classification', async () => {
+    reverseGeocode.mockResolvedValueOnce({ address: 'Collect St' });
+    nearbyPlaces.mockResolvedValueOnce([{ name: 'Sample Place' }]);
+    nearbyFoodPlaces.mockResolvedValueOnce([{ name: 'Nope' }]);
+    nearbyTrailsFromOSM.mockResolvedValueOnce([{ id: 't1', name: 'Trail 1' }]);
+
+    const out = await collectContext({ lat: 37.1, lon: -122.0, classification: 'collectables', fetchFood: true });
+    expect(out.reverseResult).toBeNull();
+    expect(out.nearbyPlaces).toEqual([]);
+    expect(out.nearbyFood).toEqual([]);
+    expect(out.osmTrails).toEqual([]);
+  });
 });
