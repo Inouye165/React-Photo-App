@@ -1,5 +1,5 @@
 import React from 'react';
-import { APIProvider, Map, AdvancedMarker, Pin } from '@vis.gl/react-google-maps';
+import { APIProvider, Map, AdvancedMarker} from '@vis.gl/react-google-maps';
 
 const containerStyle = {
   width: '100%',
@@ -14,23 +14,29 @@ const defaultCenter = {
 // Helper to extract lat/lon from metadata, similar to backend logic
 function getPhotoLocation(photo) {
   if (!photo) return null;
+
+  let heading = 0;
+  // Try to find heading/bearing
+  if (photo.metadata?.GPS?.imgDirection != null) heading = Number(photo.metadata.GPS.imgDirection);
+  else if (photo.metadata?.GPSImgDirection != null) heading = Number(photo.metadata.GPSImgDirection);
+  else if (photo.GPSImgDirection != null) heading = Number(photo.GPSImgDirection);
   
   // 1. Check top-level lat/lon (common from exifr)
   if (photo.latitude != null && photo.longitude != null) {
-    return { lat: Number(photo.latitude), lng: Number(photo.longitude) };
+    return { lat: Number(photo.latitude), lng: Number(photo.longitude), heading };
   }
   
   const meta = photo.metadata || {};
   
   // 2. Check metadata top-level
   if (meta.latitude != null && meta.longitude != null) {
-    return { lat: Number(meta.latitude), lng: Number(meta.longitude) };
+    return { lat: Number(meta.latitude), lng: Number(meta.longitude), heading };
   }
   
   // 3. Check GPS object
   if (meta.GPS) {
     if (meta.GPS.latitude != null && meta.GPS.longitude != null) {
-       return { lat: Number(meta.GPS.latitude), lng: Number(meta.GPS.longitude) };
+       return { lat: Number(meta.GPS.latitude), lng: Number(meta.GPS.longitude), heading };
     }
   }
 
@@ -38,12 +44,30 @@ function getPhotoLocation(photo) {
   if (photo.gps_string) {
     const parts = photo.gps_string.split(',');
     if (parts.length === 2) {
-      return { lat: Number(parts[0]), lng: Number(parts[1]) };
+      return { lat: Number(parts[0]), lng: Number(parts[1]), heading };
     }
   }
 
   return null;
 }
+
+// Directional Arrow Icon Component
+const DirectionalArrow = ({ heading = 0 }) => (
+  <div
+    style={{
+      transform: `rotate(${heading}deg)`,
+      width: '32px',
+      height: '32px',
+      display: 'flex',
+      alignItems: 'center',
+      justifyContent: 'center'
+    }}
+  >
+    <svg width="32" height="32" viewBox="0 0 24 24" fill="none" xmlns="http://www.w3.org/2000/svg" style={{ filter: 'drop-shadow(0px 2px 4px rgba(0,0,0,0.5))' }}>
+      <path d="M12 2L19 21L12 17L5 21L12 2Z" fill="#4285F4" stroke="white" strokeWidth="2" strokeLinejoin="round" />
+    </svg>
+  </div>
+);
 
 export default function LocationMapPanel({ photo }) {
   const apiKey = import.meta.env.VITE_GOOGLE_MAPS_API_KEY;
@@ -52,6 +76,7 @@ export default function LocationMapPanel({ photo }) {
   const location = getPhotoLocation(photo);
   const hasLocation = location != null && !isNaN(location.lat) && !isNaN(location.lng);
   const center = hasLocation ? location : defaultCenter;
+  const heading = location?.heading || 0;
 
   if (!apiKey) {
     // If we don't have an API key but do have a photo location, render a
@@ -106,14 +131,17 @@ export default function LocationMapPanel({ photo }) {
           defaultCenter={center}
           defaultZoom={15}
           mapId={mapId} // Optional: set via VITE_GOOGLE_MAPS_MAP_ID; a default is used for demo
-          disableDefaultUI={true}
+          disableDefaultUI={false}
           zoomControl={true}
           streetViewControl={false}
-          mapTypeControl={false}
-          fullscreenControl={false}
+          mapTypeControl={true}
+          fullscreenControl={true}
+          mapTypeControlOptions={{
+            position: 3, // TOP_RIGHT
+          }}
         >
           <AdvancedMarker position={center}>
-            <Pin background={'#FBBC04'} glyphColor={'#000'} borderColor={'#000'} />
+            <DirectionalArrow heading={heading} />
           </AdvancedMarker>
         </Map>
       </APIProvider>
