@@ -47,6 +47,7 @@ function getPhotoLocation(photo) {
 
 export default function LocationMapPanel({ photo }) {
   const apiKey = import.meta.env.VITE_GOOGLE_MAPS_API_KEY;
+  const mapId = import.meta.env.VITE_GOOGLE_MAPS_MAP_ID || 'DEMO_MAP_ID';
   
   const location = getPhotoLocation(photo);
   const hasLocation = location != null && !isNaN(location.lat) && !isNaN(location.lng);
@@ -55,7 +56,7 @@ export default function LocationMapPanel({ photo }) {
   if (!apiKey) {
     return (
       <div className="flex items-center justify-center h-full bg-gray-100 text-gray-500 text-sm p-4 text-center">
-        Map configuration missing.
+        Map configuration missing. Please set <code>VITE_GOOGLE_MAPS_API_KEY</code> in your Vite root `.env` (see <code>.env.example</code>) and restart the dev server.
       </div>
     );
   }
@@ -74,7 +75,7 @@ export default function LocationMapPanel({ photo }) {
         <Map
           defaultCenter={center}
           defaultZoom={15}
-          mapId="DEMO_MAP_ID" // Required for AdvancedMarker
+          mapId={mapId} // Optional: set via VITE_GOOGLE_MAPS_MAP_ID; a default is used for demo
           disableDefaultUI={true}
           zoomControl={true}
           streetViewControl={false}
