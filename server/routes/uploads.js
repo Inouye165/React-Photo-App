@@ -55,6 +55,12 @@ module.exports = function createUploadsRouter({ db }) {
         // Cleanup empty file if it exists
         if (req.file.path) {
           try {
+            // Ensure the temp file path is within Multer's configured temp directory
+            const tempDir = path.resolve(os.tmpdir());
+            const filePath = path.resolve(req.file.path);
+            if (!filePath.startsWith(tempDir + path.sep)) {
+              throw new Error(`Refusing to delete file outside temp directory: ${filePath}`);
+            }
             const realPath = validateSafePath(req.file.path);
             fs.unlink(realPath, () => {});
           } catch (e) {
@@ -82,6 +88,12 @@ module.exports = function createUploadsRouter({ db }) {
           // Strict path validation for CodeQL compliance
           let realPath;
           try {
+             // Ensure the temp file path is within Multer's configured temp directory
+             const tempDir = path.resolve(os.tmpdir());
+             const filePath = path.resolve(req.file.path);
+             if (!filePath.startsWith(tempDir + path.sep)) {
+               throw new Error(`Refusing to read file outside temp directory: ${filePath}`);
+             }
              realPath = validateSafePath(req.file.path);
           } catch (err) {
              logger.error('Attempt to read file outside temp dir:', req.file.path, err);
@@ -145,6 +157,12 @@ module.exports = function createUploadsRouter({ db }) {
         // Always clean up the local temp file
         if (req.file && req.file.path) {
           try {
+            // Ensure the temp file path is within Multer's configured temp directory
+            const tempDir = path.resolve(os.tmpdir());
+            const filePath = path.resolve(req.file.path);
+            if (!filePath.startsWith(tempDir + path.sep)) {
+              throw new Error(`Refusing to delete file outside temp directory: ${filePath}`);
+            }
             const realPath = validateSafePath(req.file.path);
             fs.unlink(realPath, (err) => {
               if (err) logger.error(`Failed to delete temp file ${req.file.path}:`, err);

@@ -6,20 +6,26 @@ const fs = require('fs');
  * Validates that a file path is within the allowed temp directory.
  * Throws an error if the path is outside the allowed directory (prevents path traversal).
  * @param {string} filePath - The file path to validate.
+ * @param {string[]} [allowedDirs] - Optional list of allowed directories.
  * @returns {string} The resolved safe path (if valid).
  */
-function validateSafePath(filePath) {
+function validateSafePath(filePath, allowedDirs) {
   if (typeof filePath !== 'string') {
     throw new Error('Invalid file path: not a string');
   }
   
   const resolvedPath = path.resolve(filePath);
   
-  // Allow both the working dir and OS temp dir for flexibility
-  const allowedDirs = [
-    path.resolve(__dirname, '../working'),
-    path.resolve(os.tmpdir())
-  ];
+  // Allow custom allowedDirs, default to working dir and OS temp dir
+  if (!allowedDirs) {
+    allowedDirs = [
+      path.resolve(__dirname, '../working'),
+      path.resolve(os.tmpdir())
+    ];
+  } else {
+    // Ensure all provided allowedDirs are resolved
+    allowedDirs = allowedDirs.map(dir => path.resolve(dir));
+  }
 
   // Pre-check: Ensure resolved path starts with one of the allowed dirs
   // This prevents passing obviously malicious paths to realpathSync

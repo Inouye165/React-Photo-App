@@ -23,6 +23,9 @@ describe('Display Endpoint with HEIC Support', () => {
   const testImageDir = path.join(__dirname, 'test-images');
 
   beforeAll(() => {
+    // Set env variable so validator allows test image directory
+    process.env.TEST_IMAGE_DIR = testImageDir;
+
     // Create test token
     validToken = jwt.sign(
       { id: 1, username: 'testuser', role: 'user' },

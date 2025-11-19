@@ -103,7 +103,15 @@ async function convertHeicToJpegBuffer(input, quality = 90) {
   let inputBuffer = input;
   if (typeof input === 'string') {
     try {
-      const realPath = validateSafePath(input);
+      // Allow override of allowedDirs, e.g. via env.TEST_IMAGE_DIR or process global for tests
+      let allowedDirs = [
+        path.resolve(__dirname, '../working'),
+        path.resolve(os.tmpdir())
+      ];
+      if (process.env.TEST_IMAGE_DIR) {
+        allowedDirs.push(path.resolve(process.env.TEST_IMAGE_DIR));
+      }
+      const realPath = validateSafePath(input, allowedDirs);
       inputBuffer = await fsPromises.readFile(realPath);
     } catch (readErr) {
       throw new Error(`Unable to read file: ${readErr.message}`);
