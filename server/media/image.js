@@ -91,7 +91,7 @@ async function convertHeicToJpegBuffer(input, quality = 90) {
     try {
       // Sanitize the input path for CodeQL compliance
       const safeFilename = path.basename(input);
-      const safeDir = path.dirname(input); // Should be os.tmpdir() or trusted dir
+      const safeDir = path.dirname(input); 
       const sanitizedPath = path.join(safeDir, safeFilename);
       inputBuffer = await fsPromises.readFile(sanitizedPath);
     } catch (readErr) {

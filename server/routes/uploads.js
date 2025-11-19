@@ -54,7 +54,7 @@ module.exports = function createUploadsRouter({ db }) {
         // Cleanup empty file if it exists
         if (req.file.path) {
           const safeFilename = path.basename(req.file.path);
-          const safeDir = path.dirname(req.file.path); // os.tmpdir() is the trusted dir
+          const safeDir = os.tmpdir();
           const sanitizedPath = path.join(safeDir, safeFilename);
           fs.unlink(sanitizedPath, () => {});
         }
@@ -77,8 +77,9 @@ module.exports = function createUploadsRouter({ db }) {
           const filePath = `working/${filename}`;
 
           // Sanitize the file path for CodeQL compliance
+          // We explicitly use os.tmpdir() because that is where Multer is configured to save files
           const safeFilename = path.basename(req.file.path);
-          const safeDir = path.dirname(req.file.path); // os.tmpdir() is the trusted dir
+          const safeDir = os.tmpdir(); 
           const sanitizedPath = path.join(safeDir, safeFilename);
           // Create a fresh stream for each attempt
           const fileStream = fs.createReadStream(sanitizedPath);
@@ -119,7 +120,7 @@ module.exports = function createUploadsRouter({ db }) {
         // Pass the local file path instead of buffer
         // Sanitize the file path for CodeQL compliance
         const safeFilename = path.basename(req.file.path);
-        const safeDir = path.dirname(req.file.path); // os.tmpdir() is the trusted dir
+        const safeDir = os.tmpdir();
         const sanitizedPath = path.join(safeDir, safeFilename);
         const result = await ingestPhoto(db, filePath, filename, 'working', sanitizedPath);
         
@@ -139,7 +140,7 @@ module.exports = function createUploadsRouter({ db }) {
         if (req.file && req.file.path) {
           try {
             const safeFilename = path.basename(req.file.path);
-            const safeDir = path.dirname(req.file.path); // os.tmpdir() is the trusted dir
+            const safeDir = os.tmpdir();
             const sanitizedPath = path.join(safeDir, safeFilename);
             fs.unlink(sanitizedPath, (err) => {
               if (err) logger.error(`Failed to delete temp file ${req.file.path}:`, err);
