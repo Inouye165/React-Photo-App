@@ -112,8 +112,21 @@ async function convertHeicToJpegBuffer(input, quality = 90) {
         allowedDirs.push(path.resolve(process.env.TEST_IMAGE_DIR));
       }
 
-      // Resolve the input path and get the real path (resolves symlinks)
+      // Resolve the input path
       const resolvedPath = path.resolve(input);
+
+      // Pre-check: Ensure resolved path starts with one of the allowed dirs
+      // This prevents passing obviously malicious paths to realpath
+      const preCheckSafe = allowedDirs.some(dir => {
+        const base = dir.endsWith(path.sep) ? dir : dir + path.sep;
+        return resolvedPath === dir || resolvedPath.startsWith(base);
+      });
+
+      if (!preCheckSafe) {
+        throw new Error(`File path ${input} is outside the allowed directories (pre-check)`);
+      }
+
+      // Get the real path (resolves symlinks)
       const realPath = await fsPromises.realpath(resolvedPath);
 
       // Resolve allowed directories to their real paths for comparison
