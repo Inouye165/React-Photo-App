@@ -1,5 +1,5 @@
 import React from 'react';
-import { APIProvider, Map, AdvancedMarker, Pin } from '@vis.gl/react-google-maps';
+import { APIProvider, Map, Marker } from '@vis.gl/react-google-maps';
 
 const containerStyle = {
   width: '100%',
@@ -45,11 +45,48 @@ function getPhotoLocation(photo) {
   return null;
 }
 
+// Helper to extract heading/bearing from metadata
+function getPhotoHeading(photo) {
+  if (!photo) return 0;
+  const meta = photo.metadata || {};
+  
+  // 1. Check top-level properties
+  if (meta.heading != null) return Number(meta.heading);
+  if (meta.bearing != null) return Number(meta.bearing);
+  if (meta.GPSImgDirection != null) return Number(meta.GPSImgDirection);
+  if (meta.GPSDestBearing != null) return Number(meta.GPSDestBearing);
+  
+  // 2. Check nested GPS object
+  if (meta.GPS) {
+    if (meta.GPS.GPSImgDirection != null) return Number(meta.GPS.GPSImgDirection);
+    if (meta.GPS.GPSDestBearing != null) return Number(meta.GPS.GPSDestBearing);
+  }
+  
+  return 0;
+}
+
+function DirectionalMarker({ position, heading }) {
+  // Ensure Google Maps API is loaded before accessing google.maps.SymbolPath
+  if (typeof window === 'undefined' || !window.google || !window.google.maps) return null;
+
+  const icon = {
+    path: window.google.maps.SymbolPath.FORWARD_CLOSED_ARROW,
+    scale: 5,
+    fillColor: 'blue',
+    fillOpacity: 1,
+    strokeWeight: 1,
+    rotation: heading || 0,
+  };
+
+  return <Marker position={position} icon={icon} />;
+}
+
 export default function LocationMapPanel({ photo }) {
   const apiKey = import.meta.env.VITE_GOOGLE_MAPS_API_KEY;
   const mapId = import.meta.env.VITE_GOOGLE_MAPS_MAP_ID || 'DEMO_MAP_ID';
   
   const location = getPhotoLocation(photo);
+  const heading = getPhotoHeading(photo);
   const hasLocation = location != null && !isNaN(location.lat) && !isNaN(location.lng);
   const center = hasLocation ? location : defaultCenter;
 
@@ -109,12 +146,10 @@ export default function LocationMapPanel({ photo }) {
           disableDefaultUI={true}
           zoomControl={true}
           streetViewControl={false}
-          mapTypeControl={false}
+          mapTypeControl={true}
           fullscreenControl={false}
         >
-          <AdvancedMarker position={center}>
-            <Pin background={'#FBBC04'} glyphColor={'#000'} borderColor={'#000'} />
-          </AdvancedMarker>
+          <DirectionalMarker position={center} heading={heading} />
         </Map>
       </APIProvider>
     </div>
