@@ -8,17 +8,14 @@ describe('HEIC Refactor Validation', () => {
     expect(typeof convertHeicToJpegBuffer).toBe('function');
   });
 
+  const os = require('os');
   test('should handle non-HEIC files correctly', async () => {
-    // Create a test file
-    const testDir = path.join(__dirname, 'test-refactor');
-    const testFile = path.join(testDir, 'test.jpg');
-    
-    if (!fs.existsSync(testDir)) {
-      fs.mkdirSync(testDir, { recursive: true });
-    }
-    
+    // Use OS temp dir to ensure path is allowed by validator
+    const testDir = os.tmpdir();
+    const testFile = path.join(testDir, `test-heic-refactor-${Date.now()}.jpg`);
+
     fs.writeFileSync(testFile, 'fake-jpeg-data');
-    
+
     try {
       const result = await convertHeicToJpegBuffer(testFile, 90);
       expect(result).toBeInstanceOf(Buffer);
@@ -26,7 +23,7 @@ describe('HEIC Refactor Validation', () => {
     } finally {
       // Clean up
       try {
-        fs.rmSync(testDir, { recursive: true, force: true });
+        fs.unlinkSync(testFile);
       } catch {
         // Ignore cleanup errors
       }

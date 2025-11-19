@@ -82,12 +82,15 @@ async function generateThumbnail(input, hash) {
   }
 }
 
+const { validateSafePath } = require('../utils/pathValidator');
+
 async function convertHeicToJpegBuffer(input, quality = 90) {
-  // Accept either a Buffer or a file path string. If a path is provided, read it into a Buffer.
+  // Accept either a Buffer or a file path string. If a path is provided, validate and read it into a Buffer.
   let inputBuffer = input;
   if (typeof input === 'string') {
     try {
-      inputBuffer = await fsPromises.readFile(input);
+      const safePath = validateSafePath(input);
+      inputBuffer = await fsPromises.readFile(safePath);
     } catch (readErr) {
       // If we can't read the file, surface the error
       throw new Error(`Unable to read file: ${readErr.message}`);
