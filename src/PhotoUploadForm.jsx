@@ -1,6 +1,32 @@
 import React, { useEffect, useState, useRef } from "react";
 
-// Renders a modal that previews local files (using object URLs) and uploads them.
+const Thumbnail = ({ file, className }) => {
+  const [src, setSrc] = useState(null);
+
+  useEffect(() => {
+    if (!file) return;
+    // Only create object URLs for browser-supported image types
+    // HEIC is not supported natively in <img> tags in most browsers
+    if (file.type.startsWith('image/') && !file.name.toLowerCase().endsWith('.heic')) {
+      const url = URL.createObjectURL(file);
+      setSrc(url);
+      return () => URL.revokeObjectURL(url);
+    }
+  }, [file]);
+
+  if (src) {
+    return <img src={src} alt="" className={`object-cover w-full h-full ${className}`} />;
+  }
+
+  // Fallback/Placeholder for HEIC or other types
+  return (
+    <div className={`flex flex-col items-center justify-center bg-gray-100 text-gray-400 font-bold text-xs ${className}`}>
+      <svg className="w-8 h-8 mb-1 opacity-50" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth="1.5" d="M4 16l4.586-4.586a2 2 0 012.828 0L16 16m-2-2l1.586-1.586a2 2 0 012.828 0L20 14m-6-6h.01M6 20h12a2 2 0 002-2V6a2 2 0 00-2-2H6a2 2 0 00-2 2v12a2 2 0 002 2z" /></svg>
+      {file.name.split('.').pop()?.toUpperCase() || 'IMG'}
+    </div>
+  );
+};
+
 const PhotoUploadForm = ({
   startDate,
   endDate,
@@ -9,36 +35,53 @@ const PhotoUploadForm = ({
   uploading,
   filteredLocalPhotos,
   handleUploadFiltered,
-  setShowLocalPicker
-  , onReopenFolder
+  setShowLocalPicker,
+  onReopenFolder
 }) => {
-  const [_previews, setPreviews] = useState({});
+  // Selection state: Set of indices
+  const [selectedIndices, setSelectedIndices] = useState(new Set());
 
-  // We no longer create large object URL previews by default to avoid showing
-  // huge images in the selection modal. Keep a tiny preview map in case a
-  // future UX wants a small thumbnail, but do not auto-generate full-size
-  // previews here.
+  // Reset selection when the filtered list changes (e.g. new folder or date filter change)
+  // Default to selecting ALL photos
   useEffect(() => {
-    setPreviews({});
+    const allIndices = new Set(filteredLocalPhotos.map((_, i) => i));
+    setSelectedIndices(allIndices);
   }, [filteredLocalPhotos]);
 
-  // Focus trap / accessibility: when the panel is open make it the top view,
-  // capture focus, prevent background scroll, and close on Escape.
+  const toggleSelection = (index) => {
+    const newSelection = new Set(selectedIndices);
+    if (newSelection.has(index)) {
+      newSelection.delete(index);
+    } else {
+      newSelection.add(index);
+    }
+    setSelectedIndices(newSelection);
+  };
+
+  const handleSelectAll = () => {
+    setSelectedIndices(new Set(filteredLocalPhotos.map((_, i) => i)));
+  };
+
+  const handleDeselectAll = () => {
+    setSelectedIndices(new Set());
+  };
+
+  const onUploadClick = () => {
+    const photosToUpload = filteredLocalPhotos.filter((_, i) => selectedIndices.has(i));
+    handleUploadFiltered(photosToUpload);
+  };
+
   const panelRef = useRef(null);
   useEffect(() => {
-    // Save previous body overflow and restore on unmount
     const prevOverflow = document.body.style.overflow;
     document.body.style.overflow = 'hidden';
-
-    // Focus the panel container
-    try { panelRef.current && panelRef.current.focus(); } catch { /* Ignore focus errors */ }
+    try { panelRef.current && panelRef.current.focus(); } catch { /* ignore */ }
 
     const onKey = (e) => {
       if (e.key === 'Escape') {
-        try { setShowLocalPicker(false); } catch { /* Ignore state errors */ }
+        try { setShowLocalPicker(false); } catch { /* ignore */ }
       }
       if (e.key !== 'Tab') return;
-      // Simple focus trap: keep focus inside panel
       const focusableSelector = 'a[href], area[href], input:not([disabled]), select:not([disabled]), textarea:not([disabled]), button:not([disabled]), [tabindex]:not([tabindex="-1"])';
       const nodes = panelRef.current ? Array.from(panelRef.current.querySelectorAll(focusableSelector)) : [];
       if (nodes.length === 0) return;
@@ -55,13 +98,10 @@ const PhotoUploadForm = ({
 
     window.addEventListener('keydown', onKey);
 
-    // Compute toolbar bottom and set panel top dynamically so the panel fills
-    // the remaining viewport under the toolbar (no hard-coded guesswork).
     try {
       const toolbar = document.querySelector('[aria-label="Main toolbar"]');
       if (toolbar && panelRef.current) {
         const rect = toolbar.getBoundingClientRect();
-        // leave a small gap of 8px
         const topPx = Math.ceil(rect.bottom + 8);
         panelRef.current.style.position = 'absolute';
         panelRef.current.style.left = '16px';
@@ -70,103 +110,151 @@ const PhotoUploadForm = ({
         panelRef.current.style.bottom = '16px';
         panelRef.current.style.margin = '0';
       }
-    } catch {
-      // ignore
-    }
+    } catch { /* ignore */ }
     return () => {
       window.removeEventListener('keydown', onKey);
       document.body.style.overflow = prevOverflow;
     };
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, []);
+  }, [setShowLocalPicker]);
 
   return (
-    // App-panel: fill remaining screen under the toolbar (toolbar stays visible)
     <div
       id="photo-upload-panel"
       ref={panelRef}
       role="dialog"
       aria-modal="true"
       tabIndex={-1}
-      className="fixed overflow-auto"
+      className="fixed overflow-hidden flex flex-col shadow-xl rounded-lg border border-gray-200"
       style={{
         left: '0',
         right: '0',
-        top: '96px', // fallback top; will be replaced dynamically if toolbar found
+        top: '96px',
         bottom: '0',
         zIndex: 60,
         margin: '0',
-        padding: '20px',
-        background: '#f5f5f5', // light gray to match other views
-        color: '#111'
+        background: '#f8fafc', // Slate-50
+        color: '#1e293b' // Slate-800
       }}
     >
-        <div className="p-4 border-b flex justify-between items-center">
-          <h2 className="text-xl font-bold">Select Photos to Upload</h2>
-          <button
-            onClick={() => setShowLocalPicker(false)}
-            className="text-gray-500 hover:text-gray-700 text-xl font-bold"
-            aria-label="Close upload modal"
+      {/* Header */}
+      <div className="px-6 py-4 bg-white border-b border-gray-200 flex justify-between items-center shrink-0">
+        <div>
+          <h2 className="text-xl font-bold text-gray-800">Select Photos to Upload</h2>
+          <p className="text-sm text-gray-500 mt-1">
+            {selectedIndices.size} selected of {filteredLocalPhotos.length} available
+          </p>
+        </div>
+        <button
+          onClick={() => setShowLocalPicker(false)}
+          className="text-gray-400 hover:text-gray-600 transition-colors p-2 rounded-full hover:bg-gray-100"
+          aria-label="Close upload modal"
+        >
+          <svg className="w-6 h-6" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M6 18L18 6M6 6l12 12" /></svg>
+        </button>
+      </div>
+
+      {/* Toolbar / Filters */}
+      <div className="px-6 py-3 bg-white border-b border-gray-200 flex flex-wrap gap-4 items-center shrink-0">
+        <div className="flex items-center gap-2">
+          <input
+            type="date"
+            value={startDate}
+            onChange={e => setStartDate(e.target.value)}
+            className="border border-gray-300 rounded px-3 py-1.5 text-sm focus:ring-2 focus:ring-blue-500 outline-none"
+            placeholder="Start Date"
+          />
+          <span className="text-gray-400">-</span>
+          <input
+            type="date"
+            value={endDate}
+            onChange={e => setEndDate(e.target.value)}
+            className="border border-gray-300 rounded px-3 py-1.5 text-sm focus:ring-2 focus:ring-blue-500 outline-none"
+            placeholder="End Date"
+          />
+        </div>
+        
+        <div className="h-6 w-px bg-gray-300 mx-2 hidden sm:block"></div>
+
+        <div className="flex gap-2">
+          <button onClick={handleSelectAll} className="text-sm text-blue-600 hover:text-blue-800 font-medium px-2 py-1 rounded hover:bg-blue-50">Select All</button>
+          <button onClick={handleDeselectAll} className="text-sm text-gray-600 hover:text-gray-800 font-medium px-2 py-1 rounded hover:bg-gray-100">Deselect All</button>
+        </div>
+
+        <div className="ml-auto flex gap-3">
+           <button 
+             onClick={() => onReopenFolder && onReopenFolder()} 
+             className="px-4 py-2 text-sm font-medium text-gray-700 bg-white border border-gray-300 rounded-md hover:bg-gray-50 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-blue-500"
+           >
+             Change Folder
+           </button>
+           <button
+            onClick={onUploadClick}
+            disabled={uploading || selectedIndices.size === 0}
+            className="px-4 py-2 text-sm font-medium text-white bg-blue-600 rounded-md hover:bg-blue-700 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-blue-500 disabled:opacity-50 disabled:cursor-not-allowed shadow-sm transition-all"
           >
-            ×
+            {uploading ? 'Uploading...' : `Upload ${selectedIndices.size} Photos`}
           </button>
         </div>
-        <div className="p-4">
-          <div className="mb-4 flex gap-4 items-center">
-            <input
-              type="date"
-              value={startDate}
-              onChange={e => setStartDate(e.target.value)}
-              className="border rounded px-2 py-1"
-              placeholder="Start Date"
-            />
-            <input
-              type="date"
-              value={endDate}
-              onChange={e => setEndDate(e.target.value)}
-              className="border rounded px-2 py-1"
-              placeholder="End Date"
-            />
-            <button
-              onClick={handleUploadFiltered}
-              disabled={uploading || filteredLocalPhotos.length === 0}
-              className="bg-green-500 hover:bg-green-700 text-white font-bold py-2 px-4 rounded disabled:opacity-50"
-            >
-              {uploading ? `Uploading...` : `Upload ${filteredLocalPhotos.length} Photos`}
-            </button>
-          </div>
-          <div className="font-medium mb-2">Photos to Upload ({filteredLocalPhotos.length}):</div>
-          {filteredLocalPhotos.length === 0 ? (
-            <div className="p-6 text-center text-gray-600">
-              <div className="mb-3">No images found in the selected folder.</div>
-              <div className="flex justify-center gap-2">
-                <button onClick={() => onReopenFolder && onReopenFolder()} className="px-3 py-1 bg-blue-600 text-white rounded">Re-select folder</button>
-                <button onClick={() => setShowLocalPicker(false)} className="px-3 py-1 bg-gray-100 border rounded">Close</button>
-              </div>
-            </div>
-          ) : (
-            <div className="bg-white border rounded">
-              <ul className="divide-y divide-gray-200">
-                {filteredLocalPhotos.map((p, i) => {
-                const key = `${p.name}-${p.file?.lastModified ?? ''}-${i}`;
-                const fileDate = p.exifDate ? new Date(p.exifDate) : new Date(p.file?.lastModified);
-                const fileSize = p.file ? (p.file.size || 0) : 0;
-                return (
-                  <li key={key} className="flex items-center gap-4 px-3 py-2">
-                    <div className="w-12 h-12 bg-gray-50 rounded flex items-center justify-center text-xs text-gray-400 border">{p.name.split('.').pop()?.toUpperCase()}</div>
-                    <div className="flex-1 min-w-0">
-                      <div className="font-medium text-sm truncate">{p.name}</div>
-                      <div className="text-xs text-gray-500">{fileDate.toLocaleString()}</div>
-                    </div>
-                    <div className="text-xs text-gray-500">{(fileSize / 1024).toFixed(1)} KB</div>
-                  </li>
-                );
-                })}
-              </ul>
-            </div>
-          )}
-        </div>
       </div>
+
+      {/* Grid Content */}
+      <div className="flex-1 overflow-y-auto p-6">
+        {filteredLocalPhotos.length === 0 ? (
+          <div className="h-full flex flex-col items-center justify-center text-gray-500">
+            <svg className="w-16 h-16 mb-4 text-gray-300" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth="1.5" d="M4 16l4.586-4.586a2 2 0 012.828 0L16 16m-2-2l1.586-1.586a2 2 0 012.828 0L20 14m-6-6h.01M6 20h12a2 2 0 002-2V6a2 2 0 00-2-2H6a2 2 0 00-2 2v12a2 2 0 002 2z" /></svg>
+            <p className="text-lg font-medium">No photos found</p>
+            <p className="text-sm mt-1">Try adjusting the date range or selecting a different folder.</p>
+          </div>
+        ) : (
+          <div className="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-4 lg:grid-cols-5 xl:grid-cols-6 gap-4">
+            {filteredLocalPhotos.map((p, i) => {
+              const isSelected = selectedIndices.has(i);
+              const key = `${p.name}-${p.file?.lastModified ?? ''}-${i}`;
+              const fileDate = p.exifDate ? new Date(p.exifDate) : new Date(p.file?.lastModified);
+              const fileSize = p.file ? (p.file.size || 0) : 0;
+
+              return (
+                <div 
+                  key={key}
+                  onClick={() => toggleSelection(i)}
+                  className={`
+                    group relative aspect-square rounded-lg overflow-hidden cursor-pointer border-2 transition-all duration-200
+                    ${isSelected ? 'border-blue-500 ring-2 ring-blue-200 ring-offset-1' : 'border-transparent hover:border-gray-300'}
+                    bg-white shadow-sm hover:shadow-md
+                  `}
+                >
+                  <Thumbnail file={p.file} className="w-full h-full" />
+                  
+                  {/* Selection Overlay */}
+                  <div className={`absolute inset-0 bg-black transition-opacity duration-200 ${isSelected ? 'bg-opacity-10' : 'bg-opacity-0 group-hover:bg-opacity-10'}`} />
+                  
+                  {/* Checkbox Indicator */}
+                  <div className="absolute top-2 right-2">
+                    <div className={`
+                      w-6 h-6 rounded-full border-2 flex items-center justify-center transition-colors duration-200
+                      ${isSelected ? 'bg-blue-500 border-blue-500' : 'bg-white/80 border-gray-400 group-hover:border-gray-500'}
+                    `}>
+                      {isSelected && (
+                        <svg className="w-4 h-4 text-white" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth="3" d="M5 13l4 4L19 7" /></svg>
+                      )}
+                    </div>
+                  </div>
+
+                  {/* Info Overlay (Bottom) */}
+                  <div className="absolute bottom-0 left-0 right-0 bg-gradient-to-t from-black/80 via-black/40 to-transparent p-3 pt-8 text-white opacity-0 group-hover:opacity-100 transition-opacity duration-200">
+                    <p className="text-xs font-medium truncate" title={p.name}>{p.name}</p>
+                    <div className="flex justify-between items-center mt-0.5">
+                      <p className="text-[10px] opacity-80">{fileDate.toLocaleDateString()}</p>
+                      <p className="text-[10px] opacity-80">{(fileSize / 1024).toFixed(0)} KB</p>
+                    </div>
+                  </div>
+                </div>
+              );
+            })}
+          </div>
+        )}
+      </div>
+    </div>
   );
 };
 

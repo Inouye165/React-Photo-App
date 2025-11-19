@@ -3,11 +3,11 @@ import ImageCanvasEditor from './ImageCanvasEditor'
 import { useAuth } from './contexts/AuthContext'
 import { API_BASE_URL, fetchProtectedBlobUrl, revokeBlobUrl } from './api.js'
 import useStore from './store.js'
-import ModelSelect from './components/ModelSelect'
-import { DEFAULT_MODEL } from './config/modelCatalog'
+// import ModelSelect from './components/ModelSelect' // Removed unused
+// import { DEFAULT_MODEL } from './config/modelCatalog' // Removed unused
 import LocationMapPanel from './components/LocationMapPanel'
 
-export default function EditPage({ photo, onClose, onSave, onFinished, onRecheckAI, aiReady = true }) {
+export default function EditPage({ photo, onClose, onSave, onRecheckAI, aiReady = true }) {
   // AuthContext no longer exposes client-side token (httpOnly cookies are used).
   useAuth();
   // Prefer the live photo from the global store when available so this editor
@@ -22,10 +22,10 @@ export default function EditPage({ photo, onClose, onSave, onFinished, onRecheck
   const [saving, setSaving] = useState(false)
   const [recheckingAI, setRecheckingAI] = useState(false)
   // Button visual status: 'idle' | 'in-progress' | 'done' | 'error'
-  const [recheckStatus, setRecheckStatus] = useState('idle')
+  // const [recheckStatus, setRecheckStatus] = useState('idle') // Removed unused
   const prevPhotoRef = React.useRef(photo)
   const doneTimeoutRef = React.useRef(null)
-  const [selectedModel, setSelectedModel] = useState(DEFAULT_MODEL)
+  // const [selectedModel, setSelectedModel] = useState(DEFAULT_MODEL) // Removed unused
 
   
 
@@ -134,7 +134,7 @@ export default function EditPage({ photo, onClose, onSave, onFinished, onRecheck
         clearTimeout(doneTimeoutRef.current)
         doneTimeoutRef.current = null
       }
-      setRecheckStatus('in-progress')
+      // setRecheckStatus('in-progress')
       return
     }
     // polling stopped; if previously was polling, determine if AI updated the photo
@@ -149,15 +149,15 @@ export default function EditPage({ photo, onClose, onSave, onFinished, onRecheck
       } catch {
         // swallow errors from missing values
       }
-      setRecheckStatus('done')
+      // setRecheckStatus('done')
       // show 'done' for 2.5s then switch to idle (label 'Recheck AI again')
       doneTimeoutRef.current = setTimeout(() => {
-        setRecheckStatus('idle')
+        // setRecheckStatus('idle')
         doneTimeoutRef.current = null
       }, 2500)
     } else {
       // No update observed; revert to idle
-      setRecheckStatus('idle')
+      // setRecheckStatus('idle')
     }
   }, [isPolling, sourcePhoto])
 
@@ -244,159 +244,249 @@ export default function EditPage({ photo, onClose, onSave, onFinished, onRecheck
 
   
   return (
-    <div
-      className="bg-white overflow-hidden flex flex-col"
-      style={{
-        height: '100%',
-        boxSizing: 'border-box',
-        borderRadius: '8px',
-        border: '2px solid #4a5568',
-        boxShadow: '0 2px 10px rgba(0,0,0,0.16)',
+    <div 
+      className="fixed inset-0 z-50 font-sans text-slate-900"
+      style={{ 
+        position: 'fixed', 
+        top: 0, 
+        left: 0, 
+        right: 0, 
+        bottom: 0, 
+        zIndex: 9999, 
+        backgroundColor: '#cbd5e1', // slate-300 for background contrast
+        display: 'flex',
+        flexDirection: 'column',
+        padding: '32px', // Equal margin all around (floating window effect)
+        fontFamily: '-apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Helvetica, Arial, sans-serif'
       }}
     >
-      {/* Header with buttons - compact */}
-      <div className="flex items-center justify-between px-4 py-2 border-b">
-  <h1 className="text-lg font-bold">Edit Photo — {sourcePhoto?.filename || photo?.filename}</h1>
-        <div className="flex gap-2">
-          <button onClick={onClose} className="px-3 py-1 text-sm bg-gray-200 rounded hover:bg-gray-300">Back</button>
-          <div className="relative inline-block">
-            <button
-              onClick={async () => {
-                try {
-                  // immediate visual change
-                  setRecheckStatus('in-progress')
-                  setRecheckingAI(true)
-                  if (typeof onRecheckAI === 'function') {
-                    // Explicitly pass photo id and null model to request default (cheaper) model
-                    await onRecheckAI(sourcePhoto?.id || photo.id, null)
-                    // toast removed: AI recheck started
-                  } else {
-                    // toast removed: Recheck handler not available
-                  }
-                } catch (err) {
-                  console.error('Recheck failed', err)
-                  setRecheckStatus('error')
-                  // toast removed: AI recheck failed
-                } finally {
-                  setRecheckingAI(false)
-                }
+      {/* Main App Window / Card */}
+      <div style={{
+        flex: 1,
+        backgroundColor: 'white',
+        borderRadius: '24px',
+        boxShadow: '0 25px 50px -12px rgba(0, 0, 0, 0.25)',
+        display: 'flex',
+        flexDirection: 'column',
+        overflow: 'hidden',
+        position: 'relative'
+      }}>
+        {/* Apple-esque Header */}
+        <header 
+          className="flex-none h-16 px-6 flex items-center justify-between bg-white/80 backdrop-blur-md border-b border-slate-200/60 z-20"
+          style={{
+            height: '64px',
+            flex: 'none',
+            display: 'flex',
+            alignItems: 'center',
+            justifyContent: 'space-between',
+            padding: '0 32px',
+            backgroundColor: 'rgba(255, 255, 255, 0.9)',
+            backdropFilter: 'blur(12px)',
+            borderBottom: '1px solid rgba(226, 232, 240, 0.6)'
+          }}
+        >
+          <div className="flex-1 flex items-center justify-start" style={{ flex: 1, display: 'flex', justifyContent: 'flex-start' }}>
+            <button 
+              onClick={onClose} 
+              className="text-slate-500 hover:text-slate-900 transition-colors text-sm font-medium flex items-center gap-1"
+              style={{ 
+                background: 'none', 
+                border: 'none', 
+                cursor: 'pointer', 
+                color: '#64748b', 
+                fontSize: '14px', 
+                fontWeight: 500,
+                display: 'flex',
+                alignItems: 'center',
+                gap: '4px'
               }}
-              disabled={recheckingAI || isPolling || !aiReady}
-              className={
-                'px-3 py-1 text-sm rounded disabled:opacity-50 disabled:cursor-not-allowed ' + (
-                  recheckStatus === 'in-progress' ? 'bg-yellow-500 text-black hover:bg-yellow-600' :
-                  recheckStatus === 'done' ? 'bg-green-600 text-white hover:bg-green-700' :
-                  recheckStatus === 'error' ? 'bg-red-600 text-white hover:bg-red-700' :
-                  'bg-green-600 text-white hover:bg-green-700'
-                )
-              }
-              title={aiReady ? 'Recheck AI with default model' : 'AI services unavailable. Start required containers to re-enable processing.'}
-              aria-disabled={recheckingAI || isPolling || !aiReady}
             >
-              {recheckingAI || recheckStatus === 'in-progress' ? 'Rechecking...' : (recheckStatus === 'done' ? 'Done' : (recheckStatus === 'error' ? 'Error - Retry' : 'Recheck AI'))}
+              <svg width="20" height="20" fill="none" stroke="currentColor" viewBox="0 0 24 24" style={{ width: '20px', height: '20px' }}><path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M15 19l-7-7 7-7" /></svg>
+              Back
             </button>
-            <button
-              onClick={() => {
-                if (!aiReady) return;
-                const model = selectedModel || DEFAULT_MODEL
-                try {
-                  if (typeof onRecheckAI === 'function') onRecheckAI(sourcePhoto?.id || photo.id, model);
-                } catch (err) {
-                  console.warn('recheck failed', err);
-                }
-              }}
-              title={aiReady ? 'Recheck with selected model' : 'AI services unavailable. Start required containers to re-enable processing.'}
-              className="ml-1 px-2 py-1 bg-purple-700 text-white rounded text-sm disabled:opacity-50 disabled:cursor-not-allowed"
-              disabled={!aiReady}
-            >
-              ▾
-            </button>
-            <div className="ml-2">
-              <ModelSelect value={selectedModel} onChange={setSelectedModel} compact disabled={!aiReady} />
-            </div>
           </div>
-          <button onClick={() => { onFinished(sourcePhoto?.id || photo.id); }} className="px-3 py-1 text-sm bg-green-600 text-white rounded hover:bg-green-700">Mark as Finished</button>
-        </div>
-      </div>
+          
+          <div className="flex-1 flex justify-center" style={{ flex: 1, display: 'flex', justifyContent: 'center' }}>
+            <h1 
+              className="text-sm font-semibold tracking-wide uppercase text-slate-800"
+              style={{ 
+                fontSize: '14px', 
+                fontWeight: 600, 
+                letterSpacing: '0.05em', 
+                textTransform: 'uppercase', 
+                color: '#1e293b',
+                margin: 0
+              }}
+            >
+              Edit Photo
+            </h1>
+          </div>
 
-      {/* 2-column layout with right side split into top/bottom panels */}
-      <div className="flex-1 flex overflow-hidden" style={{ gap: '7px', padding: '7px 7px 7px 7px', backgroundColor: 'white' }}>
-        {/* Left column: Interactive Canvas Editor (50%) */}
-        <div className="w-1/2 rounded border overflow-hidden relative" style={{ backgroundColor: '#f5f5f5' }}>
-          {/* Spinner overlay when this photo is being polled for AI results */}
-          {isPolling && (
-            <div className="absolute inset-0 bg-black bg-opacity-40 flex items-center justify-center rounded z-50">
-              <div className="w-8 h-8 border-4 border-white border-t-transparent rounded-full animate-spin" aria-hidden="true"></div>
-              <span className="sr-only">Processing...</span>
+          <div className="flex-1 flex items-center justify-end gap-3" style={{ flex: 1, display: 'flex', justifyContent: 'flex-end', gap: '12px', alignItems: 'center' }}>
+            {/* AI Recheck Status Indicator */}
+            <div className="flex items-center mr-2">
+             {isPolling || recheckingAI ? (
+                <div className="flex items-center gap-2 px-3 py-1 bg-amber-50 text-amber-600 rounded-full text-xs font-medium border border-amber-100">
+                  <span style={{ fontSize: '12px' }}>Processing...</span>
+                </div>
+             ) : (
+               <button
+                 onClick={() => {
+                    setRecheckingAI(true);
+                    if (onRecheckAI) onRecheckAI(sourcePhoto?.id || photo.id, null).finally(() => setRecheckingAI(false));
+                 }}
+                 disabled={!aiReady}
+                 style={{ 
+                   background: 'none', 
+                   border: 'none', 
+                   cursor: aiReady ? 'pointer' : 'not-allowed', 
+                   color: '#94a3b8', 
+                   fontSize: '12px', 
+                   fontWeight: 500 
+                 }}
+               >
+                 Recheck AI
+               </button>
+             )}
             </div>
-          )}
-          {!imageBlobUrl && !fetchError && (
-            <div className="text-center p-8">Loading image...</div>
-          )}
 
-          {fetchError && (
-            <div className="text-center p-8 text-red-500">Failed to load image.</div>
-          )}
+            <button 
+              onClick={handleSave} 
+              disabled={saving}
+              className="bg-slate-900 hover:bg-slate-800 text-white text-sm font-medium px-5 py-2 rounded-full shadow-sm hover:shadow transition-all active:scale-95 disabled:opacity-50 disabled:cursor-not-allowed"
+              style={{
+                backgroundColor: '#0f172a',
+                color: 'white',
+                fontSize: '14px',
+                fontWeight: 500,
+                padding: '8px 20px',
+                borderRadius: '9999px',
+                border: 'none',
+                cursor: saving ? 'wait' : 'pointer',
+                opacity: saving ? 0.7 : 1,
+                boxShadow: '0 1px 2px 0 rgba(0, 0, 0, 0.05)'
+              }}
+            >
+              {saving ? 'Saving...' : 'Save Changes'}
+            </button>
+          </div>
+        </header>
 
-          {imageBlobUrl && (
-            <ImageCanvasEditor 
-              imageUrl={imageBlobUrl}
-              caption={caption}
-              textStyle={textStyle}
-              onSave={handleCanvasSave}
-            />
-          )}
-        </div>
-
-        {/* Right column: Split into top (metadata/form) and bottom (chat) - (50%) */}
-        <div className="w-1/2 flex flex-col" style={{ gap: '7px' }}>
-          {/* Top right: Metadata and form (50% of right side) */}
-          <div
-            className="h-1/2 flex flex-col p-6 overflow-hidden rounded border"
-            style={{ backgroundColor: '#f5f5f5', minHeight: 0 }}
+        {/* Main Content Grid */}
+        <main 
+          className="flex-1 overflow-hidden flex flex-col lg:flex-row"
+          style={{ 
+            flex: 1, 
+            overflow: 'hidden', 
+            display: 'flex', 
+            flexDirection: 'row' 
+          }}
+        >
+          
+          {/* Left Panel: Image Canvas (1/3 width) */}
+          <div 
+            className="bg-slate-100 relative flex flex-col overflow-hidden border-r border-slate-200"
+            style={{ 
+              flex: 1, // 1/3 of the space
+              backgroundColor: '#f1f5f9',
+              position: 'relative',
+              display: 'flex',
+              flexDirection: 'column',
+              overflow: 'hidden',
+              borderRight: '1px solid #e2e8f0'
+            }}
           >
-            <div className="mb-2">
-              <label className="block font-semibold mb-1 text-sm">Caption</label>
-              <textarea
-                className="w-full border rounded p-2 text-sm"
-                rows={2}
-                value={caption}
-                onChange={e => setCaption(e.target.value)}
-              />
-            </div>
+            {!imageBlobUrl && !fetchError && (
+              <div className="absolute inset-0 flex items-center justify-center text-slate-400">
+                Loading...
+              </div>
+            )}
+            
+            {fetchError && (
+              <div className="absolute inset-0 flex items-center justify-center text-red-500">
+                Unable to load image
+              </div>
+            )}
 
-            <div className="mb-2 flex-1 min-h-0" style={{ display: 'flex', flexDirection: 'column' }}>
-              <label className="block font-semibold mb-1 text-sm">Description</label>
-              <textarea
-                className="w-full border rounded p-2 text-sm flex-1 min-h-0"
-                value={description}
-                onChange={e => setDescription(e.target.value)}
-                style={{ resize: 'vertical', overflow: 'auto', whiteSpace: 'pre-wrap', wordWrap: 'break-word' }}
+            {imageBlobUrl && (
+              <ImageCanvasEditor 
+                imageUrl={imageBlobUrl}
+                caption={caption}
+                textStyle={textStyle}
+                onSave={handleCanvasSave}
               />
-            </div>
-
-            <div className="mb-3">
-              <label className="block font-semibold mb-1 text-sm">Keywords</label>
-              <textarea
-                className="w-full border rounded p-2 text-sm resize-none overflow-hidden"
-                rows={1}
-                value={keywords}
-                onChange={e => setKeywords(e.target.value)}
-                style={{ whiteSpace: 'pre-wrap', wordWrap: 'break-word' }}
-              />
-            </div>
-
-            <div className="flex gap-2 mt-auto">
-              <button onClick={handleSave} disabled={saving} className="px-3 py-1.5 text-sm bg-blue-600 text-white rounded hover:bg-blue-700 disabled:opacity-50">{saving ? 'Saving...' : 'Save'}</button>
-              <button onClick={onClose} className="px-3 py-1.5 text-sm bg-gray-200 rounded hover:bg-gray-300">Cancel</button>
-            </div>
+            )}
           </div>
 
-          {/* Bottom right: Location Map (50% of right side) */}
-          <div className="h-1/2 flex flex-col rounded border overflow-hidden" style={{ backgroundColor: '#f5f5f5' }}>
-            <LocationMapPanel photo={sourcePhoto} />
+          {/* Right Panel: Metadata & Map (2/3 width) */}
+          <div 
+            className="bg-white flex flex-col h-full overflow-hidden shadow-xl z-10"
+            style={{ 
+              flex: 2, // 2/3 of the space
+              backgroundColor: 'white',
+              display: 'flex',
+              flexDirection: 'column',
+              height: '100%',
+              overflow: 'hidden'
+            }}
+          >
+            
+            {/* Top Half: Metadata Form */}
+            <div className="flex-1 overflow-y-auto p-6 min-h-0" style={{ flex: 1, overflowY: 'auto', padding: '32px' }}>
+              <div className="space-y-6" style={{ display: 'flex', flexDirection: 'column', gap: '24px', maxWidth: '800px', margin: '0 auto' }}>
+                
+                {/* Caption Field */}
+                <div className="group">
+                  <label className="block text-[11px] font-bold text-slate-400 uppercase tracking-wider mb-2 ml-1" style={{ display: 'block', fontSize: '11px', fontWeight: 700, color: '#94a3b8', textTransform: 'uppercase', letterSpacing: '0.05em', marginBottom: '8px' }}>Caption</label>
+                  <textarea
+                    value={caption}
+                    onChange={e => setCaption(e.target.value)}
+                    rows={2}
+                    className="w-full bg-slate-50 border border-slate-200 rounded-2xl p-4 text-sm text-slate-700 outline-none focus:border-blue-500"
+                    style={{ width: '100%', backgroundColor: '#f8fafc', border: '1px solid #e2e8f0', borderRadius: '16px', padding: '16px', fontSize: '16px', color: '#334155', outline: 'none', resize: 'none' }}
+                    placeholder="Write a caption..."
+                  />
+                </div>
+
+                {/* Description Field */}
+                <div className="group">
+                  <label className="block text-[11px] font-bold text-slate-400 uppercase tracking-wider mb-2 ml-1" style={{ display: 'block', fontSize: '11px', fontWeight: 700, color: '#94a3b8', textTransform: 'uppercase', letterSpacing: '0.05em', marginBottom: '8px' }}>Description</label>
+                  <textarea
+                    value={description}
+                    onChange={e => setDescription(e.target.value)}
+                    rows={6}
+                    className="w-full bg-slate-50 border border-slate-200 rounded-2xl p-4 text-sm text-slate-700 outline-none focus:border-blue-500"
+                    style={{ width: '100%', backgroundColor: '#f8fafc', border: '1px solid #e2e8f0', borderRadius: '16px', padding: '16px', fontSize: '16px', color: '#334155', outline: 'none', resize: 'none' }}
+                    placeholder="Add a detailed description..."
+                  />
+                </div>
+
+                {/* Keywords Field */}
+                <div className="group">
+                  <label className="block text-[11px] font-bold text-slate-400 uppercase tracking-wider mb-2 ml-1" style={{ display: 'block', fontSize: '11px', fontWeight: 700, color: '#94a3b8', textTransform: 'uppercase', letterSpacing: '0.05em', marginBottom: '8px' }}>Keywords</label>
+                  <input
+                    type="text"
+                    value={keywords}
+                    onChange={e => setKeywords(e.target.value)}
+                    className="w-full bg-slate-50 border border-slate-200 rounded-2xl px-4 py-3 text-sm text-slate-700 outline-none focus:border-blue-500"
+                    style={{ width: '100%', backgroundColor: '#f8fafc', border: '1px solid #e2e8f0', borderRadius: '16px', padding: '12px 16px', fontSize: '16px', color: '#334155', outline: 'none' }}
+                    placeholder="nature, landscape, memory..."
+                  />
+                </div>
+
+              </div>
+            </div>
+
+            {/* Bottom Half: Map (Fixed height) */}
+            <div className="h-64 flex-none border-t border-slate-100 bg-slate-50 p-4" style={{ height: '300px', flex: 'none', borderTop: '1px solid #f1f5f9', backgroundColor: '#f8fafc', padding: '24px' }}>
+               <div className="h-full w-full rounded-xl overflow-hidden shadow-sm border border-slate-200/60 relative" style={{ height: '100%', width: '100%', borderRadius: '16px', overflow: 'hidden', border: '1px solid rgba(226, 232, 240, 0.6)', position: 'relative' }}>
+                  <LocationMapPanel photo={sourcePhoto} />
+               </div>
+            </div>
+
           </div>
-        </div>
+        </main>
       </div>
     </div>
   )

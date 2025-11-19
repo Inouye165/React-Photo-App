@@ -54,12 +54,13 @@ export default function useLocalPhotoPicker({ onUploadComplete, onUploadSuccess 
     });
   }, [localPhotos, startDate, endDate]);
 
-  const handleUploadFiltered = useCallback(async () => {
-    if (filteredLocalPhotos.length === 0) return;
+  const handleUploadFiltered = useCallback(async (subsetToUpload) => {
+    const photosToUpload = Array.isArray(subsetToUpload) ? subsetToUpload : filteredLocalPhotos;
+    if (photosToUpload.length === 0) return;
 
     setUploading(true);
     try {
-      for (const photo of filteredLocalPhotos) {
+      for (const photo of photosToUpload) {
         await uploadPhotoToServer(photo.file);
       }
 
@@ -69,7 +70,7 @@ export default function useLocalPhotoPicker({ onUploadComplete, onUploadSuccess 
       setStartDate('');
       setEndDate('');
       if (typeof onUploadSuccess === 'function') {
-        onUploadSuccess(filteredLocalPhotos.length);
+        onUploadSuccess(photosToUpload.length);
       }
       if (typeof onUploadComplete === 'function') {
         await onUploadComplete();
