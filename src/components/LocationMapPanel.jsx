@@ -46,14 +46,31 @@ function getPhotoLocation(photo) {
 }
 
 export default function LocationMapPanel({ photo }) {
-  const { isLoaded } = useJsApiLoader({
+  const apiKey = import.meta.env.VITE_GOOGLE_MAPS_API_KEY;
+  const { isLoaded, loadError } = useJsApiLoader({
     id: 'google-map-script',
-    googleMapsApiKey: import.meta.env.VITE_GOOGLE_MAPS_API_KEY
+    googleMapsApiKey: apiKey || ''
   });
 
   const location = getPhotoLocation(photo);
   const hasLocation = location != null && !isNaN(location.lat) && !isNaN(location.lng);
   const center = hasLocation ? location : defaultCenter;
+
+  if (!apiKey) {
+    return (
+      <div className="flex items-center justify-center h-full bg-gray-100 text-gray-500 text-sm p-4 text-center">
+        Map configuration missing.
+      </div>
+    );
+  }
+
+  if (loadError) {
+    return (
+      <div className="flex items-center justify-center h-full bg-gray-100 text-red-500 text-sm p-4 text-center">
+        Error loading map.
+      </div>
+    );
+  }
 
   if (!isLoaded) {
     return (
