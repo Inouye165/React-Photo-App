@@ -1,5 +1,6 @@
 const path = require('path');
 const os = require('os');
+const fs = require('fs');
 
 /**
  * Validates that a file path is within the allowed temp directory.
@@ -11,17 +12,52 @@ function validateSafePath(filePath) {
   if (typeof filePath !== 'string') {
     throw new Error('Invalid file path: not a string');
   }
-  const resolved = path.resolve(filePath);
+  
+  const resolvedPath = path.resolve(filePath);
+  
   // Allow both the working dir and OS temp dir for flexibility
   const allowedDirs = [
     path.resolve(__dirname, '../working'),
-    os.tmpdir()
+    path.resolve(os.tmpdir())
   ];
-  const isSafe = allowedDirs.some(dir => resolved.startsWith(dir));
-  if (!isSafe) {
-    throw new Error(`Unsafe file path detected: ${filePath}`);
+
+  // Pre-check: Ensure resolved path starts with one of the allowed dirs
+  // This prevents passing obviously malicious paths to realpathSync
+  const preCheckSafe = allowedDirs.some(dir => {
+    const base = dir.endsWith(path.sep) ? dir : dir + path.sep;
+    return resolvedPath === dir || resolvedPath.startsWith(base);
+  });
+
+  if (!preCheckSafe) {
+     throw new Error(`Unsafe file path detected (pre-check): ${filePath}`);
   }
-  return resolved;
+
+  let realPath;
+  try {
+    realPath = fs.realpathSync(resolvedPath);
+  } catch {
+    throw new Error(`Unsafe or invalid file path detected (realpath failed): ${filePath}`);
+  }
+
+  // Post-check: Ensure real path starts with one of the real allowed dirs
+  const realAllowedDirs = allowedDirs.map(dir => {
+      try {
+          return fs.realpathSync(dir);
+      } catch {
+          return dir; 
+      }
+  });
+
+  const isSafe = realAllowedDirs.some(dir => {
+    const base = dir.endsWith(path.sep) ? dir : dir + path.sep;
+    return realPath === dir || realPath.startsWith(base);
+  });
+
+  if (!isSafe) {
+    throw new Error(`Unsafe file path detected (post-check): ${filePath}`);
+  }
+  
+  return realPath;
 }
 
 module.exports = { validateSafePath };

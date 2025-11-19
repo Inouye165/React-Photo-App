@@ -7,6 +7,7 @@ const heicConvert = require('heic-convert');
 const fs = require('fs');
 const fsPromises = require('fs').promises;
 const supabase = require('../lib/supabaseClient');
+const { validateSafePath } = require('../utils/pathValidator');
 
 async function hashFile(input) {
   if (Buffer.isBuffer(input)) {
@@ -16,13 +17,7 @@ async function hashFile(input) {
   return new Promise((resolve, reject) => {
     const hash = nodeCrypto.createHash('sha256');
     try {
-      const tmpDir = path.resolve(os.tmpdir());
-      const candidatePath = path.resolve(input);
-      // Optionally, use fs.realpathSync for symlink safety
-      const realPath = fs.realpathSync(candidatePath);
-      if (!realPath.startsWith(tmpDir + path.sep)) {
-        return reject(new Error(`File path ${input} is outside the allowed temp directory`));
-      }
+      const realPath = validateSafePath(input);
       const stream = fs.createReadStream(realPath);
       stream.on('error', reject);
       stream.on('data', chunk => hash.update(chunk));
@@ -108,12 +103,7 @@ async function convertHeicToJpegBuffer(input, quality = 90) {
   let inputBuffer = input;
   if (typeof input === 'string') {
     try {
-      const tmpDir = path.resolve(os.tmpdir());
-      const candidatePath = path.resolve(input);
-      const realPath = await fsPromises.realpath(candidatePath);
-      if (!realPath.startsWith(tmpDir + path.sep)) {
-        throw new Error(`File path ${input} is outside the allowed temp directory`);
-      }
+      const realPath = validateSafePath(input);
       inputBuffer = await fsPromises.readFile(realPath);
     } catch (readErr) {
       throw new Error(`Unable to read file: ${readErr.message}`);
