@@ -641,19 +641,38 @@ async function updatePhotoAIMetadata(db, photoRow, storagePath, modelOverrides =
         throw new Error(`Failed to fetch file stream: ${response.status} ${response.statusText}`);
       }
 
-      // Use sharp to resize on the fly
-      // Resize to max 2048x2048, convert to JPEG, preserve metadata
-      const pipeline = sharp()
-        .resize({ width: 2048, height: 2048, fit: 'inside', withoutEnlargement: true })
-        .withMetadata()
-        .toFormat('jpeg');
+      let fileBuffer;
+      const isHeic = photoRow.filename.toLowerCase().endsWith('.heic') || photoRow.filename.toLowerCase().endsWith('.heif');
 
-      const { Readable } = require('stream');
-      const inputStream = response.body ? Readable.fromWeb(response.body) : null;
-      
-      if (!inputStream) throw new Error('No response body stream');
+      if (isHeic) {
+        logger.debug('[AI Debug] [updatePhotoAIMetadata] Detected HEIC file, downloading full buffer for conversion...');
+        const arrayBuffer = await response.arrayBuffer();
+        const rawBuffer = Buffer.from(arrayBuffer);
+        
+        // Convert to JPEG using helper (handles fallback if sharp fails)
+        const jpegBuffer = await convertHeicToJpegBuffer(rawBuffer);
+        
+        // Resize using sharp
+        fileBuffer = await sharp(jpegBuffer)
+          .resize({ width: 2048, height: 2048, fit: 'inside', withoutEnlargement: true })
+          .withMetadata()
+          .toFormat('jpeg')
+          .toBuffer();
+      } else {
+        // Use sharp to resize on the fly
+        // Resize to max 2048x2048, convert to JPEG, preserve metadata
+        const pipeline = sharp()
+          .resize({ width: 2048, height: 2048, fit: 'inside', withoutEnlargement: true })
+          .withMetadata()
+          .toFormat('jpeg');
 
-      const fileBuffer = await inputStream.pipe(pipeline).toBuffer();
+        const { Readable } = require('stream');
+        const inputStream = response.body ? Readable.fromWeb(response.body) : null;
+        
+        if (!inputStream) throw new Error('No response body stream');
+
+        fileBuffer = await inputStream.pipe(pipeline).toBuffer();
+      }
       
       logger.debug('[AI Debug] [updatePhotoAIMetadata] Resized file buffer loaded. Buffer length:', fileBuffer.length);
 
