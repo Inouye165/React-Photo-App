@@ -112,6 +112,17 @@ async function convertHeicToJpegBuffer(input, quality = 90) {
         allowedDirs.push(path.resolve(process.env.TEST_IMAGE_DIR));
       }
       const realPath = validateSafePath(input, allowedDirs);
+      
+      // Redundant check to satisfy CodeQL data flow analysis
+      const isSafe = allowedDirs.some(dir => {
+        const base = dir.endsWith(path.sep) ? dir : dir + path.sep;
+        return realPath === dir || realPath.startsWith(base);
+      });
+      
+      if (!isSafe) {
+        throw new Error(`File path ${input} is outside the allowed directories`);
+      }
+
       inputBuffer = await fsPromises.readFile(realPath);
     } catch (readErr) {
       throw new Error(`Unable to read file: ${readErr.message}`);
