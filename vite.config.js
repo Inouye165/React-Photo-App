@@ -8,6 +8,12 @@ import { createRequire } from 'module';
 // https://vite.dev/config/
 export default defineConfig({
   plugins: [react()],
+  optimizeDeps: {
+    include: [
+      'konva',
+      'konva/lib/Core.js',
+    ],
+  },
   resolve: {
     alias: (() => {
       const requireFromModule = createRequire(import.meta.url);
