@@ -37,11 +37,25 @@ export default defineConfig({
         }
       }
 
-      // Always map 'konva/lib/*' imports to the package lib folder if it exists
+      // Debugging: Check if konva/lib/Core.js exists
+      try {
+        if (fs.existsSync(konvaLibDir)) {
+          console.log('konva/lib contents:', fs.readdirSync(konvaLibDir));
+        } else {
+          console.log('konva/lib directory NOT FOUND at', konvaLibDir);
+        }
+      } catch (e) {
+        console.log('Error checking konva/lib:', e);
+      }
+
       const aliases = [];
-      // Removed explicit konva/lib alias to let Node resolution handle it via package.json exports
-      // This fixes the "Rollup failed to resolve import" error in CI where the alias might be malformed
       
+      // Explicitly alias konva/lib/Core.js to the absolute path
+      const konvaCorePath = path.join(konvaLibDir, 'Core.js');
+      if (fs.existsSync(konvaCorePath)) {
+        aliases.push({ find: 'konva/lib/Core.js', replacement: konvaCorePath });
+      }
+
       aliases.push({ find: /^konva$/, replacement: konvaReplacement });
       return aliases;
     })(),
