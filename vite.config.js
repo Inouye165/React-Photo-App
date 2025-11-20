@@ -39,10 +39,18 @@ export default defineConfig({
 
       // Debugging: Check if konva/lib/Core.js exists
       try {
-        if (fs.existsSync(konvaLibDir)) {
-          console.log('konva/lib contents:', fs.readdirSync(konvaLibDir));
+        const konvaDir = path.resolve(__dirname, 'node_modules/konva');
+        console.log('Checking konva dir:', konvaDir);
+        if (fs.existsSync(konvaDir)) {
+          console.log('konva contents:', fs.readdirSync(konvaDir));
+          const libDir = path.join(konvaDir, 'lib');
+          if (fs.existsSync(libDir)) {
+             console.log('konva/lib contents:', fs.readdirSync(libDir));
+          } else {
+             console.log('konva/lib NOT FOUND');
+          }
         } else {
-          console.log('konva/lib directory NOT FOUND at', konvaLibDir);
+          console.log('konva dir NOT FOUND');
         }
       } catch (e) {
         console.log('Error checking konva/lib:', e);
@@ -54,6 +62,11 @@ export default defineConfig({
       const konvaCorePath = path.join(konvaLibDir, 'Core.js');
       if (fs.existsSync(konvaCorePath)) {
         aliases.push({ find: 'konva/lib/Core.js', replacement: konvaCorePath });
+      } else {
+        console.log('konva/lib/Core.js NOT FOUND, aliasing to main konva entry');
+        // Fallback to the main konva entry point if Core.js is missing
+        // This might happen if the package structure is different in CI
+        aliases.push({ find: 'konva/lib/Core.js', replacement: konvaReplacement });
       }
 
       aliases.push({ find: /^konva$/, replacement: konvaReplacement });
