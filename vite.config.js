@@ -4,7 +4,6 @@ import react from '@vitejs/plugin-react'
 import path from 'path'
 import { fileURLToPath } from 'url'
 
-// Define __dirname for ESM environment
 const __dirname = path.dirname(fileURLToPath(import.meta.url))
 
 // https://vite.dev/config/
@@ -12,10 +11,17 @@ export default defineConfig({
   plugins: [react()],
   resolve: {
     alias: {
-      // Force 'konva' import to point directly to the library index
-      'konva': path.resolve(__dirname, 'node_modules/konva/lib/index.js'),
-      // Force deep imports like 'konva/lib/Core.js' to look in the lib directory
-      'konva/lib': path.resolve(__dirname, 'node_modules/konva/lib'),
+      // "Nuclear" Fix: Point EVERYTHING to the root konva.js file.
+      // This bypasses the missing 'lib' folder in CI entirely.
+      
+      // 1. Handle 'import ... from "konva"'
+      'konva': path.resolve(__dirname, 'node_modules/konva/konva.js'),
+      
+      // 2. Handle 'import ... from "konva/lib/Core.js"' (used by react-konva)
+      'konva/lib/Core.js': path.resolve(__dirname, 'node_modules/konva/konva.js'),
+      
+      // 3. Catch-all for other deep imports
+      'konva/lib': path.resolve(__dirname, 'node_modules/konva/konva.js'),
     }
   },
   optimizeDeps: {
