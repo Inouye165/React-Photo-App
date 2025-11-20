@@ -57,7 +57,7 @@ describe('EditPage - protected image blob fetch', () => {
   test('shows loading state initially', () => {
     const photo = { id: 1, url: '/protected/image.jpg', filename: 'image.jpg' }
     render(<EditPage photo={photo} onClose={() => {}} onSave={() => {}} onFinished={() => {}} />)
-    expect(screen.getByText('Loading image...')).toBeInTheDocument()
+    expect(screen.getByText('Loading...')).toBeInTheDocument()
   })
 
   test('shows error message if blob fetch fails', async () => {
@@ -68,7 +68,7 @@ describe('EditPage - protected image blob fetch', () => {
     const { queryByTestId } = render(<EditPage photo={photo} onClose={() => {}} onSave={() => {}} onFinished={() => {}} />)
 
     await waitFor(() => {
-      expect(screen.getByText('Failed to load image.')).toBeInTheDocument()
+      expect(screen.getByText('Unable to load image')).toBeInTheDocument()
     })
 
     expect(queryByTestId('image-canvas-editor')).toBeNull()

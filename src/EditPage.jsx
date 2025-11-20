@@ -256,7 +256,7 @@ export default function EditPage({ photo, onClose, onSave, onRecheckAI, aiReady 
         backgroundColor: '#cbd5e1', // slate-300 for background contrast
         display: 'flex',
         flexDirection: 'column',
-        padding: '32px', // Equal margin all around (floating window effect)
+        padding: '16px', // Reduced margin for better screen utilization
         fontFamily: '-apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Helvetica, Arial, sans-serif'
       }}
     >
@@ -287,15 +287,21 @@ export default function EditPage({ photo, onClose, onSave, onRecheckAI, aiReady 
           }}
         >
           <div className="flex-1 flex items-center justify-start" style={{ flex: 1, display: 'flex', justifyContent: 'flex-start' }}>
-            <button 
-              onClick={onClose} 
+            <button
+              onClick={() => {
+                if (window.history.length > 1) {
+                  window.history.back();
+                } else if (typeof onClose === 'function') {
+                  onClose();
+                }
+              }}
               className="text-slate-500 hover:text-slate-900 transition-colors text-sm font-medium flex items-center gap-1"
-              style={{ 
-                background: 'none', 
-                border: 'none', 
-                cursor: 'pointer', 
-                color: '#64748b', 
-                fontSize: '14px', 
+              style={{
+                background: 'none',
+                border: 'none',
+                cursor: 'pointer',
+                color: '#64748b',
+                fontSize: '14px',
                 fontWeight: 500,
                 display: 'flex',
                 alignItems: 'center',

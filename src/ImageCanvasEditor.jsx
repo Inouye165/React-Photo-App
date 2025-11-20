@@ -36,8 +36,8 @@ export default function ImageCanvasEditor({ imageUrl, caption, textStyle, onSave
       // Calculate dimensions to fit container while maintaining aspect ratio
       const container = containerRef.current;
       if (container) {
-        const containerWidth = container.offsetWidth - 40; // padding
-        const containerHeight = container.offsetHeight - 40;
+        const containerWidth = container.offsetWidth - 8; // padding
+        const containerHeight = container.offsetHeight - 8;
         
         const imgAspect = img.width / img.height;
         const containerAspect = containerWidth / containerHeight;
@@ -58,11 +58,10 @@ export default function ImageCanvasEditor({ imageUrl, caption, textStyle, onSave
         setDimensions({ width, height, scale, imgWidth: img.width, imgHeight: img.height });
         
         // Position text - use saved position if available, otherwise center initially
-        if (!textStyle?.x && !textStyle?.y) {
+        if (!textStyle?.y) {
           setTextProps(prev => ({
             ...prev,
-            x: width / 2,
-            y: height - 100, // Bottom area
+            y: 20, // Top area with padding
           }));
         }
       }
@@ -85,11 +84,10 @@ export default function ImageCanvasEditor({ imageUrl, caption, textStyle, onSave
     const textNode = stageRef.current?.findOne('.caption-text');
     if (!textNode || !dimensions.width) return pos;
     
-    const textWidth = textNode.width();
     const textHeight = textNode.height();
     
     return {
-      x: Math.max(0, Math.min(pos.x, dimensions.width - textWidth)),
+      x: 0, // Lock horizontal movement to keep centered
       y: Math.max(0, Math.min(pos.y, dimensions.height - textHeight)),
     };
   };
@@ -141,7 +139,6 @@ export default function ImageCanvasEditor({ imageUrl, caption, textStyle, onSave
 
   return (
     <div 
-      ref={containerRef} 
       className="w-full h-full flex flex-col bg-slate-100 relative overflow-hidden"
       style={{ width: '100%', height: '100%', display: 'flex', flexDirection: 'column', backgroundColor: '#f1f5f9', position: 'relative', overflow: 'hidden' }}
     >
@@ -210,7 +207,8 @@ export default function ImageCanvasEditor({ imageUrl, caption, textStyle, onSave
 
       {/* Canvas Area */}
       <div 
-        className="flex-1 w-full relative flex items-center justify-center overflow-hidden p-8"
+        ref={containerRef}
+        className="flex-1 w-full relative flex items-center justify-center overflow-hidden p-1"
         style={{ 
           flex: 1, 
           width: '100%', 
@@ -219,7 +217,7 @@ export default function ImageCanvasEditor({ imageUrl, caption, textStyle, onSave
           alignItems: 'center', 
           justifyContent: 'center', 
           overflow: 'hidden', 
-          padding: '32px',
+          padding: '4px',
           backgroundImage: 'url("data:image/svg+xml;base64,PHN2ZyB3aWR0aD0iMjAiIGhlaWdodD0iMjAiIHhtbG5zPSJodHRwOi8vd3d3LnczLm9yZy8yMDAwL3N2ZyI+PHBhdGggZD0iTTEgMWgydjJIMUMxeiIgZmlsbD0iI0UyRThGMCIgZmlsbC1ydWxlPSJldmVub2RkIi8+PC9zdmc+")'
         }}
       >
@@ -239,24 +237,21 @@ export default function ImageCanvasEditor({ imageUrl, caption, textStyle, onSave
               <KonvaText
                 name="caption-text"
                 {...textProps}
+                x={0}
+                width={dimensions.width}
+                align="center"
+                padding={20}
                 dragBoundFunc={handleDragBound}
                 onDragMove={(e) => {
                   setTextProps(prev => ({
                     ...prev,
-                    x: e.target.x(),
+                    x: 0,
                     y: e.target.y(),
                   }));
                 }}
               />
             </Layer>
           </Stage>
-        </div>
-        
-        {/* Helper Text Overlay */}
-        <div className="absolute bottom-4 left-1/2 transform -translate-x-1/2 pointer-events-none" style={{ position: 'absolute', bottom: '16px', left: '50%', transform: 'translateX(-50%)', pointerEvents: 'none' }}>
-          <span className="bg-black/50 backdrop-blur-sm text-white/90 px-3 py-1 rounded-full text-[10px] font-medium uppercase tracking-wider shadow-sm" style={{ backgroundColor: 'rgba(0, 0, 0, 0.5)', backdropFilter: 'blur(4px)', color: 'rgba(255, 255, 255, 0.9)', padding: '4px 12px', borderRadius: '9999px', fontSize: '10px', fontWeight: 500, textTransform: 'uppercase', letterSpacing: '0.05em', boxShadow: '0 1px 2px 0 rgba(0, 0, 0, 0.05)' }}>
-            Drag text to reposition
-          </span>
         </div>
       </div>
     </div>

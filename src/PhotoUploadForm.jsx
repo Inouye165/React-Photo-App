@@ -187,12 +187,12 @@ const PhotoUploadForm = ({
            >
              Change Folder
            </button>
-           <button
+          <button
             onClick={onUploadClick}
-            disabled={uploading || selectedIndices.size === 0}
+            disabled={uploading || (selectedIndices.size === 0 && filteredLocalPhotos.length === 0)}
             className="px-4 py-2 text-sm font-medium text-white bg-blue-600 rounded-md hover:bg-blue-700 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-blue-500 disabled:opacity-50 disabled:cursor-not-allowed shadow-sm transition-all"
           >
-            {uploading ? 'Uploading...' : `Upload ${selectedIndices.size} Photos`}
+            {uploading ? 'Uploading...' : `Upload ${selectedIndices.size || filteredLocalPhotos.length} Photos`}
           </button>
         </div>
       </div>

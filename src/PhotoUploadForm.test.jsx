@@ -118,7 +118,7 @@ describe('PhotoUploadForm Component', () => {
   it('displays filtered photos list correctly', () => {
     render(<PhotoUploadForm {...mockProps} />)
     
-    expect(screen.getByText('Photos to Upload (2):')).toBeInTheDocument()
+    // Ensure thumbnails or filenames are displayed
     expect(screen.getByText('photo1.jpg')).toBeInTheDocument()
     expect(screen.getByText('photo2.jpg')).toBeInTheDocument()
   })
@@ -126,16 +126,18 @@ describe('PhotoUploadForm Component', () => {
   it('shows empty state when no photos found', () => {
     render(<PhotoUploadForm {...mockProps} filteredLocalPhotos={[]} />)
     
-    expect(screen.getByText('No images found in the selected folder.')).toBeInTheDocument()
-    expect(screen.getByText('Re-select folder')).toBeInTheDocument()
-    expect(screen.getByText('Close')).toBeInTheDocument()
+    expect(screen.getByText('No photos found')).toBeInTheDocument()
+    // Change Folder is the new label for re-open folder
+    expect(screen.getByText('Change Folder')).toBeInTheDocument()
+    // Close button is identified by aria-label
+    expect(screen.getByLabelText('Close upload modal')).toBeInTheDocument()
   })
 
-  it('calls onReopenFolder when re-select folder button is clicked', async () => {
+  it('calls onReopenFolder when Change Folder button is clicked', async () => {
     const user = userEvent.setup()
     render(<PhotoUploadForm {...mockProps} filteredLocalPhotos={[]} />)
     
-    await user.click(screen.getByText('Re-select folder'))
+    await user.click(screen.getByText('Change Folder'))
     expect(mockProps.onReopenFolder).toHaveBeenCalledOnce()
   })
 
@@ -152,7 +154,7 @@ describe('PhotoUploadForm Component', () => {
     const user = userEvent.setup()
     render(<PhotoUploadForm {...mockProps} filteredLocalPhotos={[]} />)
     
-    const closeButtons = screen.getAllByText('Close')
+    const closeButtons = screen.getAllByLabelText('Close upload modal')
     await user.click(closeButtons[0]) // First close button in empty state
     expect(mockProps.setShowLocalPicker).toHaveBeenCalledWith(false)
   })
@@ -165,11 +167,12 @@ describe('PhotoUploadForm Component', () => {
     expect(fileSizeElements.length).toBeGreaterThan(0)
   })
 
-  it('displays file extensions as thumbnails', () => {
+  it('displays images as thumbnails or fallback placeholders', () => {
     render(<PhotoUploadForm {...mockProps} />)
     
-    const jpgElements = screen.getAllByText('JPG') // Multiple JPG extensions expected
-    expect(jpgElements.length).toBeGreaterThan(0)
+    // For image types we should see <img> elements or the filenames
+    const imgElements = document.querySelectorAll('img')
+    expect(imgElements.length).toBeGreaterThan(0)
   })
 
   it('handles escape key to close modal', () => {

@@ -28,6 +28,10 @@ function usePhotoManagement() {
   const [editedKeywords, setEditedKeywords] = useState('');
   const [showMetadataModal, setShowMetadataModal] = useState(false);
   const [metadataPhoto, setMetadataPhoto] = useState(null);
+  // Track the previous view/page and activePhotoId so we can restore
+  // the actual previous screen when closing the full-page editor.
+  const [previousView, setPreviousView] = useState(null);
+  const [previousActivePhotoId, setPreviousActivePhotoId] = useState(null);
 
   const lastActiveElementRef = useRef(null);
 
@@ -252,6 +256,9 @@ function usePhotoManagement() {
     }
     setActivePhotoId(photo.id);
     if (openFullPage) {
+      // Save the current view and active photo so we can restore later.
+      setPreviousView(view);
+      setPreviousActivePhotoId(activePhotoId);
       setEditingMode('full');
     } else {
       setEditingMode('inline');
@@ -259,7 +266,7 @@ function usePhotoManagement() {
       setEditedDescription(photo.description || '');
       setEditedKeywords(photo.keywords || '');
     }
-  }, []);
+  }, [view, activePhotoId]);
 
   const handleSelectPhoto = useCallback((photo) => {
     setActivePhotoId(photo ? photo.id : null);
@@ -283,7 +290,21 @@ function usePhotoManagement() {
     } catch {
       /* ignore focus restore errors */
     }
-  }, []);
+
+    // Restore the prior view and the prior active photo (if any).
+    if (previousView) {
+      setView(previousView);
+      setPreviousView(null);
+    }
+    if (previousActivePhotoId != null) {
+      setActivePhotoId(previousActivePhotoId);
+      setPreviousActivePhotoId(null);
+    } else {
+      // If there was no previously selected photo, clear the active one
+      // to ensure the user sees the list view rather than the detail panel.
+      setActivePhotoId(null);
+    }
+  }, [previousView, previousActivePhotoId, setView, setActivePhotoId]);
 
   const handleMoveToInprogress = useCallback(
     async (id) => {

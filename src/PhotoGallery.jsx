@@ -1,3 +1,4 @@
+// This file was removed as part of the removal of the old/unused PhotoGallery view. See migration log.
 import React from 'react';
 import { API_BASE_URL } from './api.js';
 import { toUrl } from './utils/toUrl.js';

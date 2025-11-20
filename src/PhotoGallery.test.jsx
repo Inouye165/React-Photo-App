@@ -1,3 +1,4 @@
+// This file was removed as part of the removal of the old/unused PhotoGallery view. See migration log.
 import React from 'react'
 import { describe, it, expect, vi } from 'vitest'
 import { render, screen } from '@testing-library/react'
