@@ -10,19 +10,21 @@ const __dirname = path.dirname(fileURLToPath(import.meta.url))
 export default defineConfig({
   plugins: [react()],
   resolve: {
-    alias: {
-      // "Nuclear" Fix: Point EVERYTHING to the root konva.js file.
-      // This bypasses the missing 'lib' folder in CI entirely.
-      
-      // 1. Handle 'import ... from "konva"'
-      'konva': path.resolve(__dirname, 'node_modules/konva/konva.js'),
-      
-      // 2. Handle 'import ... from "konva/lib/Core.js"' (used by react-konva)
-      'konva/lib/Core.js': path.resolve(__dirname, 'node_modules/konva/konva.js'),
-      
-      // 3. Catch-all for other deep imports
-      'konva/lib': path.resolve(__dirname, 'node_modules/konva/konva.js'),
-    }
+    // Use Array syntax to support Regex replacements
+    alias: [
+      // 1. Regex: Catch ANY import starting with "konva/lib/" (like Core.js or Global.js)
+      //    and redirect it strictly to the main konva.js bundle.
+      //    This regex ensures we drop the suffix (e.g., /Core.js) so we don't get ENOTDIR errors.
+      {
+        find: /konva\/lib\/.*/,
+        replacement: path.resolve(__dirname, 'node_modules/konva/konva.js')
+      },
+      // 2. Exact match for main "konva" import
+      {
+        find: /^konva$/,
+        replacement: path.resolve(__dirname, 'node_modules/konva/konva.js')
+      }
+    ]
   },
   optimizeDeps: {
     include: ['konva', 'react-konva']
