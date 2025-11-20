@@ -39,9 +39,9 @@ export default defineConfig({
 
       // Always map 'konva/lib/*' imports to the package lib folder if it exists
       const aliases = [];
-      if (fs.existsSync(konvaLibDir)) {
-        aliases.push({ find: /^konva\/lib(.*)/, replacement: konvaLibDir + '$1' });
-      }
+      // Removed explicit konva/lib alias to let Node resolution handle it via package.json exports
+      // This fixes the "Rollup failed to resolve import" error in CI where the alias might be malformed
+      
       aliases.push({ find: /^konva$/, replacement: konvaReplacement });
       return aliases;
     })(),
