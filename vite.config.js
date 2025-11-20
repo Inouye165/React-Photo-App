@@ -10,17 +10,17 @@ const __dirname = path.dirname(fileURLToPath(import.meta.url))
 export default defineConfig({
   plugins: [react()],
   resolve: {
-    // Use Array syntax to support Regex replacements
+    // WE MUST USE ARRAY SYNTAX HERE
+    // This allows us to use Regex to strip the '/Core.js' suffix
     alias: [
-      // 1. Regex: Catch ANY import starting with "konva/lib/" (like Core.js or Global.js)
-      //    and redirect it strictly to the main konva.js bundle.
-      //    This regex ensures we drop the suffix (e.g., /Core.js) so we don't get ENOTDIR errors.
       {
+        // Match "konva/lib/ANYTHING"
         find: /konva\/lib\/.*/,
+        // Replace it with just "konva.js" (dropping the suffix)
         replacement: path.resolve(__dirname, 'node_modules/konva/konva.js')
       },
-      // 2. Exact match for main "konva" import
       {
+        // Match exact "konva" import
         find: /^konva$/,
         replacement: path.resolve(__dirname, 'node_modules/konva/konva.js')
       }
