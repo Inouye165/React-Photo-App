@@ -9,6 +9,8 @@ const __dirname = path.dirname(fileURLToPath(import.meta.url))
 // https://vite.dev/config/
 export default defineConfig({
   plugins: [react()],
+  // WARNING: Do not add aliases for 'konva' or 'konva/lib/...' here.
+  // It breaks react-konva which relies on internal structure.
   optimizeDeps: {
     include: ['konva', 'react-konva']
   },
