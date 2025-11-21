@@ -17,7 +17,11 @@ describe('Downstream error hygiene', () => {
   let app;
   beforeAll(() => {
     app = express();
-    app.use('/uploads', createUploadsRouter({ db: mockKnex }));
+    // Minimal auth shim so uploads route sees an authenticated user
+    app.use('/uploads', (req, res, next) => {
+      req.user = { id: 1, role: 'user' };
+      next();
+    }, createUploadsRouter({ db: mockKnex }));
   });
 
   it('should return 502/503 and no stack leak on upstream error', async () => {

@@ -235,7 +235,10 @@ async function ensureAllThumbnails(db) {
   await Promise.all(workers);
 }
 
-async function ingestPhoto(db, storagePath, filename, state, input) {
+async function ingestPhoto(db, storagePath, filename, state, input, userId) {
+  if (!userId) {
+    throw new Error('userId is required for ingestPhoto');
+  }
   try {
     const hash = await hashFile(input);
     const existing = await db('photos').where({ hash }).select('id').first();
@@ -274,6 +277,7 @@ async function ingestPhoto(db, storagePath, filename, state, input) {
       hash,
       file_size: fileSize,
       storage_path: storagePath,
+      user_id: userId,
       created_at: now,
       updated_at: now
     }).onConflict('filename').merge();

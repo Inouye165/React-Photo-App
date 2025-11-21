@@ -47,6 +47,9 @@ module.exports = function createUploadsRouter({ db }) {
     });
   }, async (req, res) => {
     try {
+      if (!req.user || !req.user.id) {
+        return res.status(401).json({ success: false, error: 'Authentication required' });
+      }
       if (!req.file) {
         return res.status(400).json({ success: false, error: 'No file uploaded' });
       }
@@ -140,7 +143,7 @@ module.exports = function createUploadsRouter({ db }) {
         const safeFilename = path.basename(req.file.path);
         const safeDir = os.tmpdir();
         const sanitizedPath = path.join(safeDir, safeFilename);
-        const result = await ingestPhoto(db, filePath, filename, 'working', sanitizedPath);
+        const result = await ingestPhoto(db, filePath, filename, 'working', sanitizedPath, req.user.id);
         
         if (result.duplicate) {
           // Remove the uploaded file since it's a duplicate

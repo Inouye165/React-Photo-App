@@ -7,7 +7,7 @@ const { mockStorageHelpers } = require('./__mocks__/supabase');
 
 // Mock ingestPhoto to avoid real image parsing in tests
 jest.mock('../media/image', () => ({
-  ingestPhoto: jest.fn(async (_db, _filePath, _filename, _state, _input) => {
+  ingestPhoto: jest.fn(async (_db, _filePath, _filename, _state, _input, _userId) => {
     // Simulate thumbnail generation by adding a thumbnail file to mock storage
     try {
       mockStorageHelpers.addMockFile('photos', `thumbnails/${_filename}`, {
@@ -164,7 +164,7 @@ describe('Uploads Router with Supabase Storage', () => {
     
     // Add auth middleware that accepts our test token
     app.use('/uploads', (req, res, next) => {
-      req.user = { userId: 1, username: 'testuser' };
+      req.user = { id: 1, username: 'testuser' };
       next();
     });
     
