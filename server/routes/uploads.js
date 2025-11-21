@@ -4,6 +4,7 @@ const multer = require('multer');
 const path = require('path');
 const fs = require('fs');
 const os = require('os');
+const crypto = require('crypto');
 const supabase = require('../lib/supabaseClient');
 const logger = require('../logger');
 const { validateSafePath } = require('../utils/pathValidator');
@@ -73,70 +74,44 @@ module.exports = function createUploadsRouter({ db }) {
         return res.status(400).json({ success: false, error: 'Empty file uploaded' });
       }
       
-      // Generate unique filename if needed
-      let filename = req.file.originalname;
-      let counter = 0;
-      let uploadedPath = null;
-      const ext = path.extname(req.file.originalname);
-      const basename = path.basename(req.file.originalname, ext);
+      // Generate a unique filename using UUID
+      // Strict sanitization: remove any path components and dangerous chars from originalName
+      const sanitizedOriginal = path.basename(req.file.originalname).replace(/[^a-zA-Z0-9._-]/g, '_');
+      const uniquePrefix = crypto.randomUUID();
+      const filename = `${uniquePrefix}-${sanitizedOriginal}`;
+      const filePath = `working/${filename}`;
 
       try {
-        // Attempt upload loop (atomic check-and-set via upsert: false)
-        while (!uploadedPath) {
-          if (counter > 0) {
-            filename = `${basename}(${counter})${ext}`;
+        // Strict path validation for CodeQL compliance
+        let realPath;
+        try {
+          // Ensure the temp file path is within Multer's configured temp directory
+          const tempDir = path.resolve(os.tmpdir());
+          const tempFilePath = path.resolve(req.file.path);
+          if (!tempFilePath.startsWith(tempDir + path.sep)) {
+            throw new Error(`Refusing to read file outside temp directory: ${tempFilePath}`);
           }
-          const filePath = `working/${filename}`;
-
-          // Strict path validation for CodeQL compliance
-          let realPath;
-          try {
-             // Ensure the temp file path is within Multer's configured temp directory
-             const tempDir = path.resolve(os.tmpdir());
-             const filePath = path.resolve(req.file.path);
-             if (!filePath.startsWith(tempDir + path.sep)) {
-               throw new Error(`Refusing to read file outside temp directory: ${filePath}`);
-             }
-             realPath = validateSafePath(req.file.path);
-          } catch (err) {
-             logger.error('Attempt to read file outside temp dir:', req.file.path, err);
-             return res.status(400).json({ success: false, error: 'Unsafe file path for upload' });
-          }
-          // Create a fresh stream for each attempt
-          const fileStream = fs.createReadStream(realPath);
-
-          const { data: _uploadData, error: uploadError } = await supabase.storage
-            .from('photos')
-            .upload(filePath, fileStream, {
-              contentType: req.file.mimetype,
-              duplex: 'half', // Required for streaming uploads
-              upsert: false
-            });
-
-          if (uploadError) {
-            // If file exists, increment counter and retry
-            // Supabase/PostgREST usually returns 409 Conflict or specific error message for duplicates
-            // We check for 'Duplicate' in message or 409 status code
-            const isDuplicate = uploadError.statusCode === '409' || 
-                                (uploadError.message && (uploadError.message.includes('already exists') || uploadError.message.includes('Duplicate')));
-            
-            if (isDuplicate) {
-              counter++;
-              if (counter > 100) {
-                 logger.error('Upload failed: too many duplicate filenames');
-                 return res.status(409).json({ success: false, error: 'Too many duplicate filenames' });
-              }
-              continue;
-            }
-
-            logger.error('Supabase upload error:', uploadError);
-            return res.status(500).json({ success: false, error: 'Failed to upload to storage' });
-          }
-
-          uploadedPath = filePath;
+          realPath = validateSafePath(req.file.path);
+        } catch (err) {
+          logger.error('Attempt to read file outside temp dir:', req.file.path, err);
+          return res.status(400).json({ success: false, error: 'Unsafe file path for upload' });
         }
-        
-        const filePath = uploadedPath;
+        // Create a stream for upload
+        const fileStream = fs.createReadStream(realPath);
+
+        const { data: _uploadData, error: uploadError } = await supabase.storage
+          .from('photos')
+          .upload(filePath, fileStream, {
+            contentType: req.file.mimetype,
+            duplex: 'half', // Required for streaming uploads
+            upsert: false
+          });
+
+        if (uploadError) {
+          logger.error('Supabase upload error:', uploadError);
+          return res.status(500).json({ success: false, error: 'Failed to upload to storage' });
+        }
+
         // Process the uploaded file (generate metadata, thumbnails, etc.)
         // Pass the local file path instead of buffer
         // Sanitize the file path for CodeQL compliance
@@ -144,7 +119,7 @@ module.exports = function createUploadsRouter({ db }) {
         const safeDir = os.tmpdir();
         const sanitizedPath = path.join(safeDir, safeFilename);
         const result = await ingestPhoto(db, filePath, filename, 'working', sanitizedPath, req.user.id);
-        
+
         if (result.duplicate) {
           // Remove the uploaded file since it's a duplicate
           await supabase.storage.from('photos').remove([filePath]);
@@ -162,9 +137,9 @@ module.exports = function createUploadsRouter({ db }) {
           try {
             // Ensure the temp file path is within Multer's configured temp directory
             const tempDir = path.resolve(os.tmpdir());
-            const filePath = path.resolve(req.file.path);
-            if (!filePath.startsWith(tempDir + path.sep)) {
-              throw new Error(`Refusing to delete file outside temp directory: ${filePath}`);
+            const tempFilePath = path.resolve(req.file.path);
+            if (!tempFilePath.startsWith(tempDir + path.sep)) {
+              throw new Error(`Refusing to delete file outside temp directory: ${tempFilePath}`);
             }
             const realPath = validateSafePath(req.file.path);
             fs.unlink(realPath, (err) => {

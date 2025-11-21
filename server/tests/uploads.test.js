@@ -186,11 +186,12 @@ describe('Uploads Router with Supabase Storage', () => {
 
       expect(response.status).toBe(200);
       expect(response.body.success).toBe(true);
-      expect(response.body.filename).toBe('test.jpg');
+      // Should be a UUID prefix, then dash, then sanitized original name
+      expect(response.body.filename).toMatch(/^[a-f0-9-]{36}-test\.jpg$/i);
       expect(response.body.hash).toBeDefined();
-      
-      // Verify file was added to mock storage
-      expect(mockStorageHelpers.hasMockFile('photos', 'working/test.jpg')).toBe(true);
+      // Verify file was added to mock storage (find by prefix)
+      const uploadedFile = (mockStorageHelpers.getMockFiles ? mockStorageHelpers.getMockFiles() : []).find(([k]) => /working\/[a-f0-9-]{36}-test\.jpg$/i.test(k));
+      expect(uploadedFile).toBeDefined();
     });
 
     it('should handle duplicate file detection', async () => {
@@ -207,9 +208,10 @@ describe('Uploads Router with Supabase Storage', () => {
         .set('Authorization', 'Bearer valid-token')
         .attach('photo', Buffer.from('fake image data'), 'test.jpg');
 
-      // The duplicate check logic will depend on your implementation
-      // This test may need adjustment based on actual duplicate handling
+      // Should still succeed, but filename will be UUID-prefixed
       expect(response.status).toBe(200);
+      expect(response.body.success).toBe(true);
+      expect(response.body.filename).toMatch(/^[a-f0-9-]{36}-test\.jpg$/i);
     });
 
     it('should return error when no file uploaded', async () => {
@@ -224,11 +226,8 @@ describe('Uploads Router with Supabase Storage', () => {
     });
 
     it('should handle Supabase Storage errors', async () => {
-      // Set up mock storage to return an error
-      mockStorageHelpers.setMockError('photos', 'working/test.jpg', {
-        message: 'Storage unavailable',
-        status: 500
-      });
+      // Use the mock helper to always error on upload
+      mockStorageHelpers.setAlwaysErrorOnUpload(true);
 
       const response = await request(app)
         .post('/uploads/upload')
@@ -238,6 +237,9 @@ describe('Uploads Router with Supabase Storage', () => {
       expect(response.status).toBe(500);
       expect(response.body.success).toBe(false);
       expect(response.body.error).toBe('Failed to upload to storage');
+
+      // Restore normal upload behavior
+      mockStorageHelpers.setAlwaysErrorOnUpload(false);
     });
 
     it('should require authentication', async () => {
@@ -276,7 +278,8 @@ describe('Uploads Router with Supabase Storage', () => {
       
       // Check that thumbnail was created in storage
       const mockFiles = mockStorageHelpers.getMockFiles();
-      const thumbnailFile = mockFiles.find(([key]) => key.includes('thumbnails/'));
+      // Find a thumbnail file with a UUID prefix
+      const thumbnailFile = (mockFiles ? Object.values(mockFiles) : []).find(([k]) => /thumbnails\/[a-f0-9-]{36}-test\.jpg$/i.test(k));
       expect(thumbnailFile).toBeDefined();
     });
 
@@ -318,7 +321,8 @@ describe('Uploads Router with Supabase Storage', () => {
       expect(response.body.success).toBe(true);
       expect(response.body.hash).toBeDefined();
       // Verify file exists in storage despite missing EXIF
-      expect(mockStorageHelpers.hasMockFile('photos', 'working/corrupt.jpg')).toBe(true);
+      const uploadedFile = (mockStorageHelpers.getMockFiles ? mockStorageHelpers.getMockFiles() : []).find(([k]) => /working\/[a-f0-9-]{36}-corrupt\.jpg$/i.test(k));
+      expect(uploadedFile).toBeDefined();
     });
   });
 });
