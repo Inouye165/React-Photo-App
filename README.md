@@ -698,3 +698,4 @@ The project includes a `Procfile` defining the two required process types:
 
 *   **Web Logs**: Should show "Photo upload server running on port..." but **should not** show "[WORKER] AI Worker process started".
 *   **Worker Logs**: Should show "[WORKER] AI Worker process started..." but **should not** show "Photo upload server running on port...".
+# ci trigger

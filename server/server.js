@@ -145,6 +145,10 @@ app.set('trust proxy', 1);
   // Add cookie parser for potential session management
   app.use(cookieParser());
 
+  // CSRF protection middleware (Strict Origin Verification)
+  const { csrfProtection } = require('./middleware/csrf');
+  app.use(csrfProtection);
+
   // Add request validation middleware
   app.use(validateRequest);
   
