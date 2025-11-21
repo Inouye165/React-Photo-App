@@ -4,9 +4,11 @@
  */
 /* eslint-env jest */
 
+
 const mockStorageFiles = new Map();
 const mockStorageErrors = new Map();
 const mockMoveErrors = new Map();
+let alwaysErrorOnUpload = false;
 
 const createMockSupabaseClient = () => {
   return {
@@ -14,7 +16,13 @@ const createMockSupabaseClient = () => {
   from: (bucket) => ({
         upload: jest.fn().mockImplementation((path, file, options = {}) => {
           const key = `${bucket}/${path}`;
-          
+          // Always error if flag is set
+          if (alwaysErrorOnUpload) {
+            return {
+              data: null,
+              error: { message: 'Storage unavailable', status: 500 }
+            };
+          }
           // Check if we should simulate an error
           if (mockStorageErrors.has(key)) {
             return {
@@ -22,7 +30,6 @@ const createMockSupabaseClient = () => {
               error: mockStorageErrors.get(key)
             };
           }
-          
           // Store the file data
           mockStorageFiles.set(key, {
             path,
@@ -31,7 +38,6 @@ const createMockSupabaseClient = () => {
             size: file?.size || file?.length || 1024,
             lastModified: new Date().toISOString()
           });
-          
           return {
             data: {
               path,
@@ -41,6 +47,8 @@ const createMockSupabaseClient = () => {
             error: null
           };
         }),
+          // Set global upload error flag
+          setAlwaysErrorOnUpload: (val) => { alwaysErrorOnUpload = val; },
         
         download: jest.fn().mockImplementation((path) => {
           const key = `${bucket}/${path}`;
@@ -179,12 +187,15 @@ const mockStorageHelpers = {
   
   // Get all mock files
   getMockFiles: () => Array.from(mockStorageFiles.entries()),
-  
+
   // Check if a file exists in mock storage
   hasMockFile: (bucket, path) => {
     const key = `${bucket}/${path}`;
     return mockStorageFiles.has(key);
-  }
+  },
+
+  // Set global upload error flag
+  setAlwaysErrorOnUpload: (val) => { alwaysErrorOnUpload = val; }
 };
 
 module.exports = {
