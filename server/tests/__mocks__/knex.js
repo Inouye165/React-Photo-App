@@ -10,6 +10,7 @@ const mockUsers = new Map();
 const defaultPhotos = [
   {
     id: 1,
+    user_id: 1,
     filename: 'test1.jpg',
     state: 'working',
     hash: 'abc123',
@@ -19,6 +20,7 @@ const defaultPhotos = [
   },
   {
     id: 2,
+    user_id: 1,
     filename: 'test2.jpg',
     state: 'inprogress',
     hash: 'def456',

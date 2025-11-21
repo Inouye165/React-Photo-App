@@ -156,7 +156,7 @@ module.exports = function createPhotosRouter({ db }) {
             'edited_filename',
             'storage_path',
             'ai_model_history'
-          );
+          ).where('user_id', req.user.id);
           if (state === 'working' || state === 'inprogress' || state === 'finished') {
             query = query.where({ state });
           }
@@ -265,7 +265,7 @@ module.exports = function createPhotosRouter({ db }) {
   router.get('/:id', authenticateToken, async (req, res) => {
     try {
       const { id } = req.params;
-      const row = await db('photos').where({ id }).first();
+      const row = await db('photos').where({ id, user_id: req.user.id }).first();
       if (!row) return res.status(404).json({ success: false, error: 'Photo not found' });
 
       let textStyle = null;
@@ -308,7 +308,7 @@ module.exports = function createPhotosRouter({ db }) {
   router.patch('/:id/metadata', authenticateToken, async (req, res) => {
     const { id } = req.params;
     try {
-      const row = await db('photos').where('id', id).select('caption', 'description', 'keywords', 'text_style').first();
+      const row = await db('photos').where({ id, user_id: req.user.id }).select('caption', 'description', 'keywords', 'text_style').first();
       if (!row) {
         return res.status(404).json({ success: false, error: 'Photo not found' });
       }
@@ -332,7 +332,7 @@ module.exports = function createPhotosRouter({ db }) {
           ? null
           : JSON.stringify(textStyle);
 
-      await db('photos').where('id', id).update({
+      await db('photos').where({ id, user_id: req.user.id }).update({
         caption: newCaption,
         description: newDescription,
         keywords: newKeywords,
@@ -366,7 +366,7 @@ module.exports = function createPhotosRouter({ db }) {
   router.patch('/:id/revert', authenticateToken, express.json(), async (req, res) => {
     const { id } = req.params;
     try {
-      const row = await db('photos').where('id', id).first();
+      const row = await db('photos').where({ id, user_id: req.user.id }).first();
       if (!row) {
         return res.status(404).json({ success: false, error: 'Photo not found' });
       }
@@ -384,7 +384,7 @@ module.exports = function createPhotosRouter({ db }) {
         logger.warn('Failed to delete edited file from Supabase storage:', deleteError);
       }
 
-      await db('photos').where('id', id).update({ edited_filename: null });
+      await db('photos').where({ id, user_id: req.user.id }).update({ edited_filename: null });
       res.json({ success: true });
     } catch (error) {
       logger.error('Failed to revert photo', id, error);
@@ -396,7 +396,7 @@ module.exports = function createPhotosRouter({ db }) {
   router.delete('/:id', authenticateToken, async (req, res) => {
     try {
       const { id } = req.params;
-      const row = await db('photos').where({ id }).first();
+      const row = await db('photos').where({ id, user_id: req.user.id }).first();
       if (!row) {
         return res.status(404).json({ success: false, error: 'Photo not found' });
       }
@@ -437,7 +437,7 @@ module.exports = function createPhotosRouter({ db }) {
       }
 
       // Delete from database
-      await db('photos').where({ id }).del();
+      await db('photos').where({ id, user_id: req.user.id }).del();
       res.json({ success: true, message: 'Photo deleted successfully' });
     } catch (err) {
       logger.error('Delete photo error:', err);
@@ -452,7 +452,7 @@ module.exports = function createPhotosRouter({ db }) {
       if (!['working', 'inprogress', 'finished'].includes(state)) {
         return res.status(400).json({ success: false, error: 'Invalid state' });
       }
-      const row = await db('photos').where({ id }).first();
+      const row = await db('photos').where({ id, user_id: req.user.id }).first();
       if (!row) {
         return res.status(404).json({ success: false, error: 'Photo not found' });
       }
@@ -584,7 +584,7 @@ module.exports = function createPhotosRouter({ db }) {
       }
 
       // Update database record
-      await db('photos').where({ id }).update({ 
+      await db('photos').where({ id, user_id: req.user.id }).update({ 
         state, 
         storage_path: newPath,
         updated_at: new Date().toISOString() 
@@ -635,7 +635,7 @@ module.exports = function createPhotosRouter({ db }) {
     if (!imageBuffer || imageBuffer.length === 0) return res.status(400).json({ success: false, error: 'Image data is empty' });
 
     try {
-      const photoRow = await db('photos').where('id', photoId).first();
+      const photoRow = await db('photos').where({ id: photoId, user_id: req.user.id }).first();
       if (!photoRow) return res.status(404).json({ success: false, error: 'Photo not found' });
 
       // Generate unique edited filename
@@ -695,7 +695,7 @@ module.exports = function createPhotosRouter({ db }) {
       const newKeywords = keywords !== undefined ? keywords : photoRow.keywords;
       const newTextStyleJson = textStyle === undefined ? photoRow.text_style : textStyle === null ? null : JSON.stringify(textStyle);
 
-      await db('photos').where('id', photoId).update({
+      await db('photos').where({ id: photoId, user_id: req.user.id }).update({
         edited_filename: editedFilename,
         caption: newCaption,
         description: newDescription,
@@ -741,7 +741,7 @@ module.exports = function createPhotosRouter({ db }) {
   router.post('/:id/recheck-ai', authenticateToken, async (req, res) => {
     try {
       // Ensure photo exists
-      const photo = await db('photos').where({ id: req.params.id }).first();
+      const photo = await db('photos').where({ id: req.params.id, user_id: req.user.id }).first();
       if (!photo) {
         return res.status(404).json({ error: 'Photo not found' });
       }
@@ -796,7 +796,7 @@ module.exports = function createPhotosRouter({ db }) {
   router.post('/:id/run-ai', authenticateToken, async (req, res) => {
     try {
       // Re-fetch the photo to ensure it exists
-      const photo = await db('photos').where({ id: req.params.id }).first();
+      const photo = await db('photos').where({ id: req.params.id, user_id: req.user.id }).first();
       if (!photo) {
         return res.status(404).json({ error: 'Photo not found' });
       }
