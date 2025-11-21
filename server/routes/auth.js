@@ -17,6 +17,10 @@ const {
 } = require('../middleware/auth');
 const logger = require('../logger');
 
+// Dummy hash for timing attack mitigation
+// This is a valid bcrypt hash for the password "dummy"
+const DUMMY_HASH = '$2b$10$abcdefghijklmnopqrstuv';
+
 module.exports = function createAuthRouter({ db }) {
   const router = express.Router();
 
@@ -96,6 +100,13 @@ module.exports = function createAuthRouter({ db }) {
       const clientIp = req.headers['x-forwarded-for'] || req.connection.remoteAddress;
       // Get user by username
       const user = await getUserByUsername(db, username);
+      
+      // Timing attack mitigation: Always verify password
+      // If user exists, verify against their hash. If not, verify against dummy hash.
+      // This ensures the request takes roughly the same amount of time regardless of user existence.
+      const hashToVerify = user ? user.password_hash : DUMMY_HASH;
+      const isValidPassword = await verifyPassword(password, hashToVerify);
+
       if (!user) {
         logger.warn(`[LOGIN FAIL] User not found: username='${username}' ip='${clientIp}'`);
         return res.status(401).json({
@@ -113,8 +124,7 @@ module.exports = function createAuthRouter({ db }) {
         });
       }
 
-      // Verify password
-      const isValidPassword = await verifyPassword(password, user.password_hash);
+      // Verify password result
       if (!isValidPassword) {
         // Increment failed attempts
         await incrementFailedAttempts(db, user.id);
@@ -127,7 +137,7 @@ module.exports = function createAuthRouter({ db }) {
             error: `Account locked due to ${MAX_LOGIN_ATTEMPTS} failed login attempts. Please try again later.`
           });
         }
-  logger.warn(`[LOGIN FAIL] Invalid password: username='${username}' ip='${clientIp}'`);
+        logger.warn(`[LOGIN FAIL] Invalid password: username='${username}' ip='${clientIp}'`);
         return res.status(401).json({
           success: false,
           error: 'Invalid credentials'
