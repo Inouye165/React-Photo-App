@@ -175,30 +175,28 @@ async function createUser(db, userData) {
   const passwordHash = await hashPassword(password);
   
   try {
-    // ---------------- DEBUGGING LOGGING START ----------------
-    console.log('Attempting to insert user:', username);
-    
-    // Using raw insert first without destructuring to catch the return value
-    const debugResult = await db('users').insert({
+    // Pass ['id'] to support Postgres .returning() behavior
+    const result = await db('users').insert({
       username,
       email,
       password_hash: passwordHash,
       role
-    });
+    }, ['id']);
 
-    console.log('DEBUG - DB INSERT RESULT:', debugResult);
-    console.log('DEBUG - Type of result:', typeof debugResult);
-    console.log('DEBUG - Is Array?', Array.isArray(debugResult));
-    // ---------------- DEBUGGING LOGGING END ------------------
-
-    // The original line that was failing (restored for now so you can see the crash context)
-    // If debugResult is NOT an array, this line below is what throws:
-    // TypeError: (intermediate value) is not iterable
-    const [userId] = debugResult; 
+    let userId;
+    if (Array.isArray(result)) {
+      // Handle Postgres returning array of objects or IDs
+      userId = typeof result[0] === 'object' ? result[0].id : result[0];
+    } else if (result && typeof result === 'object' && result.id) {
+      // Handle drivers returning a generic object
+      userId = result.id;
+    } else {
+      // Handle drivers returning a single scalar ID
+      userId = result;
+    }
     
     return { id: userId, username, email, role };
   } catch (err) {
-    console.error('DEBUG - Create User Error:', err); // Added error logging
     if (err.code === 'SQLITE_CONSTRAINT_UNIQUE' || err.code === '23505') {
       throw new Error('Username or email already exists');
     } else {
