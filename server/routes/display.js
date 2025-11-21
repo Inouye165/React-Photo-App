@@ -64,6 +64,7 @@ module.exports = function createDisplayRouter({ db }) {
           this.where('filename', filename).orWhere('edited_filename', filename);
         })
         .andWhere('state', state)
+        .andWhere('user_id', req.user.id)
         .first();
 
       if (!photo) {

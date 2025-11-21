@@ -1,0 +1,44 @@
+React-Photo-App Restricted License v1.0
+
+Copyright (c) 2025 Ron Inouye. All rights reserved.
+
+This software and all associated files (the "Software") are the intellectual property of the copyright holder.
+
+1. Limited Permission to Use
+
+Subject to the terms below, you are granted a limited, non-exclusive, non-transferable, revocable license to:
+
+  - Clone, install, and run the Software on your own machines; and
+  - View and study the source code for personal learning and evaluation only.
+
+You may not use the Software for any commercial purpose. "Commercial purpose" includes, but is not limited to, selling the Software, using it in a paid product or service, using it to provide services to third parties, or using it to generate revenue directly or indirectly.
+
+2. No Redistribution or Derivative Works
+
+You may not:
+
+  - Copy, publish, or redistribute the Software or any portion of it, in source or compiled form, to any third party;
+  - Create, publish, or distribute derivative works based on the Software;
+  - Incorporate any part of the Software into another project, library, service, or product, whether open source or proprietary,
+
+without the prior express written permission of the copyright holder.
+
+3. No Training or Data Mining
+
+You may not use the Software, its structure, prompts, configuration, or any associated data to train, fine-tune, or improve any machine learning models, large language models, or similar systems, nor may you incorporate the Software into any dataset used for such purposes, without the prior express written permission of the copyright holder.
+
+4. Reservation of Rights
+
+Except for the limited rights expressly granted above, all rights in and to the Software are reserved by the copyright holder. No other rights are granted, whether by implication, estoppel, or otherwise.
+
+5. Termination
+
+This license is automatically terminated if you breach any of its terms. Upon termination, you must stop using the Software and destroy any copies in your possession.
+
+6. Disclaimer of Warranty
+
+THE SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF ANY KIND, EXPRESS OR IMPLIED, INCLUDING BUT NOT LIMITED TO THE WARRANTIES OF MERCHANTABILITY, FITNESS FOR A PARTICULAR PURPOSE, AND NON-INFRINGEMENT.
+
+7. Limitation of Liability
+
+IN NO EVENT SHALL THE COPYRIGHT HOLDER BE LIABLE FOR ANY CLAIM, DAMAGES, OR OTHER LIABILITY, WHETHER IN AN ACTION OF CONTRACT, TORT, OR OTHERWISE, ARISING FROM, OUT OF, OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE SOFTWARE.

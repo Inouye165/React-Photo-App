@@ -463,8 +463,13 @@ module.exports = function createPhotosRouter({ db }) {
 
       // Move file in Supabase Storage if the state is actually changing
       if (row.state !== state) {
-  // Log the paths for debugging
-  logger.info('[Supabase MOVE] currentPath:', currentPath, 'newPath:', newPath);
+        // Step 1: Lock - Update DB to PENDING_MOVE
+        await db('photos')
+          .where({ id, user_id: req.user.id })
+          .update({ state_transition_status: 'PENDING_MOVE' });
+
+        // Log the paths for debugging
+        logger.info('[Supabase MOVE] currentPath:', currentPath, 'newPath:', newPath);
 
         const { data: _data, error: moveErrorInitial } = await supabase.storage
           .from('photos')
@@ -504,6 +509,11 @@ module.exports = function createPhotosRouter({ db }) {
             moveError = null;
             // fall through to DB update
           } else if (!notFound) {
+            // Step 4: Rollback (failed)
+            await db('photos')
+              .where({ id, user_id: req.user.id })
+              .update({ state_transition_status: 'IDLE' });
+
             // For non-recoverable errors (permissions, network), return 500 with details
             const payload = { success: false, error: errMsg || 'Failed to move file in storage' };
             if (INCLUDE_ERROR_DETAILS) payload.error_details = formattedError;
@@ -527,6 +537,11 @@ module.exports = function createPhotosRouter({ db }) {
                 .download(currentPath);
 
               if (downloadError) {
+                // Step 4: Rollback (failed)
+                await db('photos')
+                  .where({ id, user_id: req.user.id })
+                  .update({ state_transition_status: 'IDLE' });
+
                 const formattedDownloadErr = formatStorageError(downloadError);
                 logger.error('Fallback download failed for', currentPath, formattedDownloadErr);
                 const payload = { success: false, error: formattedDownloadErr.message || 'Failed to download source during fallback' };
@@ -555,6 +570,11 @@ module.exports = function createPhotosRouter({ db }) {
                 });
 
               if (uploadError) {
+                // Step 4: Rollback (failed)
+                await db('photos')
+                  .where({ id, user_id: req.user.id })
+                  .update({ state_transition_status: 'IDLE' });
+
                 const formattedUploadErr = formatStorageError(uploadError);
                 logger.error('Fallback upload failed for', newPath, formattedUploadErr);
                 const payload = { success: false, error: formattedUploadErr.message || 'Failed to upload during fallback' };
@@ -573,6 +593,11 @@ module.exports = function createPhotosRouter({ db }) {
               logger.info('Fallback copy succeeded for', currentPath, '->', newPath);
               // fall-through to database update
             } catch (fallbackErr) {
+              // Step 4: Rollback (failed)
+              await db('photos')
+                .where({ id, user_id: req.user.id })
+                .update({ state_transition_status: 'IDLE' });
+
               const formattedFallbackErr = formatStorageError(fallbackErr);
               logger.error('Fallback copy exception for', currentPath, formattedFallbackErr.message || formattedFallbackErr);
               const payload = { success: false, error: formattedFallbackErr.message || 'Failed fallback copy in storage' };
@@ -583,10 +608,11 @@ module.exports = function createPhotosRouter({ db }) {
         }
       }
 
-      // Update database record
+      // Step 3: Commit - Update DB with new state and IDLE
       await db('photos').where({ id, user_id: req.user.id }).update({ 
         state, 
         storage_path: newPath,
+        state_transition_status: 'IDLE',
         updated_at: new Date().toISOString() 
       });
 
