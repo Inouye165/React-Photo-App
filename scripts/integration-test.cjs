@@ -6,9 +6,12 @@ const fs = require('fs');
 const SERVER_CMD = 'node';
 const SERVER_ARGS = ['server/server.js'];
 const HEALTH_URL = { hostname: 'localhost', port: 3001, path: '/health', method: 'GET' };
-const REGISTER_URL = { hostname: 'localhost', port: 3001, path: '/auth/register', method: 'POST', headers: { 'Content-Type': 'application/json' } };
-const LOGIN_URL = { hostname: 'localhost', port: 3001, path: '/auth/login', method: 'POST', headers: { 'Content-Type': 'application/json' } };
-const PRIV_URL = { hostname: 'localhost', port: 3001, path: '/privilege', method: 'POST', headers: { 'Content-Type': 'application/json' } };
+// Add an explicit Origin header so that the server's strict-origin CSRF
+// protection sees a known allowed origin and doesn't reject test requests.
+const INTEGRATION_ORIGIN = 'http://localhost:5173';
+const REGISTER_URL = { hostname: 'localhost', port: 3001, path: '/auth/register', method: 'POST', headers: { 'Content-Type': 'application/json', 'Origin': INTEGRATION_ORIGIN } };
+const LOGIN_URL = { hostname: 'localhost', port: 3001, path: '/auth/login', method: 'POST', headers: { 'Content-Type': 'application/json', 'Origin': INTEGRATION_ORIGIN } };
+const PRIV_URL = { hostname: 'localhost', port: 3001, path: '/privilege', method: 'POST', headers: { 'Content-Type': 'application/json', 'Origin': INTEGRATION_ORIGIN } };
 
 // Test user credentials for integration testing
 const TEST_USER = {
