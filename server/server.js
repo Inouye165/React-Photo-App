@@ -100,6 +100,8 @@ const cors = require('cors');
 const cookieParser = require('cookie-parser');
 
 const app = express();
+// Trust first proxy (Heroku, Supabase, AWS ELB, etc.) for correct client IP resolution
+app.set('trust proxy', 1);
   // Configure CORS origins early so preflight (OPTIONS) and error responses
   // include the appropriate Access-Control-Allow-* headers before any
   // validation or authentication middleware runs.
@@ -172,6 +174,14 @@ const app = express();
   }
 
   app.use(createAuthRouter({ db }));
+
+
+  // Test-only endpoint for trust proxy regression test
+  if (process.env.NODE_ENV === 'test') {
+    app.get('/test-ip', (req, res) => {
+      res.json({ ip: req.ip, ips: req.ips, trustProxy: app.get('trust proxy') });
+    });
+  }
 
   // Health check (no auth required). Mount at '/health' so router-root handlers
   // defined in `routes/health.js` become available at '/health'.
