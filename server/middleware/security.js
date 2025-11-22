@@ -20,14 +20,32 @@ function configureSecurity(app) {
         imgSrc: [
           "'self'",
           'data:',
+          'blob:',
+          'https://*.googleapis.com',
+          'https://*.gstatic.com',
+          'https://*.ggpht.com',
+          'https://*.googleusercontent.com',
           ...(isProd ? [] : ['http://localhost:3001', 'http://localhost:5173'])
         ],
         connectSrc: [
           "'self'",
+          'https://*.googleapis.com',
+          'https://*.gstatic.com',
+          'https://*.google.com',
           ...(isProd ? [] : ['http://localhost:3001', 'http://localhost:5173'])
         ],
-        scriptSrc: ["'self'", ...(isProd ? [] : ["'unsafe-inline'"])],
-        styleSrc: ["'self'", ...(isProd ? [] : ["'unsafe-inline'", 'https://fonts.googleapis.com'])],
+        scriptSrc: [
+          "'self'",
+          "https://*.googleapis.com",
+          "https://*.gstatic.com",
+          ...(isProd ? [] : ["'unsafe-inline'", "'unsafe-eval'"])
+        ],
+        styleSrc: [
+          "'self'",
+          "'unsafe-inline'",
+          "https://*.googleapis.com",
+          "https://fonts.googleapis.com"
+        ],
         fontSrc: ["'self'", 'https://fonts.gstatic.com'],
         frameAncestors: [isProd ? "'none'" : "'self'"],
       },
