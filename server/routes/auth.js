@@ -91,6 +91,25 @@ module.exports = function createAuthRouter({ db }) {
   };
 
   /**
+   * GET /auth/csrf
+   * Get CSRF token
+   */
+  router.get('/auth/csrf', (req, res) => {
+    const crypto = require('crypto');
+    const csrfToken = crypto.randomBytes(32).toString('hex');
+    
+    const csrfCookieOptions = {
+      httpOnly: false,
+      secure: process.env.NODE_ENV === 'production',
+      sameSite: process.env.NODE_ENV === 'production' ? 'None' : 'Lax',
+      maxAge: 24 * 60 * 60 * 1000 // 24 hours
+    };
+    
+    res.cookie('csrfToken', csrfToken, csrfCookieOptions);
+    res.json({ csrfToken });
+  });
+
+  /**
    * POST /auth/login
    * Authenticate user and return JWT token
    */
