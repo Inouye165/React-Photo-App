@@ -46,6 +46,6 @@ describe('processPhotoAI HEIC path', () => {
     expect(res).toBeDefined();
     expect(res.caption).toBe('HEIC Test');
     expect(res.description).toBe('desc heic');
-    expect(res.keywords).toBe('x,y');
+    expect(res.keywords).toEqual(['x', 'y']);
   });
 });
