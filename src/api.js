@@ -52,7 +52,7 @@ export async function updateCollectible(collectibleId, data) {
 // during dev (StrictMode) or accidental double-invokes.
 
 // --- Helpers
-function getAuthHeaders() {
+export function getAuthHeaders() {
   // Authentication is handled with httpOnly cookies (credentials: 'include').
   // Do not rely on localStorage for auth tokens.
   const headers = {
@@ -115,7 +115,36 @@ const stateUpdateLimiter = createLimiter(2);
 
 export function getApiMetrics() { try { return JSON.parse(JSON.stringify(apiMetrics)); } catch { return { totals: { calls: 0 }, limiters: {} }; } }
 
-// --- API functions
+/**
+ * Fetch a protected resource (image) using credentials and return a blob URL.
+ * Caller is responsible for revoking the returned URL when no longer needed.
+ * @param {string} url - Full URL to fetch (absolute or relative)
+ * @returns {Promise<string>} - Object URL (URL.createObjectURL(blob))
+ */
+export async function fetchProtectedBlobUrl(url) {
+  const res = await fetch(url, { method: 'GET', credentials: 'include' });
+  if (handleAuthError(res)) return null;
+  if (!res.ok) throw new Error('Failed to fetch protected resource: ' + res.status);
+  const blob = await res.blob();
+  return URL.createObjectURL(blob);
+}
+
+/**
+ * Revoke a previously created blob URL from fetchProtectedBlobUrl
+ * @param {string} objectUrl
+ */
+export function revokeBlobUrl(objectUrl) {
+  try { if (objectUrl) URL.revokeObjectURL(objectUrl); } catch (e) { void e; }
+}
+
+export async function fetchCsrfToken() {
+  const url = `${API_BASE_URL}/auth/csrf`;
+  const res = await fetch(url, { credentials: 'include' });
+  if (!res.ok) throw new Error('Failed to fetch CSRF token');
+  const json = await res.json();
+  return json.csrfToken;
+}
+
 // Centralized login helper
 // NOTE: The repository uses API_BASE_URL as the configured backend origin.
 // The original plan referenced `backendOrigin`; here we use `API_BASE_URL` to
@@ -363,26 +392,4 @@ export async function getPhoto(photoId, options = {}, serverUrl = `${API_BASE_UR
     if (handleAuthError(res)) return; 
     if (!res.ok) throw new Error('Failed to fetch photo: ' + res.status); 
     return await res.json();
-}
-
-/**
- * Fetch a protected resource (image) using credentials and return a blob URL.
- * Caller is responsible for revoking the returned URL when no longer needed.
- * @param {string} url - Full URL to fetch (absolute or relative)
- * @returns {Promise<string>} - Object URL (URL.createObjectURL(blob))
- */
-export async function fetchProtectedBlobUrl(url) {
-  const res = await fetch(url, { method: 'GET', credentials: 'include' });
-  if (handleAuthError(res)) return null;
-  if (!res.ok) throw new Error('Failed to fetch protected resource: ' + res.status);
-  const blob = await res.blob();
-  return URL.createObjectURL(blob);
-}
-
-/**
- * Revoke a previously created blob URL from fetchProtectedBlobUrl
- * @param {string} objectUrl
- */
-export function revokeBlobUrl(objectUrl) {
-  try { if (objectUrl) URL.revokeObjectURL(objectUrl); } catch (e) { void e; }
 }

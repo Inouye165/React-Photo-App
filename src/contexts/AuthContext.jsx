@@ -29,6 +29,13 @@ export const AuthProvider = ({ children }) => {
       const timeout = setTimeout(() => controller.abort(), AUTH_VERIFY_TIMEOUT_MS);
 
       try {
+        // Fetch CSRF token first
+        try {
+          await api.fetchCsrfToken();
+        } catch (e) {
+          console.warn('Failed to fetch CSRF token during init:', e);
+        }
+
         // Rely only on the httpOnly cookie sent automatically by the browser
         const response = await fetch(`${API_BASE}/auth/verify`, {
           method: 'POST',
@@ -37,6 +44,7 @@ export const AuthProvider = ({ children }) => {
             'Content-Type': 'application/json',
             // Attach abort signal to ensure we don't block forever
             // if the backend hangs on this endpoint.
+            ...api.getAuthHeaders()
           },
           signal: controller.signal,
         });
@@ -63,6 +71,14 @@ export const AuthProvider = ({ children }) => {
   const login = async (username, password) => {
     try {
       const API_BASE = env.VITE_API_URL || '';
+      
+      // Ensure we have a CSRF token before login
+      try {
+        await api.fetchCsrfToken();
+      } catch (e) {
+        console.warn('Failed to fetch CSRF token before login:', e);
+      }
+
       // api.loginUser should set the httpOnly cookie on the server side. We
       // rely on that and only set the user state here.
       const data = await api.loginUser(username, password, API_BASE || undefined);
@@ -79,9 +95,20 @@ export const AuthProvider = ({ children }) => {
   const register = async (username, email, password) => {
     try {
       const API_BASE = env.VITE_API_URL || '';
+
+      // Ensure we have a CSRF token before registration
+      try {
+        await api.fetchCsrfToken();
+      } catch (e) {
+        console.warn('Failed to fetch CSRF token before register:', e);
+      }
+
       const response = await fetch(`${API_BASE}/auth/register`, {
         method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
+        headers: { 
+          'Content-Type': 'application/json',
+          ...api.getAuthHeaders()
+        },
         credentials: 'include',
         body: JSON.stringify({ username, email, password }),
       });
