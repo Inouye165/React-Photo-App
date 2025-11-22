@@ -242,6 +242,10 @@ module.exports = function createAuthRouter({ db }) {
       // Generate JWT token
       const token = generateToken(newUser);
 
+      // Generate CSRF token (cryptographically strong)
+      const crypto = require('crypto');
+      const csrfToken = crypto.randomBytes(32).toString('hex');
+
       // Set httpOnly cookie for the token
       try {
         const cookieOptions = {
@@ -253,6 +257,19 @@ module.exports = function createAuthRouter({ db }) {
         res.cookie('authToken', token, cookieOptions);
       } catch (e) {
         logger.warn('Failed to set auth cookie on register:', e && e.message ? e.message : e);
+      }
+
+      // Set CSRF token as a non-httpOnly cookie (accessible to JS)
+      try {
+        const csrfCookieOptions = {
+          httpOnly: false,
+          secure: process.env.NODE_ENV === 'production',
+          sameSite: process.env.NODE_ENV === 'production' ? 'None' : 'Lax',
+          maxAge: 24 * 60 * 60 * 1000 // 24 hours
+        };
+        res.cookie('csrfToken', csrfToken, csrfCookieOptions);
+      } catch (e) {
+        logger.warn('Failed to set CSRF cookie on register:', e && e.message ? e.message : e);
       }
 
       res.status(201).json({
