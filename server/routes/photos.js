@@ -925,6 +925,7 @@ module.exports = function createPhotosRouter({ db }) {
           this.where({ filename, state })
               .orWhere({ edited_filename: filename, state });
         })
+        .andWhere({ user_id: req.user.id })
         .first();
 
       if (!photo) {
