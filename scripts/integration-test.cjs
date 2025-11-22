@@ -11,6 +11,7 @@ const HEALTH_URL = { hostname: 'localhost', port: 3001, path: '/health', method:
 const INTEGRATION_ORIGIN = 'http://localhost:5173';
 const REGISTER_URL = { hostname: 'localhost', port: 3001, path: '/auth/register', method: 'POST', headers: { 'Content-Type': 'application/json', 'Origin': INTEGRATION_ORIGIN } };
 const LOGIN_URL = { hostname: 'localhost', port: 3001, path: '/auth/login', method: 'POST', headers: { 'Content-Type': 'application/json', 'Origin': INTEGRATION_ORIGIN } };
+const CSRF_URL = { hostname: 'localhost', port: 3001, path: '/auth/csrf', method: 'GET', headers: { 'Origin': INTEGRATION_ORIGIN } };
 const PRIV_URL = { hostname: 'localhost', port: 3001, path: '/privilege', method: 'POST', headers: { 'Content-Type': 'application/json', 'Origin': INTEGRATION_ORIGIN } };
 
 // Test user credentials for integration testing
@@ -69,12 +70,40 @@ function makeRequest(url, payload = null) {
   });
 }
 
+async function getCsrfToken() {
+  console.log('Fetching CSRF token...');
+  const result = await makeRequest(CSRF_URL);
+  if (result.status !== 200) {
+    throw new Error(`Failed to get CSRF token: ${result.status}`);
+  }
+  
+  const csrfToken = result.body.csrfToken;
+  let csrfCookie = null;
+  if (result.headers && result.headers['set-cookie']) {
+    const sc = result.headers['set-cookie'];
+    const found = sc.find(c => c && c.startsWith('csrfToken='));
+    if (found) csrfCookie = found.split(';')[0];
+  }
+  
+  return { csrfToken, csrfCookie };
+}
+
 async function registerAndLogin() {
+  const { csrfToken, csrfCookie } = await getCsrfToken();
+  console.log('Got CSRF token:', csrfToken);
+
+  const addCsrf = (urlObj) => {
+    const newHeaders = Object.assign({}, urlObj.headers);
+    if (csrfToken) newHeaders['x-csrf-token'] = csrfToken;
+    if (csrfCookie) newHeaders['Cookie'] = csrfCookie;
+    return Object.assign({}, urlObj, { headers: newHeaders });
+  };
+
   console.log('Registering test user...');
   
   // Try to register (may fail if user already exists, that's OK)
   try {
-    const registerResult = await makeRequest(REGISTER_URL, TEST_USER);
+    const registerResult = await makeRequest(addCsrf(REGISTER_URL), TEST_USER);
     console.log('Register status:', registerResult.status);
     if (registerResult.status === 400 && registerResult.body.error) {
       console.log('Register error (this may be OK if user exists):', registerResult.body.error);
@@ -88,7 +117,7 @@ async function registerAndLogin() {
   
   // Login to get auth token
   console.log('Logging in...');
-  const loginResult = await makeRequest(LOGIN_URL, {
+  const loginResult = await makeRequest(addCsrf(LOGIN_URL), {
     username: TEST_USER.username,
     password: TEST_USER.password
   });
@@ -115,12 +144,12 @@ async function registerAndLogin() {
       password: 'IntegrationTest123!'
     };
     
-    const registerResult2 = await makeRequest(REGISTER_URL, uniqueUser);
+    const registerResult2 = await makeRequest(addCsrf(REGISTER_URL), uniqueUser);
     console.log('Second register attempt:', registerResult2.status, registerResult2.body);
     
     if (registerResult2.status === 201) {
       await new Promise(resolve => setTimeout(resolve, 500));
-      const loginResult2 = await makeRequest(LOGIN_URL, {
+      const loginResult2 = await makeRequest(addCsrf(LOGIN_URL), {
         username: uniqueUser.username,
         password: uniqueUser.password
       });
@@ -135,11 +164,11 @@ async function registerAndLogin() {
         }
         if (authCookie2) {
           console.log('Login successful with new user (cookie)');
-          return authCookie2; // return cookie string for subsequent requests
+          return { authToken: authCookie2, csrfToken, csrfCookie };
         }
         if (loginResult2.body && loginResult2.body.token) {
           console.log('Login successful with new user (token in body)');
-          return loginResult2.body.token;
+          return { authToken: loginResult2.body.token, csrfToken, csrfCookie };
         }
       }
     }
@@ -149,19 +178,36 @@ async function registerAndLogin() {
   
   console.log('Login successful');
   // Prefer returning the cookie string (e.g. 'authToken=...') so callers can set Cookie header.
-  return authCookie || (loginResult.body && loginResult.body.token);
+  return { authToken: authCookie || (loginResult.body && loginResult.body.token), csrfToken, csrfCookie };
 }
 
-function postPrivilege(authToken) {
+function postPrivilege({ authToken, csrfToken, csrfCookie }) {
   const payload = { relPath: 'test-file.jpg' }; // Dummy path since Supabase Storage is used
   const opts = Object.assign({}, PRIV_URL);
   // If authToken looks like a cookie string (authToken=...), send it as Cookie header.
   const headersBase = Object.assign({}, PRIV_URL.headers, { 'Content-Length': Buffer.byteLength(JSON.stringify(payload)) });
+  
+  // Add CSRF headers
+  if (csrfToken) headersBase['x-csrf-token'] = csrfToken;
+  
+  // Construct Cookie header
+  const cookies = [];
   if (typeof authToken === 'string' && authToken.startsWith('authToken=')) {
-    opts.headers = Object.assign({}, headersBase, { 'Cookie': authToken });
+    cookies.push(authToken);
+  }
+  if (csrfCookie) {
+    cookies.push(csrfCookie);
+  }
+  
+  if (cookies.length > 0) {
+    opts.headers = Object.assign({}, headersBase, { 'Cookie': cookies.join('; ') });
   } else {
+    opts.headers = headersBase;
+  }
+  
+  if (typeof authToken === 'string' && !authToken.startsWith('authToken=')) {
     // Fallback for non-browser clients that still use bearer tokens
-    opts.headers = Object.assign({}, headersBase, { 'Authorization': `Bearer ${authToken}` });
+    opts.headers['Authorization'] = `Bearer ${authToken}`;
   }
   
   return makeRequest(opts, payload);
@@ -183,10 +229,10 @@ function postPrivilege(authToken) {
     console.log('Server healthy. Authenticating...');
     
     // Register and login to get auth token
-    const authToken = await registerAndLogin();
+    const authData = await registerAndLogin();
     
     console.log('Running authenticated privilege check...');
-    const res = await postPrivilege(authToken);
+    const res = await postPrivilege(authData);
     console.log('Privilege check status:', res.status);
     console.log('Privilege response body:', res.body);
     
