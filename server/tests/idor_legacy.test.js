@@ -4,18 +4,7 @@ const cookieParser = require('cookie-parser');
 const jwt = require('jsonwebtoken');
 const db = require('../db/index');
 const createPhotosRouter = require('../routes/photos');
-
-// Mock Supabase
-jest.mock('../lib/supabaseClient', () => ({
-  storage: {
-    from: jest.fn(() => ({
-      download: jest.fn(() => Promise.resolve({
-        data: { arrayBuffer: () => Promise.resolve(Buffer.from('fake-image')) },
-        error: null
-      }))
-    }))
-  }
-}));
+const { mockStorageHelpers, mockDbHelpers } = require('./setup');
 
 describe('IDOR Vulnerability in Legacy Display Route', () => {
   let app;
@@ -26,11 +15,16 @@ describe('IDOR Vulnerability in Legacy Display Route', () => {
   const filename = 'victim_secret_legacy.jpg';
 
   beforeAll(async () => {
-    // Access helpers from the mocked db module
-    const { mockDbHelpers } = db;
-    
-    // Clear default data
+    // Setup App with the Photos Router mounted at /photos
+    app = express();
+    app.use(cookieParser());
+    app.use('/photos', createPhotosRouter({ db }));
+  });
+
+  beforeEach(async () => {
+    // Clear default data loaded by global setup
     mockDbHelpers.clearMockData();
+    mockStorageHelpers.clearMockStorage();
 
     // Create users using helper
     victimUser = mockDbHelpers.addMockUser({ username: 'victim_legacy', password_hash: 'hash' });
@@ -54,15 +48,13 @@ describe('IDOR Vulnerability in Legacy Display Route', () => {
       updated_at: new Date().toISOString()
     });
 
-    // Setup App with the Photos Router mounted at /photos
-    app = express();
-    app.use(cookieParser());
-    app.use('/photos', createPhotosRouter({ db }));
+    // Add file to mock storage so download works
+    mockStorageHelpers.addMockFile('photos', `working/${filename}`, { size: 1024 });
   });
 
   afterAll(async () => {
-    const { mockDbHelpers } = db;
     mockDbHelpers.clearMockData();
+    mockStorageHelpers.clearMockStorage();
   });
 
   test('Attacker should NOT be able to access victim photo via legacy route', async () => {
