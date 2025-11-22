@@ -45,6 +45,6 @@ describe('processPhotoAI', () => {
     expect(res).toBeDefined();
     expect(res.caption).toBe('Test');
     expect(res.description).toBe('desc');
-    expect(res.keywords).toBe('a,b');
+    expect(res.keywords).toEqual(['a', 'b']);
   });
 });

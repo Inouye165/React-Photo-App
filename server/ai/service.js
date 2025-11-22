@@ -395,7 +395,7 @@ function mergeKeywordStrings(existing, additions) {
 
 
 const { app: aiGraph } = require('./langgraph/graph');
-
+const { AnalysisResultSchema } = require('./schemas');
 
 
 /**
@@ -542,10 +542,23 @@ async function processPhotoAI({ fileBuffer, filename, metadata, gps, device }, m
     throw new Error('AI Graph finished but produced no finalResult.');
   }
 
-  const result = {
+  const rawResult = {
     ...finalState.finalResult,
     classification: finalState.classification,
   };
+
+  // Validate with Zod
+  const validation = AnalysisResultSchema.safeParse(rawResult);
+  if (!validation.success) {
+    logger.error('[AI Validation] Schema validation failed', {
+      errors: validation.error.format(),
+      rawResult: JSON.stringify(rawResult).slice(0, 1000) // Log truncated raw result
+    });
+    // Throwing error here will be caught by updatePhotoAIMetadata, which increments retry count
+    throw new Error(`AI Validation Failed: ${validation.error.message}`);
+  }
+
+  const result = validation.data;
 
   logger.info('[AI Result] caption:', result.caption);
   logger.info('[AI Result] description (truncated):', (result.description || '').slice(0, 300));
