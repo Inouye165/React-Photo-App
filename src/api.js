@@ -55,9 +55,17 @@ export async function updateCollectible(collectibleId, data) {
 function getAuthHeaders() {
   // Authentication is handled with httpOnly cookies (credentials: 'include').
   // Do not rely on localStorage for auth tokens.
-  return {
+  const headers = {
     'Content-Type': 'application/json',
   };
+  // Read CSRF token from cookie and add to header
+  if (typeof document !== 'undefined' && document.cookie) {
+    const match = document.cookie.match(/(?:^|; )csrfToken=([^;]*)/);
+    if (match && match[1]) {
+      headers['x-csrf-token'] = decodeURIComponent(match[1]);
+    }
+  }
+  return headers;
 }
 
 function handleAuthError(response) {

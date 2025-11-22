@@ -147,8 +147,13 @@ module.exports = function createAuthRouter({ db }) {
       // Reset failed attempts on successful login
       await resetFailedAttempts(db, user.id);
 
+
       // Generate JWT token
       const token = generateToken(user);
+
+      // Generate CSRF token (cryptographically strong)
+      const crypto = require('crypto');
+      const csrfToken = crypto.randomBytes(32).toString('hex');
 
       // Set httpOnly cookie for the token
       try {
@@ -163,10 +168,24 @@ module.exports = function createAuthRouter({ db }) {
       } catch (e) {
         logger.warn('Failed to set auth cookie:', e && e.message ? e.message : e);
       }
+
+      // Set CSRF token as a non-httpOnly cookie (accessible to JS)
+      try {
+        const csrfCookieOptions = {
+          httpOnly: false,
+          secure: process.env.NODE_ENV === 'production',
+          sameSite: process.env.NODE_ENV === 'production' ? 'None' : 'Lax',
+          maxAge: 24 * 60 * 60 * 1000 // 24 hours
+        };
+        res.cookie('csrfToken', csrfToken, csrfCookieOptions);
+      } catch (e) {
+        logger.warn('Failed to set CSRF cookie:', e && e.message ? e.message : e);
+      }
+
       // Log successful login
       logger.info(`[LOGIN SUCCESS] username='${username}' ip='${clientIp}'`);
 
-      // Return success (token is set as an httpOnly cookie).
+      // Return success (token is set as an httpOnly cookie, CSRF token as readable cookie)
       res.json({
         success: true,
         user: {

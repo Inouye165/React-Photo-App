@@ -55,14 +55,14 @@ const express = require('express');
 const cookieParser = require('cookie-parser');
 const createAuthRouter = require('../routes/auth');
 
-const getAuthCookieFromResponse = (response) => {
+const getCookieFromResponse = (response, name) => {
   const setCookie = response.headers['set-cookie'];
   if (!setCookie) {
     return null;
   }
   const cookies = Array.isArray(setCookie) ? setCookie : [setCookie];
-  const authCookie = cookies.find(cookieStr => typeof cookieStr === 'string' && cookieStr.startsWith('authToken='));
-  return authCookie ? authCookie.split(';')[0] : null;
+  const found = cookies.find(cookieStr => typeof cookieStr === 'string' && cookieStr.startsWith(name + '='));
+  return found ? found.split(';')[0] : null;
 };
 
 describe('Authentication System', () => {
@@ -110,8 +110,10 @@ describe('Authentication System', () => {
       expect(response.body.token).toBeUndefined();
       expect(response.body.user.password_hash).toBeUndefined(); // Should not expose password
 
-      const authCookie = getAuthCookieFromResponse(response);
+      const authCookie = getCookieFromResponse(response, 'authToken');
+      const csrfCookie = getCookieFromResponse(response, 'csrfToken');
       expect(authCookie).toBeTruthy();
+      expect(csrfCookie).toBeTruthy();
     });
 
     test('should reject registration with weak password', async () => {
@@ -179,8 +181,10 @@ describe('Authentication System', () => {
       expect(response.body.user.username).toBe(loginData.username);
       expect(response.body.token).toBeUndefined();
 
-      const authCookie = getAuthCookieFromResponse(response);
+      const authCookie = getCookieFromResponse(response, 'authToken');
+      const csrfCookie = getCookieFromResponse(response, 'csrfToken');
       expect(authCookie).toBeTruthy();
+      expect(csrfCookie).toBeTruthy();
     });
 
     test('should reject login with invalid credentials', async () => {
@@ -217,6 +221,7 @@ describe('Authentication System', () => {
   describe('Token Verification', () => {
     let validCookie;
 
+    let csrfCookie;
     beforeAll(async () => {
       // Get a valid token by logging in
       const loginResponse = await request(app)
@@ -226,16 +231,18 @@ describe('Authentication System', () => {
           password: 'TestPassword123!'
         });
 
-      validCookie = getAuthCookieFromResponse(loginResponse);
-      if (!validCookie) {
-        throw new Error('Expected auth cookie in login response');
+      validCookie = getCookieFromResponse(loginResponse, 'authToken');
+      csrfCookie = getCookieFromResponse(loginResponse, 'csrfToken');
+      if (!validCookie || !csrfCookie) {
+        throw new Error('Expected auth and csrf cookies in login response');
       }
     });
 
     test('should verify valid token', async () => {
       const response = await request(app)
         .post('/auth/verify')
-        .set('Cookie', [validCookie])
+        .set('Cookie', [validCookie, csrfCookie])
+        .set('x-csrf-token', csrfCookie.split('=')[1])
         .expect(200);
 
       expect(response.body.success).toBe(true);
@@ -255,7 +262,8 @@ describe('Authentication System', () => {
     test('should reject invalid token', async () => {
       const response = await request(app)
         .post('/auth/verify')
-        .set('Cookie', ['authToken=invalid-token'])
+        .set('Cookie', ['authToken=invalid-token', 'csrfToken=invalid-csrf'])
+        .set('x-csrf-token', 'invalid-csrf')
         .expect(403);
 
       expect(response.body.success).toBe(false);
