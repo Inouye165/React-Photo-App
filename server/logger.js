@@ -228,7 +228,9 @@ class TinyLogger {
     const preparedArgs = applyBindings(this.bindings, args);
     const methodName = METHOD_MAP[normalized] || 'log';
     const method = typeof console[methodName] === 'function' ? console[methodName] : console.log;
-    method.apply(console, preparedArgs);
+    if (typeof method === 'function') {
+      method.apply(console, preparedArgs);
+    }
     emit('log', { level: normalized, args: preparedArgs, bindings: this.bindings });
     if (normalized === 'error' || normalized === 'fatal') {
       emit('error', { level: normalized, args: preparedArgs, bindings: this.bindings });
