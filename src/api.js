@@ -169,7 +169,11 @@ export async function loginUser(username, password, serverUrl = `${API_BASE_URL}
 export async function uploadPhotoToServer(file, serverUrl = `${API_BASE_URL}/upload`) {
   // Use FormData and rely on cookie-based auth (credentials included).
   const form = new FormData(); form.append('photo', file, file.name);
-  const res = await fetch(serverUrl, { method: 'POST', body: form, credentials: 'include' });
+  
+  const headers = getAuthHeaders();
+  delete headers['Content-Type']; // Let browser set multipart/form-data with boundary
+
+  const res = await fetch(serverUrl, { method: 'POST', headers, body: form, credentials: 'include' });
   if (handleAuthError(res)) return; if (!res.ok) throw new Error('Upload failed'); return await res.json();
 }
 

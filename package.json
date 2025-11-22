@@ -11,6 +11,7 @@
     "test:run": "vitest run",
     "test:coverage": "vitest --coverage",
     "prepare": "husky install",
+    "check-env": "node scripts/verify-env.cjs",
     "secret-scan": "node scripts/secret-scan.cjs",
     "check-privilege": "node scripts/check-privilege.cjs",
     "integration-test": "node scripts/integration-test.cjs",
