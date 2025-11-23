@@ -10,6 +10,65 @@ A chronological log of major bugs or problems found in this photo app. Each entr
 - Advice for expediting future discovery/fixes
 
 
+## 2025-11-23 - Tailwind CSS Not Working (Missing Styles)
+
+**Issue:**
+- Login page appeared completely unstyled (like 1990s HTML) with no CSS applied despite having Tailwind utility classes in the JSX.
+- All Tailwind classes (`bg-gray-50`, `rounded-lg`, `shadow-lg`, `px-3`, `py-2`, etc.) were being ignored.
+- Other components in the app appeared to work fine.
+
+**How Discovered:**
+- User reported that the redesigned login page looked completely unstyled after a UX overhaul.
+- Initial troubleshooting revealed dev servers had crashed, but restarting them didn't fix the styling issue.
+
+**Root Cause:**
+- **Tailwind CSS v4 syntax incompatibility**: The project was using Tailwind CSS v4.1.14 with `@tailwindcss/postcss`, but `src/index.css` still used the old Tailwind v3 import syntax:
+  ```css
+  @tailwind base;
+  @tailwind components;
+  @tailwind utilities;
+  ```
+- Tailwind v4 requires the new `@import` syntax:
+  ```css
+  @import "tailwindcss";
+  ```
+- With the wrong syntax, Tailwind v4 was compiling but only generating a minimal subset of utilities that were used elsewhere in the codebase, ignoring any new classes added to components.
+
+**Debugging Steps:**
+1. Checked if dev servers were running - they had crashed (Exit Code: 1).
+2. Restarted frontend dev server successfully.
+3. Verified Tailwind directives were present in `src/index.css`.
+4. Confirmed CSS file was being imported in `src/main.jsx`.
+5. Inspected compiled CSS output from Vite - noticed Tailwind was generating CSS but missing the specific utility classes used in LoginForm.
+6. Discovered project was using Tailwind v4.1.14 with `@tailwindcss/postcss` in `postcss.config.js`.
+7. Identified syntax mismatch - v3 syntax (`@tailwind`) vs v4 requirement (`@import`).
+
+**Resolution:**
+- Changed `src/index.css` from:
+  ```css
+  @tailwind base;
+  @tailwind components;
+  @tailwind utilities;
+  ```
+  To:
+  ```css
+  @import "tailwindcss";
+  ```
+- This immediately triggered Vite hot reload, and all Tailwind utility classes started working correctly.
+
+**Expedite Future Discovery:**
+- When upgrading major versions of CSS frameworks, always check for breaking changes in import syntax.
+- Add a pre-commit check or linting rule to validate Tailwind configuration matches the installed version.
+- Document the Tailwind version and required syntax in project README.
+- When debugging "missing styles," verify the CSS framework is using the correct syntax for its version, not just that it's installed.
+
+**Lessons Learned:**
+- Tailwind v4 is a complete rewrite with breaking changes to the import syntax.
+- The old `@tailwind` directives are silently ignored in v4, leading to partial CSS generation.
+- Always check dependency versions when troubleshooting styling issues after upgrades.
+
+---
+
 ## TO DO
 
 * [x] **Code Review Fixes (High Priority):** Address critical security, resilience, and operational issues identified during a recent code review. See [PROFESSIONAL_CODE_REVIEW_LOG.md] for strategy, sub-tasks, and implementation details.

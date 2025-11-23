@@ -68,6 +68,51 @@ export const AuthProvider = ({ children }) => {
     }
   };
 
+  const signInWithPhone = async (phone) => {
+    try {
+      const { data, error } = await supabase.auth.signInWithOtp({
+        phone,
+      });
+
+      if (error) throw error;
+      return { success: true, data };
+    } catch (err) {
+      console.error('Phone sign-in error:', err);
+      return { success: false, error: err.message };
+    }
+  };
+
+  const verifyPhoneOtp = async (phone, token) => {
+    try {
+      const { data, error } = await supabase.auth.verifyOtp({
+        phone,
+        token,
+        type: 'sms',
+      });
+
+      if (error) throw error;
+      return { success: true, user: data.user };
+    } catch (err) {
+      console.error('OTP verification error:', err);
+      return { success: false, error: err.message };
+    }
+  };
+
+  const resetPassword = async (email) => {
+    try {
+      const redirectTo = `${window.location.origin}/reset-password`;
+      const { data, error } = await supabase.auth.resetPasswordForEmail(email, {
+        redirectTo,
+      });
+
+      if (error) throw error;
+      return { success: true, data };
+    } catch (err) {
+      console.error('Password reset error:', err);
+      return { success: false, error: err.message };
+    }
+  };
+
   const logout = async () => {
     try {
       const { error } = await supabase.auth.signOut();
@@ -86,6 +131,9 @@ export const AuthProvider = ({ children }) => {
     login,
     register,
     logout,
+    signInWithPhone,
+    verifyPhoneOtp,
+    resetPassword,
   };
 
   return <AuthContext.Provider value={value}>{children}</AuthContext.Provider>;

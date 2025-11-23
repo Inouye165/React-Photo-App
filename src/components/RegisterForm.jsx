@@ -93,14 +93,66 @@ const RegisterForm = ({ onSwitchToLogin }) => {
     
     if (!result.success) {
       setError(result.error);
+      setLoading(false);
     } else {
-      setSuccessMessage('Registration successful! Please check your email to confirm your account.');
+      setSuccessMessage('success');
+      setLoading(false);
     }
-    
-    setLoading(false);
   };
 
   const passwordValidation = validatePassword(password);
+
+  // Show success confirmation view
+  if (successMessage === 'success') {
+    return (
+      <div className="min-h-screen flex items-center justify-center bg-gray-50 py-12 px-4 sm:px-6 lg:px-8">
+        <div className="max-w-md w-full space-y-8">
+          <div className="text-center">
+            <div className="mx-auto flex items-center justify-center h-16 w-16 rounded-full bg-green-100 mb-4">
+              <svg className="h-10 w-10 text-green-600" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M3 8l7.89 5.26a2 2 0 002.22 0L21 8M5 19h14a2 2 0 002-2V7a2 2 0 00-2-2H5a2 2 0 00-2 2v10a2 2 0 002 2z" />
+              </svg>
+            </div>
+            <h2 className="text-3xl font-extrabold text-gray-900 mb-2">
+              Check your email
+            </h2>
+            <p className="text-base text-gray-600 mb-6">
+              We've sent a confirmation link to
+            </p>
+            <p className="text-lg font-semibold text-indigo-600 mb-8">
+              {email}
+            </p>
+            <div className="bg-blue-50 border border-blue-200 rounded-lg p-4 mb-6">
+              <p className="text-sm text-blue-800">
+                Click the link in the email to activate your account and start using Photo App.
+              </p>
+            </div>
+            <button
+              onClick={onSwitchToLogin}
+              className="inline-flex items-center px-6 py-3 border border-transparent text-base font-medium rounded-md text-white bg-indigo-600 hover:bg-indigo-700 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-indigo-500"
+            >
+              Return to login
+            </button>
+            <p className="mt-4 text-xs text-gray-500">
+              Didn't receive the email? Check your spam folder or{' '}
+              <button
+                onClick={() => {
+                  setSuccessMessage('');
+                  setEmail('');
+                  setPassword('');
+                  setConfirmPassword('');
+                  setUsername('');
+                }}
+                className="text-indigo-600 hover:text-indigo-500 font-medium"
+              >
+                try again
+              </button>
+            </p>
+          </div>
+        </div>
+      </div>
+    );
+  }
 
   return (
     <div className="min-h-screen flex items-center justify-center bg-gray-50 py-12 px-4 sm:px-6 lg:px-8">
@@ -215,26 +267,6 @@ const RegisterForm = ({ onSwitchToLogin }) => {
               )}
             </div>
           </div>
-
-          {successMessage && (
-            <div className="rounded-md bg-green-50 p-4">
-              <div className="flex">
-                <div className="flex-shrink-0">
-                  <svg className="h-5 w-5 text-green-400" viewBox="0 0 20 20" fill="currentColor">
-                    <path fillRule="evenodd" d="M10 18a8 8 0 100-16 8 8 0 000 16zM8.707 7.293a1 1 0 00-1.414 1.414L8.586 10l-1.293 1.293a1 1 0 101.414 1.414L10 11.414l1.293 1.293a1 1 0 001.414-1.414L11.414 10l1.293-1.293a1 1 0 00-1.414-1.414L10 8.586 8.707 7.293z" clipRule="evenodd" />
-                  </svg>
-                </div>
-                <div className="ml-3">
-                  <h3 className="text-sm font-medium text-green-800">
-                    Registration Successful
-                  </h3>
-                  <div className="mt-2 text-sm text-green-700">
-                    <p>{successMessage}</p>
-                  </div>
-                </div>
-              </div>
-            </div>
-          )}
 
           {error && (
             <div className="rounded-md bg-red-50 p-4">
