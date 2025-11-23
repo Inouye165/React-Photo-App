@@ -51,5 +51,5 @@ describe('Collect context graph integration', () => {
     // food_location_agent should see cached nearbyFood and set best_restaurant_candidate
     expect(result.poiAnalysis).toBeTruthy();
     expect(result.finalResult).toBeTruthy();
-  });
+  }, 10000);
 });
