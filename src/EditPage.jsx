@@ -75,6 +75,7 @@ export default function EditPage({ photo, onClose, onSave, onRecheckAI, aiReady 
   const displayUrl = `${API_BASE_URL}${sourcePhoto?.url || photo?.url}${version ? `?v=${version}` : ''}`;
   const [imageBlobUrl, setImageBlobUrl] = useState(null)
   const [fetchError, setFetchError] = useState(false)
+  const { session } = useAuth(); // Get session to trigger re-fetch on auth change
 
   // Dev double-fetch guard: only fetch once per image in dev/StrictMode
   const fetchRanRef = React.useRef({});
@@ -85,6 +86,11 @@ export default function EditPage({ photo, onClose, onSave, onRecheckAI, aiReady 
     setFetchError(false);
 
     const key = displayUrl;
+    // Reset fetch guard if URL changes
+    if (fetchRanRef.current.lastUrl !== key) {
+      fetchRanRef.current = { lastUrl: key };
+    }
+    
     const fetchRan = fetchRanRef.current; // Capture ref value in effect scope
     if (fetchRan[key]) {
       if (import.meta.env.VITE_DEBUG_IMAGES === 'true') {
@@ -118,12 +124,14 @@ export default function EditPage({ photo, onClose, onSave, onRecheckAI, aiReady 
 
     return () => {
       mounted = false;
-      if (currentObjectUrl) revokeBlobUrl(currentObjectUrl);
+      if (currentObjectUrl) {
+        revokeBlobUrl(currentObjectUrl);
+      }
       setImageBlobUrl(null);
       // Reset guard for next image (safe for this use case)
       fetchRan[key] = false;
     };
-  }, [displayUrl, sourcePhoto]);
+  }, [displayUrl, sourcePhoto, session]);
 
   // Watch polling state and photo updates to change the recheck button status
   useEffect(() => {

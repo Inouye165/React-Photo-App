@@ -33,6 +33,7 @@
     "@langchain/core": "^1.0.3",
     "@langchain/langgraph": "^1.0.1",
     "@langchain/openai": "^1.1.0",
+    "@supabase/supabase-js": "^2.84.0",
     "@vis.gl/react-google-maps": "^1.7.1",
     "dotenv": "^16.6.1",
     "exifr": "^7.1.3",

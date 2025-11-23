@@ -4,6 +4,7 @@ import { toUrl } from '../utils/toUrl.js';
 import * as api from '../api';
 import ModelSelect from './ModelSelect';
 import { DEFAULT_MODEL } from '../config/modelCatalog';
+import { useAuth } from '../contexts/AuthContext';
 
 
 export default function PhotoDetailPanel({
@@ -23,6 +24,8 @@ export default function PhotoDetailPanel({
   apiBaseUrl,
   aiReady = true,
 }) {
+  const { session } = useAuth();
+  const token = session?.access_token;
   const [selectedModel, setSelectedModel] = useState(DEFAULT_MODEL);
   const [collectibles, setCollectibles] = useState([]);
   const [collectibleNotes, setCollectibleNotes] = useState({});
@@ -87,7 +90,7 @@ export default function PhotoDetailPanel({
       <div className="flex items-start h-full gap-4" style={{ height: 'calc(100vh - 140px)' }}>
         <div className="w-2/5 bg-gray-100 rounded overflow-auto flex items-center justify-center px-2 py-3" style={{ maxHeight: '100%' }}>
           <img
-            src={toUrl(photo.url, apiBaseUrl)}
+            src={toUrl(photo.url, apiBaseUrl, token)}
             alt={photo.filename}
             className="max-h-full max-w-full object-contain"
             style={{ width: 'auto', height: 'auto' }}
