@@ -61,30 +61,38 @@ jest.mock('multer', () => {
         return res.status(400).json({ success: false, error: 'Only image files are allowed' });
       }
 
+      // Check for no-multer header (case-insensitive)
+      const headers = req.headers || {};
+      const noMulter = headers['x-no-multer'] || headers['X-No-Multer'];
+
       // Default behavior: set req.file and call next unless test indicates no-multer
-      if (!req.headers || !req.headers['x-no-multer']) {
+      if (!noMulter) {
         // Allow tests to override mimetype/name/size via headers
-        const mimetype = req.headers && req.headers['x-multer-mimetype'] ? req.headers['x-multer-mimetype'] : 'image/jpeg';
-        const originalname = req.headers && req.headers['x-multer-originalname'] ? req.headers['x-multer-originalname'] : 'test.jpg';
+        const mimetype = headers['x-multer-mimetype'] ? headers['x-multer-mimetype'] : 'image/jpeg';
+        const originalname = headers['x-multer-originalname'] ? headers['x-multer-originalname'] : 'test.jpg';
         
         // Create a temp file to simulate diskStorage
         const tempPath = path.join(os.tmpdir(), `test-upload-${Date.now()}-${Math.random()}.tmp`);
         let fileContent = 'fake image data';
 
-        if (req.headers && req.headers['x-multer-zero']) {
+        if (headers['x-multer-zero']) {
           fileContent = '';
-        } else if (req.headers && req.headers['x-multer-buffer']) {
-          fileContent = req.headers['x-multer-buffer']; // Treat as string or buffer
+        } else if (headers['x-multer-buffer']) {
+          fileContent = headers['x-multer-buffer']; // Treat as string or buffer
         }
         
-        fs.writeFileSync(tempPath, fileContent);
-
-        req.file = {
-          originalname,
-          mimetype,
-          path: tempPath,
-          size: Buffer.byteLength(fileContent)
-        };
+        try {
+          fs.writeFileSync(tempPath, fileContent);
+          
+          req.file = {
+            originalname,
+            mimetype,
+            path: tempPath,
+            size: Buffer.byteLength(fileContent)
+          };
+        } catch (err) {
+          console.error('Mock multer failed to write temp file:', err);
+        }
       }
       next();
     })
