@@ -72,11 +72,27 @@ All required libraries are listed in the appropriate `package.json` files:
 - Frontend dependencies: `package.json` (project root)
 - Backend dependencies: `server/package.json`
 
+
    ## 🔐 Security Configuration
 
    **CRITICAL: Your Supabase storage bucket MUST be private.**
 
    This application is designed to be secure by serving all images and thumbnails through a server-side authentication endpoint (`/display/...`). This ensures that only logged-in users can access photos.
+
+   ### Centralized Log Redaction (2025)
+
+   **All server logs are automatically redacted to prevent accidental leakage of secrets, tokens, passwords, or API keys.**
+   - Sensitive keys (`token`, `password`, `secret`, `authorization`, `apiKey`, `access_token`, `refresh_token`) are masked in all logs, including query parameters, headers, and deeply nested JSON objects.
+   - The redaction is enforced at the logger and global `console` level, so even direct `console.log` or middleware logs are sanitized.
+   - See `server/logger.js` for implementation and `server/tests/logs.redaction.test.js` for regression tests.
+   - **No action is required by developers or operators.**
+   - This closes the P0 vulnerability where tokens could leak via query params in logs (see `server/middleware/imageAuth.js`).
+
+   **How to verify:**
+   - Run: `cd server && npm test tests/logs.redaction.test.js`
+   - Manually check logs for any sensitive data after requests with tokens or secrets in URLs or payloads.
+
+   **This feature is now complete and enforced by default.**
 
    If your Supabase **`photos`** storage bucket is left "Public", it creates a major security hole that allows anyone on the internet to access your photos if they guess the URL, bypassing all application-level security.
 
