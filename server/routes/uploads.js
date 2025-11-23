@@ -69,22 +69,15 @@ module.exports = function createUploadsRouter({ db }) {
             }
             const realPath = validateSafePath(req.file.path);
             // Use synchronous unlink for immediate cleanup
-            try {
-              // Check if file exists before attempting to delete it
-              if (fs.existsSync(realPath)) {
-                fs.unlinkSync(realPath);
-              }
-            } catch (unlinkErr) {
-              if (unlinkErr.code !== 'ENOENT') {
-                logger.error('Temp file cleanup failed:', unlinkErr);
-              }
+            if (fs.existsSync(realPath)) {
+              fs.unlinkSync(realPath);
             }
+            // CRITICAL: Prevent double-deletion in finally
+            delete req.file;
           } catch (e) {
             logger.error('Temp file cleanup failed:', e);
           }
         }
-        // Prevent double-deletion: remove req.file reference after cleanup
-        delete req.file;
         return res.status(400).json({ success: false, error: 'Empty file uploaded' });
       }
 
