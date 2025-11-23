@@ -6,6 +6,12 @@ require('dotenv').config();
 require('dotenv').config({ path: path.join(__dirname, '../server/.env') });
 const { createClient } = require('@supabase/supabase-js');
 
+// Detect CI/Test environment with dummy Supabase URL
+if (process.env.SUPABASE_URL && process.env.SUPABASE_URL.includes('test.supabase.co')) {
+  console.log('Detected CI environment with test Supabase URL. Enabling MOCK_AUTH.');
+  process.env.MOCK_AUTH = 'true';
+}
+
 const SERVER_CMD = 'node';
 const SERVER_ARGS = ['server/server.js'];
 const HEALTH_URL = { hostname: 'localhost', port: 3001, path: '/health', method: 'GET' };
@@ -112,6 +118,11 @@ async function getCsrfToken() {
 }
 
 async function registerAndLogin() {
+  if (process.env.MOCK_AUTH === 'true') {
+    console.log('MOCK_AUTH enabled. Returning mock token.');
+    return { authToken: 'mock-token', csrfToken: null, csrfCookie: null };
+  }
+
   console.log('Authenticating with Supabase...');
   
   const supabaseUrl = process.env.SUPABASE_URL || process.env.VITE_SUPABASE_URL;

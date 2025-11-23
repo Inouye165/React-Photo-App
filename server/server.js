@@ -25,6 +25,7 @@ console.log(`[server]  - SUPABASE_DB_URL = ${process.env.SUPABASE_DB_URL ? '(pre
 console.log(`[server]  - SUPABASE_URL = ${process.env.SUPABASE_URL ? '(present)' : '(missing)'} ${process.env.SUPABASE_URL ? maskSecret(process.env.SUPABASE_URL) : ''}`);
 console.log(`[server]  - SUPABASE_SERVICE_ROLE_KEY = ${process.env.SUPABASE_SERVICE_ROLE_KEY ? '(present service-role)' : '(missing)'} ${process.env.SUPABASE_SERVICE_ROLE_KEY ? maskSecret(process.env.SUPABASE_SERVICE_ROLE_KEY) : ''}`);
 console.log(`[server]  - SUPABASE_ANON_KEY = ${process.env.SUPABASE_ANON_KEY ? '(present anon)' : '(missing)'} ${process.env.SUPABASE_ANON_KEY ? maskSecret(process.env.SUPABASE_ANON_KEY) : ''}`);
+console.log(`[server]  - MOCK_AUTH = ${process.env.MOCK_AUTH || '(unset)'}`);
 console.log(`[server]  - Derived database selection: ${usingPostgres ? 'Postgres (Supabase) — will use production knex config' : 'sqlite fallback (dev) — sqlite fallback would be used if enabled'}`);
 console.log('[server] End diagnostics');
 
