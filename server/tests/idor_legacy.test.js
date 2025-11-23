@@ -1,6 +1,7 @@
 const request = require('supertest');
 const express = require('express');
 const cookieParser = require('cookie-parser');
+// const lusca = require('lusca'); // Not used in this test file, but kept for reference if needed later
 
 // Import the mocked supabase client
 const supabase = require('../lib/supabaseClient');
@@ -16,6 +17,7 @@ let attackerToken = 'attacker-token';
 beforeEach(() => {
   app = express();
   app.use(cookieParser());
+  // app.use(lusca.csrf()); // CSRF protection is not needed for this specific test setup as it mocks the router directly
   app.use(express.json());
 
   // Configure the shared mock to handle different tokens
