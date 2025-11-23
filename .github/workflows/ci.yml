@@ -1,5 +1,4 @@
 name: CI
-
 # Trigger CI: dummy comment for workflow update
 
 on:
