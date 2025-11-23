@@ -32,6 +32,69 @@ const subscribers = {
   levelChange: new Set()
 };
 
+const SENSITIVE_KEYS = new Set([
+  'token', 'password', 'secret', 'authorization', 'apikey', 'access_token', 'refresh_token'
+]);
+
+// Regex to match key=value or key%3Dvalue in strings
+// Matches: (key)(separator)(value)
+// Separator can be =, :, %3D, %3A
+// Value is anything until & or whitespace or end of string
+const SENSITIVE_REGEX = new RegExp(
+  `(${Array.from(SENSITIVE_KEYS).join('|')})(%3D|=|%3A|:)([^&\\s]+)`,
+  'gi'
+);
+
+function redact(arg, visited = new WeakSet()) {
+  if (arg === null || arg === undefined) return arg;
+
+  if (typeof arg === 'string') {
+    return arg.replace(SENSITIVE_REGEX, '$1$2[REDACTED]');
+  }
+
+  if (typeof arg === 'object') {
+    if (visited.has(arg)) return '[Circular]';
+    visited.add(arg);
+
+    try {
+      if (Array.isArray(arg)) {
+        return arg.map(item => redact(item, visited));
+      }
+
+      // Handle plain objects and errors
+      const redacted = {};
+      for (const key in arg) {
+        // We iterate over all properties including prototype for Error objects usually, 
+        // but for plain objects just own properties.
+        // However, for Error objects, message and stack are often not enumerable.
+        if (Object.prototype.hasOwnProperty.call(arg, key)) {
+          const lowerKey = key.toLowerCase();
+          if (SENSITIVE_KEYS.has(lowerKey)) {
+            redacted[key] = '[REDACTED]';
+          } else {
+            redacted[key] = redact(arg[key], visited);
+          }
+        }
+      }
+      
+      // Special handling for Error objects to ensure message/stack are captured/redacted
+      if (arg instanceof Error) {
+        redacted.message = redact(arg.message, visited);
+        redacted.stack = redact(arg.stack, visited);
+        redacted.name = arg.name;
+        // Copy any other properties that might have been missed if not enumerable
+        // (though usually custom props on Error are enumerable)
+      }
+
+      return redacted;
+    } finally {
+      visited.delete(arg);
+    }
+  }
+
+  return arg;
+}
+
 function normalizeLevel(input) {
   if (input === undefined || input === null || input === '') {
     return 'info';
@@ -226,19 +289,41 @@ class TinyLogger {
       return;
     }
     const preparedArgs = applyBindings(this.bindings, args);
+    
+    // Redact arguments before logging or emitting
+    const redactedArgs = preparedArgs.map(arg => redact(arg));
+
     const methodName = METHOD_MAP[normalized] || 'log';
     const method = typeof console[methodName] === 'function' ? console[methodName] : console.log;
     if (typeof method === 'function') {
-      method.apply(console, preparedArgs);
+      method.apply(console, redactedArgs);
     }
-    emit('log', { level: normalized, args: preparedArgs, bindings: this.bindings });
+    emit('log', { level: normalized, args: redactedArgs, bindings: this.bindings });
     if (normalized === 'error' || normalized === 'fatal') {
-      emit('error', { level: normalized, args: preparedArgs, bindings: this.bindings });
+      emit('error', { level: normalized, args: redactedArgs, bindings: this.bindings });
     }
   }
 }
 
 const rootLogger = new TinyLogger();
+
+// Wrap global console methods to ensure redaction everywhere
+const originalConsole = {
+  log: console.log,
+  warn: console.warn,
+  error: console.error,
+  info: console.info,
+  debug: console.debug,
+};
+
+['log', 'warn', 'error', 'info', 'debug'].forEach(method => {
+  if (typeof console[method] === 'function') {
+    console[method] = function(...args) {
+      const redactedArgs = args.map(arg => redact(arg));
+      originalConsole[method].apply(console, redactedArgs);
+    };
+  }
+});
 
 module.exports = rootLogger;
 module.exports.TinyLogger = TinyLogger;
