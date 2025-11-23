@@ -5,10 +5,16 @@ const cookieParser = require('cookie-parser');
 // Import the mocked supabase client
 const supabase = require('../lib/supabaseClient');
 
+// Mock the queue module
+jest.mock('../queue/index', () => ({
+  addAIJob: jest.fn().mockResolvedValue(undefined),
+  checkRedisAvailable: jest.fn().mockResolvedValue(false)
+}));
 
 const createPhotosRouter = require('../routes/photos');
 const db = require('../db/index');
 const { mockStorageHelpers, mockDbHelpers } = require('./setup');
+const { addAIJob } = require('../queue/index');
 
 let app;
 let authToken = 'valid-token';
@@ -17,6 +23,9 @@ beforeEach(() => {
   app = express();
   app.use(cookieParser());
   app.use(express.json());
+
+  // Clear mock calls
+  jest.clearAllMocks();
 
   // Configure the shared mock
   // Note: supabase.auth.getUser is already a jest.fn() from __mocks__/supabase.js
@@ -66,9 +75,6 @@ test('PATCH /photos/:id/state moves photo, triggers fallback copy, and queues AI
   expect(updatedPhoto.state).toBe('inprogress');
   expect(updatedPhoto.storage_path).toBe(newPath);
 
-  // Poll for AI metadata (simulate async AI job completion)
-  // (In a real integration test, you would mock the worker to update the DB)
-  // Here, just show the pattern:
-  // const aiRow = await pollForAnalysis(db, photo.id);
-  // expect(aiRow.caption).toBeDefined();
+  // Verify AI job was queued
+  expect(addAIJob).toHaveBeenCalledWith(photo.id);
 });
