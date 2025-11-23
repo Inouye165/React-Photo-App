@@ -1011,10 +1011,11 @@ The project includes comprehensive testing across frontend and backend:
 
 # Project TODOs
 
+
 ## High-Priority
 
 - [ ] **Security (High):** Fix token leakage in `server/middleware/imageAuth.js` by removing or redacting support for query parameter tokens (`?token=`) in logs, or enforcing short lifetimes.
-- [ ] **Security/Architecture (High):** Resolve "Split Brain" authentication. The local `users` table (migration `20251020000001`) risks desyncing from Supabase's `auth.users`. Consolidate user management to rely on Supabase as the source of truth.
+- [x] **Security/Architecture (High):** RESOLVED: "Split Brain" authentication. The local `users` table has been removed and all user management is consolidated on Supabase Auth. See `SPLIT_BRAIN_AUTH_FIX.md` for full details and migration report.
 - [ ] **Critical Logic (High):** Fix the file cleanup race condition in `server/routes/uploads.js`. If `ingestPhoto` fails, the file is deleted locally but may remain orphaned in Supabase Storage. Implement a cleanup mechanism in the catch block.
 
 ## Medium-Priority

@@ -47,6 +47,8 @@ module.exports = function createUploadsRouter({ db }) {
       next();
     });
   }, async (req, res) => {
+    let filePath = null;
+    let uploadSucceeded = false;
     try {
       if (!req.user || !req.user.id) {
         return res.status(401).json({ success: false, error: 'Authentication required' });
@@ -61,9 +63,9 @@ module.exports = function createUploadsRouter({ db }) {
           try {
             // Ensure the temp file path is within Multer's configured temp directory
             const tempDir = path.resolve(os.tmpdir());
-            const filePath = path.resolve(req.file.path);
-            if (!filePath.startsWith(tempDir + path.sep)) {
-              throw new Error(`Refusing to delete file outside temp directory: ${filePath}`);
+            const tempFilePath = path.resolve(req.file.path);
+            if (!tempFilePath.startsWith(tempDir + path.sep)) {
+              throw new Error(`Refusing to delete file outside temp directory: ${tempFilePath}`);
             }
             const realPath = validateSafePath(req.file.path);
             fs.unlink(realPath, () => {});
@@ -73,13 +75,13 @@ module.exports = function createUploadsRouter({ db }) {
         }
         return res.status(400).json({ success: false, error: 'Empty file uploaded' });
       }
-      
+
       // Generate a unique filename using UUID
       // Strict sanitization: remove any path components and dangerous chars from originalName
       const sanitizedOriginal = path.basename(req.file.originalname).replace(/[^a-zA-Z0-9._-]/g, '_');
       const uniquePrefix = crypto.randomUUID();
       const filename = `${uniquePrefix}-${sanitizedOriginal}`;
-      const filePath = `working/${filename}`;
+      filePath = `working/${filename}`;
 
       try {
         // Strict path validation for CodeQL compliance
@@ -111,6 +113,7 @@ module.exports = function createUploadsRouter({ db }) {
           logger.error('Supabase upload error:', uploadError);
           return res.status(500).json({ success: false, error: 'Failed to upload to storage' });
         }
+        uploadSucceeded = true;
 
         // Process the uploaded file (generate metadata, thumbnails, etc.)
         // Pass the local file path instead of buffer
@@ -152,6 +155,15 @@ module.exports = function createUploadsRouter({ db }) {
       }
     } catch (error) {
       logger.error('Upload error:', error);
+      // Compensating transaction: delete orphaned file from storage if DB insert fails
+      if (filePath && uploadSucceeded) {
+        try {
+          await supabase.storage.from('photos').remove([filePath]);
+          logger.error('Compensating action: Deleted orphaned file from storage due to DB error.');
+        } catch (cleanupErr) {
+          logger.error('CRITICAL: Failed to delete orphaned file from storage after DB error:', cleanupErr);
+        }
+      }
       res.status(500).json({ success: false, error: 'Failed to save file' });
     }
   });
