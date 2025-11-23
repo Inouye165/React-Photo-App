@@ -83,6 +83,8 @@ module.exports = function createUploadsRouter({ db }) {
             logger.error('Temp file cleanup failed:', e);
           }
         }
+        // Prevent double-deletion: remove req.file reference after cleanup
+        delete req.file;
         return res.status(400).json({ success: false, error: 'Empty file uploaded' });
       }
 
