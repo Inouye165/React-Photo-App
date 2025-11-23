@@ -10,10 +10,19 @@ const mockStorageErrors = new Map();
 const mockMoveErrors = new Map();
 let alwaysErrorOnUpload = false;
 
+// Shared auth mock
+const mockGetUser = jest.fn().mockResolvedValue({
+  data: { user: { id: 1, email: 'test@example.com' } },
+  error: null
+});
+
 const createMockSupabaseClient = () => {
   return {
-  storage: {
-  from: (bucket) => ({
+    auth: {
+      getUser: mockGetUser
+    },
+    storage: {
+      from: (bucket) => ({
         upload: jest.fn().mockImplementation((path, file, options = {}) => {
           const key = `${bucket}/${path}`;
           // Always error if flag is set

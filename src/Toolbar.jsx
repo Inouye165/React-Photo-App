@@ -19,7 +19,8 @@ export default function Toolbar({
   toolbarSeverity = 'info',
   onClearToolbarMessage
 }) {
-  const { isAuthenticated, user, logout } = useAuth();
+  const { user, logout } = useAuth();
+  const isAuthenticated = !!user;
 
   const handleAuthAction = () => {
     if (isAuthenticated) {
@@ -101,10 +102,10 @@ export default function Toolbar({
                   fontWeight: 'bold'
                 }}
               >
-                {user?.username?.charAt(0).toUpperCase() || 'U'}
+                {user?.email?.charAt(0).toUpperCase() || 'U'}
               </div>
               <span style={{ fontSize: '0.9rem', opacity: '0.9' }}>
-                {user?.username}
+                {user?.email}
               </span>
             </div>
             <button

@@ -2,7 +2,13 @@
 exports.up = function(knex) {
   return knex.schema
     .createTable('users', function (table) {
-      table.increments('id').primary();
+      // Use appropriate UUID generation based on DB type
+      if (knex.client.config.client === 'pg') {
+        table.uuid('id').primary().defaultTo(knex.raw('gen_random_uuid()'));
+      } else {
+        // SQLite fallback
+        table.uuid('id').primary();
+      }
       table.string('username').notNullable().unique();
       table.string('email').notNullable().unique();
       table.string('password_hash').notNullable();

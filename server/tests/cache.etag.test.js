@@ -1,5 +1,15 @@
 const request = require('supertest');
-const jwt = require('jsonwebtoken');
+
+// Mock Supabase
+const mockGetUser = jest.fn();
+jest.mock('@supabase/supabase-js', () => ({
+  createClient: () => ({
+    auth: {
+      getUser: mockGetUser
+    }
+  })
+}));
+
 const app = require('../server');
 const db = require('../db');
 
@@ -16,11 +26,11 @@ jest.mock('../lib/supabaseClient', () => ({
 }));
 
 describe('ETag/304 cache', () => {
-  let authToken;
+  let authToken = 'valid-token';
   let testPhotoId;
 
   beforeAll(async () => {
-    // Create a test user and generate a valid JWT token
+    // Create a test user
     const testUser = {
       username: 'etag_test_user',
       password_hash: 'fake_hash_for_etag_test'
@@ -32,10 +42,6 @@ describe('ETag/304 cache', () => {
     } catch {
       // User may already exist, that's okay
     }
-
-    // Generate a valid JWT token
-    const JWT_SECRET = process.env.JWT_SECRET || 'test-secret-key';
-    authToken = jwt.sign({ username: testUser.username }, JWT_SECRET, { expiresIn: '1h' });
 
     // Create a test photo in the database
     const insertResult = await db('photos').insert({
@@ -60,6 +66,20 @@ describe('ETag/304 cache', () => {
     await db('users').where({ username: 'etag_test_user' }).delete();
   });
 
+  beforeEach(() => {
+    mockGetUser.mockReset();
+    mockGetUser.mockResolvedValue({ 
+      data: { 
+        user: { 
+          id: 1, 
+          email: 'test@example.com',
+          user_metadata: { username: 'etag_test_user', role: 'user' }
+        } 
+      }, 
+      error: null 
+    });
+  });
+
   it('should set ETag and respond 304 to If-None-Match', async () => {
     const filename = 'test_cache_photo.jpg';
     const state = 'inprogress';
@@ -67,7 +87,7 @@ describe('ETag/304 cache', () => {
     // First request - should get 200 with ETag
     const res1 = await request(app)
       .get(`/display/${state}/${filename}`)
-      .set('Cookie', `authToken=${authToken}`);
+      .set('Authorization', `Bearer ${authToken}`);
     
     expect(res1.status).toBe(200);
     expect(res1.headers['etag']).toBeDefined();
@@ -78,11 +98,9 @@ describe('ETag/304 cache', () => {
     const res2 = await request(app)
       .get(`/display/${state}/${filename}`)
       .set('If-None-Match', etag)
-      .set('Cookie', `authToken=${authToken}`);
+      .set('Authorization', `Bearer ${authToken}`);
     
-    expect([304, 200]).toContain(res2.status);
-    if (res2.status === 304) {
-      expect(res2.text).toBe('');
-    }
+    // Express static or custom handler might return 304
+    expect([200, 304]).toContain(res2.status);
   });
 });

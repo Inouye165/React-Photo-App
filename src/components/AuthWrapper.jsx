@@ -4,7 +4,7 @@ import LoginForm from './LoginForm';
 import RegisterForm from './RegisterForm';
 
 const AuthWrapper = ({ children }) => {
-  const { isAuthenticated, loading } = useAuth();
+  const { user, loading } = useAuth();
   const [isLoginMode, setIsLoginMode] = useState(true);
 
   if (loading) {
@@ -18,7 +18,7 @@ const AuthWrapper = ({ children }) => {
     );
   }
 
-  if (!isAuthenticated) {
+  if (!user) {
     return isLoginMode ? (
       <LoginForm onSwitchToRegister={() => setIsLoginMode(false)} />
     ) : (

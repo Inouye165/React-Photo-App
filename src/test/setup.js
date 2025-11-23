@@ -176,6 +176,19 @@ global.Image = class {
   }
 }
 
+// Mock Supabase client
+vi.mock('../supabaseClient', () => ({
+  supabase: {
+    auth: {
+      getSession: vi.fn().mockResolvedValue({ data: { session: { access_token: 'mock-token' } } }),
+      onAuthStateChange: vi.fn().mockReturnValue({ data: { subscription: { unsubscribe: vi.fn() } } }),
+      signInWithPassword: vi.fn().mockResolvedValue({ data: { user: { id: '1', email: 'test@example.com' } }, error: null }),
+      signUp: vi.fn().mockResolvedValue({ data: { user: { id: '1', email: 'test@example.com' } }, error: null }),
+      signOut: vi.fn().mockResolvedValue({ error: null }),
+    }
+  }
+}))
+
 // Reset mocks before each test
 beforeEach(() => {
   vi.clearAllMocks();

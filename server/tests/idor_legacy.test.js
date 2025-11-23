@@ -1,80 +1,108 @@
 const request = require('supertest');
 const express = require('express');
-const cookieParser = require('cookie-parser');
-const jwt = require('jsonwebtoken');
-const db = require('../db/index');
+// const lusca = require('lusca'); // Not used in this test file, but kept for reference if needed later
+
+// Import the mocked supabase client
+const supabase = require('../lib/supabaseClient');
+
 const createPhotosRouter = require('../routes/photos');
-const { mockStorageHelpers, mockDbHelpers } = require('./setup');
+const db = require('../db/index');
+const { mockStorageHelpers } = require('./setup');
 
-describe('IDOR Vulnerability in Legacy Display Route', () => {
-  let app;
-  let victimToken;
-  let attackerToken;
-  let victimUser;
-  let attackerUser;
-  const filename = 'victim_secret_legacy.jpg';
+let app;
+let victimToken = 'victim-token';
+let attackerToken = 'attacker-token';
 
-  beforeAll(async () => {
-    // Setup App with the Photos Router mounted at /photos
-    app = express();
-    app.use(cookieParser());
-    app.use('/photos', createPhotosRouter({ db }));
+beforeEach(() => {
+  app = express();
+  // Auth in this test harness uses Authorization: Bearer tokens (Supabase-style), not cookies.
+  // CSRF protections are handled via the token model and CORS, so we intentionally do not use cookie-based auth or CSRF middleware here.
+  // app.use(lusca.csrf()); // CSRF protection is not needed for this specific test setup as it mocks the router directly
+  app.use(express.json());
+
+  // Configure the shared mock to handle different tokens
+  supabase.auth.getUser.mockReset();
+  supabase.auth.getUser.mockImplementation(async (token) => {
+    if (token === victimToken) {
+      return { 
+        data: { 
+          user: { 
+            id: 999, // Victim ID
+            email: 'victim@example.com',
+            user_metadata: { username: 'victim', role: 'user' }
+          } 
+        }, 
+        error: null 
+      };
+    } else if (token === attackerToken) {
+      return { 
+        data: { 
+          user: { 
+            id: 666, // Attacker ID
+            email: 'attacker@example.com',
+            user_metadata: { username: 'attacker', role: 'user' }
+          } 
+        }, 
+        error: null 
+      };
+    }
+    return { data: { user: null }, error: { message: 'Invalid token' } };
   });
 
-  beforeEach(async () => {
-    // Clear default data loaded by global setup
-    mockDbHelpers.clearMockData();
-    mockStorageHelpers.clearMockStorage();
+  app.use(createPhotosRouter({ db }));
+});
 
-    // Create users using helper
-    victimUser = mockDbHelpers.addMockUser({ username: 'victim_legacy', password_hash: 'hash' });
-    attackerUser = mockDbHelpers.addMockUser({ username: 'attacker_legacy', password_hash: 'hash' });
-
-    // Tokens
-    const JWT_SECRET = process.env.JWT_SECRET || 'test-secret-key';
-    process.env.JWT_SECRET = JWT_SECRET;
-
-    victimToken = jwt.sign({ id: victimUser.id, username: victimUser.username }, JWT_SECRET);
-    attackerToken = jwt.sign({ id: attackerUser.id, username: attackerUser.username }, JWT_SECRET);
-
-    // Create victim's photo using helper
-    mockDbHelpers.addMockPhoto({
-      user_id: victimUser.id,
+describe('IDOR Vulnerability in Legacy Display Route', () => {
+  test('Victim SHOULD be able to access their own photo', async () => {
+    // 1. Setup: Create a photo belonging to the victim
+    const victimId = 999;
+    const filename = 'victim_secret_legacy.jpg';
+    
+    await db('photos').insert({
+      user_id: victimId,
       filename: filename,
       state: 'working',
       storage_path: `working/${filename}`,
-      metadata: '{}',
-      created_at: new Date().toISOString(),
-      updated_at: new Date().toISOString()
+      created_at: new Date(),
+      updated_at: new Date()
     });
 
-    // Add file to mock storage so download works
+    // Add file to mock storage
     mockStorageHelpers.addMockFile('photos', `working/${filename}`, { size: 1024 });
-  });
 
-  afterAll(async () => {
-    mockDbHelpers.clearMockData();
-    mockStorageHelpers.clearMockStorage();
-  });
-
-  test('Attacker should NOT be able to access victim photo via legacy route', async () => {
-    // The legacy route is at /photos/display/:state/:filename
+    // 2. Victim requests their own photo
     const res = await request(app)
-      .get(`/photos/display/working/${filename}`)
-      .set('Cookie', `authToken=${attackerToken}`);
-    
-    // If vulnerable, this returns 200. If fixed, it should return 404.
-    if (res.status === 200) {
-        console.log('VULNERABILITY CONFIRMED: Attacker accessed victim photo');
-    }
-    expect(res.status).toBe(404); 
-  });
-
-  test('Victim SHOULD be able to access their own photo', async () => {
-    const res = await request(app)
-      .get(`/photos/display/working/${filename}`)
-      .set('Cookie', `authToken=${victimToken}`);
+      .get(`/display/working/${filename}`)
+      .set('Authorization', `Bearer ${victimToken}`);
     
     expect(res.status).toBe(200);
+  });
+
+  test('Attacker SHOULD NOT be able to access victim photo', async () => {
+    // 1. Setup: Ensure victim photo exists (from previous test or new insert)
+    const victimId = 999;
+    const filename = 'victim_secret_legacy_2.jpg';
+    
+    await db('photos').insert({
+      user_id: victimId,
+      filename: filename,
+      state: 'working',
+      storage_path: `working/${filename}`,
+      created_at: new Date(),
+      updated_at: new Date()
+    });
+
+    // Add file to mock storage
+    mockStorageHelpers.addMockFile('photos', `working/${filename}`, { size: 1024 });
+
+    // 2. Attacker requests victim's photo
+    const res = await request(app)
+      .get(`/display/working/${filename}`)
+      .set('Authorization', `Bearer ${attackerToken}`);
+    
+    // 3. Expect 404 (Not Found) because the query filters by user_id
+    // The endpoint does: .where({ filename, state }).andWhere({ user_id: req.user.id })
+    // So for the attacker, it won't find the row.
+    expect(res.status).toBe(404);
   });
 });

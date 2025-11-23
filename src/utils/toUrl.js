@@ -1,9 +1,22 @@
-export function toUrl(path = '', base = '') {
+export function toUrl(path = '', base = '', token = null) {
   try {
     if (!path) return base || '';
-    if (/^https?:\/\//i.test(path)) return path;
-    if (!base) return path;
-    return new URL(path, base).toString();
+    
+    let url;
+    if (/^https?:\/\//i.test(path)) {
+      url = new URL(path);
+    } else if (base) {
+      url = new URL(path, base);
+    } else {
+      return path;
+    }
+
+    // Append token if provided
+    if (token) {
+      url.searchParams.set('token', token);
+    }
+
+    return url.toString();
   } catch {
     // Fallback to original path if URL parsing fails to avoid breaking rendering
     return path;

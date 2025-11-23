@@ -4,7 +4,7 @@
 // to work during local development). In production we still fail-fast when
 // required variables are missing.
 
-const required = ['VITE_API_URL'];
+const required = ['VITE_API_URL', 'VITE_SUPABASE_URL', 'VITE_SUPABASE_ANON_KEY'];
 const isProduction = import.meta.env.MODE === 'production';
 
 for (const key of required) {
