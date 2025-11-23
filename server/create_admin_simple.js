@@ -1,44 +1,22 @@
-// Simple script to create an admin user
-require('./env');
+// DEPRECATED: This script created admin users in the local 'users' table
+// which has been removed in favor of Supabase Auth.
+//
+// To create admin users, use the Supabase Dashboard or Admin API:
+// https://supabase.com/docs/guides/auth/managing-user-data
+//
+// Example using Supabase Admin API:
+// const { createClient } = require('@supabase/supabase-js');
+// const supabase = createClient(SUPABASE_URL, SUPABASE_SERVICE_ROLE_KEY);
+// await supabase.auth.admin.createUser({
+//   email: 'admin@example.com',
+//   password: 'secure_password',
+//   email_confirm: true,
+//   user_metadata: { role: 'admin' }
+// });
 
-const db = require('./db/index');
-const bcrypt = require('bcryptjs');
+require('./env');
 const logger = require('./logger');
 
-async function createAdminUser() {
-  try {
-  logger.info('Creating admin user...');
-    
-    // Check if admin user already exists
-    const existingUser = await db('users').where('username', 'admin').first();
-    if (existingUser) {
-      logger.info('Admin user already exists!');
-      return;
-    }
-    
-    // Hash the password
-    const hashedPassword = await bcrypt.hash('admin123', 12);
-    
-    // Create the user
-    await db('users').insert({
-      username: 'admin',
-      email: 'admin@test.com',
-      password_hash: hashedPassword,
-      role: 'admin',
-      is_active: true,
-      failed_login_attempts: 0
-    });
-    
-    logger.info('Admin user created successfully!');
-    logger.info('Username: admin');
-    logger.info('Password: admin123');
-    logger.info('Email: admin@test.com');
-    
-  } catch (error) {
-    logger.error('Error creating admin user:', error);
-  } finally {
-    await db.destroy();
-  }
-}
-
-createAdminUser();
+logger.warn('This script is deprecated. Use Supabase Auth Admin API to create users.');
+logger.warn('See: https://supabase.com/docs/reference/javascript/auth-admin-createuser');
+process.exit(1);
