@@ -30,8 +30,6 @@ jobs:
 
   ci:
     runs-on: ubuntu-latest
-    env:
-      SERPAPI_API_KEY: test-serpapi-key
     services:
       postgres:
         image: postgres:15
