@@ -1,6 +1,5 @@
 const request = require('supertest');
 const express = require('express');
-const cookieParser = require('cookie-parser');
 // const lusca = require('lusca'); // Not used in this test file, but kept for reference if needed later
 
 // Import the mocked supabase client
@@ -16,7 +15,8 @@ let attackerToken = 'attacker-token';
 
 beforeEach(() => {
   app = express();
-  app.use(cookieParser());
+  // Auth in this test harness uses Authorization: Bearer tokens (Supabase-style), not cookies.
+  // CSRF protections are handled via the token model and CORS, so we intentionally do not use cookie-based auth or CSRF middleware here.
   // app.use(lusca.csrf()); // CSRF protection is not needed for this specific test setup as it mocks the router directly
   app.use(express.json());
 
