@@ -1,5 +1,50 @@
 # AI Polling and Processing Fix
 
+---
+
+## ✅ **PRIORITY #6 UPDATE: Synchronous AI Processing REMOVED**
+
+**Date**: 2025-01-26
+**Status**: COMPLETE - All tests passing (227 passed, 1 skipped)
+
+### Summary
+Removed all synchronous AI processing from the photo management API. The backend now **strictly enforces async-only AI processing** via BullMQ background workers. The `waitForAI` query parameter has been completely removed.
+
+### Changes Made
+
+1. **Route Handler Refactoring** (`server/routes/photos.js`):
+   - Removed `waitForAI` query parameter support (line 451)
+   - **`PATCH /:id/state`** (lines 620-640): Always enqueues AI job, returns `202 Accepted`
+   - **`POST /:id/recheck-ai`** (lines 754-783): Removed sync fallback, always enqueues
+   - **`POST /:id/run-ai`** (lines 785-813): Always enqueues regardless of Redis status
+
+2. **Removed Unused Import**: `updatePhotoAIMetadata` no longer imported in route handlers (line 30)
+
+3. **Created Test Helper** (`server/tests/pollForAnalysis.js`): Async polling utility for tests
+
+4. **Updated Tests** (`server/tests/photos-state.test.js`): Expects `202` responses instead of `200`
+
+### API Breaking Changes
+
+All AI-triggering endpoints now return:
+```json
+HTTP 202 Accepted
+{
+  "message": "AI processing has been queued.",
+  "photoId": 123,
+  "status": "processing"
+}
+```
+
+Clients must now **poll** `GET /photos/:id` to check for AI completion instead of receiving immediate results.
+
+### Verification
+✅ Zero lint errors (`npm run lint`)
+✅ All 227 tests passing (`npm test`)
+✅ No synchronous AI logic remaining in route handlers
+
+---
+
 ## Issues Identified
 
 ### 1. AI Router JSON Parsing Failure
