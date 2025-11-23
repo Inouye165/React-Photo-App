@@ -189,6 +189,52 @@ vi.mock('../supabaseClient', () => ({
   }
 }))
 
+// Mock Zustand store with default state
+vi.mock('../store', () => {
+  return {
+    default: vi.fn((selector) => {
+      const defaultState = {
+        photos: [],
+        toast: { message: '', severity: 'info' },
+        banner: { message: '', severity: 'info' },
+        view: 'working',
+        activePhotoId: null,
+        editingMode: null,
+        showMetadataModal: false,
+        metadataPhoto: null,
+        showUploadPicker: false,
+        toolbarMessage: '',
+        toolbarSeverity: 'info',
+        pollingPhotoId: null,
+        pollingPhotoIds: new Set(),
+        setPhotos: vi.fn(),
+        setBanner: vi.fn(),
+        setToast: vi.fn(),
+        setView: vi.fn(),
+        setActivePhotoId: vi.fn(),
+        setEditingMode: vi.fn(),
+        setShowMetadataModal: vi.fn(),
+        setMetadataPhoto: vi.fn(),
+        setShowUploadPicker: vi.fn(),
+        setToolbarMessage: vi.fn(),
+        setToolbarSeverity: vi.fn(),
+        setPollingPhotoId: vi.fn(),
+        addPollingId: vi.fn(),
+        removePollingId: vi.fn(),
+        updatePhotoData: vi.fn(),
+        updatePhoto: vi.fn(),
+        removePhotoById: vi.fn(),
+        moveToInprogress: vi.fn(),
+      }
+      
+      if (typeof selector === 'function') {
+        return selector(defaultState)
+      }
+      return defaultState
+    })
+  }
+})
+
 // Reset mocks before each test
 beforeEach(() => {
   vi.clearAllMocks();

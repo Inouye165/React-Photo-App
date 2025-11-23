@@ -1,8 +1,15 @@
 import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest'
 import { renderHook, act } from '@testing-library/react'
 import useAIPolling from './useAIPolling.jsx'
-import useStore from '../store.js'
 import * as api from '../api.js'
+
+// Mock the store module but preserve the actual implementation for this test
+vi.mock('../store.js', async () => {
+  const actual = await vi.importActual('../store.js')
+  return actual
+})
+
+import useStore from '../store.js'
 
 // Helper to allow pending promises inside hooks to resolve
 const flushPromises = async () => {
@@ -26,7 +33,7 @@ describe('useAIPolling', () => {
       ],
       pollingPhotoId: 107,
       pollingPhotoIds: new Set(),
-  toast: { message: '', severity: 'info' },
+      toast: { message: '', severity: 'info' },
     })
   })
 
@@ -37,7 +44,7 @@ describe('useAIPolling', () => {
       photos: [],
       pollingPhotoId: null,
       pollingPhotoIds: new Set(),
-  toast: { message: '', severity: 'info' },
+      toast: { message: '', severity: 'info' },
     })
   })
 

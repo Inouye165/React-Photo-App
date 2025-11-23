@@ -19,15 +19,22 @@ function usePhotoManagement() {
   const setPollingPhotoId = useStore((state) => state.setPollingPhotoId);
   const setBanner = useStore((state) => state.setBanner);
 
+  // UI state now from store
+  const view = useStore((state) => state.view);
+  const setView = useStore((state) => state.setView);
+  const activePhotoId = useStore((state) => state.activePhotoId);
+  const setActivePhotoId = useStore((state) => state.setActivePhotoId);
+  const editingMode = useStore((state) => state.editingMode);
+  const setEditingMode = useStore((state) => state.setEditingMode);
+  const showMetadataModal = useStore((state) => state.showMetadataModal);
+  const setShowMetadataModal = useStore((state) => state.setShowMetadataModal);
+  const metadataPhoto = useStore((state) => state.metadataPhoto);
+  const setMetadataPhoto = useStore((state) => state.setMetadataPhoto);
+
   const [loading, setLoading] = useState(true);
-  const [view, setView] = useState('working');
-  const [activePhotoId, setActivePhotoId] = useState(null);
-  const [editingMode, setEditingMode] = useState(null);
   const [editedCaption, setEditedCaption] = useState('');
   const [editedDescription, setEditedDescription] = useState('');
   const [editedKeywords, setEditedKeywords] = useState('');
-  const [showMetadataModal, setShowMetadataModal] = useState(false);
-  const [metadataPhoto, setMetadataPhoto] = useState(null);
   // Track the previous view/page and activePhotoId so we can restore
   // the actual previous screen when closing the full-page editor.
   const [previousView, setPreviousView] = useState(null);
@@ -99,7 +106,7 @@ function usePhotoManagement() {
   useEffect(() => {
     if (!showMetadataModal || !activePhoto) return;
     setMetadataPhoto(activePhoto);
-  }, [showMetadataModal, activePhoto]);
+  }, [showMetadataModal, activePhoto, setMetadataPhoto]);
 
   useEffect(() => {
     const onRunAi = (event) => {
@@ -190,7 +197,7 @@ function usePhotoManagement() {
         setBanner({ message: `Error marking photo as finished: ${error?.message || error}`, severity: 'error' });
       }
     },
-  [removePhotoById, setBanner],
+  [removePhotoById, setBanner, setEditingMode, setActivePhotoId],
   );
 
   const handleMoveToWorking = useCallback(
@@ -223,7 +230,7 @@ function usePhotoManagement() {
     } catch (error) {
       setBanner({ message: `Save failed: ${error?.message || error}`, severity: 'error' });
     }
-  }, [activePhoto, editedCaption, editedDescription, editedKeywords, updatePhotoData, setBanner]);
+  }, [activePhoto, editedCaption, editedDescription, editedKeywords, updatePhotoData, setBanner, setEditingMode]);
 
   const handleDeletePhoto = useCallback(
     async (id) => {
@@ -244,7 +251,7 @@ function usePhotoManagement() {
         setBanner({ message: `Error deleting photo: ${error?.message || error}`, severity: 'error' });
       }
     },
-  [activePhotoId, removePhotoById, setBanner],
+  [activePhotoId, removePhotoById, setBanner, setActivePhotoId, setEditingMode],
   );
 
   const handleEditPhoto = useCallback((photo, openFullPage = false) => {
@@ -266,12 +273,12 @@ function usePhotoManagement() {
       setEditedDescription(photo.description || '');
       setEditedKeywords(photo.keywords || '');
     }
-  }, [view, activePhotoId]);
+  }, [view, activePhotoId, setActivePhotoId, setEditingMode]);
 
   const handleSelectPhoto = useCallback((photo) => {
     setActivePhotoId(photo ? photo.id : null);
     setEditingMode(null);
-  }, []);
+  }, [setActivePhotoId, setEditingMode]);
 
   const handleCloseDetail = useCallback(() => {
     setEditingMode(null);
@@ -281,7 +288,7 @@ function usePhotoManagement() {
     } catch {
       /* ignore focus restore errors */
     }
-  }, []);
+  }, [setEditingMode, setActivePhotoId]);
 
   const handleCloseEditor = useCallback(() => {
     setEditingMode(null);
@@ -304,7 +311,7 @@ function usePhotoManagement() {
       // to ensure the user sees the list view rather than the detail panel.
       setActivePhotoId(null);
     }
-  }, [previousView, previousActivePhotoId, setView, setActivePhotoId]);
+  }, [previousView, previousActivePhotoId, setView, setActivePhotoId, setEditingMode]);
 
   const handleMoveToInprogress = useCallback(
     async (id) => {
@@ -314,7 +321,7 @@ function usePhotoManagement() {
       setEditingMode(null);
       return result;
     },
-    [moveToInprogress],
+    [moveToInprogress, setActivePhotoId, setEditingMode],
   );
 
   return {
