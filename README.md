@@ -454,248 +454,911 @@ The project includes comprehensive testing across frontend and backend:
 ### Test Coverage (86 Tests Total)
 
 #### Frontend (66 tests - Vitest + React Testing Library)
-- **App.test.jsx** (14 tests): Main application component, photo loading, view switching, upload flow
-- **App.e2e.test.jsx** (1 test): End-to-end upload workflow testing
-- **PhotoGallery.test.jsx** (13 tests): Gallery rendering, photo actions, metadata display, edit/delete functionality
-- **PhotoUploadForm.test.jsx** (20 tests): Upload modal, date filtering, file selection
-- **Toolbar.test.jsx** (12 tests): Navigation, toolbar messages, button interactions
-- **utils.test.js** (6 tests): Utility functions and helper methods
-- **authUtils.test.js** (20 tests): Authentication utilities, secure URL generation, token handling, error scenarios
+- **Component Testing**: All React components (App, PhotoGallery, PhotoUploadForm, Toolbar, EditPage)
+- **Authentication Testing**: JWT token handling, secure URL generation, multi-source authentication
+- **User Interaction Testing**: Clicks, form inputs, navigation, drag-and-drop
+- **State Management Testing**: Photo loading, filtering, uploads, authentication state
+- **Error Handling Testing**: API failures, validation errors, authentication failures
+- **Accessibility Testing**: ARIA attributes, keyboard navigation
+- **E2E Testing**: Complete upload workflow from folder selection to backend storage
+- **Security Testing**: Token validation, URL security, localStorage error handling
+- **Mock Integration**: External dependencies (APIs, file systems, authentication)
 
 #### Backend (20+ tests - Jest + Supertest)
-- **uploads.test.js** (9 tests): Upload endpoints, file validation, duplicate detection, error handling
-- **db.test.js**: Database operations, schema management, CRUD operations
-- **imageAuth.test.js**: Image authentication middleware, JWT validation, CORS headers
-- **displayEndpoint.test.js**: Authenticated image serving, HEIC conversion, file existence checking
-- **heicConversion.test.js**: HEIC-to-JPEG conversion, Sharp/ImageMagick fallbacks, error handling
-- **security.test.js**: Security headers, rate limiting, input validation, XSS/SQL injection protection
-- **integration.test.js**: End-to-end authentication flows, multi-machine scenarios, performance testing
+- **Authentication Testing**: JWT validation, login/register flows, token expiration
+- **Security Testing**: Rate limiting, input validation, CORS configuration, security headers
+- **API Endpoint Testing**: Authenticated upload endpoints, error handling, file validation
+- **Image Processing Testing**: HEIC conversion, Sharp/ImageMagick fallbacks, thumbnail generation
+- **Database Testing**: SQLite operations, schema constraints, CRUD operations, user management
+- **Integration Testing**: Complete authenticated request/response cycles
+- **Error Scenarios**: Permission errors, disk issues, invalid files, authentication failures
+- **Multi-machine Testing**: File sync scenarios, graceful degradation
 
-### Test Architecture  
-- **Vitest**: Modern testing framework with native Vite integration for frontend
-- **Jest**: Traditional testing framework with Supertest for backend HTTP testing
-- **React Testing Library**: User-centric component testing approach
-- **Mock Strategy**: Isolated tests with proper API, filesystem, and database mocking
-- **Test Isolation**: DOM cleanup between tests, no cross-test contamination
-- **CI Ready**: All 63 tests pass consistently for automated deployment
+**Total: 86 tests with robust coverage of authentication, security, and HEIC functionality**
 
-## Project TODOs
+## Usage
 
-This section is a concise project-facing TODO list. Each item is marked with one of the following statuses:
+1. Open the application in a modern web browser
+2. Click "Select Folder for Upload" - the folder picker will open in your Pictures folder (on supported browsers)
+3. The application will scan and display all supported image files in chronological order
+4. Use the "Start Date" and "End Date" inputs to filter photos by date taken
+5. The list updates instantly as you change dates, showing the filtered count
+6. Click "Upload" to send filtered photos to the backend
+7. The backend view shows all photos, metadata, privileges, and hash info
+8. Click on a photo to edit it - the interactive canvas editor allows you to position captions on the image:
+   - Drag the text to reposition it anywhere on the image
+   - Use the controls to adjust font size and color
+   - Edit the caption text directly in the editor
+   - Click "Save Captioned Image" to persist your text positioning and styling
+9. If a file fails AI processing (shows 'AI processing failed'), POST to `/debug/reset-ai-retry` and click "Recheck Inprogress AI" to retry
 
-- TODO — planned work that should be implemented.
-- COMPLETED — work already finished.
-- TO BE CONSIDERED — ideas or optional items that require discussion before making them TODOs.
+## Thumbnails
 
-### High priority
-- [COMPLETED] Remove JWT-in-query-params for image URLs and rely on httpOnly cookie sessions (server rejects `?token=` on image endpoints).
+- **Automatic thumbnail generation**: The backend generates thumbnails for every image in the `working` folder and serves them from `/thumbnails/<hash>.jpg` so the frontend can display fast previews without re-reading original files.
+- **HEIC/HEIF support and fallback**: Thumbnails are generated with `sharp` when possible. If `sharp`/libvips lacks HEIF/HEIC support, the server will attempt a fallback conversion using ImageMagick (the `magick` command) to create thumbnails. Install ImageMagick with HEIF delegates on your system to enable the fallback.
 
-### Architecture & core
-- [TODO] [ ] Implement an AuthProvider component higher up the React tree. Use the supabase.auth.getSession() and onAuthStateChange listener to set a 'loading' state. All authenticated content must be conditionally rendered only after the session has finished loading (`loading === false`) to prevent race conditions and initial 401 Unauthorized errors.
-- [TODO] Consolidate frontend global state into `src/store.js` (Zustand): migrate auth slice (user, loading, isAuthenticated), move UI state (selectedPhoto, editingPhoto, uploading), and extract inlined components to `src/components/`.
-- [TODO] Remove synchronous AI processing (`?waitForAI=true`) and enforce async queueing (enqueue job, return 202). Update API docs and remove blocking parameter.
-- [TO BE CONSIDERED] Review and simplify storage move / fallback logic in the backend to reduce brittle edge cases and add tests for failure paths.
+## HEIC/HEIF AI Processing Support
+- HEIC/HEIF files are now supported for AI processing. If the backend cannot convert HEIC using sharp, it will automatically use ImageMagick as a fallback.
+- If a file fails AI processing (shows 'AI processing failed'), you can reset its retry count by POSTing to `/debug/reset-ai-retry` and then clicking 'Recheck Inprogress AI' in the frontend to retry processing.
+- For new HEIC files, no manual intervention is needed.
 
-### UX
-- [TODO] Replace blocking `window.confirm` dialogs with a non-blocking `ConfirmModal` and provide an optional 'Undo' toast pattern.
-- [TODO] Add filename search and full-size preview modal in frontend.
+## Troubleshooting
+- **HEIC/HEIF 'bad seek' errors**: These are expected when Sharp can't decode certain HEIC variants. The system automatically falls back to ImageMagick - no action needed.
+- **ImageMagick not found**: Make sure ImageMagick is installed and available in your system PATH for HEIC/HEIF fallback support.
+- **AI processing failures**: Check the backend logs. You can reset retry counts via `/debug/reset-ai-retry` and click 'Recheck Inprogress AI'.
+- **Test failures**: Run `npm test` to see detailed error messages. Ensure all dependencies are installed and environment is properly configured.
 
-### Performance & reliability
-- [TODO] Resize and compress images before sending to OpenAI Vision API (JPEG, max 1024x1024, quality 70–80).
-- [TODO] Make thumbnail generation asynchronous and cache-optimized (background worker + caching).
-- [TODO] Add client-side content-hash check to avoid uploading duplicates (compute hash in browser and skip upload if server has hash).
+## Known Limitations
 
-### Real-time updates
-- [TODO] Implement Server-Sent Events (SSE) or WebSockets for AI job completion and live thumbnail/state updates. Start with SSE for a simple server→client channel.
+- **Browser Security**: Only works with locally selected files due to browser security restrictions
+- **Performance**: Large folders may take time to process initially  
+- **EXIF Dependency**: EXIF data reading depends on photo metadata being present
+- **Date Fallback**: Falls back to file modification date if EXIF date is unavailable
+- **API Requirements**: File System Access API requires user gesture and HTTPS in production
+- **Browser Support**: Modern browsers required for full feature set (Chrome, Edge recommended)
 
-### CI / DevOps
-- [TODO] Add GitHub Actions CI pipeline for automated testing, build, and linting (ensure it runs on PRs and push).
-- [TO BE CONSIDERED] Run secret-scanning (gitleaks or similar) on all pushes/PRs in CI — ensure proper rules and exceptions are configured to reduce false positives.
+## Testing & Quality Assurance
 
-### Tests & robustness
-- [COMPLETED] Add edge-case upload tests (zero-byte files, unsupported MIME types, corrupt/missing EXIF) in `server/tests/uploads.test.js`.
-- [TODO] Expand test vectors (large files, malformed multipart payloads) and add CI checks to run backend tests on PRs.
+### Test Coverage (86 Tests Total)
 
-If you prefer another ordering or want items grouped differently, tell me which items to promote to top priority and I will update this list.
+#### Frontend (66 tests - Vitest + React Testing Library)
+- **Component Testing**: All React components (App, PhotoGallery, PhotoUploadForm, Toolbar, EditPage)
+- **Authentication Testing**: JWT token handling, secure URL generation, multi-source authentication
+- **User Interaction Testing**: Clicks, form inputs, navigation, drag-and-drop
+- **State Management Testing**: Photo loading, filtering, uploads, authentication state
+- **Error Handling Testing**: API failures, validation errors, authentication failures
+- **Accessibility Testing**: ARIA attributes, keyboard navigation
+- **E2E Testing**: Complete upload workflow from folder selection to backend storage
+- **Security Testing**: Token validation, URL security, localStorage error handling
+- **Mock Integration**: External dependencies (APIs, file systems, authentication)
 
-## Future Enhancements (validated)
+#### Backend (20+ tests - Jest + Supertest)
+- **Authentication Testing**: JWT validation, login/register flows, token expiration
+- **Security Testing**: Rate limiting, input validation, CORS configuration, security headers
+- **API Endpoint Testing**: Authenticated upload endpoints, error handling, file validation
+- **Image Processing Testing**: HEIC conversion, Sharp/ImageMagick fallbacks, thumbnail generation
+- **Database Testing**: SQLite operations, schema constraints, CRUD operations, user management
+- **Integration Testing**: Complete authenticated request/response cycles
+- **Error Scenarios**: Permission errors, disk issues, invalid files, authentication failures
+- **Multi-machine Testing**: File sync scenarios, graceful degradation
 
-The following items were reviewed and validated as practical next steps for this repository. Each entry includes a short rationale and suggested next steps.
+**Total: 86 tests with robust coverage of authentication, security, and HEIC functionality**
 
-- State Management Consolidation — AGREED
-   - Rationale: Consolidating global UI and auth state into the existing `Zustand` store (`src/store.js`) reduces the number of providers, centralizes state mutations, and simplifies debugging and testing.
-   - Notes / Cautions: Keep authentication verification behavior (httpOnly cookie verification via the server) intact — do not store sensitive tokens client-side. Move the `AuthContext` effect that calls `/auth/verify` into a store initializer or a small hook that hydrates the store at app start. Avoid introducing SSR-sensitive code into the client-only store.
-   - Suggested next steps: add `auth` slice to `src/store.js`, migrate `user`, `loading`, `isAuthenticated` and `login/register/logout` adapters, update components to read from the store, and remove `src/contexts/AuthContext.jsx` once tests are green.
+## Usage
 
-- Asynchronous Job Notifications — AGREED
-   - Rationale: Replacing polling with a push-based channel yields a more responsive UI and reduces unnecessary client requests. The backend already enqueues AI jobs; once the queue completes processing, a push notification can inform clients immediately.
-   - Recommendation: Start with Server-Sent Events (SSE) for a simple, server→client-only channel. Use WebSockets only if you need bidirectional messages or complex subscriptions. Implement a lightweight SSE endpoint on the server that emits job-complete events (photoId, status, updated metadata), and add a small client hook (`useAIEvents` or similar) to subscribe and update the store.
-   - Suggested next steps: add SSE/WebSocket endpoint, add `useAIEvents` hook, wire to `src/store.js` to update photo metadata on event, add tests for subscription behavior.
+1. Open the application in a modern web browser
+2. Click "Select Folder for Upload" - the folder picker will open in your Pictures folder (on supported browsers)
+3. The application will scan and display all supported image files in chronological order
+4. Use the "Start Date" and "End Date" inputs to filter photos by date taken
+5. The list updates instantly as you change dates, showing the filtered count
+6. Click "Upload" to send filtered photos to the backend
+7. The backend view shows all photos, metadata, privileges, and hash info
+8. Click on a photo to edit it - the interactive canvas editor allows you to position captions on the image:
+   - Drag the text to reposition it anywhere on the image
+   - Use the controls to adjust font size and color
+   - Edit the caption text directly in the editor
+   - Click "Save Captioned Image" to persist your text positioning and styling
+9. If a file fails AI processing (shows 'AI processing failed'), POST to `/debug/reset-ai-retry` and click "Recheck Inprogress AI" to retry
 
-- Non-Blocking UX Modals — AGREED
-   - Rationale: Blocking browser dialogs (`window.confirm`) interrupt user flow and are less accessible and customizable than in-app modals. A custom non-blocking modal allows undo/timeout patterns, consistent design, and improved accessibility.
-   - Suggested next steps: create a `ConfirmModal` component and a small modal manager in the global store, replace `window.confirm` uses with a promise-based modal API or a callback-based flow, and add an optional 'Undo' toast for deletions.
+## Thumbnails
 
-- Component Refactoring — NOT ADDED (already covered)
-   - Reason: The repository's existing TODOs and architecture section already recommend extracting inlined components (notably the photo editing modal) and modularizing `src/App.jsx`. This is an agreed architectural direction and is tracked under "Architecturally important TODOs" in this README; no duplicate entry was added here.
+- **Automatic thumbnail generation**: The backend generates thumbnails for every image in the `working` folder and serves them from `/thumbnails/<hash>.jpg` so the frontend can display fast previews without re-reading original files.
+- **HEIC/HEIF support and fallback**: Thumbnails are generated with `sharp` when possible. If `sharp`/libvips lacks HEIF/HEIC support, the server will attempt a fallback conversion using ImageMagick (the `magick` command) to create thumbnails. Install ImageMagick with HEIF delegates on your system to enable the fallback.
 
-- CI/CD & DevOps (secret scanning on push) — NOT ADDED (already covered)
-   - Reason: The README already documents Husky pre-commit secret scanning, CI secret-scan jobs, and recommended GitHub Actions updates in the "Recommended security & CI TODOs" section. The suggested improvement (run gitleaks or similar on every push/PR) is a good practice and is already represented; implementers should ensure the CI job triggers on push/PR and has access to required repository secrets.
+## HEIC/HEIF AI Processing Support
+- HEIC/HEIF files are now supported for AI processing. If the backend cannot convert HEIC using sharp, it will automatically use ImageMagick as a fallback.
+- If a file fails AI processing (shows 'AI processing failed'), you can reset its retry count by POSTing to `/debug/reset-ai-retry` and then clicking 'Recheck Inprogress AI' in the frontend to retry processing.
+- For new HEIC files, no manual intervention is needed.
 
-- Robustness & Test Coverage — AGREED (and implemented)
-   - Rationale: Explicit tests for edge-case upload scenarios improve long-term robustness. Tests added include: zero-byte file rejection, unsupported MIME type rejection, and handling of corrupt/missing EXIF data. These are now present in `server/tests/uploads.test.js` and associated mocks.
-   - Suggested next steps: keep expanding test vectors (very large files, boundary file size, malformed multi-part uploads) and add CI checks to run the backend test suite on PRs.
+## Troubleshooting
+- **HEIC/HEIF 'bad seek' errors**: These are expected when Sharp can't decode certain HEIC variants. The system automatically falls back to ImageMagick - no action needed.
+- **ImageMagick not found**: Make sure ImageMagick is installed and available in your system PATH for HEIC/HEIF fallback support.
+- **AI processing failures**: Check the backend logs. You can reset retry counts via `/debug/reset-ai-retry` and click 'Recheck Inprogress AI'.
+- **Test failures**: Run `npm test` to see detailed error messages. Ensure all dependencies are installed and environment is properly configured.
 
-If you'd like, I can open a small PR that extracts the `Auth` slice into `src/store.js` (with tests), a follow-up PR to add an SSE endpoint and client hook, or a PR that replaces `window.confirm` calls with a `ConfirmModal` component wired to the global store.
+## Known Limitations
 
-### UX: Deletion confirmation & success messaging (future TODOs)
+- **Browser Security**: Only works with locally selected files due to browser security restrictions
+- **Performance**: Large folders may take time to process initially  
+- **EXIF Dependency**: EXIF data reading depends on photo metadata being present
+- **Date Fallback**: Falls back to file modification date if EXIF date is unavailable
+- **API Requirements**: File System Access API requires user gesture and HTTPS in production
+- **Browser Support**: Modern browsers required for full feature set (Chrome, Edge recommended)
 
-- Make the delete confirmation optional via a user preference (localStorage or account setting) so users who find the browser confirm() annoying can disable it.
-- Replace the blocking browser confirm() with a non-blocking modal that includes a "Don't show this again" checkbox and stores the user's preference.
-- Offer an "Undo" pattern: instead of a persistent dismiss-required toast, show a temporary toast with an Undo button (e.g. 5–10s) that restores the deleted item if pressed.
-- Auto-dismiss success toasts after a short configurable timeout (3–5s) to avoid requiring manual dismissal for routine actions.
-- Add a global Settings panel where users can toggle: Confirm on delete (on/off), Success toast auto-dismiss timeout, and Enable Undo for deletes.
-- For bulk deletes, show a stronger confirmation dialog and require explicit acknowledgement (checkbox + button) to prevent accidental data loss.
-- Add telemetry/logging (opt-in) to measure how often users disable confirmations so UX defaults can be adjusted.
+## Testing & Quality Assurance
 
-These options will make the delete UX less intrusive and provide safer recovery options while preserving protection against accidental deletes.
+### Test Coverage (86 Tests Total)
 
-### Recommended security & CI TODOs (priority)
+#### Frontend (66 tests - Vitest + React Testing Library)
+- **Component Testing**: All React components (App, PhotoGallery, PhotoUploadForm, Toolbar, EditPage)
+- **Authentication Testing**: JWT token handling, secure URL generation, multi-source authentication
+- **User Interaction Testing**: Clicks, form inputs, navigation, drag-and-drop
+- **State Management Testing**: Photo loading, filtering, uploads, authentication state
+- **Error Handling Testing**: API failures, validation errors, authentication failures
+- **Accessibility Testing**: ARIA attributes, keyboard navigation
+- **E2E Testing**: Complete upload workflow from folder selection to backend storage
+- **Security Testing**: Token validation, URL security, localStorage error handling
+- **Mock Integration**: External dependencies (APIs, file systems, authentication)
 
-- **HUSKY pre-commit secret-scan (HIGH PRIORITY — recommended)**: add Husky and a pre-commit hook that scans staged files for potential secrets (API keys, private keys, tokens) and blocks commits when matches are found. Provide a command to opt-in/install hooks for contributors and document it in the README (example: `npm run prepare` to install Husky hooks). This helps prevent accidental credential commits.
+#### Backend (20+ tests - Jest + Supertest)
+- **Authentication Testing**: JWT validation, login/register flows, token expiration
+- **Security Testing**: Rate limiting, input validation, CORS configuration, security headers
+- **API Endpoint Testing**: Authenticated upload endpoints, error handling, file validation
+- **Image Processing Testing**: HEIC conversion, Sharp/ImageMagick fallbacks, thumbnail generation
+- **Database Testing**: SQLite operations, schema constraints, CRUD operations, user management
+- **Integration Testing**: Complete authenticated request/response cycles
+- **Error Scenarios**: Permission errors, disk issues, invalid files, authentication failures
+- **Multi-machine Testing**: File sync scenarios, graceful degradation
 
-- Update GitHub Actions workflows to use repository secrets and remove any embedded test/placeholder keys from workflow YAMLs. Document required secret names (e.g., `OPENAI_API_KEY`, `SUPABASE_URL`, `SUPABASE_KEY`, `JWT_SECRET`) in `PRODUCTION_SETUP.md` or `server/README.md`.
+**Total: 86 tests with robust coverage of authentication, security, and HEIC functionality**
 
-- Add a CI job to run a secret-scan on PRs (e.g., detect accidentally committed secrets in the diff) and fail the build if sensitive data is found.
+## Usage
 
-- Document a short secret-rotation / incident response procedure in the README (who to notify, how to rotate keys, and how to revoke exposed tokens) and link to it from `PRODUCTION_SETUP.md`.
+1. Open the application in a modern web browser
+2. Click "Select Folder for Upload" - the folder picker will open in your Pictures folder (on supported browsers)
+3. The application will scan and display all supported image files in chronological order
+4. Use the "Start Date" and "End Date" inputs to filter photos by date taken
+5. The list updates instantly as you change dates, showing the filtered count
+6. Click "Upload" to send filtered photos to the backend
+7. The backend view shows all photos, metadata, privileges, and hash info
+8. Click on a photo to edit it - the interactive canvas editor allows you to position captions on the image:
+   - Drag the text to reposition it anywhere on the image
+   - Use the controls to adjust font size and color
+   - Edit the caption text directly in the editor
+   - Click "Save Captioned Image" to persist your text positioning and styling
+9. If a file fails AI processing (shows 'AI processing failed'), POST to `/debug/reset-ai-retry` and click "Recheck Inprogress AI" to retry
 
-- Add a small contributor onboarding note describing how to copy `.env.example` to `.env`, where to store secrets (repo secrets for CI), and how to enable Husky locally.
+## Thumbnails
 
-> Note: The Husky pre-commit hook is the recommended first step — it stops secret leaks at the source (dev machines) and is quick to add.
+- **Automatic thumbnail generation**: The backend generates thumbnails for every image in the `working` folder and serves them from `/thumbnails/<hash>.jpg` so the frontend can display fast previews without re-reading original files.
+- **HEIC/HEIF support and fallback**: Thumbnails are generated with `sharp` when possible. If `sharp`/libvips lacks HEIF/HEIC support, the server will attempt a fallback conversion using ImageMagick (the `magick` command) to create thumbnails. Install ImageMagick with HEIF delegates on your system to enable the fallback.
 
-## Progress saved (work-in-progress)
+## HEIC/HEIF AI Processing Support
+- HEIC/HEIF files are now supported for AI processing. If the backend cannot convert HEIC using sharp, it will automatically use ImageMagick as a fallback.
+- If a file fails AI processing (shows 'AI processing failed'), you can reset its retry count by POSTing to `/debug/reset-ai-retry` and then clicking 'Recheck Inprogress AI' in the frontend to retry processing.
+- For new HEIC files, no manual intervention is needed.
 
-- Modularized gallery and upload UI into `src/PhotoGallery.jsx` and `src/PhotoUploadForm.jsx`.
-- Fixed upload callsites to use the backend upload endpoint and added upload/fetch logging.
-- Upload panel now fills the viewport under the toolbar, with a compact file list and flush-edge layout. No large image previews; file list shows filename, date, size, and type.
-- Server skips non-image files (e.g., desktop.ini) and logs them, instead of exiting. HEIC/HEIF support confirmed with ImageMagick fallback.
-- **NEW: Interactive canvas editor implemented** - `ImageCanvasEditor.jsx` provides drag-and-drop text positioning on images with font size/color controls. Text styling persists across editing sessions.
-- **NEW: Comprehensive testing suite implemented** - 66 tests (54 frontend + 9 backend + 1 E2E) covering all React components and API endpoints with Vitest, Jest, React Testing Library, and Supertest. Includes user interaction, state management, error handling, database operations, and accessibility testing.
-- **NEW: Toolbar messaging system** - Upload success messages now appear in the toolbar instead of popup toasts, providing persistent feedback until dismissed or page reload.
-- **NEW: Optimized HEIC conversion logging** - Reduced console noise by only logging errors when both Sharp and ImageMagick fail. Silent fallback for expected codec limitations.
-- **FIXED: Photo editing workflow** - Edit button properly wired with `handleEditPhoto` prop, delete confirmation dialogs now work correctly.
-- Remaining open items: CSS grid for thumbnails, live updates, search, GitHub Actions CI, and backend captioned image file export.
+## Troubleshooting
+- **HEIC/HEIF 'bad seek' errors**: These are expected when Sharp can't decode certain HEIC variants. The system automatically falls back to ImageMagick - no action needed.
+- **ImageMagick not found**: Make sure ImageMagick is installed and available in your system PATH for HEIC/HEIF fallback support.
+- **AI processing failures**: Check the backend logs. You can reset retry counts via `/debug/reset-ai-retry` and click 'Recheck Inprogress AI'.
+- **Test failures**: Run `npm test` to see detailed error messages. Ensure all dependencies are installed and environment is properly configured.
 
-<!-- `App_clean.jsx` has been removed from the repository. Use `src/App.jsx` as the mounted entry. -->
+## Known Limitations
 
-## Contributing
+- **Browser Security**: Only works with locally selected files due to browser security restrictions
+- **Performance**: Large folders may take time to process initially  
+- **EXIF Dependency**: EXIF data reading depends on photo metadata being present
+- **Date Fallback**: Falls back to file modification date if EXIF date is unavailable
+- **API Requirements**: File System Access API requires user gesture and HTTPS in production
+- **Browser Support**: Modern browsers required for full feature set (Chrome, Edge recommended)
 
-### Development Workflow
-1. Fork the repository
-2. Create a feature branch: `git checkout -b feature/your-feature-name`
-3. Make your changes
-4. Run tests: `npm run test:run`
-5. Ensure build passes: `npm run build`
-6. Commit with descriptive messages
-7. Push to your fork and submit a pull request
+## Testing & Quality Assurance
 
-### Code Quality Standards
-- All new components must include comprehensive tests
-- Follow existing code patterns and naming conventions
-- Ensure accessibility compliance (ARIA attributes, keyboard navigation)
-- Update README documentation for new features
-- Maintain test coverage: 66 tests minimum (54 frontend + 9 backend + E2E)
-- Keep console output clean - only log actionable errors
+### Test Coverage (86 Tests Total)
 
-### Testing Requirements  
-- Write tests for new components using Vitest and React Testing Library (frontend)
-- Write tests for new API endpoints using Jest and Supertest (backend)
-- Test user interactions, not implementation details
-- Include error handling and edge case scenarios
-- Mock external dependencies appropriately
-- Verify accessibility features work correctly
-- Ensure all tests pass before submitting PR
+#### Frontend (66 tests - Vitest + React Testing Library)
+- **Component Testing**: All React components (App, PhotoGallery, PhotoUploadForm, Toolbar, EditPage)
+- **Authentication Testing**: JWT token handling, secure URL generation, multi-source authentication
+- **User Interaction Testing**: Clicks, form inputs, navigation, drag-and-drop
+- **State Management Testing**: Photo loading, filtering, uploads, authentication state
+- **Error Handling Testing**: API failures, validation errors, authentication failures
+- **Accessibility Testing**: ARIA attributes, keyboard navigation
+- **E2E Testing**: Complete upload workflow from folder selection to backend storage
+- **Security Testing**: Token validation, URL security, localStorage error handling
+- **Mock Integration**: External dependencies (APIs, file systems, authentication)
 
-## License
+#### Backend (20+ tests - Jest + Supertest)
+- **Authentication Testing**: JWT validation, login/register flows, token expiration
+- **Security Testing**: Rate limiting, input validation, CORS configuration, security headers
+- **API Endpoint Testing**: Authenticated upload endpoints, error handling, file validation
+- **Image Processing Testing**: HEIC conversion, Sharp/ImageMagick fallbacks, thumbnail generation
+- **Database Testing**: SQLite operations, schema constraints, CRUD operations, user management
+- **Integration Testing**: Complete authenticated request/response cycles
+- **Error Scenarios**: Permission errors, disk issues, invalid files, authentication failures
+- **Multi-machine Testing**: File sync scenarios, graceful degradation
 
-This project is licensed under the MIT License - see the [LICENSE](LICENSE) file for details.
+**Total: 86 tests with robust coverage of authentication, security, and HEIC functionality**
 
-## Acknowledgments
+## Usage
 
-- React team for the excellent framework and developer tools
-- Vite team for the fast build system  
-- Testing Library community for user-centric testing approaches
-- OpenAI for AI-powered image analysis capabilities
-- Sharp and ImageMagick teams for robust image processing
+1. Open the application in a modern web browser
+2. Click "Select Folder for Upload" - the folder picker will open in your Pictures folder (on supported browsers)
+3. The application will scan and display all supported image files in chronological order
+4. Use the "Start Date" and "End Date" inputs to filter photos by date taken
+5. The list updates instantly as you change dates, showing the filtered count
+6. Click "Upload" to send filtered photos to the backend
+7. The backend view shows all photos, metadata, privileges, and hash info
+8. Click on a photo to edit it - the interactive canvas editor allows you to position captions on the image:
+   - Drag the text to reposition it anywhere on the image
+   - Use the controls to adjust font size and color
+   - Edit the caption text directly in the editor
+   - Click "Save Captioned Image" to persist your text positioning and styling
+9. If a file fails AI processing (shows 'AI processing failed'), POST to `/debug/reset-ai-retry` and click "Recheck Inprogress AI" to retry
 
-## Integration runner (developer tool)
+## Thumbnails
 
-There's a small helper script and runner for exercising the backend's photo state workflow locally without requiring external services. It starts the server in test mode, sends a PATCH to the `/photos/:id/state` endpoint, captures server logs, and prints the response.
+- **Automatic thumbnail generation**: The backend generates thumbnails for every image in the `working` folder and serves them from `/thumbnails/<hash>.jpg` so the frontend can display fast previews without re-reading original files.
+- **HEIC/HEIF support and fallback**: Thumbnails are generated with `sharp` when possible. If `sharp`/libvips lacks HEIF/HEIC support, the server will attempt a fallback conversion using ImageMagick (the `magick` command) to create thumbnails. Install ImageMagick with HEIF delegates on your system to enable the fallback.
 
-See `server/scripts/README.md` for usage notes and PowerShell examples.
+## HEIC/HEIF AI Processing Support
+- HEIC/HEIF files are now supported for AI processing. If the backend cannot convert HEIC using sharp, it will automatically use ImageMagick as a fallback.
+- If a file fails AI processing (shows 'AI processing failed'), you can reset its retry count by POSTing to `/debug/reset-ai-retry` and then clicking 'Recheck Inprogress AI' in the frontend to retry processing.
+- For new HEIC files, no manual intervention is needed.
 
-## Supabase & local development (tips)
+## Troubleshooting
+- **HEIC/HEIF 'bad seek' errors**: These are expected when Sharp can't decode certain HEIC variants. The system automatically falls back to ImageMagick - no action needed.
+- **ImageMagick not found**: Make sure ImageMagick is installed and available in your system PATH for HEIC/HEIF fallback support.
+- **AI processing failures**: Check the backend logs. You can reset retry counts via `/debug/reset-ai-retry` and click 'Recheck Inprogress AI'.
+- **Test failures**: Run `npm test` to see detailed error messages. Ensure all dependencies are installed and environment is properly configured.
 
-When running the server locally you have a few safe options to control whether the app uses the local sqlite fallback or connects to your Supabase Postgres instance. These options were added to make switching between machines and commits easier and to provide better diagnostics.
+## Known Limitations
 
-- Use the explicit opt-in flag (temporary for the shell):
+- **Browser Security**: Only works with locally selected files due to browser security restrictions
+- **Performance**: Large folders may take time to process initially  
+- **EXIF Dependency**: EXIF data reading depends on photo metadata being present
+- **Date Fallback**: Falls back to file modification date if EXIF date is unavailable
+- **API Requirements**: File System Access API requires user gesture and HTTPS in production
+- **Browser Support**: Modern browsers required for full feature set (Chrome, Edge recommended)
 
-```powershell
-$Env:USE_POSTGRES='true'
-npm --prefix server start
+## Testing & Quality Assurance
+
+### Test Coverage (86 Tests Total)
+
+#### Frontend (66 tests - Vitest + React Testing Library)
+- **Component Testing**: All React components (App, PhotoGallery, PhotoUploadForm, Toolbar, EditPage)
+- **Authentication Testing**: JWT token handling, secure URL generation, multi-source authentication
+- **User Interaction Testing**: Clicks, form inputs, navigation, drag-and-drop
+- **State Management Testing**: Photo loading, filtering, uploads, authentication state
+- **Error Handling Testing**: API failures, validation errors, authentication failures
+- **Accessibility Testing**: ARIA attributes, keyboard navigation
+- **E2E Testing**: Complete upload workflow from folder selection to backend storage
+- **Security Testing**: Token validation, URL security, localStorage error handling
+- **Mock Integration**: External dependencies (APIs, file systems, authentication)
+
+#### Backend (20+ tests - Jest + Supertest)
+- **Authentication Testing**: JWT validation, login/register flows, token expiration
+- **Security Testing**: Rate limiting, input validation, CORS configuration, security headers
+- **API Endpoint Testing**: Authenticated upload endpoints, error handling, file validation
+- **Image Processing Testing**: HEIC conversion, Sharp/ImageMagick fallbacks, thumbnail generation
+- **Database Testing**: SQLite operations, schema constraints, CRUD operations, user management
+- **Integration Testing**: Complete authenticated request/response cycles
+- **Error Scenarios**: Permission errors, disk issues, invalid files, authentication failures
+- **Multi-machine Testing**: File sync scenarios, graceful degradation
+
+**Total: 86 tests with robust coverage of authentication, security, and HEIC functionality**
+
+## Usage
+
+1. Open the application in a modern web browser
+2. Click "Select Folder for Upload" - the folder picker will open in your Pictures folder (on supported browsers)
+3. The application will scan and display all supported image files in chronological order
+4. Use the "Start Date" and "End Date" inputs to filter photos by date taken
+5. The list updates instantly as you change dates, showing the filtered count
+6. Click "Upload" to send filtered photos to the backend
+7. The backend view shows all photos, metadata, privileges, and hash info
+8. Click on a photo to edit it - the interactive canvas editor allows you to position captions on the image:
+   - Drag the text to reposition it anywhere on the image
+   - Use the controls to adjust font size and color
+   - Edit the caption text directly in the editor
+   - Click "Save Captioned Image" to persist your text positioning and styling
+9. If a file fails AI processing (shows 'AI processing failed'), POST to `/debug/reset-ai-retry` and click "Recheck Inprogress AI" to retry
+
+## Thumbnails
+
+- **Automatic thumbnail generation**: The backend generates thumbnails for every image in the `working` folder and serves them from `/thumbnails/<hash>.jpg` so the frontend can display fast previews without re-reading original files.
+- **HEIC/HEIF support and fallback**: Thumbnails are generated with `sharp` when possible. If `sharp`/libvips lacks HEIF/HEIC support, the server will attempt a fallback conversion using ImageMagick (the `magick` command) to create thumbnails. Install ImageMagick with HEIF delegates on your system to enable the fallback.
+
+## HEIC/HEIF AI Processing Support
+- HEIC/HEIF files are now supported for AI processing. If the backend cannot convert HEIC using sharp, it will automatically use ImageMagick as a fallback.
+- If a file fails AI processing (shows 'AI processing failed'), you can reset its retry count by POSTing to `/debug/reset-ai-retry` and then clicking 'Recheck Inprogress AI' in the frontend to retry processing.
+- For new HEIC files, no manual intervention is needed.
+
+## Troubleshooting
+- **HEIC/HEIF 'bad seek' errors**: These are expected when Sharp can't decode certain HEIC variants. The system automatically falls back to ImageMagick - no action needed.
+- **ImageMagick not found**: Make sure ImageMagick is installed and available in your system PATH for HEIC/HEIF fallback support.
+- **AI processing failures**: Check the backend logs. You can reset retry counts via `/debug/reset-ai-retry` and click 'Recheck Inprogress AI'.
+- **Test failures**: Run `npm test` to see detailed error messages. Ensure all dependencies are installed and environment is properly configured.
+
+## Known Limitations
+
+- **Browser Security**: Only works with locally selected files due to browser security restrictions
+- **Performance**: Large folders may take time to process initially  
+- **EXIF Dependency**: EXIF data reading depends on photo metadata being present
+- **Date Fallback**: Falls back to file modification date if EXIF date is unavailable
+- **API Requirements**: File System Access API requires user gesture and HTTPS in production
+- **Browser Support**: Modern browsers required for full feature set (Chrome, Edge recommended)
+
+## Testing & Quality Assurance
+
+### Test Coverage (86 Tests Total)
+
+#### Frontend (66 tests - Vitest + React Testing Library)
+- **Component Testing**: All React components (App, PhotoGallery, PhotoUploadForm, Toolbar, EditPage)
+- **Authentication Testing**: JWT token handling, secure URL generation, multi-source authentication
+- **User Interaction Testing**: Clicks, form inputs, navigation, drag-and-drop
+- **State Management Testing**: Photo loading, filtering, uploads, authentication state
+- **Error Handling Testing**: API failures, validation errors, authentication failures
+- **Accessibility Testing**: ARIA attributes, keyboard navigation
+- **E2E Testing**: Complete upload workflow from folder selection to backend storage
+- **Security Testing**: Token validation, URL security, localStorage error handling
+- **Mock Integration**: External dependencies (APIs, file systems, authentication)
+
+#### Backend (20+ tests - Jest + Supertest)
+- **Authentication Testing**: JWT validation, login/register flows, token expiration
+- **Security Testing**: Rate limiting, input validation, CORS configuration, security headers
+- **API Endpoint Testing**: Authenticated upload endpoints, error handling, file validation
+- **Image Processing Testing**: HEIC conversion, Sharp/ImageMagick fallbacks, thumbnail generation
+- **Database Testing**: SQLite operations, schema constraints, CRUD operations, user management
+- **Integration Testing**: Complete authenticated request/response cycles
+- **Error Scenarios**: Permission errors, disk issues, invalid files, authentication failures
+- **Multi-machine Testing**: File sync scenarios, graceful degradation
+
+**Total: 86 tests with robust coverage of authentication, security, and HEIC functionality**
+
+## Usage
+
+1. Open the application in a modern web browser
+2. Click "Select Folder for Upload" - the folder picker will open in your Pictures folder (on supported browsers)
+3. The application will scan and display all supported image files in chronological order
+4. Use the "Start Date" and "End Date" inputs to filter photos by date taken
+5. The list updates instantly as you change dates, showing the filtered count
+6. Click "Upload" to send filtered photos to the backend
+7. The backend view shows all photos, metadata, privileges, and hash info
+8. Click on a photo to edit it - the interactive canvas editor allows you to position captions on the image:
+   - Drag the text to reposition it anywhere on the image
+   - Use the controls to adjust font size and color
+   - Edit the caption text directly in the editor
+   - Click "Save Captioned Image" to persist your text positioning and styling
+9. If a file fails AI processing (shows 'AI processing failed'), POST to `/debug/reset-ai-retry` and click "Recheck Inprogress AI" to retry
+
+## Thumbnails
+
+- **Automatic thumbnail generation**: The backend generates thumbnails for every image in the `working` folder and serves them from `/thumbnails/<hash>.jpg` so the frontend can display fast previews without re-reading original files.
+- **HEIC/HEIF support and fallback**: Thumbnails are generated with `sharp` when possible. If `sharp`/libvips lacks HEIF/HEIC support, the server will attempt a fallback conversion using ImageMagick (the `magick` command) to create thumbnails. Install ImageMagick with HEIF delegates on your system to enable the fallback.
+
+## HEIC/HEIF AI Processing Support
+- HEIC/HEIF files are now supported for AI processing. If the backend cannot convert HEIC using sharp, it will automatically use ImageMagick as a fallback.
+- If a file fails AI processing (shows 'AI processing failed'), you can reset its retry count by POSTing to `/debug/reset-ai-retry` and then clicking 'Recheck Inprogress AI' in the frontend to retry processing.
+- For new HEIC files, no manual intervention is needed.
+
+## Troubleshooting
+- **HEIC/HEIF 'bad seek' errors**: These are expected when Sharp can't decode certain HEIC variants. The system automatically falls back to ImageMagick - no action needed.
+- **ImageMagick not found**: Make sure ImageMagick is installed and available in your system PATH for HEIC/HEIF fallback support.
+- **AI processing failures**: Check the backend logs. You can reset retry counts via `/debug/reset-ai-retry` and click 'Recheck Inprogress AI'.
+- **Test failures**: Run `npm test` to see detailed error messages. Ensure all dependencies are installed and environment is properly configured.
+
+## Known Limitations
+
+- **Browser Security**: Only works with locally selected files due to browser security restrictions
+- **Performance**: Large folders may take time to process initially  
+- **EXIF Dependency**: EXIF data reading depends on photo metadata being present
+- **Date Fallback**: Falls back to file modification date if EXIF date is unavailable
+- **API Requirements**: File System Access API requires user gesture and HTTPS in production
+- **Browser Support**: Modern browsers required for full feature set (Chrome, Edge recommended)
+
+## Testing & Quality Assurance
+
+### Test Coverage (86 Tests Total)
+
+#### Frontend (66 tests - Vitest + React Testing Library)
+- **Component Testing**: All React components (App, PhotoGallery, PhotoUploadForm, Toolbar, EditPage)
+- **Authentication Testing**: JWT token handling, secure URL generation, multi-source authentication
+- **User Interaction Testing**: Clicks, form inputs, navigation, drag-and-drop
+- **State Management Testing**: Photo loading, filtering, uploads, authentication state
+- **Error Handling Testing**: API failures, validation errors, authentication failures
+- **Accessibility Testing**: ARIA attributes, keyboard navigation
+- **E2E Testing**: Complete upload workflow from folder selection to backend storage
+- **Security Testing**: Token validation, URL security, localStorage error handling
+- **Mock Integration**: External dependencies (APIs, file systems, authentication)
+
+#### Backend (20+ tests - Jest + Supertest)
+- **Authentication Testing**: JWT validation, login/register flows, token expiration
+- **Security Testing**: Rate limiting, input validation, CORS configuration, security headers
+- **API Endpoint Testing**: Authenticated upload endpoints, error handling, file validation
+- **Image Processing Testing**: HEIC conversion, Sharp/ImageMagick fallbacks, thumbnail generation
+- **Database Testing**: SQLite operations, schema constraints, CRUD operations, user management
+- **Integration Testing**: Complete authenticated request/response cycles
+- **Error Scenarios**: Permission errors, disk issues, invalid files, authentication failures
+- **Multi-machine Testing**: File sync scenarios, graceful degradation
+
+**Total: 86 tests with robust coverage of authentication, security, and HEIC functionality**
+
+## Usage
+
+1. Open the application in a modern web browser
+2. Click "Select Folder for Upload" - the folder picker will open in your Pictures folder (on supported browsers)
+3. The application will scan and display all supported image files in chronological order
+4. Use the "Start Date" and "End Date" inputs to filter photos by date taken
+5. The list updates instantly as you change dates, showing the filtered count
+6. Click "Upload" to send filtered photos to the backend
+7. The backend view shows all photos, metadata, privileges, and hash info
+8. Click on a photo to edit it - the interactive canvas editor allows you to position captions on the image:
+   - Drag the text to reposition it anywhere on the image
+   - Use the controls to adjust font size and color
+   - Edit the caption text directly in the editor
+   - Click "Save Captioned Image" to persist your text positioning and styling
+9. If a file fails AI processing (shows 'AI processing failed'), POST to `/debug/reset-ai-retry` and click "Recheck Inprogress AI" to retry
+
+## Thumbnails
+
+- **Automatic thumbnail generation**: The backend generates thumbnails for every image in the `working` folder and serves them from `/thumbnails/<hash>.jpg` so the frontend can display fast previews without re-reading original files.
+- **HEIC/HEIF support and fallback**: Thumbnails are generated with `sharp` when possible. If `sharp`/libvips lacks HEIF/HEIC support, the server will attempt a fallback conversion using ImageMagick (the `magick` command) to create thumbnails. Install ImageMagick with HEIF delegates on your system to enable the fallback.
+
+## HEIC/HEIF AI Processing Support
+- HEIC/HEIF files are now supported for AI processing. If the backend cannot convert HEIC using sharp, it will automatically use ImageMagick as a fallback.
+- If a file fails AI processing (shows 'AI processing failed'), you can reset its retry count by POSTing to `/debug/reset-ai-retry` and then clicking 'Recheck Inprogress AI' in the frontend to retry processing.
+- For new HEIC files, no manual intervention is needed.
+
+## Troubleshooting
+- **HEIC/HEIF 'bad seek' errors**: These are expected when Sharp can't decode certain HEIC variants. The system automatically falls back to ImageMagick - no action needed.
+- **ImageMagick not found**: Make sure ImageMagick is installed and available in your system PATH for HEIC/HEIF fallback support.
+- **AI processing failures**: Check the backend logs. You can reset retry counts via `/debug/reset-ai-retry` and click 'Recheck Inprogress AI'.
+- **Test failures**: Run `npm test` to see detailed error messages. Ensure all dependencies are installed and environment is properly configured.
+
+## Known Limitations
+
+- **Browser Security**: Only works with locally selected files due to browser security restrictions
+- **Performance**: Large folders may take time to process initially  
+- **EXIF Dependency**: EXIF data reading depends on photo metadata being present
+- **Date Fallback**: Falls back to file modification date if EXIF date is unavailable
+- **API Requirements**: File System Access API requires user gesture and HTTPS in production
+- **Browser Support**: Modern browsers required for full feature set (Chrome, Edge recommended)
+
+## Testing & Quality Assurance
+
+### Test Coverage (86 Tests Total)
+
+#### Frontend (66 tests - Vitest + React Testing Library)
+- **Component Testing**: All React components (App, PhotoGallery, PhotoUploadForm, Toolbar, EditPage)
+- **Authentication Testing**: JWT token handling, secure URL generation, multi-source authentication
+- **User Interaction Testing**: Clicks, form inputs, navigation, drag-and-drop
+- **State Management Testing**: Photo loading, filtering, uploads, authentication state
+- **Error Handling Testing**: API failures, validation errors, authentication failures
+- **Accessibility Testing**: ARIA attributes, keyboard navigation
+- **E2E Testing**: Complete upload workflow from folder selection to backend storage
+- **Security Testing**: Token validation, URL security, localStorage error handling
+- **Mock Integration**: External dependencies (APIs, file systems, authentication)
+
+#### Backend (20+ tests - Jest + Supertest)
+- **Authentication Testing**: JWT validation, login/register flows, token expiration
+- **Security Testing**: Rate limiting, input validation, CORS configuration, security headers
+- **API Endpoint Testing**: Authenticated upload endpoints, error handling, file validation
+- **Image Processing Testing**: HEIC conversion, Sharp/ImageMagick fallbacks, thumbnail generation
+- **Database Testing**: SQLite operations, schema constraints, CRUD operations, user management
+- **Integration Testing**: Complete authenticated request/response cycles
+- **Error Scenarios**: Permission errors, disk issues, invalid files, authentication failures
+- **Multi-machine Testing**: File sync scenarios, graceful degradation
+
+**Total: 86 tests with robust coverage of authentication, security, and HEIC functionality**
+
+## Usage
+
+1. Open the application in a modern web browser
+2. Click "Select Folder for Upload" - the folder picker will open in your Pictures folder (on supported browsers)
+3. The application will scan and display all supported image files in chronological order
+4. Use the "Start Date" and "End Date" inputs to filter photos by date taken
+5. The list updates instantly as you change dates, showing the filtered count
+6. Click "Upload" to send filtered photos to the backend
+7. The backend view shows all photos, metadata, privileges, and hash info
+8. Click on a photo to edit it - the interactive canvas editor allows you to position captions on the image:
+   - Drag the text to reposition it anywhere on the image
+   - Use the controls to adjust font size and color
+   - Edit the caption text directly in the editor
+   - Click "Save Captioned Image" to persist your text positioning and styling
+9. If a file fails AI processing (shows 'AI processing failed'), POST to `/debug/reset-ai-retry` and click "Recheck Inprogress AI" to retry
+
+## Thumbnails
+
+- **Automatic thumbnail generation**: The backend generates thumbnails for every image in the `working` folder and serves them from `/thumbnails/<hash>.jpg` so the frontend can display fast previews without re-reading original files.
+- **HEIC/HEIF support and fallback**: Thumbnails are generated with `sharp` when possible. If `sharp`/libvips lacks HEIF/HEIC support, the server will attempt a fallback conversion using ImageMagick (the `magick` command) to create thumbnails. Install ImageMagick with HEIF delegates on your system to enable the fallback.
+
+## HEIC/HEIF AI Processing Support
+- HEIC/HEIF files are now supported for AI processing. If the backend cannot convert HEIC using sharp, it will automatically use ImageMagick as a fallback.
+- If a file fails AI processing (shows 'AI processing failed'), you can reset its retry count by POSTing to `/debug/reset-ai-retry` and then clicking 'Recheck Inprogress AI' in the frontend to retry processing.
+- For new HEIC files, no manual intervention is needed.
+
+## Troubleshooting
+- **HEIC/HEIF 'bad seek' errors**: These are expected when Sharp can't decode certain HEIC variants. The system automatically falls back to ImageMagick - no action needed.
+- **ImageMagick not found**: Make sure ImageMagick is installed and available in your system PATH for HEIC/HEIF fallback support.
+- **AI processing failures**: Check the backend logs. You can reset retry counts via `/debug/reset-ai-retry` and click 'Recheck Inprogress AI'.
+- **Test failures**: Run `npm test` to see detailed error messages. Ensure all dependencies are installed and environment is properly configured.
+
+## Known Limitations
+
+- **Browser Security**: Only works with locally selected files due to browser security restrictions
+- **Performance**: Large folders may take time to process initially  
+- **EXIF Dependency**: EXIF data reading depends on photo metadata being present
+- **Date Fallback**: Falls back to file modification date if EXIF date is unavailable
+- **API Requirements**: File System Access API requires user gesture and HTTPS in production
+- **Browser Support**: Modern browsers required for full feature set (Chrome, Edge recommended)
+
+# Project TODOs
+
+## High-Priority
+
+- [ ] **Security (High):** Fix token leakage in `server/middleware/imageAuth.js` by removing or redacting support for query parameter tokens (`?token=`) in logs, or enforcing short lifetimes.
+- [ ] **Security/Architecture (High):** Resolve "Split Brain" authentication. The local `users` table (migration `20251020000001`) risks desyncing from Supabase's `auth.users`. Consolidate user management to rely on Supabase as the source of truth.
+- [ ] **Critical Logic (High):** Fix the file cleanup race condition in `server/routes/uploads.js`. If `ingestPhoto` fails, the file is deleted locally but may remain orphaned in Supabase Storage. Implement a cleanup mechanism in the catch block.
+
+## Medium-Priority
+
+- [ ] **Refactoring (Medium):** Address "Prop Drilling" in `App.jsx`. Move handlers and state (`handleSelectFolder`, `uploading`, etc.) into the Zustand store (`store.js`) to clean up component signatures.
+- [ ] **Maintainability (Medium):** Fix dependency conflicts in `package.json` to remove the requirement for `--legacy-peer-deps` during install.
+
+## Future
+
+- [ ] **Scalability (Future):** Refactor uploads to stream directly to Supabase Storage, bypassing the local `os.tmpdir()` disk write to prevent bottlenecks under high load.
+
+# Environment Variables
+
+# React Photo Filtering App
+
+[![Tests](https://img.shields.io/badge/tests-86%20passing-brightgreen.svg)](https://github.com/Inouye165/React-Photo-App)
+[![Security](https://img.shields.io/badge/security-JWT%20Auth-blue.svg)](https://jwt.io/)
+[![HEIC Support](https://img.shields.io/badge/HEIC-Auto%20Convert-orange.svg)](https://en.wikipedia.org/wiki/High_Efficiency_Image_Format)
+[![React](https://img.shields.io/badge/React-19-61dafb.svg)](https://reactjs.org/)
+[![Vite](https://img.shields.io/badge/Vite-5.0-646cff.svg)](https://vitejs.dev/)
+[![Testing](https://img.shields.io/badge/Testing-Vitest%20%2B%20Jest-6e9f18.svg)](https://vitest.dev/)
+[![License](https://img.shields.io/badge/license-MIT-blue.svg)](LICENSE)
+
+A full-screen React application for filtering, browsing, and uploading photos by date range, with a secure Node.js Express backend featuring JWT authentication, automatic HEIC conversion, and AI-powered metadata extraction. Features comprehensive testing with 86 tests covering authentication, security, and advanced image processing.
+
+**Author:** Ron Inouye
+
+## Table of Contents
+
+ - [Integration runner (developer tool)](#integration-runner-developer-tool)
+
+## 🆕 What's New (October 2025)
+
+### 🔐 Authentication & Security System
+
+### 🖼️ Advanced HEIC Support  
+
+### Testing & Quality Enhancement
+
+### Image Processing Improvements
+
+### UX Improvements
+
+### Developer Experience  
+
+## Key Features (2025 Update)
+
+### 🔐 Security & Authentication
+
+### 📸 Advanced Photo Management
+
+### 🤖 AI & Processing
+
+- The backend routes every AI operation (router, scenery narrative, collectible appraisal) through OpenAI vision-capable models by default. Overrides are accepted, but they are automatically coerced to a known image-aware model so requests that include `image_url` payloads never hit schema errors again.
+- When we introduce text-only AI workflows in the future, the model selector will branch on the request payload and allow text-only models for those flows. Until that feature lands, assume all jobs carry images and must target a vision model.
+- Processed metadata is written back to the database together with the effective model names so operators can audit which models ran each job.
+- **Dynamic model catalog** — the server now exposes `GET /photos/models`, a signed-in endpoint backed by a live OpenAI allowlist (with fallbacks). The frontend `ModelSelect` component consumes it at runtime so new model releases or account-specific fine-tunes appear automatically without redeploying the UI.
+
+### 🎨 User Interface
+
+### 🧪 Quality Assurance
+  - **Frontend**: 66 tests with Vitest + React Testing Library covering user interactions, state management, error handling, accessibility, and authentication utilities  
+  - **Backend**: 20+ tests with Jest + Supertest covering API endpoints, database operations, file upload handling, authentication flows, security middleware, and HEIC conversion
+  - **Integration**: Complete end-to-end authentication and image access workflows
+  - **Security Testing**: Validation of JWT flows, CORS configuration, and security headers
+  - **Regression Prevention**: Tests specifically designed to prevent previously encountered issues
+  - **Test Isolation**: Proper DOM cleanup between tests and comprehensive mocking strategies
+
+## Usage (2025)
+
+1. Start the backend server (`cd server && npm start`).
+2. Start the frontend (`npm run dev`).
+3. In the app, click "Select Folder for Upload" to pick a local folder.
+4. Filter/select photos by date, then upload to the backend.
+5. The backend view shows all photos, metadata, privileges, and hash info. No duplicates are stored.
+6. If a file fails AI processing (shows 'AI processing failed'), POST to `/debug/reset-ai-retry` and click "Recheck Inprogress AI" to retry.
+7. The upload panel is now flush with the viewport edges, matching other views. The file list is compact and readable.
+
+## File Hashing & Deduplication
+
+
+## Technical Stack
+
+### Frontend
+   - **Authentication Utilities**: Secure token handling and authenticated image URL generation
+   - **PhotoUploadForm.jsx**: Upload panel with compact file list, flush-edge layout
+   - **ImageCanvasEditor.jsx**: Interactive canvas editor for positioning captions on images
+   - **EditPage.jsx**: Photo editing interface with canvas, metadata forms, and authenticated image access
+
+### Backend
+
+- **Dynamic AI model endpoint**: authenticated clients can call `GET /photos/models` to receive the current allowlisted OpenAI model IDs. The server refreshes this list from the OpenAI API with safe fallbacks so the frontend selects only supported models.
+- Routes enforce the same allowlist for overrides supplied through `/photos/:id/run-ai` and `/photos/:id/recheck-ai`, guaranteeing consistent validation across the stack.
+
+## File Structure
+
+```
+photo-app/
+├── public/
+├── src/
+│   ├── App.jsx                # Main application component with photo filtering logic
+│   ├── EditPage.jsx           # Photo editing interface with canvas and metadata forms
+│   ├── ImageCanvasEditor.jsx  # Interactive canvas for positioning captions on images
+│   ├── PhotoUploadForm.jsx    # Upload panel with compact file list
+│   ├── PhotoGallery.jsx       # Photo gallery display component
+│   ├── Toolbar.jsx            # Fixed navigation toolbar
+│   ├── api.js                 # Backend API communication utilities
+│   ├── test/
+│   │   └── setup.js           # Global test configuration and mocks
+│   ├── *.test.jsx             # Component test suites (54 tests total)
+│   ├── index.css              # Tailwind CSS imports
+│   └── main.jsx               # React entry point
+├── server/                     # Backend Node.js server
+│   ├── server.js              # Express server with upload endpoints
+│   ├── tests/
+│   │   ├── uploads.test.js    # API endpoint tests (9 tests)
+│   │   └── db.test.js         # Database operation tests
+│   ├── package.json           # Server dependencies
+│   └── README.md              # Server documentation
+├── tailwind.config.js         # Tailwind configuration
+├── postcss.config.js          # PostCSS configuration
+├── vite.config.js             # Vite configuration
+├── package.json               # Frontend dependencies and scripts
+└── README.md                  # This documentation
 ```
 
-- Auto-detect Postgres: the server will prefer Postgres when `SUPABASE_DB_URL` is present in `server/.env`. You can opt-out of this behavior with:
+## Getting Started
 
+### Prerequisites
+
+### Installation
+
+1. Clone the repository:
+   ```bash
+   git clone https://github.com/Inouye165/React-Photo-App.git
+   cd React-Photo-App
+   ```
+
+2. Install frontend dependencies:
+   ```bash
+   npm install
+   ```
+
+3. Install backend dependencies:
+   ```bash
+   cd server
+   npm install
+   cd ..
+   ```
+
+### Development
+
+1. Start the backend server:
+   ```bash
+   cd server
+   npm start
+   ```
+   Server will run on `http://localhost:3001`
+
+2. Start the frontend development server (in new terminal):
+   ```bash
+   npm run dev
+   ```
+   Frontend will be available at `http://localhost:5173`
+
+## Docker containers
+
+This project uses a small set of optional but recommended Docker containers during development. The only container required by the default codebase is Redis (used by BullMQ for background AI and image-processing jobs). Other containers you may see on your machine (for example `qdrant`, local `photo-ai` services, or other leftover images) are NOT required by this repository unless you have intentionally re-wired the AI/vector-store adapters.
+
+Summary:
+
+- Required (recommended for normal dev):
+   - `redis` / any container exposing port 6379 — used by `server/queue` (BullMQ). When Redis is available the server enqueues AI processing work and the worker processes it in the background. If Redis is not available the server will fall back to synchronous processing (slower and may block requests).
+
+- Optional / Not required by default:
+   - `qdrant` (vector DB) — there are no references to Qdrant in this repo. Start it only if you have custom changes that use a vector DB.
+   - `photo-ai` or other local LLM services — the project uses OpenAI via LangChain by default (`server/ai/langchain/agents.js`). A local `photo-ai` container is only needed if you replaced the OpenAI adapters to call your local model.
+
+Quick commands (PowerShell)
+
+List containers on your machine:
 ```powershell
-$Env:USE_POSTGRES_AUTO_DETECT='false'
-npm --prefix server start
+docker ps -a --format "{{.ID}}\t{{.Names}}\t{{.Image}}\t{{.Status}}\t{{.Ports}}"
 ```
 
-- Non-blocking smoke-checks: on startup the server runs a harmless Supabase check (lists storage buckets or does a tiny `photos` select) and logs success/failure; periodic checks run every 10 minutes by default. Control the interval with `SUPABASE_SMOKE_INTERVAL_MS` (milliseconds).
-
-- Quick environment verification helper (local):
-
+Start the recommended Redis container (example used in developer docs):
 ```powershell
-# from repo root
-node server/check-env.js
+# run a lightweight Redis container
+docker run -d --name photo-app-redis -p 6379:6379 redis:7.2-alpine
+
+# if an existing stopped container named `photo-app-redis` already exists, start it instead:
+docker start photo-app-redis
 ```
 
-This prints which Supabase-related variables are present and exits non-zero if required variables are missing.
+If you want to start all stopped containers on your machine (careful — this may start unrelated services):
+```powershell
+docker start $(docker ps -a -q)
+```
 
-- Note: The application requires a Postgres database (e.g., Supabase). The local SQLite fallback has been removed to ensure consistency between development and production environments. You must provide `SUPABASE_DB_URL` in `server/.env`.
+Stop and remove a container when you're done:
+```powershell
+docker stop photo-app-redis
+docker rm photo-app-redis
+```
 
-Security reminder: never commit `server/.env` or any real service role keys to git. Use repository secrets for CI and rotate keys if they are ever committed or exposed.
+Notes and recommendations
 
-## Production Deployment
+- Keep a single Redis instance running while developing the app to get background processing and avoid synchronous fallbacks.
+- Do not start unrelated `qdrant` containers unless you intend to add vector DB functionality; they consume memory and are unnecessary for the current codebase.
+- If Redis fails to start, inspect logs with `docker logs photo-app-redis --tail 200` and recreate the container if necessary (`docker rm` then `docker run`).
 
-For production environments (e.g., Heroku, Render, Railway, or Docker), the API Server and Background Worker must run as separate processes to ensure scalability and stability.
+If you'd like, I can also add a short note to `server/README.md` with the same commands and a link to this top-level README section.
 
-### Process Types
+### Authentication Setup
 
-The project includes a `Procfile` defining the two required process types:
+The application requires user authentication for all image operations. On first run:
 
-1.  **Web Process (`web`)**:
-    *   Command: `cd server && npm start`
-    *   Role: Serves the API, handles HTTP requests, and enqueues AI jobs.
-    *   **Does NOT** process background jobs.
+1. **Register a new account**: Navigate to the login page and create an account with username, email, and password
+2. **Login**: Use your credentials to obtain a JWT token (valid for 24 hours)
+3. **Session cookie**: After login the server sets an httpOnly cookie named `authToken`. The frontend should make API and image requests to the API origin (VITE_API_URL) with credentials included (fetch/axios: `credentials: 'include'`) so the browser sends the cookie automatically. Do not place JWTs in URLs or localStorage.
+4. **Multi-device support**: Login on multiple machines with the same account for seamless multi-machine workflows
 
-2.  **Worker Process (`worker`)**:
-    *   Command: `cd server && npm run worker`
-    *   Role: Listens to the Redis queue and processes AI jobs (metadata extraction, etc.).
-    *   **Does NOT** listen on a web port.
+**Security Features:**
 
-### Deployment Steps
+### Environment Configuration
 
-1.  **Configure Environment**: Ensure all required environment variables (including `REDIS_HOST`, `REDIS_PORT`, `SUPABASE_URL`, etc.) are set in your production environment.
-2.  **Scale Processes**:
-    *   Scale `web` to at least 1 instance (more for high traffic).
-    *   Scale `worker` to at least 1 instance (more for high background job volume).
-3.  **Redis**: A Redis instance is **required** for the queue to function. Ensure both processes can connect to it.
+The frontend uses environment variables for configuration:
 
-### Verification
 
-*   **Web Logs**: Should show "Photo upload server running on port..." but **should not** show "[WORKER] AI Worker process started".
-*   **Worker Logs**: Should show "[WORKER] AI Worker process started..." but **should not** show "Photo upload server running on port...".
-# ci trigger
+To override for production or different environments, create a `.env` file in the root directory:
+
+```bash
+VITE_API_URL=https://your-production-api.com
+```
+
+This allows easy deployment to different environments without code changes.
+
+## Environment Variables (template)
+ Copy `.env.example` to `.env` in both the root and `server/` directories.
+ Fill in all required values before running the app.
+ Do not commit `.env` files to source control.
+ **Robust Environment Handling:** The app is designed to work across different machines and CI environments. If an environment variable (like `VITE_API_URL`) is missing, the app will fall back to a safe default (`http://localhost:3001`) and warn you. This prevents crashes when switching between desktop, laptop, or CI.
+ **Tip:** Always check `.env.example` for required variables after pulling new changes or switching machines.
+# Frontend (Vite)
+ **Dependency errors:** If you see errors about conflicting dependencies (e.g., ERESOLVE), always use `npm install --legacy-peer-deps`.
+ **Missing libraries:** If you see errors like "Cannot find module 'zustand'" or '@supabase/supabase-js', run `npm install <package> --legacy-peer-deps` in the correct directory (root for frontend, `server/` for backend).
+ **Missing environment variables:** If you see errors about missing environment variables, ensure you have copied `.env.example` to `.env` and filled in all required values in both root and `server/`.
+ **Wrong install directory:** Always run frontend installs in the project root and backend installs in the `server/` directory.
+ **ImageMagick not found:** Make sure ImageMagick is installed and available in your system PATH for HEIC/HEIF fallback support.
+ **Environment switching:** If you move between machines (desktop, laptop, CI), always copy `.env.example` to `.env` and review the values. The app will use safe defaults if variables are missing, but some features may require explicit configuration.
+# Map keys and map styling
+
+- `VITE_GOOGLE_MAPS_API_KEY` - (Required for Google maps in the front-end) Add a browser key restricted to `http://localhost:5173/*` (or your dev host) and enable the **Maps JavaScript API**. Place this key in the root `.env` and **do not** commit it.
+- `VITE_GOOGLE_MAPS_MAP_ID` - (Optional) Map ID if you're using a custom Google Maps style or `AdvancedMarker` which may require a specific mapId. You can fetch or create this ID in the Google Cloud console under Maps Platform → Map Management → Map IDs.
+
+If `VITE_GOOGLE_MAPS_API_KEY` is missing, the UI will show a fallback OpenStreetMap preview automatically when the selected photo contains GPS coordinates. To get a full Google Maps experience (AdvancedMarker, styled map), set `VITE_GOOGLE_MAPS_API_KEY` and `VITE_GOOGLE_MAPS_MAP_ID`.
+# OPENAI_API_KEY=sk-your_openai_api_key
+```
+Do not commit `.env` to source control. Add it to `.gitignore`.
+
+### Build
+
+```bash
+```
+
+Preview the production build:
+```bash
+Run the test suite:
+```bash
+npm run test:run
+
+npm run test:coverage
+
+# Backend tests (Jest) - 20+ tests
+cd server
+npm test
+
+# Quick test validation across all components
+node test-runner.js
+```
+
+The project includes comprehensive testing across frontend and backend:
+
+#### Frontend Tests (66 tests with Vitest + React Testing Library)
+- **Component Testing**: All React components (App, PhotoGallery, PhotoUploadForm, Toolbar, EditPage)
+- **Authentication Testing**: JWT token handling, secure URL generation, multi-source authentication
+- **User Interaction Testing**: Clicks, form inputs, navigation, drag-and-drop
+- **State Management Testing**: Photo loading, filtering, uploads, authentication state
+- **Error Handling Testing**: API failures, validation errors, authentication failures
+- **Accessibility Testing**: ARIA attributes, keyboard navigation
+- **E2E Testing**: Complete upload workflow from folder selection to backend storage
+- **Security Testing**: Token validation, URL security, localStorage error handling
+- **Mock Integration**: External dependencies (APIs, file systems, authentication)
+
+#### Backend Tests (20+ tests with Jest + Supertest)
+- **Authentication Testing**: JWT validation, login/register flows, token expiration
+- **Security Testing**: Rate limiting, input validation, CORS configuration, security headers
+- **API Endpoint Testing**: Authenticated upload endpoints, error handling, file validation
+- **Image Processing Testing**: HEIC conversion, Sharp/ImageMagick fallbacks, thumbnail generation
+- **Database Testing**: SQLite operations, schema constraints, CRUD operations, user management
+- **Integration Testing**: Complete authenticated request/response cycles
+- **Error Scenarios**: Permission errors, disk issues, invalid files, authentication failures
+- **Multi-machine Testing**: File sync scenarios, graceful degradation
+
+**Total: 86 tests with robust coverage of authentication, security, and HEIC functionality**
+
+## Usage
+
+1. Open the application in a modern web browser
+2. Click "Select Folder for Upload" - the folder picker will open in your Pictures folder (on supported browsers)
+3. The application will scan and display all supported image files in chronological order
+4. Use the "Start Date" and "End Date" inputs to filter photos by date taken
+5. The list updates instantly as you change dates, showing the filtered count
+6. Click "Upload" to send filtered photos to the backend
+7. The backend view shows all photos, metadata, privileges, and hash info
+8. Click on a photo to edit it - the interactive canvas editor allows you to position captions on the image:
+   - Drag the text to reposition it anywhere on the image
+   - Use the controls to adjust font size and color
+   - Edit the caption text directly in the editor
+   - Click "Save Captioned Image" to persist your text positioning and styling
+9. If a file fails AI processing (shows 'AI processing failed'), POST to `/debug/reset-ai-retry` and click "Recheck Inprogress AI" to retry
+
+## Thumbnails
+
+- **Automatic thumbnail generation**: The backend generates thumbnails for every image in the `working` folder and serves them from `/thumbnails/<hash>.jpg` so the frontend can display fast previews without re-reading original files.
+- **HEIC/HEIF support and fallback**: Thumbnails are generated with `sharp` when possible. If `sharp`/libvips lacks HEIF/HEIC support, the server will attempt a fallback conversion using ImageMagick (the `magick` command) to create thumbnails. Install ImageMagick with HEIF delegates on your system to enable the fallback.
+
+## HEIC/HEIF AI Processing Support
+- HEIC/HEIF files are now supported for AI processing. If the backend cannot convert HEIC using sharp, it will automatically use ImageMagick as a fallback.
+- If a file fails AI processing (shows 'AI processing failed'), you can reset its retry count by POSTing to `/debug/reset-ai-retry` and then clicking 'Recheck Inprogress AI' in the frontend to retry processing.
+- For new HEIC files, no manual intervention is needed.
+
+## Troubleshooting
+- **HEIC/HEIF 'bad seek' errors**: These are expected when Sharp can't decode certain HEIC variants. The system automatically falls back to ImageMagick - no action needed.
+- **ImageMagick not found**: Make sure ImageMagick is installed and available in your system PATH for HEIC/HEIF fallback support.
+- **AI processing failures**: Check the backend logs. You can reset retry counts via `/debug/reset-ai-retry` and click 'Recheck Inprogress AI'.
+- **Test failures**: Run `npm test` to see detailed error messages. Ensure all dependencies are installed and environment is properly configured.
+
+## Known Limitations
+
+- **Browser Security**: Only works with locally selected files due to browser security restrictions
+- **Performance**: Large folders may take time to process initially  
+- **EXIF Dependency**: EXIF data reading depends on photo metadata being present
+- **Date Fallback**: Falls back to file modification date if EXIF date is unavailable
+- **API Requirements**: File System Access API requires user gesture and HTTPS in production
+- **Browser Support**: Modern browsers required for full feature set (Chrome, Edge recommended)
+
+# Project TODOs
+
+## High-Priority
+
+- [ ] **Security (High):** Fix token leakage in `server/middleware/imageAuth.js` by removing or redacting support for query parameter tokens (`?token=`) in logs, or enforcing short lifetimes.
+- [ ] **Security/Architecture (High):** Resolve "Split Brain" authentication. The local `users` table (migration `20251020000001`) risks desyncing from Supabase's `auth.users`. Consolidate user management to rely on Supabase as the source of truth.
+- [ ] **Critical Logic (High):** Fix the file cleanup race condition in `server/routes/uploads.js`. If `ingestPhoto` fails, the file is deleted locally but may remain orphaned in Supabase Storage. Implement a cleanup mechanism in the catch block.
+
+## Medium-Priority
+
+- [ ] **Refactoring (Medium):** Address "Prop Drilling" in `App.jsx`. Move handlers and state (`handleSelectFolder`, `uploading`, etc.) into the Zustand store (`store.js`) to clean up component signatures.
+- [ ] **Maintainability (Medium):** Fix dependency conflicts in `package.json` to remove the requirement for `--legacy-peer-deps` during install.
+
+## Future
+
+- [ ] **Scalability (Future):** Refactor uploads to stream directly to Supabase Storage, bypassing the local `os.tmpdir()` disk write to prevent bottlenecks under high load.
