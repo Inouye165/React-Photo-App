@@ -93,11 +93,11 @@ jobs:
         run: npm run build
 
       - name: Run frontend tests
-        run: npm run test:run --silent
+        run: npm run test:run --silent -- --minWorkers=1 --maxWorkers=1
         env:
           CI: true
           VITE_API_URL: http://localhost:3001
-          NODE_OPTIONS: --max-old-space-size=8192
+          NODE_OPTIONS: --max-old-space-size=6144
 
       - name: Create photo working dir
         run: mkdir -p server/working/photos
