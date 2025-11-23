@@ -70,7 +70,10 @@ module.exports = function createUploadsRouter({ db }) {
             const realPath = validateSafePath(req.file.path);
             // Use synchronous unlink for immediate cleanup
             try {
-              fs.unlinkSync(realPath);
+              // Check if file exists before attempting to delete it
+              if (fs.existsSync(realPath)) {
+                fs.unlinkSync(realPath);
+              }
             } catch (unlinkErr) {
               if (unlinkErr.code !== 'ENOENT') {
                 logger.error('Temp file cleanup failed:', unlinkErr);
@@ -154,7 +157,10 @@ module.exports = function createUploadsRouter({ db }) {
             const realPath = validateSafePath(req.file.path);
             // Use synchronous unlink to ensure file is deleted before moving to next test
             try {
-              fs.unlinkSync(realPath);
+              // Check if file exists before attempting to delete it
+              if (fs.existsSync(realPath)) {
+                fs.unlinkSync(realPath);
+              }
             } catch (unlinkErr) {
               // File might already be deleted, log but don't fail
               if (unlinkErr.code !== 'ENOENT') {
