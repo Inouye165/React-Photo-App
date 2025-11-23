@@ -30,18 +30,8 @@ describe('GET /display/inprogress/:filename', () => {
   let testPhotoId;
 
   beforeAll(async () => {
-    // Create a test user
-    const testUser = {
-      username: 'cache_test_user',
-      password_hash: 'fake_hash_for_test'
-    };
-    
-    // Insert test user (if not exists)
-    try {
-      await db('users').insert(testUser);
-    } catch {
-      // User may already exist, that's okay
-    }
+    // No need to create a test user - we rely on Supabase Auth via mocked token
+    // The mock user is returned by mockGetUser in beforeEach
 
     // Create a test photo in the database
     const insertResult = await db('photos').insert({
@@ -63,7 +53,7 @@ describe('GET /display/inprogress/:filename', () => {
     if (testPhotoId) {
       await db('photos').where({ id: testPhotoId }).delete();
     }
-    await db('users').where({ username: 'cache_test_user' }).delete();
+    // No need to clean up users table - it no longer exists
   });
 
   beforeEach(() => {
