@@ -3,35 +3,33 @@ const express = require('express');
 const cookieParser = require('cookie-parser');
 const path = require('path');
 const fs = require('fs');
-const jwt = require('jsonwebtoken');
-const { authenticateImageRequest } = require('../middleware/imageAuth');
 
-const TEST_JWT_SECRET = process.env.JWT_SECRET || 'test-jwt-secret-display-endpoint';
-process.env.JWT_SECRET = TEST_JWT_SECRET;
-const JWT_SECRET = process.env.JWT_SECRET;
+// Mock Supabase
+const mockGetUser = jest.fn();
+jest.mock('@supabase/supabase-js', () => ({
+  createClient: () => ({
+    auth: {
+      getUser: mockGetUser
+    }
+  })
+}));
 
 // Mock the media/image module
 jest.mock('../media/image', () => ({
   convertHeicToJpegBuffer: jest.fn()
 }));
 
+const { authenticateImageRequest } = require('../middleware/imageAuth');
 const { convertHeicToJpegBuffer } = require('../media/image');
 
 describe('Display Endpoint with HEIC Support', () => {
   let app;
-  let validToken;
+  const validToken = 'valid-supabase-token';
   const testImageDir = path.join(__dirname, 'test-images');
 
   beforeAll(() => {
     // Set env variable so validator allows test image directory
     process.env.TEST_IMAGE_DIR = testImageDir;
-
-    // Create test token
-    validToken = jwt.sign(
-      { id: 1, username: 'testuser', role: 'user' },
-      JWT_SECRET,
-      { expiresIn: '1h' }
-    );
 
     // Setup test app with display endpoint
     app = express();
@@ -122,6 +120,7 @@ describe('Display Endpoint with HEIC Support', () => {
 
   beforeEach(() => {
     jest.clearAllMocks();
+    mockGetUser.mockResolvedValue({ data: { user: { id: 'user1' } }, error: null });
   });
 
   describe('Authentication Required', () => {
@@ -134,22 +133,13 @@ describe('Display Endpoint with HEIC Support', () => {
       expect(response.body.error).toBe('Access token required for image access');
     });
 
-    test('should reject Authorization header for display endpoint', async () => {
+    test('should accept valid Bearer token for display endpoint', async () => {
       const response = await request(app)
         .get('/display/working/test.jpg')
-        .set('Authorization', `Bearer ${validToken}`);
-
-      expect(response.status).toBe(403);
-      expect(response.body.error).toMatch(/authorization header/i);
-    });
-
-    test('should accept valid auth cookie for display endpoint', async () => {
-      const response = await request(app)
-        .get('/display/working/test.jpg')
-        .set('Cookie', [`authToken=${validToken}`])
+        .set('Authorization', `Bearer ${validToken}`)
         .expect(200);
 
-      expect(response.body).toBeDefined();
+      expect(response.headers['content-type']).toBe('image/jpeg');
     });
   });
 
@@ -157,7 +147,7 @@ describe('Display Endpoint with HEIC Support', () => {
     test('should return 404 for non-existent files', async () => {
       const response = await request(app)
         .get('/display/working/nonexistent.jpg')
-        .set('Cookie', [`authToken=${validToken}`])
+        .set('Authorization', `Bearer ${validToken}`)
         .expect(404);
 
       expect(response.body.success).toBe(false);
@@ -169,7 +159,7 @@ describe('Display Endpoint with HEIC Support', () => {
     test('should serve existing regular image files', async () => {
       const response = await request(app)
         .get('/display/working/test.jpg')
-        .set('Cookie', [`authToken=${validToken}`])
+        .set('Authorization', `Bearer ${validToken}`)
         .expect(200);
 
       // Should set proper cache headers
@@ -186,7 +176,7 @@ describe('Display Endpoint with HEIC Support', () => {
 
       const response = await request(app)
         .get('/display/working/test.heic')
-        .set('Cookie', [`authToken=${validToken}`])
+        .set('Authorization', `Bearer ${validToken}`)
         .expect(200);
 
       expect(convertHeicToJpegBuffer).toHaveBeenCalledWith(
@@ -204,7 +194,7 @@ describe('Display Endpoint with HEIC Support', () => {
 
       const response = await request(app)
         .get('/display/working/test.heic')
-        .set('Cookie', [`authToken=${validToken}`])
+        .set('Authorization', `Bearer ${validToken}`)
         .expect(500);
 
       expect(response.body.success).toBe(false);
@@ -221,7 +211,7 @@ describe('Display Endpoint with HEIC Support', () => {
 
       const response = await request(app)
         .get('/display/working/test.heif')
-        .set('Cookie', [`authToken=${validToken}`])
+        .set('Authorization', `Bearer ${validToken}`)
         .expect(200);
 
       expect(convertHeicToJpegBuffer).toHaveBeenCalledWith(
@@ -235,7 +225,7 @@ describe('Display Endpoint with HEIC Support', () => {
     test('should not attempt conversion for non-HEIC files', async () => {
       const response = await request(app)
         .get('/display/working/test.jpg')
-        .set('Cookie', [`authToken=${validToken}`]);
+        .set('Authorization', `Bearer ${validToken}`);
 
       expect(convertHeicToJpegBuffer).not.toHaveBeenCalled();
       // JPG files should still have image/jpeg content-type, just not from conversion
@@ -250,7 +240,7 @@ describe('Display Endpoint with HEIC Support', () => {
       for (const state of states) {
         const response = await request(app)
           .get(`/display/${state}/test.jpg`)
-          .set('Cookie', [`authToken=${validToken}`]);
+          .set('Authorization', `Bearer ${validToken}`);
         
         // Should not return 400 for invalid state
         expect(response.status).not.toBe(400);
@@ -262,7 +252,7 @@ describe('Display Endpoint with HEIC Support', () => {
     test('should set appropriate headers for image serving', async () => {
       const response = await request(app)
         .get('/display/working/test.jpg')
-        .set('Cookie', [`authToken=${validToken}`])
+        .set('Authorization', `Bearer ${validToken}`)
         .set('Origin', 'http://localhost:5173');
 
       expect(response.headers['cache-control']).toBe('private, max-age=3600');
@@ -276,7 +266,7 @@ describe('Display Endpoint with HEIC Support', () => {
 
       const response = await request(app)
         .get('/display/working/test.heic')
-        .set('Cookie', [`authToken=${validToken}`]);
+        .set('Authorization', `Bearer ${validToken}`);
 
       expect(response.headers['content-type']).toBe('image/jpeg');
       expect(response.headers['content-length']).toBe(mockJpegBuffer.length.toString());
@@ -289,7 +279,7 @@ describe('Display Endpoint with HEIC Support', () => {
 
       const response = await request(app)
         .get('/display/working/test.heic')
-        .set('Cookie', [`authToken=${validToken}`])
+        .set('Authorization', `Bearer ${validToken}`)
         .expect(500);
 
       expect(response.body).toEqual({
@@ -303,7 +293,7 @@ describe('Display Endpoint with HEIC Support', () => {
       // Test with a file that doesn't exist
       const response = await request(app)
         .get('/display/working/definitely-does-not-exist.jpg')
-        .set('Cookie', [`authToken=${validToken}`])
+        .set('Authorization', `Bearer ${validToken}`)
         .expect(404);
 
       expect(response.body.success).toBe(false);

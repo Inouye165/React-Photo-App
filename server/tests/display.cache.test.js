@@ -1,7 +1,16 @@
-// Minimal supertest for /display/inprogress/:filename cache header
 const request = require('supertest');
+
+// Mock Supabase
+const mockGetUser = jest.fn();
+jest.mock('@supabase/supabase-js', () => ({
+  createClient: () => ({
+    auth: {
+      getUser: mockGetUser
+    }
+  })
+}));
+
 const app = require('../server');
-const jwt = require('jsonwebtoken');
 const db = require('../db/index');
 
 // Mock Supabase storage download
@@ -17,11 +26,11 @@ jest.mock('../lib/supabaseClient', () => ({
 }));
 
 describe('GET /display/inprogress/:filename', () => {
-  let authToken;
+  let authToken = 'valid-token';
   let testPhotoId;
 
   beforeAll(async () => {
-    // Create a test user and generate a valid JWT token
+    // Create a test user
     const testUser = {
       username: 'cache_test_user',
       password_hash: 'fake_hash_for_test'
@@ -33,10 +42,6 @@ describe('GET /display/inprogress/:filename', () => {
     } catch {
       // User may already exist, that's okay
     }
-
-    // Generate a valid JWT token
-    const JWT_SECRET = process.env.JWT_SECRET || 'test-secret-key';
-    authToken = jwt.sign({ username: testUser.username }, JWT_SECRET, { expiresIn: '1h' });
 
     // Create a test photo in the database
     const insertResult = await db('photos').insert({
@@ -61,11 +66,25 @@ describe('GET /display/inprogress/:filename', () => {
     await db('users').where({ username: 'cache_test_user' }).delete();
   });
 
+  beforeEach(() => {
+    mockGetUser.mockReset();
+    mockGetUser.mockResolvedValue({ 
+      data: { 
+        user: { 
+          id: 1, 
+          email: 'test@example.com',
+          user_metadata: { username: 'cache_test_user', role: 'user' }
+        } 
+      }, 
+      error: null 
+    });
+  });
+
   it('should include Cache-Control header with max-age', async () => {
     const filename = 'test_cache_photo.jpg';
     const res = await request(app)
       .get(`/display/inprogress/${filename}`)
-      .set('Cookie', `authToken=${authToken}`)
+      .set('Authorization', `Bearer ${authToken}`)
       .expect(200);
     expect(res.headers['cache-control']).toMatch(/max-age=\d+/);
     expect(res.headers['cache-control']).toMatch(/public/);
