@@ -16,18 +16,28 @@ export const AuthProvider = ({ children }) => {
   const [loading, setLoading] = useState(true);
 
   useEffect(() => {
-    // Check active session
-    supabase.auth.getSession().then(({ data: { session } }) => {
-      setSession(session);
-      setUser(session?.user ?? null);
-      setLoading(false);
-    });
+    // Check active session - MUST complete before rendering children
+    supabase.auth.getSession()
+      .then(({ data: { session } }) => {
+        setSession(session);
+        setUser(session?.user ?? null);
+      })
+      .catch((error) => {
+        console.error('Auth session initialization error:', error);
+        // Fail-safe: default to unauthenticated state
+        setSession(null);
+        setUser(null);
+      })
+      .finally(() => {
+        // Only set loading to false after initial session check completes
+        setLoading(false);
+      });
 
-    // Listen for changes
+    // Listen for changes (subsequent auth events)
     const { data: { subscription } } = supabase.auth.onAuthStateChange((_event, session) => {
       setSession(session);
       setUser(session?.user ?? null);
-      setLoading(false);
+      // Do NOT set loading(false) here - only the initial getSession controls loading
     });
 
     return () => subscription.unsubscribe();
@@ -135,6 +145,19 @@ export const AuthProvider = ({ children }) => {
     verifyPhoneOtp,
     resetPassword,
   };
+
+  // CRITICAL: Block rendering until auth state is initialized
+  // This prevents "flash of unauthenticated content" and race conditions
+  if (loading) {
+    return (
+      <div className="min-h-screen flex items-center justify-center bg-gray-50">
+        <div className="text-center">
+          <div className="inline-block animate-spin rounded-full h-12 w-12 border-b-2 border-indigo-600"></div>
+          <p className="mt-4 text-gray-600">Initializing...</p>
+        </div>
+      </div>
+    );
+  }
 
   return <AuthContext.Provider value={value}>{children}</AuthContext.Provider>;
 };
