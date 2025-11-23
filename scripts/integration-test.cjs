@@ -7,7 +7,8 @@ require('dotenv').config({ path: path.join(__dirname, '../server/.env') });
 const { createClient } = require('@supabase/supabase-js');
 
 // Detect CI/Test environment with dummy Supabase URL
-if (process.env.SUPABASE_URL && process.env.SUPABASE_URL.includes('test.supabase.co')) {
+const checkUrl = process.env.SUPABASE_URL || process.env.VITE_SUPABASE_URL;
+if (checkUrl && checkUrl.includes('test.supabase.co')) {
   console.log('Detected CI environment with test Supabase URL. Enabling MOCK_AUTH.');
   process.env.MOCK_AUTH = 'true';
 }
