@@ -4,20 +4,17 @@ Thanks for contributing to this project — a few notes to make local developmen
 
 ## Installing dependencies
 
-This repository currently has a transitive peer-dependency mismatch between some AI-related packages.
-As a short-term workaround we install with npm's legacy peer-deps behavior so CI and local installs remain stable.
+This repository uses standard npm installation.
 
 When setting up locally prefer:
 
 ```powershell
 # clean install (Windows / PowerShell)
-npm ci --legacy-peer-deps
+npm ci
 
 # or if you need to update lockfiles
-npm install --legacy-peer-deps
+npm install
 ```
-
-If you run plain `npm ci` without `--legacy-peer-deps` you may hit an ERESOLVE peer-dependency error. CI contains a non-blocking check which will emit a warning in that case.
 
 ## Running tests
 
@@ -34,12 +31,10 @@ cd server
 npm run test:ci
 ```
 
-## Long-term plan
+## Dependency Management
 
-- We should resolve the underlying peer dependency mismatch (either by upgrading/downgrading the conflicting packages or by using a controlled `overrides` entry in `package.json`).
-- Use Dependabot or Renovate to keep dependencies tracked and to open upgrade PRs.
-- Avoid relying on `--legacy-peer-deps` forever; it is a pragmatic short-term fix but masks actual compatibility issues.
-
-If you'd like, I can open a follow-up PR to attempt a safe resolution (e.g. try upgrading `@langchain/community` or pin an `openai` version that is compatible) and run the full test suite.
+- We use Dependabot to keep dependencies tracked and to open upgrade PRs.
+- All peer dependencies are properly aligned and should install without errors.
+- If you encounter dependency conflicts, please report them as an issue.
 
 Thanks — and welcome contributions!

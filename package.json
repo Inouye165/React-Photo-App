@@ -46,7 +46,7 @@
     "zustand": "^5.0.8"
   },
   "engines": {
-    "node": ">=20.11 <21",
+    "node": ">=20.11 <23",
     "npm": ">=10"
   },
   "devDependencies": {
