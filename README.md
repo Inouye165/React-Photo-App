@@ -38,7 +38,7 @@ See `PROBLEM_LOG.md` for a chronological log of major bugs or problems found dur
 3. Install backend dependencies:
    ```bash
    cd server
-   npm install --legacy-peer-deps
+   npm install
    cd ..
    ```
 
@@ -60,8 +60,8 @@ See `PROBLEM_LOG.md` for a chronological log of major bugs or problems found dur
 
 - **Migrations failing on start:** The application requires a Postgres database. Ensure `SUPABASE_DB_URL` is set correctly in `server/.env`. SQLite is not supported.
 -
-- **Dependency errors:** If you see errors about conflicting dependencies (e.g., ERESOLVE), always use `npm install --legacy-peer-deps`.
-- **Missing libraries:** If you see errors like "Cannot find module 'zustand'" or '@supabase/supabase-js', run `npm install <package> --legacy-peer-deps` in the correct directory (root for frontend, `server/` for backend).
+- **Dependency errors:** If you encounter dependency conflicts, ensure you're using Node 20-22 and npm 10+. Try removing `node_modules` and running `npm install` again.
+- **Missing libraries:** If you see errors like "Cannot find module 'zustand'" or '@supabase/supabase-js', run `npm install <package>` in the correct directory (root for frontend, `server/` for backend).
 - **Missing environment variables:** If you see errors about missing environment variables, ensure you have copied `.env.example` to `.env` and filled in all required values in both root and `server/`.
 - **Wrong install directory:** Always run frontend installs in the project root and backend installs in the `server/` directory.
 - **ImageMagick not found:** Make sure ImageMagick is installed and available in your system PATH for HEIC/HEIF fallback support.
@@ -113,7 +113,7 @@ All required libraries are listed in the appropriate `package.json` files:
 
        ```powershell
        # from project root (Windows PowerShell)
-       npm install --legacy-peer-deps
+       npm install
        npm run prepare
        ```
 
@@ -362,8 +362,8 @@ This allows easy deployment to different environments without code changes.
  **Robust Environment Handling:** The app is designed to work across different machines and CI environments. If an environment variable (like `VITE_API_URL`) is missing, the app will fall back to a safe default (`http://localhost:3001`) and warn you. This prevents crashes when switching between desktop, laptop, or CI.
  **Tip:** Always check `.env.example` for required variables after pulling new changes or switching machines.
 # Frontend (Vite)
- **Dependency errors:** If you see errors about conflicting dependencies (e.g., ERESOLVE), always use `npm install --legacy-peer-deps`.
- **Missing libraries:** If you see errors like "Cannot find module 'zustand'" or '@supabase/supabase-js', run `npm install <package> --legacy-peer-deps` in the correct directory (root for frontend, `server/` for backend).
+ **Dependency errors:** If you encounter dependency conflicts, ensure you're using Node 20-22 and npm 10+. Try removing `node_modules` and running `npm install` again.
+ **Missing libraries:** If you see errors like "Cannot find module 'zustand'" or '@supabase/supabase-js', run `npm install <package>` in the correct directory (root for frontend, `server/` for backend).
  **Missing environment variables:** If you see errors about missing environment variables, ensure you have copied `.env.example` to `.env` and filled in all required values in both root and `server/`.
  **Wrong install directory:** Always run frontend installs in the project root and backend installs in the `server/` directory.
  **ImageMagick not found:** Make sure ImageMagick is installed and available in your system PATH for HEIC/HEIF fallback support.
@@ -1021,7 +1021,7 @@ The project includes comprehensive testing across frontend and backend:
 ## Medium-Priority
 
 - [ ] **Refactoring (Medium):** Address "Prop Drilling" in `App.jsx`. Move handlers and state (`handleSelectFolder`, `uploading`, etc.) into the Zustand store (`store.js`) to clean up component signatures.
-- [ ] **Maintainability (Medium):** Fix dependency conflicts in `package.json` to remove the requirement for `--legacy-peer-deps` during install.
+- [x] **Maintainability (Medium):** Dependency conflicts resolved - npm install now works without flags.
 
 ## Future
 
@@ -1260,8 +1260,8 @@ This allows easy deployment to different environments without code changes.
  **Robust Environment Handling:** The app is designed to work across different machines and CI environments. If an environment variable (like `VITE_API_URL`) is missing, the app will fall back to a safe default (`http://localhost:3001`) and warn you. This prevents crashes when switching between desktop, laptop, or CI.
  **Tip:** Always check `.env.example` for required variables after pulling new changes or switching machines.
 # Frontend (Vite)
- **Dependency errors:** If you see errors about conflicting dependencies (e.g., ERESOLVE), always use `npm install --legacy-peer-deps`.
- **Missing libraries:** If you see errors like "Cannot find module 'zustand'" or '@supabase/supabase-js', run `npm install <package> --legacy-peer-deps` in the correct directory (root for frontend, `server/` for backend).
+ **Dependency errors:** If you encounter dependency conflicts, ensure you're using Node 20-22 and npm 10+. Try removing `node_modules` and running `npm install` again.
+ **Missing libraries:** If you see errors like "Cannot find module 'zustand'" or '@supabase/supabase-js', run `npm install <package>` in the correct directory (root for frontend, `server/` for backend).
  **Missing environment variables:** If you see errors about missing environment variables, ensure you have copied `.env.example` to `.env` and filled in all required values in both root and `server/`.
  **Wrong install directory:** Always run frontend installs in the project root and backend installs in the `server/` directory.
  **ImageMagick not found:** Make sure ImageMagick is installed and available in your system PATH for HEIC/HEIF fallback support.
@@ -1374,8 +1374,9 @@ The project includes comprehensive testing across frontend and backend:
 ## Medium-Priority
 
 - [ ] **Refactoring (Medium):** Address "Prop Drilling" in `App.jsx`. Move handlers and state (`handleSelectFolder`, `uploading`, etc.) into the Zustand store (`store.js`) to clean up component signatures.
-- [ ] **Maintainability (Medium):** Fix dependency conflicts in `package.json` to remove the requirement for `--legacy-peer-deps` during install.
+- [x] **Maintainability (Medium):** Dependency conflicts resolved - npm install now works without flags.
 
 ## Future
 
 - [ ] **Scalability (Future):** Refactor uploads to stream directly to Supabase Storage, bypassing the local `os.tmpdir()` disk write to prevent bottlenecks under high load.
+

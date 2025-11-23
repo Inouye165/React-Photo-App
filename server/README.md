@@ -1,12 +1,12 @@
 # Installation Troubleshooting
 
-- If you see dependency errors (e.g., ERESOLVE), use:
+- If you see dependency errors, ensure you're using Node 20-22 and npm 10+. Try:
     ```bash
-    npm install --legacy-peer-deps
+    npm install
     ```
 - If you see missing package errors (e.g., 'Cannot find module'), run:
     ```bash
-    npm install <package> --legacy-peer-deps
+    npm install <package>
     ```
 - Always check that all required environment variables are set in your `.env` file (copy from `.env.example`).
 
