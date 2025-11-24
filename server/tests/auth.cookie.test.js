@@ -1,6 +1,7 @@
 const request = require('supertest');
 const express = require('express');
 const cookieParser = require('cookie-parser');
+const rateLimit = require('express-rate-limit');
 
 // Mock Supabase
 const mockGetUser = jest.fn();
@@ -37,8 +38,15 @@ describe('Cookie-Based Authentication Security', () => {
     // This test validates that the rate limiting works correctly.
     app.use('/api/auth', createAuthRouter());
     
-    // Test image endpoint with imageAuth middleware
-    app.use('/test-image', authenticateImageRequest, (req, res) => {
+    // Test image endpoint with imageAuth middleware and rate limiting
+    // lgtm[js/missing-rate-limiting] Rate limiting added for security compliance
+    const testImageLimiter = rateLimit({
+      windowMs: 15 * 60 * 1000, // 15 minutes
+      max: 100, // Higher limit for tests
+      standardHeaders: true,
+      legacyHeaders: false,
+    });
+    app.use('/test-image', testImageLimiter, authenticateImageRequest, (req, res) => {
       res.json({ success: true, user: req.user });
     });
   });
