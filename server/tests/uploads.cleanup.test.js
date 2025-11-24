@@ -89,14 +89,20 @@ describe('Upload Route - Orphaned File Cleanup', () => {
   });
 
   it('removes orphaned file from storage if DB insert fails', async () => {
+    // Mock ingestPhoto to throw an error (simulating DB failure)
+    const { ingestPhoto } = require('../media/image');
+    ingestPhoto.mockRejectedValueOnce(new Error('DB connection failed'));
+
     const response = await request(app)
       .post('/uploads/upload')
       .attach('photo', Buffer.from('fake'), 'test.jpg');
 
     expect(response.status).toBe(500);
     
-    // Verify the spy defined in the mock factory was called
-    const fs = require('fs');
-    expect(fs.unlink).toHaveBeenCalled();
+    // Verify file was removed from Supabase Storage
+    const mockStorageHelpers = require('./__mocks__/supabase').mockStorageHelpers;
+    const files = mockStorageHelpers.getMockFiles();
+    const uploadedFile = files.find(([key]) => key.includes('working/') && key.includes('test.jpg'));
+    expect(uploadedFile).toBeUndefined(); // File should be cleaned up
   });
 });
