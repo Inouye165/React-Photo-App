@@ -76,9 +76,6 @@
       "<rootDir>/node_modules/",
       "<rootDir>/working/"
     ],
-    "transformIgnorePatterns": [
-      "node_modules/(?!(p-retry|@langchain|is-network-error|retry)/)"
-    ],
     "collectCoverageFrom": [
       "**/*.js",
       "!node_modules/**",
