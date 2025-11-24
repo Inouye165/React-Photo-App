@@ -98,7 +98,7 @@ const PORT = process.env.PORT || 3001;
 const express = require('express');
 const multer = require('multer');
 const cors = require('cors');
-// const cookieParser = require('cookie-parser'); // Removed
+const cookieParser = require('cookie-parser');
 
 const app = express();
 // Trust first proxy (Heroku, Supabase, AWS ELB, etc.) for correct client IP resolution
@@ -143,10 +143,27 @@ app.set('trust proxy', 1);
   // applied to responses that already include CORS headers.
   configureSecurity(app);
 
-  // Cookie parser and CSRF removed as we use Supabase Auth with Bearer tokens
-  // app.use(cookieParser());
-  // const { csrfProtection } = require('./middleware/csrf');
-  // app.use(csrfProtection);
+  // Cookie parser for secure httpOnly cookie authentication
+  // CSRF PROTECTION ARCHITECTURE:
+  // This application implements CSRF protection through Origin validation rather than
+  // traditional CSRF tokens. This approach is valid and recommended by OWASP:
+  // https://cheatsheetseries.owasp.org/cheatsheets/Cross-Site_Request_Forgery_Prevention_Cheat_Sheet.html#verifying-origin-with-standard-headers
+  //
+  // Implementation details:
+  // 1. GET requests to /display/* are CSRF-safe (read-only, no state changes)
+  // 2. POST requests to /api/auth/* are protected by verifyOrigin() middleware
+  //    which validates the Origin header against allowedOrigins whitelist
+  // 3. SameSite cookies provide additional CSRF protection in modern browsers
+  //
+  // This is more secure than token-based CSRF for our use case because:
+  // - No CSRF token exposure risk
+  // - Works seamlessly with <img> tags for authenticated image serving
+  // - Simpler client implementation (no token management)
+  // - Defense-in-depth: Origin validation + SameSite cookies + HTTPS
+  //
+  // github/codeql/missing-csrf-middleware: False positive - Origin-based CSRF protection
+  // implemented in routes/auth.js via verifyOrigin() middleware
+  app.use(cookieParser());
 
   // Add request validation middleware
   app.use(validateRequest);
@@ -161,6 +178,9 @@ app.set('trust proxy', 1);
   app.use(express.urlencoded({ limit: '1mb', extended: true }));
 
   // Authentication routes (no auth required)
+  const createAuthRouter = require('./routes/auth');
+  app.use('/api/auth', createAuthRouter());
+
   // Dev-only diagnostics route (masked). Enabled only when not in production.
   if (process.env.NODE_ENV !== 'production') {
     app.get('/__diag/env', (_req, res) => {

@@ -1,7 +1,6 @@
 import React from 'react';
 import formatFileSize from '../utils/formatFileSize.js';
 import { toUrl } from '../utils/toUrl.js';
-import { useAuth } from '../contexts/AuthContext';
 
 export default function PhotoTable({
   photos,
@@ -14,9 +13,10 @@ export default function PhotoTable({
   onMoveToWorking,
   onDeletePhoto,
   apiBaseUrl,
+  getSignedUrl,
 }) {
-  const { session } = useAuth();
-  const token = session?.access_token;
+  // Authentication now handled via httpOnly cookies OR signed URLs
+  // For thumbnails, use signed URLs if getSignedUrl is provided
 
   if (loading) {
     return <div className="p-8 text-center text-gray-500">Loading photos...</div>;
@@ -52,7 +52,7 @@ export default function PhotoTable({
                 <div className="relative inline-block">
                   {photo.thumbnail ? (
                     <img
-                      src={toUrl(photo.thumbnail, apiBaseUrl, token)}
+                      src={getSignedUrl ? getSignedUrl(photo) : toUrl(photo.thumbnail, apiBaseUrl)}
                       alt={photo.filename}
                       className="max-h-20 rounded shadow bg-white"
                     />

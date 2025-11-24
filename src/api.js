@@ -123,15 +123,10 @@ export async function fetchProtectedBlobUrl(url) {
   // If URL is already a blob URL, return it as is
   if (url.startsWith('blob:')) return url;
 
-  // Append token to URL if available
-  let fetchUrl = url;
-  if (accessToken) {
-    const separator = fetchUrl.includes('?') ? '&' : '?';
-    fetchUrl = `${fetchUrl}${separator}token=${accessToken}`;
-  }
-
-  const res = await fetch(fetchUrl, {
-    headers: getAuthHeaders()
+  // Security: Authentication now via httpOnly cookies, not query params
+  const res = await fetch(url, {
+    headers: getAuthHeaders(),
+    credentials: 'include' // Send cookies for authentication
   });
   
   if (!res.ok) throw new Error(`Failed to fetch image: ${res.status}`);

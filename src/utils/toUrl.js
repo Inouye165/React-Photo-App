@@ -1,4 +1,4 @@
-export function toUrl(path = '', base = '', token = null) {
+export function toUrl(path = '', base = '') {
   try {
     if (!path) return base || '';
     
@@ -11,10 +11,8 @@ export function toUrl(path = '', base = '', token = null) {
       return path;
     }
 
-    // Append token if provided
-    if (token) {
-      url.searchParams.set('token', token);
-    }
+    // Security: Authentication now handled via httpOnly cookies
+    // Query parameter tokens are deprecated due to security risks
 
     return url.toString();
   } catch {

@@ -12,10 +12,15 @@ import usePhotoPrivileges from './hooks/usePhotoPrivileges.js';
 import useLocalPhotoPicker from './hooks/useLocalPhotoPicker.js';
 import usePhotoManagement from './hooks/usePhotoManagement.js';
 import useStore from './store.js';
+import { useAuth } from './contexts/AuthContext.jsx';
+import useSignedThumbnails from './hooks/useSignedThumbnails.js';
 
 const AI_DEPENDENCY_WARNING = 'AI services unavailable. Start required Docker containers to re-enable processing.';
 
 function App() {
+  // Authentication state
+  const { session } = useAuth();
+  
   // Global banner notification from Zustand (will be shown inside the Toolbar)
   const banner = useStore((state) => state.banner);
   const setBanner = useStore((state) => state.setBanner);
@@ -58,6 +63,12 @@ function App() {
     handleMoveToInprogress,
     setPhotos,
   } = usePhotoManagement();
+
+  // Signed thumbnail URLs
+  const { getSignedUrl } = useSignedThumbnails(
+    photos,
+    session?.access_token
+  );
 
   useEffect(() => {
     if (!(import.meta?.env?.DEV)) return;
@@ -250,6 +261,7 @@ function App() {
             onMoveToWorking={handleMoveToWorking}
             onDeletePhoto={handleDeletePhoto}
             apiBaseUrl={API_BASE_URL}
+            getSignedUrl={getSignedUrl}
           />
         )}
       </div>
