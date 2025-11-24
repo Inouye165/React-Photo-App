@@ -1,7 +1,6 @@
 import React from 'react';
 import formatFileSize from '../utils/formatFileSize.js';
 import { toUrl } from '../utils/toUrl.js';
-import { useAuth } from '../contexts/AuthContext';
 
 export default function PhotoTable({
   photos,
@@ -15,8 +14,8 @@ export default function PhotoTable({
   onDeletePhoto,
   apiBaseUrl,
 }) {
-  const { session } = useAuth();
-  const token = session?.access_token;
+  // Authentication now handled via httpOnly cookies
+  // Token no longer needed for image URLs
 
   if (loading) {
     return <div className="p-8 text-center text-gray-500">Loading photos...</div>;
@@ -52,7 +51,7 @@ export default function PhotoTable({
                 <div className="relative inline-block">
                   {photo.thumbnail ? (
                     <img
-                      src={toUrl(photo.thumbnail, apiBaseUrl, token)}
+                      src={toUrl(photo.thumbnail, apiBaseUrl)}
                       alt={photo.filename}
                       className="max-h-20 rounded shadow bg-white"
                     />

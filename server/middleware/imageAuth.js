@@ -18,8 +18,11 @@ const supabase = createClient(SUPABASE_URL, SUPABASE_ANON_KEY);
 
 /**
  * Middleware to authenticate image requests
- * Checks for token in Authorization header OR query parameter
+ * Checks for token in Authorization header OR httpOnly cookie
  * Sets CORS headers for cross-origin image requests
+ * 
+ * Security: Query parameter authentication is deprecated to prevent
+ * token leakage via browser history, proxy logs, and referer headers
  */
 async function authenticateImageRequest(req, res, next) {
   const allowedOrigins = getAllowedOrigins();
@@ -62,11 +65,13 @@ async function authenticateImageRequest(req, res, next) {
     token = authHeader.split(' ')[1];
   }
 
-  // 2. Check Query Parameter (fallback for <img> tags)
-  if (!token && req.query.token) {
-    token = req.query.token;
+  // 2. Check httpOnly cookie (secure method for <img> tags)
+  if (!token && req.cookies && req.cookies.authToken) {
+    token = req.cookies.authToken;
   }
 
+  // SECURITY: Query parameter authentication is deprecated and blocked
+  // to prevent token leakage via browser history, logs, and referer headers
   if (!token) {
     return res.status(401).json({ 
       success: false, 

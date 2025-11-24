@@ -51,6 +51,26 @@ export const AuthProvider = ({ children }) => {
       });
 
       if (error) throw error;
+
+      // Set httpOnly cookie for secure image authentication
+      // This eliminates the need for token query parameters
+      if (data.session?.access_token) {
+        try {
+          const API_BASE_URL = import.meta.env.VITE_API_BASE_URL || 'http://localhost:3001';
+          await fetch(`${API_BASE_URL}/api/auth/session`, {
+            method: 'POST',
+            headers: {
+              'Authorization': `Bearer ${data.session.access_token}`,
+              'Content-Type': 'application/json'
+            },
+            credentials: 'include' // Important: allows cookies to be set
+          });
+        } catch (cookieError) {
+          console.warn('Failed to set auth cookie:', cookieError);
+          // Non-fatal: user can still use Bearer token auth
+        }
+      }
+
       return { success: true, user: data.user };
     } catch (err) {
       console.error('Login error:', err);
@@ -71,6 +91,24 @@ export const AuthProvider = ({ children }) => {
       });
 
       if (error) throw error;
+
+      // Set httpOnly cookie for secure image authentication
+      if (data.session?.access_token) {
+        try {
+          const API_BASE_URL = import.meta.env.VITE_API_BASE_URL || 'http://localhost:3001';
+          await fetch(`${API_BASE_URL}/api/auth/session`, {
+            method: 'POST',
+            headers: {
+              'Authorization': `Bearer ${data.session.access_token}`,
+              'Content-Type': 'application/json'
+            },
+            credentials: 'include'
+          });
+        } catch (cookieError) {
+          console.warn('Failed to set auth cookie:', cookieError);
+        }
+      }
+
       return { success: true, user: data.user };
     } catch (err) {
       console.error('Registration error:', err);
@@ -125,6 +163,18 @@ export const AuthProvider = ({ children }) => {
 
   const logout = async () => {
     try {
+      // Clear httpOnly cookie
+      const API_BASE_URL = import.meta.env.VITE_API_BASE_URL || 'http://localhost:3001';
+      try {
+        await fetch(`${API_BASE_URL}/api/auth/logout`, {
+          method: 'POST',
+          credentials: 'include'
+        });
+      } catch (cookieError) {
+        console.warn('Failed to clear auth cookie:', cookieError);
+      }
+
+      // Sign out from Supabase
       const { error } = await supabase.auth.signOut();
       if (error) throw error;
       setUser(null);

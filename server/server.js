@@ -98,7 +98,7 @@ const PORT = process.env.PORT || 3001;
 const express = require('express');
 const multer = require('multer');
 const cors = require('cors');
-// const cookieParser = require('cookie-parser'); // Removed
+const cookieParser = require('cookie-parser');
 
 const app = express();
 // Trust first proxy (Heroku, Supabase, AWS ELB, etc.) for correct client IP resolution
@@ -143,10 +143,8 @@ app.set('trust proxy', 1);
   // applied to responses that already include CORS headers.
   configureSecurity(app);
 
-  // Cookie parser and CSRF removed as we use Supabase Auth with Bearer tokens
-  // app.use(cookieParser());
-  // const { csrfProtection } = require('./middleware/csrf');
-  // app.use(csrfProtection);
+  // Cookie parser for secure httpOnly cookie authentication (image requests)
+  app.use(cookieParser());
 
   // Add request validation middleware
   app.use(validateRequest);
@@ -161,6 +159,9 @@ app.set('trust proxy', 1);
   app.use(express.urlencoded({ limit: '1mb', extended: true }));
 
   // Authentication routes (no auth required)
+  const createAuthRouter = require('./routes/auth');
+  app.use('/api/auth', createAuthRouter());
+
   // Dev-only diagnostics route (masked). Enabled only when not in production.
   if (process.env.NODE_ENV !== 'production') {
     app.get('/__diag/env', (_req, res) => {

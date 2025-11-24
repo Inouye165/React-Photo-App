@@ -69,4 +69,25 @@ describe('Image Authentication Middleware', () => {
 
     expect(response.body.error).toBe('Access token required for image access');
   });
+
+  test('SECURITY: should reject query parameter token (deprecated)', async () => {
+    // Critical security test: query parameter authentication is deprecated
+    const response = await request(app)
+      .get('/test-image?token=' + validToken)
+      .expect(401);
+
+    expect(response.body.error).toBe('Access token required for image access');
+  });
+
+  test('should accept valid token from httpOnly cookie', async () => {
+    mockGetUser.mockResolvedValue({ data: { user: { id: 'user1' } }, error: null });
+
+    const response = await request(app)
+      .get('/test-image')
+      .set('Cookie', [`authToken=${validToken}`])
+      .expect(200);
+
+    expect(response.body.success).toBe(true);
+    expect(response.body.user.id).toBe('user1');
+  });
 });
