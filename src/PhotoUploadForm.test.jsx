@@ -3,6 +3,12 @@ import { describe, it, expect, vi, beforeEach } from 'vitest'
 import { render, screen, fireEvent } from '@testing-library/react'
 import userEvent from '@testing-library/user-event'
 import PhotoUploadForm from './PhotoUploadForm'
+import useStore from './store'
+
+// Mock the store
+vi.mock('./store', () => ({
+  default: vi.fn(),
+}))
 
 describe('PhotoUploadForm Component', () => {
   const mockFile = new File(['test'], 'test.jpg', { type: 'image/jpeg', lastModified: Date.now() })
@@ -20,6 +26,10 @@ describe('PhotoUploadForm Component', () => {
     },
   ]
 
+  const mockStoreState = {
+    setShowUploadPicker: vi.fn(),
+  }
+
   const mockProps = {
     startDate: '2024-01-01',
     endDate: '2024-01-31',
@@ -28,12 +38,19 @@ describe('PhotoUploadForm Component', () => {
     uploading: false,
     filteredLocalPhotos: mockFilteredPhotos,
     handleUploadFiltered: vi.fn(),
-    setShowLocalPicker: vi.fn(),
     onReopenFolder: vi.fn(),
   }
 
   beforeEach(() => {
     vi.clearAllMocks()
+    
+    // Mock useStore to return our mock state
+    useStore.mockImplementation((selector) => {
+      if (typeof selector === 'function') {
+        return selector(mockStoreState)
+      }
+      return mockStoreState
+    })
     
     // Mock focus and scrolling behavior
     Element.prototype.focus = vi.fn()
@@ -141,22 +158,22 @@ describe('PhotoUploadForm Component', () => {
     expect(mockProps.onReopenFolder).toHaveBeenCalledOnce()
   })
 
-  it('calls setShowLocalPicker(false) when close button is clicked', async () => {
+  it('calls store action when close button is clicked', async () => {
     const user = userEvent.setup()
     render(<PhotoUploadForm {...mockProps} />)
     
     const closeButton = screen.getByLabelText('Close upload modal')
     await user.click(closeButton)
-    expect(mockProps.setShowLocalPicker).toHaveBeenCalledWith(false)
+    expect(mockStoreState.setShowUploadPicker).toHaveBeenCalledWith(false)
   })
 
-  it('calls setShowLocalPicker(false) when close button in empty state is clicked', async () => {
+  it('calls store action when close button in empty state is clicked', async () => {
     const user = userEvent.setup()
     render(<PhotoUploadForm {...mockProps} filteredLocalPhotos={[]} />)
     
     const closeButtons = screen.getAllByLabelText('Close upload modal')
     await user.click(closeButtons[0]) // First close button in empty state
-    expect(mockProps.setShowLocalPicker).toHaveBeenCalledWith(false)
+    expect(mockStoreState.setShowUploadPicker).toHaveBeenCalledWith(false)
   })
 
   it('displays file sizes correctly', () => {
@@ -181,7 +198,7 @@ describe('PhotoUploadForm Component', () => {
     // Simulate escape key press
     fireEvent.keyDown(window, { key: 'Escape', code: 'Escape' })
     
-    expect(mockProps.setShowLocalPicker).toHaveBeenCalledWith(false)
+    expect(mockStoreState.setShowUploadPicker).toHaveBeenCalledWith(false)
   })
 
   it('has proper accessibility attributes', () => {

@@ -1,13 +1,15 @@
 import { useCallback, useMemo, useRef, useState } from 'react';
 import { parse } from 'exifr';
 import { uploadPhotoToServer } from '../api.js';
+import useStore from '../store.js';
 
 export default function useLocalPhotoPicker({ onUploadComplete, onUploadSuccess }) {
   const [localPhotos, setLocalPhotos] = useState([]);
   const [startDate, setStartDate] = useState('');
   const [endDate, setEndDate] = useState('');
   const [uploading, setUploading] = useState(false);
-  const [showPicker, setShowPicker] = useState(false);
+  const showPicker = useStore((state) => state.showUploadPicker);
+  const setShowPicker = useStore((state) => state.setShowUploadPicker);
   const workingDirHandleRef = useRef(null);
 
   const handleSelectFolder = useCallback(async () => {
@@ -38,7 +40,7 @@ export default function useLocalPhotoPicker({ onUploadComplete, onUploadSuccess 
     } catch {
       // toast removed: folder selection failed
     }
-  }, []);
+  }, [setShowPicker]);
 
   const filteredLocalPhotos = useMemo(() => {
     if (!Array.isArray(localPhotos) || localPhotos.length === 0) return [];
@@ -80,7 +82,7 @@ export default function useLocalPhotoPicker({ onUploadComplete, onUploadSuccess 
     } finally {
       setUploading(false);
     }
-  }, [filteredLocalPhotos, onUploadComplete, onUploadSuccess]);
+  }, [filteredLocalPhotos, onUploadComplete, onUploadSuccess, setShowPicker]);
 
   return {
     localPhotos,

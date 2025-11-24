@@ -189,6 +189,55 @@ vi.mock('../supabaseClient', () => ({
   }
 }))
 
+// CRITICAL FIX: Create a factory function that returns fresh state for each test
+const createDefaultState = () => ({
+  photos: [],
+  toast: { message: '', severity: 'info' },
+  banner: { message: '', severity: 'info' },
+  view: 'working',
+  activePhotoId: null,
+  editingMode: null,
+  showMetadataModal: false,
+  metadataPhoto: null,
+  showUploadPicker: false,
+  toolbarMessage: '',
+  toolbarSeverity: 'info',
+  pollingPhotoId: null,
+  pollingPhotoIds: new Set(),
+  setPhotos: vi.fn(),
+  setBanner: vi.fn(),
+  setToast: vi.fn(),
+  setView: vi.fn(),
+  setActivePhotoId: vi.fn(),
+  setEditingMode: vi.fn(),
+  setShowMetadataModal: vi.fn(),
+  setMetadataPhoto: vi.fn(),
+  setShowUploadPicker: vi.fn(),
+  setToolbarMessage: vi.fn(),
+  setToolbarSeverity: vi.fn(),
+  setPollingPhotoId: vi.fn(),
+  addPollingId: vi.fn(),
+  removePollingId: vi.fn(),
+  updatePhotoData: vi.fn(),
+  updatePhoto: vi.fn(),
+  removePhotoById: vi.fn(),
+  moveToInprogress: vi.fn(),
+})
+
+// Mock Zustand store with fresh state for each test
+vi.mock('../store', () => {
+  return {
+    default: vi.fn((selector) => {
+      const defaultState = createDefaultState()
+      
+      if (typeof selector === 'function') {
+        return selector(defaultState)
+      }
+      return defaultState
+    })
+  }
+})
+
 // Reset mocks before each test
 beforeEach(() => {
   vi.clearAllMocks();
@@ -199,5 +248,18 @@ beforeEach(() => {
   });
 });
 
-// Cleanup after each test case
-afterEach(cleanup)
+// CRITICAL FIX: Aggressive cleanup after each test
+afterEach(() => {
+  cleanup();
+  
+  // Clear all timers
+  vi.clearAllTimers();
+  
+  // Force garbage collection if available (won't work in all envs, but helps when it does)
+  if (global.gc) {
+    global.gc();
+  }
+  
+  // Clear fetch mock history
+  global.fetch.mockClear();
+})

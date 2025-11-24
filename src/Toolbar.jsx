@@ -1,5 +1,6 @@
 import React from 'react';
 import { useAuth } from './contexts/AuthContext';
+import useStore from './store.js';
 
 const sevStyles = {
   info: { bg: '#3b82f6', text: '#f1f5f9' },
@@ -9,11 +10,7 @@ const sevStyles = {
 };
 
 export default function Toolbar({
-  onViewStaged,
-  onViewInprogress,
-  onViewFinished,
   onSelectFolder,
-  onShowMetadata,
   // new: a small persistent message area in the toolbar
   toolbarMessage,
   toolbarSeverity = 'info',
@@ -22,6 +19,18 @@ export default function Toolbar({
   const { user, logout } = useAuth();
   const isAuthenticated = !!user;
 
+  // Connect to store
+  const setView = useStore((state) => state.setView);
+  const setEditingMode = useStore((state) => state.setEditingMode);
+  const setActivePhotoId = useStore((state) => state.setActivePhotoId);
+  const setShowMetadataModal = useStore((state) => state.setShowMetadataModal);
+  const setMetadataPhoto = useStore((state) => state.setMetadataPhoto);
+  const activePhoto = useStore((state) => {
+    const activePhotoId = state.activePhotoId;
+    if (activePhotoId == null) return null;
+    return state.photos.find((photo) => String(photo.id) === String(activePhotoId)) || null;
+  });
+
   const handleAuthAction = () => {
     if (isAuthenticated) {
       logout();
@@ -29,6 +38,21 @@ export default function Toolbar({
       // If not authenticated, the AuthWrapper should handle showing the login form
       // We could also trigger a refresh or redirect here
       window.location.reload();
+    }
+  };
+
+  const handleViewChange = (viewName) => {
+    setView(viewName);
+    setEditingMode(null);
+    setActivePhotoId(null);
+    setShowMetadataModal(false);
+    setMetadataPhoto(null);
+  };
+
+  const handleShowMetadata = () => {
+    if (activePhoto) {
+      setMetadataPhoto(activePhoto);
+      setShowMetadataModal(true);
     }
   };
 
@@ -58,11 +82,11 @@ export default function Toolbar({
           Photo App (Backend View)
         </span>
         <button onClick={onSelectFolder}>Select Folder for Upload</button>
-  <button onClick={onViewStaged}>View Working</button>
-        <button onClick={onViewInprogress}>View Inprogress</button>
-        <button onClick={onViewFinished}>View Finished</button>
+        <button onClick={() => handleViewChange('working')}>View Working</button>
+        <button onClick={() => handleViewChange('inprogress')}>View Inprogress</button>
+        <button onClick={() => handleViewChange('finished')}>View Finished</button>
         <button
-          onClick={onShowMetadata}
+          onClick={handleShowMetadata}
           style={{
             background: "#475569",
             color: "#fff",

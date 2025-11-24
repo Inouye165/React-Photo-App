@@ -22,24 +22,26 @@ function App() {
   const [toolbarMessage, setToolbarMessage] = useState('');
   const [dependencyWarning, setDependencyWarning] = useState('');
   const [aiDependenciesReady, setAiDependenciesReady] = useState(true);
+
+  // UI state from store
+  const showMetadataModal = useStore((state) => state.showMetadataModal);
+  const metadataPhoto = useStore((state) => state.metadataPhoto);
+  const setShowMetadataModal = useStore((state) => state.setShowMetadataModal);
+  const setMetadataPhoto = useStore((state) => state.setMetadataPhoto);
+  const showLocalPicker = useStore((state) => state.showUploadPicker);
+  const setEditingMode = useStore((state) => state.setEditingMode);
+  const setActivePhotoId = useStore((state) => state.setActivePhotoId);
+
   const {
     photos,
-  // toast, setToast removed
     loading,
-    setView,
-    setActivePhotoId,
     activePhoto,
-    setEditingMode,
     editedCaption,
     setEditedCaption,
     editedDescription,
     setEditedDescription,
     editedKeywords,
     setEditedKeywords,
-    showMetadataModal,
-    setShowMetadataModal,
-    metadataPhoto,
-    setMetadataPhoto,
     pollingPhotoId,
     refreshPhotos,
     isInlineEditing,
@@ -118,8 +120,6 @@ function App() {
     filteredLocalPhotos,
     handleSelectFolder,
     handleUploadFiltered,
-    showPicker: showLocalPicker,
-    setShowPicker: setShowLocalPicker,
     startDate,
     setStartDate,
     endDate,
@@ -171,33 +171,6 @@ function App() {
     >
       <Toolbar
         onSelectFolder={handleSelectFolder}
-        onViewStaged={() => {
-          setView('working');
-          setEditingMode(null);
-          setActivePhotoId(null);
-          setShowMetadataModal(false);
-          setMetadataPhoto(null);
-        }}
-        onViewInprogress={() => {
-          setView('inprogress');
-          setEditingMode(null);
-          setActivePhotoId(null);
-          setShowMetadataModal(false);
-          setMetadataPhoto(null);
-        }}
-        onViewFinished={() => {
-          setView('finished');
-          setEditingMode(null);
-          setActivePhotoId(null);
-          setShowMetadataModal(false);
-          setMetadataPhoto(null);
-        }}
-        onShowMetadata={() => {
-          if (activePhoto) {
-            setMetadataPhoto(activePhoto);
-            setShowMetadataModal(true);
-          }
-        }}
         toolbarMessage={dependencyWarning || toolbarMessage || banner?.message}
         toolbarSeverity={dependencyWarning ? 'warning' : (banner?.severity || 'info')}
         onClearToolbarMessage={dependencyWarning ? undefined : () => { setToolbarMessage(''); setBanner({ message: '' }); }}
@@ -222,7 +195,6 @@ function App() {
           uploading={uploading}
           filteredLocalPhotos={filteredLocalPhotos}
           handleUploadFiltered={handleUploadFiltered}
-          setShowLocalPicker={setShowLocalPicker}
           onReopenFolder={handleSelectFolder}
         />
       )}

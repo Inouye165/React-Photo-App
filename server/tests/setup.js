@@ -16,6 +16,45 @@ jest.mock('../db/index.js', () => {
   return require('./__mocks__/knex');
 });
 
+// Mock LangGraph and LangChain modules to avoid ESM import errors
+jest.mock('@langchain/langgraph', () => ({
+  StateGraph: jest.fn().mockImplementation(() => ({
+    addNode: jest.fn().mockReturnThis(),
+    addEdge: jest.fn().mockReturnThis(),
+    addConditionalEdges: jest.fn().mockReturnThis(),
+    setEntryPoint: jest.fn().mockReturnThis(),
+    compile: jest.fn().mockReturnValue({
+      invoke: jest.fn().mockResolvedValue({}),
+      stream: jest.fn().mockResolvedValue([])
+    })
+  })),
+  END: 'END',
+  START: 'START'
+}));
+
+jest.mock('@langchain/core/messages', () => ({
+  HumanMessage: jest.fn(),
+  SystemMessage: jest.fn(),
+  AIMessage: jest.fn()
+}));
+
+jest.mock('@langchain/core/tools', () => ({
+  tool: jest.fn((config) => ({
+    name: config?.name || 'mock-tool',
+    description: config?.description || 'mock description',
+    schema: config?.schema || {},
+    invoke: jest.fn().mockResolvedValue('mock result')
+  })),
+  StructuredTool: jest.fn()
+}));
+
+jest.mock('@langchain/openai', () => ({
+  ChatOpenAI: jest.fn().mockImplementation(() => ({
+    bindTools: jest.fn().mockReturnThis(),
+    invoke: jest.fn().mockResolvedValue({ content: 'mocked response' }),
+    stream: jest.fn().mockResolvedValue([])
+  }))
+}));
 
 // Mock environment variables for tests
 process.env.NODE_ENV = 'test';

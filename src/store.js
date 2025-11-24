@@ -28,6 +28,30 @@ const useStore = create((set) => ({
     return { banner: { message, severity } };
   }),
 
+  // UI State Slice - View Management
+  view: 'working', // 'working' | 'inprogress' | 'finished'
+  setView: (view) => set({ view }),
+
+  // UI State Slice - Active Photo & Editing
+  activePhotoId: null,
+  setActivePhotoId: (id) => set({ activePhotoId: id }),
+  editingMode: null, // null | 'inline' | 'full'
+  setEditingMode: (mode) => set({ editingMode: mode }),
+
+  // UI State Slice - Modals
+  showMetadataModal: false,
+  setShowMetadataModal: (show) => set({ showMetadataModal: show }),
+  metadataPhoto: null,
+  setMetadataPhoto: (photo) => set({ metadataPhoto: photo }),
+  showUploadPicker: false,
+  setShowUploadPicker: (show) => set({ showUploadPicker: show }),
+
+  // UI State Slice - Toolbar Messages
+  toolbarMessage: '',
+  setToolbarMessage: (message) => set({ toolbarMessage: message }),
+  toolbarSeverity: 'info',
+  setToolbarSeverity: (severity) => set({ toolbarSeverity: severity }),
+
   // Photos slice
   setPhotos: (photos) => set({ photos }),
   removePhotoById: (id) => set((state) => ({ photos: state.photos.filter(p => p.id !== id) })),

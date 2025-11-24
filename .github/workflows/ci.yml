@@ -1,7 +1,4 @@
 name: CI
-
-# Trigger CI: dummy comment for workflow update
-
 on:
   push:
     branches: [ main, chore/cloud-ready-audit, feat/round2-quality-guards ]
@@ -20,21 +17,15 @@ jobs:
           node-version: 20
       - name: Install patch-package globally
         run: npm install -g patch-package
-      - name: Install root dependencies (fresh for platform)
-        run: |
-          rm -rf node_modules package-lock.json
-          npm install --no-audit --no-fund
-      - name: Install server dependencies (fresh for platform)
-        run: |
-          rm -rf server/node_modules server/package-lock.json
-          npm install --no-audit --no-fund --prefix server
+      - name: Install root dependencies (reproducible)
+        run: npm ci --no-audit --no-fund
+      - name: Install server dependencies (reproducible)
+        run: npm ci --no-audit --no-fund --prefix server
       - name: Run CSP test in production mode
         run: cd server && NODE_ENV=production npx jest tests/csp.prod.test.js -i
 
   ci:
     runs-on: ubuntu-latest
-    env:
-      SERPAPI_API_KEY: ${{ secrets.SERPAPI_API_KEY }}
     services:
       postgres:
         image: postgres:15
@@ -63,7 +54,6 @@ jobs:
           node-version: ${{ matrix.node-version }}
           cache: npm
 
-      # Cache only npm cache directory, not node_modules
       - name: Cache npm cache only
         uses: actions/cache@v4
         with:
@@ -73,11 +63,9 @@ jobs:
           restore-keys: |
             ${{ runner.os }}-npm-cache-
 
-      # Install patch-package first since it's needed for postinstall
       - name: Install patch-package globally
         run: npm install -g patch-package
 
-      # Do a single fresh install for the platform
       - name: Install root dependencies (fresh for platform)
         run: |
           rm -rf node_modules package-lock.json
@@ -97,11 +85,71 @@ jobs:
       - name: Build frontend
         run: npm run build
 
-      - name: Run frontend tests
-        run: npm run test:run --silent
+      - name: Get test files
+        id: test-files
+        run: |
+          # Split into 6 batches to prevent OOM on runner
+          files=$(find src -name "*.test.*" -o -name "*.spec.*" | sort)
+          total=$(echo "$files" | wc -l)
+          # Calculate batch size for 6 parts
+          batch_size=$(( (total + 5) / 6 ))
+          
+          batch1=$(echo "$files" | head -n $batch_size | tr '\n' ' ')
+          batch2=$(echo "$files" | head -n $(($batch_size * 2)) | tail -n $batch_size | tr '\n' ' ')
+          batch3=$(echo "$files" | head -n $(($batch_size * 3)) | tail -n $batch_size | tr '\n' ' ')
+          batch4=$(echo "$files" | head -n $(($batch_size * 4)) | tail -n $batch_size | tr '\n' ' ')
+          batch5=$(echo "$files" | head -n $(($batch_size * 5)) | tail -n $batch_size | tr '\n' ' ')
+          batch6=$(echo "$files" | tail -n +$(($batch_size * 5 + 1)) | tr '\n' ' ')
+          
+          echo "batch1=$batch1" >> $GITHUB_OUTPUT
+          echo "batch2=$batch2" >> $GITHUB_OUTPUT
+          echo "batch3=$batch3" >> $GITHUB_OUTPUT
+          echo "batch4=$batch4" >> $GITHUB_OUTPUT
+          echo "batch5=$batch5" >> $GITHUB_OUTPUT
+          echo "batch6=$batch6" >> $GITHUB_OUTPUT
+
+      - name: Run frontend tests (batch 1/6)
+        # Lowered heap to 5GB to allow OS overhead within 7GB runner limit
+        run: npm run test:run --silent -- --pool=forks --maxWorkers=1 ${{ steps.test-files.outputs.batch1 }}
         env:
           CI: true
           VITE_API_URL: http://localhost:3001
+          NODE_OPTIONS: --max-old-space-size=4096
+
+      - name: Run frontend tests (batch 2/6)
+        run: npm run test:run --silent -- --pool=forks --maxWorkers=1 ${{ steps.test-files.outputs.batch2 }}
+        env:
+          CI: true
+          VITE_API_URL: http://localhost:3001
+          NODE_OPTIONS: --max-old-space-size=4096
+
+      - name: Run frontend tests (batch 3/6)
+        run: npm run test:run --silent -- --pool=forks --maxWorkers=1 ${{ steps.test-files.outputs.batch3 }}
+        env:
+          CI: true
+          VITE_API_URL: http://localhost:3001
+          NODE_OPTIONS: --max-old-space-size=4096
+
+      - name: Run frontend tests (batch 4/6)
+        run: npm run test:run --silent -- --pool=forks --maxWorkers=1 ${{ steps.test-files.outputs.batch4 }}
+        env:
+          CI: true
+          VITE_API_URL: http://localhost:3001
+          NODE_OPTIONS: --max-old-space-size=4096
+
+      - name: Run frontend tests (batch 5/6)
+        run: npm run test:run --silent -- --pool=forks --maxWorkers=1 ${{ steps.test-files.outputs.batch5 }}
+        env:
+          CI: true
+          VITE_API_URL: http://localhost:3001
+          NODE_OPTIONS: --max-old-space-size=4096
+
+      - name: Run frontend tests (batch 6/6)
+        run: npm run test:run --silent -- --pool=forks --maxWorkers=1 ${{ steps.test-files.outputs.batch6 }}
+        env:
+          CI: true
+          VITE_API_URL: http://localhost:3001
+          NODE_OPTIONS: --max-old-space-size=4096
 
       - name: Create photo working dir
         run: mkdir -p server/working/photos
@@ -112,7 +160,6 @@ jobs:
           NODE_ENV: test
           CI: true
           RUN_MIGRATION_VERIFY_TEST: 'true'
-          # Point database envs to the postgres service started by the runner
           DATABASE_URL: postgresql://test:test@localhost:5432/test
           SUPABASE_DB_URL: postgresql://test:test@localhost:5432/test
           SUPABASE_URL: https://test.supabase.co
@@ -143,7 +190,6 @@ jobs:
   test-a11y-e2e:
     runs-on: ubuntu-latest
     timeout-minutes: 12
-    # Temporarily skip - needs full setup
     if: false
     steps:
       - uses: actions/checkout@v4
@@ -183,7 +229,6 @@ jobs:
   test-perf-micro:
     runs-on: ubuntu-latest
     timeout-minutes: 8
-    # Temporarily skip - needs full setup
     if: false
     steps:
       - uses: actions/checkout@v4
@@ -221,7 +266,6 @@ jobs:
   test-docker-smoke:
     runs-on: ubuntu-latest
     timeout-minutes: 10
-    # Temporarily skip - Dockerfile not yet created
     if: false
     steps:
       - uses: actions/checkout@v4

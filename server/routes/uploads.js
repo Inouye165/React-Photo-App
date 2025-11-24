@@ -68,7 +68,12 @@ module.exports = function createUploadsRouter({ db }) {
               throw new Error(`Refusing to delete file outside temp directory: ${tempFilePath}`);
             }
             const realPath = validateSafePath(req.file.path);
-            fs.unlink(realPath, () => {});
+            // Use synchronous unlink for immediate cleanup
+            if (fs.existsSync(realPath)) {
+              fs.unlinkSync(realPath);
+            }
+            // CRITICAL: Prevent double-deletion in finally
+            delete req.file;
           } catch (e) {
             logger.error('Temp file cleanup failed:', e);
           }
@@ -145,9 +150,18 @@ module.exports = function createUploadsRouter({ db }) {
               throw new Error(`Refusing to delete file outside temp directory: ${tempFilePath}`);
             }
             const realPath = validateSafePath(req.file.path);
-            fs.unlink(realPath, (err) => {
-              if (err) logger.error(`Failed to delete temp file ${req.file.path}:`, err);
-            });
+            // Use synchronous unlink to ensure file is deleted before moving to next test
+            try {
+              // Check if file exists before attempting to delete it
+              if (fs.existsSync(realPath)) {
+                fs.unlinkSync(realPath);
+              }
+            } catch (unlinkErr) {
+              // File might already be deleted, log but don't fail
+              if (unlinkErr.code !== 'ENOENT') {
+                logger.error(`Failed to delete temp file ${req.file.path}:`, unlinkErr);
+              }
+            }
           } catch (e) {
             logger.error(`Path sanitization failed for temp file cleanup: ${req.file.path}`, e);
           }

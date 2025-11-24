@@ -1,4 +1,5 @@
 import React, { useEffect, useState, useRef } from "react";
+import useStore from './store.js';
 
 const Thumbnail = ({ file, className }) => {
   const [src, setSrc] = useState(null);
@@ -35,9 +36,11 @@ const PhotoUploadForm = ({
   uploading,
   filteredLocalPhotos,
   handleUploadFiltered,
-  setShowLocalPicker,
   onReopenFolder
 }) => {
+  // Connect to store
+  const setShowLocalPicker = useStore((state) => state.setShowUploadPicker);
+
   // Selection state: Set of indices
   const [selectedIndices, setSelectedIndices] = useState(new Set());
 

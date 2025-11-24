@@ -1,55 +1,105 @@
-// uploads.cleanup.test.js
-// Test for compensating transaction: orphaned file cleanup on DB error
-
 const request = require('supertest');
 const express = require('express');
-const fs = require('fs');
-const path = require('path');
-const os = require('os');
-const { mockStorageHelpers } = require('./__mocks__/supabase');
+
+// Mock pathValidator to bypass validation for this test
+jest.mock('../utils/pathValidator', () => ({
+  validateSafePath: jest.fn((p) => p)
+}));
+
+// FIX: Define mocks entirely inside the factory to avoid hoisting ReferenceErrors
+jest.mock('fs', () => {
+  const originalFs = jest.requireActual('fs');
+  return {
+    ...originalFs,
+    // Mock existsSync for specific test paths
+    existsSync: jest.fn((p) => {
+        if (typeof p === 'string' && p.includes('test-cleanup-upload')) return true;
+        return originalFs.existsSync(p);
+    }),
+    writeFileSync: originalFs.writeFileSync, 
+    // Define the spy directly here
+    unlink: jest.fn((path, cb) => cb && cb(null)), 
+  };
+});
+
+jest.mock('knex');
+jest.mock('@supabase/supabase-js');
+jest.mock('../lib/supabaseClient', () => require('./__mocks__/supabase').createClient());
+jest.mock('jsonwebtoken');
 
 jest.mock('../media/image', () => ({
-  ingestPhoto: jest.fn()
+  ingestPhoto: jest.fn(async (_db, _filePath) => {
+    return {
+      duplicate: false,
+      hash: 'mock-hash-cleanup'
+    };
+  })
 }));
-const { ingestPhoto } = require('../media/image');
+
+jest.mock('multer', () => {
+  const multerMock = jest.fn(() => ({
+    single: jest.fn(() => (req, res, next) => {
+      // Require modules inside to be safe
+      const path = require('path');
+      const os = require('os');
+      const tempPath = path.join(os.tmpdir(), 'test-cleanup-upload.tmp');
+      
+      req.file = {
+        originalname: 'test.jpg',
+        mimetype: 'image/jpeg',
+        path: tempPath,
+        size: 1234
+      };
+      next();
+    })
+  }));
+  multerMock.diskStorage = jest.fn(() => ({}));
+  multerMock.memoryStorage = jest.fn(() => ({}));
+  return multerMock;
+});
 
 const createUploadsRouter = require('../routes/uploads');
 
-// Setup test app
-function setupApp(db) {
-  const app = express();
-  app.use((req, res, next) => {
-    req.user = { id: 123 };
-    next();
-  });
-  app.use('/', createUploadsRouter({ db }));
-  return app;
-}
-
 describe('Upload Route - Orphaned File Cleanup', () => {
+  let app;
+
   beforeEach(() => {
-     mockStorageHelpers.clearMockStorage();
-    ingestPhoto.mockReset();
+    app = express();
+    app.use(express.json());
+    
+    app.use('/uploads', (req, res, next) => {
+      req.user = { id: 1 };
+      next();
+    });
+
+    const knex = require('knex');
+    app.use('/uploads', createUploadsRouter({ db: knex }));
   });
 
   it('removes orphaned file from storage if DB insert fails', async () => {
-    // Arrange: ingestPhoto throws
-    ingestPhoto.mockImplementation(() => { throw new Error('DB error'); });
-    const db = {};
-    const app = setupApp(db);
-    // Create a temp file to upload
-    const tempFilePath = path.join(os.tmpdir(), 'testfile.jpg');
-    fs.writeFileSync(tempFilePath, Buffer.from('testdata'));
-    // Act
-    const res = await request(app)
-      .post('/upload')
-      .attach('photo', tempFilePath);
-    // Assert
-    expect(res.status).toBe(500);
-    // The file should have been removed from storage
-    const uploadedFiles = mockStorageHelpers.getMockFiles().filter(([key]) => key.startsWith('photos/'));
-    expect(uploadedFiles).toHaveLength(0);
-    // Cleanup
-    fs.unlinkSync(tempFilePath);
+    const fs = require('fs');
+    const path = require('path');
+    const os = require('os');
+    const tmpPath = path.join(os.tmpdir(), 'test-cleanup-upload.tmp');
+    
+    // FIX: Actually create the temp file that the multer mock references
+    // The upload route will call fs.createReadStream on this path
+    fs.writeFileSync(tmpPath, Buffer.from('fake image content'));
+    
+    // Mock ingestPhoto to throw an error (simulating DB failure)
+    const { ingestPhoto } = require('../media/image');
+    ingestPhoto.mockRejectedValueOnce(new Error('DB connection failed'));
+
+    const response = await request(app)
+      .post('/uploads/upload')
+      .attach('photo', Buffer.from('fake'), 'test.jpg');
+
+    expect(response.status).toBe(500);
+    
+    // Verify file was removed from Supabase Storage
+    const mockStorageHelpers = require('./__mocks__/supabase').mockStorageHelpers;
+    const files = mockStorageHelpers.getMockFiles();
+    const uploadedFile = files.find(([key]) => key.includes('working/') && key.includes('test.jpg'));
+    expect(uploadedFile).toBeUndefined(); // File should be cleaned up
   });
 });

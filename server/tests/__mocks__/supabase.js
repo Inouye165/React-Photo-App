@@ -23,10 +23,18 @@ const createMockSupabaseClient = () => {
     },
     storage: {
       from: (bucket) => ({
-        upload: jest.fn().mockImplementation((path, file, options = {}) => {
+        upload: jest.fn().mockImplementation(async (path, file, options = {}) => {
           const key = `${bucket}/${path}`;
           // Always error if flag is set
           if (alwaysErrorOnUpload) {
+            // If file is a stream, consume it before returning error
+            if (file && typeof file.on === 'function') {
+              file.resume(); // Drain the stream
+              await new Promise((resolve) => {
+                file.on('end', resolve);
+                file.on('error', resolve);
+              });
+            }
             return {
               data: null,
               error: { message: 'Storage unavailable', status: 500 }
@@ -34,17 +42,39 @@ const createMockSupabaseClient = () => {
           }
           // Check if we should simulate an error
           if (mockStorageErrors.has(key)) {
+            // If file is a stream, consume it before returning error
+            if (file && typeof file.on === 'function') {
+              file.resume(); // Drain the stream
+              await new Promise((resolve) => {
+                file.on('end', resolve);
+                file.on('error', resolve);
+              });
+            }
             return {
               data: null,
               error: mockStorageErrors.get(key)
             };
           }
+          
+          // If file is a stream, we need to consume it to prevent ECONNRESET
+          let fileSize = file?.size || file?.length || 1024;
+          if (file && typeof file.on === 'function') {
+            // It's a stream - consume it
+            const chunks = [];
+            file.on('data', (chunk) => chunks.push(chunk));
+            await new Promise((resolve, reject) => {
+              file.on('end', resolve);
+              file.on('error', reject);
+            });
+            fileSize = Buffer.concat(chunks).length;
+          }
+          
           // Store the file data
           mockStorageFiles.set(key, {
             path,
-            file,
+            file: 'mock-consumed-stream',
             options,
-            size: file?.size || file?.length || 1024,
+            size: fileSize,
             lastModified: new Date().toISOString()
           });
           return {
