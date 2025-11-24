@@ -22,11 +22,17 @@ jest.mock('../media/image', () => ({
     try {
       let content = _input;
       if (typeof _input === 'string') {
-        // It's a path, read it
-        try {
-          content = require('fs').readFileSync(_input);
-        } catch {
-          // ignore read error
+        // It's a path, read it SAFELY
+        const fs = require('fs');
+        if (fs.existsSync(_input)) {
+           try {
+             content = fs.readFileSync(_input);
+           } catch (err) {
+             console.log('Error reading file in mock:', err.message);
+           }
+        } else {
+           // Fallback if file was already deleted by app logic (race condition fix)
+           content = Buffer.from('mock-content-fallback');
         }
       }
 
@@ -117,6 +123,9 @@ jest.mock('multer', () => {
 
 const request = require('supertest');
 const express = require('express');
+const fs = require('fs');
+const path = require('path');
+const os = require('os');
 
 // Define mock helpers locally to avoid jest.mock interference
 const mockPhotos = new Map();
@@ -165,10 +174,21 @@ const mockDbHelpers = {
 
 const createUploadsRouter = require('../routes/uploads');
 
+// Global test fixture path
+const TEST_FIXTURE_PATH = path.join(os.tmpdir(), 'test-fixture-upload.jpg');
+
 describe('Uploads Router with Supabase Storage', () => {
   let app;
 
   beforeEach(() => {
+    // Create a real file for supertest to attach
+    // This prevents ENOENT errors if supertest tries to read a buffer stream that gets closed early
+    try {
+      fs.writeFileSync(TEST_FIXTURE_PATH, 'fake image data');
+    } catch {
+      console.error('Failed to create test fixture:');
+    }
+
     // Create express app with auth middleware
     app = express();
     app.use(express.json());
@@ -188,20 +208,32 @@ describe('Uploads Router with Supabase Storage', () => {
     mockDbHelpers.clearMockData();
   });
 
+  afterEach(() => {
+    jest.clearAllMocks();
+    // Clean up the fixture file
+    try {
+      if (fs.existsSync(TEST_FIXTURE_PATH)) {
+        fs.unlinkSync(TEST_FIXTURE_PATH);
+      }
+    } catch {
+      // ignore cleanup errors
+    }
+  });
+
   describe('POST /upload', () => {
     it('should upload a photo successfully to Supabase Storage', async () => {
       const response = await request(app)
         .post('/uploads/upload')
         .set('Authorization', 'Bearer valid-token')
-        .attach('photo', Buffer.from('fake image data'), 'test.jpg');
+        .attach('photo', TEST_FIXTURE_PATH);
 
       expect(response.status).toBe(200);
       expect(response.body.success).toBe(true);
       // Should be a UUID prefix, then dash, then sanitized original name
-      expect(response.body.filename).toMatch(/^[a-f0-9-]{36}-test\.jpg$/i);
+      expect(response.body.filename).toMatch(/^[a-f0-9-]{36}-test-fixture-upload\.jpg$/i);
       expect(response.body.hash).toBeDefined();
       // Verify file was added to mock storage (find by prefix)
-      const uploadedFile = (mockStorageHelpers.getMockFiles ? mockStorageHelpers.getMockFiles() : []).find(([k]) => /working\/[a-f0-9-]{36}-test\.jpg$/i.test(k));
+      const uploadedFile = (mockStorageHelpers.getMockFiles ? mockStorageHelpers.getMockFiles() : []).find(([k]) => /working\/[a-f0-9-]{36}-test-fixture-upload\.jpg$/i.test(k));
       expect(uploadedFile).toBeDefined();
     });
 
@@ -217,12 +249,12 @@ describe('Uploads Router with Supabase Storage', () => {
       const response = await request(app)
         .post('/uploads/upload')
         .set('Authorization', 'Bearer valid-token')
-        .attach('photo', Buffer.from('fake image data'), 'test.jpg');
+        .attach('photo', TEST_FIXTURE_PATH);
 
       // Should still succeed, but filename will be UUID-prefixed
       expect(response.status).toBe(200);
       expect(response.body.success).toBe(true);
-      expect(response.body.filename).toMatch(/^[a-f0-9-]{36}-test\.jpg$/i);
+      expect(response.body.filename).toMatch(/^[a-f0-9-]{36}-test-fixture-upload\.jpg$/i);
     });
 
     it('should return error when no file uploaded', async () => {
@@ -243,7 +275,7 @@ describe('Uploads Router with Supabase Storage', () => {
       const response = await request(app)
         .post('/uploads/upload')
         .set('Authorization', 'Bearer valid-token')
-        .attach('photo', Buffer.from('fake image data'), 'test.jpg');
+        .attach('photo', TEST_FIXTURE_PATH);
 
       expect(response.status).toBe(500);
       expect(response.body.success).toBe(false);
@@ -272,7 +304,7 @@ describe('Uploads Router with Supabase Storage', () => {
 
       const response = await request(unauthApp)
         .post('/uploads/upload')
-        .attach('photo', Buffer.from('fake image data'), 'test.jpg');
+        .attach('photo', TEST_FIXTURE_PATH);
 
       expect(response.status).toBe(401);
       expect(response.body.error).toBe('Access token required');
@@ -282,7 +314,7 @@ describe('Uploads Router with Supabase Storage', () => {
       const response = await request(app)
         .post('/uploads/upload')
         .set('Authorization', 'Bearer valid-token')
-        .attach('photo', Buffer.from('fake image data'), 'test.jpg');
+        .attach('photo', TEST_FIXTURE_PATH);
 
       expect(response.status).toBe(200);
       expect(response.body.success).toBe(true);
@@ -290,16 +322,22 @@ describe('Uploads Router with Supabase Storage', () => {
       // Check that thumbnail was created in storage
       const mockFiles = mockStorageHelpers.getMockFiles();
       // Find a thumbnail file with a UUID prefix
-      const thumbnailFile = (mockFiles ? Object.values(mockFiles) : []).find(([k]) => /thumbnails\/[a-f0-9-]{36}-test\.jpg$/i.test(k));
+      const thumbnailFile = (mockFiles ? Object.values(mockFiles) : []).find(([k]) => /thumbnails\/[a-f0-9-]{36}-test-fixture-upload\.jpg$/i.test(k));
       expect(thumbnailFile).toBeDefined();
     });
 
     it('should reject a zero-byte (empty) file upload', async () => {
+      // For this specific test, we can use a buffer or a dedicated empty file
+      const emptyPath = path.join(os.tmpdir(), 'empty-test.jpg');
+      fs.writeFileSync(emptyPath, '');
+
       const response = await request(app)
         .post('/uploads/upload')
         .set('Authorization', 'Bearer valid-token')
-        .set('x-multer-zero', '1')
-        .attach('photo', Buffer.from(''));
+        .set('x-multer-zero', '1') // Helper for our multer mock
+        .attach('photo', emptyPath);
+      
+      try { fs.unlinkSync(emptyPath); } catch {} 
 
       expect(response.status).toBe(400);
       expect(response.body.success).toBe(false);
@@ -307,12 +345,18 @@ describe('Uploads Router with Supabase Storage', () => {
     });
 
     it('should reject unsupported MIME types', async () => {
+      // Create text file
+      const textPath = path.join(os.tmpdir(), 'test.txt');
+      fs.writeFileSync(textPath, 'fake text data');
+
       const response = await request(app)
         .post('/uploads/upload')
         .set('Authorization', 'Bearer valid-token')
         // instruct multer mock to reject the fileFilter
         .set('x-multer-reject', '1')
-        .attach('photo', Buffer.from('fake text data'), 'test.txt');
+        .attach('photo', textPath);
+
+      try { fs.unlinkSync(textPath); } catch {} 
 
       expect(response.status).toBe(400);
       expect(response.body.success).toBe(false);
@@ -320,13 +364,18 @@ describe('Uploads Router with Supabase Storage', () => {
     });
 
     it('should handle images with corrupt or missing EXIF data gracefully', async () => {
+      const corruptPath = path.join(os.tmpdir(), 'corrupt.jpg');
+      fs.writeFileSync(corruptPath, 'corrupt-exif');
+
       const response = await request(app)
         .post('/uploads/upload')
         .set('Authorization', 'Bearer valid-token')
         // Provide a special buffer payload that our ingestPhoto mock recognizes
         .set('x-multer-buffer', 'corrupt-exif')
         .set('x-multer-originalname', 'corrupt.jpg')
-        .attach('photo', Buffer.from('corrupt-exif'), 'corrupt.jpg');
+        .attach('photo', corruptPath);
+
+      try { fs.unlinkSync(corruptPath); } catch {} 
 
       expect(response.status).toBe(200);
       expect(response.body.success).toBe(true);
