@@ -325,7 +325,8 @@ describe('Uploads Router with Supabase Storage', () => {
       // Check that thumbnail was created in storage
       const mockFiles = mockStorageHelpers.getMockFiles();
       // Find a thumbnail file with a UUID prefix
-      const thumbnailFile = (mockFiles ? Object.values(mockFiles) : []).find(([k]) => /thumbnails\/[a-f0-9-]{36}-test-fixture-upload\.jpg$/i.test(k));
+      // Fixed: Mock forces 'test.jpg' so we must check for that, not test-fixture-upload.jpg
+      const thumbnailFile = (mockFiles ? Object.values(mockFiles) : []).find(([k]) => /thumbnails\/[a-f0-9-]{36}-test\.jpg$/i.test(k));
       expect(thumbnailFile).toBeDefined();
     });
 
@@ -340,7 +341,7 @@ describe('Uploads Router with Supabase Storage', () => {
         .set('x-multer-zero', '1') // Helper for our multer mock
         .attach('photo', emptyPath);
       
-      try { fs.unlinkSync(emptyPath); } catch {} 
+      try { fs.unlinkSync(emptyPath); } catch {}
 
       expect(response.status).toBe(400);
       expect(response.body.success).toBe(false);
@@ -359,7 +360,7 @@ describe('Uploads Router with Supabase Storage', () => {
         .set('x-multer-reject', '1')
         .attach('photo', textPath);
 
-      try { fs.unlinkSync(textPath); } catch {} 
+      try { fs.unlinkSync(textPath); } catch {}
 
       expect(response.status).toBe(400);
       expect(response.body.success).toBe(false);
@@ -378,7 +379,7 @@ describe('Uploads Router with Supabase Storage', () => {
         .set('x-multer-originalname', 'corrupt.jpg')
         .attach('photo', corruptPath);
 
-      try { fs.unlinkSync(corruptPath); } catch {} 
+      try { fs.unlinkSync(corruptPath); } catch {}
 
       expect(response.status).toBe(200);
       expect(response.body.success).toBe(true);
