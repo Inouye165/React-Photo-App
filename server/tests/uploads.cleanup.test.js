@@ -1,30 +1,27 @@
 const request = require('supertest');
 const express = require('express');
 
-// 1. Variable must start with 'mock' to be used inside jest.mock factory
-const mockUnlink = jest.fn((path, cb) => cb && cb(null));
-
-// 2. Mock 'fs' entirely.
+// FIX: Define mocks entirely inside the factory to avoid hoisting ReferenceErrors
 jest.mock('fs', () => {
   const originalFs = jest.requireActual('fs');
   return {
     ...originalFs,
+    // Mock existsSync for specific test paths
     existsSync: jest.fn((p) => {
         if (typeof p === 'string' && p.includes('test-cleanup-upload')) return true;
         return originalFs.existsSync(p);
     }),
     writeFileSync: originalFs.writeFileSync, 
-    unlink: mockUnlink, 
+    // Define the spy directly here
+    unlink: jest.fn((path, cb) => cb && cb(null)), 
   };
 });
 
-// Mock dependencies
 jest.mock('knex');
 jest.mock('@supabase/supabase-js');
 jest.mock('../lib/supabaseClient', () => require('./__mocks__/supabase').createClient());
 jest.mock('jsonwebtoken');
 
-// Mock ingestPhoto
 jest.mock('../media/image', () => ({
   ingestPhoto: jest.fn(async (_db, _filePath) => {
     return {
@@ -34,15 +31,14 @@ jest.mock('../media/image', () => ({
   })
 }));
 
-// Mock multer
 jest.mock('multer', () => {
   const multerMock = jest.fn(() => ({
     single: jest.fn(() => (req, res, next) => {
-      // FIX: Require modules INSIDE the mock to avoid ReferenceError due to hoisting
+      // Require modules inside to be safe
       const path = require('path');
       const os = require('os');
-      
       const tempPath = path.join(os.tmpdir(), 'test-cleanup-upload.tmp');
+      
       req.file = {
         originalname: 'test.jpg',
         mimetype: 'image/jpeg',
@@ -82,7 +78,9 @@ describe('Upload Route - Orphaned File Cleanup', () => {
 
     app.use('/uploads', createUploadsRouter({ db: mockKnex }));
     
-    mockUnlink.mockClear();
+    // Get the mocked fs module to access the spy
+    const fs = require('fs');
+    fs.unlink.mockClear();
   });
 
   it('removes orphaned file from storage if DB insert fails', async () => {
@@ -91,6 +89,9 @@ describe('Upload Route - Orphaned File Cleanup', () => {
       .attach('photo', Buffer.from('fake'), 'test.jpg');
 
     expect(response.status).toBe(500);
-    expect(mockUnlink).toHaveBeenCalled();
+    
+    // Verify the spy defined in the mock factory was called
+    const fs = require('fs');
+    expect(fs.unlink).toHaveBeenCalled();
   });
 });
