@@ -26,10 +26,6 @@ jobs:
 
   ci:
     runs-on: ubuntu-latest
-    env:
-      # Dummy values for CI build/test to satisfy validation
-      VITE_SUPABASE_URL: https://ci.supabase.co
-      VITE_SUPABASE_ANON_KEY: ci-anon-key
     services:
       postgres:
         image: postgres:15
@@ -88,6 +84,9 @@ jobs:
 
       - name: Build frontend
         run: npm run build
+        env:
+          VITE_SUPABASE_URL: https://ci.supabase.co
+          VITE_SUPABASE_ANON_KEY: ci-anon-key
 
       - name: Get test files
         id: test-files
