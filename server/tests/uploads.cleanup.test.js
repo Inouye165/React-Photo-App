@@ -3,21 +3,21 @@ const express = require('express');
 const path = require('path');
 const os = require('os');
 
-// 1. Define the mock function outside
-const unlinkMock = jest.fn((path, cb) => cb && cb(null));
+// 1. FIX: Variable MUST start with 'mock' to be used inside jest.mock factory
+const mockUnlink = jest.fn((path, cb) => cb && cb(null));
 
-// 2. Mock 'fs' entirely. Use requireActual for non-mocked methods.
+// 2. Mock 'fs' entirely.
 jest.mock('fs', () => {
   const originalFs = jest.requireActual('fs');
   return {
     ...originalFs,
     existsSync: jest.fn((p) => {
-        // Return true for our temp file, false for others if needed
+        // Return true for our temp file logic
         if (typeof p === 'string' && p.includes('test-cleanup-upload')) return true;
         return originalFs.existsSync(p);
     }),
-    writeFileSync: originalFs.writeFileSync, // Keep real write so we can create fixtures
-    unlink: unlinkMock, // Inject our spy
+    writeFileSync: originalFs.writeFileSync, 
+    unlink: mockUnlink, // Now safe to access because it starts with 'mock'
   };
 });
 
@@ -27,9 +27,8 @@ jest.mock('@supabase/supabase-js');
 jest.mock('../lib/supabaseClient', () => require('./__mocks__/supabase').createClient());
 jest.mock('jsonwebtoken');
 
-// Mock ingestPhoto to force a DB error
+// Mock ingestPhoto
 jest.mock('../media/image', () => ({
-  // Prefix unused param with underscore to satisfy no-unused-vars argsIgnorePattern
   ingestPhoto: jest.fn(async (_db, _filePath) => {
     return {
       duplicate: false,
@@ -42,7 +41,6 @@ jest.mock('../media/image', () => ({
 jest.mock('multer', () => {
   const multerMock = jest.fn(() => ({
     single: jest.fn(() => (req, res, next) => {
-      // We don't need to physically create the file because we mocked fs.existsSync to return true
       const tempPath = path.join(os.tmpdir(), 'test-cleanup-upload.tmp');
       req.file = {
         originalname: 'test.jpg',
@@ -74,7 +72,6 @@ describe('Upload Route - Orphaned File Cleanup', () => {
     });
 
     mockKnex = require('knex');
-    // Force DB Insert to Fail -> This triggers the cleanup catch block
     mockKnex.mockImplementation(() => ({
       insert: jest.fn().mockReturnThis(),
       returning: jest.fn().mockRejectedValue(new Error('DB error')),
@@ -84,18 +81,15 @@ describe('Upload Route - Orphaned File Cleanup', () => {
 
     app.use('/uploads', createUploadsRouter({ db: mockKnex }));
     
-    // Clear the spy before test
-    unlinkMock.mockClear();
+    mockUnlink.mockClear();
   });
 
   it('removes orphaned file from storage if DB insert fails', async () => {
     const response = await request(app)
       .post('/uploads/upload')
-      .attach('photo', Buffer.from('fake'), 'test.jpg'); // Content doesn't matter, multer mock handles it
+      .attach('photo', Buffer.from('fake'), 'test.jpg');
 
     expect(response.status).toBe(500);
-    
-    // The router should call fs.unlink when the DB insert fails
-    expect(unlinkMock).toHaveBeenCalled();
+    expect(mockUnlink).toHaveBeenCalled();
   });
 });

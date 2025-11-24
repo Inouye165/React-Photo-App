@@ -26,6 +26,10 @@ jobs:
 
   ci:
     runs-on: ubuntu-latest
+    env:
+      # Dummy values for CI build/test to satisfy validation
+      VITE_SUPABASE_URL: https://ci.supabase.co
+      VITE_SUPABASE_ANON_KEY: ci-anon-key
     services:
       postgres:
         image: postgres:15
@@ -47,25 +51,6 @@ jobs:
     steps:
       - name: Checkout repository
         uses: actions/checkout@v4
-
-      - name: Inject Supabase env (with fallback)
-        env:
-          SUPABASE_URL_SECRET: ${{ secrets.VITE_SUPABASE_URL }}
-          SUPABASE_ANON_SECRET: ${{ secrets.VITE_SUPABASE_ANON_KEY }}
-        run: |
-          if [ -z "$SUPABASE_URL_SECRET" ]; then
-            echo "VITE_SUPABASE_URL=https://example.supabase.co" >> $GITHUB_ENV
-            echo "Using fallback Supabase URL";
-          else
-            echo "VITE_SUPABASE_URL=$SUPABASE_URL_SECRET" >> $GITHUB_ENV
-          fi
-          if [ -z "$SUPABASE_ANON_SECRET" ]; then
-            echo "VITE_SUPABASE_ANON_KEY=dummy-anon-key" >> $GITHUB_ENV
-            echo "Using fallback Supabase anon key";
-          else
-            echo "VITE_SUPABASE_ANON_KEY=$SUPABASE_ANON_SECRET" >> $GITHUB_ENV
-          fi
-        shell: bash
 
       - name: Use Node.js ${{ matrix.node-version }}
         uses: actions/setup-node@v4
@@ -110,6 +95,7 @@ jobs:
           # Split into 4 batches to reduce memory pressure
           files=$(find src -name "*.test.*" -o -name "*.spec.*" | sort)
           total=$(echo "$files" | wc -l)
+          # Calculate batch size for 4 parts
           batch_size=$(( (total + 3) / 4 ))
           
           batch1=$(echo "$files" | head -n $batch_size | tr '\n' ' ')
@@ -123,33 +109,33 @@ jobs:
           echo "batch4=$batch4" >> $GITHUB_OUTPUT
 
       - name: Run frontend tests (batch 1/4)
-        # REMOVED: minWorkers=1 maxWorkers=1 (caused OOM by preventing recycling)
-        run: npm run test:run --silent -- --pool=forks ${{ steps.test-files.outputs.batch1 }}
+        # Reduced heap to 6GB to fit within runner limits and added maxWorkers=1
+        run: npm run test:run --silent -- --pool=forks --maxWorkers=1 ${{ steps.test-files.outputs.batch1 }}
         env:
           CI: true
           VITE_API_URL: http://localhost:3001
-          NODE_OPTIONS: --max-old-space-size=8192
+          NODE_OPTIONS: --max-old-space-size=6144
 
       - name: Run frontend tests (batch 2/4)
-        run: npm run test:run --silent -- --pool=forks ${{ steps.test-files.outputs.batch2 }}
+        run: npm run test:run --silent -- --pool=forks --maxWorkers=1 ${{ steps.test-files.outputs.batch2 }}
         env:
           CI: true
           VITE_API_URL: http://localhost:3001
-          NODE_OPTIONS: --max-old-space-size=8192
+          NODE_OPTIONS: --max-old-space-size=6144
 
       - name: Run frontend tests (batch 3/4)
-        run: npm run test:run --silent -- --pool=forks ${{ steps.test-files.outputs.batch3 }}
+        run: npm run test:run --silent -- --pool=forks --maxWorkers=1 ${{ steps.test-files.outputs.batch3 }}
         env:
           CI: true
           VITE_API_URL: http://localhost:3001
-          NODE_OPTIONS: --max-old-space-size=8192
+          NODE_OPTIONS: --max-old-space-size=6144
 
       - name: Run frontend tests (batch 4/4)
-        run: npm run test:run --silent -- --pool=forks ${{ steps.test-files.outputs.batch4 }}
+        run: npm run test:run --silent -- --pool=forks --maxWorkers=1 ${{ steps.test-files.outputs.batch4 }}
         env:
           CI: true
           VITE_API_URL: http://localhost:3001
-          NODE_OPTIONS: --max-old-space-size=8192
+          NODE_OPTIONS: --max-old-space-size=6144
 
       - name: Create photo working dir
         run: mkdir -p server/working/photos
