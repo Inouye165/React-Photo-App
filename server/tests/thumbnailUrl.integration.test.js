@@ -26,7 +26,26 @@ describe('Thumbnail URL API - Integration Tests', () => {
       { expiresIn: '1h' }
     );
 
-    // Create test photo with hash
+    // Get the actual user ID from a test request to see what Supabase returns
+    const testResponse = await request(app)
+      .get('/photos')
+      .set('Authorization', `Bearer ${testToken}`);
+    
+    // If this succeeds, we can get the user_id from the auth middleware
+    // Otherwise, we'll use a default test user ID (1) that exists in Supabase
+    if (testResponse.status === 200) {
+      // Auth worked, photos belong to the Supabase user
+      // We need to use their ID. Let's fetch an existing photo if any
+      const existingPhotos = await db('photos').select('user_id').limit(1);
+      if (existingPhotos && existingPhotos.length > 0) {
+        testUserId = existingPhotos[0].user_id;
+      } else {
+        // No existing photos, assume user_id = 1 (common test user)
+        testUserId = 1;
+      }
+    }
+
+    // Create test photo with hash using the correct user_id
     const insertResult = await db('photos').insert({
       user_id: testUserId,
       filename: 'test-photo.jpg',
@@ -260,8 +279,8 @@ describe('Thumbnail URL API - Integration Tests', () => {
 
       const originalUrl = urlResponse.body.url;
 
-      // Tamper with the hash in the URL path
-      const tamperedUrl = originalUrl.replace(testPhotoHash, 'tampered123');
+      // Tamper with the hash in the URL path by replacing any hash pattern with 'tampered123'
+      const tamperedUrl = originalUrl.replace(/\/thumbnails\/[a-z0-9]+\.jpg/, '/thumbnails/tampered123.jpg');
 
       const response = await request(app)
         .get(tamperedUrl)

@@ -40,6 +40,20 @@ describe('REGRESSION: Thumbnail 401 after security refactor', () => {
       { expiresIn: '1h' }
     );
 
+    // Get the actual user ID from Supabase auth
+    const testResponse = await request(app)
+      .get('/photos')
+      .set('Authorization', `Bearer ${testToken}`);
+    
+    if (testResponse.status === 200) {
+      const existingPhotos = await db('photos').select('user_id').limit(1);
+      if (existingPhotos && existingPhotos.length > 0) {
+        testUserId = existingPhotos[0].user_id;
+      } else {
+        testUserId = 1;
+      }
+    }
+
     // Create test photos (simulating uploaded photos with thumbnails)
     const photosData = [
       {
