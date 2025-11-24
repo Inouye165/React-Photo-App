@@ -17,14 +17,10 @@ jobs:
           node-version: 20
       - name: Install patch-package globally
         run: npm install -g patch-package
-      - name: Install root dependencies (fresh for platform)
-        run: |
-          rm -rf node_modules package-lock.json
-          npm install --no-audit --no-fund
-      - name: Install server dependencies (fresh for platform)
-        run: |
-          rm -rf server/node_modules server/package-lock.json
-          npm install --no-audit --no-fund --prefix server
+      - name: Install root dependencies (reproducible)
+        run: npm ci --no-audit --no-fund
+      - name: Install server dependencies (reproducible)
+        run: npm ci --no-audit --no-fund --prefix server
       - name: Run CSP test in production mode
         run: cd server && NODE_ENV=production npx jest tests/csp.prod.test.js -i
 
