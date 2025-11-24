@@ -13,9 +13,10 @@ export default function PhotoTable({
   onMoveToWorking,
   onDeletePhoto,
   apiBaseUrl,
+  getSignedUrl,
 }) {
-  // Authentication now handled via httpOnly cookies
-  // Token no longer needed for image URLs
+  // Authentication now handled via httpOnly cookies OR signed URLs
+  // For thumbnails, use signed URLs if getSignedUrl is provided
 
   if (loading) {
     return <div className="p-8 text-center text-gray-500">Loading photos...</div>;
@@ -51,7 +52,7 @@ export default function PhotoTable({
                 <div className="relative inline-block">
                   {photo.thumbnail ? (
                     <img
-                      src={toUrl(photo.thumbnail, apiBaseUrl)}
+                      src={getSignedUrl ? getSignedUrl(photo) : toUrl(photo.thumbnail, apiBaseUrl)}
                       alt={photo.filename}
                       className="max-h-20 rounded shadow bg-white"
                     />
