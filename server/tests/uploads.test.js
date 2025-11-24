@@ -55,47 +55,48 @@ jest.mock('multer', () => {
 
   const multerMock = jest.fn(() => ({
     single: jest.fn(() => (req, res, next) => {
+      // CRITICAL FIX: Check for no-multer header FIRST before creating any files
+      const headers = req.headers || {};
+      const noMulter = headers['x-no-multer'] || headers['X-No-Multer'];
+      
+      // If no-multer flag is set, don't create any file - just call next
+      if (noMulter) {
+        return next();
+      }
+
       // Simulate multer fileFilter rejection when header is present
       if (req.headers && req.headers['x-multer-reject']) {
         // Simulate multer rejecting file types by sending an immediate response
         return res.status(400).json({ success: false, error: 'Only image files are allowed' });
       }
 
-      // Check for no-multer header (case-insensitive)
-      const headers = req.headers || {};
-      const noMulter = headers['x-no-multer'] || headers['X-No-Multer'];
+      // Default behavior: set req.file and call next
+      // Allow tests to override mimetype/name/size via headers
+      const mimetype = headers['x-multer-mimetype'] ? headers['x-multer-mimetype'] : 'image/jpeg';
+      const originalname = headers['x-multer-originalname'] ? headers['x-multer-originalname'] : 'test.jpg';
 
-      // Default behavior: set req.file and call next unless test indicates no-multer
-      if (!noMulter) {
-        // Allow tests to override mimetype/name/size via headers
-        const mimetype = headers['x-multer-mimetype'] ? headers['x-multer-mimetype'] : 'image/jpeg';
-        const originalname = headers['x-multer-originalname'] ? headers['x-multer-originalname'] : 'test.jpg';
+      // Create a temp file to simulate diskStorage
+      const tempPath = path.join(os.tmpdir(), `test-upload-${Date.now()}-${Math.random()}.tmp`);
+      let fileContent = 'fake image data';
 
-        // Create a temp file to simulate diskStorage
-        const tempPath = path.join(os.tmpdir(), `test-upload-${Date.now()}-${Math.random()}.tmp`);
-        let fileContent = 'fake image data';
-
-        if (headers['x-multer-zero']) {
-          fileContent = '';
-        } else if (headers['x-multer-buffer']) {
-          fileContent = headers['x-multer-buffer']; // Treat as string or buffer
-        }
-
-        try {
-          fs.writeFileSync(tempPath, fileContent);
-          // Only assign req.file if file still exists (prevents ENOENT if deleted by route)
-          if (fs.existsSync(tempPath)) {
-            req.file = {
-              originalname,
-              mimetype,
-              path: tempPath,
-              size: Buffer.byteLength(fileContent)
-            };
-          }
-        } catch (err) {
-          console.error('Mock multer failed to write temp file:', err);
-        }
+      if (headers['x-multer-zero']) {
+        fileContent = '';
+      } else if (headers['x-multer-buffer']) {
+        fileContent = headers['x-multer-buffer']; // Treat as string or buffer
       }
+
+      try {
+        fs.writeFileSync(tempPath, fileContent);
+        req.file = {
+          originalname,
+          mimetype,
+          path: tempPath,
+          size: Buffer.byteLength(fileContent)
+        };
+      } catch (err) {
+        console.error('Mock multer failed to write temp file:', err);
+      }
+      
       next();
     })
   }));

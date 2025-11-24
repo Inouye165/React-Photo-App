@@ -88,12 +88,42 @@ jobs:
       - name: Build frontend
         run: npm run build
 
-      - name: Run frontend tests
-        run: npm run test:run --silent -- --minWorkers=1 --maxWorkers=1
+      - name: Get test files
+        id: test-files
+        run: |
+          # Get all test files and split into 3 batches
+          files=$(find src -name "*.test.*" -o -name "*.spec.*" | sort)
+          total=$(echo "$files" | wc -l)
+          batch_size=$(( (total + 2) / 3 ))
+          
+          batch1=$(echo "$files" | head -n $batch_size | tr '\n' ' ')
+          batch2=$(echo "$files" | head -n $(($batch_size * 2)) | tail -n $batch_size | tr '\n' ' ')
+          batch3=$(echo "$files" | tail -n +$(($batch_size * 2 + 1)) | tr '\n' ' ')
+          
+          echo "batch1=$batch1" >> $GITHUB_OUTPUT
+          echo "batch2=$batch2" >> $GITHUB_OUTPUT
+          echo "batch3=$batch3" >> $GITHUB_OUTPUT
+
+      - name: Run frontend tests (batch 1/3)
+        run: npm run test:run --silent -- --minWorkers=1 --maxWorkers=1 ${{ steps.test-files.outputs.batch1 }}
         env:
           CI: true
           VITE_API_URL: http://localhost:3001
-          NODE_OPTIONS: --max-old-space-size=8192 --expose-gc
+          NODE_OPTIONS: --max-old-space-size=4096 --expose-gc
+
+      - name: Run frontend tests (batch 2/3)
+        run: npm run test:run --silent -- --minWorkers=1 --maxWorkers=1 ${{ steps.test-files.outputs.batch2 }}
+        env:
+          CI: true
+          VITE_API_URL: http://localhost:3001
+          NODE_OPTIONS: --max-old-space-size=4096 --expose-gc
+
+      - name: Run frontend tests (batch 3/3)
+        run: npm run test:run --silent -- --minWorkers=1 --maxWorkers=1 ${{ steps.test-files.outputs.batch3 }}
+        env:
+          CI: true
+          VITE_API_URL: http://localhost:3001
+          NODE_OPTIONS: --max-old-space-size=4096 --expose-gc
 
       - name: Create photo working dir
         run: mkdir -p server/working/photos
