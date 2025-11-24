@@ -1,115 +1,87 @@
-# Installation Troubleshooting
-
-- If you see dependency errors, ensure you're using Node 20-22 and npm 10+. Try:
-    ```bash
-    npm install
-    ```
-- If you see missing package errors (e.g., 'Cannot find module'), run:
-    ```bash
-    npm install <package>
-    ```
-- Always check that all required environment variables are set in your `.env` file (copy from `.env.example`).
-
-# Dependency Verification
-
-All backend dependencies are listed in `server/package.json`. If you encounter a missing package error, please open an issue or PR to add it.
 # Photo App Server
 
-Backend server for the React Photo App that handles file uploads and saves photos to a local working directory.
+Backend server for the React Photo App, built with Node.js and Express. It handles authentication, file uploads, image processing (HEIC conversion), and AI metadata extraction.
 
-## Setup
+## 🚀 Setup
 
-1. Install dependencies:
+### Prerequisites
+- Node.js 20+
+- Redis (for background jobs)
+- ImageMagick (for HEIC fallback)
+
+### Installation
+
+1. **Install dependencies:**
+   ```bash
+   npm install
+   ```
+
+2. **Configure Environment:**
+   Copy `.env.example` to `.env` and fill in the required values.
+   ```bash
+   cp .env.example .env
+   ```
+
+3. **Start Redis:**
+   ```bash
+   docker run -d --name photo-app-redis -p 6379:6379 redis:7.2-alpine
+   ```
+
+4. **Start the Server:**
+   ```bash
+   # Development (with auto-restart)
+   npm run dev
+
+   # Production
+   npm start
+   ```
+
+## 🏗️ Architecture
+
+- **API**: Express.js REST API
+- **Database**: Supabase (PostgreSQL)
+- **Auth**: Supabase Auth + JWT
+- **Queue**: BullMQ + Redis (for AI & image processing)
+- **Storage**: Supabase Storage + Local Temp (for processing)
+
+## 🔌 API Endpoints
+
+### Authentication
+- `POST /auth/register` - Create a new account
+- `POST /auth/login` - Login and receive JWT
+- `GET /auth/me` - Get current user profile
+
+### Photos
+- `POST /upload` - Upload photos (Authenticated)
+- `GET /photos` - List photos with filters
+- `GET /photos/:id` - Get photo details
+- `GET /display/:path` - Securely serve image files
+
+### AI & Metadata
+- `POST /photos/:id/run-ai` - Trigger AI analysis
+- `GET /photos/models` - List available AI models
+
+## 🛠️ Background Processing
+
+This project uses **BullMQ** and **Redis** to process long-running tasks asynchronously:
+- **Image Ingestion**: HEIC conversion, thumbnail generation, metadata extraction.
+- **AI Analysis**: Sending images to OpenAI for scene description and appraisal.
+
+*Note: You must have a Redis server running for these features to work.*
+
+## 🔐 Security
+
+- **Helmet**: Sets secure HTTP headers (CSP, HSTS, etc.).
+- **Rate Limiting**: Protects against brute-force attacks.
+- **Log Redaction**: Automatically masks sensitive data (tokens, keys) in logs.
+- **Input Validation**: Strict validation on all endpoints.
+
+## 🧪 Testing
+
 ```bash
-cd server
-npm install
-```
+# Run all server tests
+npm test
 
-2. Start the server:
-```bash
-npm start
-```
-
-Or for development with auto-restart:
-```bash
-npm run dev
-```
-
-## Configuration
-
-- **Port**: Default 3001 (set PORT environment variable to change)
-- **Working Directory**: Default `C:/Users/<username>/working` (set PHOTO_WORKING_DIR environment variable to change)
-- **File Size Limit**: 50MB per file
-- **Supported Formats**: All image MIME types
-
-## API Endpoints
-
-- `POST /upload` - Upload a photo file
-- `GET /health` - Health check and server status
-
-## Features
-
-- Automatic working directory creation
-- Duplicate filename handling (adds counter)
-- CORS enabled for localhost:5173
-- File size and type validation
-- Preserves original file metadata
-
-## Asynchronous AI Processing
-
-This project uses **BullMQ** and a **Redis** server to process all long-running AI tasks in the background. This ensures the API remains fast and responsive.
-
-### Local Development
-
-1.  **Start Redis:** You must have a Redis server running. The easiest way is with Docker:
-    ```bash
-    docker run -d -p 6379:6379 redis
-    ```
-2.  **Start the Web Server:**
-    ```bash
-    npm run dev
-    ```
-3.  **Start the Worker (in a separate terminal):**
-    ```bash
-    npm run dev:worker
-    ```
-
-You must have both the web server and the worker running for the application to be fully functional.
-
-## Environment Variables
-
-This server requires a `.env` file located in the `/server` directory. Copy `server/.env.example` to `server/.env` and fill in your own values. Do NOT commit `server/.env` to source control.
-
-```text
-# --- Environment ---
-# Set to 'production' for production, 'development' or 'test' otherwise
-NODE_ENV=development
-
-# --- Server ---
-# Port the Express server will run on
-PORT=3001
-# The URL of the frontend client for CORS
-CLIENT_ORIGIN=http://localhost:5173
-
-# --- Authentication ---
-# A strong, random string used to sign JWTs
-JWT_SECRET=your_super_secret_jwt_string
-# How long tokens should last (e.g., "24h", "1d", "30m")
-JWT_EXPIRES_IN=24h
-
-# --- Supabase (Database & Storage) ---
-# Your Supabase project URL
-SUPABASE_URL=https://your-project-id.supabase.co
-# Your Supabase project's public anon key
-SUPABASE_ANON_KEY=your_public_anon_key
-# Your Supabase project's service role key (for server-side admin tasks)
-SUPABASE_SERVICE_ROLE_KEY=your_secret_service_role_key
-
-# --- AI Services ---
-# Your OpenAI API key for image analysis
-OPENAI_API_KEY=sk-your_openai_api_key
-
-# --- Debugging ---
-# Set to 'true' in development to allow unauthenticated access to debug routes
-ALLOW_DEV_DEBUG=true
+# Run specific test file
+npm test -- tests/auth.test.js
 ```
