@@ -103,6 +103,20 @@ npm run test:stress -- --runs 50       # Run 50 times
 npm run test:stress -- --bail          # Stop on first failure
 ```
 
+## 📋 Project TODOs
+
+### Completed ✅
+
+- [x] **Security (High):** Token leakage fixed - Implemented httpOnly cookie authentication to replace query parameter tokens. See PR #83.
+- [x] **Security/Architecture (High):** "Split Brain" authentication resolved - Local `users` table removed, all user management consolidated on Supabase Auth.
+- [x] **Critical Logic (High):** File cleanup race condition fixed - `server/routes/uploads.js` now properly handles cleanup in try-finally block, removing orphaned files from Supabase Storage when `ingestPhoto` fails.
+- [x] **Refactoring (Medium):** Prop drilling eliminated - State and handlers moved to Zustand store (`store.js`) and custom hooks (`usePhotoManagement`, `useLocalPhotoPicker`, etc.).
+- [x] **Maintainability (Medium):** Dependency conflicts resolved - npm install works without flags.
+
+### Future Enhancements
+
+- [ ] **Scalability:** Stream uploads directly to Supabase Storage, bypassing local `os.tmpdir()` disk write to prevent bottlenecks under high load.
+
 ## 🐳 Docker Support
 
 Redis is recommended for background job processing (AI, uploads).
