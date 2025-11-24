@@ -30,6 +30,7 @@ const { convertHeicToJpegBuffer } = require('../media/image');
 const { addAIJob, checkRedisAvailable } = require('../queue/index');
 const OpenAI = require('openai');
 const logger = require('../logger');
+const { signThumbnailUrl, DEFAULT_TTL_SECONDS } = require('../utils/urlSigning');
 // LangChain removed: dynamic allowlist for compatibility
 const openai = new OpenAI();
 const DYNAMIC_MODEL_ALLOWLIST = [];
@@ -316,6 +317,94 @@ module.exports = function createPhotosRouter({ db }) {
     } catch (err) {
         logger.error('Error in GET /photos/:id', err);
       return res.status(500).json({ success: false, error: err.message });
+    }
+  });
+
+  /**
+   * GET /photos/:id/thumbnail-url
+   * Generate a signed, time-limited URL for accessing a photo's thumbnail
+   * 
+   * Security:
+   * - Requires authentication via Bearer token
+   * - Validates photo ownership
+   * - Returns signed URL valid for DEFAULT_TTL_SECONDS (15 minutes)
+   * - Signed URL can be used in <img> tags without additional auth
+   * 
+   * Response:
+   * {
+   *   success: true,
+   *   url: "/display/thumbnails/{hash}.jpg?sig=...&exp=...",
+   *   expiresAt: 1234567890  // Unix timestamp
+   * }
+   */
+  router.get('/:id/thumbnail-url', authenticateToken, async (req, res) => {
+    const reqId = req.id || req.headers['x-request-id'] || 'unknown';
+    
+    try {
+      const { id } = req.params;
+      
+      // Fetch photo and verify ownership
+      const photo = await db('photos')
+        .where({ id, user_id: req.user.id })
+        .select('id', 'hash', 'filename')
+        .first();
+
+      if (!photo) {
+        logger.warn('Thumbnail URL request for non-existent or unauthorized photo', {
+          reqId,
+          photoId: id,
+          userId: req.user.id
+        });
+        return res.status(404).json({
+          success: false,
+          error: 'Photo not found'
+        });
+      }
+
+      // Verify thumbnail exists (hash must be present)
+      if (!photo.hash) {
+        logger.warn('Thumbnail URL request for photo without hash', {
+          reqId,
+          photoId: id,
+          filename: photo.filename
+        });
+        return res.status(404).json({
+          success: false,
+          error: 'Thumbnail not available'
+        });
+      }
+
+      // Generate signed URL parameters
+      const { sig, exp } = signThumbnailUrl(photo.hash, DEFAULT_TTL_SECONDS);
+      
+      // Construct full signed URL
+      const signedUrl = `/display/thumbnails/${photo.hash}.jpg?sig=${encodeURIComponent(sig)}&exp=${exp}`;
+
+      logger.info('Generated signed thumbnail URL', {
+        reqId,
+        photoId: id,
+        userId: req.user.id,
+        expiresAt: new Date(exp * 1000).toISOString()
+      });
+
+      return res.json({
+        success: true,
+        url: signedUrl,
+        expiresAt: exp
+      });
+
+    } catch (err) {
+      logger.error('Error generating thumbnail URL', {
+        reqId,
+        photoId: req.params.id,
+        userId: req.user?.id,
+        error: err.message,
+        stack: err.stack
+      });
+      return res.status(500).json({
+        success: false,
+        error: 'Internal server error'
+      });
     }
   });
 

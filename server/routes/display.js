@@ -4,12 +4,63 @@ const path = require('path');
 const { convertHeicToJpegBuffer } = require('../media/image');
 const supabase = require('../lib/supabaseClient');
 const { authenticateImageRequest } = require('../middleware/imageAuth');
+const { verifyThumbnailSignature } = require('../utils/urlSigning');
 const logger = require('../logger');
 
 module.exports = function createDisplayRouter({ db }) {
   const router = express.Router();
 
-  router.get('/:state/:filename', authenticateImageRequest, async (req, res) => {
+  /**
+   * Middleware to handle thumbnail authentication
+   * Supports both:
+   * 1. Signed URLs (preferred for <img> tags) - no cookie needed
+   * 2. Cookie/Bearer token (legacy, backward compatibility)
+   * 
+   * Only applies to thumbnail requests (state === 'thumbnails')
+   */
+  function authenticateThumbnailOrImage(req, res, next) {
+    const { state, filename } = req.params;
+    const { sig, exp } = req.query;
+    
+    // For thumbnails with signature, validate signature instead of auth
+    if (state === 'thumbnails' && sig && exp) {
+      // Extract hash from filename
+      const hash = filename ? filename.replace(/\.jpg$/i, '') : null;
+      
+      if (!hash) {
+        return res.status(400).json({
+          success: false,
+          error: 'Invalid filename'
+        });
+      }
+
+      // Verify signature
+      const result = verifyThumbnailSignature(hash, sig, exp);
+      
+      if (!result.valid) {
+        const reqId = req.id || req.headers['x-request-id'] || 'unknown';
+        logger.warn('Invalid thumbnail signature', {
+          reqId,
+          filename,
+          reason: result.reason
+        });
+        return res.status(403).json({
+          success: false,
+          error: 'Forbidden'
+        });
+      }
+      
+      // Signature valid - proceed without user context
+      req.user = null; // No user for signed URLs
+      return next();
+    }
+    
+    // For all other cases (non-thumbnails, or thumbnails without signature),
+    // use cookie/token authentication
+    return authenticateImageRequest(req, res, next);
+  }
+
+  router.get('/:state/:filename', authenticateThumbnailOrImage, async (req, res) => {
     const reqId = req.id || req.headers['x-request-id'] || null;
     res.set('Cross-Origin-Resource-Policy', 'cross-origin');
     const { state, filename } = req.params;
