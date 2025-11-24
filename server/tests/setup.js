@@ -38,6 +38,16 @@ jest.mock('@langchain/core/messages', () => ({
   AIMessage: jest.fn()
 }));
 
+jest.mock('@langchain/core/tools', () => ({
+  tool: jest.fn((config) => ({
+    name: config?.name || 'mock-tool',
+    description: config?.description || 'mock description',
+    schema: config?.schema || {},
+    invoke: jest.fn().mockResolvedValue('mock result')
+  })),
+  StructuredTool: jest.fn()
+}));
+
 jest.mock('@langchain/openai', () => ({
   ChatOpenAI: jest.fn().mockImplementation(() => ({
     bindTools: jest.fn().mockReturnThis(),
