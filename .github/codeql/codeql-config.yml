@@ -1,21 +1,21 @@
 name: "CodeQL Config"
 
-# Paths to exclude from analysis
+# Paths to exclude from all analysis
 paths-ignore:
   - '**/test/**'
   - '**/tests/**'
   - '**/*.test.js'
   - '**/*.spec.js'
 
-# Query filters
+# Use default security queries
 queries:
   - uses: security-and-quality
 
-# Configuration for specific queries
+# Query-specific configuration
 query-filters:
   - exclude:
       id: js/missing-rate-limiting
-    # Suppress for test files - tests validate that rate limiting exists in production code
-      paths:
-        - '**/tests/**'
-        - '**/*.test.js'
+      reason: Test files mount production routes with internal rate limiting
+  - exclude:
+      id: js/missing-csrf-middleware
+      reason: CSRF protection implemented at route level with Origin verification

@@ -149,7 +149,10 @@ app.set('trust proxy', 1);
   // 2. Auth session management (protected by Origin verification in routes/auth.js)
   // All state-changing operations that use cookies have CSRF protection
   // via Origin header validation in their respective route handlers.
-  // lgtm[js/missing-csrf-middleware] - CSRF protection applied at route level
+  // codeql[js/missing-csrf-middleware] False positive: CSRF protection is implemented
+  // at the route level in routes/auth.js via verifyOrigin() middleware which validates
+  // the Origin header on all state-changing POST requests. GET requests for images are
+  // inherently CSRF-safe as they do not modify state.
   app.use(cookieParser());
 
   // Add request validation middleware

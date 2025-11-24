@@ -31,7 +31,10 @@ describe('Cookie-Based Authentication Security', () => {
     
     // Mount auth routes (includes rate limiting and CSRF protection internally)
     // See routes/auth.js for authLimiter and verifyOrigin middleware
-    // lgtm[js/missing-rate-limiting] - Rate limiting tested in production code
+    // codeql[js/missing-rate-limiting] False positive: This is a test file that mounts
+    // production routes which contain rate limiting internally. The createAuthRouter()
+    // function in routes/auth.js includes authLimiter middleware (50 req/15min window).
+    // This test validates that the rate limiting works correctly.
     app.use('/api/auth', createAuthRouter());
     
     // Test image endpoint with imageAuth middleware
