@@ -62,7 +62,6 @@ const createUploadsRouter = require('../routes/uploads');
 
 describe('Upload Route - Orphaned File Cleanup', () => {
   let app;
-  let mockKnex;
 
   beforeEach(() => {
     app = express();
@@ -73,22 +72,20 @@ describe('Upload Route - Orphaned File Cleanup', () => {
       next();
     });
 
-    mockKnex = require('knex');
-    mockKnex.mockImplementation(() => ({
-      insert: jest.fn().mockReturnThis(),
-      returning: jest.fn().mockRejectedValue(new Error('DB error')),
-      select: jest.fn().mockReturnThis(),
-      first: jest.fn().mockResolvedValue(null)
-    }));
-
-    app.use('/uploads', createUploadsRouter({ db: mockKnex }));
-    
-    // Get the mocked fs module to access the spy
-    const fs = require('fs');
-    fs.unlink.mockClear();
+    const knex = require('knex');
+    app.use('/uploads', createUploadsRouter({ db: knex }));
   });
 
   it('removes orphaned file from storage if DB insert fails', async () => {
+    const fs = require('fs');
+    const path = require('path');
+    const os = require('os');
+    const tmpPath = path.join(os.tmpdir(), 'test-cleanup-upload.tmp');
+    
+    // FIX: Actually create the temp file that the multer mock references
+    // The upload route will call fs.createReadStream on this path
+    fs.writeFileSync(tmpPath, Buffer.from('fake image content'));
+    
     // Mock ingestPhoto to throw an error (simulating DB failure)
     const { ingestPhoto } = require('../media/image');
     ingestPhoto.mockRejectedValueOnce(new Error('DB connection failed'));
