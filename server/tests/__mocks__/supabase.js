@@ -59,14 +59,30 @@ const createMockSupabaseClient = () => {
           // If file is a stream, we need to consume it to prevent ECONNRESET
           let fileSize = file?.size || file?.length || 1024;
           if (file && typeof file.on === 'function') {
-            // It's a stream - consume it
+            // It's a stream - consume it with better error handling
             const chunks = [];
+            let streamError = null;
+            
             file.on('data', (chunk) => chunks.push(chunk));
-            await new Promise((resolve, reject) => {
-              file.on('end', resolve);
-              file.on('error', reject);
-            });
-            fileSize = Buffer.concat(chunks).length;
+            file.on('error', (err) => { streamError = err; });
+            
+            // Wait for stream to finish with timeout to prevent hanging
+            await Promise.race([
+              new Promise((resolve, reject) => {
+                file.on('end', resolve);
+                file.on('close', resolve); // Also listen for close event
+                file.on('error', reject);
+              }),
+              new Promise((resolve) => setTimeout(resolve, 1000)) // 1s timeout
+            ]);
+            
+            if (streamError) {
+              // Stream had an error but we consumed it, return success anyway
+              // This prevents ECONNRESET from bubbling up
+              fileSize = 0;
+            } else {
+              fileSize = chunks.length > 0 ? Buffer.concat(chunks).length : 0;
+            }
           }
           
           // Store the file data

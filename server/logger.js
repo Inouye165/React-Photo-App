@@ -295,8 +295,22 @@ class TinyLogger {
 
     const methodName = METHOD_MAP[normalized] || 'log';
     const method = typeof console[methodName] === 'function' ? console[methodName] : console.log;
-    if (typeof method === 'function') {
-      method.apply(console, redactedArgs);
+    // SAFETY: Ensure method exists and has apply before calling
+    // This prevents crashes when Jest or other tools modify console at runtime
+    if (typeof method === 'function' && typeof method.apply === 'function') {
+      try {
+        method.apply(console, redactedArgs);
+      } catch {
+        // Fallback to direct call if apply fails (extremely rare, but defensive)
+        try {
+          method(...redactedArgs);
+        } catch {
+          // Last resort: try to use process.stderr if available
+          if (typeof process !== 'undefined' && process.stderr && typeof process.stderr.write === 'function') {
+            process.stderr.write(`[Logger Error] ${JSON.stringify(redactedArgs)}\n`);
+          }
+        }
+      }
     }
     emit('log', { level: normalized, args: redactedArgs, bindings: this.bindings });
     if (normalized === 'error' || normalized === 'fatal') {

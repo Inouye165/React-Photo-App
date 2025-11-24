@@ -220,6 +220,20 @@ describe('Uploads Router with Supabase Storage', () => {
     } catch {
       // ignore cleanup errors
     }
+    
+    // Clean up any multer mock temp files that might be left behind
+    try {
+      const tmpFiles = fs.readdirSync(os.tmpdir()).filter(f => f.startsWith('test-upload-'));
+      tmpFiles.forEach(file => {
+        try {
+          fs.unlinkSync(path.join(os.tmpdir(), file));
+        } catch {
+          // File might already be deleted or in use
+        }
+      });
+    } catch {
+      // Ignore errors during cleanup
+    }
   });
 
   describe('POST /upload', () => {
@@ -332,17 +346,14 @@ describe('Uploads Router with Supabase Storage', () => {
     });
 
     it('should reject a zero-byte (empty) file upload', async () => {
-      // For this specific test, we can use a buffer or a dedicated empty file
-      const emptyPath = path.join(os.tmpdir(), 'empty-test.jpg');
-      fs.writeFileSync(emptyPath, '');
-
+      // Use the multer mock's buffer mode to avoid file handle issues
+      // Don't create a real file - let the mock handle everything
       const response = await request(app)
         .post('/uploads/upload')
         .set('Authorization', 'Bearer valid-token')
-        .set('x-multer-zero', '1') // Helper for our multer mock
-        .attach('photo', emptyPath);
-      
-      try { fs.unlinkSync(emptyPath); } catch {}
+        .set('x-multer-zero', '1') // Tells mock to create zero-byte content
+        .set('x-multer-originalname', 'empty-test.jpg')
+        .attach('photo', Buffer.from(''), 'empty-test.jpg'); // Attach empty buffer
 
       expect(response.status).toBe(400);
       expect(response.body.success).toBe(false);

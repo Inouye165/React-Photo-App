@@ -96,6 +96,11 @@ npm run test:run
 
 # Run backend tests only
 cd server && npm test
+
+# Stress test to detect race conditions
+npm run test:stress                    # Run 20 times (default)
+npm run test:stress -- --runs 50       # Run 50 times
+npm run test:stress -- --bail          # Stop on first failure
 ```
 
 ## 🐳 Docker Support

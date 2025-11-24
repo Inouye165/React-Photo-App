@@ -241,6 +241,38 @@ curl -H "Authorization: Bearer YOUR_TOKEN" \
 
 ## Test Data
 
+### Stress Testing for Race Conditions
+
+The project includes a stress test tool to detect intermittent failures and race conditions:
+
+```bash
+# Basic stress test (20 runs)
+npm run test:stress
+
+# Comprehensive test (50+ runs)
+npm run test:stress -- --runs 50
+
+# Stop on first failure for debugging
+npm run test:stress -- --bail
+
+# Run tests in parallel
+npm run test:stress -- --parallel 4
+```
+
+**When to use stress tests:**
+- After fixing a flaky test to verify it's truly fixed
+- Before merging changes that affect async operations, file I/O, or network calls
+- When CI shows intermittent failures you can't reproduce locally
+- Periodically as part of release validation
+
+**What stress tests detect:**
+- Race conditions (async operations completing in unexpected order)
+- File handle leaks (resources not properly closed)
+- Network timeout issues (connections not properly cleaned up)
+- Global state pollution (tests affecting each other)
+
+A healthy codebase should maintain **95%+ success rate** on stress tests.
+
 ### Sample Test User
 ```json
 {

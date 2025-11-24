@@ -48,6 +48,16 @@ let LAST_ALLOWLIST_UPDATED_AT = new Date().toISOString();
 
 async function loadDynamicAllowList() {
   try {
+    // Skip OpenAI API calls in test environment to prevent ECONNRESET errors
+    if (process.env.NODE_ENV === 'test') {
+      const fallbackModels = Array.from(new Set([...FALLBACK_MODEL_ALLOWLIST, ...INTERNAL_MODEL_NAMES]));
+      DYNAMIC_MODEL_ALLOWLIST.splice(0, DYNAMIC_MODEL_ALLOWLIST.length, ...fallbackModels);
+      LAST_ALLOWLIST_SOURCE = 'test-fallback';
+      LAST_ALLOWLIST_UPDATED_AT = new Date().toISOString();
+      logger.info('[AI Models] Using fallback allowlist in test environment');
+      return;
+    }
+
     if (!process.env.OPENAI_API_KEY) {
       throw new Error('OPENAI_API_KEY is not configured');
     }
@@ -83,7 +93,12 @@ async function loadDynamicAllowList() {
   }
 }
 
-loadDynamicAllowList();
+// Load allowlist asynchronously to avoid blocking module initialization
+// This prevents ECONNRESET errors during rapid test runs
+loadDynamicAllowList().catch(err => {
+  // Already handled inside loadDynamicAllowList, but catch here to prevent unhandled rejection
+  logger.error('[AI Models] Unhandled error in loadDynamicAllowList', { error: err && err.message });
+});
 const sharp = require('sharp');
 const exifr = require('exifr');
 const supabase = require('../lib/supabaseClient');
