@@ -29,7 +29,9 @@ describe('Cookie-Based Authentication Security', () => {
     app.use(cookieParser());
     app.use(express.json());
     
-    // Mount auth routes
+    // Mount auth routes (includes rate limiting and CSRF protection internally)
+    // See routes/auth.js for authLimiter and verifyOrigin middleware
+    // lgtm[js/missing-rate-limiting] - Rate limiting tested in production code
     app.use('/api/auth', createAuthRouter());
     
     // Test image endpoint with imageAuth middleware
