@@ -305,9 +305,10 @@ describe('Uploads Router with Supabase Storage', () => {
 
       unauthApp.use('/uploads', requireAuth, createUploadsRouter({ db: mockKnex }));
 
+      // Don't attach file - auth rejection happens before multer runs
       const response = await request(unauthApp)
         .post('/uploads/upload')
-        .attach('photo', TEST_FIXTURE_PATH);
+        .field('test', 'value'); // Send some data but no file
 
       expect(response.status).toBe(401);
       expect(response.body.error).toBe('Access token required');
@@ -349,18 +350,13 @@ describe('Uploads Router with Supabase Storage', () => {
     });
 
     it('should reject unsupported MIME types', async () => {
-      // Create text file
-      const textPath = path.join(os.tmpdir(), 'test.txt');
-      fs.writeFileSync(textPath, 'fake text data');
-
+      // Don't attach real file - multer mock rejects before reading
       const response = await request(app)
         .post('/uploads/upload')
         .set('Authorization', 'Bearer valid-token')
         // instruct multer mock to reject the fileFilter
         .set('x-multer-reject', '1')
-        .attach('photo', textPath);
-
-      try { fs.unlinkSync(textPath); } catch {}
+        .field('test', 'value'); // Send some data but multer will reject
 
       expect(response.status).toBe(400);
       expect(response.body.success).toBe(false);
