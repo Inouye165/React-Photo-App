@@ -1,0 +1,21 @@
+name: "CodeQL Config"
+
+# Paths to exclude from analysis
+paths-ignore:
+  - '**/test/**'
+  - '**/tests/**'
+  - '**/*.test.js'
+  - '**/*.spec.js'
+
+# Query filters
+queries:
+  - uses: security-and-quality
+
+# Configuration for specific queries
+query-filters:
+  - exclude:
+      id: js/missing-rate-limiting
+    # Suppress for test files - tests validate that rate limiting exists in production code
+      paths:
+        - '**/tests/**'
+        - '**/*.test.js'
