@@ -91,7 +91,6 @@ jobs:
           # Split into 4 batches to reduce memory pressure
           files=$(find src -name "*.test.*" -o -name "*.spec.*" | sort)
           total=$(echo "$files" | wc -l)
-          # Calculate batch size for 4 parts
           batch_size=$(( (total + 3) / 4 ))
           
           batch1=$(echo "$files" | head -n $batch_size | tr '\n' ' ')
@@ -105,28 +104,29 @@ jobs:
           echo "batch4=$batch4" >> $GITHUB_OUTPUT
 
       - name: Run frontend tests (batch 1/4)
-        run: npm run test:run --silent -- --minWorkers=1 --maxWorkers=1 --pool=forks ${{ steps.test-files.outputs.batch1 }}
+        # REMOVED: minWorkers=1 maxWorkers=1 (caused OOM by preventing recycling)
+        run: npm run test:run --silent -- --pool=forks ${{ steps.test-files.outputs.batch1 }}
         env:
           CI: true
           VITE_API_URL: http://localhost:3001
           NODE_OPTIONS: --max-old-space-size=8192
 
       - name: Run frontend tests (batch 2/4)
-        run: npm run test:run --silent -- --minWorkers=1 --maxWorkers=1 --pool=forks ${{ steps.test-files.outputs.batch2 }}
+        run: npm run test:run --silent -- --pool=forks ${{ steps.test-files.outputs.batch2 }}
         env:
           CI: true
           VITE_API_URL: http://localhost:3001
           NODE_OPTIONS: --max-old-space-size=8192
 
       - name: Run frontend tests (batch 3/4)
-        run: npm run test:run --silent -- --minWorkers=1 --maxWorkers=1 --pool=forks ${{ steps.test-files.outputs.batch3 }}
+        run: npm run test:run --silent -- --pool=forks ${{ steps.test-files.outputs.batch3 }}
         env:
           CI: true
           VITE_API_URL: http://localhost:3001
           NODE_OPTIONS: --max-old-space-size=8192
 
       - name: Run frontend tests (batch 4/4)
-        run: npm run test:run --silent -- --minWorkers=1 --maxWorkers=1 --pool=forks ${{ steps.test-files.outputs.batch4 }}
+        run: npm run test:run --silent -- --pool=forks ${{ steps.test-files.outputs.batch4 }}
         env:
           CI: true
           VITE_API_URL: http://localhost:3001
