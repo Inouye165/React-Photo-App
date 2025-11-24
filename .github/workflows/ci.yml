@@ -92,46 +92,53 @@ jobs:
       - name: Get test files
         id: test-files
         run: |
-          # Split into 4 batches to reduce memory pressure
+          # Split into 5 batches to prevent OOM on runner
           files=$(find src -name "*.test.*" -o -name "*.spec.*" | sort)
           total=$(echo "$files" | wc -l)
-          # Calculate batch size for 4 parts
-          batch_size=$(( (total + 3) / 4 ))
+          batch_size=$(( (total + 4) / 5 ))
           
           batch1=$(echo "$files" | head -n $batch_size | tr '\n' ' ')
           batch2=$(echo "$files" | head -n $(($batch_size * 2)) | tail -n $batch_size | tr '\n' ' ')
           batch3=$(echo "$files" | head -n $(($batch_size * 3)) | tail -n $batch_size | tr '\n' ' ')
-          batch4=$(echo "$files" | tail -n +$(($batch_size * 3 + 1)) | tr '\n' ' ')
+          batch4=$(echo "$files" | head -n $(($batch_size * 4)) | tail -n $batch_size | tr '\n' ' ')
+          batch5=$(echo "$files" | tail -n +$(($batch_size * 4 + 1)) | tr '\n' ' ')
           
           echo "batch1=$batch1" >> $GITHUB_OUTPUT
           echo "batch2=$batch2" >> $GITHUB_OUTPUT
           echo "batch3=$batch3" >> $GITHUB_OUTPUT
           echo "batch4=$batch4" >> $GITHUB_OUTPUT
+          echo "batch5=$batch5" >> $GITHUB_OUTPUT
 
-      - name: Run frontend tests (batch 1/4)
-        # Reduced heap to 6GB to fit within runner limits and added maxWorkers=1
-        run: npm run test:run --silent -- --pool=forks --maxWorkers=1 ${{ steps.test-files.outputs.batch1 }}
+      - name: Run frontend tests (batch 1/5)
+        run: npm run test:run --silent -- --pool=forks ${{ steps.test-files.outputs.batch1 }}
         env:
           CI: true
           VITE_API_URL: http://localhost:3001
           NODE_OPTIONS: --max-old-space-size=6144
 
-      - name: Run frontend tests (batch 2/4)
-        run: npm run test:run --silent -- --pool=forks --maxWorkers=1 ${{ steps.test-files.outputs.batch2 }}
+      - name: Run frontend tests (batch 2/5)
+        run: npm run test:run --silent -- --pool=forks ${{ steps.test-files.outputs.batch2 }}
         env:
           CI: true
           VITE_API_URL: http://localhost:3001
           NODE_OPTIONS: --max-old-space-size=6144
 
-      - name: Run frontend tests (batch 3/4)
-        run: npm run test:run --silent -- --pool=forks --maxWorkers=1 ${{ steps.test-files.outputs.batch3 }}
+      - name: Run frontend tests (batch 3/5)
+        run: npm run test:run --silent -- --pool=forks ${{ steps.test-files.outputs.batch3 }}
         env:
           CI: true
           VITE_API_URL: http://localhost:3001
           NODE_OPTIONS: --max-old-space-size=6144
 
-      - name: Run frontend tests (batch 4/4)
-        run: npm run test:run --silent -- --pool=forks --maxWorkers=1 ${{ steps.test-files.outputs.batch4 }}
+      - name: Run frontend tests (batch 4/5)
+        run: npm run test:run --silent -- --pool=forks ${{ steps.test-files.outputs.batch4 }}
+        env:
+          CI: true
+          VITE_API_URL: http://localhost:3001
+          NODE_OPTIONS: --max-old-space-size=6144
+
+      - name: Run frontend tests (batch 5/5)
+        run: npm run test:run --silent -- --pool=forks ${{ steps.test-files.outputs.batch5 }}
         env:
           CI: true
           VITE_API_URL: http://localhost:3001
