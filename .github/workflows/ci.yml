@@ -93,7 +93,7 @@ jobs:
         env:
           CI: true
           VITE_API_URL: http://localhost:3001
-          NODE_OPTIONS: --max-old-space-size=8192
+          NODE_OPTIONS: --max-old-space-size=8192 --expose-gc
 
       - name: Create photo working dir
         run: mkdir -p server/working/photos
