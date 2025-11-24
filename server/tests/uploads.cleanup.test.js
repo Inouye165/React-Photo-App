@@ -1,6 +1,11 @@
 const request = require('supertest');
 const express = require('express');
 
+// Mock pathValidator to bypass validation for this test
+jest.mock('../utils/pathValidator', () => ({
+  validateSafePath: jest.fn((p) => p)
+}));
+
 // FIX: Define mocks entirely inside the factory to avoid hoisting ReferenceErrors
 jest.mock('fs', () => {
   const originalFs = jest.requireActual('fs');
