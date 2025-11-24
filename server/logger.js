@@ -309,18 +309,18 @@ const rootLogger = new TinyLogger();
 
 // Wrap global console methods to ensure redaction everywhere
 const originalConsole = {
-  log: console.log,
-  warn: console.warn,
-  error: console.error,
-  info: console.info,
-  debug: console.debug,
+  log: console.log ? console.log.bind(console) : null,
+  warn: console.warn ? console.warn.bind(console) : null,
+  error: console.error ? console.error.bind(console) : null,
+  info: console.info ? console.info.bind(console) : null,
+  debug: console.debug ? console.debug.bind(console) : null,
 };
 
 ['log', 'warn', 'error', 'info', 'debug'].forEach(method => {
-  if (typeof console[method] === 'function') {
+  if (typeof console[method] === 'function' && originalConsole[method]) {
     console[method] = function(...args) {
       const redactedArgs = args.map(arg => redact(arg));
-      originalConsole[method].apply(console, redactedArgs);
+      originalConsole[method](...redactedArgs);
     };
   }
 });
