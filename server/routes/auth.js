@@ -1,5 +1,7 @@
 const express = require('express');
 const { createClient } = require('@supabase/supabase-js');
+const rateLimit = require('express-rate-limit');
+const { getAllowedOrigins } = require('../config/allowedOrigins');
 
 const SUPABASE_URL = process.env.SUPABASE_URL;
 const SUPABASE_ANON_KEY = process.env.SUPABASE_ANON_KEY;
@@ -10,12 +12,71 @@ if (!SUPABASE_URL || !SUPABASE_ANON_KEY) {
 
 const supabase = createClient(SUPABASE_URL, SUPABASE_ANON_KEY);
 
+// Rate limiting for authentication endpoints
+// More strict than general API to prevent brute force attacks
+const authLimiter = rateLimit({
+  windowMs: 15 * 60 * 1000, // 15 minutes
+  max: 50, // Limit each IP to 50 auth requests per window
+  message: {
+    success: false,
+    error: 'Too many authentication attempts, please try again later.'
+  },
+  standardHeaders: true,
+  legacyHeaders: false,
+});
+
+/**
+ * Origin verification middleware for CSRF protection
+ * Validates that requests come from allowed origins
+ */
+function verifyOrigin(req, res, next) {
+  // Safe methods don't need CSRF protection
+  const safeMethods = ['GET', 'HEAD', 'OPTIONS'];
+  if (safeMethods.includes(req.method)) {
+    return next();
+  }
+
+  // Get origin from header or referer
+  let origin = req.headers['origin'];
+  if (!origin && req.headers['referer']) {
+    try {
+      const url = new URL(req.headers['referer']);
+      origin = url.origin;
+    } catch {
+      origin = null;
+    }
+  }
+
+  // Require origin for state-changing requests
+  if (!origin) {
+    return res.status(403).json({
+      success: false,
+      error: 'Origin header required for authentication'
+    });
+  }
+
+  // Verify origin is allowed
+  const allowedOrigins = getAllowedOrigins();
+  if (!allowedOrigins.includes(origin)) {
+    return res.status(403).json({
+      success: false,
+      error: 'Origin not allowed'
+    });
+  }
+
+  next();
+}
+
 /**
  * Factory function to create auth router
  * Handles authentication-related endpoints including cookie-based session management
  */
 function createAuthRouter() {
   const router = express.Router();
+
+  // Apply rate limiting and origin verification to all auth routes
+  router.use(authLimiter);
+  router.use(verifyOrigin);
 
   /**
    * POST /api/auth/session

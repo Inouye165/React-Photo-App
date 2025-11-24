@@ -49,6 +49,7 @@ describe('Cookie-Based Authentication Security', () => {
       const response = await request(app)
         .post('/api/auth/session')
         .set('Authorization', `Bearer ${validToken}`)
+        .set('Origin', 'http://localhost:5173') // Required for CSRF protection
         .expect(200);
 
       expect(response.body.success).toBe(true);
@@ -70,6 +71,7 @@ describe('Cookie-Based Authentication Security', () => {
     test('should reject request without Authorization header', async () => {
       const response = await request(app)
         .post('/api/auth/session')
+        .set('Origin', 'http://localhost:5173')
         .expect(401);
 
       expect(response.body.success).toBe(false);
@@ -82,6 +84,7 @@ describe('Cookie-Based Authentication Security', () => {
       const response = await request(app)
         .post('/api/auth/session')
         .set('Authorization', 'Bearer invalid-token')
+        .set('Origin', 'http://localhost:5173')
         .expect(403);
 
       expect(response.body.success).toBe(false);
@@ -95,6 +98,7 @@ describe('Cookie-Based Authentication Security', () => {
       const response = await request(app)
         .post('/api/auth/session')
         .set('Authorization', 'Bearer mock-token')
+        .set('Origin', 'http://localhost:5173')
         .expect(200);
 
       expect(response.body.success).toBe(true);
@@ -109,6 +113,7 @@ describe('Cookie-Based Authentication Security', () => {
     test('should clear authToken cookie', async () => {
       const response = await request(app)
         .post('/api/auth/logout')
+        .set('Origin', 'http://localhost:5173')
         .expect(200);
 
       expect(response.body.success).toBe(true);
@@ -131,7 +136,8 @@ describe('Cookie-Based Authentication Security', () => {
       // First, set the cookie
       const loginResponse = await request(app)
         .post('/api/auth/session')
-        .set('Authorization', `Bearer ${validToken}`);
+        .set('Authorization', `Bearer ${validToken}`)
+        .set('Origin', 'http://localhost:5173');
 
       const cookies = loginResponse.headers['set-cookie'];
       
@@ -200,7 +206,8 @@ describe('Cookie-Based Authentication Security', () => {
       const cookieToken = 'cookie-token';
       const loginResponse = await request(app)
         .post('/api/auth/session')
-        .set('Authorization', `Bearer ${cookieToken}`);
+        .set('Authorization', `Bearer ${cookieToken}`)
+        .set('Origin', 'http://localhost:5173');
 
       const cookies = loginResponse.headers['set-cookie'];
 
@@ -268,6 +275,56 @@ describe('Cookie-Based Authentication Security', () => {
 
       expect(response.headers['access-control-allow-credentials']).toBe('true');
       expect(response.headers['cross-origin-resource-policy']).toBe('cross-origin');
+    });
+  });
+
+  describe('CSRF Protection', () => {
+    test('should reject POST requests without Origin header', async () => {
+      const response = await request(app)
+        .post('/api/auth/session')
+        .set('Authorization', `Bearer ${validToken}`)
+        .expect(403);
+
+      expect(response.body.success).toBe(false);
+      expect(response.body.error).toBe('Origin header required for authentication');
+    });
+
+    test('should reject POST requests from disallowed origins', async () => {
+      const response = await request(app)
+        .post('/api/auth/session')
+        .set('Authorization', `Bearer ${validToken}`)
+        .set('Origin', 'http://evil-site.com')
+        .expect(403);
+
+      expect(response.body.success).toBe(false);
+      expect(response.body.error).toBe('Origin not allowed');
+    });
+
+    test('should allow GET requests without Origin header', async () => {
+      // GET requests should not be blocked by CSRF protection
+      await request(app)
+        .get('/api/auth/session')
+        .expect(404); // Route doesn't exist, but CSRF shouldn't block it
+
+      // The point is we get past CSRF check (would be 403 if blocked)
+    });
+  });
+
+  describe('Rate Limiting', () => {
+    test('should apply rate limiting to auth endpoints', async () => {
+      // This test documents that rate limiting is active
+      // Actual rate limit testing would require many requests
+      mockGetUser.mockResolvedValue({ data: { user: mockUser }, error: null });
+
+      const response = await request(app)
+        .post('/api/auth/session')
+        .set('Authorization', `Bearer ${validToken}`)
+        .set('Origin', 'http://localhost:5173')
+        .expect(200);
+
+      // Check for rate limit headers
+      expect(response.headers['ratelimit-limit']).toBeDefined();
+      expect(response.headers['ratelimit-remaining']).toBeDefined();
     });
   });
 });
