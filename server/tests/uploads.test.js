@@ -187,8 +187,8 @@ describe('Uploads Router with Supabase Storage', () => {
     // This prevents ENOENT errors if supertest tries to read a buffer stream that gets closed early
     try {
       fs.writeFileSync(TEST_FIXTURE_PATH, 'fake image data');
-    } catch {
-      console.error('Failed to create test fixture:');
+    } catch (e) {
+      console.error('Failed to create test fixture:', e);
     }
 
     // Create express app with auth middleware

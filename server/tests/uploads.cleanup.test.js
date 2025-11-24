@@ -13,9 +13,12 @@ jest.mock('jsonwebtoken');
 // Mock ingestPhoto to force a DB error
 jest.mock('../media/image', () => ({
   ingestPhoto: jest.fn(async (_db, filePath) => {
+    // FIX: require fs inside the mock to avoid ReferenceError
+    const fsInside = require('fs');
+    
     // Read the file to ensure we trigger the ENOENT if it's missing (simulating real work)
     if (typeof filePath === 'string') {
-        if (!fs.existsSync(filePath)) {
+        if (!fsInside.existsSync(filePath)) {
             throw new Error(`ENOENT: no such file or directory, open '${filePath}'`);
         }
     }
@@ -33,11 +36,15 @@ jest.mock('multer', () => {
   const multerMock = jest.fn(() => ({
     single: jest.fn(() => (req, res, next) => {
       // Create a predictable temp file
-      const tempPath = path.join(os.tmpdir(), 'test-cleanup-upload.tmp');
+      const osInside = require('os');
+      const fsInside = require('fs');
+      const pathInside = require('path');
+      
+      const tempPath = pathInside.join(osInside.tmpdir(), 'test-cleanup-upload.tmp');
       try {
-        fs.writeFileSync(tempPath, 'temp content');
-      } catch (e) {
-        console.error('Failed to create temp file in mock:', e);
+        fsInside.writeFileSync(tempPath, 'temp content');
+      } catch {
+        // unused error ignored
       }
 
       req.file = {
@@ -84,7 +91,7 @@ describe('Upload Route - Orphaned File Cleanup', () => {
 
     // Ensure fixture exists
     try {
-      fs.writeFileSync(TEMP_FILE_PATH, 'temp content');
+        fs.writeFileSync(TEMP_FILE_PATH, 'temp content');
     } catch {}
   });
 
