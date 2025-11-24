@@ -109,21 +109,24 @@ jobs:
         env:
           CI: true
           VITE_API_URL: http://localhost:3001
-          NODE_OPTIONS: --max-old-space-size=4096 --expose-gc
+          # UPDATED MEMORY LIMIT TO 8GB
+          NODE_OPTIONS: --max-old-space-size=8192 --expose-gc
 
       - name: Run frontend tests (batch 2/3)
         run: npm run test:run --silent -- --minWorkers=1 --maxWorkers=1 ${{ steps.test-files.outputs.batch2 }}
         env:
           CI: true
           VITE_API_URL: http://localhost:3001
-          NODE_OPTIONS: --max-old-space-size=4096 --expose-gc
+          # UPDATED MEMORY LIMIT TO 8GB
+          NODE_OPTIONS: --max-old-space-size=8192 --expose-gc
 
       - name: Run frontend tests (batch 3/3)
         run: npm run test:run --silent -- --minWorkers=1 --maxWorkers=1 ${{ steps.test-files.outputs.batch3 }}
         env:
           CI: true
           VITE_API_URL: http://localhost:3001
-          NODE_OPTIONS: --max-old-space-size=4096 --expose-gc
+          # UPDATED MEMORY LIMIT TO 8GB
+          NODE_OPTIONS: --max-old-space-size=8192 --expose-gc
 
       - name: Create photo working dir
         run: mkdir -p server/working/photos
