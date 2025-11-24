@@ -206,7 +206,7 @@ module.exports = function createPhotosRouter({ db }) {
           id: row.id,
           filename: row.filename,
           state: row.state,
-          metadata: JSON.parse(row.metadata || '{}'),
+          metadata: typeof row.metadata === 'string' ? JSON.parse(row.metadata || '{}') : (row.metadata || {}),
           hash: row.hash,
           file_size: row.file_size,
           caption: row.caption,

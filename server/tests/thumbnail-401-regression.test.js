@@ -221,6 +221,13 @@ describe('REGRESSION: Thumbnail 401 after security refactor', () => {
   });
 
   test('Performance: Thumbnail URLs should be fast to generate', async () => {
+    // Ensure we have test photos
+    if (!testPhotos || testPhotos.length === 0) {
+      testPhotos = await db('photos').where({ user_id: testUserId }).select('*');
+    }
+    
+    expect(testPhotos.length).toBeGreaterThan(0);
+    
     const iterations = 10;
     const startTime = Date.now();
 
