@@ -1,9 +1,7 @@
 const request = require('supertest');
 const express = require('express');
-const path = require('path');
-const os = require('os');
 
-// 1. FIX: Variable MUST start with 'mock' to be used inside jest.mock factory
+// 1. Variable must start with 'mock' to be used inside jest.mock factory
 const mockUnlink = jest.fn((path, cb) => cb && cb(null));
 
 // 2. Mock 'fs' entirely.
@@ -12,12 +10,11 @@ jest.mock('fs', () => {
   return {
     ...originalFs,
     existsSync: jest.fn((p) => {
-        // Return true for our temp file logic
         if (typeof p === 'string' && p.includes('test-cleanup-upload')) return true;
         return originalFs.existsSync(p);
     }),
     writeFileSync: originalFs.writeFileSync, 
-    unlink: mockUnlink, // Now safe to access because it starts with 'mock'
+    unlink: mockUnlink, 
   };
 });
 
@@ -41,6 +38,10 @@ jest.mock('../media/image', () => ({
 jest.mock('multer', () => {
   const multerMock = jest.fn(() => ({
     single: jest.fn(() => (req, res, next) => {
+      // FIX: Require modules INSIDE the mock to avoid ReferenceError due to hoisting
+      const path = require('path');
+      const os = require('os');
+      
       const tempPath = path.join(os.tmpdir(), 'test-cleanup-upload.tmp');
       req.file = {
         originalname: 'test.jpg',
