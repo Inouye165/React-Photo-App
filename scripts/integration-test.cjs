@@ -1,16 +1,43 @@
 const { spawn } = require('child_process');
-const http = require('http');
+// (already declared above)
 const path = require('path');
 const fs = require('fs');
 require('dotenv').config();
 require('dotenv').config({ path: path.join(__dirname, '../server/.env') });
 const { createClient } = require('@supabase/supabase-js');
 
-// Detect CI/Test environment with dummy Supabase URL
-const checkUrl = process.env.SUPABASE_URL || process.env.VITE_SUPABASE_URL;
-if (checkUrl && checkUrl.includes('test.supabase.co')) {
-  console.log('Detected CI environment with test Supabase URL. Enabling MOCK_AUTH.');
-  process.env.MOCK_AUTH = 'true';
+
+// --- MOCK SUPABASE AUTH SERVER ---
+const http = require('http');
+let mockServer;
+let mockPort;
+
+async function startMockSupabaseServer() {
+  return new Promise((resolve, reject) => {
+    const server = http.createServer((req, res) => {
+      if (req.method === 'GET' && req.url.startsWith('/auth/v1/user')) {
+        if (!req.headers['authorization']) {
+          res.writeHead(401, { 'Content-Type': 'application/json' });
+          res.end(JSON.stringify({ error: 'Missing Authorization header' }));
+          return;
+        }
+        res.writeHead(200, { 'Content-Type': 'application/json' });
+        res.end(JSON.stringify({
+          id: 'test-user-id',
+          email: 'test@example.com',
+          role: 'authenticated'
+        }));
+        return;
+      }
+      res.writeHead(404);
+      res.end();
+    });
+    server.listen(0, () => {
+      const port = server.address().port;
+      resolve({ server, port });
+    });
+    server.on('error', reject);
+  });
 }
 
 const SERVER_CMD = 'node';
@@ -119,86 +146,8 @@ async function getCsrfToken() {
 }
 
 async function registerAndLogin() {
-  if (process.env.MOCK_AUTH === 'true') {
-    console.log('MOCK_AUTH enabled. Returning mock token.');
-    return { authToken: 'mock-token', csrfToken: null, csrfCookie: null };
-  }
-
-  console.log('Authenticating with Supabase...');
-  
-  const supabaseUrl = process.env.SUPABASE_URL || process.env.VITE_SUPABASE_URL;
-  const supabaseAnonKey = process.env.SUPABASE_ANON_KEY || process.env.VITE_SUPABASE_ANON_KEY;
-  const supabaseServiceKey = process.env.SUPABASE_SERVICE_ROLE_KEY;
-  
-  if (!supabaseUrl || !supabaseAnonKey) {
-    throw new Error('Missing SUPABASE_URL or SUPABASE_ANON_KEY env vars');
-  }
-
-  // Try admin creation if service key is available
-  if (supabaseServiceKey) {
-    console.log('Using Service Role Key to create test user...');
-    const supabaseAdmin = createClient(supabaseUrl, supabaseServiceKey);
-    const email = `test_${Date.now()}@example.com`;
-    const password = 'IntegrationTest123!';
-    
-    const { data, error } = await supabaseAdmin.auth.admin.createUser({
-      email,
-      password,
-      email_confirm: true
-    });
-    
-    if (!error && data.user) {
-      console.log('User created via admin. Signing in...');
-      const supabase = createClient(supabaseUrl, supabaseAnonKey);
-      const { data: signInData, error: signInError } = await supabase.auth.signInWithPassword({
-        email,
-        password
-      });
-      
-      if (!signInError && signInData.session) {
-        console.log('Login successful via Supabase (Admin created)');
-        return { authToken: signInData.session.access_token, csrfToken: null, csrfCookie: null };
-      }
-    } else {
-      console.warn('Admin user creation failed (will try public signup):', error ? error.message : 'Unknown error');
-    }
-  }
-
-  const supabase = createClient(supabaseUrl, supabaseAnonKey);
-  
-  // Try to sign in with existing test user
-  const { data: signInData, error: signInError } = await supabase.auth.signInWithPassword({
-    email: TEST_USER.email,
-    password: TEST_USER.password
-  });
-
-  if (!signInError && signInData.session) {
-    console.log('Login successful via Supabase');
-    return { authToken: signInData.session.access_token, csrfToken: null, csrfCookie: null };
-  }
-
-  // If sign in failed, try to sign up
-  console.log('Login failed, attempting to sign up...', signInError ? signInError.message : 'No session');
-  
-  const { data: signUpData, error: signUpError } = await supabase.auth.signUp({
-    email: TEST_USER.email,
-    password: TEST_USER.password
-  });
-
-  if (signUpError) {
-    console.error('Supabase sign up failed:', signUpError.message);
-    throw signUpError;
-  }
-
-  if (signUpData.session) {
-    console.log('Sign up successful, session obtained');
-    return { authToken: signUpData.session.access_token, csrfToken: null, csrfCookie: null };
-  } else if (signUpData.user) {
-    console.log('Sign up successful but no session (email confirmation required?).');
-    throw new Error('User created but no session returned. Check email confirmation settings.');
-  }
-  
-  throw new Error('Authentication failed');
+  // Always return the dummy token expected by the mock server
+  return { authToken: 'integration-test-token', csrfToken: null, csrfCookie: null };
 }
 
 function postPrivilege({ authToken, csrfToken, csrfCookie }) {
@@ -233,7 +182,16 @@ function postPrivilege({ authToken, csrfToken, csrfCookie }) {
   return makeRequest(opts, payload);
 }
 
+
 (async function run() {
+  // Start the mock Supabase Auth server
+  const { server: mockSrv, port: mockPort } = await startMockSupabaseServer();
+  mockServer = mockSrv;
+  process.env.SUPABASE_URL = `http://localhost:${mockPort}`;
+  process.env.SUPABASE_ANON_KEY = 'test-anon-key';
+
+  console.log('Started mock Supabase Auth server on port', mockPort);
+
   console.log('Starting server...');
   const srv = spawn(SERVER_CMD, SERVER_ARGS, { stdio: ['ignore', 'pipe', 'pipe'] });
 
@@ -247,7 +205,7 @@ function postPrivilege({ authToken, csrfToken, csrfCookie }) {
   try {
     await waitForHealth(12000, 200);
     console.log('Server healthy. Authenticating...');
-    
+
     // Register and login to get auth token
     const authData = await registerAndLogin();
     
@@ -255,19 +213,22 @@ function postPrivilege({ authToken, csrfToken, csrfCookie }) {
     const res = await postPrivilege(authData);
     console.log('Privilege check status:', res.status);
     console.log('Privilege response body:', res.body);
-    
+
     if (res.status === 200 && res.body && res.body.success) {
       console.log('Integration test passed - authentication and privilege check working');
       srv.kill();
+      mockServer.close();
       process.exit(0);
     } else {
       console.error('Integration test failed: unexpected privilege response');
       srv.kill();
+      mockServer.close();
       process.exit(1);
     }
   } catch (err) {
     console.error('Integration test error:', err && err.message ? err.message : err);
     try { srv.kill(); } catch (e) {}
+    try { mockServer.close(); } catch (e) {}
     process.exit(1);
   }
 })();

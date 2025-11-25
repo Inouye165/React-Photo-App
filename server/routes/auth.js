@@ -99,26 +99,6 @@ function createAuthRouter() {
         });
       }
 
-      // MOCK AUTH SUPPORT FOR CI/TESTING
-      const mockAuth = String(process.env.MOCK_AUTH || '').trim();
-      if (mockAuth === 'true' && token === 'mock-token') {
-        // Set cookie for mock auth
-        const cookieOptions = {
-          httpOnly: true,
-          secure: process.env.NODE_ENV === 'production',
-          sameSite: process.env.NODE_ENV === 'production' ? 'strict' : 'lax',
-          maxAge: 24 * 60 * 60 * 1000, // 24 hours
-          path: '/'
-        };
-
-        res.cookie('authToken', token, cookieOptions);
-        
-        return res.json({
-          success: true,
-          message: 'Session cookie set successfully'
-        });
-      }
-
       // Verify token using Supabase Auth
       const { data: { user }, error } = await supabase.auth.getUser(token);
 

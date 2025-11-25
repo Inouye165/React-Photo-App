@@ -22,20 +22,6 @@ async function authenticateToken(req, res, next) {
     return res.status(401).json({ success: false, error: 'Access token required' });
   }
 
-  // MOCK AUTH SUPPORT FOR CI/TESTING
-  const mockAuth = String(process.env.MOCK_AUTH || '').trim();
-  if (mockAuth === 'true') {
-    if (token === 'mock-token') {
-      req.user = {
-        id: 'test-user-id',
-        email: 'test@example.com',
-        username: 'testuser',
-        role: 'user'
-      };
-      return next();
-    }
-  }
-
   try {
     // Verify token using Supabase Auth
     const { data: { user }, error } = await supabase.auth.getUser(token);

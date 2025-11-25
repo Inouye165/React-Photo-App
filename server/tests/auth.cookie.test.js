@@ -104,21 +104,30 @@ describe('Cookie-Based Authentication Security', () => {
       expect(response.body.error).toBe('Invalid token');
     });
 
-    test('should support mock auth in test environment', async () => {
-      const originalMockAuth = process.env.MOCK_AUTH;
-      process.env.MOCK_AUTH = 'true';
+    test('should set session cookie with mocked Supabase auth', async () => {
+      // Use proper Supabase mocking instead of mock-token backdoor
+      const testUser = {
+        id: 'test-user-123',
+        email: 'test@example.com',
+        user_metadata: { username: 'testuser' }
+      };
+      
+      mockGetUser.mockResolvedValue({ data: { user: testUser }, error: null });
 
       const response = await request(app)
         .post('/api/auth/session')
-        .set('Authorization', 'Bearer mock-token')
+        .set('Authorization', 'Bearer test-token')
         .set('Origin', 'http://localhost:5173')
         .expect(200);
 
       expect(response.body.success).toBe(true);
+      expect(response.body.user.email).toBe('test@example.com');
+      
       const cookies = response.headers['set-cookie'];
       expect(cookies).toBeDefined();
-
-      process.env.MOCK_AUTH = originalMockAuth;
+      
+      // Verify Supabase was called
+      expect(mockGetUser).toHaveBeenCalledWith('test-token');
     });
   });
 
