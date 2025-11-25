@@ -108,9 +108,13 @@ app.set('trust proxy', 1);
   // This avoids cases where a validator or auth middleware rejects a
   // preflight request without sending CORS headers, which causes the
   // browser to block the request with a CORS error.
+  //
+  // SECURITY: Strict allowlist-based CORS policy
+  // - No regex patterns or IP range wildcards (prevents DNS rebinding)
+  // - Explicit origin check via Array.includes() only
+  // - Configure allowed origins via ALLOWED_ORIGINS environment variable
   const { getAllowedOrigins } = require('./config/allowedOrigins');
   const allowedOrigins = getAllowedOrigins();
-  const isDev = process.env.NODE_ENV !== 'production';
   const debugCors = process.env.DEBUG_CORS === 'true';
   app.use(cors({
     origin: function(origin, callback) {
@@ -119,16 +123,6 @@ app.set('trust proxy', 1);
       if (!origin || allowedOrigins.includes(origin)) {
         if (debugCors) console.debug('[CORS DEBUG] Allowing Origin:', origin);
         return callback(null, origin);
-      }
-
-      // In development, allow common local-network frontend hosts so you can access
-      // the backend from other machines on your LAN without adjusting env vars.
-      if (isDev) {
-        const devAllow = /^https?:\/\/(127\.0\.0\.1|localhost|10\.(?:\d+\.){2}\d+|192\.168\.(?:\d+\.)\d+)(:\d+)?$/;
-        if (origin && devAllow.test(origin)) {
-          if (debugCors) console.debug('[CORS DEBUG] Dev allowing Origin:', origin);
-          return callback(null, origin);
-        }
       }
       if (debugCors) console.debug('[CORS DEBUG] Rejecting Origin:', origin);
       // When origin not allowed, fail the CORS check. Browsers will block the request.
@@ -168,32 +162,16 @@ app.set('trust proxy', 1);
   app.use(validateRequest);
   
   // Limit request body size to mitigate DoS from huge payloads
-  app.use(express.json({
-    limit: '1mb',
-    verify: (req, res, buf) => {
-      try { req.rawBody = buf.toString(); } catch { req.rawBody = undefined; }
-    }
-  }));
+  // SECURITY: No rawBody capture to prevent memory exhaustion
+  app.use(express.json({ limit: '1mb' }));
   app.use(express.urlencoded({ limit: '1mb', extended: true }));
 
   // Authentication routes (no auth required)
   const createAuthRouter = require('./routes/auth');
   app.use('/api/auth', createAuthRouter());
 
-  // Dev-only diagnostics route (masked). Enabled only when not in production.
-  if (process.env.NODE_ENV !== 'production') {
-    app.get('/__diag/env', (_req, res) => {
-      return res.json({
-        NODE_ENV: process.env.NODE_ENV ?? '(unset)',
-        USE_POSTGRES: !!process.env.USE_POSTGRES,
-        USE_POSTGRES_AUTO_DETECT: !!process.env.USE_POSTGRES_AUTO_DETECT,
-        SUPABASE_DB_URL: !!process.env.SUPABASE_DB_URL,
-        SUPABASE_URL: process.env.SUPABASE_URL ? '•••' + String(process.env.SUPABASE_URL).slice(-4) : '(missing)',
-        SUPABASE_SERVICE_ROLE_KEY: !!process.env.SUPABASE_SERVICE_ROLE_KEY,
-        SUPABASE_ANON_KEY: !!process.env.SUPABASE_ANON_KEY
-      });
-    });
-  }
+  // SECURITY: Debug routes removed to prevent information disclosure
+  // Previously exposed environment variable configuration via /__diag/env
 
   // app.use(createAuthRouter({ db })); // Removed
 

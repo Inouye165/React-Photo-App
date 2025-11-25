@@ -75,6 +75,35 @@ This project uses **BullMQ** and **Redis** to process long-running tasks asynchr
 - **Rate Limiting**: Protects against brute-force attacks.
 - **Log Redaction**: Automatically masks sensitive data (tokens, keys) in logs.
 - **Input Validation**: Strict validation on all endpoints.
+- **Strict CORS**: Explicit origin allowlisting (no regex wildcards or IP ranges).
+
+### Environment Variables
+
+#### ALLOWED_ORIGINS
+**Type**: String (comma-separated URLs)  
+**Required**: Recommended for production  
+**Default**: `http://localhost:3000,http://localhost:5173,http://localhost:5174` (development only)
+
+Comma-separated list of allowed CORS origins. When explicitly set, **only** these origins are allowed (defaults are NOT included). This prevents accidental security holes when moving to production.
+
+**Examples:**
+```bash
+# Production (explicit, no defaults)
+ALLOWED_ORIGINS="https://myapp.com,https://www.myapp.com"
+
+# Multiple environments
+ALLOWED_ORIGINS="https://app.example.com,https://staging.example.com"
+
+# Development (if you need custom ports, list them explicitly)
+ALLOWED_ORIGINS="http://localhost:5173,http://localhost:8080"
+```
+
+**Security Notes:**
+- Do NOT use wildcards or regex patterns
+- Do NOT include IP ranges (e.g., `192.168.x.x`)
+- Each origin must include the protocol (`https://` or `http://`)
+- Whitespace around commas is handled gracefully
+- If unset, falls back to localhost defaults for local development only
 
 ## 🧪 Testing
 
