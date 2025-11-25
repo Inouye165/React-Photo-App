@@ -125,6 +125,22 @@ function App() {
 
   useAIPolling();
 
+  // Listen for session expiration events from API layer
+  useEffect(() => {
+    const handleSessionExpired = () => {
+      setBanner({ 
+        message: 'Session expired. Please refresh or log in again.', 
+        severity: 'error' 
+      });
+    };
+
+    window.addEventListener('auth:session-expired', handleSessionExpired);
+
+    return () => {
+      window.removeEventListener('auth:session-expired', handleSessionExpired);
+    };
+  }, [setBanner]);
+
   const privilegesMap = usePhotoPrivileges(photos);
 
   const {

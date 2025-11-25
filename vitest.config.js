@@ -2,7 +2,13 @@ import { defineConfig } from 'vitest/config'
 
 export default defineConfig({
   test: {
-    exclude: ['**/node_modules/**', '**/dist/**', 'server/**', 'e2e/**'],
+    exclude: [
+      '**/node_modules/**', 
+      '**/dist/**', 
+      'server/**', 
+      'e2e/**',
+      '**/App.test.jsx', // Exclude memory-heavy App.test.jsx (covered by App.auth.test.jsx)
+    ],
     environment: 'happy-dom',
     setupFiles: ['./src/test/setup.js'],
     // CRITICAL: Use forks with single fork to prevent memory accumulation

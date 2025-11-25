@@ -69,6 +69,90 @@ vi.mock('./components/MetadataModal', () => ({
 
 import App from './App'
 import { getPhotos, checkPrivilegesBatch } from './api.js'
+import useStore from './store.js'
+
+// Test for session expiration event handling
+describe('App Component - Session Expiration', () => {
+  beforeEach(() => {
+    vi.clearAllMocks()
+    getPhotos.mockResolvedValue({ photos: [] })
+    checkPrivilegesBatch.mockResolvedValue({})
+  })
+
+  afterEach(() => {
+    cleanup()
+  })
+
+  it('displays session expired banner when global auth event fires', async () => {
+    render(<App />)
+    
+    // Get initial banner state
+    const initialBanner = useStore.getState().banner
+
+    // Dispatch the session expired event
+    window.dispatchEvent(new CustomEvent('auth:session-expired', {
+      detail: { status: 401 }
+    }))
+
+    // Check that the banner was set in the store
+    await waitFor(() => {
+      const banner = useStore.getState().banner
+      expect(banner).toBeDefined()
+      expect(banner.message).toMatch(/Session expired/i)
+      expect(banner.message).not.toBe(initialBanner?.message || '')
+      expect(banner.severity).toBe('error')
+    }, { timeout: 2000 })
+  })
+
+  it('cleans up event listener on unmount to prevent memory leaks', async () => {
+    const addEventListenerSpy = vi.spyOn(window, 'addEventListener')
+    const removeEventListenerSpy = vi.spyOn(window, 'removeEventListener')
+
+    const { unmount } = render(<App />)
+
+    await waitFor(() => {
+      expect(addEventListenerSpy).toHaveBeenCalledWith(
+        'auth:session-expired',
+        expect.any(Function)
+      )
+    })
+
+    // Get the listener function that was registered
+    const listenerCall = addEventListenerSpy.mock.calls.find(
+      call => call[0] === 'auth:session-expired'
+    )
+    const listener = listenerCall?.[1]
+
+    unmount()
+
+    // Verify the same listener was removed
+    await waitFor(() => {
+      expect(removeEventListenerSpy).toHaveBeenCalledWith(
+        'auth:session-expired',
+        listener
+      )
+    })
+
+    addEventListenerSpy.mockRestore()
+    removeEventListenerSpy.mockRestore()
+  })
+
+  it('handles multiple session expired events without errors', async () => {
+    render(<App />)
+
+    // Dispatch multiple events
+    window.dispatchEvent(new CustomEvent('auth:session-expired', { detail: { status: 401 } }))
+    window.dispatchEvent(new CustomEvent('auth:session-expired', { detail: { status: 403 } }))
+
+    // Verify the banner is set (last event wins)
+    await waitFor(() => {
+      const banner = useStore.getState().banner
+      expect(banner).toBeDefined()
+      expect(banner.message).toMatch(/Session expired/i)
+      expect(banner.severity).toBe('error')
+    }, { timeout: 2000 })
+  })
+})
 
 // SKIPPED: These tests exhaust 4GB heap even with aggressive component mocking
 // Root cause: App component itself loads heavy dependencies (map libraries, etc.)

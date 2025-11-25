@@ -69,8 +69,13 @@ export function getAuthHeaders() {
 function handleAuthError(response) {
   if (!response) return false;
   if (response.status === 401 || response.status === 403) {
-    // If cookie-based auth is invalid/expired, refresh the app so user can re-authenticate.
-    try { window.location.reload(); } catch { /* ignore */ }
+    // Dispatch a custom event that UI components can listen to for graceful handling
+    // This prevents infinite reload loops and data loss from hard refreshes
+    try {
+      window.dispatchEvent(new CustomEvent('auth:session-expired', {
+        detail: { status: response.status }
+      }));
+    } catch { /* ignore */ }
     return true;
   }
   return false;
