@@ -26,6 +26,11 @@ describe('api.js - handleAuthError', () => {
   });
 
   it('should NOT reload page on 401 error', async () => {
+    // Clear any caches that might interfere
+    if (globalThis.__getPhotosInflight) {
+      globalThis.__getPhotosInflight.clear();
+    }
+    
     // Mock fetch to return 401
     global.fetch = vi.fn().mockResolvedValue({
       ok: false,
@@ -33,8 +38,8 @@ describe('api.js - handleAuthError', () => {
       json: async () => ({ error: 'Unauthorized' })
     });
 
-    // Call an API function that uses handleAuthError
-    const result = await api.getPhotos();
+    // Use updatePhotoState which doesn't have caching
+    const result = await api.updatePhotoState(1, 'finished');
 
     // CRITICAL: Verify reload was NOT called
     expect(reloadSpy).not.toHaveBeenCalled();
