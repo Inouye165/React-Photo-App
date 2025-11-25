@@ -50,6 +50,7 @@ const createMockQuery = () => {
     where: jest.fn().mockReturnThis(),
     andWhere: jest.fn().mockReturnThis(),
     orWhere: jest.fn().mockReturnThis(),
+    whereIn: jest.fn().mockReturnThis(),
     orderBy: jest.fn().mockReturnThis(),
     limit: jest.fn().mockReturnThis(),
     insert: jest.fn().mockReturnThis(),
@@ -62,6 +63,7 @@ const createMockQuery = () => {
 
   // Store where conditions for complex queries
   query._whereConditions = {};
+  query._whereInConditions = {};
 
   // Override where/andWhere/orWhere to track conditions
   const whereImpl = jest.fn(function (conditions) {
@@ -73,6 +75,12 @@ const createMockQuery = () => {
   query.where = whereImpl;
   query.andWhere = whereImpl;
   query.orWhere = whereImpl;
+
+  // Add whereIn implementation
+  query.whereIn = jest.fn(function (column, values) {
+    query._whereInConditions[column] = values;
+    return query;
+  });
 
   return query;
 };
@@ -91,6 +99,8 @@ const createTableQuery = (table) => {
     // then() should pass the filtered rows to the callback
     query.then = jest.fn().mockImplementation((callback) => {
       let photos = Array.from(mockPhotos.values());
+      
+      // Apply where conditions
       if (Object.keys(query._whereConditions).length > 0) {
         photos = photos.filter(photo => {
           return Object.entries(query._whereConditions).every(([key, value]) => {
@@ -99,12 +109,24 @@ const createTableQuery = (table) => {
           });
         });
       }
+      
+      // Apply whereIn conditions
+      if (Object.keys(query._whereInConditions).length > 0) {
+        photos = photos.filter(photo => {
+          return Object.entries(query._whereInConditions).every(([column, values]) => {
+            return values.includes(photo[column]);
+          });
+        });
+      }
+      
       return Promise.resolve(callback(photos));
     });
 
     // first() should respect where conditions
     query.first = jest.fn().mockImplementation(() => {
       let photos = Array.from(mockPhotos.values());
+      
+      // Apply where conditions
       if (Object.keys(query._whereConditions).length > 0) {
         photos = photos.filter(photo => {
           return Object.entries(query._whereConditions).every(([key, value]) => {
@@ -113,6 +135,16 @@ const createTableQuery = (table) => {
           });
         });
       }
+      
+      // Apply whereIn conditions
+      if (Object.keys(query._whereInConditions).length > 0) {
+        photos = photos.filter(photo => {
+          return Object.entries(query._whereInConditions).every(([column, values]) => {
+            return values.includes(photo[column]);
+          });
+        });
+      }
+      
       return Promise.resolve(photos[0] || null);
     });
 
