@@ -1,0 +1,102 @@
+import React from 'react';
+import { useParams, useNavigate, useOutletContext } from 'react-router-dom';
+import EditPage from '../EditPage.jsx';
+import useStore from '../store.js';
+
+/**
+ * PhotoEditPage - Route component for editing a photo (/photos/:id/edit)
+ * Reads photo ID from URL params and displays the full-page editor
+ */
+export default function PhotoEditPage() {
+  const { id } = useParams();
+  const navigate = useNavigate();
+  const { aiDependenciesReady } = useOutletContext();
+
+  // Get photo data and handlers from store
+  const photos = useStore((state) => state.photos);
+  const setBanner = useStore((state) => state.setBanner);
+  const setEditingMode = useStore((state) => state.setEditingMode);
+  const setActivePhotoId = useStore((state) => state.setActivePhotoId);
+  
+  const photo = photos.find((p) => String(p.id) === String(id));
+
+  const handleClose = () => {
+    setEditingMode(null);
+    // Navigate back to gallery or detail view
+    navigate('/');
+  };
+
+  const handleFinished = async (photoId) => {
+    try {
+      const { updatePhotoState } = await import('../api.js');
+      await updatePhotoState(photoId, 'finished');
+      setBanner({ message: 'Photo marked as finished', severity: 'success' });
+      setEditingMode(null);
+      setActivePhotoId(null);
+      useStore.getState().removePhotoById(photoId);
+      navigate('/');
+    } catch (error) {
+      setBanner({ 
+        message: `Error marking photo as finished: ${error?.message || error}`, 
+        severity: 'error' 
+      });
+    }
+  };
+
+  const handleSave = async (updated) => {
+    useStore.getState().setPhotos((prev) =>
+      prev.map((p) => (p.id === updated.id ? { ...p, ...updated } : p)),
+    );
+    setEditingMode(null);
+    setActivePhotoId(updated.id);
+    // Navigate to the detail view
+    navigate(`/photos/${updated.id}`);
+  };
+
+  const handleRecheckAI = async (photoId, model) => {
+    if (!aiDependenciesReady) {
+      setBanner({ 
+        message: 'AI services unavailable. Start required Docker containers to re-enable processing.', 
+        severity: 'warning' 
+      });
+      return null;
+    }
+
+    try {
+      const { recheckPhotoAI } = await import('../api.js');
+      const response = await recheckPhotoAI(photoId, model);
+      setBanner({ message: 'AI recheck initiated. Polling for results...', severity: 'info' });
+      useStore.getState().setPollingPhotoId(photoId);
+      return response;
+    } catch (error) {
+      setBanner({ message: `AI recheck failed: ${error?.message || 'unknown'}`, severity: 'error' });
+      throw error;
+    }
+  };
+
+  if (!photo) {
+    return (
+      <div className="text-center py-12">
+        <h2 className="text-2xl font-bold text-gray-700">Photo not found</h2>
+        <button
+          onClick={() => navigate('/')}
+          className="mt-4 px-4 py-2 bg-indigo-600 text-white rounded hover:bg-indigo-700"
+        >
+          Return to Gallery
+        </button>
+      </div>
+    );
+  }
+
+  return (
+    <EditPage
+      key={`${photo.id}:${photo.caption || ''}`}
+      photo={photo}
+      onClose={handleClose}
+      onFinished={handleFinished}
+      onSave={handleSave}
+      onRecheckAI={handleRecheckAI}
+      aiReady={aiDependenciesReady}
+    />
+  );
+}
