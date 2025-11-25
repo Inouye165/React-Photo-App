@@ -56,6 +56,7 @@ Backend server for the React Photo App, built with Node.js and Express. It handl
 - `GET /photos` - List photos with filters
 - `GET /photos/:id` - Get photo details
 - `GET /display/:path` - Securely serve image files
+- `POST /privilege` - Check file permissions (Authenticated, performs real-time ownership verification)
 
 ### AI & Metadata
 - `POST /photos/:id/run-ai` - Trigger AI analysis
@@ -76,6 +77,40 @@ This project uses **BullMQ** and **Redis** to process long-running tasks asynchr
 - **Log Redaction**: Automatically masks sensitive data (tokens, keys) in logs.
 - **Input Validation**: Strict validation on all endpoints.
 - **Strict CORS**: Explicit origin allowlisting (no regex wildcards or IP ranges).
+- **Ownership-Based Access Control**: The `/privilege` endpoint performs real-time database verification to ensure users can only modify or delete their own content. This prevents IDOR (Insecure Direct Object Reference) vulnerabilities.
+
+### Privilege Endpoint
+
+The `/privilege` endpoint provides fine-grained access control by checking file ownership in real-time:
+
+**Request:**
+```json
+POST /privilege
+Authorization: Bearer <token>
+Content-Type: application/json
+
+{
+  "filenames": ["photo1.jpg", "photo2.jpg"]
+}
+```
+
+**Response:**
+```json
+{
+  "success": true,
+  "privileges": {
+    "photo1.jpg": "RWX",  // Owner: Read, Write, Execute (Delete)
+    "photo2.jpg": "R"     // Non-owner: Read only (if public)
+  }
+}
+```
+
+**Permission Levels:**
+- `RWX` - Full access (owner only): Read, Write, Delete
+- `R` - Read-only access (non-owner, public files)
+- `""` (empty) - No access (file not found or private)
+
+The endpoint queries the database to verify ownership (`user_id`) for each requested filename, ensuring secure access control at scale with efficient batch queries.
 
 ### Environment Variables
 

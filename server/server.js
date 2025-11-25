@@ -198,7 +198,7 @@ app.set('trust proxy', 1);
   app.use('/photos', createPhotosRouter({ db }));
   app.use('/api/collectibles', authenticateToken, createCollectiblesRouter({ db }));
   app.use(authenticateToken, createUploadsRouter({ db }));
-  app.use(authenticateToken, createPrivilegeRouter());
+  app.use(authenticateToken, createPrivilegeRouter({ db }));
 
   // Mount debug routes with authentication required in ALL environments
   app.use(authenticateToken, createDebugRouter({ db }));
