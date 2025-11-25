@@ -1,6 +1,138 @@
 import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest';
 import * as api from './api';
 
+/**
+ * Tests for httpOnly cookie-based authentication
+ * 
+ * SECURITY: This test suite verifies that:
+ * 1. getAuthHeaders() does NOT include Bearer tokens (cookies handle auth)
+ * 2. All API calls include credentials: 'include' for cookie transmission
+ * 3. No token leakage via Authorization headers
+ */
+describe('api.js - Cookie-Based Authentication Security', () => {
+  beforeEach(() => {
+    vi.restoreAllMocks();
+  });
+
+  afterEach(() => {
+    vi.restoreAllMocks();
+  });
+
+  describe('getAuthHeaders - No Bearer Token Injection', () => {
+    it('should NOT include Authorization header', () => {
+      const headers = api.getAuthHeaders();
+      
+      // CRITICAL SECURITY CHECK: No Bearer token should be present
+      expect(headers['Authorization']).toBeUndefined();
+      expect(headers['authorization']).toBeUndefined();
+    });
+
+    it('should only include Content-Type header', () => {
+      const headers = api.getAuthHeaders();
+      
+      // Should only have Content-Type
+      expect(Object.keys(headers)).toEqual(['Content-Type']);
+      expect(headers['Content-Type']).toBe('application/json');
+    });
+
+    it('should return consistent headers without side effects', () => {
+      const headers1 = api.getAuthHeaders();
+      const headers2 = api.getAuthHeaders();
+      
+      expect(headers1).toEqual(headers2);
+      expect(headers1['Authorization']).toBeUndefined();
+      expect(headers2['Authorization']).toBeUndefined();
+    });
+  });
+
+  describe('Fetch calls include credentials', () => {
+    it('updatePhotoState should include credentials: include', async () => {
+      const fetchSpy = vi.fn().mockResolvedValue({
+        ok: true,
+        status: 200,
+        json: async () => ({ success: true })
+      });
+      global.fetch = fetchSpy;
+
+      await api.updatePhotoState(1, 'finished');
+
+      expect(fetchSpy).toHaveBeenCalled();
+      const fetchCall = fetchSpy.mock.calls[0];
+      expect(fetchCall[1].credentials).toBe('include');
+      
+      // Also verify no Authorization header
+      expect(fetchCall[1].headers['Authorization']).toBeUndefined();
+    });
+
+    it('getPhotos should include credentials: include', async () => {
+      // Clear cache to ensure fresh fetch
+      if (globalThis.__getPhotosInflight) {
+        globalThis.__getPhotosInflight.clear();
+      }
+      
+      const fetchSpy = vi.fn().mockResolvedValue({
+        ok: true,
+        status: 200,
+        json: async () => ({ success: true, photos: [] })
+      });
+      global.fetch = fetchSpy;
+
+      await api.getPhotos();
+
+      expect(fetchSpy).toHaveBeenCalled();
+      const fetchCall = fetchSpy.mock.calls[0];
+      expect(fetchCall[1].credentials).toBe('include');
+    });
+
+    it('deletePhoto should include credentials: include', async () => {
+      const fetchSpy = vi.fn().mockResolvedValue({
+        ok: true,
+        status: 200,
+        json: async () => ({ success: true })
+      });
+      global.fetch = fetchSpy;
+
+      await api.deletePhoto(123);
+
+      expect(fetchSpy).toHaveBeenCalled();
+      const fetchCall = fetchSpy.mock.calls[0];
+      expect(fetchCall[1].credentials).toBe('include');
+    });
+
+    it('uploadPhotoToServer should include credentials: include', async () => {
+      const fetchSpy = vi.fn().mockResolvedValue({
+        ok: true,
+        status: 200,
+        json: async () => ({ success: true })
+      });
+      global.fetch = fetchSpy;
+
+      const mockFile = new File(['test'], 'test.jpg', { type: 'image/jpeg' });
+      await api.uploadPhotoToServer(mockFile);
+
+      expect(fetchSpy).toHaveBeenCalled();
+      const fetchCall = fetchSpy.mock.calls[0];
+      expect(fetchCall[1].credentials).toBe('include');
+    });
+
+    it('fetchProtectedBlobUrl should include credentials: include', async () => {
+      const mockBlob = new Blob(['test'], { type: 'image/jpeg' });
+      const fetchSpy = vi.fn().mockResolvedValue({
+        ok: true,
+        status: 200,
+        blob: async () => mockBlob
+      });
+      global.fetch = fetchSpy;
+
+      await api.fetchProtectedBlobUrl('http://example.com/image.jpg');
+
+      expect(fetchSpy).toHaveBeenCalled();
+      const fetchCall = fetchSpy.mock.calls[0];
+      expect(fetchCall[1].credentials).toBe('include');
+    });
+  });
+});
+
 describe('api.js - handleAuthError', () => {
   let reloadSpy;
   let dispatchEventSpy;

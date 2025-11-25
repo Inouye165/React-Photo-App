@@ -12,12 +12,26 @@ const supabase = createClient(SUPABASE_URL, SUPABASE_ANON_KEY);
 
 /**
  * Middleware to verify Supabase JWT token and authenticate users
+ * 
+ * SECURITY: Token is read from httpOnly cookie (primary) or Authorization header (fallback)
+ * This prevents token leakage via browser history, proxy logs, and referer headers
+ * Query parameter tokens are NOT supported to prevent security vulnerabilities
  */
 async function authenticateToken(req, res, next) {
-  // Require token from Authorization header (Bearer token)
-  const authHeader = req.headers.authorization;
-  const token = authHeader && authHeader.split(' ')[1];
+  let token = null;
 
+  // 1. Primary: Check httpOnly cookie (secure method set by /api/auth/session)
+  if (req.cookies && req.cookies.authToken) {
+    token = req.cookies.authToken;
+  }
+
+  // 2. Fallback: Check Authorization header (for API clients, testing)
+  if (!token) {
+    const authHeader = req.headers.authorization;
+    token = authHeader && authHeader.split(' ')[1];
+  }
+
+  // SECURITY: Query parameter tokens are NOT supported
   if (!token) {
     return res.status(401).json({ success: false, error: 'Access token required' });
   }

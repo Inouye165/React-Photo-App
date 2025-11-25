@@ -14,6 +14,7 @@ A full-screen React application for filtering, browsing, and uploading photos by
 
 ## 🆕 What's New (October 2025)
 
+- **[Security] Enforced httpOnly Cookie Authentication**: All API endpoints now strictly authenticate via httpOnly cookies. Bearer token header fallback removed from frontend - authentication is handled exclusively via secure cookies set by `/api/auth/session`. This eliminates token leakage risks from browser history, proxy logs, and referer headers.
 - **Security & Authentication**: Complete overhaul with Supabase Auth integration, "Split Brain" fix, and centralized log redaction.
 - **Advanced HEIC Support**: Automatic conversion with Sharp and ImageMagick fallbacks.
 - **AI & Processing**: Dynamic model selection, background processing with BullMQ, and robust retry mechanisms.
@@ -107,6 +108,7 @@ npm run test:stress -- --bail          # Stop on first failure
 
 ### Completed ✅
 
+- [x] **Security (High):** Enforced httpOnly cookie authentication - All API endpoints now read JWTs from cookies (primary) with Authorization header fallback only for API clients. Frontend no longer injects Bearer tokens, relying on `credentials: 'include'` for automatic cookie transmission. Query parameter tokens are rejected.
 - [x] **Security (High):** Token leakage fixed - Implemented httpOnly cookie authentication to replace query parameter tokens. See PR #83.
 - [x] **Security/Architecture (High):** "Split Brain" authentication resolved - Local `users` table removed, all user management consolidated on Supabase Auth.
 - [x] **Critical Logic (High):** File cleanup race condition fixed - `server/routes/uploads.js` now properly handles cleanup in try-finally block, removing orphaned files from Supabase Storage when `ingestPhoto` fails.

@@ -1,14 +1,10 @@
-import { supabase } from './supabaseClient';
-
-let accessToken = null;
-
 // --- Collectibles API ---
 /**
  * Fetch all collectibles for a given photoId
  */
 export async function fetchCollectibles(photoId) {
   const url = `${API_BASE_URL}/photos/${photoId}/collectibles`;
-  const res = await apiLimiter(() => fetch(url, { headers: getAuthHeaders() }));
+  const res = await apiLimiter(() => fetch(url, { headers: getAuthHeaders(), credentials: 'include' }));
   if (handleAuthError(res)) return;
   if (!res.ok) throw new Error('Failed to fetch collectibles: ' + res.status);
   const json = await res.json();
@@ -25,7 +21,7 @@ export async function createCollectible(photoId, data) {
     method: 'POST',
     headers: getAuthHeaders(),
     body: JSON.stringify(data),
-    
+    credentials: 'include'
   }));
   if (handleAuthError(res)) return;
   if (!res.ok) throw new Error('Failed to create collectible: ' + res.status);
@@ -43,7 +39,7 @@ export async function updateCollectible(collectibleId, data) {
     method: 'PATCH',
     headers: getAuthHeaders(),
     body: JSON.stringify(data),
-    
+    credentials: 'include'
   }));
   if (handleAuthError(res)) return;
   if (!res.ok) throw new Error('Failed to update collectible: ' + res.status);
@@ -56,14 +52,15 @@ export async function updateCollectible(collectibleId, data) {
 // during dev (StrictMode) or accidental double-invokes.
 
 // --- Helpers
+/**
+ * Get headers for API requests.
+ * SECURITY: Authentication is handled via httpOnly cookies (credentials: 'include').
+ * Bearer tokens are no longer injected into headers to prevent token leakage.
+ */
 export function getAuthHeaders() {
-  const headers = {
+  return {
     'Content-Type': 'application/json',
   };
-  if (accessToken) {
-    headers['Authorization'] = `Bearer ${accessToken}`;
-  }
-  return headers;
 }
 
 function handleAuthError(response) {
@@ -156,7 +153,7 @@ export async function uploadPhotoToServer(file, serverUrl = `${API_BASE_URL}/upl
   const headers = getAuthHeaders();
   delete headers['Content-Type']; // Let browser set multipart/form-data with boundary
 
-  const res = await fetch(serverUrl, { method: 'POST', headers, body: form });
+  const res = await fetch(serverUrl, { method: 'POST', headers, body: form, credentials: 'include' });
   if (handleAuthError(res)) return; if (!res.ok) throw new Error('Upload failed'); return await res.json();
 }
 
@@ -165,7 +162,7 @@ export async function checkPrivilege(relPath, serverUrl = `${API_BASE_URL}/privi
   for (let attempt = 1; attempt <= maxAttempts; attempt++) {
     try {
       const body = JSON.stringify({ relPath });
-  const response = await apiLimiter(() => fetch(serverUrl, { method: 'POST', headers: getAuthHeaders(), body }));
+  const response = await apiLimiter(() => fetch(serverUrl, { method: 'POST', headers: getAuthHeaders(), body, credentials: 'include' }));
       if (handleAuthError(response)) return; if (response.ok) return await response.json();
       if (attempt < maxAttempts) { await new Promise(r => setTimeout(r, delayMs * attempt)); continue; }
       throw new Error('Privilege check failed: ' + response.status);
@@ -185,7 +182,7 @@ export async function checkPrivilegesBatch(filenames, serverUrl = `${API_BASE_UR
   async function postChunk(chunk, attempt = 1) {
     try {
       const body = JSON.stringify({ filenames: chunk });
-  const response = await apiLimiter(() => fetch(serverUrl, { method: 'POST', headers: getAuthHeaders(), body }));
+  const response = await apiLimiter(() => fetch(serverUrl, { method: 'POST', headers: getAuthHeaders(), body, credentials: 'include' }));
       if (handleAuthError(response)) return null;
       if (response.status === 429) { if (attempt < maxAttempts) { await sleep(250 * Math.pow(2, attempt - 1)); return postChunk(chunk, attempt + 1); } throw new Error('Batch privilege check rate limited: 429'); }
       if (!response.ok) throw new Error('Batch privilege check failed: ' + response.status);
@@ -232,7 +229,7 @@ export async function getPhotos(serverUrlOrEndpoint = `${API_BASE_URL}/photos`) 
 
   const fetchPromise = (async () => {
   // Protect UI from indefinite hangs if backend is not responding.
-  const response = await fetchWithTimeout(url, { headers: getAuthHeaders() }, 20000);
+  const response = await fetchWithTimeout(url, { headers: getAuthHeaders(), credentials: 'include' }, 20000);
     if (handleAuthError(response)) return; if (!response.ok) throw new Error('Failed to fetch photos: ' + response.status);
     return await response.json();
   })();
@@ -256,7 +253,7 @@ export async function fetchModelAllowlist(serverUrl = `${API_BASE_URL}`) {
 
   const url = `${serverUrl}/photos/models`;
   const fetchPromise = (async () => {
-    const response = await apiLimiter(() => fetch(url, { method: 'GET', headers: getAuthHeaders() }));
+    const response = await apiLimiter(() => fetch(url, { method: 'GET', headers: getAuthHeaders(), credentials: 'include' }));
     if (handleAuthError(response)) {
       const payload = { models: [], source: 'auth', updatedAt: null };
       root[CACHE_KEY] = { ts: Date.now(), data: payload };
@@ -288,7 +285,7 @@ export async function fetchModelAllowlist(serverUrl = `${API_BASE_URL}`) {
 
 export async function getDependencyStatus(serverUrl = `${API_BASE_URL}`) {
   const url = `${serverUrl}/photos/dependencies`;
-  const response = await apiLimiter(() => fetch(url, { method: 'GET', headers: getAuthHeaders() }));
+  const response = await apiLimiter(() => fetch(url, { method: 'GET', headers: getAuthHeaders(), credentials: 'include' }));
   if (handleAuthError(response)) return null;
   if (!response.ok) {
     throw new Error('Failed to fetch dependency status: ' + response.status);
@@ -304,20 +301,20 @@ export async function getDependencyStatus(serverUrl = `${API_BASE_URL}`) {
 }
 
 export async function updatePhotoState(id, state, serverUrl = `${API_BASE_URL}/photos/`) {
-  const doFetch = async () => fetch(`${serverUrl}${id}/state`, { method: 'PATCH', headers: getAuthHeaders(), body: JSON.stringify({ state }) });
+  const doFetch = async () => fetch(`${serverUrl}${id}/state`, { method: 'PATCH', headers: getAuthHeaders(), body: JSON.stringify({ state }), credentials: 'include' });
   const response = await stateUpdateLimiter(() => doFetch());
   if (handleAuthError(response)) return; if (!response.ok) throw new Error('Failed to update photo state'); return await response.json();
 }
 
 export async function recheckInprogressPhotos(serverUrl = `${API_BASE_URL}/photos/recheck-inprogress`) {
-  const res = await apiLimiter(() => fetch(serverUrl, { method: 'POST', headers: getAuthHeaders() }));
+  const res = await apiLimiter(() => fetch(serverUrl, { method: 'POST', headers: getAuthHeaders(), credentials: 'include' }));
   if (handleAuthError(res)) return; if (!res.ok) throw new Error('Failed to trigger recheck'); return await res.json();
 }
 
 export async function recheckPhotoAI(photoId, model = null, serverUrl = `${API_BASE_URL}`) {
   const url = `${serverUrl}/photos/${photoId}/run-ai`;
   const body = model ? JSON.stringify({ model }) : null;
-  const opts = { method: 'POST', headers: getAuthHeaders() };
+  const opts = { method: 'POST', headers: getAuthHeaders(), credentials: 'include' };
   if (body) {
     opts.body = body;
     opts.headers = { ...opts.headers, 'Content-Type': 'application/json' };
@@ -343,13 +340,13 @@ export async function recheckPhotoAI(photoId, model = null, serverUrl = `${API_B
 }
 
 export async function updatePhotoCaption(id, caption, serverUrl = `${API_BASE_URL}`) {
-  const res = await apiLimiter(() => fetch(`${serverUrl}/photos/${id}/caption`, { method: 'PATCH', headers: getAuthHeaders(), body: JSON.stringify({ caption }) }));
+  const res = await apiLimiter(() => fetch(`${serverUrl}/photos/${id}/caption`, { method: 'PATCH', headers: getAuthHeaders(), body: JSON.stringify({ caption }), credentials: 'include' }));
   if (handleAuthError(res)) return; if (!res.ok) throw new Error('Failed to update caption'); return await res.json();
 }
 
 export async function deletePhoto(id, serverUrl = `${API_BASE_URL}`) {
   const url = `${serverUrl}/photos/${id}`;
-  const res = await apiLimiter(() => fetch(url, { method: 'DELETE', headers: getAuthHeaders() }));
+  const res = await apiLimiter(() => fetch(url, { method: 'DELETE', headers: getAuthHeaders(), credentials: 'include' }));
   if (handleAuthError(res)) return;
   if (!res.ok) {
     // Try to parse error body for a useful message
@@ -375,18 +372,8 @@ export async function getPhoto(photoId, options = {}, serverUrl = `${API_BASE_UR
       url += (url.includes('?') ? '&' : '?') + `_cb=${options.cacheBuster}`;
     }
     
-    const res = await fetch(url, { method: 'GET', headers: getAuthHeaders() }); 
+    const res = await fetch(url, { method: 'GET', headers: getAuthHeaders(), credentials: 'include' }); 
     if (handleAuthError(res)) return; 
     if (!res.ok) throw new Error('Failed to fetch photo: ' + res.status); 
     return await res.json();
 }
-
-// Keep token updated
-supabase.auth.onAuthStateChange((event, session) => {
-  accessToken = session?.access_token || null;
-});
-
-// Initialize token
-supabase.auth.getSession().then(({ data: { session } }) => {
-  accessToken = session?.access_token || null;
-});
