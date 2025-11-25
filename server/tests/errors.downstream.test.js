@@ -13,6 +13,11 @@ jest.mock('../lib/supabaseClient', () => ({
   }
 }));
 
+// Mock validateSafePath to return the input path directly (avoids realpathSync issues in CI)
+jest.mock('../utils/pathValidator', () => ({
+  validateSafePath: jest.fn((p) => p)
+}));
+
 describe('Downstream error hygiene', () => {
   let app;
   beforeAll(() => {
