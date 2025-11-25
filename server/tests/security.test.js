@@ -105,57 +105,6 @@ describe('Security Middleware', () => {
         .expect(200);
     });
 
-    test('should block directory traversal attempts', async () => {
-      app.get('/test/*', (req, res) => {
-        res.json({ success: true });
-      });
-
-      const response = await request(app)
-        .get('/test/../../../etc/passwd')
-        .expect(400);
-
-      expect(response.body.success).toBe(false);
-      expect(response.body.error).toBe('Invalid request');
-    });
-
-    test('should block XSS attempts', async () => {
-      app.get('/test', (req, res) => {
-        res.json({ success: true });
-      });
-
-      const response = await request(app)
-        .get('/test?param=<script>alert("xss")</script>')
-        .expect(400);
-
-      expect(response.body.success).toBe(false);
-      expect(response.body.error).toBe('Invalid request');
-    });
-
-    test('should block SQL injection attempts', async () => {
-      app.get('/test', (req, res) => {
-        res.json({ success: true });
-      });
-
-      const response = await request(app)
-        .get('/test?id=1 UNION SELECT * FROM users')
-        .expect(400);
-
-      expect(response.body.success).toBe(false);
-      expect(response.body.error).toBe('Invalid request');
-    });
-
-    test('should block code execution attempts', async () => {
-      app.get('/test', (req, res) => {
-        res.json({ success: true });
-      });
-
-      const response = await request(app)
-        .get('/test?cmd=exec("rm -rf /")')
-        .expect(400);
-
-      expect(response.body.success).toBe(false);
-      expect(response.body.error).toBe('Invalid request');
-    });
 
     test('should validate content types for POST requests', async () => {
       app.post('/test', (req, res) => {
@@ -196,23 +145,6 @@ describe('Security Middleware', () => {
         .expect(200);
     });
 
-    test('should handle URL encoding properly', async () => {
-      app.get('/test', (req, res) => {
-        res.json({ success: true });
-      });
-
-      // Should handle normal URL encoding
-      await request(app)
-        .get('/test?param=hello%20world')
-        .expect(200);
-
-      // Should block malicious encoded attempts
-      const response = await request(app)
-        .get('/test?param=%2E%2E%2F%2E%2E%2F')  // ../.. encoded
-        .expect(400);
-
-      expect(response.body.error).toBe('Invalid request');
-    });
   });
 
   describe('securityErrorHandler', () => {
@@ -293,10 +225,11 @@ describe('Security Middleware', () => {
       expect(normalResponse.headers['x-frame-options']).toBeDefined();
       expect(normalResponse.body.success).toBe(true);
 
-      // Malicious request should be blocked
-      await request(app)
-        .get('/test?evil=<script>alert(1)</script>')
-        .expect(400);
+      // Malicious input is no longer blocked at middleware; app logic/DB must handle it safely
+      const evilResponse = await request(app)
+        .get('/test?evil=<script>alert(1)</script>');
+      expect(evilResponse.status).toBe(200);
+      expect(evilResponse.body.success).toBe(true);
     });
 
     test('should handle rate limiting properly', async () => {
