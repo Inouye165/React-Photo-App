@@ -1,31 +1,33 @@
 // Load server/.env as the very first runtime config to ensure modules
 // that read process.env later see the correct values regardless of CWD.
 require('./env');
-// Helpful startup logs to make it obvious which DB and Supabase configuration
-// are active when the server starts (useful after checking out older commits).
+
+// Validate required PostgreSQL configuration early
+if (!process.env.DATABASE_URL && !process.env.SUPABASE_DB_URL) {
+  console.error('[server] FATAL: PostgreSQL not configured');
+  console.error('[server] DATABASE_URL or SUPABASE_DB_URL is required');
+  console.error('[server] For local development, run: docker-compose up -d db');
+  console.error('[server] Then set DATABASE_URL in server/.env');
+  process.exit(1);
+}
+
+// Helpful startup logs to confirm database configuration
 const environment = process.env.NODE_ENV || 'development';
-const forcePostgres = process.env.USE_POSTGRES === 'true';
-const autoDetectPostgres = Boolean(process.env.SUPABASE_DB_URL) && process.env.USE_POSTGRES_AUTO_DETECT !== 'false';
-const usingPostgres = environment === 'production' || forcePostgres || autoDetectPostgres;
 
 // Helper to mask secrets while showing short hint
-// Mask helper used in diagnostics: show only last 4 chars to identify keys
-// without exposing secrets.
 function maskSecret(value) {
   if (!value) return '(missing)';
   return '•••' + String(value).slice(-4);
 }
 
-// Detailed debug output showing which env vars are consulted and what was found.
 console.log('[server] Startup configuration diagnostics:');
 console.log(`[server]  - NODE_ENV = ${environment}`);
-console.log(`[server]  - USE_POSTGRES = ${process.env.USE_POSTGRES || '(unset)'} (forcePostgres=${forcePostgres})`);
-console.log(`[server]  - USE_POSTGRES_AUTO_DETECT = ${process.env.USE_POSTGRES_AUTO_DETECT || '(unset)'} (autoDetectPostgres=${autoDetectPostgres})`);
-console.log(`[server]  - SUPABASE_DB_URL = ${process.env.SUPABASE_DB_URL ? '(present)' : '(missing)'} ${process.env.SUPABASE_DB_URL ? maskSecret(process.env.SUPABASE_DB_URL) : ''}`);
-console.log(`[server]  - SUPABASE_URL = ${process.env.SUPABASE_URL ? '(present)' : '(missing)'} ${process.env.SUPABASE_URL ? maskSecret(process.env.SUPABASE_URL) : ''}`);
-console.log(`[server]  - SUPABASE_SERVICE_ROLE_KEY = ${process.env.SUPABASE_SERVICE_ROLE_KEY ? '(present service-role)' : '(missing)'} ${process.env.SUPABASE_SERVICE_ROLE_KEY ? maskSecret(process.env.SUPABASE_SERVICE_ROLE_KEY) : ''}`);
-console.log(`[server]  - SUPABASE_ANON_KEY = ${process.env.SUPABASE_ANON_KEY ? '(present anon)' : '(missing)'} ${process.env.SUPABASE_ANON_KEY ? maskSecret(process.env.SUPABASE_ANON_KEY) : ''}`);
-console.log(`[server]  - Derived database selection: ${usingPostgres ? 'Postgres (Supabase) — will use production knex config' : 'sqlite fallback (dev) — sqlite fallback would be used if enabled'}`);
+console.log(`[server]  - DATABASE_URL = ${process.env.DATABASE_URL ? maskSecret(process.env.DATABASE_URL) : '(not set)'}`);
+console.log(`[server]  - SUPABASE_DB_URL = ${process.env.SUPABASE_DB_URL ? maskSecret(process.env.SUPABASE_DB_URL) : '(not set)'}`);
+console.log(`[server]  - SUPABASE_URL = ${process.env.SUPABASE_URL ? maskSecret(process.env.SUPABASE_URL) : '(missing)'}`);
+console.log(`[server]  - SUPABASE_SERVICE_ROLE_KEY = ${process.env.SUPABASE_SERVICE_ROLE_KEY ? '(present)' : '(missing)'} ${process.env.SUPABASE_SERVICE_ROLE_KEY ? maskSecret(process.env.SUPABASE_SERVICE_ROLE_KEY) : ''}`);
+console.log(`[server]  - SUPABASE_ANON_KEY = ${process.env.SUPABASE_ANON_KEY ? '(present)' : '(missing)'} ${process.env.SUPABASE_ANON_KEY ? maskSecret(process.env.SUPABASE_ANON_KEY) : ''}`);
+console.log(`[server]  - Database: PostgreSQL (all environments)`);
 console.log('[server] End diagnostics');
 
 // Warn if Google Places/Maps key missing — POI lookups will be disabled

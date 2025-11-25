@@ -8,6 +8,20 @@ on:
 jobs:
   integration:
     runs-on: ubuntu-latest
+    services:
+      postgres:
+        image: postgres:15
+        env:
+          POSTGRES_USER: test
+          POSTGRES_PASSWORD: test
+          POSTGRES_DB: test
+        ports:
+          - 5432:5432
+        options: >-
+          --health-cmd pg_isready
+          --health-interval 10s
+          --health-timeout 5s
+          --health-retries 5
     steps:
       - uses: actions/checkout@v4
       - name: Use Node.js
@@ -28,7 +42,7 @@ jobs:
         run: npm ci
       - name: Install server dependencies
         # Remove server node_modules and lockfile so platform-specific native
-        # binaries (e.g. sharp, sqlite3) are fetched for the Linux runner during install.
+        # binaries (e.g. sharp) are fetched for the Linux runner during install.
         run: |
           rm -rf server/node_modules
           rm -f server/package-lock.json
@@ -37,16 +51,13 @@ jobs:
         env:
           PHOTO_WORKING_DIR: ${{ runner.temp }}/photo-working
           NODE_ENV: development
-          USE_POSTGRES_AUTO_DETECT: "false"
-          DB_PATH: ":memory:"
-          ALLOW_SQLITE_FALLBACK: "true"
+          DATABASE_URL: postgresql://test:test@localhost:5432/test
+          SUPABASE_DB_URL: postgresql://test:test@localhost:5432/test
           # Mock Supabase environment variables for testing
           SUPABASE_URL: https://test.supabase.co
           SUPABASE_SERVICE_ROLE_KEY: test-service-role-key
           SUPABASE_ANON_KEY: test-anon-key
-          DATABASE_URL: postgresql://test:test@localhost:5432/test
           JWT_SECRET: test-jwt-secret-key-for-testing-only
-          # --- ADD THESE MOCK KEYS ---
           GOOGLE_API_KEY: sk-test-key-for-ci
           GOOGLE_CSE_ID: test-cse-id-for-ci
           OPENAI_API_KEY: sk-test-key-for-ci

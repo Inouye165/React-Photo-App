@@ -32,5 +32,5 @@ npm run test:coverage
 
 Notes
 - The test suite uses a local `package-lock.json` to ensure repeatable installations. Use `npm ci` in CI or on other machines.
-- On Windows, the `sqlite3` dependency may require native build tools if prebuilt binaries are not available. If `npm ci` fails with native build errors, install the platform build tools or use a Node version that matches the prebuilt binary availability.
+- PostgreSQL is required for all tests. Use `docker-compose up -d db` to start a local PostgreSQL instance, or configure `DATABASE_URL` to point to an existing PostgreSQL server.
 - The repository's Vitest config excludes the `server/` folder, so unit/e2e tests in `src/` run by default.

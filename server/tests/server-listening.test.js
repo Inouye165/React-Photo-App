@@ -6,12 +6,13 @@
  * server.js only starts listening when NODE_ENV !== 'test' (line 222).
  * Integration tests need the server to actually listen on a port.
  * 
- * Fix: Integration tests use NODE_ENV=development with ALLOW_SQLITE_FALLBACK=true
+ * Fix: Integration tests use NODE_ENV=development with DATABASE_URL configured for PostgreSQL
  * 
  * This test ensures:
  * 1. Server does NOT listen when NODE_ENV=test (for unit tests with supertest)
  * 2. Server DOES listen when NODE_ENV=development (for integration tests)
  * 3. Server DOES listen when NODE_ENV=production (for production)
+ * 4. Server requires PostgreSQL in all environments (no SQLite fallback)
  */
 
 describe('Server listening behavior', () => {
@@ -50,9 +51,9 @@ describe('Server listening behavior', () => {
     // We verify this by checking that no port is being listened on
   });
 
-  test('integration test environment should use development mode', () => {
+  test('integration test environment should use development mode with PostgreSQL', () => {
     // Integration tests MUST use NODE_ENV=development (not test) so server actually listens
-    // This is documented in .github/workflows/ci.yml and integration.yml
+    // They must also provide DATABASE_URL for PostgreSQL connection
     
     // Verify the workflow files use the correct configuration
     const fs = require('fs');
@@ -71,9 +72,9 @@ describe('Server listening behavior', () => {
     expect(ciWorkflow).toMatch(/Run integration test[\s\S]*?NODE_ENV:\s*development/);
     expect(integrationWorkflow).toMatch(/Run integration test[\s\S]*?NODE_ENV:\s*development/);
     
-    // And should have ALLOW_SQLITE_FALLBACK enabled
-    expect(ciWorkflow).toMatch(/Run integration test[\s\S]*?ALLOW_SQLITE_FALLBACK:\s*["']?true["']?/);
-    expect(integrationWorkflow).toMatch(/Run integration test[\s\S]*?ALLOW_SQLITE_FALLBACK:\s*["']?true["']?/);
+    // And should have DATABASE_URL configured for PostgreSQL
+    expect(ciWorkflow).toMatch(/Run integration test[\s\S]*?DATABASE_URL:\s*postgresql:\/\//);
+    expect(integrationWorkflow).toMatch(/Run integration test[\s\S]*?DATABASE_URL:\s*postgresql:\/\//);
   });
 
   test('server should be configured to listen in development mode', () => {
@@ -89,34 +90,36 @@ describe('Server listening behavior', () => {
     // This ensures the pattern remains in place
   });
 
-  test('ALLOW_SQLITE_FALLBACK should be honored in db/index.js', () => {
-    // Verify that db/index.js checks for ALLOW_SQLITE_FALLBACK
+  test('PostgreSQL configuration should be required in db/index.js', () => {
+    // Verify that db/index.js requires DATABASE_URL or SUPABASE_DB_URL
     const fs = require('fs');
     const path = require('path');
     const dbCode = fs.readFileSync(path.join(__dirname, '../db/index.js'), 'utf-8');
     
-    // Should check for both test environment AND ALLOW_SQLITE_FALLBACK
-    expect(dbCode).toMatch(/environment\s*===\s*['"]test['"]\s*\|\|\s*process\.env\.ALLOW_SQLITE_FALLBACK/);
+    // Should validate that DATABASE_URL or SUPABASE_DB_URL is present
+    expect(dbCode).toMatch(/DATABASE_URL.*SUPABASE_DB_URL/);
+    expect(dbCode).toMatch(/PostgreSQL not configured/i);
   });
 
-  test('integration test should auto-run migrations for in-memory database', () => {
-    // Verify that db/index.js auto-runs migrations for :memory: databases
+  test('knexfile should use PostgreSQL for all environments', () => {
+    // Verify that knexfile.js uses PostgreSQL config for all environments
     const fs = require('fs');
     const path = require('path');
-    const dbCode = fs.readFileSync(path.join(__dirname, '../db/index.js'), 'utf-8');
+    const knexfileCode = fs.readFileSync(path.join(__dirname, '../knexfile.js'), 'utf-8');
     
-    // Should check if connection is :memory: and run migrations
-    expect(dbCode).toMatch(/connection\s*===\s*['"]:memory:['"]/);
-    expect(dbCode).toMatch(/db\.migrate\.latest/);
+    // Should define a single PostgreSQL config used for all environments
+    expect(knexfileCode).toMatch(/client:\s*['"]pg['"]/);
+    expect(knexfileCode).toMatch(/development:\s*postgresConfig/);
+    expect(knexfileCode).toMatch(/test:\s*postgresConfig/);
+    expect(knexfileCode).toMatch(/production:\s*postgresConfig/);
   });
 
   test('documentation exists for integration test configuration', () => {
     // This test serves as living documentation
     const configRequirements = {
       'NODE_ENV': 'development (NOT test, so server listens)',
-      'USE_POSTGRES_AUTO_DETECT': 'false (to prevent auto-detecting Postgres)',
-      'ALLOW_SQLITE_FALLBACK': 'true (to allow sqlite in development mode)',
-      'DB_PATH': ':memory: (for in-memory database)',
+      'DATABASE_URL': 'postgresql://... (PostgreSQL connection required)',
+      'SUPABASE_DB_URL': 'postgresql://... (alternative PostgreSQL connection)',
       'SUPABASE_ANON_KEY': 'test-anon-key (required for server diagnostics)',
       'JWT_SECRET': 'test-jwt-secret-key-for-testing-only (for auth)',
     };

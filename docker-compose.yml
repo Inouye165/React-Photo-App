@@ -1,7 +1,26 @@
 version: '3.8'
 
 services:
-  # 1. REQUIRED (Recommended) Service: Redis for BullMQ Queue
+  # 1. REQUIRED Service: PostgreSQL Database
+  db:
+    image: postgres:15-alpine
+    container_name: photo-app-postgres
+    environment:
+      POSTGRES_USER: photoapp
+      POSTGRES_PASSWORD: photoapp_dev
+      POSTGRES_DB: photoapp
+    volumes:
+      - postgres_data:/var/lib/postgresql/data
+    ports:
+      - "5432:5432"
+    restart: unless-stopped
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U photoapp"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+
+  # 2. REQUIRED (Recommended) Service: Redis for BullMQ Queue
   redis:
     image: redis:7.2-alpine
     container_name: photo-app-redis
@@ -12,7 +31,7 @@ services:
     restart: unless-stopped
     command: redis-server --appendonly yes
 
-  # 2. OPTIONAL Service: Qdrant Vector Database
+  # 3. OPTIONAL Service: Qdrant Vector Database
   qdrant:
     image: qdrant/qdrant:latest
     container_name: photo-app-qdrant
@@ -28,7 +47,7 @@ services:
       timeout: 10s
       retries: 3
 
-  # 3. OPTIONAL Service: Local AI Model Placeholder
+  # 4. OPTIONAL Service: Local AI Model Placeholder
   photo-ai:
     image: nginx:alpine 
     container_name: photo-app-local-ai
@@ -37,5 +56,6 @@ services:
     restart: on-failure
     
 volumes:
+  postgres_data:
   redis_data:
   qdrant_data:

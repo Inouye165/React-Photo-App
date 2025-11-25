@@ -1,11 +1,9 @@
 const { spawn } = require('child_process');
-// (already declared above)
 const path = require('path');
 const fs = require('fs');
 require('dotenv').config();
 require('dotenv').config({ path: path.join(__dirname, '../server/.env') });
 const { createClient } = require('@supabase/supabase-js');
-
 
 // --- MOCK SUPABASE AUTH SERVER ---
 const http = require('http');
@@ -43,8 +41,6 @@ async function startMockSupabaseServer() {
 const SERVER_CMD = 'node';
 const SERVER_ARGS = ['server/server.js'];
 const HEALTH_URL = { hostname: 'localhost', port: 3001, path: '/health', method: 'GET' };
-// Add an explicit Origin header so that the server's strict-origin CSRF
-// protection sees a known allowed origin and doesn't reject test requests.
 const INTEGRATION_ORIGIN = 'http://localhost:5173';
 const REGISTER_URL = { hostname: 'localhost', port: 3001, path: '/auth/register', method: 'POST', headers: { 'Content-Type': 'application/json', 'Origin': INTEGRATION_ORIGIN } };
 const LOGIN_URL = { hostname: 'localhost', port: 3001, path: '/auth/login', method: 'POST', headers: { 'Content-Type': 'application/json', 'Origin': INTEGRATION_ORIGIN } };
@@ -91,7 +87,6 @@ function makeRequest(url, payload = null) {
       res.on('end', () => {
         try {
           const parsed = data ? JSON.parse(data) : {};
-          // Include response headers so callers can read Set-Cookie
           resolve({ status: res.statusCode, body: parsed, headers: res.headers });
         } catch (e) { 
           resolve({ status: res.statusCode, body: data, headers: res.headers });
@@ -109,16 +104,6 @@ function makeRequest(url, payload = null) {
 
 async function getCsrfToken() {
   console.log('Fetching CSRF token...');
-  // In Supabase native auth mode, we might not have a CSRF endpoint or it might behave differently.
-  // If the endpoint returns 404 or 401, we might be in a mode where we don't need it for this test script
-  // or we need to authenticate differently.
-  
-  // However, for now, let's try to handle the 401/404 gracefully if possible, 
-  // or just mock it if we are testing other things.
-  
-  // But wait, the error is 401. This implies the CSRF endpoint itself is protected?
-  // Or maybe the server is running in a mode where everything is protected?
-  
   const result = await makeRequest(CSRF_URL);
   
   if (result.status === 404) {
@@ -127,9 +112,6 @@ async function getCsrfToken() {
   }
 
   if (result.status !== 200) {
-    // If we get 401, it might be because we need to be logged in to get a CSRF token?
-    // Or maybe the test environment is misconfigured.
-    // For the purpose of this migration, if we are using Supabase Auth, we might not need this legacy CSRF flow.
     console.warn(`Failed to get CSRF token: ${result.status}. Proceeding without it.`);
     return { csrfToken: null, csrfCookie: null };
   }
@@ -151,15 +133,12 @@ async function registerAndLogin() {
 }
 
 function postPrivilege({ authToken, csrfToken, csrfCookie }) {
-  const payload = { relPath: 'test-file.jpg' }; // Dummy path since Supabase Storage is used
+  const payload = { relPath: 'test-file.jpg' };
   const opts = Object.assign({}, PRIV_URL);
-  // If authToken looks like a cookie string (authToken=...), send it as Cookie header.
   const headersBase = Object.assign({}, PRIV_URL.headers, { 'Content-Length': Buffer.byteLength(JSON.stringify(payload)) });
   
-  // Add CSRF headers
   if (csrfToken) headersBase['x-csrf-token'] = csrfToken;
   
-  // Construct Cookie header
   const cookies = [];
   if (typeof authToken === 'string' && authToken.startsWith('authToken=')) {
     cookies.push(authToken);
@@ -175,15 +154,19 @@ function postPrivilege({ authToken, csrfToken, csrfCookie }) {
   }
   
   if (typeof authToken === 'string' && !authToken.startsWith('authToken=')) {
-    // Fallback for non-browser clients that still use bearer tokens
     opts.headers['Authorization'] = `Bearer ${authToken}`;
   }
   
   return makeRequest(opts, payload);
 }
 
-
 (async function run() {
+  // Set DATABASE_URL to use PostgreSQL (defaults to localhost:5432 for CI)
+  if (!process.env.DATABASE_URL && !process.env.SUPABASE_DB_URL) {
+    process.env.DATABASE_URL = 'postgresql://test:test@localhost:5432/test';
+    console.log('[integration-test] Using default DATABASE_URL:', process.env.DATABASE_URL);
+  }
+
   // Start the mock Supabase Auth server
   const { server: mockSrv, port: mockPort } = await startMockSupabaseServer();
   mockServer = mockSrv;
@@ -191,8 +174,8 @@ function postPrivilege({ authToken, csrfToken, csrfCookie }) {
   process.env.SUPABASE_ANON_KEY = 'test-anon-key';
 
   console.log('Started mock Supabase Auth server on port', mockPort);
-
-  console.log('Starting server...');
+  console.log('Starting server with PostgreSQL...');
+  
   const srv = spawn(SERVER_CMD, SERVER_ARGS, { stdio: ['ignore', 'pipe', 'pipe'] });
 
   srv.stdout.on('data', (d) => process.stdout.write(`[server stdout] ${d}`));
@@ -206,7 +189,6 @@ function postPrivilege({ authToken, csrfToken, csrfCookie }) {
     await waitForHealth(12000, 200);
     console.log('Server healthy. Authenticating...');
 
-    // Register and login to get auth token
     const authData = await registerAndLogin();
     
     console.log('Running authenticated privilege check...');
