@@ -85,6 +85,30 @@ The following environment variables are required for the frontend build process:
 VITE_API_URL=https://api.your-photo-app.com
 ```
 
+## Error Handling & Process Management
+
+### Uncaught Exception Handling
+
+The application implements production-grade error handling following Node.js best practices and big-tech standards (Google, Meta, Netflix):
+
+**Behavior:**
+- **Uncaught Exceptions**: When an uncaught exception occurs, the application is in an undefined state. The server immediately logs the error (with full stack trace) and exits with status code `1`.
+- **Process Orchestration**: The non-zero exit code signals to the container orchestrator (Docker/Kubernetes/Heroku) that the application has failed and needs to be restarted.
+- **Clean State Recovery**: By exiting immediately, we prevent data corruption, memory leaks, and silent failures. The orchestrator restarts the application in a clean state.
+
+**Why We Exit:**
+According to [Node.js official documentation](https://nodejs.org/api/process.html#event-uncaughtexception):
+> "It is not safe to resume normal operation after 'uncaughtException' because the system may be in an undefined state."
+
+**Production Impact:**
+- Container orchestrators rely on exit codes to detect failed pods/containers
+- Automatic restart policies restore service availability
+- Prevents zombie processes that appear healthy but are functionally broken
+- Ensures logs contain the fatal error for post-mortem analysis
+
+**Testing:**
+The process lifecycle behavior is verified with comprehensive tests in `server/tests/process-lifecycle.test.js` using isolated child processes.
+
 ## Security Notes
 
 1. **Never commit sensitive values** to version control

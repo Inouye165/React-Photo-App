@@ -50,12 +50,38 @@ try {
   }
 }
 
-// Global safety: log uncaught exceptions and unhandled rejections instead of letting Node crash
+// Import logger for proper error logging
+const logger = require('./logger');
+
+// CRITICAL: Process lifecycle management for production environments
+// 
+// According to Node.js documentation (https://nodejs.org/api/process.html#event-uncaughtexception):
+// "It is not safe to resume normal operation after 'uncaughtException' because
+// the system may be in an undefined state."
+//
+// Production Strategy:
+// - Log the error with full stack trace for debugging
+// - Exit immediately with code 1 to signal failure to orchestrator
+// - Kubernetes/Docker will restart the pod to restore clean state
+// - This prevents data corruption and silent failures
+//
+// This is standard practice at big-tech companies (Google, Meta, Netflix, etc.)
 process.on('unhandledRejection', (reason, promise) => {
-  console.error('UnhandledRejection at:', promise, 'reason:', reason);
+  logger.error('UnhandledRejection at:', promise, 'reason:', reason);
+  // Note: We don't exit on unhandled rejection by default
+  // The application can often recover from promise rejections
 });
+
 process.on('uncaughtException', (err) => {
-  console.error('UncaughtException:', err);
+  // CRITICAL: Use fatal level to ensure this is always logged
+  logger.fatal('UncaughtException - Application in undefined state, exiting:', err);
+  
+  // Attempt to flush logs before exit (best effort)
+  // Most loggers flush synchronously on fatal, but we don't wait
+  
+  // MANDATORY: Exit with failure code for orchestrator to detect and restart
+  // Without this exit, the process hangs in an undefined state
+  process.exit(1);
 });
 
 const db = require('./db/index');
