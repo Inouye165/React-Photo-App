@@ -1,3 +1,13 @@
+/**
+ * Tests for configurable session cookie settings and authentication security
+ * 
+ * This test suite verifies:
+ * 1. Cookie configuration can be overridden via environment variables for hybrid deployments
+ * 2. Security constraints are enforced (SameSite=None requires Secure=true)
+ * 3. Cookie-based authentication works correctly
+ * 4. CSRF protection and rate limiting are applied
+ */
+
 const request = require('supertest');
 const express = require('express');
 const cookieParser = require('cookie-parser');
@@ -13,8 +23,242 @@ jest.mock('@supabase/supabase-js', () => ({
   })
 }));
 
-const createAuthRouter = require('../routes/auth');
+// Mock allowed origins
+jest.mock('../config/allowedOrigins', () => ({
+  getAllowedOrigins: jest.fn(() => ['http://localhost:5173', 'http://localhost:3000'])
+}));
+
 const { authenticateImageRequest } = require('../middleware/imageAuth');
+
+describe('Cookie Configuration for Hybrid Deployment', () => {
+  let originalEnv;
+
+  beforeAll(() => {
+    // Save original environment
+    originalEnv = { ...process.env };
+  });
+
+  afterAll(() => {
+    // Restore original environment
+    process.env = originalEnv;
+  });
+
+  /**
+   * Helper to extract Set-Cookie header and parse cookie attributes
+   */
+  function parseCookieHeader(setCookieHeader) {
+    if (!setCookieHeader) return null;
+    
+    const parts = setCookieHeader.split(';').map(part => part.trim());
+    const [nameValue] = parts;
+    const [name, value] = nameValue.split('=');
+    
+    const cookie = {
+      name,
+      value,
+      attributes: {}
+    };
+    
+    parts.slice(1).forEach(part => {
+      if (part.includes('=')) {
+        const [key, val] = part.split('=');
+        cookie.attributes[key.toLowerCase()] = val.toLowerCase();
+      } else {
+        cookie.attributes[part.toLowerCase()] = true;
+      }
+    });
+    
+    return cookie;
+  }
+
+  /**
+   * Helper to create fresh app instance with current environment
+   */
+  function createTestApp() {
+    const app = express();
+    app.use(cookieParser());
+    app.use(express.json());
+    
+    // Clear module cache to get fresh router with current env
+    jest.resetModules();
+    const createAuthRouter = require('../routes/auth');
+    
+    // Mount auth routes
+    app.use('/api/auth', createAuthRouter());
+    
+    return app;
+  }
+
+  describe('Default Behavior (no COOKIE_SAME_SITE env var)', () => {
+    beforeEach(() => {
+      mockGetUser.mockReset();
+      delete process.env.COOKIE_SAME_SITE;
+      mockGetUser.mockResolvedValue({
+        data: {
+          user: {
+            id: 'test-user-id',
+            email: 'test@example.com'
+          }
+        },
+        error: null
+      });
+    });
+
+    test('should use "strict" sameSite in production environment', async () => {
+      process.env.NODE_ENV = 'production';
+      const app = createTestApp();
+
+      const response = await request(app)
+        .post('/api/auth/session')
+        .set('Authorization', 'Bearer test-token')
+        .set('Origin', 'http://localhost:5173')
+        .expect(200);
+
+      const setCookie = response.headers['set-cookie'];
+      expect(setCookie).toBeDefined();
+      
+      const cookie = parseCookieHeader(setCookie[0]);
+      expect(cookie.attributes.samesite).toBe('strict');
+      expect(cookie.attributes.secure).toBe(true);
+      expect(cookie.attributes.httponly).toBe(true);
+    });
+
+    test('should use "lax" sameSite in development environment', async () => {
+      process.env.NODE_ENV = 'development';
+      const app = createTestApp();
+
+      const response = await request(app)
+        .post('/api/auth/session')
+        .set('Authorization', 'Bearer test-token')
+        .set('Origin', 'http://localhost:5173')
+        .expect(200);
+
+      const setCookie = response.headers['set-cookie'];
+      expect(setCookie).toBeDefined();
+      
+      const cookie = parseCookieHeader(setCookie[0]);
+      expect(cookie.attributes.samesite).toBe('lax');
+      expect(cookie.attributes.httponly).toBe(true);
+    });
+  });
+
+  describe('Override Behavior (COOKIE_SAME_SITE env var set)', () => {
+    beforeEach(() => {
+      mockGetUser.mockReset();
+      mockGetUser.mockResolvedValue({
+        data: {
+          user: {
+            id: 'test-user-id',
+            email: 'test@example.com'
+          }
+        },
+        error: null
+      });
+    });
+
+    test('should use env var value when COOKIE_SAME_SITE is "lax"', async () => {
+      process.env.NODE_ENV = 'production';
+      process.env.COOKIE_SAME_SITE = 'lax';
+      const app = createTestApp();
+
+      const response = await request(app)
+        .post('/api/auth/session')
+        .set('Authorization', 'Bearer test-token')
+        .set('Origin', 'http://localhost:5173')
+        .expect(200);
+
+      const setCookie = response.headers['set-cookie'];
+      const cookie = parseCookieHeader(setCookie[0]);
+      expect(cookie.attributes.samesite).toBe('lax');
+    });
+
+    test('should use env var value when COOKIE_SAME_SITE is "strict"', async () => {
+      process.env.NODE_ENV = 'development';
+      process.env.COOKIE_SAME_SITE = 'strict';
+      const app = createTestApp();
+
+      const response = await request(app)
+        .post('/api/auth/session')
+        .set('Authorization', 'Bearer test-token')
+        .set('Origin', 'http://localhost:5173')
+        .expect(200);
+
+      const setCookie = response.headers['set-cookie'];
+      const cookie = parseCookieHeader(setCookie[0]);
+      expect(cookie.attributes.samesite).toBe('strict');
+    });
+  });
+
+  describe('CRITICAL SECURITY: SameSite=None MUST have Secure=true', () => {
+    beforeEach(() => {
+      mockGetUser.mockReset();
+      mockGetUser.mockResolvedValue({
+        data: {
+          user: {
+            id: 'test-user-id',
+            email: 'test@example.com'
+          }
+        },
+        error: null
+      });
+    });
+
+    test('should force secure=true when COOKIE_SAME_SITE is "none" (production)', async () => {
+      process.env.NODE_ENV = 'production';
+      process.env.COOKIE_SAME_SITE = 'none';
+      const app = createTestApp();
+
+      const response = await request(app)
+        .post('/api/auth/session')
+        .set('Authorization', 'Bearer test-token')
+        .set('Origin', 'http://localhost:5173')
+        .expect(200);
+
+      const setCookie = response.headers['set-cookie'];
+      const cookie = parseCookieHeader(setCookie[0]);
+      
+      expect(cookie.attributes.samesite).toBe('none');
+      expect(cookie.attributes.secure).toBe(true);
+    });
+
+    test('should force secure=true when COOKIE_SAME_SITE is "none" (development)', async () => {
+      process.env.NODE_ENV = 'development';
+      process.env.COOKIE_SAME_SITE = 'none';
+      const app = createTestApp();
+
+      const response = await request(app)
+        .post('/api/auth/session')
+        .set('Authorization', 'Bearer test-token')
+        .set('Origin', 'http://localhost:5173')
+        .expect(200);
+
+      const setCookie = response.headers['set-cookie'];
+      const cookie = parseCookieHeader(setCookie[0]);
+      
+      // CRITICAL: Even in development, if sameSite is 'none', secure MUST be true
+      expect(cookie.attributes.samesite).toBe('none');
+      expect(cookie.attributes.secure).toBe(true);
+    });
+
+    test('should normalize case-insensitive COOKIE_SAME_SITE values', async () => {
+      process.env.NODE_ENV = 'development';
+      process.env.COOKIE_SAME_SITE = 'None'; // Mixed case
+      const app = createTestApp();
+
+      const response = await request(app)
+        .post('/api/auth/session')
+        .set('Authorization', 'Bearer test-token')
+        .set('Origin', 'http://localhost:5173')
+        .expect(200);
+
+      const setCookie = response.headers['set-cookie'];
+      const cookie = parseCookieHeader(setCookie[0]);
+      
+      expect(cookie.attributes.samesite).toBe('none');
+      expect(cookie.attributes.secure).toBe(true);
+    });
+  });
+});
 
 describe('Cookie-Based Authentication Security', () => {
   let app;
@@ -26,9 +270,16 @@ describe('Cookie-Based Authentication Security', () => {
   };
 
   beforeAll(() => {
+    // Reset environment for these tests
+    delete process.env.COOKIE_SAME_SITE;
+    
     app = express();
     app.use(cookieParser());
     app.use(express.json());
+    
+    // Clear module cache and get fresh router
+    jest.resetModules();
+    const createAuthRouter = require('../routes/auth');
     
     // Mount auth routes (includes rate limiting and CSRF protection internally)
     // See routes/auth.js for authLimiter and verifyOrigin middleware

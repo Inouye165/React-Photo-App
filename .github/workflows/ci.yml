@@ -155,7 +155,7 @@ jobs:
         run: mkdir -p server/working/photos
 
       - name: Run server tests
-        run: npm run test:ci --prefix server --silent
+        run: npm run test:ci --prefix server --silent -- --maxWorkers=1
         env:
           NODE_ENV: test
           CI: true

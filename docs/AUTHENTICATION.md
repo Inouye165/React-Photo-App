@@ -236,6 +236,102 @@ The authentication system adds a `users` table with:
 - Account lockout tracking
 - Timestamps for audit trails
 
+## Hybrid Deployment (Local Frontend + Cloud Backend)
+
+### Overview
+When running a **local frontend** (e.g., `localhost:5173`) that connects to a **cloud-hosted backend** (e.g., `your-app.onrender.com`), browsers treat these as different origins. This requires special cookie configuration to enable cross-origin authentication.
+
+### The Problem
+By default, the authentication system uses `sameSite: 'strict'` in production, which **blocks cookies from being sent in cross-origin requests**. This means:
+- ✅ Same-origin works: `https://your-app.com` → `https://your-app.com/api`
+- ❌ Cross-origin fails: `http://localhost:5173` → `https://your-app.onrender.com/api`
+
+### The Solution: COOKIE_SAME_SITE Environment Variable
+
+Configure the backend to allow cross-origin cookies by setting:
+
+```bash
+# In your cloud backend environment (e.g., Render, Heroku, Azure)
+COOKIE_SAME_SITE=none
+```
+
+### How It Works
+
+The `sameSite` cookie attribute is now **configurable via environment variable**:
+
+| Environment Variable | Behavior |
+|---------------------|----------|
+| `COOKIE_SAME_SITE=none` | Allows cross-origin cookies (required for hybrid deployment) |
+| `COOKIE_SAME_SITE=lax` | Allows some cross-origin GET requests |
+| `COOKIE_SAME_SITE=strict` | Same-origin only (most secure) |
+| *(not set)* | Defaults to `strict` (production) or `lax` (development) |
+
+**Security Guarantee:** When `COOKIE_SAME_SITE=none`, the `secure` flag is **automatically forced to `true`**, even in development. This is required by modern browsers - `SameSite=None` cookies **must** be `Secure`.
+
+### Configuration Examples
+
+#### Local Development (Both Frontend & Backend Local)
+```bash
+# server/.env
+NODE_ENV=development
+# No COOKIE_SAME_SITE needed - defaults to 'lax'
+```
+
+#### Hybrid Deployment (Local Frontend → Cloud Backend)
+```bash
+# Cloud backend environment variables
+NODE_ENV=production
+COOKIE_SAME_SITE=none
+CORS_ORIGIN=http://localhost:5173,http://localhost:3000
+```
+
+#### Full Production (Both Frontend & Backend in Cloud)
+```bash
+# Cloud backend environment variables
+NODE_ENV=production
+# No COOKIE_SAME_SITE needed - defaults to 'strict'
+CORS_ORIGIN=https://your-app.com
+```
+
+### Testing Your Configuration
+
+After setting `COOKIE_SAME_SITE=none`:
+
+1. **Start your cloud backend** with the environment variable
+2. **Run local frontend**: `npm run dev`
+3. **Test authentication**:
+   - Login from local frontend
+   - Check browser DevTools → Application → Cookies
+   - Verify cookie has: `SameSite=None; Secure; HttpOnly`
+4. **Verify API calls work** (photos load, uploads work, etc.)
+
+### Troubleshooting
+
+#### Cookies Not Being Sent
+- ✅ Verify `COOKIE_SAME_SITE=none` is set on backend
+- ✅ Verify backend is HTTPS (required for `SameSite=None`)
+- ✅ Check CORS configuration includes your frontend origin
+- ✅ Ensure `CORS_CREDENTIALS=true` is set
+
+#### "Cookie not Secure" Warning
+- If you see this error, your backend must use HTTPS
+- `SameSite=None` **requires** `Secure` flag
+- Use ngrok or similar for local HTTPS testing if needed
+
+#### Still Using Query Parameters?
+- **Don't!** Query parameter tokens are deprecated for security
+- The cookie-based system is secure and works cross-origin when configured correctly
+- See [SECURITY_REMEDIATION_CWE489.md](../SECURITY_REMEDIATION_CWE489.md) for details
+
+### Security Notes
+
+⚠️ **Important Security Considerations:**
+- `SameSite=None` is **less secure** than `strict` - only use when necessary
+- Always ensure your backend validates the `Origin` header (already implemented)
+- Rate limiting protects against abuse (already implemented)
+- HTTPS is **mandatory** for `SameSite=None` cookies
+- Consider moving to full cloud deployment when ready (both frontend & backend)
+
 ## Support
 
 This authentication system provides enterprise-grade security suitable for production web services. All major security vulnerabilities are addressed, and the system is designed to scale with your application.

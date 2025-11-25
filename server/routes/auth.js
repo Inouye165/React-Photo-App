@@ -112,13 +112,30 @@ function createAuthRouter() {
       // Token is valid - set httpOnly cookie
       // Security configuration:
       // - httpOnly: prevents JavaScript access (XSS protection)
-      // - secure: only sent over HTTPS in production
-      // - sameSite: prevents CSRF attacks
+      // - secure: only sent over HTTPS in production (or forced for SameSite=None)
+      // - sameSite: prevents CSRF attacks (configurable for hybrid deployments)
       // - maxAge: cookie expires after 24 hours
+      
+      // Determine sameSite value: use env var override or secure defaults
+      let sameSiteValue = process.env.COOKIE_SAME_SITE;
+      if (!sameSiteValue) {
+        // Default behavior: strict in production, lax in development
+        sameSiteValue = process.env.NODE_ENV === 'production' ? 'strict' : 'lax';
+      } else {
+        // Normalize to lowercase for consistent comparison
+        sameSiteValue = sameSiteValue.toLowerCase();
+      }
+      
+      // Determine secure flag
+      // CRITICAL: If sameSite is 'none', secure MUST be true (browser requirement)
+      const isSecure = sameSiteValue === 'none' 
+        ? true 
+        : process.env.NODE_ENV === 'production';
+      
       const cookieOptions = {
         httpOnly: true,
-        secure: process.env.NODE_ENV === 'production',
-        sameSite: process.env.NODE_ENV === 'production' ? 'strict' : 'lax',
+        secure: isSecure,
+        sameSite: sameSiteValue,
         maxAge: 24 * 60 * 60 * 1000, // 24 hours
         path: '/'
       };
