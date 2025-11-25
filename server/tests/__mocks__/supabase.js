@@ -126,9 +126,15 @@ const createMockSupabaseClient = () => {
           
           const fileData = mockStorageFiles.get(key);
           
-          // Create mock blob data
+          // Create mock blob data with stream support
           const mockBlob = {
             arrayBuffer: () => Promise.resolve(new ArrayBuffer(fileData.size)),
+            stream: () => {
+              // Return a Web ReadableStream (compatible with Readable.from)
+              const { Readable } = require('stream');
+              // Create a simple stream that emits mock data
+              return Readable.from([Buffer.alloc(fileData.size)]);
+            },
             size: fileData.size,
             type: 'image/jpeg'
           };

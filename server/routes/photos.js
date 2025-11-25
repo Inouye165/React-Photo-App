@@ -26,6 +26,7 @@ async function withDbRetry(operation, { retries = 2, delayMs = 150 } = {}) {
 }
 const express = require('express');
 const path = require('path');
+const { Readable } = require('stream');
 const { convertHeicToJpegBuffer } = require('../media/image');
 const { addAIJob, checkRedisAvailable } = require('../queue/index');
 const OpenAI = require('openai');
@@ -651,8 +652,9 @@ module.exports = function createPhotosRouter({ db }) {
                 return res.status(500).json(payload);
               }
 
-              const arrayBuffer = await downloadData.arrayBuffer();
-              const fileBuffer = Buffer.from(arrayBuffer);
+              // Convert Blob to Stream to avoid loading entire file into memory
+              // Supabase returns a Blob; we create a Readable stream from it
+              const stream = Readable.from(downloadData.stream());
 
               // Infer content type from extension
               const ext = path.extname(currentPath).toLowerCase();
@@ -663,12 +665,13 @@ module.exports = function createPhotosRouter({ db }) {
               else if (ext === '.heic' || ext === '.heif') contentType = 'image/heic';
 
               // Upload to the new path (use upsert to be tolerant)
+              // Supabase upload() accepts Readable streams
               const { data: _uploadData, error: uploadError } = await supabase.storage
                 .from('photos')
-                .upload(newPath, fileBuffer, {
+                .upload(newPath, stream, {
                   contentType,
                   upsert: true,
-                  duplex: false
+                  duplex: 'half'
                 });
 
               if (uploadError) {
@@ -940,11 +943,11 @@ module.exports = function createPhotosRouter({ db }) {
           logger.error('❌ Thumbnail download error:', error, { filename });
           return res.status(404).json({ error: 'Thumbnail not found in storage' });
         }
-        const buffer = await data.arrayBuffer();
-        const fileBuffer = Buffer.from(buffer);
+        // Stream the response instead of buffering the entire file
+        const stream = Readable.from(data.stream());
         res.set('Content-Type', 'image/jpeg');
         res.set('Cache-Control', `public, max-age=${IMAGE_CACHE_MAX_AGE}`);
-        res.send(fileBuffer);
+        stream.pipe(res);
         return;
       }
 
@@ -970,8 +973,7 @@ module.exports = function createPhotosRouter({ db }) {
         return res.status(404).json({ error: 'File not found in storage' });
       }
 
-      const buffer = await data.arrayBuffer();
-      const fileBuffer = Buffer.from(buffer);
+      // Determine file type to decide streaming vs buffering strategy
       const ext = path.extname(filename).toLowerCase();
       let contentType = 'image/jpeg';
       if (ext === '.png') contentType = 'image/png';
@@ -982,8 +984,12 @@ module.exports = function createPhotosRouter({ db }) {
       if (etag) res.set('ETag', etag);
       res.set('Cache-Control', `public, max-age=${IMAGE_CACHE_MAX_AGE}`);
 
+      // HEIC requires buffering for conversion, but all other formats can stream
       if (ext === '.heic' || ext === '.heif') {
         try {
+          // HEIC conversion requires the full buffer - acceptable trade-off for this format
+          const buffer = await data.arrayBuffer();
+          const fileBuffer = Buffer.from(buffer);
           const jpegBuffer = await convertHeicToJpegBuffer(fileBuffer);
           res.set('Content-Type', 'image/jpeg');
           res.send(jpegBuffer);
@@ -992,8 +998,10 @@ module.exports = function createPhotosRouter({ db }) {
           res.status(500).json({ error: 'Failed to convert HEIC image' });
         }
       } else {
+        // Stream the response to avoid memory exhaustion on large files
+        const stream = Readable.from(data.stream());
         res.set('Content-Type', contentType);
-        res.send(fileBuffer);
+        stream.pipe(res);
       }
 
     } catch (err) {

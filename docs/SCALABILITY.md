@@ -7,7 +7,9 @@ This document outlines the architectural decisions and optimizations implemented
 **Solution:**
 - **Uploads:** Implemented `multer.diskStorage` with streaming. Incoming files are piped to temporary disk storage, keeping RAM usage constant regardless of file size.
 - **AI Processing:** Refactored the OpenAI vision pipeline to stream files from storage, resize them on-the-fly using `sharp` (limiting to 2048px), and buffer only the optimized image.
-**Result:** The application is now resilient to OOM crashes, even when handling massive HEIC/RAW files under load.
+- **Error Recovery:** Storage move fallbacks now utilize strict stream piping to prevent memory spikes even during exception handling. When a storage move operation fails, the system downloads and re-uploads the file using Node.js Readable streams instead of loading the entire file into memory as a Buffer/ArrayBuffer. This ensures resilience during error scenarios without risking OOM conditions.
+- **Display Endpoints:** Photo and thumbnail display endpoints now stream responses directly to clients (except for HEIC format which requires buffering for conversion), eliminating memory accumulation on the server during concurrent downloads.
+**Result:** The application is now resilient to OOM crashes, even when handling massive HEIC/RAW files under load and during storage error recovery operations.
 
 ## 2. Concurrency Control (Atomic Operations)
 **Problem:** File uploads previously used a "Check-then-Act" pattern (`list` files -> `upload`), creating race conditions where simultaneous uploads could overwrite data or crash.
