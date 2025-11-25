@@ -94,7 +94,8 @@ describe('Authentication Security Tests', () => {
       const mockUser = {
         id: 'user-123',
         email: 'test@example.com',
-        user_metadata: { username: 'testuser', role: 'user' }
+        user_metadata: { username: 'testuser' },
+        app_metadata: { role: 'user' }
       };
       
       mockGetUser.mockResolvedValue({ data: { user: mockUser }, error: null });
@@ -193,7 +194,8 @@ describe('Authentication Security Tests', () => {
       const mockUser = {
         id: 'user-123',
         email: 'test@example.com',
-        user_metadata: { username: 'testuser', role: 'user' }
+        user_metadata: { username: 'testuser' },
+        app_metadata: { role: 'user' }
       };
       
       mockGetUser.mockResolvedValue({ data: { user: mockUser }, error: null });
@@ -297,7 +299,9 @@ describe('Authentication Security Tests', () => {
         id: 'user-456',
         email: 'admin@example.com',
         user_metadata: {
-          username: 'adminuser',
+          username: 'adminuser'
+        },
+        app_metadata: {
           role: 'admin'
         }
       };

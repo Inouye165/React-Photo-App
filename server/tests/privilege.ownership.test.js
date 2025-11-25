@@ -33,7 +33,8 @@ beforeEach(() => {
           user: { 
             id: ownerId,
             email: 'owner@example.com',
-            user_metadata: { username: 'owner', role: 'user' }
+            user_metadata: { username: 'owner' },
+            app_metadata: { role: 'user' }
           } 
         }, 
         error: null 
@@ -44,7 +45,8 @@ beforeEach(() => {
           user: { 
             id: nonOwnerId,
             email: 'nonowner@example.com',
-            user_metadata: { username: 'nonowner', role: 'user' }
+            user_metadata: { username: 'nonowner' },
+            app_metadata: { role: 'user' }
           } 
         }, 
         error: null 
@@ -72,7 +74,7 @@ beforeEach(() => {
       id: user.id,
       email: user.email,
       username: user.user_metadata?.username || user.email.split('@')[0],
-      role: user.user_metadata?.role || 'user'
+      role: user.app_metadata?.role || 'user'
     };
 
     next();
