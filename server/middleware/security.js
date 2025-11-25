@@ -116,36 +116,6 @@ function configureSecurity(app) {
  * Security middleware to validate requests
  */
 function validateRequest(req, res, next) {
-  // Basic input validation and sanitization
-  
-  // Check for suspicious patterns in URL
-  const suspiciousPatterns = [
-    /\.\.\//g, // Directory traversal
-    /<script/gi, // XSS attempts
-    /%3Cscript/gi, // URL-encoded XSS attempts
-    /union.*select/gi, // SQL injection attempts
-    /exec\(/gi, // Code execution attempts
-  ];
-
-  const fullUrl = req.originalUrl || req.url;
-  // Also check the decoded URL
-  let decodedUrl = '';
-  try {
-    decodedUrl = decodeURIComponent(fullUrl);
-  } catch {
-    // If decoding fails, stick with original URL
-    decodedUrl = fullUrl;
-  }
-
-  for (const pattern of suspiciousPatterns) {
-    if (pattern.test(fullUrl) || pattern.test(decodedUrl)) {
-  logger.warn(`Suspicious request detected from ${req.ip}: ${fullUrl}`);
-      return res.status(400).json({
-        success: false,
-        error: 'Invalid request'
-      });
-    }
-  }
 
   // Validate content type for POST/PUT requests
   if (['POST', 'PUT', 'PATCH'].includes(req.method)) {
