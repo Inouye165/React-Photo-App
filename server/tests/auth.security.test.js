@@ -18,7 +18,17 @@ jest.mock('@supabase/supabase-js', () => ({
 }));
 
 const createAuthRouter = require('../routes/auth');
+const createDebugRouter = require('../routes/debug');
 const { authenticateToken } = require('../middleware/auth');
+
+// Mock database for debug routes (Knex-style)
+const mockDb = jest.fn(() => ({
+  where: jest.fn().mockReturnThis(),
+  whereRaw: jest.fn().mockReturnThis(),
+  select: jest.fn().mockResolvedValue([{ id: 1, state: 'inprogress' }]),
+  first: jest.fn().mockResolvedValue(null),
+  update: jest.fn().mockResolvedValue(0)
+}));
 
 describe('Authentication Security Tests', () => {
   let app;
@@ -31,6 +41,9 @@ describe('Authentication Security Tests', () => {
     // Mount auth routes
     app.use('/api/auth', createAuthRouter());
     
+    // Mount debug routes WITH authentication (this is the secure way)
+    app.use(authenticateToken, createDebugRouter({ db: mockDb }));
+    
     // Test endpoint that requires authentication
     app.get('/protected', authenticateToken, (req, res) => {
       res.json({ success: true, user: req.user });
@@ -42,6 +55,60 @@ describe('Authentication Security Tests', () => {
   });
 
   describe('CWE-489: Active Debug Code Remediation', () => {
+    test('CRITICAL: Debug routes should reject unauthenticated requests', async () => {
+      // Attempt to access debug endpoint without authentication
+      const response = await request(app)
+        .get('/debug/inprogress')
+        .expect(401);
+
+      expect(response.body.success).toBe(false);
+      expect(response.body.error).toBe('Access token required');
+      expect(mockGetUser).not.toHaveBeenCalled();
+    });
+
+    test('CRITICAL: Debug routes should reject requests even when ALLOW_DEV_DEBUG is true', async () => {
+      // Store original value
+      const originalAllowDevDebug = process.env.ALLOW_DEV_DEBUG;
+      
+      try {
+        // Enable ALLOW_DEV_DEBUG (simulating accidental configuration)
+        process.env.ALLOW_DEV_DEBUG = 'true';
+        
+        // Attempt to access debug endpoint without authentication
+        const response = await request(app)
+          .get('/debug/inprogress')
+          .expect(401);
+
+        expect(response.body.success).toBe(false);
+        expect(response.body.error).toBe('Access token required');
+        
+        // Verify Supabase was NOT called (request rejected before token validation)
+        expect(mockGetUser).not.toHaveBeenCalled();
+      } finally {
+        // Restore original value
+        process.env.ALLOW_DEV_DEBUG = originalAllowDevDebug;
+      }
+    });
+
+    test('CRITICAL: Debug routes should allow access with valid authentication', async () => {
+      const mockUser = {
+        id: 'user-123',
+        email: 'test@example.com',
+        user_metadata: { username: 'testuser', role: 'user' }
+      };
+      
+      mockGetUser.mockResolvedValue({ data: { user: mockUser }, error: null });
+
+      const response = await request(app)
+        .get('/debug/inprogress')
+        .set('Authorization', 'Bearer valid-token')
+        .expect(200);
+
+      expect(mockGetUser).toHaveBeenCalledWith('valid-token');
+      // Verify response was successful (authentication worked)
+      expect(response.status).toBe(200);
+    });
+
     test('CRITICAL: should reject mock-token even when MOCK_AUTH is set', async () => {
       // Store original value
       const originalMockAuth = process.env.MOCK_AUTH;

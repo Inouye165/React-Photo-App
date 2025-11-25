@@ -200,16 +200,8 @@ app.set('trust proxy', 1);
   app.use(authenticateToken, createUploadsRouter({ db }));
   app.use(authenticateToken, createPrivilegeRouter());
 
-  // Mount debug routes. Allow unauthenticated access when explicitly enabled via
-  // ALLOW_DEV_DEBUG=true in non-production environments. This avoids accidentally
-  // exposing debug endpoints in environments where NODE_ENV might be mis-set.
-  const allowDevDebug = process.env.ALLOW_DEV_DEBUG === 'true' || (process.env.NODE_ENV !== 'production' && process.env.ALLOW_DEV_DEBUG !== 'false');
-  if (allowDevDebug) {
-    console.log('[server] Dev debug endpoints enabled (ALLOW_DEV_DEBUG=true)');
-    app.use(createDebugRouter({ db }));
-  } else {
-    app.use(authenticateToken, createDebugRouter({ db }));
-  }
+  // Mount debug routes with authentication required in ALL environments
+  app.use(authenticateToken, createDebugRouter({ db }));
 
   // Add security error handling middleware
   app.use(securityErrorHandler);
