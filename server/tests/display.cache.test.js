@@ -63,7 +63,8 @@ describe('GET /display/inprogress/:filename', () => {
         user: { 
           id: 1, 
           email: 'test@example.com',
-          user_metadata: { username: 'cache_test_user', role: 'user' }
+          user_metadata: { username: 'cache_test_user' },
+          app_metadata: { role: 'user' }
         } 
       }, 
       error: null 

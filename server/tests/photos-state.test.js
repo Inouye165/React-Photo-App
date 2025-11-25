@@ -35,7 +35,8 @@ beforeEach(() => {
       user: { 
         id: 1, 
         email: 'test@example.com',
-        user_metadata: { username: 'testuser', role: 'user' }
+        user_metadata: { username: 'testuser' },
+        app_metadata: { role: 'user' }
       } 
     }, 
     error: null 

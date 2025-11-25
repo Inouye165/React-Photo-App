@@ -36,7 +36,9 @@ async function authenticateToken(req, res, next) {
       email: user.email,
       // Use metadata for username/role if available, otherwise fallback
       username: user.user_metadata?.username || user.email.split('@')[0],
-      role: user.user_metadata?.role || 'user'
+      // SECURITY: Use app_metadata for role (server-controlled, not client-writable)
+      // app_metadata can only be modified via Service Role Key
+      role: user.app_metadata?.role || 'user'
     };
 
     next();

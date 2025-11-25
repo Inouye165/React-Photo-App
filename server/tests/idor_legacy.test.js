@@ -29,7 +29,8 @@ beforeEach(() => {
           user: { 
             id: 999, // Victim ID
             email: 'victim@example.com',
-            user_metadata: { username: 'victim', role: 'user' }
+            user_metadata: { username: 'victim' },
+            app_metadata: { role: 'user' }
           } 
         }, 
         error: null 
@@ -40,7 +41,8 @@ beforeEach(() => {
           user: { 
             id: 666, // Attacker ID
             email: 'attacker@example.com',
-            user_metadata: { username: 'attacker', role: 'user' }
+            user_metadata: { username: 'attacker' },
+            app_metadata: { role: 'user' }
           } 
         }, 
         error: null 

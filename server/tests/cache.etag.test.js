@@ -63,7 +63,8 @@ describe('ETag/304 cache', () => {
         user: { 
           id: 1, 
           email: 'test@example.com',
-          user_metadata: { username: 'etag_test_user', role: 'user' }
+          user_metadata: { username: 'etag_test_user' },
+          app_metadata: { role: 'user' }
         } 
       }, 
       error: null 
