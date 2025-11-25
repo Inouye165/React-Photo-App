@@ -9,6 +9,93 @@ const fsPromises = require('fs').promises;
 const supabase = require('../lib/supabaseClient');
 const { validateSafePath } = require('../utils/pathValidator');
 
+// ============================================================================
+// CONCURRENCY LIMITING FOR IMAGE PROCESSING (DoS Protection)
+// ============================================================================
+// We use a custom Semaphore class to prevent resource exhaustion from 
+// concurrent heavy image processing operations (HEIC conversion, thumbnail 
+// generation). This protects against denial-of-service attacks where an 
+// attacker floods the upload endpoint with complex image files.
+// ============================================================================
+
+/**
+ * Simple Semaphore/Limiter class for controlling concurrent async operations.
+ * Provides p-limit compatible API without ESM import issues.
+ */
+class ConcurrencyLimiter {
+  constructor(maxConcurrency) {
+    this.maxConcurrency = maxConcurrency;
+    this.currentCount = 0;
+    this.queue = [];
+  }
+
+  /**
+   * Execute a function with concurrency limiting.
+   * Returns a function that wraps the provided async function.
+   * @param {Function} fn - Async function to execute
+   * @returns {Promise} - Promise resolving to fn's result
+   */
+  limit(fn) {
+    return new Promise((resolve, reject) => {
+      const execute = async () => {
+        this.currentCount++;
+        try {
+          const result = await fn();
+          resolve(result);
+        } catch (error) {
+          reject(error);
+        } finally {
+          this.currentCount--;
+          this.processQueue();
+        }
+      };
+
+      if (this.currentCount < this.maxConcurrency) {
+        execute();
+      } else {
+        this.queue.push(execute);
+      }
+    });
+  }
+
+  processQueue() {
+    if (this.queue.length > 0 && this.currentCount < this.maxConcurrency) {
+      const next = this.queue.shift();
+      next();
+    }
+  }
+
+  // Return current queue stats (useful for monitoring/testing)
+  getStats() {
+    return {
+      active: this.currentCount,
+      pending: this.queue.length,
+      maxConcurrency: this.maxConcurrency
+    };
+  }
+}
+
+// Configure concurrency limit based on CPU cores (min 1, max 2)
+// We keep this low to prevent resource exhaustion
+const cpuCount = os.cpus().length;
+const maxConcurrency = Math.min(Math.max(1, Math.floor(cpuCount / 2)), 2);
+const imageProcessingLimiter = new ConcurrencyLimiter(maxConcurrency);
+
+/**
+ * Get the concurrency limiter instance.
+ * Returns a function compatible with p-limit API.
+ * @returns {Function} The limiter function
+ */
+function getImageProcessingLimit() {
+  return (fn) => imageProcessingLimiter.limit(fn);
+}
+
+// Configure sharp for constrained resource usage
+// Limit libvips thread pool to prevent CPU exhaustion per request
+sharp.concurrency(1);
+// Disable sharp cache to reduce memory pressure (or set small limit)
+sharp.cache({ memory: 50, files: 10, items: 100 });
+
 async function hashFile(input) {
   if (Buffer.isBuffer(input)) {
     return nodeCrypto.createHash('sha256').update(input).digest('hex');
@@ -45,60 +132,69 @@ async function generateThumbnail(input, hash) {
     // thumbnail existence check failed (logging removed)
   }
 
-  try {
-    // Detect file type from buffer/file
-    let sanitizedInput = input;
-    if (typeof input === 'string') {
-      const safeFilename = path.basename(input);
-      const safeDir = os.tmpdir();
-      sanitizedInput = path.join(safeDir, safeFilename);
-    }
+  // Wrap heavy image processing in concurrency limiter to prevent DoS
+  const limit = getImageProcessingLimit();
+  
+  return limit(async () => {
+    try {
+      // Detect file type from buffer/file
+      let sanitizedInput = input;
+      if (typeof input === 'string') {
+        const safeFilename = path.basename(input);
+        const safeDir = os.tmpdir();
+        sanitizedInput = path.join(safeDir, safeFilename);
+      }
 
-    const metadata = await sharp(sanitizedInput).metadata();
-    const format = metadata.format;
-    
-    let thumbnailBuffer;
-    if (format === 'heif') {
-      // Convert HEIC/HEIF to JPEG buffer first
-      try {
-        const jpegBuffer = await convertHeicToJpegBuffer(sanitizedInput, 70);
-        thumbnailBuffer = await sharp(jpegBuffer)
+      const metadata = await sharp(sanitizedInput).metadata();
+      const format = metadata.format;
+      
+      let thumbnailBuffer;
+      if (format === 'heif') {
+        // Convert HEIC/HEIF to JPEG buffer first
+        try {
+          const jpegBuffer = await convertHeicToJpegBufferInternal(sanitizedInput, 70);
+          thumbnailBuffer = await sharp(jpegBuffer)
+            .resize(90, 90, { fit: 'inside' })
+            .jpeg({ quality: 70 })
+            .toBuffer();
+        } catch {
+          // Sharp thumbnail generation failed (logging removed)
+          return null;
+        }
+      } else {
+        thumbnailBuffer = await sharp(sanitizedInput)
           .resize(90, 90, { fit: 'inside' })
           .jpeg({ quality: 70 })
           .toBuffer();
-      } catch {
-        // Sharp thumbnail generation failed (logging removed)
+      }
+
+      // Upload thumbnail to Supabase Storage
+      const { data: _data, error } = await supabase.storage
+        .from('photos')
+        .upload(thumbnailPath, thumbnailBuffer, {
+          contentType: 'image/jpeg',
+          duplex: false
+        });
+
+      if (error) {
+          // Failed to upload thumbnail to Supabase (logging removed)
         return null;
       }
-    } else {
-      thumbnailBuffer = await sharp(sanitizedInput)
-        .resize(90, 90, { fit: 'inside' })
-        .jpeg({ quality: 70 })
-        .toBuffer();
-    }
 
-    // Upload thumbnail to Supabase Storage
-    const { data: _data, error } = await supabase.storage
-      .from('photos')
-      .upload(thumbnailPath, thumbnailBuffer, {
-        contentType: 'image/jpeg',
-        duplex: false
-      });
-
-    if (error) {
-        // Failed to upload thumbnail to Supabase (logging removed)
+      return thumbnailPath;
+    } catch {
+      // Thumbnail generation failed (logging removed)
       return null;
     }
-
-    return thumbnailPath;
-  } catch {
-    // Thumbnail generation failed (logging removed)
-    return null;
-  }
+  }); // End of limit() wrapper
 }
 
 
-async function convertHeicToJpegBuffer(input, quality = 90) {
+/**
+ * Internal HEIC conversion function - no concurrency limiting.
+ * Used internally by generateThumbnail (which already has its own limiter).
+ */
+async function convertHeicToJpegBufferInternal(input, quality = 90) {
   // Accept either a Buffer or a file path string. If a path is provided, sanitize and read it into a Buffer.
   let inputBuffer = input;
   if (typeof input === 'string') {
@@ -188,6 +284,15 @@ async function convertHeicToJpegBuffer(input, quality = 90) {
       throw new Error(`HEIC conversion failed. Sharp error: ${err.message}, Fallback error: ${fallbackErr.message}`);
     }
   }
+}
+
+/**
+ * Public HEIC conversion function with concurrency limiting.
+ * Wraps the internal function with the limiter to prevent DoS attacks.
+ */
+async function convertHeicToJpegBuffer(input, quality = 90) {
+  const limit = getImageProcessingLimit();
+  return limit(() => convertHeicToJpegBufferInternal(input, quality));
 }
 
 
@@ -290,4 +395,18 @@ async function ingestPhoto(db, storagePath, filename, state, input, userId) {
   }
 }
 
-module.exports = { generateThumbnail, ensureAllThumbnails, ingestPhoto, convertHeicToJpegBuffer };
+module.exports = { 
+  generateThumbnail, 
+  ensureAllThumbnails, 
+  ingestPhoto, 
+  convertHeicToJpegBuffer,
+  // Export for testing concurrency behavior
+  getImageProcessingLimit,
+  // Export the limiter class and instance for testing
+  ConcurrencyLimiter,
+  imageProcessingLimiter,
+  // Export internal function for unit tests that need to bypass concurrency limiting
+  _internal: {
+    convertHeicToJpegBufferInternal
+  }
+};
