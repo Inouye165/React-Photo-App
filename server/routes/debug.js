@@ -20,6 +20,7 @@ module.exports = function createDebugRouter({ db }) {
   });
 
   // Debug endpoint to list all inprogress files in the database
+  // Authentication required: This endpoint requires a valid JWT token in ALL environments
   router.get('/debug/inprogress', async (req, res) => {
     try {
       const rows = await db('photos').where({ state: 'inprogress' });
@@ -31,7 +32,7 @@ module.exports = function createDebugRouter({ db }) {
   });
 
   // Dev endpoint: re-run GPS extraction on a DB row and return coordinates
-  // Enabled only when debug routes are mounted (server checks ALLOW_DEV_DEBUG)
+  // Authentication required: This endpoint requires a valid JWT token in ALL environments
   router.get('/dev/reextract-gps', async (req, res) => {
     try {
       const id = Number(req.query.id);
