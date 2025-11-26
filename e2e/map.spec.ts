@@ -1,28 +1,24 @@
 import { test, expect } from '@playwright/test';
 
 test.describe('Map Component', () => {
-  test('should render Google Maps and not the OpenStreetMap fallback', async ({ page }) => {
-    // Debug console
-    page.on('console', msg => console.log(`BROWSER LOG: ${msg.text()}`));
-    page.on('pageerror', err => console.log(`BROWSER ERROR: ${err}`));
-    page.on('requestfailed', req => console.log(`REQUEST FAILED: ${req.url()} - ${req.failure()?.errorText}`));
-
-    // 1. Mock CSRF token
-    await page.route('**/auth/csrf', async route => {
-      console.log('Mocking CSRF');
-      await route.fulfill({ json: { csrfToken: 'mock-token' } });
-    });
-
-
-    // 2. Mock Auth Verification (Auto-login)
-    await page.route('**/auth/verify', async route => {
-      await route.fulfill({ 
-        json: { 
-          success: true, 
-          user: { id: 1, username: 'test-user', role: 'admin' } 
-        } 
-      });
-    });
+  test('should render Google Maps and not the OpenStreetMap fallback', async ({ page, context }) => {
+    // E2E login: make request to get the auth cookie
+    const loginResponse = await context.request.post('http://localhost:3001/api/test/e2e-login');
+    expect(loginResponse.ok()).toBeTruthy();
+    
+    // Extract cookies and add them for localhost
+    const cookies = await context.cookies('http://localhost:3001');
+    for (const cookie of cookies) {
+      await context.addCookies([{
+        name: cookie.name,
+        value: cookie.value,
+        domain: 'localhost',
+        path: '/',
+        httpOnly: cookie.httpOnly,
+        secure: cookie.secure,
+        sameSite: cookie.sameSite
+      }]);
+    }
 
     // 3. Mock Photos List
     const mockPhoto = {
@@ -41,14 +37,55 @@ test.describe('Map Component', () => {
       }
     };
 
-    await page.route('**/photos*', async route => {
+    // Single unified route handler for all /photos requests
+    await page.route('**/photos**', async route => {
       const url = route.request().url();
-      // Avoid intercepting specific sub-resources if they are handled by other routes
-      if (url.includes('/dependencies') || url.includes('/models') || url.includes('/test-photo-1')) {
-        return route.fallback();
+      
+      // Handle thumbnail-url endpoint
+      if (url.includes('/thumbnail-url')) {
+        await route.fulfill({
+          json: {
+            success: true,
+            url: 'https://via.placeholder.com/150'
+          }
+        });
+        return;
       }
       
-      console.log('Mocking Photos List for:', url);
+      // Handle dependencies
+      if (url.includes('/dependencies')) {
+        await route.fulfill({ 
+          json: { 
+            success: true, 
+            dependencies: { aiQueue: true } 
+          } 
+        });
+        return;
+      }
+      
+      // Handle models
+      if (url.includes('/models')) {
+        await route.fulfill({ 
+          json: { 
+            success: true, 
+            models: ['gpt-4-vision-preview'] 
+          } 
+        });
+        return;
+      }
+      
+      // Handle single photo detail (test-photo-1 without thumbnail-url)
+      if (url.includes('/test-photo-1') && !url.includes('?')) {
+        await route.fulfill({ 
+          json: { 
+            success: true, 
+            photo: mockPhoto 
+          } 
+        });
+        return;
+      }
+      
+      // Default: photos list
       await route.fulfill({ 
         json: { 
           success: true, 
@@ -57,27 +94,7 @@ test.describe('Map Component', () => {
       });
     });
 
-    // 4. Mock Single Photo Detail (if fetched separately)
-    await page.route('**/photos/test-photo-1*', async route => {
-      await route.fulfill({ 
-        json: { 
-          success: true, 
-          photo: mockPhoto 
-        } 
-      });
-    });
-
-    // 5. Mock Dependencies
-    await page.route('**/photos/dependencies', async route => {
-      await route.fulfill({ 
-        json: { 
-          success: true, 
-          dependencies: { aiQueue: true } 
-        } 
-      });
-    });
-
-    // 6. Mock Privilege
+    // 5. Mock Privilege
     await page.route('**/privilege', async route => {
       await route.fulfill({ 
         json: { 
@@ -87,22 +104,31 @@ test.describe('Map Component', () => {
       });
     });
 
-    // 7. Mock Models
-    await page.route('**/photos/models', async route => {
-      await route.fulfill({ 
-        json: { 
-          success: true, 
-          models: ['gpt-4-vision-preview'] 
-        } 
+    // 6. Mock e2e-verify endpoint (ensure auth works even under load)
+    await page.route('**/api/test/e2e-verify', async route => {
+      await route.fulfill({
+        json: {
+          success: true,
+          user: {
+            id: 'e2e-test-user',
+            username: 'e2e-test',
+            role: 'admin',
+            email: 'e2e@example.com'
+          }
+        }
       });
     });
 
-    // Navigate to app
+
+    // Navigate to app (session cookie is set)
     await page.goto('http://localhost:5173/');
+    
+    // Wait for auth check and page to stabilize
+    await page.waitForTimeout(2000);
 
     // Wait for photo to appear (bypassing login screen due to mock)
     const photo = page.locator('img[alt="test-photo.jpg"]').first();
-    await photo.waitFor({ state: 'visible', timeout: 10000 });
+    await photo.waitFor({ state: 'visible', timeout: 15000 });
     await photo.click();
 
     // Wait for detail panel

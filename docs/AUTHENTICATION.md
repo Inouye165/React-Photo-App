@@ -9,7 +9,9 @@ This photo application now includes a comprehensive, production-ready authentica
 ### 🔐 JWT-Based Authentication
 - Stateless JWT tokens for scalable authentication
 - Configurable token expiration (default: 24 hours)
-- Secure token delivery via httpOnly `authToken` cookies (Authorization headers and query parameters are rejected across all endpoints)
+- **Primary**: Secure token delivery via httpOnly `authToken` cookies (set by `/api/auth/session`)
+- **Fallback**: Authorization Bearer header supported for API clients and testing
+- **SECURITY**: Query parameter tokens are strictly rejected to prevent token leakage
 
 ### 🛡️ Password Security
 - Strong password requirements (min 8 chars, uppercase, lowercase, numbers, special chars)
@@ -136,7 +138,7 @@ CORS_CREDENTIALS=true
 - **Input Validation**: Comprehensive validation and sanitization
 - **CORS Protection**: Configured for specific origins only
 - **Security Headers**: Helmet.js provides comprehensive protection
-- **Cookie-Only Auth**: Every API route, including image display endpoints, reads JWTs exclusively from the secure httpOnly cookie and rejects Authorization headers or query tokens
+- **Cookie-First Auth**: All API routes read JWTs from httpOnly cookies (primary) with Authorization header fallback for API clients. Query parameter tokens are strictly rejected to prevent token leakage.
 
 ### Data Protection
 - **Password Hashing**: Bcrypt with high salt rounds

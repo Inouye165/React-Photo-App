@@ -19,11 +19,11 @@ export default function PhotoTable({
   // For thumbnails, use signed URLs if getSignedUrl is provided
 
   if (loading) {
-    return <div className="p-8 text-center text-gray-500">Loading photos...</div>;
+    return <div className="p-8 text-center text-gray-600">Loading photos...</div>;
   }
 
   if (!Array.isArray(photos) || photos.length === 0) {
-    return <div className="p-8 text-center text-gray-500">No photos found in backend.</div>;
+    return <div className="p-8 text-center text-gray-600">No photos found in backend.</div>;
   }
 
   return (

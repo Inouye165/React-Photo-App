@@ -6,6 +6,9 @@
  * 2. Security constraints are enforced (SameSite=None requires Secure=true)
  * 3. Cookie-based authentication works correctly
  * 4. CSRF protection and rate limiting are applied
+ * 
+ * Note: Test Express apps intentionally omit CSRF middleware for isolated unit testing.
+ * codeql[js/missing-token-validation] - Test file: CSRF intentionally omitted for unit testing
  */
 
 const request = require('supertest');
@@ -598,6 +601,233 @@ describe('Cookie-Based Authentication Security', () => {
       // Check for rate limit headers
       expect(response.headers['ratelimit-limit']).toBeDefined();
       expect(response.headers['ratelimit-remaining']).toBeDefined();
+    });
+  });
+});
+
+/**
+ * Tests for authenticateToken middleware - httpOnly cookie authentication
+ * 
+ * This test suite verifies that the main authenticateToken middleware:
+ * 1. Successfully extracts and verifies tokens from req.cookies (primary)
+ * 2. Falls back to Authorization header when cookie is not present
+ * 3. Fails cleanly when neither cookie nor header is provided
+ * 4. Rejects query parameter tokens for security
+ */
+describe('authenticateToken Middleware - Cookie Authentication', () => {
+  let app;
+  const validToken = 'valid-supabase-token';
+  const mockUser = {
+    id: 'user-123',
+    email: 'test@example.com',
+    user_metadata: { username: 'testuser' },
+    app_metadata: { role: 'user' }
+  };
+
+  beforeAll(() => {
+    app = express();
+    app.use(cookieParser());
+    app.use(express.json());
+    
+    // Clear module cache and get fresh middleware
+    jest.resetModules();
+    const { authenticateToken } = require('../middleware/auth');
+    
+    // Protected test endpoint using authenticateToken middleware
+    app.get('/protected', authenticateToken, (req, res) => {
+      res.json({ success: true, user: req.user });
+    });
+    
+    app.post('/protected-post', authenticateToken, (req, res) => {
+      res.json({ success: true, user: req.user, data: req.body });
+    });
+  });
+
+  beforeEach(() => {
+    mockGetUser.mockReset();
+  });
+
+  describe('Cookie-based Authentication (Primary Method)', () => {
+    test('should authenticate successfully using httpOnly cookie', async () => {
+      mockGetUser.mockResolvedValue({ data: { user: mockUser }, error: null });
+
+      const response = await request(app)
+        .get('/protected')
+        .set('Cookie', `authToken=${validToken}`)
+        .expect(200);
+
+      expect(response.body.success).toBe(true);
+      expect(response.body.user).toBeDefined();
+      expect(response.body.user.id).toBe(mockUser.id);
+      expect(response.body.user.email).toBe(mockUser.email);
+      
+      // Verify Supabase was called with the cookie token
+      expect(mockGetUser).toHaveBeenCalledWith(validToken);
+    });
+
+    test('should map user metadata correctly from cookie auth', async () => {
+      mockGetUser.mockResolvedValue({ data: { user: mockUser }, error: null });
+
+      const response = await request(app)
+        .get('/protected')
+        .set('Cookie', `authToken=${validToken}`)
+        .expect(200);
+
+      expect(response.body.user.username).toBeDefined();
+      expect(response.body.user.role).toBe('user');
+    });
+
+    test('should prioritize cookie over Authorization header when both present', async () => {
+      const cookieToken = 'cookie-token';
+      const headerToken = 'header-token';
+      const cookieUser = { ...mockUser, id: 'cookie-user' };
+      
+      // Setup mock to return different users for different tokens
+      mockGetUser.mockImplementation((token) => {
+        if (token === cookieToken) {
+          return { data: { user: cookieUser }, error: null };
+        }
+        return { data: { user: mockUser }, error: null };
+      });
+
+      const response = await request(app)
+        .get('/protected')
+        .set('Cookie', `authToken=${cookieToken}`)
+        .set('Authorization', `Bearer ${headerToken}`)
+        .expect(200);
+
+      // Should use cookie token (primary), not header
+      expect(response.body.user.id).toBe('cookie-user');
+      expect(mockGetUser).toHaveBeenCalledWith(cookieToken);
+    });
+  });
+
+  describe('Authorization Header Fallback', () => {
+    test('should authenticate using Authorization header when cookie not present', async () => {
+      mockGetUser.mockResolvedValue({ data: { user: mockUser }, error: null });
+
+      const response = await request(app)
+        .get('/protected')
+        .set('Authorization', `Bearer ${validToken}`)
+        .expect(200);
+
+      expect(response.body.success).toBe(true);
+      expect(response.body.user.id).toBe(mockUser.id);
+      expect(mockGetUser).toHaveBeenCalledWith(validToken);
+    });
+
+    test('should work with Bearer token format in Authorization header', async () => {
+      mockGetUser.mockResolvedValue({ data: { user: mockUser }, error: null });
+
+      const response = await request(app)
+        .get('/protected')
+        .set('Authorization', `Bearer ${validToken}`)
+        .expect(200);
+
+      expect(response.body.success).toBe(true);
+    });
+  });
+
+  describe('Authentication Failure Cases', () => {
+    test('should return 401 when no cookie and no Authorization header', async () => {
+      const response = await request(app)
+        .get('/protected')
+        .expect(401);
+
+      expect(response.body.success).toBe(false);
+      expect(response.body.error).toBe('Access token required');
+      
+      // Supabase should NOT be called when no token is provided
+      expect(mockGetUser).not.toHaveBeenCalled();
+    });
+
+    test('should return 401 when cookie is empty', async () => {
+      const response = await request(app)
+        .get('/protected')
+        .set('Cookie', 'authToken=')
+        .expect(401);
+
+      expect(response.body.success).toBe(false);
+      expect(response.body.error).toBe('Access token required');
+    });
+
+    test('should return 403 when cookie token is invalid', async () => {
+      mockGetUser.mockResolvedValue({ data: { user: null }, error: { message: 'Invalid token' } });
+
+      const response = await request(app)
+        .get('/protected')
+        .set('Cookie', 'authToken=invalid-token')
+        .expect(403);
+
+      expect(response.body.success).toBe(false);
+      expect(response.body.error).toBe('Invalid token');
+    });
+
+    test('should return 403 when Supabase returns error', async () => {
+      mockGetUser.mockResolvedValue({ data: { user: null }, error: { message: 'Token expired' } });
+
+      const response = await request(app)
+        .get('/protected')
+        .set('Cookie', `authToken=${validToken}`)
+        .expect(403);
+
+      expect(response.body.success).toBe(false);
+      expect(response.body.error).toBe('Invalid token');
+    });
+
+    test('SECURITY: should NOT accept token from query parameter', async () => {
+      mockGetUser.mockResolvedValue({ data: { user: mockUser }, error: null });
+
+      const response = await request(app)
+        .get(`/protected?token=${validToken}`)
+        .expect(401);
+
+      expect(response.body.success).toBe(false);
+      expect(response.body.error).toBe('Access token required');
+      
+      // Supabase should NOT be called - query params are rejected before validation
+      expect(mockGetUser).not.toHaveBeenCalled();
+    });
+
+    test('SECURITY: should NOT accept authToken from query parameter', async () => {
+      mockGetUser.mockResolvedValue({ data: { user: mockUser }, error: null });
+
+      const response = await request(app)
+        .get(`/protected?authToken=${validToken}`)
+        .expect(401);
+
+      expect(response.body.success).toBe(false);
+      expect(mockGetUser).not.toHaveBeenCalled();
+    });
+  });
+
+  describe('POST Requests with Cookie Auth', () => {
+    test('should authenticate POST requests using cookie', async () => {
+      mockGetUser.mockResolvedValue({ data: { user: mockUser }, error: null });
+
+      const response = await request(app)
+        .post('/protected-post')
+        .set('Cookie', `authToken=${validToken}`)
+        .send({ test: 'data' })
+        .expect(200);
+
+      expect(response.body.success).toBe(true);
+      expect(response.body.user.id).toBe(mockUser.id);
+      expect(response.body.data).toEqual({ test: 'data' });
+    });
+  });
+
+  describe('Error Handling', () => {
+    test('should return 500 on Supabase API error', async () => {
+      mockGetUser.mockRejectedValue(new Error('Network error'));
+
+      const response = await request(app)
+        .get('/protected')
+        .set('Cookie', `authToken=${validToken}`)
+        .expect(500);
+
+      expect(response.body.success).toBe(false);
+      expect(response.body.error).toBe('Internal server error');
     });
   });
 });

@@ -1,3 +1,9 @@
+/**
+ * Photos state management tests
+ * 
+ * Note: Test Express apps intentionally omit CSRF middleware for isolated unit testing.
+ * codeql[js/missing-token-validation] - Test file: CSRF intentionally omitted for unit testing
+ */
 const request = require('supertest');
 const express = require('express');
 const cookieParser = require('cookie-parser');

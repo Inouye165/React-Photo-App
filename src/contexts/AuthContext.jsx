@@ -1,4 +1,4 @@
-import { createContext, useContext, useState, useEffect } from 'react';
+import { createContext, useContext, useState, useEffect, useRef } from 'react';
 import { supabase } from '../supabaseClient';
 
 const AuthContext = createContext();
@@ -10,34 +10,122 @@ export const useAuth = () => {
   return context;
 };
 
+/**
+ * Sync the Supabase session token to the backend as an httpOnly cookie.
+ * This is required for cookie-based authentication on all API calls.
+ */
+async function syncSessionCookie(accessToken) {
+  if (!accessToken) return false;
+  try {
+    const API_BASE_URL = import.meta.env.VITE_API_BASE_URL || 'http://localhost:3001';
+    const response = await fetch(`${API_BASE_URL}/api/auth/session`, {
+      method: 'POST',
+      headers: {
+        'Authorization': `Bearer ${accessToken}`,
+        'Content-Type': 'application/json'
+      },
+      credentials: 'include'
+    });
+    return response.ok;
+  } catch (err) {
+    console.warn('Failed to sync session cookie:', err);
+    return false;
+  }
+}
+
+/**
+ * Check if the backend has an E2E test session cookie set.
+ * Used for Playwright/Cypress E2E tests to bypass Supabase auth.
+ */
+async function checkE2ESession() {
+  try {
+    const API_BASE_URL = import.meta.env.VITE_API_BASE_URL || 'http://localhost:3001';
+    const response = await fetch(`${API_BASE_URL}/api/test/e2e-verify`, {
+      method: 'GET',
+      credentials: 'include'
+    });
+    if (response.ok) {
+      const data = await response.json();
+      if (data.success && data.user) {
+        return data.user;
+      }
+    }
+    return null;
+  } catch {
+    return null;
+  }
+}
+
 export const AuthProvider = ({ children }) => {
   const [user, setUser] = useState(null);
   const [session, setSession] = useState(null);
   const [loading, setLoading] = useState(true);
+  // Track if cookie is ready - app should not make API calls until this is true
+  const [cookieReady, setCookieReady] = useState(false);
+  // Track if a login is in progress to prevent onAuthStateChange from racing
+  const loginInProgressRef = useRef(false);
+  // Track if we're in E2E test mode
+  const isE2ERef = useRef(false);
 
   useEffect(() => {
-    // Check active session - MUST complete before rendering children
-    supabase.auth.getSession()
-      .then(({ data: { session } }) => {
-        setSession(session);
-        setUser(session?.user ?? null);
+    // Check for E2E test session first (for Playwright tests)
+    checkE2ESession()
+      .then(async (e2eUser) => {
+        if (e2eUser) {
+          // E2E test mode - bypass Supabase auth
+          isE2ERef.current = true;
+          setCookieReady(true);
+          setUser(e2eUser);
+          setSession({ user: e2eUser, access_token: 'e2e-test-token' });
+          setLoading(false);
+          return;
+        }
+        
+        // Normal Supabase auth flow
+        return supabase.auth.getSession()
+          .then(async ({ data: { session } }) => {
+            if (session?.access_token) {
+              // Sync cookie BEFORE setting state to prevent race conditions
+              await syncSessionCookie(session.access_token);
+              setCookieReady(true);
+            }
+            setSession(session);
+            setUser(session?.user ?? null);
+          })
+          .catch((error) => {
+            console.error('Auth session initialization error:', error);
+            setSession(null);
+            setUser(null);
+          })
+          .finally(() => {
+            setLoading(false);
+          });
       })
-      .catch((error) => {
-        console.error('Auth session initialization error:', error);
-        // Fail-safe: default to unauthenticated state
-        setSession(null);
-        setUser(null);
-      })
-      .finally(() => {
-        // Only set loading to false after initial session check completes
+      .catch(() => {
         setLoading(false);
       });
 
-    // Listen for changes (subsequent auth events)
-    const { data: { subscription } } = supabase.auth.onAuthStateChange((_event, session) => {
+    // Listen for changes (subsequent auth events like token refresh)
+    const { data: { subscription } } = supabase.auth.onAuthStateChange(async (event, session) => {
+      // Skip if we're in E2E test mode
+      if (isE2ERef.current) {
+        return;
+      }
+      // Skip if login is being handled by the login function
+      if (loginInProgressRef.current) {
+        return;
+      }
+      
+      if (session?.access_token) {
+        // Sync cookie before updating state
+        await syncSessionCookie(session.access_token);
+        setCookieReady(true);
+      } else {
+        setCookieReady(false);
+      }
+      
       setSession(session);
       setUser(session?.user ?? null);
-      // Do NOT set loading(false) here - only the initial getSession controls loading
     });
 
     return () => subscription.unsubscribe();
@@ -45,6 +133,9 @@ export const AuthProvider = ({ children }) => {
 
   const login = async (email, password) => {
     try {
+      // Prevent onAuthStateChange from racing with us
+      loginInProgressRef.current = true;
+      
       const { data, error } = await supabase.auth.signInWithPassword({
         email,
         password,
@@ -52,27 +143,26 @@ export const AuthProvider = ({ children }) => {
 
       if (error) throw error;
 
-      // Set httpOnly cookie for secure image authentication
-      // This eliminates the need for token query parameters
+      // Set httpOnly cookie BEFORE updating state
+      // This ensures API calls made after login have the cookie ready
       if (data.session?.access_token) {
-        try {
-          const API_BASE_URL = import.meta.env.VITE_API_BASE_URL || 'http://localhost:3001';
-          await fetch(`${API_BASE_URL}/api/auth/session`, {
-            method: 'POST',
-            headers: {
-              'Authorization': `Bearer ${data.session.access_token}`,
-              'Content-Type': 'application/json'
-            },
-            credentials: 'include' // Important: allows cookies to be set
-          });
-        } catch (cookieError) {
-          console.warn('Failed to set auth cookie:', cookieError);
-          // Non-fatal: user can still use Bearer token auth
+        const cookieSet = await syncSessionCookie(data.session.access_token);
+        if (!cookieSet) {
+          console.warn('Cookie sync failed during login, API calls may fail');
         }
+        setCookieReady(cookieSet);
       }
+      
+      // NOW update state - this triggers re-renders and API calls
+      setSession(data.session);
+      setUser(data.user);
+      
+      // Allow onAuthStateChange to work again
+      loginInProgressRef.current = false;
 
       return { success: true, user: data.user };
     } catch (err) {
+      loginInProgressRef.current = false;
       console.error('Login error:', err);
       return { success: false, error: err.message };
     }
@@ -80,6 +170,8 @@ export const AuthProvider = ({ children }) => {
 
   const register = async (username, email, password) => {
     try {
+      loginInProgressRef.current = true;
+      
       const { data, error } = await supabase.auth.signUp({
         email,
         password,
@@ -92,25 +184,19 @@ export const AuthProvider = ({ children }) => {
 
       if (error) throw error;
 
-      // Set httpOnly cookie for secure image authentication
+      // Set httpOnly cookie BEFORE updating state
       if (data.session?.access_token) {
-        try {
-          const API_BASE_URL = import.meta.env.VITE_API_BASE_URL || 'http://localhost:3001';
-          await fetch(`${API_BASE_URL}/api/auth/session`, {
-            method: 'POST',
-            headers: {
-              'Authorization': `Bearer ${data.session.access_token}`,
-              'Content-Type': 'application/json'
-            },
-            credentials: 'include'
-          });
-        } catch (cookieError) {
-          console.warn('Failed to set auth cookie:', cookieError);
-        }
+        const cookieSet = await syncSessionCookie(data.session.access_token);
+        setCookieReady(cookieSet);
       }
+      
+      setSession(data.session);
+      setUser(data.user);
+      loginInProgressRef.current = false;
 
       return { success: true, user: data.user };
     } catch (err) {
+      loginInProgressRef.current = false;
       console.error('Registration error:', err);
       return { success: false, error: err.message };
     }
@@ -179,6 +265,7 @@ export const AuthProvider = ({ children }) => {
       if (error) throw error;
       setUser(null);
       setSession(null);
+      setCookieReady(false);
     } catch (err) {
       console.error('Logout error:', err);
     }
@@ -188,6 +275,7 @@ export const AuthProvider = ({ children }) => {
     user,
     session,
     loading,
+    cookieReady, // Expose so components can check if API calls are safe
     login,
     register,
     logout,
