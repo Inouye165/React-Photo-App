@@ -12,6 +12,10 @@ A full-screen React application for filtering, browsing, and uploading photos by
 
 **Author:** Ron Inouye
 
+## 🆕 What's New (November 2025)
+
+- **[Scalability] Zero-Disk Streaming Uploads**: Photo uploads now stream directly to Supabase Storage using Busboy, eliminating local `os.tmpdir()` disk writes. This removes I/O bottlenecks under high load and enables horizontal scaling. Hash calculation and validation occur during streaming. Heavy processing (EXIF extraction, thumbnails) is deferred to BullMQ workers.
+
 ## 🆕 What's New (October 2025)
 
 - **[Security] Enabled strict SSL certificate validation for production database connections**: Production now enforces `rejectUnauthorized: true` with CA certificate verification to prevent MITM attacks. Development/test environments remain flexible for local Docker containers.
@@ -85,6 +89,7 @@ A full-screen React application for filtering, browsing, and uploading photos by
 - **Supabase** (PostgreSQL & Auth)
 - **BullMQ** & **Redis** for background jobs
 - **Sharp** & **ImageMagick** for image processing
+- **Busboy** for zero-disk streaming uploads (direct to Supabase Storage)
 - **Jest** & **Supertest** for testing
 - **Helmet** for security headers
 
@@ -118,7 +123,7 @@ npm run test:stress -- --bail          # Stop on first failure
 
 ### Future Enhancements
 
-- [ ] **Scalability:** Stream uploads directly to Supabase Storage, bypassing local `os.tmpdir()` disk write to prevent bottlenecks under high load.
+- [x] **Scalability:** Stream uploads directly to Supabase Storage, bypassing local `os.tmpdir()` disk write to prevent bottlenecks under high load. *(Completed November 2025)*
 
 ## 🐳 Docker Support
 

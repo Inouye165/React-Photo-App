@@ -1,13 +1,51 @@
+/**
+ * Tests for upload limits (file size and MIME type validation).
+ * Updated for streaming upload architecture.
+ */
+/* eslint-env jest */
+
+// Mock Supabase
+jest.mock('@supabase/supabase-js');
+jest.mock('../lib/supabaseClient', () => require('./__mocks__/supabase').createClient());
+
+// Mock the queue module
+jest.mock('../queue/index', () => ({
+  addAIJob: jest.fn().mockResolvedValue({ id: 'mock-job-id' }),
+  checkRedisAvailable: jest.fn().mockResolvedValue(false)
+}));
+
 const request = require('supertest');
 const express = require('express');
 const createUploadsRouter = require('../routes/uploads');
-const mockKnex = {};
+
+// Create a mock database
+const createMockDb = () => {
+  return jest.fn(() => ({
+    where: jest.fn().mockReturnValue({
+      select: jest.fn().mockReturnValue({
+        first: jest.fn().mockResolvedValue(null)
+      }),
+      update: jest.fn().mockResolvedValue(1)
+    }),
+    insert: jest.fn().mockReturnValue({
+      returning: jest.fn().mockResolvedValue([{ id: 1, filename: 'test.jpg', hash: 'hash', storage_path: 'working/test.jpg' }])
+    })
+  }));
+};
 
 describe('Upload limits', () => {
   let app;
+  let mockDb;
+
   beforeAll(() => {
+    mockDb = createMockDb();
     app = express();
-    app.use('/uploads', createUploadsRouter({ db: mockKnex }));
+    // Add auth middleware
+    app.use('/uploads', (req, res, next) => {
+      req.user = { id: 1, username: 'testuser' };
+      next();
+    });
+    app.use('/uploads', createUploadsRouter({ db: mockDb }));
   });
 
   it('should reject oversized upload (>10MB) with 413', async () => {
@@ -16,13 +54,14 @@ describe('Upload limits', () => {
       .post('/uploads/upload')
       .attach('photo', bigBuffer, 'big.jpg');
     expect(res.status).toBe(413);
-  });
+  }, 30000); // Increase timeout for large buffer
 
   it('should reject disallowed type with 415', async () => {
     const smallBuffer = Buffer.alloc(1024, 1); // 1KB
     const res = await request(app)
       .post('/uploads/upload')
       .attach('photo', smallBuffer, 'bad.txt');
-    expect([415, 400, 500]).toContain(res.status); // Accept 415, 400, or 500 for file type rejection
+    expect(res.status).toBe(415);
+    expect(res.body.error).toBe('Only image files are allowed');
   });
 });
