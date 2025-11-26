@@ -4,6 +4,7 @@ const jestOpenAPI = require('jest-openapi').default;
 const createHealthRouter = require('../routes/health');
 const createPhotosRouter = require('../routes/photos');
 const db = require('../db');
+const supabase = require('../lib/supabaseClient');
 
 describe('API contract (OpenAPI)', () => {
   let app;
@@ -11,7 +12,7 @@ describe('API contract (OpenAPI)', () => {
     jestOpenAPI(require('path').join(__dirname, '../openapi.yml'));
     app = express();
     app.use('/health', createHealthRouter());
-    app.use('/photos', createPhotosRouter({ db }));
+    app.use('/photos', createPhotosRouter({ db, supabase }));
   });
 
   it('GET /health matches OpenAPI spec', async () => {

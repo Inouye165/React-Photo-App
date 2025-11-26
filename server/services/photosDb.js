@@ -1,0 +1,51 @@
+// photosDb.js - Photo database service layer
+/**
+ * Service responsible for all photo database operations.
+ * Use dependency injection for db for easy testing/mocking.
+ */
+module.exports = function createPhotosDb({ db }) {
+  return {
+    async listPhotos(userId, state) {
+      let query = db('photos').select(
+        'id', 'filename', 'state', 'metadata', 'hash', 'file_size',
+        'caption', 'description', 'keywords', 'text_style',
+        'edited_filename', 'storage_path', 'ai_model_history'
+      ).where('user_id', userId);
+      if (state === 'working' || state === 'inprogress' || state === 'finished') {
+        query = query.where({ state });
+      }
+      return await query;
+    },
+    async getPhotoById(photoId, userId) {
+      return await db('photos').where({ id: photoId, user_id: userId }).first();
+    },
+    async updatePhotoMetadata(photoId, userId, metadata) {
+      const fields = {};
+      if (metadata.caption !== undefined) fields.caption = metadata.caption;
+      if (metadata.description !== undefined) fields.description = metadata.description;
+      if (metadata.keywords !== undefined) fields.keywords = metadata.keywords;
+      if (metadata.textStyle !== undefined) fields.text_style = metadata.textStyle === null ? null : JSON.stringify(metadata.textStyle);
+      fields.updated_at = new Date().toISOString();
+      if (Object.keys(fields).length === 1) return false; // only updated_at
+      const count = await db('photos').where({ id: photoId, user_id: userId }).update(fields);
+      return count > 0;
+    },
+    async deletePhoto(photoId, userId) {
+      const count = await db('photos').where({ id: photoId, user_id: userId }).del();
+      return count > 0;
+    },
+    async getEditedPhoto(photoId, userId) {
+      return await db('photos').where({ id: photoId, user_id: userId }).select('*').first();
+    },
+    async getPhotoByFilenameAndState(filename, state, userId) {
+      return await db('photos')
+        .where(function() {
+          this.where({ filename, state })
+              .orWhere({ edited_filename: filename, state });
+        })
+        .andWhere({ user_id: userId })
+        .first();
+    }
+    // Add additional database operations as needed.
+  };
+};

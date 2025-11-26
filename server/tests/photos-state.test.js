@@ -48,7 +48,7 @@ beforeEach(() => {
     error: null 
   });
 
-  app.use('/photos', createPhotosRouter({ db }));
+  app.use('/photos', createPhotosRouter({ db, supabase }));
 });
 
 test('PATCH /photos/:id/state moves photo, triggers fallback copy, and queues AI job (async)', async () => {
@@ -83,5 +83,5 @@ test('PATCH /photos/:id/state moves photo, triggers fallback copy, and queues AI
   expect(updatedPhoto.storage_path).toBe(newPath);
 
   // Verify AI job was queued
-  expect(addAIJob).toHaveBeenCalledWith(photo.id);
+  expect(addAIJob).toHaveBeenCalledWith(photo.id, expect.any(Object));
 });

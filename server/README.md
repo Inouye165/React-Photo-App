@@ -65,16 +65,15 @@ Backend server for the React Photo App, built with Node.js and Express. It handl
 ## 🔌 API Endpoints
 
 ### Authentication
-- `POST /auth/register` - Create a new account
-- `POST /auth/login` - Login and receive JWT
-- `GET /auth/me` - Get current user profile
+- `POST /api/auth/session` - Login and receive JWT (sets httpOnly cookie)
+- `POST /api/auth/logout` - Logout and clear session cookie
 
 ### Photos
 - `POST /upload` - Upload photos (Authenticated)
 - `GET /photos` - List photos with filters
 - `GET /photos/:id` - Get photo details
 - `GET /photos/:id/thumbnail-url` - Get signed URL for thumbnail (Authenticated, returns 404 if unavailable)
-- `GET /display/:path` - Securely serve image files
+- `GET /display/:state/:filename` - Securely serve image files
 - `POST /privilege` - Check file permissions (Authenticated, performs real-time ownership verification)
 
 ### AI & Metadata
@@ -239,5 +238,5 @@ ALLOWED_ORIGINS="http://localhost:5173,http://localhost:8080"
 npm test
 
 # Run specific test file
-npm test -- tests/auth.test.js
+npm test -- tests/security.test.js
 ```
