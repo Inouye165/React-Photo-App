@@ -73,12 +73,20 @@ Backend server for the React Photo App, built with Node.js and Express. It handl
 - `POST /upload` - Upload photos (Authenticated)
 - `GET /photos` - List photos with filters
 - `GET /photos/:id` - Get photo details
+- `GET /photos/:id/thumbnail-url` - Get signed URL for thumbnail (Authenticated, returns 404 if unavailable)
 - `GET /display/:path` - Securely serve image files
 - `POST /privilege` - Check file permissions (Authenticated, performs real-time ownership verification)
 
 ### AI & Metadata
 - `POST /photos/:id/run-ai` - Trigger AI analysis
 - `GET /photos/models` - List available AI models
+
+### Testing Endpoints (Development & E2E Only)
+- `GET /api/test/e2e-verify` - Validates E2E test authentication cookie
+  - **Production**: Returns `403 Forbidden` (completely disabled)
+  - **Development/Test**: Returns `200` with user data if `e2e_session` cookie valid, `401` otherwise
+  - **Purpose**: Allows Playwright tests to verify authentication state without exposing production endpoints
+  - **Expected behavior**: 401 responses are normal and expected when app loads without E2E session (logged as debug, not error)
 
 ## 🛠️ Background Processing
 

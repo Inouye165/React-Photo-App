@@ -44,14 +44,23 @@ export default function useSignedThumbnails(photos, token) {
       });
 
       if (!response.ok) {
-        console.error(`[useSignedThumbnails] Failed to fetch thumbnail URL for photo ${photoId}:`, response.status);
+        // Handle client errors (4xx) gracefully - these are expected
+        if (response.status >= 400 && response.status < 500) {
+          // 404: Photo not found or thumbnail not available (expected for some photos)
+          // 401/403: Auth issues (handled elsewhere)
+          console.debug(`[useSignedThumbnails] Thumbnail not available for photo ${photoId}: ${response.status}`);
+          return null;
+        }
+        
+        // Log server errors (5xx) as errors since these are unexpected
+        console.error(`[useSignedThumbnails] Server error fetching thumbnail URL for photo ${photoId}:`, response.status);
         return null;
       }
 
       const data = await response.json();
       
       if (!data.success || !data.url) {
-        console.error(`[useSignedThumbnails] Invalid response for photo ${photoId}:`, data);
+        console.warn(`[useSignedThumbnails] Invalid response for photo ${photoId}:`, data);
         return null;
       }
 
@@ -60,7 +69,8 @@ export default function useSignedThumbnails(photos, token) {
         expiresAt: data.expiresAt
       };
     } catch (err) {
-      console.error(`[useSignedThumbnails] Error fetching thumbnail URL for photo ${photoId}:`, err);
+      // Network errors or other unexpected issues
+      console.error(`[useSignedThumbnails] Error fetching thumbnail URL for photo ${photoId}:`, err.message);
       return null;
     }
   }, [token]);
@@ -139,7 +149,8 @@ export default function useSignedThumbnails(photos, token) {
 
       setSignedUrls(prev => ({ ...prev, ...newUrls }));
     } catch (err) {
-      console.error('[useSignedThumbnails] Error fetching signed URLs:', err);
+      // This should rarely happen as individual fetch errors are caught above
+      console.error('[useSignedThumbnails] Unexpected error fetching signed URLs:', err.message);
       setError(err.message);
     } finally {
       setLoading(false);

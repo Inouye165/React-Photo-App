@@ -36,6 +36,9 @@ async function syncSessionCookie(accessToken) {
 /**
  * Check if the backend has an E2E test session cookie set.
  * Used for Playwright/Cypress E2E tests to bypass Supabase auth.
+ * 
+ * Note: This will return 401 in normal usage (not in E2E mode), which is expected.
+ * The 401 is silently caught here to avoid console noise.
  */
 async function checkE2ESession() {
   try {
@@ -44,14 +47,19 @@ async function checkE2ESession() {
       method: 'GET',
       credentials: 'include'
     });
+    
+    // Expected: 401 when not in E2E mode, 200 when in E2E mode
     if (response.ok) {
       const data = await response.json();
       if (data.success && data.user) {
         return data.user;
       }
     }
+    // Silently return null for 401/403 (expected in normal usage)
     return null;
-  } catch {
+  } catch (err) {
+    // Network or other unexpected errors - log but don't crash
+    console.debug('[AuthContext] E2E session check failed (expected in normal usage):', err.message);
     return null;
   }
 }
@@ -113,6 +121,31 @@ export const AuthProvider = ({ children }) => {
       }
       // Skip if login is being handled by the login function
       if (loginInProgressRef.current) {
+        return;
+      }
+      
+      // Handle token refresh errors (e.g., invalid refresh token)
+      // When Supabase can't refresh the token, event is 'TOKEN_REFRESHED' but session is null
+      // or we get an explicit SIGNED_OUT event
+      if ((event === 'TOKEN_REFRESHED' || event === 'SIGNED_OUT') && !session) {
+        console.warn('[AuthContext] Session lost during refresh, cleaning up');
+        
+        // Clear local state
+        setSession(null);
+        setUser(null);
+        setCookieReady(false);
+        
+        // Clear httpOnly cookie
+        const API_BASE_URL = import.meta.env.VITE_API_BASE_URL || 'http://localhost:3001';
+        try {
+          await fetch(`${API_BASE_URL}/api/auth/logout`, {
+            method: 'POST',
+            credentials: 'include'
+          });
+        } catch {
+          // Silently fail - cookie may already be cleared
+        }
+        
         return;
       }
       

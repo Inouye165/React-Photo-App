@@ -14,6 +14,7 @@ A full-screen React application for filtering, browsing, and uploading photos by
 
 ## 🆕 What's New (November 2025)
 
+- **[Reliability] Enhanced Session Recovery**: Invalid refresh tokens now trigger automatic cleanup and re-login prompt, preventing zombie sessions and "half-broken" authentication states.
 - **[Scalability] Zero-Disk Streaming Uploads**: Photo uploads now stream directly to Supabase Storage using Busboy, eliminating local `os.tmpdir()` disk writes. This removes I/O bottlenecks under high load and enables horizontal scaling. Hash calculation and validation occur during streaming. Heavy processing (EXIF extraction, thumbnails) is deferred to BullMQ workers.
 
 ## 🆕 What's New (October 2025)
