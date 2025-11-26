@@ -9,6 +9,7 @@ import { API_BASE_URL } from '../api.js';
  * - Caches URLs to minimize API calls
  * - Automatically refreshes URLs before they expire
  * - Handles errors gracefully with fallbacks
+ * - Tracks photos without thumbnails to avoid re-fetching
  * 
  * @param {Array} photos - Array of photo objects with id and thumbnail properties
  * @param {string} token - Authentication token for API requests
@@ -22,6 +23,9 @@ export default function useSignedThumbnails(photos, token) {
   // Track which photos have been fetched to avoid duplicate requests
   const fetchedPhotoIds = useRef(new Set());
   
+  // Track photos that have no thumbnail (hasThumbnail: false)
+  const noThumbnailPhotoIds = useRef(new Set());
+  
   // Track refresh timers to clean them up on unmount
   const refreshTimers = useRef({});
 
@@ -30,7 +34,7 @@ export default function useSignedThumbnails(photos, token) {
    */
   const fetchSignedUrl = useCallback(async (photoId) => {
     if (!token) {
-      console.warn('[useSignedThumbnails] No token available, skipping fetch');
+      // No token means user is not logged in - silently skip
       return null;
     }
 
@@ -44,11 +48,20 @@ export default function useSignedThumbnails(photos, token) {
       });
 
       if (!response.ok) {
-        // Handle client errors (4xx) gracefully - these are expected
+        // 404 means photo not found or unauthorized - expected after session loss or deletion
+        if (response.status === 404) {
+          // Track this photo to avoid re-fetching
+          noThumbnailPhotoIds.current.add(photoId);
+          // Debug level only - this is expected when photos are deleted or user session changes
+          if (import.meta.env?.DEV) {
+            console.debug(`[useSignedThumbnails] Photo ${photoId} not found or unauthorized (404)`);
+          }
+          return null;
+        }
+        
+        // Other 4xx errors (401/403 auth issues handled elsewhere)
         if (response.status >= 400 && response.status < 500) {
-          // 404: Photo not found or thumbnail not available (expected for some photos)
-          // 401/403: Auth issues (handled elsewhere)
-          console.debug(`[useSignedThumbnails] Thumbnail not available for photo ${photoId}: ${response.status}`);
+          console.debug(`[useSignedThumbnails] Client error for photo ${photoId}: ${response.status}`);
           return null;
         }
         
@@ -59,10 +72,21 @@ export default function useSignedThumbnails(photos, token) {
 
       const data = await response.json();
       
+      // Check if response indicates no thumbnail available
+      if (data.hasThumbnail === false) {
+        // Normal case: photo exists but has no thumbnail yet
+        // Track this photo to avoid re-fetching
+        noThumbnailPhotoIds.current.add(photoId);
+        return null;
+      }
+      
       if (!data.success || !data.url) {
         console.warn(`[useSignedThumbnails] Invalid response for photo ${photoId}:`, data);
         return null;
       }
+
+      // Photo has a thumbnail - remove from no-thumbnail set if present
+      noThumbnailPhotoIds.current.delete(photoId);
 
       return {
         url: data.url,
@@ -109,16 +133,27 @@ export default function useSignedThumbnails(photos, token) {
    * Fetch signed URLs for all photos that need them
    */
   const fetchAllSignedUrls = useCallback(async () => {
+    // Skip entirely if no token (user not logged in)
+    if (!token) {
+      return;
+    }
+
     if (!photos || photos.length === 0) {
       return;
     }
 
-    // Filter photos that have thumbnails and haven't been fetched yet
+    // Filter photos that:
+    // - Have thumbnail property
+    // - Have an id
+    // - Haven't been fetched yet
+    // - Don't already have a signed URL
+    // - Are not marked as having no thumbnail
     const photosToFetch = photos.filter(photo => 
       photo.thumbnail && 
       photo.id && 
       !fetchedPhotoIds.current.has(photo.id) &&
-      !signedUrls[photo.id]
+      !signedUrls[photo.id] &&
+      !noThumbnailPhotoIds.current.has(photo.id)
     );
 
     if (photosToFetch.length === 0) {
@@ -155,13 +190,14 @@ export default function useSignedThumbnails(photos, token) {
     } finally {
       setLoading(false);
     }
-  }, [photos, signedUrls, fetchSignedUrl, scheduleRefresh]);
+  }, [photos, token, signedUrls, fetchSignedUrl, scheduleRefresh]);
 
   /**
    * Manual refresh function exposed to consumers
    */
   const refresh = useCallback(() => {
     fetchedPhotoIds.current.clear();
+    noThumbnailPhotoIds.current.clear();
     setSignedUrls({});
     fetchAllSignedUrls();
   }, [fetchAllSignedUrls]);

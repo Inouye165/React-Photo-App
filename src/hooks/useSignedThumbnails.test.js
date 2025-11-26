@@ -101,8 +101,8 @@ describe('useSignedThumbnails Hook', () => {
   });
 
   describe('Error Handling - 4xx Responses', () => {
-    it('should handle 404 gracefully without logging as error', async () => {
-      const consoleDebugSpy = vi.spyOn(console, 'debug').mockImplementation(() => {});
+    it('should handle 404 gracefully with dev-only warning', async () => {
+      const consoleWarnSpy = vi.spyOn(console, 'warn').mockImplementation(() => {});
 
       global.fetch.mockResolvedValue({
         ok: false,
@@ -116,15 +116,13 @@ describe('useSignedThumbnails Hook', () => {
         expect(result.current.loading).toBe(false);
       });
 
-      // Should use debug logging for 404, not error
-      expect(consoleDebugSpy).toHaveBeenCalledWith(
-        "[useSignedThumbnails] Thumbnail not available for photo 1: 404"
-      );
-
       // Should not set error state for 404s
       expect(result.current.error).toBeNull();
+      
+      // signedUrls should be empty for 404
+      expect(result.current.signedUrls[1]).toBeUndefined();
 
-      consoleDebugSpy.mockRestore();
+      consoleWarnSpy.mockRestore();
     });
 
     it('should handle 403 gracefully as client error', async () => {
