@@ -332,11 +332,21 @@ module.exports = function createPhotosRouter({ db }) {
    * - Signed URL can be used in <img> tags without additional auth
    * 
    * Response:
-   * {
-   *   success: true,
-   *   url: "/display/thumbnails/{hash}.jpg?sig=...&exp=...",
-   *   expiresAt: 1234567890  // Unix timestamp
-   * }
+   * - 404: Photo not found or not owned by user (auth/ownership failure)
+   * - 200 with hasThumbnail=true: Thumbnail available
+   *   {
+   *     success: true,
+   *     url: "/display/thumbnails/{hash}.jpg?sig=...&exp=...",
+   *     expiresAt: 1234567890,
+   *     hasThumbnail: true
+   *   }
+   * - 200 with hasThumbnail=false: Photo exists but has no thumbnail yet
+   *   {
+   *     success: true,
+   *     url: null,
+   *     expiresAt: null,
+   *     hasThumbnail: false
+   *   }
    */
   router.get('/:id/thumbnail-url', authenticateToken, async (req, res) => {
     const reqId = req.id || req.headers['x-request-id'] || 'unknown';
@@ -362,16 +372,18 @@ module.exports = function createPhotosRouter({ db }) {
         });
       }
 
-      // Verify thumbnail exists (hash must be present)
+      // Check if thumbnail exists (hash must be present)
       if (!photo.hash) {
-        logger.warn('Thumbnail URL request for photo without hash', {
+        logger.debug('Thumbnail URL request for photo without hash (normal case)', {
           reqId,
           photoId: id,
           filename: photo.filename
         });
-        return res.status(404).json({
-          success: false,
-          error: 'Thumbnail not available'
+        return res.status(200).json({
+          success: true,
+          url: null,
+          expiresAt: null,
+          hasThumbnail: false
         });
       }
 
@@ -391,7 +403,8 @@ module.exports = function createPhotosRouter({ db }) {
       return res.json({
         success: true,
         url: signedUrl,
-        expiresAt: exp
+        expiresAt: exp,
+        hasThumbnail: true
       });
 
     } catch (err) {

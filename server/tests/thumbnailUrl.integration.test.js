@@ -85,6 +85,7 @@ describe('Thumbnail URL API - Integration Tests', () => {
         .expect(200);
 
       expect(response.body.success).toBe(true);
+      expect(response.body.hasThumbnail).toBe(true);
       expect(response.body.url).toBeDefined();
       expect(response.body.expiresAt).toBeDefined();
 
@@ -151,7 +152,7 @@ describe('Thumbnail URL API - Integration Tests', () => {
       await db('photos').where({ id: otherPhotoId }).delete();
     });
 
-    test('should return 404 for photo without hash', async () => {
+    test('should return 200 with hasThumbnail:false for photo without hash', async () => {
       // Create photo without hash (thumbnail not generated yet)
       const insertResult = await db('photos').insert({
         user_id: testUserId,
@@ -172,10 +173,12 @@ describe('Thumbnail URL API - Integration Tests', () => {
       const response = await request(app)
         .get(`/photos/${photoWithoutHashId}/thumbnail-url`)
         .set('Authorization', `Bearer ${testToken}`)
-        .expect(404);
+        .expect(200);
 
-      expect(response.body.success).toBe(false);
-      expect(response.body.error).toBe('Thumbnail not available');
+      expect(response.body.success).toBe(true);
+      expect(response.body.hasThumbnail).toBe(false);
+      expect(response.body.url).toBe(null);
+      expect(response.body.expiresAt).toBe(null);
 
       // Clean up
       await db('photos').where({ id: photoWithoutHashId }).delete();
@@ -187,6 +190,9 @@ describe('Thumbnail URL API - Integration Tests', () => {
         .set('Authorization', `Bearer ${testToken}`)
         .expect(200);
 
+      expect(response.body.success).toBe(true);
+      expect(response.body.hasThumbnail).toBe(true);
+      
       const url = response.body.url;
 
       // Parse URL

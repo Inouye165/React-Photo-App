@@ -1,5 +1,6 @@
 import { createContext, useContext, useState, useEffect, useRef } from 'react';
 import { supabase } from '../supabaseClient';
+import useStore from '../store.js';
 
 const AuthContext = createContext();
 
@@ -41,25 +42,30 @@ async function syncSessionCookie(accessToken) {
  * The 401 is silently caught here to avoid console noise.
  */
 async function checkE2ESession() {
+  const isE2E = import.meta.env.VITE_E2E === 'true';
+  if (!isE2E) return null; // No-op in normal dev/prod
   try {
     const API_BASE_URL = import.meta.env.VITE_API_BASE_URL || 'http://localhost:3001';
     const response = await fetch(`${API_BASE_URL}/api/test/e2e-verify`, {
       method: 'GET',
       credentials: 'include'
     });
-    
-    // Expected: 401 when not in E2E mode, 200 when in E2E mode
+    // Only in E2E mode: 200 means success, 401/403 means no session
     if (response.ok) {
       const data = await response.json();
       if (data.success && data.user) {
         return data.user;
       }
     }
-    // Silently return null for 401/403 (expected in normal usage)
+    // No E2E session available
+    if (import.meta.env.DEV) {
+      console.debug('[AuthContext] No E2E session cookie present (expected in E2E mode)');
+    }
     return null;
   } catch (err) {
-    // Network or other unexpected errors - log but don't crash
-    console.debug('[AuthContext] E2E session check failed (expected in normal usage):', err.message);
+    if (import.meta.env.DEV) {
+      console.debug('[AuthContext] E2E session check failed:', err.message);
+    }
     return null;
   }
 }
@@ -76,40 +82,45 @@ export const AuthProvider = ({ children }) => {
   const isE2ERef = useRef(false);
 
   useEffect(() => {
-    // Check for E2E test session first (for Playwright tests)
-    checkE2ESession()
-      .then(async (e2eUser) => {
-        if (e2eUser) {
-          // E2E test mode - bypass Supabase auth
-          isE2ERef.current = true;
-          setCookieReady(true);
-          setUser(e2eUser);
-          setSession({ user: e2eUser, access_token: 'e2e-test-token' });
-          setLoading(false);
-          return;
-        }
-        
-        // Normal Supabase auth flow
-        return supabase.auth.getSession()
-          .then(async ({ data: { session } }) => {
-            if (session?.access_token) {
-              // Sync cookie BEFORE setting state to prevent race conditions
-              await syncSessionCookie(session.access_token);
-              setCookieReady(true);
-            }
-            setSession(session);
-            setUser(session?.user ?? null);
-          })
-          .catch((error) => {
-            console.error('Auth session initialization error:', error);
-            setSession(null);
-            setUser(null);
-          })
-          .finally(() => {
+    const isE2E = import.meta.env.VITE_E2E === 'true';
+    if (isE2E) {
+      // Only check E2E session if explicitly enabled
+      checkE2ESession()
+        .then(async (e2eUser) => {
+          if (e2eUser) {
+            // E2E test mode - bypass Supabase auth
+            isE2ERef.current = true;
+            setCookieReady(true);
+            setUser(e2eUser);
+            setSession({ user: e2eUser, access_token: 'e2e-test-token' });
             setLoading(false);
-          });
+            return;
+          }
+          // No E2E session, treat as not logged in
+          setLoading(false);
+        })
+        .catch(() => {
+          setLoading(false);
+        });
+      return;
+    }
+    // Normal Supabase auth flow
+    supabase.auth.getSession()
+      .then(async ({ data: { session } }) => {
+        if (session?.access_token) {
+          // Sync cookie BEFORE setting state to prevent race conditions
+          await syncSessionCookie(session.access_token);
+          setCookieReady(true);
+        }
+        setSession(session);
+        setUser(session?.user ?? null);
       })
-      .catch(() => {
+      .catch((error) => {
+        console.error('Auth session initialization error:', error);
+        setSession(null);
+        setUser(null);
+      })
+      .finally(() => {
         setLoading(false);
       });
 
@@ -123,18 +134,20 @@ export const AuthProvider = ({ children }) => {
       if (loginInProgressRef.current) {
         return;
       }
-      
       // Handle token refresh errors (e.g., invalid refresh token)
       // When Supabase can't refresh the token, event is 'TOKEN_REFRESHED' but session is null
       // or we get an explicit SIGNED_OUT event
       if ((event === 'TOKEN_REFRESHED' || event === 'SIGNED_OUT') && !session) {
-        console.warn('[AuthContext] Session lost during refresh, cleaning up');
-        
+        // Expected during logout or token expiry - debug only
+        if (import.meta.env.DEV) {
+          console.debug('[AuthContext] Session lost during refresh, cleaning up');
+        }
         // Clear local state
         setSession(null);
         setUser(null);
         setCookieReady(false);
-        
+        // Clear photo store to prevent stale data fetches
+        useStore.getState().setPhotos([]);
         // Clear httpOnly cookie
         const API_BASE_URL = import.meta.env.VITE_API_BASE_URL || 'http://localhost:3001';
         try {
@@ -145,10 +158,8 @@ export const AuthProvider = ({ children }) => {
         } catch {
           // Silently fail - cookie may already be cleared
         }
-        
         return;
       }
-      
       if (session?.access_token) {
         // Sync cookie before updating state
         await syncSessionCookie(session.access_token);
@@ -156,11 +167,9 @@ export const AuthProvider = ({ children }) => {
       } else {
         setCookieReady(false);
       }
-      
       setSession(session);
       setUser(session?.user ?? null);
     });
-
     return () => subscription.unsubscribe();
   }, []);
 
@@ -299,6 +308,8 @@ export const AuthProvider = ({ children }) => {
       setUser(null);
       setSession(null);
       setCookieReady(false);
+      // Clear photo store to prevent stale data
+      useStore.getState().setPhotos([]);
     } catch (err) {
       console.error('Logout error:', err);
     }
