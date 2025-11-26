@@ -77,6 +77,9 @@ const addAIJob = async (photoId, options = {}) => {
   const jobData = { photoId };
   if (options && options.modelOverrides) jobData.modelOverrides = options.modelOverrides;
   if (options && options.models) jobData.modelOverrides = options.models;
+  // Support streaming upload options for background processing
+  if (options && options.processMetadata) jobData.processMetadata = options.processMetadata;
+  if (options && options.generateThumbnail) jobData.generateThumbnail = options.generateThumbnail;
   return await aiQueue.add('process-photo-ai', jobData);
 };
 
@@ -91,14 +94,26 @@ const startWorker = async () => {
     const { Worker: BullMQWorker } = require('bullmq');
     const db = require('../db');
     const { updatePhotoAIMetadata } = require('../ai/service');
+    const { processUploadedPhoto } = require('../media/backgroundProcessor');
 
     const processor = async (job) => {
-      const { photoId, modelOverrides } = job.data || {};
-      logger.info(`[WORKER] Processing AI job for photoId: ${photoId}`);
+      const { photoId, modelOverrides, processMetadata, generateThumbnail } = job.data || {};
+      logger.info(`[WORKER] Processing job for photoId: ${photoId}`);
       try {
         const photo = await db('photos').where({ id: photoId }).first();
         if (!photo) throw new Error(`Photo with ID ${photoId} not found.`);
         const storagePath = photo.storage_path || `${photo.state}/${photo.filename}`;
+        
+        // If this is a streaming upload job, process metadata and thumbnails first
+        if (processMetadata || generateThumbnail) {
+          logger.info(`[WORKER] Running background processing for photoId: ${photoId}`);
+          await processUploadedPhoto(db, photoId, {
+            processMetadata: processMetadata !== false,
+            generateThumbnail: generateThumbnail !== false
+          });
+        }
+        
+        // Run AI metadata extraction
         await updatePhotoAIMetadata(db, photo, storagePath, modelOverrides);
         logger.info(`[WORKER] Successfully processed job for photoId: ${photoId}`);
       } catch (error) {
