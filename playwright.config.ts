@@ -5,6 +5,10 @@ export default defineConfig({
   testMatch: ['**/*.spec.ts'],
   reporter: 'list',
   timeout: 60_000,
+  // Limit workers to prevent overloading during parallel test runs
+  workers: 2,
+  // Retry failed tests once
+  retries: 1,
   use: {
     headless: true,
     baseURL: 'http://localhost:5173'

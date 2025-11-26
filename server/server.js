@@ -198,6 +198,12 @@ app.set('trust proxy', 1);
   const createAuthRouter = require('./routes/auth');
   app.use('/api/auth', createAuthRouter());
 
+  // E2E test login route (only in non-production)
+  if (process.env.NODE_ENV !== 'production') {
+    const e2eRouter = require('./routes/e2e');
+    app.use('/api/test', e2eRouter);
+  }
+
   // SECURITY: Debug routes removed to prevent information disclosure
   // Previously exposed environment variable configuration via /__diag/env
 
