@@ -107,11 +107,12 @@ describe('Server listening behavior', () => {
     const path = require('path');
     const knexfileCode = fs.readFileSync(path.join(__dirname, '../knexfile.js'), 'utf-8');
     
-    // Should define a single PostgreSQL config used for all environments
+    // Should define PostgreSQL config factory for all environments
     expect(knexfileCode).toMatch(/client:\s*['"]pg['"]/);
-    expect(knexfileCode).toMatch(/development:\s*postgresConfig/);
-    expect(knexfileCode).toMatch(/test:\s*postgresConfig/);
-    expect(knexfileCode).toMatch(/production:\s*postgresConfig/);
+    // New pattern uses createPostgresConfig() factory with environment-specific SSL
+    expect(knexfileCode).toMatch(/development:\s*createPostgresConfig\(['"]development['"]\)/);
+    expect(knexfileCode).toMatch(/test:\s*createPostgresConfig\(['"]test['"]\)/);
+    expect(knexfileCode).toMatch(/production:\s*createPostgresConfig\(['"]production['"]\)/);
   });
 
   test('documentation exists for integration test configuration', () => {

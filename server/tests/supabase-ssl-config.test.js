@@ -1,15 +1,16 @@
 /**
  * tests/supabase-ssl-config.test.js
  * 
- * Regression test to ensure Supabase SSL configuration remains correct.
+ * Security test to ensure SSL configuration is secure in production.
  * 
- * This test prevents the "self-signed certificate in certificate chain" error
- * that was fixed on 2025-11-04. See server/PROBLEM_LOG.md for details.
+ * Production MUST use strict SSL with CA certificate verification to prevent
+ * man-in-the-middle (MITM) attacks. Development/test environments can use
+ * relaxed SSL for local Docker containers.
  * 
  * What we're testing:
- * 1. knexfile.js production config has proper SSL settings
- * 2. Connection strings don't have conflicting ?sslmode= parameters
- * 3. SSL is configured to not reject unauthorized certificates (required for Supabase)
+ * 1. knexfile.js production config has strict SSL (rejectUnauthorized: true)
+ * 2. Production config includes CA certificate
+ * 3. Development/test configs allow self-signed certs (for local Docker)
  * 4. db/index.js properly handles SSL configuration
  */
 
@@ -37,15 +38,18 @@ describe('Supabase SSL Configuration (Regression Test)', () => {
       expect(typeof conn.connectionString === 'string' || conn.connectionString === undefined).toBe(true);
     });
 
-    test('production SSL is configured to not reject unauthorized certificates', () => {
+    test('production SSL is configured with strict certificate validation', () => {
       const conn = knexfile.production.connection;
       
       // Must have SSL object
       expect(conn.ssl).toBeDefined();
       expect(typeof conn.ssl).toBe('object');
       
-      // Must set rejectUnauthorized to false for Supabase
-      expect(conn.ssl.rejectUnauthorized).toBe(false);
+      // Production MUST enforce strict SSL with CA verification to prevent MITM attacks
+      expect(conn.ssl.rejectUnauthorized).toBe(true);
+      expect(conn.ssl.ca).toBeDefined();
+      expect(typeof conn.ssl.ca).toBe('string');
+      expect(conn.ssl.ca).toMatch(/-----BEGIN CERTIFICATE-----/);
     });
 
     test('connection string should not contain ?sslmode= parameter', () => {
@@ -90,41 +94,41 @@ describe('Supabase SSL Configuration (Regression Test)', () => {
 
   describe('Error message guidance', () => {
     
-    test('if SSL is misconfigured, provide helpful error message', () => {
+    test('production SSL is properly secured with CA certificate', () => {
       const conn = knexfile.production.connection;
       
       if (!conn || typeof conn !== 'object') {
         throw new Error(
-          '\n❌ Supabase SSL Configuration Error:\n' +
+          '\n❌ SSL Configuration Error:\n' +
           '   Production connection must be an object, not a string.\n' +
           '   \n' +
           '   Expected:\n' +
           '     connection: {\n' +
           '       connectionString: process.env.SUPABASE_DB_URL,\n' +
-          '       ssl: { rejectUnauthorized: false }\n' +
-          '     }\n' +
-          '   \n' +
-          '   See server/PROBLEM_LOG.md [2025-11-04 15:15 PST] for fix details.\n'
+          '       ssl: { rejectUnauthorized: true, ca: <CA_CERT> }\n' +
+          '     }\n'
         );
       }
       
-      if (!conn.ssl || conn.ssl.rejectUnauthorized !== false) {
+      // Production MUST have strict SSL with CA certificate to prevent MITM attacks
+      if (!conn.ssl || conn.ssl.rejectUnauthorized !== true || !conn.ssl.ca) {
         throw new Error(
-          '\n❌ Supabase SSL Configuration Error:\n' +
-          '   SSL must be configured with rejectUnauthorized: false\n' +
+          '\n❌ Production SSL Security Error:\n' +
+          '   Production MUST use strict SSL with CA certificate verification\n' +
+          '   to prevent man-in-the-middle (MITM) attacks.\n' +
           '   \n' +
           '   Current config:\n' +
-          `     ssl: ${JSON.stringify(conn.ssl, null, 2)}\n` +
+          `     ssl.rejectUnauthorized: ${conn.ssl?.rejectUnauthorized}\n` +
+          `     ssl.ca: ${conn.ssl?.ca ? 'present' : 'MISSING'}\n` +
           '   \n' +
           '   Required config:\n' +
-          '     ssl: { rejectUnauthorized: false }\n' +
+          '     ssl: { rejectUnauthorized: true, ca: <contents of prod-ca-2021.crt> }\n' +
           '   \n' +
-          '   This prevents "self-signed certificate in certificate chain" errors.\n' +
-          '   See server/PROBLEM_LOG.md [2025-11-04 15:15 PST] for details.\n'
+          '   See server/README.md Database SSL Configuration section.\n'
         );
       }
       
-      // If we got here, config is correct
+      // If we got here, config is secure
       expect(true).toBe(true);
     });
   });

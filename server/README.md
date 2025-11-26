@@ -95,8 +95,33 @@ This project uses **BullMQ** and **Redis** to process long-running tasks asynchr
 - **Log Redaction**: Automatically masks sensitive data (tokens, keys) in logs.
 - **Input Validation**: Strict validation on all endpoints.
 - **Strict CORS**: Explicit origin allowlisting (no regex wildcards or IP ranges).
+- **SSL Certificate Validation**: Production enforces strict SSL with CA certificate verification (see below).
 - **Ownership-Based Access Control**: The `/privilege` endpoint performs real-time database verification to ensure users can only modify or delete their own content. This prevents IDOR (Insecure Direct Object Reference) vulnerabilities.
 - **Secure Role Storage**: User roles are stored in `app_metadata` (server-controlled) instead of `user_metadata` (client-writable) to prevent privilege escalation attacks.
+
+### Database SSL Configuration
+
+**Production environments enforce strict SSL certificate validation** to prevent man-in-the-middle (MITM) attacks.
+
+| Environment | `rejectUnauthorized` | CA Certificate |
+|-------------|---------------------|----------------|
+| Production  | `true` ✓            | Required       |
+| Development | `false`             | Not required   |
+| Test        | `false`             | Not required   |
+
+**Requirements for Production:**
+- The file `prod-ca-2021.crt` must be present in the `server/` directory
+- The certificate must match your PostgreSQL/Supabase provider's CA
+- The server will fail to start with a clear error if the certificate is missing
+
+**Verifying SSL Configuration:**
+```bash
+# Verify production SSL connection
+NODE_ENV=production node scripts/verify-db-ssl.js
+```
+
+**Updating the CA Certificate:**
+If your database provider rotates their CA certificate, replace `prod-ca-2021.crt` with the new certificate from your provider.
 
 ### Privilege Endpoint
 

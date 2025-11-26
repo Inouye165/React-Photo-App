@@ -14,6 +14,7 @@ A full-screen React application for filtering, browsing, and uploading photos by
 
 ## 🆕 What's New (October 2025)
 
+- **[Security] Enabled strict SSL certificate validation for production database connections**: Production now enforces `rejectUnauthorized: true` with CA certificate verification to prevent MITM attacks. Development/test environments remain flexible for local Docker containers.
 - **[Security] Enforced httpOnly Cookie Authentication**: All API endpoints now strictly authenticate via httpOnly cookies. Bearer token header fallback removed from frontend - authentication is handled exclusively via secure cookies set by `/api/auth/session`. This eliminates token leakage risks from browser history, proxy logs, and referer headers.
 - **Security & Authentication**: Complete overhaul with Supabase Auth integration, "Split Brain" fix, and centralized log redaction.
 - **Advanced HEIC Support**: Automatic conversion with Sharp and ImageMagick fallbacks.
