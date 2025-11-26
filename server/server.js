@@ -87,6 +87,7 @@ process.on('uncaughtException', (err) => {
 });
 
 const db = require('./db/index');
+const supabase = require('./lib/supabaseClient');
 const createPhotosRouter = require('./routes/photos');
 const createCollectiblesRouter = require('./routes/collectibles');
   // Mount collectibles API under /api
@@ -229,7 +230,7 @@ app.set('trust proxy', 1);
 
   // Mount photos API under '/photos' so routes like '/' and '/:id' defined
   // in `routes/photos.js` are accessible at '/photos' and '/photos/:id'.
-  app.use('/photos', createPhotosRouter({ db }));
+  app.use('/photos', createPhotosRouter({ db, supabase }));
   app.use('/api/collectibles', authenticateToken, createCollectiblesRouter({ db }));
   app.use(authenticateToken, createUploadsRouter({ db }));
   app.use(authenticateToken, createPrivilegeRouter({ db }));

@@ -51,7 +51,7 @@ beforeEach(() => {
     return { data: { user: null }, error: { message: 'Invalid token' } };
   });
 
-  app.use(createPhotosRouter({ db }));
+  app.use(createPhotosRouter({ db, supabase }));
 });
 
 describe('IDOR Vulnerability in Legacy Display Route', () => {

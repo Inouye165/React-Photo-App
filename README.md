@@ -1,6 +1,6 @@
 # React Photo App
 
-[![Tests](https://img.shields.io/badge/tests-86%20passing-brightgreen.svg)](https://github.com/Inouye165/React-Photo-App)
+[![Tests](https://img.shields.io/badge/tests-313%2B%20passing-brightgreen.svg)](https://github.com/Inouye165/React-Photo-App)
 [![Security](https://img.shields.io/badge/security-JWT%20Auth-blue.svg)](https://jwt.io/)
 [![HEIC Support](https://img.shields.io/badge/HEIC-Auto%20Convert-orange.svg)](https://en.wikipedia.org/wiki/High_Efficiency_Image_Format)
 [![React](https://img.shields.io/badge/React-19-61dafb.svg)](https://reactjs.org/)
@@ -24,7 +24,7 @@ A full-screen React application for filtering, browsing, and uploading photos by
 - **Security & Authentication**: Complete overhaul with Supabase Auth integration, "Split Brain" fix, and centralized log redaction.
 - **Advanced HEIC Support**: Automatic conversion with Sharp and ImageMagick fallbacks.
 - **AI & Processing**: Dynamic model selection, background processing with BullMQ, and robust retry mechanisms.
-- **Quality Assurance**: Comprehensive test suite (86 tests) covering frontend, backend, and security.
+- **Quality Assurance**: Comprehensive test suite (313+ tests) covering frontend, backend, and security.
 
 ## 🚀 Quick Start
 
@@ -96,7 +96,7 @@ A full-screen React application for filtering, browsing, and uploading photos by
 
 ## 🧪 Testing
 
-The project maintains high code quality with 86 automated tests.
+The project maintains high code quality with 313+ automated tests.
 
 ```bash
 # Run all tests
