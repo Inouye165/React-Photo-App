@@ -4,7 +4,7 @@
  */
 export async function fetchCollectibles(photoId) {
   const url = `${API_BASE_URL}/photos/${photoId}/collectibles`;
-  const res = await apiLimiter(() => fetch(url, { headers: getAuthHeaders(), credentials: 'include' }));
+  const res = await apiLimiter(() => fetchWithNetworkFallback(url, { headers: getAuthHeaders(), credentials: 'include' }));
   if (handleAuthError(res)) return;
   if (!res.ok) throw new Error('Failed to fetch collectibles: ' + res.status);
   const json = await res.json();
@@ -17,7 +17,7 @@ export async function fetchCollectibles(photoId) {
  */
 export async function createCollectible(photoId, data) {
   const url = `${API_BASE_URL}/photos/${photoId}/collectibles`;
-  const res = await apiLimiter(() => fetch(url, {
+  const res = await apiLimiter(() => fetchWithNetworkFallback(url, {
     method: 'POST',
     headers: getAuthHeaders(),
     body: JSON.stringify(data),
@@ -35,7 +35,7 @@ export async function createCollectible(photoId, data) {
  */
 export async function updateCollectible(collectibleId, data) {
   const url = `${API_BASE_URL}/collectibles/${collectibleId}`;
-  const res = await apiLimiter(() => fetch(url, {
+  const res = await apiLimiter(() => fetchWithNetworkFallback(url, {
     method: 'PATCH',
     headers: getAuthHeaders(),
     body: JSON.stringify(data),
@@ -76,6 +76,90 @@ function handleAuthError(response) {
     return true;
   }
   return false;
+}
+
+// Network failure tracking (for auto-recovery detection)
+let isNetworkDown = false;
+
+/**
+ * Reset network state (for testing only)
+ * @private
+ */
+export function __resetNetworkState() {
+  isNetworkDown = false;
+}
+
+/**
+ * Wrapper around fetch that handles network-level failures gracefully.
+ * 
+ * Network failures (ECONNREFUSED, DNS errors, etc.) are different from HTTP errors:
+ * - HTTP errors (4xx, 5xx) have a response object and are handled normally
+ * - Network failures throw before any HTTP response is received
+ * 
+ * This wrapper:
+ * - Catches network-level failures (fetch throws)
+ * - Logs them with context
+ * - Dispatches a custom event for UI to show a banner
+ * - Detects recovery when subsequent calls succeed
+ * - Re-throws the error so callers can handle it appropriately
+ * 
+ * @param {RequestInfo} input - fetch URL or Request object
+ * @param {RequestInit} init - fetch options
+ * @returns {Promise<Response>} - The fetch response
+ * @throws {Error} - Network error with descriptive message
+ */
+async function fetchWithNetworkFallback(input, init) {
+  try {
+    const response = await fetch(input, init);
+    
+    // Network is healthy - dispatch recovery event if we were previously down
+    if (isNetworkDown) {
+      isNetworkDown = false;
+      try {
+        if (typeof window !== 'undefined' && window.dispatchEvent) {
+          window.dispatchEvent(new CustomEvent('network:recovered'));
+        }
+      } catch { /* ignore */ }
+    }
+    
+    return response;
+  } catch (error) {
+    // Network-level failure (no HTTP response received)
+    // Common causes: ECONNREFUSED, DNS failure, CORS preflight failure, network disconnect
+    
+    // Extract URL for logging (handle both string and Request object)
+    const url = typeof input === 'string' ? input : input?.url || 'unknown';
+    
+    // Log with context for debugging
+    console.error('[Network] Backend request failed', {
+      url,
+      error: error?.message || String(error),
+      type: error?.constructor?.name
+    });
+    
+    // Mark network as down and dispatch event for UI
+    if (!isNetworkDown) {
+      isNetworkDown = true;
+      try {
+        if (typeof window !== 'undefined' && window.dispatchEvent) {
+          window.dispatchEvent(new CustomEvent('network:unavailable', {
+            detail: { 
+              error: error?.message || 'Network request failed',
+              url 
+            }
+          }));
+        }
+      } catch { /* ignore */ }
+    }
+    
+    // Re-throw with enhanced error message for caller
+    const enhancedError = new Error(
+      `Network error: ${error?.message || 'Failed to reach server'}`
+    );
+    enhancedError.originalError = error;
+    enhancedError.isNetworkError = true;
+    throw enhancedError;
+  }
 }
 
 function resolveApiBaseUrl() {
@@ -126,7 +210,7 @@ export async function fetchProtectedBlobUrl(url) {
   if (url.startsWith('blob:')) return url;
 
   // Security: Authentication now via httpOnly cookies, not query params
-  const res = await fetch(url, {
+  const res = await fetchWithNetworkFallback(url, {
     headers: getAuthHeaders(),
     credentials: 'include' // Send cookies for authentication
   });
@@ -153,7 +237,7 @@ export async function uploadPhotoToServer(file, serverUrl = `${API_BASE_URL}/upl
   const headers = getAuthHeaders();
   delete headers['Content-Type']; // Let browser set multipart/form-data with boundary
 
-  const res = await fetch(serverUrl, { method: 'POST', headers, body: form, credentials: 'include' });
+  const res = await fetchWithNetworkFallback(serverUrl, { method: 'POST', headers, body: form, credentials: 'include' });
   if (handleAuthError(res)) return; if (!res.ok) throw new Error('Upload failed'); return await res.json();
 }
 
@@ -162,7 +246,7 @@ export async function checkPrivilege(relPath, serverUrl = `${API_BASE_URL}/privi
   for (let attempt = 1; attempt <= maxAttempts; attempt++) {
     try {
       const body = JSON.stringify({ relPath });
-  const response = await apiLimiter(() => fetch(serverUrl, { method: 'POST', headers: getAuthHeaders(), body, credentials: 'include' }));
+  const response = await apiLimiter(() => fetchWithNetworkFallback(serverUrl, { method: 'POST', headers: getAuthHeaders(), body, credentials: 'include' }));
       if (handleAuthError(response)) return; if (response.ok) return await response.json();
       if (attempt < maxAttempts) { await new Promise(r => setTimeout(r, delayMs * attempt)); continue; }
       throw new Error('Privilege check failed: ' + response.status);
@@ -182,7 +266,7 @@ export async function checkPrivilegesBatch(filenames, serverUrl = `${API_BASE_UR
   async function postChunk(chunk, attempt = 1) {
     try {
       const body = JSON.stringify({ filenames: chunk });
-  const response = await apiLimiter(() => fetch(serverUrl, { method: 'POST', headers: getAuthHeaders(), body, credentials: 'include' }));
+  const response = await apiLimiter(() => fetchWithNetworkFallback(serverUrl, { method: 'POST', headers: getAuthHeaders(), body, credentials: 'include' }));
       if (handleAuthError(response)) return null;
       if (response.status === 429) { if (attempt < maxAttempts) { await sleep(250 * Math.pow(2, attempt - 1)); return postChunk(chunk, attempt + 1); } throw new Error('Batch privilege check rate limited: 429'); }
       if (!response.ok) throw new Error('Batch privilege check failed: ' + response.status);
@@ -208,7 +292,7 @@ async function fetchWithTimeout(resource, options = {}, timeoutMs = 20000) {
   const controller = new AbortController();
   const id = setTimeout(() => controller.abort(), timeoutMs);
   try {
-    const resp = await fetch(resource, { ...options, signal: controller.signal });
+    const resp = await fetchWithNetworkFallback(resource, { ...options, signal: controller.signal });
     return resp;
   } finally {
     clearTimeout(id);
@@ -253,7 +337,7 @@ export async function fetchModelAllowlist(serverUrl = `${API_BASE_URL}`) {
 
   const url = `${serverUrl}/photos/models`;
   const fetchPromise = (async () => {
-    const response = await apiLimiter(() => fetch(url, { method: 'GET', headers: getAuthHeaders(), credentials: 'include' }));
+    const response = await apiLimiter(() => fetchWithNetworkFallback(url, { method: 'GET', headers: getAuthHeaders(), credentials: 'include' }));
     if (handleAuthError(response)) {
       const payload = { models: [], source: 'auth', updatedAt: null };
       root[CACHE_KEY] = { ts: Date.now(), data: payload };
@@ -285,7 +369,7 @@ export async function fetchModelAllowlist(serverUrl = `${API_BASE_URL}`) {
 
 export async function getDependencyStatus(serverUrl = `${API_BASE_URL}`) {
   const url = `${serverUrl}/photos/dependencies`;
-  const response = await apiLimiter(() => fetch(url, { method: 'GET', headers: getAuthHeaders(), credentials: 'include' }));
+  const response = await apiLimiter(() => fetchWithNetworkFallback(url, { method: 'GET', headers: getAuthHeaders(), credentials: 'include' }));
   if (handleAuthError(response)) return null;
   if (!response.ok) {
     throw new Error('Failed to fetch dependency status: ' + response.status);
@@ -301,13 +385,13 @@ export async function getDependencyStatus(serverUrl = `${API_BASE_URL}`) {
 }
 
 export async function updatePhotoState(id, state, serverUrl = `${API_BASE_URL}/photos/`) {
-  const doFetch = async () => fetch(`${serverUrl}${id}/state`, { method: 'PATCH', headers: getAuthHeaders(), body: JSON.stringify({ state }), credentials: 'include' });
+  const doFetch = async () => fetchWithNetworkFallback(`${serverUrl}${id}/state`, { method: 'PATCH', headers: getAuthHeaders(), body: JSON.stringify({ state }), credentials: 'include' });
   const response = await stateUpdateLimiter(() => doFetch());
   if (handleAuthError(response)) return; if (!response.ok) throw new Error('Failed to update photo state'); return await response.json();
 }
 
 export async function recheckInprogressPhotos(serverUrl = `${API_BASE_URL}/photos/recheck-inprogress`) {
-  const res = await apiLimiter(() => fetch(serverUrl, { method: 'POST', headers: getAuthHeaders(), credentials: 'include' }));
+  const res = await apiLimiter(() => fetchWithNetworkFallback(serverUrl, { method: 'POST', headers: getAuthHeaders(), credentials: 'include' }));
   if (handleAuthError(res)) return; if (!res.ok) throw new Error('Failed to trigger recheck'); return await res.json();
 }
 
@@ -319,7 +403,7 @@ export async function recheckPhotoAI(photoId, model = null, serverUrl = `${API_B
     opts.body = body;
     opts.headers = { ...opts.headers, 'Content-Type': 'application/json' };
   }
-  const res = await apiLimiter(() => fetch(url, opts));
+  const res = await apiLimiter(() => fetchWithNetworkFallback(url, opts));
   if (handleAuthError(res)) return; if (!res.ok) {
     const text = await res.text().catch(() => '');
     throw new Error('Failed to trigger photo recheck: ' + (text || res.status));
@@ -340,13 +424,13 @@ export async function recheckPhotoAI(photoId, model = null, serverUrl = `${API_B
 }
 
 export async function updatePhotoCaption(id, caption, serverUrl = `${API_BASE_URL}`) {
-  const res = await apiLimiter(() => fetch(`${serverUrl}/photos/${id}/caption`, { method: 'PATCH', headers: getAuthHeaders(), body: JSON.stringify({ caption }), credentials: 'include' }));
+  const res = await apiLimiter(() => fetchWithNetworkFallback(`${serverUrl}/photos/${id}/caption`, { method: 'PATCH', headers: getAuthHeaders(), body: JSON.stringify({ caption }), credentials: 'include' }));
   if (handleAuthError(res)) return; if (!res.ok) throw new Error('Failed to update caption'); return await res.json();
 }
 
 export async function deletePhoto(id, serverUrl = `${API_BASE_URL}`) {
   const url = `${serverUrl}/photos/${id}`;
-  const res = await apiLimiter(() => fetch(url, { method: 'DELETE', headers: getAuthHeaders(), credentials: 'include' }));
+  const res = await apiLimiter(() => fetchWithNetworkFallback(url, { method: 'DELETE', headers: getAuthHeaders(), credentials: 'include' }));
   if (handleAuthError(res)) return;
   if (!res.ok) {
     // Try to parse error body for a useful message
@@ -372,7 +456,7 @@ export async function getPhoto(photoId, options = {}, serverUrl = `${API_BASE_UR
       url += (url.includes('?') ? '&' : '?') + `_cb=${options.cacheBuster}`;
     }
     
-    const res = await fetch(url, { method: 'GET', headers: getAuthHeaders(), credentials: 'include' }); 
+    const res = await fetchWithNetworkFallback(url, { method: 'GET', headers: getAuthHeaders(), credentials: 'include' }); 
     if (handleAuthError(res)) return; 
     if (!res.ok) throw new Error('Failed to fetch photo: ' + res.status); 
     return await res.json();
