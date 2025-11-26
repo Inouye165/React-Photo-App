@@ -153,6 +153,7 @@ CORS_CREDENTIALS=true
 - Real-time password validation feedback
 - Error handling with user-friendly messages
 - Automatic token refresh and logout on expiration
+- **Robust session recovery**: Invalid refresh tokens trigger automatic cleanup and re-login prompt (prevents zombie sessions)
 
 ### User Interface
 - User info bar showing logged-in user and role
@@ -198,6 +199,12 @@ CORS_CREDENTIALS=true
 - Ensure user is logged in
 - Check if token has expired
 - Verify CORS configuration
+
+#### "Invalid Refresh Token" errors
+- This error is now handled automatically - the app will log you out and prompt for re-login
+- Common cause: Browser session cleared or token expired while app was idle
+- Expected behavior: App logs "Session lost during refresh, cleaning up" and redirects to login
+- **No action required** - this is normal cleanup of stale sessions
 
 #### Account locked messages
 - Wait 15 minutes for automatic unlock
