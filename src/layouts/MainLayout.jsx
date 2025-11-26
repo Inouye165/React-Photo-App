@@ -71,6 +71,37 @@ export default function MainLayout() {
     };
   }, [setBanner]);
 
+  // Listen for network failure and recovery events
+  useEffect(() => {
+    const handleNetworkUnavailable = () => {
+      setBanner({
+        message: "We're having trouble connecting to the server right now. Please try again in a moment.",
+        severity: 'error'
+      });
+    };
+
+    const handleNetworkRecovered = () => {
+      // Clear the network error banner when connection is restored
+      setBanner({
+        message: 'Connection restored.',
+        severity: 'success'
+      });
+      
+      // Auto-hide the success message after 3 seconds
+      setTimeout(() => {
+        setBanner({ message: '' });
+      }, 3000);
+    };
+
+    window.addEventListener('network:unavailable', handleNetworkUnavailable);
+    window.addEventListener('network:recovered', handleNetworkRecovered);
+
+    return () => {
+      window.removeEventListener('network:unavailable', handleNetworkUnavailable);
+      window.removeEventListener('network:recovered', handleNetworkRecovered);
+    };
+  }, [setBanner]);
+
   return (
     <div
       className="flex flex-col bg-gray-100"
