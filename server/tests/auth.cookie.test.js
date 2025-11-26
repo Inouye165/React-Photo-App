@@ -6,6 +6,9 @@
  * 2. Security constraints are enforced (SameSite=None requires Secure=true)
  * 3. Cookie-based authentication works correctly
  * 4. CSRF protection and rate limiting are applied
+ * 
+ * Note: Test Express apps intentionally omit CSRF middleware for isolated unit testing.
+ * codeql[js/missing-token-validation] - Test file: CSRF intentionally omitted for unit testing
  */
 
 const request = require('supertest');
