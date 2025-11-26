@@ -1,0 +1,86 @@
+# Changelog
+
+All notable changes to the React Photo App are documented here.
+
+The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/).
+
+---
+
+## [Unreleased]
+
+### In Progress
+- Gallery view redesign for improved UX
+- Mobile-responsive layouts
+- Batch operations (multi-select, delete, re-analyze)
+
+---
+
+## [November 2025] - Security & Scalability Focus
+
+### Added
+- **[Reliability]** Enhanced Session Recovery - Invalid refresh tokens now trigger automatic cleanup and re-login prompt, preventing zombie sessions and "half-broken" authentication states
+- **[Scalability]** Zero-Disk Streaming Uploads - Photo uploads now stream directly to Supabase Storage using Busboy, eliminating local `os.tmpdir()` disk writes. Hash calculation and validation occur during streaming. Heavy processing (EXIF extraction, thumbnails) deferred to BullMQ workers
+- **[Security]** CSRF Protection - Token + Origin validation on all state-changing requests
+- **[Security]** Concurrency Limits - Rate limiting prevents upload storms from overwhelming workers
+
+### Fixed
+- File cleanup race condition in `server/routes/uploads.js` - Properly handles cleanup in try-finally block, removing orphaned files from Supabase Storage when `ingestPhoto` fails
+- Dependency conflicts resolved - `npm install` now works without flags
+
+### Changed
+- **[Security]** Enforced httpOnly Cookie Authentication - All API endpoints now strictly authenticate via httpOnly cookies. Bearer token header fallback removed from frontend. Authentication handled exclusively via secure cookies set by `/api/auth/session`
+- **[Security]** Token leakage eliminated - No more JWT tokens in localStorage, URL params, or browser history
+
+---
+
+## [October 2025] - Cloud-Native Architecture
+
+### Added
+- **[Security]** Strict SSL certificate validation for production database connections - Production now enforces `rejectUnauthorized: true` with CA certificate verification to prevent MITM attacks
+- **[Security]** Complete Supabase Auth integration with centralized log redaction
+- **[AI]** Advanced HEIC Support - Automatic conversion with Sharp and ImageMagick fallbacks
+- **[AI]** Dynamic model selection with failover
+- **[Infrastructure]** Background processing with BullMQ and robust retry mechanisms
+- **[Infrastructure]** Comprehensive test suite expanded to 86 tests covering frontend, backend, and security
+- **[Features]** Location Intelligence - Google Places API integration for POI lookup
+- **[Features]** Collectibles Valuation - AI estimates worth of memorabilia
+- **[Features]** Food Detective Agent - Cross-references dishes with nearby restaurants using GPS
+
+### Fixed
+- "Split Brain" authentication resolved - Local `users` table removed, all user management consolidated on Supabase Auth
+
+### Changed
+- Supabase Postgres became the backbone of data layer (SQLite still supported for local dev)
+- Configuration management improved - environment variables, secrets, deployment scenarios carefully managed
+- Content Security Policy (CSP) with Helmet introduced with dedicated CI tests
+
+---
+
+## [September 2025] - The 2025 Overhaul
+
+### Added
+- Backend-driven photo service architecture
+- Photos as first-class records with metadata
+- HEIC image handling
+- Thumbnail generation for fast browsing
+- Location data extraction from EXIF
+- Async queue for AI processing (non-blocking uploads)
+- Modular backend structure (routes, helpers, configuration)
+- Automated tests and early CI pipeline
+
+### Changed
+- Transformed from course-style photo gallery into serious, backend-driven photo service
+- Frontend became proper client consuming backend API
+- Backend took responsibility for uploads and metadata
+
+---
+
+## Earlier Versions
+
+Previous iterations served as learning vehicles for React and Node.js fundamentals. The September 2025 overhaul marked the transition to production-ready architecture.
+
+See [docs/PRODUCT_STORY.md](docs/PRODUCT_STORY.md) for the complete narrative journey.
+
+---
+
+**Note:** This project follows [Semantic Versioning](https://semver.org/spec/v2.0.0.html) principles, though version numbers are not yet formally assigned. Once a v1.0.0 release is tagged, this changelog will reflect version numbers accordingly.

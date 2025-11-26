@@ -12,86 +12,304 @@ import useStore from '../store.js';
 describe('Integration: API auth errors trigger UI banner', () => {
   beforeEach(() => {
     vi.clearAllMocks();
+    
+    // Clear getPhotos cache (prevents stale cached responses between tests)
+    if (globalThis.__getPhotosInflight) {
+      globalThis.__getPhotosInflight.clear();
+    }
+    
     // Reset banner
     useStore.setState({
       banner: { message: '', severity: 'info' }
     });
   });
 
-  it('API 401 error dispatches event that updates store banner', async () => {
-    // Mock fetch to return 401
+  it('401 (expired cookie) dispatches auth:session-expired event and updates banner', async () => {
+    // Verify test environment supports events
+    if (typeof window === 'undefined' || !window.addEventListener) {
+      console.warn('Test environment does not support window.addEventListener');
+      return;
+    }
+
+    // Mock fetch to return 401 (expired cookie scenario)
     global.fetch = vi.fn().mockResolvedValue({
       ok: false,
       status: 401,
       json: async () => ({ error: 'Unauthorized' })
     });
 
-    // Track if event was dispatched
-    let eventDispatched = false;
-    
-    // Set up listener before making API call (simulates App.jsx mounting)
-    const listener = () => {
-      eventDispatched = true;
-      useStore.getState().setBanner({
-        message: 'Session expired. Please refresh or log in again.',
-        severity: 'error'
-      });
-    };
-    window.addEventListener('auth:session-expired', listener);
+    let eventDetail = null;
 
-    try {
-      // Make API call that will trigger auth error
-      await api.getPhotos();
+    // Use promise-based event listener (robust pattern from network tests)
+    const eventPromise = new Promise((resolve) => {
+      const listener = (event) => {
+        eventDetail = event.detail;
+        
+        // Simulate what MainLayout does - update banner
+        useStore.getState().setBanner({
+          message: 'Session expired. Please refresh or log in again.',
+          severity: 'error'
+        });
+        
+        window.removeEventListener('auth:session-expired', listener);
+        resolve(true);
+      };
+      
+      // Add listener BEFORE making API call
+      window.addEventListener('auth:session-expired', listener);
+    });
 
-      // Wait for event to propagate
-      await new Promise(resolve => setTimeout(resolve, 50));
+    // Make API call that will trigger auth error
+    const result = await api.getPhotos();
 
-      // Verify event was dispatched
-      expect(eventDispatched).toBe(true);
+    // Wait for event (with timeout to prevent hanging)
+    const eventFired = await Promise.race([
+      eventPromise,
+      new Promise(resolve => setTimeout(() => resolve(false), 200))
+    ]);
 
-      // Verify banner was updated
-      const banner = useStore.getState().banner;
-      expect(banner.message).toMatch(/Session expired/i);
-      expect(banner.severity).toBe('error');
-    } finally {
-      window.removeEventListener('auth:session-expired', listener);
-    }
+    // Verify event was dispatched
+    expect(eventFired).toBe(true);
+    expect(eventDetail).toBeDefined();
+    expect(eventDetail.status).toBe(401);
+
+    // Verify banner was updated
+    const banner = useStore.getState().banner;
+    expect(banner.message).toMatch(/Session expired/i);
+    expect(banner.severity).toBe('error');
+
+    // Verify API call returned gracefully (handleAuthError returns early, no throw)
+    expect(result).toBeUndefined();
+
+    // Verify fetch was called exactly once
+    expect(global.fetch).toHaveBeenCalledTimes(1);
   });
 
-  it('API 403 error dispatches event that updates store banner', async () => {
-    // Mock fetch to return 403
+  it('403 (invalid token) dispatches auth:session-expired event and updates banner', async () => {
+    // Mock fetch to return 403 (invalid/forbidden token scenario)
     global.fetch = vi.fn().mockResolvedValue({
       ok: false,
       status: 403,
       json: async () => ({ error: 'Forbidden' })
     });
 
-    // Set up listener
-    const listener = () => {
-      useStore.getState().setBanner({
-        message: 'Session expired. Please refresh or log in again.',
-        severity: 'error'
-      });
-    };
-    window.addEventListener('auth:session-expired', listener);
+    let eventDetail = null;
 
-    try {
-      // Make API call that will trigger auth error
-      await api.updatePhotoState(123, 'finished');
+    // Promise-based event listener
+    const eventPromise = new Promise((resolve) => {
+      const listener = (event) => {
+        eventDetail = event.detail;
+        
+        // Simulate MainLayout behavior
+        useStore.getState().setBanner({
+          message: 'Session expired. Please refresh or log in again.',
+          severity: 'error'
+        });
+        
+        window.removeEventListener('auth:session-expired', listener);
+        resolve(true);
+      };
+      
+      window.addEventListener('auth:session-expired', listener);
+    });
 
-      // Brief wait for event to propagate
-      await new Promise(resolve => setTimeout(resolve, 10));
+    // Make API call that will trigger auth error
+    const result = await api.updatePhotoState(123, 'finished');
 
-      // Verify banner was updated
-      const banner = useStore.getState().banner;
-      expect(banner.message).toMatch(/Session expired/i);
-      expect(banner.severity).toBe('error');
-    } finally {
-      window.removeEventListener('auth:session-expired', listener);
-    }
+    // Wait for event with timeout
+    const eventFired = await Promise.race([
+      eventPromise,
+      new Promise(resolve => setTimeout(() => resolve(false), 200))
+    ]);
+
+    // Verify event was dispatched
+    expect(eventFired).toBe(true);
+    expect(eventDetail).toBeDefined();
+    expect(eventDetail.status).toBe(403);
+
+    // Verify banner was updated
+    const banner = useStore.getState().banner;
+    expect(banner.message).toMatch(/Session expired/i);
+    expect(banner.severity).toBe('error');
+
+    // Verify API call returned gracefully
+    expect(result).toBeUndefined();
   });
 
-  it('Multiple API 401 errors only update banner once with same message', async () => {
+  it('Multiple concurrent auth failures dispatch events without suppression', async () => {
+    // Mock fetch to return 401 for all calls
+    global.fetch = vi.fn().mockResolvedValue({
+      ok: false,
+      status: 401,
+      json: async () => ({ error: 'Unauthorized' })
+    });
+
+    let eventCount = 0;
+    const expectedEvents = 3;
+
+    // Promise that resolves when we've seen at least N events
+    const multiEventPromise = new Promise((resolve) => {
+      const listener = (_event) => {
+        eventCount++;
+        
+        // Update banner (idempotent - same message each time)
+        useStore.getState().setBanner({
+          message: 'Session expired. Please refresh or log in again.',
+          severity: 'error'
+        });
+        
+        // Once we've seen enough events, clean up and resolve
+        if (eventCount >= expectedEvents) {
+          window.removeEventListener('auth:session-expired', listener);
+          resolve(true);
+        }
+      };
+      
+      window.addEventListener('auth:session-expired', listener);
+    });
+
+    // Make multiple concurrent API calls
+    await Promise.all([
+      api.getPhotos(),
+      api.updatePhotoState(1, 'finished'),
+      api.deletePhoto(2)
+    ]);
+
+    // Wait for events with timeout
+    const allEventsFired = await Promise.race([
+      multiEventPromise,
+      new Promise(resolve => setTimeout(() => resolve(false), 300))
+    ]);
+
+    // Verify events fired (no hidden suppression)
+    expect(allEventsFired).toBe(true);
+    expect(eventCount).toBeGreaterThanOrEqual(expectedEvents);
+
+    // Verify banner is in stable, sane state (same message, not corrupted)
+    const banner = useStore.getState().banner;
+    expect(banner.message).toMatch(/Session expired/i);
+    expect(banner.severity).toBe('error');
+    expect(banner.message).not.toContain('undefined');
+    expect(banner.message).not.toContain('null');
+  });
+
+  it('Non-auth errors (404) do NOT trigger auth:session-expired event', async () => {
+    // Mock fetch to return 404 (not an auth error)
+    global.fetch = vi.fn().mockResolvedValue({
+      ok: false,
+      status: 404,
+      json: async () => ({ error: 'Not found' })
+    });
+
+    // Promise that fails the test if auth event fires
+    const noAuthEventPromise = new Promise((resolve, reject) => {
+      const listener = (_event) => {
+        window.removeEventListener('auth:session-expired', listener);
+        reject(new Error('auth:session-expired should NOT fire for 404 errors'));
+      };
+      
+      window.addEventListener('auth:session-expired', listener);
+      
+      // Auto-resolve after a delay (no event = success)
+      setTimeout(() => {
+        window.removeEventListener('auth:session-expired', listener);
+        resolve(true);
+      }, 100);
+    });
+
+    // Make API call that will get 404
+    try {
+      await api.getPhotos();
+    } catch {
+      // Expected to throw due to !res.ok check in getPhotos
+    }
+
+    // Wait for event timeout (should NOT fire)
+    const noEventFired = await noAuthEventPromise;
+    expect(noEventFired).toBe(true);
+
+    // Verify banner was NOT updated to session expired message
+    const banner = useStore.getState().banner;
+    expect(banner.message).not.toMatch(/Session expired/i);
+  });
+
+  it('Non-auth errors (500) do NOT trigger auth:session-expired event', async () => {
+    // Mock fetch to return 500 (server error, not auth error)
+    global.fetch = vi.fn().mockResolvedValue({
+      ok: false,
+      status: 500,
+      json: async () => ({ error: 'Internal Server Error' })
+    });
+
+    // Promise that fails the test if auth event fires
+    const noAuthEventPromise = new Promise((resolve, reject) => {
+      const listener = (_event) => {
+        window.removeEventListener('auth:session-expired', listener);
+        reject(new Error('auth:session-expired should NOT fire for 500 errors'));
+      };
+      
+      window.addEventListener('auth:session-expired', listener);
+      
+      // Auto-resolve after a delay (no event = success)
+      setTimeout(() => {
+        window.removeEventListener('auth:session-expired', listener);
+        resolve(true);
+      }, 100);
+    });
+
+    // Make API call that will get 500
+    try {
+      await api.updatePhotoState(456, 'finished');
+    } catch {
+      // Expected to throw
+    }
+
+    // Wait for event timeout (should NOT fire)
+    const noEventFired = await noAuthEventPromise;
+    expect(noEventFired).toBe(true);
+
+    // Verify banner was NOT updated to session expired message
+    const banner = useStore.getState().banner;
+    expect(banner.message).not.toMatch(/Session expired/i);
+  });
+
+  it('Non-auth errors (502, 503) do NOT trigger auth:session-expired event', async () => {
+    // Mock fetch to return 502 (bad gateway)
+    global.fetch = vi.fn().mockResolvedValue({
+      ok: false,
+      status: 502,
+      json: async () => ({ error: 'Bad Gateway' })
+    });
+
+    // Promise that fails the test if auth event fires
+    const noAuthEventPromise = new Promise((resolve, reject) => {
+      const listener = (_event) => {
+        window.removeEventListener('auth:session-expired', listener);
+        reject(new Error('auth:session-expired should NOT fire for 502 errors'));
+      };
+      
+      window.addEventListener('auth:session-expired', listener);
+      
+      // Auto-resolve after a delay (no event = success)
+      setTimeout(() => {
+        window.removeEventListener('auth:session-expired', listener);
+        resolve(true);
+      }, 100);
+    });
+
+    // Make API call that will get 502
+    try {
+      await api.recheckInprogressPhotos();
+    } catch {
+      // Expected to throw
+    }
+
+    // Wait for event timeout (should NOT fire)
+    const noEventFired = await noAuthEventPromise;
+    expect(noEventFired).toBe(true);
+  });
+
+  it('Auth errors return gracefully without throwing (no app crash)', async () => {
     // Mock fetch to return 401
     global.fetch = vi.fn().mockResolvedValue({
       ok: false,
@@ -99,72 +317,24 @@ describe('Integration: API auth errors trigger UI banner', () => {
       json: async () => ({ error: 'Unauthorized' })
     });
 
-    // Set up listener
-    let callCount = 0;
-    const listener = () => {
-      callCount++;
-      useStore.getState().setBanner({
-        message: 'Session expired. Please refresh or log in again.',
-        severity: 'error'
-      });
-    };
+    // Set up minimal listener to prevent unhandled event warnings
+    const listener = (_event) => {};
     window.addEventListener('auth:session-expired', listener);
 
     try {
-      // Make multiple API calls
-      await api.getPhotos();
-      await api.updatePhotoState(1, 'finished');
-      await api.deletePhoto(2);
+      // These should all return undefined (via handleAuthError early return)
+      // and NOT throw errors
+      const result1 = await api.getPhotos();
+      expect(result1).toBeUndefined();
 
-      // Brief wait for events to propagate
-      await new Promise(resolve => setTimeout(resolve, 50));
+      const result2 = await api.updatePhotoState(1, 'finished');
+      expect(result2).toBeUndefined();
 
-      // Verify banner was updated and listener was called multiple times
-      const banner = useStore.getState().banner;
-      expect(banner.message).toMatch(/Session expired/i);
-      expect(banner.severity).toBe('error');
-      expect(callCount).toBeGreaterThan(0);
-    } finally {
-      window.removeEventListener('auth:session-expired', listener);
-    }
-  });
+      const result3 = await api.deletePhoto(2);
+      expect(result3).toBeUndefined();
 
-  it('Non-auth errors (404, 500) do not trigger session expired banner', async () => {
-    // Mock fetch to return 404
-    global.fetch = vi.fn().mockResolvedValue({
-      ok: false,
-      status: 404,
-      json: async () => ({ error: 'Not found' })
-    });
-
-    // Set up listener
-    let eventFired = false;
-    const listener = () => {
-      eventFired = true;
-      useStore.getState().setBanner({
-        message: 'Session expired. Please refresh or log in again.',
-        severity: 'error'
-      });
-    };
-    window.addEventListener('auth:session-expired', listener);
-
-    try {
-      // Make API call that will get 404
-      try {
-        await api.getPhotos();
-      } catch {
-        // Expected to throw
-      }
-
-      // Brief wait
-      await new Promise(resolve => setTimeout(resolve, 10));
-
-      // Verify event was NOT fired
-      expect(eventFired).toBe(false);
-      
-      // Verify banner was NOT updated to session expired message
-      const banner = useStore.getState().banner;
-      expect(banner.message).not.toMatch(/Session expired/i);
+      // Verify fetch was called for each API call
+      expect(global.fetch).toHaveBeenCalledTimes(3);
     } finally {
       window.removeEventListener('auth:session-expired', listener);
     }
