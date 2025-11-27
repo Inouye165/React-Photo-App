@@ -267,12 +267,12 @@ describe('LocationMapPanel component', () => {
       expect(centerData.lng).toBe(-74.0060);
     });
 
-    it('sets zoom to 15 by default', () => {
+    it('sets zoom to 19 by default (street-level ~300ft)', () => {
       const photo = { latitude: 37.7749, longitude: -122.4194 };
       render(<LocationMapPanel photo={photo} />);
 
       const map = screen.getByTestId('google-map');
-      expect(map.getAttribute('data-zoom')).toBe('15');
+      expect(map.getAttribute('data-zoom')).toBe('19');
     });
 
     it('shows "No GPS location" message when photo has no location', () => {

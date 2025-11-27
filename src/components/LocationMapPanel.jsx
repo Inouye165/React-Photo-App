@@ -42,13 +42,14 @@ export default function LocationMapPanel({ photo }) {
 
   // Controlled map state for proper recentering when photo changes
   const [mapCenter, setMapCenter] = useState(center);
-  const [mapZoom, setMapZoom] = useState(15);
+  // Zoom level 19 ≈ ~300ft altitude (street-level detail)
+  const [mapZoom, setMapZoom] = useState(19);
 
   // Update map center when photo location changes
   useEffect(() => {
     if (hasLocation) {
       setMapCenter(center);
-      setMapZoom(15);
+      setMapZoom(19);
     }
   }, [center, hasLocation]);
 

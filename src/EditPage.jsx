@@ -5,6 +5,8 @@ import { API_BASE_URL, fetchProtectedBlobUrl, revokeBlobUrl } from './api.js'
 import useStore from './store.js'
 import AppHeader from './components/AppHeader.jsx'
 import LocationMapPanel from './components/LocationMapPanel'
+import FlipCard from './components/FlipCard'
+import PhotoMetadataBack from './components/PhotoMetadataBack'
 
 export default function EditPage({ photo, onClose: _onClose, onSave, onRecheckAI, aiReady = true }) {
   // AuthContext no longer exposes client-side token (httpOnly cookies are used).
@@ -28,6 +30,7 @@ export default function EditPage({ photo, onClose: _onClose, onSave, onRecheckAI
   const [textStyle, setTextStyle] = useState(photo?.textStyle || null)
   const [saving, setSaving] = useState(false)
   const [recheckingAI, setRecheckingAI] = useState(false)
+  const [isFlipped, setIsFlipped] = useState(false) // Flip card state
   // Button visual status: 'idle' | 'in-progress' | 'done' | 'error'
   // const [recheckStatus, setRecheckStatus] = useState('idle') // Removed unused
   const prevPhotoRef = React.useRef(photo)
@@ -364,46 +367,119 @@ export default function EditPage({ photo, onClose: _onClose, onSave, onRecheckAI
           }}
         >
           
-          {/* Left Panel: Image Canvas (1/3 width) */}
+          {/* ========================================
+              LEFT COLUMN: Caption + Flip Card (Photo Stack)
+              ======================================== */}
           <div 
             className="bg-slate-100 relative flex flex-col overflow-hidden border-r border-slate-200"
             style={{ 
-              flex: 1, // 1/3 of the space
+              flex: 1,
               backgroundColor: '#f1f5f9',
               position: 'relative',
               display: 'flex',
               flexDirection: 'column',
               overflow: 'hidden',
-              borderRight: '1px solid #e2e8f0'
+              borderRight: '1px solid #e2e8f0',
+              padding: '20px',
             }}
           >
-            {!imageBlobUrl && !fetchError && (
-              <div className="absolute inset-0 flex items-center justify-center text-slate-400">
-                Loading...
-              </div>
-            )}
-            
-            {fetchError && (
-              <div className="absolute inset-0 flex items-center justify-center text-red-500">
-                Unable to load image
-              </div>
-            )}
-
-            {imageBlobUrl && (
-              <ImageCanvasEditor 
-                imageUrl={imageBlobUrl}
-                caption={caption}
-                textStyle={textStyle}
-                onSave={handleCanvasSave}
+            {/* Caption Input - Above the Photo (styled as header) */}
+            <div style={{ marginBottom: '16px', flexShrink: 0 }}>
+              <input
+                type="text"
+                value={caption}
+                onChange={e => setCaption(e.target.value)}
+                placeholder="Add a caption..."
+                style={{
+                  width: '100%',
+                  backgroundColor: 'transparent',
+                  border: 'none',
+                  borderBottom: '2px solid transparent',
+                  padding: '8px 4px',
+                  fontSize: '1.5rem',
+                  fontWeight: 600,
+                  color: '#1e293b',
+                  outline: 'none',
+                  fontFamily: 'inherit',
+                  transition: 'border-color 0.2s ease',
+                }}
+                onFocus={(e) => {
+                  e.target.style.borderBottomColor = '#3b82f6';
+                }}
+                onBlur={(e) => {
+                  e.target.style.borderBottomColor = 'transparent';
+                }}
               />
-            )}
+            </div>
+
+            {/* Flip Card Container - Photo / Metadata */}
+            <div style={{ flex: 1, minHeight: 0, position: 'relative' }}>
+              <FlipCard
+                isFlipped={isFlipped}
+                onFlip={() => setIsFlipped(!isFlipped)}
+                frontContent={
+                  /* Front Face: Photo with Burn Caption functionality */
+                  <div style={{ 
+                    width: '100%', 
+                    height: '100%', 
+                    backgroundColor: '#0f172a',
+                    position: 'relative',
+                  }}>
+                    {!imageBlobUrl && !fetchError && (
+                      <div style={{
+                        position: 'absolute',
+                        inset: 0,
+                        display: 'flex',
+                        alignItems: 'center',
+                        justifyContent: 'center',
+                        color: '#94a3b8',
+                      }}>
+                        Loading...
+                      </div>
+                    )}
+                    
+                    {fetchError && (
+                      <div style={{
+                        position: 'absolute',
+                        inset: 0,
+                        display: 'flex',
+                        alignItems: 'center',
+                        justifyContent: 'center',
+                        color: '#ef4444',
+                      }}>
+                        Unable to load image
+                      </div>
+                    )}
+
+                    {imageBlobUrl && (
+                      <ImageCanvasEditor 
+                        imageUrl={imageBlobUrl}
+                        caption={caption}
+                        textStyle={textStyle}
+                        onSave={handleCanvasSave}
+                      />
+                    )}
+                  </div>
+                }
+                backContent={
+                  /* Back Face: Keywords + Technical Metadata */
+                  <PhotoMetadataBack
+                    keywords={keywords}
+                    onKeywordsChange={setKeywords}
+                    photo={sourcePhoto}
+                  />
+                }
+              />
+            </div>
           </div>
 
-          {/* Right Panel: Metadata & Map (2/3 width) */}
+          {/* ========================================
+              RIGHT COLUMN: Description + Map (Narrative & Context)
+              ======================================== */}
           <div 
             className="bg-white flex flex-col h-full overflow-hidden shadow-xl z-10"
             style={{ 
-              flex: 2, // 2/3 of the space
+              flex: 1, // Equal width columns
               backgroundColor: 'white',
               display: 'flex',
               flexDirection: 'column',
@@ -412,57 +488,84 @@ export default function EditPage({ photo, onClose: _onClose, onSave, onRecheckAI
             }}
           >
             
-            {/* Top Half: Metadata Form */}
-            <div className="flex-1 overflow-y-auto p-6 min-h-0" style={{ flex: 1, overflowY: 'auto', padding: '32px' }}>
-              <div className="space-y-6" style={{ display: 'flex', flexDirection: 'column', gap: '24px', maxWidth: '800px', margin: '0 auto' }}>
-                
-                {/* Caption Field */}
-                <div className="group">
-                  <label className="block text-[11px] font-bold text-slate-400 uppercase tracking-wider mb-2 ml-1" style={{ display: 'block', fontSize: '11px', fontWeight: 700, color: '#94a3b8', textTransform: 'uppercase', letterSpacing: '0.05em', marginBottom: '8px' }}>Caption</label>
-                  <textarea
-                    value={caption}
-                    onChange={e => setCaption(e.target.value)}
-                    rows={2}
-                    className="w-full bg-slate-50 border border-slate-200 rounded-2xl p-4 text-sm text-slate-700 outline-none focus:border-blue-500"
-                    style={{ width: '100%', backgroundColor: '#f8fafc', border: '1px solid #e2e8f0', borderRadius: '16px', padding: '16px', fontSize: '16px', color: '#334155', outline: 'none', resize: 'none' }}
-                    placeholder="Write a caption..."
-                  />
-                </div>
-
-                {/* Description Field */}
-                <div className="group">
-                  <label className="block text-[11px] font-bold text-slate-400 uppercase tracking-wider mb-2 ml-1" style={{ display: 'block', fontSize: '11px', fontWeight: 700, color: '#94a3b8', textTransform: 'uppercase', letterSpacing: '0.05em', marginBottom: '8px' }}>Description</label>
-                  <textarea
-                    value={description}
-                    onChange={e => setDescription(e.target.value)}
-                    rows={6}
-                    className="w-full bg-slate-50 border border-slate-200 rounded-2xl p-4 text-sm text-slate-700 outline-none focus:border-blue-500"
-                    style={{ width: '100%', backgroundColor: '#f8fafc', border: '1px solid #e2e8f0', borderRadius: '16px', padding: '16px', fontSize: '16px', color: '#334155', outline: 'none', resize: 'none' }}
-                    placeholder="Add a detailed description..."
-                  />
-                </div>
-
-                {/* Keywords Field */}
-                <div className="group">
-                  <label className="block text-[11px] font-bold text-slate-400 uppercase tracking-wider mb-2 ml-1" style={{ display: 'block', fontSize: '11px', fontWeight: 700, color: '#94a3b8', textTransform: 'uppercase', letterSpacing: '0.05em', marginBottom: '8px' }}>Keywords</label>
-                  <input
-                    type="text"
-                    value={keywords}
-                    onChange={e => setKeywords(e.target.value)}
-                    className="w-full bg-slate-50 border border-slate-200 rounded-2xl px-4 py-3 text-sm text-slate-700 outline-none focus:border-blue-500"
-                    style={{ width: '100%', backgroundColor: '#f8fafc', border: '1px solid #e2e8f0', borderRadius: '16px', padding: '12px 16px', fontSize: '16px', color: '#334155', outline: 'none' }}
-                    placeholder="nature, landscape, memory..."
-                  />
-                </div>
-
+            {/* Top: Description Field (prominent) */}
+            <div 
+              className="flex-1 overflow-y-auto p-6 min-h-0" 
+              style={{ 
+                flex: 1, 
+                overflowY: 'auto', 
+                padding: '24px',
+                display: 'flex',
+                flexDirection: 'column',
+              }}
+            >
+              <div style={{ 
+                display: 'flex', 
+                flexDirection: 'column', 
+                height: '100%',
+              }}>
+                <label 
+                  style={{ 
+                    display: 'block', 
+                    fontSize: '11px', 
+                    fontWeight: 700, 
+                    color: '#94a3b8', 
+                    textTransform: 'uppercase', 
+                    letterSpacing: '0.05em', 
+                    marginBottom: '12px',
+                  }}
+                >
+                  Photo Story
+                </label>
+                <textarea
+                  value={description}
+                  onChange={e => setDescription(e.target.value)}
+                  className="w-full bg-slate-50 border border-slate-200 rounded-2xl p-4 text-sm text-slate-700 outline-none focus:border-blue-500"
+                  style={{ 
+                    flex: 1,
+                    width: '100%', 
+                    backgroundColor: '#f8fafc', 
+                    border: '1px solid #e2e8f0', 
+                    borderRadius: '16px', 
+                    padding: '16px', 
+                    fontSize: '15px', 
+                    lineHeight: '1.6',
+                    color: '#334155', 
+                    outline: 'none', 
+                    resize: 'none',
+                    minHeight: '200px',
+                  }}
+                  placeholder="Tell the story behind this photo... What were you doing? Who was there? What made this moment special?"
+                />
               </div>
             </div>
 
-            {/* Bottom Half: Map (Fixed height) */}
-            <div className="h-64 flex-none border-t border-slate-100 bg-slate-50 p-4" style={{ height: '300px', flex: 'none', borderTop: '1px solid #f1f5f9', backgroundColor: '#f8fafc', padding: '24px' }}>
-               <div className="h-full w-full rounded-xl overflow-hidden shadow-sm border border-slate-200/60 relative" style={{ height: '100%', width: '100%', borderRadius: '16px', overflow: 'hidden', border: '1px solid rgba(226, 232, 240, 0.6)', position: 'relative' }}>
-                  <LocationMapPanel photo={sourcePhoto} />
-               </div>
+            {/* Bottom: Map (better aspect ratio - square/4:3) */}
+            <div 
+              className="flex-none border-t border-slate-100 bg-slate-50 p-4" 
+              style={{ 
+                flex: 'none',
+                aspectRatio: '4 / 3',
+                maxHeight: '50%',
+                minHeight: '280px',
+                borderTop: '1px solid #f1f5f9', 
+                backgroundColor: '#f8fafc', 
+                padding: '20px',
+              }}
+            >
+              <div 
+                style={{ 
+                  height: '100%', 
+                  width: '100%', 
+                  borderRadius: '16px', 
+                  overflow: 'hidden', 
+                  border: '1px solid rgba(226, 232, 240, 0.6)', 
+                  position: 'relative',
+                  boxShadow: '0 1px 3px rgba(0, 0, 0, 0.05)',
+                }}
+              >
+                <LocationMapPanel photo={sourcePhoto} />
+              </div>
             </div>
 
           </div>

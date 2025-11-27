@@ -38,6 +38,25 @@ vi.mock('./components/LocationMapPanel', () => ({
   default: () => React.createElement('div', { 'data-testid': 'location-map-panel' }, 'Mock Map')
 }))
 
+// Mock FlipCard component
+vi.mock('./components/FlipCard', () => ({
+  default: ({ frontContent, backContent, isFlipped, onFlip }) => 
+    React.createElement('div', { 
+      'data-testid': 'flip-card', 
+      'data-is-flipped': String(isFlipped),
+      onClick: onFlip 
+    }, isFlipped ? backContent : frontContent)
+}))
+
+// Mock PhotoMetadataBack component
+vi.mock('./components/PhotoMetadataBack', () => ({
+  default: ({ keywords, onKeywordsChange: _onKeywordsChange, photo: _photo }) => 
+    React.createElement('div', { 
+      'data-testid': 'photo-metadata-back',
+      'data-keywords': keywords,
+    }, 'Mock Metadata Back')
+}))
+
 import EditPage from './EditPage.jsx'
 import * as api from './api.js'
 
