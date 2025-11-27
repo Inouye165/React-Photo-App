@@ -50,18 +50,22 @@ export default function FlipCard({
             WebkitBackfaceVisibility: 'hidden',
             borderRadius: '16px',
             overflow: 'hidden',
+            pointerEvents: isFlipped ? 'none' : 'auto',
           }}
         >
           {frontContent}
           
-          {/* Flip Button - Front */}
+          {/* Flip Button - Front (positioned bottom-right to avoid toolbar overlap) */}
           <button
-            onClick={onFlip}
+            onClick={(e) => {
+              e.stopPropagation();
+              onFlip && onFlip();
+            }}
             aria-label="Show photo details"
             title="View Keywords & Metadata"
             style={{
               position: 'absolute',
-              top: '12px',
+              bottom: '12px',
               right: '12px',
               width: '36px',
               height: '36px',
@@ -73,8 +77,9 @@ export default function FlipCard({
               alignItems: 'center',
               justifyContent: 'center',
               boxShadow: '0 2px 8px rgba(0, 0, 0, 0.15)',
-              transition: 'all 0.2s ease',
-              zIndex: 10,
+              transition: 'transform 0.2s ease, box-shadow 0.2s ease',
+              zIndex: 100,
+              pointerEvents: 'auto',
             }}
             onMouseEnter={(e) => {
               e.currentTarget.style.transform = 'scale(1.1)';
@@ -115,13 +120,17 @@ export default function FlipCard({
             transform: 'rotateY(180deg)',
             borderRadius: '16px',
             overflow: 'hidden',
+            pointerEvents: isFlipped ? 'auto' : 'none',
           }}
         >
           {backContent}
           
           {/* Flip Button - Back */}
           <button
-            onClick={onFlip}
+            onClick={(e) => {
+              e.stopPropagation();
+              onFlip && onFlip();
+            }}
             aria-label="Show photo"
             title="Back to Photo"
             style={{
@@ -138,8 +147,9 @@ export default function FlipCard({
               alignItems: 'center',
               justifyContent: 'center',
               boxShadow: '0 2px 8px rgba(0, 0, 0, 0.2)',
-              transition: 'all 0.2s ease',
-              zIndex: 10,
+              transition: 'transform 0.2s ease, box-shadow 0.2s ease',
+              zIndex: 100,
+              pointerEvents: 'auto',
             }}
             onMouseEnter={(e) => {
               e.currentTarget.style.transform = 'scale(1.1)';
