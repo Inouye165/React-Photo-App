@@ -2,6 +2,9 @@ const express = require('express');
 const path = require('path');
 const { Readable } = require('stream');
 const logger = require('../logger');
+
+// SECURITY: UUID validation regex for user IDs (Supabase uses UUIDs)
+const UUID_REGEX = /^[0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i;
 const { signThumbnailUrl, DEFAULT_TTL_SECONDS } = require('../utils/urlSigning');
 const { addAIJob } = require('../queue');
 const createPhotosDb = require('../services/photosDb');
@@ -41,11 +44,19 @@ module.exports = function createPhotosRouter({ db, supabase }) {
   router.get('/status', authenticateToken, async (req, res) => {
     const reqId = Math.random().toString(36).slice(2, 10);
     try {
+      // SECURITY: Validate user ID is a valid UUID before using in query
+      // This prevents potential injection if auth middleware is compromised
+      const userId = req.user?.id;
+      if (!userId || typeof userId !== 'string' || !UUID_REGEX.test(userId)) {
+        logger.warn('[photos/status] Invalid user ID format', { reqId, userId: typeof userId });
+        return res.status(400).json({ success: false, error: 'Invalid user identifier', reqId });
+      }
+
       const DB_QUERY_TIMEOUT_MS = Number(process.env.DB_QUERY_TIMEOUT_MS || 10000);
 
       const counts = await Promise.race([
         db('photos')
-          .where('user_id', req.user.id)
+          .where('user_id', userId)
           .select('state')
           .count('* as count')
           .groupBy('state'),
@@ -53,6 +64,8 @@ module.exports = function createPhotosRouter({ db, supabase }) {
       ]);
 
       // Transform array of {state, count} into object { working: N, inprogress: N, ... }
+      // SECURITY: Only accept known state values to prevent enumeration
+      const VALID_STATES = ['working', 'inprogress', 'finished'];
       const result = {
         working: 0,
         inprogress: 0,
@@ -63,15 +76,18 @@ module.exports = function createPhotosRouter({ db, supabase }) {
       for (const row of counts) {
         const state = row.state;
         const count = Number(row.count) || 0;
-        if (state === 'working') result.working = count;
-        else if (state === 'inprogress') result.inprogress = count;
-        else if (state === 'finished') result.finished = count;
+        // Only process known states - ignore any unexpected values
+        if (VALID_STATES.includes(state)) {
+          result[state] = count;
+        }
         result.total += count;
       }
 
       res.set('Cache-Control', 'no-store');
       res.json({ success: true, ...result });
     } catch (err) {
+      // SECURITY: Log full error details server-side but don't expose to client
+      // CWE-209: Information Exposure Through an Error Message
       logger.error('[photos/status] DB error', {
         reqId,
         endpoint: '/photos/status',
@@ -81,7 +97,8 @@ module.exports = function createPhotosRouter({ db, supabase }) {
           stack: err && err.stack && err.stack.split('\n').slice(0, 3).join(' | ')
         }
       });
-      res.status(500).json({ success: false, error: err.message, reqId });
+      // Return generic error message - do not expose internal error details
+      res.status(500).json({ success: false, error: 'Failed to retrieve photo status', reqId });
     }
   });
 
