@@ -3,17 +3,24 @@ import ImageCanvasEditor from './ImageCanvasEditor'
 import { useAuth } from './contexts/AuthContext'
 import { API_BASE_URL, fetchProtectedBlobUrl, revokeBlobUrl } from './api.js'
 import useStore from './store.js'
-// import ModelSelect from './components/ModelSelect' // Removed unused
-// import { DEFAULT_MODEL } from './config/modelCatalog' // Removed unused
+import AppHeader from './components/AppHeader.jsx'
 import LocationMapPanel from './components/LocationMapPanel'
 
-export default function EditPage({ photo, onClose, onSave, onRecheckAI, aiReady = true }) {
+export default function EditPage({ photo, onClose: _onClose, onSave, onRecheckAI, aiReady = true }) {
   // AuthContext no longer exposes client-side token (httpOnly cookies are used).
   useAuth();
   // Prefer the live photo from the global store when available so this editor
   // always displays the freshest AI-updated content. Fall back to the prop.
   const reactivePhoto = useStore(state => state.photos.find(p => String(p.id) === String(photo?.id)) || photo)
   const sourcePhoto = reactivePhoto || photo
+  const setLastEditedPhotoId = useStore(state => state.setLastEditedPhotoId);
+
+  // Track this photo as the last edited
+  useEffect(() => {
+    if (photo?.id) {
+      setLastEditedPhotoId(photo.id);
+    }
+  }, [photo?.id, setLastEditedPhotoId]);
 
   const [caption, setCaption] = useState(sourcePhoto?.caption || '')
   const [description, setDescription] = useState(sourcePhoto?.description || '')
@@ -264,13 +271,80 @@ export default function EditPage({ photo, onClose, onSave, onRecheckAI, aiReady 
         backgroundColor: '#cbd5e1', // slate-300 for background contrast
         display: 'flex',
         flexDirection: 'column',
-        padding: '16px', // Reduced margin for better screen utilization
         fontFamily: '-apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Helvetica, Arial, sans-serif'
       }}
     >
+      {/* Consistent App Header */}
+      <AppHeader 
+        rightContent={
+          <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
+            {/* AI Recheck Status */}
+            {isPolling || recheckingAI ? (
+              <div style={{
+                display: 'flex',
+                alignItems: 'center',
+                gap: '6px',
+                padding: '6px 12px',
+                backgroundColor: '#fef3c7',
+                color: '#d97706',
+                borderRadius: '8px',
+                fontSize: '12px',
+                fontWeight: 500,
+                border: '1px solid #fde68a',
+              }}>
+                <span>Processing...</span>
+              </div>
+            ) : (
+              <button
+                onClick={() => {
+                  setRecheckingAI(true);
+                  if (onRecheckAI) onRecheckAI(sourcePhoto?.id || photo.id, null).finally(() => setRecheckingAI(false));
+                }}
+                disabled={!aiReady}
+                style={{ 
+                  padding: '6px 12px',
+                  borderRadius: '8px',
+                  border: '1px solid #e2e8f0',
+                  backgroundColor: '#ffffff',
+                  cursor: aiReady ? 'pointer' : 'not-allowed', 
+                  color: aiReady ? '#475569' : '#cbd5e1', 
+                  fontSize: '12px', 
+                  fontWeight: 500,
+                  transition: 'all 0.15s ease',
+                }}
+              >
+                Recheck AI
+              </button>
+            )}
+
+            {/* Save Button */}
+            <button 
+              onClick={handleSave} 
+              disabled={saving}
+              style={{
+                backgroundColor: '#0f172a',
+                color: 'white',
+                fontSize: '12px',
+                fontWeight: 500,
+                padding: '6px 16px',
+                borderRadius: '8px',
+                border: 'none',
+                cursor: saving ? 'wait' : 'pointer',
+                opacity: saving ? 0.7 : 1,
+                transition: 'all 0.15s ease',
+              }}
+            >
+              {saving ? 'Saving...' : 'Save Changes'}
+            </button>
+          </div>
+        }
+      />
+
       {/* Main App Window / Card */}
       <div style={{
         flex: 1,
+        margin: '16px',
+        marginTop: '68px', // Account for fixed 52px AppHeader + 16px spacing
         backgroundColor: 'white',
         borderRadius: '24px',
         boxShadow: '0 25px 50px -12px rgba(0, 0, 0, 0.25)',
@@ -279,114 +353,6 @@ export default function EditPage({ photo, onClose, onSave, onRecheckAI, aiReady 
         overflow: 'hidden',
         position: 'relative'
       }}>
-        {/* Apple-esque Header */}
-        <header 
-          className="flex-none h-16 px-6 flex items-center justify-between bg-white/80 backdrop-blur-md border-b border-slate-200/60 z-20"
-          style={{
-            height: '64px',
-            flex: 'none',
-            display: 'flex',
-            alignItems: 'center',
-            justifyContent: 'space-between',
-            padding: '0 32px',
-            backgroundColor: 'rgba(255, 255, 255, 0.9)',
-            backdropFilter: 'blur(12px)',
-            borderBottom: '1px solid rgba(226, 232, 240, 0.6)'
-          }}
-        >
-          <div className="flex-1 flex items-center justify-start" style={{ flex: 1, display: 'flex', justifyContent: 'flex-start' }}>
-            <button
-              onClick={() => {
-                if (window.history.length > 1) {
-                  window.history.back();
-                } else if (typeof onClose === 'function') {
-                  onClose();
-                }
-              }}
-              className="text-slate-500 hover:text-slate-900 transition-colors text-sm font-medium flex items-center gap-1"
-              style={{
-                background: 'none',
-                border: 'none',
-                cursor: 'pointer',
-                color: '#64748b',
-                fontSize: '14px',
-                fontWeight: 500,
-                display: 'flex',
-                alignItems: 'center',
-                gap: '4px'
-              }}
-            >
-              <svg width="20" height="20" fill="none" stroke="currentColor" viewBox="0 0 24 24" style={{ width: '20px', height: '20px' }}><path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M15 19l-7-7 7-7" /></svg>
-              Back
-            </button>
-          </div>
-          
-          <div className="flex-1 flex justify-center" style={{ flex: 1, display: 'flex', justifyContent: 'center' }}>
-            <h1 
-              className="text-sm font-semibold tracking-wide uppercase text-slate-800"
-              style={{ 
-                fontSize: '14px', 
-                fontWeight: 600, 
-                letterSpacing: '0.05em', 
-                textTransform: 'uppercase', 
-                color: '#1e293b',
-                margin: 0
-              }}
-            >
-              Edit Photo
-            </h1>
-          </div>
-
-          <div className="flex-1 flex items-center justify-end gap-3" style={{ flex: 1, display: 'flex', justifyContent: 'flex-end', gap: '12px', alignItems: 'center' }}>
-            {/* AI Recheck Status Indicator */}
-            <div className="flex items-center mr-2">
-             {isPolling || recheckingAI ? (
-                <div className="flex items-center gap-2 px-3 py-1 bg-amber-50 text-amber-600 rounded-full text-xs font-medium border border-amber-100">
-                  <span style={{ fontSize: '12px' }}>Processing...</span>
-                </div>
-             ) : (
-               <button
-                 onClick={() => {
-                    setRecheckingAI(true);
-                    if (onRecheckAI) onRecheckAI(sourcePhoto?.id || photo.id, null).finally(() => setRecheckingAI(false));
-                 }}
-                 disabled={!aiReady}
-                 style={{ 
-                   background: 'none', 
-                   border: 'none', 
-                   cursor: aiReady ? 'pointer' : 'not-allowed', 
-                   color: '#94a3b8', 
-                   fontSize: '12px', 
-                   fontWeight: 500 
-                 }}
-               >
-                 Recheck AI
-               </button>
-             )}
-            </div>
-
-            <button 
-              onClick={handleSave} 
-              disabled={saving}
-              className="bg-slate-900 hover:bg-slate-800 text-white text-sm font-medium px-5 py-2 rounded-full shadow-sm hover:shadow transition-all active:scale-95 disabled:opacity-50 disabled:cursor-not-allowed"
-              style={{
-                backgroundColor: '#0f172a',
-                color: 'white',
-                fontSize: '14px',
-                fontWeight: 500,
-                padding: '8px 20px',
-                borderRadius: '9999px',
-                border: 'none',
-                cursor: saving ? 'wait' : 'pointer',
-                opacity: saving ? 0.7 : 1,
-                boxShadow: '0 1px 2px 0 rgba(0, 0, 0, 0.05)'
-              }}
-            >
-              {saving ? 'Saving...' : 'Save Changes'}
-            </button>
-          </div>
-        </header>
-
         {/* Main Content Grid */}
         <main 
           className="flex-1 overflow-hidden flex flex-col lg:flex-row"

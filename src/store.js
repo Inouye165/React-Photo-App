@@ -39,6 +39,10 @@ const useStore = create((set) => ({
   setActivePhotoId: (id) => set({ activePhotoId: id }),
   editingMode: null, // null | 'inline' | 'full'
   setEditingMode: (mode) => set({ editingMode: mode }),
+  
+  // Last edited photo - persists across navigation for quick return
+  lastEditedPhotoId: null,
+  setLastEditedPhotoId: (id) => set({ lastEditedPhotoId: id }),
 
   // UI State Slice - Modals
   showMetadataModal: false,

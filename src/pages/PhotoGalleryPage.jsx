@@ -1,6 +1,6 @@
 import React, { useEffect } from 'react';
 import { useNavigate, useOutletContext, useSearchParams } from 'react-router-dom';
-import PhotoTable from '../components/PhotoTable.jsx';
+import PhotoGallery from '../PhotoGallery.jsx';
 import PhotoUploadForm from '../PhotoUploadForm.jsx';
 import MetadataModal from '../components/MetadataModal.jsx';
 import usePhotoPrivileges from '../hooks/usePhotoPrivileges.js';
@@ -10,10 +10,9 @@ import useStore from '../store.js';
 import { useAuth } from '../contexts/AuthContext.jsx';
 import useSignedThumbnails from '../hooks/useSignedThumbnails.js';
 import useAIPolling from '../hooks/useAIPolling.jsx';
-import { API_BASE_URL } from '../api.js';
 
 /**
- * PhotoGalleryPage - Main gallery view showing the photo table
+ * PhotoGalleryPage - Main gallery view showing the photo card grid
  * Route: /gallery
  * 
  * Supports URL query params for deep linking:
@@ -148,19 +147,23 @@ export default function PhotoGalleryPage() {
         />
       )}
 
-      <PhotoTable
-        photos={photos}
-        loading={loading}
-        privilegesMap={privilegesMap}
-        pollingPhotoId={pollingPhotoId}
-        onSelectPhoto={handleSelectPhoto}
-        onEditPhoto={handleEditPhoto}
-        onMoveToInprogress={handleMoveToInprogress}
-        onMoveToWorking={handleMoveToWorking}
-        onDeletePhoto={handleDeletePhoto}
-        apiBaseUrl={API_BASE_URL}
-        getSignedUrl={getSignedUrl}
-      />
+      {loading ? (
+        <div className="flex items-center justify-center h-64 text-slate-500">
+          <p>Loading photos...</p>
+        </div>
+      ) : (
+        <PhotoGallery
+          photos={photos}
+          privilegesMap={privilegesMap}
+          pollingPhotoId={pollingPhotoId}
+          handleMoveToInprogress={handleMoveToInprogress}
+          handleEditPhoto={handleEditPhoto}
+          handleMoveToWorking={handleMoveToWorking}
+          handleDeletePhoto={handleDeletePhoto}
+          onSelectPhoto={handleSelectPhoto}
+          getSignedUrl={getSignedUrl}
+        />
+      )}
     </>
   );
 }
