@@ -45,6 +45,21 @@ module.exports = function createPhotosDb({ db }) {
         })
         .andWhere({ user_id: userId })
         .first();
+    },
+    async updatePhotoEditedFilename(photoId, userId, editedFilename) {
+      const count = await db('photos')
+        .where({ id: photoId, user_id: userId })
+        .update({ 
+          edited_filename: editedFilename,
+          updated_at: new Date().toISOString()
+        });
+      return count > 0;
+    },
+    async updatePhoto(photoId, userId, fields) {
+      const count = await db('photos')
+        .where({ id: photoId, user_id: userId })
+        .update(fields);
+      return count > 0;
     }
     // Add additional database operations as needed.
   };

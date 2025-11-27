@@ -1,30 +1,97 @@
 import React, { useEffect, useState, useRef } from "react";
 import useStore from './store.js';
+import heic2any from 'heic2any';
 
 const Thumbnail = ({ file, className }) => {
   const [src, setSrc] = useState(null);
+  const [loadError, setLoadError] = useState(false);
+  const [converting, setConverting] = useState(false);
 
   useEffect(() => {
-    if (!file) return;
-    // Only create object URLs for browser-supported image types
-    // HEIC is not supported natively in <img> tags in most browsers
-    if (file.type.startsWith('image/') && !file.name.toLowerCase().endsWith('.heic')) {
+    if (!file) {
+      console.log('[Thumbnail] No file provided');
+      return;
+    }
+    
+    console.log('[Thumbnail] Processing file:', file.name, 'type:', file.type, 'size:', file.size);
+    setLoadError(false);
+    setSrc(null);
+    
+    // Check file extension for HEIC (some browsers don't set correct MIME type)
+    const isHeic = file.name.toLowerCase().endsWith('.heic') || file.name.toLowerCase().endsWith('.heif');
+    
+    if (isHeic) {
+      // Convert HEIC to JPEG for display
+      setConverting(true);
+      console.log('[Thumbnail] Converting HEIC file:', file.name);
+      
+      heic2any({
+        blob: file,
+        toType: 'image/jpeg',
+        quality: 0.5 // Lower quality for faster thumbnails
+      })
+        .then((convertedBlob) => {
+          const url = URL.createObjectURL(convertedBlob);
+          console.log('[Thumbnail] HEIC converted successfully:', file.name);
+          setSrc(url);
+          setConverting(false);
+        })
+        .catch((err) => {
+          console.error('[Thumbnail] HEIC conversion failed:', file.name, err);
+          setLoadError(true);
+          setConverting(false);
+        });
+      
+      return; // No cleanup needed until src is set
+    } else {
+      // Create object URL for browser-supported image types
       const url = URL.createObjectURL(file);
+      console.log('[Thumbnail] Created object URL:', url);
       setSrc(url);
       return () => URL.revokeObjectURL(url);
     }
   }, [file]);
 
-  if (src) {
-    return <img src={src} alt="" className={`object-cover w-full h-full ${className}`} />;
+  // Cleanup URL when src changes or component unmounts
+  useEffect(() => {
+    return () => {
+      if (src) {
+        URL.revokeObjectURL(src);
+      }
+    };
+  }, [src]);
+
+  // Show loading spinner while converting HEIC
+  if (converting) {
+    return (
+      <div className={`flex flex-col items-center justify-center bg-gray-200 text-gray-600 ${className}`}>
+        <div className="animate-spin rounded-full h-8 w-8 border-b-2 border-blue-500"></div>
+        <span className="text-xs mt-2">Converting...</span>
+      </div>
+    );
   }
 
-  // Fallback/Placeholder for HEIC or other types
+  // Show placeholder if no src or if image failed to load
+  if (!src || loadError) {
+    return (
+      <div className={`flex flex-col items-center justify-center bg-gray-200 text-gray-600 font-bold text-sm ${className}`} style={{ minHeight: '100px' }}>
+        <svg className="w-10 h-10 mb-2 text-gray-400" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth="1.5" d="M4 16l4.586-4.586a2 2 0 012.828 0L16 16m-2-2l1.586-1.586a2 2 0 012.828 0L20 14m-6-6h.01M6 20h12a2 2 0 002-2V6a2 2 0 00-2 2v12a2 2 0 002 2z" /></svg>
+        <span>{file.name.split('.').pop()?.toUpperCase() || 'IMG'}</span>
+      </div>
+    );
+  }
+
   return (
-    <div className={`flex flex-col items-center justify-center bg-gray-100 text-gray-400 font-bold text-xs ${className}`}>
-      <svg className="w-8 h-8 mb-1 opacity-50" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth="1.5" d="M4 16l4.586-4.586a2 2 0 012.828 0L16 16m-2-2l1.586-1.586a2 2 0 012.828 0L20 14m-6-6h.01M6 20h12a2 2 0 002-2V6a2 2 0 00-2-2H6a2 2 0 00-2 2v12a2 2 0 002 2z" /></svg>
-      {file.name.split('.').pop()?.toUpperCase() || 'IMG'}
-    </div>
+    <img 
+      src={src} 
+      alt={file.name || ''} 
+      className={`object-cover w-full h-full ${className}`}
+      onError={(e) => {
+        console.log('[Thumbnail] Image load error for:', file.name, e);
+        setLoadError(true);
+      }}
+      onLoad={() => console.log('[Thumbnail] Image loaded successfully:', file.name)}
+    />
   );
 };
 
@@ -223,16 +290,13 @@ const PhotoUploadForm = ({
                   className={`
                     group relative aspect-square rounded-lg overflow-hidden cursor-pointer border-2 transition-all duration-200
                     ${isSelected ? 'border-blue-500 ring-2 ring-blue-200 ring-offset-1' : 'border-transparent hover:border-gray-300'}
-                    bg-white shadow-sm hover:shadow-md
+                    bg-gray-100 shadow-sm hover:shadow-md
                   `}
                 >
                   <Thumbnail file={p.file} className="w-full h-full" />
                   
-                  {/* Selection Overlay */}
-                  <div className={`absolute inset-0 bg-black transition-opacity duration-200 ${isSelected ? 'bg-opacity-10' : 'bg-opacity-0 group-hover:bg-opacity-10'}`} />
-                  
                   {/* Checkbox Indicator */}
-                  <div className="absolute top-2 right-2">
+                  <div className="absolute top-2 right-2 z-10">
                     <div className={`
                       w-6 h-6 rounded-full border-2 flex items-center justify-center transition-colors duration-200
                       ${isSelected ? 'bg-blue-500 border-blue-500' : 'bg-white/80 border-gray-400 group-hover:border-gray-500'}
@@ -243,8 +307,8 @@ const PhotoUploadForm = ({
                     </div>
                   </div>
 
-                  {/* Info Overlay (Bottom) */}
-                  <div className="absolute bottom-0 left-0 right-0 bg-gradient-to-t from-black/80 via-black/40 to-transparent p-3 pt-8 text-white opacity-0 group-hover:opacity-100 transition-opacity duration-200">
+                  {/* Info Overlay (Bottom) - only visible on hover */}
+                  <div className="absolute bottom-0 left-0 right-0 z-10 bg-gradient-to-t from-black/80 via-black/40 to-transparent p-3 pt-8 text-white opacity-0 group-hover:opacity-100 transition-opacity duration-200 pointer-events-none">
                     <p className="text-xs font-medium truncate" title={p.name}>{p.name}</p>
                     <div className="flex justify-between items-center mt-0.5">
                       <p className="text-[10px] opacity-80">{fileDate.toLocaleDateString()}</p>

@@ -39,15 +39,30 @@ const createPostgresConfig = (env) => ({
   client: 'pg',
   connection: {
     connectionString: process.env.DATABASE_URL || process.env.SUPABASE_DB_URL,
-    ssl: getSslConfig(env)
+    ssl: getSslConfig(env),
+    // Keepalive settings to prevent connection drops
+    keepAlive: true,
+    keepAliveInitialDelayMillis: 10000
   },
   migrations: {
     directory: path.join(__dirname, 'db/migrations')
   },
   pool: {
-    min: parseInt(process.env.DB_POOL_MIN || '2', 10),
-    max: parseInt(process.env.DB_POOL_MAX || '20', 10)
-  }
+    min: parseInt(process.env.DB_POOL_MIN || '0', 10),  // Start with 0 to avoid idle connections
+    max: parseInt(process.env.DB_POOL_MAX || '10', 10), // Reduced max for Supabase free tier
+    // Acquire timeout - how long to wait for a connection
+    acquireTimeoutMillis: 30000,
+    // Idle timeout - destroy connections idle for this long
+    idleTimeoutMillis: 30000,
+    // Reap interval - check for idle connections this often
+    reapIntervalMillis: 1000,
+    // Create retry interval
+    createRetryIntervalMillis: 200,
+    // Propagate create error to acquire
+    propagateCreateError: false
+  },
+  // Acquire connection settings
+  acquireConnectionTimeout: 30000
 });
 
 module.exports = {

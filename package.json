@@ -38,6 +38,7 @@
     "@vis.gl/react-google-maps": "^1.7.1",
     "dotenv": "^16.6.1",
     "exifr": "^7.1.3",
+    "heic2any": "^0.0.4",
     "konva": "^10.0.2",
     "langsmith": "^0.3.77",
     "openai": "^6.8.1",

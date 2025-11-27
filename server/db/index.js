@@ -45,4 +45,14 @@ logger.info(`[db] Initializing PostgreSQL connection for ${environment} environm
 
 const db = knex(config);
 
+// Handle connection errors gracefully
+db.on('query-error', (error) => {
+	logger.error('[db] Query error:', error.message);
+});
+
+// Test the connection on startup
+db.raw('SELECT 1')
+  .then(() => logger.info('[db] Database connection verified'))
+  .catch((err) => logger.error('[db] Database connection test failed:', err.message));
+
 module.exports = db;
