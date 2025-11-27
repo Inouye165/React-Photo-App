@@ -323,6 +323,38 @@ export async function checkPrivilegesBatch(filenames, serverUrl = `${API_BASE_UR
   try { const res = await promise; return res; } catch (e) { throw new Error('Error checking privileges batch: ' + e.message); }
 }
 
+/**
+ * Get lightweight photo status counts for Smart Routing.
+ * Returns { working, inprogress, finished, total } without fetching full photo data.
+ * Used to determine the initial landing page for authenticated users.
+ * 
+ * @returns {Promise<{success: boolean, working: number, inprogress: number, finished: number, total: number}>}
+ */
+export async function getPhotoStatus() {
+  const url = `${API_BASE_URL}/photos/status`;
+  try {
+    const response = await fetchWithTimeout(url, { 
+      headers: getAuthHeaders(), 
+      credentials: 'include' 
+    }, 10000);
+    
+    if (handleAuthError(response)) {
+      // Return empty counts if auth fails - SmartRouter will handle redirect to login
+      return { success: false, working: 0, inprogress: 0, finished: 0, total: 0 };
+    }
+    
+    if (!response.ok) {
+      throw new Error('Failed to fetch photo status: ' + response.status);
+    }
+    
+    return await response.json();
+  } catch (error) {
+    console.error('[getPhotoStatus] Error:', error);
+    // Return safe defaults on error - SmartRouter will redirect to upload page
+    return { success: false, working: 0, inprogress: 0, finished: 0, total: 0, error: error.message };
+  }
+}
+
 // Utility: fetch with AbortController and timeout
 async function fetchWithTimeout(resource, options = {}, timeoutMs = 20000) {
   const controller = new AbortController();

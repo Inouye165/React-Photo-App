@@ -29,7 +29,9 @@ const useStore = create((set) => ({
   }),
 
   // UI State Slice - View Management
-  view: 'working', // 'working' | 'inprogress' | 'finished'
+  // NOTE: Initial view is null - URL params are the source of truth
+  // SmartRouter determines the initial view and sets it via URL
+  view: null, // null | 'working' | 'inprogress' | 'finished'
   setView: (view) => set({ view }),
 
   // UI State Slice - Active Photo & Editing

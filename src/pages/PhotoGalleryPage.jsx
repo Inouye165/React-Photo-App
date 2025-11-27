@@ -1,5 +1,5 @@
-import React from 'react';
-import { useNavigate, useOutletContext } from 'react-router-dom';
+import React, { useEffect } from 'react';
+import { useNavigate, useOutletContext, useSearchParams } from 'react-router-dom';
 import PhotoTable from '../components/PhotoTable.jsx';
 import PhotoUploadForm from '../PhotoUploadForm.jsx';
 import MetadataModal from '../components/MetadataModal.jsx';
@@ -14,10 +14,16 @@ import { API_BASE_URL } from '../api.js';
 
 /**
  * PhotoGalleryPage - Main gallery view showing the photo table
- * Route: /
+ * Route: /gallery
+ * 
+ * Supports URL query params for deep linking:
+ * - /gallery?view=working (default)
+ * - /gallery?view=inprogress
+ * - /gallery?view=finished
  */
 export default function PhotoGalleryPage() {
   const navigate = useNavigate();
+  const [searchParams, setSearchParams] = useSearchParams();
   const { setToolbarMessage } = useOutletContext();
   const { session } = useAuth();
 
@@ -27,6 +33,37 @@ export default function PhotoGalleryPage() {
   const setShowMetadataModal = useStore((state) => state.setShowMetadataModal);
   const setMetadataPhoto = useStore((state) => state.setMetadataPhoto);
   const showLocalPicker = useStore((state) => state.showUploadPicker);
+  const view = useStore((state) => state.view);
+  const setView = useStore((state) => state.setView);
+
+  // Sync view state from URL query params on mount and when URL changes
+  // URL is the single source of truth - store just mirrors it for convenience
+  useEffect(() => {
+    const viewParam = searchParams.get('view');
+    const validViews = ['working', 'inprogress', 'finished'];
+    
+    if (viewParam && validViews.includes(viewParam)) {
+      // URL has a valid view param - sync to store
+      if (viewParam !== view) {
+        setView(viewParam);
+      }
+    } else {
+      // No view param or invalid - default to 'working' and update URL
+      // This handles direct navigation to /gallery without a view param
+      setSearchParams({ view: 'working' }, { replace: true });
+      if (view !== 'working') {
+        setView('working');
+      }
+    }
+  }, [searchParams, view, setView, setSearchParams]);
+
+  // Update URL when view changes via toolbar or other means
+  // Note: This function is available for programmatic view changes within the page
+  // eslint-disable-next-line no-unused-vars
+  const handleViewChange = (newView) => {
+    setView(newView);
+    setSearchParams({ view: newView }, { replace: true });
+  };
 
   const {
     photos,

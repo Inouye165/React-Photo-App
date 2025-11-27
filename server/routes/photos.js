@@ -35,6 +35,56 @@ module.exports = function createPhotosRouter({ db, supabase }) {
   const photosAi = createPhotosAi({ addAIJob, MODEL_ALLOWLIST: [] });
   const photosState = createPhotosState({ db, storage: photosStorage });
 
+  // --- API: Lightweight photo status counts for Smart Routing ---
+  // Returns aggregated counts by state without fetching photo data
+  // Used by frontend SmartRouter to determine initial landing page
+  router.get('/status', authenticateToken, async (req, res) => {
+    const reqId = Math.random().toString(36).slice(2, 10);
+    try {
+      const DB_QUERY_TIMEOUT_MS = Number(process.env.DB_QUERY_TIMEOUT_MS || 10000);
+
+      const counts = await Promise.race([
+        db('photos')
+          .where('user_id', req.user.id)
+          .select('state')
+          .count('* as count')
+          .groupBy('state'),
+        new Promise((_, reject) => setTimeout(() => reject(new Error('DB query timeout')), DB_QUERY_TIMEOUT_MS)),
+      ]);
+
+      // Transform array of {state, count} into object { working: N, inprogress: N, ... }
+      const result = {
+        working: 0,
+        inprogress: 0,
+        finished: 0,
+        total: 0
+      };
+
+      for (const row of counts) {
+        const state = row.state;
+        const count = Number(row.count) || 0;
+        if (state === 'working') result.working = count;
+        else if (state === 'inprogress') result.inprogress = count;
+        else if (state === 'finished') result.finished = count;
+        result.total += count;
+      }
+
+      res.set('Cache-Control', 'no-store');
+      res.json({ success: true, ...result });
+    } catch (err) {
+      logger.error('[photos/status] DB error', {
+        reqId,
+        endpoint: '/photos/status',
+        error: {
+          message: err && err.message,
+          code: err && err.code,
+          stack: err && err.stack && err.stack.split('\n').slice(0, 3).join(' | ')
+        }
+      });
+      res.status(500).json({ success: false, error: err.message, reqId });
+    }
+  });
+
   // --- API: List all photos and metadata (include hash) ---
   // Router-root: defined here as '/' so mounting at '/photos' results in
   // final path '/photos'.
