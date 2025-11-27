@@ -3,7 +3,8 @@ import React from 'react';
 /**
  * FlipCard Component
  * A 3D flip card with front and back faces using CSS transforms.
- * The flip button stays stationary while the card rotates behind it.
+ * Front side flip button is in the toolbar (ImageCanvasEditor).
+ * Back side has its own flip button to return to photo.
  * 
  * Props:
  * - isFlipped: boolean - Controls whether the card shows front (false) or back (true)
@@ -29,76 +30,6 @@ export default function FlipCard({
         position: 'relative',
       }}
     >
-      {/* Flip Button - Stays stationary outside the rotating card, positioned left of burn button */}
-      <button
-        onClick={(e) => {
-          e.stopPropagation();
-          onFlip && onFlip();
-        }}
-        aria-label={isFlipped ? "Show photo" : "Show photo details"}
-        title={isFlipped ? "Back to Photo" : "View Keywords & Metadata"}
-        style={{
-          position: 'absolute',
-          top: '10px',
-          right: '150px',
-          width: '36px',
-          height: '36px',
-          borderRadius: '50%',
-          backgroundColor: isFlipped ? 'rgba(15, 23, 42, 0.9)' : 'rgba(255, 255, 255, 0.95)',
-          border: isFlipped ? '1px solid rgba(51, 65, 85, 0.5)' : '1px solid rgba(226, 232, 240, 0.8)',
-          cursor: 'pointer',
-          display: 'flex',
-          alignItems: 'center',
-          justifyContent: 'center',
-          boxShadow: '0 2px 8px rgba(0, 0, 0, 0.15)',
-          transition: 'background-color 0.3s ease, border-color 0.3s ease, box-shadow 0.2s ease',
-          zIndex: 200,
-        }}
-        onMouseEnter={(e) => {
-          e.currentTarget.style.transform = 'scale(1.1)';
-          e.currentTarget.style.boxShadow = '0 4px 12px rgba(0, 0, 0, 0.25)';
-        }}
-        onMouseLeave={(e) => {
-          e.currentTarget.style.transform = 'scale(1)';
-          e.currentTarget.style.boxShadow = '0 2px 8px rgba(0, 0, 0, 0.15)';
-        }}
-      >
-        {/* Icon changes based on flip state */}
-        {isFlipped ? (
-          /* Image/photo icon - shown when viewing metadata */
-          <svg 
-            width="18" 
-            height="18" 
-            viewBox="0 0 24 24" 
-            fill="none" 
-            stroke="#ffffff" 
-            strokeWidth="2" 
-            strokeLinecap="round" 
-            strokeLinejoin="round"
-          >
-            <rect x="3" y="3" width="18" height="18" rx="2" ry="2" />
-            <circle cx="8.5" cy="8.5" r="1.5" />
-            <polyline points="21 15 16 10 5 21" />
-          </svg>
-        ) : (
-          /* Info icon - shown when viewing photo */
-          <svg 
-            width="18" 
-            height="18" 
-            viewBox="0 0 24 24" 
-            fill="none" 
-            stroke="#475569" 
-            strokeWidth="2" 
-            strokeLinecap="round" 
-            strokeLinejoin="round"
-          >
-            <circle cx="12" cy="12" r="10" />
-            <line x1="12" y1="16" x2="12" y2="12" />
-            <line x1="12" y1="8" x2="12.01" y2="8" />
-          </svg>
-        )}
-      </button>
-
       <div 
         className="flip-card-inner"
         style={{
@@ -143,6 +74,47 @@ export default function FlipCard({
           }}
         >
           {backContent}
+          
+          {/* Flip Back Button - Only on back face */}
+          <button
+            onClick={(e) => {
+              e.stopPropagation();
+              onFlip && onFlip();
+            }}
+            aria-label="Show photo"
+            title="Back to Photo"
+            style={{
+              position: 'absolute',
+              top: '12px',
+              right: '12px',
+              width: '36px',
+              height: '36px',
+              borderRadius: '50%',
+              backgroundColor: 'rgba(15, 23, 42, 0.9)',
+              border: '1px solid rgba(51, 65, 85, 0.5)',
+              cursor: 'pointer',
+              display: 'flex',
+              alignItems: 'center',
+              justifyContent: 'center',
+              boxShadow: '0 2px 8px rgba(0, 0, 0, 0.2)',
+              zIndex: 10,
+            }}
+          >
+            <svg 
+              width="18" 
+              height="18" 
+              viewBox="0 0 24 24" 
+              fill="none" 
+              stroke="#ffffff" 
+              strokeWidth="2" 
+              strokeLinecap="round" 
+              strokeLinejoin="round"
+            >
+              <rect x="3" y="3" width="18" height="18" rx="2" ry="2" />
+              <circle cx="8.5" cy="8.5" r="1.5" />
+              <polyline points="21 15 16 10 5 21" />
+            </svg>
+          </button>
         </div>
       </div>
     </div>

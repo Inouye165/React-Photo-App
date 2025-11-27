@@ -457,6 +457,8 @@ export default function EditPage({ photo, onClose: _onClose, onSave, onRecheckAI
                         caption={caption}
                         textStyle={textStyle}
                         onSave={handleCanvasSave}
+                        isFlipped={isFlipped}
+                        onFlip={() => setIsFlipped(!isFlipped)}
                       />
                     )}
                   </div>

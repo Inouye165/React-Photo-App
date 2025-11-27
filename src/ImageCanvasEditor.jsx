@@ -1,7 +1,7 @@
 import React, { useState, useEffect, useRef } from 'react';
 import { Stage, Layer, Image as KonvaImage, Text as KonvaText } from 'react-konva';
 
-export default function ImageCanvasEditor({ imageUrl, caption, textStyle, onSave }) {
+export default function ImageCanvasEditor({ imageUrl, caption, textStyle, onSave, isFlipped, onFlip }) {
   const [image, setImage] = useState(null);
   const [imageError, setImageError] = useState(null);
   const [dimensions, setDimensions] = useState({ width: 0, height: 0, scale: 1 });
@@ -204,6 +204,43 @@ export default function ImageCanvasEditor({ imageUrl, caption, textStyle, onSave
             <svg width="12" height="12" fill="none" stroke="currentColor" viewBox="0 0 24 24" style={{ width: '12px', height: '12px' }}><path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M8 7H5a2 2 0 00-2 2v9a2 2 0 002 2h14a2 2 0 002-2V9a2 2 0 00-2-2h-3m-1 4l-3 3m0 0l-3-3m3 3V4" /></svg>
             Burn Caption
           </button>
+
+          {/* Flip Button - View Metadata */}
+          {onFlip && (
+            <button
+              onClick={onFlip}
+              aria-label={isFlipped ? "Show photo" : "Show photo details"}
+              title={isFlipped ? "Back to Photo" : "View Keywords & Metadata"}
+              style={{
+                width: '36px',
+                height: '36px',
+                borderRadius: '50%',
+                backgroundColor: isFlipped ? 'rgba(15, 23, 42, 0.9)' : 'rgba(255, 255, 255, 0.95)',
+                border: isFlipped ? '1px solid rgba(51, 65, 85, 0.5)' : '1px solid rgba(226, 232, 240, 0.8)',
+                cursor: 'pointer',
+                display: 'flex',
+                alignItems: 'center',
+                justifyContent: 'center',
+                boxShadow: '0 2px 8px rgba(0, 0, 0, 0.15)',
+                transition: 'background-color 0.3s ease, border-color 0.3s ease',
+                flexShrink: 0,
+              }}
+            >
+              {isFlipped ? (
+                <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="#ffffff" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+                  <rect x="3" y="3" width="18" height="18" rx="2" ry="2" />
+                  <circle cx="8.5" cy="8.5" r="1.5" />
+                  <polyline points="21 15 16 10 5 21" />
+                </svg>
+              ) : (
+                <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="#475569" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+                  <circle cx="12" cy="12" r="10" />
+                  <line x1="12" y1="16" x2="12" y2="12" />
+                  <line x1="12" y1="8" x2="12.01" y2="8" />
+                </svg>
+              )}
+            </button>
+          )}
         </div>
       </div>
 
