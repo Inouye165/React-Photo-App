@@ -1,5 +1,6 @@
-import React from 'react';
+import React, { useState, useEffect, useMemo } from 'react';
 import { APIProvider, Map, AdvancedMarker} from '@vis.gl/react-google-maps';
+import { getPhotoLocation } from './LocationMapUtils';
 
 const containerStyle = {
   width: '100%',
@@ -10,46 +11,6 @@ const defaultCenter = {
   lat: 0,
   lng: 0
 };
-
-// Helper to extract lat/lon from metadata, similar to backend logic
-function getPhotoLocation(photo) {
-  if (!photo) return null;
-
-  let heading = 0;
-  // Try to find heading/bearing
-  if (photo.metadata?.GPS?.imgDirection != null) heading = Number(photo.metadata.GPS.imgDirection);
-  else if (photo.metadata?.GPSImgDirection != null) heading = Number(photo.metadata.GPSImgDirection);
-  else if (photo.GPSImgDirection != null) heading = Number(photo.GPSImgDirection);
-  
-  // 1. Check top-level lat/lon (common from exifr)
-  if (photo.latitude != null && photo.longitude != null) {
-    return { lat: Number(photo.latitude), lng: Number(photo.longitude), heading };
-  }
-  
-  const meta = photo.metadata || {};
-  
-  // 2. Check metadata top-level
-  if (meta.latitude != null && meta.longitude != null) {
-    return { lat: Number(meta.latitude), lng: Number(meta.longitude), heading };
-  }
-  
-  // 3. Check GPS object
-  if (meta.GPS) {
-    if (meta.GPS.latitude != null && meta.GPS.longitude != null) {
-       return { lat: Number(meta.GPS.latitude), lng: Number(meta.GPS.longitude), heading };
-    }
-  }
-
-  // 4. Check for gps string "lat,lon" if available (some backend scripts populate this)
-  if (photo.gps_string) {
-    const parts = photo.gps_string.split(',');
-    if (parts.length === 2) {
-      return { lat: Number(parts[0]), lng: Number(parts[1]), heading };
-    }
-  }
-
-  return null;
-}
 
 // Directional Arrow Icon Component
 const DirectionalArrow = ({ heading = 0 }) => (
@@ -73,10 +34,23 @@ export default function LocationMapPanel({ photo }) {
   const apiKey = import.meta.env.VITE_GOOGLE_MAPS_API_KEY;
   const mapId = import.meta.env.VITE_GOOGLE_MAPS_MAP_ID || 'DEMO_MAP_ID';
   
-  const location = getPhotoLocation(photo);
+  // Memoize location calculation to avoid unnecessary recalculations
+  const location = useMemo(() => getPhotoLocation(photo), [photo]);
   const hasLocation = location != null && !isNaN(location.lat) && !isNaN(location.lng);
-  const center = hasLocation ? location : defaultCenter;
+  const center = useMemo(() => hasLocation ? location : defaultCenter, [location, hasLocation]);
   const heading = location?.heading || 0;
+
+  // Controlled map state for proper recentering when photo changes
+  const [mapCenter, setMapCenter] = useState(center);
+  const [mapZoom, setMapZoom] = useState(15);
+
+  // Update map center when photo location changes
+  useEffect(() => {
+    if (hasLocation) {
+      setMapCenter(center);
+      setMapZoom(15);
+    }
+  }, [center, hasLocation]);
 
   if (!apiKey) {
     // If we don't have an API key but do have a photo location, render a
@@ -94,13 +68,15 @@ export default function LocationMapPanel({ photo }) {
       const osmEmbedUrl = `https://www.openstreetmap.org/export/embed.html?bbox=${minLon}%2C${minLat}%2C${maxLon}%2C${maxLat}&layer=mapnik&marker=${lat}%2C${lng}`;
       const osmLink = `https://www.openstreetmap.org/?mlat=${lat}&mlon=${lng}#map=16/${lat}/${lng}`;
       return (
-        <div className="h-full w-full bg-white">
-          <iframe
-            title="Map (OpenStreetMap)"
-            src={osmEmbedUrl}
-            style={{ border: 0, width: '100%', height: '100%' }}
-            loading="lazy"
-          />
+        <div className="h-full w-full bg-white flex flex-col">
+          <div className="flex-1">
+            <iframe
+              title="Map (OpenStreetMap)"
+              src={osmEmbedUrl}
+              style={{ border: 0, width: '100%', height: '100%' }}
+              loading="lazy"
+            />
+          </div>
           <div className="p-2 text-xs text-gray-600 bg-gray-100">
             Map provided by OpenStreetMap as a fallback. For the full interactive map, open
             &nbsp;<a target="_blank" rel="noreferrer" href={osmLink} className="text-blue-600 underline">OpenStreetMap</a>.
@@ -119,7 +95,8 @@ export default function LocationMapPanel({ photo }) {
   if (!hasLocation) {
     return (
       <div className="flex flex-col items-center justify-center h-full bg-gray-100 text-gray-500 p-4 text-center">
-        <p className="text-sm">No GPS location data available.</p>
+        <p className="text-sm font-medium">No GPS location data available.</p>
+        <p className="text-xs mt-2">Try viewing a different photo or ensure EXIF GPS data is present.</p>
       </div>
     );
   }
@@ -128,8 +105,10 @@ export default function LocationMapPanel({ photo }) {
     <div style={containerStyle}>
       <APIProvider apiKey={apiKey}>
         <Map
-          defaultCenter={center}
-          defaultZoom={15}
+          center={mapCenter}
+          zoom={mapZoom}
+          onCenterChanged={(e) => setMapCenter(e.detail.center)}
+          onZoomChanged={(e) => setMapZoom(e.detail.zoom)}
           mapId={mapId} // Optional: set via VITE_GOOGLE_MAPS_MAP_ID; a default is used for demo
           disableDefaultUI={false}
           zoomControl={true}
