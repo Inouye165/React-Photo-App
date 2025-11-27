@@ -21,6 +21,7 @@ export default function AppHeader({
   const location = useLocation();
   const { user, logout } = useAuth();
   const lastEditedPhotoId = useStore(state => state.lastEditedPhotoId);
+  const setShowUploadPicker = useStore(state => state.setShowUploadPicker);
   
   // Determine active view from URL
   const searchParams = new URLSearchParams(location.search);
@@ -30,6 +31,8 @@ export default function AppHeader({
   const isUploadPage = location.pathname === '/upload';
 
   const handleViewChange = (viewName) => {
+    // Close any open upload picker modal when navigating to gallery views
+    setShowUploadPicker(false);
     navigate(`/gallery?view=${viewName}`);
   };
 
@@ -48,6 +51,8 @@ export default function AppHeader({
   };
 
   const handleEditClick = () => {
+    // Close any open upload picker modal when navigating to edit
+    setShowUploadPicker(false);
     // If we have a last edited photo, go there; otherwise go to inprogress
     if (lastEditedPhotoId) {
       navigate(`/photos/${lastEditedPhotoId}/edit`);
@@ -161,7 +166,11 @@ export default function AppHeader({
         border: '1px solid #e2e8f0',
       }}>
         <button
-          onClick={() => navigate('/upload')}
+          onClick={() => {
+            // Close any open upload picker modal when navigating to upload page
+            setShowUploadPicker(false);
+            navigate('/upload');
+          }}
           style={getTabStyle(isUploadPage)}
         >
           <Upload size={14} />
