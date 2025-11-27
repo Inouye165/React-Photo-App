@@ -13,6 +13,7 @@ const request = require('supertest');
 const express = require('express');
 const jwt = require('jsonwebtoken');
 const cookieParser = require('cookie-parser');
+const rateLimit = require('express-rate-limit');
 
 // Test fixtures
 const JWT_SECRET = process.env.JWT_SECRET || 'test-secret-for-photo-status';
@@ -67,6 +68,14 @@ const createTestApp = (db) => {
   app.use(express.json());
   app.use(cookieParser());
 
+  // Rate limiter for CodeQL compliance (test environment)
+  const testLimiter = rateLimit({
+    windowMs: 15 * 60 * 1000,
+    max: 1000, // High limit for tests
+    standardHeaders: true,
+    legacyHeaders: false,
+  });
+
   // Simplified auth middleware for testing
   const authenticateToken = async (req, res, next) => {
     let token = null;
@@ -100,7 +109,7 @@ const createTestApp = (db) => {
   };
 
   // Mount the status endpoint
-  app.get('/photos/status', authenticateToken, async (req, res) => {
+  app.get('/photos/status', testLimiter, authenticateToken, async (req, res) => {
     try {
       const counts = await db('photos')
         .where('user_id', req.user.id)
