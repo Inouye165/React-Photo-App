@@ -103,10 +103,22 @@ const PhotoUploadForm = ({
   uploading,
   filteredLocalPhotos,
   handleUploadFiltered,
-  onReopenFolder
+  onReopenFolder,
+  isStandalonePage = false,
+  onClose
 }) => {
   // Connect to store
   const setShowLocalPicker = useStore((state) => state.setShowUploadPicker);
+
+  // Handler for closing - supports both modal and page modes
+  // Wrapped in useCallback to prevent useEffect dependency changes on every render
+  const handleClose = React.useCallback(() => {
+    if (isStandalonePage && onClose) {
+      onClose();
+    } else {
+      setShowLocalPicker(false);
+    }
+  }, [isStandalonePage, onClose, setShowLocalPicker]);
 
   // Selection state: Set of indices
   const [selectedIndices, setSelectedIndices] = useState(new Set());
@@ -143,13 +155,16 @@ const PhotoUploadForm = ({
 
   const panelRef = useRef(null);
   useEffect(() => {
+    // Skip body overflow lock in standalone page mode
     const prevOverflow = document.body.style.overflow;
-    document.body.style.overflow = 'hidden';
+    if (!isStandalonePage) {
+      document.body.style.overflow = 'hidden';
+    }
     try { panelRef.current && panelRef.current.focus(); } catch { /* ignore */ }
 
     const onKey = (e) => {
       if (e.key === 'Escape') {
-        try { setShowLocalPicker(false); } catch { /* ignore */ }
+        try { handleClose(); } catch { /* ignore */ }
       }
       if (e.key !== 'Tab') return;
       const focusableSelector = 'a[href], area[href], input:not([disabled]), select:not([disabled]), textarea:not([disabled]), button:not([disabled]), [tabindex]:not([tabindex="-1"])';
@@ -168,43 +183,60 @@ const PhotoUploadForm = ({
 
     window.addEventListener('keydown', onKey);
 
-    try {
-      const toolbar = document.querySelector('[aria-label="Main toolbar"]');
-      if (toolbar && panelRef.current) {
-        const rect = toolbar.getBoundingClientRect();
-        const topPx = Math.ceil(rect.bottom + 8);
-        panelRef.current.style.position = 'absolute';
-        panelRef.current.style.left = '16px';
-        panelRef.current.style.right = '16px';
-        panelRef.current.style.top = `${topPx}px`;
-        panelRef.current.style.bottom = '16px';
-        panelRef.current.style.margin = '0';
-      }
-    } catch { /* ignore */ }
+    // Position panel relative to toolbar only in modal mode
+    if (!isStandalonePage) {
+      try {
+        const toolbar = document.querySelector('[aria-label="Main toolbar"]');
+        if (toolbar && panelRef.current) {
+          const rect = toolbar.getBoundingClientRect();
+          const topPx = Math.ceil(rect.bottom + 8);
+          panelRef.current.style.position = 'absolute';
+          panelRef.current.style.left = '16px';
+          panelRef.current.style.right = '16px';
+          panelRef.current.style.top = `${topPx}px`;
+          panelRef.current.style.bottom = '16px';
+          panelRef.current.style.margin = '0';
+        }
+      } catch { /* ignore */ }
+    }
     return () => {
       window.removeEventListener('keydown', onKey);
-      document.body.style.overflow = prevOverflow;
+      if (!isStandalonePage) {
+        document.body.style.overflow = prevOverflow;
+      }
     };
-  }, [setShowLocalPicker]);
+  }, [isStandalonePage, handleClose]);
 
-  return (
-    <div
-      id="photo-upload-panel"
-      ref={panelRef}
-      role="dialog"
-      aria-modal="true"
-      tabIndex={-1}
-      className="fixed overflow-hidden flex flex-col shadow-xl rounded-lg border border-gray-200"
-      style={{
+  // Different container styles for modal vs standalone page
+  const containerStyle = isStandalonePage
+    ? {
+        position: 'relative',
+        display: 'flex',
+        flexDirection: 'column',
+        minHeight: 'calc(100vh - 80px)',
+        background: '#f8fafc',
+        color: '#1e293b'
+      }
+    : {
         left: '0',
         right: '0',
         top: '96px',
         bottom: '0',
         zIndex: 60,
         margin: '0',
-        background: '#f8fafc', // Slate-50
-        color: '#1e293b' // Slate-800
-      }}
+        background: '#f8fafc',
+        color: '#1e293b'
+      };
+
+  return (
+    <div
+      id="photo-upload-panel"
+      ref={panelRef}
+      role={isStandalonePage ? 'main' : 'dialog'}
+      aria-modal={!isStandalonePage}
+      tabIndex={-1}
+      className={isStandalonePage ? 'flex flex-col' : 'fixed overflow-hidden flex flex-col shadow-xl rounded-lg border border-gray-200'}
+      style={containerStyle}
     >
       {/* Header */}
       <div className="px-6 py-4 bg-white border-b border-gray-200 flex justify-between items-center shrink-0">
@@ -215,7 +247,7 @@ const PhotoUploadForm = ({
           </p>
         </div>
         <button
-          onClick={() => setShowLocalPicker(false)}
+          onClick={handleClose}
           className="text-gray-400 hover:text-gray-600 transition-colors p-2 rounded-full hover:bg-gray-100"
           aria-label="Close upload modal"
         >

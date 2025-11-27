@@ -1,4 +1,5 @@
 import React from 'react';
+import { useNavigate } from 'react-router-dom';
 import { useAuth } from './contexts/AuthContext';
 import useStore from './store.js';
 
@@ -10,13 +11,13 @@ const sevStyles = {
 };
 
 export default function Toolbar({
-  onSelectFolder,
   // new: a small persistent message area in the toolbar
   toolbarMessage,
   toolbarSeverity = 'info',
   onClearToolbarMessage
 }) {
   const { user, logout } = useAuth();
+  const navigate = useNavigate();
   const isAuthenticated = !!user;
 
   // Connect to store
@@ -41,12 +42,19 @@ export default function Toolbar({
     }
   };
 
+  // Navigate to gallery with specific view using URL query params
   const handleViewChange = (viewName) => {
     setView(viewName);
     setEditingMode(null);
     setActivePhotoId(null);
     setShowMetadataModal(false);
     setMetadataPhoto(null);
+    navigate(`/gallery?view=${viewName}`);
+  };
+
+  // Navigate to upload page
+  const handleUploadClick = () => {
+    navigate('/upload');
   };
 
   const handleShowMetadata = () => {
@@ -81,7 +89,7 @@ export default function Toolbar({
         <span style={{ fontWeight: "bold", fontSize: "1.1rem", marginRight: "20px" }} tabIndex={-1}>
           Photo App (Backend View)
         </span>
-        <button onClick={onSelectFolder}>Select Folder for Upload</button>
+        <button onClick={handleUploadClick}>Select Folder for Upload</button>
         <button onClick={() => handleViewChange('working')}>View Working</button>
         <button onClick={() => handleViewChange('inprogress')}>View Inprogress</button>
         <button onClick={() => handleViewChange('finished')}>View Finished</button>

@@ -1,0 +1,162 @@
+import React, { useEffect, useState } from 'react';
+import { useNavigate } from 'react-router-dom';
+import { useAuth } from '../contexts/AuthContext.jsx';
+import { getPhotoStatus } from '../api.js';
+
+/**
+ * SmartRouter - Intelligent initial route handler
+ * 
+ * This component runs on the root path (/) and determines the appropriate
+ * landing page based on the user's photo data state:
+ * 
+ * 1. No photos → /upload (clear call to action)
+ * 2. Has "working" photos → /gallery?view=working
+ * 3. Has "inprogress" photos (but no working) → /gallery?view=inprogress
+ * 4. Default fallback → /upload
+ * 
+ * Security:
+ * - Only runs for authenticated users (relies on AuthWrapper)
+ * - API call validates user session server-side
+ * - On auth failure, silently defaults to upload (AuthWrapper handles redirect)
+ * 
+ * UX:
+ * - Shows loading spinner while determining route
+ * - Prevents "Photo not found" flash on initial load
+ * - Enables deep linking via URL query params
+ */
+export default function SmartRouter() {
+  const navigate = useNavigate();
+  const { user, loading: authLoading, cookieReady } = useAuth();
+  const [status, setStatus] = useState('loading'); // 'loading' | 'redirecting' | 'error'
+  const [errorMessage, setErrorMessage] = useState('');
+
+  useEffect(() => {
+    // Wait for auth to be ready
+    if (authLoading) return;
+    
+    // If not authenticated, AuthWrapper will handle it
+    if (!user) {
+      setStatus('redirecting');
+      return;
+    }
+
+    // Wait for cookie to be synced before making API calls
+    if (!cookieReady) return;
+
+    let cancelled = false;
+
+    async function determineRoute() {
+      try {
+        setStatus('loading');
+        
+        const result = await getPhotoStatus();
+        
+        if (cancelled) return;
+
+        // Determine the best route based on photo counts
+        let targetPath = '/upload'; // Default fallback
+
+        if (result.total === 0) {
+          // No photos at all - go to upload page
+          targetPath = '/upload';
+        } else if (result.working > 0) {
+          // Has working photos - go to working view
+          targetPath = '/gallery?view=working';
+        } else if (result.inprogress > 0) {
+          // Has in-progress photos (but no working) - go to inprogress view
+          targetPath = '/gallery?view=inprogress';
+        } else if (result.finished > 0) {
+          // Only finished photos - still go to gallery with finished view
+          targetPath = '/gallery?view=finished';
+        }
+
+        setStatus('redirecting');
+        navigate(targetPath, { replace: true });
+      } catch (err) {
+        if (cancelled) return;
+        console.error('[SmartRouter] Error determining route:', err);
+        setErrorMessage(err.message || 'Failed to load');
+        setStatus('error');
+        
+        // On error, redirect to upload as safe fallback after a brief delay
+        setTimeout(() => {
+          if (!cancelled) {
+            navigate('/upload', { replace: true });
+          }
+        }, 1500);
+      }
+    }
+
+    determineRoute();
+
+    return () => {
+      cancelled = true;
+    };
+  }, [user, authLoading, cookieReady, navigate]);
+
+  // Loading state with spinner
+  if (status === 'loading' || status === 'redirecting' || authLoading) {
+    return (
+      <div 
+        style={{
+          display: 'flex',
+          flexDirection: 'column',
+          alignItems: 'center',
+          justifyContent: 'center',
+          minHeight: '50vh',
+          gap: '16px'
+        }}
+        role="status"
+        aria-live="polite"
+        aria-busy="true"
+      >
+        <div 
+          style={{
+            width: '48px',
+            height: '48px',
+            border: '4px solid #e2e8f0',
+            borderTopColor: '#4f46e5',
+            borderRadius: '50%',
+            animation: 'spin 1s linear infinite'
+          }}
+        />
+        <p style={{ color: '#64748b', fontSize: '14px' }}>
+          {status === 'redirecting' ? 'Redirecting...' : 'Loading your photos...'}
+        </p>
+        <style>{`
+          @keyframes spin {
+            to { transform: rotate(360deg); }
+          }
+        `}</style>
+      </div>
+    );
+  }
+
+  // Error state (brief, before redirect)
+  if (status === 'error') {
+    return (
+      <div 
+        style={{
+          display: 'flex',
+          flexDirection: 'column',
+          alignItems: 'center',
+          justifyContent: 'center',
+          minHeight: '50vh',
+          gap: '16px'
+        }}
+        role="alert"
+      >
+        <div style={{ color: '#ef4444', fontSize: '24px' }}>⚠️</div>
+        <p style={{ color: '#64748b', fontSize: '14px' }}>
+          {errorMessage || 'Something went wrong'}
+        </p>
+        <p style={{ color: '#94a3b8', fontSize: '12px' }}>
+          Redirecting to upload page...
+        </p>
+      </div>
+    );
+  }
+
+  // Should not reach here, but safety fallback
+  return null;
+}
