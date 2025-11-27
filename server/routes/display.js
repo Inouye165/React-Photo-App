@@ -161,10 +161,16 @@ module.exports = function createDisplayRouter({ db }) {
       }
 
       // HEIC/HEIF: always convert to JPEG and serve as image/jpeg
+      // Note: Use private cache + Vary header to avoid ERR_CACHE_READ_FAILURE
+      // This occurs because URL says .heic but response is image/jpeg, confusing browser cache
       if (ext === '.heic' || ext === '.heif') {
         try {
           const jpegBuffer = await convertHeicToJpegBuffer(fileBuffer);
           res.set('Content-Type', 'image/jpeg');
+          // Override cache header for converted content to prevent cache corruption
+          // Browser disk cache struggles with URL-extension vs Content-Type mismatch
+          res.set('Cache-Control', 'private, no-store');
+          res.set('Vary', 'Accept');
           return res.send(jpegBuffer);
         } catch (err) {
           logger.error('Display route error', {
