@@ -203,9 +203,12 @@ export function getApiMetrics() { try { return JSON.parse(JSON.stringify(apiMetr
  * Fetch a protected resource (image) using credentials and return a blob URL.
  * Caller is responsible for revoking the returned URL when no longer needed.
  * 
- * Handles ERR_CACHE_READ_FAILURE by retrying with cache bypass for HEIC files.
- * This error occurs when browser disk cache gets corrupted due to URL extension
- * (.heic) not matching response Content-Type (image/jpeg after server conversion).
+ * Note: ERR_CACHE_READ_FAILURE is now prevented architecturally:
+ * - Server uses ID-based URLs (/display/image/:id) instead of filename-based
+ * - No URL extension means no conflict with Content-Type header
+ * - HEIC→JPEG conversion is transparent to browser cache
+ * 
+ * Retry logic is kept as a safety net for any remaining edge cases.
  * 
  * @param {string} url - Full URL to fetch (absolute or relative)
  * @returns {Promise<string>} - Object URL (URL.createObjectURL(blob))
@@ -234,15 +237,13 @@ export async function fetchProtectedBlobUrl(url) {
   try {
     res = await doFetch(false);
   } catch (err) {
-    // ERR_CACHE_READ_FAILURE manifests as a network error in fetch
-    // Retry once with cache bypass, especially helpful for HEIC files
-    // where browser cache gets confused by .heic URL → image/jpeg response
-    const isHeicUrl = url.toLowerCase().includes('.heic') || url.toLowerCase().includes('.heif');
+    // Safety net: retry with cache bypass on network errors
+    // This is rarely needed now that we use ID-based URLs
     const isCacheError = err?.message?.includes('cache') || 
                          err?.message?.includes('Failed to fetch') ||
                          err?.isNetworkError;
     
-    if (isHeicUrl || isCacheError) {
+    if (isCacheError) {
       console.warn('[api] Retrying fetch with cache bypass for:', url);
       res = await doFetch(true);
     } else {

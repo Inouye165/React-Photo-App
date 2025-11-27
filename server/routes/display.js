@@ -7,6 +7,39 @@ const { authenticateImageRequest } = require('../middleware/imageAuth');
 const { verifyThumbnailSignature } = require('../utils/urlSigning');
 const logger = require('../logger');
 
+/**
+ * Helper: Determine the original file extension from storage path or filename
+ */
+function getOriginalExtension(storagePath, filename) {
+  const fromPath = storagePath ? path.extname(storagePath).toLowerCase() : '';
+  const fromName = filename ? path.extname(filename).toLowerCase() : '';
+  return fromPath || fromName || '';
+}
+
+/**
+ * Helper: Check if extension is HEIC/HEIF format
+ */
+function isHeicFormat(ext) {
+  return ext === '.heic' || ext === '.heif';
+}
+
+/**
+ * Helper: Get Content-Type for non-HEIC images
+ */
+function getContentTypeForExtension(ext) {
+  const typeMap = {
+    '.jpg': 'image/jpeg',
+    '.jpeg': 'image/jpeg',
+    '.png': 'image/png',
+    '.gif': 'image/gif',
+    '.webp': 'image/webp',
+    '.bmp': 'image/bmp',
+    '.tiff': 'image/tiff',
+    '.tif': 'image/tiff'
+  };
+  return typeMap[ext] || 'image/jpeg';
+}
+
 module.exports = function createDisplayRouter({ db }) {
   const router = express.Router();
 
@@ -60,6 +93,128 @@ module.exports = function createDisplayRouter({ db }) {
     return authenticateImageRequest(req, res, next);
   }
 
+  /**
+   * NEW: ID-based image route (PREVENTS ERR_CACHE_READ_FAILURE)
+   * 
+   * GET /display/image/:photoId
+   * 
+   * This route uses photo ID instead of filename, eliminating the URL extension
+   * that caused browser cache corruption when Content-Type didn't match.
+   * 
+   * Architecture:
+   * - URL has no extension → browser can't infer content type from URL
+   * - Server determines Content-Type based on actual content
+   * - HEIC files are converted to JPEG transparently
+   * - Response Content-Type is always accurate
+   * - Browser cache key is based on URL (no extension conflict)
+   * 
+   * Why this prevents ERR_CACHE_READ_FAILURE:
+   * - Old: /display/working/photo.heic → Content-Type: image/jpeg (MISMATCH!)
+   * - New: /display/image/123 → Content-Type: image/jpeg (NO MISMATCH!)
+   * 
+   * The browser cache associates the response with the URL. When the URL has
+   * .heic extension but Content-Type is image/jpeg, some browsers (especially
+   * Chromium) get confused when writing to/reading from disk cache.
+   */
+  router.get('/image/:photoId', authenticateImageRequest, async (req, res) => {
+    const reqId = req.id || req.headers['x-request-id'] || null;
+    res.set('Cross-Origin-Resource-Policy', 'cross-origin');
+    const { photoId } = req.params;
+    const IMAGE_CACHE_MAX_AGE = parseInt(process.env.IMAGE_CACHE_MAX_AGE, 10) || 86400;
+
+    try {
+      if (typeof db !== 'function') {
+        logger.error('Display route error', {
+          reqId,
+          photoId,
+          error: 'DB instance is not a function',
+          dbType: typeof db
+        });
+        return res.status(500).json({ error: 'Internal server error: DB misconfiguration' });
+      }
+
+      // Look up photo by ID and verify ownership
+      const photo = await db('photos')
+        .where('id', photoId)
+        .andWhere('user_id', req.user.id)
+        .first();
+
+      if (!photo) {
+        logger.warn('Display image by ID: not found or unauthorized', {
+          reqId,
+          photoId,
+          userId: req.user?.id
+        });
+        return res.status(404).json({ error: 'Photo not found' });
+      }
+
+      // Download from storage
+      const storagePath = photo.storage_path || `${photo.state}/${photo.filename}`;
+      const { data, error } = await supabase.storage.from('photos').download(storagePath);
+      
+      if (error || !data) {
+        logger.error('Display image by ID: storage error', {
+          reqId,
+          photoId,
+          storagePath,
+          error: error ? error.message : 'Not found'
+        });
+        return res.status(404).json({ error: 'File not found in storage' });
+      }
+
+      const buffer = await data.arrayBuffer();
+      const fileBuffer = Buffer.from(buffer);
+      const ext = getOriginalExtension(storagePath, photo.filename);
+
+      // ETag based on content hash (guaranteed unique per file version)
+      const etag = photo.hash || `${photo.file_size || ''}-${photo.updated_at || ''}-${photoId}`;
+      res.set('ETag', `"${etag}"`);
+      
+      // Check If-None-Match for 304 response
+      const clientEtag = req.headers['if-none-match'];
+      if (clientEtag && (clientEtag === `"${etag}"` || clientEtag === etag)) {
+        return res.status(304).end();
+      }
+
+      // HEIC/HEIF: Convert to JPEG
+      // Since URL has no extension, Content-Type: image/jpeg is accurate
+      // and browser cache won't be confused
+      if (isHeicFormat(ext)) {
+        try {
+          const jpegBuffer = await convertHeicToJpegBuffer(fileBuffer);
+          res.set('Content-Type', 'image/jpeg');
+          // Can use normal caching - no URL/Content-Type mismatch!
+          res.set('Cache-Control', `public, max-age=${IMAGE_CACHE_MAX_AGE}`);
+          return res.send(jpegBuffer);
+        } catch (err) {
+          logger.error('Display image by ID: HEIC conversion error', {
+            reqId,
+            photoId,
+            storagePath,
+            error: err.message,
+            stack: err.stack
+          });
+          return res.status(500).json({ error: 'Image conversion failed' });
+        }
+      }
+
+      // Non-HEIC: Serve with appropriate Content-Type
+      res.set('Content-Type', getContentTypeForExtension(ext));
+      res.set('Cache-Control', `public, max-age=${IMAGE_CACHE_MAX_AGE}`);
+      return res.send(fileBuffer);
+
+    } catch (err) {
+      logger.error('Display image by ID: unexpected error', {
+        reqId,
+        photoId,
+        error: err.message,
+        stack: err.stack
+      });
+      return res.status(500).json({ error: 'Internal server error' });
+    }
+  });
+
+  // Legacy filename-based route (kept for backward compatibility)
   router.get('/:state/:filename', authenticateThumbnailOrImage, async (req, res) => {
     const reqId = req.id || req.headers['x-request-id'] || null;
     res.set('Cross-Origin-Resource-Policy', 'cross-origin');
