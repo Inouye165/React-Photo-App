@@ -149,7 +149,7 @@ export default function ImageCanvasEditor({ imageUrl, caption, textStyle, onSave
         style={{ flex: 'none', height: '56px', backgroundColor: 'white', borderBottom: '1px solid #e2e8f0', padding: '0 16px', display: 'flex', alignItems: 'center', justifyContent: 'space-between', zIndex: 10, boxShadow: '0 1px 2px 0 rgba(0, 0, 0, 0.05)' }}
       >
         
-        <div className="flex items-center gap-4" style={{ display: 'flex', alignItems: 'center', gap: '16px' }}>
+        <div className="flex items-center gap-4" style={{ display: 'flex', alignItems: 'center', gap: '16px', flex: 1 }}>
           {/* Font Size Control */}
           <div className="flex items-center gap-2 group" style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
             <span className="text-[10px] font-bold text-slate-400 uppercase tracking-wider" style={{ fontSize: '10px', fontWeight: 700, color: '#94a3b8', textTransform: 'uppercase', letterSpacing: '0.05em' }}>Size</span>
@@ -180,19 +180,21 @@ export default function ImageCanvasEditor({ imageUrl, caption, textStyle, onSave
               />
             </div>
           </div>
-        </div>
 
-        <div className="flex items-center gap-3" style={{ display: 'flex', alignItems: 'center', gap: '12px' }}>
-          {/* Caption Input */}
+          <div className="h-4 w-px bg-slate-200" style={{ height: '16px', width: '1px', backgroundColor: '#e2e8f0' }}></div>
+
+          {/* Caption Input - moved to left side */}
           <input
             type="text"
             value={textProps.text}
             onChange={(e) => setTextProps(prev => ({ ...prev, text: e.target.value }))}
-            className="bg-slate-50 border border-slate-200 rounded-full px-4 py-1.5 text-sm text-slate-700 w-64 outline-none focus:border-blue-500"
-            style={{ backgroundColor: '#f8fafc', border: '1px solid #e2e8f0', borderRadius: '9999px', padding: '6px 16px', fontSize: '14px', color: '#334155', width: '256px', outline: 'none' }}
+            className="bg-slate-50 border border-slate-200 rounded-full px-4 py-1.5 text-sm text-slate-700 outline-none focus:border-blue-500"
+            style={{ backgroundColor: '#f8fafc', border: '1px solid #e2e8f0', borderRadius: '9999px', padding: '6px 16px', fontSize: '14px', color: '#334155', flex: 1, maxWidth: '300px', outline: 'none' }}
             placeholder="Enter caption text..."
           />
-          
+        </div>
+
+        <div className="flex items-center gap-3" style={{ display: 'flex', alignItems: 'center', gap: '12px', marginLeft: '16px' }}>
           {/* Burn Button */}
           <button
             onClick={handleSave}
