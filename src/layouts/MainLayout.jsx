@@ -1,6 +1,6 @@
 import React, { useState, useEffect } from 'react';
 import { Outlet } from 'react-router-dom';
-import Toolbar from '../Toolbar.jsx';
+import AppHeader from '../components/AppHeader.jsx';
 import useStore from '../store.js';
 import { getDependencyStatus } from '../api.js';
 
@@ -102,9 +102,12 @@ export default function MainLayout() {
     };
   }, [setBanner]);
 
+  // Build status message for header
+  const statusMessage = dependencyWarning || toolbarMessage || banner?.message;
+
   return (
     <div
-      className="flex flex-col bg-gray-100"
+      className="flex flex-col"
       id="main-app-container"
       style={{
         position: 'fixed',
@@ -112,31 +115,56 @@ export default function MainLayout() {
         left: 0,
         right: 0,
         bottom: 0,
-        paddingTop: '96px',
+        paddingTop: '52px', // Match AppHeader height
+        backgroundColor: '#cbd5e1', // Slate-300 to match EditPage background
       }}
     >
-      <Toolbar
-        onSelectFolder={() => {
-          // This will be handled by the router/context in next steps
-          useStore.getState().setShowUploadPicker(true);
-        }}
-        toolbarMessage={dependencyWarning || toolbarMessage || banner?.message}
-        toolbarSeverity={dependencyWarning ? 'warning' : (banner?.severity || 'info')}
-        onClearToolbarMessage={
-          dependencyWarning 
-            ? undefined 
-            : () => { 
-                setToolbarMessage(''); 
-                setBanner({ message: '' }); 
-              }
-        }
+      <AppHeader 
+        rightContent={statusMessage ? (
+          <div 
+            style={{ 
+              display: 'flex', 
+              alignItems: 'center', 
+              gap: '8px',
+              padding: '6px 12px',
+              borderRadius: '9999px',
+              fontSize: '12px',
+              fontWeight: 500,
+              backgroundColor: dependencyWarning ? '#fef3c7' : (banner?.severity === 'error' ? '#fef2f2' : '#f0fdf4'),
+              color: dependencyWarning ? '#92400e' : (banner?.severity === 'error' ? '#dc2626' : '#16a34a'),
+            }}
+          >
+            <span>{statusMessage}</span>
+            {!dependencyWarning && (
+              <button 
+                onClick={() => { setToolbarMessage(''); setBanner({ message: '' }); }}
+                style={{ 
+                  background: 'none', 
+                  border: 'none', 
+                  cursor: 'pointer', 
+                  fontSize: '14px',
+                  color: 'inherit',
+                  padding: '0 4px',
+                }}
+              >
+                ×
+              </button>
+            )}
+          </div>
+        ) : null}
       />
 
       <div aria-live="polite" className="sr-only">
         {toolbarMessage}
       </div>
 
-      <div className="flex-1 overflow-auto" style={{ padding: '8px 16px 16px 16px' }}>
+      {/* Main content area with consistent padding */}
+      <div 
+        className="flex-1 overflow-auto" 
+        style={{ 
+          padding: '16px',
+        }}
+      >
         <Outlet context={{ 
           aiDependenciesReady, 
           setToolbarMessage,
