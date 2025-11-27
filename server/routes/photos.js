@@ -67,7 +67,11 @@ module.exports = function createPhotosRouter({ db, supabase }) {
         if (row.hash) {
           thumbnailUrl = `/display/thumbnails/${row.hash}.jpg`;
         }
-        photoUrl = `/display/${row.state}/${row.filename}`;
+        // Use ID-based URL for photos to prevent ERR_CACHE_READ_FAILURE
+        // This eliminates the URL extension mismatch when HEIC is converted to JPEG
+        // Old: /display/working/photo.heic → Content-Type: image/jpeg (MISMATCH!)
+        // New: /display/image/123 → Content-Type: image/jpeg (NO MISMATCH!)
+        photoUrl = `/display/image/${row.id}`;
         let parsedHistory = null;
         try { parsedHistory = row.ai_model_history ? JSON.parse(row.ai_model_history) : null; } catch { parsedHistory = null; }
         return {
@@ -157,10 +161,11 @@ module.exports = function createPhotosRouter({ db, supabase }) {
       }
 
       // Provide relative image URLs; /display/* is protected by the cookie auth middleware.
+      // Use ID-based URL for photos to prevent ERR_CACHE_READ_FAILURE
       let url = null;
       let thumbnail = null;
       if (row.hash) thumbnail = `/display/thumbnails/${row.hash}.jpg`;
-      url = `/display/${row.state}/${row.filename}`;
+      url = `/display/image/${row.id}`;
 
       const photo = {
         id: row.id,

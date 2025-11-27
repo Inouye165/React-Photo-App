@@ -3,6 +3,28 @@ import { vi, afterEach, beforeEach } from 'vitest'
 import { cleanup } from '@testing-library/react'
 import React from 'react'
 
+/**
+ * Mock Web Worker for heic2any and other browser-only APIs.
+ * 
+ * heic2any uses Web Workers internally, which are not available in Node.js/jsdom.
+ * This minimal mock prevents "ReferenceError: Worker is not defined" errors
+ * during test runs while allowing tests to execute without actual Worker functionality.
+ * 
+ * The mock provides the basic Worker interface (postMessage, terminate, event listeners)
+ * but does not execute any actual worker code.
+ */
+class MockWorker {
+  constructor() {
+    this.onmessage = null;
+    this.onerror = null;
+  }
+  postMessage() {}
+  terminate() {}
+  addEventListener() {}
+  removeEventListener() {}
+}
+globalThis.Worker = MockWorker;
+
 // Mock API responses for consistent testing
 const mockApiResponses = {
   '/api/photos': {

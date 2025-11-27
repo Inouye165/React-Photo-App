@@ -202,6 +202,14 @@ export function getApiMetrics() { try { return JSON.parse(JSON.stringify(apiMetr
 /**
  * Fetch a protected resource (image) using credentials and return a blob URL.
  * Caller is responsible for revoking the returned URL when no longer needed.
+ * 
+ * Note: ERR_CACHE_READ_FAILURE is now prevented architecturally:
+ * - Server uses ID-based URLs (/display/image/:id) instead of filename-based
+ * - No URL extension means no conflict with Content-Type header
+ * - HEIC→JPEG conversion is transparent to browser cache
+ * 
+ * Retry logic is kept as a safety net for any remaining edge cases.
+ * 
  * @param {string} url - Full URL to fetch (absolute or relative)
  * @returns {Promise<string>} - Object URL (URL.createObjectURL(blob))
  */
@@ -209,11 +217,39 @@ export async function fetchProtectedBlobUrl(url) {
   // If URL is already a blob URL, return it as is
   if (url.startsWith('blob:')) return url;
 
-  // Security: Authentication now via httpOnly cookies, not query params
-  const res = await fetchWithNetworkFallback(url, {
-    headers: getAuthHeaders(),
-    credentials: 'include' // Send cookies for authentication
-  });
+  // Helper to perform the actual fetch
+  const doFetch = async (bypassCache = false) => {
+    const headers = { ...getAuthHeaders() };
+    if (bypassCache) {
+      // Force network fetch, bypass browser cache
+      headers['Cache-Control'] = 'no-cache';
+      headers['Pragma'] = 'no-cache';
+    }
+    
+    return fetchWithNetworkFallback(url, {
+      headers,
+      credentials: 'include', // Send cookies for authentication
+      cache: bypassCache ? 'no-store' : 'default'
+    });
+  };
+
+  let res;
+  try {
+    res = await doFetch(false);
+  } catch (err) {
+    // Safety net: retry with cache bypass on network errors
+    // This is rarely needed now that we use ID-based URLs
+    const isCacheError = err?.message?.includes('cache') || 
+                         err?.message?.includes('Failed to fetch') ||
+                         err?.isNetworkError;
+    
+    if (isCacheError) {
+      console.warn('[api] Retrying fetch with cache bypass for:', url);
+      res = await doFetch(true);
+    } else {
+      throw err;
+    }
+  }
   
   if (!res.ok) throw new Error(`Failed to fetch image: ${res.status}`);
   
