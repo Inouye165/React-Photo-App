@@ -29,7 +29,7 @@ export default function FlipCard({
         position: 'relative',
       }}
     >
-      {/* Flip Button - Stays stationary outside the rotating card */}
+      {/* Flip Button - Stays stationary outside the rotating card, positioned left of burn button */}
       <button
         onClick={(e) => {
           e.stopPropagation();
@@ -40,7 +40,7 @@ export default function FlipCard({
         style={{
           position: 'absolute',
           top: '10px',
-          right: '10px',
+          right: '150px',
           width: '36px',
           height: '36px',
           borderRadius: '50%',
