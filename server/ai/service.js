@@ -824,7 +824,8 @@ async function updatePhotoAIMetadata(db, photoRow, storagePath, modelOverrides =
           .onConflict('photo_id')
           .merge({
             // If it exists, append to history (PostgreSQL JSONB concatenation)
-            ai_analysis_history: trx.raw('ai_analysis_history || ?::jsonb', [JSON.stringify([historyEntry])]),
+            // Fix: Add 'collectibles.' prefix to resolve column ambiguity in ON CONFLICT
+            ai_analysis_history: trx.raw('"collectibles"."ai_analysis_history" || ?::jsonb', [JSON.stringify([historyEntry])]),
             specifics: collectibleRow.specifics, // Update specifics with latest
             category: collectibleRow.category,
             condition_rank: collectibleRow.condition_rank,
