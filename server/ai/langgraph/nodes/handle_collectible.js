@@ -89,11 +89,18 @@ async function handle_collectible(state) {
   try {
     logger.info('[LangGraph] handle_collectible node invoked');
 
-    // Check feature flag - return early if disabled
+    // Check feature flag - return early if disabled but still provide a finalResult
+    // so the pipeline doesn't fail
     if (!isCollectiblesAiEnabled()) {
-      logger.info('[LangGraph] handle_collectible: Collectibles AI disabled, skipping');
+      logger.info('[LangGraph] handle_collectible: Collectibles AI disabled, generating fallback result');
       return {
         ...state,
+        finalResult: {
+          caption: 'Collectible item',
+          description: 'This appears to be a collectible item. Enable ENABLE_COLLECTIBLES_AI for detailed analysis.',
+          keywords: ['collectible'],
+          classification: state.classification || 'collectables'
+        },
         collectibleResult: {
           collectibleData: null,
           status: 'skipped',
