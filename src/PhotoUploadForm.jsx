@@ -1,10 +1,9 @@
 import React, { useEffect, useState, useRef } from "react";
 import useStore from './store.js';
-import heic2any from 'heic2any';
+import { heicTo } from 'heic-to';
 
-// NOTE: heic2any is used for client-side HEIC preview thumbnails.
-// It works for many HEIC files but fails on newer iPhone HEVC codecs.
-// When it fails, we show a styled placeholder. Server-side conversion handles all formats.
+// NOTE: heic-to is a newer library (2025) that supports modern iPhone HEVC codec.
+// It properly decodes HEIC files that heic2any cannot handle.
 
 /**
  * HeicPlaceholder - A styled placeholder for HEIC files that couldn't be converted client-side.
@@ -48,9 +47,8 @@ const HeicPlaceholder = ({ filename, className }) => (
  * Thumbnail component - Displays image thumbnails for upload preview.
  * 
  * For HEIC files:
- * - Attempts client-side conversion using heic2any library
- * - Falls back to a styled placeholder if conversion fails (common with newer iPhone codecs)
- * - The actual file will be converted server-side after upload using sharp/heic-convert
+ * - Uses heic-to library which supports modern iPhone HEVC codec
+ * - Falls back to a styled placeholder only if conversion truly fails
  * 
  * For other formats (JPEG, PNG, etc.):
  * - Creates an object URL for immediate display
@@ -76,48 +74,24 @@ const Thumbnail = ({ file, className }) => {
     const isHeic = file.name.toLowerCase().endsWith('.heic') || file.name.toLowerCase().endsWith('.heif');
     
     if (isHeic) {
-      // Attempt HEIC conversion for thumbnail preview
+      // Attempt HEIC conversion for thumbnail preview using heic-to
       setConverting(true);
       
-      // Use a timeout to avoid blocking the UI
       const convertHeic = async () => {
         try {
-          // Suppress console errors from libheif by temporarily overriding console.error
-          const originalError = console.error;
-          const originalWarn = console.warn;
-          console.error = (...args) => {
-            // Filter out libheif/heic2any errors
-            const msg = args.join(' ');
-            if (msg.includes('libheif') || msg.includes('HEIF') || msg.includes('heic')) {
-              return; // Suppress
-            }
-            originalError.apply(console, args);
-          };
-          console.warn = (...args) => {
-            const msg = args.join(' ');
-            if (msg.includes('libheif') || msg.includes('HEIF') || msg.includes('heic')) {
-              return; // Suppress
-            }
-            originalWarn.apply(console, args);
-          };
-          
-          const blob = await heic2any({
+          // heic-to supports modern HEVC codec used by newer iPhones
+          const blob = await heicTo({
             blob: file,
-            toType: 'image/jpeg',
-            quality: 0.7 // Lower quality for faster thumbnails
+            type: 'image/jpeg',
+            quality: 0.6 // Lower quality for faster thumbnails
           });
           
-          // Restore console
-          console.error = originalError;
-          console.warn = originalWarn;
-          
-          // heic2any can return array for multi-image HEIC, take first
-          const resultBlob = Array.isArray(blob) ? blob[0] : blob;
-          const url = URL.createObjectURL(resultBlob);
+          const url = URL.createObjectURL(blob);
           setSrc(url);
           setConverting(false);
-        } catch {
-          // Silently fall back to placeholder - no console spam
+        } catch (err) {
+          // Log error for debugging but show placeholder
+          console.warn(`HEIC conversion failed for ${file.name}:`, err.message || err);
           setIsHeicFallback(true);
           setConverting(false);
         }
