@@ -2,6 +2,7 @@ import React, { useEffect } from 'react';
 import { useParams, useNavigate, useOutletContext } from 'react-router-dom';
 import EditPage from '../EditPage.jsx';
 import useStore from '../store.js';
+import useAIPolling from '../hooks/useAIPolling.jsx';
 
 /**
  * PhotoEditPage - Route component for editing a photo (/photos/:id/edit)
@@ -11,6 +12,9 @@ export default function PhotoEditPage() {
   const { id } = useParams();
   const navigate = useNavigate();
   const { aiDependenciesReady } = useOutletContext();
+
+  // Enable AI polling on this page (not just gallery)
+  useAIPolling();
 
   // Get photo data and handlers from store
   const photos = useStore((state) => state.photos);
