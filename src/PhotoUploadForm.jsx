@@ -1,52 +1,107 @@
 import React, { useEffect, useState, useRef } from "react";
 import useStore from './store.js';
-import heic2any from 'heic2any';
+import { heicTo } from 'heic-to';
 
+// NOTE: heic-to is a newer library (2025) that supports modern iPhone HEVC codec.
+// It properly decodes HEIC files that heic2any cannot handle.
+
+/**
+ * HeicPlaceholder - A styled placeholder for HEIC files that couldn't be converted client-side.
+ * Shows a camera icon with HEIC badge to indicate the file type.
+ * These files will be converted server-side after upload.
+ */
+const HeicPlaceholder = ({ filename, className }) => (
+  <div 
+    className={`flex flex-col items-center justify-center bg-gradient-to-br from-gray-100 to-gray-200 text-gray-600 ${className}`} 
+    style={{ minHeight: '100px' }}
+    title={`${filename} - Will be converted after upload`}
+  >
+    {/* Camera/Image icon */}
+    <svg 
+      className="w-10 h-10 mb-1 text-gray-400" 
+      fill="none" 
+      stroke="currentColor" 
+      viewBox="0 0 24 24"
+    >
+      <path 
+        strokeLinecap="round" 
+        strokeLinejoin="round" 
+        strokeWidth="1.5" 
+        d="M3 9a2 2 0 012-2h.93a2 2 0 001.664-.89l.812-1.22A2 2 0 0110.07 4h3.86a2 2 0 011.664.89l.812 1.22A2 2 0 0018.07 7H19a2 2 0 012 2v9a2 2 0 01-2 2H5a2 2 0 01-2-2V9z" 
+      />
+      <path 
+        strokeLinecap="round" 
+        strokeLinejoin="round" 
+        strokeWidth="1.5" 
+        d="M15 13a3 3 0 11-6 0 3 3 0 016 0z" 
+      />
+    </svg>
+    {/* HEIC badge */}
+    <span className="px-2 py-0.5 bg-blue-100 text-blue-700 text-xs font-semibold rounded">
+      HEIC
+    </span>
+  </div>
+);
+
+/**
+ * Thumbnail component - Displays image thumbnails for upload preview.
+ * 
+ * For HEIC files:
+ * - Uses heic-to library which supports modern iPhone HEVC codec
+ * - Falls back to a styled placeholder only if conversion truly fails
+ * 
+ * For other formats (JPEG, PNG, etc.):
+ * - Creates an object URL for immediate display
+ */
 const Thumbnail = ({ file, className }) => {
   const [src, setSrc] = useState(null);
   const [loadError, setLoadError] = useState(false);
   const [converting, setConverting] = useState(false);
+  const [isHeicFallback, setIsHeicFallback] = useState(false);
 
   useEffect(() => {
     if (!file) {
-      console.log('[Thumbnail] No file provided');
       return;
     }
     
-    console.log('[Thumbnail] Processing file:', file.name, 'type:', file.type, 'size:', file.size);
+    // Reset state for new file
     setLoadError(false);
     setSrc(null);
+    setIsHeicFallback(false);
+    setConverting(false);
     
     // Check file extension for HEIC (some browsers don't set correct MIME type)
     const isHeic = file.name.toLowerCase().endsWith('.heic') || file.name.toLowerCase().endsWith('.heif');
     
     if (isHeic) {
-      // Convert HEIC to JPEG for display
+      // Attempt HEIC conversion for thumbnail preview using heic-to
       setConverting(true);
-      console.log('[Thumbnail] Converting HEIC file:', file.name);
       
-      heic2any({
-        blob: file,
-        toType: 'image/jpeg',
-        quality: 0.5 // Lower quality for faster thumbnails
-      })
-        .then((convertedBlob) => {
-          const url = URL.createObjectURL(convertedBlob);
-          console.log('[Thumbnail] HEIC converted successfully:', file.name);
+      const convertHeic = async () => {
+        try {
+          // heic-to supports modern HEVC codec used by newer iPhones
+          const blob = await heicTo({
+            blob: file,
+            type: 'image/jpeg',
+            quality: 0.6 // Lower quality for faster thumbnails
+          });
+          
+          const url = URL.createObjectURL(blob);
           setSrc(url);
           setConverting(false);
-        })
-        .catch((err) => {
-          console.error('[Thumbnail] HEIC conversion failed:', file.name, err);
-          setLoadError(true);
+        } catch (err) {
+          // Log error for debugging but show placeholder
+          console.warn(`HEIC conversion failed for ${file.name}:`, err.message || err);
+          setIsHeicFallback(true);
           setConverting(false);
-        });
+        }
+      };
       
-      return; // No cleanup needed until src is set
+      convertHeic();
+      return;
     } else {
       // Create object URL for browser-supported image types
       const url = URL.createObjectURL(file);
-      console.log('[Thumbnail] Created object URL:', url);
       setSrc(url);
       return () => URL.revokeObjectURL(url);
     }
@@ -71,7 +126,12 @@ const Thumbnail = ({ file, className }) => {
     );
   }
 
-  // Show placeholder if no src or if image failed to load
+  // Show HEIC-specific placeholder when client-side conversion failed
+  if (isHeicFallback) {
+    return <HeicPlaceholder filename={file.name} className={className} />;
+  }
+
+  // Show generic placeholder if no src or if image failed to load
   if (!src || loadError) {
     return (
       <div className={`flex flex-col items-center justify-center bg-gray-200 text-gray-600 font-bold text-sm ${className}`} style={{ minHeight: '100px' }}>
@@ -86,11 +146,9 @@ const Thumbnail = ({ file, className }) => {
       src={src} 
       alt={file.name || ''} 
       className={`object-cover w-full h-full ${className}`}
-      onError={(e) => {
-        console.log('[Thumbnail] Image load error for:', file.name, e);
+      onError={() => {
         setLoadError(true);
       }}
-      onLoad={() => console.log('[Thumbnail] Image loaded successfully:', file.name)}
     />
   );
 };

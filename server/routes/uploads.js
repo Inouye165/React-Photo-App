@@ -56,7 +56,8 @@ module.exports = function createUploadsRouter({ db }) {
       try {
         uploadResult = await streamToSupabase(req, {
           maxFileSize: UPLOAD_MAX_BYTES,
-          fieldName: 'photo'
+          fieldName: 'photo',
+          userEmail: req.user.email // Pass user email for scoped hashing
         });
       } catch (err) {
         // Handle specific error types with appropriate HTTP status codes
