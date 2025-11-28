@@ -225,9 +225,22 @@ export default function useSignedThumbnails(photos, token) {
    * Helper function to get signed URL for a photo
    * Returns full URL with API base if signed URL is available,
    * otherwise returns original thumbnail path as fallback
+   * 
+   * @param {Object} photo - Photo object with id, thumbnail, and url properties
+   * @param {string} type - 'thumbnail' (default) or 'full' for full-size image
    */
-  const getSignedUrl = useCallback((photo) => {
-    if (!photo || !photo.id || !photo.thumbnail) {
+  const getSignedUrl = useCallback((photo, type = 'thumbnail') => {
+    if (!photo || !photo.id) {
+      return null;
+    }
+
+    // For full-size images, return the photo.url directly (authenticated via cookie)
+    if (type === 'full' && photo.url) {
+      return `${API_BASE_URL}${photo.url}`;
+    }
+
+    // For thumbnails, require the thumbnail property
+    if (!photo.thumbnail) {
       return null;
     }
 
