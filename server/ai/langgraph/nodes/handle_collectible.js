@@ -1,8 +1,10 @@
-const { SystemMessage, HumanMessage } = require('@langchain/core/messages');
-const { collectibleAgent } = require('../../langchain/agents');
 const { CollectibleOutputSchema, extractCleanData } = require('../../schemas');
 const { isCollectiblesAiEnabled } = require('../../../utils/featureFlags');
+const { openai } = require('../../openaiClient');
 const logger = require('../../../logger');
+
+// Use the same model config as the existing collectibleAgent
+const COLLECTIBLE_MODEL = process.env.AI_COLLECTIBLE_MODEL || process.env.OPENAI_MODEL || 'gpt-4o-mini';
 
 /**
  * System prompt that enforces the CollectibleOutputSchema JSON structure.
@@ -109,39 +111,46 @@ async function handle_collectible(state) {
       };
     }
 
-    const messages = [
-      new SystemMessage(COLLECTIBLE_CONTRACT_PROMPT),
-      new HumanMessage({
-        content: [
-          {
-            type: 'text',
-            text: `Analyze this collectible image and return the structured JSON response.
+    // Build the user content with image for direct OpenAI API call
+    const userContent = [
+      {
+        type: 'text',
+        text: `Analyze this collectible image and return the structured JSON response.
             
 Available metadata keys: ${Object.keys(state.metadata || {}).join(', ')}
 Classification: ${state.classification || 'collectible'}`,
-          },
-          {
-            type: 'image_url',
-            image_url: {
-              url: `data:${state.imageMime};base64,${state.imageBase64}`,
-              detail: 'high',
-            },
-          },
-        ],
-      }),
+      },
+      {
+        type: 'image_url',
+        image_url: {
+          url: `data:${state.imageMime};base64,${state.imageBase64}`,
+          detail: 'high',
+        },
+      },
     ];
 
     logger.info('[LangGraph] handle_collectible: Invoking AI agent');
-    const response = await collectibleAgent.invoke(messages);
+    
+    // Use direct OpenAI client with response_format for reliable JSON output
+    const response = await openai.chat.completions.create({
+      model: COLLECTIBLE_MODEL,
+      messages: [
+        { role: 'system', content: COLLECTIBLE_CONTRACT_PROMPT },
+        { role: 'user', content: userContent },
+      ],
+      max_tokens: 1400,
+      temperature: 0.25,
+      response_format: { type: 'json_object' },
+    });
 
-    // Parse the raw response
+    // Parse the raw response from the OpenAI API
     let rawParsed;
     try {
-      rawParsed = JSON.parse(response.content);
+      rawParsed = JSON.parse(response.choices[0].message.content);
     } catch (parseError) {
       logger.error('[LangGraph] handle_collectible: Failed to parse JSON response', {
         error: parseError.message,
-        raw_response: response.content?.substring(0, 500)
+        raw_response: response.choices[0].message.content?.substring(0, 500)
       });
       return {
         ...state,
