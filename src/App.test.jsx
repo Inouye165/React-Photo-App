@@ -59,10 +59,6 @@ vi.mock('./components/PhotoTable', () => ({
   default: () => React.createElement('div', { 'data-testid': 'photo-table' }, 'Photo Table')
 }))
 
-vi.mock('./components/PhotoDetailPanel', () => ({
-  default: () => React.createElement('div', { 'data-testid': 'photo-detail-panel' }, 'Detail Panel')
-}))
-
 vi.mock('./components/MetadataModal', () => ({
   default: () => React.createElement('div', { 'data-testid': 'metadata-modal' }, 'Metadata Modal')
 }))

@@ -49,8 +49,8 @@ export default function PhotoEditPage() {
     );
     setEditingMode(null);
     setActivePhotoId(updated.id);
-    // Navigate to the detail view
-    navigate(`/photos/${updated.id}`);
+    // Stay on the edit page after saving (no navigation needed)
+    // User can manually navigate away when done
   };
 
   const handleRecheckAI = async (photoId, model) => {
