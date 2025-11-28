@@ -305,8 +305,8 @@ describe('HEIC Conversion Functionality', () => {
       const result = await generateThumbnail(testJpegBuffer, testHash);
       
       expect(sharp).toHaveBeenCalledWith(testJpegBuffer);
-      expect(mockSharp.resize).toHaveBeenCalledWith(90, 90, { fit: 'inside' });
-      expect(mockSharp.jpeg).toHaveBeenCalledWith({ quality: 70 });
+      expect(mockSharp.resize).toHaveBeenCalledWith(400, 400, { fit: 'inside' });
+      expect(mockSharp.jpeg).toHaveBeenCalledWith({ quality: 85 });
       expect(result).toBe(`thumbnails/${testHash}.jpg`);
     });
 
@@ -352,8 +352,8 @@ describe('HEIC Conversion Functionality', () => {
       const result = await generateThumbnail(testHeicBuffer, testHash);
       
       expect(result).toBe(`thumbnails/${testHash}.jpg`);
-      expect(mockThumbnailSharp.resize).toHaveBeenCalledWith(90, 90, { fit: 'inside' });
-      expect(mockThumbnailSharp.jpeg).toHaveBeenCalledWith({ quality: 70 });
+      expect(mockThumbnailSharp.resize).toHaveBeenCalledWith(400, 400, { fit: 'inside' });
+      expect(mockThumbnailSharp.jpeg).toHaveBeenCalledWith({ quality: 85 });
     });
   });
 
