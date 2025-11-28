@@ -76,9 +76,10 @@
       "<rootDir>/node_modules/",
       "<rootDir>/working/"
     ],
-    "transformIgnorePatterns": [
-      "node_modules/(?!(p-retry|is-network-error|@langchain)/)"
-    ],
+    "moduleNameMapper": {
+      "^p-retry$": "<rootDir>/tests/__mocks__/p-retry.js",
+      "^is-network-error$": "<rootDir>/tests/__mocks__/is-network-error.js"
+    },
     "collectCoverageFrom": [
       "**/*.js",
       "!node_modules/**",
