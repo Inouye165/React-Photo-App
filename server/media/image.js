@@ -96,9 +96,22 @@ sharp.concurrency(1);
 // Disable sharp cache to reduce memory pressure (or set small limit)
 sharp.cache({ memory: 50, files: 10, items: 100 });
 
-async function hashFile(input) {
+/**
+ * Compute SHA256 hash of file content, optionally scoped to a user.
+ * When userEmail is provided, the hash becomes user-specific, allowing
+ * the same photo to be owned by multiple users.
+ * 
+ * @param {Buffer|string} input - File buffer or file path
+ * @param {string} [userEmail] - User email for scoped hashing (optional)
+ * @returns {Promise<string>} Hex-encoded SHA256 hash
+ */
+async function hashFile(input, userEmail = null) {
   if (Buffer.isBuffer(input)) {
-    return nodeCrypto.createHash('sha256').update(input).digest('hex');
+    const hash = nodeCrypto.createHash('sha256').update(input);
+    if (userEmail) {
+      hash.update(userEmail);
+    }
+    return hash.digest('hex');
   }
   // Assume input is a file path
   return new Promise((resolve, reject) => {
@@ -108,7 +121,13 @@ async function hashFile(input) {
       const stream = fs.createReadStream(realPath);
       stream.on('error', reject);
       stream.on('data', chunk => hash.update(chunk));
-      stream.on('end', () => resolve(hash.digest('hex')));
+      stream.on('end', () => {
+        // Append userEmail to hash if provided for user-scoped deduplication
+        if (userEmail) {
+          hash.update(userEmail);
+        }
+        resolve(hash.digest('hex'));
+      });
     } catch (err) {
       return reject(err);
     }
@@ -340,12 +359,25 @@ async function ensureAllThumbnails(db) {
   await Promise.all(workers);
 }
 
-async function ingestPhoto(db, storagePath, filename, state, input, userId) {
+/**
+ * Ingest a photo into the database with user-scoped deduplication.
+ * 
+ * @param {Object} db - Knex database instance
+ * @param {string} storagePath - Path in storage bucket
+ * @param {string} filename - Original filename
+ * @param {string} state - Photo state (working, inprogress, etc.)
+ * @param {Buffer|string} input - File buffer or path
+ * @param {string} userId - User UUID
+ * @param {string} [userEmail] - User email for scoped hashing (optional but recommended)
+ * @returns {Promise<Object>} Result with duplicate flag and hash
+ */
+async function ingestPhoto(db, storagePath, filename, state, input, userId, userEmail = null) {
   if (!userId) {
     throw new Error('userId is required for ingestPhoto');
   }
   try {
-    const hash = await hashFile(input);
+    // Use user-scoped hash if email is provided, otherwise fall back to content-only hash
+    const hash = await hashFile(input, userEmail);
     const existing = await db('photos').where({ hash }).select('id').first();
     if (existing) {
         // Duplicate file skipped (logging removed)

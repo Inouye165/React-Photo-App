@@ -58,11 +58,13 @@ class SizeLimiter extends Transform {
 
 /**
  * Stream hasher that calculates SHA256 hash while passing through data.
+ * Supports user-scoped hashing by appending userEmail to the hash input.
  */
 class HashingStream extends Transform {
-  constructor() {
+  constructor(userEmail = null) {
     super();
     this.hash = crypto.createHash('sha256');
+    this.userEmail = userEmail;
   }
 
   _transform(chunk, encoding, callback) {
@@ -71,6 +73,11 @@ class HashingStream extends Transform {
   }
 
   getHash() {
+    // If userEmail is provided, append it to create a user-scoped hash
+    // This allows the same photo to be owned by different users
+    if (this.userEmail) {
+      this.hash.update(this.userEmail);
+    }
     return this.hash.digest('hex');
   }
 }
@@ -125,6 +132,7 @@ function sanitizeFilename(originalname) {
 async function streamToSupabase(req, options = {}) {
   const maxFileSize = options.maxFileSize || Number(process.env.UPLOAD_MAX_BYTES || 10 * 1024 * 1024);
   const fieldName = options.fieldName || 'photo';
+  const userEmail = options.userEmail || null; // User email for scoped hashing
 
   return new Promise((resolve, reject) => {
     // Check content-type before creating busboy
@@ -179,7 +187,7 @@ async function streamToSupabase(req, options = {}) {
 
       // Create transform streams for validation and hashing
       const sizeLimiter = new SizeLimiter(maxFileSize);
-      const hashingStream = new HashingStream();
+      const hashingStream = new HashingStream(userEmail); // Pass userEmail for scoped hashing
       const passThrough = new PassThrough();
 
       // Note: Empty file detection is handled by checking sizeLimiter.getTotalBytes() after upload
