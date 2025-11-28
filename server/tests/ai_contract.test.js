@@ -7,7 +7,7 @@
  * 3. Low confidence handling (valid data, just flagged)
  * 4. Specifics extraction and preservation
  * 
- * CRITICAL: These tests mock the LangChain model - no real OpenAI API calls.
+ * CRITICAL: These tests mock the OpenAI client - no real OpenAI API calls.
  * 
  * @module server/tests/ai_contract.test.js
  */
@@ -31,10 +31,15 @@ const {
   isSuggestionOnly
 } = require('../config/aiConfig');
 
-// Mock the collectibleAgent before requiring the node
-jest.mock('../ai/langchain/agents', () => ({
-  collectibleAgent: {
-    invoke: jest.fn()
+// Mock the openai client before requiring the node
+const mockOpenAICreate = jest.fn();
+jest.mock('../ai/openaiClient', () => ({
+  openai: {
+    chat: {
+      completions: {
+        create: mockOpenAICreate
+      }
+    }
   }
 }));
 
@@ -46,7 +51,6 @@ jest.mock('../logger', () => ({
   debug: jest.fn()
 }));
 
-const { collectibleAgent } = require('../ai/langchain/agents');
 const handle_collectible = require('../ai/langgraph/nodes/handle_collectible');
 
 describe('AI Contract Layer - Sprint 2', () => {
@@ -54,6 +58,7 @@ describe('AI Contract Layer - Sprint 2', () => {
   // Reset mocks before each test
   beforeEach(() => {
     jest.clearAllMocks();
+    mockOpenAICreate.mockReset();
     process.env.ENABLE_COLLECTIBLES_AI = 'true';
   });
 
@@ -353,8 +358,14 @@ describe('AI Contract Layer - Sprint 2', () => {
       jest.resetModules();
       
       // Re-mock dependencies
-      jest.mock('../ai/langchain/agents', () => ({
-        collectibleAgent: { invoke: jest.fn() }
+      jest.mock('../ai/openaiClient', () => ({
+        openai: {
+          chat: {
+            completions: {
+              create: jest.fn()
+            }
+          }
+        }
       }));
       jest.mock('../logger', () => ({
         info: jest.fn(), warn: jest.fn(), error: jest.fn(), debug: jest.fn()
@@ -369,8 +380,8 @@ describe('AI Contract Layer - Sprint 2', () => {
     });
 
     test('Valid Schema Test - processes valid AI response correctly', async () => {
-      collectibleAgent.invoke.mockResolvedValueOnce({
-        content: JSON.stringify(validAIResponse)
+      mockOpenAICreate.mockResolvedValueOnce({
+        choices: [{ message: { content: JSON.stringify(validAIResponse) } }]
       });
 
       const result = await handle_collectible(mockState);
@@ -382,8 +393,8 @@ describe('AI Contract Layer - Sprint 2', () => {
     });
 
     test('Invalid Schema Test - catches malformed JSON and returns failed status', async () => {
-      collectibleAgent.invoke.mockResolvedValueOnce({
-        content: 'This is not valid JSON at all'
+      mockOpenAICreate.mockResolvedValueOnce({
+        choices: [{ message: { content: 'This is not valid JSON at all' } }]
       });
 
       const result = await handle_collectible(mockState);
@@ -399,8 +410,8 @@ describe('AI Contract Layer - Sprint 2', () => {
         // Missing required fields: condition, value
       };
 
-      collectibleAgent.invoke.mockResolvedValueOnce({
-        content: JSON.stringify(invalidResponse)
+      mockOpenAICreate.mockResolvedValueOnce({
+        choices: [{ message: { content: JSON.stringify(invalidResponse) } }]
       });
 
       const result = await handle_collectible(mockState);
@@ -429,8 +440,8 @@ describe('AI Contract Layer - Sprint 2', () => {
         specifics: {}
       };
 
-      collectibleAgent.invoke.mockResolvedValueOnce({
-        content: JSON.stringify(lowConfidenceResponse)
+      mockOpenAICreate.mockResolvedValueOnce({
+        choices: [{ message: { content: JSON.stringify(lowConfidenceResponse) } }]
       });
 
       const result = await handle_collectible(mockState);
@@ -455,8 +466,8 @@ describe('AI Contract Layer - Sprint 2', () => {
         }
       };
 
-      collectibleAgent.invoke.mockResolvedValueOnce({
-        content: JSON.stringify(responseWithSpecifics)
+      mockOpenAICreate.mockResolvedValueOnce({
+        choices: [{ message: { content: JSON.stringify(responseWithSpecifics) } }]
       });
 
       const result = await handle_collectible(mockState);
@@ -475,7 +486,7 @@ describe('AI Contract Layer - Sprint 2', () => {
     });
 
     test('handles unexpected errors gracefully', async () => {
-      collectibleAgent.invoke.mockRejectedValueOnce(new Error('Network timeout'));
+      mockOpenAICreate.mockRejectedValueOnce(new Error('Network timeout'));
 
       const result = await handle_collectible(mockState);
 
@@ -485,8 +496,8 @@ describe('AI Contract Layer - Sprint 2', () => {
     });
 
     test('maintains backward compatibility with finalResult', async () => {
-      collectibleAgent.invoke.mockResolvedValueOnce({
-        content: JSON.stringify(validAIResponse)
+      mockOpenAICreate.mockResolvedValueOnce({
+        choices: [{ message: { content: JSON.stringify(validAIResponse) } }]
       });
 
       const result = await handle_collectible(mockState);

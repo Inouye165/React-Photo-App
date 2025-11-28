@@ -10,3 +10,170 @@ html, body {
   padding-top: 0.25rem;
   padding-bottom: 0.25rem;
 }
+
+/* ========================================
+   Collectible Editor Panel Styles
+   ======================================== */
+
+.collectible-editor-panel {
+  padding: 16px;
+  background-color: #ffffff;
+  border-radius: 12px;
+}
+
+.collectible-editor-panel .panel-header {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  margin-bottom: 20px;
+  padding-bottom: 12px;
+  border-bottom: 1px solid #e2e8f0;
+}
+
+.collectible-editor-panel .panel-header h3 {
+  font-size: 1.25rem;
+  font-weight: 600;
+  color: #1e293b;
+  margin: 0;
+}
+
+.collectible-editor-panel .ai-badge {
+  display: inline-flex;
+  align-items: center;
+  padding: 4px 10px;
+  background-color: #f0fdf4;
+  color: #16a34a;
+  border: 1px solid #bbf7d0;
+  border-radius: 9999px;
+  font-size: 0.75rem;
+  font-weight: 500;
+}
+
+.collectible-editor-panel .form-grid {
+  display: flex;
+  flex-direction: column;
+  gap: 16px;
+}
+
+.collectible-editor-panel .form-group {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+}
+
+.collectible-editor-panel .form-group label {
+  font-size: 0.75rem;
+  font-weight: 600;
+  color: #64748b;
+  text-transform: uppercase;
+  letter-spacing: 0.05em;
+}
+
+.collectible-editor-panel input,
+.collectible-editor-panel select {
+  width: 100%;
+  padding: 10px 12px;
+  border: 1px solid #e2e8f0;
+  border-radius: 8px;
+  font-size: 0.875rem;
+  color: #1e293b;
+  background-color: #f8fafc;
+  transition: border-color 0.2s ease, box-shadow 0.2s ease;
+}
+
+.collectible-editor-panel input:focus,
+.collectible-editor-panel select:focus {
+  outline: none;
+  border-color: #3b82f6;
+  box-shadow: 0 0 0 3px rgba(59, 130, 246, 0.1);
+}
+
+.collectible-editor-panel input::placeholder {
+  color: #94a3b8;
+  font-style: italic;
+}
+
+/* Confidence: Review Needed (Yellow Border) - 0.8 to 0.9 confidence */
+.collectible-editor-panel input.confidence-review,
+.collectible-editor-panel select.confidence-review {
+  border-color: #fbbf24;
+  border-width: 2px;
+  background-color: #fffbeb;
+}
+
+.collectible-editor-panel input.confidence-review:focus,
+.collectible-editor-panel select.confidence-review:focus {
+  border-color: #f59e0b;
+  box-shadow: 0 0 0 3px rgba(251, 191, 36, 0.2);
+}
+
+/* Value Range Section */
+.collectible-editor-panel .value-range .value-inputs {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+
+.collectible-editor-panel .value-range .value-inputs input {
+  flex: 1;
+  min-width: 0;
+}
+
+.collectible-editor-panel .value-range .value-separator {
+  color: #94a3b8;
+  font-size: 0.875rem;
+  flex-shrink: 0;
+}
+
+/* Specifics Section */
+.collectible-editor-panel .specifics-section {
+  padding-top: 16px;
+  border-top: 1px solid #e2e8f0;
+}
+
+.collectible-editor-panel .specifics-section h4 {
+  font-size: 0.875rem;
+  font-weight: 600;
+  color: #475569;
+  margin: 0 0 12px 0;
+}
+
+/* Condition Definition */
+.collectible-editor-panel .condition-definition {
+  margin-top: 4px;
+  padding: 8px 10px;
+  background-color: #f1f5f9;
+  border-radius: 6px;
+  font-size: 0.75rem;
+  color: #64748b;
+  line-height: 1.4;
+}
+
+/* Form Actions */
+.collectible-editor-panel .form-actions {
+  display: flex;
+  justify-content: flex-end;
+  margin-top: 20px;
+  padding-top: 16px;
+  border-top: 1px solid #e2e8f0;
+}
+
+.collectible-editor-panel .save-button {
+  padding: 10px 20px;
+  background-color: #0f172a;
+  color: #ffffff;
+  border: none;
+  border-radius: 8px;
+  font-size: 0.875rem;
+  font-weight: 500;
+  cursor: pointer;
+  transition: background-color 0.2s ease;
+}
+
+.collectible-editor-panel .save-button:hover {
+  background-color: #1e293b;
+}
+
+.collectible-editor-panel .save-button:active {
+  background-color: #334155;
+}

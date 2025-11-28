@@ -789,14 +789,53 @@ async function updatePhotoAIMetadata(db, photoRow, storagePath, modelOverrides =
 
       // If collectibleInsights exists, insert into collectibles table
       if (ai && ai.collectibleInsights) {
+        // Construct the History Entry for AI analysis versioning
+        const historyEntry = {
+          timestamp: new Date().toISOString(),
+          model: process.env.AI_COLLECTIBLE_MODEL || process.env.OPENAI_MODEL || 'unknown',
+          result: ai.collectibleInsights
+        };
+
+        // Extract specifics from collectibleInsights if available
+        const specifics = ai.collectibleInsights.specifics 
+          ? ai.collectibleInsights.specifics 
+          : {};
+
         const collectibleRow = {
           photo_id: photoRow.id,
-          name: caption,
-          ai_analysis: JSON.stringify(ai.collectibleInsights),
-          user_notes: ''
+          user_id: photoRow.user_id, // Required for RLS (Row Level Security)
+          name: caption, // Use the generated caption as the initial name
+          // Fix: Use the correct column name (ai_analysis_history) and Array format
+          ai_analysis_history: JSON.stringify([historyEntry]),
+          // Fix: Populate the specifics column with clean data
+          specifics: JSON.stringify(specifics),
+          // Include other fields from collectibleInsights if available
+          category: ai.collectibleInsights.category || null,
+          condition_rank: ai.collectibleInsights.condition?.rank || null,
+          condition_label: ai.collectibleInsights.condition?.label || null,
+          value_min: ai.collectibleInsights.valuation?.lowEstimateUSD || null,
+          value_max: ai.collectibleInsights.valuation?.highEstimateUSD || null,
+          currency: 'USD',
+          schema_version: 1
         };
-        await trx('collectibles').insert(collectibleRow);
-        logger.debug('[AI Debug] [updatePhotoAIMetadata] Inserted collectible for photo', photoRow.id);
+
+        // Use onConflict to update history if row exists (Idempotency)
+        await trx('collectibles')
+          .insert(collectibleRow)
+          .onConflict('photo_id')
+          .merge({
+            // If it exists, append to history (PostgreSQL JSONB concatenation)
+            // Fix: Add 'collectibles.' prefix to resolve column ambiguity in ON CONFLICT
+            ai_analysis_history: trx.raw('"collectibles"."ai_analysis_history" || ?::jsonb', [JSON.stringify([historyEntry])]),
+            specifics: collectibleRow.specifics, // Update specifics with latest
+            category: collectibleRow.category,
+            condition_rank: collectibleRow.condition_rank,
+            condition_label: collectibleRow.condition_label,
+            value_min: collectibleRow.value_min,
+            value_max: collectibleRow.value_max,
+            updated_at: new Date().toISOString()
+          });
+        logger.debug('[AI Debug] [updatePhotoAIMetadata] Upserted collectible for photo', photoRow.id);
       }
     });
 

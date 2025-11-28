@@ -47,6 +47,30 @@ export async function updateCollectible(collectibleId, data) {
   if (!json.success) throw new Error(json.error || 'Failed to update collectible');
   return json.collectible;
 }
+
+/**
+ * Upsert (create or update) a collectible for a photo.
+ * Uses PUT method for idempotent upsert semantics.
+ * @param {string|number} photoId - Photo ID
+ * @param {Object} data - Collectible form data
+ * @param {Object} [options] - Additional options
+ * @param {boolean} [options.recordAi=false] - Whether to record AI analysis history
+ */
+export async function upsertCollectible(photoId, data, options = {}) {
+  const url = `${API_BASE_URL}/photos/${photoId}/collectibles`;
+  const res = await apiLimiter(() => fetchWithNetworkFallback(url, {
+    method: 'PUT',
+    headers: getAuthHeaders(),
+    body: JSON.stringify({ ...data, ...options }),
+    credentials: 'include'
+  }));
+  if (handleAuthError(res)) return;
+  if (!res.ok) throw new Error('Failed to upsert collectible: ' + res.status);
+  const json = await res.json();
+  if (!json.success) throw new Error(json.error || 'Failed to upsert collectible');
+  return json.collectible;
+}
+
 // Rewritten clean API module (single copy) with small dedupe caches for
 // getPhotos and checkPrivilegesBatch to avoid duplicate network requests
 // during dev (StrictMode) or accidental double-invokes.

@@ -1,12 +1,16 @@
-import React, { useState, useEffect } from 'react'
+import React, { useState, useEffect, useCallback, useRef } from 'react'
 import ImageCanvasEditor from './ImageCanvasEditor'
 import { useAuth } from './contexts/AuthContext'
-import { API_BASE_URL, fetchProtectedBlobUrl, revokeBlobUrl } from './api.js'
+import { API_BASE_URL, fetchProtectedBlobUrl, revokeBlobUrl, fetchCollectibles, upsertCollectible } from './api.js'
 import useStore from './store.js'
 import AppHeader from './components/AppHeader.jsx'
 import LocationMapPanel from './components/LocationMapPanel'
 import FlipCard from './components/FlipCard'
 import PhotoMetadataBack from './components/PhotoMetadataBack'
+import CollectibleEditorPanel from './components/CollectibleEditorPanel.jsx'
+
+// Feature flag for collectibles UI
+const COLLECTIBLES_UI_ENABLED = import.meta.env.VITE_ENABLE_COLLECTIBLES_UI === 'true';
 
 export default function EditPage({ photo, onClose: _onClose, onSave, onRecheckAI, aiReady = true }) {
   // AuthContext no longer exposes client-side token (httpOnly cookies are used).
@@ -33,9 +37,84 @@ export default function EditPage({ photo, onClose: _onClose, onSave, onRecheckAI
   const [isFlipped, setIsFlipped] = useState(false) // Flip card state
   // Button visual status: 'idle' | 'in-progress' | 'done' | 'error'
   // const [recheckStatus, setRecheckStatus] = useState('idle') // Removed unused
-  const prevPhotoRef = React.useRef(photo)
-  const doneTimeoutRef = React.useRef(null)
+  const prevPhotoRef = useRef(photo)
+  const doneTimeoutRef = useRef(null)
   // const [selectedModel, setSelectedModel] = useState(DEFAULT_MODEL) // Removed unused
+
+  // === Collectibles Tab State ===
+  const [activeTab, setActiveTab] = useState('story'); // 'story' | 'location' | 'collectibles'
+  const [collectibleData, setCollectibleData] = useState(null);
+  const [collectibleFormState, setCollectibleFormState] = useState(null);
+  const [collectibleLoading, setCollectibleLoading] = useState(false);
+  const collectibleFetchedRef = useRef(false);
+
+  // Check if photo is classified as a collectible or has existing collectible data
+  const isCollectiblePhoto = sourcePhoto?.ai_analysis?.classification === 'collectables' || 
+                              sourcePhoto?.ai_analysis?.classification === 'collectible' ||
+                              sourcePhoto?.classification === 'collectables' ||
+                              sourcePhoto?.classification === 'collectible';
+  const hasCollectibleData = collectibleData !== null;
+  const showCollectiblesTab = COLLECTIBLES_UI_ENABLED && (isCollectiblePhoto || hasCollectibleData);
+
+  // Extract AI analysis for collectibles from photo data
+  const collectibleAiAnalysis = sourcePhoto?.ai_analysis?.collectibleInsights || 
+                                 sourcePhoto?.collectible_insights || null;
+
+  // Load existing collectible data when photo changes
+  useEffect(() => {
+    if (!COLLECTIBLES_UI_ENABLED || !sourcePhoto?.id || collectibleFetchedRef.current) return;
+    
+    const loadCollectibleData = async () => {
+      setCollectibleLoading(true);
+      try {
+        const collectibles = await fetchCollectibles(sourcePhoto.id);
+        if (collectibles && collectibles.length > 0) {
+          setCollectibleData(collectibles[0]); // Use first collectible for this photo
+        }
+      } catch (err) {
+        console.debug('[EditPage] No collectible data found:', err.message);
+      } finally {
+        setCollectibleLoading(false);
+        collectibleFetchedRef.current = true;
+      }
+    };
+    
+    loadCollectibleData();
+  }, [sourcePhoto?.id]);
+
+  // Reset collectible fetch flag when photo changes
+  useEffect(() => {
+    collectibleFetchedRef.current = false;
+  }, [photo?.id]);
+
+  // Handle collectible form state changes
+  const handleCollectibleChange = useCallback((formState) => {
+    setCollectibleFormState(formState);
+  }, []);
+
+  // Save collectible data
+  const saveCollectible = useCallback(async () => {
+    if (!collectibleFormState || !sourcePhoto?.id) return;
+    
+    try {
+      const result = await upsertCollectible(sourcePhoto.id, {
+        formState: {
+          category: collectibleFormState.category,
+          name: collectibleFormState.name,
+          conditionLabel: collectibleFormState.conditionLabel,
+          valueMin: collectibleFormState.valueMin,
+          valueMax: collectibleFormState.valueMax,
+          specifics: collectibleFormState.specifics
+        }
+      }, { recordAi: true });
+      
+      setCollectibleData(result);
+      return result;
+    } catch (err) {
+      console.error('[EditPage] Failed to save collectible:', err);
+      throw err;
+    }
+  }, [collectibleFormState, sourcePhoto?.id]);
 
   
 
@@ -53,6 +132,7 @@ export default function EditPage({ photo, onClose: _onClose, onSave, onRecheckAI
     // Note: Include all setters in the dependency array if your linter complains,
     // but for this photo-sync hook, only the reactive photo references are required for the intended behavior.
   }, [photo, sourcePhoto])
+
 
   // Lock background scroll while this full-page editor is open
   useEffect(() => {
@@ -208,6 +288,15 @@ export default function EditPage({ photo, onClose: _onClose, onSave, onRecheckAI
       
       if (!response.ok) {
         throw new Error('Failed to save metadata');
+      }
+
+      // Save collectible data if present
+      if (COLLECTIBLES_UI_ENABLED && collectibleFormState) {
+        try {
+          await saveCollectible();
+        } catch (collectibleErr) {
+          console.warn('[EditPage] Collectible save failed (non-blocking):', collectibleErr.message);
+        }
       }
 
       // Update local state
@@ -476,7 +565,7 @@ export default function EditPage({ photo, onClose: _onClose, onSave, onRecheckAI
           </div>
 
           {/* ========================================
-              RIGHT COLUMN: Description + Map (Narrative & Context)
+              RIGHT COLUMN: Tabbed Interface (Story / Location / Collectibles)
               ======================================== */}
           <div 
             className="bg-white flex flex-col h-full overflow-hidden shadow-xl z-10"
@@ -489,85 +578,207 @@ export default function EditPage({ photo, onClose: _onClose, onSave, onRecheckAI
               overflow: 'hidden'
             }}
           >
-            
-            {/* Top: Description Field (prominent) */}
+            {/* Tab Navigation */}
             <div 
-              className="flex-1 overflow-y-auto p-6 min-h-0" 
-              style={{ 
-                flex: 1, 
-                overflowY: 'auto', 
-                padding: '24px',
+              style={{
                 display: 'flex',
-                flexDirection: 'column',
+                borderBottom: '1px solid #e2e8f0',
+                backgroundColor: '#f8fafc',
+                flexShrink: 0,
               }}
             >
-              <div style={{ 
-                display: 'flex', 
-                flexDirection: 'column', 
-                height: '100%',
-              }}>
-                <label 
-                  style={{ 
-                    display: 'block', 
-                    fontSize: '11px', 
-                    fontWeight: 700, 
-                    color: '#94a3b8', 
-                    textTransform: 'uppercase', 
-                    letterSpacing: '0.05em', 
-                    marginBottom: '12px',
-                  }}
-                >
-                  Photo Story
-                </label>
-                <textarea
-                  value={description}
-                  onChange={e => setDescription(e.target.value)}
-                  className="w-full bg-slate-50 border border-slate-200 rounded-2xl p-4 text-sm text-slate-700 outline-none focus:border-blue-500"
-                  style={{ 
-                    flex: 1,
-                    width: '100%', 
-                    backgroundColor: '#f8fafc', 
-                    border: '1px solid #e2e8f0', 
-                    borderRadius: '16px', 
-                    padding: '16px', 
-                    fontSize: '15px', 
-                    lineHeight: '1.6',
-                    color: '#334155', 
-                    outline: 'none', 
-                    resize: 'none',
-                    minHeight: '200px',
-                  }}
-                  placeholder="Tell the story behind this photo... What were you doing? Who was there? What made this moment special?"
-                />
-              </div>
-            </div>
-
-            {/* Bottom: Map (better aspect ratio - square/4:3) */}
-            <div 
-              className="flex-none border-t border-slate-100 bg-slate-50 p-4" 
-              style={{ 
-                flex: 'none',
-                aspectRatio: '4 / 3',
-                maxHeight: '50%',
-                minHeight: '280px',
-                borderTop: '1px solid #f1f5f9', 
-                backgroundColor: '#f8fafc', 
-                padding: '20px',
-              }}
-            >
-              <div 
-                style={{ 
-                  height: '100%', 
-                  width: '100%', 
-                  borderRadius: '16px', 
-                  overflow: 'hidden', 
-                  border: '1px solid rgba(226, 232, 240, 0.6)', 
-                  position: 'relative',
-                  boxShadow: '0 1px 3px rgba(0, 0, 0, 0.05)',
+              <button
+                onClick={() => setActiveTab('story')}
+                style={{
+                  flex: 1,
+                  padding: '12px 16px',
+                  fontSize: '13px',
+                  fontWeight: activeTab === 'story' ? 600 : 500,
+                  color: activeTab === 'story' ? '#1e293b' : '#64748b',
+                  backgroundColor: activeTab === 'story' ? '#ffffff' : 'transparent',
+                  border: 'none',
+                  borderBottom: activeTab === 'story' ? '2px solid #3b82f6' : '2px solid transparent',
+                  cursor: 'pointer',
+                  transition: 'all 0.15s ease',
                 }}
               >
-                <LocationMapPanel photo={sourcePhoto} />
-              </div>
+                Story
+              </button>
+              <button
+                onClick={() => setActiveTab('location')}
+                style={{
+                  flex: 1,
+                  padding: '12px 16px',
+                  fontSize: '13px',
+                  fontWeight: activeTab === 'location' ? 600 : 500,
+                  color: activeTab === 'location' ? '#1e293b' : '#64748b',
+                  backgroundColor: activeTab === 'location' ? '#ffffff' : 'transparent',
+                  border: 'none',
+                  borderBottom: activeTab === 'location' ? '2px solid #3b82f6' : '2px solid transparent',
+                  cursor: 'pointer',
+                  transition: 'all 0.15s ease',
+                }}
+              >
+                Location
+              </button>
+              {(showCollectiblesTab || COLLECTIBLES_UI_ENABLED) && (
+                <button
+                  onClick={() => setActiveTab('collectibles')}
+                  style={{
+                    flex: 1,
+                    padding: '12px 16px',
+                    fontSize: '13px',
+                    fontWeight: activeTab === 'collectibles' ? 600 : 500,
+                    color: activeTab === 'collectibles' ? '#1e293b' : '#64748b',
+                    backgroundColor: activeTab === 'collectibles' ? '#ffffff' : 'transparent',
+                    border: 'none',
+                    borderBottom: activeTab === 'collectibles' ? '2px solid #3b82f6' : '2px solid transparent',
+                    cursor: 'pointer',
+                    transition: 'all 0.15s ease',
+                    position: 'relative',
+                  }}
+                >
+                  Collectibles
+                  {isCollectiblePhoto && !hasCollectibleData && (
+                    <span style={{
+                      position: 'absolute',
+                      top: '8px',
+                      right: '8px',
+                      width: '8px',
+                      height: '8px',
+                      backgroundColor: '#f59e0b',
+                      borderRadius: '50%',
+                    }} title="AI detected collectible" />
+                  )}
+                </button>
+              )}
+            </div>
+
+            {/* Tab Content */}
+            <div style={{ flex: 1, overflow: 'hidden', display: 'flex', flexDirection: 'column' }}>
+              {/* Story Tab */}
+              {activeTab === 'story' && (
+                <div 
+                  className="flex-1 overflow-y-auto p-6 min-h-0" 
+                  style={{ 
+                    flex: 1, 
+                    overflowY: 'auto', 
+                    padding: '24px',
+                    display: 'flex',
+                    flexDirection: 'column',
+                  }}
+                >
+                  <div style={{ 
+                    display: 'flex', 
+                    flexDirection: 'column', 
+                    height: '100%',
+                  }}>
+                    <label 
+                      style={{ 
+                        display: 'block', 
+                        fontSize: '11px', 
+                        fontWeight: 700, 
+                        color: '#94a3b8', 
+                        textTransform: 'uppercase', 
+                        letterSpacing: '0.05em', 
+                        marginBottom: '12px',
+                      }}
+                    >
+                      Photo Story
+                    </label>
+                    <textarea
+                      value={description}
+                      onChange={e => setDescription(e.target.value)}
+                      className="w-full bg-slate-50 border border-slate-200 rounded-2xl p-4 text-sm text-slate-700 outline-none focus:border-blue-500"
+                      style={{ 
+                        flex: 1,
+                        width: '100%', 
+                        backgroundColor: '#f8fafc', 
+                        border: '1px solid #e2e8f0', 
+                        borderRadius: '16px', 
+                        padding: '16px', 
+                        fontSize: '15px', 
+                        lineHeight: '1.6',
+                        color: '#334155', 
+                        outline: 'none', 
+                        resize: 'none',
+                        minHeight: '200px',
+                      }}
+                      placeholder="Tell the story behind this photo... What were you doing? Who was there? What made this moment special?"
+                    />
+                  </div>
+                </div>
+              )}
+
+              {/* Location Tab */}
+              {activeTab === 'location' && (
+                <div 
+                  className="flex-1 bg-slate-50 p-4" 
+                  style={{ 
+                    flex: 1,
+                    backgroundColor: '#f8fafc', 
+                    padding: '20px',
+                  }}
+                >
+                  <div 
+                    style={{ 
+                      height: '100%', 
+                      width: '100%', 
+                      borderRadius: '16px', 
+                      overflow: 'hidden', 
+                      border: '1px solid rgba(226, 232, 240, 0.6)', 
+                      position: 'relative',
+                      boxShadow: '0 1px 3px rgba(0, 0, 0, 0.05)',
+                    }}
+                  >
+                    <LocationMapPanel photo={sourcePhoto} />
+                  </div>
+                </div>
+              )}
+
+              {/* Collectibles Tab */}
+              {activeTab === 'collectibles' && COLLECTIBLES_UI_ENABLED && (
+                <div 
+                  className="flex-1 overflow-y-auto p-4" 
+                  style={{ 
+                    flex: 1, 
+                    overflowY: 'auto', 
+                    padding: '16px',
+                  }}
+                >
+                  {collectibleLoading ? (
+                    <div style={{
+                      display: 'flex',
+                      alignItems: 'center',
+                      justifyContent: 'center',
+                      height: '200px',
+                      color: '#64748b',
+                    }}>
+                      Loading collectible data...
+                    </div>
+                  ) : (
+                    <CollectibleEditorPanel
+                      photoId={sourcePhoto.id}
+                      aiAnalysis={collectibleAiAnalysis}
+                      initialData={collectibleData}
+                      onChange={handleCollectibleChange}
+                    />
+                  )}
+                  {!isCollectiblePhoto && !hasCollectibleData && (
+                    <div style={{
+                      marginTop: '16px',
+                      padding: '12px 16px',
+                      backgroundColor: '#f1f5f9',
+                      borderRadius: '8px',
+                      fontSize: '13px',
+                      color: '#64748b',
+                    }}>
+                      <strong>Tip:</strong> Add collectible details to track estimated values and condition. 
+                      This data will be saved when you click "Save Changes".
+                    </div>
+                  )}
+                </div>
+              )}
             </div>
 
           </div>
