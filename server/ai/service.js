@@ -416,7 +416,7 @@ async function processPhotoAI({ fileBuffer, filename, metadata, gps, device }, m
   const ext = path.extname(filename).toLowerCase();
   logger.debug(`[AI Debug] [processPhotoAI] Starting for filename: ${filename}`);
   if (ext === '.heic' || ext === '.heif') {
-    imageBuffer = await convertHeicToJpegBuffer(fileBuffer, 90);
+    imageBuffer = await convertHeicToJpegBuffer(fileBuffer, 95);
     imageMime = 'image/jpeg';
     try {
       const debugPath = path.join(__dirname, 'debug_image.jpg');
@@ -665,19 +665,19 @@ async function updatePhotoAIMetadata(db, photoRow, storagePath, modelOverrides =
         // Convert to JPEG using helper (handles fallback if sharp fails)
         const jpegBuffer = await convertHeicToJpegBuffer(rawBuffer);
         
-        // Resize using sharp
+        // Resize using sharp - use high quality settings to preserve image detail
         fileBuffer = await sharp(jpegBuffer)
-          .resize({ width: 2048, height: 2048, fit: 'inside', withoutEnlargement: true })
+          .resize({ width: 4096, height: 4096, fit: 'inside', withoutEnlargement: true })
           .withMetadata()
-          .toFormat('jpeg')
+          .toFormat('jpeg', { quality: 95, mozjpeg: true })
           .toBuffer();
       } else {
         // Use sharp to resize on the fly
-        // Resize to max 2048x2048, convert to JPEG, preserve metadata
+        // Resize to max 4096x4096, convert to high-quality JPEG, preserve metadata
         const pipeline = sharp()
-          .resize({ width: 2048, height: 2048, fit: 'inside', withoutEnlargement: true })
+          .resize({ width: 4096, height: 4096, fit: 'inside', withoutEnlargement: true })
           .withMetadata()
-          .toFormat('jpeg');
+          .toFormat('jpeg', { quality: 95, mozjpeg: true });
 
         const { Readable } = require('stream');
         const inputStream = response.body ? Readable.fromWeb(response.body) : null;

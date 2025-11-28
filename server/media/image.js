@@ -171,10 +171,10 @@ async function generateThumbnail(input, hash) {
       if (format === 'heif') {
         // Convert HEIC/HEIF to JPEG buffer first
         try {
-          const jpegBuffer = await convertHeicToJpegBufferInternal(sanitizedInput, 70);
+          const jpegBuffer = await convertHeicToJpegBufferInternal(sanitizedInput, 90);
           thumbnailBuffer = await sharp(jpegBuffer)
-            .resize(90, 90, { fit: 'inside' })
-            .jpeg({ quality: 70 })
+            .resize(400, 400, { fit: 'inside' })
+            .jpeg({ quality: 85 })
             .toBuffer();
         } catch {
           // Sharp thumbnail generation failed (logging removed)
@@ -182,8 +182,8 @@ async function generateThumbnail(input, hash) {
         }
       } else {
         thumbnailBuffer = await sharp(sanitizedInput)
-          .resize(90, 90, { fit: 'inside' })
-          .jpeg({ quality: 70 })
+          .resize(400, 400, { fit: 'inside' })
+          .jpeg({ quality: 85 })
           .toBuffer();
       }
 

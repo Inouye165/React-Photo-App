@@ -181,7 +181,7 @@ module.exports = function createDisplayRouter({ db }) {
       // and browser cache won't be confused
       if (isHeicFormat(ext)) {
         try {
-          const jpegBuffer = await convertHeicToJpegBuffer(fileBuffer);
+          const jpegBuffer = await convertHeicToJpegBuffer(fileBuffer, 95);
           res.set('Content-Type', 'image/jpeg');
           // Can use normal caching - no URL/Content-Type mismatch!
           res.set('Cache-Control', `public, max-age=${IMAGE_CACHE_MAX_AGE}`);
@@ -320,7 +320,7 @@ module.exports = function createDisplayRouter({ db }) {
       // This occurs because URL says .heic but response is image/jpeg, confusing browser cache
       if (ext === '.heic' || ext === '.heif') {
         try {
-          const jpegBuffer = await convertHeicToJpegBuffer(fileBuffer);
+          const jpegBuffer = await convertHeicToJpegBuffer(fileBuffer, 95);
           res.set('Content-Type', 'image/jpeg');
           // Override cache header for converted content to prevent cache corruption
           // Browser disk cache struggles with URL-extension vs Content-Type mismatch
