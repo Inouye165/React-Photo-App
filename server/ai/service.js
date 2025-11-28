@@ -803,6 +803,7 @@ async function updatePhotoAIMetadata(db, photoRow, storagePath, modelOverrides =
 
         const collectibleRow = {
           photo_id: photoRow.id,
+          user_id: photoRow.user_id, // Required for RLS (Row Level Security)
           name: caption, // Use the generated caption as the initial name
           // Fix: Use the correct column name (ai_analysis_history) and Array format
           ai_analysis_history: JSON.stringify([historyEntry]),
