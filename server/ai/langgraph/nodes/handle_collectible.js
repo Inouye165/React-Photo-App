@@ -173,20 +173,31 @@ async function handle_collectible(state) {
       };
     }
 
-    // Build the messages for the agent
-    const userPrompt = `Analyze this collectible image and return the structured JSON response.
+    // Build the messages for the agent with multimodal content
+    // Use content array format for image support in LangChain
+    const userContent = [
+      {
+        type: 'text',
+        text: `Analyze this collectible image and return the structured JSON response.
 
 Available metadata keys: ${Object.keys(state.metadata || {}).join(', ')}
 Classification: ${state.classification || 'collectible'}
 
-Image data (base64): data:${state.imageMime};base64,${state.imageBase64}
-
 First, use the google_collectible_search tool to research current market values for this type of item.
-Then provide your final answer as a VALID JSON object matching the Schema. Do NOT include any markdown formatting or code blocks.`;
+Then provide your final answer as a VALID JSON object matching the Schema. Do NOT include any markdown formatting or code blocks.`
+      },
+      {
+        type: 'image_url',
+        image_url: {
+          url: `data:${state.imageMime};base64,${state.imageBase64}`,
+          detail: 'high'
+        }
+      }
+    ];
 
     const messages = [
       new SystemMessage(COLLECTIBLE_CONTRACT_PROMPT),
-      new HumanMessage(userPrompt)
+      new HumanMessage({ content: userContent })
     ];
 
     logger.info('[LangGraph] handle_collectible: Invoking agent with tool support');
