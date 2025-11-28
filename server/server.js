@@ -96,6 +96,7 @@ const createUploadsRouter = require('./routes/uploads');
 const createDebugRouter = require('./routes/debug');
 const createHealthRouter = require('./routes/health');
 const createPrivilegeRouter = require('./routes/privilege');
+const createUsersRouter = require('./routes/users');
 // const createAuthRouter = require('./routes/auth'); // Removed
 const { configureSecurity, validateRequest, securityErrorHandler } = require('./middleware/security');
 const { authenticateToken } = require('./middleware/auth');
@@ -232,6 +233,7 @@ app.set('trust proxy', 1);
   // in `routes/photos.js` are accessible at '/photos' and '/photos/:id'.
   app.use('/photos', createPhotosRouter({ db, supabase }));
   app.use('/api/collectibles', authenticateToken, createCollectiblesRouter({ db }));
+  app.use('/api/users', createUsersRouter({ db }));
   app.use(authenticateToken, createUploadsRouter({ db }));
   app.use(authenticateToken, createPrivilegeRouter({ db }));
 

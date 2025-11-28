@@ -11,6 +11,7 @@
 'use strict';
 
 const { assertCollectiblesDbEnabled, isCollectiblesDbEnabled } = require('../utils/featureFlags');
+const createUserPreferencesService = require('./userPreferences');
 
 /**
  * Factory function to create a collectibles service instance.
@@ -21,6 +22,8 @@ const { assertCollectiblesDbEnabled, isCollectiblesDbEnabled } = require('../uti
  * @returns {Object} Collectibles service methods
  */
 function createCollectiblesService({ db }) {
+  // Create preferences service for definition lookups
+  const preferencesService = createUserPreferencesService({ db });
   /**
    * Upsert a collectible record for a photo.
    * Uses INSERT ... ON CONFLICT for idempotent operations.
@@ -54,6 +57,17 @@ function createCollectiblesService({ db }) {
       throw new Error('photoId is required');
     }
 
+    // SNAPSHOTTING: If conditionDef not provided but we have category and label,
+    // look up the user's definition and snapshot it
+    let conditionDef = formState.conditionDef || null;
+    if (!conditionDef && formState.category && formState.conditionLabel) {
+      conditionDef = await preferencesService.getDefinition(
+        userId,
+        formState.category,
+        formState.conditionLabel
+      );
+    }
+
     // Map form state to database columns
     const collectibleData = {
       user_id: userId,
@@ -63,7 +77,7 @@ function createCollectiblesService({ db }) {
       name: formState.name || null,
       condition_rank: formState.conditionRank || null,
       condition_label: formState.conditionLabel || null,
-      condition_def: formState.conditionDef || null,
+      condition_def: conditionDef,
       value_min: formState.valueMin || null,
       value_max: formState.valueMax || null,
       currency: formState.currency || 'USD',

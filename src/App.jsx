@@ -7,6 +7,7 @@ import SmartRouter from './components/SmartRouter.jsx';
 import PhotoGalleryPage from './pages/PhotoGalleryPage.jsx';
 import PhotoEditPage from './pages/PhotoEditPage.jsx';
 import UploadPage from './pages/UploadPage.jsx';
+import SettingsPage from './pages/SettingsPage.jsx';
 
 /**
  * RedirectToEdit - Redirects /photos/:id to /photos/:id/edit
@@ -58,6 +59,9 @@ function App() {
             
             {/* Dedicated upload page */}
             <Route path="/upload" element={<UploadPage />} />
+            
+            {/* Settings page */}
+            <Route path="/settings" element={<SettingsPage />} />
             
             {/* Photo detail view - redirects to edit */}
             <Route path="/photos/:id" element={<RedirectToEdit />} />

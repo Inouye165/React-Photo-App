@@ -11,6 +11,72 @@ export const useAuth = () => {
   return context;
 };
 
+const API_BASE_URL = import.meta.env.VITE_API_BASE_URL || 'http://localhost:3001';
+
+/**
+ * Fetch user preferences from the backend
+ */
+async function fetchPreferences() {
+  try {
+    const response = await fetch(`${API_BASE_URL}/api/users/me/preferences`, {
+      method: 'GET',
+      credentials: 'include'
+    });
+    if (response.ok) {
+      const data = await response.json();
+      return data.success ? data.data : { gradingScales: {} };
+    }
+    return { gradingScales: {} };
+  } catch (err) {
+    console.warn('Failed to fetch preferences:', err);
+    return { gradingScales: {} };
+  }
+}
+
+/**
+ * Update user preferences on the backend
+ */
+async function patchPreferences(newPrefs) {
+  try {
+    const response = await fetch(`${API_BASE_URL}/api/users/me/preferences`, {
+      method: 'PATCH',
+      headers: { 'Content-Type': 'application/json' },
+      credentials: 'include',
+      body: JSON.stringify(newPrefs)
+    });
+    if (response.ok) {
+      const data = await response.json();
+      return data.success ? data.data : null;
+    }
+    return null;
+  } catch (err) {
+    console.warn('Failed to update preferences:', err);
+    return null;
+  }
+}
+
+/**
+ * Load default grading scales from the backend
+ */
+async function loadDefaultPreferences(categories = null) {
+  try {
+    const response = await fetch(`${API_BASE_URL}/api/users/me/preferences/load-defaults`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      credentials: 'include',
+      body: JSON.stringify({ categories })
+    });
+    if (response.ok) {
+      const data = await response.json();
+      return data.success ? data.data : null;
+    }
+    return null;
+  } catch (err) {
+    console.warn('Failed to load default preferences:', err);
+    return null;
+  }
+}
+
 /**
  * Sync the Supabase session token to the backend as an httpOnly cookie.
  * This is required for cookie-based authentication on all API calls.
@@ -18,7 +84,6 @@ export const useAuth = () => {
 async function syncSessionCookie(accessToken) {
   if (!accessToken) return false;
   try {
-    const API_BASE_URL = import.meta.env.VITE_API_BASE_URL || 'http://localhost:3001';
     const response = await fetch(`${API_BASE_URL}/api/auth/session`, {
       method: 'POST',
       headers: {
@@ -76,10 +141,19 @@ export const AuthProvider = ({ children }) => {
   const [loading, setLoading] = useState(true);
   // Track if cookie is ready - app should not make API calls until this is true
   const [cookieReady, setCookieReady] = useState(false);
+  // User preferences (grading scales for collectibles)
+  const [preferences, setPreferences] = useState({ gradingScales: {} });
   // Track if a login is in progress to prevent onAuthStateChange from racing
   const loginInProgressRef = useRef(false);
   // Track if we're in E2E test mode
   const isE2ERef = useRef(false);
+
+  // Fetch preferences when cookie becomes ready
+  useEffect(() => {
+    if (cookieReady && user) {
+      fetchPreferences().then(setPreferences);
+    }
+  }, [cookieReady, user]);
 
   useEffect(() => {
     const isE2E = import.meta.env.VITE_E2E === 'true';
@@ -308,6 +382,7 @@ export const AuthProvider = ({ children }) => {
       setUser(null);
       setSession(null);
       setCookieReady(false);
+      setPreferences({ gradingScales: {} });
       // Clear photo store to prevent stale data
       useStore.getState().setPhotos([]);
     } catch (err) {
@@ -315,11 +390,53 @@ export const AuthProvider = ({ children }) => {
     }
   };
 
+  /**
+   * Update user preferences (optimistic update)
+   */
+  const updatePreferences = async (newPrefs) => {
+    // Optimistic update
+    const previousPrefs = preferences;
+    setPreferences(prev => ({
+      ...prev,
+      ...newPrefs,
+      gradingScales: {
+        ...(prev.gradingScales || {}),
+        ...(newPrefs.gradingScales || {})
+      }
+    }));
+
+    // Persist to backend
+    const result = await patchPreferences(newPrefs);
+    if (result) {
+      setPreferences(result);
+      return { success: true, data: result };
+    } else {
+      // Rollback on failure
+      setPreferences(previousPrefs);
+      return { success: false, error: 'Failed to update preferences' };
+    }
+  };
+
+  /**
+   * Load default grading scales
+   */
+  const loadDefaultScales = async (categories = null) => {
+    const result = await loadDefaultPreferences(categories);
+    if (result) {
+      setPreferences(result);
+      return { success: true, data: result };
+    }
+    return { success: false, error: 'Failed to load defaults' };
+  };
+
   const value = {
     user,
     session,
     loading,
     cookieReady, // Expose so components can check if API calls are safe
+    preferences,
+    updatePreferences,
+    loadDefaultScales,
     login,
     register,
     logout,
