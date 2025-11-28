@@ -1,10 +1,10 @@
 import React, { useEffect, useState, useRef } from "react";
 import useStore from './store.js';
+import heic2any from 'heic2any';
 
-// NOTE: heic2any removed - client-side HEIC conversion disabled because:
-// 1. heic2any's libheif doesn't support modern iPhone HEVC codec (causes console spam)
-// 2. Server-side conversion using sharp/heic-convert handles all HEIC formats reliably
-// 3. Showing a placeholder immediately provides better UX than a failed conversion attempt
+// NOTE: heic2any is used for client-side HEIC preview thumbnails.
+// It works for many HEIC files but fails on newer iPhone HEVC codecs.
+// When it fails, we show a styled placeholder. Server-side conversion handles all formats.
 
 /**
  * HeicPlaceholder - A styled placeholder for HEIC files that couldn't be converted client-side.
@@ -70,16 +70,60 @@ const Thumbnail = ({ file, className }) => {
     setLoadError(false);
     setSrc(null);
     setIsHeicFallback(false);
+    setConverting(false);
     
     // Check file extension for HEIC (some browsers don't set correct MIME type)
     const isHeic = file.name.toLowerCase().endsWith('.heic') || file.name.toLowerCase().endsWith('.heif');
     
     if (isHeic) {
-      // For HEIC files, show placeholder immediately since heic2any often fails
-      // with newer iPhone HEVC codecs. Server-side conversion handles these properly.
-      // Skip client-side conversion attempt to avoid console spam from libheif.
-      setIsHeicFallback(true);
-      setConverting(false);
+      // Attempt HEIC conversion for thumbnail preview
+      setConverting(true);
+      
+      // Use a timeout to avoid blocking the UI
+      const convertHeic = async () => {
+        try {
+          // Suppress console errors from libheif by temporarily overriding console.error
+          const originalError = console.error;
+          const originalWarn = console.warn;
+          console.error = (...args) => {
+            // Filter out libheif/heic2any errors
+            const msg = args.join(' ');
+            if (msg.includes('libheif') || msg.includes('HEIF') || msg.includes('heic')) {
+              return; // Suppress
+            }
+            originalError.apply(console, args);
+          };
+          console.warn = (...args) => {
+            const msg = args.join(' ');
+            if (msg.includes('libheif') || msg.includes('HEIF') || msg.includes('heic')) {
+              return; // Suppress
+            }
+            originalWarn.apply(console, args);
+          };
+          
+          const blob = await heic2any({
+            blob: file,
+            toType: 'image/jpeg',
+            quality: 0.7 // Lower quality for faster thumbnails
+          });
+          
+          // Restore console
+          console.error = originalError;
+          console.warn = originalWarn;
+          
+          // heic2any can return array for multi-image HEIC, take first
+          const resultBlob = Array.isArray(blob) ? blob[0] : blob;
+          const url = URL.createObjectURL(resultBlob);
+          setSrc(url);
+          setConverting(false);
+        } catch {
+          // Silently fall back to placeholder - no console spam
+          setIsHeicFallback(true);
+          setConverting(false);
+        }
+      };
+      
+      convertHeic();
       return;
     } else {
       // Create object URL for browser-supported image types
