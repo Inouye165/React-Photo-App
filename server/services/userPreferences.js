@@ -135,10 +135,16 @@ function createUserPreferencesService({ db }) {
       }
     };
 
-    // Update in database
+    // Upsert in database (create user if doesn't exist)
     await db('users')
-      .where({ id: userId })
-      .update({
+      .insert({
+        id: userId,
+        preferences: JSON.stringify(mergedPrefs),
+        created_at: new Date().toISOString(),
+        updated_at: new Date().toISOString()
+      })
+      .onConflict('id')
+      .merge({
         preferences: JSON.stringify(mergedPrefs),
         updated_at: new Date().toISOString()
       });

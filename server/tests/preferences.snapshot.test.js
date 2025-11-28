@@ -88,6 +88,26 @@ describe('Preferences Snapshot Tests - Sprint 3', () => {
           pendingInsertData = data;
           return builder;
         }),
+        onConflict: jest.fn(() => {
+          // Return builder to continue chain
+          return builder;
+        }),
+        merge: jest.fn(async (mergeData) => {
+          // Upsert: update if exists, insert if not
+          const items = store[tableName] || [];
+          const existing = applyFilter(items)[0];
+          if (existing) {
+            Object.assign(existing, mergeData || pendingInsertData);
+          } else {
+            const newItem = {
+              id: pendingInsertData.id || store.nextId++,
+              ...pendingInsertData
+            };
+            items.push(newItem);
+            store[tableName] = items;
+          }
+          return 1;
+        }),
         returning: jest.fn(async () => {
           const items = store[tableName] || [];
           const newItem = {
