@@ -76,6 +76,10 @@
       "<rootDir>/node_modules/",
       "<rootDir>/working/"
     ],
+    "moduleNameMapper": {
+      "^p-retry$": "<rootDir>/tests/__mocks__/p-retry.js",
+      "^is-network-error$": "<rootDir>/tests/__mocks__/is-network-error.js"
+    },
     "collectCoverageFrom": [
       "**/*.js",
       "!node_modules/**",

@@ -52,6 +52,24 @@ const AppState = z.object({
     collectibleInsights: z.any().optional(),
   }).nullable(),
 
+  // --- Collectible-specific state ---
+  // Result from handle_collectible node containing structured analysis data
+  collectibleResult: z.object({
+    collectibleData: z.object({
+      cleanData: z.any(),
+      fullAnalysis: z.any()
+    }).nullable(),
+    status: z.enum(['success', 'skipped', 'failed']),
+    reason: z.string().optional(),
+    error: z.string().optional()
+  }).nullable().optional(),
+  // Search results from tool calls (for describe_collectible to cite sources)
+  collectibleSearchResults: z.array(z.object({
+    tool: z.string(),
+    observation: z.string().optional(),
+    summary: z.string().optional()
+  })).nullable().optional(),
+
   // --- Utility ---
   // To hold error messages if a step fails
   error: z.string().nullable(),

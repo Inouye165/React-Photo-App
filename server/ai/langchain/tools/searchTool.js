@@ -66,8 +66,8 @@ async function runGoogleSearch({ query, numResults = 4, siteFilter }) {
       }));
     } catch (error) {
       logger.error('[SearchTool] SerpAPI call failed:', error.message);
-      // Re-throw the error so the agent knows it failed
-      throw new Error(`Search tool failed: ${error.message}`);
+      // Return a string error message so the Agent can proceed with its internal knowledge
+      return `Search failed: ${error.message}. Proceeding with internal knowledge only.`;
     }
     // --- END OF TRY/CATCH ---
   }
@@ -106,8 +106,8 @@ async function runGoogleSearch({ query, numResults = 4, siteFilter }) {
     }));
   } catch (error) {
     logger.error('[SearchTool] Google Custom Search call failed:', error.message);
-    // Re-throw the error so the agent knows it failed
-    throw new Error(`Search tool failed: ${error.message}`);
+    // Return a string error message so the Agent can proceed with its internal knowledge
+    return `Search failed: ${error.message}. Proceeding with internal knowledge only.`;
   }
   // --- END OF TRY/CATCH ---
 }

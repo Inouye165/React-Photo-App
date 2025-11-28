@@ -37,10 +37,15 @@ const collectibleAgent = new ChatOpenAI({
   maxTokens: 1400
 }).bindTools([googleSearchTool]);
 
+// Export the tools array for use in LangGraph tool nodes
+const collectibleTools = [googleSearchTool];
+
 module.exports = {
   routerAgent,
   sceneryAgent,
   collectibleAgent,
+  collectibleTools,
+  googleSearchTool,
   ROUTER_SYSTEM_PROMPT,
   SCENERY_SYSTEM_PROMPT,
   COLLECTIBLE_SYSTEM_PROMPT,

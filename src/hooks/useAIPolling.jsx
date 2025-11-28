@@ -14,7 +14,7 @@ export default function useAIPolling() {
   const attemptsRef = useRef(0)
 
   // Save initial AI fields so we can check for actual changes
-  const originalAI = useRef({ caption: null, description: null, keywords: null });
+  const originalAI = useRef({ caption: null, description: null, keywords: null, updated_at: null });
 
   useEffect(() => {
     if (!pollingPhotoId) return;
@@ -33,6 +33,7 @@ export default function useAIPolling() {
             caption: base.caption || '',
             description: base.description || '',
             keywords: base.keywords || '',
+            updated_at: base.updated_at || null,
           };
         }
       } catch (error) {
@@ -47,11 +48,18 @@ export default function useAIPolling() {
       const c = (p.caption || '').toString().trim();
       const d = (p.description || '').toString().trim();
       const k = (p.keywords || '').toString().trim();
+      const u = p.updated_at || null;
       
       // Check if AI processing failed permanently
       const failedMarker = 'ai processing failed';
       if (c.toLowerCase() === failedMarker || d.toLowerCase() === failedMarker) {
         return true; // Stop polling - AI failed
+      }
+      
+      // Check if updated_at timestamp changed (most reliable for rechecks)
+      if (u && originalAI.current.updated_at && u !== originalAI.current.updated_at) {
+        console.log('[useAIPolling] Detected update via timestamp change:', originalAI.current.updated_at, '->', u);
+        return true;
       }
       
       return (

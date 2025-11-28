@@ -8,6 +8,7 @@ const { AppState } = require('./state');
 const classify_image = require('./nodes/classify_image');
 const generate_metadata = require('./nodes/generate_metadata');
 const handle_collectible = require('./nodes/handle_collectible');
+const describe_collectible = require('./nodes/describe_collectible');
 const location_intelligence_agent = require('./nodes/location_intelligence_agent');
 const decide_scene_label = require('./nodes/decide_scene_label');
 const food_location_agent = require('./nodes/food_location_agent');
@@ -55,6 +56,7 @@ const workflow = new StateGraph({
 workflow.addNode('classify_image', classify_image);
 workflow.addNode('generate_metadata', generate_metadata);
 workflow.addNode('handle_collectible', handle_collectible);
+workflow.addNode('describe_collectible', describe_collectible);
 workflow.addNode('location_intelligence_agent', location_intelligence_agent);
 workflow.addNode('decide_scene_label', decide_scene_label);
 workflow.addNode('food_location_agent', food_location_agent);
@@ -83,7 +85,8 @@ workflow.addConditionalEdges(
 
 // 4. Add the final edges
 workflow.addEdge('generate_metadata', END);
-workflow.addEdge('handle_collectible', END);
+workflow.addEdge('handle_collectible', 'describe_collectible');
+workflow.addEdge('describe_collectible', END);
 workflow.addEdge('decide_scene_label', 'generate_metadata');
 workflow.addEdge('food_location_agent', 'food_metadata_agent');
 workflow.addEdge('food_metadata_agent', END);

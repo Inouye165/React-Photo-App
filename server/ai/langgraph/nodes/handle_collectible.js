@@ -1,10 +1,12 @@
 const { CollectibleOutputSchema, extractCleanData } = require('../../schemas');
 const { isCollectiblesAiEnabled } = require('../../../utils/featureFlags');
-const { openai } = require('../../openaiClient');
+const { collectibleAgent, collectibleTools } = require('../../langchain/agents');
+const { ToolNode } = require('@langchain/langgraph/prebuilt');
+const { HumanMessage, SystemMessage } = require('@langchain/core/messages');
 const logger = require('../../../logger');
 
-// Use the same model config as the existing collectibleAgent
-const COLLECTIBLE_MODEL = process.env.AI_COLLECTIBLE_MODEL || process.env.OPENAI_MODEL || 'gpt-4o-mini';
+// Maximum iterations for tool-calling loop to prevent infinite loops
+const MAX_ITERATIONS = 3;
 
 /**
  * System prompt that enforces the CollectibleOutputSchema JSON structure.
@@ -12,7 +14,9 @@ const COLLECTIBLE_MODEL = process.env.AI_COLLECTIBLE_MODEL || process.env.OPENAI
  */
 const COLLECTIBLE_CONTRACT_PROMPT = `You are Collectible Curator, a veteran appraiser specializing in accurately identifying and valuing collectibles.
 
-CRITICAL: You MUST respond with a JSON object that strictly follows this schema:
+You have access to the google_collectible_search tool to look up current market values and identification information. USE IT to research the item before providing your final answer.
+
+CRITICAL: Your FINAL response MUST be a JSON object that strictly follows this schema:
 
 {
   "category": {
@@ -66,10 +70,68 @@ For "specifics", include category-relevant attributes such as:
 - Coins: denomination, mint_mark, year, metal
 
 IMPORTANT:
+- Use the google_collectible_search tool to research current market values
 - If you cannot determine a value with any confidence, use confidence: 0.1
 - Always provide reasoning for low confidence scores
 - Do NOT fabricate values - if uncertain, reflect it in confidence score
-- Return ONLY the JSON object, no additional text`;
+- Return ONLY the JSON object as your final answer, no additional text`;
+
+// Create tool node for executing tools
+const toolNode = new ToolNode(collectibleTools);
+
+/**
+ * Run the agent loop with tool calling support.
+ * This implements a ReAct-style loop where the LLM can call tools and receive results.
+ * 
+ * @param {Array} messages - Initial messages array
+ * @returns {Object} - { output: string, intermediateSteps: Array }
+ */
+async function runAgentLoop(messages) {
+  const intermediateSteps = [];
+  let currentMessages = [...messages];
+  
+  for (let i = 0; i < MAX_ITERATIONS; i++) {
+    // Call the LLM
+    const response = await collectibleAgent.invoke(currentMessages);
+    currentMessages.push(response);
+    
+    // Check if the LLM wants to call tools
+    const toolCalls = response.tool_calls;
+    
+    if (!toolCalls || toolCalls.length === 0) {
+      // No tool calls - return the final response
+      return {
+        output: response.content,
+        intermediateSteps
+      };
+    }
+    
+    // Execute tool calls
+    logger.info('[LangGraph] handle_collectible: Agent calling tools', {
+      iteration: i + 1,
+      tools: toolCalls.map(tc => tc.name)
+    });
+    
+    // Execute tools via ToolNode
+    const toolResults = await toolNode.invoke(currentMessages);
+    
+    // Add tool results to messages and intermediate steps
+    for (const toolResult of toolResults) {
+      currentMessages.push(toolResult);
+      intermediateSteps.push({
+        action: { tool: toolResult.name },
+        observation: toolResult.content
+      });
+    }
+  }
+  
+  // Max iterations reached - get final response without tools
+  const finalResponse = await collectibleAgent.invoke(currentMessages);
+  return {
+    output: finalResponse.content,
+    intermediateSteps
+  };
+}
 
 /**
  * Handle collectible analysis node for LangGraph pipeline.
@@ -77,7 +139,7 @@ IMPORTANT:
  * This node processes images classified as collectibles, using AI to:
  * 1. Identify the collectible category
  * 2. Assess physical condition
- * 3. Estimate market value
+ * 3. Estimate market value (using Google Search tool)
  * 4. Extract category-specific attributes
  * 
  * @param {Object} state - LangGraph state containing image data
@@ -111,46 +173,66 @@ async function handle_collectible(state) {
       };
     }
 
-    // Build the user content with image for direct OpenAI API call
+    // Build the messages for the agent with multimodal content
+    // Use content array format for image support in LangChain
     const userContent = [
       {
         type: 'text',
         text: `Analyze this collectible image and return the structured JSON response.
-            
+
 Available metadata keys: ${Object.keys(state.metadata || {}).join(', ')}
-Classification: ${state.classification || 'collectible'}`,
+Classification: ${state.classification || 'collectible'}
+
+First, use the google_collectible_search tool to research current market values for this type of item.
+Then provide your final answer as a VALID JSON object matching the Schema. Do NOT include any markdown formatting or code blocks.`
       },
       {
         type: 'image_url',
         image_url: {
           url: `data:${state.imageMime};base64,${state.imageBase64}`,
-          detail: 'high',
-        },
-      },
+          detail: 'high'
+        }
+      }
     ];
 
-    logger.info('[LangGraph] handle_collectible: Invoking AI agent');
-    
-    // Use direct OpenAI client with response_format for reliable JSON output
-    const response = await openai.chat.completions.create({
-      model: COLLECTIBLE_MODEL,
-      messages: [
-        { role: 'system', content: COLLECTIBLE_CONTRACT_PROMPT },
-        { role: 'user', content: userContent },
-      ],
-      max_tokens: 1400,
-      temperature: 0.25,
-      response_format: { type: 'json_object' },
-    });
+    const messages = [
+      new SystemMessage(COLLECTIBLE_CONTRACT_PROMPT),
+      new HumanMessage({ content: userContent })
+    ];
 
-    // Parse the raw response from the OpenAI API
+    logger.info('[LangGraph] handle_collectible: Invoking agent with tool support');
+    
+    // Run the agent loop with tool support
+    const response = await runAgentLoop(messages);
+
+    // Log intermediate steps for debugging
+    if (response.intermediateSteps && response.intermediateSteps.length > 0) {
+      logger.info('[LangGraph] handle_collectible: Agent used tools', {
+        stepCount: response.intermediateSteps.length,
+        tools: response.intermediateSteps.map(step => step.action?.tool || 'unknown')
+      });
+    }
+
+    // Parse the output
     let rawParsed;
     try {
-      rawParsed = JSON.parse(response.choices[0].message.content);
+      // Clean the output - remove any markdown code blocks if present
+      let cleanOutput = response.output;
+      if (cleanOutput.startsWith('```json')) {
+        cleanOutput = cleanOutput.slice(7);
+      } else if (cleanOutput.startsWith('```')) {
+        cleanOutput = cleanOutput.slice(3);
+      }
+      if (cleanOutput.endsWith('```')) {
+        cleanOutput = cleanOutput.slice(0, -3);
+      }
+      cleanOutput = cleanOutput.trim();
+      
+      rawParsed = JSON.parse(cleanOutput);
     } catch (parseError) {
       logger.error('[LangGraph] handle_collectible: Failed to parse JSON response', {
         error: parseError.message,
-        raw_response: response.choices[0].message.content?.substring(0, 500)
+        raw_response: response.output?.substring(0, 500)
       });
       return {
         ...state,
@@ -191,26 +273,25 @@ Classification: ${state.classification || 'collectible'}`,
       specificsCount: Object.keys(cleanData.specifics).length
     });
 
-    // Preserve backward compatibility with finalResult
-    const legacyResult = {
-      caption: `${cleanData.category} - ${cleanData.condition.label}`,
-      description: `Estimated value: $${cleanData.value.min}-$${cleanData.value.max}`,
-      keywords: [cleanData.category, cleanData.condition.label],
-      collectibleInsights: {
-        category: cleanData.category,
-        condition: cleanData.condition,
-        valuation: {
-          lowEstimateUSD: cleanData.value.min,
-          highEstimateUSD: cleanData.value.max
-        },
-        specifics: cleanData.specifics
-      },
-      classification: state.classification
-    };
+    // Extract search summaries from intermediate steps for describe_collectible
+    const intermediateSteps = response.intermediateSteps || [];
+    const searchResults = intermediateSteps
+      .filter(step => step.action?.tool)
+      .map(step => ({
+        tool: step.action.tool,
+        observation: step.observation,
+        summary: step.observation?.substring(0, 300) // Keep it concise
+      }));
 
+    logger.info('[LangGraph] handle_collectible: Passing to describe_collectible', {
+      searchResultsCount: searchResults.length,
+      category: cleanData.category
+    });
+
+    // Return state for describe_collectible to generate rich description
+    // No finalResult here - describe_collectible will create it
     return {
       ...state,
-      finalResult: legacyResult,
       collectibleResult: {
         collectibleData: {
           cleanData,
@@ -218,6 +299,7 @@ Classification: ${state.classification || 'collectible'}`,
         },
         status: 'success'
       },
+      collectibleSearchResults: searchResults,
       error: null
     };
   } catch (err) {
