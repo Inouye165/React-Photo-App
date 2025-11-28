@@ -1,6 +1,10 @@
 import React, { useEffect, useState, useRef } from "react";
 import useStore from './store.js';
-import heic2any from 'heic2any';
+
+// NOTE: heic2any removed - client-side HEIC conversion disabled because:
+// 1. heic2any's libheif doesn't support modern iPhone HEVC codec (causes console spam)
+// 2. Server-side conversion using sharp/heic-convert handles all HEIC formats reliably
+// 3. Showing a placeholder immediately provides better UX than a failed conversion attempt
 
 /**
  * HeicPlaceholder - A styled placeholder for HEIC files that couldn't be converted client-side.
@@ -71,27 +75,12 @@ const Thumbnail = ({ file, className }) => {
     const isHeic = file.name.toLowerCase().endsWith('.heic') || file.name.toLowerCase().endsWith('.heif');
     
     if (isHeic) {
-      // Attempt HEIC to JPEG conversion for preview
-      setConverting(true);
-      
-      heic2any({
-        blob: file,
-        toType: 'image/jpeg',
-        quality: 0.5 // Lower quality for faster thumbnails
-      })
-        .then((convertedBlob) => {
-          const url = URL.createObjectURL(convertedBlob);
-          setSrc(url);
-          setConverting(false);
-        })
-        .catch(() => {
-          // Client-side HEIC conversion failed (common with newer iPhone codecs)
-          // Show placeholder - file will be converted server-side after upload
-          setIsHeicFallback(true);
-          setConverting(false);
-        });
-      
-      return; // No cleanup needed until src is set
+      // For HEIC files, show placeholder immediately since heic2any often fails
+      // with newer iPhone HEVC codecs. Server-side conversion handles these properly.
+      // Skip client-side conversion attempt to avoid console spam from libheif.
+      setIsHeicFallback(true);
+      setConverting(false);
+      return;
     } else {
       // Create object URL for browser-supported image types
       const url = URL.createObjectURL(file);
