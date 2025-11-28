@@ -517,7 +517,7 @@ describe('AI Contract Layer - Sprint 2', () => {
       expect(result.error).toBe('Network timeout');
     });
 
-    test('maintains backward compatibility with finalResult', async () => {
+    test('passes data to describe_collectible for rich description generation', async () => {
       mockAgentInvoke.mockResolvedValueOnce({
         content: JSON.stringify(validAIResponse),
         tool_calls: []
@@ -525,12 +525,13 @@ describe('AI Contract Layer - Sprint 2', () => {
 
       const result = await handle_collectible(mockState);
 
-      // Legacy finalResult should still be populated
-      expect(result.finalResult).toBeDefined();
-      expect(result.finalResult.caption).toContain('Pyrex');
-      expect(result.finalResult.collectibleInsights).toBeDefined();
-      expect(result.finalResult.collectibleInsights.category).toBe('Pyrex');
-      expect(result.finalResult.classification).toBe('specific_identifiable_object');
+      // handle_collectible no longer sets finalResult directly - 
+      // it passes collectibleResult to describe_collectible which generates the rich description
+      expect(result.collectibleResult).toBeDefined();
+      expect(result.collectibleResult.status).toBe('success');
+      expect(result.collectibleResult.collectibleData.cleanData.category).toBe('Pyrex');
+      expect(result.collectibleSearchResults).toBeDefined();
+      expect(Array.isArray(result.collectibleSearchResults)).toBe(true);
     });
   });
 });

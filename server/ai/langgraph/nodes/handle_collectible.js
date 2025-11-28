@@ -273,26 +273,25 @@ Then provide your final answer as a VALID JSON object matching the Schema. Do NO
       specificsCount: Object.keys(cleanData.specifics).length
     });
 
-    // Preserve backward compatibility with finalResult
-    const legacyResult = {
-      caption: `${cleanData.category} - ${cleanData.condition.label}`,
-      description: `Estimated value: $${cleanData.value.min}-$${cleanData.value.max}`,
-      keywords: [cleanData.category, cleanData.condition.label],
-      collectibleInsights: {
-        category: cleanData.category,
-        condition: cleanData.condition,
-        valuation: {
-          lowEstimateUSD: cleanData.value.min,
-          highEstimateUSD: cleanData.value.max
-        },
-        specifics: cleanData.specifics
-      },
-      classification: state.classification
-    };
+    // Extract search summaries from intermediate steps for describe_collectible
+    const intermediateSteps = response.intermediateSteps || [];
+    const searchResults = intermediateSteps
+      .filter(step => step.action?.tool)
+      .map(step => ({
+        tool: step.action.tool,
+        observation: step.observation,
+        summary: step.observation?.substring(0, 300) // Keep it concise
+      }));
 
+    logger.info('[LangGraph] handle_collectible: Passing to describe_collectible', {
+      searchResultsCount: searchResults.length,
+      category: cleanData.category
+    });
+
+    // Return state for describe_collectible to generate rich description
+    // No finalResult here - describe_collectible will create it
     return {
       ...state,
-      finalResult: legacyResult,
       collectibleResult: {
         collectibleData: {
           cleanData,
@@ -300,6 +299,7 @@ Then provide your final answer as a VALID JSON object matching the Schema. Do NO
         },
         status: 'success'
       },
+      collectibleSearchResults: searchResults,
       error: null
     };
   } catch (err) {
