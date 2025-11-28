@@ -1,4 +1,4 @@
-import React from 'react';
+import React, { useEffect } from 'react';
 import { useParams, useNavigate, useOutletContext } from 'react-router-dom';
 import EditPage from '../EditPage.jsx';
 import useStore from '../store.js';
@@ -17,8 +17,35 @@ export default function PhotoEditPage() {
   const setBanner = useStore((state) => state.setBanner);
   const setEditingMode = useStore((state) => state.setEditingMode);
   const setActivePhotoId = useStore((state) => state.setActivePhotoId);
+  const pollingPhotoId = useStore((state) => state.pollingPhotoId);
+  const setPollingPhotoId = useStore((state) => state.setPollingPhotoId);
   
   const photo = photos.find((p) => String(p.id) === String(id));
+
+  // Auto-start polling if photo appears to still be processing
+  // (has placeholder caption or empty AI metadata)
+  useEffect(() => {
+    if (!photo || !photo.id) return;
+    
+    // Skip if already polling this photo
+    if (pollingPhotoId === photo.id) return;
+    
+    // Check if photo looks like it's still being processed
+    const caption = (photo.caption || '').trim().toLowerCase();
+    const description = (photo.description || '').trim();
+    
+    const isPlaceholder = 
+      caption === '' ||
+      caption === 'processing...' ||
+      caption === 'ai processing' ||
+      caption.startsWith('uploaded photo') ||
+      (description === '' && caption === '');
+    
+    if (isPlaceholder) {
+      console.log('[PhotoEditPage] Auto-starting polling for photo', photo.id, '(appears to be processing)');
+      setPollingPhotoId(photo.id);
+    }
+  }, [photo, pollingPhotoId, setPollingPhotoId]);
 
   const handleClose = () => {
     setEditingMode(null);
