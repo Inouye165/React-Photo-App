@@ -9,7 +9,8 @@ module.exports = function createPhotosDb({ db }) {
       let query = db('photos').select(
         'id', 'filename', 'state', 'metadata', 'hash', 'file_size',
         'caption', 'description', 'keywords', 'text_style',
-        'edited_filename', 'storage_path', 'ai_model_history'
+        'edited_filename', 'storage_path', 'ai_model_history',
+        'poi_analysis', 'classification'
       ).where('user_id', userId);
       if (state === 'working' || state === 'inprogress' || state === 'finished') {
         query = query.where({ state });

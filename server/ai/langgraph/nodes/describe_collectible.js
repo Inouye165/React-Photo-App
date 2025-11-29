@@ -23,32 +23,41 @@ Your task is to take structured collectible analysis data and transform it into 
 **Writing Style:**
 - Write in a confident, knowledgeable tone like an expert appraiser
 - Be specific about identifying features and why they matter
-- Mention valuation sources naturally (e.g., "Based on recent eBay sold listings..." or "According to collector guides...")
+- ALWAYS mention specific prices found and cite the source (e.g., "According to GoCollect, this issue sells for $15-$30" or "Recent eBay sold listings show prices of $25-$45")
 - Include interesting facts about the item's history or collectibility when relevant
-- Keep it concise but informative (2-4 sentences)
+- Keep it concise but informative (3-5 sentences)
 
 **What to Include:**
 1. What the item IS (category, maker, pattern/series if known)
 2. Condition assessment with brief reasoning
-3. Estimated value range WITH the source cited
+3. Estimated value range WITH the specific source cited (website name + price found)
 4. One notable/interesting detail about the item
 
 **Output Format:**
 Return a JSON object with:
 {
-  "description": "Your narrative description here (2-4 sentences)",
+  "description": "Your narrative description here (3-5 sentences, MUST include prices and sources)",
   "caption": "A catchy, short headline (5-10 words)",
-  "keywords": ["keyword1", "keyword2", ...] (up to 8 relevant keywords)
+  "keywords": ["keyword1", "keyword2", ...] (up to 8 relevant keywords),
+  "priceSources": [
+    {
+      "source": "Website name",
+      "url": "https://...",
+      "priceFound": "$XX - $XX",
+      "notes": "Brief note about this source"
+    }
+  ]
 }
-
-**Example Input:**
-Category: Pyrex, Condition: Good (rank 3), Value: $25-$45 USD, Specifics: { pattern: "Butterprint", color: "Turquoise", year_range: "1957-1968" }
 
 **Example Output:**
 {
-  "description": "This Pyrex Butterprint bowl in the classic turquoise-on-white colorway dates from the 1957-1968 production era. The piece shows typical light wear consistent with regular use but retains its vibrant color. Based on recent sold listings, similar pieces in this condition typically fetch $25-$45. The Butterprint pattern, featuring Amish-inspired farm scenes, remains one of the most sought-after vintage Pyrex designs.",
+  "description": "This Pyrex Butterprint bowl in the classic turquoise-on-white colorway dates from the 1957-1968 production era. The piece shows typical light wear consistent with regular use but retains its vibrant color. According to recent eBay sold listings, similar pieces in this condition typically fetch $25-$45, while Etsy shows prices ranging from $30-$50 for mint examples. The Butterprint pattern, featuring Amish-inspired farm scenes, remains one of the most sought-after vintage Pyrex designs.",
   "caption": "Vintage Pyrex Butterprint Bowl - Turquoise",
-  "keywords": ["Pyrex", "Butterprint", "vintage", "turquoise", "1950s", "collectible", "kitchenware", "Amish"]
+  "keywords": ["Pyrex", "Butterprint", "vintage", "turquoise", "1950s", "collectible", "kitchenware", "Amish"],
+  "priceSources": [
+    {"source": "eBay Sold Listings", "url": "https://ebay.com/...", "priceFound": "$25-$45", "notes": "Good condition examples"},
+    {"source": "Etsy", "url": "https://etsy.com/...", "priceFound": "$30-$50", "notes": "Mint condition asking prices"}
+  ]
 }`;
 
 /**
@@ -96,18 +105,48 @@ async function describe_collectible(state) {
       }
     };
 
-    // Include intermediate steps (search results) if available
-    const searchSummary = state.collectibleSearchResults || [];
+    // Include intermediate steps (search results) if available - pass full results for source extraction
+    const searchResults = state.collectibleSearchResults || [];
+    
+    // Parse search results to extract actual URLs and snippets
+    const formattedSearchResults = searchResults.map(result => {
+      try {
+        // The observation contains the JSON stringified results from the search tool
+        const parsed = typeof result.observation === 'string' 
+          ? JSON.parse(result.observation) 
+          : result.observation;
+        return {
+          query: parsed?.query || 'Unknown query',
+          results: Array.isArray(parsed?.results) ? parsed.results : []
+        };
+      } catch {
+        return { query: 'Unknown', results: [] };
+      }
+    });
 
+    // Flatten all search results for the prompt
+    const allSearchResults = formattedSearchResults.flatMap(sr => sr.results);
+    
     const userPrompt = `Generate a rich description for this collectible:
 
 **Analysis Data:**
 ${JSON.stringify(analysisContext, null, 2)}
 
-${searchSummary.length > 0 ? `**Search Findings:**
-${searchSummary.map(s => `- ${s.tool}: ${s.summary || s.observation?.substring(0, 200)}`).join('\n')}` : ''}
+**Search Results Found (USE THESE FOR PRICING AND SOURCES):**
+${allSearchResults.length > 0 ? allSearchResults.map((r, i) => `
+${i + 1}. Source: ${r.displayLink || r.source || 'Unknown'}
+   Title: ${r.title || 'No title'}
+   URL: ${r.link || 'No URL'}
+   Snippet: ${r.snippet || 'No snippet'}
+`).join('\n') : 'No search results available'}
 
-Create an engaging description that a collector would appreciate. Include the valuation range and cite sources naturally.`;
+CRITICAL INSTRUCTIONS:
+1. Include the ACTUAL price range found in the search results in your description
+2. Cite the SPECIFIC source websites by name (e.g., "According to GoCollect..." or "eBay sold listings show...")
+3. Include the priceSources array with real URLs from the search results above
+4. If no price data was found in search results, mention that in the description
+
+Create an engaging description that a collector would appreciate.`;
 
     const response = await openai.chat.completions.create({
       model: 'gpt-4o-mini',
@@ -139,10 +178,11 @@ Create an engaging description that a collector would appreciate. Include the va
     logger.info('[LangGraph] describe_collectible: Generated rich description', {
       captionLength: parsed.caption?.length,
       descriptionLength: parsed.description?.length,
-      keywordCount: parsed.keywords?.length
+      keywordCount: parsed.keywords?.length,
+      priceSourcesCount: parsed.priceSources?.length || 0
     });
 
-    // Build the enhanced final result
+    // Build the enhanced final result with price sources
     const enhancedFinalResult = {
       caption: parsed.caption || `${cleanData.category} - ${cleanData.condition.label}`,
       description: parsed.description,
@@ -155,14 +195,16 @@ Create an engaging description that a collector would appreciate. Include the va
           lowEstimateUSD: cleanData.value.min,
           highEstimateUSD: cleanData.value.max,
           currency: cleanData.value.currency,
-          reasoning: fullAnalysis.value?.reasoning
+          reasoning: fullAnalysis.value?.reasoning,
+          priceSources: parsed.priceSources || []
         },
         specifics: cleanData.specifics,
         confidences: {
           category: fullAnalysis.category?.confidence,
           condition: fullAnalysis.condition?.confidence,
           value: fullAnalysis.value?.confidence
-        }
+        },
+        searchResultsUsed: allSearchResults.length
       }
     };
 

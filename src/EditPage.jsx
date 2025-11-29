@@ -8,6 +8,7 @@ import LocationMapPanel from './components/LocationMapPanel'
 import FlipCard from './components/FlipCard'
 import PhotoMetadataBack from './components/PhotoMetadataBack'
 import CollectibleEditorPanel from './components/CollectibleEditorPanel.jsx'
+import CollectibleDetailView from './components/CollectibleDetailView.jsx'
 
 // Feature flag for collectibles UI
 const COLLECTIBLES_UI_ENABLED = import.meta.env.VITE_ENABLE_COLLECTIBLES_UI === 'true';
@@ -46,18 +47,21 @@ export default function EditPage({ photo, onClose: _onClose, onSave, onRecheckAI
   const [collectibleData, setCollectibleData] = useState(null);
   const [collectibleFormState, setCollectibleFormState] = useState(null);
   const [collectibleLoading, setCollectibleLoading] = useState(false);
+  const [collectibleViewMode, setCollectibleViewMode] = useState('view'); // 'view' | 'edit'
   const collectibleFetchedRef = useRef(false);
 
   // Check if photo is classified as a collectible or has existing collectible data
-  const isCollectiblePhoto = sourcePhoto?.ai_analysis?.classification === 'collectables' || 
-                              sourcePhoto?.ai_analysis?.classification === 'collectible' ||
-                              sourcePhoto?.classification === 'collectables' ||
-                              sourcePhoto?.classification === 'collectible';
+  const isCollectiblePhoto = sourcePhoto?.classification === 'collectables' || 
+                              sourcePhoto?.classification === 'collectible' ||
+                              sourcePhoto?.ai_analysis?.classification === 'collectables' || 
+                              sourcePhoto?.ai_analysis?.classification === 'collectible';
   const hasCollectibleData = collectibleData !== null;
   const showCollectiblesTab = COLLECTIBLES_UI_ENABLED && (isCollectiblePhoto || hasCollectibleData);
 
   // Extract AI analysis for collectibles from photo data
-  const collectibleAiAnalysis = sourcePhoto?.ai_analysis?.collectibleInsights || 
+  // poi_analysis contains the collectibles insights from the AI pipeline
+  const collectibleAiAnalysis = sourcePhoto?.poi_analysis || 
+                                 sourcePhoto?.ai_analysis?.collectibleInsights || 
                                  sourcePhoto?.collectible_insights || null;
 
   // Load existing collectible data when photo changes
@@ -739,39 +743,110 @@ export default function EditPage({ photo, onClose: _onClose, onSave, onRecheckAI
               {/* Collectibles Tab */}
               {activeTab === 'collectibles' && COLLECTIBLES_UI_ENABLED && (
                 <div 
-                  className="flex-1 overflow-y-auto p-4" 
+                  className="flex-1 overflow-y-auto" 
                   style={{ 
                     flex: 1, 
                     overflowY: 'auto', 
-                    padding: '16px',
+                    display: 'flex',
+                    flexDirection: 'column',
                   }}
                 >
-                  {collectibleLoading ? (
+                  {/* View/Edit Toggle */}
+                  <div style={{
+                    display: 'flex',
+                    alignItems: 'center',
+                    justifyContent: 'space-between',
+                    padding: '12px 16px',
+                    borderBottom: '1px solid #e2e8f0',
+                    backgroundColor: '#f8fafc',
+                    flexShrink: 0,
+                  }}>
                     <div style={{
                       display: 'flex',
-                      alignItems: 'center',
-                      justifyContent: 'center',
-                      height: '200px',
-                      color: '#64748b',
+                      gap: '8px',
                     }}>
-                      Loading collectible data...
+                      <button
+                        onClick={() => setCollectibleViewMode('view')}
+                        style={{
+                          padding: '6px 14px',
+                          fontSize: '12px',
+                          fontWeight: collectibleViewMode === 'view' ? 600 : 500,
+                          backgroundColor: collectibleViewMode === 'view' ? '#1e293b' : 'white',
+                          color: collectibleViewMode === 'view' ? 'white' : '#64748b',
+                          border: '1px solid #e2e8f0',
+                          borderRadius: '6px',
+                          cursor: 'pointer',
+                          transition: 'all 0.15s ease',
+                        }}
+                      >
+                        📋 View Details
+                      </button>
+                      <button
+                        onClick={() => setCollectibleViewMode('edit')}
+                        style={{
+                          padding: '6px 14px',
+                          fontSize: '12px',
+                          fontWeight: collectibleViewMode === 'edit' ? 600 : 500,
+                          backgroundColor: collectibleViewMode === 'edit' ? '#1e293b' : 'white',
+                          color: collectibleViewMode === 'edit' ? 'white' : '#64748b',
+                          border: '1px solid #e2e8f0',
+                          borderRadius: '6px',
+                          cursor: 'pointer',
+                          transition: 'all 0.15s ease',
+                        }}
+                      >
+                        ✏️ Edit
+                      </button>
                     </div>
-                  ) : (
-                    <CollectibleEditorPanel
-                      photoId={sourcePhoto.id}
-                      aiAnalysis={collectibleAiAnalysis}
-                      initialData={collectibleData}
-                      onChange={handleCollectibleChange}
-                    />
-                  )}
+                    {isCollectiblePhoto && (
+                      <span style={{
+                        fontSize: '11px',
+                        color: '#16a34a',
+                        fontWeight: 500,
+                      }}>
+                        ✓ AI Detected Collectible
+                      </span>
+                    )}
+                  </div>
+
+                  {/* Content Area */}
+                  <div style={{ flex: 1, overflowY: 'auto' }}>
+                    {collectibleLoading ? (
+                      <div style={{
+                        display: 'flex',
+                        alignItems: 'center',
+                        justifyContent: 'center',
+                        height: '200px',
+                        color: '#64748b',
+                      }}>
+                        Loading collectible data...
+                      </div>
+                    ) : collectibleViewMode === 'view' ? (
+                      <CollectibleDetailView
+                        photo={sourcePhoto}
+                        collectibleData={collectibleData}
+                        aiInsights={collectibleAiAnalysis}
+                      />
+                    ) : (
+                      <div style={{ padding: '16px' }}>
+                        <CollectibleEditorPanel
+                          photoId={sourcePhoto.id}
+                          aiAnalysis={collectibleAiAnalysis}
+                          initialData={collectibleData}
+                          onChange={handleCollectibleChange}
+                        />
+                      </div>
+                    )}
+                  </div>
+
                   {!isCollectiblePhoto && !hasCollectibleData && (
                     <div style={{
-                      marginTop: '16px',
                       padding: '12px 16px',
                       backgroundColor: '#f1f5f9',
-                      borderRadius: '8px',
                       fontSize: '13px',
                       color: '#64748b',
+                      borderTop: '1px solid #e2e8f0',
+                      flexShrink: 0,
                     }}>
                       <strong>Tip:</strong> Add collectible details to track estimated values and condition. 
                       This data will be saved when you click "Save Changes".

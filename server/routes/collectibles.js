@@ -3,22 +3,88 @@ const express = require('express');
 module.exports = function createCollectiblesRouter({ db }) {
   const router = express.Router();
 
-  // GET /api/photos/:photoId/collectibles
+  // GET /photos/:photoId/collectibles
   router.get('/photos/:photoId/collectibles', async (req, res) => {
     try {
       const { photoId } = req.params;
       const collectibles = await db('collectibles')
-        .join('photos', 'collectibles.photo_id', 'photos.id')
-        .where('photos.id', photoId)
-        .andWhere('photos.user_id', req.user.id)
-        .select('collectibles.*');
+        .where('photo_id', photoId)
+        .select('*');
+      
+      // If no collectibles found, check if photo exists and return empty array
+      if (collectibles.length === 0) {
+        const photo = await db('photos')
+          .where({ id: photoId, user_id: req.user.id })
+          .first();
+        if (!photo) {
+          return res.status(404).json({ success: false, error: 'Photo not found' });
+        }
+      }
+      
       res.json({ success: true, collectibles });
     } catch (err) {
       res.status(500).json({ success: false, error: err.message });
     }
   });
 
-  // POST /api/photos/:photoId/collectibles
+  // PUT /photos/:photoId/collectibles - Upsert (create or update) collectible
+  router.put('/photos/:photoId/collectibles', express.json(), async (req, res) => {
+    try {
+      const { photoId } = req.params;
+      const { formState, recordAi: _recordAi } = req.body;
+
+      // Verify photo ownership
+      const photo = await db('photos')
+        .where({ id: photoId, user_id: req.user.id })
+        .first();
+      
+      if (!photo) {
+        return res.status(404).json({ success: false, error: 'Photo not found' });
+      }
+
+      // Check if collectible already exists for this photo
+      const existing = await db('collectibles')
+        .where('photo_id', photoId)
+        .first();
+
+      const collectibleData = {
+        photo_id: photoId,
+        user_id: req.user.id,
+        name: formState?.name || photo.caption || 'Collectible Item',
+        category: formState?.category || null,
+        condition_label: formState?.conditionLabel || null,
+        condition_rank: formState?.conditionRank || null,
+        value_min: formState?.valueMin || null,
+        value_max: formState?.valueMax || null,
+        currency: 'USD',
+        specifics: formState?.specifics ? JSON.stringify(formState.specifics) : null,
+        updated_at: new Date().toISOString()
+      };
+
+      let collectible;
+      if (existing) {
+        // Update existing
+        await db('collectibles')
+          .where('id', existing.id)
+          .update(collectibleData);
+        collectible = await db('collectibles').where('id', existing.id).first();
+      } else {
+        // Create new
+        collectibleData.created_at = new Date().toISOString();
+        const [inserted] = await db('collectibles')
+          .insert(collectibleData)
+          .returning('*');
+        collectible = inserted;
+      }
+
+      res.json({ success: true, collectible });
+    } catch (err) {
+      console.error('[Collectibles] Upsert error:', err);
+      res.status(500).json({ success: false, error: err.message });
+    }
+  });
+
+  // POST /photos/:photoId/collectibles - Create new collectible
   router.post('/photos/:photoId/collectibles', express.json(), async (req, res) => {
     try {
       const { photoId } = req.params;
@@ -34,19 +100,22 @@ module.exports = function createCollectiblesRouter({ db }) {
         return res.status(404).json({ success: false, error: 'Photo not found' });
       }
 
-      const [id] = await db('collectibles').insert({
+      const [collectible] = await db('collectibles').insert({
         photo_id: photoId,
+        user_id: req.user.id,
         name,
-        user_notes: user_notes || ''
-      }).returning('id');
-      const collectible = await db('collectibles').where({ id }).first();
+        user_notes: user_notes || '',
+        created_at: new Date().toISOString(),
+        updated_at: new Date().toISOString()
+      }).returning('*');
+      
       res.status(201).json({ success: true, collectible });
     } catch (err) {
       res.status(500).json({ success: false, error: err.message });
     }
   });
 
-  // PATCH /api/collectibles/:collectibleId
+  // PATCH /collectibles/:collectibleId
   router.patch('/collectibles/:collectibleId', express.json(), async (req, res) => {
     try {
       const { collectibleId } = req.params;
@@ -65,7 +134,9 @@ module.exports = function createCollectiblesRouter({ db }) {
         return res.status(404).json({ success: false, error: 'Collectible not found' });
       }
 
-      await db('collectibles').where({ id: collectibleId }).update({ user_notes });
+      await db('collectibles')
+        .where({ id: collectibleId })
+        .update({ user_notes, updated_at: new Date().toISOString() });
       const updated = await db('collectibles').where({ id: collectibleId }).first();
       res.json({ success: true, collectible: updated });
     } catch (err) {

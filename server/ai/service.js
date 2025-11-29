@@ -777,12 +777,20 @@ async function updatePhotoAIMetadata(db, photoRow, storagePath, modelOverrides =
           ? ai.poiAnalysis
           : null;
 
+      // Extract classification type from AI result
+      const classificationType = (ai && ai.classification && typeof ai.classification === 'object')
+        ? ai.classification.type
+        : (ai && ai.classification)
+          ? ai.classification
+          : null;
+
       const dbUpdates = {
         caption,
         description,
         keywords,
         ai_retry_count: 0,
-        poi_analysis: JSON.stringify(extraData || null)
+        poi_analysis: JSON.stringify(extraData || null),
+        classification: classificationType
       };
       logger.debug('[AI Debug] [updatePhotoAIMetadata] Writing AI metadata to DB (transaction).');
       await trx('photos').where({ id: photoRow.id }).update(dbUpdates);

@@ -141,6 +141,14 @@ module.exports = function createPhotosRouter({ db, supabase }) {
         photoUrl = `/display/image/${row.id}`;
         let parsedHistory = null;
         try { parsedHistory = row.ai_model_history ? JSON.parse(row.ai_model_history) : null; } catch { parsedHistory = null; }
+        // Parse poi_analysis for collectibles insights
+        let parsedPoiAnalysis = null;
+        try { 
+          parsedPoiAnalysis = row.poi_analysis ? 
+            (typeof row.poi_analysis === 'string' ? JSON.parse(row.poi_analysis) : row.poi_analysis) 
+            : null; 
+        } catch { parsedPoiAnalysis = null; }
+        
         return {
           id: row.id,
           filename: row.filename,
@@ -156,7 +164,10 @@ module.exports = function createPhotosRouter({ db, supabase }) {
           storagePath: row.storage_path,
           url: photoUrl,
           thumbnail: thumbnailUrl,
-          aiModelHistory: parsedHistory
+          aiModelHistory: parsedHistory,
+          poi_analysis: parsedPoiAnalysis,
+          // Expose collectible insights at top level for easier access
+          classification: row.classification,
         };
       }));
       // Prevent caching so frontend always gets fresh filtered results
@@ -234,6 +245,14 @@ module.exports = function createPhotosRouter({ db, supabase }) {
       if (row.hash) thumbnail = `/display/thumbnails/${row.hash}.jpg`;
       url = `/display/image/${row.id}`;
 
+      // Parse poi_analysis for collectibles insights
+      let parsedPoiAnalysis = null;
+      try { 
+        parsedPoiAnalysis = row.poi_analysis ? 
+          (typeof row.poi_analysis === 'string' ? JSON.parse(row.poi_analysis) : row.poi_analysis) 
+          : null; 
+      } catch { parsedPoiAnalysis = null; }
+
       const photo = {
         id: row.id,
         filename: row.filename,
@@ -249,7 +268,9 @@ module.exports = function createPhotosRouter({ db, supabase }) {
         storagePath: row.storage_path,
         url,
         thumbnail,
-        aiModelHistory: (() => { try { return row.ai_model_history ? JSON.parse(row.ai_model_history) : null; } catch { return null; } })()
+        aiModelHistory: (() => { try { return row.ai_model_history ? JSON.parse(row.ai_model_history) : null; } catch { return null; } })(),
+        poi_analysis: parsedPoiAnalysis,
+        classification: row.classification,
       };
 
       res.set('Cache-Control', 'no-store');

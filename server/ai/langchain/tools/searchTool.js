@@ -83,6 +83,7 @@ async function runGoogleSearch({ query, numResults = 4, siteFilter }) {
 
   // --- ADDED TRY/CATCH ---
   try {
+    logger.info('[SearchTool] Calling Google Custom Search API for query:', trimmedQuery);
     const response = await fetchFn(`https://www.googleapis.com/customsearch/v1?${params.toString()}`, {
       method: 'GET',
       headers: { 'User-Agent': 'CollectibleAgent/1.0 (+https://github.com/Inouye165/React-Photo-App)' }
@@ -96,7 +97,9 @@ async function runGoogleSearch({ query, numResults = 4, siteFilter }) {
     const json = await response.json();
     const items = Array.isArray(json.items) ? json.items : [];
 
-    return items.slice(0, appliedResults).map((item) => ({
+    logger.info('[SearchTool] Google Custom Search returned %d results for: %s', items.length, trimmedQuery);
+    
+    const results = items.slice(0, appliedResults).map((item) => ({
       title: item.title || '',
       link: item.link || '',
       snippet: item.snippet || '',
@@ -104,6 +107,13 @@ async function runGoogleSearch({ query, numResults = 4, siteFilter }) {
       mime: item.mime || undefined,
       source: 'google'
     }));
+    
+    // Log first result for debugging
+    if (results.length > 0) {
+      logger.info('[SearchTool] First result: %s - %s', results[0].title, results[0].link);
+    }
+    
+    return results;
   } catch (error) {
     logger.error('[SearchTool] Google Custom Search call failed:', error.message);
     // Return a string error message so the Agent can proceed with its internal knowledge
