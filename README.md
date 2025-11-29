@@ -209,6 +209,12 @@ See [docs/CONTRIBUTING.md](docs/CONTRIBUTING.md) for guidelines on:
 
 ---
 
+## 🔐 Security & Dependencies
+
+Security is a core design principle. For details on authentication architecture, dependency audits, and any temporary security measures, see [SECURITY_REMEDIATION_SUMMARY.md](./SECURITY_REMEDIATION_SUMMARY.md).
+
+---
+
 ## 📜 License
 
 MIT License - see [LICENSE](LICENSE)

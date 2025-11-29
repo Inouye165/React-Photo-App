@@ -312,6 +312,26 @@ Modified:
 
 ---
 
+### Follow-Up / TODO
+
+**Current State:**
+- `jest-openapi` pinned to `0.14.1` in `server/package.json`
+- `overrides` block forces `openapi-validator@0.14.1` for `jest-openapi`
+- This affects **dev-only test tooling**; no runtime/production code uses these packages
+
+**Action Required:**
+Remove the override and relax the version pin once upstream releases a version of `jest-openapi` and/or `openapi-validator` with non-vulnerable dependencies.
+
+**Acceptance Criteria:**
+- [ ] A new version of `jest-openapi` or `openapi-validator` is available that does not depend on vulnerable `axios` versions
+- [ ] `npm audit` shows 0 vulnerabilities without the `overrides` block
+- [ ] All tests pass after removing the override and updating the dependency
+- [ ] Update this document to mark the override as removed
+
+**Tracking:** See GitHub issue for periodic upstream checks.
+
+---
+
 **Remediated by:** GitHub Copilot (Senior Backend/Node.js Engineer Mode)  
 **Branch:** `fix/server-security-audit`  
 **Ready for:** Merge to `main` after review
