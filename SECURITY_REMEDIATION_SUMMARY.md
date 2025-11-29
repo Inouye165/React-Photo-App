@@ -214,7 +214,124 @@ Added:
 
 ---
 
-**Remediated by:** GitHub Copilot (Senior Security Architect Mode)  
-**Commit:** `b9a1209` - "SECURITY: Remove CWE-489 mock auth backdoor (CRITICAL)"  
+**Remediated by:** GitHub Copilot (Senior Security Architect Mode)
+**Commit:** `b9a1209` - "SECURITY: Remove CWE-489 mock auth backdoor (CRITICAL)"
 **Ready for:** Merge to `main` after security review approval
 
+---
+
+## NPM Dependency Security Audit - REMEDIATION COMPLETE ✅
+
+**Branch:** `fix/server-security-audit`  
+**Date:** November 29, 2025  
+**Status:** COMPLETE - Ready for merge
+
+---
+
+### What Was Fixed
+
+Resolved **3 high-severity** npm vulnerabilities in the server project, all stemming from the `axios` package (version ≤0.30.1):
+
+| CVE/Advisory | Severity | Issue |
+|--------------|----------|-------|
+| GHSA-wf5p-g6vw-rhxx | Moderate | Axios CSRF Vulnerability |
+| GHSA-4hjh-wcwx-xvwj | High | Axios DoS via uncontrolled data size |
+| GHSA-jr5f-v2jv-69x6 | High | Axios SSRF and Credential Leakage |
+
+---
+
+### Root Cause Analysis
+
+**Dependency Chain:**
+```
+jest-openapi@0.14.2 (devDependency)
+  └── openapi-validator@0.14.2
+        └── axios@0.21.4 ❌ (VULNERABLE)
+```
+
+- The vulnerable `axios` was a **transitive dependency** of `jest-openapi`
+- `jest-openapi` is **dev-only tooling** (test library for OpenAPI response validation)
+- **No runtime/production code affected** - this was purely test tooling
+
+---
+
+### Solution Applied
+
+**Key insight:** `openapi-validator@0.14.1` does NOT depend on axios (it was added in 0.14.2)
+
+**Changes Made:**
+
+1. **`server/package.json`**
+   - Pinned `jest-openapi` to version `0.14.1` (was `^0.14.2`)
+   - Added `overrides` section to force `openapi-validator@0.14.1`
+
+2. **Result:**
+   - Axios completely removed from dependency tree
+   - `npm audit` now returns **0 vulnerabilities**
+   - All 520 tests pass
+   - No breaking changes to test functionality
+
+---
+
+### Why This Approach?
+
+| Alternative | Why Not Used |
+|-------------|--------------|
+| `npm audit fix --force` | Less explicit; would do the same thing but harder to review |
+| Wait for upstream fix | `jest-openapi` hasn't been updated since Dec 2022 |
+| Pin axios directly | Wouldn't work; it's a transitive dep of openapi-validator |
+| Replace jest-openapi | Overkill; simple version pin solves it |
+
+---
+
+### Verification
+
+```bash
+# Before fix
+$ npm audit
+3 high severity vulnerabilities
+
+# After fix
+$ npm audit
+found 0 vulnerabilities
+
+$ npm test
+Test Suites: 69 passed
+Tests: 520 passed
+```
+
+---
+
+### Files Changed
+
+```
+Modified:
+  server/package.json       (+5 lines: overrides, version pin)
+  server/package-lock.json  (dependency resolution)
+```
+
+---
+
+### Follow-Up / TODO
+
+**Current State:**
+- `jest-openapi` pinned to `0.14.1` in `server/package.json`
+- `overrides` block forces `openapi-validator@0.14.1` for `jest-openapi`
+- This affects **dev-only test tooling**; no runtime/production code uses these packages
+
+**Action Required:**
+Remove the override and relax the version pin once upstream releases a version of `jest-openapi` and/or `openapi-validator` with non-vulnerable dependencies.
+
+**Acceptance Criteria:**
+- [ ] A new version of `jest-openapi` or `openapi-validator` is available that does not depend on vulnerable `axios` versions
+- [ ] `npm audit` shows 0 vulnerabilities without the `overrides` block
+- [ ] All tests pass after removing the override and updating the dependency
+- [ ] Update this document to mark the override as removed
+
+**Tracking:** See GitHub issue for periodic upstream checks.
+
+---
+
+**Remediated by:** GitHub Copilot (Senior Backend/Node.js Engineer Mode)  
+**Branch:** `fix/server-security-audit`  
+**Ready for:** Merge to `main` after review
