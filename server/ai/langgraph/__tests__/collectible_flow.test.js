@@ -32,18 +32,23 @@ describe('Sprint 1 Collectible Flow Integration', () => {
     expect(result1.collectible_id).toBe('Action Comic #1');
     expect(result1.collectible_category).toBe('Comics');
 
-    // 2. Test valuate_collectible
-    googleSearchTool.invoke.mockResolvedValue('Found price $100');
+    // 2. Test valuate_collectible (Sprint 2: now returns market_data array)
+    googleSearchTool.invoke.mockResolvedValue('Found price $1,500,000 on eBay');
     
     openai.chat.completions.create.mockResolvedValueOnce({
       choices: [{
         message: {
           content: JSON.stringify({
-            low: 1000000,
-            high: 2000000,
-            currency: 'USD',
-            found_at: ['http://example.com'],
-            reasoning: 'High value item'
+            valuation: {
+              low: 1000000,
+              high: 2000000,
+              currency: 'USD'
+            },
+            market_data: [
+              { price: 1500000, venue: 'eBay', url: 'https://ebay.com/item/action-comic-1', date_seen: '2025-11-30' },
+              { price: 1800000, venue: 'Heritage Auctions', url: 'https://ha.com/action-comic', date_seen: '2025-11-29' }
+            ],
+            reasoning: 'High value item based on recent auction sales'
           })
         }
       }]
@@ -53,6 +58,11 @@ describe('Sprint 1 Collectible Flow Integration', () => {
 
     expect(result2.collectible_valuation).toBeDefined();
     expect(result2.collectible_valuation.low).toBe(1000000);
+    expect(result2.collectible_valuation.high).toBe(2000000);
+    expect(result2.collectible_valuation.market_data).toBeDefined();
+    expect(result2.collectible_valuation.market_data).toHaveLength(2);
+    expect(result2.collectible_valuation.market_data[0].price).toBe(1500000);
+    expect(result2.collectible_valuation.market_data[0].venue).toBe('eBay');
     expect(googleSearchTool.invoke).toHaveBeenCalledTimes(3);
 
     // 3. Test describe_collectible
@@ -88,5 +98,62 @@ describe('Sprint 1 Collectible Flow Integration', () => {
     // Verify the context passed to OpenAI (optional, but good for debugging)
     // const lastCall = openai.chat.completions.create.mock.calls[2]; // 0=identify, 1=valuate, 2=describe
     // We can inspect lastCall if needed
+  });
+
+  test('Valuate handles old format response (backward compatibility)', async () => {
+    googleSearchTool.invoke.mockResolvedValue('Found item for $500');
+
+    // Old format response (without nested valuation object)
+    openai.chat.completions.create.mockResolvedValueOnce({
+      choices: [{
+        message: {
+          content: JSON.stringify({
+            low: 400,
+            high: 600,
+            currency: 'USD',
+            found_at: ['http://example.com/item'],
+            reasoning: 'Based on comparable sales'
+          })
+        }
+      }]
+    });
+
+    const result = await valuate_collectible({
+      collectible_id: 'Vintage Toy',
+      collectible_category: 'Toys'
+    });
+
+    expect(result.collectible_valuation).toBeDefined();
+    expect(result.collectible_valuation.low).toBe(400);
+    expect(result.collectible_valuation.high).toBe(600);
+    expect(result.collectible_valuation.market_data).toEqual([]);
+    expect(result.collectible_valuation.found_at).toContain('http://example.com/item');
+  });
+
+  test('Valuate sanitizes price strings with $ and commas', async () => {
+    googleSearchTool.invoke.mockResolvedValue('Found item');
+
+    openai.chat.completions.create.mockResolvedValueOnce({
+      choices: [{
+        message: {
+          content: JSON.stringify({
+            valuation: { low: '$1,234.56', high: '$5,678.90', currency: 'USD' },
+            market_data: [
+              { price: '$2,500.00', venue: 'Test Store', url: 'https://test.com', date_seen: '2025-11-30' }
+            ],
+            reasoning: 'Test sanitization'
+          })
+        }
+      }]
+    });
+
+    const result = await valuate_collectible({
+      collectible_id: 'Test Item',
+      collectible_category: 'Test'
+    });
+
+    expect(result.collectible_valuation.low).toBe(1234.56);
+    expect(result.collectible_valuation.high).toBe(5678.90);
+    expect(result.collectible_valuation.market_data[0].price).toBe(2500);
   });
 });
