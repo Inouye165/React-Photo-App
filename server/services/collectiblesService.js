@@ -247,6 +247,48 @@ function createCollectiblesService({ db }) {
   }
 
   /**
+   * Bulk insert market data records within a transaction.
+   * Designed for use within updatePhotoAIMetadata or similar orchestration functions.
+   * 
+   * @param {import('knex').Knex.Transaction} trx - Knex transaction object
+   * @param {Object[]} records - Array of market data records
+   * @param {number} records[].collectible_id - Collectible ID
+   * @param {string} records[].user_id - User UUID
+   * @param {number} records[].price - Price observed (must be a valid number)
+   * @param {Date|string} [records[].date_seen] - Date the price was observed
+   * @param {string} [records[].venue] - Where the price was observed (max 255 chars)
+   * @param {number} [records[].similarity_score] - 0-100 similarity score
+   * @param {string} [records[].url] - URL reference (max 2048 chars)
+   * @returns {Promise<void>}
+   * @throws {Error} When ENABLE_COLLECTIBLES_DB is false
+   */
+  async function addMarketDataBulk(trx, records) {
+    assertCollectiblesDbEnabled();
+
+    if (!records || !Array.isArray(records) || records.length === 0) {
+      return;
+    }
+
+    const sanitizedRecords = records
+      .filter(r => r && typeof r.price === 'number' && !Number.isNaN(r.price))
+      .map(r => ({
+        collectible_id: r.collectible_id,
+        user_id: r.user_id,
+        price: r.price,
+        date_seen: r.date_seen || new Date(),
+        venue: r.venue ? String(r.venue).substring(0, 255) : null,
+        similarity_score: r.similarity_score || null,
+        url: (r.url && typeof r.url === 'string' && r.url.length < 2048) ? r.url : null,
+        created_at: new Date().toISOString(),
+        updated_at: new Date().toISOString()
+      }));
+
+    if (sanitizedRecords.length > 0) {
+      await trx('collectible_market_data').insert(sanitizedRecords);
+    }
+  }
+
+  /**
    * Get market data history for a collectible.
    * 
    * @param {string} userId - User UUID
@@ -339,6 +381,7 @@ function createCollectiblesService({ db }) {
     listCollectibles,
     deleteCollectible,
     addMarketData,
+    addMarketDataBulk,
     getMarketData,
     linkPhoto,
     getLinkedPhotos,

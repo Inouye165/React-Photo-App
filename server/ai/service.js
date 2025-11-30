@@ -834,7 +834,7 @@ async function updatePhotoAIMetadata(db, photoRow, storagePath, modelOverrides =
         };
 
         // Use onConflict to update history if row exists (Idempotency)
-        await trx('collectibles')
+        const upsertResult = await trx('collectibles')
           .insert(collectibleRow)
           .onConflict('photo_id')
           .merge({
@@ -848,8 +848,38 @@ async function updatePhotoAIMetadata(db, photoRow, storagePath, modelOverrides =
             value_min: collectibleRow.value_min,
             value_max: collectibleRow.value_max,
             updated_at: new Date().toISOString()
-          });
-        logger.debug('[AI Debug] [updatePhotoAIMetadata] Upserted collectible for photo', photoRow.id);
+          })
+          .returning('id');
+        
+        // Capture the collectible_id from the upsert result
+        const collectibleId = upsertResult && upsertResult[0] 
+          ? (typeof upsertResult[0] === 'object' ? upsertResult[0].id : upsertResult[0])
+          : null;
+        
+        logger.debug('[AI Debug] [updatePhotoAIMetadata] Upserted collectible for photo', photoRow.id, 'collectible_id:', collectibleId);
+
+        // --- SPRINT 2: Persist market_data to collectible_market_data table ---
+        // Check if valuation contains market_data array
+        const marketData = ai.collectibleInsights?.valuation?.market_data;
+        if (collectibleId && Array.isArray(marketData) && marketData.length > 0) {
+          const marketDataRecords = marketData
+            .filter(item => item && typeof item.price === 'number' && !Number.isNaN(item.price))
+            .map(item => ({
+              collectible_id: collectibleId,
+              user_id: photoRow.user_id,
+              price: item.price,
+              venue: item.venue ? String(item.venue).substring(0, 255) : null,
+              url: (item.url && typeof item.url === 'string' && item.url.length < 2048) ? item.url : null,
+              date_seen: item.date_seen ? new Date(item.date_seen) : new Date(),
+              created_at: new Date().toISOString(),
+              updated_at: new Date().toISOString()
+            }));
+
+          if (marketDataRecords.length > 0) {
+            await trx('collectible_market_data').insert(marketDataRecords);
+            logger.info('[AI Debug] [updatePhotoAIMetadata] Inserted %d market_data records for collectible %d', marketDataRecords.length, collectibleId);
+          }
+        }
       }
     });
 
