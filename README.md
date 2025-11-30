@@ -88,8 +88,8 @@ Photo ingested
 Understanding the AI decision-making process is crucial for debugging and transparency. We maintain detailed flowcharts for our LangGraph pipelines.
 
 ### Available Workflows
-- **Collectibles & Valuation:** [View Flowchart](./docs/pipeline-graphs/collectibles-flowchart.md)
-  *(GitHub automatically renders this diagram. If viewing locally in VS Code, use `Ctrl+Shift+V` for preview)*
+- **Collectibles & Valuation:** [View Flowchart](https://www.mermaidchart.com/app/projects/3987fe3a-7a87-4a8e-88aa-f8f67641a1c8/diagrams/40b55f2f-dde6-4165-bb1d-51a9cd381eb3/share/invite/eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJkb2N1bWVudElEIjoiNDBiNTVmMmYtZGRlNi00MTY1LWJiMWQtNTFhOWNkMzgxZWIzIiwiYWNjZXNzIjoiRWRpdCIsImlhdCI6MTc2NDUxMzEwN30.b4x8ODds4lnoiSOsPSqBGbnGotzegAomf14DMbOroWM)
+  *(Interactive diagram hosted on Mermaid Chart)*
   *Visualizes the logic for identifying collectible items, assessing condition, and estimating market value.*
 
 *(More pipeline visualizations for Food/Scenery coming soon)*
