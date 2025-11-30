@@ -1,7 +1,9 @@
 const fs = require('fs');
 const path = require('path');
+const crypto = require('crypto');
 require('../env');
 const logger = require('../logger');
+const auditLogger = require('./langgraph/audit_logger');
 const allowDevDebug = process.env.ALLOW_DEV_DEBUG === 'true';
 
 // Fail-fast if OpenAI API key is missing — check at module load time
@@ -467,7 +469,9 @@ async function processPhotoAI({ fileBuffer, filename, metadata, gps, device }, m
   };
   // <<< ADDED
 
+  const runId = crypto.randomUUID();
   const initialState = {
+    runId,
     filename,
     fileBuffer,
     imageBase64,
@@ -497,12 +501,14 @@ async function processPhotoAI({ fileBuffer, filename, metadata, gps, device }, m
   if (sanitizedInitial.imageBase64) sanitizedInitial.imageBase64 = '[omitted]';
   // Keep logs concise: print keys and a few summary fields instead of full metadata
   logger.info('[Graph] Initial state for %s: keys=%s classification=%s gps=%s', filename || '<unknown>', Object.keys(sanitizedInitial).join(','), sanitizedInitial.classification || '<none>', sanitizedInitial.gpsString || '<none>');
+  auditLogger.logGraphStart(runId, sanitizedInitial);
   } catch (err) {
     logger.warn('[Graph] Failed to log initial state for %s', filename, err && err.message ? err.message : err);
   }
 
   logger.info(`[Graph] Invoking graph for ${filename}...`);
   const finalState = await aiGraph.invoke(initialState);
+  auditLogger.logGraphEnd(runId, finalState);
   logger.debug('[AI Debug] [processPhotoAI] aiGraph.invoke returned', {
     hasFinalResult: Boolean(finalState && finalState.finalResult),
     classificationType: finalState && finalState.classification ? finalState.classification.type || null : null,

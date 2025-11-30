@@ -1,6 +1,7 @@
 require('../../env');
 const logger = require('../../logger');
 const { haversineDistanceMeters } = require('./geoUtils');
+const auditLogger = require('../langgraph/audit_logger');
 
 const ensureFetch = () => {
   if (typeof globalThis.fetch === 'function') return globalThis.fetch.bind(globalThis);
@@ -72,37 +73,52 @@ function normalizeCategory(types = []) {
 }
 
 async function reverseGeocode(lat, lon, opts = {}) {
-  if (!API_KEY) return { address: null };
+  const runId = opts.runId || 'unknown-run-id';
+  if (!API_KEY) {
+    auditLogger.logToolCall(runId, 'Google Reverse Geocode', { lat, lon, status: 'skipped (no key)' }, null);
+    return { address: null };
+  }
   const cacheKey = `regeocode:${toKey(lat, lon, 0)}`;
   const cached = cacheGet(cacheKey);
-  if (cached) return cached;
+  if (cached) {
+    auditLogger.logToolCall(runId, 'Google Reverse Geocode', { lat, lon, status: 'cached' }, cached);
+    return cached;
+  }
 
   const url = `https://maps.googleapis.com/maps/api/geocode/json?latlng=${encodeURIComponent(lat)},${encodeURIComponent(lon)}&key=${API_KEY}`;
   const fetchFn = getFetchFn(opts.fetch);
     // Allow tests to run without API key if custom fetch is injected
     if (!API_KEY && !opts.fetch) return { address: null };
     try {
+      auditLogger.logToolCall(runId, 'Google Reverse Geocode', { lat, lon, url: redactUrl(url) }, 'Fetching...');
       const res = await fetchFn(url, { method: 'GET' });
     if (!res.ok) {
       const text = await res.text();
       logger.warn('[POI] reverseGeocode failed', { status: res.status, body: text });
+      auditLogger.logToolCall(runId, 'Google Reverse Geocode', { lat, lon, status: res.status }, { error: text });
       return { address: null };
     }
     const json = await res.json();
     const addr = Array.isArray(json.results) && json.results[0] ? json.results[0].formatted_address : null;
     const out = { address: addr };
     cacheSet(cacheKey, out);
+    auditLogger.logToolCall(runId, 'Google Reverse Geocode', { lat, lon }, out);
     return out;
   } catch (err) {
     logger.warn('[POI] reverseGeocode exception', err && err.message ? err.message : err);
+    auditLogger.logToolCall(runId, 'Google Reverse Geocode', { lat, lon }, { error: err.message });
     return { address: null };
   }
 }
 
 // 200 feet ≈ 61 meters
 async function nearbyPlaces(lat, lon, radius = 61, opts = {}) {
+  const runId = opts.runId || 'unknown-run-id';
   // Allow tests to run without API key if custom fetch is injected
-  if (!API_KEY && !opts.fetch) return [];
+  if (!API_KEY && !opts.fetch) {
+    auditLogger.logToolCall(runId, 'Google Nearby Places', { lat, lon, radius, status: 'skipped (no key)' }, null);
+    return [];
+  }
   if (requestDeniedUntil && Date.now() < requestDeniedUntil) {
     if (allowDevDebug && Date.now() - lastBackoffNotice > 30_000) {
       console.warn(
@@ -110,12 +126,16 @@ async function nearbyPlaces(lat, lon, radius = 61, opts = {}) {
       );
       lastBackoffNotice = Date.now();
     }
+    auditLogger.logToolCall(runId, 'Google Nearby Places', { lat, lon, radius, status: 'skipped (backoff)' }, null);
     return [];
   }
   const fetchFn = getFetchFn(opts.fetch);
   const cacheKey = toKey(lat, lon, radius);
   const cached = cacheGet(cacheKey);
-  if (cached) return cached;
+  if (cached) {
+    auditLogger.logToolCall(runId, 'Google Nearby Places', { lat, lon, radius, status: 'cached' }, cached);
+    return cached;
+  }
 
   // Prefer parks, open spaces, museums, etc. for scenery
   const params = new URLSearchParams({
@@ -134,6 +154,7 @@ async function nearbyPlaces(lat, lon, radius = 61, opts = {}) {
     console.log('[infer_poi] url (redacted):', `${redactUrl(url)}`);
   }
   try {
+    auditLogger.logToolCall(runId, 'Google Nearby Places', { lat, lon, radius, url: redactUrl(url) }, 'Fetching...');
     const res = await fetchFn(url, { method: 'GET' });
     if (!res.ok) {
       const txt = await res.text();
@@ -141,6 +162,7 @@ async function nearbyPlaces(lat, lon, radius = 61, opts = {}) {
       if (allowDevDebug) {
         console.error('[infer_poi] Google Places error:', `HTTP ${res.status}`);
       }
+      auditLogger.logToolCall(runId, 'Google Nearby Places', { lat, lon, radius, status: res.status }, { error: txt });
       return [];
     }
     const json = await res.json();
@@ -206,12 +228,14 @@ async function nearbyPlaces(lat, lon, radius = 61, opts = {}) {
       };
     });
     cacheSet(cacheKey, pois);
+    auditLogger.logToolCall(runId, 'Google Nearby Places', { lat, lon, radius }, pois);
     return pois;
   } catch (err) {
     logger.warn('[POI] nearbyPlaces exception', err && err.message ? err.message : err);
     if (allowDevDebug) {
       console.error('[infer_poi] Google Places error:', err && err.message ? err.message : err);
     }
+    auditLogger.logToolCall(runId, 'Google Nearby Places', { lat, lon, radius }, { error: err.message });
     return [];
   }
 }

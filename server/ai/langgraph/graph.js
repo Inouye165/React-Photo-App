@@ -4,6 +4,9 @@ const { StateGraph, END } = require('@langchain/langgraph');
 // We need HumanMessage AND SystemMessage
 const logger = require('../../logger');
 const { AppState } = require('./state');
+const auditLogger = require('./audit_logger');
+const context = require('./context');
+
 // Node implementations
 const classify_image = require('./nodes/classify_image');
 const generate_metadata = require('./nodes/generate_metadata');
@@ -15,6 +18,23 @@ const food_location_agent = require('./nodes/food_location_agent');
 const food_metadata_agent = require('./nodes/food_metadata_agent');
 const collect_context = require('./nodes/collect_context');
 // Node food_metadata_agent -> implemented in ./nodes/food_metadata_agent.js
+
+function wrapNode(name, nodeFn) {
+  return async (state) => {
+    const runId = state.runId || 'unknown-run-id';
+    auditLogger.logNodeStart(runId, name, state);
+    return context.run({ runId, nodeName: name }, async () => {
+      try {
+        const result = await nodeFn(state);
+        auditLogger.logNodeEnd(runId, name, result);
+        return result;
+      } catch (error) {
+        auditLogger.logNodeEnd(runId, name, { error: error.message });
+        throw error;
+      }
+    });
+  };
+}
 
 // --- Router: Decides next node after the location intelligence agent ---
 function route_after_location(state) {
@@ -53,15 +73,15 @@ const workflow = new StateGraph({
 });
 
 // 1. Add all the nodes
-workflow.addNode('classify_image', classify_image);
-workflow.addNode('generate_metadata', generate_metadata);
-workflow.addNode('handle_collectible', handle_collectible);
-workflow.addNode('describe_collectible', describe_collectible);
-workflow.addNode('location_intelligence_agent', location_intelligence_agent);
-workflow.addNode('decide_scene_label', decide_scene_label);
-workflow.addNode('food_location_agent', food_location_agent);
-workflow.addNode('food_metadata_agent', food_metadata_agent);
-workflow.addNode('collect_context', collect_context);
+workflow.addNode('classify_image', wrapNode('classify_image', classify_image));
+workflow.addNode('generate_metadata', wrapNode('generate_metadata', generate_metadata));
+workflow.addNode('handle_collectible', wrapNode('handle_collectible', handle_collectible));
+workflow.addNode('describe_collectible', wrapNode('describe_collectible', describe_collectible));
+workflow.addNode('location_intelligence_agent', wrapNode('location_intelligence_agent', location_intelligence_agent));
+workflow.addNode('decide_scene_label', wrapNode('decide_scene_label', decide_scene_label));
+workflow.addNode('food_location_agent', wrapNode('food_location_agent', food_location_agent));
+workflow.addNode('food_metadata_agent', wrapNode('food_metadata_agent', food_metadata_agent));
+workflow.addNode('collect_context', wrapNode('collect_context', collect_context));
 
 // 2. Set the entry point
 workflow.setEntryPoint('classify_image');
