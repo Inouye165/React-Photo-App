@@ -1,7 +1,34 @@
 const express = require('express');
+const createCollectiblesService = require('../services/collectiblesService');
 
 module.exports = function createCollectiblesRouter({ db }) {
   const router = express.Router();
+  const collectiblesService = createCollectiblesService({ db });
+
+  // GET /collectibles/:collectibleId/history - Get price history for a collectible
+  router.get('/collectibles/:collectibleId/history', async (req, res) => {
+    try {
+      const { collectibleId } = req.params;
+      
+      // Verify the collectible exists and belongs to user
+      const collectible = await db('collectibles')
+        .join('photos', 'collectibles.photo_id', 'photos.id')
+        .where('collectibles.id', collectibleId)
+        .andWhere('photos.user_id', req.user.id)
+        .select('collectibles.id')
+        .first();
+
+      if (!collectible) {
+        return res.status(404).json({ success: false, error: 'Collectible not found' });
+      }
+
+      const history = await collectiblesService.getMarketData(req.user.id, collectibleId);
+      res.json({ success: true, history });
+    } catch (err) {
+      console.error('[Collectibles] History fetch error:', err);
+      res.status(500).json({ success: false, error: err.message });
+    }
+  });
 
   // GET /photos/:photoId/collectibles
   router.get('/photos/:photoId/collectibles', async (req, res) => {
