@@ -3,38 +3,38 @@
 ## Complete System Architecture
 ```mermaid
 graph TD
-    Start(["Graph Execution Started<br/>Initialize Run ID"]) --> Init["Initialize State<br/>----------------<br/>Filename & Buffer<br/>Image Base64<br/>Metadata: null<br/>GPS: null"]
+    Start(["Graph Execution Started<br/>Initialize Run ID"]) --> Init["Initialize State<br/>Filename & Buffer<br/>Image Base64<br/>Metadata: null<br/>GPS: null"]
     
-    Init --> ClassifyNode["classify_image Node<br/>----------------<br/>Model: GPT-4o-2024-08-06<br/>Low Detail Analysis"]
+    Init --> ClassifyNode["classify_image Node<br/>Model: GPT-4o-2024-08-06<br/>Low Detail Analysis"]
     
-    ClassifyNode --> ClassifyResult["Classification Result<br/>----------------<br/>Category: collectables<br/>Confidence: 0.9<br/>Status: Success"]
+    ClassifyNode --> ClassifyResult["Classification Result<br/>Category: collectables<br/>Confidence: 0.9<br/>Status: Success"]
     
-    ClassifyResult --> ContextNode["collect_context Node<br/>----------------<br/>Check for Additional Data<br/>GPS String: null<br/>POI Cache: null"]
+    ClassifyResult --> ContextNode["collect_context Node<br/>Check for Additional Data<br/>GPS String: null<br/>POI Cache: null"]
     
-    ContextNode --> LocationNode["location_intelligence_agent<br/>----------------<br/>No GPS Data Available<br/>Skip Location Analysis<br/>Debug Usage: undefined"]
+    ContextNode --> LocationNode["location_intelligence_agent<br/>No GPS Data Available<br/>Skip Location Analysis<br/>Debug Usage: undefined"]
     
-    LocationNode --> HandleNode["handle_collectible Node<br/>----------------<br/>Main Analysis Engine<br/>Vision + Search Integration"]
+    LocationNode --> HandleNode["handle_collectible Node<br/>Main Analysis Engine<br/>Vision + Search Integration"]
     
     HandleNode --> SearchPhase{"Dual Search Strategy"}
     
-    SearchPhase --> SearchA["Google Search Query 1<br/>----------------<br/>Power Pack comic book<br/>issue 1 Marvel<br/>Fetch Time: 18:10:17"]
+    SearchPhase --> SearchA["Google Search Query 1<br/>Power Pack comic book<br/>issue 1 Marvel<br/>Fetch Time: 18:10:17"]
     
-    SearchPhase --> SearchB["Google Search Query 2<br/>----------------<br/>Power Pack #1<br/>comic book value<br/>Fetch Time: 18:10:21"]
+    SearchPhase --> SearchB["Google Search Query 2<br/>Power Pack #1<br/>comic book value<br/>Fetch Time: 18:10:21"]
     
-    SearchA --> Results1["Search Results Set 1<br/>----------------<br/>Wikipedia Info<br/>MyComicShop Listings<br/>GoCollect Values"]
+    SearchA --> Results1["Search Results Set 1<br/>Wikipedia Info<br/>MyComicShop Listings<br/>GoCollect Values"]
     
-    SearchB --> Results2["Search Results Set 2<br/>----------------<br/>GoCollect Prices<br/>ComicBookRealm Data<br/>RareComics Values"]
+    SearchB --> Results2["Search Results Set 2<br/>GoCollect Prices<br/>ComicBookRealm Data<br/>RareComics Values"]
     
     Results1 --> Merge["Combine Search Results"]
     Results2 --> Merge
     
-    Merge --> Analysis["Vision LLM Analysis<br/>----------------<br/>Extract Specifics<br/>Assess Condition<br/>Estimate Value"]
+    Merge --> Analysis["Vision LLM Analysis<br/>Extract Specifics<br/>Assess Condition<br/>Estimate Value"]
     
-    Analysis --> AnalysisData["Structured Data Output<br/>----------------<br/>Category: Comic Book<br/>Publisher: Marvel<br/>Issue Number: 1<br/>Year: 1984<br/>Condition: Good Rank 3<br/>Value: $4.48 - $25 USD<br/>Confidences: 0.9/0.8/0.85"]
+    Analysis --> AnalysisData["Structured Data Output<br/>Category: Comic Book<br/>Publisher: Marvel<br/>Issue Number: 1<br/>Year: 1984<br/>Condition: Good Rank 3<br/>Value: $4.48 - $25 USD<br/>Confidences: 0.9/0.8/0.85"]
     
-    AnalysisData --> DescribeNode["describe_collectible Node<br/>----------------<br/>Model: GPT-4o-mini<br/>Generate Rich Description"]
+    AnalysisData --> DescribeNode["describe_collectible Node<br/>Model: GPT-4o-mini<br/>Generate Rich Description"]
     
-    DescribeNode --> FinalOutput["Final Result Package<br/>----------------<br/>Caption Generated<br/>Description with Sources<br/>Keywords Array<br/>Price Sources Cited<br/>Collectible Insights<br/>Search Results Used: 10"]
+    DescribeNode --> FinalOutput["Final Result Package<br/>Caption Generated<br/>Description with Sources<br/>Keywords Array<br/>Price Sources Cited<br/>Collectible Insights<br/>Search Results Used: 10"]
     
     FinalOutput --> End(["Graph Execution Finished<br/>Total Runtime: ~60s"])
     
