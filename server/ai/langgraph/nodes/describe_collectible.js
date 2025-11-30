@@ -71,39 +71,64 @@ async function describe_collectible(state) {
     logger.info('[LangGraph] describe_collectible node invoked');
 
     // Check if we have collectible data to work with
-    const collectibleResult = state.collectibleResult;
-    if (!collectibleResult || collectibleResult.status !== 'success' || !collectibleResult.collectibleData) {
-      logger.warn('[LangGraph] describe_collectible: No valid collectible data, using fallback');
-      return {
-        ...state,
-        finalResult: state.finalResult || {
-          caption: 'Collectible Item',
-          description: 'This appears to be a collectible item. Analysis was not available.',
-          keywords: ['collectible'],
-          classification: state.classification
+    let analysisContext = {};
+    
+    // Sprint 1 Optimization Path
+    if (state.collectible_id && state.collectible_valuation) {
+      logger.info('[LangGraph] describe_collectible: Using Sprint 1 optimized data');
+      analysisContext = {
+        category: state.collectible_category || 'Collectible',
+        condition: { label: 'Not assessed in rapid mode' },
+        value: { 
+          min: state.collectible_valuation.low, 
+          max: state.collectible_valuation.high, 
+          currency: state.collectible_valuation.currency 
+        },
+        specifics: { "Identified Item": state.collectible_id },
+        categoryReasoning: `Identified as ${state.collectible_id} with confidence ${state.collectible_id_confidence}`,
+        valueReasoning: state.collectible_valuation.reasoning,
+        confidences: {
+          category: state.collectible_id_confidence,
+          value: 0.8
+        }
+      };
+    } 
+    // Legacy Path
+    else {
+      const collectibleResult = state.collectibleResult;
+      if (!collectibleResult || collectibleResult.status !== 'success' || !collectibleResult.collectibleData) {
+        logger.warn('[LangGraph] describe_collectible: No valid collectible data, using fallback');
+        return {
+          ...state,
+          finalResult: state.finalResult || {
+            caption: 'Collectible Item',
+            description: 'This appears to be a collectible item. Analysis was not available.',
+            keywords: ['collectible'],
+            classification: state.classification
+          }
+        };
+      }
+
+      const { cleanData, fullAnalysis } = collectibleResult.collectibleData;
+
+      // Build context for the description generator
+      analysisContext = {
+        category: cleanData.category,
+        condition: cleanData.condition,
+        value: cleanData.value,
+        specifics: cleanData.specifics,
+        // Include reasoning from full analysis for richer context
+        categoryReasoning: fullAnalysis.category?.reasoning,
+        conditionReasoning: fullAnalysis.condition?.reasoning,
+        valueReasoning: fullAnalysis.value?.reasoning,
+        // Include confidence levels
+        confidences: {
+          category: fullAnalysis.category?.confidence,
+          condition: fullAnalysis.condition?.confidence,
+          value: fullAnalysis.value?.confidence
         }
       };
     }
-
-    const { cleanData, fullAnalysis } = collectibleResult.collectibleData;
-
-    // Build context for the description generator
-    const analysisContext = {
-      category: cleanData.category,
-      condition: cleanData.condition,
-      value: cleanData.value,
-      specifics: cleanData.specifics,
-      // Include reasoning from full analysis for richer context
-      categoryReasoning: fullAnalysis.category?.reasoning,
-      conditionReasoning: fullAnalysis.condition?.reasoning,
-      valueReasoning: fullAnalysis.value?.reasoning,
-      // Include confidence levels
-      confidences: {
-        category: fullAnalysis.category?.confidence,
-        condition: fullAnalysis.condition?.confidence,
-        value: fullAnalysis.value?.confidence
-      }
-    };
 
     // Include intermediate steps (search results) if available - pass full results for source extraction
     const searchResults = state.collectibleSearchResults || [];
@@ -167,11 +192,18 @@ Create an engaging description that a collector would appreciate.`;
         error: parseError.message,
         raw: response.choices[0].message.content?.substring(0, 500)
       });
+      
+      const cat = typeof analysisContext.category === 'string' ? analysisContext.category : (analysisContext.category?.value || 'Item');
+      const cond = analysisContext.condition?.label || analysisContext.condition?.value?.label || 'Unknown';
+      const valMin = analysisContext.value?.min || '?';
+      const valMax = analysisContext.value?.max || '?';
+      const valCurr = analysisContext.value?.currency || 'USD';
+
       // Fall back to template description
       parsed = {
-        description: `This ${cleanData.category} is in ${cleanData.condition.label} condition. Estimated value: $${cleanData.value.min}-$${cleanData.value.max} ${cleanData.value.currency}.`,
-        caption: `${cleanData.category} - ${cleanData.condition.label}`,
-        keywords: [cleanData.category, cleanData.condition.label, 'collectible']
+        description: `This ${cat} is in ${cond} condition. Estimated value: $${valMin}-$${valMax} ${valCurr}.`,
+        caption: `${cat} - ${cond}`,
+        keywords: [cat, cond, 'collectible']
       };
     }
 
@@ -183,47 +215,36 @@ Create an engaging description that a collector would appreciate.`;
     });
 
     // Build the enhanced final result with price sources
+    const cat = typeof analysisContext.category === 'string' ? analysisContext.category : (analysisContext.category?.value || 'Item');
+    const cond = analysisContext.condition?.label || analysisContext.condition?.value?.label || 'Unknown';
+
     const enhancedFinalResult = {
-      caption: parsed.caption || `${cleanData.category} - ${cleanData.condition.label}`,
+      caption: parsed.caption || `${cat} - ${cond}`,
       description: parsed.description,
-      keywords: parsed.keywords || [cleanData.category, cleanData.condition.label],
+      keywords: parsed.keywords || [cat, 'collectible'],
       classification: state.classification,
       collectibleInsights: {
-        category: cleanData.category,
-        condition: cleanData.condition,
+        category: analysisContext.category,
+        condition: analysisContext.condition,
         valuation: {
-          lowEstimateUSD: cleanData.value.min,
-          highEstimateUSD: cleanData.value.max,
-          currency: cleanData.value.currency,
-          reasoning: fullAnalysis.value?.reasoning,
+          lowEstimateUSD: analysisContext.value?.min,
+          highEstimateUSD: analysisContext.value?.max,
+          currency: analysisContext.value?.currency,
+          reasoning: analysisContext.valueReasoning,
           priceSources: parsed.priceSources || []
         },
-        specifics: cleanData.specifics,
-        confidences: {
-          category: fullAnalysis.category?.confidence,
-          condition: fullAnalysis.condition?.confidence,
-          value: fullAnalysis.value?.confidence
-        },
-        searchResultsUsed: allSearchResults.length
+        specifics: analysisContext.specifics,
+        confidences: analysisContext.confidences
       }
     };
 
     return {
       ...state,
-      finalResult: enhancedFinalResult,
-      error: null
+      finalResult: enhancedFinalResult
     };
   } catch (err) {
-    logger.error('[LangGraph] describe_collectible: Error', {
-      error: err.message,
-      stack: err.stack
-    });
-    
-    // Return state with existing finalResult on error
-    return {
-      ...state,
-      error: err.message || String(err)
-    };
+    logger.error('[LangGraph] describe_collectible: Error', err);
+    return { ...state, error: err.message || String(err) };
   }
 }
 

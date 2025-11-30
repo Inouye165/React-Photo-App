@@ -17,6 +17,9 @@ const decide_scene_label = require('./nodes/decide_scene_label');
 const food_location_agent = require('./nodes/food_location_agent');
 const food_metadata_agent = require('./nodes/food_metadata_agent');
 const collect_context = require('./nodes/collect_context');
+// Sprint 1 Nodes
+const identify_collectible = require('./nodes/identify_collectible');
+const valuate_collectible = require('./nodes/valuate_collectible');
 // Node food_metadata_agent -> implemented in ./nodes/food_metadata_agent.js
 
 function wrapNode(name, nodeFn) {
@@ -34,6 +37,19 @@ function wrapNode(name, nodeFn) {
       }
     });
   };
+}
+
+// --- Router: Decides next node after collect_context ---
+function route_after_context(state) {
+  if (state.error) return END;
+  const classification = String(state.classification || '').toLowerCase().trim();
+  
+  if (classification === 'collectables') {
+    logger.info('[LangGraph] Router: Fast-tracking collectible');
+    return 'identify_collectible';
+  }
+  
+  return 'location_intelligence_agent';
 }
 
 // --- Router: Decides next node after the location intelligence agent ---
@@ -82,6 +98,9 @@ workflow.addNode('decide_scene_label', wrapNode('decide_scene_label', decide_sce
 workflow.addNode('food_location_agent', wrapNode('food_location_agent', food_location_agent));
 workflow.addNode('food_metadata_agent', wrapNode('food_metadata_agent', food_metadata_agent));
 workflow.addNode('collect_context', wrapNode('collect_context', collect_context));
+// Sprint 1 Nodes
+workflow.addNode('identify_collectible', wrapNode('identify_collectible', identify_collectible));
+workflow.addNode('valuate_collectible', wrapNode('valuate_collectible', valuate_collectible));
 
 // 2. Set the entry point
 workflow.setEntryPoint('classify_image');
@@ -89,7 +108,17 @@ workflow.setEntryPoint('classify_image');
 // 3. Wire the flow: classification -> location intelligence -> rest
 // Insert a short-circuit node that collects POI once per image and caches it.
 workflow.addEdge('classify_image', 'collect_context');
-workflow.addEdge('collect_context', 'location_intelligence_agent');
+
+// Sprint 1: Conditional routing after collect_context
+workflow.addConditionalEdges(
+  'collect_context',
+  route_after_context,
+  {
+    identify_collectible: 'identify_collectible',
+    location_intelligence_agent: 'location_intelligence_agent',
+    __end__: END
+  }
+);
 
 workflow.addConditionalEdges(
   'location_intelligence_agent',
@@ -111,8 +140,12 @@ workflow.addEdge('decide_scene_label', 'generate_metadata');
 workflow.addEdge('food_location_agent', 'food_metadata_agent');
 workflow.addEdge('food_metadata_agent', END);
 
+// Sprint 1 Edges
+workflow.addEdge('identify_collectible', 'valuate_collectible');
+workflow.addEdge('valuate_collectible', 'describe_collectible');
+
 // 5. Compile the app
 const app = workflow.compile();
-module.exports = { app, __testing: { food_location_agent, food_metadata_agent, location_intelligence_agent } };
+module.exports = { app, __testing: { food_location_agent, food_metadata_agent, location_intelligence_agent, route_after_context } };
 // Export the collect_context node for unit testing
 module.exports.__testing.collect_context = collect_context;
