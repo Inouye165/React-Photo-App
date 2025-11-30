@@ -1,7 +1,5 @@
 # LangGraph Collectibles Analysis Workflow
 
-> **Note:** If the diagram below does not render, please open [collectibles-flowchart.html](./collectibles-flowchart.html) in your browser.
-
 ## Complete System Architecture
 ```mermaid
 graph TD
