@@ -1,5 +1,7 @@
 import React from 'react';
 import PropTypes from 'prop-types';
+import PriceRangeVisual from './PriceRangeVisual';
+import PriceHistoryList from './PriceHistoryList';
 
 /**
  * Condition rank to color mapping
@@ -31,12 +33,19 @@ function getConfidenceLabel(confidence) {
  * - Price valuation with sources (links)
  * - Item specifics
  * - Confidence scores
+ * - Expandable price history ledger
  */
 export default function CollectibleDetailView({ 
   photo,
   collectibleData,
   aiInsights 
 }) {
+  // State for collapsible valuation ledger
+  const [ledgerExpanded, setLedgerExpanded] = React.useState(false);
+  const [historyLoading, setHistoryLoading] = React.useState(false);
+  const [historyData, setHistoryData] = React.useState(null);
+  const [historyError, setHistoryError] = React.useState(null);
+
   // Get insights from either the collectible data or directly from photo
   const insights = aiInsights || 
                    collectibleData?.ai_analysis_history?.[0]?.result ||
@@ -59,8 +68,11 @@ export default function CollectibleDetailView({
   const description = photo?.description || '';
   const _caption = photo?.caption || 'Collectible Item';
   
-  // Extract valuation data
-  const valuation = parsedInsights?.valuation || {};
+  // Extract valuation data - memoized to prevent dependency issues
+  const valuation = React.useMemo(() => {
+    return parsedInsights?.valuation || {};
+  }, [parsedInsights]);
+  
   const priceSources = valuation?.priceSources || [];
   const condition = parsedInsights?.condition || collectibleData?.condition_label;
   const conditionRank = parsedInsights?.condition?.rank || collectibleData?.condition_rank || 3;
@@ -69,6 +81,53 @@ export default function CollectibleDetailView({
   const confidences = parsedInsights?.confidences || {};
 
   const conditionColors = CONDITION_COLORS[conditionRank] || CONDITION_COLORS[3];
+
+  // Fetch price history when ledger is expanded
+  const fetchHistory = React.useCallback(async () => {
+    if (!collectibleData?.id) return;
+    
+    setHistoryLoading(true);
+    setHistoryError(null);
+    
+    try {
+      const response = await fetch(`/api/collectibles/${collectibleData.id}/history`, {
+        credentials: 'include'
+      });
+      
+      if (!response.ok) {
+        throw new Error('Failed to load price history');
+      }
+      
+      const data = await response.json();
+      setHistoryData(data.history || []);
+    } catch (err) {
+      console.error('[CollectibleDetailView] History fetch error:', err);
+      setHistoryError(err.message || 'Failed to load price history');
+    } finally {
+      setHistoryLoading(false);
+    }
+  }, [collectibleData?.id]);
+
+  // Toggle ledger and fetch data on first expand
+  const handleLedgerToggle = () => {
+    const willExpand = !ledgerExpanded;
+    setLedgerExpanded(willExpand);
+    
+    // Fetch data on first expand
+    if (willExpand && historyData === null && !historyLoading) {
+      fetchHistory();
+    }
+  };
+
+  // Calculate average value for the range visual
+  const currentValue = React.useMemo(() => {
+    const min = valuation.lowEstimateUSD || collectibleData?.value_min;
+    const max = valuation.highEstimateUSD || collectibleData?.value_max;
+    if (min && max) {
+      return (parseFloat(min) + parseFloat(max)) / 2;
+    }
+    return min || max || 0;
+  }, [valuation, collectibleData]);
 
   return (
     <div className="collectible-detail-view" style={{
@@ -406,6 +465,104 @@ export default function CollectibleDetailView({
           Analysis used {parsedInsights.searchResultsUsed} search results from Google
         </div>
       )}
+
+      {/* Valuation Ledger - Collapsible Price History Section */}
+      {collectibleData?.id && (
+        <div 
+          style={{
+            backgroundColor: '#f8fafc',
+            borderRadius: '16px',
+            border: '1px solid #e2e8f0',
+            overflow: 'hidden'
+          }}
+          data-testid="valuation-ledger"
+        >
+          {/* Collapsible Header */}
+          <button
+            onClick={handleLedgerToggle}
+            style={{
+              width: '100%',
+              padding: '16px 20px',
+              display: 'flex',
+              alignItems: 'center',
+              justifyContent: 'space-between',
+              backgroundColor: 'transparent',
+              border: 'none',
+              cursor: 'pointer',
+              textAlign: 'left'
+            }}
+            aria-expanded={ledgerExpanded}
+            data-testid="valuation-ledger-toggle"
+          >
+            <h4 style={{
+              margin: 0,
+              fontSize: '11px',
+              fontWeight: 700,
+              color: '#94a3b8',
+              textTransform: 'uppercase',
+              letterSpacing: '0.5px',
+            }}>
+              📜 Valuation Ledger
+            </h4>
+            <span style={{
+              fontSize: '18px',
+              color: '#94a3b8',
+              transform: ledgerExpanded ? 'rotate(180deg)' : 'rotate(0deg)',
+              transition: 'transform 0.2s ease'
+            }}>
+              ▼
+            </span>
+          </button>
+
+          {/* Collapsible Content */}
+          {ledgerExpanded && (
+            <div 
+              style={{
+                padding: '0 20px 20px 20px',
+                borderTop: '1px solid #e2e8f0'
+              }}
+              data-testid="valuation-ledger-content"
+            >
+              {/* Price Range Visual */}
+              {(valuation.lowEstimateUSD || collectibleData?.value_min) && (
+                <div style={{ marginTop: '16px' }}>
+                  <PriceRangeVisual
+                    min={valuation.lowEstimateUSD || collectibleData?.value_min || 0}
+                    max={valuation.highEstimateUSD || collectibleData?.value_max || 0}
+                    value={currentValue}
+                    currency={valuation.currency || 'USD'}
+                    label="Estimated Value"
+                  />
+                </div>
+              )}
+
+              {/* Error State */}
+              {historyError && (
+                <div 
+                  style={{
+                    padding: '12px 16px',
+                    backgroundColor: '#fef2f2',
+                    borderRadius: '8px',
+                    color: '#991b1b',
+                    fontSize: '13px',
+                    marginTop: '8px'
+                  }}
+                  data-testid="valuation-ledger-error"
+                >
+                  ⚠️ {historyError}
+                </div>
+              )}
+
+              {/* Price History List */}
+              <PriceHistoryList 
+                history={historyData || []}
+                loading={historyLoading}
+                currency={valuation.currency || 'USD'}
+              />
+            </div>
+          )}
+        </div>
+      )}
     </div>
   );
 }
@@ -418,6 +575,7 @@ CollectibleDetailView.propTypes = {
     poi_analysis: PropTypes.oneOfType([PropTypes.string, PropTypes.object]),
   }),
   collectibleData: PropTypes.shape({
+    id: PropTypes.oneOfType([PropTypes.string, PropTypes.number]),
     category: PropTypes.string,
     condition_label: PropTypes.string,
     condition_rank: PropTypes.number,
