@@ -83,39 +83,99 @@ Photo ingested
 
 ---
 
+
 ## 🚀 Quick Start
 
 ### Prerequisites
-- Node.js 20+
-- Supabase account (free tier works)
-- Redis (Docker: `docker run -d -p 6379:6379 redis:7.2-alpine`)
-- ImageMagick (for HEIC fallback)
+- **Node.js 20+**
+- **Docker** (for local Postgres and Redis)
+- **docker-compose** (recommended for local DB/Redis)
+- **Supabase account** (for production or hosted Postgres/Storage/Auth)
+- **Redis** (local: `docker-compose up -d redis` or `docker run -d -p 6379:6379 redis:7.2-alpine`)
+- **ImageMagick** (for HEIC fallback)
 
-### Installation
+### Installation & Setup
 
 ```bash
-# 1. Clone and install
+# 1. Clone and install dependencies
 git clone https://github.com/Inouye165/React-Photo-App.git
 cd React-Photo-App
-npm install && cd server && npm install && cd ..
+npm install
+cd server && npm install && cd ..
 
-# 2. Configure environment
-cp .env.example .env
+# 2. Start required services (local dev)
+docker-compose up -d db redis
+
+# 3. Configure environment variables
 cp server/.env.example server/.env
-# Edit server/.env with your Supabase credentials
+# Edit server/.env with your Supabase/Postgres/Redis credentials
+# At minimum, set one of:
+#   SUPABASE_DB_URL or DATABASE_URL (Postgres connection string)
+#   SUPABASE_URL, SUPABASE_ANON_KEY, SUPABASE_SERVICE_ROLE_KEY
 
-# 3. Run migrations
+# 4. Run migrations
 cd server && npm run migrate && cd ..
 
-# 4. Start the app
-npm run dev          # Terminal 1: Frontend (Vite)
-cd server && npm start   # Terminal 2: Backend + Workers
+# 5. Start the app (in separate terminals)
+npm run dev                # Terminal 1: Frontend (Vite, port 5173)
+cd server && npm start     # Terminal 2: Backend API (port 3001)
+cd server && npm run worker # Terminal 3: AI Worker (requires Redis & DB)
 ```
 
-**Visit:** `http://localhost:5173`
+**Frontend:** http://localhost:5173  
+**Backend API:** http://localhost:3001
+
+> **Note:** The AI worker (`npm run worker`) is required for background photo analysis and enrichment. If `GOOGLE_MAPS_API_KEY` is missing, Places-based enrichment will be disabled but uploads and basic analysis will still work.
 
 ---
 
+## ⚙️ Environment Variables
+
+Edit `server/.env` (see `server/.env.example` for all options). **Required** variables:
+
+- `SUPABASE_DB_URL` or `DATABASE_URL` – Postgres connection string (local or Supabase)
+- `SUPABASE_URL` – Supabase project URL
+- `SUPABASE_ANON_KEY` – Supabase anon public key
+- `SUPABASE_SERVICE_ROLE_KEY` – Supabase service role key (server-side only)
+
+**Optional:**
+- `GOOGLE_MAPS_API_KEY` – Enables Google Places enrichment (optional; if missing, POI lookups are skipped)
+- `OPENAI_API_KEY` – Required for AI features (see `server/.env.example` for more)
+
+---
+
+## 🏃 Running in Development
+
+Start each service in its own terminal:
+
+```bash
+# 1. Frontend (Vite, port 5173)
+
+
+# 2. Backend API (Express, port 3001)
+---
+
+# 3. AI Worker (background jobs)
+
+```
+
+**Ports:**
+- Frontend: `5173`
+- Backend API: `3001`
+- Postgres (Docker): `5432`
+- Redis (Docker): `6379`
+
+---
+
+## 🔐 Auth & Security
+
+- **Authentication:** Cookie-based (httpOnly) JWT tokens; never stored in localStorage or URL params.
+- **Row-Level Security:** Supabase RLS is enforced for all user data isolation.
+- **CSRF Protection:** All state-changing requests require CSRF tokens and Origin validation.
+
+---
+
+**Visit:** `http://localhost:5173`
 ## 🛠️ Tech Stack
 
 **Frontend:** React 19, Vite, Tailwind CSS, Zustand, React Testing Library  
