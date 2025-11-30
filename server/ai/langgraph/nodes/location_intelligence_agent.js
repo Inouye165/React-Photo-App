@@ -38,7 +38,7 @@ async function location_intelligence_agent(state) {
 
   if (!state.poiCache) {
     try {
-      state.poiCache = await collectContext({ lat: coordinates.lat, lon: coordinates.lon, classification: state.classification, fetchFood: false });
+      state.poiCache = await collectContext({ lat: coordinates.lat, lon: coordinates.lon, classification: state.classification, fetchFood: false, runId: state.runId });
     } catch (err) {
       logger.warn('[LangGraph] location_intelligence_agent collectContext failed', err?.message || err);
       state.poiCache = null;

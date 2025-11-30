@@ -14,7 +14,7 @@ async function collect_context(state) {
     const classification = state.classification || '';
     const startMs = Date.now();
     const fetchFood = String(classification || '').toLowerCase().includes('food');
-    const poi = await collectContext({ lat, lon, classification, fetchFood });
+    const poi = await collectContext({ lat, lon, classification, fetchFood, runId: state.runId });
     const durationMs = Date.now() - startMs;
     const summary = {
       reverse: !!poi.reverseResult && !!poi.reverseResult.address,

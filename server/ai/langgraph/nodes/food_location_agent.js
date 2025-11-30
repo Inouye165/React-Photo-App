@@ -25,7 +25,7 @@ async function food_location_agent(state) {
           nearby = state.poiCache.nearbyFood;
         } else {
           try {
-            const poi = await collectContext({ lat: lat, lon: lon, classification: state.classification, fetchFood: true });
+            const poi = await collectContext({ lat: lat, lon: lon, classification: state.classification, fetchFood: true, runId: state.runId });
             state.poiCache = { ...(state.poiCache || {}), ...poi };
             nearby = poi.nearbyFood || [];
           } catch (err) {

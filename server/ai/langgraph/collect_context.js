@@ -3,7 +3,7 @@ const { nearbyFoodPlaces } = require('../poi/foodPlaces');
 const { nearbyTrailsFromOSM } = require('../poi/osmTrails');
 const logger = require('../../logger');
 
-async function collectContext({ lat, lon, classification = '', fetchFood = false }) {
+async function collectContext({ lat, lon, classification = '', fetchFood = false, runId }) {
   const { shouldSkipGenericPoi, isCollectablesClassification } = require('./classification_helpers');
   const classificationLower = String(classification || '').toLowerCase();
   const _isCollectables = isCollectablesClassification(classificationLower);
@@ -22,7 +22,7 @@ async function collectContext({ lat, lon, classification = '', fetchFood = false
     // Skip reverse geocode entirely for 'collectables' to avoid noisy
     // and expensive geo lookups that are not meaningful for collectibles.
     if (!_isCollectables) {
-      out.reverseResult = await reverseGeocode(lat, lon);
+      out.reverseResult = await reverseGeocode(lat, lon, { runId });
     }
   } catch (err) {
     logger.warn('[collectContext] reverseGeocode failed', err?.message || err);
@@ -30,7 +30,7 @@ async function collectContext({ lat, lon, classification = '', fetchFood = false
 
   if (!skipGenericPoi) {
     try {
-      out.nearbyPlaces = await nearbyPlaces(lat, lon, 800);
+      out.nearbyPlaces = await nearbyPlaces(lat, lon, 800, { runId });
     } catch (err) {
       logger.warn('[collectContext] nearbyPlaces failed', err?.message || err);
     }

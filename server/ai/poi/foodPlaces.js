@@ -1,6 +1,7 @@
 require('../../env');
 const logger = require('../../logger');
 const { haversineDistanceMeters } = require('./geoUtils');
+const auditLogger = require('../langgraph/audit_logger');
 
 const ensureFetch = () => {
   if (typeof globalThis.fetch === 'function') return globalThis.fetch.bind(globalThis);
@@ -61,6 +62,7 @@ const FOOD_PLACES_MAX_RADIUS_METERS = Number(process.env.FOOD_PLACES_MAX_RADIUS_
 const FOOD_PLACES_START_RADIUS_METERS = Number(process.env.FOOD_PLACES_START_RADIUS_METERS || 50);
 
 async function nearbyFoodPlaces(lat, lon, radiusMeters = 15.24, opts = {}) {
+  const runId = opts.runId || 'unknown-run-id';
   if (allowDevDebug) logger.info(`[foodPlaces] ========== STARTING nearbyFoodPlaces ==========`);
   if (allowDevDebug) logger.info(`[foodPlaces] 🔍 INPUT PARAMS: lat=${lat}, lon=${lon}, radiusMeters=${radiusMeters}`);
   if (allowDevDebug) logger.info(`[foodPlaces] 🔍 CONFIG: FOOD_PLACES_START_RADIUS_METERS=${FOOD_PLACES_START_RADIUS_METERS}, FOOD_PLACES_MAX_RADIUS_METERS=${FOOD_PLACES_MAX_RADIUS_METERS}`);
@@ -116,12 +118,14 @@ async function nearbyFoodPlaces(lat, lon, radiusMeters = 15.24, opts = {}) {
       if (allowDevDebug) logger.info('[foodPlaces] 🌐 URL (redacted):', redactUrl(url));
       
       try {
+        auditLogger.logToolCall(runId, 'Google Nearby Places (Food)', { lat, lon, radius: r, type, url: redactUrl(url) }, 'Fetching...');
         const res = await fetchFn(url, { method: 'GET' });
         if (allowDevDebug) logger.info(`[foodPlaces] 📡 RESPONSE: status=${res.status}, ok=${res.ok}`);
         
         if (!res.ok) {
           const text = await res.text();
           logger.warn('[foodPlaces] ⚠️ Google Places returned error', { status: res.status, body: text?.slice?.(0, 200) });
+          auditLogger.logToolCall(runId, 'Google Nearby Places (Food)', { lat, lon, radius: r, type, status: res.status }, { error: text });
           continue;
         }
         
@@ -130,6 +134,7 @@ async function nearbyFoodPlaces(lat, lon, radiusMeters = 15.24, opts = {}) {
         logger.info(`[foodPlaces] 📊 RESULTS COUNT: ${json.results?.length || 0}`);
         
         const results = Array.isArray(json.results) ? json.results : [];
+        auditLogger.logToolCall(runId, 'Google Nearby Places (Food)', { lat, lon, radius: r, type }, results);
         
         if (results.length > 0) {
           logger.info(`[foodPlaces] ✅ Found ${results.length} results for type='${type}' radius=${r}`);
