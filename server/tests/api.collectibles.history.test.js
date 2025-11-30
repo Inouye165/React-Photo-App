@@ -10,6 +10,7 @@
 const request = require('supertest');
 const express = require('express');
 const jwt = require('jsonwebtoken');
+const rateLimit = require('express-rate-limit');
 
 // Mock feature flags before requiring modules
 jest.mock('../utils/featureFlags', () => ({
@@ -41,6 +42,15 @@ describe('Sprint 3: Collectibles History API', () => {
     // Create Express app with router
     app = express();
     app.use(express.json());
+
+    // Rate limiter for security (required by CodeQL)
+    const limiter = rateLimit({
+      windowMs: 60 * 1000, // 1 minute
+      max: 100, // generous limit for tests
+      standardHeaders: true,
+      legacyHeaders: false,
+    });
+    app.use(limiter);
     
     // Mock auth middleware
     app.use((req, res, next) => {
