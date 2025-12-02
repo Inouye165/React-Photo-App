@@ -31,22 +31,24 @@ module.exports = function createCollectiblesRouter({ db }) {
   });
 
   // GET /photos/:photoId/collectibles
+  // SECURITY: Verify photo ownership before returning collectibles
   router.get('/photos/:photoId/collectibles', async (req, res) => {
     try {
       const { photoId } = req.params;
+      
+      // CRITICAL: First verify the photo belongs to the requesting user
+      const photo = await db('photos')
+        .where({ id: photoId, user_id: req.user.id })
+        .first();
+      
+      if (!photo) {
+        return res.status(404).json({ success: false, error: 'Photo not found' });
+      }
+      
+      // Only fetch collectibles after ownership verification
       const collectibles = await db('collectibles')
         .where('photo_id', photoId)
         .select('*');
-      
-      // If no collectibles found, check if photo exists and return empty array
-      if (collectibles.length === 0) {
-        const photo = await db('photos')
-          .where({ id: photoId, user_id: req.user.id })
-          .first();
-        if (!photo) {
-          return res.status(404).json({ success: false, error: 'Photo not found' });
-        }
-      }
       
       res.json({ success: true, collectibles });
     } catch (err) {

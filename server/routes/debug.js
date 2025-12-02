@@ -21,9 +21,10 @@ module.exports = function createDebugRouter({ db }) {
 
   // Debug endpoint to list all inprogress files in the database
   // Authentication required: This endpoint requires a valid JWT token in ALL environments
+  // SECURITY: Filter by user_id to prevent information leakage
   router.get('/debug/inprogress', async (req, res) => {
     try {
-      const rows = await db('photos').where({ state: 'inprogress' });
+      const rows = await db('photos').where({ state: 'inprogress', user_id: req.user.id });
       res.json(rows);
     } catch (err) {
       logger.error('Debug inprogress error:', err);
@@ -33,11 +34,12 @@ module.exports = function createDebugRouter({ db }) {
 
   // Dev endpoint: re-run GPS extraction on a DB row and return coordinates
   // Authentication required: This endpoint requires a valid JWT token in ALL environments
+  // SECURITY: Filter by user_id to prevent information leakage
   router.get('/dev/reextract-gps', async (req, res) => {
     try {
       const id = Number(req.query.id);
       if (!id) return res.status(400).json({ error: 'id is required' });
-      const row = await db('photos').where({ id }).first();
+      const row = await db('photos').where({ id, user_id: req.user.id }).first();
       if (!row) return res.status(404).json({ error: 'not found' });
       const meta = (typeof row.metadata === 'string') ? JSON.parse(row.metadata || '{}') : (row.metadata || {});
       const coords = extractLatLon(meta);
@@ -57,9 +59,13 @@ module.exports = function createDebugRouter({ db }) {
   });
 
   // Debug endpoint to reset ai_retry_count for all HEIC files
+  // SECURITY: Filter by user_id to prevent cross-user modifications
   router.post('/debug/reset-ai-retry', async (req, res) => {
     try {
-      const result = await db('photos').where('filename', 'like', '%.HEIC').update({ ai_retry_count: 0 });
+      const result = await db('photos')
+        .where('filename', 'like', '%.HEIC')
+        .andWhere('user_id', req.user.id)
+        .update({ ai_retry_count: 0 });
       res.json({ updated: result });
     } catch (err) {
       logger.error('Reset ai retry error:', err);
@@ -68,9 +74,12 @@ module.exports = function createDebugRouter({ db }) {
   });
 
   // Debug endpoint to regenerate missing thumbnails
+  // SECURITY: Filter by user_id to prevent processing other users' photos
   router.post('/debug/regenerate-thumbnails', async (req, res) => {
     try {
-      const rows = await db('photos').whereNotNull('hash');
+      const rows = await db('photos')
+        .whereNotNull('hash')
+        .andWhere('user_id', req.user.id);
       
       let missing = 0;
       let generated = 0;

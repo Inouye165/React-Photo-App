@@ -9,7 +9,7 @@ const path = require('path');
 const REQUIRED_KEYS = [
   'SUPABASE_URL',
   'SUPABASE_ANON_KEY',
-  'SUPABASE_SERVICE_ROLE_KEY',
+  // 'SUPABASE_SERVICE_ROLE_KEY', // Optional - falls back to ANON_KEY
   'JWT_SECRET',
   'OPENAI_API_KEY',
   'USE_LANGCHAIN',
