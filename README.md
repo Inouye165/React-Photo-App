@@ -239,6 +239,7 @@ cd server && npm run worker
 ## 📚 Documentation
 
 - **[TESTING.md](TESTING.md)** - Test suite guide (unit, integration, stress tests)
+- **[TOOLS_AND_TESTS.md](docs/TOOLS_AND_TESTS.md)** - Reference for all scripts, tools, and environment verification utilities
 - **[PRODUCT_STORY.md](docs/PRODUCT_STORY.md)** - Engineering journey (Sept–Nov 2025)
 - **[CHANGELOG.md](docs/CHANGELOG.md)** - Release history and recent updates
 - **[ROADMAP.md](docs/ROADMAP.md)** - Planned features and known limitations
