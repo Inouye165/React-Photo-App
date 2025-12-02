@@ -9046,3 +9046,783 @@
 ]
 ```
 
+
+
+# Logger Initialized at 2025-12-02T12:43:29.922Z
+
+
+# Logger Initialized at 2025-12-02T12:44:11.745Z
+
+================================================================================
+# Graph Execution Started
+**Run ID:** a59660df-32b6-4a65-98c2-afb5af601d0b
+**Timestamp:** 2025-12-02T12:45:04.009Z
+
+## Initial State
+```json
+{
+  "runId": "a59660df-32b6-4a65-98c2-afb5af601d0b",
+  "filename": "7a80a11d-94ee-4710-b8ae-5d874c969525-Screenshot_2025-11-30_182354.jpg.processed.jpg",
+  "fileBuffer": "[Buffer: 22 bytes]",
+  "imageBase64": "[Base64 Image Data Omitted]",
+  "imageMime": "image/jpeg",
+  "metadata": {
+    "dateTime": "null",
+    "cameraModel": "null"
+  },
+  "gpsString": "null",
+  "device": "null",
+  "modelOverrides": {},
+  "classification": "null",
+  "poiAnalysis": "null",
+  "rich_search_context": "null",
+  "finalResult": "null",
+  "error": "null"
+}
+```
+
+
+### Node Started: classify_image
+**Timestamp:** 2025-12-02T12:45:04.088Z
+
+**Input:**
+```json
+{
+  "filename": "7a80a11d-94ee-4710-b8ae-5d874c969525-Screenshot_2025-11-30_182354.jpg.processed.jpg",
+  "fileBuffer": "[Buffer: 34437 bytes]",
+  "imageBase64": "[Base64 Image Data Omitted]",
+  "imageMime": "image/jpeg",
+  "metadata": {
+    "dateTime": "null",
+    "cameraModel": "null"
+  },
+  "gpsString": "null",
+  "device": "null",
+  "modelOverrides": {},
+  "classification": "null",
+  "poiAnalysis": "null",
+  "rich_search_context": "null",
+  "finalResult": "null",
+  "error": "null"
+}
+```
+
+
+#### LLM Used in classify_image
+**Timestamp:** 2025-12-02T12:45:05.487Z
+**Model:** gpt-4o-2024-08-06
+
+**Prompt:**
+```json
+[
+  {
+    "role": "system",
+    "content": "You are a helpful assistant for image classification."
+  },
+  {
+    "role": "user",
+    "content": [
+      {
+        "type": "text",
+        "text": "Classify this image as one of the following categories: scenery, food, receipt, collectables, health data, or other. Return ONLY a JSON object: {\"classification\": \"...\"}."
+      },
+      {
+        "type": "image_url",
+        "image_url": {
+          "url": "[Base64 Image Data Omitted]",
+          "detail": "low"
+        }
+      }
+    ]
+  }
+]
+```
+
+**Response:**
+```
+{"classification": "collectables"}
+```
+
+
+### Node Finished: classify_image
+**Timestamp:** 2025-12-02T12:45:05.488Z
+
+**Output:**
+```json
+{
+  "filename": "7a80a11d-94ee-4710-b8ae-5d874c969525-Screenshot_2025-11-30_182354.jpg.processed.jpg",
+  "fileBuffer": "[Buffer: 34437 bytes]",
+  "imageBase64": "[Base64 Image Data Omitted]",
+  "imageMime": "image/jpeg",
+  "metadata": {
+    "dateTime": "null",
+    "cameraModel": "null"
+  },
+  "gpsString": "null",
+  "device": "null",
+  "modelOverrides": {},
+  "classification": "collectables",
+  "poiAnalysis": "null",
+  "rich_search_context": "null",
+  "finalResult": "null",
+  "error": "null"
+}
+```
+
+
+### Node Started: collect_context
+**Timestamp:** 2025-12-02T12:45:05.519Z
+
+**Input:**
+```json
+{
+  "filename": "7a80a11d-94ee-4710-b8ae-5d874c969525-Screenshot_2025-11-30_182354.jpg.processed.jpg",
+  "fileBuffer": "[Buffer: 34437 bytes]",
+  "imageBase64": "[Base64 Image Data Omitted]",
+  "imageMime": "image/jpeg",
+  "metadata": {
+    "dateTime": "null",
+    "cameraModel": "null"
+  },
+  "gpsString": "null",
+  "device": "null",
+  "modelOverrides": {},
+  "classification": "collectables",
+  "poiAnalysis": "null",
+  "rich_search_context": "null",
+  "finalResult": "null",
+  "error": "null"
+}
+```
+
+
+### Node Finished: collect_context
+**Timestamp:** 2025-12-02T12:45:05.520Z
+
+**Output:**
+```json
+{
+  "filename": "7a80a11d-94ee-4710-b8ae-5d874c969525-Screenshot_2025-11-30_182354.jpg.processed.jpg",
+  "fileBuffer": "[Buffer: 34437 bytes]",
+  "imageBase64": "[Base64 Image Data Omitted]",
+  "imageMime": "image/jpeg",
+  "metadata": {
+    "dateTime": "null",
+    "cameraModel": "null"
+  },
+  "gpsString": "null",
+  "device": "null",
+  "modelOverrides": {},
+  "classification": "collectables",
+  "poiAnalysis": "null",
+  "rich_search_context": "null",
+  "finalResult": "null",
+  "error": "null",
+  "poiCache": "null"
+}
+```
+
+
+### Node Started: identify_collectible
+**Timestamp:** 2025-12-02T12:45:05.556Z
+
+**Input:**
+```json
+{
+  "filename": "7a80a11d-94ee-4710-b8ae-5d874c969525-Screenshot_2025-11-30_182354.jpg.processed.jpg",
+  "fileBuffer": "[Buffer: 34437 bytes]",
+  "imageBase64": "[Base64 Image Data Omitted]",
+  "imageMime": "image/jpeg",
+  "metadata": {
+    "dateTime": "null",
+    "cameraModel": "null"
+  },
+  "gpsString": "null",
+  "device": "null",
+  "modelOverrides": {},
+  "classification": "collectables",
+  "poiAnalysis": "null",
+  "poiCache": "null",
+  "rich_search_context": "null",
+  "finalResult": "null",
+  "error": "null"
+}
+```
+
+
+#### LLM Used in identify_collectible
+**Timestamp:** 2025-12-02T12:45:08.162Z
+**Model:** gpt-4o-2024-08-06
+
+**Prompt:**
+```json
+[
+  {
+    "role": "system",
+    "content": "You are an expert visual identifier of collectibles.\nYour ONLY job is to identify the item in the image as precisely as possible.\nReturn a JSON object with:\n- \"id\": A precise identification string (e.g., \"Marvel Power Pack #1, 1984\", \"Pyrex Butterprint Mixing Bowl 403\").\n- \"confidence\": A number between 0 and 1.\n- \"category\": A broad category (e.g., \"Comics\", \"Kitchenware\", \"Trading Cards\").\n\nDo NOT estimate value.\nDo NOT describe the background.\nFocus ONLY on the item identity."
+  },
+  {
+    "role": "user",
+    "content": [
+      {
+        "type": "text",
+        "text": "Identify this collectible item."
+      },
+      {
+        "type": "image_url",
+        "image_url": {
+          "url": "[Base64 Image Data Omitted]",
+          "detail": "high"
+        }
+      }
+    ]
+  }
+]
+```
+
+**Response:**
+```
+{
+  "id": "Pyrex Snowflake Blue Oval Cinderella Casserole",
+  "confidence": 0.95,
+  "category": "Kitchenware"
+}
+```
+
+
+### Node Finished: identify_collectible
+**Timestamp:** 2025-12-02T12:45:08.163Z
+
+**Output:**
+```json
+{
+  "filename": "7a80a11d-94ee-4710-b8ae-5d874c969525-Screenshot_2025-11-30_182354.jpg.processed.jpg",
+  "fileBuffer": "[Buffer: 34437 bytes]",
+  "imageBase64": "[Base64 Image Data Omitted]",
+  "imageMime": "image/jpeg",
+  "metadata": {
+    "dateTime": "null",
+    "cameraModel": "null"
+  },
+  "gpsString": "null",
+  "device": "null",
+  "modelOverrides": {},
+  "classification": "collectables",
+  "poiAnalysis": "null",
+  "poiCache": "null",
+  "rich_search_context": "null",
+  "finalResult": "null",
+  "error": "null",
+  "collectible_id": "Pyrex Snowflake Blue Oval Cinderella Casserole",
+  "collectible_id_confidence": 0.95,
+  "collectible_category": "Kitchenware"
+}
+```
+
+
+### Node Started: valuate_collectible
+**Timestamp:** 2025-12-02T12:45:08.191Z
+
+**Input:**
+```json
+{
+  "filename": "7a80a11d-94ee-4710-b8ae-5d874c969525-Screenshot_2025-11-30_182354.jpg.processed.jpg",
+  "fileBuffer": "[Buffer: 34437 bytes]",
+  "imageBase64": "[Base64 Image Data Omitted]",
+  "imageMime": "image/jpeg",
+  "metadata": {
+    "dateTime": "null",
+    "cameraModel": "null"
+  },
+  "gpsString": "null",
+  "device": "null",
+  "modelOverrides": {},
+  "classification": "collectables",
+  "poiAnalysis": "null",
+  "poiCache": "null",
+  "rich_search_context": "null",
+  "finalResult": "null",
+  "error": "null"
+}
+```
+
+
+### Node Finished: valuate_collectible
+**Timestamp:** 2025-12-02T12:45:08.192Z
+
+**Output:**
+```json
+{
+  "filename": "7a80a11d-94ee-4710-b8ae-5d874c969525-Screenshot_2025-11-30_182354.jpg.processed.jpg",
+  "fileBuffer": "[Buffer: 34437 bytes]",
+  "imageBase64": "[Base64 Image Data Omitted]",
+  "imageMime": "image/jpeg",
+  "metadata": {
+    "dateTime": "null",
+    "cameraModel": "null"
+  },
+  "gpsString": "null",
+  "device": "null",
+  "modelOverrides": {},
+  "classification": "collectables",
+  "poiAnalysis": "null",
+  "poiCache": "null",
+  "rich_search_context": "null",
+  "finalResult": "null",
+  "error": "null"
+}
+```
+
+
+### Node Started: describe_collectible
+**Timestamp:** 2025-12-02T12:45:08.224Z
+
+**Input:**
+```json
+{
+  "filename": "7a80a11d-94ee-4710-b8ae-5d874c969525-Screenshot_2025-11-30_182354.jpg.processed.jpg",
+  "fileBuffer": "[Buffer: 34437 bytes]",
+  "imageBase64": "[Base64 Image Data Omitted]",
+  "imageMime": "image/jpeg",
+  "metadata": {
+    "dateTime": "null",
+    "cameraModel": "null"
+  },
+  "gpsString": "null",
+  "device": "null",
+  "modelOverrides": {},
+  "classification": "collectables",
+  "poiAnalysis": "null",
+  "poiCache": "null",
+  "rich_search_context": "null",
+  "finalResult": "null",
+  "error": "null"
+}
+```
+
+
+### Node Finished: describe_collectible
+**Timestamp:** 2025-12-02T12:45:08.225Z
+
+**Output:**
+```json
+{
+  "filename": "7a80a11d-94ee-4710-b8ae-5d874c969525-Screenshot_2025-11-30_182354.jpg.processed.jpg",
+  "fileBuffer": "[Buffer: 34437 bytes]",
+  "imageBase64": "[Base64 Image Data Omitted]",
+  "imageMime": "image/jpeg",
+  "metadata": {
+    "dateTime": "null",
+    "cameraModel": "null"
+  },
+  "gpsString": "null",
+  "device": "null",
+  "modelOverrides": {},
+  "classification": "collectables",
+  "poiAnalysis": "null",
+  "poiCache": "null",
+  "rich_search_context": "null",
+  "finalResult": {
+    "caption": "Collectible Item",
+    "description": "This appears to be a collectible item. Analysis was not available.",
+    "keywords": [
+      "collectible"
+    ],
+    "classification": "collectables"
+  },
+  "error": "null"
+}
+```
+
+
+## Graph Execution Finished
+**Run ID:** a59660df-32b6-4a65-98c2-afb5af601d0b
+**Timestamp:** 2025-12-02T12:45:08.248Z
+
+## Final State
+```json
+{
+  "filename": "7a80a11d-94ee-4710-b8ae-5d874c969525-Screenshot_2025-11-30_182354.jpg.processed.jpg",
+  "fileBuffer": "[Buffer: 34437 bytes]",
+  "imageBase64": "[Base64 Image Data Omitted]",
+  "imageMime": "image/jpeg",
+  "metadata": {
+    "dateTime": "null",
+    "cameraModel": "null"
+  },
+  "gpsString": "null",
+  "device": "null",
+  "modelOverrides": {},
+  "classification": "collectables",
+  "poiAnalysis": "null",
+  "poiCache": "null",
+  "rich_search_context": "null",
+  "finalResult": {
+    "caption": "Collectible Item",
+    "description": "This appears to be a collectible item. Analysis was not available.",
+    "keywords": [
+      "collectible"
+    ],
+    "classification": "collectables"
+  },
+  "error": "null"
+}
+```
+
+================================================================================
+
+
+================================================================================
+# Graph Execution Started
+**Run ID:** 3f4914b9-1af8-46c1-b729-4d43bafbac79
+**Timestamp:** 2025-12-02T12:46:02.102Z
+
+## Initial State
+```json
+{
+  "runId": "3f4914b9-1af8-46c1-b729-4d43bafbac79",
+  "filename": "3000cf0f-5c72-49b7-9bb0-2a6bff1d8262-IMG_5935.HEIC.processed.jpg",
+  "fileBuffer": "[Buffer: 24 bytes]",
+  "imageBase64": "[Base64 Image Data Omitted]",
+  "imageMime": "image/jpeg",
+  "metadata": {
+    "dateTime": "null",
+    "cameraModel": "null"
+  },
+  "gpsString": "null",
+  "device": "null",
+  "modelOverrides": {},
+  "classification": "null",
+  "poiAnalysis": "null",
+  "rich_search_context": "null",
+  "finalResult": "null",
+  "error": "null"
+}
+```
+
+
+### Node Started: classify_image
+**Timestamp:** 2025-12-02T12:46:09.745Z
+
+**Input:**
+```json
+{
+  "filename": "3000cf0f-5c72-49b7-9bb0-2a6bff1d8262-IMG_5935.HEIC.processed.jpg",
+  "fileBuffer": "[Buffer: 3324336 bytes]",
+  "imageBase64": "[Base64 Image Data Omitted]",
+  "imageMime": "image/jpeg",
+  "metadata": {
+    "dateTime": "null",
+    "cameraModel": "null"
+  },
+  "gpsString": "null",
+  "device": "null",
+  "modelOverrides": {},
+  "classification": "null",
+  "poiAnalysis": "null",
+  "rich_search_context": "null",
+  "finalResult": "null",
+  "error": "null"
+}
+```
+
+
+#### LLM Used in classify_image
+**Timestamp:** 2025-12-02T12:46:15.013Z
+**Model:** gpt-4o-2024-08-06
+
+**Prompt:**
+```json
+[
+  {
+    "role": "system",
+    "content": "You are a helpful assistant for image classification."
+  },
+  {
+    "role": "user",
+    "content": [
+      {
+        "type": "text",
+        "text": "Classify this image as one of the following categories: scenery, food, receipt, collectables, health data, or other. Return ONLY a JSON object: {\"classification\": \"...\"}."
+      },
+      {
+        "type": "image_url",
+        "image_url": {
+          "url": "[Base64 Image Data Omitted]",
+          "detail": "low"
+        }
+      }
+    ]
+  }
+]
+```
+
+**Response:**
+```
+{"classification": "scenery"}
+```
+
+
+### Node Finished: classify_image
+**Timestamp:** 2025-12-02T12:46:15.013Z
+
+**Output:**
+```json
+{
+  "filename": "3000cf0f-5c72-49b7-9bb0-2a6bff1d8262-IMG_5935.HEIC.processed.jpg",
+  "fileBuffer": "[Buffer: 3324336 bytes]",
+  "imageBase64": "[Base64 Image Data Omitted]",
+  "imageMime": "image/jpeg",
+  "metadata": {
+    "dateTime": "null",
+    "cameraModel": "null"
+  },
+  "gpsString": "null",
+  "device": "null",
+  "modelOverrides": {},
+  "classification": "scenery",
+  "poiAnalysis": "null",
+  "rich_search_context": "null",
+  "finalResult": "null",
+  "error": "null"
+}
+```
+
+
+### Node Started: collect_context
+**Timestamp:** 2025-12-02T12:46:20.656Z
+
+**Input:**
+```json
+{
+  "filename": "3000cf0f-5c72-49b7-9bb0-2a6bff1d8262-IMG_5935.HEIC.processed.jpg",
+  "fileBuffer": "[Buffer: 3324336 bytes]",
+  "imageBase64": "[Base64 Image Data Omitted]",
+  "imageMime": "image/jpeg",
+  "metadata": {
+    "dateTime": "null",
+    "cameraModel": "null"
+  },
+  "gpsString": "null",
+  "device": "null",
+  "modelOverrides": {},
+  "classification": "scenery",
+  "poiAnalysis": "null",
+  "rich_search_context": "null",
+  "finalResult": "null",
+  "error": "null"
+}
+```
+
+
+### Node Finished: collect_context
+**Timestamp:** 2025-12-02T12:46:20.658Z
+
+**Output:**
+```json
+{
+  "filename": "3000cf0f-5c72-49b7-9bb0-2a6bff1d8262-IMG_5935.HEIC.processed.jpg",
+  "fileBuffer": "[Buffer: 3324336 bytes]",
+  "imageBase64": "[Base64 Image Data Omitted]",
+  "imageMime": "image/jpeg",
+  "metadata": {
+    "dateTime": "null",
+    "cameraModel": "null"
+  },
+  "gpsString": "null",
+  "device": "null",
+  "modelOverrides": {},
+  "classification": "scenery",
+  "poiAnalysis": "null",
+  "rich_search_context": "null",
+  "finalResult": "null",
+  "error": "null",
+  "poiCache": "null"
+}
+```
+
+
+### Node Started: location_intelligence_agent
+**Timestamp:** 2025-12-02T12:46:25.994Z
+
+**Input:**
+```json
+{
+  "filename": "3000cf0f-5c72-49b7-9bb0-2a6bff1d8262-IMG_5935.HEIC.processed.jpg",
+  "fileBuffer": "[Buffer: 3324336 bytes]",
+  "imageBase64": "[Base64 Image Data Omitted]",
+  "imageMime": "image/jpeg",
+  "metadata": {
+    "dateTime": "null",
+    "cameraModel": "null"
+  },
+  "gpsString": "null",
+  "device": "null",
+  "modelOverrides": {},
+  "classification": "scenery",
+  "poiAnalysis": "null",
+  "poiCache": "null",
+  "rich_search_context": "null",
+  "finalResult": "null",
+  "error": "null"
+}
+```
+
+
+### Node Finished: location_intelligence_agent
+**Timestamp:** 2025-12-02T12:46:25.995Z
+
+**Output:**
+```json
+{
+  "filename": "3000cf0f-5c72-49b7-9bb0-2a6bff1d8262-IMG_5935.HEIC.processed.jpg",
+  "fileBuffer": "[Buffer: 3324336 bytes]",
+  "imageBase64": "[Base64 Image Data Omitted]",
+  "imageMime": "image/jpeg",
+  "metadata": {
+    "dateTime": "null",
+    "cameraModel": "null"
+  },
+  "gpsString": "null",
+  "device": "null",
+  "modelOverrides": {},
+  "classification": "scenery",
+  "poiAnalysis": "null",
+  "poiCache": "null",
+  "rich_search_context": "null",
+  "finalResult": "null",
+  "error": "null",
+  "debugUsage": "undefined"
+}
+```
+
+
+### Node Started: generate_metadata
+**Timestamp:** 2025-12-02T12:46:31.459Z
+
+**Input:**
+```json
+{
+  "filename": "3000cf0f-5c72-49b7-9bb0-2a6bff1d8262-IMG_5935.HEIC.processed.jpg",
+  "fileBuffer": "[Buffer: 3324336 bytes]",
+  "imageBase64": "[Base64 Image Data Omitted]",
+  "imageMime": "image/jpeg",
+  "metadata": {
+    "dateTime": "null",
+    "cameraModel": "null"
+  },
+  "gpsString": "null",
+  "device": "null",
+  "modelOverrides": {},
+  "classification": "scenery",
+  "poiAnalysis": "null",
+  "poiCache": "null",
+  "rich_search_context": "null",
+  "finalResult": "null",
+  "error": "null"
+}
+```
+
+
+#### LLM Used in generate_metadata
+**Timestamp:** 2025-12-02T12:46:40.634Z
+**Model:** gpt-4o-2024-08-06
+
+**Prompt:**
+```json
+[
+  {
+    "role": "system",
+    "content": "You are a helpful assistant for photo metadata extraction."
+  },
+  {
+    "role": "user",
+    "content": [
+      {
+        "type": "text",
+        "text": "You are a photo archivist. Given the image and the following context, generate a JSON object with three fields:\ncaption: A short, one-sentence title for the photo.\ndescription: A detailed, multi-sentence paragraph describing the visual contents.\nkeywords: A comma-separated string that begins with the classification provided (scenery) followed by 4-9 descriptive keywords. After the descriptive keywords, append explicit metadata keywords for capture date, capture time, facing direction, GPS coordinates, and altitude. Use the formats date:YYYY-MM-DD, time:HH:MM:SSZ, direction:<cardinal or degrees>, gps:<latitude,longitude>, altitude:<value>m. When a value is missing, use date:unknown, time:unknown, direction:unknown, gps:unknown, or altitude:unknown.\n\nContext:\nclassification: {classification}\nmetadata: {\"date\":null,\"gps\":null,\"camera\":null,\"heading\":null,\"altitude_meters\":null,\"exposure\":{\"iso\":null,\"aperture\":null,\"shutter\":null}}\npoiAnalysis: {}\nsceneDecision: {}\nNote: If 'sceneDecision... [truncated 383 chars]"
+      },
+      {
+        "type": "image_url",
+        "image_url": {
+          "url": "[Base64 Image Data Omitted]",
+          "detail": "high"
+        }
+      }
+    ]
+  }
+]
+```
+
+**Response:**
+```
+{"caption": "Majestic Waterfall Amidst Pine Forest", "description": "The photo captures a breathtaking waterfall cascading down rugged cliffs, surrounded by dense pine forests. In the background, a bridge spans the river, adding an element of human construction amidst the natural beauty. The cloudy sky enhances the dramatic atmosphere, highlighting the vibrant greens of the trees and the powerful flow of the water.", "keywords": "scenery, waterfall, forest, bridge, river, cliffs, pine trees, nature, date:unknown, time:unknown, direction:unknown, gps:unknown, altitude:unknown"}
+```
+
+
+### Node Finished: generate_metadata
+**Timestamp:** 2025-12-02T12:46:40.635Z
+
+**Output:**
+```json
+{
+  "filename": "3000cf0f-5c72-49b7-9bb0-2a6bff1d8262-IMG_5935.HEIC.processed.jpg",
+  "fileBuffer": "[Buffer: 3324336 bytes]",
+  "imageBase64": "[Base64 Image Data Omitted]",
+  "imageMime": "image/jpeg",
+  "metadata": {
+    "dateTime": "null",
+    "cameraModel": "null"
+  },
+  "gpsString": "null",
+  "device": "null",
+  "modelOverrides": {},
+  "classification": "scenery",
+  "poiAnalysis": "null",
+  "poiCache": "null",
+  "rich_search_context": "null",
+  "finalResult": {
+    "caption": "Majestic Waterfall Amidst Pine Forest",
+    "description": "The photo captures a breathtaking waterfall cascading down rugged cliffs, surrounded by dense pine forests. In the background, a bridge spans the river, adding an element of human construction amidst the natural beauty. The cloudy sky enhances the dramatic atmosphere, highlighting the vibrant greens of the trees and the powerful flow of the water.",
+    "keywords": "scenery, waterfall, forest, bridge, river, cliffs, pine trees, nature, date:unknown, time:unknown, direction:unknown, gps:unknown, altitude:unknown",
+    "classification": "scenery"
+  },
+  "error": "null"
+}
+```
+
+
+## Graph Execution Finished
+**Run ID:** 3f4914b9-1af8-46c1-b729-4d43bafbac79
+**Timestamp:** 2025-12-02T12:46:44.630Z
+
+## Final State
+```json
+{
+  "filename": "3000cf0f-5c72-49b7-9bb0-2a6bff1d8262-IMG_5935.HEIC.processed.jpg",
+  "fileBuffer": "[Buffer: 3324336 bytes]",
+  "imageBase64": "[Base64 Image Data Omitted]",
+  "imageMime": "image/jpeg",
+  "metadata": {
+    "dateTime": "null",
+    "cameraModel": "null"
+  },
+  "gpsString": "null",
+  "device": "null",
+  "modelOverrides": {},
+  "classification": "scenery",
+  "poiAnalysis": "null",
+  "poiCache": "null",
+  "rich_search_context": "null",
+  "finalResult": {
+    "caption": "Majestic Waterfall Amidst Pine Forest",
+    "description": "The photo captures a breathtaking waterfall cascading down rugged cliffs, surrounded by dense pine forests. In the background, a bridge spans the river, adding an element of human construction amidst the natural beauty. The cloudy sky enhances the dramatic atmosphere, highlighting the vibrant greens of the trees and the powerful flow of the water.",
+    "keywords": "scenery, waterfall, forest, bridge, river, cliffs, pine trees, nature, date:unknown, time:unknown, direction:unknown, gps:unknown, altitude:unknown",
+    "classification": "scenery"
+  },
+  "error": "null"
+}
+```
+
+================================================================================
+
