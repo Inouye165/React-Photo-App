@@ -198,7 +198,7 @@ app.set('trust proxy', 1);
 
   // Authentication routes (no auth required)
   const createAuthRouter = require('./routes/auth');
-  app.use('/api/auth', createAuthRouter());
+  app.use('/api/auth', createAuthRouter({ db }));
 
   // E2E test login route (only in non-production)
   if (process.env.NODE_ENV !== 'production') {
