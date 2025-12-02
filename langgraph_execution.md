@@ -9826,3 +9826,9072 @@
 
 ================================================================================
 
+
+
+# Logger Initialized at 2025-12-02T15:45:35.514Z
+
+
+# Logger Initialized at 2025-12-02T15:45:35.516Z
+
+
+# Logger Initialized at 2025-12-02T15:45:36.074Z
+
+
+# Logger Initialized at 2025-12-02T15:45:36.317Z
+
+
+# Logger Initialized at 2025-12-02T15:45:36.418Z
+
+#### Tool Used: Google Reverse Geocode
+**Timestamp:** 2025-12-02T15:45:36.479Z
+
+**Input:**
+```json
+{
+  "lat": 37,
+  "lon": -122,
+  "url": "https://maps.googleapis.com/maps/api/geocode/json?latlng=37,-122&key=****"
+}
+```
+
+**Output:**
+```json
+"Fetching..."
+```
+
+
+
+# Logger Initialized at 2025-12-02T15:45:36.507Z
+
+
+# Logger Initialized at 2025-12-02T15:45:36.512Z
+
+
+# Logger Initialized at 2025-12-02T15:45:36.613Z
+
+
+# Logger Initialized at 2025-12-02T15:45:36.622Z
+
+
+# Logger Initialized at 2025-12-02T15:45:36.625Z
+
+
+# Logger Initialized at 2025-12-02T15:45:36.657Z
+
+
+# Logger Initialized at 2025-12-02T15:45:36.666Z
+
+
+# Logger Initialized at 2025-12-02T15:45:36.712Z
+
+
+# Logger Initialized at 2025-12-02T15:45:36.745Z
+
+
+# Logger Initialized at 2025-12-02T15:45:36.750Z
+
+#### Tool Used: Google Reverse Geocode
+**Timestamp:** 2025-12-02T15:45:36.800Z
+
+**Input:**
+```json
+{
+  "lat": 37,
+  "lon": -122
+}
+```
+
+**Output:**
+```json
+{
+  "address": "null"
+}
+```
+
+
+
+# Logger Initialized at 2025-12-02T15:45:37.577Z
+
+
+# Logger Initialized at 2025-12-02T15:45:37.738Z
+
+
+# Logger Initialized at 2025-12-02T15:45:37.838Z
+
+================================================================================
+# Graph Execution Started
+**Run ID:** 01012165-522b-4d69-9b67-ea0efd7fb358
+**Timestamp:** 2025-12-02T15:45:37.847Z
+
+## Initial State
+```json
+{
+  "runId": "01012165-522b-4d69-9b67-ea0efd7fb358",
+  "filename": "tmp_test.jpg",
+  "fileBuffer": "[Buffer: 19 bytes]",
+  "imageBase64": "[Base64 Image Data Omitted]",
+  "imageMime": "image/jpeg",
+  "metadata": {
+    "dateTime": "null",
+    "cameraModel": "null"
+  },
+  "gpsString": "null",
+  "device": "null",
+  "modelOverrides": {},
+  "classification": "null",
+  "poiAnalysis": "null",
+  "rich_search_context": "null",
+  "finalResult": "null",
+  "error": "null"
+}
+```
+
+
+## Graph Execution Finished
+**Run ID:** 01012165-522b-4d69-9b67-ea0efd7fb358
+**Timestamp:** 2025-12-02T15:45:37.848Z
+
+## Final State
+```json
+{
+  "classification": "scenery_or_general_subject",
+  "finalResult": {
+    "caption": "Test",
+    "description": "desc",
+    "keywords": "a,b"
+  }
+}
+```
+
+================================================================================
+
+
+
+# Logger Initialized at 2025-12-02T15:45:37.942Z
+
+
+# Logger Initialized at 2025-12-02T15:45:37.979Z
+
+
+# Logger Initialized at 2025-12-02T15:45:37.987Z
+
+#### Tool Used: Google Nearby Places (Food)
+**Timestamp:** 2025-12-02T15:45:37.997Z
+
+**Input:**
+```json
+{
+  "lat": 37.123,
+  "lon": -122.456,
+  "radius": 250,
+  "type": "restaurant",
+  "url": "https://maps.googleapis.com/maps/api/place/nearbysearch/json?location=37.123%2C-122.456&radius=250&type=restaurant&key=****"
+}
+```
+
+**Output:**
+```json
+"Fetching..."
+```
+
+
+#### Tool Used: Google Nearby Places (Food)
+**Timestamp:** 2025-12-02T15:45:37.998Z
+
+**Input:**
+```json
+{
+  "lat": 37.123,
+  "lon": -122.456,
+  "radius": 250,
+  "type": "restaurant"
+}
+```
+
+**Output:**
+```json
+[
+  {
+    "place_id": "p2",
+    "name": "Far Bar",
+    "types": [
+      "bar",
+      "restaurant"
+    ],
+    "geometry": {
+      "location": {
+        "lat": 37.125,
+        "lng": -122.456
+      }
+    },
+    "vicinity": "Oakland, CA",
+    "rating": 4.2,
+    "user_ratings_total": 65
+  },
+  {
+    "place_id": "p1",
+    "name": "Near Cafe",
+    "types": [
+      "cafe"
+    ],
+    "geometry": {
+      "location": {
+        "lat": 37.123,
+        "lng": -122.456
+      }
+    },
+    "vicinity": "Oakland, CA",
+    "rating": 4.5,
+    "user_ratings_total": 120
+  }
+]
+```
+
+
+#### Tool Used: Google Nearby Places (Food)
+**Timestamp:** 2025-12-02T15:45:38.000Z
+
+**Input:**
+```json
+{
+  "lat": 37.123,
+  "lon": -122.456,
+  "radius": 250,
+  "type": "cafe",
+  "url": "https://maps.googleapis.com/maps/api/place/nearbysearch/json?location=37.123%2C-122.456&radius=250&type=cafe&key=****"
+}
+```
+
+**Output:**
+```json
+"Fetching..."
+```
+
+
+#### Tool Used: Google Nearby Places (Food)
+**Timestamp:** 2025-12-02T15:45:38.000Z
+
+**Input:**
+```json
+{
+  "lat": 37.123,
+  "lon": -122.456,
+  "radius": 250,
+  "type": "cafe"
+}
+```
+
+**Output:**
+```json
+[
+  {
+    "place_id": "p2",
+    "name": "Far Bar",
+    "types": [
+      "bar",
+      "restaurant"
+    ],
+    "geometry": {
+      "location": {
+        "lat": 37.125,
+        "lng": -122.456
+      }
+    },
+    "vicinity": "Oakland, CA",
+    "rating": 4.2,
+    "user_ratings_total": 65
+  },
+  {
+    "place_id": "p1",
+    "name": "Near Cafe",
+    "types": [
+      "cafe"
+    ],
+    "geometry": {
+      "location": {
+        "lat": 37.123,
+        "lng": -122.456
+      }
+    },
+    "vicinity": "Oakland, CA",
+    "rating": 4.5,
+    "user_ratings_total": 120
+  }
+]
+```
+
+
+#### Tool Used: Google Nearby Places (Food)
+**Timestamp:** 2025-12-02T15:45:38.005Z
+
+**Input:**
+```json
+{
+  "lat": 37.123,
+  "lon": -122.456,
+  "radius": 250,
+  "type": "bakery",
+  "url": "https://maps.googleapis.com/maps/api/place/nearbysearch/json?location=37.123%2C-122.456&radius=250&type=bakery&key=****"
+}
+```
+
+**Output:**
+```json
+"Fetching..."
+```
+
+
+#### Tool Used: Google Nearby Places (Food)
+**Timestamp:** 2025-12-02T15:45:38.007Z
+
+**Input:**
+```json
+{
+  "lat": 37.123,
+  "lon": -122.456,
+  "radius": 250,
+  "type": "bakery"
+}
+```
+
+**Output:**
+```json
+[
+  {
+    "place_id": "p2",
+    "name": "Far Bar",
+    "types": [
+      "bar",
+      "restaurant"
+    ],
+    "geometry": {
+      "location": {
+        "lat": 37.125,
+        "lng": -122.456
+      }
+    },
+    "vicinity": "Oakland, CA",
+    "rating": 4.2,
+    "user_ratings_total": 65
+  },
+  {
+    "place_id": "p1",
+    "name": "Near Cafe",
+    "types": [
+      "cafe"
+    ],
+    "geometry": {
+      "location": {
+        "lat": 37.123,
+        "lng": -122.456
+      }
+    },
+    "vicinity": "Oakland, CA",
+    "rating": 4.5,
+    "user_ratings_total": 120
+  }
+]
+```
+
+
+================================================================================
+# Graph Execution Started
+**Run ID:** 8ca8da2e-8997-49c7-80e7-1ce95fc7ff65
+**Timestamp:** 2025-12-02T15:45:38.008Z
+
+## Initial State
+```json
+{
+  "runId": "8ca8da2e-8997-49c7-80e7-1ce95fc7ff65",
+  "filename": "photo.HEIC.processed.jpg",
+  "fileBuffer": "[Buffer: 18 bytes]",
+  "imageBase64": "[Base64 Image Data Omitted]",
+  "imageMime": "image/jpeg",
+  "metadata": {
+    "dateTime": "null",
+    "cameraModel": "null"
+  },
+  "gpsString": "null",
+  "device": "null",
+  "modelOverrides": {},
+  "classification": "null",
+  "poiAnalysis": "null",
+  "rich_search_context": "null",
+  "finalResult": "null",
+  "error": "null"
+}
+```
+
+
+#### Tool Used: Google Nearby Places (Food)
+**Timestamp:** 2025-12-02T15:45:38.009Z
+
+**Input:**
+```json
+{
+  "lat": 37.123,
+  "lon": -122.456,
+  "radius": 250,
+  "type": "bar",
+  "url": "https://maps.googleapis.com/maps/api/place/nearbysearch/json?location=37.123%2C-122.456&radius=250&type=bar&key=****"
+}
+```
+
+**Output:**
+```json
+"Fetching..."
+```
+
+
+## Graph Execution Finished
+**Run ID:** 8ca8da2e-8997-49c7-80e7-1ce95fc7ff65
+**Timestamp:** 2025-12-02T15:45:38.012Z
+
+## Final State
+```json
+{
+  "finalResult": {
+    "caption": "test",
+    "description": "test",
+    "keywords": "test"
+  },
+  "classification": "null"
+}
+```
+
+================================================================================
+
+
+#### Tool Used: Google Nearby Places (Food)
+**Timestamp:** 2025-12-02T15:45:38.014Z
+
+**Input:**
+```json
+{
+  "lat": 37.123,
+  "lon": -122.456,
+  "radius": 250,
+  "type": "bar"
+}
+```
+
+**Output:**
+```json
+[
+  {
+    "place_id": "p2",
+    "name": "Far Bar",
+    "types": [
+      "bar",
+      "restaurant"
+    ],
+    "geometry": {
+      "location": {
+        "lat": 37.125,
+        "lng": -122.456
+      }
+    },
+    "vicinity": "Oakland, CA",
+    "rating": 4.2,
+    "user_ratings_total": 65
+  },
+  {
+    "place_id": "p1",
+    "name": "Near Cafe",
+    "types": [
+      "cafe"
+    ],
+    "geometry": {
+      "location": {
+        "lat": 37.123,
+        "lng": -122.456
+      }
+    },
+    "vicinity": "Oakland, CA",
+    "rating": 4.5,
+    "user_ratings_total": 120
+  }
+]
+```
+
+
+#### Tool Used: Google Nearby Places (Food)
+**Timestamp:** 2025-12-02T15:45:38.015Z
+
+**Input:**
+```json
+{
+  "lat": 37.123,
+  "lon": -122.456,
+  "radius": 250,
+  "type": "meal_takeaway",
+  "url": "https://maps.googleapis.com/maps/api/place/nearbysearch/json?location=37.123%2C-122.456&radius=250&type=meal_takeaway&key=****"
+}
+```
+
+**Output:**
+```json
+"Fetching..."
+```
+
+
+#### Tool Used: Google Nearby Places (Food)
+**Timestamp:** 2025-12-02T15:45:38.016Z
+
+**Input:**
+```json
+{
+  "lat": 37.123,
+  "lon": -122.456,
+  "radius": 250,
+  "type": "meal_takeaway"
+}
+```
+
+**Output:**
+```json
+[
+  {
+    "place_id": "p2",
+    "name": "Far Bar",
+    "types": [
+      "bar",
+      "restaurant"
+    ],
+    "geometry": {
+      "location": {
+        "lat": 37.125,
+        "lng": -122.456
+      }
+    },
+    "vicinity": "Oakland, CA",
+    "rating": 4.2,
+    "user_ratings_total": 65
+  },
+  {
+    "place_id": "p1",
+    "name": "Near Cafe",
+    "types": [
+      "cafe"
+    ],
+    "geometry": {
+      "location": {
+        "lat": 37.123,
+        "lng": -122.456
+      }
+    },
+    "vicinity": "Oakland, CA",
+    "rating": 4.5,
+    "user_ratings_total": 120
+  }
+]
+```
+
+
+#### Tool Used: Google Nearby Places (Food)
+**Timestamp:** 2025-12-02T15:45:38.021Z
+
+**Input:**
+```json
+{
+  "lat": 37.123,
+  "lon": -122.456,
+  "radius": 250,
+  "type": "meal_delivery",
+  "url": "https://maps.googleapis.com/maps/api/place/nearbysearch/json?location=37.123%2C-122.456&radius=250&type=meal_delivery&key=****"
+}
+```
+
+**Output:**
+```json
+"Fetching..."
+```
+
+
+#### Tool Used: Google Nearby Places (Food)
+**Timestamp:** 2025-12-02T15:45:38.025Z
+
+**Input:**
+```json
+{
+  "lat": 37.123,
+  "lon": -122.456,
+  "radius": 250,
+  "type": "meal_delivery"
+}
+```
+
+**Output:**
+```json
+[
+  {
+    "place_id": "p2",
+    "name": "Far Bar",
+    "types": [
+      "bar",
+      "restaurant"
+    ],
+    "geometry": {
+      "location": {
+        "lat": 37.125,
+        "lng": -122.456
+      }
+    },
+    "vicinity": "Oakland, CA",
+    "rating": 4.2,
+    "user_ratings_total": 65
+  },
+  {
+    "place_id": "p1",
+    "name": "Near Cafe",
+    "types": [
+      "cafe"
+    ],
+    "geometry": {
+      "location": {
+        "lat": 37.123,
+        "lng": -122.456
+      }
+    },
+    "vicinity": "Oakland, CA",
+    "rating": 4.5,
+    "user_ratings_total": 120
+  }
+]
+```
+
+
+#### Tool Used: Google Nearby Places (Food)
+**Timestamp:** 2025-12-02T15:45:38.034Z
+
+**Input:**
+```json
+{
+  "lat": 37.123,
+  "lon": -122.456,
+  "radius": 50,
+  "type": "restaurant",
+  "url": "https://maps.googleapis.com/maps/api/place/nearbysearch/json?location=37.123%2C-122.456&radius=50&type=restaurant&key=****"
+}
+```
+
+**Output:**
+```json
+"Fetching..."
+```
+
+
+#### Tool Used: Google Nearby Places (Food)
+**Timestamp:** 2025-12-02T15:45:38.035Z
+
+**Input:**
+```json
+{
+  "lat": 37.123,
+  "lon": -122.456,
+  "radius": 50,
+  "type": "restaurant"
+}
+```
+
+**Output:**
+```json
+[]
+```
+
+
+#### Tool Used: Google Nearby Places (Food)
+**Timestamp:** 2025-12-02T15:45:38.037Z
+
+**Input:**
+```json
+{
+  "lat": 37.123,
+  "lon": -122.456,
+  "radius": 50,
+  "type": "cafe",
+  "url": "https://maps.googleapis.com/maps/api/place/nearbysearch/json?location=37.123%2C-122.456&radius=50&type=cafe&key=****"
+}
+```
+
+**Output:**
+```json
+"Fetching..."
+```
+
+
+#### Tool Used: Google Nearby Places (Food)
+**Timestamp:** 2025-12-02T15:45:38.037Z
+
+**Input:**
+```json
+{
+  "lat": 37.123,
+  "lon": -122.456,
+  "radius": 50,
+  "type": "cafe"
+}
+```
+
+**Output:**
+```json
+[]
+```
+
+
+#### Tool Used: Google Nearby Places (Food)
+**Timestamp:** 2025-12-02T15:45:38.038Z
+
+**Input:**
+```json
+{
+  "lat": 37.123,
+  "lon": -122.456,
+  "radius": 50,
+  "type": "bakery",
+  "url": "https://maps.googleapis.com/maps/api/place/nearbysearch/json?location=37.123%2C-122.456&radius=50&type=bakery&key=****"
+}
+```
+
+**Output:**
+```json
+"Fetching..."
+```
+
+
+#### Tool Used: Google Nearby Places (Food)
+**Timestamp:** 2025-12-02T15:45:38.038Z
+
+**Input:**
+```json
+{
+  "lat": 37.123,
+  "lon": -122.456,
+  "radius": 50,
+  "type": "bakery"
+}
+```
+
+**Output:**
+```json
+[]
+```
+
+
+#### Tool Used: Google Nearby Places (Food)
+**Timestamp:** 2025-12-02T15:45:38.039Z
+
+**Input:**
+```json
+{
+  "lat": 37.123,
+  "lon": -122.456,
+  "radius": 50,
+  "type": "bar",
+  "url": "https://maps.googleapis.com/maps/api/place/nearbysearch/json?location=37.123%2C-122.456&radius=50&type=bar&key=****"
+}
+```
+
+**Output:**
+```json
+"Fetching..."
+```
+
+
+#### Tool Used: Google Nearby Places (Food)
+**Timestamp:** 2025-12-02T15:45:38.039Z
+
+**Input:**
+```json
+{
+  "lat": 37.123,
+  "lon": -122.456,
+  "radius": 50,
+  "type": "bar"
+}
+```
+
+**Output:**
+```json
+[]
+```
+
+
+#### Tool Used: Google Nearby Places (Food)
+**Timestamp:** 2025-12-02T15:45:38.040Z
+
+**Input:**
+```json
+{
+  "lat": 37.123,
+  "lon": -122.456,
+  "radius": 50,
+  "type": "meal_takeaway",
+  "url": "https://maps.googleapis.com/maps/api/place/nearbysearch/json?location=37.123%2C-122.456&radius=50&type=meal_takeaway&key=****"
+}
+```
+
+**Output:**
+```json
+"Fetching..."
+```
+
+
+#### Tool Used: Google Nearby Places (Food)
+**Timestamp:** 2025-12-02T15:45:38.041Z
+
+**Input:**
+```json
+{
+  "lat": 37.123,
+  "lon": -122.456,
+  "radius": 50,
+  "type": "meal_takeaway"
+}
+```
+
+**Output:**
+```json
+[]
+```
+
+
+#### Tool Used: Google Nearby Places (Food)
+**Timestamp:** 2025-12-02T15:45:38.041Z
+
+**Input:**
+```json
+{
+  "lat": 37.123,
+  "lon": -122.456,
+  "radius": 50,
+  "type": "meal_delivery",
+  "url": "https://maps.googleapis.com/maps/api/place/nearbysearch/json?location=37.123%2C-122.456&radius=50&type=meal_delivery&key=****"
+}
+```
+
+**Output:**
+```json
+"Fetching..."
+```
+
+
+#### Tool Used: Google Nearby Places (Food)
+**Timestamp:** 2025-12-02T15:45:38.041Z
+
+**Input:**
+```json
+{
+  "lat": 37.123,
+  "lon": -122.456,
+  "radius": 50,
+  "type": "meal_delivery"
+}
+```
+
+**Output:**
+```json
+[]
+```
+
+
+#### Tool Used: Google Nearby Places (Food)
+**Timestamp:** 2025-12-02T15:45:38.042Z
+
+**Input:**
+```json
+{
+  "lat": 37.123,
+  "lon": -122.456,
+  "radius": 100,
+  "type": "restaurant",
+  "url": "https://maps.googleapis.com/maps/api/place/nearbysearch/json?location=37.123%2C-122.456&radius=100&type=restaurant&key=****"
+}
+```
+
+**Output:**
+```json
+"Fetching..."
+```
+
+
+#### Tool Used: Google Nearby Places (Food)
+**Timestamp:** 2025-12-02T15:45:38.042Z
+
+**Input:**
+```json
+{
+  "lat": 37.123,
+  "lon": -122.456,
+  "radius": 100,
+  "type": "restaurant"
+}
+```
+
+**Output:**
+```json
+[]
+```
+
+
+#### Tool Used: Google Nearby Places (Food)
+**Timestamp:** 2025-12-02T15:45:38.043Z
+
+**Input:**
+```json
+{
+  "lat": 37.123,
+  "lon": -122.456,
+  "radius": 100,
+  "type": "cafe",
+  "url": "https://maps.googleapis.com/maps/api/place/nearbysearch/json?location=37.123%2C-122.456&radius=100&type=cafe&key=****"
+}
+```
+
+**Output:**
+```json
+"Fetching..."
+```
+
+
+#### Tool Used: Google Nearby Places (Food)
+**Timestamp:** 2025-12-02T15:45:38.047Z
+
+**Input:**
+```json
+{
+  "lat": 37.123,
+  "lon": -122.456,
+  "radius": 100,
+  "type": "cafe"
+}
+```
+
+**Output:**
+```json
+[]
+```
+
+
+#### Tool Used: Google Nearby Places (Food)
+**Timestamp:** 2025-12-02T15:45:38.050Z
+
+**Input:**
+```json
+{
+  "lat": 37.123,
+  "lon": -122.456,
+  "radius": 100,
+  "type": "bakery",
+  "url": "https://maps.googleapis.com/maps/api/place/nearbysearch/json?location=37.123%2C-122.456&radius=100&type=bakery&key=****"
+}
+```
+
+**Output:**
+```json
+"Fetching..."
+```
+
+
+#### Tool Used: Google Nearby Places (Food)
+**Timestamp:** 2025-12-02T15:45:38.050Z
+
+**Input:**
+```json
+{
+  "lat": 37.123,
+  "lon": -122.456,
+  "radius": 100,
+  "type": "bakery"
+}
+```
+
+**Output:**
+```json
+[]
+```
+
+
+#### Tool Used: Google Nearby Places (Food)
+**Timestamp:** 2025-12-02T15:45:38.051Z
+
+**Input:**
+```json
+{
+  "lat": 37.123,
+  "lon": -122.456,
+  "radius": 100,
+  "type": "bar",
+  "url": "https://maps.googleapis.com/maps/api/place/nearbysearch/json?location=37.123%2C-122.456&radius=100&type=bar&key=****"
+}
+```
+
+**Output:**
+```json
+"Fetching..."
+```
+
+
+#### Tool Used: Google Nearby Places (Food)
+**Timestamp:** 2025-12-02T15:45:38.051Z
+
+**Input:**
+```json
+{
+  "lat": 37.123,
+  "lon": -122.456,
+  "radius": 100,
+  "type": "bar"
+}
+```
+
+**Output:**
+```json
+[]
+```
+
+
+#### Tool Used: Google Nearby Places (Food)
+**Timestamp:** 2025-12-02T15:45:38.052Z
+
+**Input:**
+```json
+{
+  "lat": 37.123,
+  "lon": -122.456,
+  "radius": 100,
+  "type": "meal_takeaway",
+  "url": "https://maps.googleapis.com/maps/api/place/nearbysearch/json?location=37.123%2C-122.456&radius=100&type=meal_takeaway&key=****"
+}
+```
+
+**Output:**
+```json
+"Fetching..."
+```
+
+
+#### Tool Used: Google Nearby Places (Food)
+**Timestamp:** 2025-12-02T15:45:38.054Z
+
+**Input:**
+```json
+{
+  "lat": 37.123,
+  "lon": -122.456,
+  "radius": 100,
+  "type": "meal_takeaway"
+}
+```
+
+**Output:**
+```json
+[]
+```
+
+
+#### Tool Used: Google Nearby Places (Food)
+**Timestamp:** 2025-12-02T15:45:38.055Z
+
+**Input:**
+```json
+{
+  "lat": 37.123,
+  "lon": -122.456,
+  "radius": 100,
+  "type": "meal_delivery",
+  "url": "https://maps.googleapis.com/maps/api/place/nearbysearch/json?location=37.123%2C-122.456&radius=100&type=meal_delivery&key=****"
+}
+```
+
+**Output:**
+```json
+"Fetching..."
+```
+
+
+#### Tool Used: Google Nearby Places (Food)
+**Timestamp:** 2025-12-02T15:45:38.056Z
+
+**Input:**
+```json
+{
+  "lat": 37.123,
+  "lon": -122.456,
+  "radius": 100,
+  "type": "meal_delivery"
+}
+```
+
+**Output:**
+```json
+[]
+```
+
+
+#### Tool Used: Google Nearby Places (Food)
+**Timestamp:** 2025-12-02T15:45:38.057Z
+
+**Input:**
+```json
+{
+  "lat": 37.123,
+  "lon": -122.456,
+  "radius": 200,
+  "type": "restaurant",
+  "url": "https://maps.googleapis.com/maps/api/place/nearbysearch/json?location=37.123%2C-122.456&radius=200&type=restaurant&key=****"
+}
+```
+
+**Output:**
+```json
+"Fetching..."
+```
+
+
+#### Tool Used: Google Nearby Places (Food)
+**Timestamp:** 2025-12-02T15:45:38.059Z
+
+**Input:**
+```json
+{
+  "lat": 37.123,
+  "lon": -122.456,
+  "radius": 200,
+  "type": "restaurant"
+}
+```
+
+**Output:**
+```json
+[]
+```
+
+
+#### Tool Used: Google Nearby Places (Food)
+**Timestamp:** 2025-12-02T15:45:38.059Z
+
+**Input:**
+```json
+{
+  "lat": 37.123,
+  "lon": -122.456,
+  "radius": 200,
+  "type": "cafe",
+  "url": "https://maps.googleapis.com/maps/api/place/nearbysearch/json?location=37.123%2C-122.456&radius=200&type=cafe&key=****"
+}
+```
+
+**Output:**
+```json
+"Fetching..."
+```
+
+
+#### Tool Used: Google Nearby Places (Food)
+**Timestamp:** 2025-12-02T15:45:38.060Z
+
+**Input:**
+```json
+{
+  "lat": 37.123,
+  "lon": -122.456,
+  "radius": 200,
+  "type": "cafe"
+}
+```
+
+**Output:**
+```json
+[]
+```
+
+
+#### Tool Used: Google Nearby Places (Food)
+**Timestamp:** 2025-12-02T15:45:38.062Z
+
+**Input:**
+```json
+{
+  "lat": 37.123,
+  "lon": -122.456,
+  "radius": 200,
+  "type": "bakery",
+  "url": "https://maps.googleapis.com/maps/api/place/nearbysearch/json?location=37.123%2C-122.456&radius=200&type=bakery&key=****"
+}
+```
+
+**Output:**
+```json
+"Fetching..."
+```
+
+
+#### Tool Used: Google Nearby Places (Food)
+**Timestamp:** 2025-12-02T15:45:38.063Z
+
+**Input:**
+```json
+{
+  "lat": 37.123,
+  "lon": -122.456,
+  "radius": 200,
+  "type": "bakery"
+}
+```
+
+**Output:**
+```json
+[]
+```
+
+
+#### Tool Used: Google Nearby Places (Food)
+**Timestamp:** 2025-12-02T15:45:38.063Z
+
+**Input:**
+```json
+{
+  "lat": 37.123,
+  "lon": -122.456,
+  "radius": 200,
+  "type": "bar",
+  "url": "https://maps.googleapis.com/maps/api/place/nearbysearch/json?location=37.123%2C-122.456&radius=200&type=bar&key=****"
+}
+```
+
+**Output:**
+```json
+"Fetching..."
+```
+
+
+#### Tool Used: Google Nearby Places (Food)
+**Timestamp:** 2025-12-02T15:45:38.064Z
+
+**Input:**
+```json
+{
+  "lat": 37.123,
+  "lon": -122.456,
+  "radius": 200,
+  "type": "bar"
+}
+```
+
+**Output:**
+```json
+[]
+```
+
+
+#### Tool Used: Google Nearby Places (Food)
+**Timestamp:** 2025-12-02T15:45:38.066Z
+
+**Input:**
+```json
+{
+  "lat": 37.123,
+  "lon": -122.456,
+  "radius": 200,
+  "type": "meal_takeaway",
+  "url": "https://maps.googleapis.com/maps/api/place/nearbysearch/json?location=37.123%2C-122.456&radius=200&type=meal_takeaway&key=****"
+}
+```
+
+**Output:**
+```json
+"Fetching..."
+```
+
+
+#### Tool Used: Google Nearby Places (Food)
+**Timestamp:** 2025-12-02T15:45:38.068Z
+
+**Input:**
+```json
+{
+  "lat": 37.123,
+  "lon": -122.456,
+  "radius": 200,
+  "type": "meal_takeaway"
+}
+```
+
+**Output:**
+```json
+[]
+```
+
+
+#### Tool Used: Google Nearby Places (Food)
+**Timestamp:** 2025-12-02T15:45:38.069Z
+
+**Input:**
+```json
+{
+  "lat": 37.123,
+  "lon": -122.456,
+  "radius": 200,
+  "type": "meal_delivery",
+  "url": "https://maps.googleapis.com/maps/api/place/nearbysearch/json?location=37.123%2C-122.456&radius=200&type=meal_delivery&key=****"
+}
+```
+
+**Output:**
+```json
+"Fetching..."
+```
+
+
+#### Tool Used: Google Nearby Places (Food)
+**Timestamp:** 2025-12-02T15:45:38.071Z
+
+**Input:**
+```json
+{
+  "lat": 37.123,
+  "lon": -122.456,
+  "radius": 200,
+  "type": "meal_delivery"
+}
+```
+
+**Output:**
+```json
+[]
+```
+
+
+#### Tool Used: Google Nearby Places (Food)
+**Timestamp:** 2025-12-02T15:45:38.073Z
+
+**Input:**
+```json
+{
+  "lat": 37.123,
+  "lon": -122.456,
+  "radius": 1000,
+  "type": "restaurant",
+  "url": "https://maps.googleapis.com/maps/api/place/nearbysearch/json?location=37.123%2C-122.456&radius=1000&type=restaurant&key=****"
+}
+```
+
+**Output:**
+```json
+"Fetching..."
+```
+
+
+#### Tool Used: Google Nearby Places (Food)
+**Timestamp:** 2025-12-02T15:45:38.074Z
+
+**Input:**
+```json
+{
+  "lat": 37.123,
+  "lon": -122.456,
+  "radius": 1000,
+  "type": "restaurant"
+}
+```
+
+**Output:**
+```json
+[
+  {
+    "place_id": "p_large",
+    "name": "Far Restaurant",
+    "types": [
+      "restaurant"
+    ],
+    "geometry": {
+      "location": {
+        "lat": 1,
+        "lng": 2
+      }
+    }
+  }
+]
+```
+
+
+#### Tool Used: Google Nearby Places (Food)
+**Timestamp:** 2025-12-02T15:45:38.077Z
+
+**Input:**
+```json
+{
+  "lat": 37.123,
+  "lon": -122.456,
+  "radius": 1000,
+  "type": "cafe",
+  "url": "https://maps.googleapis.com/maps/api/place/nearbysearch/json?location=37.123%2C-122.456&radius=1000&type=cafe&key=****"
+}
+```
+
+**Output:**
+```json
+"Fetching..."
+```
+
+
+#### Tool Used: Google Nearby Places (Food)
+**Timestamp:** 2025-12-02T15:45:38.079Z
+
+**Input:**
+```json
+{
+  "lat": 37.123,
+  "lon": -122.456,
+  "radius": 1000,
+  "type": "cafe"
+}
+```
+
+**Output:**
+```json
+[
+  {
+    "place_id": "p_large",
+    "name": "Far Restaurant",
+    "types": [
+      "restaurant"
+    ],
+    "geometry": {
+      "location": {
+        "lat": 1,
+        "lng": 2
+      }
+    }
+  }
+]
+```
+
+
+#### Tool Used: Google Nearby Places (Food)
+**Timestamp:** 2025-12-02T15:45:38.082Z
+
+**Input:**
+```json
+{
+  "lat": 37.123,
+  "lon": -122.456,
+  "radius": 1000,
+  "type": "bakery",
+  "url": "https://maps.googleapis.com/maps/api/place/nearbysearch/json?location=37.123%2C-122.456&radius=1000&type=bakery&key=****"
+}
+```
+
+**Output:**
+```json
+"Fetching..."
+```
+
+
+#### Tool Used: Google Nearby Places (Food)
+**Timestamp:** 2025-12-02T15:45:38.082Z
+
+**Input:**
+```json
+{
+  "lat": 37.123,
+  "lon": -122.456,
+  "radius": 1000,
+  "type": "bakery"
+}
+```
+
+**Output:**
+```json
+[
+  {
+    "place_id": "p_large",
+    "name": "Far Restaurant",
+    "types": [
+      "restaurant"
+    ],
+    "geometry": {
+      "location": {
+        "lat": 1,
+        "lng": 2
+      }
+    }
+  }
+]
+```
+
+
+================================================================================
+# Graph Execution Started
+**Run ID:** 3fb53597-129a-43b3-823b-e9506fa6c1d9
+**Timestamp:** 2025-12-02T15:45:38.082Z
+
+## Initial State
+```json
+{
+  "runId": "3fb53597-129a-43b3-823b-e9506fa6c1d9",
+  "filename": "tmp_test.heic",
+  "fileBuffer": "[Buffer: 19 bytes]",
+  "imageBase64": "[Base64 Image Data Omitted]",
+  "imageMime": "image/jpeg",
+  "metadata": {
+    "dateTime": "null",
+    "cameraModel": "null"
+  },
+  "gpsString": "null",
+  "device": "null",
+  "modelOverrides": {},
+  "classification": "null",
+  "poiAnalysis": "null",
+  "rich_search_context": "null",
+  "finalResult": "null",
+  "error": "null"
+}
+```
+
+
+#### Tool Used: Google Nearby Places (Food)
+**Timestamp:** 2025-12-02T15:45:38.083Z
+
+**Input:**
+```json
+{
+  "lat": 37.123,
+  "lon": -122.456,
+  "radius": 1000,
+  "type": "bar",
+  "url": "https://maps.googleapis.com/maps/api/place/nearbysearch/json?location=37.123%2C-122.456&radius=1000&type=bar&key=****"
+}
+```
+
+**Output:**
+```json
+"Fetching..."
+```
+
+
+#### Tool Used: Google Nearby Places (Food)
+**Timestamp:** 2025-12-02T15:45:38.083Z
+
+**Input:**
+```json
+{
+  "lat": 37.123,
+  "lon": -122.456,
+  "radius": 1000,
+  "type": "bar"
+}
+```
+
+**Output:**
+```json
+[
+  {
+    "place_id": "p_large",
+    "name": "Far Restaurant",
+    "types": [
+      "restaurant"
+    ],
+    "geometry": {
+      "location": {
+        "lat": 1,
+        "lng": 2
+      }
+    }
+  }
+]
+```
+
+
+## Graph Execution Finished
+**Run ID:** 3fb53597-129a-43b3-823b-e9506fa6c1d9
+**Timestamp:** 2025-12-02T15:45:38.083Z
+
+## Final State
+```json
+{
+  "classification": "scenery_or_general_subject",
+  "finalResult": {
+    "caption": "HEIC Test",
+    "description": "desc heic",
+    "keywords": "x,y"
+  }
+}
+```
+
+================================================================================
+
+
+#### Tool Used: Google Nearby Places (Food)
+**Timestamp:** 2025-12-02T15:45:38.083Z
+
+**Input:**
+```json
+{
+  "lat": 37.123,
+  "lon": -122.456,
+  "radius": 1000,
+  "type": "meal_takeaway",
+  "url": "https://maps.googleapis.com/maps/api/place/nearbysearch/json?location=37.123%2C-122.456&radius=1000&type=meal_takeaway&key=****"
+}
+```
+
+**Output:**
+```json
+"Fetching..."
+```
+
+
+#### Tool Used: Google Nearby Places (Food)
+**Timestamp:** 2025-12-02T15:45:38.084Z
+
+**Input:**
+```json
+{
+  "lat": 37.123,
+  "lon": -122.456,
+  "radius": 1000,
+  "type": "meal_takeaway"
+}
+```
+
+**Output:**
+```json
+[
+  {
+    "place_id": "p_large",
+    "name": "Far Restaurant",
+    "types": [
+      "restaurant"
+    ],
+    "geometry": {
+      "location": {
+        "lat": 1,
+        "lng": 2
+      }
+    }
+  }
+]
+```
+
+
+#### Tool Used: Google Nearby Places (Food)
+**Timestamp:** 2025-12-02T15:45:38.086Z
+
+**Input:**
+```json
+{
+  "lat": 37.123,
+  "lon": -122.456,
+  "radius": 1000,
+  "type": "meal_delivery",
+  "url": "https://maps.googleapis.com/maps/api/place/nearbysearch/json?location=37.123%2C-122.456&radius=1000&type=meal_delivery&key=****"
+}
+```
+
+**Output:**
+```json
+"Fetching..."
+```
+
+
+#### Tool Used: Google Nearby Places (Food)
+**Timestamp:** 2025-12-02T15:45:38.087Z
+
+**Input:**
+```json
+{
+  "lat": 37.123,
+  "lon": -122.456,
+  "radius": 1000,
+  "type": "meal_delivery"
+}
+```
+
+**Output:**
+```json
+[
+  {
+    "place_id": "p_large",
+    "name": "Far Restaurant",
+    "types": [
+      "restaurant"
+    ],
+    "geometry": {
+      "location": {
+        "lat": 1,
+        "lng": 2
+      }
+    }
+  }
+]
+```
+
+
+
+# Logger Initialized at 2025-12-02T15:45:38.115Z
+
+#### Tool Used: Google Nearby Places
+**Timestamp:** 2025-12-02T15:45:38.129Z
+
+**Input:**
+```json
+{
+  "lat": 37.123,
+  "lon": -122.456,
+  "radius": 61,
+  "url": "https://maps.googleapis.com/maps/api/place/nearbysearch/json?location=37.123%2C-122.456&radius=61&type=park%7Cmuseum%7Ctourist_attraction%7Cnatural_feature&key=****"
+}
+```
+
+**Output:**
+```json
+"Fetching..."
+```
+
+
+#### Tool Used: Google Nearby Places
+**Timestamp:** 2025-12-02T15:45:38.130Z
+
+**Input:**
+```json
+{
+  "lat": 37.123,
+  "lon": -122.456,
+  "radius": 61
+}
+```
+
+**Output:**
+```json
+[
+  {
+    "id": "abc123",
+    "name": "Contra Costa Canal Trail",
+    "category": "trail",
+    "lat": 37.123,
+    "lon": -122.456,
+    "distanceMeters": 0,
+    "address": "Walnut Creek, CA",
+    "source": "google",
+    "confidence": "high"
+  }
+]
+```
+
+
+#### Tool Used: Google Nearby Places
+**Timestamp:** 2025-12-02T15:45:38.134Z
+
+**Input:**
+```json
+{
+  "lat": 37.124,
+  "lon": -122.457,
+  "radius": 61,
+  "url": "https://maps.googleapis.com/maps/api/place/nearbysearch/json?location=37.124%2C-122.457&radius=61&type=park%7Cmuseum%7Ctourist_attraction%7Cnatural_feature&key=****"
+}
+```
+
+**Output:**
+```json
+"Fetching..."
+```
+
+
+#### Tool Used: Google Nearby Places
+**Timestamp:** 2025-12-02T15:45:38.135Z
+
+**Input:**
+```json
+{
+  "lat": 37.124,
+  "lon": -122.457,
+  "radius": 61
+}
+```
+
+**Output:**
+```json
+[
+  {
+    "id": "def456",
+    "name": "Lime Ridge Open Space",
+    "category": "park",
+    "lat": 37.124,
+    "lon": -122.457,
+    "distanceMeters": 0,
+    "address": "Walnut Creek, CA",
+    "source": "google",
+    "confidence": "high"
+  }
+]
+```
+
+
+
+# Logger Initialized at 2025-12-02T15:47:08.135Z
+
+
+# Logger Initialized at 2025-12-02T15:51:33.799Z
+
+
+# Logger Initialized at 2025-12-02T16:00:08.310Z
+
+
+# Logger Initialized at 2025-12-02T16:26:28.050Z
+
+
+# Logger Initialized at 2025-12-02T16:26:44.659Z
+
+
+# Logger Initialized at 2025-12-02T17:25:46.231Z
+
+
+# Logger Initialized at 2025-12-02T17:27:20.665Z
+
+
+# Logger Initialized at 2025-12-02T18:23:29.755Z
+
+
+# Logger Initialized at 2025-12-02T18:25:56.391Z
+
+
+# Logger Initialized at 2025-12-02T18:26:03.766Z
+
+
+# Logger Initialized at 2025-12-02T18:52:17.161Z
+
+
+# Logger Initialized at 2025-12-02T18:55:38.176Z
+
+
+# Logger Initialized at 2025-12-02T18:55:55.439Z
+
+
+# Logger Initialized at 2025-12-02T19:02:02.486Z
+
+
+# Logger Initialized at 2025-12-02T19:02:02.553Z
+
+
+# Logger Initialized at 2025-12-02T19:02:03.504Z
+
+
+# Logger Initialized at 2025-12-02T19:02:03.582Z
+
+#### Tool Used: Google Reverse Geocode
+**Timestamp:** 2025-12-02T19:02:03.683Z
+
+**Input:**
+```json
+{
+  "lat": 37,
+  "lon": -122,
+  "url": "https://maps.googleapis.com/maps/api/geocode/json?latlng=37,-122&key=****"
+}
+```
+
+**Output:**
+```json
+"Fetching..."
+```
+
+
+#### Tool Used: Google Reverse Geocode
+**Timestamp:** 2025-12-02T19:02:03.885Z
+
+**Input:**
+```json
+{
+  "lat": 37,
+  "lon": -122
+}
+```
+
+**Output:**
+```json
+{
+  "address": "null"
+}
+```
+
+
+
+# Logger Initialized at 2025-12-02T19:02:03.978Z
+
+
+# Logger Initialized at 2025-12-02T19:02:04.074Z
+
+
+# Logger Initialized at 2025-12-02T19:02:04.099Z
+
+
+# Logger Initialized at 2025-12-02T19:02:04.136Z
+
+
+# Logger Initialized at 2025-12-02T19:02:04.209Z
+
+
+# Logger Initialized at 2025-12-02T19:02:04.375Z
+
+
+# Logger Initialized at 2025-12-02T19:02:04.375Z
+
+
+# Logger Initialized at 2025-12-02T19:02:04.400Z
+
+
+# Logger Initialized at 2025-12-02T19:02:04.433Z
+
+
+# Logger Initialized at 2025-12-02T19:02:04.459Z
+
+
+# Logger Initialized at 2025-12-02T19:02:04.463Z
+
+
+# Logger Initialized at 2025-12-02T19:02:04.481Z
+
+
+# Logger Initialized at 2025-12-02T19:02:04.759Z
+
+================================================================================
+# Graph Execution Started
+**Run ID:** 8f4d5f75-808c-486e-b139-57ad31ef6e24
+**Timestamp:** 2025-12-02T19:02:05.011Z
+
+## Initial State
+```json
+{
+  "runId": "8f4d5f75-808c-486e-b139-57ad31ef6e24",
+  "filename": "tmp_test.jpg",
+  "fileBuffer": "[Buffer: 19 bytes]",
+  "imageBase64": "[Base64 Image Data Omitted]",
+  "imageMime": "image/jpeg",
+  "metadata": {
+    "dateTime": "null",
+    "cameraModel": "null"
+  },
+  "gpsString": "null",
+  "device": "null",
+  "modelOverrides": {},
+  "classification": "null",
+  "poiAnalysis": "null",
+  "rich_search_context": "null",
+  "finalResult": "null",
+  "error": "null"
+}
+```
+
+
+## Graph Execution Finished
+**Run ID:** 8f4d5f75-808c-486e-b139-57ad31ef6e24
+**Timestamp:** 2025-12-02T19:02:05.013Z
+
+## Final State
+```json
+{
+  "classification": "scenery_or_general_subject",
+  "finalResult": {
+    "caption": "Test",
+    "description": "desc",
+    "keywords": "a,b"
+  }
+}
+```
+
+================================================================================
+
+
+
+# Logger Initialized at 2025-12-02T19:02:05.713Z
+
+
+# Logger Initialized at 2025-12-02T19:02:05.732Z
+
+#### Tool Used: Google Nearby Places (Food)
+**Timestamp:** 2025-12-02T19:02:05.768Z
+
+**Input:**
+```json
+{
+  "lat": 37.123,
+  "lon": -122.456,
+  "radius": 250,
+  "type": "restaurant",
+  "url": "https://maps.googleapis.com/maps/api/place/nearbysearch/json?location=37.123%2C-122.456&radius=250&type=restaurant&key=****"
+}
+```
+
+**Output:**
+```json
+"Fetching..."
+```
+
+
+#### Tool Used: Google Nearby Places (Food)
+**Timestamp:** 2025-12-02T19:02:05.769Z
+
+**Input:**
+```json
+{
+  "lat": 37.123,
+  "lon": -122.456,
+  "radius": 250,
+  "type": "restaurant"
+}
+```
+
+**Output:**
+```json
+[
+  {
+    "place_id": "p2",
+    "name": "Far Bar",
+    "types": [
+      "bar",
+      "restaurant"
+    ],
+    "geometry": {
+      "location": {
+        "lat": 37.125,
+        "lng": -122.456
+      }
+    },
+    "vicinity": "Oakland, CA",
+    "rating": 4.2,
+    "user_ratings_total": 65
+  },
+  {
+    "place_id": "p1",
+    "name": "Near Cafe",
+    "types": [
+      "cafe"
+    ],
+    "geometry": {
+      "location": {
+        "lat": 37.123,
+        "lng": -122.456
+      }
+    },
+    "vicinity": "Oakland, CA",
+    "rating": 4.5,
+    "user_ratings_total": 120
+  }
+]
+```
+
+
+#### Tool Used: Google Nearby Places (Food)
+**Timestamp:** 2025-12-02T19:02:05.769Z
+
+**Input:**
+```json
+{
+  "lat": 37.123,
+  "lon": -122.456,
+  "radius": 250,
+  "type": "cafe",
+  "url": "https://maps.googleapis.com/maps/api/place/nearbysearch/json?location=37.123%2C-122.456&radius=250&type=cafe&key=****"
+}
+```
+
+**Output:**
+```json
+"Fetching..."
+```
+
+
+#### Tool Used: Google Nearby Places (Food)
+**Timestamp:** 2025-12-02T19:02:05.770Z
+
+**Input:**
+```json
+{
+  "lat": 37.123,
+  "lon": -122.456,
+  "radius": 250,
+  "type": "cafe"
+}
+```
+
+**Output:**
+```json
+[
+  {
+    "place_id": "p2",
+    "name": "Far Bar",
+    "types": [
+      "bar",
+      "restaurant"
+    ],
+    "geometry": {
+      "location": {
+        "lat": 37.125,
+        "lng": -122.456
+      }
+    },
+    "vicinity": "Oakland, CA",
+    "rating": 4.2,
+    "user_ratings_total": 65
+  },
+  {
+    "place_id": "p1",
+    "name": "Near Cafe",
+    "types": [
+      "cafe"
+    ],
+    "geometry": {
+      "location": {
+        "lat": 37.123,
+        "lng": -122.456
+      }
+    },
+    "vicinity": "Oakland, CA",
+    "rating": 4.5,
+    "user_ratings_total": 120
+  }
+]
+```
+
+
+#### Tool Used: Google Nearby Places (Food)
+**Timestamp:** 2025-12-02T19:02:05.772Z
+
+**Input:**
+```json
+{
+  "lat": 37.123,
+  "lon": -122.456,
+  "radius": 250,
+  "type": "bakery",
+  "url": "https://maps.googleapis.com/maps/api/place/nearbysearch/json?location=37.123%2C-122.456&radius=250&type=bakery&key=****"
+}
+```
+
+**Output:**
+```json
+"Fetching..."
+```
+
+
+#### Tool Used: Google Nearby Places (Food)
+**Timestamp:** 2025-12-02T19:02:05.772Z
+
+**Input:**
+```json
+{
+  "lat": 37.123,
+  "lon": -122.456,
+  "radius": 250,
+  "type": "bakery"
+}
+```
+
+**Output:**
+```json
+[
+  {
+    "place_id": "p2",
+    "name": "Far Bar",
+    "types": [
+      "bar",
+      "restaurant"
+    ],
+    "geometry": {
+      "location": {
+        "lat": 37.125,
+        "lng": -122.456
+      }
+    },
+    "vicinity": "Oakland, CA",
+    "rating": 4.2,
+    "user_ratings_total": 65
+  },
+  {
+    "place_id": "p1",
+    "name": "Near Cafe",
+    "types": [
+      "cafe"
+    ],
+    "geometry": {
+      "location": {
+        "lat": 37.123,
+        "lng": -122.456
+      }
+    },
+    "vicinity": "Oakland, CA",
+    "rating": 4.5,
+    "user_ratings_total": 120
+  }
+]
+```
+
+
+#### Tool Used: Google Nearby Places (Food)
+**Timestamp:** 2025-12-02T19:02:05.773Z
+
+**Input:**
+```json
+{
+  "lat": 37.123,
+  "lon": -122.456,
+  "radius": 250,
+  "type": "bar",
+  "url": "https://maps.googleapis.com/maps/api/place/nearbysearch/json?location=37.123%2C-122.456&radius=250&type=bar&key=****"
+}
+```
+
+**Output:**
+```json
+"Fetching..."
+```
+
+
+#### Tool Used: Google Nearby Places (Food)
+**Timestamp:** 2025-12-02T19:02:05.774Z
+
+**Input:**
+```json
+{
+  "lat": 37.123,
+  "lon": -122.456,
+  "radius": 250,
+  "type": "bar"
+}
+```
+
+**Output:**
+```json
+[
+  {
+    "place_id": "p2",
+    "name": "Far Bar",
+    "types": [
+      "bar",
+      "restaurant"
+    ],
+    "geometry": {
+      "location": {
+        "lat": 37.125,
+        "lng": -122.456
+      }
+    },
+    "vicinity": "Oakland, CA",
+    "rating": 4.2,
+    "user_ratings_total": 65
+  },
+  {
+    "place_id": "p1",
+    "name": "Near Cafe",
+    "types": [
+      "cafe"
+    ],
+    "geometry": {
+      "location": {
+        "lat": 37.123,
+        "lng": -122.456
+      }
+    },
+    "vicinity": "Oakland, CA",
+    "rating": 4.5,
+    "user_ratings_total": 120
+  }
+]
+```
+
+
+#### Tool Used: Google Nearby Places (Food)
+**Timestamp:** 2025-12-02T19:02:05.778Z
+
+**Input:**
+```json
+{
+  "lat": 37.123,
+  "lon": -122.456,
+  "radius": 250,
+  "type": "meal_takeaway",
+  "url": "https://maps.googleapis.com/maps/api/place/nearbysearch/json?location=37.123%2C-122.456&radius=250&type=meal_takeaway&key=****"
+}
+```
+
+**Output:**
+```json
+"Fetching..."
+```
+
+
+#### Tool Used: Google Nearby Places (Food)
+**Timestamp:** 2025-12-02T19:02:05.779Z
+
+**Input:**
+```json
+{
+  "lat": 37.123,
+  "lon": -122.456,
+  "radius": 250,
+  "type": "meal_takeaway"
+}
+```
+
+**Output:**
+```json
+[
+  {
+    "place_id": "p2",
+    "name": "Far Bar",
+    "types": [
+      "bar",
+      "restaurant"
+    ],
+    "geometry": {
+      "location": {
+        "lat": 37.125,
+        "lng": -122.456
+      }
+    },
+    "vicinity": "Oakland, CA",
+    "rating": 4.2,
+    "user_ratings_total": 65
+  },
+  {
+    "place_id": "p1",
+    "name": "Near Cafe",
+    "types": [
+      "cafe"
+    ],
+    "geometry": {
+      "location": {
+        "lat": 37.123,
+        "lng": -122.456
+      }
+    },
+    "vicinity": "Oakland, CA",
+    "rating": 4.5,
+    "user_ratings_total": 120
+  }
+]
+```
+
+
+#### Tool Used: Google Nearby Places (Food)
+**Timestamp:** 2025-12-02T19:02:05.780Z
+
+**Input:**
+```json
+{
+  "lat": 37.123,
+  "lon": -122.456,
+  "radius": 250,
+  "type": "meal_delivery",
+  "url": "https://maps.googleapis.com/maps/api/place/nearbysearch/json?location=37.123%2C-122.456&radius=250&type=meal_delivery&key=****"
+}
+```
+
+**Output:**
+```json
+"Fetching..."
+```
+
+
+#### Tool Used: Google Nearby Places (Food)
+**Timestamp:** 2025-12-02T19:02:05.782Z
+
+**Input:**
+```json
+{
+  "lat": 37.123,
+  "lon": -122.456,
+  "radius": 250,
+  "type": "meal_delivery"
+}
+```
+
+**Output:**
+```json
+[
+  {
+    "place_id": "p2",
+    "name": "Far Bar",
+    "types": [
+      "bar",
+      "restaurant"
+    ],
+    "geometry": {
+      "location": {
+        "lat": 37.125,
+        "lng": -122.456
+      }
+    },
+    "vicinity": "Oakland, CA",
+    "rating": 4.2,
+    "user_ratings_total": 65
+  },
+  {
+    "place_id": "p1",
+    "name": "Near Cafe",
+    "types": [
+      "cafe"
+    ],
+    "geometry": {
+      "location": {
+        "lat": 37.123,
+        "lng": -122.456
+      }
+    },
+    "vicinity": "Oakland, CA",
+    "rating": 4.5,
+    "user_ratings_total": 120
+  }
+]
+```
+
+
+#### Tool Used: Google Nearby Places (Food)
+**Timestamp:** 2025-12-02T19:02:05.786Z
+
+**Input:**
+```json
+{
+  "lat": 37.123,
+  "lon": -122.456,
+  "radius": 50,
+  "type": "restaurant",
+  "url": "https://maps.googleapis.com/maps/api/place/nearbysearch/json?location=37.123%2C-122.456&radius=50&type=restaurant&key=****"
+}
+```
+
+**Output:**
+```json
+"Fetching..."
+```
+
+
+#### Tool Used: Google Nearby Places (Food)
+**Timestamp:** 2025-12-02T19:02:05.789Z
+
+**Input:**
+```json
+{
+  "lat": 37.123,
+  "lon": -122.456,
+  "radius": 50,
+  "type": "restaurant"
+}
+```
+
+**Output:**
+```json
+[]
+```
+
+
+#### Tool Used: Google Nearby Places (Food)
+**Timestamp:** 2025-12-02T19:02:05.789Z
+
+**Input:**
+```json
+{
+  "lat": 37.123,
+  "lon": -122.456,
+  "radius": 50,
+  "type": "cafe",
+  "url": "https://maps.googleapis.com/maps/api/place/nearbysearch/json?location=37.123%2C-122.456&radius=50&type=cafe&key=****"
+}
+```
+
+**Output:**
+```json
+"Fetching..."
+```
+
+
+#### Tool Used: Google Nearby Places (Food)
+**Timestamp:** 2025-12-02T19:02:05.790Z
+
+**Input:**
+```json
+{
+  "lat": 37.123,
+  "lon": -122.456,
+  "radius": 50,
+  "type": "cafe"
+}
+```
+
+**Output:**
+```json
+[]
+```
+
+
+#### Tool Used: Google Nearby Places (Food)
+**Timestamp:** 2025-12-02T19:02:05.790Z
+
+**Input:**
+```json
+{
+  "lat": 37.123,
+  "lon": -122.456,
+  "radius": 50,
+  "type": "bakery",
+  "url": "https://maps.googleapis.com/maps/api/place/nearbysearch/json?location=37.123%2C-122.456&radius=50&type=bakery&key=****"
+}
+```
+
+**Output:**
+```json
+"Fetching..."
+```
+
+
+#### Tool Used: Google Nearby Places (Food)
+**Timestamp:** 2025-12-02T19:02:05.792Z
+
+**Input:**
+```json
+{
+  "lat": 37.123,
+  "lon": -122.456,
+  "radius": 50,
+  "type": "bakery"
+}
+```
+
+**Output:**
+```json
+[]
+```
+
+
+#### Tool Used: Google Nearby Places (Food)
+**Timestamp:** 2025-12-02T19:02:05.793Z
+
+**Input:**
+```json
+{
+  "lat": 37.123,
+  "lon": -122.456,
+  "radius": 50,
+  "type": "bar",
+  "url": "https://maps.googleapis.com/maps/api/place/nearbysearch/json?location=37.123%2C-122.456&radius=50&type=bar&key=****"
+}
+```
+
+**Output:**
+```json
+"Fetching..."
+```
+
+
+
+# Logger Initialized at 2025-12-02T19:02:05.794Z
+
+#### Tool Used: Google Nearby Places (Food)
+**Timestamp:** 2025-12-02T19:02:05.794Z
+
+**Input:**
+```json
+{
+  "lat": 37.123,
+  "lon": -122.456,
+  "radius": 50,
+  "type": "bar"
+}
+```
+
+**Output:**
+```json
+[]
+```
+
+
+#### Tool Used: Google Nearby Places (Food)
+**Timestamp:** 2025-12-02T19:02:05.795Z
+
+**Input:**
+```json
+{
+  "lat": 37.123,
+  "lon": -122.456,
+  "radius": 50,
+  "type": "meal_takeaway",
+  "url": "https://maps.googleapis.com/maps/api/place/nearbysearch/json?location=37.123%2C-122.456&radius=50&type=meal_takeaway&key=****"
+}
+```
+
+**Output:**
+```json
+"Fetching..."
+```
+
+
+#### Tool Used: Google Nearby Places (Food)
+**Timestamp:** 2025-12-02T19:02:05.796Z
+
+**Input:**
+```json
+{
+  "lat": 37.123,
+  "lon": -122.456,
+  "radius": 50,
+  "type": "meal_takeaway"
+}
+```
+
+**Output:**
+```json
+[]
+```
+
+
+#### Tool Used: Google Nearby Places (Food)
+**Timestamp:** 2025-12-02T19:02:05.796Z
+
+**Input:**
+```json
+{
+  "lat": 37.123,
+  "lon": -122.456,
+  "radius": 50,
+  "type": "meal_delivery",
+  "url": "https://maps.googleapis.com/maps/api/place/nearbysearch/json?location=37.123%2C-122.456&radius=50&type=meal_delivery&key=****"
+}
+```
+
+**Output:**
+```json
+"Fetching..."
+```
+
+
+#### Tool Used: Google Nearby Places (Food)
+**Timestamp:** 2025-12-02T19:02:05.797Z
+
+**Input:**
+```json
+{
+  "lat": 37.123,
+  "lon": -122.456,
+  "radius": 50,
+  "type": "meal_delivery"
+}
+```
+
+**Output:**
+```json
+[]
+```
+
+
+#### Tool Used: Google Nearby Places (Food)
+**Timestamp:** 2025-12-02T19:02:05.798Z
+
+**Input:**
+```json
+{
+  "lat": 37.123,
+  "lon": -122.456,
+  "radius": 100,
+  "type": "restaurant",
+  "url": "https://maps.googleapis.com/maps/api/place/nearbysearch/json?location=37.123%2C-122.456&radius=100&type=restaurant&key=****"
+}
+```
+
+**Output:**
+```json
+"Fetching..."
+```
+
+
+#### Tool Used: Google Nearby Places (Food)
+**Timestamp:** 2025-12-02T19:02:05.799Z
+
+**Input:**
+```json
+{
+  "lat": 37.123,
+  "lon": -122.456,
+  "radius": 100,
+  "type": "restaurant"
+}
+```
+
+**Output:**
+```json
+[]
+```
+
+
+#### Tool Used: Google Nearby Places (Food)
+**Timestamp:** 2025-12-02T19:02:05.801Z
+
+**Input:**
+```json
+{
+  "lat": 37.123,
+  "lon": -122.456,
+  "radius": 100,
+  "type": "cafe",
+  "url": "https://maps.googleapis.com/maps/api/place/nearbysearch/json?location=37.123%2C-122.456&radius=100&type=cafe&key=****"
+}
+```
+
+**Output:**
+```json
+"Fetching..."
+```
+
+
+#### Tool Used: Google Nearby Places (Food)
+**Timestamp:** 2025-12-02T19:02:05.804Z
+
+**Input:**
+```json
+{
+  "lat": 37.123,
+  "lon": -122.456,
+  "radius": 100,
+  "type": "cafe"
+}
+```
+
+**Output:**
+```json
+[]
+```
+
+
+#### Tool Used: Google Nearby Places (Food)
+**Timestamp:** 2025-12-02T19:02:05.811Z
+
+**Input:**
+```json
+{
+  "lat": 37.123,
+  "lon": -122.456,
+  "radius": 100,
+  "type": "bakery",
+  "url": "https://maps.googleapis.com/maps/api/place/nearbysearch/json?location=37.123%2C-122.456&radius=100&type=bakery&key=****"
+}
+```
+
+**Output:**
+```json
+"Fetching..."
+```
+
+
+#### Tool Used: Google Nearby Places (Food)
+**Timestamp:** 2025-12-02T19:02:05.811Z
+
+**Input:**
+```json
+{
+  "lat": 37.123,
+  "lon": -122.456,
+  "radius": 100,
+  "type": "bakery"
+}
+```
+
+**Output:**
+```json
+[]
+```
+
+
+#### Tool Used: Google Nearby Places (Food)
+**Timestamp:** 2025-12-02T19:02:05.814Z
+
+**Input:**
+```json
+{
+  "lat": 37.123,
+  "lon": -122.456,
+  "radius": 100,
+  "type": "bar",
+  "url": "https://maps.googleapis.com/maps/api/place/nearbysearch/json?location=37.123%2C-122.456&radius=100&type=bar&key=****"
+}
+```
+
+**Output:**
+```json
+"Fetching..."
+```
+
+
+#### Tool Used: Google Nearby Places (Food)
+**Timestamp:** 2025-12-02T19:02:05.817Z
+
+**Input:**
+```json
+{
+  "lat": 37.123,
+  "lon": -122.456,
+  "radius": 100,
+  "type": "bar"
+}
+```
+
+**Output:**
+```json
+[]
+```
+
+
+#### Tool Used: Google Nearby Places (Food)
+**Timestamp:** 2025-12-02T19:02:05.817Z
+
+**Input:**
+```json
+{
+  "lat": 37.123,
+  "lon": -122.456,
+  "radius": 100,
+  "type": "meal_takeaway",
+  "url": "https://maps.googleapis.com/maps/api/place/nearbysearch/json?location=37.123%2C-122.456&radius=100&type=meal_takeaway&key=****"
+}
+```
+
+**Output:**
+```json
+"Fetching..."
+```
+
+
+#### Tool Used: Google Nearby Places (Food)
+**Timestamp:** 2025-12-02T19:02:05.818Z
+
+**Input:**
+```json
+{
+  "lat": 37.123,
+  "lon": -122.456,
+  "radius": 100,
+  "type": "meal_takeaway"
+}
+```
+
+**Output:**
+```json
+[]
+```
+
+
+#### Tool Used: Google Nearby Places (Food)
+**Timestamp:** 2025-12-02T19:02:05.818Z
+
+**Input:**
+```json
+{
+  "lat": 37.123,
+  "lon": -122.456,
+  "radius": 100,
+  "type": "meal_delivery",
+  "url": "https://maps.googleapis.com/maps/api/place/nearbysearch/json?location=37.123%2C-122.456&radius=100&type=meal_delivery&key=****"
+}
+```
+
+**Output:**
+```json
+"Fetching..."
+```
+
+
+#### Tool Used: Google Nearby Places (Food)
+**Timestamp:** 2025-12-02T19:02:05.819Z
+
+**Input:**
+```json
+{
+  "lat": 37.123,
+  "lon": -122.456,
+  "radius": 100,
+  "type": "meal_delivery"
+}
+```
+
+**Output:**
+```json
+[]
+```
+
+
+================================================================================
+# Graph Execution Started
+**Run ID:** 59d58dbd-234a-458a-abe4-d6f8101eb42b
+**Timestamp:** 2025-12-02T19:02:05.823Z
+
+## Initial State
+```json
+{
+  "runId": "59d58dbd-234a-458a-abe4-d6f8101eb42b",
+  "filename": "photo.HEIC.processed.jpg",
+  "fileBuffer": "[Buffer: 18 bytes]",
+  "imageBase64": "[Base64 Image Data Omitted]",
+  "imageMime": "image/jpeg",
+  "metadata": {
+    "dateTime": "null",
+    "cameraModel": "null"
+  },
+  "gpsString": "null",
+  "device": "null",
+  "modelOverrides": {},
+  "classification": "null",
+  "poiAnalysis": "null",
+  "rich_search_context": "null",
+  "finalResult": "null",
+  "error": "null"
+}
+```
+
+
+## Graph Execution Finished
+**Run ID:** 59d58dbd-234a-458a-abe4-d6f8101eb42b
+**Timestamp:** 2025-12-02T19:02:05.824Z
+
+## Final State
+```json
+{
+  "finalResult": {
+    "caption": "test",
+    "description": "test",
+    "keywords": "test"
+  },
+  "classification": "null"
+}
+```
+
+================================================================================
+
+
+#### Tool Used: Google Nearby Places (Food)
+**Timestamp:** 2025-12-02T19:02:05.819Z
+
+**Input:**
+```json
+{
+  "lat": 37.123,
+  "lon": -122.456,
+  "radius": 200,
+  "type": "restaurant",
+  "url": "https://maps.googleapis.com/maps/api/place/nearbysearch/json?location=37.123%2C-122.456&radius=200&type=restaurant&key=****"
+}
+```
+
+**Output:**
+```json
+"Fetching..."
+```
+
+
+#### Tool Used: Google Nearby Places (Food)
+**Timestamp:** 2025-12-02T19:02:05.831Z
+
+**Input:**
+```json
+{
+  "lat": 37.123,
+  "lon": -122.456,
+  "radius": 200,
+  "type": "restaurant"
+}
+```
+
+**Output:**
+```json
+[]
+```
+
+
+#### Tool Used: Google Nearby Places (Food)
+**Timestamp:** 2025-12-02T19:02:05.832Z
+
+**Input:**
+```json
+{
+  "lat": 37.123,
+  "lon": -122.456,
+  "radius": 200,
+  "type": "cafe",
+  "url": "https://maps.googleapis.com/maps/api/place/nearbysearch/json?location=37.123%2C-122.456&radius=200&type=cafe&key=****"
+}
+```
+
+**Output:**
+```json
+"Fetching..."
+```
+
+
+#### Tool Used: Google Nearby Places (Food)
+**Timestamp:** 2025-12-02T19:02:05.833Z
+
+**Input:**
+```json
+{
+  "lat": 37.123,
+  "lon": -122.456,
+  "radius": 200,
+  "type": "cafe"
+}
+```
+
+**Output:**
+```json
+[]
+```
+
+
+#### Tool Used: Google Nearby Places (Food)
+**Timestamp:** 2025-12-02T19:02:05.833Z
+
+**Input:**
+```json
+{
+  "lat": 37.123,
+  "lon": -122.456,
+  "radius": 200,
+  "type": "bakery",
+  "url": "https://maps.googleapis.com/maps/api/place/nearbysearch/json?location=37.123%2C-122.456&radius=200&type=bakery&key=****"
+}
+```
+
+**Output:**
+```json
+"Fetching..."
+```
+
+
+#### Tool Used: Google Nearby Places (Food)
+**Timestamp:** 2025-12-02T19:02:05.833Z
+
+**Input:**
+```json
+{
+  "lat": 37.123,
+  "lon": -122.456,
+  "radius": 200,
+  "type": "bakery"
+}
+```
+
+**Output:**
+```json
+[]
+```
+
+
+#### Tool Used: Google Nearby Places (Food)
+**Timestamp:** 2025-12-02T19:02:05.834Z
+
+**Input:**
+```json
+{
+  "lat": 37.123,
+  "lon": -122.456,
+  "radius": 200,
+  "type": "bar",
+  "url": "https://maps.googleapis.com/maps/api/place/nearbysearch/json?location=37.123%2C-122.456&radius=200&type=bar&key=****"
+}
+```
+
+**Output:**
+```json
+"Fetching..."
+```
+
+
+#### Tool Used: Google Nearby Places (Food)
+**Timestamp:** 2025-12-02T19:02:05.834Z
+
+**Input:**
+```json
+{
+  "lat": 37.123,
+  "lon": -122.456,
+  "radius": 200,
+  "type": "bar"
+}
+```
+
+**Output:**
+```json
+[]
+```
+
+
+#### Tool Used: Google Nearby Places (Food)
+**Timestamp:** 2025-12-02T19:02:05.835Z
+
+**Input:**
+```json
+{
+  "lat": 37.123,
+  "lon": -122.456,
+  "radius": 200,
+  "type": "meal_takeaway",
+  "url": "https://maps.googleapis.com/maps/api/place/nearbysearch/json?location=37.123%2C-122.456&radius=200&type=meal_takeaway&key=****"
+}
+```
+
+**Output:**
+```json
+"Fetching..."
+```
+
+
+#### Tool Used: Google Nearby Places (Food)
+**Timestamp:** 2025-12-02T19:02:05.835Z
+
+**Input:**
+```json
+{
+  "lat": 37.123,
+  "lon": -122.456,
+  "radius": 200,
+  "type": "meal_takeaway"
+}
+```
+
+**Output:**
+```json
+[]
+```
+
+
+#### Tool Used: Google Nearby Places (Food)
+**Timestamp:** 2025-12-02T19:02:05.836Z
+
+**Input:**
+```json
+{
+  "lat": 37.123,
+  "lon": -122.456,
+  "radius": 200,
+  "type": "meal_delivery",
+  "url": "https://maps.googleapis.com/maps/api/place/nearbysearch/json?location=37.123%2C-122.456&radius=200&type=meal_delivery&key=****"
+}
+```
+
+**Output:**
+```json
+"Fetching..."
+```
+
+
+#### Tool Used: Google Nearby Places (Food)
+**Timestamp:** 2025-12-02T19:02:05.836Z
+
+**Input:**
+```json
+{
+  "lat": 37.123,
+  "lon": -122.456,
+  "radius": 200,
+  "type": "meal_delivery"
+}
+```
+
+**Output:**
+```json
+[]
+```
+
+
+#### Tool Used: Google Nearby Places (Food)
+**Timestamp:** 2025-12-02T19:02:05.839Z
+
+**Input:**
+```json
+{
+  "lat": 37.123,
+  "lon": -122.456,
+  "radius": 1000,
+  "type": "restaurant",
+  "url": "https://maps.googleapis.com/maps/api/place/nearbysearch/json?location=37.123%2C-122.456&radius=1000&type=restaurant&key=****"
+}
+```
+
+**Output:**
+```json
+"Fetching..."
+```
+
+
+#### Tool Used: Google Nearby Places (Food)
+**Timestamp:** 2025-12-02T19:02:05.839Z
+
+**Input:**
+```json
+{
+  "lat": 37.123,
+  "lon": -122.456,
+  "radius": 1000,
+  "type": "restaurant"
+}
+```
+
+**Output:**
+```json
+[
+  {
+    "place_id": "p_large",
+    "name": "Far Restaurant",
+    "types": [
+      "restaurant"
+    ],
+    "geometry": {
+      "location": {
+        "lat": 1,
+        "lng": 2
+      }
+    }
+  }
+]
+```
+
+
+#### Tool Used: Google Nearby Places (Food)
+**Timestamp:** 2025-12-02T19:02:05.840Z
+
+**Input:**
+```json
+{
+  "lat": 37.123,
+  "lon": -122.456,
+  "radius": 1000,
+  "type": "cafe",
+  "url": "https://maps.googleapis.com/maps/api/place/nearbysearch/json?location=37.123%2C-122.456&radius=1000&type=cafe&key=****"
+}
+```
+
+**Output:**
+```json
+"Fetching..."
+```
+
+
+#### Tool Used: Google Nearby Places (Food)
+**Timestamp:** 2025-12-02T19:02:05.840Z
+
+**Input:**
+```json
+{
+  "lat": 37.123,
+  "lon": -122.456,
+  "radius": 1000,
+  "type": "cafe"
+}
+```
+
+**Output:**
+```json
+[
+  {
+    "place_id": "p_large",
+    "name": "Far Restaurant",
+    "types": [
+      "restaurant"
+    ],
+    "geometry": {
+      "location": {
+        "lat": 1,
+        "lng": 2
+      }
+    }
+  }
+]
+```
+
+
+#### Tool Used: Google Nearby Places (Food)
+**Timestamp:** 2025-12-02T19:02:05.841Z
+
+**Input:**
+```json
+{
+  "lat": 37.123,
+  "lon": -122.456,
+  "radius": 1000,
+  "type": "bakery",
+  "url": "https://maps.googleapis.com/maps/api/place/nearbysearch/json?location=37.123%2C-122.456&radius=1000&type=bakery&key=****"
+}
+```
+
+**Output:**
+```json
+"Fetching..."
+```
+
+
+#### Tool Used: Google Nearby Places (Food)
+**Timestamp:** 2025-12-02T19:02:05.841Z
+
+**Input:**
+```json
+{
+  "lat": 37.123,
+  "lon": -122.456,
+  "radius": 1000,
+  "type": "bakery"
+}
+```
+
+**Output:**
+```json
+[
+  {
+    "place_id": "p_large",
+    "name": "Far Restaurant",
+    "types": [
+      "restaurant"
+    ],
+    "geometry": {
+      "location": {
+        "lat": 1,
+        "lng": 2
+      }
+    }
+  }
+]
+```
+
+
+#### Tool Used: Google Nearby Places (Food)
+**Timestamp:** 2025-12-02T19:02:05.842Z
+
+**Input:**
+```json
+{
+  "lat": 37.123,
+  "lon": -122.456,
+  "radius": 1000,
+  "type": "bar",
+  "url": "https://maps.googleapis.com/maps/api/place/nearbysearch/json?location=37.123%2C-122.456&radius=1000&type=bar&key=****"
+}
+```
+
+**Output:**
+```json
+"Fetching..."
+```
+
+
+#### Tool Used: Google Nearby Places (Food)
+**Timestamp:** 2025-12-02T19:02:05.844Z
+
+**Input:**
+```json
+{
+  "lat": 37.123,
+  "lon": -122.456,
+  "radius": 1000,
+  "type": "bar"
+}
+```
+
+**Output:**
+```json
+[
+  {
+    "place_id": "p_large",
+    "name": "Far Restaurant",
+    "types": [
+      "restaurant"
+    ],
+    "geometry": {
+      "location": {
+        "lat": 1,
+        "lng": 2
+      }
+    }
+  }
+]
+```
+
+
+#### Tool Used: Google Nearby Places (Food)
+**Timestamp:** 2025-12-02T19:02:05.845Z
+
+**Input:**
+```json
+{
+  "lat": 37.123,
+  "lon": -122.456,
+  "radius": 1000,
+  "type": "meal_takeaway",
+  "url": "https://maps.googleapis.com/maps/api/place/nearbysearch/json?location=37.123%2C-122.456&radius=1000&type=meal_takeaway&key=****"
+}
+```
+
+**Output:**
+```json
+"Fetching..."
+```
+
+
+#### Tool Used: Google Nearby Places (Food)
+**Timestamp:** 2025-12-02T19:02:05.846Z
+
+**Input:**
+```json
+{
+  "lat": 37.123,
+  "lon": -122.456,
+  "radius": 1000,
+  "type": "meal_takeaway"
+}
+```
+
+**Output:**
+```json
+[
+  {
+    "place_id": "p_large",
+    "name": "Far Restaurant",
+    "types": [
+      "restaurant"
+    ],
+    "geometry": {
+      "location": {
+        "lat": 1,
+        "lng": 2
+      }
+    }
+  }
+]
+```
+
+
+#### Tool Used: Google Nearby Places (Food)
+**Timestamp:** 2025-12-02T19:02:05.846Z
+
+**Input:**
+```json
+{
+  "lat": 37.123,
+  "lon": -122.456,
+  "radius": 1000,
+  "type": "meal_delivery",
+  "url": "https://maps.googleapis.com/maps/api/place/nearbysearch/json?location=37.123%2C-122.456&radius=1000&type=meal_delivery&key=****"
+}
+```
+
+**Output:**
+```json
+"Fetching..."
+```
+
+
+#### Tool Used: Google Nearby Places (Food)
+**Timestamp:** 2025-12-02T19:02:05.847Z
+
+**Input:**
+```json
+{
+  "lat": 37.123,
+  "lon": -122.456,
+  "radius": 1000,
+  "type": "meal_delivery"
+}
+```
+
+**Output:**
+```json
+[
+  {
+    "place_id": "p_large",
+    "name": "Far Restaurant",
+    "types": [
+      "restaurant"
+    ],
+    "geometry": {
+      "location": {
+        "lat": 1,
+        "lng": 2
+      }
+    }
+  }
+]
+```
+
+
+
+# Logger Initialized at 2025-12-02T19:02:05.854Z
+
+#### Tool Used: Google Nearby Places
+**Timestamp:** 2025-12-02T19:02:05.867Z
+
+**Input:**
+```json
+{
+  "lat": 37.123,
+  "lon": -122.456,
+  "radius": 61,
+  "url": "https://maps.googleapis.com/maps/api/place/nearbysearch/json?location=37.123%2C-122.456&radius=61&type=park%7Cmuseum%7Ctourist_attraction%7Cnatural_feature&key=****"
+}
+```
+
+**Output:**
+```json
+"Fetching..."
+```
+
+
+#### Tool Used: Google Nearby Places
+**Timestamp:** 2025-12-02T19:02:05.870Z
+
+**Input:**
+```json
+{
+  "lat": 37.123,
+  "lon": -122.456,
+  "radius": 61
+}
+```
+
+**Output:**
+```json
+[
+  {
+    "id": "abc123",
+    "name": "Contra Costa Canal Trail",
+    "category": "trail",
+    "lat": 37.123,
+    "lon": -122.456,
+    "distanceMeters": 0,
+    "address": "Walnut Creek, CA",
+    "source": "google",
+    "confidence": "high"
+  }
+]
+```
+
+
+#### Tool Used: Google Nearby Places
+**Timestamp:** 2025-12-02T19:02:05.893Z
+
+**Input:**
+```json
+{
+  "lat": 37.124,
+  "lon": -122.457,
+  "radius": 61,
+  "url": "https://maps.googleapis.com/maps/api/place/nearbysearch/json?location=37.124%2C-122.457&radius=61&type=park%7Cmuseum%7Ctourist_attraction%7Cnatural_feature&key=****"
+}
+```
+
+**Output:**
+```json
+"Fetching..."
+```
+
+
+#### Tool Used: Google Nearby Places
+**Timestamp:** 2025-12-02T19:02:05.894Z
+
+**Input:**
+```json
+{
+  "lat": 37.124,
+  "lon": -122.457,
+  "radius": 61
+}
+```
+
+**Output:**
+```json
+[
+  {
+    "id": "def456",
+    "name": "Lime Ridge Open Space",
+    "category": "park",
+    "lat": 37.124,
+    "lon": -122.457,
+    "distanceMeters": 0,
+    "address": "Walnut Creek, CA",
+    "source": "google",
+    "confidence": "high"
+  }
+]
+```
+
+
+================================================================================
+# Graph Execution Started
+**Run ID:** 8223c711-2304-40a9-ae06-66e9874fa40e
+**Timestamp:** 2025-12-02T19:02:05.996Z
+
+## Initial State
+```json
+{
+  "runId": "8223c711-2304-40a9-ae06-66e9874fa40e",
+  "filename": "tmp_test.heic",
+  "fileBuffer": "[Buffer: 19 bytes]",
+  "imageBase64": "[Base64 Image Data Omitted]",
+  "imageMime": "image/jpeg",
+  "metadata": {
+    "dateTime": "null",
+    "cameraModel": "null"
+  },
+  "gpsString": "null",
+  "device": "null",
+  "modelOverrides": {},
+  "classification": "null",
+  "poiAnalysis": "null",
+  "rich_search_context": "null",
+  "finalResult": "null",
+  "error": "null"
+}
+```
+
+
+## Graph Execution Finished
+**Run ID:** 8223c711-2304-40a9-ae06-66e9874fa40e
+**Timestamp:** 2025-12-02T19:02:06.019Z
+
+## Final State
+```json
+{
+  "classification": "scenery_or_general_subject",
+  "finalResult": {
+    "caption": "HEIC Test",
+    "description": "desc heic",
+    "keywords": "x,y"
+  }
+}
+```
+
+================================================================================
+
+
+
+# Logger Initialized at 2025-12-02T19:02:06.083Z
+
+
+# Logger Initialized at 2025-12-02T19:04:44.578Z
+
+
+# Logger Initialized at 2025-12-02T19:08:10.046Z
+
+
+# Logger Initialized at 2025-12-02T19:08:30.216Z
+
+
+# Logger Initialized at 2025-12-02T19:08:40.288Z
+
+
+# Logger Initialized at 2025-12-02T19:08:40.300Z
+
+
+# Logger Initialized at 2025-12-02T19:08:40.316Z
+
+
+# Logger Initialized at 2025-12-02T19:08:40.316Z
+
+
+# Logger Initialized at 2025-12-02T19:08:41.284Z
+
+
+# Logger Initialized at 2025-12-02T19:08:41.378Z
+
+#### Tool Used: Google Reverse Geocode
+**Timestamp:** 2025-12-02T19:08:41.464Z
+
+**Input:**
+```json
+{
+  "lat": 37,
+  "lon": -122,
+  "url": "https://maps.googleapis.com/maps/api/geocode/json?latlng=37,-122&key=****"
+}
+```
+
+**Output:**
+```json
+"Fetching..."
+```
+
+
+
+# Logger Initialized at 2025-12-02T19:08:41.483Z
+
+
+# Logger Initialized at 2025-12-02T19:08:41.483Z
+
+
+# Logger Initialized at 2025-12-02T19:08:41.546Z
+
+
+# Logger Initialized at 2025-12-02T19:08:41.586Z
+
+
+# Logger Initialized at 2025-12-02T19:08:41.612Z
+
+
+# Logger Initialized at 2025-12-02T19:08:41.618Z
+
+
+# Logger Initialized at 2025-12-02T19:08:41.670Z
+
+
+# Logger Initialized at 2025-12-02T19:08:41.684Z
+
+
+# Logger Initialized at 2025-12-02T19:08:41.693Z
+
+#### Tool Used: Google Reverse Geocode
+**Timestamp:** 2025-12-02T19:08:41.706Z
+
+**Input:**
+```json
+{
+  "lat": 37,
+  "lon": -122
+}
+```
+
+**Output:**
+```json
+{
+  "address": "null"
+}
+```
+
+
+================================================================================
+# Graph Execution Started
+**Run ID:** 55c17f15-6945-4bcf-b868-5679c9e1639d
+**Timestamp:** 2025-12-02T19:08:41.847Z
+
+## Initial State
+```json
+{
+  "runId": "55c17f15-6945-4bcf-b868-5679c9e1639d",
+  "filename": "tmp_test.heic",
+  "fileBuffer": "[Buffer: 19 bytes]",
+  "imageBase64": "[Base64 Image Data Omitted]",
+  "imageMime": "image/jpeg",
+  "metadata": {
+    "dateTime": "null",
+    "cameraModel": "null"
+  },
+  "gpsString": "null",
+  "device": "null",
+  "modelOverrides": {},
+  "classification": "null",
+  "poiAnalysis": "null",
+  "rich_search_context": "null",
+  "finalResult": "null",
+  "error": "null"
+}
+```
+
+
+## Graph Execution Finished
+**Run ID:** 55c17f15-6945-4bcf-b868-5679c9e1639d
+**Timestamp:** 2025-12-02T19:08:41.849Z
+
+## Final State
+```json
+{
+  "classification": "scenery_or_general_subject",
+  "finalResult": {
+    "caption": "HEIC Test",
+    "description": "desc heic",
+    "keywords": "x,y"
+  }
+}
+```
+
+================================================================================
+
+
+
+# Logger Initialized at 2025-12-02T19:08:42.075Z
+
+================================================================================
+# Graph Execution Started
+**Run ID:** cc5be339-9fe8-4e4d-b1d4-c405b7c9b9ef
+**Timestamp:** 2025-12-02T19:08:42.284Z
+
+## Initial State
+```json
+{
+  "runId": "cc5be339-9fe8-4e4d-b1d4-c405b7c9b9ef",
+  "filename": "tmp_test.jpg",
+  "fileBuffer": "[Buffer: 19 bytes]",
+  "imageBase64": "[Base64 Image Data Omitted]",
+  "imageMime": "image/jpeg",
+  "metadata": {
+    "dateTime": "null",
+    "cameraModel": "null"
+  },
+  "gpsString": "null",
+  "device": "null",
+  "modelOverrides": {},
+  "classification": "null",
+  "poiAnalysis": "null",
+  "rich_search_context": "null",
+  "finalResult": "null",
+  "error": "null"
+}
+```
+
+
+## Graph Execution Finished
+**Run ID:** cc5be339-9fe8-4e4d-b1d4-c405b7c9b9ef
+**Timestamp:** 2025-12-02T19:08:42.285Z
+
+## Final State
+```json
+{
+  "classification": "scenery_or_general_subject",
+  "finalResult": {
+    "caption": "Test",
+    "description": "desc",
+    "keywords": "a,b"
+  }
+}
+```
+
+================================================================================
+
+
+
+# Logger Initialized at 2025-12-02T19:08:42.396Z
+
+
+# Logger Initialized at 2025-12-02T19:08:42.457Z
+
+
+# Logger Initialized at 2025-12-02T19:08:42.607Z
+
+#### Tool Used: Google Nearby Places (Food)
+**Timestamp:** 2025-12-02T19:08:42.615Z
+
+**Input:**
+```json
+{
+  "lat": 37.123,
+  "lon": -122.456,
+  "radius": 250,
+  "type": "restaurant",
+  "url": "https://maps.googleapis.com/maps/api/place/nearbysearch/json?location=37.123%2C-122.456&radius=250&type=restaurant&key=****"
+}
+```
+
+**Output:**
+```json
+"Fetching..."
+```
+
+
+#### Tool Used: Google Nearby Places (Food)
+**Timestamp:** 2025-12-02T19:08:42.616Z
+
+**Input:**
+```json
+{
+  "lat": 37.123,
+  "lon": -122.456,
+  "radius": 250,
+  "type": "restaurant"
+}
+```
+
+**Output:**
+```json
+[
+  {
+    "place_id": "p2",
+    "name": "Far Bar",
+    "types": [
+      "bar",
+      "restaurant"
+    ],
+    "geometry": {
+      "location": {
+        "lat": 37.125,
+        "lng": -122.456
+      }
+    },
+    "vicinity": "Oakland, CA",
+    "rating": 4.2,
+    "user_ratings_total": 65
+  },
+  {
+    "place_id": "p1",
+    "name": "Near Cafe",
+    "types": [
+      "cafe"
+    ],
+    "geometry": {
+      "location": {
+        "lat": 37.123,
+        "lng": -122.456
+      }
+    },
+    "vicinity": "Oakland, CA",
+    "rating": 4.5,
+    "user_ratings_total": 120
+  }
+]
+```
+
+
+#### Tool Used: Google Nearby Places (Food)
+**Timestamp:** 2025-12-02T19:08:42.617Z
+
+**Input:**
+```json
+{
+  "lat": 37.123,
+  "lon": -122.456,
+  "radius": 250,
+  "type": "cafe",
+  "url": "https://maps.googleapis.com/maps/api/place/nearbysearch/json?location=37.123%2C-122.456&radius=250&type=cafe&key=****"
+}
+```
+
+**Output:**
+```json
+"Fetching..."
+```
+
+
+#### Tool Used: Google Nearby Places (Food)
+**Timestamp:** 2025-12-02T19:08:42.617Z
+
+**Input:**
+```json
+{
+  "lat": 37.123,
+  "lon": -122.456,
+  "radius": 250,
+  "type": "cafe"
+}
+```
+
+**Output:**
+```json
+[
+  {
+    "place_id": "p2",
+    "name": "Far Bar",
+    "types": [
+      "bar",
+      "restaurant"
+    ],
+    "geometry": {
+      "location": {
+        "lat": 37.125,
+        "lng": -122.456
+      }
+    },
+    "vicinity": "Oakland, CA",
+    "rating": 4.2,
+    "user_ratings_total": 65
+  },
+  {
+    "place_id": "p1",
+    "name": "Near Cafe",
+    "types": [
+      "cafe"
+    ],
+    "geometry": {
+      "location": {
+        "lat": 37.123,
+        "lng": -122.456
+      }
+    },
+    "vicinity": "Oakland, CA",
+    "rating": 4.5,
+    "user_ratings_total": 120
+  }
+]
+```
+
+
+#### Tool Used: Google Nearby Places (Food)
+**Timestamp:** 2025-12-02T19:08:42.618Z
+
+**Input:**
+```json
+{
+  "lat": 37.123,
+  "lon": -122.456,
+  "radius": 250,
+  "type": "bakery",
+  "url": "https://maps.googleapis.com/maps/api/place/nearbysearch/json?location=37.123%2C-122.456&radius=250&type=bakery&key=****"
+}
+```
+
+**Output:**
+```json
+"Fetching..."
+```
+
+
+#### Tool Used: Google Nearby Places (Food)
+**Timestamp:** 2025-12-02T19:08:42.619Z
+
+**Input:**
+```json
+{
+  "lat": 37.123,
+  "lon": -122.456,
+  "radius": 250,
+  "type": "bakery"
+}
+```
+
+**Output:**
+```json
+[
+  {
+    "place_id": "p2",
+    "name": "Far Bar",
+    "types": [
+      "bar",
+      "restaurant"
+    ],
+    "geometry": {
+      "location": {
+        "lat": 37.125,
+        "lng": -122.456
+      }
+    },
+    "vicinity": "Oakland, CA",
+    "rating": 4.2,
+    "user_ratings_total": 65
+  },
+  {
+    "place_id": "p1",
+    "name": "Near Cafe",
+    "types": [
+      "cafe"
+    ],
+    "geometry": {
+      "location": {
+        "lat": 37.123,
+        "lng": -122.456
+      }
+    },
+    "vicinity": "Oakland, CA",
+    "rating": 4.5,
+    "user_ratings_total": 120
+  }
+]
+```
+
+
+#### Tool Used: Google Nearby Places (Food)
+**Timestamp:** 2025-12-02T19:08:42.619Z
+
+**Input:**
+```json
+{
+  "lat": 37.123,
+  "lon": -122.456,
+  "radius": 250,
+  "type": "bar",
+  "url": "https://maps.googleapis.com/maps/api/place/nearbysearch/json?location=37.123%2C-122.456&radius=250&type=bar&key=****"
+}
+```
+
+**Output:**
+```json
+"Fetching..."
+```
+
+
+#### Tool Used: Google Nearby Places (Food)
+**Timestamp:** 2025-12-02T19:08:42.620Z
+
+**Input:**
+```json
+{
+  "lat": 37.123,
+  "lon": -122.456,
+  "radius": 250,
+  "type": "bar"
+}
+```
+
+**Output:**
+```json
+[
+  {
+    "place_id": "p2",
+    "name": "Far Bar",
+    "types": [
+      "bar",
+      "restaurant"
+    ],
+    "geometry": {
+      "location": {
+        "lat": 37.125,
+        "lng": -122.456
+      }
+    },
+    "vicinity": "Oakland, CA",
+    "rating": 4.2,
+    "user_ratings_total": 65
+  },
+  {
+    "place_id": "p1",
+    "name": "Near Cafe",
+    "types": [
+      "cafe"
+    ],
+    "geometry": {
+      "location": {
+        "lat": 37.123,
+        "lng": -122.456
+      }
+    },
+    "vicinity": "Oakland, CA",
+    "rating": 4.5,
+    "user_ratings_total": 120
+  }
+]
+```
+
+
+#### Tool Used: Google Nearby Places (Food)
+**Timestamp:** 2025-12-02T19:08:42.621Z
+
+**Input:**
+```json
+{
+  "lat": 37.123,
+  "lon": -122.456,
+  "radius": 250,
+  "type": "meal_takeaway",
+  "url": "https://maps.googleapis.com/maps/api/place/nearbysearch/json?location=37.123%2C-122.456&radius=250&type=meal_takeaway&key=****"
+}
+```
+
+**Output:**
+```json
+"Fetching..."
+```
+
+
+#### Tool Used: Google Nearby Places (Food)
+**Timestamp:** 2025-12-02T19:08:42.622Z
+
+**Input:**
+```json
+{
+  "lat": 37.123,
+  "lon": -122.456,
+  "radius": 250,
+  "type": "meal_takeaway"
+}
+```
+
+**Output:**
+```json
+[
+  {
+    "place_id": "p2",
+    "name": "Far Bar",
+    "types": [
+      "bar",
+      "restaurant"
+    ],
+    "geometry": {
+      "location": {
+        "lat": 37.125,
+        "lng": -122.456
+      }
+    },
+    "vicinity": "Oakland, CA",
+    "rating": 4.2,
+    "user_ratings_total": 65
+  },
+  {
+    "place_id": "p1",
+    "name": "Near Cafe",
+    "types": [
+      "cafe"
+    ],
+    "geometry": {
+      "location": {
+        "lat": 37.123,
+        "lng": -122.456
+      }
+    },
+    "vicinity": "Oakland, CA",
+    "rating": 4.5,
+    "user_ratings_total": 120
+  }
+]
+```
+
+
+#### Tool Used: Google Nearby Places (Food)
+**Timestamp:** 2025-12-02T19:08:42.623Z
+
+**Input:**
+```json
+{
+  "lat": 37.123,
+  "lon": -122.456,
+  "radius": 250,
+  "type": "meal_delivery",
+  "url": "https://maps.googleapis.com/maps/api/place/nearbysearch/json?location=37.123%2C-122.456&radius=250&type=meal_delivery&key=****"
+}
+```
+
+**Output:**
+```json
+"Fetching..."
+```
+
+
+#### Tool Used: Google Nearby Places (Food)
+**Timestamp:** 2025-12-02T19:08:42.623Z
+
+**Input:**
+```json
+{
+  "lat": 37.123,
+  "lon": -122.456,
+  "radius": 250,
+  "type": "meal_delivery"
+}
+```
+
+**Output:**
+```json
+[
+  {
+    "place_id": "p2",
+    "name": "Far Bar",
+    "types": [
+      "bar",
+      "restaurant"
+    ],
+    "geometry": {
+      "location": {
+        "lat": 37.125,
+        "lng": -122.456
+      }
+    },
+    "vicinity": "Oakland, CA",
+    "rating": 4.2,
+    "user_ratings_total": 65
+  },
+  {
+    "place_id": "p1",
+    "name": "Near Cafe",
+    "types": [
+      "cafe"
+    ],
+    "geometry": {
+      "location": {
+        "lat": 37.123,
+        "lng": -122.456
+      }
+    },
+    "vicinity": "Oakland, CA",
+    "rating": 4.5,
+    "user_ratings_total": 120
+  }
+]
+```
+
+
+#### Tool Used: Google Nearby Places (Food)
+**Timestamp:** 2025-12-02T19:08:42.625Z
+
+**Input:**
+```json
+{
+  "lat": 37.123,
+  "lon": -122.456,
+  "radius": 50,
+  "type": "restaurant",
+  "url": "https://maps.googleapis.com/maps/api/place/nearbysearch/json?location=37.123%2C-122.456&radius=50&type=restaurant&key=****"
+}
+```
+
+**Output:**
+```json
+"Fetching..."
+```
+
+
+#### Tool Used: Google Nearby Places (Food)
+**Timestamp:** 2025-12-02T19:08:42.626Z
+
+**Input:**
+```json
+{
+  "lat": 37.123,
+  "lon": -122.456,
+  "radius": 50,
+  "type": "restaurant"
+}
+```
+
+**Output:**
+```json
+[]
+```
+
+
+#### Tool Used: Google Nearby Places (Food)
+**Timestamp:** 2025-12-02T19:08:42.626Z
+
+**Input:**
+```json
+{
+  "lat": 37.123,
+  "lon": -122.456,
+  "radius": 50,
+  "type": "cafe",
+  "url": "https://maps.googleapis.com/maps/api/place/nearbysearch/json?location=37.123%2C-122.456&radius=50&type=cafe&key=****"
+}
+```
+
+**Output:**
+```json
+"Fetching..."
+```
+
+
+#### Tool Used: Google Nearby Places (Food)
+**Timestamp:** 2025-12-02T19:08:42.627Z
+
+**Input:**
+```json
+{
+  "lat": 37.123,
+  "lon": -122.456,
+  "radius": 50,
+  "type": "cafe"
+}
+```
+
+**Output:**
+```json
+[]
+```
+
+
+#### Tool Used: Google Nearby Places (Food)
+**Timestamp:** 2025-12-02T19:08:42.627Z
+
+**Input:**
+```json
+{
+  "lat": 37.123,
+  "lon": -122.456,
+  "radius": 50,
+  "type": "bakery",
+  "url": "https://maps.googleapis.com/maps/api/place/nearbysearch/json?location=37.123%2C-122.456&radius=50&type=bakery&key=****"
+}
+```
+
+**Output:**
+```json
+"Fetching..."
+```
+
+
+#### Tool Used: Google Nearby Places (Food)
+**Timestamp:** 2025-12-02T19:08:42.627Z
+
+**Input:**
+```json
+{
+  "lat": 37.123,
+  "lon": -122.456,
+  "radius": 50,
+  "type": "bakery"
+}
+```
+
+**Output:**
+```json
+[]
+```
+
+
+#### Tool Used: Google Nearby Places (Food)
+**Timestamp:** 2025-12-02T19:08:42.628Z
+
+**Input:**
+```json
+{
+  "lat": 37.123,
+  "lon": -122.456,
+  "radius": 50,
+  "type": "bar",
+  "url": "https://maps.googleapis.com/maps/api/place/nearbysearch/json?location=37.123%2C-122.456&radius=50&type=bar&key=****"
+}
+```
+
+**Output:**
+```json
+"Fetching..."
+```
+
+
+#### Tool Used: Google Nearby Places (Food)
+**Timestamp:** 2025-12-02T19:08:42.628Z
+
+**Input:**
+```json
+{
+  "lat": 37.123,
+  "lon": -122.456,
+  "radius": 50,
+  "type": "bar"
+}
+```
+
+**Output:**
+```json
+[]
+```
+
+
+#### Tool Used: Google Nearby Places (Food)
+**Timestamp:** 2025-12-02T19:08:42.629Z
+
+**Input:**
+```json
+{
+  "lat": 37.123,
+  "lon": -122.456,
+  "radius": 50,
+  "type": "meal_takeaway",
+  "url": "https://maps.googleapis.com/maps/api/place/nearbysearch/json?location=37.123%2C-122.456&radius=50&type=meal_takeaway&key=****"
+}
+```
+
+**Output:**
+```json
+"Fetching..."
+```
+
+
+#### Tool Used: Google Nearby Places (Food)
+**Timestamp:** 2025-12-02T19:08:42.630Z
+
+**Input:**
+```json
+{
+  "lat": 37.123,
+  "lon": -122.456,
+  "radius": 50,
+  "type": "meal_takeaway"
+}
+```
+
+**Output:**
+```json
+[]
+```
+
+
+#### Tool Used: Google Nearby Places (Food)
+**Timestamp:** 2025-12-02T19:08:42.630Z
+
+**Input:**
+```json
+{
+  "lat": 37.123,
+  "lon": -122.456,
+  "radius": 50,
+  "type": "meal_delivery",
+  "url": "https://maps.googleapis.com/maps/api/place/nearbysearch/json?location=37.123%2C-122.456&radius=50&type=meal_delivery&key=****"
+}
+```
+
+**Output:**
+```json
+"Fetching..."
+```
+
+
+#### Tool Used: Google Nearby Places (Food)
+**Timestamp:** 2025-12-02T19:08:42.631Z
+
+**Input:**
+```json
+{
+  "lat": 37.123,
+  "lon": -122.456,
+  "radius": 50,
+  "type": "meal_delivery"
+}
+```
+
+**Output:**
+```json
+[]
+```
+
+
+#### Tool Used: Google Nearby Places (Food)
+**Timestamp:** 2025-12-02T19:08:42.631Z
+
+**Input:**
+```json
+{
+  "lat": 37.123,
+  "lon": -122.456,
+  "radius": 100,
+  "type": "restaurant",
+  "url": "https://maps.googleapis.com/maps/api/place/nearbysearch/json?location=37.123%2C-122.456&radius=100&type=restaurant&key=****"
+}
+```
+
+**Output:**
+```json
+"Fetching..."
+```
+
+
+#### Tool Used: Google Nearby Places (Food)
+**Timestamp:** 2025-12-02T19:08:42.631Z
+
+**Input:**
+```json
+{
+  "lat": 37.123,
+  "lon": -122.456,
+  "radius": 100,
+  "type": "restaurant"
+}
+```
+
+**Output:**
+```json
+[]
+```
+
+
+#### Tool Used: Google Nearby Places (Food)
+**Timestamp:** 2025-12-02T19:08:42.632Z
+
+**Input:**
+```json
+{
+  "lat": 37.123,
+  "lon": -122.456,
+  "radius": 100,
+  "type": "cafe",
+  "url": "https://maps.googleapis.com/maps/api/place/nearbysearch/json?location=37.123%2C-122.456&radius=100&type=cafe&key=****"
+}
+```
+
+**Output:**
+```json
+"Fetching..."
+```
+
+
+#### Tool Used: Google Nearby Places (Food)
+**Timestamp:** 2025-12-02T19:08:42.633Z
+
+**Input:**
+```json
+{
+  "lat": 37.123,
+  "lon": -122.456,
+  "radius": 100,
+  "type": "cafe"
+}
+```
+
+**Output:**
+```json
+[]
+```
+
+
+#### Tool Used: Google Nearby Places (Food)
+**Timestamp:** 2025-12-02T19:08:42.635Z
+
+**Input:**
+```json
+{
+  "lat": 37.123,
+  "lon": -122.456,
+  "radius": 100,
+  "type": "bakery",
+  "url": "https://maps.googleapis.com/maps/api/place/nearbysearch/json?location=37.123%2C-122.456&radius=100&type=bakery&key=****"
+}
+```
+
+**Output:**
+```json
+"Fetching..."
+```
+
+
+#### Tool Used: Google Nearby Places (Food)
+**Timestamp:** 2025-12-02T19:08:42.635Z
+
+**Input:**
+```json
+{
+  "lat": 37.123,
+  "lon": -122.456,
+  "radius": 100,
+  "type": "bakery"
+}
+```
+
+**Output:**
+```json
+[]
+```
+
+
+#### Tool Used: Google Nearby Places (Food)
+**Timestamp:** 2025-12-02T19:08:42.635Z
+
+**Input:**
+```json
+{
+  "lat": 37.123,
+  "lon": -122.456,
+  "radius": 100,
+  "type": "bar",
+  "url": "https://maps.googleapis.com/maps/api/place/nearbysearch/json?location=37.123%2C-122.456&radius=100&type=bar&key=****"
+}
+```
+
+**Output:**
+```json
+"Fetching..."
+```
+
+
+#### Tool Used: Google Nearby Places (Food)
+**Timestamp:** 2025-12-02T19:08:42.636Z
+
+**Input:**
+```json
+{
+  "lat": 37.123,
+  "lon": -122.456,
+  "radius": 100,
+  "type": "bar"
+}
+```
+
+**Output:**
+```json
+[]
+```
+
+
+#### Tool Used: Google Nearby Places (Food)
+**Timestamp:** 2025-12-02T19:08:42.636Z
+
+**Input:**
+```json
+{
+  "lat": 37.123,
+  "lon": -122.456,
+  "radius": 100,
+  "type": "meal_takeaway",
+  "url": "https://maps.googleapis.com/maps/api/place/nearbysearch/json?location=37.123%2C-122.456&radius=100&type=meal_takeaway&key=****"
+}
+```
+
+**Output:**
+```json
+"Fetching..."
+```
+
+
+#### Tool Used: Google Nearby Places (Food)
+**Timestamp:** 2025-12-02T19:08:42.637Z
+
+**Input:**
+```json
+{
+  "lat": 37.123,
+  "lon": -122.456,
+  "radius": 100,
+  "type": "meal_takeaway"
+}
+```
+
+**Output:**
+```json
+[]
+```
+
+
+#### Tool Used: Google Nearby Places (Food)
+**Timestamp:** 2025-12-02T19:08:42.637Z
+
+**Input:**
+```json
+{
+  "lat": 37.123,
+  "lon": -122.456,
+  "radius": 100,
+  "type": "meal_delivery",
+  "url": "https://maps.googleapis.com/maps/api/place/nearbysearch/json?location=37.123%2C-122.456&radius=100&type=meal_delivery&key=****"
+}
+```
+
+**Output:**
+```json
+"Fetching..."
+```
+
+
+#### Tool Used: Google Nearby Places (Food)
+**Timestamp:** 2025-12-02T19:08:42.639Z
+
+**Input:**
+```json
+{
+  "lat": 37.123,
+  "lon": -122.456,
+  "radius": 100,
+  "type": "meal_delivery"
+}
+```
+
+**Output:**
+```json
+[]
+```
+
+
+#### Tool Used: Google Nearby Places (Food)
+**Timestamp:** 2025-12-02T19:08:42.639Z
+
+**Input:**
+```json
+{
+  "lat": 37.123,
+  "lon": -122.456,
+  "radius": 200,
+  "type": "restaurant",
+  "url": "https://maps.googleapis.com/maps/api/place/nearbysearch/json?location=37.123%2C-122.456&radius=200&type=restaurant&key=****"
+}
+```
+
+**Output:**
+```json
+"Fetching..."
+```
+
+
+#### Tool Used: Google Nearby Places (Food)
+**Timestamp:** 2025-12-02T19:08:42.639Z
+
+**Input:**
+```json
+{
+  "lat": 37.123,
+  "lon": -122.456,
+  "radius": 200,
+  "type": "restaurant"
+}
+```
+
+**Output:**
+```json
+[]
+```
+
+
+#### Tool Used: Google Nearby Places (Food)
+**Timestamp:** 2025-12-02T19:08:42.640Z
+
+**Input:**
+```json
+{
+  "lat": 37.123,
+  "lon": -122.456,
+  "radius": 200,
+  "type": "cafe",
+  "url": "https://maps.googleapis.com/maps/api/place/nearbysearch/json?location=37.123%2C-122.456&radius=200&type=cafe&key=****"
+}
+```
+
+**Output:**
+```json
+"Fetching..."
+```
+
+
+#### Tool Used: Google Nearby Places (Food)
+**Timestamp:** 2025-12-02T19:08:42.640Z
+
+**Input:**
+```json
+{
+  "lat": 37.123,
+  "lon": -122.456,
+  "radius": 200,
+  "type": "cafe"
+}
+```
+
+**Output:**
+```json
+[]
+```
+
+
+#### Tool Used: Google Nearby Places (Food)
+**Timestamp:** 2025-12-02T19:08:42.642Z
+
+**Input:**
+```json
+{
+  "lat": 37.123,
+  "lon": -122.456,
+  "radius": 200,
+  "type": "bakery",
+  "url": "https://maps.googleapis.com/maps/api/place/nearbysearch/json?location=37.123%2C-122.456&radius=200&type=bakery&key=****"
+}
+```
+
+**Output:**
+```json
+"Fetching..."
+```
+
+
+#### Tool Used: Google Nearby Places (Food)
+**Timestamp:** 2025-12-02T19:08:42.642Z
+
+**Input:**
+```json
+{
+  "lat": 37.123,
+  "lon": -122.456,
+  "radius": 200,
+  "type": "bakery"
+}
+```
+
+**Output:**
+```json
+[]
+```
+
+
+#### Tool Used: Google Nearby Places (Food)
+**Timestamp:** 2025-12-02T19:08:42.643Z
+
+**Input:**
+```json
+{
+  "lat": 37.123,
+  "lon": -122.456,
+  "radius": 200,
+  "type": "bar",
+  "url": "https://maps.googleapis.com/maps/api/place/nearbysearch/json?location=37.123%2C-122.456&radius=200&type=bar&key=****"
+}
+```
+
+**Output:**
+```json
+"Fetching..."
+```
+
+
+#### Tool Used: Google Nearby Places (Food)
+**Timestamp:** 2025-12-02T19:08:42.643Z
+
+**Input:**
+```json
+{
+  "lat": 37.123,
+  "lon": -122.456,
+  "radius": 200,
+  "type": "bar"
+}
+```
+
+**Output:**
+```json
+[]
+```
+
+
+#### Tool Used: Google Nearby Places (Food)
+**Timestamp:** 2025-12-02T19:08:42.644Z
+
+**Input:**
+```json
+{
+  "lat": 37.123,
+  "lon": -122.456,
+  "radius": 200,
+  "type": "meal_takeaway",
+  "url": "https://maps.googleapis.com/maps/api/place/nearbysearch/json?location=37.123%2C-122.456&radius=200&type=meal_takeaway&key=****"
+}
+```
+
+**Output:**
+```json
+"Fetching..."
+```
+
+
+#### Tool Used: Google Nearby Places (Food)
+**Timestamp:** 2025-12-02T19:08:42.644Z
+
+**Input:**
+```json
+{
+  "lat": 37.123,
+  "lon": -122.456,
+  "radius": 200,
+  "type": "meal_takeaway"
+}
+```
+
+**Output:**
+```json
+[]
+```
+
+
+#### Tool Used: Google Nearby Places (Food)
+**Timestamp:** 2025-12-02T19:08:42.646Z
+
+**Input:**
+```json
+{
+  "lat": 37.123,
+  "lon": -122.456,
+  "radius": 200,
+  "type": "meal_delivery",
+  "url": "https://maps.googleapis.com/maps/api/place/nearbysearch/json?location=37.123%2C-122.456&radius=200&type=meal_delivery&key=****"
+}
+```
+
+**Output:**
+```json
+"Fetching..."
+```
+
+
+#### Tool Used: Google Nearby Places (Food)
+**Timestamp:** 2025-12-02T19:08:42.646Z
+
+**Input:**
+```json
+{
+  "lat": 37.123,
+  "lon": -122.456,
+  "radius": 200,
+  "type": "meal_delivery"
+}
+```
+
+**Output:**
+```json
+[]
+```
+
+
+#### Tool Used: Google Nearby Places (Food)
+**Timestamp:** 2025-12-02T19:08:42.646Z
+
+**Input:**
+```json
+{
+  "lat": 37.123,
+  "lon": -122.456,
+  "radius": 1000,
+  "type": "restaurant",
+  "url": "https://maps.googleapis.com/maps/api/place/nearbysearch/json?location=37.123%2C-122.456&radius=1000&type=restaurant&key=****"
+}
+```
+
+**Output:**
+```json
+"Fetching..."
+```
+
+
+#### Tool Used: Google Nearby Places (Food)
+**Timestamp:** 2025-12-02T19:08:42.647Z
+
+**Input:**
+```json
+{
+  "lat": 37.123,
+  "lon": -122.456,
+  "radius": 1000,
+  "type": "restaurant"
+}
+```
+
+**Output:**
+```json
+[
+  {
+    "place_id": "p_large",
+    "name": "Far Restaurant",
+    "types": [
+      "restaurant"
+    ],
+    "geometry": {
+      "location": {
+        "lat": 1,
+        "lng": 2
+      }
+    }
+  }
+]
+```
+
+
+#### Tool Used: Google Nearby Places (Food)
+**Timestamp:** 2025-12-02T19:08:42.647Z
+
+**Input:**
+```json
+{
+  "lat": 37.123,
+  "lon": -122.456,
+  "radius": 1000,
+  "type": "cafe",
+  "url": "https://maps.googleapis.com/maps/api/place/nearbysearch/json?location=37.123%2C-122.456&radius=1000&type=cafe&key=****"
+}
+```
+
+**Output:**
+```json
+"Fetching..."
+```
+
+
+#### Tool Used: Google Nearby Places (Food)
+**Timestamp:** 2025-12-02T19:08:42.648Z
+
+**Input:**
+```json
+{
+  "lat": 37.123,
+  "lon": -122.456,
+  "radius": 1000,
+  "type": "cafe"
+}
+```
+
+**Output:**
+```json
+[
+  {
+    "place_id": "p_large",
+    "name": "Far Restaurant",
+    "types": [
+      "restaurant"
+    ],
+    "geometry": {
+      "location": {
+        "lat": 1,
+        "lng": 2
+      }
+    }
+  }
+]
+```
+
+
+#### Tool Used: Google Nearby Places (Food)
+**Timestamp:** 2025-12-02T19:08:42.648Z
+
+**Input:**
+```json
+{
+  "lat": 37.123,
+  "lon": -122.456,
+  "radius": 1000,
+  "type": "bakery",
+  "url": "https://maps.googleapis.com/maps/api/place/nearbysearch/json?location=37.123%2C-122.456&radius=1000&type=bakery&key=****"
+}
+```
+
+**Output:**
+```json
+"Fetching..."
+```
+
+
+#### Tool Used: Google Nearby Places (Food)
+**Timestamp:** 2025-12-02T19:08:42.651Z
+
+**Input:**
+```json
+{
+  "lat": 37.123,
+  "lon": -122.456,
+  "radius": 1000,
+  "type": "bakery"
+}
+```
+
+**Output:**
+```json
+[
+  {
+    "place_id": "p_large",
+    "name": "Far Restaurant",
+    "types": [
+      "restaurant"
+    ],
+    "geometry": {
+      "location": {
+        "lat": 1,
+        "lng": 2
+      }
+    }
+  }
+]
+```
+
+
+#### Tool Used: Google Nearby Places (Food)
+**Timestamp:** 2025-12-02T19:08:42.652Z
+
+**Input:**
+```json
+{
+  "lat": 37.123,
+  "lon": -122.456,
+  "radius": 1000,
+  "type": "bar",
+  "url": "https://maps.googleapis.com/maps/api/place/nearbysearch/json?location=37.123%2C-122.456&radius=1000&type=bar&key=****"
+}
+```
+
+**Output:**
+```json
+"Fetching..."
+```
+
+
+#### Tool Used: Google Nearby Places (Food)
+**Timestamp:** 2025-12-02T19:08:42.653Z
+
+**Input:**
+```json
+{
+  "lat": 37.123,
+  "lon": -122.456,
+  "radius": 1000,
+  "type": "bar"
+}
+```
+
+**Output:**
+```json
+[
+  {
+    "place_id": "p_large",
+    "name": "Far Restaurant",
+    "types": [
+      "restaurant"
+    ],
+    "geometry": {
+      "location": {
+        "lat": 1,
+        "lng": 2
+      }
+    }
+  }
+]
+```
+
+
+#### Tool Used: Google Nearby Places (Food)
+**Timestamp:** 2025-12-02T19:08:42.654Z
+
+**Input:**
+```json
+{
+  "lat": 37.123,
+  "lon": -122.456,
+  "radius": 1000,
+  "type": "meal_takeaway",
+  "url": "https://maps.googleapis.com/maps/api/place/nearbysearch/json?location=37.123%2C-122.456&radius=1000&type=meal_takeaway&key=****"
+}
+```
+
+**Output:**
+```json
+"Fetching..."
+```
+
+
+#### Tool Used: Google Nearby Places (Food)
+**Timestamp:** 2025-12-02T19:08:42.654Z
+
+**Input:**
+```json
+{
+  "lat": 37.123,
+  "lon": -122.456,
+  "radius": 1000,
+  "type": "meal_takeaway"
+}
+```
+
+**Output:**
+```json
+[
+  {
+    "place_id": "p_large",
+    "name": "Far Restaurant",
+    "types": [
+      "restaurant"
+    ],
+    "geometry": {
+      "location": {
+        "lat": 1,
+        "lng": 2
+      }
+    }
+  }
+]
+```
+
+
+#### Tool Used: Google Nearby Places (Food)
+**Timestamp:** 2025-12-02T19:08:42.655Z
+
+**Input:**
+```json
+{
+  "lat": 37.123,
+  "lon": -122.456,
+  "radius": 1000,
+  "type": "meal_delivery",
+  "url": "https://maps.googleapis.com/maps/api/place/nearbysearch/json?location=37.123%2C-122.456&radius=1000&type=meal_delivery&key=****"
+}
+```
+
+**Output:**
+```json
+"Fetching..."
+```
+
+
+#### Tool Used: Google Nearby Places (Food)
+**Timestamp:** 2025-12-02T19:08:42.656Z
+
+**Input:**
+```json
+{
+  "lat": 37.123,
+  "lon": -122.456,
+  "radius": 1000,
+  "type": "meal_delivery"
+}
+```
+
+**Output:**
+```json
+[
+  {
+    "place_id": "p_large",
+    "name": "Far Restaurant",
+    "types": [
+      "restaurant"
+    ],
+    "geometry": {
+      "location": {
+        "lat": 1,
+        "lng": 2
+      }
+    }
+  }
+]
+```
+
+
+
+# Logger Initialized at 2025-12-02T19:08:42.741Z
+
+================================================================================
+# Graph Execution Started
+**Run ID:** 0f230995-55a7-4be2-9996-63636da38765
+**Timestamp:** 2025-12-02T19:08:42.756Z
+
+## Initial State
+```json
+{
+  "runId": "0f230995-55a7-4be2-9996-63636da38765",
+  "filename": "photo.HEIC.processed.jpg",
+  "fileBuffer": "[Buffer: 18 bytes]",
+  "imageBase64": "[Base64 Image Data Omitted]",
+  "imageMime": "image/jpeg",
+  "metadata": {
+    "dateTime": "null",
+    "cameraModel": "null"
+  },
+  "gpsString": "null",
+  "device": "null",
+  "modelOverrides": {},
+  "classification": "null",
+  "poiAnalysis": "null",
+  "rich_search_context": "null",
+  "finalResult": "null",
+  "error": "null"
+}
+```
+
+
+## Graph Execution Finished
+**Run ID:** 0f230995-55a7-4be2-9996-63636da38765
+**Timestamp:** 2025-12-02T19:08:42.757Z
+
+## Final State
+```json
+{
+  "finalResult": {
+    "caption": "test",
+    "description": "test",
+    "keywords": "test"
+  },
+  "classification": "null"
+}
+```
+
+================================================================================
+
+
+
+# Logger Initialized at 2025-12-02T19:08:42.778Z
+
+
+# Logger Initialized at 2025-12-02T19:08:42.781Z
+
+#### Tool Used: Google Nearby Places
+**Timestamp:** 2025-12-02T19:08:42.792Z
+
+**Input:**
+```json
+{
+  "lat": 37.123,
+  "lon": -122.456,
+  "radius": 61,
+  "url": "https://maps.googleapis.com/maps/api/place/nearbysearch/json?location=37.123%2C-122.456&radius=61&type=park%7Cmuseum%7Ctourist_attraction%7Cnatural_feature&key=****"
+}
+```
+
+**Output:**
+```json
+"Fetching..."
+```
+
+
+#### Tool Used: Google Nearby Places
+**Timestamp:** 2025-12-02T19:08:42.796Z
+
+**Input:**
+```json
+{
+  "lat": 37.123,
+  "lon": -122.456,
+  "radius": 61
+}
+```
+
+**Output:**
+```json
+[
+  {
+    "id": "abc123",
+    "name": "Contra Costa Canal Trail",
+    "category": "trail",
+    "lat": 37.123,
+    "lon": -122.456,
+    "distanceMeters": 0,
+    "address": "Walnut Creek, CA",
+    "source": "google",
+    "confidence": "high"
+  }
+]
+```
+
+
+#### Tool Used: Google Nearby Places
+**Timestamp:** 2025-12-02T19:08:42.800Z
+
+**Input:**
+```json
+{
+  "lat": 37.124,
+  "lon": -122.457,
+  "radius": 61,
+  "url": "https://maps.googleapis.com/maps/api/place/nearbysearch/json?location=37.124%2C-122.457&radius=61&type=park%7Cmuseum%7Ctourist_attraction%7Cnatural_feature&key=****"
+}
+```
+
+**Output:**
+```json
+"Fetching..."
+```
+
+
+#### Tool Used: Google Nearby Places
+**Timestamp:** 2025-12-02T19:08:42.800Z
+
+**Input:**
+```json
+{
+  "lat": 37.124,
+  "lon": -122.457,
+  "radius": 61
+}
+```
+
+**Output:**
+```json
+[
+  {
+    "id": "def456",
+    "name": "Lime Ridge Open Space",
+    "category": "park",
+    "lat": 37.124,
+    "lon": -122.457,
+    "distanceMeters": 0,
+    "address": "Walnut Creek, CA",
+    "source": "google",
+    "confidence": "high"
+  }
+]
+```
+
+
+
+# Logger Initialized at 2025-12-02T19:11:35.179Z
+
+
+# Logger Initialized at 2025-12-02T19:11:35.240Z
+
+
+# Logger Initialized at 2025-12-02T19:11:35.242Z
+
+
+# Logger Initialized at 2025-12-02T19:11:36.146Z
+
+#### Tool Used: Google Reverse Geocode
+**Timestamp:** 2025-12-02T19:11:36.309Z
+
+**Input:**
+```json
+{
+  "lat": 37,
+  "lon": -122,
+  "url": "https://maps.googleapis.com/maps/api/geocode/json?latlng=37,-122&key=****"
+}
+```
+
+**Output:**
+```json
+"Fetching..."
+```
+
+
+
+# Logger Initialized at 2025-12-02T19:11:36.330Z
+
+
+# Logger Initialized at 2025-12-02T19:11:36.444Z
+
+
+# Logger Initialized at 2025-12-02T19:11:36.449Z
+
+
+# Logger Initialized at 2025-12-02T19:11:36.478Z
+
+
+# Logger Initialized at 2025-12-02T19:11:36.480Z
+
+
+# Logger Initialized at 2025-12-02T19:11:36.506Z
+
+
+# Logger Initialized at 2025-12-02T19:11:36.507Z
+
+#### Tool Used: Google Reverse Geocode
+**Timestamp:** 2025-12-02T19:11:36.523Z
+
+**Input:**
+```json
+{
+  "lat": 37,
+  "lon": -122
+}
+```
+
+**Output:**
+```json
+{
+  "address": "null"
+}
+```
+
+
+
+# Logger Initialized at 2025-12-02T19:11:36.610Z
+
+
+# Logger Initialized at 2025-12-02T19:11:36.632Z
+
+
+# Logger Initialized at 2025-12-02T19:11:36.662Z
+
+
+# Logger Initialized at 2025-12-02T19:11:36.677Z
+
+
+# Logger Initialized at 2025-12-02T19:11:37.729Z
+
+
+# Logger Initialized at 2025-12-02T19:11:37.730Z
+
+
+# Logger Initialized at 2025-12-02T19:11:37.782Z
+
+================================================================================
+# Graph Execution Started
+**Run ID:** ce0995b5-77cd-4ac4-bb22-8b85ff5a6725
+**Timestamp:** 2025-12-02T19:11:37.875Z
+
+## Initial State
+```json
+{
+  "runId": "ce0995b5-77cd-4ac4-bb22-8b85ff5a6725",
+  "filename": "tmp_test.heic",
+  "fileBuffer": "[Buffer: 19 bytes]",
+  "imageBase64": "[Base64 Image Data Omitted]",
+  "imageMime": "image/jpeg",
+  "metadata": {
+    "dateTime": "null",
+    "cameraModel": "null"
+  },
+  "gpsString": "null",
+  "device": "null",
+  "modelOverrides": {},
+  "classification": "null",
+  "poiAnalysis": "null",
+  "rich_search_context": "null",
+  "finalResult": "null",
+  "error": "null"
+}
+```
+
+
+## Graph Execution Finished
+**Run ID:** ce0995b5-77cd-4ac4-bb22-8b85ff5a6725
+**Timestamp:** 2025-12-02T19:11:37.877Z
+
+## Final State
+```json
+{
+  "classification": "scenery_or_general_subject",
+  "finalResult": {
+    "caption": "HEIC Test",
+    "description": "desc heic",
+    "keywords": "x,y"
+  }
+}
+```
+
+================================================================================
+
+
+
+# Logger Initialized at 2025-12-02T19:11:37.940Z
+
+
+# Logger Initialized at 2025-12-02T19:11:38.007Z
+
+#### Tool Used: Google Nearby Places (Food)
+**Timestamp:** 2025-12-02T19:11:38.017Z
+
+**Input:**
+```json
+{
+  "lat": 37.123,
+  "lon": -122.456,
+  "radius": 250,
+  "type": "restaurant",
+  "url": "https://maps.googleapis.com/maps/api/place/nearbysearch/json?location=37.123%2C-122.456&radius=250&type=restaurant&key=****"
+}
+```
+
+**Output:**
+```json
+"Fetching..."
+```
+
+
+#### Tool Used: Google Nearby Places (Food)
+**Timestamp:** 2025-12-02T19:11:38.017Z
+
+**Input:**
+```json
+{
+  "lat": 37.123,
+  "lon": -122.456,
+  "radius": 250,
+  "type": "restaurant"
+}
+```
+
+**Output:**
+```json
+[
+  {
+    "place_id": "p2",
+    "name": "Far Bar",
+    "types": [
+      "bar",
+      "restaurant"
+    ],
+    "geometry": {
+      "location": {
+        "lat": 37.125,
+        "lng": -122.456
+      }
+    },
+    "vicinity": "Oakland, CA",
+    "rating": 4.2,
+    "user_ratings_total": 65
+  },
+  {
+    "place_id": "p1",
+    "name": "Near Cafe",
+    "types": [
+      "cafe"
+    ],
+    "geometry": {
+      "location": {
+        "lat": 37.123,
+        "lng": -122.456
+      }
+    },
+    "vicinity": "Oakland, CA",
+    "rating": 4.5,
+    "user_ratings_total": 120
+  }
+]
+```
+
+
+#### Tool Used: Google Nearby Places (Food)
+**Timestamp:** 2025-12-02T19:11:38.019Z
+
+**Input:**
+```json
+{
+  "lat": 37.123,
+  "lon": -122.456,
+  "radius": 250,
+  "type": "cafe",
+  "url": "https://maps.googleapis.com/maps/api/place/nearbysearch/json?location=37.123%2C-122.456&radius=250&type=cafe&key=****"
+}
+```
+
+**Output:**
+```json
+"Fetching..."
+```
+
+
+#### Tool Used: Google Nearby Places (Food)
+**Timestamp:** 2025-12-02T19:11:38.020Z
+
+**Input:**
+```json
+{
+  "lat": 37.123,
+  "lon": -122.456,
+  "radius": 250,
+  "type": "cafe"
+}
+```
+
+**Output:**
+```json
+[
+  {
+    "place_id": "p2",
+    "name": "Far Bar",
+    "types": [
+      "bar",
+      "restaurant"
+    ],
+    "geometry": {
+      "location": {
+        "lat": 37.125,
+        "lng": -122.456
+      }
+    },
+    "vicinity": "Oakland, CA",
+    "rating": 4.2,
+    "user_ratings_total": 65
+  },
+  {
+    "place_id": "p1",
+    "name": "Near Cafe",
+    "types": [
+      "cafe"
+    ],
+    "geometry": {
+      "location": {
+        "lat": 37.123,
+        "lng": -122.456
+      }
+    },
+    "vicinity": "Oakland, CA",
+    "rating": 4.5,
+    "user_ratings_total": 120
+  }
+]
+```
+
+
+#### Tool Used: Google Nearby Places (Food)
+**Timestamp:** 2025-12-02T19:11:38.021Z
+
+**Input:**
+```json
+{
+  "lat": 37.123,
+  "lon": -122.456,
+  "radius": 250,
+  "type": "bakery",
+  "url": "https://maps.googleapis.com/maps/api/place/nearbysearch/json?location=37.123%2C-122.456&radius=250&type=bakery&key=****"
+}
+```
+
+**Output:**
+```json
+"Fetching..."
+```
+
+
+#### Tool Used: Google Nearby Places (Food)
+**Timestamp:** 2025-12-02T19:11:38.021Z
+
+**Input:**
+```json
+{
+  "lat": 37.123,
+  "lon": -122.456,
+  "radius": 250,
+  "type": "bakery"
+}
+```
+
+**Output:**
+```json
+[
+  {
+    "place_id": "p2",
+    "name": "Far Bar",
+    "types": [
+      "bar",
+      "restaurant"
+    ],
+    "geometry": {
+      "location": {
+        "lat": 37.125,
+        "lng": -122.456
+      }
+    },
+    "vicinity": "Oakland, CA",
+    "rating": 4.2,
+    "user_ratings_total": 65
+  },
+  {
+    "place_id": "p1",
+    "name": "Near Cafe",
+    "types": [
+      "cafe"
+    ],
+    "geometry": {
+      "location": {
+        "lat": 37.123,
+        "lng": -122.456
+      }
+    },
+    "vicinity": "Oakland, CA",
+    "rating": 4.5,
+    "user_ratings_total": 120
+  }
+]
+```
+
+
+#### Tool Used: Google Nearby Places (Food)
+**Timestamp:** 2025-12-02T19:11:38.022Z
+
+**Input:**
+```json
+{
+  "lat": 37.123,
+  "lon": -122.456,
+  "radius": 250,
+  "type": "bar",
+  "url": "https://maps.googleapis.com/maps/api/place/nearbysearch/json?location=37.123%2C-122.456&radius=250&type=bar&key=****"
+}
+```
+
+**Output:**
+```json
+"Fetching..."
+```
+
+
+#### Tool Used: Google Nearby Places (Food)
+**Timestamp:** 2025-12-02T19:11:38.024Z
+
+**Input:**
+```json
+{
+  "lat": 37.123,
+  "lon": -122.456,
+  "radius": 250,
+  "type": "bar"
+}
+```
+
+**Output:**
+```json
+[
+  {
+    "place_id": "p2",
+    "name": "Far Bar",
+    "types": [
+      "bar",
+      "restaurant"
+    ],
+    "geometry": {
+      "location": {
+        "lat": 37.125,
+        "lng": -122.456
+      }
+    },
+    "vicinity": "Oakland, CA",
+    "rating": 4.2,
+    "user_ratings_total": 65
+  },
+  {
+    "place_id": "p1",
+    "name": "Near Cafe",
+    "types": [
+      "cafe"
+    ],
+    "geometry": {
+      "location": {
+        "lat": 37.123,
+        "lng": -122.456
+      }
+    },
+    "vicinity": "Oakland, CA",
+    "rating": 4.5,
+    "user_ratings_total": 120
+  }
+]
+```
+
+
+#### Tool Used: Google Nearby Places (Food)
+**Timestamp:** 2025-12-02T19:11:38.024Z
+
+**Input:**
+```json
+{
+  "lat": 37.123,
+  "lon": -122.456,
+  "radius": 250,
+  "type": "meal_takeaway",
+  "url": "https://maps.googleapis.com/maps/api/place/nearbysearch/json?location=37.123%2C-122.456&radius=250&type=meal_takeaway&key=****"
+}
+```
+
+**Output:**
+```json
+"Fetching..."
+```
+
+
+#### Tool Used: Google Nearby Places (Food)
+**Timestamp:** 2025-12-02T19:11:38.025Z
+
+**Input:**
+```json
+{
+  "lat": 37.123,
+  "lon": -122.456,
+  "radius": 250,
+  "type": "meal_takeaway"
+}
+```
+
+**Output:**
+```json
+[
+  {
+    "place_id": "p2",
+    "name": "Far Bar",
+    "types": [
+      "bar",
+      "restaurant"
+    ],
+    "geometry": {
+      "location": {
+        "lat": 37.125,
+        "lng": -122.456
+      }
+    },
+    "vicinity": "Oakland, CA",
+    "rating": 4.2,
+    "user_ratings_total": 65
+  },
+  {
+    "place_id": "p1",
+    "name": "Near Cafe",
+    "types": [
+      "cafe"
+    ],
+    "geometry": {
+      "location": {
+        "lat": 37.123,
+        "lng": -122.456
+      }
+    },
+    "vicinity": "Oakland, CA",
+    "rating": 4.5,
+    "user_ratings_total": 120
+  }
+]
+```
+
+
+
+# Logger Initialized at 2025-12-02T19:11:38.025Z
+
+#### Tool Used: Google Nearby Places (Food)
+**Timestamp:** 2025-12-02T19:11:38.026Z
+
+**Input:**
+```json
+{
+  "lat": 37.123,
+  "lon": -122.456,
+  "radius": 250,
+  "type": "meal_delivery",
+  "url": "https://maps.googleapis.com/maps/api/place/nearbysearch/json?location=37.123%2C-122.456&radius=250&type=meal_delivery&key=****"
+}
+```
+
+**Output:**
+```json
+"Fetching..."
+```
+
+
+#### Tool Used: Google Nearby Places (Food)
+**Timestamp:** 2025-12-02T19:11:38.028Z
+
+**Input:**
+```json
+{
+  "lat": 37.123,
+  "lon": -122.456,
+  "radius": 250,
+  "type": "meal_delivery"
+}
+```
+
+**Output:**
+```json
+[
+  {
+    "place_id": "p2",
+    "name": "Far Bar",
+    "types": [
+      "bar",
+      "restaurant"
+    ],
+    "geometry": {
+      "location": {
+        "lat": 37.125,
+        "lng": -122.456
+      }
+    },
+    "vicinity": "Oakland, CA",
+    "rating": 4.2,
+    "user_ratings_total": 65
+  },
+  {
+    "place_id": "p1",
+    "name": "Near Cafe",
+    "types": [
+      "cafe"
+    ],
+    "geometry": {
+      "location": {
+        "lat": 37.123,
+        "lng": -122.456
+      }
+    },
+    "vicinity": "Oakland, CA",
+    "rating": 4.5,
+    "user_ratings_total": 120
+  }
+]
+```
+
+
+#### Tool Used: Google Nearby Places (Food)
+**Timestamp:** 2025-12-02T19:11:38.030Z
+
+**Input:**
+```json
+{
+  "lat": 37.123,
+  "lon": -122.456,
+  "radius": 50,
+  "type": "restaurant",
+  "url": "https://maps.googleapis.com/maps/api/place/nearbysearch/json?location=37.123%2C-122.456&radius=50&type=restaurant&key=****"
+}
+```
+
+**Output:**
+```json
+"Fetching..."
+```
+
+
+#### Tool Used: Google Nearby Places (Food)
+**Timestamp:** 2025-12-02T19:11:38.031Z
+
+**Input:**
+```json
+{
+  "lat": 37.123,
+  "lon": -122.456,
+  "radius": 50,
+  "type": "restaurant"
+}
+```
+
+**Output:**
+```json
+[]
+```
+
+
+#### Tool Used: Google Nearby Places (Food)
+**Timestamp:** 2025-12-02T19:11:38.031Z
+
+**Input:**
+```json
+{
+  "lat": 37.123,
+  "lon": -122.456,
+  "radius": 50,
+  "type": "cafe",
+  "url": "https://maps.googleapis.com/maps/api/place/nearbysearch/json?location=37.123%2C-122.456&radius=50&type=cafe&key=****"
+}
+```
+
+**Output:**
+```json
+"Fetching..."
+```
+
+
+#### Tool Used: Google Nearby Places (Food)
+**Timestamp:** 2025-12-02T19:11:38.032Z
+
+**Input:**
+```json
+{
+  "lat": 37.123,
+  "lon": -122.456,
+  "radius": 50,
+  "type": "cafe"
+}
+```
+
+**Output:**
+```json
+[]
+```
+
+
+#### Tool Used: Google Nearby Places (Food)
+**Timestamp:** 2025-12-02T19:11:38.033Z
+
+**Input:**
+```json
+{
+  "lat": 37.123,
+  "lon": -122.456,
+  "radius": 50,
+  "type": "bakery",
+  "url": "https://maps.googleapis.com/maps/api/place/nearbysearch/json?location=37.123%2C-122.456&radius=50&type=bakery&key=****"
+}
+```
+
+**Output:**
+```json
+"Fetching..."
+```
+
+
+#### Tool Used: Google Nearby Places (Food)
+**Timestamp:** 2025-12-02T19:11:38.035Z
+
+**Input:**
+```json
+{
+  "lat": 37.123,
+  "lon": -122.456,
+  "radius": 50,
+  "type": "bakery"
+}
+```
+
+**Output:**
+```json
+[]
+```
+
+
+#### Tool Used: Google Nearby Places (Food)
+**Timestamp:** 2025-12-02T19:11:38.036Z
+
+**Input:**
+```json
+{
+  "lat": 37.123,
+  "lon": -122.456,
+  "radius": 50,
+  "type": "bar",
+  "url": "https://maps.googleapis.com/maps/api/place/nearbysearch/json?location=37.123%2C-122.456&radius=50&type=bar&key=****"
+}
+```
+
+**Output:**
+```json
+"Fetching..."
+```
+
+
+#### Tool Used: Google Nearby Places (Food)
+**Timestamp:** 2025-12-02T19:11:38.037Z
+
+**Input:**
+```json
+{
+  "lat": 37.123,
+  "lon": -122.456,
+  "radius": 50,
+  "type": "bar"
+}
+```
+
+**Output:**
+```json
+[]
+```
+
+
+#### Tool Used: Google Nearby Places (Food)
+**Timestamp:** 2025-12-02T19:11:38.038Z
+
+**Input:**
+```json
+{
+  "lat": 37.123,
+  "lon": -122.456,
+  "radius": 50,
+  "type": "meal_takeaway",
+  "url": "https://maps.googleapis.com/maps/api/place/nearbysearch/json?location=37.123%2C-122.456&radius=50&type=meal_takeaway&key=****"
+}
+```
+
+**Output:**
+```json
+"Fetching..."
+```
+
+
+#### Tool Used: Google Nearby Places (Food)
+**Timestamp:** 2025-12-02T19:11:38.039Z
+
+**Input:**
+```json
+{
+  "lat": 37.123,
+  "lon": -122.456,
+  "radius": 50,
+  "type": "meal_takeaway"
+}
+```
+
+**Output:**
+```json
+[]
+```
+
+
+#### Tool Used: Google Nearby Places
+**Timestamp:** 2025-12-02T19:11:38.038Z
+
+**Input:**
+```json
+{
+  "lat": 37.123,
+  "lon": -122.456,
+  "radius": 61,
+  "url": "https://maps.googleapis.com/maps/api/place/nearbysearch/json?location=37.123%2C-122.456&radius=61&type=park%7Cmuseum%7Ctourist_attraction%7Cnatural_feature&key=****"
+}
+```
+
+**Output:**
+```json
+"Fetching..."
+```
+
+
+#### Tool Used: Google Nearby Places (Food)
+**Timestamp:** 2025-12-02T19:11:38.040Z
+
+**Input:**
+```json
+{
+  "lat": 37.123,
+  "lon": -122.456,
+  "radius": 50,
+  "type": "meal_delivery",
+  "url": "https://maps.googleapis.com/maps/api/place/nearbysearch/json?location=37.123%2C-122.456&radius=50&type=meal_delivery&key=****"
+}
+```
+
+**Output:**
+```json
+"Fetching..."
+```
+
+
+================================================================================
+# Graph Execution Started
+**Run ID:** 66667564-002a-45ac-a29a-318ac8da17c8
+**Timestamp:** 2025-12-02T19:11:38.041Z
+
+## Initial State
+```json
+{
+  "runId": "66667564-002a-45ac-a29a-318ac8da17c8",
+  "filename": "tmp_test.jpg",
+  "fileBuffer": "[Buffer: 19 bytes]",
+  "imageBase64": "[Base64 Image Data Omitted]",
+  "imageMime": "image/jpeg",
+  "metadata": {
+    "dateTime": "null",
+    "cameraModel": "null"
+  },
+  "gpsString": "null",
+  "device": "null",
+  "modelOverrides": {},
+  "classification": "null",
+  "poiAnalysis": "null",
+  "rich_search_context": "null",
+  "finalResult": "null",
+  "error": "null"
+}
+```
+
+
+#### Tool Used: Google Nearby Places (Food)
+**Timestamp:** 2025-12-02T19:11:38.041Z
+
+**Input:**
+```json
+{
+  "lat": 37.123,
+  "lon": -122.456,
+  "radius": 50,
+  "type": "meal_delivery"
+}
+```
+
+**Output:**
+```json
+[]
+```
+
+
+## Graph Execution Finished
+**Run ID:** 66667564-002a-45ac-a29a-318ac8da17c8
+**Timestamp:** 2025-12-02T19:11:38.042Z
+
+## Final State
+```json
+{
+  "classification": "scenery_or_general_subject",
+  "finalResult": {
+    "caption": "Test",
+    "description": "desc",
+    "keywords": "a,b"
+  }
+}
+```
+
+================================================================================
+
+
+#### Tool Used: Google Nearby Places
+**Timestamp:** 2025-12-02T19:11:38.041Z
+
+**Input:**
+```json
+{
+  "lat": 37.123,
+  "lon": -122.456,
+  "radius": 61
+}
+```
+
+**Output:**
+```json
+[
+  {
+    "id": "abc123",
+    "name": "Contra Costa Canal Trail",
+    "category": "trail",
+    "lat": 37.123,
+    "lon": -122.456,
+    "distanceMeters": 0,
+    "address": "Walnut Creek, CA",
+    "source": "google",
+    "confidence": "high"
+  }
+]
+```
+
+
+#### Tool Used: Google Nearby Places (Food)
+**Timestamp:** 2025-12-02T19:11:38.042Z
+
+**Input:**
+```json
+{
+  "lat": 37.123,
+  "lon": -122.456,
+  "radius": 100,
+  "type": "restaurant",
+  "url": "https://maps.googleapis.com/maps/api/place/nearbysearch/json?location=37.123%2C-122.456&radius=100&type=restaurant&key=****"
+}
+```
+
+**Output:**
+```json
+"Fetching..."
+```
+
+
+#### Tool Used: Google Nearby Places (Food)
+**Timestamp:** 2025-12-02T19:11:38.046Z
+
+**Input:**
+```json
+{
+  "lat": 37.123,
+  "lon": -122.456,
+  "radius": 100,
+  "type": "restaurant"
+}
+```
+
+**Output:**
+```json
+[]
+```
+
+
+#### Tool Used: Google Nearby Places (Food)
+**Timestamp:** 2025-12-02T19:11:38.046Z
+
+**Input:**
+```json
+{
+  "lat": 37.123,
+  "lon": -122.456,
+  "radius": 100,
+  "type": "cafe",
+  "url": "https://maps.googleapis.com/maps/api/place/nearbysearch/json?location=37.123%2C-122.456&radius=100&type=cafe&key=****"
+}
+```
+
+**Output:**
+```json
+"Fetching..."
+```
+
+
+#### Tool Used: Google Nearby Places (Food)
+**Timestamp:** 2025-12-02T19:11:38.047Z
+
+**Input:**
+```json
+{
+  "lat": 37.123,
+  "lon": -122.456,
+  "radius": 100,
+  "type": "cafe"
+}
+```
+
+**Output:**
+```json
+[]
+```
+
+
+#### Tool Used: Google Nearby Places
+**Timestamp:** 2025-12-02T19:11:38.047Z
+
+**Input:**
+```json
+{
+  "lat": 37.124,
+  "lon": -122.457,
+  "radius": 61,
+  "url": "https://maps.googleapis.com/maps/api/place/nearbysearch/json?location=37.124%2C-122.457&radius=61&type=park%7Cmuseum%7Ctourist_attraction%7Cnatural_feature&key=****"
+}
+```
+
+**Output:**
+```json
+"Fetching..."
+```
+
+
+#### Tool Used: Google Nearby Places (Food)
+**Timestamp:** 2025-12-02T19:11:38.048Z
+
+**Input:**
+```json
+{
+  "lat": 37.123,
+  "lon": -122.456,
+  "radius": 100,
+  "type": "bakery",
+  "url": "https://maps.googleapis.com/maps/api/place/nearbysearch/json?location=37.123%2C-122.456&radius=100&type=bakery&key=****"
+}
+```
+
+**Output:**
+```json
+"Fetching..."
+```
+
+
+#### Tool Used: Google Nearby Places (Food)
+**Timestamp:** 2025-12-02T19:11:38.049Z
+
+**Input:**
+```json
+{
+  "lat": 37.123,
+  "lon": -122.456,
+  "radius": 100,
+  "type": "bakery"
+}
+```
+
+**Output:**
+```json
+[]
+```
+
+
+#### Tool Used: Google Nearby Places
+**Timestamp:** 2025-12-02T19:11:38.048Z
+
+**Input:**
+```json
+{
+  "lat": 37.124,
+  "lon": -122.457,
+  "radius": 61
+}
+```
+
+**Output:**
+```json
+[
+  {
+    "id": "def456",
+    "name": "Lime Ridge Open Space",
+    "category": "park",
+    "lat": 37.124,
+    "lon": -122.457,
+    "distanceMeters": 0,
+    "address": "Walnut Creek, CA",
+    "source": "google",
+    "confidence": "high"
+  }
+]
+```
+
+
+#### Tool Used: Google Nearby Places (Food)
+**Timestamp:** 2025-12-02T19:11:38.049Z
+
+**Input:**
+```json
+{
+  "lat": 37.123,
+  "lon": -122.456,
+  "radius": 100,
+  "type": "bar",
+  "url": "https://maps.googleapis.com/maps/api/place/nearbysearch/json?location=37.123%2C-122.456&radius=100&type=bar&key=****"
+}
+```
+
+**Output:**
+```json
+"Fetching..."
+```
+
+
+#### Tool Used: Google Nearby Places (Food)
+**Timestamp:** 2025-12-02T19:11:38.050Z
+
+**Input:**
+```json
+{
+  "lat": 37.123,
+  "lon": -122.456,
+  "radius": 100,
+  "type": "bar"
+}
+```
+
+**Output:**
+```json
+[]
+```
+
+
+#### Tool Used: Google Nearby Places (Food)
+**Timestamp:** 2025-12-02T19:11:38.050Z
+
+**Input:**
+```json
+{
+  "lat": 37.123,
+  "lon": -122.456,
+  "radius": 100,
+  "type": "meal_takeaway",
+  "url": "https://maps.googleapis.com/maps/api/place/nearbysearch/json?location=37.123%2C-122.456&radius=100&type=meal_takeaway&key=****"
+}
+```
+
+**Output:**
+```json
+"Fetching..."
+```
+
+
+#### Tool Used: Google Nearby Places (Food)
+**Timestamp:** 2025-12-02T19:11:38.051Z
+
+**Input:**
+```json
+{
+  "lat": 37.123,
+  "lon": -122.456,
+  "radius": 100,
+  "type": "meal_takeaway"
+}
+```
+
+**Output:**
+```json
+[]
+```
+
+
+#### Tool Used: Google Nearby Places (Food)
+**Timestamp:** 2025-12-02T19:11:38.051Z
+
+**Input:**
+```json
+{
+  "lat": 37.123,
+  "lon": -122.456,
+  "radius": 100,
+  "type": "meal_delivery",
+  "url": "https://maps.googleapis.com/maps/api/place/nearbysearch/json?location=37.123%2C-122.456&radius=100&type=meal_delivery&key=****"
+}
+```
+
+**Output:**
+```json
+"Fetching..."
+```
+
+
+#### Tool Used: Google Nearby Places (Food)
+**Timestamp:** 2025-12-02T19:11:38.052Z
+
+**Input:**
+```json
+{
+  "lat": 37.123,
+  "lon": -122.456,
+  "radius": 100,
+  "type": "meal_delivery"
+}
+```
+
+**Output:**
+```json
+[]
+```
+
+
+#### Tool Used: Google Nearby Places (Food)
+**Timestamp:** 2025-12-02T19:11:38.052Z
+
+**Input:**
+```json
+{
+  "lat": 37.123,
+  "lon": -122.456,
+  "radius": 200,
+  "type": "restaurant",
+  "url": "https://maps.googleapis.com/maps/api/place/nearbysearch/json?location=37.123%2C-122.456&radius=200&type=restaurant&key=****"
+}
+```
+
+**Output:**
+```json
+"Fetching..."
+```
+
+
+#### Tool Used: Google Nearby Places (Food)
+**Timestamp:** 2025-12-02T19:11:38.053Z
+
+**Input:**
+```json
+{
+  "lat": 37.123,
+  "lon": -122.456,
+  "radius": 200,
+  "type": "restaurant"
+}
+```
+
+**Output:**
+```json
+[]
+```
+
+
+#### Tool Used: Google Nearby Places (Food)
+**Timestamp:** 2025-12-02T19:11:38.054Z
+
+**Input:**
+```json
+{
+  "lat": 37.123,
+  "lon": -122.456,
+  "radius": 200,
+  "type": "cafe",
+  "url": "https://maps.googleapis.com/maps/api/place/nearbysearch/json?location=37.123%2C-122.456&radius=200&type=cafe&key=****"
+}
+```
+
+**Output:**
+```json
+"Fetching..."
+```
+
+
+#### Tool Used: Google Nearby Places (Food)
+**Timestamp:** 2025-12-02T19:11:38.054Z
+
+**Input:**
+```json
+{
+  "lat": 37.123,
+  "lon": -122.456,
+  "radius": 200,
+  "type": "cafe"
+}
+```
+
+**Output:**
+```json
+[]
+```
+
+
+#### Tool Used: Google Nearby Places (Food)
+**Timestamp:** 2025-12-02T19:11:38.055Z
+
+**Input:**
+```json
+{
+  "lat": 37.123,
+  "lon": -122.456,
+  "radius": 200,
+  "type": "bakery",
+  "url": "https://maps.googleapis.com/maps/api/place/nearbysearch/json?location=37.123%2C-122.456&radius=200&type=bakery&key=****"
+}
+```
+
+**Output:**
+```json
+"Fetching..."
+```
+
+
+#### Tool Used: Google Nearby Places (Food)
+**Timestamp:** 2025-12-02T19:11:38.057Z
+
+**Input:**
+```json
+{
+  "lat": 37.123,
+  "lon": -122.456,
+  "radius": 200,
+  "type": "bakery"
+}
+```
+
+**Output:**
+```json
+[]
+```
+
+
+#### Tool Used: Google Nearby Places (Food)
+**Timestamp:** 2025-12-02T19:11:38.057Z
+
+**Input:**
+```json
+{
+  "lat": 37.123,
+  "lon": -122.456,
+  "radius": 200,
+  "type": "bar",
+  "url": "https://maps.googleapis.com/maps/api/place/nearbysearch/json?location=37.123%2C-122.456&radius=200&type=bar&key=****"
+}
+```
+
+**Output:**
+```json
+"Fetching..."
+```
+
+
+#### Tool Used: Google Nearby Places (Food)
+**Timestamp:** 2025-12-02T19:11:38.058Z
+
+**Input:**
+```json
+{
+  "lat": 37.123,
+  "lon": -122.456,
+  "radius": 200,
+  "type": "bar"
+}
+```
+
+**Output:**
+```json
+[]
+```
+
+
+#### Tool Used: Google Nearby Places (Food)
+**Timestamp:** 2025-12-02T19:11:38.059Z
+
+**Input:**
+```json
+{
+  "lat": 37.123,
+  "lon": -122.456,
+  "radius": 200,
+  "type": "meal_takeaway",
+  "url": "https://maps.googleapis.com/maps/api/place/nearbysearch/json?location=37.123%2C-122.456&radius=200&type=meal_takeaway&key=****"
+}
+```
+
+**Output:**
+```json
+"Fetching..."
+```
+
+
+#### Tool Used: Google Nearby Places (Food)
+**Timestamp:** 2025-12-02T19:11:38.060Z
+
+**Input:**
+```json
+{
+  "lat": 37.123,
+  "lon": -122.456,
+  "radius": 200,
+  "type": "meal_takeaway"
+}
+```
+
+**Output:**
+```json
+[]
+```
+
+
+#### Tool Used: Google Nearby Places (Food)
+**Timestamp:** 2025-12-02T19:11:38.061Z
+
+**Input:**
+```json
+{
+  "lat": 37.123,
+  "lon": -122.456,
+  "radius": 200,
+  "type": "meal_delivery",
+  "url": "https://maps.googleapis.com/maps/api/place/nearbysearch/json?location=37.123%2C-122.456&radius=200&type=meal_delivery&key=****"
+}
+```
+
+**Output:**
+```json
+"Fetching..."
+```
+
+
+#### Tool Used: Google Nearby Places (Food)
+**Timestamp:** 2025-12-02T19:11:38.061Z
+
+**Input:**
+```json
+{
+  "lat": 37.123,
+  "lon": -122.456,
+  "radius": 200,
+  "type": "meal_delivery"
+}
+```
+
+**Output:**
+```json
+[]
+```
+
+
+#### Tool Used: Google Nearby Places (Food)
+**Timestamp:** 2025-12-02T19:11:38.068Z
+
+**Input:**
+```json
+{
+  "lat": 37.123,
+  "lon": -122.456,
+  "radius": 1000,
+  "type": "restaurant",
+  "url": "https://maps.googleapis.com/maps/api/place/nearbysearch/json?location=37.123%2C-122.456&radius=1000&type=restaurant&key=****"
+}
+```
+
+**Output:**
+```json
+"Fetching..."
+```
+
+
+#### Tool Used: Google Nearby Places (Food)
+**Timestamp:** 2025-12-02T19:11:38.072Z
+
+**Input:**
+```json
+{
+  "lat": 37.123,
+  "lon": -122.456,
+  "radius": 1000,
+  "type": "restaurant"
+}
+```
+
+**Output:**
+```json
+[
+  {
+    "place_id": "p_large",
+    "name": "Far Restaurant",
+    "types": [
+      "restaurant"
+    ],
+    "geometry": {
+      "location": {
+        "lat": 1,
+        "lng": 2
+      }
+    }
+  }
+]
+```
+
+
+#### Tool Used: Google Nearby Places (Food)
+**Timestamp:** 2025-12-02T19:11:38.072Z
+
+**Input:**
+```json
+{
+  "lat": 37.123,
+  "lon": -122.456,
+  "radius": 1000,
+  "type": "cafe",
+  "url": "https://maps.googleapis.com/maps/api/place/nearbysearch/json?location=37.123%2C-122.456&radius=1000&type=cafe&key=****"
+}
+```
+
+**Output:**
+```json
+"Fetching..."
+```
+
+
+#### Tool Used: Google Nearby Places (Food)
+**Timestamp:** 2025-12-02T19:11:38.073Z
+
+**Input:**
+```json
+{
+  "lat": 37.123,
+  "lon": -122.456,
+  "radius": 1000,
+  "type": "cafe"
+}
+```
+
+**Output:**
+```json
+[
+  {
+    "place_id": "p_large",
+    "name": "Far Restaurant",
+    "types": [
+      "restaurant"
+    ],
+    "geometry": {
+      "location": {
+        "lat": 1,
+        "lng": 2
+      }
+    }
+  }
+]
+```
+
+
+#### Tool Used: Google Nearby Places (Food)
+**Timestamp:** 2025-12-02T19:11:38.074Z
+
+**Input:**
+```json
+{
+  "lat": 37.123,
+  "lon": -122.456,
+  "radius": 1000,
+  "type": "bakery",
+  "url": "https://maps.googleapis.com/maps/api/place/nearbysearch/json?location=37.123%2C-122.456&radius=1000&type=bakery&key=****"
+}
+```
+
+**Output:**
+```json
+"Fetching..."
+```
+
+
+#### Tool Used: Google Nearby Places (Food)
+**Timestamp:** 2025-12-02T19:11:38.076Z
+
+**Input:**
+```json
+{
+  "lat": 37.123,
+  "lon": -122.456,
+  "radius": 1000,
+  "type": "bakery"
+}
+```
+
+**Output:**
+```json
+[
+  {
+    "place_id": "p_large",
+    "name": "Far Restaurant",
+    "types": [
+      "restaurant"
+    ],
+    "geometry": {
+      "location": {
+        "lat": 1,
+        "lng": 2
+      }
+    }
+  }
+]
+```
+
+
+#### Tool Used: Google Nearby Places (Food)
+**Timestamp:** 2025-12-02T19:11:38.076Z
+
+**Input:**
+```json
+{
+  "lat": 37.123,
+  "lon": -122.456,
+  "radius": 1000,
+  "type": "bar",
+  "url": "https://maps.googleapis.com/maps/api/place/nearbysearch/json?location=37.123%2C-122.456&radius=1000&type=bar&key=****"
+}
+```
+
+**Output:**
+```json
+"Fetching..."
+```
+
+
+#### Tool Used: Google Nearby Places (Food)
+**Timestamp:** 2025-12-02T19:11:38.078Z
+
+**Input:**
+```json
+{
+  "lat": 37.123,
+  "lon": -122.456,
+  "radius": 1000,
+  "type": "bar"
+}
+```
+
+**Output:**
+```json
+[
+  {
+    "place_id": "p_large",
+    "name": "Far Restaurant",
+    "types": [
+      "restaurant"
+    ],
+    "geometry": {
+      "location": {
+        "lat": 1,
+        "lng": 2
+      }
+    }
+  }
+]
+```
+
+
+#### Tool Used: Google Nearby Places (Food)
+**Timestamp:** 2025-12-02T19:11:38.079Z
+
+**Input:**
+```json
+{
+  "lat": 37.123,
+  "lon": -122.456,
+  "radius": 1000,
+  "type": "meal_takeaway",
+  "url": "https://maps.googleapis.com/maps/api/place/nearbysearch/json?location=37.123%2C-122.456&radius=1000&type=meal_takeaway&key=****"
+}
+```
+
+**Output:**
+```json
+"Fetching..."
+```
+
+
+#### Tool Used: Google Nearby Places (Food)
+**Timestamp:** 2025-12-02T19:11:38.079Z
+
+**Input:**
+```json
+{
+  "lat": 37.123,
+  "lon": -122.456,
+  "radius": 1000,
+  "type": "meal_takeaway"
+}
+```
+
+**Output:**
+```json
+[
+  {
+    "place_id": "p_large",
+    "name": "Far Restaurant",
+    "types": [
+      "restaurant"
+    ],
+    "geometry": {
+      "location": {
+        "lat": 1,
+        "lng": 2
+      }
+    }
+  }
+]
+```
+
+
+#### Tool Used: Google Nearby Places (Food)
+**Timestamp:** 2025-12-02T19:11:38.080Z
+
+**Input:**
+```json
+{
+  "lat": 37.123,
+  "lon": -122.456,
+  "radius": 1000,
+  "type": "meal_delivery",
+  "url": "https://maps.googleapis.com/maps/api/place/nearbysearch/json?location=37.123%2C-122.456&radius=1000&type=meal_delivery&key=****"
+}
+```
+
+**Output:**
+```json
+"Fetching..."
+```
+
+
+#### Tool Used: Google Nearby Places (Food)
+**Timestamp:** 2025-12-02T19:11:38.080Z
+
+**Input:**
+```json
+{
+  "lat": 37.123,
+  "lon": -122.456,
+  "radius": 1000,
+  "type": "meal_delivery"
+}
+```
+
+**Output:**
+```json
+[
+  {
+    "place_id": "p_large",
+    "name": "Far Restaurant",
+    "types": [
+      "restaurant"
+    ],
+    "geometry": {
+      "location": {
+        "lat": 1,
+        "lng": 2
+      }
+    }
+  }
+]
+```
+
+
+
+# Logger Initialized at 2025-12-02T19:11:38.095Z
+
+================================================================================
+# Graph Execution Started
+**Run ID:** 40d7e1a5-a649-407c-bc1d-1f1dff6b9a8b
+**Timestamp:** 2025-12-02T19:11:38.134Z
+
+## Initial State
+```json
+{
+  "runId": "40d7e1a5-a649-407c-bc1d-1f1dff6b9a8b",
+  "filename": "photo.HEIC.processed.jpg",
+  "fileBuffer": "[Buffer: 18 bytes]",
+  "imageBase64": "[Base64 Image Data Omitted]",
+  "imageMime": "image/jpeg",
+  "metadata": {
+    "dateTime": "null",
+    "cameraModel": "null"
+  },
+  "gpsString": "null",
+  "device": "null",
+  "modelOverrides": {},
+  "classification": "null",
+  "poiAnalysis": "null",
+  "rich_search_context": "null",
+  "finalResult": "null",
+  "error": "null"
+}
+```
+
+
+## Graph Execution Finished
+**Run ID:** 40d7e1a5-a649-407c-bc1d-1f1dff6b9a8b
+**Timestamp:** 2025-12-02T19:11:38.135Z
+
+## Final State
+```json
+{
+  "finalResult": {
+    "caption": "test",
+    "description": "test",
+    "keywords": "test"
+  },
+  "classification": "null"
+}
+```
+
+================================================================================
+
+
+
+# Logger Initialized at 2025-12-02T20:19:58.250Z
+
+
+# Logger Initialized at 2025-12-02T20:20:10.490Z
+
+
+# Logger Initialized at 2025-12-02T21:07:22.286Z
+
+
+# Logger Initialized at 2025-12-02T21:07:22.288Z
+
+
+# Logger Initialized at 2025-12-02T21:07:22.354Z
+
+
+# Logger Initialized at 2025-12-02T21:07:23.073Z
+
+
+# Logger Initialized at 2025-12-02T21:07:23.108Z
+
+
+# Logger Initialized at 2025-12-02T21:07:23.219Z
+
+#### Tool Used: Google Reverse Geocode
+**Timestamp:** 2025-12-02T21:07:23.245Z
+
+**Input:**
+```json
+{
+  "lat": 37,
+  "lon": -122,
+  "url": "https://maps.googleapis.com/maps/api/geocode/json?latlng=37,-122&key=****"
+}
+```
+
+**Output:**
+```json
+"Fetching..."
+```
+
+
+#### Tool Used: Google Reverse Geocode
+**Timestamp:** 2025-12-02T21:07:23.434Z
+
+**Input:**
+```json
+{
+  "lat": 37,
+  "lon": -122
+}
+```
+
+**Output:**
+```json
+{
+  "address": "null"
+}
+```
+
+
+
+# Logger Initialized at 2025-12-02T21:07:23.519Z
+
+
+# Logger Initialized at 2025-12-02T21:07:23.631Z
+
+
+# Logger Initialized at 2025-12-02T21:07:23.657Z
+
+
+# Logger Initialized at 2025-12-02T21:07:23.663Z
+
+
+# Logger Initialized at 2025-12-02T21:07:23.670Z
+
+
+# Logger Initialized at 2025-12-02T21:07:23.690Z
+
+
+# Logger Initialized at 2025-12-02T21:07:23.689Z
+
+
+# Logger Initialized at 2025-12-02T21:07:23.704Z
+
+
+# Logger Initialized at 2025-12-02T21:07:23.707Z
+
+
+# Logger Initialized at 2025-12-02T21:07:23.707Z
+
+
+# Logger Initialized at 2025-12-02T21:07:23.871Z
+
+================================================================================
+# Graph Execution Started
+**Run ID:** 3655bfef-2db9-4fcf-8ac1-eca0cda8db8a
+**Timestamp:** 2025-12-02T21:07:24.060Z
+
+## Initial State
+```json
+{
+  "runId": "3655bfef-2db9-4fcf-8ac1-eca0cda8db8a",
+  "filename": "tmp_test.jpg",
+  "fileBuffer": "[Buffer: 19 bytes]",
+  "imageBase64": "[Base64 Image Data Omitted]",
+  "imageMime": "image/jpeg",
+  "metadata": {
+    "dateTime": "null",
+    "cameraModel": "null"
+  },
+  "gpsString": "null",
+  "device": "null",
+  "modelOverrides": {},
+  "classification": "null",
+  "poiAnalysis": "null",
+  "rich_search_context": "null",
+  "finalResult": "null",
+  "error": "null"
+}
+```
+
+
+## Graph Execution Finished
+**Run ID:** 3655bfef-2db9-4fcf-8ac1-eca0cda8db8a
+**Timestamp:** 2025-12-02T21:07:24.061Z
+
+## Final State
+```json
+{
+  "classification": "scenery_or_general_subject",
+  "finalResult": {
+    "caption": "Test",
+    "description": "desc",
+    "keywords": "a,b"
+  }
+}
+```
+
+================================================================================
+
+
+
+# Logger Initialized at 2025-12-02T21:07:24.612Z
+
+================================================================================
+# Graph Execution Started
+**Run ID:** 40469c58-c798-443a-a614-112f5fca47fe
+**Timestamp:** 2025-12-02T21:07:24.753Z
+
+## Initial State
+```json
+{
+  "runId": "40469c58-c798-443a-a614-112f5fca47fe",
+  "filename": "tmp_test.heic",
+  "fileBuffer": "[Buffer: 19 bytes]",
+  "imageBase64": "[Base64 Image Data Omitted]",
+  "imageMime": "image/jpeg",
+  "metadata": {
+    "dateTime": "null",
+    "cameraModel": "null"
+  },
+  "gpsString": "null",
+  "device": "null",
+  "modelOverrides": {},
+  "classification": "null",
+  "poiAnalysis": "null",
+  "rich_search_context": "null",
+  "finalResult": "null",
+  "error": "null"
+}
+```
+
+
+## Graph Execution Finished
+**Run ID:** 40469c58-c798-443a-a614-112f5fca47fe
+**Timestamp:** 2025-12-02T21:07:24.754Z
+
+## Final State
+```json
+{
+  "classification": "scenery_or_general_subject",
+  "finalResult": {
+    "caption": "HEIC Test",
+    "description": "desc heic",
+    "keywords": "x,y"
+  }
+}
+```
+
+================================================================================
+
+
+
+# Logger Initialized at 2025-12-02T21:07:24.767Z
+
+#### Tool Used: Google Nearby Places (Food)
+**Timestamp:** 2025-12-02T21:07:24.784Z
+
+**Input:**
+```json
+{
+  "lat": 37.123,
+  "lon": -122.456,
+  "radius": 250,
+  "type": "restaurant",
+  "url": "https://maps.googleapis.com/maps/api/place/nearbysearch/json?location=37.123%2C-122.456&radius=250&type=restaurant&key=****"
+}
+```
+
+**Output:**
+```json
+"Fetching..."
+```
+
+
+#### Tool Used: Google Nearby Places (Food)
+**Timestamp:** 2025-12-02T21:07:24.784Z
+
+**Input:**
+```json
+{
+  "lat": 37.123,
+  "lon": -122.456,
+  "radius": 250,
+  "type": "restaurant"
+}
+```
+
+**Output:**
+```json
+[
+  {
+    "place_id": "p2",
+    "name": "Far Bar",
+    "types": [
+      "bar",
+      "restaurant"
+    ],
+    "geometry": {
+      "location": {
+        "lat": 37.125,
+        "lng": -122.456
+      }
+    },
+    "vicinity": "Oakland, CA",
+    "rating": 4.2,
+    "user_ratings_total": 65
+  },
+  {
+    "place_id": "p1",
+    "name": "Near Cafe",
+    "types": [
+      "cafe"
+    ],
+    "geometry": {
+      "location": {
+        "lat": 37.123,
+        "lng": -122.456
+      }
+    },
+    "vicinity": "Oakland, CA",
+    "rating": 4.5,
+    "user_ratings_total": 120
+  }
+]
+```
+
+
+#### Tool Used: Google Nearby Places (Food)
+**Timestamp:** 2025-12-02T21:07:24.786Z
+
+**Input:**
+```json
+{
+  "lat": 37.123,
+  "lon": -122.456,
+  "radius": 250,
+  "type": "cafe",
+  "url": "https://maps.googleapis.com/maps/api/place/nearbysearch/json?location=37.123%2C-122.456&radius=250&type=cafe&key=****"
+}
+```
+
+**Output:**
+```json
+"Fetching..."
+```
+
+
+#### Tool Used: Google Nearby Places (Food)
+**Timestamp:** 2025-12-02T21:07:24.786Z
+
+**Input:**
+```json
+{
+  "lat": 37.123,
+  "lon": -122.456,
+  "radius": 250,
+  "type": "cafe"
+}
+```
+
+**Output:**
+```json
+[
+  {
+    "place_id": "p2",
+    "name": "Far Bar",
+    "types": [
+      "bar",
+      "restaurant"
+    ],
+    "geometry": {
+      "location": {
+        "lat": 37.125,
+        "lng": -122.456
+      }
+    },
+    "vicinity": "Oakland, CA",
+    "rating": 4.2,
+    "user_ratings_total": 65
+  },
+  {
+    "place_id": "p1",
+    "name": "Near Cafe",
+    "types": [
+      "cafe"
+    ],
+    "geometry": {
+      "location": {
+        "lat": 37.123,
+        "lng": -122.456
+      }
+    },
+    "vicinity": "Oakland, CA",
+    "rating": 4.5,
+    "user_ratings_total": 120
+  }
+]
+```
+
+
+#### Tool Used: Google Nearby Places (Food)
+**Timestamp:** 2025-12-02T21:07:24.787Z
+
+**Input:**
+```json
+{
+  "lat": 37.123,
+  "lon": -122.456,
+  "radius": 250,
+  "type": "bakery",
+  "url": "https://maps.googleapis.com/maps/api/place/nearbysearch/json?location=37.123%2C-122.456&radius=250&type=bakery&key=****"
+}
+```
+
+**Output:**
+```json
+"Fetching..."
+```
+
+
+#### Tool Used: Google Nearby Places (Food)
+**Timestamp:** 2025-12-02T21:07:24.787Z
+
+**Input:**
+```json
+{
+  "lat": 37.123,
+  "lon": -122.456,
+  "radius": 250,
+  "type": "bakery"
+}
+```
+
+**Output:**
+```json
+[
+  {
+    "place_id": "p2",
+    "name": "Far Bar",
+    "types": [
+      "bar",
+      "restaurant"
+    ],
+    "geometry": {
+      "location": {
+        "lat": 37.125,
+        "lng": -122.456
+      }
+    },
+    "vicinity": "Oakland, CA",
+    "rating": 4.2,
+    "user_ratings_total": 65
+  },
+  {
+    "place_id": "p1",
+    "name": "Near Cafe",
+    "types": [
+      "cafe"
+    ],
+    "geometry": {
+      "location": {
+        "lat": 37.123,
+        "lng": -122.456
+      }
+    },
+    "vicinity": "Oakland, CA",
+    "rating": 4.5,
+    "user_ratings_total": 120
+  }
+]
+```
+
+
+#### Tool Used: Google Nearby Places (Food)
+**Timestamp:** 2025-12-02T21:07:24.788Z
+
+**Input:**
+```json
+{
+  "lat": 37.123,
+  "lon": -122.456,
+  "radius": 250,
+  "type": "bar",
+  "url": "https://maps.googleapis.com/maps/api/place/nearbysearch/json?location=37.123%2C-122.456&radius=250&type=bar&key=****"
+}
+```
+
+**Output:**
+```json
+"Fetching..."
+```
+
+
+#### Tool Used: Google Nearby Places (Food)
+**Timestamp:** 2025-12-02T21:07:24.788Z
+
+**Input:**
+```json
+{
+  "lat": 37.123,
+  "lon": -122.456,
+  "radius": 250,
+  "type": "bar"
+}
+```
+
+**Output:**
+```json
+[
+  {
+    "place_id": "p2",
+    "name": "Far Bar",
+    "types": [
+      "bar",
+      "restaurant"
+    ],
+    "geometry": {
+      "location": {
+        "lat": 37.125,
+        "lng": -122.456
+      }
+    },
+    "vicinity": "Oakland, CA",
+    "rating": 4.2,
+    "user_ratings_total": 65
+  },
+  {
+    "place_id": "p1",
+    "name": "Near Cafe",
+    "types": [
+      "cafe"
+    ],
+    "geometry": {
+      "location": {
+        "lat": 37.123,
+        "lng": -122.456
+      }
+    },
+    "vicinity": "Oakland, CA",
+    "rating": 4.5,
+    "user_ratings_total": 120
+  }
+]
+```
+
+
+#### Tool Used: Google Nearby Places (Food)
+**Timestamp:** 2025-12-02T21:07:24.789Z
+
+**Input:**
+```json
+{
+  "lat": 37.123,
+  "lon": -122.456,
+  "radius": 250,
+  "type": "meal_takeaway",
+  "url": "https://maps.googleapis.com/maps/api/place/nearbysearch/json?location=37.123%2C-122.456&radius=250&type=meal_takeaway&key=****"
+}
+```
+
+**Output:**
+```json
+"Fetching..."
+```
+
+
+#### Tool Used: Google Nearby Places (Food)
+**Timestamp:** 2025-12-02T21:07:24.789Z
+
+**Input:**
+```json
+{
+  "lat": 37.123,
+  "lon": -122.456,
+  "radius": 250,
+  "type": "meal_takeaway"
+}
+```
+
+**Output:**
+```json
+[
+  {
+    "place_id": "p2",
+    "name": "Far Bar",
+    "types": [
+      "bar",
+      "restaurant"
+    ],
+    "geometry": {
+      "location": {
+        "lat": 37.125,
+        "lng": -122.456
+      }
+    },
+    "vicinity": "Oakland, CA",
+    "rating": 4.2,
+    "user_ratings_total": 65
+  },
+  {
+    "place_id": "p1",
+    "name": "Near Cafe",
+    "types": [
+      "cafe"
+    ],
+    "geometry": {
+      "location": {
+        "lat": 37.123,
+        "lng": -122.456
+      }
+    },
+    "vicinity": "Oakland, CA",
+    "rating": 4.5,
+    "user_ratings_total": 120
+  }
+]
+```
+
+
+#### Tool Used: Google Nearby Places (Food)
+**Timestamp:** 2025-12-02T21:07:24.790Z
+
+**Input:**
+```json
+{
+  "lat": 37.123,
+  "lon": -122.456,
+  "radius": 250,
+  "type": "meal_delivery",
+  "url": "https://maps.googleapis.com/maps/api/place/nearbysearch/json?location=37.123%2C-122.456&radius=250&type=meal_delivery&key=****"
+}
+```
+
+**Output:**
+```json
+"Fetching..."
+```
+
+
+#### Tool Used: Google Nearby Places (Food)
+**Timestamp:** 2025-12-02T21:07:24.790Z
+
+**Input:**
+```json
+{
+  "lat": 37.123,
+  "lon": -122.456,
+  "radius": 250,
+  "type": "meal_delivery"
+}
+```
+
+**Output:**
+```json
+[
+  {
+    "place_id": "p2",
+    "name": "Far Bar",
+    "types": [
+      "bar",
+      "restaurant"
+    ],
+    "geometry": {
+      "location": {
+        "lat": 37.125,
+        "lng": -122.456
+      }
+    },
+    "vicinity": "Oakland, CA",
+    "rating": 4.2,
+    "user_ratings_total": 65
+  },
+  {
+    "place_id": "p1",
+    "name": "Near Cafe",
+    "types": [
+      "cafe"
+    ],
+    "geometry": {
+      "location": {
+        "lat": 37.123,
+        "lng": -122.456
+      }
+    },
+    "vicinity": "Oakland, CA",
+    "rating": 4.5,
+    "user_ratings_total": 120
+  }
+]
+```
+
+
+#### Tool Used: Google Nearby Places (Food)
+**Timestamp:** 2025-12-02T21:07:24.794Z
+
+**Input:**
+```json
+{
+  "lat": 37.123,
+  "lon": -122.456,
+  "radius": 50,
+  "type": "restaurant",
+  "url": "https://maps.googleapis.com/maps/api/place/nearbysearch/json?location=37.123%2C-122.456&radius=50&type=restaurant&key=****"
+}
+```
+
+**Output:**
+```json
+"Fetching..."
+```
+
+
+#### Tool Used: Google Nearby Places (Food)
+**Timestamp:** 2025-12-02T21:07:24.795Z
+
+**Input:**
+```json
+{
+  "lat": 37.123,
+  "lon": -122.456,
+  "radius": 50,
+  "type": "restaurant"
+}
+```
+
+**Output:**
+```json
+[]
+```
+
+
+#### Tool Used: Google Nearby Places (Food)
+**Timestamp:** 2025-12-02T21:07:24.795Z
+
+**Input:**
+```json
+{
+  "lat": 37.123,
+  "lon": -122.456,
+  "radius": 50,
+  "type": "cafe",
+  "url": "https://maps.googleapis.com/maps/api/place/nearbysearch/json?location=37.123%2C-122.456&radius=50&type=cafe&key=****"
+}
+```
+
+**Output:**
+```json
+"Fetching..."
+```
+
+
+#### Tool Used: Google Nearby Places (Food)
+**Timestamp:** 2025-12-02T21:07:24.796Z
+
+**Input:**
+```json
+{
+  "lat": 37.123,
+  "lon": -122.456,
+  "radius": 50,
+  "type": "cafe"
+}
+```
+
+**Output:**
+```json
+[]
+```
+
+
+#### Tool Used: Google Nearby Places (Food)
+**Timestamp:** 2025-12-02T21:07:24.797Z
+
+**Input:**
+```json
+{
+  "lat": 37.123,
+  "lon": -122.456,
+  "radius": 50,
+  "type": "bakery",
+  "url": "https://maps.googleapis.com/maps/api/place/nearbysearch/json?location=37.123%2C-122.456&radius=50&type=bakery&key=****"
+}
+```
+
+**Output:**
+```json
+"Fetching..."
+```
+
+
+#### Tool Used: Google Nearby Places (Food)
+**Timestamp:** 2025-12-02T21:07:24.797Z
+
+**Input:**
+```json
+{
+  "lat": 37.123,
+  "lon": -122.456,
+  "radius": 50,
+  "type": "bakery"
+}
+```
+
+**Output:**
+```json
+[]
+```
+
+
+#### Tool Used: Google Nearby Places (Food)
+**Timestamp:** 2025-12-02T21:07:24.798Z
+
+**Input:**
+```json
+{
+  "lat": 37.123,
+  "lon": -122.456,
+  "radius": 50,
+  "type": "bar",
+  "url": "https://maps.googleapis.com/maps/api/place/nearbysearch/json?location=37.123%2C-122.456&radius=50&type=bar&key=****"
+}
+```
+
+**Output:**
+```json
+"Fetching..."
+```
+
+
+#### Tool Used: Google Nearby Places (Food)
+**Timestamp:** 2025-12-02T21:07:24.798Z
+
+**Input:**
+```json
+{
+  "lat": 37.123,
+  "lon": -122.456,
+  "radius": 50,
+  "type": "bar"
+}
+```
+
+**Output:**
+```json
+[]
+```
+
+
+#### Tool Used: Google Nearby Places (Food)
+**Timestamp:** 2025-12-02T21:07:24.798Z
+
+**Input:**
+```json
+{
+  "lat": 37.123,
+  "lon": -122.456,
+  "radius": 50,
+  "type": "meal_takeaway",
+  "url": "https://maps.googleapis.com/maps/api/place/nearbysearch/json?location=37.123%2C-122.456&radius=50&type=meal_takeaway&key=****"
+}
+```
+
+**Output:**
+```json
+"Fetching..."
+```
+
+
+#### Tool Used: Google Nearby Places (Food)
+**Timestamp:** 2025-12-02T21:07:24.800Z
+
+**Input:**
+```json
+{
+  "lat": 37.123,
+  "lon": -122.456,
+  "radius": 50,
+  "type": "meal_takeaway"
+}
+```
+
+**Output:**
+```json
+[]
+```
+
+
+#### Tool Used: Google Nearby Places (Food)
+**Timestamp:** 2025-12-02T21:07:24.800Z
+
+**Input:**
+```json
+{
+  "lat": 37.123,
+  "lon": -122.456,
+  "radius": 50,
+  "type": "meal_delivery",
+  "url": "https://maps.googleapis.com/maps/api/place/nearbysearch/json?location=37.123%2C-122.456&radius=50&type=meal_delivery&key=****"
+}
+```
+
+**Output:**
+```json
+"Fetching..."
+```
+
+
+#### Tool Used: Google Nearby Places (Food)
+**Timestamp:** 2025-12-02T21:07:24.801Z
+
+**Input:**
+```json
+{
+  "lat": 37.123,
+  "lon": -122.456,
+  "radius": 50,
+  "type": "meal_delivery"
+}
+```
+
+**Output:**
+```json
+[]
+```
+
+
+#### Tool Used: Google Nearby Places (Food)
+**Timestamp:** 2025-12-02T21:07:24.803Z
+
+**Input:**
+```json
+{
+  "lat": 37.123,
+  "lon": -122.456,
+  "radius": 100,
+  "type": "restaurant",
+  "url": "https://maps.googleapis.com/maps/api/place/nearbysearch/json?location=37.123%2C-122.456&radius=100&type=restaurant&key=****"
+}
+```
+
+**Output:**
+```json
+"Fetching..."
+```
+
+
+#### Tool Used: Google Nearby Places (Food)
+**Timestamp:** 2025-12-02T21:07:24.803Z
+
+**Input:**
+```json
+{
+  "lat": 37.123,
+  "lon": -122.456,
+  "radius": 100,
+  "type": "restaurant"
+}
+```
+
+**Output:**
+```json
+[]
+```
+
+
+#### Tool Used: Google Nearby Places (Food)
+**Timestamp:** 2025-12-02T21:07:24.804Z
+
+**Input:**
+```json
+{
+  "lat": 37.123,
+  "lon": -122.456,
+  "radius": 100,
+  "type": "cafe",
+  "url": "https://maps.googleapis.com/maps/api/place/nearbysearch/json?location=37.123%2C-122.456&radius=100&type=cafe&key=****"
+}
+```
+
+**Output:**
+```json
+"Fetching..."
+```
+
+
+#### Tool Used: Google Nearby Places (Food)
+**Timestamp:** 2025-12-02T21:07:24.805Z
+
+**Input:**
+```json
+{
+  "lat": 37.123,
+  "lon": -122.456,
+  "radius": 100,
+  "type": "cafe"
+}
+```
+
+**Output:**
+```json
+[]
+```
+
+
+#### Tool Used: Google Nearby Places (Food)
+**Timestamp:** 2025-12-02T21:07:24.805Z
+
+**Input:**
+```json
+{
+  "lat": 37.123,
+  "lon": -122.456,
+  "radius": 100,
+  "type": "bakery",
+  "url": "https://maps.googleapis.com/maps/api/place/nearbysearch/json?location=37.123%2C-122.456&radius=100&type=bakery&key=****"
+}
+```
+
+**Output:**
+```json
+"Fetching..."
+```
+
+
+#### Tool Used: Google Nearby Places (Food)
+**Timestamp:** 2025-12-02T21:07:24.806Z
+
+**Input:**
+```json
+{
+  "lat": 37.123,
+  "lon": -122.456,
+  "radius": 100,
+  "type": "bakery"
+}
+```
+
+**Output:**
+```json
+[]
+```
+
+
+#### Tool Used: Google Nearby Places (Food)
+**Timestamp:** 2025-12-02T21:07:24.807Z
+
+**Input:**
+```json
+{
+  "lat": 37.123,
+  "lon": -122.456,
+  "radius": 100,
+  "type": "bar",
+  "url": "https://maps.googleapis.com/maps/api/place/nearbysearch/json?location=37.123%2C-122.456&radius=100&type=bar&key=****"
+}
+```
+
+**Output:**
+```json
+"Fetching..."
+```
+
+
+#### Tool Used: Google Nearby Places (Food)
+**Timestamp:** 2025-12-02T21:07:24.807Z
+
+**Input:**
+```json
+{
+  "lat": 37.123,
+  "lon": -122.456,
+  "radius": 100,
+  "type": "bar"
+}
+```
+
+**Output:**
+```json
+[]
+```
+
+
+#### Tool Used: Google Nearby Places (Food)
+**Timestamp:** 2025-12-02T21:07:24.808Z
+
+**Input:**
+```json
+{
+  "lat": 37.123,
+  "lon": -122.456,
+  "radius": 100,
+  "type": "meal_takeaway",
+  "url": "https://maps.googleapis.com/maps/api/place/nearbysearch/json?location=37.123%2C-122.456&radius=100&type=meal_takeaway&key=****"
+}
+```
+
+**Output:**
+```json
+"Fetching..."
+```
+
+
+#### Tool Used: Google Nearby Places (Food)
+**Timestamp:** 2025-12-02T21:07:24.809Z
+
+**Input:**
+```json
+{
+  "lat": 37.123,
+  "lon": -122.456,
+  "radius": 100,
+  "type": "meal_takeaway"
+}
+```
+
+**Output:**
+```json
+[]
+```
+
+
+#### Tool Used: Google Nearby Places (Food)
+**Timestamp:** 2025-12-02T21:07:24.809Z
+
+**Input:**
+```json
+{
+  "lat": 37.123,
+  "lon": -122.456,
+  "radius": 100,
+  "type": "meal_delivery",
+  "url": "https://maps.googleapis.com/maps/api/place/nearbysearch/json?location=37.123%2C-122.456&radius=100&type=meal_delivery&key=****"
+}
+```
+
+**Output:**
+```json
+"Fetching..."
+```
+
+
+#### Tool Used: Google Nearby Places (Food)
+**Timestamp:** 2025-12-02T21:07:24.810Z
+
+**Input:**
+```json
+{
+  "lat": 37.123,
+  "lon": -122.456,
+  "radius": 100,
+  "type": "meal_delivery"
+}
+```
+
+**Output:**
+```json
+[]
+```
+
+
+#### Tool Used: Google Nearby Places (Food)
+**Timestamp:** 2025-12-02T21:07:24.810Z
+
+**Input:**
+```json
+{
+  "lat": 37.123,
+  "lon": -122.456,
+  "radius": 200,
+  "type": "restaurant",
+  "url": "https://maps.googleapis.com/maps/api/place/nearbysearch/json?location=37.123%2C-122.456&radius=200&type=restaurant&key=****"
+}
+```
+
+**Output:**
+```json
+"Fetching..."
+```
+
+
+#### Tool Used: Google Nearby Places (Food)
+**Timestamp:** 2025-12-02T21:07:24.811Z
+
+**Input:**
+```json
+{
+  "lat": 37.123,
+  "lon": -122.456,
+  "radius": 200,
+  "type": "restaurant"
+}
+```
+
+**Output:**
+```json
+[]
+```
+
+
+#### Tool Used: Google Nearby Places (Food)
+**Timestamp:** 2025-12-02T21:07:24.812Z
+
+**Input:**
+```json
+{
+  "lat": 37.123,
+  "lon": -122.456,
+  "radius": 200,
+  "type": "cafe",
+  "url": "https://maps.googleapis.com/maps/api/place/nearbysearch/json?location=37.123%2C-122.456&radius=200&type=cafe&key=****"
+}
+```
+
+**Output:**
+```json
+"Fetching..."
+```
+
+
+#### Tool Used: Google Nearby Places (Food)
+**Timestamp:** 2025-12-02T21:07:24.813Z
+
+**Input:**
+```json
+{
+  "lat": 37.123,
+  "lon": -122.456,
+  "radius": 200,
+  "type": "cafe"
+}
+```
+
+**Output:**
+```json
+[]
+```
+
+
+#### Tool Used: Google Nearby Places (Food)
+**Timestamp:** 2025-12-02T21:07:24.815Z
+
+**Input:**
+```json
+{
+  "lat": 37.123,
+  "lon": -122.456,
+  "radius": 200,
+  "type": "bakery",
+  "url": "https://maps.googleapis.com/maps/api/place/nearbysearch/json?location=37.123%2C-122.456&radius=200&type=bakery&key=****"
+}
+```
+
+**Output:**
+```json
+"Fetching..."
+```
+
+
+#### Tool Used: Google Nearby Places (Food)
+**Timestamp:** 2025-12-02T21:07:24.817Z
+
+**Input:**
+```json
+{
+  "lat": 37.123,
+  "lon": -122.456,
+  "radius": 200,
+  "type": "bakery"
+}
+```
+
+**Output:**
+```json
+[]
+```
+
+
+#### Tool Used: Google Nearby Places (Food)
+**Timestamp:** 2025-12-02T21:07:24.818Z
+
+**Input:**
+```json
+{
+  "lat": 37.123,
+  "lon": -122.456,
+  "radius": 200,
+  "type": "bar",
+  "url": "https://maps.googleapis.com/maps/api/place/nearbysearch/json?location=37.123%2C-122.456&radius=200&type=bar&key=****"
+}
+```
+
+**Output:**
+```json
+"Fetching..."
+```
+
+
+#### Tool Used: Google Nearby Places (Food)
+**Timestamp:** 2025-12-02T21:07:24.818Z
+
+**Input:**
+```json
+{
+  "lat": 37.123,
+  "lon": -122.456,
+  "radius": 200,
+  "type": "bar"
+}
+```
+
+**Output:**
+```json
+[]
+```
+
+
+#### Tool Used: Google Nearby Places (Food)
+**Timestamp:** 2025-12-02T21:07:24.819Z
+
+**Input:**
+```json
+{
+  "lat": 37.123,
+  "lon": -122.456,
+  "radius": 200,
+  "type": "meal_takeaway",
+  "url": "https://maps.googleapis.com/maps/api/place/nearbysearch/json?location=37.123%2C-122.456&radius=200&type=meal_takeaway&key=****"
+}
+```
+
+**Output:**
+```json
+"Fetching..."
+```
+
+
+#### Tool Used: Google Nearby Places (Food)
+**Timestamp:** 2025-12-02T21:07:24.819Z
+
+**Input:**
+```json
+{
+  "lat": 37.123,
+  "lon": -122.456,
+  "radius": 200,
+  "type": "meal_takeaway"
+}
+```
+
+**Output:**
+```json
+[]
+```
+
+
+#### Tool Used: Google Nearby Places (Food)
+**Timestamp:** 2025-12-02T21:07:24.820Z
+
+**Input:**
+```json
+{
+  "lat": 37.123,
+  "lon": -122.456,
+  "radius": 200,
+  "type": "meal_delivery",
+  "url": "https://maps.googleapis.com/maps/api/place/nearbysearch/json?location=37.123%2C-122.456&radius=200&type=meal_delivery&key=****"
+}
+```
+
+**Output:**
+```json
+"Fetching..."
+```
+
+
+#### Tool Used: Google Nearby Places (Food)
+**Timestamp:** 2025-12-02T21:07:24.821Z
+
+**Input:**
+```json
+{
+  "lat": 37.123,
+  "lon": -122.456,
+  "radius": 200,
+  "type": "meal_delivery"
+}
+```
+
+**Output:**
+```json
+[]
+```
+
+
+#### Tool Used: Google Nearby Places (Food)
+**Timestamp:** 2025-12-02T21:07:24.821Z
+
+**Input:**
+```json
+{
+  "lat": 37.123,
+  "lon": -122.456,
+  "radius": 1000,
+  "type": "restaurant",
+  "url": "https://maps.googleapis.com/maps/api/place/nearbysearch/json?location=37.123%2C-122.456&radius=1000&type=restaurant&key=****"
+}
+```
+
+**Output:**
+```json
+"Fetching..."
+```
+
+
+#### Tool Used: Google Nearby Places (Food)
+**Timestamp:** 2025-12-02T21:07:24.822Z
+
+**Input:**
+```json
+{
+  "lat": 37.123,
+  "lon": -122.456,
+  "radius": 1000,
+  "type": "restaurant"
+}
+```
+
+**Output:**
+```json
+[
+  {
+    "place_id": "p_large",
+    "name": "Far Restaurant",
+    "types": [
+      "restaurant"
+    ],
+    "geometry": {
+      "location": {
+        "lat": 1,
+        "lng": 2
+      }
+    }
+  }
+]
+```
+
+
+#### Tool Used: Google Nearby Places (Food)
+**Timestamp:** 2025-12-02T21:07:24.823Z
+
+**Input:**
+```json
+{
+  "lat": 37.123,
+  "lon": -122.456,
+  "radius": 1000,
+  "type": "cafe",
+  "url": "https://maps.googleapis.com/maps/api/place/nearbysearch/json?location=37.123%2C-122.456&radius=1000&type=cafe&key=****"
+}
+```
+
+**Output:**
+```json
+"Fetching..."
+```
+
+
+#### Tool Used: Google Nearby Places (Food)
+**Timestamp:** 2025-12-02T21:07:24.823Z
+
+**Input:**
+```json
+{
+  "lat": 37.123,
+  "lon": -122.456,
+  "radius": 1000,
+  "type": "cafe"
+}
+```
+
+**Output:**
+```json
+[
+  {
+    "place_id": "p_large",
+    "name": "Far Restaurant",
+    "types": [
+      "restaurant"
+    ],
+    "geometry": {
+      "location": {
+        "lat": 1,
+        "lng": 2
+      }
+    }
+  }
+]
+```
+
+
+#### Tool Used: Google Nearby Places (Food)
+**Timestamp:** 2025-12-02T21:07:24.824Z
+
+**Input:**
+```json
+{
+  "lat": 37.123,
+  "lon": -122.456,
+  "radius": 1000,
+  "type": "bakery",
+  "url": "https://maps.googleapis.com/maps/api/place/nearbysearch/json?location=37.123%2C-122.456&radius=1000&type=bakery&key=****"
+}
+```
+
+**Output:**
+```json
+"Fetching..."
+```
+
+
+#### Tool Used: Google Nearby Places (Food)
+**Timestamp:** 2025-12-02T21:07:24.824Z
+
+**Input:**
+```json
+{
+  "lat": 37.123,
+  "lon": -122.456,
+  "radius": 1000,
+  "type": "bakery"
+}
+```
+
+**Output:**
+```json
+[
+  {
+    "place_id": "p_large",
+    "name": "Far Restaurant",
+    "types": [
+      "restaurant"
+    ],
+    "geometry": {
+      "location": {
+        "lat": 1,
+        "lng": 2
+      }
+    }
+  }
+]
+```
+
+
+#### Tool Used: Google Nearby Places (Food)
+**Timestamp:** 2025-12-02T21:07:24.825Z
+
+**Input:**
+```json
+{
+  "lat": 37.123,
+  "lon": -122.456,
+  "radius": 1000,
+  "type": "bar",
+  "url": "https://maps.googleapis.com/maps/api/place/nearbysearch/json?location=37.123%2C-122.456&radius=1000&type=bar&key=****"
+}
+```
+
+**Output:**
+```json
+"Fetching..."
+```
+
+
+#### Tool Used: Google Nearby Places (Food)
+**Timestamp:** 2025-12-02T21:07:24.826Z
+
+**Input:**
+```json
+{
+  "lat": 37.123,
+  "lon": -122.456,
+  "radius": 1000,
+  "type": "bar"
+}
+```
+
+**Output:**
+```json
+[
+  {
+    "place_id": "p_large",
+    "name": "Far Restaurant",
+    "types": [
+      "restaurant"
+    ],
+    "geometry": {
+      "location": {
+        "lat": 1,
+        "lng": 2
+      }
+    }
+  }
+]
+```
+
+
+#### Tool Used: Google Nearby Places (Food)
+**Timestamp:** 2025-12-02T21:07:24.826Z
+
+**Input:**
+```json
+{
+  "lat": 37.123,
+  "lon": -122.456,
+  "radius": 1000,
+  "type": "meal_takeaway",
+  "url": "https://maps.googleapis.com/maps/api/place/nearbysearch/json?location=37.123%2C-122.456&radius=1000&type=meal_takeaway&key=****"
+}
+```
+
+**Output:**
+```json
+"Fetching..."
+```
+
+
+#### Tool Used: Google Nearby Places (Food)
+**Timestamp:** 2025-12-02T21:07:24.827Z
+
+**Input:**
+```json
+{
+  "lat": 37.123,
+  "lon": -122.456,
+  "radius": 1000,
+  "type": "meal_takeaway"
+}
+```
+
+**Output:**
+```json
+[
+  {
+    "place_id": "p_large",
+    "name": "Far Restaurant",
+    "types": [
+      "restaurant"
+    ],
+    "geometry": {
+      "location": {
+        "lat": 1,
+        "lng": 2
+      }
+    }
+  }
+]
+```
+
+
+#### Tool Used: Google Nearby Places (Food)
+**Timestamp:** 2025-12-02T21:07:24.828Z
+
+**Input:**
+```json
+{
+  "lat": 37.123,
+  "lon": -122.456,
+  "radius": 1000,
+  "type": "meal_delivery",
+  "url": "https://maps.googleapis.com/maps/api/place/nearbysearch/json?location=37.123%2C-122.456&radius=1000&type=meal_delivery&key=****"
+}
+```
+
+**Output:**
+```json
+"Fetching..."
+```
+
+
+#### Tool Used: Google Nearby Places (Food)
+**Timestamp:** 2025-12-02T21:07:24.828Z
+
+**Input:**
+```json
+{
+  "lat": 37.123,
+  "lon": -122.456,
+  "radius": 1000,
+  "type": "meal_delivery"
+}
+```
+
+**Output:**
+```json
+[
+  {
+    "place_id": "p_large",
+    "name": "Far Restaurant",
+    "types": [
+      "restaurant"
+    ],
+    "geometry": {
+      "location": {
+        "lat": 1,
+        "lng": 2
+      }
+    }
+  }
+]
+```
+
+
+
+# Logger Initialized at 2025-12-02T21:07:24.854Z
+
+#### Tool Used: Google Nearby Places
+**Timestamp:** 2025-12-02T21:07:24.864Z
+
+**Input:**
+```json
+{
+  "lat": 37.123,
+  "lon": -122.456,
+  "radius": 61,
+  "url": "https://maps.googleapis.com/maps/api/place/nearbysearch/json?location=37.123%2C-122.456&radius=61&type=park%7Cmuseum%7Ctourist_attraction%7Cnatural_feature&key=****"
+}
+```
+
+**Output:**
+```json
+"Fetching..."
+```
+
+
+#### Tool Used: Google Nearby Places
+**Timestamp:** 2025-12-02T21:07:24.874Z
+
+**Input:**
+```json
+{
+  "lat": 37.123,
+  "lon": -122.456,
+  "radius": 61
+}
+```
+
+**Output:**
+```json
+[
+  {
+    "id": "abc123",
+    "name": "Contra Costa Canal Trail",
+    "category": "trail",
+    "lat": 37.123,
+    "lon": -122.456,
+    "distanceMeters": 0,
+    "address": "Walnut Creek, CA",
+    "source": "google",
+    "confidence": "high"
+  }
+]
+```
+
+
+#### Tool Used: Google Nearby Places
+**Timestamp:** 2025-12-02T21:07:24.877Z
+
+**Input:**
+```json
+{
+  "lat": 37.124,
+  "lon": -122.457,
+  "radius": 61,
+  "url": "https://maps.googleapis.com/maps/api/place/nearbysearch/json?location=37.124%2C-122.457&radius=61&type=park%7Cmuseum%7Ctourist_attraction%7Cnatural_feature&key=****"
+}
+```
+
+**Output:**
+```json
+"Fetching..."
+```
+
+
+#### Tool Used: Google Nearby Places
+**Timestamp:** 2025-12-02T21:07:24.877Z
+
+**Input:**
+```json
+{
+  "lat": 37.124,
+  "lon": -122.457,
+  "radius": 61
+}
+```
+
+**Output:**
+```json
+[
+  {
+    "id": "def456",
+    "name": "Lime Ridge Open Space",
+    "category": "park",
+    "lat": 37.124,
+    "lon": -122.457,
+    "distanceMeters": 0,
+    "address": "Walnut Creek, CA",
+    "source": "google",
+    "confidence": "high"
+  }
+]
+```
+
+
+
+# Logger Initialized at 2025-12-02T21:07:24.967Z
+
+
+# Logger Initialized at 2025-12-02T21:07:25.030Z
+
+================================================================================
+# Graph Execution Started
+**Run ID:** 2afa1921-9db2-46cb-98ec-499216ea5ed5
+**Timestamp:** 2025-12-02T21:07:25.061Z
+
+## Initial State
+```json
+{
+  "runId": "2afa1921-9db2-46cb-98ec-499216ea5ed5",
+  "filename": "photo.HEIC.processed.jpg",
+  "fileBuffer": "[Buffer: 18 bytes]",
+  "imageBase64": "[Base64 Image Data Omitted]",
+  "imageMime": "image/jpeg",
+  "metadata": {
+    "dateTime": "null",
+    "cameraModel": "null"
+  },
+  "gpsString": "null",
+  "device": "null",
+  "modelOverrides": {},
+  "classification": "null",
+  "poiAnalysis": "null",
+  "rich_search_context": "null",
+  "finalResult": "null",
+  "error": "null"
+}
+```
+
+
+## Graph Execution Finished
+**Run ID:** 2afa1921-9db2-46cb-98ec-499216ea5ed5
+**Timestamp:** 2025-12-02T21:07:25.062Z
+
+## Final State
+```json
+{
+  "finalResult": {
+    "caption": "test",
+    "description": "test",
+    "keywords": "test"
+  },
+  "classification": "null"
+}
+```
+
+================================================================================
+
