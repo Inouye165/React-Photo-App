@@ -77,6 +77,20 @@ export async function upsertCollectible(photoId, data, options = {}) {
 
 // --- Helpers
 /**
+ * Check if an error is an AbortError or cancellation.
+ * @param {Error} error 
+ * @returns {boolean}
+ */
+export function isAbortError(error) {
+  return !!(
+    error &&
+    (error.name === 'AbortError' || 
+     error.message?.includes('aborted') ||
+     error.message?.includes('The user aborted a request'))
+  );
+}
+
+/**
  * Get headers for API requests.
  * SECURITY: Authentication is handled via httpOnly cookies (credentials: 'include').
  * Bearer tokens are no longer injected into headers to prevent token leakage.
@@ -148,6 +162,11 @@ async function fetchWithNetworkFallback(input, init) {
     
     return response;
   } catch (error) {
+    // Ignore AbortError (user cancelled or component unmounted)
+    if (isAbortError(error)) {
+      throw error;
+    }
+
     // Network-level failure (no HTTP response received)
     // Common causes: ECONNREFUSED, DNS failure, CORS preflight failure, network disconnect
     
@@ -275,9 +294,15 @@ export async function fetchProtectedBlobUrl(url) {
       return URL.createObjectURL(blob);
     } catch (err) {
       lastError = err;
+
+      // If aborted, rethrow immediately to avoid retries and logging
+      if (isAbortError(err) || (signal && signal.aborted)) {
+        throw err;
+      }
+
       // Only retry on network/cache errors
       const isCacheError = err?.message?.includes('cache') || err?.message?.includes('Failed to fetch') || err?.isNetworkError;
-      if (!isCacheError || (signal && signal.aborted)) break;
+      if (!isCacheError) break;
       if (attempt < maxAttempts) {
         await new Promise(resolve => setTimeout(resolve, 75 + 50 * attempt));
         continue;

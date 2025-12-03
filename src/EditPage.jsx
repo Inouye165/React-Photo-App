@@ -1,7 +1,7 @@
 import React, { useState, useEffect, useCallback, useRef } from 'react'
 import ImageCanvasEditor from './ImageCanvasEditor'
 import { useAuth } from './contexts/AuthContext'
-import { API_BASE_URL, fetchProtectedBlobUrl, revokeBlobUrl, fetchCollectibles, upsertCollectible } from './api.js'
+import { API_BASE_URL, fetchProtectedBlobUrl, revokeBlobUrl, fetchCollectibles, upsertCollectible, isAbortError } from './api.js'
 import useStore from './store.js'
 import AppHeader from './components/AppHeader.jsx'
 import LocationMapPanel from './components/LocationMapPanel'
@@ -213,8 +213,10 @@ export default function EditPage({ photo, onClose: _onClose, onSave, onRecheckAI
         }
         currentObjectUrl = objUrl;
         setImageBlobUrl(objUrl);
-      } catch {
-        if (!mounted || controller.signal.aborted) return;
+      } catch (error) {
+        // React StrictMode or unmounts can legitimately abort requests.
+        // We intentionally ignore AbortError to avoid noisy logs.
+        if (!mounted || controller.signal.aborted || isAbortError(error)) return;
         setFetchError(true);
         fetchRan[key] = false;
       }
