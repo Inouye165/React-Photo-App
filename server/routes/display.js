@@ -119,6 +119,9 @@ module.exports = function createDisplayRouter({ db }) {
   router.get('/image/:photoId', authenticateImageRequest, async (req, res) => {
     const reqId = req.id || req.headers['x-request-id'] || null;
     res.set('Cross-Origin-Resource-Policy', 'cross-origin');
+    // TEMP: Force cache bypass for client troubleshooting (see src/api.js retry logic)
+    // TODO: Remove or tune this header for production cache performance
+    res.set('Cache-Control', 'no-store, max-age=0');
     const { photoId } = req.params;
     const IMAGE_CACHE_MAX_AGE = parseInt(process.env.IMAGE_CACHE_MAX_AGE, 10) || 86400;
 

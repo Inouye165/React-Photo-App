@@ -241,44 +241,63 @@ export async function fetchProtectedBlobUrl(url) {
   // If URL is already a blob URL, return it as is
   if (url.startsWith('blob:')) return url;
 
-  // Helper to perform the actual fetch
+  // Instrumentation: log only once per session for hard failures
+  if (!window.__imageCacheErrorLogged) window.__imageCacheErrorLogged = new Set();
+
+  // Accept AbortController signal
+  let signal;
+  if (arguments.length > 1 && arguments[1] && typeof arguments[1] === 'object') {
+    signal = arguments[1].signal;
+  }
+
   const doFetch = async (bypassCache = false) => {
     const headers = { ...getAuthHeaders() };
     if (bypassCache) {
-      // Force network fetch, bypass browser cache
       headers['Cache-Control'] = 'no-cache';
       headers['Pragma'] = 'no-cache';
     }
-    
     return fetchWithNetworkFallback(url, {
       headers,
-      credentials: 'include', // Send cookies for authentication
-      cache: bypassCache ? 'no-store' : 'default'
+      credentials: 'include',
+      cache: bypassCache ? 'no-store' : 'default',
+      signal
     });
   };
 
-  let res;
-  try {
-    res = await doFetch(false);
-  } catch (err) {
-    // Safety net: retry with cache bypass on network errors
-    // This is rarely needed now that we use ID-based URLs
-    const isCacheError = err?.message?.includes('cache') || 
-                         err?.message?.includes('Failed to fetch') ||
-                         err?.isNetworkError;
-    
-    if (isCacheError) {
-      console.warn('[api] Retrying fetch with cache bypass for:', url);
-      res = await doFetch(true);
-    } else {
-      throw err;
+  let lastError = null;
+  let res = null;
+  const maxAttempts = 3;
+  for (let attempt = 1; attempt <= maxAttempts; attempt++) {
+    try {
+      res = await doFetch(attempt > 1);
+      if (!res.ok) throw new Error(`Failed to fetch image: ${res.status}`);
+      const blob = await res.blob();
+      return URL.createObjectURL(blob);
+    } catch (err) {
+      lastError = err;
+      // Only retry on network/cache errors
+      const isCacheError = err?.message?.includes('cache') || err?.message?.includes('Failed to fetch') || err?.isNetworkError;
+      if (!isCacheError || (signal && signal.aborted)) break;
+      if (attempt < maxAttempts) {
+        await new Promise(resolve => setTimeout(resolve, 75 + 50 * attempt));
+        continue;
+      }
     }
   }
-  
-  if (!res.ok) throw new Error(`Failed to fetch image: ${res.status}`);
-  
-  const blob = await res.blob();
-  return URL.createObjectURL(blob);
+  // Instrumentation: log only once per session
+  const logKey = `${url}`;
+  if (!window.__imageCacheErrorLogged.has(logKey)) {
+    window.__imageCacheErrorLogged.add(logKey);
+    const photoId = url.match(/\/display\/image\/(\d+)/)?.[1] || url;
+    console.warn('[image-cache-error]', {
+      photoId,
+      attempts: maxAttempts,
+      online: typeof navigator !== 'undefined' ? navigator.onLine : 'unknown',
+      errorName: lastError?.name,
+      errorMessage: lastError?.message
+    });
+  }
+  throw lastError || new Error('Failed to fetch image after retries');
 }
 
 export function revokeBlobUrl(url) {

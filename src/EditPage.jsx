@@ -167,25 +167,32 @@ export default function EditPage({ photo, onClose: _onClose, onSave, onRecheckAI
   // If hash is unavailable, updated_at is used as a fallback (may be less reliable).
   const version = sourcePhoto?.hash || sourcePhoto?.updated_at || '';
   const displayUrl = `${API_BASE_URL}${sourcePhoto?.url || photo?.url}${version ? `?v=${version}` : ''}`;
-  const [imageBlobUrl, setImageBlobUrl] = useState(null)
-  const [fetchError, setFetchError] = useState(false)
-  const { session } = useAuth(); // Get session to trigger re-fetch on auth change
+  const [imageBlobUrl, setImageBlobUrl] = useState(null);
+  const [fetchError, setFetchError] = useState(false);
+  const [retryCount, setRetryCount] = useState(0);
+  const { session } = useAuth();
 
   // Dev double-fetch guard: only fetch once per image in dev/StrictMode
   const fetchRanRef = React.useRef({});
+  const abortControllerRef = useRef(null);
   useEffect(() => {
     if (!sourcePhoto || !sourcePhoto.url) return undefined;
     let mounted = true;
     let currentObjectUrl = null;
     setFetchError(false);
 
-    const key = displayUrl;
-    // Reset fetch guard if URL changes
+    // Abort previous fetch if any
+    if (abortControllerRef.current) {
+      abortControllerRef.current.abort();
+    }
+    const controller = new window.AbortController();
+    abortControllerRef.current = controller;
+
+    const key = displayUrl + `::retry${retryCount}`;
     if (fetchRanRef.current.lastUrl !== key) {
       fetchRanRef.current = { lastUrl: key };
     }
-    
-    const fetchRan = fetchRanRef.current; // Capture ref value in effect scope
+    const fetchRan = fetchRanRef.current;
     if (fetchRan[key]) {
       if (import.meta.env.VITE_DEBUG_IMAGES === 'true') {
         console.log('[DEBUG_IMAGES] Skipping duplicate fetch for', key);
@@ -199,33 +206,32 @@ export default function EditPage({ photo, onClose: _onClose, onSave, onRecheckAI
 
     (async () => {
       try {
-        const objUrl = await fetchProtectedBlobUrl(displayUrl);
-        if (!mounted) {
+        const objUrl = await fetchProtectedBlobUrl(displayUrl, { signal: controller.signal });
+        if (!mounted || controller.signal.aborted) {
           if (objUrl) revokeBlobUrl(objUrl);
           return;
         }
         currentObjectUrl = objUrl;
-        if (objUrl) {
-          setImageBlobUrl(objUrl);
-        } else {
-          setFetchError(true);
-        }
-      } catch (err) {
-        console.error('Failed to fetch protected image', err);
-        if (mounted) setFetchError(true);
+        setImageBlobUrl(objUrl);
+      } catch {
+        if (!mounted || controller.signal.aborted) return;
+        setFetchError(true);
+        fetchRan[key] = false;
       }
     })();
 
     return () => {
       mounted = false;
+      if (abortControllerRef.current) {
+        abortControllerRef.current.abort();
+      }
       if (currentObjectUrl) {
         revokeBlobUrl(currentObjectUrl);
       }
       setImageBlobUrl(null);
-      // Reset guard for next image (safe for this use case)
       fetchRan[key] = false;
     };
-  }, [displayUrl, sourcePhoto, session]);
+  }, [displayUrl, sourcePhoto, session, retryCount]);
 
   // Watch polling state and photo updates to change the recheck button status
   useEffect(() => {
@@ -536,11 +542,27 @@ export default function EditPage({ photo, onClose: _onClose, onSave, onRecheckAI
                         position: 'absolute',
                         inset: 0,
                         display: 'flex',
+                        flexDirection: 'column',
                         alignItems: 'center',
                         justifyContent: 'center',
                         color: '#ef4444',
+                        gap: '8px'
                       }}>
-                        Unable to load image
+                        <span>Unable to load image</span>
+                        <button 
+                            onClick={() => setRetryCount(c => c + 1)}
+                            style={{
+                                padding: '4px 12px',
+                                backgroundColor: 'white',
+                                border: '1px solid #ef4444',
+                                borderRadius: '4px',
+                                color: '#ef4444',
+                                cursor: 'pointer',
+                                fontSize: '12px'
+                            }}
+                        >
+                            Retry
+                        </button>
                       </div>
                     )}
 
