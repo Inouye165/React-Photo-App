@@ -626,7 +626,7 @@ async function updatePhotoAIMetadata(db, photoRow, storagePath, modelOverrides =
       });
     }
     
-    const device = meta.Make && meta.Model ? `${meta.Make} ${meta.Model}` : '';
+    let device = meta.Make && meta.Model ? `${meta.Make} ${meta.Model}` : '';
     const retryCount = photoRow.ai_retry_count || 0;
     if (retryCount >= 5) {
       logger.error(`AI processing failed permanently for ${photoRow.filename} after ${retryCount} retries`);
