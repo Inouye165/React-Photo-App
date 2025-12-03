@@ -24,7 +24,7 @@ if (!process.env.OPENAI_API_KEY) {
 // Native OpenAI client (singleton)
 const openai = require('./openaiClient');
 const { convertHeicToJpegBuffer } = require('../media/image');
-const exifr = require('exifr');
+const { extractMetadata } = require('../media/exif');
 const sharp = require('sharp');
 
 // Hard limit for AI processing file size (20 MB)
@@ -660,16 +660,47 @@ async function updatePhotoAIMetadata(db, photoRow, storagePath, modelOverrides =
         throw new Error(`Failed to fetch file stream: ${response.status} ${response.statusText}`);
       }
 
+      // Download the original file buffer first for metadata extraction
+      const arrayBuffer = await response.arrayBuffer();
+      const originalBuffer = Buffer.from(arrayBuffer);
+      
+      // Extract metadata from original file before any processing
+      const os = require('os');
+      const tmpFilePath = path.join(os.tmpdir(), `metadata_extract_${Date.now()}_${photoRow.filename}`);
+      let richMetadata = null;
+      
+      try {
+        // Write original buffer to temp file for exiftool to read
+        fs.writeFileSync(tmpFilePath, originalBuffer);
+        logger.debug('[AI Debug] [updatePhotoAIMetadata] Extracting metadata from original file...');
+        richMetadata = await extractMetadata(tmpFilePath);
+        logger.debug('[AI Debug] [updatePhotoAIMetadata] Extracted rich metadata:', {
+          hasCreatedAt: Boolean(richMetadata.created_at),
+          hasGps: Boolean(richMetadata.gps),
+          hasDevice: Boolean(richMetadata.device && richMetadata.device.make),
+          hasExposure: Boolean(richMetadata.exposure && richMetadata.exposure.iso)
+        });
+      } catch (metaErr) {
+        logger.warn('[Metadata Debug] Failed to extract metadata:', metaErr.message || metaErr);
+      } finally {
+        // Clean up temp file
+        try {
+          if (fs.existsSync(tmpFilePath)) {
+            fs.unlinkSync(tmpFilePath);
+          }
+        } catch (cleanupErr) {
+          logger.warn('[Metadata Debug] Failed to cleanup temp file:', cleanupErr.message);
+        }
+      }
+
       let fileBuffer;
       const isHeic = photoRow.filename.toLowerCase().endsWith('.heic') || photoRow.filename.toLowerCase().endsWith('.heif');
 
       if (isHeic) {
-        logger.debug('[AI Debug] [updatePhotoAIMetadata] Detected HEIC file, downloading full buffer for conversion...');
-        const arrayBuffer = await response.arrayBuffer();
-        const rawBuffer = Buffer.from(arrayBuffer);
+        logger.debug('[AI Debug] [updatePhotoAIMetadata] Detected HEIC file, converting to JPEG...');
         
         // Convert to JPEG using helper (handles fallback if sharp fails)
-        const jpegBuffer = await convertHeicToJpegBuffer(rawBuffer);
+        const jpegBuffer = await convertHeicToJpegBuffer(originalBuffer);
         
         // Resize using sharp - use high quality settings to preserve image detail
         fileBuffer = await sharp(jpegBuffer)
@@ -678,43 +709,54 @@ async function updatePhotoAIMetadata(db, photoRow, storagePath, modelOverrides =
           .toFormat('jpeg', { quality: 95, mozjpeg: true })
           .toBuffer();
       } else {
-        // Use sharp to resize on the fly
-        // Resize to max 4096x4096, convert to high-quality JPEG, preserve metadata
-        const pipeline = sharp()
+        // Resize the original buffer
+        fileBuffer = await sharp(originalBuffer)
           .resize({ width: 4096, height: 4096, fit: 'inside', withoutEnlargement: true })
           .withMetadata()
-          .toFormat('jpeg', { quality: 95, mozjpeg: true });
-
-        const { Readable } = require('stream');
-        const inputStream = response.body ? Readable.fromWeb(response.body) : null;
-        
-        if (!inputStream) throw new Error('No response body stream');
-
-        fileBuffer = await inputStream.pipe(pipeline).toBuffer();
+          .toFormat('jpeg', { quality: 95, mozjpeg: true })
+          .toBuffer();
       }
       
       logger.debug('[AI Debug] [updatePhotoAIMetadata] Resized file buffer loaded. Buffer length:', fileBuffer.length);
 
-      let freshMeta = null;
-      try {
-        freshMeta = await exifr.parse(fileBuffer, { gps: true, ifd0: true, exif: true, xmp: true, icc: true, tiff: true });
-      } catch (exifrErr) {
-        logger.warn('[Metadata Debug] Failed to parse EXIF from storage file:', exifrErr.message || exifrErr);
+      // Build GPS string from rich metadata if available
+      if (richMetadata && richMetadata.gps && typeof richMetadata.gps.lat === 'number' && typeof richMetadata.gps.lon === 'number') {
+        gps = `${richMetadata.gps.lat.toFixed(6)},${richMetadata.gps.lon.toFixed(6)}`;
+        logger.info('[GPS] Using exiftool-extracted GPS:', gps);
       }
 
-      if (process.env.DEBUG_GPS === '1' && freshMeta) {
-        const freshCoords = extractLatLon(freshMeta);
-        logger.info('[GPS] Fresh EXIF extractLatLon result', freshCoords);
+      // Build device string from rich metadata if available
+      if (richMetadata && richMetadata.device && richMetadata.device.make && richMetadata.device.model) {
+        device = `${richMetadata.device.make} ${richMetadata.device.model}`;
+        logger.info('[Device] Using exiftool-extracted device:', device);
       }
 
-      // Pass the resized JPEG buffer. 
-      // We append .jpg to filename so processPhotoAI treats it as JPEG
+      // Merge rich metadata into the legacy meta object for backward compatibility
+      const enrichedMeta = {
+        ...meta,
+        ...(richMetadata && {
+          DateTimeOriginal: richMetadata.created_at,
+          Make: richMetadata.device?.make,
+          Model: richMetadata.device?.model,
+          LensModel: richMetadata.device?.lens,
+          ISO: richMetadata.exposure?.iso,
+          FNumber: richMetadata.exposure?.f_stop,
+          ExposureTime: richMetadata.exposure?.shutter_speed,
+          Flash: richMetadata.exposure?.flash_fired,
+          GPSLatitude: richMetadata.gps?.lat,
+          GPSLongitude: richMetadata.gps?.lon,
+          GPSAltitude: richMetadata.gps?.alt,
+          UserComment: richMetadata.user_comment
+        })
+      };
+
+      // Pass the resized JPEG buffer with enriched metadata
       const processedFilename = photoRow.filename + '.processed.jpg';
 
       ai = await processPhotoAI({ 
         fileBuffer,
         filename: processedFilename, 
-        metadata: meta, 
+        metadata: enrichedMeta, 
         gps, 
         device 
       }, modelOverrides);
