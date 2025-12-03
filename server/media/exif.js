@@ -15,7 +15,9 @@ const logger = require('../logger');
  */
 async function extractMetadata(filePath) {
   try {
+    logger.debug(`[extractMetadata] Reading EXIF from: ${filePath}`);
     const tags = await exiftool.read(filePath);
+    logger.debug(`[extractMetadata] Successfully read ${Object.keys(tags).length} tags`);
     
     // Helper to normalize date from various EXIF date fields
     const normalizeDate = () => {
@@ -83,7 +85,7 @@ async function extractMetadata(filePath) {
       user_comment: userComment
     };
   } catch (error) {
-    logger.error(`Failed to extract metadata from ${filePath}:`, error.message);
+    logger.error(`[extractMetadata] Failed to extract metadata from ${filePath}:`, error.message, error.stack);
     // Return minimal object on failure
     return {
       created_at: null,

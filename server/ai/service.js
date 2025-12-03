@@ -672,6 +672,7 @@ async function updatePhotoAIMetadata(db, photoRow, storagePath, modelOverrides =
       try {
         // Write original buffer to temp file for exiftool to read
         fs.writeFileSync(tmpFilePath, originalBuffer);
+        logger.debug('[AI Debug] [updatePhotoAIMetadata] Wrote temp file for metadata extraction:', tmpFilePath);
         logger.debug('[AI Debug] [updatePhotoAIMetadata] Extracting metadata from original file...');
         richMetadata = await extractMetadata(tmpFilePath);
         logger.debug('[AI Debug] [updatePhotoAIMetadata] Extracted rich metadata:', {
@@ -681,7 +682,8 @@ async function updatePhotoAIMetadata(db, photoRow, storagePath, modelOverrides =
           hasExposure: Boolean(richMetadata.exposure && richMetadata.exposure.iso)
         });
       } catch (metaErr) {
-        logger.warn('[Metadata Debug] Failed to extract metadata:', metaErr.message || metaErr);
+        logger.error('[Metadata Debug] Failed to extract metadata:', metaErr.message || metaErr, metaErr.stack);
+        // Don't throw - continue without rich metadata
       } finally {
         // Clean up temp file
         try {
