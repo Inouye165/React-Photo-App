@@ -24190,3 +24190,6476 @@
 
 
 # Logger Initialized at 2025-12-03T17:56:30.500Z
+
+
+# Logger Initialized at 2025-12-03T18:01:10.931Z
+
+
+# Logger Initialized at 2025-12-03T18:01:16.755Z
+
+================================================================================
+# Graph Execution Started
+**Run ID:** 2c5f0758-919a-4d6f-8b1f-dacfb7165b25
+**Timestamp:** 2025-12-03T18:01:43.517Z
+
+## Initial State
+```json
+{
+  "runId": "2c5f0758-919a-4d6f-8b1f-dacfb7165b25",
+  "filename": "a3340686-a651-4aad-a13f-79ce0f9dbd1c-20240418_160529001_iOS.heic.processed.jpg",
+  "fileBuffer": "[Buffer: 24 bytes]",
+  "imageBase64": "[Base64 Image Data Omitted]",
+  "imageMime": "image/jpeg",
+  "metadata": {
+    "DateTimeOriginal": "null",
+    "Make": "Apple",
+    "Model": "iPhone 15 Pro Max",
+    "LensModel": "iPhone 15 Pro Max back triple camera 6.765mm f/1.78",
+    "ISO": 64,
+    "FNumber": 1.8,
+    "ExposureTime": "1/995",
+    "Flash": false,
+    "GPSLatitude": 21.003556,
+    "GPSLongitude": -156.662933,
+    "GPSAltitude": 1.335102887,
+    "UserComment": "null",
+    "dateTime": "null",
+    "cameraModel": "Apple iPhone 15 Pro Max"
+  },
+  "gpsString": "21.003556,-156.662933",
+  "device": "Apple iPhone 15 Pro Max",
+  "modelOverrides": {},
+  "classification": "null",
+  "poiAnalysis": "null",
+  "rich_search_context": "null",
+  "finalResult": "null",
+  "error": "null"
+}
+```
+
+
+### Node Started: classify_image
+**Timestamp:** 2025-12-03T18:01:45.608Z
+
+**Input:**
+```json
+{
+  "filename": "a3340686-a651-4aad-a13f-79ce0f9dbd1c-20240418_160529001_iOS.heic.processed.jpg",
+  "fileBuffer": "[Buffer: 2241191 bytes]",
+  "imageBase64": "[Base64 Image Data Omitted]",
+  "imageMime": "image/jpeg",
+  "metadata": {
+    "DateTimeOriginal": "null",
+    "Make": "Apple",
+    "Model": "iPhone 15 Pro Max",
+    "LensModel": "iPhone 15 Pro Max back triple camera 6.765mm f/1.78",
+    "ISO": 64,
+    "FNumber": 1.8,
+    "ExposureTime": "1/995",
+    "Flash": false,
+    "GPSLatitude": 21.003556,
+    "GPSLongitude": -156.662933,
+    "GPSAltitude": 1.335102887,
+    "UserComment": "null",
+    "dateTime": "null",
+    "cameraModel": "Apple iPhone 15 Pro Max"
+  },
+  "gpsString": "21.003556,-156.662933",
+  "device": "Apple iPhone 15 Pro Max",
+  "modelOverrides": {},
+  "classification": "null",
+  "poiAnalysis": "null",
+  "rich_search_context": "null",
+  "finalResult": "null",
+  "error": "null"
+}
+```
+
+
+================================================================================
+# Graph Execution Started
+**Run ID:** 26442684-5de1-413d-a4b6-deb1e165801b
+**Timestamp:** 2025-12-03T18:01:45.622Z
+
+## Initial State
+```json
+{
+  "runId": "26442684-5de1-413d-a4b6-deb1e165801b",
+  "filename": "a3340686-a651-4aad-a13f-79ce0f9dbd1c-20240418_160529001_iOS.heic.processed.jpg",
+  "fileBuffer": "[Buffer: 24 bytes]",
+  "imageBase64": "[Base64 Image Data Omitted]",
+  "imageMime": "image/jpeg",
+  "metadata": {
+    "DateTimeOriginal": "null",
+    "Make": "Apple",
+    "Model": "iPhone 15 Pro Max",
+    "LensModel": "iPhone 15 Pro Max back triple camera 6.765mm f/1.78",
+    "ISO": 64,
+    "FNumber": 1.8,
+    "ExposureTime": "1/995",
+    "Flash": false,
+    "GPSLatitude": 21.003556,
+    "GPSLongitude": -156.662933,
+    "GPSAltitude": 1.335102887,
+    "UserComment": "null",
+    "dateTime": "null",
+    "cameraModel": "Apple iPhone 15 Pro Max"
+  },
+  "gpsString": "21.003556,-156.662933",
+  "device": "Apple iPhone 15 Pro Max",
+  "modelOverrides": {},
+  "classification": "null",
+  "poiAnalysis": "null",
+  "rich_search_context": "null",
+  "finalResult": "null",
+  "error": "null"
+}
+```
+
+
+### Node Started: classify_image
+**Timestamp:** 2025-12-03T18:01:47.650Z
+
+**Input:**
+```json
+{
+  "filename": "a3340686-a651-4aad-a13f-79ce0f9dbd1c-20240418_160529001_iOS.heic.processed.jpg",
+  "fileBuffer": "[Buffer: 2241191 bytes]",
+  "imageBase64": "[Base64 Image Data Omitted]",
+  "imageMime": "image/jpeg",
+  "metadata": {
+    "DateTimeOriginal": "null",
+    "Make": "Apple",
+    "Model": "iPhone 15 Pro Max",
+    "LensModel": "iPhone 15 Pro Max back triple camera 6.765mm f/1.78",
+    "ISO": 64,
+    "FNumber": 1.8,
+    "ExposureTime": "1/995",
+    "Flash": false,
+    "GPSLatitude": 21.003556,
+    "GPSLongitude": -156.662933,
+    "GPSAltitude": 1.335102887,
+    "UserComment": "null",
+    "dateTime": "null",
+    "cameraModel": "Apple iPhone 15 Pro Max"
+  },
+  "gpsString": "21.003556,-156.662933",
+  "device": "Apple iPhone 15 Pro Max",
+  "modelOverrides": {},
+  "classification": "null",
+  "poiAnalysis": "null",
+  "rich_search_context": "null",
+  "finalResult": "null",
+  "error": "null"
+}
+```
+
+
+#### LLM Used in classify_image
+**Timestamp:** 2025-12-03T18:01:51.866Z
+**Model:** gpt-4o-2024-08-06
+
+**Prompt:**
+```json
+[
+  {
+    "role": "system",
+    "content": "You are a helpful assistant for image classification."
+  },
+  {
+    "role": "user",
+    "content": [
+      {
+        "type": "text",
+        "text": "Classify this image as one of the following categories: scenery, food, receipt, collectables, health data, or other. Return ONLY a JSON object: {\"classification\": \"...\"}."
+      },
+      {
+        "type": "image_url",
+        "image_url": {
+          "url": "[Base64 Image Data Omitted]",
+          "detail": "low"
+        }
+      }
+    ]
+  }
+]
+```
+
+**Response:**
+```
+{"classification": "scenery"}
+```
+
+
+### Node Finished: classify_image
+**Timestamp:** 2025-12-03T18:01:51.867Z
+
+**Output:**
+```json
+{
+  "filename": "a3340686-a651-4aad-a13f-79ce0f9dbd1c-20240418_160529001_iOS.heic.processed.jpg",
+  "fileBuffer": "[Buffer: 2241191 bytes]",
+  "imageBase64": "[Base64 Image Data Omitted]",
+  "imageMime": "image/jpeg",
+  "metadata": {
+    "DateTimeOriginal": "null",
+    "Make": "Apple",
+    "Model": "iPhone 15 Pro Max",
+    "LensModel": "iPhone 15 Pro Max back triple camera 6.765mm f/1.78",
+    "ISO": 64,
+    "FNumber": 1.8,
+    "ExposureTime": "1/995",
+    "Flash": false,
+    "GPSLatitude": 21.003556,
+    "GPSLongitude": -156.662933,
+    "GPSAltitude": 1.335102887,
+    "UserComment": "null",
+    "dateTime": "null",
+    "cameraModel": "Apple iPhone 15 Pro Max"
+  },
+  "gpsString": "21.003556,-156.662933",
+  "device": "Apple iPhone 15 Pro Max",
+  "modelOverrides": {},
+  "classification": "scenery",
+  "poiAnalysis": "null",
+  "rich_search_context": "null",
+  "finalResult": "null",
+  "error": "null"
+}
+```
+
+
+### Node Started: collect_context
+**Timestamp:** 2025-12-03T18:01:55.012Z
+
+**Input:**
+```json
+{
+  "filename": "a3340686-a651-4aad-a13f-79ce0f9dbd1c-20240418_160529001_iOS.heic.processed.jpg",
+  "fileBuffer": "[Buffer: 2241191 bytes]",
+  "imageBase64": "[Base64 Image Data Omitted]",
+  "imageMime": "image/jpeg",
+  "metadata": {
+    "DateTimeOriginal": "null",
+    "Make": "Apple",
+    "Model": "iPhone 15 Pro Max",
+    "LensModel": "iPhone 15 Pro Max back triple camera 6.765mm f/1.78",
+    "ISO": 64,
+    "FNumber": 1.8,
+    "ExposureTime": "1/995",
+    "Flash": false,
+    "GPSLatitude": 21.003556,
+    "GPSLongitude": -156.662933,
+    "GPSAltitude": 1.335102887,
+    "UserComment": "null",
+    "dateTime": "null",
+    "cameraModel": "Apple iPhone 15 Pro Max"
+  },
+  "gpsString": "21.003556,-156.662933",
+  "device": "Apple iPhone 15 Pro Max",
+  "modelOverrides": {},
+  "classification": "scenery",
+  "poiAnalysis": "null",
+  "rich_search_context": "null",
+  "finalResult": "null",
+  "error": "null"
+}
+```
+
+
+#### Tool Used: Google Reverse Geocode
+**Timestamp:** 2025-12-03T18:01:55.015Z
+
+**Input:**
+```json
+{
+  "lat": 21.003556,
+  "lon": -156.662933,
+  "url": "https://maps.googleapis.com/maps/api/geocode/json?latlng=21.003556,-156.662933&key=****"
+}
+```
+
+**Output:**
+```json
+"Fetching..."
+```
+
+
+#### LLM Used in classify_image
+**Timestamp:** 2025-12-03T18:01:55.022Z
+**Model:** gpt-4o-2024-08-06
+
+**Prompt:**
+```json
+[
+  {
+    "role": "system",
+    "content": "You are a helpful assistant for image classification."
+  },
+  {
+    "role": "user",
+    "content": [
+      {
+        "type": "text",
+        "text": "Classify this image as one of the following categories: scenery, food, receipt, collectables, health data, or other. Return ONLY a JSON object: {\"classification\": \"...\"}."
+      },
+      {
+        "type": "image_url",
+        "image_url": {
+          "url": "[Base64 Image Data Omitted]",
+          "detail": "low"
+        }
+      }
+    ]
+  }
+]
+```
+
+**Response:**
+```
+{"classification": "scenery"}
+```
+
+
+### Node Finished: classify_image
+**Timestamp:** 2025-12-03T18:01:55.023Z
+
+**Output:**
+```json
+{
+  "filename": "a3340686-a651-4aad-a13f-79ce0f9dbd1c-20240418_160529001_iOS.heic.processed.jpg",
+  "fileBuffer": "[Buffer: 2241191 bytes]",
+  "imageBase64": "[Base64 Image Data Omitted]",
+  "imageMime": "image/jpeg",
+  "metadata": {
+    "DateTimeOriginal": "null",
+    "Make": "Apple",
+    "Model": "iPhone 15 Pro Max",
+    "LensModel": "iPhone 15 Pro Max back triple camera 6.765mm f/1.78",
+    "ISO": 64,
+    "FNumber": 1.8,
+    "ExposureTime": "1/995",
+    "Flash": false,
+    "GPSLatitude": 21.003556,
+    "GPSLongitude": -156.662933,
+    "GPSAltitude": 1.335102887,
+    "UserComment": "null",
+    "dateTime": "null",
+    "cameraModel": "Apple iPhone 15 Pro Max"
+  },
+  "gpsString": "21.003556,-156.662933",
+  "device": "Apple iPhone 15 Pro Max",
+  "modelOverrides": {},
+  "classification": "scenery",
+  "poiAnalysis": "null",
+  "rich_search_context": "null",
+  "finalResult": "null",
+  "error": "null"
+}
+```
+
+
+### Node Started: collect_context
+**Timestamp:** 2025-12-03T18:01:58.334Z
+
+**Input:**
+```json
+{
+  "filename": "a3340686-a651-4aad-a13f-79ce0f9dbd1c-20240418_160529001_iOS.heic.processed.jpg",
+  "fileBuffer": "[Buffer: 2241191 bytes]",
+  "imageBase64": "[Base64 Image Data Omitted]",
+  "imageMime": "image/jpeg",
+  "metadata": {
+    "DateTimeOriginal": "null",
+    "Make": "Apple",
+    "Model": "iPhone 15 Pro Max",
+    "LensModel": "iPhone 15 Pro Max back triple camera 6.765mm f/1.78",
+    "ISO": 64,
+    "FNumber": 1.8,
+    "ExposureTime": "1/995",
+    "Flash": false,
+    "GPSLatitude": 21.003556,
+    "GPSLongitude": -156.662933,
+    "GPSAltitude": 1.335102887,
+    "UserComment": "null",
+    "dateTime": "null",
+    "cameraModel": "Apple iPhone 15 Pro Max"
+  },
+  "gpsString": "21.003556,-156.662933",
+  "device": "Apple iPhone 15 Pro Max",
+  "modelOverrides": {},
+  "classification": "scenery",
+  "poiAnalysis": "null",
+  "rich_search_context": "null",
+  "finalResult": "null",
+  "error": "null"
+}
+```
+
+
+#### Tool Used: Google Reverse Geocode
+**Timestamp:** 2025-12-03T18:01:58.336Z
+
+**Input:**
+```json
+{
+  "lat": 21.003556,
+  "lon": -156.662933,
+  "url": "https://maps.googleapis.com/maps/api/geocode/json?latlng=21.003556,-156.662933&key=****"
+}
+```
+
+**Output:**
+```json
+"Fetching..."
+```
+
+
+#### Tool Used: Google Reverse Geocode
+**Timestamp:** 2025-12-03T18:01:58.404Z
+
+**Input:**
+```json
+{
+  "lat": 21.003556,
+  "lon": -156.662933
+}
+```
+
+**Output:**
+```json
+{
+  "address": "null"
+}
+```
+
+
+#### Tool Used: Google Nearby Places
+**Timestamp:** 2025-12-03T18:01:58.406Z
+
+**Input:**
+```json
+{
+  "lat": 21.003556,
+  "lon": -156.662933,
+  "radius": 800,
+  "url": "https://maps.googleapis.com/maps/api/place/nearbysearch/json?location=21.003556%2C-156.662933&radius=800&type=park%7Cmuseum%7Ctourist_attraction%7Cnatural_feature&key=****"
+}
+```
+
+**Output:**
+```json
+"Fetching..."
+```
+
+
+#### Tool Used: Google Reverse Geocode
+**Timestamp:** 2025-12-03T18:01:58.427Z
+
+**Input:**
+```json
+{
+  "lat": 21.003556,
+  "lon": -156.662933
+}
+```
+
+**Output:**
+```json
+{
+  "address": "null"
+}
+```
+
+
+#### Tool Used: Google Nearby Places
+**Timestamp:** 2025-12-03T18:01:58.429Z
+
+**Input:**
+```json
+{
+  "lat": 21.003556,
+  "lon": -156.662933,
+  "radius": 800,
+  "url": "https://maps.googleapis.com/maps/api/place/nearbysearch/json?location=21.003556%2C-156.662933&radius=800&type=park%7Cmuseum%7Ctourist_attraction%7Cnatural_feature&key=****"
+}
+```
+
+**Output:**
+```json
+"Fetching..."
+```
+
+
+### Node Finished: collect_context
+**Timestamp:** 2025-12-03T18:01:59.480Z
+
+**Output:**
+```json
+{
+  "filename": "a3340686-a651-4aad-a13f-79ce0f9dbd1c-20240418_160529001_iOS.heic.processed.jpg",
+  "fileBuffer": "[Buffer: 2241191 bytes]",
+  "imageBase64": "[Base64 Image Data Omitted]",
+  "imageMime": "image/jpeg",
+  "metadata": {
+    "DateTimeOriginal": "null",
+    "Make": "Apple",
+    "Model": "iPhone 15 Pro Max",
+    "LensModel": "iPhone 15 Pro Max back triple camera 6.765mm f/1.78",
+    "ISO": 64,
+    "FNumber": 1.8,
+    "ExposureTime": "1/995",
+    "Flash": false,
+    "GPSLatitude": 21.003556,
+    "GPSLongitude": -156.662933,
+    "GPSAltitude": 1.335102887,
+    "UserComment": "null",
+    "dateTime": "null",
+    "cameraModel": "Apple iPhone 15 Pro Max"
+  },
+  "gpsString": "21.003556,-156.662933",
+  "device": "Apple iPhone 15 Pro Max",
+  "modelOverrides": {},
+  "classification": "scenery",
+  "poiAnalysis": "null",
+  "rich_search_context": "null",
+  "finalResult": "null",
+  "error": "null",
+  "poiCache": {
+    "reverseResult": {
+      "address": "null"
+    },
+    "nearbyPlaces": [],
+    "nearbyFood": [],
+    "osmTrails": [
+      {
+        "id": "osm:way/439994347",
+        "name": "Kapalua Coastal Trail",
+        "category": "trail",
+        "lat": 21.0038191,
+        "lon": -156.6630581,
+        "distanceMeters": 32.00812221112616,
+        "source": "osm",
+        "tags": {
+          "foot": "designated",
+          "highway": "footway",
+          "name": "Kapalua Coastal Trail",
+          "surface": "unpaved",
+          "wheelchair": "limited"
+        }
+      },
+      {
+        "id": "osm:way/774896778",
+        "name": "null",
+        "category": "trail",
+        "lat": 21.0037598,
+        "lon": -156.6610141,
+        "distanceMeters": 200.4798952799343,
+        "source": "osm",
+        "tags": {
+          "highway": "path",
+          "surface": "sand"
+        }
+      },
+      {
+        "id": "osm:way/765196474",
+        "name": "Kapalua Coastal Trail",
+        "category": "trail",
+        "lat": 21.004448,
+        "lon": -156.6651137,
+        "distanceMeters": 247.14715112815313,
+        "source": "osm",
+        "tags": {
+          "highway": "path",
+          "name": "Kapalua Coastal Trail",
+          "surface": "rock"
+        }
+      },
+      {
+        "id": "osm:way/774896776",
+        "name": "Kapalua Coastal Trail",
+        "category": "trail",
+        "lat": 21.0036164,
+        "lon": -156.6600075,
+        "distanceMeters": 303.7613794862301,
+        "source": "osm",
+        "tags": {
+          "bridge": "boardwalk",
+          "highway": "footway",
+          "layer": "1",
+          "name": "Kapalua Coastal Trail"
+        }
+      },
+      {
+        "id": "osm:way/1417231482",
+        "name": "null",
+        "category": "trail",
+        "lat": 21.0011301,
+        "lon": -156.6611972,
+        "distanceMeters": 324.3950232453944,
+        "source": "osm",
+        "tags": {
+          "footway": "sidewalk",
+          "highway": "footway",
+          "surface": "concrete"
+        }
+      },
+      {
+        "id": "osm:way/266640167",
+        "name": "Kapalua Coastal Trail",
+        "category": "trail",
+        "lat": 21.0011499,
+        "lon": -156.6657353,
+        "distanceMeters": 395.2265582454306,
+        "source": "osm",
+        "tags": {
+          "foot": "designated",
+          "highway": "footway",
+          "name": "Kapalua Coastal Trail",
+          "surface": "asphalt",
+          "wheelchair": "limited"
+        }
+      }
+    ]
+  },
+  "poiCacheSummary": {
+    "reverse": false,
+    "nearbyPlacesCount": 0,
+    "nearbyFoodCount": 0,
+    "osmTrailsCount": 6,
+    "durationMs": 4466
+  },
+  "poiCacheFetchedAt": "2025-12-03T18:01:59.480Z"
+}
+```
+
+
+### Node Started: location_intelligence_agent
+**Timestamp:** 2025-12-03T18:02:02.090Z
+
+**Input:**
+```json
+{
+  "filename": "a3340686-a651-4aad-a13f-79ce0f9dbd1c-20240418_160529001_iOS.heic.processed.jpg",
+  "fileBuffer": "[Buffer: 2241191 bytes]",
+  "imageBase64": "[Base64 Image Data Omitted]",
+  "imageMime": "image/jpeg",
+  "metadata": {
+    "DateTimeOriginal": "null",
+    "Make": "Apple",
+    "Model": "iPhone 15 Pro Max",
+    "LensModel": "iPhone 15 Pro Max back triple camera 6.765mm f/1.78",
+    "ISO": 64,
+    "FNumber": 1.8,
+    "ExposureTime": "1/995",
+    "Flash": false,
+    "GPSLatitude": 21.003556,
+    "GPSLongitude": -156.662933,
+    "GPSAltitude": 1.335102887,
+    "UserComment": "null",
+    "dateTime": "null",
+    "cameraModel": "Apple iPhone 15 Pro Max"
+  },
+  "gpsString": "21.003556,-156.662933",
+  "device": "Apple iPhone 15 Pro Max",
+  "modelOverrides": {},
+  "classification": "scenery",
+  "poiAnalysis": "null",
+  "poiCache": {
+    "reverseResult": {
+      "address": "null"
+    },
+    "nearbyPlaces": [],
+    "nearbyFood": [],
+    "osmTrails": [
+      {
+        "id": "osm:way/439994347",
+        "name": "Kapalua Coastal Trail",
+        "category": "trail",
+        "lat": 21.0038191,
+        "lon": -156.6630581,
+        "distanceMeters": 32.00812221112616,
+        "source": "osm",
+        "tags": {
+          "foot": "designated",
+          "highway": "footway",
+          "name": "Kapalua Coastal Trail",
+          "surface": "unpaved",
+          "wheelchair": "limited"
+        }
+      },
+      {
+        "id": "osm:way/774896778",
+        "name": "null",
+        "category": "trail",
+        "lat": 21.0037598,
+        "lon": -156.6610141,
+        "distanceMeters": 200.4798952799343,
+        "source": "osm",
+        "tags": {
+          "highway": "path",
+          "surface": "sand"
+        }
+      },
+      {
+        "id": "osm:way/765196474",
+        "name": "Kapalua Coastal Trail",
+        "category": "trail",
+        "lat": 21.004448,
+        "lon": -156.6651137,
+        "distanceMeters": 247.14715112815313,
+        "source": "osm",
+        "tags": {
+          "highway": "path",
+          "name": "Kapalua Coastal Trail",
+          "surface": "rock"
+        }
+      },
+      {
+        "id": "osm:way/774896776",
+        "name": "Kapalua Coastal Trail",
+        "category": "trail",
+        "lat": 21.0036164,
+        "lon": -156.6600075,
+        "distanceMeters": 303.7613794862301,
+        "source": "osm",
+        "tags": {
+          "bridge": "boardwalk",
+          "highway": "footway",
+          "layer": "1",
+          "name": "Kapalua Coastal Trail"
+        }
+      },
+      {
+        "id": "osm:way/1417231482",
+        "name": "null",
+        "category": "trail",
+        "lat": 21.0011301,
+        "lon": -156.6611972,
+        "distanceMeters": 324.3950232453944,
+        "source": "osm",
+        "tags": {
+          "footway": "sidewalk",
+          "highway": "footway",
+          "surface": "concrete"
+        }
+      },
+      {
+        "id": "osm:way/266640167",
+        "name": "Kapalua Coastal Trail",
+        "category": "trail",
+        "lat": 21.0011499,
+        "lon": -156.6657353,
+        "distanceMeters": 395.2265582454306,
+        "source": "osm",
+        "tags": {
+          "foot": "designated",
+          "highway": "footway",
+          "name": "Kapalua Coastal Trail",
+          "surface": "asphalt",
+          "wheelchair": "limited"
+        }
+      }
+    ]
+  },
+  "poiCacheSummary": {
+    "reverse": false,
+    "nearbyPlacesCount": 0,
+    "nearbyFoodCount": 0,
+    "osmTrailsCount": 6,
+    "durationMs": 4466
+  },
+  "poiCacheFetchedAt": "2025-12-03T18:01:59.480Z",
+  "rich_search_context": "null",
+  "finalResult": "null",
+  "error": "null"
+}
+```
+
+
+### Node Finished: collect_context
+**Timestamp:** 2025-12-03T18:02:02.120Z
+
+**Output:**
+```json
+{
+  "filename": "a3340686-a651-4aad-a13f-79ce0f9dbd1c-20240418_160529001_iOS.heic.processed.jpg",
+  "fileBuffer": "[Buffer: 2241191 bytes]",
+  "imageBase64": "[Base64 Image Data Omitted]",
+  "imageMime": "image/jpeg",
+  "metadata": {
+    "DateTimeOriginal": "null",
+    "Make": "Apple",
+    "Model": "iPhone 15 Pro Max",
+    "LensModel": "iPhone 15 Pro Max back triple camera 6.765mm f/1.78",
+    "ISO": 64,
+    "FNumber": 1.8,
+    "ExposureTime": "1/995",
+    "Flash": false,
+    "GPSLatitude": 21.003556,
+    "GPSLongitude": -156.662933,
+    "GPSAltitude": 1.335102887,
+    "UserComment": "null",
+    "dateTime": "null",
+    "cameraModel": "Apple iPhone 15 Pro Max"
+  },
+  "gpsString": "21.003556,-156.662933",
+  "device": "Apple iPhone 15 Pro Max",
+  "modelOverrides": {},
+  "classification": "scenery",
+  "poiAnalysis": "null",
+  "rich_search_context": "null",
+  "finalResult": "null",
+  "error": "null",
+  "poiCache": {
+    "reverseResult": {
+      "address": "null"
+    },
+    "nearbyPlaces": [],
+    "nearbyFood": [],
+    "osmTrails": [
+      {
+        "id": "osm:way/439994347",
+        "name": "Kapalua Coastal Trail",
+        "category": "trail",
+        "lat": 21.0038191,
+        "lon": -156.6630581,
+        "distanceMeters": 32.00812221112616,
+        "source": "osm",
+        "tags": {
+          "foot": "designated",
+          "highway": "footway",
+          "name": "Kapalua Coastal Trail",
+          "surface": "unpaved",
+          "wheelchair": "limited"
+        }
+      },
+      {
+        "id": "osm:way/774896778",
+        "name": "null",
+        "category": "trail",
+        "lat": 21.0037598,
+        "lon": -156.6610141,
+        "distanceMeters": 200.4798952799343,
+        "source": "osm",
+        "tags": {
+          "highway": "path",
+          "surface": "sand"
+        }
+      },
+      {
+        "id": "osm:way/765196474",
+        "name": "Kapalua Coastal Trail",
+        "category": "trail",
+        "lat": 21.004448,
+        "lon": -156.6651137,
+        "distanceMeters": 247.14715112815313,
+        "source": "osm",
+        "tags": {
+          "highway": "path",
+          "name": "Kapalua Coastal Trail",
+          "surface": "rock"
+        }
+      },
+      {
+        "id": "osm:way/774896776",
+        "name": "Kapalua Coastal Trail",
+        "category": "trail",
+        "lat": 21.0036164,
+        "lon": -156.6600075,
+        "distanceMeters": 303.7613794862301,
+        "source": "osm",
+        "tags": {
+          "bridge": "boardwalk",
+          "highway": "footway",
+          "layer": "1",
+          "name": "Kapalua Coastal Trail"
+        }
+      },
+      {
+        "id": "osm:way/1417231482",
+        "name": "null",
+        "category": "trail",
+        "lat": 21.0011301,
+        "lon": -156.6611972,
+        "distanceMeters": 324.3950232453944,
+        "source": "osm",
+        "tags": {
+          "footway": "sidewalk",
+          "highway": "footway",
+          "surface": "concrete"
+        }
+      },
+      {
+        "id": "osm:way/266640167",
+        "name": "Kapalua Coastal Trail",
+        "category": "trail",
+        "lat": 21.0011499,
+        "lon": -156.6657353,
+        "distanceMeters": 395.2265582454306,
+        "source": "osm",
+        "tags": {
+          "foot": "designated",
+          "highway": "footway",
+          "name": "Kapalua Coastal Trail",
+          "surface": "asphalt",
+          "wheelchair": "limited"
+        }
+      }
+    ]
+  },
+  "poiCacheSummary": {
+    "reverse": false,
+    "nearbyPlacesCount": 0,
+    "nearbyFoodCount": 0,
+    "osmTrailsCount": 6,
+    "durationMs": 3785
+  },
+  "poiCacheFetchedAt": "2025-12-03T18:02:02.120Z"
+}
+```
+
+
+### Node Started: location_intelligence_agent
+**Timestamp:** 2025-12-03T18:02:04.853Z
+
+**Input:**
+```json
+{
+  "filename": "a3340686-a651-4aad-a13f-79ce0f9dbd1c-20240418_160529001_iOS.heic.processed.jpg",
+  "fileBuffer": "[Buffer: 2241191 bytes]",
+  "imageBase64": "[Base64 Image Data Omitted]",
+  "imageMime": "image/jpeg",
+  "metadata": {
+    "DateTimeOriginal": "null",
+    "Make": "Apple",
+    "Model": "iPhone 15 Pro Max",
+    "LensModel": "iPhone 15 Pro Max back triple camera 6.765mm f/1.78",
+    "ISO": 64,
+    "FNumber": 1.8,
+    "ExposureTime": "1/995",
+    "Flash": false,
+    "GPSLatitude": 21.003556,
+    "GPSLongitude": -156.662933,
+    "GPSAltitude": 1.335102887,
+    "UserComment": "null",
+    "dateTime": "null",
+    "cameraModel": "Apple iPhone 15 Pro Max"
+  },
+  "gpsString": "21.003556,-156.662933",
+  "device": "Apple iPhone 15 Pro Max",
+  "modelOverrides": {},
+  "classification": "scenery",
+  "poiAnalysis": "null",
+  "poiCache": {
+    "reverseResult": {
+      "address": "null"
+    },
+    "nearbyPlaces": [],
+    "nearbyFood": [],
+    "osmTrails": [
+      {
+        "id": "osm:way/439994347",
+        "name": "Kapalua Coastal Trail",
+        "category": "trail",
+        "lat": 21.0038191,
+        "lon": -156.6630581,
+        "distanceMeters": 32.00812221112616,
+        "source": "osm",
+        "tags": {
+          "foot": "designated",
+          "highway": "footway",
+          "name": "Kapalua Coastal Trail",
+          "surface": "unpaved",
+          "wheelchair": "limited"
+        }
+      },
+      {
+        "id": "osm:way/774896778",
+        "name": "null",
+        "category": "trail",
+        "lat": 21.0037598,
+        "lon": -156.6610141,
+        "distanceMeters": 200.4798952799343,
+        "source": "osm",
+        "tags": {
+          "highway": "path",
+          "surface": "sand"
+        }
+      },
+      {
+        "id": "osm:way/765196474",
+        "name": "Kapalua Coastal Trail",
+        "category": "trail",
+        "lat": 21.004448,
+        "lon": -156.6651137,
+        "distanceMeters": 247.14715112815313,
+        "source": "osm",
+        "tags": {
+          "highway": "path",
+          "name": "Kapalua Coastal Trail",
+          "surface": "rock"
+        }
+      },
+      {
+        "id": "osm:way/774896776",
+        "name": "Kapalua Coastal Trail",
+        "category": "trail",
+        "lat": 21.0036164,
+        "lon": -156.6600075,
+        "distanceMeters": 303.7613794862301,
+        "source": "osm",
+        "tags": {
+          "bridge": "boardwalk",
+          "highway": "footway",
+          "layer": "1",
+          "name": "Kapalua Coastal Trail"
+        }
+      },
+      {
+        "id": "osm:way/1417231482",
+        "name": "null",
+        "category": "trail",
+        "lat": 21.0011301,
+        "lon": -156.6611972,
+        "distanceMeters": 324.3950232453944,
+        "source": "osm",
+        "tags": {
+          "footway": "sidewalk",
+          "highway": "footway",
+          "surface": "concrete"
+        }
+      },
+      {
+        "id": "osm:way/266640167",
+        "name": "Kapalua Coastal Trail",
+        "category": "trail",
+        "lat": 21.0011499,
+        "lon": -156.6657353,
+        "distanceMeters": 395.2265582454306,
+        "source": "osm",
+        "tags": {
+          "foot": "designated",
+          "highway": "footway",
+          "name": "Kapalua Coastal Trail",
+          "surface": "asphalt",
+          "wheelchair": "limited"
+        }
+      }
+    ]
+  },
+  "poiCacheSummary": {
+    "reverse": false,
+    "nearbyPlacesCount": 0,
+    "nearbyFoodCount": 0,
+    "osmTrailsCount": 6,
+    "durationMs": 3785
+  },
+  "poiCacheFetchedAt": "2025-12-03T18:02:02.120Z",
+  "rich_search_context": "null",
+  "finalResult": "null",
+  "error": "null"
+}
+```
+
+
+#### LLM Used in location_intelligence_agent
+**Timestamp:** 2025-12-03T18:02:07.694Z
+**Model:** gpt-4o-mini-2024-07-18
+
+**Prompt:**
+```json
+[
+  {
+    "role": "system",
+    "content": "You are the Expert Location Detective. Using ONLY the structured GPS metadata provided, infer the most likely city, region, nearby landmark, park, and trail. Input fields include reverse-geocoded address details, Google Places nearby POIs (nearby_places), and OSM trail/canal/aqueduct features (nearby_trails_osm). Always respond with a JSON object containing exactly the keys: city, region, nearest_landmark, nearest_park, nearest_trail, description_addendum. Use descriptive, human-readable names when possible. When information is missing, use the string \"unknown\". description_addendum should be 1 sentence highlighting unique geographic insight. Do not hallucinate or invent locations. Only use the structured metadata, images, and listed nearby POIs/trails to infer locations. If the data is insufficient, return \"unknown\" for that field rather than fabricating a name. If nearest_park would otherwise be \"unknown\" but nearest_landmark clearly refers to an open space, preserve, or park (e.g., ... [truncated 465 chars]"
+  },
+  {
+    "role": "user",
+    "content": "Structured metadata for analysis:\n{\n  \"gps_string\": \"21.003556,-156.662933\",\n  \"coordinates\": {\n    \"lat\": 21.003556,\n    \"lon\": -156.662933\n  },\n  \"heading_degrees\": null,\n  \"heading_cardinal\": null,\n  \"altitude_meters\": 1.335102887,\n  \"timestamp_utc\": null,\n  \"device\": \"Apple iPhone 15 Pro Max\",\n  \"reverse_geocode\": {\n    \"address\": null\n  },\n  \"nearby_places\": [],\n  \"nearby_trails_osm\": [\n    {\n      \"id\": \"osm:way/439994347\",\n      \"name\": \"Kapalua Coastal Trail\",\n      \"category\": \"trail\",\n      \"lat\": 21.0038191,\n      \"lon\": -156.6630581,\n      \"distanceMeters\": 32.00812221112616,\n      \"source\": \"osm\",\n      \"tags\": {\n        \"foot\": \"designated\",\n        \"highway\": \"footway\",\n        \"name\": \"Kapalua Coastal Trail\",\n        \"surface\": \"unpaved\",\n        \"wheelchair\": \"limited\"\n      }\n    },\n    {\n      \"id\": \"osm:way/774896778\",\n      \"name\": null,\n      \"category\": \"trail\",\n      \"lat\": 21.0037598,\n      \"lon\": -156.6610141,\n      \"distanceMeters\": 200.4798952799343,\n      \"... [truncated 1766 chars]"
+  }
+]
+```
+
+**Response:**
+```
+{
+  "city": "Lahaina",
+  "region": "Hawaii",
+  "nearest_landmark": "Kapalua Coastal Trail",
+  "nearest_park": "Kapalua Coastal Trail",
+  "nearest_trail": "Kapalua Coastal Trail",
+  "description_addendum": "The Kapalua Coastal Trail offers stunning ocean views and lush landscapes characteristic of Hawaii's coastal beauty."
+}
+```
+
+
+### Node Finished: location_intelligence_agent
+**Timestamp:** 2025-12-03T18:02:07.695Z
+
+**Output:**
+```json
+{
+  "filename": "a3340686-a651-4aad-a13f-79ce0f9dbd1c-20240418_160529001_iOS.heic.processed.jpg",
+  "fileBuffer": "[Buffer: 2241191 bytes]",
+  "imageBase64": "[Base64 Image Data Omitted]",
+  "imageMime": "image/jpeg",
+  "metadata": {
+    "DateTimeOriginal": "null",
+    "Make": "Apple",
+    "Model": "iPhone 15 Pro Max",
+    "LensModel": "iPhone 15 Pro Max back triple camera 6.765mm f/1.78",
+    "ISO": 64,
+    "FNumber": 1.8,
+    "ExposureTime": "1/995",
+    "Flash": false,
+    "GPSLatitude": 21.003556,
+    "GPSLongitude": -156.662933,
+    "GPSAltitude": 1.335102887,
+    "UserComment": "null",
+    "dateTime": "null",
+    "cameraModel": "Apple iPhone 15 Pro Max"
+  },
+  "gpsString": "21.003556,-156.662933",
+  "device": "Apple iPhone 15 Pro Max",
+  "modelOverrides": {},
+  "classification": "scenery",
+  "poiAnalysis": {
+    "locationIntel": {
+      "city": "Lahaina",
+      "region": "Hawaii",
+      "nearest_landmark": "Kapalua Coastal Trail",
+      "nearest_park": "Kapalua Coastal Trail",
+      "nearest_trail": "Kapalua Coastal Trail",
+      "description_addendum": "The Kapalua Coastal Trail offers stunning ocean views and lush landscapes characteristic of Hawaii's coastal beauty."
+    },
+    "city": "Lahaina",
+    "region": "Hawaii",
+    "nearest_landmark": "Kapalua Coastal Trail",
+    "nearest_park": "Kapalua Coastal Trail",
+    "nearest_trail": "Kapalua Coastal Trail",
+    "description_addendum": "The Kapalua Coastal Trail offers stunning ocean views and lush landscapes characteristic of Hawaii's coastal beauty.",
+    "heading_degrees": "null",
+    "heading_cardinal": "null",
+    "altitude_meters": 1.335102887,
+    "timestamp": "null",
+    "gpsString": "21.003556,-156.662933",
+    "address": "null",
+    "bestMatchPOI": {
+      "name": "Kapalua Coastal Trail",
+      "category": "landmark",
+      "distanceMeters": "null"
+    },
+    "bestMatchCategory": "landmark",
+    "poiConfidence": "medium",
+    "nearbyPOIs": [],
+    "nearbyTrailsOSM": [
+      {
+        "id": "osm:way/439994347",
+        "name": "Kapalua Coastal Trail",
+        "category": "trail",
+        "lat": 21.0038191,
+        "lon": -156.6630581,
+        "distanceMeters": 32.00812221112616,
+        "source": "osm",
+        "tags": {
+          "foot": "designated",
+          "highway": "footway",
+          "name": "Kapalua Coastal Trail",
+          "surface": "unpaved",
+          "wheelchair": "limited"
+        }
+      },
+      {
+        "id": "osm:way/774896778",
+        "name": "null",
+        "category": "trail",
+        "lat": 21.0037598,
+        "lon": -156.6610141,
+        "distanceMeters": 200.4798952799343,
+        "source": "osm",
+        "tags": {
+          "highway": "path",
+          "surface": "sand"
+        }
+      },
+      {
+        "id": "osm:way/765196474",
+        "name": "Kapalua Coastal Trail",
+        "category": "trail",
+        "lat": 21.004448,
+        "lon": -156.6651137,
+        "distanceMeters": 247.14715112815313,
+        "source": "osm",
+        "tags": {
+          "highway": "path",
+          "name": "Kapalua Coastal Trail",
+          "surface": "rock"
+        }
+      },
+      {
+        "id": "osm:way/774896776",
+        "name": "Kapalua Coastal Trail",
+        "category": "trail",
+        "lat": 21.0036164,
+        "lon": -156.6600075,
+        "distanceMeters": 303.7613794862301,
+        "source": "osm",
+        "tags": {
+          "bridge": "boardwalk",
+          "highway": "footway",
+          "layer": "1",
+          "name": "Kapalua Coastal Trail"
+        }
+      },
+      {
+        "id": "osm:way/1417231482",
+        "name": "null",
+        "category": "trail",
+        "lat": 21.0011301,
+        "lon": -156.6611972,
+        "distanceMeters": 324.3950232453944,
+        "source": "osm",
+        "tags": {
+          "footway": "sidewalk",
+          "highway": "footway",
+          "surface": "concrete"
+        }
+      },
+      {
+        "id": "osm:way/266640167",
+        "name": "Kapalua Coastal Trail",
+        "category": "trail",
+        "lat": 21.0011499,
+        "lon": -156.6657353,
+        "distanceMeters": 395.2265582454306,
+        "source": "osm",
+        "tags": {
+          "foot": "designated",
+          "highway": "footway",
+          "name": "Kapalua Coastal Trail",
+          "surface": "asphalt",
+          "wheelchair": "limited"
+        }
+      }
+    ]
+  },
+  "poiCache": {
+    "reverseResult": {
+      "address": "null"
+    },
+    "nearbyPlaces": [],
+    "nearbyFood": [],
+    "osmTrails": [
+      {
+        "id": "osm:way/439994347",
+        "name": "Kapalua Coastal Trail",
+        "category": "trail",
+        "lat": 21.0038191,
+        "lon": -156.6630581,
+        "distanceMeters": 32.00812221112616,
+        "source": "osm",
+        "tags": {
+          "foot": "designated",
+          "highway": "footway",
+          "name": "Kapalua Coastal Trail",
+          "surface": "unpaved",
+          "wheelchair": "limited"
+        }
+      },
+      {
+        "id": "osm:way/774896778",
+        "name": "null",
+        "category": "trail",
+        "lat": 21.0037598,
+        "lon": -156.6610141,
+        "distanceMeters": 200.4798952799343,
+        "source": "osm",
+        "tags": {
+          "highway": "path",
+          "surface": "sand"
+        }
+      },
+      {
+        "id": "osm:way/765196474",
+        "name": "Kapalua Coastal Trail",
+        "category": "trail",
+        "lat": 21.004448,
+        "lon": -156.6651137,
+        "distanceMeters": 247.14715112815313,
+        "source": "osm",
+        "tags": {
+          "highway": "path",
+          "name": "Kapalua Coastal Trail",
+          "surface": "rock"
+        }
+      },
+      {
+        "id": "osm:way/774896776",
+        "name": "Kapalua Coastal Trail",
+        "category": "trail",
+        "lat": 21.0036164,
+        "lon": -156.6600075,
+        "distanceMeters": 303.7613794862301,
+        "source": "osm",
+        "tags": {
+          "bridge": "boardwalk",
+          "highway": "footway",
+          "layer": "1",
+          "name": "Kapalua Coastal Trail"
+        }
+      },
+      {
+        "id": "osm:way/1417231482",
+        "name": "null",
+        "category": "trail",
+        "lat": 21.0011301,
+        "lon": -156.6611972,
+        "distanceMeters": 324.3950232453944,
+        "source": "osm",
+        "tags": {
+          "footway": "sidewalk",
+          "highway": "footway",
+          "surface": "concrete"
+        }
+      },
+      {
+        "id": "osm:way/266640167",
+        "name": "Kapalua Coastal Trail",
+        "category": "trail",
+        "lat": 21.0011499,
+        "lon": -156.6657353,
+        "distanceMeters": 395.2265582454306,
+        "source": "osm",
+        "tags": {
+          "foot": "designated",
+          "highway": "footway",
+          "name": "Kapalua Coastal Trail",
+          "surface": "asphalt",
+          "wheelchair": "limited"
+        }
+      }
+    ]
+  },
+  "poiCacheSummary": {
+    "reverse": false,
+    "nearbyPlacesCount": 0,
+    "nearbyFoodCount": 0,
+    "osmTrailsCount": 6,
+    "durationMs": 3785
+  },
+  "poiCacheFetchedAt": "2025-12-03T18:02:02.120Z",
+  "rich_search_context": "null",
+  "finalResult": "null",
+  "error": "null",
+  "nearby_food_places": [],
+  "nearby_food_places_curated": [],
+  "nearby_food_places_raw": [],
+  "debugUsage": [
+    {
+      "step": "location_intelligence_agent",
+      "model": "gpt-4o-mini-2024-07-18",
+      "usage": {
+        "prompt_tokens": 1210,
+        "completion_tokens": 85,
+        "total_tokens": 1295,
+        "prompt_tokens_details": {
+          "cached_tokens": 0,
+          "audio_tokens": 0
+        },
+        "completion_tokens_details": {
+          "reasoning_tokens": 0,
+          "audio_tokens": 0,
+          "accepted_prediction_tokens": 0,
+          "rejected_prediction_tokens": 0
+        }
+      },
+      "durationMs": 0,
+      "notes": "Expert location detective LLM call",
+      "request": {
+        "systemPrompt": "You are the Expert Location Detective. Using ONLY the structured GPS metadata provided, infer the most likely city, region, nearby landmark, park, and trail. Input fields include reverse-geocoded address details, Google Places nearby POIs (nearby_places), and OSM trail/canal/aqueduct features (nearby_trails_osm). Always respond with a JSON object containing exactly the keys: city, region, nearest_landmark, nearest_park, nearest_trail, description_addendum. Use descriptive, human-readable names when possible. When information is missing, use the string \"unknown\". description_addendum should be 1 sentence highlighting unique geographic insight. Do not hallucinate or invent locations. Only use the structured metadata, images, and listed nearby POIs/trails to infer locations. If the data is insufficient, return \"unknown\" for that field rather than fabricating a name. If nearest_park would otherwise be \"unknown\" but nearest_landmark clearly refers to an open space, preserve, or park (e.g., ... [truncated 465 chars]",
+        "userPrompt": "Structured metadata for analysis:\n{\n  \"gps_string\": \"21.003556,-156.662933\",\n  \"coordinates\": {\n    \"lat\": 21.003556,\n    \"lon\": -156.662933\n  },\n  \"heading_degrees\": null,\n  \"heading_cardinal\": null,\n  \"altitude_meters\": 1.335102887,\n  \"timestamp_utc\": null,\n  \"device\": \"Apple iPhone 15 Pro Max\",\n  \"reverse_geocode\": {\n    \"address\": null\n  },\n  \"nearby_places\": [],\n  \"nearby_trails_osm\": [\n    {\n      \"id\": \"osm:way/439994347\",\n      \"name\": \"Kapalua Coastal Trail\",\n      \"category\": \"trail\",\n      \"lat\": 21.0038191,\n      \"lon\": -156.6630581,\n      \"distanceMeters\": 32.00812221112616,\n      \"source\": \"osm\",\n      \"tags\": {\n        \"foot\": \"designated\",\n        \"highway\": \"footway\",\n        \"name\": \"Kapalua Coastal Trail\",\n        \"surface\": \"unpaved\",\n        \"wheelchair\": \"limited\"\n      }\n    },\n    {\n      \"id\": \"osm:way/774896778\",\n      \"name\": null,\n      \"category\": \"trail\",\n      \"lat\": 21.0037598,\n      \"lon\": -156.6610141,\n      \"distanceMeters\": 200.4798952799343,\n      \"... [truncated 1766 chars]"
+      },
+      "response": {
+        "city": "Lahaina",
+        "region": "Hawaii",
+        "nearest_landmark": "Kapalua Coastal Trail",
+        "nearest_park": "Kapalua Coastal Trail",
+        "nearest_trail": "Kapalua Coastal Trail",
+        "description_addendum": "The Kapalua Coastal Trail offers stunning ocean views and lush landscapes characteristic of Hawaii's coastal beauty."
+      },
+      "prompt": "Structured metadata for analysis:\n{\n  \"gps_string\": \"21.003556,-156.662933\",\n  \"coordinates\": {\n    \"lat\": 21.003556,\n    \"lon\": -156.662933\n  },\n  \"heading_degrees\": null,\n  \"heading_cardinal\": null,\n  \"altitude_meters\": 1.335102887,\n  \"timestamp_utc\": null,\n  \"device\": \"Apple iPhone 15 Pro Max\",\n  \"reverse_geocode\": {\n    \"address\": null\n  },\n  \"nearby_places\": [],\n  \"nearby_trails_osm\": [\n    {\n      \"id\": \"osm:way/439994347\",\n      \"name\": \"Kapalua Coastal Trail\",\n      \"category\": \"trail\",\n      \"lat\": 21.0038191,\n      \"lon\": -156.6630581,\n      \"distanceMeters\": 32.00812221112616,\n      \"source\": \"osm\",\n      \"tags\": {\n        \"foot\": \"designated\",\n        \"highway\": \"footway\",\n        \"name\": \"Kapalua Coastal Trail\",\n        \"surface\": \"unpaved\",\n        \"wheelchair\": \"limited\"\n      }\n    },\n    {\n      \"id\": \"osm:way/774896778\",\n      \"name\": null,\n      \"category\": \"trail\",\n      \"lat\": 21.0037598,\n      \"lon\": -156.6610141,\n      \"distanceMeters\": 200.4798952799343,\n      \"... [truncated 1766 chars]"
+    }
+  ]
+}
+```
+
+
+### Node Started: decide_scene_label
+**Timestamp:** 2025-12-03T18:02:10.252Z
+
+**Input:**
+```json
+{
+  "filename": "a3340686-a651-4aad-a13f-79ce0f9dbd1c-20240418_160529001_iOS.heic.processed.jpg",
+  "fileBuffer": "[Buffer: 2241191 bytes]",
+  "imageBase64": "[Base64 Image Data Omitted]",
+  "imageMime": "image/jpeg",
+  "metadata": {
+    "DateTimeOriginal": "null",
+    "Make": "Apple",
+    "Model": "iPhone 15 Pro Max",
+    "LensModel": "iPhone 15 Pro Max back triple camera 6.765mm f/1.78",
+    "ISO": 64,
+    "FNumber": 1.8,
+    "ExposureTime": "1/995",
+    "Flash": false,
+    "GPSLatitude": 21.003556,
+    "GPSLongitude": -156.662933,
+    "GPSAltitude": 1.335102887,
+    "UserComment": "null",
+    "dateTime": "null",
+    "cameraModel": "Apple iPhone 15 Pro Max"
+  },
+  "gpsString": "21.003556,-156.662933",
+  "device": "Apple iPhone 15 Pro Max",
+  "modelOverrides": {},
+  "classification": "scenery",
+  "poiAnalysis": {
+    "locationIntel": {
+      "city": "Lahaina",
+      "region": "Hawaii",
+      "nearest_landmark": "Kapalua Coastal Trail",
+      "nearest_park": "Kapalua Coastal Trail",
+      "nearest_trail": "Kapalua Coastal Trail",
+      "description_addendum": "The Kapalua Coastal Trail offers stunning ocean views and lush landscapes characteristic of Hawaii's coastal beauty."
+    },
+    "city": "Lahaina",
+    "region": "Hawaii",
+    "nearest_landmark": "Kapalua Coastal Trail",
+    "nearest_park": "Kapalua Coastal Trail",
+    "nearest_trail": "Kapalua Coastal Trail",
+    "description_addendum": "The Kapalua Coastal Trail offers stunning ocean views and lush landscapes characteristic of Hawaii's coastal beauty.",
+    "heading_degrees": "null",
+    "heading_cardinal": "null",
+    "altitude_meters": 1.335102887,
+    "timestamp": "null",
+    "gpsString": "21.003556,-156.662933",
+    "address": "null",
+    "bestMatchPOI": {
+      "name": "Kapalua Coastal Trail",
+      "category": "landmark",
+      "distanceMeters": "null"
+    },
+    "bestMatchCategory": "landmark",
+    "poiConfidence": "medium",
+    "nearbyPOIs": [],
+    "nearbyTrailsOSM": [
+      {
+        "id": "osm:way/439994347",
+        "name": "Kapalua Coastal Trail",
+        "category": "trail",
+        "lat": 21.0038191,
+        "lon": -156.6630581,
+        "distanceMeters": 32.00812221112616,
+        "source": "osm",
+        "tags": {
+          "foot": "designated",
+          "highway": "footway",
+          "name": "Kapalua Coastal Trail",
+          "surface": "unpaved",
+          "wheelchair": "limited"
+        }
+      },
+      {
+        "id": "osm:way/774896778",
+        "name": "null",
+        "category": "trail",
+        "lat": 21.0037598,
+        "lon": -156.6610141,
+        "distanceMeters": 200.4798952799343,
+        "source": "osm",
+        "tags": {
+          "highway": "path",
+          "surface": "sand"
+        }
+      },
+      {
+        "id": "osm:way/765196474",
+        "name": "Kapalua Coastal Trail",
+        "category": "trail",
+        "lat": 21.004448,
+        "lon": -156.6651137,
+        "distanceMeters": 247.14715112815313,
+        "source": "osm",
+        "tags": {
+          "highway": "path",
+          "name": "Kapalua Coastal Trail",
+          "surface": "rock"
+        }
+      },
+      {
+        "id": "osm:way/774896776",
+        "name": "Kapalua Coastal Trail",
+        "category": "trail",
+        "lat": 21.0036164,
+        "lon": -156.6600075,
+        "distanceMeters": 303.7613794862301,
+        "source": "osm",
+        "tags": {
+          "bridge": "boardwalk",
+          "highway": "footway",
+          "layer": "1",
+          "name": "Kapalua Coastal Trail"
+        }
+      },
+      {
+        "id": "osm:way/1417231482",
+        "name": "null",
+        "category": "trail",
+        "lat": 21.0011301,
+        "lon": -156.6611972,
+        "distanceMeters": 324.3950232453944,
+        "source": "osm",
+        "tags": {
+          "footway": "sidewalk",
+          "highway": "footway",
+          "surface": "concrete"
+        }
+      },
+      {
+        "id": "osm:way/266640167",
+        "name": "Kapalua Coastal Trail",
+        "category": "trail",
+        "lat": 21.0011499,
+        "lon": -156.6657353,
+        "distanceMeters": 395.2265582454306,
+        "source": "osm",
+        "tags": {
+          "foot": "designated",
+          "highway": "footway",
+          "name": "Kapalua Coastal Trail",
+          "surface": "asphalt",
+          "wheelchair": "limited"
+        }
+      }
+    ]
+  },
+  "poiCache": {
+    "reverseResult": {
+      "address": "null"
+    },
+    "nearbyPlaces": [],
+    "nearbyFood": [],
+    "osmTrails": [
+      {
+        "id": "osm:way/439994347",
+        "name": "Kapalua Coastal Trail",
+        "category": "trail",
+        "lat": 21.0038191,
+        "lon": -156.6630581,
+        "distanceMeters": 32.00812221112616,
+        "source": "osm",
+        "tags": {
+          "foot": "designated",
+          "highway": "footway",
+          "name": "Kapalua Coastal Trail",
+          "surface": "unpaved",
+          "wheelchair": "limited"
+        }
+      },
+      {
+        "id": "osm:way/774896778",
+        "name": "null",
+        "category": "trail",
+        "lat": 21.0037598,
+        "lon": -156.6610141,
+        "distanceMeters": 200.4798952799343,
+        "source": "osm",
+        "tags": {
+          "highway": "path",
+          "surface": "sand"
+        }
+      },
+      {
+        "id": "osm:way/765196474",
+        "name": "Kapalua Coastal Trail",
+        "category": "trail",
+        "lat": 21.004448,
+        "lon": -156.6651137,
+        "distanceMeters": 247.14715112815313,
+        "source": "osm",
+        "tags": {
+          "highway": "path",
+          "name": "Kapalua Coastal Trail",
+          "surface": "rock"
+        }
+      },
+      {
+        "id": "osm:way/774896776",
+        "name": "Kapalua Coastal Trail",
+        "category": "trail",
+        "lat": 21.0036164,
+        "lon": -156.6600075,
+        "distanceMeters": 303.7613794862301,
+        "source": "osm",
+        "tags": {
+          "bridge": "boardwalk",
+          "highway": "footway",
+          "layer": "1",
+          "name": "Kapalua Coastal Trail"
+        }
+      },
+      {
+        "id": "osm:way/1417231482",
+        "name": "null",
+        "category": "trail",
+        "lat": 21.0011301,
+        "lon": -156.6611972,
+        "distanceMeters": 324.3950232453944,
+        "source": "osm",
+        "tags": {
+          "footway": "sidewalk",
+          "highway": "footway",
+          "surface": "concrete"
+        }
+      },
+      {
+        "id": "osm:way/266640167",
+        "name": "Kapalua Coastal Trail",
+        "category": "trail",
+        "lat": 21.0011499,
+        "lon": -156.6657353,
+        "distanceMeters": 395.2265582454306,
+        "source": "osm",
+        "tags": {
+          "foot": "designated",
+          "highway": "footway",
+          "name": "Kapalua Coastal Trail",
+          "surface": "asphalt",
+          "wheelchair": "limited"
+        }
+      }
+    ]
+  },
+  "poiCacheSummary": {
+    "reverse": false,
+    "nearbyPlacesCount": 0,
+    "nearbyFoodCount": 0,
+    "osmTrailsCount": 6,
+    "durationMs": 3785
+  },
+  "poiCacheFetchedAt": "2025-12-03T18:02:02.120Z",
+  "rich_search_context": "null",
+  "finalResult": "null",
+  "error": "null"
+}
+```
+
+
+#### LLM Used in location_intelligence_agent
+**Timestamp:** 2025-12-03T18:02:10.283Z
+**Model:** gpt-4o-mini-2024-07-18
+
+**Prompt:**
+```json
+[
+  {
+    "role": "system",
+    "content": "You are the Expert Location Detective. Using ONLY the structured GPS metadata provided, infer the most likely city, region, nearby landmark, park, and trail. Input fields include reverse-geocoded address details, Google Places nearby POIs (nearby_places), and OSM trail/canal/aqueduct features (nearby_trails_osm). Always respond with a JSON object containing exactly the keys: city, region, nearest_landmark, nearest_park, nearest_trail, description_addendum. Use descriptive, human-readable names when possible. When information is missing, use the string \"unknown\". description_addendum should be 1 sentence highlighting unique geographic insight. Do not hallucinate or invent locations. Only use the structured metadata, images, and listed nearby POIs/trails to infer locations. If the data is insufficient, return \"unknown\" for that field rather than fabricating a name. If nearest_park would otherwise be \"unknown\" but nearest_landmark clearly refers to an open space, preserve, or park (e.g., ... [truncated 465 chars]"
+  },
+  {
+    "role": "user",
+    "content": "Structured metadata for analysis:\n{\n  \"gps_string\": \"21.003556,-156.662933\",\n  \"coordinates\": {\n    \"lat\": 21.003556,\n    \"lon\": -156.662933\n  },\n  \"heading_degrees\": null,\n  \"heading_cardinal\": null,\n  \"altitude_meters\": 1.335102887,\n  \"timestamp_utc\": null,\n  \"device\": \"Apple iPhone 15 Pro Max\",\n  \"reverse_geocode\": {\n    \"address\": null\n  },\n  \"nearby_places\": [],\n  \"nearby_trails_osm\": [\n    {\n      \"id\": \"osm:way/439994347\",\n      \"name\": \"Kapalua Coastal Trail\",\n      \"category\": \"trail\",\n      \"lat\": 21.0038191,\n      \"lon\": -156.6630581,\n      \"distanceMeters\": 32.00812221112616,\n      \"source\": \"osm\",\n      \"tags\": {\n        \"foot\": \"designated\",\n        \"highway\": \"footway\",\n        \"name\": \"Kapalua Coastal Trail\",\n        \"surface\": \"unpaved\",\n        \"wheelchair\": \"limited\"\n      }\n    },\n    {\n      \"id\": \"osm:way/774896778\",\n      \"name\": null,\n      \"category\": \"trail\",\n      \"lat\": 21.0037598,\n      \"lon\": -156.6610141,\n      \"distanceMeters\": 200.4798952799343,\n      \"... [truncated 1766 chars]"
+  }
+]
+```
+
+**Response:**
+```
+{
+  "city": "Lahaina",
+  "region": "Hawaii",
+  "nearest_landmark": "Kapalua Coastal Trail",
+  "nearest_park": "Kapalua Coastal Trail",
+  "nearest_trail": "Kapalua Coastal Trail",
+  "description_addendum": "This location boasts stunning coastal views along the Kapalua Coastal Trail, famed for its scenic beauty." 
+}
+```
+
+
+### Node Finished: location_intelligence_agent
+**Timestamp:** 2025-12-03T18:02:10.284Z
+
+**Output:**
+```json
+{
+  "filename": "a3340686-a651-4aad-a13f-79ce0f9dbd1c-20240418_160529001_iOS.heic.processed.jpg",
+  "fileBuffer": "[Buffer: 2241191 bytes]",
+  "imageBase64": "[Base64 Image Data Omitted]",
+  "imageMime": "image/jpeg",
+  "metadata": {
+    "DateTimeOriginal": "null",
+    "Make": "Apple",
+    "Model": "iPhone 15 Pro Max",
+    "LensModel": "iPhone 15 Pro Max back triple camera 6.765mm f/1.78",
+    "ISO": 64,
+    "FNumber": 1.8,
+    "ExposureTime": "1/995",
+    "Flash": false,
+    "GPSLatitude": 21.003556,
+    "GPSLongitude": -156.662933,
+    "GPSAltitude": 1.335102887,
+    "UserComment": "null",
+    "dateTime": "null",
+    "cameraModel": "Apple iPhone 15 Pro Max"
+  },
+  "gpsString": "21.003556,-156.662933",
+  "device": "Apple iPhone 15 Pro Max",
+  "modelOverrides": {},
+  "classification": "scenery",
+  "poiAnalysis": {
+    "locationIntel": {
+      "city": "Lahaina",
+      "region": "Hawaii",
+      "nearest_landmark": "Kapalua Coastal Trail",
+      "nearest_park": "Kapalua Coastal Trail",
+      "nearest_trail": "Kapalua Coastal Trail",
+      "description_addendum": "This location boasts stunning coastal views along the Kapalua Coastal Trail, famed for its scenic beauty."
+    },
+    "city": "Lahaina",
+    "region": "Hawaii",
+    "nearest_landmark": "Kapalua Coastal Trail",
+    "nearest_park": "Kapalua Coastal Trail",
+    "nearest_trail": "Kapalua Coastal Trail",
+    "description_addendum": "This location boasts stunning coastal views along the Kapalua Coastal Trail, famed for its scenic beauty.",
+    "heading_degrees": "null",
+    "heading_cardinal": "null",
+    "altitude_meters": 1.335102887,
+    "timestamp": "null",
+    "gpsString": "21.003556,-156.662933",
+    "address": "null",
+    "bestMatchPOI": {
+      "name": "Kapalua Coastal Trail",
+      "category": "landmark",
+      "distanceMeters": "null"
+    },
+    "bestMatchCategory": "landmark",
+    "poiConfidence": "medium",
+    "nearbyPOIs": [],
+    "nearbyTrailsOSM": [
+      {
+        "id": "osm:way/439994347",
+        "name": "Kapalua Coastal Trail",
+        "category": "trail",
+        "lat": 21.0038191,
+        "lon": -156.6630581,
+        "distanceMeters": 32.00812221112616,
+        "source": "osm",
+        "tags": {
+          "foot": "designated",
+          "highway": "footway",
+          "name": "Kapalua Coastal Trail",
+          "surface": "unpaved",
+          "wheelchair": "limited"
+        }
+      },
+      {
+        "id": "osm:way/774896778",
+        "name": "null",
+        "category": "trail",
+        "lat": 21.0037598,
+        "lon": -156.6610141,
+        "distanceMeters": 200.4798952799343,
+        "source": "osm",
+        "tags": {
+          "highway": "path",
+          "surface": "sand"
+        }
+      },
+      {
+        "id": "osm:way/765196474",
+        "name": "Kapalua Coastal Trail",
+        "category": "trail",
+        "lat": 21.004448,
+        "lon": -156.6651137,
+        "distanceMeters": 247.14715112815313,
+        "source": "osm",
+        "tags": {
+          "highway": "path",
+          "name": "Kapalua Coastal Trail",
+          "surface": "rock"
+        }
+      },
+      {
+        "id": "osm:way/774896776",
+        "name": "Kapalua Coastal Trail",
+        "category": "trail",
+        "lat": 21.0036164,
+        "lon": -156.6600075,
+        "distanceMeters": 303.7613794862301,
+        "source": "osm",
+        "tags": {
+          "bridge": "boardwalk",
+          "highway": "footway",
+          "layer": "1",
+          "name": "Kapalua Coastal Trail"
+        }
+      },
+      {
+        "id": "osm:way/1417231482",
+        "name": "null",
+        "category": "trail",
+        "lat": 21.0011301,
+        "lon": -156.6611972,
+        "distanceMeters": 324.3950232453944,
+        "source": "osm",
+        "tags": {
+          "footway": "sidewalk",
+          "highway": "footway",
+          "surface": "concrete"
+        }
+      },
+      {
+        "id": "osm:way/266640167",
+        "name": "Kapalua Coastal Trail",
+        "category": "trail",
+        "lat": 21.0011499,
+        "lon": -156.6657353,
+        "distanceMeters": 395.2265582454306,
+        "source": "osm",
+        "tags": {
+          "foot": "designated",
+          "highway": "footway",
+          "name": "Kapalua Coastal Trail",
+          "surface": "asphalt",
+          "wheelchair": "limited"
+        }
+      }
+    ]
+  },
+  "poiCache": {
+    "reverseResult": {
+      "address": "null"
+    },
+    "nearbyPlaces": [],
+    "nearbyFood": [],
+    "osmTrails": [
+      {
+        "id": "osm:way/439994347",
+        "name": "Kapalua Coastal Trail",
+        "category": "trail",
+        "lat": 21.0038191,
+        "lon": -156.6630581,
+        "distanceMeters": 32.00812221112616,
+        "source": "osm",
+        "tags": {
+          "foot": "designated",
+          "highway": "footway",
+          "name": "Kapalua Coastal Trail",
+          "surface": "unpaved",
+          "wheelchair": "limited"
+        }
+      },
+      {
+        "id": "osm:way/774896778",
+        "name": "null",
+        "category": "trail",
+        "lat": 21.0037598,
+        "lon": -156.6610141,
+        "distanceMeters": 200.4798952799343,
+        "source": "osm",
+        "tags": {
+          "highway": "path",
+          "surface": "sand"
+        }
+      },
+      {
+        "id": "osm:way/765196474",
+        "name": "Kapalua Coastal Trail",
+        "category": "trail",
+        "lat": 21.004448,
+        "lon": -156.6651137,
+        "distanceMeters": 247.14715112815313,
+        "source": "osm",
+        "tags": {
+          "highway": "path",
+          "name": "Kapalua Coastal Trail",
+          "surface": "rock"
+        }
+      },
+      {
+        "id": "osm:way/774896776",
+        "name": "Kapalua Coastal Trail",
+        "category": "trail",
+        "lat": 21.0036164,
+        "lon": -156.6600075,
+        "distanceMeters": 303.7613794862301,
+        "source": "osm",
+        "tags": {
+          "bridge": "boardwalk",
+          "highway": "footway",
+          "layer": "1",
+          "name": "Kapalua Coastal Trail"
+        }
+      },
+      {
+        "id": "osm:way/1417231482",
+        "name": "null",
+        "category": "trail",
+        "lat": 21.0011301,
+        "lon": -156.6611972,
+        "distanceMeters": 324.3950232453944,
+        "source": "osm",
+        "tags": {
+          "footway": "sidewalk",
+          "highway": "footway",
+          "surface": "concrete"
+        }
+      },
+      {
+        "id": "osm:way/266640167",
+        "name": "Kapalua Coastal Trail",
+        "category": "trail",
+        "lat": 21.0011499,
+        "lon": -156.6657353,
+        "distanceMeters": 395.2265582454306,
+        "source": "osm",
+        "tags": {
+          "foot": "designated",
+          "highway": "footway",
+          "name": "Kapalua Coastal Trail",
+          "surface": "asphalt",
+          "wheelchair": "limited"
+        }
+      }
+    ]
+  },
+  "poiCacheSummary": {
+    "reverse": false,
+    "nearbyPlacesCount": 0,
+    "nearbyFoodCount": 0,
+    "osmTrailsCount": 6,
+    "durationMs": 4466
+  },
+  "poiCacheFetchedAt": "2025-12-03T18:01:59.480Z",
+  "rich_search_context": "null",
+  "finalResult": "null",
+  "error": "null",
+  "nearby_food_places": [],
+  "nearby_food_places_curated": [],
+  "nearby_food_places_raw": [],
+  "debugUsage": [
+    {
+      "step": "location_intelligence_agent",
+      "model": "gpt-4o-mini-2024-07-18",
+      "usage": {
+        "prompt_tokens": 1210,
+        "completion_tokens": 86,
+        "total_tokens": 1296,
+        "prompt_tokens_details": {
+          "cached_tokens": 0,
+          "audio_tokens": 0
+        },
+        "completion_tokens_details": {
+          "reasoning_tokens": 0,
+          "audio_tokens": 0,
+          "accepted_prediction_tokens": 0,
+          "rejected_prediction_tokens": 0
+        }
+      },
+      "durationMs": 0,
+      "notes": "Expert location detective LLM call",
+      "request": {
+        "systemPrompt": "You are the Expert Location Detective. Using ONLY the structured GPS metadata provided, infer the most likely city, region, nearby landmark, park, and trail. Input fields include reverse-geocoded address details, Google Places nearby POIs (nearby_places), and OSM trail/canal/aqueduct features (nearby_trails_osm). Always respond with a JSON object containing exactly the keys: city, region, nearest_landmark, nearest_park, nearest_trail, description_addendum. Use descriptive, human-readable names when possible. When information is missing, use the string \"unknown\". description_addendum should be 1 sentence highlighting unique geographic insight. Do not hallucinate or invent locations. Only use the structured metadata, images, and listed nearby POIs/trails to infer locations. If the data is insufficient, return \"unknown\" for that field rather than fabricating a name. If nearest_park would otherwise be \"unknown\" but nearest_landmark clearly refers to an open space, preserve, or park (e.g., ... [truncated 465 chars]",
+        "userPrompt": "Structured metadata for analysis:\n{\n  \"gps_string\": \"21.003556,-156.662933\",\n  \"coordinates\": {\n    \"lat\": 21.003556,\n    \"lon\": -156.662933\n  },\n  \"heading_degrees\": null,\n  \"heading_cardinal\": null,\n  \"altitude_meters\": 1.335102887,\n  \"timestamp_utc\": null,\n  \"device\": \"Apple iPhone 15 Pro Max\",\n  \"reverse_geocode\": {\n    \"address\": null\n  },\n  \"nearby_places\": [],\n  \"nearby_trails_osm\": [\n    {\n      \"id\": \"osm:way/439994347\",\n      \"name\": \"Kapalua Coastal Trail\",\n      \"category\": \"trail\",\n      \"lat\": 21.0038191,\n      \"lon\": -156.6630581,\n      \"distanceMeters\": 32.00812221112616,\n      \"source\": \"osm\",\n      \"tags\": {\n        \"foot\": \"designated\",\n        \"highway\": \"footway\",\n        \"name\": \"Kapalua Coastal Trail\",\n        \"surface\": \"unpaved\",\n        \"wheelchair\": \"limited\"\n      }\n    },\n    {\n      \"id\": \"osm:way/774896778\",\n      \"name\": null,\n      \"category\": \"trail\",\n      \"lat\": 21.0037598,\n      \"lon\": -156.6610141,\n      \"distanceMeters\": 200.4798952799343,\n      \"... [truncated 1766 chars]"
+      },
+      "response": {
+        "city": "Lahaina",
+        "region": "Hawaii",
+        "nearest_landmark": "Kapalua Coastal Trail",
+        "nearest_park": "Kapalua Coastal Trail",
+        "nearest_trail": "Kapalua Coastal Trail",
+        "description_addendum": "This location boasts stunning coastal views along the Kapalua Coastal Trail, famed for its scenic beauty."
+      },
+      "prompt": "Structured metadata for analysis:\n{\n  \"gps_string\": \"21.003556,-156.662933\",\n  \"coordinates\": {\n    \"lat\": 21.003556,\n    \"lon\": -156.662933\n  },\n  \"heading_degrees\": null,\n  \"heading_cardinal\": null,\n  \"altitude_meters\": 1.335102887,\n  \"timestamp_utc\": null,\n  \"device\": \"Apple iPhone 15 Pro Max\",\n  \"reverse_geocode\": {\n    \"address\": null\n  },\n  \"nearby_places\": [],\n  \"nearby_trails_osm\": [\n    {\n      \"id\": \"osm:way/439994347\",\n      \"name\": \"Kapalua Coastal Trail\",\n      \"category\": \"trail\",\n      \"lat\": 21.0038191,\n      \"lon\": -156.6630581,\n      \"distanceMeters\": 32.00812221112616,\n      \"source\": \"osm\",\n      \"tags\": {\n        \"foot\": \"designated\",\n        \"highway\": \"footway\",\n        \"name\": \"Kapalua Coastal Trail\",\n        \"surface\": \"unpaved\",\n        \"wheelchair\": \"limited\"\n      }\n    },\n    {\n      \"id\": \"osm:way/774896778\",\n      \"name\": null,\n      \"category\": \"trail\",\n      \"lat\": 21.0037598,\n      \"lon\": -156.6610141,\n      \"distanceMeters\": 200.4798952799343,\n      \"... [truncated 1766 chars]"
+    }
+  ]
+}
+```
+
+
+### Node Started: decide_scene_label
+**Timestamp:** 2025-12-03T18:02:12.931Z
+
+**Input:**
+```json
+{
+  "filename": "a3340686-a651-4aad-a13f-79ce0f9dbd1c-20240418_160529001_iOS.heic.processed.jpg",
+  "fileBuffer": "[Buffer: 2241191 bytes]",
+  "imageBase64": "[Base64 Image Data Omitted]",
+  "imageMime": "image/jpeg",
+  "metadata": {
+    "DateTimeOriginal": "null",
+    "Make": "Apple",
+    "Model": "iPhone 15 Pro Max",
+    "LensModel": "iPhone 15 Pro Max back triple camera 6.765mm f/1.78",
+    "ISO": 64,
+    "FNumber": 1.8,
+    "ExposureTime": "1/995",
+    "Flash": false,
+    "GPSLatitude": 21.003556,
+    "GPSLongitude": -156.662933,
+    "GPSAltitude": 1.335102887,
+    "UserComment": "null",
+    "dateTime": "null",
+    "cameraModel": "Apple iPhone 15 Pro Max"
+  },
+  "gpsString": "21.003556,-156.662933",
+  "device": "Apple iPhone 15 Pro Max",
+  "modelOverrides": {},
+  "classification": "scenery",
+  "poiAnalysis": {
+    "locationIntel": {
+      "city": "Lahaina",
+      "region": "Hawaii",
+      "nearest_landmark": "Kapalua Coastal Trail",
+      "nearest_park": "Kapalua Coastal Trail",
+      "nearest_trail": "Kapalua Coastal Trail",
+      "description_addendum": "This location boasts stunning coastal views along the Kapalua Coastal Trail, famed for its scenic beauty."
+    },
+    "city": "Lahaina",
+    "region": "Hawaii",
+    "nearest_landmark": "Kapalua Coastal Trail",
+    "nearest_park": "Kapalua Coastal Trail",
+    "nearest_trail": "Kapalua Coastal Trail",
+    "description_addendum": "This location boasts stunning coastal views along the Kapalua Coastal Trail, famed for its scenic beauty.",
+    "heading_degrees": "null",
+    "heading_cardinal": "null",
+    "altitude_meters": 1.335102887,
+    "timestamp": "null",
+    "gpsString": "21.003556,-156.662933",
+    "address": "null",
+    "bestMatchPOI": {
+      "name": "Kapalua Coastal Trail",
+      "category": "landmark",
+      "distanceMeters": "null"
+    },
+    "bestMatchCategory": "landmark",
+    "poiConfidence": "medium",
+    "nearbyPOIs": [],
+    "nearbyTrailsOSM": [
+      {
+        "id": "osm:way/439994347",
+        "name": "Kapalua Coastal Trail",
+        "category": "trail",
+        "lat": 21.0038191,
+        "lon": -156.6630581,
+        "distanceMeters": 32.00812221112616,
+        "source": "osm",
+        "tags": {
+          "foot": "designated",
+          "highway": "footway",
+          "name": "Kapalua Coastal Trail",
+          "surface": "unpaved",
+          "wheelchair": "limited"
+        }
+      },
+      {
+        "id": "osm:way/774896778",
+        "name": "null",
+        "category": "trail",
+        "lat": 21.0037598,
+        "lon": -156.6610141,
+        "distanceMeters": 200.4798952799343,
+        "source": "osm",
+        "tags": {
+          "highway": "path",
+          "surface": "sand"
+        }
+      },
+      {
+        "id": "osm:way/765196474",
+        "name": "Kapalua Coastal Trail",
+        "category": "trail",
+        "lat": 21.004448,
+        "lon": -156.6651137,
+        "distanceMeters": 247.14715112815313,
+        "source": "osm",
+        "tags": {
+          "highway": "path",
+          "name": "Kapalua Coastal Trail",
+          "surface": "rock"
+        }
+      },
+      {
+        "id": "osm:way/774896776",
+        "name": "Kapalua Coastal Trail",
+        "category": "trail",
+        "lat": 21.0036164,
+        "lon": -156.6600075,
+        "distanceMeters": 303.7613794862301,
+        "source": "osm",
+        "tags": {
+          "bridge": "boardwalk",
+          "highway": "footway",
+          "layer": "1",
+          "name": "Kapalua Coastal Trail"
+        }
+      },
+      {
+        "id": "osm:way/1417231482",
+        "name": "null",
+        "category": "trail",
+        "lat": 21.0011301,
+        "lon": -156.6611972,
+        "distanceMeters": 324.3950232453944,
+        "source": "osm",
+        "tags": {
+          "footway": "sidewalk",
+          "highway": "footway",
+          "surface": "concrete"
+        }
+      },
+      {
+        "id": "osm:way/266640167",
+        "name": "Kapalua Coastal Trail",
+        "category": "trail",
+        "lat": 21.0011499,
+        "lon": -156.6657353,
+        "distanceMeters": 395.2265582454306,
+        "source": "osm",
+        "tags": {
+          "foot": "designated",
+          "highway": "footway",
+          "name": "Kapalua Coastal Trail",
+          "surface": "asphalt",
+          "wheelchair": "limited"
+        }
+      }
+    ]
+  },
+  "poiCache": {
+    "reverseResult": {
+      "address": "null"
+    },
+    "nearbyPlaces": [],
+    "nearbyFood": [],
+    "osmTrails": [
+      {
+        "id": "osm:way/439994347",
+        "name": "Kapalua Coastal Trail",
+        "category": "trail",
+        "lat": 21.0038191,
+        "lon": -156.6630581,
+        "distanceMeters": 32.00812221112616,
+        "source": "osm",
+        "tags": {
+          "foot": "designated",
+          "highway": "footway",
+          "name": "Kapalua Coastal Trail",
+          "surface": "unpaved",
+          "wheelchair": "limited"
+        }
+      },
+      {
+        "id": "osm:way/774896778",
+        "name": "null",
+        "category": "trail",
+        "lat": 21.0037598,
+        "lon": -156.6610141,
+        "distanceMeters": 200.4798952799343,
+        "source": "osm",
+        "tags": {
+          "highway": "path",
+          "surface": "sand"
+        }
+      },
+      {
+        "id": "osm:way/765196474",
+        "name": "Kapalua Coastal Trail",
+        "category": "trail",
+        "lat": 21.004448,
+        "lon": -156.6651137,
+        "distanceMeters": 247.14715112815313,
+        "source": "osm",
+        "tags": {
+          "highway": "path",
+          "name": "Kapalua Coastal Trail",
+          "surface": "rock"
+        }
+      },
+      {
+        "id": "osm:way/774896776",
+        "name": "Kapalua Coastal Trail",
+        "category": "trail",
+        "lat": 21.0036164,
+        "lon": -156.6600075,
+        "distanceMeters": 303.7613794862301,
+        "source": "osm",
+        "tags": {
+          "bridge": "boardwalk",
+          "highway": "footway",
+          "layer": "1",
+          "name": "Kapalua Coastal Trail"
+        }
+      },
+      {
+        "id": "osm:way/1417231482",
+        "name": "null",
+        "category": "trail",
+        "lat": 21.0011301,
+        "lon": -156.6611972,
+        "distanceMeters": 324.3950232453944,
+        "source": "osm",
+        "tags": {
+          "footway": "sidewalk",
+          "highway": "footway",
+          "surface": "concrete"
+        }
+      },
+      {
+        "id": "osm:way/266640167",
+        "name": "Kapalua Coastal Trail",
+        "category": "trail",
+        "lat": 21.0011499,
+        "lon": -156.6657353,
+        "distanceMeters": 395.2265582454306,
+        "source": "osm",
+        "tags": {
+          "foot": "designated",
+          "highway": "footway",
+          "name": "Kapalua Coastal Trail",
+          "surface": "asphalt",
+          "wheelchair": "limited"
+        }
+      }
+    ]
+  },
+  "poiCacheSummary": {
+    "reverse": false,
+    "nearbyPlacesCount": 0,
+    "nearbyFoodCount": 0,
+    "osmTrailsCount": 6,
+    "durationMs": 4466
+  },
+  "poiCacheFetchedAt": "2025-12-03T18:01:59.480Z",
+  "rich_search_context": "null",
+  "finalResult": "null",
+  "error": "null"
+}
+```
+
+
+#### LLM Used in decide_scene_label
+**Timestamp:** 2025-12-03T18:02:14.613Z
+**Model:** gpt-4o-2024-08-06
+
+**Prompt:**
+```json
+[
+  {
+    "role": "system",
+    "content": "You are a short-image-tagger assistant. Respond with JSON object {\"tags\": [..] }."
+  },
+  {
+    "role": "user",
+    "content": [
+      {
+        "type": "text",
+        "text": "Provide a short list of descriptive tags (single words) about the image content, like [\"geyser\",\"steam\",\"hotel\",\"trail\",\"flower\",\"closeup\"]. Return JSON only."
+      },
+      {
+        "type": "image_url",
+        "image_url": {
+          "url": "[Base64 Image Data Omitted]",
+          "detail": "low"
+        }
+      }
+    ]
+  }
+]
+```
+
+**Response:**
+```
+{"tags": ["sunset", "ocean", "clouds", "coastline", "grass"]}
+```
+
+
+### Node Finished: decide_scene_label
+**Timestamp:** 2025-12-03T18:02:14.614Z
+
+**Output:**
+```json
+{
+  "filename": "a3340686-a651-4aad-a13f-79ce0f9dbd1c-20240418_160529001_iOS.heic.processed.jpg",
+  "fileBuffer": "[Buffer: 2241191 bytes]",
+  "imageBase64": "[Base64 Image Data Omitted]",
+  "imageMime": "image/jpeg",
+  "metadata": {
+    "DateTimeOriginal": "null",
+    "Make": "Apple",
+    "Model": "iPhone 15 Pro Max",
+    "LensModel": "iPhone 15 Pro Max back triple camera 6.765mm f/1.78",
+    "ISO": 64,
+    "FNumber": 1.8,
+    "ExposureTime": "1/995",
+    "Flash": false,
+    "GPSLatitude": 21.003556,
+    "GPSLongitude": -156.662933,
+    "GPSAltitude": 1.335102887,
+    "UserComment": "null",
+    "dateTime": "null",
+    "cameraModel": "Apple iPhone 15 Pro Max"
+  },
+  "gpsString": "21.003556,-156.662933",
+  "device": "Apple iPhone 15 Pro Max",
+  "modelOverrides": {},
+  "classification": "scenery",
+  "poiAnalysis": {
+    "locationIntel": {
+      "city": "Lahaina",
+      "region": "Hawaii",
+      "nearest_landmark": "Kapalua Coastal Trail",
+      "nearest_park": "Kapalua Coastal Trail",
+      "nearest_trail": "Kapalua Coastal Trail",
+      "description_addendum": "The Kapalua Coastal Trail offers stunning ocean views and lush landscapes characteristic of Hawaii's coastal beauty."
+    },
+    "city": "Lahaina",
+    "region": "Hawaii",
+    "nearest_landmark": "Kapalua Coastal Trail",
+    "nearest_park": "Kapalua Coastal Trail",
+    "nearest_trail": "Kapalua Coastal Trail",
+    "description_addendum": "The Kapalua Coastal Trail offers stunning ocean views and lush landscapes characteristic of Hawaii's coastal beauty.",
+    "heading_degrees": "null",
+    "heading_cardinal": "null",
+    "altitude_meters": 1.335102887,
+    "timestamp": "null",
+    "gpsString": "21.003556,-156.662933",
+    "address": "null",
+    "bestMatchPOI": {
+      "name": "Kapalua Coastal Trail",
+      "category": "landmark",
+      "distanceMeters": "null"
+    },
+    "bestMatchCategory": "landmark",
+    "poiConfidence": "medium",
+    "nearbyPOIs": [],
+    "nearbyTrailsOSM": [
+      {
+        "id": "osm:way/439994347",
+        "name": "Kapalua Coastal Trail",
+        "category": "trail",
+        "lat": 21.0038191,
+        "lon": -156.6630581,
+        "distanceMeters": 32.00812221112616,
+        "source": "osm",
+        "tags": {
+          "foot": "designated",
+          "highway": "footway",
+          "name": "Kapalua Coastal Trail",
+          "surface": "unpaved",
+          "wheelchair": "limited"
+        }
+      },
+      {
+        "id": "osm:way/774896778",
+        "name": "null",
+        "category": "trail",
+        "lat": 21.0037598,
+        "lon": -156.6610141,
+        "distanceMeters": 200.4798952799343,
+        "source": "osm",
+        "tags": {
+          "highway": "path",
+          "surface": "sand"
+        }
+      },
+      {
+        "id": "osm:way/765196474",
+        "name": "Kapalua Coastal Trail",
+        "category": "trail",
+        "lat": 21.004448,
+        "lon": -156.6651137,
+        "distanceMeters": 247.14715112815313,
+        "source": "osm",
+        "tags": {
+          "highway": "path",
+          "name": "Kapalua Coastal Trail",
+          "surface": "rock"
+        }
+      },
+      {
+        "id": "osm:way/774896776",
+        "name": "Kapalua Coastal Trail",
+        "category": "trail",
+        "lat": 21.0036164,
+        "lon": -156.6600075,
+        "distanceMeters": 303.7613794862301,
+        "source": "osm",
+        "tags": {
+          "bridge": "boardwalk",
+          "highway": "footway",
+          "layer": "1",
+          "name": "Kapalua Coastal Trail"
+        }
+      },
+      {
+        "id": "osm:way/1417231482",
+        "name": "null",
+        "category": "trail",
+        "lat": 21.0011301,
+        "lon": -156.6611972,
+        "distanceMeters": 324.3950232453944,
+        "source": "osm",
+        "tags": {
+          "footway": "sidewalk",
+          "highway": "footway",
+          "surface": "concrete"
+        }
+      },
+      {
+        "id": "osm:way/266640167",
+        "name": "Kapalua Coastal Trail",
+        "category": "trail",
+        "lat": 21.0011499,
+        "lon": -156.6657353,
+        "distanceMeters": 395.2265582454306,
+        "source": "osm",
+        "tags": {
+          "foot": "designated",
+          "highway": "footway",
+          "name": "Kapalua Coastal Trail",
+          "surface": "asphalt",
+          "wheelchair": "limited"
+        }
+      }
+    ]
+  },
+  "poiCache": {
+    "reverseResult": {
+      "address": "null"
+    },
+    "nearbyPlaces": [],
+    "nearbyFood": [],
+    "osmTrails": [
+      {
+        "id": "osm:way/439994347",
+        "name": "Kapalua Coastal Trail",
+        "category": "trail",
+        "lat": 21.0038191,
+        "lon": -156.6630581,
+        "distanceMeters": 32.00812221112616,
+        "source": "osm",
+        "tags": {
+          "foot": "designated",
+          "highway": "footway",
+          "name": "Kapalua Coastal Trail",
+          "surface": "unpaved",
+          "wheelchair": "limited"
+        }
+      },
+      {
+        "id": "osm:way/774896778",
+        "name": "null",
+        "category": "trail",
+        "lat": 21.0037598,
+        "lon": -156.6610141,
+        "distanceMeters": 200.4798952799343,
+        "source": "osm",
+        "tags": {
+          "highway": "path",
+          "surface": "sand"
+        }
+      },
+      {
+        "id": "osm:way/765196474",
+        "name": "Kapalua Coastal Trail",
+        "category": "trail",
+        "lat": 21.004448,
+        "lon": -156.6651137,
+        "distanceMeters": 247.14715112815313,
+        "source": "osm",
+        "tags": {
+          "highway": "path",
+          "name": "Kapalua Coastal Trail",
+          "surface": "rock"
+        }
+      },
+      {
+        "id": "osm:way/774896776",
+        "name": "Kapalua Coastal Trail",
+        "category": "trail",
+        "lat": 21.0036164,
+        "lon": -156.6600075,
+        "distanceMeters": 303.7613794862301,
+        "source": "osm",
+        "tags": {
+          "bridge": "boardwalk",
+          "highway": "footway",
+          "layer": "1",
+          "name": "Kapalua Coastal Trail"
+        }
+      },
+      {
+        "id": "osm:way/1417231482",
+        "name": "null",
+        "category": "trail",
+        "lat": 21.0011301,
+        "lon": -156.6611972,
+        "distanceMeters": 324.3950232453944,
+        "source": "osm",
+        "tags": {
+          "footway": "sidewalk",
+          "highway": "footway",
+          "surface": "concrete"
+        }
+      },
+      {
+        "id": "osm:way/266640167",
+        "name": "Kapalua Coastal Trail",
+        "category": "trail",
+        "lat": 21.0011499,
+        "lon": -156.6657353,
+        "distanceMeters": 395.2265582454306,
+        "source": "osm",
+        "tags": {
+          "foot": "designated",
+          "highway": "footway",
+          "name": "Kapalua Coastal Trail",
+          "surface": "asphalt",
+          "wheelchair": "limited"
+        }
+      }
+    ]
+  },
+  "poiCacheSummary": {
+    "reverse": false,
+    "nearbyPlacesCount": 0,
+    "nearbyFoodCount": 0,
+    "osmTrailsCount": 6,
+    "durationMs": 3785
+  },
+  "poiCacheFetchedAt": "2025-12-03T18:02:02.120Z",
+  "rich_search_context": "null",
+  "finalResult": "null",
+  "error": "null",
+  "sceneDecision": {
+    "chosenLabel": "Kapalua Coastal Trail",
+    "rationale": "Nearest landmark matches scene tags (sunset, ocean, clouds).",
+    "confidence": "low"
+  },
+  "debugUsage": [
+    {
+      "step": "decide_scene_label_tagging",
+      "model": "gpt-4o-2024-08-06",
+      "usage": {
+        "prompt_tokens": 152,
+        "completion_tokens": 24,
+        "total_tokens": 176,
+        "prompt_tokens_details": {
+          "cached_tokens": 0,
+          "audio_tokens": 0
+        },
+        "completion_tokens_details": {
+          "reasoning_tokens": 0,
+          "audio_tokens": 0,
+          "accepted_prediction_tokens": 0,
+          "rejected_prediction_tokens": 0
+        }
+      },
+      "durationMs": 0,
+      "notes": "Image tag extraction",
+      "request": {
+        "systemPrompt": "You are a short-image-tagger assistant. Respond with JSON object {\"tags\": [..] }.",
+        "userPrompt": "Provide a short list of descriptive tags (single words) about the image content, like [\"geyser\",\"steam\",\"hotel\",\"trail\",\"flower\",\"closeup\"]. Return JSON only."
+      },
+      "response": "{\"tags\": [\"sunset\", \"ocean\", \"clouds\", \"coastline\", \"grass\"]}",
+      "prompt": "Provide a short list of descriptive tags (single words) about the image content, like [\"geyser\",\"steam\",\"hotel\",\"trail\",\"flower\",\"closeup\"]. Return JSON only."
+    },
+    {
+      "step": "decide_scene_label",
+      "model": "null",
+      "usage": "null",
+      "durationMs": 0,
+      "notes": "Scene label decision based on POI and tags",
+      "request": {
+        "systemPrompt": "null",
+        "userPrompt": "Tags: sunset,ocean,clouds,coastline,grass"
+      },
+      "response": {
+        "chosenLabel": "Kapalua Coastal Trail",
+        "rationale": "Nearest landmark matches scene tags (sunset, ocean, clouds).",
+        "confidence": "low"
+      },
+      "prompt": "Tags: sunset,ocean,clouds,coastline,grass"
+    }
+  ]
+}
+```
+
+
+### Node Started: generate_metadata
+**Timestamp:** 2025-12-03T18:02:17.508Z
+
+**Input:**
+```json
+{
+  "filename": "a3340686-a651-4aad-a13f-79ce0f9dbd1c-20240418_160529001_iOS.heic.processed.jpg",
+  "fileBuffer": "[Buffer: 2241191 bytes]",
+  "imageBase64": "[Base64 Image Data Omitted]",
+  "imageMime": "image/jpeg",
+  "metadata": {
+    "DateTimeOriginal": "null",
+    "Make": "Apple",
+    "Model": "iPhone 15 Pro Max",
+    "LensModel": "iPhone 15 Pro Max back triple camera 6.765mm f/1.78",
+    "ISO": 64,
+    "FNumber": 1.8,
+    "ExposureTime": "1/995",
+    "Flash": false,
+    "GPSLatitude": 21.003556,
+    "GPSLongitude": -156.662933,
+    "GPSAltitude": 1.335102887,
+    "UserComment": "null",
+    "dateTime": "null",
+    "cameraModel": "Apple iPhone 15 Pro Max"
+  },
+  "gpsString": "21.003556,-156.662933",
+  "device": "Apple iPhone 15 Pro Max",
+  "modelOverrides": {},
+  "classification": "scenery",
+  "poiAnalysis": {
+    "locationIntel": {
+      "city": "Lahaina",
+      "region": "Hawaii",
+      "nearest_landmark": "Kapalua Coastal Trail",
+      "nearest_park": "Kapalua Coastal Trail",
+      "nearest_trail": "Kapalua Coastal Trail",
+      "description_addendum": "The Kapalua Coastal Trail offers stunning ocean views and lush landscapes characteristic of Hawaii's coastal beauty."
+    },
+    "city": "Lahaina",
+    "region": "Hawaii",
+    "nearest_landmark": "Kapalua Coastal Trail",
+    "nearest_park": "Kapalua Coastal Trail",
+    "nearest_trail": "Kapalua Coastal Trail",
+    "description_addendum": "The Kapalua Coastal Trail offers stunning ocean views and lush landscapes characteristic of Hawaii's coastal beauty.",
+    "heading_degrees": "null",
+    "heading_cardinal": "null",
+    "altitude_meters": 1.335102887,
+    "timestamp": "null",
+    "gpsString": "21.003556,-156.662933",
+    "address": "null",
+    "bestMatchPOI": {
+      "name": "Kapalua Coastal Trail",
+      "category": "landmark",
+      "distanceMeters": "null"
+    },
+    "bestMatchCategory": "landmark",
+    "poiConfidence": "medium",
+    "nearbyPOIs": [],
+    "nearbyTrailsOSM": [
+      {
+        "id": "osm:way/439994347",
+        "name": "Kapalua Coastal Trail",
+        "category": "trail",
+        "lat": 21.0038191,
+        "lon": -156.6630581,
+        "distanceMeters": 32.00812221112616,
+        "source": "osm",
+        "tags": {
+          "foot": "designated",
+          "highway": "footway",
+          "name": "Kapalua Coastal Trail",
+          "surface": "unpaved",
+          "wheelchair": "limited"
+        }
+      },
+      {
+        "id": "osm:way/774896778",
+        "name": "null",
+        "category": "trail",
+        "lat": 21.0037598,
+        "lon": -156.6610141,
+        "distanceMeters": 200.4798952799343,
+        "source": "osm",
+        "tags": {
+          "highway": "path",
+          "surface": "sand"
+        }
+      },
+      {
+        "id": "osm:way/765196474",
+        "name": "Kapalua Coastal Trail",
+        "category": "trail",
+        "lat": 21.004448,
+        "lon": -156.6651137,
+        "distanceMeters": 247.14715112815313,
+        "source": "osm",
+        "tags": {
+          "highway": "path",
+          "name": "Kapalua Coastal Trail",
+          "surface": "rock"
+        }
+      },
+      {
+        "id": "osm:way/774896776",
+        "name": "Kapalua Coastal Trail",
+        "category": "trail",
+        "lat": 21.0036164,
+        "lon": -156.6600075,
+        "distanceMeters": 303.7613794862301,
+        "source": "osm",
+        "tags": {
+          "bridge": "boardwalk",
+          "highway": "footway",
+          "layer": "1",
+          "name": "Kapalua Coastal Trail"
+        }
+      },
+      {
+        "id": "osm:way/1417231482",
+        "name": "null",
+        "category": "trail",
+        "lat": 21.0011301,
+        "lon": -156.6611972,
+        "distanceMeters": 324.3950232453944,
+        "source": "osm",
+        "tags": {
+          "footway": "sidewalk",
+          "highway": "footway",
+          "surface": "concrete"
+        }
+      },
+      {
+        "id": "osm:way/266640167",
+        "name": "Kapalua Coastal Trail",
+        "category": "trail",
+        "lat": 21.0011499,
+        "lon": -156.6657353,
+        "distanceMeters": 395.2265582454306,
+        "source": "osm",
+        "tags": {
+          "foot": "designated",
+          "highway": "footway",
+          "name": "Kapalua Coastal Trail",
+          "surface": "asphalt",
+          "wheelchair": "limited"
+        }
+      }
+    ]
+  },
+  "poiCache": {
+    "reverseResult": {
+      "address": "null"
+    },
+    "nearbyPlaces": [],
+    "nearbyFood": [],
+    "osmTrails": [
+      {
+        "id": "osm:way/439994347",
+        "name": "Kapalua Coastal Trail",
+        "category": "trail",
+        "lat": 21.0038191,
+        "lon": -156.6630581,
+        "distanceMeters": 32.00812221112616,
+        "source": "osm",
+        "tags": {
+          "foot": "designated",
+          "highway": "footway",
+          "name": "Kapalua Coastal Trail",
+          "surface": "unpaved",
+          "wheelchair": "limited"
+        }
+      },
+      {
+        "id": "osm:way/774896778",
+        "name": "null",
+        "category": "trail",
+        "lat": 21.0037598,
+        "lon": -156.6610141,
+        "distanceMeters": 200.4798952799343,
+        "source": "osm",
+        "tags": {
+          "highway": "path",
+          "surface": "sand"
+        }
+      },
+      {
+        "id": "osm:way/765196474",
+        "name": "Kapalua Coastal Trail",
+        "category": "trail",
+        "lat": 21.004448,
+        "lon": -156.6651137,
+        "distanceMeters": 247.14715112815313,
+        "source": "osm",
+        "tags": {
+          "highway": "path",
+          "name": "Kapalua Coastal Trail",
+          "surface": "rock"
+        }
+      },
+      {
+        "id": "osm:way/774896776",
+        "name": "Kapalua Coastal Trail",
+        "category": "trail",
+        "lat": 21.0036164,
+        "lon": -156.6600075,
+        "distanceMeters": 303.7613794862301,
+        "source": "osm",
+        "tags": {
+          "bridge": "boardwalk",
+          "highway": "footway",
+          "layer": "1",
+          "name": "Kapalua Coastal Trail"
+        }
+      },
+      {
+        "id": "osm:way/1417231482",
+        "name": "null",
+        "category": "trail",
+        "lat": 21.0011301,
+        "lon": -156.6611972,
+        "distanceMeters": 324.3950232453944,
+        "source": "osm",
+        "tags": {
+          "footway": "sidewalk",
+          "highway": "footway",
+          "surface": "concrete"
+        }
+      },
+      {
+        "id": "osm:way/266640167",
+        "name": "Kapalua Coastal Trail",
+        "category": "trail",
+        "lat": 21.0011499,
+        "lon": -156.6657353,
+        "distanceMeters": 395.2265582454306,
+        "source": "osm",
+        "tags": {
+          "foot": "designated",
+          "highway": "footway",
+          "name": "Kapalua Coastal Trail",
+          "surface": "asphalt",
+          "wheelchair": "limited"
+        }
+      }
+    ]
+  },
+  "poiCacheSummary": {
+    "reverse": false,
+    "nearbyPlacesCount": 0,
+    "nearbyFoodCount": 0,
+    "osmTrailsCount": 6,
+    "durationMs": 3785
+  },
+  "poiCacheFetchedAt": "2025-12-03T18:02:02.120Z",
+  "rich_search_context": "null",
+  "finalResult": "null",
+  "error": "null",
+  "sceneDecision": {
+    "chosenLabel": "Kapalua Coastal Trail",
+    "rationale": "Nearest landmark matches scene tags (sunset, ocean, clouds).",
+    "confidence": "low"
+  }
+}
+```
+
+
+#### LLM Used in decide_scene_label
+**Timestamp:** 2025-12-03T18:02:17.547Z
+**Model:** gpt-4o-2024-08-06
+
+**Prompt:**
+```json
+[
+  {
+    "role": "system",
+    "content": "You are a short-image-tagger assistant. Respond with JSON object {\"tags\": [..] }."
+  },
+  {
+    "role": "user",
+    "content": [
+      {
+        "type": "text",
+        "text": "Provide a short list of descriptive tags (single words) about the image content, like [\"geyser\",\"steam\",\"hotel\",\"trail\",\"flower\",\"closeup\"]. Return JSON only."
+      },
+      {
+        "type": "image_url",
+        "image_url": {
+          "url": "[Base64 Image Data Omitted]",
+          "detail": "low"
+        }
+      }
+    ]
+  }
+]
+```
+
+**Response:**
+```
+{"tags": ["sunset", "ocean", "sky", "clouds", "grass", "coast"]}
+```
+
+
+### Node Finished: decide_scene_label
+**Timestamp:** 2025-12-03T18:02:17.548Z
+
+**Output:**
+```json
+{
+  "filename": "a3340686-a651-4aad-a13f-79ce0f9dbd1c-20240418_160529001_iOS.heic.processed.jpg",
+  "fileBuffer": "[Buffer: 2241191 bytes]",
+  "imageBase64": "[Base64 Image Data Omitted]",
+  "imageMime": "image/jpeg",
+  "metadata": {
+    "DateTimeOriginal": "null",
+    "Make": "Apple",
+    "Model": "iPhone 15 Pro Max",
+    "LensModel": "iPhone 15 Pro Max back triple camera 6.765mm f/1.78",
+    "ISO": 64,
+    "FNumber": 1.8,
+    "ExposureTime": "1/995",
+    "Flash": false,
+    "GPSLatitude": 21.003556,
+    "GPSLongitude": -156.662933,
+    "GPSAltitude": 1.335102887,
+    "UserComment": "null",
+    "dateTime": "null",
+    "cameraModel": "Apple iPhone 15 Pro Max"
+  },
+  "gpsString": "21.003556,-156.662933",
+  "device": "Apple iPhone 15 Pro Max",
+  "modelOverrides": {},
+  "classification": "scenery",
+  "poiAnalysis": {
+    "locationIntel": {
+      "city": "Lahaina",
+      "region": "Hawaii",
+      "nearest_landmark": "Kapalua Coastal Trail",
+      "nearest_park": "Kapalua Coastal Trail",
+      "nearest_trail": "Kapalua Coastal Trail",
+      "description_addendum": "This location boasts stunning coastal views along the Kapalua Coastal Trail, famed for its scenic beauty."
+    },
+    "city": "Lahaina",
+    "region": "Hawaii",
+    "nearest_landmark": "Kapalua Coastal Trail",
+    "nearest_park": "Kapalua Coastal Trail",
+    "nearest_trail": "Kapalua Coastal Trail",
+    "description_addendum": "This location boasts stunning coastal views along the Kapalua Coastal Trail, famed for its scenic beauty.",
+    "heading_degrees": "null",
+    "heading_cardinal": "null",
+    "altitude_meters": 1.335102887,
+    "timestamp": "null",
+    "gpsString": "21.003556,-156.662933",
+    "address": "null",
+    "bestMatchPOI": {
+      "name": "Kapalua Coastal Trail",
+      "category": "landmark",
+      "distanceMeters": "null"
+    },
+    "bestMatchCategory": "landmark",
+    "poiConfidence": "medium",
+    "nearbyPOIs": [],
+    "nearbyTrailsOSM": [
+      {
+        "id": "osm:way/439994347",
+        "name": "Kapalua Coastal Trail",
+        "category": "trail",
+        "lat": 21.0038191,
+        "lon": -156.6630581,
+        "distanceMeters": 32.00812221112616,
+        "source": "osm",
+        "tags": {
+          "foot": "designated",
+          "highway": "footway",
+          "name": "Kapalua Coastal Trail",
+          "surface": "unpaved",
+          "wheelchair": "limited"
+        }
+      },
+      {
+        "id": "osm:way/774896778",
+        "name": "null",
+        "category": "trail",
+        "lat": 21.0037598,
+        "lon": -156.6610141,
+        "distanceMeters": 200.4798952799343,
+        "source": "osm",
+        "tags": {
+          "highway": "path",
+          "surface": "sand"
+        }
+      },
+      {
+        "id": "osm:way/765196474",
+        "name": "Kapalua Coastal Trail",
+        "category": "trail",
+        "lat": 21.004448,
+        "lon": -156.6651137,
+        "distanceMeters": 247.14715112815313,
+        "source": "osm",
+        "tags": {
+          "highway": "path",
+          "name": "Kapalua Coastal Trail",
+          "surface": "rock"
+        }
+      },
+      {
+        "id": "osm:way/774896776",
+        "name": "Kapalua Coastal Trail",
+        "category": "trail",
+        "lat": 21.0036164,
+        "lon": -156.6600075,
+        "distanceMeters": 303.7613794862301,
+        "source": "osm",
+        "tags": {
+          "bridge": "boardwalk",
+          "highway": "footway",
+          "layer": "1",
+          "name": "Kapalua Coastal Trail"
+        }
+      },
+      {
+        "id": "osm:way/1417231482",
+        "name": "null",
+        "category": "trail",
+        "lat": 21.0011301,
+        "lon": -156.6611972,
+        "distanceMeters": 324.3950232453944,
+        "source": "osm",
+        "tags": {
+          "footway": "sidewalk",
+          "highway": "footway",
+          "surface": "concrete"
+        }
+      },
+      {
+        "id": "osm:way/266640167",
+        "name": "Kapalua Coastal Trail",
+        "category": "trail",
+        "lat": 21.0011499,
+        "lon": -156.6657353,
+        "distanceMeters": 395.2265582454306,
+        "source": "osm",
+        "tags": {
+          "foot": "designated",
+          "highway": "footway",
+          "name": "Kapalua Coastal Trail",
+          "surface": "asphalt",
+          "wheelchair": "limited"
+        }
+      }
+    ]
+  },
+  "poiCache": {
+    "reverseResult": {
+      "address": "null"
+    },
+    "nearbyPlaces": [],
+    "nearbyFood": [],
+    "osmTrails": [
+      {
+        "id": "osm:way/439994347",
+        "name": "Kapalua Coastal Trail",
+        "category": "trail",
+        "lat": 21.0038191,
+        "lon": -156.6630581,
+        "distanceMeters": 32.00812221112616,
+        "source": "osm",
+        "tags": {
+          "foot": "designated",
+          "highway": "footway",
+          "name": "Kapalua Coastal Trail",
+          "surface": "unpaved",
+          "wheelchair": "limited"
+        }
+      },
+      {
+        "id": "osm:way/774896778",
+        "name": "null",
+        "category": "trail",
+        "lat": 21.0037598,
+        "lon": -156.6610141,
+        "distanceMeters": 200.4798952799343,
+        "source": "osm",
+        "tags": {
+          "highway": "path",
+          "surface": "sand"
+        }
+      },
+      {
+        "id": "osm:way/765196474",
+        "name": "Kapalua Coastal Trail",
+        "category": "trail",
+        "lat": 21.004448,
+        "lon": -156.6651137,
+        "distanceMeters": 247.14715112815313,
+        "source": "osm",
+        "tags": {
+          "highway": "path",
+          "name": "Kapalua Coastal Trail",
+          "surface": "rock"
+        }
+      },
+      {
+        "id": "osm:way/774896776",
+        "name": "Kapalua Coastal Trail",
+        "category": "trail",
+        "lat": 21.0036164,
+        "lon": -156.6600075,
+        "distanceMeters": 303.7613794862301,
+        "source": "osm",
+        "tags": {
+          "bridge": "boardwalk",
+          "highway": "footway",
+          "layer": "1",
+          "name": "Kapalua Coastal Trail"
+        }
+      },
+      {
+        "id": "osm:way/1417231482",
+        "name": "null",
+        "category": "trail",
+        "lat": 21.0011301,
+        "lon": -156.6611972,
+        "distanceMeters": 324.3950232453944,
+        "source": "osm",
+        "tags": {
+          "footway": "sidewalk",
+          "highway": "footway",
+          "surface": "concrete"
+        }
+      },
+      {
+        "id": "osm:way/266640167",
+        "name": "Kapalua Coastal Trail",
+        "category": "trail",
+        "lat": 21.0011499,
+        "lon": -156.6657353,
+        "distanceMeters": 395.2265582454306,
+        "source": "osm",
+        "tags": {
+          "foot": "designated",
+          "highway": "footway",
+          "name": "Kapalua Coastal Trail",
+          "surface": "asphalt",
+          "wheelchair": "limited"
+        }
+      }
+    ]
+  },
+  "poiCacheSummary": {
+    "reverse": false,
+    "nearbyPlacesCount": 0,
+    "nearbyFoodCount": 0,
+    "osmTrailsCount": 6,
+    "durationMs": 4466
+  },
+  "poiCacheFetchedAt": "2025-12-03T18:01:59.480Z",
+  "rich_search_context": "null",
+  "finalResult": "null",
+  "error": "null",
+  "sceneDecision": {
+    "chosenLabel": "Kapalua Coastal Trail",
+    "rationale": "Nearest landmark matches scene tags (sunset, ocean, sky).",
+    "confidence": "low"
+  },
+  "debugUsage": [
+    {
+      "step": "decide_scene_label_tagging",
+      "model": "gpt-4o-2024-08-06",
+      "usage": {
+        "prompt_tokens": 152,
+        "completion_tokens": 26,
+        "total_tokens": 178,
+        "prompt_tokens_details": {
+          "cached_tokens": 0,
+          "audio_tokens": 0
+        },
+        "completion_tokens_details": {
+          "reasoning_tokens": 0,
+          "audio_tokens": 0,
+          "accepted_prediction_tokens": 0,
+          "rejected_prediction_tokens": 0
+        }
+      },
+      "durationMs": 0,
+      "notes": "Image tag extraction",
+      "request": {
+        "systemPrompt": "You are a short-image-tagger assistant. Respond with JSON object {\"tags\": [..] }.",
+        "userPrompt": "Provide a short list of descriptive tags (single words) about the image content, like [\"geyser\",\"steam\",\"hotel\",\"trail\",\"flower\",\"closeup\"]. Return JSON only."
+      },
+      "response": "{\"tags\": [\"sunset\", \"ocean\", \"sky\", \"clouds\", \"grass\", \"coast\"]}",
+      "prompt": "Provide a short list of descriptive tags (single words) about the image content, like [\"geyser\",\"steam\",\"hotel\",\"trail\",\"flower\",\"closeup\"]. Return JSON only."
+    },
+    {
+      "step": "decide_scene_label",
+      "model": "null",
+      "usage": "null",
+      "durationMs": 0,
+      "notes": "Scene label decision based on POI and tags",
+      "request": {
+        "systemPrompt": "null",
+        "userPrompt": "Tags: sunset,ocean,sky,clouds,grass,coast"
+      },
+      "response": {
+        "chosenLabel": "Kapalua Coastal Trail",
+        "rationale": "Nearest landmark matches scene tags (sunset, ocean, sky).",
+        "confidence": "low"
+      },
+      "prompt": "Tags: sunset,ocean,sky,clouds,grass,coast"
+    }
+  ]
+}
+```
+
+
+### Node Started: generate_metadata
+**Timestamp:** 2025-12-03T18:02:20.585Z
+
+**Input:**
+```json
+{
+  "filename": "a3340686-a651-4aad-a13f-79ce0f9dbd1c-20240418_160529001_iOS.heic.processed.jpg",
+  "fileBuffer": "[Buffer: 2241191 bytes]",
+  "imageBase64": "[Base64 Image Data Omitted]",
+  "imageMime": "image/jpeg",
+  "metadata": {
+    "DateTimeOriginal": "null",
+    "Make": "Apple",
+    "Model": "iPhone 15 Pro Max",
+    "LensModel": "iPhone 15 Pro Max back triple camera 6.765mm f/1.78",
+    "ISO": 64,
+    "FNumber": 1.8,
+    "ExposureTime": "1/995",
+    "Flash": false,
+    "GPSLatitude": 21.003556,
+    "GPSLongitude": -156.662933,
+    "GPSAltitude": 1.335102887,
+    "UserComment": "null",
+    "dateTime": "null",
+    "cameraModel": "Apple iPhone 15 Pro Max"
+  },
+  "gpsString": "21.003556,-156.662933",
+  "device": "Apple iPhone 15 Pro Max",
+  "modelOverrides": {},
+  "classification": "scenery",
+  "poiAnalysis": {
+    "locationIntel": {
+      "city": "Lahaina",
+      "region": "Hawaii",
+      "nearest_landmark": "Kapalua Coastal Trail",
+      "nearest_park": "Kapalua Coastal Trail",
+      "nearest_trail": "Kapalua Coastal Trail",
+      "description_addendum": "This location boasts stunning coastal views along the Kapalua Coastal Trail, famed for its scenic beauty."
+    },
+    "city": "Lahaina",
+    "region": "Hawaii",
+    "nearest_landmark": "Kapalua Coastal Trail",
+    "nearest_park": "Kapalua Coastal Trail",
+    "nearest_trail": "Kapalua Coastal Trail",
+    "description_addendum": "This location boasts stunning coastal views along the Kapalua Coastal Trail, famed for its scenic beauty.",
+    "heading_degrees": "null",
+    "heading_cardinal": "null",
+    "altitude_meters": 1.335102887,
+    "timestamp": "null",
+    "gpsString": "21.003556,-156.662933",
+    "address": "null",
+    "bestMatchPOI": {
+      "name": "Kapalua Coastal Trail",
+      "category": "landmark",
+      "distanceMeters": "null"
+    },
+    "bestMatchCategory": "landmark",
+    "poiConfidence": "medium",
+    "nearbyPOIs": [],
+    "nearbyTrailsOSM": [
+      {
+        "id": "osm:way/439994347",
+        "name": "Kapalua Coastal Trail",
+        "category": "trail",
+        "lat": 21.0038191,
+        "lon": -156.6630581,
+        "distanceMeters": 32.00812221112616,
+        "source": "osm",
+        "tags": {
+          "foot": "designated",
+          "highway": "footway",
+          "name": "Kapalua Coastal Trail",
+          "surface": "unpaved",
+          "wheelchair": "limited"
+        }
+      },
+      {
+        "id": "osm:way/774896778",
+        "name": "null",
+        "category": "trail",
+        "lat": 21.0037598,
+        "lon": -156.6610141,
+        "distanceMeters": 200.4798952799343,
+        "source": "osm",
+        "tags": {
+          "highway": "path",
+          "surface": "sand"
+        }
+      },
+      {
+        "id": "osm:way/765196474",
+        "name": "Kapalua Coastal Trail",
+        "category": "trail",
+        "lat": 21.004448,
+        "lon": -156.6651137,
+        "distanceMeters": 247.14715112815313,
+        "source": "osm",
+        "tags": {
+          "highway": "path",
+          "name": "Kapalua Coastal Trail",
+          "surface": "rock"
+        }
+      },
+      {
+        "id": "osm:way/774896776",
+        "name": "Kapalua Coastal Trail",
+        "category": "trail",
+        "lat": 21.0036164,
+        "lon": -156.6600075,
+        "distanceMeters": 303.7613794862301,
+        "source": "osm",
+        "tags": {
+          "bridge": "boardwalk",
+          "highway": "footway",
+          "layer": "1",
+          "name": "Kapalua Coastal Trail"
+        }
+      },
+      {
+        "id": "osm:way/1417231482",
+        "name": "null",
+        "category": "trail",
+        "lat": 21.0011301,
+        "lon": -156.6611972,
+        "distanceMeters": 324.3950232453944,
+        "source": "osm",
+        "tags": {
+          "footway": "sidewalk",
+          "highway": "footway",
+          "surface": "concrete"
+        }
+      },
+      {
+        "id": "osm:way/266640167",
+        "name": "Kapalua Coastal Trail",
+        "category": "trail",
+        "lat": 21.0011499,
+        "lon": -156.6657353,
+        "distanceMeters": 395.2265582454306,
+        "source": "osm",
+        "tags": {
+          "foot": "designated",
+          "highway": "footway",
+          "name": "Kapalua Coastal Trail",
+          "surface": "asphalt",
+          "wheelchair": "limited"
+        }
+      }
+    ]
+  },
+  "poiCache": {
+    "reverseResult": {
+      "address": "null"
+    },
+    "nearbyPlaces": [],
+    "nearbyFood": [],
+    "osmTrails": [
+      {
+        "id": "osm:way/439994347",
+        "name": "Kapalua Coastal Trail",
+        "category": "trail",
+        "lat": 21.0038191,
+        "lon": -156.6630581,
+        "distanceMeters": 32.00812221112616,
+        "source": "osm",
+        "tags": {
+          "foot": "designated",
+          "highway": "footway",
+          "name": "Kapalua Coastal Trail",
+          "surface": "unpaved",
+          "wheelchair": "limited"
+        }
+      },
+      {
+        "id": "osm:way/774896778",
+        "name": "null",
+        "category": "trail",
+        "lat": 21.0037598,
+        "lon": -156.6610141,
+        "distanceMeters": 200.4798952799343,
+        "source": "osm",
+        "tags": {
+          "highway": "path",
+          "surface": "sand"
+        }
+      },
+      {
+        "id": "osm:way/765196474",
+        "name": "Kapalua Coastal Trail",
+        "category": "trail",
+        "lat": 21.004448,
+        "lon": -156.6651137,
+        "distanceMeters": 247.14715112815313,
+        "source": "osm",
+        "tags": {
+          "highway": "path",
+          "name": "Kapalua Coastal Trail",
+          "surface": "rock"
+        }
+      },
+      {
+        "id": "osm:way/774896776",
+        "name": "Kapalua Coastal Trail",
+        "category": "trail",
+        "lat": 21.0036164,
+        "lon": -156.6600075,
+        "distanceMeters": 303.7613794862301,
+        "source": "osm",
+        "tags": {
+          "bridge": "boardwalk",
+          "highway": "footway",
+          "layer": "1",
+          "name": "Kapalua Coastal Trail"
+        }
+      },
+      {
+        "id": "osm:way/1417231482",
+        "name": "null",
+        "category": "trail",
+        "lat": 21.0011301,
+        "lon": -156.6611972,
+        "distanceMeters": 324.3950232453944,
+        "source": "osm",
+        "tags": {
+          "footway": "sidewalk",
+          "highway": "footway",
+          "surface": "concrete"
+        }
+      },
+      {
+        "id": "osm:way/266640167",
+        "name": "Kapalua Coastal Trail",
+        "category": "trail",
+        "lat": 21.0011499,
+        "lon": -156.6657353,
+        "distanceMeters": 395.2265582454306,
+        "source": "osm",
+        "tags": {
+          "foot": "designated",
+          "highway": "footway",
+          "name": "Kapalua Coastal Trail",
+          "surface": "asphalt",
+          "wheelchair": "limited"
+        }
+      }
+    ]
+  },
+  "poiCacheSummary": {
+    "reverse": false,
+    "nearbyPlacesCount": 0,
+    "nearbyFoodCount": 0,
+    "osmTrailsCount": 6,
+    "durationMs": 4466
+  },
+  "poiCacheFetchedAt": "2025-12-03T18:01:59.480Z",
+  "rich_search_context": "null",
+  "finalResult": "null",
+  "error": "null",
+  "sceneDecision": {
+    "chosenLabel": "Kapalua Coastal Trail",
+    "rationale": "Nearest landmark matches scene tags (sunset, ocean, sky).",
+    "confidence": "low"
+  }
+}
+```
+
+
+#### LLM Used in generate_metadata
+**Timestamp:** 2025-12-03T18:02:24.576Z
+**Model:** gpt-4o-2024-08-06
+
+**Prompt:**
+```json
+[
+  {
+    "role": "system",
+    "content": "You are a helpful assistant for photo metadata extraction."
+  },
+  {
+    "role": "user",
+    "content": [
+      {
+        "type": "text",
+        "text": "You are a photo archivist. Given the image and the following context, generate a JSON object with three fields:\ncaption: A short, one-sentence title for the photo.\ndescription: A detailed, multi-sentence paragraph describing the visual contents.\nkeywords: A comma-separated string that begins with the classification provided (scenery) followed by 4-9 descriptive keywords. After the descriptive keywords, append explicit metadata keywords for capture date, capture time, facing direction, GPS coordinates, and altitude. Use the formats date:YYYY-MM-DD, time:HH:MM:SSZ, direction:<cardinal or degrees>, gps:<latitude,longitude>, altitude:<value>m. When a value is missing, use date:unknown, time:unknown, direction:unknown, gps:unknown, or altitude:unknown.\n\nContext:\nclassification: {classification}\nmetadata: {\"date\":null,\"gps\":null,\"camera\":\"Apple iPhone 15 Pro Max\",\"heading\":null,\"altitude_meters\":1.335102887,\"exposure\":{\"iso\":64,\"aperture\":1.8,\"shutter\":\"1/995\"}}\npoiAnalysis: {\"locationIntel\"... [truncated 2998 chars]"
+      },
+      {
+        "type": "image_url",
+        "image_url": {
+          "url": "[Base64 Image Data Omitted]",
+          "detail": "high"
+        }
+      }
+    ]
+  }
+]
+```
+
+**Response:**
+```
+{"caption": "Sunset Over Hawaiian Coastal Trail","description": "The image captures a serene sunset over a coastal trail in Hawaii, where the sky is painted with hues of orange and pink, scattered with soft, fluffy clouds. In the foreground, lush greenery lines the trail, set against the rugged rocks that edge the shoreline. The ocean gently laps against the rocks, creating a peaceful ambiance as the last light of the day reflects off the water.","keywords": "scenery, sunset, ocean, clouds, greenery, rocks, Hawaii, date:unknown, time:unknown, direction:unknown, gps:21.003556,-156.662933, altitude:1.34m"}
+```
+
+
+### Node Finished: generate_metadata
+**Timestamp:** 2025-12-03T18:02:24.578Z
+
+**Output:**
+```json
+{
+  "filename": "a3340686-a651-4aad-a13f-79ce0f9dbd1c-20240418_160529001_iOS.heic.processed.jpg",
+  "fileBuffer": "[Buffer: 2241191 bytes]",
+  "imageBase64": "[Base64 Image Data Omitted]",
+  "imageMime": "image/jpeg",
+  "metadata": {
+    "DateTimeOriginal": "null",
+    "Make": "Apple",
+    "Model": "iPhone 15 Pro Max",
+    "LensModel": "iPhone 15 Pro Max back triple camera 6.765mm f/1.78",
+    "ISO": 64,
+    "FNumber": 1.8,
+    "ExposureTime": "1/995",
+    "Flash": false,
+    "GPSLatitude": 21.003556,
+    "GPSLongitude": -156.662933,
+    "GPSAltitude": 1.335102887,
+    "UserComment": "null",
+    "dateTime": "null",
+    "cameraModel": "Apple iPhone 15 Pro Max"
+  },
+  "gpsString": "21.003556,-156.662933",
+  "device": "Apple iPhone 15 Pro Max",
+  "modelOverrides": {},
+  "classification": "scenery",
+  "poiAnalysis": {
+    "locationIntel": {
+      "city": "Lahaina",
+      "region": "Hawaii",
+      "nearest_landmark": "Kapalua Coastal Trail",
+      "nearest_park": "Kapalua Coastal Trail",
+      "nearest_trail": "Kapalua Coastal Trail",
+      "description_addendum": "The Kapalua Coastal Trail offers stunning ocean views and lush landscapes characteristic of Hawaii's coastal beauty."
+    },
+    "city": "Lahaina",
+    "region": "Hawaii",
+    "nearest_landmark": "Kapalua Coastal Trail",
+    "nearest_park": "Kapalua Coastal Trail",
+    "nearest_trail": "Kapalua Coastal Trail",
+    "description_addendum": "The Kapalua Coastal Trail offers stunning ocean views and lush landscapes characteristic of Hawaii's coastal beauty.",
+    "heading_degrees": "null",
+    "heading_cardinal": "null",
+    "altitude_meters": 1.335102887,
+    "timestamp": "null",
+    "gpsString": "21.003556,-156.662933",
+    "address": "null",
+    "bestMatchPOI": {
+      "name": "Kapalua Coastal Trail",
+      "category": "landmark",
+      "distanceMeters": "null"
+    },
+    "bestMatchCategory": "landmark",
+    "poiConfidence": "medium",
+    "nearbyPOIs": [],
+    "nearbyTrailsOSM": [
+      {
+        "id": "osm:way/439994347",
+        "name": "Kapalua Coastal Trail",
+        "category": "trail",
+        "lat": 21.0038191,
+        "lon": -156.6630581,
+        "distanceMeters": 32.00812221112616,
+        "source": "osm",
+        "tags": {
+          "foot": "designated",
+          "highway": "footway",
+          "name": "Kapalua Coastal Trail",
+          "surface": "unpaved",
+          "wheelchair": "limited"
+        }
+      },
+      {
+        "id": "osm:way/774896778",
+        "name": "null",
+        "category": "trail",
+        "lat": 21.0037598,
+        "lon": -156.6610141,
+        "distanceMeters": 200.4798952799343,
+        "source": "osm",
+        "tags": {
+          "highway": "path",
+          "surface": "sand"
+        }
+      },
+      {
+        "id": "osm:way/765196474",
+        "name": "Kapalua Coastal Trail",
+        "category": "trail",
+        "lat": 21.004448,
+        "lon": -156.6651137,
+        "distanceMeters": 247.14715112815313,
+        "source": "osm",
+        "tags": {
+          "highway": "path",
+          "name": "Kapalua Coastal Trail",
+          "surface": "rock"
+        }
+      },
+      {
+        "id": "osm:way/774896776",
+        "name": "Kapalua Coastal Trail",
+        "category": "trail",
+        "lat": 21.0036164,
+        "lon": -156.6600075,
+        "distanceMeters": 303.7613794862301,
+        "source": "osm",
+        "tags": {
+          "bridge": "boardwalk",
+          "highway": "footway",
+          "layer": "1",
+          "name": "Kapalua Coastal Trail"
+        }
+      },
+      {
+        "id": "osm:way/1417231482",
+        "name": "null",
+        "category": "trail",
+        "lat": 21.0011301,
+        "lon": -156.6611972,
+        "distanceMeters": 324.3950232453944,
+        "source": "osm",
+        "tags": {
+          "footway": "sidewalk",
+          "highway": "footway",
+          "surface": "concrete"
+        }
+      },
+      {
+        "id": "osm:way/266640167",
+        "name": "Kapalua Coastal Trail",
+        "category": "trail",
+        "lat": 21.0011499,
+        "lon": -156.6657353,
+        "distanceMeters": 395.2265582454306,
+        "source": "osm",
+        "tags": {
+          "foot": "designated",
+          "highway": "footway",
+          "name": "Kapalua Coastal Trail",
+          "surface": "asphalt",
+          "wheelchair": "limited"
+        }
+      }
+    ]
+  },
+  "poiCache": {
+    "reverseResult": {
+      "address": "null"
+    },
+    "nearbyPlaces": [],
+    "nearbyFood": [],
+    "osmTrails": [
+      {
+        "id": "osm:way/439994347",
+        "name": "Kapalua Coastal Trail",
+        "category": "trail",
+        "lat": 21.0038191,
+        "lon": -156.6630581,
+        "distanceMeters": 32.00812221112616,
+        "source": "osm",
+        "tags": {
+          "foot": "designated",
+          "highway": "footway",
+          "name": "Kapalua Coastal Trail",
+          "surface": "unpaved",
+          "wheelchair": "limited"
+        }
+      },
+      {
+        "id": "osm:way/774896778",
+        "name": "null",
+        "category": "trail",
+        "lat": 21.0037598,
+        "lon": -156.6610141,
+        "distanceMeters": 200.4798952799343,
+        "source": "osm",
+        "tags": {
+          "highway": "path",
+          "surface": "sand"
+        }
+      },
+      {
+        "id": "osm:way/765196474",
+        "name": "Kapalua Coastal Trail",
+        "category": "trail",
+        "lat": 21.004448,
+        "lon": -156.6651137,
+        "distanceMeters": 247.14715112815313,
+        "source": "osm",
+        "tags": {
+          "highway": "path",
+          "name": "Kapalua Coastal Trail",
+          "surface": "rock"
+        }
+      },
+      {
+        "id": "osm:way/774896776",
+        "name": "Kapalua Coastal Trail",
+        "category": "trail",
+        "lat": 21.0036164,
+        "lon": -156.6600075,
+        "distanceMeters": 303.7613794862301,
+        "source": "osm",
+        "tags": {
+          "bridge": "boardwalk",
+          "highway": "footway",
+          "layer": "1",
+          "name": "Kapalua Coastal Trail"
+        }
+      },
+      {
+        "id": "osm:way/1417231482",
+        "name": "null",
+        "category": "trail",
+        "lat": 21.0011301,
+        "lon": -156.6611972,
+        "distanceMeters": 324.3950232453944,
+        "source": "osm",
+        "tags": {
+          "footway": "sidewalk",
+          "highway": "footway",
+          "surface": "concrete"
+        }
+      },
+      {
+        "id": "osm:way/266640167",
+        "name": "Kapalua Coastal Trail",
+        "category": "trail",
+        "lat": 21.0011499,
+        "lon": -156.6657353,
+        "distanceMeters": 395.2265582454306,
+        "source": "osm",
+        "tags": {
+          "foot": "designated",
+          "highway": "footway",
+          "name": "Kapalua Coastal Trail",
+          "surface": "asphalt",
+          "wheelchair": "limited"
+        }
+      }
+    ]
+  },
+  "poiCacheSummary": {
+    "reverse": false,
+    "nearbyPlacesCount": 0,
+    "nearbyFoodCount": 0,
+    "osmTrailsCount": 6,
+    "durationMs": 3785
+  },
+  "poiCacheFetchedAt": "2025-12-03T18:02:02.120Z",
+  "rich_search_context": "null",
+  "finalResult": {
+    "caption": "Sunset Over Hawaiian Coastal Trail",
+    "description": "The image captures a serene sunset over a coastal trail in Hawaii, where the sky is painted with hues of orange and pink, scattered with soft, fluffy clouds. In the foreground, lush greenery lines the trail, set against the rugged rocks that edge the shoreline. The ocean gently laps against the rocks, creating a peaceful ambiance as the last light of the day reflects off the water.\n\nLocation Intelligence: City: Lahaina | Region: Hawaii | Nearest park: Kapalua Coastal Trail | Nearest trail: Kapalua Coastal Trail | Nearest landmark: Kapalua Coastal Trail | Notes: The Kapalua Coastal Trail offers stunning ocean views and lush landscapes characteristic of Hawaii's coastal beauty.",
+    "keywords": "scenery, sunset, ocean, clouds, greenery, rocks, Hawaii, date:unknown, time:unknown, direction:unknown, gps:21.003556,-156.662933, altitude:1.34m, Lahaina, Hawaii, Kapalua Coastal Trail, Kapalua Coastal Trail, Kapalua Coastal Trail, The Kapalua Coastal Trail offers stunning ocean views and lush landscapes characteristic of Hawaii's coastal beauty.",
+    "classification": "scenery"
+  },
+  "error": "null",
+  "sceneDecision": {
+    "chosenLabel": "Kapalua Coastal Trail",
+    "rationale": "Nearest landmark matches scene tags (sunset, ocean, clouds).",
+    "confidence": "low"
+  }
+}
+```
+
+
+## Graph Execution Finished
+**Run ID:** 2c5f0758-919a-4d6f-8b1f-dacfb7165b25
+**Timestamp:** 2025-12-03T18:02:26.619Z
+
+## Final State
+```json
+{
+  "filename": "a3340686-a651-4aad-a13f-79ce0f9dbd1c-20240418_160529001_iOS.heic.processed.jpg",
+  "fileBuffer": "[Buffer: 2241191 bytes]",
+  "imageBase64": "[Base64 Image Data Omitted]",
+  "imageMime": "image/jpeg",
+  "metadata": {
+    "DateTimeOriginal": "null",
+    "Make": "Apple",
+    "Model": "iPhone 15 Pro Max",
+    "LensModel": "iPhone 15 Pro Max back triple camera 6.765mm f/1.78",
+    "ISO": 64,
+    "FNumber": 1.8,
+    "ExposureTime": "1/995",
+    "Flash": false,
+    "GPSLatitude": 21.003556,
+    "GPSLongitude": -156.662933,
+    "GPSAltitude": 1.335102887,
+    "UserComment": "null",
+    "dateTime": "null",
+    "cameraModel": "Apple iPhone 15 Pro Max"
+  },
+  "gpsString": "21.003556,-156.662933",
+  "device": "Apple iPhone 15 Pro Max",
+  "modelOverrides": {},
+  "classification": "scenery",
+  "poiAnalysis": {
+    "locationIntel": {
+      "city": "Lahaina",
+      "region": "Hawaii",
+      "nearest_landmark": "Kapalua Coastal Trail",
+      "nearest_park": "Kapalua Coastal Trail",
+      "nearest_trail": "Kapalua Coastal Trail",
+      "description_addendum": "The Kapalua Coastal Trail offers stunning ocean views and lush landscapes characteristic of Hawaii's coastal beauty."
+    },
+    "city": "Lahaina",
+    "region": "Hawaii",
+    "nearest_landmark": "Kapalua Coastal Trail",
+    "nearest_park": "Kapalua Coastal Trail",
+    "nearest_trail": "Kapalua Coastal Trail",
+    "description_addendum": "The Kapalua Coastal Trail offers stunning ocean views and lush landscapes characteristic of Hawaii's coastal beauty.",
+    "heading_degrees": "null",
+    "heading_cardinal": "null",
+    "altitude_meters": 1.335102887,
+    "timestamp": "null",
+    "gpsString": "21.003556,-156.662933",
+    "address": "null",
+    "bestMatchPOI": {
+      "name": "Kapalua Coastal Trail",
+      "category": "landmark",
+      "distanceMeters": "null"
+    },
+    "bestMatchCategory": "landmark",
+    "poiConfidence": "medium",
+    "nearbyPOIs": [],
+    "nearbyTrailsOSM": [
+      {
+        "id": "osm:way/439994347",
+        "name": "Kapalua Coastal Trail",
+        "category": "trail",
+        "lat": 21.0038191,
+        "lon": -156.6630581,
+        "distanceMeters": 32.00812221112616,
+        "source": "osm",
+        "tags": {
+          "foot": "designated",
+          "highway": "footway",
+          "name": "Kapalua Coastal Trail",
+          "surface": "unpaved",
+          "wheelchair": "limited"
+        }
+      },
+      {
+        "id": "osm:way/774896778",
+        "name": "null",
+        "category": "trail",
+        "lat": 21.0037598,
+        "lon": -156.6610141,
+        "distanceMeters": 200.4798952799343,
+        "source": "osm",
+        "tags": {
+          "highway": "path",
+          "surface": "sand"
+        }
+      },
+      {
+        "id": "osm:way/765196474",
+        "name": "Kapalua Coastal Trail",
+        "category": "trail",
+        "lat": 21.004448,
+        "lon": -156.6651137,
+        "distanceMeters": 247.14715112815313,
+        "source": "osm",
+        "tags": {
+          "highway": "path",
+          "name": "Kapalua Coastal Trail",
+          "surface": "rock"
+        }
+      },
+      {
+        "id": "osm:way/774896776",
+        "name": "Kapalua Coastal Trail",
+        "category": "trail",
+        "lat": 21.0036164,
+        "lon": -156.6600075,
+        "distanceMeters": 303.7613794862301,
+        "source": "osm",
+        "tags": {
+          "bridge": "boardwalk",
+          "highway": "footway",
+          "layer": "1",
+          "name": "Kapalua Coastal Trail"
+        }
+      },
+      {
+        "id": "osm:way/1417231482",
+        "name": "null",
+        "category": "trail",
+        "lat": 21.0011301,
+        "lon": -156.6611972,
+        "distanceMeters": 324.3950232453944,
+        "source": "osm",
+        "tags": {
+          "footway": "sidewalk",
+          "highway": "footway",
+          "surface": "concrete"
+        }
+      },
+      {
+        "id": "osm:way/266640167",
+        "name": "Kapalua Coastal Trail",
+        "category": "trail",
+        "lat": 21.0011499,
+        "lon": -156.6657353,
+        "distanceMeters": 395.2265582454306,
+        "source": "osm",
+        "tags": {
+          "foot": "designated",
+          "highway": "footway",
+          "name": "Kapalua Coastal Trail",
+          "surface": "asphalt",
+          "wheelchair": "limited"
+        }
+      }
+    ]
+  },
+  "poiCache": {
+    "reverseResult": {
+      "address": "null"
+    },
+    "nearbyPlaces": [],
+    "nearbyFood": [],
+    "osmTrails": [
+      {
+        "id": "osm:way/439994347",
+        "name": "Kapalua Coastal Trail",
+        "category": "trail",
+        "lat": 21.0038191,
+        "lon": -156.6630581,
+        "distanceMeters": 32.00812221112616,
+        "source": "osm",
+        "tags": {
+          "foot": "designated",
+          "highway": "footway",
+          "name": "Kapalua Coastal Trail",
+          "surface": "unpaved",
+          "wheelchair": "limited"
+        }
+      },
+      {
+        "id": "osm:way/774896778",
+        "name": "null",
+        "category": "trail",
+        "lat": 21.0037598,
+        "lon": -156.6610141,
+        "distanceMeters": 200.4798952799343,
+        "source": "osm",
+        "tags": {
+          "highway": "path",
+          "surface": "sand"
+        }
+      },
+      {
+        "id": "osm:way/765196474",
+        "name": "Kapalua Coastal Trail",
+        "category": "trail",
+        "lat": 21.004448,
+        "lon": -156.6651137,
+        "distanceMeters": 247.14715112815313,
+        "source": "osm",
+        "tags": {
+          "highway": "path",
+          "name": "Kapalua Coastal Trail",
+          "surface": "rock"
+        }
+      },
+      {
+        "id": "osm:way/774896776",
+        "name": "Kapalua Coastal Trail",
+        "category": "trail",
+        "lat": 21.0036164,
+        "lon": -156.6600075,
+        "distanceMeters": 303.7613794862301,
+        "source": "osm",
+        "tags": {
+          "bridge": "boardwalk",
+          "highway": "footway",
+          "layer": "1",
+          "name": "Kapalua Coastal Trail"
+        }
+      },
+      {
+        "id": "osm:way/1417231482",
+        "name": "null",
+        "category": "trail",
+        "lat": 21.0011301,
+        "lon": -156.6611972,
+        "distanceMeters": 324.3950232453944,
+        "source": "osm",
+        "tags": {
+          "footway": "sidewalk",
+          "highway": "footway",
+          "surface": "concrete"
+        }
+      },
+      {
+        "id": "osm:way/266640167",
+        "name": "Kapalua Coastal Trail",
+        "category": "trail",
+        "lat": 21.0011499,
+        "lon": -156.6657353,
+        "distanceMeters": 395.2265582454306,
+        "source": "osm",
+        "tags": {
+          "foot": "designated",
+          "highway": "footway",
+          "name": "Kapalua Coastal Trail",
+          "surface": "asphalt",
+          "wheelchair": "limited"
+        }
+      }
+    ]
+  },
+  "poiCacheSummary": {
+    "reverse": false,
+    "nearbyPlacesCount": 0,
+    "nearbyFoodCount": 0,
+    "osmTrailsCount": 6,
+    "durationMs": 3785
+  },
+  "poiCacheFetchedAt": "2025-12-03T18:02:02.120Z",
+  "rich_search_context": "null",
+  "finalResult": {
+    "caption": "Sunset Over Hawaiian Coastal Trail",
+    "description": "The image captures a serene sunset over a coastal trail in Hawaii, where the sky is painted with hues of orange and pink, scattered with soft, fluffy clouds. In the foreground, lush greenery lines the trail, set against the rugged rocks that edge the shoreline. The ocean gently laps against the rocks, creating a peaceful ambiance as the last light of the day reflects off the water.\n\nLocation Intelligence: City: Lahaina | Region: Hawaii | Nearest park: Kapalua Coastal Trail | Nearest trail: Kapalua Coastal Trail | Nearest landmark: Kapalua Coastal Trail | Notes: The Kapalua Coastal Trail offers stunning ocean views and lush landscapes characteristic of Hawaii's coastal beauty.",
+    "keywords": "scenery, sunset, ocean, clouds, greenery, rocks, Hawaii, date:unknown, time:unknown, direction:unknown, gps:21.003556,-156.662933, altitude:1.34m, Lahaina, Hawaii, Kapalua Coastal Trail, Kapalua Coastal Trail, Kapalua Coastal Trail, The Kapalua Coastal Trail offers stunning ocean views and lush landscapes characteristic of Hawaii's coastal beauty.",
+    "classification": "scenery"
+  },
+  "error": "null",
+  "sceneDecision": {
+    "chosenLabel": "Kapalua Coastal Trail",
+    "rationale": "Nearest landmark matches scene tags (sunset, ocean, clouds).",
+    "confidence": "low"
+  }
+}
+```
+
+================================================================================
+
+
+#### LLM Used in generate_metadata
+**Timestamp:** 2025-12-03T18:02:29.359Z
+**Model:** gpt-4o-2024-08-06
+
+**Prompt:**
+```json
+[
+  {
+    "role": "system",
+    "content": "You are a helpful assistant for photo metadata extraction."
+  },
+  {
+    "role": "user",
+    "content": [
+      {
+        "type": "text",
+        "text": "You are a photo archivist. Given the image and the following context, generate a JSON object with three fields:\ncaption: A short, one-sentence title for the photo.\ndescription: A detailed, multi-sentence paragraph describing the visual contents.\nkeywords: A comma-separated string that begins with the classification provided (scenery) followed by 4-9 descriptive keywords. After the descriptive keywords, append explicit metadata keywords for capture date, capture time, facing direction, GPS coordinates, and altitude. Use the formats date:YYYY-MM-DD, time:HH:MM:SSZ, direction:<cardinal or degrees>, gps:<latitude,longitude>, altitude:<value>m. When a value is missing, use date:unknown, time:unknown, direction:unknown, gps:unknown, or altitude:unknown.\n\nContext:\nclassification: {classification}\nmetadata: {\"date\":null,\"gps\":null,\"camera\":\"Apple iPhone 15 Pro Max\",\"heading\":null,\"altitude_meters\":1.335102887,\"exposure\":{\"iso\":64,\"aperture\":1.8,\"shutter\":\"1/995\"}}\npoiAnalysis: {\"locationIntel\"... [truncated 2973 chars]"
+      },
+      {
+        "type": "image_url",
+        "image_url": {
+          "url": "[Base64 Image Data Omitted]",
+          "detail": "high"
+        }
+      }
+    ]
+  }
+]
+```
+
+**Response:**
+```
+{"caption": "Sunset Over the Kapalua Coastal Trail","description": "The image captures a serene sunset along the Kapalua Coastal Trail in Lahaina, Hawaii. The scene displays a beautiful gradient in the sky with hues of orange and purple as the sun sets on the horizon. On the left, the ocean's surface reflects the evening light, while the rugged coastline stretches out towards lush green vegetation leading into the foreground. Scattered clouds add texture to the tranquil sky, enhancing the overall picturesque view.","keywords": "scenery, sunset, ocean, coastline, greenery, sky, clouds, Hawaii, trail, date:unknown, time:unknown, direction:unknown, gps:21.003556,-156.662933, altitude:1.33m"}
+```
+
+
+### Node Finished: generate_metadata
+**Timestamp:** 2025-12-03T18:02:29.361Z
+
+**Output:**
+```json
+{
+  "filename": "a3340686-a651-4aad-a13f-79ce0f9dbd1c-20240418_160529001_iOS.heic.processed.jpg",
+  "fileBuffer": "[Buffer: 2241191 bytes]",
+  "imageBase64": "[Base64 Image Data Omitted]",
+  "imageMime": "image/jpeg",
+  "metadata": {
+    "DateTimeOriginal": "null",
+    "Make": "Apple",
+    "Model": "iPhone 15 Pro Max",
+    "LensModel": "iPhone 15 Pro Max back triple camera 6.765mm f/1.78",
+    "ISO": 64,
+    "FNumber": 1.8,
+    "ExposureTime": "1/995",
+    "Flash": false,
+    "GPSLatitude": 21.003556,
+    "GPSLongitude": -156.662933,
+    "GPSAltitude": 1.335102887,
+    "UserComment": "null",
+    "dateTime": "null",
+    "cameraModel": "Apple iPhone 15 Pro Max"
+  },
+  "gpsString": "21.003556,-156.662933",
+  "device": "Apple iPhone 15 Pro Max",
+  "modelOverrides": {},
+  "classification": "scenery",
+  "poiAnalysis": {
+    "locationIntel": {
+      "city": "Lahaina",
+      "region": "Hawaii",
+      "nearest_landmark": "Kapalua Coastal Trail",
+      "nearest_park": "Kapalua Coastal Trail",
+      "nearest_trail": "Kapalua Coastal Trail",
+      "description_addendum": "This location boasts stunning coastal views along the Kapalua Coastal Trail, famed for its scenic beauty."
+    },
+    "city": "Lahaina",
+    "region": "Hawaii",
+    "nearest_landmark": "Kapalua Coastal Trail",
+    "nearest_park": "Kapalua Coastal Trail",
+    "nearest_trail": "Kapalua Coastal Trail",
+    "description_addendum": "This location boasts stunning coastal views along the Kapalua Coastal Trail, famed for its scenic beauty.",
+    "heading_degrees": "null",
+    "heading_cardinal": "null",
+    "altitude_meters": 1.335102887,
+    "timestamp": "null",
+    "gpsString": "21.003556,-156.662933",
+    "address": "null",
+    "bestMatchPOI": {
+      "name": "Kapalua Coastal Trail",
+      "category": "landmark",
+      "distanceMeters": "null"
+    },
+    "bestMatchCategory": "landmark",
+    "poiConfidence": "medium",
+    "nearbyPOIs": [],
+    "nearbyTrailsOSM": [
+      {
+        "id": "osm:way/439994347",
+        "name": "Kapalua Coastal Trail",
+        "category": "trail",
+        "lat": 21.0038191,
+        "lon": -156.6630581,
+        "distanceMeters": 32.00812221112616,
+        "source": "osm",
+        "tags": {
+          "foot": "designated",
+          "highway": "footway",
+          "name": "Kapalua Coastal Trail",
+          "surface": "unpaved",
+          "wheelchair": "limited"
+        }
+      },
+      {
+        "id": "osm:way/774896778",
+        "name": "null",
+        "category": "trail",
+        "lat": 21.0037598,
+        "lon": -156.6610141,
+        "distanceMeters": 200.4798952799343,
+        "source": "osm",
+        "tags": {
+          "highway": "path",
+          "surface": "sand"
+        }
+      },
+      {
+        "id": "osm:way/765196474",
+        "name": "Kapalua Coastal Trail",
+        "category": "trail",
+        "lat": 21.004448,
+        "lon": -156.6651137,
+        "distanceMeters": 247.14715112815313,
+        "source": "osm",
+        "tags": {
+          "highway": "path",
+          "name": "Kapalua Coastal Trail",
+          "surface": "rock"
+        }
+      },
+      {
+        "id": "osm:way/774896776",
+        "name": "Kapalua Coastal Trail",
+        "category": "trail",
+        "lat": 21.0036164,
+        "lon": -156.6600075,
+        "distanceMeters": 303.7613794862301,
+        "source": "osm",
+        "tags": {
+          "bridge": "boardwalk",
+          "highway": "footway",
+          "layer": "1",
+          "name": "Kapalua Coastal Trail"
+        }
+      },
+      {
+        "id": "osm:way/1417231482",
+        "name": "null",
+        "category": "trail",
+        "lat": 21.0011301,
+        "lon": -156.6611972,
+        "distanceMeters": 324.3950232453944,
+        "source": "osm",
+        "tags": {
+          "footway": "sidewalk",
+          "highway": "footway",
+          "surface": "concrete"
+        }
+      },
+      {
+        "id": "osm:way/266640167",
+        "name": "Kapalua Coastal Trail",
+        "category": "trail",
+        "lat": 21.0011499,
+        "lon": -156.6657353,
+        "distanceMeters": 395.2265582454306,
+        "source": "osm",
+        "tags": {
+          "foot": "designated",
+          "highway": "footway",
+          "name": "Kapalua Coastal Trail",
+          "surface": "asphalt",
+          "wheelchair": "limited"
+        }
+      }
+    ]
+  },
+  "poiCache": {
+    "reverseResult": {
+      "address": "null"
+    },
+    "nearbyPlaces": [],
+    "nearbyFood": [],
+    "osmTrails": [
+      {
+        "id": "osm:way/439994347",
+        "name": "Kapalua Coastal Trail",
+        "category": "trail",
+        "lat": 21.0038191,
+        "lon": -156.6630581,
+        "distanceMeters": 32.00812221112616,
+        "source": "osm",
+        "tags": {
+          "foot": "designated",
+          "highway": "footway",
+          "name": "Kapalua Coastal Trail",
+          "surface": "unpaved",
+          "wheelchair": "limited"
+        }
+      },
+      {
+        "id": "osm:way/774896778",
+        "name": "null",
+        "category": "trail",
+        "lat": 21.0037598,
+        "lon": -156.6610141,
+        "distanceMeters": 200.4798952799343,
+        "source": "osm",
+        "tags": {
+          "highway": "path",
+          "surface": "sand"
+        }
+      },
+      {
+        "id": "osm:way/765196474",
+        "name": "Kapalua Coastal Trail",
+        "category": "trail",
+        "lat": 21.004448,
+        "lon": -156.6651137,
+        "distanceMeters": 247.14715112815313,
+        "source": "osm",
+        "tags": {
+          "highway": "path",
+          "name": "Kapalua Coastal Trail",
+          "surface": "rock"
+        }
+      },
+      {
+        "id": "osm:way/774896776",
+        "name": "Kapalua Coastal Trail",
+        "category": "trail",
+        "lat": 21.0036164,
+        "lon": -156.6600075,
+        "distanceMeters": 303.7613794862301,
+        "source": "osm",
+        "tags": {
+          "bridge": "boardwalk",
+          "highway": "footway",
+          "layer": "1",
+          "name": "Kapalua Coastal Trail"
+        }
+      },
+      {
+        "id": "osm:way/1417231482",
+        "name": "null",
+        "category": "trail",
+        "lat": 21.0011301,
+        "lon": -156.6611972,
+        "distanceMeters": 324.3950232453944,
+        "source": "osm",
+        "tags": {
+          "footway": "sidewalk",
+          "highway": "footway",
+          "surface": "concrete"
+        }
+      },
+      {
+        "id": "osm:way/266640167",
+        "name": "Kapalua Coastal Trail",
+        "category": "trail",
+        "lat": 21.0011499,
+        "lon": -156.6657353,
+        "distanceMeters": 395.2265582454306,
+        "source": "osm",
+        "tags": {
+          "foot": "designated",
+          "highway": "footway",
+          "name": "Kapalua Coastal Trail",
+          "surface": "asphalt",
+          "wheelchair": "limited"
+        }
+      }
+    ]
+  },
+  "poiCacheSummary": {
+    "reverse": false,
+    "nearbyPlacesCount": 0,
+    "nearbyFoodCount": 0,
+    "osmTrailsCount": 6,
+    "durationMs": 4466
+  },
+  "poiCacheFetchedAt": "2025-12-03T18:01:59.480Z",
+  "rich_search_context": "null",
+  "finalResult": {
+    "caption": "Sunset Over the Kapalua Coastal Trail",
+    "description": "The image captures a serene sunset along the Kapalua Coastal Trail in Lahaina, Hawaii. The scene displays a beautiful gradient in the sky with hues of orange and purple as the sun sets on the horizon. On the left, the ocean's surface reflects the evening light, while the rugged coastline stretches out towards lush green vegetation leading into the foreground. Scattered clouds add texture to the tranquil sky, enhancing the overall picturesque view.\n\nLocation Intelligence: City: Lahaina | Region: Hawaii | Nearest park: Kapalua Coastal Trail | Nearest trail: Kapalua Coastal Trail | Nearest landmark: Kapalua Coastal Trail | Notes: This location boasts stunning coastal views along the Kapalua Coastal Trail, famed for its scenic beauty.",
+    "keywords": "scenery, sunset, ocean, coastline, greenery, sky, clouds, Hawaii, trail, date:unknown, time:unknown, direction:unknown, gps:21.003556,-156.662933, altitude:1.33m, Lahaina, Hawaii, Kapalua Coastal Trail, Kapalua Coastal Trail, Kapalua Coastal Trail, This location boasts stunning coastal views along the Kapalua Coastal Trail, famed for its scenic beauty.",
+    "classification": "scenery"
+  },
+  "error": "null",
+  "sceneDecision": {
+    "chosenLabel": "Kapalua Coastal Trail",
+    "rationale": "Nearest landmark matches scene tags (sunset, ocean, sky).",
+    "confidence": "low"
+  }
+}
+```
+
+
+## Graph Execution Finished
+**Run ID:** 26442684-5de1-413d-a4b6-deb1e165801b
+**Timestamp:** 2025-12-03T18:02:31.336Z
+
+## Final State
+```json
+{
+  "filename": "a3340686-a651-4aad-a13f-79ce0f9dbd1c-20240418_160529001_iOS.heic.processed.jpg",
+  "fileBuffer": "[Buffer: 2241191 bytes]",
+  "imageBase64": "[Base64 Image Data Omitted]",
+  "imageMime": "image/jpeg",
+  "metadata": {
+    "DateTimeOriginal": "null",
+    "Make": "Apple",
+    "Model": "iPhone 15 Pro Max",
+    "LensModel": "iPhone 15 Pro Max back triple camera 6.765mm f/1.78",
+    "ISO": 64,
+    "FNumber": 1.8,
+    "ExposureTime": "1/995",
+    "Flash": false,
+    "GPSLatitude": 21.003556,
+    "GPSLongitude": -156.662933,
+    "GPSAltitude": 1.335102887,
+    "UserComment": "null",
+    "dateTime": "null",
+    "cameraModel": "Apple iPhone 15 Pro Max"
+  },
+  "gpsString": "21.003556,-156.662933",
+  "device": "Apple iPhone 15 Pro Max",
+  "modelOverrides": {},
+  "classification": "scenery",
+  "poiAnalysis": {
+    "locationIntel": {
+      "city": "Lahaina",
+      "region": "Hawaii",
+      "nearest_landmark": "Kapalua Coastal Trail",
+      "nearest_park": "Kapalua Coastal Trail",
+      "nearest_trail": "Kapalua Coastal Trail",
+      "description_addendum": "This location boasts stunning coastal views along the Kapalua Coastal Trail, famed for its scenic beauty."
+    },
+    "city": "Lahaina",
+    "region": "Hawaii",
+    "nearest_landmark": "Kapalua Coastal Trail",
+    "nearest_park": "Kapalua Coastal Trail",
+    "nearest_trail": "Kapalua Coastal Trail",
+    "description_addendum": "This location boasts stunning coastal views along the Kapalua Coastal Trail, famed for its scenic beauty.",
+    "heading_degrees": "null",
+    "heading_cardinal": "null",
+    "altitude_meters": 1.335102887,
+    "timestamp": "null",
+    "gpsString": "21.003556,-156.662933",
+    "address": "null",
+    "bestMatchPOI": {
+      "name": "Kapalua Coastal Trail",
+      "category": "landmark",
+      "distanceMeters": "null"
+    },
+    "bestMatchCategory": "landmark",
+    "poiConfidence": "medium",
+    "nearbyPOIs": [],
+    "nearbyTrailsOSM": [
+      {
+        "id": "osm:way/439994347",
+        "name": "Kapalua Coastal Trail",
+        "category": "trail",
+        "lat": 21.0038191,
+        "lon": -156.6630581,
+        "distanceMeters": 32.00812221112616,
+        "source": "osm",
+        "tags": {
+          "foot": "designated",
+          "highway": "footway",
+          "name": "Kapalua Coastal Trail",
+          "surface": "unpaved",
+          "wheelchair": "limited"
+        }
+      },
+      {
+        "id": "osm:way/774896778",
+        "name": "null",
+        "category": "trail",
+        "lat": 21.0037598,
+        "lon": -156.6610141,
+        "distanceMeters": 200.4798952799343,
+        "source": "osm",
+        "tags": {
+          "highway": "path",
+          "surface": "sand"
+        }
+      },
+      {
+        "id": "osm:way/765196474",
+        "name": "Kapalua Coastal Trail",
+        "category": "trail",
+        "lat": 21.004448,
+        "lon": -156.6651137,
+        "distanceMeters": 247.14715112815313,
+        "source": "osm",
+        "tags": {
+          "highway": "path",
+          "name": "Kapalua Coastal Trail",
+          "surface": "rock"
+        }
+      },
+      {
+        "id": "osm:way/774896776",
+        "name": "Kapalua Coastal Trail",
+        "category": "trail",
+        "lat": 21.0036164,
+        "lon": -156.6600075,
+        "distanceMeters": 303.7613794862301,
+        "source": "osm",
+        "tags": {
+          "bridge": "boardwalk",
+          "highway": "footway",
+          "layer": "1",
+          "name": "Kapalua Coastal Trail"
+        }
+      },
+      {
+        "id": "osm:way/1417231482",
+        "name": "null",
+        "category": "trail",
+        "lat": 21.0011301,
+        "lon": -156.6611972,
+        "distanceMeters": 324.3950232453944,
+        "source": "osm",
+        "tags": {
+          "footway": "sidewalk",
+          "highway": "footway",
+          "surface": "concrete"
+        }
+      },
+      {
+        "id": "osm:way/266640167",
+        "name": "Kapalua Coastal Trail",
+        "category": "trail",
+        "lat": 21.0011499,
+        "lon": -156.6657353,
+        "distanceMeters": 395.2265582454306,
+        "source": "osm",
+        "tags": {
+          "foot": "designated",
+          "highway": "footway",
+          "name": "Kapalua Coastal Trail",
+          "surface": "asphalt",
+          "wheelchair": "limited"
+        }
+      }
+    ]
+  },
+  "poiCache": {
+    "reverseResult": {
+      "address": "null"
+    },
+    "nearbyPlaces": [],
+    "nearbyFood": [],
+    "osmTrails": [
+      {
+        "id": "osm:way/439994347",
+        "name": "Kapalua Coastal Trail",
+        "category": "trail",
+        "lat": 21.0038191,
+        "lon": -156.6630581,
+        "distanceMeters": 32.00812221112616,
+        "source": "osm",
+        "tags": {
+          "foot": "designated",
+          "highway": "footway",
+          "name": "Kapalua Coastal Trail",
+          "surface": "unpaved",
+          "wheelchair": "limited"
+        }
+      },
+      {
+        "id": "osm:way/774896778",
+        "name": "null",
+        "category": "trail",
+        "lat": 21.0037598,
+        "lon": -156.6610141,
+        "distanceMeters": 200.4798952799343,
+        "source": "osm",
+        "tags": {
+          "highway": "path",
+          "surface": "sand"
+        }
+      },
+      {
+        "id": "osm:way/765196474",
+        "name": "Kapalua Coastal Trail",
+        "category": "trail",
+        "lat": 21.004448,
+        "lon": -156.6651137,
+        "distanceMeters": 247.14715112815313,
+        "source": "osm",
+        "tags": {
+          "highway": "path",
+          "name": "Kapalua Coastal Trail",
+          "surface": "rock"
+        }
+      },
+      {
+        "id": "osm:way/774896776",
+        "name": "Kapalua Coastal Trail",
+        "category": "trail",
+        "lat": 21.0036164,
+        "lon": -156.6600075,
+        "distanceMeters": 303.7613794862301,
+        "source": "osm",
+        "tags": {
+          "bridge": "boardwalk",
+          "highway": "footway",
+          "layer": "1",
+          "name": "Kapalua Coastal Trail"
+        }
+      },
+      {
+        "id": "osm:way/1417231482",
+        "name": "null",
+        "category": "trail",
+        "lat": 21.0011301,
+        "lon": -156.6611972,
+        "distanceMeters": 324.3950232453944,
+        "source": "osm",
+        "tags": {
+          "footway": "sidewalk",
+          "highway": "footway",
+          "surface": "concrete"
+        }
+      },
+      {
+        "id": "osm:way/266640167",
+        "name": "Kapalua Coastal Trail",
+        "category": "trail",
+        "lat": 21.0011499,
+        "lon": -156.6657353,
+        "distanceMeters": 395.2265582454306,
+        "source": "osm",
+        "tags": {
+          "foot": "designated",
+          "highway": "footway",
+          "name": "Kapalua Coastal Trail",
+          "surface": "asphalt",
+          "wheelchair": "limited"
+        }
+      }
+    ]
+  },
+  "poiCacheSummary": {
+    "reverse": false,
+    "nearbyPlacesCount": 0,
+    "nearbyFoodCount": 0,
+    "osmTrailsCount": 6,
+    "durationMs": 4466
+  },
+  "poiCacheFetchedAt": "2025-12-03T18:01:59.480Z",
+  "rich_search_context": "null",
+  "finalResult": {
+    "caption": "Sunset Over the Kapalua Coastal Trail",
+    "description": "The image captures a serene sunset along the Kapalua Coastal Trail in Lahaina, Hawaii. The scene displays a beautiful gradient in the sky with hues of orange and purple as the sun sets on the horizon. On the left, the ocean's surface reflects the evening light, while the rugged coastline stretches out towards lush green vegetation leading into the foreground. Scattered clouds add texture to the tranquil sky, enhancing the overall picturesque view.\n\nLocation Intelligence: City: Lahaina | Region: Hawaii | Nearest park: Kapalua Coastal Trail | Nearest trail: Kapalua Coastal Trail | Nearest landmark: Kapalua Coastal Trail | Notes: This location boasts stunning coastal views along the Kapalua Coastal Trail, famed for its scenic beauty.",
+    "keywords": "scenery, sunset, ocean, coastline, greenery, sky, clouds, Hawaii, trail, date:unknown, time:unknown, direction:unknown, gps:21.003556,-156.662933, altitude:1.33m, Lahaina, Hawaii, Kapalua Coastal Trail, Kapalua Coastal Trail, Kapalua Coastal Trail, This location boasts stunning coastal views along the Kapalua Coastal Trail, famed for its scenic beauty.",
+    "classification": "scenery"
+  },
+  "error": "null",
+  "sceneDecision": {
+    "chosenLabel": "Kapalua Coastal Trail",
+    "rationale": "Nearest landmark matches scene tags (sunset, ocean, sky).",
+    "confidence": "low"
+  }
+}
+```
+
+================================================================================
+
+
+
+# Logger Initialized at 2025-12-03T20:02:06.580Z
+
+
+# Logger Initialized at 2025-12-03T20:02:06.653Z
+
+
+# Logger Initialized at 2025-12-03T20:02:06.677Z
+
+
+# Logger Initialized at 2025-12-03T20:02:07.469Z
+
+
+# Logger Initialized at 2025-12-03T20:02:07.593Z
+
+#### Tool Used: Google Reverse Geocode
+**Timestamp:** 2025-12-03T20:02:07.648Z
+
+**Input:**
+```json
+{
+  "lat": 37,
+  "lon": -122,
+  "url": "https://maps.googleapis.com/maps/api/geocode/json?latlng=37,-122&key=****"
+}
+```
+
+**Output:**
+```json
+"Fetching..."
+```
+
+
+
+# Logger Initialized at 2025-12-03T20:02:07.663Z
+
+#### Tool Used: Google Reverse Geocode
+**Timestamp:** 2025-12-03T20:02:07.848Z
+
+**Input:**
+```json
+{
+  "lat": 37,
+  "lon": -122
+}
+```
+
+**Output:**
+```json
+{
+  "address": "null"
+}
+```
+
+
+
+# Logger Initialized at 2025-12-03T20:02:07.986Z
+
+
+# Logger Initialized at 2025-12-03T20:02:08.064Z
+
+
+# Logger Initialized at 2025-12-03T20:02:08.205Z
+
+
+# Logger Initialized at 2025-12-03T20:02:08.225Z
+
+
+# Logger Initialized at 2025-12-03T20:02:08.329Z
+
+
+# Logger Initialized at 2025-12-03T20:02:08.348Z
+
+
+# Logger Initialized at 2025-12-03T20:02:08.376Z
+
+
+# Logger Initialized at 2025-12-03T20:02:08.422Z
+
+
+# Logger Initialized at 2025-12-03T20:02:08.435Z
+
+
+# Logger Initialized at 2025-12-03T20:02:08.452Z
+
+
+# Logger Initialized at 2025-12-03T20:02:08.463Z
+
+================================================================================
+# Graph Execution Started
+**Run ID:** 05b72957-00e6-42be-8363-03c7352c9eb8
+**Timestamp:** 2025-12-03T20:02:08.829Z
+
+## Initial State
+```json
+{
+  "runId": "05b72957-00e6-42be-8363-03c7352c9eb8",
+  "filename": "tmp_test.jpg",
+  "fileBuffer": "[Buffer: 19 bytes]",
+  "imageBase64": "[Base64 Image Data Omitted]",
+  "imageMime": "image/jpeg",
+  "metadata": {
+    "dateTime": "null",
+    "cameraModel": "null"
+  },
+  "gpsString": "null",
+  "device": "null",
+  "modelOverrides": {},
+  "classification": "null",
+  "poiAnalysis": "null",
+  "rich_search_context": "null",
+  "finalResult": "null",
+  "error": "null"
+}
+```
+
+
+## Graph Execution Finished
+**Run ID:** 05b72957-00e6-42be-8363-03c7352c9eb8
+**Timestamp:** 2025-12-03T20:02:08.830Z
+
+## Final State
+```json
+{
+  "classification": "scenery_or_general_subject",
+  "finalResult": {
+    "caption": "Test",
+    "description": "desc",
+    "keywords": "a,b"
+  }
+}
+```
+
+================================================================================
+
+
+
+# Logger Initialized at 2025-12-03T20:02:08.909Z
+
+
+# Logger Initialized at 2025-12-03T20:02:08.909Z
+
+================================================================================
+# Graph Execution Started
+**Run ID:** 68e0950c-b4e3-45f0-8d45-beba4b17eff0
+**Timestamp:** 2025-12-03T20:02:08.969Z
+
+## Initial State
+```json
+{
+  "runId": "68e0950c-b4e3-45f0-8d45-beba4b17eff0",
+  "filename": "tmp_test.heic",
+  "fileBuffer": "[Buffer: 19 bytes]",
+  "imageBase64": "[Base64 Image Data Omitted]",
+  "imageMime": "image/jpeg",
+  "metadata": {
+    "dateTime": "null",
+    "cameraModel": "null"
+  },
+  "gpsString": "null",
+  "device": "null",
+  "modelOverrides": {},
+  "classification": "null",
+  "poiAnalysis": "null",
+  "rich_search_context": "null",
+  "finalResult": "null",
+  "error": "null"
+}
+```
+
+
+## Graph Execution Finished
+**Run ID:** 68e0950c-b4e3-45f0-8d45-beba4b17eff0
+**Timestamp:** 2025-12-03T20:02:08.971Z
+
+## Final State
+```json
+{
+  "classification": "scenery_or_general_subject",
+  "finalResult": {
+    "caption": "HEIC Test",
+    "description": "desc heic",
+    "keywords": "x,y"
+  }
+}
+```
+
+================================================================================
+
+
+================================================================================
+# Graph Execution Started
+**Run ID:** ea0f09c6-0d97-41de-a7b4-8c8b84136b3e
+**Timestamp:** 2025-12-03T20:02:09.197Z
+
+## Initial State
+```json
+{
+  "runId": "ea0f09c6-0d97-41de-a7b4-8c8b84136b3e",
+  "filename": "photo.HEIC.processed.jpg",
+  "fileBuffer": "[Buffer: 18 bytes]",
+  "imageBase64": "[Base64 Image Data Omitted]",
+  "imageMime": "image/jpeg",
+  "metadata": {
+    "DateTimeOriginal": "null",
+    "Make": "null",
+    "Model": "null",
+    "LensModel": "null",
+    "ISO": "null",
+    "FNumber": "null",
+    "ExposureTime": "null",
+    "Flash": "null",
+    "GPSLatitude": "undefined",
+    "GPSLongitude": "undefined",
+    "GPSAltitude": "undefined",
+    "UserComment": "null",
+    "dateTime": "null",
+    "cameraModel": "null"
+  },
+  "gpsString": "null",
+  "device": "null",
+  "modelOverrides": {},
+  "classification": "null",
+  "poiAnalysis": "null",
+  "rich_search_context": "null",
+  "finalResult": "null",
+  "error": "null"
+}
+```
+
+
+## Graph Execution Finished
+**Run ID:** ea0f09c6-0d97-41de-a7b4-8c8b84136b3e
+**Timestamp:** 2025-12-03T20:02:09.198Z
+
+## Final State
+```json
+{
+  "finalResult": {
+    "caption": "test",
+    "description": "test",
+    "keywords": "test"
+  },
+  "classification": "null"
+}
+```
+
+================================================================================
+
+
+
+# Logger Initialized at 2025-12-03T20:02:09.442Z
+
+#### Tool Used: Google Nearby Places (Food)
+**Timestamp:** 2025-12-03T20:02:09.450Z
+
+**Input:**
+```json
+{
+  "lat": 37.123,
+  "lon": -122.456,
+  "radius": 250,
+  "type": "restaurant",
+  "url": "https://maps.googleapis.com/maps/api/place/nearbysearch/json?location=37.123%2C-122.456&radius=250&type=restaurant&key=****"
+}
+```
+
+**Output:**
+```json
+"Fetching..."
+```
+
+
+#### Tool Used: Google Nearby Places (Food)
+**Timestamp:** 2025-12-03T20:02:09.451Z
+
+**Input:**
+```json
+{
+  "lat": 37.123,
+  "lon": -122.456,
+  "radius": 250,
+  "type": "restaurant"
+}
+```
+
+**Output:**
+```json
+[
+  {
+    "place_id": "p2",
+    "name": "Far Bar",
+    "types": [
+      "bar",
+      "restaurant"
+    ],
+    "geometry": {
+      "location": {
+        "lat": 37.125,
+        "lng": -122.456
+      }
+    },
+    "vicinity": "Oakland, CA",
+    "rating": 4.2,
+    "user_ratings_total": 65
+  },
+  {
+    "place_id": "p1",
+    "name": "Near Cafe",
+    "types": [
+      "cafe"
+    ],
+    "geometry": {
+      "location": {
+        "lat": 37.123,
+        "lng": -122.456
+      }
+    },
+    "vicinity": "Oakland, CA",
+    "rating": 4.5,
+    "user_ratings_total": 120
+  }
+]
+```
+
+
+#### Tool Used: Google Nearby Places (Food)
+**Timestamp:** 2025-12-03T20:02:09.457Z
+
+**Input:**
+```json
+{
+  "lat": 37.123,
+  "lon": -122.456,
+  "radius": 250,
+  "type": "cafe",
+  "url": "https://maps.googleapis.com/maps/api/place/nearbysearch/json?location=37.123%2C-122.456&radius=250&type=cafe&key=****"
+}
+```
+
+**Output:**
+```json
+"Fetching..."
+```
+
+
+#### Tool Used: Google Nearby Places (Food)
+**Timestamp:** 2025-12-03T20:02:09.460Z
+
+**Input:**
+```json
+{
+  "lat": 37.123,
+  "lon": -122.456,
+  "radius": 250,
+  "type": "cafe"
+}
+```
+
+**Output:**
+```json
+[
+  {
+    "place_id": "p2",
+    "name": "Far Bar",
+    "types": [
+      "bar",
+      "restaurant"
+    ],
+    "geometry": {
+      "location": {
+        "lat": 37.125,
+        "lng": -122.456
+      }
+    },
+    "vicinity": "Oakland, CA",
+    "rating": 4.2,
+    "user_ratings_total": 65
+  },
+  {
+    "place_id": "p1",
+    "name": "Near Cafe",
+    "types": [
+      "cafe"
+    ],
+    "geometry": {
+      "location": {
+        "lat": 37.123,
+        "lng": -122.456
+      }
+    },
+    "vicinity": "Oakland, CA",
+    "rating": 4.5,
+    "user_ratings_total": 120
+  }
+]
+```
+
+
+#### Tool Used: Google Nearby Places (Food)
+**Timestamp:** 2025-12-03T20:02:09.462Z
+
+**Input:**
+```json
+{
+  "lat": 37.123,
+  "lon": -122.456,
+  "radius": 250,
+  "type": "bakery",
+  "url": "https://maps.googleapis.com/maps/api/place/nearbysearch/json?location=37.123%2C-122.456&radius=250&type=bakery&key=****"
+}
+```
+
+**Output:**
+```json
+"Fetching..."
+```
+
+
+#### Tool Used: Google Nearby Places (Food)
+**Timestamp:** 2025-12-03T20:02:09.463Z
+
+**Input:**
+```json
+{
+  "lat": 37.123,
+  "lon": -122.456,
+  "radius": 250,
+  "type": "bakery"
+}
+```
+
+**Output:**
+```json
+[
+  {
+    "place_id": "p2",
+    "name": "Far Bar",
+    "types": [
+      "bar",
+      "restaurant"
+    ],
+    "geometry": {
+      "location": {
+        "lat": 37.125,
+        "lng": -122.456
+      }
+    },
+    "vicinity": "Oakland, CA",
+    "rating": 4.2,
+    "user_ratings_total": 65
+  },
+  {
+    "place_id": "p1",
+    "name": "Near Cafe",
+    "types": [
+      "cafe"
+    ],
+    "geometry": {
+      "location": {
+        "lat": 37.123,
+        "lng": -122.456
+      }
+    },
+    "vicinity": "Oakland, CA",
+    "rating": 4.5,
+    "user_ratings_total": 120
+  }
+]
+```
+
+
+#### Tool Used: Google Nearby Places (Food)
+**Timestamp:** 2025-12-03T20:02:09.463Z
+
+**Input:**
+```json
+{
+  "lat": 37.123,
+  "lon": -122.456,
+  "radius": 250,
+  "type": "bar",
+  "url": "https://maps.googleapis.com/maps/api/place/nearbysearch/json?location=37.123%2C-122.456&radius=250&type=bar&key=****"
+}
+```
+
+**Output:**
+```json
+"Fetching..."
+```
+
+
+#### Tool Used: Google Nearby Places (Food)
+**Timestamp:** 2025-12-03T20:02:09.465Z
+
+**Input:**
+```json
+{
+  "lat": 37.123,
+  "lon": -122.456,
+  "radius": 250,
+  "type": "bar"
+}
+```
+
+**Output:**
+```json
+[
+  {
+    "place_id": "p2",
+    "name": "Far Bar",
+    "types": [
+      "bar",
+      "restaurant"
+    ],
+    "geometry": {
+      "location": {
+        "lat": 37.125,
+        "lng": -122.456
+      }
+    },
+    "vicinity": "Oakland, CA",
+    "rating": 4.2,
+    "user_ratings_total": 65
+  },
+  {
+    "place_id": "p1",
+    "name": "Near Cafe",
+    "types": [
+      "cafe"
+    ],
+    "geometry": {
+      "location": {
+        "lat": 37.123,
+        "lng": -122.456
+      }
+    },
+    "vicinity": "Oakland, CA",
+    "rating": 4.5,
+    "user_ratings_total": 120
+  }
+]
+```
+
+
+#### Tool Used: Google Nearby Places (Food)
+**Timestamp:** 2025-12-03T20:02:09.465Z
+
+**Input:**
+```json
+{
+  "lat": 37.123,
+  "lon": -122.456,
+  "radius": 250,
+  "type": "meal_takeaway",
+  "url": "https://maps.googleapis.com/maps/api/place/nearbysearch/json?location=37.123%2C-122.456&radius=250&type=meal_takeaway&key=****"
+}
+```
+
+**Output:**
+```json
+"Fetching..."
+```
+
+
+#### Tool Used: Google Nearby Places (Food)
+**Timestamp:** 2025-12-03T20:02:09.466Z
+
+**Input:**
+```json
+{
+  "lat": 37.123,
+  "lon": -122.456,
+  "radius": 250,
+  "type": "meal_takeaway"
+}
+```
+
+**Output:**
+```json
+[
+  {
+    "place_id": "p2",
+    "name": "Far Bar",
+    "types": [
+      "bar",
+      "restaurant"
+    ],
+    "geometry": {
+      "location": {
+        "lat": 37.125,
+        "lng": -122.456
+      }
+    },
+    "vicinity": "Oakland, CA",
+    "rating": 4.2,
+    "user_ratings_total": 65
+  },
+  {
+    "place_id": "p1",
+    "name": "Near Cafe",
+    "types": [
+      "cafe"
+    ],
+    "geometry": {
+      "location": {
+        "lat": 37.123,
+        "lng": -122.456
+      }
+    },
+    "vicinity": "Oakland, CA",
+    "rating": 4.5,
+    "user_ratings_total": 120
+  }
+]
+```
+
+
+#### Tool Used: Google Nearby Places (Food)
+**Timestamp:** 2025-12-03T20:02:09.466Z
+
+**Input:**
+```json
+{
+  "lat": 37.123,
+  "lon": -122.456,
+  "radius": 250,
+  "type": "meal_delivery",
+  "url": "https://maps.googleapis.com/maps/api/place/nearbysearch/json?location=37.123%2C-122.456&radius=250&type=meal_delivery&key=****"
+}
+```
+
+**Output:**
+```json
+"Fetching..."
+```
+
+
+#### Tool Used: Google Nearby Places (Food)
+**Timestamp:** 2025-12-03T20:02:09.467Z
+
+**Input:**
+```json
+{
+  "lat": 37.123,
+  "lon": -122.456,
+  "radius": 250,
+  "type": "meal_delivery"
+}
+```
+
+**Output:**
+```json
+[
+  {
+    "place_id": "p2",
+    "name": "Far Bar",
+    "types": [
+      "bar",
+      "restaurant"
+    ],
+    "geometry": {
+      "location": {
+        "lat": 37.125,
+        "lng": -122.456
+      }
+    },
+    "vicinity": "Oakland, CA",
+    "rating": 4.2,
+    "user_ratings_total": 65
+  },
+  {
+    "place_id": "p1",
+    "name": "Near Cafe",
+    "types": [
+      "cafe"
+    ],
+    "geometry": {
+      "location": {
+        "lat": 37.123,
+        "lng": -122.456
+      }
+    },
+    "vicinity": "Oakland, CA",
+    "rating": 4.5,
+    "user_ratings_total": 120
+  }
+]
+```
+
+
+#### Tool Used: Google Nearby Places (Food)
+**Timestamp:** 2025-12-03T20:02:09.469Z
+
+**Input:**
+```json
+{
+  "lat": 37.123,
+  "lon": -122.456,
+  "radius": 50,
+  "type": "restaurant",
+  "url": "https://maps.googleapis.com/maps/api/place/nearbysearch/json?location=37.123%2C-122.456&radius=50&type=restaurant&key=****"
+}
+```
+
+**Output:**
+```json
+"Fetching..."
+```
+
+
+#### Tool Used: Google Nearby Places (Food)
+**Timestamp:** 2025-12-03T20:02:09.470Z
+
+**Input:**
+```json
+{
+  "lat": 37.123,
+  "lon": -122.456,
+  "radius": 50,
+  "type": "restaurant"
+}
+```
+
+**Output:**
+```json
+[]
+```
+
+
+#### Tool Used: Google Nearby Places (Food)
+**Timestamp:** 2025-12-03T20:02:09.471Z
+
+**Input:**
+```json
+{
+  "lat": 37.123,
+  "lon": -122.456,
+  "radius": 50,
+  "type": "cafe",
+  "url": "https://maps.googleapis.com/maps/api/place/nearbysearch/json?location=37.123%2C-122.456&radius=50&type=cafe&key=****"
+}
+```
+
+**Output:**
+```json
+"Fetching..."
+```
+
+
+#### Tool Used: Google Nearby Places (Food)
+**Timestamp:** 2025-12-03T20:02:09.472Z
+
+**Input:**
+```json
+{
+  "lat": 37.123,
+  "lon": -122.456,
+  "radius": 50,
+  "type": "cafe"
+}
+```
+
+**Output:**
+```json
+[]
+```
+
+
+#### Tool Used: Google Nearby Places (Food)
+**Timestamp:** 2025-12-03T20:02:09.473Z
+
+**Input:**
+```json
+{
+  "lat": 37.123,
+  "lon": -122.456,
+  "radius": 50,
+  "type": "bakery",
+  "url": "https://maps.googleapis.com/maps/api/place/nearbysearch/json?location=37.123%2C-122.456&radius=50&type=bakery&key=****"
+}
+```
+
+**Output:**
+```json
+"Fetching..."
+```
+
+
+#### Tool Used: Google Nearby Places (Food)
+**Timestamp:** 2025-12-03T20:02:09.474Z
+
+**Input:**
+```json
+{
+  "lat": 37.123,
+  "lon": -122.456,
+  "radius": 50,
+  "type": "bakery"
+}
+```
+
+**Output:**
+```json
+[]
+```
+
+
+#### Tool Used: Google Nearby Places (Food)
+**Timestamp:** 2025-12-03T20:02:09.474Z
+
+**Input:**
+```json
+{
+  "lat": 37.123,
+  "lon": -122.456,
+  "radius": 50,
+  "type": "bar",
+  "url": "https://maps.googleapis.com/maps/api/place/nearbysearch/json?location=37.123%2C-122.456&radius=50&type=bar&key=****"
+}
+```
+
+**Output:**
+```json
+"Fetching..."
+```
+
+
+#### Tool Used: Google Nearby Places (Food)
+**Timestamp:** 2025-12-03T20:02:09.475Z
+
+**Input:**
+```json
+{
+  "lat": 37.123,
+  "lon": -122.456,
+  "radius": 50,
+  "type": "bar"
+}
+```
+
+**Output:**
+```json
+[]
+```
+
+
+#### Tool Used: Google Nearby Places (Food)
+**Timestamp:** 2025-12-03T20:02:09.476Z
+
+**Input:**
+```json
+{
+  "lat": 37.123,
+  "lon": -122.456,
+  "radius": 50,
+  "type": "meal_takeaway",
+  "url": "https://maps.googleapis.com/maps/api/place/nearbysearch/json?location=37.123%2C-122.456&radius=50&type=meal_takeaway&key=****"
+}
+```
+
+**Output:**
+```json
+"Fetching..."
+```
+
+
+#### Tool Used: Google Nearby Places (Food)
+**Timestamp:** 2025-12-03T20:02:09.477Z
+
+**Input:**
+```json
+{
+  "lat": 37.123,
+  "lon": -122.456,
+  "radius": 50,
+  "type": "meal_takeaway"
+}
+```
+
+**Output:**
+```json
+[]
+```
+
+
+#### Tool Used: Google Nearby Places (Food)
+**Timestamp:** 2025-12-03T20:02:09.478Z
+
+**Input:**
+```json
+{
+  "lat": 37.123,
+  "lon": -122.456,
+  "radius": 50,
+  "type": "meal_delivery",
+  "url": "https://maps.googleapis.com/maps/api/place/nearbysearch/json?location=37.123%2C-122.456&radius=50&type=meal_delivery&key=****"
+}
+```
+
+**Output:**
+```json
+"Fetching..."
+```
+
+
+#### Tool Used: Google Nearby Places (Food)
+**Timestamp:** 2025-12-03T20:02:09.478Z
+
+**Input:**
+```json
+{
+  "lat": 37.123,
+  "lon": -122.456,
+  "radius": 50,
+  "type": "meal_delivery"
+}
+```
+
+**Output:**
+```json
+[]
+```
+
+
+#### Tool Used: Google Nearby Places (Food)
+**Timestamp:** 2025-12-03T20:02:09.479Z
+
+**Input:**
+```json
+{
+  "lat": 37.123,
+  "lon": -122.456,
+  "radius": 100,
+  "type": "restaurant",
+  "url": "https://maps.googleapis.com/maps/api/place/nearbysearch/json?location=37.123%2C-122.456&radius=100&type=restaurant&key=****"
+}
+```
+
+**Output:**
+```json
+"Fetching..."
+```
+
+
+#### Tool Used: Google Nearby Places (Food)
+**Timestamp:** 2025-12-03T20:02:09.480Z
+
+**Input:**
+```json
+{
+  "lat": 37.123,
+  "lon": -122.456,
+  "radius": 100,
+  "type": "restaurant"
+}
+```
+
+**Output:**
+```json
+[]
+```
+
+
+#### Tool Used: Google Nearby Places (Food)
+**Timestamp:** 2025-12-03T20:02:09.482Z
+
+**Input:**
+```json
+{
+  "lat": 37.123,
+  "lon": -122.456,
+  "radius": 100,
+  "type": "cafe",
+  "url": "https://maps.googleapis.com/maps/api/place/nearbysearch/json?location=37.123%2C-122.456&radius=100&type=cafe&key=****"
+}
+```
+
+**Output:**
+```json
+"Fetching..."
+```
+
+
+#### Tool Used: Google Nearby Places (Food)
+**Timestamp:** 2025-12-03T20:02:09.484Z
+
+**Input:**
+```json
+{
+  "lat": 37.123,
+  "lon": -122.456,
+  "radius": 100,
+  "type": "cafe"
+}
+```
+
+**Output:**
+```json
+[]
+```
+
+
+#### Tool Used: Google Nearby Places (Food)
+**Timestamp:** 2025-12-03T20:02:09.484Z
+
+**Input:**
+```json
+{
+  "lat": 37.123,
+  "lon": -122.456,
+  "radius": 100,
+  "type": "bakery",
+  "url": "https://maps.googleapis.com/maps/api/place/nearbysearch/json?location=37.123%2C-122.456&radius=100&type=bakery&key=****"
+}
+```
+
+**Output:**
+```json
+"Fetching..."
+```
+
+
+#### Tool Used: Google Nearby Places (Food)
+**Timestamp:** 2025-12-03T20:02:09.485Z
+
+**Input:**
+```json
+{
+  "lat": 37.123,
+  "lon": -122.456,
+  "radius": 100,
+  "type": "bakery"
+}
+```
+
+**Output:**
+```json
+[]
+```
+
+
+#### Tool Used: Google Nearby Places (Food)
+**Timestamp:** 2025-12-03T20:02:09.485Z
+
+**Input:**
+```json
+{
+  "lat": 37.123,
+  "lon": -122.456,
+  "radius": 100,
+  "type": "bar",
+  "url": "https://maps.googleapis.com/maps/api/place/nearbysearch/json?location=37.123%2C-122.456&radius=100&type=bar&key=****"
+}
+```
+
+**Output:**
+```json
+"Fetching..."
+```
+
+
+#### Tool Used: Google Nearby Places (Food)
+**Timestamp:** 2025-12-03T20:02:09.485Z
+
+**Input:**
+```json
+{
+  "lat": 37.123,
+  "lon": -122.456,
+  "radius": 100,
+  "type": "bar"
+}
+```
+
+**Output:**
+```json
+[]
+```
+
+
+#### Tool Used: Google Nearby Places (Food)
+**Timestamp:** 2025-12-03T20:02:09.486Z
+
+**Input:**
+```json
+{
+  "lat": 37.123,
+  "lon": -122.456,
+  "radius": 100,
+  "type": "meal_takeaway",
+  "url": "https://maps.googleapis.com/maps/api/place/nearbysearch/json?location=37.123%2C-122.456&radius=100&type=meal_takeaway&key=****"
+}
+```
+
+**Output:**
+```json
+"Fetching..."
+```
+
+
+#### Tool Used: Google Nearby Places (Food)
+**Timestamp:** 2025-12-03T20:02:09.486Z
+
+**Input:**
+```json
+{
+  "lat": 37.123,
+  "lon": -122.456,
+  "radius": 100,
+  "type": "meal_takeaway"
+}
+```
+
+**Output:**
+```json
+[]
+```
+
+
+#### Tool Used: Google Nearby Places (Food)
+**Timestamp:** 2025-12-03T20:02:09.489Z
+
+**Input:**
+```json
+{
+  "lat": 37.123,
+  "lon": -122.456,
+  "radius": 100,
+  "type": "meal_delivery",
+  "url": "https://maps.googleapis.com/maps/api/place/nearbysearch/json?location=37.123%2C-122.456&radius=100&type=meal_delivery&key=****"
+}
+```
+
+**Output:**
+```json
+"Fetching..."
+```
+
+
+#### Tool Used: Google Nearby Places (Food)
+**Timestamp:** 2025-12-03T20:02:09.490Z
+
+**Input:**
+```json
+{
+  "lat": 37.123,
+  "lon": -122.456,
+  "radius": 100,
+  "type": "meal_delivery"
+}
+```
+
+**Output:**
+```json
+[]
+```
+
+
+#### Tool Used: Google Nearby Places (Food)
+**Timestamp:** 2025-12-03T20:02:09.492Z
+
+**Input:**
+```json
+{
+  "lat": 37.123,
+  "lon": -122.456,
+  "radius": 200,
+  "type": "restaurant",
+  "url": "https://maps.googleapis.com/maps/api/place/nearbysearch/json?location=37.123%2C-122.456&radius=200&type=restaurant&key=****"
+}
+```
+
+**Output:**
+```json
+"Fetching..."
+```
+
+
+#### Tool Used: Google Nearby Places (Food)
+**Timestamp:** 2025-12-03T20:02:09.493Z
+
+**Input:**
+```json
+{
+  "lat": 37.123,
+  "lon": -122.456,
+  "radius": 200,
+  "type": "restaurant"
+}
+```
+
+**Output:**
+```json
+[]
+```
+
+
+#### Tool Used: Google Nearby Places (Food)
+**Timestamp:** 2025-12-03T20:02:09.493Z
+
+**Input:**
+```json
+{
+  "lat": 37.123,
+  "lon": -122.456,
+  "radius": 200,
+  "type": "cafe",
+  "url": "https://maps.googleapis.com/maps/api/place/nearbysearch/json?location=37.123%2C-122.456&radius=200&type=cafe&key=****"
+}
+```
+
+**Output:**
+```json
+"Fetching..."
+```
+
+
+#### Tool Used: Google Nearby Places (Food)
+**Timestamp:** 2025-12-03T20:02:09.494Z
+
+**Input:**
+```json
+{
+  "lat": 37.123,
+  "lon": -122.456,
+  "radius": 200,
+  "type": "cafe"
+}
+```
+
+**Output:**
+```json
+[]
+```
+
+
+#### Tool Used: Google Nearby Places (Food)
+**Timestamp:** 2025-12-03T20:02:09.495Z
+
+**Input:**
+```json
+{
+  "lat": 37.123,
+  "lon": -122.456,
+  "radius": 200,
+  "type": "bakery",
+  "url": "https://maps.googleapis.com/maps/api/place/nearbysearch/json?location=37.123%2C-122.456&radius=200&type=bakery&key=****"
+}
+```
+
+**Output:**
+```json
+"Fetching..."
+```
+
+
+#### Tool Used: Google Nearby Places (Food)
+**Timestamp:** 2025-12-03T20:02:09.496Z
+
+**Input:**
+```json
+{
+  "lat": 37.123,
+  "lon": -122.456,
+  "radius": 200,
+  "type": "bakery"
+}
+```
+
+**Output:**
+```json
+[]
+```
+
+
+#### Tool Used: Google Nearby Places (Food)
+**Timestamp:** 2025-12-03T20:02:09.498Z
+
+**Input:**
+```json
+{
+  "lat": 37.123,
+  "lon": -122.456,
+  "radius": 200,
+  "type": "bar",
+  "url": "https://maps.googleapis.com/maps/api/place/nearbysearch/json?location=37.123%2C-122.456&radius=200&type=bar&key=****"
+}
+```
+
+**Output:**
+```json
+"Fetching..."
+```
+
+
+#### Tool Used: Google Nearby Places (Food)
+**Timestamp:** 2025-12-03T20:02:09.499Z
+
+**Input:**
+```json
+{
+  "lat": 37.123,
+  "lon": -122.456,
+  "radius": 200,
+  "type": "bar"
+}
+```
+
+**Output:**
+```json
+[]
+```
+
+
+#### Tool Used: Google Nearby Places (Food)
+**Timestamp:** 2025-12-03T20:02:09.500Z
+
+**Input:**
+```json
+{
+  "lat": 37.123,
+  "lon": -122.456,
+  "radius": 200,
+  "type": "meal_takeaway",
+  "url": "https://maps.googleapis.com/maps/api/place/nearbysearch/json?location=37.123%2C-122.456&radius=200&type=meal_takeaway&key=****"
+}
+```
+
+**Output:**
+```json
+"Fetching..."
+```
+
+
+#### Tool Used: Google Nearby Places (Food)
+**Timestamp:** 2025-12-03T20:02:09.500Z
+
+**Input:**
+```json
+{
+  "lat": 37.123,
+  "lon": -122.456,
+  "radius": 200,
+  "type": "meal_takeaway"
+}
+```
+
+**Output:**
+```json
+[]
+```
+
+
+#### Tool Used: Google Nearby Places (Food)
+**Timestamp:** 2025-12-03T20:02:09.501Z
+
+**Input:**
+```json
+{
+  "lat": 37.123,
+  "lon": -122.456,
+  "radius": 200,
+  "type": "meal_delivery",
+  "url": "https://maps.googleapis.com/maps/api/place/nearbysearch/json?location=37.123%2C-122.456&radius=200&type=meal_delivery&key=****"
+}
+```
+
+**Output:**
+```json
+"Fetching..."
+```
+
+
+#### Tool Used: Google Nearby Places (Food)
+**Timestamp:** 2025-12-03T20:02:09.501Z
+
+**Input:**
+```json
+{
+  "lat": 37.123,
+  "lon": -122.456,
+  "radius": 200,
+  "type": "meal_delivery"
+}
+```
+
+**Output:**
+```json
+[]
+```
+
+
+#### Tool Used: Google Nearby Places (Food)
+**Timestamp:** 2025-12-03T20:02:09.502Z
+
+**Input:**
+```json
+{
+  "lat": 37.123,
+  "lon": -122.456,
+  "radius": 1000,
+  "type": "restaurant",
+  "url": "https://maps.googleapis.com/maps/api/place/nearbysearch/json?location=37.123%2C-122.456&radius=1000&type=restaurant&key=****"
+}
+```
+
+**Output:**
+```json
+"Fetching..."
+```
+
+
+#### Tool Used: Google Nearby Places (Food)
+**Timestamp:** 2025-12-03T20:02:09.507Z
+
+**Input:**
+```json
+{
+  "lat": 37.123,
+  "lon": -122.456,
+  "radius": 1000,
+  "type": "restaurant"
+}
+```
+
+**Output:**
+```json
+[
+  {
+    "place_id": "p_large",
+    "name": "Far Restaurant",
+    "types": [
+      "restaurant"
+    ],
+    "geometry": {
+      "location": {
+        "lat": 1,
+        "lng": 2
+      }
+    }
+  }
+]
+```
+
+
+
+# Logger Initialized at 2025-12-03T20:02:09.509Z
+
+#### Tool Used: Google Nearby Places (Food)
+**Timestamp:** 2025-12-03T20:02:09.510Z
+
+**Input:**
+```json
+{
+  "lat": 37.123,
+  "lon": -122.456,
+  "radius": 1000,
+  "type": "cafe",
+  "url": "https://maps.googleapis.com/maps/api/place/nearbysearch/json?location=37.123%2C-122.456&radius=1000&type=cafe&key=****"
+}
+```
+
+**Output:**
+```json
+"Fetching..."
+```
+
+
+#### Tool Used: Google Nearby Places (Food)
+**Timestamp:** 2025-12-03T20:02:09.514Z
+
+**Input:**
+```json
+{
+  "lat": 37.123,
+  "lon": -122.456,
+  "radius": 1000,
+  "type": "cafe"
+}
+```
+
+**Output:**
+```json
+[
+  {
+    "place_id": "p_large",
+    "name": "Far Restaurant",
+    "types": [
+      "restaurant"
+    ],
+    "geometry": {
+      "location": {
+        "lat": 1,
+        "lng": 2
+      }
+    }
+  }
+]
+```
+
+
+#### Tool Used: Google Nearby Places (Food)
+**Timestamp:** 2025-12-03T20:02:09.514Z
+
+**Input:**
+```json
+{
+  "lat": 37.123,
+  "lon": -122.456,
+  "radius": 1000,
+  "type": "bakery",
+  "url": "https://maps.googleapis.com/maps/api/place/nearbysearch/json?location=37.123%2C-122.456&radius=1000&type=bakery&key=****"
+}
+```
+
+**Output:**
+```json
+"Fetching..."
+```
+
+
+#### Tool Used: Google Nearby Places (Food)
+**Timestamp:** 2025-12-03T20:02:09.517Z
+
+**Input:**
+```json
+{
+  "lat": 37.123,
+  "lon": -122.456,
+  "radius": 1000,
+  "type": "bakery"
+}
+```
+
+**Output:**
+```json
+[
+  {
+    "place_id": "p_large",
+    "name": "Far Restaurant",
+    "types": [
+      "restaurant"
+    ],
+    "geometry": {
+      "location": {
+        "lat": 1,
+        "lng": 2
+      }
+    }
+  }
+]
+```
+
+
+#### Tool Used: Google Nearby Places (Food)
+**Timestamp:** 2025-12-03T20:02:09.519Z
+
+**Input:**
+```json
+{
+  "lat": 37.123,
+  "lon": -122.456,
+  "radius": 1000,
+  "type": "bar",
+  "url": "https://maps.googleapis.com/maps/api/place/nearbysearch/json?location=37.123%2C-122.456&radius=1000&type=bar&key=****"
+}
+```
+
+**Output:**
+```json
+"Fetching..."
+```
+
+
+#### Tool Used: Google Nearby Places (Food)
+**Timestamp:** 2025-12-03T20:02:09.522Z
+
+**Input:**
+```json
+{
+  "lat": 37.123,
+  "lon": -122.456,
+  "radius": 1000,
+  "type": "bar"
+}
+```
+
+**Output:**
+```json
+[
+  {
+    "place_id": "p_large",
+    "name": "Far Restaurant",
+    "types": [
+      "restaurant"
+    ],
+    "geometry": {
+      "location": {
+        "lat": 1,
+        "lng": 2
+      }
+    }
+  }
+]
+```
+
+
+#### Tool Used: Google Nearby Places (Food)
+**Timestamp:** 2025-12-03T20:02:09.523Z
+
+**Input:**
+```json
+{
+  "lat": 37.123,
+  "lon": -122.456,
+  "radius": 1000,
+  "type": "meal_takeaway",
+  "url": "https://maps.googleapis.com/maps/api/place/nearbysearch/json?location=37.123%2C-122.456&radius=1000&type=meal_takeaway&key=****"
+}
+```
+
+**Output:**
+```json
+"Fetching..."
+```
+
+
+#### Tool Used: Google Nearby Places (Food)
+**Timestamp:** 2025-12-03T20:02:09.524Z
+
+**Input:**
+```json
+{
+  "lat": 37.123,
+  "lon": -122.456,
+  "radius": 1000,
+  "type": "meal_takeaway"
+}
+```
+
+**Output:**
+```json
+[
+  {
+    "place_id": "p_large",
+    "name": "Far Restaurant",
+    "types": [
+      "restaurant"
+    ],
+    "geometry": {
+      "location": {
+        "lat": 1,
+        "lng": 2
+      }
+    }
+  }
+]
+```
+
+
+#### Tool Used: Google Nearby Places (Food)
+**Timestamp:** 2025-12-03T20:02:09.525Z
+
+**Input:**
+```json
+{
+  "lat": 37.123,
+  "lon": -122.456,
+  "radius": 1000,
+  "type": "meal_delivery",
+  "url": "https://maps.googleapis.com/maps/api/place/nearbysearch/json?location=37.123%2C-122.456&radius=1000&type=meal_delivery&key=****"
+}
+```
+
+**Output:**
+```json
+"Fetching..."
+```
+
+
+#### Tool Used: Google Nearby Places (Food)
+**Timestamp:** 2025-12-03T20:02:09.527Z
+
+**Input:**
+```json
+{
+  "lat": 37.123,
+  "lon": -122.456,
+  "radius": 1000,
+  "type": "meal_delivery"
+}
+```
+
+**Output:**
+```json
+[
+  {
+    "place_id": "p_large",
+    "name": "Far Restaurant",
+    "types": [
+      "restaurant"
+    ],
+    "geometry": {
+      "location": {
+        "lat": 1,
+        "lng": 2
+      }
+    }
+  }
+]
+```
+
+
+
+# Logger Initialized at 2025-12-03T20:02:09.577Z
+
+#### Tool Used: Google Nearby Places
+**Timestamp:** 2025-12-03T20:02:09.586Z
+
+**Input:**
+```json
+{
+  "lat": 37.123,
+  "lon": -122.456,
+  "radius": 61,
+  "url": "https://maps.googleapis.com/maps/api/place/nearbysearch/json?location=37.123%2C-122.456&radius=61&type=park%7Cmuseum%7Ctourist_attraction%7Cnatural_feature&key=****"
+}
+```
+
+**Output:**
+```json
+"Fetching..."
+```
+
+
+#### Tool Used: Google Nearby Places
+**Timestamp:** 2025-12-03T20:02:09.590Z
+
+**Input:**
+```json
+{
+  "lat": 37.123,
+  "lon": -122.456,
+  "radius": 61
+}
+```
+
+**Output:**
+```json
+[
+  {
+    "id": "abc123",
+    "name": "Contra Costa Canal Trail",
+    "category": "trail",
+    "lat": 37.123,
+    "lon": -122.456,
+    "distanceMeters": 0,
+    "address": "Walnut Creek, CA",
+    "source": "google",
+    "confidence": "high"
+  }
+]
+```
+
+
+#### Tool Used: Google Nearby Places
+**Timestamp:** 2025-12-03T20:02:09.594Z
+
+**Input:**
+```json
+{
+  "lat": 37.124,
+  "lon": -122.457,
+  "radius": 61,
+  "url": "https://maps.googleapis.com/maps/api/place/nearbysearch/json?location=37.124%2C-122.457&radius=61&type=park%7Cmuseum%7Ctourist_attraction%7Cnatural_feature&key=****"
+}
+```
+
+**Output:**
+```json
+"Fetching..."
+```
+
+
+#### Tool Used: Google Nearby Places
+**Timestamp:** 2025-12-03T20:02:09.595Z
+
+**Input:**
+```json
+{
+  "lat": 37.124,
+  "lon": -122.457,
+  "radius": 61
+}
+```
+
+**Output:**
+```json
+[
+  {
+    "id": "def456",
+    "name": "Lime Ridge Open Space",
+    "category": "park",
+    "lat": 37.124,
+    "lon": -122.457,
+    "distanceMeters": 0,
+    "address": "Walnut Creek, CA",
+    "source": "google",
+    "confidence": "high"
+  }
+]
+```
+
