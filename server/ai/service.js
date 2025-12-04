@@ -409,10 +409,11 @@ const { AnalysisResultSchema } = require('./schemas');
  * @param {Object|string} [options.metadata] - EXIF/metadata associated with the image. May be a stringified JSON.
  * @param {string} [options.gps] - Precomputed GPS string (lat,lon) or empty string.
  * @param {string} [options.device] - Device make/model string.
+ * @param {boolean} [options.isRecheck=false] - Whether this is a recheck of existing photo.
  * @returns {Promise<Object>} Resolves with an object: { caption, description, keywords }.
  * @throws Error when the workflow returns an error or omits the final result payload.
  */
-async function processPhotoAI({ fileBuffer, filename, metadata, gps, device }, modelOverrides = {}) {
+async function processPhotoAI({ fileBuffer, filename, metadata, gps, device, isRecheck = false }, modelOverrides = {}) {
   let imageBuffer;
   let imageMime;
   const ext = path.extname(filename).toLowerCase();
@@ -501,14 +502,21 @@ async function processPhotoAI({ fileBuffer, filename, metadata, gps, device }, m
   if (sanitizedInitial.imageBase64) sanitizedInitial.imageBase64 = '[omitted]';
   // Keep logs concise: print keys and a few summary fields instead of full metadata
   logger.info('[Graph] Initial state for %s: keys=%s classification=%s gps=%s', filename || '<unknown>', Object.keys(sanitizedInitial).join(','), sanitizedInitial.classification || '<none>', sanitizedInitial.gpsString || '<none>');
-  auditLogger.logGraphStart(runId, sanitizedInitial);
+  const runType = isRecheck ? 'Recheck' : 'Standard';
+  auditLogger.logGraphStart(runId, sanitizedInitial, runType);
   } catch (err) {
     logger.warn('[Graph] Failed to log initial state for %s', filename, err && err.message ? err.message : err);
   }
 
   logger.info(`[Graph] Invoking graph for ${filename}...`);
-  const finalState = await aiGraph.invoke(initialState);
-  auditLogger.logGraphEnd(runId, finalState);
+  let finalState;
+  try {
+    finalState = await aiGraph.invoke(initialState);
+    auditLogger.logGraphEnd(runId, finalState);
+  } catch (graphError) {
+    auditLogger.logError(runId, 'Graph Invocation', graphError);
+    throw graphError;
+  }
   logger.debug('[AI Debug] [processPhotoAI] aiGraph.invoke returned', {
     hasFinalResult: Boolean(finalState && finalState.finalResult),
     classificationType: finalState && finalState.classification ? finalState.classification.type || null : null,
@@ -551,6 +559,8 @@ async function processPhotoAI({ fileBuffer, filename, metadata, gps, device }, m
   const rawResult = {
     ...finalState.finalResult,
     classification: finalState.classification,
+    poiAnalysis: finalState.poiAnalysis,
+    collectibleInsights: finalState.collectibleInsights
   };
 
   // Validate with Zod
@@ -756,12 +766,19 @@ async function updatePhotoAIMetadata(db, photoRow, storagePath, modelOverrides =
       // Pass the resized JPEG buffer with enriched metadata
       const processedFilename = photoRow.filename + '.processed.jpg';
 
+      // Detect if this is a recheck (existing AI metadata present)
+      const isRecheck = Boolean(photoRow.caption && photoRow.caption.trim() !== '' && photoRow.caption !== 'Processing...');
+      if (isRecheck) {
+        logger.info(`[AI Recheck] Re-processing photo with existing metadata: ${photoRow.filename}`);
+      }
+
       ai = await processPhotoAI({ 
         fileBuffer,
         filename: processedFilename, 
         metadata: enrichedMeta, 
         gps, 
-        device 
+        device,
+        isRecheck
       }, modelOverrides);
       logger.debug('[AI Debug] [updatePhotoAIMetadata] processPhotoAI result keys', ai ? Object.keys(ai) : null);
     } catch (error) {
@@ -769,6 +786,11 @@ async function updatePhotoAIMetadata(db, photoRow, storagePath, modelOverrides =
       if (error && error.stack) {
         logger.error('[AI Debug] Stack trace:', error.stack);
       }
+      // Log error to audit system if we can extract runId from error context
+      // The runId is created inside processPhotoAI, so we need to parse it from logs or accept that
+      // top-level processPhotoAI failures won't have runId. For now, log with photoId as context.
+      const auditLogger = require('./langgraph/audit_logger');
+      auditLogger.logError(`photo-${photoRow.id}`, `AI Processing (${photoRow.filename})`, error);
       await db('photos').where({ id: photoRow.id }).update({ ai_retry_count: retryCount + 1 });
       return null;
     }

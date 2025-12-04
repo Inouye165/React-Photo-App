@@ -63,7 +63,14 @@ export default function useLocalPhotoPicker({ onUploadComplete, onUploadSuccess 
     setUploading(true);
     try {
       for (const photo of photosToUpload) {
-        await uploadPhotoToServer(photo.file);
+          const uploadResponse = await uploadPhotoToServer(photo.file);
+          // Log compass direction (if available) from server response
+          if (uploadResponse && uploadResponse.metadata) {
+            const direction = uploadResponse.metadata.compass_heading;
+            console.log(`Photo '${photo.name}': Compass direction =`, direction !== undefined ? direction : 'Not found');
+          } else {
+            console.log(`Photo '${photo.name}': No metadata returned from server.`);
+          }
       }
 
   // toast removed: upload success

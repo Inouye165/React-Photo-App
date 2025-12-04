@@ -286,7 +286,7 @@ async function convertHeicToJpegBufferInternal(input, quality = 90) {
   }
 
   try {
-    const buffer = await s.jpeg({ quality }).toBuffer();
+    const buffer = await s.jpeg({ quality }).withMetadata().toBuffer();
     return buffer;
   } catch (err) {
     try {

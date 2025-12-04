@@ -629,6 +629,44 @@ module.exports = function createPhotosRouter({ db, supabase }) {
       if (!photo) {
         return res.status(404).json({ error: 'Photo not found' });
       }
+
+      // Re-extract metadata from the photo file first
+      try {
+        const { downloadFromStorage, extractMetadata } = require('../media/backgroundProcessor');
+        
+        logger.info(`Re-extracting metadata for photo ${photo.id} during recheck-ai`);
+        
+        let buffer;
+        let filename = photo.filename;
+        
+        try {
+          buffer = await downloadFromStorage(photo.filename);
+        } catch {
+          // Try processed version if original fails
+          const processedFilename = photo.filename.replace(/\.heic$/i, '.heic.processed.jpg');
+          try {
+            buffer = await downloadFromStorage(processedFilename);
+            filename = processedFilename;
+          } catch (err2) {
+            logger.warn(`Could not re-extract metadata for photo ${photo.id}: ${err2.message}`);
+            // Don't fail the whole recheck if metadata extraction fails
+          }
+        }
+
+        if (buffer) {
+          const metadata = await extractMetadata(buffer, filename);
+          if (metadata && Object.keys(metadata).length > 0) {
+            await photosDb.updatePhoto(photo.id, req.user.id, {
+              metadata: JSON.stringify(metadata)
+            });
+            logger.info(`Successfully re-extracted metadata for photo ${photo.id}`);
+          }
+        }
+      } catch (metadataError) {
+        logger.warn(`Metadata re-extraction failed for photo ${photo.id}:`, metadataError.message);
+        // Continue with AI processing even if metadata extraction fails
+      }
+
       // Always enqueue a job for rechecking AI metadata
       const modelOverride = req.body && req.body.model ? req.body.model : (req.query && req.query.model ? req.query.model : null);
       if (modelOverride && !photosAi.isModelAllowed(modelOverride)) {
@@ -644,10 +682,67 @@ module.exports = function createPhotosRouter({ db, supabase }) {
       } catch (err) {
         logger.error('Failed to enqueue AI recheck job:', err && err.message);
       }
-      return res.status(202).json({ message: 'AI recheck queued.', photoId: photo.id });
+      return res.status(202).json({ message: 'AI recheck queued (metadata re-extracted).', photoId: photo.id });
     } catch (error) {
       logger.error('Error processing AI recheck:', error);
       return res.status(500).json({ error: 'Failed to process AI recheck' });
+    }
+  });
+
+  // --- Re-extract metadata endpoint ---
+  // Re-extracts EXIF metadata from the stored photo file
+  router.post('/:id/reextract-metadata', authenticateToken, async (req, res) => {
+    try {
+      const photo = await photosDb.getPhotoById(req.params.id, req.user.id);
+      if (!photo) {
+        return res.status(404).json({ error: 'Photo not found' });
+      }
+
+      const { downloadFromStorage, extractMetadata } = require('../media/backgroundProcessor');
+      
+      logger.info(`Re-extracting metadata for photo ${photo.id}`);
+      
+      // Try to download the photo
+      let buffer;
+      let filename = photo.filename;
+      
+      try {
+        buffer = await downloadFromStorage(photo.filename);
+      } catch {
+        // Try processed version if original fails
+        const processedFilename = photo.filename.replace(/\.heic$/i, '.heic.processed.jpg');
+        try {
+          buffer = await downloadFromStorage(processedFilename);
+          filename = processedFilename;
+        } catch (err2) {
+          logger.error(`Failed to download photo ${photo.id}:`, err2.message);
+          return res.status(500).json({ error: 'Failed to download photo from storage' });
+        }
+      }
+
+      // Extract metadata
+      const metadata = await extractMetadata(buffer, filename);
+      
+      if (!metadata || Object.keys(metadata).length === 0) {
+        return res.status(500).json({ error: 'Failed to extract metadata' });
+      }
+
+      // Update database
+      await photosDb.updatePhoto(photo.id, req.user.id, {
+        metadata: JSON.stringify(metadata)
+      });
+
+      logger.info(`Successfully re-extracted metadata for photo ${photo.id}`);
+      
+      return res.status(200).json({
+        message: 'Metadata re-extracted successfully',
+        photoId: photo.id,
+        hasGPS: !!(metadata.latitude && metadata.longitude),
+        hasHeading: !!(metadata.GPSImgDirection || metadata.GPS?.imgDirection)
+      });
+    } catch (error) {
+      logger.error('Error re-extracting metadata:', error);
+      return res.status(500).json({ error: 'Failed to re-extract metadata' });
     }
   });
 

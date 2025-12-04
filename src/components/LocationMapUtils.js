@@ -51,7 +51,7 @@ export function getPhotoLocation(photo) {
     }
   }
   
-  // 3. Check GPS object
+  // 3. Check GPS object (uppercase)
   if (meta.GPS) {
     if (meta.GPS.latitude != null && meta.GPS.longitude != null) {
       const lat = Number(meta.GPS.latitude);
@@ -61,8 +61,19 @@ export function getPhotoLocation(photo) {
       }
     }
   }
+  
+  // 4. Check gps object (lowercase) with lat/lon
+  if (meta.gps) {
+    if (meta.gps.lat != null && meta.gps.lon != null) {
+      const lat = Number(meta.gps.lat);
+      const lng = Number(meta.gps.lon);
+      if (isValidLat(lat) && isValidLng(lng)) {
+        return { lat, lng, heading };
+      }
+    }
+  }
 
-  // 4. Check for gps string "lat,lon" if available (some backend scripts populate this)
+  // 5. Check for gps string "lat,lon" if available (some backend scripts populate this)
   if (photo.gps_string) {
     const parts = photo.gps_string.split(',').map(part => part.trim());
     if (parts.length === 2) {

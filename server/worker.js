@@ -18,6 +18,25 @@ const logger = require('./logger');
 console.log('[AI Debug] Worker entrypoint reached');
 logger.info('Starting AI Worker...');
 
+// Validate critical AI keys before starting worker to prevent API waste
+if (process.env.NODE_ENV !== 'test') {
+  const missingAIKeys = [];
+  
+  if (!process.env.OPENAI_API_KEY || process.env.OPENAI_API_KEY.trim() === '') {
+    missingAIKeys.push('OPENAI_API_KEY');
+  }
+  
+  if (missingAIKeys.length > 0) {
+    console.error('[worker] FATAL: Required AI API keys missing');
+    missingAIKeys.forEach(key => console.error(`[worker]  - ${key} is required`));
+    console.error('[worker] AI pipeline will fail without these keys');
+    console.error('[worker] Worker startup blocked to prevent unnecessary API costs');
+    process.exit(1);
+  }
+  
+  console.log('[worker] ✓ AI API keys present');
+}
+
 if (process.env.NODE_ENV !== 'production' && !process.env.GOOGLE_MAPS_API_KEY) {
   console.warn('[AI Worker] GOOGLE_MAPS_API_KEY is missing. Places API will be skipped.');
 }

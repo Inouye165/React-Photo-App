@@ -3,6 +3,7 @@ const supabase = require('../lib/supabaseClient');
 const logger = require('../logger');
 const { streamToSupabase } = require('../media/streamUploader');
 const { addAIJob, checkRedisAvailable } = require('../queue/index');
+const { extractMetadata } = require('../media/backgroundProcessor');
 
 /**
  * Streaming uploads router.
@@ -94,7 +95,33 @@ module.exports = function createUploadsRouter({ db }) {
         });
       }
 
-      // Insert minimal record into database
+      // IMMEDIATE EXIF EXTRACTION: Extract metadata right after upload
+      // This allows the frontend to display compass direction immediately
+      let immediateMetadata = {};
+      try {
+        // Download the file from Supabase Storage
+        const { data: fileBlob, error: downloadError } = await supabase.storage
+          .from('photos')
+          .download(storagePath);
+
+        if (!downloadError && fileBlob) {
+          const arrayBuffer = await fileBlob.arrayBuffer();
+          const buffer = Buffer.from(arrayBuffer);
+          
+          // Extract EXIF metadata (including compass heading)
+          immediateMetadata = await extractMetadata(buffer, uploadResult.filename);
+          logger.info(`Immediate EXIF extraction for ${uploadResult.filename}:`, {
+            hasGPS: !!(immediateMetadata.latitude && immediateMetadata.longitude),
+            hasDirection: !!(immediateMetadata.GPSImgDirection || immediateMetadata.GPSDestBearing),
+            direction: immediateMetadata.GPSImgDirection || immediateMetadata.GPSDestBearing || null
+          });
+        }
+      } catch (metadataErr) {
+        logger.warn('Immediate metadata extraction failed:', metadataErr.message);
+        // Continue with upload even if metadata extraction fails
+      }
+
+      // Insert record with immediate metadata
       const now = new Date().toISOString();
       const [insertedPhoto] = await db('photos')
         .insert({
@@ -106,8 +133,8 @@ module.exports = function createUploadsRouter({ db }) {
           user_id: req.user.id,
           created_at: now,
           updated_at: now,
-          // Metadata will be populated by background worker
-          metadata: JSON.stringify({ pending: true })
+          // Store immediate metadata or mark as pending
+          metadata: JSON.stringify(Object.keys(immediateMetadata).length > 0 ? immediateMetadata : { pending: true })
         })
         .returning(['id', 'filename', 'hash', 'storage_path']);
 
@@ -131,13 +158,24 @@ module.exports = function createUploadsRouter({ db }) {
       // Return 202 Accepted (async processing in background)
       // Or 200 OK if no background queue
       const statusCode = jobEnqueued ? 202 : 200;
+      
+      // Extract compass direction for easy access
+      const compassHeading = immediateMetadata.GPSImgDirection || 
+                            immediateMetadata.GPSDestBearing || 
+                            null;
+      
       res.status(statusCode).json({
         success: true,
         filename: uploadResult.filename,
         hash: uploadResult.hash,
         path: storagePath,
         photoId: insertedPhoto.id,
-        processing: jobEnqueued ? 'queued' : 'immediate'
+        processing: jobEnqueued ? 'queued' : 'immediate',
+        // Include immediate metadata in response (especially compass direction)
+        metadata: {
+          ...immediateMetadata,
+          compass_heading: compassHeading // Top-level field for easy access
+        }
       });
 
     } catch (error) {

@@ -137,64 +137,108 @@ async function nearbyPlaces(lat, lon, radius = 61, opts = {}) {
     return cached;
   }
 
-  // Prefer parks, open spaces, museums, etc. for scenery
-  const params = new URLSearchParams({
-    location: `${lat},${lon}`,
-    radius: String(radius),
-    type: 'park|museum|tourist_attraction|natural_feature',
-      key: API_KEY || 'test', // dummy value for test
-  });
-  // Google expects only one type per request, but we can try a pipe-separated list for broader matching (some APIs accept this)
-  // If only one type is allowed, use 'park' as primary, or consider making multiple requests for each type if needed.
-  const url = `https://maps.googleapis.com/maps/api/place/nearbysearch/json?${params.toString()}`;
+  // Google Places API does not support multiple types in a single request
+  // Issue parallel requests for each type and aggregate results
+  const types = ['park', 'museum', 'tourist_attraction', 'natural_feature'];
+  
   if (allowDevDebug) {
-    console.log('[infer_poi] About to call Google Places');
+    console.log('[infer_poi] About to call Google Places for types:', types);
     console.log('[infer_poi] key loaded:', Boolean(API_KEY));
     console.log('[infer_poi] lat/lon:', lat, lon);
-    console.log('[infer_poi] url (redacted):', `${redactUrl(url)}`);
   }
+
   try {
-    auditLogger.logToolCall(runId, 'Google Nearby Places', { lat, lon, radius, url: redactUrl(url) }, 'Fetching...');
-    const res = await fetchFn(url, { method: 'GET' });
-    if (!res.ok) {
-      const txt = await res.text();
-      logger.warn('[POI] nearbyPlaces failed', { status: res.status, body: txt });
-      if (allowDevDebug) {
-        console.error('[infer_poi] Google Places error:', `HTTP ${res.status}`);
-      }
-      auditLogger.logToolCall(runId, 'Google Nearby Places', { lat, lon, radius, status: res.status }, { error: txt });
-      return [];
-    }
-    const json = await res.json();
-    if (allowDevDebug) {
-      console.log('[infer_poi] raw places response:', JSON.stringify(json, null, 2));
-    }
-    const status = json?.status || 'OK';
-    const statusIsOk = status === 'OK' || status === 'ZERO_RESULTS';
-    if (!statusIsOk) {
-      const errorMessage = json?.error_message || null;
-      if (status === 'REQUEST_DENIED') {
-        requestDeniedUntil = Date.now() + REQUEST_DENIED_BACKOFF_MS;
-      }
-      const key = `${status}:${errorMessage || ''}`;
-      const lastLogged = statusHistory.get(key) || 0;
-      if (!lastLogged || Date.now() - lastLogged >= STATUS_WARN_THROTTLE_MS) {
-        statusHistory.set(key, Date.now());
-        const suffix = errorMessage ? ` (${errorMessage})` : '';
-        logger.warn(`[POI] Google Places API status ${status}${suffix}`);
-        if (status === 'REQUEST_DENIED') {
-          logger.warn(
-            '[POI] Verify that the configured GOOGLE_MAPS_API_KEY has the Places API enabled with billing and server-side access allowed.'
-          );
+    // Use Promise.allSettled to ensure partial failures don't reject the entire batch
+    const requests = types.map(async (type) => {
+      const params = new URLSearchParams({
+        location: `${lat},${lon}`,
+        radius: String(radius),
+        type,
+        key: API_KEY,
+      });
+      const url = `https://maps.googleapis.com/maps/api/place/nearbysearch/json?${params.toString()}`;
+      
+      try {
+        if (allowDevDebug) {
+          console.log(`[infer_poi] Fetching type: ${type}, url (redacted):`, redactUrl(url));
         }
+        auditLogger.logToolCall(runId, `Google Nearby Places (${type})`, { lat, lon, radius, url: redactUrl(url) }, 'Fetching...');
+        
+        const res = await fetchFn(url, { method: 'GET' });
+        if (!res.ok) {
+          const txt = await res.text();
+          logger.warn(`[POI] nearbyPlaces failed for type ${type}`, { status: res.status, body: txt });
+          if (allowDevDebug) {
+            console.error(`[infer_poi] Google Places error for ${type}:`, `HTTP ${res.status}`);
+          }
+          auditLogger.logToolCall(runId, `Google Nearby Places (${type})`, { lat, lon, radius, status: res.status }, { error: txt });
+          return []; // Return empty array for this type, don't fail the entire batch
+        }
+        
+        const json = await res.json();
+        if (allowDevDebug) {
+          // Verbose logging disabled - uncomment for debugging
+          // console.log(`[infer_poi] raw places response for ${type}:`, JSON.stringify(json, null, 2));
+        }
+        
+        const status = json?.status || 'OK';
+        const statusIsOk = status === 'OK' || status === 'ZERO_RESULTS';
+        if (!statusIsOk) {
+          const errorMessage = json?.error_message || null;
+          if (status === 'REQUEST_DENIED') {
+            requestDeniedUntil = Date.now() + REQUEST_DENIED_BACKOFF_MS;
+          }
+          const key = `${status}:${errorMessage || ''}`;
+          const lastLogged = statusHistory.get(key) || 0;
+          if (!lastLogged || Date.now() - lastLogged >= STATUS_WARN_THROTTLE_MS) {
+            statusHistory.set(key, Date.now());
+            const suffix = errorMessage ? ` (${errorMessage})` : '';
+            logger.warn(`[POI] Google Places API status ${status}${suffix} for type ${type}`);
+            if (status === 'REQUEST_DENIED') {
+              logger.warn(
+                '[POI] Verify that the configured GOOGLE_MAPS_API_KEY has the Places API enabled with billing and server-side access allowed.'
+              );
+            }
+          }
+          if (allowDevDebug) {
+            console.error(`[infer_poi] Google Places status error for ${type}:`, status, errorMessage || '');
+          }
+          return []; // Return empty array for this type
+        }
+        
+        const results = Array.isArray(json.results) ? json.results : [];
+        auditLogger.logToolCall(runId, `Google Nearby Places (${type})`, { lat, lon, radius }, { count: results.length });
+        return results;
+      } catch (err) {
+        logger.warn(`[POI] nearbyPlaces exception for type ${type}`, err && err.message ? err.message : err);
+        if (allowDevDebug) {
+          console.error(`[infer_poi] Google Places error for ${type}:`, err && err.message ? err.message : err);
+        }
+        auditLogger.logToolCall(runId, `Google Nearby Places (${type})`, { lat, lon, radius }, { error: err.message });
+        return []; // Return empty array for this type on exception
       }
-      if (allowDevDebug) {
-        console.error('[infer_poi] Google Places status error:', status, errorMessage || '');
+    });
+
+    const settledResults = await Promise.allSettled(requests);
+    
+    // Flatten all successful results
+    const allResults = settledResults
+      .filter(result => result.status === 'fulfilled')
+      .flatMap(result => result.value);
+
+    // Deduplicate by place_id using a Map for O(N) efficiency
+    const deduplicatedMap = new Map();
+    for (const r of allResults) {
+      const placeId = r.place_id;
+      if (placeId && !deduplicatedMap.has(placeId)) {
+        deduplicatedMap.set(placeId, r);
       }
-      return [];
     }
-    const results = Array.isArray(json.results) ? json.results : [];
-    const pois = results.map((r) => {
+
+    const uniqueResults = Array.from(deduplicatedMap.values());
+
+    // Transform results into POI objects
+    const pois = uniqueResults.map((r) => {
       const placeLat = r.geometry?.location?.lat;
       const placeLon = r.geometry?.location?.lng;
       const distance = (placeLat && placeLon) ? haversineDistanceMeters(lat, lon, placeLat, placeLon) : undefined;
@@ -227,8 +271,9 @@ async function nearbyPlaces(lat, lon, radius = 61, opts = {}) {
         confidence,
       };
     });
+    
     cacheSet(cacheKey, pois);
-    auditLogger.logToolCall(runId, 'Google Nearby Places', { lat, lon, radius }, pois);
+    auditLogger.logToolCall(runId, 'Google Nearby Places', { lat, lon, radius, totalResults: pois.length }, pois);
     return pois;
   } catch (err) {
     logger.warn('[POI] nearbyPlaces exception', err && err.message ? err.message : err);

@@ -35,6 +35,25 @@ if (!process.env.GOOGLE_PLACES_API_KEY && !process.env.GOOGLE_MAPS_API_KEY) {
   console.warn('[POI] GOOGLE_MAPS_API_KEY missing; POI lookups disabled');
 }
 
+// Validate critical AI keys before starting server to prevent API waste
+if (process.env.NODE_ENV !== 'test') {
+  const missingAIKeys = [];
+  
+  if (!process.env.OPENAI_API_KEY || process.env.OPENAI_API_KEY.trim() === '') {
+    missingAIKeys.push('OPENAI_API_KEY');
+  }
+  
+  if (missingAIKeys.length > 0) {
+    console.error('[server] FATAL: Required AI API keys missing');
+    missingAIKeys.forEach(key => console.error(`[server]  - ${key} is required`));
+    console.error('[server] AI pipeline will fail without these keys');
+    console.error('[server] Server startup blocked to prevent unnecessary API costs');
+    process.exit(1);
+  }
+  
+  console.log('[server] ✓ AI API keys present');
+}
+
 
 // Validate required environment variables
 

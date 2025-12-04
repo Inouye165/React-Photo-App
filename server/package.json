@@ -9,6 +9,7 @@
     "dev": "nodemon server.js",
     "worker": "node worker.js",
     "dev:worker": "nodemon worker.js",
+    "pretest": "node scripts/validate-keys.js",
     "test": "jest",
     "test:db": "node scripts/test-db-connection.js",
     "verify:env": "node scripts/verify-env.js",
