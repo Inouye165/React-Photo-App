@@ -642,6 +642,7 @@ async function updatePhotoAIMetadata(db, photoRow, storagePath, modelOverrides =
     }
     
     let ai;
+    let enrichedMeta;
     try {
       // Stream and resize file from Supabase Storage to avoid OOM
       logger.debug('[AI Debug] [updatePhotoAIMetadata] Creating signed URL for streaming:', storagePath);
@@ -734,7 +735,7 @@ async function updatePhotoAIMetadata(db, photoRow, storagePath, modelOverrides =
       }
 
       // Merge rich metadata into the legacy meta object for backward compatibility
-      const enrichedMeta = {
+      enrichedMeta = {
         ...meta,
         ...(richMetadata && {
           DateTimeOriginal: richMetadata.created_at,
@@ -813,7 +814,20 @@ async function updatePhotoAIMetadata(db, photoRow, storagePath, modelOverrides =
       ? String(ai.keywords).trim()
       : generateKeywordsFallback(description);
 
-    const metadataKeywordParts = buildMetadataKeywordParts(meta, coords);
+    // Use enrichedMeta if available (it contains the extracted GPS/device info), otherwise fallback to DB meta
+    // Also use the updated 'gps' string to parse coordinates if available
+    const finalMeta = (typeof enrichedMeta !== 'undefined') ? enrichedMeta : meta;
+    let finalCoords = coords;
+    if (gps && gps.includes(',')) {
+      const [latStr, lonStr] = gps.split(',');
+      const lat = Number(latStr);
+      const lon = Number(lonStr);
+      if (!Number.isNaN(lat) && !Number.isNaN(lon)) {
+        finalCoords = { lat, lon, source: 'enriched' };
+      }
+    }
+
+    const metadataKeywordParts = buildMetadataKeywordParts(finalMeta, finalCoords);
     keywords = mergeKeywordStrings(keywords, metadataKeywordParts);
 
     // --- TRANSACTIONAL WRITE: update photos and insert collectible (if any) atomically ---
