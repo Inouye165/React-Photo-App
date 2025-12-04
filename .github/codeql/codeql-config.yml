@@ -6,6 +6,7 @@ paths-ignore:
   - '**/tests/**'
   - '**/*.test.js'
   - '**/*.spec.js'
+  - '**/scripts/test-keys.js'  # Local diagnostic tool, not used in production
 
 # Use default security queries
 queries:
