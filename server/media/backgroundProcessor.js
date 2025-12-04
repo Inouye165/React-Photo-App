@@ -45,6 +45,30 @@ async function downloadFromStorage(storagePath) {
 }
 
 /**
+ * Converts DMS (Degrees, Minutes, Seconds) array to decimal degrees.
+ * If input is already a number, returns it as-is.
+ * 
+ * @param {number|Array} value - DMS array [degrees, minutes, seconds] or decimal number
+ * @returns {number|null} Decimal degrees or null
+ */
+function dmsToDecimal(value) {
+  if (value == null) return null;
+  
+  // Already a decimal number
+  if (typeof value === 'number') {
+    return value;
+  }
+  
+  // DMS array format [degrees, minutes, seconds]
+  if (Array.isArray(value) && value.length >= 2) {
+    const [degrees, minutes, seconds = 0] = value;
+    return degrees + minutes / 60 + seconds / 3600;
+  }
+  
+  return null;
+}
+
+/**
  * Extracts EXIF metadata from an image buffer.
  * Handles HEIC conversion if needed.
  * 
@@ -54,29 +78,64 @@ async function downloadFromStorage(storagePath) {
  */
 async function extractMetadata(buffer, filename) {
   try {
-    const ext = filename.toLowerCase().split('.').pop();
-    let processBuffer = buffer;
-
-    // Convert HEIC to JPEG for metadata extraction if sharp can't handle it
-    if (ext === 'heic' || ext === 'heif') {
-      try {
-        processBuffer = await convertHeicToJpegBuffer(buffer);
-      } catch {
-        // Continue with original buffer - exifr might handle it
-      }
-    }
-
-    const metadata = await exifr.parse(processBuffer, {
+    // Extract EXIF directly from original buffer - don't convert HEIC to JPEG
+    // as conversion can lose metadata and may fail on certain HEIC compression formats
+    const metadata = await exifr.parse(buffer, {
       tiff: true,
       ifd0: true,
       exif: true,
       gps: true,
       xmp: true,
       icc: true,
-      iptc: true
+      iptc: true,
+      translateKeys: true,
+      translateValues: true
     });
 
-    return metadata || {};
+    if (!metadata) return {};
+
+    // Convert GPS coordinates from DMS to decimal if needed
+    let lat = dmsToDecimal(metadata.GPSLatitude || metadata.latitude);
+    let lon = dmsToDecimal(metadata.GPSLongitude || metadata.longitude);
+    
+    // Apply hemisphere signs (S and W are negative)
+    if (lat != null && metadata.GPSLatitudeRef === 'S') {
+      lat = -Math.abs(lat);
+    }
+    if (lon != null && metadata.GPSLongitudeRef === 'W') {
+      lon = -Math.abs(lon);
+    }
+
+    // Normalize GPS fields for frontend compatibility
+    // Add top-level latitude/longitude (frontend check #1)
+    if (lat != null && lon != null) {
+      metadata.latitude = lat;
+      metadata.longitude = lon;
+      metadata.GPSLatitude = lat;
+      metadata.GPSLongitude = lon;
+    }
+
+    // Add nested gps object with shortened names (frontend check #4)
+    if (lat != null && lon != null) {
+      metadata.gps = {
+        lat,
+        lon,
+        alt: metadata.GPSAltitude || null,
+        direction: metadata.GPSImgDirection || metadata.GPSDestBearing || null
+      };
+    }
+
+    // Add nested GPS object with full names (frontend check #3)
+    if (lat != null && lon != null) {
+      metadata.GPS = {
+        latitude: lat,
+        longitude: lon,
+        altitude: metadata.GPSAltitude || null,
+        imgDirection: metadata.GPSImgDirection || metadata.GPSDestBearing || null
+      };
+    }
+
+    return metadata;
   } catch (err) {
     logger.warn(`Failed to extract EXIF for ${filename}:`, err.message);
     return {};

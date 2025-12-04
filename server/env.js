@@ -24,4 +24,11 @@ if (!process.env.GOOGLE_MAPS_API_KEY && process.env.GOOGLE_PLACES_API_KEY) {
   process.env.GOOGLE_MAPS_API_KEY = process.env.GOOGLE_PLACES_API_KEY;
 }
 
+// Safe default: If LangChain API key is missing, explicitly disable tracing
+// to prevent 403 errors from trace upload attempts
+if (!process.env.LANGCHAIN_API_KEY || process.env.LANGCHAIN_API_KEY.trim() === '') {
+  process.env.LANGCHAIN_TRACING_V2 = 'false';
+  console.warn('[env] LangChain API key missing; disabling tracing to prevent network errors.');
+}
+
 module.exports = process.env;

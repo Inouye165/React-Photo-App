@@ -6,6 +6,7 @@
   "scripts": {
     "dev": "vite",
     "build": "vite build",
+    "pretest": "node scripts/validate-keys.cjs",
     "test": "vitest",
     "test:ui": "vitest --ui",
     "test:run": "vitest run",

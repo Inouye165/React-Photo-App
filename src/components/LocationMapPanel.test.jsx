@@ -46,6 +46,14 @@ describe('getPhotoLocation', () => {
       expect(result).toEqual({ lat: 51.5074, lng: -0.1278, heading: 0 });
     });
 
+    it('extracts location from metadata.gps.lat/lon (lowercase)', () => {
+      const photo = {
+        metadata: { gps: { lat: 21.0036, lon: -156.6629 } }
+      };
+      const result = getPhotoLocation(photo);
+      expect(result).toEqual({ lat: 21.0036, lng: -156.6629, heading: 0 });
+    });
+
     it('extracts location from gps_string format', () => {
       const photo = { gps_string: '35.6762,139.6503' };
       const result = getPhotoLocation(photo);

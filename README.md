@@ -245,6 +245,7 @@ cd server && npm run worker
 - **[ROADMAP.md](docs/ROADMAP.md)** - Planned features and known limitations
 - **[CONTRIBUTING.md](docs/CONTRIBUTING.md)** - How to report bugs and suggest features
 - **[server/README.md](server/README.md)** - Backend architecture and API docs
+- **[server/ai/README.md](server/ai/README.md)** - AI service documentation (POI detection, LangGraph workflows)
 
 ---
 
