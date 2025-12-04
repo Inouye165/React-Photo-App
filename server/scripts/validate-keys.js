@@ -30,8 +30,8 @@ async function validateKeys() {
     process.exit(1);
   }
   
-  // Test OpenAI API key if present
-  if (process.env.OPENAI_API_KEY) {
+  // Test OpenAI API key if present (skip validation in CI)
+  if (process.env.OPENAI_API_KEY && !process.env.CI) {
     try {
       const response = await fetch('https://api.openai.com/v1/models', {
         method: 'GET',
@@ -49,8 +49,8 @@ async function validateKeys() {
     }
   }
   
-  // Test Google Maps API key if present (optional but warn if invalid)
-  if (process.env.GOOGLE_MAPS_API_KEY || process.env.GOOGLE_PLACES_API_KEY) {
+  // Test Google Maps API key if present (optional but warn if invalid, skip in CI)
+  if ((process.env.GOOGLE_MAPS_API_KEY || process.env.GOOGLE_PLACES_API_KEY) && !process.env.CI) {
     const apiKey = process.env.GOOGLE_MAPS_API_KEY || process.env.GOOGLE_PLACES_API_KEY;
     try {
       const testUrl = `https://maps.googleapis.com/maps/api/place/nearbysearch/json?location=47.6205,-122.3493&radius=500&type=park&key=${apiKey}`;
@@ -74,7 +74,11 @@ async function validateKeys() {
     process.exit(1);
   }
   
-  console.log('✅ All required API keys validated');
+  if (process.env.CI) {
+    console.log('✅ All required API keys present (CI mode - skipped validation)');
+  } else {
+    console.log('✅ All required API keys validated');
+  }
 }
 
 validateKeys().catch(error => {
