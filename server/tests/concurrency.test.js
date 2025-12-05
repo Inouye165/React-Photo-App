@@ -9,6 +9,7 @@
 jest.mock('sharp', () => {
   const mockSharp = jest.fn(() => ({
     metadata: jest.fn().mockResolvedValue({ format: 'jpeg' }),
+    rotate: jest.fn().mockReturnThis(),
     resize: jest.fn().mockReturnThis(),
     jpeg: jest.fn().mockReturnThis(),
     toBuffer: jest.fn().mockResolvedValue(Buffer.from('mock-thumbnail'))
@@ -203,6 +204,7 @@ describe('Image Processing Concurrency Limiting', () => {
       jest.mock('sharp', () => {
         const mockSharp = jest.fn(() => ({
           metadata: jest.fn().mockResolvedValue({ format: 'jpeg' }),
+          rotate: jest.fn().mockReturnThis(),
           resize: jest.fn().mockReturnThis(),
           jpeg: jest.fn().mockReturnThis(),
           toBuffer: jest.fn().mockResolvedValue(Buffer.from('mock'))

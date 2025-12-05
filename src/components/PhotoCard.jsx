@@ -85,6 +85,7 @@ export default function PhotoCard({
 }) {
   const [imageError, setImageError] = useState(false);
   const [imageLoaded, setImageLoaded] = useState(false);
+  const [useThumbnail, setUseThumbnail] = useState(true);
 
   const status = getStatusBadge(photo.state);
   const title = getDisplayTitle(photo);
@@ -95,13 +96,20 @@ export default function PhotoCard({
   // Determine if user can perform write actions
   const canWrite = accessLevel?.includes('write');
   
-  // Get image URL - prefer full image for better quality, fallback to thumbnail
-  // The full image URL provides crisp display, thumbnails are low-res and get blurry when scaled
-  const imageUrl = photo.url 
-    ? (getSignedUrl ? getSignedUrl(photo, 'full') : toUrl(photo.url, apiBaseUrl))
-    : photo.thumbnail 
-      ? (getSignedUrl ? getSignedUrl(photo) : toUrl(photo.thumbnail, apiBaseUrl))
-      : null;
+  // Get image URL - prefer thumbnail for performance, fallback to full image
+  // Thumbnails are much smaller and faster to load. Full image is only used if no thumbnail exists.
+  // If thumbnail fails to load (race condition or error), we fallback to full image via useThumbnail state.
+  const getImageUrl = () => {
+    if (photo.thumbnail && useThumbnail) {
+      return getSignedUrl ? getSignedUrl(photo) : toUrl(photo.thumbnail, apiBaseUrl);
+    }
+    if (photo.url) {
+      return getSignedUrl ? getSignedUrl(photo, 'full') : toUrl(photo.url, apiBaseUrl);
+    }
+    return null;
+  };
+
+  const imageUrl = getImageUrl();
 
   const handleEdit = (e) => {
     e.stopPropagation();
@@ -147,7 +155,16 @@ export default function PhotoCard({
             alt={photo.caption || photo.filename || 'Photo thumbnail'}
             className={`w-full h-full object-cover transition-opacity duration-300 ${imageLoaded ? 'opacity-100' : 'opacity-0'}`}
             onLoad={() => setImageLoaded(true)}
-            onError={() => setImageError(true)}
+            onError={() => {
+              // If thumbnail failed, try falling back to full image
+              if (useThumbnail && photo.thumbnail && photo.url) {
+                setUseThumbnail(false);
+                setImageLoaded(false); // Reset loaded state for the new image
+                setImageError(false);  // Reset error state
+              } else {
+                setImageError(true);
+              }
+            }}
             loading="lazy"
           />
         ) : (

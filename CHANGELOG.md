@@ -1,5 +1,13 @@
 # Changelog
 
+## [Unreleased]
+
+### ⚡ Performance
+* **Optimized gallery performance:** Prioritized thumbnail loading over full-resolution images in `PhotoCard` component to reduce bandwidth usage and improve load times.
+
+### 🐛 Bug Fixes
+* **Fixed thumbnail generation:** Corrected orientation (auto-rotate) and improved resolution (90px -> 400px) in background processing pipeline.
+
 ## [v1.1.0] - 2025-10-30
 
 ### 🔒 Security (Critical)

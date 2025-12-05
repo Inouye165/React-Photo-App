@@ -168,23 +168,32 @@ async function generateThumbnail(input, hash) {
       const format = metadata.format;
       
       let thumbnailBuffer;
-      if (format === 'heif') {
-        // Convert HEIC/HEIF to JPEG buffer first
-        try {
-          const jpegBuffer = await convertHeicToJpegBufferInternal(sanitizedInput, 90);
-          thumbnailBuffer = await sharp(jpegBuffer)
-            .resize(400, 400, { fit: 'inside' })
-            .jpeg({ quality: 85 })
-            .toBuffer();
-        } catch {
-          // Sharp thumbnail generation failed (logging removed)
-          return null;
-        }
-      } else {
+      
+      // Try direct processing first (works for JPEG, PNG, and HEIC if sharp supports it)
+      // Use 800x800 for high-DPI (Retina) display support - displays at 400x400 CSS pixels look crisp at 2x
+      try {
         thumbnailBuffer = await sharp(sanitizedInput)
-          .resize(400, 400, { fit: 'inside' })
+          .rotate()
+          .resize(800, 800, { fit: 'inside' })
           .jpeg({ quality: 85 })
           .toBuffer();
+      } catch {
+        // If direct processing failed and it's HEIC, try the fallback conversion
+        if (format === 'heif') {
+          try {
+            const jpegBuffer = await convertHeicToJpegBufferInternal(sanitizedInput, 90);
+            thumbnailBuffer = await sharp(jpegBuffer)
+              .rotate()
+              .resize(800, 800, { fit: 'inside' })
+              .jpeg({ quality: 85 })
+              .toBuffer();
+          } catch {
+            // Sharp thumbnail generation failed (logging removed)
+            return null;
+          }
+        } else {
+          return null;
+        }
       }
 
       // Upload thumbnail to Supabase Storage

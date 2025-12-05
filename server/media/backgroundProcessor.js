@@ -174,23 +174,37 @@ async function generateAndUploadThumbnail(buffer, filename, hash) {
     }
 
     const ext = filename.toLowerCase().split('.').pop();
-    let processBuffer = buffer;
 
-    // Convert HEIC to JPEG first
-    if (ext === 'heic' || ext === 'heif') {
-      try {
-        processBuffer = await convertHeicToJpegBuffer(buffer, 70);
-      } catch (err) {
-        logger.warn(`HEIC conversion failed for thumbnail:`, err.message);
+    // Try to generate thumbnail directly (works for JPEG, PNG, and HEIC if sharp supports it)
+    // Use 800x800 for high-DPI (Retina) display support - displays at 400x400 CSS pixels look crisp at 2x
+    let thumbnailBuffer;
+    try {
+      thumbnailBuffer = await sharp(buffer)
+        .rotate() // Auto-rotate based on EXIF orientation
+        .resize(800, 800, { fit: 'inside' })
+        .jpeg({ quality: 85 })
+        .toBuffer();
+    } catch (err) {
+      // If direct processing failed and it's HEIC, try the fallback conversion
+      if (ext === 'heic' || ext === 'heif') {
+        try {
+          // Use higher quality for intermediate step to avoid blurriness
+          const jpegBuffer = await convertHeicToJpegBuffer(buffer, 90);
+          thumbnailBuffer = await sharp(jpegBuffer)
+            .rotate() // Auto-rotate based on EXIF orientation
+            .resize(800, 800, { fit: 'inside' })
+            .jpeg({ quality: 85 })
+            .toBuffer();
+        } catch (fallbackErr) {
+          logger.warn(`HEIC fallback conversion failed for thumbnail:`, fallbackErr.message);
+          return null;
+        }
+      } else {
+        // Not HEIC or fallback failed
+        logger.error(`Thumbnail generation failed for ${filename}:`, err.message);
         return null;
       }
     }
-
-    // Generate thumbnail
-    const thumbnailBuffer = await sharp(processBuffer)
-      .resize(90, 90, { fit: 'inside' })
-      .jpeg({ quality: 70 })
-      .toBuffer();
 
     // Upload to storage
     const { error } = await supabase.storage
