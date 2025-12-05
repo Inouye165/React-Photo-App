@@ -342,4 +342,41 @@ describe('PhotoCard Component', () => {
       expect(cards).toHaveLength(3);
     });
   });
+
+  describe('Image Loading Logic', () => {
+    it('prioritizes thumbnail over full URL', () => {
+      const photoWithBoth = {
+        ...mockPhoto,
+        url: 'http://example.com/full.jpg',
+        thumbnail: 'http://example.com/thumb.jpg'
+      };
+      
+      render(<PhotoCard {...defaultProps} photo={photoWithBoth} />);
+      
+      const img = screen.getByRole('img');
+      expect(img).toHaveAttribute('src', 'http://example.com/thumb.jpg');
+    });
+
+    it('falls back to full URL when thumbnail is missing', () => {
+      const photoNoThumb = {
+        ...mockPhoto,
+        url: 'http://example.com/full.jpg',
+        thumbnail: null
+      };
+      
+      render(<PhotoCard {...defaultProps} photo={photoNoThumb} />);
+      
+      const img = screen.getByRole('img');
+      expect(img).toHaveAttribute('src', 'http://example.com/full.jpg');
+    });
+
+    it('handles image load error gracefully', () => {
+      render(<PhotoCard {...defaultProps} />);
+      
+      const img = screen.getByRole('img');
+      fireEvent.error(img);
+      
+      expect(screen.getByText('Failed to load')).toBeInTheDocument();
+    });
+  });
 });
