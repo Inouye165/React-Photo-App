@@ -62,8 +62,11 @@
   },
   "devDependencies": {
     "@axe-core/playwright": "^4.11.0",
+    "@babel/core": "^7.28.5",
+    "@babel/preset-env": "^7.28.5",
     "@eslint/js": "^9.38.0",
     "@playwright/test": "^1.56.1",
+    "babel-jest": "^30.2.0",
     "eslint": "^9.38.0",
     "eslint-plugin-react": "^7.37.5",
     "eslint-plugin-react-hooks": "^7.0.1",
@@ -86,6 +89,12 @@
       "^p-retry$": "<rootDir>/tests/__mocks__/p-retry.js",
       "^is-network-error$": "<rootDir>/tests/__mocks__/is-network-error.js"
     },
+    "transform": {
+      "^.+\\.[jt]sx?$": "babel-jest"
+    },
+    "transformIgnorePatterns": [
+      "node_modules/(?!(@langchain|@langchain/langgraph|p-queue)/)"
+    ],
     "collectCoverageFrom": [
       "**/*.js",
       "!node_modules/**",
