@@ -7,7 +7,10 @@ import { fileURLToPath } from 'url'
 const __dirname = path.dirname(fileURLToPath(import.meta.url))
 
 // https://vite.dev/config/
-export default defineConfig({
+export default defineConfig(({ mode }) => {
+  console.log(`[vite] Running in mode: ${mode}`);
+  console.log(`[vite] VITE_E2E: ${process.env.VITE_E2E}`);
+  return {
   plugins: [react()],
   // WARNING: Do not add aliases for 'konva' or 'konva/lib/...' here.
   // It breaks react-konva which relies on internal structure.
@@ -22,4 +25,5 @@ export default defineConfig({
     environment: 'jsdom',
     setupFiles: './src/test/setup.js',
   },
+}
 })

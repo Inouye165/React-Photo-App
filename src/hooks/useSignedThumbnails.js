@@ -236,6 +236,10 @@ export default function useSignedThumbnails(photos, token) {
 
     // For full-size images, return the photo.url directly (authenticated via cookie)
     if (type === 'full' && photo.url) {
+      // If URL is already absolute or a data URI, return as is
+      if (photo.url.startsWith('http') || photo.url.startsWith('data:')) {
+        return photo.url;
+      }
       return `${API_BASE_URL}${photo.url}`;
     }
 
