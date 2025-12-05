@@ -76,3 +76,6 @@ server/tests/test.dbserver/working/dev.db
 # Ensure migrations are not accidentally ignored
 !server/db/migrations/
 !server/db/migrations/*.js
+
+# Ignore langgraph execution logs and metadata
+langgraph_execution.md
