@@ -210,8 +210,8 @@ describe('Thumbnail URL API - Integration Tests', () => {
       expect(Number(exp)).toBeGreaterThan(0);
     });
 
-    test('should generate different signatures for multiple requests', async () => {
-      // Wait 1 second between requests to ensure different timestamps
+    test('should generate stable signatures within same time window', async () => {
+      // With 24-hour time windows, signatures should be identical within the same day
       const response1 = await request(app)
         .get(`/photos/${testPhotoId}/thumbnail-url`)
         .set('Authorization', `Bearer ${testToken}`)
@@ -224,9 +224,9 @@ describe('Thumbnail URL API - Integration Tests', () => {
         .set('Authorization', `Bearer ${testToken}`)
         .expect(200);
 
-      // URLs should be different (different signatures and expirations)
-      expect(response1.body.url).not.toBe(response2.body.url);
-      expect(response1.body.expiresAt).not.toBe(response2.body.expiresAt);
+      // URLs should be identical (same signatures and expirations within time window)
+      expect(response1.body.url).toBe(response2.body.url);
+      expect(response1.body.expiresAt).toBe(response2.body.expiresAt);
     });
   });
 

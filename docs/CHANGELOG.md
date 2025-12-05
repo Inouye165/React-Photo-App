@@ -13,6 +13,9 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/).
 - Mobile-responsive layouts
 - Batch operations (multi-select, delete, re-analyze)
 
+### Added
+- **[Performance]** Stable Signed URLs - Refactored URL signing to use 24-hour time windows aligned to UTC midnight. Signatures now remain stable within each window, enabling browser caching of signed thumbnail URLs (Phase 1 of caching optimization)
+
 ---
 
 ## [November 2025] - Security & Scalability Focus

@@ -218,3 +218,41 @@ If issues arise:
 **Implementation Date**: 2025-01-XX  
 **Branch**: `feat/image-caching-1d-and-dev-guard`  
 **Status**: ✅ Complete and Verified
+
+---
+
+## Phase 1: Stable Signed URLs (December 2025)
+
+### Problem: URL Churn
+The previous URL signing implementation used `Date.now() + 15min` for expiration, generating a unique signature for every request. This caused "URL Churn"—every page refresh generated unique URLs (`?sig=abc...` vs `?sig=xyz...`), forcing the browser to re-download images even if they hadn't changed.
+
+### Solution: 24-Hour Time Windows
+Refactored `signThumbnailUrl` in `server/utils/urlSigning.js` to use time windows aligned to UTC midnight:
+
+```javascript
+// Formula: ceiling(now / WINDOW) * WINDOW = next window boundary
+const TIME_WINDOW_SECONDS = 24 * 60 * 60; // 86400 seconds
+const nowSeconds = Math.floor(Date.now() / 1000);
+const expiresAt = Math.ceil((nowSeconds + 1) / TIME_WINDOW_SECONDS) * TIME_WINDOW_SECONDS;
+```
+
+### Benefits
+- **Cache Stability**: Same hash generates identical signatures throughout the day
+- **Browser Caching**: URLs remain stable, enabling effective HTTP caching
+- **Security Preserved**: Signatures still expire (at UTC midnight)
+
+### Test Coverage
+- **New Test File**: `server/tests/urlSigning.stability.test.js` (6 tests)
+  - Stability within same 24h window
+  - Rollover across 24h boundary
+  - Expiration alignment to UTC midnight
+- **Updated Legacy Tests**: `server/tests/urlSigning.unit.test.js` (24 tests)
+  - Changed "different signatures at different times" to "identical signatures within same window"
+
+### Verification
+- ✅ All URL signing tests pass (30 total)
+- ✅ Linting passes
+- ✅ TDD workflow followed (tests fail first, then pass)
+
+**Branch**: `feat/stable-signed-urls-logic`  
+**Status**: ✅ Phase 1 Complete

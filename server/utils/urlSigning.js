@@ -33,8 +33,15 @@ if (!SECRET) {
 /**
  * Default TTL for signed URLs (15 minutes)
  * Short enough to limit exposure window, long enough for normal browsing
+ * @deprecated TTL is now calculated based on time windows for cache stability
  */
 const DEFAULT_TTL_SECONDS = 15 * 60;
+
+/**
+ * Time window size in seconds (24 hours)
+ * Signatures remain stable within each window for improved browser caching
+ */
+const TIME_WINDOW_SECONDS = 24 * 60 * 60; // 86400 seconds
 
 /**
  * Generate HMAC-SHA256 signature for a thumbnail URL
@@ -77,12 +84,16 @@ function generateSignature(hash, expiresAt) {
  * Returns an object containing the query parameters needed to authenticate
  * the thumbnail request without cookies or headers.
  * 
+ * Uses 24-hour time windows aligned to UTC midnight for cache stability.
+ * All signatures generated within the same time window will be identical,
+ * enabling browser caching of signed URLs.
+ * 
  * @param {string} hash - Thumbnail hash (filename without extension)
- * @param {number} [ttlSeconds=900] - Time-to-live in seconds (default: 15 minutes)
+ * @param {number} [ttlSeconds=900] - Time-to-live in seconds (deprecated, ignored - uses time windows)
  * @returns {{sig: string, exp: number}} Query parameters for signed URL
  * 
  * @example
- * const params = signThumbnailUrl('abc123', 900);
+ * const params = signThumbnailUrl('abc123');
  * const url = `/display/thumbnails/abc123.jpg?sig=${params.sig}&exp=${params.exp}`;
  */
 function signThumbnailUrl(hash, ttlSeconds = DEFAULT_TTL_SECONDS) {
@@ -93,9 +104,13 @@ function signThumbnailUrl(hash, ttlSeconds = DEFAULT_TTL_SECONDS) {
     throw new Error('TTL must be a positive number');
   }
 
-  // Calculate expiration timestamp (seconds since epoch)
-  const now = Math.floor(Date.now() / 1000);
-  const expiresAt = now + ttlSeconds;
+  // Calculate expiration timestamp using time windows for cache stability
+  // Windows align to epoch (UTC midnight boundaries)
+  const nowSeconds = Math.floor(Date.now() / 1000);
+  
+  // Find the end of the current time window
+  // Formula: ceil(now / WINDOW) * WINDOW gives the next window boundary
+  const expiresAt = Math.ceil((nowSeconds + 1) / TIME_WINDOW_SECONDS) * TIME_WINDOW_SECONDS;
   
   // Generate signature
   const signature = generateSignature(hash, expiresAt);
@@ -229,5 +244,6 @@ module.exports = {
   signThumbnailUrl,
   verifyThumbnailSignature,
   validateSignedUrl,
-  DEFAULT_TTL_SECONDS
+  DEFAULT_TTL_SECONDS,
+  TIME_WINDOW_SECONDS
 };

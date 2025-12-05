@@ -1,8 +1,7 @@
 const {
   signThumbnailUrl,
   verifyThumbnailSignature,
-  validateSignedUrl,
-  DEFAULT_TTL_SECONDS
+  validateSignedUrl
 } = require('../utils/urlSigning');
 
 // Mock environment for consistent testing
@@ -22,15 +21,18 @@ describe('URL Signing - Unit Tests', () => {
       expect(result.exp).toBeGreaterThan(Math.floor(Date.now() / 1000));
     });
 
-    test('should use default TTL when not specified', () => {
+    test('should use time window alignment for expiration', () => {
       const hash = 'test123';
-      const before = Math.floor(Date.now() / 1000);
       const result = signThumbnailUrl(hash);
-      const after = Math.floor(Date.now() / 1000);
-
-      // Expiration should be approximately DEFAULT_TTL_SECONDS in the future
-      expect(result.exp).toBeGreaterThanOrEqual(before + DEFAULT_TTL_SECONDS);
-      expect(result.exp).toBeLessThanOrEqual(after + DEFAULT_TTL_SECONDS + 1);
+      
+      // Expiration should be aligned to a 24-hour window boundary (UTC midnight)
+      // The TIME_WINDOW_SECONDS is 86400 (24 hours)
+      const TIME_WINDOW_SECONDS = 86400;
+      expect(result.exp % TIME_WINDOW_SECONDS).toBe(0);
+      
+      // Expiration should be in the future
+      const now = Math.floor(Date.now() / 1000);
+      expect(result.exp).toBeGreaterThan(now);
     });
 
     test('should generate different signatures for different hashes', () => {
@@ -44,17 +46,18 @@ describe('URL Signing - Unit Tests', () => {
       expect(result1.sig).not.toBe(result2.sig);
     });
 
-    test('should generate different signatures for same hash at different times', async () => {
+    test('should generate identical signatures for same hash within same time window', async () => {
       const hash = 'abc123';
       const result1 = signThumbnailUrl(hash, 900);
       
-      // Wait 1 second to ensure different timestamp
+      // Wait 1 second - signatures should still be identical within same window
       await new Promise(resolve => setTimeout(resolve, 1100));
       
       const result2 = signThumbnailUrl(hash, 900);
 
-      expect(result1.sig).not.toBe(result2.sig);
-      expect(result1.exp).not.toBe(result2.exp);
+      // With 24-hour time windows, signatures should be identical within the same day
+      expect(result1.sig).toBe(result2.sig);
+      expect(result1.exp).toBe(result2.exp);
     });
 
     test('should throw error for invalid hash', () => {
