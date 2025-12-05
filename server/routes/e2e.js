@@ -62,7 +62,7 @@ router.get('/e2e-verify', (req, res) => {
   try {
     const decoded = jwt.verify(token, JWT_SECRET);
     // Check if this is an E2E test token
-    if (decoded.sub === '11111111-1111-1111-1111-111111111111') {
+    if (decoded.sub === '11111111-1111-4111-8111-111111111111') {
       return res.json({
         success: true,
         user: {
