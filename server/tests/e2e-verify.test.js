@@ -14,7 +14,7 @@ describe('E2E Verify Endpoint - /api/test/e2e-verify', () => {
   beforeEach(() => {
     // Generate a test E2E token
     testToken = jwt.sign({
-      sub: 'e2e-test-user',
+      sub: '11111111-1111-4111-8111-111111111111',
       username: 'e2e-test',
       role: 'admin',
       email: 'e2e@example.com'
@@ -35,7 +35,7 @@ describe('E2E Verify Endpoint - /api/test/e2e-verify', () => {
 
       expect(response.body.success).toBe(true);
       expect(response.body.user).toBeDefined();
-      expect(response.body.user.id).toBe('e2e-test-user');
+      expect(response.body.user.id).toBe('11111111-1111-4111-8111-111111111111');
       expect(response.body.user.email).toBe('e2e@example.com');
       expect(response.body.user.role).toBe('admin');
     });

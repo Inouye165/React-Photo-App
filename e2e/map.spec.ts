@@ -2,6 +2,11 @@ import { test, expect } from '@playwright/test';
 
 test.describe('Map Component', () => {
   test('should render Google Maps and not the OpenStreetMap fallback', async ({ page, context }) => {
+    // Inject E2E mode flag
+    await page.addInitScript(() => {
+      window.__E2E_MODE__ = true;
+    });
+
     // E2E login: make request to get the auth cookie
     const loginResponse = await context.request.post('http://localhost:3001/api/test/e2e-login');
     expect(loginResponse.ok()).toBeTruthy();
@@ -20,12 +25,27 @@ test.describe('Map Component', () => {
       }]);
     }
 
+    // Mock e2e-verify endpoint to ensure auth works
+    await page.route('**/api/test/e2e-verify', async route => {
+      await route.fulfill({
+        json: {
+          success: true,
+          user: {
+            id: '11111111-1111-4111-8111-111111111111',
+            username: 'e2e-test',
+            role: 'admin',
+            email: 'e2e@example.com'
+          }
+        }
+      });
+    });
+
     // 3. Mock Photos List
     const mockPhoto = {
       id: 'test-photo-1',
       filename: 'test-photo.jpg',
-      url: 'https://via.placeholder.com/150',
-      thumbnail: 'https://via.placeholder.com/150',
+      url: 'data:image/gif;base64,R0lGODlhAQABAIAAAAAAAP///yH5BAEAAAAALAAAAAABAAEAAAIBRAA7',
+      thumbnail: 'data:image/gif;base64,R0lGODlhAQABAIAAAAAAAP///yH5BAEAAAAALAAAAAABAAEAAAIBRAA7',
       latitude: 37.7749,
       longitude: -122.4194,
       metadata: {
@@ -46,7 +66,7 @@ test.describe('Map Component', () => {
         await route.fulfill({
           json: {
             success: true,
-            url: 'https://via.placeholder.com/150'
+            url: 'data:image/gif;base64,R0lGODlhAQABAIAAAAAAAP///yH5BAEAAAAALAAAAAABAAEAAAIBRAA7'
           }
         });
         return;
@@ -70,6 +90,20 @@ test.describe('Map Component', () => {
             success: true, 
             models: ['gpt-4-vision-preview'] 
           } 
+        });
+        return;
+      }
+
+      // Handle status for SmartRouter
+      if (url.includes('/status')) {
+        await route.fulfill({
+          json: {
+            success: true,
+            working: 1,
+            inprogress: 0,
+            finished: 0,
+            total: 1
+          }
         });
         return;
       }
@@ -110,7 +144,7 @@ test.describe('Map Component', () => {
         json: {
           success: true,
           user: {
-            id: 'e2e-test-user',
+            id: '11111111-1111-4111-8111-111111111111',
             username: 'e2e-test',
             role: 'admin',
             email: 'e2e@example.com'

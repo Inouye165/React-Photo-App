@@ -1,3 +1,4 @@
+
 import { defineConfig } from '@playwright/test';
 
 export default defineConfig({
@@ -5,9 +6,7 @@ export default defineConfig({
   testMatch: ['**/*.spec.ts'],
   reporter: 'list',
   timeout: 60_000,
-  // Limit workers to prevent overloading during parallel test runs
   workers: 2,
-  // Retry failed tests once
   retries: 1,
   use: {
     headless: true,
@@ -15,16 +14,27 @@ export default defineConfig({
   },
   webServer: [
     {
-      command: 'npm run dev',
+      command: 'npm run dev -- --mode e2e',
       port: 5173,
       reuseExistingServer: process.env.CI ? false : true,
       timeout: 120_000,
+      env: {
+        VITE_E2E: 'true',
+      }
     },
     {
       command: 'npm run --prefix server start',
       port: 3001,
       reuseExistingServer: process.env.CI ? false : true,
       timeout: 120_000,
+    }
+  ],
+  // Only run tests in the e2e directory
+  projects: [
+    {
+      name: 'e2e',
+      testDir: 'e2e',
+      testMatch: ['**/*.spec.ts'],
     }
   ]
 });

@@ -107,7 +107,7 @@ async function syncSessionCookie(accessToken) {
  * The 401 is silently caught here to avoid console noise.
  */
 async function checkE2ESession() {
-  const isE2E = import.meta.env.VITE_E2E === 'true';
+  const isE2E = import.meta.env.VITE_E2E === 'true' || window.__E2E_MODE__ === true;
   if (!isE2E) return null; // No-op in normal dev/prod
   try {
     const API_BASE_URL = import.meta.env.VITE_API_BASE_URL || 'http://localhost:3001';
@@ -156,7 +156,7 @@ export const AuthProvider = ({ children }) => {
   }, [cookieReady, user]);
 
   useEffect(() => {
-    const isE2E = import.meta.env.VITE_E2E === 'true';
+    const isE2E = import.meta.env.VITE_E2E === 'true' || window.__E2E_MODE__ === true;
     if (isE2E) {
       // Only check E2E session if explicitly enabled
       checkE2ESession()

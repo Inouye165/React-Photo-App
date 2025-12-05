@@ -117,6 +117,7 @@ export default function MainLayout() {
         bottom: 0,
         paddingTop: '52px', // Match AppHeader height
         backgroundColor: '#cbd5e1', // Slate-300 to match EditPage background
+        color: '#1e293b', // Slate-800 for high contrast text
       }}
     >
       <AppHeader 

@@ -634,11 +634,11 @@ describe('authenticateToken Middleware - Cookie Authentication', () => {
     const { authenticateToken } = require('../middleware/auth');
     
     // Protected test endpoint using authenticateToken middleware
-    app.get('/protected', authenticateToken, (req, res) => {
+    app.get('/protected', authenticateToken, (req, res) => { // lgtm[js/missing-rate-limiting] - Test-only mock server
       res.json({ success: true, user: req.user });
     });
     
-    app.post('/protected-post', authenticateToken, (req, res) => {
+    app.post('/protected-post', authenticateToken, (req, res) => { // lgtm[js/missing-rate-limiting] - Test-only mock server
       res.json({ success: true, user: req.user, data: req.body });
     });
   });

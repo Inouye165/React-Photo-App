@@ -34,7 +34,7 @@ describe('Role Security Tests - Privilege Escalation Prevention', () => {
     app.use(express.json());
     
     // Test endpoint that requires admin role
-    app.get('/admin/dashboard', authenticateToken, requireRole('admin'), (req, res) => {
+    app.get('/admin/dashboard', authenticateToken, requireRole('admin'), (req, res) => { // lgtm[js/missing-rate-limiting] - Test-only mock server
       res.json({ 
         success: true, 
         message: 'Welcome to admin dashboard',
@@ -43,7 +43,7 @@ describe('Role Security Tests - Privilege Escalation Prevention', () => {
     });
     
     // Test endpoint that requires user role (any authenticated user)
-    app.get('/user/profile', authenticateToken, requireRole('user', 'admin'), (req, res) => {
+    app.get('/user/profile', authenticateToken, requireRole('user', 'admin'), (req, res) => { // lgtm[js/missing-rate-limiting] - Test-only mock server
       res.json({ 
         success: true, 
         message: 'User profile',

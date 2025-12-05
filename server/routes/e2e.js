@@ -18,7 +18,7 @@ router.post('/e2e-login', (req, res) => {
     return res.status(403).json({ success: false, error: 'E2E login not allowed in production' });
   }
   const user = {
-    id: 'e2e-test-user',
+    id: '11111111-1111-4111-8111-111111111111',
     username: 'e2e-test',
     role: 'admin',
     email: 'e2e@example.com'
@@ -26,14 +26,16 @@ router.post('/e2e-login', (req, res) => {
   // Sign a JWT for the test user
   // lgtm[js/clear-text-storage-of-sensitive-data]
   // codeql[js/clear-text-storage-of-sensitive-data] - Token is stored in httpOnly cookie (secure pattern)
-  const token = jwt.sign({
-    sub: user.id,
-    username: user.username,
-    role: user.role,
-    email: user.email
-  }, JWT_SECRET, { expiresIn: '24h' });
-
-  // Set the cookie (same config as /auth/session)
+    const token = jwt.sign(
+      { 
+        sub: '11111111-1111-4111-8111-111111111111',
+        email: 'e2e@example.com',
+        username: 'e2e-test',
+        role: 'admin'
+      },
+      process.env.JWT_SECRET || 'test-secret',
+      { expiresIn: '1h' }
+    );  // Set the cookie (same config as /auth/session)
   // The httpOnly flag prevents JavaScript access, making this secure storage
   res.cookie('authToken', token, {
     httpOnly: true,
@@ -60,7 +62,7 @@ router.get('/e2e-verify', (req, res) => {
   try {
     const decoded = jwt.verify(token, JWT_SECRET);
     // Check if this is an E2E test token
-    if (decoded.sub === 'e2e-test-user') {
+    if (decoded.sub === '11111111-1111-4111-8111-111111111111') {
       return res.json({
         success: true,
         user: {

@@ -22,7 +22,7 @@ export default function PhotoGallery({
   // Empty state
   if (!photos || photos.length === 0) {
     return (
-      <div className="flex items-center justify-center h-64 text-slate-500">
+      <div className="flex items-center justify-center h-64 text-slate-700">
         <p>No photos to display.</p>
       </div>
     );

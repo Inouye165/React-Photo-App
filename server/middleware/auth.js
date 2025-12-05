@@ -1,8 +1,10 @@
 const { createClient } = require('@supabase/supabase-js');
+const jwt = require('jsonwebtoken');
 
 // Initialize Supabase client
 const SUPABASE_URL = process.env.SUPABASE_URL;
 const SUPABASE_ANON_KEY = process.env.SUPABASE_ANON_KEY;
+const JWT_SECRET = process.env.JWT_SECRET || 'test-secret';
 
 if (!SUPABASE_URL || !SUPABASE_ANON_KEY) {
   console.warn('Supabase URL or Key missing. Auth middleware may fail.');
@@ -37,6 +39,24 @@ async function authenticateToken(req, res, next) {
   }
 
   try {
+    // 0. Check for E2E test token (only in non-production)
+    if (process.env.NODE_ENV !== 'production') {
+      try {
+        const decoded = jwt.verify(token, JWT_SECRET);
+        if (decoded.sub === '11111111-1111-4111-8111-111111111111') {
+          req.user = {
+            id: decoded.sub,
+            email: decoded.email,
+            username: decoded.username,
+            role: decoded.role
+          };
+          return next();
+        }
+      } catch {
+        // Not a valid E2E token, continue to Supabase check
+      }
+    }
+
     // Verify token using Supabase Auth
     const { data: { user }, error } = await supabase.auth.getUser(token);
 
