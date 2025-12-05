@@ -48,6 +48,8 @@ describe('Authentication Security Tests', () => {
     app.use(authenticateToken, createDebugRouter({ db: mockDb }));
     
     // Test endpoint that requires authentication
+    // lgtm[js/missing-rate-limiting]
+    // codeql[js/missing-rate-limiting] - Test-only mock server, never exposed to production
     app.get('/protected', authenticateToken, (req, res) => {
       res.json({ success: true, user: req.user });
     });
