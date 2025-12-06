@@ -219,7 +219,8 @@ async function streamToSupabase(req, options = {}) {
           .upload(storagePath, passThrough, {
             contentType: mimetype,
             duplex: 'half', // Required for streaming uploads
-            upsert: false
+            upsert: false,
+            cacheControl: '31536000' // 1 year cache for immutable content-addressed files
           });
 
         if (error) {
