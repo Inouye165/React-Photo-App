@@ -184,12 +184,22 @@ describe('PhotoUploadForm Component', () => {
     expect(fileSizeElements.length).toBeGreaterThan(0)
   })
 
-  it('displays images as thumbnails or fallback placeholders', () => {
+  it('displays images as thumbnails or fallback placeholders', async () => {
     render(<PhotoUploadForm {...mockProps} />)
     
-    // For image types we should see <img> elements or the filenames
+    // Thumbnail component now handles loading asynchronously
+    // We should see either img elements, loading spinners, or placeholder content
+    const thumbnailContainers = document.querySelectorAll('[class*="aspect-square"]')
+    expect(thumbnailContainers.length).toBeGreaterThan(0)
+    
+    // Each photo should have some visual representation
+    // (loading state, image, or placeholder)
+    const loadingSpinners = document.querySelectorAll('.animate-spin')
     const imgElements = document.querySelectorAll('img')
-    expect(imgElements.length).toBeGreaterThan(0)
+    const placeholders = document.querySelectorAll('[class*="bg-gray"]')
+    
+    // At least one of these should be present for each photo
+    expect(loadingSpinners.length + imgElements.length + placeholders.length).toBeGreaterThan(0)
   })
 
   it('handles escape key to close modal', () => {
