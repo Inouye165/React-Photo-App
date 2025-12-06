@@ -14,6 +14,7 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/).
 - Batch operations (multi-select, delete, re-analyze)
 
 ### Added
+- **[Performance]** Storage Metadata Cache-Control (Phase 3) - All uploads to Supabase Storage now include `cacheControl: '31536000'` (1 year) metadata. Applies to both user-uploaded photos and generated thumbnails. Enables CDN and browser caching for immutable content-addressed files
 - **[Performance]** API Payload Optimization - `GET /photos` list endpoint now returns a strict subset of columns, excluding heavy fields (`poi_analysis`, `ai_model_history`, `text_style`, `storage_path`, `edited_filename`). Detail view (`GET /photos/:id`) remains unchanged with full data. Reduces list payload size significantly for gallery views
 - **[Performance]** Immutable Cache Headers (Phase 2) - Display routes now serve `Cache-Control: public, max-age=31536000, immutable` for aggressive browser caching. Eliminates 304 revalidation round-trips for hashed thumbnails and static images
 - **[Performance]** Stable Signed URLs - Refactored URL signing to use 24-hour time windows aligned to UTC midnight. Signatures now remain stable within each window, enabling browser caching of signed thumbnail URLs (Phase 1 of caching optimization)

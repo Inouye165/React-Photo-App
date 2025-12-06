@@ -211,7 +211,8 @@ async function generateAndUploadThumbnail(buffer, filename, hash) {
       .from('photos')
       .upload(thumbnailPath, thumbnailBuffer, {
         contentType: 'image/jpeg',
-        upsert: false
+        upsert: false,
+        cacheControl: '31536000' // 1 year cache for immutable content-addressed files
       });
 
     if (error) {
