@@ -334,15 +334,27 @@ export function revokeBlobUrl(url) {
 // fetchCsrfToken removed
 // loginUser removed
 
-export async function uploadPhotoToServer(file, serverUrl = `${API_BASE_URL}/upload`) {
+/**
+ * Upload a photo to the server, optionally with a client-generated thumbnail.
+ * @param {File} file - The main photo file
+ * @param {string} [serverUrl] - Optional server URL
+ * @param {Blob|null} [thumbnailBlob] - Optional thumbnail Blob
+ */
+export async function uploadPhotoToServer(file, serverUrl = `${API_BASE_URL}/upload`, thumbnailBlob = null) {
   // Use FormData and rely on cookie-based auth (credentials included).
-  const form = new FormData(); form.append('photo', file, file.name);
-  
+  const form = new FormData();
+  form.append('photo', file, file.name);
+  if (thumbnailBlob) {
+    form.append('thumbnail', thumbnailBlob, 'thumbnail.jpg');
+  }
+
   const headers = getAuthHeaders();
   delete headers['Content-Type']; // Let browser set multipart/form-data with boundary
 
   const res = await fetchWithNetworkFallback(serverUrl, { method: 'POST', headers, body: form, credentials: 'include' });
-  if (handleAuthError(res)) return; if (!res.ok) throw new Error('Upload failed'); return await res.json();
+  if (handleAuthError(res)) return;
+  if (!res.ok) throw new Error('Upload failed');
+  return await res.json();
 }
 
 export async function checkPrivilege(relPath, serverUrl = `${API_BASE_URL}/privilege`) {

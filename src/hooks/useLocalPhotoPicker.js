@@ -1,6 +1,7 @@
 import { useCallback, useMemo, useRef, useState } from 'react';
 import { parse } from 'exifr';
 import { uploadPhotoToServer } from '../api.js';
+import { generateClientThumbnail } from '../utils/clientImageProcessing.js';
 import useStore from '../store.js';
 
 export default function useLocalPhotoPicker({ onUploadComplete, onUploadSuccess }) {
@@ -63,14 +64,21 @@ export default function useLocalPhotoPicker({ onUploadComplete, onUploadSuccess 
     setUploading(true);
     try {
       for (const photo of photosToUpload) {
-          const uploadResponse = await uploadPhotoToServer(photo.file);
-          // Log compass direction (if available) from server response
-          if (uploadResponse && uploadResponse.metadata) {
-            const direction = uploadResponse.metadata.compass_heading;
-            console.log(`Photo '${photo.name}': Compass direction =`, direction !== undefined ? direction : 'Not found');
-          } else {
-            console.log(`Photo '${photo.name}': No metadata returned from server.`);
-          }
+        let thumbnailBlob = null;
+        try {
+          thumbnailBlob = await generateClientThumbnail(photo.file);
+        } catch (err) {
+          // Graceful fallback: log and continue without thumbnail
+          console.warn(`Thumbnail generation failed for ${photo.name}:`, err);
+        }
+        const uploadResponse = await uploadPhotoToServer(photo.file, undefined, thumbnailBlob);
+        // Log compass direction (if available) from server response
+        if (uploadResponse && uploadResponse.metadata) {
+          const direction = uploadResponse.metadata.compass_heading;
+          console.log(`Photo '${photo.name}': Compass direction =`, direction !== undefined ? direction : 'Not found');
+        } else {
+          console.log(`Photo '${photo.name}': No metadata returned from server.`);
+        }
       }
 
   // toast removed: upload success

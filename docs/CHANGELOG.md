@@ -1,3 +1,5 @@
+## [Unreleased]
+Performance: Implemented client-side thumbnail generation to eliminate server-side resizing delays.
 # Changelog
 
 All notable changes to the React Photo App are documented here.

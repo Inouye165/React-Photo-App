@@ -1,3 +1,54 @@
+describe('uploadPhotoToServer FormData construction', () => {
+  let originalFetch;
+  beforeEach(() => {
+    originalFetch = global.fetch;
+  });
+  afterEach(() => {
+    global.fetch = originalFetch;
+    vi.restoreAllMocks();
+  });
+
+  it('should append thumbnail if provided', async () => {
+    const dummyFile = new File(['main'], 'main.jpg', { type: 'image/jpeg' });
+    const dummyThumb = new Blob(['thumb'], { type: 'image/jpeg' });
+    let formDataArg;
+    global.fetch = vi.fn((url, opts) => {
+      formDataArg = opts.body;
+      return Promise.resolve({ ok: true, json: async () => ({ success: true }) });
+    });
+    await api.uploadPhotoToServer(dummyFile, '/upload', dummyThumb);
+    expect(formDataArg instanceof FormData).toBe(true);
+    // Check keys
+    const keys = Array.from(formDataArg.keys());
+    expect(keys).toContain('photo');
+    expect(keys).toContain('thumbnail');
+    // Check values
+    const photoVal = formDataArg.get('photo');
+    const thumbVal = formDataArg.get('thumbnail');
+    expect(photoVal).toStrictEqual(dummyFile);
+    // For thumbnail, FormData returns a File (with name) even if you append a Blob. Check type and content.
+    expect(thumbVal).toBeInstanceOf(File);
+    expect(thumbVal.type).toBe(dummyThumb.type);
+    // Optionally check content
+    const thumbArray = await thumbVal.arrayBuffer();
+    const dummyArray = await dummyThumb.arrayBuffer();
+    expect(new Uint8Array(thumbArray)).toStrictEqual(new Uint8Array(dummyArray));
+  });
+
+  it('should not append thumbnail if not provided', async () => {
+    const dummyFile = new File(['main'], 'main.jpg', { type: 'image/jpeg' });
+    let formDataArg;
+    global.fetch = vi.fn((url, opts) => {
+      formDataArg = opts.body;
+      return Promise.resolve({ ok: true, json: async () => ({ success: true }) });
+    });
+    await api.uploadPhotoToServer(dummyFile, '/upload');
+    expect(formDataArg instanceof FormData).toBe(true);
+    const keys = Array.from(formDataArg.keys());
+    expect(keys).toContain('photo');
+    expect(keys).not.toContain('thumbnail');
+  });
+});
 import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest';
 import * as api from './api';
 
