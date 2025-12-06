@@ -1,6 +1,29 @@
-import React, { useEffect, useState, useRef } from "react";
+import React, { useEffect, useState, useRef, useCallback } from "react";
+import { useVirtualizer } from '@tanstack/react-virtual';
 import useStore from './store.js';
 import Thumbnail from './components/Thumbnail.jsx';
+
+// Hook to get responsive column count
+const useColumns = () => {
+  const [columns, setColumns] = useState(6);
+  
+  useEffect(() => {
+    const updateColumns = () => {
+      const width = window.innerWidth;
+      if (width < 640) setColumns(2);
+      else if (width < 768) setColumns(3);
+      else if (width < 1024) setColumns(4);
+      else if (width < 1280) setColumns(5);
+      else setColumns(6);
+    };
+    
+    updateColumns();
+    window.addEventListener('resize', updateColumns);
+    return () => window.removeEventListener('resize', updateColumns);
+  }, []);
+  
+  return columns;
+};
 
 const PhotoUploadForm = ({
   startDate,
@@ -16,7 +39,13 @@ const PhotoUploadForm = ({
 }) => {
   // Connect to store
   const setShowLocalPicker = useStore((state) => state.setShowUploadPicker);
-
+  
+  // Get responsive column count
+  const columns = useColumns();
+  
+  // Ref for the scrollable container
+  const parentRef = useRef(null);
+  
   // Handler for closing - supports both modal and page modes
   // Wrapped in useCallback to prevent useEffect dependency changes on every render
   const handleClose = React.useCallback(() => {
@@ -37,15 +66,17 @@ const PhotoUploadForm = ({
     setSelectedIndices(allIndices);
   }, [filteredLocalPhotos]);
 
-  const toggleSelection = (index) => {
-    const newSelection = new Set(selectedIndices);
-    if (newSelection.has(index)) {
-      newSelection.delete(index);
-    } else {
-      newSelection.add(index);
-    }
-    setSelectedIndices(newSelection);
-  };
+  const toggleSelection = useCallback((index) => {
+    setSelectedIndices(prev => {
+      const newSelection = new Set(prev);
+      if (newSelection.has(index)) {
+        newSelection.delete(index);
+      } else {
+        newSelection.add(index);
+      }
+      return newSelection;
+    });
+  }, []);
 
   const handleSelectAll = () => {
     setSelectedIndices(new Set(filteredLocalPhotos.map((_, i) => i)));
@@ -207,7 +238,7 @@ const PhotoUploadForm = ({
       </div>
 
       {/* Grid Content */}
-      <div className="flex-1 overflow-y-auto p-6">
+      <div className="flex-1 h-full min-h-0 overflow-auto" ref={parentRef}>
         {filteredLocalPhotos.length === 0 ? (
           <div className="h-full flex flex-col items-center justify-center text-gray-500">
             <svg className="w-16 h-16 mb-4 text-gray-300" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth="1.5" d="M4 16l4.586-4.586a2 2 0 012.828 0L16 16m-2-2l1.586-1.586a2 2 0 012.828 0L20 14m-6-6h.01M6 20h12a2 2 0 002-2V6a2 2 0 00-2-2H6a2 2 0 00-2 2v12a2 2 0 002 2z" /></svg>
@@ -215,51 +246,107 @@ const PhotoUploadForm = ({
             <p className="text-sm mt-1">Try adjusting the date range or selecting a different folder.</p>
           </div>
         ) : (
-          <div className="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-4 lg:grid-cols-5 xl:grid-cols-6 gap-4">
-            {filteredLocalPhotos.map((p, i) => {
-              const isSelected = selectedIndices.has(i);
-              const key = `${p.name}-${p.file?.lastModified ?? ''}-${i}`;
-              const fileDate = p.exifDate ? new Date(p.exifDate) : new Date(p.file?.lastModified);
-              const fileSize = p.file ? (p.file.size || 0) : 0;
-
-              return (
-                <div 
-                  key={key}
-                  onClick={() => toggleSelection(i)}
-                  className={`
-                    group relative aspect-square rounded-lg overflow-hidden cursor-pointer border-2 transition-all duration-200
-                    ${isSelected ? 'border-blue-500 ring-2 ring-blue-200 ring-offset-1' : 'border-transparent hover:border-gray-300'}
-                    bg-gray-100 shadow-sm hover:shadow-md
-                  `}
-                >
-                  <Thumbnail file={p.file} className="w-full h-full" />
-                  
-                  {/* Checkbox Indicator */}
-                  <div className="absolute top-2 right-2 z-10">
-                    <div className={`
-                      w-6 h-6 rounded-full border-2 flex items-center justify-center transition-colors duration-200
-                      ${isSelected ? 'bg-blue-500 border-blue-500' : 'bg-white/80 border-gray-400 group-hover:border-gray-500'}
-                    `}>
-                      {isSelected && (
-                        <svg className="w-4 h-4 text-white" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth="3" d="M5 13l4 4L19 7" /></svg>
-                      )}
-                    </div>
-                  </div>
-
-                  {/* Info Overlay (Bottom) - only visible on hover */}
-                  <div className="absolute bottom-0 left-0 right-0 z-10 bg-gradient-to-t from-black/80 via-black/40 to-transparent p-3 pt-8 text-white opacity-0 group-hover:opacity-100 transition-opacity duration-200 pointer-events-none">
-                    <p className="text-xs font-medium truncate" title={p.name}>{p.name}</p>
-                    <div className="flex justify-between items-center mt-0.5">
-                      <p className="text-[10px] opacity-80">{fileDate.toLocaleDateString()}</p>
-                      <p className="text-[10px] opacity-80">{(fileSize / 1024).toFixed(0)} KB</p>
-                    </div>
-                  </div>
-                </div>
-              );
-            })}
-          </div>
+          <VirtualizedPhotoGrid
+            photos={filteredLocalPhotos}
+            columns={columns}
+            selectedIndices={selectedIndices}
+            toggleSelection={toggleSelection}
+            parentRef={parentRef}
+          />
         )}
       </div>
+    </div>
+  );
+};
+
+// Virtualized grid component using TanStack Virtual
+const VirtualizedPhotoGrid = ({ photos, columns, selectedIndices, toggleSelection, parentRef }) => {
+  const rowCount = Math.ceil(photos.length / columns);
+  
+  const rowVirtualizer = useVirtualizer({
+    count: rowCount,
+    getScrollElement: () => parentRef.current,
+    estimateSize: () => 180, // Estimated row height (will be measured)
+    overscan: 5,
+  });
+
+  return (
+    <div
+      style={{
+        height: `${rowVirtualizer.getTotalSize()}px`,
+        width: '100%',
+        position: 'relative',
+      }}
+      className="p-4"
+    >
+      {rowVirtualizer.getVirtualItems().map((virtualRow) => {
+        const rowIndex = virtualRow.index;
+        const startIdx = rowIndex * columns;
+        const rowPhotos = photos.slice(startIdx, startIdx + columns);
+
+        return (
+          <div
+            key={virtualRow.key}
+            style={{
+              position: 'absolute',
+              top: 0,
+              left: 0,
+              width: '100%',
+              height: `${virtualRow.size}px`,
+              transform: `translateY(${virtualRow.start}px)`,
+            }}
+          >
+            <div 
+              className="grid gap-4 h-full"
+              style={{ gridTemplateColumns: `repeat(${columns}, minmax(0, 1fr))` }}
+            >
+              {rowPhotos.map((p, colIndex) => {
+                const index = startIdx + colIndex;
+                const isSelected = selectedIndices.has(index);
+                const fileDate = p.exifDate ? new Date(p.exifDate) : new Date(p.file?.lastModified);
+                const fileSize = p.file ? (p.file.size || 0) : 0;
+
+                return (
+                  <div 
+                    key={`${p.name}-${index}`}
+                    data-testid="photo-cell"
+                    onClick={() => toggleSelection(index)}
+                    className={`
+                      aspect-square
+                      group relative rounded-lg overflow-hidden cursor-pointer border-2 transition-all duration-200
+                      ${isSelected ? 'border-blue-500 ring-2 ring-blue-200 ring-offset-1' : 'border-transparent hover:border-gray-300'}
+                      bg-gray-100 shadow-sm hover:shadow-md
+                    `}
+                  >
+                    <Thumbnail file={p.file} className="w-full h-full object-cover" />
+                    
+                    {/* Checkbox Indicator */}
+                    <div className="absolute top-2 right-2 z-10">
+                      <div className={`
+                        w-6 h-6 rounded-full border-2 flex items-center justify-center transition-colors duration-200
+                        ${isSelected ? 'bg-blue-500 border-blue-500' : 'bg-white/80 border-gray-400 group-hover:border-gray-500'}
+                      `}>
+                        {isSelected && (
+                          <svg className="w-4 h-4 text-white" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth="3" d="M5 13l4 4L19 7" /></svg>
+                        )}
+                      </div>
+                    </div>
+
+                    {/* Info Overlay (Bottom) - only visible on hover */}
+                    <div className="absolute bottom-0 left-0 right-0 z-10 bg-gradient-to-t from-black/80 via-black/40 to-transparent p-3 pt-8 text-white opacity-0 group-hover:opacity-100 transition-opacity duration-200 pointer-events-none">
+                      <p className="text-xs font-medium truncate" title={p.name}>{p.name}</p>
+                      <div className="flex justify-between items-center mt-0.5">
+                        <p className="text-[10px] opacity-80">{fileDate.toLocaleDateString()}</p>
+                        <p className="text-[10px] opacity-80">{(fileSize / 1024).toFixed(0)} KB</p>
+                      </div>
+                    </div>
+                  </div>
+                );
+              })}
+            </div>
+          </div>
+        );
+      })}
     </div>
   );
 };

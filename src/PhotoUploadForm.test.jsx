@@ -5,6 +5,25 @@ import userEvent from '@testing-library/user-event'
 import PhotoUploadForm from './PhotoUploadForm'
 import useStore from './store'
 
+// Mock @tanstack/react-virtual
+vi.mock('@tanstack/react-virtual', () => ({
+  useVirtualizer: ({ count }) => ({
+    getTotalSize: () => count * 180,
+    getVirtualItems: () => Array.from({ length: count }, (_, i) => ({
+      index: i,
+      key: i,
+      size: 180,
+      start: i * 180,
+    })),
+  }),
+}));
+
+
+// Mock Thumbnail component
+vi.mock('./components/Thumbnail.jsx', () => ({
+  default: () => <div data-testid="thumbnail-mock" />
+}));
+
 // Mock the store
 vi.mock('./store', () => ({
   default: vi.fn(),
@@ -189,7 +208,7 @@ describe('PhotoUploadForm Component', () => {
     
     // Thumbnail component now handles loading asynchronously
     // We should see either img elements, loading spinners, or placeholder content
-    const thumbnailContainers = document.querySelectorAll('[class*="aspect-square"]')
+    const thumbnailContainers = screen.getAllByTestId('photo-cell')
     expect(thumbnailContainers.length).toBeGreaterThan(0)
     
     // Each photo should have some visual representation

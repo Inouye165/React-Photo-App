@@ -182,7 +182,10 @@ export default function useSignedThumbnails(photos, token) {
         }
       });
 
-      setSignedUrls(prev => ({ ...prev, ...newUrls }));
+      // Only update state if we actually have new URLs to avoid infinite loops
+      if (Object.keys(newUrls).length > 0) {
+        setSignedUrls(prev => ({ ...prev, ...newUrls }));
+      }
     } catch (err) {
       // This should rarely happen as individual fetch errors are caught above
       console.error('[useSignedThumbnails] Unexpected error fetching signed URLs:', err.message);

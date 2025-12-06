@@ -28,6 +28,10 @@ test.describe('Map Component', () => {
     // Mock e2e-verify endpoint to ensure auth works
     await page.route('**/api/test/e2e-verify', async route => {
       await route.fulfill({
+        headers: {
+          'Access-Control-Allow-Origin': 'http://localhost:5173',
+          'Access-Control-Allow-Credentials': 'true'
+        },
         json: {
           success: true,
           user: {
@@ -60,10 +64,15 @@ test.describe('Map Component', () => {
     // Single unified route handler for all /photos requests
     await page.route('**/photos**', async route => {
       const url = route.request().url();
+      const headers = {
+        'Access-Control-Allow-Origin': 'http://localhost:5173',
+        'Access-Control-Allow-Credentials': 'true'
+      };
       
       // Handle thumbnail-url endpoint
       if (url.includes('/thumbnail-url')) {
         await route.fulfill({
+          headers,
           json: {
             success: true,
             url: 'data:image/gif;base64,R0lGODlhAQABAIAAAAAAAP///yH5BAEAAAAALAAAAAABAAEAAAIBRAA7'
@@ -75,6 +84,7 @@ test.describe('Map Component', () => {
       // Handle dependencies
       if (url.includes('/dependencies')) {
         await route.fulfill({ 
+          headers,
           json: { 
             success: true, 
             dependencies: { aiQueue: true } 
@@ -86,6 +96,7 @@ test.describe('Map Component', () => {
       // Handle models
       if (url.includes('/models')) {
         await route.fulfill({ 
+          headers,
           json: { 
             success: true, 
             models: ['gpt-4-vision-preview'] 
@@ -97,6 +108,7 @@ test.describe('Map Component', () => {
       // Handle status for SmartRouter
       if (url.includes('/status')) {
         await route.fulfill({
+          headers,
           json: {
             success: true,
             working: 1,
@@ -111,6 +123,7 @@ test.describe('Map Component', () => {
       // Handle single photo detail (test-photo-1 without thumbnail-url)
       if (url.includes('/test-photo-1') && !url.includes('?')) {
         await route.fulfill({ 
+          headers,
           json: { 
             success: true, 
             photo: mockPhoto 
@@ -121,6 +134,7 @@ test.describe('Map Component', () => {
       
       // Default: photos list
       await route.fulfill({ 
+        headers,
         json: { 
           success: true, 
           photos: [mockPhoto] 
@@ -131,6 +145,10 @@ test.describe('Map Component', () => {
     // 5. Mock Privilege
     await page.route('**/privilege', async route => {
       await route.fulfill({ 
+        headers: {
+          'Access-Control-Allow-Origin': 'http://localhost:5173',
+          'Access-Control-Allow-Credentials': 'true'
+        },
         json: { 
           success: true, 
           privileges: { 'test-photo-1': true } 
@@ -138,20 +156,7 @@ test.describe('Map Component', () => {
       });
     });
 
-    // 6. Mock e2e-verify endpoint (ensure auth works even under load)
-    await page.route('**/api/test/e2e-verify', async route => {
-      await route.fulfill({
-        json: {
-          success: true,
-          user: {
-            id: '11111111-1111-4111-8111-111111111111',
-            username: 'e2e-test',
-            role: 'admin',
-            email: 'e2e@example.com'
-          }
-        }
-      });
-    });
+
 
 
     // Navigate to app (session cookie is set)

@@ -52,6 +52,7 @@ export default function SmartRouter() {
         const result = await getPhotoStatus();
         
         if (cancelled) return;
+        if (!result) throw new Error('Invalid API response');
 
         // Determine the best route based on photo counts
         let targetPath = '/upload'; // Default fallback

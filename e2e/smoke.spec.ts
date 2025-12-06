@@ -1,25 +1,18 @@
 import { test, expect } from '@playwright/test';
 
 test('E2E smoke: login → upload → view', async ({ page, context }) => {
-  // Inject E2E mode flag
+  // Set E2E mode flag in window object
   await page.addInitScript(() => {
     window.__E2E_MODE__ = true;
   });
 
-  page.on('console', msg => console.log(`BROWSER LOG: ${msg.text()}`));
-  page.on('requestfailed', request => {
-    console.log(`REQUEST FAILED: ${request.url()} - ${request.failure().errorText}`);
-  });
-  page.on('response', response => {
-    if (response.status() >= 400) {
-      console.log(`RESPONSE ERROR: ${response.url()} - ${response.status()}`);
-    }
-  });
-
-  // Set up route mocks FIRST before any requests
-  // Mock e2e-verify endpoint to ensure auth works under parallel test load
+  // Mock e2e-verify endpoint
   await page.route('**/api/test/e2e-verify', async route => {
     await route.fulfill({
+      headers: {
+        'Access-Control-Allow-Origin': 'http://localhost:5173',
+        'Access-Control-Allow-Credentials': 'true'
+      },
       json: {
         success: true,
         user: {
