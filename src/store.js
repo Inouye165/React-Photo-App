@@ -1,5 +1,6 @@
 import { create } from 'zustand'
 import { updatePhotoState } from './api.js'
+import { createUploadPickerSlice } from './store/uploadPickerSlice.js'
 
 const debug = (...args) => {
   if (typeof console !== 'undefined' && typeof console.debug === 'function') {
@@ -8,7 +9,8 @@ const debug = (...args) => {
 }
 
 // Minimal Zustand store for photos and ui state (polling, toast)
-const useStore = create((set) => ({
+const useStore = create((set, get) => ({
+  ...createUploadPickerSlice(set, get),
   photos: [],
   toast: { message: '', severity: 'info' },
   // Support both a single legacy polling id and a Set of polling ids for concurrent polling
@@ -49,8 +51,6 @@ const useStore = create((set) => ({
   setShowMetadataModal: (show) => set({ showMetadataModal: show }),
   metadataPhoto: null,
   setMetadataPhoto: (photo) => set({ metadataPhoto: photo }),
-  showUploadPicker: false,
-  setShowUploadPicker: (show) => set({ showUploadPicker: show }),
 
   // UI State Slice - Toolbar Messages
   toolbarMessage: '',

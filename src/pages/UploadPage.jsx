@@ -236,6 +236,7 @@ export default function UploadPage() {
         handleUploadFiltered={handleUploadFiltered}
         onReopenFolder={handleSelectFolder}
         isStandalonePage={true}
+        closeReason="upload-page-close"
         onClose={handleClose}
       />
     </div>

@@ -1,17 +1,18 @@
-import { useCallback, useMemo, useRef, useState } from 'react';
+import { useCallback, useMemo, useRef } from 'react';
 import { parse } from 'exifr';
 import { uploadPhotoToServer } from '../api.js';
 import { generateClientThumbnail } from '../utils/clientImageProcessing.js';
 import useStore from '../store.js';
 
 export default function useLocalPhotoPicker({ onUploadComplete, onUploadSuccess }) {
-  const [localPhotos, setLocalPhotos] = useState([]);
-  const [startDate, setStartDate] = useState('');
-  const [endDate, setEndDate] = useState('');
-  const [uploading, setUploading] = useState(false);
-  const showPicker = useStore((state) => state.showUploadPicker);
-  const setShowPicker = useStore((state) => state.setShowUploadPicker);
+  const uploadPicker = useStore((state) => state.uploadPicker);
+  const pickerCommand = useStore((state) => state.pickerCommand);
   const workingDirHandleRef = useRef(null);
+
+  const startDate = uploadPicker.filters.startDate;
+  const endDate = uploadPicker.filters.endDate;
+  const uploading = uploadPicker.status === 'uploading';
+  const showPicker = uploadPicker.status !== 'closed';
 
   const handleSelectFolder = useCallback(async () => {
     try {
@@ -36,15 +37,15 @@ export default function useLocalPhotoPicker({ onUploadComplete, onUploadSuccess 
       }
 
       workingDirHandleRef.current = dirHandle;
-      setLocalPhotos(files);
-      setShowPicker(true);
+      pickerCommand.openPicker({ dirHandle, files });
     } catch {
       // toast removed: folder selection failed
     }
-  }, [setShowPicker]);
+  }, [pickerCommand]);
 
   const filteredLocalPhotos = useMemo(() => {
-    if (!Array.isArray(localPhotos) || localPhotos.length === 0) return [];
+    const localPhotos = uploadPicker.localPhotos || [];
+    if (localPhotos.length === 0) return [];
 
     return localPhotos.filter((photo) => {
       if (!startDate && !endDate) return true;
@@ -55,13 +56,22 @@ export default function useLocalPhotoPicker({ onUploadComplete, onUploadSuccess 
 
       return (!start || rawDate >= start) && (!end || rawDate <= end);
     });
-  }, [localPhotos, startDate, endDate]);
+  }, [uploadPicker.localPhotos, startDate, endDate]);
+
+  const setStartDate = useCallback((value) => {
+    pickerCommand.setFilters({ startDate: value, endDate });
+  }, [pickerCommand, endDate]);
+
+  const setEndDate = useCallback((value) => {
+    pickerCommand.setFilters({ startDate, endDate: value });
+  }, [pickerCommand, startDate]);
 
   const handleUploadFiltered = useCallback(async (subsetToUpload) => {
     const photosToUpload = Array.isArray(subsetToUpload) ? subsetToUpload : filteredLocalPhotos;
     if (photosToUpload.length === 0) return;
 
-    setUploading(true);
+    pickerCommand.startUpload({ ids: photosToUpload.map((photo) => photo.id) });
+    let encounteredError = null;
     try {
       for (const photo of photosToUpload) {
         let thumbnailBlob = null;
@@ -71,41 +81,42 @@ export default function useLocalPhotoPicker({ onUploadComplete, onUploadSuccess 
           // Graceful fallback: log and continue without thumbnail
           console.warn(`Thumbnail generation failed for ${photo.name}:`, err);
         }
-        const uploadResponse = await uploadPhotoToServer(photo.file, undefined, thumbnailBlob);
-        // Log compass direction (if available) from server response
-        if (uploadResponse && uploadResponse.metadata) {
-          const direction = uploadResponse.metadata.compass_heading;
-          console.log(`Photo '${photo.name}': Compass direction =`, direction !== undefined ? direction : 'Not found');
-        } else {
-          console.log(`Photo '${photo.name}': No metadata returned from server.`);
+        try {
+          const uploadResponse = await uploadPhotoToServer(photo.file, undefined, thumbnailBlob);
+          pickerCommand.markUploadSuccess(photo.id);
+          // Log compass direction (if available) from server response
+          if (uploadResponse && uploadResponse.metadata) {
+            const direction = uploadResponse.metadata.compass_heading;
+            console.log(`Photo '${photo.name}': Compass direction =`, direction !== undefined ? direction : 'Not found');
+          } else {
+            console.log(`Photo '${photo.name}': No metadata returned from server.`);
+          }
+        } catch (error) {
+          encounteredError = error;
+          pickerCommand.markUploadFailure(photo.id, error?.message);
         }
       }
 
   // toast removed: upload success
-      setLocalPhotos([]);
-      setShowPicker(false);
-      setStartDate('');
-      setEndDate('');
-      if (typeof onUploadSuccess === 'function') {
-        onUploadSuccess(photosToUpload.length);
+      if (!encounteredError) {
+        pickerCommand.closePicker('upload-complete');
+        if (typeof onUploadSuccess === 'function') {
+          onUploadSuccess(photosToUpload.length);
+        }
+        if (typeof onUploadComplete === 'function') {
+          await onUploadComplete();
+        }
       }
-      if (typeof onUploadComplete === 'function') {
-        await onUploadComplete();
-      }
-    } catch {
-      // toast removed: upload failed
     } finally {
-      setUploading(false);
+      pickerCommand.finishUploads(encounteredError ? 'error' : 'complete');
     }
-  }, [filteredLocalPhotos, onUploadComplete, onUploadSuccess, setShowPicker]);
+  }, [filteredLocalPhotos, onUploadComplete, onUploadSuccess, pickerCommand]);
 
   return {
-    localPhotos,
     filteredLocalPhotos,
     handleSelectFolder,
     handleUploadFiltered,
     showPicker,
-    setShowPicker,
     startDate,
     setStartDate,
     endDate,

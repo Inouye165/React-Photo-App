@@ -46,7 +46,9 @@ describe('PhotoUploadForm Component', () => {
   ]
 
   const mockStoreState = {
-    setShowUploadPicker: vi.fn(),
+    pickerCommand: {
+      closePicker: vi.fn(),
+    },
   }
 
   const mockProps = {
@@ -183,7 +185,24 @@ describe('PhotoUploadForm Component', () => {
     
     const closeButton = screen.getByLabelText('Close upload modal')
     await user.click(closeButton)
-    expect(mockStoreState.setShowUploadPicker).toHaveBeenCalledWith(false)
+    expect(mockStoreState.pickerCommand.closePicker).toHaveBeenCalledWith('user-dismissed')
+  })
+
+  it('invokes onClose callback with the provided close reason', async () => {
+    const user = userEvent.setup()
+    const onCloseSpy = vi.fn()
+    render(
+      <PhotoUploadForm
+        {...mockProps}
+        onClose={onCloseSpy}
+        closeReason="custom-reason"
+      />
+    )
+
+    const closeButton = screen.getByLabelText('Close upload modal')
+    await user.click(closeButton)
+    expect(mockStoreState.pickerCommand.closePicker).toHaveBeenCalledWith('custom-reason')
+    expect(onCloseSpy).toHaveBeenCalledWith('custom-reason')
   })
 
   it('calls store action when close button in empty state is clicked', async () => {
@@ -192,7 +211,7 @@ describe('PhotoUploadForm Component', () => {
     
     const closeButtons = screen.getAllByLabelText('Close upload modal')
     await user.click(closeButtons[0]) // First close button in empty state
-    expect(mockStoreState.setShowUploadPicker).toHaveBeenCalledWith(false)
+    expect(mockStoreState.pickerCommand.closePicker).toHaveBeenCalledWith('user-dismissed')
   })
 
   it('displays file sizes correctly', () => {
@@ -227,7 +246,7 @@ describe('PhotoUploadForm Component', () => {
     // Simulate escape key press
     fireEvent.keyDown(window, { key: 'Escape', code: 'Escape' })
     
-    expect(mockStoreState.setShowUploadPicker).toHaveBeenCalledWith(false)
+    expect(mockStoreState.pickerCommand.closePicker).toHaveBeenCalledWith('user-dismissed')
   })
 
   it('has proper accessibility attributes', () => {

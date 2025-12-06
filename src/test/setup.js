@@ -2,6 +2,7 @@ import '@testing-library/jest-dom/vitest'
 import { vi, afterEach, beforeEach } from 'vitest'
 import { cleanup } from '@testing-library/react'
 import React from 'react'
+import { uploadPickerInitialState } from '../store/uploadPickerSlice.js'
 
 /**
  * Mock Web Worker for heic2any and other browser-only APIs.
@@ -221,7 +222,7 @@ const createDefaultState = () => ({
   editingMode: null,
   showMetadataModal: false,
   metadataPhoto: null,
-  showUploadPicker: false,
+  uploadPicker: { ...uploadPickerInitialState },
   toolbarMessage: '',
   toolbarSeverity: 'info',
   pollingPhotoId: null,
@@ -234,7 +235,6 @@ const createDefaultState = () => ({
   setEditingMode: vi.fn(),
   setShowMetadataModal: vi.fn(),
   setMetadataPhoto: vi.fn(),
-  setShowUploadPicker: vi.fn(),
   setToolbarMessage: vi.fn(),
   setToolbarSeverity: vi.fn(),
   setPollingPhotoId: vi.fn(),
@@ -244,6 +244,17 @@ const createDefaultState = () => ({
   updatePhoto: vi.fn(),
   removePhotoById: vi.fn(),
   moveToInprogress: vi.fn(),
+  pickerCommand: {
+    openPicker: vi.fn(),
+    closePicker: vi.fn(),
+    resetPicker: vi.fn(),
+    setFilters: vi.fn(),
+    queuePhotos: vi.fn(),
+    startUpload: vi.fn(),
+    markUploadSuccess: vi.fn(),
+    markUploadFailure: vi.fn(),
+    finishUploads: vi.fn(),
+  },
 })
 
 // Mock Zustand store with fresh state for each test

@@ -46,6 +46,7 @@
     "konva": "^10.0.2",
     "langsmith": "^0.3.77",
     "lucide-react": "^0.555.0",
+    "nanoid": "^5.0.7",
     "openai": "^6.8.1",
     "react": "^19.1.1",
     "react-dom": "^19.1.1",

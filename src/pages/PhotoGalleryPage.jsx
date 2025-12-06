@@ -31,7 +31,7 @@ export default function PhotoGalleryPage() {
   const metadataPhoto = useStore((state) => state.metadataPhoto);
   const setShowMetadataModal = useStore((state) => state.setShowMetadataModal);
   const setMetadataPhoto = useStore((state) => state.setMetadataPhoto);
-  const showLocalPicker = useStore((state) => state.showUploadPicker);
+  const showLocalPicker = useStore((state) => state.uploadPicker.status !== 'closed');
   const view = useStore((state) => state.view);
   const setView = useStore((state) => state.setView);
 
@@ -146,10 +146,8 @@ export default function PhotoGalleryPage() {
           filteredLocalPhotos={filteredLocalPhotos}
           handleUploadFiltered={handleUploadFiltered}
           onReopenFolder={handleSelectFolder}
+          closeReason="gallery-close"
           onClose={() => {
-            // Hide picker and reset view to a valid state
-            useStore.getState().setShowUploadPicker(false);
-            // If no photos, force view to 'working' (or another default)
             if (!photos || photos.length === 0) {
               setView('working');
               setSearchParams({ view: 'working' }, { replace: true });

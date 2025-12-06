@@ -8,6 +8,7 @@ import MainLayout from './layouts/MainLayout.jsx';
 import PhotoGalleryPage from './pages/PhotoGalleryPage.jsx';
 import PhotoEditPage from './pages/PhotoEditPage.jsx';
 import GlobalErrorBoundary from './components/GlobalErrorBoundary.jsx';
+import { uploadPickerInitialState } from './store/uploadPickerSlice.js';
 
 // RedirectToEdit component matching App.jsx implementation
 function RedirectToEdit() {
@@ -94,7 +95,7 @@ describe('Routing Implementation Tests', () => {
       showMetadataModal: false,
       metadataPhoto: null,
       pollingPhotoId: null,
-      showUploadPicker: false,
+      uploadPicker: { ...uploadPickerInitialState },
     });
   });
 

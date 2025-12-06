@@ -35,10 +35,11 @@ const PhotoUploadForm = ({
   handleUploadFiltered,
   onReopenFolder,
   isStandalonePage = false,
-  onClose
+  onClose,
+  closeReason = 'user-dismissed',
 }) => {
-  // Connect to store
-  const setShowLocalPicker = useStore((state) => state.setShowUploadPicker);
+  // Connect to store commands
+  const closePicker = useStore((state) => state.pickerCommand.closePicker);
   
   // Get responsive column count
   const columns = useColumns();
@@ -49,12 +50,11 @@ const PhotoUploadForm = ({
   // Handler for closing - supports both modal and page modes
   // Wrapped in useCallback to prevent useEffect dependency changes on every render
   const handleClose = React.useCallback(() => {
-    if (isStandalonePage && onClose) {
-      onClose();
-    } else {
-      setShowLocalPicker(false);
+    closePicker(closeReason);
+    if (typeof onClose === 'function') {
+      onClose(closeReason);
     }
-  }, [isStandalonePage, onClose, setShowLocalPicker]);
+  }, [closePicker, onClose, closeReason]);
 
   // Selection state: Set of indices
   const [selectedIndices, setSelectedIndices] = useState(new Set());
