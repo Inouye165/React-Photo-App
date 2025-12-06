@@ -135,6 +135,7 @@ export default function PhotoGalleryPage() {
         />
       )}
 
+
       {showLocalPicker && (
         <PhotoUploadForm
           startDate={startDate}
@@ -145,6 +146,15 @@ export default function PhotoGalleryPage() {
           filteredLocalPhotos={filteredLocalPhotos}
           handleUploadFiltered={handleUploadFiltered}
           onReopenFolder={handleSelectFolder}
+          onClose={() => {
+            // Hide picker and reset view to a valid state
+            useStore.getState().setShowUploadPicker(false);
+            // If no photos, force view to 'working' (or another default)
+            if (!photos || photos.length === 0) {
+              setView('working');
+              setSearchParams({ view: 'working' }, { replace: true });
+            }
+          }}
         />
       )}
 
