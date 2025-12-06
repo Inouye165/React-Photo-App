@@ -144,8 +144,14 @@ async function streamToSupabase(req, options = {}) {
     }
 
     let fileFound = false;
-    let uploadResult = null;
+    let photoUploadPromise = null;
     let uploadError = null;
+    
+    // Thumbnail state
+    let thumbnailBuffer = [];
+    let thumbnailSize = 0;
+    let thumbnailMime = null;
+    let thumbnailTooLarge = false;
 
     let busboy;
     try {
@@ -153,7 +159,7 @@ async function streamToSupabase(req, options = {}) {
         headers: req.headers,
         limits: {
           fileSize: maxFileSize,
-          files: 1 // Only accept one file
+          files: 2 // Allow photo + thumbnail
         }
       });
     } catch {
@@ -163,96 +169,123 @@ async function streamToSupabase(req, options = {}) {
       return reject(noFileErr);
     }
 
-    busboy.on('file', async (name, fileStream, info) => {
+    busboy.on('file', (name, fileStream, info) => {
       const { filename: originalname, mimeType: mimetype } = info;
 
-      // Check field name
-      if (name !== fieldName) {
-        fileStream.resume(); // Drain the stream
-        return;
-      }
+      // Handle Main Photo
+      if (name === fieldName) {
+        fileFound = true;
 
-      fileFound = true;
-
-      // Validate MIME type
-      if (!isValidImageType(mimetype, originalname)) {
-        fileStream.resume(); // Drain the stream
-        uploadError = new Error('Only image files are allowed');
-        uploadError.code = 'INVALID_MIME_TYPE';
-        return;
-      }
-
-      const filename = sanitizeFilename(originalname);
-      const storagePath = `working/${filename}`;
-
-      // Create transform streams for validation and hashing
-      const sizeLimiter = new SizeLimiter(maxFileSize);
-      const hashingStream = new HashingStream(userEmail); // Pass userEmail for scoped hashing
-      const passThrough = new PassThrough();
-
-      // Note: Empty file detection is handled by checking sizeLimiter.getTotalBytes() after upload
-
-      // Handle file size limit exceeded
-      sizeLimiter.on('error', (err) => {
-        uploadError = err;
-        fileStream.destroy();
-        passThrough.destroy();
-      });
-
-      // Handle busboy's file size limit
-      fileStream.on('limit', () => {
-        uploadError = new Error('File too large');
-        uploadError.code = 'LIMIT_FILE_SIZE';
-        passThrough.destroy();
-      });
-
-      // Pipe: fileStream -> sizeLimiter -> hashingStream -> passThrough -> Supabase
-      fileStream
-        .pipe(sizeLimiter)
-        .pipe(hashingStream)
-        .pipe(passThrough);
-
-      try {
-        // Upload to Supabase Storage using streaming
-        const { data, error } = await supabase.storage
-          .from('photos')
-          .upload(storagePath, passThrough, {
-            contentType: mimetype,
-            duplex: 'half', // Required for streaming uploads
-            upsert: false,
-            cacheControl: '31536000' // 1 year cache for immutable content-addressed files
-          });
-
-        if (error) {
-          logger.error('Supabase streaming upload error:', error);
-          uploadError = new Error('Failed to upload to storage');
-          uploadError.supabaseError = error;
+        // Validate MIME type
+        if (!isValidImageType(mimetype, originalname)) {
+          fileStream.resume(); // Drain the stream
+          uploadError = new Error('Only image files are allowed');
+          uploadError.code = 'INVALID_MIME_TYPE';
           return;
         }
 
-        // Check for empty file after upload completes
-        const totalBytes = sizeLimiter.getTotalBytes();
-        if (totalBytes === 0) {
-          // Clean up the empty file from storage
-          await supabase.storage.from('photos').remove([storagePath]);
-          uploadError = new Error('Empty file uploaded');
-          uploadError.code = 'EMPTY_FILE';
-          return;
-        }
+        const filename = sanitizeFilename(originalname);
+        const storagePath = `working/${filename}`;
 
-        uploadResult = {
-          success: true,
-          filename,
-          originalname,
-          mimetype,
-          hash: hashingStream.getHash(),
-          path: storagePath,
-          size: totalBytes,
-          supabaseData: data
-        };
-      } catch (err) {
-        logger.error('Stream upload error:', err);
-        uploadError = err;
+        // Create transform streams for validation and hashing
+        const sizeLimiter = new SizeLimiter(maxFileSize);
+        const hashingStream = new HashingStream(userEmail); // Pass userEmail for scoped hashing
+        const passThrough = new PassThrough();
+
+        // Handle file size limit exceeded
+        sizeLimiter.on('error', (err) => {
+          uploadError = err;
+          fileStream.destroy();
+          passThrough.destroy();
+        });
+
+        // Handle busboy's file size limit
+        fileStream.on('limit', () => {
+          uploadError = new Error('File too large');
+          uploadError.code = 'LIMIT_FILE_SIZE';
+          passThrough.destroy();
+        });
+
+        // Pipe: fileStream -> sizeLimiter -> hashingStream -> passThrough -> Supabase
+        fileStream
+          .pipe(sizeLimiter)
+          .pipe(hashingStream)
+          .pipe(passThrough);
+
+        // Start the upload and store the promise
+        photoUploadPromise = (async () => {
+          try {
+            const { data, error } = await supabase.storage
+              .from('photos')
+              .upload(storagePath, passThrough, {
+                contentType: mimetype,
+                duplex: 'half', // Required for streaming uploads
+                upsert: false,
+                cacheControl: '31536000' // 1 year cache for immutable content-addressed files
+              });
+
+            if (error) {
+              logger.error('Supabase streaming upload error:', error);
+              const err = new Error('Failed to upload to storage');
+              err.supabaseError = error;
+              throw err;
+            }
+
+            // Check for empty file after upload completes
+            const totalBytes = sizeLimiter.getTotalBytes();
+            if (totalBytes === 0) {
+              // Clean up the empty file from storage
+              await supabase.storage.from('photos').remove([storagePath]);
+              const err = new Error('Empty file uploaded');
+              err.code = 'EMPTY_FILE';
+              throw err;
+            }
+
+            return {
+              success: true,
+              filename,
+              originalname,
+              mimetype,
+              hash: hashingStream.getHash(),
+              path: storagePath,
+              size: totalBytes,
+              supabaseData: data
+            };
+          } catch (err) {
+            throw err;
+          }
+        })();
+
+        // Catch errors on the promise to ensure we don't have unhandled rejections
+        photoUploadPromise.catch(err => {
+          if (!uploadError) uploadError = err;
+        });
+
+      } 
+      // Handle Thumbnail
+      else if (name === 'thumbnail') {
+        thumbnailMime = mimetype;
+        
+        fileStream.on('data', (chunk) => {
+          if (thumbnailTooLarge) return;
+          
+          thumbnailSize += chunk.length;
+          if (thumbnailSize > 200 * 1024) { // 200KB limit
+            thumbnailTooLarge = true;
+            thumbnailBuffer = []; // Discard buffer to save memory
+          } else {
+            thumbnailBuffer.push(chunk);
+          }
+        });
+        
+        fileStream.on('limit', () => {
+           thumbnailTooLarge = true;
+           thumbnailBuffer = [];
+        });
+      } 
+      // Ignore other fields
+      else {
+        fileStream.resume();
       }
     });
 
@@ -266,7 +299,7 @@ async function streamToSupabase(req, options = {}) {
       uploadError = err;
     });
 
-    busboy.on('finish', () => {
+    busboy.on('finish', async () => {
       if (uploadError) {
         reject(uploadError);
         return;
@@ -279,24 +312,36 @@ async function streamToSupabase(req, options = {}) {
         return;
       }
 
-      // Wait for upload to complete
-      const checkResult = setInterval(() => {
-        if (uploadResult) {
-          clearInterval(checkResult);
-          resolve(uploadResult);
-        } else if (uploadError) {
-          clearInterval(checkResult);
-          reject(uploadError);
+      try {
+        // Wait for the main photo upload to complete
+        if (!photoUploadPromise) {
+           reject(new Error('Upload failed to start'));
+           return;
         }
-      }, 10);
 
-      // Timeout after 30 seconds
-      setTimeout(() => {
-        clearInterval(checkResult);
-        if (!uploadResult && !uploadError) {
-          reject(new Error('Upload timeout'));
+        const result = await photoUploadPromise;
+
+        // Handle Thumbnail Upload (Best Effort)
+        if (result && result.hash && thumbnailBuffer.length > 0 && !thumbnailTooLarge) {
+          try {
+            const fullThumbnailBuffer = Buffer.concat(thumbnailBuffer);
+            const thumbPath = `thumbnails/${result.hash}.jpg`;
+            
+            await supabase.storage.from('photos').upload(thumbPath, fullThumbnailBuffer, {
+              contentType: thumbnailMime || 'image/jpeg',
+              upsert: true,
+              cacheControl: '31536000'
+            });
+          } catch (thumbErr) {
+            logger.error('Thumbnail upload failed (non-fatal):', thumbErr);
+          }
         }
-      }, 30000);
+
+        resolve(result);
+      } catch (err) {
+        logger.error('Stream upload error:', err);
+        reject(err);
+      }
     });
 
     // Pipe request to busboy
