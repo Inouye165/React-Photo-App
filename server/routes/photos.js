@@ -788,7 +788,8 @@ module.exports = function createPhotosRouter({ db, supabase }) {
   router.get('/display/:state/:filename', authenticateImageRequest, async (req, res) => {
     try {
       const { state, filename } = req.params;
-      const IMAGE_CACHE_MAX_AGE = parseInt(process.env.IMAGE_CACHE_MAX_AGE, 10) || 86400;
+      // 1-year cache for immutable assets (hashed thumbnails, static images)
+      const IMAGE_CACHE_MAX_AGE = parseInt(process.env.IMAGE_CACHE_MAX_AGE, 10) || 31536000;
 
       if (state === 'thumbnails') {
         const storagePath = `thumbnails/${filename}`;
@@ -800,7 +801,7 @@ module.exports = function createPhotosRouter({ db, supabase }) {
         // Stream the response instead of buffering the entire file
         const stream = Readable.from(data.stream());
         res.set('Content-Type', 'image/jpeg');
-        res.set('Cache-Control', `public, max-age=${IMAGE_CACHE_MAX_AGE}`);
+        res.set('Cache-Control', `public, max-age=${IMAGE_CACHE_MAX_AGE}, immutable`);
         stream.pipe(res);
         return;
       }
@@ -828,7 +829,7 @@ module.exports = function createPhotosRouter({ db, supabase }) {
 
       let etag = photo.hash || (photo.file_size ? `${photo.file_size}` : '') + (photo.updated_at ? `-${photo.updated_at}` : '');
       if (etag) res.set('ETag', etag);
-      res.set('Cache-Control', `public, max-age=${IMAGE_CACHE_MAX_AGE}`);
+      res.set('Cache-Control', `public, max-age=${IMAGE_CACHE_MAX_AGE}, immutable`);
 
       // HEIC requires buffering for conversion, but all other formats can stream
       if (ext === '.heic' || ext === '.heif') {
