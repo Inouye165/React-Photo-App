@@ -256,3 +256,65 @@ const expiresAt = Math.ceil((nowSeconds + 1) / TIME_WINDOW_SECONDS) * TIME_WINDO
 
 **Branch**: `feat/stable-signed-urls-logic`  
 **Status**: ✅ Phase 1 Complete
+
+---
+
+## Phase 2: Immutable Cache Headers (December 2025)
+
+### Problem: Unnecessary Network Round-Trips
+While Phase 1 stabilized signed URLs, the server was still sending `Cache-Control: public, max-age=86400` (1 day). This caused browsers to send revalidation requests (304 Not Modified checks) after the cache expired. For immutable assets like content-addressed thumbnails (where the filename IS the hash), this network round-trip is unnecessary latency.
+
+### Solution: Big Tech Standard Cache Headers
+Updated all image display routes to serve the aggressive caching header used by major platforms:
+
+```
+Cache-Control: public, max-age=31536000, immutable
+```
+
+- **31536000**: 1-year cache duration (the HTTP standard maximum)
+- **immutable**: Tells browsers to never revalidate (skip 304 checks)
+
+### Implementation Scope
+The `immutable` directive is **ONLY** applied to image serving routes:
+- `/display/:state/:filename` (photos.js)
+- `/display/image/:photoId` (display.js)
+- `/display/thumbnails/:filename` (display.js)
+
+JSON API routes (e.g., `/photos`, `/photos/:id`) are NOT affected—they continue to use standard caching policies.
+
+### Changes Made
+
+#### Server Routes
+- **`server/routes/photos.js`**: Updated Cache-Control header to include `immutable` and 1-year default
+- **`server/routes/display.js`**: Updated 4 Cache-Control headers to include `immutable` and 1-year default
+
+#### Configuration
+- **`server/.env.example`**: Updated `IMAGE_CACHE_MAX_AGE` default from 86400 to 31536000
+
+#### Excluded (Intentional)
+- HEIC-to-JPEG converted images on legacy `.heic` URL routes retain `private, no-store` to prevent cache corruption
+- `/display/image/:photoId` temporary bypass (`no-store, max-age=0`) retained for troubleshooting
+
+### Test Coverage
+**New Tests in `server/tests/display.cache.test.js`**:
+- ✅ `should include immutable directive for aggressive caching`
+- ✅ `should set 1-year max-age (31536000 seconds)`
+- ✅ `should NOT include immutable directive on /photos API route` (API isolation)
+
+### Verification
+```bash
+# Expected Cache-Control header on image routes:
+Cache-Control: public, max-age=31536000, immutable
+
+# API routes should NOT have immutable:
+Cache-Control: (default or no immutable)
+```
+
+### Performance Impact
+- **Eliminated**: 304 Not Modified round-trips for cached images
+- **Reduced**: Server load from revalidation requests
+- **Improved**: Perceived performance (instant cache hits)
+
+**Branch**: `feat/immutable-cache-headers`  
+**Status**: ✅ Phase 2 Complete
+

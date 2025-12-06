@@ -14,6 +14,7 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/).
 - Batch operations (multi-select, delete, re-analyze)
 
 ### Added
+- **[Performance]** Immutable Cache Headers (Phase 2) - Display routes now serve `Cache-Control: public, max-age=31536000, immutable` for aggressive browser caching. Eliminates 304 revalidation round-trips for hashed thumbnails and static images
 - **[Performance]** Stable Signed URLs - Refactored URL signing to use 24-hour time windows aligned to UTC midnight. Signatures now remain stable within each window, enabling browser caching of signed thumbnail URLs (Phase 1 of caching optimization)
 
 ---

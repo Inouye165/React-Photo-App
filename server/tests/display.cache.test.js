@@ -81,4 +81,57 @@ describe('GET /display/inprogress/:filename', () => {
     expect(res.headers['cache-control']).toMatch(/public/);
     expect(res.headers['etag']).toBeDefined();
   });
+
+  describe('Immutable Cache Headers (Phase 2)', () => {
+    it('should include immutable directive for aggressive caching', async () => {
+      const filename = 'test_cache_photo.jpg';
+      const res = await request(app)
+        .get(`/display/inprogress/${filename}`)
+        .set('Authorization', `Bearer ${authToken}`)
+        .expect(200);
+      
+      const cacheControl = res.headers['cache-control'];
+      expect(cacheControl).toContain('immutable');
+      expect(cacheControl).toContain('public');
+      expect(cacheControl).toContain('max-age=31536000');
+    });
+
+    it('should set 1-year max-age (31536000 seconds)', async () => {
+      const filename = 'test_cache_photo.jpg';
+      const res = await request(app)
+        .get(`/display/inprogress/${filename}`)
+        .set('Authorization', `Bearer ${authToken}`)
+        .expect(200);
+      
+      expect(res.headers['cache-control']).toMatch(/max-age=31536000/);
+    });
+  });
+});
+
+describe('API Isolation - JSON routes should NOT have immutable headers', () => {
+  beforeEach(() => {
+    mockGetUser.mockReset();
+    mockGetUser.mockResolvedValue({ 
+      data: { 
+        user: { 
+          id: 1, 
+          email: 'test@example.com',
+          user_metadata: { username: 'cache_test_user' },
+          app_metadata: { role: 'user' }
+        } 
+      }, 
+      error: null 
+    });
+  });
+
+  it('should NOT include immutable directive on /photos API route', async () => {
+    const res = await request(app)
+      .get('/photos')
+      .set('Authorization', `Bearer valid-token`);
+    
+    const cacheControl = res.headers['cache-control'] || '';
+    // API routes should NOT have immutable caching
+    expect(cacheControl).not.toContain('immutable');
+    expect(cacheControl).not.toContain('31536000');
+  });
 });

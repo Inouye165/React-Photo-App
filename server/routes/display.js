@@ -123,7 +123,8 @@ module.exports = function createDisplayRouter({ db }) {
     // TODO: Remove or tune this header for production cache performance
     res.set('Cache-Control', 'no-store, max-age=0');
     const { photoId } = req.params;
-    const IMAGE_CACHE_MAX_AGE = parseInt(process.env.IMAGE_CACHE_MAX_AGE, 10) || 86400;
+    // 1-year cache for immutable assets (hashed thumbnails, static images)
+    const IMAGE_CACHE_MAX_AGE = parseInt(process.env.IMAGE_CACHE_MAX_AGE, 10) || 31536000;
 
     try {
       if (typeof db !== 'function') {
@@ -187,7 +188,7 @@ module.exports = function createDisplayRouter({ db }) {
           const jpegBuffer = await convertHeicToJpegBuffer(fileBuffer, 95);
           res.set('Content-Type', 'image/jpeg');
           // Can use normal caching - no URL/Content-Type mismatch!
-          res.set('Cache-Control', `public, max-age=${IMAGE_CACHE_MAX_AGE}`);
+          res.set('Cache-Control', `public, max-age=${IMAGE_CACHE_MAX_AGE}, immutable`);
           return res.send(jpegBuffer);
         } catch (err) {
           logger.error('Display image by ID: HEIC conversion error', {
@@ -203,7 +204,7 @@ module.exports = function createDisplayRouter({ db }) {
 
       // Non-HEIC: Serve with appropriate Content-Type
       res.set('Content-Type', getContentTypeForExtension(ext));
-      res.set('Cache-Control', `public, max-age=${IMAGE_CACHE_MAX_AGE}`);
+      res.set('Cache-Control', `public, max-age=${IMAGE_CACHE_MAX_AGE}, immutable`);
       return res.send(fileBuffer);
 
     } catch (err) {
@@ -222,7 +223,8 @@ module.exports = function createDisplayRouter({ db }) {
     const reqId = req.id || req.headers['x-request-id'] || null;
     res.set('Cross-Origin-Resource-Policy', 'cross-origin');
     const { state, filename } = req.params;
-    const IMAGE_CACHE_MAX_AGE = parseInt(process.env.IMAGE_CACHE_MAX_AGE, 10) || 86400;
+    // 1-year cache for immutable assets (hashed thumbnails, static images)
+    const IMAGE_CACHE_MAX_AGE = parseInt(process.env.IMAGE_CACHE_MAX_AGE, 10) || 31536000;
 
     try {
       // Handle thumbnail requests
@@ -246,7 +248,7 @@ module.exports = function createDisplayRouter({ db }) {
         const etag = filename;
         res.set('ETag', etag);
         res.set('Content-Type', 'image/jpeg');
-        res.set('Cache-Control', `public, max-age=${IMAGE_CACHE_MAX_AGE}`);
+        res.set('Cache-Control', `public, max-age=${IMAGE_CACHE_MAX_AGE}, immutable`);
         if (req.headers['if-none-match'] && req.headers['if-none-match'] === etag) {
           return res.status(304).end();
         }
@@ -313,7 +315,7 @@ module.exports = function createDisplayRouter({ db }) {
         etag = ((photo.file_size ? String(photo.file_size) : '') + (photo.updated_at ? `-${photo.updated_at}` : '') + `-${filename}`);
       }
       res.set('ETag', etag);
-      res.set('Cache-Control', `public, max-age=${IMAGE_CACHE_MAX_AGE}`);
+      res.set('Cache-Control', `public, max-age=${IMAGE_CACHE_MAX_AGE}, immutable`);
       if (req.headers['if-none-match'] && req.headers['if-none-match'] === etag) {
         return res.status(304).end();
       }
