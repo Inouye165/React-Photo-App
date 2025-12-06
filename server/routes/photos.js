@@ -118,6 +118,8 @@ module.exports = function createPhotosRouter({ db, supabase }) {
       ]);
       // Generate public URLs for each photo using Supabase Storage
       const photosWithUrls = await Promise.all(rows.map(async (row) => {
+        // text_style excluded from list view for payload optimization
+        // Parse only if present (for backwards compatibility)
         let textStyle = null;
         if (row.text_style) {
           try {
@@ -139,16 +141,25 @@ module.exports = function createPhotosRouter({ db, supabase }) {
         // Old: /display/working/photo.heic → Content-Type: image/jpeg (MISMATCH!)
         // New: /display/image/123 → Content-Type: image/jpeg (NO MISMATCH!)
         photoUrl = `/display/image/${row.id}`;
+        // ai_model_history excluded from list view for payload optimization
+        // Parse only if present (for backwards compatibility)
         let parsedHistory = null;
-        try { parsedHistory = row.ai_model_history ? JSON.parse(row.ai_model_history) : null; } catch { parsedHistory = null; }
-        // Parse poi_analysis for collectibles insights
+        if (row.ai_model_history) {
+          try { parsedHistory = JSON.parse(row.ai_model_history); } catch { parsedHistory = null; }
+        }
+        // poi_analysis excluded from list view for payload optimization
+        // Parse only if present (for backwards compatibility)
         let parsedPoiAnalysis = null;
-        try { 
-          parsedPoiAnalysis = row.poi_analysis ? 
-            (typeof row.poi_analysis === 'string' ? JSON.parse(row.poi_analysis) : row.poi_analysis) 
-            : null; 
-        } catch { parsedPoiAnalysis = null; }
+        if (row.poi_analysis) {
+          try { 
+            parsedPoiAnalysis = typeof row.poi_analysis === 'string' 
+              ? JSON.parse(row.poi_analysis) 
+              : row.poi_analysis; 
+          } catch { parsedPoiAnalysis = null; }
+        }
         
+        // OPTIMIZED: editedFilename, storagePath, aiModelHistory, poi_analysis
+        // are excluded from list view but gracefully default to null
         return {
           id: row.id,
           filename: row.filename,
@@ -160,8 +171,8 @@ module.exports = function createPhotosRouter({ db, supabase }) {
           description: row.description,
           keywords: row.keywords,
           textStyle,
-          editedFilename: row.edited_filename,
-          storagePath: row.storage_path,
+          editedFilename: row.edited_filename || null,
+          storagePath: row.storage_path || null,
           url: photoUrl,
           thumbnail: thumbnailUrl,
           aiModelHistory: parsedHistory,

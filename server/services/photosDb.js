@@ -6,11 +6,12 @@
 module.exports = function createPhotosDb({ db }) {
   return {
     async listPhotos(userId, state) {
+      // OPTIMIZED: Select only lite columns for list view to reduce payload size
+      // Heavy fields (poi_analysis, ai_model_history, text_style, storage_path, edited_filename)
+      // are excluded - use getPhotoById for full detail view
       let query = db('photos').select(
         'id', 'filename', 'state', 'metadata', 'hash', 'file_size',
-        'caption', 'description', 'keywords', 'text_style',
-        'edited_filename', 'storage_path', 'ai_model_history',
-        'poi_analysis', 'classification'
+        'caption', 'description', 'keywords', 'classification', 'created_at'
       ).where('user_id', userId);
       if (state === 'working' || state === 'inprogress' || state === 'finished') {
         query = query.where({ state });
