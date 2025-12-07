@@ -49,8 +49,9 @@ export function useThumbnailQueue(files, options = {}) {
     
     return () => {
       mountedRef.current = false;
-      // Revoke all object URLs to free memory
-      generatedUrlsRef.current.forEach(url => {
+      // Copy ref to local variable for cleanup
+      const urlsToCleanup = Array.from(generatedUrlsRef.current);
+      urlsToCleanup.forEach(url => {
         if (url?.startsWith('blob:')) {
           URL.revokeObjectURL(url);
         }
