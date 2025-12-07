@@ -55,7 +55,7 @@ export function useThumbnailQueue(files, options = {}) {
         }
       });
     };
-  }, []);
+  }, [thumbnails]);
 
   // Process a single thumbnail
   const processThumbnail = useCallback(async (file) => {
