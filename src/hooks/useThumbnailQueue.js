@@ -41,6 +41,7 @@ export function useThumbnailQueue(files, options = {}) {
   const processingRef = useRef(new Set());
   const mountedRef = useRef(true);
   const processedFilesRef = useRef(new Set()); // Track which files we've already processed
+  const generatedUrlsRef = useRef(new Set()); // Track generated URLs for cleanup
 
   // Cleanup on unmount
   useEffect(() => {
@@ -49,13 +50,14 @@ export function useThumbnailQueue(files, options = {}) {
     return () => {
       mountedRef.current = false;
       // Revoke all object URLs to free memory
-      thumbnails.forEach(url => {
+      generatedUrlsRef.current.forEach(url => {
         if (url?.startsWith('blob:')) {
           URL.revokeObjectURL(url);
         }
       });
+      generatedUrlsRef.current.clear();
     };
-  }, [thumbnails]);
+  }, []);
 
   // Process a single thumbnail
   const processThumbnail = useCallback(async (file) => {
@@ -77,6 +79,7 @@ export function useThumbnailQueue(files, options = {}) {
           return null;
         }
         
+        generatedUrlsRef.current.add(url);
         setThumbnails(prev => new Map(prev).set(fileName, url));
         setStatus(prev => new Map(prev).set(fileName, 'success'));
         return url;
@@ -94,6 +97,7 @@ export function useThumbnailQueue(files, options = {}) {
         });
 
         const url = URL.createObjectURL(blob);
+        generatedUrlsRef.current.add(url);
         setThumbnails(prev => new Map(prev).set(fileName, url));
         setStatus(prev => new Map(prev).set(fileName, 'success'));
         return url;
