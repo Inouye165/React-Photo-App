@@ -33,21 +33,17 @@ describe('PhotoUploadForm Component', () => {
     it('falls back to file input on unsupported browsers', async () => {
       // Remove showDirectoryPicker from window
       delete window.showDirectoryPicker;
-      const fileInputClickSpy = vi.fn();
-      // Render with a ref spy
       render(
         <PhotoUploadForm
           {...mockProps}
           handleNativeSelection={vi.fn()}
-          // Patch ref after render
-          ref={el => {
-            if (el) {
-              const input = el.querySelector('input[type="file"]');
-              if (input) input.click = fileInputClickSpy;
-            }
-          }}
         />
       );
+      // Wait for file input to appear
+        const fileInput = await screen.findByDisplayValue('', { selector: 'input[type="file"]', hidden: true })
+          .catch(() => document.querySelector('input[type="file"]'));
+      const fileInputClickSpy = vi.fn();
+      if (fileInput) fileInput.click = fileInputClickSpy;
       // Click Change Folder
       const changeFolderBtn = screen.getByText('Change Folder');
       await userEvent.click(changeFolderBtn);
@@ -195,11 +191,14 @@ describe('PhotoUploadForm Component', () => {
   })
 
   it('calls onReopenFolder when Change Folder button is clicked', async () => {
-    const user = userEvent.setup()
-    render(<PhotoUploadForm {...mockProps} filteredLocalPhotos={[]} />)
-    
-    await user.click(screen.getByText('Change Folder'))
-    expect(mockProps.onReopenFolder).toHaveBeenCalledOnce()
+    // Simulate showDirectoryPicker support
+    window.showDirectoryPicker = () => Promise.resolve();
+    const user = userEvent.setup();
+    render(<PhotoUploadForm {...mockProps} filteredLocalPhotos={[]} />);
+    await user.click(screen.getByText('Change Folder'));
+    expect(mockProps.onReopenFolder).toHaveBeenCalledOnce();
+    // Clean up
+    delete window.showDirectoryPicker;
   })
 
   it('calls store action when close button is clicked', async () => {
