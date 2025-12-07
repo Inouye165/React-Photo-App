@@ -74,38 +74,78 @@ export function calculateScaledDimensions(width, height, maxSize) {
  * @returns {boolean} - True if supported natively, false otherwise
  */
 export function isSupportedImageType(file) {
-  if (!file || !file.type) return false;
-  const supportedTypes = new Set([
-    'image/jpeg',
-    'image/jpg',
-    'image/png',
-    'image/webp',
-    'image/gif',
-    'image/bmp',
-  ]);
-  return supportedTypes.has(file.type.toLowerCase());
+  if (!file) return false;
+  
+  // Check MIME type first
+  if (file.type) {
+    const supportedTypes = new Set([
+      'image/jpeg',
+      'image/jpg',
+      'image/png',
+      'image/webp',
+      'image/gif',
+      'image/bmp',
+    ]);
+    if (supportedTypes.has(file.type.toLowerCase())) {
+      return true;
+    }
+  }
+  
+  // Fallback: check file extension (some browsers don't set type for folder picker)
+  if (file.name) {
+    const ext = file.name.toLowerCase().split('.').pop();
+    const supportedExtensions = new Set(['jpg', 'jpeg', 'png', 'webp', 'gif', 'bmp']);
+    if (supportedExtensions.has(ext)) {
+      return true;
+    }
+  }
+  
+  return false;
 }
 
 /**
  * Load an image from a Blob/File.
+ * Uses createImageBitmap for more reliable blob decoding.
  * @param {Blob} blob - The blob to load
- * @returns {Promise<HTMLImageElement>} - The loaded image element
+ * @returns {Promise<HTMLImageElement|ImageBitmap>} - The loaded image
  */
-function loadImage(blob) {
+async function loadImage(blob) {
+  // Validate blob first
+  if (!blob || blob.size === 0) {
+    throw new Error(`Invalid blob: size=${blob?.size}, type=${blob?.type}`);
+  }
+  
+  // Try createImageBitmap first - more reliable for blobs
+  if (typeof createImageBitmap === 'function') {
+    try {
+      const bitmap = await createImageBitmap(blob);
+      return bitmap;
+    } catch (bitmapError) {
+      console.warn(`[loadImage] createImageBitmap failed, falling back to Image element:`, bitmapError.message);
+    }
+  }
+  
+  // Fallback to Image element
   return new Promise((resolve, reject) => {
     const img = new Image();
     const url = URL.createObjectURL(blob);
     
-    const cleanup = () => URL.revokeObjectURL(url);
+    const timeout = setTimeout(() => {
+      URL.revokeObjectURL(url);
+      reject(new Error('Image load timeout'));
+    }, 30000);
     
     img.onload = () => {
-      cleanup();
+      clearTimeout(timeout);
+      URL.revokeObjectURL(url);
       resolve(img);
     };
     
     img.onerror = () => {
-      cleanup();
-      reject(new Error('Failed to load image'));
+      clearTimeout(timeout);
+      URL.revokeObjectURL(url);
+      console.warn(`[loadImage] Image element failed: type=${blob.type}, size=${blob.size}`);
+      reject(new Error('Failed to decode image'));
     };
     
     img.src = url;
@@ -274,21 +314,52 @@ export async function generateClientThumbnail(file, maxSize = MAX_THUMBNAIL_SIZE
 
   try {
     let sourceBlob = file;
+    let isHeic = isHeicFile(file);
 
-    // Convert HEIC to JPEG first if needed
-    const isHeic = isHeicFile(file);
+    // If not identified as HEIC by name/type, check content for magic numbers
+    // This handles HEIC files incorrectly named as .JPG (common with iOS exports)
+    if (!isHeic) {
+      if (isSupportedImageType(file)) {
+        try {
+          // Read into a fresh buffer to ensure data is accessible and to check magic numbers
+          const arrayBuffer = await file.arrayBuffer();
+          const arr = new Uint8Array(arrayBuffer).subarray(0, 12);
+          
+          // Check for HEIC signature: 'ftyp' at offset 4
+          if (arr[4] === 0x66 && arr[5] === 0x74 && arr[6] === 0x79 && arr[7] === 0x70) {
+            const brand = String.fromCharCode(...arr.subarray(8, 12));
+            const heicBrands = ['heic', 'heix', 'hevc', 'heim', 'heis', 'hevm', 'hevs', 'mif1', 'msf1'];
+            
+            if (heicBrands.includes(brand)) {
+              console.warn(`File ${file.name} has .JPG extension but appears to be HEIC. Converting...`);
+              isHeic = true;
+              sourceBlob = new Blob([arrayBuffer], { type: 'image/heic' });
+            }
+          }
+          
+          if (!isHeic) {
+            // It's likely a real JPEG or other supported type
+            // Create a fresh blob from the buffer
+            sourceBlob = new Blob([arrayBuffer], { type: file.type || 'image/jpeg' });
+          }
+        } catch (readError) {
+          console.warn(`Failed to read file ${file.name}:`, readError);
+          return null;
+        }
+      } else {
+        // Unsupported type and not HEIC
+        return null;
+      }
+    }
 
     if (isHeic) {
       try {
-        sourceBlob = await convertHeicToJpeg(file);
+        sourceBlob = await convertHeicToJpeg(sourceBlob);
       } catch (heicError) {
         console.warn(`HEIC conversion failed for ${file.name}:`, heicError);
         // Return null to trigger fallback in Thumbnail component
         return null;
       }
-    } else if (!isSupportedImageType(file)) {
-      // Non-HEIC unsupported type
-      return null;
     }
 
     // Load the image
