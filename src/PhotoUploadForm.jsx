@@ -34,10 +34,13 @@ const PhotoUploadForm = ({
   filteredLocalPhotos,
   handleUploadFiltered,
   onReopenFolder,
+  handleNativeSelection,
   isStandalonePage = false,
   onClose,
   closeReason = 'user-dismissed',
 }) => {
+    // Ref for fallback file input
+    const fileInputRef = useRef(null);
   // Connect to store commands
   const closePicker = useStore((state) => state.pickerCommand.closePicker);
   
@@ -222,11 +225,25 @@ const PhotoUploadForm = ({
 
         <div className="ml-auto flex gap-3">
            <button 
-             onClick={() => onReopenFolder && onReopenFolder()} 
+             onClick={() => {
+               if ('showDirectoryPicker' in window) {
+                 onReopenFolder && onReopenFolder();
+               } else {
+                 fileInputRef.current?.click();
+               }
+             }}
              className="px-4 py-2 text-sm font-medium text-gray-700 bg-white border border-gray-300 rounded-md hover:bg-gray-50 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-blue-500"
            >
              Change Folder
            </button>
+           <input
+             type="file"
+             webkitdirectory=""
+             multiple
+             className="hidden"
+             ref={fileInputRef}
+             onChange={handleNativeSelection}
+           />
           <button
             onClick={onUploadClick}
             disabled={uploading || (selectedIndices.size === 0 && filteredLocalPhotos.length === 0)}

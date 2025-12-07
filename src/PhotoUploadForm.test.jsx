@@ -30,6 +30,29 @@ vi.mock('./store', () => ({
 }))
 
 describe('PhotoUploadForm Component', () => {
+    it('falls back to file input on unsupported browsers', async () => {
+      // Remove showDirectoryPicker from window
+      delete window.showDirectoryPicker;
+      const fileInputClickSpy = vi.fn();
+      // Render with a ref spy
+      render(
+        <PhotoUploadForm
+          {...mockProps}
+          handleNativeSelection={vi.fn()}
+          // Patch ref after render
+          ref={el => {
+            if (el) {
+              const input = el.querySelector('input[type="file"]');
+              if (input) input.click = fileInputClickSpy;
+            }
+          }}
+        />
+      );
+      // Click Change Folder
+      const changeFolderBtn = screen.getByText('Change Folder');
+      await userEvent.click(changeFolderBtn);
+      expect(fileInputClickSpy).toHaveBeenCalled();
+    });
   const mockFile = new File(['test'], 'test.jpg', { type: 'image/jpeg', lastModified: Date.now() })
   
   const mockFilteredPhotos = [

@@ -4,6 +4,7 @@ import { uploadPhotoToServer } from '../api.js';
 import { generateClientThumbnail } from '../utils/clientImageProcessing.js';
 import useStore from '../store.js';
 
+
 export default function useLocalPhotoPicker({ onUploadComplete, onUploadSuccess }) {
   const uploadPicker = useStore((state) => state.uploadPicker);
   const pickerCommand = useStore((state) => state.pickerCommand);
@@ -14,34 +15,57 @@ export default function useLocalPhotoPicker({ onUploadComplete, onUploadSuccess 
   const uploading = uploadPicker.status === 'uploading';
   const showPicker = uploadPicker.status !== 'closed';
 
+  // Shared file processing logic
+  const processFiles = useCallback(async (fileList, dirHandle = null) => {
+    const files = [];
+    for (const fileObj of fileList) {
+      let file, name, handle;
+      if (fileObj instanceof File) {
+        file = fileObj;
+        name = fileObj.name;
+        handle = null;
+      } else {
+        file = fileObj.file;
+        name = fileObj.name;
+        handle = fileObj.handle || null;
+      }
+      try {
+        const exif = await parse(file);
+        const exifDate = exif?.DateTimeOriginal || exif?.CreateDate || exif?.DateTime;
+        files.push({ name, file, exifDate, handle });
+      } catch {
+        files.push({ name, file, exifDate: null, handle });
+      }
+    }
+    pickerCommand.openPicker({ dirHandle, files });
+  }, [pickerCommand]);
+
+  // Modern API (Chrome/Edge)
   const handleSelectFolder = useCallback(async () => {
     try {
       if (!window.showDirectoryPicker) {
         throw new Error('File System Access API not supported');
       }
-
       const dirHandle = await window.showDirectoryPicker();
-      const files = [];
-
+      const fileList = [];
       for await (const [name, handle] of dirHandle.entries()) {
         if (handle.kind === 'file' && /\.(jpg|jpeg|png|gif|heic|heif)$/i.test(name)) {
           const file = await handle.getFile();
-          try {
-            const exif = await parse(file);
-            const exifDate = exif?.DateTimeOriginal || exif?.CreateDate || exif?.DateTime;
-            files.push({ name, file, exifDate, handle });
-          } catch {
-            files.push({ name, file, exifDate: null, handle });
-          }
+          fileList.push({ name, file, handle });
         }
       }
-
       workingDirHandleRef.current = dirHandle;
-      pickerCommand.openPicker({ dirHandle, files });
+      await processFiles(fileList, dirHandle);
     } catch {
       // toast removed: folder selection failed
     }
-  }, [pickerCommand]);
+  }, [processFiles]);
+
+  // Fallback for Safari/Firefox
+  const handleNativeSelection = useCallback(async (event) => {
+    const inputFiles = Array.from(event.target.files || []);
+    await processFiles(inputFiles, null);
+  }, [processFiles]);
 
   const filteredLocalPhotos = useMemo(() => {
     const localPhotos = uploadPicker.localPhotos || [];
@@ -115,6 +139,7 @@ export default function useLocalPhotoPicker({ onUploadComplete, onUploadSuccess 
   return {
     filteredLocalPhotos,
     handleSelectFolder,
+    handleNativeSelection,
     handleUploadFiltered,
     showPicker,
     startDate,

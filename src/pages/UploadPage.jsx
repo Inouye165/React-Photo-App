@@ -1,4 +1,4 @@
-import React from 'react';
+import React, { useRef } from 'react';
 import { useNavigate, useOutletContext } from 'react-router-dom';
 import PhotoUploadForm from '../PhotoUploadForm.jsx';
 import useLocalPhotoPicker from '../hooks/useLocalPhotoPicker.js';
@@ -21,6 +21,7 @@ export default function UploadPage() {
   const {
     filteredLocalPhotos,
     handleSelectFolder,
+    handleNativeSelection,
     handleUploadFiltered,
     startDate,
     setStartDate,
@@ -37,12 +38,19 @@ export default function UploadPage() {
     },
   });
 
+  // Ref for fallback file input (Firefox/Safari)
+  const fileInputRef = useRef(null);
+
   // Track if user has selected a folder
   const hasSelectedFolder = filteredLocalPhotos.length > 0;
 
-  // Handle folder selection flow
-  const handleStartUpload = async () => {
-    await handleSelectFolder();
+  // Handle folder selection flow with cross-browser support
+  const handleStartUpload = () => {
+    if (typeof window.showDirectoryPicker === 'function') {
+      handleSelectFolder();
+    } else {
+      fileInputRef.current?.click();
+    }
   };
 
   // Close/cancel handler - go to gallery
@@ -168,6 +176,17 @@ export default function UploadPage() {
             </svg>
             Select Folder
           </button>
+          
+          {/* Hidden file input for Firefox/Safari fallback */}
+          <input
+            type="file"
+            webkitdirectory=""
+            multiple
+            className="hidden"
+            style={{ display: 'none' }}
+            ref={fileInputRef}
+            onChange={handleNativeSelection}
+          />
 
           {/* Secondary link */}
           <div style={{ marginTop: '24px' }}>
