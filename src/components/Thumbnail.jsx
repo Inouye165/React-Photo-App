@@ -5,14 +5,12 @@
  * 
  * Features:
  * - IndexedDB caching for instant subsequent loads
- * - Unified HEIC/JPEG processing via generateClientThumbnail
- * - Fallback to heic-to for HEIC files when main processor can't handle them
- * - Graceful degradation with styled placeholders
+ * - Unified HEIC/JPEG processing via generateClientThumbnail with memory-safe scaling
+ * - Graceful degradation with styled placeholders for failed conversions
  * - Memory management with proper ObjectURL cleanup
  */
 
 import React, { useEffect, useState, useRef } from 'react';
-import { heicTo } from 'heic-to';
 import { generateClientThumbnail } from '../utils/clientImageProcessing.js';
 import { getThumbnail, saveThumbnail } from '../utils/thumbnailCache.js';
 
@@ -153,26 +151,13 @@ const Thumbnail = ({ file, className = '' }) => {
           return;
         }
 
-        // Step 2: Generate new thumbnail
-        let thumbnailBlob = await generateClientThumbnail(file);
-
-        // Step 3: For HEIC files, try heic-to as fallback if needed
-        if (!thumbnailBlob && isHeic) {
-          try {
-            thumbnailBlob = await heicTo({
-              blob: file,
-              type: 'image/jpeg',
-              quality: 0.6, // Lower quality for faster thumbnails
-            });
-          } catch (heicErr) {
-            console.warn(`HEIC conversion failed for ${file.name}:`, heicErr.message || heicErr);
-          }
-        }
+        // Step 2: Generate new thumbnail (handles both regular images and HEIC conversion)
+        const thumbnailBlob = await generateClientThumbnail(file);
 
         if (!mountedRef.current) return;
 
         if (thumbnailBlob) {
-          // Step 4: Cache the thumbnail for future use (fire and forget)
+          // Step 3: Cache the thumbnail for future use (fire and forget)
           saveThumbnail(file, thumbnailBlob).catch(() => {
             // Ignore cache save errors - app still works
           });
@@ -183,14 +168,20 @@ const Thumbnail = ({ file, className = '' }) => {
           setSrc(url);
           setIsLoading(false);
         } else if (isHeic) {
-          // HEIC file that couldn't be converted - show HEIC placeholder
+          // HEIC file that couldn't be converted (out-of-memory or conversion failure)
+          console.warn(`HEIC thumbnail generation failed for ${file.name}`);
           setIsHeicFallback(true);
           setIsLoading(false);
         } else {
           // Non-HEIC file that failed - try direct ObjectURL as last resort
-          const url = URL.createObjectURL(file);
-          objectUrlRef.current = url;
-          setSrc(url);
+          try {
+            const url = URL.createObjectURL(file);
+            objectUrlRef.current = url;
+            setSrc(url);
+          } catch (err) {
+            console.warn('Failed to create ObjectURL for file:', err);
+            setLoadError(true);
+          }
           setIsLoading(false);
         }
       } catch (err) {

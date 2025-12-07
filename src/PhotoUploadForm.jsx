@@ -1,7 +1,7 @@
 import React, { useEffect, useState, useRef, useCallback } from "react";
 import { useVirtualizer } from '@tanstack/react-virtual';
 import useStore from './store.js';
-import Thumbnail from './components/Thumbnail.jsx';
+import useThumbnailQueue from './hooks/useThumbnailQueue.js';
 
 // Hook to get responsive column count
 const useColumns = () => {
@@ -263,7 +263,7 @@ const PhotoUploadForm = ({
             <p className="text-sm mt-1">Try adjusting the date range or selecting a different folder.</p>
           </div>
         ) : (
-          <VirtualizedPhotoGrid
+          <VirtualizedPhotoGridWithQueue
             photos={filteredLocalPhotos}
             columns={columns}
             selectedIndices={selectedIndices}
@@ -276,94 +276,156 @@ const PhotoUploadForm = ({
   );
 };
 
-// Virtualized grid component using TanStack Virtual
-const VirtualizedPhotoGrid = ({ photos, columns, selectedIndices, toggleSelection, parentRef }) => {
+// Virtualized grid component using TanStack Virtual with Queue-based thumbnail processing
+const VirtualizedPhotoGridWithQueue = ({ photos, columns, selectedIndices, toggleSelection, parentRef }) => {
+  // Extract files for queue processing
+  const files = photos.map(p => p.file).filter(Boolean);
+  
+  // Use queue-based thumbnail processor - processes 2 at a time to prevent UI blocking
+  const { thumbnails, status, progress, isComplete } = useThumbnailQueue(files, {
+    concurrency: 2, // Process 2 at a time for balance between speed and UI responsiveness
+  });
+
   const rowCount = Math.ceil(photos.length / columns);
   
   const rowVirtualizer = useVirtualizer({
     count: rowCount,
     getScrollElement: () => parentRef.current,
-    estimateSize: () => 180, // Estimated row height (will be measured)
+    estimateSize: () => 180,
     overscan: 5,
   });
 
   return (
-    <div
-      style={{
-        height: `${rowVirtualizer.getTotalSize()}px`,
-        width: '100%',
-        position: 'relative',
-      }}
-      className="p-4"
-    >
-      {rowVirtualizer.getVirtualItems().map((virtualRow) => {
-        const rowIndex = virtualRow.index;
-        const startIdx = rowIndex * columns;
-        const rowPhotos = photos.slice(startIdx, startIdx + columns);
-
-        return (
-          <div
-            key={virtualRow.key}
-            style={{
-              position: 'absolute',
-              top: 0,
-              left: 0,
-              width: '100%',
-              height: `${virtualRow.size}px`,
-              transform: `translateY(${virtualRow.start}px)`,
-            }}
-          >
-            <div 
-              className="grid gap-4 h-full"
-              style={{ gridTemplateColumns: `repeat(${columns}, minmax(0, 1fr))` }}
-            >
-              {rowPhotos.map((p, colIndex) => {
-                const index = startIdx + colIndex;
-                const isSelected = selectedIndices.has(index);
-                const fileDate = p.exifDate ? new Date(p.exifDate) : new Date(p.file?.lastModified);
-                const fileSize = p.file ? (p.file.size || 0) : 0;
-
-                return (
-                  <div 
-                    key={`${p.name}-${index}`}
-                    data-testid="photo-cell"
-                    onClick={() => toggleSelection(index)}
-                    className={`
-                      aspect-square
-                      group relative rounded-lg overflow-hidden cursor-pointer border-2 transition-all duration-200
-                      ${isSelected ? 'border-blue-500 ring-2 ring-blue-200 ring-offset-1' : 'border-transparent hover:border-gray-300'}
-                      bg-gray-100 shadow-sm hover:shadow-md
-                    `}
-                  >
-                    <Thumbnail file={p.file} className="w-full h-full object-cover" />
-                    
-                    {/* Checkbox Indicator */}
-                    <div className="absolute top-2 right-2 z-10">
-                      <div className={`
-                        w-6 h-6 rounded-full border-2 flex items-center justify-center transition-colors duration-200
-                        ${isSelected ? 'bg-blue-500 border-blue-500' : 'bg-white/80 border-gray-400 group-hover:border-gray-500'}
-                      `}>
-                        {isSelected && (
-                          <svg className="w-4 h-4 text-white" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth="3" d="M5 13l4 4L19 7" /></svg>
-                        )}
-                      </div>
-                    </div>
-
-                    {/* Info Overlay (Bottom) - only visible on hover */}
-                    <div className="absolute bottom-0 left-0 right-0 z-10 bg-gradient-to-t from-black/80 via-black/40 to-transparent p-3 pt-8 text-white opacity-0 group-hover:opacity-100 transition-opacity duration-200 pointer-events-none">
-                      <p className="text-xs font-medium truncate" title={p.name}>{p.name}</p>
-                      <div className="flex justify-between items-center mt-0.5">
-                        <p className="text-[10px] opacity-80">{fileDate.toLocaleDateString()}</p>
-                        <p className="text-[10px] opacity-80">{(fileSize / 1024).toFixed(0)} KB</p>
-                      </div>
-                    </div>
-                  </div>
-                );
-              })}
+    <div className="relative">
+      {/* Progress indicator - shows while thumbnails are being processed */}
+      {!isComplete && progress.total > 0 && (
+        <div className="sticky top-0 z-20 mx-4 mt-4 mb-2 p-3 bg-blue-50 border border-blue-100 rounded-lg shadow-sm">
+          <div className="flex items-center gap-3">
+            <div className="flex-1 h-2 bg-blue-100 rounded-full overflow-hidden">
+              <div 
+                className="h-full bg-gradient-to-r from-blue-500 to-indigo-500 transition-all duration-300 ease-out"
+                style={{ width: `${(progress.completed / progress.total) * 100}%` }}
+              />
             </div>
+            <span className="text-sm font-medium text-blue-700 whitespace-nowrap">
+              {progress.completed} / {progress.total}
+            </span>
           </div>
-        );
-      })}
+          <p className="text-xs text-blue-600 mt-1">
+            Processing thumbnails... UI stays responsive.
+          </p>
+        </div>
+      )}
+
+      <div
+        style={{
+          height: `${rowVirtualizer.getTotalSize()}px`,
+          width: '100%',
+          position: 'relative',
+        }}
+        className="p-4"
+      >
+        {rowVirtualizer.getVirtualItems().map((virtualRow) => {
+          const rowIndex = virtualRow.index;
+          const startIdx = rowIndex * columns;
+          const rowPhotos = photos.slice(startIdx, startIdx + columns);
+
+          return (
+            <div
+              key={virtualRow.key}
+              style={{
+                position: 'absolute',
+                top: 0,
+                left: 0,
+                width: '100%',
+                height: `${virtualRow.size}px`,
+                transform: `translateY(${virtualRow.start}px)`,
+              }}
+            >
+              <div 
+                className="grid gap-4 h-full"
+                style={{ gridTemplateColumns: `repeat(${columns}, minmax(0, 1fr))` }}
+              >
+                {rowPhotos.map((p, colIndex) => {
+                  const index = startIdx + colIndex;
+                  const isSelected = selectedIndices.has(index);
+                  const fileDate = p.exifDate ? new Date(p.exifDate) : new Date(p.file?.lastModified);
+                  const fileSize = p.file ? (p.file.size || 0) : 0;
+                  
+                  // Get thumbnail from queue
+                  const fileName = p.file?.name;
+                  const thumbnailUrl = fileName ? thumbnails.get(fileName) : null;
+                  const thumbnailStatus = fileName ? (status.get(fileName) || 'pending') : 'pending';
+
+                  return (
+                    <div 
+                      key={`${p.name}-${index}`}
+                      data-testid="photo-cell"
+                      onClick={() => toggleSelection(index)}
+                      className={`
+                        aspect-square
+                        group relative rounded-lg overflow-hidden cursor-pointer border-2 transition-all duration-200
+                        ${isSelected ? 'border-blue-500 ring-2 ring-blue-200 ring-offset-1' : 'border-transparent hover:border-gray-300'}
+                        bg-gray-100 shadow-sm hover:shadow-md
+                      `}
+                    >
+                      {/* Queue-based thumbnail rendering */}
+                      {thumbnailStatus === 'success' && thumbnailUrl ? (
+                        <img 
+                          src={thumbnailUrl}
+                          alt={fileName}
+                          className="w-full h-full object-cover"
+                          loading="lazy"
+                        />
+                      ) : thumbnailStatus === 'processing' ? (
+                        <div className="w-full h-full flex flex-col items-center justify-center bg-gray-50">
+                          <div className="w-6 h-6 border-2 border-blue-200 border-t-blue-500 rounded-full animate-spin" />
+                          <span className="text-[10px] text-gray-500 mt-2">Processing...</span>
+                        </div>
+                      ) : thumbnailStatus === 'failed' ? (
+                        <div className="w-full h-full flex flex-col items-center justify-center bg-gray-100 text-gray-400">
+                          <svg className="w-8 h-8 mb-1" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                            <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="1.5" d="M4 16l4.586-4.586a2 2 0 012.828 0L16 16m-2-2l1.586-1.586a2 2 0 012.828 0L20 14m-6-6h.01M6 20h12a2 2 0 002-2V6a2 2 0 00-2-2H6a2 2 0 00-2 2v12a2 2 0 002 2z" />
+                          </svg>
+                          <span className="text-[10px]">Failed</span>
+                        </div>
+                      ) : (
+                        <div className="w-full h-full flex flex-col items-center justify-center bg-gray-50 text-gray-400">
+                          <svg className="w-8 h-8 mb-1 opacity-50" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                            <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="1.5" d="M4 16l4.586-4.586a2 2 0 012.828 0L16 16m-2-2l1.586-1.586a2 2 0 012.828 0L20 14m-6-6h.01M6 20h12a2 2 0 002-2V6a2 2 0 00-2-2H6a2 2 0 00-2 2v12a2 2 0 002 2z" />
+                          </svg>
+                          <span className="text-[10px]">Waiting...</span>
+                        </div>
+                      )}
+                      
+                      {/* Checkbox Indicator */}
+                      <div className="absolute top-2 right-2 z-10">
+                        <div className={`
+                          w-6 h-6 rounded-full border-2 flex items-center justify-center transition-colors duration-200
+                          ${isSelected ? 'bg-blue-500 border-blue-500' : 'bg-white/80 border-gray-400 group-hover:border-gray-500'}
+                        `}>
+                          {isSelected && (
+                            <svg className="w-4 h-4 text-white" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth="3" d="M5 13l4 4L19 7" /></svg>
+                          )}
+                        </div>
+                      </div>
+
+                      {/* Info Overlay (Bottom) - only visible on hover */}
+                      <div className="absolute bottom-0 left-0 right-0 z-10 bg-gradient-to-t from-black/80 via-black/40 to-transparent p-3 pt-8 text-white opacity-0 group-hover:opacity-100 transition-opacity duration-200 pointer-events-none">
+                        <p className="text-xs font-medium truncate" title={p.name}>{p.name}</p>
+                        <div className="flex justify-between items-center mt-0.5">
+                          <p className="text-[10px] opacity-80">{fileDate.toLocaleDateString()}</p>
+                          <p className="text-[10px] opacity-80">{(fileSize / 1024).toFixed(0)} KB</p>
+                        </div>
+                      </div>
+                    </div>
+                  );
+                })}
+              </div>
+            </div>
+          );
+        })}
+      </div>
     </div>
   );
 };

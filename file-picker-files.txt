@@ -1,0 +1,73 @@
+// =============================
+// docs/upload-picker-architecture.md
+// =============================
+# Upload Picker Command/Event Architecture
+
+## Overview
+
+The Upload Picker is a component that allows users to select and upload photos from their local file system. It is designed to work seamlessly with both modern and legacy browsers, providing a consistent and user-friendly interface for photo uploads.
+
+## Components
+
+- `UploadPage`: The main page component that hosts the photo upload form and handles folder selection.
+- `PhotoUploadForm`: A form component that displays the selected photos and provides controls for cropping, rotation, and uploading.
+- `Thumbnail`: A component for rendering photo thumbnails with support for cropping and rotation.
+- `clientImageProcessing`: A utility for processing images on the client side, including resizing and compression.
+- `thumbnailCache`: A caching mechanism for storing and retrieving thumbnail images.
+
+## Hooks
+
+- `useLocalPhotoPicker`: A custom hook that manages the state and logic for selecting and processing local photos.
+
+## State Management
+
+The Upload Picker uses Redux for state management, with a dedicated slice (`uploadPickerSlice`) for managing the upload state and actions.
+
+## API Integration
+
+The component integrates with a backend API for uploading photos. The API endpoint is `/api/upload`, and it expects a `multipart/form-data` request containing the photos to be uploaded.
+
+## Browser Compatibility
+
+The Upload Picker is designed to be compatible with the latest versions of major browsers, including Chrome, Firefox, Safari, and Edge. It also includes fallbacks for older browsers that do not support modern file handling APIs.
+
+## Future Enhancements
+
+- Support for additional image formats (e.g., GIF, BMP)
+- Advanced editing features (e.g., filters, adjustments)
+- Integration with cloud storage services (e.g., AWS S3, Google Cloud Storage)
+- Improved error handling and user feedback mechanisms
+
+// =============================
+// src/api.js
+// =============================
+// --- Collectibles API ---
+/**
+ * Fetch all collectibles for a given photoId
+ */
+export async function fetchCollectibles(photoId) {
+  const response = await fetch(`/api/collectibles/${photoId}`);
+  if (!response.ok) {
+    throw new Error('Network response was not ok');
+  }
+  return response.json();
+}
+
+// =============================
+// src/test/setup.js
+// =============================
+import '@testing-library/jest-dom/vitest'
+import { vi, afterEach, beforeEach } from 'vitest'
+import { cleanup } from '@testing-library/react'
+import React from 'react'
+import { uploadPickerInitialState } from '../store/uploadPickerSlice.js'
+
+beforeEach(() => {
+  // Reset any global state or mocks before each test
+  vi.clearAllMocks();
+});
+
+afterEach(() => {
+  // Clean up the DOM after each test
+  cleanup();
+});

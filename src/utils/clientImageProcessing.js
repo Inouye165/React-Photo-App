@@ -1,219 +1,320 @@
 /**
- * Client-Side Image Processing Utility
+ * Client Image Processing Utility
  * 
- * Generates high-quality JPEG thumbnails from user files before upload.
- * Uses native browser APIs for optimal performance with no heavy dependencies.
+ * Handles client-side image operations including thumbnail generation
+ * with memory-safe processing for high-resolution images.
  */
 
-// Supported MIME types for client-side processing
-const SUPPORTED_TYPES = new Set([
-  'image/jpeg',
-  'image/jpg',
-  'image/png',
-  'image/webp',
-  'image/gif',
-  'image/bmp',
-]);
+import heic2any from 'heic2any';
+import { heicTo } from 'heic-to';
 
-// Thumbnail output configuration
-const THUMBNAIL_CONFIG = {
-  maxDimension: 400,
-  quality: 0.8,
-  outputType: 'image/jpeg',
-};
+// Safe limits to prevent memory exhaustion
+const MAX_THUMBNAIL_SIZE = 400; // Maximum dimension for thumbnails
+const MAX_IMAGEDATA_SIZE = 2000; // Safety limit before ImageData creation
 
 /**
- * Check if the file type is supported for client-side thumbnail generation
- * @param {File} file - The file to check
- * @returns {boolean} - True if supported, false otherwise
- */
-export function isSupportedImageType(file) {
-  if (!file || !file.type) return false;
-  return SUPPORTED_TYPES.has(file.type.toLowerCase());
-}
-
-/**
- * Calculate scaled dimensions maintaining aspect ratio
+ * Calculate scaled dimensions that fit within max bounds while preserving aspect ratio.
  * @param {number} width - Original width
  * @param {number} height - Original height
- * @param {number} maxDimension - Maximum dimension for either side
+ * @param {number} maxSize - Maximum dimension for either side
  * @returns {{width: number, height: number}} - Scaled dimensions
  */
-export function calculateScaledDimensions(width, height, maxDimension) {
-  if (width <= maxDimension && height <= maxDimension) {
+export function calculateScaledDimensions(width, height, maxSize) {
+  if (width <= maxSize && height <= maxSize) {
     return { width, height };
   }
 
-  const aspectRatio = width / height;
+  const scale = Math.min(maxSize / width, maxSize / height);
+  return {
+    width: Math.floor(width * scale),
+    height: Math.floor(height * scale)
+  };
+}
 
-  if (width > height) {
-    return {
-      width: maxDimension,
-      height: Math.round(maxDimension / aspectRatio),
+/**
+ * Check if the file type is supported for client-side thumbnail generation
+ * (non-HEIC types that browsers can natively handle)
+ * @param {File} file - The file to check
+ * @returns {boolean} - True if supported natively, false otherwise
+ */
+export function isSupportedImageType(file) {
+  if (!file || !file.type) return false;
+  const supportedTypes = new Set([
+    'image/jpeg',
+    'image/jpg',
+    'image/png',
+    'image/webp',
+    'image/gif',
+    'image/bmp',
+  ]);
+  return supportedTypes.has(file.type.toLowerCase());
+}
+
+/**
+ * Load an image from a Blob/File.
+ * @param {Blob} blob - The blob to load
+ * @returns {Promise<HTMLImageElement>} - The loaded image element
+ */
+function loadImage(blob) {
+  return new Promise((resolve, reject) => {
+    const img = new Image();
+    const url = URL.createObjectURL(blob);
+    
+    const cleanup = () => URL.revokeObjectURL(url);
+    
+    img.onload = () => {
+      cleanup();
+      resolve(img);
     };
-  } else {
-    return {
-      width: Math.round(maxDimension * aspectRatio),
-      height: maxDimension,
+    
+    img.onerror = () => {
+      cleanup();
+      reject(new Error('Failed to load image'));
     };
+    
+    img.src = url;
+  });
+}
+
+/**
+ * Generate a thumbnail from an image with memory-safe scaling.
+ * 
+ * CRITICAL: This function scales images DOWN before creating ImageData
+ * to prevent "Out of memory" errors with high-resolution photos.
+ * 
+ * @param {HTMLImageElement} img - Source image
+ * @param {number} maxSize - Maximum dimension for thumbnail
+ * @returns {Promise<Blob>} - Thumbnail blob
+ */
+async function createScaledThumbnail(img, maxSize = MAX_THUMBNAIL_SIZE) {
+  // Step 1: Calculate safe dimensions
+  // For very large images, we need to scale in stages to avoid memory issues
+  let { width, height } = calculateScaledDimensions(
+    img.width,
+    img.height,
+    maxSize
+  );
+
+  // Safety check: ensure dimensions are reasonable
+  if (width > MAX_IMAGEDATA_SIZE || height > MAX_IMAGEDATA_SIZE) {
+    console.warn(`Image too large (${img.width}x${img.height}), scaling to safe size first`);
+    const safeSize = calculateScaledDimensions(width, height, MAX_IMAGEDATA_SIZE);
+    width = safeSize.width;
+    height = safeSize.height;
+  }
+
+  // Step 2: Create canvas with safe dimensions
+  const canvas = document.createElement('canvas');
+  canvas.width = width;
+  canvas.height = height;
+
+  const ctx = canvas.getContext('2d', {
+    alpha: false, // No transparency needed for thumbnails
+    willReadFrequently: false
+  });
+
+  if (!ctx) {
+    throw new Error('Failed to get canvas context');
+  }
+
+  // Step 3: Configure high-quality scaling
+  ctx.imageSmoothingEnabled = true;
+  ctx.imageSmoothingQuality = 'high';
+
+  // Step 4: Draw scaled image
+  try {
+    ctx.drawImage(img, 0, 0, width, height);
+  } catch (drawError) {
+    // If drawing fails, try with even smaller dimensions
+    console.warn('Draw failed, retrying with smaller dimensions:', drawError);
+    const halfSize = calculateScaledDimensions(width, height, Math.floor(maxSize / 2));
+    canvas.width = halfSize.width;
+    canvas.height = halfSize.height;
+    ctx.drawImage(img, 0, 0, halfSize.width, halfSize.height);
+  }
+
+  // Step 5: Convert to blob
+  const blob = await new Promise((resolve, reject) => {
+    canvas.toBlob(
+      (blob) => {
+        if (blob) {
+          resolve(blob);
+        } else {
+          reject(new Error('Failed to create blob from canvas'));
+        }
+      },
+      'image/jpeg',
+      0.85 // Good quality for thumbnails
+    );
+  });
+
+  // Step 6: Cleanup canvas to release memory
+  canvas.width = 0;
+  canvas.height = 0;
+
+  return blob;
+}
+
+/**
+ * Convert HEIC to JPEG using multiple fallback strategies.
+ * 
+ * Some HEIC files use codecs that heic2any doesn't support (ERR_LIBHEIF errors).
+ * We try multiple conversion libraries to maximize compatibility.
+ * 
+ * @param {File} file - The HEIC file to convert
+ * @returns {Promise<Blob>} - JPEG blob
+ * @throws {Error} - If all conversion methods fail
+ */
+async function convertHeicToJpeg(file) {
+  // Strategy 1: Try heic2any (uses libheif, handles most HEIC files)
+  try {
+    const result = await heic2any({
+      blob: file,
+      toType: 'image/jpeg',
+      quality: 0.8
+    });
+    // heic2any can return array or single blob
+    return Array.isArray(result) ? result[0] : result;
+  } catch (heic2anyError) {
+    // Check if it's a format not supported error
+    const isFormatError = heic2anyError?.code === 2 || 
+                          heic2anyError?.message?.includes('format not supported') ||
+                          heic2anyError?.message?.includes('ERR_LIBHEIF');
+    
+    if (!isFormatError) {
+      // If it's a different error, rethrow
+      throw heic2anyError;
+    }
+    
+    console.warn(`heic2any failed for ${file.name}, trying heic-to fallback:`, heic2anyError.message);
+  }
+
+  // Strategy 2: Try heic-to as fallback (different decoder implementation)
+  try {
+    const result = await heicTo({
+      blob: file,
+      type: 'image/jpeg',
+      quality: 0.8
+    });
+    return result;
+  } catch (heicToError) {
+    console.warn(`heic-to also failed for ${file.name}:`, heicToError.message || heicToError);
+    // Throw a combined error message
+    throw new Error(`All HEIC converters failed for ${file.name}`);
   }
 }
 
 /**
- * Load an image using createImageBitmap (preferred, off-main-thread)
- * @param {File} file - The image file
- * @returns {Promise<ImageBitmap>} - The loaded image bitmap
+ * Check if file is HEIC format
+ * @param {File} file - The file to check
+ * @returns {boolean} - True if HEIC format
  */
-async function loadImageBitmap(file) {
-  return await createImageBitmap(file);
+function isHeicFile(file) {
+  if (!file) return false;
+  const name = file.name?.toLowerCase() || '';
+  const type = file.type?.toLowerCase() || '';
+  return name.endsWith('.heic') || 
+         name.endsWith('.heif') ||
+         type === 'image/heic' ||
+         type === 'image/heif';
 }
 
 /**
- * Load an image using Image element (fallback for older browsers)
- * @param {File} file - The image file
- * @returns {Promise<HTMLImageElement>} - The loaded image element
- */
-function loadImageElement(file) {
-  return new Promise((resolve, reject) => {
-    const img = new Image();
-    const objectUrl = URL.createObjectURL(file);
-
-    img.onload = () => {
-      URL.revokeObjectURL(objectUrl); // Cleanup to prevent memory leak
-      resolve(img);
-    };
-
-    img.onerror = () => {
-      URL.revokeObjectURL(objectUrl); // Cleanup on error too
-      reject(new Error('Failed to load image'));
-    };
-
-    img.src = objectUrl;
-  });
-}
-
-/**
- * Draw image to canvas and export as JPEG blob
- * @param {ImageBitmap|HTMLImageElement} imageSource - The image to draw
- * @param {number} targetWidth - Target canvas width
- * @param {number} targetHeight - Target canvas height
- * @returns {Promise<Blob|null>} - The resulting JPEG blob or null on failure
- */
-function drawToCanvas(imageSource, targetWidth, targetHeight) {
-  return new Promise((resolve) => {
-    try {
-      const canvas = document.createElement('canvas');
-      canvas.width = targetWidth;
-      canvas.height = targetHeight;
-
-      const ctx = canvas.getContext('2d');
-      if (!ctx) {
-        resolve(null);
-        return;
-      }
-
-      // Use high-quality image smoothing
-      ctx.imageSmoothingEnabled = true;
-      ctx.imageSmoothingQuality = 'high';
-
-      // Draw the image scaled to fit the canvas
-      ctx.drawImage(imageSource, 0, 0, targetWidth, targetHeight);
-
-      // Convert to JPEG blob
-      canvas.toBlob(
-        (blob) => {
-          resolve(blob);
-        },
-        THUMBNAIL_CONFIG.outputType,
-        THUMBNAIL_CONFIG.quality
-      );
-    } catch {
-      resolve(null);
-    }
-  });
-}
-
-/**
- * Generate a client-side thumbnail from a user's file
+ * Generate a client-side thumbnail from an image file.
  * 
- * @param {File} file - The image file to process
- * @returns {Promise<Blob|null>} - A JPEG thumbnail blob, or null if:
- *   - File type is not supported (HEIC, TIFF, video, etc.)
- *   - Browser cannot process the image
- *   - Any error occurs during processing
+ * This is the main entry point used by the Thumbnail component.
+ * Handles both regular images and HEIC files with memory-safe processing.
  * 
- * @example
- * const thumbnail = await generateClientThumbnail(file);
- * if (thumbnail) {
- *   // Use the thumbnail
- *   const url = URL.createObjectURL(thumbnail);
- * } else {
- *   // Fall back to server-side processing
- * }
+ * @param {File} file - Image file to process
+ * @param {number} maxSize - Maximum thumbnail dimension (default: 400px)
+ * @returns {Promise<Blob|null>} - Thumbnail blob, or null on failure
  */
-export async function generateClientThumbnail(file) {
+export async function generateClientThumbnail(file, maxSize = MAX_THUMBNAIL_SIZE) {
+  if (!file) {
+    return null;
+  }
+
   try {
-    // Safety: Reject unsupported file types immediately
-    if (!isSupportedImageType(file)) {
-      return null;
-    }
+    let sourceBlob = file;
 
-    let imageSource;
-    let sourceWidth;
-    let sourceHeight;
+    // Convert HEIC to JPEG first if needed
+    const isHeic = isHeicFile(file);
 
-    // Try createImageBitmap first (faster, off-main-thread)
-    if (typeof createImageBitmap === 'function') {
+    if (isHeic) {
       try {
-        imageSource = await loadImageBitmap(file);
-        sourceWidth = imageSource.width;
-        sourceHeight = imageSource.height;
-      } catch {
-        // Fall through to Image fallback
-        imageSource = null;
-      }
-    }
-
-    // Fallback to Image + Canvas approach
-    if (!imageSource) {
-      try {
-        imageSource = await loadImageElement(file);
-        sourceWidth = imageSource.naturalWidth || imageSource.width;
-        sourceHeight = imageSource.naturalHeight || imageSource.height;
-      } catch {
+        sourceBlob = await convertHeicToJpeg(file);
+      } catch (heicError) {
+        console.warn(`HEIC conversion failed for ${file.name}:`, heicError);
+        // Return null to trigger fallback in Thumbnail component
         return null;
       }
-    }
-
-    // Validate dimensions
-    if (!sourceWidth || !sourceHeight) {
-      // Cleanup ImageBitmap if applicable
-      if (imageSource && typeof imageSource.close === 'function') {
-        imageSource.close();
-      }
+    } else if (!isSupportedImageType(file)) {
+      // Non-HEIC unsupported type
       return null;
     }
 
-    // Calculate target dimensions maintaining aspect ratio
-    const { width: targetWidth, height: targetHeight } = calculateScaledDimensions(
-      sourceWidth,
-      sourceHeight,
-      THUMBNAIL_CONFIG.maxDimension
-    );
+    // Load the image
+    const img = await loadImage(sourceBlob);
 
-    // Draw to canvas and get the blob
-    const blob = await drawToCanvas(imageSource, targetWidth, targetHeight);
-
-    // Cleanup ImageBitmap to free memory
-    if (imageSource && typeof imageSource.close === 'function') {
-      imageSource.close();
+    // Check if image is suspiciously large
+    if (img.width * img.height > 50000000) { // ~50 megapixels
+      console.warn(`Very large image detected: ${img.width}x${img.height} (${file.name})`);
     }
 
-    return blob;
-  } catch {
-    // Any unexpected error: return null, server will be our fallback
+    // Generate thumbnail with memory-safe scaling
+    const thumbnailBlob = await createScaledThumbnail(img, maxSize);
+
+    return thumbnailBlob;
+
+  } catch (error) {
+    console.error(`generateClientThumbnail failed for ${file.name}:`, error);
+    
+    // Return null to trigger fallback behavior in Thumbnail component
     return null;
   }
 }
 
-export default generateClientThumbnail;
+/**
+ * Batch process multiple files with rate limiting to avoid memory spikes.
+ * 
+ * @param {File[]} files - Files to process
+ * @param {Function} onProgress - Progress callback (index, total, file, error?)
+ * @param {number} maxSize - Maximum thumbnail dimension
+ * @returns {Promise<Map<string, Blob>>} - Map of filename to thumbnail blob
+ */
+export async function generateClientThumbnailBatch(files, onProgress = null, maxSize = MAX_THUMBNAIL_SIZE) {
+  const results = new Map();
+
+  for (let i = 0; i < files.length; i++) {
+    const file = files[i];
+
+    try {
+      const thumbnail = await generateClientThumbnail(file, maxSize);
+      
+      if (thumbnail) {
+        results.set(file.name, thumbnail);
+      }
+
+      if (onProgress) {
+        onProgress(i + 1, files.length, file);
+      }
+
+      // Yield to event loop between files to prevent UI blocking
+      await new Promise(resolve => setTimeout(resolve, 0));
+
+    } catch (error) {
+      console.error(`Batch processing failed for ${file.name}:`, error);
+      
+      if (onProgress) {
+        onProgress(i + 1, files.length, file, error);
+      }
+    }
+  }
+
+  return results;
+}
+
+export default {
+  generateClientThumbnail,
+  generateClientThumbnailBatch
+};

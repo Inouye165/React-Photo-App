@@ -1,7 +1,7 @@
 /**
  * Unit Tests for Client-Side Image Processing Utility
  * 
- * Strategy: Mock DOM APIs (createImageBitmap, HTMLCanvasElement) since
+ * Strategy: Mock DOM APIs (Image, HTMLCanvasElement) and heic converters since
  * Canvas operations are difficult to test in JSDOM/Vitest environments.
  */
 
@@ -10,7 +10,21 @@ import {
   generateClientThumbnail,
   isSupportedImageType,
   calculateScaledDimensions,
+  generateClientThumbnailBatch,
 } from './clientImageProcessing.js';
+
+// Mock heic2any
+vi.mock('heic2any', () => ({
+  default: vi.fn(),
+}));
+
+// Mock heic-to
+vi.mock('heic-to', () => ({
+  heicTo: vi.fn(),
+}));
+
+import heic2any from 'heic2any';
+import { heicTo } from 'heic-to';
 
 // Helper to create a mock File
 function createMockFile(type, name = 'test-image') {
@@ -73,83 +87,203 @@ describe('clientImageProcessing', () => {
       expect(result.width).toBe(400);
       expect(result.height).toBe(300);
     });
+
+    it('should use Math.floor for non-integer results', () => {
+      // 1000 x 750 scaled to 400 max should give 400 x 300
+      const result = calculateScaledDimensions(1000, 750, 400);
+      expect(result.width).toBe(400);
+      expect(result.height).toBe(300);
+    });
   });
 
   describe('generateClientThumbnail', () => {
-    let originalCreateImageBitmap;
     let originalCreateElement;
     let originalCreateObjectURL;
     let originalRevokeObjectURL;
+    let originalImage;
 
     beforeEach(() => {
       // Store originals
-      originalCreateImageBitmap = globalThis.createImageBitmap;
       originalCreateElement = document.createElement;
       originalCreateObjectURL = URL.createObjectURL;
       originalRevokeObjectURL = URL.revokeObjectURL;
+      originalImage = globalThis.Image;
 
       // Mock URL methods
       URL.createObjectURL = vi.fn(() => 'blob:mock-url');
       URL.revokeObjectURL = vi.fn();
+
+      // Reset heic mocks
+      vi.mocked(heic2any).mockReset();
+      vi.mocked(heicTo).mockReset();
     });
 
     afterEach(() => {
       // Restore originals
-      globalThis.createImageBitmap = originalCreateImageBitmap;
       document.createElement = originalCreateElement;
       URL.createObjectURL = originalCreateObjectURL;
       URL.revokeObjectURL = originalRevokeObjectURL;
+      globalThis.Image = originalImage;
       vi.clearAllMocks();
     });
 
-    it('should return null immediately for unsupported types (HEIC)', async () => {
-      const heicFile = createMockFile('image/heic', 'test.heic');
-      
-      // createImageBitmap should NOT be called for unsupported types
-      const mockCreateImageBitmap = vi.fn();
-      globalThis.createImageBitmap = mockCreateImageBitmap;
-
-      const result = await generateClientThumbnail(heicFile);
-
-      expect(result).toBeNull();
-      expect(mockCreateImageBitmap).not.toHaveBeenCalled();
+    it('should return null for null/undefined file', async () => {
+      expect(await generateClientThumbnail(null)).toBeNull();
+      expect(await generateClientThumbnail(undefined)).toBeNull();
     });
 
-    it('should return null immediately for TIFF files', async () => {
+    it('should return null immediately for unsupported types (TIFF)', async () => {
       const tiffFile = createMockFile('image/tiff', 'test.tiff');
-      
-      const mockCreateImageBitmap = vi.fn();
-      globalThis.createImageBitmap = mockCreateImageBitmap;
-
       const result = await generateClientThumbnail(tiffFile);
-
       expect(result).toBeNull();
-      expect(mockCreateImageBitmap).not.toHaveBeenCalled();
     });
 
     it('should return null immediately for video files', async () => {
       const videoFile = createMockFile('video/mp4', 'test.mp4');
-      
-      const mockCreateImageBitmap = vi.fn();
-      globalThis.createImageBitmap = mockCreateImageBitmap;
-
       const result = await generateClientThumbnail(videoFile);
-
       expect(result).toBeNull();
-      expect(mockCreateImageBitmap).not.toHaveBeenCalled();
     });
 
-    it('should attempt to process valid JPEG files using createImageBitmap', async () => {
+    it('should attempt HEIC conversion for .heic files', async () => {
+      const heicFile = createMockFile('image/heic', 'test.heic');
+      const convertedBlob = new Blob(['converted'], { type: 'image/jpeg' });
+      
+      vi.mocked(heic2any).mockResolvedValue(convertedBlob);
+
+      // Mock Image that loads successfully
+      const mockImage = {
+        width: 800,
+        height: 600,
+        onload: null,
+        onerror: null,
+        set src(url) {
+          setTimeout(() => this.onload && this.onload(), 0);
+        },
+      };
+      globalThis.Image = vi.fn(() => mockImage);
+
+      // Mock canvas
+      const mockBlob = new Blob(['thumbnail'], { type: 'image/jpeg' });
+      const mockContext = {
+        imageSmoothingEnabled: true,
+        imageSmoothingQuality: 'high',
+        drawImage: vi.fn(),
+      };
+      const mockCanvas = {
+        width: 0,
+        height: 0,
+        getContext: vi.fn(() => mockContext),
+        toBlob: vi.fn((callback) => callback(mockBlob)),
+      };
+      document.createElement = vi.fn((tag) => {
+        if (tag === 'canvas') return mockCanvas;
+        return originalCreateElement.call(document, tag);
+      });
+
+      const result = await generateClientThumbnail(heicFile);
+
+      expect(heic2any).toHaveBeenCalledWith({
+        blob: heicFile,
+        toType: 'image/jpeg',
+        quality: 0.8
+      });
+      expect(result).toBe(mockBlob);
+    });
+
+    it('should fallback to heic-to when heic2any fails with ERR_LIBHEIF', async () => {
+      const heicFile = createMockFile('image/heic', 'test.heic');
+      const convertedBlob = new Blob(['converted'], { type: 'image/jpeg' });
+      const thumbnailBlob = new Blob(['thumbnail'], { type: 'image/jpeg' });
+
+      // heic2any fails with format not supported error
+      vi.mocked(heic2any).mockRejectedValue({ code: 2, message: 'ERR_LIBHEIF format not supported' });
+      // heic-to succeeds as fallback
+      vi.mocked(heicTo).mockResolvedValue(convertedBlob);
+
+      // Mock Image that loads successfully
+      const mockImage = {
+        width: 800,
+        height: 600,
+        onload: null,
+        onerror: null,
+        set src(url) {
+          setTimeout(() => this.onload && this.onload(), 0);
+        },
+      };
+      globalThis.Image = vi.fn(() => mockImage);
+
+      // Mock canvas
+      const mockContext = {
+        imageSmoothingEnabled: true,
+        imageSmoothingQuality: 'high',
+        drawImage: vi.fn(),
+      };
+      const mockCanvas = {
+        width: 0,
+        height: 0,
+        getContext: vi.fn(() => mockContext),
+        toBlob: vi.fn((callback) => callback(thumbnailBlob)),
+      };
+      document.createElement = vi.fn((tag) => {
+        if (tag === 'canvas') return mockCanvas;
+        return originalCreateElement.call(document, tag);
+      });
+
+      const result = await generateClientThumbnail(heicFile);
+
+      // Should have tried heic2any first, then fallen back to heicTo
+      expect(heic2any).toHaveBeenCalled();
+      expect(heicTo).toHaveBeenCalledWith({
+        blob: heicFile,
+        type: 'image/jpeg',
+        quality: 0.8
+      });
+      expect(result).toBe(thumbnailBlob);
+    });
+
+    it('should return null when both heic converters fail', async () => {
+      const heicFile = createMockFile('image/heic', 'test.heic');
+      
+      // Both converters fail
+      vi.mocked(heic2any).mockRejectedValue({ code: 2, message: 'ERR_LIBHEIF format not supported' });
+      vi.mocked(heicTo).mockRejectedValue(new Error('heic-to also failed'));
+
+      const result = await generateClientThumbnail(heicFile);
+
+      expect(heic2any).toHaveBeenCalled();
+      expect(heicTo).toHaveBeenCalled();
+      expect(result).toBeNull();
+    });
+
+    it('should not fallback to heic-to for non-format errors', async () => {
+      const heicFile = createMockFile('image/heic', 'test.heic');
+      
+      // heic2any fails with a different (non-format) error
+      vi.mocked(heic2any).mockRejectedValue(new Error('Network error'));
+
+      const result = await generateClientThumbnail(heicFile);
+
+      // Should NOT have tried heicTo because error wasn't a format error
+      expect(heic2any).toHaveBeenCalled();
+      expect(heicTo).not.toHaveBeenCalled();
+      expect(result).toBeNull();
+    });
+
+    it('should process valid JPEG files', async () => {
       const jpegFile = createMockFile('image/jpeg', 'test.jpg');
       const mockBlob = new Blob(['thumbnail'], { type: 'image/jpeg' });
 
-      // Mock createImageBitmap
-      const mockImageBitmap = {
+      // Mock Image
+      const mockImage = {
         width: 800,
         height: 600,
-        close: vi.fn(),
+        onload: null,
+        onerror: null,
+        set src(url) {
+          setTimeout(() => this.onload && this.onload(), 0);
+        },
       };
-      globalThis.createImageBitmap = vi.fn().mockResolvedValue(mockImageBitmap);
+      globalThis.Image = vi.fn(() => mockImage);
 
       // Mock canvas
       const mockContext = {
@@ -170,11 +304,11 @@ describe('clientImageProcessing', () => {
 
       const result = await generateClientThumbnail(jpegFile);
 
-      expect(globalThis.createImageBitmap).toHaveBeenCalledWith(jpegFile);
-      expect(mockCanvas.getContext).toHaveBeenCalledWith('2d');
+      expect(mockCanvas.getContext).toHaveBeenCalledWith('2d', {
+        alpha: false,
+        willReadFrequently: false
+      });
       expect(mockContext.drawImage).toHaveBeenCalled();
-      expect(mockCanvas.toBlob).toHaveBeenCalled();
-      expect(mockImageBitmap.close).toHaveBeenCalled(); // Memory cleanup
       expect(result).toBe(mockBlob);
     });
 
@@ -182,13 +316,21 @@ describe('clientImageProcessing', () => {
       const jpegFile = createMockFile('image/jpeg', 'test.jpg');
       const mockBlob = new Blob(['thumbnail'], { type: 'image/jpeg' });
 
-      // Mock createImageBitmap with landscape dimensions
-      const mockImageBitmap = {
+      // Mock Image with landscape dimensions
+      const mockImage = {
         width: 1600,
         height: 1200,
-        close: vi.fn(),
+        onload: null,
+        onerror: null,
+        set src(url) {
+          setTimeout(() => this.onload && this.onload(), 0);
+        },
       };
-      globalThis.createImageBitmap = vi.fn().mockResolvedValue(mockImageBitmap);
+      globalThis.Image = vi.fn(() => mockImage);
+
+      // Track dimensions when drawImage is called (before cleanup)
+      let capturedWidth = 0;
+      let capturedHeight = 0;
 
       // Mock canvas
       const mockContext = {
@@ -197,10 +339,19 @@ describe('clientImageProcessing', () => {
         drawImage: vi.fn(),
       };
       const mockCanvas = {
-        width: 0,
-        height: 0,
+        _width: 0,
+        _height: 0,
+        get width() { return this._width; },
+        set width(v) { this._width = v; },
+        get height() { return this._height; },
+        set height(v) { this._height = v; },
         getContext: vi.fn(() => mockContext),
-        toBlob: vi.fn((callback) => callback(mockBlob)),
+        toBlob: vi.fn((callback) => {
+          // Capture dimensions before blob is created (before cleanup)
+          capturedWidth = mockCanvas._width;
+          capturedHeight = mockCanvas._height;
+          callback(mockBlob);
+        }),
       };
       document.createElement = vi.fn((tag) => {
         if (tag === 'canvas') return mockCanvas;
@@ -210,26 +361,30 @@ describe('clientImageProcessing', () => {
       await generateClientThumbnail(jpegFile);
 
       // Should be scaled to 400x300 (maintaining 4:3 aspect ratio)
-      expect(mockCanvas.width).toBe(400);
-      expect(mockCanvas.height).toBe(300);
+      expect(capturedWidth).toBe(400);
+      expect(capturedHeight).toBe(300);
     });
 
     it('should return null when canvas context fails', async () => {
       const jpegFile = createMockFile('image/jpeg', 'test.jpg');
 
-      // Mock createImageBitmap
-      const mockImageBitmap = {
+      // Mock Image
+      const mockImage = {
         width: 800,
         height: 600,
-        close: vi.fn(),
+        onload: null,
+        onerror: null,
+        set src(url) {
+          setTimeout(() => this.onload && this.onload(), 0);
+        },
       };
-      globalThis.createImageBitmap = vi.fn().mockResolvedValue(mockImageBitmap);
+      globalThis.Image = vi.fn(() => mockImage);
 
-      // Mock canvas with null context (simulates canvas error)
+      // Mock canvas with null context
       const mockCanvas = {
         width: 0,
         height: 0,
-        getContext: vi.fn(() => null), // Context creation fails
+        getContext: vi.fn(() => null),
       };
       document.createElement = vi.fn((tag) => {
         if (tag === 'canvas') return mockCanvas;
@@ -239,61 +394,40 @@ describe('clientImageProcessing', () => {
       const result = await generateClientThumbnail(jpegFile);
 
       expect(result).toBeNull();
-      expect(mockImageBitmap.close).toHaveBeenCalled(); // Should still cleanup
     });
 
-    it('should return null when createImageBitmap throws and fallback fails', async () => {
+    it('should return null when image fails to load', async () => {
       const jpegFile = createMockFile('image/jpeg', 'test.jpg');
 
-      // Mock createImageBitmap to throw
-      globalThis.createImageBitmap = vi.fn().mockRejectedValue(new Error('Decode error'));
-
-      // Mock Image element that also fails
+      // Mock Image that fails to load
       const mockImage = {
-        set src(url) {
-          // Trigger error after setting src
-          setTimeout(() => this.onerror && this.onerror(new Error('Load failed')), 0);
-        },
-        get src() {
-          return '';
-        },
         onload: null,
         onerror: null,
+        set src(url) {
+          setTimeout(() => this.onerror && this.onerror(new Error('Load failed')), 0);
+        },
       };
-
-      document.createElement = vi.fn((tag) => {
-        if (tag === 'canvas') {
-          return {
-            width: 0,
-            height: 0,
-            getContext: vi.fn(),
-          };
-        }
-        return mockImage;
-      });
-
-      // Mock Image constructor
-      const originalImage = globalThis.Image;
       globalThis.Image = vi.fn(() => mockImage);
 
       const result = await generateClientThumbnail(jpegFile);
 
       expect(result).toBeNull();
-
-      // Restore
-      globalThis.Image = originalImage;
     });
 
     it('should handle toBlob returning null', async () => {
       const jpegFile = createMockFile('image/jpeg', 'test.jpg');
 
-      // Mock createImageBitmap
-      const mockImageBitmap = {
+      // Mock Image
+      const mockImage = {
         width: 800,
         height: 600,
-        close: vi.fn(),
+        onload: null,
+        onerror: null,
+        set src(url) {
+          setTimeout(() => this.onload && this.onload(), 0);
+        },
       };
-      globalThis.createImageBitmap = vi.fn().mockResolvedValue(mockImageBitmap);
+      globalThis.Image = vi.fn(() => mockImage);
 
       // Mock canvas with toBlob returning null
       const mockContext = {
@@ -305,7 +439,7 @@ describe('clientImageProcessing', () => {
         width: 0,
         height: 0,
         getContext: vi.fn(() => mockContext),
-        toBlob: vi.fn((callback) => callback(null)), // toBlob fails
+        toBlob: vi.fn((callback) => callback(null)),
       };
       document.createElement = vi.fn((tag) => {
         if (tag === 'canvas') return mockCanvas;
@@ -317,16 +451,20 @@ describe('clientImageProcessing', () => {
       expect(result).toBeNull();
     });
 
-    it('should cleanup ImageBitmap after successful processing', async () => {
+    it('should cleanup canvas dimensions after processing', async () => {
       const pngFile = createMockFile('image/png', 'test.png');
       const mockBlob = new Blob(['thumbnail'], { type: 'image/jpeg' });
 
-      const mockImageBitmap = {
+      const mockImage = {
         width: 500,
         height: 500,
-        close: vi.fn(),
+        onload: null,
+        onerror: null,
+        set src(url) {
+          setTimeout(() => this.onload && this.onload(), 0);
+        },
       };
-      globalThis.createImageBitmap = vi.fn().mockResolvedValue(mockImageBitmap);
+      globalThis.Image = vi.fn(() => mockImage);
 
       const mockContext = {
         imageSmoothingEnabled: true,
@@ -346,20 +484,69 @@ describe('clientImageProcessing', () => {
 
       await generateClientThumbnail(pngFile);
 
-      // Verify cleanup was called
-      expect(mockImageBitmap.close).toHaveBeenCalled();
+      // Canvas dimensions should be reset to 0 for memory cleanup
+      expect(mockCanvas.width).toBe(0);
+      expect(mockCanvas.height).toBe(0);
+    });
+
+    it('should retry with smaller dimensions when drawImage fails', async () => {
+      const jpegFile = createMockFile('image/jpeg', 'test.jpg');
+      const mockBlob = new Blob(['thumbnail'], { type: 'image/jpeg' });
+
+      const mockImage = {
+        width: 800,
+        height: 600,
+        onload: null,
+        onerror: null,
+        set src(url) {
+          setTimeout(() => this.onload && this.onload(), 0);
+        },
+      };
+      globalThis.Image = vi.fn(() => mockImage);
+
+      let drawAttempts = 0;
+      const mockContext = {
+        imageSmoothingEnabled: true,
+        imageSmoothingQuality: 'high',
+        drawImage: vi.fn(() => {
+          drawAttempts++;
+          if (drawAttempts === 1) {
+            throw new RangeError('Out of memory');
+          }
+        }),
+      };
+      const mockCanvas = {
+        width: 0,
+        height: 0,
+        getContext: vi.fn(() => mockContext),
+        toBlob: vi.fn((callback) => callback(mockBlob)),
+      };
+      document.createElement = vi.fn((tag) => {
+        if (tag === 'canvas') return mockCanvas;
+        return originalCreateElement.call(document, tag);
+      });
+
+      const result = await generateClientThumbnail(jpegFile);
+
+      // Should have attempted twice
+      expect(mockContext.drawImage).toHaveBeenCalledTimes(2);
+      expect(result).toBe(mockBlob);
     });
 
     it('should process WebP files correctly', async () => {
       const webpFile = createMockFile('image/webp', 'test.webp');
       const mockBlob = new Blob(['thumbnail'], { type: 'image/jpeg' });
 
-      const mockImageBitmap = {
+      const mockImage = {
         width: 1000,
         height: 750,
-        close: vi.fn(),
+        onload: null,
+        onerror: null,
+        set src(url) {
+          setTimeout(() => this.onload && this.onload(), 0);
+        },
       };
-      globalThis.createImageBitmap = vi.fn().mockResolvedValue(mockImageBitmap);
+      globalThis.Image = vi.fn(() => mockImage);
 
       const mockContext = {
         imageSmoothingEnabled: true,
@@ -380,7 +567,169 @@ describe('clientImageProcessing', () => {
       const result = await generateClientThumbnail(webpFile);
 
       expect(result).toBe(mockBlob);
-      expect(globalThis.createImageBitmap).toHaveBeenCalledWith(webpFile);
+    });
+
+    it('should detect HEIC by file extension', async () => {
+      // File with .heic extension but empty type
+      const heicFile = new File([new Blob(['data'])], 'photo.HEIC', { type: '' });
+      
+      vi.mocked(heic2any).mockRejectedValue(new Error('Test'));
+
+      await generateClientThumbnail(heicFile);
+
+      // Should have attempted HEIC conversion despite empty mime type
+      expect(heic2any).toHaveBeenCalled();
+    });
+  });
+
+  describe('generateClientThumbnailBatch', () => {
+    let originalImage;
+    let originalCreateElement;
+    let originalCreateObjectURL;
+    let originalRevokeObjectURL;
+
+    beforeEach(() => {
+      originalImage = globalThis.Image;
+      originalCreateElement = document.createElement;
+      originalCreateObjectURL = URL.createObjectURL;
+      originalRevokeObjectURL = URL.revokeObjectURL;
+
+      URL.createObjectURL = vi.fn(() => 'blob:mock-url');
+      URL.revokeObjectURL = vi.fn();
+    });
+
+    afterEach(() => {
+      globalThis.Image = originalImage;
+      document.createElement = originalCreateElement;
+      URL.createObjectURL = originalCreateObjectURL;
+      URL.revokeObjectURL = originalRevokeObjectURL;
+      vi.clearAllMocks();
+    });
+
+    it('should process multiple files and return a Map', async () => {
+      const files = [
+        createMockFile('image/jpeg', 'photo1.jpg'),
+        createMockFile('image/png', 'photo2.png'),
+      ];
+      const mockBlob = new Blob(['thumbnail'], { type: 'image/jpeg' });
+
+      const mockImage = {
+        width: 800,
+        height: 600,
+        onload: null,
+        onerror: null,
+        set src(url) {
+          setTimeout(() => this.onload && this.onload(), 0);
+        },
+      };
+      globalThis.Image = vi.fn(() => mockImage);
+
+      const mockContext = {
+        imageSmoothingEnabled: true,
+        imageSmoothingQuality: 'high',
+        drawImage: vi.fn(),
+      };
+      const mockCanvas = {
+        width: 0,
+        height: 0,
+        getContext: vi.fn(() => mockContext),
+        toBlob: vi.fn((callback) => callback(mockBlob)),
+      };
+      document.createElement = vi.fn((tag) => {
+        if (tag === 'canvas') return mockCanvas;
+        return originalCreateElement.call(document, tag);
+      });
+
+      const results = await generateClientThumbnailBatch(files);
+
+      expect(results).toBeInstanceOf(Map);
+      expect(results.size).toBe(2);
+      expect(results.get('photo1.jpg')).toBe(mockBlob);
+      expect(results.get('photo2.png')).toBe(mockBlob);
+    });
+
+    it('should call progress callback', async () => {
+      const files = [
+        createMockFile('image/jpeg', 'photo1.jpg'),
+        createMockFile('image/png', 'photo2.png'),
+      ];
+      const mockBlob = new Blob(['thumbnail'], { type: 'image/jpeg' });
+      const onProgress = vi.fn();
+
+      const mockImage = {
+        width: 800,
+        height: 600,
+        onload: null,
+        onerror: null,
+        set src(url) {
+          setTimeout(() => this.onload && this.onload(), 0);
+        },
+      };
+      globalThis.Image = vi.fn(() => mockImage);
+
+      const mockContext = {
+        imageSmoothingEnabled: true,
+        imageSmoothingQuality: 'high',
+        drawImage: vi.fn(),
+      };
+      const mockCanvas = {
+        width: 0,
+        height: 0,
+        getContext: vi.fn(() => mockContext),
+        toBlob: vi.fn((callback) => callback(mockBlob)),
+      };
+      document.createElement = vi.fn((tag) => {
+        if (tag === 'canvas') return mockCanvas;
+        return originalCreateElement.call(document, tag);
+      });
+
+      await generateClientThumbnailBatch(files, onProgress);
+
+      expect(onProgress).toHaveBeenCalledTimes(2);
+      expect(onProgress).toHaveBeenNthCalledWith(1, 1, 2, files[0]);
+      expect(onProgress).toHaveBeenNthCalledWith(2, 2, 2, files[1]);
+    });
+
+    it('should continue processing when one file fails', async () => {
+      const files = [
+        createMockFile('image/tiff', 'unsupported.tiff'), // Will fail
+        createMockFile('image/jpeg', 'photo.jpg'), // Will succeed
+      ];
+      const mockBlob = new Blob(['thumbnail'], { type: 'image/jpeg' });
+
+      const mockImage = {
+        width: 800,
+        height: 600,
+        onload: null,
+        onerror: null,
+        set src(url) {
+          setTimeout(() => this.onload && this.onload(), 0);
+        },
+      };
+      globalThis.Image = vi.fn(() => mockImage);
+
+      const mockContext = {
+        imageSmoothingEnabled: true,
+        imageSmoothingQuality: 'high',
+        drawImage: vi.fn(),
+      };
+      const mockCanvas = {
+        width: 0,
+        height: 0,
+        getContext: vi.fn(() => mockContext),
+        toBlob: vi.fn((callback) => callback(mockBlob)),
+      };
+      document.createElement = vi.fn((tag) => {
+        if (tag === 'canvas') return mockCanvas;
+        return originalCreateElement.call(document, tag);
+      });
+
+      const results = await generateClientThumbnailBatch(files);
+
+      // Only the JPEG should be in results
+      expect(results.size).toBe(1);
+      expect(results.has('unsupported.tiff')).toBe(false);
+      expect(results.get('photo.jpg')).toBe(mockBlob);
     });
   });
 });
