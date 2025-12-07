@@ -289,14 +289,24 @@ export function useThumbnailQueue(files, options = {}) {
       processingRef.current.add(file.name);
 
       // Process thumbnail (don't await - let it run in parallel up to concurrency limit)
-      processThumbnail(file).then(() => {
-        processingRef.current.delete(file.name);
+      // CRITICAL: Use .catch() to ensure queue continues even if processing fails
+      processThumbnail(file)
+        .catch((err) => {
+          console.warn(`Queue: thumbnail processing error for ${file.name}:`, err);
+          // Mark as failed in the buffer
+          const pending = pendingUpdatesRef.current;
+          pending.status.set(file.name, 'failed');
+          pending.failedDelta += 1;
+          pending.completedDelta += 1;
+        })
+        .finally(() => {
+          processingRef.current.delete(file.name);
 
-        // Process next in queue (no artificial delay needed with batching)
-        if (mountedRef.current && processQueueRef.current) {
-          processQueueRef.current();
-        }
-      });
+          // Process next in queue (no artificial delay needed with batching)
+          if (mountedRef.current && processQueueRef.current) {
+            processQueueRef.current();
+          }
+        });
     }
   };
 
