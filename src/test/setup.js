@@ -5,6 +5,25 @@ import React from 'react'
 import { uploadPickerInitialState } from '../store/uploadPickerSlice.js'
 
 /**
+ * CRITICAL: Mock heavy WASM dependencies to prevent memory issues during testing.
+ * These must be mocked before they're imported by any test or module.
+ */
+vi.mock('heic2any', () => ({
+  default: vi.fn(() => Promise.resolve(new Blob(['converted'], { type: 'image/jpeg' }))),
+}));
+
+vi.mock('heic-to', () => ({
+  heicTo: vi.fn(() => Promise.resolve(new Blob(['converted'], { type: 'image/jpeg' }))),
+}));
+
+vi.mock('idb-keyval', () => ({
+  get: vi.fn(() => Promise.resolve(null)),
+  set: vi.fn(() => Promise.resolve()),
+  del: vi.fn(() => Promise.resolve()),
+  createStore: vi.fn(() => ({})),
+}));
+
+/**
  * Mock Web Worker for heic2any and other browser-only APIs.
  * 
  * heic2any uses Web Workers internally, which are not available in Node.js/jsdom.
