@@ -20,7 +20,7 @@
  * 2. Processing files concurrently (4 at a time by default)
  */
 
-import { useState, useEffect, useRef, useCallback } from 'react';
+import { useState, useEffect, useRef, useCallback, useMemo } from 'react';
 import { generateClientThumbnail } from '../utils/clientImageProcessing.js';
 import { getThumbnail, saveThumbnail } from '../utils/thumbnailCache.js';
 
@@ -276,7 +276,10 @@ export function useThumbnailQueue(files, options = {}) {
    * 1. State updates are now batched (no per-file setState thrashing)
    * 2. Browser's task scheduler handles yielding naturally
    */
-  const processQueue = useCallback(async () => {
+  const processQueueRef = useRef(null);
+  
+  // Store the actual processing function in a ref to avoid dependency loops
+  processQueueRef.current = async () => {
     while (queueRef.current.length > 0 && processingRef.current.size < concurrency) {
       if (!mountedRef.current) break;
 
@@ -290,16 +293,36 @@ export function useThumbnailQueue(files, options = {}) {
         processingRef.current.delete(file.name);
 
         // Process next in queue (no artificial delay needed with batching)
-        if (mountedRef.current) {
-          processQueue();
+        if (mountedRef.current && processQueueRef.current) {
+          processQueueRef.current();
         }
       });
     }
-  }, [concurrency, processThumbnail]);
+  };
 
-  // Initialize queue when files change
+  // Stable wrapper that calls the ref
+  const processQueue = useCallback(() => {
+    if (processQueueRef.current) {
+      processQueueRef.current();
+    }
+  }, []);
+
+  // Create a stable key from file names to detect actual changes
+  // This prevents re-running when files array reference changes but content is same
+  const filesKey = useMemo(() => {
+    if (!files || files.length === 0) return '';
+    return files.map(f => f.name).sort().join('|');
+  }, [files]);
+
+  // Store files in a ref so we can access current value without dependency
+  const filesRef = useRef(files);
+  filesRef.current = files;
+
+  // Initialize queue when files actually change (based on stable key)
   useEffect(() => {
-    if (!files || files.length === 0) {
+    const currentFiles = filesRef.current;
+    
+    if (!currentFiles || currentFiles.length === 0) {
       setThumbnails(new Map());
       setStatus(new Map());
       setProgress({ completed: 0, total: 0, failed: 0 });
@@ -312,7 +335,7 @@ export function useThumbnailQueue(files, options = {}) {
     const existingFileNames = processedFilesRef.current;
     
     // Find files that need processing
-    const filesToProcess = files.filter(f => !existingFileNames.has(f.name));
+    const filesToProcess = currentFiles.filter(f => !existingFileNames.has(f.name));
     
     if (filesToProcess.length === 0) {
       // All files already processed, nothing to do
@@ -320,11 +343,11 @@ export function useThumbnailQueue(files, options = {}) {
     }
 
     // Reset progress for new batch
-    setProgress({ completed: 0, total: files.length, failed: 0 });
+    setProgress({ completed: 0, total: currentFiles.length, failed: 0 });
     
     // Initialize status for all files
     const initialStatus = new Map();
-    files.forEach(file => {
+    currentFiles.forEach(file => {
       if (!existingFileNames.has(file.name)) {
         initialStatus.set(file.name, 'pending');
       }
@@ -336,7 +359,7 @@ export function useThumbnailQueue(files, options = {}) {
     });
 
     // Mark files as being processed
-    files.forEach(f => processedFilesRef.current.add(f.name));
+    currentFiles.forEach(f => processedFilesRef.current.add(f.name));
 
     // Build queue with only new files
     queueRef.current = [...filesToProcess];
@@ -344,7 +367,7 @@ export function useThumbnailQueue(files, options = {}) {
     // Start processing
     processQueue();
 
-  }, [files, processQueue]);
+  }, [filesKey, processQueue]); // Only re-run when filesKey actually changes
 
   return {
     thumbnails,      // Map<filename, blobURL>
