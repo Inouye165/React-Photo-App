@@ -1,11 +1,15 @@
-import { defineConfig } from 'vitest/config'
+import path from 'node:path';
+import { fileURLToPath } from 'node:url';
+import { defineConfig } from 'vitest/config';
+
+const __dirname = path.dirname(fileURLToPath(import.meta.url));
 
 export default defineConfig({
   test: {
     exclude: [
-      '**/node_modules/**', 
-      '**/dist/**', 
-      'server/**', 
+      '**/node_modules/**',
+      '**/dist/**',
+      'server/**',
       'e2e/**',
       '**/App.test.jsx', // Exclude memory-heavy App.test.jsx (covered by App.auth.test.jsx)
     ],
@@ -31,4 +35,10 @@ export default defineConfig({
     // Disable threads entirely
     threads: false,
   },
-})
+  resolve: {
+    alias: {
+      heic2any: path.resolve(__dirname, '__mocks__/heic2any.js'),
+      'heic-to': path.resolve(__dirname, '__mocks__/heic-to.js'),
+    },
+  },
+});

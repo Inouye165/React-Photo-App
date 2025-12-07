@@ -5,8 +5,44 @@
  * with memory-safe processing for high-resolution images.
  */
 
-import heic2any from 'heic2any';
-import { heicTo } from 'heic-to';
+let heic2anyLoader;
+let heicToLoader;
+
+async function loadHeic2any() {
+  if (typeof window === 'undefined') {
+    return async () => {
+      throw new Error('heic2any is only supported in browser environments');
+    };
+  }
+  if (!heic2anyLoader) {
+    heic2anyLoader = import('heic2any').then((module) => {
+      const converter = module?.default ?? module;
+      if (typeof converter !== 'function') {
+        throw new Error('heic2any module did not export a function');
+      }
+      return converter;
+    });
+  }
+  return heic2anyLoader;
+}
+
+async function loadHeicTo() {
+  if (typeof window === 'undefined') {
+    return async () => {
+      throw new Error('heic-to is only supported in browser environments');
+    };
+  }
+  if (!heicToLoader) {
+    heicToLoader = import('heic-to').then((module) => {
+      const converter = module?.heicTo ?? module?.default ?? module;
+      if (typeof converter !== 'function') {
+        throw new Error('heic-to module did not export a function');
+      }
+      return converter;
+    });
+  }
+  return heicToLoader;
+}
 
 // Safe limits to prevent memory exhaustion
 const MAX_THUMBNAIL_SIZE = 400; // Maximum dimension for thumbnails
@@ -168,6 +204,7 @@ async function createScaledThumbnail(img, maxSize = MAX_THUMBNAIL_SIZE) {
 async function convertHeicToJpeg(file) {
   // Strategy 1: Try heic2any (uses libheif, handles most HEIC files)
   try {
+    const heic2any = await loadHeic2any();
     const result = await heic2any({
       blob: file,
       toType: 'image/jpeg',
@@ -191,6 +228,7 @@ async function convertHeicToJpeg(file) {
 
   // Strategy 2: Try heic-to as fallback (different decoder implementation)
   try {
+    const heicTo = await loadHeicTo();
     const result = await heicTo({
       blob: file,
       type: 'image/jpeg',
