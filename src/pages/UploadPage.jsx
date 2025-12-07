@@ -1,7 +1,8 @@
-import React, { useRef } from 'react';
+import React, { useRef, useMemo } from 'react';
 import { useNavigate, useOutletContext } from 'react-router-dom';
 import PhotoUploadForm from '../PhotoUploadForm.jsx';
 import useLocalPhotoPicker from '../hooks/useLocalPhotoPicker.js';
+import { useThumbnailQueue } from '../hooks/useThumbnailQueue.js';
 
 /**
  * UploadPage - Dedicated page for photo uploads
@@ -43,6 +44,19 @@ export default function UploadPage() {
 
   // Track if user has selected a folder
   const hasSelectedFolder = filteredLocalPhotos.length > 0;
+
+  // Extract files for queue processing
+  const files = useMemo(() => 
+    filteredLocalPhotos.map(p => p.file).filter(Boolean), 
+    [filteredLocalPhotos]
+  );
+
+  // Instantiate thumbnail queue - processes thumbnails in batches for better performance
+  // The queue handles concurrent processing (default: 4) with state batching
+  const thumbnailQueue = useThumbnailQueue(files, {
+    concurrency: 4,      // Process 4 thumbnails in parallel
+    batchInterval: 200,  // Flush UI updates every 200ms
+  });
 
   // Handle folder selection flow with cross-browser support
   const handleStartUpload = () => {
@@ -257,6 +271,7 @@ export default function UploadPage() {
         isStandalonePage={true}
         closeReason="upload-page-close"
         onClose={handleClose}
+        thumbnailData={thumbnailQueue}
       />
     </div>
   );

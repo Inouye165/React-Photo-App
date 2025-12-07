@@ -4,6 +4,7 @@
  * Displays image thumbnails with intelligent caching for upload previews.
  * 
  * Features:
+ * - External source support for pre-generated thumbnails (useThumbnailQueue integration)
  * - IndexedDB caching for instant subsequent loads
  * - Unified HEIC/JPEG processing via generateClientThumbnail with memory-safe scaling
  * - Graceful degradation with styled placeholders for failed conversions
@@ -84,17 +85,21 @@ const GenericPlaceholder = ({ filename, className }) => {
  * Thumbnail - Main component for displaying cached/generated thumbnails.
  * 
  * Processing pipeline:
- * 1. Check IndexedDB cache for existing thumbnail
- * 2. If not cached, generate thumbnail using generateClientThumbnail
- * 3. For HEIC files, fall back to heic-to if standard processing fails
- * 4. Cache successful results for future instant access
- * 5. Display appropriate placeholder on failure
+ * 1. If `externalSrc` is provided with 'success' status, render it immediately (skip internal generation)
+ * 2. If external status is 'processing' or 'failed', render appropriate placeholder
+ * 3. Otherwise fall back to internal processing:
+ *    a. Check IndexedDB cache for existing thumbnail
+ *    b. If not cached, generate thumbnail using generateClientThumbnail
+ *    c. Cache successful results for future instant access
+ *    d. Display appropriate placeholder on failure
  * 
  * @param {Object} props
  * @param {File} props.file - The image file to thumbnail
  * @param {string} props.className - CSS classes for styling
+ * @param {string} [props.externalSrc] - Pre-generated blob URL from useThumbnailQueue (bypasses internal generation)
+ * @param {'pending'|'processing'|'success'|'failed'} [props.externalStatus] - Status from the queue
  */
-const Thumbnail = ({ file, className = '' }) => {
+const Thumbnail = ({ file, className = '', externalSrc = null, externalStatus = null }) => {
   const [src, setSrc] = useState(null);
   const [loadError, setLoadError] = useState(false);
   const [isLoading, setIsLoading] = useState(true);
@@ -106,6 +111,9 @@ const Thumbnail = ({ file, className = '' }) => {
   // Track if component is mounted to prevent state updates after unmount
   const mountedRef = useRef(true);
 
+  // Determine if we should use external source
+  const useExternalSource = Boolean(externalSrc || externalStatus);
+
   useEffect(() => {
     mountedRef.current = true;
     
@@ -114,7 +122,14 @@ const Thumbnail = ({ file, className = '' }) => {
     };
   }, []);
 
+  // Main thumbnail processing effect
   useEffect(() => {
+    // Skip internal processing if external source is being used
+    if (useExternalSource) {
+      setIsLoading(false);
+      return;
+    }
+
     if (!file) {
       setIsLoading(false);
       return;
@@ -214,7 +229,7 @@ const Thumbnail = ({ file, className = '' }) => {
         objectUrlRef.current = null;
       }
     };
-  }, [file]);
+  }, [file, useExternalSource]);
 
   // Additional cleanup on unmount
   useEffect(() => {
@@ -225,6 +240,55 @@ const Thumbnail = ({ file, className = '' }) => {
       }
     };
   }, []);
+
+  // === RENDER LOGIC ===
+  
+  // Priority 1: External source with success status - render immediately
+  if (externalSrc && externalStatus === 'success') {
+    return (
+      <img 
+        src={externalSrc} 
+        alt={file?.name || ''} 
+        className={`object-cover w-full h-full ${className}`}
+        onError={() => {
+          console.warn(`External thumbnail failed for ${file?.name}`);
+        }}
+      />
+    );
+  }
+
+  // Priority 2: External processing status - show spinner
+  if (externalStatus === 'processing') {
+    return (
+      <div className={`flex flex-col items-center justify-center bg-gray-200 text-gray-600 ${className}`}>
+        <div className="animate-spin rounded-full h-8 w-8 border-b-2 border-blue-500"></div>
+        <span className="text-xs mt-2">Loading...</span>
+      </div>
+    );
+  }
+
+  // Priority 3: External failed status - show placeholder
+  if (externalStatus === 'failed') {
+    const isHeic = file?.name?.toLowerCase().endsWith('.heic') || 
+                   file?.name?.toLowerCase().endsWith('.heif');
+    return isHeic 
+      ? <HeicPlaceholder filename={file?.name || 'Unknown'} className={className} />
+      : <GenericPlaceholder filename={file?.name || 'Unknown'} className={className} />;
+  }
+
+  // Priority 4: External pending status (waiting in queue) - show waiting state
+  if (externalStatus === 'pending') {
+    return (
+      <div className={`flex flex-col items-center justify-center bg-gray-50 text-gray-400 ${className}`}>
+        <svg className="w-8 h-8 mb-1 opacity-50" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+          <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="1.5" d="M4 16l4.586-4.586a2 2 0 012.828 0L16 16m-2-2l1.586-1.586a2 2 0 012.828 0L20 14m-6-6h.01M6 20h12a2 2 0 002-2V6a2 2 0 00-2-2H6a2 2 0 00-2 2v12a2 2 0 002 2z" />
+        </svg>
+        <span className="text-[10px]">Waiting...</span>
+      </div>
+    );
+  }
+
+  // === Internal processing render states (when not using external source) ===
 
   // Loading state
   if (isLoading) {

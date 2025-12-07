@@ -1,7 +1,8 @@
 import React, { useEffect, useState, useRef, useCallback } from "react";
 import { useVirtualizer } from '@tanstack/react-virtual';
 import useStore from './store.js';
-import useThumbnailQueue from './hooks/useThumbnailQueue.js';
+import { useThumbnailQueue } from './hooks/useThumbnailQueue.js';
+import Thumbnail from './components/Thumbnail.jsx';
 
 // Hook to get responsive column count
 const useColumns = () => {
@@ -38,6 +39,7 @@ const PhotoUploadForm = ({
   isStandalonePage = false,
   onClose,
   closeReason = 'user-dismissed',
+  thumbnailData = null, // Optional pre-instantiated thumbnail queue from parent (UploadPage)
 }) => {
     // Ref for fallback file input
     const fileInputRef = useRef(null);
@@ -269,6 +271,7 @@ const PhotoUploadForm = ({
             selectedIndices={selectedIndices}
             toggleSelection={toggleSelection}
             parentRef={parentRef}
+            externalThumbnailData={thumbnailData}
           />
         )}
       </div>
@@ -277,14 +280,18 @@ const PhotoUploadForm = ({
 };
 
 // Virtualized grid component using TanStack Virtual with Queue-based thumbnail processing
-const VirtualizedPhotoGridWithQueue = ({ photos, columns, selectedIndices, toggleSelection, parentRef }) => {
-  // Extract files for queue processing
+const VirtualizedPhotoGridWithQueue = ({ photos, columns, selectedIndices, toggleSelection, parentRef, externalThumbnailData = null }) => {
+  // Extract files for queue processing (only needed if no external data)
   const files = photos.map(p => p.file).filter(Boolean);
   
-  // Use queue-based thumbnail processor - processes 2 at a time to prevent UI blocking
-  const { thumbnails, status, progress, isComplete } = useThumbnailQueue(files, {
+  // Use external thumbnail queue if provided (from UploadPage), otherwise create internal one
+  // This allows the queue to be managed at a higher level for better state coordination
+  const internalQueue = useThumbnailQueue(externalThumbnailData ? [] : files, {
     concurrency: 2, // Process 2 at a time for balance between speed and UI responsiveness
   });
+  
+  // Use external data if provided, otherwise use internal queue
+  const { thumbnails, status, progress, isComplete } = externalThumbnailData || internalQueue;
 
   const rowCount = Math.ceil(photos.length / columns);
   
@@ -369,34 +376,13 @@ const VirtualizedPhotoGridWithQueue = ({ photos, columns, selectedIndices, toggl
                         bg-gray-100 shadow-sm hover:shadow-md
                       `}
                     >
-                      {/* Queue-based thumbnail rendering */}
-                      {thumbnailStatus === 'success' && thumbnailUrl ? (
-                        <img 
-                          src={thumbnailUrl}
-                          alt={fileName}
-                          className="w-full h-full object-cover"
-                          loading="lazy"
-                        />
-                      ) : thumbnailStatus === 'processing' ? (
-                        <div className="w-full h-full flex flex-col items-center justify-center bg-gray-50">
-                          <div className="w-6 h-6 border-2 border-blue-200 border-t-blue-500 rounded-full animate-spin" />
-                          <span className="text-[10px] text-gray-500 mt-2">Processing...</span>
-                        </div>
-                      ) : thumbnailStatus === 'failed' ? (
-                        <div className="w-full h-full flex flex-col items-center justify-center bg-gray-100 text-gray-400">
-                          <svg className="w-8 h-8 mb-1" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                            <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="1.5" d="M4 16l4.586-4.586a2 2 0 012.828 0L16 16m-2-2l1.586-1.586a2 2 0 012.828 0L20 14m-6-6h.01M6 20h12a2 2 0 002-2V6a2 2 0 00-2-2H6a2 2 0 00-2 2v12a2 2 0 002 2z" />
-                          </svg>
-                          <span className="text-[10px]">Failed</span>
-                        </div>
-                      ) : (
-                        <div className="w-full h-full flex flex-col items-center justify-center bg-gray-50 text-gray-400">
-                          <svg className="w-8 h-8 mb-1 opacity-50" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                            <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="1.5" d="M4 16l4.586-4.586a2 2 0 012.828 0L16 16m-2-2l1.586-1.586a2 2 0 012.828 0L20 14m-6-6h.01M6 20h12a2 2 0 002-2V6a2 2 0 00-2-2H6a2 2 0 00-2 2v12a2 2 0 002 2z" />
-                          </svg>
-                          <span className="text-[10px]">Waiting...</span>
-                        </div>
-                      )}
+                      {/* Queue-based thumbnail rendering via Thumbnail component */}
+                      <Thumbnail 
+                        file={p.file}
+                        externalSrc={thumbnailUrl}
+                        externalStatus={thumbnailStatus}
+                        className="w-full h-full"
+                      />
                       
                       {/* Checkbox Indicator */}
                       <div className="absolute top-2 right-2 z-10">
