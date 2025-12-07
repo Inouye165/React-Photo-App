@@ -1,13 +1,11 @@
 /**
  * useThumbnailQueue Hook
- * 
- * Production-ready thumbnail processing that:
+ * * Production-ready thumbnail processing that:
  * - Processes thumbnails sequentially to avoid UI freezing
  * - Shows progressive loading as thumbnails become ready
  * - Prioritizes visible thumbnails first
  * - Limits concurrency to prevent memory issues
- * 
- * This solves the "[Violation] 'message' handler took 268ms" issue by
+ * * This solves the "[Violation] 'message' handler took 268ms" issue by
  * processing HEIC files 2 at a time instead of all at once.
  */
 
@@ -17,8 +15,7 @@ import { getThumbnail, saveThumbnail } from '../utils/thumbnailCache.js';
 
 /**
  * Queue-based thumbnail processor that prevents UI blocking
- * 
- * @param {File[]} files - Array of image files to process
+ * * @param {File[]} files - Array of image files to process
  * @param {Object} options - Configuration options
  * @returns {Object} - Processing state and thumbnail URLs
  */
@@ -47,16 +44,20 @@ export function useThumbnailQueue(files, options = {}) {
   useEffect(() => {
     mountedRef.current = true;
     
+    // Capture the Set instance locally to satisfy exhaustive-deps
+    const trackedUrls = generatedUrlsRef.current;
+
     return () => {
       mountedRef.current = false;
-      // Copy ref to local variable for cleanup
-      const urlsToCleanup = Array.from(generatedUrlsRef.current);
-      urlsToCleanup.forEach(url => {
+      
+      // Use the LOCAL variable for cleanup, not the ref directly
+      // This prevents the linter warning about ref.current changing
+      trackedUrls.forEach(url => {
         if (url?.startsWith('blob:')) {
           URL.revokeObjectURL(url);
         }
       });
-      generatedUrlsRef.current.clear();
+      trackedUrls.clear();
     };
   }, []);
 
