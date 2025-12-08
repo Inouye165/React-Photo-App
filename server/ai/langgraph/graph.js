@@ -22,10 +22,10 @@ const identify_collectible = require('./nodes/identify_collectible');
 const valuate_collectible = require('./nodes/valuate_collectible');
 // Node food_metadata_agent -> implemented in ./nodes/food_metadata_agent.js
 
-function wrapNode(name, nodeFn) {
+function wrapNode(name, nodeFn, filePath) {
   return async (state) => {
     const runId = state.runId || 'unknown-run-id';
-    auditLogger.logNodeStart(runId, name, state);
+    auditLogger.logNodeStart(runId, name, state, filePath);
     return context.run({ runId, nodeName: name }, async () => {
       try {
         const result = await nodeFn(state);
@@ -89,18 +89,18 @@ const workflow = new StateGraph({
 });
 
 // 1. Add all the nodes
-workflow.addNode('classify_image', wrapNode('classify_image', classify_image));
-workflow.addNode('generate_metadata', wrapNode('generate_metadata', generate_metadata));
-workflow.addNode('handle_collectible', wrapNode('handle_collectible', handle_collectible));
-workflow.addNode('describe_collectible', wrapNode('describe_collectible', describe_collectible));
-workflow.addNode('location_intelligence_agent', wrapNode('location_intelligence_agent', location_intelligence_agent));
-workflow.addNode('decide_scene_label', wrapNode('decide_scene_label', decide_scene_label));
-workflow.addNode('food_location_agent', wrapNode('food_location_agent', food_location_agent));
-workflow.addNode('food_metadata_agent', wrapNode('food_metadata_agent', food_metadata_agent));
-workflow.addNode('collect_context', wrapNode('collect_context', collect_context));
+workflow.addNode('classify_image', wrapNode('classify_image', classify_image, require.resolve('./nodes/classify_image')));
+workflow.addNode('generate_metadata', wrapNode('generate_metadata', generate_metadata, require.resolve('./nodes/generate_metadata')));
+workflow.addNode('handle_collectible', wrapNode('handle_collectible', handle_collectible, require.resolve('./nodes/handle_collectible')));
+workflow.addNode('describe_collectible', wrapNode('describe_collectible', describe_collectible, require.resolve('./nodes/describe_collectible')));
+workflow.addNode('location_intelligence_agent', wrapNode('location_intelligence_agent', location_intelligence_agent, require.resolve('./nodes/location_intelligence_agent')));
+workflow.addNode('decide_scene_label', wrapNode('decide_scene_label', decide_scene_label, require.resolve('./nodes/decide_scene_label')));
+workflow.addNode('food_location_agent', wrapNode('food_location_agent', food_location_agent, require.resolve('./nodes/food_location_agent')));
+workflow.addNode('food_metadata_agent', wrapNode('food_metadata_agent', food_metadata_agent, require.resolve('./nodes/food_metadata_agent')));
+workflow.addNode('collect_context', wrapNode('collect_context', collect_context, require.resolve('./nodes/collect_context')));
 // Sprint 1 Nodes
-workflow.addNode('identify_collectible', wrapNode('identify_collectible', identify_collectible));
-workflow.addNode('valuate_collectible', wrapNode('valuate_collectible', valuate_collectible));
+workflow.addNode('identify_collectible', wrapNode('identify_collectible', identify_collectible, require.resolve('./nodes/identify_collectible')));
+workflow.addNode('valuate_collectible', wrapNode('valuate_collectible', valuate_collectible, require.resolve('./nodes/valuate_collectible')));
 
 // 2. Set the entry point
 workflow.setEntryPoint('classify_image');

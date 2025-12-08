@@ -135,9 +135,10 @@ const auditLogger = {
     appendLog(content);
   },
 
-  logNodeStart: (runId, nodeName, input) => {
+  logNodeStart: (runId, nodeName, input, filePath) => {
     const timestamp = formatTimestamp();
-    const content = `\n### Node Started: ${nodeName}\n**Timestamp:** ${timestamp}\n\n**Input:**\n\`\`\`json\n${formatValue(input)}\n\`\`\`\n`;
+    const debugComment = filePath ? `<!-- Entering function ${nodeName} within ${filePath} -->\n` : '';
+    const content = `\n${debugComment}### Node Started: ${nodeName}\n**Timestamp:** ${timestamp}\n\n**Input:**\n\`\`\`json\n${formatValue(input)}\n\`\`\`\n`;
     appendLog(content);
   },
 
