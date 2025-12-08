@@ -4,6 +4,7 @@ const { collectibleAgent, collectibleTools } = require('../../langchain/agents')
 const { ToolNode } = require('@langchain/langgraph/prebuilt');
 const { HumanMessage, SystemMessage } = require('@langchain/core/messages');
 const logger = require('../../../logger');
+const auditLogger = require('../audit_logger');
 
 // Maximum iterations for tool-calling loop to prevent infinite loops
 const MAX_ITERATIONS = 3;
@@ -84,15 +85,22 @@ const toolNode = new ToolNode(collectibleTools);
  * This implements a ReAct-style loop where the LLM can call tools and receive results.
  * 
  * @param {Array} messages - Initial messages array
+ * @param {string} runId - The run ID for audit logging
  * @returns {Object} - { output: string, intermediateSteps: Array }
  */
-async function runAgentLoop(messages) {
+async function runAgentLoop(messages, runId) {
   const intermediateSteps = [];
   let currentMessages = [...messages];
   
   for (let i = 0; i < MAX_ITERATIONS; i++) {
     // Call the LLM
     const response = await collectibleAgent.invoke(currentMessages);
+    
+    if (runId) {
+      const modelName = response.response_metadata?.model_name || 'unknown-model';
+      auditLogger.logLLMUsage(runId, 'handle_collectible', modelName, currentMessages, response.content);
+    }
+
     currentMessages.push(response);
     
     // Check if the LLM wants to call tools
@@ -127,6 +135,12 @@ async function runAgentLoop(messages) {
   
   // Max iterations reached - get final response without tools
   const finalResponse = await collectibleAgent.invoke(currentMessages);
+  
+  if (runId) {
+    const modelName = finalResponse.response_metadata?.model_name || 'unknown-model';
+    auditLogger.logLLMUsage(runId, 'handle_collectible', modelName, currentMessages, finalResponse.content);
+  }
+
   return {
     output: finalResponse.content,
     intermediateSteps
@@ -203,7 +217,7 @@ Then provide your final answer as a VALID JSON object matching the Schema. Do NO
     logger.info('[LangGraph] handle_collectible: Invoking agent with tool support');
     
     // Run the agent loop with tool support
-    const response = await runAgentLoop(messages);
+    const response = await runAgentLoop(messages, state.runId);
 
     // Log intermediate steps for debugging
     if (response.intermediateSteps && response.intermediateSteps.length > 0) {
