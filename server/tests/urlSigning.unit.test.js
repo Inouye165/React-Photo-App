@@ -269,26 +269,20 @@ describe('URL Signing - Unit Tests', () => {
     });
 
     test('should use constant-time comparison (timing-safe)', () => {
-      // This test verifies that the verifyThumbnailSignature function
-      // uses crypto.timingSafeEqual for signature comparison
+      // Refactored: Use jest.spyOn to verify crypto.timingSafeEqual is called with Buffer arguments
+      const crypto = require('crypto');
+      const spy = jest.spyOn(crypto, 'timingSafeEqual');
+
       const hash = 'abc123';
       const { sig, exp } = signThumbnailUrl(hash, 900);
-
-      // Measure time for valid signature
-      const start1 = process.hrtime.bigint();
       verifyThumbnailSignature(hash, sig, exp);
-      const time1 = process.hrtime.bigint() - start1;
 
-      // Measure time for invalid signature (wrong hash)
-      const start2 = process.hrtime.bigint();
-      verifyThumbnailSignature('different-hash', sig, exp);
-      const time2 = process.hrtime.bigint() - start2;
+      expect(spy).toHaveBeenCalled();
+      const callArgs = spy.mock.calls[0];
+      expect(Buffer.isBuffer(callArgs[0])).toBe(true);
+      expect(Buffer.isBuffer(callArgs[1])).toBe(true);
 
-      // Times should be roughly similar (within 10x) - not revealing info through timing
-      // Note: This is a weak test, but better than nothing
-      const ratio = Number(time1) / Number(time2);
-      expect(ratio).toBeGreaterThan(0.1);
-      expect(ratio).toBeLessThan(10);
+      spy.mockRestore();
     });
 
     test('signature should include resource path to prevent substitution', () => {
