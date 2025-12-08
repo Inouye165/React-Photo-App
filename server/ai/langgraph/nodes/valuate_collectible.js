@@ -3,6 +3,42 @@ const { googleSearchTool } = require('../../langchain/tools/searchTool');
 const logger = require('../../../logger');
 
 /**
+ * Safe wrapper for googleSearchTool to standardize logging and error handling.
+ * @param {string} label - Human-readable label for the search (e.g., 'price value')
+ * @param {object} toolInput - The input object matching the tool's Zod schema
+ * @returns {Promise<{ok: boolean, result?: any, error?: Error}>}
+ */
+async function safeGoogleSearch(label, toolInput) {
+  logger.info('[valuate_collectible] Calling googleSearchTool', {
+    label,
+    toolInput,
+    inputType: typeof toolInput,
+    inputKeys: toolInput && typeof toolInput === 'object' ? Object.keys(toolInput) : null,
+  });
+
+  try {
+    const result = await googleSearchTool.invoke(toolInput);
+    logger.info('[valuate_collectible] googleSearchTool result summary', {
+      label,
+      resultType: typeof result,
+      resultPreview: typeof result === 'string'
+        ? result.slice(0, 500)
+        : JSON.stringify(result).slice(0, 500),
+    });
+    return { ok: true, result };
+  } catch (err) {
+    logger.error('[valuate_collectible] googleSearchTool error', {
+      label,
+      message: err?.message,
+      name: err?.name,
+      toolInput,
+      stack: err?.stack?.split('\n').slice(0, 5).join('\n'),
+    });
+    return { ok: false, error: err };
+  }
+}
+
+/**
  * Sanitize a price string/number to a valid float.
  * Strips currency symbols ($), commas, and whitespace.
  * @param {string|number} value - The price value to sanitize
@@ -96,9 +132,13 @@ async function valuate_collectible(state) {
 
     logger.info(`[LangGraph] valuate_collectible: Searching for "${sanitizedId}"`);
 
-    // 3. Execute Searches in Parallel
+    // 3. Execute Searches in Parallel using safe wrapper
+    const searchLabels = ['price value', 'for sale', 'sold listings'];
     const searchResults = await Promise.all(
-      queries.map(q => googleSearchTool.invoke(q).catch(e => `Error searching for ${q}: ${e.message}`))
+      queries.map((q, i) =>
+        safeGoogleSearch(searchLabels[i], { query: q, numResults: 4 })
+          .then(res => res.ok ? res.result : `Error searching for ${q}: ${res.error?.message}`)
+      )
     );
 
     const combinedSearchResults = searchResults.join('\n\n');

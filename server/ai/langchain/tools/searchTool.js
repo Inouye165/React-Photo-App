@@ -18,6 +18,12 @@ const ensureFetch = () => {
 const fetchFn = ensureFetch();
 
 async function runGoogleSearch({ query, numResults = 4, siteFilter }) {
+  logger.info('[searchTool] runGoogleSearch called', {
+    query: query?.slice(0, 100),
+    numResults,
+    siteFilter: siteFilter || null,
+  });
+
   const trimmedQuery = (query || '').trim();
   if (!trimmedQuery) {
     throw new Error('Search query is required');
@@ -27,6 +33,22 @@ async function runGoogleSearch({ query, numResults = 4, siteFilter }) {
 
   const apiKey = process.env.GOOGLE_API_KEY;
   const cx = process.env.GOOGLE_CSE_ID;
+
+  // [TEMPORARY DEBUG] Log only the last 4 chars of the API key to verify configuration
+  // Remove this block once configuration is confirmed correct
+  if (apiKey && apiKey.length >= 4) {
+    const lastFour = apiKey.slice(-4);
+    const endsWithEight = apiKey.endsWith('8');
+    logger.info('[searchTool] Using Google Custom Search key ending with: ****' + lastFour, {
+      endsWithEight,
+      cxConfigured: !!cx,
+    });
+  } else if (!apiKey) {
+    logger.warn('[searchTool] GOOGLE_API_KEY is missing or empty - search will fail or fallback to SerpAPI');
+  } else {
+    logger.warn('[searchTool] GOOGLE_API_KEY is too short (less than 4 chars) - likely misconfigured');
+  }
+  // [END TEMPORARY DEBUG]
 
   if (!apiKey || !cx) {
     const serpKey = process.env.SERPAPI_API_KEY;

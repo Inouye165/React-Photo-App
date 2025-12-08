@@ -10,6 +10,28 @@ jest.mock('../../langchain/tools/searchTool');
 describe('Sprint 1 Collectible Flow Integration', () => {
   beforeEach(() => {
     jest.clearAllMocks();
+    
+    // Set up googleSearchTool mock with schema validation
+    googleSearchTool.invoke.mockImplementation(async (input) => {
+      // Validate input shape matches Zod schema
+      expect(input).toEqual(
+        expect.objectContaining({
+          query: expect.any(String),
+          numResults: expect.any(Number),
+        })
+      );
+      expect(typeof input).toBe('object');
+      expect(typeof input.query).toBe('string');
+      expect(input.query.length).toBeGreaterThan(0);
+      
+      return JSON.stringify({
+        query: input.query,
+        fetchedAt: new Date().toISOString(),
+        results: [
+          { title: 'Mock Result', link: 'https://example.com', snippet: 'Found price $1,500,000 on eBay' }
+        ]
+      });
+    });
   });
 
   test('Full flow: Identify -> Valuate -> Describe', async () => {
@@ -33,7 +55,7 @@ describe('Sprint 1 Collectible Flow Integration', () => {
     expect(result1.collectible_category).toBe('Comics');
 
     // 2. Test valuate_collectible (Sprint 2: now returns market_data array)
-    googleSearchTool.invoke.mockResolvedValue('Found price $1,500,000 on eBay');
+    // Note: googleSearchTool.invoke is already mocked in beforeEach with schema validation
     
     openai.chat.completions.create.mockResolvedValueOnce({
       choices: [{
@@ -101,7 +123,7 @@ describe('Sprint 1 Collectible Flow Integration', () => {
   });
 
   test('Valuate handles old format response (backward compatibility)', async () => {
-    googleSearchTool.invoke.mockResolvedValue('Found item for $500');
+    // googleSearchTool is already mocked in beforeEach with schema validation
 
     // Old format response (without nested valuation object)
     openai.chat.completions.create.mockResolvedValueOnce({
@@ -131,7 +153,7 @@ describe('Sprint 1 Collectible Flow Integration', () => {
   });
 
   test('Valuate sanitizes price strings with $ and commas', async () => {
-    googleSearchTool.invoke.mockResolvedValue('Found item');
+    // googleSearchTool is already mocked in beforeEach with schema validation
 
     openai.chat.completions.create.mockResolvedValueOnce({
       choices: [{
