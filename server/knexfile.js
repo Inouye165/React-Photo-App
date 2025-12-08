@@ -38,7 +38,10 @@ const getSslConfig = (env) => {
 const createPostgresConfig = (env) => ({
   client: 'pg',
   connection: {
-    connectionString: process.env.DATABASE_URL || process.env.SUPABASE_DB_URL,
+    // Prefer SUPABASE_DB_URL (pooler) over DATABASE_URL (direct) because the
+    // direct endpoint may have DNS/connectivity issues from local networks.
+    // The pooler endpoint (port 6543) is more reliable for development.
+    connectionString: process.env.SUPABASE_DB_URL || process.env.DATABASE_URL,
     ssl: getSslConfig(env),
     // Keepalive settings to prevent connection drops
     keepAlive: true,
@@ -48,8 +51,8 @@ const createPostgresConfig = (env) => ({
     directory: path.join(__dirname, 'db/migrations')
   },
   pool: {
-    min: parseInt(process.env.DB_POOL_MIN || '0', 10),  // Start with 0 to avoid idle connections
-    max: parseInt(process.env.DB_POOL_MAX || '10', 10), // Reduced max for Supabase free tier
+     min: parseInt(process.env.DB_POOL_MIN || (env === 'production' ? '0' : '2'), 10),
+     max: parseInt(process.env.DB_POOL_MAX || (env === 'production' ? '10' : '30'), 10),
     // Acquire timeout - how long to wait for a connection
     acquireTimeoutMillis: 30000,
     // Idle timeout - destroy connections idle for this long

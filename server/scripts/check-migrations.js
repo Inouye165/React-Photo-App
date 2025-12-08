@@ -37,20 +37,22 @@ async function verifyMigrations(retryAttempt = 0) {
   }
 
   const knexfile = require('../knexfile');
-  // Reuse same selection logic as server/db/index.js
-  const isProduction = process.env.NODE_ENV === 'production';
-  const forcePostgres = process.env.USE_POSTGRES === 'true' || false;
-  const autoDetectPostgres = Boolean(process.env.SUPABASE_DB_URL) && process.env.USE_POSTGRES_AUTO_DETECT !== 'false';
-  // During tests (Jest sets NODE_ENV='test') prefer the 'test' knex config even
-  // if SUPABASE_DB_URL is present. This prevents local/CI tests from attempting
-  // to contact a remote Postgres instance unless explicitly requested.
+  
+  // IMPORTANT: Use the same environment selection logic as server/db/index.js
+  // Previously, this script had "auto-detect" logic that switched to 'production'
+  // config when SUPABASE_DB_URL was present, even in development. This caused
+  // SSL/connection failures because production config expects strict SSL with
+  // CA certificates, while the main server uses relaxed SSL in development.
+  //
+  // The fix: Always respect NODE_ENV, just like db/index.js does.
   const isTestRuntime = process.env.NODE_ENV === 'test' || typeof process.env.JEST_WORKER_ID !== 'undefined';
 
   let env;
   if (isTestRuntime) {
     env = 'test';
   } else {
-    env = (isProduction || forcePostgres || autoDetectPostgres) ? 'production' : (process.env.NODE_ENV || 'development');
+    // Match db/index.js: use NODE_ENV directly, defaulting to 'development'
+    env = process.env.NODE_ENV || 'development';
   }
 
   const cfg = knexfile[env];
@@ -69,8 +71,9 @@ async function verifyMigrations(retryAttempt = 0) {
     }
   }
 
-  // Ensure SSL is configured properly for Supabase (reject unauthorized certs).
-  if (env === 'production' && cfg.client === 'pg') {
+  // Handle SSL configuration for PostgreSQL - match db/index.js behavior exactly
+  // This ensures the migration script connects the same way the server does.
+  if (cfg.client === 'pg') {
     if (typeof cfg.connection === 'string') {
       // Remove sslmode from connection string as we'll use the ssl object instead
       const connStr = cfg.connection.replace(/[?&]sslmode=[^&]+/, '');
@@ -81,9 +84,8 @@ async function verifyMigrations(retryAttempt = 0) {
     } else if (cfg.connection && cfg.connection.connectionString) {
       // Remove sslmode from connection string if present
       cfg.connection.connectionString = cfg.connection.connectionString.replace(/[?&]sslmode=[^&]+/, '');
-      if (!cfg.connection.ssl) {
-        cfg.connection.ssl = { rejectUnauthorized: false };
-      }
+      // Ensure SSL config exists with relaxed verification
+      cfg.connection.ssl = { rejectUnauthorized: false };
     }
   }
 
@@ -91,6 +93,38 @@ async function verifyMigrations(retryAttempt = 0) {
 
   if (!fs.existsSync(migrationsDir)) {
     throw new Error(`[verify:migrations] migrations directory does not exist: ${migrationsDir}`);
+  }
+
+  // Pre-flight connection test using raw pg client to get better error messages
+  // Knex pool timeouts hide the real error; this catches DNS/SSL/auth issues early
+  const connectionString = typeof cfg.connection === 'string' 
+    ? cfg.connection 
+    : cfg.connection?.connectionString;
+  
+  if (connectionString && cfg.client === 'pg') {
+    const { Client } = require('pg');
+    const testClient = new Client({
+      connectionString,
+      ssl: cfg.connection?.ssl || { rejectUnauthorized: false },
+      connectionTimeoutMillis: 10000 // 10 second timeout for pre-flight
+    });
+    
+    try {
+      await testClient.connect();
+      await testClient.end();
+      console.log('[verify:migrations] Pre-flight connection test: OK');
+    } catch (preflightErr) {
+      await testClient.end().catch(() => {}); // Ignore cleanup errors
+      // Re-throw with more context - this error has the REAL cause
+      const enhancedErr = new Error(
+        `Database connection failed: ${preflightErr.message}\n` +
+        `  Host: ${(() => { try { return new URL(connectionString).hostname; } catch { return '(unknown)'; } })()}\n` +
+        `  Code: ${preflightErr.code || '(none)'}`
+      );
+      enhancedErr.code = preflightErr.code;
+      enhancedErr.cause = preflightErr;
+      throw enhancedErr;
+    }
   }
 
   const db = knex(cfg);
@@ -144,14 +178,72 @@ async function verifyMigrations(retryAttempt = 0) {
   }
 }
 
+/**
+ * Diagnose connection errors and provide helpful messages.
+ * Knex pool timeout errors are notoriously unhelpful - this function
+ * extracts the real cause from the error chain.
+ */
+function diagnoseConnectionError(err) {
+  const lines = ['[verify:migrations] Connection diagnostics:'];
+  
+  // Check for common root causes
+  if (err.code === 'ENOTFOUND') {
+    lines.push(`  ❌ DNS resolution failed: Cannot resolve hostname`);
+    lines.push(`  💡 Check if the database URL hostname is correct`);
+    lines.push(`  💡 Try: ping <hostname> or nslookup <hostname>`);
+  } else if (err.code === 'ECONNREFUSED') {
+    lines.push(`  ❌ Connection refused: Database server not accepting connections`);
+    lines.push(`  💡 Check if the database is running and port is correct`);
+  } else if (err.code === 'ETIMEDOUT' || err.code === 'ESOCKETTIMEDOUT') {
+    lines.push(`  ❌ Connection timed out: Network or firewall issue`);
+    lines.push(`  💡 Check firewall rules and network connectivity`);
+  } else if (err.message?.includes('SSL') || err.message?.includes('certificate')) {
+    lines.push(`  ❌ SSL/TLS error: ${err.message}`);
+    lines.push(`  💡 Check SSL configuration in knexfile.js`);
+  } else if (err.message?.includes('password') || err.message?.includes('authentication')) {
+    lines.push(`  ❌ Authentication failed: ${err.message}`);
+    lines.push(`  💡 Check database credentials in .env`);
+  } else if (err.message?.includes('pool') || err.message?.includes('timeout')) {
+    lines.push(`  ❌ Pool timeout (but the REAL cause may be hidden below)`);
+    lines.push(`  💡 This often means the underlying connection failed`);
+  }
+  
+  // Show error details
+  lines.push(`  📋 Error code: ${err.code || '(none)'}`);
+  lines.push(`  📋 Error message: ${err.message}`);
+  
+  // Check for nested/cause errors (Knex wraps errors)
+  if (err.cause) {
+    lines.push(`  📋 Caused by: ${err.cause.message || err.cause}`);
+    if (err.cause.code) {
+      lines.push(`  📋 Cause code: ${err.cause.code}`);
+    }
+  }
+  
+  // Show which URL was attempted
+  const dbUrl = process.env.SUPABASE_DB_URL || process.env.DATABASE_URL;
+  if (dbUrl) {
+    try {
+      const url = new URL(dbUrl);
+      lines.push(`  🔗 Attempted host: ${url.hostname}:${url.port || 5432}`);
+    } catch {
+      lines.push(`  🔗 Database URL: (could not parse)`);
+    }
+  }
+  
+  return lines.join('\n');
+}
+
 // CLI entrypoint
 if (require.main === module) {
   verifyMigrations()
     .then(() => process.exit(0))
     .catch(err => {
       console.error('[verify:migrations] FAILED:', err.message || err);
+      console.error('');
+      console.error(diagnoseConnectionError(err));
       process.exit(1);
     });
 }
 
-module.exports = { verifyMigrations };
+module.exports = { verifyMigrations, diagnoseConnectionError };
