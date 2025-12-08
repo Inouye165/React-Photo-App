@@ -21,7 +21,8 @@ function appendLog(content) {
 }
 
 function formatTimestamp() {
-  return new Date().toISOString();
+  const now = new Date();
+  return `${now.toISOString()} (Local: ${now.toLocaleString()})`;
 }
 
 function sanitizeValue(value, depth = 0) {
@@ -138,8 +139,8 @@ const auditLogger = {
 
   logNodeStart: (runId, nodeName, input, filePath) => {
     const timestamp = formatTimestamp();
-    const debugComment = filePath ? `<!-- Entering function ${nodeName} within ${filePath} -->\n` : '';
-    const content = `\n${debugComment}### Node Started: ${nodeName}\n**Timestamp:** ${timestamp}\n\n**Input:**\n\`\`\`json\n${formatValue(input)}\n\`\`\`\n`;
+    const fileInfo = filePath ? `\n**Source:** \`${filePath}\`` : '';
+    const content = `\n### Node Started: ${nodeName}\n**Timestamp:** ${timestamp}${fileInfo}\n\n**Input:**\n\`\`\`json\n${formatValue(input)}\n\`\`\`\n`;
     appendLog(content);
   },
 
