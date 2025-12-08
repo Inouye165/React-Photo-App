@@ -1,0 +1,2036 @@
+=== Collectibles Pipeline Code Snapshot ===
+Purpose: All code involved in the collectibles AI pipeline (classify_image → collect_context → identify_collectible → valuate_collectible → describe_collectible), for external analysis. DO NOT EDIT – generated for debugging.
+
+----------------------------------------------------------------------
+FILE: server/ai/langgraph/graph.js
+NOTES: Graph definition wiring collectibles nodes
+----------------------------------------------------------------------
+// LangGraph-based implementation
+// C:\Users\Ron\React-Photo-App\server\ai\langgraph\graph.js
+const { StateGraph, END } = require('@langchain/langgraph');
+// We need HumanMessage AND SystemMessage
+const logger = require('../../logger');
+const { AppState } = require('./state');
+const auditLogger = require('./audit_logger');
+const context = require('./context');
+
+// Node implementations
+const classify_image = require('./nodes/classify_image');
+const generate_metadata = require('./nodes/generate_metadata');
+const handle_collectible = require('./nodes/handle_collectible');
+const describe_collectible = require('./nodes/describe_collectible');
+const location_intelligence_agent = require('./nodes/location_intelligence_agent');
+const decide_scene_label = require('./nodes/decide_scene_label');
+const food_location_agent = require('./nodes/food_location_agent');
+const food_metadata_agent = require('./nodes/food_metadata_agent');
+const collect_context = require('./nodes/collect_context');
+// Sprint 1 Nodes
+const identify_collectible = require('./nodes/identify_collectible');
+const valuate_collectible = require('./nodes/valuate_collectible');
+// Node food_metadata_agent -> implemented in ./nodes/food_metadata_agent.js
+
+function wrapNode(name, nodeFn, filePath) {
+  return async (state) => {
+    const runId = state.runId || 'unknown-run-id';
+    auditLogger.logNodeStart(runId, name, state, filePath);
+    return context.run({ runId, nodeName: name }, async () => {
+      try {
+        const result = await nodeFn(state);
+        auditLogger.logNodeEnd(runId, name, result);
+        return result;
+      } catch (error) {
+        auditLogger.logNodeEnd(runId, name, { error: error.message });
+        throw error;
+      }
+    });
+  };
+}
+
+// --- Router: Decides next node after collect_context ---
+function route_after_context(state) {
+  if (state.error) return END;
+  const classification = String(state.classification || '').toLowerCase().trim();
+  
+  if (classification === 'collectables') {
+    logger.info('[LangGraph] Router: Fast-tracking collectible');
+    return 'identify_collectible';
+  }
+  
+  return 'location_intelligence_agent';
+}
+
+// --- Router: Decides next node after the location intelligence agent ---
+function route_after_location(state) {
+  if (state.error) {
+    logger.error('[LangGraph] Router: Error detected, ending graph.', state.error);
+    return END;
+  }
+
+  const classification = String(state.classification || '').toLowerCase().trim();
+  logger.info(`[LangGraph] Router: Routing after location intel for "${classification}"`);
+
+  if (classification === 'collectables') {
+    return 'handle_collectible';
+  }
+
+  if (classification === 'food') {
+    return 'food_location_agent';
+  }
+
+  if (needPoi(state) && (classification === 'scenery' || classification.includes('scenery'))) {
+    return 'decide_scene_label';
+  }
+
+  return 'generate_metadata';
+}
+
+function needPoi(state) {
+  if (!state) return false;
+  return Boolean(state.poiAnalysis?.gpsString);
+}
+
+// --- Build the LangGraph workflow ---
+const workflow = new StateGraph({
+  // Use the Zod schema from your state.js for validation
+  channels: AppState.shape, // <-- This fix was correct
+});
+
+// 1. Add all the nodes
+workflow.addNode('classify_image', wrapNode('classify_image', classify_image, require.resolve('./nodes/classify_image')));
+workflow.addNode('generate_metadata', wrapNode('generate_metadata', generate_metadata, require.resolve('./nodes/generate_metadata')));
+workflow.addNode('handle_collectible', wrapNode('handle_collectible', handle_collectible, require.resolve('./nodes/handle_collectible')));
+workflow.addNode('describe_collectible', wrapNode('describe_collectible', describe_collectible, require.resolve('./nodes/describe_collectible')));
+workflow.addNode('location_intelligence_agent', wrapNode('location_intelligence_agent', location_intelligence_agent, require.resolve('./nodes/location_intelligence_agent')));
+workflow.addNode('decide_scene_label', wrapNode('decide_scene_label', decide_scene_label, require.resolve('./nodes/decide_scene_label')));
+workflow.addNode('food_location_agent', wrapNode('food_location_agent', food_location_agent, require.resolve('./nodes/food_location_agent')));
+workflow.addNode('food_metadata_agent', wrapNode('food_metadata_agent', food_metadata_agent, require.resolve('./nodes/food_metadata_agent')));
+workflow.addNode('collect_context', wrapNode('collect_context', collect_context, require.resolve('./nodes/collect_context')));
+// Sprint 1 Nodes
+workflow.addNode('identify_collectible', wrapNode('identify_collectible', identify_collectible, require.resolve('./nodes/identify_collectible')));
+workflow.addNode('valuate_collectible', wrapNode('valuate_collectible', valuate_collectible, require.resolve('./nodes/valuate_collectible')));
+
+// 2. Set the entry point
+workflow.setEntryPoint('classify_image');
+
+// 3. Wire the flow: classification -> location intelligence -> rest
+// Insert a short-circuit node that collects POI once per image and caches it.
+workflow.addEdge('classify_image', 'collect_context');
+
+// Sprint 1: Conditional routing after collect_context
+workflow.addConditionalEdges(
+  'collect_context',
+  route_after_context,
+  {
+    identify_collectible: 'identify_collectible',
+    location_intelligence_agent: 'location_intelligence_agent',
+    __end__: END
+  }
+);
+
+workflow.addConditionalEdges(
+  'location_intelligence_agent',
+  route_after_location,
+  {
+    generate_metadata: 'generate_metadata',
+    decide_scene_label: 'decide_scene_label',
+    handle_collectible: 'handle_collectible',
+    food_location_agent: 'food_location_agent',
+    __end__: END,
+  }
+);
+
+// 4. Add the final edges
+workflow.addEdge('generate_metadata', END);
+workflow.addEdge('handle_collectible', 'describe_collectible');
+workflow.addEdge('describe_collectible', END);
+workflow.addEdge('decide_scene_label', 'generate_metadata');
+workflow.addEdge('food_location_agent', 'food_metadata_agent');
+workflow.addEdge('food_metadata_agent', END);
+
+// Sprint 1 Edges
+workflow.addEdge('identify_collectible', 'valuate_collectible');
+workflow.addEdge('valuate_collectible', 'describe_collectible');
+
+// 5. Compile the app
+const app = workflow.compile();
+module.exports = { app, __testing: { food_location_agent, food_metadata_agent, location_intelligence_agent, route_after_context } };
+// Export the collect_context node for unit testing
+module.exports.__testing.collect_context = collect_context;
+
+----------------------------------------------------------------------
+FILE: server/ai/langgraph/nodes/classify_image.js
+NOTES: Node implementation for classify_image
+----------------------------------------------------------------------
+const { CLASSIFY_SYSTEM_PROMPT, CLASSIFY_USER_PROMPT } = require('../../prompts/classify_image');
+const { openai } = require('../../openaiClient');
+const logger = require('../../../logger');
+
+async function classify_image(state) {
+  try {
+    logger.info('[LangGraph] classify_image node invoked');
+    const prompt = CLASSIFY_USER_PROMPT;
+
+    const userContent = [
+      { type: 'text', text: prompt },
+      {
+        type: 'image_url',
+        image_url: {
+          url: `data:${state.imageMime};base64,${state.imageBase64}`,
+          detail: 'low',
+        },
+      },
+    ];
+
+    const response = await openai.chat.completions.create({
+      model: 'gpt-4o',
+      messages: [
+        {
+          role: 'system',
+          content: CLASSIFY_SYSTEM_PROMPT,
+        },
+        { role: 'user', content: userContent },
+      ],
+      max_tokens: 64,
+      response_format: { type: 'json_object' },
+    });
+
+    let parsed;
+    try {
+      parsed = JSON.parse(response.choices[0].message.content);
+    } catch (e) {
+      logger.error('[LangGraph] classify_image: Failed to parse model response', e, response.choices[0].message.content);
+      return { ...state, error: 'Failed to parse classification response: ' + e.message };
+    }
+    logger.info('[LangGraph] classify_image: Model classified as', parsed.classification);
+    return { ...state, classification: parsed.classification, error: null };
+  } catch (err) {
+    logger.error('[LangGraph] classify_image: Error', err);
+    return { ...state, error: err.message || String(err) };
+  }
+}
+
+module.exports = classify_image;
+
+----------------------------------------------------------------------
+FILE: server/ai/prompts/classify_image.js
+NOTES: Prompts for classify_image
+----------------------------------------------------------------------
+// Prompts for classify_image node
+
+const CLASSIFY_SYSTEM_PROMPT = 'You are a helpful assistant for image classification.';
+
+const CLASSIFY_USER_PROMPT = `Classify this image as one of the following categories: scenery, food, receipt, collectables, health data, or other. Return ONLY a JSON object: {"classification": "..."}.`;
+
+module.exports = { CLASSIFY_SYSTEM_PROMPT, CLASSIFY_USER_PROMPT };
+
+----------------------------------------------------------------------
+FILE: server/ai/langgraph/nodes/collect_context.js
+NOTES: Node implementation for collect_context
+----------------------------------------------------------------------
+const logger = require('../../../logger');
+const { collectContext } = require('../collect_context');
+const { parseGpsCoordinates } = require('../utils');
+
+async function collect_context(state) {
+  try {
+    logger.info('[LangGraph] collect_context: Enter', { photoId: state.filename });
+    const coordinates = parseGpsCoordinates(state);
+    if (!coordinates) {
+      logger.info('[LangGraph] collect_context: No GPS available, skipping');
+      return { ...state, poiCache: null };
+    }
+    const { lat, lon } = coordinates;
+    const classification = state.classification || '';
+    const startMs = Date.now();
+    const fetchFood = String(classification || '').toLowerCase().includes('food');
+    const poi = await collectContext({ lat, lon, classification, fetchFood, runId: state.runId });
+    const durationMs = Date.now() - startMs;
+    const summary = {
+      reverse: !!poi.reverseResult && !!poi.reverseResult.address,
+      nearbyPlacesCount: Array.isArray(poi.nearbyPlaces) ? poi.nearbyPlaces.length : 0,
+      nearbyFoodCount: Array.isArray(poi.nearbyFood) ? poi.nearbyFood.length : 0,
+      osmTrailsCount: Array.isArray(poi.osmTrails) ? poi.osmTrails.length : 0,
+      durationMs,
+    };
+    logger.info('[LangGraph] collect_context: poiCache summary', { photoId: state.filename, ...summary });
+    return { ...state, poiCache: poi, poiCacheSummary: summary, poiCacheFetchedAt: new Date().toISOString() };
+  } catch (err) {
+    logger.warn('[LangGraph] collect_context: Error', err && err.message ? err.message : err);
+    return { ...state, poiCache: null };
+  }
+}
+
+module.exports = collect_context;
+
+----------------------------------------------------------------------
+FILE: server/ai/langgraph/collect_context.js
+NOTES: Helper function for collect_context node
+----------------------------------------------------------------------
+const { reverseGeocode, nearbyPlaces } = require('../poi/googlePlaces');
+const { nearbyFoodPlaces } = require('../poi/foodPlaces');
+const { nearbyTrailsFromOSM } = require('../poi/osmTrails');
+const logger = require('../../logger');
+
+async function collectContext({ lat, lon, classification = '', fetchFood = false, runId }) {
+  const { shouldSkipGenericPoi, isCollectablesClassification } = require('./classification_helpers');
+  const classificationLower = String(classification || '').toLowerCase();
+  const _isCollectables = isCollectablesClassification(classificationLower);
+  const skipGenericPoi = shouldSkipGenericPoi(classificationLower);
+
+  const out = {
+    reverseResult: null,
+    nearbyPlaces: [],
+    nearbyFood: [],
+    osmTrails: [],
+  };
+
+  if (!lat || !lon) return out;
+
+  try {
+    // Skip reverse geocode entirely for 'collectables' to avoid noisy
+    // and expensive geo lookups that are not meaningful for collectibles.
+    if (!_isCollectables) {
+      out.reverseResult = await reverseGeocode(lat, lon, { runId });
+    }
+  } catch (err) {
+    logger.warn('[collectContext] reverseGeocode failed', err?.message || err);
+  }
+
+  if (!skipGenericPoi) {
+    try {
+      out.nearbyPlaces = await nearbyPlaces(lat, lon, 800, { runId });
+    } catch (err) {
+      logger.warn('[collectContext] nearbyPlaces failed', err?.message || err);
+    }
+  } else {
+    // We intentionally skip generic POIs for food context to save cost
+    out.nearbyPlaces = [];
+  }
+
+  if (fetchFood && !_isCollectables) {
+    try {
+      const fallback = Number(process.env.FOOD_POI_FALLBACK_RADIUS || '30.48');
+      out.nearbyFood = await nearbyFoodPlaces(lat, lon, fallback);
+    } catch (err) {
+      logger.warn('[collectContext] nearbyFoodPlaces failed', err?.message || err);
+    }
+  }
+
+  try {
+    const osmDefaultRadius = Number(process.env.OSM_TRAILS_DEFAULT_RADIUS_METERS || 200);
+    if (!skipGenericPoi) {
+      out.osmTrails = await nearbyTrailsFromOSM(lat, lon, osmDefaultRadius);
+    } else {
+      out.osmTrails = [];
+    }
+  } catch (err) {
+    logger.warn('[collectContext] nearbyTrailsFromOSM failed', err?.message || err);
+  }
+
+  return out;
+}
+
+module.exports = { collectContext };
+
+----------------------------------------------------------------------
+FILE: server/ai/langgraph/classification_helpers.js
+NOTES: Helper for classification logic
+----------------------------------------------------------------------
+function normalizeClassification(input) {
+  return String(input || '').trim().toLowerCase();
+}
+
+function isCollectablesClassification(classification) {
+  const c = normalizeClassification(classification);
+  // Accept common synonyms used in the project and be defensive about
+  // variations. Exact equality and contains-check allow matching 'collectable'
+  // or 'collectables' or 'collectible', while avoiding accidental matches.
+  return c === 'collectables' || c === 'collectible' || c.includes('collect');
+}
+
+function shouldSkipGenericPoi(classification) {
+  const c = normalizeClassification(classification);
+  // We skip generic POI lookups for food images (food-specific flow) and for
+  // collectables where POI lookups are not meaningful.
+  // Use a word-boundary match to prevent accidental partial matches such as
+  // 'not_food' or 'foodie' from matching erroneously.
+  const foodMatch = /\bfood\b/.test(c);
+  return foodMatch || isCollectablesClassification(c);
+}
+
+module.exports = { normalizeClassification, isCollectablesClassification, shouldSkipGenericPoi };
+
+----------------------------------------------------------------------
+FILE: server/ai/langgraph/utils.js
+NOTES: Utility helpers for graph nodes
+----------------------------------------------------------------------
+// Utility helpers extracted from graph.js
+
+function accumulateDebugUsage(debugUsage = [], entry = {}) {
+  const next = Array.isArray(debugUsage) ? [...debugUsage] : [];
+  next.push(entry);
+  return next;
+}
+
+function extractUsageFromResponse(response) {
+  try {
+    const usage = response?.usage || null;
+    const model = response?.model || response?.choices?.[0]?.model || null;
+    return { usage, model };
+  } catch {
+    return { usage: null, model: null };
+  }
+}
+
+function parseGpsString(gpsString) {
+  if (!gpsString) return null;
+  const [latStr, lonStr] = String(gpsString)
+    .split(',')
+    .map((s) => (s || '').trim())
+    .filter(Boolean);
+  if (!latStr || !lonStr) return null;
+  const lat = Number(latStr);
+  const lon = Number(lonStr);
+  if (!Number.isFinite(lat) || !Number.isFinite(lon)) return null;
+  return { lat, lon };
+}
+
+function parseNumber(value) {
+  if (typeof value === 'number' && Number.isFinite(value)) return value;
+  const num = Number(value);
+  return Number.isFinite(num) ? num : null;
+}
+
+function dmsToDecimal(values, ref) {
+  if (!Array.isArray(values) || values.length < 3) return null;
+  const [deg, min, sec] = values.map(parseNumber);
+  if (!Number.isFinite(deg) || !Number.isFinite(min) || !Number.isFinite(sec)) return null;
+  let decimal = deg + min / 60 + sec / 3600;
+  if (typeof ref === 'string' && ['S', 'W'].includes(ref.toUpperCase())) {
+    decimal *= -1;
+  }
+  return decimal;
+}
+
+function resolveGpsFromMetadata(meta = {}) {
+  const candidatePairs = [
+    { lat: meta.latitude, lon: meta.longitude },
+    { lat: meta.lat, lon: meta.lon },
+    { lat: meta.Latitude, lon: meta.Longitude },
+    { lat: meta?.location?.lat, lon: meta?.location?.lon },
+    { lat: meta?.GPS?.latitude, lon: meta?.GPS?.longitude },
+  ];
+  for (const pair of candidatePairs) {
+    if (pair && pair.lat != null && pair.lon != null) {
+      const lat = parseNumber(pair.lat);
+      const lon = parseNumber(pair.lon);
+      if (lat != null && lon != null) return { lat, lon };
+    }
+  }
+
+  if (Array.isArray(meta.GPSLatitude) && Array.isArray(meta.GPSLongitude)) {
+    const lat = dmsToDecimal(meta.GPSLatitude, meta.GPSLatitudeRef);
+    const lon = dmsToDecimal(meta.GPSLongitude, meta.GPSLongitudeRef);
+    if (lat != null && lon != null) return { lat, lon };
+  }
+  return null;
+}
+
+function parseGpsCoordinates(state) {
+  return parseGpsString(state?.gpsString) || resolveGpsFromMetadata(state?.metadata || {});
+}
+
+function extractHeading(meta = {}) {
+  const candidates = [
+    meta.heading,
+    meta.Heading,
+    meta.direction,
+    meta.Direction,
+    meta.facingDirection,
+    meta.compassHeading,
+    meta?.GPSImgDirection,
+    meta?.GPSDirection,
+    meta?.GPSDestBearing,
+    meta?.GPS?.GPSImgDirection,
+    meta?.GPSInfo?.GPSImgDirection,
+  ];
+  for (const value of candidates) {
+    const num = parseNumber(value);
+    if (num != null) return num;
+  }
+  return null;
+}
+
+function extractAltitude(meta = {}) {
+  const candidates = [
+    meta.altitude,
+    meta.Altitude,
+    meta.GPSAltitude,
+    meta?.GPS?.GPSAltitude,
+    meta?.GPSInfo?.GPSAltitude,
+  ];
+  for (const value of candidates) {
+    const num = parseNumber(value);
+    if (num != null) return num;
+  }
+  return null;
+}
+
+function extractTimestamp(meta = {}) {
+  const gpsDate = typeof meta.GPSDateStamp === 'string' ? meta.GPSDateStamp.trim() : null;
+  let gpsTime = null;
+  if (Array.isArray(meta.GPSTimeStamp)) {
+    gpsTime = meta.GPSTimeStamp.map((part) => String(part).padStart(2, '0')).join(':');
+  } else if (typeof meta.GPSTimeStamp === 'string') {
+    gpsTime = meta.GPSTimeStamp.trim();
+  }
+  if (gpsDate && gpsTime) {
+    return `${gpsDate} ${gpsTime}`;
+  }
+
+  const candidates = [
+    meta.captureTimestamp,
+    meta.captureTime,
+    meta.DateTimeOriginal,
+    meta.CreateDate,
+    meta.DateCreated,
+    meta.ModifyDate,
+  ];
+  for (const value of candidates) {
+    if (typeof value === 'string' && value.trim()) {
+      return value.trim();
+    }
+  }
+  return null;
+}
+
+function headingToCardinal(degrees) {
+  if (degrees == null || !Number.isFinite(degrees)) return null;
+  const normalized = ((degrees % 360) + 360) % 360;
+  const directions = ['N', 'NNE', 'NE', 'ENE', 'E', 'ESE', 'SE', 'SSE', 'S', 'SSW', 'SW', 'WSW', 'W', 'WNW', 'NW', 'NNW'];
+  const index = Math.round(normalized / 22.5) % directions.length;
+  return directions[index];
+}
+
+function buildLocationIntelDefaults(overrides = {}) {
+  return {
+    city: 'unknown',
+    region: 'unknown',
+    nearest_landmark: 'unknown',
+    nearest_park: 'unknown',
+    nearest_trail: 'unknown',
+    description_addendum: 'No additional location insights available.',
+    ...overrides,
+  };
+}
+
+function sanitizeIntelField(value) {
+  if (value == null) return null;
+  const text = String(value).trim();
+  return text.length ? text : null;
+}
+
+function postProcessLocationIntel(intel) {
+  if (!intel || typeof intel !== 'object') return intel;
+  const result = { ...intel };
+
+  const parkUnknown =
+    !sanitizeIntelField(result.nearest_park) ||
+    String(result.nearest_park).trim().toLowerCase() === 'unknown';
+
+  const landmark = sanitizeIntelField(result.nearest_landmark);
+
+  if (parkUnknown && typeof landmark === 'string') {
+    const looksLikePark =
+      /\b(open space|regional park|state park|city park|preserve|recreation area|park)\b/i.test(
+        landmark
+      );
+
+    if (looksLikePark) {
+      result.nearest_park = landmark;
+    }
+  }
+
+  return result;
+}
+
+function selectBestNearby(nearby = [], intel = {}) {
+  if (!Array.isArray(nearby)) return null;
+  const priority = ['landmark', 'attraction', 'park', 'trail', 'mountain', 'river'];
+  for (const category of priority) {
+    const found = nearby.find((place) => (place?.category || '').toLowerCase() === category);
+    if (found) return found;
+  }
+  if (sanitizeIntelField(intel.nearest_landmark)) {
+    return {
+      name: intel.nearest_landmark,
+      category: 'landmark',
+      distanceMeters: null,
+    };
+  }
+  return null;
+}
+
+function enrichMetadataWithPoi(parsed, poiAnalysis) {
+  if (!parsed || !poiAnalysis) return parsed;
+  const intel = poiAnalysis.locationIntel || poiAnalysis;
+  if (!intel) return parsed;
+
+  const fields = [
+    { key: 'city', label: 'City' },
+    { key: 'region', label: 'Region' },
+    { key: 'nearest_park', label: 'Nearest park' },
+    { key: 'nearest_trail', label: 'Nearest trail' },
+    { key: 'nearest_landmark', label: 'Nearest landmark' },
+    { key: 'description_addendum', label: 'Notes' },
+  ];
+
+  const descriptionExtras = [];
+  const keywordExtras = [];
+
+  for (const field of fields) {
+    const value = sanitizeIntelField(intel[field.key]);
+    if (value) {
+      descriptionExtras.push(`${field.label}: ${value}`);
+      keywordExtras.push(value);
+    }
+  }
+
+  if (descriptionExtras.length) {
+    const detail = `Location Intelligence: ${descriptionExtras.join(' | ')}`;
+    parsed.description = parsed.description
+      ? `${parsed.description}\n\n${detail}`
+      : detail;
+  }
+
+  if (keywordExtras.length) {
+    parsed.keywords = parsed.keywords
+      ? `${parsed.keywords}, ${keywordExtras.join(', ')}`
+      : keywordExtras.join(', ');
+  }
+
+  return parsed;
+}
+
+function metadataPayloadWithDirection(state) {
+  const base = state.metadata || {};
+  const heading = extractHeading(base);
+  const payload = {
+    ...base,
+    directionDegrees: heading,
+    directionCardinal: headingToCardinal(heading),
+    altitudeMeters: extractAltitude(base),
+  };
+  return payload;
+}
+
+function summarizeMetadataForPrompt(meta = {}) {
+  return {
+    date: meta.DateTimeOriginal || meta.dateTime || null,
+    gps: meta?.latitude && meta?.longitude ? `${meta.latitude},${meta.longitude}` : null,
+    camera: meta.cameraModel || meta.Make || meta.Model || null,
+    heading: extractHeading(meta) || null,
+    altitude_meters: extractAltitude(meta) || null,
+    exposure: {
+      iso: parseNumber(meta.ISO) || null,
+      aperture: parseNumber(meta.FNumber) || null,
+      shutter: meta.ExposureTime || null,
+    }
+  };
+}
+
+function ensureRestaurantInDescription(description, restaurantName, photoLocation, photoTimestamp) {
+  const desc = (description || '').trim();
+  const name = (restaurantName || '').trim();
+  if (!name) {
+    return desc || '';
+  }
+  if (desc.toLowerCase().includes(name.toLowerCase())) {
+    return desc;
+  }
+  const locationSuffix = photoLocation ? ` in ${photoLocation}` : '';
+  const timeSuffix = photoTimestamp ? ` on ${photoTimestamp}` : '';
+  if (desc) {
+    return `${desc} This dish was enjoyed at ${name}${locationSuffix}${timeSuffix}.`;
+  }
+  return `A dish enjoyed at ${name}${locationSuffix}${timeSuffix}.`;
+}
+
+module.exports = {
+  accumulateDebugUsage,
+  extractUsageFromResponse,
+  parseGpsString,
+  parseNumber,
+  dmsToDecimal,
+  resolveGpsFromMetadata,
+  extractHeading,
+  extractAltitude,
+  extractTimestamp,
+  headingToCardinal,
+  buildLocationIntelDefaults,
+  sanitizeIntelField,
+  postProcessLocationIntel,
+  selectBestNearby,
+  enrichMetadataWithPoi,
+  metadataPayloadWithDirection,
+  summarizeMetadataForPrompt,
+  ensureRestaurantInDescription,
+  parseGpsCoordinates,
+};
+
+----------------------------------------------------------------------
+FILE: server/ai/langgraph/nodes/identify_collectible.js
+NOTES: Node implementation for identify_collectible
+----------------------------------------------------------------------
+const { openai } = require('../../openaiClient');
+const logger = require('../../../logger');
+
+const IDENTIFY_SYSTEM_PROMPT = `You are an expert visual identifier of collectibles.
+Your ONLY job is to identify the item in the image as precisely as possible.
+Return a JSON object with:
+- "id": A precise identification string (e.g., "Marvel Power Pack #1, 1984", "Pyrex Butterprint Mixing Bowl 403").
+- "confidence": A number between 0 and 1.
+- "category": A broad category (e.g., "Comics", "Kitchenware", "Trading Cards").
+
+Do NOT estimate value.
+Do NOT describe the background.
+Focus ONLY on the item identity.`;
+
+async function identify_collectible(state) {
+  try {
+    logger.info('[LangGraph] identify_collectible: Enter');
+    
+    const response = await openai.chat.completions.create({
+      model: 'gpt-4o',
+      messages: [
+        { role: 'system', content: IDENTIFY_SYSTEM_PROMPT },
+        {
+          role: 'user',
+          content: [
+            { type: 'text', text: 'Identify this collectible item.' },
+            {
+              type: 'image_url',
+              image_url: {
+                url: `data:${state.imageMime};base64,${state.imageBase64}`,
+                detail: 'high',
+              },
+            },
+          ],
+        },
+      ],
+      response_format: { type: 'json_object' },
+    });
+
+    const content = response.choices[0].message.content;
+    let parsed;
+    try {
+      parsed = JSON.parse(content);
+    } catch (e) {
+      logger.error('[LangGraph] identify_collectible: Failed to parse JSON', e);
+      return { ...state, error: 'Failed to parse identification response' };
+    }
+
+    logger.info('[LangGraph] identify_collectible: Identified', parsed);
+
+    return {
+      ...state,
+      collectible_id: parsed.id,
+      collectible_id_confidence: parsed.confidence,
+      collectible_category: parsed.category,
+    };
+  } catch (err) {
+    logger.error('[LangGraph] identify_collectible: Error', err);
+    return { ...state, error: err.message };
+  }
+}
+
+module.exports = identify_collectible;
+
+----------------------------------------------------------------------
+FILE: server/ai/langgraph/nodes/valuate_collectible.js
+NOTES: Node implementation for valuate_collectible
+----------------------------------------------------------------------
+const { openai } = require('../../openaiClient');
+const { googleSearchTool } = require('../../langchain/tools/searchTool');
+const logger = require('../../../logger');
+
+/**
+ * Sanitize a price string/number to a valid float.
+ * Strips currency symbols ($), commas, and whitespace.
+ * @param {string|number} value - The price value to sanitize
+ * @returns {number|null} - Sanitized float or null if invalid
+ */
+function sanitizePrice(value) {
+  if (value === null || value === undefined) return null;
+  if (typeof value === 'number') {
+    return Number.isNaN(value) ? null : value;
+  }
+  if (typeof value === 'string') {
+    // Remove $, commas, whitespace
+    const cleaned = value.replace(/[$,\s]/g, '').trim();
+    if (!cleaned) return null;
+    const parsed = parseFloat(cleaned);
+    return Number.isNaN(parsed) ? null : parsed;
+  }
+  return null;
+}
+
+/**
+ * Validate URL string (basic sanity check).
+ * @param {string} url - URL to validate
+ * @returns {string|null} - Valid URL or null
+ */
+function sanitizeUrl(url) {
+  if (!url || typeof url !== 'string') return null;
+  const trimmed = url.trim();
+  if (trimmed.length > 2048) return null;
+  if (!trimmed.startsWith('http://') && !trimmed.startsWith('https://')) return null;
+  return trimmed;
+}
+
+const VALUATE_SYSTEM_PROMPT = `You are a professional appraiser.
+Your goal is to determine the market value of a collectible item based on search results.
+You MUST return a JSON object with this exact schema:
+{
+  "valuation": {
+    "low": <number or null>,
+    "high": <number or null>,
+    "currency": "USD"
+  },
+  "market_data": [
+    {
+      "price": <number - NO currency symbols or commas, just the numeric value>,
+      "venue": "<string - e.g. 'eBay', 'Heritage Auctions', 'GoCollect'>",
+      "url": "<string - the specific source URL>",
+      "date_seen": "<string - ISO date format YYYY-MM-DD>"
+    }
+  ],
+  "reasoning": "<string>"
+}
+
+IMPORTANT:
+- Extract EACH individual price point you find into the market_data array.
+- The "price" field MUST be a plain number (e.g., 1200.00), NOT a string with $ or commas.
+- If you cannot find a price, set valuation.low and valuation.high to null and market_data to an empty array.
+- Do not make up numbers.`;
+
+async function valuate_collectible(state) {
+  try {
+    logger.info('[LangGraph] valuate_collectible: Enter');
+    const { collectible_id, collectible_category } = state;
+
+    if (!collectible_id) {
+      logger.warn('[LangGraph] valuate_collectible: No ID found, skipping');
+      return state;
+    }
+
+    // 1. Sanitize Input (Basic prevention of prompt injection via item names)
+    const sanitizedId = collectible_id.replace(/[^\w\s\-\,\.\#]/g, '').trim();
+    
+    // 2. Prepare Parallel Search Queries
+    const queries = [
+      `"${sanitizedId}" price value`,
+      `"${sanitizedId}" for sale`,
+      `"${sanitizedId}" sold listings`
+    ];
+
+    logger.info(`[LangGraph] valuate_collectible: Searching for "${sanitizedId}"`);
+
+    // 3. Execute Searches in Parallel
+    const searchResults = await Promise.all(
+      queries.map(q => googleSearchTool.invoke(q).catch(e => `Error searching for ${q}: ${e.message}`))
+    );
+
+    const combinedSearchResults = searchResults.join('\n\n');
+
+    // 4. Synthesize with LLM
+    const response = await openai.chat.completions.create({
+      model: 'gpt-4o',
+      messages: [
+        { role: 'system', content: VALUATE_SYSTEM_PROMPT },
+        {
+          role: 'user',
+          content: `Item: ${sanitizedId} (Category: ${collectible_category})
+          
+Search Results:
+${combinedSearchResults}
+
+Determine the value range.`
+        }
+      ],
+      response_format: { type: 'json_object' },
+    });
+
+    const content = response.choices[0].message.content;
+    let valuation;
+    try {
+      const rawValuation = JSON.parse(content);
+      
+      // Normalize response structure - handle both old and new formats
+      let normalizedValuation;
+      if (rawValuation.valuation) {
+        // New format: { valuation: {...}, market_data: [...] }
+        normalizedValuation = {
+          low: sanitizePrice(rawValuation.valuation.low),
+          high: sanitizePrice(rawValuation.valuation.high),
+          currency: rawValuation.valuation.currency || 'USD',
+          reasoning: rawValuation.reasoning || '',
+          market_data: []
+        };
+        
+        // Process market_data array
+        if (Array.isArray(rawValuation.market_data)) {
+          const today = new Date().toISOString().split('T')[0];
+          normalizedValuation.market_data = rawValuation.market_data
+            .map(item => {
+              const price = sanitizePrice(item.price);
+              if (price === null) return null; // Skip invalid prices
+              
+              return {
+                price,
+                venue: item.venue ? String(item.venue).trim() : 'Unknown',
+                url: sanitizeUrl(item.url),
+                date_seen: item.date_seen || today
+              };
+            })
+            .filter(Boolean); // Remove nulls
+        }
+      } else {
+        // Old format fallback: { low, high, currency, found_at, reasoning }
+        normalizedValuation = {
+          low: sanitizePrice(rawValuation.low),
+          high: sanitizePrice(rawValuation.high),
+          currency: rawValuation.currency || 'USD',
+          reasoning: rawValuation.reasoning || '',
+          found_at: rawValuation.found_at || [],
+          market_data: []
+        };
+      }
+      
+      valuation = normalizedValuation;
+    } catch (e) {
+      logger.error('[LangGraph] valuate_collectible: Failed to parse JSON', e);
+      return { ...state, error: 'Failed to parse valuation response' };
+    }
+
+    logger.info('[LangGraph] valuate_collectible: Valuation', valuation);
+    logger.info('[LangGraph] valuate_collectible: Market data points:', valuation.market_data?.length || 0);
+
+    return {
+      ...state,
+      collectible_valuation: valuation,
+    };
+
+  } catch (err) {
+    logger.error('[LangGraph] valuate_collectible: Error', err);
+    return { ...state, error: err.message };
+  }
+}
+
+module.exports = valuate_collectible;
+
+----------------------------------------------------------------------
+FILE: server/ai/langchain/tools/searchTool.js
+NOTES: Search tool used by valuate_collectible
+----------------------------------------------------------------------
+const { tool } = require('@langchain/core/tools');
+const { z } = require('zod');
+const logger = require('../../../logger'); // <-- ADDED IMPORT
+
+const MAX_RESULTS = 8;
+
+const ensureFetch = () => {
+  if (typeof globalThis.fetch === 'function') {
+    return globalThis.fetch.bind(globalThis);
+  }
+
+  return async (...args) => {
+    const { default: fetchPolyfill } = await import('node-fetch');
+    return fetchPolyfill(...args);
+  };
+};
+
+const fetchFn = ensureFetch();
+
+async function runGoogleSearch({ query, numResults = 4, siteFilter }) {
+  const trimmedQuery = (query || '').trim();
+  if (!trimmedQuery) {
+    throw new Error('Search query is required');
+  }
+
+  const appliedResults = Math.max(1, Math.min(numResults, MAX_RESULTS));
+
+  const apiKey = process.env.GOOGLE_API_KEY;
+  const cx = process.env.GOOGLE_CSE_ID;
+
+  if (!apiKey || !cx) {
+    const serpKey = process.env.SERPAPI_API_KEY;
+    if (!serpKey) {
+      throw new Error('Google Custom Search or SerpAPI credentials are not configured');
+    }
+
+    const serpParams = new URLSearchParams({
+      engine: 'google',
+      q: trimmedQuery,
+      num: String(appliedResults),
+      api_key: serpKey
+    });
+
+    if (siteFilter) serpParams.append('as_sitesearch', siteFilter);
+
+    // --- ADDED TRY/CATCH ---
+    try {
+      const serpResponse = await fetchFn(`https://serpapi.com/search.json?${serpParams.toString()}`, {
+        method: 'GET',
+        headers: { 'User-Agent': 'CollectibleAgent/1.0 (+https://github.com/Inouye165/React-Photo-App)' }
+      });
+      
+      if (!serpResponse.ok) {
+        throw new Error(`SerpAPI request failed: ${serpResponse.status} ${serpResponse.statusText}`);
+      }
+      
+      const serpData = await serpResponse.json();
+      if (serpData.error) {
+        throw new Error(`SerpAPI error: ${serpData.error}`);
+      }
+      
+      const results = serpData.organic_results || [];
+      return results.map(r => ({
+        title: r.title,
+        link: r.link,
+        snippet: r.snippet
+      }));
+    } catch (err) {
+      logger.error('[SearchTool] SerpAPI failed', err);
+      throw err;
+    }
+  }
+
+  const params = new URLSearchParams({
+    key: apiKey,
+    cx: cx,
+    q: trimmedQuery,
+    num: String(appliedResults)
+  });
+
+  if (siteFilter) params.append('siteSearch', siteFilter);
+
+  // --- ADDED TRY/CATCH ---
+  try {
+    const response = await fetchFn(`https://www.googleapis.com/customsearch/v1?${params.toString()}`, {
+      method: 'GET',
+      headers: { 'User-Agent': 'CollectibleAgent/1.0 (+https://github.com/Inouye165/React-Photo-App)' }
+    });
+
+    if (!response.ok) {
+      throw new Error(`Google Custom Search API request failed: ${response.status} ${response.statusText}`);
+    }
+
+    const data = await response.json();
+    if (data.error) {
+      throw new Error(`Google API error: ${data.error.message}`);
+    }
+
+    const items = data.items || [];
+    return items.map(item => ({
+      title: item.title,
+      link: item.link,
+      snippet: item.snippet
+    }));
+  } catch (err) {
+    logger.error('[SearchTool] Google Custom Search failed', err);
+    throw err;
+  }
+}
+
+const googleSearchTool = tool(
+  async ({ query }) => {
+    try {
+      const results = await runGoogleSearch({ query });
+      return JSON.stringify(results);
+    } catch (error) {
+      return `Error performing search: ${error.message}`;
+    }
+  },
+  {
+    name: 'google_search',
+    description: 'Search Google for information about collectibles, prices, and history.',
+    schema: z.object({
+      query: z.string().describe('The search query to execute'),
+    }),
+  }
+);
+
+module.exports = { googleSearchTool, runGoogleSearch };
+
+----------------------------------------------------------------------
+FILE: server/ai/langgraph/nodes/describe_collectible.js
+NOTES: Node implementation for describe_collectible
+----------------------------------------------------------------------
+/**
+ * describe_collectible.js - LangGraph Node
+ * 
+ * Generates rich, narrative descriptions for collectible items.
+ * Takes the analysis from handle_collectible and creates a compelling
+ * description that includes:
+ * - Item identification and category
+ * - Condition assessment
+ * - Valuation with sources cited
+ * - Notable features and specifics
+ * - Search findings summary
+ * 
+ * This is the collectibles equivalent of generate_metadata for scenery.
+ */
+
+const { openai } = require('../../openaiClient');
+const logger = require('../../../logger');
+
+const DESCRIBE_COLLECTIBLE_SYSTEM_PROMPT = `You are a collectibles expert writing engaging descriptions for a photo catalog app.
+
+Your task is to take structured collectible analysis data and transform it into a rich, informative narrative description that collectors will appreciate.
+
+**Writing Style:**
+- Write in a confident, knowledgeable tone like an expert appraiser
+- Be specific about identifying features and why they matter
+- ALWAYS mention specific prices found and cite the source (e.g., "According to GoCollect, this issue sells for $15-$30" or "Recent eBay sold listings show prices of $25-$45")
+- Include interesting facts about the item's history or collectibility when relevant
+- Keep it concise but informative (3-5 sentences)
+
+**What to Include:**
+1. What the item IS (category, maker, pattern/series if known)
+2. Condition assessment with brief reasoning
+3. Estimated value range WITH the specific source cited (website name + price found)
+4. One notable/interesting detail about the item
+
+**Output Format:**
+Return a JSON object with:
+{
+  "description": "Your narrative description here (3-5 sentences, MUST include prices and sources)",
+  "caption": "A catchy, short headline (5-10 words)",
+  "keywords": ["keyword1", "keyword2", ...] (up to 8 relevant keywords),
+  "priceSources": [
+    {
+      "source": "Website name",
+      "url": "https://...",
+      "priceFound": "$XX - $XX",
+      "notes": "Brief note about this source"
+    }
+  ]
+}
+
+**Example Output:**
+{
+  "description": "This Pyrex Butterprint bowl in the classic turquoise-on-white colorway dates from the 1957-1968 production era. The piece shows typical light wear consistent with regular use but retains its vibrant color. According to recent eBay sold listings, similar pieces in this condition typically fetch $25-$45, while Etsy shows prices ranging from $30-$50 for mint examples. The Butterprint pattern, featuring Amish-inspired farm scenes, remains one of the most sought-after vintage Pyrex designs.",
+  "caption": "Vintage Pyrex Butterprint Bowl - Turquoise",
+  "keywords": ["Pyrex", "Butterprint", "vintage", "turquoise", "1950s", "collectible", "kitchenware", "Amish"],
+  "priceSources": [
+    {"source": "eBay Sold Listings", "url": "https://ebay.com/...", "priceFound": "$25-$45", "notes": "Good condition examples"},
+    {"source": "Etsy", "url": "https://etsy.com/...", "priceFound": "$30-$50", "notes": "Mint condition asking prices"}
+  ]
+}`;
+
+/**
+ * Generate a rich description for a collectible item
+ * 
+ * @param {Object} state - LangGraph state containing collectibleResult
+ * @returns {Object} Updated state with enhanced finalResult description
+ */
+async function describe_collectible(state) {
+  try {
+    logger.info('[LangGraph] describe_collectible node invoked');
+
+    // Check if we have collectible data to work with
+    let analysisContext = {};
+    
+    // Sprint 1 Optimization Path
+    if (state.collectible_id && state.collectible_valuation) {
+      logger.info('[LangGraph] describe_collectible: Using Sprint 1 optimized data');
+      analysisContext = {
+        category: state.collectible_category || 'Collectible',
+        condition: { label: 'Not assessed in rapid mode' },
+        value: { 
+          min: state.collectible_valuation.low, 
+          max: state.collectible_valuation.high, 
+          currency: state.collectible_valuation.currency 
+        },
+        specifics: { "Identified Item": state.collectible_id },
+        categoryReasoning: `Identified as ${state.collectible_id} with confidence ${state.collectible_id_confidence}`,
+        valueReasoning: state.collectible_valuation.reasoning,
+        confidences: {
+          category: state.collectible_id_confidence,
+          value: 0.8
+        }
+      };
+    } 
+    // Legacy Path
+    else {
+      const collectibleResult = state.collectibleResult;
+      if (!collectibleResult || collectibleResult.status !== 'success' || !collectibleResult.collectibleData) {
+        logger.warn('[LangGraph] describe_collectible: No valid collectible data, using fallback');
+        return {
+          ...state,
+          finalResult: state.finalResult || {
+            caption: 'Collectible Item',
+            description: 'This appears to be a collectible item. Analysis was not available.',
+            keywords: ['collectible'],
+            classification: state.classification
+          }
+        };
+      }
+
+      const { cleanData, fullAnalysis } = collectibleResult.collectibleData;
+
+      // Build context for the description generator
+      analysisContext = {
+        category: cleanData.category,
+        condition: cleanData.condition,
+        value: cleanData.value,
+        specifics: cleanData.specifics,
+        // Include reasoning from full analysis for richer context
+        categoryReasoning: fullAnalysis.category?.reasoning,
+        conditionReasoning: fullAnalysis.condition?.reasoning,
+        valueReasoning: fullAnalysis.value?.reasoning,
+        // Include confidence levels
+        confidences: {
+          category: fullAnalysis.category?.confidence,
+          condition: fullAnalysis.condition?.confidence,
+          value: fullAnalysis.value?.confidence
+        }
+      };
+    }
+
+    // Include intermediate steps (search results) if available - pass full results for source extraction
+    const searchResults = state.collectibleSearchResults || [];
+    
+    // Parse search results to extract actual URLs and snippets
+    const formattedSearchResults = searchResults.map(result => {
+      try {
+        // The observation contains the JSON stringified results from the search tool
+        const parsed = typeof result.observation === 'string' 
+          ? JSON.parse(result.observation) 
+          : result.observation;
+        return {
+          query: parsed?.query || 'Unknown query',
+          results: Array.isArray(parsed?.results) ? parsed.results : []
+        };
+      } catch {
+        return { query: 'Unknown', results: [] };
+      }
+    });
+
+    // Flatten all search results for the prompt
+    const allSearchResults = formattedSearchResults.flatMap(sr => sr.results);
+    
+    const userPrompt = `Generate a rich description for this collectible:
+
+**Analysis Data:**
+${JSON.stringify(analysisContext, null, 2)}
+
+**Search Results Found (USE THESE FOR PRICING AND SOURCES):**
+${allSearchResults.length > 0 ? allSearchResults.map((r, i) => `
+${i + 1}. Source: ${r.displayLink || r.source || 'Unknown'}
+   Title: ${r.title || 'No title'}
+   URL: ${r.link || 'No URL'}
+   Snippet: ${r.snippet || 'No snippet'}
+`).join('\n') : 'No search results available'}
+
+CRITICAL INSTRUCTIONS:
+1. Include the ACTUAL price range found in the search results in your description
+2. Cite the SPECIFIC source websites by name (e.g., "According to GoCollect..." or "eBay sold listings show...")
+3. Include the priceSources array with real URLs from the search results above
+4. If no price data was found in search results, mention that in the description
+
+Create an engaging description that a collector would appreciate.`;
+
+    const response = await openai.chat.completions.create({
+      model: 'gpt-4o-mini',
+      messages: [
+        { role: 'system', content: DESCRIBE_COLLECTIBLE_SYSTEM_PROMPT },
+        { role: 'user', content: userPrompt }
+      ],
+      max_tokens: 512,
+      temperature: 0.7,
+      response_format: { type: 'json_object' }
+    });
+
+    let parsed;
+    try {
+      parsed = JSON.parse(response.choices[0].message.content);
+    } catch (parseError) {
+      logger.error('[LangGraph] describe_collectible: Failed to parse response', {
+        error: parseError.message,
+        raw: response.choices[0].message.content?.substring(0, 500)
+      });
+      
+      const cat = typeof analysisContext.category === 'string' ? analysisContext.category : (analysisContext.category?.value || 'Item');
+      const cond = analysisContext.condition?.label || analysisContext.condition?.value?.label || 'Unknown';
+      const valMin = analysisContext.value?.min || '?';
+      const valMax = analysisContext.value?.max || '?';
+      const valCurr = analysisContext.value?.currency || 'USD';
+
+      // Fall back to template description
+      parsed = {
+        description: `This ${cat} is in ${cond} condition. Estimated value: $${valMin}-$${valMax} ${valCurr}.`,
+        caption: `${cat} - ${cond}`,
+        keywords: [cat, cond, 'collectible']
+      };
+    }
+
+    logger.info('[LangGraph] describe_collectible: Generated rich description', {
+      captionLength: parsed.caption?.length,
+      descriptionLength: parsed.description?.length,
+      keywordCount: parsed.keywords?.length,
+      priceSourcesCount: parsed.priceSources?.length || 0
+    });
+
+    // Build the enhanced final result with price sources
+    const cat = typeof analysisContext.category === 'string' ? analysisContext.category : (analysisContext.category?.value || 'Item');
+    const cond = analysisContext.condition?.label || analysisContext.condition?.value?.label || 'Unknown';
+
+    const enhancedFinalResult = {
+      caption: parsed.caption || `${cat} - ${cond}`,
+      description: parsed.description,
+      keywords: parsed.keywords || [cat, 'collectible'],
+      classification: state.classification,
+      collectibleInsights: {
+        category: analysisContext.category,
+        condition: analysisContext.condition,
+        valuation: {
+          lowEstimateUSD: analysisContext.value?.min,
+          highEstimateUSD: analysisContext.value?.max,
+          currency: analysisContext.value?.currency,
+          reasoning: analysisContext.valueReasoning,
+          priceSources: parsed.priceSources || []
+        },
+        specifics: analysisContext.specifics,
+        confidences: analysisContext.confidences
+      }
+    };
+
+    return {
+      ...state,
+      finalResult: enhancedFinalResult
+    };
+  } catch (err) {
+    logger.error('[LangGraph] describe_collectible: Error', err);
+    return { ...state, error: err.message || String(err) };
+  }
+}
+
+module.exports = describe_collectible;
+
+----------------------------------------------------------------------
+FILE: server/ai/service.js
+NOTES: Service layer orchestrating the AI pipeline
+----------------------------------------------------------------------
+const { app: aiGraph } = require('./langgraph/graph');
+const { AnalysisResultSchema } = require('./schemas');
+
+/**
+ * Generate caption, description and keywords for a photo using the LangGraph workflow.
+ *
+ * @param {Object} options - The processing options.
+ * @param {Buffer} options.fileBuffer - Raw image bytes (Buffer).
+ * @param {string} options.filename - The filename (used to infer mime/extension).
+ * @param {Object|string} [options.metadata] - EXIF/metadata associated with the image. May be a stringified JSON.
+ * @param {string} [options.gps] - Precomputed GPS string (lat,lon) or empty string.
+ * @param {string} [options.device] - Device make/model string.
+ * @param {boolean} [options.isRecheck=false] - Whether this is a recheck of existing photo.
+ * @returns {Promise<Object>} Resolves with an object: { caption, description, keywords }.
+ * @throws Error when the workflow returns an error or omits the final result payload.
+ */
+async function processPhotoAI({ fileBuffer, filename, metadata, gps, device, isRecheck = false }, modelOverrides = {}) {
+  let imageBuffer;
+  let imageMime;
+  const ext = path.extname(filename).toLowerCase();
+  logger.debug(`[AI Debug] [processPhotoAI] Starting for filename: ${filename}`);
+  if (ext === '.heic' || ext === '.heif') {
+    imageBuffer = await convertHeicToJpegBuffer(fileBuffer, 95);
+    imageMime = 'image/jpeg';
+    try {
+      const debugPath = path.join(__dirname, 'debug_image.jpg');
+      fs.writeFileSync(debugPath, imageBuffer);
+      logger.debug(`[Graph Debug] Saved intermediate JPEG buffer to ${debugPath}`);
+    } catch (e) {
+      logger.error(`[Graph Debug] Failed to write debug image: ${e.message}`);
+    }
+  } else {
+    imageBuffer = fileBuffer;
+    imageMime = ext === '.png' ? 'image/png' : 'image/jpeg';
+  }
+  const imageBase64 = imageBuffer.toString('base64');
+  logger.debug('[Graph] Prepared image buffer for graph invocation', { filename, imageMime });
+  logger.debug(`[Graph Debug] imageMime before graph: ${imageMime}`);
+  logger.debug('[AI Debug] [processPhotoAI] Prepared graph invocation', {
+    filename,
+    imageMime,
+    imageBase64Length: imageBase64.length,
+    hasMetadata: Boolean(metadata && (typeof metadata === 'string' ? metadata.trim().length : Object.keys(metadata || {}).length)),
+    hasGps: Boolean(gps),
+    hasDevice: Boolean(device),
+    modelOverrideKeys: Object.keys(modelOverrides || {})
+  });
+
+  let meta = {};
+  if (typeof metadata === 'string') {
+    try {
+      meta = JSON.parse(metadata);
+    } catch (e) {
+      logger.warn('[AI Debug] [processPhotoAI] Failed to parse metadata string', e);
+    }
+  } else {
+    meta = metadata || {};
+  }
+
+  // Generate a unique runId for this execution
+  const runId = require('crypto').randomUUID();
+  const auditLogger = require('./langgraph/audit_logger');
+  
+  // Log the start of the graph execution
+  auditLogger.logGraphStart(runId, {
+    filename,
+    fileBuffer: '[Omitted for brevity]',
+    imageBase64: '[Omitted for brevity]',
+    imageMime,
+    metadata: meta,
+    gpsString: gps,
+    device,
+    modelOverrides
+  }, isRecheck);
+
+  const inputs = {
+    filename,
+    fileBuffer: imageBuffer,
+    imageBase64,
+    imageMime,
+    metadata: meta,
+    gpsString: gps,
+    device,
+    modelOverrides,
+    runId // Pass runId to the state so nodes can use it
+  };
+
+  try {
+    logger.debug('[AI Debug] [processPhotoAI] Invoking aiGraph...');
+    const finalState = await aiGraph.invoke(inputs);
+    logger.debug('[AI Debug] [processPhotoAI] aiGraph.invoke returned', {
+      hasFinalResult: Boolean(finalState.finalResult),
+      hasError: Boolean(finalState.error)
+    });
+
+    // Log the end of the graph execution
+    auditLogger.logGraphEnd(runId, finalState);
+
+    if (finalState.error) {
+      logger.error(`[AI Debug] [processPhotoAI] aiGraph.invoke error: ${finalState.error}`);
+      throw new Error(finalState.error);
+    }
+
+    if (!finalState.finalResult) {
+      logger.error('[AI Debug] [processPhotoAI] aiGraph.invoke finished but produced no finalResult.');
+      throw new Error('AI processing completed but returned no result.');
+    }
+
+    // Validate the result against the schema
+    const validated = AnalysisResultSchema.parse(finalState.finalResult);
+    return validated;
+  } catch (err) {
+    logger.error('[AI Debug] [processPhotoAI] Error during graph execution:', err);
+    
+    // Log the error in the audit log
+    auditLogger.logGraphEnd(runId, { error: err.message });
+    
+    // Throwing error here will be caught by updatePhotoAIMetadata, which increments retry count
+    throw err;
+  }
+}
+
+/**
+ * Update AI metadata for a photo in the database.
+ * This function handles file fetching, resizing, and calling processPhotoAI.
+ *
+ * @param {Object} db - Knex database instance.
+ * @param {Object} photoRow - The photo row from the database.
+ * @param {string} storagePath - Path to the file in storage.
+ * @param {Object} [modelOverrides={}] - Optional model overrides.
+ * @returns {Promise<Object|null>} Returns the AI result object on success, or null when processing failed or retried.
+ * @throws Will re-throw unexpected errors only in rare cases; normally returns null on recoverable failures.
+ */
+async function updatePhotoAIMetadata(db, photoRow, storagePath, modelOverrides = {}) {
+  // ... (implementation omitted for brevity, see full file if needed)
+  // Key part is calling processPhotoAI:
+  /*
+      ai = await processPhotoAI({ 
+        fileBuffer,
+        filename: processedFilename, 
+        metadata: enrichedMeta, 
+        gps, 
+        device,
+        isRecheck
+      }, modelOverrides);
+  */
+}
+
+----------------------------------------------------------------------
+FILE: server/ai/openaiClient.js
+NOTES: OpenAI client wrapper with logging
+----------------------------------------------------------------------
+// server/ai/openaiClient.js
+// Singleton OpenAI client instance
+
+
+const { OpenAI } = require('openai');
+require('../env'); // Ensure env variables are loaded
+const auditLogger = require('./langgraph/audit_logger');
+const context = require('./langgraph/context');
+
+let openai;
+// Prioritize test environment check to avoid real API calls during tests
+if (process.env.NODE_ENV === 'test') {
+  // In the test environment, provide a dummy object to prevent network calls
+  openai = {
+    chat: {
+      completions: {
+        create: () => {
+          throw new Error("OpenAI API called in test mode without a key.");
+        },
+      },
+    },
+    models: {
+      list: () => Promise.resolve({ data: [] })
+    }
+  };
+} else if (process.env.OPENAI_API_KEY) {
+  // Use the actual client if the API key is set
+  openai = new OpenAI();
+  
+  // Wrap chat.completions.create to log usage if within a graph execution context
+  const originalCreate = openai.chat.completions.create.bind(openai.chat.completions);
+  openai.chat.completions.create = async (params, options) => {
+    const store = context.getStore();
+    if (store) {
+      const { runId, nodeName } = store;
+      
+      try {
+        const response = await originalCreate(params, options);
+        const responseText = response.choices?.[0]?.message?.content || JSON.stringify(response);
+        const model = response.model || params.model;
+        
+        auditLogger.logLLMUsage(runId, nodeName, model, params.messages, responseText);
+        return response;
+      } catch (err) {
+        auditLogger.logLLMUsage(runId, nodeName, params.model, params.messages, `Error: ${err.message}`);
+        throw err;
+      }
+    } else {
+      return originalCreate(params, options);
+    }
+  };
+} else {
+  // Critical failure for non-test environments if key is missing
+  throw new Error('OPENAI_API_KEY not set in non-test environment.');
+}
+
+module.exports = { openai };
+
+----------------------------------------------------------------------
+FILE: server/ai/langgraph/state.js
+NOTES: AppState definition
+----------------------------------------------------------------------
+// File: c:\Users\Ron\React-Photo-App\server\ai\langgraph\state.js
+const { z } = require('zod');
+
+/**
+ * Defines the central state object for the entire AI processing graph.
+ * This object is passed to each node, which can read from and write to it.
+ */
+const PassthroughObject = z.object({}).passthrough();
+
+const AppState = z.object({
+  // --- Initial Inputs ---
+  filename: z.string(),
+  fileBuffer: z.any(), // Will be a Buffer
+  imageBase64: z.string(), // Base64 representation
+  imageMime: z.string(),
+  metadata: z.union([PassthroughObject, z.null(), z.undefined()]).transform(val => val ?? {}),
+  gpsString: z.string().nullable(), // e.g., "37.95, -122.01"
+  device: z.string().nullable(),
+  modelOverrides: z.union([PassthroughObject, z.null(), z.undefined()]).transform(val => val ?? {}),
+  runId: z.string().optional(), // Added runId to state
+
+  // --- Step 1: Router Output ---
+  classification: z.string().nullable(), // 'scenery_or_general_subject' or 'specific_identifiable_object'
+
+  // --- Step 2: POI & Search Outputs ---
+  // The full, rich output from the photoPOIIdentifier tool
+  poiAnalysis: z.object().passthrough().nullable(),
+  // Cache of collected POI results to avoid repeating expensive lookups
+  poiCache: z.object().passthrough().nullable(),
+  // Small summary about the cache: counts and timing
+  poiCacheSummary: z
+    .object({
+      reverse: z.boolean().optional(),
+      nearbyPlacesCount: z.number().optional(),
+      nearbyFoodCount: z.number().optional(),
+      osmTrailsCount: z.number().optional(),
+      durationMs: z.number().optional(),
+    })
+    .nullable()
+    .optional(),
+  // Timestamp string for when poiCache was fetched
+  poiCacheFetchedAt: z.string().nullable().optional(),
+  // The specific context snippets from the fallback web search
+  rich_search_context: z.string().nullable(),
+
+  // --- Step 3: Narrative/Final Output ---
+  // The final JSON result from the Scenery or Collectible agent
+  finalResult: z.object({
+    caption: z.string(),
+    description: z.string(),
+    keywords: z.string(),
+    classification: z.string().nullable(),
+    collectibleInsights: z.any().optional(),
+  }).nullable(),
+
+  // --- Collectible-specific state ---
+  collectible_id: z.string().optional(),
+  collectible_id_confidence: z.number().optional(),
+  collectible_category: z.string().optional(),
+  collectible_valuation: z.any().optional(),
+
+  // Result from handle_collectible node containing structured analysis data
+  collectibleResult: z.object({
+    collectibleData: z.object({
+      cleanData: z.any(),
+      fullAnalysis: z.any()
+    }).nullable(),
+    status: z.enum(['success', 'skipped', 'failed']),
+    reason: z.string().optional(),
+    error: z.string().optional()
+  }).nullable().optional(),
+  // Search results from tool calls (for describe_collectible to cite sources)
+  collectibleSearchResults: z.array(z.object({
+    tool: z.string(),
+    observation: z.string().optional(),
+    summary: z.string().optional()
+  })).nullable().optional(),
+
+  // --- Utility ---
+  // To hold error messages if a step fails
+  error: z.string().nullable(),
+    sceneDecision: z
+      .object({
+        chosenLabel: z.string(),
+        rationale: z.string(),
+        confidence: z.union([z.literal('high'), z.literal('medium'), z.literal('low')]),
+      })
+      .nullable()
+      .optional(),
+});
+
+// We must export the type for use in the graph builder
+module.exports = { AppState };
+
+----------------------------------------------------------------------
+FILE: server/ai/langgraph/context.js
+NOTES: Async context for runId tracking
+----------------------------------------------------------------------
+const { AsyncLocalStorage } = require('async_hooks');
+
+const context = new AsyncLocalStorage();
+
+module.exports = context;
+
+----------------------------------------------------------------------
+FILE: server/ai/langgraph/audit_logger.js
+NOTES: Audit logger for graph execution
+----------------------------------------------------------------------
+const fs = require('fs');
+const path = require('path');
+
+const LOG_FILE_PATH = path.join(__dirname, '../../../langgraph_execution.md');
+
+// Ensure the file exists and write a startup message
+try {
+  fs.appendFileSync(LOG_FILE_PATH, `\n\n# Logger Initialized at ${new Date().toISOString()}\n`);
+  console.log(`[AuditLogger] Logging to ${LOG_FILE_PATH}`);
+} catch (err) {
+  console.error('[AuditLogger] Failed to initialize log file:', err);
+}
+
+function appendLog(content) {
+  try {
+    fs.appendFileSync(LOG_FILE_PATH, content + '\n');
+    console.log('[AuditLogger] Wrote to file');
+  } catch (err) {
+    console.error('[AuditLogger] Failed to write to audit log:', err);
+  }
+}
+
+function formatTimestamp() {
+  const now = new Date();
+  return `${now.toISOString()} (Local: ${now.toLocaleString()})`;
+}
+
+function sanitizeValue(value, depth = 0) {
+  if (depth > 3) return '[Max Depth Reached]';
+  if (value === undefined) return 'undefined';
+  if (value === null) return 'null';
+  
+  if (Buffer.isBuffer(value)) {
+    return `[Buffer: ${value.length} bytes]`;
+  }
+
+  if (value instanceof Date) {
+    return value.toISOString();
+  }
+
+  if (typeof value === 'string') {
+    if (value.length > 500) {
+      return value.substring(0, 500) + `... [truncated ${value.length - 500} chars]`;
+    }
+    return value;
+  }
+
+  if (Array.isArray(value)) {
+    // If array is too long, truncate it
+    if (value.length > 10) {
+      const sanitized = value.slice(0, 10).map(v => sanitizeValue(v, depth + 1));
+      sanitized.push(`... [truncated ${value.length - 10} items]`);
+      return sanitized;
+    }
+    return value.map(v => sanitizeValue(v, depth + 1));
+  }
+
+  if (typeof value === 'object') {
+    const sanitized = {};
+    
+    // Skip binary/bloated metadata fields entirely
+    const skipKeys = [
+      'fileBuffer', 'imageBase64', 'url',
+      'ProfileCMMType', 'ProfileVersion', 'ProfileClass', 'ColorSpaceData',
+      'ProfileConnectionSpace', 'ProfileDateTime', 'ProfileFileSignature',
+      'PrimaryPlatform', 'DeviceManufacturer', 'RenderingIntent',
+      'ProfileCreator', 'ProfileDescription', 'ProfileCopyright',
+      'MediaWhitePoint', 'RedMatrixColumn', 'GreenMatrixColumn', 'BlueMatrixColumn',
+      'RedTRC', 'GreenTRC', 'BlueTRC', 'ChromaticAdaptation',
+      'Regions', 'RegionList', 'AppliedToDimensions', 'CreatorTool'
+    ];
+    
+    for (const key of Object.keys(value)) {
+      if (skipKeys.includes(key)) {
+        sanitized[key] = '[Omitted for brevity]';
+      } else if (key === 'metadata' && depth === 0) {
+        // For top-level metadata, only keep GPS and essential fields
+        const meta = value[key];
+        if (meta && typeof meta === 'object') {
+          sanitized[key] = {
+            date: meta.CreateDate || meta.DateTimeOriginal || meta.ModifyDate || '[Omitted]',
+            GPSLatitude: meta.GPSLatitude || meta.latitude,
+            GPSLongitude: meta.GPSLongitude || meta.longitude,
+            GPSAltitude: meta.GPSAltitude,
+            GPSImgDirection: meta.GPSImgDirection,
+            GPSDestBearing: meta.GPSDestBearing,
+            gps: meta.gps,
+            GPS: meta.GPS,
+            camera: meta.Make || meta.Model || '[Omitted]',
+            '...': '[Other metadata omitted for brevity]'
+          };
+        } else {
+          sanitized[key] = meta;
+        }
+      } else if (key === 'poiCache' && depth > 0) {
+        sanitized[key] = '[Omitted for brevity]';
+      } else {
+        sanitized[key] = sanitizeValue(value[key], depth + 1);
+      }
+    }
+    return sanitized;
+  }
+
+  return value;
+}
+
+function formatValue(value) {
+  try {
+    const sanitized = sanitizeValue(value);
+    return JSON.stringify(sanitized, null, 2);
+  } catch {
+    return '[Circular or Non-serializable]';
+  }
+}
+
+const auditLogger = {
+  logGraphStart: (runId, initialState, runType = 'Standard') => {
+    // Clear the log file before starting a new graph
+    try {
+      fs.writeFileSync(LOG_FILE_PATH, '');
+      console.log('[AuditLogger] Log file cleared for new graph execution');
+    } catch (err) {
+      console.error('[AuditLogger] Failed to clear log file:', err);
+    }
+    
+    const timestamp = formatTimestamp();
+    const filename = initialState.filename || 'Unknown File';
+    const separator = '\n' + '='.repeat(80) + '\n';
+    const content = `${separator}# Graph Execution Started [${runType}]\n**Timestamp:** ${timestamp}\n**File:** ${filename}\n**Run ID:** ${runId}\n\n## Initial State\n\`\`\`json\n${formatValue(initialState)}\n\`\`\`\n`;
+    appendLog(content);
+  },
+
+  logGraphEnd: (runId, finalState) => {
+    const timestamp = formatTimestamp();
+    const separator = '\n' + '='.repeat(80) + '\n';
+    const content = `\n## Graph Execution Finished\n**Run ID:** ${runId}\n**Timestamp:** ${timestamp}\n\n## Final State\n\`\`\`json\n${formatValue(finalState)}\n\`\`\`\n${separator}`;
+    appendLog(content);
+  },
+
+  logNodeStart: (runId, nodeName, input, filePath) => {
+    const timestamp = formatTimestamp();
+    const fileInfo = filePath ? `\n**Source:** \`${filePath}\`` : '';
+    const content = `\n### Node Started: ${nodeName}\n**Timestamp:** ${timestamp}${fileInfo}\n\n**Input:**\n\`\`\`json\n${formatValue(input)}\n\`\`\`\n`;
+    appendLog(content);
+  },
+
+  logNodeEnd: (runId, nodeName, output) => {
+    const timestamp = formatTimestamp();
+    const content = `\n### Node Finished: ${nodeName}\n**Timestamp:** ${timestamp}\n\n**Output:**\n\`\`\`json\n${formatValue(output)}\n\`\`\`\n`;
+    appendLog(content);
+  },
+
+  logToolCall: (runId, toolName, input, output) => {
+    const timestamp = formatTimestamp();
+    const content = `\n#### Tool Used: ${toolName}\n**Timestamp:** ${timestamp}\n\n**Input:**\n\`\`\`json\n${formatValue(input)}\n\`\`\`\n\n**Output:**\n\`\`\`json\n${formatValue(output)}\n\`\`\`\n`;
+    appendLog(content);
+  },
+  
+  logLLMUsage: (runId, nodeName, modelName, prompt, response) => {
+      const timestamp = formatTimestamp();
+      const content = `\n#### LLM Used in ${nodeName}\n**Timestamp:** ${timestamp}\n**Model:** ${modelName}\n\n**Prompt:**\n\`\`\`json\n${formatValue(prompt)}\n\`\`\`\n\n**Response:**\n\`\`\`\n${response}\n\`\`\`\n`;
+      appendLog(content);
+  },
+
+  logError: (runId, context, error) => {
+    const timestamp = formatTimestamp();
+    const errorMessage = error?.message || String(error);
+    const errorStack = error?.stack || 'No stack trace available';
+    const content = `\n## ❌ Error\n**Run ID:** ${runId}\n**Timestamp:** ${timestamp}\n**Context:** ${context}\n\n**Error Message:**\n\`\`\`\n${errorMessage}\n\`\`\`\n\n**Stack Trace:**\n\`\`\`\n${errorStack}\n\`\`\`\n`;
+    appendLog(content);
+  }
+};
+
+module.exports = auditLogger;
+
+----------------------------------------------------------------------
+FILE: server/ai/schemas.js
+NOTES: Zod schemas for AI output
+----------------------------------------------------------------------
+const { z } = require('zod');
+
+// ============================================================================
+// LEGACY SCHEMAS (for backward compatibility)
+// ============================================================================
+
+// Helper to transform comma-separated string to array
+const KeywordsSchema = z.union([
+  z.array(z.string()),
+  z.string().transform((str) => str.split(',').map((s) => s.trim()).filter(Boolean))
+]);
+
+const MetadataResultSchema = z.object({
+  caption: z.string().default(''),
+  description: z.string().default(''),
+  keywords: KeywordsSchema.default([]),
+});
+
+const AnalysisResultSchema = MetadataResultSchema.extend({
+  classification: z.union([
+    z.string(),
+    z.object({
+      type: z.string().optional(),
+      confidence: z.number().optional(),
+      explanation: z.string().optional(),
+    })
+  ]).optional().nullable(),
+  poiAnalysis: z.record(z.any()).optional().nullable(),
+  collectibleInsights: z.record(z.any()).optional().nullable(),
+}).passthrough();
+
+// ============================================================================
+// SPRINT 2: COLLECTIBLE AI CONTRACT SCHEMAS
+// ============================================================================
+
+/**
+ * ConfidenceField - A generic wrapper that adds confidence scoring to any value.
+ * This allows the AI to express uncertainty about individual fields.
+ * 
+ * @template T - The type of the underlying value
+ * @property {T} value - The actual value returned by AI
+ * @property {number} confidence - Confidence score between 0 and 1
+ * @property {string} [reasoning] - Optional explanation for the confidence level
+ */
+function createConfidenceFieldSchema(valueSchema) {
+  return z.object({
+    value: valueSchema,
+    confidence: z.number().min(0).max(1),
+    reasoning: z.string().optional()
+  });
+}
+
+// Pre-built confidence field schemas for common types
+const ConfidenceStringSchema = createConfidenceFieldSchema(z.string());
+const ConfidenceNumberSchema = createConfidenceFieldSchema(z.number());
+
+/**
+ * Condition Schema - Represents the physical condition of a collectible
+ * Uses a 1-5 rank system with human-readable labels
+ */
+const ConditionSchema = z.object({
+  rank: z.number().int().min(1).max(5),
+  label: z.enum(['Poor', 'Fair', 'Good', 'Very Good', 'Mint/Near Mint'])
+});
+
+const ConfidenceConditionSchema = createConfidenceFieldSchema(ConditionSchema);
+
+/**
+ * Value Range Schema - Represents estimated monetary value
+ * Supports ranges to express market variance
+ */
+const ValueRangeSchema = z.object({
+  min: z.number().nonnegative(),
+  max: z.number().nonnegative(),
+  currency: z.string().default('USD')
+});
+
+const ConfidenceValueSchema = createConfidenceFieldSchema(ValueRangeSchema);
+
+/**
+ * CollectibleOutputSchema - The strict contract for AI collectible analysis
+ * 
+ * This schema defines the exact structure the AI must return.
+ * All fields use ConfidenceField wrappers for transparency.
+ */
+const CollectibleOutputSchema = z.object({
+  // Core identification
+  category: createConfidenceFieldSchema(z.string()),
+  
+  // Physical condition assessment
+  condition: ConfidenceConditionSchema,
+  
+  // Monetary valuation
+  value: ConfidenceValueSchema,
+  
+  // Category-specific attributes (e.g., publisher, pattern, year)
+  // Each specific attribute also has its own confidence score
+  specifics: z.record(z.string(), createConfidenceFieldSchema(z.any())).default({})
+});
+
+/**
+ * Extract clean data from a validated collectible output.
+ * This pulls just the .value from each ConfidenceField for database storage.
+ * 
+ * @param {object} validatedOutput - Output that passed CollectibleOutputSchema.parse()
+ * @returns {object} Clean data with just values, no confidence metadata
+ */
+function extractCleanData(validatedOutput) {
+  const cleanData = {
+    category: validatedOutput.category.value,
+    condition: validatedOutput.condition.value,
+    value: validatedOutput.value.value,
+    specifics: {}
+  };
+  
+  // Extract values from specifics
+  for (const [key, field] of Object.entries(validatedOutput.specifics)) {
+    cleanData.specifics[key] = field.value;
+  }
+  
+  return cleanData;
+}
+
+/**
+ * CollectibleAnalysisResultSchema - Full response wrapper for the node
+ */
+const CollectibleAnalysisResultSchema = z.object({
+  collectibleData: z.object({
+    cleanData: z.object({
+      category: z.string(),
+      condition: ConditionSchema,
+      value: ValueRangeSchema,
+      specifics: z.record(z.string(), z.any()).default({})
+    }),
+    fullAnalysis: CollectibleOutputSchema
+  }),
+  status: z.enum(['success', 'partial', 'failed']),
+  error: z.string().optional()
+});
+
+module.exports = {
+  // Legacy exports (backward compatibility)
+  MetadataResultSchema,
+  AnalysisResultSchema,
+  
+  // Sprint 2: Collectible Contract exports
+  createConfidenceFieldSchema,
+  ConfidenceStringSchema,
+  ConfidenceNumberSchema,
+  ConditionSchema,
+  ConfidenceConditionSchema,
+  ValueRangeSchema,
+  ConfidenceValueSchema,
+  CollectibleOutputSchema,
+  CollectibleAnalysisResultSchema,
+  extractCleanData
+};
+
+----------------------------------------------------------------------
+FILE: server/queue/index.js
+NOTES: Worker definition triggering the pipeline
+----------------------------------------------------------------------
+// For direct worker usage (worker.js)
+const startWorker = async () => {
+  await initializeQueue();
+
+  // Only create the worker if it doesn't exist yet. This function is the
+  // canonical place to create the worker and allows the worker process to be
+  // started separately from the server process.
+  if (!aiWorker) {
+    const { Worker: BullMQWorker } = require('bullmq');
+    const db = require('../db');
+    const { updatePhotoAIMetadata } = require('../ai/service');
+    const { processUploadedPhoto } = require('../media/backgroundProcessor');
+
+    const processor = async (job) => {
+      const { photoId, modelOverrides, processMetadata, generateThumbnail } = job.data || {};
+      logger.info(`[WORKER] Processing job for photoId: ${photoId}`);
+      try {
+        const photo = await db('photos').where({ id: photoId }).first();
+        if (!photo) throw new Error(`Photo with ID ${photoId} not found.`);
+        const storagePath = photo.storage_path || `${photo.state}/${photo.filename}`;
+        
+        // If this is a streaming upload job, process metadata and thumbnails first
+        if (processMetadata || generateThumbnail) {
+          logger.info(`[WORKER] Running background processing for photoId: ${photoId}`);
+          await processUploadedPhoto(db, photoId, {
+            processMetadata: processMetadata !== false,
+            generateThumbnail: generateThumbnail !== false
+          });
+        }
+        
+        // Run AI metadata extraction
+        await updatePhotoAIMetadata(db, photo, storagePath, modelOverrides);
+        logger.info(`[WORKER] Successfully processed job for photoId: ${photoId}`);
+      } catch (error) {
+        logger.error(`[WORKER] Job for photoId ${photoId} failed:`, error.message);
+        throw error;
+      }
+    };
+
+    aiWorker = new BullMQWorker(QUEUE_NAME, processor, {
+      connection,
+      lockDuration: 300000,
+      concurrency: 2,
+      attempts: 3,
+      backoff: { type: 'exponential', delay: 60000 },
+    });
+  }
+};

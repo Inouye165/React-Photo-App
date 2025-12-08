@@ -53,6 +53,23 @@ const AppState = z.object({
   }).nullable(),
 
   // --- Collectible-specific state ---
+  // Sprint 1: Direct identification and valuation fields
+  collectible_id: z.string().nullable().optional(),
+  collectible_id_confidence: z.number().nullable().optional(),
+  collectible_category: z.string().nullable().optional(),
+  collectible_valuation: z.object({
+    low: z.number().nullable(),
+    high: z.number().nullable(),
+    currency: z.string(),
+    reasoning: z.string().optional(),
+    market_data: z.array(z.object({
+      price: z.number(),
+      venue: z.string(),
+      url: z.string().nullable(),
+      date_seen: z.string().optional()
+    })).optional()
+  }).nullable().optional(),
+
   // Result from handle_collectible node containing structured analysis data
   collectibleResult: z.object({
     collectibleData: z.object({
@@ -83,5 +100,24 @@ const AppState = z.object({
       .optional(),
 });
 
+// Helper to create a standard reducer for all fields
+// This ensures that updates from nodes are merged correctly (last write wins)
+// and that we have explicit channel definitions for LangGraph.
+function createGraphChannels(schema) {
+  const channels = {};
+  const override = (prev, next) => (next === undefined ? prev : next);
+
+  for (const key in schema.shape) {
+    channels[key] = {
+      reducer: override,
+      default: () => null,
+    };
+  }
+
+  return channels;
+}
+
+const graphChannels = createGraphChannels(AppState);
+
 // We must export the type for use in the graph builder
-module.exports = { AppState };
+module.exports = { AppState, graphChannels };

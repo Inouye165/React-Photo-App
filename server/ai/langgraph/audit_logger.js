@@ -92,6 +92,14 @@ function sanitizeValue(value, depth = 0) {
         } else {
           sanitized[key] = meta;
         }
+      } else if (key === 'collectible_valuation' && value[key]) {
+        const val = value[key];
+        sanitized[key] = {
+          currency: val.currency,
+          low: val.low,
+          high: val.high,
+          marketDataPoints: Array.isArray(val.market_data) ? val.market_data.length : 0
+        };
       } else if (key === 'poiCache' && depth > 0) {
         sanitized[key] = '[Omitted for brevity]';
       } else {

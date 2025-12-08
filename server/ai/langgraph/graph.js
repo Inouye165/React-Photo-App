@@ -3,7 +3,7 @@
 const { StateGraph, END } = require('@langchain/langgraph');
 // We need HumanMessage AND SystemMessage
 const logger = require('../../logger');
-const { AppState } = require('./state');
+const { graphChannels } = require('./state');
 const auditLogger = require('./audit_logger');
 const context = require('./context');
 
@@ -84,8 +84,8 @@ function needPoi(state) {
 
 // --- Build the LangGraph workflow ---
 const workflow = new StateGraph({
-  // Use the Zod schema from your state.js for validation
-  channels: AppState.shape, // <-- This fix was correct
+  // Use explicit channels with reducers defined in state.js
+  channels: graphChannels,
 });
 
 // 1. Add all the nodes

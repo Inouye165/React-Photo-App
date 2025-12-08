@@ -97,6 +97,12 @@ async function describe_collectible(state) {
     else {
       const collectibleResult = state.collectibleResult;
       if (!collectibleResult || collectibleResult.status !== 'success' || !collectibleResult.collectibleData) {
+        logger.info('[LangGraph] describe_collectible: Using generic fallback (no valuation/collectibleResult)', {
+          collectible_id: state.collectible_id || null,
+          hasValuation: !!state.collectible_valuation,
+          hasCollectibleResult: !!state.collectibleResult,
+          error: state.error || null,
+        });
         logger.warn('[LangGraph] describe_collectible: No valid collectible data, using fallback');
         return {
           ...state,

@@ -65,10 +65,22 @@ IMPORTANT:
 async function valuate_collectible(state) {
   try {
     logger.info('[LangGraph] valuate_collectible: Enter');
+    logger.info('[LangGraph] valuate_collectible: Enter with state', {
+      collectible_id: state.collectible_id || null,
+      collectible_category: state.collectible_category || null,
+      classification: state.classification || null,
+      classification_raw: state.classification_raw || null,
+      hasCollectibleId: !!state.collectible_id,
+    });
+
     const { collectible_id, collectible_category } = state;
 
     if (!collectible_id) {
-      logger.warn('[LangGraph] valuate_collectible: No ID found, skipping');
+      logger.warn('[LangGraph] valuate_collectible: No ID found, skipping', {
+        classification: state.classification || null,
+        classification_raw: state.classification_raw || null,
+        collectible_category: state.collectible_category || null,
+      });
       return state;
     }
 

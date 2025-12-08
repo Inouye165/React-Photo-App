@@ -48,6 +48,14 @@ async function identify_collectible(state) {
 
     logger.info('[LangGraph] identify_collectible: Identified', parsed);
 
+    logger.info('[LangGraph] identify_collectible: Output fields', {
+      inputClassification: state.classification || null,
+      inputClassificationRaw: state.classification_raw || null,
+      collectible_id: parsed.id,
+      collectible_id_confidence: parsed.confidence,
+      collectible_category: parsed.category,
+    });
+
     return {
       ...state,
       collectible_id: parsed.id,
