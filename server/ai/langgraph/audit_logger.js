@@ -123,8 +123,9 @@ const auditLogger = {
     }
     
     const timestamp = formatTimestamp();
+    const filename = initialState.filename || 'Unknown File';
     const separator = '\n' + '='.repeat(80) + '\n';
-    const content = `${separator}# Graph Execution Started [${runType}]\n**Run ID:** ${runId}\n**Timestamp:** ${timestamp}\n\n## Initial State\n\`\`\`json\n${formatValue(initialState)}\n\`\`\`\n`;
+    const content = `${separator}# Graph Execution Started [${runType}]\n**Timestamp:** ${timestamp}\n**File:** ${filename}\n**Run ID:** ${runId}\n\n## Initial State\n\`\`\`json\n${formatValue(initialState)}\n\`\`\`\n`;
     appendLog(content);
   },
 
