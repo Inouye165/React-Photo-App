@@ -21,6 +21,9 @@ jobs:
         run: npm ci --no-audit --no-fund
       - name: Install server dependencies (reproducible)
         run: npm ci --no-audit --no-fund --prefix server
+      - name: Install sharp for Linux
+        run: npm install --include=optional sharp
+        working-directory: server
       - name: Run CSP test in production mode
         run: cd server && NODE_ENV=production npx jest tests/csp.prod.test.js -i
 
