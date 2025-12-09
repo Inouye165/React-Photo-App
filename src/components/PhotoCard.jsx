@@ -58,8 +58,9 @@ function getStatusBadge(state) {
  */
 function formatAccessLevel(privileges) {
   if (!privileges) return 'Unknown';
-  if (privileges.includes('write')) return 'Full Access';
-  if (privileges.includes('read')) return 'Read Only';
+  // RWX or W means full access (backend), fallback to legacy 'write'
+  if (/\bW\b|W|write/i.test(privileges)) return 'Full Access';
+  if (/\bR\b|read/i.test(privileges)) return 'Read Only';
   return privileges;
 }
 
@@ -93,8 +94,9 @@ export default function PhotoCard({
   const fileSize = formatFileSize(photo.file_size);
   const access = formatAccessLevel(accessLevel);
   
-  // Determine if user can perform write actions
-  const canWrite = accessLevel?.includes('write');
+  // Determine if user can perform write actions (RWX, W, or legacy 'write')
+  const canWrite = !!accessLevel &&
+    (accessLevel.includes('W') || accessLevel.toLowerCase().includes('write'));
   
   // Get image URL - prefer thumbnail for performance, fallback to full image
   // Thumbnails are much smaller and faster to load. Full image is only used if no thumbnail exists.

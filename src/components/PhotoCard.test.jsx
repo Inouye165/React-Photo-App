@@ -90,15 +90,28 @@ describe('PhotoCard Component', () => {
       expect(screen.getByTestId('photo-card-size')).toHaveTextContent('2 MB');
     });
 
-    it('displays access level as "Full Access" for write permissions', () => {
-      render(<PhotoCard {...defaultProps} />);
-
+    it('displays access level as "Full Access" for RWX permissions', () => {
+      render(<PhotoCard {...defaultProps} accessLevel="RWX" />);
       expect(screen.getByTestId('photo-card-access')).toHaveTextContent('Full Access');
     });
 
-    it('displays access level as "Read Only" for read-only permissions', () => {
-      render(<PhotoCard {...defaultProps} accessLevel="read" />);
+    it('displays access level as "Full Access" for W permissions', () => {
+      render(<PhotoCard {...defaultProps} accessLevel="W" />);
+      expect(screen.getByTestId('photo-card-access')).toHaveTextContent('Full Access');
+    });
 
+    it('displays access level as "Full Access" for legacy write permissions', () => {
+      render(<PhotoCard {...defaultProps} accessLevel="write" />);
+      expect(screen.getByTestId('photo-card-access')).toHaveTextContent('Full Access');
+    });
+
+    it('displays access level as "Read Only" for R permissions', () => {
+      render(<PhotoCard {...defaultProps} accessLevel="R" />);
+      expect(screen.getByTestId('photo-card-access')).toHaveTextContent('Read Only');
+    });
+
+    it('displays access level as "Read Only" for legacy read permissions', () => {
+      render(<PhotoCard {...defaultProps} accessLevel="read" />);
       expect(screen.getByTestId('photo-card-access')).toHaveTextContent('Read Only');
     });
   });
@@ -240,9 +253,32 @@ describe('PhotoCard Component', () => {
       confirmSpy.mockRestore();
     });
 
-    it('disables Delete button when user has read-only access', () => {
-      render(<PhotoCard {...defaultProps} accessLevel="read" />);
+    it('enables Delete button for RWX permissions', () => {
+      render(<PhotoCard {...defaultProps} accessLevel="RWX" />);
+      const deleteBtn = screen.getByTestId('photo-card-delete-btn');
+      expect(deleteBtn).not.toBeDisabled();
+    });
 
+    it('enables Delete button for W permissions', () => {
+      render(<PhotoCard {...defaultProps} accessLevel="W" />);
+      const deleteBtn = screen.getByTestId('photo-card-delete-btn');
+      expect(deleteBtn).not.toBeDisabled();
+    });
+
+    it('enables Delete button for legacy write permissions', () => {
+      render(<PhotoCard {...defaultProps} accessLevel="write" />);
+      const deleteBtn = screen.getByTestId('photo-card-delete-btn');
+      expect(deleteBtn).not.toBeDisabled();
+    });
+
+    it('disables Delete button for R permissions', () => {
+      render(<PhotoCard {...defaultProps} accessLevel="R" />);
+      const deleteBtn = screen.getByTestId('photo-card-delete-btn');
+      expect(deleteBtn).toBeDisabled();
+    });
+
+    it('disables Delete button for legacy read permissions', () => {
+      render(<PhotoCard {...defaultProps} accessLevel="read" />);
       const deleteBtn = screen.getByTestId('photo-card-delete-btn');
       expect(deleteBtn).toBeDisabled();
     });
