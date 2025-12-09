@@ -58,6 +58,8 @@ server/.env.*
 *.local.js
 *.local.json
 
+deployment_env_vars.txt
+
 # Ignore frontend build artifacts
 public/*.map
 
