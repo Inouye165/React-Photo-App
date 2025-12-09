@@ -105,6 +105,7 @@ describe('updatePhotoAIMetadata HEIC regression', () => {
     const mockStream = Readable.from(['data']);
     global.fetch.mockResolvedValue({
       ok: true,
+      arrayBuffer: jest.fn().mockResolvedValue(Buffer.from('data')),
       body: mockStream
     });
     const mockSharpInstance = sharp();

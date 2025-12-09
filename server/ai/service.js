@@ -707,28 +707,20 @@ async function updatePhotoAIMetadata(db, photoRow, storagePath, modelOverrides =
       }
 
       let fileBuffer;
-      const isHeic = photoRow.filename.toLowerCase().endsWith('.heic') || photoRow.filename.toLowerCase().endsWith('.heif');
-
-      if (isHeic) {
-        logger.debug('[AI Debug] [updatePhotoAIMetadata] Detected HEIC file, converting to JPEG...');
-        
-        // Convert to JPEG using helper (handles fallback if sharp fails)
-        const jpegBuffer = await convertHeicToJpegBuffer(originalBuffer);
-        
-        // Resize using sharp - use high quality settings to preserve image detail
-        fileBuffer = await sharp(jpegBuffer)
-          .resize({ width: 4096, height: 4096, fit: 'inside', withoutEnlargement: true })
-          .withMetadata()
-          .toFormat('jpeg', { quality: 95, mozjpeg: true })
-          .toBuffer();
-      } else {
-        // Resize the original buffer
-        fileBuffer = await sharp(originalBuffer)
-          .resize({ width: 4096, height: 4096, fit: 'inside', withoutEnlargement: true })
-          .withMetadata()
-          .toFormat('jpeg', { quality: 95, mozjpeg: true })
-          .toBuffer();
-      }
+      // Unified processing: convertHeicToJpegBuffer handles HEIC detection by content (magic numbers)
+      // This fixes issues where HEIC files are renamed to .jpg or .jpeg, which causes sharp to crash
+      // if we try to process them directly as JPEGs.
+      logger.debug('[AI Debug] [updatePhotoAIMetadata] Normalizing image format (checking for HEIC content)...');
+      
+      // This will return the original buffer if it's not HEIC, or convert to JPEG if it is
+      const sourceBuffer = await convertHeicToJpegBuffer(originalBuffer);
+      
+      // Resize using sharp - use high quality settings to preserve image detail
+      fileBuffer = await sharp(sourceBuffer)
+        .resize({ width: 4096, height: 4096, fit: 'inside', withoutEnlargement: true })
+        .withMetadata()
+        .toFormat('jpeg', { quality: 95, mozjpeg: true })
+        .toBuffer();
       
       logger.debug('[AI Debug] [updatePhotoAIMetadata] Resized file buffer loaded. Buffer length:', fileBuffer.length);
 
