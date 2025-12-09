@@ -269,23 +269,21 @@ export default function PhotoCard({
             </button>
           )}
 
-          {/* Delete Button */}
-          {photo.state === 'inprogress' && (
-            <button
-              onClick={handleDelete}
-              disabled={!canWrite}
-              className={`flex items-center justify-center p-2 rounded-full transition-colors ${
-                canWrite 
-                  ? 'bg-red-50 hover:bg-red-100 text-red-600' 
-                  : 'bg-slate-50 text-slate-300 cursor-not-allowed'
-              }`}
-              aria-label="Delete photo"
-              title={canWrite ? 'Delete photo' : 'No permission to delete'}
-              data-testid="photo-card-delete-btn"
-            >
-              <Trash2 size={16} />
-            </button>
-          )}
+          {/* Delete Button - Available in all states */}
+          <button
+            onClick={handleDelete}
+            disabled={!canWrite}
+            className={`flex items-center justify-center p-2 rounded-full transition-colors ${
+              canWrite 
+                ? 'bg-red-50 hover:bg-red-100 text-red-600' 
+                : 'bg-slate-50 text-slate-300 cursor-not-allowed'
+            }`}
+            aria-label="Delete photo"
+            title={canWrite ? 'Delete photo' : 'No permission to delete'}
+            data-testid="photo-card-delete-btn"
+          >
+            <Trash2 size={16} />
+          </button>
         </div>
       </div>
     </div>

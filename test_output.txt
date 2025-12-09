@@ -1,0 +1,21 @@
+
+> photo-app@0.0.0 pretest
+> node scripts/validate-keys.cjs
+
+Γ£à All required frontend API keys validated
+
+> photo-app@0.0.0 test
+> vitest src/EditPage.test.jsx
+
+
+[1m[44m DEV [49m[22m [34mv3.2.4 [39m[90mC:/Users/inouy/photo-app[39m
+
+ [2m[90mΓåô[39m[22m src/EditPage.test.jsx [2m([22m[2m4 tests[22m[2m)[22m
+
+[2m Test Files [22m [33m1 skipped[39m[90m (1)[39m
+[2m      Tests [22m [90m (4)[39m
+[2m   Start at [22m 07:44:16
+[2m   Duration [22m 4.04s[2m (transform 424ms, setup 2.63s, collect 342ms, tests 0ms, environment 264ms, prepare 394ms)[22m
+
+[1m[41m CANCELLED [49m[22m [31mTest run cancelled. Watching for file changes...[39m
+       [2mpress [22m[1mh[22m[2m to show help[22m[2m, [22m[2mpress [22m[1mq[22m[2m to quit[22m

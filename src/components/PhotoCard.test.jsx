@@ -258,12 +258,17 @@ describe('PhotoCard Component', () => {
       expect(screen.getByText('Promote')).toBeInTheDocument();
     });
 
-    it('does not render Edit/Return/Delete buttons for working photos', () => {
+    it('does not render Edit/Return buttons for working photos', () => {
       render(<PhotoCard {...defaultProps} photo={workingPhoto} />);
 
       expect(screen.queryByTestId('photo-card-edit-btn')).not.toBeInTheDocument();
       expect(screen.queryByTestId('photo-card-return-btn')).not.toBeInTheDocument();
-      expect(screen.queryByTestId('photo-card-delete-btn')).not.toBeInTheDocument();
+    });
+
+    it('renders Delete button for working photos', () => {
+      render(<PhotoCard {...defaultProps} photo={workingPhoto} />);
+
+      expect(screen.getByTestId('photo-card-delete-btn')).toBeInTheDocument();
     });
 
     it('calls onApprove with photo id when Promote button is clicked', async () => {
@@ -273,6 +278,53 @@ describe('PhotoCard Component', () => {
       await user.click(screen.getByTestId('photo-card-approve-btn'));
 
       expect(defaultProps.onApprove).toHaveBeenCalledWith(workingPhoto.id);
+    });
+
+    it('calls onDelete with photo id when Delete confirmed in working state', async () => {
+      const user = userEvent.setup();
+      const confirmSpy = vi.spyOn(window, 'confirm').mockReturnValue(true);
+      render(<PhotoCard {...defaultProps} photo={workingPhoto} />);
+
+      await user.click(screen.getByTestId('photo-card-delete-btn'));
+
+      expect(defaultProps.onDelete).toHaveBeenCalledWith(workingPhoto.id);
+      confirmSpy.mockRestore();
+    });
+  });
+
+  describe('Action Buttons - Finished State', () => {
+    const finishedPhoto = { ...mockPhoto, state: 'finished' };
+
+    it('renders Delete button for finished photos', () => {
+      render(<PhotoCard {...defaultProps} photo={finishedPhoto} />);
+
+      expect(screen.getByTestId('photo-card-delete-btn')).toBeInTheDocument();
+    });
+
+    it('does not render Edit/Return/Promote buttons for finished photos', () => {
+      render(<PhotoCard {...defaultProps} photo={finishedPhoto} />);
+
+      expect(screen.queryByTestId('photo-card-edit-btn')).not.toBeInTheDocument();
+      expect(screen.queryByTestId('photo-card-return-btn')).not.toBeInTheDocument();
+      expect(screen.queryByTestId('photo-card-approve-btn')).not.toBeInTheDocument();
+    });
+
+    it('calls onDelete with photo id when Delete confirmed in finished state', async () => {
+      const user = userEvent.setup();
+      const confirmSpy = vi.spyOn(window, 'confirm').mockReturnValue(true);
+      render(<PhotoCard {...defaultProps} photo={finishedPhoto} />);
+
+      await user.click(screen.getByTestId('photo-card-delete-btn'));
+
+      expect(defaultProps.onDelete).toHaveBeenCalledWith(finishedPhoto.id);
+      confirmSpy.mockRestore();
+    });
+
+    it('disables Delete button for finished photos when user has read-only access', () => {
+      render(<PhotoCard {...defaultProps} photo={finishedPhoto} accessLevel="read" />);
+
+      const deleteBtn = screen.getByTestId('photo-card-delete-btn');
+      expect(deleteBtn).toBeDisabled();
     });
   });
 
