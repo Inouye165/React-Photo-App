@@ -63,6 +63,11 @@ const ConditionSchema = z.object({
   label: z.enum(['Poor', 'Fair', 'Good', 'Very Good', 'Mint/Near Mint'])
 });
 
+// TODO: Future work - Normalized Quality Tiers
+// We need to implement per-category quality scales (e.g. Comics: CGC 0.5-10.0, Coins: Sheldon Scale, etc.)
+// Currently we use a simple 1-5 rank or free-form text labels.
+// See: https://github.com/Inouye165/photo-app/issues/new?title=Implement+Normalized+Quality+Tiers
+
 const ConfidenceConditionSchema = createConfidenceFieldSchema(ConditionSchema);
 
 /**

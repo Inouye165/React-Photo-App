@@ -86,7 +86,8 @@ You MUST return a JSON object with this exact schema:
       "price": <number - NO currency symbols or commas, just the numeric value>,
       "venue": "<string - e.g. 'eBay', 'Heritage Auctions', 'GoCollect'>",
       "url": "<string - the specific source URL>",
-      "date_seen": "<string - ISO date format YYYY-MM-DD>"
+      "date_seen": "<string - ISO date format YYYY-MM-DD>",
+      "condition_label": "<string or null - e.g. 'CGC 9.8', 'NM', 'VF', 'chipped', 'excellent condition', 'with lid'>"
     }
   ],
   "reasoning": "<string>"
@@ -95,6 +96,7 @@ You MUST return a JSON object with this exact schema:
 IMPORTANT:
 - Extract EACH individual price point you find into the market_data array.
 - The "price" field MUST be a plain number (e.g., 1200.00), NOT a string with $ or commas.
+- Look for condition/grade information in the title or snippet (e.g. "CGC 9.8", "NM", "VF", "chipped", "excellent condition", "with lid") and put it in "condition_label".
 - If you cannot find a price, set valuation.low and valuation.high to null and market_data to an empty array.
 - Do not make up numbers.`;
 
@@ -190,7 +192,8 @@ Determine the value range.`
                 price,
                 venue: item.venue ? String(item.venue).trim() : 'Unknown',
                 url: sanitizeUrl(item.url),
-                date_seen: item.date_seen || today
+                date_seen: item.date_seen || today,
+                condition_label: item.condition_label ? String(item.condition_label).trim() : null
               };
             })
             .filter(Boolean); // Remove nulls

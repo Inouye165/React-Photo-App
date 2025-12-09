@@ -951,6 +951,7 @@ async function updatePhotoAIMetadata(db, photoRow, storagePath, modelOverrides =
               venue: item.venue ? String(item.venue).substring(0, 255) : null,
               url: (item.url && typeof item.url === 'string' && item.url.length < 2048) ? item.url : null,
               date_seen: item.date_seen ? new Date(item.date_seen) : new Date(),
+              condition_label: item.condition_label || null,
               created_at: new Date().toISOString(),
               updated_at: new Date().toISOString()
             }));

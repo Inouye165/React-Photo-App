@@ -67,8 +67,8 @@ describe('Sprint 1 Collectible Flow Integration', () => {
               currency: 'USD'
             },
             market_data: [
-              { price: 1500000, venue: 'eBay', url: 'https://ebay.com/item/action-comic-1', date_seen: '2025-11-30' },
-              { price: 1800000, venue: 'Heritage Auctions', url: 'https://ha.com/action-comic', date_seen: '2025-11-29' }
+              { price: 1500000, venue: 'eBay', url: 'https://ebay.com/item/action-comic-1', date_seen: '2025-11-30', condition_label: 'CGC 9.0' },
+              { price: 1800000, venue: 'Heritage Auctions', url: 'https://ha.com/action-comic', date_seen: '2025-11-29', condition_label: 'NM+' }
             ],
             reasoning: 'High value item based on recent auction sales'
           })
@@ -85,6 +85,8 @@ describe('Sprint 1 Collectible Flow Integration', () => {
     expect(result2.collectible_valuation.market_data).toHaveLength(2);
     expect(result2.collectible_valuation.market_data[0].price).toBe(1500000);
     expect(result2.collectible_valuation.market_data[0].venue).toBe('eBay');
+    expect(result2.collectible_valuation.market_data[0].condition_label).toBe('CGC 9.0');
+    expect(result2.collectible_valuation.market_data[1].condition_label).toBe('NM+');
     expect(googleSearchTool.invoke).toHaveBeenCalledTimes(3);
 
     // 3. Test describe_collectible

@@ -20,45 +20,77 @@ const DESCRIBE_COLLECTIBLE_SYSTEM_PROMPT = `You are a collectibles expert writin
 
 Your task is to take structured collectible analysis data and transform it into a rich, informative narrative description that collectors will appreciate.
 
-**Writing Style:**
-- Write in a confident, knowledgeable tone like an expert appraiser
-- Be specific about identifying features and why they matter
-- ALWAYS mention specific prices found and cite the source (e.g., "According to GoCollect, this issue sells for $15-$30" or "Recent eBay sold listings show prices of $25-$45")
-- Include interesting facts about the item's history or collectibility when relevant
-- Keep it concise but informative (3-5 sentences)
+You will be given:
+- A broad category (e.g., "Comics", "Kitchenware", "Coins", "Trading Cards", etc.)
+- A specific identified item name (e.g., "Secret Wars II #3, 1985", "Pyrex Blue Dianthus Cinderella Bowl 443")
+- Value and market data (prices, venues, and notes)
+- Optional condition or other analysis details
 
-**What to Include:**
-1. What the item IS (category, maker, pattern/series if known)
-2. Condition assessment with brief reasoning
-3. Estimated value range WITH the specific source cited (website name + price found)
-4. One notable/interesting detail about the item
+Your goals:
+1. Clearly identify what the item is.
+2. Add interesting historical or contextual details about the item, its line/series, maker, or era.
+3. Explain the value range using the market data.
+4. Keep the text concise enough for a mobile app, but rich enough to feel like an expert’s insight.
 
-**Output Format:**
-Return a JSON object with:
+### Historical / Story Context (generic but category-aware)
+
+Always include at least one short paragraph with *story* or *history*:
+
+- If it’s **Comics**:
+  - Mention why this issue or series matters (e.g., crossovers, key characters, creative team, notable events).
+  - Optionally mention the era (e.g., “mid-1980s Marvel event” rather than exact dates if you’re unsure).
+
+- If it’s **Kitchenware / Pyrex / Glassware**:
+  - Mention the production era or style (e.g., “mid-century kitchenware”, “promotional pattern”, “classic mixing bowl line”).
+  - Note what collectors like about the pattern, colors, or form factor.
+
+- If it’s **Coins / Currency**:
+  - Mention the historical or political context of the year, the issuing country, or minting changes.
+  - Highlight features like composition, design motifs, or commemorative purpose.
+
+- If it’s any **other category**:
+  - Mention either the brand’s significance, the series/line, or something interesting about the time period or design style.
+  - If you are unsure of exact historical details, keep it general rather than inventing precise facts.
+
+Do **not** fabricate very specific facts (like exact print runs, production counts, or invented storylines) if you are not confident. Prefer slightly general but plausible historical context over precise but speculative claims.
+
+### Value & Market Data
+
+Use the given value and market data to ground your description:
+
+- Explain the low–high range in plain language.
+- Refer explicitly to sources (e.g., “According to PriceCharting…”, “A CBCS 9.6 graded copy on MyComicShop…”).
+- Tie higher prices to better condition or grading when that’s indicated in the data (e.g., “graded 9.6”, “near mint”, “pristine cookware set”).
+
+### Style
+
+- Tone: confident, expert, and collector-friendly.
+- Focus: the item, why it’s interesting, and how the market sees it.
+- Avoid: talking about the app UI, JSON, or internal data structures.
+- Be honest about uncertainty (e.g., “This issue is part of a major 1980s Marvel crossover event” vs. “This issue introduced X character” if that’s not clearly supported).
+
+### Output Format (JSON)
+
+You MUST return a JSON object with this exact structure:
+
 {
-  "description": "Your narrative description here (3-5 sentences, MUST include prices and sources)",
-  "caption": "A catchy, short headline (5-10 words)",
-  "keywords": ["keyword1", "keyword2", ...] (up to 8 relevant keywords),
+  "description": "<one or two rich paragraphs about the item, its story/history, and its market context>",
+  "caption": "<short, catchy caption for the photo>",
+  "keywords": ["<keyword1>", "<keyword2>", "<etc>"],
   "priceSources": [
     {
-      "source": "Website name",
-      "url": "https://...",
-      "priceFound": "$XX - $XX",
-      "notes": "Brief note about this source"
+      "source": "<site or venue name, e.g. 'PriceCharting', 'MyComicShop', 'eBay'>",
+      "url": "<string - the URL used or inferred>",
+      "priceFound": "<string representation of the relevant price or range, e.g. '$3.88 - $21.72'>",
+      "notes": "<short explanation of what this price represents (e.g. 'ungraded copies', 'CBCS 9.6 graded copy', 'recent auction result')>"
     }
   ]
 }
 
-**Example Output:**
-{
-  "description": "This Pyrex Butterprint bowl in the classic turquoise-on-white colorway dates from the 1957-1968 production era. The piece shows typical light wear consistent with regular use but retains its vibrant color. According to recent eBay sold listings, similar pieces in this condition typically fetch $25-$45, while Etsy shows prices ranging from $30-$50 for mint examples. The Butterprint pattern, featuring Amish-inspired farm scenes, remains one of the most sought-after vintage Pyrex designs.",
-  "caption": "Vintage Pyrex Butterprint Bowl - Turquoise",
-  "keywords": ["Pyrex", "Butterprint", "vintage", "turquoise", "1950s", "collectible", "kitchenware", "Amish"],
-  "priceSources": [
-    {"source": "eBay Sold Listings", "url": "https://ebay.com/...", "priceFound": "$25-$45", "notes": "Good condition examples"},
-    {"source": "Etsy", "url": "https://etsy.com/...", "priceFound": "$30-$50", "notes": "Mint condition asking prices"}
-  ]
-}`;
+Rules:
+- Do NOT include any extra top-level fields.
+- Do NOT output anything that is not valid JSON.
+- Do NOT mention that you are an AI model or reference the prompt.`;
 
 /**
  * Generate a rich description for a collectible item
@@ -139,6 +171,9 @@ async function describe_collectible(state) {
     // Include intermediate steps (search results) if available - pass full results for source extraction
     const searchResults = state.collectibleSearchResults || [];
     
+    // Also include market_data from valuation if available (Sprint 2)
+    const marketData = state.collectible_valuation?.market_data || [];
+    
     // Parse search results to extract actual URLs and snippets
     const formattedSearchResults = searchResults.map(result => {
       try {
@@ -163,6 +198,9 @@ async function describe_collectible(state) {
 **Analysis Data:**
 ${JSON.stringify(analysisContext, null, 2)}
 
+**Market Data (Valuation Points):**
+${marketData.length > 0 ? JSON.stringify(marketData, null, 2) : 'No structured market data available'}
+
 **Search Results Found (USE THESE FOR PRICING AND SOURCES):**
 ${allSearchResults.length > 0 ? allSearchResults.map((r, i) => `
 ${i + 1}. Source: ${r.displayLink || r.source || 'Unknown'}
@@ -174,8 +212,9 @@ ${i + 1}. Source: ${r.displayLink || r.source || 'Unknown'}
 CRITICAL INSTRUCTIONS:
 1. Include the ACTUAL price range found in the search results in your description
 2. Cite the SPECIFIC source websites by name (e.g., "According to GoCollect..." or "eBay sold listings show...")
-3. Include the priceSources array with real URLs from the search results above
-4. If no price data was found in search results, mention that in the description
+3. If market data points have "condition_label" (e.g. "CGC 9.8", "NM", "chipped"), MENTION how condition affects price (e.g. "A CGC 9.8 copy sold for $X, while raw copies are around $Y").
+4. Include the priceSources array with real URLs from the search results above
+5. If no price data was found in search results, mention that in the description
 
 Create an engaging description that a collector would appreciate.`;
 
