@@ -1,6 +1,7 @@
 import { createContext, useContext, useState, useEffect, useRef } from 'react';
 import { supabase } from '../supabaseClient';
 import useStore from '../store.js';
+import { API_BASE_URL } from '../config/apiConfig.js';
 
 const AuthContext = createContext();
 
@@ -10,8 +11,6 @@ export const useAuth = () => {
   if (!context) throw new Error('useAuth must be used within an AuthProvider');
   return context;
 };
-
-const API_BASE_URL = import.meta.env.VITE_API_BASE_URL || 'http://localhost:3001';
 
 /**
  * Fetch user preferences from the backend
@@ -110,7 +109,6 @@ async function checkE2ESession() {
   const isE2E = import.meta.env.VITE_E2E === 'true' || window.__E2E_MODE__ === true;
   if (!isE2E) return null; // No-op in normal dev/prod
   try {
-    const API_BASE_URL = import.meta.env.VITE_API_BASE_URL || 'http://localhost:3001';
     const response = await fetch(`${API_BASE_URL}/api/test/e2e-verify`, {
       method: 'GET',
       credentials: 'include'
@@ -223,7 +221,6 @@ export const AuthProvider = ({ children }) => {
         // Clear photo store to prevent stale data fetches
         useStore.getState().setPhotos([]);
         // Clear httpOnly cookie
-        const API_BASE_URL = import.meta.env.VITE_API_BASE_URL || 'http://localhost:3001';
         try {
           await fetch(`${API_BASE_URL}/api/auth/logout`, {
             method: 'POST',
@@ -366,7 +363,6 @@ export const AuthProvider = ({ children }) => {
   const logout = async () => {
     try {
       // Clear httpOnly cookie
-      const API_BASE_URL = import.meta.env.VITE_API_BASE_URL || 'http://localhost:3001';
       try {
         await fetch(`${API_BASE_URL}/api/auth/logout`, {
           method: 'POST',

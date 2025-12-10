@@ -2,6 +2,7 @@ const express = require('express');
 const { createClient } = require('@supabase/supabase-js');
 const rateLimit = require('express-rate-limit');
 const { getAllowedOrigins } = require('../config/allowedOrigins');
+const { COOKIE_NAME, getAuthCookieOptions, getClearCookieOptions } = require('../config/cookieConfig');
 
 const SUPABASE_URL = process.env.SUPABASE_URL;
 const SUPABASE_ANON_KEY = process.env.SUPABASE_ANON_KEY;
@@ -110,37 +111,15 @@ function createAuthRouter({ db: _db } = {}) {
       }
 
       // Token is valid - set httpOnly cookie
-      // Security configuration:
+      // Security configuration centralized in config/cookieConfig.js:
       // - httpOnly: prevents JavaScript access (XSS protection)
-      // - secure: only sent over HTTPS in production (or forced for SameSite=None)
-      // - sameSite: prevents CSRF attacks (configurable for hybrid deployments)
+      // - secure: true in production OR when SameSite=None (browser requirement)
+      // - sameSite: configurable via COOKIE_SAME_SITE env var for cross-origin
       // - maxAge: cookie expires after 24 hours
       
-      // Determine sameSite value: use env var override or secure defaults
-      let sameSiteValue = process.env.COOKIE_SAME_SITE;
-      if (!sameSiteValue) {
-        // Default behavior: strict in production, lax in development
-        sameSiteValue = process.env.NODE_ENV === 'production' ? 'strict' : 'lax';
-      } else {
-        // Normalize to lowercase for consistent comparison
-        sameSiteValue = sameSiteValue.toLowerCase();
-      }
-      
-      // Determine secure flag
-      // CRITICAL: If sameSite is 'none', secure MUST be true (browser requirement)
-      const isSecure = sameSiteValue === 'none' 
-        ? true 
-        : process.env.NODE_ENV === 'production';
-      
-      const cookieOptions = {
-        httpOnly: true,
-        secure: isSecure,
-        sameSite: sameSiteValue,
-        maxAge: 24 * 60 * 60 * 1000, // 24 hours
-        path: '/'
-      };
+      const cookieOptions = getAuthCookieOptions();
 
-      res.cookie('authToken', token, cookieOptions);
+      res.cookie(COOKIE_NAME, token, cookieOptions);
 
       return res.json({
         success: true,
@@ -162,9 +141,12 @@ function createAuthRouter({ db: _db } = {}) {
   /**
    * POST /api/auth/logout
    * Clears the authToken cookie
+   * 
+   * IMPORTANT: clearCookie options must match the options used when setting
+   * the cookie (same secure, sameSite, path) otherwise browsers won't clear it.
    */
   router.post('/logout', (req, res) => {
-    res.clearCookie('authToken', { path: '/' });
+    res.clearCookie(COOKIE_NAME, getClearCookieOptions());
     return res.json({
       success: true,
       message: 'Session cookie cleared'

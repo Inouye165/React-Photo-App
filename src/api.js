@@ -205,18 +205,10 @@ async function fetchWithNetworkFallback(input, init) {
   }
 }
 
-function resolveApiBaseUrl() {
-  try {
-    if (typeof import.meta !== 'undefined' && import.meta.env && import.meta.env.VITE_API_URL) {
-      return import.meta.env.VITE_API_URL;
-    }
-  } catch (e) { void e; }
-  if (typeof globalThis !== 'undefined' && globalThis.process && globalThis.process.env && globalThis.process.env.VITE_API_URL) {
-    return globalThis.process.env.VITE_API_URL;
-  }
-  return 'http://localhost:3001';
-}
-export const API_BASE_URL = resolveApiBaseUrl();
+// Use centralized API configuration
+import { API_BASE_URL as CENTRAL_API_BASE_URL } from './config/apiConfig.js';
+
+export const API_BASE_URL = CENTRAL_API_BASE_URL;
 
 // --- Concurrency limiter (small utility used across API calls)
 const apiMetrics = { totals: { calls: 0 }, limiters: {} };

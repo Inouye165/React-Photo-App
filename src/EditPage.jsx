@@ -291,7 +291,7 @@ export default function EditPage({ photo, onClose: _onClose, onSave, onRecheckAI
     setSaving(true)
     try {
       // Save metadata to backend
-      const response = await fetch(`http://localhost:3001/photos/${photo.id}/metadata`, {
+      const response = await fetch(`${API_BASE_URL}/photos/${photo.id}/metadata`, {
         method: 'PATCH',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ caption, description, keywords, textStyle }),
@@ -329,7 +329,7 @@ export default function EditPage({ photo, onClose: _onClose, onSave, onRecheckAI
     setSaving(true);
     try {
       setTextStyle(newTextStyle);
-      const response = await fetch('http://localhost:3001/save-captioned-image', {
+      const response = await fetch(`${API_BASE_URL}/save-captioned-image`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({

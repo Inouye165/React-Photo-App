@@ -107,7 +107,9 @@ describe('Cookie Configuration for Hybrid Deployment', () => {
       });
     });
 
-    test('should use "strict" sameSite in production environment', async () => {
+    test('should use "lax" sameSite in production environment (default for same-origin)', async () => {
+      // Note: Default is now 'lax' for both dev and prod to support same-origin setups.
+      // For cross-origin deployments, COOKIE_SAME_SITE=none must be explicitly set.
       process.env.NODE_ENV = 'production';
       const app = createTestApp();
 
@@ -121,8 +123,8 @@ describe('Cookie Configuration for Hybrid Deployment', () => {
       expect(setCookie).toBeDefined();
       
       const cookie = parseCookieHeader(setCookie[0]);
-      expect(cookie.attributes.samesite).toBe('strict');
-      expect(cookie.attributes.secure).toBe(true);
+      expect(cookie.attributes.samesite).toBe('lax');
+      expect(cookie.attributes.secure).toBe(true);  // Still secure in production
       expect(cookie.attributes.httponly).toBe(true);
     });
 

@@ -4,8 +4,15 @@
 // to work during local development). In production we still fail-fast when
 // required variables are missing.
 
-const required = ['VITE_API_URL', 'VITE_SUPABASE_URL', 'VITE_SUPABASE_ANON_KEY'];
+// Support both VITE_API_URL (canonical) and VITE_API_BASE_URL (legacy)
+const apiUrl = import.meta.env.VITE_API_URL || import.meta.env.VITE_API_BASE_URL || '';
+const required = ['VITE_SUPABASE_URL', 'VITE_SUPABASE_ANON_KEY'];
 const isProduction = import.meta.env.MODE === 'production';
+
+// In production, require an API URL to be set
+if (isProduction && !apiUrl) {
+  throw new Error('Missing required environment variable: VITE_API_URL. Add it to your .env (root) or Vite env file.');
+}
 
 for (const key of required) {
   if (isProduction) {
@@ -19,4 +26,8 @@ for (const key of required) {
 // Export a normalized env object. In development an empty string means "use
 // relative URLs" (so code that constructs API requests can do
 // `${env.VITE_API_URL || ''}/auth/verify`).
-export const env = Object.fromEntries(required.map(k => [k, import.meta.env[k] ? String(import.meta.env[k]) : '']));
+export const env = {
+  VITE_API_URL: apiUrl,
+  VITE_SUPABASE_URL: import.meta.env.VITE_SUPABASE_URL ? String(import.meta.env.VITE_SUPABASE_URL) : '',
+  VITE_SUPABASE_ANON_KEY: import.meta.env.VITE_SUPABASE_ANON_KEY ? String(import.meta.env.VITE_SUPABASE_ANON_KEY) : ''
+};
