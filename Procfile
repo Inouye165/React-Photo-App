@@ -1,2 +1,2 @@
-web: cd server && npm start
-worker: cd server && npm run worker
+web: npm start
+worker: npm run worker
