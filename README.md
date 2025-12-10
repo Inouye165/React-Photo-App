@@ -98,7 +98,21 @@ Understanding the AI decision-making process is crucial for debugging and transp
 
 ---
 
+## 🔐 Authentication & Password Reset
 
+The application uses Supabase for authentication.
+
+### Password Reset Flow
+The password reset flow is handled by the `/reset-password` route.
+1. User requests password reset via "Forgot Password" link.
+2. Supabase sends an email with a link to `/reset-password`.
+3. User enters new password.
+4. App updates password in Supabase and syncs session with backend.
+
+**Configuration:**
+Ensure your Supabase project has the following Redirect URLs configured:
+- `https://react-photo-app-eta.vercel.app/reset-password`
+- `http://localhost:5173/reset-password` (for local development)
 
 
 ## 🚀 Quick Start

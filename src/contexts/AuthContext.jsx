@@ -360,6 +360,22 @@ export const AuthProvider = ({ children }) => {
     }
   };
 
+  const updatePassword = async (newPassword) => {
+    try {
+      const { data, error } = await supabase.auth.updateUser({ password: newPassword });
+      if (error) throw error;
+      
+      // Sync cookie just in case
+      if (data.session?.access_token) {
+         await syncSessionCookie(data.session.access_token);
+      }
+      return { success: true };
+    } catch (err) {
+      console.error('Update password error:', err);
+      return { success: false, error: err.message };
+    }
+  };
+
   const logout = async () => {
     try {
       // Clear httpOnly cookie
@@ -439,6 +455,7 @@ export const AuthProvider = ({ children }) => {
     signInWithPhone,
     verifyPhoneOtp,
     resetPassword,
+    updatePassword,
   };
 
   // CRITICAL: Block rendering until auth state is initialized

@@ -8,6 +8,8 @@ import PhotoGalleryPage from './pages/PhotoGalleryPage.jsx';
 import PhotoEditPage from './pages/PhotoEditPage.jsx';
 import UploadPage from './pages/UploadPage.jsx';
 import SettingsPage from './pages/SettingsPage.jsx';
+import AuthWrapper from './components/AuthWrapper.jsx';
+import ResetPasswordPage from './pages/ResetPasswordPage.jsx';
 
 /**
  * RedirectToEdit - Redirects /photos/:id to /photos/:id/edit
@@ -50,7 +52,8 @@ function App() {
     <GlobalErrorBoundary>
       <BrowserRouter>
         <Routes>
-          <Route element={<MainLayout />}>
+          <Route path="/reset-password" element={<ResetPasswordPage />} />
+          <Route element={<AuthWrapper><MainLayout /></AuthWrapper>}>
             {/* Smart Router - determines initial landing page based on photo state */}
             <Route index element={<SmartRouter />} />
             
