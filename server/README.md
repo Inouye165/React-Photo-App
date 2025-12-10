@@ -205,6 +205,27 @@ node server/scripts/set-admin-role.js 550e8400-e29b-41d4-a716-446655440000
 
 ### Environment Variables
 
+#### FRONTEND_ORIGIN
+**Type**: String (single URL)  
+**Required**: Recommended for Vercel/Netlify deployments  
+**Default**: None
+
+Single frontend URL for simple deployments. Use this when deploying to Vercel, Netlify, or similar platforms.
+
+**Example:**
+```bash
+# Vercel deployment
+FRONTEND_ORIGIN="https://react-photo-il8l0cuz2-ron-inouyes-projects.vercel.app"
+
+# Netlify deployment
+FRONTEND_ORIGIN="https://your-app.netlify.app"
+```
+
+**Behavior:**
+- When set with no `ALLOWED_ORIGINS`, adds to localhost defaults (allows both local dev and production)
+- When set with `ALLOWED_ORIGINS`, adds to explicit origins (flexible config)
+- Always trimmed of whitespace
+
 #### ALLOWED_ORIGINS
 **Type**: String (comma-separated URLs)  
 **Required**: Recommended for production  
@@ -222,6 +243,10 @@ ALLOWED_ORIGINS="https://app.example.com,https://staging.example.com"
 
 # Development (if you need custom ports, list them explicitly)
 ALLOWED_ORIGINS="http://localhost:5173,http://localhost:8080"
+
+# Combined with FRONTEND_ORIGIN (both are merged)
+ALLOWED_ORIGINS="https://api.example.com"
+FRONTEND_ORIGIN="https://react-photo-il8l0cuz2-ron-inouyes-projects.vercel.app"
 ```
 
 **Security Notes:**

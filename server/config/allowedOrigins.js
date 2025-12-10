@@ -11,6 +11,8 @@
  * Configuration:
  * - ALLOWED_ORIGINS: Comma-separated list of allowed origins (production use)
  *   Example: "https://app.example.com,https://staging.example.com"
+ * - FRONTEND_ORIGIN: Single frontend URL for simple deployments (e.g., Vercel)
+ *   Example: "https://react-photo-il8l0cuz2-ron-inouyes-projects.vercel.app"
  * - CLIENT_ORIGIN: Legacy single origin support (backward compatibility)
  * - CLIENT_ORIGINS: Legacy multi-origin support (backward compatibility)
  * 
@@ -18,6 +20,12 @@
  * - Includes common localhost ports for local development (5173, 3000, 5174)
  * - Does NOT allow arbitrary LAN IPs by default (security by design)
  * - All origins must be explicitly configured for production environments
+ * 
+ * Priority (all are merged when present):
+ * 1. ALLOWED_ORIGINS (if set, defaults are NOT included for security)
+ * 2. FRONTEND_ORIGIN (always added if set)
+ * 3. CLIENT_ORIGIN / CLIENT_ORIGINS (legacy backward compatibility)
+ * 4. DEFAULT_ORIGINS (only when ALLOWED_ORIGINS is not set)
  */
 
 const DEFAULT_ORIGINS = [
@@ -32,6 +40,9 @@ const DEFAULT_ORIGINS = [
  * Security note: When ALLOWED_ORIGINS is explicitly set, defaults are NOT included.
  * This prevents accidental security holes when moving to production.
  * 
+ * FRONTEND_ORIGIN is always added if set, regardless of ALLOWED_ORIGINS.
+ * This supports simple Vercel/Netlify deployments without complex config.
+ * 
  * @returns {string[]} Array of allowed origin URLs
  */
 function getAllowedOrigins() {
@@ -43,6 +54,11 @@ function getAllowedOrigins() {
     
     // Still support legacy env vars alongside explicit config
     const origins = new Set(explicit);
+    
+    // FRONTEND_ORIGIN is always respected (simple single-origin config)
+    if (process.env.FRONTEND_ORIGIN) {
+      origins.add(process.env.FRONTEND_ORIGIN.trim());
+    }
     
     if (process.env.CLIENT_ORIGIN) {
       origins.add(process.env.CLIENT_ORIGIN.trim());
@@ -60,6 +76,11 @@ function getAllowedOrigins() {
   
   // Fallback: use defaults only when no explicit config exists
   const origins = new Set(DEFAULT_ORIGINS);
+  
+  // FRONTEND_ORIGIN (simple single-origin config for production frontend)
+  if (process.env.FRONTEND_ORIGIN) {
+    origins.add(process.env.FRONTEND_ORIGIN.trim());
+  }
   
   // Backward compatibility: CLIENT_ORIGIN (single origin)
   const envOrigin = process.env.CLIENT_ORIGIN;

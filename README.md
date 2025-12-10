@@ -256,11 +256,21 @@ npm run test:stress -- --runs 50
 ## 🚢 Deployment
 
 Currently designed for self-hosted deployment to:
-- **Railway** (recommended: automatic Redis + Node.js)
+- **Railway** (recommended: automatic Redis + Node.js for backend)
+- **Vercel** (frontend hosting, deployed at `https://react-photo-il8l0cuz2-ron-inouyes-projects.vercel.app`)
 - **Supabase + VPS** (backend on DigitalOcean/AWS, DB on Supabase)
 - **Docker Compose** (all services containerized)
 
-*One-click Vercel/Netlify deployment coming soon.*
+### Frontend/Backend CORS Configuration
+
+When deploying the frontend to Vercel (or Netlify) and the backend to Railway, configure CORS via the `FRONTEND_ORIGIN` environment variable on the backend:
+
+```bash
+# On Railway backend
+FRONTEND_ORIGIN=https://your-app.vercel.app
+```
+
+This ensures cross-origin cookie-based authentication works correctly. See `server/README.md` for full CORS configuration options.
 
 **Environment:** Production requires Supabase Postgres, Redis, and object storage. See `server/.env.example` for required variables.
 

@@ -12,6 +12,7 @@ describe('getAllowedOrigins', () => {
     process.env = { ...originalEnv };
     // Clear the environment variables we're testing
     delete process.env.ALLOWED_ORIGINS;
+    delete process.env.FRONTEND_ORIGIN;
     delete process.env.CLIENT_ORIGIN;
     delete process.env.CLIENT_ORIGINS;
   });
@@ -133,5 +134,58 @@ describe('getAllowedOrigins', () => {
     
     expect(origins).toContain('https://legacy1.example.com');
     expect(origins).toContain('https://legacy2.example.com');
+  });
+
+  describe('FRONTEND_ORIGIN support', () => {
+    test('should include FRONTEND_ORIGIN with defaults when ALLOWED_ORIGINS not set', () => {
+      process.env.FRONTEND_ORIGIN = 'https://react-photo-il8l0cuz2-ron-inouyes-projects.vercel.app';
+      
+      const { getAllowedOrigins: getOrigins } = require('../config/allowedOrigins');
+      const origins = getOrigins();
+      
+      // Should include the Vercel frontend
+      expect(origins).toContain('https://react-photo-il8l0cuz2-ron-inouyes-projects.vercel.app');
+      // Should also include defaults for local dev
+      expect(origins).toContain('http://localhost:5173');
+      expect(origins).toContain('http://localhost:3000');
+    });
+
+    test('should include FRONTEND_ORIGIN even when ALLOWED_ORIGINS is set', () => {
+      process.env.ALLOWED_ORIGINS = 'https://production.example.com';
+      process.env.FRONTEND_ORIGIN = 'https://react-photo-il8l0cuz2-ron-inouyes-projects.vercel.app';
+      
+      const { getAllowedOrigins: getOrigins } = require('../config/allowedOrigins');
+      const origins = getOrigins();
+      
+      // Should include both the explicit origin and FRONTEND_ORIGIN
+      expect(origins).toContain('https://production.example.com');
+      expect(origins).toContain('https://react-photo-il8l0cuz2-ron-inouyes-projects.vercel.app');
+      // Should NOT include localhost defaults (ALLOWED_ORIGINS overrides them)
+      expect(origins).not.toContain('http://localhost:5173');
+    });
+
+    test('should handle FRONTEND_ORIGIN with whitespace', () => {
+      process.env.FRONTEND_ORIGIN = '  https://my-app.vercel.app  ';
+      
+      const { getAllowedOrigins: getOrigins } = require('../config/allowedOrigins');
+      const origins = getOrigins();
+      
+      // Should be trimmed
+      expect(origins).toContain('https://my-app.vercel.app');
+      expect(origins).not.toContain('  https://my-app.vercel.app  ');
+    });
+
+    test('should deduplicate FRONTEND_ORIGIN if already in ALLOWED_ORIGINS', () => {
+      const vercelOrigin = 'https://react-photo-il8l0cuz2-ron-inouyes-projects.vercel.app';
+      process.env.ALLOWED_ORIGINS = vercelOrigin;
+      process.env.FRONTEND_ORIGIN = vercelOrigin;
+      
+      const { getAllowedOrigins: getOrigins } = require('../config/allowedOrigins');
+      const origins = getOrigins();
+      
+      // Should only appear once
+      const count = origins.filter(o => o === vercelOrigin).length;
+      expect(count).toBe(1);
+    });
   });
 });

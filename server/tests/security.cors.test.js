@@ -17,6 +17,7 @@ describe('CORS Security', () => {
     // Set NODE_ENV to production to disable regex bypass logic
     process.env.NODE_ENV = 'production';
     delete process.env.ALLOWED_ORIGINS;
+    delete process.env.FRONTEND_ORIGIN;
     delete process.env.CLIENT_ORIGIN;
     delete process.env.CLIENT_ORIGINS;
     delete process.env.DEBUG_CORS;
@@ -314,6 +315,149 @@ describe('CORS Security', () => {
         .expect(204);
 
       expect(response.headers['access-control-allow-origin']).toBe('https://app.example.com');
+    });
+  });
+
+  describe('Vercel Frontend Origin', () => {
+    const VERCEL_ORIGIN = 'https://react-photo-il8l0cuz2-ron-inouyes-projects.vercel.app';
+
+    test('should allow Vercel origin when set via FRONTEND_ORIGIN', async () => {
+      process.env.FRONTEND_ORIGIN = VERCEL_ORIGIN;
+      
+      const { getAllowedOrigins } = require('../config/allowedOrigins');
+      const allowedOrigins = getAllowedOrigins();
+
+      app = express();
+      app.use(cors({
+        origin: function(origin, callback) {
+          if (!origin || allowedOrigins.includes(origin)) {
+            return callback(null, origin);
+          }
+          return callback(new Error('Not allowed by CORS'));
+        },
+        credentials: true
+      }));
+
+      app.get('/api/auth/session', (req, res) => {
+        res.json({ success: true, user: { id: 1 } });
+      });
+
+      const response = await request(app)
+        .get('/api/auth/session')
+        .set('Origin', VERCEL_ORIGIN)
+        .expect(200);
+
+      expect(response.headers['access-control-allow-origin']).toBe(VERCEL_ORIGIN);
+      expect(response.headers['access-control-allow-credentials']).toBe('true');
+      expect(response.body.success).toBe(true);
+    });
+
+    test('should allow Vercel origin via OPTIONS preflight request', async () => {
+      process.env.FRONTEND_ORIGIN = VERCEL_ORIGIN;
+      
+      const { getAllowedOrigins } = require('../config/allowedOrigins');
+      const allowedOrigins = getAllowedOrigins();
+
+      app = express();
+      app.use(cors({
+        origin: function(origin, callback) {
+          if (!origin || allowedOrigins.includes(origin)) {
+            return callback(null, origin);
+          }
+          return callback(new Error('Not allowed by CORS'));
+        },
+        credentials: true,
+        optionsSuccessStatus: 204
+      }));
+
+      app.post('/api/auth/session', (req, res) => {
+        res.json({ success: true });
+      });
+
+      const response = await request(app)
+        .options('/api/auth/session')
+        .set('Origin', VERCEL_ORIGIN)
+        .set('Access-Control-Request-Method', 'POST')
+        .expect(204);
+
+      expect(response.headers['access-control-allow-origin']).toBe(VERCEL_ORIGIN);
+      expect(response.headers['access-control-allow-credentials']).toBe('true');
+    });
+
+    test('should allow both localhost and Vercel when FRONTEND_ORIGIN is set (no ALLOWED_ORIGINS)', async () => {
+      process.env.FRONTEND_ORIGIN = VERCEL_ORIGIN;
+      
+      const { getAllowedOrigins } = require('../config/allowedOrigins');
+      const allowedOrigins = getAllowedOrigins();
+
+      app = express();
+      app.use(cors({
+        origin: function(origin, callback) {
+          if (!origin || allowedOrigins.includes(origin)) {
+            return callback(null, origin);
+          }
+          return callback(new Error('Not allowed by CORS'));
+        },
+        credentials: true
+      }));
+
+      app.get('/api/auth/session', (req, res) => {
+        res.json({ success: true });
+      });
+
+      // Test Vercel origin
+      const vercelResponse = await request(app)
+        .get('/api/auth/session')
+        .set('Origin', VERCEL_ORIGIN)
+        .expect(200);
+      expect(vercelResponse.headers['access-control-allow-origin']).toBe(VERCEL_ORIGIN);
+
+      // Test localhost (should still work with defaults)
+      const localhostResponse = await request(app)
+        .get('/api/auth/session')
+        .set('Origin', 'http://localhost:5173')
+        .expect(200);
+      expect(localhostResponse.headers['access-control-allow-origin']).toBe('http://localhost:5173');
+    });
+
+    test('should reject evil.example.com even when Vercel is allowed', async () => {
+      process.env.FRONTEND_ORIGIN = VERCEL_ORIGIN;
+      
+      const { getAllowedOrigins } = require('../config/allowedOrigins');
+      const allowedOrigins = getAllowedOrigins();
+
+      app = express();
+      app.use(cors({
+        origin: function(origin, callback) {
+          if (!origin || allowedOrigins.includes(origin)) {
+            return callback(null, origin);
+          }
+          return callback(new Error('Not allowed by CORS'));
+        },
+        credentials: true
+      }));
+
+      app.get('/api/auth/session', (req, res) => {
+        res.json({ success: true });
+      });
+
+      app.use((err, req, res, next) => {
+        if (err.message === 'Not allowed by CORS') {
+          return res.status(403).json({
+            success: false,
+            error: 'CORS policy violation'
+          });
+        }
+        next(err);
+      });
+
+      const response = await request(app)
+        .get('/api/auth/session')
+        .set('Origin', 'https://evil.example.com')
+        .expect(403);
+
+      expect(response.body.success).toBe(false);
+      expect(response.body.error).toBe('CORS policy violation');
     });
   });
 });
