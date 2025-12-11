@@ -574,6 +574,14 @@ describe('resolveAllowedOrigin helper', () => {
     expect(resolveAllowedOrigin(undefined)).toBeNull();
     expect(resolveAllowedOrigin(null)).toBeNull();
   });
+
+  test('should return null for literal "null" string origin (sandboxed iframe, file://, etc.)', () => {
+    const { resolveAllowedOrigin } = require('../config/allowedOrigins');
+    
+    // SECURITY: Browsers send Origin: null in certain privacy contexts.
+    // We must never allow this to be set as Access-Control-Allow-Origin with credentials.
+    expect(resolveAllowedOrigin('null')).toBeNull();
+  });
 });
 
 /**
@@ -614,4 +622,11 @@ describe('isOriginAllowed helper', () => {
     expect(isOriginAllowed(undefined)).toBe(true);
     expect(isOriginAllowed(null)).toBe(true);
   });
-});
+
+  test('should return false for literal "null" string origin', () => {
+    const { isOriginAllowed } = require('../config/allowedOrigins');
+    
+    // SECURITY: The literal string "null" is NOT the same as no origin.
+    // It should be rejected since it's not in the allowlist.
+    expect(isOriginAllowed('null')).toBe(false);
+  });});

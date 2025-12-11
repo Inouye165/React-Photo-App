@@ -51,9 +51,11 @@ async function authenticateImageRequest(req, res, next) {
     });
   }
 
-  // Only set Access-Control-Allow-Origin if we have an allowed origin
-  // This ensures we echo back the request origin (when allowed), not a hardcoded value
-  if (resolvedOrigin) {
+  // SECURITY: Only set Access-Control-Allow-Origin if we have a valid, non-"null" origin.
+  // This protects against misconfigurations where "null" could be treated as allowed.
+  // Setting Access-Control-Allow-Origin to "null" with credentials is a security risk (CWE-942).
+  // Defense-in-depth: even if resolveAllowedOrigin is misconfigured, this guard prevents the issue.
+  if (resolvedOrigin && resolvedOrigin !== 'null') {
     res.header('Access-Control-Allow-Origin', resolvedOrigin);
     res.header('Vary', 'Origin');
   }
