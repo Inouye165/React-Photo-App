@@ -104,6 +104,9 @@ This project uses **BullMQ** and **Redis** to process long-running tasks asynchr
 - **Log Redaction**: Automatically masks sensitive data (tokens, keys) in logs.
 - **Input Validation**: Strict validation on all endpoints.
 - **Strict CORS**: Explicit origin allowlisting (no regex wildcards or IP ranges).
+  - **Production**: Set `FRONTEND_ORIGIN` environment variable to your deployed frontend URL
+  - **Local Dev**: Automatically includes `http://localhost:5173` (Vite), `http://localhost:3000`, `http://localhost:5174`
+  - **Security**: Only explicitly whitelisted origins receive CORS headers; credentials enabled for secure cookie/token auth
 - **SSL Certificate Validation**: Production enforces strict SSL with CA certificate verification (see below).
 - **Ownership-Based Access Control**: The `/privilege` endpoint performs real-time database verification to ensure users can only modify or delete their own content. This prevents IDOR (Insecure Direct Object Reference) vulnerabilities.
 - **Secure Role Storage**: User roles are stored in `app_metadata` (server-controlled) instead of `user_metadata` (client-writable) to prevent privilege escalation attacks.
@@ -209,14 +212,20 @@ node server/scripts/set-admin-role.js 550e8400-e29b-41d4-a716-446655440000
 
 #### FRONTEND_ORIGIN
 **Type**: String (single URL)  
-**Required**: Recommended for Vercel/Netlify deployments  
+**Required**: ✅ **Required for production deployments** (Vercel/Railway/Netlify)  
 **Default**: None
 
 Single frontend URL for simple deployments. Use this when deploying to Vercel, Netlify, or similar platforms.
 
-**Example:**
+**Production Example (Current Deployment):**
 ```bash
-# Vercel deployment
+# Production Vercel frontend
+FRONTEND_ORIGIN="https://react-photo-app-eta.vercel.app"
+```
+
+**Other Examples:**
+```bash
+# Alternative Vercel URL
 FRONTEND_ORIGIN="https://react-photo-il8l0cuz2-ron-inouyes-projects.vercel.app"
 
 # Netlify deployment
@@ -227,6 +236,7 @@ FRONTEND_ORIGIN="https://your-app.netlify.app"
 - When set with no `ALLOWED_ORIGINS`, adds to localhost defaults (allows both local dev and production)
 - When set with `ALLOWED_ORIGINS`, adds to explicit origins (flexible config)
 - Always trimmed of whitespace
+- **This is the primary configuration for production CORS** - set it in Railway environment variables
 
 #### ALLOWED_ORIGINS
 **Type**: String (comma-separated URLs)  
@@ -257,6 +267,63 @@ FRONTEND_ORIGIN="https://react-photo-il8l0cuz2-ron-inouyes-projects.vercel.app"
 - Each origin must include the protocol (`https://` or `http://`)
 - Whitespace around commas is handled gracefully
 - If unset, falls back to localhost defaults for local development only
+
+### Production Deployment CORS Configuration
+
+#### Current Production Setup (Vercel + Railway)
+
+**Frontend (Vercel):** `https://react-photo-app-eta.vercel.app`  
+**Backend (Railway):** `https://web-production-d709f.up.railway.app`
+
+**Railway Environment Configuration:**
+```bash
+FRONTEND_ORIGIN=https://react-photo-app-eta.vercel.app
+```
+
+This single environment variable enables:
+- ✅ Vercel frontend can make authenticated requests to Railway backend
+- ✅ Cookies and Authorization headers work across origins
+- ✅ `/display/thumbnails` and `/display/image` routes return proper CORS headers
+- ✅ Local development still works (`http://localhost:5173` is included by default)
+
+#### Adding New Frontends
+
+To whitelist additional frontend URLs (e.g., staging environments, mobile apps):
+
+1. **Single additional origin:** Update `FRONTEND_ORIGIN` or use `ALLOWED_ORIGINS`
+   ```bash
+   ALLOWED_ORIGINS=https://staging.myapp.com,https://preview.myapp.com
+   FRONTEND_ORIGIN=https://react-photo-app-eta.vercel.app
+   ```
+
+2. **Multiple origins:** Use comma-separated list in `ALLOWED_ORIGINS`
+   ```bash
+   ALLOWED_ORIGINS=https://app1.vercel.app,https://app2.netlify.app,https://app3.fly.io
+   ```
+
+3. **Verify configuration:** Check Railway logs for CORS debug output
+   ```bash
+   # Enable CORS debugging in Railway
+   DEBUG_CORS=true
+   ```
+
+#### Troubleshooting CORS Issues
+
+**Symptoms:**
+- Browser console: "blocked by CORS policy: header has a value 'http://localhost:5173' that is not equal to the supplied origin"
+- Images fail to load with `net::ERR_FAILED`
+- API requests return 403 or don't include `Access-Control-Allow-Origin`
+
+**Solutions:**
+1. **Verify `FRONTEND_ORIGIN` is set** in Railway dashboard
+2. **Check the exact URL** - must match exactly (no trailing slash, correct protocol)
+3. **Restart Railway service** after environment variable changes
+4. **Enable debug logging** with `DEBUG_CORS=true` to see CORS decisions in logs
+
+**Expected behavior:**
+- Allowed origins receive `Access-Control-Allow-Origin: <requesting-origin>`
+- Disallowed origins receive no CORS headers (browser blocks request)
+- No wildcards (`*`) when credentials are enabled (security requirement)
 
 ## 🧪 Testing
 
