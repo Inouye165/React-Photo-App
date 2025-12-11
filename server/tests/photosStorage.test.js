@@ -40,3 +40,4 @@ describe('photosStorage service', () => {
     expect(result).toHaveProperty('data');
   });
 });
+

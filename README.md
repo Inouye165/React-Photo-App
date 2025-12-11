@@ -229,6 +229,13 @@ cd server && npm run worker
 - Collectibles → "Vintage Pyrex Butterprint bowl, est. $45-$60"
 - Wildlife/Nature → "Bison grazing near Mud Volcano Trailhead, Yellowstone"
 
+### 📱 Mobile-Optimized PWA
+- **Native Camera Roll Access:** One-tap photo selection from mobile device gallery
+- **Client-Side Compression:** Images optimized before upload (max 2048px, 85% JPEG quality)
+- **Responsive Touch UI:** 44px touch targets, mobile-first Tailwind styling
+- **Add to Home Screen:** PWA manifest for native app-like experience
+- **Virtualized Gallery:** Smooth scrolling for 1000+ photos using react-virtuoso
+
 ### Developer Experience
 - **Modular codebase:** Clear separation (routes, services, workers)
 - **Comprehensive tests:** Frontend + backend + security (see [TESTING.md](TESTING.md))
@@ -244,6 +251,7 @@ cd server && npm run worker
 - **[PRODUCT_STORY.md](docs/PRODUCT_STORY.md)** - Engineering journey (Sept–Nov 2025)
 - **[CHANGELOG.md](docs/CHANGELOG.md)** - Release history and recent updates
 - **[ROADMAP.md](docs/ROADMAP.md)** - Planned features and known limitations
+- **[IMPROVEMENT_PLAN.md](docs/IMPROVEMENT_PLAN.md)** - Full phased TODO and improvement plan: critical security, mobile, performance, desktop, and polish tasks as prioritized by the project owner.
 - **[CONTRIBUTING.md](docs/CONTRIBUTING.md)** - How to report bugs and suggest features
 - **[server/README.md](server/README.md)** - Backend architecture and API docs
 - **[server/ai/README.md](server/ai/README.md)** - AI service documentation (POI detection, LangGraph workflows)

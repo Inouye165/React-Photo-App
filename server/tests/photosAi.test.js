@@ -27,3 +27,4 @@ describe('photosAi service', () => {
     expect(service.isModelAllowed('not-in-list')).toBe(false);
   });
 });
+
