@@ -26,9 +26,18 @@ jest.mock('@supabase/supabase-js', () => ({
   })
 }));
 
-// Mock allowed origins
+// Mock allowed origins with all exported functions
+const mockAllowedOrigins = ['http://localhost:5173', 'http://localhost:3000'];
 jest.mock('../config/allowedOrigins', () => ({
-  getAllowedOrigins: jest.fn(() => ['http://localhost:5173', 'http://localhost:3000'])
+  getAllowedOrigins: jest.fn(() => mockAllowedOrigins),
+  resolveAllowedOrigin: jest.fn((origin) => {
+    if (!origin) return null;
+    return mockAllowedOrigins.includes(origin) ? origin : null;
+  }),
+  isOriginAllowed: jest.fn((origin) => {
+    if (!origin) return true;
+    return mockAllowedOrigins.includes(origin);
+  })
 }));
 
 const { authenticateImageRequest } = require('../middleware/imageAuth');

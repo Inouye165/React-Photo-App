@@ -137,9 +137,10 @@ This project uses **BullMQ** and **Redis** to process long-running tasks asynchr
 - **Log Redaction**: Automatically masks sensitive data (tokens, keys) in logs.
 - **Input Validation**: Strict validation on all endpoints.
 - **Strict CORS**: Explicit origin allowlisting (no regex wildcards or IP ranges).
-  - **Production**: Set `FRONTEND_ORIGIN` environment variable to your deployed frontend URL
+  - **Production**: Set `FRONTEND_ORIGIN` environment variable to your deployed frontend URL (e.g., `https://react-photo-app-eta.vercel.app`)
   - **Local Dev**: Automatically includes `http://localhost:5173` (Vite), `http://localhost:3000`, `http://localhost:5174`
   - **Security**: Only explicitly whitelisted origins receive CORS headers; credentials enabled for secure cookie/token auth
+  - **Centralized**: All origin resolution uses `config/allowedOrigins.js` helpers (`resolveAllowedOrigin`, `isOriginAllowed`) for consistency across main CORS middleware, image auth, and auth routes
 - **SSL Certificate Validation**: Production enforces strict SSL with CA certificate verification (see below).
 - **Ownership-Based Access Control**: The `/privilege` endpoint performs real-time database verification to ensure users can only modify or delete their own content. This prevents IDOR (Insecure Direct Object Reference) vulnerabilities.
 - **Secure Role Storage**: User roles are stored in `app_metadata` (server-controlled) instead of `user_metadata` (client-writable) to prevent privilege escalation attacks.

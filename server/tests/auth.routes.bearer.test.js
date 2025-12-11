@@ -351,9 +351,18 @@ describe('Image Endpoint Authentication', () => {
     app = express();
     app.use(cookieParser());
     
-    // Mock allowed origins
+    // Mock allowed origins with all exported functions
+    const mockOrigins = ['http://localhost:5173'];
     jest.mock('../config/allowedOrigins', () => ({
-      getAllowedOrigins: () => ['http://localhost:5173']
+      getAllowedOrigins: () => mockOrigins,
+      resolveAllowedOrigin: (origin) => {
+        if (!origin) return null;
+        return mockOrigins.includes(origin) ? origin : null;
+      },
+      isOriginAllowed: (origin) => {
+        if (!origin) return true;
+        return mockOrigins.includes(origin);
+      }
     }));
     
     // Use the actual imageAuth middleware
