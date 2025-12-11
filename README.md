@@ -42,8 +42,8 @@ This project is not a tutorial or a consumer-ready product. It is a high-perform
 - **Row-Level Security:** Supabase RLS for strict user data isolation
 
 ### 🔒 **Security (Experimental)**
-- **httpOnly Cookie Auth:** JWT tokens never touch browser localStorage or URL params
-- **CSRF Protection:** Token + Origin validation on every state-changing request
+- **Bearer Token Auth (Primary):** `Authorization: Bearer <token>` header; httpOnly cookie deprecated fallback
+- **CSRF Protection:** Origin validation + double-submit cookie pattern on state-changing requests
 - **Content Security Policy:** Helmet-enforced CSP with automated CI tests
 - **Concurrency Limits:** Rate limiting to prevent upload storms
 
@@ -144,8 +144,8 @@ cp server/.env.example server/.env
 #   SUPABASE_DB_URL or DATABASE_URL (Postgres connection string)
 #   SUPABASE_URL, SUPABASE_ANON_KEY, SUPABASE_SERVICE_ROLE_KEY
 
-# 4. Run migrations
-cd server && npm run migrate && cd ..
+# 4. Run migrations (using Knex CLI)
+cd server && npx knex migrate:latest --knexfile knexfile.js && cd ..
 
 # 5. Start the app (in separate terminals)
 npm run dev                # Terminal 1: Frontend (Vite, port 5173)
@@ -167,10 +167,13 @@ Edit `server/.env` (see `server/.env.example` for all options). **Required** var
 - `SUPABASE_DB_URL` or `DATABASE_URL` – Postgres connection string (local or Supabase)
 - `SUPABASE_URL` – Supabase project URL
 - `SUPABASE_ANON_KEY` – Supabase anon public key
-- `SUPABASE_SERVICE_ROLE_KEY` – Supabase service role key (server-side only)
+- `JWT_SECRET` – Secret for signing local JWT tokens
+
+**Recommended (but optional):**
+- `SUPABASE_SERVICE_ROLE_KEY` – Supabase service role key (server-side only; falls back to ANON_KEY if missing)
 
 **Optional:**
-- `GOOGLE_MAPS_API_KEY` – Enables Google Places enrichment (optional; if missing, POI lookups are skipped)
+- `GOOGLE_MAPS_API_KEY` – Enables Google Places enrichment (if missing, POI lookups are skipped)
 - `OPENAI_API_KEY` – Required for AI features (see `server/.env.example` for more)
 
 ---
@@ -200,9 +203,9 @@ cd server && npm run worker
 
 ## 🔐 Auth & Security
 
-- **Authentication:** Cookie-based (httpOnly) JWT tokens; never stored in localStorage or URL params.
+- **Authentication:** Bearer token via `Authorization` header (primary); httpOnly cookie fallback (deprecated). Tokens never stored in localStorage or URL params.
 - **Row-Level Security:** Supabase RLS is enforced for all user data isolation.
-- **CSRF Protection:** All state-changing requests require CSRF tokens and Origin validation.
+- **CSRF Protection:** All state-changing requests require Origin validation; double-submit cookie pattern for CSRF tokens.
 
 ---
 
@@ -212,7 +215,7 @@ cd server && npm run worker
 **Frontend:** React 19, Vite, Tailwind CSS, Zustand, React Testing Library  
 **Backend:** Node.js, Express, Supabase (Postgres + Storage + Auth), BullMQ, Redis  
 **AI/Processing:** LangGraph, Sharp, ImageMagick, Google Places API  
-**Security:** Helmet, JWT (httpOnly cookies), RLS, CSRF tokens  
+**Security:** Helmet, JWT (Bearer token auth), RLS, CSRF tokens  
 **Testing:** Vitest, Jest, Supertest (700+ tests across frontend & backend, 20x stress-tested)
 
 ---

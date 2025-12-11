@@ -31,7 +31,12 @@ Backend server for the React Photo App, built with Node.js and Express. It handl
    cp .env.example .env
    ```
    
-   **Required:** Set `DATABASE_URL` or `SUPABASE_DB_URL`:
+   **Required environment variables:**
+   - `SUPABASE_URL` - Your Supabase project URL
+   - `SUPABASE_ANON_KEY` - Supabase anon public key
+   - `JWT_SECRET` - Secret for signing local JWT tokens
+   - `DATABASE_URL` or `SUPABASE_DB_URL` - Postgres connection string:
+   
    ```bash
    # Local PostgreSQL
    DATABASE_URL=postgresql://user:password@localhost:5432/photoapp
@@ -39,13 +44,22 @@ Backend server for the React Photo App, built with Node.js and Express. It handl
    # Or Supabase
    SUPABASE_DB_URL=postgresql://postgres:[PASSWORD]@db.[PROJECT].supabase.co:5432/postgres
    ```
+   
+   **Optional but recommended:**
+   - `SUPABASE_SERVICE_ROLE_KEY` - Server-side operations (falls back to ANON_KEY)
 
 4. **Start Redis:**
    ```bash
    docker run -d --name photo-app-redis -p 6379:6379 redis:7.2-alpine
    ```
 
-5. **Start the Server:**
+5. **Run Migrations:**
+   ```bash
+   npx knex migrate:latest --knexfile knexfile.js
+   ```
+   See `MIGRATIONS.md` for details on creating new migrations.
+
+6. **Start the Server:**
    ```bash
    # Development (with auto-restart)
    npm run dev
@@ -65,20 +79,39 @@ Backend server for the React Photo App, built with Node.js and Express. It handl
 ## 🔌 API Endpoints
 
 ### Authentication
-- `POST /api/auth/session` - Login and receive JWT (sets httpOnly cookie)
-- `POST /api/auth/logout` - Logout and clear session cookie
+- `POST /api/auth/session` - Login and receive JWT (returns Bearer token; also sets deprecated httpOnly cookie for legacy clients)
+- `POST /api/auth/logout` - Logout and clear session
 
 ### Photos
 - `POST /upload` - Upload photos (Authenticated)
 - `GET /photos` - List photos with filters
 - `GET /photos/:id` - Get photo details
 - `GET /photos/:id/thumbnail-url` - Get signed URL for thumbnail (Authenticated, returns 404 if unavailable)
+- `PATCH /photos/:id/metadata` - Update photo metadata (Authenticated)
+- `DELETE /photos/:id` - Delete a photo (Authenticated, owner only)
+- `GET /photos/status` - Get aggregated photo counts by state for smart routing
 - `GET /display/:state/:filename` - Securely serve image files
+- `GET /display/image/:photoId` - Serve full-size image by ID
 - `POST /privilege` - Check file permissions (Authenticated, performs real-time ownership verification)
 
 ### AI & Metadata
 - `POST /photos/:id/run-ai` - Trigger AI analysis
+- `POST /photos/:id/recheck-ai` - Re-run AI analysis on existing photo
+- `POST /photos/:id/reextract-metadata` - Re-extract EXIF metadata
 - `GET /photos/models` - List available AI models
+- `GET /photos/dependencies` - Check AI dependencies status
+
+### User Preferences
+- `GET /api/users/me/preferences` - Get user preferences
+- `PATCH /api/users/me/preferences` - Update user preferences
+- `POST /api/users/me/preferences/load-defaults` - Load default preferences
+
+### Collectibles
+- `GET /api/photos/:photoId/collectibles` - Get collectibles for a photo
+- `POST /api/photos/:photoId/collectibles` - Create new collectible entry
+- `PUT /api/photos/:photoId/collectibles` - Update collectible data
+- `PATCH /api/collectibles/:collectibleId` - Update specific collectible
+- `GET /api/collectibles/:collectibleId/history` - Get valuation history
 
 ### Testing Endpoints (Development & E2E Only)
 - `GET /api/test/e2e-verify` - Validates E2E test authentication cookie
