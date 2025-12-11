@@ -55,7 +55,7 @@ node test-runner.js
 - [ ] **Token Expiration**: Login expires after 24 hours
 
 ### 🖼️ Image Operations (Authenticated Users Only)
-- [ ] **Folder Selection**: Select folder for upload works
+- [ ] **File/Folder Selection**: Select photos or folder for upload works (File picker on mobile/Safari/Firefox)
 - [ ] **Image Display**: All images load with authenticated URLs
 - [ ] **HEIC Conversion**: HEIC files display properly (converted to JPEG)
 - [ ] **Edit Mode**: Click edit on any image opens editor

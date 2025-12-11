@@ -147,7 +147,7 @@ export default function UploadPage() {
               marginBottom: '32px'
             }}
           >
-            Select a folder from your computer to get started. 
+            Select photos to get started. 
             Your photos will be uploaded and processed automatically.
           </p>
 
@@ -188,18 +188,19 @@ export default function UploadPage() {
             >
               <path d="M22 19a2 2 0 01-2 2H4a2 2 0 01-2-2V5a2 2 0 012-2h5l2 3h9a2 2 0 012 2z" />
             </svg>
-            Select Folder
+            Select Photos
           </button>
           
           {/* Hidden file input for Firefox/Safari fallback */}
           <input
             type="file"
-            webkitdirectory=""
+            accept="image/*,.heic,.heif,.png,.jpg,.jpeg"
             multiple
             className="hidden"
             style={{ display: 'none' }}
             ref={fileInputRef}
             onChange={handleNativeSelection}
+            data-testid="file-input"
           />
 
           {/* Secondary link */}
