@@ -128,18 +128,31 @@ function resolveAllowedOrigin(requestOrigin) {
   // file:// URLs, cross-origin redirects). Setting Access-Control-Allow-Origin
   // to "null" with credentials is a security misconfiguration (CodeQL CWE-942).
   if (!requestOrigin || requestOrigin === 'null') {
+    if (process.env.NODE_ENV !== 'test') {
+      console.log('[CORS DEBUG]', {
+        requestOrigin,
+        resolvedOrigin: null,
+        allowedOrigins: getAllowedOrigins(),
+        path: undefined // req not available here
+      });
+    }
     return null;
   }
-  
+
   const allowedOrigins = getAllowedOrigins();
-  
-  // Only return the origin if it's explicitly in the allowlist
+  let resolved = null;
   if (allowedOrigins.includes(requestOrigin)) {
-    return requestOrigin;
+    resolved = requestOrigin;
   }
-  
-  // Origin not in allowlist - rejected
-  return null;
+  if (process.env.NODE_ENV !== 'test') {
+    console.log('[CORS DEBUG]', {
+      requestOrigin,
+      resolvedOrigin: resolved,
+      allowedOrigins,
+      path: undefined // req not available here
+    });
+  }
+  return resolved;
 }
 
 /**
@@ -151,11 +164,28 @@ function resolveAllowedOrigin(requestOrigin) {
 function isOriginAllowed(requestOrigin) {
   // No origin (server-to-server) is typically allowed
   if (!requestOrigin) {
+    if (process.env.NODE_ENV !== 'test') {
+      console.log('[CORS DEBUG]', {
+        requestOrigin,
+        allowedOrigins: getAllowedOrigins(),
+        allowed: true,
+        path: undefined // req not available here
+      });
+    }
     return true;
   }
-  
+
   const allowedOrigins = getAllowedOrigins();
-  return allowedOrigins.includes(requestOrigin);
+  const allowed = allowedOrigins.includes(requestOrigin);
+  if (process.env.NODE_ENV !== 'test') {
+    console.log('[CORS DEBUG]', {
+      requestOrigin,
+      allowedOrigins,
+      allowed,
+      path: undefined // req not available here
+    });
+  }
+  return allowed;
 }
 
 module.exports = {

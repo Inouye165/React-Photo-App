@@ -2,6 +2,17 @@
 // that read process.env later see the correct values regardless of CWD.
 require('./env');
 
+// Version logging for deployment tracking
+let APP_VERSION = null;
+try {
+  APP_VERSION = require('./version.js').APP_VERSION;
+} catch {
+  // fallback: not critical
+}
+if (APP_VERSION) {
+  console.log('Starting server - version:', APP_VERSION);
+}
+
 // Validate required PostgreSQL configuration early
 if (!process.env.DATABASE_URL && !process.env.SUPABASE_DB_URL) {
   console.error('[server] FATAL: PostgreSQL not configured');
@@ -164,16 +175,21 @@ app.set('trust proxy', 1);
   // - Configure allowed origins via ALLOWED_ORIGINS environment variable
   const { getAllowedOrigins } = require('./config/allowedOrigins');
   const allowedOrigins = getAllowedOrigins();
-  const debugCors = process.env.DEBUG_CORS === 'true';
+  // const debugCors = process.env.DEBUG_CORS === 'true'; // removed unused var
   app.use(cors({
     origin: function(origin, callback) {
-      if (debugCors) console.debug('[CORS DEBUG] Incoming Origin:', origin);
+      const isAllowed = !origin || allowedOrigins.includes(origin);
+      if (process.env.NODE_ENV !== 'test') {
+        console.log('[GLOBAL CORS DEBUG]', {
+          origin,
+          isAllowed,
+          allowedOrigins
+        });
+      }
       // Allow requests with no origin (e.g., server-to-server) or explicit allowed origins
-      if (!origin || allowedOrigins.includes(origin)) {
-        if (debugCors) console.debug('[CORS DEBUG] Allowing Origin:', origin);
+      if (isAllowed) {
         return callback(null, origin);
       }
-      if (debugCors) console.debug('[CORS DEBUG] Rejecting Origin:', origin);
       // When origin not allowed, fail the CORS check. Browsers will block the request.
       return callback(new Error('Not allowed by CORS'));
     },
