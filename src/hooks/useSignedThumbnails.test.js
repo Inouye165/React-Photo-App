@@ -81,7 +81,7 @@ describe('useSignedThumbnails Hook', () => {
       expect(fullUrl).toBe(`${API_BASE_URL}/display/thumbnails/hash1.jpg?sig=test-sig&exp=123456`);
     });
 
-    it('should fallback to original thumbnail path when signed URL not available', async () => {
+    it('should return null when signed URL not available (requires AuthenticatedImage)', async () => {
       global.fetch.mockResolvedValue({
         ok: false,
         status: 404,
@@ -94,9 +94,10 @@ describe('useSignedThumbnails Hook', () => {
         expect(result.current.loading).toBe(false);
       });
 
-      // getSignedUrl should fallback to original path
+      // getSignedUrl should return null when no signed URL is available
+      // This signals to components that they need to use AuthenticatedImage
       const fallbackUrl = result.current.getSignedUrl(mockPhotos[0]);
-      expect(fallbackUrl).toBe(`${API_BASE_URL}/display/thumbnails/hash1.jpg`);
+      expect(fallbackUrl).toBeNull();
     });
   });
 

@@ -4,6 +4,13 @@ import { render, screen, fireEvent, waitFor } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
 import PhotoCard from './PhotoCard';
 
+// Mock the api module to prevent actual fetch calls in AuthenticatedImage
+vi.mock('../api.js', () => ({
+  fetchProtectedBlobUrl: vi.fn(() => Promise.resolve('blob:mock-url')),
+  revokeBlobUrl: vi.fn(),
+  API_BASE_URL: 'http://localhost:3001',
+}));
+
 describe('PhotoCard Component', () => {
   const mockPhoto = {
     id: 1,
@@ -19,12 +26,15 @@ describe('PhotoCard Component', () => {
     },
   };
 
+  // Provide getSignedUrl to avoid AuthenticatedImage usage in most tests
+  const mockGetSignedUrl = vi.fn((photo) => `http://localhost:3001${photo.thumbnail}?signed=true`);
+
   const defaultProps = {
     photo: mockPhoto,
     accessLevel: 'read,write',
     isPolling: false,
     apiBaseUrl: 'http://localhost:3001',
-    getSignedUrl: null,
+    getSignedUrl: mockGetSignedUrl,
     onSelect: vi.fn(),
     onEdit: vi.fn(),
     onApprove: vi.fn(),
@@ -439,7 +449,15 @@ describe('PhotoCard Component', () => {
         thumbnail: 'http://example.com/thumb.jpg'
       };
       
-      render(<PhotoCard {...defaultProps} photo={photoWithBoth} />);
+      // Use a smarter mock that returns absolute URLs as-is
+      const smartGetSignedUrl = vi.fn((photo) => {
+        const url = photo.thumbnail || photo.url;
+        // If URL is already absolute, return as-is (simulates signed URL behavior)
+        if (url?.startsWith('http')) return url;
+        return `http://localhost:3001${url}?signed=true`;
+      });
+      
+      render(<PhotoCard {...defaultProps} photo={photoWithBoth} getSignedUrl={smartGetSignedUrl} />);
       
       const img = screen.getByRole('img');
       expect(img).toHaveAttribute('src', 'http://example.com/thumb.jpg');
@@ -452,7 +470,15 @@ describe('PhotoCard Component', () => {
         thumbnail: null
       };
       
-      render(<PhotoCard {...defaultProps} photo={photoNoThumb} />);
+      // Use a smarter mock that returns absolute URLs as-is
+      const smartGetSignedUrl = vi.fn((photo) => {
+        const url = photo.thumbnail || photo.url;
+        // If URL is already absolute, return as-is
+        if (url?.startsWith('http')) return url;
+        return url ? `http://localhost:3001${url}?signed=true` : null;
+      });
+      
+      render(<PhotoCard {...defaultProps} photo={photoNoThumb} getSignedUrl={smartGetSignedUrl} />);
       
       const img = screen.getByRole('img');
       expect(img).toHaveAttribute('src', 'http://example.com/full.jpg');
