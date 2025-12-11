@@ -1,6 +1,6 @@
 const { createClient } = require('@supabase/supabase-js');
 const jwt = require('jsonwebtoken');
-const { getAllowedOrigins } = require('../config/allowedOrigins');
+const { resolveAllowedOrigin, isOriginAllowed } = require('../config/allowedOrigins');
 
 const SUPABASE_URL = process.env.SUPABASE_URL;
 const SUPABASE_ANON_KEY = process.env.SUPABASE_ANON_KEY;
@@ -34,11 +34,12 @@ const supabase = createClient(SUPABASE_URL, SUPABASE_ANON_KEY);
  * Query parameter authentication is NOT supported (security risk)
  */
 async function authenticateImageRequest(req, res, next) {
-  const allowedOrigins = getAllowedOrigins();
   const requestOrigin = req.get('Origin');
-  const originIsAllowed = !requestOrigin || allowedOrigins.includes(requestOrigin);
-  const fallbackOrigin = allowedOrigins.find(origin => /5173/.test(origin)) || allowedOrigins[0] || null;
-  const originToSet = requestOrigin || fallbackOrigin;
+  
+  // SECURITY: Use centralized origin resolution - never hardcode localhost:5173
+  // This ensures CORS headers match the incoming request origin when allowed
+  const originIsAllowed = isOriginAllowed(requestOrigin);
+  const resolvedOrigin = resolveAllowedOrigin(requestOrigin);
 
   // Always set CORP header for images to allow cross-origin loading
   res.header('Cross-Origin-Resource-Policy', 'cross-origin');
@@ -50,11 +51,11 @@ async function authenticateImageRequest(req, res, next) {
     });
   }
 
-  if (originToSet) {
-    res.header('Access-Control-Allow-Origin', originToSet);
-    if (requestOrigin) {
-      res.header('Vary', 'Origin');
-    }
+  // Only set Access-Control-Allow-Origin if we have an allowed origin
+  // This ensures we echo back the request origin (when allowed), not a hardcoded value
+  if (resolvedOrigin) {
+    res.header('Access-Control-Allow-Origin', resolvedOrigin);
+    res.header('Vary', 'Origin');
   }
 
   res.header('Access-Control-Allow-Credentials', 'true');

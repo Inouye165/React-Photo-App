@@ -99,6 +99,59 @@ function getAllowedOrigins() {
   return Array.from(origins);
 }
 
+/**
+ * Resolve an incoming request Origin against the allowlist.
+ * 
+ * Security behavior:
+ * - Returns the origin unchanged if it's explicitly in the allowlist
+ * - Returns null if the origin is not allowed (rejected)
+ * - Returns null for undefined/null origins (server-to-server requests)
+ *   Note: Server-to-server requests with no Origin are typically allowed
+ *   by the CORS middleware (via callback(null, origin) where origin is undefined),
+ *   but for manual header-setting we should not set any origin header.
+ * 
+ * Use this helper when manually setting Access-Control-Allow-Origin headers
+ * (e.g., in image serving routes) to ensure consistency with the main CORS policy.
+ * 
+ * @param {string|undefined} requestOrigin - The Origin header from the request
+ * @returns {string|null} The origin to use in Access-Control-Allow-Origin, or null if not allowed
+ */
+function resolveAllowedOrigin(requestOrigin) {
+  // No origin provided (server-to-server, curl, etc.)
+  // Don't set CORS header for these requests
+  if (!requestOrigin) {
+    return null;
+  }
+  
+  const allowedOrigins = getAllowedOrigins();
+  
+  // Only return the origin if it's explicitly in the allowlist
+  if (allowedOrigins.includes(requestOrigin)) {
+    return requestOrigin;
+  }
+  
+  // Origin not in allowlist - rejected
+  return null;
+}
+
+/**
+ * Check if an origin is allowed.
+ * 
+ * @param {string|undefined} requestOrigin - The Origin header from the request
+ * @returns {boolean} True if the origin is allowed or not provided
+ */
+function isOriginAllowed(requestOrigin) {
+  // No origin (server-to-server) is typically allowed
+  if (!requestOrigin) {
+    return true;
+  }
+  
+  const allowedOrigins = getAllowedOrigins();
+  return allowedOrigins.includes(requestOrigin);
+}
+
 module.exports = {
-  getAllowedOrigins
+  getAllowedOrigins,
+  resolveAllowedOrigin,
+  isOriginAllowed
 };
