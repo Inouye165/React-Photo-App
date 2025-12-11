@@ -90,15 +90,86 @@ export function isAbortError(error) {
   );
 }
 
+// Import supabase client for session access
+import { supabase } from './supabaseClient';
+
+// Module-level token cache to avoid repeated async getSession calls
+// This is updated by setAuthToken (called from AuthContext on session changes)
+let _cachedAccessToken = null;
+
 /**
- * Get headers for API requests.
- * SECURITY: Authentication is handled via httpOnly cookies (credentials: 'include').
- * Bearer tokens are no longer injected into headers to prevent token leakage.
+ * Set the current access token for API requests.
+ * Called by AuthContext when session changes.
+ * SECURITY: Token is stored in module closure, not exposed globally.
+ * @param {string|null} token - The Supabase access token or null on logout
  */
-export function getAuthHeaders() {
-  return {
-    'Content-Type': 'application/json',
-  };
+export function setAuthToken(token) {
+  _cachedAccessToken = token;
+}
+
+/**
+ * Get the current access token synchronously from cache.
+ * Returns null if no token is cached (user not logged in).
+ * @returns {string|null}
+ */
+export function getAccessToken() {
+  return _cachedAccessToken;
+}
+
+/**
+ * Get headers for API requests with Bearer token authentication.
+ * 
+ * SECURITY ARCHITECTURE (Bearer Token Auth):
+ * - Token is sourced from Supabase's managed session (no custom storage)
+ * - Token is attached to Authorization header as "Bearer <token>"
+ * - This approach is compatible with iOS/Mobile Safari (no cookie blocking)
+ * - Token is NEVER logged or included in error messages
+ * 
+ * @param {boolean} [includeContentType=true] - Whether to include Content-Type header
+ * @returns {Object} Headers object with Authorization (if authenticated) and optionally Content-Type
+ */
+export function getAuthHeaders(includeContentType = true) {
+  const headers = {};
+  
+  if (includeContentType) {
+    headers['Content-Type'] = 'application/json';
+  }
+  
+  // Attach Bearer token if available
+  if (_cachedAccessToken) {
+    headers['Authorization'] = `Bearer ${_cachedAccessToken}`;
+  }
+  
+  return headers;
+}
+
+/**
+ * Async version of getAuthHeaders that fetches fresh token from Supabase.
+ * Use this when you need guaranteed fresh token (rare cases like retry after 401).
+ * 
+ * @param {boolean} [includeContentType=true] - Whether to include Content-Type header
+ * @returns {Promise<Object>} Headers object
+ */
+export async function getAuthHeadersAsync(includeContentType = true) {
+  const headers = {};
+  
+  if (includeContentType) {
+    headers['Content-Type'] = 'application/json';
+  }
+  
+  try {
+    const { data: { session } } = await supabase.auth.getSession();
+    if (session?.access_token) {
+      headers['Authorization'] = `Bearer ${session.access_token}`;
+      // Update cache while we're at it
+      _cachedAccessToken = session.access_token;
+    }
+  } catch {
+    // Supabase client may not be initialized (e.g., missing env vars)
+    // Fall through without token - server will return 401
+  }
+  
+  return headers;
 }
 
 function handleAuthError(response) {
@@ -235,8 +306,11 @@ const stateUpdateLimiter = createLimiter(2);
 export function getApiMetrics() { try { return JSON.parse(JSON.stringify(apiMetrics)); } catch { return { totals: { calls: 0 }, limiters: {} }; } }
 
 /**
- * Fetch a protected resource (image) using credentials and return a blob URL.
+ * Fetch a protected resource (image) using Bearer token authentication and return a blob URL.
  * Caller is responsible for revoking the returned URL when no longer needed.
+ * 
+ * SECURITY: Uses Bearer token in Authorization header for iOS/Mobile Safari compatibility.
+ * This replaces the previous cookie-based auth approach that was blocked by ITP.
  * 
  * Note: ERR_CACHE_READ_FAILURE is now prevented architecturally:
  * - Server uses ID-based URLs (/display/image/:id) instead of filename-based
@@ -246,27 +320,33 @@ export function getApiMetrics() { try { return JSON.parse(JSON.stringify(apiMetr
  * Retry logic is kept as a safety net for any remaining edge cases.
  * 
  * @param {string} url - Full URL to fetch (absolute or relative)
+ * @param {Object} [options] - Options object
+ * @param {AbortSignal} [options.signal] - AbortController signal for cancellation
  * @returns {Promise<string>} - Object URL (URL.createObjectURL(blob))
  */
-export async function fetchProtectedBlobUrl(url) {
+export async function fetchProtectedBlobUrl(url, options = {}) {
   // If URL is already a blob URL, return it as is
   if (url.startsWith('blob:')) return url;
 
   // Instrumentation: log only once per session for hard failures
   if (!window.__imageCacheErrorLogged) window.__imageCacheErrorLogged = new Set();
 
-  // Accept AbortController signal
-  let signal;
-  if (arguments.length > 1 && arguments[1] && typeof arguments[1] === 'object') {
+  // Accept AbortController signal from options or legacy second argument
+  let signal = options?.signal;
+  if (!signal && arguments.length > 1 && arguments[1] && typeof arguments[1] === 'object') {
     signal = arguments[1].signal;
   }
 
   const doFetch = async (bypassCache = false) => {
-    const headers = { ...getAuthHeaders() };
+    // Get auth headers with Bearer token (without Content-Type for blob requests)
+    const headers = getAuthHeaders(false);
     if (bypassCache) {
       headers['Cache-Control'] = 'no-cache';
       headers['Pragma'] = 'no-cache';
     }
+    
+    // Note: credentials: 'include' is kept for backward compatibility during transition
+    // but Authorization header is now the primary auth mechanism
     return fetchWithNetworkFallback(url, {
       headers,
       credentials: 'include',

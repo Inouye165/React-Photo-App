@@ -53,51 +53,134 @@ import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest';
 import * as api from './api';
 
 /**
- * Tests for httpOnly cookie-based authentication
+ * Tests for Bearer Token Authentication
  * 
  * SECURITY: This test suite verifies that:
- * 1. getAuthHeaders() does NOT include Bearer tokens (cookies handle auth)
- * 2. All API calls include credentials: 'include' for cookie transmission
- * 3. No token leakage via Authorization headers
+ * 1. getAuthHeaders() correctly includes Bearer tokens when authenticated
+ * 2. getAuthHeaders() does NOT include tokens when logged out
+ * 3. Tokens are NEVER logged or included in error messages
+ * 4. fetchProtectedBlobUrl sends Authorization header for images
  */
-describe('api.js - Cookie-Based Authentication Security', () => {
+describe('api.js - Bearer Token Authentication Security', () => {
   beforeEach(() => {
     vi.restoreAllMocks();
+    // Clear token cache before each test
+    api.setAuthToken(null);
   });
 
   afterEach(() => {
     vi.restoreAllMocks();
+    api.setAuthToken(null);
   });
 
-  describe('getAuthHeaders - No Bearer Token Injection', () => {
-    it('should NOT include Authorization header', () => {
+  describe('getAuthHeaders - Bearer Token Injection', () => {
+    it('should include Authorization header when token is set', () => {
+      const testToken = 'test-jwt-token-12345';
+      api.setAuthToken(testToken);
+      
       const headers = api.getAuthHeaders();
       
-      // CRITICAL SECURITY CHECK: No Bearer token should be present
-      expect(headers['Authorization']).toBeUndefined();
-      expect(headers['authorization']).toBeUndefined();
+      // CRITICAL SECURITY CHECK: Bearer token should be present
+      expect(headers['Authorization']).toBe(`Bearer ${testToken}`);
+      expect(headers['Content-Type']).toBe('application/json');
     });
 
-    it('should only include Content-Type header', () => {
+    it('should NOT include Authorization header when logged out', () => {
+      api.setAuthToken(null);
+      
       const headers = api.getAuthHeaders();
       
-      // Should only have Content-Type
+      // No Bearer token should be present when logged out
+      expect(headers['Authorization']).toBeUndefined();
+      expect(headers['Content-Type']).toBe('application/json');
+    });
+
+    it('should return only Content-Type when no token (for public endpoints)', () => {
+      api.setAuthToken(null);
+      
+      const headers = api.getAuthHeaders();
+      
       expect(Object.keys(headers)).toEqual(['Content-Type']);
       expect(headers['Content-Type']).toBe('application/json');
     });
 
+    it('should allow excluding Content-Type header', () => {
+      const testToken = 'test-jwt-token';
+      api.setAuthToken(testToken);
+      
+      const headers = api.getAuthHeaders(false);
+      
+      expect(headers['Authorization']).toBe(`Bearer ${testToken}`);
+      expect(headers['Content-Type']).toBeUndefined();
+    });
+
     it('should return consistent headers without side effects', () => {
+      const testToken = 'consistent-token';
+      api.setAuthToken(testToken);
+      
       const headers1 = api.getAuthHeaders();
       const headers2 = api.getAuthHeaders();
       
       expect(headers1).toEqual(headers2);
-      expect(headers1['Authorization']).toBeUndefined();
-      expect(headers2['Authorization']).toBeUndefined();
+      expect(headers1['Authorization']).toBe(`Bearer ${testToken}`);
+      expect(headers2['Authorization']).toBe(`Bearer ${testToken}`);
+    });
+
+    it('should update token when setAuthToken is called', () => {
+      api.setAuthToken('token-1');
+      expect(api.getAuthHeaders()['Authorization']).toBe('Bearer token-1');
+      
+      api.setAuthToken('token-2');
+      expect(api.getAuthHeaders()['Authorization']).toBe('Bearer token-2');
+      
+      api.setAuthToken(null);
+      expect(api.getAuthHeaders()['Authorization']).toBeUndefined();
     });
   });
 
-  describe('Fetch calls include credentials', () => {
-    it('updatePhotoState should include credentials: include', async () => {
+  describe('getAccessToken - Token Retrieval', () => {
+    it('should return cached token when set', () => {
+      const testToken = 'cached-token';
+      api.setAuthToken(testToken);
+      
+      expect(api.getAccessToken()).toBe(testToken);
+    });
+
+    it('should return null when no token is set', () => {
+      api.setAuthToken(null);
+      
+      expect(api.getAccessToken()).toBeNull();
+    });
+  });
+
+  describe('Token Security - No Leakage', () => {
+    it('should NOT log token to console on setAuthToken', () => {
+      const consoleSpy = vi.spyOn(console, 'log');
+      const consoleDebugSpy = vi.spyOn(console, 'debug');
+      const consoleWarnSpy = vi.spyOn(console, 'warn');
+      
+      const sensitiveToken = 'super-secret-jwt-token';
+      api.setAuthToken(sensitiveToken);
+      
+      // Check no console output contains the token
+      const allCalls = [
+        ...consoleSpy.mock.calls,
+        ...consoleDebugSpy.mock.calls,
+        ...consoleWarnSpy.mock.calls
+      ];
+      
+      for (const call of allCalls) {
+        const stringified = JSON.stringify(call);
+        expect(stringified).not.toContain(sensitiveToken);
+      }
+    });
+  });
+
+  describe('Fetch calls include Authorization header', () => {
+    it('updatePhotoState should include Authorization header when authenticated', async () => {
+      const testToken = 'test-bearer-token';
+      api.setAuthToken(testToken);
+      
       const fetchSpy = vi.fn().mockResolvedValue({
         ok: true,
         status: 200,
@@ -109,13 +192,13 @@ describe('api.js - Cookie-Based Authentication Security', () => {
 
       expect(fetchSpy).toHaveBeenCalled();
       const fetchCall = fetchSpy.mock.calls[0];
-      expect(fetchCall[1].credentials).toBe('include');
-      
-      // Also verify no Authorization header
-      expect(fetchCall[1].headers['Authorization']).toBeUndefined();
+      expect(fetchCall[1].headers['Authorization']).toBe(`Bearer ${testToken}`);
     });
 
-    it('getPhotos should include credentials: include', async () => {
+    it('getPhotos should include Authorization header when authenticated', async () => {
+      const testToken = 'photos-token';
+      api.setAuthToken(testToken);
+      
       // Clear cache to ensure fresh fetch
       if (globalThis.__getPhotosInflight) {
         globalThis.__getPhotosInflight.clear();
@@ -132,10 +215,13 @@ describe('api.js - Cookie-Based Authentication Security', () => {
 
       expect(fetchSpy).toHaveBeenCalled();
       const fetchCall = fetchSpy.mock.calls[0];
-      expect(fetchCall[1].credentials).toBe('include');
+      expect(fetchCall[1].headers['Authorization']).toBe(`Bearer ${testToken}`);
     });
 
-    it('deletePhoto should include credentials: include', async () => {
+    it('deletePhoto should include Authorization header when authenticated', async () => {
+      const testToken = 'delete-token';
+      api.setAuthToken(testToken);
+      
       const fetchSpy = vi.fn().mockResolvedValue({
         ok: true,
         status: 200,
@@ -147,10 +233,13 @@ describe('api.js - Cookie-Based Authentication Security', () => {
 
       expect(fetchSpy).toHaveBeenCalled();
       const fetchCall = fetchSpy.mock.calls[0];
-      expect(fetchCall[1].credentials).toBe('include');
+      expect(fetchCall[1].headers['Authorization']).toBe(`Bearer ${testToken}`);
     });
 
-    it('uploadPhotoToServer should include credentials: include', async () => {
+    it('uploadPhotoToServer should include Authorization header when authenticated', async () => {
+      const testToken = 'upload-token';
+      api.setAuthToken(testToken);
+      
       const fetchSpy = vi.fn().mockResolvedValue({
         ok: true,
         status: 200,
@@ -163,10 +252,15 @@ describe('api.js - Cookie-Based Authentication Security', () => {
 
       expect(fetchSpy).toHaveBeenCalled();
       const fetchCall = fetchSpy.mock.calls[0];
-      expect(fetchCall[1].credentials).toBe('include');
+      expect(fetchCall[1].headers['Authorization']).toBe(`Bearer ${testToken}`);
     });
+  });
 
-    it('fetchProtectedBlobUrl should include credentials: include', async () => {
+  describe('fetchProtectedBlobUrl - Bearer Token for Images', () => {
+    it('should include Authorization header for image requests', async () => {
+      const testToken = 'image-bearer-token';
+      api.setAuthToken(testToken);
+      
       const mockBlob = new Blob(['test'], { type: 'image/jpeg' });
       const fetchSpy = vi.fn().mockResolvedValue({
         ok: true,
@@ -179,6 +273,70 @@ describe('api.js - Cookie-Based Authentication Security', () => {
 
       expect(fetchSpy).toHaveBeenCalled();
       const fetchCall = fetchSpy.mock.calls[0];
+      expect(fetchCall[1].headers['Authorization']).toBe(`Bearer ${testToken}`);
+    });
+
+    it('should NOT include Content-Type header for blob requests', async () => {
+      const testToken = 'blob-token';
+      api.setAuthToken(testToken);
+      
+      const mockBlob = new Blob(['test'], { type: 'image/jpeg' });
+      const fetchSpy = vi.fn().mockResolvedValue({
+        ok: true,
+        status: 200,
+        blob: async () => mockBlob
+      });
+      global.fetch = fetchSpy;
+
+      await api.fetchProtectedBlobUrl('http://example.com/image.jpg');
+
+      const fetchCall = fetchSpy.mock.calls[0];
+      // Content-Type should NOT be set for blob requests (browser handles it)
+      expect(fetchCall[1].headers['Content-Type']).toBeUndefined();
+    });
+
+    it('should handle 401 gracefully for image requests', async () => {
+      const testToken = 'expired-token';
+      api.setAuthToken(testToken);
+      
+      const dispatchEventSpy = vi.spyOn(window, 'dispatchEvent');
+      const fetchSpy = vi.fn().mockResolvedValue({
+        ok: false,
+        status: 401,
+        blob: async () => { throw new Error('401'); }
+      });
+      global.fetch = fetchSpy;
+
+      // fetchProtectedBlobUrl should throw on 401
+      await expect(api.fetchProtectedBlobUrl('http://example.com/image.jpg'))
+        .rejects.toThrow();
+      
+      dispatchEventSpy.mockRestore();
+    });
+
+    it('should return blob URL as-is if already a blob URL', async () => {
+      const blobUrl = 'blob:http://example.com/12345';
+      
+      const result = await api.fetchProtectedBlobUrl(blobUrl);
+      
+      expect(result).toBe(blobUrl);
+    });
+
+    it('should include credentials for backward compatibility during transition', async () => {
+      api.setAuthToken('test-token');
+      
+      const mockBlob = new Blob(['test'], { type: 'image/jpeg' });
+      const fetchSpy = vi.fn().mockResolvedValue({
+        ok: true,
+        status: 200,
+        blob: async () => mockBlob
+      });
+      global.fetch = fetchSpy;
+
+      await api.fetchProtectedBlobUrl('http://example.com/image.jpg');
+
+      const fetchCall = fetchSpy.mock.calls[0];
+      // credentials: 'include' is kept for backward compatibility
       expect(fetchCall[1].credentials).toBe('include');
     });
   });

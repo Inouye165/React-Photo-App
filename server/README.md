@@ -97,6 +97,8 @@ This project uses **BullMQ** and **Redis** to process long-running tasks asynchr
 
 ## 🔐 Security
 
+> **Update (December 2025):** Authentication has been migrated from cookie-based to **Bearer token authentication**. The backend now prioritizes `Authorization: Bearer <token>` header over cookies. This improves iOS/Mobile Safari compatibility and aligns with modern API patterns. Cookie-based auth is deprecated but still works as a fallback.
+
 - **Helmet**: Sets secure HTTP headers (CSP, HSTS, etc.).
 - **Rate Limiting**: Protects against brute-force attacks.
 - **Log Redaction**: Automatically masks sensitive data (tokens, keys) in logs.

@@ -14,16 +14,18 @@ if (!SUPABASE_URL || !SUPABASE_ANON_KEY) {
 const supabase = createClient(SUPABASE_URL, SUPABASE_ANON_KEY);
 
 // Rate limiting for authentication endpoints
-// More strict than general API to prevent brute force attacks
+// Strict limit to prevent brute force attacks on login/session endpoints
+// In test environment, use higher limit to avoid test interference
+const isTestEnv = process.env.NODE_ENV === 'test';
 const authLimiter = rateLimit({
   windowMs: 15 * 60 * 1000, // 15 minutes
-  max: 50, // Limit each IP to 50 auth requests per window
+  max: isTestEnv ? 1000 : 10, // 10 in production, higher in tests to avoid interference
   message: {
     success: false,
-    error: 'Too many authentication attempts, please try again later.'
+    error: 'Too many login attempts, please try again later.'
   },
-  standardHeaders: true,
-  legacyHeaders: false,
+  standardHeaders: true, // Return rate limit info in `RateLimit-*` headers
+  legacyHeaders: false, // Disable `X-RateLimit-*` headers
 });
 
 /**

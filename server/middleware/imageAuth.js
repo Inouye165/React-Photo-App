@@ -18,11 +18,20 @@ const supabase = createClient(SUPABASE_URL, SUPABASE_ANON_KEY);
 
 /**
  * Middleware to authenticate image requests
- * Checks for token in Authorization header OR httpOnly cookie
- * Sets CORS headers for cross-origin image requests
  * 
- * Security: Query parameter authentication is deprecated to prevent
- * token leakage via browser history, proxy logs, and referer headers
+ * SECURITY ARCHITECTURE (Bearer Token Auth - Primary):
+ * - Token is read from Authorization header as "Bearer <token>" (PRIMARY)
+ * - This is the recommended approach for:
+ *   - iOS/Mobile Safari compatibility (no ITP cookie blocking)
+ *   - Modern stateless API patterns
+ *   - Cross-origin deployments (frontend on Vercel, backend on Railway)
+ * 
+ * DEPRECATED: Cookie-based auth (fallback during transition)
+ * - httpOnly cookie is checked as FALLBACK only
+ * - Will be removed in a future version
+ * - New clients should use Bearer token auth exclusively via fetchProtectedBlobUrl
+ * 
+ * Query parameter authentication is NOT supported (security risk)
  */
 async function authenticateImageRequest(req, res, next) {
   const allowedOrigins = getAllowedOrigins();
@@ -58,19 +67,28 @@ async function authenticateImageRequest(req, res, next) {
   }
 
   let token = null;
+  let authSource = null;
 
-  // 1. Check Authorization header
+  // 1. PRIMARY: Check Authorization header (Bearer token)
+  // This is the recommended approach for modern clients
   const authHeader = req.headers['authorization'];
   if (authHeader && authHeader.startsWith('Bearer ')) {
-    token = authHeader.split(' ')[1];
+    token = authHeader.slice(7); // Remove 'Bearer ' prefix
+    authSource = 'bearer';
   }
 
-  // 2. Check httpOnly cookie (secure method for <img> tags)
+  // 2. DEPRECATED FALLBACK: Check httpOnly cookie (legacy support)
+  // This will be removed in a future version
   if (!token && req.cookies && req.cookies.authToken) {
     token = req.cookies.authToken;
+    authSource = 'cookie';
+    // Log deprecation warning in development (not in production to avoid log spam)
+    if (process.env.NODE_ENV !== 'production' && process.env.NODE_ENV !== 'test') {
+      console.debug('[imageAuth] Cookie-based auth is deprecated. Please use Authorization: Bearer <token> header.');
+    }
   }
 
-  // SECURITY: Query parameter authentication is deprecated and blocked
+  // SECURITY: Query parameter authentication is NOT supported
   // to prevent token leakage via browser history, logs, and referer headers
   if (!token) {
     return res.status(401).json({ 
@@ -85,6 +103,7 @@ async function authenticateImageRequest(req, res, next) {
       try {
         const decoded = jwt.verify(token, JWT_SECRET);
         req.user = { id: decoded.sub, ...decoded }; // Map standard claims
+        req.authSource = authSource;
         return next();
       } catch {
         // Token might be a Supabase session token not signed by our JWT_SECRET
@@ -100,9 +119,11 @@ async function authenticateImageRequest(req, res, next) {
     }
 
     req.user = user;
+    req.authSource = authSource;
     next();
   } catch (err) {
-    console.error('Image auth error:', err);
+    // SECURITY: Never log the actual token or include it in error responses
+    console.error('Image auth error:', err.message);
     return res.status(403).json({ success: false, error: 'Invalid token' });
   }
 }

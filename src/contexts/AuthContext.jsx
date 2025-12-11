@@ -2,6 +2,7 @@ import { createContext, useContext, useState, useEffect, useRef } from 'react';
 import { supabase } from '../supabaseClient';
 import useStore from '../store.js';
 import { API_BASE_URL } from '../config/apiConfig.js';
+import { setAuthToken } from '../api.js';
 
 const AuthContext = createContext();
 
@@ -14,12 +15,15 @@ export const useAuth = () => {
 
 /**
  * Fetch user preferences from the backend
+ * Now uses Bearer token auth via getAuthHeaders() in api.js
  */
 async function fetchPreferences() {
   try {
+    // Import dynamically to avoid circular dependency
+    const { getAuthHeaders } = await import('../api.js');
     const response = await fetch(`${API_BASE_URL}/api/users/me/preferences`, {
       method: 'GET',
-      credentials: 'include'
+      headers: getAuthHeaders()
     });
     if (response.ok) {
       const data = await response.json();
@@ -37,10 +41,10 @@ async function fetchPreferences() {
  */
 async function patchPreferences(newPrefs) {
   try {
+    const { getAuthHeaders } = await import('../api.js');
     const response = await fetch(`${API_BASE_URL}/api/users/me/preferences`, {
       method: 'PATCH',
-      headers: { 'Content-Type': 'application/json' },
-      credentials: 'include',
+      headers: getAuthHeaders(),
       body: JSON.stringify(newPrefs)
     });
     if (response.ok) {
@@ -59,10 +63,10 @@ async function patchPreferences(newPrefs) {
  */
 async function loadDefaultPreferences(categories = null) {
   try {
+    const { getAuthHeaders } = await import('../api.js');
     const response = await fetch(`${API_BASE_URL}/api/users/me/preferences/load-defaults`, {
       method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      credentials: 'include',
+      headers: getAuthHeaders(),
       body: JSON.stringify({ categories })
     });
     if (response.ok) {
@@ -77,25 +81,15 @@ async function loadDefaultPreferences(categories = null) {
 }
 
 /**
- * Sync the Supabase session token to the backend as an httpOnly cookie.
- * This is required for cookie-based authentication on all API calls.
+ * @deprecated Cookie sync is deprecated in favor of Bearer token auth.
+ * This function is kept for backward compatibility during transition.
+ * It will be removed in a future version.
  */
-async function syncSessionCookie(accessToken) {
+async function _syncSessionCookie(accessToken) {
   if (!accessToken) return false;
-  try {
-    const response = await fetch(`${API_BASE_URL}/api/auth/session`, {
-      method: 'POST',
-      headers: {
-        'Authorization': `Bearer ${accessToken}`,
-        'Content-Type': 'application/json'
-      },
-      credentials: 'include'
-    });
-    return response.ok;
-  } catch (err) {
-    console.warn('Failed to sync session cookie:', err);
-    return false;
-  }
+  // In Bearer token mode, we just update the token cache instead of syncing cookies
+  setAuthToken(accessToken);
+  return true;
 }
 
 /**
@@ -137,8 +131,9 @@ export const AuthProvider = ({ children }) => {
   const [user, setUser] = useState(null);
   const [session, setSession] = useState(null);
   const [loading, setLoading] = useState(true);
-  // Track if cookie is ready - app should not make API calls until this is true
-  const [cookieReady, setCookieReady] = useState(false);
+  // authReady tracks if auth state is initialized and token is set in api.js
+  // Replaces the deprecated cookieReady state
+  const [authReady, setAuthReady] = useState(false);
   // User preferences (grading scales for collectibles)
   const [preferences, setPreferences] = useState({ gradingScales: {} });
   // Track if a login is in progress to prevent onAuthStateChange from racing
@@ -146,12 +141,12 @@ export const AuthProvider = ({ children }) => {
   // Track if we're in E2E test mode
   const isE2ERef = useRef(false);
 
-  // Fetch preferences when cookie becomes ready
+  // Fetch preferences when auth becomes ready
   useEffect(() => {
-    if (cookieReady && user) {
+    if (authReady && user) {
       fetchPreferences().then(setPreferences);
     }
-  }, [cookieReady, user]);
+  }, [authReady, user]);
 
   useEffect(() => {
     const isE2E = import.meta.env.VITE_E2E === 'true' || window.__E2E_MODE__ === true;
@@ -162,7 +157,8 @@ export const AuthProvider = ({ children }) => {
           if (e2eUser) {
             // E2E test mode - bypass Supabase auth
             isE2ERef.current = true;
-            setCookieReady(true);
+            setAuthToken('e2e-test-token');
+            setAuthReady(true);
             setUser(e2eUser);
             setSession({ user: e2eUser, access_token: 'e2e-test-token' });
             setLoading(false);
@@ -180,9 +176,9 @@ export const AuthProvider = ({ children }) => {
     supabase.auth.getSession()
       .then(async ({ data: { session } }) => {
         if (session?.access_token) {
-          // Sync cookie BEFORE setting state to prevent race conditions
-          await syncSessionCookie(session.access_token);
-          setCookieReady(true);
+          // Set token in api.js for Bearer auth
+          setAuthToken(session.access_token);
+          setAuthReady(true);
         }
         setSession(session);
         setUser(session?.user ?? null);
@@ -217,10 +213,11 @@ export const AuthProvider = ({ children }) => {
         // Clear local state
         setSession(null);
         setUser(null);
-        setCookieReady(false);
+        setAuthToken(null);
+        setAuthReady(false);
         // Clear photo store to prevent stale data fetches
         useStore.getState().setPhotos([]);
-        // Clear httpOnly cookie
+        // Attempt to clear legacy cookie (best effort, will be removed in future)
         try {
           await fetch(`${API_BASE_URL}/api/auth/logout`, {
             method: 'POST',
@@ -232,11 +229,12 @@ export const AuthProvider = ({ children }) => {
         return;
       }
       if (session?.access_token) {
-        // Sync cookie before updating state
-        await syncSessionCookie(session.access_token);
-        setCookieReady(true);
+        // Update token in api.js for Bearer auth
+        setAuthToken(session.access_token);
+        setAuthReady(true);
       } else {
-        setCookieReady(false);
+        setAuthToken(null);
+        setAuthReady(false);
       }
       setSession(session);
       setUser(session?.user ?? null);
@@ -256,14 +254,11 @@ export const AuthProvider = ({ children }) => {
 
       if (error) throw error;
 
-      // Set httpOnly cookie BEFORE updating state
-      // This ensures API calls made after login have the cookie ready
+      // Set Bearer token in api.js BEFORE updating state
+      // This ensures API calls made after login have the token ready
       if (data.session?.access_token) {
-        const cookieSet = await syncSessionCookie(data.session.access_token);
-        if (!cookieSet) {
-          console.warn('Cookie sync failed during login, API calls may fail');
-        }
-        setCookieReady(cookieSet);
+        setAuthToken(data.session.access_token);
+        setAuthReady(true);
       }
       
       // NOW update state - this triggers re-renders and API calls
@@ -297,10 +292,10 @@ export const AuthProvider = ({ children }) => {
 
       if (error) throw error;
 
-      // Set httpOnly cookie BEFORE updating state
+      // Set Bearer token in api.js BEFORE updating state
       if (data.session?.access_token) {
-        const cookieSet = await syncSessionCookie(data.session.access_token);
-        setCookieReady(cookieSet);
+        setAuthToken(data.session.access_token);
+        setAuthReady(true);
       }
       
       setSession(data.session);
@@ -365,9 +360,9 @@ export const AuthProvider = ({ children }) => {
       const { data, error } = await supabase.auth.updateUser({ password: newPassword });
       if (error) throw error;
       
-      // Sync cookie just in case
+      // Update token if session was refreshed
       if (data.session?.access_token) {
-         await syncSessionCookie(data.session.access_token);
+        setAuthToken(data.session.access_token);
       }
       return { success: true };
     } catch (err) {
@@ -378,14 +373,20 @@ export const AuthProvider = ({ children }) => {
 
   const logout = async () => {
     try {
-      // Clear httpOnly cookie
+      // Clear Bearer token from api.js
+      setAuthToken(null);
+      
+      // Clear legacy httpOnly cookie (best effort, will be removed in future)
       try {
         await fetch(`${API_BASE_URL}/api/auth/logout`, {
           method: 'POST',
           credentials: 'include'
         });
       } catch (cookieError) {
-        console.warn('Failed to clear auth cookie:', cookieError);
+        // Silently fail - cookie may already be cleared or not used
+        if (import.meta.env.DEV) {
+          console.debug('Legacy cookie clear failed (expected if not using cookies):', cookieError);
+        }
       }
 
       // Sign out from Supabase
@@ -393,7 +394,7 @@ export const AuthProvider = ({ children }) => {
       if (error) throw error;
       setUser(null);
       setSession(null);
-      setCookieReady(false);
+      setAuthReady(false);
       setPreferences({ gradingScales: {} });
       // Clear photo store to prevent stale data
       useStore.getState().setPhotos([]);
@@ -445,7 +446,9 @@ export const AuthProvider = ({ children }) => {
     user,
     session,
     loading,
-    cookieReady, // Expose so components can check if API calls are safe
+    authReady, // Expose so components can check if API calls are safe
+    // Deprecated: cookieReady is an alias for authReady for backward compatibility
+    cookieReady: authReady,
     preferences,
     updatePreferences,
     loadDefaultScales,
