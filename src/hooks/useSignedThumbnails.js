@@ -227,23 +227,30 @@ export default function useSignedThumbnails(photos, token) {
   /**
    * Helper function to get signed URL for a photo
    * Returns full URL with API base if signed URL is available,
-   * otherwise returns original thumbnail path as fallback
+   * otherwise returns null to indicate the URL requires authenticated fetch
+   * 
+   * IMPORTANT: After Bearer token migration, fallback URLs that previously
+   * relied on cookie auth now return null. Components should use
+   * AuthenticatedImage component or fetchProtectedBlobUrl for these cases.
    * 
    * @param {Object} photo - Photo object with id, thumbnail, and url properties
    * @param {string} type - 'thumbnail' (default) or 'full' for full-size image
+   * @returns {string|null} - Signed URL, absolute URL, data URI, or null if auth required
    */
   const getSignedUrl = useCallback((photo, type = 'thumbnail') => {
     if (!photo || !photo.id) {
       return null;
     }
 
-    // For full-size images, return the photo.url directly (authenticated via cookie)
+    // For full-size images, check if URL is already public/absolute
     if (type === 'full' && photo.url) {
-      // If URL is already absolute or a data URI, return as is
+      // If URL is already absolute (external) or a data URI, return as is
       if (photo.url.startsWith('http') || photo.url.startsWith('data:')) {
         return photo.url;
       }
-      return `${API_BASE_URL}${photo.url}`;
+      // Server-relative URLs require auth - return null to signal need for AuthenticatedImage
+      // The component should use fetchProtectedBlobUrl for these
+      return null;
     }
 
     // For thumbnails, require the thumbnail property
@@ -253,12 +260,13 @@ export default function useSignedThumbnails(photos, token) {
 
     const signed = signedUrls[photo.id];
     if (signed && signed.url) {
-      // Return full URL with API base
+      // Return full URL with API base - signed URLs don't need additional auth
       return `${API_BASE_URL}${signed.url}`;
     }
 
-    // Fallback to original thumbnail path (will use cookie auth)
-    return `${API_BASE_URL}${photo.thumbnail}`;
+    // No signed URL available yet - return null to signal need for authenticated fetch
+    // Components should either wait for signed URL or use AuthenticatedImage
+    return null;
   }, [signedUrls]);
 
   return {

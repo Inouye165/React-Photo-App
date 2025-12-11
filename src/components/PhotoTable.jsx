@@ -1,6 +1,7 @@
 import React from 'react';
 import formatFileSize from '../utils/formatFileSize.js';
 import { toUrl } from '../utils/toUrl.js';
+import AuthenticatedImage from './AuthenticatedImage.jsx';
 
 export default function PhotoTable({
   photos,
@@ -51,11 +52,25 @@ export default function PhotoTable({
               <div className="col-span-2">
                 <div className="relative inline-block">
                   {photo.thumbnail ? (
-                    <img
-                      src={getSignedUrl ? getSignedUrl(photo) : toUrl(photo.thumbnail, apiBaseUrl)}
-                      alt={photo.filename}
-                      className="max-h-20 rounded shadow bg-white"
-                    />
+                    (() => {
+                      const signedUrl = getSignedUrl ? getSignedUrl(photo) : null;
+                      const imageUrl = signedUrl || toUrl(photo.thumbnail, apiBaseUrl);
+                      const needsAuth = !signedUrl;
+                      
+                      return needsAuth ? (
+                        <AuthenticatedImage
+                          src={imageUrl}
+                          alt={photo.filename}
+                          className="max-h-20 rounded shadow bg-white"
+                        />
+                      ) : (
+                        <img
+                          src={imageUrl}
+                          alt={photo.filename}
+                          className="max-h-20 rounded shadow bg-white"
+                        />
+                      );
+                    })()
                   ) : (
                     <div className="w-20 h-20 flex items-center justify-center bg-gray-200 text-gray-400 rounded shadow">
                       No Thumb

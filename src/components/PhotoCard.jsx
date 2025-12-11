@@ -2,6 +2,7 @@ import React, { useState } from 'react';
 import { Pencil, CheckCircle, Trash2, Calendar, HardDrive, Lock, Image as ImageIcon } from 'lucide-react';
 import formatFileSize from '../utils/formatFileSize.js';
 import { toUrl } from '../utils/toUrl.js';
+import AuthenticatedImage from './AuthenticatedImage.jsx';
 
 /**
  * Generates a human-readable title from photo data.
@@ -101,17 +102,31 @@ export default function PhotoCard({
   // Get image URL - prefer thumbnail for performance, fallback to full image
   // Thumbnails are much smaller and faster to load. Full image is only used if no thumbnail exists.
   // If thumbnail fails to load (race condition or error), we fallback to full image via useThumbnail state.
+  // 
+  // Returns { url, needsAuth } where:
+  // - url: The image URL to load
+  // - needsAuth: true if the URL requires Bearer token auth (use AuthenticatedImage)
   const getImageUrl = () => {
     if (photo.thumbnail && useThumbnail) {
-      return getSignedUrl ? getSignedUrl(photo) : toUrl(photo.thumbnail, apiBaseUrl);
+      const signedUrl = getSignedUrl ? getSignedUrl(photo) : null;
+      if (signedUrl) {
+        return { url: signedUrl, needsAuth: false };
+      }
+      // No signed URL - need authenticated fetch
+      return { url: toUrl(photo.thumbnail, apiBaseUrl), needsAuth: true };
     }
     if (photo.url) {
-      return getSignedUrl ? getSignedUrl(photo, 'full') : toUrl(photo.url, apiBaseUrl);
+      const signedUrl = getSignedUrl ? getSignedUrl(photo, 'full') : null;
+      if (signedUrl) {
+        return { url: signedUrl, needsAuth: false };
+      }
+      // No signed URL - need authenticated fetch
+      return { url: toUrl(photo.url, apiBaseUrl), needsAuth: true };
     }
-    return null;
+    return { url: null, needsAuth: false };
   };
 
-  const imageUrl = getImageUrl();
+  const { url: imageUrl, needsAuth } = getImageUrl();
 
   const handleEdit = (e) => {
     e.stopPropagation();
@@ -150,25 +165,47 @@ export default function PhotoCard({
           <div className="absolute inset-0 bg-slate-200 animate-pulse" data-testid="photo-card-skeleton" />
         )}
         
-        {/* Actual Image */}
+        {/* Actual Image - use AuthenticatedImage when Bearer auth is required */}
         {imageUrl && !imageError ? (
-          <img
-            src={imageUrl}
-            alt={photo.caption || photo.filename || 'Photo thumbnail'}
-            className={`w-full h-full object-cover transition-opacity duration-300 ${imageLoaded ? 'opacity-100' : 'opacity-0'}`}
-            onLoad={() => setImageLoaded(true)}
-            onError={() => {
-              // If thumbnail failed, try falling back to full image
-              if (useThumbnail && photo.thumbnail && photo.url) {
-                setUseThumbnail(false);
-                setImageLoaded(false); // Reset loaded state for the new image
-                setImageError(false);  // Reset error state
-              } else {
-                setImageError(true);
+          needsAuth ? (
+            <AuthenticatedImage
+              src={imageUrl}
+              alt={photo.caption || photo.filename || 'Photo thumbnail'}
+              className={`w-full h-full object-cover transition-opacity duration-300 ${imageLoaded ? 'opacity-100' : 'opacity-0'}`}
+              onLoad={() => setImageLoaded(true)}
+              onError={() => {
+                // If thumbnail failed, try falling back to full image
+                if (useThumbnail && photo.thumbnail && photo.url) {
+                  setUseThumbnail(false);
+                  setImageLoaded(false);
+                  setImageError(false);
+                } else {
+                  setImageError(true);
+                }
+              }}
+              loadingPlaceholder={
+                <div className="absolute inset-0 bg-slate-200 animate-pulse" />
               }
-            }}
-            loading="lazy"
-          />
+            />
+          ) : (
+            <img
+              src={imageUrl}
+              alt={photo.caption || photo.filename || 'Photo thumbnail'}
+              className={`w-full h-full object-cover transition-opacity duration-300 ${imageLoaded ? 'opacity-100' : 'opacity-0'}`}
+              onLoad={() => setImageLoaded(true)}
+              onError={() => {
+                // If thumbnail failed, try falling back to full image
+                if (useThumbnail && photo.thumbnail && photo.url) {
+                  setUseThumbnail(false);
+                  setImageLoaded(false);
+                  setImageError(false);
+                } else {
+                  setImageError(true);
+                }
+              }}
+              loading="lazy"
+            />
+          )
         ) : (
           /* Fallback Placeholder */
           <div className="absolute inset-0 flex flex-col items-center justify-center bg-slate-100 text-slate-400">
