@@ -35,7 +35,7 @@ const supabase = createClient(SUPABASE_URL, SUPABASE_ANON_KEY);
  */
 async function authenticateImageRequest(req, res, next) {
   const requestOrigin = req.get('Origin');
-  
+
   // SECURITY: Use centralized origin resolution - never hardcode localhost:5173
   // This ensures CORS headers match the incoming request origin when allowed
   const originIsAllowed = isOriginAllowed(requestOrigin);
@@ -43,6 +43,16 @@ async function authenticateImageRequest(req, res, next) {
 
   // Always set CORP header for images to allow cross-origin loading
   res.header('Cross-Origin-Resource-Policy', 'cross-origin');
+
+  if (process.env.NODE_ENV !== 'test') {
+    console.log('[IMAGEAUTH CORS DEBUG]', {
+      requestOrigin: req.get('origin') || req.get('Origin'),
+      resolvedOrigin,
+      allowed: originIsAllowed,
+      allowedOrigins: require('../config/allowedOrigins').getAllowedOrigins(),
+      path: req.path
+    });
+  }
 
   if (!originIsAllowed) {
     return res.status(403).json({
