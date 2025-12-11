@@ -15,22 +15,41 @@ const supabase = createClient(SUPABASE_URL, SUPABASE_ANON_KEY);
 /**
  * Middleware to verify Supabase JWT token and authenticate users
  * 
- * SECURITY: Token is read from httpOnly cookie (primary) or Authorization header (fallback)
- * This prevents token leakage via browser history, proxy logs, and referer headers
- * Query parameter tokens are NOT supported to prevent security vulnerabilities
+ * SECURITY ARCHITECTURE (Bearer Token Auth - Primary):
+ * - Token is read from Authorization header as "Bearer <token>" (PRIMARY)
+ * - This is the recommended approach for:
+ *   - iOS/Mobile Safari compatibility (no ITP cookie blocking)
+ *   - Modern stateless API patterns
+ *   - Cross-origin deployments (frontend on Vercel, backend on Railway)
+ * 
+ * DEPRECATED: Cookie-based auth (fallback during transition)
+ * - httpOnly cookie is checked as FALLBACK only
+ * - Will be removed in a future version
+ * - New clients should use Bearer token auth exclusively
+ * 
+ * Query parameter tokens are NOT supported (security risk)
  */
 async function authenticateToken(req, res, next) {
   let token = null;
+  let authSource = null;
 
-  // 1. Primary: Check httpOnly cookie (secure method set by /api/auth/session)
-  if (req.cookies && req.cookies.authToken) {
-    token = req.cookies.authToken;
+  // 1. PRIMARY: Check Authorization header (Bearer token)
+  // This is the recommended approach for modern clients
+  const authHeader = req.headers.authorization;
+  if (authHeader && authHeader.startsWith('Bearer ')) {
+    token = authHeader.slice(7); // Remove 'Bearer ' prefix
+    authSource = 'bearer';
   }
 
-  // 2. Fallback: Check Authorization header (for API clients, testing)
-  if (!token) {
-    const authHeader = req.headers.authorization;
-    token = authHeader && authHeader.split(' ')[1];
+  // 2. DEPRECATED FALLBACK: Check httpOnly cookie (legacy support)
+  // This will be removed in a future version
+  if (!token && req.cookies && req.cookies.authToken) {
+    token = req.cookies.authToken;
+    authSource = 'cookie';
+    // Log deprecation warning in development (not in production to avoid log spam)
+    if (process.env.NODE_ENV !== 'production' && process.env.NODE_ENV !== 'test') {
+      console.debug('[auth] Cookie-based auth is deprecated. Please use Authorization: Bearer <token> header.');
+    }
   }
 
   // SECURITY: Query parameter tokens are NOT supported
@@ -50,6 +69,7 @@ async function authenticateToken(req, res, next) {
             username: decoded.username,
             role: decoded.role
           };
+          req.authSource = 'e2e-test';
           return next();
         }
       } catch {
@@ -74,10 +94,12 @@ async function authenticateToken(req, res, next) {
       // app_metadata can only be modified via Service Role Key
       role: user.app_metadata?.role || 'user'
     };
+    req.authSource = authSource;
 
     next();
   } catch (err) {
-    console.error('Auth error:', err);
+    // SECURITY: Never log the actual token or include it in error responses
+    console.error('Auth error:', err.message);
     return res.status(500).json({ success: false, error: 'Internal server error' });
   }
 }

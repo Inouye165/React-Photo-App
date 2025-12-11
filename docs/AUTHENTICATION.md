@@ -4,14 +4,40 @@
 
 This photo application now includes a comprehensive, production-ready authentication system that prevents unauthorized access to all application features. The system is built with best security practices and is ready for web service deployment.
 
+> **Update (December 2025):** Authentication has been migrated from cookie-based auth to **Bearer token authentication**. This change improves iOS/Mobile Safari compatibility and aligns with modern stateless API patterns. See [Bearer Token Authentication](#bearer-token-authentication-primary) below.
+
 ## Security Features
 
 ### 🔐 JWT-Based Authentication
 - Stateless JWT tokens for scalable authentication
 - Configurable token expiration (default: 24 hours)
-- **Primary**: Secure token delivery via httpOnly `authToken` cookies (set by `/api/auth/session`)
-- **Fallback**: Authorization Bearer header supported for API clients and testing
+- **Primary**: Bearer token in `Authorization` header (recommended for all clients)
+- **Deprecated Fallback**: httpOnly `authToken` cookies (will be removed in future)
 - **SECURITY**: Query parameter tokens are strictly rejected to prevent token leakage
+
+### Bearer Token Authentication (Primary)
+
+As of December 2025, the primary authentication method is **Bearer tokens in the Authorization header**:
+
+```
+Authorization: Bearer <supabase_access_token>
+```
+
+**Why Bearer tokens over cookies?**
+- ✅ iOS/Mobile Safari compatibility (no ITP cookie blocking)
+- ✅ Works with cross-origin deployments (Vercel frontend + Railway backend)
+- ✅ Stateless API patterns (better for scaling)
+- ✅ Explicit auth (no hidden cookie behavior)
+
+**Frontend Implementation:**
+- Token is sourced from Supabase's managed session
+- `api.js` attaches `Authorization: Bearer <token>` to all protected requests
+- No custom token storage needed - Supabase handles it securely
+
+**Backend Implementation:**
+- Middleware checks `Authorization` header first (primary)
+- Cookie is checked only as deprecated fallback
+- Query parameters are always rejected
 
 ### 🛡️ Password Security
 - Strong password requirements (min 8 chars, uppercase, lowercase, numbers, special chars)
@@ -138,7 +164,7 @@ CORS_CREDENTIALS=true
 - **Input Validation**: Comprehensive validation and sanitization
 - **CORS Protection**: Configured for specific origins only
 - **Security Headers**: Helmet.js provides comprehensive protection
-- **Cookie-First Auth**: All API routes read JWTs from httpOnly cookies (primary) with Authorization header fallback for API clients. Query parameter tokens are strictly rejected to prevent token leakage.
+- **Bearer Token Auth**: All API routes read JWTs from `Authorization: Bearer <token>` header (primary). Cookie-based auth is deprecated. Query parameter tokens are strictly rejected to prevent token leakage.
 
 ### Data Protection
 - **Password Hashing**: Bcrypt with high salt rounds

@@ -679,15 +679,15 @@ describe('authenticateToken Middleware - Cookie Authentication', () => {
       expect(response.body.user.role).toBe('user');
     });
 
-    test('should prioritize cookie over Authorization header when both present', async () => {
+    test('should prioritize Bearer token over cookie when both present (Bearer is now primary)', async () => {
       const cookieToken = 'cookie-token';
       const headerToken = 'header-token';
-      const cookieUser = { ...mockUser, id: 'cookie-user' };
+      const headerUser = { ...mockUser, id: 'header-user' };
       
       // Setup mock to return different users for different tokens
       mockGetUser.mockImplementation((token) => {
-        if (token === cookieToken) {
-          return { data: { user: cookieUser }, error: null };
+        if (token === headerToken) {
+          return { data: { user: headerUser }, error: null };
         }
         return { data: { user: mockUser }, error: null };
       });
@@ -698,26 +698,29 @@ describe('authenticateToken Middleware - Cookie Authentication', () => {
         .set('Authorization', `Bearer ${headerToken}`)
         .expect(200);
 
-      // Should use cookie token (primary), not header
-      expect(response.body.user.id).toBe('cookie-user');
-      expect(mockGetUser).toHaveBeenCalledWith(cookieToken);
+      // Should use Bearer token (primary), not cookie (deprecated fallback)
+      // This behavior changed as part of the cookie→Bearer token migration
+      expect(response.body.user.id).toBe('header-user');
+      expect(mockGetUser).toHaveBeenCalledWith(headerToken);
     });
   });
 
-  describe('Authorization Header Fallback', () => {
-    test('should authenticate using Authorization header when cookie not present', async () => {
+  describe('Cookie Fallback (Deprecated)', () => {
+    test('should authenticate using cookie when Authorization header not present (deprecated fallback)', async () => {
       mockGetUser.mockResolvedValue({ data: { user: mockUser }, error: null });
 
       const response = await request(app)
         .get('/protected')
-        .set('Authorization', `Bearer ${validToken}`)
+        .set('Cookie', `authToken=${validToken}`)
         .expect(200);
 
       expect(response.body.success).toBe(true);
       expect(response.body.user.id).toBe(mockUser.id);
       expect(mockGetUser).toHaveBeenCalledWith(validToken);
     });
+  });
 
+  describe('Authorization Header (Primary)', () => {
     test('should work with Bearer token format in Authorization header', async () => {
       mockGetUser.mockResolvedValue({ data: { user: mockUser }, error: null });
 
