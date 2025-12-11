@@ -39,11 +39,10 @@ describe('PhotoUploadForm Component', () => {
           handleNativeSelection={vi.fn()}
         />
       );
-      // Wait for file input to appear
-        const fileInput = await screen.findByDisplayValue('', { selector: 'input[type="file"]', hidden: true })
-          .catch(() => document.querySelector('input[type="file"]'));
+      // Get the folder input using testid
+      const folderInput = screen.getByTestId('folder-input');
       const fileInputClickSpy = vi.fn();
-      if (fileInput) fileInput.click = fileInputClickSpy;
+      folderInput.click = fileInputClickSpy;
       // Click Change Folder
       const changeFolderBtn = screen.getByText('Change Folder');
       await userEvent.click(changeFolderBtn);
@@ -316,5 +315,50 @@ describe('PhotoUploadForm Component', () => {
     // Should filter out or warn about invalid files
     // Assuming the component filters by date but not type, this test checks for potential issues
     expect(screen.getByText('test.txt')).toBeInTheDocument()
+  })
+
+  describe('Mobile Camera Roll Access', () => {
+    it('renders mobile photo input with correct accept attribute', () => {
+      render(<PhotoUploadForm {...mockProps} />)
+      
+      const mobileInput = screen.getByTestId('mobile-photo-input')
+      expect(mobileInput).toBeInTheDocument()
+      expect(mobileInput).toHaveAttribute('type', 'file')
+      expect(mobileInput.getAttribute('accept')).toMatch(/image\/png/)
+      expect(mobileInput.getAttribute('accept')).toMatch(/image\/jpeg/)
+      expect(mobileInput.getAttribute('accept')).toMatch(/image\/heic/)
+      expect(mobileInput.getAttribute('accept')).toMatch(/image\/heif/)
+      expect(mobileInput).toHaveAttribute('multiple')
+    })
+
+    it('has separate inputs for folder and mobile photo selection', () => {
+      render(<PhotoUploadForm {...mockProps} />)
+      
+      const folderInput = screen.getByTestId('folder-input')
+      const mobileInput = screen.getByTestId('mobile-photo-input')
+      
+      expect(folderInput).toBeInTheDocument()
+      expect(mobileInput).toBeInTheDocument()
+      expect(folderInput).not.toBe(mobileInput)
+    })
+
+    it('folder input has webkitdirectory attribute for folder selection', () => {
+      render(<PhotoUploadForm {...mockProps} />)
+      
+      const folderInput = screen.getByTestId('folder-input')
+      expect(folderInput).toHaveAttribute('webkitdirectory')
+    })
+  })
+
+  describe('Touch Target Accessibility', () => {
+    it('Change Folder button has minimum touch target size', () => {
+      render(<PhotoUploadForm {...mockProps} />)
+      
+      const changeFolderBtn = screen.getByText('Change Folder')
+      
+      // Button should have min-h-[44px] min-w-[44px] classes
+      expect(changeFolderBtn.className).toMatch(/min-h-\[44px\]/)
+      expect(changeFolderBtn.className).toMatch(/min-w-\[44px\]/)
+    })
   })
 })

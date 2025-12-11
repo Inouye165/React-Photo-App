@@ -43,3 +43,4 @@
 ---
 
 _Audit performed by Cursor AI agent on 2025-12-11 for end-to-end project/README verification and compliance tracking._
+

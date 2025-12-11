@@ -30,3 +30,4 @@ describe('photosImage service', () => {
     expect(hash).toBe('abc123');
   });
 });
+

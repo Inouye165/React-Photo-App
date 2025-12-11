@@ -42,3 +42,4 @@ module.exports = function createPhotosStorage({ storageClient /*, logger*/ }) {
     },
   };
 };
+

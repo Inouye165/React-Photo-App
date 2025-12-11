@@ -37,10 +37,16 @@ This document outlines completed milestones, current priorities, and future plan
 ## 🚧 Current Focus (Dec 2025)
 
 ### UI Polish
-- [ ] **Gallery View Redesign** - Improve browsing UX for 1000+ photo libraries
-- [ ] **Mobile-Responsive Layouts** - Touch-friendly interfaces for phone/tablet
+- [x] **Gallery View Redesign** - Virtualized grid with react-virtuoso for smooth scrolling at 1000+ photos
+- [x] **Mobile-Responsive Layouts** - Touch-friendly 44px targets, mobile-first Tailwind styling
 - [ ] **Keyboard Navigation** - Arrow keys, shortcuts, accessibility improvements
 - [ ] **Loading States** - Better feedback during AI processing and uploads
+
+### Mobile PWA
+- [x] **Native Camera Roll Access** - One-tap photo selection from mobile device gallery
+- [x] **Client-Side Compression** - Images optimized before upload (max 2048px, 85% quality)
+- [x] **PWA Manifest** - Add to Home Screen support for iOS and Android
+- [x] **Responsive Header** - Icons-only on mobile, full labels on desktop
 
 ### Feature Completeness
 - [ ] **Batch Operations** - Select multiple photos for delete, tag, or re-analyze
@@ -84,7 +90,6 @@ This document outlines completed milestones, current priorities, and future plan
 - **English-Only AI:** Descriptions generated in English only (multi-language planned Q1 2026)
 - **No Public Demo:** Requires self-hosted setup; no live demo site yet
 - **Gallery UI Rough:** Focus has been on backend/security; frontend polish in progress
-- **Desktop-Optimized:** Mobile layouts functional but not polished
 - **Single-User Focus:** Multi-user sharing not yet implemented
 
 ### Scale Testing

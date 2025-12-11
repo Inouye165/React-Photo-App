@@ -24,3 +24,4 @@ module.exports = function createPhotosAi({ addAIJob, MODEL_ALLOWLIST }) {
     }
   };
 };
+

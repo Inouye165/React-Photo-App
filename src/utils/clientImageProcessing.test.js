@@ -11,6 +11,7 @@ import {
   isSupportedImageType,
   calculateScaledDimensions,
   generateClientThumbnailBatch,
+  // compressForUpload is tested via dynamic import due to mocking requirements
 } from './clientImageProcessing.js';
 
 // Mock heic2any
@@ -730,6 +731,262 @@ describe('clientImageProcessing', () => {
       expect(results.size).toBe(1);
       expect(results.has('unsupported.tiff')).toBe(false);
       expect(results.get('photo.jpg')).toBe(mockBlob);
+    });
+  });
+
+  describe('compressForUpload', () => {
+    let originalCreateElement;
+    let originalCreateObjectURL;
+    let originalRevokeObjectURL;
+    let originalImage;
+
+    beforeEach(() => {
+      // Store originals
+      originalCreateElement = document.createElement;
+      originalCreateObjectURL = URL.createObjectURL;
+      originalRevokeObjectURL = URL.revokeObjectURL;
+      originalImage = globalThis.Image;
+
+      // Mock URL methods
+      URL.createObjectURL = vi.fn(() => 'blob:mock-url');
+      URL.revokeObjectURL = vi.fn();
+
+      // Reset heic mocks
+      vi.mocked(heic2any).mockReset();
+      vi.mocked(heicTo).mockReset();
+    });
+
+    afterEach(() => {
+      // Restore originals
+      document.createElement = originalCreateElement;
+      URL.createObjectURL = originalCreateObjectURL;
+      URL.revokeObjectURL = originalRevokeObjectURL;
+      globalThis.Image = originalImage;
+      vi.clearAllMocks();
+    });
+
+    it('should throw error for null/undefined file', async () => {
+      const { compressForUpload } = await import('./clientImageProcessing.js');
+      
+      await expect(compressForUpload(null)).rejects.toThrow('No file provided');
+      await expect(compressForUpload(undefined)).rejects.toThrow('No file provided');
+    });
+
+    it('should compress JPEG files and return blob with metadata', async () => {
+      const { compressForUpload } = await import('./clientImageProcessing.js');
+      const jpegFile = createMockFile('image/jpeg', 'test.jpg');
+      const compressedBlob = new Blob(['compressed'], { type: 'image/jpeg' });
+
+      // Mock Image that loads successfully
+      const mockImage = {
+        width: 3000,
+        height: 2000,
+        onload: null,
+        onerror: null,
+        set src(url) {
+          setTimeout(() => this.onload && this.onload(), 0);
+        },
+      };
+      globalThis.Image = vi.fn(() => mockImage);
+
+      // Mock canvas
+      const mockContext = {
+        imageSmoothingEnabled: true,
+        imageSmoothingQuality: 'high',
+        drawImage: vi.fn(),
+      };
+      const mockCanvas = {
+        width: 0,
+        height: 0,
+        getContext: vi.fn(() => mockContext),
+        toBlob: vi.fn((callback) => callback(compressedBlob)),
+      };
+      document.createElement = vi.fn((tag) => {
+        if (tag === 'canvas') return mockCanvas;
+        return originalCreateElement.call(document, tag);
+      });
+
+      const result = await compressForUpload(jpegFile);
+
+      expect(result).toHaveProperty('blob');
+      expect(result).toHaveProperty('width');
+      expect(result).toHaveProperty('height');
+      expect(result).toHaveProperty('originalSize');
+      expect(result).toHaveProperty('compressedSize');
+      expect(result).toHaveProperty('compressionRatio');
+      expect(result).toHaveProperty('wasResized');
+      
+      // Should have been resized since 3000 > 2048
+      expect(result.wasResized).toBe(true);
+    });
+
+    it('should not resize images smaller than maxSize', async () => {
+      const { compressForUpload } = await import('./clientImageProcessing.js');
+      const jpegFile = createMockFile('image/jpeg', 'small.jpg');
+      const compressedBlob = new Blob(['compressed'], { type: 'image/jpeg' });
+
+      // Mock small image
+      const mockImage = {
+        width: 1024,
+        height: 768,
+        onload: null,
+        onerror: null,
+        set src(url) {
+          setTimeout(() => this.onload && this.onload(), 0);
+        },
+      };
+      globalThis.Image = vi.fn(() => mockImage);
+
+      const mockContext = {
+        imageSmoothingEnabled: true,
+        imageSmoothingQuality: 'high',
+        drawImage: vi.fn(),
+      };
+      const mockCanvas = {
+        width: 0,
+        height: 0,
+        getContext: vi.fn(() => mockContext),
+        toBlob: vi.fn((callback) => callback(compressedBlob)),
+      };
+      document.createElement = vi.fn((tag) => {
+        if (tag === 'canvas') return mockCanvas;
+        return originalCreateElement.call(document, tag);
+      });
+
+      const result = await compressForUpload(jpegFile);
+
+      // Should not be resized since 1024 < 2048
+      expect(result.wasResized).toBe(false);
+      expect(result.width).toBe(1024);
+      expect(result.height).toBe(768);
+    });
+
+    it('should respect custom maxSize option', async () => {
+      const { compressForUpload } = await import('./clientImageProcessing.js');
+      const jpegFile = createMockFile('image/jpeg', 'test.jpg');
+      const compressedBlob = new Blob(['compressed'], { type: 'image/jpeg' });
+
+      // Mock image larger than custom max
+      const mockImage = {
+        width: 1500,
+        height: 1000,
+        onload: null,
+        onerror: null,
+        set src(url) {
+          setTimeout(() => this.onload && this.onload(), 0);
+        },
+      };
+      globalThis.Image = vi.fn(() => mockImage);
+
+      const mockContext = {
+        imageSmoothingEnabled: true,
+        imageSmoothingQuality: 'high',
+        drawImage: vi.fn(),
+      };
+      const mockCanvas = {
+        width: 0,
+        height: 0,
+        getContext: vi.fn(() => mockContext),
+        toBlob: vi.fn((callback) => callback(compressedBlob)),
+      };
+      document.createElement = vi.fn((tag) => {
+        if (tag === 'canvas') return mockCanvas;
+        return originalCreateElement.call(document, tag);
+      });
+
+      // Custom max size of 1024
+      const result = await compressForUpload(jpegFile, { maxSize: 1024 });
+
+      // Should be resized since 1500 > 1024
+      expect(result.wasResized).toBe(true);
+      expect(result.width).toBeLessThanOrEqual(1024);
+      expect(result.height).toBeLessThanOrEqual(1024);
+    });
+
+    it('should convert HEIC files before compression', async () => {
+      const { compressForUpload } = await import('./clientImageProcessing.js');
+      const heicFile = createMockFile('image/heic', 'test.heic');
+      const convertedBlob = new Blob(['converted'], { type: 'image/jpeg' });
+      const compressedBlob = new Blob(['compressed'], { type: 'image/jpeg' });
+
+      vi.mocked(heic2any).mockResolvedValue(convertedBlob);
+
+      const mockImage = {
+        width: 4000,
+        height: 3000,
+        onload: null,
+        onerror: null,
+        set src(url) {
+          setTimeout(() => this.onload && this.onload(), 0);
+        },
+      };
+      globalThis.Image = vi.fn(() => mockImage);
+
+      const mockContext = {
+        imageSmoothingEnabled: true,
+        imageSmoothingQuality: 'high',
+        drawImage: vi.fn(),
+      };
+      const mockCanvas = {
+        width: 0,
+        height: 0,
+        getContext: vi.fn(() => mockContext),
+        toBlob: vi.fn((callback) => callback(compressedBlob)),
+      };
+      document.createElement = vi.fn((tag) => {
+        if (tag === 'canvas') return mockCanvas;
+        return originalCreateElement.call(document, tag);
+      });
+
+      const result = await compressForUpload(heicFile);
+
+      expect(heic2any).toHaveBeenCalled();
+      expect(result.blob).toBe(compressedBlob);
+      expect(result.wasResized).toBe(true);
+    });
+
+    it('should return correct compression ratio', async () => {
+      const { compressForUpload } = await import('./clientImageProcessing.js');
+      
+      // Create a "large" file (in terms of size)
+      const largeData = new Uint8Array(100000).fill(255);
+      const largeFile = new File([largeData], 'large.jpg', { type: 'image/jpeg' });
+      
+      // Small compressed blob
+      const compressedBlob = new Blob(['compressed'], { type: 'image/jpeg' });
+
+      const mockImage = {
+        width: 800,
+        height: 600,
+        onload: null,
+        onerror: null,
+        set src(url) {
+          setTimeout(() => this.onload && this.onload(), 0);
+        },
+      };
+      globalThis.Image = vi.fn(() => mockImage);
+
+      const mockContext = {
+        imageSmoothingEnabled: true,
+        imageSmoothingQuality: 'high',
+        drawImage: vi.fn(),
+      };
+      const mockCanvas = {
+        width: 0,
+        height: 0,
+        getContext: vi.fn(() => mockContext),
+        toBlob: vi.fn((callback) => callback(compressedBlob)),
+      };
+      document.createElement = vi.fn((tag) => {
+        if (tag === 'canvas') return mockCanvas;
+        return originalCreateElement.call(document, tag);
+      });
+
+      const result = await compressForUpload(largeFile);
+
+      expect(result.originalSize).toBe(largeFile.size);
+      expect(result.compressedSize).toBe(compressedBlob.size);
+      expect(parseFloat(result.compressionRatio)).toBeGreaterThan(1);
     });
   });
 });

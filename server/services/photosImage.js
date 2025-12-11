@@ -35,3 +35,4 @@ module.exports = function createPhotosImage({ sharp, exifr, crypto }) {
     }
   };
 };
+

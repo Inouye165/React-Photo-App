@@ -5,14 +5,13 @@ import useStore from '../store.js';
 import { ChevronLeft, ChevronRight, Upload, Grid3X3, Clock, Edit3, CheckCircle, LogOut } from 'lucide-react';
 
 /**
- * AppHeader - Consistent navigation header across ALL views
+ * AppHeader - Mobile-first responsive navigation header
  * 
  * Features:
- * - Photo App branding always visible
- * - Back/Forward browser navigation arrows
- * - Navigation tabs always visible (Upload, Queued, In Progress, Edit, Finished)
- * - Traditional logout button
- * - Fixed-width tabs to prevent layout shifts
+ * - Mobile (< 640px): Icons only, compact layout, visible logout
+ * - Desktop: Full labels with icons
+ * - Fat Finger Rule: All touch targets ≥ 44x44px
+ * - PWA-ready fixed header with safe-area-inset support
  */
 export default function AppHeader({ 
   rightContent,
@@ -31,7 +30,6 @@ export default function AppHeader({
   const isUploadPage = location.pathname === '/upload';
 
   const handleViewChange = (viewName) => {
-    // Close any open upload picker modal when navigating to gallery views
     closePicker('nav-working');
     navigate(`/gallery?view=${viewName}`);
   };
@@ -51,9 +49,7 @@ export default function AppHeader({
   };
 
   const handleEditClick = () => {
-    // Close any open upload picker modal when navigating to edit
     closePicker('nav-edit');
-    // If we have a last edited photo, go there; otherwise go to inprogress
     if (lastEditedPhotoId) {
       navigate(`/photos/${lastEditedPhotoId}/edit`);
     } else {
@@ -61,231 +57,149 @@ export default function AppHeader({
     }
   };
 
-  // Navigation tab styling with fixed min-width for stability
-  const getTabStyle = (isActive) => ({
-    display: 'flex',
-    alignItems: 'center',
-    justifyContent: 'center',
-    gap: '5px',
-    padding: '6px 12px',
-    minWidth: '90px', // Fixed width prevents layout shift
-    borderRadius: '6px',
-    fontSize: '13px',
-    fontWeight: 500,
-    cursor: 'pointer',
-    transition: 'all 0.15s ease',
-    border: 'none',
-    backgroundColor: isActive ? '#0f172a' : 'transparent',
-    color: isActive ? '#ffffff' : '#64748b',
-  });
-
-  // Arrow button style
-  const arrowButtonStyle = {
-    display: 'flex',
-    alignItems: 'center',
-    justifyContent: 'center',
-    width: '28px',
-    height: '28px',
-    borderRadius: '6px',
-    border: 'none',
-    backgroundColor: 'transparent',
-    color: '#64748b',
-    cursor: 'pointer',
-    transition: 'all 0.15s ease',
-  };
+  // Tab button component for DRY code
+  const NavTab = ({ isActive, onClick, icon: Icon, label, testId }) => (
+    <button
+      onClick={onClick}
+      data-testid={testId}
+      aria-current={isActive ? 'page' : undefined}
+      className={`
+        flex items-center justify-center gap-1.5
+        min-w-[44px] min-h-[44px] px-2 sm:px-3
+        rounded-lg text-xs sm:text-sm font-medium
+        transition-all duration-150 touch-manipulation
+        ${isActive 
+          ? 'bg-slate-900 text-white' 
+          : 'bg-transparent text-slate-500 hover:bg-slate-100 active:bg-slate-200'
+        }
+      `}
+    >
+      <Icon size={16} className="flex-shrink-0" />
+      <span className="hidden sm:inline">{label}</span>
+    </button>
+  );
 
   return (
     <header
       role="navigation"
       aria-label="Main toolbar"
-      style={{
-        position: 'fixed',
-        top: 0,
-        left: 0,
-        right: 0,
-        zIndex: 100,
-        height: '52px',
-        display: 'flex',
-        alignItems: 'center',
-        justifyContent: 'space-between',
-        padding: '0 16px',
-        backgroundColor: 'rgba(255, 255, 255, 0.95)',
-        backdropFilter: 'blur(12px)',
-        WebkitBackdropFilter: 'blur(12px)',
-        borderBottom: '1px solid #e2e8f0',
-      }}
+      className="fixed top-0 left-0 right-0 z-50 h-14 
+                 flex items-center justify-between px-2 sm:px-4
+                 bg-white/95 backdrop-blur-md border-b border-slate-200
+                 supports-[padding:env(safe-area-inset-top)]:pt-[env(safe-area-inset-top)]"
     >
-      {/* Left Section - Logo & Navigation Arrows */}
-      <div style={{ display: 'flex', alignItems: 'center', gap: '8px', width: '200px' }}>
-        {/* App Logo */}
-        <span style={{ 
-          fontWeight: 700, 
-          fontSize: '14px', 
-          color: '#0f172a',
-          letterSpacing: '-0.02em',
-          display: 'flex',
-          alignItems: 'center',
-          gap: '5px',
-          whiteSpace: 'nowrap',
-        }}>
-          📷 Photo App
+      {/* Left Section - Logo & Nav Arrows */}
+      <div className="flex items-center gap-1 sm:gap-2 min-w-0 flex-shrink-0">
+        {/* Logo - hidden on very small screens */}
+        <span className="hidden xs:flex items-center gap-1 font-bold text-sm text-slate-900 whitespace-nowrap">
+          📷 <span className="hidden sm:inline">Photo App</span>
         </span>
         
-        {/* Back/Forward Arrows */}
-        <div style={{ display: 'flex', alignItems: 'center', gap: '2px', marginLeft: '8px' }}>
+        {/* Navigation Arrows */}
+        <div className="flex items-center">
           <button
             onClick={handleBack}
             title="Go back"
-            style={arrowButtonStyle}
-            onMouseEnter={(e) => e.currentTarget.style.backgroundColor = '#f1f5f9'}
-            onMouseLeave={(e) => e.currentTarget.style.backgroundColor = 'transparent'}
+            aria-label="Go back"
+            data-testid="nav-back"
+            className="flex items-center justify-center w-11 h-11 rounded-lg
+                       text-slate-500 hover:bg-slate-100 active:bg-slate-200
+                       transition-colors touch-manipulation"
           >
-            <ChevronLeft size={16} />
+            <ChevronLeft size={20} />
           </button>
           <button
             onClick={handleForward}
             title="Go forward"
-            style={arrowButtonStyle}
-            onMouseEnter={(e) => e.currentTarget.style.backgroundColor = '#f1f5f9'}
-            onMouseLeave={(e) => e.currentTarget.style.backgroundColor = 'transparent'}
+            aria-label="Go forward"
+            data-testid="nav-forward"
+            className="flex items-center justify-center w-11 h-11 rounded-lg
+                       text-slate-500 hover:bg-slate-100 active:bg-slate-200
+                       transition-colors touch-manipulation"
           >
-            <ChevronRight size={16} />
+            <ChevronRight size={20} />
           </button>
         </div>
       </div>
 
-      {/* Center Section - Navigation Tabs (ALWAYS visible, fixed width) */}
-      <div style={{ 
-        display: 'flex', 
-        alignItems: 'center', 
-        justifyContent: 'center',
-        gap: '2px',
-        backgroundColor: '#f8fafc',
-        padding: '4px',
-        borderRadius: '8px',
-        border: '1px solid #e2e8f0',
-      }}>
-        <button
+      {/* Center Section - Navigation Tabs */}
+      <nav className="flex items-center gap-0.5 sm:gap-1 px-1 sm:px-2 py-1 
+                      bg-slate-50 rounded-lg border border-slate-200 
+                      overflow-x-auto scrollbar-hide">
+        <NavTab
+          isActive={isUploadPage}
           onClick={() => {
-            // Close any open upload picker modal when navigating to upload page
             closePicker('nav-upload');
             navigate('/upload');
           }}
-          style={getTabStyle(isUploadPage)}
-        >
-          <Upload size={14} />
-          <span>Upload</span>
-        </button>
-        <button
+          icon={Upload}
+          label="Upload"
+          testId="nav-upload"
+        />
+        <NavTab
+          isActive={isGalleryPage && currentView === 'working'}
           onClick={() => handleViewChange('working')}
-          style={getTabStyle(isGalleryPage && currentView === 'working')}
-        >
-          <Grid3X3 size={14} />
-          <span>Queued</span>
-        </button>
-        <button
+          icon={Grid3X3}
+          label="Queued"
+          testId="nav-queued"
+        />
+        <NavTab
+          isActive={isGalleryPage && currentView === 'inprogress'}
           onClick={() => handleViewChange('inprogress')}
-          style={getTabStyle(isGalleryPage && currentView === 'inprogress')}
-        >
-          <Clock size={14} />
-          <span>In Progress</span>
-        </button>
-        <button
+          icon={Clock}
+          label="In Progress"
+          testId="nav-inprogress"
+        />
+        <NavTab
+          isActive={isEditPage}
           onClick={handleEditClick}
-          style={getTabStyle(isEditPage)}
-        >
-          <Edit3 size={14} />
-          <span>Edit</span>
-        </button>
-        <button
+          icon={Edit3}
+          label="Edit"
+          testId="nav-edit"
+        />
+        <NavTab
+          isActive={isGalleryPage && currentView === 'finished'}
           onClick={() => handleViewChange('finished')}
-          style={getTabStyle(isGalleryPage && currentView === 'finished')}
-        >
-          <CheckCircle size={14} />
-          <span>Finished</span>
-        </button>
-      </div>
+          icon={CheckCircle}
+          label="Finished"
+          testId="nav-finished"
+        />
+      </nav>
 
-      {/* Right Section - Actions & User */}
-      <div style={{ 
-        display: 'flex', 
-        alignItems: 'center', 
-        justifyContent: 'flex-end',
-        gap: '12px',
-        width: '200px',
-      }}>
+      {/* Right Section - User & Logout */}
+      <div className="flex items-center gap-1 sm:gap-2 min-w-0 flex-shrink-0">
         {rightContent}
         
-        {/* User Section */}
         {user && (
-          <div style={{ 
-            display: 'flex', 
-            alignItems: 'center', 
-            gap: '10px',
-          }}>
-            {/* User avatar/email */}
+          <div className="flex items-center gap-1 sm:gap-2">
+            {/* User avatar - always visible */}
             <div 
-              style={{ 
-                display: 'flex',
-                alignItems: 'center',
-                gap: '6px',
-                fontSize: '12px',
-                color: '#64748b',
-              }}
+              className="hidden sm:flex items-center gap-1.5 text-xs text-slate-500"
               title={user.email}
             >
-              <div style={{
-                width: '24px',
-                height: '24px',
-                borderRadius: '50%',
-                backgroundColor: '#e2e8f0',
-                display: 'flex',
-                alignItems: 'center',
-                justifyContent: 'center',
-                fontSize: '11px',
-                fontWeight: 600,
-                color: '#475569',
-              }}>
+              <div className="w-7 h-7 rounded-full bg-slate-200 flex items-center justify-center
+                            text-xs font-semibold text-slate-600">
                 {user.email?.charAt(0).toUpperCase() || 'U'}
               </div>
-              <span style={{ 
-                maxWidth: '80px', 
-                overflow: 'hidden', 
-                textOverflow: 'ellipsis', 
-                whiteSpace: 'nowrap' 
-              }}>
+              <span className="hidden md:block max-w-[80px] truncate">
                 {user.email?.split('@')[0]}
               </span>
             </div>
             
-            {/* Traditional Logout button with text */}
+            {/* Logout button - always visible, 44px touch target */}
             <button
               onClick={handleLogout}
-              style={{
-                display: 'flex',
-                alignItems: 'center',
-                gap: '5px',
-                padding: '6px 12px',
-                borderRadius: '6px',
-                border: '1px solid #e2e8f0',
-                backgroundColor: '#ffffff',
-                color: '#64748b',
-                fontSize: '12px',
-                fontWeight: 500,
-                cursor: 'pointer',
-                transition: 'all 0.15s ease',
-              }}
-              onMouseEnter={(e) => {
-                e.currentTarget.style.backgroundColor = '#f8fafc';
-                e.currentTarget.style.borderColor = '#cbd5e1';
-              }}
-              onMouseLeave={(e) => {
-                e.currentTarget.style.backgroundColor = '#ffffff';
-                e.currentTarget.style.borderColor = '#e2e8f0';
-              }}
+              data-testid="logout-button"
+              aria-label="Sign out"
+              className="flex items-center justify-center gap-1.5
+                        min-w-[44px] min-h-[44px] px-2 sm:px-3
+                        rounded-lg border border-slate-200 bg-white
+                        text-slate-500 text-xs sm:text-sm font-medium
+                        hover:bg-slate-50 hover:border-slate-300
+                        active:bg-slate-100 transition-all touch-manipulation"
             >
-              <LogOut size={14} />
-              <span>Logout</span>
+              <LogOut size={16} />
+              <span className="hidden sm:inline">Logout</span>
             </button>
           </div>
         )}
