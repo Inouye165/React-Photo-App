@@ -74,7 +74,7 @@ node test-runner.js
 
 ## Automated Test Coverage
 
-### Frontend Tests (66 tests)
+### Frontend Tests (350+ tests)
 ```bash
 # Run with coverage
 npm run test:coverage
@@ -89,7 +89,7 @@ npx vitest run src/tests/authUtils.test.js
 - User workflows and error handling
 - Accessibility features
 
-### Backend Tests (20+ tests)
+### Backend Tests (700+ tests)
 ```bash
 cd server && npm test
 ```
