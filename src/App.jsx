@@ -8,7 +8,7 @@ import PhotoGalleryPage from './pages/PhotoGalleryPage.jsx';
 import PhotoEditPage from './pages/PhotoEditPage.jsx';
 import UploadPage from './pages/UploadPage.jsx';
 import SettingsPage from './pages/SettingsPage.jsx';
-import AuthWrapper from './components/AuthWrapper.jsx';
+import AuthWrapper from './components/AuthWrapper';
 import ResetPasswordPage from './pages/ResetPasswordPage.jsx';
 
 /**

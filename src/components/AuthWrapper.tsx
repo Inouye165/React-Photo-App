@@ -2,7 +2,11 @@ import React from 'react';
 import { useAuth } from '../contexts/AuthContext';
 import LandingPage from '../pages/LandingPage';
 
-const AuthWrapper = ({ children }) => {
+interface AuthWrapperProps {
+  children: React.ReactNode;
+}
+
+const AuthWrapper = ({ children }: AuthWrapperProps) => {
   const { user, loading } = useAuth();
 
   if (loading) {
@@ -22,12 +26,7 @@ const AuthWrapper = ({ children }) => {
 
   // Authenticated user interface - now just renders the app content
   // User info and logout are handled in the main Toolbar component
-  return (
-    <div className="min-h-screen bg-gray-100">
-      {/* Main app content */}
-      {children}
-    </div>
-  );
+  return <div className="min-h-screen bg-gray-100">{children}</div>;
 };
 
 export default AuthWrapper;
