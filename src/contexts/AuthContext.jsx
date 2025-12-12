@@ -294,7 +294,7 @@ export const AuthProvider = ({ children }) => {
 
       // FIX: Only log the user in if Supabase returned a valid session.
       // If email confirmation is enabled, data.session will be null.
-      // This keeps the user "logged out" so the RegisterForm can show the "Check Email" message.
+      // This keeps the user "logged out" so the UI can show the "Check Email" message.
       if (data.session) {
         if (data.session.access_token) {
           setAuthToken(data.session.access_token);
