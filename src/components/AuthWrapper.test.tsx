@@ -27,7 +27,7 @@ describe('AuthWrapper', () => {
       </AuthWrapper>
     );
 
-    expect(screen.getByText(/Crafting the future/i)).toBeInTheDocument();
+    expect(screen.getByRole('heading', { name: 'Vaultage' })).toBeInTheDocument();
   });
 
   it('Authenticated: renders children', () => {

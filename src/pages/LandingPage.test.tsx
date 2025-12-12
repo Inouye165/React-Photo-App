@@ -15,7 +15,11 @@ describe('LandingPage', () => {
 
   it('renders the landing page correctly', () => {
     render(<LandingPage />);
-    expect(screen.getByText(/Crafting the future/i)).toBeInTheDocument();
+    expect(screen.getByRole('heading', { name: 'Vaultage' })).toBeInTheDocument();
+    expect(
+      screen.getByText(/Secure AI-powered analysis for your most treasured memories and collectibles\./i)
+    ).toBeInTheDocument();
+    expect(screen.getByText(/Beta Access|Under Construction/i)).toBeInTheDocument();
     expect(screen.getByText('I have an account')).toBeInTheDocument();
     expect(screen.getByText('Request Access')).toBeInTheDocument();
   });

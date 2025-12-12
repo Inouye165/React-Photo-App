@@ -55,20 +55,23 @@ const LandingPage: React.FC = () => {
   };
 
   const renderBrandPanel = () => (
-    <div className="w-full md:w-1/2 bg-slate-900 text-white p-8 flex flex-col justify-between min-h-[300px] md:min-h-screen">
-      <div>
-        <div className="inline-block px-3 py-1 mb-6 text-xs font-semibold tracking-wider text-emerald-400 uppercase bg-emerald-900/30 rounded-full border border-emerald-800">
-          Private Beta
+    <div className="relative w-full md:w-1/2 text-white p-8 flex flex-col justify-between min-h-[300px] md:min-h-screen bg-[url('/vaultage-bg.png')] bg-cover bg-center">
+      <div className="absolute inset-0 bg-slate-900/80 mix-blend-multiply" />
+
+      <div className="relative">
+        <div className="inline-flex items-center px-3 py-1 mb-6 text-xs font-semibold tracking-wider text-amber-300 uppercase bg-amber-900/30 rounded-full border border-amber-800">
+          Beta Access • Under Construction
         </div>
         <h1 className="text-4xl md:text-6xl font-bold tracking-tight mb-4">
-          Photo App
+          Vaultage
         </h1>
-        <p className="text-slate-400 text-lg md:text-xl max-w-md">
-          Crafting the future of digital memory preservation. Secure, intelligent, and beautiful.
+        <p className="text-slate-200/80 text-lg md:text-xl max-w-md">
+          Secure AI-powered analysis for your most treasured memories and collectibles.
         </p>
       </div>
-      <div className="hidden md:block text-slate-600 text-sm">
-        &copy; {new Date().getFullYear()} Photo App Inc. All rights reserved.
+
+      <div className="relative hidden md:block text-slate-200/50 text-sm">
+        &copy; {new Date().getFullYear()} Vaultage. All rights reserved.
       </div>
     </div>
   );
