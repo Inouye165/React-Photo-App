@@ -292,17 +292,23 @@ export const AuthProvider = ({ children }) => {
 
       if (error) throw error;
 
-      // Set Bearer token in api.js BEFORE updating state
-      if (data.session?.access_token) {
-        setAuthToken(data.session.access_token);
-        setAuthReady(true);
+      // FIX: Only log the user in if Supabase returned a valid session.
+      // If email confirmation is enabled, data.session will be null.
+      // This keeps the user "logged out" so the RegisterForm can show the "Check Email" message.
+      if (data.session) {
+        if (data.session.access_token) {
+          setAuthToken(data.session.access_token);
+          setAuthReady(true);
+        }
+        setSession(data.session);
+        setUser(data.user);
       }
-      
-      setSession(data.session);
-      setUser(data.user);
+      // If no session (email verification pending), we DO NOT set user/session state.
+      // The user remains logged out until they verify their email and log in.
+
       loginInProgressRef.current = false;
 
-      return { success: true, user: data.user };
+      return { success: true, user: data.user, session: data.session };
     } catch (err) {
       loginInProgressRef.current = false;
       console.error('Registration error:', err);

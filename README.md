@@ -286,18 +286,28 @@ Currently designed for self-hosted deployment to:
 - **Supabase + VPS** (backend on DigitalOcean/AWS, DB on Supabase)
 - **Docker Compose** (all services containerized)
 
-### Frontend/Backend CORS Configuration
 
-When deploying the frontend to Vercel (or Netlify) and the backend to Railway, configure CORS via the `FRONTEND_ORIGIN` environment variable on the backend:
+---
 
-```bash
-# On Railway backend
-FRONTEND_ORIGIN=https://your-app.vercel.app
-```
+## 🌐 CORS Configuration (Frontend/Backend)
 
-This ensures cross-origin cookie-based authentication works correctly. See `server/README.md` for full CORS configuration options.
+The backend uses a strict, centralized CORS allowlist for all API and image routes.
 
-**Environment:** Production requires Supabase Postgres, Redis, and object storage. See `server/.env.example` for required variables.
+**Default dev origins:**
+- http://localhost:5173 (Vite dev server)
+- http://localhost:3000, http://localhost:5174 (legacy/alt dev ports)
+
+**Production:**
+- Set `FRONTEND_ORIGIN=https://react-photo-app-eta.vercel.app` in Railway environment variables.
+- Optionally set `ALLOWED_ORIGINS` (comma-separated) for multiple frontends. If set, defaults are NOT included.
+
+**How it works:**
+- Only explicitly allowed origins receive CORS headers (no wildcards).
+- Credentials (cookies, Authorization) are supported.
+- All image/thumbnail routes (e.g., `/display/thumbnails/:hash`, `/display/image/:id`) use this config.
+- Requests from unknown origins are blocked or get no CORS headers (intentional for security).
+
+**See also:** `server/README.md` for backend-specific details and troubleshooting.
 
 ---
 
