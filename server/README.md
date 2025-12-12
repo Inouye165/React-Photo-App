@@ -358,3 +358,68 @@ npm test
 # Run specific test file
 npm test -- tests/security.test.js
 ```
+
+## 📬 Public API
+
+### Contact Form Endpoint
+
+Public endpoints that do not require authentication.
+
+#### `POST /api/public/contact`
+
+Submit a contact form message. Rate limited and validated.
+
+**Rate Limits:**
+- Production: 5 requests per hour per IP
+- Development/Test: 100 requests per hour per IP
+
+**Request Body:**
+```json
+{
+  "name": "string (required, max 100 chars)",
+  "email": "string (required, valid email, max 255 chars)",
+  "subject": "string (optional, max 150 chars, default: 'General Inquiry')",
+  "message": "string (required, max 4000 chars)"
+}
+```
+
+**Success Response (200):**
+```json
+{
+  "success": true,
+  "message": "Thank you for your message. We will respond within 24-48 hours.",
+  "id": "uuid"
+}
+```
+
+**Validation Error Response (400):**
+```json
+{
+  "success": false,
+  "error": "Validation failed",
+  "details": [{ "field": "name", "message": "Name is required" }]
+}
+```
+
+**Rate Limit Response (429):**
+```json
+{
+  "success": false,
+  "error": "Too many contact requests. Please try again later."
+}
+```
+
+### Database Schema: `contact_messages`
+
+| Column | Type | Description |
+|--------|------|-------------|
+| `id` | UUID | Primary key (auto-generated) |
+| `name` | VARCHAR(100) | Sender name |
+| `email` | VARCHAR(255) | Sender email |
+| `subject` | VARCHAR(150) | Message subject (default: 'General Inquiry') |
+| `message` | TEXT | Message content (max 4000 chars) |
+| `status` | VARCHAR(50) | Message status (default: 'new') |
+| `ip_address` | VARCHAR(45) | Sender IP address for abuse prevention |
+| `created_at` | TIMESTAMP | Submission timestamp |
+| `updated_at` | TIMESTAMP | Last update timestamp |
+
