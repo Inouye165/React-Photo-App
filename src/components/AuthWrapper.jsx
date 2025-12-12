@@ -1,11 +1,9 @@
-import React, { useState } from 'react';
+import React from 'react';
 import { useAuth } from '../contexts/AuthContext';
-import LoginForm from './LoginForm';
-import RegisterForm from './RegisterForm';
+import LandingPage from '../pages/LandingPage';
 
 const AuthWrapper = ({ children }) => {
   const { user, loading } = useAuth();
-  const [isLoginMode, setIsLoginMode] = useState(true);
 
   if (loading) {
     return (
@@ -19,11 +17,7 @@ const AuthWrapper = ({ children }) => {
   }
 
   if (!user) {
-    return isLoginMode ? (
-      <LoginForm onSwitchToRegister={() => setIsLoginMode(false)} />
-    ) : (
-      <RegisterForm onSwitchToLogin={() => setIsLoginMode(true)} />
-    );
+    return <LandingPage />;
   }
 
   // Authenticated user interface - now just renders the app content
