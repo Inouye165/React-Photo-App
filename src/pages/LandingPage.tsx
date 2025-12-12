@@ -1,6 +1,5 @@
 /// <reference types="vite/client" />
 import React, { useState } from 'react';
-// @ts-ignore - LoginForm is currently JSX
 import LoginForm from '../components/LoginForm';
 
 type ViewState = 'landing' | 'login' | 'contact';
@@ -204,7 +203,7 @@ const LandingPage: React.FC = () => {
       >
         ← Back
       </button>
-      <LoginForm onSwitchToRegister={() => setView('contact')} />
+      <LoginForm />
     </div>
   );
 
