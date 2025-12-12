@@ -175,16 +175,21 @@ app.set('trust proxy', 1);
   // - Configure allowed origins via ALLOWED_ORIGINS environment variable
   const { getAllowedOrigins } = require('./config/allowedOrigins');
   const allowedOrigins = getAllowedOrigins();
-  // const debugCors = process.env.DEBUG_CORS === 'true'; // removed unused var
+  // --- CORS Startup Logging ---
+  // Print allowed origins at startup (non-prod or DEBUG_CORS=true)
+  if (process.env.NODE_ENV !== 'production' || process.env.DEBUG_CORS === 'true') {
+    const logger = require('./logger');
+    logger.info(`[CORS] Allowed origins: ${allowedOrigins.join(', ')}`);
+  }
+  // --- Centralized CORS Middleware ---
+  // See config/allowedOrigins.js for full logic and documentation.
   app.use(cors({
     origin: function(origin, callback) {
       const isAllowed = !origin || allowedOrigins.includes(origin);
-      if (process.env.NODE_ENV !== 'test') {
-        console.log('[GLOBAL CORS DEBUG]', {
-          origin,
-          isAllowed,
-          allowedOrigins
-        });
+      if (process.env.NODE_ENV !== 'test' && process.env.DEBUG_CORS === 'true') {
+        // Extra debug logging if enabled
+        const logger = require('./logger');
+        logger.info('[CORS DEBUG]', { origin, isAllowed, allowedOrigins });
       }
       // Allow requests with no origin (e.g., server-to-server) or explicit allowed origins
       if (isAllowed) {

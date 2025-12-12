@@ -1,31 +1,33 @@
 /**
- * CORS Origin Configuration
- * 
- * This module provides strict, explicit CORS origin allowlisting.
- * 
- * Security Design:
- * - Explicit allowlist (no regex patterns or IP range wildcards)
- * - Defense in depth: prevents DNS rebinding attacks
- * - Principle of least privilege: only explicitly allowed origins accepted
- * 
- * Configuration:
- * - ALLOWED_ORIGINS: Comma-separated list of allowed origins (production use)
- *   Example: "https://app.example.com,https://staging.example.com"
- * - FRONTEND_ORIGIN: Single frontend URL for simple deployments (e.g., Vercel)
- *   Example: "https://react-photo-il8l0cuz2-ron-inouyes-projects.vercel.app"
- * - CLIENT_ORIGIN: Legacy single origin support (backward compatibility)
- * - CLIENT_ORIGINS: Legacy multi-origin support (backward compatibility)
- * 
- * Default behavior:
- * - Includes common localhost ports for local development (5173, 3000, 5174)
- * - Does NOT allow arbitrary LAN IPs by default (security by design)
- * - All origins must be explicitly configured for production environments
- * 
- * Priority (all are merged when present):
- * 1. ALLOWED_ORIGINS (if set, defaults are NOT included for security)
- * 2. FRONTEND_ORIGIN (always added if set)
- * 3. CLIENT_ORIGIN / CLIENT_ORIGINS (legacy backward compatibility)
- * 4. DEFAULT_ORIGINS (only when ALLOWED_ORIGINS is not set)
+ * CORS Origin Configuration (Centralized)
+ *
+ * This module provides strict, explicit CORS origin allowlisting for the backend API and all image/thumbnail routes.
+ *
+ * === Default Dev Origins ===
+ * - http://localhost:5173 (Vite dev server)
+ * - http://localhost:3000 (legacy dev server)
+ * - http://localhost:5174 (alt dev port)
+ *
+ * === Production Configuration ===
+ * - Set FRONTEND_ORIGIN to your deployed frontend (e.g. https://react-photo-app-eta.vercel.app) in Railway env vars.
+ * - Optionally set ALLOWED_ORIGINS (comma-separated) for multiple frontends. If set, defaults are NOT included.
+ *
+ * === How it works ===
+ * - If ALLOWED_ORIGINS is set, only those origins (plus FRONTEND_ORIGIN, if set) are allowed.
+ * - If ALLOWED_ORIGINS is not set, defaults + FRONTEND_ORIGIN are allowed.
+ * - No wildcards (*) are ever used. This is intentional for security (credentials: true).
+ * - Requests from unknown origins get no CORS headers or are rejected (never a wildcard). This is by design.
+ *
+ * === Where this is used ===
+ * - Main CORS middleware in server/server.js
+ * - All image/thumbnail routes (via imageAuth and display.js)
+ *
+ * === Security ===
+ * - Only explicitly allowed origins receive CORS headers.
+ * - Credentials (cookies, Authorization) are supported.
+ * - No regex, no IP ranges, no *.
+ *
+ * See server/README.md for full documentation and troubleshooting.
  */
 
 const DEFAULT_ORIGINS = [

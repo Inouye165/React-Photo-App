@@ -242,42 +242,32 @@ node server/scripts/set-admin-role.js 550e8400-e29b-41d4-a716-446655440000
 - Users must re-login after role changes to get an updated JWT token
 - Client-writable `user_metadata` is deliberately ignored for role determination
 
-### Environment Variables
 
-#### FRONTEND_ORIGIN
-**Type**: String (single URL)  
-**Required**: ✅ **Required for production deployments** (Vercel/Railway/Netlify)  
-**Default**: None
+---
 
-Single frontend URL for simple deployments. Use this when deploying to Vercel, Netlify, or similar platforms.
+## 🌐 CORS Configuration
 
-**Production Example (Current Deployment):**
-```bash
-# Production Vercel frontend
-FRONTEND_ORIGIN="https://react-photo-app-eta.vercel.app"
-```
+The backend uses a strict, centralized CORS allowlist for all API and image/thumbnail routes.
 
-**Other Examples:**
-```bash
-# Alternative Vercel URL
-FRONTEND_ORIGIN="https://react-photo-il8l0cuz2-ron-inouyes-projects.vercel.app"
+**Default dev origins:**
+- http://localhost:5173 (Vite dev server)
+- http://localhost:3000, http://localhost:5174 (legacy/alt dev ports)
 
-# Netlify deployment
-FRONTEND_ORIGIN="https://your-app.netlify.app"
-```
+**Production:**
+- Set `FRONTEND_ORIGIN=https://react-photo-app-eta.vercel.app` in Railway environment variables.
+- Optionally set `ALLOWED_ORIGINS` (comma-separated) for multiple frontends. If set, defaults are NOT included.
 
-**Behavior:**
-- When set with no `ALLOWED_ORIGINS`, adds to localhost defaults (allows both local dev and production)
-- When set with `ALLOWED_ORIGINS`, adds to explicit origins (flexible config)
-- Always trimmed of whitespace
-- **This is the primary configuration for production CORS** - set it in Railway environment variables
+**How it works:**
+- Only explicitly allowed origins receive CORS headers (no wildcards).
+- Credentials (cookies, Authorization) are supported.
+- All image/thumbnail routes (e.g., `/display/thumbnails/:hash`, `/display/image/:id`) use this config.
+- Requests from unknown origins are blocked or get no CORS headers (intentional for security).
 
-#### ALLOWED_ORIGINS
-**Type**: String (comma-separated URLs)  
-**Required**: Recommended for production  
-**Default**: `http://localhost:3000,http://localhost:5173,http://localhost:5174` (development only)
+**Troubleshooting:**
+- Check Railway logs for `[CORS] Allowed origins: ...` on startup (non-prod or `DEBUG_CORS=true`).
+- Enable debug logging with `DEBUG_CORS=true` to see CORS decisions in logs.
 
-Comma-separated list of allowed CORS origins. When explicitly set, **only** these origins are allowed (defaults are NOT included). This prevents accidental security holes when moving to production.
+**See also:** Comments in `config/allowedOrigins.js` and main CORS middleware in `server.js` for implementation details.
 
 **Examples:**
 ```bash
