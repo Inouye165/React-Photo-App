@@ -128,6 +128,7 @@ const createHealthRouter = require('./routes/health');
 const createPrivilegeRouter = require('./routes/privilege');
 const createUsersRouter = require('./routes/users');
 // const createAuthRouter = require('./routes/auth'); // Removed
+const createPublicRouter = require('./routes/public');
 const { configureSecurity, validateRequest, securityErrorHandler } = require('./middleware/security');
 const { authenticateToken } = require('./middleware/auth');
 
@@ -239,6 +240,9 @@ app.set('trust proxy', 1);
   // Authentication routes (no auth required)
   const createAuthRouter = require('./routes/auth');
   app.use('/api/auth', createAuthRouter({ db }));
+
+  // Public API routes (no auth required) - mounted before auth middleware
+  app.use('/api/public', createPublicRouter({ db }));
 
   // E2E test login route (only in non-production)
   if (process.env.NODE_ENV !== 'production') {

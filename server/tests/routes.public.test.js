@@ -3,18 +3,23 @@
  * 
  * Tests the /api/public/* endpoints which are accessible without authentication.
  * Covers validation, rate limiting, and database integration.
+ * 
+ * This test creates an isolated Express app to avoid conflicts with the main
+ * server's middleware and mocking setup.
  */
 
 /* eslint-env jest */
 
 const request = require('supertest');
+const express = require('express');
 
-// Mock the database before requiring the app
+// Create mock functions at module scope so they can be referenced in tests
 const mockInsert = jest.fn();
 const mockReturning = jest.fn();
 
-jest.mock('../db/index.js', () => {
-  const mockKnex = jest.fn((_tableName) => ({
+// Create a mock database function
+const createMockDb = () => {
+  const mockDb = jest.fn((_tableName) => ({
     insert: mockInsert.mockReturnValue({
       returning: mockReturning
     }),
@@ -23,77 +28,58 @@ jest.mock('../db/index.js', () => {
     first: jest.fn()
   }));
   
-  mockKnex.raw = jest.fn();
-  mockKnex.schema = {
+  mockDb.raw = jest.fn().mockResolvedValue(true);
+  mockDb.fn = {
+    now: jest.fn().mockReturnValue('NOW()')
+  };
+  mockDb.schema = {
     hasTable: jest.fn().mockResolvedValue(true),
     createTable: jest.fn().mockResolvedValue(true),
     dropTableIfExists: jest.fn().mockResolvedValue(true)
   };
-  mockKnex.migrate = {
-    latest: jest.fn().mockResolvedValue([1, ['migration']]),
-    rollback: jest.fn().mockResolvedValue([1, ['migration']])
-  };
   
-  return mockKnex;
-});
+  return mockDb;
+};
 
-// Mock Supabase to prevent connection attempts
-jest.mock('@supabase/supabase-js', () => ({
-  createClient: jest.fn(() => ({
-    storage: {
-      from: jest.fn(() => ({
-        upload: jest.fn().mockResolvedValue({ data: {}, error: null }),
-        getPublicUrl: jest.fn().mockReturnValue({ data: { publicUrl: 'http://test.com/image.jpg' } })
-      }))
-    }
-  }))
+// Mock the logger to prevent console spam
+jest.mock('../logger', () => ({
+  info: jest.fn(),
+  warn: jest.fn(),
+  error: jest.fn(),
+  debug: jest.fn(),
+  fatal: jest.fn()
 }));
 
-// Mock LangGraph/LangChain to prevent ESM issues
-jest.mock('@langchain/langgraph', () => ({
-  StateGraph: jest.fn().mockImplementation(() => ({
-    addNode: jest.fn().mockReturnThis(),
-    addEdge: jest.fn().mockReturnThis(),
-    addConditionalEdges: jest.fn().mockReturnThis(),
-    setEntryPoint: jest.fn().mockReturnThis(),
-    compile: jest.fn().mockReturnValue({ invoke: jest.fn() })
-  })),
-  END: 'END',
-  START: 'START'
-}));
-
-jest.mock('@langchain/openai', () => ({
-  ChatOpenAI: jest.fn().mockImplementation(() => ({
-    bindTools: jest.fn().mockReturnThis(),
-    invoke: jest.fn().mockResolvedValue({ content: 'mocked' })
-  }))
-}));
-
-jest.mock('@langchain/core/messages', () => ({
-  HumanMessage: jest.fn(),
-  SystemMessage: jest.fn(),
-  AIMessage: jest.fn()
-}));
-
-jest.mock('@langchain/core/tools', () => ({
-  tool: jest.fn(),
-  StructuredTool: jest.fn()
-}));
-
-// Set test environment variables
-process.env.NODE_ENV = 'test';
-process.env.DATABASE_URL = 'postgresql://test:test@localhost:5432/test';
-process.env.SUPABASE_URL = 'https://test.supabase.co';
-process.env.SUPABASE_ANON_KEY = 'test-anon-key';
-process.env.SUPABASE_SERVICE_ROLE_KEY = 'test-service-role-key';
-process.env.JWT_SECRET = 'test-jwt-secret-key-for-testing-only';
-process.env.OPENAI_API_KEY = 'test-openai-api-key';
-
-const app = require('../server');
+// Create an isolated test app with just the public router
+function createTestApp() {
+  const app = express();
+  app.set('trust proxy', 1);
+  app.use(express.json());
+  
+  // Import and mount the public router with mock db
+  const createPublicRouter = require('../routes/public');
+  const mockDb = createMockDb();
+  app.use('/api/public', createPublicRouter({ db: mockDb }));
+  
+  // 404 handler
+  app.use((_req, res) => {
+    res.status(404).json({ success: false, error: 'Not found' });
+  });
+  
+  return app;
+}
 
 describe('Public API Routes', () => {
+  let app;
+  
+  beforeAll(() => {
+    // Set test environment
+    process.env.NODE_ENV = 'test';
+  });
+
   beforeEach(() => {
     jest.clearAllMocks();
+    app = createTestApp();
     
     // Setup default successful insert mock
     mockReturning.mockResolvedValue([{
@@ -400,52 +386,49 @@ describe('Migration Integrity', () => {
 
   it('should execute up migration without errors', async () => {
     const migration = require('../db/migrations/20251212000001_create_contact_messages');
-    const db = require('../db/index');
     
-    // Mock knex.raw for extension creation
-    db.raw = jest.fn().mockResolvedValue(true);
-    
-    // Mock knex.fn.now() for timestamps
-    db.fn = {
-      now: jest.fn().mockReturnValue('NOW()')
-    };
-    
-    // Mock schema.createTable
-    db.schema = {
-      createTable: jest.fn().mockImplementation((_tableName, callback) => {
-        // Create a mock table builder to verify column definitions
-        const tableBuilder = {
-          uuid: jest.fn().mockReturnValue({
-            primary: jest.fn().mockReturnValue({
+    // Create a complete mock knex object
+    const mockKnex = {
+      raw: jest.fn().mockResolvedValue(true),
+      fn: {
+        now: jest.fn().mockReturnValue('NOW()')
+      },
+      schema: {
+        createTable: jest.fn().mockImplementation((_tableName, callback) => {
+          // Create a mock table builder to verify column definitions
+          const tableBuilder = {
+            uuid: jest.fn().mockReturnValue({
+              primary: jest.fn().mockReturnValue({
+                defaultTo: jest.fn()
+              })
+            }),
+            string: jest.fn().mockReturnValue({
+              notNullable: jest.fn().mockReturnThis(),
+              defaultTo: jest.fn().mockReturnThis()
+            }),
+            text: jest.fn().mockReturnValue({
+              notNullable: jest.fn().mockReturnThis()
+            }),
+            timestamp: jest.fn().mockReturnValue({
               defaultTo: jest.fn()
-            })
-          }),
-          string: jest.fn().mockReturnValue({
-            notNullable: jest.fn().mockReturnThis(),
-            defaultTo: jest.fn().mockReturnThis()
-          }),
-          text: jest.fn().mockReturnValue({
-            notNullable: jest.fn().mockReturnThis()
-          }),
-          timestamp: jest.fn().mockReturnValue({
-            defaultTo: jest.fn()
-          }),
-          index: jest.fn()
-        };
-        
-        // Call the callback with our mock builder
-        callback(tableBuilder);
-        
-        return Promise.resolve();
-      }),
-      dropTableIfExists: jest.fn().mockResolvedValue(true)
+            }),
+            index: jest.fn()
+          };
+          
+          // Call the callback with our mock builder
+          callback(tableBuilder);
+          
+          return Promise.resolve();
+        }),
+        dropTableIfExists: jest.fn().mockResolvedValue(true)
+      }
     };
     
     // Should not throw
-    await expect(migration.up(db)).resolves.not.toThrow();
+    await expect(migration.up(mockKnex)).resolves.not.toThrow();
     
     // Verify createTable was called with correct table name
-    expect(db.schema.createTable).toHaveBeenCalledWith(
+    expect(mockKnex.schema.createTable).toHaveBeenCalledWith(
       'contact_messages',
       expect.any(Function)
     );
@@ -453,14 +436,15 @@ describe('Migration Integrity', () => {
 
   it('should execute down migration without errors', async () => {
     const migration = require('../db/migrations/20251212000001_create_contact_messages');
-    const db = require('../db/index');
     
-    db.schema = {
-      dropTableIfExists: jest.fn().mockResolvedValue(true)
+    const mockKnex = {
+      schema: {
+        dropTableIfExists: jest.fn().mockResolvedValue(true)
+      }
     };
     
-    await expect(migration.down(db)).resolves.not.toThrow();
+    await expect(migration.down(mockKnex)).resolves.not.toThrow();
     
-    expect(db.schema.dropTableIfExists).toHaveBeenCalledWith('contact_messages');
+    expect(mockKnex.schema.dropTableIfExists).toHaveBeenCalledWith('contact_messages');
   });
 });
