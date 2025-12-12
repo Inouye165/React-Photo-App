@@ -34,7 +34,8 @@ Backend server for the React Photo App, built with Node.js and Express. It handl
    **Required environment variables:**
    - `SUPABASE_URL` - Your Supabase project URL
    - `SUPABASE_ANON_KEY` - Supabase anon public key
-   - `JWT_SECRET` - Secret for signing local JWT tokens
+  - `JWT_SECRET` - Server secret used for internal signing (e.g., non-prod/E2E test tokens); not the Supabase access token secret
+  - `OPENAI_API_KEY` - Required for server startup in non-test environments (AI pipeline dependency)
    - `DATABASE_URL` or `SUPABASE_DB_URL` - Postgres connection string:
    
    ```bash
@@ -79,7 +80,7 @@ Backend server for the React Photo App, built with Node.js and Express. It handl
 ## 🔌 API Endpoints
 
 ### Authentication
-- `POST /api/auth/session` - Login and receive JWT (returns Bearer token; also sets deprecated httpOnly cookie for legacy clients)
+- `POST /api/auth/session` - Set httpOnly session cookie (deprecated legacy bridge for cookie-based image access; expects `Authorization: Bearer <token>`)
 - `POST /api/auth/logout` - Logout and clear session
 
 ### Photos

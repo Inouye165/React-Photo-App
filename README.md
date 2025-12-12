@@ -11,7 +11,7 @@
 
 > **A production-grade backend and security architecture wrapped in a functional prototype UI.**
 
-This repository demonstrates that a single developer can build a secure, scalable, AI-integrated photo platform. The backend features enterprise-grade architecture, robust security (RLS, CSRF, HttpOnly auth), and advanced AI workflows. The user interface is a functional draft—focusing on architecture over UI polish. Expect a utilitarian, developer-focused experience while the frontend evolves.
+This repository demonstrates that a single developer can build a secure, scalable, AI-integrated photo platform. The backend features enterprise-grade architecture, robust security (RLS, strict CORS allowlist, origin-protected auth routes, rate limiting), and advanced AI workflows. The user interface is a functional draft—focusing on architecture over UI polish. Expect a utilitarian, developer-focused experience while the frontend evolves.
 
 **Author:** Ron Inouye ([@Inouye165](https://github.com/Inouye165))
 
@@ -43,7 +43,7 @@ This project is not a tutorial or a consumer-ready product. It is a high-perform
 
 ### 🔒 **Security (Experimental)**
 - **Bearer Token Auth (Primary):** `Authorization: Bearer <token>` header; httpOnly cookie deprecated fallback
-- **CSRF Protection:** Origin validation + double-submit cookie pattern on state-changing requests
+- **CSRF Protection:** Origin/Referer allowlist verification on state-changing auth endpoints (no CSRF tokens); SameSite cookies for defense-in-depth
 - **Content Security Policy:** Helmet-enforced CSP with automated CI tests
 - **Concurrency Limits:** Rate limiting to prevent upload storms
 
@@ -158,6 +158,8 @@ cd server && npm run worker # Terminal 3: AI Worker (requires Redis & DB)
 
 > **Note:** The AI worker (`npm run worker`) is required for background photo analysis and enrichment. If `GOOGLE_MAPS_API_KEY` is missing, Places-based enrichment will be disabled but uploads and basic analysis will still work.
 
+> **Important:** In non-test environments, the backend is configured to **refuse startup** if `OPENAI_API_KEY` is missing (to prevent accidental API-cost surprises).
+
 ---
 
 ## ⚙️ Environment Variables
@@ -167,14 +169,15 @@ Edit `server/.env` (see `server/.env.example` for all options). **Required** var
 - `SUPABASE_DB_URL` or `DATABASE_URL` – Postgres connection string (local or Supabase)
 - `SUPABASE_URL` – Supabase project URL
 - `SUPABASE_ANON_KEY` – Supabase anon public key
-- `JWT_SECRET` – Secret for signing local JWT tokens
+- `JWT_SECRET` – Server secret used for internal signing (e.g., non-prod/E2E test tokens); not the Supabase access token secret
+- `OPENAI_API_KEY` – Required for server startup (non-test) and AI features
 
 **Recommended (but optional):**
 - `SUPABASE_SERVICE_ROLE_KEY` – Supabase service role key (server-side only; falls back to ANON_KEY if missing)
 
 **Optional:**
 - `GOOGLE_MAPS_API_KEY` – Enables Google Places enrichment (if missing, POI lookups are skipped)
-- `OPENAI_API_KEY` – Required for AI features (see `server/.env.example` for more)
+- (See `server/.env.example` for the full set of options)
 
 ---
 
@@ -205,7 +208,7 @@ cd server && npm run worker
 
 - **Authentication:** Bearer token via `Authorization` header (primary); httpOnly cookie fallback (deprecated). Tokens never stored in localStorage or URL params.
 - **Row-Level Security:** Supabase RLS is enforced for all user data isolation.
-- **CSRF Protection:** All state-changing requests require Origin validation; double-submit cookie pattern for CSRF tokens.
+- **CSRF Protection:** Origin/Referer allowlist verification is enforced on state-changing auth endpoints (no CSRF tokens).
 
 ---
 
