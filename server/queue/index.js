@@ -1,12 +1,9 @@
 // server/queue/index.js
 const { Queue } = require('bullmq');
 const logger = require('../logger');
+const { createRedisConnection } = require("../redis/connection");
 
-// Define the Redis connection
-const connection = {
-  host: process.env.REDIS_HOST || '127.0.0.1',
-  port: process.env.REDIS_PORT || 6379,
-};
+const connection = createRedisConnection();
 
 const QUEUE_NAME = 'ai-processing';
 
@@ -24,6 +21,8 @@ async function initializeQueue() {
 
   initializationPromise = (async () => {
     try {
+      await connection.ping();
+      console.log("[Redis] auth OK");
       // Lazy load dependencies required for queue operations (worker needs
       // these dependencies when it is created in startWorker()). We avoid
       // requiring them here to prevent creating unused variables.
@@ -50,6 +49,7 @@ async function initializeQueue() {
       // Worker will log start info when startWorker() is invoked.
       
     } catch (error) {
+      console.error("[Redis] auth FAILED", error?.message || error);
       logger.warn('[QUEUE] Redis not available - queue operations will be disabled:', error.message);
       redisAvailable = false;
       aiQueue = null;
