@@ -1,151 +1,140 @@
 // server/queue/index.js
-const { Queue } = require('bullmq');
-const logger = require('../logger');
+const { Queue, Worker: BullMQWorker } = require("bullmq");
+const logger = require("../logger");
 const { createRedisConnection } = require("../redis/connection");
 
-const connection = createRedisConnection();
+const QUEUE_NAME = "ai-processing";
 
-const QUEUE_NAME = 'ai-processing';
-
-// Lazy initialization variables
+// Internal state (lazy init)
+let redisConnection = null;
 let aiQueue = null;
 let aiWorker = null;
-let redisAvailable = null; // null = not checked yet, true/false = checked
+let redisAvailable = false;
 let initializationPromise = null;
 
-// Lazy initialization function
 async function initializeQueue() {
-  if (initializationPromise) {
-    return initializationPromise;
-  }
+  if (initializationPromise) return initializationPromise;
 
   initializationPromise = (async () => {
     try {
-      await connection.ping();
-      console.log("[Redis] auth OK");
-      // Lazy load dependencies required for queue operations (worker needs
-      // these dependencies when it is created in startWorker()). We avoid
-      // requiring them here to prevent creating unused variables.
+      // Create connection lazily so missing REDIS_URL doesn't crash module import (CI/tests).
+        redisConnection = createRedisConnection(); // Create connection lazily
 
-    aiQueue = new Queue(QUEUE_NAME, { connection });
-  redisAvailable = true;
-  logger.info('[QUEUE] Successfully connected to Redis');
-      // NOTE: Do not create the worker here. The worker process should be
-      // started explicitly via `startWorker()` (see worker.js). Creating a
-      // worker during queue initialization results in the server starting a
-      // worker inline when `addAIJob` is called, which can lead to duplicate
-      // workers and log output appearing in the server process. This is
-      // intentionally deferred to allow a separate worker process to be
-      // started by `npm run worker`.
-      // Processor is only used by the worker. Worker instances are created in
-      // `startWorker()` so we leave processor implementation there and avoid
-      // creating or using it in the queue initializer.
+      // Force an auth/connection check up front.
+      await redisConnection.ping();
 
-      // leave aiWorker creation to startWorker
+      aiQueue = new Queue(QUEUE_NAME, { connection: redisConnection });
+      redisAvailable = true;
 
-      // Worker event handlers are attached when the worker is created in
-      // startWorker(). Do not attach them here where aiWorker may still be null.
+      logger.info("[QUEUE] Redis connected");
+    } catch (err) {
+      const msg = err?.message || String(err);
+      logger.warn(`[QUEUE] Redis unavailable; queue disabled: ${msg}`);
 
-      // Worker will log start info when startWorker() is invoked.
-      
-    } catch (error) {
-      console.error("[Redis] auth FAILED", error?.message || error);
-      logger.warn('[QUEUE] Redis not available - queue operations will be disabled:', error.message);
       redisAvailable = false;
       aiQueue = null;
       aiWorker = null;
+
+      // Best-effort cleanup if we partially created a client.
+      try {
+        redisConnection?.disconnect?.();
+      } catch {
+        // ignore
+      }
+      redisConnection = null;
     }
   })();
 
   return initializationPromise;
 }
 
-// Function to check if Redis is available (lazy check)
 async function checkRedisAvailable() {
-  if (redisAvailable === null) {
-    await initializeQueue();
-  }
+  await initializeQueue();
   return redisAvailable;
 }
 
-// Export functions to handle queue operations
 const addAIJob = async (photoId, options = {}) => {
   await initializeQueue();
+
   if (!redisAvailable || !aiQueue) {
-    throw new Error('Queue service unavailable - Redis connection required');
+    throw new Error("Queue service unavailable - Redis connection required");
   }
+
   const jobData = { photoId };
-  if (options && options.modelOverrides) jobData.modelOverrides = options.modelOverrides;
-  if (options && options.models) jobData.modelOverrides = options.models;
-  // Support streaming upload options for background processing
-  if (options && options.processMetadata) jobData.processMetadata = options.processMetadata;
-  if (options && options.generateThumbnail) jobData.generateThumbnail = options.generateThumbnail;
-  return await aiQueue.add('process-photo-ai', jobData);
+
+  // Back-compat: some callers used `models` instead of `modelOverrides`.
+  const overrides = options.modelOverrides ?? options.models;
+  if (overrides) jobData.modelOverrides = overrides;
+
+  if (options.processMetadata !== undefined) jobData.processMetadata = options.processMetadata;
+  if (options.generateThumbnail !== undefined) jobData.generateThumbnail = options.generateThumbnail;
+
+  return aiQueue.add("process-photo-ai", jobData);
 };
 
-// For direct worker usage (worker.js)
 const startWorker = async () => {
   await initializeQueue();
 
-  // Only create the worker if it doesn't exist yet. This function is the
-  // canonical place to create the worker and allows the worker process to be
-  // started separately from the server process.
+  if (!redisAvailable || !redisConnection) {
+    throw new Error("Redis connection required to start worker");
+  }
+
   if (!aiWorker) {
-    const { Worker: BullMQWorker } = require('bullmq');
-    const db = require('../db');
-    const { updatePhotoAIMetadata } = require('../ai/service');
-    const { processUploadedPhoto } = require('../media/backgroundProcessor');
+    const db = require("../db");
+    const { updatePhotoAIMetadata } = require("../ai/service");
+    const { processUploadedPhoto } = require("../media/backgroundProcessor");
 
     const processor = async (job) => {
       const { photoId, modelOverrides, processMetadata, generateThumbnail } = job.data || {};
       logger.info(`[WORKER] Processing job for photoId: ${photoId}`);
-      try {
-        const photo = await db('photos').where({ id: photoId }).first();
-        if (!photo) throw new Error(`Photo with ID ${photoId} not found.`);
-        const storagePath = photo.storage_path || `${photo.state}/${photo.filename}`;
-        
-        // If this is a streaming upload job, process metadata and thumbnails first
-        if (processMetadata || generateThumbnail) {
-          logger.info(`[WORKER] Running background processing for photoId: ${photoId}`);
-          await processUploadedPhoto(db, photoId, {
-            processMetadata: processMetadata !== false,
-            generateThumbnail: generateThumbnail !== false
-          });
-        }
-        
-        // Run AI metadata extraction
-        await updatePhotoAIMetadata(db, photo, storagePath, modelOverrides);
-        logger.info(`[WORKER] Successfully processed job for photoId: ${photoId}`);
-      } catch (error) {
-        logger.error(`[WORKER] Job for photoId ${photoId} failed:`, error.message);
-        throw error;
+
+      const photo = await db("photos").where({ id: photoId }).first();
+      if (!photo) throw new Error(`Photo with ID ${photoId} not found.`);
+
+      const storagePath = photo.storage_path || `${photo.state}/${photo.filename}`;
+
+      // Optional background steps for streaming uploads.
+      if (processMetadata || generateThumbnail) {
+        await processUploadedPhoto(db, photoId, {
+          processMetadata: processMetadata !== false,
+          generateThumbnail: generateThumbnail !== false,
+        });
       }
+
+      await updatePhotoAIMetadata(db, photo, storagePath, modelOverrides);
+      logger.info(`[WORKER] Done photoId: ${photoId}`);
     };
 
     aiWorker = new BullMQWorker(QUEUE_NAME, processor, {
-      connection,
+      connection: redisConnection,
       lockDuration: 300000,
       concurrency: 2,
       attempts: 3,
-      backoff: { type: 'exponential', delay: 60000 },
+      backoff: { type: "exponential", delay: 60000 },
     });
 
-    aiWorker.on('completed', (job) => logger.info(`[WORKER] Job ${job.id} (PhotoId: ${job.data.photoId}) completed.`));
-    aiWorker.on('failed', (job, err) => logger.warn(`[WORKER] Job ${job.id} (PhotoId: ${job.data.photoId}) failed: ${err.message}`));
-    logger.info('[WORKER] AI Worker process started and listening for jobs.');
+    aiWorker.on("completed", (job) =>
+      logger.info(`[WORKER] Job ${job.id} (PhotoId: ${job.data.photoId}) completed.`)
+    );
+    aiWorker.on("failed", (job, err) =>
+      logger.warn(`[WORKER] Job ${job?.id} failed: ${err?.message || err}`)
+    );
+
+    logger.info("[WORKER] Started and listening for jobs");
   }
 
   return { aiWorker, redisAvailable };
 };
 
-// Synchronous getter for redisAvailable (for routes)
-const getRedisStatus = () => redisAvailable;
-
-module.exports = { 
-  aiQueue, 
-  aiWorker,
-  redisAvailable: getRedisStatus,
+module.exports = {
   addAIJob,
   startWorker,
-  checkRedisAvailable
+  checkRedisAvailable,
 };
+
+// Export live views (prevents “stale null” exports after lazy init)
+Object.defineProperties(module.exports, {
+  aiQueue: { enumerable: true, get: () => aiQueue },
+  aiWorker: { enumerable: true, get: () => aiWorker },
+  redisAvailable: { enumerable: true, get: () => redisAvailable },
+});
