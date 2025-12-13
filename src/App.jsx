@@ -11,6 +11,8 @@ import SettingsPage from './pages/SettingsPage.jsx';
 import AuthWrapper from './components/AuthWrapper';
 import ResetPasswordPage from './pages/ResetPasswordPage.jsx';
 
+import JoinPage from './pages/JoinPage.tsx';
+
 /**
  * RedirectToEdit - Redirects /photos/:id to /photos/:id/edit
  * This ensures clicking on any photo always goes to the modern edit view
@@ -53,6 +55,7 @@ function App() {
       <BrowserRouter>
         <Routes>
           <Route path="/reset-password" element={<ResetPasswordPage />} />
+          <Route path="/join" element={<JoinPage />} />
           <Route element={<AuthWrapper><MainLayout /></AuthWrapper>}>
             {/* Smart Router - determines initial landing page based on photo state */}
             <Route index element={<SmartRouter />} />
