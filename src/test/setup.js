@@ -223,6 +223,14 @@ vi.mock('../supabaseClient', () => ({
   supabase: {
     auth: {
       getSession: vi.fn().mockResolvedValue({ data: { session: { access_token: 'mock-token' } } }),
+      getSessionFromUrl: vi.fn().mockResolvedValue({
+        data: { session: { access_token: 'mock-token', refresh_token: 'mock-refresh-token' } },
+        error: null,
+      }),
+      setSession: vi.fn().mockResolvedValue({
+        data: { session: { access_token: 'mock-token', refresh_token: 'mock-refresh-token' } },
+        error: null,
+      }),
       onAuthStateChange: vi.fn().mockReturnValue({ data: { subscription: { unsubscribe: vi.fn() } } }),
       signInWithPassword: vi.fn().mockResolvedValue({ data: { user: { id: '1', email: 'test@example.com' } }, error: null }),
       signUp: vi.fn().mockResolvedValue({ data: { user: { id: '1', email: 'test@example.com' } }, error: null }),
