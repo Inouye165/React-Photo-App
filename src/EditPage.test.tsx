@@ -135,7 +135,8 @@ describe('EditPage - TypeScript Phase 1', () => {
 
       await waitFor(() => {
         const storyButton = screen.getByText('Story')
-        expect(storyButton.style.fontWeight).toBe('600') // Active tab has fontWeight 600
+        // Phase 5: Check for active class instead of inline style (now uses CSS Modules)
+        expect(storyButton.className).toContain('active')
       })
     })
   })

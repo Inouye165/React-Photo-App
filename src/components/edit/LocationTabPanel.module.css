@@ -1,0 +1,21 @@
+/**
+ * LocationTabPanel styles
+ * Phase 5: Migrated from styles.ts inline styles
+ * Values preserved exactly to maintain pixel-perfect layout
+ */
+
+.locationTabContainer {
+  flex: 1;
+  background-color: #f8fafc;
+  padding: 20px;
+}
+
+.locationMapWrapper {
+  height: 100%;
+  width: 100%;
+  border-radius: 16px;
+  overflow: hidden;
+  border: 1px solid rgba(226, 232, 240, 0.6);
+  position: relative;
+  box-shadow: 0 1px 3px rgba(0, 0, 0, 0.05);
+}

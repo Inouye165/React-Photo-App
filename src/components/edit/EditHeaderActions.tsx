@@ -1,4 +1,4 @@
-import { editPageStyles } from './styles';
+import styles from './EditHeaderActions.module.css';
 
 interface EditHeaderActionsProps {
   isPolling: boolean;
@@ -12,6 +12,7 @@ interface EditHeaderActionsProps {
 /**
  * EditHeaderActions - Header actions for EditPage
  * Contains AI Recheck button/badge and Save Changes button
+ * Phase 5: Styles migrated to CSS Modules
  */
 export default function EditHeaderActions({
   isPolling,
@@ -22,17 +23,17 @@ export default function EditHeaderActions({
   onSaveClick,
 }: EditHeaderActionsProps) {
   return (
-    <div style={editPageStyles.headerActionsContainer}>
+    <div className={styles.headerActionsContainer}>
       {/* AI Recheck Status */}
       {isPolling || recheckingAI ? (
-        <div style={editPageStyles.processingBadge}>
+        <div className={styles.processingBadge}>
           <span>Processing...</span>
         </div>
       ) : (
         <button
           onClick={onRecheckClick}
           disabled={!aiReady}
-          style={editPageStyles.recheckButton(!aiReady)}
+          className={styles.recheckButton}
         >
           Recheck AI
         </button>
@@ -42,7 +43,7 @@ export default function EditHeaderActions({
       <button 
         onClick={onSaveClick} 
         disabled={saving}
-        style={editPageStyles.saveButton(saving)}
+        className={styles.saveButton}
       >
         {saving ? 'Saving...' : 'Save Changes'}
       </button>

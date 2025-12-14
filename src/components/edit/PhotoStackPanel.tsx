@@ -2,7 +2,7 @@ import { ChangeEvent } from 'react';
 import ImageCanvasEditor from '../../ImageCanvasEditor';
 import FlipCard from '../FlipCard';
 import PhotoMetadataBack from '../PhotoMetadataBack';
-import { editPageStyles } from './styles';
+import styles from './PhotoStackPanel.module.css';
 import type { Photo, TextStyle } from '../../types/photo';
 
 interface PhotoStackPanelProps {
@@ -24,6 +24,7 @@ interface PhotoStackPanelProps {
 /**
  * PhotoStackPanel - Left column of EditPage
  * Contains caption input, flip card with photo/metadata
+ * Phase 5: Styles migrated to CSS Modules
  */
 export default function PhotoStackPanel({
   caption,
@@ -45,47 +46,38 @@ export default function PhotoStackPanel({
   };
 
   return (
-    <div 
-      className="bg-slate-100 relative flex flex-col overflow-hidden border-r border-slate-200"
-      style={editPageStyles.photoStackContainer}
-    >
+    <div className={styles.photoStackContainer}>
       {/* Caption Input - Above the Photo (styled as header) */}
-      <div style={{ marginBottom: '16px', flexShrink: 0 }}>
+      <div className={styles.captionInputWrapper}>
         <input
           type="text"
           value={caption}
           onChange={handleCaptionChange}
           placeholder="Add a caption..."
-          style={editPageStyles.captionInput}
-          onFocus={(e) => {
-            e.target.style.borderBottomColor = '#3b82f6';
-          }}
-          onBlur={(e) => {
-            e.target.style.borderBottomColor = 'transparent';
-          }}
+          className={styles.captionInput}
         />
       </div>
 
       {/* Flip Card Container - Photo / Metadata */}
-      <div style={editPageStyles.flipCardContainer}>
+      <div className={styles.flipCardContainer}>
         <FlipCard
           isFlipped={isFlipped}
           onFlip={onFlip}
           frontContent={
             /* Front Face: Photo with Burn Caption functionality */
-            <div style={editPageStyles.photoCanvasContainer}>
+            <div className={styles.photoCanvasContainer}>
               {isLoading && (
-                <div style={editPageStyles.loadingOverlay}>
+                <div className={styles.loadingOverlay}>
                   Loading...
                 </div>
               )}
               
               {fetchError && (
-                <div style={editPageStyles.errorOverlay}>
+                <div className={styles.errorOverlay}>
                   <span>Unable to load image</span>
                   <button 
                     onClick={onRetry}
-                    style={editPageStyles.retryButton}
+                    className={styles.retryButton}
                   >
                     Retry
                   </button>

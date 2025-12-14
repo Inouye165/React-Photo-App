@@ -1,4 +1,4 @@
-import { editPageStyles } from './styles';
+import styles from './EditTabs.module.css';
 
 type TabType = 'story' | 'location' | 'collectibles';
 
@@ -13,6 +13,7 @@ interface EditTabsProps {
 /**
  * EditTabs - Tab navigation for EditPage
  * Renders Story, Location, and conditionally Collectibles tabs
+ * Phase 5: Styles migrated to CSS Modules
  */
 export default function EditTabs({
   activeTab,
@@ -22,30 +23,27 @@ export default function EditTabs({
   hasCollectibleData,
 }: EditTabsProps) {
   return (
-    <div style={editPageStyles.tabNavContainer}>
+    <div className={styles.tabNavContainer}>
       <button
         onClick={() => onTabChange('story')}
-        style={editPageStyles.tabButton(activeTab === 'story')}
+        className={`${styles.tabButton} ${activeTab === 'story' ? styles.active : ''}`}
       >
         Story
       </button>
       <button
         onClick={() => onTabChange('location')}
-        style={editPageStyles.tabButton(activeTab === 'location')}
+        className={`${styles.tabButton} ${activeTab === 'location' ? styles.active : ''}`}
       >
         Location
       </button>
       {showCollectiblesTab && (
         <button
           onClick={() => onTabChange('collectibles')}
-          style={{
-            ...editPageStyles.tabButton(activeTab === 'collectibles'),
-            position: 'relative',
-          }}
+          className={`${styles.tabButton} ${styles.tabButtonWithBadge} ${activeTab === 'collectibles' ? styles.active : ''}`}
         >
           Collectibles
           {isCollectiblePhoto && !hasCollectibleData && (
-            <span style={editPageStyles.collectibleIndicator} title="AI detected collectible" />
+            <span className={styles.collectibleIndicator} title="AI detected collectible" />
           )}
         </button>
       )}
