@@ -1,7 +1,7 @@
 import React, { useState, useEffect, useCallback, useRef } from 'react'
 import ImageCanvasEditor from './ImageCanvasEditor'
 import { useAuth } from './contexts/AuthContext'
-import { API_BASE_URL, fetchProtectedBlobUrl, revokeBlobUrl, fetchCollectibles, upsertCollectible, isAbortError } from './api.js'
+import { API_BASE_URL, fetchCollectibles, upsertCollectible } from './api.js'
 import useStore from './store.js'
 import AppHeader from './components/AppHeader.jsx'
 import LocationMapPanel from './components/LocationMapPanel'
@@ -9,6 +9,8 @@ import FlipCard from './components/FlipCard'
 import PhotoMetadataBack from './components/PhotoMetadataBack'
 import CollectibleEditorPanel from './components/CollectibleEditorPanel.jsx'
 import CollectibleDetailView from './components/CollectibleDetailView.jsx'
+import { useProtectedImageBlobUrl } from './hooks/useProtectedImageBlobUrl.js'
+import { useLockBodyScroll } from './hooks/useLockBodyScroll.js'
 
 // Feature flag for collectibles UI
 const COLLECTIBLES_UI_ENABLED = import.meta.env.VITE_ENABLE_COLLECTIBLES_UI === 'true';
@@ -137,23 +139,8 @@ export default function EditPage({ photo, onClose: _onClose, onSave, onRecheckAI
     // but for this photo-sync hook, only the reactive photo references are required for the intended behavior.
   }, [photo, sourcePhoto])
 
-
   // Lock background scroll while this full-page editor is open
-  useEffect(() => {
-    const prev = document.body.style.overflow;
-    try { 
-      document.body.style.overflow = 'hidden'; 
-    } catch (error) {
-      console.warn('Failed to set body overflow:', error);
-    }
-    return () => { 
-      try { 
-        document.body.style.overflow = prev || ''; 
-      } catch (error) {
-        console.warn('Failed to restore body overflow:', error);
-      }
-    };
-  }, []);
+  useLockBodyScroll(true)
 
   // Zustand polling flags: support either a Set `pollingPhotoIds` or the legacy `pollingPhotoId`
   const pollingPhotoIds = useStore(state => state.pollingPhotoIds)
@@ -167,73 +154,16 @@ export default function EditPage({ photo, onClose: _onClose, onSave, onRecheckAI
   // If hash is unavailable, updated_at is used as a fallback (may be less reliable).
   const version = sourcePhoto?.hash || sourcePhoto?.updated_at || '';
   const displayUrl = `${API_BASE_URL}${sourcePhoto?.url || photo?.url}${version ? `?v=${version}` : ''}`;
-  const [imageBlobUrl, setImageBlobUrl] = useState(null);
-  const [fetchError, setFetchError] = useState(false);
-  const [retryCount, setRetryCount] = useState(0);
   const { session } = useAuth();
 
-  // Dev double-fetch guard: only fetch once per image in dev/StrictMode
-  const fetchRanRef = React.useRef({});
-  const abortControllerRef = useRef(null);
-  useEffect(() => {
-    if (!sourcePhoto || !sourcePhoto.url) return undefined;
-    let mounted = true;
-    let currentObjectUrl = null;
-    setFetchError(false);
+  // Preserve previous gating behavior: only start blob fetching when the live
+  // `sourcePhoto.url` exists (even if `photo.url` is present as a fallback).
+  const gatedDisplayUrl = sourcePhoto?.url ? displayUrl : null
 
-    // Abort previous fetch if any
-    if (abortControllerRef.current) {
-      abortControllerRef.current.abort();
-    }
-    const controller = new window.AbortController();
-    abortControllerRef.current = controller;
-
-    const key = displayUrl + `::retry${retryCount}`;
-    if (fetchRanRef.current.lastUrl !== key) {
-      fetchRanRef.current = { lastUrl: key };
-    }
-    const fetchRan = fetchRanRef.current;
-    if (fetchRan[key]) {
-      if (import.meta.env.VITE_DEBUG_IMAGES === 'true') {
-        console.log('[DEBUG_IMAGES] Skipping duplicate fetch for', key);
-      }
-      return;
-    }
-    fetchRan[key] = true;
-    if (import.meta.env.VITE_DEBUG_IMAGES === 'true') {
-      console.log('[DEBUG_IMAGES] Fetching image for', key);
-    }
-
-    (async () => {
-      try {
-        const objUrl = await fetchProtectedBlobUrl(displayUrl, { signal: controller.signal });
-        if (!mounted || controller.signal.aborted) {
-          if (objUrl) revokeBlobUrl(objUrl);
-          return;
-        }
-        currentObjectUrl = objUrl;
-        setImageBlobUrl(objUrl);
-      } catch (error) {
-        // React StrictMode or unmounts can legitimately abort requests.
-        // We intentionally ignore AbortError to avoid noisy logs.
-        if (!mounted || controller.signal.aborted || isAbortError(error)) return;
-        setFetchError(true);
-        fetchRan[key] = false;
-      }
-    })();
-
-    return () => {
-      mounted = false;
-      if (abortControllerRef.current) {
-        abortControllerRef.current.abort();
-      }
-      if (currentObjectUrl) {
-        revokeBlobUrl(currentObjectUrl);
-      }
-      setImageBlobUrl(null);
-      fetchRan[key] = false;
-    };
-  }, [displayUrl, sourcePhoto, session, retryCount]);
+  const { imageBlobUrl, fetchError, isLoading, retry } = useProtectedImageBlobUrl(gatedDisplayUrl, {
+    // Maintain prior parity: session was part of the effect dependency list.
+    deps: [session],
+  })
 
   // Watch polling state and photo updates to change the recheck button status
   useEffect(() => {
@@ -460,12 +390,6 @@ export default function EditPage({ photo, onClose: _onClose, onSave, onRecheckAI
         {/* Main Content Grid */}
         <main 
           className="flex-1 overflow-hidden flex flex-col lg:flex-row"
-          style={{ 
-            flex: 1, 
-            overflow: 'hidden', 
-            display: 'flex', 
-            flexDirection: 'row' 
-          }}
         >
           
           {/* ========================================
@@ -526,7 +450,7 @@ export default function EditPage({ photo, onClose: _onClose, onSave, onRecheckAI
                     backgroundColor: '#0f172a',
                     position: 'relative',
                   }}>
-                    {!imageBlobUrl && !fetchError && (
+                    {isLoading && (
                       <div style={{
                         position: 'absolute',
                         inset: 0,
@@ -552,7 +476,7 @@ export default function EditPage({ photo, onClose: _onClose, onSave, onRecheckAI
                       }}>
                         <span>Unable to load image</span>
                         <button 
-                            onClick={() => setRetryCount(c => c + 1)}
+                          onClick={retry}
                             style={{
                                 padding: '4px 12px',
                                 backgroundColor: 'white',

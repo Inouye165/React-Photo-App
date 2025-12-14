@@ -4,7 +4,7 @@ import { describe, test, expect, vi, beforeEach } from 'vitest'
 
 // Mock the API helper module (use literals inside the factory; vi.mock is hoisted)
 vi.mock('./api.js', () => ({
-  fetchProtectedBlobUrl: vi.fn().mockResolvedValue('blob:fake-url'),
+  fetchProtectedBlobUrl: vi.fn(),
   revokeBlobUrl: vi.fn(),
   fetchModelAllowlist: vi.fn().mockResolvedValue({ models: ['gpt-4o-mini'], source: 'test', updatedAt: null }),
   API_BASE_URL: 'http://api'
@@ -12,7 +12,12 @@ vi.mock('./api.js', () => ({
 
 // Mock useAuth context
 vi.mock('./contexts/AuthContext', () => ({
-  useAuth: vi.fn().mockReturnValue({ session: { user: { id: 'test-user' } } })
+  useAuth: vi.fn()
+}))
+
+// Mock AppHeader to avoid router/store coupling in this test suite
+vi.mock('./components/AppHeader.jsx', () => ({
+  default: ({ rightContent }) => React.createElement('div', { 'data-testid': 'app-header' }, rightContent)
 }))
 
 // Mock the store to return a photo when selectors are applied
@@ -21,7 +26,8 @@ vi.mock('./store.js', () => ({
     const state = { 
       pollingPhotoIds: new Set(), 
       pollingPhotoId: null, 
-      photos: [{ id: 1, url: '/protected/image.jpg', filename: 'image.jpg' }] 
+      photos: [{ id: 1, url: '/protected/image.jpg', filename: 'image.jpg' }],
+      setLastEditedPhotoId: vi.fn(),
     }
     const result = selector(state)
     return result
@@ -29,7 +35,7 @@ vi.mock('./store.js', () => ({
 }))
 
 // Mock the ImageCanvasEditor so we can inspect props via rendered attributes
-vi.mock('./ImageCanvasEditor.jsx', () => ({
+vi.mock('./ImageCanvasEditor', () => ({
   default: (props) => React.createElement('div', { 'data-testid': 'image-canvas-editor', 'data-image-url': props.imageUrl })
 }))
 
@@ -59,19 +65,27 @@ vi.mock('./components/PhotoMetadataBack', () => ({
 
 import EditPage from './EditPage.jsx'
 import * as api from './api.js'
+import { useAuth } from './contexts/AuthContext'
 
-describe.skip('EditPage - protected image blob fetch', () => {
+describe('EditPage - protected image blob fetch', () => {
   beforeEach(() => {
     vi.clearAllMocks()
+
+    // Vitest is configured with mockReset=true, so re-apply default behavior.
+    useAuth.mockReturnValue({ session: { user: { id: 'test-user' } } })
+    api.fetchProtectedBlobUrl.mockResolvedValue('blob:fake-url')
   })
 
-  test.skip('calls fetchProtectedBlobUrl and passes blob URL to ImageCanvasEditor (happy path)', async () => {
+  test('calls fetchProtectedBlobUrl and passes blob URL to ImageCanvasEditor (happy path)', async () => {
     const photo = { id: 1, url: '/protected/image.jpg', filename: 'image.jpg' }
     const { getByTestId } = render(<EditPage photo={photo} onClose={() => {}} onSave={() => {}} onFinished={() => {}} />)
 
     // Wait for the API call
     await waitFor(() => {
-      expect(api.fetchProtectedBlobUrl).toHaveBeenCalledWith('http://api' + photo.url)
+      expect(api.fetchProtectedBlobUrl).toHaveBeenCalledWith(
+        'http://api' + photo.url,
+        expect.objectContaining({ signal: expect.any(Object) })
+      )
     })
 
     // Wait for the editor to appear with the blob URL
@@ -81,7 +95,7 @@ describe.skip('EditPage - protected image blob fetch', () => {
     })
   })
 
-  test.skip('revokes blob URL on unmount (cleanup)', async () => {
+  test('revokes blob URL on unmount (cleanup)', async () => {
     const photo = { id: 1, url: '/protected/image.jpg', filename: 'image.jpg' }
     const { unmount } = render(<EditPage photo={photo} onClose={() => {}} onSave={() => {}} onFinished={() => {}} />)
 
@@ -110,9 +124,8 @@ describe.skip('EditPage - protected image blob fetch', () => {
   })
 
   test('shows error message if blob fetch fails', async () => {
-    // Arrange: mock the API to return null
-    const originalImpl = api.fetchProtectedBlobUrl.getMockImplementation?.()
-    api.fetchProtectedBlobUrl.mockImplementation(() => Promise.resolve(null))
+    // Arrange: mock the API to return null for this render
+    api.fetchProtectedBlobUrl.mockResolvedValueOnce(null)
     const photo = { id: 1, url: '/protected/image.jpg', filename: 'image.jpg' }
     const { queryByTestId } = render(<EditPage photo={photo} onClose={() => {}} onSave={() => {}} onFinished={() => {}} />)
 
@@ -121,12 +134,5 @@ describe.skip('EditPage - protected image blob fetch', () => {
     })
 
     expect(queryByTestId('image-canvas-editor')).toBeNull()
-
-    // Restore default mock so other tests keep using the success path
-    if (originalImpl) {
-      api.fetchProtectedBlobUrl.mockImplementation(originalImpl)
-    } else {
-      api.fetchProtectedBlobUrl.mockImplementation(() => Promise.resolve('blob:fake-url'))
-    }
   })
 })
