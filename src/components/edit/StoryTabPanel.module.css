@@ -1,0 +1,48 @@
+/**
+ * StoryTabPanel styles
+ * Phase 5: Migrated from styles.ts inline styles
+ * Values preserved exactly to maintain pixel-perfect layout
+ */
+
+.storyTabContainer {
+  flex: 1;
+  overflow-y: auto;
+  padding: 24px;
+  display: flex;
+  flex-direction: column;
+}
+
+.storyTabInner {
+  display: flex;
+  flex-direction: column;
+  height: 100%;
+}
+
+.storyTabLabel {
+  display: block;
+  font-size: 11px;
+  font-weight: 700;
+  color: #94a3b8;
+  text-transform: uppercase;
+  letter-spacing: 0.05em;
+  margin-bottom: 12px;
+}
+
+.storyTextarea {
+  flex: 1;
+  width: 100%;
+  background-color: #f8fafc;
+  border: 1px solid #e2e8f0;
+  border-radius: 16px;
+  padding: 16px;
+  font-size: 15px;
+  line-height: 1.6;
+  color: #334155;
+  outline: none;
+  resize: none;
+  min-height: 200px;
+}
+
+.storyTextarea:focus {
+  border-color: #3b82f6;
+}

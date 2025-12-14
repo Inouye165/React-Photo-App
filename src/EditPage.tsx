@@ -15,6 +15,7 @@ import StoryTabPanel from './components/edit/StoryTabPanel'
 import LocationTabPanel from './components/edit/LocationTabPanel'
 import PhotoStackPanel from './components/edit/PhotoStackPanel'
 import CollectiblesTabPanel from './components/edit/CollectiblesTabPanel'
+import shellStyles from './components/edit/EditPageShell.module.css'
 import type { Photo, TextStyle } from './types/photo'
 
 interface EditPageProps {
@@ -213,18 +214,7 @@ export default function EditPage({ photo, onClose: _onClose, onSave, onRecheckAI
       />
 
       {/* Main App Window / Card */}
-      <div style={{
-        flex: 1,
-        margin: '16px',
-        marginTop: '68px', // Account for fixed 52px AppHeader + 16px spacing
-        backgroundColor: 'white',
-        borderRadius: '24px',
-        boxShadow: '0 25px 50px -12px rgba(0, 0, 0, 0.25)',
-        display: 'flex',
-        flexDirection: 'column',
-        overflow: 'hidden',
-        position: 'relative'
-      }}>
+      <div className={shellStyles.mainCard}>
         {/* Main Content Grid */}
         <main 
           className="flex-1 overflow-hidden flex flex-col lg:flex-row"
@@ -252,17 +242,7 @@ export default function EditPage({ photo, onClose: _onClose, onSave, onRecheckAI
           {/* ========================================
               RIGHT COLUMN: Tabbed Interface (Story / Location / Collectibles)
               ======================================== */}
-          <div 
-            className="bg-white flex flex-col h-full overflow-hidden shadow-xl z-10"
-            style={{ 
-              flex: 1, // Equal width columns
-              backgroundColor: 'white',
-              display: 'flex',
-              flexDirection: 'column',
-              height: '100%',
-              overflow: 'hidden'
-            }}
-          >
+          <div className={shellStyles.rightColumnContainer}>
             {/* Tab Navigation */}
             <EditTabs
               activeTab={activeTab}
@@ -273,7 +253,7 @@ export default function EditPage({ photo, onClose: _onClose, onSave, onRecheckAI
             />
 
             {/* Tab Content */}
-            <div style={{ flex: 1, overflow: 'hidden', display: 'flex', flexDirection: 'column' }}>
+            <div className={shellStyles.tabContentContainer}>
               {/* Story Tab */}
               {activeTab === 'story' && (
                 <StoryTabPanel

@@ -3,6 +3,7 @@
  * 
  * Presentational component for the Collectibles tab in EditPage.
  * Phase 2: Extracted from EditPage to isolate collectibles UI logic.
+ * Phase 5: Styles migrated to CSS Modules
  * 
  * Features:
  * - View/Edit mode toggle
@@ -15,6 +16,7 @@ import type { Photo } from '../../types/photo';
 import type { CollectibleRecord, CollectibleFormState, CollectibleAiAnalysis } from '../../types/collectibles';
 import CollectibleDetailView from '../CollectibleDetailView';
 import CollectibleEditorPanel from '../CollectibleEditorPanel';
+import styles from './CollectiblesTabPanel.module.css';
 
 export interface CollectiblesTabPanelProps {
   photo: Photo;
@@ -44,83 +46,34 @@ export default function CollectiblesTabPanel({
   onCollectibleChange,
 }: CollectiblesTabPanelProps) {
   return (
-    <div 
-      className="flex-1 overflow-y-auto" 
-      style={{ 
-        flex: 1, 
-        overflowY: 'auto', 
-        display: 'flex',
-        flexDirection: 'column',
-      }}
-    >
+    <div className={styles.container}>
       {/* View/Edit Toggle */}
-      <div style={{
-        display: 'flex',
-        alignItems: 'center',
-        justifyContent: 'space-between',
-        padding: '12px 16px',
-        borderBottom: '1px solid #e2e8f0',
-        backgroundColor: '#f8fafc',
-        flexShrink: 0,
-      }}>
-        <div style={{
-          display: 'flex',
-          gap: '8px',
-        }}>
+      <div className={styles.toggleHeader}>
+        <div className={styles.toggleButtons}>
           <button
             onClick={() => onViewModeChange('view')}
-            style={{
-              padding: '6px 14px',
-              fontSize: '12px',
-              fontWeight: collectibleViewMode === 'view' ? 600 : 500,
-              backgroundColor: collectibleViewMode === 'view' ? '#1e293b' : 'white',
-              color: collectibleViewMode === 'view' ? 'white' : '#64748b',
-              border: '1px solid #e2e8f0',
-              borderRadius: '6px',
-              cursor: 'pointer',
-              transition: 'all 0.15s ease',
-            }}
+            className={`${styles.toggleButton} ${collectibleViewMode === 'view' ? styles.active : ''}`}
           >
             📋 View Details
           </button>
           <button
             onClick={() => onViewModeChange('edit')}
-            style={{
-              padding: '6px 14px',
-              fontSize: '12px',
-              fontWeight: collectibleViewMode === 'edit' ? 600 : 500,
-              backgroundColor: collectibleViewMode === 'edit' ? '#1e293b' : 'white',
-              color: collectibleViewMode === 'edit' ? 'white' : '#64748b',
-              border: '1px solid #e2e8f0',
-              borderRadius: '6px',
-              cursor: 'pointer',
-              transition: 'all 0.15s ease',
-            }}
+            className={`${styles.toggleButton} ${collectibleViewMode === 'edit' ? styles.active : ''}`}
           >
             ✏️ Edit
           </button>
         </div>
         {isCollectiblePhoto && (
-          <span style={{
-            fontSize: '11px',
-            color: '#16a34a',
-            fontWeight: 500,
-          }}>
+          <span className={styles.aiDetectedBadge}>
             ✓ AI Detected Collectible
           </span>
         )}
       </div>
 
       {/* Content Area */}
-      <div style={{ flex: 1, overflowY: 'auto' }}>
+      <div className={styles.contentArea}>
         {collectibleLoading ? (
-          <div style={{
-            display: 'flex',
-            alignItems: 'center',
-            justifyContent: 'center',
-            height: '200px',
-            color: '#64748b',
-          }}>
+          <div className={styles.loadingState}>
             Loading collectible data...
           </div>
         ) : collectibleViewMode === 'view' ? (
@@ -130,7 +83,7 @@ export default function CollectiblesTabPanel({
             aiInsights={collectibleAiAnalysis}
           />
         ) : (
-          <div style={{ padding: '16px' }}>
+          <div className={styles.editorWrapper}>
             <CollectibleEditorPanel
               photoId={photo.id}
               aiAnalysis={collectibleAiAnalysis || undefined}
@@ -142,14 +95,7 @@ export default function CollectiblesTabPanel({
       </div>
 
       {!isCollectiblePhoto && !hasCollectibleData && (
-        <div style={{
-          padding: '12px 16px',
-          backgroundColor: '#f1f5f9',
-          fontSize: '13px',
-          color: '#64748b',
-          borderTop: '1px solid #e2e8f0',
-          flexShrink: 0,
-        }}>
+        <div className={styles.helperTip}>
           <strong>Tip:</strong> Add collectible details to track estimated values and condition. 
           This data will be saved when you click "Save Changes".
         </div>

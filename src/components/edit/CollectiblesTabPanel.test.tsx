@@ -62,16 +62,16 @@ describe('CollectiblesTabPanel', () => {
       render(<CollectiblesTabPanel {...defaultProps} collectibleViewMode="view" />)
 
       const viewButton = screen.getByText('📋 View Details')
-      expect(viewButton.style.fontWeight).toBe('600')
-      expect(viewButton.style.backgroundColor).toBe('#1e293b')
+      // Phase 5: Check for active class instead of inline styles (now uses CSS Modules)
+      expect(viewButton.className).toContain('active')
     })
 
     test('edit button is active when collectibleViewMode is "edit"', () => {
       render(<CollectiblesTabPanel {...defaultProps} collectibleViewMode="edit" />)
 
       const editButton = screen.getByText('✏️ Edit')
-      expect(editButton.style.fontWeight).toBe('600')
-      expect(editButton.style.backgroundColor).toBe('#1e293b')
+      // Phase 5: Check for active class instead of inline styles (now uses CSS Modules)
+      expect(editButton.className).toContain('active')
     })
 
     test('clicking view button calls onViewModeChange with "view"', () => {
@@ -292,8 +292,9 @@ describe('CollectiblesTabPanel', () => {
       const viewButton = screen.getByText('📋 View Details')
       const editButton = screen.getByText('✏️ Edit')
 
-      expect(viewButton.style.cursor).toBe('pointer')
-      expect(editButton.style.cursor).toBe('pointer')
+      // Phase 5: Cursor pointer is now applied via CSS Module class, check that class is present
+      expect(viewButton.className).toContain('toggleButton')
+      expect(editButton.className).toContain('toggleButton')
     })
   })
 })

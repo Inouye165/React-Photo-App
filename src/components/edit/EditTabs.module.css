@@ -1,0 +1,46 @@
+/**
+ * EditTabs styles
+ * Phase 5: Migrated from styles.ts inline styles
+ * Values preserved exactly to maintain pixel-perfect layout
+ */
+
+.tabNavContainer {
+  display: flex;
+  border-bottom: 1px solid #e2e8f0;
+  background-color: #f8fafc;
+  flex-shrink: 0;
+}
+
+.tabButton {
+  flex: 1;
+  padding: 12px 16px;
+  font-size: 13px;
+  font-weight: 500;
+  color: #64748b;
+  background-color: transparent;
+  border: none;
+  border-bottom: 2px solid transparent;
+  cursor: pointer;
+  transition: all 0.15s ease;
+}
+
+.tabButton.active {
+  font-weight: 600;
+  color: #1e293b;
+  background-color: #ffffff;
+  border-bottom: 2px solid #3b82f6;
+}
+
+.tabButtonWithBadge {
+  position: relative;
+}
+
+.collectibleIndicator {
+  position: absolute;
+  top: 8px;
+  right: 8px;
+  width: 8px;
+  height: 8px;
+  background-color: #f59e0b;
+  border-radius: 50%;
+}
