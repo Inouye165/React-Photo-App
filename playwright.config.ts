@@ -10,25 +10,18 @@ export default defineConfig({
   retries: 1,
   use: {
     headless: true,
-    baseURL: 'http://localhost:5173'
+    baseURL: 'http://127.0.0.1:5173'
   },
-  webServer: [
-    {
-      command: 'npm run dev -- --mode e2e',
-      port: 5173,
-      reuseExistingServer: process.env.CI ? false : true,
-      timeout: 120_000,
-      env: {
-        VITE_E2E: 'true',
-      }
-    },
-    {
-      command: 'npm run --prefix server start',
-      port: 3001,
-      reuseExistingServer: process.env.CI ? false : true,
-      timeout: 120_000,
+  webServer: {
+    command: 'npm run dev -- --mode e2e',
+    url: 'http://127.0.0.1:5173',
+    reuseExistingServer: !process.env.CI, // Reuse locally, fresh in CI
+    timeout: 120_000,
+    env: {
+      VITE_E2E: 'true',
+      VITE_API_URL: 'http://127.0.0.1:5173', // Same origin as Vite - prevents fallback to localhost:3001
     }
-  ],
+  },
   // Only run tests in the e2e directory
   projects: [
     {

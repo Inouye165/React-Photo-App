@@ -1,0 +1,135 @@
+/**
+ * Design Tokens for EditPage Components (Phase 6)
+ * 
+ * CSS Custom Properties extracted from CSS Modules
+ * These tokens maintain existing visual styles while improving maintainability
+ * 
+ * NO VISUAL CHANGES: All values are exact copies from existing CSS
+ */
+
+:root {
+  /* ===== Colors ===== */
+  
+  /* Slate scale (primary grays) */
+  --color-slate-50: #f8fafc;
+  --color-slate-100: #f1f5f9;
+  --color-slate-200: #e2e8f0;
+  --color-slate-300: #cbd5e1;
+  --color-slate-400: #94a3b8;
+  --color-slate-500: #64748b;
+  --color-slate-600: #475569;
+  --color-slate-700: #334155;
+  --color-slate-800: #1e293b;
+  --color-slate-900: #0f172a;
+  
+  /* Blue scale (primary action color) */
+  --color-blue-500: #3b82f6;
+  
+  /* Amber/Orange scale (warnings, collectibles) */
+  --color-amber-300: #fde68a;
+  --color-amber-400: #fef3c7;
+  --color-amber-600: #d97706;
+  --color-amber-500: #f59e0b;
+  
+  /* Green scale (success, AI detected) */
+  --color-green-600: #16a34a;
+  
+  /* Red scale (errors) */
+  --color-red-500: #ef4444;
+  
+  /* Semantic colors */
+  --color-white: #ffffff;
+  --color-background-primary: var(--color-white);
+  --color-background-secondary: var(--color-slate-50);
+  --color-background-tertiary: var(--color-slate-100);
+  --color-background-overlay: var(--color-slate-300);
+  --color-background-dark: var(--color-slate-900);
+  
+  --color-text-primary: var(--color-slate-800);
+  --color-text-secondary: var(--color-slate-500);
+  --color-text-tertiary: var(--color-slate-400);
+  --color-text-inverse: var(--color-white);
+  
+  --color-border-default: var(--color-slate-200);
+  --color-border-subtle: rgba(226, 232, 240, 0.6);
+  
+  --color-action-primary: var(--color-blue-500);
+  --color-action-dark: var(--color-slate-900);
+  
+  --color-status-warning-bg: var(--color-amber-400);
+  --color-status-warning-text: var(--color-amber-600);
+  --color-status-warning-border: var(--color-amber-300);
+  --color-status-success: var(--color-green-600);
+  --color-status-error: var(--color-red-500);
+  
+  /* ===== Spacing ===== */
+  --spacing-xs: 4px;
+  --spacing-sm: 8px;
+  --spacing-md: 12px;
+  --spacing-lg: 16px;
+  --spacing-xl: 20px;
+  --spacing-2xl: 24px;
+  
+  /* ===== Border Radius ===== */
+  --radius-sm: 4px;
+  --radius-md: 6px;
+  --radius-lg: 8px;
+  --radius-xl: 16px;
+  --radius-2xl: 24px;
+  --radius-full: 50%;
+  
+  /* ===== Shadows ===== */
+  --shadow-sm: 0 1px 3px rgba(0, 0, 0, 0.05);
+  --shadow-md: 0 4px 6px rgba(0, 0, 0, 0.1);
+  --shadow-lg: 0 10px 15px -3px rgba(0, 0, 0, 0.1);
+  --shadow-xl: 0 20px 25px -5px rgba(0, 0, 0, 0.1);
+  --shadow-2xl: 0 25px 50px -12px rgba(0, 0, 0, 0.25);
+  
+  /* ===== Typography ===== */
+  --font-size-xs: 11px;
+  --font-size-sm: 12px;
+  --font-size-md: 13px;
+  --font-size-base: 15px;
+  --font-size-lg: 1.5rem;
+  
+  --font-weight-normal: 500;
+  --font-weight-semibold: 600;
+  --font-weight-bold: 700;
+  
+  --line-height-normal: 1.6;
+  
+  --letter-spacing-wide: 0.05em;
+  
+  /* ===== Transitions ===== */
+  --transition-fast: all 0.15s ease;
+  --transition-base: all 0.2s ease;
+  
+  /* ===== Z-Index ===== */
+  --z-modal: 9999;
+  --z-elevated: 10;
+  
+  /* ===== Layout ===== */
+  --header-height: 52px;
+  --header-spacing: 16px;
+  --header-total-offset: 68px; /* 52px + 16px */
+}
+
+/**
+ * Usage Guidelines:
+ * 
+ * 1. Replace hardcoded values in CSS modules with var() references
+ * 2. Maintain exact computed values to ensure pixel-perfect parity
+ * 3. Test thoroughly before and after to verify no visual changes
+ * 4. Use semantic token names (e.g., --color-text-primary) over direct names
+ *    for better maintainability
+ * 
+ * Example migrations:
+ * 
+ * Before:
+ *   color: #64748b;
+ *   border-radius: 8px;
+ * 
+ * After:
+ *   color: var(--color-text-secondary);
+ *   border-radius: var(--radius-lg);
+ */
