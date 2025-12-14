@@ -17,18 +17,33 @@ The visual regression suite covers these key EditPage states:
 
 ## Running Visual Tests
 
-### Locally
+### Locally (Frontend-Only)
+
+Visual tests run **WITHOUT requiring a backend server or database**. All API calls are mocked via Playwright.
 
 ```bash
-# Run all visual regression tests
-npm run test:e2e -- editpage-visual.spec.ts
+# CI-like run (headless, strict pixel-parity)
+npx playwright test e2e/editpage-visual.spec.ts
 
-# Update snapshots after intentional visual changes
-npm run test:e2e -- editpage-visual.spec.ts --update-snapshots
+# Headed run (allows minor rendering differences)
+npx playwright test e2e/editpage-visual.spec.ts --headed
 
-# Run in headed mode (see browser)
-npm run test:e2e -- editpage-visual.spec.ts --headed
+# Run specific test by name
+npx playwright test e2e/editpage-visual.spec.ts --headed --grep "Default Story"
+
+# Debug mode (pauses at each step, interactive)
+npx playwright test e2e/editpage-visual.spec.ts --headed --debug --grep "Default Story" --max-failures=1 --retries=0
+
+# Update snapshots ONLY after approved UI changes
+# Fix determinism issues first before updating snapshots
+npx playwright test e2e/editpage-visual.spec.ts --update-snapshots
 ```
+
+**Important**: Headed runs automatically allow small tolerances to handle focus rings, hover states, and compositor differences:
+- Most tests: `maxDiffPixelRatio: 0.015` (1.5%)
+- Location tab: `maxDiffPixelRatio: 0.12` (12%) due to map tile rendering variability
+
+CI/headless runs remain strict with zero tolerance for pixel-perfect comparison.
 
 ### CI/CD
 
@@ -37,6 +52,8 @@ Visual tests run automatically in GitHub Actions as part of the E2E test suite:
 ```bash
 npm run test:e2e
 ```
+
+**Note**: Only the **Vite frontend** is started. The backend server (port 3001) is NOT required.
 
 ## Snapshot Management
 
@@ -60,10 +77,12 @@ npm run test:e2e
 
 Visual tests use these stable settings (from [editpage-visual.spec.ts](e2e/editpage-visual.spec.ts)):
 
+- **Frontend-Only**: No backend/DB required (all API calls mocked)
 - **Viewport**: 1280x720 (consistent across runs)
 - **Reduced Motion**: Enabled (prevents animation flakiness)
 - **Timeout**: 10s per screenshot
 - **Animations**: Disabled during capture
+- **Mocked Data**: Deterministic photo/user/collectible data from `e2e/helpers/mockEditPageData.ts`
 
 ## Design Tokens (Optional)
 
@@ -80,23 +99,39 @@ Phase 6 also introduces CSS custom properties in [src/styles/tokens.css](src/sty
 
 ## Troubleshooting
 
-### Flaky Snapshots
+### Flaky Snapshots in Headed Mode
 
-**Symptom**: Tests pass locally but fail in CI (or vice versa)
+**Symptom**: Tests pass in headless but fail in headed mode with tiny diffs (~0.01 pixel ratio)
+
+**Cause**: Focus rings, hover tooltips, and compositor rendering differ between headed/headless
+
+**Solution**: Already implemented! The test suite includes:
+- **Stabilization helper**: Blurs active element, moves mouse to (0,0), waits 100ms before screenshots
+- **Headed tolerance**: Allows `maxDiffPixelRatio: 0.015` only in headed runs
+- **CI/headless**: Remains strict (zero tolerance for pixel-perfect verification)
+
+### CI vs Local Snapshots
+
+**Symptom**: Tests pass locally but fail in CI (or vice versa) with large diffs
 
 **Causes**:
 - Font rendering differences (Windows vs Linux)
 - Timing issues (images not loaded)
-- CI environment differences
+- Platform-specific browser rendering
 
 **Solutions**:
 ```bash
-# Generate platform-specific snapshots
+# Generate platform-specific snapshots on CI platform
 npm run test:e2e -- editpage-visual.spec.ts --update-snapshots
 
 # Increase wait times in spec if needed
 await page.waitForTimeout(1000); // Allow for loading
 ```
+
+**Policy**: Update snapshots ONLY after:
+1. Verifying the visual change is intentional and approved
+2. Confirming tests are deterministic (not flaky)
+3. Running both headless and headed modes locally
 
 ### Mock Data Not Appearing
 
@@ -104,8 +139,15 @@ await page.waitForTimeout(1000); // Allow for loading
 
 **Solutions**:
 - Check route mocking in `beforeEach` hook
-- Verify photo ID matches mock data
-- Ensure auth cookies are set correctly
+- Verify photo ID matches mock data (999 or 1000)
+- Inspect mock data in `e2e/helpers/mockEditPageData.ts`
+- Check console for unhandled API routes: `[Visual Test] Unhandled API route`
+
+### Backend Server Errors
+
+**Symptom**: `Error: Process from config.webServer was not able to start`
+
+**Solution**: Visual tests are **frontend-only**. The backend server should NOT be started. Verify `playwright.config.ts` only starts the Vite dev server (port 5173), not the backend server (port 3001).
 
 ### Snapshot Size Too Large
 

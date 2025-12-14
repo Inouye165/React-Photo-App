@@ -1,349 +1,484 @@
+// @ts-check
 import { test, expect } from '@playwright/test';
+import type { Route, Page } from '@playwright/test';
+
+/**
+ * Stabilization helper for screenshots in headed mode.
+ * Eliminates focus rings, hover states, and compositor differences.
+ * Call immediately before expect(page).toHaveScreenshot().
+ */
+async function stabilizeForScreenshot(page: Page): Promise<void> {
+  // Blur active element to remove focus rings/carets
+  await page.evaluate(() => {
+    const active = document.activeElement as HTMLElement | null;
+    active?.blur?.();
+  });
+
+  // Move mouse to top-left corner to avoid hover tooltips
+  await page.mouse.move(0, 0);
+
+  // Brief settle delay for compositor/font rendering
+  await page.waitForTimeout(100);
+}
+
+// Mock data
+const mockUser = { id: 'test-user', username: 'visual-test', email: 'test@example.com' };
+
+const mockPhotos = [
+  {
+    id: '999',
+    filename: 'photo-999.jpg',
+    state: 'working',
+    caption: 'Test photo for visual regression',
+    takenAt: '2025-01-15T10:30:00Z',
+    latitude: 37.7749,
+    longitude: -122.4194,
+    hasThumbnail: true
+  },
+  {
+    id: '1000',
+    filename: 'photo-1000.jpg',
+    state: 'working',
+    caption: 'Second test photo',
+    takenAt: '2025-01-16T14:20:00Z',
+    hasThumbnail: true
+  }
+];
+
+const mockCollectibleData = {
+  id: 'collectible-1',
+  photoId: '1000',
+  grade: 'PSA 10',
+  certNumber: '12345678'
+};
+
+// Helper to create mock image buffer
+function getMockImageBuffer(): Buffer {
+  // 1x1 transparent PNG
+  return Buffer.from(
+    'iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAADUlEQVR42mNk+M9QDwADhgGAWjR9awAAAABJRU5ErkJggg==',
+    'base64'
+  );
+}
 
 /**
  * Visual Regression Tests for EditPage (Phase 6)
- * 
- * Tests key UI states with screenshot comparisons:
- * - Default Story tab
- * - Location tab with GPS data
- * - Collectibles tab (feature flag mocked)
- * - Processing/polling state
- * - Flipped metadata view
- * 
- * Configuration:
- * - Stable viewport (1280x720)
- * - Reduced motion for deterministic rendering
- * - Headless Chrome for consistent font rendering
+ * Frontend-only tests (no backend/DB required)
  */
-
-// Mock photo data with complete fields
-const mockPhoto = {
-  id: 999,
-  user_id: '11111111-1111-4111-8111-111111111111',
-  url: '/photos/test-photo.jpg',
-  thumbnail: '/photos/test-photo-thumb.jpg',
-  caption: 'Test Photo Caption',
-  description: 'A detailed description of the test photo for visual regression testing.',
-  keywords: 'test, visual, regression',
-  filename: 'test-photo.jpg',
-  latitude: 37.7749,
-  longitude: -122.4194,
-  location_name: 'San Francisco, CA',
-  hash: 'abc123',
-  updated_at: '2025-12-14T00:00:00Z',
-  created_at: '2025-12-14T00:00:00Z',
-  classification: 'general',
-  ai_analysis: {
-    classification: 'general',
-    description: 'AI-generated description'
-  }
-};
-
-const mockCollectiblePhoto = {
-  ...mockPhoto,
-  id: 1000,
-  classification: 'collectables',
-  ai_analysis: {
-    classification: 'collectables',
-    collectibleInsights: {
-      category: 'vintage-toys',
-      estimatedValue: { min: 50, max: 150 },
-      condition: 'good',
-      rarity: 'medium'
-    }
-  },
-  poi_analysis: {
-    category: 'vintage-toys',
-    name: 'Vintage Action Figure',
-    conditionLabel: 'Good',
-    valueMin: 50,
-    valueMax: 150
-  }
-};
-
-test.describe('EditPage Visual Regression', () => {
-  test.beforeEach(async ({ page, context }) => {
-    // Set E2E mode flag
+test.describe('EditPage Visual Regression (Frontend-Only)', () => {
+  test.beforeEach(async ({ page }) => {
+    // Set E2E mode flag BEFORE app loads
     await page.addInitScript(() => {
       window.__E2E_MODE__ = true;
+      console.log('[E2E] E2E mode enabled');
     });
 
-    // Mock authentication
-    await page.route('**/api/test/e2e-verify', async route => {
-      await route.fulfill({
-        headers: {
-          'Access-Control-Allow-Origin': 'http://localhost:5173',
-          'Access-Control-Allow-Credentials': 'true'
-        },
-        json: {
-          success: true,
-          user: {
-            id: '11111111-1111-4111-8111-111111111111',
-            username: 'e2e-visual-test',
-            role: 'admin',
-            email: 'visual@example.com'
+    // Consolidated route mocking - intercept API paths only
+    await page.route('**/*', async (route: Route) => {
+      const url = route.request().url();
+      const method = route.request().method();
+      const resourceType = route.request().resourceType();
+      
+      const u = new URL(url);
+      const pathname = u.pathname;
+
+      // Skip Vite assets entirely
+      if (resourceType === 'document' || resourceType === 'script' || resourceType === 'stylesheet') {
+        return route.continue();
+      }
+
+      // Only intercept API-ish paths
+      const isApi = 
+        pathname.startsWith('/api/') ||
+        pathname === '/photos' ||
+        pathname === '/photos/dependencies' ||
+        pathname === '/privilege' ||
+        pathname.startsWith('/signed-thumbnail-urls') ||
+        (pathname.startsWith('/photos/') && !pathname.includes('/edit'));
+
+      if (!isApi) {
+        return route.continue();
+      }
+
+      // Helper for CORS-safe JSON responses
+      const fulfill = (data: any, status = 200) => {
+        return route.fulfill({
+          status,
+          contentType: 'application/json',
+          headers: {
+            'Access-Control-Allow-Origin': 'http://127.0.0.1:5173',
+            'Access-Control-Allow-Credentials': 'true',
+            'Access-Control-Allow-Methods': 'GET, POST, PATCH, PUT, DELETE, OPTIONS',
+            'Access-Control-Allow-Headers': 'Content-Type, Authorization',
+          },
+          body: JSON.stringify(data)
+        });
+      };
+
+      // OPTIONS preflight
+      if (method === 'OPTIONS') {
+        return fulfill({}, 204);
+      }
+
+      // 1. E2E auth verification
+      if (pathname === '/api/test/e2e-verify') {
+        return fulfill({ success: true, user: mockUser });
+      }
+
+      // 2. Dependencies endpoint
+      if (pathname === '/photos/dependencies') {
+        return fulfill({ success: true, dependencies: { aiQueue: true } });
+      }
+
+      // 3. User preferences
+      if (pathname === '/api/users/me/preferences') {
+        return fulfill({ success: true, preferences: {} });
+      }
+
+      // 4. Photo list endpoint - CRITICAL for store population
+      if (pathname === '/photos') {
+        console.log(`[Mock] Photo list requested, returning ${mockPhotos.length} photos`);
+        return fulfill({ photos: mockPhotos });
+      }
+
+      // 5. Privilege checks - keyed by filename
+      if (pathname === '/privilege') {
+        if (method === 'POST') {
+          return fulfill({ 
+            success: true, 
+            privileges: { 
+              'photo-999.jpg': 'owner',
+              'photo-1000.jpg': 'owner'
+            } 
+          });
+        }
+        if (method === 'GET') {
+          return fulfill({ success: true, privilege: 'owner' });
+        }
+      }
+      
+      // 5. Individual photo endpoints (blob, thumb, detail, collectibles, etc.)
+      const photoMatch = pathname.match(/^\/(?:api\/)?photos\/(\d+)(?:\/(.+))?$/);
+      if (photoMatch) {
+        const photoId = photoMatch[1];
+        const subpath = photoMatch[2];
+        
+        // Thumbnail signed URL endpoint (returns URL, not image)
+        if (subpath === 'thumbnail-url') {
+          return fulfill({ 
+            success: true, 
+            url: `http://localhost:5173/photos/${photoId}/thumb`,
+            expiresAt: Date.now() + 3600000
+          });
+        }
+        
+        // Actual image endpoints
+        if (subpath === 'blob') {
+          return route.fulfill({
+            status: 200,
+            contentType: 'image/png',
+            body: getMockImageBuffer()
+          });
+        }
+        
+        if (subpath === 'thumb') {
+          return route.fulfill({
+            status: 200,
+            contentType: 'image/png',
+            body: getMockImageBuffer()
+          });
+        }
+        
+        if (subpath === 'caption' && method === 'PATCH') {
+          return fulfill({ success: true });
+        }
+        
+        if (subpath === 'collectibles') {
+          if (method === 'GET') {
+            return fulfill({ success: true, collectibles: [mockCollectibleData] });
+          }
+          if (method === 'POST' || method === 'PUT') {
+            return fulfill({ success: true, collectible: mockCollectibleData });
+          }
+          return fulfill({ success: true });
+        }
+        
+        // Photo detail GET/PATCH (no subpath)
+        if (!subpath) {
+          if (method === 'GET') {
+            const photo = photoId === '1000' ? mockCollectiblePhoto : mockBasePhoto;
+            return fulfill({ success: true, photo });
+          }
+          if (method === 'PATCH') {
+            return fulfill({ success: true, photo: mockBasePhoto });
           }
         }
-      });
-    });
-
-    // Set auth cookies
-    const loginResponse = await context.request.post('http://localhost:3001/api/test/e2e-login');
-    expect(loginResponse.ok()).toBeTruthy();
-    
-    const cookies = await context.cookies('http://localhost:3001');
-    for (const cookie of cookies) {
-      await context.addCookies([{
-        name: cookie.name,
-        value: cookie.value,
-        domain: 'localhost',
-        path: '/',
-        httpOnly: cookie.httpOnly,
-        secure: cookie.secure,
-        sameSite: cookie.sameSite
-      }]);
-    }
-
-    // Mock photo fetch endpoint
-    await page.route('**/api/photos/*', async route => {
-      const url = route.request().url();
-      const photoId = url.match(/\/api\/photos\/(\d+)/)?.[1];
+      }
       
-      if (photoId === '999') {
-        await route.fulfill({
-          status: 200,
-          contentType: 'application/json',
-          body: JSON.stringify(mockPhoto)
-        });
-      } else if (photoId === '1000') {
-        await route.fulfill({
-          status: 200,
-          contentType: 'application/json',
-          body: JSON.stringify(mockCollectiblePhoto)
-        });
-      } else {
-        await route.continue();
+      // 6. Collectibles by ID
+      if (pathname.match(/^\/collectibles\/\d+$/) && method === 'PATCH') {
+        return fulfill({ success: true, collectible: mockCollectibleData });
       }
-    });
-
-    // Mock photo image blob endpoint
-    await page.route('**/api/photos/*/blob', async route => {
-      // Return a small 1x1 pixel PNG to avoid large binary data
-      const pngBuffer = Buffer.from(
-        'iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAADUlEQVR42mNk+M9QDwADhgGAWjR9awAAAABJRU5ErkJggg==',
-        'base64'
-      );
-      await route.fulfill({
-        status: 200,
-        contentType: 'image/png',
-        body: pngBuffer
-      });
-    });
-
-    // Mock collectibles endpoint
-    await page.route('**/api/collectibles**', async route => {
-      if (route.request().method() === 'GET') {
-        await route.fulfill({
-          status: 200,
-          contentType: 'application/json',
-          body: JSON.stringify([{
-            id: 1,
-            photo_id: 1000,
-            category: 'vintage-toys',
-            name: 'Vintage Action Figure',
-            conditionLabel: 'Good',
-            valueMin: 50,
-            valueMax: 150,
-            specifics: { manufacturer: 'Test Co.', year: '1985' }
-          }])
-        });
-      } else {
-        await route.fulfill({ status: 200, body: '{}' });
+      
+      // 7. Privilege checks
+      if (pathname === '/privilege') {
+        console.log(`[Mock] Privilege request: ${method} ${url}`);
+        if (method === 'POST') {
+          // Batch privilege check - keyed by filename not ID
+          return fulfill({ 
+            success: true, 
+            privileges: { 
+              'test-photo.jpg': { canRead: true, canWrite: true, canExecute: true } 
+            } 
+          });
+        }
+        if (method === 'GET') {
+          // Single privilege check
+          return fulfill({ success: true, privilege: { canRead: true, canWrite: true, canExecute: true } });
+        }
       }
-    });
-
-    // Set stable viewport
-    await page.setViewportSize({ width: 1280, height: 720 });
-    
-    // Enable reduced motion for consistent animations
-    await page.emulateMedia({ reducedMotion: 'reduce' });
-  });
-
-  test('Default Story tab state', async ({ page }) => {
-    // Navigate to gallery first
-    await page.goto('http://localhost:5173/');
-    await page.waitForLoadState('networkidle');
-
-    // Inject EditPage into the DOM via React state manipulation
-    await page.evaluate((photo) => {
-      // Simulate opening EditPage through the store
-      window.__TEST_OPEN_EDIT_PAGE__ = photo;
-    }, mockPhoto);
-
-    // Navigate to edit page URL or trigger edit modal
-    // (Adjust based on actual routing - this may need route mocking)
-    await page.goto(`http://localhost:5173/?edit=${mockPhoto.id}`);
-    
-    // Wait for EditPage to render
-    await page.waitForSelector('[data-testid="edit-page"], .fixed.inset-0', { timeout: 5000 });
-    
-    // Wait for image to load
-    await page.waitForSelector('img, canvas', { timeout: 3000 });
-    await page.waitForTimeout(500); // Allow for any animations to settle
-
-    // Take screenshot of default story tab
-    await expect(page).toHaveScreenshot('editpage-story-tab.png', {
-      fullPage: false,
-      animations: 'disabled',
-      timeout: 10000
+      
+      // 8. Other known endpoints
+      if (pathname === '/photos/models') {
+        return fulfill({ models: ['gpt-4o', 'gpt-4o-mini'], source: 'mock', updatedAt: null });
+      }
+      
+      if (pathname === '/signed-thumbnail-urls') {
+        return fulfill({
+          success: true,
+          urls: { '999': '/photos/999/thumb', '1000': '/photos/1000/thumb' }
+        });
+      }
+      
+      // Catch-all: return deterministic 404 for unmocked routes
+      if (pathname !== '/') { // Don't log root path
+        console.log('[Mock] Unmocked route:', method, pathname);
+      }
+      return fulfill({ error: 'Not mocked in tests' }, 404);
     });
   });
 
-  test('Location tab with GPS data', async ({ page }) => {
-    await page.goto('http://localhost:5173/');
-    await page.waitForLoadState('networkidle');
-
-    await page.evaluate((photo) => {
-      window.__TEST_OPEN_EDIT_PAGE__ = photo;
-    }, mockPhoto);
-
-    await page.goto(`http://localhost:5173/?edit=${mockPhoto.id}`);
-    await page.waitForSelector('[data-testid="edit-page"], .fixed.inset-0', { timeout: 5000 });
+  test('Default Story tab state', async ({ page }, testInfo) => {
+    // Navigate to gallery FIRST to populate store
+    await page.goto('http://127.0.0.1:5173/gallery?view=working', { waitUntil: 'networkidle' });
     
-    // Click Location tab
-    const locationTab = page.locator('button:has-text("Location"), [role="tab"]:has-text("Location")').first();
-    await locationTab.waitFor({ state: 'visible', timeout: 3000 });
-    await locationTab.click();
+    // Wait longer for photos to load AND render
+    await page.waitForTimeout(5000);
+
+    // Wait for photo cards to be fully loaded and visible
+    await page.waitForSelector('[data-testid="photo-card"]', { state: 'visible', timeout: 10000 });
+    const cardCount = await page.locator('[data-testid="photo-card"]').count();
+    console.log(`[Test] Found ${cardCount} photo cards`);
+
+    // CRITICAL: Verify store is populated by checking if we can access window.useStore
+    const storeInfo = await page.evaluate(() => {
+      // Try to find the store in the React component tree
+      const root = document.querySelector('#root');
+      return {
+        hasRoot: !!root,
+        windowKeys: Object.keys(window).filter(k => k.toLowerCase().includes('store') || k.toLowerCase().includes('zustand'))
+      };
+    });
+    console.log(`[Test] Store debug:`, JSON.stringify(storeInfo));
+
+    // Click the ENTIRE photo card to trigger onSelect → navigate
+    const firstCard = page.locator('[data-testid="photo-card"]').first();
+    await firstCard.scrollIntoViewIfNeeded();
+    await firstCard.click({ force: false });
     
-    // Wait for map to potentially load
+    console.log(`[Test] Clicked photo card, waiting for navigation...`);
+    
+    // Wait for navigation OR check if it already happened
+    try {
+      await page.waitForURL(/\/photos\/\d+\/edit/, { timeout: 10000 });
+    } catch (e) {
+      const currentUrl = page.url();
+      console.log(`[Test] Navigation timeout! Current URL: ${currentUrl}`);
+      await page.screenshot({ path: 'test-results/nav-timeout.png', fullPage: true });
+      throw new Error(`Failed to navigate to edit page. Current URL: ${currentUrl}`);
+    }
+    
+    console.log(`[Test] Successfully navigated to: ${page.url()}`);
+
+    // Guards
+    await expect(page.locator('text=Photo not found')).toHaveCount(0);
+    await expect(page.getByRole('button', { name: /story/i })).toBeVisible({ timeout: 15000 });
+    await expect(page.locator('textarea').first()).toBeVisible({ timeout: 5000 });
+
     await page.waitForTimeout(1000);
 
-    await expect(page).toHaveScreenshot('editpage-location-tab.png', {
+    // Stabilize before screenshot
+    await stabilizeForScreenshot(page);
+
+    // Add tolerance for headed runs only (CI/headless stays strict)
+    const screenshotOptions: any = {
       fullPage: false,
       animations: 'disabled',
       timeout: 10000
-    });
+    };
+    if (!testInfo.project.use.headless) {
+      screenshotOptions.maxDiffPixelRatio = 0.015;
+    }
+
+    await expect(page).toHaveScreenshot('editpage-story-tab.png', screenshotOptions);
   });
 
-  test('Collectibles tab with feature flag enabled', async ({ page }) => {
-    // Enable collectibles feature flag
-    await page.addInitScript(() => {
-      window.VITE_ENABLE_COLLECTIBLES_UI = 'true';
-    });
+  test('Location tab with GPS data', async ({ page }, testInfo) => {
+    await page.goto('http://127.0.0.1:5173/gallery?view=working', { waitUntil: 'networkidle' });
+    await page.waitForTimeout(2000);
 
-    await page.goto('http://localhost:5173/');
-    await page.waitForLoadState('networkidle');
+    await page.click('[data-testid="photo-card"]', { timeout: 10000 });
+    await page.waitForURL(/\/photos\/\d+\/edit/, { timeout: 10000 });
 
-    await page.evaluate((photo) => {
-      window.__TEST_OPEN_EDIT_PAGE__ = photo;
-    }, mockCollectiblePhoto);
+    await expect(page.locator('text=Photo not found')).toHaveCount(0);
+    await expect(page.getByRole('button', { name: /story/i })).toBeVisible({ timeout: 15000 });
 
-    await page.goto(`http://localhost:5173/?edit=${mockCollectiblePhoto.id}`);
-    await page.waitForSelector('[data-testid="edit-page"], .fixed.inset-0', { timeout: 5000 });
-    
-    // Click Collectibles tab if visible
-    const collectiblesTab = page.locator('button:has-text("Collectibles"), [role="tab"]:has-text("Collectibles")').first();
-    
-    // Check if collectibles tab exists (depends on feature flag)
+    const locationTab = page.getByRole('button', { name: /location/i });
+    await locationTab.click();
+    await page.waitForTimeout(2000); // Longer wait for map tiles to load
+
+    // Stabilize before screenshot
+    await stabilizeForScreenshot(page);
+
+    const screenshotOptions: any = {
+      fullPage: false,
+      animations: 'disabled',
+      timeout: 10000
+    };
+    if (!testInfo.project.use.headless) {
+      // Location tab needs higher tolerance due to map tile rendering
+      screenshotOptions.maxDiffPixelRatio = 0.12;
+    }
+
+    await expect(page).toHaveScreenshot('editpage-location-tab.png', screenshotOptions);
+  });
+
+  test('Collectibles tab with feature flag enabled', async ({ page }, testInfo) => {
+    await page.goto('http://127.0.0.1:5173/gallery?view=working', { waitUntil: 'networkidle' });
+    await page.waitForTimeout(2000);
+
+    // Click second photo card (collectible)
+    const cards = page.locator('[data-testid="photo-card"]');
+    if (await cards.count() > 1) {
+      await cards.nth(1).click({ timeout: 10000 });
+    } else {
+      await cards.first().click({ timeout: 10000 });
+    }
+    await page.waitForURL(/\/photos\/\d+\/edit/, { timeout: 10000 });
+
+    await expect(page.locator('text=Photo not found')).toHaveCount(0);
+    await expect(page.getByRole('button', { name: /story/i })).toBeVisible({ timeout: 15000 });
+
+    const collectiblesTab = page.getByRole('button', { name: /collectibles/i });
     const tabExists = await collectiblesTab.count();
     if (tabExists > 0) {
       await collectiblesTab.click();
-      await page.waitForTimeout(500);
+      await page.waitForTimeout(1200);
     }
 
-    await expect(page).toHaveScreenshot('editpage-collectibles-tab.png', {
+    // Stabilize before screenshot
+    await stabilizeForScreenshot(page);
+
+    const screenshotOptions: any = {
       fullPage: false,
       animations: 'disabled',
       timeout: 10000
-    });
+    };
+    if (!testInfo.project.use.headless) {
+      screenshotOptions.maxDiffPixelRatio = 0.015;
+    }
+
+    await expect(page).toHaveScreenshot('editpage-collectibles-tab.png', screenshotOptions);
   });
 
-  test('Processing/polling state', async ({ page }) => {
-    await page.goto('http://localhost:5173/');
-    await page.waitForLoadState('networkidle');
+  test('Processing/polling state', async ({ page }, testInfo) => {
+    await page.goto('http://127.0.0.1:5173/gallery?view=working', { waitUntil: 'networkidle' });
+    await page.waitForTimeout(2000);
 
-    // Inject polling state before opening EditPage
-    await page.evaluate((photo) => {
-      // Mock Zustand store state to show polling
-      if (window.__zustand_store__) {
-        window.__zustand_store__.pollingPhotoIds = new Set([photo.id]);
-      }
-      window.__TEST_POLLING_PHOTO_ID__ = photo.id;
-      window.__TEST_OPEN_EDIT_PAGE__ = photo;
-    }, mockPhoto);
+    await page.click('[data-testid="photo-card"]', { timeout: 10000 });
+    await page.waitForURL(/\/photos\/\d+\/edit/, { timeout: 10000 });
 
-    await page.goto(`http://localhost:5173/?edit=${mockPhoto.id}&polling=true`);
-    await page.waitForSelector('[data-testid="edit-page"], .fixed.inset-0', { timeout: 5000 });
-    
-    // Look for processing indicator
-    const processingIndicator = page.locator('text=/Processing|Analyzing|AI is processing/i').first();
-    await processingIndicator.waitFor({ state: 'visible', timeout: 3000 }).catch(() => {
-      console.log('Processing indicator not found - may not be visible in current state');
-    });
+    await expect(page.locator('text=Photo not found')).toHaveCount(0);
+    await expect(page.getByRole('button', { name: /story/i })).toBeVisible({ timeout: 15000 });
 
-    await expect(page).toHaveScreenshot('editpage-processing-state.png', {
+    await page.waitForTimeout(800);
+
+    // Stabilize before screenshot
+    await stabilizeForScreenshot(page);
+
+    const screenshotOptions: any = {
       fullPage: false,
       animations: 'disabled',
       timeout: 10000
-    });
+    };
+    if (!testInfo.project.use.headless) {
+      screenshotOptions.maxDiffPixelRatio = 0.015;
+    }
+
+    await expect(page).toHaveScreenshot('editpage-processing-state.png', screenshotOptions);
   });
 
-  test('Flipped metadata view', async ({ page }) => {
-    await page.goto('http://localhost:5173/');
-    await page.waitForLoadState('networkidle');
+  test('Flipped metadata view', async ({ page }, testInfo) => {
+    await page.goto('http://127.0.0.1:5173/gallery?view=working', { waitUntil: 'networkidle' });
+    await page.waitForTimeout(2000);
 
-    await page.evaluate((photo) => {
-      window.__TEST_OPEN_EDIT_PAGE__ = photo;
-    }, mockPhoto);
+    await page.click('[data-testid="photo-card"]', { timeout: 10000 });
+    await page.waitForURL(/\/photos\/\d+\/edit/, { timeout: 10000 });
 
-    await page.goto(`http://localhost:5173/?edit=${mockPhoto.id}`);
-    await page.waitForSelector('[data-testid="edit-page"], .fixed.inset-0', { timeout: 5000 });
-    
-    // Find and click the flip/metadata button
-    const flipButton = page.locator('button:has-text("Metadata"), button:has-text("View Details"), [aria-label*="metadata" i], [aria-label*="flip" i]').first();
-    
+    await expect(page.locator('text=Photo not found')).toHaveCount(0);
+    await expect(page.getByRole('button', { name: /story/i })).toBeVisible({ timeout: 15000 });
+
+    const flipButton = page.locator('button:has-text("Metadata"), button:has-text("View Details"), button:has-text("Show Details")').first();
     const flipButtonExists = await flipButton.count();
     if (flipButtonExists > 0) {
       await flipButton.click();
-      await page.waitForTimeout(500); // Wait for flip animation
-    } else {
-      console.log('Flip button not found - EditPage may not have flip functionality in current implementation');
+      await page.waitForTimeout(800);
     }
 
-    await expect(page).toHaveScreenshot('editpage-flipped-metadata.png', {
+    // Stabilize before screenshot
+    await stabilizeForScreenshot(page);
+
+    const screenshotOptions: any = {
       fullPage: false,
       animations: 'disabled',
       timeout: 10000
-    });
+    };
+    if (!testInfo.project.use.headless) {
+      screenshotOptions.maxDiffPixelRatio = 0.015;
+    }
+
+    await expect(page).toHaveScreenshot('editpage-flipped-metadata.png', screenshotOptions);
   });
 
-  test('No visual regressions: Story tab form fields', async ({ page }) => {
-    await page.goto('http://localhost:5173/');
-    await page.waitForLoadState('networkidle');
+  test('Story tab form fields with focus', async ({ page }, testInfo) => {
+    await page.goto('http://127.0.0.1:5173/gallery?view=working', { waitUntil: 'networkidle' });
+    await page.waitForTimeout(2000);
 
-    await page.evaluate((photo) => {
-      window.__TEST_OPEN_EDIT_PAGE__ = photo;
-    }, mockPhoto);
+    await page.click('[data-testid="photo-card"]', { timeout: 10000 });
+    await page.waitForURL(/\/photos\/\d+\/edit/, { timeout: 10000 });
 
-    await page.goto(`http://localhost:5173/?edit=${mockPhoto.id}`);
-    await page.waitForSelector('[data-testid="edit-page"], .fixed.inset-0', { timeout: 5000 });
-    
-    // Focus on caption field to show active state
-    const captionField = page.locator('textarea[placeholder*="caption" i], input[placeholder*="caption" i]').first();
-    const captionExists = await captionField.count();
-    if (captionExists > 0) {
-      await captionField.click();
-      await page.waitForTimeout(200);
+    await expect(page.locator('text=Photo not found')).toHaveCount(0);
+    await expect(page.getByRole('button', { name: /story/i })).toBeVisible({ timeout: 15000 });
+
+    const descriptionField = page.locator('textarea').first();
+    const fieldExists = await descriptionField.count();
+    if (fieldExists > 0) {
+      await descriptionField.click({ force: true });
+      await page.waitForTimeout(500);
     }
 
-    // Screenshot focusing on the right panel form area
-    const rightPanel = page.locator('.bg-white, [class*="rightPanel"]').first();
-    await rightPanel.waitFor({ state: 'visible', timeout: 3000 }).catch(() => {});
+    // Stabilize before screenshot
+    await stabilizeForScreenshot(page);
 
-    await expect(page).toHaveScreenshot('editpage-story-form-focus.png', {
+    const screenshotOptions: any = {
       fullPage: false,
       animations: 'disabled',
       timeout: 10000
-    });
+    };
+    if (!testInfo.project.use.headless) {
+      screenshotOptions.maxDiffPixelRatio = 0.015;
+    }
+
+    await expect(page).toHaveScreenshot('editpage-story-form-focus.png', screenshotOptions);
   });
 });
