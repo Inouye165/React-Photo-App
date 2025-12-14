@@ -1,17 +1,19 @@
 import { useState, useEffect } from 'react'
-import ImageCanvasEditor from './ImageCanvasEditor'
 import { useAuth } from './contexts/AuthContext'
 import { API_BASE_URL } from './api.js'
 import useStore from './store.js'
 import AppHeader from './components/AppHeader.jsx'
-import LocationMapPanel from './components/LocationMapPanel'
-import FlipCard from './components/FlipCard'
-import PhotoMetadataBack from './components/PhotoMetadataBack'
 import { useProtectedImageBlobUrl } from './hooks/useProtectedImageBlobUrl.js'
 import { useLockBodyScroll } from './hooks/useLockBodyScroll.js'
 import { COLLECTIBLES_UI_ENABLED } from './config/featureFlags'
 import { useCollectiblesForPhoto } from './hooks/useCollectiblesForPhoto'
 import { useAiRecheckForPhoto } from './hooks/useAiRecheckForPhoto'
+import EditPageShell from './components/edit/EditPageShell'
+import EditHeaderActions from './components/edit/EditHeaderActions'
+import EditTabs from './components/edit/EditTabs'
+import StoryTabPanel from './components/edit/StoryTabPanel'
+import LocationTabPanel from './components/edit/LocationTabPanel'
+import PhotoStackPanel from './components/edit/PhotoStackPanel'
 import CollectiblesTabPanel from './components/edit/CollectiblesTabPanel'
 import type { Photo, TextStyle } from './types/photo'
 
@@ -195,81 +197,18 @@ export default function EditPage({ photo, onClose: _onClose, onSave, onRecheckAI
 
   
   return (
-    <div 
-      className="fixed inset-0 z-50 font-sans text-slate-900"
-      style={{ 
-        position: 'fixed', 
-        top: 0, 
-        left: 0, 
-        right: 0, 
-        bottom: 0, 
-        zIndex: 9999, 
-        backgroundColor: '#cbd5e1', // slate-300 for background contrast
-        display: 'flex',
-        flexDirection: 'column',
-        fontFamily: '-apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Helvetica, Arial, sans-serif'
-      }}
-    >
+    <EditPageShell>
       {/* Consistent App Header */}
       <AppHeader 
         rightContent={
-          <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
-            {/* AI Recheck Status */}
-            {isPolling || recheckingAI ? (
-              <div style={{
-                display: 'flex',
-                alignItems: 'center',
-                gap: '6px',
-                padding: '6px 12px',
-                backgroundColor: '#fef3c7',
-                color: '#d97706',
-                borderRadius: '8px',
-                fontSize: '12px',
-                fontWeight: 500,
-                border: '1px solid #fde68a',
-              }}>
-                <span>Processing...</span>
-              </div>
-            ) : (
-              <button
-                onClick={handleRecheckAi}
-                disabled={!aiReady}
-                style={{ 
-                  padding: '6px 12px',
-                  borderRadius: '8px',
-                  border: '1px solid #e2e8f0',
-                  backgroundColor: '#ffffff',
-                  cursor: aiReady ? 'pointer' : 'not-allowed', 
-                  color: aiReady ? '#475569' : '#cbd5e1', 
-                  fontSize: '12px', 
-                  fontWeight: 500,
-                  transition: 'all 0.15s ease',
-                }}
-              >
-                Recheck AI
-              </button>
-            )}
-
-            {/* Save Button */}
-            <button 
-              onClick={handleSave} 
-              disabled={saving}
-              style={{
-                backgroundColor: '#0f172a',
-                color: 'white',
-                fontSize: '12px',
-                fontWeight: 500,
-                padding: '6px 16px',
-                borderRadius: '8px',
-                border: 'none',
-                cursor: saving ? 'wait' : 'pointer',
-                opacity: saving ? 0.7 : 1,
-                transition: 'all 0.15s ease',
-              }}
-            >
-              {saving ? 'Saving...' : 'Save Changes'}
-            </button>
-          </div>
+          <EditHeaderActions
+            isPolling={isPolling}
+            recheckingAI={recheckingAI}
+            aiReady={aiReady}
+            saving={saving}
+            onRecheckClick={handleRecheckAi}
+            onSaveClick={handleSave}
+          />
         }
       />
 
@@ -294,126 +233,21 @@ export default function EditPage({ photo, onClose: _onClose, onSave, onRecheckAI
           {/* ========================================
               LEFT COLUMN: Caption + Flip Card (Photo Stack)
               ======================================== */}
-          <div 
-            className="bg-slate-100 relative flex flex-col overflow-hidden border-r border-slate-200"
-            style={{ 
-              flex: 1,
-              backgroundColor: '#f1f5f9',
-              position: 'relative',
-              display: 'flex',
-              flexDirection: 'column',
-              overflow: 'hidden',
-              borderRight: '1px solid #e2e8f0',
-              padding: '20px',
-            }}
-          >
-            {/* Caption Input - Above the Photo (styled as header) */}
-            <div style={{ marginBottom: '16px', flexShrink: 0 }}>
-              <input
-                type="text"
-                value={caption}
-                onChange={e => setCaption(e.target.value)}
-                placeholder="Add a caption..."
-                style={{
-                  width: '100%',
-                  backgroundColor: 'transparent',
-                  border: 'none',
-                  borderBottom: '2px solid transparent',
-                  padding: '8px 4px',
-                  fontSize: '1.5rem',
-                  fontWeight: 600,
-                  color: '#1e293b',
-                  outline: 'none',
-                  fontFamily: 'inherit',
-                  transition: 'border-color 0.2s ease',
-                }}
-                onFocus={(e) => {
-                  e.target.style.borderBottomColor = '#3b82f6';
-                }}
-                onBlur={(e) => {
-                  e.target.style.borderBottomColor = 'transparent';
-                }}
-              />
-            </div>
-
-            {/* Flip Card Container - Photo / Metadata */}
-            <div style={{ flex: 1, minHeight: 0, position: 'relative' }}>
-              <FlipCard
-                isFlipped={isFlipped}
-                onFlip={() => setIsFlipped(!isFlipped)}
-                frontContent={
-                  /* Front Face: Photo with Burn Caption functionality */
-                  <div style={{ 
-                    width: '100%', 
-                    height: '100%', 
-                    backgroundColor: '#0f172a',
-                    position: 'relative',
-                  }}>
-                    {isLoading && (
-                      <div style={{
-                        position: 'absolute',
-                        inset: 0,
-                        display: 'flex',
-                        alignItems: 'center',
-                        justifyContent: 'center',
-                        color: '#94a3b8',
-                      }}>
-                        Loading...
-                      </div>
-                    )}
-                    
-                    {fetchError && (
-                      <div style={{
-                        position: 'absolute',
-                        inset: 0,
-                        display: 'flex',
-                        flexDirection: 'column',
-                        alignItems: 'center',
-                        justifyContent: 'center',
-                        color: '#ef4444',
-                        gap: '8px'
-                      }}>
-                        <span>Unable to load image</span>
-                        <button 
-                          onClick={retry}
-                            style={{
-                                padding: '4px 12px',
-                                backgroundColor: 'white',
-                                border: '1px solid #ef4444',
-                                borderRadius: '4px',
-                                color: '#ef4444',
-                                cursor: 'pointer',
-                                fontSize: '12px'
-                            }}
-                        >
-                            Retry
-                        </button>
-                      </div>
-                    )}
-
-                    {imageBlobUrl && (
-                      <ImageCanvasEditor 
-                        imageUrl={imageBlobUrl}
-                        caption={caption}
-                        textStyle={textStyle}
-                        onSave={handleCanvasSave}
-                        isFlipped={isFlipped}
-                        onFlip={() => setIsFlipped(!isFlipped)}
-                      />
-                    )}
-                  </div>
-                }
-                backContent={
-                  /* Back Face: Keywords + Technical Metadata */
-                  <PhotoMetadataBack
-                    keywords={keywords}
-                    onKeywordsChange={setKeywords}
-                    photo={sourcePhoto}
-                  />
-                }
-              />
-            </div>
-          </div>
+          <PhotoStackPanel
+            caption={caption}
+            onCaptionChange={setCaption}
+            isFlipped={isFlipped}
+            onFlip={() => setIsFlipped(!isFlipped)}
+            imageBlobUrl={imageBlobUrl}
+            isLoading={isLoading}
+            fetchError={fetchError}
+            onRetry={retry}
+            textStyle={textStyle}
+            onCanvasSave={handleCanvasSave}
+            keywords={keywords}
+            onKeywordsChange={setKeywords}
+            photo={sourcePhoto}
+          />
 
           {/* ========================================
               RIGHT COLUMN: Tabbed Interface (Story / Location / Collectibles)
@@ -430,161 +264,27 @@ export default function EditPage({ photo, onClose: _onClose, onSave, onRecheckAI
             }}
           >
             {/* Tab Navigation */}
-            <div 
-              style={{
-                display: 'flex',
-                borderBottom: '1px solid #e2e8f0',
-                backgroundColor: '#f8fafc',
-                flexShrink: 0,
-              }}
-            >
-              <button
-                onClick={() => setActiveTab('story')}
-                style={{
-                  flex: 1,
-                  padding: '12px 16px',
-                  fontSize: '13px',
-                  fontWeight: activeTab === 'story' ? 600 : 500,
-                  color: activeTab === 'story' ? '#1e293b' : '#64748b',
-                  backgroundColor: activeTab === 'story' ? '#ffffff' : 'transparent',
-                  border: 'none',
-                  borderBottom: activeTab === 'story' ? '2px solid #3b82f6' : '2px solid transparent',
-                  cursor: 'pointer',
-                  transition: 'all 0.15s ease',
-                }}
-              >
-                Story
-              </button>
-              <button
-                onClick={() => setActiveTab('location')}
-                style={{
-                  flex: 1,
-                  padding: '12px 16px',
-                  fontSize: '13px',
-                  fontWeight: activeTab === 'location' ? 600 : 500,
-                  color: activeTab === 'location' ? '#1e293b' : '#64748b',
-                  backgroundColor: activeTab === 'location' ? '#ffffff' : 'transparent',
-                  border: 'none',
-                  borderBottom: activeTab === 'location' ? '2px solid #3b82f6' : '2px solid transparent',
-                  cursor: 'pointer',
-                  transition: 'all 0.15s ease',
-                }}
-              >
-                Location
-              </button>
-              {(showCollectiblesTab || COLLECTIBLES_UI_ENABLED) && (
-                <button
-                  onClick={() => setActiveTab('collectibles')}
-                  style={{
-                    flex: 1,
-                    padding: '12px 16px',
-                    fontSize: '13px',
-                    fontWeight: activeTab === 'collectibles' ? 600 : 500,
-                    color: activeTab === 'collectibles' ? '#1e293b' : '#64748b',
-                    backgroundColor: activeTab === 'collectibles' ? '#ffffff' : 'transparent',
-                    border: 'none',
-                    borderBottom: activeTab === 'collectibles' ? '2px solid #3b82f6' : '2px solid transparent',
-                    cursor: 'pointer',
-                    transition: 'all 0.15s ease',
-                    position: 'relative',
-                  }}
-                >
-                  Collectibles
-                  {isCollectiblePhoto && !hasCollectibleData && (
-                    <span style={{
-                      position: 'absolute',
-                      top: '8px',
-                      right: '8px',
-                      width: '8px',
-                      height: '8px',
-                      backgroundColor: '#f59e0b',
-                      borderRadius: '50%',
-                    }} title="AI detected collectible" />
-                  )}
-                </button>
-              )}
-            </div>
+            <EditTabs
+              activeTab={activeTab}
+              onTabChange={setActiveTab}
+              showCollectiblesTab={showCollectiblesTab || COLLECTIBLES_UI_ENABLED}
+              isCollectiblePhoto={isCollectiblePhoto}
+              hasCollectibleData={hasCollectibleData}
+            />
 
             {/* Tab Content */}
             <div style={{ flex: 1, overflow: 'hidden', display: 'flex', flexDirection: 'column' }}>
               {/* Story Tab */}
               {activeTab === 'story' && (
-                <div 
-                  className="flex-1 overflow-y-auto p-6 min-h-0" 
-                  style={{ 
-                    flex: 1, 
-                    overflowY: 'auto', 
-                    padding: '24px',
-                    display: 'flex',
-                    flexDirection: 'column',
-                  }}
-                >
-                  <div style={{ 
-                    display: 'flex', 
-                    flexDirection: 'column', 
-                    height: '100%',
-                  }}>
-                    <label 
-                      style={{ 
-                        display: 'block', 
-                        fontSize: '11px', 
-                        fontWeight: 700, 
-                        color: '#94a3b8', 
-                        textTransform: 'uppercase', 
-                        letterSpacing: '0.05em', 
-                        marginBottom: '12px',
-                      }}
-                    >
-                      Photo Story
-                    </label>
-                    <textarea
-                      value={description}
-                      onChange={e => setDescription(e.target.value)}
-                      className="w-full bg-slate-50 border border-slate-200 rounded-2xl p-4 text-sm text-slate-700 outline-none focus:border-blue-500"
-                      style={{ 
-                        flex: 1,
-                        width: '100%', 
-                        backgroundColor: '#f8fafc', 
-                        border: '1px solid #e2e8f0', 
-                        borderRadius: '16px', 
-                        padding: '16px', 
-                        fontSize: '15px', 
-                        lineHeight: '1.6',
-                        color: '#334155', 
-                        outline: 'none', 
-                        resize: 'none',
-                        minHeight: '200px',
-                      }}
-                      placeholder="Tell the story behind this photo... What were you doing? Who was there? What made this moment special?"
-                    />
-                  </div>
-                </div>
+                <StoryTabPanel
+                  description={description}
+                  onDescriptionChange={setDescription}
+                />
               )}
 
               {/* Location Tab */}
               {activeTab === 'location' && (
-                <div 
-                  className="flex-1 bg-slate-50 p-4" 
-                  style={{ 
-                    flex: 1,
-                    backgroundColor: '#f8fafc', 
-                    padding: '20px',
-                  }}
-                >
-                  <div 
-                    style={{ 
-                      height: '100%', 
-                      width: '100%', 
-                      borderRadius: '16px', 
-                      overflow: 'hidden', 
-                      border: '1px solid rgba(226, 232, 240, 0.6)', 
-                      position: 'relative',
-                      boxShadow: '0 1px 3px rgba(0, 0, 0, 0.05)',
-                    }}
-                  >
-                    <LocationMapPanel photo={sourcePhoto} />
-                  </div>
-                </div>
+                <LocationTabPanel photo={sourcePhoto} />
               )}
 
               {/* Collectibles Tab */}
@@ -607,6 +307,6 @@ export default function EditPage({ photo, onClose: _onClose, onSave, onRecheckAI
           </div>
         </main>
       </div>
-    </div>
+    </EditPageShell>
   )
 }
