@@ -1,19 +1,18 @@
-import { useState, useEffect, useCallback, useRef } from 'react'
+import { useState, useEffect, useRef } from 'react'
 import ImageCanvasEditor from './ImageCanvasEditor'
 import { useAuth } from './contexts/AuthContext'
-import { API_BASE_URL, fetchCollectibles, upsertCollectible } from './api.js'
+import { API_BASE_URL } from './api.js'
 import useStore from './store.js'
 import AppHeader from './components/AppHeader.jsx'
 import LocationMapPanel from './components/LocationMapPanel'
 import FlipCard from './components/FlipCard'
 import PhotoMetadataBack from './components/PhotoMetadataBack'
-import CollectibleEditorPanel from './components/CollectibleEditorPanel.jsx'
-import CollectibleDetailView from './components/CollectibleDetailView.jsx'
 import { useProtectedImageBlobUrl } from './hooks/useProtectedImageBlobUrl.js'
 import { useLockBodyScroll } from './hooks/useLockBodyScroll.js'
 import { COLLECTIBLES_UI_ENABLED } from './config/featureFlags'
+import { useCollectiblesForPhoto } from './hooks/useCollectiblesForPhoto'
+import CollectiblesTabPanel from './components/edit/CollectiblesTabPanel'
 import type { Photo, TextStyle } from './types/photo'
-import type { CollectibleRecord, CollectibleFormState, CollectibleAiAnalysis } from './types/collectibles'
 
 interface EditPageProps {
   photo: Photo;
@@ -51,83 +50,21 @@ export default function EditPage({ photo, onClose: _onClose, onSave, onRecheckAI
   const prevPhotoRef = useRef<Photo | undefined>(photo)
   const doneTimeoutRef = useRef<ReturnType<typeof setTimeout> | null>(null)
 
-  // === Collectibles Tab State ===
+  // === Collectibles Tab State (via hook) ===
   const [activeTab, setActiveTab] = useState<'story' | 'location' | 'collectibles'>('story');
-  const [collectibleData, setCollectibleData] = useState<CollectibleRecord | null>(null);
-  const [collectibleFormState, setCollectibleFormState] = useState<CollectibleFormState | null>(null);
-  const [collectibleLoading, setCollectibleLoading] = useState<boolean>(false);
-  const [collectibleViewMode, setCollectibleViewMode] = useState<'view' | 'edit'>('view');
-  const collectibleFetchedRef = useRef<boolean>(false);
-
-  // Check if photo is classified as a collectible or has existing collectible data
-  const isCollectiblePhoto = sourcePhoto?.classification === 'collectables' || 
-                              sourcePhoto?.classification === 'collectible' ||
-                              sourcePhoto?.ai_analysis?.classification === 'collectables' || 
-                              sourcePhoto?.ai_analysis?.classification === 'collectible';
-  const hasCollectibleData = collectibleData !== null;
-  const showCollectiblesTab = COLLECTIBLES_UI_ENABLED && (isCollectiblePhoto || hasCollectibleData);
-
-  // Extract AI analysis for collectibles from photo data
-  // poi_analysis contains the collectibles insights from the AI pipeline
-  const collectibleAiAnalysis: CollectibleAiAnalysis | null = sourcePhoto?.poi_analysis || 
-                                 sourcePhoto?.ai_analysis?.collectibleInsights || 
-                                 sourcePhoto?.collectible_insights || null;
-
-  // Load existing collectible data when photo changes
-  useEffect(() => {
-    if (!COLLECTIBLES_UI_ENABLED || !sourcePhoto?.id || collectibleFetchedRef.current) return;
-    
-    const loadCollectibleData = async () => {
-      setCollectibleLoading(true);
-      try {
-        const collectibles = await fetchCollectibles(sourcePhoto.id);
-        if (collectibles && collectibles.length > 0) {
-          setCollectibleData(collectibles[0]); // Use first collectible for this photo
-        }
-      } catch (err) {
-        console.debug('[EditPage] No collectible data found:', (err as Error).message);
-      } finally {
-        setCollectibleLoading(false);
-        collectibleFetchedRef.current = true;
-      }
-    };
-    
-    loadCollectibleData();
-  }, [sourcePhoto?.id]);
-
-  // Reset collectible fetch flag when photo changes
-  useEffect(() => {
-    collectibleFetchedRef.current = false;
-  }, [photo?.id]);
-
-  // Handle collectible form state changes
-  const handleCollectibleChange = useCallback((formState: CollectibleFormState) => {
-    setCollectibleFormState(formState);
-  }, []);
-
-  // Save collectible data
-  const saveCollectible = useCallback(async () => {
-    if (!collectibleFormState || !sourcePhoto?.id) return;
-    
-    try {
-      const result = await upsertCollectible(sourcePhoto.id, {
-        formState: {
-          category: collectibleFormState.category,
-          name: collectibleFormState.name,
-          conditionLabel: collectibleFormState.conditionLabel,
-          valueMin: collectibleFormState.valueMin,
-          valueMax: collectibleFormState.valueMax,
-          specifics: collectibleFormState.specifics
-        }
-      }, { recordAi: true });
-      
-      setCollectibleData(result);
-      return result;
-    } catch (err) {
-      console.error('[EditPage] Failed to save collectible:', err);
-      throw err;
-    }
-  }, [collectibleFormState, sourcePhoto?.id]);
+  const {
+    collectibleData,
+    collectibleLoading,
+    collectibleViewMode,
+    collectibleFormState,
+    isCollectiblePhoto,
+    hasCollectibleData,
+    collectibleAiAnalysis,
+    showCollectiblesTab,
+    setCollectibleViewMode,
+    handleCollectibleChange,
+    saveCollectible,
+  } = useCollectiblesForPhoto({ photo: sourcePhoto, enabled: COLLECTIBLES_UI_ENABLED });
 
   
 
@@ -698,117 +635,18 @@ export default function EditPage({ photo, onClose: _onClose, onSave, onRecheckAI
 
               {/* Collectibles Tab */}
               {activeTab === 'collectibles' && COLLECTIBLES_UI_ENABLED && (
-                <div 
-                  className="flex-1 overflow-y-auto" 
-                  style={{ 
-                    flex: 1, 
-                    overflowY: 'auto', 
-                    display: 'flex',
-                    flexDirection: 'column',
-                  }}
-                >
-                  {/* View/Edit Toggle */}
-                  <div style={{
-                    display: 'flex',
-                    alignItems: 'center',
-                    justifyContent: 'space-between',
-                    padding: '12px 16px',
-                    borderBottom: '1px solid #e2e8f0',
-                    backgroundColor: '#f8fafc',
-                    flexShrink: 0,
-                  }}>
-                    <div style={{
-                      display: 'flex',
-                      gap: '8px',
-                    }}>
-                      <button
-                        onClick={() => setCollectibleViewMode('view')}
-                        style={{
-                          padding: '6px 14px',
-                          fontSize: '12px',
-                          fontWeight: collectibleViewMode === 'view' ? 600 : 500,
-                          backgroundColor: collectibleViewMode === 'view' ? '#1e293b' : 'white',
-                          color: collectibleViewMode === 'view' ? 'white' : '#64748b',
-                          border: '1px solid #e2e8f0',
-                          borderRadius: '6px',
-                          cursor: 'pointer',
-                          transition: 'all 0.15s ease',
-                        }}
-                      >
-                        📋 View Details
-                      </button>
-                      <button
-                        onClick={() => setCollectibleViewMode('edit')}
-                        style={{
-                          padding: '6px 14px',
-                          fontSize: '12px',
-                          fontWeight: collectibleViewMode === 'edit' ? 600 : 500,
-                          backgroundColor: collectibleViewMode === 'edit' ? '#1e293b' : 'white',
-                          color: collectibleViewMode === 'edit' ? 'white' : '#64748b',
-                          border: '1px solid #e2e8f0',
-                          borderRadius: '6px',
-                          cursor: 'pointer',
-                          transition: 'all 0.15s ease',
-                        }}
-                      >
-                        ✏️ Edit
-                      </button>
-                    </div>
-                    {isCollectiblePhoto && (
-                      <span style={{
-                        fontSize: '11px',
-                        color: '#16a34a',
-                        fontWeight: 500,
-                      }}>
-                        ✓ AI Detected Collectible
-                      </span>
-                    )}
-                  </div>
-
-                  {/* Content Area */}
-                  <div style={{ flex: 1, overflowY: 'auto' }}>
-                    {collectibleLoading ? (
-                      <div style={{
-                        display: 'flex',
-                        alignItems: 'center',
-                        justifyContent: 'center',
-                        height: '200px',
-                        color: '#64748b',
-                      }}>
-                        Loading collectible data...
-                      </div>
-                    ) : collectibleViewMode === 'view' ? (
-                      <CollectibleDetailView
-                        photo={sourcePhoto}
-                        collectibleData={collectibleData}
-                        aiInsights={collectibleAiAnalysis}
-                      />
-                    ) : (
-                      <div style={{ padding: '16px' }}>
-                        <CollectibleEditorPanel
-                          photoId={sourcePhoto.id}
-                          aiAnalysis={collectibleAiAnalysis || undefined}
-                          initialData={collectibleData || undefined}
-                          onChange={handleCollectibleChange}
-                        />
-                      </div>
-                    )}
-                  </div>
-
-                  {!isCollectiblePhoto && !hasCollectibleData && (
-                    <div style={{
-                      padding: '12px 16px',
-                      backgroundColor: '#f1f5f9',
-                      fontSize: '13px',
-                      color: '#64748b',
-                      borderTop: '1px solid #e2e8f0',
-                      flexShrink: 0,
-                    }}>
-                      <strong>Tip:</strong> Add collectible details to track estimated values and condition. 
-                      This data will be saved when you click "Save Changes".
-                    </div>
-                  )}
-                </div>
+                <CollectiblesTabPanel
+                  photo={sourcePhoto}
+                  collectibleData={collectibleData}
+                  collectibleLoading={collectibleLoading}
+                  collectibleViewMode={collectibleViewMode}
+                  collectibleFormState={collectibleFormState}
+                  collectibleAiAnalysis={collectibleAiAnalysis}
+                  isCollectiblePhoto={isCollectiblePhoto}
+                  hasCollectibleData={hasCollectibleData}
+                  onViewModeChange={setCollectibleViewMode}
+                  onCollectibleChange={handleCollectibleChange}
+                />
               )}
             </div>
 
