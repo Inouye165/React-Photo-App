@@ -1,4 +1,4 @@
-import React, { useState, useEffect, useCallback, useRef } from 'react'
+import { useState, useEffect, useCallback, useRef } from 'react'
 import ImageCanvasEditor from './ImageCanvasEditor'
 import { useAuth } from './contexts/AuthContext'
 import { API_BASE_URL, fetchCollectibles, upsertCollectible } from './api.js'
@@ -11,16 +11,26 @@ import CollectibleEditorPanel from './components/CollectibleEditorPanel.jsx'
 import CollectibleDetailView from './components/CollectibleDetailView.jsx'
 import { useProtectedImageBlobUrl } from './hooks/useProtectedImageBlobUrl.js'
 import { useLockBodyScroll } from './hooks/useLockBodyScroll.js'
+import { COLLECTIBLES_UI_ENABLED } from './config/featureFlags'
+import type { Photo, TextStyle } from './types/photo'
+import type { CollectibleRecord, CollectibleFormState, CollectibleAiAnalysis } from './types/collectibles'
 
-// Feature flag for collectibles UI
-const COLLECTIBLES_UI_ENABLED = import.meta.env.VITE_ENABLE_COLLECTIBLES_UI === 'true';
+interface EditPageProps {
+  photo: Photo;
+  onClose?: () => void;
+  onSave: (photo: Photo) => Promise<void>;
+  onRecheckAI?: (photoId: number | string, model: string | null) => Promise<void>;
+  aiReady?: boolean;
+}
 
-export default function EditPage({ photo, onClose: _onClose, onSave, onRecheckAI, aiReady = true }) {
+export default function EditPage({ photo, onClose: _onClose, onSave, onRecheckAI, aiReady = true }: EditPageProps) {
   // AuthContext no longer exposes client-side token (httpOnly cookies are used).
-  useAuth();
+  const authContext = useAuth();
+  const session = authContext?.session || null;
+  
   // Prefer the live photo from the global store when available so this editor
   // always displays the freshest AI-updated content. Fall back to the prop.
-  const reactivePhoto = useStore(state => state.photos.find(p => String(p.id) === String(photo?.id)) || photo)
+  const reactivePhoto = useStore(state => state.photos.find((p: Photo) => String(p.id) === String(photo?.id)) || photo)
   const sourcePhoto = reactivePhoto || photo
   const setLastEditedPhotoId = useStore(state => state.setLastEditedPhotoId);
 
@@ -31,26 +41,23 @@ export default function EditPage({ photo, onClose: _onClose, onSave, onRecheckAI
     }
   }, [photo?.id, setLastEditedPhotoId]);
 
-  const [caption, setCaption] = useState(sourcePhoto?.caption || '')
-  const [description, setDescription] = useState(sourcePhoto?.description || '')
-  const [keywords, setKeywords] = useState(sourcePhoto?.keywords || '')
-  const [textStyle, setTextStyle] = useState(photo?.textStyle || null)
-  const [saving, setSaving] = useState(false)
-  const [recheckingAI, setRecheckingAI] = useState(false)
-  const [isFlipped, setIsFlipped] = useState(false) // Flip card state
-  // Button visual status: 'idle' | 'in-progress' | 'done' | 'error'
-  // const [recheckStatus, setRecheckStatus] = useState('idle') // Removed unused
-  const prevPhotoRef = useRef(photo)
-  const doneTimeoutRef = useRef(null)
-  // const [selectedModel, setSelectedModel] = useState(DEFAULT_MODEL) // Removed unused
+  const [caption, setCaption] = useState<string>(sourcePhoto?.caption || '')
+  const [description, setDescription] = useState<string>(sourcePhoto?.description || '')
+  const [keywords, setKeywords] = useState<string>(sourcePhoto?.keywords || '')
+  const [textStyle, setTextStyle] = useState<TextStyle | null>(photo?.textStyle || null)
+  const [saving, setSaving] = useState<boolean>(false)
+  const [recheckingAI, setRecheckingAI] = useState<boolean>(false)
+  const [isFlipped, setIsFlipped] = useState<boolean>(false) // Flip card state
+  const prevPhotoRef = useRef<Photo | undefined>(photo)
+  const doneTimeoutRef = useRef<ReturnType<typeof setTimeout> | null>(null)
 
   // === Collectibles Tab State ===
-  const [activeTab, setActiveTab] = useState('story'); // 'story' | 'location' | 'collectibles'
-  const [collectibleData, setCollectibleData] = useState(null);
-  const [collectibleFormState, setCollectibleFormState] = useState(null);
-  const [collectibleLoading, setCollectibleLoading] = useState(false);
-  const [collectibleViewMode, setCollectibleViewMode] = useState('view'); // 'view' | 'edit'
-  const collectibleFetchedRef = useRef(false);
+  const [activeTab, setActiveTab] = useState<'story' | 'location' | 'collectibles'>('story');
+  const [collectibleData, setCollectibleData] = useState<CollectibleRecord | null>(null);
+  const [collectibleFormState, setCollectibleFormState] = useState<CollectibleFormState | null>(null);
+  const [collectibleLoading, setCollectibleLoading] = useState<boolean>(false);
+  const [collectibleViewMode, setCollectibleViewMode] = useState<'view' | 'edit'>('view');
+  const collectibleFetchedRef = useRef<boolean>(false);
 
   // Check if photo is classified as a collectible or has existing collectible data
   const isCollectiblePhoto = sourcePhoto?.classification === 'collectables' || 
@@ -62,7 +69,7 @@ export default function EditPage({ photo, onClose: _onClose, onSave, onRecheckAI
 
   // Extract AI analysis for collectibles from photo data
   // poi_analysis contains the collectibles insights from the AI pipeline
-  const collectibleAiAnalysis = sourcePhoto?.poi_analysis || 
+  const collectibleAiAnalysis: CollectibleAiAnalysis | null = sourcePhoto?.poi_analysis || 
                                  sourcePhoto?.ai_analysis?.collectibleInsights || 
                                  sourcePhoto?.collectible_insights || null;
 
@@ -78,7 +85,7 @@ export default function EditPage({ photo, onClose: _onClose, onSave, onRecheckAI
           setCollectibleData(collectibles[0]); // Use first collectible for this photo
         }
       } catch (err) {
-        console.debug('[EditPage] No collectible data found:', err.message);
+        console.debug('[EditPage] No collectible data found:', (err as Error).message);
       } finally {
         setCollectibleLoading(false);
         collectibleFetchedRef.current = true;
@@ -94,7 +101,7 @@ export default function EditPage({ photo, onClose: _onClose, onSave, onRecheckAI
   }, [photo?.id]);
 
   // Handle collectible form state changes
-  const handleCollectibleChange = useCallback((formState) => {
+  const handleCollectibleChange = useCallback((formState: CollectibleFormState) => {
     setCollectibleFormState(formState);
   }, []);
 
@@ -154,7 +161,6 @@ export default function EditPage({ photo, onClose: _onClose, onSave, onRecheckAI
   // If hash is unavailable, updated_at is used as a fallback (may be less reliable).
   const version = sourcePhoto?.hash || sourcePhoto?.updated_at || '';
   const displayUrl = `${API_BASE_URL}${sourcePhoto?.url || photo?.url}${version ? `?v=${version}` : ''}`;
-  const { session } = useAuth();
 
   // Preserve previous gating behavior: only start blob fetching when the live
   // `sourcePhoto.url` exists (even if `photo.url` is present as a fallback).
@@ -237,12 +243,12 @@ export default function EditPage({ photo, onClose: _onClose, onSave, onRecheckAI
         try {
           await saveCollectible();
         } catch (collectibleErr) {
-          console.warn('[EditPage] Collectible save failed (non-blocking):', collectibleErr.message);
+          console.warn('[EditPage] Collectible save failed (non-blocking):', (collectibleErr as Error).message);
         }
       }
 
       // Update local state
-      const updated = { ...photo, caption, description, keywords, textStyle };
+      const updated: Photo = { ...photo, caption, description, keywords, textStyle };
       await onSave(updated);
 
   // toast removed: Metadata saved successfully
@@ -254,7 +260,7 @@ export default function EditPage({ photo, onClose: _onClose, onSave, onRecheckAI
     }
   }
 
-  const handleCanvasSave = async (dataURL, newTextStyle) => {
+  const handleCanvasSave = async (dataURL: string, newTextStyle: TextStyle) => {
     console.log('Canvas saved with caption overlay!');
     setSaving(true);
     try {
@@ -280,7 +286,7 @@ export default function EditPage({ photo, onClose: _onClose, onSave, onRecheckAI
       const result = await response.json();
       console.log('Captioned image saved:', result);
 
-      const updated = { ...photo, caption, description, keywords, textStyle: newTextStyle };
+      const updated: Photo = { ...photo, caption, description, keywords, textStyle: newTextStyle };
       await onSave(updated);
   // toast removed: Captioned image saved
     } catch (e) {
@@ -332,7 +338,9 @@ export default function EditPage({ photo, onClose: _onClose, onSave, onRecheckAI
               <button
                 onClick={() => {
                   setRecheckingAI(true);
-                  if (onRecheckAI) onRecheckAI(sourcePhoto?.id || photo.id, null).finally(() => setRecheckingAI(false));
+                  if (onRecheckAI) {
+                    onRecheckAI(sourcePhoto?.id || photo.id, null).finally(() => setRecheckingAI(false));
+                  }
                 }}
                 disabled={!aiReady}
                 style={{ 
@@ -779,8 +787,8 @@ export default function EditPage({ photo, onClose: _onClose, onSave, onRecheckAI
                       <div style={{ padding: '16px' }}>
                         <CollectibleEditorPanel
                           photoId={sourcePhoto.id}
-                          aiAnalysis={collectibleAiAnalysis}
-                          initialData={collectibleData}
+                          aiAnalysis={collectibleAiAnalysis || undefined}
+                          initialData={collectibleData || undefined}
                           onChange={handleCollectibleChange}
                         />
                       </div>

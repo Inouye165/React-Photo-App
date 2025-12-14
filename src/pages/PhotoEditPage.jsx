@@ -1,6 +1,6 @@
 import React, { useEffect } from 'react';
 import { useParams, useNavigate, useOutletContext } from 'react-router-dom';
-import EditPage from '../EditPage.jsx';
+import EditPage from '../EditPage.tsx';
 import useStore from '../store.js';
 import useAIPolling from '../hooks/useAIPolling.jsx';
 
