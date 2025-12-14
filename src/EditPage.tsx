@@ -1,4 +1,4 @@
-import { useState, useEffect, useRef } from 'react'
+import { useState, useEffect } from 'react'
 import ImageCanvasEditor from './ImageCanvasEditor'
 import { useAuth } from './contexts/AuthContext'
 import { API_BASE_URL } from './api.js'
@@ -11,6 +11,7 @@ import { useProtectedImageBlobUrl } from './hooks/useProtectedImageBlobUrl.js'
 import { useLockBodyScroll } from './hooks/useLockBodyScroll.js'
 import { COLLECTIBLES_UI_ENABLED } from './config/featureFlags'
 import { useCollectiblesForPhoto } from './hooks/useCollectiblesForPhoto'
+import { useAiRecheckForPhoto } from './hooks/useAiRecheckForPhoto'
 import CollectiblesTabPanel from './components/edit/CollectiblesTabPanel'
 import type { Photo, TextStyle } from './types/photo'
 
@@ -45,10 +46,7 @@ export default function EditPage({ photo, onClose: _onClose, onSave, onRecheckAI
   const [keywords, setKeywords] = useState<string>(sourcePhoto?.keywords || '')
   const [textStyle, setTextStyle] = useState<TextStyle | null>(photo?.textStyle || null)
   const [saving, setSaving] = useState<boolean>(false)
-  const [recheckingAI, setRecheckingAI] = useState<boolean>(false)
   const [isFlipped, setIsFlipped] = useState<boolean>(false) // Flip card state
-  const prevPhotoRef = useRef<Photo | undefined>(photo)
-  const doneTimeoutRef = useRef<ReturnType<typeof setTimeout> | null>(null)
 
   // === Collectibles Tab State (via hook) ===
   const [activeTab, setActiveTab] = useState<'story' | 'location' | 'collectibles'>('story');
@@ -65,6 +63,20 @@ export default function EditPage({ photo, onClose: _onClose, onSave, onRecheckAI
     handleCollectibleChange,
     saveCollectible,
   } = useCollectiblesForPhoto({ photo: sourcePhoto, enabled: COLLECTIBLES_UI_ENABLED });
+
+  // === AI Recheck + Polling Logic (Phase 3: extracted to hook) ===
+  const { isPolling, recheckingAI, handleRecheckAi } = useAiRecheckForPhoto({
+    photoId: sourcePhoto?.id || photo.id,
+    aiReady,
+    onRecheckAI,
+    sourcePhoto,
+    onAiUpdateDetected: (updates) => {
+      // Apply AI-generated updates to form state
+      if (updates.caption !== undefined) setCaption(updates.caption)
+      if (updates.description !== undefined) setDescription(updates.description)
+      if (updates.keywords !== undefined) setKeywords(updates.keywords)
+    },
+  });
 
   
 
@@ -86,11 +98,6 @@ export default function EditPage({ photo, onClose: _onClose, onSave, onRecheckAI
   // Lock background scroll while this full-page editor is open
   useLockBodyScroll(true)
 
-  // Zustand polling flags: support either a Set `pollingPhotoIds` or the legacy `pollingPhotoId`
-  const pollingPhotoIds = useStore(state => state.pollingPhotoIds)
-  const pollingPhotoId = useStore(state => state.pollingPhotoId)
-  const isPolling = (pollingPhotoIds && pollingPhotoIds.has && pollingPhotoIds.has(sourcePhoto?.id)) || pollingPhotoId === sourcePhoto?.id
-
   // toast logic removed
 
   // Use ?v=hash for cache busting. Prefer hash, fallback to updated_at if needed.
@@ -108,55 +115,7 @@ export default function EditPage({ photo, onClose: _onClose, onSave, onRecheckAI
     deps: [session],
   })
 
-  // Watch polling state and photo updates to change the recheck button status
-  useEffect(() => {
-    // If polling started for this photo, show in-progress
-    if (isPolling) {
-      // clear any pending done timeout
-      if (doneTimeoutRef.current) {
-        clearTimeout(doneTimeoutRef.current)
-        doneTimeoutRef.current = null
-      }
-      // setRecheckStatus('in-progress')
-      return
-    }
-    // polling stopped; if previously was polling, determine if AI updated the photo
-    const prev = prevPhotoRef.current
-    if (prev && (prev.caption !== sourcePhoto?.caption || prev.description !== sourcePhoto?.description || prev.keywords !== sourcePhoto?.keywords)) {
-      // AI updated fields -> update form fields immediately then mark done briefly
-      // Force form to reflect latest AI-generated values from the photo prop
-      try {
-        setCaption(sourcePhoto?.caption || '')
-        setDescription(sourcePhoto?.description || '')
-        setKeywords(sourcePhoto?.keywords || '')
-      } catch {
-        // swallow errors from missing values
-      }
-      // setRecheckStatus('done')
-      // show 'done' for 2.5s then switch to idle (label 'Recheck AI again')
-      doneTimeoutRef.current = setTimeout(() => {
-        // setRecheckStatus('idle')
-        doneTimeoutRef.current = null
-      }, 2500)
-    } else {
-      // No update observed; revert to idle
-      // setRecheckStatus('idle')
-    }
-  }, [isPolling, sourcePhoto])
-
-  
-  
-  // Keep previous photo for comparison when prop changes
-  useEffect(() => {
-    prevPhotoRef.current = sourcePhoto
-    return () => {
-      // clear timeout on unmount
-      if (doneTimeoutRef.current) {
-        clearTimeout(doneTimeoutRef.current)
-        doneTimeoutRef.current = null
-      }
-    }
-  }, [sourcePhoto])
+  // AI polling watch effects removed (Phase 3: moved to useAiRecheckForPhoto hook)
 
   if (!sourcePhoto) return null
 
@@ -273,12 +232,7 @@ export default function EditPage({ photo, onClose: _onClose, onSave, onRecheckAI
               </div>
             ) : (
               <button
-                onClick={() => {
-                  setRecheckingAI(true);
-                  if (onRecheckAI) {
-                    onRecheckAI(sourcePhoto?.id || photo.id, null).finally(() => setRecheckingAI(false));
-                  }
-                }}
+                onClick={handleRecheckAi}
                 disabled={!aiReady}
                 style={{ 
                   padding: '6px 12px',
