@@ -11,56 +11,59 @@ import { Lock, Server, Sparkles } from 'lucide-react';
  * - Checkbox confirmation required before enabling accept button
  * - Professional styling matching app aesthetic
  */
-export default function DisclaimerModal({ onAccept, isAccepting = false }) {
+export default function DisclaimerModal({ onAccept, onDeny, isAccepting = false }) {
   const [hasReadAndUnderstood, setHasReadAndUnderstood] = useState(false);
 
   const handleAccept = () => {
     if (hasReadAndUnderstood && !isAccepting) {
       onAccept();
     }
-  };
+  } 
 
   return (
-    <div 
-      className="fixed inset-0 bg-black/60 backdrop-blur-sm z-50 flex items-center justify-center p-4"
-      role="dialog"
-      aria-modal="true"
-      aria-labelledby="disclaimer-title"
-    >
-      <div 
-        className="bg-white rounded-3xl shadow-2xl max-w-2xl w-full max-h-[90vh] overflow-y-auto"
-        style={{
-          borderRadius: '24px',
-          boxShadow: '0 25px 50px -12px rgba(0, 0, 0, 0.25)',
-        }}
+    <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-slate-900/70 backdrop-blur-sm transition-opacity">
+      <div
+        className="bg-white rounded-2xl shadow-2xl max-w-md w-full overflow-hidden transform transition-all scale-100 flex flex-col max-h-[90vh]"
+        role="dialog"
+        aria-modal="true"
+        aria-labelledby="modal-title"
       >
-        {/* Header */}
-        <div className="px-8 pt-8 pb-6 border-b border-slate-200">
-          <div className="flex items-start gap-4">
-            <div className="flex-shrink-0">
-              <Sparkles className="w-10 h-10 text-amber-500" strokeWidth={2} />
-            </div>
-            <div>
-              <h2 
-                id="disclaimer-title"
-                className="text-2xl font-bold text-slate-900 mb-2"
-              >
-                Experimental Preview
-              </h2>
-              <p className="text-slate-600">
-                Work in Progress
-              </p>
+        {/* Brand Header with Background Image */}
+        <div className="relative h-32 w-full bg-slate-900 overflow-hidden shrink-0">
+          <div className="absolute inset-0 opacity-60">
+            <img
+              src="/vaultage-bg.png"
+              alt="Lumina Background"
+              className="w-full h-full object-cover"
+            />
+          </div>
+          <div className="absolute inset-0 bg-gradient-to-t from-slate-900/90 to-transparent" />
+
+          {/* Brand Content Overlay */}
+          <div className="absolute bottom-0 left-0 p-6 w-full">
+            <div className="flex items-center gap-3">
+              <div className="w-10 h-10 rounded-lg bg-white/10 backdrop-blur-md flex items-center justify-center border border-white/20 shadow-lg">
+                <span className="text-xl">📷</span>
+              </div>
+              <div>
+                <h2 className="text-2xl font-bold text-white tracking-tight leading-none" id="modal-title">
+                  Lumina
+                </h2>
+                <p className="text-xs text-blue-200 font-medium uppercase tracking-wider mt-1">
+                  Experimental Preview
+                </p>
+              </div>
             </div>
           </div>
         </div>
 
-        {/* Content */}
-        <div className="px-8 py-6 space-y-6">
-          <p className="text-slate-700">
-            Welcome! You are accessing a beta version of this application.
+        {/* Scrollable Content Body */}
+        <div className="px-6 py-6 space-y-5 overflow-y-auto">
+          <p className="text-slate-600 text-sm leading-relaxed">
+            Welcome! You are accessing a <strong className="text-slate-900">beta version</strong> of this application.
           </p>
 
-          {/* Section 1: AI & Metadata */}
+          {/* --- Existing Sections: AI, Security, Warning --- */}
           <div className="flex gap-4 p-4 bg-amber-50 border border-amber-200 rounded-2xl">
             <Sparkles className="w-5 h-5 text-amber-600 flex-shrink-0 mt-0.5" />
             <div>
@@ -70,8 +73,6 @@ export default function DisclaimerModal({ onAccept, isAccepting = false }) {
               </p>
             </div>
           </div>
-
-          {/* Section 2: Security & Privacy */}
           <div className="flex gap-4 p-4 bg-slate-50 border border-slate-200 rounded-2xl">
             <Lock className="w-5 h-5 text-slate-700 flex-shrink-0 mt-0.5" />
             <div>
@@ -81,8 +82,6 @@ export default function DisclaimerModal({ onAccept, isAccepting = false }) {
               </p>
             </div>
           </div>
-
-          {/* Section 3: Data Recovery Warning */}
           <div className="flex gap-4 p-4 bg-blue-50 border border-blue-200 rounded-2xl">
             <Server className="w-5 h-5 text-blue-600 flex-shrink-0 mt-0.5" />
             <div>
@@ -92,13 +91,11 @@ export default function DisclaimerModal({ onAccept, isAccepting = false }) {
               </p>
             </div>
           </div>
-
           {/* Acknowledgment Section */}
           <div className="pt-4 border-t border-slate-200">
             <p className="text-sm text-slate-600 mb-4">
               By accepting, you acknowledge that you have read and understood these terms and agree to use this experimental software at your own risk.
             </p>
-
             {/* Checkbox */}
             <label className="flex items-start gap-3 cursor-pointer group">
               <input
@@ -115,29 +112,21 @@ export default function DisclaimerModal({ onAccept, isAccepting = false }) {
           </div>
         </div>
 
-        {/* Footer */}
-        <div className="px-8 py-6 bg-slate-50 border-t border-slate-200 rounded-b-3xl">
-          <div className="flex items-center justify-end gap-4">
-            <button
-              onClick={handleAccept}
-              disabled={!hasReadAndUnderstood || isAccepting}
-              className={`px-8 py-3 rounded-full font-semibold text-white transition-all duration-200 ${
-                hasReadAndUnderstood && !isAccepting
-                  ? 'bg-indigo-600 hover:bg-indigo-700 shadow-lg hover:shadow-xl'
-                  : 'bg-slate-300 cursor-not-allowed'
-              }`}
-              aria-label="Accept terms and continue"
-            >
-              {isAccepting ? (
-                <span className="flex items-center gap-2">
-                  <span className="inline-block w-4 h-4 border-2 border-white border-t-transparent rounded-full animate-spin" />
-                  <span>Accepting...</span>
-                </span>
-              ) : (
-                'Accept and Continue'
-              )}
-            </button>
-          </div>
+        {/* Footer Actions (With Decline Option) */}
+        <div className="px-6 py-4 bg-slate-50 border-t border-slate-100 shrink-0 flex justify-between items-center">
+          <button
+            onClick={onDeny}
+            className="px-4 py-2 text-slate-500 hover:text-slate-700 hover:bg-slate-200/50 text-sm font-medium rounded-lg transition-colors"
+          >
+            Decline & Sign Out
+          </button>
+          <button
+            onClick={handleAccept}
+            disabled={!hasReadAndUnderstood || isAccepting}
+            className="px-6 py-2.5 bg-slate-900 hover:bg-slate-800 active:bg-black text-white text-sm font-semibold rounded-xl transition-all shadow-sm hover:shadow-md disabled:opacity-50 disabled:cursor-not-allowed flex items-center gap-2"
+          >
+            {isAccepting ? 'Saving...' : 'I Understand & Accept'}
+          </button>
         </div>
       </div>
     </div>
