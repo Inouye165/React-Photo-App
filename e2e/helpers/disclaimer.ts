@@ -11,8 +11,10 @@ export async function acceptDisclaimer(page: Page) {
     await dialog.dismiss();
   });
 
-  // Check if the modal exists (short timeout to not slow down tests if not present)
-  const modal = page.getByRole('dialog', { name: 'Experimental Feature Notice' });
+  // Check if a disclaimer modal exists (short timeout to not slow down tests if not present)
+  // The modal title/copy can change over time (e.g., branded "Lumina" header), so avoid
+  // hard-coding a single accessible name.
+  const modal = page.getByRole('dialog');
   
   try {
     // Wait briefly to see if it appears
@@ -25,20 +27,22 @@ export async function acceptDisclaimer(page: Page) {
   // If we get here, modal is visible
   console.log('Disclaimer modal detected, accepting...');
 
-  // Check the "I have read and understood" checkbox
-  const checkbox = page.getByRole('checkbox', { name: /I have read and understood/i });
+  // Check the acknowledgment checkbox (copy varies slightly across revisions)
+  const checkboxByName = modal.getByRole('checkbox', { name: /I have read and understood/i });
+  const checkbox = (await checkboxByName.count()) > 0 ? checkboxByName.first() : modal.getByRole('checkbox').first();
   await checkbox.waitFor({ state: 'visible' });
   await checkbox.check();
   
   // Wait for state update
   await page.waitForTimeout(500);
 
-  // Wait for button to be enabled
-  // Use filter instead of name option in case of accessibility name issues
-  const button = modal.getByRole('button').filter({ hasText: /Accept and Continue/i });
+  // Wait for accept button to be enabled (label varies across revisions)
+  const button = modal
+    .getByRole('button')
+    .filter({ hasText: /I Understand\s*&\s*Accept|Accept and Continue/i });
   await expect(button).toBeEnabled();
   
-  // Click "Accept and Continue"
+  // Click accept
   await button.click();
   
   // Wait for modal to disappear
