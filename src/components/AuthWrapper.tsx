@@ -7,16 +7,14 @@ import { API_BASE_URL } from '../config/apiConfig';
 interface AuthWrapperProps {
   children: React.ReactNode;
 }
-
-import { useNavigate } from 'react-router-dom';
 const AuthWrapper = ({ children }: AuthWrapperProps) => {
   const { user, loading, authReady, logout } = useAuth();
-    const navigate = useNavigate();
-    // Handler for Decline & Sign Out
-    const handleDecline = async () => {
-      await logout();
-      navigate('/');
-    };
+  // Handler for Decline & Sign Out
+  const handleDecline = async () => {
+    await logout();
+    // Router-independent redirect (AuthWrapper can render outside Router in some tests)
+    window.location.assign('/');
+  };
   const [termsAccepted, setTermsAccepted] = useState<boolean | null>(null);
   const [isAccepting, setIsAccepting] = useState(false);
   const [checkingTerms, setCheckingTerms] = useState(true);
