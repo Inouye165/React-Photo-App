@@ -25,7 +25,7 @@ const AuthWrapper = ({ children }: AuthWrapperProps) => {
       try {
         // Import dynamically to avoid circular dependency
         const { getAuthHeaders } = await import('../api.js');
-        const headers = getAuthHeaders();
+        const headers = getAuthHeaders() as Record<string, string>;
         // E2E Bypass: Add header if in E2E mode to avoid cookie issues
         if ((window as any).__E2E_MODE__) {
           headers['X-E2E-User-ID'] = '11111111-1111-4111-8111-111111111111';
@@ -33,12 +33,12 @@ const AuthWrapper = ({ children }: AuthWrapperProps) => {
 
         const response = await fetch(`${API_BASE_URL}/api/users/me/preferences`, {
           method: 'GET',
-          headers,
+          headers: headers as HeadersInit,
           credentials: 'include'
         });
         
         if (response.ok) {
-          const data = await response.json();
+          await response.json();
           // Check if the user record has terms_accepted_at
           // Note: This endpoint returns preferences, but we need to check the users table
           // Let's make a dedicated call or check if the backend returns this info
@@ -47,7 +47,8 @@ const AuthWrapper = ({ children }: AuthWrapperProps) => {
           // Or we need to add this to the preferences endpoint response
           
           // Temporary: Check localStorage as fallback (will be replaced by DB check)
-          const localAcceptance = localStorage.getItem(`terms_accepted_${user.id}`);
+          const userId = (user && typeof user === 'object' && user !== null && 'id' in user) ? (user as any).id : '';
+          const localAcceptance = localStorage.getItem(`terms_accepted_${userId}`);
           setTermsAccepted(!!localAcceptance);
         }
       } catch (error) {
@@ -68,7 +69,7 @@ const AuthWrapper = ({ children }: AuthWrapperProps) => {
     setIsAccepting(true);
     try {
       const { getAuthHeaders } = await import('../api.js');
-      const headers = getAuthHeaders();
+      const headers = getAuthHeaders() as Record<string, string>;
       // E2E Bypass: Add header if in E2E mode to avoid cookie issues
       if ((window as any).__E2E_MODE__) {
         headers['X-E2E-User-ID'] = '11111111-1111-4111-8111-111111111111';
@@ -76,13 +77,14 @@ const AuthWrapper = ({ children }: AuthWrapperProps) => {
 
       const response = await fetch(`${API_BASE_URL}/api/users/accept-terms`, {
         method: 'POST',
-        headers,
+        headers: headers as HeadersInit,
         credentials: 'include'
       });
 
       if (response.ok) {
         // Store acceptance locally as well for quick checks
-        localStorage.setItem(`terms_accepted_${user.id}`, 'true');
+        const userId = (user && typeof user === 'object' && user !== null && 'id' in user) ? (user as any).id : '';
+        localStorage.setItem(`terms_accepted_${userId}`, 'true');
         setTermsAccepted(true);
       } else {
         const err = await response.json().catch(() => ({}));
