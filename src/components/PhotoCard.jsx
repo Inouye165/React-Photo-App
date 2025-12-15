@@ -228,7 +228,15 @@ export default function PhotoCard({
             className={`px-3 py-1 rounded-full text-xs font-medium border ${status.className}`}
             data-testid="photo-card-status"
           >
-            {status.label}
+            <span className="inline-flex items-center gap-1.5">
+              {photo.state === 'inprogress' && (
+                <span
+                  aria-hidden="true"
+                  className="inline-block w-3 h-3 rounded-full border-2 border-amber-400/70 border-t-transparent animate-spin"
+                />
+              )}
+              <span>{status.label}</span>
+            </span>
           </span>
         </div>
       </div>

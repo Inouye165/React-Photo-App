@@ -39,6 +39,31 @@ if (config.client === 'pg') {
 			config.connection.ssl = { rejectUnauthorized: false };
 		}
 	}
+
+	// Ensure pooled pg clients always have an error handler.
+	// Without this, certain server-initiated disconnects can emit an 'error'
+	// event on an idle client and crash the Node process.
+	const existingPool = config.pool || {};
+	const previousAfterCreate = existingPool.afterCreate;
+	config.pool = {
+		...existingPool,
+		afterCreate: (conn, done) => {
+			try {
+				if (conn && typeof conn.on === 'function') {
+					conn.on('error', (err) => {
+						logger.error('[db] PostgreSQL client error:', err && err.message ? err.message : err);
+					});
+				}
+			} catch (err) {
+				logger.error('[db] Failed to attach PostgreSQL client error handler:', err && err.message ? err.message : err);
+			}
+
+			if (typeof previousAfterCreate === 'function') {
+				return previousAfterCreate(conn, done);
+			}
+			return done(null, conn);
+		}
+	};
 }
 
 logger.info(`[db] Initializing PostgreSQL connection for ${environment} environment`);

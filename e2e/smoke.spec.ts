@@ -10,7 +10,7 @@ test('E2E smoke: login → upload → view', async ({ page, context }) => {
   await page.route('**/api/test/e2e-verify', async route => {
     await route.fulfill({
       headers: {
-        'Access-Control-Allow-Origin': 'http://localhost:5173',
+        'Access-Control-Allow-Origin': 'http://127.0.0.1:5173',
         'Access-Control-Allow-Credentials': 'true'
       },
       json: {
@@ -26,18 +26,18 @@ test('E2E smoke: login → upload → view', async ({ page, context }) => {
   });
 
   // E2E login: make request to get the auth cookie
-  const loginResponse = await context.request.post('http://localhost:3001/api/test/e2e-login');
+  const loginResponse = await context.request.post('http://127.0.0.1:3001/api/test/e2e-login');
   expect(loginResponse.ok()).toBeTruthy();
   
   // Extract cookies from the response and add them to the browser context for localhost
-  const cookies = await context.cookies('http://localhost:3001');
+  const cookies = await context.cookies('http://127.0.0.1:3001');
   
   // Re-add cookies for localhost (any port) so they're sent to port 5173 as well
   for (const cookie of cookies) {
     await context.addCookies([{
       name: cookie.name,
       value: cookie.value,
-      domain: 'localhost',
+      domain: '127.0.0.1',
       path: '/',
       httpOnly: cookie.httpOnly,
       secure: cookie.secure,
@@ -46,7 +46,7 @@ test('E2E smoke: login → upload → view', async ({ page, context }) => {
   }
 
   // Go to gallery (should be authenticated - cookie is set for localhost)
-  await page.goto('http://localhost:5173/');
+  await page.goto('http://127.0.0.1:5173/');
   
   // Wait for auth check to complete
   await page.waitForTimeout(2000);
@@ -54,5 +54,5 @@ test('E2E smoke: login → upload → view', async ({ page, context }) => {
   // Check for authenticated elements - user email (truncated) or logout button
   // The UI displays the part before @ (e.g. "e2e" from "e2e@example.com")
   await expect(page.getByText('e2e', { exact: true })).toBeVisible({ timeout: 10000 });
-  await expect(page.getByRole('button', { name: 'Logout' })).toBeVisible();
+  await expect(page.getByRole('button', { name: 'Sign out' })).toBeVisible();
 });

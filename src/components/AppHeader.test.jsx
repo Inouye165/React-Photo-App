@@ -9,7 +9,7 @@ vi.mock('react-router-dom', () => ({
   useNavigate: () => vi.fn(),
   useLocation: () => ({
     pathname: '/gallery',
-    search: '?view=working',
+    search: '',
   }),
 }));
 
@@ -42,10 +42,8 @@ describe('AppHeader Component', () => {
     
     // Check all navigation tabs exist
     expect(screen.getByTestId('nav-upload')).toBeInTheDocument();
-    expect(screen.getByTestId('nav-queued')).toBeInTheDocument();
-    expect(screen.getByTestId('nav-inprogress')).toBeInTheDocument();
+    expect(screen.getByTestId('nav-gallery')).toBeInTheDocument();
     expect(screen.getByTestId('nav-edit')).toBeInTheDocument();
-    expect(screen.getByTestId('nav-finished')).toBeInTheDocument();
   });
 
   it('renders navigation arrows with accessible labels', () => {
@@ -74,10 +72,8 @@ describe('AppHeader Component', () => {
       
       const navButtons = [
         screen.getByTestId('nav-upload'),
-        screen.getByTestId('nav-queued'),
-        screen.getByTestId('nav-inprogress'),
+        screen.getByTestId('nav-gallery'),
         screen.getByTestId('nav-edit'),
-        screen.getByTestId('nav-finished'),
       ];
       
       navButtons.forEach((button) => {
@@ -181,9 +177,9 @@ describe('AppHeader Component', () => {
     it('marks current view as active with aria-current', () => {
       render(<AppHeader />);
       
-      // Based on mock location (view=working), Queued should be active
-      const queuedButton = screen.getByTestId('nav-queued');
-      expect(queuedButton).toHaveAttribute('aria-current', 'page');
+      // Based on mock location (/gallery), Gallery should be active
+      const galleryButton = screen.getByTestId('nav-gallery');
+      expect(galleryButton).toHaveAttribute('aria-current', 'page');
     });
 
     it('inactive tabs do not have aria-current', () => {

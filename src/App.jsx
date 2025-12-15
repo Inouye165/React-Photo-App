@@ -25,7 +25,7 @@ function RedirectToEdit() {
  * 
  * Route structure:
  * - / : SmartRouter (determines initial landing based on photo state)
- * - /gallery : PhotoGalleryPage (with ?view=working|inprogress|finished)
+ * - /gallery : PhotoGalleryPage (unified gallery)
  * - /upload : Dedicated upload page
  * - /photos/:id : Redirects to /photos/:id/edit
  * - /photos/:id/edit : Photo edit view (modern editor)
@@ -57,7 +57,7 @@ function App() {
             {/* Smart Router - determines initial landing page based on photo state */}
             <Route index element={<SmartRouter />} />
             
-            {/* Gallery view with query param support (?view=working|inprogress|finished) */}
+            {/* Unified gallery view */}
             <Route path="/gallery" element={<PhotoGalleryPage />} />
             
             {/* Dedicated upload page */}

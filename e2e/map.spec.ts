@@ -8,11 +8,11 @@ test.describe('Map Component', () => {
     });
 
     // E2E login: make request to get the auth cookie
-    const loginResponse = await context.request.post('http://localhost:3001/api/test/e2e-login');
+    const loginResponse = await context.request.post('http://127.0.0.1:3001/api/test/e2e-login');
     expect(loginResponse.ok()).toBeTruthy();
     
     // Extract cookies and add them for localhost
-    const cookies = await context.cookies('http://localhost:3001');
+    const cookies = await context.cookies('http://127.0.0.1:3001');
     for (const cookie of cookies) {
       await context.addCookies([{
         name: cookie.name,

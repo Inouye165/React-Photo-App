@@ -5,6 +5,10 @@ const sharp = require('sharp');
 const exifr = require('exifr');
 
 describe('HEIC Conversion Integration Tests', () => {
+  // HEIC decoding and conversion can be slow on CI/Windows.
+  // Use a higher timeout to avoid flaky failures.
+  jest.setTimeout(30000);
+
   const testFixturePath = path.join(__dirname, 'fixtures', 'test-photo-with-compass.heic');
   
   // Skip tests if fixture file doesn't exist

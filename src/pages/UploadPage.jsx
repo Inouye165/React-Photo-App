@@ -32,7 +32,7 @@ export default function UploadPage() {
   } = useLocalPhotoPicker({
     onUploadComplete: () => {
       // After upload completes, navigate to gallery to see the new photos
-      navigate('/gallery?view=working');
+      navigate('/gallery');
     },
     onUploadSuccess: (count) => {
       setToolbarMessage(`Successfully uploaded ${count} photos`);
@@ -69,7 +69,7 @@ export default function UploadPage() {
 
   // Close/cancel handler - go to gallery
   const handleClose = () => {
-    navigate('/gallery?view=working');
+    navigate('/gallery');
   };
 
   // If no folder selected yet, show the welcome/empty state

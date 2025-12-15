@@ -2,7 +2,7 @@ import React from 'react';
 import { useNavigate, useLocation } from 'react-router-dom';
 import { useAuth } from '../contexts/AuthContext';
 import useStore from '../store.js';
-import { ChevronLeft, ChevronRight, Upload, Grid3X3, Clock, Edit3, CheckCircle, LogOut } from 'lucide-react';
+import { ChevronLeft, ChevronRight, Upload, Grid3X3, Edit3, LogOut } from 'lucide-react';
 
 /**
  * AppHeader - Mobile-first responsive navigation header
@@ -21,18 +21,10 @@ export default function AppHeader({
   const { user, logout } = useAuth();
   const lastEditedPhotoId = useStore(state => state.lastEditedPhotoId);
   const closePicker = useStore(state => state.pickerCommand.closePicker);
-  
-  // Determine active view from URL
-  const searchParams = new URLSearchParams(location.search);
-  const currentView = searchParams.get('view') || 'working';
+
   const isGalleryPage = location.pathname === '/gallery' || location.pathname === '/';
   const isEditPage = location.pathname.includes('/edit');
   const isUploadPage = location.pathname === '/upload';
-
-  const handleViewChange = (viewName) => {
-    closePicker('nav-working');
-    navigate(`/gallery?view=${viewName}`);
-  };
 
   const handleBack = () => {
     if (window.history.length > 1) {
@@ -53,7 +45,7 @@ export default function AppHeader({
     if (lastEditedPhotoId) {
       navigate(`/photos/${lastEditedPhotoId}/edit`);
     } else {
-      navigate('/gallery?view=inprogress');
+      navigate('/gallery');
     }
   };
 
@@ -137,18 +129,14 @@ export default function AppHeader({
           testId="nav-upload"
         />
         <NavTab
-          isActive={isGalleryPage && currentView === 'working'}
-          onClick={() => handleViewChange('working')}
+          isActive={isGalleryPage}
+          onClick={() => {
+            closePicker('nav-gallery');
+            navigate('/gallery');
+          }}
           icon={Grid3X3}
-          label="Queued"
-          testId="nav-queued"
-        />
-        <NavTab
-          isActive={isGalleryPage && currentView === 'inprogress'}
-          onClick={() => handleViewChange('inprogress')}
-          icon={Clock}
-          label="In Progress"
-          testId="nav-inprogress"
+          label="Gallery"
+          testId="nav-gallery"
         />
         <NavTab
           isActive={isEditPage}
@@ -156,13 +144,6 @@ export default function AppHeader({
           icon={Edit3}
           label="Edit"
           testId="nav-edit"
-        />
-        <NavTab
-          isActive={isGalleryPage && currentView === 'finished'}
-          onClick={() => handleViewChange('finished')}
-          icon={CheckCircle}
-          label="Finished"
-          testId="nav-finished"
         />
       </nav>
 

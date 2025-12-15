@@ -51,13 +51,13 @@ function usePhotoManagement() {
   }, []);
 
   const loadPhotos = useCallback(
-    (endpoint = 'working') => {
+    (endpoint) => {
       const controller = new AbortController();
 
       const task = (async () => {
         setLoading(true);
         try {
-          const response = await getPhotos(endpoint);
+          const response = endpoint ? await getPhotos(endpoint) : await getPhotos();
           if (controller.signal.aborted) return;
           setPhotos((response && response.photos) || []);
         } catch (error) {
@@ -80,13 +80,14 @@ function usePhotoManagement() {
   );
 
   useEffect(() => {
-    const { cancel } = loadPhotos(view);
+    // Unified gallery: always fetch all photos.
+    const { cancel } = loadPhotos();
     return cancel;
-  }, [view, loadPhotos]);
+  }, [loadPhotos]);
 
   const refreshPhotos = useCallback(() => {
-    loadPhotos(view);
-  }, [view, loadPhotos]);
+    loadPhotos();
+  }, [loadPhotos]);
 
   const activePhoto = useMemo(() => {
     if (activePhotoId == null) return null;
@@ -204,14 +205,14 @@ function usePhotoManagement() {
     async (id) => {
       try {
         await updatePhotoState(id, 'working');
-        const { promise } = loadPhotos(view);
+        const { promise } = loadPhotos();
         await promise;
         setBanner({ message: 'Photo moved back to working', severity: 'info' });
       } catch (error) {
         setBanner({ message: `Error moving photo back to working: ${error?.message || error}`, severity: 'error' });
       }
     },
-  [loadPhotos, view, setBanner],
+  [loadPhotos, setBanner],
   );
 
   const handleInlineSave = useCallback(async () => {

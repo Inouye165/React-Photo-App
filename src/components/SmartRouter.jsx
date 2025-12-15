@@ -10,9 +10,8 @@ import { getPhotoStatus } from '../api.js';
  * landing page based on the user's photo data state:
  * 
  * 1. No photos → /upload (clear call to action)
- * 2. Has "working" photos → /gallery?view=working
- * 3. Has "inprogress" photos (but no working) → /gallery?view=inprogress
- * 4. Default fallback → /upload
+ * 2. Has any photos → /gallery
+ * 3. Default fallback → /upload
  * 
  * Security:
  * - Only runs for authenticated users (relies on AuthWrapper)
@@ -60,15 +59,9 @@ export default function SmartRouter() {
         if (result.total === 0) {
           // No photos at all - go to upload page
           targetPath = '/upload';
-        } else if (result.working > 0) {
-          // Has working photos - go to working view
-          targetPath = '/gallery?view=working';
-        } else if (result.inprogress > 0) {
-          // Has in-progress photos (but no working) - go to inprogress view
-          targetPath = '/gallery?view=inprogress';
-        } else if (result.finished > 0) {
-          // Only finished photos - still go to gallery with finished view
-          targetPath = '/gallery?view=finished';
+        } else {
+          // Any photos - unified gallery
+          targetPath = '/gallery';
         }
 
         setStatus('redirecting');

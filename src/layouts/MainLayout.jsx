@@ -132,7 +132,7 @@ export default function MainLayout() {
               fontSize: '12px',
               fontWeight: 500,
               backgroundColor: dependencyWarning ? '#fef3c7' : (banner?.severity === 'error' ? '#fef2f2' : '#f0fdf4'),
-              color: dependencyWarning ? '#92400e' : (banner?.severity === 'error' ? '#dc2626' : '#16a34a'),
+              color: dependencyWarning ? '#92400e' : (banner?.severity === 'error' ? '#b91c1c' : '#16a34a'),
             }}
           >
             <span>{statusMessage}</span>

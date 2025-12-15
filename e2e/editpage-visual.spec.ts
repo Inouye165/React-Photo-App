@@ -260,7 +260,7 @@ test.describe('EditPage Visual Regression (Frontend-Only)', () => {
 
   test('Default Story tab state', async ({ page }, testInfo) => {
     // Navigate to gallery FIRST to populate store
-    await page.goto('http://127.0.0.1:5173/gallery?view=working', { waitUntil: 'networkidle' });
+    await page.goto('http://127.0.0.1:5173/gallery', { waitUntil: 'networkidle' });
     
     // Wait longer for photos to load AND render
     await page.waitForTimeout(5000);
@@ -324,7 +324,7 @@ test.describe('EditPage Visual Regression (Frontend-Only)', () => {
   });
 
   test('Location tab with GPS data', async ({ page }, testInfo) => {
-    await page.goto('http://127.0.0.1:5173/gallery?view=working', { waitUntil: 'networkidle' });
+    await page.goto('http://127.0.0.1:5173/gallery', { waitUntil: 'networkidle' });
     await page.waitForTimeout(2000);
 
     await page.click('[data-testid="photo-card"]', { timeout: 10000 });
@@ -354,7 +354,7 @@ test.describe('EditPage Visual Regression (Frontend-Only)', () => {
   });
 
   test('Collectibles tab with feature flag enabled', async ({ page }, testInfo) => {
-    await page.goto('http://127.0.0.1:5173/gallery?view=working', { waitUntil: 'networkidle' });
+    await page.goto('http://127.0.0.1:5173/gallery', { waitUntil: 'networkidle' });
     await page.waitForTimeout(2000);
 
     // Click second photo card (collectible)
@@ -392,7 +392,7 @@ test.describe('EditPage Visual Regression (Frontend-Only)', () => {
   });
 
   test('Processing/polling state', async ({ page }, testInfo) => {
-    await page.goto('http://127.0.0.1:5173/gallery?view=working', { waitUntil: 'networkidle' });
+    await page.goto('http://127.0.0.1:5173/gallery', { waitUntil: 'networkidle' });
     await page.waitForTimeout(2000);
 
     await page.click('[data-testid="photo-card"]', { timeout: 10000 });
@@ -419,7 +419,7 @@ test.describe('EditPage Visual Regression (Frontend-Only)', () => {
   });
 
   test('Flipped metadata view', async ({ page }, testInfo) => {
-    await page.goto('http://127.0.0.1:5173/gallery?view=working', { waitUntil: 'networkidle' });
+    await page.goto('http://127.0.0.1:5173/gallery', { waitUntil: 'networkidle' });
     await page.waitForTimeout(2000);
 
     await page.click('[data-testid="photo-card"]', { timeout: 10000 });
@@ -451,7 +451,7 @@ test.describe('EditPage Visual Regression (Frontend-Only)', () => {
   });
 
   test('Story tab form fields with focus', async ({ page }, testInfo) => {
-    await page.goto('http://127.0.0.1:5173/gallery?view=working', { waitUntil: 'networkidle' });
+    await page.goto('http://127.0.0.1:5173/gallery', { waitUntil: 'networkidle' });
     await page.waitForTimeout(2000);
 
     await page.click('[data-testid="photo-card"]', { timeout: 10000 });

@@ -18,16 +18,16 @@ test('A11y: upload page', async ({ page, context }) => {
   });
 
   // E2E login: make request to get the auth cookie
-  const loginResponse = await context.request.post('http://localhost:3001/api/test/e2e-login');
+  const loginResponse = await context.request.post('http://127.0.0.1:3001/api/test/e2e-login');
   expect(loginResponse.ok()).toBeTruthy();
   
   // Extract cookies and add them for localhost
-  const cookies = await context.cookies('http://localhost:3001');
+  const cookies = await context.cookies('http://127.0.0.1:3001');
   for (const cookie of cookies) {
     await context.addCookies([{
       name: cookie.name,
       value: cookie.value,
-      domain: 'localhost',
+      domain: '127.0.0.1',
       path: '/',
       httpOnly: cookie.httpOnly,
       secure: cookie.secure,
@@ -35,7 +35,7 @@ test('A11y: upload page', async ({ page, context }) => {
     }]);
   }
 
-  await page.goto('http://localhost:5173/upload');
+  await page.goto('http://127.0.0.1:5173/upload');
   await page.waitForTimeout(2000); // Wait for auth check
   const { violations } = await new AxeBuilder({ page }).analyze();
   const severe = violations.filter(v => v.impact === 'serious' || v.impact === 'critical');

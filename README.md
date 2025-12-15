@@ -240,6 +240,7 @@ cd server && npm run worker
 - **Client-Side Compression:** Images optimized before upload (max 2048px, 85% JPEG quality)
 - **Responsive Touch UI:** 44px touch targets, mobile-first Tailwind styling
 - **Add to Home Screen:** PWA manifest for native app-like experience
+- **Unified Gallery:** Single “Gallery” view with mixed-state status badges (no separate status tabs)
 - **Virtualized Gallery:** Smooth scrolling for 1000+ photos using react-virtuoso
 
 ### Developer Experience

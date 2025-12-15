@@ -87,7 +87,7 @@ describe('SmartRouter Component', () => {
       });
     });
 
-    it('Case B: redirects to /gallery?view=working when user has working photos', async () => {
+    it('Case B: redirects to /gallery when user has photos (including working)', async () => {
       // Mock API response: has working photos
       mockGetPhotoStatus.mockResolvedValueOnce({
         success: true,
@@ -105,11 +105,11 @@ describe('SmartRouter Component', () => {
 
       // Wait for navigation
       await waitFor(() => {
-        expect(mockNavigate).toHaveBeenCalledWith('/gallery?view=working', { replace: true });
+        expect(mockNavigate).toHaveBeenCalledWith('/gallery', { replace: true });
       });
     });
 
-    it('Case C: redirects to /gallery?view=inprogress when user has only inprogress photos', async () => {
+    it('Case C: redirects to /gallery when user has only inprogress photos', async () => {
       // Mock API response: no working, has inprogress
       mockGetPhotoStatus.mockResolvedValueOnce({
         success: true,
@@ -127,11 +127,11 @@ describe('SmartRouter Component', () => {
 
       // Wait for navigation
       await waitFor(() => {
-        expect(mockNavigate).toHaveBeenCalledWith('/gallery?view=inprogress', { replace: true });
+        expect(mockNavigate).toHaveBeenCalledWith('/gallery', { replace: true });
       });
     });
 
-    it('redirects to /gallery?view=finished when user has only finished photos', async () => {
+    it('redirects to /gallery when user has only finished photos', async () => {
       // Mock API response: only finished photos
       mockGetPhotoStatus.mockResolvedValueOnce({
         success: true,
@@ -149,11 +149,11 @@ describe('SmartRouter Component', () => {
 
       // Wait for navigation
       await waitFor(() => {
-        expect(mockNavigate).toHaveBeenCalledWith('/gallery?view=finished', { replace: true });
+        expect(mockNavigate).toHaveBeenCalledWith('/gallery', { replace: true });
       });
     });
 
-    it('prioritizes working over inprogress when both exist', async () => {
+    it('redirects to /gallery when photos exist (mixed states)', async () => {
       // Mock API response: has both working and inprogress
       mockGetPhotoStatus.mockResolvedValueOnce({
         success: true,
@@ -171,7 +171,7 @@ describe('SmartRouter Component', () => {
 
       // Should navigate to working, not inprogress
       await waitFor(() => {
-        expect(mockNavigate).toHaveBeenCalledWith('/gallery?view=working', { replace: true });
+        expect(mockNavigate).toHaveBeenCalledWith('/gallery', { replace: true });
       });
     });
   });

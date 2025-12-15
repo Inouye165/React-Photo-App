@@ -7,6 +7,8 @@
  * - http://localhost:5173 (Vite dev server)
  * - http://localhost:3000 (legacy dev server)
  * - http://localhost:5174 (alt dev port)
+ * - http://127.0.0.1:5173 (Vite dev server via IPv4)
+ * - http://127.0.0.1:5174 (alt dev port via IPv4)
  *
  * === Production Configuration ===
  * - Set FRONTEND_ORIGIN to your deployed frontend (e.g. https://react-photo-app-eta.vercel.app) in Railway env vars.
@@ -33,7 +35,9 @@
 const DEFAULT_ORIGINS = [
   'http://localhost:3000',   // Common dev server port
   'http://localhost:5173',   // Vite default port
-  'http://localhost:5174'    // Vite alternative port
+  'http://localhost:5174',   // Vite alternative port
+  'http://127.0.0.1:5173',   // IPv4 loopback (Playwright/baseURL)
+  'http://127.0.0.1:5174'    // IPv4 loopback alternative
 ];
 
 /**
