@@ -15,11 +15,20 @@ describe('LandingPage', () => {
 
   it('renders the landing page correctly', () => {
     render(<LandingPage />);
-    expect(screen.getByRole('heading', { name: 'Vaultage' })).toBeInTheDocument();
+    expect(screen.getByRole('heading', { name: 'Lumina' })).toBeInTheDocument();
     expect(
-      screen.getByText(/Secure AI-powered analysis for your most treasured memories and collectibles\./i)
+      screen.getByText(/Upload a photo, and I'll tell you what it is, where it was, or what it's worth\./i)
     ).toBeInTheDocument();
-    expect(screen.getByText(/Beta Access|Under Construction/i)).toBeInTheDocument();
+    expect(screen.getByText(/Beta Access/i)).toBeInTheDocument();
+    
+    // Value props
+    expect(screen.getByText('Scenery')).toBeInTheDocument();
+    expect(screen.getByText(/Discover the exact location/i)).toBeInTheDocument();
+    expect(screen.getByText('Collectibles')).toBeInTheDocument();
+    expect(screen.getByText(/Get instant valuations/i)).toBeInTheDocument();
+    expect(screen.getByText('Secure')).toBeInTheDocument();
+    expect(screen.getByText(/Your memories are private/i)).toBeInTheDocument();
+
     expect(screen.getByText('I have an account')).toBeInTheDocument();
     expect(screen.getByText('Request Access')).toBeInTheDocument();
   });

@@ -1,6 +1,6 @@
 
 
-# React Photo App
+# Lumina (formerly React Photo App)
 
 ![Status: High-Performance Engineering Prototype (Active Development)](https://img.shields.io/badge/status-high--performance--prototype-yellow.svg)
 [![Tests](https://img.shields.io/badge/tests-700%2B%20passing-brightgreen.svg)](https://github.com/Inouye165/React-Photo-App)
@@ -9,7 +9,7 @@
 [![React](https://img.shields.io/badge/React-19-61dafb.svg)](https://reactjs.org/)
 [![License](https://img.shields.io/badge/license-MIT-blue.svg)](LICENSE)
 
-> **A production-grade backend and security architecture wrapped in a functional prototype UI.**
+> **Lumina is your AI Photo Companion.**
 
 This repository demonstrates that a single developer can build a secure, scalable, AI-integrated photo platform. The backend features enterprise-grade architecture, robust security (RLS, strict CORS allowlist, origin-protected auth routes, rate limiting), and advanced AI workflows. The user interface is a functional draft—focusing on architecture over UI polish. Expect a utilitarian, developer-focused experience while the frontend evolves.
 

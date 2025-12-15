@@ -91,7 +91,7 @@ export default function AppHeader({
       <div className="flex items-center gap-1 sm:gap-2 min-w-0 flex-shrink-0">
         {/* Logo - hidden on very small screens */}
         <span className="hidden xs:flex items-center gap-1 font-bold text-sm text-slate-900 whitespace-nowrap">
-          📷 <span className="hidden sm:inline">Photo App</span>
+          📷 <span className="hidden sm:inline">Lumina</span>
         </span>
         
         {/* Navigation Arrows */}

@@ -60,18 +60,42 @@ const LandingPage: React.FC = () => {
 
       <div className="relative">
         <div className="inline-flex items-center px-3 py-1 mb-6 text-xs font-semibold tracking-wider text-amber-300 uppercase bg-amber-900/30 rounded-full border border-amber-800">
-          Beta Access • Under Construction
+          Beta Access
         </div>
         <h1 className="text-4xl md:text-6xl font-bold tracking-tight mb-4">
-          Vaultage
+          Lumina
         </h1>
-        <p className="text-slate-200/80 text-lg md:text-xl max-w-md">
-          Secure AI-powered analysis for your most treasured memories and collectibles.
+        <p className="text-slate-200/80 text-lg md:text-xl max-w-md mb-8">
+          Upload a photo, and I'll tell you what it is, where it was, or what it's worth.
         </p>
+
+        <div className="space-y-4 max-w-md">
+          <div className="flex items-start gap-3">
+            <span className="text-2xl" role="img" aria-label="scenery">🏞️</span>
+            <div>
+              <h3 className="font-semibold text-white">Scenery</h3>
+              <p className="text-slate-300 text-sm">Discover the exact location and details of your scenic shots.</p>
+            </div>
+          </div>
+          <div className="flex items-start gap-3">
+            <span className="text-2xl" role="img" aria-label="collectibles">🏺</span>
+            <div>
+              <h3 className="font-semibold text-white">Collectibles</h3>
+              <p className="text-slate-300 text-sm">Get instant valuations and descriptions for your treasures.</p>
+            </div>
+          </div>
+          <div className="flex items-start gap-3">
+            <span className="text-2xl" role="img" aria-label="secure">🔒</span>
+            <div>
+              <h3 className="font-semibold text-white">Secure</h3>
+              <p className="text-slate-300 text-sm">Your memories are private and encrypted.</p>
+            </div>
+          </div>
+        </div>
       </div>
 
       <div className="relative hidden md:block text-slate-200/50 text-sm">
-        &copy; {new Date().getFullYear()} Vaultage. All rights reserved.
+        &copy; {new Date().getFullYear()} Lumina. All rights reserved.
       </div>
     </div>
   );
