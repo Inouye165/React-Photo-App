@@ -1,15 +1,103 @@
-import React from 'react';
+import React, { useState, useEffect } from 'react';
 import { useAuth } from '../contexts/AuthContext';
 import LandingPage from '../pages/LandingPage';
+import DisclaimerModal from './DisclaimerModal';
+import { API_BASE_URL } from '../config/apiConfig';
 
 interface AuthWrapperProps {
   children: React.ReactNode;
 }
 
 const AuthWrapper = ({ children }: AuthWrapperProps) => {
-  const { user, loading } = useAuth();
+  const { user, loading, authReady } = useAuth();
+  const [termsAccepted, setTermsAccepted] = useState<boolean | null>(null);
+  const [isAccepting, setIsAccepting] = useState(false);
+  const [checkingTerms, setCheckingTerms] = useState(true);
 
-  if (loading) {
+  // Check if user has accepted terms when authenticated
+  useEffect(() => {
+    if (!user || !authReady) {
+      setCheckingTerms(false);
+      return;
+    }
+
+    const checkTermsAcceptance = async () => {
+      try {
+        // Import dynamically to avoid circular dependency
+        const { getAuthHeaders } = await import('../api.js');
+        const headers = getAuthHeaders();
+        // E2E Bypass: Add header if in E2E mode to avoid cookie issues
+        if ((window as any).__E2E_MODE__) {
+          headers['X-E2E-User-ID'] = '11111111-1111-4111-8111-111111111111';
+        }
+
+        const response = await fetch(`${API_BASE_URL}/api/users/me/preferences`, {
+          method: 'GET',
+          headers,
+          credentials: 'include'
+        });
+        
+        if (response.ok) {
+          const data = await response.json();
+          // Check if the user record has terms_accepted_at
+          // Note: This endpoint returns preferences, but we need to check the users table
+          // Let's make a dedicated call or check if the backend returns this info
+          
+          // For now, we'll check via the user metadata if available
+          // Or we need to add this to the preferences endpoint response
+          
+          // Temporary: Check localStorage as fallback (will be replaced by DB check)
+          const localAcceptance = localStorage.getItem(`terms_accepted_${user.id}`);
+          setTermsAccepted(!!localAcceptance);
+        }
+      } catch (error) {
+        console.error('Failed to check terms acceptance:', error);
+        // On error, assume terms not accepted to be safe
+        setTermsAccepted(false);
+      } finally {
+        setCheckingTerms(false);
+      }
+    };
+
+    checkTermsAcceptance();
+  }, [user, authReady]);
+
+  const handleAcceptTerms = async () => {
+    if (!user) return;
+
+    setIsAccepting(true);
+    try {
+      const { getAuthHeaders } = await import('../api.js');
+      const headers = getAuthHeaders();
+      // E2E Bypass: Add header if in E2E mode to avoid cookie issues
+      if ((window as any).__E2E_MODE__) {
+        headers['X-E2E-User-ID'] = '11111111-1111-4111-8111-111111111111';
+      }
+
+      const response = await fetch(`${API_BASE_URL}/api/users/accept-terms`, {
+        method: 'POST',
+        headers,
+        credentials: 'include'
+      });
+
+      if (response.ok) {
+        // Store acceptance locally as well for quick checks
+        localStorage.setItem(`terms_accepted_${user.id}`, 'true');
+        setTermsAccepted(true);
+      } else {
+        const err = await response.json().catch(() => ({}));
+        console.error('Failed to record terms acceptance', err);
+        alert(`Failed to save acceptance: ${response.status} ${err.error || response.statusText}`);
+      }
+    } catch (error) {
+      console.error('Error accepting terms:', error);
+      alert('Network error. Please check your connection and try again.');
+    } finally {
+      setIsAccepting(false);
+    }
+  };
+
+  if (loading || checkingTerms) {
     return (
       <div className="min-h-screen flex items-center justify-center bg-gray-50">
         <div className="text-center">
@@ -22,6 +110,11 @@ const AuthWrapper = ({ children }: AuthWrapperProps) => {
 
   if (!user) {
     return <LandingPage />;
+  }
+
+  // Show disclaimer modal if terms not accepted
+  if (termsAccepted === false) {
+    return <DisclaimerModal onAccept={handleAcceptTerms} isAccepting={isAccepting} />;
   }
 
   // Authenticated user interface - now just renders the app content

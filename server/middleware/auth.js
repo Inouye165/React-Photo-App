@@ -60,6 +60,18 @@ async function authenticateToken(req, res, next) {
   try {
     // 0. Check for E2E test token (only in non-production)
     if (process.env.NODE_ENV !== 'production') {
+      // Allow header-based bypass for E2E tests (avoids cookie issues)
+      if (req.headers['x-e2e-user-id'] === '11111111-1111-4111-8111-111111111111') {
+        req.user = {
+          id: '11111111-1111-4111-8111-111111111111',
+          email: 'e2e@example.com',
+          username: 'e2e-test',
+          role: 'admin'
+        };
+        req.authSource = 'e2e-header';
+        return next();
+      }
+
       try {
         const decoded = jwt.verify(token, JWT_SECRET);
         if (decoded.sub === '11111111-1111-4111-8111-111111111111') {

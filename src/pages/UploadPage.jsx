@@ -1,5 +1,6 @@
 import React, { useRef, useMemo } from 'react';
-import { useNavigate, useOutletContext } from 'react-router-dom';
+import useStore from '../store.js';
+import { useNavigate } from 'react-router-dom';
 import PhotoUploadForm from '../PhotoUploadForm.jsx';
 import useLocalPhotoPicker from '../hooks/useLocalPhotoPicker.js';
 import { useThumbnailQueue } from '../hooks/useThumbnailQueue.js';
@@ -17,27 +18,57 @@ import { useThumbnailQueue } from '../hooks/useThumbnailQueue.js';
  */
 export default function UploadPage() {
   const navigate = useNavigate();
-  const { setToolbarMessage } = useOutletContext();
+  // const { setToolbarMessage } = useOutletContext();
 
   const {
     filteredLocalPhotos,
     handleSelectFolder,
     handleNativeSelection,
-    handleUploadFiltered,
     startDate,
     setStartDate,
     endDate,
     setEndDate,
     uploading,
   } = useLocalPhotoPicker({
-    onUploadComplete: () => {
-      // After upload completes, navigate to gallery to see the new photos
-      navigate('/gallery');
-    },
-    onUploadSuccess: (count) => {
-      setToolbarMessage(`Successfully uploaded ${count} photos`);
-    },
+    onUploadComplete: () => {},
+    onUploadSuccess: () => {},
   });
+
+  // Optimistic upload handler
+  const addPendingUploads = useStore((state) => state.addPendingUploads);
+  const clearPendingUploads = useStore((state) => state.clearPendingUploads);
+
+  // Fire-and-forget upload logic
+  const handleOptimisticUpload = async (photosToUpload, analysisType = 'scenery') => {
+    // Add pending uploads to store
+    addPendingUploads(photosToUpload.map(p => p.file));
+    // Navigate immediately
+    navigate('/gallery');
+    // Start background upload
+    setTimeout(async () => {
+      const { uploadPhotoToServer } = await import('../api.js');
+      const { generateClientThumbnail } = await import('../utils/clientImageProcessing.js');
+      const removePendingUpload = useStore.getState().removePendingUpload;
+      for (const photo of photosToUpload) {
+        let thumbnailBlob = null;
+        try {
+          thumbnailBlob = await generateClientThumbnail(photo.file);
+        } catch {
+          /* no-op: error intentionally ignored */
+        }
+        try {
+          await uploadPhotoToServer(photo.file, undefined, thumbnailBlob, { classification: analysisType });
+        } catch {
+          /* no-op: error intentionally ignored */
+        }
+        // Remove from pending uploads
+        // Find the tempId by matching file name and size
+        const pending = useStore.getState().pendingUploads.find(p => p.filename === photo.file.name && p.file_size === photo.file.size);
+        if (pending) removePendingUpload(pending.id);
+      }
+      clearPendingUploads();
+    }, 100);
+  };
 
   // Ref for fallback file input (Firefox/Safari)
   const fileInputRef = useRef(null);
@@ -267,7 +298,7 @@ export default function UploadPage() {
         setEndDate={setEndDate}
         uploading={uploading}
         filteredLocalPhotos={filteredLocalPhotos}
-        handleUploadFiltered={handleUploadFiltered}
+        handleUploadFiltered={handleOptimisticUpload}
         onReopenFolder={handleSelectFolder}
         isStandalonePage={true}
         closeReason="upload-page-close"

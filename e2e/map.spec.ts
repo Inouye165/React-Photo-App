@@ -1,4 +1,5 @@
 import { test, expect } from '@playwright/test';
+import { acceptDisclaimer } from './helpers/disclaimer';
 
 test.describe('Map Component', () => {
   test('should render Google Maps and not the OpenStreetMap fallback', async ({ page, context }) => {
@@ -162,6 +163,9 @@ test.describe('Map Component', () => {
     // Navigate to app (session cookie is set)
     await page.goto('http://localhost:5173/');
     
+    // Handle disclaimer modal if present
+    await acceptDisclaimer(page);
+
     // Wait for auth check and page to stabilize
     await page.waitForTimeout(2000);
 

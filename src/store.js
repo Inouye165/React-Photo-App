@@ -17,6 +17,39 @@ const useStore = create((set, get) => ({
   pollingPhotoId: null,
   pollingPhotoIds: new Set(),
 
+  // Optimistic uploads - pending photos being uploaded
+  pendingUploads: [],
+  addPendingUploads: (files) => set((state) => {
+    const newPending = files.map(file => ({
+      id: `temp-${Date.now()}-${Math.random().toString(36).substr(2, 9)}`,
+      filename: file.name,
+      state: 'uploading',
+      url: URL.createObjectURL(file),
+      file_size: file.size,
+      caption: '',
+      isTemporary: true,
+      file // Keep reference to file for upload
+    }));
+    return { pendingUploads: [...state.pendingUploads, ...newPending] };
+  }),
+  removePendingUpload: (tempId) => set((state) => {
+    // Revoke blob URL to prevent memory leak
+    const pending = state.pendingUploads.find(p => p.id === tempId);
+    if (pending?.url && pending.url.startsWith('blob:')) {
+      URL.revokeObjectURL(pending.url);
+    }
+    return { pendingUploads: state.pendingUploads.filter(p => p.id !== tempId) };
+  }),
+  clearPendingUploads: () => set((state) => {
+    // Revoke all blob URLs
+    state.pendingUploads.forEach(p => {
+      if (p.url && p.url.startsWith('blob:')) {
+        URL.revokeObjectURL(p.url);
+      }
+    });
+    return { pendingUploads: [] };
+  }),
+
   // Persistent banner notification (alternative to toast)
   banner: { message: '', severity: 'info' },
   setBanner: (value) => set((state) => {

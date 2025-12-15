@@ -26,6 +26,7 @@ export default function PhotoGalleryPage() {
   const setShowMetadataModal = useStore((state) => state.setShowMetadataModal);
   const setMetadataPhoto = useStore((state) => state.setMetadataPhoto);
   const showLocalPicker = useStore((state) => state.uploadPicker.status !== 'closed');
+  const pendingUploads = useStore((state) => state.pendingUploads);
 
   const {
     photos,
@@ -51,6 +52,11 @@ export default function PhotoGalleryPage() {
     list.sort((a, b) => toTimestamp(b) - toTimestamp(a));
     return list;
   }, [photos]);
+
+  // Merge pending uploads with sorted photos (pending uploads at the top)
+  const allPhotos = useMemo(() => {
+    return [...pendingUploads, ...sortedPhotos];
+  }, [pendingUploads, sortedPhotos]);
 
   const { getSignedUrl } = useSignedThumbnails(photos, session?.access_token);
   const privilegesMap = usePhotoPrivileges(photos);
@@ -139,7 +145,7 @@ export default function PhotoGalleryPage() {
         </div>
       ) : (
         <PhotoGallery
-          photos={sortedPhotos}
+          photos={allPhotos}
           privilegesMap={privilegesMap}
           pollingPhotoId={pollingPhotoId}
           handleMoveToInprogress={handleMoveToInprogress}

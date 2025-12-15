@@ -1,5 +1,5 @@
 import React, { useState } from 'react';
-import { Pencil, CheckCircle, Trash2, Calendar, HardDrive, Lock, Image as ImageIcon } from 'lucide-react';
+import { Pencil, Sparkles, Trash2, Calendar, HardDrive, Lock, Image as ImageIcon } from 'lucide-react';
 import formatFileSize from '../utils/formatFileSize.js';
 import { toUrl } from '../utils/toUrl.js';
 import AuthenticatedImage from './AuthenticatedImage.jsx';
@@ -146,6 +146,9 @@ export default function PhotoCard({
     }
   };
 
+  // Disable interaction for uploading photos
+  const isUploading = photo.state === 'uploading' || photo.isTemporary;
+
   return (
     <div
       className="bg-white rounded-3xl shadow-lg hover:shadow-xl transition-shadow duration-200 overflow-hidden cursor-pointer group"
@@ -153,7 +156,7 @@ export default function PhotoCard({
         borderRadius: '24px',
         boxShadow: '0 10px 25px -5px rgba(0, 0, 0, 0.1), 0 8px 10px -6px rgba(0, 0, 0, 0.1)',
       }}
-      onClick={() => onSelect && onSelect(photo)}
+      onClick={() => !isUploading && onSelect && onSelect(photo)}
       data-testid="photo-card"
       role="article"
       aria-label={`Photo: ${title}`}
@@ -161,7 +164,7 @@ export default function PhotoCard({
       {/* Thumbnail Section */}
       <div className="relative aspect-[4/3] bg-slate-100 overflow-hidden">
         {/* Loading Skeleton */}
-        {!imageLoaded && !imageError && imageUrl && (
+        {!imageLoaded && !imageError && imageUrl && !isUploading && (
           <div className="absolute inset-0 bg-slate-200 animate-pulse" data-testid="photo-card-skeleton" />
         )}
         
@@ -214,8 +217,19 @@ export default function PhotoCard({
           </div>
         )}
 
+        {/* Uploading Overlay - for optimistic uploads */}
+        {isUploading && (
+          <div className="absolute inset-0 bg-indigo-900/60 flex items-center justify-center backdrop-blur-sm">
+            <div className="text-center">
+              <div className="w-12 h-12 border-4 border-white border-t-transparent rounded-full animate-spin mb-3" />
+              <p className="text-white text-sm font-medium">Uploading...</p>
+            </div>
+            <span className="sr-only">Uploading</span>
+          </div>
+        )}
+
         {/* Polling Overlay */}
-        {isPolling && (
+        {isPolling && !isUploading && (
           <div className="absolute inset-0 bg-black/40 flex items-center justify-center">
             <div className="w-8 h-8 border-3 border-white border-t-transparent rounded-full animate-spin" />
             <span className="sr-only">Processing</span>
@@ -223,11 +237,12 @@ export default function PhotoCard({
         )}
 
         {/* Status Badge */}
-        <div className="absolute top-3 left-3">
-          <span
-            className={`px-3 py-1 rounded-full text-xs font-medium border ${status.className}`}
-            data-testid="photo-card-status"
-          >
+        {!isUploading && (
+          <div className="absolute top-3 left-3">
+            <span
+              className={`px-3 py-1 rounded-full text-xs font-medium border ${status.className}`}
+              data-testid="photo-card-status"
+            >
             <span className="inline-flex items-center gap-1.5">
               {photo.state === 'inprogress' && (
                 <span
@@ -238,7 +253,8 @@ export default function PhotoCard({
               <span>{status.label}</span>
             </span>
           </span>
-        </div>
+          </div>
+        )}
       </div>
 
       {/* Content Section */}
@@ -274,53 +290,56 @@ export default function PhotoCard({
 
         {/* Action Buttons */}
         <div className="flex gap-2 pt-2 border-t border-slate-100">
-          {/* Edit Button - Always visible for inprogress */}
-          {photo.state === 'inprogress' && (
-            <button
-              onClick={handleEdit}
-              className="flex-1 flex items-center justify-center gap-2 px-3 py-2 bg-slate-900 hover:bg-slate-800 text-white text-sm font-medium rounded-full transition-colors"
-              aria-label="Edit photo"
-              data-testid="photo-card-edit-btn"
-            >
-              <Pencil size={14} />
-              <span>Edit</span>
-            </button>
-          )}
+          {/* Hide all action buttons when uploading */}
+          {!isUploading && (
+            <>
+              {/* Edit Button - Always visible for inprogress */}
+              {photo.state === 'inprogress' && (
+                <button
+                  onClick={handleEdit}
+                  className="flex-1 flex items-center justify-center gap-2 px-3 py-2 bg-slate-900 hover:bg-slate-800 text-white text-sm font-medium rounded-full transition-colors"
+                  aria-label="Edit photo"
+                  data-testid="photo-card-edit-btn"
+                >
+                  <Pencil size={14} />
+                  <span>Edit</span>
+                </button>
+              )}
 
-          {/* Approve/Promote Button - For working state */}
-          {photo.state === 'working' && (
-            <button
-              onClick={handleApprove}
-              className="flex-1 flex items-center justify-center gap-2 px-3 py-2 bg-green-600 hover:bg-green-700 text-white text-sm font-medium rounded-full transition-colors"
-              aria-label="Promote photo to processing"
-              data-testid="photo-card-approve-btn"
-            >
-              <CheckCircle size={14} />
-              <span>Promote</span>
-            </button>
-          )}
+              {/* Analyze Button - For working state */}
+              {photo.state === 'working' && (
+                <button
+                  onClick={handleApprove}
+                  className="flex-1 flex items-center justify-center gap-2 px-3 py-2 bg-indigo-600 hover:bg-indigo-700 text-white text-sm font-medium rounded-full transition-colors"
+                  aria-label="Analyze photo with AI"
+                  data-testid="photo-card-approve-btn"
+                >
+                  <Sparkles size={14} />
+                  <span>Analyze</span>
+                </button>
+              )}
 
-          {/* Return to Queue Button - For inprogress state */}
-          {photo.state === 'inprogress' && (
-            <button
-              onClick={(e) => {
-                e.stopPropagation();
-                // This triggers the "move to working" action
-                if (onApprove) onApprove(photo.id);
-              }}
-              className="flex items-center justify-center gap-2 px-3 py-2 bg-slate-100 hover:bg-slate-200 text-slate-600 text-sm font-medium rounded-full transition-colors"
-              aria-label="Return photo to queue"
-              data-testid="photo-card-return-btn"
-            >
-              <span>Return</span>
-            </button>
-          )}
+              {/* Return to Queue Button - For inprogress state */}
+              {photo.state === 'inprogress' && (
+                <button
+                  onClick={(e) => {
+                    e.stopPropagation();
+                    // This triggers the "move to working" action
+                    if (onApprove) onApprove(photo.id);
+                  }}
+                  className="flex items-center justify-center gap-2 px-3 py-2 bg-slate-100 hover:bg-slate-200 text-slate-600 text-sm font-medium rounded-full transition-colors"
+                  aria-label="Return photo to queue"
+                  data-testid="photo-card-return-btn"
+                >
+                  <span>Return</span>
+                </button>
+              )}
 
-          {/* Delete Button - Available in all states */}
-          <button
-            onClick={handleDelete}
-            disabled={!canWrite}
-            className={`flex items-center justify-center p-2 rounded-full transition-colors ${
+              {/* Delete Button - Available in all states */}
+              <button
+                onClick={handleDelete}
+                disabled={!canWrite}
+                className={`flex items-center justify-center p-2 rounded-full transition-colors ${
               canWrite 
                 ? 'bg-red-50 hover:bg-red-100 text-red-600' 
                 : 'bg-slate-50 text-slate-300 cursor-not-allowed'
@@ -331,6 +350,8 @@ export default function PhotoCard({
           >
             <Trash2 size={16} />
           </button>
+            </>
+          )}
         </div>
       </div>
     </div>

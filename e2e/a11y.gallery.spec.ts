@@ -1,5 +1,6 @@
 import { test, expect } from '@playwright/test';
 import AxeBuilder from '@axe-core/playwright';
+import { acceptDisclaimer } from './helpers/disclaimer';
 
 test('A11y: gallery page', async ({ page, context }) => {
   // Set up route mocks FIRST before any requests
@@ -36,6 +37,10 @@ test('A11y: gallery page', async ({ page, context }) => {
   }
 
   await page.goto('http://127.0.0.1:5173/gallery');
+  
+  // Handle disclaimer modal if present
+  await acceptDisclaimer(page);
+
   await page.waitForTimeout(2000); // Wait for auth check
   const { violations } = await new AxeBuilder({ page }).analyze();
   // Allow moderate/minor for now; enforce no serious/critical

@@ -297,11 +297,11 @@ describe('PhotoCard Component', () => {
   describe('Action Buttons - Working State', () => {
     const workingPhoto = { ...mockPhoto, state: 'working' };
 
-    it('renders Promote button for working photos', () => {
+    it('renders Analyze button for working photos', () => {
       render(<PhotoCard {...defaultProps} photo={workingPhoto} />);
 
       expect(screen.getByTestId('photo-card-approve-btn')).toBeInTheDocument();
-      expect(screen.getByText('Promote')).toBeInTheDocument();
+      expect(screen.getByText('Analyze')).toBeInTheDocument();
     });
 
     it('does not render Edit/Return buttons for working photos', () => {
@@ -317,7 +317,7 @@ describe('PhotoCard Component', () => {
       expect(screen.getByTestId('photo-card-delete-btn')).toBeInTheDocument();
     });
 
-    it('calls onApprove with photo id when Promote button is clicked', async () => {
+    it('calls onApprove with photo id when Analyze button is clicked', async () => {
       const user = userEvent.setup();
       render(<PhotoCard {...defaultProps} photo={workingPhoto} />);
 
@@ -347,7 +347,7 @@ describe('PhotoCard Component', () => {
       expect(screen.getByTestId('photo-card-delete-btn')).toBeInTheDocument();
     });
 
-    it('does not render Edit/Return/Promote buttons for finished photos', () => {
+    it('does not render Edit/Return/Analyze buttons for finished photos', () => {
       render(<PhotoCard {...defaultProps} photo={finishedPhoto} />);
 
       expect(screen.queryByTestId('photo-card-edit-btn')).not.toBeInTheDocument();
