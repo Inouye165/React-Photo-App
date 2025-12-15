@@ -9,7 +9,6 @@
 
 const request = require('supertest');
 const express = require('express');
-const cookieParser = require('cookie-parser');
 
 // Mock Supabase
 const mockGetUser = jest.fn();
@@ -48,7 +47,6 @@ describe('Users API Routes', () => {
     
     // Create Express app
     app = express();
-    app.use(cookieParser());
     app.use(express.json());
     
     // Mount users routes
