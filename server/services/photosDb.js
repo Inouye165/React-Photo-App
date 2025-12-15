@@ -26,6 +26,7 @@ module.exports = function createPhotosDb({ db }) {
       if (metadata.caption !== undefined) fields.caption = metadata.caption;
       if (metadata.description !== undefined) fields.description = metadata.description;
       if (metadata.keywords !== undefined) fields.keywords = metadata.keywords;
+      if (metadata.classification !== undefined) fields.classification = metadata.classification;
       if (metadata.textStyle !== undefined) fields.text_style = metadata.textStyle === null ? null : JSON.stringify(metadata.textStyle);
       fields.updated_at = new Date().toISOString();
       if (Object.keys(fields).length === 1) return false; // only updated_at

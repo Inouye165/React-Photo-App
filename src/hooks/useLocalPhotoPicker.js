@@ -90,7 +90,7 @@ export default function useLocalPhotoPicker({ onUploadComplete, onUploadSuccess 
     pickerCommand.setFilters({ startDate, endDate: value });
   }, [pickerCommand, startDate]);
 
-  const handleUploadFiltered = useCallback(async (subsetToUpload) => {
+  const handleUploadFiltered = useCallback(async (subsetToUpload, analysisType = 'scenery') => {
     const photosToUpload = Array.isArray(subsetToUpload) ? subsetToUpload : filteredLocalPhotos;
     if (photosToUpload.length === 0) return;
 
@@ -106,7 +106,7 @@ export default function useLocalPhotoPicker({ onUploadComplete, onUploadSuccess 
           console.warn(`Thumbnail generation failed for ${photo.name}:`, err);
         }
         try {
-          const uploadResponse = await uploadPhotoToServer(photo.file, undefined, thumbnailBlob);
+          const uploadResponse = await uploadPhotoToServer(photo.file, undefined, thumbnailBlob, { classification: analysisType });
           pickerCommand.markUploadSuccess(photo.id);
           // Log compass direction (if available) from server response
           if (uploadResponse && uploadResponse.metadata) {

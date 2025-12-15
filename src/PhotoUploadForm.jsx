@@ -64,6 +64,9 @@ const PhotoUploadForm = ({
   // Selection state: Set of indices
   const [selectedIndices, setSelectedIndices] = useState(new Set());
 
+  // Intent-based upload state
+  const [analysisType, setAnalysisType] = useState('scenery');
+
   // Reset selection when the filtered list changes (e.g. new folder or date filter change)
   // Default to selecting ALL photos
   useEffect(() => {
@@ -93,7 +96,7 @@ const PhotoUploadForm = ({
 
   const onUploadClick = () => {
     const photosToUpload = filteredLocalPhotos.filter((_, i) => selectedIndices.has(i));
-    handleUploadFiltered(photosToUpload);
+    handleUploadFiltered(photosToUpload, analysisType);
   };
 
   const panelRef = useRef(null);
@@ -216,6 +219,23 @@ const PhotoUploadForm = ({
             className="border border-gray-300 rounded px-3 py-1.5 text-sm focus:ring-2 focus:ring-blue-500 outline-none"
             placeholder="End Date"
           />
+        </div>
+
+        <div className="flex items-center gap-2">
+          <label htmlFor="analysis-type" className="text-sm font-medium text-gray-700 whitespace-nowrap">
+            Analysis Type
+          </label>
+          <select
+            id="analysis-type"
+            value={analysisType}
+            onChange={(e) => setAnalysisType(e.target.value)}
+            className="border border-gray-300 rounded px-3 py-1.5 text-sm focus:ring-2 focus:ring-blue-500 outline-none bg-white min-h-[44px]"
+            aria-label="Analysis Type"
+          >
+            <option value="scenery">🏞️ Scenery &amp; Location</option>
+            <option value="collectible">🏺 Collectible &amp; Appraisal</option>
+            <option value="todo" disabled>📝 Todo / Reminder</option>
+          </select>
         </div>
         
         <div className="h-6 w-px bg-gray-300 mx-2 hidden sm:block"></div>

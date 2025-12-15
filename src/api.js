@@ -408,22 +408,50 @@ export function revokeBlobUrl(url) {
 
 /**
  * Upload a photo to the server, optionally with a client-generated thumbnail.
+ * Also supports attaching lightweight metadata (e.g. intent/classification).
+ *
+ * Back-compat:
+ * - uploadPhotoToServer(file)
+ * - uploadPhotoToServer(file, '/upload')
+ * - uploadPhotoToServer(file, '/upload', thumbnail)
+ *
+ * New:
+ * - uploadPhotoToServer(file, undefined, thumbnail, { classification: 'scenery' })
+ * - uploadPhotoToServer(file, { classification: 'scenery' }, thumbnail)
+ *
  * @param {File} file - The main photo file
- * @param {string} [serverUrl] - Optional server URL
+ * @param {string|Object} [serverUrl] - Optional server URL or options object
  * @param {Blob|null} [thumbnailBlob] - Optional thumbnail Blob
+ * @param {Object} [options] - Optional metadata/options
  */
-export async function uploadPhotoToServer(file, serverUrl = `${API_BASE_URL}/upload`, thumbnailBlob = null) {
+export async function uploadPhotoToServer(file, serverUrl = `${API_BASE_URL}/upload`, thumbnailBlob = null, options = {}) {
+  // Allow passing options as the 2nd argument for convenience.
+  let effectiveServerUrl = serverUrl;
+  let effectiveOptions = options;
+  let effectiveThumbnailBlob = thumbnailBlob;
+
+  if (serverUrl && typeof serverUrl === 'object' && !(serverUrl instanceof String)) {
+    effectiveOptions = serverUrl;
+    effectiveServerUrl = `${API_BASE_URL}/upload`;
+    effectiveThumbnailBlob = thumbnailBlob;
+  }
+
   // Use FormData and rely on cookie-based auth (credentials included).
   const form = new FormData();
   form.append('photo', file, file.name);
-  if (thumbnailBlob) {
-    form.append('thumbnail', thumbnailBlob, 'thumbnail.jpg');
+  if (effectiveThumbnailBlob) {
+    form.append('thumbnail', effectiveThumbnailBlob, 'thumbnail.jpg');
+  }
+
+  const classification = effectiveOptions?.classification;
+  if (typeof classification === 'string' && classification.trim()) {
+    form.append('classification', classification.trim());
   }
 
   const headers = getAuthHeaders();
   delete headers['Content-Type']; // Let browser set multipart/form-data with boundary
 
-  const res = await fetchWithNetworkFallback(serverUrl, { method: 'POST', headers, body: form, credentials: 'include' });
+  const res = await fetchWithNetworkFallback(effectiveServerUrl, { method: 'POST', headers, body: form, credentials: 'include' });
   if (handleAuthError(res)) return;
   if (!res.ok) throw new Error('Upload failed');
   return await res.json();

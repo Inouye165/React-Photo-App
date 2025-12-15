@@ -82,6 +82,15 @@ module.exports = function createUploadsRouter({ db }) {
       storagePath = uploadResult.path;
       uploadSucceeded = true;
 
+      // Intent-based uploads: accept a lightweight classification/intent hint
+      // from multipart form fields. Default to 'scenery' if missing/invalid.
+      const rawClassification = uploadResult?.fields?.classification;
+      const normalizedClassification = (typeof rawClassification === 'string' ? rawClassification.trim() : '')
+        .toLowerCase();
+      const classification = (normalizedClassification === 'collectible' || normalizedClassification === 'scenery')
+        ? normalizedClassification
+        : 'scenery';
+
       // Check for duplicate by hash
       const existing = await db('photos').where({ hash: uploadResult.hash }).select('id').first();
       if (existing) {
@@ -133,6 +142,7 @@ module.exports = function createUploadsRouter({ db }) {
           user_id: req.user.id,
           created_at: now,
           updated_at: now,
+          classification,
           // Store immediate metadata or mark as pending
           metadata: JSON.stringify(Object.keys(immediateMetadata).length > 0 ? immediateMetadata : { pending: true })
         })
