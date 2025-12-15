@@ -73,8 +73,8 @@ export default function PhotoGalleryPage() {
 
   const handleSelectPhoto = (photo) => {
     if (photo) {
-      // Navigate directly to edit page when clicking photo thumbnail
-      navigate(`/photos/${photo.id}/edit`);
+      // Navigate to read-only detail page when clicking photo thumbnail
+      navigate(`/photos/${photo.id}`);
     }
   };
 

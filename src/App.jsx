@@ -1,24 +1,16 @@
 ﻿import React, { useEffect } from 'react';
-import { BrowserRouter, Routes, Route, Navigate, useParams } from 'react-router-dom';
+import { BrowserRouter, Routes, Route } from 'react-router-dom';
 import { logGlobalError } from './utils/globalLog.js';
 import GlobalErrorBoundary from './components/GlobalErrorBoundary.jsx';
 import MainLayout from './layouts/MainLayout.jsx';
 import SmartRouter from './components/SmartRouter.jsx';
 import PhotoGalleryPage from './pages/PhotoGalleryPage.jsx';
+import PhotoDetailPage from './pages/PhotoDetailPage.jsx';
 import PhotoEditPage from './pages/PhotoEditPage.jsx';
 import UploadPage from './pages/UploadPage.jsx';
 import SettingsPage from './pages/SettingsPage.jsx';
 import AuthWrapper from './components/AuthWrapper';
 import ResetPasswordPage from './pages/ResetPasswordPage.jsx';
-
-/**
- * RedirectToEdit - Redirects /photos/:id to /photos/:id/edit
- * This ensures clicking on any photo always goes to the modern edit view
- */
-function RedirectToEdit() {
-  const { id } = useParams();
-  return <Navigate to={`/photos/${id}/edit`} replace />;
-}
 
 /**
  * App - Root component with routing and error boundary
@@ -27,7 +19,7 @@ function RedirectToEdit() {
  * - / : SmartRouter (determines initial landing based on photo state)
  * - /gallery : PhotoGalleryPage (unified gallery)
  * - /upload : Dedicated upload page
- * - /photos/:id : Redirects to /photos/:id/edit
+ * - /photos/:id : Photo detail view (read-only)
  * - /photos/:id/edit : Photo edit view (modern editor)
  */
 function App() {
@@ -66,8 +58,8 @@ function App() {
             {/* Settings page */}
             <Route path="/settings" element={<SettingsPage />} />
             
-            {/* Photo detail view - redirects to edit */}
-            <Route path="/photos/:id" element={<RedirectToEdit />} />
+            {/* Photo detail view */}
+            <Route path="/photos/:id" element={<PhotoDetailPage />} />
             
             {/* Photo edit view */}
             <Route path="/photos/:id/edit" element={<PhotoEditPage />} />

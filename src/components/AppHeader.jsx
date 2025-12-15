@@ -23,8 +23,13 @@ export default function AppHeader({
   const closePicker = useStore(state => state.pickerCommand.closePicker);
 
   const isGalleryPage = location.pathname === '/gallery' || location.pathname === '/';
-  const isEditPage = location.pathname.includes('/edit');
+  const isEditPage = /^\/photos\/[^/]+\/edit$/.test(location.pathname);
   const isUploadPage = location.pathname === '/upload';
+
+  const currentPhotoId = (() => {
+    const match = location.pathname.match(/^\/photos\/([^/]+)(?:\/edit)?$/);
+    return match ? match[1] : null;
+  })();
 
   const handleBack = () => {
     if (window.history.length > 1) {
@@ -42,7 +47,9 @@ export default function AppHeader({
 
   const handleEditClick = () => {
     closePicker('nav-edit');
-    if (lastEditedPhotoId) {
+    if (currentPhotoId) {
+      navigate(`/photos/${currentPhotoId}/edit`);
+    } else if (lastEditedPhotoId) {
       navigate(`/photos/${lastEditedPhotoId}/edit`);
     } else {
       navigate('/gallery');
