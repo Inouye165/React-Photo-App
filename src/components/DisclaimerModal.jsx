@@ -1,5 +1,5 @@
 import React, { useState } from 'react';
-import { AlertTriangle, Shield, Database, Info } from 'lucide-react';
+import { Lock, Server, Sparkles } from 'lucide-react';
 
 /**
  * DisclaimerModal - Blocking modal requiring users to accept experimental terms
@@ -38,17 +38,17 @@ export default function DisclaimerModal({ onAccept, isAccepting = false }) {
         <div className="px-8 pt-8 pb-6 border-b border-slate-200">
           <div className="flex items-start gap-4">
             <div className="flex-shrink-0">
-              <AlertTriangle className="w-10 h-10 text-amber-500" strokeWidth={2} />
+              <Sparkles className="w-10 h-10 text-amber-500" strokeWidth={2} />
             </div>
             <div>
               <h2 
                 id="disclaimer-title"
                 className="text-2xl font-bold text-slate-900 mb-2"
               >
-                Experimental Feature Notice
+                Experimental Preview
               </h2>
               <p className="text-slate-600">
-                Please read and accept the following terms before continuing
+                Work in Progress
               </p>
             </div>
           </div>
@@ -56,44 +56,39 @@ export default function DisclaimerModal({ onAccept, isAccepting = false }) {
 
         {/* Content */}
         <div className="px-8 py-6 space-y-6">
-          {/* Beta Warning */}
+          <p className="text-slate-700">
+            Welcome! You are accessing a beta version of this application.
+          </p>
+
+          {/* Section 1: AI & Metadata */}
           <div className="flex gap-4 p-4 bg-amber-50 border border-amber-200 rounded-2xl">
-            <Info className="w-5 h-5 text-amber-600 flex-shrink-0 mt-0.5" />
+            <Sparkles className="w-5 h-5 text-amber-600 flex-shrink-0 mt-0.5" />
             <div>
-              <h3 className="font-semibold text-amber-900 mb-1">Beta Software</h3>
+              <h3 className="font-semibold text-amber-900 mb-1">AI &amp; Metadata</h3>
               <p className="text-sm text-amber-800">
-                This application is in active development and may contain bugs or incomplete features. 
-                Use at your own discretion.
+                We use AI to analyze your photos for scenery, location, and appraisals. This generates metadata to help organize your library. This data is stored securely to power search and mapping features.
               </p>
             </div>
           </div>
 
-          {/* Data Privacy Warning */}
-          <div className="flex gap-4 p-4 bg-blue-50 border border-blue-200 rounded-2xl">
-            <Database className="w-5 h-5 text-blue-600 flex-shrink-0 mt-0.5" />
-            <div>
-              <h3 className="font-semibold text-blue-900 mb-1">Data Privacy</h3>
-              <p className="text-sm text-blue-800 mb-2">
-                Your photos and personal data are processed and stored by this application. 
-                While we implement security best practices:
-              </p>
-              <ul className="text-sm text-blue-800 space-y-1 ml-4 list-disc">
-                <li>Photos may be analyzed using AI services</li>
-                <li>Metadata is extracted and stored in our database</li>
-                <li>Do not upload sensitive or confidential images</li>
-                <li>Regular backups are recommended</li>
-              </ul>
-            </div>
-          </div>
-
-          {/* Security Notice */}
+          {/* Section 2: Security & Privacy */}
           <div className="flex gap-4 p-4 bg-slate-50 border border-slate-200 rounded-2xl">
-            <Shield className="w-5 h-5 text-slate-600 flex-shrink-0 mt-0.5" />
+            <Lock className="w-5 h-5 text-slate-700 flex-shrink-0 mt-0.5" />
             <div>
-              <h3 className="font-semibold text-slate-900 mb-1">Security Notice</h3>
+              <h3 className="font-semibold text-slate-900 mb-1">Security &amp; Privacy</h3>
               <p className="text-sm text-slate-700">
-                This application is provided "as-is" without warranty. We are not responsible for 
-                data loss, security breaches, or any damages resulting from use of this software.
+                We use industry-standard encryption. <strong>We do not see or store your passwords.</strong> Authentication is handled securely by our identity provider. We cannot decrypt or access your private credentials.
+              </p>
+            </div>
+          </div>
+
+          {/* Section 3: Data Recovery Warning */}
+          <div className="flex gap-4 p-4 bg-blue-50 border border-blue-200 rounded-2xl">
+            <Server className="w-5 h-5 text-blue-600 flex-shrink-0 mt-0.5" />
+            <div>
+              <h3 className="font-semibold text-blue-900 mb-1">Data Recovery Warning</h3>
+              <p className="text-sm text-blue-800">
+                As a work-in-progress, <strong>data recovery is NOT available.</strong> If you delete a photo, it is permanently removed. Please do not upload sensitive personal documents (e.g., financial/medical records) at this time.
               </p>
             </div>
           </div>
@@ -101,8 +96,7 @@ export default function DisclaimerModal({ onAccept, isAccepting = false }) {
           {/* Acknowledgment Section */}
           <div className="pt-4 border-t border-slate-200">
             <p className="text-sm text-slate-600 mb-4">
-              By accepting, you acknowledge that you have read and understood these terms and 
-              agree to use this experimental software at your own risk.
+              By accepting, you acknowledge that you have read and understood these terms and agree to use this experimental software at your own risk.
             </p>
 
             {/* Checkbox */}
@@ -115,8 +109,7 @@ export default function DisclaimerModal({ onAccept, isAccepting = false }) {
                 disabled={isAccepting}
               />
               <span className="text-sm font-medium text-slate-700 group-hover:text-slate-900 select-none">
-                I have read and understood the terms above, and I accept the risks of using 
-                this experimental software.
+                I have read and understood the terms above, and I accept the risks of using this experimental software.
               </span>
             </label>
           </div>
