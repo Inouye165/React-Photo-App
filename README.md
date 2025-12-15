@@ -44,11 +44,13 @@ This project is not a tutorial or a consumer-ready product. It is a high-perform
 ### 🔒 **Security (Experimental)**
 - **Bearer Token Auth (Primary):** `Authorization: Bearer <token>` header; httpOnly cookie deprecated fallback
 - **CSRF Protection:** Origin/Referer allowlist verification on state-changing auth endpoints (no CSRF tokens); SameSite cookies for defense-in-depth
+- **Experimental Beta Mode:** Optional beta features with an explicit privacy disclaimer and user acknowledgement
 - **Content Security Policy:** Helmet-enforced CSP with automated CI tests
 - **Concurrency Limits:** Rate limiting to prevent upload storms
 
 ### 📸 **Photo Handling**
 - **HEIC Auto-Convert:** Sharp + ImageMagick fallback for Apple's HEIC format
+- **Optimistic Uploads:** Fast, responsive uploads with immediate navigation and background processing
 - **Compass Overlay:** Shows camera direction on map pins (prototype)
 - **Smart Thumbnails:** Lazy-loaded, optimized for large galleries
 - **Date Range Filtering:** Browse by month/year (basic infinite scroll)

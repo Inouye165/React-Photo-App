@@ -40,7 +40,12 @@ This document outlines completed milestones, current priorities, and future plan
 - [x] **Gallery View Redesign** - Virtualized grid with react-virtuoso for smooth scrolling at 1000+ photos
 - [x] **Mobile-Responsive Layouts** - Touch-friendly 44px targets, mobile-first Tailwind styling
 - [ ] **Keyboard Navigation** - Arrow keys, shortcuts, accessibility improvements
-- [ ] **Loading States** - Better feedback during AI processing and uploads
+- [x] **Loading States** - Better feedback during AI processing and uploads
+
+### Recently Completed (Dec 2025)
+- [x] **Upload UX** - Improved upload landing experience and faster perceived performance
+- [x] **Disclaimer / Legal Gate** - Terms/beta disclaimer enforced before entering the main app
+- [x] **Optimistic Uploads** - Immediate navigation with background uploads and pending state
 
 ### Mobile PWA
 - [x] **Native Camera Roll Access** - One-tap photo selection from mobile device gallery
@@ -141,5 +146,5 @@ Have a feature request or use case? Here's how to contribute:
 
 ---
 
-**Last Updated:** November 2025  
+**Last Updated:** December 2025  
 **See Also:** [Product Story](docs/PRODUCT_STORY.md) for detailed engineering journey

@@ -39,6 +39,16 @@ Authorization: Bearer <supabase_access_token>
 - Cookie is checked only as deprecated fallback
 - Query parameters are always rejected
 
+## Terms of Service & Beta Disclaimer
+
+The application requires an explicit acceptance step before an authenticated user can access the main app UI.
+
+- **Enforcement:** The frontend `AuthWrapper` component blocks rendering the authenticated application shell until terms are accepted.
+- **Persistence:** Acceptance is recorded in the database on the `users.terms_accepted_at` column.
+- **API contract:** The backend exposes an authenticated endpoint to record acceptance (e.g., `POST /api/users/accept-terms`).
+
+This gate exists to ensure users acknowledge the app's experimental/beta behavior and the associated privacy disclaimer before using the core product experience.
+
 ### 🛡️ Password Security
 - Strong password requirements (min 8 chars, uppercase, lowercase, numbers, special chars)
 - Bcrypt hashing with salt rounds (12)
