@@ -179,6 +179,53 @@ function createUsersRouter({ db }) {
     }
   });
 
+  /**
+   * POST /api/users/accept-terms
+   * Records that the current user has accepted the experimental/beta terms.
+   * Updates terms_accepted_at timestamp to current time.
+   */
+  router.post('/accept-terms', async (req, res) => {
+    try {
+      // SECURITY: Strictly use req.user.id - users can only accept terms for themselves
+      const userId = req.user?.id;
+      if (!userId) {
+        return res.status(401).json({
+          success: false,
+          error: 'Authentication required'
+        });
+      }
+
+      // Upsert the user record with terms_accepted_at = now
+      await db('users')
+        .insert({
+          id: userId,
+          terms_accepted_at: db.fn.now(),
+          created_at: db.fn.now(),
+          updated_at: db.fn.now()
+        })
+        .onConflict('id')
+        .merge({
+          terms_accepted_at: db.fn.now(),
+          updated_at: db.fn.now()
+        });
+
+      logger.info(`[users] User ${userId} accepted terms`);
+
+      res.json({
+        success: true,
+        data: {
+          terms_accepted_at: new Date().toISOString()
+        }
+      });
+    } catch (error) {
+      logger.error('[users] POST /accept-terms error:', error);
+      res.status(500).json({
+        success: false,
+        error: 'Failed to record terms acceptance'
+      });
+    }
+  });
+
   return router;
 }
 

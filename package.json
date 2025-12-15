@@ -82,7 +82,6 @@
     "happy-dom": "^20.0.10",
     "husky": "^8.0.3",
     "jsdom": "^27.0.1",
-    "lusca": "^1.7.0",
     "postcss": "^8.5.6",
     "tailwindcss": "^4.1.14",
     "typescript": "^5.9.3",

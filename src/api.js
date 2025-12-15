@@ -128,18 +128,24 @@ export function getAccessToken() {
  * @param {boolean} [includeContentType=true] - Whether to include Content-Type header
  * @returns {Object} Headers object with Authorization (if authenticated) and optionally Content-Type
  */
+/**
+ * Get headers for API requests with Bearer token authentication.
+ * @param {boolean} [includeContentType=true]
+ * @returns {Record<string, string>} Headers object with Authorization (if authenticated) and optionally Content-Type
+ */
+/**
+ * Get headers for API requests with Bearer token authentication.
+ * @param {boolean} [includeContentType=true]
+ * @returns {Object} Headers object with Authorization (if authenticated) and optionally Content-Type
+ */
 export function getAuthHeaders(includeContentType = true) {
   const headers = {};
-  
   if (includeContentType) {
     headers['Content-Type'] = 'application/json';
   }
-  
-  // Attach Bearer token if available
   if (_cachedAccessToken) {
     headers['Authorization'] = `Bearer ${_cachedAccessToken}`;
   }
-  
   return headers;
 }
 

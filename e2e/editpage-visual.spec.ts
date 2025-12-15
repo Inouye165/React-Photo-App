@@ -1,6 +1,7 @@
 // @ts-check
 import { test, expect } from '@playwright/test';
 import type { Route, Page } from '@playwright/test';
+import { acceptDisclaimer } from './helpers/disclaimer';
 
 /**
  * Stabilization helper for screenshots in headed mode.
@@ -25,6 +26,10 @@ async function goToEditFromGallery(page: Page, options?: { cardIndex?: number })
   const cardIndex = options?.cardIndex ?? 0;
 
   await page.goto('http://127.0.0.1:5173/gallery', { waitUntil: 'networkidle' });
+  
+  // Handle disclaimer modal if present
+  await acceptDisclaimer(page);
+
   await page.waitForTimeout(2000);
 
   const cards = page.locator('[data-testid="photo-card"]');
@@ -153,6 +158,11 @@ test.describe('EditPage Visual Regression (Frontend-Only)', () => {
       // 3. User preferences
       if (pathname === '/api/users/me/preferences') {
         return fulfill({ success: true, preferences: {} });
+      }
+
+      // 3b. Accept terms
+      if (pathname === '/api/users/accept-terms') {
+        return fulfill({ success: true, data: { terms_accepted_at: new Date().toISOString() } });
       }
 
       // 4. Photo list endpoint - CRITICAL for store population

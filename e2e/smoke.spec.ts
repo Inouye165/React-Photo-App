@@ -1,4 +1,5 @@
 import { test, expect } from '@playwright/test';
+import { acceptDisclaimer } from './helpers/disclaimer';
 
 test('E2E smoke: login → upload → view', async ({ page, context }) => {
   // Set E2E mode flag in window object
@@ -158,6 +159,9 @@ test('E2E smoke: login → upload → view', async ({ page, context }) => {
   // Go directly to gallery (avoid SmartRouter redirects affecting stability)
   await page.goto('http://127.0.0.1:5173/gallery', { waitUntil: 'networkidle' });
   
+  // Handle disclaimer modal if present
+  await acceptDisclaimer(page);
+
   // Wait for auth check to complete
   await page.waitForTimeout(2000);
   
