@@ -146,6 +146,10 @@ async function streamToSupabase(req, options = {}) {
     let fileFound = false;
     let photoUploadPromise = null;
     let uploadError = null;
+
+    // Capture lightweight non-file fields from multipart form.
+    // Keep this scoped and small to avoid memory issues.
+    const fields = {};
     
     // Thumbnail state
     let thumbnailBuffer = [];
@@ -289,6 +293,16 @@ async function streamToSupabase(req, options = {}) {
       }
     });
 
+    busboy.on('field', (name, value) => {
+      if (name !== 'classification') return;
+      try {
+        const raw = typeof value === 'string' ? value : String(value);
+        fields.classification = raw.slice(0, 64);
+      } catch {
+        // ignore malformed field
+      }
+    });
+
     busboy.on('filesLimit', () => {
       uploadError = new Error('Too many files');
       uploadError.code = 'LIMIT_FILES';
@@ -337,7 +351,7 @@ async function streamToSupabase(req, options = {}) {
           }
         }
 
-        resolve(result);
+        resolve({ ...result, fields });
       } catch (err) {
         logger.error('Stream upload error:', err);
         reject(err);
