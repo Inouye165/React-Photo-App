@@ -21,6 +21,26 @@ async function stabilizeForScreenshot(page: Page): Promise<void> {
   await page.waitForTimeout(100);
 }
 
+async function goToEditFromGallery(page: Page, options?: { cardIndex?: number }): Promise<void> {
+  const cardIndex = options?.cardIndex ?? 0;
+
+  await page.goto('http://127.0.0.1:5173/gallery', { waitUntil: 'networkidle' });
+  await page.waitForTimeout(2000);
+
+  const cards = page.locator('[data-testid="photo-card"]');
+  await expect(cards.first()).toBeVisible({ timeout: 15000 });
+
+  const target = cards.nth(cardIndex);
+  await target.scrollIntoViewIfNeeded();
+  await target.click({ timeout: 10000 });
+
+  await page.waitForURL(/\/photos\/\d+$/, { timeout: 10000 });
+  await expect(page.getByTestId('photo-detail-page')).toBeVisible({ timeout: 15000 });
+
+  await page.getByTestId('photo-detail-edit').click();
+  await page.waitForURL(/\/photos\/\d+\/edit/, { timeout: 10000 });
+}
+
 // Mock data
 const mockUser = { id: 'test-user', username: 'visual-test', email: 'test@example.com' };
 
@@ -259,46 +279,7 @@ test.describe('EditPage Visual Regression (Frontend-Only)', () => {
   });
 
   test('Default Story tab state', async ({ page }, testInfo) => {
-    // Navigate to gallery FIRST to populate store
-    await page.goto('http://127.0.0.1:5173/gallery', { waitUntil: 'networkidle' });
-    
-    // Wait longer for photos to load AND render
-    await page.waitForTimeout(5000);
-
-    // Wait for photo cards to be fully loaded and visible
-    await page.waitForSelector('[data-testid="photo-card"]', { state: 'visible', timeout: 10000 });
-    const cardCount = await page.locator('[data-testid="photo-card"]').count();
-    console.log(`[Test] Found ${cardCount} photo cards`);
-
-    // CRITICAL: Verify store is populated by checking if we can access window.useStore
-    const storeInfo = await page.evaluate(() => {
-      // Try to find the store in the React component tree
-      const root = document.querySelector('#root');
-      return {
-        hasRoot: !!root,
-        windowKeys: Object.keys(window).filter(k => k.toLowerCase().includes('store') || k.toLowerCase().includes('zustand'))
-      };
-    });
-    console.log(`[Test] Store debug:`, JSON.stringify(storeInfo));
-
-    // Click the ENTIRE photo card to trigger onSelect → navigate
-    const firstCard = page.locator('[data-testid="photo-card"]').first();
-    await firstCard.scrollIntoViewIfNeeded();
-    await firstCard.click({ force: false });
-    
-    console.log(`[Test] Clicked photo card, waiting for navigation...`);
-    
-    // Wait for navigation OR check if it already happened
-    try {
-      await page.waitForURL(/\/photos\/\d+\/edit/, { timeout: 10000 });
-    } catch (e) {
-      const currentUrl = page.url();
-      console.log(`[Test] Navigation timeout! Current URL: ${currentUrl}`);
-      await page.screenshot({ path: 'test-results/nav-timeout.png', fullPage: true });
-      throw new Error(`Failed to navigate to edit page. Current URL: ${currentUrl}`);
-    }
-    
-    console.log(`[Test] Successfully navigated to: ${page.url()}`);
+    await goToEditFromGallery(page);
 
     // Guards
     await expect(page.locator('text=Photo not found')).toHaveCount(0);
@@ -324,11 +305,7 @@ test.describe('EditPage Visual Regression (Frontend-Only)', () => {
   });
 
   test('Location tab with GPS data', async ({ page }, testInfo) => {
-    await page.goto('http://127.0.0.1:5173/gallery', { waitUntil: 'networkidle' });
-    await page.waitForTimeout(2000);
-
-    await page.click('[data-testid="photo-card"]', { timeout: 10000 });
-    await page.waitForURL(/\/photos\/\d+\/edit/, { timeout: 10000 });
+    await goToEditFromGallery(page);
 
     await expect(page.locator('text=Photo not found')).toHaveCount(0);
     await expect(page.getByRole('button', { name: /story/i })).toBeVisible({ timeout: 15000 });
@@ -354,17 +331,8 @@ test.describe('EditPage Visual Regression (Frontend-Only)', () => {
   });
 
   test('Collectibles tab with feature flag enabled', async ({ page }, testInfo) => {
-    await page.goto('http://127.0.0.1:5173/gallery', { waitUntil: 'networkidle' });
-    await page.waitForTimeout(2000);
-
     // Click second photo card (collectible)
-    const cards = page.locator('[data-testid="photo-card"]');
-    if (await cards.count() > 1) {
-      await cards.nth(1).click({ timeout: 10000 });
-    } else {
-      await cards.first().click({ timeout: 10000 });
-    }
-    await page.waitForURL(/\/photos\/\d+\/edit/, { timeout: 10000 });
+    await goToEditFromGallery(page, { cardIndex: 1 });
 
     await expect(page.locator('text=Photo not found')).toHaveCount(0);
     await expect(page.getByRole('button', { name: /story/i })).toBeVisible({ timeout: 15000 });
@@ -392,11 +360,7 @@ test.describe('EditPage Visual Regression (Frontend-Only)', () => {
   });
 
   test('Processing/polling state', async ({ page }, testInfo) => {
-    await page.goto('http://127.0.0.1:5173/gallery', { waitUntil: 'networkidle' });
-    await page.waitForTimeout(2000);
-
-    await page.click('[data-testid="photo-card"]', { timeout: 10000 });
-    await page.waitForURL(/\/photos\/\d+\/edit/, { timeout: 10000 });
+    await goToEditFromGallery(page);
 
     await expect(page.locator('text=Photo not found')).toHaveCount(0);
     await expect(page.getByRole('button', { name: /story/i })).toBeVisible({ timeout: 15000 });
@@ -419,11 +383,7 @@ test.describe('EditPage Visual Regression (Frontend-Only)', () => {
   });
 
   test('Flipped metadata view', async ({ page }, testInfo) => {
-    await page.goto('http://127.0.0.1:5173/gallery', { waitUntil: 'networkidle' });
-    await page.waitForTimeout(2000);
-
-    await page.click('[data-testid="photo-card"]', { timeout: 10000 });
-    await page.waitForURL(/\/photos\/\d+\/edit/, { timeout: 10000 });
+    await goToEditFromGallery(page);
 
     await expect(page.locator('text=Photo not found')).toHaveCount(0);
     await expect(page.getByRole('button', { name: /story/i })).toBeVisible({ timeout: 15000 });
@@ -451,11 +411,7 @@ test.describe('EditPage Visual Regression (Frontend-Only)', () => {
   });
 
   test('Story tab form fields with focus', async ({ page }, testInfo) => {
-    await page.goto('http://127.0.0.1:5173/gallery', { waitUntil: 'networkidle' });
-    await page.waitForTimeout(2000);
-
-    await page.click('[data-testid="photo-card"]', { timeout: 10000 });
-    await page.waitForURL(/\/photos\/\d+\/edit/, { timeout: 10000 });
+    await goToEditFromGallery(page);
 
     await expect(page.locator('text=Photo not found')).toHaveCount(0);
     await expect(page.getByRole('button', { name: /story/i })).toBeVisible({ timeout: 15000 });

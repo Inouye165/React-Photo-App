@@ -1,20 +1,15 @@
 import React from 'react';
 import { describe, it, expect, vi, beforeEach } from 'vitest';
 import { render, screen, waitFor } from '@testing-library/react';
-import { MemoryRouter, Routes, Route, Navigate, useParams } from 'react-router-dom';
+import { MemoryRouter, Routes, Route } from 'react-router-dom';
 import { AuthProvider } from './contexts/AuthContext.jsx';
 import AuthWrapper from './components/AuthWrapper';
 import MainLayout from './layouts/MainLayout.jsx';
 import PhotoGalleryPage from './pages/PhotoGalleryPage.jsx';
+import PhotoDetailPage from './pages/PhotoDetailPage.jsx';
 import PhotoEditPage from './pages/PhotoEditPage.jsx';
 import GlobalErrorBoundary from './components/GlobalErrorBoundary.jsx';
 import { uploadPickerInitialState } from './store/uploadPickerSlice.js';
-
-// RedirectToEdit component matching App.jsx implementation
-function RedirectToEdit() {
-  const { id } = useParams();
-  return <Navigate to={`/photos/${id}/edit`} replace />;
-}
 
 // Import store after mock setup
 vi.mock('./store.js', async () => {
@@ -125,7 +120,7 @@ describe('Routing Implementation Tests', () => {
       });
     });
 
-    it('redirects /photos/:id to /photos/:id/edit', async () => {
+      it('renders PhotoDetailPage at /photos/:id', async () => {
       render(
         <AuthProvider>
           <AuthWrapper>
@@ -133,7 +128,7 @@ describe('Routing Implementation Tests', () => {
               <MemoryRouter initialEntries={['/photos/1']}>
                 <Routes>
                   <Route element={<MainLayout />}>
-                    <Route path="/photos/:id" element={<RedirectToEdit />} />
+                      <Route path="/photos/:id" element={<PhotoDetailPage />} />
                     <Route path="/photos/:id/edit" element={<PhotoEditPage />} />
                   </Route>
                 </Routes>
@@ -143,10 +138,9 @@ describe('Routing Implementation Tests', () => {
         </AuthProvider>
       );
 
-      // Wait for the edit page to render (after redirect)
+        // Wait for the detail page to render
       await waitFor(() => {
-        // EditPage should be rendered after redirect
-        expect(document.body.textContent).toBeTruthy();
+          expect(screen.getByTestId('photo-detail-page')).toBeInTheDocument();
       });
     });
 
@@ -298,7 +292,7 @@ describe('Routing Implementation Tests', () => {
                 <Routes>
                   <Route element={<MainLayout />}>
                     <Route index element={<PhotoGalleryPage />} />
-                    <Route path="/photos/:id" element={<RedirectToEdit />} />
+                      <Route path="/photos/:id" element={<PhotoDetailPage />} />
                     <Route path="/photos/:id/edit" element={<PhotoEditPage />} />
                     <Route path="*" element={<PhotoGalleryPage />} />
                   </Route>
