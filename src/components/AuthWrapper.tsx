@@ -8,8 +8,15 @@ interface AuthWrapperProps {
   children: React.ReactNode;
 }
 
+import { useNavigate } from 'react-router-dom';
 const AuthWrapper = ({ children }: AuthWrapperProps) => {
-  const { user, loading, authReady } = useAuth();
+  const { user, loading, authReady, logout } = useAuth();
+    const navigate = useNavigate();
+    // Handler for Decline & Sign Out
+    const handleDecline = async () => {
+      await logout();
+      navigate('/');
+    };
   const [termsAccepted, setTermsAccepted] = useState<boolean | null>(null);
   const [isAccepting, setIsAccepting] = useState(false);
   const [checkingTerms, setCheckingTerms] = useState(true);
@@ -116,7 +123,7 @@ const AuthWrapper = ({ children }: AuthWrapperProps) => {
 
   // Show disclaimer modal if terms not accepted
   if (termsAccepted === false) {
-    return <DisclaimerModal onAccept={handleAcceptTerms} isAccepting={isAccepting} />;
+    return <DisclaimerModal onAccept={handleAcceptTerms} onDeny={handleDecline} isAccepting={isAccepting} />;
   }
 
   // Authenticated user interface - now just renders the app content
