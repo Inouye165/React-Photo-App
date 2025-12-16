@@ -107,6 +107,11 @@ export default function PhotoCard({
   // - url: The image URL to load
   // - needsAuth: true if the URL requires Bearer token auth (use AuthenticatedImage)
   const getImageUrl = () => {
+    // Optimistic uploads use local blob URLs; never require auth for these.
+    if ((photo?.isTemporary || photo?.state === 'uploading') && typeof photo?.url === 'string') {
+      return { url: photo.url, needsAuth: false };
+    }
+
     if (photo.thumbnail && useThumbnail) {
       const signedUrl = getSignedUrl ? getSignedUrl(photo) : null;
       if (signedUrl) {
@@ -116,6 +121,10 @@ export default function PhotoCard({
       return { url: toUrl(photo.thumbnail, apiBaseUrl), needsAuth: true };
     }
     if (photo.url) {
+      // Public URLs (blob/data/http) should render directly without AuthenticatedImage.
+      if (typeof photo.url === 'string' && (photo.url.startsWith('blob:') || photo.url.startsWith('data:') || photo.url.startsWith('http'))) {
+        return { url: photo.url, needsAuth: false };
+      }
       const signedUrl = getSignedUrl ? getSignedUrl(photo, 'full') : null;
       if (signedUrl) {
         return { url: signedUrl, needsAuth: false };

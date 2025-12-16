@@ -19,19 +19,30 @@ const useStore = create((set, get) => ({
 
   // Optimistic uploads - pending photos being uploaded
   pendingUploads: [],
-  addPendingUploads: (files) => set((state) => {
-    const newPending = files.map(file => ({
-      id: `temp-${Date.now()}-${Math.random().toString(36).substr(2, 9)}`,
-      filename: file.name,
-      state: 'uploading',
-      url: URL.createObjectURL(file),
-      file_size: file.size,
-      caption: '',
-      isTemporary: true,
-      file // Keep reference to file for upload
-    }));
-    return { pendingUploads: [...state.pendingUploads, ...newPending] };
-  }),
+  addPendingUploads: (files) => {
+    const safeFiles = Array.isArray(files) ? files.filter(Boolean) : [];
+    const now = Date.now();
+    const createdAt = new Date().toISOString();
+
+    const newPending = safeFiles.map((file) => {
+      const id = `temp-${now}-${Math.random().toString(36).substr(2, 9)}`;
+      return {
+        id,
+        file,
+        url: URL.createObjectURL(file),
+        name: file.name,
+        filename: file.name,
+        state: 'uploading',
+        created_at: createdAt,
+        file_size: file.size,
+        caption: '',
+        isTemporary: true,
+      };
+    });
+
+    set((state) => ({ pendingUploads: [...newPending, ...(state.pendingUploads || [])] }));
+    return newPending;
+  },
   removePendingUpload: (tempId) => set((state) => {
     // Revoke blob URL to prevent memory leak
     const pending = state.pendingUploads.find(p => p.id === tempId);
