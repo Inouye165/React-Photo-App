@@ -54,7 +54,7 @@ describe('PhotoDetailPage', () => {
     );
   };
 
-  it('shows "In progress" for inprogress state when not polling', async () => {
+  it('shows "Analyzing..." for inprogress state', async () => {
     useStore.setState({
       photos: [
         {
@@ -70,7 +70,7 @@ describe('PhotoDetailPage', () => {
     renderAt('/photos/10');
 
     const state = await screen.findByTestId('photo-detail-state');
-    expect(state).toHaveTextContent('In progress');
+    expect(state).toHaveTextContent('Analyzing...');
   });
 
   it('shows "Analyzing..." for a photo while polling is active', async () => {
@@ -93,7 +93,7 @@ describe('PhotoDetailPage', () => {
     expect(state).toHaveTextContent('Analyzing...');
   });
 
-  it('shows "Draft" for working state', async () => {
+  it('shows "Queue" for working state', async () => {
     useStore.setState({
       photos: [
         {
@@ -109,10 +109,10 @@ describe('PhotoDetailPage', () => {
     renderAt('/photos/11');
 
     const state = await screen.findByTestId('photo-detail-state');
-    expect(state).toHaveTextContent('Draft');
+    expect(state).toHaveTextContent('Queue');
   });
 
-  it('shows "Analyzed" for finished state', async () => {
+  it('shows "Done" for finished state', async () => {
     useStore.setState({
       photos: [
         {
@@ -128,7 +128,7 @@ describe('PhotoDetailPage', () => {
     renderAt('/photos/12');
 
     const state = await screen.findByTestId('photo-detail-state');
-    expect(state).toHaveTextContent('Analyzed');
+    expect(state).toHaveTextContent('Done');
   });
 
   it('shows an Edit button that links to /photos/:id/edit', async () => {
