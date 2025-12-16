@@ -703,15 +703,19 @@ export async function deletePhoto(id, serverUrl = `${API_BASE_URL}`) {
 // runAI client helper intentionally removed; use recheckPhotoAI(photoId) instead.
 
 export async function getPhoto(photoId, options = {}, serverUrl = `${API_BASE_URL}`) {
+  const { cacheBust = false, cacheBuster } = options || {};
     let url = `${serverUrl}/photos/${photoId}`;
-    
-    // FIX: Append the cache-buster if provided to force a fresh request
-    if (options.cacheBuster) {
-      url += (url.includes('?') ? '&' : '?') + `_cb=${options.cacheBuster}`;
+
+    // Cache-busting: force a unique URL to bypass browser/HTTP caches for polling.
+    // Back-compat: treat legacy `cacheBuster` as enabling cache busting.
+    const shouldBust = Boolean(cacheBust) || typeof cacheBuster !== 'undefined';
+    if (shouldBust) {
+      const cb = typeof cacheBuster !== 'undefined' ? cacheBuster : Date.now();
+      url += (url.includes('?') ? '&' : '?') + `_cb=${cb}`;
     }
-    
-    const res = await fetchWithNetworkFallback(url, { method: 'GET', headers: getAuthHeaders(), credentials: 'include' }); 
-    if (handleAuthError(res)) return; 
-    if (!res.ok) throw new Error('Failed to fetch photo: ' + res.status); 
+
+    const res = await fetchWithNetworkFallback(url, { method: 'GET', headers: getAuthHeaders(), credentials: 'include' });
+    if (handleAuthError(res)) return;
+    if (!res.ok) throw new Error('Failed to fetch photo: ' + res.status);
     return await res.json();
 }

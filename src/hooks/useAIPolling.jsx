@@ -26,7 +26,7 @@ export default function useAIPolling() {
     // Fetch the initial photo state to compare with future AI values
     (async () => {
       try {
-        const res = await getPhoto(pollingPhotoId, { cacheBuster: Date.now() });
+        const res = await getPhoto(pollingPhotoId, { cacheBust: true });
         let base = res && res.photo ? res.photo : res;
         if (base) {
           originalAI.current = {
@@ -69,24 +69,34 @@ export default function useAIPolling() {
       );
     };
 
+    const isTerminalState = (p) => {
+      const state = p && p.state;
+      return state === 'finished' || state === 'error';
+    };
+
     const pollForUpdate = async () => {
       attemptsRef.current += 1;
       try {
-        const res = await getPhoto(pollingPhotoId, { cacheBuster: Date.now() });
+        const res = await getPhoto(pollingPhotoId, { cacheBust: true });
         let updated = res && res.photo ? res.photo : res;
-        if (hasNewAIdata(updated)) {
-          if (cancelled) return;
+
+        // Always merge the freshest photo into the store so UI badges update
+        // (including `state: 'finished'`) without requiring a full refresh.
+        if (!cancelled && updated) {
           updatePhoto(updated);
-          removePollingId(updated.id);
-          setPollingPhotoId(null);
-          
-          // Check if AI processing failed
-          const failedMarker = 'ai processing failed';
-          const caption = (updated.caption || '').toString().toLowerCase();
-          const description = (updated.description || '').toString().toLowerCase();
-          if (caption === failedMarker || description === failedMarker) {
-            // toast removed: AI processing failed
+        }
+
+        // Only stop polling when the backend reports a terminal state.
+        // Stopping early on “AI fields changed” can leave `state` stale.
+        if (updated && (isTerminalState(updated) || hasNewAIdata(updated))) {
+          // If state is still inprogress but AI fields changed, keep polling.
+          if (!isTerminalState(updated)) {
+            return;
           }
+
+          if (cancelled) return;
+          removePollingId(updated.id ?? pollingPhotoId);
+          setPollingPhotoId(null);
           return;
         }
         if (attemptsRef.current >= MAX_ATTEMPTS) {
