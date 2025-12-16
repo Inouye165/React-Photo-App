@@ -61,41 +61,77 @@ const PhotoUploadForm = ({
     }
   }, [closePicker, onClose, closeReason]);
 
-  // Selection state: Set of indices
-  const [selectedIndices, setSelectedIndices] = useState(new Set());
+  const getPhotoKey = useCallback((photo, index) => {
+    // Prefer stable ids from uploadPickerSlice; fall back to name/file name.
+    return photo?.id || photo?.name || photo?.file?.name || String(index);
+  }, []);
+
+  // Selection state: Set of stable keys (not indices)
+  const [selectedKeys, setSelectedKeys] = useState(new Set());
+  const userTouchedSelectionRef = useRef(false);
+  const lastListKeyRef = useRef('');
 
   // Intent-based upload state
   const [analysisType, setAnalysisType] = useState('scenery');
 
-  // Reset selection when the filtered list changes (e.g. new folder or date filter change)
-  // Default to selecting ALL photos
+  // Keep selection stable across re-renders and filtering.
+  // Default to selecting ALL photos only until the user interacts.
   useEffect(() => {
-    const allIndices = new Set(filteredLocalPhotos.map((_, i) => i));
-    setSelectedIndices(allIndices);
-  }, [filteredLocalPhotos]);
+    const keys = Array.isArray(filteredLocalPhotos)
+      ? filteredLocalPhotos.map((p, i) => getPhotoKey(p, i))
+      : [];
+    const nextListKey = keys.join('|');
 
-  const toggleSelection = useCallback((index) => {
-    setSelectedIndices(prev => {
-      const newSelection = new Set(prev);
-      if (newSelection.has(index)) {
-        newSelection.delete(index);
-      } else {
-        newSelection.add(index);
+    // When list becomes empty, reset selection state machine.
+    if (keys.length === 0) {
+      lastListKeyRef.current = '';
+      userTouchedSelectionRef.current = false;
+      setSelectedKeys(new Set());
+      return;
+    }
+
+    const listChanged = lastListKeyRef.current !== nextListKey;
+    lastListKeyRef.current = nextListKey;
+
+    setSelectedKeys((prev) => {
+      const prevSet = prev instanceof Set ? prev : new Set();
+      // If the user hasn't interacted yet, default to "select all".
+      if (!userTouchedSelectionRef.current) {
+        return new Set(keys);
       }
-      return newSelection;
+      // Otherwise, preserve selection by intersecting with the new list.
+      if (!listChanged) return prevSet;
+      const next = new Set();
+      for (const k of prevSet) {
+        if (keys.includes(k)) next.add(k);
+      }
+      return next;
     });
-  }, []);
+  }, [filteredLocalPhotos, getPhotoKey]);
+
+  const toggleSelection = useCallback((photo, index) => {
+    const key = getPhotoKey(photo, index);
+    userTouchedSelectionRef.current = true;
+    setSelectedKeys((prev) => {
+      const next = new Set(prev);
+      if (next.has(key)) next.delete(key);
+      else next.add(key);
+      return next;
+    });
+  }, [getPhotoKey]);
 
   const handleSelectAll = () => {
-    setSelectedIndices(new Set(filteredLocalPhotos.map((_, i) => i)));
+    userTouchedSelectionRef.current = true;
+    setSelectedKeys(new Set(filteredLocalPhotos.map((p, i) => getPhotoKey(p, i))));
   };
 
   const handleDeselectAll = () => {
-    setSelectedIndices(new Set());
+    userTouchedSelectionRef.current = true;
+    setSelectedKeys(new Set());
   };
 
   const onUploadClick = () => {
-    const photosToUpload = filteredLocalPhotos.filter((_, i) => selectedIndices.has(i));
+    const photosToUpload = filteredLocalPhotos.filter((p, i) => selectedKeys.has(getPhotoKey(p, i)));
     handleUploadFiltered(photosToUpload, analysisType);
   };
 
@@ -189,7 +225,7 @@ const PhotoUploadForm = ({
         <div>
           <h2 className="text-xl font-bold text-gray-800">Select Photos to Upload</h2>
           <p className="text-sm text-gray-500 mt-1">
-            {selectedIndices.size} selected of {filteredLocalPhotos.length} available
+            {selectedKeys.size} selected of {filteredLocalPhotos.length} available
           </p>
         </div>
         <button
@@ -280,10 +316,10 @@ const PhotoUploadForm = ({
            />
           <button
             onClick={onUploadClick}
-            disabled={uploading || (selectedIndices.size === 0 && filteredLocalPhotos.length === 0)}
+            disabled={uploading || filteredLocalPhotos.length === 0 || selectedKeys.size === 0}
             className="px-4 py-2 text-sm font-medium text-white bg-blue-600 rounded-md hover:bg-blue-700 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-blue-500 disabled:opacity-50 disabled:cursor-not-allowed shadow-sm transition-all"
           >
-            {uploading ? 'Uploading...' : `Upload ${selectedIndices.size || filteredLocalPhotos.length} Photos`}
+            {uploading ? 'Uploading...' : `Upload ${selectedKeys.size} Photos`}
           </button>
         </div>
       </div>
@@ -300,7 +336,7 @@ const PhotoUploadForm = ({
           <VirtualizedPhotoGridWithQueue
             photos={filteredLocalPhotos}
             columns={columns}
-            selectedIndices={selectedIndices}
+            selectedKeys={selectedKeys}
             toggleSelection={toggleSelection}
             parentRef={parentRef}
             externalThumbnailData={thumbnailData}
@@ -312,7 +348,7 @@ const PhotoUploadForm = ({
 };
 
 // Virtualized grid component using TanStack Virtual with Queue-based thumbnail processing
-const VirtualizedPhotoGridWithQueue = ({ photos, columns, selectedIndices, toggleSelection, parentRef, externalThumbnailData = null }) => {
+const VirtualizedPhotoGridWithQueue = ({ photos, columns, selectedKeys, toggleSelection, parentRef, externalThumbnailData = null }) => {
   // Extract files for queue processing (only needed if no external data)
   const files = photos.map(p => p.file).filter(Boolean);
   
@@ -387,7 +423,8 @@ const VirtualizedPhotoGridWithQueue = ({ photos, columns, selectedIndices, toggl
               >
                 {rowPhotos.map((p, colIndex) => {
                   const index = startIdx + colIndex;
-                  const isSelected = selectedIndices.has(index);
+                  const key = p?.id || p?.name || p?.file?.name || String(index);
+                  const isSelected = selectedKeys.has(key);
                   const fileDate = p.exifDate ? new Date(p.exifDate) : new Date(p.file?.lastModified);
                   const fileSize = p.file ? (p.file.size || 0) : 0;
                   
@@ -400,7 +437,7 @@ const VirtualizedPhotoGridWithQueue = ({ photos, columns, selectedIndices, toggl
                     <div 
                       key={`${p.name}-${index}`}
                       data-testid="photo-cell"
-                      onClick={() => toggleSelection(index)}
+                      onClick={() => toggleSelection(p, index)}
                       className={`
                         aspect-square
                         group relative rounded-lg overflow-hidden cursor-pointer border-2 transition-all duration-200

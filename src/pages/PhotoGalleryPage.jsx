@@ -66,7 +66,7 @@ export default function PhotoGalleryPage() {
   const {
     filteredLocalPhotos,
     handleSelectFolder,
-    handleUploadFiltered,
+    handleUploadFilteredOptimistic,
     startDate,
     setStartDate,
     endDate,
@@ -130,7 +130,7 @@ export default function PhotoGalleryPage() {
           setEndDate={setEndDate}
           uploading={uploading}
           filteredLocalPhotos={filteredLocalPhotos}
-          handleUploadFiltered={handleUploadFiltered}
+          handleUploadFiltered={handleUploadFilteredOptimistic}
           onReopenFolder={handleSelectFolder}
           closeReason="gallery-close"
           onClose={() => {

@@ -136,11 +136,74 @@ export default function useLocalPhotoPicker({ onUploadComplete, onUploadSuccess 
     }
   }, [filteredLocalPhotos, onUploadComplete, onUploadSuccess, pickerCommand]);
 
+  // Optimistic version: close picker immediately and upload in the background.
+  const handleUploadFilteredOptimistic = useCallback((subsetToUpload, analysisType = 'scenery') => {
+    const photosToUpload = Array.isArray(subsetToUpload) ? subsetToUpload : filteredLocalPhotos;
+    if (photosToUpload.length === 0) return;
+
+    const files = photosToUpload.map((p) => p?.file).filter(Boolean);
+    if (files.length === 0) return;
+
+    // Add placeholders to gallery immediately.
+    const pendingEntries = useStore.getState().addPendingUploads(files) || [];
+
+    // Close the picker UI immediately so the user returns to the gallery.
+    pickerCommand.closePicker('optimistic-upload-start');
+
+    // Fire-and-forget background upload.
+    Promise.resolve().then(async () => {
+      const removePendingUpload = useStore.getState().removePendingUpload;
+      const errors = [];
+
+      for (let i = 0; i < files.length; i++) {
+        const file = files[i];
+        const tempId = pendingEntries[i]?.id;
+        let thumbnailBlob = null;
+
+        try {
+          thumbnailBlob = await generateClientThumbnail(file);
+        } catch {
+          /* no-op */
+        }
+
+        try {
+          await uploadPhotoToServer(file, undefined, thumbnailBlob, { classification: analysisType });
+        } catch {
+          errors.push(file?.name || 'unknown');
+        } finally {
+          if (tempId) {
+            removePendingUpload(tempId);
+          }
+        }
+      }
+
+      if (errors.length === 0) {
+        if (typeof onUploadSuccess === 'function') {
+          onUploadSuccess(files.length);
+        }
+      } else {
+        useStore.getState().setBanner({
+          message: `Upload failed for: ${errors.slice(0, 3).join(', ')}${errors.length > 3 ? ` (+${errors.length - 3} more)` : ''}`,
+          severity: 'error',
+        });
+      }
+
+      if (typeof onUploadComplete === 'function') {
+        try {
+          await onUploadComplete();
+        } catch {
+          /* no-op */
+        }
+      }
+    });
+  }, [filteredLocalPhotos, onUploadComplete, onUploadSuccess, pickerCommand]);
+
   return {
     filteredLocalPhotos,
     handleSelectFolder,
     handleNativeSelection,
     handleUploadFiltered,
+    handleUploadFilteredOptimistic,
     showPicker,
     startDate,
     setStartDate,

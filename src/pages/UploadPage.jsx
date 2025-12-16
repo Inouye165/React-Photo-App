@@ -43,6 +43,13 @@ export default function UploadPage() {
       .map((p) => p?.file)
       .filter(Boolean);
 
+    // Close picker state so /gallery doesn't reopen the picker modal
+    try {
+      useStore.getState().pickerCommand?.closePicker?.('optimistic-upload-start');
+    } catch {
+      /* no-op */
+    }
+
     // Add pending uploads to store (returns created temp entries)
     const pendingEntries = addPendingUploads(files) || [];
 
