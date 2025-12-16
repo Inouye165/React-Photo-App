@@ -1,5 +1,5 @@
-import React, { useMemo } from 'react';
-import { useNavigate, useOutletContext } from 'react-router-dom';
+import React, { useEffect, useMemo } from 'react';
+import { useLocation, useNavigate, useOutletContext } from 'react-router-dom';
 import PhotoGallery from '../PhotoGallery.jsx';
 import PhotoUploadForm from '../PhotoUploadForm.jsx';
 import MetadataModal from '../components/MetadataModal.jsx';
@@ -17,6 +17,7 @@ import useAIPolling from '../hooks/useAIPolling.jsx';
  */
 export default function PhotoGalleryPage() {
   const navigate = useNavigate();
+  const location = useLocation();
   const { setToolbarMessage } = useOutletContext();
   const { session } = useAuth();
 
@@ -27,6 +28,19 @@ export default function PhotoGalleryPage() {
   const setMetadataPhoto = useStore((state) => state.setMetadataPhoto);
   const showLocalPicker = useStore((state) => state.uploadPicker.status !== 'closed');
   const pendingUploads = useStore((state) => state.pendingUploads);
+
+  // If we navigated here from an optimistic upload redirect (e.g., /upload → /gallery),
+  // make sure the picker is forced closed so it doesn't re-open/redraw unexpectedly.
+  useEffect(() => {
+    if (!location?.state?.suppressUploadPicker) return;
+    try {
+      useStore.getState().pickerCommand?.closePicker?.('nav-suppress');
+    } catch {
+      /* no-op */
+    }
+    // Clear the one-time flag to avoid affecting back/forward navigation.
+    navigate(`${location.pathname}${location.search}`, { replace: true, state: null });
+  }, [location?.state?.suppressUploadPicker, location.pathname, location.search, navigate]);
 
   const {
     photos,
