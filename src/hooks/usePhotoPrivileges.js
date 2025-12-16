@@ -26,7 +26,8 @@ export default function usePhotoPrivileges(photos) {
       lastCheckedFilenamesRef.current = filenames;
 
       const initial = {};
-      for (const photo of photos) initial[photo.id] = 'Loading...';
+      // Avoid user-visible "Loading..." labels in the UI; render blank until privileges resolve.
+      for (const photo of photos) initial[photo.id] = '';
       setPrivilegesMap(initial);
 
       let map = {};

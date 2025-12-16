@@ -93,11 +93,14 @@ function getStatusBadge(state: PhotoCardPhoto['state']): { label: string; classN
  * Maps access level string to user-friendly label
  */
 function formatAccessLevel(privileges?: string | null): string {
-  if (!privileges) return 'Unknown';
+  if (privileges == null) return '';
+  const normalized = String(privileges).trim();
+  if (!normalized) return '';
+  if (/^loading\.*$/i.test(normalized)) return '';
   // RWX or W means full access (backend), fallback to legacy 'write'
-  if (/\bW\b|W|write/i.test(privileges)) return 'Full Access';
-  if (/\bR\b|read/i.test(privileges)) return 'Read Only';
-  return privileges;
+  if (/\bW\b|W|write/i.test(normalized)) return 'Full Access';
+  if (/\bR\b|read/i.test(normalized)) return 'Read Only';
+  return normalized;
 }
 
 /**
