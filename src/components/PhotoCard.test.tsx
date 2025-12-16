@@ -1,8 +1,8 @@
-import React from 'react';
 import { describe, it, expect, vi, beforeEach } from 'vitest';
 import { render, screen, fireEvent, waitFor } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
-import PhotoCard from './PhotoCard';
+import PhotoCard from './PhotoCard.tsx';
+import type { PhotoCardProps } from './PhotoCard.tsx';
 
 // Mock the api module to prevent actual fetch calls in AuthenticatedImage
 vi.mock('../api.js', () => ({
@@ -12,7 +12,7 @@ vi.mock('../api.js', () => ({
 }));
 
 describe('PhotoCard Component', () => {
-  const mockPhoto = {
+  const mockPhoto: PhotoCardProps['photo'] = {
     id: 1,
     filename: 'test-photo.jpg',
     state: 'inprogress',
@@ -27,7 +27,7 @@ describe('PhotoCard Component', () => {
   };
 
   // Provide getSignedUrl to avoid AuthenticatedImage usage in most tests
-  const mockGetSignedUrl = vi.fn((photo) => `http://localhost:3001${photo.thumbnail}?signed=true`);
+  const mockGetSignedUrl = vi.fn((photo: PhotoCardProps['photo']) => `http://localhost:3001${photo.thumbnail}?signed=true`);
 
   const defaultProps = {
     photo: mockPhoto,
@@ -127,24 +127,25 @@ describe('PhotoCard Component', () => {
   });
 
   describe('Status Badge', () => {
-    it('shows "In Progress" badge for inprogress state', () => {
+    it('shows "Analyzing..." badge for inprogress state', () => {
       render(<PhotoCard {...defaultProps} />);
 
-      expect(screen.getByTestId('photo-card-status')).toHaveTextContent('In Progress');
+      expect(screen.getByTestId('photo-card-status')).toHaveTextContent('Analyzing...');
+      expect(screen.getByTestId('photo-card-status-spinner')).toBeInTheDocument();
     });
 
-    it('shows "Queued" badge for working state', () => {
-      const workingPhoto = { ...mockPhoto, state: 'working' };
+    it('shows "Draft" badge for working state', () => {
+      const workingPhoto: PhotoCardProps['photo'] = { ...mockPhoto, state: 'working' };
       render(<PhotoCard {...defaultProps} photo={workingPhoto} />);
 
-      expect(screen.getByTestId('photo-card-status')).toHaveTextContent('Queued');
+      expect(screen.getByTestId('photo-card-status')).toHaveTextContent('Draft');
     });
 
-    it('shows "Complete" badge for finished state', () => {
-      const finishedPhoto = { ...mockPhoto, state: 'finished' };
+    it('shows "Analyzed" badge for finished state', () => {
+      const finishedPhoto: PhotoCardProps['photo'] = { ...mockPhoto, state: 'finished' };
       render(<PhotoCard {...defaultProps} photo={finishedPhoto} />);
 
-      expect(screen.getByTestId('photo-card-status')).toHaveTextContent('Complete');
+      expect(screen.getByTestId('photo-card-status')).toHaveTextContent('Analyzed');
     });
   });
 
@@ -295,7 +296,7 @@ describe('PhotoCard Component', () => {
   });
 
   describe('Action Buttons - Working State', () => {
-    const workingPhoto = { ...mockPhoto, state: 'working' };
+    const workingPhoto: PhotoCardProps['photo'] = { ...mockPhoto, state: 'working' };
 
     it('renders Analyze button for working photos', () => {
       render(<PhotoCard {...defaultProps} photo={workingPhoto} />);
@@ -339,7 +340,7 @@ describe('PhotoCard Component', () => {
   });
 
   describe('Action Buttons - Finished State', () => {
-    const finishedPhoto = { ...mockPhoto, state: 'finished' };
+    const finishedPhoto: PhotoCardProps['photo'] = { ...mockPhoto, state: 'finished' };
 
     it('renders Delete button for finished photos', () => {
       render(<PhotoCard {...defaultProps} photo={finishedPhoto} />);

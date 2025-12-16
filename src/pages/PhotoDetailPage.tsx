@@ -1,31 +1,34 @@
-import React, { useMemo } from 'react';
+import { useMemo } from 'react';
 import { Link, useNavigate, useOutletContext, useParams } from 'react-router-dom';
-import { ArrowLeft, Pencil, Image as ImageIcon } from 'lucide-react';
+import { ArrowLeft, Image as ImageIcon, Pencil } from 'lucide-react';
+import type { Photo } from '../types/photo';
 import { API_BASE_URL } from '../api.js';
 import useStore from '../store.js';
 import { useProtectedImageBlobUrl } from '../hooks/useProtectedImageBlobUrl.js';
 import LocationMapPanel from '../components/LocationMapPanel.jsx';
 import formatFileSize from '../utils/formatFileSize.js';
 
-function normalizeClassification(photo) {
-  const raw = (photo?.classification || photo?.ai_analysis?.classification || '').toLowerCase().trim();
+function normalizeClassification(photo: Photo | undefined): string {
+  const raw = (photo?.classification || photo?.ai_analysis?.classification || '')
+    .toLowerCase()
+    .trim();
   if (raw === 'collectables' || raw === 'collectible') return 'collectible';
   if (raw === 'scenery') return 'scenery';
   return raw || 'unknown';
 }
 
-function getDisplayTitle(photo) {
+function getDisplayTitle(photo: Photo | undefined): string {
   if (photo?.caption && String(photo.caption).trim()) return String(photo.caption).trim();
   if (photo?.filename && String(photo.filename).trim()) return String(photo.filename).trim();
   return 'Untitled';
 }
 
-function getDescription(photo) {
+function getDescription(photo: Photo | undefined): string {
   const d = (photo?.description || '').trim();
   return d || 'No description available.';
 }
 
-function getDisplayDate(photo) {
+function getDisplayDate(photo: Photo | undefined): string {
   const dateStr = photo?.metadata?.DateTimeOriginal || photo?.metadata?.CreateDate || photo?.created_at;
   if (!dateStr) return 'Unknown date';
   try {
@@ -38,7 +41,20 @@ function getDisplayDate(photo) {
   }
 }
 
-function ClassificationBadge({ classification }) {
+function formatStateLabel(state: Photo['state'] | undefined): string {
+  switch (state) {
+    case 'working':
+      return 'Draft';
+    case 'inprogress':
+      return 'Analyzing...';
+    case 'finished':
+      return 'Analyzed';
+    default:
+      return state || '—';
+  }
+}
+
+function ClassificationBadge({ classification }: { classification: string }) {
   const normalized = classification;
   const { label, className } = (() => {
     if (normalized === 'collectible') {
@@ -47,7 +63,10 @@ function ClassificationBadge({ classification }) {
     if (normalized === 'scenery') {
       return { label: 'Scenery', className: 'bg-blue-50 text-blue-700 border-blue-100' };
     }
-    return { label: normalized === 'unknown' ? 'Unclassified' : normalized, className: 'bg-slate-50 text-slate-700 border-slate-200' };
+    return {
+      label: normalized === 'unknown' ? 'Unclassified' : normalized,
+      className: 'bg-slate-50 text-slate-700 border-slate-200',
+    };
   })();
 
   return (
@@ -60,14 +79,15 @@ function ClassificationBadge({ classification }) {
   );
 }
 
-function formatValuationRange(min, max, currency = '$') {
-  const safeMin = Number.isFinite(min) ? min : null;
-  const safeMax = Number.isFinite(max) ? max : null;
+function formatValuationRange(min: unknown, max: unknown, currency = '$'): string | null {
+  const safeMin = Number.isFinite(min as number) ? (min as number) : null;
+  const safeMax = Number.isFinite(max as number) ? (max as number) : null;
   if (safeMin == null && safeMax == null) return null;
-  const fmt = (n) => `${currency}${Math.round(n)}`;
+  const fmt = (n: number) => `${currency}${Math.round(n)}`;
   if (safeMin != null && safeMax != null) return `${fmt(safeMin)} - ${fmt(safeMax)}`;
   if (safeMin != null) return `${fmt(safeMin)}+`;
-  return `Up to ${fmt(safeMax)}`;
+  if (safeMax != null) return `Up to ${fmt(safeMax)}`;
+  return null;
 }
 
 /**
@@ -78,9 +98,9 @@ export default function PhotoDetailPage() {
   const { id } = useParams();
   const navigate = useNavigate();
   // Ensure parity with PhotoEditPage dependency context, even if unused.
-  useOutletContext();
+  useOutletContext<unknown>();
 
-  const photos = useStore((state) => state.photos);
+  const photos = useStore((state) => state.photos) as Photo[];
   const photo = useMemo(() => photos.find((p) => String(p.id) === String(id)), [photos, id]);
 
   const title = getDisplayTitle(photo);
@@ -89,13 +109,18 @@ export default function PhotoDetailPage() {
 
   // Use ?v=hash for cache busting (parity with EditPage)
   const version = photo?.hash || photo?.updated_at || '';
-  const displayUrl = photo?.url ? `${API_BASE_URL}${photo.url}${version ? `?v=${version}` : ''}` : null;
+  const displayUrl = photo?.url
+    ? `${API_BASE_URL}${photo.url}${version ? `?v=${version}` : ''}`
+    : null;
 
   const { imageBlobUrl, fetchError, isLoading, retry } = useProtectedImageBlobUrl(displayUrl);
 
   const valuationRange = (() => {
-    const est = photo?.poi_analysis?.estimatedValue || photo?.collectible_insights?.estimatedValue || photo?.ai_analysis?.collectibleInsights?.estimatedValue;
-    const currency = (est?.currency && typeof est.currency === 'string') ? est.currency : '$';
+    const est =
+      photo?.poi_analysis?.estimatedValue ||
+      photo?.collectible_insights?.estimatedValue ||
+      photo?.ai_analysis?.collectibleInsights?.estimatedValue;
+    const currency = est?.currency && typeof est.currency === 'string' ? est.currency : '$';
     const range = formatValuationRange(est?.min, est?.max, currency);
     return range || '$45 - $60';
   })();
@@ -150,16 +175,10 @@ export default function PhotoDetailPage() {
         {/* Left: sticky image */}
         <div className="lg:w-1/2 lg:sticky lg:top-4 lg:self-start bg-slate-100">
           <div className="aspect-[4/3] sm:aspect-[16/10] lg:aspect-auto lg:h-[calc(100vh-200px)] relative">
-            {isLoading && (
-              <div className="absolute inset-0 bg-slate-200 animate-pulse" />
-            )}
+            {isLoading && <div className="absolute inset-0 bg-slate-200 animate-pulse" />}
 
             {imageBlobUrl && !fetchError ? (
-              <img
-                src={imageBlobUrl}
-                alt={title}
-                className="w-full h-full object-contain"
-              />
+              <img src={imageBlobUrl} alt={title} className="w-full h-full object-contain" />
             ) : fetchError ? (
               <div className="absolute inset-0 flex flex-col items-center justify-center text-slate-500 p-6 text-center">
                 <ImageIcon size={48} strokeWidth={1} />
@@ -185,7 +204,10 @@ export default function PhotoDetailPage() {
           {/* Header section */}
           <div className="flex items-start justify-between gap-3">
             <div className="min-w-0">
-              <h1 className="text-2xl sm:text-3xl font-bold text-slate-900 truncate" data-testid="photo-detail-title">
+              <h1
+                className="text-2xl sm:text-3xl font-bold text-slate-900 truncate"
+                data-testid="photo-detail-title"
+              >
                 {title}
               </h1>
               <div className="mt-2 flex flex-wrap items-center gap-2 text-sm text-slate-600">
@@ -224,7 +246,10 @@ export default function PhotoDetailPage() {
 
             <div className="rounded-2xl border border-slate-200 bg-white p-4">
               <h2 className="text-sm font-semibold text-slate-900">Description</h2>
-              <p className="mt-2 text-sm leading-relaxed text-slate-700" data-testid="photo-detail-description">
+              <p
+                className="mt-2 text-sm leading-relaxed text-slate-700"
+                data-testid="photo-detail-description"
+              >
                 {getDescription(photo)}
               </p>
             </div>
@@ -238,7 +263,9 @@ export default function PhotoDetailPage() {
                 </div>
                 <div>
                   <dt className="text-slate-500">State</dt>
-                  <dd className="text-slate-800">{photo.state || '—'}</dd>
+                  <dd className="text-slate-800" data-testid="photo-detail-state">
+                    {formatStateLabel(photo.state)}
+                  </dd>
                 </div>
                 <div>
                   <dt className="text-slate-500">Camera</dt>

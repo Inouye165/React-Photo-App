@@ -2,6 +2,8 @@ import { create } from 'zustand'
 import { updatePhotoState } from './api.js'
 import { createUploadPickerSlice } from './store/uploadPickerSlice.js'
 
+/** @typedef {import('./types/photo').Photo} Photo */
+
 const debug = (...args) => {
   if (typeof console !== 'undefined' && typeof console.debug === 'function') {
     console.debug(...args)
@@ -175,11 +177,21 @@ const useStore = create((set, get) => ({
   moveToInprogress: async (id) => {
     try {
       await updatePhotoState(id, 'inprogress')
-      // remove locally and set polling trigger
+      // Update locally (keep photo visible) and set polling trigger
       set((state) => {
+        const normalizeId = (value) => (value != null ? String(value) : value);
+        const targetId = normalizeId(id);
+        /** @type {Photo[]} */
+        const currentPhotos = Array.isArray(state.photos) ? state.photos : [];
         const newSet = new Set(state.pollingPhotoIds || []);
         newSet.add(id);
-        return { photos: state.photos.filter(p => p.id !== id), pollingPhotoId: id, pollingPhotoIds: newSet };
+
+        const photos = currentPhotos.map((p) => {
+          if (normalizeId(p?.id) !== targetId) return p;
+          return { ...p, state: 'inprogress' };
+        });
+
+        return { photos, pollingPhotoId: id, pollingPhotoIds: newSet };
       })
       return { success: true }
     } catch (err) {
