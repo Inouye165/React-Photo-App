@@ -36,37 +36,66 @@ export default function UploadPage() {
 
   // Optimistic upload handler
   const addPendingUploads = useStore((state) => state.addPendingUploads);
-  const clearPendingUploads = useStore((state) => state.clearPendingUploads);
 
   // Fire-and-forget upload logic
   const handleOptimisticUpload = async (photosToUpload, analysisType = 'scenery') => {
-    // Add pending uploads to store
-    addPendingUploads(photosToUpload.map(p => p.file));
+    const files = (Array.isArray(photosToUpload) ? photosToUpload : [])
+      .map((p) => p?.file)
+      .filter(Boolean);
+
+    // Add pending uploads to store (returns created temp entries)
+    const pendingEntries = addPendingUploads(files) || [];
+
     // Navigate immediately
     navigate('/gallery');
+
     // Start background upload
     setTimeout(async () => {
       const { uploadPhotoToServer } = await import('../api.js');
+      const { getPhotos } = await import('../api.js');
       const { generateClientThumbnail } = await import('../utils/clientImageProcessing.js');
       const removePendingUpload = useStore.getState().removePendingUpload;
-      for (const photo of photosToUpload) {
+
+      const errors = [];
+      for (let i = 0; i < files.length; i++) {
+        const file = files[i];
+        const tempId = pendingEntries[i]?.id;
         let thumbnailBlob = null;
         try {
-          thumbnailBlob = await generateClientThumbnail(photo.file);
+          thumbnailBlob = await generateClientThumbnail(file);
         } catch {
           /* no-op: error intentionally ignored */
         }
         try {
-          await uploadPhotoToServer(photo.file, undefined, thumbnailBlob, { classification: analysisType });
+          await uploadPhotoToServer(file, undefined, thumbnailBlob, { classification: analysisType });
         } catch {
-          /* no-op: error intentionally ignored */
+          errors.push(file?.name || 'unknown');
         }
-        // Remove from pending uploads
-        // Find the tempId by matching file name and size
-        const pending = useStore.getState().pendingUploads.find(p => p.filename === photo.file.name && p.file_size === photo.file.size);
-        if (pending) removePendingUpload(pending.id);
+
+        // Remove from pending uploads (use exact tempId when available)
+        if (tempId) {
+          removePendingUpload(tempId);
+        } else {
+          // Fallback: best-effort match by name+size
+          const pending = useStore.getState().pendingUploads.find((p) => p?.filename === file?.name && p?.file_size === file?.size);
+          if (pending) removePendingUpload(pending.id);
+        }
       }
-      clearPendingUploads();
+
+      // Refresh the gallery data once uploads finish so real server photos appear
+      try {
+        const response = await getPhotos();
+        useStore.getState().setPhotos((response && response.photos) || []);
+      } catch {
+        /* no-op */
+      }
+
+      if (errors.length > 0) {
+        useStore.getState().setBanner({
+          message: `Upload failed for: ${errors.slice(0, 3).join(', ')}${errors.length > 3 ? ` (+${errors.length - 3} more)` : ''}`,
+          severity: 'error',
+        });
+      }
     }, 100);
   };
 
