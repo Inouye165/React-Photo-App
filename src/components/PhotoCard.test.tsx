@@ -127,11 +127,11 @@ describe('PhotoCard Component', () => {
   });
 
   describe('Status Badge', () => {
-    it('shows "Analyzing..." badge for inprogress state', () => {
+    it('shows "In progress" badge for inprogress state (not polling)', () => {
       render(<PhotoCard {...defaultProps} />);
 
-      expect(screen.getByTestId('photo-card-status')).toHaveTextContent('Analyzing...');
-      expect(screen.getByTestId('photo-card-status-spinner')).toBeInTheDocument();
+      expect(screen.getByTestId('photo-card-status')).toHaveTextContent('In progress');
+      expect(screen.queryByTestId('photo-card-status-spinner')).not.toBeInTheDocument();
     });
 
     it('shows "Draft" badge for working state', () => {
@@ -193,10 +193,12 @@ describe('PhotoCard Component', () => {
   });
 
   describe('Polling State', () => {
-    it('shows spinner overlay when isPolling is true', () => {
+    it('shows spinner overlay and "Analyzing..." badge when isPolling is true', () => {
       render(<PhotoCard {...defaultProps} isPolling={true} />);
 
       expect(screen.getByText('Processing')).toBeInTheDocument();
+      expect(screen.getByTestId('photo-card-status')).toHaveTextContent('Analyzing...');
+      expect(screen.getByTestId('photo-card-status-spinner')).toBeInTheDocument();
     });
   });
 

@@ -74,6 +74,7 @@ export default function PhotoGallery({
   photos, 
   privilegesMap, 
   pollingPhotoId,
+  pollingPhotoIds,
   handleMoveToInprogress,
   handleEditPhoto,
   handleMoveToWorking,
@@ -82,6 +83,15 @@ export default function PhotoGallery({
   getSignedUrl,
 }) {
   const { columns, gap } = useResponsiveGrid();
+
+  const isPollingForId = useCallback((photoId) => {
+    if (pollingPhotoIds && pollingPhotoIds.size) {
+      for (const value of pollingPhotoIds) {
+        if (String(value) === String(photoId)) return true;
+      }
+    }
+    return pollingPhotoId != null && String(pollingPhotoId) === String(photoId);
+  }, [pollingPhotoIds, pollingPhotoId]);
   
   // Memoize the item renderer
   const itemContent = useCallback((index) => {
@@ -93,7 +103,7 @@ export default function PhotoGallery({
         key={photo.id || photo.name}
         photo={photo}
         accessLevel={privilegesMap?.[photo.id] || ''}
-        isPolling={pollingPhotoId === photo.id}
+        isPolling={isPollingForId(photo.id)}
         apiBaseUrl={API_BASE_URL}
         getSignedUrl={getSignedUrl}
         onSelect={onSelectPhoto}
@@ -102,7 +112,7 @@ export default function PhotoGallery({
         onDelete={handleDeletePhoto}
       />
     );
-  }, [photos, privilegesMap, pollingPhotoId, getSignedUrl, onSelectPhoto, handleEditPhoto, handleMoveToInprogress, handleMoveToWorking, handleDeletePhoto]);
+  }, [photos, privilegesMap, isPollingForId, getSignedUrl, onSelectPhoto, handleEditPhoto, handleMoveToInprogress, handleMoveToWorking, handleDeletePhoto]);
 
   // Dynamic grid style based on screen size
   const gridStyle = useMemo(() => ({
@@ -132,7 +142,7 @@ export default function PhotoGallery({
             key={photo.id || photo.name}
             photo={photo}
             accessLevel={privilegesMap?.[photo.id] || ''}
-            isPolling={pollingPhotoId === photo.id}
+            isPolling={isPollingForId(photo.id)}
             apiBaseUrl={API_BASE_URL}
             getSignedUrl={getSignedUrl}
             onSelect={onSelectPhoto}

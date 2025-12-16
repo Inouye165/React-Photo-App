@@ -46,6 +46,7 @@ export default function PhotoGalleryPage() {
     photos,
     loading,
     pollingPhotoId,
+    pollingPhotoIds,
     refreshPhotos,
     handleDeletePhoto,
   } = usePhotoManagement();
@@ -162,6 +163,7 @@ export default function PhotoGalleryPage() {
           photos={allPhotos}
           privilegesMap={privilegesMap}
           pollingPhotoId={pollingPhotoId}
+          pollingPhotoIds={pollingPhotoIds}
           handleMoveToInprogress={handleMoveToInprogress}
           handleEditPhoto={handleEditPhoto}
           handleMoveToWorking={handleMoveToWorking}

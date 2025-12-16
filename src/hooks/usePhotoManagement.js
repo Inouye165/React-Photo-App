@@ -16,7 +16,9 @@ function usePhotoManagement() {
   const removePhotoById = useStore((state) => state.removePhotoById);
   const moveToInprogress = useStore((state) => state.moveToInprogress);
   const pollingPhotoId = useStore((state) => state.pollingPhotoId);
+  const pollingPhotoIds = useStore((state) => state.pollingPhotoIds);
   const setPollingPhotoId = useStore((state) => state.setPollingPhotoId);
+  const startAiPolling = useStore((state) => state.startAiPolling);
   const setBanner = useStore((state) => state.setBanner);
 
   // UI state now from store
@@ -113,7 +115,7 @@ function usePhotoManagement() {
     const onRunAi = (event) => {
       try {
         const id = event?.detail?.photoId;
-        if (id) setPollingPhotoId(id);
+        if (id) startAiPolling(id);
       } catch {
         /* noop */
       }
@@ -124,7 +126,7 @@ function usePhotoManagement() {
         if (!event.newValue) return;
         const parsed = JSON.parse(event.newValue);
         const id = parsed?.photoId;
-        if (id) setPollingPhotoId(id);
+        if (id) startAiPolling(id);
       } catch {
         /* ignore */
       }
@@ -143,7 +145,7 @@ function usePhotoManagement() {
         /* ignore */
       }
     };
-  }, [setPollingPhotoId]);
+  }, [startAiPolling]);
 
   useEffect(() => {
     const onMessage = (event) => {
@@ -176,14 +178,14 @@ function usePhotoManagement() {
       try {
         const response = await recheckPhotoAI(photoId, model);
         setBanner({ message: 'AI recheck initiated. Polling for results...', severity: 'info' });
-        setPollingPhotoId(photoId);
+        startAiPolling(photoId);
         return response;
       } catch (error) {
         setBanner({ message: `AI recheck failed: ${error?.message || 'unknown'}`, severity: 'error' });
         throw error;
       }
     },
-  [setPollingPhotoId, setBanner],
+  [startAiPolling, setBanner],
   );
 
   const handleMoveToFinished = useCallback(
@@ -347,6 +349,7 @@ function usePhotoManagement() {
     metadataPhoto,
     setMetadataPhoto,
     pollingPhotoId,
+    pollingPhotoIds,
     setPollingPhotoId,
     loadPhotos,
     refreshPhotos,

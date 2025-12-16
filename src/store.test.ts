@@ -2,6 +2,13 @@ import { beforeEach, describe, expect, it, vi } from 'vitest';
 
 vi.mock('./api.js', () => ({
   updatePhotoState: vi.fn().mockResolvedValue(undefined),
+  getPhoto: vi.fn().mockImplementation(async (id: number | string) => ({
+    photo: {
+      id,
+      caption: 'Processing...',
+      description: 'Processing...',
+    },
+  })),
 }));
 
 describe('store moveToInprogress', () => {
@@ -10,6 +17,8 @@ describe('store moveToInprogress', () => {
 
   beforeEach(async () => {
     vi.clearAllMocks();
+    // Ensure module-level state in store (like polling timer registries) is reset per test.
+    vi.resetModules();
 
     // Import the mocked API module and the real store after mocks are set up.
     ({ updatePhotoState } = await import('./api.js'));
