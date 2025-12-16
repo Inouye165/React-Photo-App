@@ -54,8 +54,28 @@ describe('PhotoDetailPage', () => {
     );
   };
 
-  it('shows "Analyzing..." for inprogress state', async () => {
+  it('shows "In progress" for inprogress state when not polling', async () => {
     useStore.setState({
+      photos: [
+        {
+          id: 10,
+          caption: 'In Progress Photo',
+          url: '/api/photos/10/blob',
+          classification: 'scenery',
+          state: 'inprogress',
+        },
+      ],
+    });
+
+    renderAt('/photos/10');
+
+    const state = await screen.findByTestId('photo-detail-state');
+    expect(state).toHaveTextContent('In progress');
+  });
+
+  it('shows "Analyzing..." for a photo while polling is active', async () => {
+    useStore.setState({
+      pollingPhotoId: 10,
       photos: [
         {
           id: 10,

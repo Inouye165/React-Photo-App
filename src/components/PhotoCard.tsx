@@ -77,9 +77,11 @@ function formatDate(photo: PhotoCardPhoto): string {
  * Maps state to a user-friendly badge
  */
 function getStatusBadge(state: PhotoCardPhoto['state']): { label: string; className: string } {
+  // IMPORTANT: "Analyzing..." is a transient UI state.
+  // The persisted photo.state "inprogress" represents workflow state, not necessarily active AI processing.
   switch (state) {
     case 'inprogress':
-      return { label: 'Analyzing...', className: 'bg-amber-50 text-amber-600 border-amber-100' };
+      return { label: 'In progress', className: 'bg-amber-50 text-amber-600 border-amber-100' };
     case 'working':
       return { label: 'Draft', className: 'bg-blue-50 text-blue-600 border-blue-100' };
     case 'finished':
@@ -118,7 +120,9 @@ export default function PhotoCard({
   const [imageLoaded, setImageLoaded] = useState(false);
   const [useThumbnail, setUseThumbnail] = useState(true);
 
-  const status = getStatusBadge(photo.state);
+  const status = isPolling
+    ? { label: 'Analyzing...', className: 'bg-amber-50 text-amber-600 border-amber-100' }
+    : getStatusBadge(photo.state);
   const title = getDisplayTitle(photo);
   const date = formatDate(photo);
   const fileSize = formatFileSize(photo.file_size);
@@ -286,7 +290,7 @@ export default function PhotoCard({
               data-testid="photo-card-status"
             >
               <span className="inline-flex items-center gap-1.5">
-                {photo.state === 'inprogress' && (
+                {isPolling && (
                   <span
                     data-testid="photo-card-status-spinner"
                     aria-hidden="true"

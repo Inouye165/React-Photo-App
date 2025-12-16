@@ -41,12 +41,13 @@ function getDisplayDate(photo: Photo | undefined): string {
   }
 }
 
-function formatStateLabel(state: Photo['state'] | undefined): string {
+function formatStateLabel(state: Photo['state'] | undefined, isPolling: boolean): string {
+  if (isPolling) return 'Analyzing...';
   switch (state) {
     case 'working':
       return 'Draft';
     case 'inprogress':
-      return 'Analyzing...';
+      return 'In progress';
     case 'finished':
       return 'Analyzed';
     default:
@@ -101,7 +102,20 @@ export default function PhotoDetailPage() {
   useOutletContext<unknown>();
 
   const photos = useStore((state) => state.photos) as Photo[];
+  const pollingPhotoId = useStore((state) => state.pollingPhotoId) as Photo['id'] | null;
+  const pollingPhotoIds = useStore((state) => state.pollingPhotoIds) as Set<unknown>;
   const photo = useMemo(() => photos.find((p) => String(p.id) === String(id)), [photos, id]);
+
+  const isPolling = useMemo(() => {
+    if (!photo) return false;
+    const photoId = String(photo.id);
+    if (pollingPhotoIds && (pollingPhotoIds as any).size) {
+      for (const value of pollingPhotoIds as any) {
+        if (String(value) === photoId) return true;
+      }
+    }
+    return pollingPhotoId != null && String(pollingPhotoId) === photoId;
+  }, [photo, pollingPhotoId, pollingPhotoIds]);
 
   const title = getDisplayTitle(photo);
   const classification = normalizeClassification(photo);
@@ -264,7 +278,7 @@ export default function PhotoDetailPage() {
                 <div>
                   <dt className="text-slate-500">State</dt>
                   <dd className="text-slate-800" data-testid="photo-detail-state">
-                    {formatStateLabel(photo.state)}
+                    {formatStateLabel(photo.state, isPolling)}
                   </dd>
                 </div>
                 <div>

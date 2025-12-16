@@ -1,5 +1,5 @@
 import { create } from 'zustand'
-import { updatePhotoState } from './api.js'
+import { getPhoto, updatePhotoState } from './api.js'
 import { createUploadPickerSlice } from './store/uploadPickerSlice.js'
 
 /** @typedef {import('./types/photo').Photo} Photo */
@@ -9,6 +9,20 @@ const debug = (...args) => {
     console.debug(...args)
   }
 }
+
+// Module-level timer registry for AI polling so we can stop polling
+// when analysis completes.
+const aiPollingTimers = new Map();
+
+const isAiAnalysisComplete = (photo) => {
+  const caption = typeof photo?.caption === 'string' ? photo.caption.trim() : '';
+  const description = typeof photo?.description === 'string' ? photo.description.trim() : '';
+
+  // Treat any non-empty caption+description as completion, including failure fallbacks.
+  if (!caption || !description) return false;
+  if (caption === 'Processing...' || description === 'Processing...') return false;
+  return true;
+};
 
 // Minimal Zustand store for photos and ui state (polling, toast)
 const useStore = create((set, get) => ({
@@ -168,10 +182,85 @@ const useStore = create((set, get) => ({
     return { pollingPhotoIds: newSet };
   }),
   removePollingId: (id) => set((state) => {
-    const newSet = new Set(state.pollingPhotoIds || []);
-    newSet.delete(id);
-    return { pollingPhotoIds: newSet };
+    const current = state.pollingPhotoIds || new Set();
+    const filtered = Array.from(current).filter((value) => String(value) !== String(id));
+    return { pollingPhotoIds: new Set(filtered) };
   }),
+
+  // Start polling /photos/:id until AI metadata is present.
+  startAiPolling: (id, opts = {}) => {
+    const key = String(id);
+    if (aiPollingTimers.has(key)) return;
+
+    const intervalMs = Number.isFinite(opts?.intervalMs) ? opts.intervalMs : 1500;
+    const timeoutMs = Number.isFinite(opts?.timeoutMs) ? opts.timeoutMs : 180000;
+    const startedAt = Date.now();
+    let inFlight = false;
+
+    // Ensure store indicates polling for this id
+    set((state) => {
+      const current = state.pollingPhotoIds || new Set();
+      const filtered = Array.from(current).filter((value) => String(value) !== key);
+      const next = new Set(filtered);
+      next.add(id);
+      return { pollingPhotoId: id, pollingPhotoIds: next };
+    });
+
+    const tick = async () => {
+      if (inFlight) return;
+      if (Date.now() - startedAt > timeoutMs) {
+        get().stopAiPolling(id);
+        return;
+      }
+      inFlight = true;
+      try {
+        const result = await getPhoto(id, { cacheBuster: Date.now() });
+        const photo = result && result.photo ? result.photo : null;
+        if (!photo) return;
+
+        // Merge the latest photo data into the store so UI updates.
+        try {
+          get().updatePhoto(photo);
+        } catch {
+          // ignore update errors
+        }
+
+        if (isAiAnalysisComplete(photo)) {
+          get().stopAiPolling(id);
+        }
+      } catch {
+        // Network or auth errors: stop polling to avoid an infinite spinner
+        get().stopAiPolling(id);
+      } finally {
+        inFlight = false;
+      }
+    };
+
+    const timer = setInterval(tick, intervalMs);
+    aiPollingTimers.set(key, timer);
+    // Kick off immediately
+    tick();
+  },
+
+  stopAiPolling: (id) => {
+    const key = String(id);
+    const timer = aiPollingTimers.get(key);
+    if (timer) {
+      try { clearInterval(timer); } catch { /* ignore */ }
+      aiPollingTimers.delete(key);
+    }
+
+    set((state) => {
+      const current = state.pollingPhotoIds || new Set();
+      const filtered = Array.from(current).filter((value) => String(value) !== key);
+      const next = new Set(filtered);
+      const shouldClearLegacy = state.pollingPhotoId != null && String(state.pollingPhotoId) === key;
+      return {
+        pollingPhotoIds: next,
+        pollingPhotoId: shouldClearLegacy ? null : state.pollingPhotoId,
+      };
+    });
+  },
 
   // Action: move a photo to inprogress and start polling for AI results
   moveToInprogress: async (id) => {
@@ -183,16 +272,21 @@ const useStore = create((set, get) => ({
         const targetId = normalizeId(id);
         /** @type {Photo[]} */
         const currentPhotos = Array.isArray(state.photos) ? state.photos : [];
-        const newSet = new Set(state.pollingPhotoIds || []);
-        newSet.add(id);
 
         const photos = currentPhotos.map((p) => {
           if (normalizeId(p?.id) !== targetId) return p;
           return { ...p, state: 'inprogress' };
         });
 
-        return { photos, pollingPhotoId: id, pollingPhotoIds: newSet };
+        return { photos };
       })
+
+      // Poll until AI fields appear so "Analyzing..." clears when done.
+      try {
+        get().startAiPolling(id);
+      } catch {
+        // ignore polling start errors
+      }
       return { success: true }
     } catch (err) {
   // ...toast error removed...

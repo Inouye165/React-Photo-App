@@ -259,6 +259,8 @@ const createDefaultState = () => ({
   setPollingPhotoId: vi.fn(),
   addPollingId: vi.fn(),
   removePollingId: vi.fn(),
+  startAiPolling: vi.fn(),
+  stopAiPolling: vi.fn(),
   updatePhotoData: vi.fn(),
   updatePhoto: vi.fn(),
   removePhotoById: vi.fn(),
