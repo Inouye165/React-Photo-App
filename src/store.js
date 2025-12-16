@@ -15,13 +15,17 @@ const debug = (...args) => {
 const aiPollingTimers = new Map();
 
 const isAiAnalysisComplete = (photo) => {
-  const caption = typeof photo?.caption === 'string' ? photo.caption.trim() : '';
-  const description = typeof photo?.description === 'string' ? photo.description.trim() : '';
+  if (!photo) return false;
+  // Prefer the explicit state machine from the backend.
+  if (photo.state === 'finished' || photo.state === 'error') return true;
 
-  // Treat any non-empty caption+description as completion, including failure fallbacks.
-  if (!caption || !description) return false;
-  if (caption === 'Processing...' || description === 'Processing...') return false;
-  return true;
+  // Backstop: some AI failures may be encoded in text fields.
+  const caption = typeof photo.caption === 'string' ? photo.caption.trim().toLowerCase() : '';
+  const description = typeof photo.description === 'string' ? photo.description.trim().toLowerCase() : '';
+  const failedMarker = 'ai processing failed';
+  if (caption === failedMarker || description === failedMarker) return true;
+
+  return false;
 };
 
 // Minimal Zustand store for photos and ui state (polling, toast)
@@ -214,7 +218,7 @@ const useStore = create((set, get) => ({
       }
       inFlight = true;
       try {
-        const result = await getPhoto(id, { cacheBuster: Date.now() });
+        const result = await getPhoto(id, { cacheBust: true });
         const photo = result && result.photo ? result.photo : null;
         if (!photo) return;
 

@@ -54,6 +54,7 @@ describe('useAIPolling', () => {
       success: true,
       photo: {
         id: 107,
+        state: 'inprogress',
         caption: 'Original caption',
         description: 'Original description',
         keywords: 'original keywords',
@@ -63,6 +64,7 @@ describe('useAIPolling', () => {
       success: true,
       photo: {
         id: 107,
+        state: 'finished',
         caption: 'Fresh caption',
         description: 'Updated description',
         keywords: 'updated keywords',
@@ -84,7 +86,9 @@ describe('useAIPolling', () => {
     await flushPromises()
 
     expect(getPhotoMock).toHaveBeenCalledTimes(2)
-    expect(updateSpy).not.toHaveBeenCalled()
+    // Polling now always merges the latest photo into the store so the UI
+    // can update status (e.g. `state`) without waiting for AI fields to change.
+    expect(updateSpy).toHaveBeenCalledTimes(1)
     expect(useStore.getState().pollingPhotoId).toBe(107)
 
     // Advance the polling interval so the hook fetches again and sees the change
@@ -94,7 +98,7 @@ describe('useAIPolling', () => {
     await flushPromises()
 
     expect(getPhotoMock).toHaveBeenCalledTimes(3)
-    expect(updateSpy).toHaveBeenCalledTimes(1)
+    expect(updateSpy).toHaveBeenCalledTimes(2)
 
     const storedPhoto = useStore.getState().photos.find(p => String(p.id) === '107')
     expect(storedPhoto).toBeTruthy()
