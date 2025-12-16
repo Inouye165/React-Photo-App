@@ -65,11 +65,12 @@ module.exports = function createPhotosRouter({ db, supabase }) {
 
       // Transform array of {state, count} into object { working: N, inprogress: N, ... }
       // SECURITY: Only accept known state values to prevent enumeration
-      const VALID_STATES = ['working', 'inprogress', 'finished'];
+      const VALID_STATES = ['working', 'inprogress', 'finished', 'error'];
       const result = {
         working: 0,
         inprogress: 0,
         finished: 0,
+        error: 0,
         total: 0
       };
 
@@ -581,6 +582,16 @@ module.exports = function createPhotosRouter({ db, supabase }) {
       // Generate metadata from the edited buffer
       let metadata = {};
       try { metadata = await photosImage.extractMetadata(orientedBuffer); } catch (metaErr) { logger.warn('Failed to parse metadata for edited image', metaErr && metaErr.message); }
+
+      // Merge metadata rather than overwriting: preserve existing GPS/date if extraction is incomplete.
+      let mergedMetadata = metadata || {};
+      try {
+        const { mergeMetadataPreservingLocationAndDate } = require('../media/backgroundProcessor');
+        const existingMeta = typeof photoRow.metadata === 'string' ? JSON.parse(photoRow.metadata || '{}') : (photoRow.metadata || {});
+        mergedMetadata = mergeMetadataPreservingLocationAndDate(existingMeta, metadata);
+      } catch (mergeErr) {
+        logger.warn('Failed to merge metadata for edited image; falling back to extracted metadata only', mergeErr && mergeErr.message);
+      }
       // Compute hash and update DB
       const newHash = photosImage.computeHash(orientedBuffer);
       const now = new Date().toISOString();
@@ -596,7 +607,7 @@ module.exports = function createPhotosRouter({ db, supabase }) {
         description: newDescription,
         keywords: newKeywords,
         text_style: newTextStyleJson,
-        metadata: JSON.stringify(metadata || {}),
+        metadata: JSON.stringify(mergedMetadata || {}),
         hash: newHash,
         file_size: orientedBuffer.length,
         storage_path: editedPath,
@@ -620,7 +631,7 @@ module.exports = function createPhotosRouter({ db, supabase }) {
         textStyle: parsedTextStyle,
         hash: newHash,
         fileSize: orientedBuffer.length,
-        metadata,
+        metadata: mergedMetadata,
         storagePath: editedPath
       });
     } catch (error) {
@@ -643,7 +654,7 @@ module.exports = function createPhotosRouter({ db, supabase }) {
 
       // Re-extract metadata from the photo file first
       try {
-        const { downloadFromStorage, extractMetadata } = require('../media/backgroundProcessor');
+        const { downloadFromStorage, extractMetadata, mergeMetadataPreservingLocationAndDate } = require('../media/backgroundProcessor');
         
         logger.info(`Re-extracting metadata for photo ${photo.id} during recheck-ai`);
         
@@ -667,8 +678,16 @@ module.exports = function createPhotosRouter({ db, supabase }) {
         if (buffer) {
           const metadata = await extractMetadata(buffer, filename);
           if (metadata && Object.keys(metadata).length > 0) {
+            let merged = metadata;
+            try {
+              const existing = typeof photo.metadata === 'string' ? JSON.parse(photo.metadata || '{}') : (photo.metadata || {});
+              merged = mergeMetadataPreservingLocationAndDate(existing, metadata);
+            } catch (mergeErr) {
+              logger.warn(`Metadata merge failed for photo ${photo.id} during recheck-ai: ${mergeErr.message}`);
+              merged = metadata;
+            }
             await photosDb.updatePhoto(photo.id, req.user.id, {
-              metadata: JSON.stringify(metadata)
+              metadata: JSON.stringify(merged)
             });
             logger.info(`Successfully re-extracted metadata for photo ${photo.id}`);
           }
@@ -709,7 +728,7 @@ module.exports = function createPhotosRouter({ db, supabase }) {
         return res.status(404).json({ error: 'Photo not found' });
       }
 
-      const { downloadFromStorage, extractMetadata } = require('../media/backgroundProcessor');
+      const { downloadFromStorage, extractMetadata, mergeMetadataPreservingLocationAndDate } = require('../media/backgroundProcessor');
       
       logger.info(`Re-extracting metadata for photo ${photo.id}`);
       
@@ -738,9 +757,17 @@ module.exports = function createPhotosRouter({ db, supabase }) {
         return res.status(500).json({ error: 'Failed to extract metadata' });
       }
 
-      // Update database
+      // Update database (merge to preserve existing GPS/date if extraction is incomplete)
+      let merged = metadata;
+      try {
+        const existing = typeof photo.metadata === 'string' ? JSON.parse(photo.metadata || '{}') : (photo.metadata || {});
+        merged = mergeMetadataPreservingLocationAndDate(existing, metadata);
+      } catch (mergeErr) {
+        logger.warn(`Metadata merge failed for photo ${photo.id} during reextract-metadata: ${mergeErr.message}`);
+        merged = metadata;
+      }
       await photosDb.updatePhoto(photo.id, req.user.id, {
-        metadata: JSON.stringify(metadata)
+        metadata: JSON.stringify(merged)
       });
 
       logger.info(`Successfully re-extracted metadata for photo ${photo.id}`);
@@ -748,8 +775,8 @@ module.exports = function createPhotosRouter({ db, supabase }) {
       return res.status(200).json({
         message: 'Metadata re-extracted successfully',
         photoId: photo.id,
-        hasGPS: !!(metadata.latitude && metadata.longitude),
-        hasHeading: !!(metadata.GPSImgDirection || metadata.GPS?.imgDirection)
+        hasGPS: !!(merged.latitude && merged.longitude),
+        hasHeading: !!(merged.GPSImgDirection || merged.GPS?.imgDirection)
       });
     } catch (error) {
       logger.error('Error re-extracting metadata:', error);

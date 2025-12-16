@@ -22,6 +22,99 @@ const { convertHeicToJpegBuffer } = require('./image');
 sharp.concurrency(1);
 sharp.cache({ memory: 50, files: 10, items: 100 });
 
+function safeParseJson(value, fallback = {}) {
+  if (!value) return fallback;
+  if (typeof value === 'object') return value;
+  if (typeof value !== 'string') return fallback;
+  try {
+    const parsed = JSON.parse(value);
+    return parsed && typeof parsed === 'object' ? parsed : fallback;
+  } catch {
+    return fallback;
+  }
+}
+
+function isNonEmptyObject(value) {
+  return value && typeof value === 'object' && !Array.isArray(value) && Object.keys(value).length > 0;
+}
+
+function hasValidGps(meta) {
+  const latCandidates = [meta?.latitude, meta?.GPSLatitude, meta?.gps?.lat, meta?.GPS?.latitude];
+  const lonCandidates = [meta?.longitude, meta?.GPSLongitude, meta?.gps?.lon, meta?.GPS?.longitude];
+  const lat = Number(latCandidates.find((v) => v != null));
+  const lon = Number(lonCandidates.find((v) => v != null));
+  return Number.isFinite(lat) && Number.isFinite(lon) && Math.abs(lat) <= 90 && Math.abs(lon) <= 180;
+}
+
+function hasValidDate(meta) {
+  const candidates = [
+    meta?.DateTimeOriginal,
+    meta?.CreateDate,
+    meta?.DateCreated,
+    meta?.DateTimeDigitized,
+    meta?.ModifyDate,
+    meta?.DateTime,
+  ].filter(Boolean);
+  if (candidates.length === 0) return false;
+  const value = candidates[0];
+  const date = value instanceof Date ? value : new Date(String(value).replace(/^(\d{4}):(\d{2}):(\d{2})/, '$1-$2-$3'));
+  return !Number.isNaN(date.getTime());
+}
+
+function preserveFields(target, source, keys) {
+  for (const key of keys) {
+    if (source && source[key] != null && target[key] == null) {
+      target[key] = source[key];
+    }
+  }
+}
+
+function mergeMetadataPreservingLocationAndDate(existingMeta, extractedMeta) {
+  const existing = existingMeta && typeof existingMeta === 'object' ? existingMeta : {};
+  const extracted = extractedMeta && typeof extractedMeta === 'object' ? extractedMeta : {};
+
+  // If extraction failed or produced nothing, do not change metadata at all.
+  if (!isNonEmptyObject(extracted)) return existing;
+
+  const merged = { ...existing, ...extracted };
+
+  // Clear "pending" marker once we have real metadata.
+  if (merged.pending) {
+    delete merged.pending;
+  }
+
+  // If extracted metadata doesn't include valid GPS, preserve existing GPS-related fields.
+  if (!hasValidGps(extracted) && hasValidGps(existing)) {
+    preserveFields(merged, existing, [
+      'latitude',
+      'longitude',
+      'GPSLatitude',
+      'GPSLongitude',
+      'GPSLatitudeRef',
+      'GPSLongitudeRef',
+      'GPSAltitude',
+      'GPSImgDirection',
+      'GPSDestBearing',
+      'gps',
+      'GPS',
+    ]);
+  }
+
+  // If extracted metadata doesn't include a valid capture date, preserve existing date fields.
+  if (!hasValidDate(extracted) && hasValidDate(existing)) {
+    preserveFields(merged, existing, [
+      'DateTimeOriginal',
+      'CreateDate',
+      'DateCreated',
+      'DateTimeDigitized',
+      'ModifyDate',
+      'DateTime',
+    ]);
+  }
+
+  return merged;
+}
+
 /**
  * Downloads a file from Supabase Storage and returns it as a Buffer.
  * Uses streaming to avoid loading the entire file into memory at once
@@ -272,8 +365,16 @@ async function processUploadedPhoto(db, photoId, options = {}) {
   // Extract metadata if requested
   if (doMetadata) {
     const metadata = await extractMetadata(buffer, photo.filename);
-    updates.metadata = JSON.stringify(metadata);
-    logger.debug(`[Processor] Extracted metadata with ${Object.keys(metadata).length} fields`);
+    const existingMeta = safeParseJson(photo.metadata, {});
+    const mergedMeta = mergeMetadataPreservingLocationAndDate(existingMeta, metadata);
+
+    // Only write metadata if we actually have something meaningful (prevents wiping existing GPS/date).
+    if (isNonEmptyObject(mergedMeta)) {
+      updates.metadata = JSON.stringify(mergedMeta);
+      logger.debug(`[Processor] Extracted metadata with ${Object.keys(metadata || {}).length} fields (merged)`);
+    } else {
+      logger.warn(`[Processor] Skipping metadata update for photo ${photoId}: extraction returned empty and existing metadata was empty`);
+    }
   }
 
   // Verify/update hash if needed
@@ -308,6 +409,7 @@ module.exports = {
   processUploadedPhoto,
   downloadFromStorage,
   extractMetadata,
+  mergeMetadataPreservingLocationAndDate,
   generateAndUploadThumbnail,
   hashBuffer
 };

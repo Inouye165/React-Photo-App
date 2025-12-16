@@ -1,5 +1,6 @@
 // server/queue/index.js
 const { Queue, Worker: BullMQWorker } = require("bullmq");
+const path = require('path');
 const logger = require("../logger");
 const { createRedisConnection } = require("../redis/connection");
 
@@ -83,6 +84,22 @@ const startWorker = async () => {
     const db = require("../db");
     const { updatePhotoAIMetadata } = require("../ai/service");
     const { processUploadedPhoto } = require("../media/backgroundProcessor");
+    const supabase = require('../lib/supabaseClient');
+    const createPhotosStorage = require('../services/photosStorage');
+    const createPhotosState = require('../services/photosState');
+
+    const photosStorage = createPhotosStorage({ storageClient: supabase.storage.from('photos') });
+    const photosState = createPhotosState({ db, storage: photosStorage });
+
+    const AI_MAX_RETRIES = 5;
+
+    async function setPhotoStateFallback(photoId, state) {
+      await db('photos').where({ id: photoId }).update({
+        state,
+        state_transition_status: 'IDLE',
+        updated_at: new Date().toISOString(),
+      });
+    }
 
     const processor = async (job) => {
       const { photoId, modelOverrides, processMetadata, generateThumbnail } = job.data || {};
@@ -93,23 +110,78 @@ const startWorker = async () => {
 
       const storagePath = photo.storage_path || `${photo.state}/${photo.filename}`;
 
-      // Optional background steps for streaming uploads.
-      if (processMetadata || generateThumbnail) {
-        await processUploadedPhoto(db, photoId, {
-          processMetadata: processMetadata !== false,
-          generateThumbnail: generateThumbnail !== false,
-        });
-      }
+      try {
+        // Optional background steps for streaming uploads.
+        if (processMetadata || generateThumbnail) {
+          await processUploadedPhoto(db, photoId, {
+            processMetadata: processMetadata !== false,
+            generateThumbnail: generateThumbnail !== false,
+          });
+        }
 
-      await updatePhotoAIMetadata(db, photo, storagePath, modelOverrides);
-      logger.info(`[WORKER] Done photoId: ${photoId}`);
+        const aiResult = await updatePhotoAIMetadata(db, photo, storagePath, modelOverrides);
+
+        if (!aiResult) {
+          const fresh = await db('photos').where({ id: photoId }).select('ai_retry_count').first();
+          const retries = Number(fresh?.ai_retry_count) || 0;
+
+          if (retries >= AI_MAX_RETRIES) {
+            logger.warn(`[WORKER] AI permanent failure for photoId: ${photoId}; marking state=error`);
+            try {
+              // Best-effort: storage move is not required to prevent UI from being stuck.
+              await setPhotoStateFallback(photoId, 'error');
+            } catch (stateErr) {
+              logger.error(`[WORKER] Failed to mark photoId ${photoId} error: ${stateErr?.message || stateErr}`);
+            }
+            return;
+          }
+
+          // Trigger BullMQ retry.
+          throw new Error(`AI processing failed for photoId ${photoId} (retry_count=${retries})`);
+        }
+
+        // AI succeeded: finalize state to finished.
+        if (photo.state !== 'finished') {
+          try {
+            const userId = photo.user_id;
+            const fromState = photo.storage_path ? String(photo.storage_path).split('/')[0] : (photo.state || 'inprogress');
+            const toState = 'finished';
+            const filenameForMove = photo.storage_path
+              ? path.posix.basename(String(photo.storage_path))
+              : photo.filename;
+            const result = await photosState.transitionState(photoId, userId, fromState, toState, filenameForMove, photo.storage_path);
+            if (!result?.success) {
+              logger.warn(`[WORKER] Storage transition failed for photoId ${photoId}; falling back to DB-only state update`, result?.error);
+              await setPhotoStateFallback(photoId, 'finished');
+            }
+          } catch (stateErr) {
+            logger.warn(`[WORKER] State finalize failed for photoId ${photoId}; falling back to DB-only state update`, stateErr?.message || stateErr);
+            await setPhotoStateFallback(photoId, 'finished');
+          }
+        }
+
+        logger.info(`[WORKER] Done photoId: ${photoId}`);
+      } catch (err) {
+        // On final attempt, mark error so UI doesn't stay stuck in inprogress.
+        try {
+          const attempts = Number(job?.opts?.attempts) || 1;
+          const currentAttempt = Number(job?.attemptsMade) + 1;
+          if (currentAttempt >= attempts) {
+            logger.warn(`[WORKER] Job exhausted retries for photoId ${photoId}; marking state=error`);
+            await setPhotoStateFallback(photoId, 'error');
+          }
+        } catch (stateErr) {
+          logger.error(`[WORKER] Failed to mark error on exhausted retries for photoId ${photoId}: ${stateErr?.message || stateErr}`);
+        }
+        throw err;
+      }
     };
 
     aiWorker = new BullMQWorker(QUEUE_NAME, processor, {
       connection: redisConnection,
       lockDuration: 300000,
       concurrency: 2,
-      attempts: 3,
+      attempts: 5,
       backoff: { type: "exponential", delay: 60000 },
     });
 
