@@ -54,7 +54,7 @@ export default function UploadPage() {
     const pendingEntries = addPendingUploads(files) || [];
 
     // Navigate immediately
-    navigate('/gallery');
+    navigate('/gallery', { replace: true, state: { suppressUploadPicker: true } });
 
     // Start background upload
     setTimeout(async () => {
@@ -136,6 +136,11 @@ export default function UploadPage() {
 
   // Close/cancel handler - go to gallery
   const handleClose = () => {
+    try {
+      useStore.getState().pickerCommand?.closePicker?.('upload-cancel');
+    } catch {
+      /* no-op */
+    }
     navigate('/gallery');
   };
 
