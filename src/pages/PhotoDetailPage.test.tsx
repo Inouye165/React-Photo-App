@@ -1,8 +1,7 @@
-import React from 'react';
 import { describe, it, expect, vi, beforeEach } from 'vitest';
 import { render, screen } from '@testing-library/react';
 import { MemoryRouter, Routes, Route } from 'react-router-dom';
-import PhotoDetailPage from './PhotoDetailPage.jsx';
+import PhotoDetailPage from './PhotoDetailPage.tsx';
 import { uploadPickerInitialState } from '../store/uploadPickerSlice.js';
 
 // Import store after mock setup (matches repo testing pattern)
@@ -13,7 +12,7 @@ vi.mock('../store.js', async () => {
 
 import useStore from '../store.js';
 
-vi.mock('../api.js', async (importOriginal) => {
+vi.mock('../api.js', async (importOriginal: any) => {
   const actual = await importOriginal();
   return {
     ...actual,
@@ -45,7 +44,7 @@ describe('PhotoDetailPage', () => {
     });
   });
 
-  const renderAt = (path) => {
+  const renderAt = (path: string) => {
     return render(
       <MemoryRouter initialEntries={[path]}>
         <Routes>
@@ -54,6 +53,63 @@ describe('PhotoDetailPage', () => {
       </MemoryRouter>
     );
   };
+
+  it('shows "Analyzing..." for inprogress state', async () => {
+    useStore.setState({
+      photos: [
+        {
+          id: 10,
+          caption: 'In Progress Photo',
+          url: '/api/photos/10/blob',
+          classification: 'scenery',
+          state: 'inprogress',
+        },
+      ],
+    });
+
+    renderAt('/photos/10');
+
+    const state = await screen.findByTestId('photo-detail-state');
+    expect(state).toHaveTextContent('Analyzing...');
+  });
+
+  it('shows "Draft" for working state', async () => {
+    useStore.setState({
+      photos: [
+        {
+          id: 11,
+          caption: 'Working Photo',
+          url: '/api/photos/11/blob',
+          classification: 'scenery',
+          state: 'working',
+        },
+      ],
+    });
+
+    renderAt('/photos/11');
+
+    const state = await screen.findByTestId('photo-detail-state');
+    expect(state).toHaveTextContent('Draft');
+  });
+
+  it('shows "Analyzed" for finished state', async () => {
+    useStore.setState({
+      photos: [
+        {
+          id: 12,
+          caption: 'Finished Photo',
+          url: '/api/photos/12/blob',
+          classification: 'scenery',
+          state: 'finished',
+        },
+      ],
+    });
+
+    renderAt('/photos/12');
+
+    const state = await screen.findByTestId('photo-detail-state');
+    expect(state).toHaveTextContent('Analyzed');
+  });
 
   it('shows an Edit button that links to /photos/:id/edit', async () => {
     useStore.setState({

@@ -1,14 +1,44 @@
 import React, { useState } from 'react';
-import { Pencil, Sparkles, Trash2, Calendar, HardDrive, Lock, Image as ImageIcon } from 'lucide-react';
+import {
+  Calendar,
+  HardDrive,
+  Image as ImageIcon,
+  Lock,
+  Pencil,
+  Sparkles,
+  Trash2,
+} from 'lucide-react';
+import type { Photo } from '../types/photo';
 import formatFileSize from '../utils/formatFileSize.js';
 import { toUrl } from '../utils/toUrl.js';
 import AuthenticatedImage from './AuthenticatedImage.jsx';
+
+type PhotoCardPhoto = Omit<Photo, 'state' | 'url'> & {
+  url?: string;
+  state?: Photo['state'] | 'uploading';
+  thumbnail?: string | null;
+  isTemporary?: boolean;
+  file?: File;
+  name?: string;
+};
+
+export interface PhotoCardProps {
+  photo: PhotoCardPhoto;
+  accessLevel?: string | null;
+  isPolling?: boolean;
+  apiBaseUrl?: string;
+  getSignedUrl?: (photo: PhotoCardPhoto, variant?: 'full' | 'thumb') => string | null;
+  onSelect?: (photo: PhotoCardPhoto) => void;
+  onEdit?: (photo: PhotoCardPhoto) => void;
+  onApprove?: (id: PhotoCardPhoto['id']) => void;
+  onDelete?: (id: PhotoCardPhoto['id']) => void;
+}
 
 /**
  * Generates a human-readable title from photo data.
  * Priority: caption > truncated filename > "Untitled"
  */
-function getDisplayTitle(photo) {
+function getDisplayTitle(photo: PhotoCardPhoto): string {
   if (photo.caption && photo.caption.trim()) {
     return photo.caption.length > 40 ? photo.caption.slice(0, 40) + '…' : photo.caption;
   }
@@ -23,16 +53,21 @@ function getDisplayTitle(photo) {
 /**
  * Formats date for display. Accepts EXIF date strings or ISO dates.
  */
-function formatDate(photo) {
-  const dateStr = photo.metadata?.DateTimeOriginal || photo.metadata?.CreateDate || photo.created_at;
+function formatDate(photo: PhotoCardPhoto): string {
+  const dateStr =
+    photo.metadata?.DateTimeOriginal || photo.metadata?.CreateDate || photo.created_at;
   if (!dateStr) return 'Unknown date';
-  
+
   try {
     // EXIF dates are often "YYYY:MM:DD HH:MM:SS" format
     const normalized = dateStr.replace(/^(\d{4}):(\d{2}):(\d{2})/, '$1-$2-$3');
     const date = new Date(normalized);
-    if (isNaN(date.getTime())) return 'Unknown date';
-    return date.toLocaleDateString('en-US', { month: 'short', day: 'numeric', year: 'numeric' });
+    if (Number.isNaN(date.getTime())) return 'Unknown date';
+    return date.toLocaleDateString('en-US', {
+      month: 'short',
+      day: 'numeric',
+      year: 'numeric',
+    });
   } catch {
     return 'Unknown date';
   }
@@ -41,14 +76,14 @@ function formatDate(photo) {
 /**
  * Maps state to a user-friendly badge
  */
-function getStatusBadge(state) {
+function getStatusBadge(state: PhotoCardPhoto['state']): { label: string; className: string } {
   switch (state) {
     case 'inprogress':
-      return { label: 'In Progress', className: 'bg-amber-50 text-amber-600 border-amber-100' };
+      return { label: 'Analyzing...', className: 'bg-amber-50 text-amber-600 border-amber-100' };
     case 'working':
-      return { label: 'Queued', className: 'bg-blue-50 text-blue-600 border-blue-100' };
+      return { label: 'Draft', className: 'bg-blue-50 text-blue-600 border-blue-100' };
     case 'finished':
-      return { label: 'Complete', className: 'bg-green-50 text-green-600 border-green-100' };
+      return { label: 'Analyzed', className: 'bg-green-50 text-green-600 border-green-100' };
     default:
       return { label: state || 'Unknown', className: 'bg-gray-50 text-gray-600 border-gray-100' };
   }
@@ -57,7 +92,7 @@ function getStatusBadge(state) {
 /**
  * Maps access level string to user-friendly label
  */
-function formatAccessLevel(privileges) {
+function formatAccessLevel(privileges?: string | null): string {
   if (!privileges) return 'Unknown';
   // RWX or W means full access (backend), fallback to legacy 'write'
   if (/\bW\b|W|write/i.test(privileges)) return 'Full Access';
@@ -67,12 +102,6 @@ function formatAccessLevel(privileges) {
 
 /**
  * PhotoCard - A modern card component for displaying photo previews
- * 
- * Styled to match the EditPage aesthetic with:
- * - Large rounded corners (24px)
- * - Subtle shadows
- * - Clean typography
- * - Icon-based actions
  */
 export default function PhotoCard({
   photo,
@@ -84,7 +113,7 @@ export default function PhotoCard({
   onEdit,
   onApprove,
   onDelete,
-}) {
+}: PhotoCardProps) {
   const [imageError, setImageError] = useState(false);
   const [imageLoaded, setImageLoaded] = useState(false);
   const [useThumbnail, setUseThumbnail] = useState(true);
@@ -94,19 +123,16 @@ export default function PhotoCard({
   const date = formatDate(photo);
   const fileSize = formatFileSize(photo.file_size);
   const access = formatAccessLevel(accessLevel);
-  
+
   // Determine if user can perform write actions (RWX, W, or legacy 'write')
-  const canWrite = !!accessLevel &&
-    (accessLevel.includes('W') || accessLevel.toLowerCase().includes('write'));
-  
+  const canWrite =
+    !!accessLevel && (accessLevel.includes('W') || accessLevel.toLowerCase().includes('write'));
+
+  // Disable interaction for uploading photos
+  const isUploading = photo.state === 'uploading' || !!photo.isTemporary;
+
   // Get image URL - prefer thumbnail for performance, fallback to full image
-  // Thumbnails are much smaller and faster to load. Full image is only used if no thumbnail exists.
-  // If thumbnail fails to load (race condition or error), we fallback to full image via useThumbnail state.
-  // 
-  // Returns { url, needsAuth } where:
-  // - url: The image URL to load
-  // - needsAuth: true if the URL requires Bearer token auth (use AuthenticatedImage)
-  const getImageUrl = () => {
+  const getImageUrl = (): { url: string | null; needsAuth: boolean } => {
     // Optimistic uploads use local blob URLs; never require auth for these.
     if ((photo?.isTemporary || photo?.state === 'uploading') && typeof photo?.url === 'string') {
       return { url: photo.url, needsAuth: false };
@@ -122,7 +148,12 @@ export default function PhotoCard({
     }
     if (photo.url) {
       // Public URLs (blob/data/http) should render directly without AuthenticatedImage.
-      if (typeof photo.url === 'string' && (photo.url.startsWith('blob:') || photo.url.startsWith('data:') || photo.url.startsWith('http'))) {
+      if (
+        typeof photo.url === 'string' &&
+        (photo.url.startsWith('blob:') ||
+          photo.url.startsWith('data:') ||
+          photo.url.startsWith('http'))
+      ) {
         return { url: photo.url, needsAuth: false };
       }
       const signedUrl = getSignedUrl ? getSignedUrl(photo, 'full') : null;
@@ -137,26 +168,23 @@ export default function PhotoCard({
 
   const { url: imageUrl, needsAuth } = getImageUrl();
 
-  const handleEdit = (e) => {
+  const handleEdit = (e: React.MouseEvent) => {
     e.stopPropagation();
-    if (onEdit) onEdit(photo);
+    onEdit?.(photo);
   };
 
-  const handleApprove = (e) => {
+  const handleApprove = (e: React.MouseEvent) => {
     e.stopPropagation();
-    if (onApprove) onApprove(photo.id);
+    onApprove?.(photo.id);
   };
 
-  const handleDelete = (e) => {
+  const handleDelete = (e: React.MouseEvent) => {
     e.stopPropagation();
     if (!canWrite) return;
     if (window.confirm('Are you sure you want to delete this photo? This action cannot be undone.')) {
-      if (onDelete) onDelete(photo.id);
+      onDelete?.(photo.id);
     }
   };
-
-  // Disable interaction for uploading photos
-  const isUploading = photo.state === 'uploading' || photo.isTemporary;
 
   return (
     <div
@@ -165,7 +193,7 @@ export default function PhotoCard({
         borderRadius: '24px',
         boxShadow: '0 10px 25px -5px rgba(0, 0, 0, 0.1), 0 8px 10px -6px rgba(0, 0, 0, 0.1)',
       }}
-      onClick={() => !isUploading && onSelect && onSelect(photo)}
+      onClick={() => !isUploading && onSelect?.(photo)}
       data-testid="photo-card"
       role="article"
       aria-label={`Photo: ${title}`}
@@ -174,16 +202,21 @@ export default function PhotoCard({
       <div className="relative aspect-[4/3] bg-slate-100 overflow-hidden">
         {/* Loading Skeleton */}
         {!imageLoaded && !imageError && imageUrl && !isUploading && (
-          <div className="absolute inset-0 bg-slate-200 animate-pulse" data-testid="photo-card-skeleton" />
+          <div
+            className="absolute inset-0 bg-slate-200 animate-pulse"
+            data-testid="photo-card-skeleton"
+          />
         )}
-        
+
         {/* Actual Image - use AuthenticatedImage when Bearer auth is required */}
         {imageUrl && !imageError ? (
           needsAuth ? (
             <AuthenticatedImage
               src={imageUrl}
               alt={photo.caption || photo.filename || 'Photo thumbnail'}
-              className={`w-full h-full object-cover transition-opacity duration-300 ${imageLoaded ? 'opacity-100' : 'opacity-0'}`}
+              className={`w-full h-full object-cover transition-opacity duration-300 ${
+                imageLoaded ? 'opacity-100' : 'opacity-0'
+              }`}
               onLoad={() => setImageLoaded(true)}
               onError={() => {
                 // If thumbnail failed, try falling back to full image
@@ -195,15 +228,15 @@ export default function PhotoCard({
                   setImageError(true);
                 }
               }}
-              loadingPlaceholder={
-                <div className="absolute inset-0 bg-slate-200 animate-pulse" />
-              }
+              loadingPlaceholder={<div className="absolute inset-0 bg-slate-200 animate-pulse" />}
             />
           ) : (
             <img
               src={imageUrl}
               alt={photo.caption || photo.filename || 'Photo thumbnail'}
-              className={`w-full h-full object-cover transition-opacity duration-300 ${imageLoaded ? 'opacity-100' : 'opacity-0'}`}
+              className={`w-full h-full object-cover transition-opacity duration-300 ${
+                imageLoaded ? 'opacity-100' : 'opacity-0'
+              }`}
               onLoad={() => setImageLoaded(true)}
               onError={() => {
                 // If thumbnail failed, try falling back to full image
@@ -252,16 +285,17 @@ export default function PhotoCard({
               className={`px-3 py-1 rounded-full text-xs font-medium border ${status.className}`}
               data-testid="photo-card-status"
             >
-            <span className="inline-flex items-center gap-1.5">
-              {photo.state === 'inprogress' && (
-                <span
-                  aria-hidden="true"
-                  className="inline-block w-3 h-3 rounded-full border-2 border-amber-400/70 border-t-transparent animate-spin"
-                />
-              )}
-              <span>{status.label}</span>
+              <span className="inline-flex items-center gap-1.5">
+                {photo.state === 'inprogress' && (
+                  <span
+                    data-testid="photo-card-status-spinner"
+                    aria-hidden="true"
+                    className="inline-block w-3 h-3 rounded-full border-2 border-amber-400/70 border-t-transparent animate-spin"
+                  />
+                )}
+                <span>{status.label}</span>
+              </span>
             </span>
-          </span>
           </div>
         )}
       </div>
@@ -269,7 +303,7 @@ export default function PhotoCard({
       {/* Content Section */}
       <div className="p-4">
         {/* Title */}
-        <h3 
+        <h3
           className="text-base font-semibold text-slate-800 truncate mb-2"
           title={photo.caption || photo.filename}
           data-testid="photo-card-title"
@@ -288,7 +322,7 @@ export default function PhotoCard({
           </div>
           <div className="flex items-center gap-2">
             <Lock size={14} className="text-slate-400" />
-            <span 
+            <span
               className="text-[11px] font-medium text-slate-400 uppercase tracking-wider"
               data-testid="photo-card-access"
             >
@@ -334,7 +368,7 @@ export default function PhotoCard({
                   onClick={(e) => {
                     e.stopPropagation();
                     // This triggers the "move to working" action
-                    if (onApprove) onApprove(photo.id);
+                    onApprove?.(photo.id);
                   }}
                   className="flex items-center justify-center gap-2 px-3 py-2 bg-slate-100 hover:bg-slate-200 text-slate-600 text-sm font-medium rounded-full transition-colors"
                   aria-label="Return photo to queue"
@@ -349,16 +383,16 @@ export default function PhotoCard({
                 onClick={handleDelete}
                 disabled={!canWrite}
                 className={`flex items-center justify-center p-2 rounded-full transition-colors ${
-              canWrite 
-                ? 'bg-red-50 hover:bg-red-100 text-red-600' 
-                : 'bg-slate-50 text-slate-300 cursor-not-allowed'
-            }`}
-            aria-label="Delete photo"
-            title={canWrite ? 'Delete photo' : 'No permission to delete'}
-            data-testid="photo-card-delete-btn"
-          >
-            <Trash2 size={16} />
-          </button>
+                  canWrite
+                    ? 'bg-red-50 hover:bg-red-100 text-red-600'
+                    : 'bg-slate-50 text-slate-300 cursor-not-allowed'
+                }`}
+                aria-label="Delete photo"
+                title={canWrite ? 'Delete photo' : 'No permission to delete'}
+                data-testid="photo-card-delete-btn"
+              >
+                <Trash2 size={16} />
+              </button>
             </>
           )}
         </div>

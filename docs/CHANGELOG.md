@@ -21,6 +21,12 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/).
 - **[Performance]** Immutable Cache Headers (Phase 2) - Display routes now serve `Cache-Control: public, max-age=31536000, immutable` for aggressive browser caching. Eliminates 304 revalidation round-trips for hashed thumbnails and static images
 - **[Performance]** Stable Signed URLs - Refactored URL signing to use 24-hour time windows aligned to UTC midnight. Signatures now remain stable within each window, enabling browser caching of signed thumbnail URLs (Phase 1 of caching optimization)
 
+### Fixed
+- Analyze action no longer removes the photo from the gallery; the card stays visible and shows `Analyzing...` while processing.
+
+### Changed
+- Migrated `PhotoCard` and `PhotoDetailPage` to TypeScript (`.tsx`) and aligned user-facing state labels (`Draft` / `Analyzing...` / `Analyzed`).
+
 ---
 
 ## [November 2025] - Security & Scalability Focus

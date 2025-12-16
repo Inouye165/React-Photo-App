@@ -6,7 +6,7 @@ import { AuthProvider } from './contexts/AuthContext.jsx';
 import AuthWrapper from './components/AuthWrapper';
 import MainLayout from './layouts/MainLayout.jsx';
 import PhotoGalleryPage from './pages/PhotoGalleryPage.jsx';
-import PhotoDetailPage from './pages/PhotoDetailPage.jsx';
+import PhotoDetailPage from './pages/PhotoDetailPage.tsx';
 import PhotoEditPage from './pages/PhotoEditPage.jsx';
 import GlobalErrorBoundary from './components/GlobalErrorBoundary.jsx';
 import { uploadPickerInitialState } from './store/uploadPickerSlice.js';
