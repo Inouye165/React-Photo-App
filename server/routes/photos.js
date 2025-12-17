@@ -148,13 +148,14 @@ module.exports = function createPhotosRouter({ db, supabase }) {
             logger.warn('Failed to parse text_style for photo', row.id, parseErr.message);
           }
         }
-        // The frontend will receive fully signed URLs below.
-        // Use simple relative paths for images and thumbnails. Image access
-        // is protected by httpOnly cookie-based authentication on /display/*.
+        // Use relative paths for images.
+        // Thumbnails are returned as signed URLs so they can be loaded via <img>
+        // without Authorization headers (avoids cross-origin preflight).
         let thumbnailUrl = null;
         let photoUrl = null;
         if (row.hash) {
-          thumbnailUrl = `/display/thumbnails/${row.hash}.jpg`;
+          const { sig, exp } = signThumbnailUrl(row.hash, DEFAULT_TTL_SECONDS);
+          thumbnailUrl = `/display/thumbnails/${row.hash}.jpg?sig=${encodeURIComponent(sig)}&exp=${exp}`;
         }
         // Use ID-based URL for photos to prevent ERR_CACHE_READ_FAILURE
         // This eliminates the URL extension mismatch when HEIC is converted to JPEG

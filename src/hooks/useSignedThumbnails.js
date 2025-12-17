@@ -1,6 +1,17 @@
 import { useState, useEffect, useCallback, useRef } from 'react';
 import { API_BASE_URL, isCookieSessionActive } from '../api.js';
 
+function isSignedThumbnailUrl(thumbnailUrl) {
+  if (!thumbnailUrl || typeof thumbnailUrl !== 'string') return false;
+  // Only treat /display/thumbnails URLs with both sig and exp as signed.
+  // This is a conservative check to avoid accidentally treating unrelated URLs as signed.
+  return (
+    thumbnailUrl.includes('/display/thumbnails/') &&
+    thumbnailUrl.includes('sig=') &&
+    thumbnailUrl.includes('exp=')
+  );
+}
+
 /**
  * Custom hook to manage signed thumbnail URLs for photo rendering
  * 
@@ -145,12 +156,14 @@ export default function useSignedThumbnails(photos, token) {
     // - Have an id
     // - Haven't been fetched yet
     // - Don't already have a signed URL
+    // - Don't already have a signed thumbnail URL from /photos
     // - Are not marked as having no thumbnail
     const photosToFetch = photos.filter(photo => 
       photo.thumbnail && 
       photo.id && 
       !fetchedPhotoIds.current.has(photo.id) &&
       !signedUrls[photo.id] &&
+      !isSignedThumbnailUrl(photo.thumbnail) &&
       !noThumbnailPhotoIds.current.has(photo.id)
     );
 
@@ -254,6 +267,11 @@ export default function useSignedThumbnails(photos, token) {
     // For thumbnails, require the thumbnail property
     if (!photo.thumbnail) {
       return null;
+    }
+
+    // If /photos already provided a signed thumbnail URL, use it directly.
+    if (type === 'thumbnail' && isSignedThumbnailUrl(photo.thumbnail)) {
+      return `${API_BASE_URL}${photo.thumbnail}`;
     }
 
     const signed = signedUrls[photo.id];

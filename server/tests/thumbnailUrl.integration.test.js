@@ -230,6 +230,22 @@ describe('Thumbnail URL API - Integration Tests', () => {
     });
   });
 
+  describe('GET /photos list includes signed thumbnails', () => {
+    test('should include signed thumbnail URLs in list response', async () => {
+      const response = await request(app)
+        .get('/photos')
+        .set('Authorization', `Bearer ${testToken}`)
+        .expect(200);
+
+      expect(response.body.success).toBe(true);
+      expect(Array.isArray(response.body.photos)).toBe(true);
+
+      const listed = response.body.photos.find((p) => p && p.id === testPhotoId);
+      expect(listed).toBeTruthy();
+      expect(listed.thumbnail).toMatch(/\/display\/thumbnails\/[a-z0-9]+\.jpg\?sig=.*&exp=\d+/);
+    });
+  });
+
   describe('Signed URL validation in /display/thumbnails', () => {
     test('should serve thumbnail with valid signed URL', async () => {
       // Get signed URL

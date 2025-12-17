@@ -11,6 +11,11 @@ describe('useSignedThumbnails Hook', () => {
     { id: 3, thumbnail: '/display/thumbnails/hash3.jpg' },
   ];
 
+  const mockPhotosAlreadySigned = [
+    { id: 1, thumbnail: '/display/thumbnails/hash1.jpg?sig=test-sig&exp=123456' },
+    { id: 2, thumbnail: '/display/thumbnails/hash2.jpg?sig=test-sig&exp=123456' },
+  ];
+
   beforeEach(() => {
     vi.clearAllMocks();
     global.fetch = vi.fn();
@@ -21,6 +26,18 @@ describe('useSignedThumbnails Hook', () => {
   });
 
   describe('Success Cases', () => {
+    it('should not fetch when thumbnails are already signed in /photos response', async () => {
+      const { result } = renderHook(() => useSignedThumbnails(mockPhotosAlreadySigned, mockToken));
+
+      // No per-photo signing calls needed
+      expect(global.fetch).not.toHaveBeenCalled();
+      expect(result.current.loading).toBe(false);
+
+      // getSignedUrl should return full URL with API base immediately
+      const fullUrl = result.current.getSignedUrl(mockPhotosAlreadySigned[0]);
+      expect(fullUrl).toBe(`${API_BASE_URL}/display/thumbnails/hash1.jpg?sig=test-sig&exp=123456`);
+    });
+
     it('should fetch signed URLs for all photos with thumbnails', async () => {
       // Mock successful responses
       global.fetch.mockImplementation((url) => {
