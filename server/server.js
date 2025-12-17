@@ -200,6 +200,10 @@ app.set('trust proxy', 1);
       return callback(new Error('Not allowed by CORS'));
     },
     credentials: true, // Allow cookies to be sent
+    // Cache successful preflight results in browsers to reduce repeated OPTIONS overhead.
+    // SECURITY: This does not change the allowlist or credential policy; it only allows
+    // the browser to reuse the preflight decision for a period of time.
+    maxAge: Number(process.env.CORS_MAX_AGE_SECONDS || 600),
     optionsSuccessStatus: 204
   }));
 

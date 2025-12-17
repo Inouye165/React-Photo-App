@@ -67,6 +67,37 @@ test('GET /photos returns 200 when listPhotos resolves', async () => {
   expect(listPhotos).toHaveBeenCalledWith(1, undefined, expect.objectContaining({ timeoutMs: 50 }));
 });
 
+test('GET /photos returns 200 with authToken cookie (no Authorization header)', async () => {
+  process.env.DB_QUERY_TIMEOUT_MS = '50';
+
+  const listPhotos = jest.fn().mockResolvedValue([]);
+  createPhotosDb.mockReturnValue({ listPhotos });
+
+  app.use('/photos', createPhotosRouter({ db, supabase }));
+
+  const res = await request(app)
+    .get('/photos')
+    .set('Cookie', ['authToken=valid-token'])
+    .expect(200);
+
+  expect(res.body).toEqual({ success: true, photos: [] });
+  expect(listPhotos).toHaveBeenCalledWith(1, undefined, expect.any(Object));
+});
+
+test('GET /photos returns 401 when no auth provided', async () => {
+  const listPhotos = jest.fn().mockResolvedValue([]);
+  createPhotosDb.mockReturnValue({ listPhotos });
+
+  app.use('/photos', createPhotosRouter({ db, supabase }));
+
+  await request(app)
+    .get('/photos')
+    .expect(401);
+
+  // Ensure auth middleware short-circuited.
+  expect(listPhotos).not.toHaveBeenCalled();
+});
+
 test('GET /photos normalizes Knex timeout errors to "DB query timeout"', async () => {
   process.env.DB_QUERY_TIMEOUT_MS = '1';
 
