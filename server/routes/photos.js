@@ -114,10 +114,20 @@ module.exports = function createPhotosRouter({ db, supabase }) {
       const DB_QUERY_TIMEOUT_MS = Number(process.env.DB_QUERY_TIMEOUT_MS || 10000);
 
       const listStart = Date.now();
-      const rows = await Promise.race([
-        photosDb.listPhotos(req.user.id, state),
-        new Promise((_, reject) => setTimeout(() => reject(new Error('DB query timeout')), DB_QUERY_TIMEOUT_MS)),
-      ]);
+      let rows;
+      try {
+        rows = await photosDb.listPhotos(req.user.id, state, { timeoutMs: DB_QUERY_TIMEOUT_MS });
+      } catch (err) {
+        const message = err && err.message ? String(err.message) : '';
+        const isTimeout =
+          (err && err.name === 'KnexTimeoutError') ||
+          /defined query timeout|query timeout|timeout exceeded/i.test(message);
+
+        if (isTimeout) {
+          throw new Error('DB query timeout');
+        }
+        throw err;
+      }
 
       const listMs = Date.now() - listStart;
       logger.info('[photos] listPhotos_ms', {
