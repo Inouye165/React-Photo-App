@@ -223,6 +223,7 @@ module.exports = function createDisplayRouter({ db }) {
     const reqId = req.id || req.headers['x-request-id'] || null;
     res.set('Cross-Origin-Resource-Policy', 'cross-origin');
     const { state, filename } = req.params;
+    const { sig, exp } = req.query || {};
     // 1-year cache for immutable assets (hashed thumbnails, static images)
     const IMAGE_CACHE_MAX_AGE = parseInt(process.env.IMAGE_CACHE_MAX_AGE, 10) || 31536000;
 
@@ -248,7 +249,14 @@ module.exports = function createDisplayRouter({ db }) {
         const etag = filename;
         res.set('ETag', etag);
         res.set('Content-Type', 'image/jpeg');
-        res.set('Cache-Control', `public, max-age=${IMAGE_CACHE_MAX_AGE}, immutable`);
+
+        // Security/privacy hardening: Signed thumbnail URLs are user-private media.
+        // Keep long-lived browser caching, but avoid shared/proxy caching.
+        const isSignedThumbnailRequest = Boolean(sig && exp);
+        res.set(
+          'Cache-Control',
+          `${isSignedThumbnailRequest ? 'private' : 'public'}, max-age=${IMAGE_CACHE_MAX_AGE}, immutable`
+        );
         if (req.headers['if-none-match'] && req.headers['if-none-match'] === etag) {
           return res.status(304).end();
         }
