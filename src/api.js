@@ -715,7 +715,15 @@ export async function getPhoto(photoId, options = {}, serverUrl = `${API_BASE_UR
     }
 
     const res = await fetchWithNetworkFallback(url, { method: 'GET', headers: getAuthHeaders(), credentials: 'include' });
-    if (handleAuthError(res)) return;
-    if (!res.ok) throw new Error('Failed to fetch photo: ' + res.status);
+    if (handleAuthError(res)) {
+      const err = new Error('Auth error');
+      try { err.status = res.status; } catch { /* ignore */ }
+      throw err;
+    }
+    if (!res.ok) {
+      const err = new Error('Failed to fetch photo: ' + res.status);
+      try { err.status = res.status; } catch { /* ignore */ }
+      throw err;
+    }
     return await res.json();
 }

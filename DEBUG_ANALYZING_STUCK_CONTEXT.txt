@@ -1,0 +1,2474 @@
+===== src/api.js =====
+// --- Collectibles API ---
+/**
+ * Fetch all collectibles for a given photoId
+ */
+export async function fetchCollectibles(photoId) {
+  const url = `${API_BASE_URL}/photos/${photoId}/collectibles`;
+  const res = await apiLimiter(() => fetchWithNetworkFallback(url, { headers: getAuthHeaders(), credentials: 'include' }));
+  if (handleAuthError(res)) return;
+  if (!res.ok) throw new Error('Failed to fetch collectibles: ' + res.status);
+  const json = await res.json();
+  if (!json.success) throw new Error(json.error || 'Failed to fetch collectibles');
+  return json.collectibles;
+}
+
+/**
+ * Create a new collectible for a photo
+ */
+export async function createCollectible(photoId, data) {
+  const url = `${API_BASE_URL}/photos/${photoId}/collectibles`;
+  const res = await apiLimiter(() => fetchWithNetworkFallback(url, {
+    method: 'POST',
+    headers: getAuthHeaders(),
+    body: JSON.stringify(data),
+    credentials: 'include'
+  }));
+  if (handleAuthError(res)) return;
+  if (!res.ok) throw new Error('Failed to create collectible: ' + res.status);
+  const json = await res.json();
+  if (!json.success) throw new Error(json.error || 'Failed to create collectible');
+  return json.collectible;
+}
+
+/**
+ * Update a collectible's user_notes
+ */
+export async function updateCollectible(collectibleId, data) {
+  const url = `${API_BASE_URL}/collectibles/${collectibleId}`;
+  const res = await apiLimiter(() => fetchWithNetworkFallback(url, {
+    method: 'PATCH',
+    headers: getAuthHeaders(),
+    body: JSON.stringify(data),
+    credentials: 'include'
+  }));
+  if (handleAuthError(res)) return;
+  if (!res.ok) throw new Error('Failed to update collectible: ' + res.status);
+  const json = await res.json();
+  if (!json.success) throw new Error(json.error || 'Failed to update collectible');
+  return json.collectible;
+}
+
+/**
+ * Upsert (create or update) a collectible for a photo.
+ * Uses PUT method for idempotent upsert semantics.
+ * @param {string|number} photoId - Photo ID
+ * @param {Object} data - Collectible form data
+ * @param {Object} [options] - Additional options
+ * @param {boolean} [options.recordAi=false] - Whether to record AI analysis history
+ */
+export async function upsertCollectible(photoId, data, options = {}) {
+  const url = `${API_BASE_URL}/photos/${photoId}/collectibles`;
+  const res = await apiLimiter(() => fetchWithNetworkFallback(url, {
+    method: 'PUT',
+    headers: getAuthHeaders(),
+    body: JSON.stringify({ ...data, ...options }),
+    credentials: 'include'
+  }));
+  if (handleAuthError(res)) return;
+  if (!res.ok) throw new Error('Failed to upsert collectible: ' + res.status);
+  const json = await res.json();
+  if (!json.success) throw new Error(json.error || 'Failed to upsert collectible');
+  return json.collectible;
+}
+
+// Rewritten clean API module (single copy) with small dedupe caches for
+// getPhotos and checkPrivilegesBatch to avoid duplicate network requests
+// during dev (StrictMode) or accidental double-invokes.
+
+// --- Helpers
+/**
+ * Check if an error is an AbortError or cancellation.
+ * @param {Error} error 
+ * @returns {boolean}
+ */
+export function isAbortError(error) {
+  return !!(
+    error &&
+    (error.name === 'AbortError' || 
+     error.message?.includes('aborted') ||
+     error.message?.includes('The user aborted a request'))
+  );
+}
+
+// Import supabase client for session access
+import { supabase } from './supabaseClient';
+
+// Module-level token cache to avoid repeated async getSession calls
+// This is updated by setAuthToken (called from AuthContext on session changes)
+let _cachedAccessToken = null;
+
+/**
+ * Set the current access token for API requests.
+ * Called by AuthContext when session changes.
+ * SECURITY: Token is stored in module closure, not exposed globally.
+ * @param {string|null} token - The Supabase access token or null on logout
+ */
+export function setAuthToken(token) {
+  _cachedAccessToken = token;
+}
+
+/**
+ * Get the current access token synchronously from cache.
+ * Returns null if no token is cached (user not logged in).
+ * @returns {string|null}
+ */
+export function getAccessToken() {
+  return _cachedAccessToken;
+}
+
+/**
+ * Get headers for API requests with Bearer token authentication.
+ * 
+ * SECURITY ARCHITECTURE (Bearer Token Auth):
+ * - Token is sourced from Supabase's managed session (no custom storage)
+ * - Token is attached to Authorization header as "Bearer <token>"
+ * - This approach is compatible with iOS/Mobile Safari (no cookie blocking)
+ * - Token is NEVER logged or included in error messages
+ * 
+ * @param {boolean} [includeContentType=true] - Whether to include Content-Type header
+ * @returns {Object} Headers object with Authorization (if authenticated) and optionally Content-Type
+ */
+/**
+ * Get headers for API requests with Bearer token authentication.
+ * @param {boolean} [includeContentType=true]
+ * @returns {Record<string, string>} Headers object with Authorization (if authenticated) and optionally Content-Type
+ */
+/**
+ * Get headers for API requests with Bearer token authentication.
+ * @param {boolean} [includeContentType=true]
+ * @returns {Object} Headers object with Authorization (if authenticated) and optionally Content-Type
+ */
+export function getAuthHeaders(includeContentType = true) {
+  const headers = {};
+  if (includeContentType) {
+    headers['Content-Type'] = 'application/json';
+  }
+  if (_cachedAccessToken) {
+    headers['Authorization'] = `Bearer ${_cachedAccessToken}`;
+  }
+  return headers;
+}
+
+/**
+ * Async version of getAuthHeaders that fetches fresh token from Supabase.
+ * Use this when you need guaranteed fresh token (rare cases like retry after 401).
+ * 
+ * @param {boolean} [includeContentType=true] - Whether to include Content-Type header
+ * @returns {Promise<Object>} Headers object
+ */
+export async function getAuthHeadersAsync(includeContentType = true) {
+  const headers = {};
+  
+  if (includeContentType) {
+    headers['Content-Type'] = 'application/json';
+  }
+  
+  try {
+    const { data: { session } } = await supabase.auth.getSession();
+    if (session?.access_token) {
+      headers['Authorization'] = `Bearer ${session.access_token}`;
+      // Update cache while we're at it
+      _cachedAccessToken = session.access_token;
+    }
+  } catch {
+    // Supabase client may not be initialized (e.g., missing env vars)
+    // Fall through without token - server will return 401
+  }
+  
+  return headers;
+}
+
+function handleAuthError(response) {
+  if (!response) return false;
+  if (response.status === 401 || response.status === 403) {
+    // Dispatch a custom event that UI components can listen to for graceful handling
+    // This prevents infinite reload loops and data loss from hard refreshes
+    try {
+      window.dispatchEvent(new CustomEvent('auth:session-expired', {
+        detail: { status: response.status }
+      }));
+    } catch { /* ignore */ }
+    return true;
+  }
+  return false;
+}
+
+// Network failure tracking (for auto-recovery detection)
+let isNetworkDown = false;
+
+/**
+ * Reset network state (for testing only)
+ * @private
+ */
+export function __resetNetworkState() {
+  isNetworkDown = false;
+}
+
+/**
+ * Wrapper around fetch that handles network-level failures gracefully.
+ * 
+ * Network failures (ECONNREFUSED, DNS errors, etc.) are different from HTTP errors:
+ * - HTTP errors (4xx, 5xx) have a response object and are handled normally
+ * - Network failures throw before any HTTP response is received
+ * 
+ * This wrapper:
+ * - Catches network-level failures (fetch throws)
+ * - Logs them with context
+ * - Dispatches a custom event for UI to show a banner
+ * - Detects recovery when subsequent calls succeed
+ * - Re-throws the error so callers can handle it appropriately
+ * 
+ * @param {RequestInfo} input - fetch URL or Request object
+ * @param {RequestInit} init - fetch options
+ * @returns {Promise<Response>} - The fetch response
+ * @throws {Error} - Network error with descriptive message
+ */
+async function fetchWithNetworkFallback(input, init) {
+  try {
+    const response = await fetch(input, init);
+    
+    // Network is healthy - dispatch recovery event if we were previously down
+    if (isNetworkDown) {
+      isNetworkDown = false;
+      try {
+        if (typeof window !== 'undefined' && window.dispatchEvent) {
+          window.dispatchEvent(new CustomEvent('network:recovered'));
+        }
+      } catch { /* ignore */ }
+    }
+    
+    return response;
+  } catch (error) {
+    // Ignore AbortError (user cancelled or component unmounted)
+    if (isAbortError(error)) {
+      throw error;
+    }
+
+    // Network-level failure (no HTTP response received)
+    // Common causes: ECONNREFUSED, DNS failure, CORS preflight failure, network disconnect
+    
+    // Extract URL for logging (handle both string and Request object)
+    const url = typeof input === 'string' ? input : input?.url || 'unknown';
+    
+    // Log with context for debugging
+    console.error('[Network] Backend request failed', {
+      url,
+      error: error?.message || String(error),
+      type: error?.constructor?.name
+    });
+    
+    // Mark network as down and dispatch event for UI
+    if (!isNetworkDown) {
+      isNetworkDown = true;
+      try {
+        if (typeof window !== 'undefined' && window.dispatchEvent) {
+          window.dispatchEvent(new CustomEvent('network:unavailable', {
+            detail: { 
+              error: error?.message || 'Network request failed',
+              url 
+            }
+          }));
+        }
+      } catch { /* ignore */ }
+    }
+    
+    // Re-throw with enhanced error message for caller
+    const enhancedError = new Error(
+      `Network error: ${error?.message || 'Failed to reach server'}`
+    );
+    enhancedError.originalError = error;
+    enhancedError.isNetworkError = true;
+    throw enhancedError;
+  }
+}
+
+// Use centralized API configuration
+import { API_BASE_URL as CENTRAL_API_BASE_URL } from './config/apiConfig.js';
+
+export const API_BASE_URL = CENTRAL_API_BASE_URL;
+
+// --- Concurrency limiter (small utility used across API calls)
+const apiMetrics = { totals: { calls: 0 }, limiters: {} };
+function createLimiter(maxConcurrency = 6, name = 'default') {
+  let active = 0;
+  const queue = [];
+  if (!apiMetrics.limiters[name]) apiMetrics.limiters[name] = { calls: 0, active: 0, queued: 0, maxActiveSeen: 0 };
+  const next = () => { if (queue.length === 0) return; const fn = queue.shift(); apiMetrics.limiters[name].queued = queue.length; fn(); };
+  return async function limit(fn) {
+    apiMetrics.totals.calls += 1; apiMetrics.limiters[name].calls += 1;
+    return new Promise((resolve, reject) => {
+      const run = async () => {
+        active += 1; apiMetrics.limiters[name].active = active;
+        if (active > apiMetrics.limiters[name].maxActiveSeen) apiMetrics.limiters[name].maxActiveSeen = active;
+        try { const r = await fn(); resolve(r); } catch (err) { reject(err); } finally { active -= 1; apiMetrics.limiters[name].active = active; apiMetrics.limiters[name].queued = queue.length; next(); }
+      };
+      if (active < maxConcurrency) run(); else { queue.push(run); apiMetrics.limiters[name].queued = queue.length; }
+    });
+  };
+}
+const apiLimiter = createLimiter(6);
+const stateUpdateLimiter = createLimiter(2);
+
+export function getApiMetrics() { try { return JSON.parse(JSON.stringify(apiMetrics)); } catch { return { totals: { calls: 0 }, limiters: {} }; } }
+
+/**
+ * Fetch a protected resource (image) using Bearer token authentication and return a blob URL.
+ * Caller is responsible for revoking the returned URL when no longer needed.
+ * 
+ * SECURITY: Uses Bearer token in Authorization header for iOS/Mobile Safari compatibility.
+ * This replaces the previous cookie-based auth approach that was blocked by ITP.
+ * 
+ * Note: ERR_CACHE_READ_FAILURE is now prevented architecturally:
+ * - Server uses ID-based URLs (/display/image/:id) instead of filename-based
+ * - No URL extension means no conflict with Content-Type header
+ * - HEIC→JPEG conversion is transparent to browser cache
+ * 
+ * Retry logic is kept as a safety net for any remaining edge cases.
+ * 
+ * @param {string} url - Full URL to fetch (absolute or relative)
+ * @param {Object} [options] - Options object
+ * @param {AbortSignal} [options.signal] - AbortController signal for cancellation
+ * @returns {Promise<string>} - Object URL (URL.createObjectURL(blob))
+ */
+export async function fetchProtectedBlobUrl(url, options = {}) {
+  // If URL is already a blob URL, return it as is
+  if (url.startsWith('blob:')) return url;
+
+  // Instrumentation: log only once per session for hard failures
+  if (!window.__imageCacheErrorLogged) window.__imageCacheErrorLogged = new Set();
+
+  // Accept AbortController signal from options or legacy second argument
+  let signal = options?.signal;
+  if (!signal && arguments.length > 1 && arguments[1] && typeof arguments[1] === 'object') {
+    signal = arguments[1].signal;
+  }
+
+  const doFetch = async (bypassCache = false) => {
+    // Get auth headers with Bearer token (without Content-Type for blob requests)
+    const headers = getAuthHeaders(false);
+    if (bypassCache) {
+      headers['Cache-Control'] = 'no-cache';
+      headers['Pragma'] = 'no-cache';
+    }
+    
+    // Note: credentials: 'include' is kept for backward compatibility during transition
+    // but Authorization header is now the primary auth mechanism
+    return fetchWithNetworkFallback(url, {
+      headers,
+      credentials: 'include',
+      cache: bypassCache ? 'no-store' : 'default',
+      signal
+    });
+  };
+
+  let lastError = null;
+  let res = null;
+  const maxAttempts = 3;
+  for (let attempt = 1; attempt <= maxAttempts; attempt++) {
+    try {
+      res = await doFetch(attempt > 1);
+      if (!res.ok) throw new Error(`Failed to fetch image: ${res.status}`);
+      const blob = await res.blob();
+      return URL.createObjectURL(blob);
+    } catch (err) {
+      lastError = err;
+
+      // If aborted, rethrow immediately to avoid retries and logging
+      if (isAbortError(err) || (signal && signal.aborted)) {
+        throw err;
+      }
+
+      // Only retry on network/cache errors
+      const isCacheError = err?.message?.includes('cache') || err?.message?.includes('Failed to fetch') || err?.isNetworkError;
+      if (!isCacheError) break;
+      if (attempt < maxAttempts) {
+        await new Promise(resolve => setTimeout(resolve, 75 + 50 * attempt));
+        continue;
+      }
+    }
+  }
+  // Instrumentation: log only once per session
+  const logKey = `${url}`;
+  if (!window.__imageCacheErrorLogged.has(logKey)) {
+    window.__imageCacheErrorLogged.add(logKey);
+    const photoId = url.match(/\/display\/image\/(\d+)/)?.[1] || url;
+    console.warn('[image-cache-error]', {
+      photoId,
+      attempts: maxAttempts,
+      online: typeof navigator !== 'undefined' ? navigator.onLine : 'unknown',
+      errorName: lastError?.name,
+      errorMessage: lastError?.message
+    });
+  }
+  throw lastError || new Error('Failed to fetch image after retries');
+}
+
+export function revokeBlobUrl(url) {
+  if (url && url.startsWith('blob:')) {
+    URL.revokeObjectURL(url);
+  }
+}
+
+// fetchCsrfToken removed
+// loginUser removed
+
+/**
+ * Upload a photo to the server, optionally with a client-generated thumbnail.
+ * Also supports attaching lightweight metadata (e.g. intent/classification).
+ *
+ * Back-compat:
+ * - uploadPhotoToServer(file)
+ * - uploadPhotoToServer(file, '/upload')
+ * - uploadPhotoToServer(file, '/upload', thumbnail)
+ *
+ * New:
+ * - uploadPhotoToServer(file, undefined, thumbnail, { classification: 'scenery' })
+ * - uploadPhotoToServer(file, { classification: 'scenery' }, thumbnail)
+ *
+ * @param {File} file - The main photo file
+ * @param {string|Object} [serverUrl] - Optional server URL or options object
+ * @param {Blob|null} [thumbnailBlob] - Optional thumbnail Blob
+ * @param {Object} [options] - Optional metadata/options
+ */
+export async function uploadPhotoToServer(file, serverUrl = `${API_BASE_URL}/upload`, thumbnailBlob = null, options = {}) {
+  // Allow passing options as the 2nd argument for convenience.
+  let effectiveServerUrl = serverUrl;
+  let effectiveOptions = options;
+  let effectiveThumbnailBlob = thumbnailBlob;
+
+  if (serverUrl && typeof serverUrl === 'object' && !(serverUrl instanceof String)) {
+    effectiveOptions = serverUrl;
+    effectiveServerUrl = `${API_BASE_URL}/upload`;
+    effectiveThumbnailBlob = thumbnailBlob;
+  }
+
+  // Use FormData and rely on cookie-based auth (credentials included).
+  const form = new FormData();
+  form.append('photo', file, file.name);
+  if (effectiveThumbnailBlob) {
+    form.append('thumbnail', effectiveThumbnailBlob, 'thumbnail.jpg');
+  }
+
+  const classification = effectiveOptions?.classification;
+  if (typeof classification === 'string' && classification.trim()) {
+    form.append('classification', classification.trim());
+  }
+
+  const headers = getAuthHeaders();
+  delete headers['Content-Type']; // Let browser set multipart/form-data with boundary
+
+  const res = await fetchWithNetworkFallback(effectiveServerUrl, { method: 'POST', headers, body: form, credentials: 'include' });
+  if (handleAuthError(res)) return;
+  if (!res.ok) throw new Error('Upload failed');
+  return await res.json();
+}
+
+export async function checkPrivilege(relPath, serverUrl = `${API_BASE_URL}/privilege`) {
+  const maxAttempts = 3; const delayMs = 250;
+  for (let attempt = 1; attempt <= maxAttempts; attempt++) {
+    try {
+      const body = JSON.stringify({ relPath });
+  const response = await apiLimiter(() => fetchWithNetworkFallback(serverUrl, { method: 'POST', headers: getAuthHeaders(), body, credentials: 'include' }));
+      if (handleAuthError(response)) return; if (response.ok) return await response.json();
+      if (attempt < maxAttempts) { await new Promise(r => setTimeout(r, delayMs * attempt)); continue; }
+      throw new Error('Privilege check failed: ' + response.status);
+    } catch (err) { if (attempt < maxAttempts) { await new Promise(r => setTimeout(r, delayMs * attempt)); continue; } throw err; }
+  }
+}
+
+export async function checkPrivilegesBatch(filenames, serverUrl = `${API_BASE_URL}/privilege`) {
+  if (!Array.isArray(filenames)) filenames = [];
+  if (!globalThis.__privBatchCache) globalThis.__privBatchCache = new Map();
+  const key = filenames.slice().sort().join('|');
+  const TTL = 1200; const now = Date.now(); const existing = globalThis.__privBatchCache.get(key);
+  if (existing && (now - existing.ts) < TTL) return existing.promise;
+
+  const CHUNK_SIZE = 12; const maxAttempts = 4; const sleep = (ms) => new Promise(r => setTimeout(r, ms));
+  const results = {};
+  async function postChunk(chunk, attempt = 1) {
+    try {
+      const body = JSON.stringify({ filenames: chunk });
+  const response = await apiLimiter(() => fetchWithNetworkFallback(serverUrl, { method: 'POST', headers: getAuthHeaders(), body, credentials: 'include' }));
+      if (handleAuthError(response)) return null;
+      if (response.status === 429) { if (attempt < maxAttempts) { await sleep(250 * Math.pow(2, attempt - 1)); return postChunk(chunk, attempt + 1); } throw new Error('Batch privilege check rate limited: 429'); }
+      if (!response.ok) throw new Error('Batch privilege check failed: ' + response.status);
+      const json = await response.json(); if (!json.success) throw new Error('Batch privilege check error: ' + json.error); return json.privileges || {};
+    } catch (e) { if (attempt < maxAttempts) { await sleep(250 * Math.pow(2, attempt - 1)); return postChunk(chunk, attempt + 1); } throw e; }
+  }
+
+  const promise = (async () => {
+    for (let i = 0; i < filenames.length; i += CHUNK_SIZE) {
+      const chunk = filenames.slice(i, i + CHUNK_SIZE);
+      const chunkRes = await postChunk(chunk, 1);
+      if (chunkRes && typeof chunkRes === 'object') Object.assign(results, chunkRes);
+    }
+    return results;
+  })();
+
+  globalThis.__privBatchCache.set(key, { ts: Date.now(), promise });
+  try { const res = await promise; return res; } catch (e) { throw new Error('Error checking privileges batch: ' + e.message); }
+}
+
+/**
+ * Get lightweight photo status counts for Smart Routing.
+ * Returns { working, inprogress, finished, total } without fetching full photo data.
+ * Used to determine the initial landing page for authenticated users.
+ * 
+ * @returns {Promise<{success: boolean, working: number, inprogress: number, finished: number, total: number}>}
+ */
+export async function getPhotoStatus() {
+  const url = `${API_BASE_URL}/photos/status`;
+  try {
+    const response = await fetchWithTimeout(url, { 
+      headers: getAuthHeaders(), 
+      credentials: 'include' 
+    }, 10000);
+    
+    if (handleAuthError(response)) {
+      // Return empty counts if auth fails - SmartRouter will handle redirect to login
+      return { success: false, working: 0, inprogress: 0, finished: 0, total: 0 };
+    }
+    
+    if (!response.ok) {
+      throw new Error('Failed to fetch photo status: ' + response.status);
+    }
+    
+    return await response.json();
+  } catch (error) {
+    console.error('[getPhotoStatus] Error:', error);
+    // Return safe defaults on error - SmartRouter will redirect to upload page
+    return { success: false, working: 0, inprogress: 0, finished: 0, total: 0, error: error.message };
+  }
+}
+
+// Utility: fetch with AbortController and timeout
+async function fetchWithTimeout(resource, options = {}, timeoutMs = 20000) {
+  const controller = new AbortController();
+  const id = setTimeout(() => controller.abort(), timeoutMs);
+  try {
+    const resp = await fetchWithNetworkFallback(resource, { ...options, signal: controller.signal });
+    return resp;
+  } finally {
+    clearTimeout(id);
+  }
+}
+
+export async function getPhotos(serverUrlOrEndpoint = `${API_BASE_URL}/photos`) {
+  let url = serverUrlOrEndpoint;
+  if (!/^https?:\/\//i.test(serverUrlOrEndpoint)) {
+    if (['working', 'inprogress', 'finished'].includes(serverUrlOrEndpoint)) url = `${API_BASE_URL}/photos?state=${serverUrlOrEndpoint}`;
+    else if (serverUrlOrEndpoint.startsWith('photos')) url = `${API_BASE_URL}/${serverUrlOrEndpoint}`;
+    else url = `${API_BASE_URL}/photos`;
+  }
+
+  if (!globalThis.__getPhotosInflight) globalThis.__getPhotosInflight = new Map();
+  const TTL = 1000; const key = url; const now = Date.now(); const cached = globalThis.__getPhotosInflight.get(key);
+  if (cached && (now - cached.ts) < TTL) return cached.promise;
+
+  const fetchPromise = (async () => {
+  // Protect UI from indefinite hangs if backend is not responding.
+  const response = await fetchWithTimeout(url, { headers: getAuthHeaders(), credentials: 'include' }, 20000);
+    if (handleAuthError(response)) return; if (!response.ok) throw new Error('Failed to fetch photos: ' + response.status);
+    return await response.json();
+  })();
+
+  globalThis.__getPhotosInflight.set(key, { ts: Date.now(), promise: fetchPromise });
+  try { const res = await fetchPromise; return res; } finally { setTimeout(() => { try { globalThis.__getPhotosInflight.delete(key); } catch (e) { void e; } }, TTL); }
+}
+
+export async function fetchModelAllowlist(serverUrl = `${API_BASE_URL}`) {
+  const root = typeof globalThis !== 'undefined' ? globalThis : (typeof window !== 'undefined' ? window : {});
+  const CACHE_KEY = '__photoModelAllowlistCache';
+  const TTL = 60_000;
+  const now = Date.now();
+  const cache = root[CACHE_KEY];
+  if (cache && cache.data && (now - cache.ts) < TTL) {
+    return cache.data;
+  }
+  if (cache && cache.promise) {
+    return cache.promise;
+  }
+
+  const url = `${serverUrl}/photos/models`;
+  const fetchPromise = (async () => {
+    const response = await apiLimiter(() => fetchWithNetworkFallback(url, { method: 'GET', headers: getAuthHeaders(), credentials: 'include' }));
+    if (handleAuthError(response)) {
+      const payload = { models: [], source: 'auth', updatedAt: null };
+      root[CACHE_KEY] = { ts: Date.now(), data: payload };
+      return payload;
+    }
+    if (!response.ok) {
+      throw new Error(`Failed to fetch model allowlist: ${response.status}`);
+    }
+    const json = await response.json().catch(() => ({}));
+    const models = Array.isArray(json.models) ? json.models.filter(item => typeof item === 'string' && item.length > 0) : [];
+    const payload = {
+      models,
+      source: typeof json.source === 'string' ? json.source : 'unknown',
+      updatedAt: typeof json.updatedAt === 'string' ? json.updatedAt : null
+    };
+    root[CACHE_KEY] = { ts: Date.now(), data: payload };
+    return payload;
+  })();
+
+  root[CACHE_KEY] = { ts: now, promise: fetchPromise };
+  try {
+    const result = await fetchPromise;
+    return result;
+  } catch (error) {
+    try { delete root[CACHE_KEY]; } catch { /* ignore */ }
+    throw error;
+  }
+}
+
+export async function getDependencyStatus(serverUrl = `${API_BASE_URL}`) {
+  const url = `${serverUrl}/photos/dependencies`;
+  const response = await apiLimiter(() => fetchWithNetworkFallback(url, { method: 'GET', headers: getAuthHeaders(), credentials: 'include' }));
+  if (handleAuthError(response)) return null;
+  if (!response.ok) {
+    throw new Error('Failed to fetch dependency status: ' + response.status);
+  }
+  const json = await response.json().catch(() => ({}));
+  const dependencies = (json && typeof json.dependencies === 'object' && json.dependencies !== null)
+    ? json.dependencies
+    : {};
+  return {
+    success: json && json.success !== false,
+    dependencies,
+  };
+}
+
+export async function updatePhotoState(id, state, serverUrl = `${API_BASE_URL}/photos/`) {
+  const doFetch = async () => fetchWithNetworkFallback(`${serverUrl}${id}/state`, { method: 'PATCH', headers: getAuthHeaders(), body: JSON.stringify({ state }), credentials: 'include' });
+  const response = await stateUpdateLimiter(() => doFetch());
+  if (handleAuthError(response)) return; if (!response.ok) throw new Error('Failed to update photo state'); return await response.json();
+}
+
+export async function recheckInprogressPhotos(serverUrl = `${API_BASE_URL}/photos/recheck-inprogress`) {
+  const res = await apiLimiter(() => fetchWithNetworkFallback(serverUrl, { method: 'POST', headers: getAuthHeaders(), credentials: 'include' }));
+  if (handleAuthError(res)) return; if (!res.ok) throw new Error('Failed to trigger recheck'); return await res.json();
+}
+
+export async function recheckPhotoAI(photoId, model = null, serverUrl = `${API_BASE_URL}`) {
+  const url = `${serverUrl}/photos/${photoId}/run-ai`;
+  const body = model ? JSON.stringify({ model }) : null;
+  const opts = { method: 'POST', headers: getAuthHeaders(), credentials: 'include' };
+  if (body) {
+    opts.body = body;
+    opts.headers = { ...opts.headers, 'Content-Type': 'application/json' };
+  }
+  const res = await apiLimiter(() => fetchWithNetworkFallback(url, opts));
+  if (handleAuthError(res)) return; if (!res.ok) {
+    const text = await res.text().catch(() => '');
+    throw new Error('Failed to trigger photo recheck: ' + (text || res.status));
+  }
+  try {
+    const json = await res.json().catch(() => null);
+    // Notify other windows/tabs that an AI run has been started for this photo
+    try {
+      if (typeof window !== 'undefined' && window.dispatchEvent) {
+        try { window.dispatchEvent(new CustomEvent('photo:run-ai', { detail: { photoId } })); } catch { /* ignore */ }
+      }
+      try { localStorage.setItem('photo:run-ai', JSON.stringify({ photoId, timestamp: Date.now() })); } catch { /* ignore */ }
+    } catch { /* ignore cross-window notify errors */ }
+    return json;
+  } catch {
+    return null;
+  }
+}
+
+export async function updatePhotoCaption(id, caption, serverUrl = `${API_BASE_URL}`) {
+  const res = await apiLimiter(() => fetchWithNetworkFallback(`${serverUrl}/photos/${id}/caption`, { method: 'PATCH', headers: getAuthHeaders(), body: JSON.stringify({ caption }), credentials: 'include' }));
+  if (handleAuthError(res)) return; if (!res.ok) throw new Error('Failed to update caption'); return await res.json();
+}
+
+export async function deletePhoto(id, serverUrl = `${API_BASE_URL}`) {
+  const url = `${serverUrl}/photos/${id}`;
+  const res = await apiLimiter(() => fetchWithNetworkFallback(url, { method: 'DELETE', headers: getAuthHeaders(), credentials: 'include' }));
+  if (handleAuthError(res)) return;
+  if (!res.ok) {
+    // Try to parse error body for a useful message
+    let body = null;
+    try { body = await res.json(); } catch { try { body = await res.text(); } catch { body = null; } }
+    const msg = (body && (body.error || body.message)) ? (body.error || body.message) : (typeof body === 'string' && body.length ? body : res.statusText || `Failed to delete photo: ${res.status}`);
+    const err = new Error(msg);
+    // attach status so callers can detect 401/403 and reload if desired
+    try { err.status = res.status; } catch { /* ignore */ }
+    throw err;
+  }
+  // Return parsed JSON when available, otherwise true
+  try { return await res.json(); } catch { return true; }
+}
+
+// runAI client helper intentionally removed; use recheckPhotoAI(photoId) instead.
+
+export async function getPhoto(photoId, options = {}, serverUrl = `${API_BASE_URL}`) {
+  const { cacheBust = false, cacheBuster } = options || {};
+    let url = `${serverUrl}/photos/${photoId}`;
+
+    // Cache-busting: force a unique URL to bypass browser/HTTP caches for polling.
+    // Back-compat: treat legacy `cacheBuster` as enabling cache busting.
+    const shouldBust = Boolean(cacheBust) || typeof cacheBuster !== 'undefined';
+    if (shouldBust) {
+      const cb = typeof cacheBuster !== 'undefined' ? cacheBuster : Date.now();
+      url += (url.includes('?') ? '&' : '?') + `_cb=${cb}`;
+    }
+
+    const res = await fetchWithNetworkFallback(url, { method: 'GET', headers: getAuthHeaders(), credentials: 'include' });
+    if (handleAuthError(res)) return;
+    if (!res.ok) throw new Error('Failed to fetch photo: ' + res.status);
+    return await res.json();
+}
+===== src\store.js =====
+import { create } from 'zustand'
+import { getPhoto, updatePhotoState } from './api.js'
+import { createUploadPickerSlice } from './store/uploadPickerSlice.js'
+
+/** @typedef {import('./types/photo').Photo} Photo */
+
+const debug = (...args) => {
+  if (typeof console !== 'undefined' && typeof console.debug === 'function') {
+    console.debug(...args)
+  }
+}
+
+// Module-level timer registry for AI polling so we can stop polling
+// when analysis completes.
+const aiPollingTimers = new Map();
+
+const isAiAnalysisComplete = (photo) => {
+  if (!photo) return false;
+  // Prefer the explicit state machine from the backend.
+  if (photo.state === 'finished' || photo.state === 'error') return true;
+
+  // Backstop: some AI failures may be encoded in text fields.
+  const caption = typeof photo.caption === 'string' ? photo.caption.trim().toLowerCase() : '';
+  const description = typeof photo.description === 'string' ? photo.description.trim().toLowerCase() : '';
+  const failedMarker = 'ai processing failed';
+  if (caption === failedMarker || description === failedMarker) return true;
+
+  return false;
+};
+
+// Minimal Zustand store for photos and ui state (polling, toast)
+const useStore = create((set, get) => ({
+  ...createUploadPickerSlice(set, get),
+  photos: [],
+  toast: { message: '', severity: 'info' },
+  // Support both a single legacy polling id and a Set of polling ids for concurrent polling
+  pollingPhotoId: null,
+  pollingPhotoIds: new Set(),
+
+  // Optimistic uploads - pending photos being uploaded
+  pendingUploads: [],
+  addPendingUploads: (files) => {
+    const safeFiles = Array.isArray(files) ? files.filter(Boolean) : [];
+    const now = Date.now();
+    const createdAt = new Date().toISOString();
+
+    const newPending = safeFiles.map((file) => {
+      const id = `temp-${now}-${Math.random().toString(36).substr(2, 9)}`;
+      return {
+        id,
+        file,
+        url: URL.createObjectURL(file),
+        name: file.name,
+        filename: file.name,
+        state: 'uploading',
+        created_at: createdAt,
+        file_size: file.size,
+        caption: '',
+        isTemporary: true,
+      };
+    });
+
+    set((state) => ({ pendingUploads: [...newPending, ...(state.pendingUploads || [])] }));
+    return newPending;
+  },
+  removePendingUpload: (tempId) => set((state) => {
+    // Revoke blob URL to prevent memory leak
+    const pending = state.pendingUploads.find(p => p.id === tempId);
+    if (pending?.url && pending.url.startsWith('blob:')) {
+      URL.revokeObjectURL(pending.url);
+    }
+    return { pendingUploads: state.pendingUploads.filter(p => p.id !== tempId) };
+  }),
+  clearPendingUploads: () => set((state) => {
+    // Revoke all blob URLs
+    state.pendingUploads.forEach(p => {
+      if (p.url && p.url.startsWith('blob:')) {
+        URL.revokeObjectURL(p.url);
+      }
+    });
+    return { pendingUploads: [] };
+  }),
+
+  // Persistent banner notification (alternative to toast)
+  banner: { message: '', severity: 'info' },
+  setBanner: (value) => set((state) => {
+    const base = state.banner || { message: '', severity: 'info' };
+    if (!value) return { banner: { message: '', severity: base.severity || 'info' } };
+    if (typeof value === 'string') {
+      return { banner: { message: value, severity: base.severity || 'info' } };
+    }
+    const message = typeof value.message === 'string' ? value.message : '';
+    const severity = typeof value.severity === 'string' ? value.severity : (base.severity || 'info');
+    return { banner: { message, severity } };
+  }),
+
+  // UI State Slice - View Management
+  // NOTE: Initial view is null - URL params are the source of truth
+  // SmartRouter determines the initial view and sets it via URL
+  view: null, // null | 'working' | 'inprogress' | 'finished'
+  setView: (view) => set({ view }),
+
+  // UI State Slice - Active Photo & Editing
+  activePhotoId: null,
+  setActivePhotoId: (id) => set({ activePhotoId: id }),
+  editingMode: null, // null | 'inline' | 'full'
+  setEditingMode: (mode) => set({ editingMode: mode }),
+  
+  // Last edited photo - persists across navigation for quick return
+  lastEditedPhotoId: null,
+  setLastEditedPhotoId: (id) => set({ lastEditedPhotoId: id }),
+
+  // UI State Slice - Modals
+  showMetadataModal: false,
+  setShowMetadataModal: (show) => set({ showMetadataModal: show }),
+  metadataPhoto: null,
+  setMetadataPhoto: (photo) => set({ metadataPhoto: photo }),
+
+  // UI State Slice - Toolbar Messages
+  toolbarMessage: '',
+  setToolbarMessage: (message) => set({ toolbarMessage: message }),
+  toolbarSeverity: 'info',
+  setToolbarSeverity: (severity) => set({ toolbarSeverity: severity }),
+
+  // Photos slice
+  setPhotos: (photos) => set({ photos }),
+  removePhotoById: (id) => set((state) => ({ photos: state.photos.filter(p => p.id !== id) })),
+  // Update existing photo data or insert if missing (upsert)
+  updatePhotoData: (id, newData) => set((state) => {
+    const normalizeId = (value) => value != null ? String(value) : value;
+    const targetId = normalizeId(id);
+    const exists = state.photos.some(p => normalizeId(p.id) === targetId);
+    debug('[store] updatePhotoData', { id, exists, newData, prePhotos: state.photos });
+    if (exists) {
+      const out = {
+        photos: state.photos.map(p => {
+          if (normalizeId(p.id) !== targetId) return p;
+          const merged = { ...p, ...newData };
+          merged.id = p.id;
+          debug('[store] merged photo', merged);
+          return merged;
+        })
+      };
+      debug('[store] post-update photos', out.photos);
+      return out;
+    }
+    // Append updated/inserted photo to the list so editors can observe it
+    const appended = { photos: [...state.photos, typeof newData === 'object' ? { ...newData, id } : newData] };
+    debug('[store] appending new photo:', appended, 'to', state.photos);
+    return appended;
+  }),
+  // Replace an existing photo object in the photos array with the full updated object
+  updatePhoto: (updatedPhoto) => set((state) => {
+    if (!updatedPhoto || typeof updatedPhoto.id === 'undefined') return {};
+    const normalizeId = (value) => value != null ? String(value) : value;
+    const targetId = normalizeId(updatedPhoto.id);
+    const photos = state.photos.map(p => {
+      if (normalizeId(p.id) !== targetId) return p;
+      const merged = { ...p, ...updatedPhoto };
+      merged.id = p.id;
+      debug('[store] updatePhoto merged', { prev: p, next: merged });
+      return merged;
+    });
+    debug('[store] updatePhoto', { id: updatedPhoto.id, photos });
+    return { photos };
+  }),
+
+  // UI slice
+  // setToast accepts either a string (legacy) or an object { message, severity }
+  setToast: (value) => set((state) => {
+    const base = state.toast || { message: '', severity: 'info' };
+    if (!value) return { toast: { message: '', severity: base.severity || 'info' } };
+    if (typeof value === 'string') {
+      return { toast: { message: value, severity: base.severity || 'info' } };
+    }
+    const message = typeof value.message === 'string' ? value.message : '';
+    const severity = typeof value.severity === 'string' ? value.severity : (base.severity || 'info');
+    return { toast: { message, severity } };
+  }),
+  setPollingPhotoId: (id) => set({ pollingPhotoId: id }),
+
+  // Manage pollingPhotoIds immutably so Zustand subscribers detect changes
+  addPollingId: (id) => set((state) => {
+    const newSet = new Set(state.pollingPhotoIds || []);
+    newSet.add(id);
+    return { pollingPhotoIds: newSet };
+  }),
+  removePollingId: (id) => set((state) => {
+    const current = state.pollingPhotoIds || new Set();
+    const filtered = Array.from(current).filter((value) => String(value) !== String(id));
+    return { pollingPhotoIds: new Set(filtered) };
+  }),
+
+  // Start polling /photos/:id until AI metadata is present.
+  startAiPolling: (id, opts = {}) => {
+    const key = String(id);
+    if (aiPollingTimers.has(key)) return;
+
+    const intervalMs = Number.isFinite(opts?.intervalMs) ? opts.intervalMs : 1500;
+    const timeoutMs = Number.isFinite(opts?.timeoutMs) ? opts.timeoutMs : 180000;
+    const startedAt = Date.now();
+    let inFlight = false;
+
+    // Ensure store indicates polling for this id
+    set((state) => {
+      const current = state.pollingPhotoIds || new Set();
+      const filtered = Array.from(current).filter((value) => String(value) !== key);
+      const next = new Set(filtered);
+      next.add(id);
+      return { pollingPhotoId: id, pollingPhotoIds: next };
+    });
+
+    const tick = async () => {
+      if (inFlight) return;
+      if (Date.now() - startedAt > timeoutMs) {
+        get().stopAiPolling(id);
+        return;
+      }
+      inFlight = true;
+      try {
+        const result = await getPhoto(id, { cacheBust: true });
+        const photo = result && result.photo ? result.photo : null;
+        if (!photo) return;
+
+        // Merge the latest photo data into the store so UI updates.
+        try {
+          get().updatePhoto(photo);
+        } catch {
+          // ignore update errors
+        }
+
+        if (isAiAnalysisComplete(photo)) {
+          get().stopAiPolling(id);
+        }
+      } catch {
+        // Network or auth errors: stop polling to avoid an infinite spinner
+        get().stopAiPolling(id);
+      } finally {
+        inFlight = false;
+      }
+    };
+
+    const timer = setInterval(tick, intervalMs);
+    aiPollingTimers.set(key, timer);
+    // Kick off immediately
+    tick();
+  },
+
+  stopAiPolling: (id) => {
+    const key = String(id);
+    const timer = aiPollingTimers.get(key);
+    if (timer) {
+      try { clearInterval(timer); } catch { /* ignore */ }
+      aiPollingTimers.delete(key);
+    }
+
+    set((state) => {
+      const current = state.pollingPhotoIds || new Set();
+      const filtered = Array.from(current).filter((value) => String(value) !== key);
+      const next = new Set(filtered);
+      const shouldClearLegacy = state.pollingPhotoId != null && String(state.pollingPhotoId) === key;
+      return {
+        pollingPhotoIds: next,
+        pollingPhotoId: shouldClearLegacy ? null : state.pollingPhotoId,
+      };
+    });
+  },
+
+  // Action: move a photo to inprogress and start polling for AI results
+  moveToInprogress: async (id) => {
+    try {
+      await updatePhotoState(id, 'inprogress')
+      // Update locally (keep photo visible) and set polling trigger
+      set((state) => {
+        const normalizeId = (value) => (value != null ? String(value) : value);
+        const targetId = normalizeId(id);
+        /** @type {Photo[]} */
+        const currentPhotos = Array.isArray(state.photos) ? state.photos : [];
+
+        const photos = currentPhotos.map((p) => {
+          if (normalizeId(p?.id) !== targetId) return p;
+          return { ...p, state: 'inprogress' };
+        });
+
+        return { photos };
+      })
+
+      // Poll until AI fields appear so "Analyzing..." clears when done.
+      try {
+        get().startAiPolling(id);
+      } catch {
+        // ignore polling start errors
+      }
+      return { success: true }
+    } catch (err) {
+  // ...toast error removed...
+      return { success: false, error: err }
+    }
+  }
+}))
+
+export default useStore
+===== src\hooks\useAIPolling.jsx =====
+import { useEffect, useRef } from 'react'
+import useStore from '../store.js'
+import { getPhoto } from '../api.js'
+
+// Hook: poll backend for AI results when store.pollingPhotoId is set
+export default function useAIPolling() {
+  const pollingPhotoId = useStore(state => state.pollingPhotoId)
+  // Use the dedicated updatePhoto action
+  const updatePhoto = useStore(state => state.updatePhoto)
+  const setPollingPhotoId = useStore(state => state.setPollingPhotoId)
+  const addPollingId = useStore(state => state.addPollingId)
+  const removePollingId = useStore(state => state.removePollingId)
+  // setToast removed
+  const attemptsRef = useRef(0)
+
+  // Save initial AI fields so we can check for actual changes
+  const originalAI = useRef({ caption: null, description: null, keywords: null, updated_at: null });
+
+  useEffect(() => {
+    if (!pollingPhotoId) return;
+    addPollingId(pollingPhotoId);
+    let cancelled = false;
+    attemptsRef.current = 0;
+    const MAX_ATTEMPTS = 40;
+
+    // Fetch the initial photo state to compare with future AI values
+    (async () => {
+      try {
+        const res = await getPhoto(pollingPhotoId, { cacheBust: true });
+        let base = res && res.photo ? res.photo : res;
+        if (base) {
+          originalAI.current = {
+            caption: base.caption || '',
+            description: base.description || '',
+            keywords: base.keywords || '',
+            updated_at: base.updated_at || null,
+          };
+        }
+      } catch (error) {
+        void error;
+        // ignore fetch errors here; polling will retry
+      }
+    })();
+
+    const hasNewAIdata = (p) => {
+      if (!p) return false;
+      // Compare with captured original values
+      const c = (p.caption || '').toString().trim();
+      const d = (p.description || '').toString().trim();
+      const k = (p.keywords || '').toString().trim();
+      const u = p.updated_at || null;
+      
+      // Check if AI processing failed permanently
+      const failedMarker = 'ai processing failed';
+      if (c.toLowerCase() === failedMarker || d.toLowerCase() === failedMarker) {
+        return true; // Stop polling - AI failed
+      }
+      
+      // Check if updated_at timestamp changed (most reliable for rechecks)
+      if (u && originalAI.current.updated_at && u !== originalAI.current.updated_at) {
+        console.log('[useAIPolling] Detected update via timestamp change:', originalAI.current.updated_at, '->', u);
+        return true;
+      }
+      
+      return (
+        (!!c && c !== originalAI.current.caption) ||
+        (!!d && d !== originalAI.current.description) ||
+        (!!k && k !== originalAI.current.keywords)
+      );
+    };
+
+    const isTerminalState = (p) => {
+      const state = p && p.state;
+      return state === 'finished' || state === 'error';
+    };
+
+    const pollForUpdate = async () => {
+      attemptsRef.current += 1;
+      try {
+        const res = await getPhoto(pollingPhotoId, { cacheBust: true });
+        let updated = res && res.photo ? res.photo : res;
+
+        // Always merge the freshest photo into the store so UI badges update
+        // (including `state: 'finished'`) without requiring a full refresh.
+        if (!cancelled && updated) {
+          updatePhoto(updated);
+        }
+
+        // Only stop polling when the backend reports a terminal state.
+        // Stopping early on “AI fields changed” can leave `state` stale.
+        if (updated && (isTerminalState(updated) || hasNewAIdata(updated))) {
+          // If state is still inprogress but AI fields changed, keep polling.
+          if (!isTerminalState(updated)) {
+            return;
+          }
+
+          if (cancelled) return;
+          removePollingId(updated.id ?? pollingPhotoId);
+          setPollingPhotoId(null);
+          return;
+        }
+        if (attemptsRef.current >= MAX_ATTEMPTS) {
+          if (!cancelled) {
+            removePollingId(pollingPhotoId);
+            setPollingPhotoId(null);
+            // toast removed: AI job still running
+          }
+          return;
+        }
+      } catch (err) {
+        if (String(err?.message).includes('404')) {
+          if (!cancelled) {
+            removePollingId(pollingPhotoId);
+            setPollingPhotoId(null);
+            // toast removed: Photo not found
+          }
+          return;
+        }
+        // Ignore other errors and continue polling
+      }
+    };
+
+    pollForUpdate();
+    const interval = setInterval(pollForUpdate, 3000);
+    return () => {
+      cancelled = true;
+      clearInterval(interval);
+      removePollingId(pollingPhotoId);
+    };
+  }, [pollingPhotoId, updatePhoto, setPollingPhotoId, addPollingId, removePollingId]);
+}
+===== src\components\PhotoCard.tsx =====
+import React, { useState } from 'react';
+import {
+  Calendar,
+  HardDrive,
+  Image as ImageIcon,
+  Lock,
+  Pencil,
+  Sparkles,
+  Trash2,
+} from 'lucide-react';
+import type { Photo } from '../types/photo';
+import formatFileSize from '../utils/formatFileSize.js';
+import { toUrl } from '../utils/toUrl.js';
+import AuthenticatedImage from './AuthenticatedImage.jsx';
+
+type PhotoCardPhoto = Omit<Photo, 'state' | 'url'> & {
+  url?: string;
+  state?: Photo['state'] | 'uploading';
+  thumbnail?: string | null;
+  isTemporary?: boolean;
+  file?: File;
+  name?: string;
+};
+
+export interface PhotoCardProps {
+  photo: PhotoCardPhoto;
+  accessLevel?: string | null;
+  isPolling?: boolean;
+  apiBaseUrl?: string;
+  getSignedUrl?: (photo: PhotoCardPhoto, variant?: 'full' | 'thumb') => string | null;
+  onSelect?: (photo: PhotoCardPhoto) => void;
+  onEdit?: (photo: PhotoCardPhoto) => void;
+  onApprove?: (id: PhotoCardPhoto['id']) => void;
+  onDelete?: (id: PhotoCardPhoto['id']) => void;
+}
+
+/**
+ * Generates a human-readable title from photo data.
+ * Priority: caption > truncated filename > "Untitled"
+ */
+function getDisplayTitle(photo: PhotoCardPhoto): string {
+  if (photo.caption && photo.caption.trim()) {
+    return photo.caption.length > 40 ? photo.caption.slice(0, 40) + '…' : photo.caption;
+  }
+  if (photo.filename) {
+    // Remove UUID prefix if present (common pattern: uuid_originalname.ext)
+    const name = photo.filename.replace(/^[a-f0-9-]{36}_/i, '');
+    return name.length > 25 ? name.slice(0, 25) + '…' : name;
+  }
+  return 'Untitled';
+}
+
+/**
+ * Formats date for display. Accepts EXIF date strings or ISO dates.
+ */
+function formatDate(photo: PhotoCardPhoto): string {
+  const dateStr =
+    photo.metadata?.DateTimeOriginal || photo.metadata?.CreateDate || photo.created_at;
+  if (!dateStr) return 'Unknown date';
+
+  try {
+    // EXIF dates are often "YYYY:MM:DD HH:MM:SS" format
+    const normalized = dateStr.replace(/^(\d{4}):(\d{2}):(\d{2})/, '$1-$2-$3');
+    const date = new Date(normalized);
+    if (Number.isNaN(date.getTime())) return 'Unknown date';
+    return date.toLocaleDateString('en-US', {
+      month: 'short',
+      day: 'numeric',
+      year: 'numeric',
+    });
+  } catch {
+    return 'Unknown date';
+  }
+}
+
+/**
+ * Maps state to a user-friendly badge
+ */
+function getStatusBadge(state: PhotoCardPhoto['state']): { label: string; className: string } {
+  switch (state) {
+    case 'inprogress':
+      return { label: 'Analyzing...', className: 'bg-amber-50 text-amber-600 border-amber-100' };
+    case 'working':
+      return { label: 'Queue', className: 'bg-slate-50 text-slate-700 border-slate-200' };
+    case 'finished':
+      return { label: 'Done', className: 'bg-green-50 text-green-700 border-green-100' };
+    default:
+      return { label: state || 'Unknown', className: 'bg-gray-50 text-gray-600 border-gray-100' };
+  }
+}
+
+/**
+ * Maps access level string to user-friendly label
+ */
+function formatAccessLevel(privileges?: string | null): string {
+  if (privileges == null) return '';
+  const normalized = String(privileges).trim();
+  if (!normalized) return '';
+  if (/^loading\.*$/i.test(normalized)) return '';
+  // RWX or W means full access (backend), fallback to legacy 'write'
+  if (/\bW\b|W|write/i.test(normalized)) return 'Full Access';
+  if (/\bR\b|read/i.test(normalized)) return 'Read Only';
+  return normalized;
+}
+
+/**
+ * PhotoCard - A modern card component for displaying photo previews
+ */
+export default function PhotoCard({
+  photo,
+  accessLevel,
+  isPolling = false,
+  apiBaseUrl,
+  getSignedUrl,
+  onSelect,
+  onEdit,
+  onApprove,
+  onDelete,
+}: PhotoCardProps) {
+  const [imageError, setImageError] = useState(false);
+  const [imageLoaded, setImageLoaded] = useState(false);
+  const [useThumbnail, setUseThumbnail] = useState(true);
+
+  const status = getStatusBadge(photo.state);
+  const title = getDisplayTitle(photo);
+  const date = formatDate(photo);
+  const fileSize = formatFileSize(photo.file_size);
+  const access = formatAccessLevel(accessLevel);
+
+  // Determine if user can perform write actions (RWX, W, or legacy 'write')
+  const canWrite =
+    !!accessLevel && (accessLevel.includes('W') || accessLevel.toLowerCase().includes('write'));
+
+  // Disable interaction for uploading photos
+  const isUploading = photo.state === 'uploading' || !!photo.isTemporary;
+
+  // Get image URL - prefer thumbnail for performance, fallback to full image
+  const getImageUrl = (): { url: string | null; needsAuth: boolean } => {
+    // Optimistic uploads use local blob URLs; never require auth for these.
+    if ((photo?.isTemporary || photo?.state === 'uploading') && typeof photo?.url === 'string') {
+      return { url: photo.url, needsAuth: false };
+    }
+
+    if (photo.thumbnail && useThumbnail) {
+      const signedUrl = getSignedUrl ? getSignedUrl(photo) : null;
+      if (signedUrl) {
+        return { url: signedUrl, needsAuth: false };
+      }
+      // No signed URL - need authenticated fetch
+      return { url: toUrl(photo.thumbnail, apiBaseUrl), needsAuth: true };
+    }
+    if (photo.url) {
+      // Public URLs (blob/data/http) should render directly without AuthenticatedImage.
+      if (
+        typeof photo.url === 'string' &&
+        (photo.url.startsWith('blob:') ||
+          photo.url.startsWith('data:') ||
+          photo.url.startsWith('http'))
+      ) {
+        return { url: photo.url, needsAuth: false };
+      }
+      const signedUrl = getSignedUrl ? getSignedUrl(photo, 'full') : null;
+      if (signedUrl) {
+        return { url: signedUrl, needsAuth: false };
+      }
+      // No signed URL - need authenticated fetch
+      return { url: toUrl(photo.url, apiBaseUrl), needsAuth: true };
+    }
+    return { url: null, needsAuth: false };
+  };
+
+  const { url: imageUrl, needsAuth } = getImageUrl();
+
+  const handleEdit = (e: React.MouseEvent) => {
+    e.stopPropagation();
+    onEdit?.(photo);
+  };
+
+  const handleApprove = (e: React.MouseEvent) => {
+    e.stopPropagation();
+    onApprove?.(photo.id);
+  };
+
+  const handleDelete = (e: React.MouseEvent) => {
+    e.stopPropagation();
+    if (!canWrite) return;
+    if (window.confirm('Are you sure you want to delete this photo? This action cannot be undone.')) {
+      onDelete?.(photo.id);
+    }
+  };
+
+  return (
+    <div
+      className="bg-white rounded-3xl shadow-lg hover:shadow-xl transition-shadow duration-200 overflow-hidden cursor-pointer group"
+      style={{
+        borderRadius: '24px',
+        boxShadow: '0 10px 25px -5px rgba(0, 0, 0, 0.1), 0 8px 10px -6px rgba(0, 0, 0, 0.1)',
+      }}
+      onClick={() => !isUploading && onSelect?.(photo)}
+      data-testid="photo-card"
+      role="article"
+      aria-label={`Photo: ${title}`}
+    >
+      {/* Thumbnail Section */}
+      <div className="relative aspect-[4/3] bg-slate-100 overflow-hidden">
+        {/* Loading Skeleton */}
+        {!imageLoaded && !imageError && imageUrl && !isUploading && (
+          <div
+            className="absolute inset-0 bg-slate-200 animate-pulse"
+            data-testid="photo-card-skeleton"
+          />
+        )}
+
+        {/* Actual Image - use AuthenticatedImage when Bearer auth is required */}
+        {imageUrl && !imageError ? (
+          needsAuth ? (
+            <AuthenticatedImage
+              src={imageUrl}
+              alt={photo.caption || photo.filename || 'Photo thumbnail'}
+              className={`w-full h-full object-cover transition-opacity duration-300 ${
+                imageLoaded ? 'opacity-100' : 'opacity-0'
+              }`}
+              onLoad={() => setImageLoaded(true)}
+              onError={() => {
+                // If thumbnail failed, try falling back to full image
+                if (useThumbnail && photo.thumbnail && photo.url) {
+                  setUseThumbnail(false);
+                  setImageLoaded(false);
+                  setImageError(false);
+                } else {
+                  setImageError(true);
+                }
+              }}
+              loadingPlaceholder={<div className="absolute inset-0 bg-slate-200 animate-pulse" />}
+            />
+          ) : (
+            <img
+              src={imageUrl}
+              alt={photo.caption || photo.filename || 'Photo thumbnail'}
+              className={`w-full h-full object-cover transition-opacity duration-300 ${
+                imageLoaded ? 'opacity-100' : 'opacity-0'
+              }`}
+              onLoad={() => setImageLoaded(true)}
+              onError={() => {
+                // If thumbnail failed, try falling back to full image
+                if (useThumbnail && photo.thumbnail && photo.url) {
+                  setUseThumbnail(false);
+                  setImageLoaded(false);
+                  setImageError(false);
+                } else {
+                  setImageError(true);
+                }
+              }}
+              loading="lazy"
+            />
+          )
+        ) : (
+          /* Fallback Placeholder */
+          <div className="absolute inset-0 flex flex-col items-center justify-center bg-slate-100 text-slate-400">
+            <ImageIcon size={48} strokeWidth={1} />
+            <span className="text-xs mt-2">{imageError ? 'Failed to load' : 'No preview'}</span>
+          </div>
+        )}
+
+        {/* Uploading Overlay - for optimistic uploads */}
+        {isUploading && (
+          <div className="absolute inset-0 bg-indigo-900/60 flex items-center justify-center backdrop-blur-sm">
+            <div className="text-center">
+              <div className="w-12 h-12 border-4 border-white border-t-transparent rounded-full animate-spin mb-3" />
+              <p className="text-white text-sm font-medium">Uploading...</p>
+            </div>
+            <span className="sr-only">Uploading</span>
+          </div>
+        )}
+
+        {/* Polling Overlay */}
+        {isPolling && !isUploading && (
+          <div className="absolute inset-0 bg-black/40 flex items-center justify-center">
+            <div className="w-8 h-8 border-3 border-white border-t-transparent rounded-full animate-spin" />
+            <span className="sr-only">Processing</span>
+          </div>
+        )}
+
+        {/* Status Badge */}
+        {!isUploading && (
+          <div className="absolute top-3 left-3">
+            <span
+              className={`px-3 py-1 rounded-full text-xs font-medium border ${status.className}`}
+              data-testid="photo-card-status"
+            >
+              <span className="inline-flex items-center gap-1.5">
+                {photo.state === 'inprogress' && (
+                  <span
+                    data-testid="photo-card-status-spinner"
+                    aria-hidden="true"
+                    className="inline-block w-3 h-3 rounded-full border-2 border-amber-400/70 border-t-transparent animate-spin"
+                  />
+                )}
+                <span>{status.label}</span>
+              </span>
+            </span>
+          </div>
+        )}
+      </div>
+
+      {/* Content Section */}
+      <div className="p-4">
+        {/* Title */}
+        <h3
+          className="text-base font-semibold text-slate-800 truncate mb-2"
+          title={photo.caption || photo.filename}
+          data-testid="photo-card-title"
+        >
+          {title}
+        </h3>
+
+        {/* Metadata */}
+        <div className="space-y-1 text-sm text-slate-500 mb-4">
+          <div className="flex items-center gap-2">
+            <Calendar size={14} className="text-slate-400" />
+            <span data-testid="photo-card-date">{date}</span>
+            <span className="text-slate-300">•</span>
+            <HardDrive size={14} className="text-slate-400" />
+            <span data-testid="photo-card-size">{fileSize}</span>
+          </div>
+          <div className="flex items-center gap-2">
+            <Lock size={14} className="text-slate-400" />
+            <span
+              className="text-[11px] font-medium text-slate-400 uppercase tracking-wider"
+              data-testid="photo-card-access"
+            >
+              {access}
+            </span>
+          </div>
+        </div>
+
+        {/* Action Buttons */}
+        <div className="flex gap-2 pt-2 border-t border-slate-100">
+          {/* Hide all action buttons when uploading */}
+          {!isUploading && (
+            <>
+              {/* Edit Button - Always visible for inprogress */}
+              {photo.state === 'inprogress' && (
+                <button
+                  onClick={handleEdit}
+                  className="flex-1 flex items-center justify-center gap-2 px-3 py-2 bg-slate-900 hover:bg-slate-800 text-white text-sm font-medium rounded-full transition-colors"
+                  aria-label="Edit photo"
+                  data-testid="photo-card-edit-btn"
+                >
+                  <Pencil size={14} />
+                  <span>Edit</span>
+                </button>
+              )}
+
+              {/* Analyze Button - For working state */}
+              {photo.state === 'working' && (
+                <button
+                  onClick={handleApprove}
+                  className="flex-1 flex items-center justify-center gap-2 px-3 py-2 bg-indigo-600 hover:bg-indigo-700 text-white text-sm font-medium rounded-full transition-colors"
+                  aria-label="Analyze photo with AI"
+                  data-testid="photo-card-approve-btn"
+                >
+                  <Sparkles size={14} />
+                  <span>Analyze</span>
+                </button>
+              )}
+
+              {/* Return to Queue Button - For inprogress state */}
+              {photo.state === 'inprogress' && (
+                <button
+                  onClick={(e) => {
+                    e.stopPropagation();
+                    // This triggers the "move to working" action
+                    onApprove?.(photo.id);
+                  }}
+                  className="flex items-center justify-center gap-2 px-3 py-2 bg-slate-100 hover:bg-slate-200 text-slate-600 text-sm font-medium rounded-full transition-colors"
+                  aria-label="Return photo to queue"
+                  data-testid="photo-card-return-btn"
+                >
+                  <span>Return</span>
+                </button>
+              )}
+
+              {/* Delete Button - Available in all states */}
+              <button
+                onClick={handleDelete}
+                disabled={!canWrite}
+                className={`flex items-center justify-center p-2 rounded-full transition-colors ${
+                  canWrite
+                    ? 'bg-red-50 hover:bg-red-100 text-red-600'
+                    : 'bg-slate-50 text-slate-300 cursor-not-allowed'
+                }`}
+                aria-label="Delete photo"
+                title={canWrite ? 'Delete photo' : 'No permission to delete'}
+                data-testid="photo-card-delete-btn"
+              >
+                <Trash2 size={16} />
+              </button>
+            </>
+          )}
+        </div>
+      </div>
+    </div>
+  );
+}
+===== server\routes\photos.js =====
+const express = require('express');
+const path = require('path');
+const { Readable } = require('stream');
+const logger = require('../logger');
+
+// SECURITY: UUID validation regex for user IDs (Supabase uses UUIDs)
+const UUID_REGEX = /^[0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i;
+const { signThumbnailUrl, DEFAULT_TTL_SECONDS } = require('../utils/urlSigning');
+const { addAIJob } = require('../queue');
+const createPhotosDb = require('../services/photosDb');
+const createPhotosStorage = require('../services/photosStorage');
+const createPhotosImage = require('../services/photosImage');
+const createPhotosAi = require('../services/photosAi');
+const createPhotosState = require('../services/photosState');
+// LangChain removed: dynamic allowlist for compatibility
+const DYNAMIC_MODEL_ALLOWLIST = [];
+const INTERNAL_MODEL_NAMES = ['router', 'scenery', 'collectible'];
+const INTERNAL_MODEL_SET = new Set(INTERNAL_MODEL_NAMES);
+const FALLBACK_MODEL_ALLOWLIST = ['gpt-4o', 'gpt-4-vision-preview', 'gpt-3.5-turbo', 'gpt-5'];
+const MODEL_ALLOWLIST = DYNAMIC_MODEL_ALLOWLIST;
+
+// Seed the allowlist with a fallback so routes have sensible defaults before async loading completes.
+const initialFallback = Array.from(new Set([...FALLBACK_MODEL_ALLOWLIST, ...INTERNAL_MODEL_NAMES]));
+DYNAMIC_MODEL_ALLOWLIST.push(...initialFallback);
+let LAST_ALLOWLIST_SOURCE = 'seed';
+let LAST_ALLOWLIST_UPDATED_AT = new Date().toISOString();
+
+const { authenticateToken } = require('../middleware/auth');
+const { authenticateImageRequest } = require('../middleware/imageAuth');
+const { checkRedisAvailable } = require('../queue');
+
+module.exports = function createPhotosRouter({ db, supabase }) {
+  const router = express.Router();
+  // Instantiate only inside this function
+  const photosDb = createPhotosDb({ db });
+  const photosStorage = createPhotosStorage({ storageClient: supabase.storage.from('photos') });
+  const photosImage = createPhotosImage({ sharp: require('sharp'), exifr: require('exifr'), crypto: require('crypto') });
+  const photosAi = createPhotosAi({ addAIJob, MODEL_ALLOWLIST: [] });
+  const photosState = createPhotosState({ db, storage: photosStorage });
+
+  // --- API: Lightweight photo status counts for Smart Routing ---
+  // Returns aggregated counts by state without fetching photo data
+  // Used by frontend SmartRouter to determine initial landing page
+  router.get('/status', authenticateToken, async (req, res) => {
+    const reqId = Math.random().toString(36).slice(2, 10);
+    try {
+      // SECURITY: Validate user ID is a valid UUID before using in query
+      // This prevents potential injection if auth middleware is compromised
+      const userId = req.user?.id;
+      if (!userId || typeof userId !== 'string' || !UUID_REGEX.test(userId)) {
+        logger.warn('[photos/status] Invalid user ID format', { reqId, userId: typeof userId });
+        return res.status(400).json({ success: false, error: 'Invalid user identifier', reqId });
+      }
+
+      const DB_QUERY_TIMEOUT_MS = Number(process.env.DB_QUERY_TIMEOUT_MS || 10000);
+
+      const counts = await Promise.race([
+        db('photos')
+          .where('user_id', userId)
+          .select('state')
+          .count('* as count')
+          .groupBy('state'),
+        new Promise((_, reject) => setTimeout(() => reject(new Error('DB query timeout')), DB_QUERY_TIMEOUT_MS)),
+      ]);
+
+      // Transform array of {state, count} into object { working: N, inprogress: N, ... }
+      // SECURITY: Only accept known state values to prevent enumeration
+      const VALID_STATES = ['working', 'inprogress', 'finished', 'error'];
+      const result = {
+        working: 0,
+        inprogress: 0,
+        finished: 0,
+        error: 0,
+        total: 0
+      };
+
+      for (const row of counts) {
+        const state = row.state;
+        const count = Number(row.count) || 0;
+        // Only process known states - ignore any unexpected values
+        if (VALID_STATES.includes(state)) {
+          result[state] = count;
+        }
+        result.total += count;
+      }
+
+      res.set('Cache-Control', 'no-store');
+      res.json({ success: true, ...result });
+    } catch (err) {
+      // SECURITY: Log full error details server-side but don't expose to client
+      // CWE-209: Information Exposure Through an Error Message
+      logger.error('[photos/status] DB error', {
+        reqId,
+        endpoint: '/photos/status',
+        error: {
+          message: err && err.message,
+          code: err && err.code,
+          stack: err && err.stack && err.stack.split('\n').slice(0, 3).join(' | ')
+        }
+      });
+      // Return generic error message - do not expose internal error details
+      res.status(500).json({ success: false, error: 'Failed to retrieve photo status', reqId });
+    }
+  });
+
+  // --- API: List all photos and metadata (include hash) ---
+  // Router-root: defined here as '/' so mounting at '/photos' results in
+  // final path '/photos'.
+  router.get('/', authenticateToken, async (req, res) => {
+    const reqId = Math.random().toString(36).slice(2, 10);
+    try {
+      const state = req.query.state;
+      // Protect against long-running DB queries causing the request to hang
+      const DB_QUERY_TIMEOUT_MS = Number(process.env.DB_QUERY_TIMEOUT_MS || 10000);
+
+      const rows = await Promise.race([
+        photosDb.listPhotos(req.user.id, state),
+        new Promise((_, reject) => setTimeout(() => reject(new Error('DB query timeout')), DB_QUERY_TIMEOUT_MS)),
+      ]);
+      // Generate public URLs for each photo using Supabase Storage
+      const photosWithUrls = await Promise.all(rows.map(async (row) => {
+        // text_style excluded from list view for payload optimization
+        // Parse only if present (for backwards compatibility)
+        let textStyle = null;
+        if (row.text_style) {
+          try {
+            textStyle = JSON.parse(row.text_style);
+          } catch (parseErr) {
+            logger.warn('Failed to parse text_style for photo', row.id, parseErr.message);
+          }
+        }
+        // The frontend will receive fully signed URLs below.
+        // Use simple relative paths for images and thumbnails. Image access
+        // is protected by httpOnly cookie-based authentication on /display/*.
+        let thumbnailUrl = null;
+        let photoUrl = null;
+        if (row.hash) {
+          thumbnailUrl = `/display/thumbnails/${row.hash}.jpg`;
+        }
+        // Use ID-based URL for photos to prevent ERR_CACHE_READ_FAILURE
+        // This eliminates the URL extension mismatch when HEIC is converted to JPEG
+        // Old: /display/working/photo.heic → Content-Type: image/jpeg (MISMATCH!)
+        // New: /display/image/123 → Content-Type: image/jpeg (NO MISMATCH!)
+        photoUrl = `/display/image/${row.id}`;
+        // ai_model_history excluded from list view for payload optimization
+        // Parse only if present (for backwards compatibility)
+        let parsedHistory = null;
+        if (row.ai_model_history) {
+          try { parsedHistory = JSON.parse(row.ai_model_history); } catch { parsedHistory = null; }
+        }
+        // poi_analysis excluded from list view for payload optimization
+        // Parse only if present (for backwards compatibility)
+        let parsedPoiAnalysis = null;
+        if (row.poi_analysis) {
+          try { 
+            parsedPoiAnalysis = typeof row.poi_analysis === 'string' 
+              ? JSON.parse(row.poi_analysis) 
+              : row.poi_analysis; 
+          } catch { parsedPoiAnalysis = null; }
+        }
+        
+        // OPTIMIZED: editedFilename, storagePath, aiModelHistory, poi_analysis
+        // are excluded from list view but gracefully default to null
+        return {
+          id: row.id,
+          filename: row.filename,
+          state: row.state,
+          metadata: typeof row.metadata === 'string' ? JSON.parse(row.metadata || '{}') : (row.metadata || {}),
+          hash: row.hash,
+          file_size: row.file_size,
+          caption: row.caption,
+          description: row.description,
+          keywords: row.keywords,
+          textStyle,
+          editedFilename: row.edited_filename || null,
+          storagePath: row.storage_path || null,
+          url: photoUrl,
+          thumbnail: thumbnailUrl,
+          aiModelHistory: parsedHistory,
+          poi_analysis: parsedPoiAnalysis,
+          // Expose collectible insights at top level for easier access
+          classification: row.classification,
+        };
+      }));
+      // Prevent caching so frontend always gets fresh filtered results
+      res.set('Cache-Control', 'no-store');
+      res.json({ success: true, photos: photosWithUrls });
+    } catch (err) {
+      // Improved error logging for diagnostics
+      logger.error('[photos] DB error', {
+        reqId,
+        endpoint: '/photos',
+        query: req.query,
+        state: req.query.state,
+        error: {
+          message: err && err.message,
+          code: err && err.code,
+          stack: err && err.stack && err.stack.split('\n').slice(0, 3).join(' | ')
+        }
+      });
+      res.status(500).json({ success: false, error: err.message, reqId });
+    }
+  });
+
+  router.get('/models', authenticateToken, (req, res) => {
+    try {
+      const filtered = DYNAMIC_MODEL_ALLOWLIST
+        .filter(item => typeof item === 'string' && item.length > 0 && !INTERNAL_MODEL_SET.has(item));
+      const fallbackPublic = FALLBACK_MODEL_ALLOWLIST.filter(item => !INTERNAL_MODEL_SET.has(item));
+      const models = filtered.length > 0 ? filtered : fallbackPublic;
+      res.set('Cache-Control', 'no-store');
+      res.json({
+        success: true,
+        models,
+        source: LAST_ALLOWLIST_SOURCE,
+        updatedAt: LAST_ALLOWLIST_UPDATED_AT
+      });
+    } catch (error) {
+      logger.error('[AI Models] Failed to expose model allowlist', error && error.message ? error : error);
+      res.status(500).json({ success: false, error: 'Failed to load model allowlist' });
+    }
+  });
+
+  router.get('/dependencies', authenticateToken, async (req, res) => {
+    try {
+      const redisAvailable = await checkRedisAvailable();
+      res.set('Cache-Control', 'no-store');
+      res.json({
+        success: true,
+        dependencies: {
+          aiQueue: Boolean(redisAvailable),
+        },
+      });
+    } catch (error) {
+      logger.error('[Dependencies] Failed to report dependency status', error && error.message ? error : error);
+      res.status(500).json({ success: false, error: 'Failed to determine dependency status' });
+    }
+  });
+
+  // --- Metadata update endpoint ---
+  // --- Single photo fetch endpoint ---
+  router.get('/:id', authenticateToken, async (req, res) => {
+    try {
+      const { id } = req.params;
+      const row = await photosDb.getPhotoById(id, req.user.id);
+      if (!row) return res.status(404).json({ success: false, error: 'Photo not found' });
+
+      let textStyle = null;
+      if (row.text_style) {
+        try { textStyle = JSON.parse(row.text_style); } catch { textStyle = null; }
+      }
+
+      // Provide relative image URLs; /display/* is protected by the cookie auth middleware.
+      // Use ID-based URL for photos to prevent ERR_CACHE_READ_FAILURE
+      let url = null;
+      let thumbnail = null;
+      if (row.hash) thumbnail = `/display/thumbnails/${row.hash}.jpg`;
+      url = `/display/image/${row.id}`;
+
+      // Parse poi_analysis for collectibles insights
+      let parsedPoiAnalysis = null;
+      try { 
+        parsedPoiAnalysis = row.poi_analysis ? 
+          (typeof row.poi_analysis === 'string' ? JSON.parse(row.poi_analysis) : row.poi_analysis) 
+          : null; 
+      } catch { parsedPoiAnalysis = null; }
+
+      const photo = {
+        id: row.id,
+        filename: row.filename,
+        state: row.state,
+        metadata: JSON.parse(row.metadata || '{}'),
+        hash: row.hash,
+        file_size: row.file_size,
+        caption: row.caption,
+        description: row.description,
+        keywords: row.keywords,
+        textStyle,
+        editedFilename: row.edited_filename,
+        storagePath: row.storage_path,
+        url,
+        thumbnail,
+        aiModelHistory: (() => { try { return row.ai_model_history ? JSON.parse(row.ai_model_history) : null; } catch { return null; } })(),
+        poi_analysis: parsedPoiAnalysis,
+        classification: row.classification,
+      };
+
+      res.set('Cache-Control', 'no-store');
+      return res.json({ success: true, photo });
+    } catch (err) {
+        logger.error('Error in GET /photos/:id', err);
+      return res.status(500).json({ success: false, error: err.message });
+    }
+  });
+
+  /**
+   * GET /photos/:id/thumbnail-url
+   * Generate a signed, time-limited URL for accessing a photo's thumbnail
+   * 
+   * Security:
+   * - Requires authentication via Bearer token
+   * - Validates photo ownership
+   * - Returns signed URL valid for DEFAULT_TTL_SECONDS (15 minutes)
+   * - Signed URL can be used in <img> tags without additional auth
+   * 
+   * Response:
+   * - 404: Photo not found or not owned by user (auth/ownership failure)
+   * - 200 with hasThumbnail=true: Thumbnail available
+   *   {
+   *     success: true,
+   *     url: "/display/thumbnails/{hash}.jpg?sig=...&exp=...",
+   *     expiresAt: 1234567890,
+   *     hasThumbnail: true
+   *   }
+   * - 200 with hasThumbnail=false: Photo exists but has no thumbnail yet
+   *   {
+   *     success: true,
+   *     url: null,
+   *     expiresAt: null,
+   *     hasThumbnail: false
+   *   }
+   */
+  router.get('/:id/thumbnail-url', authenticateToken, async (req, res) => {
+    const reqId = req.id || req.headers['x-request-id'] || 'unknown';
+    
+    try {
+      const { id } = req.params;
+      
+      // Fetch photo and verify ownership
+      const photo = await photosDb.getPhotoById(id, req.user.id);
+
+      if (!photo) {
+        logger.warn('Thumbnail URL request for non-existent or unauthorized photo', {
+          reqId,
+          photoId: id,
+          userId: req.user.id
+        });
+        return res.status(404).json({
+          success: false,
+          error: 'Photo not found'
+        });
+      }
+
+      // Check if thumbnail exists (hash must be present)
+      if (!photo.hash) {
+        logger.debug('Thumbnail URL request for photo without hash (normal case)', {
+          reqId,
+          photoId: id,
+          filename: photo.filename
+        });
+        return res.status(200).json({
+          success: true,
+          url: null,
+          expiresAt: null,
+          hasThumbnail: false
+        });
+      }
+
+      // Generate signed URL parameters
+      const { sig, exp } = signThumbnailUrl(photo.hash, DEFAULT_TTL_SECONDS);
+      
+      // Construct full signed URL
+      const signedUrl = `/display/thumbnails/${photo.hash}.jpg?sig=${encodeURIComponent(sig)}&exp=${exp}`;
+
+      logger.info('Generated signed thumbnail URL', {
+        reqId,
+        photoId: id,
+        userId: req.user.id,
+        expiresAt: new Date(exp * 1000).toISOString()
+      });
+
+      return res.json({
+        success: true,
+        url: signedUrl,
+        expiresAt: exp,
+        hasThumbnail: true
+      });
+
+    } catch (err) {
+      logger.error('Error generating thumbnail URL', {
+        reqId,
+        photoId: req.params.id,
+        userId: req.user?.id,
+        error: err.message,
+        stack: err.stack
+      });
+      return res.status(500).json({
+        success: false,
+        error: 'Internal server error'
+      });
+    }
+  });
+
+  router.patch('/:id/metadata', authenticateToken, async (req, res) => {
+    const { id } = req.params;
+    try {
+      const photo = await photosDb.getPhotoById(id, req.user.id);
+      if (!photo) {
+        return res.status(404).json({ success: false, error: 'Photo not found' });
+      }
+
+      const { caption, description, keywords, textStyle } = req.body || {};
+      if (
+        caption === undefined &&
+        description === undefined &&
+        keywords === undefined &&
+        textStyle === undefined
+      ) {
+        return res.status(400).json({ success: false, error: 'No metadata fields provided' });
+      }
+
+      const updated = await photosDb.updatePhotoMetadata(id, req.user.id, { caption, description, keywords, textStyle });
+      let parsedTextStyle = null;
+      if (textStyle !== undefined && textStyle !== null) {
+        try { parsedTextStyle = textStyle; } catch { logger.warn('Failed to parse text_style after update for photo', id); }
+      }
+
+      res.json({
+        success: !!updated,
+        metadata: {
+          caption: caption !== undefined ? caption : photo.caption,
+          description: description !== undefined ? description : photo.description,
+          keywords: keywords !== undefined ? keywords : photo.keywords,
+          textStyle: parsedTextStyle,
+        }
+      });
+    } catch (error) {
+      logger.error('Failed to update metadata for photo', id, error);
+      res.status(500).json({ success: false, error: error.message || 'Failed to update metadata' });
+    }
+  });
+
+  // --- Revert edited image endpoint ---
+  router.patch('/:id/revert', authenticateToken, express.json(), async (req, res) => {
+    const { id } = req.params;
+    try {
+      const row = await photosDb.getPhotoById(id, req.user.id);
+      if (!row) {
+        return res.status(404).json({ success: false, error: 'Photo not found' });
+      }
+      if (!row.edited_filename) {
+        return res.status(400).json({ success: false, error: 'No edited version to revert' });
+      }
+      
+      // Delete edited file from Supabase Storage
+      const editedPath = `inprogress/${row.edited_filename}`;
+      const { error: deleteError } = await photosStorage.deletePhotos([editedPath]);
+      
+      if (deleteError) {
+        logger.warn('Failed to delete edited file from Supabase storage:', deleteError);
+      }
+
+      await photosDb.updatePhotoEditedFilename(id, req.user.id, null);
+      res.json({ success: true });
+    } catch (error) {
+      logger.error('Failed to revert photo', id, error);
+      res.status(500).json({ success: false, error: error.message || 'Failed to revert' });
+    }
+  });
+
+  // --- Delete photo endpoint ---
+  router.delete('/:id', authenticateToken, async (req, res) => {
+    try {
+      const { id } = req.params;
+      const row = await photosDb.getPhotoById(id, req.user.id);
+      if (!row) {
+        return res.status(404).json({ success: false, error: 'Photo not found' });
+      }
+
+      // Delete the file from Supabase Storage
+      const filePath = row.storage_path || `${row.state}/${row.filename}`;
+      const { error: deleteError } = await photosStorage.deletePhotos([filePath]);
+
+      if (deleteError) {
+        logger.warn('Failed to delete file from Supabase storage:', deleteError);
+        // Continue with database deletion even if storage deletion fails
+      }
+
+      // Also delete any edited version
+      if (row.edited_filename) {
+        const editedPath = `inprogress/${row.edited_filename}`;
+        const { error: editedDeleteError } = await photosStorage.deletePhotos([editedPath]);
+        
+        if (editedDeleteError) {
+          logger.warn('Failed to delete edited file from Supabase storage:', editedDeleteError);
+        }
+      }
+
+      // Delete thumbnail from Supabase Storage
+      if (row.hash) {
+        const thumbnailPath = `thumbnails/${row.hash}.jpg`;
+        const { error: thumbDeleteError } = await photosStorage.deletePhotos([thumbnailPath]);
+        
+        if (thumbDeleteError) {
+          logger.warn('Failed to delete thumbnail from Supabase storage:', thumbDeleteError);
+        }
+      }
+
+      // Delete from database
+      await photosDb.deletePhoto(id, req.user.id);
+      res.json({ success: true, message: 'Photo deleted successfully' });
+    } catch (err) {
+      logger.error('Delete photo error:', err);
+      res.status(500).json({ success: false, error: err.message });
+    }
+  });
+  // In state transition endpoint
+  router.patch('/:id/state', authenticateToken, express.json(), async (req, res) => {
+    try {
+      const { id } = req.params;
+      const { state } = req.body;
+      if (!['working', 'inprogress', 'finished'].includes(state)) {
+        return res.status(400).json({ success: false, error: 'Invalid state' });
+      }
+      const row = await photosDb.getPhotoById(id, req.user.id);
+      if (!row) {
+        return res.status(404).json({ success: false, error: 'Photo not found' });
+      }
+      if (row.state !== state) {
+        const result = await photosState.transitionState(row.id, req.user.id, row.state, state, row.filename, row.storage_path);
+        if (!result.success) {
+          return res.status(500).json({ success: false, error: result.error, error_details: result.error_details });
+        }
+      }
+      // After successful move, enqueue AI job if needed
+      if (state === 'inprogress') {
+        try {
+          await photosAi.enqueuePhotoAiJob(row.id);
+        } catch (err) {
+          logger.error('Failed to enqueue AI job:', err && err.message);
+        }
+        return res.status(202).json({ success: true, status: 'processing', message: 'AI processing has been queued.' });
+      }
+      res.json({ success: true });
+    } catch (err) {
+      logger.error('State update error:', err);
+      res.status(500).json({ success: false, error: err.message });
+    }
+  });
+
+  // --- Save captioned image endpoint ---
+  router.post('/save-captioned-image', authenticateToken, async (req, res) => {
+    const { photoId, dataURL, caption, description, keywords, textStyle } = req.body || {};
+    if (!photoId) return res.status(400).json({ success: false, error: 'photoId is required' });
+    if (typeof dataURL !== 'string' || !dataURL.startsWith('data:')) return res.status(400).json({ success: false, error: 'Invalid image dataURL' });
+    const dataUrlMatch = dataURL.match(/^data:(image\/[a-zA-Z0-9.+-]+);base64,(.+)$/);
+    if (!dataUrlMatch) return res.status(400).json({ success: false, error: 'Unsupported data URL format' });
+    const base64Data = dataUrlMatch[2];
+    let imageBuffer;
+    try { imageBuffer = Buffer.from(base64Data, 'base64'); } catch { return res.status(400).json({ success: false, error: 'Unable to decode image data' }); }
+    if (!imageBuffer || imageBuffer.length === 0) return res.status(400).json({ success: false, error: 'Image data is empty' });
+    try {
+      const photoRow = await photosDb.getPhotoById(photoId, req.user.id);
+      if (!photoRow) return res.status(404).json({ success: false, error: 'Photo not found' });
+      // Generate unique edited filename
+      const originalExt = path.extname(photoRow.filename);
+      const baseName = path.basename(photoRow.filename, originalExt);
+      let editedFilename = `${baseName}-edit.jpg`;
+      let counter = 1;
+      
+      // Check if edited filename exists in Supabase Storage
+      while (true) {
+        const { data: existingFiles } = await photosStorage.listPhotos('inprogress', { search: editedFilename });
+        
+        if (!existingFiles || existingFiles.length === 0) {
+          break;
+        }
+        
+        editedFilename = `${baseName}-edit-${counter}.jpg`;
+        counter++;
+      }
+
+      // Save the image buffer as JPEG with rotation applied
+      const orientedBuffer = await photosImage.convertHeicToJpeg(imageBuffer);
+      // Upload edited image to Supabase Storage
+      const editedPath = `inprogress/${editedFilename}`;
+      const { error: uploadError } = await photosStorage.uploadPhoto(editedPath, orientedBuffer, { contentType: 'image/jpeg', duplex: false });
+      if (uploadError) {
+        logger.error('Supabase upload error for edited image:', uploadError);
+        return res.status(500).json({ success: false, error: 'Failed to upload edited image to storage' });
+      }
+      // Generate metadata from the edited buffer
+      let metadata = {};
+      try { metadata = await photosImage.extractMetadata(orientedBuffer); } catch (metaErr) { logger.warn('Failed to parse metadata for edited image', metaErr && metaErr.message); }
+
+      // Merge metadata rather than overwriting: preserve existing GPS/date if extraction is incomplete.
+      let mergedMetadata = metadata || {};
+      try {
+        const { mergeMetadataPreservingLocationAndDate } = require('../media/backgroundProcessor');
+        const existingMeta = typeof photoRow.metadata === 'string' ? JSON.parse(photoRow.metadata || '{}') : (photoRow.metadata || {});
+        mergedMetadata = mergeMetadataPreservingLocationAndDate(existingMeta, metadata);
+      } catch (mergeErr) {
+        logger.warn('Failed to merge metadata for edited image; falling back to extracted metadata only', mergeErr && mergeErr.message);
+      }
+      // Compute hash and update DB
+      const newHash = photosImage.computeHash(orientedBuffer);
+      const now = new Date().toISOString();
+
+      const newCaption = caption !== undefined ? caption : photoRow.caption;
+      const newDescription = description !== undefined ? description : photoRow.description;
+      const newKeywords = keywords !== undefined ? keywords : photoRow.keywords;
+      const newTextStyleJson = textStyle === undefined ? photoRow.text_style : textStyle === null ? null : JSON.stringify(textStyle);
+
+      await photosDb.updatePhoto(photoId, req.user.id, {
+        edited_filename: editedFilename,
+        caption: newCaption,
+        description: newDescription,
+        keywords: newKeywords,
+        text_style: newTextStyleJson,
+        metadata: JSON.stringify(mergedMetadata || {}),
+        hash: newHash,
+        file_size: orientedBuffer.length,
+        storage_path: editedPath,
+        updated_at: now
+      });
+
+      let parsedTextStyle = null;
+      if (newTextStyleJson) {
+        try { parsedTextStyle = JSON.parse(newTextStyleJson); } catch { logger.warn('Failed to parse text_style after save for photo', photoId); }
+      }
+
+      res.json({
+        success: true,
+        id: photoId,
+        filename: photoRow.filename,
+        editedFilename,
+        state: photoRow.state,
+        caption: newCaption,
+        description: newDescription,
+        keywords: newKeywords,
+        textStyle: parsedTextStyle,
+        hash: newHash,
+        fileSize: orientedBuffer.length,
+        metadata: mergedMetadata,
+        storagePath: editedPath
+      });
+    } catch (error) {
+      logger.error('Failed to save captioned image for photo', error);
+      res.status(500).json({ success: false, error: error.message || 'Failed to save captioned image' });
+    }
+  });
+
+  // --- Run AI processing endpoint ---
+  // --- Recheck AI processing endpoint (single-photo) ---
+  // This mirrors the behavior of /:id/run-ai but provides a dedicated
+  // route for client-side single-photo rechecks.
+  router.post('/:id/recheck-ai', authenticateToken, async (req, res) => {
+    try {
+      // Ensure photo exists
+      const photo = await photosDb.getPhotoById(req.params.id, req.user.id);
+      if (!photo) {
+        return res.status(404).json({ error: 'Photo not found' });
+      }
+
+      // Re-extract metadata from the photo file first
+      try {
+        const { downloadFromStorage, extractMetadata, mergeMetadataPreservingLocationAndDate } = require('../media/backgroundProcessor');
+        
+        logger.info(`Re-extracting metadata for photo ${photo.id} during recheck-ai`);
+        
+        let buffer;
+        let filename = photo.filename;
+        
+        try {
+          buffer = await downloadFromStorage(photo.filename);
+        } catch {
+          // Try processed version if original fails
+          const processedFilename = photo.filename.replace(/\.heic$/i, '.heic.processed.jpg');
+          try {
+            buffer = await downloadFromStorage(processedFilename);
+            filename = processedFilename;
+          } catch (err2) {
+            logger.warn(`Could not re-extract metadata for photo ${photo.id}: ${err2.message}`);
+            // Don't fail the whole recheck if metadata extraction fails
+          }
+        }
+
+        if (buffer) {
+          const metadata = await extractMetadata(buffer, filename);
+          if (metadata && Object.keys(metadata).length > 0) {
+            let merged = metadata;
+            try {
+              const existing = typeof photo.metadata === 'string' ? JSON.parse(photo.metadata || '{}') : (photo.metadata || {});
+              merged = mergeMetadataPreservingLocationAndDate(existing, metadata);
+            } catch (mergeErr) {
+              logger.warn(`Metadata merge failed for photo ${photo.id} during recheck-ai: ${mergeErr.message}`);
+              merged = metadata;
+            }
+            await photosDb.updatePhoto(photo.id, req.user.id, {
+              metadata: JSON.stringify(merged)
+            });
+            logger.info(`Successfully re-extracted metadata for photo ${photo.id}`);
+          }
+        }
+      } catch (metadataError) {
+        logger.warn(`Metadata re-extraction failed for photo ${photo.id}:`, metadataError.message);
+        // Continue with AI processing even if metadata extraction fails
+      }
+
+      // Always enqueue a job for rechecking AI metadata
+      const modelOverride = req.body && req.body.model ? req.body.model : (req.query && req.query.model ? req.query.model : null);
+      if (modelOverride && !photosAi.isModelAllowed(modelOverride)) {
+        return res.status(400).json({ success: false, error: 'Unsupported model override', allowedModels: MODEL_ALLOWLIST });
+      }
+      if (modelOverride === 'gpt-image-1') {
+        return res.status(400).json({ success: false, error: 'gpt-image-1 is an image-generation model and cannot be used for text analysis. Choose a vision-analysis model (e.g., gpt-4o-mini).' });
+      }
+      const jobOptions = {};
+      if (modelOverride) jobOptions.modelOverrides = { router: modelOverride, scenery: modelOverride, collectible: modelOverride };
+      try {
+        await photosAi.enqueuePhotoAiJob(photo.id, jobOptions);
+      } catch (err) {
+        logger.error('Failed to enqueue AI recheck job:', err && err.message);
+      }
+      return res.status(202).json({ message: 'AI recheck queued (metadata re-extracted).', photoId: photo.id });
+    } catch (error) {
+      logger.error('Error processing AI recheck:', error);
+      return res.status(500).json({ error: 'Failed to process AI recheck' });
+    }
+  });
+
+  // --- Re-extract metadata endpoint ---
+  // Re-extracts EXIF metadata from the stored photo file
+  router.post('/:id/reextract-metadata', authenticateToken, async (req, res) => {
+    try {
+      const photo = await photosDb.getPhotoById(req.params.id, req.user.id);
+      if (!photo) {
+        return res.status(404).json({ error: 'Photo not found' });
+      }
+
+      const { downloadFromStorage, extractMetadata, mergeMetadataPreservingLocationAndDate } = require('../media/backgroundProcessor');
+      
+      logger.info(`Re-extracting metadata for photo ${photo.id}`);
+      
+      // Try to download the photo
+      let buffer;
+      let filename = photo.filename;
+      
+      try {
+        buffer = await downloadFromStorage(photo.filename);
+      } catch {
+        // Try processed version if original fails
+        const processedFilename = photo.filename.replace(/\.heic$/i, '.heic.processed.jpg');
+        try {
+          buffer = await downloadFromStorage(processedFilename);
+          filename = processedFilename;
+        } catch (err2) {
+          logger.error(`Failed to download photo ${photo.id}:`, err2.message);
+          return res.status(500).json({ error: 'Failed to download photo from storage' });
+        }
+      }
+
+      // Extract metadata
+      const metadata = await extractMetadata(buffer, filename);
+      
+      if (!metadata || Object.keys(metadata).length === 0) {
+        return res.status(500).json({ error: 'Failed to extract metadata' });
+      }
+
+      // Update database (merge to preserve existing GPS/date if extraction is incomplete)
+      let merged = metadata;
+      try {
+        const existing = typeof photo.metadata === 'string' ? JSON.parse(photo.metadata || '{}') : (photo.metadata || {});
+        merged = mergeMetadataPreservingLocationAndDate(existing, metadata);
+      } catch (mergeErr) {
+        logger.warn(`Metadata merge failed for photo ${photo.id} during reextract-metadata: ${mergeErr.message}`);
+        merged = metadata;
+      }
+      await photosDb.updatePhoto(photo.id, req.user.id, {
+        metadata: JSON.stringify(merged)
+      });
+
+      logger.info(`Successfully re-extracted metadata for photo ${photo.id}`);
+      
+      return res.status(200).json({
+        message: 'Metadata re-extracted successfully',
+        photoId: photo.id,
+        hasGPS: !!(merged.latitude && merged.longitude),
+        hasHeading: !!(merged.GPSImgDirection || merged.GPS?.imgDirection)
+      });
+    } catch (error) {
+      logger.error('Error re-extracting metadata:', error);
+      return res.status(500).json({ error: 'Failed to re-extract metadata' });
+    }
+  });
+
+  router.post('/:id/run-ai', authenticateToken, async (req, res) => {
+    try {
+      // Re-fetch the photo to ensure it exists
+      const photo = await photosDb.getPhotoById(req.params.id, req.user.id);
+      if (!photo) {
+        return res.status(404).json({ error: 'Photo not found' });
+      }
+      let modelOverride = req.body && req.body.model ? req.body.model : (req.query && req.query.model ? req.query.model : null);
+      if (modelOverride && !photosAi.isModelAllowed(modelOverride)) {
+        return res.status(400).json({ success: false, error: 'Unsupported model override', allowedModels: MODEL_ALLOWLIST });
+      }
+      if (modelOverride === 'gpt-image-1') {
+        return res.status(400).json({ success: false, error: 'gpt-image-1 is an image-generation model and cannot be used for text analysis. Choose a vision-analysis model (e.g., gpt-4o-mini).' });
+      }
+      const jobOptions = {};
+      if (modelOverride) jobOptions.modelOverrides = { router: modelOverride, scenery: modelOverride, collectible: modelOverride };
+      await photosAi.enqueuePhotoAiJob(photo.id, jobOptions);
+      return res.status(202).json({
+        message: 'AI processing has been queued.',
+        photoId: photo.id,
+      });
+    } catch (error) {
+      logger.error('Error processing AI job:', error);
+      return res.status(500).json({ error: 'Failed to process AI job' });
+    }
+  });
+
+  // --- Display endpoint: Serve images from Supabase Storage ---
+  // Use the specialized image authentication middleware which enforces
+  // CORS headers and explicitly rejects token-in-query parameters.
+  // NOTE: display endpoints were moved to a dedicated router (routes/display.js)
+  // to allow display image URLs to be exposed at '/display/*' while keeping
+  // the photos API mounted under the '/photos' prefix.
+  // For backwards-compatibility when the photos router is mounted at the
+  // application root (some tests mount it directly), re-expose the
+  // '/display/:state/:filename' route here. When the app mounts a dedicated
+  // display router at root, that router will handle '/display/*' in normal
+  // server operation; keeping this here avoids breaking tests that mount the
+  // photos router standalone.
+  router.get('/display/:state/:filename', authenticateImageRequest, async (req, res) => {
+    try {
+      const { state, filename } = req.params;
+      // 1-year cache for immutable assets (hashed thumbnails, static images)
+      const IMAGE_CACHE_MAX_AGE = parseInt(process.env.IMAGE_CACHE_MAX_AGE, 10) || 31536000;
+
+      if (state === 'thumbnails') {
+        const storagePath = `thumbnails/${filename}`;
+        const { data, error } = await photosStorage.downloadPhoto(storagePath);
+        if (error) {
+          logger.error('❌ Thumbnail download error:', error, { filename });
+          return res.status(404).json({ error: 'Thumbnail not found in storage' });
+        }
+        // Stream the response instead of buffering the entire file
+        const stream = Readable.from(data.stream());
+        res.set('Content-Type', 'image/jpeg');
+        res.set('Cache-Control', `public, max-age=${IMAGE_CACHE_MAX_AGE}, immutable`);
+        stream.pipe(res);
+        return;
+      }
+
+      const photo = await photosDb.getPhotoByFilenameAndState(filename, state, req.user.id);
+
+      if (!photo) {
+        logger.error('Display endpoint 404: Photo not found', { filename, state });
+        return res.status(404).json({ error: 'Photo not found' });
+      }
+
+      const storagePath = photo.storage_path || `${state}/${filename}`;
+      const { data, error} = await photosStorage.downloadPhoto(storagePath);
+      if (error) {
+        logger.error('Supabase download error:', error, { filename, state });
+        return res.status(404).json({ error: 'File not found in storage' });
+      }
+
+      // Determine file type to decide streaming vs buffering strategy
+      const ext = path.extname(filename).toLowerCase();
+      let contentType = 'image/jpeg';
+      if (ext === '.png') contentType = 'image/png';
+      else if (ext === '.gif') contentType = 'image/gif';
+      else if (ext === '.heic' || ext === '.heif') contentType = 'image/heic';
+
+      let etag = photo.hash || (photo.file_size ? `${photo.file_size}` : '') + (photo.updated_at ? `-${photo.updated_at}` : '');
+      if (etag) res.set('ETag', etag);
+      res.set('Cache-Control', `public, max-age=${IMAGE_CACHE_MAX_AGE}, immutable`);
+
+      // HEIC requires buffering for conversion, but all other formats can stream
+      if (ext === '.heic' || ext === '.heif') {
+        try {
+          // HEIC conversion requires the full buffer - acceptable trade-off for this format
+          const buffer = await data.arrayBuffer();
+          const fileBuffer = Buffer.from(buffer);
+          const jpegBuffer = await photosImage.convertHeicToJpeg(fileBuffer);
+          res.set('Content-Type', 'image/jpeg');
+          res.send(jpegBuffer);
+        } catch (conversionError) {
+          logger.error('HEIC conversion error:', conversionError, { filename });
+          res.status(500).json({ error: 'Failed to convert HEIC image' });
+        }
+      } else {
+        // Stream the response to avoid memory exhaustion on large files
+        const stream = Readable.from(data.stream());
+        res.set('Content-Type', contentType);
+        stream.pipe(res);
+      }
+
+    } catch (err) {
+      logger.error('Display endpoint error:', err, { filename: req?.params?.filename });
+      res.status(500).json({ error: 'Internal server error' });
+    }
+  });
+
+  // Debug: list registered routes on the photos router to help diagnose missing endpoints
+  try {
+    const routes = (router.stack || []).filter(Boolean).map((s) => {
+      try { return s.route ? (s.route.path || s.route.stack && s.route.stack[0] && s.route.stack[0].method ? s.route.stack[0].method + ' ' + s.route.path : s.route.path) : (s.name || 'middleware'); } catch { return 'unknown'; }
+    });
+    logger.info('[routes] photos router routes:', routes);
+  } catch (e) {
+    logger.warn('[routes] failed to enumerate photos router routes', e && e.message);
+  }
+
+  return router;
+};
+

@@ -70,6 +70,30 @@ User uploads photo
   → Frontend polls for completion, displays results
 ```
 
+### AI Processing Status (Polling)
+- The UI shows **Analyzing...** while the backend reports `photo.state === 'inprogress'`.
+- The client polls `GET /photos/:id` (with cache-busting query params) until `state` is terminal (`finished` or `error`).
+- Polling is implemented in the Zustand store (`startAiPolling` / `stopAiPolling`) as the **single source of truth** to avoid competing pollers and stale UI state.
+
+### AI Poll Trace (Debug)
+This repo includes a flag-gated client trace to debug cases where the UI stays stuck on **Analyzing...** until refresh.
+
+Enable debug:
+- In DevTools console: `localStorage.setItem('debug_ai_poll','1'); location.reload();`
+- Or at build time: `VITE_DEBUG_AI_POLL=1`
+
+Reproduce:
+- Trigger AI processing for a photo.
+- Wait for it to complete (or to get stuck).
+
+Export:
+- In DevTools console: `copy(window.dumpAiPollTrace())`
+- Paste into `AI_POLL_TRACE_OUTPUT.txt` (a placeholder file can be generated via `node scripts/dumpAiPollTrace.mjs`).
+
+What to look for:
+- Stop reason: `store_poll_stop_decision` / `store_poll_stop`
+- UI decision: `ui_photoCard_status` / `ui_photoDetail_status` / `ui_photoEditPage_snapshot`
+
 **Why this matters:** Traditional apps write to disk, process, then upload—creating I/O bottlenecks under load. Streaming directly to cloud storage eliminates this entirely.
 
 ### The AI Brain (LangGraph)

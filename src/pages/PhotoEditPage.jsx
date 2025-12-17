@@ -2,7 +2,7 @@ import React, { useEffect } from 'react';
 import { useParams, useNavigate, useOutletContext } from 'react-router-dom';
 import EditPage from '../EditPage.tsx';
 import useStore from '../store.js';
-import useAIPolling from '../hooks/useAIPolling.jsx';
+import { aiPollDebug } from '../utils/aiPollDebug';
 
 /**
  * PhotoEditPage - Route component for editing a photo (/photos/:id/edit)
@@ -13,26 +13,38 @@ export default function PhotoEditPage() {
   const navigate = useNavigate();
   const { aiDependenciesReady } = useOutletContext();
 
-  // Enable AI polling on this page (not just gallery)
-  useAIPolling();
-
   // Get photo data and handlers from store
   const photos = useStore((state) => state.photos);
   const setBanner = useStore((state) => state.setBanner);
   const setEditingMode = useStore((state) => state.setEditingMode);
   const setActivePhotoId = useStore((state) => state.setActivePhotoId);
-  const pollingPhotoId = useStore((state) => state.pollingPhotoId);
-  const setPollingPhotoId = useStore((state) => state.setPollingPhotoId);
+  const pollingPhotoIds = useStore((state) => state.pollingPhotoIds);
+  const startAiPolling = useStore((state) => state.startAiPolling);
   
   const photo = photos.find((p) => String(p.id) === String(id));
+
+  useEffect(() => {
+    aiPollDebug('ui_photoEditPage_snapshot', {
+      photoId: photo?.id ?? id ?? null,
+      photoState: photo?.state ?? null,
+      isPolling: !!(photo?.id && pollingPhotoIds && pollingPhotoIds.has && pollingPhotoIds.has(photo.id)),
+      derivedLabel:
+        photo?.state === 'inprogress'
+          ? 'Analyzing...'
+          : (photo?.state === 'finished' ? 'Done' : (photo?.state ?? 'Unknown')),
+    });
+  }, [photo?.id, photo?.state, id, pollingPhotoIds]);
 
   // Auto-start polling if photo appears to still be processing
   // (has placeholder caption or empty AI metadata)
   useEffect(() => {
     if (!photo || !photo.id) return;
-    
     // Skip if already polling this photo
-    if (pollingPhotoId === photo.id) return;
+    try {
+      if (pollingPhotoIds && pollingPhotoIds.has && pollingPhotoIds.has(photo.id)) return;
+    } catch {
+      // ignore
+    }
     
     // Check if photo looks like it's still being processed
     const caption = (photo.caption || '').trim().toLowerCase();
@@ -46,10 +58,19 @@ export default function PhotoEditPage() {
       (description === '' && caption === '');
     
     if (isPlaceholder) {
-      console.log('[PhotoEditPage] Auto-starting polling for photo', photo.id, '(appears to be processing)');
-      setPollingPhotoId(photo.id);
+      aiPollDebug('ui_photoEditPage_autoStartPolling', {
+        photoId: photo.id,
+        reason: 'placeholder_caption_or_empty_ai_fields',
+        captionLen: typeof photo.caption === 'string' ? photo.caption.length : null,
+        descriptionLen: typeof photo.description === 'string' ? photo.description.length : null,
+      });
+      try {
+        startAiPolling(photo.id);
+      } catch {
+        // ignore polling start errors
+      }
     }
-  }, [photo, pollingPhotoId, setPollingPhotoId]);
+  }, [photo, pollingPhotoIds, startAiPolling]);
 
   const handleClose = () => {
     setEditingMode(null);
@@ -97,7 +118,7 @@ export default function PhotoEditPage() {
       const { recheckPhotoAI } = await import('../api.js');
       const response = await recheckPhotoAI(photoId, model);
       setBanner({ message: 'AI recheck initiated. Polling for results...', severity: 'info' });
-      useStore.getState().setPollingPhotoId(photoId);
+      useStore.getState().startAiPolling(photoId);
       return response;
     } catch (error) {
       setBanner({ message: `AI recheck failed: ${error?.message || 'unknown'}`, severity: 'error' });

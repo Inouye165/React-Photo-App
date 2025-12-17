@@ -1,4 +1,4 @@
-import React, { useState } from 'react';
+import React, { useEffect, useState } from 'react';
 import {
   Calendar,
   HardDrive,
@@ -12,6 +12,7 @@ import type { Photo } from '../types/photo';
 import formatFileSize from '../utils/formatFileSize.js';
 import { toUrl } from '../utils/toUrl.js';
 import AuthenticatedImage from './AuthenticatedImage.jsx';
+import { aiPollDebug } from '../utils/aiPollDebug';
 
 type PhotoCardPhoto = Omit<Photo, 'state' | 'url'> & {
   url?: string;
@@ -126,6 +127,15 @@ export default function PhotoCard({
   const date = formatDate(photo);
   const fileSize = formatFileSize(photo.file_size);
   const access = formatAccessLevel(accessLevel);
+
+  useEffect(() => {
+    aiPollDebug('ui_photoCard_status', {
+      photoId: photo?.id,
+      photoState: photo?.state ?? null,
+      isPolling,
+      derivedLabel: status?.label ?? null,
+    });
+  }, [photo?.id, photo?.state, isPolling, status?.label]);
 
   // Determine if user can perform write actions (RWX, W, or legacy 'write')
   const canWrite =

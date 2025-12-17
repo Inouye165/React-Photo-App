@@ -9,7 +9,6 @@ import usePhotoManagement from '../hooks/usePhotoManagement.js';
 import useStore from '../store.js';
 import { useAuth } from '../contexts/AuthContext.jsx';
 import useSignedThumbnails from '../hooks/useSignedThumbnails.js';
-import useAIPolling from '../hooks/useAIPolling.jsx';
 
 /**
  * PhotoGalleryPage - Main gallery view showing the photo card grid
@@ -75,8 +74,6 @@ export default function PhotoGalleryPage() {
 
   const { getSignedUrl } = useSignedThumbnails(photos, session?.access_token);
   const privilegesMap = usePhotoPrivileges(photos);
-
-  useAIPolling();
 
   const {
     filteredLocalPhotos,

@@ -36,12 +36,19 @@ describe('store moveToInprogress', () => {
     });
   });
 
+  const stopAllPolling = () => {
+    try { useStore.getState().stopAiPolling(1); } catch { /* ignore */ }
+    try { useStore.getState().stopAiPolling(2); } catch { /* ignore */ }
+  };
+
   it('updates the photo state to inprogress', async () => {
     await useStore.getState().moveToInprogress(1);
 
     const photo = useStore.getState().photos.find((p: any) => p.id === 1);
     expect(photo).toBeTruthy();
     expect(photo.state).toBe('inprogress');
+
+    stopAllPolling();
   });
 
   it('does not remove the photo from the photos array', async () => {
@@ -51,6 +58,8 @@ describe('store moveToInprogress', () => {
 
     const after = useStore.getState().photos.length;
     expect(after).toBe(before);
+
+    stopAllPolling();
   });
 
   it('adds the id to pollingPhotoIds and sets pollingPhotoId', async () => {
@@ -60,11 +69,15 @@ describe('store moveToInprogress', () => {
     expect(state.pollingPhotoId).toBe(1);
     expect(state.pollingPhotoIds).toBeInstanceOf(Set);
     expect(state.pollingPhotoIds.has(1)).toBe(true);
+
+    stopAllPolling();
   });
 
   it('calls updatePhotoState(id, "inprogress")', async () => {
     await useStore.getState().moveToInprogress(1);
 
     expect(updatePhotoState).toHaveBeenCalledWith(1, 'inprogress');
+
+    stopAllPolling();
   });
 });
