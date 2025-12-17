@@ -272,6 +272,9 @@ describe('Thumbnail URL API - Integration Tests', () => {
         .expect(200);
 
       expect(imageResponse.headers['content-type']).toBe('image/jpeg');
+      expect(imageResponse.headers['cache-control']).toContain('private');
+      expect(imageResponse.headers['cache-control']).toContain('immutable');
+      expect(imageResponse.headers['cache-control']).toContain('max-age=31536000');
       expect(imageResponse.body).toBeDefined();
     });
 
