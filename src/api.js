@@ -4,7 +4,7 @@
  */
 export async function fetchCollectibles(photoId) {
   const url = `${API_BASE_URL}/photos/${photoId}/collectibles`;
-  const res = await apiLimiter(() => fetchWithNetworkFallback(url, { headers: getAuthHeaders(), credentials: 'include' }));
+  const res = await apiLimiter(() => fetchWithNetworkFallback(url, { headers: getHeadersForGetRequest(), credentials: 'include' }));
   if (handleAuthError(res)) return;
   if (!res.ok) throw new Error('Failed to fetch collectibles: ' + res.status);
   const json = await res.json();
@@ -97,6 +97,12 @@ import { supabase } from './supabaseClient';
 // This is updated by setAuthToken (called from AuthContext on session changes)
 let _cachedAccessToken = null;
 
+// Cookie-session mode (browser optimization)
+// When active, GET requests should avoid Authorization/Content-Type so they
+// qualify as "simple requests" and skip CORS preflight.
+let _cookieSessionActive = false;
+let _cookieSessionSyncPromise = null;
+
 /**
  * Set the current access token for API requests.
  * Called by AuthContext when session changes.
@@ -105,6 +111,84 @@ let _cachedAccessToken = null;
  */
 export function setAuthToken(token) {
   _cachedAccessToken = token;
+
+  // If we no longer have an access token, treat cookie session as inactive.
+  // Logout flows clear the cookie server-side; this keeps client behavior consistent.
+  if (!token) {
+    _cookieSessionActive = false;
+    _cookieSessionSyncPromise = null;
+  }
+}
+
+/**
+ * Mark whether the browser has an active httpOnly auth cookie session.
+ * When active, GET requests omit Authorization/Content-Type to avoid preflight.
+ * @param {boolean} active
+ */
+export function setCookieSessionActive(active) {
+  _cookieSessionActive = Boolean(active);
+  if (!_cookieSessionActive) {
+    _cookieSessionSyncPromise = null;
+  }
+}
+
+/**
+ * @returns {boolean}
+ */
+export function isCookieSessionActive() {
+  return _cookieSessionActive;
+}
+
+function getHeadersForGetRequest() {
+  // Cookie auth path: rely on credentials/include + httpOnly cookie.
+  // Omit headers entirely to keep the request "simple" (no preflight).
+  if (_cookieSessionActive) return undefined;
+
+  // Bearer auth path: only send Authorization (no Content-Type for GET).
+  if (_cachedAccessToken) return { Authorization: `Bearer ${_cachedAccessToken}` };
+
+  return undefined;
+}
+
+/**
+ * Ensure the backend has set the httpOnly auth cookie for this session.
+ * Uses the Supabase access token as proof and sets an httpOnly cookie.
+ *
+ * This call may trigger a preflight (Authorization header), but it should run
+ * once per session; subsequent GETs can be simple requests.
+ *
+ * @param {string|null} [accessToken]
+ * @returns {Promise<boolean>}
+ */
+export async function ensureAuthCookie(accessToken = _cachedAccessToken) {
+  if (_cookieSessionActive) return true;
+  if (!accessToken) return false;
+  if (_cookieSessionSyncPromise) return _cookieSessionSyncPromise;
+
+  const url = `${API_BASE_URL}/api/auth/session`;
+  _cookieSessionSyncPromise = (async () => {
+    try {
+      const res = await fetchWithNetworkFallback(url, {
+        method: 'POST',
+        headers: { Authorization: `Bearer ${accessToken}` },
+        credentials: 'include'
+      });
+
+      if (!res || !res.ok) return false;
+      const json = await res.json().catch(() => ({}));
+      const ok = Boolean(json && json.success);
+      if (ok) _cookieSessionActive = true;
+      return ok;
+    } catch {
+      return false;
+    }
+  })();
+
+  try {
+    return await _cookieSessionSyncPromise;
+  } finally {
+    _cookieSessionSyncPromise = null;
+  }
 }
 
 /**
@@ -520,7 +604,7 @@ export async function getPhotoStatus() {
   const url = `${API_BASE_URL}/photos/status`;
   try {
     const response = await fetchWithTimeout(url, { 
-      headers: getAuthHeaders(), 
+      headers: getHeadersForGetRequest(), 
       credentials: 'include' 
     }, 10000);
     
@@ -567,7 +651,7 @@ export async function getPhotos(serverUrlOrEndpoint = `${API_BASE_URL}/photos`) 
 
   const fetchPromise = (async () => {
   // Protect UI from indefinite hangs if backend is not responding.
-  const response = await fetchWithTimeout(url, { headers: getAuthHeaders(), credentials: 'include' }, 20000);
+  const response = await fetchWithTimeout(url, { headers: getHeadersForGetRequest(), credentials: 'include' }, 20000);
     if (handleAuthError(response)) return; if (!response.ok) throw new Error('Failed to fetch photos: ' + response.status);
     return await response.json();
   })();
@@ -591,7 +675,7 @@ export async function fetchModelAllowlist(serverUrl = `${API_BASE_URL}`) {
 
   const url = `${serverUrl}/photos/models`;
   const fetchPromise = (async () => {
-    const response = await apiLimiter(() => fetchWithNetworkFallback(url, { method: 'GET', headers: getAuthHeaders(), credentials: 'include' }));
+    const response = await apiLimiter(() => fetchWithNetworkFallback(url, { method: 'GET', headers: getHeadersForGetRequest(), credentials: 'include' }));
     if (handleAuthError(response)) {
       const payload = { models: [], source: 'auth', updatedAt: null };
       root[CACHE_KEY] = { ts: Date.now(), data: payload };
@@ -623,7 +707,7 @@ export async function fetchModelAllowlist(serverUrl = `${API_BASE_URL}`) {
 
 export async function getDependencyStatus(serverUrl = `${API_BASE_URL}`) {
   const url = `${serverUrl}/photos/dependencies`;
-  const response = await apiLimiter(() => fetchWithNetworkFallback(url, { method: 'GET', headers: getAuthHeaders(), credentials: 'include' }));
+  const response = await apiLimiter(() => fetchWithNetworkFallback(url, { method: 'GET', headers: getHeadersForGetRequest(), credentials: 'include' }));
   if (handleAuthError(response)) return null;
   if (!response.ok) {
     throw new Error('Failed to fetch dependency status: ' + response.status);
@@ -714,7 +798,7 @@ export async function getPhoto(photoId, options = {}, serverUrl = `${API_BASE_UR
       url += (url.includes('?') ? '&' : '?') + `_cb=${cb}`;
     }
 
-    const res = await fetchWithNetworkFallback(url, { method: 'GET', headers: getAuthHeaders(), credentials: 'include' });
+    const res = await fetchWithNetworkFallback(url, { method: 'GET', headers: getHeadersForGetRequest(), credentials: 'include' });
     if (handleAuthError(res)) {
       const err = new Error('Auth error');
       try { err.status = res.status; } catch { /* ignore */ }
