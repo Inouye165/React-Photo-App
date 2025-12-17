@@ -1,4 +1,4 @@
-import { useMemo } from 'react';
+import { useEffect, useMemo } from 'react';
 import { Link, useNavigate, useOutletContext, useParams } from 'react-router-dom';
 import { ArrowLeft, Image as ImageIcon, Pencil } from 'lucide-react';
 import type { Photo } from '../types/photo';
@@ -7,6 +7,7 @@ import useStore from '../store.js';
 import { useProtectedImageBlobUrl } from '../hooks/useProtectedImageBlobUrl.js';
 import LocationMapPanel from '../components/LocationMapPanel.jsx';
 import formatFileSize from '../utils/formatFileSize.js';
+import { aiPollDebug } from '../utils/aiPollDebug';
 
 function normalizeClassification(photo: Photo | undefined): string {
   const raw = (photo?.classification || photo?.ai_analysis?.classification || '')
@@ -101,7 +102,27 @@ export default function PhotoDetailPage() {
   useOutletContext<unknown>();
 
   const photos = useStore((state) => state.photos) as Photo[];
+  const pollingPhotoIds = useStore((state) => state.pollingPhotoIds) as Set<unknown>;
   const photo = useMemo(() => photos.find((p) => String(p.id) === String(id)), [photos, id]);
+
+  const isPolling = useMemo(() => {
+    try {
+      return !!photo?.id && (pollingPhotoIds instanceof Set) && pollingPhotoIds.has(photo.id);
+    } catch {
+      return false;
+    }
+  }, [pollingPhotoIds, photo?.id]);
+
+  const stateLabel = useMemo(() => formatStateLabel(photo?.state), [photo?.state]);
+
+  useEffect(() => {
+    aiPollDebug('ui_photoDetail_status', {
+      photoId: photo?.id ?? id ?? null,
+      photoState: photo?.state ?? null,
+      isPolling,
+      derivedLabel: stateLabel,
+    });
+  }, [photo?.id, photo?.state, id, isPolling, stateLabel]);
 
   const title = getDisplayTitle(photo);
   const classification = normalizeClassification(photo);

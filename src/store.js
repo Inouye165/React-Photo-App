@@ -1,6 +1,7 @@
 import { create } from 'zustand'
 import { getPhoto, updatePhotoState } from './api.js'
 import { createUploadPickerSlice } from './store/uploadPickerSlice.js'
+import { aiPollDebug } from './utils/aiPollDebug'
 
 /** @typedef {import('./types/photo').Photo} Photo */
 
@@ -12,7 +13,17 @@ const debug = (...args) => {
 
 // Module-level timer registry for AI polling so we can stop polling
 // when analysis completes.
+//
+// IMPORTANT: This store-level poller is the single source of truth.
+// Avoid adding additional polling loops in hooks/components (they can
+// race, stop early, and leave photo.state stale).
 const aiPollingTimers = new Map();
+
+const getErrorStatus = (err) => {
+  if (!err) return null;
+  const status = err.status ?? err?.response?.status;
+  return Number.isFinite(status) ? status : null;
+};
 
 const isAiAnalysisComplete = (photo) => {
   if (!photo) return false;
@@ -154,13 +165,35 @@ const useStore = create((set, get) => ({
     if (!updatedPhoto || typeof updatedPhoto.id === 'undefined') return {};
     const normalizeId = (value) => value != null ? String(value) : value;
     const targetId = normalizeId(updatedPhoto.id);
-    const photos = state.photos.map(p => {
+    const prevPhotos = state.photos;
+    let found = false;
+    /** @type {any} */
+    let prevPhoto = null;
+    /** @type {any} */
+    let nextPhoto = null;
+
+    const photos = prevPhotos.map(p => {
       if (normalizeId(p.id) !== targetId) return p;
+      found = true;
+      prevPhoto = p;
       const merged = { ...p, ...updatedPhoto };
       merged.id = p.id;
+      nextPhoto = merged;
       debug('[store] updatePhoto merged', { prev: p, next: merged });
       return merged;
     });
+
+    const oldState = found ? prevPhoto?.state : null;
+    const newState = found ? nextPhoto?.state : null;
+    aiPollDebug('store_updatePhoto', {
+      photoId: updatedPhoto.id,
+      found,
+      oldState,
+      newState,
+      arrayRefChanged: prevPhotos !== photos,
+      objectRefChanged: found ? prevPhoto !== nextPhoto : null,
+    });
+
     debug('[store] updatePhoto', { id: updatedPhoto.id, photos });
     return { photos };
   }),
@@ -191,15 +224,24 @@ const useStore = create((set, get) => ({
     return { pollingPhotoIds: new Set(filtered) };
   }),
 
-  // Start polling /photos/:id until AI metadata is present.
+  // Start polling /photos/:id until the backend reports a terminal state.
   startAiPolling: (id, opts = {}) => {
     const key = String(id);
-    if (aiPollingTimers.has(key)) return;
+    if (aiPollingTimers.has(key)) {
+      aiPollDebug('store_poll_start_skipped_already_running', { photoId: id });
+      return;
+    }
 
-    const intervalMs = Number.isFinite(opts?.intervalMs) ? opts.intervalMs : 1500;
-    const timeoutMs = Number.isFinite(opts?.timeoutMs) ? opts.timeoutMs : 180000;
+    const baseIntervalMs = Number.isFinite(opts?.intervalMs) ? opts.intervalMs : 1500;
+    const maxIntervalMs = Number.isFinite(opts?.maxIntervalMs) ? opts.maxIntervalMs : 15000;
+    const softTimeoutMs = Number.isFinite(opts?.softTimeoutMs) ? opts.softTimeoutMs : 180000;
+    // Treat hardTimeoutMs as the total polling timeout (aka timeoutMs).
+    const hardTimeoutMs = Number.isFinite(opts?.hardTimeoutMs) ? opts.hardTimeoutMs : 1800000;
     const startedAt = Date.now();
     let inFlight = false;
+    let consecutiveErrors = 0;
+    let attempt = 0;
+    let nextAllowedAt = 0;
 
     // Ensure store indicates polling for this id
     set((state) => {
@@ -210,17 +252,162 @@ const useStore = create((set, get) => ({
       return { pollingPhotoId: id, pollingPhotoIds: next };
     });
 
+    // Mark active immediately so repeated calls don't start competing pollers
+    // before the first tick has a chance to schedule the next timeout.
+    aiPollingTimers.set(key, null);
+
+    aiPollDebug('store_poll_start', {
+      photoId: id,
+      baseIntervalMs,
+      maxIntervalMs,
+      softTimeoutMs,
+      hardTimeoutMs,
+    });
+
+    aiPollDebug('poll_start', {
+      photoId: id,
+      intervalMs: baseIntervalMs,
+      timeoutMs: hardTimeoutMs,
+    });
+
+    const stopWithReason = (stopReason, extra = {}) => {
+      aiPollDebug('store_poll_stop_decision', { photoId: id, stopReason, ...extra });
+      debug('[store] stopAiPolling', { id, reason: stopReason, ...extra });
+      get().stopAiPolling(id, stopReason);
+    };
+
+    const nextDelayMs = () => {
+      if (consecutiveErrors <= 0) return baseIntervalMs;
+      const backoff = baseIntervalMs * Math.pow(2, Math.min(consecutiveErrors, 5));
+      return Math.min(maxIntervalMs, Math.max(baseIntervalMs, backoff));
+    };
+
+    const scheduleNext = (delayMs) => {
+      const timer = setTimeout(tick, delayMs);
+      aiPollingTimers.set(key, timer);
+    };
+
     const tick = async () => {
-      if (inFlight) return;
-      if (Date.now() - startedAt > timeoutMs) {
-        get().stopAiPolling(id);
+      const elapsedMs = Date.now() - startedAt;
+      if (inFlight) {
+        aiPollDebug('store_poll_tick_skipped_inFlight', {
+          photoId: id,
+          attempt,
+          elapsedMs,
+          inFlight: true,
+        });
+        // Ensure we don't stall if a tick fires while a request is still in-flight.
+        scheduleNext(baseIntervalMs);
+        return;
+      }
+
+      if (nextAllowedAt && Date.now() < nextAllowedAt) {
+        const delayMs = Math.max(0, nextAllowedAt - Date.now());
+        aiPollDebug('store_poll_tick_skipped_backoff', {
+          photoId: id,
+          attempt,
+          elapsedMs,
+          backoffDelayMs: delayMs,
+        });
+        scheduleNext(delayMs);
+        return;
+      }
+
+      if (elapsedMs > hardTimeoutMs) {
+        // Explicit (non-silent) hard timeout: stop polling and ensure we don't
+        // leave the UI stuck showing "Analyzing..." forever.
+        try {
+          const existing = (get().photos || []).find((p) => String(p?.id) === String(id));
+          if (existing && existing.state === 'inprogress') {
+            get().updatePhoto({ ...existing, state: 'error' });
+          }
+        } catch {
+          // ignore local update errors
+        }
+        aiPollDebug('poll_timeout', { photoId: id, elapsedMs, timeoutMs: hardTimeoutMs });
+        stopWithReason('timeout', { elapsedMs, hardTimeoutMs });
         return;
       }
       inFlight = true;
+      attempt += 1;
+
+      aiPollDebug('store_poll_tick', {
+        photoId: id,
+        attempt,
+        elapsedMs,
+        inFlight: true,
+      });
+
+      aiPollDebug('poll_tick', { photoId: id, attempt, elapsedMs });
+
       try {
         const result = await getPhoto(id, { cacheBust: true });
         const photo = result && result.photo ? result.photo : null;
-        if (!photo) return;
+        if (!photo) {
+          // Treat missing payload as transient; keep polling with backoff.
+          const nextDelay = nextDelayMs();
+          consecutiveErrors += 1;
+          const backoffMs = Math.min(5000, nextDelay);
+          nextAllowedAt = Date.now() + backoffMs;
+
+          aiPollDebug('store_poll_result', {
+            photoId: id,
+            attempt,
+            elapsedMs,
+            outcome: 'error',
+            errorType: 'empty_payload',
+            consecutiveErrors,
+            nextDelayMs: nextDelay,
+          });
+
+          aiPollDebug('poll_fetch_err', {
+            photoId: id,
+            message: 'Empty payload',
+            consecutiveErrors,
+          });
+
+          if (consecutiveErrors >= 5) {
+            stopWithReason('unexpected_error', { consecutiveErrors, lastError: 'empty_payload' });
+            return;
+          }
+
+          scheduleNext(nextDelay);
+          return;
+        }
+
+        consecutiveErrors = 0;
+        nextAllowedAt = 0;
+
+        const stateValue = photo?.state ?? null;
+        const updatedAt = photo?.updated_at ?? photo?.updatedAt ?? null;
+        const captionLen = typeof photo?.caption === 'string' ? photo.caption.length : null;
+        const descriptionLen = typeof photo?.description === 'string' ? photo.description.length : null;
+        const keywordLen = Array.isArray(photo?.keywords)
+          ? photo.keywords.length
+          : (typeof photo?.keywords === 'string' ? photo.keywords.length : null);
+
+        const isTerminal = stateValue === 'finished' || stateValue === 'error';
+        const isAiComplete = isAiAnalysisComplete(photo);
+
+        aiPollDebug('store_poll_result', {
+          photoId: id,
+          attempt,
+          elapsedMs,
+          outcome: 'ok',
+          state: stateValue,
+          updated_at: updatedAt,
+          captionLen,
+          descriptionLen,
+          keywordLen,
+          isTerminal,
+          isAiComplete,
+        });
+
+        aiPollDebug('poll_fetch_ok', {
+          photoId: id,
+          state: stateValue,
+          updated_at: updatedAt,
+        });
 
         // Merge the latest photo data into the store so UI updates.
         try {
@@ -229,28 +416,123 @@ const useStore = create((set, get) => ({
           // ignore update errors
         }
 
-        if (isAiAnalysisComplete(photo)) {
-          get().stopAiPolling(id);
+        if (isTerminal) {
+          aiPollDebug('poll_complete', { photoId: id, finalState: stateValue });
+          stopWithReason('terminal_state', { state: stateValue, updated_at: updatedAt });
+          return;
         }
-      } catch {
-        // Network or auth errors: stop polling to avoid an infinite spinner
-        get().stopAiPolling(id);
+
+        if (isAiComplete) {
+          aiPollDebug('poll_complete', { photoId: id, finalState: stateValue });
+          stopWithReason('ai_complete_predicate', { state: stateValue, updated_at: updatedAt });
+          return;
+        }
+
+        // Past the soft timeout, slow down polling but keep going.
+        if (elapsedMs > softTimeoutMs) {
+          scheduleNext(Math.min(maxIntervalMs, Math.max(baseIntervalMs, 5000)));
+          return;
+        }
+
+        scheduleNext(baseIntervalMs);
+      } catch (err) {
+        if (err && (err.name === 'AbortError' || err.code === 'ERR_CANCELED')) {
+          // Request was canceled; do not count as a polling failure.
+          aiPollDebug('poll_fetch_err', {
+            photoId: id,
+            message: 'Request aborted',
+            consecutiveErrors,
+          });
+          scheduleNext(baseIntervalMs);
+          return;
+        }
+
+        const status = getErrorStatus(err);
+        if (status === 401 || status === 403) {
+          aiPollDebug('store_poll_result', {
+            photoId: id,
+            attempt,
+            elapsedMs,
+            outcome: 'error',
+            errorType: 'http',
+            status,
+          });
+          aiPollDebug('poll_fetch_err', {
+            photoId: id,
+            message: `HTTP ${status}`,
+            consecutiveErrors,
+          });
+          stopWithReason('auth_error', { status });
+          return;
+        }
+        if (status === 404) {
+          aiPollDebug('store_poll_result', {
+            photoId: id,
+            attempt,
+            elapsedMs,
+            outcome: 'error',
+            errorType: 'http',
+            status,
+          });
+          aiPollDebug('poll_fetch_err', {
+            photoId: id,
+            message: `HTTP ${status}`,
+            consecutiveErrors,
+          });
+          stopWithReason('not_found', { status });
+          return;
+        }
+
+        consecutiveErrors += 1;
+        const nextDelay = nextDelayMs();
+        const backoffMs = Math.min(5000, nextDelay);
+        nextAllowedAt = Date.now() + backoffMs;
+
+        aiPollDebug('store_poll_result', {
+          photoId: id,
+          attempt,
+          elapsedMs,
+          outcome: 'error',
+          errorType: 'unexpected_error',
+          status,
+          consecutiveErrors,
+          nextDelayMs: nextDelay,
+        });
+
+        aiPollDebug('poll_fetch_err', {
+          photoId: id,
+          message: (err && typeof err.message === 'string') ? err.message : 'Unknown error',
+          consecutiveErrors,
+        });
+
+        if (consecutiveErrors >= 5) {
+          stopWithReason('unexpected_error', { consecutiveErrors });
+          return;
+        }
+
+        scheduleNext(nextDelay);
       } finally {
         inFlight = false;
       }
     };
 
-    const timer = setInterval(tick, intervalMs);
-    aiPollingTimers.set(key, timer);
-    // Kick off immediately
+    // Kick off immediately and then self-schedule.
     tick();
   },
 
-  stopAiPolling: (id) => {
+  stopAiPolling: (id, stopReason) => {
     const key = String(id);
+    aiPollDebug('store_poll_stop', {
+      photoId: id,
+      stopReason: stopReason || 'manual_stop',
+      hadTimer: aiPollingTimers.has(key),
+    });
     const timer = aiPollingTimers.get(key);
     if (timer) {
       try { clearInterval(timer); } catch { /* ignore */ }
+      try { clearTimeout(timer); } catch { /* ignore */ }
+    }
+    if (aiPollingTimers.has(key)) {
       aiPollingTimers.delete(key);
     }
 
