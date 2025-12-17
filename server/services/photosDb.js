@@ -5,7 +5,7 @@
  */
 module.exports = function createPhotosDb({ db }) {
   return {
-    async listPhotos(userId, state) {
+    async listPhotos(userId, state, options = {}) {
       // OPTIMIZED: Select only lite columns for list view to reduce payload size
       // Heavy fields (poi_analysis, ai_model_history, text_style, storage_path, edited_filename)
       // are excluded - use getPhotoById for full detail view
@@ -15,6 +15,10 @@ module.exports = function createPhotosDb({ db }) {
       ).where('user_id', userId);
       if (state === 'working' || state === 'inprogress' || state === 'finished') {
         query = query.where({ state });
+      }
+      const timeoutMs = Number(options && options.timeoutMs);
+      if (Number.isFinite(timeoutMs) && timeoutMs > 0 && typeof query.timeout === 'function') {
+        query = query.timeout(timeoutMs, { cancel: true });
       }
       return await query;
     },

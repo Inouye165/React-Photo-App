@@ -90,6 +90,19 @@ afterEach(() => {
   // Additional cleanup if needed
 });
 
+afterAll(async () => {
+  // exiftool-vendored starts a background BatchCluster that keeps the event loop alive.
+  // Shut it down so Jest can exit cleanly.
+  try {
+    const { exiftool } = require('exiftool-vendored');
+    if (exiftool && typeof exiftool.end === 'function') {
+      await exiftool.end();
+    }
+  } catch {
+    // Best-effort cleanup only
+  }
+});
+
 // Handle unhandled promise rejections in tests
 process.on('unhandledRejection', (reason, promise) => {
   console.error('Unhandled Rejection at:', promise, 'reason:', reason);

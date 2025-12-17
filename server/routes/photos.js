@@ -113,11 +113,30 @@ module.exports = function createPhotosRouter({ db, supabase }) {
       // Protect against long-running DB queries causing the request to hang
       const DB_QUERY_TIMEOUT_MS = Number(process.env.DB_QUERY_TIMEOUT_MS || 10000);
 
-      const rows = await Promise.race([
-        photosDb.listPhotos(req.user.id, state),
-        new Promise((_, reject) => setTimeout(() => reject(new Error('DB query timeout')), DB_QUERY_TIMEOUT_MS)),
-      ]);
+      const listStart = Date.now();
+      let rows;
+      try {
+        rows = await photosDb.listPhotos(req.user.id, state, { timeoutMs: DB_QUERY_TIMEOUT_MS });
+      } catch (err) {
+        const message = err && err.message ? String(err.message) : '';
+        const isTimeout =
+          (err && err.name === 'KnexTimeoutError') ||
+          /defined query timeout|query timeout|timeout exceeded/i.test(message);
+
+        if (isTimeout) {
+          throw new Error('DB query timeout');
+        }
+        throw err;
+      }
+
+      const listMs = Date.now() - listStart;
+      logger.info('[photos] listPhotos_ms', {
+        reqId,
+        state: state || null,
+        ms: listMs,
+      });
       // Generate public URLs for each photo using Supabase Storage
+      const mapStart = Date.now();
       const photosWithUrls = await Promise.all(rows.map(async (row) => {
         // text_style excluded from list view for payload optimization
         // Parse only if present (for backwards compatibility)
@@ -182,6 +201,13 @@ module.exports = function createPhotosRouter({ db, supabase }) {
           classification: row.classification,
         };
       }));
+
+      const mapMs = Date.now() - mapStart;
+      logger.info('[photos] mapPhotos_ms', {
+        reqId,
+        ms: mapMs,
+        rowCount: Array.isArray(rows) ? rows.length : 0,
+      });
       // Prevent caching so frontend always gets fresh filtered results
       res.set('Cache-Control', 'no-store');
       res.json({ success: true, photos: photosWithUrls });
