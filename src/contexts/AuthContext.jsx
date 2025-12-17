@@ -2,7 +2,7 @@ import { createContext, useContext, useState, useEffect, useRef } from 'react';
 import { supabase } from '../supabaseClient';
 import useStore from '../store.js';
 import { API_BASE_URL } from '../config/apiConfig.js';
-import { setAuthToken } from '../api.js';
+import { setAuthToken, ensureAuthCookie } from '../api.js';
 
 const AuthContext = createContext();
 
@@ -179,6 +179,11 @@ export const AuthProvider = ({ children }) => {
           // Set token in api.js for Bearer auth
           setAuthToken(session.access_token);
           setAuthReady(true);
+
+          // Phase 1: Establish httpOnly cookie session (best-effort, once per session).
+          // This enables simple GET requests (no Authorization/Content-Type headers) while
+          // keeping credentials: 'include'.
+          ensureAuthCookie(session.access_token).catch(() => {});
         }
         setSession(session);
         setUser(session?.user ?? null);
@@ -232,6 +237,9 @@ export const AuthProvider = ({ children }) => {
         // Update token in api.js for Bearer auth
         setAuthToken(session.access_token);
         setAuthReady(true);
+
+        // Phase 1: Ensure cookie session is set/renewed (best-effort).
+        ensureAuthCookie(session.access_token).catch(() => {});
       } else {
         setAuthToken(null);
         setAuthReady(false);
@@ -258,6 +266,7 @@ export const AuthProvider = ({ children }) => {
       // This ensures API calls made after login have the token ready
       if (data.session?.access_token) {
         setAuthToken(data.session.access_token);
+        ensureAuthCookie(data.session.access_token).catch(() => {});
         setAuthReady(true);
       }
       
