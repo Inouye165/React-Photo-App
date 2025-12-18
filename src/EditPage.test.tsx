@@ -119,22 +119,22 @@ describe('EditPage - TypeScript Phase 1', () => {
   })
 
   describe('Baseline Tab Rendering', () => {
-    test('renders Story and Location tabs by default', async () => {
+    test('renders Context tab by default', async () => {
       const photo = { id: 1, url: '/protected/image.jpg', filename: 'image.jpg' }
       render(<EditPage photo={photo} onClose={() => {}} onSave={() => Promise.resolve()} />)
 
       await waitFor(() => {
-        expect(screen.getByText('Story')).toBeInTheDocument()
-        expect(screen.getByText('Location')).toBeInTheDocument()
+        expect(screen.getByRole('button', { name: 'Context' })).toBeInTheDocument()
+        expect(screen.queryByText('Location')).not.toBeInTheDocument()
       })
     })
 
-    test('Story tab is active by default', async () => {
+    test('Context tab is active by default', async () => {
       const photo = { id: 1, url: '/protected/image.jpg', filename: 'image.jpg' }
       render(<EditPage photo={photo} onClose={() => {}} onSave={() => Promise.resolve()} />)
 
       await waitFor(() => {
-        const storyButton = screen.getByText('Story')
+        const storyButton = screen.getByRole('button', { name: 'Context' })
         // Phase 5: Check for active class instead of inline style (now uses CSS Modules)
         expect(storyButton.className).toContain('active')
       })

@@ -4,11 +4,11 @@ import userEvent from '@testing-library/user-event';
 import EditTabs from './EditTabs';
 
 describe('EditTabs', () => {
-  it('renders Story and Location tabs by default', () => {
+  it('renders Context tab by default', () => {
     const onTabChange = vi.fn();
     render(
       <EditTabs
-        activeTab="story"
+        activeTab="context"
         onTabChange={onTabChange}
         showCollectiblesTab={false}
         isCollectiblePhoto={false}
@@ -16,8 +16,7 @@ describe('EditTabs', () => {
       />
     );
 
-    expect(screen.getByText('Story')).toBeInTheDocument();
-    expect(screen.getByText('Location')).toBeInTheDocument();
+    expect(screen.getByText('Context')).toBeInTheDocument();
     expect(screen.queryByText('Collectibles')).not.toBeInTheDocument();
   });
 
@@ -25,7 +24,7 @@ describe('EditTabs', () => {
     const onTabChange = vi.fn();
     render(
       <EditTabs
-        activeTab="story"
+        activeTab="context"
         onTabChange={onTabChange}
         showCollectiblesTab={true}
         isCollectiblePhoto={false}
@@ -36,12 +35,12 @@ describe('EditTabs', () => {
     expect(screen.getByText('Collectibles')).toBeInTheDocument();
   });
 
-  it('calls onTabChange when Location tab is clicked', async () => {
+  it('calls onTabChange when Context tab is clicked', async () => {
     const user = userEvent.setup();
     const onTabChange = vi.fn();
     render(
       <EditTabs
-        activeTab="story"
+        activeTab="collectibles"
         onTabChange={onTabChange}
         showCollectiblesTab={false}
         isCollectiblePhoto={false}
@@ -49,8 +48,8 @@ describe('EditTabs', () => {
       />
     );
 
-    await user.click(screen.getByText('Location'));
-    expect(onTabChange).toHaveBeenCalledWith('location');
+    await user.click(screen.getByText('Context'));
+    expect(onTabChange).toHaveBeenCalledWith('context');
   });
 
   it('calls onTabChange when Collectibles tab is clicked', async () => {
@@ -58,7 +57,7 @@ describe('EditTabs', () => {
     const onTabChange = vi.fn();
     render(
       <EditTabs
-        activeTab="story"
+        activeTab="context"
         onTabChange={onTabChange}
         showCollectiblesTab={true}
         isCollectiblePhoto={false}
@@ -74,7 +73,7 @@ describe('EditTabs', () => {
     const onTabChange = vi.fn();
     const { container } = render(
       <EditTabs
-        activeTab="story"
+        activeTab="context"
         onTabChange={onTabChange}
         showCollectiblesTab={true}
         isCollectiblePhoto={true}
@@ -91,7 +90,7 @@ describe('EditTabs', () => {
     const onTabChange = vi.fn();
     const { container } = render(
       <EditTabs
-        activeTab="story"
+        activeTab="context"
         onTabChange={onTabChange}
         showCollectiblesTab={true}
         isCollectiblePhoto={true}

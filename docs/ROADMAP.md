@@ -36,16 +36,19 @@ This document outlines completed milestones, current priorities, and future plan
 
 ## 🚧 Current Focus (Dec 2025)
 
+
 ### UI Polish
 - [x] **Gallery View Redesign** - Virtualized grid with react-virtuoso for smooth scrolling at 1000+ photos
 - [x] **Mobile-Responsive Layouts** - Touch-friendly 44px targets, mobile-first Tailwind styling
 - [ ] **Keyboard Navigation** - Arrow keys, shortcuts, accessibility improvements
 - [x] **Loading States** - Better feedback during AI processing and uploads
+- [x] ~~Consolidate EditPage Tabs to Unified Context~~
 
 ### Recently Completed (Dec 2025)
 - [x] **Upload UX** - Improved upload landing experience and faster perceived performance
 - [x] **Disclaimer / Legal Gate** - Terms/beta disclaimer enforced before entering the main app
 - [x] **Optimistic Uploads** - Immediate navigation with background uploads and pending state
+- [x] ~~Refactor EditPage: Story/Location → Context Tab~~
 
 ### Mobile PWA
 - [x] **Native Camera Roll Access** - One-tap photo selection from mobile device gallery

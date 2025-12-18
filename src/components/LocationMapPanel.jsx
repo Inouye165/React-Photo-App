@@ -33,7 +33,8 @@ const DirectionalArrow = ({ heading = 0 }) => (
 export default function LocationMapPanel({ photo }) {
   const apiKey = import.meta.env.VITE_GOOGLE_MAPS_API_KEY;
   const mapId = import.meta.env.VITE_GOOGLE_MAPS_MAP_ID || 'DEMO_MAP_ID';
-  
+  const isE2E = import.meta.env.VITE_E2E === 'true';
+
   // Memoize location calculation to avoid unnecessary recalculations
   const location = useMemo(() => getPhotoLocation(photo), [photo]);
   const hasLocation = location != null && !isNaN(location.lat) && !isNaN(location.lng);
@@ -53,11 +54,18 @@ export default function LocationMapPanel({ photo }) {
     }
   }, [center, hasLocation]);
 
-  if (!apiKey) {
-    // If we don't have an API key but do have a photo location, render a
-    // simple OpenStreetMap iframe so users still see a preview map without
-    // requiring a Google Maps key. This avoids a completely empty panel and
-    // still protects any server-side key.
+  // Render logic (never call hooks conditionally)
+  let content = null;
+  if (isE2E && hasLocation) {
+    content = (
+      <div className="h-full w-full bg-gray-100 flex flex-col items-center justify-center text-gray-600 p-4 text-center">
+        <div className="text-sm font-medium">Map preview disabled in E2E</div>
+        <div className="text-xs mt-2">
+          {center.lat.toFixed(5)}, {center.lng.toFixed(5)}
+        </div>
+      </div>
+    );
+  } else if (!apiKey) {
     if (hasLocation) {
       const lat = center.lat;
       const lng = center.lng;
@@ -68,7 +76,7 @@ export default function LocationMapPanel({ photo }) {
       const maxLat = lat + delta;
       const osmEmbedUrl = `https://www.openstreetmap.org/export/embed.html?bbox=${minLon}%2C${minLat}%2C${maxLon}%2C${maxLat}&layer=mapnik&marker=${lat}%2C${lng}`;
       const osmLink = `https://www.openstreetmap.org/?mlat=${lat}&mlon=${lng}#map=16/${lat}/${lng}`;
-      return (
+      content = (
         <div className="h-full w-full bg-white flex flex-col">
           <div className="flex-1">
             <iframe
@@ -84,47 +92,47 @@ export default function LocationMapPanel({ photo }) {
           </div>
         </div>
       );
+    } else {
+      content = (
+        <div className="flex items-center justify-center h-full bg-gray-100 text-gray-500 text-sm p-4 text-center">
+          Map configuration missing. Please set <code>VITE_GOOGLE_MAPS_API_KEY</code> in your Vite root `.env` (see <code>.env.example</code>) and restart the dev server.
+        </div>
+      );
     }
-
-    return (
-      <div className="flex items-center justify-center h-full bg-gray-100 text-gray-500 text-sm p-4 text-center">
-        Map configuration missing. Please set <code>VITE_GOOGLE_MAPS_API_KEY</code> in your Vite root `.env` (see <code>.env.example</code>) and restart the dev server.
-      </div>
-    );
-  }
-
-  if (!hasLocation) {
-    return (
+  } else if (!hasLocation) {
+    content = (
       <div className="flex flex-col items-center justify-center h-full bg-gray-100 text-gray-500 p-4 text-center">
         <p className="text-sm font-medium">No GPS location data available.</p>
         <p className="text-xs mt-2">Try viewing a different photo or ensure EXIF GPS data is present.</p>
       </div>
     );
+  } else {
+    content = (
+      <div style={containerStyle}>
+        <APIProvider apiKey={apiKey}>
+          <Map
+            center={mapCenter}
+            zoom={mapZoom}
+            onCenterChanged={(e) => setMapCenter(e.detail.center)}
+            onZoomChanged={(e) => setMapZoom(e.detail.zoom)}
+            mapId={mapId} // Optional: set via VITE_GOOGLE_MAPS_MAP_ID; a default is used for demo
+            disableDefaultUI={false}
+            zoomControl={true}
+            streetViewControl={false}
+            mapTypeControl={true}
+            fullscreenControl={true}
+            mapTypeControlOptions={{
+              position: 3, // TOP_RIGHT
+            }}
+          >
+            <AdvancedMarker position={center}>
+              <DirectionalArrow heading={heading} />
+            </AdvancedMarker>
+          </Map>
+        </APIProvider>
+      </div>
+    );
   }
 
-  return (
-    <div style={containerStyle}>
-      <APIProvider apiKey={apiKey}>
-        <Map
-          center={mapCenter}
-          zoom={mapZoom}
-          onCenterChanged={(e) => setMapCenter(e.detail.center)}
-          onZoomChanged={(e) => setMapZoom(e.detail.zoom)}
-          mapId={mapId} // Optional: set via VITE_GOOGLE_MAPS_MAP_ID; a default is used for demo
-          disableDefaultUI={false}
-          zoomControl={true}
-          streetViewControl={false}
-          mapTypeControl={true}
-          fullscreenControl={true}
-          mapTypeControlOptions={{
-            position: 3, // TOP_RIGHT
-          }}
-        >
-          <AdvancedMarker position={center}>
-            <DirectionalArrow heading={heading} />
-          </AdvancedMarker>
-        </Map>
-      </APIProvider>
-    </div>
-  );
+  return content;
 }
