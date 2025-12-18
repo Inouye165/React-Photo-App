@@ -58,9 +58,9 @@ jobs:
           SUPABASE_SERVICE_ROLE_KEY: test-service-role-key
           SUPABASE_ANON_KEY: test-anon-key
           JWT_SECRET: test-jwt-secret-key-for-testing-only
-          GOOGLE_API_KEY: sk-test-key-for-ci
+          GOOGLE_API_KEY: test_google_key_ci
           GOOGLE_CSE_ID: test-cse-id-for-ci
-          OPENAI_API_KEY: sk-test-key-for-ci
+          OPENAI_API_KEY: test_openai_key_ci
           SERPAPI_API_KEY: test-serpapi-key
         run: |
           mkdir -p "$PHOTO_WORKING_DIR"

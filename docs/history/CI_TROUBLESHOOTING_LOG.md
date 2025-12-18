@@ -92,7 +92,7 @@ SUPABASE_URL: https://test.supabase.co
 SUPABASE_ANON_KEY: test-anon-key
 SUPABASE_SERVICE_ROLE_KEY: test-service-role-key
 JWT_SECRET: test-jwt-secret-key-for-testing-only
-OPENAI_API_KEY: sk-test-key-for-ci
+OPENAI_API_KEY: test_openai_key_ci
 ```
 
 **Commit:** `10cfec9`
@@ -448,7 +448,7 @@ SUPABASE_URL=https://test.supabase.co
 SUPABASE_ANON_KEY=test-anon-key
 SUPABASE_SERVICE_ROLE_KEY=test-service-role-key
 JWT_SECRET=test-jwt-secret-key-for-testing-only
-OPENAI_API_KEY=test-openai-api-key  # or sk-test-key-for-ci
+OPENAI_API_KEY=test-openai-api-key  # or test_openai_key_ci
 ```
 
 **Required for specific tests:**
@@ -476,8 +476,8 @@ SUPABASE_URL=https://test.supabase.co
 SUPABASE_SERVICE_ROLE_KEY=test-service-role-key
 SUPABASE_ANON_KEY=test-anon-key
 JWT_SECRET=test-jwt-secret-key-for-testing-only
-OPENAI_API_KEY=sk-test-key-for-ci
-GOOGLE_API_KEY=sk-test-key-for-ci
+OPENAI_API_KEY=test_openai_key_ci
+GOOGLE_API_KEY=test_google_key_ci
 GOOGLE_CSE_ID=test-cse-id-for-ci
 ```
 

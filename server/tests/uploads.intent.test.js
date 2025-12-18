@@ -98,6 +98,13 @@ describe('Uploads Router - Intent-Based Uploads', () => {
   let app;
   let mockDb;
 
+  const minimalJpegBuffer = Buffer.from([
+    0xFF, 0xD8, 0xFF, 0xE0, 0x00, 0x10,
+    0x4A, 0x46, 0x49, 0x46, 0x00, 0x01,
+    0x01, 0x00, 0x00, 0x01, 0x00, 0x01,
+    0x00, 0x00, 0xFF, 0xD9
+  ]);
+
   beforeEach(() => {
     mockDb = createMockDb();
 
@@ -120,7 +127,7 @@ describe('Uploads Router - Intent-Based Uploads', () => {
     const response = await request(app)
       .post('/uploads/upload')
       .field('classification', 'collectible')
-      .attach('photo', Buffer.from('fake-photo-data'), 'photo.jpg');
+      .attach('photo', minimalJpegBuffer, 'photo.jpg');
 
     expect([200, 202]).toContain(response.status);
     expect(response.body).toBeTruthy();

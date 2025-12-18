@@ -63,6 +63,30 @@ const createUploadsRouter = require('../routes/uploads');
 describe('Upload Route - Orphaned File Cleanup', () => {
   let app;
 
+  const minimalJpegBuffer = Buffer.from([
+    0xFF, 0xD8, 0xFF, 0xE0, 0x00, 0x10,
+    0x4A, 0x46, 0x49, 0x46, 0x00, 0x01,
+    0x01, 0x00, 0x00, 0x01, 0x00, 0x01,
+    0x00, 0x00, 0xFF, 0xD9
+  ]);
+
+  const createFailingDb = () => {
+    return jest.fn((_tableName) => ({
+      where: jest.fn(() => ({
+        select: jest.fn(() => ({
+          first: jest.fn().mockResolvedValue(null)
+        })),
+        first: jest.fn().mockResolvedValue(null),
+        update: jest.fn().mockResolvedValue(1)
+      })),
+      insert: jest.fn(() => ({
+        returning: jest.fn().mockImplementation(async () => {
+          throw new Error('DB connection failed');
+        })
+      }))
+    }));
+  };
+
   beforeEach(() => {
     app = express();
     app.use(express.json());
@@ -72,27 +96,14 @@ describe('Upload Route - Orphaned File Cleanup', () => {
       next();
     });
 
-    const knex = require('knex');
-    app.use('/uploads', createUploadsRouter({ db: knex }));
+    const db = createFailingDb();
+    app.use('/uploads', createUploadsRouter({ db }));
   });
 
   it('removes orphaned file from storage if DB insert fails', async () => {
-    const fs = require('fs');
-    const path = require('path');
-    const os = require('os');
-    const tmpPath = path.join(os.tmpdir(), 'test-cleanup-upload.tmp');
-    
-    // FIX: Actually create the temp file that the multer mock references
-    // The upload route will call fs.createReadStream on this path
-    fs.writeFileSync(tmpPath, Buffer.from('fake image content'));
-    
-    // Mock ingestPhoto to throw an error (simulating DB failure)
-    const { ingestPhoto } = require('../media/image');
-    ingestPhoto.mockRejectedValueOnce(new Error('DB connection failed'));
-
     const response = await request(app)
       .post('/uploads/upload')
-      .attach('photo', Buffer.from('fake'), 'test.jpg');
+      .attach('photo', minimalJpegBuffer, 'test.jpg');
 
     expect(response.status).toBe(500);
     

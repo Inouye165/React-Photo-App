@@ -28,6 +28,13 @@ const createUploadsRouter = require('../routes/uploads');
 // Global test fixture path
 const TEST_FIXTURE_PATH = path.join(os.tmpdir(), 'test-fixture-upload.jpg');
 
+const minimalJpegBuffer = Buffer.from([
+  0xff, 0xd8, 0xff, 0xe0,
+  0x00, 0x10, 0x4a, 0x46,
+  0x49, 0x46, 0x00, 0x01,
+  0xff, 0xd9
+]);
+
 // Create a mock database that supports the operations used by the streaming router
 const createMockDb = () => {
   const photos = new Map();
@@ -82,7 +89,7 @@ describe('Uploads Router with Streaming Architecture', () => {
   beforeEach(() => {
     // Create a real file for supertest to attach
     try {
-      fs.writeFileSync(TEST_FIXTURE_PATH, 'fake image data for testing');
+      fs.writeFileSync(TEST_FIXTURE_PATH, minimalJpegBuffer);
     } catch (e) {
       console.error('Failed to create test fixture:', e);
     }

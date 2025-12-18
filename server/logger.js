@@ -33,7 +33,8 @@ const subscribers = {
 };
 
 const SENSITIVE_KEYS = new Set([
-  'token', 'password', 'secret', 'authorization', 'apikey', 'access_token', 'refresh_token'
+  'token', 'password', 'secret', 'authorization', 'apikey', 'access_token', 'refresh_token',
+  'cookie', 'set-cookie'
 ]);
 
 // Regex to match key=value or key%3Dvalue in strings
