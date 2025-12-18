@@ -13,7 +13,7 @@
  */
 
 import { useState, useEffect, useCallback, useRef } from 'react';
-import { fetchCollectibles, upsertCollectible } from '../api.js';
+import { fetchCollectibles, upsertCollectible } from '../api';
 import type { Photo } from '../types/photo';
 import type { CollectibleRecord, CollectibleFormState, CollectibleAiAnalysis } from '../types/collectibles';
 
@@ -126,7 +126,11 @@ export function useCollectiblesForPhoto({
         }
       }, { recordAi: true });
       
-      setCollectibleData(result);
+      if (result) {
+        setCollectibleData(result);
+      } else {
+        setCollectibleData(null);
+      }
       return result;
     } catch (err) {
       console.error('[useCollectiblesForPhoto] Failed to save collectible:', err);

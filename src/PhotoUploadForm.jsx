@@ -1,7 +1,7 @@
 import React, { useEffect, useState, useRef, useCallback } from "react";
 import { useVirtualizer } from '@tanstack/react-virtual';
-import useStore from './store.js';
-import { useThumbnailQueue } from './hooks/useThumbnailQueue.js';
+import useStore from './store';
+import { useThumbnailQueue } from './hooks/useThumbnailQueue';
 import Thumbnail from './components/Thumbnail.jsx';
 
 // Hook to get responsive column count

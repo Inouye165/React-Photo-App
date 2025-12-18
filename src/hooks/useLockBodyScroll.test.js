@@ -1,6 +1,6 @@
 import { describe, it, expect } from 'vitest'
 import { renderHook } from '@testing-library/react'
-import { useLockBodyScroll } from './useLockBodyScroll.js'
+import { useLockBodyScroll } from './useLockBodyScroll'
 
 describe('useLockBodyScroll', () => {
   it('locks body scroll and restores previous overflow on unmount', () => {

@@ -9,7 +9,7 @@
  */
 import React, { useState, useEffect, useCallback, useMemo } from 'react';
 import { VirtuosoGrid } from 'react-virtuoso';
-import { API_BASE_URL } from './api.js';
+import { API_BASE_URL } from './api';
 import PhotoCard from './components/PhotoCard.tsx';
 
 // Hook to get responsive column count and gap

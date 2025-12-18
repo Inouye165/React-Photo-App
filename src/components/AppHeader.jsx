@@ -1,7 +1,7 @@
 import React from 'react';
 import { useNavigate, useLocation } from 'react-router-dom';
 import { useAuth } from '../contexts/AuthContext';
-import useStore from '../store.js';
+import useStore from '../store';
 import { ChevronLeft, ChevronRight, Upload, Grid3X3, Edit3, LogOut } from 'lucide-react';
 
 /**

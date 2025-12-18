@@ -2,7 +2,7 @@ import '@testing-library/jest-dom/vitest'
 import { vi, afterEach, beforeEach } from 'vitest'
 import { cleanup } from '@testing-library/react'
 import React from 'react'
-import { uploadPickerInitialState } from '../store/uploadPickerSlice.js'
+import { uploadPickerInitialState } from '../store/uploadPickerSlice'
 
 /**
  * CRITICAL: Mock heavy WASM dependencies to prevent memory issues during testing.

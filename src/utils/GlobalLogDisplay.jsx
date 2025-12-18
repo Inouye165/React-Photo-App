@@ -1,5 +1,5 @@
 import React from 'react';
-import { getGlobalLog } from './globalLog.js';
+import { getGlobalLog } from './globalLog';
 
 function useGlobalLogDisplay() {
   const [_, forceUpdate] = React.useState(0);

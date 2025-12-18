@@ -17,7 +17,8 @@ export interface Photo {
   taken_at?: string;
   file_size?: number;
   classification?: string;
-  state?: 'working' | 'inprogress' | 'finished';
+  // Note: store-level AI polling can mark a photo as 'error' on hard timeout.
+  state?: 'working' | 'inprogress' | 'finished' | 'error';
   
   // AI analysis fields
   ai_analysis?: {

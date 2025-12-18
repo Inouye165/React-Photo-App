@@ -1,5 +1,5 @@
 import { useEffect, useRef, useState } from 'react';
-import { checkPrivilege, checkPrivilegesBatch } from '../api.js';
+import { checkPrivilege, checkPrivilegesBatch } from '../api';
 
 export default function usePhotoPrivileges(photos) {
   const [privilegesMap, setPrivilegesMap] = useState({});

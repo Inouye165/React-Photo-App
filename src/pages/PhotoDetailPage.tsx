@@ -2,11 +2,11 @@ import { useEffect, useMemo } from 'react';
 import { Link, useNavigate, useOutletContext, useParams } from 'react-router-dom';
 import { ArrowLeft, Image as ImageIcon, Pencil } from 'lucide-react';
 import type { Photo } from '../types/photo';
-import { API_BASE_URL } from '../api.js';
-import useStore from '../store.js';
-import { useProtectedImageBlobUrl } from '../hooks/useProtectedImageBlobUrl.js';
+import { API_BASE_URL } from '../api';
+import useStore from '../store';
+import { useProtectedImageBlobUrl } from '../hooks/useProtectedImageBlobUrl';
 import LocationMapPanel from '../components/LocationMapPanel.jsx';
-import formatFileSize from '../utils/formatFileSize.js';
+import formatFileSize from '../utils/formatFileSize';
 import { aiPollDebug } from '../utils/aiPollDebug';
 
 function normalizeClassification(photo: Photo | undefined): string {

@@ -11,8 +11,8 @@ import type { Photo } from '../types/photo'
 import type { CollectibleRecord } from '../types/collectibles'
 
 // Mock API functions
-vi.mock('../api.js', async (importOriginal) => {
-  const actual = await importOriginal() as any
+vi.mock('../api', async (importOriginal) => {
+  const actual = (await importOriginal()) as unknown as Record<string, unknown>
   return {
     ...(actual || {}),
     fetchCollectibles: vi.fn(),

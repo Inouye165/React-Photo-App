@@ -2,18 +2,18 @@ import { describe, it, expect, vi, beforeEach } from 'vitest';
 import { render, screen } from '@testing-library/react';
 import { MemoryRouter, Routes, Route } from 'react-router-dom';
 import PhotoDetailPage from './PhotoDetailPage.tsx';
-import { uploadPickerInitialState } from '../store/uploadPickerSlice.js';
+import { uploadPickerInitialState } from '../store/uploadPickerSlice';
 
 // Import store after mock setup (matches repo testing pattern)
-vi.mock('../store.js', async () => {
-  const actual = await vi.importActual('../store.js');
+vi.mock('../store', async () => {
+  const actual = await vi.importActual('../store');
   return actual;
 });
 
-import useStore from '../store.js';
+import useStore from '../store';
 
-vi.mock('../api.js', async (importOriginal: any) => {
-  const actual = await importOriginal();
+vi.mock('../api', async (importOriginal: () => Promise<unknown>) => {
+  const actual = (await importOriginal()) as Record<string, unknown>;
   return {
     ...actual,
     API_BASE_URL: 'http://localhost:3001',

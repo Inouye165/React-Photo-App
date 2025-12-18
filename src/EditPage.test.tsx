@@ -8,8 +8,8 @@ vi.mock('./config/featureFlags', () => ({
 }))
 
 // Mock the API helper module (use literals inside the factory; vi.mock is hoisted)
-vi.mock('./api.js', async (importOriginal) => {
-  const actual = await importOriginal() as any
+vi.mock('./api', async (importOriginal) => {
+  const actual = (await importOriginal()) as unknown as Record<string, unknown>
   return {
     ...(actual || {}),
     fetchProtectedBlobUrl: vi.fn(),
@@ -40,7 +40,7 @@ let mockStoreState: any = {
   setLastEditedPhotoId: vi.fn(),
 }
 
-vi.mock('./store.js', () => ({
+vi.mock('./store', () => ({
   default: (selector: any) => {
     const result = selector(mockStoreState)
     return result
@@ -95,7 +95,7 @@ vi.mock('./components/CollectibleDetailView.jsx', () => ({
 }))
 
 import EditPage from './EditPage.tsx'
-import * as api from './api.js'
+import * as api from './api'
 import { useAuth } from './contexts/AuthContext'
 import * as featureFlags from './config/featureFlags'
 

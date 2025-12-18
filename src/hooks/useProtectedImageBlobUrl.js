@@ -1,5 +1,5 @@
 import { useCallback, useEffect, useRef, useState } from 'react'
-import { fetchProtectedBlobUrl, isAbortError, revokeBlobUrl } from '../api.js'
+import { fetchProtectedBlobUrl, isAbortError, revokeBlobUrl } from '../api'
 
 /**
  * useProtectedImageBlobUrl

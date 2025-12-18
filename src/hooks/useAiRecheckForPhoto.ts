@@ -1,5 +1,5 @@
 import { useState, useEffect, useRef } from 'react'
-import useStore from '../store.js'
+import useStore from '../store'
 import type { Photo } from '../types/photo'
 
 interface UseAiRecheckForPhotoParams {

@@ -11,19 +11,19 @@ import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest';
 import { renderHook, act } from '@testing-library/react';
 
 // Mock the utility modules completely
-vi.mock('../utils/clientImageProcessing.js', () => ({
+vi.mock('../utils/clientImageProcessing', () => ({
   generateClientThumbnail: vi.fn(),
 }));
 
-vi.mock('../utils/thumbnailCache.js', () => ({
+vi.mock('../utils/thumbnailCache', () => ({
   getThumbnail: vi.fn(),
   saveThumbnail: vi.fn(),
 }));
 
 // Import the mocked modules
-import { generateClientThumbnail } from '../utils/clientImageProcessing.js';
-import { getThumbnail, saveThumbnail } from '../utils/thumbnailCache.js';
-import { useThumbnailQueue } from './useThumbnailQueue.js';
+import { generateClientThumbnail } from '../utils/clientImageProcessing';
+import { getThumbnail, saveThumbnail } from '../utils/thumbnailCache';
+import { useThumbnailQueue } from './useThumbnailQueue';
 
 describe('useThumbnailQueue Hook', () => {
   

@@ -24,19 +24,19 @@ beforeAll(async () => {
     createStore: vi.fn(() => ({})),
   }));
 
-  vi.doMock('../utils/clientImageProcessing.js', () => ({
+  vi.doMock('../utils/clientImageProcessing', () => ({
     generateClientThumbnail: vi.fn(),
   }));
 
-  vi.doMock('../utils/thumbnailCache.js', () => ({
+  vi.doMock('../utils/thumbnailCache', () => ({
     getThumbnail: vi.fn(),
     saveThumbnail: vi.fn(),
   }));
 
   // Now dynamically import with mocks active
-  const imageProcessing = await import('../utils/clientImageProcessing.js');
-  const thumbnailCache = await import('../utils/thumbnailCache.js');
-  const hookModule = await import('./useThumbnailQueue.js');
+  const imageProcessing = await import('../utils/clientImageProcessing');
+  const thumbnailCache = await import('../utils/thumbnailCache');
+  const hookModule = await import('./useThumbnailQueue');
 
   generateClientThumbnail = imageProcessing.generateClientThumbnail;
   getThumbnail = thumbnailCache.getThumbnail;

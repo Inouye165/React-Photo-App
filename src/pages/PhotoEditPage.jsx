@@ -1,7 +1,7 @@
 import React, { useEffect } from 'react';
 import { useParams, useNavigate, useOutletContext } from 'react-router-dom';
 import EditPage from '../EditPage.tsx';
-import useStore from '../store.js';
+import useStore from '../store';
 import { aiPollDebug } from '../utils/aiPollDebug';
 
 /**
@@ -80,7 +80,7 @@ export default function PhotoEditPage() {
 
   const handleFinished = async (photoId) => {
     try {
-      const { updatePhotoState } = await import('../api.js');
+      const { updatePhotoState } = await import('../api');
       await updatePhotoState(photoId, 'finished');
       setBanner({ message: 'Photo marked as finished', severity: 'success' });
       setEditingMode(null);
@@ -115,7 +115,7 @@ export default function PhotoEditPage() {
     }
 
     try {
-      const { recheckPhotoAI } = await import('../api.js');
+      const { recheckPhotoAI } = await import('../api');
       const response = await recheckPhotoAI(photoId, model);
       setBanner({ message: 'AI recheck initiated. Polling for results...', severity: 'info' });
       useStore.getState().startAiPolling(photoId);

@@ -1,6 +1,6 @@
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 
-vi.mock('./api.js', () => ({
+vi.mock('./api', () => ({
   updatePhotoState: vi.fn().mockResolvedValue(undefined),
   getPhoto: vi.fn().mockImplementation(async (id: number | string) => ({
     photo: {
@@ -12,8 +12,8 @@ vi.mock('./api.js', () => ({
 }));
 
 describe('store moveToInprogress', () => {
-  let useStore: any;
-  let updatePhotoState: any;
+  let useStore: typeof import('./store').default;
+  let updatePhotoState: typeof import('./api').updatePhotoState;
 
   beforeEach(async () => {
     vi.clearAllMocks();
@@ -21,10 +21,10 @@ describe('store moveToInprogress', () => {
     vi.resetModules();
 
     // Import the mocked API module and the real store after mocks are set up.
-    ({ updatePhotoState } = await import('./api.js'));
+    ({ updatePhotoState } = await import('./api'));
     // NOTE: src/test/setup.js globally mocks the store module for most tests.
     // For this unit test we explicitly import the real store implementation.
-    ({ default: useStore } = await vi.importActual('./store.js'));
+    ({ default: useStore } = await vi.importActual('./store'));
 
     useStore.setState({
       photos: [
@@ -44,8 +44,10 @@ describe('store moveToInprogress', () => {
   it('updates the photo state to inprogress', async () => {
     await useStore.getState().moveToInprogress(1);
 
-    const photo = useStore.getState().photos.find((p: any) => p.id === 1);
+    const photos = useStore.getState().photos as Array<{ id: number | string; state?: string }>;
+    const photo = photos.find((p) => p.id === 1);
     expect(photo).toBeTruthy();
+    if (!photo) throw new Error('Expected photo to be present in store state');
     expect(photo.state).toBe('inprogress');
 
     stopAllPolling();

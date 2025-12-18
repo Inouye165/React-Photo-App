@@ -20,7 +20,7 @@ vi.mock('../contexts/AuthContext', () => ({
   }),
 }));
 
-vi.mock('../store.js', () => ({
+vi.mock('../store', () => ({
   default: vi.fn((selector) => {
     const state = {
       lastEditedPhotoId: null,

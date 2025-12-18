@@ -1,8 +1,8 @@
 import { useCallback, useMemo, useRef } from 'react';
 import { parse } from 'exifr';
-import { uploadPhotoToServer } from '../api.js';
-import { generateClientThumbnail } from '../utils/clientImageProcessing.js';
-import useStore from '../store.js';
+import { uploadPhotoToServer } from '../api';
+import { generateClientThumbnail } from '../utils/clientImageProcessing';
+import useStore from '../store';
 
 
 export default function useLocalPhotoPicker({ onUploadComplete, onUploadSuccess }) {

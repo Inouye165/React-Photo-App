@@ -1,9 +1,9 @@
 import React, { useRef, useMemo } from 'react';
-import useStore from '../store.js';
+import useStore from '../store';
 import { useNavigate } from 'react-router-dom';
 import PhotoUploadForm from '../PhotoUploadForm.jsx';
-import useLocalPhotoPicker from '../hooks/useLocalPhotoPicker.js';
-import { useThumbnailQueue } from '../hooks/useThumbnailQueue.js';
+import useLocalPhotoPicker from '../hooks/useLocalPhotoPicker';
+import { useThumbnailQueue } from '../hooks/useThumbnailQueue';
 
 /**
  * UploadPage - Dedicated page for photo uploads
@@ -58,9 +58,9 @@ export default function UploadPage() {
 
     // Start background upload
     setTimeout(async () => {
-      const { uploadPhotoToServer } = await import('../api.js');
-      const { getPhotos } = await import('../api.js');
-      const { generateClientThumbnail } = await import('../utils/clientImageProcessing.js');
+      const { uploadPhotoToServer } = await import('../api');
+      const { getPhotos } = await import('../api');
+      const { generateClientThumbnail } = await import('../utils/clientImageProcessing');
       const removePendingUpload = useStore.getState().removePendingUpload;
 
       const errors = [];

@@ -1,8 +1,8 @@
 import React, { useState, useEffect } from 'react';
 import { Outlet } from 'react-router-dom';
 import AppHeader from '../components/AppHeader.jsx';
-import useStore from '../store.js';
-import { getDependencyStatus } from '../api.js';
+import useStore from '../store';
+import { getDependencyStatus } from '../api';
 
 const AI_DEPENDENCY_WARNING = 'AI services unavailable. Start required Docker containers to re-enable processing.';
 

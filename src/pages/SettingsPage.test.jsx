@@ -21,7 +21,7 @@ let mockAuthState = {
   cookieReady: true
 };
 
-vi.mock('../contexts/AuthContext.jsx', () => ({
+vi.mock('../contexts/AuthContext', () => ({
   useAuth: () => mockAuthState
 }));
 
