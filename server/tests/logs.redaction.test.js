@@ -107,4 +107,27 @@ describe('Log Redaction Security', () => {
     expect(arg.Authorization).toBe('[REDACTED]');
     expect(JSON.stringify(arg)).not.toContain('secret-token-value');
   });
+
+  test('redacts Cookie and Set-Cookie headers', () => {
+    const headers = {
+      cookie: 'authToken=super-secret-cookie; other=value',
+      'set-cookie': 'authToken=super-secret-cookie; HttpOnly; Secure',
+      Cookie: 'authToken=another-secret',
+      'Set-Cookie': 'authToken=another-secret; HttpOnly'
+    };
+
+    logger.info(headers);
+
+    const calls = spies.log.mock.calls;
+    const arg = calls[0][0];
+
+    expect(arg.cookie).toBe('[REDACTED]');
+    expect(arg['set-cookie']).toBe('[REDACTED]');
+    expect(arg.Cookie).toBe('[REDACTED]');
+    expect(arg['Set-Cookie']).toBe('[REDACTED]');
+
+    const output = JSON.stringify(arg);
+    expect(output).not.toContain('super-secret-cookie');
+    expect(output).not.toContain('another-secret');
+  });
 });

@@ -49,6 +49,13 @@ describe('Multipart Uploads (Photo + Thumbnail)', () => {
   let mockDb;
   let uploadMock;
 
+  const minimalJpegBuffer = Buffer.from([
+    0xFF, 0xD8, 0xFF, 0xE0, 0x00, 0x10,
+    0x4A, 0x46, 0x49, 0x46, 0x00, 0x01,
+    0x01, 0x00, 0x00, 0x01, 0x00, 0x01,
+    0x00, 0x00, 0xFF, 0xD9
+  ]);
+
   beforeEach(() => {
     mockDb = createMockDb();
     
@@ -79,7 +86,7 @@ describe('Multipart Uploads (Photo + Thumbnail)', () => {
   });
 
   test('Happy Path: Uploads both photo and thumbnail', async () => {
-    const photoBuffer = Buffer.from('fake-photo-data');
+    const photoBuffer = minimalJpegBuffer;
     const thumbnailBuffer = Buffer.from('fake-thumbnail-data');
 
     const response = await request(app)
@@ -108,7 +115,7 @@ describe('Multipart Uploads (Photo + Thumbnail)', () => {
   });
 
   test('Thumbnail Too Large: Ignores thumbnail but uploads photo', async () => {
-    const photoBuffer = Buffer.from('fake-photo-data');
+    const photoBuffer = minimalJpegBuffer;
     // Create a large buffer > 200KB
     const largeThumbnail = Buffer.alloc(201 * 1024); 
 

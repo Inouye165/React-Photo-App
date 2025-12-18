@@ -5,7 +5,7 @@
 
 // Skip tests that require external services when OPENAI_API_KEY is not set
 if (!process.env.OPENAI_API_KEY) {
-  process.env.OPENAI_API_KEY = 'sk-test-key-for-ci';
+  process.env.OPENAI_API_KEY = 'test_openai_key_ci';
 }
 
 // Set test environment

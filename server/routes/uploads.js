@@ -4,6 +4,7 @@ const logger = require('../logger');
 const { streamToSupabase } = require('../media/streamUploader');
 const { addAIJob, checkRedisAvailable } = require('../queue/index');
 const { extractMetadata } = require('../media/backgroundProcessor');
+const { sanitizePhotoMetadata } = require('../media/metadataSanitizer');
 
 /**
  * Streaming uploads router.
@@ -68,6 +69,13 @@ module.exports = function createUploadsRouter({ db }) {
         if (err.code === 'INVALID_MIME_TYPE') {
           return res.status(415).json({ success: false, error: err.message });
         }
+        if (err.code === 'INVALID_FILE_SIGNATURE') {
+          return res.status(415).json({
+            success: false,
+            error: err.message,
+            code: 'INVALID_FILE_SIGNATURE'
+          });
+        }
         if (err.code === 'NO_FILE') {
           return res.status(400).json({ success: false, error: 'No file uploaded' });
         }
@@ -131,6 +139,9 @@ module.exports = function createUploadsRouter({ db }) {
       }
 
       // Insert record with immediate metadata
+      const storeGpsCoords = String(process.env.STORE_GPS_COORDS || '').toLowerCase() === 'true';
+      const sanitizedMetadata = sanitizePhotoMetadata(immediateMetadata, { storeGpsCoords });
+
       const now = new Date().toISOString();
       const [insertedPhoto] = await db('photos')
         .insert({
@@ -144,7 +155,7 @@ module.exports = function createUploadsRouter({ db }) {
           updated_at: now,
           classification,
           // Store immediate metadata or mark as pending
-          metadata: JSON.stringify(Object.keys(immediateMetadata).length > 0 ? immediateMetadata : { pending: true })
+          metadata: JSON.stringify(Object.keys(sanitizedMetadata).length > 0 ? sanitizedMetadata : { pending: true })
         })
         .returning(['id', 'filename', 'hash', 'storage_path']);
 

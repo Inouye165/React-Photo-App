@@ -46,6 +46,8 @@ This project is not a tutorial or a consumer-ready product. It is a high-perform
 - **Stateless JWT Bearer Auth:** `Authorization: Bearer <token>` header exclusively; ~~cookie fallback removed~~ (eliminates split-brain auth)
 - **CSRF Immunity:** Bearer tokens not sent automatically by browsers (unlike cookies), eliminating CSRF attack vectors
 - **Origin Verification:** Origin/Referer allowlist verification on state-changing auth endpoints for defense-in-depth
+- **Security Gates (CI):** GitHub Actions runs **gitleaks** to scan the repository for committed secrets
+- **CI Placeholder Keys:** CI uses non-secret placeholder values for API key env vars (to avoid secret-like strings in the repo)
 - **Experimental Beta Mode:** Optional beta features with an explicit privacy disclaimer and user acknowledgement
 - **Content Security Policy:** Helmet-enforced CSP with automated CI tests
 - **Concurrency Limits:** Rate limiting to prevent upload storms

@@ -29,6 +29,86 @@ const ALLOWED_MIME_TYPES = [
   'image/webp'
 ];
 
+function isAllowedMimeType(mimetype) {
+  if (!mimetype) return false;
+  const normalized = String(mimetype).toLowerCase().trim();
+  return ALLOWED_MIME_TYPES.includes(normalized);
+}
+
+function isHeicFamily(mimetype) {
+  const normalized = String(mimetype || '').toLowerCase().trim();
+  return normalized === 'image/heic' || normalized === 'image/heif';
+}
+
+function detectImageMimeFromMagicBytes(buffer) {
+  if (!buffer || buffer.length < 4) return null;
+
+  // JPEG: FF D8 FF
+  if (buffer.length >= 3 && buffer[0] === 0xff && buffer[1] === 0xd8 && buffer[2] === 0xff) {
+    return 'image/jpeg';
+  }
+
+  // PNG: 89 50 4E 47 0D 0A 1A 0A
+  if (
+    buffer.length >= 8 &&
+    buffer[0] === 0x89 && buffer[1] === 0x50 && buffer[2] === 0x4e && buffer[3] === 0x47 &&
+    buffer[4] === 0x0d && buffer[5] === 0x0a && buffer[6] === 0x1a && buffer[7] === 0x0a
+  ) {
+    return 'image/png';
+  }
+
+  // GIF: "GIF87a" or "GIF89a"
+  if (buffer.length >= 6) {
+    const head6 = buffer.slice(0, 6).toString('ascii');
+    if (head6 === 'GIF87a' || head6 === 'GIF89a') {
+      return 'image/gif';
+    }
+  }
+
+  // WEBP: RIFF....WEBP
+  if (buffer.length >= 12) {
+    const riff = buffer.slice(0, 4).toString('ascii');
+    const webp = buffer.slice(8, 12).toString('ascii');
+    if (riff === 'RIFF' && webp === 'WEBP') {
+      return 'image/webp';
+    }
+  }
+
+  // BMP: "BM"
+  if (buffer.length >= 2) {
+    const bm = buffer.slice(0, 2).toString('ascii');
+    if (bm === 'BM') {
+      return 'image/bmp';
+    }
+  }
+
+  // TIFF: "II*\0" or "MM\0*"
+  if (buffer.length >= 4) {
+    if (buffer[0] === 0x49 && buffer[1] === 0x49 && buffer[2] === 0x2a && buffer[3] === 0x00) {
+      return 'image/tiff';
+    }
+    if (buffer[0] === 0x4d && buffer[1] === 0x4d && buffer[2] === 0x00 && buffer[3] === 0x2a) {
+      return 'image/tiff';
+    }
+  }
+
+  // HEIC/HEIF: ISO BMFF brands via ftyp box
+  // Offset 4-7 should be 'ftyp', then major brand at 8-11.
+  if (buffer.length >= 12 && buffer.slice(4, 8).toString('ascii') === 'ftyp') {
+    const brand = buffer.slice(8, 12).toString('ascii');
+    const heicBrands = new Set(['heic', 'heix', 'hevc', 'hevx']);
+    const heifBrands = new Set(['mif1', 'msf1', 'heif']);
+
+    if (heicBrands.has(brand) || heifBrands.has(brand)) {
+      // NOTE: Some HEIC files use the generic 'mif1' brand.
+      // Treat both image/heic and image/heif as acceptable for validation.
+      return heicBrands.has(brand) ? 'image/heic' : 'image/heif';
+    }
+  }
+
+  return null;
+}
+
 /**
  * Stream validator transform that enforces file size limits.
  * Emits an error if the cumulative bytes exceed the maximum.
@@ -82,6 +162,102 @@ class HashingStream extends Transform {
   }
 }
 
+class MagicByteSniffer extends Transform {
+  constructor({ claimedMime, peekBytes = 64 }) {
+    super();
+    this.claimedMime = String(claimedMime || '').toLowerCase().trim();
+    this.peekBytes = peekBytes;
+    this.bufferedChunks = [];
+    this.bufferedBytes = 0;
+    this.validated = false;
+    this.detectedMime = null;
+  }
+
+  _fail(message) {
+    const err = new Error(message || 'Invalid file signature');
+    err.code = 'INVALID_FILE_SIGNATURE';
+    this.emit('error', err);
+  }
+
+  _matchesClaimed(detectedMime) {
+    if (!detectedMime) return false;
+    return this.claimedMime === detectedMime || (isHeicFamily(this.claimedMime) && isHeicFamily(detectedMime));
+  }
+
+  _validateWithHead(head) {
+    const detected = detectImageMimeFromMagicBytes(head);
+    if (!detected) return null;
+    if (!this._matchesClaimed(detected)) return null;
+    if (!isAllowedMimeType(detected)) return null;
+    return detected;
+  }
+
+  _flushBufferedToOutput() {
+    if (this.bufferedBytes === 0) return;
+    const full = Buffer.concat(this.bufferedChunks, this.bufferedBytes);
+    this.bufferedChunks = [];
+    this.bufferedBytes = 0;
+    this.push(full);
+  }
+
+  _markValidated(detectedMime) {
+    this.validated = true;
+    this.detectedMime = detectedMime;
+    this.emit('validated', detectedMime);
+  }
+
+  _transform(chunk, encoding, callback) {
+    if (this.validated) {
+      callback(null, chunk);
+      return;
+    }
+
+    this.bufferedChunks.push(chunk);
+    this.bufferedBytes += chunk.length;
+
+    if (this.bufferedBytes < this.peekBytes) {
+      callback();
+      return;
+    }
+
+    const head = Buffer.concat(this.bufferedChunks, this.bufferedBytes);
+    const detected = this._validateWithHead(head);
+    if (!detected) {
+      callback(Object.assign(new Error('Invalid file signature'), { code: 'INVALID_FILE_SIGNATURE' }));
+      return;
+    }
+
+    this._markValidated(detected);
+    this._flushBufferedToOutput();
+    callback();
+  }
+
+  _flush(callback) {
+    if (this.validated) {
+      callback();
+      return;
+    }
+
+    // Preserve historical semantics for empty uploads: let downstream detect EMPTY_FILE.
+    if (this.bufferedBytes === 0) {
+      this._markValidated(this.claimedMime);
+      callback();
+      return;
+    }
+
+    const head = Buffer.concat(this.bufferedChunks, this.bufferedBytes);
+    const detected = this._validateWithHead(head);
+    if (!detected) {
+      callback(Object.assign(new Error('Invalid file signature'), { code: 'INVALID_FILE_SIGNATURE' }));
+      return;
+    }
+
+    this._markValidated(detected);
+    this._flushBufferedToOutput();
+    callback();
+  }
+}
+
 /**
  * Validates MIME type for image uploads.
  * @param {string} mimetype - The MIME type to validate
@@ -89,18 +265,8 @@ class HashingStream extends Transform {
  * @returns {boolean} True if valid image type
  */
 function isValidImageType(mimetype, filename) {
-  const ext = path.extname(filename).toLowerCase();
-  
-  // Accept files with image MIME type or allowed image extensions
-  if (mimetype && ALLOWED_MIME_TYPES.some(t => mimetype.startsWith(t.split('/')[0] + '/'))) {
-    return true;
-  }
-  
-  if (ALLOWED_IMAGE_EXTENSIONS.includes(ext)) {
-    return true;
-  }
-  
-  return false;
+  void filename; // extensions are not trusted for security decisions
+  return isAllowedMimeType(mimetype);
 }
 
 /**
@@ -180,18 +346,21 @@ async function streamToSupabase(req, options = {}) {
       if (name === fieldName) {
         fileFound = true;
 
-        // Validate MIME type
-        if (!isValidImageType(mimetype, originalname)) {
+        // Validate claimed MIME type (exact allowlist)
+        const claimedMime = String(mimetype || '').toLowerCase().trim();
+        if (!isValidImageType(claimedMime, originalname)) {
           fileStream.resume(); // Drain the stream
           uploadError = new Error('Only image files are allowed');
           uploadError.code = 'INVALID_MIME_TYPE';
           return;
         }
 
+        // SECURITY: Magic-byte sniffing BEFORE uploading to Supabase.
+        // Implemented as a Transform to avoid unsafe unshift() on ended streams.
         const filename = sanitizeFilename(originalname);
         const storagePath = `working/${filename}`;
 
-        // Create transform streams for validation and hashing
+        const sniffer = new MagicByteSniffer({ claimedMime, peekBytes: 64 });
         const sizeLimiter = new SizeLimiter(maxFileSize);
         const hashingStream = new HashingStream(userEmail); // Pass userEmail for scoped hashing
         const passThrough = new PassThrough();
@@ -199,71 +368,82 @@ async function streamToSupabase(req, options = {}) {
         // Handle file size limit exceeded
         sizeLimiter.on('error', (err) => {
           uploadError = err;
-          fileStream.destroy();
-          passThrough.destroy();
+          try { fileStream.destroy(); } catch { /* ignore */ }
+          try { passThrough.destroy(); } catch { /* ignore */ }
+        });
+
+        // Handle signature errors
+        sniffer.on('error', (err) => {
+          uploadError = err;
+          try { fileStream.destroy(); } catch { /* ignore */ }
+          try { passThrough.destroy(); } catch { /* ignore */ }
         });
 
         // Handle busboy's file size limit
         fileStream.on('limit', () => {
           uploadError = new Error('File too large');
           uploadError.code = 'LIMIT_FILE_SIZE';
-          passThrough.destroy();
+          try { passThrough.destroy(); } catch { /* ignore */ }
         });
 
-        // Pipe: fileStream -> sizeLimiter -> hashingStream -> passThrough -> Supabase
-        fileStream
-          .pipe(sizeLimiter)
-          .pipe(hashingStream)
-          .pipe(passThrough);
+        // Start the upload only after the sniffer validates and identifies the content type.
+        const validatedPromise = new Promise((resolve, reject) => {
+          sniffer.once('validated', resolve);
+          sniffer.once('error', reject);
+        });
 
-        // Start the upload and store the promise
         photoUploadPromise = (async () => {
-          try {
-            const { data, error } = await supabase.storage
-              .from('photos')
-              .upload(storagePath, passThrough, {
-                contentType: mimetype,
-                duplex: 'half', // Required for streaming uploads
-                upsert: false,
-                cacheControl: '31536000' // 1 year cache for immutable content-addressed files
-              });
+          const detectedMime = await validatedPromise;
 
-            if (error) {
-              logger.error('Supabase streaming upload error:', error);
-              const err = new Error('Failed to upload to storage');
-              err.supabaseError = error;
-              throw err;
-            }
+          const { data, error } = await supabase.storage
+            .from('photos')
+            .upload(storagePath, passThrough, {
+              // SECURITY: Use detected content type; do not trust client-provided MIME.
+              contentType: detectedMime,
+              duplex: 'half', // Required for streaming uploads
+              upsert: false,
+              cacheControl: '31536000' // 1 year cache for immutable content-addressed files
+            });
 
-            // Check for empty file after upload completes
-            const totalBytes = sizeLimiter.getTotalBytes();
-            if (totalBytes === 0) {
-              // Clean up the empty file from storage
-              await supabase.storage.from('photos').remove([storagePath]);
-              const err = new Error('Empty file uploaded');
-              err.code = 'EMPTY_FILE';
-              throw err;
-            }
-
-            return {
-              success: true,
-              filename,
-              originalname,
-              mimetype,
-              hash: hashingStream.getHash(),
-              path: storagePath,
-              size: totalBytes,
-              supabaseData: data
-            };
-          } catch (err) {
+          if (error) {
+            logger.error('Supabase streaming upload error:', error);
+            const err = new Error('Failed to upload to storage');
+            err.supabaseError = error;
             throw err;
           }
+
+          // Check for empty file after upload completes
+          const totalBytes = sizeLimiter.getTotalBytes();
+          if (totalBytes === 0) {
+            // Clean up the empty file from storage
+            await supabase.storage.from('photos').remove([storagePath]);
+            const err = new Error('Empty file uploaded');
+            err.code = 'EMPTY_FILE';
+            throw err;
+          }
+
+          return {
+            success: true,
+            filename,
+            originalname,
+            mimetype: detectedMime,
+            hash: hashingStream.getHash(),
+            path: storagePath,
+            size: totalBytes,
+            supabaseData: data
+          };
         })();
 
-        // Catch errors on the promise to ensure we don't have unhandled rejections
         photoUploadPromise.catch(err => {
           if (!uploadError) uploadError = err;
         });
+
+        // Pipe: fileStream -> sniffer -> sizeLimiter -> hashingStream -> passThrough -> Supabase
+        fileStream
+          .pipe(sniffer)
+          .pipe(sizeLimiter)
+          .pipe(hashingStream)
+          .pipe(passThrough);
 
       } 
       // Handle Thumbnail

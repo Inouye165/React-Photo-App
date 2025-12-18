@@ -35,7 +35,12 @@ describe('Auth RBAC guards', () => {
   });
 
   it('should return 200 with correct role', async () => {
-    const smallBuffer = Buffer.alloc(1024, 1);
+    const jpegHead = Buffer.from([
+      0xff, 0xd8, 0xff, 0xe0,
+      0x00, 0x10, 0x4a, 0x46,
+      0x49, 0x46, 0x00, 0x01
+    ]);
+    const smallBuffer = Buffer.concat([jpegHead, Buffer.alloc(1024 - jpegHead.length, 1)]);
     const res = await request(app)
       .post('/uploads/upload')
       .set('Authorization', 'Bearer admin')

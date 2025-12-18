@@ -388,9 +388,9 @@ describe('StreamUploader Module Unit Tests', () => {
       expect(isValidImageType('image/heic', 'test.heic')).toBe(true);
     });
 
-    it('should accept valid image extensions even with generic MIME', () => {
-      expect(isValidImageType('application/octet-stream', 'test.jpg')).toBe(true);
-      expect(isValidImageType('application/octet-stream', 'test.heic')).toBe(true);
+    it('should reject generic MIME types even with image-looking extensions', () => {
+      expect(isValidImageType('application/octet-stream', 'test.jpg')).toBe(false);
+      expect(isValidImageType('application/octet-stream', 'test.heic')).toBe(false);
     });
 
     it('should reject non-image MIME types and extensions', () => {

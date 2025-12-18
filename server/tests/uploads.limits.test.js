@@ -49,7 +49,13 @@ describe('Upload limits', () => {
   });
 
   it('should reject oversized upload (>10MB) with 413', async () => {
-    const bigBuffer = Buffer.alloc(10 * 1024 * 1024 + 1, 1); // 10MB + 1 byte
+    const jpegHead = Buffer.from([
+      0xff, 0xd8, 0xff, 0xe0,
+      0x00, 0x10, 0x4a, 0x46,
+      0x49, 0x46, 0x00, 0x01
+    ]);
+    const bigSize = 10 * 1024 * 1024 + 1;
+    const bigBuffer = Buffer.concat([jpegHead, Buffer.alloc(bigSize - jpegHead.length, 1)]);
     const res = await request(app)
       .post('/uploads/upload')
       .attach('photo', bigBuffer, 'big.jpg');
