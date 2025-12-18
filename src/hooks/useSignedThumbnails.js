@@ -1,5 +1,5 @@
 import { useState, useEffect, useCallback, useRef } from 'react';
-import { API_BASE_URL, isCookieSessionActive } from '../api';
+import { API_BASE_URL } from '../api';
 
 function isSignedThumbnailUrl(thumbnailUrl) {
   if (!thumbnailUrl || typeof thumbnailUrl !== 'string') return false;
@@ -44,15 +44,14 @@ export default function useSignedThumbnails(photos, token) {
    * Fetch signed URL for a single photo
    */
   const fetchSignedUrl = useCallback(async (photoId) => {
-    // In cookie-session mode, we can fetch without attaching Authorization.
-    // If neither cookie-session nor a token is available, user is not logged in.
-    if (!token && !isCookieSessionActive()) return null;
+    // Require Bearer token for authentication (no cookie fallback)
+    if (!token) return null;
 
     try {
       const response = await fetch(`${API_BASE_URL}/photos/${photoId}/thumbnail-url`, {
-        headers: isCookieSessionActive() ? undefined : ({
+        headers: {
           'Authorization': `Bearer ${token}`
-        }),
+        },
         credentials: 'include'
       });
 

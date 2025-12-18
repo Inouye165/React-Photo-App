@@ -148,13 +148,8 @@ import { supabase } from './supabaseClient'
 
 // Module-level token cache to avoid repeated async getSession calls
 // This is updated by setAuthToken (called from AuthContext on session changes)
+// SECURITY: Token stored in module closure, not exposed globally
 let _cachedAccessToken: string | null = null
-
-// Cookie-session mode (browser optimization)
-// When active, GET requests should avoid Authorization/Content-Type so they
-// qualify as "simple requests" and skip CORS preflight.
-let _cookieSessionActive = false
-let _cookieSessionSyncPromise: Promise<boolean> | null = null
 
 /**
  * Set the current access token for API requests.
@@ -163,74 +158,18 @@ let _cookieSessionSyncPromise: Promise<boolean> | null = null
  */
 export function setAuthToken(token: string | null): void {
   _cachedAccessToken = token
-
-  // If we no longer have an access token, treat cookie session as inactive.
-  // Logout flows clear the cookie server-side; this keeps client behavior consistent.
-  if (!token) {
-    _cookieSessionActive = false
-    _cookieSessionSyncPromise = null
-  }
 }
 
 /**
- * Mark whether the browser has an active httpOnly auth cookie session.
- * When active, GET requests omit Authorization/Content-Type to avoid preflight.
+ * Get headers for GET requests with Bearer token authentication.
+ * Returns Authorization header if token is available, undefined otherwise.
  */
-export function setCookieSessionActive(active: boolean): void {
-  _cookieSessionActive = Boolean(active)
-  if (!_cookieSessionActive) {
-    _cookieSessionSyncPromise = null
-  }
-}
-
-export function isCookieSessionActive(): boolean {
-  return _cookieSessionActive
-}
-
 function getHeadersForGetRequest(): Record<string, string> | undefined {
-  // Cookie auth path: rely on credentials/include + httpOnly cookie.
-  // Omit headers entirely to keep the request "simple" (no preflight).
-  if (_cookieSessionActive) return undefined
-
-  // Bearer auth path: only send Authorization (no Content-Type for GET).
-  if (_cachedAccessToken) return { Authorization: `Bearer ${_cachedAccessToken}` }
-
-  return undefined
-}
-
-/**
- * Ensure the backend has set the httpOnly auth cookie for this session.
- * Uses the Supabase access token as proof and sets an httpOnly cookie.
- */
-export async function ensureAuthCookie(accessToken: string | null = _cachedAccessToken): Promise<boolean> {
-  if (_cookieSessionActive) return true
-  if (!accessToken) return false
-  if (_cookieSessionSyncPromise) return _cookieSessionSyncPromise
-
-  const url = `${API_BASE_URL}/api/auth/session`
-  _cookieSessionSyncPromise = (async () => {
-    try {
-      const res = await fetchWithNetworkFallback(url, {
-        method: 'POST',
-        headers: { Authorization: `Bearer ${accessToken}` },
-        credentials: 'include',
-      })
-
-      if (!res || !res.ok) return false
-      const json = (await res.json().catch(() => ({}))) as { success?: unknown }
-      const ok = Boolean(json && json.success)
-      if (ok) _cookieSessionActive = true
-      return ok
-    } catch {
-      return false
-    }
-  })()
-
-  try {
-    return await _cookieSessionSyncPromise
-  } finally {
-    _cookieSessionSyncPromise = null
+  // Always use Bearer token auth (no cookie fallback)
+  if (_cachedAccessToken) {
+    return { Authorization: `Bearer ${_cachedAccessToken}` }
   }
+  return undefined
 }
 
 /**

@@ -42,8 +42,9 @@ This project is not a tutorial or a consumer-ready product. It is a high-perform
 - **Row-Level Security:** Supabase RLS for strict user data isolation
 
 ### 🔒 **Security (Experimental)**
-- **Bearer Token Auth (Primary):** `Authorization: Bearer <token>` header; httpOnly cookie deprecated fallback
-- **CSRF Protection:** Origin/Referer allowlist verification on state-changing auth endpoints (no CSRF tokens); SameSite cookies for defense-in-depth
+- **Stateless JWT Bearer Auth:** `Authorization: Bearer <token>` header exclusively; ~~cookie fallback removed~~ (eliminates split-brain auth)
+- **CSRF Immunity:** Bearer tokens not sent automatically by browsers (unlike cookies), eliminating CSRF attack vectors
+- **Origin Verification:** Origin/Referer allowlist verification on state-changing auth endpoints for defense-in-depth
 - **Experimental Beta Mode:** Optional beta features with an explicit privacy disclaimer and user acknowledgement
 - **Content Security Policy:** Helmet-enforced CSP with automated CI tests
 - **Concurrency Limits:** Rate limiting to prevent upload storms

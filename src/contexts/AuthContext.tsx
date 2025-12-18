@@ -5,7 +5,7 @@ import type { Session, User } from '@supabase/supabase-js'
 import { supabase } from '../supabaseClient'
 import useStore from '../store'
 import { API_BASE_URL } from '../config/apiConfig'
-import { ensureAuthCookie, setAuthToken } from '../api'
+import { setAuthToken } from '../api'
 
 declare global {
   interface Window {
@@ -269,7 +269,7 @@ export function AuthProvider({ children }: { children: ReactNode }): ReactNode {
           // Phase 1: Establish httpOnly cookie session (best-effort, once per session).
           // This enables simple GET requests (no Authorization/Content-Type headers) while
           // keeping credentials: 'include'.
-          ensureAuthCookie(currentSession.access_token).catch(() => {})
+          // Token is now cached for Bearer auth - no cookie sync needed
         }
         setSession(currentSession)
         setUser(currentSession?.user ?? null)
@@ -321,7 +321,7 @@ export function AuthProvider({ children }: { children: ReactNode }): ReactNode {
       if (nextSession?.access_token) {
         setAuthToken(nextSession.access_token)
         setAuthReady(true)
-        ensureAuthCookie(nextSession.access_token).catch(() => {})
+        // Token is now cached for Bearer auth - no cookie sync needed
       } else {
         setAuthToken(null)
         setAuthReady(false)
@@ -350,7 +350,7 @@ export function AuthProvider({ children }: { children: ReactNode }): ReactNode {
       // This ensures API calls made after login have the token ready
       if (data.session?.access_token) {
         setAuthToken(data.session.access_token)
-        ensureAuthCookie(data.session.access_token).catch(() => {})
+        // Token is now cached for Bearer auth - no cookie sync needed
         setAuthReady(true)
       }
 

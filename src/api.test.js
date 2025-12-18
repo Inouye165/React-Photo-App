@@ -198,9 +198,6 @@ describe('api - Bearer Token Authentication Security', () => {
     it('getPhotos should include Authorization header when authenticated', async () => {
       const testToken = 'photos-token';
       api.setAuthToken(testToken);
-
-      // Ensure cookie-session mode is off for this test.
-      api.setCookieSessionActive(false);
       
       // Clear cache to ensure fresh fetch
       if (globalThis.__getPhotosInflight) {
@@ -221,10 +218,8 @@ describe('api - Bearer Token Authentication Security', () => {
       expect(fetchCall[1].headers['Authorization']).toBe(`Bearer ${testToken}`);
     });
 
-    it('getPhotos should omit Authorization and Content-Type in cookie session mode (simple GET)', async () => {
-      // Token may still exist (Supabase session), but cookie-session mode should avoid headers.
+    it('getPhotos should always include Authorization header with Bearer token', async () => {
       api.setAuthToken('photos-token');
-      api.setCookieSessionActive(true);
 
       // Clear cache to ensure fresh fetch
       if (globalThis.__getPhotosInflight) {
@@ -244,8 +239,7 @@ describe('api - Bearer Token Authentication Security', () => {
       const fetchCall = fetchSpy.mock.calls[0];
       expect(fetchCall[1].credentials).toBe('include');
       const headers = fetchCall[1].headers || {};
-      expect(headers['Authorization']).toBeUndefined();
-      expect(headers['Content-Type']).toBeUndefined();
+      expect(headers['Authorization']).toBe('Bearer photos-token');
     });
 
     it('deletePhoto should include Authorization header when authenticated', async () => {
