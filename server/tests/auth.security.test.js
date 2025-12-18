@@ -65,7 +65,7 @@ describe('Authentication Security Tests', () => {
         .expect(401);
 
       expect(response.body.success).toBe(false);
-      expect(response.body.error).toBe('Access token required');
+      expect(response.body.error).toBe('Authorization header with Bearer token required');
       expect(mockGetUser).not.toHaveBeenCalled();
     });
 
@@ -83,7 +83,7 @@ describe('Authentication Security Tests', () => {
           .expect(401);
 
         expect(response.body.success).toBe(false);
-        expect(response.body.error).toBe('Access token required');
+        expect(response.body.error).toBe('Authorization header with Bearer token required');
         
         // Verify Supabase was NOT called (request rejected before token validation)
         expect(mockGetUser).not.toHaveBeenCalled();
@@ -150,23 +150,20 @@ describe('Authentication Security Tests', () => {
       try {
         process.env.MOCK_AUTH = 'true';
         
-        // Mock Supabase to reject the mock-token
-        mockGetUser.mockResolvedValue({ 
-          data: { user: null }, 
-          error: { message: 'Invalid JWT' } 
-        });
-        
+        // The /session endpoint is now deprecated and returns 200 with a deprecation notice
+        // It no longer validates tokens (no-op for backward compatibility)
         const response = await request(app)
           .post('/api/auth/session')
           .set('Authorization', 'Bearer mock-token')
           .set('Origin', 'http://localhost:5173')
-          .expect(403);
+          .expect(200);
 
-        expect(response.body.success).toBe(false);
-        expect(response.body.error).toBe('Invalid token');
+        expect(response.body.success).toBe(true);
+        expect(response.body.deprecated).toBe(true);
+        expect(response.body.message).toContain('deprecated');
         
-        // Verify token was validated via Supabase
-        expect(mockGetUser).toHaveBeenCalledWith('mock-token');
+        // Verify Supabase was NOT called (endpoint is now a no-op)
+        expect(mockGetUser).not.toHaveBeenCalled();
       } finally {
         process.env.MOCK_AUTH = originalMockAuth;
       }
@@ -234,7 +231,7 @@ describe('Authentication Security Tests', () => {
         .expect(401);
 
       expect(response.body.success).toBe(false);
-      expect(response.body.error).toBe('Access token required');
+      expect(response.body.error).toBe('Authorization header with Bearer token required');
       expect(mockGetUser).not.toHaveBeenCalled();
     });
   });
@@ -247,7 +244,7 @@ describe('Authentication Security Tests', () => {
         .expect(401);
 
       expect(response.body.success).toBe(false);
-      expect(response.body.error).toBe('Access token required');
+      expect(response.body.error).toBe('Authorization header with Bearer token required');
     });
 
     test('should extract token from Bearer format correctly', async () => {

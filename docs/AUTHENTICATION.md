@@ -4,40 +4,44 @@
 
 This photo application now includes a comprehensive, production-ready authentication system that prevents unauthorized access to all application features. The system is built with best security practices and is ready for web service deployment.
 
-> **Update (December 2025):** Authentication has been migrated from cookie-based auth to **Bearer token authentication**. This change improves iOS/Mobile Safari compatibility and aligns with modern stateless API patterns. See [Bearer Token Authentication](#bearer-token-authentication-primary) below.
+> **🎯 Architecture Update (December 2025):** Authentication now uses exclusively **stateless JWT Bearer tokens**. ~~Cookie-based session fallback has been removed~~ to eliminate split-brain authentication issues and align with modern API standards.
 
 ## Security Features
 
 ### 🔐 JWT-Based Authentication
 - Stateless JWT tokens for scalable authentication
 - Configurable token expiration (default: 24 hours)
-- **Primary**: Bearer token in `Authorization` header (recommended for all clients)
-- **Deprecated Fallback**: httpOnly `authToken` cookies (will be removed in future)
+- **REQUIRED**: Bearer token in `Authorization` header (only supported method)
 - **SECURITY**: Query parameter tokens are strictly rejected to prevent token leakage
+- **CSRF Immunity**: Tokens are not sent automatically (unlike cookies), eliminating CSRF risks
 
-### Bearer Token Authentication (Primary)
+### Bearer Token Authentication (Exclusive Method)
 
-As of December 2025, the primary authentication method is **Bearer tokens in the Authorization header**:
+As of December 2025, authentication uses **exclusively Bearer tokens in the Authorization header**:
 
 ```
 Authorization: Bearer <supabase_access_token>
 ```
 
-**Why Bearer tokens over cookies?**
-- ✅ iOS/Mobile Safari compatibility (no ITP cookie blocking)
-- ✅ Works with cross-origin deployments (Vercel frontend + Railway backend)
-- ✅ Stateless API patterns (better for scaling)
-- ✅ Explicit auth (no hidden cookie behavior)
+**Why Bearer tokens exclusively (no cookies)?**
+- ✅ **CSRF Immunity**: Tokens are not sent automatically by browsers, eliminating CSRF attack vectors
+- ✅ **Stateless**: No server-side session storage required (pure JWT validation)
+- ✅ **iOS/Mobile Safari compatibility**: No ITP cookie blocking issues
+- ✅ **Cross-origin ready**: Works seamlessly with frontend on Vercel, backend on Railway
+- ✅ **No split-brain**: Frontend and backend sessions cannot get out of sync
+- ✅ **Standard HTTP**: Uses the standard `Authorization` header pattern
 
 **Frontend Implementation:**
-- Token is sourced from Supabase's managed session
-- `api.js` attaches `Authorization: Bearer <token>` to all protected requests
-- No custom token storage needed - Supabase handles it securely
+- Token is sourced from Supabase's managed session (`supabase.auth.getSession()`)
+- `api.ts` attaches `Authorization: Bearer <token>` to all protected requests
+- Token stored in module closure, not exposed globally (security)
+- No custom token storage needed - Supabase handles it securely in localStorage
 
 **Backend Implementation:**
-- Middleware checks `Authorization` header first (primary)
-- Cookie is checked only as deprecated fallback
-- Query parameters are always rejected
+- Middleware requires `Authorization: Bearer <token>` header (strictly enforced)
+- ~~Cookie fallback removed~~ - cookies are no longer checked
+- Query parameters are always rejected (security: tokens in URLs get logged)
+- Returns 401 with clear error message if Authorization header is missing
 
 ## Terms of Service & Beta Disclaimer
 
@@ -174,7 +178,7 @@ CORS_CREDENTIALS=true
 - **Input Validation**: Comprehensive validation and sanitization
 - **CORS Protection**: Configured for specific origins only
 - **Security Headers**: Helmet.js provides comprehensive protection
-- **Bearer Token Auth**: All API routes read JWTs from `Authorization: Bearer <token>` header (primary). Cookie-based auth is deprecated. Query parameter tokens are strictly rejected to prevent token leakage.
+- **Bearer Token Auth**: All API routes require `Authorization: Bearer <token>` header (exclusively). ~~Cookie-based auth removed~~. Query parameter tokens are strictly rejected to prevent token leakage.
 
 ### Data Protection
 - **Password Hashing**: Bcrypt with high salt rounds

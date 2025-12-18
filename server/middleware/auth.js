@@ -15,46 +15,40 @@ const supabase = createClient(SUPABASE_URL, SUPABASE_ANON_KEY);
 /**
  * Middleware to verify Supabase JWT token and authenticate users
  * 
- * SECURITY ARCHITECTURE (Bearer Token Auth - Primary):
- * - Token is read from Authorization header as "Bearer <token>" (PRIMARY)
- * - This is the recommended approach for:
+ * SECURITY ARCHITECTURE (Stateless JWT Bearer Token):
+ * - Token MUST be provided in Authorization header as "Bearer <token>"
+ * - This approach provides:
+ *   - Stateless authentication (no server-side session storage)
+ *   - CSRF immunity (tokens not sent automatically like cookies)
  *   - iOS/Mobile Safari compatibility (no ITP cookie blocking)
- *   - Modern stateless API patterns
- *   - Cross-origin deployments (frontend on Vercel, backend on Railway)
+ *   - Modern API patterns (standard HTTP Authorization header)
+ *   - Cross-origin deployments (no SameSite cookie issues)
  * 
- * DEPRECATED: Cookie-based auth (fallback during transition)
- * - httpOnly cookie is checked as FALLBACK only
- * - Will be removed in a future version
- * - New clients should use Bearer token auth exclusively
- * 
- * Query parameter tokens are NOT supported (security risk)
+ * SECURITY NOTES:
+ * - Cookies are NOT supported (eliminates cookie/session split-brain issues)
+ * - Query parameter tokens are NOT supported (security risk - logged in URLs)
+ * - Token validation is handled by Supabase Auth (getUser API)
+ * - Tokens are NEVER logged or exposed in error messages
  */
 async function authenticateToken(req, res, next) {
-  let token = null;
-  let authSource = null;
-
-  // 1. PRIMARY: Check Authorization header (Bearer token)
-  // This is the recommended approach for modern clients
+  // REQUIRED: Extract Bearer token from Authorization header
+  // This is the ONLY supported authentication method
   const authHeader = req.headers.authorization;
-  if (authHeader && authHeader.startsWith('Bearer ')) {
-    token = authHeader.slice(7); // Remove 'Bearer ' prefix
-    authSource = 'bearer';
+  
+  if (!authHeader || !authHeader.startsWith('Bearer ')) {
+    return res.status(401).json({ 
+      success: false, 
+      error: 'Authorization header with Bearer token required' 
+    });
   }
 
-  // 2. DEPRECATED FALLBACK: Check httpOnly cookie (legacy support)
-  // This will be removed in a future version
-  if (!token && req.cookies && req.cookies.authToken) {
-    token = req.cookies.authToken;
-    authSource = 'cookie';
-    // Log deprecation warning in development (not in production to avoid log spam)
-    if (process.env.NODE_ENV !== 'production' && process.env.NODE_ENV !== 'test') {
-      console.debug('[auth] Cookie-based auth is deprecated. Please use Authorization: Bearer <token> header.');
-    }
-  }
-
-  // SECURITY: Query parameter tokens are NOT supported
+  const token = authHeader.slice(7); // Remove 'Bearer ' prefix
+  
   if (!token) {
-    return res.status(401).json({ success: false, error: 'Access token required' });
+    return res.status(401).json({ 
+      success: false, 
+      error: 'Access token required' 
+    });
   }
 
   try {
@@ -106,7 +100,7 @@ async function authenticateToken(req, res, next) {
       // app_metadata can only be modified via Service Role Key
       role: user.app_metadata?.role || 'user'
     };
-    req.authSource = authSource;
+    req.authSource = 'bearer';
 
     next();
   } catch (err) {

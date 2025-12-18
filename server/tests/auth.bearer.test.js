@@ -139,7 +139,7 @@ describe('Bearer Token Authentication - Primary Auth Method', () => {
         .expect(401);
 
       expect(response.body.success).toBe(false);
-      expect(response.body.error).toBe('Access token required');
+      expect(response.body.error).toBe('Authorization header with Bearer token required');
     });
 
     it('should return safe error message without sensitive token values', async () => {
@@ -148,11 +148,9 @@ describe('Bearer Token Authentication - Primary Auth Method', () => {
         .expect(401);
 
       // Error should NOT contain any actual JWT tokens or sensitive info
-      // The generic message "Access token required" is acceptable
-      expect(response.body.error).not.toContain('Bearer');
       expect(response.body.error).not.toContain('jwt');
       expect(response.body.error).not.toContain('secret');
-      expect(response.body.error).toBe('Access token required');
+      expect(response.body.error).toBe('Authorization header with Bearer token required');
     });
   });
 
@@ -212,7 +210,7 @@ describe('Bearer Token Authentication - Primary Auth Method', () => {
         .expect(401);
 
       expect(response.body.success).toBe(false);
-      expect(response.body.error).toBe('Access token required');
+      expect(response.body.error).toBe('Authorization header with Bearer token required');
     });
 
     it('should return 401 when Authorization header is empty', async () => {
@@ -234,44 +232,33 @@ describe('Bearer Token Authentication - Primary Auth Method', () => {
     });
   });
 
-  describe('Cookie-Based Auth (Deprecated Fallback)', () => {
-    beforeEach(() => {
+  describe('Cookie-Based Auth (NO LONGER SUPPORTED)', () => {
+    it('should reject authentication with only cookie (no Bearer token)', async () => {
+      const response = await request(app)
+        .get('/api/test/protected')
+        .set('Cookie', 'authToken=cookie-jwt-token')
+        .expect(401);
+
+      expect(response.body.success).toBe(false);
+      expect(response.body.error).toBe('Authorization header with Bearer token required');
+    });
+
+    it('should ignore cookie when Bearer token is present', async () => {
       mockGetUser.mockResolvedValue({
         data: { user: testUser },
         error: null
       });
-    });
 
-    it('should still authenticate with cookie when no Bearer token is present', async () => {
       const response = await request(app)
-        .get('/api/test/protected')
-        .set('Cookie', 'authToken=cookie-jwt-token')
-        .expect(200);
-
-      expect(response.body.success).toBe(true);
-      expect(response.body.user.id).toBe('user-123');
-      expect(response.body.authSource).toBe('cookie');
-    });
-
-    it('should prefer Bearer token over cookie when both are present', async () => {
-      // Different tokens to distinguish which was used
-      let tokenUsed = null;
-      mockGetUser.mockImplementation((token) => {
-        tokenUsed = token;
-        return Promise.resolve({
-          data: { user: testUser },
-          error: null
-        });
-      });
-
-      await request(app)
         .get('/api/test/protected')
         .set('Authorization', 'Bearer bearer-token')
         .set('Cookie', 'authToken=cookie-token')
         .expect(200);
 
-      // Should use Bearer token, not cookie
-      expect(tokenUsed).toBe('bearer-token');
+      expect(response.body.success).toBe(true);
+      expect(response.body.authSource).toBe('bearer');
+      // Verify Supabase was called with Bearer token, not cookie
+      expect(mockGetUser).toHaveBeenCalledWith('bearer-token');
     });
   });
 
@@ -282,7 +269,7 @@ describe('Bearer Token Authentication - Primary Auth Method', () => {
         .expect(401);
 
       expect(response.body.success).toBe(false);
-      expect(response.body.error).toBe('Access token required');
+      expect(response.body.error).toBe('Authorization header with Bearer token required');
     });
 
     it('should NOT accept access_token in query parameter', async () => {

@@ -93,7 +93,7 @@ describe('Protected Routes - Bearer Token Authentication', () => {
         .expect(401);
 
       expect(response.body.success).toBe(false);
-      expect(response.body.error).toBe('Access token required');
+      expect(response.body.error).toBe('Authorization header with Bearer token required');
     });
 
     it('should return 200 with valid Bearer token', async () => {
@@ -154,7 +154,7 @@ describe('Protected Routes - Bearer Token Authentication', () => {
         .expect(401);
 
       expect(response.body.success).toBe(false);
-      expect(response.body.error).toBe('Access token required');
+      expect(response.body.error).toBe('Authorization header with Bearer token required');
     });
 
     it('should return 200 with valid Bearer token', async () => {

@@ -106,7 +106,7 @@ describe('Thumbnail URL API - Integration Tests', () => {
         .expect(401);
 
       expect(response.body.success).toBe(false);
-      expect(response.body.error).toBe('Access token required');
+      expect(response.body.error).toBe('Authorization header with Bearer token required');
     });
 
     test('should reject request for non-existent photo', async () => {

@@ -3,7 +3,7 @@
 # Lumina (formerly React Photo App)
 
 ![Status: High-Performance Engineering Prototype (Active Development)](https://img.shields.io/badge/status-high--performance--prototype-yellow.svg)
-[![Tests](https://img.shields.io/badge/tests-700%2B%20passing-brightgreen.svg)](https://github.com/Inouye165/React-Photo-App)
+[![Tests](https://img.shields.io/badge/tests-1145%2B%20passing-brightgreen.svg)](https://github.com/Inouye165/React-Photo-App)
 [![Security](https://img.shields.io/badge/security-JWT%20%2B%20RLS-blue.svg)](https://supabase.com/docs/guides/auth)
 [![HEIC Support](https://img.shields.io/badge/HEIC-Auto%20Convert-orange.svg)](https://en.wikipedia.org/wiki/High_Efficiency_Image_Format)
 [![React](https://img.shields.io/badge/React-19-61dafb.svg)](https://reactjs.org/)
@@ -42,8 +42,9 @@ This project is not a tutorial or a consumer-ready product. It is a high-perform
 - **Row-Level Security:** Supabase RLS for strict user data isolation
 
 ### 🔒 **Security (Experimental)**
-- **Bearer Token Auth (Primary):** `Authorization: Bearer <token>` header; httpOnly cookie deprecated fallback
-- **CSRF Protection:** Origin/Referer allowlist verification on state-changing auth endpoints (no CSRF tokens); SameSite cookies for defense-in-depth
+- **Stateless JWT Bearer Auth:** `Authorization: Bearer <token>` header exclusively; ~~cookie fallback removed~~ (eliminates split-brain auth)
+- **CSRF Immunity:** Bearer tokens not sent automatically by browsers (unlike cookies), eliminating CSRF attack vectors
+- **Origin Verification:** Origin/Referer allowlist verification on state-changing auth endpoints for defense-in-depth
 - **Experimental Beta Mode:** Optional beta features with an explicit privacy disclaimer and user acknowledgement
 - **Content Security Policy:** Helmet-enforced CSP with automated CI tests
 - **Concurrency Limits:** Rate limiting to prevent upload storms
@@ -245,7 +246,7 @@ cd server && npm run worker
 **Backend:** Node.js, Express, Supabase (Postgres + Storage + Auth), BullMQ, Redis  
 **AI/Processing:** LangGraph, Sharp, ImageMagick, Google Places API  
 **Security:** Helmet, JWT (Bearer token auth), RLS, CSRF tokens  
-**Testing:** Vitest, Jest, Supertest (700+ tests across frontend & backend, 20x stress-tested)
+**Testing:** Vitest, Jest, Supertest (1,145+ tests across frontend & backend, 20x stress-tested)
 
 ---
 
@@ -294,7 +295,7 @@ cd server && npm run worker
 ## 🧪 Quality Assurance
 
 ```bash
-# Run all tests (700+ passing across frontend & backend)
+# Run all tests (1,145+ passing across frontend & backend)
 npm run test:run
 
 # Backend only

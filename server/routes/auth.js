@@ -1,17 +1,6 @@
 const express = require('express');
-const { createClient } = require('@supabase/supabase-js');
 const rateLimit = require('express-rate-limit');
 const { getAllowedOrigins } = require('../config/allowedOrigins');
-const { COOKIE_NAME, getAuthCookieOptions, getClearCookieOptions } = require('../config/cookieConfig');
-
-const SUPABASE_URL = process.env.SUPABASE_URL;
-const SUPABASE_ANON_KEY = process.env.SUPABASE_ANON_KEY;
-
-if (!SUPABASE_URL || !SUPABASE_ANON_KEY) {
-  console.warn('Supabase URL or Key missing. Auth routes may fail.');
-}
-
-const supabase = createClient(SUPABASE_URL, SUPABASE_ANON_KEY);
 
 // Rate limiting for authentication endpoints
 // Strict limit to prevent brute force attacks on login/session endpoints
@@ -83,75 +72,55 @@ function createAuthRouter({ db: _db } = {}) {
 
   /**
    * POST /api/auth/session
-   * Accepts a valid Supabase JWT in Authorization header
-   * Verifies the token and sets an httpOnly cookie for secure image access
+   * DEPRECATED: This endpoint is no longer needed for Bearer token authentication.
    * 
-   * This endpoint bridges Supabase client-side auth with server-side cookie-based auth
-   * enabling secure <img> tag requests without query parameter token leakage
+   * Previously used to bridge Supabase client-side auth with server-side cookie-based auth.
+   * Now that the application uses exclusively Bearer token authentication, this endpoint
+   * is maintained only for backward compatibility and returns success without side effects.
+   * 
+   * Migration Note: Update your frontend to use Bearer tokens directly:
+   *   Authorization: Bearer <token>
+   * 
+   * This endpoint will be removed in a future version.
    */
   router.post('/session', async (req, res) => {
-    try {
-      // Extract token from Authorization header
-      const authHeader = req.headers.authorization;
-      const token = authHeader && authHeader.split(' ')[1];
-
-      if (!token) {
-        return res.status(401).json({
-          success: false,
-          error: 'Access token required'
-        });
-      }
-
-      // Verify token using Supabase Auth
-      const { data: { user }, error } = await supabase.auth.getUser(token);
-
-      if (error || !user) {
-        return res.status(403).json({
-          success: false,
-          error: 'Invalid token'
-        });
-      }
-
-      // Token is valid - set httpOnly cookie
-      // Security configuration centralized in config/cookieConfig.js:
-      // - httpOnly: prevents JavaScript access (XSS protection)
-      // - secure: true in production OR when SameSite=None (browser requirement)
-      // - sameSite: configurable via COOKIE_SAME_SITE env var for cross-origin
-      // - maxAge: cookie expires after 24 hours
-      
-      const cookieOptions = getAuthCookieOptions();
-
-      res.cookie(COOKIE_NAME, token, cookieOptions);
-
-      return res.json({
-        success: true,
-        message: 'Session cookie set successfully',
-        user: {
-          id: user.id,
-          email: user.email
-        }
-      });
-    } catch (err) {
-      console.error('Session endpoint error:', err);
-      return res.status(500).json({
-        success: false,
-        error: 'Internal server error'
-      });
+    // Log deprecation warning in development
+    if (process.env.NODE_ENV !== 'production' && process.env.NODE_ENV !== 'test') {
+      console.warn('[DEPRECATED] /api/auth/session endpoint is deprecated. Use Bearer token authentication directly.');
     }
+
+    // Return success for backward compatibility (no-op)
+    return res.json({
+      success: true,
+      deprecated: true,
+      message: 'Session endpoint deprecated. Use Authorization: Bearer <token> header for all requests.'
+    });
   });
 
   /**
    * POST /api/auth/logout
-   * Clears the authToken cookie
+   * DEPRECATED: This endpoint is no longer needed for Bearer token authentication.
    * 
-   * IMPORTANT: clearCookie options must match the options used when setting
-   * the cookie (same secure, sameSite, path) otherwise browsers won't clear it.
+   * Previously used to clear httpOnly cookies. With Bearer token authentication,
+   * logout is handled entirely on the client side by discarding the token.
+   * 
+   * Migration Note: To log out, simply:
+   *   1. Call supabase.auth.signOut() on the frontend
+   *   2. Remove the token from your frontend state/storage
+   * 
+   * This endpoint will be removed in a future version.
    */
   router.post('/logout', (req, res) => {
-    res.clearCookie(COOKIE_NAME, getClearCookieOptions());
+    // Log deprecation warning in development
+    if (process.env.NODE_ENV !== 'production' && process.env.NODE_ENV !== 'test') {
+      console.warn('[DEPRECATED] /api/auth/logout endpoint is deprecated. Handle logout on the client side.');
+    }
+
+    // Return success for backward compatibility (no-op)
     return res.json({
       success: true,
-      message: 'Session cookie cleared'
+      deprecated: true,
+      message: 'Logout endpoint deprecated. Handle logout client-side by calling supabase.auth.signOut().'
     });
   });
 
