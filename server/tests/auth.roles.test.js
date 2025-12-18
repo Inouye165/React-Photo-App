@@ -235,7 +235,7 @@ describe('Role Security Tests - Privilege Escalation Prevention', () => {
         .expect(401);
 
       expect(response.body.success).toBe(false);
-      expect(response.body.error).toBe('Access token required');
+      expect(response.body.error).toBe('Authorization header with Bearer token required');
     });
 
     test('Should reject when user has no role and tries to access admin', async () => {

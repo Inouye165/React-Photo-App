@@ -69,7 +69,7 @@ describe('Users API Routes', () => {
         .expect(401);
 
       expect(response.body.success).toBe(false);
-      expect(response.body.error).toBe('Access token required');
+      expect(response.body.error).toBe('Authorization header with Bearer token required');
     });
 
     it('should return 403 with invalid Bearer token', async () => {
