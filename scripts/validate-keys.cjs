@@ -40,12 +40,6 @@ function loadEnvFile(filePath) {
 loadEnvFile(path.resolve(process.cwd(), '.env'));
 loadEnvFile(path.resolve(process.cwd(), 'server', '.env'));
 
-function safePreviewSecret(value) {
-  const trimmed = String(value || '').trim();
-  if (trimmed.length <= 12) return trimmed;
-  return `${trimmed.slice(0, 6)}…${trimmed.slice(-4)}`;
-}
-
 async function validateOpenAIKeyLive(apiKey) {
   if (typeof fetch !== 'function') {
     throw new Error('fetch is not available in this Node runtime');
@@ -111,8 +105,7 @@ async function validateKeys() {
       // Helpful hint: If OPENAI_API_KEY is coming from the shell, it may mask .env values.
       if (inheritedOpenAIKey && inheritedOpenAIKey === process.env.OPENAI_API_KEY && !openAIKeyLoadedFromEnvFile) {
         console.log(
-          `ℹ️  Using OPENAI_API_KEY from environment (${safePreviewSecret(process.env.OPENAI_API_KEY)}). ` +
-            'Unset it to use .env/server/.env values.'
+          'ℹ️  Using OPENAI_API_KEY from environment. Unset it to use .env/server/.env values.'
         );
       }
 
