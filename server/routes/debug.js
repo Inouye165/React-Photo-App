@@ -133,7 +133,7 @@ module.exports = function createDebugRouter({ db }) {
   // Test storage connection
   router.get('/storage', async (req, res) => {
     try {
-      // Test if we can list files in the bucket
+      // List files in the bucket
       const { data, error } = await supabase.storage.from('photos').list('', {
         limit: 1
       });
@@ -142,7 +142,7 @@ module.exports = function createDebugRouter({ db }) {
         return res.status(500).json({ success: false, error: error.message, details: error });
       }
       
-      // Test if we can create a test file
+      // Create a test file
       const testContent = Buffer.from('test', 'utf8');
       const { data: uploadData, error: uploadError } = await supabase.storage
         .from('photos')
