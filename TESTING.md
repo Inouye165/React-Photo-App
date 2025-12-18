@@ -89,7 +89,7 @@ npx vitest run src/tests/authUtils.test.js
 - User workflows and error handling
 - Accessibility features
 
-### Backend Tests (700+ tests)
+### Backend Tests (670 tests)
 ```bash
 cd server && npm test
 ```
