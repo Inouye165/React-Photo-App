@@ -6,7 +6,7 @@
   "scripts": {
     "dev": "vite",
     "build": "vite build",
-    "pretest": "node scripts/validate-keys.cjs",
+    "pretest": "node scripts/validate-keys.cjs && node scripts/repo-hygiene-gps-check.cjs",
     "test": "vitest",
     "test:ui": "vitest --ui",
     "test:run": "vitest run",
@@ -16,7 +16,7 @@
     "secret-scan": "node scripts/secret-scan.cjs",
     "check-privilege": "node scripts/check-privilege.cjs",
     "integration-test": "node scripts/integration-test.cjs",
-    "lint": "eslint . --cache",
+    "lint": "eslint . --cache && node scripts/repo-hygiene-gps-check.cjs",
     "lint:fix": "eslint . --fix --cache",
     "lint:server": "eslint server --cache",
     "lint:web": "eslint src --cache",

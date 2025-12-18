@@ -2634,9 +2634,6 @@ Codebase Scan Log: server/server_photos.db
 
    No issues
 
-Codebase Scan Log: server/server_photos.json
-
-   No issues
 
 Codebase Scan Log: server/server.js
 

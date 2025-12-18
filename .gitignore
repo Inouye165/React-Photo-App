@@ -38,6 +38,9 @@ coverage/
 *.tgz
 *.swp
 *.bak
+
+# Prevent committed GPS/EXIF test data
+server/server_photos.json
 *.tmp
 
 # Ignore SQLite DB and backups
