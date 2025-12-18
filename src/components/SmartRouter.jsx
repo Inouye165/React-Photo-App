@@ -1,7 +1,7 @@
 import React, { useEffect, useState } from 'react';
 import { useNavigate } from 'react-router-dom';
-import { useAuth } from '../contexts/AuthContext.jsx';
-import { getPhotoStatus } from '../api.js';
+import { useAuth } from '../contexts/AuthContext';
+import { getPhotoStatus } from '../api';
 
 /**
  * SmartRouter - Intelligent initial route handler

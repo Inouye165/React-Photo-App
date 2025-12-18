@@ -11,9 +11,9 @@ vi.mock('./ImageCanvasEditor', () => ({
 // We need to mock the api module BEFORE importing App so App imports the mocked functions.
 const photosStore = [];
 
-// Provide a dynamic mock for ./api.js that the App will import.
+// Provide a dynamic mock for ./api that the App will import.
 // The closure captures `photosStore` so upload mock can push and getPhotos reads the array.
-vi.mock('./api.js', () => {
+vi.mock('./api', () => {
   return {
     uploadPhotoToServer: vi.fn(async (file) => {
       // Simulate server storing the uploaded file and returning success

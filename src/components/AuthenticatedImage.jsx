@@ -17,7 +17,7 @@
  */
 
 import React, { useState, useEffect, useRef } from 'react';
-import { fetchProtectedBlobUrl, revokeBlobUrl } from '../api.js';
+import { fetchProtectedBlobUrl, revokeBlobUrl } from '../api';
 
 /**
  * @param {Object} props

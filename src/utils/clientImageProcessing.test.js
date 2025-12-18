@@ -12,7 +12,7 @@ import {
   calculateScaledDimensions,
   generateClientThumbnailBatch,
   // compressForUpload is tested via dynamic import due to mocking requirements
-} from './clientImageProcessing.js';
+} from './clientImageProcessing';
 
 // Mock heic2any
 vi.mock('heic2any', () => ({
@@ -766,14 +766,14 @@ describe('clientImageProcessing', () => {
     });
 
     it('should throw error for null/undefined file', async () => {
-      const { compressForUpload } = await import('./clientImageProcessing.js');
+      const { compressForUpload } = await import('./clientImageProcessing');
       
       await expect(compressForUpload(null)).rejects.toThrow('No file provided');
       await expect(compressForUpload(undefined)).rejects.toThrow('No file provided');
     });
 
     it('should compress JPEG files and return blob with metadata', async () => {
-      const { compressForUpload } = await import('./clientImageProcessing.js');
+      const { compressForUpload } = await import('./clientImageProcessing');
       const jpegFile = createMockFile('image/jpeg', 'test.jpg');
       const compressedBlob = new Blob(['compressed'], { type: 'image/jpeg' });
 
@@ -821,7 +821,7 @@ describe('clientImageProcessing', () => {
     });
 
     it('should not resize images smaller than maxSize', async () => {
-      const { compressForUpload } = await import('./clientImageProcessing.js');
+      const { compressForUpload } = await import('./clientImageProcessing');
       const jpegFile = createMockFile('image/jpeg', 'small.jpg');
       const compressedBlob = new Blob(['compressed'], { type: 'image/jpeg' });
 
@@ -862,7 +862,7 @@ describe('clientImageProcessing', () => {
     });
 
     it('should respect custom maxSize option', async () => {
-      const { compressForUpload } = await import('./clientImageProcessing.js');
+      const { compressForUpload } = await import('./clientImageProcessing');
       const jpegFile = createMockFile('image/jpeg', 'test.jpg');
       const compressedBlob = new Blob(['compressed'], { type: 'image/jpeg' });
 
@@ -904,7 +904,7 @@ describe('clientImageProcessing', () => {
     });
 
     it('should convert HEIC files before compression', async () => {
-      const { compressForUpload } = await import('./clientImageProcessing.js');
+      const { compressForUpload } = await import('./clientImageProcessing');
       const heicFile = createMockFile('image/heic', 'test.heic');
       const convertedBlob = new Blob(['converted'], { type: 'image/jpeg' });
       const compressedBlob = new Blob(['compressed'], { type: 'image/jpeg' });
@@ -946,7 +946,7 @@ describe('clientImageProcessing', () => {
     });
 
     it('should return correct compression ratio', async () => {
-      const { compressForUpload } = await import('./clientImageProcessing.js');
+      const { compressForUpload } = await import('./clientImageProcessing');
       
       // Create a "large" file (in terms of size)
       const largeData = new Uint8Array(100000).fill(255);

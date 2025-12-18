@@ -5,7 +5,7 @@ import PhotoCard from './PhotoCard.tsx';
 import type { PhotoCardProps } from './PhotoCard.tsx';
 
 // Mock the api module to prevent actual fetch calls in AuthenticatedImage
-vi.mock('../api.js', () => ({
+vi.mock('../api', () => ({
   fetchProtectedBlobUrl: vi.fn(() => Promise.resolve('blob:mock-url')),
   revokeBlobUrl: vi.fn(),
   API_BASE_URL: 'http://localhost:3001',

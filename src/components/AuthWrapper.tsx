@@ -29,7 +29,7 @@ const AuthWrapper = ({ children }: AuthWrapperProps) => {
     const checkTermsAcceptance = async () => {
       try {
         // Import dynamically to avoid circular dependency
-        const { getAuthHeaders } = await import('../api.js');
+        const { getAuthHeaders } = await import('../api');
         const headers = getAuthHeaders() as Record<string, string>;
         // E2E Bypass: Add header if in E2E mode to avoid cookie issues
         if ((window as any).__E2E_MODE__) {
@@ -73,7 +73,7 @@ const AuthWrapper = ({ children }: AuthWrapperProps) => {
 
     setIsAccepting(true);
     try {
-      const { getAuthHeaders } = await import('../api.js');
+      const { getAuthHeaders } = await import('../api');
       const headers = getAuthHeaders() as Record<string, string>;
       // E2E Bypass: Add header if in E2E mode to avoid cookie issues
       if ((window as any).__E2E_MODE__) {

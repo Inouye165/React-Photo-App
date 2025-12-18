@@ -1,7 +1,7 @@
 import React from 'react';
 import { useNavigate } from 'react-router-dom';
 import { useAuth } from './contexts/AuthContext';
-import useStore from './store.js';
+import useStore from './store';
 
 const sevStyles = {
   info: { bg: '#3b82f6', text: '#f1f5f9' },

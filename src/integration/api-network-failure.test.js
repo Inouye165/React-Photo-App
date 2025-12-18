@@ -1,13 +1,13 @@
 import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest';
-import * as api from '../api.js';
+import * as api from '../api';
 
 // Ensure we're using the actual store, not a mock
-vi.mock('../store.js', async () => {
-  const actual = await vi.importActual('../store.js');
+vi.mock('../store', async () => {
+  const actual = await vi.importActual('../store');
   return actual;
 });
 
-import useStore from '../store.js';
+import useStore from '../store';
 
 describe('Integration: Network failure handling', () => {
   let consoleErrorSpy;

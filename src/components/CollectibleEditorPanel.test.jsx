@@ -21,7 +21,7 @@ const mockAuthState = {
   }
 };
 
-vi.mock('../contexts/AuthContext.jsx', () => ({
+vi.mock('../contexts/AuthContext', () => ({
   useAuth: () => mockAuthState
 }));
 

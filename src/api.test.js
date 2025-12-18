@@ -61,7 +61,7 @@ import * as api from './api';
  * 3. Tokens are NEVER logged or included in error messages
  * 4. fetchProtectedBlobUrl sends Authorization header for images
  */
-describe('api.js - Bearer Token Authentication Security', () => {
+describe('api - Bearer Token Authentication Security', () => {
   beforeEach(() => {
     vi.restoreAllMocks();
     // Clear token cache before each test
@@ -372,7 +372,7 @@ describe('api.js - Bearer Token Authentication Security', () => {
   });
 });
 
-describe('api.js - handleAuthError', () => {
+describe('api - handleAuthError', () => {
   let reloadSpy;
   let dispatchEventSpy;
   let originalLocation;
@@ -555,7 +555,7 @@ describe('api.js - handleAuthError', () => {
   });
 });
 
-describe('api.js - API functions with auth error handling', () => {
+describe('api - API functions with auth error handling', () => {
   let dispatchEventSpy;
 
   beforeEach(() => {

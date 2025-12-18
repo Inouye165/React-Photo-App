@@ -11,7 +11,7 @@ vi.mock('./hooks/useAIPolling.jsx', () => ({
 }))
 
 // Mock API functions
-vi.mock('./api.js', () => ({
+vi.mock('./api', () => ({
   getPhotos: vi.fn(),
   uploadPhotoToServer: vi.fn(),
   checkPrivilege: vi.fn(),
@@ -64,8 +64,8 @@ vi.mock('./components/MetadataModal', () => ({
 }))
 
 import App from './App'
-import { getPhotos, checkPrivilegesBatch } from './api.js'
-import useStore from './store.js'
+import { getPhotos, checkPrivilegesBatch } from './api'
+import useStore from './store'
 
 // Test for session expiration event handling
 describe('App Component - Session Expiration', () => {

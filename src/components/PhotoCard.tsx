@@ -9,8 +9,8 @@ import {
   Trash2,
 } from 'lucide-react';
 import type { Photo } from '../types/photo';
-import formatFileSize from '../utils/formatFileSize.js';
-import { toUrl } from '../utils/toUrl.js';
+import formatFileSize from '../utils/formatFileSize';
+import { toUrl } from '../utils/toUrl';
 import AuthenticatedImage from './AuthenticatedImage.jsx';
 import { aiPollDebug } from '../utils/aiPollDebug';
 

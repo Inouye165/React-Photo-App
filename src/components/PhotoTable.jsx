@@ -1,6 +1,6 @@
 import React from 'react';
-import formatFileSize from '../utils/formatFileSize.js';
-import { toUrl } from '../utils/toUrl.js';
+import formatFileSize from '../utils/formatFileSize';
+import { toUrl } from '../utils/toUrl';
 import AuthenticatedImage from './AuthenticatedImage.jsx';
 
 export default function PhotoTable({

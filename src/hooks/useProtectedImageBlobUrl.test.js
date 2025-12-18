@@ -1,15 +1,15 @@
 import { describe, it, expect, vi, beforeEach } from 'vitest'
 import { renderHook, act } from '@testing-library/react'
 
-// Note: the hook imports these from "../api.js" (src/api.js)
-vi.mock('../api.js', () => ({
+// Note: the hook imports these from "../api" (src/api.ts)
+vi.mock('../api', () => ({
   fetchProtectedBlobUrl: vi.fn(),
   revokeBlobUrl: vi.fn(),
   isAbortError: vi.fn(),
 }))
 
-import { fetchProtectedBlobUrl, revokeBlobUrl, isAbortError } from '../api.js'
-import { useProtectedImageBlobUrl } from './useProtectedImageBlobUrl.js'
+import { fetchProtectedBlobUrl, revokeBlobUrl, isAbortError } from '../api'
+import { useProtectedImageBlobUrl } from './useProtectedImageBlobUrl'
 
 function flushMicrotasks(times = 2) {
   return act(async () => {

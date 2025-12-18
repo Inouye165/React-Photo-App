@@ -1,6 +1,6 @@
 ﻿import React, { useEffect } from 'react';
 import { BrowserRouter, Routes, Route } from 'react-router-dom';
-import { logGlobalError } from './utils/globalLog.js';
+import { logGlobalError } from './utils/globalLog';
 import GlobalErrorBoundary from './components/GlobalErrorBoundary.jsx';
 import MainLayout from './layouts/MainLayout.jsx';
 import SmartRouter from './components/SmartRouter.jsx';

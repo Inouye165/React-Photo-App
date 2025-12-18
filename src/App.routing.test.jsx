@@ -2,25 +2,25 @@ import React from 'react';
 import { describe, it, expect, vi, beforeEach } from 'vitest';
 import { render, screen, waitFor } from '@testing-library/react';
 import { MemoryRouter, Routes, Route } from 'react-router-dom';
-import { AuthProvider } from './contexts/AuthContext.jsx';
+import { AuthProvider } from './contexts/AuthContext';
 import AuthWrapper from './components/AuthWrapper';
 import MainLayout from './layouts/MainLayout.jsx';
 import PhotoGalleryPage from './pages/PhotoGalleryPage.jsx';
 import PhotoDetailPage from './pages/PhotoDetailPage.tsx';
 import PhotoEditPage from './pages/PhotoEditPage.jsx';
 import GlobalErrorBoundary from './components/GlobalErrorBoundary.jsx';
-import { uploadPickerInitialState } from './store/uploadPickerSlice.js';
+import { uploadPickerInitialState } from './store/uploadPickerSlice';
 
 // Import store after mock setup
-vi.mock('./store.js', async () => {
-  const actual = await vi.importActual('./store.js');
+vi.mock('./store', async () => {
+  const actual = await vi.importActual('./store');
   return actual;
 });
 
-import useStore from './store.js';
+import useStore from './store';
 
 // Mock dependencies - use importOriginal to avoid having to mock every API function
-vi.mock('./api.js', async (importOriginal) => {
+vi.mock('./api', async (importOriginal) => {
   const actual = await importOriginal();
   return {
     ...actual,

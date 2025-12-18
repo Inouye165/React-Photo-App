@@ -1,5 +1,5 @@
 import { useState, useEffect, useCallback, useRef } from 'react';
-import { API_BASE_URL, isCookieSessionActive } from '../api.js';
+import { API_BASE_URL, isCookieSessionActive } from '../api';
 
 function isSignedThumbnailUrl(thumbnailUrl) {
   if (!thumbnailUrl || typeof thumbnailUrl !== 'string') return false;

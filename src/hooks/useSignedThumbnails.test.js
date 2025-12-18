@@ -1,7 +1,7 @@
 import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest';
 import { renderHook, waitFor } from '@testing-library/react';
 import useSignedThumbnails from './useSignedThumbnails';
-import { API_BASE_URL } from '../api.js';
+import { API_BASE_URL } from '../api';
 
 describe('useSignedThumbnails Hook', () => {
   const mockToken = 'test-token-123';

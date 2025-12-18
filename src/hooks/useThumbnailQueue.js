@@ -21,8 +21,8 @@
  */
 
 import { useState, useEffect, useRef, useCallback, useMemo } from 'react';
-import { generateClientThumbnail } from '../utils/clientImageProcessing.js';
-import { getThumbnail, saveThumbnail } from '../utils/thumbnailCache.js';
+import { generateClientThumbnail } from '../utils/clientImageProcessing';
+import { getThumbnail, saveThumbnail } from '../utils/thumbnailCache';
 
 /**
  * Queue-based thumbnail processor with batched state updates

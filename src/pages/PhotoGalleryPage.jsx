@@ -3,12 +3,12 @@ import { useLocation, useNavigate, useOutletContext } from 'react-router-dom';
 import PhotoGallery from '../PhotoGallery.jsx';
 import PhotoUploadForm from '../PhotoUploadForm.jsx';
 import MetadataModal from '../components/MetadataModal.jsx';
-import usePhotoPrivileges from '../hooks/usePhotoPrivileges.js';
-import useLocalPhotoPicker from '../hooks/useLocalPhotoPicker.js';
-import usePhotoManagement from '../hooks/usePhotoManagement.js';
-import useStore from '../store.js';
-import { useAuth } from '../contexts/AuthContext.jsx';
-import useSignedThumbnails from '../hooks/useSignedThumbnails.js';
+import usePhotoPrivileges from '../hooks/usePhotoPrivileges';
+import useLocalPhotoPicker from '../hooks/useLocalPhotoPicker';
+import usePhotoManagement from '../hooks/usePhotoManagement';
+import useStore from '../store';
+import { useAuth } from '../contexts/AuthContext';
+import useSignedThumbnails from '../hooks/useSignedThumbnails';
 
 /**
  * PhotoGalleryPage - Main gallery view showing the photo card grid
@@ -109,7 +109,7 @@ export default function PhotoGalleryPage() {
 
   const handleMoveToWorking = async (id) => {
     try {
-      const { updatePhotoState } = await import('../api.js');
+      const { updatePhotoState } = await import('../api');
       await updatePhotoState(id, 'working');
       await refreshPhotos();
       setBanner({ message: 'Photo moved back to working', severity: 'info' });

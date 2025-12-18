@@ -3,12 +3,12 @@ import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest';
 import { render, waitFor, cleanup, act } from '@testing-library/react';
 
 // Ensure we're using the actual store, not a mock
-vi.mock('./store.js', async () => {
-  const actual = await vi.importActual('./store.js');
+vi.mock('./store', async () => {
+  const actual = await vi.importActual('./store');
   return actual;
 });
 
-import useStore from './store.js';
+import useStore from './store';
 
 // Lightweight test component that mimics App's session expiration listener
 function SessionExpirationTestComponent() {

@@ -11,7 +11,7 @@ import {
   saveThumbnail,
   removeThumbnail,
   hasThumbnail,
-} from './thumbnailCache.js';
+} from './thumbnailCache';
 
 // Mock idb-keyval module
 vi.mock('idb-keyval', () => {

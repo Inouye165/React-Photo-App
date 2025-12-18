@@ -17,7 +17,7 @@ vi.mock('react-router-dom', async () => {
 });
 
 // Mock AuthContext
-vi.mock('../contexts/AuthContext.jsx', () => ({
+vi.mock('../contexts/AuthContext', () => ({
   useAuth: vi.fn(() => ({
     user: { id: 'test-user-id', email: 'test@example.com' },
     loading: false,
@@ -27,7 +27,7 @@ vi.mock('../contexts/AuthContext.jsx', () => ({
 
 // Mock API - will be configured per test
 const mockGetPhotoStatus = vi.fn();
-vi.mock('../api.js', () => ({
+vi.mock('../api', () => ({
   getPhotoStatus: () => mockGetPhotoStatus(),
   API_BASE_URL: 'http://localhost:3001',
 }));
@@ -245,7 +245,7 @@ describe('SmartRouter Component', () => {
   describe('Authentication States', () => {
     it('does not make API call while auth is still loading', async () => {
       // Override the auth mock for this test
-      const { useAuth } = await import('../contexts/AuthContext.jsx');
+      const { useAuth } = await import('../contexts/AuthContext');
       vi.mocked(useAuth).mockReturnValueOnce({
         user: null,
         loading: true,
@@ -263,7 +263,7 @@ describe('SmartRouter Component', () => {
     });
 
     it('does not make API call if cookie is not ready', async () => {
-      const { useAuth } = await import('../contexts/AuthContext.jsx');
+      const { useAuth } = await import('../contexts/AuthContext');
       vi.mocked(useAuth).mockReturnValueOnce({
         user: { id: 'test-user' },
         loading: false,

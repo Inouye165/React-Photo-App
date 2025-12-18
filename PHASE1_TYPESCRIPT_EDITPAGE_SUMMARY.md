@@ -177,6 +177,25 @@ This Phase 1 conversion establishes patterns for future TypeScript migrations:
 5. **Type Check Iteratively:** Run `npx tsc --noEmit` frequently during conversion
 6. **Preserve Security:** Never lose `credentials: 'include'` on authenticated requests
 
+## Phase 1b: Hub TypeScript Conversion (API + Store)
+
+Following the EditPage conversion, the project also migrated the two shared “hub” modules to TypeScript with strict typing and no runtime behavior changes:
+
+- **Shared contracts:** Added `src/types/api.ts` and `src/types/auth.ts` for reusable, strongly-typed API/store/auth boundaries.
+- **API hub:** Migrated `src/api.js` → `src/api.ts` (typed fetch wrappers, token cache typing, network/auth event invariants preserved).
+- **Store hub:** Migrated `src/store.js` → `src/store.ts` (typed Zustand state/actions, strict AI polling timer typing, backoff/timeout behavior preserved).
+- **Import rule (important):** Store may import API; API must not import Store (unidirectional dependency to prevent cycles).
+
+Validation performed for this hub migration:
+
+```bash
+npx tsc --noEmit
+npx vitest run src/api.test.js
+npx vitest run src/store.test.ts
+npx vitest run src/store.aiPolling.test.ts
+npm run lint
+```
+
 ## Next Steps (Future Phases)
 
 Phase 1 is complete. Future phases can now safely refactor EditPage with confidence:

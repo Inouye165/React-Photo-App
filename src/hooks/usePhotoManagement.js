@@ -6,8 +6,8 @@ import {
   updatePhotoCaption,
   deletePhoto,
   API_BASE_URL,
-} from '../api.js';
-import useStore from '../store.js';
+} from '../api';
+import useStore from '../store';
 
 function usePhotoManagement() {
   const photos = useStore((state) => state.photos);
