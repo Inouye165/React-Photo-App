@@ -73,6 +73,7 @@ export function calculateScaledDimensions(width, height, maxSize) {
 
 /**
  * Check if the file type is supported for client-side thumbnail generation
+  // Client image processing functions
  * (non-HEIC types that browsers can natively handle)
  * @param {File} file - The file to check
  * @returns {boolean} - True if supported natively, false otherwise
@@ -80,6 +81,7 @@ export function calculateScaledDimensions(width, height, maxSize) {
 export function isSupportedImageType(file) {
   if (!file) return false;
   
+  // Calculate scaled dimensions to fit within max bounds
   // Check MIME type first
   if (file.type) {
     const supportedTypes = new Set([
@@ -90,6 +92,7 @@ export function isSupportedImageType(file) {
       'image/gif',
       'image/bmp',
     ]);
+  // Convert HEIC to JPEG
     if (supportedTypes.has(file.type.toLowerCase())) {
       return true;
     }
