@@ -288,12 +288,12 @@ test.describe('EditPage Visual Regression (Frontend-Only)', () => {
     });
   });
 
-  test('Default Story tab state', async ({ page }, testInfo) => {
+  test('Default Context tab state', async ({ page }, testInfo) => {
     await goToEditFromGallery(page);
 
     // Guards
     await expect(page.locator('text=Photo not found')).toHaveCount(0);
-    await expect(page.getByRole('button', { name: /story/i })).toBeVisible({ timeout: 15000 });
+    await expect(page.getByRole('button', { name: /context/i })).toBeVisible({ timeout: 15000 });
     await expect(page.locator('textarea').first()).toBeVisible({ timeout: 5000 });
 
     await page.waitForTimeout(1000);
@@ -311,20 +311,19 @@ test.describe('EditPage Visual Regression (Frontend-Only)', () => {
       screenshotOptions.maxDiffPixelRatio = 0.015;
     }
 
-    await expect(page).toHaveScreenshot('editpage-story-tab.png', screenshotOptions);
+    await expect(page).toHaveScreenshot('editpage-context-tab.png', screenshotOptions);
   });
 
-  test('Location tab with GPS data', async ({ page }, testInfo) => {
+  test('Context view with GPS map', async ({ page }, testInfo) => {
     await goToEditFromGallery(page);
 
     await expect(page.locator('text=Photo not found')).toHaveCount(0);
-    await expect(page.getByRole('button', { name: /story/i })).toBeVisible({ timeout: 15000 });
+    await expect(page.getByRole('button', { name: /context/i })).toBeVisible({ timeout: 15000 });
 
-    const locationTab = page.getByRole('button', { name: /location/i });
-    await locationTab.click();
-    await page.waitForTimeout(2000); // Longer wait for map tiles to load
+    // In E2E we render a stable map placeholder to avoid flaky third-party map UIs.
+    await expect(page.getByText(/map preview disabled in e2e/i)).toBeVisible({ timeout: 10000 });
+    await page.waitForTimeout(2000);
 
-    // Stabilize before screenshot
     await stabilizeForScreenshot(page);
 
     const screenshotOptions: any = {
@@ -333,11 +332,10 @@ test.describe('EditPage Visual Regression (Frontend-Only)', () => {
       timeout: 10000
     };
     if (!testInfo.project.use.headless) {
-      // Location tab needs higher tolerance due to map tile rendering
       screenshotOptions.maxDiffPixelRatio = 0.12;
     }
 
-    await expect(page).toHaveScreenshot('editpage-location-tab.png', screenshotOptions);
+    await expect(page).toHaveScreenshot('editpage-context-map.png', screenshotOptions);
   });
 
   test('Collectibles tab with feature flag enabled', async ({ page }, testInfo) => {
@@ -345,7 +343,7 @@ test.describe('EditPage Visual Regression (Frontend-Only)', () => {
     await goToEditFromGallery(page, { cardIndex: 1 });
 
     await expect(page.locator('text=Photo not found')).toHaveCount(0);
-    await expect(page.getByRole('button', { name: /story/i })).toBeVisible({ timeout: 15000 });
+    await expect(page.getByRole('button', { name: /context/i })).toBeVisible({ timeout: 15000 });
 
     const collectiblesTab = page.getByRole('button', { name: /collectibles/i });
     const tabExists = await collectiblesTab.count();
@@ -373,13 +371,13 @@ test.describe('EditPage Visual Regression (Frontend-Only)', () => {
     await goToEditFromGallery(page);
 
     await expect(page.locator('text=Photo not found')).toHaveCount(0);
-    await expect(page.getByRole('button', { name: /story/i })).toBeVisible({ timeout: 15000 });
+    await expect(page.getByRole('button', { name: /context/i })).toBeVisible({ timeout: 15000 });
 
     await page.waitForTimeout(800);
 
     // Stabilize before screenshot
     await stabilizeForScreenshot(page);
-
+      await expect(page.getByRole('button', { name: /context/i })).toBeVisible({ timeout: 15000 });
     const screenshotOptions: any = {
       fullPage: false,
       animations: 'disabled',
@@ -396,7 +394,7 @@ test.describe('EditPage Visual Regression (Frontend-Only)', () => {
     await goToEditFromGallery(page);
 
     await expect(page.locator('text=Photo not found')).toHaveCount(0);
-    await expect(page.getByRole('button', { name: /story/i })).toBeVisible({ timeout: 15000 });
+    await expect(page.getByRole('button', { name: /context/i })).toBeVisible({ timeout: 15000 });
 
     const flipButton = page.locator('button:has-text("Metadata"), button:has-text("View Details"), button:has-text("Show Details")').first();
     const flipButtonExists = await flipButton.count();
@@ -420,12 +418,11 @@ test.describe('EditPage Visual Regression (Frontend-Only)', () => {
     await expect(page).toHaveScreenshot('editpage-flipped-metadata.png', screenshotOptions);
   });
 
-  test('Story tab form fields with focus', async ({ page }, testInfo) => {
+  test('Context tab form fields with focus', async ({ page }, testInfo) => {
     await goToEditFromGallery(page);
 
     await expect(page.locator('text=Photo not found')).toHaveCount(0);
-    await expect(page.getByRole('button', { name: /story/i })).toBeVisible({ timeout: 15000 });
-
+    await expect(page.getByRole('button', { name: /context/i })).toBeVisible({ timeout: 15000 });
     const descriptionField = page.locator('textarea').first();
     const fieldExists = await descriptionField.count();
     if (fieldExists > 0) {
@@ -445,6 +442,6 @@ test.describe('EditPage Visual Regression (Frontend-Only)', () => {
       screenshotOptions.maxDiffPixelRatio = 0.015;
     }
 
-    await expect(page).toHaveScreenshot('editpage-story-form-focus.png', screenshotOptions);
+    await expect(page).toHaveScreenshot('editpage-context-form-focus.png', screenshotOptions);
   });
 });

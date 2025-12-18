@@ -11,8 +11,7 @@ import { useAiRecheckForPhoto } from './hooks/useAiRecheckForPhoto'
 import EditPageShell from './components/edit/EditPageShell'
 import EditHeaderActions from './components/edit/EditHeaderActions'
 import EditTabs from './components/edit/EditTabs'
-import StoryTabPanel from './components/edit/StoryTabPanel'
-import LocationTabPanel from './components/edit/LocationTabPanel'
+import ContextTabPanel from './components/edit/ContextTabPanel'
 import PhotoStackPanel from './components/edit/PhotoStackPanel'
 import CollectiblesTabPanel from './components/edit/CollectiblesTabPanel'
 import shellStyles from './components/edit/EditPageShell.module.css'
@@ -52,7 +51,7 @@ export default function EditPage({ photo, onClose: _onClose, onSave, onRecheckAI
   const [isFlipped, setIsFlipped] = useState<boolean>(false) // Flip card state
 
   // === Collectibles Tab State (via hook) ===
-  const [activeTab, setActiveTab] = useState<'story' | 'location' | 'collectibles'>('story');
+  const [activeTab, setActiveTab] = useState<'context' | 'collectibles'>('context');
   const {
     collectibleData,
     collectibleLoading,
@@ -254,17 +253,13 @@ export default function EditPage({ photo, onClose: _onClose, onSave, onRecheckAI
 
             {/* Tab Content */}
             <div className={shellStyles.tabContentContainer}>
-              {/* Story Tab */}
-              {activeTab === 'story' && (
-                <StoryTabPanel
+              {/* Context Tab (Unified) */}
+              {activeTab === 'context' && (
+                <ContextTabPanel
                   description={description}
                   onDescriptionChange={setDescription}
+                  photo={sourcePhoto}
                 />
-              )}
-
-              {/* Location Tab */}
-              {activeTab === 'location' && (
-                <LocationTabPanel photo={sourcePhoto} />
               )}
 
               {/* Collectibles Tab */}

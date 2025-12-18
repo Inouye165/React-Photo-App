@@ -30,6 +30,7 @@ This project is not a tutorial or a consumer-ready product. It is a high-perform
 ## ✨ Architectural Experiments & Features
 
 ### 🧠 **AI Photo Concierge (Prototype)**
+- **Unified Context Tab:** EditPage now combines story description and location map in a single, vertically stacked Context view for streamlined editing.
 - **Object & Scene Detection:** Recognizes dogs, food, collectibles, and 100+ categories (via AI models)
 - **Food/Location Agent:** Attempts to cross-reference food photos with nearby restaurants using GPS and Google Places API
 - **Collectibles Valuation:** Prototype logic for estimating value of items like Pyrex, comics, memorabilia

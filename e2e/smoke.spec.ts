@@ -179,5 +179,5 @@ test('E2E smoke: login → upload → view', async ({ page, context }) => {
 
   await page.getByTestId('photo-detail-edit').click();
   await expect(page).toHaveURL(new RegExp(`/photos/${mockPhotoId}/edit$`));
-  await expect(page.getByRole('button', { name: 'Story' })).toBeVisible({ timeout: 10000 });
+  await expect(page.getByRole('button', { name: 'Context' })).toBeVisible({ timeout: 10000 });
 });

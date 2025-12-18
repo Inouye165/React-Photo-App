@@ -1,6 +1,6 @@
 import styles from './EditTabs.module.css';
 
-type TabType = 'story' | 'location' | 'collectibles';
+type TabType = 'context' | 'collectibles';
 
 interface EditTabsProps {
   activeTab: TabType;
@@ -12,7 +12,7 @@ interface EditTabsProps {
 
 /**
  * EditTabs - Tab navigation for EditPage
- * Renders Story, Location, and conditionally Collectibles tabs
+ * Renders Context and conditionally Collectibles tabs
  * Phase 5: Styles migrated to CSS Modules
  */
 export default function EditTabs({
@@ -25,16 +25,10 @@ export default function EditTabs({
   return (
     <div className={styles.tabNavContainer}>
       <button
-        onClick={() => onTabChange('story')}
-        className={`${styles.tabButton} ${activeTab === 'story' ? styles.active : ''}`}
+        onClick={() => onTabChange('context')}
+        className={`${styles.tabButton} ${activeTab === 'context' ? styles.active : ''}`}
       >
-        Story
-      </button>
-      <button
-        onClick={() => onTabChange('location')}
-        className={`${styles.tabButton} ${activeTab === 'location' ? styles.active : ''}`}
-      >
-        Location
+        Context
       </button>
       {showCollectiblesTab && (
         <button

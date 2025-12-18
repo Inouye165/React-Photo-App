@@ -23,13 +23,13 @@ export default function StoryTabPanel({
     <div className={styles.storyTabContainer}>
       <div className={styles.storyTabInner}>
         <label className={styles.storyTabLabel}>
-          Photo Story
+          Context
         </label>
         <textarea
           value={description}
           onChange={handleChange}
           className={styles.storyTextarea}
-          placeholder="Tell the story behind this photo... What were you doing? Who was there? What made this moment special?"
+          placeholder="Where does this memory take you? Who was there? What made this moment unforgettable?"
         />
       </div>
     </div>
