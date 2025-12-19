@@ -286,8 +286,13 @@ app.set('trust proxy', 1);
   app.use(authenticateToken, createUploadsRouter({ db }));
   app.use(authenticateToken, createPrivilegeRouter({ db }));
 
-  // Mount debug routes with authentication required in ALL environments
-  app.use(authenticateToken, createDebugRouter({ db }));
+  // SECURITY: Debug/diagnostic routes are high risk.
+  // - In production, do NOT mount unless explicitly enabled.
+  // - In all environments, debug routes require normal authentication.
+  const shouldMountDebugRoutes = (process.env.NODE_ENV !== 'production') || (process.env.DEBUG_ROUTES_ENABLED === 'true');
+  if (shouldMountDebugRoutes) {
+    app.use(authenticateToken, createDebugRouter({ db }));
+  }
 
   // Add security error handling middleware
   app.use(securityErrorHandler);

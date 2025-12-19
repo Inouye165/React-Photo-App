@@ -38,19 +38,27 @@ if (allowDevDebug) {
 ## Remediation Applied
 
 ### After (Secure Code)
-Debug routes now **always** require authentication, regardless of environment configuration:
+Debug routes require authentication in all environments when enabled/mounted, and are **disabled by default in production**:
 
 ```javascript
-// SECURE CODE (FIXED)
-// Mount debug routes with authentication required in ALL environments
-app.use(authenticateToken, createDebugRouter({ db }));
+// SECURE CODE (HARDENED)
+// - In production, do NOT mount debug routes unless explicitly enabled.
+// - In all environments, debug routes require normal authentication.
+const shouldMountDebugRoutes = (process.env.NODE_ENV !== 'production') || (process.env.DEBUG_ROUTES_ENABLED === 'true');
+if (shouldMountDebugRoutes) {
+  app.use(authenticateToken, createDebugRouter({ db }));
+}
 ```
+
+Additionally, the debug router applies a defense-in-depth guard so that even if the router is accidentally mounted in production, the routes still default to 404 unless explicitly enabled. If `DEBUG_ADMIN_TOKEN` is set, requests must include `x-debug-token: <token>` or they receive a 403.
 
 ### Key Changes
 1. **Removed conditional authentication logic** - No more `if (allowDevDebug)` checks
 2. **Authentication always required** - `authenticateToken` middleware now protects all debug routes
-3. **Environment variable clarified** - `ALLOW_DEV_DEBUG` now only controls logging verbosity, not security
-4. **Removed security-related logging** - Deleted misleading log message about "dev debug endpoints enabled"
+3. **Production safe by default** - Debug routes are disabled (404) in `NODE_ENV=production` unless explicitly enabled
+4. **Optional admin token gate** - `DEBUG_ADMIN_TOKEN` enforces `x-debug-token` as an additional defense
+5. **Environment variable clarified** - `ALLOW_DEV_DEBUG` only controls logging verbosity, not security
+6. **Removed security-related logging** - Deleted misleading log message about "dev debug endpoints enabled"
 
 ## Files Modified
 
