@@ -4,6 +4,8 @@ import { useNavigate } from 'react-router-dom';
 import PhotoUploadForm from '../PhotoUploadForm.jsx';
 import useLocalPhotoPicker from '../hooks/useLocalPhotoPicker';
 import { useThumbnailQueue } from '../hooks/useThumbnailQueue';
+import { isProbablyMobile } from '../utils/isProbablyMobile';
+import { isAndroid } from '../utils/isAndroid';
 
 /**
  * UploadPage - Dedicated page for photo uploads
@@ -109,6 +111,8 @@ export default function UploadPage() {
   // Ref for fallback file input (Firefox/Safari)
   const fileInputRef = useRef(null);
 
+  const android = isAndroid();
+
   // Track if user has selected a folder
   const hasSelectedFolder = filteredLocalPhotos.length > 0;
 
@@ -127,7 +131,9 @@ export default function UploadPage() {
 
   // Handle folder selection flow with cross-browser support
   const handleStartUpload = () => {
-    if (typeof window.showDirectoryPicker === 'function') {
+    // On Android/mobile, using the directory picker often routes users into a filesystem UI
+    // that does not offer the Camera option. Prefer the native file input there.
+    if (typeof window.showDirectoryPicker === 'function' && !isProbablyMobile()) {
       handleSelectFolder();
     } else {
       fileInputRef.current?.click();
@@ -267,6 +273,7 @@ export default function UploadPage() {
           <input
             type="file"
             accept="image/*,.heic,.heif,.png,.jpg,.jpeg"
+            capture={android ? 'environment' : undefined}
             multiple
             className="hidden"
             style={{ display: 'none' }}

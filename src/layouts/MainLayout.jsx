@@ -3,6 +3,7 @@ import { Outlet } from 'react-router-dom';
 import AppHeader from '../components/AppHeader.jsx';
 import useStore from '../store';
 import { getDependencyStatus } from '../api';
+import { useAuth } from '../contexts/AuthContext';
 
 const AI_DEPENDENCY_WARNING = 'AI services unavailable. Start required Docker containers to re-enable processing.';
 
@@ -11,6 +12,7 @@ const AI_DEPENDENCY_WARNING = 'AI services unavailable. Start required Docker co
  * Manages toolbar, banners, and dependency status checks
  */
 export default function MainLayout() {
+  const { user, authReady } = useAuth();
   const banner = useStore((state) => state.banner);
   const setBanner = useStore((state) => state.setBanner);
   const [toolbarMessage, setToolbarMessage] = useState('');
@@ -20,6 +22,11 @@ export default function MainLayout() {
   // Check AI dependency status periodically
   useEffect(() => {
     if (typeof window === 'undefined') return undefined;
+
+    // Dependency status endpoint is protected; avoid noisy 401/403 before auth.
+    if (!authReady || !user) {
+      return undefined;
+    }
 
     let cancelled = false;
     let intervalId = null;
@@ -53,7 +60,7 @@ export default function MainLayout() {
         window.clearInterval(intervalId);
       }
     };
-  }, []);
+  }, [authReady, user]);
 
   // Listen for session expiration events from API layer
   useEffect(() => {

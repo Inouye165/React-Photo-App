@@ -3,6 +3,8 @@ import { useVirtualizer } from '@tanstack/react-virtual';
 import useStore from './store';
 import { useThumbnailQueue } from './hooks/useThumbnailQueue';
 import Thumbnail from './components/Thumbnail.jsx';
+import { isProbablyMobile } from './utils/isProbablyMobile';
+import { isAndroid } from './utils/isAndroid';
 
 // Hook to get responsive column count
 const useColumns = () => {
@@ -43,6 +45,9 @@ const PhotoUploadForm = ({
 }) => {
     // Ref for fallback file input
     const fileInputRef = useRef(null);
+  const mobilePhotoInputRef = useRef(null);
+
+  const android = isAndroid();
   // Connect to store commands
   const closePicker = useStore((state) => state.pickerCommand.closePicker);
   
@@ -284,11 +289,21 @@ const PhotoUploadForm = ({
         <div className="ml-auto flex gap-3">
            <button 
              onClick={() => {
-               if ('showDirectoryPicker' in window) {
+               const mobile = isProbablyMobile();
+               const canUseDirectoryPicker = 'showDirectoryPicker' in window && !mobile;
+               if (canUseDirectoryPicker) {
                  onReopenFolder && onReopenFolder();
-               } else {
-                 fileInputRef.current?.click();
+                 return;
                }
+
+               if (mobile && mobilePhotoInputRef.current) {
+                 // Mobile: prefer the plain image file input so browsers can offer Camera/Photos.
+                 mobilePhotoInputRef.current.click();
+                 return;
+               }
+
+               // Desktop unsupported browsers: fall back to webkitdirectory input.
+               fileInputRef.current?.click();
              }}
              className="px-4 py-2 text-sm font-medium text-gray-700 bg-white border border-gray-300 rounded-md hover:bg-gray-50 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-blue-500 min-h-[44px] min-w-[44px]"
            >
@@ -308,10 +323,12 @@ const PhotoUploadForm = ({
            <input
              type="file"
              accept="image/png,image/jpeg,image/jpg,image/heic,image/heif,image/webp,image/*"
+             capture={android ? 'environment' : undefined}
              multiple
              className="hidden"
              id="mobile-photo-input"
              data-testid="mobile-photo-input"
+             ref={mobilePhotoInputRef}
              onChange={handleNativeSelection}
            />
           <button

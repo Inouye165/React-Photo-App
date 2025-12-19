@@ -8,8 +8,10 @@ import {
   API_BASE_URL,
 } from '../api';
 import useStore from '../store';
+import { useAuth } from '../contexts/AuthContext';
 
 function usePhotoManagement() {
+  const { user, authReady } = useAuth();
   const photos = useStore((state) => state.photos);
   const setPhotos = useStore((state) => state.setPhotos);
   const updatePhotoData = useStore((state) => state.updatePhotoData);
@@ -82,6 +84,11 @@ function usePhotoManagement() {
   );
 
   useEffect(() => {
+    // Protected endpoint: only fetch once auth is ready.
+    if (!authReady || !user) {
+      setLoading(false);
+      return undefined;
+    }
     // Unified gallery: always fetch all photos.
     const { cancel } = loadPhotos();
     return cancel;
