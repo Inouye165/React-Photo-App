@@ -71,7 +71,7 @@ cd server && npm test
 
 ## Automated Test Coverage
 
-### Frontend Tests (350+ tests)
+### Frontend tests
 ```bash
 # Run with coverage
 npm run test:coverage
@@ -80,23 +80,14 @@ npm run test:coverage
 npx vitest run src/tests/authUtils.test.js
 ```
 
-**Covers:**
-- Authentication utilities (20 tests)
-- Component rendering and interactions (46 tests)
-- User workflows and error handling
-- Accessibility features
+This covers core UI behavior (auth flows, component interactions, and regression coverage for the main screens).
 
-### Backend Tests (670 tests)
+### Backend tests
 ```bash
 cd server && npm test
 ```
 
-**Covers:**
-- Authentication endpoints and JWT validation
-- Image serving with authentication
-- HEIC conversion functionality 
-- Security middleware and headers
-- Database operations and error handling
+This covers auth middleware behavior, image access rules, upload/processing paths, and security-related regressions.
 
 ## Common Issues & Solutions
 
@@ -112,13 +103,13 @@ cd server && npm test
 
 ### 🖼️ HEIC Issues  
 **Problem**: HEIC files not displaying
-- **Check**: ImageMagick installed (`magick --version`)
 - **Check**: Server logs for conversion errors
-- **Solution**: Install ImageMagick with HEIF delegates
+- **Check**: Worker is running (thumbnails/conversion happen in background jobs)
+- **Notes**: The app is intended to work without ImageMagick; conversion uses Sharp plus a `heic-convert` fallback.
 
 **Problem**: "Bad seek" errors in console
-- **Expected**: These are normal when Sharp can't decode certain HEIC variants
-- **Action**: No action needed - ImageMagick fallback handles it
+- **Expected**: Some HEIC variants can fail to decode in Sharp.
+- **Action**: Check server logs for whether the `heic-convert` fallback succeeded; if not, capture the failing file and open an issue.
 
 ### 🔧 Development Issues
 **Problem**: Port conflicts (EADDRINUSE)
@@ -210,10 +201,20 @@ npm test
 ```bash
 # Complete reset
 taskkill /F /IM node.exe    # Kill all Node processes
-rm -rf node_modules         # Remove frontend deps
-rm -rf server/node_modules  # Remove backend deps
+rm -rf node_modules         # Remove frontend deps (Mac/Linux)
+rm -rf server/node_modules  # Remove backend deps (Mac/Linux)
 npm install                 # Reinstall frontend
 cd server && npm install    # Reinstall backend
+```
+
+PowerShell equivalents:
+
+```powershell
+Get-Process node -ErrorAction SilentlyContinue | Stop-Process -Force
+Remove-Item -Recurse -Force node_modules
+Remove-Item -Recurse -Force server\node_modules
+npm install
+cd server; npm install
 ```
 
 ### Debug Authentication
@@ -294,6 +295,6 @@ When reporting authentication or HEIC issues, please include:
 
 ✅ **Authentication Working**: Login/logout functional, images load only when authenticated  
 ✅ **HEIC Support Working**: HEIC files display as JPEG, no conversion errors  
-✅ **Tests Passing**: All 86 tests pass consistently  
+✅ **Tests Passing**: `npm run test:run` and `cd server && npm test` pass consistently  
 ✅ **Security Active**: Proper headers, rate limiting, input validation  
 ✅ **Multi-device Ready**: Works across multiple machines with proper file sync handling
