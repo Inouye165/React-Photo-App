@@ -1,0 +1,769 @@
+DOCS_PROPOSED_UPDATES_FROM_CHAT.txt
+Generated: 2025-12-19
+Scope: Consolidated documentation edits proposed across this chat.
+Constraint: NO CODE CHANGES. This file is a review artifact only.
+
+Format conventions:
+- Each section is a file path.
+- Each item is a patch-like block with the original line range.
+- "-" lines are the existing text (or an excerpt of it).
+- "+" lines are the proposed replacement.
+
+====================================================================
+FILE: README.md
+====================================================================
+
+1) Align README with project mission (privacy-first, inclusive, community-oriented) and avoid misleading framing.
+
+OLD (lines 12-16):
+- > **Lumina is your AI Photo Companion.**
+-
+- This repository demonstrates that a single developer can build a secure, scalable, AI-integrated photo platform. The backend features enterprise-grade architecture, robust security (RLS, strict CORS allowlist, origin-protected auth routes, rate limiting), and advanced AI workflows. The user interface is a functional draft—focusing on architecture over UI polish. Expect a utilitarian, developer-focused experience while the frontend evolves.
+-
+- **Author:** Ron Inouye ([@Inouye165](https://github.com/Inouye165))
+
+NEW (replace lines 12-16 with):
++ > **Lumina is an AI-powered, privacy-first photo workspace — built to learn and practice “big tech” engineering standards.**
++ 
++ Lumina is a long-running engineering project focused on security, scalability, and maintainability. The goal is to evolve into a community-oriented platform (sharing + chat) while keeping user data isolation, consent, and privacy at the center.
++ 
++ The frontend is still evolving; the backend and security posture are treated as first-class concerns.
++ 
++ **Author:** Ron Inouye ([@Inouye165](https://github.com/Inouye165))
+
+2) Add explicit project values: inclusive community + privacy promise.
+
+OLD: (no dedicated section)
+
+NEW (insert after "## 🎯 Why This Exists" section, e.g. after line 28):
++ ## 🌱 Community & values
++ - **Be kind and inclusive:** This project aims to welcome contributors and users from all backgrounds.
++ - **Privacy-first by default:** User data isolation, least-privilege access, and secure-by-design patterns are core requirements.
++ - **Transparency:** Security trade-offs and changes should be documented. No “security theater.”
++ - **Respectful community:** Harassment, hate, and abusive behavior are not welcome.
++
++ ## 🔒 Privacy & user isolation (north star)
++ Lumina is designed around **isolated user workspaces**: each user’s photos, metadata, and derived AI outputs must remain private and access-controlled.
++ Sharing features (albums, links, chat) should be **opt-in**, permissioned, and auditable.
+
+3) Fix Security section contradictions and reflect actual auth behavior.
+
+OLD (lines 45-53):
+- ### 🔒 **Security (Experimental)**
+- - **Stateless JWT Bearer Auth:** `Authorization: Bearer <token>` header exclusively; ~~cookie fallback removed~~ (eliminates split-brain auth)
+- - **CSRF Immunity:** Bearer tokens not sent automatically by browsers (unlike cookies), eliminating CSRF attack vectors
+- - **Origin Verification:** Origin/Referer allowlist verification on state-changing auth endpoints for defense-in-depth
+- - **Security Gates (CI):** GitHub Actions runs **gitleaks** to scan the repository for committed secrets
+- - **CI Placeholder Keys:** CI uses non-secret placeholder values for API key env vars (to avoid secret-like strings in the repo)
+- - **Experimental Beta Mode:** Optional beta features with an explicit privacy disclaimer and user acknowledgement
+- - **Content Security Policy:** Helmet-enforced CSP with automated CI tests
+- - **Concurrency Limits:** Rate limiting to prevent upload storms
+
+NEW (replace lines 45-53 with):
++ ### 🔒 **Security (Experimental)**
++ - **API Auth:** Protected API routes require `Authorization: Bearer <token>`.
++ - **Images/Thumbnails:** Prefer signed thumbnail URLs for `<img>`; otherwise use Bearer auth. A deprecated cookie fallback may exist only for legacy image access/E2E and will be removed.
++ - **CSRF defense:** State-changing auth endpoints enforce strict Origin/Referer allowlisting (no CSRF tokens).
++ - **Secret scanning:** Use `npm run secret-scan` (and hooks if enabled) to block committing secret-like strings.
++ - **CSP:** Helmet-enforced CSP (tests exist; CI setup depends on your environment).
++ - **Rate limiting:** Concurrency limits to reduce upload storms.
++
++ ### ✅ Engineering standards (what “Google-level” means here)
++ - Security tests and threat-model thinking are expected.
++ - Clear error handling (no secret leakage) and safe logging.
++ - Documentation should be kept in sync with refactors.
++ - Performance is measured and regressions are investigated.
+
+4) HEIC handling: remove ImageMagick references (repo uses Sharp + heic-convert fallback).
+
+OLD (lines 55-56):
+- - **HEIC Auto-Convert:** Sharp + ImageMagick fallback for Apple's HEIC format
+
+NEW:
++ - **HEIC Auto-Convert:** HEIC/HEIF → JPEG via Sharp, with `heic-convert` fallback (no ImageMagick dependency).
+
+5) CI claims are too strong / misleading (no workflows committed by default).
+
+OLD (lines 316-317):
+- **CI Pipeline:** Every push runs unit tests, integration tests, CSP validation, and security scans.
+
+NEW:
++ **CI:** Recommended to run unit tests, integration checks, CSP validation, and secret scanning. (CI wiring depends on your environment.)
+
+6) Prereqs list: remove ImageMagick and clarify Redis.
+
+OLD (lines 150-156):
+- ### Prerequisites
+- - **Node.js 20+**
+- - **Docker** (for local Postgres and Redis)
+- - **docker-compose** (recommended for local DB/Redis)
+- - **Supabase account** (for production or hosted Postgres/Storage/Auth)
+- - **Redis** (local: `docker-compose up -d redis` or `docker run -d -p 6379:6379 redis:7.2-alpine`)
+- - **ImageMagick** (for HEIC fallback)
+
+NEW:
++ ### Prerequisites
++ - **Node.js 20+**
++ - **Docker + docker-compose** (for local Postgres + Redis)
++ - **Supabase account** (for hosted Postgres/Storage/Auth)
++ - (No ImageMagick required)
+
+7) Google Places key naming: code supports GOOGLE_MAPS_API_KEY or GOOGLE_PLACES_API_KEY.
+
+OLD (line 192):
+- > **Note:** The AI worker (`npm run worker`) is required for background photo analysis and enrichment. If `GOOGLE_MAPS_API_KEY` is missing, Places-based enrichment will be disabled but uploads and basic analysis will still work.
+
+NEW:
++ > **Note:** The AI worker (`npm run worker`) is required for background photo analysis and enrichment. If `GOOGLE_MAPS_API_KEY` / `GOOGLE_PLACES_API_KEY` is missing, Places-based enrichment will be disabled but uploads and core analysis will still work.
+
+8) Tech stack security line incorrectly says "CSRF tokens".
+
+OLD (lines 256-257):
+- **AI/Processing:** LangGraph, Sharp, ImageMagick, Google Places API  
+- **Security:** Helmet, JWT (Bearer token auth), RLS, CSRF tokens  
+
+NEW:
++ **AI/Processing:** LangGraph, Sharp (+ `heic-convert` fallback), Google Places API  
++ **Security:** Helmet, JWT (Bearer token auth), RLS, Origin/Referer verification (no CSRF tokens)
+
+9) Test counts: remove / soften hard-coded numbers to avoid drift.
+
+OLD (line 6):
+- [![Tests](https://img.shields.io/badge/tests-1145%2B%20passing-brightgreen.svg)](https://github.com/Inouye165/React-Photo-App)
+
+NEW:
++ [![Tests](https://img.shields.io/badge/tests-vitest%20%2B%20jest-brightgreen.svg)](https://github.com/Inouye165/React-Photo-App)
+
+OLD (line 258):
+- **Testing:** Vitest, Jest, Supertest (1,145+ tests across frontend & backend, 20x stress-tested)
+
+NEW:
++ **Testing:** Vitest, Jest, Supertest (large test suite; see `npm run test:run` and `cd server && npm test`)
+
+OLD (line 307):
+- # Run all tests (1,145+ passing across frontend & backend)
+
+NEW:
++ # Run all tests (frontend unit tests)
+
+10) Deployment section contains a hard-coded Vercel URL that will drift.
+
+OLD (line 325):
+- - **Vercel** (frontend hosting, deployed at `https://react-photo-il8l0cuz2-ron-inouyes-projects.vercel.app`)
+
+NEW:
++ - **Vercel** (frontend hosting; URL depends on your Vercel project)
+
+11) Acknowledgments: remove ImageMagick.
+
+OLD (lines 391-392):
+- - **Supabase** for managed Postgres + Auth + Storage
+- - **Sharp/ImageMagick** for image processing
+
+NEW:
++ - **Supabase** for managed Postgres + Auth + Storage
++ - **Sharp (+ `heic-convert` fallback)** for image processing
+
+====================================================================
+FILE: server/README.md
+====================================================================
+
+1) Remove ImageMagick prereq.
+
+OLD (lines 7-12):
+- ### Prerequisites
+- - Node.js 20+
+- - **PostgreSQL** (via Docker or Supabase)
+- - Redis (for background jobs)
+- - ImageMagick (for HEIC fallback)
+
+NEW:
++ ### Prerequisites
++ - Node.js 20+
++ - **PostgreSQL** (via Docker or Supabase)
++ - Redis (for background jobs)
++ - (No ImageMagick required; HEIC/HEIF conversion uses Sharp + `heic-convert` fallback)
+
+2) /api/auth/session and /api/auth/logout are no-ops; the README still implies cookie set/clear.
+
+OLD (lines 84-87):
+- ### Authentication
+- - `POST /api/auth/session` - Set httpOnly session cookie (deprecated legacy bridge for cookie-based image access; expects `Authorization: Bearer <token>`)
+- - `POST /api/auth/logout` - Logout and clear session
+
+NEW:
++ ### Authentication
++ - `POST /api/auth/session` - Deprecated/no-op endpoint kept for backward compatibility (does not set cookies). Use `Authorization: Bearer <token>`.
++ - `POST /api/auth/logout` - Deprecated/no-op endpoint kept for backward compatibility. Logout is handled client-side via Supabase.
+
+3) Fix file path reference: `config/allowedOrigins.js` should be `server/config/allowedOrigins.js`.
+
+OLD (line 147):
+-   - **Centralized**: All origin resolution uses `config/allowedOrigins.js` helpers (`resolveAllowedOrigin`, `isOriginAllowed`) ...
+
+NEW:
++   - **Centralized**: All origin resolution uses `server/config/allowedOrigins.js` helpers (`resolveAllowedOrigin`, `isOriginAllowed`) ...
+
+4) Security note about cookies: clarify scope (API vs images).
+
+OLD (line 137):
+- > ... Cookie-based auth is deprecated but still works as a fallback.
+
+NEW:
++ > ... Protected API routes require Bearer tokens. A deprecated cookie fallback may exist only for legacy image access/E2E and will be removed.
+
+====================================================================
+FILE: server/ai/README.md
+====================================================================
+
+1) Fix relative paths to include `server/ai/` prefix.
+
+OLD (line 9):
+- The Google Places API integration (`poi/googlePlaces.js`) ...
+
+NEW:
++ The Google Places API integration (`server/ai/poi/googlePlaces.js`) ...
+
+OLD (line 45):
+- The test suite (`poi/googlePlaces.test.js`) validates:
+
+NEW:
++ The test suite (`server/ai/poi/googlePlaces.test.js`) validates:
+
+OLD (line 55):
+- ... See `poi/osmTrails.js`.
+
+NEW:
++ ... See `server/ai/poi/osmTrails.js`.
+
+2) Env var: code accepts GOOGLE_MAPS_API_KEY or GOOGLE_PLACES_API_KEY or GOOGLE_API_KEY.
+
+OLD (lines 27-30):
+- Set the following environment variable:
+- ```
+- GOOGLE_MAPS_API_KEY=your_api_key_here
+- ```
+
+NEW:
++ Set ONE of:
++ ```
++ GOOGLE_MAPS_API_KEY=...
++ GOOGLE_PLACES_API_KEY=...
++ GOOGLE_API_KEY=...
++ ```
+
+3) Test invocation is wrong for Jest.
+
+OLD (line 51):
+- Run tests: `npm test ai/poi/googlePlaces`
+
+NEW:
++ Run tests (from `server/`): `npm test -- ai/poi/googlePlaces.test.js`
+
+====================================================================
+FILE: docs/TESTING.md
+====================================================================
+
+1) Remove misleading GitHub Actions claim.
+
+OLD (line 3):
+- ... The repository includes a GitHub Actions workflow ...
+
+NEW:
++ ... CI setup depends on your environment and is not guaranteed to be committed in this repository.
+
+2) Node version is outdated (repo engines require Node 20+).
+
+OLD (lines 5-7):
+- Requirements
+- - Node.js 18+ (LTS recommended)
+- - npm
+
+NEW:
++ Requirements
++ - Node.js 20+ (see root `package.json` engines)
++ - npm 10+
+
+3) Postgres requirement is overstated for frontend-only Vitest.
+
+OLD (line 35):
+- - PostgreSQL is required for all tests. ...
+
+NEW:
++ - PostgreSQL is required for server tests and some integration/e2e flows. Frontend unit tests (`npm run test:run`) do not require Postgres.
+
+====================================================================
+FILE: TESTING.md
+====================================================================
+
+1) Remove ImageMagick prerequisite.
+
+OLD (lines 6-11):
+- - Node.js (v18 or higher)
+- - npm or yarn
+- - Modern web browser (Chrome, Edge recommended)
+- - ImageMagick installed and available in PATH (for HEIC support)
+
+NEW:
++ - Node.js 20+ (see root `package.json` engines)
++ - npm 10+
++ - Modern web browser (Chrome/Edge recommended)
++ - (No ImageMagick required; HEIC/HEIF conversion uses Sharp + `heic-convert` fallback)
+
+2) Remove reference to non-existent `test-runner.js`.
+
+OLD (lines 32-42):
+- # Quick test validation
+- node test-runner.js
+
+NEW:
++ # (No test-runner.js in this repo)
+
+3) Remove localStorage auth-token troubleshooting (stale).
+
+OLD (lines 112-116):
+- - **Check**: Auth token in localStorage
+- - **Solution**: Clear localStorage and re-login
+
+NEW:
++ - Check requests include `Authorization: Bearer <token>` (Supabase session token) and that image loading uses signed thumbnails or authenticated fetch.
+
+4) Remove SQLite reset instructions.
+
+OLD (lines 151-157):
+- rm *.db              # Remove SQLite files
+
+NEW:
++ (Project uses PostgreSQL; reset Postgres and re-run migrations.)
+
+5) Remove obsolete `/auth/login` curl sample.
+
+OLD (lines 224-230):
+- curl -X POST http://localhost:3001/auth/login \
+
+NEW:
++ curl -H "Authorization: Bearer <SUPABASE_ACCESS_TOKEN>" http://localhost:3001/photos
+
+====================================================================
+FILE: docs/ROADMAP.md
+====================================================================
+
+1) Cookie-auth milestone is stale / misleading.
+
+OLD (lines 10-13):
+- - [x] **httpOnly Cookie Auth** - Eliminated token leakage from localStorage/URL params
+- - [x] **CSRF Protection** - Token + Origin validation ...
+
+NEW:
++ - [x] **Bearer Token Auth (API)** - Protected backend API routes require `Authorization: Bearer <token>`.
++ - [x] **CSRF Defense** - Origin/Referer allowlist verification (no CSRF tokens).
+
+2) Hard-coded test counts and CI/CD claims drift.
+
+OLD (lines 29-33):
+- - [x] **Comprehensive Test Suite** - 86 tests ...
+- - [x] **CI/CD Pipeline** - Automated tests, CSP validation, security scans
+
+NEW:
++ - [x] **Comprehensive Test Suite** - Frontend (Vitest) + backend (Jest/Supertest)
++ - [ ] **CI/CD Pipeline** - Document the currently configured CI for this repo (varies by environment)
+
+3) Broken internal link to Product Story.
+
+OLD (line 153):
+- **See Also:** [Product Story](docs/PRODUCT_STORY.md) ...
+
+NEW:
++ **See Also:** [Product Story](./PRODUCT_STORY.md) ...
+
+====================================================================
+FILE: docs/CHANGELOG.md
+====================================================================
+
+1) Auth model is stale (cookie-only claim).
+
+OLD (lines 44-46):
+- - **[Security]** Enforced httpOnly Cookie Authentication - All API endpoints now strictly authenticate via httpOnly cookies. ...
+
+NEW:
++ - **[Security]** Enforced Bearer Token Authentication (API) - Protected API routes require `Authorization: Bearer <token>`. `/api/auth/session` and `/api/auth/logout` are deprecated/no-op.
+
+2) Remove ImageMagick mention.
+
+OLD (line 55):
+- - **[AI]** Advanced HEIC Support - Automatic conversion with Sharp and ImageMagick fallbacks
+
+NEW:
++ - **[AI]** Advanced HEIC Support - Automatic conversion with Sharp and `heic-convert` fallback (no ImageMagick dependency)
+
+3) Remove SQLite claim.
+
+OLD (line 67):
+- - Supabase Postgres became the backbone of data layer (SQLite still supported for local dev)
+
+NEW:
++ - Supabase/local PostgreSQL became the backbone of the data layer (PostgreSQL required for all environments)
+
+4) Broken link to Product Story.
+
+OLD (line 96):
+- See [docs/PRODUCT_STORY.md](docs/PRODUCT_STORY.md) ...
+
+NEW:
++ See [PRODUCT_STORY.md](./PRODUCT_STORY.md) ...
+
+====================================================================
+FILE: CHANGELOG.md
+====================================================================
+
+1) Fix stale file path and auth model description.
+
+OLD (lines 15-16):
+- ... (`src/contexts/AuthContext.jsx`). ... exclusively relies on ... httpOnly cookie ...
+- ... middleware ... only accept ... httpOnly cookie ... Authorization Bearer fallback removed ...
+
+NEW:
++ * **Patched XSS Vulnerability:** Tokens are not stored in `localStorage` on the client (see `src/contexts/AuthContext.tsx`).
++ * **Hardened Server Middleware:** Protected API routes require `Authorization: Bearer <token>` (`server/middleware/auth.js`). Legacy cookie-based endpoints are deprecated/no-op; image routes may still have a deprecated cookie fallback.
+
+====================================================================
+FILE: docs/pipeline-graphs/README.md
+====================================================================
+
+1) References a branch that may not exist and implies logging defaults.
+
+OLD (lines 8-12):
+- 1. Ensure the server is running with logging enabled (default in `langgraph-logging` branch).
+- 2. Process a photo...
+- 3. ... generates `langgraph_execution.md` in the project root.
+
+NEW:
++ 1. Run the worker and trigger an AI run for a photo.
++ 2. The LangGraph audit logger (`server/ai/langgraph/audit_logger.js`) writes `langgraph_execution.md` at the repo root.
++ 3. Note: each new run clears and rewrites the file (see `logGraphStart`).
+
+====================================================================
+FILE: public/icons/README.md
+====================================================================
+
+1) README claims icons should exist, but `public/icons/` currently contains only README.md.
+
+OLD (lines 3-13):
+- This directory should contain the following PNG icons for the PWA:
+- (list of icon-72x72.png ... icon-512x512.png)
+
+NEW (append after line 13):
++ 
++ NOTE: These files are referenced by `public/manifest.json`. If you want PWA install to work, commit the icons or update the manifest to match the assets you have.
+
+====================================================================
+FILE: docs/VISUAL_REGRESSION_TESTING.md
+====================================================================
+
+1) Broken relative link to spec file (path should be relative to docs/).
+
+OLD (line 78):
+- Visual tests use these stable settings (from [editpage-visual.spec.ts](e2e/editpage-visual.spec.ts)):
+
+NEW:
++ Visual tests use these stable settings (from [editpage-visual.spec.ts](../e2e/editpage-visual.spec.ts)):
+
+2) Broken relative link to tokens file (path should be relative to docs/).
+
+OLD (line 89):
+- Phase 6 also introduces CSS custom properties in [src/styles/tokens.css](src/styles/tokens.css):
+
+NEW:
++ Phase 6 also introduces CSS custom properties in [src/styles/tokens.css](../src/styles/tokens.css):
+
+3) CI wording should not assert GitHub Actions exists.
+
+OLD (lines 48-54):
+- Visual tests run automatically in GitHub Actions ...
+
+NEW:
++ Visual tests can be run in CI as part of the E2E test suite:
+
+====================================================================
+FILE: docs/DEV.md
+====================================================================
+
+1) Stale file path: `src/api.js` migrated to `src/api.ts`.
+
+OLD (line 37):
+- `src/api.js` logs the outgoing JSON body ...
+
+NEW:
++ `src/api.ts` logs the outgoing JSON body ...
+
+====================================================================
+FILE: .github/copilot-instructions.md
+====================================================================
+
+1) SQLite + GitHub Actions claims are stale.
+
+OLD (lines 11-19):
+- Database: SQLite ...
+- CI/CD: GitHub Actions pipeline ...
+- Testing: ... 86 total tests ...
+
+NEW:
++ Database: PostgreSQL (Supabase or local Docker)
++ CI/CD: varies by environment; do not assume workflows exist
++ Testing: avoid hard-coded counts; refer to scripts
+
+====================================================================
+FILE: docs/AUTHENTICATION.md
+====================================================================
+
+1) Incorrect statement: says Supabase stores tokens in localStorage “securely” (also conflicts with other docs). Better to avoid claiming storage mechanism.
+
+OLD (lines 34-39):
+- ... Token stored in module closure ...
+- No custom token storage needed - Supabase handles it securely in localStorage
+
+NEW:
++ - Token is sourced from Supabase-managed session (`supabase.auth.getSession()`).
++ - Avoid relying on or documenting the browser storage mechanism; treat the session token as sensitive and do not log it.
+
+2) `npm run create-admin` referenced but script is not present.
+
+OLD (lines 100-104):
+- npm run create-admin
+
+NEW:
++ node server/scripts/set-admin-role.js <user-uuid>
+
+3) API endpoints list is obsolete (mentions /auth/login etc).
+
+OLD (lines 143-154):
+- - `POST /auth/login` ...
+
+NEW:
++ Replace with actual server routes (examples):
++ - `POST /api/auth/session` (deprecated/no-op)
++ - `POST /api/auth/logout` (deprecated/no-op)
++ - `GET /photos` (requires Authorization header)
++ - `GET /display/...` (signed thumbs or bearer)
+
+4) Hybrid cookie deployment section conflicts with Bearer-token model.
+
+OLD (lines 288+):
+- Explains COOKIE_SAME_SITE, cross-origin cookies, etc.
+
+NEW:
++ Either remove this section or reframe it as legacy/transition-only for image routes. Current primary model is Bearer tokens for API auth.
+
+5) Broken link path.
+
+OLD (line 373):
+- See [SECURITY_REMEDIATION_CWE489.md](../SECURITY_REMEDIATION_CWE489.md) ...
+
+NEW:
++ See [SECURITY_REMEDIATION_CWE489.md](./SECURITY_REMEDIATION_CWE489.md) ...
+
+====================================================================
+FILE: docs/IMPROVEMENT_PLAN.md
+====================================================================
+
+1) First item assumes cookie split-brain; update to current direction.
+
+OLD (line 10):
+- Fix "Split-Brain" Auth: Frontend ... Backend (Cookies) ... update the server cookie ...
+
+NEW:
++ Fix "Split-Brain" Auth: Remove/retire remaining legacy cookie auth paths (images/E2E) so auth is consistently Bearer-token based where feasible.
+
+2) References missing file `docs/ADR_POLICY.md`.
+
+OLD (line 19):
+- Create `docs/ADR_POLICY.md` ...
+
+NEW:
++ Create `docs/ADR_POLICY.md` (does not exist yet) or remove the TODO if ADRs won’t be used.
+
+====================================================================
+FILE: docs/model-selection.md
+====================================================================
+
+1) Missing `server/` prefix.
+
+OLD (line 6):
+- `routes/photos.js` initializes ...
+
+NEW:
++ `server/routes/photos.js` initializes ...
+
+====================================================================
+FILE: docs/ENGINEERING_CASE_STUDY.md
+====================================================================
+
+1) SQLite fallback claim is stale.
+
+OLD (line 115):
+- SQLite retained as a development/test fallback where appropriate.
+
+NEW:
++ PostgreSQL used for all environments (no SQLite fallback).
+
+====================================================================
+FILE: docs/PRODUCT_STORY.md
+====================================================================
+
+1) SQLite support claim is stale.
+
+OLD (line 46):
+- ... still supported local development with SQLite ...
+
+NEW:
++ ... local development uses PostgreSQL (e.g., Docker Compose) for parity with production.
+
+====================================================================
+FILE: docs/pipeline-graphs/update-ai-sequence.md
+====================================================================
+
+1) Stale file references (EditPage.jsx, api.js).
+
+OLD (lines 18, 20, 32-33, 82-84):
+- `src/EditPage.jsx`
+- `src/api.js`
+
+NEW:
++ `src/EditPage.tsx`
++ `src/api.ts`
+
+====================================================================
+FILE: docs/branch-reports/refactor-centralize-api-logic.md
+====================================================================
+
+1) Historical report references deleted/migrated paths; add a "historical" disclaimer.
+
+OLD (lines 8-11):
+- Purpose: ... `src/api.js` ... `src/contexts/AuthContext.jsx` ...
+
+NEW (insert after line 1):
++ > Historical note: this branch report references paths that have since migrated (e.g., `src/api.ts`, `src/contexts/AuthContext.tsx`). Treat as historical.
+
+====================================================================
+FILE: docs/error-handling-audit.md
+====================================================================
+
+1) Sample file list references old paths.
+
+OLD (lines 1268-1273 within file):
+- `src/api.js`
+- `src/contexts/AuthContext.jsx`
+
+NEW:
++ `src/api.ts`
++ `src/contexts/AuthContext.tsx`
+
+====================================================================
+FILE: docs/FIX_ORPHANED_PHOTOS.md
+====================================================================
+
+1) Document appears to describe older architecture (local users table + scripts). Mark as historical OR update to match current state.
+
+OLD (multiple places; example lines 36-46):
+- Created and ran `scripts/backfill-users.js` ...
+- Modified `routes/auth.js` `/session` endpoint to auto-create users ...
+
+NEW:
++ Add a top-of-file note: "This is a historical incident report; scripts/paths may not exist on current main." Then update or remove references that no longer exist.
+
+2) Invalid npm script.
+
+OLD (line 116):
+- npm run test:integration
+
+NEW:
++ npm run integration-test
+
+====================================================================
+FILE: docs/SECRET_ROTATION.md
+====================================================================
+
+1) CI wording assumes GitHub Actions.
+
+OLD (line 9):
+- Update the key in any CI/CD secrets (GitHub Actions Secrets, etc.).
+
+NEW:
++ Update the key in any CI/CD secrets (GitHub Actions, other CI providers, etc.).
+
+2) Section header can be generalized.
+
+OLD (line 37):
+- ## GitHub Actions / CI
+
+NEW:
++ ## CI (GitHub Actions, etc.)
+
+====================================================================
+FILE: PHASE1_TYPESCRIPT_EDITPAGE_SUMMARY.md
+====================================================================
+
+1) References non-existent `src/contexts/AuthContext.d.ts`.
+
+OLD (lines 48-51):
+- **`src/contexts/AuthContext.d.ts`** - Extended type definition
+
+NEW:
++ **`src/contexts/AuthContext.tsx`** - TypeScript source of the auth context
+
+2) Cookie-auth claim is stale.
+
+OLD (line 59):
+- 1. **Authentication:** httpOnly cookie authentication ...
+
+NEW:
++ 1. **Authentication:** Bearer token auth for protected API routes (Authorization header). Legacy cookie behavior may exist only for images/E2E.
+
+====================================================================
+FILE: PHASE_6_STABILIZATION.md
+====================================================================
+
+1) CI claim too specific.
+
+OLD (lines 142-146):
+- # Runs automatically in GitHub Actions
+
+NEW:
++ # Run in CI if your environment is configured to do so
+
+====================================================================
+FILE: SECURITY_REMEDIATION_SUMMARY.md
+====================================================================
+
+1) References `server/tests/auth.cookie.test.js` which does not exist in current tree.
+
+OLD (line 35):
+- 4. **`server/tests/auth.cookie.test.js`**
+
+NEW:
++ 4. **(Removed/retired)** Cookie-based auth tests were retired; current auth security coverage is in `server/tests/auth.security.test.js` and bearer-focused tests.
+
+====================================================================
+FILE: SPLIT_BRAIN_AUTH_FIX_SUMMARY.md
+====================================================================
+
+1) Mentions moving tests to .bak files that do not exist; update to “retired” wording.
+
+OLD (lines 58-61):
+- Moved deprecated tests to `.DEPRECATED.test.js.bak` files: ...
+
+NEW:
++ Retired deprecated cookie-based auth tests; do not rely on cookie auth for API routes.
+
+====================================================================
+NOTES: historical docs
+====================================================================
+The following are likely historical/log documents and contain stale paths/CI assumptions. If you want to keep them, add a one-line disclaimer at the top:
+
+> Historical note: This is a point-in-time log. Paths/scripts may not match current main.
+
+Candidates (from this chat’s scan):
+- docs/history/* (many files)
+
+====================================================================
+END

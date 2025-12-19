@@ -47,7 +47,7 @@ CI/headless runs remain strict with zero tolerance for pixel-perfect comparison.
 
 ### CI/CD
 
-Visual tests run automatically in GitHub Actions as part of the E2E test suite:
+Visual tests can be run in CI as part of the E2E test suite:
 
 ```bash
 npm run test:e2e
@@ -75,7 +75,7 @@ npm run test:e2e
 
 ## Configuration
 
-Visual tests use these stable settings (from [editpage-visual.spec.ts](e2e/editpage-visual.spec.ts)):
+Visual tests use these stable settings (from [editpage-visual.spec.ts](../e2e/editpage-visual.spec.ts)):
 
 - **Frontend-Only**: No backend/DB required (all API calls mocked)
 - **Viewport**: 1280x720 (consistent across runs)
@@ -86,7 +86,7 @@ Visual tests use these stable settings (from [editpage-visual.spec.ts](e2e/editp
 
 ## Design Tokens (Optional)
 
-Phase 6 also introduces CSS custom properties in [src/styles/tokens.css](src/styles/tokens.css):
+Phase 6 also introduces CSS custom properties in [src/styles/tokens.css](../src/styles/tokens.css):
 
 ```css
 /* Example tokens */

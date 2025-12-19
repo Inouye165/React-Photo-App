@@ -32,10 +32,7 @@ Removed a **CRITICAL** authentication bypass vulnerability (CWE-489) where the a
 
 ### Test Code (Quality Improvements)
 
-4. **`server/tests/auth.cookie.test.js`**
-   - ♻️ Refactored test to use proper Supabase mocking
-   - ✅ No longer relies on production code backdoor
-   - ✅ Uses Jest mock functions (`mockGetUser`)
+4. **(Retired)** Cookie-based auth tests were retired; current auth security coverage is in `server/tests/auth.security.test.js` and other bearer-focused tests.
 
 5. **`server/tests/auth.security.test.js`** (NEW)
    - ✨ Created comprehensive security test suite

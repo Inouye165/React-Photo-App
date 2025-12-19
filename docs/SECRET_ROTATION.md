@@ -6,7 +6,7 @@ If you suspect API keys or other secrets have been committed or exposed, rotate 
 
 1. Revoke the exposed key(s) immediately from the provider dashboard.
 2. Create a new key with the minimum required permissions.
-3. Update the key in any CI/CD secrets (GitHub Actions Secrets, etc.).
+3. Update the key in any CI/CD secrets (GitHub Actions, other CI providers, etc.).
 4. Update local `.env` files on machines that need the new key. Do NOT commit `.env` files.
 5. If secrets were pushed to the repository, consider removing them from history (see "Removing secrets from git history").
 6. Notify any stakeholders and rotate any dependent credentials (e.g., secondary service keys) as necessary.
@@ -34,7 +34,7 @@ Notes:
 - Update the new key in your server `.env` and CI secrets (e.g. `OPENAI_API_KEY`).
 - If your app used the key client-side, rotate immediately and audit where keys are used.
 
-## GitHub Actions / CI
+## CI (GitHub Actions, etc.)
 
 - Replace any plaintext keys in workflow YAMLs with repository secrets.
 - Update the repository secrets (`Settings → Secrets & variables`) with the rotated keys.

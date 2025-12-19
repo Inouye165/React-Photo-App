@@ -35,7 +35,7 @@ Authorization: Bearer <supabase_access_token>
 - Token is sourced from Supabase's managed session (`supabase.auth.getSession()`)
 - `api.ts` attaches `Authorization: Bearer <token>` to all protected requests
 - Token stored in module closure, not exposed globally (security)
-- No custom token storage needed - Supabase handles it securely in localStorage
+- Avoid relying on or documenting the browser storage mechanism; treat the session token as sensitive and do not log it.
 
 **Backend Implementation:**
 - Middleware requires `Authorization: Bearer <token>` header (strictly enforced)
@@ -99,9 +99,9 @@ cp .env.example .env
 
 ### 3. Create Admin User
 ```bash
-npm run create-admin
+node server/scripts/set-admin-role.js <user-uuid>
 ```
-Follow the prompts to create your first admin user.
+This promotes an existing Supabase user to admin by writing role data to `app_metadata`.
 
 ### 4. Start the Server
 ```bash
@@ -141,9 +141,8 @@ CORS_CREDENTIALS=true
 ## API Endpoints
 
 ### Authentication Endpoints (No Auth Required)
-- `POST /auth/login` - User login
-- `POST /auth/register` - User registration
-- `POST /auth/verify` - Token verification
+- `POST /api/auth/session` - Deprecated/no-op (backward compatibility only)
+- `POST /api/auth/logout` - Deprecated/no-op (backward compatibility only)
 - `GET /health` - Health check
 
 ### Protected Endpoints (Require Authentication)
@@ -151,7 +150,7 @@ CORS_CREDENTIALS=true
 - `POST /upload` - Upload photos
 - `PATCH /photos/:id/state` - Update photo state
 - `DELETE /photos/:id` - Delete photos
-- All static file serving (`/working`, `/inprogress`, `/finished`)
+- Image serving (`/display/*`) uses signed thumbnail URLs or Bearer auth; legacy cookie fallback may exist for images/E2E only
 
 ## User Roles
 
@@ -285,10 +284,12 @@ The authentication system adds a `users` table with:
 - Account lockout tracking
 - Timestamps for audit trails
 
-## Hybrid Deployment (Local Frontend + Cloud Backend)
+## Hybrid Deployment (Local Frontend + Cloud Backend) (Legacy / transition notes)
 
 ### Overview
-When running a **local frontend** (e.g., `localhost:5173`) that connects to a **cloud-hosted backend** (e.g., `your-app.onrender.com`), browsers treat these as different origins. This requires special cookie configuration to enable cross-origin authentication.
+When running a **local frontend** (e.g., `localhost:5173`) that connects to a **cloud-hosted backend**, browsers treat these as different origins.
+
+**Note:** The primary authentication model for protected API routes is Bearer tokens (`Authorization: Bearer <token>`). Cookie configuration is only relevant for any remaining legacy image/E2E cookie flows (if enabled) and may be removed in future.
 
 ### The Problem
 By default, the authentication system uses `sameSite: 'strict'` in production, which **blocks cookies from being sent in cross-origin requests**. This means:
@@ -370,7 +371,7 @@ After setting `COOKIE_SAME_SITE=none`:
 #### Still Using Query Parameters?
 - **Don't!** Query parameter tokens are deprecated for security
 - The cookie-based system is secure and works cross-origin when configured correctly
-- See [SECURITY_REMEDIATION_CWE489.md](../SECURITY_REMEDIATION_CWE489.md) for details
+- See [SECURITY_REMEDIATION_CWE489.md](./SECURITY_REMEDIATION_CWE489.md) for details
 
 ### Security Notes
 

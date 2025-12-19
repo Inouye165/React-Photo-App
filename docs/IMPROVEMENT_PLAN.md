@@ -7,7 +7,7 @@ This document contains the full list of phased TODO items and improvement plans 
 ## 🔴 Phase 1: Critical Security & Stability (Do Immediately)
 *Fixes that prevent data loss, security breaches, and core functionality failures.*
 
-- [ ] **Fix "Split-Brain" Auth:** Frontend (Supabase SDK) and Backend (Cookies) get out of sync. Add a listener to React to update the server cookie on token refresh.
+- [ ] **Fix "Split-Brain" Auth:** Remove/retire remaining legacy cookie auth paths (images/E2E) so auth is consistently Bearer-token based where feasible.
 - [ ] **Fix "Trojan Horse" Uploads:** Validate file types by checking "Magic Numbers" (hex signatures), not just file extensions/MIME types.
 - [ ] **Fix "Mobile Gallery" Trap:** Add `accept="image/*"` to file inputs so mobile users get the Camera Roll instead of the Files app.
 - [ ] **Implement "Wallet Drainer" Protection:** Add Rate Limiting to the `/upload` endpoint to prevent attackers from bankrupting storage costs.
@@ -16,7 +16,7 @@ This document contains the full list of phased TODO items and improvement plans 
 - [ ] **Fix "Broken Link" Deletes:** Delete the Database record *before* the Storage file (or use a transaction) to prevent "ghost" images.
 - [ ] **Fix "Self-Denial" Limit:** Increase `express.json` limit for the "Save Edit" route or switch to `multipart/form-data` to allow saving edits.
 - [ ] **Fix "Race Condition" in Collectibles:** Use SQL `ON CONFLICT` (Upsert) instead of "Check-then-Insert" logic.
-- [ ] **Create ADR Policy:** Create `docs/ADR_POLICY.md` to start documenting architectural decisions (Google Standard).
+- [ ] **Create ADR Policy:** Add `docs/ADR_POLICY.md` (does not exist yet) or remove this item if ADRs won’t be used.
 
 ## 🟠 Phase 2: High Priority Mobile Fixes & Crash Prevention
 *Fixes that stop the app from looking broken on phones or crashing under load.*

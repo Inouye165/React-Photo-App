@@ -55,9 +55,7 @@ Successfully migrated Lumina from a hybrid authentication system (Bearer + Cooki
 
 - ✅ Updated [server/tests/auth.bearer.test.js](server/tests/auth.bearer.test.js) to verify cookies are rejected
 - ✅ Updated error message assertions across all test files
-- ✅ Moved deprecated tests to `.DEPRECATED.test.js.bak` files:
-  - `server/tests/auth.cookie.test.js` → `.bak`
-  - `server/tests/photos.timeout.test.js` → `.bak`
+- ✅ Retired deprecated cookie-based auth tests; do not rely on cookie auth for API routes.
 - ✅ Updated [src/api.test.js](src/api.test.js) to remove cookie session mode tests
 
 ### 7. Documentation

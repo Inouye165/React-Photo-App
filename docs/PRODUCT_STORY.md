@@ -43,7 +43,7 @@ The app had learned an important lesson: real products don’t just work; they r
 
 In **early November 2025**, the focus shifted from “works well on my machine” to **“works well in the cloud.”**
 
-Supabase Postgres became the backbone of the data layer. The app still supported local development with SQLite, but in production, it could connect to a managed database and object store. Configuration was no longer an afterthought: environment variables, secrets, and deployment scenarios were carefully managed.
+Supabase/local Postgres became the backbone of the data layer. Local development uses PostgreSQL (e.g., Docker Compose) for parity with production. Configuration was no longer an afterthought: environment variables, secrets, and deployment scenarios were carefully managed.
 
 At the same time, you tightened up security on the front line:
 

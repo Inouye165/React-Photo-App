@@ -1,5 +1,7 @@
 # Fix: Image Loading 404 Errors - Orphaned Photos
 
+> Historical note: This is a point-in-time incident report. Some scripts/paths referenced here may not exist on current `main`.
+
 ## Root Cause Analysis
 
 ### Problem
@@ -113,7 +115,7 @@ cd ..
 npm test
 
 # Integration tests
-npm run test:integration
+npm run integration-test
 ```
 
 ## Diagnostic Scripts Created

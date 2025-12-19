@@ -1266,8 +1266,8 @@ describe('Upload: Background queue failure handling', () => {
 ### Files Analyzed (Sample)
 
 **Frontend:**
-- `src/api.js` (API wrapper)
-- `src/contexts/AuthContext.jsx` (Auth state)
+- `src/api.ts` (API wrapper)
+- `src/contexts/AuthContext.tsx` (Auth state)
 - `src/hooks/useSignedThumbnails.js` (Thumbnail fetching)
 - `src/components/PhotoDetailPanel.jsx` (Collectibles)
 

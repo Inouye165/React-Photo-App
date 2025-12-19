@@ -1,5 +1,7 @@
 # refactor/centralize-api-logic
 
+> Historical note: this branch report references paths that have since migrated (e.g., `src/api.ts`, `src/contexts/AuthContext.tsx`). Treat as historical.
+
 Date: 2025-10-29
 
 Summary
