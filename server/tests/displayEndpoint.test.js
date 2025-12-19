@@ -6,8 +6,7 @@ const jwt = require('jsonwebtoken');
 const rateLimit = require('express-rate-limit'); //
 const { authenticateImageRequest } = require('../middleware/imageAuth');
 
-const TEST_JWT_SECRET = process.env.JWT_SECRET || 'test-jwt-secret-display-endpoint';
-process.env.JWT_SECRET = TEST_JWT_SECRET;
+process.env.JWT_SECRET = 'test-jwt-secret-display-endpoint';
 const JWT_SECRET = process.env.JWT_SECRET;
 
 // Mock the media/image module

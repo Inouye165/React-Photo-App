@@ -1,0 +1,70 @@
+// server/config/env.js
+// Single source of truth for reading server environment variables.
+//
+// IMPORTANT:
+// - Do not read secrets via scattered `process.env.X || 'default'` patterns.
+// - In production, this module FAILS FAST when required config is missing.
+// - In test/dev, it provides safe defaults for local workflows.
+
+const { validateEnv, getNodeEnv } = require('./env.validate');
+
+let cachedConfig = null;
+
+function readTrimmed(name) {
+  const value = process.env[name];
+  if (value == null) return '';
+  return typeof value === 'string' ? value.trim() : String(value);
+}
+
+function buildConfig() {
+  const nodeEnv = getNodeEnv();
+  const isProduction = nodeEnv === 'production';
+  const isTest = nodeEnv === 'test';
+
+  // Enforce production-only required env vars.
+  validateEnv({ nodeEnv });
+
+  const jwtSecretFromEnv = readTrimmed('JWT_SECRET');
+  const jwtSecret = isProduction
+    ? jwtSecretFromEnv
+    : (jwtSecretFromEnv || (isTest ? 'test-jwt-secret-key-for-testing-only' : 'dev-jwt-secret-not-for-production'));
+
+  const supabaseUrl = readTrimmed('SUPABASE_URL');
+  const supabaseAnonKey = readTrimmed('SUPABASE_ANON_KEY');
+  const supabaseServiceRoleKey = readTrimmed('SUPABASE_SERVICE_ROLE_KEY');
+
+  const thumbnailSigningSecretFromEnv = readTrimmed('THUMBNAIL_SIGNING_SECRET');
+  const thumbnailSigningSecret = thumbnailSigningSecretFromEnv || jwtSecret;
+
+  return {
+    nodeEnv,
+    isProduction,
+    isTest,
+
+    jwtSecret,
+
+    supabase: {
+      url: supabaseUrl,
+      anonKey: supabaseAnonKey,
+      serviceRoleKey: supabaseServiceRoleKey
+    },
+
+    thumbnailSigningSecret
+  };
+}
+
+function getConfig() {
+  if (cachedConfig) return cachedConfig;
+  cachedConfig = buildConfig();
+  return cachedConfig;
+}
+
+// Test helper: allow isolated module reload patterns.
+function __resetForTests() {
+  cachedConfig = null;
+}
+
+module.exports = {
+  getConfig,
+  __resetForTests
+};

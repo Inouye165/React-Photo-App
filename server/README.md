@@ -37,6 +37,8 @@ Backend server for the React Photo App, built with Node.js and Express. It handl
   - `JWT_SECRET` - Server secret used for internal signing (e.g., non-prod/E2E test tokens); not the Supabase access token secret
   - `OPENAI_API_KEY` - Required for server startup in non-test environments (AI pipeline dependency)
    - `DATABASE_URL` or `SUPABASE_DB_URL` - Postgres connection string:
+
+  In production, the server is configured to **fail fast** (exit on startup) if `SUPABASE_URL`, `SUPABASE_ANON_KEY`, or `JWT_SECRET` are missing or empty.
    
    ```bash
    # Local PostgreSQL

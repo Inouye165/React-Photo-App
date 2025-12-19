@@ -1,4 +1,5 @@
 const crypto = require('crypto');
+const { getConfig } = require('../config/env');
 
 /**
  * URL Signing Utility for Secure Thumbnail Access
@@ -15,20 +16,10 @@ const crypto = require('crypto');
  * @module urlSigning
  */
 
-// Get signing secret from environment, with secure fallback for development
-const SIGNING_SECRET = process.env.THUMBNAIL_SIGNING_SECRET || process.env.JWT_SECRET;
-
-if (!SIGNING_SECRET) {
-  console.warn('[urlSigning] WARNING: No THUMBNAIL_SIGNING_SECRET or JWT_SECRET found. Using insecure fallback.');
-  console.warn('[urlSigning] Set THUMBNAIL_SIGNING_SECRET in production for security.');
-}
-
-// Use fallback only in non-production environments
-const SECRET = SIGNING_SECRET || (process.env.NODE_ENV === 'test' ? 'test-signing-secret' : null);
-
-if (!SECRET) {
-  throw new Error('THUMBNAIL_SIGNING_SECRET or JWT_SECRET required in production');
-}
+// Centralized signing secret:
+// - Production requires JWT_SECRET (and optionally THUMBNAIL_SIGNING_SECRET).
+// - Non-prod gets a safe default JWT secret if not provided.
+const SECRET = getConfig().thumbnailSigningSecret;
 
 /**
  * Default TTL for signed URLs (15 minutes)

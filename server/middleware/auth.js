@@ -1,16 +1,11 @@
 const { createClient } = require('@supabase/supabase-js');
 const jwt = require('jsonwebtoken');
+const { getConfig } = require('../config/env');
 
 // Initialize Supabase client
-const SUPABASE_URL = process.env.SUPABASE_URL;
-const SUPABASE_ANON_KEY = process.env.SUPABASE_ANON_KEY;
-const JWT_SECRET = process.env.JWT_SECRET || 'test-secret';
-
-if (!SUPABASE_URL || !SUPABASE_ANON_KEY) {
-  console.warn('Supabase URL or Key missing. Auth middleware may fail.');
-}
-
-const supabase = createClient(SUPABASE_URL, SUPABASE_ANON_KEY);
+// In production, missing SUPABASE_* or JWT_SECRET will fail fast via config validation.
+const config = getConfig();
+const supabase = createClient(config.supabase.url, config.supabase.anonKey);
 
 /**
  * Middleware to verify Supabase JWT token and authenticate users
@@ -67,7 +62,7 @@ async function authenticateToken(req, res, next) {
       }
 
       try {
-        const decoded = jwt.verify(token, JWT_SECRET);
+        const decoded = jwt.verify(token, config.jwtSecret);
         if (decoded.sub === '11111111-1111-4111-8111-111111111111') {
           req.user = {
             id: decoded.sub,

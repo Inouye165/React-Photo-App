@@ -11,7 +11,6 @@ jest.mock('../lib/supabaseClient', () => ({
   }
 }));
 
-const createUploadsRouter = require('../routes/uploads');
 const mockKnex = {};
 
 describe('CSP in production', () => {
@@ -21,6 +20,15 @@ describe('CSP in production', () => {
   beforeAll(() => {
     originalNodeEnv = process.env.NODE_ENV;
     process.env.NODE_ENV = 'production';
+
+    // Production mode now fails fast if critical env vars are missing.
+    // Provide minimal non-sensitive placeholders for this CSP-only test.
+    process.env.SUPABASE_URL = process.env.SUPABASE_URL || 'https://test.supabase.co';
+    process.env.SUPABASE_ANON_KEY = process.env.SUPABASE_ANON_KEY || 'test-anon-key';
+    process.env.JWT_SECRET = 'test-jwt-secret-key-for-testing-only';
+
+    // Import after env is set to match CI behavior (NODE_ENV=production at process start).
+    const createUploadsRouter = require('../routes/uploads');
     app = express();
     app.use(helmet({
       contentSecurityPolicy: {

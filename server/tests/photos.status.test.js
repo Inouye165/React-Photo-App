@@ -16,7 +16,7 @@ const cookieParser = require('cookie-parser');
 const rateLimit = require('express-rate-limit');
 
 // Test fixtures
-const JWT_SECRET = process.env.JWT_SECRET || 'test-secret-for-photo-status';
+const JWT_SECRET = process.env.JWT_SECRET;
 
 // Helper to create auth tokens
 const makeToken = (userId, opts) => jwt.sign(

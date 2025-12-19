@@ -3,10 +3,11 @@
 // Security: This route is blocked in production and only creates test tokens
 const express = require('express');
 const jwt = require('jsonwebtoken');
+const { getConfig } = require('../config/env');
 
 const router = express.Router();
 
-const JWT_SECRET = process.env.JWT_SECRET || 'test-secret';
+const config = getConfig();
 
 // POST /api/test/e2e-login
 // Sets a valid httpOnly cookie for a test user
@@ -33,7 +34,7 @@ router.post('/e2e-login', (req, res) => {
         username: 'e2e-test',
         role: 'admin'
       },
-      process.env.JWT_SECRET || 'test-secret',
+      config.jwtSecret,
       { expiresIn: '1h' }
     );  // Set the cookie (same config as /auth/session)
   // The httpOnly flag prevents JavaScript access, making this secure storage
@@ -60,7 +61,7 @@ router.get('/e2e-verify', (req, res) => {
   }
   
   try {
-    const decoded = jwt.verify(token, JWT_SECRET);
+    const decoded = jwt.verify(token, config.jwtSecret);
     // Check if this is an E2E test token
     if (decoded.sub === '11111111-1111-4111-8111-111111111111') {
       return res.json({

@@ -8,7 +8,8 @@ const logger = require('../logger');
 const SERVER_DIR = path.join(__dirname, '..');
 const SERVER_ENTRY = path.join(SERVER_DIR, 'server.js');
 const PORT = process.env.PORT || 3001;
-const JWT_SECRET = process.env.JWT_SECRET || 'integration-test-secret';
+const { getConfig } = require('../config/env');
+const JWT_SECRET = getConfig().jwtSecret;
 
 function waitForOutput(child, matcher, timeout = 10000) {
   return new Promise((resolve, reject) => {

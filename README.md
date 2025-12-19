@@ -173,6 +173,9 @@ cp server/.env.example server/.env
 # At minimum, set one of:
 #   SUPABASE_DB_URL or DATABASE_URL (Postgres connection string)
 #   SUPABASE_URL, SUPABASE_ANON_KEY, SUPABASE_SERVICE_ROLE_KEY
+#
+# Production safety note:
+# - In production, the server will refuse startup unless SUPABASE_URL, SUPABASE_ANON_KEY, and JWT_SECRET are set.
 
 # 4. Run migrations (using Knex CLI)
 cd server && npx knex migrate:latest --knexfile knexfile.js && cd ..
@@ -201,6 +204,8 @@ Edit `server/.env` (see `server/.env.example` for all options). **Required** var
 - `SUPABASE_ANON_KEY` – Supabase anon public key
 - `JWT_SECRET` – Server secret used for internal signing (e.g., non-prod/E2E test tokens); not the Supabase access token secret
 - `OPENAI_API_KEY` – Required for server startup (non-test) and AI features
+
+In production, the server is configured to **fail fast** (exit on startup) if `SUPABASE_URL`, `SUPABASE_ANON_KEY`, or `JWT_SECRET` are missing or empty.
 
 **Recommended (but optional):**
 - `SUPABASE_SERVICE_ROLE_KEY` – Supabase service role key (server-side only; falls back to ANON_KEY if missing)

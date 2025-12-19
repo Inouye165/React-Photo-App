@@ -18,7 +18,7 @@ Important environment variables
 -------------------------------
 
 - NODE_ENV=test  (the runner launches the server with this by default)
-- JWT_SECRET     (optional — the runner will fall back to the repo default if not provided; use the same secret the server expects for Authorization JWTs)
+- JWT_SECRET     (optional in NODE_ENV=test/dev — the server will use a test/dev default if not provided; in production, JWT_SECRET must be set explicitly)
 - PORT           (optional — default port used by the server)
 - ALLOW_DEV_DEBUG (optional — set to true to enable extra debug logging in test mode)
 

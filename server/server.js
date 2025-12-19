@@ -24,6 +24,7 @@ if (!process.env.DATABASE_URL && !process.env.SUPABASE_DB_URL) {
 
 // Helpful startup logs to confirm database configuration
 const environment = process.env.NODE_ENV || 'development';
+const isProduction = String(environment).toLowerCase() === 'production';
 
 // Helper to mask secrets while showing short hint
 function maskSecret(value) {
@@ -31,13 +32,18 @@ function maskSecret(value) {
   return '•••' + String(value).slice(-4);
 }
 
+function presentOrMissing(value) {
+  return value ? '(present)' : '(missing)';
+}
+
 console.log('[server] Startup configuration diagnostics:');
 console.log(`[server]  - NODE_ENV = ${environment}`);
-console.log(`[server]  - DATABASE_URL = ${process.env.DATABASE_URL ? maskSecret(process.env.DATABASE_URL) : '(not set)'}`);
-console.log(`[server]  - SUPABASE_DB_URL = ${process.env.SUPABASE_DB_URL ? maskSecret(process.env.SUPABASE_DB_URL) : '(not set)'}`);
-console.log(`[server]  - SUPABASE_URL = ${process.env.SUPABASE_URL ? maskSecret(process.env.SUPABASE_URL) : '(missing)'}`);
-console.log(`[server]  - SUPABASE_SERVICE_ROLE_KEY = ${process.env.SUPABASE_SERVICE_ROLE_KEY ? '(present)' : '(missing)'} ${process.env.SUPABASE_SERVICE_ROLE_KEY ? maskSecret(process.env.SUPABASE_SERVICE_ROLE_KEY) : ''}`);
-console.log(`[server]  - SUPABASE_ANON_KEY = ${process.env.SUPABASE_ANON_KEY ? '(present)' : '(missing)'} ${process.env.SUPABASE_ANON_KEY ? maskSecret(process.env.SUPABASE_ANON_KEY) : ''}`);
+// SECURITY: avoid printing any portion of secrets/URLs in production logs.
+console.log(`[server]  - DATABASE_URL = ${isProduction ? presentOrMissing(process.env.DATABASE_URL) : (process.env.DATABASE_URL ? maskSecret(process.env.DATABASE_URL) : '(not set)')}`);
+console.log(`[server]  - SUPABASE_DB_URL = ${isProduction ? presentOrMissing(process.env.SUPABASE_DB_URL) : (process.env.SUPABASE_DB_URL ? maskSecret(process.env.SUPABASE_DB_URL) : '(not set)')}`);
+console.log(`[server]  - SUPABASE_URL = ${isProduction ? presentOrMissing(process.env.SUPABASE_URL) : (process.env.SUPABASE_URL ? maskSecret(process.env.SUPABASE_URL) : '(missing)')}`);
+console.log(`[server]  - SUPABASE_SERVICE_ROLE_KEY = ${isProduction ? presentOrMissing(process.env.SUPABASE_SERVICE_ROLE_KEY) : (process.env.SUPABASE_SERVICE_ROLE_KEY ? `(present) ${maskSecret(process.env.SUPABASE_SERVICE_ROLE_KEY)}` : '(missing)')}`);
+console.log(`[server]  - SUPABASE_ANON_KEY = ${isProduction ? presentOrMissing(process.env.SUPABASE_ANON_KEY) : (process.env.SUPABASE_ANON_KEY ? `(present) ${maskSecret(process.env.SUPABASE_ANON_KEY)}` : '(missing)')}`);
 console.log(`[server]  - Database: PostgreSQL (all environments)`);
 console.log('[server] End diagnostics');
 
@@ -66,20 +72,13 @@ if (process.env.NODE_ENV !== 'test') {
 }
 
 
-// Validate required environment variables
-
-const { validateEnv } = require('./config/env.validate');
+// Validate required environment variables (fail fast in production)
 try {
-  validateEnv();
+  // Centralized config module validates production requirements.
+  require('./config/env').getConfig();
 } catch (err) {
-  // In test environment, setup.js will set env vars before tests run
-  // So we just warn and continue - the validation will be retried by individual tests
-  if (process.env.NODE_ENV === 'test') {
-    console.warn('[server] Warning:', err.message, '(continuing in test mode - setup.js should set these)');
-  } else {
-    console.error(err.message);
-    process.exit(1);
-  }
+  console.error('[server] FATAL:', err && err.message ? err.message : 'Invalid environment configuration');
+  process.exit(1);
 }
 
 // Import logger for proper error logging

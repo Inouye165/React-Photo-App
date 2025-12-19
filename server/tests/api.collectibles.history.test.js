@@ -20,7 +20,7 @@ jest.mock('../utils/featureFlags', () => ({
 
 const createCollectiblesRouter = require('../routes/collectibles');
 
-const JWT_SECRET = process.env.JWT_SECRET || 'test-secret';
+const JWT_SECRET = process.env.JWT_SECRET;
 
 describe('Sprint 3: Collectibles History API', () => {
   let app;

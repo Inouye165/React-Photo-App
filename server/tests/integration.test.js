@@ -11,7 +11,7 @@ let server;
 let app;
 let authToken;
 
-const JWT_SECRET = process.env.JWT_SECRET || 'test-secret';
+const JWT_SECRET = process.env.JWT_SECRET;
 // Helper to create header tokens for tests where header auth is desired
 const makeToken = (opts) => jwt.sign({ id: 1, username: 'testuser', role: 'user' }, JWT_SECRET, opts || { expiresIn: '1h' });
 

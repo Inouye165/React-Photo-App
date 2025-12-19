@@ -1,20 +1,13 @@
 const { createClient } = require('@supabase/supabase-js');
 const jwt = require('jsonwebtoken');
 const { resolveAllowedOrigin, isOriginAllowed } = require('../config/allowedOrigins');
+const { getConfig } = require('../config/env');
 
-const SUPABASE_URL = process.env.SUPABASE_URL;
-const SUPABASE_ANON_KEY = process.env.SUPABASE_ANON_KEY;
-const JWT_SECRET = process.env.JWT_SECRET;
-
-if (!SUPABASE_URL || !SUPABASE_ANON_KEY) {
-  console.warn('Supabase URL or Key missing. Image auth may fail.');
-}
-
-if (!JWT_SECRET) {
-  console.warn('JWT_SECRET missing. Local token verification will fail.');
-}
-
-const supabase = createClient(SUPABASE_URL, SUPABASE_ANON_KEY);
+// Centralized config:
+// - Production fails fast if required env is missing.
+// - Non-prod provides safe defaults.
+const config = getConfig();
+const supabase = createClient(config.supabase.url, config.supabase.anonKey);
 
 /**
  * Middleware to authenticate image requests
@@ -112,17 +105,15 @@ async function authenticateImageRequest(req, res, next) {
   }
 
   try {
-    // Verify token locally using JWT_SECRET if available (faster)
-    if (JWT_SECRET) {
-      try {
-        const decoded = jwt.verify(token, JWT_SECRET);
-        req.user = { id: decoded.sub, ...decoded }; // Map standard claims
-        req.authSource = authSource;
-        return next();
-      } catch {
-        // Token might be a Supabase session token not signed by our JWT_SECRET
-        // Fall through to Supabase verification
-      }
+    // Verify token locally using server JWT secret (faster)
+    try {
+      const decoded = jwt.verify(token, config.jwtSecret);
+      req.user = { id: decoded.sub, ...decoded }; // Map standard claims
+      req.authSource = authSource;
+      return next();
+    } catch {
+      // Token might be a Supabase session token not signed by our server JWT secret
+      // Fall through to Supabase verification
     }
 
     // Fallback to Supabase API verification (slower)
