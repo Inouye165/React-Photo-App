@@ -1,31 +1,63 @@
-const fs = require("fs");
-const path = require("path");
-const cp = require("child_process");
+import * as fs from 'fs';
+import * as path from 'path';
+import * as cp from 'child_process';
 
-const repo = process.cwd();
-const head = cp.execSync("git rev-parse HEAD", { encoding: "utf8" }).trim();
-const files = cp.execSync("git ls-files", { encoding: "utf8" }).split(/\r?\n/).filter(Boolean);
+// --- Types & Interfaces ---
 
-const extOf = (p) => path.extname(p).toLowerCase();
-const baseOf = (p) => path.basename(p);
-const isLikelyBinary = (buf) => {
+type Severity = 'HIGH' | 'MEDIUM' | 'LOW';
+
+interface Finding {
+  severity: Severity;
+  kind: 'path' | 'content';
+  category: string;
+  detail: string;
+  evidence?: string;
+}
+
+interface Pattern {
+  severity: Severity;
+  kind: 'path' | 'content';
+  category: string;
+  re: RegExp;
+  detail?: string; // For path signals
+  why?: string;    // For prose/code patterns
+}
+
+// --- Setup ---
+
+const repo: string = process.cwd();
+const head: string = cp.execSync("git rev-parse HEAD", { encoding: "utf8" }).trim();
+const files: string[] = cp.execSync("git ls-files", { encoding: "utf8" })
+  .split(/\r?\n/)
+  .filter(Boolean);
+
+const extOf = (p: string): string => path.extname(p).toLowerCase();
+const baseOf = (p: string): string => path.basename(p);
+
+const isLikelyBinary = (buf: Buffer): boolean => {
   if (!buf || buf.length === 0) return false;
   const sample = buf.subarray(0, Math.min(buf.length, 8000));
-  for (let i = 0; i < sample.length; i++) if (sample[i] === 0) return true;
+  for (let i = 0; i < sample.length; i++) {
+    if (sample[i] === 0) return true;
+  }
   return false;
 };
 
-const isTestFile = (p) => /(^|\/)(__tests__|tests)(\/|$)/.test(p) || /\.(test|spec)\./.test(p) || /e2e\//.test(p);
-const isDocsLike = (p) => {
+const isTestFile = (p: string): boolean => 
+  /(^|\/)(__tests__|tests)(\/|$)/.test(p) || /\.(test|spec)\./.test(p) || /e2e\//.test(p);
+
+const isDocsLike = (p: string): boolean => {
   const ext = extOf(p);
   return ext === ".md" || ext === ".txt" || p.startsWith("docs/") || p.startsWith(".github/");
 };
-const isCodeLike = (p) => /\.(js|jsx|ts|tsx|cjs|mjs)$/.test(extOf(p));
 
-const binaryExts = new Set([".png", ".jpg", ".jpeg", ".gif", ".webp", ".svg", ".heic", ".db", ".crt"]);
+const isCodeLike = (p: string): boolean => /\.(js|jsx|ts|tsx|cjs|mjs)$/.test(extOf(p));
 
-// Path/name level smells (senior hygiene / AI-iteration artifacts)
-const fileNameSignals = [
+const binaryExts: Set<string> = new Set([".png", ".jpg", ".jpeg", ".gif", ".webp", ".svg", ".heic", ".db", ".crt"]);
+
+// --- Patterns ---
+
+const fileNameSignals: Pattern[] = [
   {
     severity: "HIGH",
     kind: "path",
@@ -63,8 +95,7 @@ const fileNameSignals = [
   },
 ];
 
-// Content-level assistant/provenance smells (docs-like)
-const prosePatterns = [
+const prosePatterns: Pattern[] = [
   {
     severity: "HIGH",
     kind: "content",
@@ -95,8 +126,7 @@ const prosePatterns = [
   },
 ];
 
-// Content-level prompt/agent directive smells in code/comments (don’t confuse with legit OpenAI usage)
-const codeDirectivePatterns = [
+const codeDirectivePatterns: Pattern[] = [
   {
     severity: "MEDIUM",
     kind: "content",
@@ -106,8 +136,7 @@ const codeDirectivePatterns = [
   },
 ];
 
-// Senior hygiene: committed env/workflow keys (even placeholders)
-const secretPatterns = [
+const secretPatterns: Pattern[] = [
   {
     severity: "HIGH",
     kind: "content",
@@ -117,7 +146,9 @@ const secretPatterns = [
   },
 ];
 
-function lineEvidence(content, idx) {
+// --- Helper Functions ---
+
+function lineEvidence(content: string, idx: number): { lineNo: number; line: string } {
   const before = content.slice(0, idx);
   const lineNo = before.split(/\r?\n/).length;
   const lines = content.split(/\r?\n/);
@@ -125,36 +156,53 @@ function lineEvidence(content, idx) {
   return { lineNo, line: line.trim().slice(0, 260) };
 }
 
-function isEnvOrWorkflowFile(rel) {
+function isEnvOrWorkflowFile(rel: string): boolean {
   const base = baseOf(rel);
   if (base.startsWith(".env")) return true;
   if (rel.startsWith(".github/workflows/") && /\.(yml|yaml)$/i.test(rel)) return true;
   return false;
 }
 
-const byFile = new Map();
+// --- Execution Loop ---
+
+const byFile: Map<string, Finding[]> = new Map();
 for (const f of files) byFile.set(f, []);
 
 for (const rel of files) {
   // path-level findings
   for (const s of fileNameSignals) {
     if (s.re.test(rel)) {
-      byFile.get(rel).push({ severity: s.severity, kind: s.kind, category: s.category, detail: s.detail });
+      byFile.get(rel)?.push({
+        severity: s.severity,
+        kind: 'path',
+        category: s.category,
+        detail: s.detail || ""
+      });
     }
   }
 
   const abs = path.join(repo, rel);
-  let buf;
+  let buf: Buffer;
   try {
     buf = fs.readFileSync(abs);
-  } catch (e) {
-    byFile.get(rel).push({ severity: "MEDIUM", kind: "path", category: "Unreadable file", detail: "Failed to read: " + e.message });
+  } catch (e: any) {
+    byFile.get(rel)?.push({
+      severity: "MEDIUM",
+      kind: 'path',
+      category: "Unreadable file",
+      detail: "Failed to read: " + e.message
+    });
     continue;
   }
 
   const ext = extOf(rel);
   if (binaryExts.has(ext) || isLikelyBinary(buf)) {
-    byFile.get(rel).push({ severity: "LOW", kind: "path", category: "Binary file", detail: "Binary or non-text content; line-level scan skipped." });
+    byFile.get(rel)?.push({
+      severity: "LOW",
+      kind: 'path',
+      category: "Binary file",
+      detail: "Binary or non-text content; line-level scan skipped."
+    });
     continue;
   }
 
@@ -164,10 +212,16 @@ for (const rel of files) {
     for (const p of secretPatterns) {
       p.re.lastIndex = 0;
       let hits = 0;
-      let m;
+      let m: RegExpExecArray | null;
       while ((m = p.re.exec(content)) && hits < 15) {
         const ev = lineEvidence(content, m.index);
-        byFile.get(rel).push({ severity: p.severity, kind: p.kind, category: p.category, detail: p.why, evidence: "L" + ev.lineNo + ": " + ev.line });
+        byFile.get(rel)?.push({
+          severity: p.severity,
+          kind: p.kind,
+          category: p.category,
+          detail: p.why || "",
+          evidence: "L" + ev.lineNo + ": " + ev.line
+        });
         hits++;
       }
     }
@@ -177,10 +231,16 @@ for (const rel of files) {
     for (const p of prosePatterns) {
       p.re.lastIndex = 0;
       let hits = 0;
-      let m;
+      let m: RegExpExecArray | null;
       while ((m = p.re.exec(content)) && hits < 10) {
         const ev = lineEvidence(content, m.index);
-        byFile.get(rel).push({ severity: p.severity, kind: p.kind, category: p.category, detail: p.why, evidence: "L" + ev.lineNo + ": " + ev.line });
+        byFile.get(rel)?.push({
+          severity: p.severity,
+          kind: p.kind,
+          category: p.category,
+          detail: p.why || "",
+          evidence: "L" + ev.lineNo + ": " + ev.line
+        });
         hits++;
       }
     }
@@ -190,18 +250,27 @@ for (const rel of files) {
     for (const p of codeDirectivePatterns) {
       p.re.lastIndex = 0;
       let hits = 0;
-      let m;
+      let m: RegExpExecArray | null;
       while ((m = p.re.exec(content)) && hits < 10) {
         const ev = lineEvidence(content, m.index);
-        byFile.get(rel).push({ severity: p.severity, kind: p.kind, category: p.category, detail: p.why, evidence: "L" + ev.lineNo + ": " + ev.line });
+        byFile.get(rel)?.push({
+          severity: p.severity,
+          kind: p.kind,
+          category: p.category,
+          detail: p.why || "",
+          evidence: "L" + ev.lineNo + ": " + ev.line
+        });
         hits++;
       }
     }
   }
 }
 
-const severityRank = { HIGH: 3, MEDIUM: 2, LOW: 1 };
-function sortFindings(list) {
+// --- Sorting & Output ---
+
+const severityRank: Record<Severity, number> = { HIGH: 3, MEDIUM: 2, LOW: 1 };
+
+function sortFindings(list: Finding[]): Finding[] {
   return list
     .slice()
     .sort((a, b) => {
@@ -230,9 +299,8 @@ for (const rel of files) {
   out += "## " + rel + "\n\n";
   const items = sortFindings(byFile.get(rel) || []);
 
-  // dedupe identical findings
-  const seen = new Set();
-  const deduped = [];
+  const seen = new Set<string>();
+  const deduped: Finding[] = [];
   for (const it of items) {
     const key = [it.severity, it.category, it.evidence || "", it.detail || ""].join("||");
     if (seen.has(key)) continue;
@@ -249,7 +317,7 @@ for (const rel of files) {
     out += "- **" + it.severity + " / " + it.category + "**";
     out += it.evidence ? " — " + it.evidence : " (path-level)";
     out += "\n";
-    out += "  - " + it.detail + "\n";
+    out += "   - " + it.detail + "\n";
   }
 
   out += "\n";
@@ -257,4 +325,3 @@ for (const rel of files) {
 
 fs.writeFileSync(path.join(repo, "AI_CODE_REVIEW.md"), out, "utf8");
 console.log("Wrote AI_CODE_REVIEW.md in per-file format");
-
