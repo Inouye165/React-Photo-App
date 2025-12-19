@@ -7,6 +7,29 @@ const logger = require('../logger');
 module.exports = function createDebugRouter({ db }) {
   const router = express.Router();
 
+  // SECURITY: Defense-in-depth guard for operational/debug routes.
+  // - Production default: disabled (return 404) unless DEBUG_ROUTES_ENABLED=true
+  // - Optional admin header gate: if DEBUG_ADMIN_TOKEN is set, require x-debug-token
+  router.use((req, res, next) => {
+    const isProduction = (process.env.NODE_ENV === 'production');
+    const debugRoutesEnabled = (process.env.DEBUG_ROUTES_ENABLED === 'true');
+
+    if (isProduction && !debugRoutesEnabled) {
+      // Match the app-wide JSON 404 shape to avoid leaking route existence.
+      return res.status(404).json({ success: false, error: 'Not found' });
+    }
+
+    const adminToken = process.env.DEBUG_ADMIN_TOKEN;
+    if (adminToken && adminToken.trim() !== '') {
+      const provided = req.get('x-debug-token');
+      if (!provided || provided !== adminToken) {
+        return res.status(403).json({ success: false, error: 'Forbidden' });
+      }
+    }
+
+    return next();
+  });
+
   // Add endpoint to recheck/reprocess all inprogress files for AI metadata
   router.post('/photos/recheck-inprogress', (req, res) => {
     try {
