@@ -1,6 +1,7 @@
 const { createClient } = require('@supabase/supabase-js');
 const jwt = require('jsonwebtoken');
 const { getConfig } = require('../config/env');
+const { isE2EEnabled } = require('../config/e2eGate');
 
 // Initialize Supabase client
 // In production, missing SUPABASE_* or JWT_SECRET will fail fast via config validation.
@@ -48,7 +49,7 @@ async function authenticateToken(req, res, next) {
 
   try {
     // 0. Check for E2E test token (only in non-production)
-    if (process.env.NODE_ENV !== 'production') {
+    if (isE2EEnabled()) {
       // Allow header-based bypass for E2E tests (avoids cookie issues)
       if (req.headers['x-e2e-user-id'] === '11111111-1111-4111-8111-111111111111') {
         req.user = {

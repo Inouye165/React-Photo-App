@@ -247,11 +247,17 @@ app.set('trust proxy', 1);
   // Public API routes (no auth required) - mounted before auth middleware
   app.use('/api/public', createPublicRouter({ db }));
 
-  // E2E test login route (only in non-production)
-  if (process.env.NODE_ENV !== 'production') {
-    const e2eRouter = require('./routes/e2e');
-    app.use('/api/test', e2eRouter);
-  }
+  // E2E/test-only routes
+  // Defense-in-depth: require explicit opt-in flag in addition to non-production.
+  // This prevents accidental exposure if NODE_ENV is misconfigured.
+  const { isE2EEnabled } = require('./config/e2eGate');
+  const e2eRouter = require('./routes/e2e');
+  app.use('/api/test', (req, res, next) => {
+    if (!isE2EEnabled()) {
+      return res.status(404).json({ success: false, error: 'Not found' });
+    }
+    return e2eRouter(req, res, next);
+  });
 
   // SECURITY: Debug routes removed to prevent information disclosure
   // Previously exposed environment variable configuration via /__diag/env

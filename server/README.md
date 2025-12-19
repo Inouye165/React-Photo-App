@@ -118,8 +118,9 @@ Backend server for the React Photo App, built with Node.js and Express. It handl
 
 ### Testing Endpoints (Development & E2E Only)
 - `GET /api/test/e2e-verify` - Validates E2E test authentication cookie
-  - **Production**: Returns `403 Forbidden` (completely disabled)
-  - **Development/Test**: Returns `200` with user data if `e2e_session` cookie valid, `401` otherwise
+  - **Production**: Always returns `404 Not found` (completely disabled, flag ignored)
+  - **Development/Test**: Disabled by default; set `E2E_ROUTES_ENABLED=true` to enable
+  - **When enabled**: Returns `200` with user data if `authToken` cookie is a valid E2E session, `401` otherwise
   - **Purpose**: Allows Playwright tests to verify authentication state without exposing production endpoints
   - **Expected behavior**: 401 responses are normal and expected when app loads without E2E session (logged as debug, not error)
 

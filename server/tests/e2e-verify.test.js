@@ -4,6 +4,7 @@ const jwt = require('jsonwebtoken');
 // Set test environment
 process.env.NODE_ENV = 'test';
 process.env.JWT_SECRET = 'test-jwt-secret-e2e';
+process.env.E2E_ROUTES_ENABLED = 'true';
 
 const app = require('../server');
 
@@ -100,32 +101,35 @@ describe('E2E Verify Endpoint - /api/test/e2e-verify', () => {
 
   describe('Production Environment', () => {
     const originalEnv = process.env.NODE_ENV;
+    const originalE2E = process.env.E2E_ROUTES_ENABLED;
 
     beforeEach(() => {
       process.env.NODE_ENV = 'production';
+      process.env.E2E_ROUTES_ENABLED = 'true';
     });
 
     afterEach(() => {
       process.env.NODE_ENV = originalEnv;
+      process.env.E2E_ROUTES_ENABLED = originalE2E;
     });
 
-    test('should return 403 in production even with valid E2E cookie', async () => {
+    test('should return 404 in production even with valid E2E cookie (flag ignored)', async () => {
       const response = await request(app)
         .get('/api/test/e2e-verify')
         .set('Cookie', `authToken=${testToken}`)
-        .expect(403);
+        .expect(404);
 
       expect(response.body.success).toBe(false);
-      expect(response.body.error).toBe('E2E verify not allowed in production');
+      expect(response.body.error).toBe('Not found');
     });
 
-    test('should return 403 in production with no cookie', async () => {
+    test('should return 404 in production with no cookie (flag ignored)', async () => {
       const response = await request(app)
         .get('/api/test/e2e-verify')
-        .expect(403);
+        .expect(404);
 
       expect(response.body.success).toBe(false);
-      expect(response.body.error).toBe('E2E verify not allowed in production');
+      expect(response.body.error).toBe('Not found');
     });
   });
 

@@ -4,8 +4,13 @@
 const express = require('express');
 const jwt = require('jsonwebtoken');
 const { getConfig } = require('../config/env');
+const { e2eGateMiddleware } = require('../config/e2eGate');
 
 const router = express.Router();
+
+// Defense-in-depth: even if this router is mounted accidentally,
+// keep E2E surfaces disabled unless explicitly enabled.
+router.use(e2eGateMiddleware);
 
 const config = getConfig();
 
@@ -15,9 +20,6 @@ const config = getConfig();
 // and only used for automated E2E testing. The token is stored in an httpOnly
 // cookie which is the secure pattern for session management.
 router.post('/e2e-login', (req, res) => {
-  if (process.env.NODE_ENV === 'production') {
-    return res.status(403).json({ success: false, error: 'E2E login not allowed in production' });
-  }
   const user = {
     id: '11111111-1111-4111-8111-111111111111',
     username: 'e2e-test',
@@ -51,10 +53,6 @@ router.post('/e2e-login', (req, res) => {
 // GET /api/test/e2e-verify
 // Verifies the E2E test session cookie and returns the user if valid
 router.get('/e2e-verify', (req, res) => {
-  if (process.env.NODE_ENV === 'production') {
-    return res.status(403).json({ success: false, error: 'E2E verify not allowed in production' });
-  }
-  
   const token = req.cookies?.authToken;
   if (!token) {
     return res.status(401).json({ success: false, error: 'No session cookie' });

@@ -212,6 +212,7 @@ In production, the server is configured to **fail fast** (exit on startup) if `S
 
 **Optional:**
 - `GOOGLE_MAPS_API_KEY` – Enables Google Places enrichment (if missing, POI lookups are skipped)
+- `E2E_ROUTES_ENABLED` – Enables `/api/test/*` E2E routes and test-only auth bypass hooks in non-production only (always disabled in production)
 - (See `server/.env.example` for the full set of options)
 
 ---
