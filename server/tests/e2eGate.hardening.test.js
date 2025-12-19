@@ -1,6 +1,7 @@
 const request = require('supertest');
 const express = require('express');
 const cookieParser = require('cookie-parser');
+const rateLimit = require('express-rate-limit');
 
 // Mock Supabase before requiring the middleware
 const mockGetUser = jest.fn();
@@ -79,6 +80,15 @@ describe('E2E Gate Hardening', () => {
     const testApp = express();
     testApp.use(cookieParser());
     testApp.use(express.json());
+
+    // CodeQL hardening: even in tests, avoid defining auth-protected handlers
+    // without some rate limiting in place.
+    testApp.use(rateLimit({
+      windowMs: 60 * 1000,
+      max: 1000,
+      standardHeaders: true,
+      legacyHeaders: false,
+    }));
 
     // If bypass were honored, this would succeed without calling Supabase.
     mockGetUser.mockResolvedValue({
