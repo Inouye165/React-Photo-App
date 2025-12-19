@@ -11,6 +11,8 @@ This directory should contain the following PNG icons for the PWA:
 - `icon-384x384.png` - 384x384 pixels
 - `icon-512x512.png` - 512x512 pixels
 
+NOTE: These files are referenced by `public/manifest.json`. If you want PWA install to work, commit the icons or update the manifest to match the assets you have.
+
 ## Generating Icons
 
 You can use tools like:

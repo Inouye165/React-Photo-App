@@ -3,15 +3,17 @@
 # Lumina (formerly React Photo App)
 
 ![Status: High-Performance Engineering Prototype (Active Development)](https://img.shields.io/badge/status-high--performance--prototype-yellow.svg)
-[![Tests](https://img.shields.io/badge/tests-1145%2B%20passing-brightgreen.svg)](https://github.com/Inouye165/React-Photo-App)
+[![Tests](https://img.shields.io/badge/tests-vitest%20%2B%20jest-brightgreen.svg)](https://github.com/Inouye165/React-Photo-App)
 [![Security](https://img.shields.io/badge/security-JWT%20%2B%20RLS-blue.svg)](https://supabase.com/docs/guides/auth)
 [![HEIC Support](https://img.shields.io/badge/HEIC-Auto%20Convert-orange.svg)](https://en.wikipedia.org/wiki/High_Efficiency_Image_Format)
 [![React](https://img.shields.io/badge/React-19-61dafb.svg)](https://reactjs.org/)
 [![License](https://img.shields.io/badge/license-MIT-blue.svg)](LICENSE)
 
-> **Lumina is your AI Photo Companion.**
+> **Lumina is an AI-powered, privacy-first photo workspace — built to learn and practice “big tech” engineering standards.**
 
-This repository demonstrates that a single developer can build a secure, scalable, AI-integrated photo platform. The backend features enterprise-grade architecture, robust security (RLS, strict CORS allowlist, origin-protected auth routes, rate limiting), and advanced AI workflows. The user interface is a functional draft—focusing on architecture over UI polish. Expect a utilitarian, developer-focused experience while the frontend evolves.
+Lumina is a long-running engineering project focused on security, scalability, and maintainability. The goal is to evolve into a community-oriented platform (sharing + chat) while keeping user data isolation, consent, and privacy at the center.
+
+The frontend is still evolving; the backend and security posture are treated as first-class concerns.
 
 **Author:** Ron Inouye ([@Inouye165](https://github.com/Inouye165))
 
@@ -26,6 +28,17 @@ This project is not a tutorial or a consumer-ready product. It is a high-perform
 **Read the full journey:** [Product Story](docs/PRODUCT_STORY.md) (Sept–Nov 2025)
 
 ---
+
+## 🌱 Community & values
+- **Be kind and inclusive:** This project aims to welcome contributors and users from all backgrounds.
+- **Privacy-first by default:** User data isolation, least-privilege access, and secure-by-design patterns are core requirements.
+- **Transparency:** Security trade-offs and changes should be documented. No “security theater.”
+- **Respectful community:** Harassment, hate, and abusive behavior are not welcome.
+
+## 🔒 Privacy & user isolation (north star)
+Lumina is designed around **isolated user workspaces**: each user’s photos, metadata, and derived AI outputs must remain private and access-controlled.
+
+Sharing features (albums, links, chat) should be **opt-in**, permissioned, and auditable.
 
 ## ✨ Architectural Experiments & Features
 
@@ -43,17 +56,22 @@ This project is not a tutorial or a consumer-ready product. It is a high-perform
 - **Row-Level Security:** Supabase RLS for strict user data isolation
 
 ### 🔒 **Security (Experimental)**
-- **Stateless JWT Bearer Auth:** `Authorization: Bearer <token>` header exclusively; ~~cookie fallback removed~~ (eliminates split-brain auth)
-- **CSRF Immunity:** Bearer tokens not sent automatically by browsers (unlike cookies), eliminating CSRF attack vectors
-- **Origin Verification:** Origin/Referer allowlist verification on state-changing auth endpoints for defense-in-depth
-- **Security Gates (CI):** GitHub Actions runs **gitleaks** to scan the repository for committed secrets
-- **CI Placeholder Keys:** CI uses non-secret placeholder values for API key env vars (to avoid secret-like strings in the repo)
+- **API Auth:** Protected API routes require `Authorization: Bearer <token>`.
+- **Images/Thumbnails:** Prefer signed thumbnail URLs for `<img>`; otherwise use Bearer auth. A deprecated cookie fallback may exist only for legacy image access/E2E and will be removed.
+- **CSRF defense:** State-changing auth endpoints enforce strict Origin/Referer allowlisting (no CSRF tokens).
+- **Secret scanning:** Use `npm run secret-scan` (and hooks if enabled) to block committing secret-like strings.
 - **Experimental Beta Mode:** Optional beta features with an explicit privacy disclaimer and user acknowledgement
-- **Content Security Policy:** Helmet-enforced CSP with automated CI tests
+- **Content Security Policy:** Helmet-enforced CSP (tests exist; CI setup depends on your environment)
 - **Concurrency Limits:** Rate limiting to prevent upload storms
 
+### ✅ Engineering standards (what “Google-level” means here)
+- Security tests and threat-model thinking are expected.
+- Clear error handling (no secret leakage) and safe logging.
+- Documentation should be kept in sync with refactors.
+- Performance is measured and regressions are investigated.
+
 ### 📸 **Photo Handling**
-- **HEIC Auto-Convert:** Sharp + ImageMagick fallback for Apple's HEIC format
+- **HEIC Auto-Convert:** HEIC/HEIF → JPEG via Sharp, with `heic-convert` fallback (no ImageMagick dependency)
 - **Optimistic Uploads:** Fast, responsive uploads with immediate navigation and background processing
 - **Compass Overlay:** Shows camera direction on map pins (prototype)
 - **Smart Thumbnails:** Lazy-loaded, optimized for large galleries
@@ -149,11 +167,9 @@ Ensure your Supabase project has the following Redirect URLs configured:
 
 ### Prerequisites
 - **Node.js 20+**
-- **Docker** (for local Postgres and Redis)
-- **docker-compose** (recommended for local DB/Redis)
+- **Docker + docker-compose** (for local Postgres + Redis)
 - **Supabase account** (for production or hosted Postgres/Storage/Auth)
-- **Redis** (local: `docker-compose up -d redis` or `docker run -d -p 6379:6379 redis:7.2-alpine`)
-- **ImageMagick** (for HEIC fallback)
+- **Redis** (local: `docker-compose up -d redis`)
 
 ### Installation & Setup
 
@@ -189,7 +205,7 @@ cd server && npm run worker # Terminal 3: AI Worker (requires Redis & DB)
 **Frontend:** http://localhost:5173  
 **Backend API:** http://localhost:3001
 
-> **Note:** The AI worker (`npm run worker`) is required for background photo analysis and enrichment. If `GOOGLE_MAPS_API_KEY` is missing, Places-based enrichment will be disabled but uploads and basic analysis will still work.
+> **Note:** The AI worker (`npm run worker`) is required for background photo analysis and enrichment. If `GOOGLE_MAPS_API_KEY` / `GOOGLE_PLACES_API_KEY` is missing, Places-based enrichment will be disabled but uploads and core analysis will still work.
 
 > **Important:** In non-test environments, the backend is configured to **refuse startup** if `OPENAI_API_KEY` is missing (to prevent accidental API-cost surprises).
 
@@ -253,9 +269,9 @@ cd server && npm run worker
 
 **Frontend:** React 19, Vite, Tailwind CSS, Zustand, React Testing Library  
 **Backend:** Node.js, Express, Supabase (Postgres + Storage + Auth), BullMQ, Redis  
-**AI/Processing:** LangGraph, Sharp, ImageMagick, Google Places API  
-**Security:** Helmet, JWT (Bearer token auth), RLS, CSRF tokens  
-**Testing:** Vitest, Jest, Supertest (1,145+ tests across frontend & backend, 20x stress-tested)
+**AI/Processing:** LangGraph, Sharp (+ `heic-convert` fallback), Google Places API  
+**Security:** Helmet, JWT (Bearer token auth), RLS, Origin/Referer verification (no CSRF tokens)  
+**Testing:** Vitest, Jest, Supertest (large test suite; see `npm run test:run` and `cd server && npm test`)
 
 ---
 
@@ -304,7 +320,7 @@ cd server && npm run worker
 ## 🧪 Quality Assurance
 
 ```bash
-# Run all tests (1,145+ passing across frontend & backend)
+# Run all tests (frontend unit tests)
 npm run test:run
 
 # Backend only
@@ -314,7 +330,7 @@ cd server && npm test
 npm run test:stress -- --runs 50
 ```
 
-**CI Pipeline:** Every push runs unit tests, integration tests, CSP validation, and security scans.
+**CI:** Recommended to run unit tests, integration checks, CSP validation, and secret scanning. (CI wiring depends on your environment.)
 
 ---
 
@@ -322,7 +338,7 @@ npm run test:stress -- --runs 50
 
 Currently designed for self-hosted deployment to:
 - **Railway** (recommended: automatic Redis + Node.js for backend)
-- **Vercel** (frontend hosting, deployed at `https://react-photo-il8l0cuz2-ron-inouyes-projects.vercel.app`)
+- **Vercel** (frontend hosting; URL depends on your Vercel project)
 - **Supabase + VPS** (backend on DigitalOcean/AWS, DB on Supabase)
 - **Docker Compose** (all services containerized)
 
@@ -389,7 +405,7 @@ MIT License - see [LICENSE](LICENSE)
 
 Built with:
 - **Supabase** for managed Postgres + Auth + Storage
-- **Sharp/ImageMagick** for image processing
+- **Sharp (+ `heic-convert` fallback)** for image processing
 - **BullMQ** for reliable background jobs
 - **LangGraph** for AI workflow orchestration
 

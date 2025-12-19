@@ -42,8 +42,8 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/).
 - Dependency conflicts resolved - `npm install` now works without flags
 
 ### Changed
-- **[Security]** Enforced httpOnly Cookie Authentication - All API endpoints now strictly authenticate via httpOnly cookies. Bearer token header fallback removed from frontend. Authentication handled exclusively via secure cookies set by `/api/auth/session`
-- **[Security]** Token leakage eliminated - No more JWT tokens in localStorage, URL params, or browser history
+- **[Security]** Enforced Bearer Token Authentication (API) - Protected API routes require `Authorization: Bearer <token>`. `/api/auth/session` and `/api/auth/logout` are deprecated/no-op.
+- **[Security]** Token leakage eliminated - No tokens stored in localStorage or URL params.
 
 ---
 
@@ -52,7 +52,7 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/).
 ### Added
 - **[Security]** Strict SSL certificate validation for production database connections - Production now enforces `rejectUnauthorized: true` with CA certificate verification to prevent MITM attacks
 - **[Security]** Complete Supabase Auth integration with centralized log redaction
-- **[AI]** Advanced HEIC Support - Automatic conversion with Sharp and ImageMagick fallbacks
+- **[AI]** Advanced HEIC Support - Automatic conversion with Sharp and `heic-convert` fallback (no ImageMagick dependency)
 - **[AI]** Dynamic model selection with failover
 - **[Infrastructure]** Background processing with BullMQ and robust retry mechanisms
 - **[Infrastructure]** Comprehensive test suite expanded to 86 tests covering frontend, backend, and security
@@ -64,7 +64,7 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/).
 - "Split Brain" authentication resolved - Local `users` table removed, all user management consolidated on Supabase Auth
 
 ### Changed
-- Supabase Postgres became the backbone of data layer (SQLite still supported for local dev)
+- Supabase/local PostgreSQL became the backbone of the data layer (PostgreSQL required for all environments)
 - Configuration management improved - environment variables, secrets, deployment scenarios carefully managed
 - Content Security Policy (CSP) with Helmet introduced with dedicated CI tests
 
@@ -93,7 +93,7 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/).
 
 Previous iterations served as learning vehicles for React and Node.js fundamentals. The September 2025 overhaul marked the transition to production-ready architecture.
 
-See [docs/PRODUCT_STORY.md](docs/PRODUCT_STORY.md) for the complete narrative journey.
+See [PRODUCT_STORY.md](./PRODUCT_STORY.md) for the complete narrative journey.
 
 ---
 

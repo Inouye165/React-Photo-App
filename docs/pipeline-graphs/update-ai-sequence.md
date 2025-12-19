@@ -15,9 +15,9 @@ Legend:
 
 | # | Stage | What Happens | Files & Functions |
 | - | ----- | ------------ | ----------------- |
-| 1 | 🟦 | User presses the **Update AI** (labeled **Recheck AI** in UI) button on the edit drawer, which toggles the `recheckingAI` flag and invokes the injected `onRecheckAI`. | `src/EditPage.jsx` – inline button handler calling `onRecheckAI(photo.id)` |
+| 1 | 🟦 | User presses the **Update AI** (labeled **Recheck AI** in UI) button on the edit drawer, which toggles the `recheckingAI` flag and invokes the injected `onRecheckAI`. | `src/EditPage.tsx` – inline button handler calling `onRecheckAI(photo.id)` |
 | 2 | 🟦 | Route component wires that callback: `PhotoEditPage.handleRecheckAI` checks that Docker/AI dependencies are ready, surfaces banners, and imports the API helper dynamically. | `src/pages/PhotoEditPage.jsx` – `handleRecheckAI` |
-| 3 | 🟦🟧 | The client helper `recheckPhotoAI(photoId, model)` builds `POST /photos/:id/run-ai`, attaches credentials, and fires it through the `apiLimiter`. Success dispatches a `photo:run-ai` event/localStorage ping so other tabs know polling should start. | `src/api.js` – `recheckPhotoAI` |
+| 3 | 🟦🟧 | The client helper `recheckPhotoAI(photoId, model)` builds `POST /photos/:id/run-ai`, attaches credentials, and fires it through the `apiLimiter`. Success dispatches a `photo:run-ai` event/localStorage ping so other tabs know polling should start. | `src/api.ts` – `recheckPhotoAI` |
 | 4 | 🟧 | Express receives the request, re-loads the photo row for the authenticated user, validates optional model overrides, and delegates to the AI service. | `server/routes/photos.js` – route handler for `router.post('/:id/run-ai', ...)` |
 | 5 | 🟩 | The AI service wrapper simply forwards to the queue abstraction so all enqueue logic stays centralized. | `server/services/photosAi.js` – `enqueuePhotoAiJob` |
 | 6 | 🟩 | BullMQ queue initialization ensures Redis is reachable, then `addAIJob` pushes a `process-photo-ai` job whose payload includes the `photoId` and any override metadata. Worker startup (`startWorker` from `server/worker.js`) binds the processor. | `server/queue/index.js` – `initializeQueue`, `addAIJob`, `startWorker` |
@@ -29,7 +29,7 @@ Legend:
 | 12 | 🟥 | **Branch workloads.** Collectibles: `identify_collectible` → `valuate_collectible` → `describe_collectible`. Scenery: `location_intelligence_agent` → (`decide_scene_label` if GPS-rich) → `generate_metadata`. Food: `food_location_agent` → `food_metadata_agent`. Every path logs via `auditLogger` and returns a populated `finalResult`. | `server/ai/langgraph/nodes/*` |
 | 13 | ⬛ | Every node start/finish, tool call, and LLM request funnels through `server/ai/langgraph/audit_logger.js`, which appends Markdown to `langgraph_execution.md`. The `collectibles-execution-log.md` inside `docs/pipeline-graphs/` is a curated copy of that raw log for the collectibles run you opened. | `server/ai/langgraph/audit_logger.js` – `logGraphStart/End`, `logNodeStart/End`, `logLLMUsage`; resulting artifact `docs/pipeline-graphs/collectibles-execution-log.md` |
 | 14 | 🟨 | Once LangGraph returns, the AI result is validated (`AnalysisResultSchema`), keywords are merged with EXIF hints, and a DB transaction updates `photos` plus upserts `collectibles` and `collectible_market_data` rows (persisting `collectibleInsights`, history, specifics, valuations). | `server/ai/schemas.js`; `server/ai/service.js` – transactional block inside `updatePhotoAIMetadata` |
-| 15 | 🟦 | While the job runs, `useAIPolling` notices the `pollingPhotoId` and polls `GET /photos/:id` with cache-busting every 3s. Once caption/description/keywords or `updated_at` change, it updates Zustand state and clears the polling flags. | `src/hooks/useAIPolling.jsx` – effect + `hasNewAIdata`; `src/api.js` – `getPhoto` |
+| 15 | 🟦 | While the job runs, `useAIPolling` notices the `pollingPhotoId` and polls `GET /photos/:id` with cache-busting every 3s. Once caption/description/keywords or `updated_at` change, it updates Zustand state and clears the polling flags. | `src/hooks/useAIPolling.jsx` – effect + `hasNewAIdata`; `src/api.ts` – `getPhoto` |
 | 16 | 🟦 | The updated photo in state re-renders the edit drawer. `CollectibleDetailView` and `CollectibleEditorPanel` receive the refreshed `photo.poi_analysis` / `collectibleData`, so the valuation, specifics, and price sources appear without another click. | `src/components/CollectibleDetailView.jsx`; `src/components/CollectibleEditorPanel.jsx`; `src/EditPage.jsx` |
 
 ## How the Execution Logs Are Produced
@@ -79,9 +79,9 @@ Legend:
 
 ## File & Function Reference
 
-- `src/EditPage.jsx` – button handler invoking `onRecheckAI`.
+- `src/EditPage.tsx` – button handler invoking `onRecheckAI`.
 - `src/pages/PhotoEditPage.jsx` – `handleRecheckAI` wiring to API helper and banners.
-- `src/api.js` – `recheckPhotoAI`, `getPhoto`, auth header helpers.
+- `src/api.ts` – `recheckPhotoAI`, `getPhoto`, auth header helpers.
 - `server/routes/photos.js` – `/photos/:id/run-ai` handler.
 - `server/services/photosAi.js` – `enqueuePhotoAiJob` wrapper.
 - `server/queue/index.js` – `initializeQueue`, `addAIJob`, `startWorker`, BullMQ processor.

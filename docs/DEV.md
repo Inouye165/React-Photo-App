@@ -34,7 +34,7 @@ npm run check-privilege
 
 3) Frontend instrumentation
 
-- `src/api.js` logs the outgoing JSON body for `checkPrivilege` as `console.log('[API] checkPrivilege ->', serverUrl, 'body:', body);` so you can inspect the exact payload sent from the browser.
+- `src/api.ts` logs the outgoing JSON body for `checkPrivilege` as `console.log('[API] checkPrivilege ->', serverUrl, 'body:', body);` so you can inspect the exact payload sent from the browser.
 
 4) Next steps
 

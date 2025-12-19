@@ -45,9 +45,8 @@ Phase 1 successfully converts `EditPage.jsx` to `EditPage.tsx` with full TypeScr
 - **`src/pages/PhotoEditPage.jsx`** - Updated import
   - Changed `import EditPage from '../EditPage.jsx'` → `import EditPage from '../EditPage.tsx'`
 
-- **`src/contexts/AuthContext.d.ts`** - Extended type definition
-  - Added `session` property to `AuthContextValue` interface
-  - Added all missing context methods (register, logout, preferences, etc.)
+- **`src/contexts/AuthContext.tsx`** - Auth context source (TypeScript)
+  - `AuthContextValue` and related types live in the `.tsx` source
 
 ### Deleted Files
 - **`src/EditPage.jsx`** - Replaced by EditPage.tsx
@@ -56,7 +55,7 @@ Phase 1 successfully converts `EditPage.jsx` to `EditPage.tsx` with full TypeScr
 ## Behavior Preservation
 
 ### ✅ Intentionally Preserved
-1. **Authentication:** httpOnly cookie authentication with `credentials: 'include'` on all fetch calls
+1. **Authentication:** Bearer token auth for protected API routes (Authorization header). Legacy cookie behavior may exist only for images/E2E.
 2. **Tab Structure:** Story, Location, and Collectibles tabs (conditionally rendered)
 3. **Feature Flags:** Collectibles UI gated by `VITE_ENABLE_COLLECTIBLES_UI` environment variable
 4. **Save Mechanism:** PATCH request to `/photos/:id/metadata` with metadata fields

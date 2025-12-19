@@ -6,9 +6,9 @@ This directory contains visualization resources for the LangGraph AI pipeline us
 To visualize the complex execution flows of the LangGraph orchestration, including node transitions, AI model decisions, and data transformations.
 
 ## How to Generate Execution Logs
-1. Ensure the server is running with logging enabled (default in `langgraph-logging` branch).
-2. Process a photo through the application.
-3. The system will generate a `langgraph_execution.md` file in the project root.
+1. Run the worker and trigger an AI run for a photo.
+2. The LangGraph audit logger (`server/ai/langgraph/audit_logger.js`) writes `langgraph_execution.md` at the repo root.
+3. Note: each new run clears and rewrites the file (see `logGraphStart`).
 4. This file captures:
    - Node execution start/finish
    - LLM calls (prompts & responses)

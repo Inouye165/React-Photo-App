@@ -6,7 +6,7 @@ This directory contains AI-powered features for the photo application, including
 
 ### Google Places Integration
 
-The Google Places API integration (`poi/googlePlaces.js`) provides location-based POI discovery for photos with GPS metadata.
+The Google Places API integration (`server/ai/poi/googlePlaces.js`) provides location-based POI discovery for photos with GPS metadata.
 
 #### Architecture
 
@@ -24,9 +24,11 @@ The Google Places API integration (`poi/googlePlaces.js`) provides location-base
 
 #### Configuration
 
-Set the following environment variable:
+Set ONE of the following environment variables:
 ```
 GOOGLE_MAPS_API_KEY=your_api_key_here
+GOOGLE_PLACES_API_KEY=your_api_key_here
+GOOGLE_API_KEY=your_api_key_here
 ```
 
 The API key must have:
@@ -42,17 +44,17 @@ The API key must have:
 
 #### Testing
 
-The test suite (`poi/googlePlaces.test.js`) validates:
+The test suite (`server/ai/poi/googlePlaces.test.js`) validates:
 - Name-based heuristics (trail detection)
 - Deduplication logic
 - Partial failure resilience
 - Category normalization
 
-Run tests: `npm test ai/poi/googlePlaces`
+Run tests (from `server/`): `npm test -- ai/poi/googlePlaces.test.js`
 
 ### OpenStreetMap Integration
 
-Alternative POI source for trail data when Google Places doesn't return results. See `poi/osmTrails.js`.
+Alternative POI source for trail data when Google Places doesn't return results. See `server/ai/poi/osmTrails.js`.
 
 ## LangGraph Workflows
 

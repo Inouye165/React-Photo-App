@@ -12,8 +12,8 @@
 
 ### 🔒 Security (Critical)
 
-* **Patched XSS Vulnerability:** Removed all usage of `localStorage` for storing JWTs on the client (`src/contexts/AuthContext.jsx`). The application now exclusively relies on a server-set, `httpOnly` cookie for authentication.
-* **Hardened Server Middleware:** The `authenticateToken` middleware (`server/middleware/auth.js`) was updated to *only* accept the `httpOnly` cookie. The fallback for `Authorization: Bearer` headers has been removed for browser-facing routes, mitigating the risk of stolen tokens.
+* **Patched XSS Vulnerability:** Tokens are not stored in `localStorage` on the client (see `src/contexts/AuthContext.tsx`).
+* **Hardened Server Middleware:** Protected API routes require `Authorization: Bearer <token>` (`server/middleware/auth.js`). Legacy cookie-based endpoints are deprecated/no-op; image routes may still have a deprecated cookie fallback.
 
 ### 🧹 Chore
 

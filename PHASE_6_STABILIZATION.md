@@ -141,7 +141,7 @@ npx playwright test e2e/editpage-visual.spec.ts --headed --debug --grep "Default
 
 ### CI/CD
 ```bash
-# Runs automatically in GitHub Actions
+# Run in CI if your environment is configured to do so
 npm run test:e2e
 ```
 

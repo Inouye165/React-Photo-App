@@ -8,8 +8,8 @@ This document outlines completed milestones, current priorities, and future plan
 
 ### Security & Reliability
 - [x] **Row-Level Security (RLS)** - Supabase RLS ensures strict data isolation between users
-- [x] **httpOnly Cookie Auth** - Eliminated token leakage from localStorage/URL params
-- [x] **CSRF Protection** - Token + Origin validation on all state-changing requests
+- [x] **Bearer Token Auth (API)** - Protected backend API routes require `Authorization: Bearer <token>`. No tokens stored in localStorage/URL params.
+- [x] **CSRF Defense** - Origin/Referer allowlist verification on state-changing auth endpoints (no CSRF tokens).
 - [x] **SSL Certificate Validation** - Enforced `rejectUnauthorized: true` for production DB connections
 - [x] **Session Recovery** - Invalid refresh tokens trigger automatic cleanup and re-login
 - [x] **Concurrency Limits** - Rate limiting prevents upload storms
@@ -27,9 +27,9 @@ This document outlines completed milestones, current priorities, and future plan
 - [x] **Location Intelligence** - Identifies landmarks, trails, and points of interest from GPS coords
 
 ### Developer Experience
-- [x] **Comprehensive Test Suite** - 86 tests covering frontend, backend, and security
+- [x] **Comprehensive Test Suite** - Frontend (Vitest) + backend (Jest/Supertest)
 - [x] **Stress Testing** - 20x runs to catch race conditions and flaky tests
-- [x] **CI/CD Pipeline** - Automated tests, CSP validation, security scans
+- [ ] **CI/CD Pipeline** - Document the currently configured CI for this repo (varies by environment)
 - [x] **Migration System** - SQL migrations with rollback support
 
 ---
@@ -150,4 +150,4 @@ Have a feature request or use case? Here's how to contribute:
 ---
 
 **Last Updated:** December 2025  
-**See Also:** [Product Story](docs/PRODUCT_STORY.md) for detailed engineering journey
+**See Also:** [Product Story](./PRODUCT_STORY.md) for detailed engineering journey

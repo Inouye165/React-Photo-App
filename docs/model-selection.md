@@ -3,7 +3,7 @@
 The photo server now builds its OpenAI model allowlist at startup instead of relying on a hardcoded array.
 
 ## Startup Behaviour
-- `routes/photos.js` initializes an OpenAI SDK client and invokes `loadDynamicAllowList()` during module load.
+- `server/routes/photos.js` initializes an OpenAI SDK client and invokes `loadDynamicAllowList()` during module load.
 - The function calls `openai.models.list()` using the API key provided via `OPENAI_API_KEY`.
 - Returned model IDs are filtered to keep chat and vision capable models only. Matching prefixes include `gpt-5`, `gpt-4`, `gpt-3.5`, `ft:`, `o1`, and `o3`.
 - Application-specific model aliases (`router`, `scenery`, `collectible`) are appended so existing jobs continue to resolve correctly.

@@ -11,9 +11,9 @@
 - Project type: Full-stack photo management application with authentication
 - Frontend: React with Vite, comprehensive authentication UI, HEIC conversion support
 - Backend: Node.js Express with JWT authentication, bcrypt security, rate limiting
-- Database: SQLite with user management and photo metadata
-- Testing: Comprehensive test suite (86 total tests) with Jest, Vitest, integration tests
+- Database: PostgreSQL (Supabase or local Docker Postgres)
+- Testing: Comprehensive test suite (avoid hard-coded counts; refer to scripts)
 - Security: Best practice authentication system with middleware protection
-- CI/CD: GitHub Actions pipeline with automated testing
+- CI/CD: varies by environment; do not assume workflows exist
 - Documentation: Complete with README.md and TESTING.md guides
 - Ready for production deployment

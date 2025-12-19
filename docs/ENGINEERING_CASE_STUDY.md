@@ -112,7 +112,7 @@ This document walks through the major engineering milestones in chronological or
 
 - **Supabase Postgres + Storage** integration:
   - Supabase Postgres set as primary DB for production.
-  - SQLite retained as a development/test fallback where appropriate.
+  - PostgreSQL used for all environments (no SQLite fallback).
   - Environment variables (`SUPABASE_*`) wired through server, CI, and tests.
 - **Env-aware Helmet & CSP**:
   - Strict CSP for production builds.

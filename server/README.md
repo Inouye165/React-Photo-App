@@ -8,7 +8,7 @@ Backend server for the React Photo App, built with Node.js and Express. It handl
 - Node.js 20+
 - **PostgreSQL** (via Docker or Supabase)
 - Redis (for background jobs)
-- ImageMagick (for HEIC fallback)
+- (No ImageMagick required; HEIC/HEIF conversion uses Sharp + `heic-convert` fallback)
 
 ### Installation
 
@@ -82,8 +82,8 @@ Backend server for the React Photo App, built with Node.js and Express. It handl
 ## 🔌 API Endpoints
 
 ### Authentication
-- `POST /api/auth/session` - Set httpOnly session cookie (deprecated legacy bridge for cookie-based image access; expects `Authorization: Bearer <token>`)
-- `POST /api/auth/logout` - Logout and clear session
+- `POST /api/auth/session` - Deprecated/no-op endpoint kept for backward compatibility (does not set cookies). Use `Authorization: Bearer <token>`.
+- `POST /api/auth/logout` - Deprecated/no-op endpoint kept for backward compatibility. Logout is handled client-side via Supabase (`supabase.auth.signOut()`).
 
 ### Photos
 - `POST /upload` - Upload photos (Authenticated)
@@ -134,7 +134,7 @@ This project uses **BullMQ** and **Redis** to process long-running tasks asynchr
 
 ## 🔐 Security
 
-> **Update (December 2025):** Authentication has been migrated from cookie-based to **Bearer token authentication**. The backend now prioritizes `Authorization: Bearer <token>` header over cookies. This improves iOS/Mobile Safari compatibility and aligns with modern API patterns. Cookie-based auth is deprecated but still works as a fallback.
+> **Update (December 2025):** Protected API routes require `Authorization: Bearer <token>`. A deprecated cookie fallback may exist only for legacy image access/E2E and will be removed.
 
 - **Helmet**: Sets secure HTTP headers (CSP, HSTS, etc.).
 - **Rate Limiting**: Protects against brute-force attacks.
@@ -144,7 +144,7 @@ This project uses **BullMQ** and **Redis** to process long-running tasks asynchr
   - **Production**: Set `FRONTEND_ORIGIN` environment variable to your deployed frontend URL (e.g., `https://react-photo-app-eta.vercel.app`)
   - **Local Dev**: Automatically includes `http://localhost:5173` (Vite), `http://localhost:3000`, `http://localhost:5174`
   - **Security**: Only explicitly whitelisted origins receive CORS headers; credentials enabled for secure cookie/token auth
-  - **Centralized**: All origin resolution uses `config/allowedOrigins.js` helpers (`resolveAllowedOrigin`, `isOriginAllowed`) for consistency across main CORS middleware, image auth, and auth routes
+  - **Centralized**: All origin resolution uses `server/config/allowedOrigins.js` helpers (`resolveAllowedOrigin`, `isOriginAllowed`) for consistency across main CORS middleware, image auth, and auth routes
 - **SSL Certificate Validation**: Production enforces strict SSL with CA certificate verification (see below).
 - **Ownership-Based Access Control**: The `/privilege` endpoint performs real-time database verification to ensure users can only modify or delete their own content. This prevents IDOR (Insecure Direct Object Reference) vulnerabilities.
 - **Secure Role Storage**: User roles are stored in `app_metadata` (server-controlled) instead of `user_metadata` (client-writable) to prevent privilege escalation attacks.

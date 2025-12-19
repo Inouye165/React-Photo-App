@@ -4,10 +4,10 @@
 This document provides comprehensive testing instructions for the Photo App's authentication system, HEIC conversion, and core functionality.
 
 ## Prerequisites
-- Node.js (v18 or higher)
-- npm or yarn
+- Node.js 20+ (see root `package.json` engines)
+- npm 10+
 - Modern web browser (Chrome, Edge recommended)
-- ImageMagick installed and available in PATH (for HEIC support)
+- (No ImageMagick required; HEIC/HEIF conversion uses Sharp + `heic-convert` fallback)
 
 ## Quick Start Testing
 
@@ -31,14 +31,11 @@ npm run dev
 
 ### 3. Run Test Suite
 ```bash
-# Run all tests
-npm test
+# Frontend unit tests
+npm run test:run
 
-# Run backend tests
+# Backend tests
 cd server && npm test
-
-# Quick test validation
-node test-runner.js
 ```
 
 ## Manual Testing Checklist
@@ -110,9 +107,8 @@ cd server && npm test
 - **Solution**: Restart servers, check for port conflicts
 
 **Problem**: Images not loading after login
-- **Check**: Auth token in localStorage
-- **Check**: Network tab shows 200 responses for image requests
-- **Solution**: Clear localStorage and re-login
+- **Check**: Signed thumbnail URLs are being used for `<img>` tags (preferred), or image fetches include `Authorization: Bearer <token>`.
+- **Check**: CORS allows your frontend origin.
 
 ### 🖼️ HEIC Issues  
 **Problem**: HEIC files not displaying
@@ -150,10 +146,9 @@ npm run preview      # Preview production build
 
 ### Test Database Reset
 ```bash
-# Reset test database (if needed)
-cd server
-rm *.db              # Remove SQLite files
-npm start            # Restart to recreate schema
+# This project uses PostgreSQL. Reset your Postgres DB and re-run migrations:
+docker-compose up -d db
+cd server && npx knex migrate:latest --knexfile knexfile.js
 ```
 
 ## Security Testing
@@ -223,10 +218,9 @@ cd server && npm install    # Reinstall backend
 
 ### Debug Authentication
 ```bash
-# Check auth endpoints directly
-curl -X POST http://localhost:3001/auth/login \
-  -H "Content-Type: application/json" \
-  -d '{"username":"test","password":"test"}'
+# Auth is handled by Supabase on the client. To debug protected backend endpoints,
+# call them with a Supabase access token:
+curl -H "Authorization: Bearer <SUPABASE_ACCESS_TOKEN>" http://localhost:3001/photos
 ```
 
 ### Debug Image Access
