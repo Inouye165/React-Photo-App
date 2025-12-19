@@ -2,6 +2,7 @@
 // This route is only enabled in test/dev environments
 // Security: This route is blocked in production and only creates test tokens
 const express = require('express');
+const rateLimit = require('express-rate-limit');
 const jwt = require('jsonwebtoken');
 const { getConfig } = require('../config/env');
 const { e2eGateMiddleware } = require('../config/e2eGate');
@@ -11,6 +12,22 @@ const router = express.Router();
 // Defense-in-depth: even if this router is mounted accidentally,
 // keep E2E surfaces disabled unless explicitly enabled.
 router.use(e2eGateMiddleware);
+
+// Explicit rate limiting for E2E auth-like endpoints.
+// Note: These routes are always disabled in production by the E2E gate.
+const isTestEnv = process.env.NODE_ENV === 'test';
+const e2eLimiter = rateLimit({
+  windowMs: 15 * 60 * 1000, // 15 minutes
+  // Keep tests stable (avoid flakiness), but still satisfy scanners and protect dev usage.
+  max: isTestEnv ? 1000 : 30,
+  message: {
+    success: false,
+    error: 'Too many requests, please try again later.'
+  },
+  standardHeaders: true,
+  legacyHeaders: false,
+});
+router.use(e2eLimiter);
 
 const config = getConfig();
 
