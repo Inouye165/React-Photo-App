@@ -9,36 +9,52 @@
 [![React](https://img.shields.io/badge/React-19-61dafb.svg)](https://reactjs.org/)
 [![License](https://img.shields.io/badge/license-MIT-blue.svg)](LICENSE)
 
-> **Lumina is an AI-powered, privacy-first photo workspace — built to learn and practice “big tech” engineering standards.**
+> **A photo workspace I built to learn how real production apps are architected — security, scaling, and all the unglamorous stuff.**
 
-Lumina is a long-running engineering project focused on security, scalability, and maintainability. The goal is to evolve into a community-oriented platform (sharing + chat) while keeping user data isolation, consent, and privacy at the center.
-
-The frontend is still evolving; the backend and security posture are treated as first-class concerns.
+This started as a way to practice backend engineering and security habits. It's grown into something I actually use. The backend is solid; the frontend is functional but still rough around the edges. Maybe one day it'll support sharing and collaboration, but for now it's focused on doing the basics right.
 
 **Author:** Ron Inouye ([@Inouye165](https://github.com/Inouye165))
 
 ---
 
+
 ## 🎯 Why This Exists
 
-After managing 15,000+ vacation photos and hitting the limits of commercial tools (slow HEIC conversion, vendor lock-in, no collectibles support), I set out to prove that modern web technologies can deliver production-grade security and backend architecture—even as a solo developer. Every architectural decision, from zero-disk streaming uploads to LangGraph AI orchestration, was made to solve real bottlenecks and deliver robust, scalable solutions.
+This project was created to learn and practice building large-scale, secure, cloud-deployed web applications. The focus is on:
 
-This project is not a tutorial or a consumer-ready product. It is a high-performance engineering prototype: the backend and security are ready for real-world use, while the frontend remains a functional draft. The goal is to showcase backend and AI engineering, with UI polish coming later.
+- Engineering for scale: designing codebases and architectures that can grow and be maintained over time
+- Security coding habits: applying best practices for authentication, data isolation, and safe defaults
+- Cloud deployment: using modern cloud platforms and managed services (Supabase, Railway, Vercel, Docker)
+
+It is not a consumer product or tutorial, but a high-performance engineering prototype. The backend and security posture are prioritized, with the frontend evolving as a functional draft. The main goal is to develop and demonstrate real-world engineering and security skills in a modern web stack.
 
 **Read the full journey:** [Product Story](docs/PRODUCT_STORY.md) (Sept–Nov 2025)
 
 ---
 
-## 🌱 Community & values
-- **Be kind and inclusive:** This project aims to welcome contributors and users from all backgrounds.
-- **Privacy-first by default:** User data isolation, least-privilege access, and secure-by-design patterns are core requirements.
-- **Transparency:** Security trade-offs and changes should be documented. No “security theater.”
-- **Respectful community:** Harassment, hate, and abusive behavior are not welcome.
+## 💪 What Sets This Apart
 
-## 🔒 Privacy & user isolation (north star)
-Lumina is designed around **isolated user workspaces**: each user’s photos, metadata, and derived AI outputs must remain private and access-controlled.
+This isn't a tutorial project with placeholder tests. Here's what's actually here:
 
-Sharing features (albums, links, chat) should be **opt-in**, permissioned, and auditable.
+| Area | What's Here |
+|------|-------------|
+| **Test Suite** | 1,166 tests (476 frontend, 690 backend) — real coverage, not "TODO: add tests" |
+| **Streaming Uploads** | Zero-disk: files stream directly to cloud storage with hash verification |
+| **Security Layers** | RLS, Bearer auth, Origin allowlisting, rate limiting, secret scanning |
+| **Background Jobs** | BullMQ + Redis for thumbnails, AI, HEIC conversion — nothing blocks the request |
+| **AI Pipeline** | LangGraph workflows with retry logic and fallbacks, not spaghetti API calls |
+| **HEIC Conversion** | Pure Node.js (Sharp + heic-convert) — deploys anywhere without ImageMagick |
+
+---
+
+## 🌱 Values
+- **Be decent:** Everyone's welcome here.
+- **Privacy matters:** Your photos stay yours. User isolation isn't an afterthought.
+- **No security theater:** If something's a known limitation, it gets documented.
+- **Keep it respectful:** Standard open-source community expectations apply.
+
+## 🔒 Privacy
+Each user's photos, metadata, and AI outputs are isolated. You can't accidentally (or intentionally) see someone else's stuff. If sharing features ever get added, they'll be opt-in with clear permissions.
 
 ## ✨ Architectural Experiments & Features
 
@@ -64,11 +80,11 @@ Sharing features (albums, links, chat) should be **opt-in**, permissioned, and a
 - **Content Security Policy:** Helmet-enforced CSP (tests exist; CI setup depends on your environment)
 - **Concurrency Limits:** Rate limiting to prevent upload storms
 
-### ✅ Engineering standards (what “Google-level” means here)
-- Security tests and threat-model thinking are expected.
-- Clear error handling (no secret leakage) and safe logging.
-- Documentation should be kept in sync with refactors.
-- Performance is measured and regressions are investigated.
+### ✅ Engineering habits I'm practicing
+- Write security tests, not just happy-path tests
+- Don't leak secrets in error messages or logs
+- Keep docs updated when the code changes (harder than it sounds)
+- Measure performance and actually look at the numbers
 
 ### 📸 **Photo Handling**
 - **HEIC Auto-Convert:** HEIC/HEIF → JPEG via Sharp, with `heic-convert` fallback (no ImageMagick dependency)
@@ -116,7 +132,7 @@ What to look for:
 - Stop reason: `store_poll_stop_decision` / `store_poll_stop`
 - UI decision: `ui_photoCard_status` / `ui_photoDetail_status` / `ui_photoEditPage_snapshot`
 
-**Why this matters:** Traditional apps write to disk, process, then upload—creating I/O bottlenecks under load. Streaming directly to cloud storage eliminates this entirely.
+**Why bother?** Most tutorials teach "save to disk, then upload." That creates bottlenecks. Streaming straight to cloud storage skips that problem entirely.
 
 ### The AI Brain (LangGraph)
 ```
@@ -129,7 +145,7 @@ Photo ingested
   → Generate rich description with location context
 ```
 
-**Why this matters:** Instead of scattered API calls, LangGraph creates a clear, testable workflow with retry logic and fallbacks.
+**Why bother?** Without this, you end up with a mess of API calls scattered everywhere. LangGraph keeps it organized and testable.
 
 ---
 
@@ -409,7 +425,7 @@ Built with:
 - **BullMQ** for reliable background jobs
 - **LangGraph** for AI workflow orchestration
 
-Inspired by real frustrations with commercial photo apps and a desire to prove that indie developers can build enterprise-quality software.
+Started because I wanted to learn how production apps actually work — not just follow tutorials.
 
 ---
 
