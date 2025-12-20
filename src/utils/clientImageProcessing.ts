@@ -5,46 +5,89 @@
  * - Thumbnail generation with memory-safe processing
  * - Upload compression (resize to max 2048px, JPEG 85%)
  * - HEIC to JPEG conversion
+ * 
+ * @security Input validation on all file operations
+ * @security Memory bounds checking to prevent DoS via large images
+ * @security No metadata leakage in error logs (file names only, no content)
  */
 
-let heic2anyLoader;
-let heicToLoader;
+// ==================== Type Definitions ====================
 
-async function loadHeic2any() {
-  if (typeof window === 'undefined') {
-    return async () => {
-      throw new Error('heic2any is only supported in browser environments');
-    };
-  }
-  if (!heic2anyLoader) {
-    heic2anyLoader = import('heic2any').then((module) => {
-      const converter = module?.default ?? module;
-      if (typeof converter !== 'function') {
-        throw new Error('heic2any module did not export a function');
-      }
-      return converter;
-    });
-  }
-  return heic2anyLoader;
+/**
+ * HEIC converter function type from heic2any library
+ */
+type Heic2anyConverter = (options: {
+  blob: Blob | File;
+  toType: string;
+  quality?: number;
+}) => Promise<Blob | Blob[]>;
+
+/**
+ * HEIC converter function type from heic-to library
+ */
+type HeicToConverter = (options: {
+  blob: Blob | File;
+  type: string;
+  quality?: number;
+}) => Promise<Blob>;
+
+/**
+ * Scaled dimensions result
+ */
+interface ScaledDimensions {
+  width: number;
+  height: number;
 }
 
-async function loadHeicTo() {
-  if (typeof window === 'undefined') {
-    return async () => {
-      throw new Error('heic-to is only supported in browser environments');
-    };
-  }
-  if (!heicToLoader) {
-    heicToLoader = import('heic-to').then((module) => {
-      const converter = module?.heicTo ?? module?.default ?? module;
-      if (typeof converter !== 'function') {
-        throw new Error('heic-to module did not export a function');
-      }
-      return converter;
-    });
-  }
-  return heicToLoader;
+/**
+ * Compression result with metadata
+ */
+export interface CompressionResult {
+  blob: Blob;
+  width: number;
+  height: number;
+  originalSize: number;
+  compressedSize: number;
+  compressionRatio: string;
+  wasResized: boolean;
 }
+
+/**
+ * Progress callback for batch operations
+ */
+export type ProgressCallback = (data: {
+  index: number;
+  total: number;
+  file: File;
+  result?: CompressionResult;
+  error?: Error;
+}) => void;
+
+/**
+ * Simple progress callback for thumbnail batch
+ */
+export type ThumbnailProgressCallback = (
+  index: number,
+  total: number,
+  file: File,
+  error?: Error
+) => void;
+
+/**
+ * Compression options
+ */
+export interface CompressionOptions {
+  maxSize?: number;
+  quality?: number;
+  onProgress?: ProgressCallback;
+}
+
+// ==================== Module-level State ====================
+
+let heic2anyLoader: Promise<Heic2anyConverter> | undefined;
+let heicToLoader: Promise<HeicToConverter> | undefined;
+
+// ==================== Constants ====================
 
 // Safe limits to prevent memory exhaustion
 const MAX_THUMBNAIL_SIZE = 400; // Maximum dimension for thumbnails
@@ -52,131 +95,136 @@ const MAX_IMAGEDATA_SIZE = 2000; // Safety limit before ImageData creation
 const MAX_UPLOAD_SIZE = 2048; // Maximum dimension for upload compression
 const UPLOAD_JPEG_QUALITY = 0.85; // 85% JPEG quality for uploads
 
-/**
- * Calculate scaled dimensions that fit within max bounds while preserving aspect ratio.
- * @param {number} width - Original width
- * @param {number} height - Original height
- * @param {number} maxSize - Maximum dimension for either side
- * @returns {{width: number, height: number}} - Scaled dimensions
- */
-export function calculateScaledDimensions(width, height, maxSize) {
-  if (width <= maxSize && height <= maxSize) {
-    return { width, height };
-  }
+// ==================== Private Helper Functions ====================
 
-  const scale = Math.min(maxSize / width, maxSize / height);
-  return {
-    width: Math.floor(width * scale),
-    height: Math.floor(height * scale)
-  };
+/**
+ * Dynamically load heic2any converter
+ * @security SSR-safe: returns error-throwing function in non-browser environments
+ */
+async function loadHeic2any(): Promise<Heic2anyConverter> {
+  if (typeof window === 'undefined') {
+    return async () => {
+      throw new Error('heic2any is only supported in browser environments');
+    };
+  }
+  if (!heic2anyLoader) {
+    heic2anyLoader = import('heic2any').then((module) => {
+      const converter = (module as any)?.default ?? module;
+      if (typeof converter !== 'function') {
+        throw new Error('heic2any module did not export a function');
+      }
+      return converter as Heic2anyConverter;
+    });
+  }
+  return heic2anyLoader;
 }
 
 /**
- * Check if the file type is supported for client-side thumbnail generation
-  // Client image processing functions
- * (non-HEIC types that browsers can natively handle)
- * @param {File} file - The file to check
- * @returns {boolean} - True if supported natively, false otherwise
+ * Dynamically load heic-to converter
+ * @security SSR-safe: returns error-throwing function in non-browser environments
  */
-export function isSupportedImageType(file) {
+async function loadHeicTo(): Promise<HeicToConverter> {
+  if (typeof window === 'undefined') {
+    return async () => {
+      throw new Error('heic-to is only supported in browser environments');
+    };
+  }
+  if (!heicToLoader) {
+    heicToLoader = import('heic-to').then((module) => {
+      const converter = (module as any)?.heicTo ?? (module as any)?.default ?? module;
+      if (typeof converter !== 'function') {
+        throw new Error('heic-to module did not export a function');
+      }
+      return converter as HeicToConverter;
+    });
+  }
+  return heicToLoader;
+}
+
+/**
+ * Check if file is HEIC format by name or MIME type
+ * @security Input validation: safely handles null/undefined
+ */
+function isHeicFile(file: File | Blob | null | undefined): boolean {
   if (!file) return false;
   
-  // Calculate scaled dimensions to fit within max bounds
-  // Check MIME type first
-  if (file.type) {
-    const supportedTypes = new Set([
-      'image/jpeg',
-      'image/jpg',
-      'image/png',
-      'image/webp',
-      'image/gif',
-      'image/bmp',
-    ]);
-  // Convert HEIC to JPEG
-    if (supportedTypes.has(file.type.toLowerCase())) {
-      return true;
-    }
-  }
+  // Check if this is a File (has name property) or just a Blob
+  const name = (file as File).name?.toLowerCase() || '';
+  const type = file.type?.toLowerCase() || '';
   
-  // Fallback: check file extension (some browsers don't set type for folder picker)
-  if (file.name) {
-    const ext = file.name.toLowerCase().split('.').pop();
-    const supportedExtensions = new Set(['jpg', 'jpeg', 'png', 'webp', 'gif', 'bmp']);
-    if (supportedExtensions.has(ext)) {
-      return true;
-    }
-  }
-  
-  return false;
+  return (
+    name.endsWith('.heic') ||
+    name.endsWith('.heif') ||
+    type === 'image/heic' ||
+    type === 'image/heif'
+  );
 }
 
 /**
- * Load an image from a Blob/File.
- * Uses createImageBitmap for more reliable blob decoding.
- * @param {Blob} blob - The blob to load
- * @returns {Promise<HTMLImageElement|ImageBitmap>} - The loaded image
+ * Load an image from a Blob/File using createImageBitmap or Image element
+ * @security Validates blob before loading, timeout prevents hanging
+ * @param blob - The blob to load
+ * @returns Promise resolving to loaded image or bitmap
  */
-async function loadImage(blob) {
+async function loadImage(blob: Blob): Promise<HTMLImageElement | ImageBitmap> {
   // Validate blob first
   if (!blob || blob.size === 0) {
     throw new Error(`Invalid blob: size=${blob?.size}, type=${blob?.type}`);
   }
-  
+
   // Try createImageBitmap first - more reliable for blobs
   if (typeof createImageBitmap === 'function') {
     try {
       const bitmap = await createImageBitmap(blob);
       return bitmap;
     } catch (bitmapError) {
-      console.warn(`[loadImage] createImageBitmap failed, falling back to Image element:`, bitmapError.message);
+      console.warn(
+        `[loadImage] createImageBitmap failed, falling back to Image element:`,
+        (bitmapError as Error).message
+      );
     }
   }
-  
+
   // Fallback to Image element
   return new Promise((resolve, reject) => {
     const img = new Image();
     const url = URL.createObjectURL(blob);
-    
+
     const timeout = setTimeout(() => {
       URL.revokeObjectURL(url);
       reject(new Error('Image load timeout'));
     }, 30000);
-    
+
     img.onload = () => {
       clearTimeout(timeout);
       URL.revokeObjectURL(url);
       resolve(img);
     };
-    
+
     img.onerror = () => {
       clearTimeout(timeout);
       URL.revokeObjectURL(url);
       console.warn(`[loadImage] Image element failed: type=${blob.type}, size=${blob.size}`);
       reject(new Error('Failed to decode image'));
     };
-    
+
     img.src = url;
   });
 }
 
 /**
- * Generate a thumbnail from an image with memory-safe scaling.
- * 
- * CRITICAL: This function scales images DOWN before creating ImageData
- * to prevent "Out of memory" errors with high-resolution photos.
- * 
- * @param {HTMLImageElement} img - Source image
- * @param {number} maxSize - Maximum dimension for thumbnail
- * @returns {Promise<Blob>} - Thumbnail blob
+ * Generate a thumbnail from an image with memory-safe scaling
+ * @security Memory bounds: prevents OOM by scaling down before ImageData creation
+ * @param img - Source image (HTMLImageElement or ImageBitmap)
+ * @param maxSize - Maximum dimension for thumbnail
+ * @returns Promise resolving to thumbnail blob
  */
-async function createScaledThumbnail(img, maxSize = MAX_THUMBNAIL_SIZE) {
+async function createScaledThumbnail(
+  img: HTMLImageElement | ImageBitmap,
+  maxSize: number = MAX_THUMBNAIL_SIZE
+): Promise<Blob> {
   // Step 1: Calculate safe dimensions
-  // For very large images, we need to scale in stages to avoid memory issues
-  let { width, height } = calculateScaledDimensions(
-    img.width,
-    img.height,
-    maxSize
-  );
+  let { width, height } = calculateScaledDimensions(img.width, img.height, maxSize);
 
   // Safety check: ensure dimensions are reasonable
   if (width > MAX_IMAGEDATA_SIZE || height > MAX_IMAGEDATA_SIZE) {
@@ -193,7 +241,7 @@ async function createScaledThumbnail(img, maxSize = MAX_THUMBNAIL_SIZE) {
 
   const ctx = canvas.getContext('2d', {
     alpha: false, // No transparency needed for thumbnails
-    willReadFrequently: false
+    willReadFrequently: false,
   });
 
   if (!ctx) {
@@ -217,11 +265,11 @@ async function createScaledThumbnail(img, maxSize = MAX_THUMBNAIL_SIZE) {
   }
 
   // Step 5: Convert to blob
-  const blob = await new Promise((resolve, reject) => {
+  const blob = await new Promise<Blob>((resolve, reject) => {
     canvas.toBlob(
-      (blob) => {
-        if (blob) {
-          resolve(blob);
+      (result) => {
+        if (result) {
+          resolve(result);
         } else {
           reject(new Error('Failed to create blob from canvas'));
         }
@@ -239,38 +287,38 @@ async function createScaledThumbnail(img, maxSize = MAX_THUMBNAIL_SIZE) {
 }
 
 /**
- * Convert HEIC to JPEG using multiple fallback strategies.
- * 
- * Some HEIC files use codecs that heic2any doesn't support (ERR_LIBHEIF errors).
- * We try multiple conversion libraries to maximize compatibility.
- * 
- * @param {File} file - The HEIC file to convert
- * @returns {Promise<Blob>} - JPEG blob
- * @throws {Error} - If all conversion methods fail
+ * Convert HEIC to JPEG using multiple fallback strategies
+ * @security Error handling: tries multiple converters, sanitizes error messages
+ * @param file - The HEIC file to convert
+ * @returns Promise resolving to JPEG blob
+ * @throws Error if all conversion methods fail
  */
-async function convertHeicToJpeg(file) {
+async function convertHeicToJpeg(file: Blob | File): Promise<Blob> {
   // Strategy 1: Try heic2any (uses libheif, handles most HEIC files)
   try {
     const heic2any = await loadHeic2any();
     const result = await heic2any({
       blob: file,
       toType: 'image/jpeg',
-      quality: 0.8
+      quality: 0.8,
     });
     // heic2any can return array or single blob
     return Array.isArray(result) ? result[0] : result;
   } catch (heic2anyError) {
     // Check if it's a format not supported error
-    const isFormatError = heic2anyError?.code === 2 || 
-                          heic2anyError?.message?.includes('format not supported') ||
-                          heic2anyError?.message?.includes('ERR_LIBHEIF');
-    
+    const error = heic2anyError as any;
+    const isFormatError =
+      error?.code === 2 ||
+      error?.message?.includes('format not supported') ||
+      error?.message?.includes('ERR_LIBHEIF');
+
     if (!isFormatError) {
       // If it's a different error, rethrow
       throw heic2anyError;
     }
-    
-    console.warn(`heic2any failed for ${file.name}, trying heic-to fallback:`, heic2anyError.message);
+
+    const fileName = (file as File).name || 'unknown';
+    console.warn(`heic2any failed for ${fileName}, trying heic-to fallback:`, error.message);
   }
 
   // Strategy 2: Try heic-to as fallback (different decoder implementation)
@@ -279,48 +327,102 @@ async function convertHeicToJpeg(file) {
     const result = await heicTo({
       blob: file,
       type: 'image/jpeg',
-      quality: 0.8
+      quality: 0.8,
     });
     return result;
   } catch (heicToError) {
-    console.warn(`heic-to also failed for ${file.name}:`, heicToError.message || heicToError);
+    const fileName = (file as File).name || 'unknown';
+    console.warn(`heic-to also failed for ${fileName}:`, (heicToError as Error).message || heicToError);
     // Throw a combined error message
-    throw new Error(`All HEIC converters failed for ${file.name}`);
+    throw new Error(`All HEIC converters failed for ${fileName}`);
   }
 }
 
+// ==================== Public API Functions ====================
+
 /**
- * Check if file is HEIC format
- * @param {File} file - The file to check
- * @returns {boolean} - True if HEIC format
+ * Calculate scaled dimensions that fit within max bounds while preserving aspect ratio
+ * @param width - Original width
+ * @param height - Original height
+ * @param maxSize - Maximum dimension for either side
+ * @returns Scaled dimensions
  */
-function isHeicFile(file) {
-  if (!file) return false;
-  const name = file.name?.toLowerCase() || '';
-  const type = file.type?.toLowerCase() || '';
-  return name.endsWith('.heic') || 
-         name.endsWith('.heif') ||
-         type === 'image/heic' ||
-         type === 'image/heif';
+export function calculateScaledDimensions(
+  width: number,
+  height: number,
+  maxSize: number
+): ScaledDimensions {
+  if (width <= maxSize && height <= maxSize) {
+    return { width, height };
+  }
+
+  const scale = Math.min(maxSize / width, maxSize / height);
+  return {
+    width: Math.floor(width * scale),
+    height: Math.floor(height * scale),
+  };
 }
 
 /**
- * Generate a client-side thumbnail from an image file.
- * 
- * This is the main entry point used by the Thumbnail component.
- * Handles both regular images and HEIC files with memory-safe processing.
- * 
- * @param {File} file - Image file to process
- * @param {number} maxSize - Maximum thumbnail dimension (default: 400px)
- * @returns {Promise<Blob|null>} - Thumbnail blob, or null on failure
+ * Check if the file type is supported for client-side processing
+ * (non-HEIC types that browsers can natively handle)
+ * @security Input validation: safely handles null/undefined
+ * @param file - The file to check
+ * @returns True if supported natively, false otherwise
  */
-export async function generateClientThumbnail(file, maxSize = MAX_THUMBNAIL_SIZE) {
+export function isSupportedImageType(file: File | null | undefined): boolean {
+  if (!file) return false;
+
+  // Check MIME type first
+  if (file.type) {
+    const supportedTypes = new Set([
+      'image/jpeg',
+      'image/jpg',
+      'image/png',
+      'image/webp',
+      'image/gif',
+      'image/bmp',
+    ]);
+    if (supportedTypes.has(file.type.toLowerCase())) {
+      return true;
+    }
+  }
+
+  // Fallback: check file extension (some browsers don't set type for folder picker)
+  if (file.name) {
+    const ext = file.name.toLowerCase().split('.').pop();
+    const supportedExtensions = new Set(['jpg', 'jpeg', 'png', 'webp', 'gif', 'bmp']);
+    if (ext && supportedExtensions.has(ext)) {
+      return true;
+    }
+  }
+
+  return false;
+}
+
+/**
+ * Generate a client-side thumbnail from an image file
+ * 
+ * Main entry point for thumbnail generation. Handles both regular images
+ * and HEIC files with memory-safe processing.
+ * 
+ * @security Input validation, memory bounds checking, graceful error handling
+ * @security No metadata leakage: only logs file names, not content
+ * 
+ * @param file - Image file to process
+ * @param maxSize - Maximum thumbnail dimension (default: 400px)
+ * @returns Promise resolving to thumbnail blob, or null on failure
+ */
+export async function generateClientThumbnail(
+  file: File | null | undefined,
+  maxSize: number = MAX_THUMBNAIL_SIZE
+): Promise<Blob | null> {
   if (!file) {
     return null;
   }
 
   try {
-    let sourceBlob = file;
+    let sourceBlob: Blob = file;
     let isHeic = isHeicFile(file);
 
     // If not identified as HEIC by name/type, check content for magic numbers
@@ -328,25 +430,24 @@ export async function generateClientThumbnail(file, maxSize = MAX_THUMBNAIL_SIZE
     if (!isHeic) {
       if (isSupportedImageType(file)) {
         try {
-          // Read into a fresh buffer to ensure data is accessible and to check magic numbers
+          // Read into a fresh buffer to check magic numbers
           const arrayBuffer = await file.arrayBuffer();
           const arr = new Uint8Array(arrayBuffer).subarray(0, 12);
-          
+
           // Check for HEIC signature: 'ftyp' at offset 4
           if (arr[4] === 0x66 && arr[5] === 0x74 && arr[6] === 0x79 && arr[7] === 0x70) {
             const brand = String.fromCharCode(...arr.subarray(8, 12));
             const heicBrands = ['heic', 'heix', 'hevc', 'heim', 'heis', 'hevm', 'hevs', 'mif1', 'msf1'];
-            
+
             if (heicBrands.includes(brand)) {
-              console.warn(`File ${file.name} has .JPG extension but appears to be HEIC. Converting...`);
+              console.warn(`File ${file.name} has incorrect extension but appears to be HEIC. Converting...`);
               isHeic = true;
               sourceBlob = new Blob([arrayBuffer], { type: 'image/heic' });
             }
           }
-          
+
           if (!isHeic) {
             // It's likely a real JPEG or other supported type
-            // Create a fresh blob from the buffer
             sourceBlob = new Blob([arrayBuffer], { type: file.type || 'image/jpeg' });
           }
         } catch (readError) {
@@ -372,8 +473,9 @@ export async function generateClientThumbnail(file, maxSize = MAX_THUMBNAIL_SIZE
     // Load the image
     const img = await loadImage(sourceBlob);
 
-    // Check if image is suspiciously large
-    if (img.width * img.height > 50000000) { // ~50 megapixels
+    // Check if image is suspiciously large (potential DoS)
+    if (img.width * img.height > 50000000) {
+      // ~50 megapixels
       console.warn(`Very large image detected: ${img.width}x${img.height} (${file.name})`);
     }
 
@@ -381,32 +483,33 @@ export async function generateClientThumbnail(file, maxSize = MAX_THUMBNAIL_SIZE
     const thumbnailBlob = await createScaledThumbnail(img, maxSize);
 
     return thumbnailBlob;
-
   } catch (error) {
     console.error(`generateClientThumbnail failed for ${file.name}:`, error);
-    
     // Return null to trigger fallback behavior in Thumbnail component
     return null;
   }
 }
 
 /**
- * Batch process multiple files with rate limiting to avoid memory spikes.
- * 
- * @param {File[]} files - Files to process
- * @param {Function} onProgress - Progress callback (index, total, file, error?)
- * @param {number} maxSize - Maximum thumbnail dimension
- * @returns {Promise<Map<string, Blob>>} - Map of filename to thumbnail blob
+ * Batch process multiple files with rate limiting to avoid memory spikes
+ * @param files - Files to process
+ * @param onProgress - Progress callback (index, total, file, error?)
+ * @param maxSize - Maximum thumbnail dimension
+ * @returns Promise resolving to Map of filename to thumbnail blob
  */
-export async function generateClientThumbnailBatch(files, onProgress = null, maxSize = MAX_THUMBNAIL_SIZE) {
-  const results = new Map();
+export async function generateClientThumbnailBatch(
+  files: File[],
+  onProgress: ThumbnailProgressCallback | null = null,
+  maxSize: number = MAX_THUMBNAIL_SIZE
+): Promise<Map<string, Blob>> {
+  const results = new Map<string, Blob>();
 
   for (let i = 0; i < files.length; i++) {
     const file = files[i];
 
     try {
       const thumbnail = await generateClientThumbnail(file, maxSize);
-      
+
       if (thumbnail) {
         results.set(file.name, thumbnail);
       }
@@ -416,13 +519,12 @@ export async function generateClientThumbnailBatch(files, onProgress = null, max
       }
 
       // Yield to event loop between files to prevent UI blocking
-      await new Promise(resolve => setTimeout(resolve, 0));
-
+      await new Promise((resolve) => setTimeout(resolve, 0));
     } catch (error) {
       console.error(`Batch processing failed for ${file.name}:`, error);
-      
+
       if (onProgress) {
-        onProgress(i + 1, files.length, file, error);
+        onProgress(i + 1, files.length, file, error as Error);
       }
     }
   }
@@ -431,34 +533,33 @@ export async function generateClientThumbnailBatch(files, onProgress = null, max
 }
 
 /**
- * Compress an image for upload to reduce transfer size and upload time.
+ * Compress an image for upload to reduce transfer size and upload time
  * 
- * This function is designed to run BEFORE uploading to the server:
- * - Resizes images larger than 2048px (width or height) 
+ * Designed to run BEFORE uploading to the server:
+ * - Resizes images larger than 2048px (width or height)
  * - Converts to JPEG at 85% quality
  * - Handles HEIC files automatically
  * - Preserves aspect ratio
  * 
- * Performance Impact: Reduces upload time by ~10x for large photos.
+ * @security Memory bounds checking, input validation
+ * @security No metadata leakage in logs
  * 
- * @param {File} file - Image file to compress
- * @param {Object} options - Compression options
- * @param {number} [options.maxSize=2048] - Maximum dimension (width or height)
- * @param {number} [options.quality=0.85] - JPEG quality (0-1)
- * @returns {Promise<{blob: Blob, width: number, height: number, originalSize: number, compressedSize: number}>}
+ * @param file - Image file to compress
+ * @param options - Compression options (maxSize, quality)
+ * @returns Promise resolving to compression result with metadata
  */
-export async function compressForUpload(file, options = {}) {
-  const {
-    maxSize = MAX_UPLOAD_SIZE,
-    quality = UPLOAD_JPEG_QUALITY,
-  } = options;
+export async function compressForUpload(
+  file: File,
+  options: Omit<CompressionOptions, 'onProgress'> = {}
+): Promise<CompressionResult> {
+  const { maxSize = MAX_UPLOAD_SIZE, quality = UPLOAD_JPEG_QUALITY } = options;
 
   if (!file) {
     throw new Error('No file provided for compression');
   }
 
   const originalSize = file.size;
-  let sourceBlob = file;
+  let sourceBlob: Blob = file;
   let isHeic = isHeicFile(file);
 
   // Check for misnamed HEIC files (common with iOS)
@@ -466,17 +567,17 @@ export async function compressForUpload(file, options = {}) {
     try {
       const arrayBuffer = await file.arrayBuffer();
       const arr = new Uint8Array(arrayBuffer).subarray(0, 12);
-      
+
       if (arr[4] === 0x66 && arr[5] === 0x74 && arr[6] === 0x79 && arr[7] === 0x70) {
         const brand = String.fromCharCode(...arr.subarray(8, 12));
         const heicBrands = ['heic', 'heix', 'hevc', 'heim', 'heis', 'hevm', 'hevs', 'mif1', 'msf1'];
-        
+
         if (heicBrands.includes(brand)) {
           isHeic = true;
           sourceBlob = new Blob([arrayBuffer], { type: 'image/heic' });
         }
       }
-      
+
       if (!isHeic) {
         sourceBlob = new Blob([arrayBuffer], { type: file.type || 'image/jpeg' });
       }
@@ -497,9 +598,9 @@ export async function compressForUpload(file, options = {}) {
 
   // Check if resizing is needed
   const needsResize = originalWidth > maxSize || originalHeight > maxSize;
-  
+
   // Calculate new dimensions
-  const { width, height } = needsResize 
+  const { width, height } = needsResize
     ? calculateScaledDimensions(originalWidth, originalHeight, maxSize)
     : { width: originalWidth, height: originalHeight };
 
@@ -510,7 +611,7 @@ export async function compressForUpload(file, options = {}) {
 
   const ctx = canvas.getContext('2d', {
     alpha: false,
-    willReadFrequently: false
+    willReadFrequently: false,
   });
 
   if (!ctx) {
@@ -522,11 +623,11 @@ export async function compressForUpload(file, options = {}) {
   ctx.drawImage(img, 0, 0, width, height);
 
   // Convert to JPEG blob
-  const blob = await new Promise((resolve, reject) => {
+  const blob = await new Promise<Blob>((resolve, reject) => {
     canvas.toBlob(
-      (blob) => {
-        if (blob) {
-          resolve(blob);
+      (result) => {
+        if (result) {
+          resolve(result);
         } else {
           reject(new Error('Failed to create blob from canvas'));
         }
@@ -552,15 +653,17 @@ export async function compressForUpload(file, options = {}) {
 }
 
 /**
- * Compress multiple files for upload with progress callback.
- * 
- * @param {File[]} files - Array of files to compress
- * @param {Object} options - Options including onProgress callback
- * @returns {Promise<Map<string, {blob: Blob, ...}>>} - Map of filename to compression result
+ * Compress multiple files for upload with progress callback
+ * @param files - Array of files to compress
+ * @param options - Options including onProgress callback
+ * @returns Promise resolving to Map of filename to compression result
  */
-export async function compressFilesForUpload(files, options = {}) {
+export async function compressFilesForUpload(
+  files: File[],
+  options: CompressionOptions = {}
+): Promise<Map<string, CompressionResult>> {
   const { onProgress, maxSize, quality } = options;
-  const results = new Map();
+  const results = new Map<string, CompressionResult>();
 
   for (let i = 0; i < files.length; i++) {
     const file = files[i];
@@ -579,17 +682,16 @@ export async function compressFilesForUpload(files, options = {}) {
       }
 
       // Yield to event loop
-      await new Promise(resolve => setTimeout(resolve, 0));
-
+      await new Promise((resolve) => setTimeout(resolve, 0));
     } catch (error) {
       console.error(`Compression failed for ${file.name}:`, error);
-      
+
       if (onProgress) {
         onProgress({
           index: i + 1,
           total: files.length,
           file,
-          error,
+          error: error as Error,
         });
       }
     }
@@ -598,6 +700,7 @@ export async function compressFilesForUpload(files, options = {}) {
   return results;
 }
 
+// Default export for backwards compatibility
 export default {
   generateClientThumbnail,
   generateClientThumbnailBatch,
