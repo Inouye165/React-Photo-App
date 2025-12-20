@@ -4,7 +4,6 @@ import useStore from './store';
 import { useThumbnailQueue } from './hooks/useThumbnailQueue';
 import Thumbnail from './components/Thumbnail.jsx';
 import { isProbablyMobile } from './utils/isProbablyMobile';
-import { isAndroid } from './utils/isAndroid';
 
 // Hook to get responsive column count
 const useColumns = () => {
@@ -45,9 +44,8 @@ const PhotoUploadForm = ({
 }) => {
     // Ref for fallback file input
     const fileInputRef = useRef(null);
-  const mobilePhotoInputRef = useRef(null);
-
-  const android = isAndroid();
+  const mobileGalleryInputRef = useRef(null);
+  const mobileCameraInputRef = useRef(null);
   // Connect to store commands
   const closePicker = useStore((state) => state.pickerCommand.closePicker);
   
@@ -287,28 +285,44 @@ const PhotoUploadForm = ({
         </div>
 
         <div className="ml-auto flex gap-3">
-           <button 
-             onClick={() => {
-               const mobile = isProbablyMobile();
-               const canUseDirectoryPicker = 'showDirectoryPicker' in window && !mobile;
-               if (canUseDirectoryPicker) {
-                 onReopenFolder && onReopenFolder();
-                 return;
-               }
+           {isProbablyMobile() ? (
+             <>
+               <button
+                 type="button"
+                 onClick={() => mobileGalleryInputRef.current?.click()}
+                 className="px-4 py-2 text-sm font-medium text-gray-700 bg-white border border-gray-300 rounded-md hover:bg-gray-50 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-blue-500 min-h-[44px] min-w-[44px]"
+                 aria-label="Choose from gallery"
+               >
+                 Choose from gallery
+               </button>
+               <button
+                 type="button"
+                 onClick={() => mobileCameraInputRef.current?.click()}
+                 className="px-4 py-2 text-sm font-medium text-gray-700 bg-white border border-gray-300 rounded-md hover:bg-gray-50 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-blue-500 min-h-[44px] min-w-[44px]"
+                 aria-label="Take photo"
+               >
+                 Take photo
+               </button>
+             </>
+           ) : (
+             <button 
+               type="button"
+               onClick={() => {
+                 const mobile = isProbablyMobile();
+                 const canUseDirectoryPicker = 'showDirectoryPicker' in window && !mobile;
+                 if (canUseDirectoryPicker) {
+                   onReopenFolder && onReopenFolder();
+                   return;
+                 }
 
-               if (mobile && mobilePhotoInputRef.current) {
-                 // Mobile: prefer the plain image file input so browsers can offer Camera/Photos.
-                 mobilePhotoInputRef.current.click();
-                 return;
-               }
-
-               // Desktop unsupported browsers: fall back to webkitdirectory input.
-               fileInputRef.current?.click();
-             }}
-             className="px-4 py-2 text-sm font-medium text-gray-700 bg-white border border-gray-300 rounded-md hover:bg-gray-50 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-blue-500 min-h-[44px] min-w-[44px]"
-           >
-             Change Folder
-           </button>
+                 // Desktop unsupported browsers: fall back to webkitdirectory input.
+                 fileInputRef.current?.click();
+               }}
+               className="px-4 py-2 text-sm font-medium text-gray-700 bg-white border border-gray-300 rounded-md hover:bg-gray-50 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-blue-500 min-h-[44px] min-w-[44px]"
+             >
+               Change Folder
+             </button>
+           )}
            {/* Hidden file input for folder selection (desktop fallback) */}
            <input
              type="file"
@@ -319,16 +333,26 @@ const PhotoUploadForm = ({
              onChange={handleNativeSelection}
              data-testid="folder-input"
            />
-           {/* Mobile-optimized file input for camera roll access */}
+           {/* Mobile inputs: gallery (no capture) + camera (capture=environment) */}
            <input
              type="file"
              accept="image/png,image/jpeg,image/jpg,image/heic,image/heif,image/webp,image/*"
-             capture={android ? 'environment' : undefined}
              multiple
              className="hidden"
-             id="mobile-photo-input"
-             data-testid="mobile-photo-input"
-             ref={mobilePhotoInputRef}
+             id="mobile-gallery-input"
+             data-testid="mobile-gallery-input"
+             ref={mobileGalleryInputRef}
+             onChange={handleNativeSelection}
+           />
+           <input
+             type="file"
+             accept="image/png,image/jpeg,image/jpg,image/heic,image/heif,image/webp,image/*"
+             multiple
+             className="hidden"
+             id="mobile-camera-input"
+             data-testid="mobile-camera-input"
+             ref={mobileCameraInputRef}
+             capture="environment"
              onChange={handleNativeSelection}
            />
           <button
