@@ -18,7 +18,7 @@ export default function AppHeader({
 }) {
   const navigate = useNavigate();
   const location = useLocation();
-  const { user, logout } = useAuth();
+  const { user, logout, profile } = useAuth();
   const lastEditedPhotoId = useStore(state => state.lastEditedPhotoId);
   const closePicker = useStore(state => state.pickerCommand.closePicker);
 
@@ -163,14 +163,14 @@ export default function AppHeader({
             {/* User avatar - always visible */}
             <div 
               className="hidden sm:flex items-center gap-1.5 text-xs text-slate-500"
-              title={user.email}
+              title={profile?.username || 'User'}
             >
               <div className="w-7 h-7 rounded-full bg-slate-200 flex items-center justify-center
                             text-xs font-semibold text-slate-600">
-                {user.email?.charAt(0).toUpperCase() || 'U'}
+                {(profile?.username || 'U').charAt(0).toUpperCase()}
               </div>
               <span className="hidden md:block max-w-[80px] truncate">
-                {user.email?.split('@')[0]}
+                {profile?.username || 'User'}
               </span>
             </div>
             

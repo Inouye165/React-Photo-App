@@ -1,6 +1,56 @@
 import React from 'react'
-import { describe, it, expect, vi, beforeEach } from 'vitest'
+import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest'
 import { render, screen, fireEvent, waitFor } from '@testing-library/react'
+
+function makeMockResponse(payload: unknown, init?: { ok?: boolean; status?: number }) {
+  const ok = init?.ok ?? true
+  const status = init?.status ?? (ok ? 200 : 500)
+  return {
+    ok,
+    status,
+    headers: new Headers(),
+    json: async () => payload,
+    text: async () => JSON.stringify(payload),
+    blob: async () => new Blob([JSON.stringify(payload)]),
+  }
+}
+
+const originalFetch = global.fetch
+
+beforeEach(() => {
+  // This suite expects real AuthContext to run (via doUnmock) and will trigger
+  // both preferences + profile fetching; provide a stable Response-like fetch.
+  global.fetch = vi.fn(async (url: any, options: any = {}) => {
+    const href = typeof url === 'string' ? url : String(url?.url || url)
+    const method = (options?.method || 'GET').toUpperCase()
+
+    if (href.includes('/api/users/me/preferences')) {
+      return makeMockResponse({
+        success: true,
+        data: {
+          gradingScales: {},
+        },
+      }) as any
+    }
+
+    if (href.includes('/api/users/me') && method === 'GET') {
+      return makeMockResponse({
+        success: true,
+        data: {
+          id: '11111111-1111-4111-8111-111111111111',
+          username: 'testuser',
+          has_set_username: true,
+        },
+      }) as any
+    }
+
+    return makeMockResponse({ success: false, error: 'Not found' }, { ok: false, status: 404 }) as any
+  }) as any
+})
+
+afterEach(() => {
+  global.fetch = originalFetch
+})
 
 const mockSetAuthToken = vi.fn()
 
@@ -135,5 +185,49 @@ describe('AuthContext.updatePassword', () => {
     })
 
     expect(await screen.findByText('Bad Request')).toBeInTheDocument()
+  })
+})
+
+describe('AuthContext profile fetching', () => {
+  beforeEach(() => {
+    vi.clearAllMocks()
+
+    // Initial provider mount session
+    mockGetSession.mockResolvedValueOnce({
+      data: {
+        session: {
+          access_token: 'old-token',
+          user: { id: 'user-1' },
+        },
+      },
+    })
+  })
+
+  it('fetches /api/users/me and exposes profile in context', async () => {
+    vi.doUnmock('../contexts/AuthContext')
+    const { AuthProvider, useAuth } = await import('../contexts/AuthContext')
+
+    function Harness() {
+      const { profile, profileLoading } = useAuth() as any
+      if (profileLoading) return <div>Loading profile</div>
+      return <div>{profile ? profile.username : 'no-profile'}</div>
+    }
+
+    render(
+      <AuthProvider>
+        <Harness />
+      </AuthProvider>,
+    )
+
+    // The shared test fetch mock returns username: testuser
+    expect(await screen.findByText('testuser')).toBeInTheDocument()
+
+    // Ensure profile endpoint was called at least once
+    await waitFor(() => {
+      expect(global.fetch).toHaveBeenCalledWith(
+        expect.stringContaining('/api/users/me'),
+        expect.objectContaining({ method: 'GET' }),
+      )
+    })
   })
 })

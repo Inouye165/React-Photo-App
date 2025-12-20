@@ -222,6 +222,62 @@ export async function getAuthHeadersAsync(includeContentType = true): Promise<Re
   return headers
 }
 
+// --- User Profile (public.users) ---
+
+export interface UserProfile {
+  id: string
+  username: string | null
+  has_set_username: boolean
+  created_at?: string | null
+  updated_at?: string | null
+}
+
+export async function fetchProfile(): Promise<UserProfile | undefined> {
+  const url = `${API_BASE_URL}/api/users/me`
+  const res = await apiLimiter(() =>
+    fetchWithNetworkFallback(url, {
+      method: 'GET',
+      headers: getAuthHeaders(false),
+      credentials: 'include',
+    }),
+  )
+  if (handleAuthError(res)) return
+  if (!res.ok) throw new Error('Failed to fetch profile: ' + res.status)
+
+  const json = (await res.json()) as { success?: boolean; data?: unknown; error?: string }
+  if (!json || !json.success) throw new Error(json?.error || 'Failed to fetch profile')
+
+  return json.data as UserProfile
+}
+
+export async function updateProfile(username: string): Promise<UserProfile | undefined> {
+  const url = `${API_BASE_URL}/api/users/me`
+  const res = await apiLimiter(() =>
+    fetchWithNetworkFallback(url, {
+      method: 'PATCH',
+      headers: getAuthHeaders(),
+      body: JSON.stringify({ username }),
+      credentials: 'include',
+    }),
+  )
+  if (handleAuthError(res)) return
+
+  if (res.status === 409) {
+    const json = (await res.json().catch(() => null)) as { error?: string } | null
+    throw new Error(json?.error || 'Username is already taken')
+  }
+
+  if (!res.ok) {
+    const json = (await res.json().catch(() => null)) as { error?: string } | null
+    throw new Error(json?.error || 'Failed to update profile: ' + res.status)
+  }
+
+  const json = (await res.json()) as { success?: boolean; data?: unknown; error?: string }
+  if (!json || !json.success) throw new Error(json?.error || 'Failed to update profile')
+
+  return json.data as UserProfile
+}
+
 function handleAuthError(response: Response | null): boolean {
   if (!response) return false
   if (response.status === 401 || response.status === 403) {

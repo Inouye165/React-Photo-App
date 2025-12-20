@@ -9,8 +9,7 @@ vi.mock('../components/LoginForm', () => ({
 
 describe('LandingPage', () => {
   beforeEach(() => {
-    vi.resetAllMocks();
-    global.fetch = vi.fn();
+    vi.clearAllMocks();
   });
 
   it('renders the landing page correctly', () => {

@@ -25,8 +25,124 @@ function createUsersRouter({ db }) {
   const router = express.Router();
   const preferencesService = createUserPreferencesService({ db });
 
+  const USERNAME_MIN_LEN = 3;
+  const USERNAME_MAX_LEN = 30;
+  const USERNAME_REGEX = /^[A-Za-z0-9_]+$/;
+
   // All routes require authentication
   router.use(authenticateToken);
+
+  /**
+   * GET /api/users/me
+   * Returns the current user's profile row from public.users.
+   *
+   * IMPORTANT (PII): This endpoint is intended to be the single source of truth
+   * for display name/username; clients should not derive names from email.
+   */
+  router.get('/me', async (req, res) => {
+    try {
+      const userId = req.user?.id;
+      if (!userId) {
+        return res.status(401).json({ success: false, error: 'Authentication required' });
+      }
+
+      const row = await db('users')
+        .select('id', 'username', 'has_set_username', 'created_at', 'updated_at')
+        .where({ id: userId })
+        .first();
+
+      // If no row exists yet, return a safe default.
+      // (Some environments may create the row lazily.)
+      if (!row) {
+        return res.json({
+          success: true,
+          data: {
+            id: userId,
+            username: null,
+            has_set_username: false,
+          },
+        });
+      }
+
+      return res.json({ success: true, data: row });
+    } catch (error) {
+      logger.error('[users] GET /me error:', error);
+      return res.status(500).json({ success: false, error: 'Failed to fetch profile' });
+    }
+  });
+
+  /**
+   * PATCH /api/users/me
+   * Updates the current user's profile.
+   * Currently supports: username (also sets has_set_username=true).
+   */
+  router.patch('/me', async (req, res) => {
+    try {
+      const userId = req.user?.id;
+      if (!userId) {
+        return res.status(401).json({ success: false, error: 'Authentication required' });
+      }
+
+      const usernameRaw = req.body?.username;
+      if (typeof usernameRaw !== 'string') {
+        return res.status(400).json({ success: false, error: 'username is required' });
+      }
+
+      const username = usernameRaw.trim();
+      if (username.length < USERNAME_MIN_LEN) {
+        return res
+          .status(400)
+          .json({ success: false, error: `Username must be at least ${USERNAME_MIN_LEN} characters` });
+      }
+      if (username.length > USERNAME_MAX_LEN) {
+        return res
+          .status(400)
+          .json({ success: false, error: `Username must be at most ${USERNAME_MAX_LEN} characters` });
+      }
+      if (!USERNAME_REGEX.test(username)) {
+        return res
+          .status(400)
+          .json({ success: false, error: 'Username may only contain letters, numbers, and underscores' });
+      }
+
+      // Uniqueness check (case-insensitive) to provide a clear 409.
+      const existing = await db('users')
+        .select('id')
+        .whereRaw('lower(username) = lower(?)', [username])
+        .andWhereNot({ id: userId })
+        .first();
+
+      if (existing) {
+        return res.status(409).json({ success: false, error: 'Username is already taken' });
+      }
+
+      // Upsert profile update.
+      await db('users')
+        .insert({
+          id: userId,
+          username,
+          has_set_username: true,
+          created_at: db.fn.now(),
+          updated_at: db.fn.now(),
+        })
+        .onConflict('id')
+        .merge({
+          username,
+          has_set_username: true,
+          updated_at: db.fn.now(),
+        });
+
+      const updated = await db('users')
+        .select('id', 'username', 'has_set_username', 'created_at', 'updated_at')
+        .where({ id: userId })
+        .first();
+
+      return res.json({ success: true, data: updated });
+    } catch (error) {
+      logger.error('[users] PATCH /me error:', error);
+      return res.status(500).json({ success: false, error: 'Failed to update profile' });
+    }
+  });
 
   /**
    * GET /api/users/me/preferences

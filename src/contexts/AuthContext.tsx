@@ -6,6 +6,7 @@ import { supabase } from '../supabaseClient'
 import useStore from '../store'
 import { API_BASE_URL } from '../config/apiConfig'
 import { setAuthToken } from '../api'
+import type { UserProfile } from '../api'
 
 declare global {
   interface Window {
@@ -32,8 +33,15 @@ export interface AuthContextValue {
   cookieReady: boolean
   preferences: UserPreferences
 
+  // public.users profile (authoritative display identity)
+  profile: UserProfile | null
+  profileLoading: boolean
+  profileError: string | null
+
   updatePreferences: (newPrefs: Partial<UserPreferences>) => Promise<AuthActionResult<{ data: UserPreferences }>>
   loadDefaultScales: (categories?: string[] | null) => Promise<AuthActionResult<{ data: UserPreferences }>>
+
+  updateProfile: (username: string) => Promise<AuthActionResult<{ profile: UserProfile }>>
 
   login: (email: string, password: string) => Promise<AuthActionResult<{ user: User | null }>>
   register: (
@@ -220,6 +228,12 @@ export function AuthProvider({ children }: { children: ReactNode }): ReactNode {
   // User preferences (grading scales for collectibles)
   const [preferences, setPreferences] = useState<UserPreferences>({ ...defaultPreferences })
 
+  // public.users profile (username / has_set_username)
+  const [profile, setProfile] = useState<UserProfile | null>(null)
+  const [profileLoading, setProfileLoading] = useState<boolean>(false)
+  const [profileError, setProfileError] = useState<string | null>(null)
+  const lastProfileUserIdRef = useRef<string | null>(null)
+
   // Track if a login is in progress to prevent onAuthStateChange from racing
   const loginInProgressRef = useRef<boolean>(false)
 
@@ -232,6 +246,54 @@ export function AuthProvider({ children }: { children: ReactNode }): ReactNode {
       fetchPreferences().then(setPreferences)
     }
   }, [authReady, user])
+
+  // Fetch profile from public.users when auth becomes ready.
+  // This is the authoritative identity for UI display (never derive from email).
+  useEffect(() => {
+    if (!authReady || !user) {
+      setProfile(null)
+      setProfileLoading(false)
+      setProfileError(null)
+      lastProfileUserIdRef.current = null
+      return
+    }
+
+    if (lastProfileUserIdRef.current === user.id && profile) {
+      return
+    }
+
+    let cancelled = false
+
+    async function loadProfile() {
+      try {
+        setProfileLoading(true)
+        setProfileError(null)
+        // Import dynamically to avoid circular dependency concerns.
+        const { fetchProfile } = await import('../api')
+        const next = await fetchProfile()
+        if (cancelled) return
+        if (next) {
+          setProfile(next)
+          lastProfileUserIdRef.current = user.id
+        } else {
+          setProfile(null)
+        }
+      } catch (err) {
+        if (cancelled) return
+        setProfile(null)
+        setProfileError(getErrorMessage(err))
+      } finally {
+        if (!cancelled) setProfileLoading(false)
+      }
+    }
+
+    loadProfile()
+
+    return () => {
+      cancelled = true
+    }
+    // Intentionally omit `profile` from deps to avoid refetch loops.
+  }, [authReady, user?.id])
 
   useEffect(() => {
     const isE2E = import.meta.env.VITE_E2E === 'true' || window.__E2E_MODE__ === true
@@ -582,6 +644,28 @@ export function AuthProvider({ children }: { children: ReactNode }): ReactNode {
     return { success: false, error: 'Failed to load defaults' }
   }
 
+  const updateProfile = async (username: string): Promise<AuthActionResult<{ profile: UserProfile }>> => {
+    try {
+      const nextUsername = typeof username === 'string' ? username.trim() : ''
+      if (nextUsername.length < 3) {
+        return { success: false, error: 'Username must be at least 3 characters' }
+      }
+
+      const { updateProfile: apiUpdateProfile } = await import('../api')
+      const updated = await apiUpdateProfile(nextUsername)
+      if (!updated) {
+        return { success: false, error: 'Failed to update profile' }
+      }
+
+      setProfile(updated)
+      lastProfileUserIdRef.current = updated.id
+      setProfileError(null)
+      return { success: true, profile: updated }
+    } catch (err) {
+      return { success: false, error: getErrorMessage(err) }
+    }
+  }
+
   const value: AuthContextValue = {
     user,
     session,
@@ -590,8 +674,12 @@ export function AuthProvider({ children }: { children: ReactNode }): ReactNode {
     // Deprecated: cookieReady is an alias for authReady for backward compatibility
     cookieReady: authReady,
     preferences,
+    profile,
+    profileLoading,
+    profileError,
     updatePreferences,
     loadDefaultScales,
+    updateProfile,
     login,
     register,
     logout,
