@@ -2,22 +2,20 @@
 
 ## Overview
 
-This photo application now includes a comprehensive, production-ready authentication system that prevents unauthorized access to all application features. The system is built with best security practices and is ready for web service deployment.
+This app uses Supabase Auth for user sessions and validates access on the backend using Bearer tokens.
 
-> **🎯 Architecture Update (December 2025):** Authentication now uses exclusively **stateless JWT Bearer tokens**. ~~Cookie-based session fallback has been removed~~ to eliminate split-brain authentication issues and align with modern API standards.
+> **Architecture note (December 2025):** Protected API routes require `Authorization: Bearer <token>`. Some image endpoints still contain a deprecated cookie fallback for legacy/E2E compatibility; it should be treated as transitional and removed over time.
 
 ## Security Features
 
 ### 🔐 JWT-Based Authentication
-- Stateless JWT tokens for scalable authentication
-- Configurable token expiration (default: 24 hours)
-- **REQUIRED**: Bearer token in `Authorization` header (only supported method)
-- **SECURITY**: Query parameter tokens are strictly rejected to prevent token leakage
-- **CSRF Immunity**: Tokens are not sent automatically (unlike cookies), eliminating CSRF risks
+- Bearer tokens are required for protected API routes.
+- Query parameter tokens are intentionally not supported (URLs leak).
+- CSRF risk is reduced by the token model (not automatically attached like cookies) plus strict origin allowlisting on sensitive endpoints.
 
 ### Bearer Token Authentication (Exclusive Method)
 
-As of December 2025, authentication uses **exclusively Bearer tokens in the Authorization header**:
+As of December 2025, protected API routes use Bearer tokens in the Authorization header:
 
 ```
 Authorization: Bearer <supabase_access_token>
@@ -34,12 +32,11 @@ Authorization: Bearer <supabase_access_token>
 **Frontend Implementation:**
 - Token is sourced from Supabase's managed session (`supabase.auth.getSession()`)
 - `api.ts` attaches `Authorization: Bearer <token>` to all protected requests
-- Token stored in module closure, not exposed globally (security)
 - Avoid relying on or documenting the browser storage mechanism; treat the session token as sensitive and do not log it.
 
 **Backend Implementation:**
 - Middleware requires `Authorization: Bearer <token>` header (strictly enforced)
-- ~~Cookie fallback removed~~ - cookies are no longer checked
+- Cookies are not used for protected API routes
 - Query parameters are always rejected (security: tokens in URLs get logged)
 - Returns 401 with clear error message if Authorization header is missing
 
@@ -53,10 +50,9 @@ The application requires an explicit acceptance step before an authenticated use
 
 This gate exists to ensure users acknowledge the app's experimental/beta behavior and the associated privacy disclaimer before using the core product experience.
 
-### 🛡️ Password Security
-- Strong password requirements (min 8 chars, uppercase, lowercase, numbers, special chars)
-- Bcrypt hashing with salt rounds (12)
-- Account lockout after 5 failed login attempts (15-minute lockout)
+### 🛡️ Password security
+
+Password storage, password rules, lockout, and reset flows are handled by Supabase Auth. The application should not implement or document its own password hashing scheme in parallel.
 
 ### 🚫 Rate Limiting
 - General API rate limiting (100 requests per 15 minutes)
@@ -77,10 +73,7 @@ This gate exists to ensure users acknowledge the app's experimental/beta behavio
 - Directory traversal protection
 
 ### 📊 User Management
-- Role-based access control (admin/user roles)
-- User registration with validation
-- Account activation status
-- Failed login attempt tracking
+- Role-based access control (admin/user roles) via Supabase `app_metadata`
 
 ## Quick Start
 
@@ -152,7 +145,7 @@ CORS_CREDENTIALS=true
 - `DELETE /photos/:id` - Delete photos
 - Image serving (`/display/*`) uses signed thumbnail URLs or Bearer auth; legacy cookie fallback may exist for images/E2E only
 
-## User Roles
+## User roles
 
 ### User
 - Can upload, view, and manage their own photos
@@ -208,10 +201,9 @@ CORS_CREDENTIALS=true
 ## Production Deployment Checklist
 
 ### 🔧 Configuration
-- [ ] Change `JWT_SECRET` to a strong, unique value
 - [ ] Set `NODE_ENV=production`
-- [ ] Configure appropriate `CORS_ORIGIN` for your domain
-- [ ] Set up HTTPS and configure `ENABLE_HTTPS=true`
+- [ ] Set `JWT_SECRET` (used for internal signing / E2E helpers; not the Supabase signing secret)
+- [ ] Configure allowed origins for your deployed frontend
 - [ ] Review and adjust rate limits for your traffic
 
 ### 🗄️ Database
@@ -284,19 +276,18 @@ The authentication system adds a `users` table with:
 - Account lockout tracking
 - Timestamps for audit trails
 
-## Hybrid Deployment (Local Frontend + Cloud Backend) (Legacy / transition notes)
+## Hybrid deployment (local frontend + cloud backend)
 
 ### Overview
 When running a **local frontend** (e.g., `localhost:5173`) that connects to a **cloud-hosted backend**, browsers treat these as different origins.
 
-**Note:** The primary authentication model for protected API routes is Bearer tokens (`Authorization: Bearer <token>`). Cookie configuration is only relevant for any remaining legacy image/E2E cookie flows (if enabled) and may be removed in future.
+**Note:** Protected API routes use Bearer tokens (`Authorization: Bearer <token>`). Cookie configuration is only relevant for any remaining legacy image/E2E cookie flows (if enabled) and may be removed in future.
 
-### The Problem
-By default, the authentication system uses `sameSite: 'strict'` in production, which **blocks cookies from being sent in cross-origin requests**. This means:
-- ✅ Same-origin works: `https://your-app.com` → `https://your-app.com/api`
-- ❌ Cross-origin fails: `http://localhost:5173` → `https://your-app.onrender.com/api`
+### The problem
 
-### The Solution: COOKIE_SAME_SITE Environment Variable
+If you are still relying on legacy cookie-based image auth in a cross-origin setup, browser cookie rules can block those cookies.
+
+### The solution (legacy only): cookie SameSite configuration
 
 Configure the backend to allow cross-origin cookies by setting:
 
@@ -373,7 +364,7 @@ After setting `COOKIE_SAME_SITE=none`:
 - The cookie-based system is secure and works cross-origin when configured correctly
 - See [SECURITY_REMEDIATION_CWE489.md](./SECURITY_REMEDIATION_CWE489.md) for details
 
-### Security Notes
+### Security notes
 
 ⚠️ **Important Security Considerations:**
 - `SameSite=None` is **less secure** than `strict` - only use when necessary
@@ -384,10 +375,4 @@ After setting `COOKIE_SAME_SITE=none`:
 
 ## Support
 
-This authentication system provides enterprise-grade security suitable for production web services. All major security vulnerabilities are addressed, and the system is designed to scale with your application.
-
-For additional security hardening or custom requirements, consider implementing:
-- Two-factor authentication (2FA)
-- OAuth integration
-- Advanced session management
-- Audit logging and compliance features
+This document describes the current auth model and known transitional edges. If you find a mismatch between this doc and the code, treat the code as the source of truth and open an issue (docs should be updated as part of the fix).

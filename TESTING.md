@@ -215,10 +215,20 @@ npm test
 ```bash
 # Complete reset
 taskkill /F /IM node.exe    # Kill all Node processes
-rm -rf node_modules         # Remove frontend deps
-rm -rf server/node_modules  # Remove backend deps
+rm -rf node_modules         # Remove frontend deps (Mac/Linux)
+rm -rf server/node_modules  # Remove backend deps (Mac/Linux)
 npm install                 # Reinstall frontend
 cd server && npm install    # Reinstall backend
+```
+
+PowerShell equivalents:
+
+```powershell
+Get-Process node -ErrorAction SilentlyContinue | Stop-Process -Force
+Remove-Item -Recurse -Force node_modules
+Remove-Item -Recurse -Force server\node_modules
+npm install
+cd server; npm install
 ```
 
 ### Debug Authentication
@@ -299,6 +309,6 @@ When reporting authentication or HEIC issues, please include:
 
 ✅ **Authentication Working**: Login/logout functional, images load only when authenticated  
 ✅ **HEIC Support Working**: HEIC files display as JPEG, no conversion errors  
-✅ **Tests Passing**: All 86 tests pass consistently  
+✅ **Tests Passing**: `npm run test:run` and `cd server && npm test` pass consistently  
 ✅ **Security Active**: Proper headers, rate limiting, input validation  
 ✅ **Multi-device Ready**: Works across multiple machines with proper file sync handling
