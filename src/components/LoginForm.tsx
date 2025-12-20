@@ -186,7 +186,10 @@ const LoginForm: React.FC<LoginFormProps> = ({ onSwitchToRegister }) => {
           <div className="flex items-center justify-between text-sm">
             <button
               type="button"
-              onClick={() => setShowForgotPassword(true)}
+              onClick={() => {
+                setResetEmail(email)
+                setShowForgotPassword(true)
+              }}
               className="text-indigo-600 hover:text-indigo-500"
             >
               Forgot password?

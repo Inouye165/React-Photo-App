@@ -29,6 +29,7 @@ describe('ResetPasswordPage', () => {
     useAuth.mockReturnValue({
       loading: true,
       user: null,
+      session: null,
       updatePassword: vi.fn(),
     });
 
@@ -41,10 +42,11 @@ describe('ResetPasswordPage', () => {
     expect(screen.getByText('Verifying link...')).toBeInTheDocument();
   });
 
-  it('redirects to home if user is not logged in (and not loading)', () => {
+  it('redirects to home if accessed without an active session', () => {
     useAuth.mockReturnValue({
       loading: false,
       user: null,
+      session: null,
       updatePassword: vi.fn(),
     });
 
@@ -61,6 +63,7 @@ describe('ResetPasswordPage', () => {
     useAuth.mockReturnValue({
       loading: false,
       user: { id: '123' },
+      session: { access_token: 'token', user: { id: '123' } },
       updatePassword: vi.fn(),
     });
 
@@ -78,6 +81,7 @@ describe('ResetPasswordPage', () => {
     useAuth.mockReturnValue({
       loading: false,
       user: { id: '123' },
+      session: { access_token: 'token', user: { id: '123' } },
       updatePassword: vi.fn(),
     });
 
@@ -94,11 +98,61 @@ describe('ResetPasswordPage', () => {
     expect(screen.getByText('Passwords do not match')).toBeInTheDocument();
   });
 
+  it('rejects passwords shorter than 6 characters', async () => {
+    const mockUpdatePassword = vi.fn();
+    useAuth.mockReturnValue({
+      loading: false,
+      user: { id: '123' },
+      session: { access_token: 'token', user: { id: '123' } },
+      updatePassword: mockUpdatePassword,
+    });
+
+    render(
+      <BrowserRouter>
+        <ResetPasswordPage />
+      </BrowserRouter>
+    );
+
+    fireEvent.change(screen.getByLabelText('New Password'), { target: { value: '12345' } });
+    fireEvent.change(screen.getByLabelText('Confirm Password'), { target: { value: '12345' } });
+    fireEvent.click(screen.getByRole('button', { name: 'Update Password' }));
+
+    expect(screen.getByText('Password must be at least 6 characters')).toBeInTheDocument();
+    expect(mockUpdatePassword).not.toHaveBeenCalled();
+  });
+
+  it('shows Supabase errors returned by updatePassword', async () => {
+    const mockUpdatePassword = vi.fn().mockResolvedValue({ success: false, error: 'Server error' });
+    useAuth.mockReturnValue({
+      loading: false,
+      user: { id: '123' },
+      session: { access_token: 'token', user: { id: '123' } },
+      updatePassword: mockUpdatePassword,
+    });
+
+    render(
+      <BrowserRouter>
+        <ResetPasswordPage />
+      </BrowserRouter>
+    );
+
+    fireEvent.change(screen.getByLabelText('New Password'), { target: { value: 'newpassword' } });
+    fireEvent.change(screen.getByLabelText('Confirm Password'), { target: { value: 'newpassword' } });
+    fireEvent.click(screen.getByRole('button', { name: 'Update Password' }));
+
+    await waitFor(() => {
+      expect(mockUpdatePassword).toHaveBeenCalledWith('newpassword');
+    });
+
+    expect(screen.getByText('Server error')).toBeInTheDocument();
+  });
+
   it('calls updatePassword and redirects on success', async () => {
     const mockUpdatePassword = vi.fn().mockResolvedValue({ success: true });
     useAuth.mockReturnValue({
       loading: false,
       user: { id: '123' },
+      session: { access_token: 'token', user: { id: '123' } },
       updatePassword: mockUpdatePassword,
     });
 

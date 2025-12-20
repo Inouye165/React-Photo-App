@@ -17,7 +17,7 @@ import { useAuth } from '../contexts/AuthContext';
  */
 export default function SettingsPage() {
   const navigate = useNavigate();
-  const { user, preferences, updatePreferences, loadDefaultScales, cookieReady } = useAuth();
+  const { user, preferences, updatePreferences, loadDefaultScales, updatePassword, cookieReady } = useAuth();
   
   // Selected category for right panel
   const [selectedCategory, setSelectedCategory] = useState(null);
@@ -29,6 +29,11 @@ export default function SettingsPage() {
   // Loading states
   const [loading, setLoading] = useState(false);
   const [message, setMessage] = useState(null);
+
+  // Password change state
+  const [newPassword, setNewPassword] = useState('');
+  const [confirmNewPassword, setConfirmNewPassword] = useState('');
+  const [passwordLoading, setPasswordLoading] = useState(false);
   
   // State for adding new category (must be declared before conditional return)
   const [newCategory, setNewCategory] = useState('');
@@ -187,6 +192,35 @@ export default function SettingsPage() {
     setLoading(false);
   };
 
+  const handleChangePassword = async (e) => {
+    e.preventDefault();
+
+    if (newPassword !== confirmNewPassword) {
+      setMessage({ type: 'error', text: 'Passwords do not match' });
+      return;
+    }
+
+    if (!newPassword || newPassword.length < 6) {
+      setMessage({ type: 'error', text: 'Password must be at least 6 characters' });
+      return;
+    }
+
+    setPasswordLoading(true);
+    try {
+      const result = await updatePassword(newPassword);
+      if (result.success) {
+        setNewPassword('');
+        setConfirmNewPassword('');
+        setMessage({ type: 'success', text: 'Password updated' });
+      } else {
+        setMessage({ type: 'error', text: result.error || 'Failed to update password' });
+      }
+    } catch {
+      setMessage({ type: 'error', text: 'Failed to update password' });
+    }
+    setPasswordLoading(false);
+  };
+
   return (
     <div className="min-h-screen bg-gray-50 py-8 px-4">
       <div className="max-w-6xl mx-auto">
@@ -212,6 +246,54 @@ export default function SettingsPage() {
             {message.text}
           </div>
         )}
+
+        {/* Change Password */}
+        <div className="mb-6 bg-white rounded-lg shadow p-6">
+          <h2 className="text-lg font-semibold text-gray-900 mb-1">Change Password</h2>
+          <p className="text-sm text-gray-600 mb-4">Update your account password.</p>
+
+          <form className="grid grid-cols-1 md:grid-cols-3 gap-4" onSubmit={handleChangePassword}>
+            <div>
+              <label htmlFor="new-password" className="block text-sm font-medium text-gray-700 mb-1">
+                New Password
+              </label>
+              <input
+                id="new-password"
+                type="password"
+                value={newPassword}
+                onChange={(e) => setNewPassword(e.target.value)}
+                className="w-full px-3 py-2 border border-gray-300 rounded-md"
+                disabled={passwordLoading}
+                minLength={6}
+                required
+              />
+            </div>
+            <div>
+              <label htmlFor="confirm-new-password" className="block text-sm font-medium text-gray-700 mb-1">
+                Confirm Password
+              </label>
+              <input
+                id="confirm-new-password"
+                type="password"
+                value={confirmNewPassword}
+                onChange={(e) => setConfirmNewPassword(e.target.value)}
+                className="w-full px-3 py-2 border border-gray-300 rounded-md"
+                disabled={passwordLoading}
+                minLength={6}
+                required
+              />
+            </div>
+            <div className="flex items-end">
+              <button
+                type="submit"
+                disabled={passwordLoading}
+                className="w-full py-2 px-4 bg-indigo-600 hover:bg-indigo-700 text-white font-medium rounded-md disabled:opacity-50 disabled:cursor-not-allowed"
+              >
+                {passwordLoading ? 'Updating...' : 'Update Password'}
+              </button>
+            </div>
+          </form>
+        </div>
 
         {/* Main content - two columns */}
         <div className="grid grid-cols-1 md:grid-cols-3 gap-6">

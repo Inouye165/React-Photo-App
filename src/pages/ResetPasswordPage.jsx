@@ -1,6 +1,7 @@
 import React, { useState, useEffect } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { useAuth } from '../contexts/AuthContext';
+import { supabase } from '../supabaseClient';
 
 const ResetPasswordPage = () => {
   const [password, setPassword] = useState('');
@@ -8,11 +9,45 @@ const ResetPasswordPage = () => {
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState('');
   const [success, setSuccess] = useState(false);
-  const { updatePassword, user, loading: authLoading } = useAuth();
+  const { updatePassword, user, session, loading: authLoading } = useAuth();
   const navigate = useNavigate();
 
+  const [processingRecoveryLink, setProcessingRecoveryLink] = useState(() => {
+    const hash = window.location.hash || '';
+    const search = window.location.search || '';
+    return hash.includes('type=recovery') || search.includes('code=');
+  });
+
   useEffect(() => {
-    if (!authLoading && !user) {
+    let cancelled = false;
+
+    async function maybeFinalizeRecovery() {
+      if (!processingRecoveryLink) return;
+
+      try {
+        const params = new URLSearchParams(window.location.search);
+        const code = params.get('code');
+
+        // Hash-based recovery doesn't need this; code-based flows do.
+        if (code && supabase?.auth?.exchangeCodeForSession) {
+          await supabase.auth.exchangeCodeForSession(code);
+        }
+      } catch {
+        // If this fails, the lack of a session will trigger the redirect path after processing completes.
+      } finally {
+        if (!cancelled) setProcessingRecoveryLink(false);
+      }
+    }
+
+    void maybeFinalizeRecovery();
+
+    return () => {
+      cancelled = true;
+    };
+  }, [processingRecoveryLink]);
+
+  useEffect(() => {
+    if (!authLoading && !processingRecoveryLink && !session) {
       // If not logged in, redirect to login (or show error)
       // But wait, if they just clicked the link, Supabase might still be processing the hash.
       // However, AuthContext handles onAuthStateChange, so user should be set if hash is valid.
@@ -20,7 +55,7 @@ const ResetPasswordPage = () => {
       // We'll redirect to home which will show login form.
       navigate('/');
     }
-  }, [user, authLoading, navigate]);
+  }, [session, authLoading, processingRecoveryLink, navigate]);
 
   const handleSubmit = async (e) => {
     e.preventDefault();
@@ -52,7 +87,7 @@ const ResetPasswordPage = () => {
     setLoading(false);
   };
 
-  if (authLoading) {
+  if (authLoading || processingRecoveryLink) {
     return (
       <div className="min-h-screen flex items-center justify-center bg-gray-50">
         <div className="text-center">
@@ -63,7 +98,7 @@ const ResetPasswordPage = () => {
     );
   }
 
-  if (!user) return null; // Will redirect in useEffect
+  if (!session || !user) return null; // Will redirect in useEffect
 
   return (
     <div className="min-h-screen flex items-center justify-center bg-gray-50 p-4">
@@ -82,7 +117,7 @@ const ResetPasswordPage = () => {
             <p className="text-sm text-green-700 mb-2">Redirecting you to the gallery...</p>
           </div>
         ) : (
-          <form className="space-y-6" onSubmit={handleSubmit}>
+          <form className="space-y-6" onSubmit={handleSubmit} noValidate>
             {error && (
               <div className="rounded-md bg-red-50 p-3 text-center text-red-700 text-sm font-medium">{error}</div>
             )}
