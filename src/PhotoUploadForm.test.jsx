@@ -203,7 +203,7 @@ describe('PhotoUploadForm Component', () => {
   it('shows empty state when no photos found', () => {
     render(<PhotoUploadForm {...mockProps} filteredLocalPhotos={[]} />)
     
-    expect(screen.getByText('No photos found')).toBeInTheDocument()
+    expect(screen.getByText('No photos match the selected date range')).toBeInTheDocument()
     // Change Folder is the new label for re-open folder
     expect(screen.getByText('Change Folder')).toBeInTheDocument()
     // Close button is identified by aria-label
@@ -260,7 +260,7 @@ describe('PhotoUploadForm Component', () => {
     render(<PhotoUploadForm {...mockProps} />)
     
     // Mock files should show their size (mockFile is 4 bytes = "test")
-    const fileSizeElements = screen.getAllByText(/KB/)
+    const fileSizeElements = screen.getAllByText(/MB/)
     expect(fileSizeElements.length).toBeGreaterThan(0)
   })
 

@@ -1,10 +1,12 @@
-import React, { useRef, useMemo } from 'react';
+import { useRef, useMemo, CSSProperties } from 'react';
 import useStore from '../store';
 import { useNavigate } from 'react-router-dom';
-import PhotoUploadForm from '../PhotoUploadForm.jsx';
+import PhotoUploadForm from '../PhotoUploadForm';
 import useLocalPhotoPicker from '../hooks/useLocalPhotoPicker';
 import { useThumbnailQueue } from '../hooks/useThumbnailQueue';
 import { isProbablyMobile } from '../utils/isProbablyMobile';
+import type { UploadPickerLocalPhoto } from '../store/uploadPickerSlice';
+import type { AnalysisType } from '../hooks/useLocalPhotoPicker';
 
 /**
  * UploadPage - Dedicated page for photo uploads
@@ -14,12 +16,20 @@ import { isProbablyMobile } from '../utils/isProbablyMobile';
  * - User has no photos (SmartRouter redirects here)
  * - User explicitly navigates to upload new photos
  * 
- * Provides a clear call-to-action for new users instead of
- * dropping them into an empty gallery.
+ * Mobile behavior:
+ * - Shows TWO buttons: "Choose from gallery" and "Take photo"
+ * - Gallery input has NO capture attribute (opens gallery)
+ * - Camera input has capture="environment" (opens camera)
+ * 
+ * Desktop behavior:
+ * - Shows "Select Photos" button
+ * - Uses File System Access API if available
+ * 
+ * @security File inputs validated and processed safely
+ * @security Optimistic upload with error handling
  */
 export default function UploadPage() {
   const navigate = useNavigate();
-  // const { setToolbarMessage } = useOutletContext();
 
   const {
     filteredLocalPhotos,
@@ -38,8 +48,14 @@ export default function UploadPage() {
   // Optimistic upload handler
   const addPendingUploads = useStore((state) => state.addPendingUploads);
 
-  // Fire-and-forget upload logic
-  const handleOptimisticUpload = async (photosToUpload, analysisType = 'scenery') => {
+  /**
+   * Fire-and-forget upload logic with optimistic UI
+   * @security Per-file error tracking, graceful failures
+   */
+  const handleOptimisticUpload = async (
+    photosToUpload: UploadPickerLocalPhoto[],
+    analysisType: AnalysisType = 'scenery'
+  ) => {
     const files = (Array.isArray(photosToUpload) ? photosToUpload : [])
       .map((p) => p?.file)
       .filter(Boolean);
@@ -64,11 +80,11 @@ export default function UploadPage() {
       const { generateClientThumbnail } = await import('../utils/clientImageProcessing');
       const removePendingUpload = useStore.getState().removePendingUpload;
 
-      const errors = [];
+      const errors: string[] = [];
       for (let i = 0; i < files.length; i++) {
         const file = files[i];
         const tempId = pendingEntries[i]?.id;
-        let thumbnailBlob = null;
+        let thumbnailBlob: Blob | null = null;
         try {
           thumbnailBlob = await generateClientThumbnail(file);
         } catch {
@@ -85,7 +101,9 @@ export default function UploadPage() {
           removePendingUpload(tempId);
         } else {
           // Fallback: best-effort match by name+size
-          const pending = useStore.getState().pendingUploads.find((p) => p?.filename === file?.name && p?.file_size === file?.size);
+          const pending = useStore
+            .getState()
+            .pendingUploads.find((p) => p?.filename === file?.name && p?.file_size === file?.size);
           if (pending) removePendingUpload(pending.id);
         }
       }
@@ -100,38 +118,39 @@ export default function UploadPage() {
 
       if (errors.length > 0) {
         useStore.getState().setBanner({
-          message: `Upload failed for: ${errors.slice(0, 3).join(', ')}${errors.length > 3 ? ` (+${errors.length - 3} more)` : ''}`,
+          message: `Upload failed for: ${errors.slice(0, 3).join(', ')}${
+            errors.length > 3 ? ` (+${errors.length - 3} more)` : ''
+          }`,
           severity: 'error',
         });
       }
     }, 100);
   };
 
-  // Ref for fallback file input (Firefox/Safari)
-  const galleryInputRef = useRef(null);
-  const cameraInputRef = useRef(null);
+  // Refs for fallback file inputs (Safari/Firefox/mobile)
+  const galleryInputRef = useRef<HTMLInputElement>(null);
+  const cameraInputRef = useRef<HTMLInputElement>(null);
 
   // Track if user has selected a folder
   const hasSelectedFolder = filteredLocalPhotos.length > 0;
   const isMobile = isProbablyMobile();
 
   // Extract files for queue processing
-  const files = useMemo(() => 
-    filteredLocalPhotos.map(p => p.file).filter(Boolean), 
-    [filteredLocalPhotos]
-  );
+  const files = useMemo(() => filteredLocalPhotos.map((p) => p.file).filter(Boolean), [filteredLocalPhotos]);
 
   // Instantiate thumbnail queue - processes thumbnails in batches for better performance
-  // The queue handles concurrent processing (default: 4) with state batching
   const thumbnailQueue = useThumbnailQueue(files, {
-    concurrency: 4,      // Process 4 thumbnails in parallel
-    batchInterval: 200,  // Flush UI updates every 200ms
+    concurrency: 4, // Process 4 thumbnails in parallel
+    batchInterval: 200, // Flush UI updates every 200ms
   });
 
-  // Handle folder selection flow with cross-browser support
+  /**
+   * Handle folder selection flow with cross-browser support
+   * @security On mobile, prefer native file input to avoid file system UI
+   */
   const handleStartUpload = () => {
-    // On Android/mobile, using the directory picker often routes users into a filesystem UI
-    // that does not offer the Camera option. Prefer the native file input there.
+    // On Android/mobile, directory picker routes users into filesystem UI
+    // that does not offer Camera option. Prefer native file input there.
     if (typeof window.showDirectoryPicker === 'function' && !isMobile) {
       handleSelectFolder();
     } else {
@@ -157,49 +176,98 @@ export default function UploadPage() {
     navigate('/gallery');
   };
 
+  // Styles
+  const containerStyle: CSSProperties = {
+    display: 'flex',
+    flexDirection: 'column',
+    alignItems: 'center',
+    justifyContent: 'center',
+    minHeight: 'calc(100vh - 120px)',
+    padding: '32px',
+    textAlign: 'center',
+  };
+
+  const cardStyle: CSSProperties = {
+    maxWidth: '500px',
+    padding: '48px',
+    background: '#ffffff',
+    borderRadius: '16px',
+    boxShadow: '0 4px 24px rgba(0, 0, 0, 0.08)',
+    border: '1px solid #e2e8f0',
+  };
+
+  const iconContainerStyle: CSSProperties = {
+    width: '80px',
+    height: '80px',
+    margin: '0 auto 24px',
+    background: 'linear-gradient(135deg, #4f46e5 0%, #7c3aed 100%)',
+    borderRadius: '20px',
+    display: 'flex',
+    alignItems: 'center',
+    justifyContent: 'center',
+    boxShadow: '0 8px 16px rgba(79, 70, 229, 0.3)',
+  };
+
+  const titleStyle: CSSProperties = {
+    fontSize: '28px',
+    fontWeight: '700',
+    color: '#1e293b',
+    marginBottom: '12px',
+  };
+
+  const descriptionStyle: CSSProperties = {
+    fontSize: '16px',
+    color: '#64748b',
+    lineHeight: '1.6',
+    marginBottom: '32px',
+  };
+
+  const primaryButtonStyle: CSSProperties = {
+    display: 'inline-flex',
+    alignItems: 'center',
+    justifyContent: 'center',
+    gap: '8px',
+    padding: '16px 32px',
+    fontSize: '16px',
+    fontWeight: '600',
+    color: '#ffffff',
+    background: 'linear-gradient(135deg, #4f46e5 0%, #7c3aed 100%)',
+    border: 'none',
+    borderRadius: '12px',
+    cursor: 'pointer',
+    boxShadow: '0 4px 12px rgba(79, 70, 229, 0.4)',
+    transition: 'transform 0.2s, box-shadow 0.2s',
+  };
+
+  const secondaryButtonStyle: CSSProperties = {
+    display: 'inline-flex',
+    alignItems: 'center',
+    justifyContent: 'center',
+    gap: '8px',
+    padding: '16px 32px',
+    fontSize: '16px',
+    fontWeight: '600',
+    color: '#1e293b',
+    background: '#ffffff',
+    border: '1px solid #e2e8f0',
+    borderRadius: '12px',
+    cursor: 'pointer',
+    boxShadow: '0 4px 12px rgba(0, 0, 0, 0.06)',
+    transition: 'transform 0.2s, box-shadow 0.2s',
+  };
+
   // If no folder selected yet, show the welcome/empty state
   if (!hasSelectedFolder) {
     return (
-      <div 
-        style={{
-          display: 'flex',
-          flexDirection: 'column',
-          alignItems: 'center',
-          justifyContent: 'center',
-          minHeight: 'calc(100vh - 120px)',
-          padding: '32px',
-          textAlign: 'center'
-        }}
-      >
-        <div 
-          style={{
-            maxWidth: '500px',
-            padding: '48px',
-            background: '#ffffff',
-            borderRadius: '16px',
-            boxShadow: '0 4px 24px rgba(0, 0, 0, 0.08)',
-            border: '1px solid #e2e8f0'
-          }}
-        >
+      <div style={containerStyle}>
+        <div style={cardStyle}>
           {/* Icon */}
-          <div 
-            style={{
-              width: '80px',
-              height: '80px',
-              margin: '0 auto 24px',
-              background: 'linear-gradient(135deg, #4f46e5 0%, #7c3aed 100%)',
-              borderRadius: '20px',
-              display: 'flex',
-              alignItems: 'center',
-              justifyContent: 'center',
-              boxShadow: '0 8px 16px rgba(79, 70, 229, 0.3)'
-            }}
-          >
-            <svg 
-              width="40" 
-              height="40" 
-              fill="none" 
-              stroke="white" 
+          <div style={iconContainerStyle}>
+            <svg
+              width="40"
+              height="40"
+              fill="none"
+              stroke="white"
               viewBox="0 0 24 24"
               strokeWidth="2"
               strokeLinecap="round"
@@ -212,52 +280,20 @@ export default function UploadPage() {
           </div>
 
           {/* Title */}
-          <h1 
-            style={{
-              fontSize: '28px',
-              fontWeight: '700',
-              color: '#1e293b',
-              marginBottom: '12px'
-            }}
-          >
-            Upload Your Photos
-          </h1>
+          <h1 style={titleStyle}>Upload Your Photos</h1>
 
           {/* Description */}
-          <p 
-            style={{
-              fontSize: '16px',
-              color: '#64748b',
-              lineHeight: '1.6',
-              marginBottom: '32px'
-            }}
-          >
-            Select photos to get started. 
-            Your photos will be uploaded and processed automatically.
+          <p style={descriptionStyle}>
+            Select photos to get started. Your photos will be uploaded and processed automatically.
           </p>
 
-          {/* Primary Action Button */}
+          {/* Primary Action Button(s) */}
           {isMobile ? (
             <div style={{ display: 'flex', flexDirection: 'column', gap: '12px' }}>
               <button
                 type="button"
                 onClick={handleChooseFromGallery}
-                style={{
-                  display: 'inline-flex',
-                  alignItems: 'center',
-                  justifyContent: 'center',
-                  gap: '8px',
-                  padding: '16px 32px',
-                  fontSize: '16px',
-                  fontWeight: '600',
-                  color: '#ffffff',
-                  background: 'linear-gradient(135deg, #4f46e5 0%, #7c3aed 100%)',
-                  border: 'none',
-                  borderRadius: '12px',
-                  cursor: 'pointer',
-                  boxShadow: '0 4px 12px rgba(79, 70, 229, 0.4)',
-                  transition: 'transform 0.2s, box-shadow 0.2s'
-                }}
+                style={primaryButtonStyle}
                 aria-label="Choose from gallery"
                 onMouseEnter={(e) => {
                   e.currentTarget.style.transform = 'translateY(-2px)';
@@ -268,14 +304,7 @@ export default function UploadPage() {
                   e.currentTarget.style.boxShadow = '0 4px 12px rgba(79, 70, 229, 0.4)';
                 }}
               >
-                <svg 
-                  width="20" 
-                  height="20" 
-                  fill="none" 
-                  stroke="currentColor" 
-                  viewBox="0 0 24 24"
-                  strokeWidth="2"
-                >
+                <svg width="20" height="20" fill="none" stroke="currentColor" viewBox="0 0 24 24" strokeWidth="2">
                   <path d="M22 19a2 2 0 01-2 2H4a2 2 0 01-2-2V5a2 2 0 012-2h5l2 3h9a2 2 0 012 2z" />
                 </svg>
                 Choose from gallery
@@ -284,22 +313,7 @@ export default function UploadPage() {
               <button
                 type="button"
                 onClick={handleTakePhoto}
-                style={{
-                  display: 'inline-flex',
-                  alignItems: 'center',
-                  justifyContent: 'center',
-                  gap: '8px',
-                  padding: '16px 32px',
-                  fontSize: '16px',
-                  fontWeight: '600',
-                  color: '#1e293b',
-                  background: '#ffffff',
-                  border: '1px solid #e2e8f0',
-                  borderRadius: '12px',
-                  cursor: 'pointer',
-                  boxShadow: '0 4px 12px rgba(0, 0, 0, 0.06)',
-                  transition: 'transform 0.2s, box-shadow 0.2s'
-                }}
+                style={secondaryButtonStyle}
                 aria-label="Take photo"
                 onMouseEnter={(e) => {
                   e.currentTarget.style.transform = 'translateY(-2px)';
@@ -310,14 +324,7 @@ export default function UploadPage() {
                   e.currentTarget.style.boxShadow = '0 4px 12px rgba(0, 0, 0, 0.06)';
                 }}
               >
-                <svg 
-                  width="20" 
-                  height="20" 
-                  fill="none" 
-                  stroke="currentColor" 
-                  viewBox="0 0 24 24"
-                  strokeWidth="2"
-                >
+                <svg width="20" height="20" fill="none" stroke="currentColor" viewBox="0 0 24 24" strokeWidth="2">
                   <path d="M23 19a2 2 0 01-2 2H3a2 2 0 01-2-2V7a2 2 0 012-2h3l2-2h8l2 2h3a2 2 0 012 2z" />
                   <circle cx="12" cy="13" r="4" />
                 </svg>
@@ -325,48 +332,27 @@ export default function UploadPage() {
               </button>
             </div>
           ) : (
-          <button
-            type="button"
-            onClick={handleStartUpload}
-            style={{
-              display: 'inline-flex',
-              alignItems: 'center',
-              gap: '8px',
-              padding: '16px 32px',
-              fontSize: '16px',
-              fontWeight: '600',
-              color: '#ffffff',
-              background: 'linear-gradient(135deg, #4f46e5 0%, #7c3aed 100%)',
-              border: 'none',
-              borderRadius: '12px',
-              cursor: 'pointer',
-              boxShadow: '0 4px 12px rgba(79, 70, 229, 0.4)',
-              transition: 'transform 0.2s, box-shadow 0.2s'
-            }}
-            onMouseEnter={(e) => {
-              e.currentTarget.style.transform = 'translateY(-2px)';
-              e.currentTarget.style.boxShadow = '0 6px 20px rgba(79, 70, 229, 0.5)';
-            }}
-            onMouseLeave={(e) => {
-              e.currentTarget.style.transform = 'translateY(0)';
-              e.currentTarget.style.boxShadow = '0 4px 12px rgba(79, 70, 229, 0.4)';
-            }}
-          >
-            <svg 
-              width="20" 
-              height="20" 
-              fill="none" 
-              stroke="currentColor" 
-              viewBox="0 0 24 24"
-              strokeWidth="2"
+            <button
+              type="button"
+              onClick={handleStartUpload}
+              style={primaryButtonStyle}
+              onMouseEnter={(e) => {
+                e.currentTarget.style.transform = 'translateY(-2px)';
+                e.currentTarget.style.boxShadow = '0 6px 20px rgba(79, 70, 229, 0.5)';
+              }}
+              onMouseLeave={(e) => {
+                e.currentTarget.style.transform = 'translateY(0)';
+                e.currentTarget.style.boxShadow = '0 4px 12px rgba(79, 70, 229, 0.4)';
+              }}
             >
-              <path d="M22 19a2 2 0 01-2 2H4a2 2 0 01-2-2V5a2 2 0 012-2h5l2 3h9a2 2 0 012 2z" />
-            </svg>
-            Select Photos
-          </button>
+              <svg width="20" height="20" fill="none" stroke="currentColor" viewBox="0 0 24 24" strokeWidth="2">
+                <path d="M22 19a2 2 0 01-2 2H4a2 2 0 01-2-2V5a2 2 0 012-2h5l2 3h9a2 2 0 012 2z" />
+              </svg>
+              Select Photos
+            </button>
           )}
-          
-          {/* Hidden inputs: gallery (no capture) + camera (capture=environment) */}
+
+          {/* Hidden inputs: gallery (no capture) + camera (capture="environment") */}
           <input
             type="file"
             accept="image/*,.heic,.heif,.png,.jpg,.jpeg"
@@ -399,7 +385,7 @@ export default function UploadPage() {
                 background: 'none',
                 border: 'none',
                 cursor: 'pointer',
-                textDecoration: 'underline'
+                textDecoration: 'underline',
               }}
             >
               Go to Gallery →
@@ -407,7 +393,7 @@ export default function UploadPage() {
           </div>
 
           {/* Features list */}
-          <div 
+          <div
             style={{
               marginTop: '32px',
               paddingTop: '24px',
@@ -415,7 +401,7 @@ export default function UploadPage() {
               display: 'flex',
               flexDirection: 'column',
               gap: '12px',
-              textAlign: 'left'
+              textAlign: 'left',
             }}
           >
             {[
@@ -423,14 +409,14 @@ export default function UploadPage() {
               { icon: '🔄', text: 'Automatic HEIC to JPEG conversion' },
               { icon: '🤖', text: 'AI-powered metadata extraction' },
             ].map((feature, i) => (
-              <div 
+              <div
                 key={i}
                 style={{
                   display: 'flex',
                   alignItems: 'center',
                   gap: '12px',
                   fontSize: '14px',
-                  color: '#475569'
+                  color: '#475569',
                 }}
               >
                 <span>{feature.icon}</span>
@@ -455,6 +441,7 @@ export default function UploadPage() {
         filteredLocalPhotos={filteredLocalPhotos}
         handleUploadFiltered={handleOptimisticUpload}
         onReopenFolder={handleSelectFolder}
+        handleNativeSelection={handleNativeSelection}
         isStandalonePage={true}
         closeReason="upload-page-close"
         onClose={handleClose}
