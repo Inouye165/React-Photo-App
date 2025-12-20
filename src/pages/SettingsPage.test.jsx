@@ -6,6 +6,7 @@ import { MemoryRouter } from 'react-router-dom';
 // Mock useAuth hook with controllable state
 const mockUpdatePreferences = vi.fn();
 const mockLoadDefaultScales = vi.fn();
+const mockUpdatePassword = vi.fn();
 let mockAuthState = {
   user: { id: 'test-user-id', email: 'test@example.com' },
   preferences: {
@@ -18,6 +19,7 @@ let mockAuthState = {
   },
   updatePreferences: mockUpdatePreferences,
   loadDefaultScales: mockLoadDefaultScales,
+  updatePassword: mockUpdatePassword,
   cookieReady: true
 };
 
@@ -55,6 +57,7 @@ describe('SettingsPage', () => {
       },
       updatePreferences: mockUpdatePreferences,
       loadDefaultScales: mockLoadDefaultScales,
+      updatePassword: mockUpdatePassword,
       cookieReady: true
     };
   });

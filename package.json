@@ -20,6 +20,7 @@
     "lint:fix": "eslint . --fix --cache",
     "lint:server": "eslint server --cache",
     "lint:web": "eslint src --cache",
+    "type-check": "tsc -p tsconfig.json --noEmit",
     "preview": "vite preview",
     "test:e2e": "playwright test",
     "test:a11y": "playwright test e2e/a11y.*",

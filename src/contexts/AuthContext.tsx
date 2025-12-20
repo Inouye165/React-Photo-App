@@ -458,17 +458,57 @@ export function AuthProvider({ children }: { children: ReactNode }): ReactNode {
 
   const updatePassword = async (newPassword: string): Promise<AuthActionResult> => {
     try {
+      if (!newPassword || newPassword.length < 6) {
+        return { success: false, error: 'Password must be at least 6 characters' }
+      }
+
       const { data, error } = await supabase.auth.updateUser({ password: newPassword })
       if (error) throw error
 
-      // Update token if session was refreshed
+      // Defense in depth: ensure the app token cache is refreshed from the current session.
+      // Supabase may or may not return a session directly from updateUser depending on server settings.
       const sessionFromUpdate = (data as unknown as { session?: Session | null }).session
-      if (sessionFromUpdate?.access_token) {
-        setAuthToken(sessionFromUpdate.access_token)
+      const accessTokenFromUpdate = sessionFromUpdate?.access_token
+
+      if (accessTokenFromUpdate) {
+        setAuthToken(accessTokenFromUpdate)
+        setAuthReady(true)
+        setSession(sessionFromUpdate)
+        setUser(sessionFromUpdate.user)
+        return { success: true }
       }
+
+      const {
+        data: { session: sessionFromGet },
+      } = await supabase.auth.getSession()
+
+      if (!sessionFromGet?.access_token) {
+        // If we can't confirm a valid session after password update, force cleanup.
+        setAuthToken(null)
+        setAuthReady(false)
+        setSession(null)
+        setUser(null)
+        return { success: false, error: 'Your session expired. Please sign in again.' }
+      }
+
+      setAuthToken(sessionFromGet.access_token)
+      setAuthReady(true)
+      setSession(sessionFromGet)
+      setUser(sessionFromGet.user)
+
       return { success: true }
     } catch (err) {
       console.error('Update password error:', err)
+      // Defense in depth: clear app auth state/token cache on failure to avoid stale-token use.
+      try {
+        await supabase.auth.signOut()
+      } catch {
+        // ignore
+      }
+      setAuthToken(null)
+      setAuthReady(false)
+      setSession(null)
+      setUser(null)
       return { success: false, error: getErrorMessage(err) }
     }
   }
