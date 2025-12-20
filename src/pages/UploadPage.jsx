@@ -5,7 +5,6 @@ import PhotoUploadForm from '../PhotoUploadForm.jsx';
 import useLocalPhotoPicker from '../hooks/useLocalPhotoPicker';
 import { useThumbnailQueue } from '../hooks/useThumbnailQueue';
 import { isProbablyMobile } from '../utils/isProbablyMobile';
-import { isAndroid } from '../utils/isAndroid';
 
 /**
  * UploadPage - Dedicated page for photo uploads
@@ -109,12 +108,12 @@ export default function UploadPage() {
   };
 
   // Ref for fallback file input (Firefox/Safari)
-  const fileInputRef = useRef(null);
-
-  const android = isAndroid();
+  const galleryInputRef = useRef(null);
+  const cameraInputRef = useRef(null);
 
   // Track if user has selected a folder
   const hasSelectedFolder = filteredLocalPhotos.length > 0;
+  const isMobile = isProbablyMobile();
 
   // Extract files for queue processing
   const files = useMemo(() => 
@@ -133,11 +132,19 @@ export default function UploadPage() {
   const handleStartUpload = () => {
     // On Android/mobile, using the directory picker often routes users into a filesystem UI
     // that does not offer the Camera option. Prefer the native file input there.
-    if (typeof window.showDirectoryPicker === 'function' && !isProbablyMobile()) {
+    if (typeof window.showDirectoryPicker === 'function' && !isMobile) {
       handleSelectFolder();
     } else {
-      fileInputRef.current?.click();
+      galleryInputRef.current?.click();
     }
+  };
+
+  const handleChooseFromGallery = () => {
+    galleryInputRef.current?.click();
+  };
+
+  const handleTakePhoto = () => {
+    cameraInputRef.current?.click();
   };
 
   // Close/cancel handler - go to gallery
@@ -230,7 +237,96 @@ export default function UploadPage() {
           </p>
 
           {/* Primary Action Button */}
+          {isMobile ? (
+            <div style={{ display: 'flex', flexDirection: 'column', gap: '12px' }}>
+              <button
+                type="button"
+                onClick={handleChooseFromGallery}
+                style={{
+                  display: 'inline-flex',
+                  alignItems: 'center',
+                  justifyContent: 'center',
+                  gap: '8px',
+                  padding: '16px 32px',
+                  fontSize: '16px',
+                  fontWeight: '600',
+                  color: '#ffffff',
+                  background: 'linear-gradient(135deg, #4f46e5 0%, #7c3aed 100%)',
+                  border: 'none',
+                  borderRadius: '12px',
+                  cursor: 'pointer',
+                  boxShadow: '0 4px 12px rgba(79, 70, 229, 0.4)',
+                  transition: 'transform 0.2s, box-shadow 0.2s'
+                }}
+                aria-label="Choose from gallery"
+                onMouseEnter={(e) => {
+                  e.currentTarget.style.transform = 'translateY(-2px)';
+                  e.currentTarget.style.boxShadow = '0 6px 20px rgba(79, 70, 229, 0.5)';
+                }}
+                onMouseLeave={(e) => {
+                  e.currentTarget.style.transform = 'translateY(0)';
+                  e.currentTarget.style.boxShadow = '0 4px 12px rgba(79, 70, 229, 0.4)';
+                }}
+              >
+                <svg 
+                  width="20" 
+                  height="20" 
+                  fill="none" 
+                  stroke="currentColor" 
+                  viewBox="0 0 24 24"
+                  strokeWidth="2"
+                >
+                  <path d="M22 19a2 2 0 01-2 2H4a2 2 0 01-2-2V5a2 2 0 012-2h5l2 3h9a2 2 0 012 2z" />
+                </svg>
+                Choose from gallery
+              </button>
+
+              <button
+                type="button"
+                onClick={handleTakePhoto}
+                style={{
+                  display: 'inline-flex',
+                  alignItems: 'center',
+                  justifyContent: 'center',
+                  gap: '8px',
+                  padding: '16px 32px',
+                  fontSize: '16px',
+                  fontWeight: '600',
+                  color: '#1e293b',
+                  background: '#ffffff',
+                  border: '1px solid #e2e8f0',
+                  borderRadius: '12px',
+                  cursor: 'pointer',
+                  boxShadow: '0 4px 12px rgba(0, 0, 0, 0.06)',
+                  transition: 'transform 0.2s, box-shadow 0.2s'
+                }}
+                aria-label="Take photo"
+                onMouseEnter={(e) => {
+                  e.currentTarget.style.transform = 'translateY(-2px)';
+                  e.currentTarget.style.boxShadow = '0 6px 20px rgba(0, 0, 0, 0.10)';
+                }}
+                onMouseLeave={(e) => {
+                  e.currentTarget.style.transform = 'translateY(0)';
+                  e.currentTarget.style.boxShadow = '0 4px 12px rgba(0, 0, 0, 0.06)';
+                }}
+              >
+                <svg 
+                  width="20" 
+                  height="20" 
+                  fill="none" 
+                  stroke="currentColor" 
+                  viewBox="0 0 24 24"
+                  strokeWidth="2"
+                >
+                  <path d="M23 19a2 2 0 01-2 2H3a2 2 0 01-2-2V7a2 2 0 012-2h3l2-2h8l2 2h3a2 2 0 012 2z" />
+                  <circle cx="12" cy="13" r="4" />
+                </svg>
+                Take photo
+              </button>
+            </div>
+          ) : (
           <button
+            type="button"
             onClick={handleStartUpload}
             style={{
               display: 'inline-flex',
@@ -268,18 +364,29 @@ export default function UploadPage() {
             </svg>
             Select Photos
           </button>
+          )}
           
-          {/* Hidden file input for Firefox/Safari fallback */}
+          {/* Hidden inputs: gallery (no capture) + camera (capture=environment) */}
           <input
             type="file"
             accept="image/*,.heic,.heif,.png,.jpg,.jpeg"
-            capture={android ? 'environment' : undefined}
             multiple
             className="hidden"
             style={{ display: 'none' }}
-            ref={fileInputRef}
+            ref={galleryInputRef}
             onChange={handleNativeSelection}
-            data-testid="file-input"
+            data-testid="gallery-input"
+          />
+          <input
+            type="file"
+            accept="image/*,.heic,.heif,.png,.jpg,.jpeg"
+            multiple
+            className="hidden"
+            style={{ display: 'none' }}
+            ref={cameraInputRef}
+            capture="environment"
+            onChange={handleNativeSelection}
+            data-testid="camera-input"
           />
 
           {/* Secondary link */}

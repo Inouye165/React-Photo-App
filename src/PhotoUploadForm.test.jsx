@@ -1,9 +1,15 @@
 import React from 'react'
-import { describe, it, expect, vi, beforeEach } from 'vitest'
+import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest'
 import { render, screen, fireEvent } from '@testing-library/react'
 import userEvent from '@testing-library/user-event'
 import PhotoUploadForm from './PhotoUploadForm'
 import useStore from './store'
+
+vi.mock('./utils/isProbablyMobile', () => ({
+  isProbablyMobile: vi.fn(),
+}))
+
+import { isProbablyMobile } from './utils/isProbablyMobile'
 
 // Mock @tanstack/react-virtual
 vi.mock('@tanstack/react-virtual', () => ({
@@ -30,9 +36,13 @@ vi.mock('./store', () => ({
 }))
 
 describe('PhotoUploadForm Component', () => {
-    it('falls back to file input on unsupported browsers', async () => {
+  let querySelectorSpy;
+  let prevShowDirectoryPicker;
+
+  it('falls back to file input on unsupported browsers', async () => {
+      const user = userEvent.setup()
       // Remove showDirectoryPicker from window
-      delete window.showDirectoryPicker;
+      delete window.showDirectoryPicker
       render(
         <PhotoUploadForm
           {...mockProps}
@@ -40,14 +50,14 @@ describe('PhotoUploadForm Component', () => {
         />
       );
       // Get the folder input using testid
-      const folderInput = screen.getByTestId('folder-input');
-      const fileInputClickSpy = vi.fn();
-      folderInput.click = fileInputClickSpy;
+      const folderInput = screen.getByTestId('folder-input')
+      const fileInputClickSpy = vi.fn()
+      folderInput.click = fileInputClickSpy
       // Click Change Folder
-      const changeFolderBtn = screen.getByText('Change Folder');
-      await userEvent.click(changeFolderBtn);
-      expect(fileInputClickSpy).toHaveBeenCalled();
-    });
+      const changeFolderBtn = screen.getByText('Change Folder')
+      await user.click(changeFolderBtn)
+      expect(fileInputClickSpy).toHaveBeenCalled()
+    })
   const mockFile = new File(['test'], 'test.jpg', { type: 'image/jpeg', lastModified: Date.now() })
   
   const mockFilteredPhotos = [
@@ -82,6 +92,8 @@ describe('PhotoUploadForm Component', () => {
 
   beforeEach(() => {
     vi.clearAllMocks()
+    isProbablyMobile.mockReturnValue(false)
+    prevShowDirectoryPicker = window.showDirectoryPicker
     
     // Mock useStore to return our mock state
     useStore.mockImplementation((selector) => {
@@ -95,12 +107,21 @@ describe('PhotoUploadForm Component', () => {
     Element.prototype.focus = vi.fn()
     Element.prototype.scrollIntoView = vi.fn()
     
-    // Mock querySelector for toolbar positioning
-    document.querySelector = vi.fn().mockReturnValue({
+    // Mock querySelector for toolbar positioning (avoid global overwrite)
+    querySelectorSpy = vi.spyOn(document, 'querySelector').mockReturnValue({
       getBoundingClientRect: () => ({
         bottom: 100,
       }),
     })
+  })
+
+  afterEach(() => {
+    try {
+      querySelectorSpy?.mockRestore?.()
+    } catch {
+      /* ignore */
+    }
+    window.showDirectoryPicker = prevShowDirectoryPicker
   })
 
   it('renders modal with correct title', () => {
@@ -190,14 +211,14 @@ describe('PhotoUploadForm Component', () => {
   })
 
   it('calls onReopenFolder when Change Folder button is clicked', async () => {
+    const user = userEvent.setup()
     // Simulate showDirectoryPicker support
-    window.showDirectoryPicker = () => Promise.resolve();
-    const user = userEvent.setup();
-    render(<PhotoUploadForm {...mockProps} filteredLocalPhotos={[]} />);
-    await user.click(screen.getByText('Change Folder'));
-    expect(mockProps.onReopenFolder).toHaveBeenCalledOnce();
-    // Clean up
-    delete window.showDirectoryPicker;
+    const prev = window.showDirectoryPicker
+    window.showDirectoryPicker = () => Promise.resolve()
+    render(<PhotoUploadForm {...mockProps} filteredLocalPhotos={[]} />)
+    await user.click(screen.getByText('Change Folder'))
+    expect(mockProps.onReopenFolder).toHaveBeenCalledOnce()
+    window.showDirectoryPicker = prev
   })
 
   it('calls store action when close button is clicked', async () => {
@@ -318,28 +339,47 @@ describe('PhotoUploadForm Component', () => {
   })
 
   describe('Mobile Camera Roll Access', () => {
-    it('renders mobile photo input with correct accept attribute', () => {
+    it('renders separate gallery + camera inputs with correct accept/capture attributes (mobile)', () => {
+      isProbablyMobile.mockReturnValue(true)
       render(<PhotoUploadForm {...mockProps} />)
-      
-      const mobileInput = screen.getByTestId('mobile-photo-input')
-      expect(mobileInput).toBeInTheDocument()
-      expect(mobileInput).toHaveAttribute('type', 'file')
-      expect(mobileInput.getAttribute('accept')).toMatch(/image\/png/)
-      expect(mobileInput.getAttribute('accept')).toMatch(/image\/jpeg/)
-      expect(mobileInput.getAttribute('accept')).toMatch(/image\/heic/)
-      expect(mobileInput.getAttribute('accept')).toMatch(/image\/heif/)
-      expect(mobileInput).toHaveAttribute('multiple')
+
+      const galleryInput = screen.getByTestId('mobile-gallery-input')
+      const cameraInput = screen.getByTestId('mobile-camera-input')
+      expect(galleryInput).toBeInTheDocument()
+      expect(cameraInput).toBeInTheDocument()
+
+      expect(galleryInput).toHaveAttribute('type', 'file')
+      expect(galleryInput.getAttribute('accept')).toMatch(/image\/png/)
+      expect(galleryInput.getAttribute('accept')).toMatch(/image\/jpeg/)
+      expect(galleryInput.getAttribute('accept')).toMatch(/image\/heic/)
+      expect(galleryInput.getAttribute('accept')).toMatch(/image\/heif/)
+      expect(galleryInput).toHaveAttribute('multiple')
+      expect(galleryInput).not.toHaveAttribute('capture')
+
+      expect(cameraInput).toHaveAttribute('type', 'file')
+      expect(cameraInput.getAttribute('accept')).toMatch(/image\/png/)
+      expect(cameraInput.getAttribute('accept')).toMatch(/image\/jpeg/)
+      expect(cameraInput.getAttribute('accept')).toMatch(/image\/heic/)
+      expect(cameraInput.getAttribute('accept')).toMatch(/image\/heif/)
+      expect(cameraInput).toHaveAttribute('multiple')
+      expect(cameraInput).toHaveAttribute('capture', 'environment')
     })
 
-    it('has separate inputs for folder and mobile photo selection', () => {
+    it('shows two explicit buttons on mobile and wires them to the correct inputs', async () => {
+      isProbablyMobile.mockReturnValue(true)
+      const user = userEvent.setup()
       render(<PhotoUploadForm {...mockProps} />)
-      
-      const folderInput = screen.getByTestId('folder-input')
-      const mobileInput = screen.getByTestId('mobile-photo-input')
-      
-      expect(folderInput).toBeInTheDocument()
-      expect(mobileInput).toBeInTheDocument()
-      expect(folderInput).not.toBe(mobileInput)
+
+      const galleryInput = screen.getByTestId('mobile-gallery-input')
+      const cameraInput = screen.getByTestId('mobile-camera-input')
+      galleryInput.click = vi.fn()
+      cameraInput.click = vi.fn()
+
+      await user.click(screen.getByRole('button', { name: /choose from gallery/i }))
+      expect(galleryInput.click).toHaveBeenCalled()
+
+      await user.click(screen.getByRole('button', { name: /take photo/i }))
+      expect(cameraInput.click).toHaveBeenCalled()
     })
 
     it('folder input has webkitdirectory attribute for folder selection', () => {

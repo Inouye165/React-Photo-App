@@ -1,8 +1,15 @@
 import React from 'react';
 import { render, screen } from '@testing-library/react';
+import userEvent from '@testing-library/user-event';
 import { describe, it, expect, vi, beforeEach } from 'vitest';
 import UploadPage from './UploadPage';
 import { BrowserRouter } from 'react-router-dom';
+
+vi.mock('../utils/isProbablyMobile', () => ({
+  isProbablyMobile: vi.fn(),
+}));
+
+import { isProbablyMobile } from '../utils/isProbablyMobile';
 
 // Mock dependencies
 vi.mock('react-router-dom', async () => {
@@ -39,28 +46,51 @@ vi.mock('../PhotoUploadForm.jsx', () => ({
 describe('UploadPage', () => {
   beforeEach(() => {
     vi.clearAllMocks();
+    isProbablyMobile.mockReturnValue(false);
   });
 
-  it('renders the file input with correct attributes for mobile support', () => {
+  it('renders the hidden gallery + camera inputs with correct attributes', () => {
     render(
       <BrowserRouter>
         <UploadPage />
       </BrowserRouter>
     );
 
-    // Find the hidden file input by test id
-    const fileInput = screen.getByTestId('file-input');
+    const galleryInput = screen.getByTestId('gallery-input');
+    const cameraInput = screen.getByTestId('camera-input');
 
-    expect(fileInput).toBeInTheDocument();
+    expect(galleryInput).toBeInTheDocument();
+    expect(cameraInput).toBeInTheDocument();
 
-    // 1. Assert webkitdirectory attribute is absent
-    expect(fileInput).not.toHaveAttribute('webkitdirectory');
+    expect(galleryInput).toHaveAttribute('accept', 'image/*,.heic,.heif,.png,.jpg,.jpeg');
+    expect(galleryInput).toHaveAttribute('multiple');
+    expect(galleryInput).not.toHaveAttribute('capture');
 
-    // 2. Assert accept attribute contains image/*
-    expect(fileInput).toHaveAttribute('accept', 'image/*,.heic,.heif,.png,.jpg,.jpeg');
+    expect(cameraInput).toHaveAttribute('accept', 'image/*,.heic,.heif,.png,.jpg,.jpeg');
+    expect(cameraInput).toHaveAttribute('multiple');
+    expect(cameraInput).toHaveAttribute('capture', 'environment');
+  });
 
-    // 3. Assert multiple is present
-    expect(fileInput).toHaveAttribute('multiple');
+  it('shows two explicit buttons on mobile and wires them to the correct inputs', async () => {
+    isProbablyMobile.mockReturnValue(true);
+
+    const user = userEvent.setup();
+    render(
+      <BrowserRouter>
+        <UploadPage />
+      </BrowserRouter>
+    );
+
+    const galleryInput = screen.getByTestId('gallery-input');
+    const cameraInput = screen.getByTestId('camera-input');
+    galleryInput.click = vi.fn();
+    cameraInput.click = vi.fn();
+
+    await user.click(screen.getByRole('button', { name: /choose from gallery/i }));
+    expect(galleryInput.click).toHaveBeenCalled();
+
+    await user.click(screen.getByRole('button', { name: /take photo/i }));
+    expect(cameraInput.click).toHaveBeenCalled();
   });
 
   it('displays the correct button text for file selection', () => {
