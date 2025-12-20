@@ -1,5 +1,5 @@
 import React, { useEffect, useState } from 'react';
-import { useNavigate } from 'react-router-dom';
+import { useLocation, useNavigate } from 'react-router-dom';
 import { useAuth } from '../contexts/AuthContext';
 import { getPhotoStatus } from '../api';
 
@@ -25,7 +25,8 @@ import { getPhotoStatus } from '../api';
  */
 export default function SmartRouter() {
   const navigate = useNavigate();
-  const { user, loading: authLoading, cookieReady } = useAuth();
+  const location = useLocation();
+  const { user, loading: authLoading, cookieReady, profile, profileLoading } = useAuth();
   const [status, setStatus] = useState('loading'); // 'loading' | 'redirecting' | 'error'
   const [errorMessage, setErrorMessage] = useState('');
 
@@ -41,6 +42,18 @@ export default function SmartRouter() {
 
     // Wait for cookie to be synced before making API calls
     if (!cookieReady) return;
+
+    // Identity Gate (defense in depth):
+    // If user hasn't set a username, redirect before doing any other work.
+    if (user) {
+      if (profileLoading) return;
+      const onSetUsernamePage = location.pathname === '/set-username';
+      if (!onSetUsernamePage && profile && profile.has_set_username === false) {
+        setStatus('redirecting');
+        navigate('/set-username', { replace: true });
+        return;
+      }
+    }
 
     let cancelled = false;
 
@@ -86,7 +99,7 @@ export default function SmartRouter() {
     return () => {
       cancelled = true;
     };
-  }, [user, authLoading, cookieReady, navigate]);
+  }, [user, authLoading, cookieReady, profile, profileLoading, navigate, location.pathname]);
 
   // Loading state with spinner
   if (status === 'loading' || status === 'redirecting' || authLoading) {

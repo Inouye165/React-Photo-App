@@ -1,5 +1,5 @@
 import React from 'react';
-import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest';
+import { describe, it, expect, vi, beforeEach } from 'vitest';
 import { render, screen, waitFor } from '@testing-library/react';
 import { MemoryRouter, Routes, Route, useLocation } from 'react-router-dom';
 import SmartRouter from './SmartRouter.jsx';
@@ -22,6 +22,8 @@ vi.mock('../contexts/AuthContext', () => ({
     user: { id: 'test-user-id', email: 'test@example.com' },
     loading: false,
     cookieReady: true,
+    profileLoading: false,
+    profile: { id: 'test-user-id', username: 'testuser', has_set_username: true },
   })),
 }));
 
@@ -57,11 +59,41 @@ describe('SmartRouter Component', () => {
     vi.clearAllMocks();
   });
 
-  afterEach(() => {
-    vi.resetAllMocks();
-  });
-
   describe('Smart Routing Logic', () => {
+    it('redirects to /set-username when user has not set a username', async () => {
+      // Override AuthContext for this test
+      const { useAuth } = await import('../contexts/AuthContext');
+      // Use a stable return value across re-renders to avoid falling back
+      // to the default profile after the first render.
+      useAuth.mockReturnValue({
+        user: { id: 'test-user-id', email: 'test@example.com' },
+        loading: false,
+        cookieReady: true,
+        profileLoading: false,
+        profile: { id: 'test-user-id', username: null, has_set_username: false },
+      });
+
+      mockGetPhotoStatus.mockResolvedValueOnce({
+        success: true,
+        working: 0,
+        inprogress: 0,
+        finished: 0,
+        total: 0,
+      });
+
+      render(
+        <TestWrapper>
+          <SmartRouter />
+        </TestWrapper>
+      );
+
+      await waitFor(() => {
+        expect(mockNavigate).toHaveBeenCalledWith('/set-username', { replace: true });
+      });
+
+      expect(mockGetPhotoStatus).not.toHaveBeenCalled();
+    });
+
     it('Case A: redirects to /upload when user has no photos (total: 0)', async () => {
       // Mock API response: no photos
       mockGetPhotoStatus.mockResolvedValueOnce({

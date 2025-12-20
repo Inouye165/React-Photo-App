@@ -47,6 +47,20 @@ globalThis.Worker = MockWorker;
 
 // Mock API responses for consistent testing
 const mockApiResponses = {
+  '/api/users/me/preferences': {
+    success: true,
+    data: {
+      gradingScales: {},
+    },
+  },
+  '/api/users/me': {
+    success: true,
+    data: {
+      id: '11111111-1111-4111-8111-111111111111',
+      username: 'testuser',
+      has_set_username: true,
+    },
+  },
   '/api/photos': {
     success: true,
     photos: [
@@ -133,7 +147,7 @@ global.localStorage = localStorageMock
 global.showDirectoryPicker = vi.fn()
 
 // Enhanced fetch mock that returns appropriate responses
-global.fetch = vi.fn().mockImplementation((url, options = {}) => {
+const defaultFetchImpl = (url, options = {}) => {
   const _method = options.method || 'GET';
   
   // Handle different API endpoints
@@ -180,7 +194,9 @@ global.fetch = vi.fn().mockImplementation((url, options = {}) => {
     json: async () => ({ error: 'Not found' }),
     text: async () => 'Not found',
   });
-});
+};
+
+global.fetch = vi.fn().mockImplementation(defaultFetchImpl);
 
 // Mock window.open for external links
 global.open = vi.fn()
@@ -314,6 +330,12 @@ afterEach(() => {
     global.gc();
   }
   
-  // Clear fetch mock history
-  global.fetch.mockClear();
+  // Clear fetch mock history (if it is still a mock)
+  if (global.fetch && typeof global.fetch.mockClear === 'function') {
+    global.fetch.mockClear();
+  }
+
+  // IMPORTANT: Some tests overwrite global.fetch. Restore our default implementation
+  // so later tests don't observe an unconfigured fetch returning undefined.
+  global.fetch = vi.fn().mockImplementation(defaultFetchImpl);
 })

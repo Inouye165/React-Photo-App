@@ -4,6 +4,7 @@ import { logGlobalError } from './utils/globalLog';
 import GlobalErrorBoundary from './components/GlobalErrorBoundary.jsx';
 import MainLayout from './layouts/MainLayout.jsx';
 import SmartRouter from './components/SmartRouter.jsx';
+import IdentityGate from './components/IdentityGate.jsx';
 import PhotoGalleryPage from './pages/PhotoGalleryPage.jsx';
 import PhotoDetailPage from './pages/PhotoDetailPage.tsx';
 import PhotoEditPage from './pages/PhotoEditPage.jsx';
@@ -11,6 +12,7 @@ import UploadPage from './pages/UploadPage.jsx';
 import SettingsPage from './pages/SettingsPage.jsx';
 import AuthWrapper from './components/AuthWrapper';
 import ResetPasswordPage from './pages/ResetPasswordPage.jsx';
+import SetUsernamePage from './pages/SetUsernamePage.jsx';
 
 /**
  * App - Root component with routing and error boundary
@@ -45,27 +47,31 @@ function App() {
       <BrowserRouter>
         <Routes>
           <Route path="/reset-password" element={<ResetPasswordPage />} />
-          <Route element={<AuthWrapper><MainLayout /></AuthWrapper>}>
-            {/* Smart Router - determines initial landing page based on photo state */}
-            <Route index element={<SmartRouter />} />
-            
-            {/* Unified gallery view */}
-            <Route path="/gallery" element={<PhotoGalleryPage />} />
-            
-            {/* Dedicated upload page */}
-            <Route path="/upload" element={<UploadPage />} />
-            
-            {/* Settings page */}
-            <Route path="/settings" element={<SettingsPage />} />
-            
-            {/* Photo detail view */}
-            <Route path="/photos/:id" element={<PhotoDetailPage />} />
-            
-            {/* Photo edit view */}
-            <Route path="/photos/:id/edit" element={<PhotoEditPage />} />
-            
-            {/* Catch-all redirect to SmartRouter */}
-            <Route path="*" element={<SmartRouter />} />
+          <Route element={<AuthWrapper><IdentityGate /></AuthWrapper>}>
+            <Route element={<MainLayout />}>
+              <Route path="/set-username" element={<SetUsernamePage />} />
+
+              {/* Smart Router - determines initial landing page based on photo state */}
+              <Route index element={<SmartRouter />} />
+              
+              {/* Unified gallery view */}
+              <Route path="/gallery" element={<PhotoGalleryPage />} />
+              
+              {/* Dedicated upload page */}
+              <Route path="/upload" element={<UploadPage />} />
+              
+              {/* Settings page */}
+              <Route path="/settings" element={<SettingsPage />} />
+              
+              {/* Photo detail view */}
+              <Route path="/photos/:id" element={<PhotoDetailPage />} />
+              
+              {/* Photo edit view */}
+              <Route path="/photos/:id/edit" element={<PhotoEditPage />} />
+              
+              {/* Catch-all redirect to SmartRouter */}
+              <Route path="*" element={<SmartRouter />} />
+            </Route>
           </Route>
         </Routes>
       </BrowserRouter>
