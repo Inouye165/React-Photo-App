@@ -70,24 +70,38 @@ cd server && npm test
 - [ ] **Cross-Device Login**: Same account works on multiple machines
 
 ## Automated Test Coverage
+This repo has frontend (Vitest) and backend (Jest) suites.
 
-### Frontend tests
+### Frontend (Vitest)
+As of the latest run, the frontend suite contains **476** tests across **182** test suites (475 passing, 1 skipped/pending).
 ```bash
 # Run with coverage
 npm run test:coverage
 
-# Test specific component
-npx vitest run src/tests/authUtils.test.js
+# Produce a machine-readable summary (used for the counts above)
+npx vitest run --reporter=json --outputFile test-results/vitest-summary.json
 ```
 
-This covers core UI behavior (auth flows, component interactions, and regression coverage for the main screens).
+**Covers:**
+- UI rendering and interactions
+- Auth flows and auth-error handling
+- Upload flow and client-side thumbnail/HEIC handling
+- Accessibility checks
 
-### Backend tests
+### Backend (Jest)
+As of the latest run, the backend suite contains **690** tests across **95** test suites (684 passing, 6 skipped/pending).
 ```bash
 cd server && npm test
+
+# Produce a machine-readable summary (used for the counts above)
+cd server && npm test -- --json --outputFile ..\\test-results\\jest-server-summary.json
 ```
 
-This covers auth middleware behavior, image access rules, upload/processing paths, and security-related regressions.
+**Covers:**
+- Auth and middleware behavior
+- Image access and upload routes
+- Security checks (rate limiting, headers, access control)
+- Database operations and error handling
 
 ## Common Issues & Solutions
 
@@ -104,12 +118,12 @@ This covers auth middleware behavior, image access rules, upload/processing path
 ### 🖼️ HEIC Issues  
 **Problem**: HEIC files not displaying
 - **Check**: Server logs for conversion errors
-- **Check**: Worker is running (thumbnails/conversion happen in background jobs)
-- **Notes**: The app is intended to work without ImageMagick; conversion uses Sharp plus a `heic-convert` fallback.
+- **Check**: Your Node dependencies installed cleanly (`npm install` in root + `server`)
+- **Note**: ImageMagick is not required for this project; HEIC/HEIF conversion uses Sharp with a `heic-convert` fallback.
 
 **Problem**: "Bad seek" errors in console
-- **Expected**: Some HEIC variants can fail to decode in Sharp.
-- **Action**: Check server logs for whether the `heic-convert` fallback succeeded; if not, capture the failing file and open an issue.
+- **Expected**: These can happen when a specific HEIC variant can't be decoded cleanly.
+- **Action**: Check server logs to confirm whether the fallback conversion succeeded; if both converters fail, the file may be skipped/rejected.
 
 ### 🔧 Development Issues
 **Problem**: Port conflicts (EADDRINUSE)
