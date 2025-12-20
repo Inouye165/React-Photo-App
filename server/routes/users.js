@@ -47,7 +47,7 @@ function createUsersRouter({ db }) {
       }
 
       const row = await db('users')
-        .select('id', 'username', 'has_set_username', 'created_at', 'updated_at')
+        .select('id', 'username', 'has_set_username')
         .where({ id: userId })
         .first();
 
@@ -64,7 +64,14 @@ function createUsersRouter({ db }) {
         });
       }
 
-      return res.json({ success: true, data: row });
+      return res.json({
+        success: true,
+        data: {
+          id: row.id,
+          username: row.username ?? null,
+          has_set_username: Boolean(row.has_set_username),
+        },
+      });
     } catch (error) {
       logger.error('[users] GET /me error:', error);
       return res.status(500).json({ success: false, error: 'Failed to fetch profile' });
@@ -132,12 +139,16 @@ function createUsersRouter({ db }) {
           updated_at: db.fn.now(),
         });
 
-      const updated = await db('users')
-        .select('id', 'username', 'has_set_username', 'created_at', 'updated_at')
-        .where({ id: userId })
-        .first();
+      const updated = await db('users').select('id', 'username', 'has_set_username').where({ id: userId }).first();
 
-      return res.json({ success: true, data: updated });
+      return res.json({
+        success: true,
+        data: {
+          id: updated?.id ?? userId,
+          username: updated?.username ?? username,
+          has_set_username: updated ? Boolean(updated.has_set_username) : true,
+        },
+      });
     } catch (error) {
       logger.error('[users] PATCH /me error:', error);
       return res.status(500).json({ success: false, error: 'Failed to update profile' });

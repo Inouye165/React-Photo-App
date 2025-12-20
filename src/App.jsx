@@ -4,7 +4,7 @@ import { logGlobalError } from './utils/globalLog';
 import GlobalErrorBoundary from './components/GlobalErrorBoundary.jsx';
 import MainLayout from './layouts/MainLayout.jsx';
 import SmartRouter from './components/SmartRouter.jsx';
-import IdentityGate from './components/IdentityGate.jsx';
+import IdentityGate from './components/IdentityGate.tsx';
 import PhotoGalleryPage from './pages/PhotoGalleryPage.jsx';
 import PhotoDetailPage from './pages/PhotoDetailPage.tsx';
 import PhotoEditPage from './pages/PhotoEditPage.jsx';
@@ -12,7 +12,7 @@ import UploadPage from './pages/UploadPage.jsx';
 import SettingsPage from './pages/SettingsPage.jsx';
 import AuthWrapper from './components/AuthWrapper';
 import ResetPasswordPage from './pages/ResetPasswordPage.jsx';
-import SetUsernamePage from './pages/SetUsernamePage.jsx';
+import SetUsernamePage from './pages/SetUsernamePage.tsx';
 
 /**
  * App - Root component with routing and error boundary

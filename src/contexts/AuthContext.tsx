@@ -258,7 +258,9 @@ export function AuthProvider({ children }: { children: ReactNode }): ReactNode {
       return
     }
 
-    if (lastProfileUserIdRef.current === user.id && profile) {
+    const userId = user.id
+
+    if (lastProfileUserIdRef.current === userId && profile) {
       return
     }
 
@@ -274,7 +276,7 @@ export function AuthProvider({ children }: { children: ReactNode }): ReactNode {
         if (cancelled) return
         if (next) {
           setProfile(next)
-          lastProfileUserIdRef.current = user.id
+          lastProfileUserIdRef.current = userId
         } else {
           setProfile(null)
         }
