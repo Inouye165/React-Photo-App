@@ -1129,14 +1129,20 @@ export async function getOrCreateRoom(otherUserId: string): Promise<ChatRoom> {
   if (roomError) throw roomError
   if (!room) throw new Error('Failed to create room')
 
-  const { error: membersError } = await supabase
+  // Insert membership rows sequentially.
+  // This plays nicely with RLS policies that allow adding other members only
+  // after the current user is already a member.
+  const { error: selfMemberError } = await supabase
     .from('room_members')
-    .insert([
-      { room_id: (room as ChatRoom).id, user_id: userId },
-      { room_id: (room as ChatRoom).id, user_id: otherUserId },
-    ])
+    .insert({ room_id: (room as ChatRoom).id, user_id: userId })
 
-  if (membersError) throw membersError
+  if (selfMemberError) throw selfMemberError
+
+  const { error: otherMemberError } = await supabase
+    .from('room_members')
+    .insert({ room_id: (room as ChatRoom).id, user_id: otherUserId })
+
+  if (otherMemberError) throw otherMemberError
   return room as ChatRoom
 }
 
