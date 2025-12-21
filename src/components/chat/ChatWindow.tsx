@@ -1,11 +1,14 @@
 import { useEffect, useMemo, useRef, useState } from 'react'
 
-import { sendMessage } from '../../api'
+import { Image as ImageIcon, X } from 'lucide-react'
+
+import { API_BASE_URL, getAccessToken, getPhotos, sendMessage } from '../../api'
 import { useChatRealtime } from '../../hooks/useChatRealtime'
 import { usePresence } from '../../hooks/usePresence'
 import { supabase } from '../../supabaseClient'
 import type { ChatMessage } from '../../types/chat'
 import { useAuth } from '../../contexts/AuthContext'
+import { toUrl } from '../../utils/toUrl'
 import ChatBubble from './ChatBubble'
 
 export interface ChatWindowProps {
@@ -35,6 +38,12 @@ export default function ChatWindow({ roomId }: ChatWindowProps) {
   const [draft, setDraft] = useState<string>('')
   const [sending, setSending] = useState<boolean>(false)
   const [sendError, setSendError] = useState<string | null>(null)
+
+  const [pickerOpen, setPickerOpen] = useState<boolean>(false)
+  const [pickerLoading, setPickerLoading] = useState<boolean>(false)
+  const [pickerError, setPickerError] = useState<string | null>(null)
+  const [pickerPhotos, setPickerPhotos] = useState<Array<{ id: number; thumbnail?: string; url?: string }>>([])
+  const [selectedPhotoId, setSelectedPhotoId] = useState<number | null>(null)
 
   const [idToUsername, setIdToUsername] = useState<Record<string, string | null>>({})
   const [header, setHeader] = useState<ChatHeaderState>({ title: 'Conversation', isGroup: false, otherUserId: null })
@@ -163,20 +172,64 @@ export default function ChatWindow({ roomId }: ChatWindowProps) {
     setDraft('')
     setSendError(null)
     setSending(false)
+    setPickerOpen(false)
+    setPickerError(null)
+    setPickerLoading(false)
+    setPickerPhotos([])
+    setSelectedPhotoId(null)
   }, [roomId])
+
+  useEffect(() => {
+    if (!pickerOpen) return
+    if (pickerLoading) return
+    if (pickerPhotos.length) return
+
+    let cancelled = false
+    async function run(): Promise<void> {
+      try {
+        setPickerLoading(true)
+        setPickerError(null)
+        const res = await getPhotos()
+        if (cancelled) return
+        const list = (res?.success && Array.isArray(res.photos) ? res.photos : []) as Array<{ id: number | string; thumbnail?: string; url?: string }>
+        const normalized = list
+          .map((p) => ({
+            id: typeof p.id === 'number' ? p.id : Number(p.id),
+            thumbnail: typeof p.thumbnail === 'string' ? p.thumbnail : undefined,
+            url: typeof p.url === 'string' ? p.url : undefined,
+          }))
+          .filter((p) => Number.isFinite(p.id) && p.id > 0)
+          .slice(0, 24)
+
+        setPickerPhotos(normalized)
+      } catch (err) {
+        const message = err instanceof Error ? err.message : String(err)
+        if (!cancelled) setPickerError(message)
+      } finally {
+        if (!cancelled) setPickerLoading(false)
+      }
+    }
+
+    run()
+    return () => {
+      cancelled = true
+    }
+  }, [pickerOpen, pickerLoading, pickerPhotos.length])
 
   const canSend = Boolean(roomId) && !sending
 
   async function onSend(): Promise<void> {
     if (!roomId) return
     const trimmed = draft.trim()
-    if (!trimmed) return
+    if (!trimmed && selectedPhotoId == null) return
 
     try {
       setSending(true)
       setSendError(null)
-      await sendMessage(roomId, trimmed)
+      await sendMessage(roomId, trimmed, selectedPhotoId)
       setDraft('')
+      setSelectedPhotoId(null)
+      setPickerOpen(false)
     } catch (err) {
       const message = err instanceof Error ? err.message : String(err)
       setSendError(message)
@@ -184,6 +237,18 @@ export default function ChatWindow({ roomId }: ChatWindowProps) {
       setSending(false)
     }
   }
+
+  const selectedPhoto = useMemo(() => {
+    if (selectedPhotoId == null) return null
+    return pickerPhotos.find((p) => p.id === selectedPhotoId) || { id: selectedPhotoId }
+  }, [pickerPhotos, selectedPhotoId])
+
+  const selectedPreviewUrl = useMemo(() => {
+    if (!selectedPhoto) return null
+    const rel = selectedPhoto.thumbnail || selectedPhoto.url
+    if (!rel) return null
+    return toUrl(rel, API_BASE_URL)
+  }, [selectedPhoto])
 
   function getSenderLabel(message: ChatMessage): string {
     if (user?.id && message.sender_id === user.id) {
@@ -228,6 +293,7 @@ export default function ChatWindow({ roomId }: ChatWindowProps) {
             <ChatBubble
               key={m.id}
               message={m}
+              roomId={roomId}
               isOwn={isOwn}
               senderLabel={getSenderLabel(m)}
               timestampLabel={formatTime(m.created_at)}
@@ -241,6 +307,83 @@ export default function ChatWindow({ roomId }: ChatWindowProps) {
       <div className="border-t border-slate-200 bg-white p-3 sm:p-4">
         {sendError && <div className="mb-2 text-sm text-red-600">{sendError}</div>}
 
+        {selectedPhoto && (
+          <div className="mb-2 flex items-center gap-2 rounded-2xl border border-slate-200 bg-slate-50 px-3 py-2">
+            {selectedPreviewUrl ? (
+              <img
+                src={selectedPreviewUrl}
+                alt="Selected photo"
+                className="h-12 w-12 rounded-xl object-cover border border-slate-200"
+              />
+            ) : (
+              <div className="h-12 w-12 rounded-xl bg-slate-200" aria-label="Selected photo" />
+            )}
+            <div className="flex-1 min-w-0">
+              <div className="text-xs font-medium text-slate-700 truncate">Photo #{selectedPhoto.id}</div>
+              <div className="text-[11px] text-slate-500 truncate">Attached to next message</div>
+            </div>
+            <button
+              type="button"
+              onClick={() => setSelectedPhotoId(null)}
+              className="inline-flex items-center justify-center rounded-xl p-2 text-slate-600 hover:bg-slate-100"
+              aria-label="Remove attached photo"
+            >
+              <X className="h-4 w-4" />
+            </button>
+          </div>
+        )}
+
+        {pickerOpen && (
+          <div className="mb-2 rounded-2xl border border-slate-200 bg-white p-3">
+            <div className="flex items-center justify-between">
+              <div className="text-xs font-semibold text-slate-900">Select a photo</div>
+              <button
+                type="button"
+                onClick={() => setPickerOpen(false)}
+                className="inline-flex items-center justify-center rounded-xl p-2 text-slate-600 hover:bg-slate-100"
+                aria-label="Close photo picker"
+              >
+                <X className="h-4 w-4" />
+              </button>
+            </div>
+
+            {pickerLoading && <div className="mt-2 text-sm text-slate-500">Loading photos…</div>}
+            {pickerError && <div className="mt-2 text-sm text-red-600">Failed to load photos: {pickerError}</div>}
+
+            {!pickerLoading && !pickerError && pickerPhotos.length === 0 && (
+              <div className="mt-2 text-sm text-slate-500">No photos available.</div>
+            )}
+
+            {!pickerLoading && !pickerError && pickerPhotos.length > 0 && (
+              <div className="mt-3 grid grid-cols-6 gap-2">
+                {pickerPhotos.map((p) => {
+                  const rel = p.thumbnail || p.url
+                  const src = rel ? toUrl(rel, API_BASE_URL) : null
+                  const isSelected = selectedPhotoId === p.id
+                  return (
+                    <button
+                      key={p.id}
+                      type="button"
+                      onClick={() => {
+                        setSelectedPhotoId(p.id)
+                        setPickerOpen(false)
+                      }}
+                      className={
+                        isSelected
+                          ? 'relative h-12 w-12 rounded-xl border-2 border-slate-900 overflow-hidden'
+                          : 'relative h-12 w-12 rounded-xl border border-slate-200 overflow-hidden hover:border-slate-400'
+                      }
+                      aria-label={`Attach photo ${p.id}`}
+                    >
+                      {src ? <img src={src} alt="" className="h-full w-full object-cover" /> : null}
+                    </button>
+                  )
+                })}
+              </div>
+            )}
+          </div>
+        )}
+
         <form
           className="flex items-end gap-2"
           onSubmit={(e) => {
@@ -248,6 +391,24 @@ export default function ChatWindow({ roomId }: ChatWindowProps) {
             onSend()
           }}
         >
+          <button
+            type="button"
+            disabled={!roomId || sending}
+            onClick={() => {
+              // Keep token warm so fetches that require Authorization can work immediately.
+              // (Picker thumbnails are usually signed and don't need this, but it's safe.)
+              void getAccessToken()
+              setPickerOpen((v) => !v)
+            }}
+            className={
+              !roomId || sending
+                ? 'inline-flex items-center justify-center h-10 w-10 rounded-2xl bg-slate-200 text-slate-500 cursor-not-allowed'
+                : 'inline-flex items-center justify-center h-10 w-10 rounded-2xl bg-slate-100 text-slate-700 hover:bg-slate-200'
+            }
+            aria-label="Attach photo"
+          >
+            <ImageIcon className="h-5 w-5" />
+          </button>
           <textarea
             value={draft}
             onChange={(e) => setDraft(e.target.value)}
@@ -257,9 +418,9 @@ export default function ChatWindow({ roomId }: ChatWindowProps) {
           />
           <button
             type="submit"
-            disabled={!canSend || !draft.trim()}
+            disabled={!canSend || (!draft.trim() && selectedPhotoId == null)}
             className={
-              !canSend || !draft.trim()
+              !canSend || (!draft.trim() && selectedPhotoId == null)
                 ? 'px-4 py-3 rounded-2xl bg-slate-200 text-slate-500 text-sm font-semibold cursor-not-allowed'
                 : 'px-4 py-3 rounded-2xl bg-slate-900 text-white text-sm font-semibold hover:bg-slate-800'
             }

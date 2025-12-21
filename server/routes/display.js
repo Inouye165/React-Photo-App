@@ -218,6 +218,122 @@ module.exports = function createDisplayRouter({ db }) {
     }
   });
 
+  /**
+   * Chat-shared image route
+   *
+   * GET /display/chat-image/:roomId/:photoId
+   *
+   * Authorization rules:
+   * - Caller must be authenticated
+   * - Caller must be a member of :roomId
+   * - The photo must have been shared in that room via a message row
+   * - Defense-in-depth: the shared photo must belong to the message sender
+   */
+  router.get('/chat-image/:roomId/:photoId', authenticateImageRequest, async (req, res) => {
+    const reqId = req.id || req.headers['x-request-id'] || null;
+    res.set('Cross-Origin-Resource-Policy', 'cross-origin');
+    res.set('Cache-Control', 'no-store, max-age=0');
+
+    const { roomId, photoId } = req.params;
+
+    try {
+      if (typeof db !== 'function') {
+        logger.error('Chat display route error', {
+          reqId,
+          roomId,
+          photoId,
+          error: 'DB instance is not a function',
+          dbType: typeof db
+        });
+        return res.status(500).json({ error: 'Internal server error: DB misconfiguration' });
+      }
+
+      // Must be a room member
+      const membership = await db('room_members')
+        .where('room_id', roomId)
+        .andWhere('user_id', req.user.id)
+        .first();
+
+      if (!membership) {
+        return res.status(403).json({ error: 'Forbidden' });
+      }
+
+      // Must be shared in this room, and photo must belong to the sender of that message.
+      const sharedPhoto = await db('messages as m')
+        .join('photos as p', 'p.id', 'm.photo_id')
+        .select('p.*')
+        .where('m.room_id', roomId)
+        .andWhere('m.photo_id', photoId)
+        .whereNotNull('m.photo_id')
+        .whereRaw('p.user_id = m.sender_id')
+        .first();
+
+      if (!sharedPhoto) {
+        return res.status(404).json({ error: 'Photo not found' });
+      }
+
+      const storagePath = sharedPhoto.storage_path || `${sharedPhoto.state}/${sharedPhoto.filename}`;
+      const { data, error } = await supabase.storage.from('photos').download(storagePath);
+
+      if (error || !data) {
+        logger.error('Chat display image: storage error', {
+          reqId,
+          roomId,
+          photoId,
+          storagePath,
+          error: error ? error.message : 'Not found'
+        });
+        return res.status(404).json({ error: 'File not found in storage' });
+      }
+
+      const buffer = await data.arrayBuffer();
+      const fileBuffer = Buffer.from(buffer);
+      const ext = getOriginalExtension(storagePath, sharedPhoto.filename);
+
+      const etag = sharedPhoto.hash || `${sharedPhoto.file_size || ''}-${sharedPhoto.updated_at || ''}-${photoId}`;
+      res.set('ETag', `"${etag}"`);
+
+      const clientEtag = req.headers['if-none-match'];
+      if (clientEtag && (clientEtag === `"${etag}"` || clientEtag === etag)) {
+        return res.status(304).end();
+      }
+
+      const IMAGE_CACHE_MAX_AGE = parseInt(process.env.IMAGE_CACHE_MAX_AGE, 10) || 31536000;
+
+      if (isHeicFormat(ext)) {
+        try {
+          const jpegBuffer = await convertHeicToJpegBuffer(fileBuffer, 95);
+          res.set('Content-Type', 'image/jpeg');
+          res.set('Cache-Control', `private, max-age=${IMAGE_CACHE_MAX_AGE}, immutable`);
+          return res.send(jpegBuffer);
+        } catch (err) {
+          logger.error('Chat display image: HEIC conversion error', {
+            reqId,
+            roomId,
+            photoId,
+            storagePath,
+            error: err.message,
+            stack: err.stack
+          });
+          return res.status(500).json({ error: 'Image conversion failed' });
+        }
+      }
+
+      res.set('Content-Type', getContentTypeForExtension(ext));
+      res.set('Cache-Control', `private, max-age=${IMAGE_CACHE_MAX_AGE}, immutable`);
+      return res.send(fileBuffer);
+    } catch (err) {
+      logger.error('Chat display image: unexpected error', {
+        reqId,
+        roomId,
+        photoId,
+        error: err.message,
+        stack: err.stack
+      });
+      return res.status(500).json({ error: 'Internal server error' });
+    }
+  });
+
   // Legacy filename-based route (kept for backward compatibility)
   router.get('/:state/:filename', authenticateThumbnailOrImage, async (req, res) => {
     const reqId = req.id || req.headers['x-request-id'] || null;
