@@ -34,6 +34,10 @@ export default defineConfig({
       env: {
         VITE_E2E: 'true',
         VITE_API_URL: 'http://127.0.0.1:3001',
+        // Provide a deterministic Supabase base URL so Playwright can mock chat traffic.
+        // This avoids requiring real Supabase credentials for E2E tests.
+        VITE_SUPABASE_URL: 'http://127.0.0.1:5173/__supabase',
+        VITE_SUPABASE_ANON_KEY: 'e2e-anon-key',
       }
     }
   ],

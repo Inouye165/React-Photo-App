@@ -1,6 +1,8 @@
-import { useEffect, useMemo, useState } from 'react'
+import { useEffect, useMemo, useRef, useState } from 'react'
 
-import { fetchRooms } from '../../api'
+import { SquarePen, X } from 'lucide-react'
+
+import { fetchRooms, getOrCreateRoom, searchUsers, type UserSearchResult } from '../../api'
 import { supabase } from '../../supabaseClient'
 import type { ChatRoom } from '../../types/chat'
 import { useAuth } from '../../contexts/AuthContext'
@@ -18,6 +20,12 @@ type RoomListState =
 
 type UserRow = { id: string; username: string | null }
 
+type UserSearchState =
+  | { status: 'idle'; users: UserSearchResult[] }
+  | { status: 'loading'; users: UserSearchResult[] }
+  | { status: 'ready'; users: UserSearchResult[] }
+  | { status: 'error'; users: UserSearchResult[]; error: string }
+
 function formatRoomTitle(room: ChatRoom, otherUsername: string | null): string {
   if (room.name && room.name.trim()) return room.name
   if (!room.is_group) return otherUsername?.trim() || 'Direct message'
@@ -32,6 +40,13 @@ export default function ChatSidebar({ selectedRoomId, onSelectRoom }: ChatSideba
   const [roomToOtherUsername, setRoomToOtherUsername] = useState<Record<string, string | null>>({})
   const [roomToOtherUserId, setRoomToOtherUserId] = useState<Record<string, string>>({})
   const [searchText, setSearchText] = useState<string>('')
+
+  const [isDiscoveryOpen, setIsDiscoveryOpen] = useState<boolean>(false)
+  const [userQuery, setUserQuery] = useState<string>('')
+  const [userSearchState, setUserSearchState] = useState<UserSearchState>({ status: 'idle', users: [] })
+  const [userSearchError, setUserSearchError] = useState<string | null>(null)
+  const [creatingRoom, setCreatingRoom] = useState<boolean>(false)
+  const searchInputRef = useRef<HTMLInputElement | null>(null)
 
   useEffect(() => {
     let cancelled = false
@@ -54,6 +69,74 @@ export default function ChatSidebar({ selectedRoomId, onSelectRoom }: ChatSideba
       cancelled = true
     }
   }, [])
+
+  useEffect(() => {
+    if (!isDiscoveryOpen) return
+
+    // Focus input when opening
+    const id = window.setTimeout(() => {
+      try {
+        searchInputRef.current?.focus()
+      } catch {
+        // ignore
+      }
+    }, 0)
+
+    function onKeyDown(e: KeyboardEvent): void {
+      if (e.key === 'Escape') {
+        e.preventDefault()
+        setIsDiscoveryOpen(false)
+      }
+    }
+
+    window.addEventListener('keydown', onKeyDown)
+    return () => {
+      window.clearTimeout(id)
+      window.removeEventListener('keydown', onKeyDown)
+    }
+  }, [isDiscoveryOpen])
+
+  useEffect(() => {
+    if (!isDiscoveryOpen) return
+
+    const q = userQuery.trim()
+    setUserSearchError(null)
+
+    if (!q) {
+      setUserSearchState({ status: 'idle', users: [] })
+      return
+    }
+
+    let cancelled = false
+    const debounceId = window.setTimeout(() => {
+      setUserSearchState((prev) => ({ status: 'loading', users: prev.users }))
+
+      searchUsers(q)
+        .then((users) => {
+          if (cancelled) return
+          setUserSearchState({ status: 'ready', users })
+        })
+        .catch((err) => {
+          if (cancelled) return
+          const message = err instanceof Error ? err.message : String(err)
+          setUserSearchState({ status: 'error', users: [], error: message })
+        })
+    }, 200)
+
+    return () => {
+      cancelled = true
+      window.clearTimeout(debounceId)
+    }
+  }, [isDiscoveryOpen, userQuery])
+
+  useEffect(() => {
+    if (isDiscoveryOpen) return
+    // Reset modal state when closing
+    setUserQuery('')
+    setUserSearchState({ status: 'idle', users: [] })
+    setUserSearchError(null)
+    setCreatingRoom(false)
+  }, [isDiscoveryOpen])
 
   useEffect(() => {
     let cancelled = false
@@ -146,11 +229,46 @@ export default function ChatSidebar({ selectedRoomId, onSelectRoom }: ChatSideba
     return rooms.filter((room) => (roomIdToSearchKey[room.id] ?? '').includes(q))
   }, [rooms, roomIdToSearchKey, searchText])
 
+  async function onPickUser(target: UserSearchResult): Promise<void> {
+    if (!target?.id) return
+    if (user?.id && target.id === user.id) {
+      setUserSearchError('You cannot start a chat with yourself.')
+      return
+    }
+
+    try {
+      setCreatingRoom(true)
+      setUserSearchError(null)
+      const room = await getOrCreateRoom(target.id)
+      onSelectRoom(room.id)
+      setIsDiscoveryOpen(false)
+    } catch (err) {
+      const message = err instanceof Error ? err.message : String(err)
+      setUserSearchError(message)
+    } finally {
+      setCreatingRoom(false)
+    }
+  }
+
   return (
     <aside className="w-full sm:w-80 shrink-0 border-r border-slate-200 bg-white" aria-label="Chat rooms">
       <div className="p-4 border-b border-slate-200">
-        <h2 className="text-sm font-semibold text-slate-900">Chats</h2>
-        <p className="mt-1 text-xs text-slate-500">Your recent conversations</p>
+        <div className="flex items-start justify-between gap-3">
+          <div className="min-w-0">
+            <h2 className="text-sm font-semibold text-slate-900">Chats</h2>
+            <p className="mt-1 text-xs text-slate-500">Your recent conversations</p>
+          </div>
+
+          <button
+            type="button"
+            onClick={() => setIsDiscoveryOpen(true)}
+            className="shrink-0 rounded-xl border border-slate-200 bg-white p-2 text-slate-700 hover:bg-slate-50"
+            aria-label="New message"
+            data-testid="chat-new-message"
+          >
+            <SquarePen className="h-4 w-4" />
+          </button>
+        </div>
 
         <div className="mt-3">
           <input
@@ -173,10 +291,21 @@ export default function ChatSidebar({ selectedRoomId, onSelectRoom }: ChatSideba
           <div className="p-3 text-sm text-red-600">Failed to load rooms: {roomState.error}</div>
         )}
 
-        {roomState.status === 'ready' && filteredRooms.length === 0 && (
-          <div className="p-3 text-sm text-slate-500">
-            {rooms.length === 0 ? 'No conversations yet.' : 'No matches.'}
+        {roomState.status === 'ready' && filteredRooms.length === 0 && rooms.length === 0 && (
+          <div className="p-3">
+            <div className="text-sm text-slate-600">No conversations yet.</div>
+            <button
+              type="button"
+              onClick={() => setIsDiscoveryOpen(true)}
+              className="mt-3 inline-flex items-center justify-center rounded-xl bg-slate-900 px-4 py-2 text-sm font-semibold text-white hover:bg-slate-800"
+            >
+              Find someone to chat with.
+            </button>
           </div>
+        )}
+
+        {roomState.status === 'ready' && filteredRooms.length === 0 && rooms.length > 0 && (
+          <div className="p-3 text-sm text-slate-500">No matches.</div>
         )}
 
         {roomState.status === 'ready' && filteredRooms.length > 0 && (
@@ -219,6 +348,105 @@ export default function ChatSidebar({ selectedRoomId, onSelectRoom }: ChatSideba
           </ul>
         )}
       </div>
+
+      {isDiscoveryOpen && (
+        <div
+          className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-slate-900/70 backdrop-blur-sm"
+          role="dialog"
+          aria-modal="true"
+          aria-label="Start new chat"
+          onMouseDown={(e) => {
+            // Click outside closes
+            if (e.target === e.currentTarget) setIsDiscoveryOpen(false)
+          }}
+        >
+          <div className="bg-white rounded-2xl shadow-2xl w-full max-w-md overflow-hidden border border-slate-200">
+            <div className="px-5 py-4 border-b border-slate-200 flex items-center justify-between gap-3">
+              <div className="min-w-0">
+                <h3 className="text-sm font-semibold text-slate-900">New message</h3>
+                <p className="mt-1 text-xs text-slate-500">Search by username</p>
+              </div>
+              <button
+                type="button"
+                className="rounded-xl p-2 text-slate-600 hover:bg-slate-50"
+                aria-label="Close"
+                onClick={() => setIsDiscoveryOpen(false)}
+              >
+                <X className="h-4 w-4" />
+              </button>
+            </div>
+
+            <div className="px-5 py-4">
+              <input
+                ref={searchInputRef}
+                type="search"
+                value={userQuery}
+                onChange={(e) => setUserQuery(e.target.value)}
+                placeholder="Type a username…"
+                aria-label="Search users"
+                className="w-full rounded-xl border border-slate-200 bg-white px-3 py-2 text-sm text-slate-900 placeholder:text-slate-400 focus:outline-none focus:ring-2 focus:ring-slate-900/10"
+              />
+
+              {(userSearchError || (userSearchState.status === 'error' ? userSearchState.error : null)) && (
+                <div className="mt-3 text-sm text-red-600">
+                  {userSearchError ?? (userSearchState.status === 'error' ? userSearchState.error : null)}
+                </div>
+              )}
+
+              <div className="mt-4">
+                {userSearchState.status === 'idle' && !userQuery.trim() && (
+                  <div className="text-sm text-slate-500">Start typing to find someone.</div>
+                )}
+
+                {userSearchState.status === 'loading' && (
+                  <div className="text-sm text-slate-500">Searching…</div>
+                )}
+
+                {userQuery.trim() && userSearchState.status === 'ready' && userSearchState.users.length === 0 && (
+                  <div className="text-sm text-slate-500">No users found with that name.</div>
+                )}
+
+                {userSearchState.users.length > 0 && (
+                  <ul className="space-y-1" aria-label="User search results">
+                    {userSearchState.users.map((u) => {
+                      const username = typeof u.username === 'string' && u.username.trim() ? u.username.trim() : 'Unknown'
+                      return (
+                        <li key={u.id}>
+                          <button
+                            type="button"
+                            onClick={() => onPickUser(u)}
+                            disabled={creatingRoom}
+                            className="w-full rounded-xl border border-slate-200 px-3 py-2 text-left hover:bg-slate-50 disabled:opacity-60"
+                            data-testid={`chat-user-result-${u.id}`}
+                          >
+                            <div className="flex items-center gap-3">
+                              {u.avatar_url ? (
+                                <img
+                                  src={u.avatar_url}
+                                  alt=""
+                                  className="h-8 w-8 rounded-full object-cover border border-slate-200"
+                                />
+                              ) : (
+                                <div className="h-8 w-8 rounded-full bg-slate-100 border border-slate-200" aria-hidden="true" />
+                              )}
+                              <div className="min-w-0">
+                                <div className="text-sm font-semibold text-slate-900 truncate">{username}</div>
+                                {user?.id && u.id === user.id && (
+                                  <div className="mt-0.5 text-xs text-slate-500">This is you</div>
+                                )}
+                              </div>
+                            </div>
+                          </button>
+                        </li>
+                      )
+                    })}
+                  </ul>
+                )}
+              </div>
+            </div>
+          </div>
+        </div>
+      )}
     </aside>
   )
 }

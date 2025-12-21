@@ -1010,11 +1010,59 @@ export async function getPhoto(
 // --- Community Chat (Supabase Realtime + RLS tables: public.rooms, public.room_members, public.messages) ---
 
 async function requireAuthedUserId(): Promise<string> {
+  const isE2E = import.meta.env.VITE_E2E === 'true' || window.__E2E_MODE__ === true
+
+  // In E2E mode, AuthContext bypasses Supabase auth and relies on a backend test cookie.
+  // Chat flows still need a stable user id, so we ask the backend verification route.
+  if (isE2E) {
+    const res = await fetch(`${API_BASE_URL}/api/test/e2e-verify`, { method: 'GET', credentials: 'include' })
+    if (res.ok) {
+      const json = (await res.json().catch(() => null)) as
+        | { success?: unknown; user?: { id?: unknown } | null }
+        | null
+      const id = json && json.success && json.user && typeof json.user.id === 'string' ? json.user.id : null
+      if (id) return id
+    }
+    throw new Error('Not authenticated')
+  }
+
   const { data, error } = await supabase.auth.getUser()
   if (error) throw error
   const id = data?.user?.id
   if (!id) throw new Error('Not authenticated')
   return id
+}
+
+export type UserSearchResult = {
+  id: string
+  username: string | null
+  avatar_url: string | null
+}
+
+export async function searchUsers(query: string): Promise<UserSearchResult[]> {
+  const q = query.trim()
+  if (!q) return []
+
+  // Enforce auth (RLS expectation) while keeping E2E flows working.
+  await requireAuthedUserId()
+
+  const { data, error } = await supabase
+    .from('users')
+    .select('id, username, avatar_url')
+    .ilike('username', `%${q}%`)
+    .limit(20)
+
+  if (error) throw error
+
+  const rows = (data ?? []) as Array<Partial<UserSearchResult>>
+  return rows
+    .filter((r): r is UserSearchResult => typeof r.id === 'string')
+    .map((r) => ({
+      id: r.id,
+      username: typeof r.username === 'string' ? r.username : null,
+      avatar_url: typeof r.avatar_url === 'string' ? r.avatar_url : null,
+    }))
+
 }
 
 export async function fetchRooms(): Promise<ChatRoom[]> {
