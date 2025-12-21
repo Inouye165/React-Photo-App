@@ -21,11 +21,14 @@ vi.mock('react-router-dom', () => ({
   },
 }));
 
+const authState = {
+  user: { email: 'test@example.com' },
+  logout: vi.fn(),
+  profile: { username: 'tester', has_set_username: true },
+};
+
 vi.mock('../contexts/AuthContext', () => ({
-  useAuth: () => ({
-    user: { email: 'test@example.com' },
-    logout: vi.fn(),
-  }),
+  useAuth: () => authState,
 }));
 
 vi.mock('../store', () => ({
@@ -43,6 +46,8 @@ vi.mock('../store', () => ({
 describe('AppHeader Component', () => {
   beforeEach(() => {
     vi.clearAllMocks();
+    authState.user = { email: 'test@example.com' };
+    authState.profile = { username: 'tester', has_set_username: true };
   });
 
   it('renders navigation tabs with icons', () => {
@@ -53,6 +58,12 @@ describe('AppHeader Component', () => {
     expect(screen.getByTestId('nav-gallery')).toBeInTheDocument();
     expect(screen.getByTestId('nav-edit')).toBeInTheDocument();
     expect(screen.getByTestId('nav-messages')).toBeInTheDocument();
+  });
+
+  it('hides Messages tab when username is not set', () => {
+    authState.profile = { username: null, has_set_username: false };
+    render(<AppHeader />);
+    expect(screen.queryByTestId('nav-messages')).not.toBeInTheDocument();
   });
 
   it('renders navigation arrows with accessible labels', () => {
