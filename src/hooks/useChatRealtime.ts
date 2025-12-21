@@ -11,6 +11,7 @@ export interface UseChatRealtimeResult {
   messages: ChatMessage[]
   loading: boolean
   error: string | null
+  upsertLocalMessage: (message: ChatMessage) => void
 }
 
 export function useChatRealtime(roomId: string | null, options?: { initialLimit?: number }): UseChatRealtimeResult {
@@ -21,6 +22,10 @@ export function useChatRealtime(roomId: string | null, options?: { initialLimit?
   const [error, setError] = useState<string | null>(null)
 
   const channelRef = useRef<RealtimeChannel | null>(null)
+
+  const upsertLocalMessage = (message: ChatMessage) => {
+    setMessages((prev) => upsertMessage(prev, message))
+  }
 
   const subscriptionKey = useMemo(() => (roomId ? `room:${roomId}` : null), [roomId])
 
@@ -43,7 +48,7 @@ export function useChatRealtime(roomId: string | null, options?: { initialLimit?
         // Initial fetch
         const { data, error: fetchError } = await supabase
           .from('messages')
-          .select('id, room_id, sender_id, content, created_at')
+          .select('id, room_id, sender_id, content, photo_id, created_at')
           .eq('room_id', roomId)
           .order('created_at', { ascending: true })
           .limit(initialLimit)
@@ -99,5 +104,5 @@ export function useChatRealtime(roomId: string | null, options?: { initialLimit?
     }
   }, [roomId, initialLimit, subscriptionKey])
 
-  return { messages, loading, error }
+  return { messages, loading, error, upsertLocalMessage }
 }

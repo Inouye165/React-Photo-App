@@ -29,11 +29,15 @@ export function asChatMessage(row: unknown): ChatMessage | null {
   if (typeof r.content !== 'string') return null
   if (typeof r.created_at !== 'string') return null
 
+  const rawPhotoId = r.photo_id
+  const photo_id = rawPhotoId == null ? null : typeof rawPhotoId === 'number' ? rawPhotoId : null
+
   return {
     id: r.id,
     room_id: r.room_id,
     sender_id: r.sender_id,
     content: r.content,
+    photo_id,
     created_at: r.created_at,
   }
 }

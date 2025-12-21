@@ -1167,17 +1167,18 @@ export async function getOrCreateRoom(otherUserId: string): Promise<ChatRoom> {
   return room as ChatRoom
 }
 
-export async function sendMessage(roomId: string, content: string): Promise<ChatMessage> {
+export async function sendMessage(roomId: string, content: string, photoId?: PhotoId | null): Promise<ChatMessage> {
   const userId = await requireAuthedUserId()
   if (!roomId) throw new Error('Missing roomId')
 
   const trimmed = content.trim()
-  if (!trimmed) throw new Error('Message content is empty')
+  const hasPhoto = photoId != null && photoId !== ''
+  if (!trimmed && !hasPhoto) throw new Error('Message content is empty')
 
   const { data, error } = await supabase
     .from('messages')
-    .insert({ room_id: roomId, sender_id: userId, content: trimmed })
-    .select('id, room_id, sender_id, content, created_at')
+    .insert({ room_id: roomId, sender_id: userId, content: trimmed, photo_id: hasPhoto ? photoId : null })
+    .select('id, room_id, sender_id, content, photo_id, created_at')
     .single()
 
   if (error) throw error

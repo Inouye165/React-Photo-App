@@ -17,5 +17,6 @@ export interface ChatMessage {
   room_id: string
   sender_id: string
   content: string
+  photo_id: number | null
   created_at: string
 }
