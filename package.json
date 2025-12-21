@@ -7,7 +7,7 @@
     "dev": "vite",
     "build": "vite build",
     "pretest": "node scripts/validate-keys.cjs && node scripts/repo-hygiene-gps-check.cjs",
-    "test": "vitest",
+    "test": "vitest run",
     "test:ui": "vitest --ui",
     "test:run": "vitest run",
     "test:coverage": "vitest --coverage",

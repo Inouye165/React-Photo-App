@@ -5,6 +5,7 @@
 import type { CollectibleFormState, CollectibleRecord } from './types/collectibles'
 import type { Photo } from './types/photo'
 import type { ModelAllowlistResponse, PhotoState, PhotoStatusResponse } from './types/api'
+import type { ChatMessage, ChatRoom } from './types/chat'
 
 export type PhotoId = Photo['id']
 export type CollectibleId = CollectibleRecord['id']
@@ -1004,4 +1005,107 @@ export async function getPhoto(
     throw err
   }
   return (await res.json()) as GetPhotoResponse
+}
+
+// --- Community Chat (Supabase Realtime + RLS tables: public.rooms, public.room_members, public.messages) ---
+
+async function requireAuthedUserId(): Promise<string> {
+  const { data, error } = await supabase.auth.getUser()
+  if (error) throw error
+  const id = data?.user?.id
+  if (!id) throw new Error('Not authenticated')
+  return id
+}
+
+export async function fetchRooms(): Promise<ChatRoom[]> {
+  const userId = await requireAuthedUserId()
+
+  const { data, error } = await supabase
+    .from('room_members')
+    .select('room_id, rooms!inner(id, name, is_group, created_at)')
+    .eq('user_id', userId)
+
+  if (error) throw error
+
+  const rooms = (data ?? [])
+    .map((row) => (row as unknown as { rooms?: ChatRoom | null }).rooms)
+    .filter((r): r is ChatRoom => Boolean(r))
+
+  // De-dupe by id (defensive) + sort newest-first
+  const byId = new Map<string, ChatRoom>()
+  for (const r of rooms) byId.set(r.id, r)
+
+  return [...byId.values()].sort((a, b) => Date.parse(b.created_at) - Date.parse(a.created_at))
+}
+
+export async function getOrCreateRoom(otherUserId: string): Promise<ChatRoom> {
+  const userId = await requireAuthedUserId()
+  if (!otherUserId) throw new Error('Missing otherUserId')
+  if (otherUserId === userId) throw new Error('Cannot create a direct message room with yourself')
+
+  // Option B: Intersection fallback (schema has no deterministic dm_key)
+  const [{ data: mine, error: mineError }, { data: theirs, error: theirsError }] = await Promise.all([
+    supabase
+      .from('room_members')
+      .select('room_id, rooms!inner(id, name, is_group, created_at)')
+      .eq('user_id', userId)
+      .eq('rooms.is_group', false),
+    supabase
+      .from('room_members')
+      .select('room_id, rooms!inner(id, name, is_group, created_at)')
+      .eq('user_id', otherUserId)
+      .eq('rooms.is_group', false),
+  ])
+
+  if (mineError) throw mineError
+  if (theirsError) throw theirsError
+
+  const myRoomIds = new Set((mine ?? []).map((r) => (r as unknown as { room_id: string }).room_id))
+  const candidates = (theirs ?? [])
+    .filter((r) => myRoomIds.has((r as unknown as { room_id: string }).room_id))
+    .map((r) => (r as unknown as { rooms?: ChatRoom | null }).rooms)
+    .filter((room): room is ChatRoom => Boolean(room))
+
+  if (candidates.length) {
+    candidates.sort((a, b) => Date.parse(b.created_at) - Date.parse(a.created_at))
+    return candidates[0]
+  }
+
+  // Create a new DM room (name NULL, is_group FALSE), then add both members.
+  const { data: room, error: roomError } = await supabase
+    .from('rooms')
+    .insert({ name: null, is_group: false })
+    .select('id, name, is_group, created_at')
+    .single()
+
+  if (roomError) throw roomError
+  if (!room) throw new Error('Failed to create room')
+
+  const { error: membersError } = await supabase
+    .from('room_members')
+    .insert([
+      { room_id: (room as ChatRoom).id, user_id: userId },
+      { room_id: (room as ChatRoom).id, user_id: otherUserId },
+    ])
+
+  if (membersError) throw membersError
+  return room as ChatRoom
+}
+
+export async function sendMessage(roomId: string, content: string): Promise<ChatMessage> {
+  const userId = await requireAuthedUserId()
+  if (!roomId) throw new Error('Missing roomId')
+
+  const trimmed = content.trim()
+  if (!trimmed) throw new Error('Message content is empty')
+
+  const { data, error } = await supabase
+    .from('messages')
+    .insert({ room_id: roomId, sender_id: userId, content: trimmed })
+    .select('id, room_id, sender_id, content, created_at')
+    .single()
+
+  if (error) throw error
+  if (!data) throw new Error('Failed to send message')
+  return data as ChatMessage
 }
