@@ -160,6 +160,18 @@ test.describe('EditPage Visual Regression (Frontend-Only)', () => {
         return fulfill({ success: true, preferences: {} });
       }
 
+      // 3a. Current user profile (authoritative identity: username)
+      if (pathname === '/api/users/me') {
+        return fulfill({
+          success: true,
+          data: {
+            id: mockUser.id,
+            username: mockUser.username,
+            has_set_username: true,
+          },
+        });
+      }
+
       // 3b. Accept terms
       if (pathname === '/api/users/accept-terms') {
         return fulfill({ success: true, data: { terms_accepted_at: new Date().toISOString() } });
@@ -168,7 +180,7 @@ test.describe('EditPage Visual Regression (Frontend-Only)', () => {
       // 4. Photo list endpoint - CRITICAL for store population
       if (pathname === '/photos') {
         console.log(`[Mock] Photo list requested, returning ${mockPhotos.length} photos`);
-        return fulfill({ photos: mockPhotos });
+        return fulfill({ success: true, photos: mockPhotos });
       }
 
       // 5. Privilege checks - keyed by filename

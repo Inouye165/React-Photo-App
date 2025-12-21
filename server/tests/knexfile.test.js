@@ -38,28 +38,32 @@ describe('knexfile.js SSL configuration', () => {
     });
 
     it('should throw error if CA certificate file is missing', () => {
-      const certPath = path.join(__dirname, '..', 'prod-ca-2021.crt');
-      const backupPath = certPath + '.backup';
-      
-      // Temporarily rename cert file
-      fs.renameSync(certPath, backupPath);
-      
-      try {
-        // Use jest.isolateModules for fresh require
-        let loadError = null;
-        jest.isolateModules(() => {
-          try {
-            require('../knexfile.js');
-          } catch (e) {
-            loadError = e;
-          }
-        });
-        expect(loadError).not.toBeNull();
-        expect(loadError.message).toMatch(/Production CA certificate not found/);
-      } finally {
-        // Restore cert file
-        fs.renameSync(backupPath, certPath);
-      }
+      // IMPORTANT: This test runs in parallel with other Jest worker processes.
+      // Renaming the real CA cert file can race other tests that require knexfile,
+      // causing intermittent failures. Instead, mock fs.existsSync.
+      jest.resetModules();
+      jest.doMock('fs', () => {
+        const actualFs = jest.requireActual('fs');
+        return {
+          ...actualFs,
+          existsSync: () => false
+        };
+      });
+
+      let loadError = null;
+      jest.isolateModules(() => {
+        try {
+          require('../knexfile.js');
+        } catch (e) {
+          loadError = e;
+        }
+      });
+
+      expect(loadError).not.toBeNull();
+      expect(loadError.message).toMatch(/Production CA certificate not found/);
+
+      jest.dontMock('fs');
+      jest.resetModules();
     });
   });
 

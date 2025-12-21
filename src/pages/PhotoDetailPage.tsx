@@ -1,13 +1,14 @@
-import { useEffect, useMemo } from 'react';
+import { useEffect, useMemo, useState } from 'react';
 import { Link, useNavigate, useOutletContext, useParams } from 'react-router-dom';
-import { ArrowLeft, Image as ImageIcon, Pencil } from 'lucide-react';
+import { ArrowLeft, Image as ImageIcon, MessageCircle, Pencil } from 'lucide-react';
 import type { Photo } from '../types/photo';
-import { API_BASE_URL } from '../api';
+import { API_BASE_URL, getOrCreateRoom } from '../api';
 import useStore from '../store';
 import { useProtectedImageBlobUrl } from '../hooks/useProtectedImageBlobUrl';
 import LocationMapPanel from '../components/LocationMapPanel.jsx';
 import formatFileSize from '../utils/formatFileSize';
 import { aiPollDebug } from '../utils/aiPollDebug';
+import { useAuth } from '../contexts/AuthContext';
 
 function normalizeClassification(photo: Photo | undefined): string {
   const raw = (photo?.classification || photo?.ai_analysis?.classification || '')
@@ -98,6 +99,7 @@ function formatValuationRange(min: unknown, max: unknown, currency = '$'): strin
 export default function PhotoDetailPage() {
   const { id } = useParams();
   const navigate = useNavigate();
+  const { user } = useAuth();
   // Ensure parity with PhotoEditPage dependency context, even if unused.
   useOutletContext<unknown>();
 
@@ -146,6 +148,9 @@ export default function PhotoDetailPage() {
     return range || '$45 - $60';
   })();
 
+  const [dmLoading, setDmLoading] = useState<boolean>(false);
+  const [dmError, setDmError] = useState<string | null>(null);
+
   if (!photo) {
     return (
       <div className="bg-white rounded-3xl shadow-lg p-6">
@@ -180,16 +185,54 @@ export default function PhotoDetailPage() {
           <span>Back</span>
         </button>
 
-        <Link
-          to={`/photos/${photo.id}/edit`}
-          className="inline-flex items-center gap-2 px-4 py-2 rounded-full bg-slate-900 text-white hover:bg-slate-800"
-          data-testid="photo-detail-edit"
-          aria-label="Edit photo"
-        >
-          <Pencil size={16} />
-          <span>Edit</span>
-        </Link>
+        <div className="flex items-center gap-2">
+          {photo.user_id && user?.id && photo.user_id !== user.id && (
+            <button
+              type="button"
+              onClick={async () => {
+                try {
+                  setDmLoading(true);
+                  setDmError(null);
+                  const room = await getOrCreateRoom(photo.user_id as string);
+                  navigate(`/chat/${room.id}`);
+                } catch (err) {
+                  const message = err instanceof Error ? err.message : String(err);
+                  setDmError(message);
+                } finally {
+                  setDmLoading(false);
+                }
+              }}
+              disabled={dmLoading}
+              className={
+                dmLoading
+                  ? 'inline-flex items-center gap-2 px-4 py-2 rounded-full bg-slate-200 text-slate-500 cursor-not-allowed'
+                  : 'inline-flex items-center gap-2 px-4 py-2 rounded-full bg-slate-100 text-slate-700 hover:bg-slate-200'
+              }
+              data-testid="photo-detail-message-owner"
+              aria-label="Message owner"
+            >
+              <MessageCircle size={16} />
+              <span>{dmLoading ? 'Opening…' : 'Message Owner'}</span>
+            </button>
+          )}
+
+          <Link
+            to={`/photos/${photo.id}/edit`}
+            className="inline-flex items-center gap-2 px-4 py-2 rounded-full bg-slate-900 text-white hover:bg-slate-800"
+            data-testid="photo-detail-edit"
+            aria-label="Edit photo"
+          >
+            <Pencil size={16} />
+            <span>Edit</span>
+          </Link>
+        </div>
       </div>
+
+      {dmError && (
+        <div className="px-4 sm:px-6 pt-3 text-sm text-red-600" role="alert">
+          {dmError}
+        </div>
+      )}
 
       {/* Responsive layout: stacked on mobile, split on desktop */}
       <div className="flex flex-col lg:flex-row">

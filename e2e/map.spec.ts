@@ -12,13 +12,13 @@ test.describe('Map Component', () => {
     const loginResponse = await context.request.post('http://127.0.0.1:3001/api/test/e2e-login');
     expect(loginResponse.ok()).toBeTruthy();
     
-    // Extract cookies and add them for localhost
+    // Extract cookies and add them for 127.0.0.1
     const cookies = await context.cookies('http://127.0.0.1:3001');
     for (const cookie of cookies) {
       await context.addCookies([{
         name: cookie.name,
         value: cookie.value,
-        domain: 'localhost',
+        domain: '127.0.0.1',
         path: '/',
         httpOnly: cookie.httpOnly,
         secure: cookie.secure,
@@ -30,7 +30,7 @@ test.describe('Map Component', () => {
     await page.route('**/api/test/e2e-verify', async route => {
       await route.fulfill({
         headers: {
-          'Access-Control-Allow-Origin': 'http://localhost:5173',
+          'Access-Control-Allow-Origin': 'http://127.0.0.1:5173',
           'Access-Control-Allow-Credentials': 'true'
         },
         json: {
@@ -45,12 +45,56 @@ test.describe('Map Component', () => {
       });
     });
 
+    // Mock current user profile (AuthContext fetchProfile -> GET /api/users/me)
+    await page.route('**/api/users/me', async route => {
+      await route.fulfill({
+        headers: {
+          'Access-Control-Allow-Origin': 'http://127.0.0.1:5173',
+          'Access-Control-Allow-Credentials': 'true'
+        },
+        json: {
+          success: true,
+          data: {
+            id: '11111111-1111-4111-8111-111111111111',
+            username: 'e2e-test',
+            has_set_username: true,
+          },
+        },
+      });
+    });
+
+    // Accept terms endpoint (used by disclaimer modal flow)
+    await page.route('**/api/users/accept-terms', async route => {
+      await route.fulfill({
+        headers: {
+          'Access-Control-Allow-Origin': 'http://127.0.0.1:5173',
+          'Access-Control-Allow-Credentials': 'true'
+        },
+        json: { success: true, data: { terms_accepted_at: new Date().toISOString() } },
+      });
+    });
+
+    // Preferences endpoint (AuthContext fetchPreferences)
+    await page.route('**/api/users/me/preferences', async route => {
+      await route.fulfill({
+        headers: {
+          'Access-Control-Allow-Origin': 'http://127.0.0.1:5173',
+          'Access-Control-Allow-Credentials': 'true'
+        },
+        json: { success: true, data: { gradingScales: {} } },
+      });
+    });
+
     // 3. Mock Photos List
     const mockPhoto = {
       id: 'test-photo-1',
       filename: 'test-photo.jpg',
+      state: 'working',
+      caption: 'Map test photo',
       url: 'data:image/gif;base64,R0lGODlhAQABAIAAAAAAAP///yH5BAEAAAAALAAAAAABAAEAAAIBRAA7',
       thumbnail: 'data:image/gif;base64,R0lGODlhAQABAIAAAAAAAP///yH5BAEAAAAALAAAAAABAAEAAAIBRAA7',
+      file_size: 1234,
+      created_at: '2025-12-01T12:00:00Z',
       latitude: 37.7749,
       longitude: -122.4194,
       metadata: {
@@ -66,7 +110,7 @@ test.describe('Map Component', () => {
     await page.route('**/photos**', async route => {
       const url = route.request().url();
       const headers = {
-        'Access-Control-Allow-Origin': 'http://localhost:5173',
+        'Access-Control-Allow-Origin': 'http://127.0.0.1:5173',
         'Access-Control-Allow-Credentials': 'true'
       };
       
@@ -137,8 +181,8 @@ test.describe('Map Component', () => {
       await route.fulfill({ 
         headers,
         json: { 
-          success: true, 
-          photos: [mockPhoto] 
+          success: true,
+          photos: [mockPhoto]
         } 
       });
     });
@@ -147,21 +191,20 @@ test.describe('Map Component', () => {
     await page.route('**/privilege', async route => {
       await route.fulfill({ 
         headers: {
-          'Access-Control-Allow-Origin': 'http://localhost:5173',
+          'Access-Control-Allow-Origin': 'http://127.0.0.1:5173',
           'Access-Control-Allow-Credentials': 'true'
         },
-        json: { 
-          success: true, 
-          privileges: { 'test-photo-1': true } 
-        } 
+        json: route.request().method() === 'POST'
+          ? { success: true, privileges: { 'test-photo.jpg': 'owner' } }
+          : { success: true, privilege: 'owner' }
       });
     });
 
 
 
 
-    // Navigate to app (session cookie is set)
-    await page.goto('http://localhost:5173/');
+    // Navigate directly to gallery for stable selection
+    await page.goto('http://127.0.0.1:5173/gallery', { waitUntil: 'networkidle' });
     
     // Handle disclaimer modal if present
     await acceptDisclaimer(page);
@@ -169,10 +212,9 @@ test.describe('Map Component', () => {
     // Wait for auth check and page to stabilize
     await page.waitForTimeout(2000);
 
-    // Wait for photo to appear (bypassing login screen due to mock)
-    const photo = page.locator('img[alt="test-photo.jpg"]').first();
-    await photo.waitFor({ state: 'visible', timeout: 15000 });
-    await photo.click();
+    // Wait for photo cards to render and open the detail view
+    await expect(page.getByTestId('photo-card').first()).toBeVisible({ timeout: 15000 });
+    await page.getByTestId('photo-card').first().click();
 
     // Wait for detail panel
     const osmIframe = page.locator('iframe[title="Map (OpenStreetMap)"]');

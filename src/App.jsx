@@ -13,6 +13,7 @@ import SettingsPage from './pages/SettingsPage.jsx';
 import AuthWrapper from './components/AuthWrapper';
 import ResetPasswordPage from './pages/ResetPasswordPage.jsx';
 import SetUsernamePage from './pages/SetUsernamePage.tsx';
+import ChatPage from './pages/ChatPage.tsx';
 
 /**
  * App - Root component with routing and error boundary
@@ -62,6 +63,10 @@ function App() {
               
               {/* Settings page */}
               <Route path="/settings" element={<SettingsPage />} />
+
+              {/* Community chat */}
+              <Route path="/chat" element={<ChatPage />} />
+              <Route path="/chat/:roomId" element={<ChatPage />} />
               
               {/* Photo detail view */}
               <Route path="/photos/:id" element={<PhotoDetailPage />} />

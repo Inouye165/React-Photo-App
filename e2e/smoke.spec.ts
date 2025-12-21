@@ -26,6 +26,39 @@ test('E2E smoke: login → upload → view', async ({ page, context }) => {
     });
   });
 
+  // Mock current user profile (authoritative identity: username, not email)
+  await page.route('**/api/users/me', async route => {
+    if (route.request().method() === 'OPTIONS') {
+      return route.fulfill({ status: 204, headers: corsHeaders, body: '' });
+    }
+    await route.fulfill({
+      status: 200,
+      contentType: 'application/json',
+      headers: corsHeaders,
+      body: JSON.stringify({
+        success: true,
+        data: {
+          id: '11111111-1111-4111-8111-111111111111',
+          username: 'e2e-test',
+          has_set_username: true,
+        },
+      }),
+    });
+  });
+
+  // Accept terms endpoint (used by disclaimer modal flow)
+  await page.route('**/api/users/accept-terms', async route => {
+    if (route.request().method() === 'OPTIONS') {
+      return route.fulfill({ status: 204, headers: corsHeaders, body: '' });
+    }
+    await route.fulfill({
+      status: 200,
+      contentType: 'application/json',
+      headers: corsHeaders,
+      body: JSON.stringify({ success: true, data: { terms_accepted_at: new Date().toISOString() } }),
+    });
+  });
+
   // Provide deterministic gallery data (avoid depending on pre-seeded DB state)
   const mockPhotoId = '999';
   const now = Math.floor(Date.now() / 1000);
@@ -54,6 +87,7 @@ test('E2E smoke: login → upload → view', async ({ page, context }) => {
       contentType: 'application/json',
       headers: corsHeaders,
       body: JSON.stringify({
+        success: true,
         photos: [
           {
             id: mockPhotoId,
@@ -166,8 +200,8 @@ test('E2E smoke: login → upload → view', async ({ page, context }) => {
   await page.waitForTimeout(2000);
   
   // Check for authenticated elements - user email (truncated) or logout button
-  // The UI displays the part before @ (e.g. "e2e" from "e2e@example.com")
-  await expect(page.getByText('e2e', { exact: true })).toBeVisible({ timeout: 10000 });
+  // IMPORTANT (PII): UI displays public.users.username (not email)
+  await expect(page.getByText('e2e-test', { exact: true })).toBeVisible({ timeout: 10000 });
   await expect(page.getByRole('button', { name: 'Sign out' })).toBeVisible();
 
   // New primary flow: Gallery -> Detail -> Edit
