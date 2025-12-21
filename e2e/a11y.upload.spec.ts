@@ -18,6 +18,33 @@ test('A11y: upload page', async ({ page, context }) => {
     });
   });
 
+  await page.route('**/api/users/me', async route => {
+    await route.fulfill({
+      headers: {
+        'Access-Control-Allow-Origin': 'http://127.0.0.1:5173',
+        'Access-Control-Allow-Credentials': 'true'
+      },
+      json: {
+        success: true,
+        data: {
+          id: '11111111-1111-4111-8111-111111111111',
+          username: 'e2e-test',
+          has_set_username: true,
+        },
+      },
+    });
+  });
+
+  await page.route('**/api/users/accept-terms', async route => {
+    await route.fulfill({
+      headers: {
+        'Access-Control-Allow-Origin': 'http://127.0.0.1:5173',
+        'Access-Control-Allow-Credentials': 'true'
+      },
+      json: { success: true, data: { terms_accepted_at: new Date().toISOString() } },
+    });
+  });
+
   // E2E login: make request to get the auth cookie
   const loginResponse = await context.request.post('http://127.0.0.1:3001/api/test/e2e-login');
   expect(loginResponse.ok()).toBeTruthy();

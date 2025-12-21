@@ -6,6 +6,7 @@
 export interface Photo {
   id: number | string;
   url: string;
+  user_id?: string;
   filename?: string;
   caption?: string;
   description?: string;
