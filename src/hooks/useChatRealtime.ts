@@ -67,7 +67,7 @@ export function useChatRealtime(roomId: string | null, options?: { initialLimit?
           'postgres_changes',
           { event: 'INSERT', schema: 'public', table: 'messages', filter: `room_id=eq.${roomId}` },
           (payload: MessagesInsertPayload) => {
-            if (import.meta.env.DEV) console.log('Realtime Payload Received:', payload)
+            if (import.meta.env.DEV) console.log('[Realtime] New Message Received', payload)
             if (!roomId) return
             const incomingRoomId = (payload.new as Record<string, unknown> | null | undefined)?.['room_id']
             if (typeof incomingRoomId === 'string' && incomingRoomId !== roomId) return
