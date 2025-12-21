@@ -1070,7 +1070,7 @@ export async function fetchRooms(): Promise<ChatRoom[]> {
 
   const { data, error } = await supabase
     .from('room_members')
-    .select('room_id, rooms!inner(id, name, is_group, created_at)')
+    .select('room_id, rooms!room_members_room_id_fkey!inner(id, name, is_group, created_at)')
     .eq('user_id', userId)
 
   if (error) throw error
@@ -1095,12 +1095,12 @@ export async function getOrCreateRoom(otherUserId: string): Promise<ChatRoom> {
   const [{ data: mine, error: mineError }, { data: theirs, error: theirsError }] = await Promise.all([
     supabase
       .from('room_members')
-      .select('room_id, rooms!inner(id, name, is_group, created_at)')
+      .select('room_id, rooms!room_members_room_id_fkey!inner(id, name, is_group, created_at)')
       .eq('user_id', userId)
       .eq('rooms.is_group', false),
     supabase
       .from('room_members')
-      .select('room_id, rooms!inner(id, name, is_group, created_at)')
+      .select('room_id, rooms!room_members_room_id_fkey!inner(id, name, is_group, created_at)')
       .eq('user_id', otherUserId)
       .eq('rooms.is_group', false),
   ])
@@ -1129,14 +1129,20 @@ export async function getOrCreateRoom(otherUserId: string): Promise<ChatRoom> {
   if (roomError) throw roomError
   if (!room) throw new Error('Failed to create room')
 
-  const { error: membersError } = await supabase
+  // Insert membership rows sequentially.
+  // This plays nicely with RLS policies that allow adding other members only
+  // after the current user is already a member.
+  const { error: selfMemberError } = await supabase
     .from('room_members')
-    .insert([
-      { room_id: (room as ChatRoom).id, user_id: userId },
-      { room_id: (room as ChatRoom).id, user_id: otherUserId },
-    ])
+    .insert({ room_id: (room as ChatRoom).id, user_id: userId })
 
-  if (membersError) throw membersError
+  if (selfMemberError) throw selfMemberError
+
+  const { error: otherMemberError } = await supabase
+    .from('room_members')
+    .insert({ room_id: (room as ChatRoom).id, user_id: otherUserId })
+
+  if (otherMemberError) throw otherMemberError
   return room as ChatRoom
 }
 
