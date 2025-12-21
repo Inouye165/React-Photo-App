@@ -67,15 +67,21 @@ export function useChatRealtime(roomId: string | null, options?: { initialLimit?
           'postgres_changes',
           { event: 'INSERT', schema: 'public', table: 'messages', filter: `room_id=eq.${roomId}` },
           (payload: MessagesInsertPayload) => {
+            if (!roomId) return
+            const incomingRoomId = (payload.new as Record<string, unknown> | null | undefined)?.['room_id']
+            if (typeof incomingRoomId === 'string' && incomingRoomId !== roomId) return
             const msg = asChatMessage(payload.new)
             if (!msg) return
-            setMessages((prev) => upsertMessage(prev, msg))
+            setMessages((prev) => [...prev, msg])
           },
         )
 
         channel.subscribe((status, err) => {
           if (cancelled) return
-          if (status === 'SUBSCRIBED') return
+          if (status === 'SUBSCRIBED') {
+            if (import.meta.env.DEV) console.log('[useChatRealtime] SUBSCRIBED', { roomId, channel: channelName })
+            return
+          }
           if (status === 'CHANNEL_ERROR' || status === 'TIMED_OUT') {
             setError(err?.message || `Realtime subscription failed: ${status}`)
           }
