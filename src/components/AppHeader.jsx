@@ -2,7 +2,7 @@ import React from 'react';
 import { NavLink, useNavigate, useLocation } from 'react-router-dom';
 import { useAuth } from '../contexts/AuthContext';
 import useStore from '../store';
-import { ChevronLeft, ChevronRight, Upload, Grid3X3, Edit3, LogOut, MessageCircle } from 'lucide-react';
+import { ChevronLeft, ChevronRight, Upload, Grid3X3, Edit3, LogOut, MessageSquare } from 'lucide-react';
 
 /**
  * AppHeader - Mobile-first responsive navigation header
@@ -21,6 +21,8 @@ export default function AppHeader({
   const { user, logout, profile } = useAuth();
   const lastEditedPhotoId = useStore(state => state.lastEditedPhotoId);
   const closePicker = useStore(state => state.pickerCommand.closePicker);
+
+  const canUseChat = Boolean(profile?.has_set_username);
 
   const isGalleryPage = location.pathname === '/gallery' || location.pathname === '/';
   const isEditPage = /^\/photos\/[^/]+\/edit$/.test(location.pathname);
@@ -174,15 +176,17 @@ export default function AppHeader({
           testId="nav-edit"
         />
 
-        <NavTabLink
-          to="/chat"
-          onClick={() => {
-            closePicker('nav-messages');
-          }}
-          icon={MessageCircle}
-          label="Messages"
-          testId="nav-messages"
-        />
+        {canUseChat && (
+          <NavTabLink
+            to="/chat"
+            onClick={() => {
+              closePicker('nav-messages');
+            }}
+            icon={MessageSquare}
+            label="Messages"
+            testId="nav-messages"
+          />
+        )}
       </nav>
 
       {/* Right Section - User & Logout */}

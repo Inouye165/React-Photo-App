@@ -205,8 +205,8 @@ export default function PhotoDetailPage() {
               disabled={dmLoading}
               className={
                 dmLoading
-                  ? 'inline-flex items-center gap-2 px-4 py-2 rounded-full bg-slate-200 text-slate-500 cursor-not-allowed'
-                  : 'inline-flex items-center gap-2 px-4 py-2 rounded-full bg-slate-100 text-slate-700 hover:bg-slate-200'
+                  ? 'inline-flex items-center gap-2 px-4 py-2 rounded-full bg-slate-700 text-white cursor-not-allowed'
+                  : 'inline-flex items-center gap-2 px-4 py-2 rounded-full bg-slate-900 text-white hover:bg-slate-800'
               }
               data-testid="photo-detail-message-owner"
               aria-label="Message owner"
