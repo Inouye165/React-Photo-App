@@ -1068,22 +1068,33 @@ export async function searchUsers(query: string): Promise<UserSearchResult[]> {
 export async function fetchRooms(): Promise<ChatRoom[]> {
   const userId = await requireAuthedUserId()
 
-  const { data, error } = await supabase
+  // Flattened hydration (two-step) to avoid PostgREST embed/join 500s.
+  // Step A: fetch room_ids for the current user.
+  const { data: memberRows, error: membersError } = await supabase
     .from('room_members')
-    .select('room_id, rooms!room_members_room_id_fkey!inner(id, name, is_group, created_at)')
+    .select('room_id')
     .eq('user_id', userId)
 
-  if (error) throw error
+  if (membersError) throw membersError
 
-  const rooms = (data ?? [])
-    .map((row) => (row as unknown as { rooms?: ChatRoom | null }).rooms)
-    .filter((r): r is ChatRoom => Boolean(r))
+  const roomIds = (memberRows ?? [])
+    .map((r) => (r as { room_id?: unknown }).room_id)
+    .filter((id): id is string => typeof id === 'string')
 
-  // De-dupe by id (defensive) + sort newest-first
-  const byId = new Map<string, ChatRoom>()
-  for (const r of rooms) byId.set(r.id, r)
+  if (roomIds.length === 0) return []
 
-  return [...byId.values()].sort((a, b) => Date.parse(b.created_at) - Date.parse(a.created_at))
+  const uniqueRoomIds = [...new Set(roomIds)]
+
+  // Step B: fetch rooms by id.
+  const { data: rooms, error: roomsError } = await supabase
+    .from('rooms')
+    .select('id, name, is_group, created_at')
+    .in('id', uniqueRoomIds)
+
+  if (roomsError) throw roomsError
+
+  const typedRooms = (rooms ?? []).filter((r): r is ChatRoom => Boolean(r && typeof (r as ChatRoom).id === 'string'))
+  return typedRooms.sort((a, b) => Date.parse(b.created_at) - Date.parse(a.created_at))
 }
 
 export async function getOrCreateRoom(otherUserId: string): Promise<ChatRoom> {
@@ -1091,32 +1102,42 @@ export async function getOrCreateRoom(otherUserId: string): Promise<ChatRoom> {
   if (!otherUserId) throw new Error('Missing otherUserId')
   if (otherUserId === userId) throw new Error('Cannot create a direct message room with yourself')
 
-  // Option B: Intersection fallback (schema has no deterministic dm_key)
+  // Find an existing DM room by intersecting memberships, then fetching rooms by id.
+  // This avoids PostgREST embed/join queries which can produce 500s.
   const [{ data: mine, error: mineError }, { data: theirs, error: theirsError }] = await Promise.all([
-    supabase
-      .from('room_members')
-      .select('room_id, rooms!room_members_room_id_fkey!inner(id, name, is_group, created_at)')
-      .eq('user_id', userId)
-      .eq('rooms.is_group', false),
-    supabase
-      .from('room_members')
-      .select('room_id, rooms!room_members_room_id_fkey!inner(id, name, is_group, created_at)')
-      .eq('user_id', otherUserId)
-      .eq('rooms.is_group', false),
+    supabase.from('room_members').select('room_id').eq('user_id', userId),
+    supabase.from('room_members').select('room_id').eq('user_id', otherUserId),
   ])
 
   if (mineError) throw mineError
   if (theirsError) throw theirsError
 
-  const myRoomIds = new Set((mine ?? []).map((r) => (r as unknown as { room_id: string }).room_id))
-  const candidates = (theirs ?? [])
-    .filter((r) => myRoomIds.has((r as unknown as { room_id: string }).room_id))
-    .map((r) => (r as unknown as { rooms?: ChatRoom | null }).rooms)
-    .filter((room): room is ChatRoom => Boolean(room))
+  const myRoomIds = new Set(
+    (mine ?? [])
+      .map((r) => (r as { room_id?: unknown }).room_id)
+      .filter((id): id is string => typeof id === 'string'),
+  )
 
-  if (candidates.length) {
-    candidates.sort((a, b) => Date.parse(b.created_at) - Date.parse(a.created_at))
-    return candidates[0]
+  const commonRoomIds = (theirs ?? [])
+    .map((r) => (r as { room_id?: unknown }).room_id)
+    .filter((id): id is string => typeof id === 'string' && myRoomIds.has(id))
+
+  if (commonRoomIds.length) {
+    const uniqueCommon = [...new Set(commonRoomIds)]
+
+    const { data: rooms, error: roomsError } = await supabase
+      .from('rooms')
+      .select('id, name, is_group, created_at')
+      .in('id', uniqueCommon)
+      .eq('is_group', false)
+
+    if (roomsError) throw roomsError
+
+    const candidates = (rooms ?? []) as ChatRoom[]
+    if (candidates.length) {
+      candidates.sort((a, b) => Date.parse(b.created_at) - Date.parse(a.created_at))
+      return candidates[0]
+    }
   }
 
   // Create a new DM room (name NULL, is_group FALSE), then add both members.
