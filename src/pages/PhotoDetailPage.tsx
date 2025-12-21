@@ -186,14 +186,14 @@ export default function PhotoDetailPage() {
         </button>
 
         <div className="flex items-center gap-2">
-          {photo.user_id && user?.id && photo.user_id !== user.id && (
+          {photo.user_id && user?.id && String(photo.user_id) !== String(user.id) && (
             <button
               type="button"
               onClick={async () => {
                 try {
                   setDmLoading(true);
                   setDmError(null);
-                  const room = await getOrCreateRoom(photo.user_id as string);
+                  const room = await getOrCreateRoom(String(photo.user_id));
                   navigate(`/chat/${room.id}`);
                 } catch (err) {
                   const message = err instanceof Error ? err.message : String(err);

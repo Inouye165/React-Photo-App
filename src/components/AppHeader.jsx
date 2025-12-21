@@ -1,8 +1,8 @@
 import React from 'react';
-import { useNavigate, useLocation } from 'react-router-dom';
+import { NavLink, useNavigate, useLocation } from 'react-router-dom';
 import { useAuth } from '../contexts/AuthContext';
 import useStore from '../store';
-import { ChevronLeft, ChevronRight, Upload, Grid3X3, Edit3, LogOut } from 'lucide-react';
+import { ChevronLeft, ChevronRight, Upload, Grid3X3, Edit3, LogOut, MessageCircle } from 'lucide-react';
 
 /**
  * AppHeader - Mobile-first responsive navigation header
@@ -78,6 +78,27 @@ export default function AppHeader({
     </button>
   );
 
+  const NavTabLink = ({ to, icon: Icon, label, testId, onClick }) => (
+    <NavLink
+      to={to}
+      onClick={onClick}
+      data-testid={testId}
+      className={({ isActive }) => `
+        flex items-center justify-center gap-1.5
+        min-w-[44px] min-h-[44px] px-2 sm:px-3
+        rounded-lg text-xs sm:text-sm font-medium
+        transition-all duration-150 touch-manipulation
+        ${isActive
+          ? 'bg-slate-900 text-white'
+          : 'bg-transparent text-slate-500 hover:bg-slate-100 active:bg-slate-200'
+        }
+      `}
+    >
+      <Icon size={16} className="flex-shrink-0" />
+      <span className="hidden sm:inline">{label}</span>
+    </NavLink>
+  );
+
   return (
     <header
       role="navigation"
@@ -151,6 +172,16 @@ export default function AppHeader({
           icon={Edit3}
           label="Edit"
           testId="nav-edit"
+        />
+
+        <NavTabLink
+          to="/chat"
+          onClick={() => {
+            closePicker('nav-messages');
+          }}
+          icon={MessageCircle}
+          label="Messages"
+          testId="nav-messages"
         />
       </nav>
 

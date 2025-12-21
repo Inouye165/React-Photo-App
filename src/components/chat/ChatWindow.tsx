@@ -2,6 +2,7 @@ import { useEffect, useMemo, useRef, useState } from 'react'
 
 import { sendMessage } from '../../api'
 import { useChatRealtime } from '../../hooks/useChatRealtime'
+import { usePresence } from '../../hooks/usePresence'
 import { supabase } from '../../supabaseClient'
 import type { ChatMessage } from '../../types/chat'
 import { useAuth } from '../../contexts/AuthContext'
@@ -12,6 +13,13 @@ export interface ChatWindowProps {
 }
 
 type UserRow = { id: string; username: string | null }
+type RoomRow = { id: string; name: string | null; is_group: boolean | null }
+
+type ChatHeaderState = {
+  title: string
+  isGroup: boolean
+  otherUserId: string | null
+}
 
 function formatTime(iso: string): string {
   const d = new Date(iso)
@@ -22,12 +30,14 @@ function formatTime(iso: string): string {
 export default function ChatWindow({ roomId }: ChatWindowProps) {
   const { user, profile } = useAuth()
   const { messages, loading, error } = useChatRealtime(roomId)
+  const { isUserOnline } = usePresence(user?.id)
 
   const [draft, setDraft] = useState<string>('')
   const [sending, setSending] = useState<boolean>(false)
   const [sendError, setSendError] = useState<string | null>(null)
 
   const [idToUsername, setIdToUsername] = useState<Record<string, string | null>>({})
+  const [header, setHeader] = useState<ChatHeaderState>({ title: 'Conversation', isGroup: false, otherUserId: null })
 
   const bottomRef = useRef<HTMLDivElement | null>(null)
 
@@ -66,6 +76,79 @@ export default function ChatWindow({ roomId }: ChatWindowProps) {
       cancelled = true
     }
   }, [senderIds])
+
+  useEffect(() => {
+    let cancelled = false
+
+    async function run(): Promise<void> {
+      if (!roomId) {
+        setHeader({ title: 'Conversation', isGroup: false, otherUserId: null })
+        return
+      }
+
+      setHeader({ title: 'Conversation', isGroup: false, otherUserId: null })
+
+      const { data: room, error: roomError } = await supabase
+        .from('rooms')
+        .select('id, name, is_group')
+        .eq('id', roomId)
+        .maybeSingle()
+
+      if (roomError) throw roomError
+
+      const roomRow = (room ?? null) as RoomRow | null
+      const isGroup = Boolean(roomRow?.is_group)
+      const roomName = typeof roomRow?.name === 'string' ? roomRow?.name : null
+
+      if (isGroup) {
+        if (!cancelled) setHeader({ title: roomName?.trim() || 'Group chat', isGroup: true, otherUserId: null })
+        return
+      }
+
+      if (!user?.id) {
+        if (!cancelled) setHeader({ title: roomName?.trim() || 'Direct message', isGroup: false, otherUserId: null })
+        return
+      }
+
+      const { data: memberRow, error: memberError } = await supabase
+        .from('room_members')
+        .select('user_id')
+        .eq('room_id', roomId)
+        .neq('user_id', user.id)
+        .limit(1)
+        .maybeSingle()
+
+      if (memberError) throw memberError
+
+      const otherUserId = (memberRow as { user_id?: unknown } | null)?.user_id
+      const otherId = typeof otherUserId === 'string' ? otherUserId : null
+      if (!otherId) {
+        if (!cancelled) setHeader({ title: roomName?.trim() || 'Direct message', isGroup: false, otherUserId: null })
+        return
+      }
+
+      const { data: otherUser, error: otherUserError } = await supabase
+        .from('users')
+        .select('id, username')
+        .eq('id', otherId)
+        .maybeSingle()
+
+      if (otherUserError) throw otherUserError
+
+      const username = (otherUser as UserRow | null)?.username
+      const title = typeof username === 'string' && username.trim() ? username.trim() : roomName?.trim() || 'Direct message'
+
+      if (!cancelled) setHeader({ title, isGroup: false, otherUserId: otherId })
+    }
+
+    run().catch((err) => {
+      if (import.meta.env.DEV) console.debug('[ChatWindow] Failed to resolve chat header:', err)
+    })
+
+    return () => {
+      cancelled = true
+    }
+  }, [roomId, user?.id])
 
   useEffect(() => {
     // Auto-scroll on new messages (and when switching rooms)
@@ -122,6 +205,15 @@ export default function ChatWindow({ roomId }: ChatWindowProps) {
 
   return (
     <section className="flex-1 flex flex-col bg-slate-50" aria-label="Chat window">
+      <div className="border-b border-slate-200 bg-white px-4 py-3 sm:px-6">
+        <div className="flex items-center gap-2 min-w-0">
+          {!header.isGroup && header.otherUserId && isUserOnline(header.otherUserId) && (
+            <div className="h-2 w-2 rounded-full bg-green-500" aria-label="Online" />
+          )}
+          <h2 className="text-sm font-semibold text-slate-900 truncate">{header.title}</h2>
+        </div>
+      </div>
+
       <div className="flex-1 overflow-auto p-4 sm:p-6 space-y-3" data-testid="chat-messages">
         {loading && <div className="text-sm text-slate-500">Loading messages…</div>}
         {error && <div className="text-sm text-red-600">Failed to load messages: {error}</div>}

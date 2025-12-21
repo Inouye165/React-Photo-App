@@ -4,6 +4,7 @@ import { fetchRooms } from '../../api'
 import { supabase } from '../../supabaseClient'
 import type { ChatRoom } from '../../types/chat'
 import { useAuth } from '../../contexts/AuthContext'
+import { usePresence } from '../../hooks/usePresence'
 
 export interface ChatSidebarProps {
   selectedRoomId: string | null
@@ -25,9 +26,12 @@ function formatRoomTitle(room: ChatRoom, otherUsername: string | null): string {
 
 export default function ChatSidebar({ selectedRoomId, onSelectRoom }: ChatSidebarProps) {
   const { user } = useAuth()
+  const { isUserOnline } = usePresence(user?.id)
 
   const [roomState, setRoomState] = useState<RoomListState>({ status: 'loading' })
   const [roomToOtherUsername, setRoomToOtherUsername] = useState<Record<string, string | null>>({})
+  const [roomToOtherUserId, setRoomToOtherUserId] = useState<Record<string, string>>({})
+  const [searchText, setSearchText] = useState<string>('')
 
   useEffect(() => {
     let cancelled = false
@@ -97,11 +101,16 @@ export default function ChatSidebar({ selectedRoomId, onSelectRoom }: ChatSideba
       }
 
       const next: Record<string, string | null> = {}
+      const nextOtherIds: Record<string, string> = {}
       for (const [roomId, otherUserId] of roomToOtherUserId.entries()) {
         next[roomId] = idToUsername.get(otherUserId) ?? null
+        nextOtherIds[roomId] = otherUserId
       }
 
-      if (!cancelled) setRoomToOtherUsername((prev) => ({ ...prev, ...next }))
+      if (!cancelled) {
+        setRoomToOtherUsername((prev) => ({ ...prev, ...next }))
+        setRoomToOtherUserId((prev) => ({ ...prev, ...nextOtherIds }))
+      }
     }
 
     if (roomState.status === 'ready') {
@@ -119,11 +128,40 @@ export default function ChatSidebar({ selectedRoomId, onSelectRoom }: ChatSideba
 
   const rooms = useMemo(() => (roomState.status === 'ready' ? roomState.rooms : []), [roomState])
 
+  const roomIdToSearchKey = useMemo(() => {
+    const map: Record<string, string> = {}
+    for (const room of rooms) {
+      if (room.is_group) {
+        map[room.id] = (room.name ?? '').toLowerCase()
+      } else {
+        map[room.id] = (roomToOtherUsername[room.id] ?? '').toLowerCase()
+      }
+    }
+    return map
+  }, [rooms, roomToOtherUsername])
+
+  const filteredRooms = useMemo(() => {
+    const q = searchText.trim().toLowerCase()
+    if (!q) return rooms
+    return rooms.filter((room) => (roomIdToSearchKey[room.id] ?? '').includes(q))
+  }, [rooms, roomIdToSearchKey, searchText])
+
   return (
     <aside className="w-full sm:w-80 shrink-0 border-r border-slate-200 bg-white" aria-label="Chat rooms">
       <div className="p-4 border-b border-slate-200">
         <h2 className="text-sm font-semibold text-slate-900">Chats</h2>
         <p className="mt-1 text-xs text-slate-500">Your recent conversations</p>
+
+        <div className="mt-3">
+          <input
+            type="search"
+            value={searchText}
+            onChange={(e) => setSearchText(e.target.value)}
+            placeholder="Search"
+            aria-label="Search chats"
+            className="w-full rounded-xl border border-slate-200 bg-white px-3 py-2 text-sm text-slate-900 placeholder:text-slate-400 focus:outline-none focus:ring-2 focus:ring-slate-900/10"
+          />
+        </div>
       </div>
 
       <div className="p-2">
@@ -135,15 +173,19 @@ export default function ChatSidebar({ selectedRoomId, onSelectRoom }: ChatSideba
           <div className="p-3 text-sm text-red-600">Failed to load rooms: {roomState.error}</div>
         )}
 
-        {roomState.status === 'ready' && rooms.length === 0 && (
-          <div className="p-3 text-sm text-slate-500">No conversations yet.</div>
+        {roomState.status === 'ready' && filteredRooms.length === 0 && (
+          <div className="p-3 text-sm text-slate-500">
+            {rooms.length === 0 ? 'No conversations yet.' : 'No matches.'}
+          </div>
         )}
 
-        {roomState.status === 'ready' && rooms.length > 0 && (
+        {roomState.status === 'ready' && filteredRooms.length > 0 && (
           <ul className="space-y-1">
-            {rooms.map((room) => {
+            {filteredRooms.map((room) => {
               const isSelected = selectedRoomId === room.id
               const title = formatRoomTitle(room, roomToOtherUsername[room.id] ?? null)
+              const otherUserId = room.is_group ? null : roomToOtherUserId[room.id] ?? null
+              const showOnlineDot = Boolean(otherUserId) && isUserOnline(otherUserId)
 
               return (
                 <li key={room.id}>
@@ -167,6 +209,8 @@ export default function ChatSidebar({ selectedRoomId, onSelectRoom }: ChatSideba
                           {room.is_group ? 'Group' : 'Direct message'}
                         </div>
                       </div>
+
+                      {!room.is_group && showOnlineDot && <div className="h-2 w-2 rounded-full bg-green-500" aria-label="Online" />}
                     </div>
                   </button>
                 </li>

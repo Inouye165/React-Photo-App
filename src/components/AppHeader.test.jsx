@@ -11,6 +11,14 @@ vi.mock('react-router-dom', () => ({
     pathname: '/gallery',
     search: '',
   }),
+  NavLink: ({ to, className, children, ...rest }) => {
+    const computedClassName = typeof className === 'function' ? className({ isActive: false }) : className;
+    return (
+      <a href={to} className={computedClassName} {...rest}>
+        {children}
+      </a>
+    );
+  },
 }));
 
 vi.mock('../contexts/AuthContext', () => ({
@@ -44,6 +52,7 @@ describe('AppHeader Component', () => {
     expect(screen.getByTestId('nav-upload')).toBeInTheDocument();
     expect(screen.getByTestId('nav-gallery')).toBeInTheDocument();
     expect(screen.getByTestId('nav-edit')).toBeInTheDocument();
+    expect(screen.getByTestId('nav-messages')).toBeInTheDocument();
   });
 
   it('renders navigation arrows with accessible labels', () => {
@@ -74,6 +83,7 @@ describe('AppHeader Component', () => {
         screen.getByTestId('nav-upload'),
         screen.getByTestId('nav-gallery'),
         screen.getByTestId('nav-edit'),
+        screen.getByTestId('nav-messages'),
       ];
       
       navButtons.forEach((button) => {
