@@ -100,13 +100,13 @@ export function useChatRealtime(roomId: string | null, options?: { initialLimit?
           { event: 'INSERT', schema: 'public', table: 'messages', filter: `room_id=eq.${normalizedRoomId}` },
           (payload: MessagesInsertPayload) => {
             console.log('BROADCAST DETECTED:', (payload.new as Record<string, unknown> | null | undefined) ?? null)
+            console.log('RAW REALTIME PAYLOAD:', (payload.new as Record<string, unknown> | null | undefined) ?? null)
             if (import.meta.env.DEV) console.log('[Realtime] New Message Received', payload)
             if (!normalizedRoomId) return
             const incomingRoomId = (payload.new as Record<string, unknown> | null | undefined)?.['room_id']
             if (typeof incomingRoomId === 'string' && incomingRoomId !== normalizedRoomId) return
-            const msg = asChatMessage(payload.new)
-            if (!msg) return
-            setMessages((prev) => [...prev, msg])
+            if (!payload.new) return
+            setMessages((prev) => [...prev, payload.new as unknown as ChatMessage])
           },
         )
 
