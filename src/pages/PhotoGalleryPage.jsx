@@ -72,6 +72,8 @@ export default function PhotoGalleryPage() {
     return [...pendingUploads, ...sortedPhotos];
   }, [pendingUploads, sortedPhotos]);
 
+  const hasCachedPhotos = allPhotos && allPhotos.length > 0;
+
   const { getSignedUrl } = useSignedThumbnails(photos, session?.access_token);
   const privilegesMap = usePhotoPrivileges(photos);
 
@@ -151,23 +153,30 @@ export default function PhotoGalleryPage() {
         />
       )}
 
-      {loading ? (
+      {loading && !hasCachedPhotos ? (
         <div className="flex items-center justify-center h-64 text-slate-500">
           <p>Loading photos...</p>
         </div>
       ) : (
-        <PhotoGallery
-          photos={allPhotos}
-          privilegesMap={privilegesMap}
-          pollingPhotoId={pollingPhotoId}
-          pollingPhotoIds={pollingPhotoIds}
-          handleMoveToInprogress={handleMoveToInprogress}
-          handleEditPhoto={handleEditPhoto}
-          handleMoveToWorking={handleMoveToWorking}
-          handleDeletePhoto={handleDeletePhoto}
-          onSelectPhoto={handleSelectPhoto}
-          getSignedUrl={getSignedUrl}
-        />
+        <>
+          {loading && hasCachedPhotos && (
+            <div className="flex items-center justify-center text-xs text-slate-400 mb-2">
+              <span>Refreshing…</span>
+            </div>
+          )}
+          <PhotoGallery
+            photos={allPhotos}
+            privilegesMap={privilegesMap}
+            pollingPhotoId={pollingPhotoId}
+            pollingPhotoIds={pollingPhotoIds}
+            handleMoveToInprogress={handleMoveToInprogress}
+            handleEditPhoto={handleEditPhoto}
+            handleMoveToWorking={handleMoveToWorking}
+            handleDeletePhoto={handleDeletePhoto}
+            onSelectPhoto={handleSelectPhoto}
+            getSignedUrl={getSignedUrl}
+          />
+        </>
       )}
     </>
   );
