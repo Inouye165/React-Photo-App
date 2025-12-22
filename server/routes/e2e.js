@@ -6,6 +6,7 @@ const rateLimit = require('express-rate-limit');
 const jwt = require('jsonwebtoken');
 const { getConfig } = require('../config/env');
 const { e2eGateMiddleware } = require('../config/e2eGate');
+const { getRateLimitStore } = require('../middleware/rateLimitStore');
 
 const router = express.Router();
 
@@ -20,6 +21,7 @@ const e2eLimiter = rateLimit({
   windowMs: 15 * 60 * 1000, // 15 minutes
   // Keep tests stable (avoid flakiness), but still satisfy scanners and protect dev usage.
   max: isTestEnv ? 1000 : 30,
+  store: getRateLimitStore(),
   message: {
     success: false,
     error: 'Too many requests, please try again later.'

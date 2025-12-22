@@ -1,6 +1,7 @@
 const express = require('express');
 const rateLimit = require('express-rate-limit');
 const { getAllowedOrigins } = require('../config/allowedOrigins');
+const { getRateLimitStore } = require('../middleware/rateLimitStore');
 
 // Rate limiting for authentication endpoints
 // Strict limit to prevent brute force attacks on login/session endpoints
@@ -9,6 +10,7 @@ const isTestEnv = process.env.NODE_ENV === 'test';
 const authLimiter = rateLimit({
   windowMs: 15 * 60 * 1000, // 15 minutes
   max: isTestEnv ? 1000 : 10, // 10 in production, higher in tests to avoid interference
+  store: getRateLimitStore(),
   message: {
     success: false,
     error: 'Too many login attempts, please try again later.'
