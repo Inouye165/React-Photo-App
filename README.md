@@ -1,20 +1,20 @@
 
 # Lumina
 
-# Lumina (formerly React Photo App)
-
 ![Status: High-Performance Engineering Prototype (Active Development)](https://img.shields.io/badge/status-high--performance--prototype-yellow.svg)
-[![Tests](https://img.shields.io/badge/tests-vitest%20%2B%20jest-brightgreen.svg)](https://github.com/Inouye165/React-Photo-App)
+[![Tests](https://img.shields.io/badge/tests-vitest%20%2B%20jest-brightgreen.svg)](TESTING.md)
 [![Security](https://img.shields.io/badge/security-JWT%20%2B%20RLS-blue.svg)](https://supabase.com/docs/guides/auth)
 [![HEIC Support](https://img.shields.io/badge/HEIC-Auto%20Convert-orange.svg)](https://en.wikipedia.org/wiki/High_Efficiency_Image_Format)
 [![React](https://img.shields.io/badge/React-19-61dafb.svg)](https://reactjs.org/)
 [![License](https://img.shields.io/badge/license-MIT-blue.svg)](LICENSE)
 
-> **A photo workspace I built to learn how real production apps are architected — security, scaling, and all the unglamorous stuff.**
+Lumina is an AI-powered, privacy-first photo workspace — built to learn and practice industry-leading engineering standards.
 
-This started as a way to practice backend engineering and security habits. It's grown into something I actually use. The backend is solid; the frontend is functional but still rough around the edges. Maybe one day it'll support sharing and collaboration, but for now it's focused on doing the basics right.
+Lumina is a long-running engineering project focused on security, scalability, and maintainability. The goal is to evolve into a community-oriented platform (sharing + chat) while keeping user data isolation, consent, and privacy at the center.
 
-**Author:** Ron Inouye ([@Inouye165](https://github.com/Inouye165))
+The frontend is still evolving; the backend and security posture are treated as first-class concerns.
+
+Author: Ron Inouye (@Inouye165)
 
 ---
 
@@ -33,6 +33,17 @@ It is not a consumer product or tutorial, but a high-performance engineering pro
 
 ---
 
+## 🌱 Community & values
+
+- Be kind and inclusive: This project aims to welcome contributors and users from all backgrounds.
+- Privacy-first by default: User data isolation, least-privilege access, and secure-by-design patterns are core requirements.
+- Transparency: Security trade-offs and changes should be documented. No “security theater.”
+- Respectful community: Harassment, hate, and abusive behavior are not welcome.
+
+## 🔒 Privacy & user isolation (north star)
+
+Lumina is designed around isolated user workspaces: each user’s photos, metadata, and derived AI outputs must remain private and access-controlled. Sharing features (albums, links, chat) should be opt-in, permissioned, and auditable.
+
 ## 💪 What Sets This Apart
 
 This isn't a tutorial project with placeholder tests. Here's what's actually here:
@@ -44,25 +55,16 @@ This isn't a tutorial project with placeholder tests. Here's what's actually her
 | **Security Layers** | RLS, Bearer auth, Origin allowlisting, rate limiting, secret scanning |
 | **Background Jobs** | BullMQ + Redis for thumbnails, AI, HEIC conversion — nothing blocks the request |
 | **AI Pipeline** | LangGraph workflows with retry logic and fallbacks, not spaghetti API calls |
-| **HEIC Conversion** | Pure Node.js (Sharp + heic-convert) — deploys anywhere without ImageMagick |
+| **HEIC Conversion** | HEIC/HEIF → JPEG via Sharp, with heic-convert fallback. |
 
 ---
-
-## 🌱 Values
-- **Be decent:** Everyone's welcome here.
-- **Privacy matters:** Your photos stay yours. User isolation isn't an afterthought.
-- **No security theater:** If something's a known limitation, it gets documented.
-- **Keep it respectful:** Standard open-source community expectations apply.
-
-## 🔒 Privacy
-Each user's photos, metadata, and AI outputs are isolated. You can't accidentally (or intentionally) see someone else's stuff. If sharing features ever get added, they'll be opt-in with clear permissions.
 
 ## ✨ Architectural Experiments & Features
 
 ### 🧠 **AI Photo Concierge (Prototype)**
 - **Unified Context Tab:** EditPage now combines story description and location map in a single, vertically stacked Context view for streamlined editing.
 - **Object & Scene Detection:** Recognizes dogs, food, collectibles, and 100+ categories (via AI models)
-- **Food/Location Agent:** Attempts to cross-reference food photos with nearby restaurants using GPS and Google Places API
+- **Food/Location Agent:** Attempts to cross-reference food photos with nearby restaurants using GPS and a Places API
 - **Collectibles Valuation:** Prototype logic for estimating value of items like Pyrex, comics, memorabilia
 - **Location Intelligence:** Tries to identify visible landmarks, mountains, or lakes in the photo background
 
@@ -72,23 +74,32 @@ Each user's photos, metadata, and AI outputs are isolated. You can't accidentall
 - **Background Processing:** BullMQ + Redis for offloading heavy tasks (thumbnails, AI, HEIC conversion)
 - **Row-Level Security:** Supabase RLS for strict user data isolation
 
-### 🔒 **Security (Experimental)**
-- **API Auth:** Protected API routes require `Authorization: Bearer <token>`.
-- **Images/Thumbnails:** Prefer signed thumbnail URLs for `<img>`; otherwise use Bearer auth. A deprecated cookie fallback may exist only for legacy image access/E2E and will be removed.
-- **CSRF defense:** State-changing auth endpoints enforce strict Origin/Referer allowlisting (no CSRF tokens).
-- **Secret scanning:** Use `npm run secret-scan` (and hooks if enabled) to block committing secret-like strings.
-- **Experimental Beta Mode:** Optional beta features with an explicit privacy disclaimer and user acknowledgement
-- **Content Security Policy:** Helmet-enforced CSP (tests exist; CI setup depends on your environment)
-- **Concurrency Limits:** Rate limiting to prevent upload storms
+### 🔒 Security (Experimental)
 
-### ✅ Engineering habits I'm practicing
-- Write security tests, not just happy-path tests
-- Don't leak secrets in error messages or logs
-- Keep docs updated when the code changes (harder than it sounds)
-- Measure performance and actually look at the numbers
+API Auth: Protected API routes require `Authorization: Bearer <token>`.
+
+Images/Thumbnails: Prefer signed thumbnail URLs for `<img>`; otherwise use Bearer auth. A deprecated cookie fallback may exist only for legacy image access/E2E and will be removed.
+
+CSRF defense: State-changing auth endpoints enforce strict Origin/Referer allowlisting (no CSRF tokens).
+
+Secret scanning: Use `npm run secret-scan` (and hooks if enabled) to block committing secret-like strings.
+
+CSP: Helmet-enforced CSP (tests exist; CI setup depends on your environment).
+
+Rate limiting: Concurrency limits to reduce upload storms.
+
+### ✅ Engineering standards (what “industry-leading” means here)
+
+Security tests and threat-model thinking are expected.
+
+Clear error handling (no secret leakage) and safe logging.
+
+Documentation should be kept in sync with refactors.
+
+Performance is measured and regressions are investigated.
 
 ### 📸 **Photo Handling**
-- **HEIC Auto-Convert:** HEIC/HEIF → JPEG via Sharp, with `heic-convert` fallback (no ImageMagick dependency)
+- **HEIC Auto-Convert:** HEIC/HEIF → JPEG via Sharp, with `heic-convert` fallback.
 - **Optimistic Uploads:** Fast, responsive uploads with immediate navigation and background processing
 - **Compass Overlay:** Shows camera direction on map pins (prototype)
 - **Smart Thumbnails:** Lazy-loaded, optimized for large galleries
@@ -126,8 +137,9 @@ User uploads photo
 - Backend: Node.js + Express
 - Data: Postgres (Supabase or local) + Supabase Storage
 - Jobs: BullMQ + Redis
-- Image processing: Sharp + `heic-convert` fallback
+- HEIC/HEIF → JPEG via Sharp, with `heic-convert` fallback.
 - Tests: Vitest (web) + Jest (server) + Playwright (E2E)
+- CI/CD: Recommended to run unit tests, integration checks, CSP validation, and secret scanning. (CI wiring depends on your environment.)
 
 ## Architecture notes
 
@@ -180,7 +192,7 @@ Backend: http://localhost:3001
 Notes:
 
 - The worker is required for thumbnail generation and background enrichment.
-- If Google Places keys are missing, Places-based enrichment is skipped.
+- If `Maps_API_KEY` / `GOOGLE_PLACES_API_KEY` is missing, Places-based enrichment will be disabled.
 - In non-test environments, the backend is configured to refuse startup if `OPENAI_API_KEY` is missing.
 
 ## Configuration

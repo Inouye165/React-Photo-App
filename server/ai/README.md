@@ -1,16 +1,16 @@
 # AI Service Documentation
 
-This directory contains AI-powered features for the photo application, including point-of-interest (POI) detection, nutrition analysis, and LangGraph workflows.
+This directory contains AI-powered features for Lumina, including point-of-interest (POI) detection, nutrition analysis, and LangGraph workflows.
 
 ## Point of Interest (POI) Detection
 
-### Google Places Integration
+### Places API Integration
 
-The Google Places API integration (`server/ai/poi/googlePlaces.js`) provides location-based POI discovery for photos with GPS metadata.
+The Places API integration (`server/ai/poi/googlePlaces.js`) provides location-based POI discovery for photos with GPS metadata.
 
 #### Architecture
 
-**Parallel Type Requests**: The `nearbyPlaces` function executes parallel requests for multiple POI types to maximize result coverage. The Google Places API does not support multiple types in a single request, so we issue concurrent requests for:
+**Parallel Type Requests**: The `nearbyPlaces` function executes parallel requests for multiple POI types to maximize result coverage. The Places API does not support multiple types in a single request, so we issue concurrent requests for:
 - `park`
 - `museum`
 - `tourist_attraction`
@@ -32,7 +32,7 @@ GOOGLE_API_KEY=your_api_key_here
 ```
 
 The API key must have:
-- Google Places API enabled
+- Places API enabled
 - Billing configured
 - Server-side API restrictions
 
@@ -54,7 +54,7 @@ Run tests (from `server/`): `npm test -- ai/poi/googlePlaces.test.js`
 
 ### OpenStreetMap Integration
 
-Alternative POI source for trail data when Google Places doesn't return results. See `server/ai/poi/osmTrails.js`.
+Alternative POI source for trail data when the Places provider doesn't return results. See `server/ai/poi/osmTrails.js`.
 
 ## LangGraph Workflows
 

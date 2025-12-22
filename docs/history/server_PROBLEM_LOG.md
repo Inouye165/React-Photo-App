@@ -1,3 +1,5 @@
+> Historical note: This is a point-in-time log. Paths, scripts, or auth models may not match the current main branch.
+
 ## [2025-11-13] /photos Endpoint Hardened with DB Retry Logic
 
 **Symptoms:**

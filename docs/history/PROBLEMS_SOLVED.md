@@ -1,3 +1,5 @@
+> Historical note: This is a point-in-time log. Paths, scripts, or auth models may not match the current main branch.
+
 # Problems solved — Root index
 
 This file cross-references subsystem problem logs.

@@ -1,6 +1,6 @@
 # Project Roadmap & Improvement Plan
 
-This document contains the full list of phased TODO items and improvement plans as provided by the user. Use this to track critical security, mobile, performance, desktop, and polish tasks for the Photo App.
+This document contains the full list of phased TODO items and improvement plans as provided by the user. Use this to track critical security, mobile, performance, desktop, and polish tasks for Lumina.
 
 ---
 

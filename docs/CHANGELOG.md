@@ -2,7 +2,7 @@
 Performance: Implemented client-side thumbnail generation to eliminate server-side resizing delays.
 # Changelog
 
-All notable changes to the React Photo App are documented here.
+All notable changes to Lumina are documented here.
 
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/).
 
@@ -34,7 +34,7 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/).
 ### Added
 - **[Reliability]** Enhanced Session Recovery - Invalid refresh tokens now trigger automatic cleanup and re-login prompt, preventing zombie sessions and "half-broken" authentication states
 - **[Scalability]** Zero-Disk Streaming Uploads - Photo uploads now stream directly to Supabase Storage using Busboy, eliminating local `os.tmpdir()` disk writes. Hash calculation and validation occur during streaming. Heavy processing (EXIF extraction, thumbnails) deferred to BullMQ workers
-- **[Security]** CSRF Protection - Token + Origin validation on all state-changing requests
+- **[Security]** CSRF defense - Origin/Referer verification on state-changing requests (no CSRF tokens)
 - **[Security]** Concurrency Limits - Rate limiting prevents upload storms from overwhelming workers
 
 ### Fixed
@@ -52,11 +52,11 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/).
 ### Added
 - **[Security]** Strict SSL certificate validation for production database connections - Production now enforces `rejectUnauthorized: true` with CA certificate verification to prevent MITM attacks
 - **[Security]** Complete Supabase Auth integration with centralized log redaction
-- **[AI]** Advanced HEIC Support - Automatic conversion with Sharp and `heic-convert` fallback (no ImageMagick dependency)
+- **[AI]** Advanced HEIC Support - Automatic conversion with Sharp and `heic-convert` fallback
 - **[AI]** Dynamic model selection with failover
 - **[Infrastructure]** Background processing with BullMQ and robust retry mechanisms
 - **[Infrastructure]** Comprehensive test suite expanded to 86 tests covering frontend, backend, and security
-- **[Features]** Location Intelligence - Google Places API integration for POI lookup
+- **[Features]** Location Intelligence - Places API integration for POI lookup
 - **[Features]** Collectibles Valuation - AI estimates worth of memorabilia
 - **[Features]** Food Detective Agent - Cross-references dishes with nearby restaurants using GPS
 

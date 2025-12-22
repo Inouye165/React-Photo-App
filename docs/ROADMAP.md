@@ -1,6 +1,6 @@
 # Roadmap
 
-This document outlines completed milestones, current priorities, and future plans for the React Photo App.
+This document outlines completed milestones, current priorities, and future plans for Lumina.
 
 ---
 
@@ -22,7 +22,7 @@ This document outlines completed milestones, current priorities, and future plan
 
 ### AI & Intelligence
 - [x] **LangGraph Pipeline** - Orchestrated AI workflow (EXIF → GPS → Analysis → POI → Valuation)
-- [x] **Food Detective Agent** - Cross-references dishes with nearby restaurants via Google Places
+- [x] **Food Detective Agent** - Cross-references dishes with nearby restaurants via a Places API
 - [x] **Collectibles Valuation** - Estimates worth of memorabilia based on image + condition
 - [x] **Location Intelligence** - Identifies landmarks, trails, and points of interest from GPS coords
 
@@ -86,7 +86,7 @@ This document outlines completed milestones, current priorities, and future plan
 ### Future Vision
 - [ ] **Plugin System** - Custom AI models, third-party integrations
 - [ ] **Print Fulfillment** - Direct ordering of photo books, prints, canvases
-- [ ] **Cloud Backup Sync** - Two-way sync with Google Photos, iCloud, Dropbox
+- [ ] **Cloud Backup Sync** - Two-way sync with cloud photo backup services (e.g., iCloud, Dropbox)
 - [ ] **Timeline View** - Visual timeline with photo clusters and travel routes
 - [ ] **3D Photo Support** - Depth maps, spatial photos from iPhone 15+
 

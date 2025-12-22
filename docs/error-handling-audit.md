@@ -1,8 +1,10 @@
 # Error Handling & Logging Safety Audit
 
+> Historical note: This is a point-in-time audit log. Paths, scripts, and auth models may not match the current main branch.
+
 **Date:** November 26, 2025  
 **Auditor:** Senior Staff Software Architect (Code Review)  
-**Scope:** Full-stack React Photo App codebase (frontend + backend)  
+**Scope:** Full-stack Lumina codebase (frontend + backend)  
 **Goal:** Verify that recent console cleanup work did not hide real errors
 
 ---

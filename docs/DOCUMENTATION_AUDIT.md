@@ -1,9 +1,11 @@
 
-# Documentation Audit – React Photo App
+> Historical note: This is a point-in-time audit log. Paths, scripts, and doc status may not match the current main branch.
+
+# Documentation Audit – Lumina
 
 This file tracks all documentation in the repo, its purpose, review status, and known issues.
 
-- **Repo clone:** React-Photo-App-Docs
+- **Repo clone:** Lumina-Docs
 - **Audit branch:** docs/audit-2025-11-29
 - **Created on:** 2025-11-29
 - **Auditor:** Ron + LLM assistant
@@ -21,7 +23,7 @@ Legend:
 | Reviewed | File Path         | Purpose / Description                                              | Last Reviewed | Issues / Notes |
 |----------|-------------------|--------------------------------------------------------------------|---------------|----------------|
 | [x]      | README.md         | Top-level overview, features, and quickstart.                      | 2025-11-29    | Synced quickstart, env vars, and dev/worker instructions with current backend/AI stack. Clarified required/optional env vars, Docker/Postgres/Redis setup, ports, and auth/security summary. |
-| [ ]      | TESTING.md        | Comprehensive testing guide for the Photo App.                      | Never         |                |
+| [ ]      | TESTING.md        | Comprehensive testing guide for Lumina.                             | Never         |                |
 | [ ]      | SECURITY_REMEDIATION_SUMMARY.md | Summary of security remediations and vulnerabilities.             | Never         |                |
 | [ ]      | CHANGELOG.md      | Project changelog and release history.                             | Never         |                |
 | [ ]      | CONTRIBUTING.md   | Contribution guidelines and local dev/CI notes.                    | Never         |                |

@@ -1,3 +1,5 @@
+> Historical note: This is a point-in-time log. Paths, scripts, or auth models may not match the current main branch.
+
 # TESTS_HARDENING_LOG.md
 
 ## [2025-11-06] Phase-1 Hardening - Complete

@@ -1,3 +1,5 @@
+> Historical note: This is a point-in-time log. Paths, scripts, or auth models may not match the current main branch.
+
 # CI/Test Troubleshooting Log
 
 This document maintains a running log of CI/test failures, their root causes, fixes, and requirements for successful test execution.

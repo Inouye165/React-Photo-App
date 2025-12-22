@@ -1,6 +1,6 @@
 # Scalability & Architecture Report
 
-This document outlines the architectural decisions and optimizations implemented to ensure the React Photo App scales reliably from 1 to 10,000+ concurrent users.
+This document outlines the architectural decisions and optimizations implemented to ensure Lumina scales reliably from 1 to 10,000+ concurrent users.
 
 ## 1. Memory Safety (Streaming Architecture)
 **Problem:** Previous versions buffered entire file uploads (up to 50MB) into RAM before processing. A concurrent load of 20 users could exhaust server memory (OOM).

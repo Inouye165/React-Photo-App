@@ -1,6 +1,6 @@
 # Pipeline Graphs & Visualization
 
-This directory contains visualization resources for the LangGraph AI pipeline used in the React Photo App.
+This directory contains visualization resources for the LangGraph AI pipeline used in Lumina.
 
 ## Purpose
 To visualize the complex execution flows of the LangGraph orchestration, including node transitions, AI model decisions, and data transformations.
@@ -14,7 +14,7 @@ To visualize the complex execution flows of the LangGraph orchestration, includi
    - LLM calls (prompts & responses)
    - Timestamps
    - State transitions
-   - Tool usage (e.g., Google Search, Places API)
+   - Tool usage (e.g., web search, Places API)
 
 ## Naming Convention
 - **Raw Logs**: `{category}-execution-log.md` (e.g., `collectibles-execution-log.md`)

@@ -1,6 +1,8 @@
 <!-- docs/ENGINEERING_CASE_STUDY.md -->
 
-# React Photo App – Engineering Case Study (Sept–Nov 2025)
+> Historical note: This is a point-in-time case study. Paths, scripts, and auth models may not match the current main branch.
+
+# Lumina – Engineering Case Study (Sept–Nov 2025)
 
 ## Overview
 
@@ -12,7 +14,7 @@ Key characteristics of the current system:
 - **Frontend:** React with modern state management and routing
 - **AI Pipeline:** OpenAI SDK orchestrated with LangGraph
 - **Domains:** Photo archiving, collectibles valuation, food/restaurant detection, location intelligence
-- **Operational Maturity:** Strong CI, security-by-design, cloud-native configuration
+- **Operational Maturity:** Strong automated checks, security-by-design, cloud-native configuration
 
 This document walks through the major engineering milestones in chronological order and highlights the core improvements at each stage.
 
@@ -119,7 +121,7 @@ This document walks through the major engineering milestones in chronological or
   - Development/test modes relaxed for DX but still realistic.
   - Separate “CSP prod test” CI job using custom sharp build flags and test envs.
 - CI & tooling improvements:
-  - Fixed issues with native modules (e.g., `sharp`, `sqlite3`) on Linux runners.
+  - Fixed issues with native modules (e.g., `sharp`) on Linux runners.
   - Managed Husky hooks, caching, and script consistency for reproducible CI runs.
 
 **Impact**
@@ -130,7 +132,7 @@ This document walks through the major engineering milestones in chronological or
 
 ---
 
-### 5. Collectibles Domain, Google Places & LangGraph  
+### 5. Collectibles Domain, Places API & LangGraph  
 **Approx. Nov 11–18, 2025**
 
 **Goals**
@@ -150,11 +152,11 @@ This document walks through the major engineering milestones in chronological or
   - Structured metadata (pattern, condition, etc.) fed into model prompts.
 - Added tests and docs around the migration path and production behavior.
 
-#### Google Places & POI System (Around Nov 13–14, 2025)
+#### Places API & POI System (Around Nov 13–14, 2025)
 
 **Key changes**
 
-- Integrated **Google Places API**:
+- Integrated a **Places API**:
   - Fetches nearby restaurants / POIs for given coordinates.
   - Configurable search radius and categories.
 - Implemented a **POI cache**:
@@ -281,16 +283,16 @@ This document walks through the major engineering milestones in chronological or
 - **Cloud-native** architecture with Supabase Postgres and storage.
 - **Async AI pipeline** orchestrated via LangGraph with multiple domain-specific agents.
 - **Defense in depth**:
-  - HTTP-only cookies.
-  - CSRF protection with token + Origin checks.
+  - HTTP-only cookies (legacy/transition use only).
+  - CSRF defenses via strict Origin/Referer verification (no CSRF tokens).
   - CSP via Helmet.
   - RLS in Postgres.
   - Path sanitization, CORS, and safe logging.
-- **Mature CI**:
+- **Mature automated checks**:
   - Separate jobs for client, server, CSP tests, and security scanning.
   - Stable tests (including AI and Supabase integrations) with clear mocks and fixtures.
 
-The React Photo App has effectively grown into a **small, production-ready SaaS-style platform** with engineering practices comparable to what you’d expect at a large tech company.
+Lumina has effectively grown into a **small, production-ready SaaS-style platform** with engineering practices comparable to what you’d expect at industry-leading engineering organizations.
 
 ---
 

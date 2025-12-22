@@ -1,6 +1,6 @@
 # Running tests
 
-This project uses Vitest for frontend tests and Jest/Supertest for backend tests. CI setup depends on your environment and is not guaranteed to be committed in this repository.
+Lumina uses Vitest for frontend tests and Jest/Supertest for backend tests. CI setup depends on your environment and is not guaranteed to be committed in this repository.
 
 Requirements
 - Node.js 20+ (see root `package.json` engines)

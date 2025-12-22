@@ -1,6 +1,6 @@
-# Photo App Server
+# Lumina Server
 
-Backend server for the React Photo App, built with Node.js and Express. It handles authentication, file uploads, image processing (HEIC conversion), and AI metadata extraction.
+Backend server for Lumina, built with Node.js and Express. It handles authentication, file uploads, image processing (HEIC conversion), and AI metadata extraction.
 
 ## 🚀 Setup
 
@@ -8,7 +8,7 @@ Backend server for the React Photo App, built with Node.js and Express. It handl
 - Node.js 20+
 - **PostgreSQL** (via Docker or Supabase)
 - Redis (for background jobs)
-- (No ImageMagick required; HEIC/HEIF conversion uses Sharp + `heic-convert` fallback)
+- HEIC/HEIF conversion uses Sharp + `heic-convert` fallback
 
 ### Installation
 
@@ -141,7 +141,7 @@ This project uses **BullMQ** and **Redis** to process long-running tasks asynchr
 - **Log Redaction**: Automatically masks sensitive data (tokens, keys) in logs.
 - **Input Validation**: Strict validation on all endpoints.
 - **Strict CORS**: Explicit origin allowlisting (no regex wildcards or IP ranges).
-  - **Production**: Set `FRONTEND_ORIGIN` environment variable to your deployed frontend URL (e.g., `https://react-photo-app-eta.vercel.app`)
+  - **Production**: Set `FRONTEND_ORIGIN` environment variable to your deployed frontend URL (e.g., `https://your-frontend.example.com`)
   - **Local Dev**: Automatically includes `http://localhost:5173` (Vite), `http://localhost:3000`, `http://localhost:5174`
   - **Security**: Only explicitly whitelisted origins receive CORS headers; credentials enabled for secure cookie/token auth
   - **Centralized**: All origin resolution uses `server/config/allowedOrigins.js` helpers (`resolveAllowedOrigin`, `isOriginAllowed`) for consistency across main CORS middleware, image auth, and auth routes
@@ -258,7 +258,7 @@ The backend uses a strict, centralized CORS allowlist for all API and image/thum
 - http://localhost:3000, http://localhost:5174 (legacy/alt dev ports)
 
 **Production:**
-- Set `FRONTEND_ORIGIN=https://react-photo-app-eta.vercel.app` in Railway environment variables.
+- Set `FRONTEND_ORIGIN=https://your-frontend.example.com` in Railway environment variables.
 - Optionally set `ALLOWED_ORIGINS` (comma-separated) for multiple frontends. If set, defaults are NOT included.
 
 **How it works:**
@@ -271,7 +271,7 @@ The backend uses a strict, centralized CORS allowlist for all API and image/thum
 - Check Railway logs for `[CORS] Allowed origins: ...` on startup (non-prod or `DEBUG_CORS=true`).
 - Enable debug logging with `DEBUG_CORS=true` to see CORS decisions in logs.
 
-**See also:** Comments in `config/allowedOrigins.js` and main CORS middleware in `server.js` for implementation details.
+**See also:** Comments in `server/config/allowedOrigins.js` and main CORS middleware in `server.js` for implementation details.
 
 **Examples:**
 ```bash
@@ -286,7 +286,7 @@ ALLOWED_ORIGINS="http://localhost:5173,http://localhost:8080"
 
 # Combined with FRONTEND_ORIGIN (both are merged)
 ALLOWED_ORIGINS="https://api.example.com"
-FRONTEND_ORIGIN="https://react-photo-il8l0cuz2-ron-inouyes-projects.vercel.app"
+FRONTEND_ORIGIN="https://your-frontend.example.com"
 ```
 
 **Security Notes:**
@@ -300,16 +300,16 @@ FRONTEND_ORIGIN="https://react-photo-il8l0cuz2-ron-inouyes-projects.vercel.app"
 
 #### Current Production Setup (Vercel + Railway)
 
-**Frontend (Vercel):** `https://react-photo-app-eta.vercel.app`  
-**Backend (Railway):** `https://web-production-d709f.up.railway.app`
+**Frontend (Vercel):** (your Vercel project URL)  
+**Backend (Railway):** (your Railway project URL)
 
 **Railway Environment Configuration:**
 ```bash
-FRONTEND_ORIGIN=https://react-photo-app-eta.vercel.app
+FRONTEND_ORIGIN=https://your-frontend.example.com
 ```
 
 This single environment variable enables:
-- ✅ Vercel frontend can make authenticated requests to Railway backend
+- ✅ Frontend can make authenticated requests to backend
 - ✅ Cookies and Authorization headers work across origins
 - ✅ `/display/thumbnails` and `/display/image` routes return proper CORS headers
 - ✅ Local development still works (`http://localhost:5173` is included by default)
@@ -321,12 +321,12 @@ To whitelist additional frontend URLs (e.g., staging environments, mobile apps):
 1. **Single additional origin:** Update `FRONTEND_ORIGIN` or use `ALLOWED_ORIGINS`
    ```bash
    ALLOWED_ORIGINS=https://staging.myapp.com,https://preview.myapp.com
-   FRONTEND_ORIGIN=https://react-photo-app-eta.vercel.app
+  FRONTEND_ORIGIN=https://your-frontend.example.com
    ```
 
 2. **Multiple origins:** Use comma-separated list in `ALLOWED_ORIGINS`
    ```bash
-   ALLOWED_ORIGINS=https://app1.vercel.app,https://app2.netlify.app,https://app3.fly.io
+  ALLOWED_ORIGINS=https://app1.example.com,https://app2.example.com,https://app3.example.com
    ```
 
 3. **Verify configuration:** Check Railway logs for CORS debug output

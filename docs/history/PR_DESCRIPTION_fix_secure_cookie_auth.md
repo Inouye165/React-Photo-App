@@ -1,3 +1,5 @@
+> Historical note: This is a point-in-time log. Paths, scripts, or auth models may not match the current main branch.
+
 PR: Harden image auth and switch to httpOnly cookie sessions
 
 Branch: fix/secure-cookie-auth

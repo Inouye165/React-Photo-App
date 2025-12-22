@@ -1,3 +1,5 @@
+> Historical note: This is a point-in-time log. Paths, scripts, or auth models may not match the current main branch.
+
 PR: Implement 1-day HTTP caching with cache busting and dev guards
 
 Branch: feat/image-caching-1d-and-dev-guard

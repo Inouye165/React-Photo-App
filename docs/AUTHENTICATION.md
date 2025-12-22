@@ -1,8 +1,8 @@
-# Photo App Authentication System
+# Lumina Authentication System
 
 ## Overview
 
-This app uses Supabase Auth for user sessions and validates access on the backend using Bearer tokens.
+Lumina uses Supabase Auth for user sessions and validates access on the backend using Bearer tokens.
 
 > **Architecture note (December 2025):** Protected API routes require `Authorization: Bearer <token>`. Some image endpoints still contain a deprecated cookie fallback for legacy/E2E compatibility; it should be treated as transitional and removed over time.
 
@@ -25,7 +25,7 @@ Authorization: Bearer <supabase_access_token>
 - ✅ **CSRF Immunity**: Tokens are not sent automatically by browsers, eliminating CSRF attack vectors
 - ✅ **Stateless**: No server-side session storage required (pure JWT validation)
 - ✅ **iOS/Mobile Safari compatibility**: No ITP cookie blocking issues
-- ✅ **Cross-origin ready**: Works seamlessly with frontend on Vercel, backend on Railway
+- ✅ **Cross-origin ready**: Works seamlessly across origins
 - ✅ **No split-brain**: Frontend and backend sessions cannot get out of sync
 - ✅ **Standard HTTP**: Uses the standard `Authorization` header pattern
 
@@ -170,7 +170,7 @@ CORS_CREDENTIALS=true
 - **Input Validation**: Comprehensive validation and sanitization
 - **CORS Protection**: Configured for specific origins only
 - **Security Headers**: Helmet.js provides comprehensive protection
-- **Bearer Token Auth**: All API routes require `Authorization: Bearer <token>` header (exclusively). ~~Cookie-based auth removed~~. Query parameter tokens are strictly rejected to prevent token leakage.
+- **Bearer Token Auth**: Protected API routes require `Authorization: Bearer <token>`. Cookie-based auth is legacy-only (image access/E2E transition, if enabled) and will be removed. Query parameter tokens are strictly rejected to prevent token leakage.
 
 ### Data Protection
 - **Password Hashing**: Bcrypt with high salt rounds
@@ -361,7 +361,7 @@ After setting `COOKIE_SAME_SITE=none`:
 
 #### Still Using Query Parameters?
 - **Don't!** Query parameter tokens are deprecated for security
-- The cookie-based system is secure and works cross-origin when configured correctly
+- Cookie-based image auth is legacy-only and may be removed; prefer Bearer auth (for API routes) and signed URLs (for `<img>`)
 - See [SECURITY_REMEDIATION_CWE489.md](./SECURITY_REMEDIATION_CWE489.md) for details
 
 ### Security notes

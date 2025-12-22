@@ -89,7 +89,7 @@ VITE_API_URL=https://api.your-photo-app.com
 
 ### Uncaught Exception Handling
 
-The application implements production-grade error handling following Node.js best practices and big-tech standards (Google, Meta, Netflix):
+The application implements production-grade error handling following Node.js best practices and industry-leading engineering standards:
 
 **Behavior:**
 - **Uncaught Exceptions**: When an uncaught exception occurs, the application is in an undefined state. The server immediately logs the error (with full stack trace) and exits with status code `1`.

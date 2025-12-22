@@ -74,7 +74,7 @@ The AI pipeline was extended to estimate what an item might be worth, based on t
 
 Next, you gave it a better sense of **where**.
 
-By integrating the **Google Places API**, the app learned to look around each photo’s GPS coordinates:
+By integrating a **Places API**, the app learned to look around each photo’s GPS coordinates:
 
 - “Is there a restaurant nearby?”
 - “What’s the name of this café?”
@@ -94,7 +94,7 @@ You built a **Food Detective agent** with a very specific job:
 
 > Look at the photo, figure out what dish it is, and guess which nearby restaurant it came from.
 
-Using the POI data from Google Places:
+Using the POI data from the Places provider:
 
 - The AI recognized dishes (“seafood boil,” “burger,” “ramen,” etc.).
 - It cross-referenced the list of nearby restaurants.
@@ -115,8 +115,8 @@ Of course, a smart app also has to be a **safe** app.
 Between roughly **November 21 and November 25, 2025**, you put security and reliability front and center:
 
 - **Row Level Security (RLS)** ensured that each user’s data stayed isolated in the database.
-- **Cookie-based authentication** replaced token-in-query patterns, tightening how sessions are managed.
-- **CSRF protection** with token + Origin checks guarded against cross-site attacks.
+- **Bearer token authentication** became the standard for protected routes, and cookie-based auth was limited to legacy/transition use (e.g., image access/E2E) while eliminating token-in-query patterns.
+- **CSRF defenses** use strict Origin/Referer verification (no CSRF tokens).
 - Concurrency limits and race-condition fixes prevented a single user from overwhelming the system with uploads.
 - CI was tamed, flaky tests were fixed, and the pipeline became stable and predictable.
 

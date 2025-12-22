@@ -1,3 +1,5 @@
+> Historical note: This is a point-in-time log. Paths, scripts, or auth models may not match the current main branch.
+
 # Professional Code Review Log: High-Priority Fixes
 
 This document records high-impact issues identified in a professional code review, focusing on security, resilience, and operational cost efficiency.

@@ -1,21 +1,21 @@
-# Testing Guide for Photo App
+# Testing Guide for Lumina
 
 ## Overview
-This document provides comprehensive testing instructions for the Photo App's authentication system, HEIC conversion, and core functionality.
+This document provides comprehensive testing instructions for Lumina's authentication system, HEIC conversion, and core functionality.
 
 ## Prerequisites
 - Node.js 20+ (see root `package.json` engines)
 - npm 10+
 - Modern web browser (Chrome, Edge recommended)
-- (No ImageMagick required; HEIC/HEIF conversion uses Sharp + `heic-convert` fallback)
+- (HEIC/HEIF conversion uses Sharp + `heic-convert` fallback)
 
 ## Quick Start Testing
 
 ### 1. Environment Setup
 ```bash
 # Clone and install dependencies
-git clone https://github.com/Inouye165/React-Photo-App.git
-cd React-Photo-App
+git clone <your-repo-url>
+cd <your-repo-folder>
 npm install
 cd server && npm install && cd ..
 ```
@@ -119,7 +119,7 @@ cd server && npm test -- --json --outputFile ..\\test-results\\jest-server-summa
 **Problem**: HEIC files not displaying
 - **Check**: Server logs for conversion errors
 - **Check**: Your Node dependencies installed cleanly (`npm install` in root + `server`)
-- **Note**: ImageMagick is not required for this project; HEIC/HEIF conversion uses Sharp with a `heic-convert` fallback.
+- **Note**: HEIC/HEIF conversion uses Sharp with a `heic-convert` fallback.
 
 **Problem**: "Bad seek" errors in console
 - **Expected**: These can happen when a specific HEIC variant can't be decoded cleanly.

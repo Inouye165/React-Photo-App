@@ -6,7 +6,7 @@ If you suspect API keys or other secrets have been committed or exposed, rotate 
 
 1. Revoke the exposed key(s) immediately from the provider dashboard.
 2. Create a new key with the minimum required permissions.
-3. Update the key in any CI/CD secrets (GitHub Actions, other CI providers, etc.).
+3. Update the key in your CI/CD secret store (if applicable).
 4. Update local `.env` files on machines that need the new key. Do NOT commit `.env` files.
 5. If secrets were pushed to the repository, consider removing them from history (see "Removing secrets from git history").
 6. Notify any stakeholders and rotate any dependent credentials (e.g., secondary service keys) as necessary.
@@ -19,7 +19,7 @@ If you suspect API keys or other secrets have been committed or exposed, rotate 
 - Open **Project Settings → API**.
 - Revoke the exposed key (anon or service_role depending on which was leaked).
 - Generate a new key.
-- Update any server `.env` values (e.g., `SUPABASE_URL`, `SUPABASE_KEY`) in the `server/.env` file and in your CI secrets (`Settings → Secrets` in GitHub).
+- Update any server `.env` values (e.g., `SUPABASE_URL`, `SUPABASE_KEY`) in the `server/.env` file and in your CI/CD secret store.
 - If you used a `service_role` in client-side code, revoke and replace it immediately — `service_role` keys must never be exposed to clients.
 
 Notes:
@@ -34,11 +34,11 @@ Notes:
 - Update the new key in your server `.env` and CI secrets (e.g. `OPENAI_API_KEY`).
 - If your app used the key client-side, rotate immediately and audit where keys are used.
 
-## CI (GitHub Actions, etc.)
+## CI
 
-- Replace any plaintext keys in workflow YAMLs with repository secrets.
-- Update the repository secrets (`Settings → Secrets & variables`) with the rotated keys.
-- Re-run CI to ensure builds/flows pick up the new keys.
+- Replace any plaintext keys in CI configuration with secret references.
+- Update your CI/CD secret store with the rotated keys.
+- Re-run your CI pipeline to ensure builds/flows pick up the new keys.
 
 ## Removing secrets from git history (if keys were committed)
 

@@ -1,3 +1,5 @@
+> Historical note: This is a point-in-time log. Paths, scripts, or auth models may not match the current main branch.
+
 # Split-Brain Authentication Fix - Implementation Report
 
 **Date:** November 23, 2025  
