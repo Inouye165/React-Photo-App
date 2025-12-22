@@ -5,6 +5,7 @@ import { Image as ImageIcon, X } from 'lucide-react'
 import { API_BASE_URL, getAccessToken, getPhotos, sendMessage } from '../../api'
 import { useChatRealtime } from '../../hooks/useChatRealtime'
 import { usePresence } from '../../hooks/usePresence'
+import { useChatTyping } from '../../hooks/useChatTyping'
 import { supabase } from '../../supabaseClient'
 import type { ChatMessage } from '../../types/chat'
 import { useAuth } from '../../contexts/AuthContext'
@@ -47,6 +48,17 @@ export default function ChatWindow({ roomId }: ChatWindowProps) {
 
   const [idToUsername, setIdToUsername] = useState<Record<string, string | null>>({})
   const [header, setHeader] = useState<ChatHeaderState>({ title: 'Conversation', isGroup: false, otherUserId: null })
+
+  // Typing indicator hook (best-effort; no UI crash if Realtime unavailable)
+  const { typingUsernames, handleInputChange, handleInputSubmit } = useChatTyping({
+    roomId: roomId ?? '',
+    userId: user?.id ?? '',
+    supabase,
+    participants: Object.entries(idToUsername).map(([id, username]) => ({
+      userId: id,
+      username: username ?? undefined,
+    })),
+  })
 
   const bottomRef = useRef<HTMLDivElement | null>(null)
 
@@ -222,6 +234,9 @@ export default function ChatWindow({ roomId }: ChatWindowProps) {
     if (!roomId) return
     const trimmed = draft.trim()
     if (!trimmed && selectedPhotoId == null) return
+
+    // Best-effort: stop typing indicator as soon as user submits.
+    handleInputSubmit()
 
     try {
       setSending(true)
@@ -411,7 +426,10 @@ export default function ChatWindow({ roomId }: ChatWindowProps) {
           </button>
           <textarea
             value={draft}
-            onChange={(e) => setDraft(e.target.value)}
+            onChange={(e) => {
+              setDraft(e.target.value)
+              handleInputChange()
+            }}
             placeholder="Write a message…"
             rows={1}
             className="flex-1 resize-none rounded-2xl border border-slate-200 px-4 py-3 text-sm text-slate-900 placeholder:text-slate-400 focus:outline-none focus:ring-2 focus:ring-slate-900/10"
@@ -428,6 +446,14 @@ export default function ChatWindow({ roomId }: ChatWindowProps) {
             {sending ? 'Sending…' : 'Send'}
           </button>
         </form>
+        {/* Typing indicator UI */}
+        {typingUsernames.length > 0 && (
+          <div className="mt-2 text-xs text-slate-500" data-testid="chat-typing-indicator">
+            {typingUsernames.length === 1
+              ? `${typingUsernames[0]} is typing…`
+              : 'Someone is typing…'}
+          </div>
+        )}
       </div>
     </section>
   )
