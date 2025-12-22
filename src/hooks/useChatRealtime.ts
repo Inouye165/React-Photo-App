@@ -5,6 +5,8 @@ import { supabase } from '../supabaseClient'
 import type { ChatMessage } from '../types/chat'
 import { asChatMessage, sortMessages, upsertMessage } from '../utils/chatUtils'
 
+console.log('HOOK FILE LOADED')
+
 type MessagesInsertPayload = RealtimePostgresChangesPayload<{ [key: string]: unknown }>
 
 export interface UseChatRealtimeResult {
@@ -30,6 +32,9 @@ export function useChatRealtime(roomId: string | null, options?: { initialLimit?
   const subscriptionKey = useMemo(() => (roomId ? `room:${roomId}` : null), [roomId])
 
   useEffect(() => {
+    console.log('Attempting Connection to Room:', roomId)
+    if (!supabase) console.error('CRITICAL: Supabase client is NULL')
+
     if (import.meta.env.DEV) console.log('Attempting to subscribe to room:', roomId)
     let cancelled = false
 
@@ -79,6 +84,9 @@ export function useChatRealtime(roomId: string | null, options?: { initialLimit?
         )
 
         channel.subscribe((status, err) => {
+          console.log('SUBSCRIPTION STATUS:', status)
+          if (err) console.error('SUBSCRIPTION ERROR:', err)
+
           if (cancelled) return
           if (status === 'SUBSCRIBED') {
             if (import.meta.env.DEV) console.log('[useChatRealtime] SUBSCRIBED', { roomId, channel: channelName })
