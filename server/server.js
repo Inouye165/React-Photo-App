@@ -311,24 +311,6 @@ app.set('trust proxy', 1);
     });
   });
 
-
-module.exports = app;
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
   // Error handling middleware
   app.use((error, req, res, _next) => {
     // No attempt to repair malformed JSON here; let body-parser return errors so clients send valid JSON.
@@ -382,3 +364,6 @@ if (process.env.NODE_ENV !== 'test') {
     }
   })();
 }
+
+// Export after full configuration so tests/importers always get the complete app.
+module.exports = app;
