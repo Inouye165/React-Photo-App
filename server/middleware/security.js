@@ -1,6 +1,7 @@
 const helmet = require('helmet');
 const rateLimit = require('express-rate-limit');
 const logger = require('../logger');
+const { getRateLimitStore } = require('./rateLimitStore');
 
 /**
  * Configure security middleware
@@ -60,6 +61,7 @@ function configureSecurity(app) {
   const generalLimiter = rateLimit({
     windowMs: 15 * 60 * 1000, // 15 minutes
     max: 2000, // Limit each IP to 2000 requests per windowMs
+    store: getRateLimitStore(),
     message: {
       error: 'Too many requests from this IP, please try again later.'
     },
@@ -75,6 +77,7 @@ function configureSecurity(app) {
   const uploadLimiter = rateLimit({
     windowMs: 15 * 60 * 1000, // 15 minutes
     max: 100, // Limit uploads per IP
+    store: getRateLimitStore(),
     message: {
       success: false,
       error: 'Too many upload attempts, please try again later.'
@@ -87,6 +90,7 @@ function configureSecurity(app) {
   const apiLimiter = rateLimit({
     windowMs: 15 * 60 * 1000, // 15 minutes
     max: 1000, // Limit API calls per IP
+    store: getRateLimitStore(),
     message: {
       success: false,
       error: 'Too many API requests, please try again later.'

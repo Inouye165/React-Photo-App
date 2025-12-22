@@ -11,6 +11,7 @@ const express = require('express');
 const rateLimit = require('express-rate-limit');
 const { body, validationResult } = require('express-validator');
 const logger = require('../logger');
+const { getRateLimitStore } = require('../middleware/rateLimitStore');
 
 /**
  * Create rate limiter with environment-aware configuration
@@ -23,6 +24,7 @@ function createContactRateLimiter() {
   return rateLimit({
     windowMs: 60 * 60 * 1000, // 1 hour window
     max: isProduction ? 5 : 100,
+    store: getRateLimitStore(),
     standardHeaders: true, // Return rate limit info in the `RateLimit-*` headers
     legacyHeaders: false, // Disable the `X-RateLimit-*` headers
     message: {
