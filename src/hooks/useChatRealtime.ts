@@ -30,6 +30,7 @@ export function useChatRealtime(roomId: string | null, options?: { initialLimit?
   const subscriptionKey = useMemo(() => (roomId ? `room:${roomId}` : null), [roomId])
 
   useEffect(() => {
+    if (import.meta.env.DEV) console.log('Attempting to subscribe to room:', roomId)
     let cancelled = false
 
     async function run(): Promise<void> {
