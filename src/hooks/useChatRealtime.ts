@@ -31,7 +31,7 @@ export function useChatRealtime(roomId: string | null, options?: { initialLimit?
     setMessages((prev) => upsertMessage(prev, message))
   }
 
-  const subscriptionKey = useMemo(() => (roomId ? `room:${roomId}` : null), [roomId])
+  const subscriptionKey = useMemo(() => (normalizedRoomId ? `room:${normalizedRoomId}` : null), [normalizedRoomId])
 
   useEffect(() => {
     console.log('Attempting Connection to Room:', normalizedRoomId)
@@ -39,7 +39,6 @@ export function useChatRealtime(roomId: string | null, options?: { initialLimit?
 
     if (import.meta.env.DEV) console.log('Attempting to subscribe to room:', normalizedRoomId)
     let cancelled = false
-    let heartbeat: number | null = null
 
     const lastSubscriptionStatusRef: { current: string | null } = { current: null }
 
@@ -84,17 +83,6 @@ export function useChatRealtime(roomId: string | null, options?: { initialLimit?
         const channel = supabase.channel(channelName)
         channelRef.current = channel
 
-        heartbeat = window.setInterval(() => {
-          const currentChannel = channelRef.current
-          const channelState = (currentChannel as unknown as { state?: string } | null)?.state ?? 'unknown'
-          console.log('[useChatRealtime] Heartbeat', {
-            roomId: normalizedRoomId,
-            channel: channelName,
-            state: channelState,
-            lastStatus: lastSubscriptionStatusRef.current,
-          })
-        }, 5000)
-
         channel.on(
           'postgres_changes',
           { event: 'INSERT', schema: 'public', table: 'messages', filter: `room_id=eq.${normalizedRoomId}` },
@@ -136,21 +124,18 @@ export function useChatRealtime(roomId: string | null, options?: { initialLimit?
 
     return () => {
       cancelled = true
-      if (heartbeat !== null) {
-        window.clearInterval(heartbeat)
-        heartbeat = null
-      }
       const ch = channelRef.current
       channelRef.current = null
       if (ch) {
         try {
+          void ch.unsubscribe()
           supabase.removeChannel(ch)
         } catch {
           // ignore cleanup errors
         }
       }
     }
-  }, [normalizedRoomId, initialLimit, subscriptionKey])
+  }, [roomId, normalizedRoomId, initialLimit, subscriptionKey])
 
   return { messages, loading, error, upsertLocalMessage }
 }
