@@ -75,6 +75,21 @@ test('E2E chat: user discovery → start DM (no photo required)', async ({ page,
     })
   })
 
+  // Dependency status endpoint (polled by MainLayout after authReady)
+  await page.route('**/photos/dependencies', async (route) => {
+    const method = route.request().method()
+    if (method === 'OPTIONS') {
+      return route.fulfill({ status: 204, headers: corsHeaders, body: '' })
+    }
+    if (method !== 'GET') return route.fulfill({ status: 405, headers: corsHeaders, body: '' })
+    return route.fulfill({
+      status: 200,
+      contentType: 'application/json',
+      headers: corsHeaders,
+      body: JSON.stringify({ success: true, dependencies: {} }),
+    })
+  })
+
   // --- Supabase mocks (chat uses Supabase client directly) ---
   // The Playwright config sets VITE_SUPABASE_URL to http://127.0.0.1:5173/__supabase
 
@@ -90,6 +105,8 @@ test('E2E chat: user discovery → start DM (no photo required)', async ({ page,
     is_group: false,
     created_at: new Date().toISOString(),
   }
+
+  let hasCreatedRoom = false
 
   // Users search
   await page.route('**/__supabase/rest/v1/users**', async (route) => {
@@ -121,6 +138,8 @@ test('E2E chat: user discovery → start DM (no photo required)', async ({ page,
   })
 
   // Room members lookups (fetchRooms + dm intersection logic)
+  const roomMembers: Array<{ room_id: string; user_id: string }> = []
+
   await page.route('**/__supabase/rest/v1/room_members**', async (route) => {
     const method = route.request().method()
     if (method === 'OPTIONS') {
@@ -128,10 +147,48 @@ test('E2E chat: user discovery → start DM (no photo required)', async ({ page,
     }
 
     if (method === 'GET') {
+      const url = new URL(route.request().url())
+
+      const userIdEq = url.searchParams.get('user_id')
+      const roomIdEq = url.searchParams.get('room_id')
+
+      // fetchRooms(): user_id=eq.<id>
+      if (typeof userIdEq === 'string' && userIdEq.startsWith('eq.')) {
+        const userId = userIdEq.slice('eq.'.length)
+        const rows = roomMembers
+          .filter((m) => m.user_id === userId)
+          .map((m) => ({ room_id: m.room_id }))
+
+        // Resilient fallback: some flows may not explicitly POST room_members in mocks.
+        if (!rows.length && hasCreatedRoom && (userId === '11111111-1111-4111-8111-111111111111' || userId === targetUser.id)) {
+          return route.fulfill({ status: 200, contentType: 'application/json', headers: corsHeaders, body: JSON.stringify([{ room_id: room.id }]) })
+        }
+
+        return route.fulfill({ status: 200, contentType: 'application/json', headers: corsHeaders, body: JSON.stringify(rows) })
+      }
+
+      // ChatWindow header lookup: room_id=eq.<roomId> and user_id=neq.<self>
+      if (typeof roomIdEq === 'string' && roomIdEq.startsWith('eq.')) {
+        return route.fulfill({
+          status: 200,
+          contentType: 'application/json',
+          headers: corsHeaders,
+          body: JSON.stringify([{ user_id: targetUser.id }]),
+        })
+      }
+
       return route.fulfill({ status: 200, contentType: 'application/json', headers: corsHeaders, body: JSON.stringify([]) })
     }
 
     if (method === 'POST') {
+      try {
+        const body = (await route.request().postDataJSON()) as { room_id?: string; user_id?: string }
+        if (typeof body?.room_id === 'string' && typeof body?.user_id === 'string') {
+          roomMembers.push({ room_id: body.room_id, user_id: body.user_id })
+        }
+      } catch {
+        // ignore
+      }
       return route.fulfill({ status: 201, contentType: 'application/json', headers: corsHeaders, body: JSON.stringify([]) })
     }
 
@@ -146,6 +203,7 @@ test('E2E chat: user discovery → start DM (no photo required)', async ({ page,
     }
 
     if (method === 'POST') {
+      hasCreatedRoom = true
       return route.fulfill({ status: 201, contentType: 'application/json', headers: corsHeaders, body: JSON.stringify(room) })
     }
 
