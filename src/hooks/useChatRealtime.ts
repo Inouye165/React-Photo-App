@@ -5,8 +5,6 @@ import { supabase } from '../supabaseClient'
 import type { ChatMessage } from '../types/chat'
 import { asChatMessage, sortMessages, upsertMessage } from '../utils/chatUtils'
 
-console.log('HOOK FILE LOADED')
-
 type MessagesInsertPayload = RealtimePostgresChangesPayload<{ [key: string]: unknown }>
 
 export interface UseChatRealtimeResult {
@@ -87,9 +85,6 @@ export function useChatRealtime(roomId: string | null, options?: { initialLimit?
           'postgres_changes',
           { event: 'INSERT', schema: 'public', table: 'messages', filter: `room_id=eq.${normalizedRoomId}` },
           (payload: MessagesInsertPayload) => {
-            console.log('BROADCAST DETECTED:', (payload.new as Record<string, unknown> | null | undefined) ?? null)
-            console.log('RAW REALTIME PAYLOAD:', (payload.new as Record<string, unknown> | null | undefined) ?? null)
-            if (import.meta.env.DEV) console.log('[Realtime] New Message Received', payload)
             if (!normalizedRoomId) return
             const incomingRoomId = (payload.new as Record<string, unknown> | null | undefined)?.['room_id']
             if (typeof incomingRoomId === 'string' && incomingRoomId !== normalizedRoomId) return
@@ -100,8 +95,10 @@ export function useChatRealtime(roomId: string | null, options?: { initialLimit?
 
         channel.subscribe((status, err) => {
           lastSubscriptionStatusRef.current = status
-          console.log('SUBSCRIPTION STATUS:', status)
-          if (err) console.error('SUBSCRIPTION ERROR:', err)
+          if (import.meta.env.DEV) {
+            console.log('SUBSCRIPTION STATUS:', status)
+            if (err) console.error('SUBSCRIPTION ERROR:', err)
+          }
 
           if (cancelled) return
           if (status === 'SUBSCRIBED') {
