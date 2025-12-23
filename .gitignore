@@ -39,6 +39,9 @@ coverage/
 *.swp
 *.bak
 
+# Local doc diffs
+documentation_changes.txt
+
 # Prevent committed GPS/EXIF test data
 server/server_photos.json
 *.tmp
