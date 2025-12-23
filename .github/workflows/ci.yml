@@ -1,5 +1,5 @@
 name: CI
-on:
+"on":
   push:
     branches: [ main, chore/cloud-ready-audit, feat/round2-quality-guards ]
   pull_request:
