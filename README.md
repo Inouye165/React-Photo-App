@@ -1,4 +1,3 @@
-
 # Lumina
 
 ![Status: High-Performance Engineering Prototype (Active Development)](https://img.shields.io/badge/status-high--performance--prototype-yellow.svg)
@@ -8,148 +7,108 @@
 [![React](https://img.shields.io/badge/React-19-61dafb.svg)](https://reactjs.org/)
 [![License](https://img.shields.io/badge/license-MIT-blue.svg)](LICENSE)
 
-Lumina is an AI-powered, privacy-first photo workspace — built to learn and practice industry-leading engineering standards.
+I built **Lumina** as a privacy-focused photo workspace to move beyond basic tutorials and dive into professional engineering standards. It is a long-term project tackling the "hard stuff" in web development: building for real-world security, ensuring the architecture can scale, and keeping the codebase maintainable over time.
 
-Lumina is a long-running engineering project focused on security, scalability, and maintainability. The goal is to evolve into a community-oriented platform (sharing + chat) while keeping user data isolation, consent, and privacy at the center.
+While the frontend is a work in progress, the backend and security have been treated as the core of the project from day one. The long-term goal is to turn this into a community platform where people can share and chat without ever compromising their data isolation or privacy.
 
-The frontend is still evolving; the backend and security posture are treated as first-class concerns.
-
-Author: Ron Inouye (@Inouye165)
+**Author:** Ron Inouye ([@Inouye165](https://github.com/Inouye165))
 
 ---
 
+### 🎯 Why This Exists
 
-## 🎯 Why This Exists
+This project started as a way to see what it takes to build a secure, cloud-deployed application at scale. Instead of just following a guide, the focus is on:
 
-This project was created to learn and practice building large-scale, secure, cloud-deployed web applications. The focus is on:
+* **Engineering for the long haul:** Building an architecture that doesn’t fall apart as it grows.
+* **Security as a habit:** Implementing Row-Level Security (RLS), strict data isolation, and safe defaults rather than "bolting them on" later.
+* **Modern Cloud Workflows:** Getting hands-on with Supabase, Railway, Vercel, and Docker.
 
-- Engineering for scale: designing codebases and architectures that can grow and be maintained over time
-- Security coding habits: applying best practices for authentication, data isolation, and safe defaults
-- Cloud deployment: using modern cloud platforms and managed services (Supabase, Railway, Vercel, Docker)
+Lumina isn't meant to be a polished consumer product yet—it’s a high-performance engineering prototype. The focus is on the "under the hood" work over a flashy UI to demonstrate how a modern web stack should actually function.
 
-It is not a consumer product or tutorial, but a high-performance engineering prototype. The backend and security posture are prioritized, with the frontend evolving as a functional draft. The main goal is to develop and demonstrate real-world engineering and security skills in a modern web stack.
-
-**Read the full journey:** [Product Story](docs/PRODUCT_STORY.md) (Sept–Nov 2025)
+[Read the full journey: Product Story (Sept–Nov 2025)](docs/PRODUCT_STORY.md)
 
 ---
 
-## 🌱 Community & values
+### 🌱 Community & Values
 
-- Be kind and inclusive: This project aims to welcome contributors and users from all backgrounds.
-- Privacy-first by default: User data isolation, least-privilege access, and secure-by-design patterns are core requirements.
-- Transparency: Security trade-offs and changes should be documented. No “security theater.”
-- Respectful community: Harassment, hate, and abusive behavior are not welcome.
+* **Welcoming to contributors**
+* **Privacy by default:** Every design choice starts with user data isolation and least-privilege access.
+* **Zero "Security Theater":** Aims for total transparency regarding security trade-offs.
 
-## 🔒 Privacy & user isolation (north star)
+---
 
-Lumina is designed around isolated user workspaces: each user’s photos, metadata, and derived AI outputs must remain private and access-controlled. Sharing features (albums, links, chat) should be opt-in, permissioned, and auditable.
+### 🔒 Privacy & User Isolation
 
-## 💪 What Sets This Apart
+The core of Lumina is the isolated workspace. Whether it’s your photos, EXIF metadata, or AI-generated descriptions, that data belongs to you alone. Any social features—like albums or chat—are strictly opt-in, permissioned, and auditable.
 
-This isn't a tutorial project with placeholder tests. Here's what's actually here:
+---
+
+### 💪 What’s Under the Hood
+
+This isn't a "hello world" app. Here is a look at the actual engineering involved:
 
 | Area | What's Here |
-|------|-------------|
-| **Test Suite** | 1,166 tests (476 frontend, 690 backend) — real coverage, not "TODO: add tests" |
-| **Streaming Uploads** | Zero-disk: files stream directly to cloud storage with hash verification |
-| **Security Layers** | RLS, Bearer auth, Origin allowlisting, rate limiting, secret scanning |
-| **Background Jobs** | BullMQ + Redis for thumbnails, AI, HEIC conversion — nothing blocks the request |
-| **AI Pipeline** | LangGraph workflows with retry logic and fallbacks, not spaghetti API calls |
-| **HEIC Conversion** | HEIC/HEIF → JPEG via Sharp, with heic-convert fallback. |
+| --- | --- |
+| **Test Suite** | **1,166 tests** (476 frontend, 690 backend). These are real integration and unit tests, not placeholders. |
+| **Streaming Uploads** | Zero-disk architecture. Files stream straight to the cloud with hash verification to prevent bottlenecks. |
+| **Security Layers** | Hardened with RLS, Bearer auth, Origin allowlisting, and automated secret scanning. |
+| **Background Jobs** | Uses **BullMQ + Redis** to handle thumbnails, AI processing, and HEIC conversion so the main thread never hangs. |
+| **AI Pipeline** | Built with **LangGraph** workflows. It uses modular logic with built-in retries rather than messy, one-off API calls. |
+| **HEIC Conversion** | Automatic conversion to JPEG via Sharp, with a heic-convert fallback. |
+
+**Why bother?** Without this, you end up with a mess of API calls scattered everywhere. LangGraph keeps it organized and testable.
 
 ---
 
-## ✨ Architectural Experiments & Features
+### ✨ Architectural Experiments & Features
 
-### 🧠 **AI Photo Concierge (Prototype)**
-- **Unified Context Tab:** EditPage now combines story description and location map in a single, vertically stacked Context view for streamlined editing.
-- **Object & Scene Detection:** Recognizes dogs, food, collectibles, and 100+ categories (via AI models)
-- **Food/Location Agent:** Attempts to cross-reference food photos with nearby restaurants using GPS and a Places API
-- **Collectibles Valuation:** Prototype logic for estimating value of items like Pyrex, comics, memorabilia
-- **Location Intelligence:** Tries to identify visible landmarks, mountains, or lakes in the photo background
+#### 🧠 AI Photo Concierge (Prototype)
 
-### 🏗️ **Backend & AI Architecture**
-- **Zero-Disk Streaming:** Uploads stream directly to Supabase Storage—no local disk bottlenecks
-- **LangGraph AI Pipeline:** Modular workflow (EXIF → GPS → Image Analysis → POI Lookup → Value Estimation)
-- **Background Processing:** BullMQ + Redis for offloading heavy tasks (thumbnails, AI, HEIC conversion)
-- **Row-Level Security:** Supabase RLS for strict user data isolation
+* **Unified Context Tab:** The EditPage was redesigned to stack the story description and map in a single view for better UX.
+* **Detection:** It identifies dogs, food, and over 100 other categories.
+* **Intelligent Logic:** It tries to cross-reference food photos with local restaurants via the Places API and can even estimate the value of collectibles (like Pyrex or comics).
+* **Landscape Awareness:** The AI attempts to name specific landmarks, mountains, or lakes found in your shots.
 
-### 🔒 Security (Experimental)
+#### 🏗️ Backend & Infrastructure
 
-API Auth: Protected API routes require `Authorization: Bearer <token>`.
+* **Zero-Disk Streaming:** Uploads go directly to Supabase Storage, skipping local disk limits.
+* **Modular AI:** Using LangGraph to chain EXIF extraction, GPS lookups, and image analysis into a clean workflow.
+* **Robust Processing:** BullMQ handles the heavy lifting in the background.
+* **Data Safety:** Strict Postgres RLS ensures users can only ever touch their own data.
 
-Images/Thumbnails: Prefer signed thumbnail URLs for `<img>`; otherwise use Bearer auth. A deprecated cookie fallback may exist only for legacy image access/E2E and will be removed.
+#### 🔒 Security (Experimental)
 
-CSRF defense: State-changing auth endpoints enforce strict Origin/Referer allowlisting (no CSRF tokens).
+* **Bearer Auth:** API routes are locked down and require valid tokens.
+* **Secure Media:** Prefers signed URLs for thumbnails to keep assets private.
+* **Hardened Auth:** State-changing endpoints enforce strict Origin/Referer checks to stop CSRF without relying solely on tokens.
+* **Hygiene:** Uses `npm run secret-scan` to make sure no keys ever accidentally hit the repo.
 
-Secret scanning: Use `npm run secret-scan` (and hooks if enabled) to block committing secret-like strings.
+#### 💬 Chat & Notifications
 
-CSP: Helmet-enforced CSP (tests exist; CI setup depends on your environment).
-
-Rate limiting: Concurrency limits to reduce upload storms.
-
-### 💬 Chat unread notifications (per-room)
-
-Unread message tracking is computed **per room** (not just a single global number) using `room_members.last_read_at`.
-
-- If you are **not** in the exact room where a message arrives, the UI may show a popup notification.
-- If you are viewing `/chat/:roomId` and new messages arrive **in that same room**, the popup is suppressed.
-- The unread badge in the header still shows the **total** unread count across rooms.
-
-### ✅ Engineering standards (what “industry-leading” means here)
-
-Security tests and threat-model thinking are expected.
-
-Clear error handling (no secret leakage) and safe logging.
-
-Documentation should be kept in sync with refactors.
-
-Performance is measured and regressions are investigated.
-
-### 📸 **Photo Handling**
-- **HEIC Auto-Convert:** HEIC/HEIF → JPEG via Sharp, with `heic-convert` fallback.
-- **Optimistic Uploads:** Fast, responsive uploads with immediate navigation and background processing
-- **Compass Overlay:** Shows camera direction on map pins (prototype)
-- **Smart Thumbnails:** Lazy-loaded, optimized for large galleries
-- **Date Range Filtering:** Browse by month/year (basic infinite scroll)
+* **Smart Tracking:** Unread counts are tracked per-room using `last_read_at`.
+* **Context-Aware Popups:** If you’re already in a chat room, notifications for that room are silenced to stay out of your way.
 
 ---
 
+### ✅ Engineering Standards
 
-## 🏗️ Architecture Highlights
+Here, "industry-leading" means:
 
-### The Upload Pipeline
-```
-User uploads photo 
-  → Busboy streams to Supabase Storage (zero local disk)
-  → Hash calculated during stream (integrity check)
-  → BullMQ job queued for processing
-  → Worker extracts EXIF, generates thumbnail, runs AI
-  → Frontend polls for completion, displays results
-```
+* Thinking about threat models before writing code.
+* Handling errors gracefully without leaking system info.
+* Keeping documentation alive and in sync with the code.
+* Watching for performance regressions during every refactor.
 
-### AI Processing Status (Polling)
-- The UI shows **Analyzing...** while the backend reports `photo.state === 'inprogress'`.
-- The client polls `GET /photos/:id` (with cache-busting query params) until `state` is terminal (`finished` or `error`).
-- Polling is implemented in the Zustand store (`startAiPolling` / `stopAiPolling`) as the **single source of truth** to avoid competing pollers and stale UI state.
+---
 
-- Upload photos (including HEIC/HEIF) and browse them in a gallery.
-- Open an edit page that shows derived metadata (EXIF, timestamps) and a map when GPS exists.
-- Run background processing via a worker (thumbnails, EXIF extraction, optional AI enrichment).
+### 📸 Photo Handling
 
-![Edit page screenshot](docs/screenshots/edit_page.png)
+* **Optimistic Uploads:** The UI stays snappy; you can navigate away while the background workers handle the heavy lifting.
+* **Smart Gallery:** Includes lazy loading, date-range filtering, and a compass overlay for map pins to show which way the camera was pointing.
 
-## Tech stack (high level)
+---
 
-- Frontend: React + Vite + Tailwind, Zustand
-- Backend: Node.js + Express
-- Data: Postgres (Supabase or local) + Supabase Storage
-- Jobs: BullMQ + Redis
-- HEIC/HEIF → JPEG via Sharp, with `heic-convert` fallback.
-- Tests: Vitest (web) + Jest (server) + Playwright (E2E)
-- CI/CD: Recommended to run unit tests, integration checks, CSP validation, and secret scanning. (CI wiring depends on your environment.)
-
-## Architecture notes
+### 🏗️ How the Upload Pipeline Works
 
 **Why bother?** Most tutorials teach "save to disk, then upload." That creates bottlenecks. Streaming straight to cloud storage skips that problem entirely.
 
@@ -161,78 +120,60 @@ upload
   → (optional) AI enrichment
 ```
 
-The UI polls photo status while background work is running.
-**Why bother?** Without this, you end up with a mess of API calls scattered everywhere. LangGraph keeps it organized and testable.
+1. **Stream:** Photo moves from user to Supabase Storage (zero local disk).
+2. **Verify:** Integrity hash is calculated on the fly.
+3. **Queue:** BullMQ picks up the job.
+4. **Process:** Workers extract EXIF, make thumbnails, and trigger AI.
+5. **Poll:** The frontend polls a single source of truth (Zustand store) until the job is done.
 
-## Quick start (local dev)
+---
 
-### Prerequisites
+### 🚀 Quick Start (Local Dev)
 
-- Node.js 20+ (see `engines`)
-- Docker + docker-compose (recommended for local Postgres + Redis)
-
-### Setup
+**Prerequisites:** Node.js 20+, Docker (for Postgres/Redis).
 
 ```bash
-# install deps
+# 1. Install dependencies
 npm install
 cd server && npm install && cd ..
 
-# start local services (optional, but recommended)
+# 2. Spin up local services
 docker-compose up -d db redis
 
-# env
+# 3. Setup environment
 cp server/.env.example server/.env
 
-# migrations
+# 4. Run migrations
 cd server && npx knex migrate:latest --knexfile knexfile.js && cd ..
 
-# run (separate terminals)
-npm run dev
-cd server && npm start
-cd server && npm run worker
+# 5. Start development (3 separate terminals)
+npm run dev           # Frontend
+cd server && npm run dev # Backend
+cd server && npm run worker # Background Worker
+
 ```
 
-Frontend: http://localhost:5173
-
-Backend: http://localhost:3001
+* **Frontend:** `http://localhost:5173`
+* **Backend:** `http://localhost:3001`
 
 Notes:
 
-- The worker is required for thumbnail generation and background enrichment.
-- If `Maps_API_KEY` / `GOOGLE_PLACES_API_KEY` is missing, Places-based enrichment will be disabled.
-- In non-test environments, the backend is configured to refuse startup if `OPENAI_API_KEY` is missing.
+* The worker is required for thumbnail generation and background enrichment.
+* If `Maps_API_KEY` / `GOOGLE_PLACES_API_KEY` is missing, Places-based enrichment will be disabled.
+* In non-test environments, the backend is configured to refuse startup if `OPENAI_API_KEY` is missing.
 
-## Configuration
+---
 
-See `server/.env.example` for the full list. Commonly required values are:
+### 📖 Docs & Further Reading
 
-- `DATABASE_URL` / `SUPABASE_DB_URL` (Postgres)
-- `SUPABASE_URL` + `SUPABASE_ANON_KEY`
-- `JWT_SECRET`
-- `OPENAI_API_KEY` (required for non-test server startup)
+* [Development Notes (check-privilege)](docs/DEV.md)
+* [Testing Guide](TESTING.md)
+* [Roadmap](docs/ROADMAP.md)
+* [Security Maintenance Checklist](docs/SECURITY_CODING_MAINTENANCE.md)
+* [Backend README](server/README.md)
 
-## Security model (current behavior)
+---
 
-- API routes use Bearer tokens (`Authorization: Bearer <token>`) and do not support cookie auth.
-- Image routes prefer signed URLs for `<img>` tags; they also support Bearer tokens.
-- A deprecated cookie fallback exists for some image requests during transition and is intended to be removed.
-- State-changing auth endpoints use Origin/Referer allowlisting.
-- Supabase RLS is part of the data-isolation story when running against Supabase.
-
-Security maintenance / secure coding notes:
-
-- [docs/SECURITY_CODING_MAINTENANCE.md](docs/SECURITY_CODING_MAINTENANCE.md)
-- [SECURITY_REMEDIATION_SUMMARY.md](SECURITY_REMEDIATION_SUMMARY.md)
-
-## Docs
-Started because I wanted to learn how production apps actually work — not just follow tutorials.
-
-- [TESTING.md](TESTING.md)
-- [docs/DEV.md](docs/DEV.md)
-- [docs/ROADMAP.md](docs/ROADMAP.md)
-- [server/README.md](server/README.md)
-
-## License
+### License
 
 MIT - see [LICENSE](LICENSE)

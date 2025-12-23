@@ -1,6 +1,6 @@
 # Security coding & maintenance
 
-This project treats security as part of everyday engineering work: making changes safely, keeping dependencies current, and documenting trade-offs. This doc is intentionally practical — it’s the checklist I use when I touch auth, uploads, image serving, or anything that could impact user data isolation.
+This project treats security as everyday engineering work: make changes safely, keep dependencies current, and document trade-offs. This doc is intentionally practical — it’s a checklist to follow when touching auth, uploads, image serving, or anything that could impact user data isolation.
 
 ## The security “shape” of this app
 

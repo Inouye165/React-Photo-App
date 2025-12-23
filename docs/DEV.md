@@ -1,10 +1,11 @@
 Development notes
 
-- Purpose: explain the temporary dev-only JSON repair logic and how to use the check-privilege helper.
+This doc exists for one reason: to capture dev-only edge cases and quick repro steps so debugging doesn’t turn into tribal knowledge.
 
 1) Dev-time tolerance (now removed)
 
-- Previously the server included a dev-only text body parser and a best-effort JSON "repair" for `/privilege`. That logic has been removed to keep the server strict and fail fast when clients send invalid JSON.
+- Previously the server included a dev-only text body parser and a best-effort JSON “repair” for `/privilege`.
+- That logic was removed to keep the server strict and fail fast when clients send invalid JSON.
 - If you need to temporarily re-enable tolerant parsing for local debugging, add the following back into `server/server.js` (development only):
 
 ```js
@@ -14,7 +15,7 @@ if (process.env.NODE_ENV !== 'production') {
 }
 ```
 
-- Recommended: fix the client to send clean JSON and keep the server strict in production.
+- Recommendation: fix the client to send clean JSON and keep the server strict in production.
 
 2) How to reproduce locally
 
@@ -34,9 +35,9 @@ npm run check-privilege
 
 3) Frontend instrumentation
 
-- `src/api.ts` logs the outgoing JSON body for `checkPrivilege` as `console.log('[API] checkPrivilege ->', serverUrl, 'body:', body);` so you can inspect the exact payload sent from the browser.
+- `src/api.ts` logs the outgoing JSON body for `checkPrivilege` as `console.log('[API] checkPrivilege ->', serverUrl, 'body:', body);` so you can inspect the exact payload leaving the browser.
 
 4) Next steps
 
-- Remove repair heuristics and text parser once all clients consistently send valid JSON.
-- Convert the simple check script into a proper test harness if you want CI coverage for the endpoint.
+- Keep the server strict: remove any repair heuristics and text parsing once all clients consistently send valid JSON.
+- If CI coverage is needed, convert the simple check script into a proper test harness.
