@@ -72,7 +72,11 @@ describe('useUnreadMessages', () => {
 
     await waitFor(() => expect(result.current.loading).toBe(false))
 
-    // Expected unread: Message 1 (roomA) and Message 3 (roomB) -> 2
+    // Expected unread: Message 1 (roomA) and Message 3 (roomB) -> total 2
     expect(result.current.unreadCount).toBe(2)
+    expect(result.current.unreadByRoom).toEqual({
+      roomA: 1,
+      roomB: 1,
+    })
   })
 })

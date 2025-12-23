@@ -14,6 +14,7 @@ const mockRouterState = vi.hoisted(() => ({
 const mockUnreadState = vi.hoisted(() => ({
   unread: {
     unreadCount: 0,
+    unreadByRoom: {},
     hasUnread: false,
     loading: false,
     markAllAsRead: vi.fn(),
@@ -78,17 +79,45 @@ describe('AppHeader Component', () => {
     mockRouterState.location.search = '';
     mockUnreadState.unread = {
       unreadCount: 0,
+      unreadByRoom: {},
       hasUnread: false,
       loading: false,
       markAllAsRead: vi.fn(),
     };
   });
 
-  it('does not render new message popup on /chat when hasUnread=true', () => {
+  it('renders new message popup on /chat (no room) when unread exists', () => {
     mockRouterState.location.pathname = '/chat';
     mockUnreadState.unread = {
       ...mockUnreadState.unread,
       unreadCount: 3,
+      unreadByRoom: { roomA: 1, roomB: 2 },
+      hasUnread: true,
+    };
+
+    render(<AppHeader />);
+    expect(screen.getByTestId('new-message-notification')).toBeInTheDocument();
+  });
+
+  it('renders new message popup on /chat/room-A when unread exists for another room', () => {
+    mockRouterState.location.pathname = '/chat/room-A';
+    mockUnreadState.unread = {
+      ...mockUnreadState.unread,
+      unreadCount: 1,
+      unreadByRoom: { 'room-B': 1 },
+      hasUnread: true,
+    };
+
+    render(<AppHeader />);
+    expect(screen.getByTestId('new-message-notification')).toBeInTheDocument();
+  });
+
+  it('suppresses new message popup on /chat/room-A when unread exists only for room-A', () => {
+    mockRouterState.location.pathname = '/chat/room-A';
+    mockUnreadState.unread = {
+      ...mockUnreadState.unread,
+      unreadCount: 2,
+      unreadByRoom: { 'room-A': 2 },
       hasUnread: true,
     };
 
@@ -101,6 +130,7 @@ describe('AppHeader Component', () => {
     mockUnreadState.unread = {
       ...mockUnreadState.unread,
       unreadCount: 3,
+      unreadByRoom: { roomA: 3 },
       hasUnread: true,
     };
 

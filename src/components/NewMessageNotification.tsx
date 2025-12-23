@@ -1,11 +1,10 @@
-import { useEffect, useState } from 'react'
+import { useEffect, useRef, useState } from 'react'
 import { MessageSquare, X } from 'lucide-react'
 import { useNavigate } from 'react-router-dom'
 
 export interface NewMessageNotificationProps {
   unreadCount: number
   onDismiss: () => void
-  showOnce?: boolean
 }
 
 /**
@@ -14,26 +13,42 @@ export interface NewMessageNotificationProps {
  */
 export default function NewMessageNotification({ 
   unreadCount, 
-  onDismiss,
-  showOnce = true 
+  onDismiss
 }: NewMessageNotificationProps) {
   const [isVisible, setIsVisible] = useState(false)
-  const [hasShown, setHasShown] = useState(false)
+  const prevUnreadRef = useRef<number>(0)
+  const autoDismissTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null)
   const navigate = useNavigate()
 
   useEffect(() => {
-    if (unreadCount > 0 && !hasShown && showOnce) {
-      setIsVisible(true)
-      setHasShown(true)
+    const prevUnread = prevUnreadRef.current
+    prevUnreadRef.current = unreadCount
 
-      // Auto-dismiss after 5 seconds
-      const timer = setTimeout(() => {
+    if (unreadCount <= 0) {
+      setIsVisible(false)
+      return
+    }
+
+    // Re-show whenever unreadCount increases.
+    if (unreadCount > prevUnread) {
+      setIsVisible(true)
+
+      if (autoDismissTimerRef.current) {
+        clearTimeout(autoDismissTimerRef.current)
+      }
+      autoDismissTimerRef.current = setTimeout(() => {
         handleDismiss()
       }, 5000)
-
-      return () => clearTimeout(timer)
     }
-  }, [unreadCount, hasShown, showOnce])
+
+    return () => {
+      if (autoDismissTimerRef.current) {
+        clearTimeout(autoDismissTimerRef.current)
+        autoDismissTimerRef.current = null
+      }
+    }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [unreadCount])
 
   const handleDismiss = () => {
     setIsVisible(false)
