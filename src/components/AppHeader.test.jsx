@@ -4,13 +4,26 @@ import { render, screen } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
 import AppHeader from './AppHeader';
 
+const mockRouterState = vi.hoisted(() => ({
+  location: {
+    pathname: '/gallery',
+    search: '',
+  },
+}));
+
+const mockUnreadState = vi.hoisted(() => ({
+  unread: {
+    unreadCount: 0,
+    hasUnread: false,
+    loading: false,
+    markAllAsRead: vi.fn(),
+  },
+}));
+
 // Mock dependencies
 vi.mock('react-router-dom', () => ({
   useNavigate: () => vi.fn(),
-  useLocation: () => ({
-    pathname: '/gallery',
-    search: '',
-  }),
+  useLocation: () => mockRouterState.location,
   NavLink: ({ to, className, children, ...rest }) => {
     const computedClassName = typeof className === 'function' ? className({ isActive: false }) : className;
     return (
@@ -45,11 +58,14 @@ vi.mock('../store', () => ({
 
 vi.mock('../hooks/useUnreadMessages', () => ({
   useUnreadMessages: vi.fn(() => ({
-    unreadCount: 0,
-    hasUnread: false,
-    loading: false,
-    markAllAsRead: vi.fn(),
+    ...mockUnreadState.unread,
   })),
+}));
+
+vi.mock('./NewMessageNotification', () => ({
+  default: ({ unreadCount }) => (
+    <div data-testid="new-message-notification">Unread: {unreadCount}</div>
+  ),
 }));
 
 describe('AppHeader Component', () => {
@@ -57,6 +73,39 @@ describe('AppHeader Component', () => {
     vi.clearAllMocks();
     authState.user = { email: 'test@example.com' };
     authState.profile = { username: 'tester', has_set_username: true };
+
+    mockRouterState.location.pathname = '/gallery';
+    mockRouterState.location.search = '';
+    mockUnreadState.unread = {
+      unreadCount: 0,
+      hasUnread: false,
+      loading: false,
+      markAllAsRead: vi.fn(),
+    };
+  });
+
+  it('does not render new message popup on /chat when hasUnread=true', () => {
+    mockRouterState.location.pathname = '/chat';
+    mockUnreadState.unread = {
+      ...mockUnreadState.unread,
+      unreadCount: 3,
+      hasUnread: true,
+    };
+
+    render(<AppHeader />);
+    expect(screen.queryByTestId('new-message-notification')).not.toBeInTheDocument();
+  });
+
+  it('renders new message popup off /chat when hasUnread=true', () => {
+    mockRouterState.location.pathname = '/gallery';
+    mockUnreadState.unread = {
+      ...mockUnreadState.unread,
+      unreadCount: 3,
+      hasUnread: true,
+    };
+
+    render(<AppHeader />);
+    expect(screen.getByTestId('new-message-notification')).toBeInTheDocument();
   });
 
   it('renders navigation tabs with icons', () => {

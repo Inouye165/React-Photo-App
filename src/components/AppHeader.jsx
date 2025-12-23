@@ -105,9 +105,12 @@ export default function AppHeader({
     </NavLink>
   );
 
+  // Suppress NewMessageNotification popup if in /chat route
+  const isChatRoute = location.pathname.startsWith('/chat');
+
   return (
     <>
-      {showNotification && hasUnread && (
+      {showNotification && hasUnread && !isChatRoute && (
         <NewMessageNotification 
           unreadCount={unreadCount}
           onDismiss={() => setShowNotification(false)}
