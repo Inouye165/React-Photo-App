@@ -1,6 +1,6 @@
 import { useEffect, useMemo, useRef, useState } from 'react'
 
-import { Image as ImageIcon, X } from 'lucide-react'
+import { ArrowDown, Image as ImageIcon, X } from 'lucide-react'
 
 import { API_BASE_URL, getAccessToken, getPhotos, sendMessage } from '../../api'
 import { useChatRealtime } from '../../hooks/useChatRealtime'
@@ -61,6 +61,11 @@ export default function ChatWindow({ roomId }: ChatWindowProps) {
   })
 
   const bottomRef = useRef<HTMLDivElement | null>(null)
+  const scrollContainerRef = useRef<HTMLDivElement | null>(null)
+  const prevMessageCountRef = useRef<number>(0)
+  
+  const [isAtBottom, setIsAtBottom] = useState<boolean>(true)
+  const [unseenCount, setUnseenCount] = useState<number>(0)
 
   const senderIds = useMemo(() => {
     const ids = new Set<string>()
@@ -173,12 +178,22 @@ export default function ChatWindow({ roomId }: ChatWindowProps) {
 
   useEffect(() => {
     // Auto-scroll on new messages (and when switching rooms)
-    try {
-      bottomRef.current?.scrollIntoView({ behavior: 'smooth', block: 'end' })
-    } catch {
-      bottomRef.current?.scrollIntoView()
+    // Only scroll if user is at bottom
+    if (isAtBottom) {
+      try {
+        bottomRef.current?.scrollIntoView({ behavior: 'smooth', block: 'end' })
+      } catch {
+        bottomRef.current?.scrollIntoView()
+      }
+    } else {
+      // User is scrolled up; track new messages
+      const delta = messages.length - prevMessageCountRef.current
+      if (delta > 0) {
+        setUnseenCount((prev) => prev + delta)
+      }
     }
-  }, [roomId, messages.length])
+    prevMessageCountRef.current = messages.length
+  }, [roomId, messages.length, isAtBottom])
 
   useEffect(() => {
     setDraft('')
@@ -189,6 +204,9 @@ export default function ChatWindow({ roomId }: ChatWindowProps) {
     setPickerLoading(false)
     setPickerPhotos([])
     setSelectedPhotoId(null)
+    setUnseenCount(0)
+    setIsAtBottom(true)
+    prevMessageCountRef.current = 0
   }, [roomId])
 
   useEffect(() => {
@@ -229,6 +247,30 @@ export default function ChatWindow({ roomId }: ChatWindowProps) {
   }, [pickerOpen, pickerLoading, pickerPhotos.length])
 
   const canSend = Boolean(roomId) && !sending
+
+  function checkIfAtBottom(): void {
+    const container = scrollContainerRef.current
+    if (!container) return
+    
+    const threshold = 100
+    const { scrollHeight, scrollTop, clientHeight } = container
+    const isNearBottom = scrollHeight - scrollTop - clientHeight < threshold
+    
+    setIsAtBottom(isNearBottom)
+    if (isNearBottom) {
+      setUnseenCount(0)
+    }
+  }
+
+  function scrollToBottom(): void {
+    try {
+      bottomRef.current?.scrollIntoView({ behavior: 'smooth', block: 'end' })
+    } catch {
+      bottomRef.current?.scrollIntoView()
+    }
+    setUnseenCount(0)
+    setIsAtBottom(true)
+  }
 
   async function onSend(): Promise<void> {
     if (!roomId) return
@@ -284,7 +326,7 @@ export default function ChatWindow({ roomId }: ChatWindowProps) {
   }
 
   return (
-    <section className="flex-1 flex flex-col bg-slate-50" aria-label="Chat window">
+    <section className="flex-1 flex flex-col bg-slate-50 relative" aria-label="Chat window">
       <div className="border-b border-slate-200 bg-white px-4 py-3 sm:px-6">
         <div className="flex items-center gap-2 min-w-0">
           {!header.isGroup && header.otherUserId && isUserOnline(header.otherUserId) && (
@@ -294,7 +336,12 @@ export default function ChatWindow({ roomId }: ChatWindowProps) {
         </div>
       </div>
 
-      <div className="flex-1 overflow-auto p-4 sm:p-6 space-y-3" data-testid="chat-messages">
+      <div 
+        ref={scrollContainerRef}
+        onScroll={checkIfAtBottom}
+        className="flex-1 overflow-auto p-4 sm:p-6 space-y-3" 
+        data-testid="chat-messages"
+      >
         {loading && <div className="text-sm text-slate-500">Loading messages…</div>}
         {error && <div className="text-sm text-red-600">Failed to load messages: {error}</div>}
 
@@ -318,6 +365,21 @@ export default function ChatWindow({ roomId }: ChatWindowProps) {
 
         <div ref={bottomRef} />
       </div>
+
+      {/* New messages notification pill */}
+      {unseenCount > 0 && (
+        <div className="absolute bottom-20 left-1/2 -translate-x-1/2 z-10">
+          <button
+            type="button"
+            onClick={scrollToBottom}
+            className="flex items-center gap-2 px-4 py-2 rounded-full bg-slate-900 text-white text-sm font-medium shadow-lg hover:bg-slate-800 transition-colors"
+            aria-label="Jump to latest messages"
+          >
+            <ArrowDown className="h-4 w-4" />
+            <span>New messages ({unseenCount}) · Jump to latest</span>
+          </button>
+        </div>
+      )}
 
       <div className="border-t border-slate-200 bg-white p-3 sm:p-4">
         {sendError && <div className="mb-2 text-sm text-red-600">{sendError}</div>}

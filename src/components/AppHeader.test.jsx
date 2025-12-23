@@ -43,6 +43,15 @@ vi.mock('../store', () => ({
   }),
 }));
 
+vi.mock('../hooks/useUnreadMessages', () => ({
+  useUnreadMessages: vi.fn(() => ({
+    unreadCount: 0,
+    hasUnread: false,
+    loading: false,
+    markAllAsRead: vi.fn(),
+  })),
+}));
+
 describe('AppHeader Component', () => {
   beforeEach(() => {
     vi.clearAllMocks();

@@ -61,6 +61,15 @@ vi.mock('./hooks/useSignedThumbnails.js', () => ({
   })),
 }));
 
+vi.mock('./hooks/useUnreadMessages', () => ({
+  useUnreadMessages: vi.fn(() => ({
+    unreadCount: 0,
+    hasUnread: false,
+    loading: false,
+    markAllAsRead: vi.fn(),
+  })),
+}));
+
 vi.mock('./supabaseClient', () => ({
   supabase: {
     auth: {
