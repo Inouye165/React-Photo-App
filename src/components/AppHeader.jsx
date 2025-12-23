@@ -1,8 +1,10 @@
-import React from 'react';
+import React, { useState } from 'react';
 import { NavLink, useNavigate, useLocation } from 'react-router-dom';
 import { useAuth } from '../contexts/AuthContext';
 import useStore from '../store';
 import { ChevronLeft, ChevronRight, Upload, Grid3X3, Edit3, LogOut, MessageSquare } from 'lucide-react';
+import { useUnreadMessages } from '../hooks/useUnreadMessages';
+import NewMessageNotification from './NewMessageNotification';
 
 /**
  * AppHeader - Mobile-first responsive navigation header
@@ -23,6 +25,8 @@ export default function AppHeader({
   const closePicker = useStore(state => state.pickerCommand.closePicker);
 
   const canUseChat = Boolean(profile?.has_set_username);
+  const { unreadCount, hasUnread, markAllAsRead } = useUnreadMessages(user?.id);
+  const [showNotification, setShowNotification] = useState(true);
 
   const isGalleryPage = location.pathname === '/gallery' || location.pathname === '/';
   const isEditPage = /^\/photos\/[^/]+\/edit$/.test(location.pathname);
@@ -102,14 +106,22 @@ export default function AppHeader({
   );
 
   return (
-    <header
-      role="navigation"
-      aria-label="Main toolbar"
-      className="fixed top-0 left-0 right-0 z-50 h-14 
-                 flex items-center justify-between px-2 sm:px-4
-                 bg-white/95 backdrop-blur-md border-b border-slate-200
-                 supports-[padding:env(safe-area-inset-top)]:pt-[env(safe-area-inset-top)]"
-    >
+    <>
+      {showNotification && hasUnread && (
+        <NewMessageNotification 
+          unreadCount={unreadCount}
+          onDismiss={() => setShowNotification(false)}
+        />
+      )}
+      
+      <header
+        role="navigation"
+        aria-label="Main toolbar"
+        className="fixed top-0 left-0 right-0 z-50 h-14 
+                   flex items-center justify-between px-2 sm:px-4
+                   bg-white/95 backdrop-blur-md border-b border-slate-200
+                   supports-[padding:env(safe-area-inset-top)]:pt-[env(safe-area-inset-top)]"
+      >
       {/* Left Section - Logo & Nav Arrows */}
       <div className="flex items-center gap-1 sm:gap-2 min-w-0 flex-shrink-0">
         {/* Logo - hidden on very small screens */}
@@ -177,15 +189,25 @@ export default function AppHeader({
         />
 
         {canUseChat && (
-          <NavTabLink
-            to="/chat"
-            onClick={() => {
-              closePicker('nav-messages');
-            }}
-            icon={MessageSquare}
-            label="Messages"
-            testId="nav-messages"
-          />
+          <div className="relative">
+            <NavTabLink
+              to="/chat"
+              onClick={() => {
+                closePicker('nav-messages');
+                markAllAsRead();
+              }}
+              icon={MessageSquare}
+              label="Messages"
+              testId="nav-messages"
+            />
+            {hasUnread && (
+              <div className="absolute -top-1 -right-1 w-5 h-5 bg-red-500 rounded-full flex items-center justify-center animate-pulse" data-testid="unread-badge">
+                <span className="text-white text-[10px] font-bold">
+                  {unreadCount > 9 ? '9+' : unreadCount}
+                </span>
+              </div>
+            )}
+          </div>
         )}
       </nav>
 
@@ -228,5 +250,6 @@ export default function AppHeader({
         )}
       </div>
     </header>
+    </>
   );
 }
