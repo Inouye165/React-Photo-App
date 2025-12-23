@@ -1,6 +1,6 @@
 # Roadmap
 
-This document outlines completed milestones, current priorities, and future plans for Lumina.
+This is the running log of what shipped, what’s in progress, and what’s next.
 
 ---
 
@@ -8,7 +8,7 @@ This document outlines completed milestones, current priorities, and future plan
 
 ### Security & Reliability
 - [x] **Row-Level Security (RLS)** - Supabase RLS ensures strict data isolation between users
-- [x] **Bearer Token Auth (API)** - Protected backend API routes require `Authorization: Bearer <token>`. No tokens stored in localStorage/URL params.
+- [x] **Bearer Token Auth (API)** - Protected backend API routes require `Authorization: Bearer <token>`. Avoid token-in-URL patterns.
 - [x] **CSRF Defense** - Origin/Referer allowlist verification on state-changing auth endpoints (no CSRF tokens).
 - [x] **SSL Certificate Validation** - Enforced `rejectUnauthorized: true` for production DB connections
 - [x] **Session Recovery** - Invalid refresh tokens trigger automatic cleanup and re-login

@@ -1,6 +1,6 @@
 # Lumina Server
 
-Backend server for Lumina, built with Node.js and Express. It handles authentication, file uploads, image processing (HEIC conversion), and AI metadata extraction.
+Backend server for Lumina. Node.js + Express, covering authentication, uploads, image processing (including HEIC/HEIF), and AI metadata extraction.
 
 ## 🚀 Setup
 
@@ -8,7 +8,7 @@ Backend server for Lumina, built with Node.js and Express. It handles authentica
 - Node.js 20+
 - **PostgreSQL** (via Docker or Supabase)
 - Redis (for background jobs)
-- HEIC/HEIF conversion uses Sharp + `heic-convert` fallback
+- HEIC/HEIF conversion uses Sharp with a `heic-convert` fallback
 
 ### Installation
 
@@ -35,10 +35,10 @@ Backend server for Lumina, built with Node.js and Express. It handles authentica
    - `SUPABASE_URL` - Your Supabase project URL
    - `SUPABASE_ANON_KEY` - Supabase anon public key
   - `JWT_SECRET` - Server secret used for internal signing (e.g., non-prod/E2E test tokens); not the Supabase access token secret
-  - `OPENAI_API_KEY` - Required for server startup in non-test environments (AI pipeline dependency)
-   - `DATABASE_URL` or `SUPABASE_DB_URL` - Postgres connection string:
+  - `OPENAI_API_KEY` - Required for startup in non-test environments (AI pipeline dependency)
+  - `DATABASE_URL` or `SUPABASE_DB_URL` - Postgres connection string:
 
-  In production, the server is configured to **fail fast** (exit on startup) if `SUPABASE_URL`, `SUPABASE_ANON_KEY`, or `JWT_SECRET` are missing or empty.
+    In production, the server is configured to **fail fast** (exit on startup) if `SUPABASE_URL`, `SUPABASE_ANON_KEY`, or `JWT_SECRET` are missing or empty.
    
    ```bash
    # Local PostgreSQL
@@ -300,8 +300,9 @@ FRONTEND_ORIGIN="https://your-frontend.example.com"
 
 #### Current Production Setup (Vercel + Railway)
 
-**Frontend (Vercel):** (your Vercel project URL)  
-**Backend (Railway):** (your Railway project URL)
+Common setup:
+- **Frontend**: Vercel
+- **Backend**: Railway
 
 **Railway Environment Configuration:**
 ```bash

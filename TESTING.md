@@ -1,7 +1,7 @@
 # Testing Guide for Lumina
 
 ## Overview
-This document provides comprehensive testing instructions for Lumina's authentication system, HEIC conversion, and core functionality.
+This doc is the practical “how to test this repo” guide: what to run, what to click through, and what to look for when something feels off.
 
 ## Prerequisites
 - Node.js 20+ (see root `package.json` engines)
@@ -49,7 +49,7 @@ cd server && npm test
   - [ ] Toolbar shows user avatar + username + "Logout" button when authenticated
 - [ ] **Logout**: Click logout button clears session and returns to login form
 - [ ] **Session Persistence**: Refresh page maintains login state
-- [ ] **Token Expiration**: Login expires after 24 hours
+- [ ] **Token Expiration**: Expired/invalid tokens trigger a re-login flow (and should never silently grant access)
 
 ### 🖼️ Image Operations (Authenticated Users Only)
 - [ ] **File/Folder Selection**: Select photos or folder for upload works (File picker on mobile/Safari/Firefox)
@@ -160,7 +160,7 @@ cd server && npx knex migrate:latest --knexfile knexfile.js
 
 ### Manual Security Checks
 1. **Network Tab**: Verify all requests include proper auth headers
-2. **Application Tab**: Check localStorage for auth tokens
+2. **Application Tab**: Check whether a client-side session is being stored (Supabase commonly uses localStorage by default)
 3. **Console**: No authentication errors or CORS issues
 4. **Direct URL Access**: `http://localhost:3001/display/working/image.jpg` should return 401
 
