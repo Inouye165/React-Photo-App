@@ -1,21 +1,25 @@
-import { useEffect, useState } from 'react'
+import { useEffect, useState, useCallback } from 'react'
 import { supabase } from '../supabaseClient'
 
 export interface UseUnreadMessagesResult {
   unreadCount: number
   hasUnread: boolean
   loading: boolean
-  markAllAsRead: () => void
+  refresh: () => void
 }
 
 /**
  * Hook to track unread messages across all rooms for the current user.
- * Checks for messages created after the user's last login time.
+ * Uses persistent last_read_at from room_members table.
  */
 export function useUnreadMessages(userId: string | null | undefined): UseUnreadMessagesResult {
   const [unreadCount, setUnreadCount] = useState<number>(0)
   const [loading, setLoading] = useState<boolean>(true)
-  const [lastCheckTime, setLastCheckTime] = useState<string>(new Date().toISOString())
+  const [trigger, setTrigger] = useState(0)
+
+  const refresh = useCallback(() => {
+    setTrigger((prev) => prev + 1)
+  }, [])
 
   useEffect(() => {
     if (!userId) {
@@ -25,20 +29,19 @@ export function useUnreadMessages(userId: string | null | undefined): UseUnreadM
     }
 
     let cancelled = false
-    let channel: ReturnType<typeof supabase.channel> | null = null
 
-    async function fetchUnreadCount(): Promise<void> {
+    async function fetchUnreadCount() {
       try {
         setLoading(true)
 
-        // Get all rooms the user is a member of
-        const { data: roomMemberships, error: roomError } = await supabase
+        // 1. Get all rooms and their last_read_at for this user
+        const { data: memberships, error: memError } = await supabase
           .from('room_members')
-          .select('room_id')
+          .select('room_id, last_read_at')
           .eq('user_id', userId)
 
-        if (roomError) throw roomError
-        if (!roomMemberships || roomMemberships.length === 0) {
+        if (memError) throw memError
+        if (!memberships || memberships.length === 0) {
           if (!cancelled) {
             setUnreadCount(0)
             setLoading(false)
@@ -46,41 +49,54 @@ export function useUnreadMessages(userId: string | null | undefined): UseUnreadM
           return
         }
 
-        const roomIds = roomMemberships.map((m) => m.room_id)
+        // 2. Find the oldest last_read_at to minimize the query range
+        const timestamps = memberships.map((m) => new Date(m.last_read_at).getTime())
+        const minTimestamp = Math.min(...timestamps)
+        const minDateISO = new Date(minTimestamp).toISOString()
+        const roomIds = memberships.map((m) => m.room_id)
 
-        // Count messages in those rooms that are newer than lastCheckTime
-        // and not sent by the current user
-        const { count, error: countError } = await supabase
+        // 3. Fetch potential unread messages
+        // We only care about messages from other users.
+        const { data: messages, error: msgError } = await supabase
           .from('messages')
-          .select('*', { count: 'exact', head: true })
+          .select('room_id, created_at')
           .in('room_id', roomIds)
           .neq('sender_id', userId)
-          .gt('created_at', lastCheckTime)
+          .gt('created_at', minDateISO)
 
-        if (countError) throw countError
+        if (msgError) throw msgError
+
+        // 4. Filter and count
+        let count = 0
+        const lastReadMap = new Map(memberships.map((m) => [m.room_id, new Date(m.last_read_at).getTime()]))
+
+        messages?.forEach((msg) => {
+          const msgTime = new Date(msg.created_at).getTime()
+          const readTime = lastReadMap.get(msg.room_id) ?? 0
+          if (msgTime > readTime) {
+            count++
+          }
+        })
 
         if (!cancelled) {
-          setUnreadCount(count ?? 0)
+          setUnreadCount(count)
           setLoading(false)
         }
       } catch (err) {
         if (import.meta.env.DEV) {
-          console.debug('[useUnreadMessages] Error fetching unread count:', err)
+          console.error('[useUnreadMessages] Error:', err)
         }
         if (!cancelled) {
-          setUnreadCount(0)
           setLoading(false)
         }
       }
     }
 
-    // Initial fetch
     fetchUnreadCount()
 
-    // Subscribe to new messages in real-time
-    const channelName = `unread-messages:${userId}`
-    channel = supabase
-      .channel(channelName)
+    // Subscribe to changes
+    const channel = supabase
+      .channel(`unread-tracking:${userId}`)
       .on(
         'postgres_changes',
         {
@@ -89,32 +105,36 @@ export function useUnreadMessages(userId: string | null | undefined): UseUnreadM
           table: 'messages',
         },
         (payload) => {
-          // Only count if message is not from current user
-          const newMessage = payload.new as { sender_id?: string; created_at?: string }
-          if (newMessage.sender_id !== userId && newMessage.created_at && newMessage.created_at > lastCheckTime) {
-            setUnreadCount((prev) => prev + 1)
+          const newMsg = payload.new as { room_id: string; sender_id: string; created_at: string }
+          if (newMsg.sender_id !== userId) {
+            refresh()
           }
+        }
+      )
+      .on(
+        'postgres_changes',
+        {
+          event: 'UPDATE',
+          schema: 'public',
+          table: 'room_members',
+          filter: `user_id=eq.${userId}`,
+        },
+        () => {
+          refresh()
         }
       )
       .subscribe()
 
     return () => {
       cancelled = true
-      if (channel) {
-        supabase.removeChannel(channel)
-      }
+      supabase.removeChannel(channel)
     }
-  }, [userId, lastCheckTime])
-
-  const markAllAsRead = () => {
-    setLastCheckTime(new Date().toISOString())
-    setUnreadCount(0)
-  }
+  }, [userId, trigger, refresh])
 
   return {
     unreadCount,
     hasUnread: unreadCount > 0,
     loading,
-    markAllAsRead,
+    refresh,
   }
 }

@@ -25,7 +25,7 @@ export default function AppHeader({
   const closePicker = useStore(state => state.pickerCommand.closePicker);
 
   const canUseChat = Boolean(profile?.has_set_username);
-  const { unreadCount, hasUnread, markAllAsRead } = useUnreadMessages(user?.id);
+  const { unreadCount, hasUnread } = useUnreadMessages(user?.id);
   const [showNotification, setShowNotification] = useState(true);
 
   const isGalleryPage = location.pathname === '/gallery' || location.pathname === '/';
@@ -197,7 +197,6 @@ export default function AppHeader({
               to="/chat"
               onClick={() => {
                 closePicker('nav-messages');
-                markAllAsRead();
               }}
               icon={MessageSquare}
               label="Messages"
