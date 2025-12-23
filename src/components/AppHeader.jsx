@@ -1,4 +1,4 @@
-import React, { useState } from 'react';
+import React, { useEffect, useState } from 'react';
 import { NavLink, useNavigate, useLocation } from 'react-router-dom';
 import { useAuth } from '../contexts/AuthContext';
 import useStore from '../store';
@@ -25,8 +25,8 @@ export default function AppHeader({
   const closePicker = useStore(state => state.pickerCommand.closePicker);
 
   const canUseChat = Boolean(profile?.has_set_username);
-  const { unreadCount, hasUnread } = useUnreadMessages(user?.id);
-  const [showNotification, setShowNotification] = useState(true);
+  const { unreadCount, unreadByRoom } = useUnreadMessages(user?.id);
+  const [dismissedAtUnreadCount, setDismissedAtUnreadCount] = useState(0);
 
   const isGalleryPage = location.pathname === '/gallery' || location.pathname === '/';
   const isEditPage = /^\/photos\/[^/]+\/edit$/.test(location.pathname);
@@ -35,6 +35,11 @@ export default function AppHeader({
   const currentPhotoId = (() => {
     const match = location.pathname.match(/^\/photos\/([^/]+)(?:\/edit)?$/);
     return match ? match[1] : null;
+  })();
+
+  const currentChatRoomId = (() => {
+    const match = location.pathname.match(/^\/chat\/([^/?#]+)(?:[/?#].*)?$/);
+    return match ? decodeURIComponent(match[1]) : null;
   })();
 
   const handleBack = () => {
@@ -105,15 +110,24 @@ export default function AppHeader({
     </NavLink>
   );
 
-  // Suppress NewMessageNotification popup if in /chat route
-  const isChatRoute = location.pathname.startsWith('/chat');
+  const unreadInCurrentRoom = currentChatRoomId ? (unreadByRoom?.[currentChatRoomId] ?? 0) : 0;
+  const otherUnreadCount = Math.max(0, unreadCount - unreadInCurrentRoom);
+  const shouldShowNotification = otherUnreadCount > dismissedAtUnreadCount;
+
+  useEffect(() => {
+    // If unread decreases (e.g., user reads messages), don't keep a stale high dismissal
+    // threshold that would prevent future notifications from showing.
+    if (otherUnreadCount < dismissedAtUnreadCount) {
+      setDismissedAtUnreadCount(otherUnreadCount);
+    }
+  }, [otherUnreadCount, dismissedAtUnreadCount]);
 
   return (
     <>
-      {showNotification && hasUnread && !isChatRoute && (
+      {shouldShowNotification && otherUnreadCount > 0 && (
         <NewMessageNotification 
-          unreadCount={unreadCount}
-          onDismiss={() => setShowNotification(false)}
+          unreadCount={otherUnreadCount}
+          onDismiss={() => setDismissedAtUnreadCount(otherUnreadCount)}
         />
       )}
       
@@ -202,7 +216,7 @@ export default function AppHeader({
               label="Messages"
               testId="nav-messages"
             />
-            {hasUnread && (
+            {unreadCount > 0 && (
               <div className="absolute -top-1 -right-1 w-5 h-5 bg-red-500 rounded-full flex items-center justify-center animate-pulse" data-testid="unread-badge">
                 <span className="text-white text-[10px] font-bold">
                   {unreadCount > 9 ? '9+' : unreadCount}

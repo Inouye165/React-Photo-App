@@ -88,6 +88,14 @@ CSP: Helmet-enforced CSP (tests exist; CI setup depends on your environment).
 
 Rate limiting: Concurrency limits to reduce upload storms.
 
+### 💬 Chat unread notifications (per-room)
+
+Unread message tracking is computed **per room** (not just a single global number) using `room_members.last_read_at`.
+
+- If you are **not** in the exact room where a message arrives, the UI may show a popup notification.
+- If you are viewing `/chat/:roomId` and new messages arrive **in that same room**, the popup is suppressed.
+- The unread badge in the header still shows the **total** unread count across rooms.
+
 ### ✅ Engineering standards (what “industry-leading” means here)
 
 Security tests and threat-model thinking are expected.

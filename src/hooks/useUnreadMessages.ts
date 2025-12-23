@@ -3,6 +3,7 @@ import { supabase } from '../supabaseClient'
 
 export interface UseUnreadMessagesResult {
   unreadCount: number
+  unreadByRoom: Record<string, number>
   hasUnread: boolean
   loading: boolean
   refresh: () => void
@@ -14,6 +15,7 @@ export interface UseUnreadMessagesResult {
  */
 export function useUnreadMessages(userId: string | null | undefined): UseUnreadMessagesResult {
   const [unreadCount, setUnreadCount] = useState<number>(0)
+  const [unreadByRoom, setUnreadByRoom] = useState<Record<string, number>>({})
   const [loading, setLoading] = useState<boolean>(true)
   const [trigger, setTrigger] = useState(0)
 
@@ -24,6 +26,7 @@ export function useUnreadMessages(userId: string | null | undefined): UseUnreadM
   useEffect(() => {
     if (!userId) {
       setUnreadCount(0)
+      setUnreadByRoom({})
       setLoading(false)
       return
     }
@@ -44,6 +47,7 @@ export function useUnreadMessages(userId: string | null | undefined): UseUnreadM
         if (!memberships || memberships.length === 0) {
           if (!cancelled) {
             setUnreadCount(0)
+            setUnreadByRoom({})
             setLoading(false)
           }
           return
@@ -66,20 +70,37 @@ export function useUnreadMessages(userId: string | null | undefined): UseUnreadM
 
         if (msgError) throw msgError
 
-        // 4. Filter and count
-        let count = 0
+        // 4. Filter and count per room
+        const byRoom = new Map<string, number>()
         const lastReadMap = new Map(memberships.map((m) => [m.room_id, new Date(m.last_read_at).getTime()]))
 
         messages?.forEach((msg) => {
           const msgTime = new Date(msg.created_at).getTime()
           const readTime = lastReadMap.get(msg.room_id) ?? 0
           if (msgTime > readTime) {
-            count++
+            byRoom.set(msg.room_id, (byRoom.get(msg.room_id) ?? 0) + 1)
           }
         })
 
+        const unreadByRoomRecord: Record<string, number> = {}
+        for (const [roomId, count] of byRoom.entries()) {
+          unreadByRoomRecord[roomId] = count
+        }
+
+        // Ensure we only expose rooms the user belongs to (defense-in-depth)
+        // and ensure rooms with 0 unread are omitted.
+        const allowedRoomIds = new Set(memberships.map((m) => m.room_id))
+        for (const roomId of Object.keys(unreadByRoomRecord)) {
+          if (!allowedRoomIds.has(roomId)) {
+            delete unreadByRoomRecord[roomId]
+          }
+        }
+
+        const totalUnread = Object.values(unreadByRoomRecord).reduce((sum, n) => sum + n, 0)
+
         if (!cancelled) {
-          setUnreadCount(count)
+          setUnreadByRoom(unreadByRoomRecord)
+          setUnreadCount(totalUnread)
           setLoading(false)
         }
       } catch (err) {
@@ -133,6 +154,7 @@ export function useUnreadMessages(userId: string | null | undefined): UseUnreadM
 
   return {
     unreadCount,
+    unreadByRoom,
     hasUnread: unreadCount > 0,
     loading,
     refresh,
