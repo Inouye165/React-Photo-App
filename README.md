@@ -171,6 +171,7 @@ Notes:
 * [Roadmap](docs/ROADMAP.md)
 * [Security Maintenance Checklist](docs/SECURITY_CODING_MAINTENANCE.md)
 * [Backend README](server/README.md)
+* [TypeScript Refactoring Candidates](./typescript-refactor-candidates.md) - Files flagged for TS conversion
 
 ---
 
