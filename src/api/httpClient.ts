@@ -183,6 +183,10 @@ function createLimiter(maxConcurrency = 6, name = 'default') {
 export const apiLimiter = createLimiter(6)
 export const stateUpdateLimiter = createLimiter(2)
 
+// Some UI flows must never be blocked behind a saturated queue.
+// This limiter runs the task immediately (no queue / concurrency cap).
+export const directLimiter: (fn: () => Promise<Response>) => Promise<Response> = async (fn) => fn()
+
 export function getApiMetrics(): ApiMetrics {
   try {
     return JSON.parse(JSON.stringify(apiMetrics)) as ApiMetrics

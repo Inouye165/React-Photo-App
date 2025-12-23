@@ -1,6 +1,6 @@
 import type { Photo } from '../types/photo'
 import type { ModelAllowlistResponse, PhotoState, PhotoStatusResponse } from '../types/api'
-import { request, ApiError, fetchWithNetworkFallback, isAbortError, API_BASE_URL, apiLimiter, stateUpdateLimiter } from './httpClient'
+import { request, ApiError, fetchWithNetworkFallback, isAbortError, API_BASE_URL, apiLimiter, stateUpdateLimiter, directLimiter } from './httpClient'
 import { getAuthHeaders, getHeadersForGetRequest } from './auth'
 
 export type PhotoId = Photo['id']
@@ -145,6 +145,7 @@ export async function getPhotos(serverUrlOrEndpoint: string = `${API_BASE_URL}/p
         path: url,
         headers: getHeadersForGetRequest(),
         timeoutMs: 20000,
+        limiter: directLimiter,
       })
     } catch (error) {
       if (error instanceof ApiError && (error.status === 401 || error.status === 403)) return undefined

@@ -45,6 +45,7 @@ export default function ChatWindow({ roomId }: ChatWindowProps) {
   const [pickerError, setPickerError] = useState<string | null>(null)
   const [pickerPhotos, setPickerPhotos] = useState<Array<{ id: number; thumbnail?: string; url?: string }>>([])
   const [selectedPhotoId, setSelectedPhotoId] = useState<number | null>(null)
+  const [pickerReloadKey, setPickerReloadKey] = useState<number>(0)
 
   const [idToUsername, setIdToUsername] = useState<Record<string, string | null>>({})
   const [header, setHeader] = useState<ChatHeaderState>({ title: 'Conversation', isGroup: false, otherUserId: null })
@@ -254,6 +255,7 @@ export default function ChatWindow({ roomId }: ChatWindowProps) {
       } catch (err) {
         const message = err instanceof Error ? err.message : String(err)
         if (!cancelled) setPickerError(message)
+        if (import.meta.env.DEV) console.warn('[ChatWindow] Failed to load picker photos', err)
       } finally {
         if (!cancelled) setPickerLoading(false)
       }
@@ -263,7 +265,7 @@ export default function ChatWindow({ roomId }: ChatWindowProps) {
     return () => {
       cancelled = true
     }
-  }, [pickerOpen, pickerLoading, pickerPhotos.length])
+  }, [pickerOpen, pickerLoading, pickerPhotos.length, pickerReloadKey])
 
   const canSend = Boolean(roomId) && !sending
 
@@ -430,53 +432,74 @@ export default function ChatWindow({ roomId }: ChatWindowProps) {
         )}
 
         {pickerOpen && (
-          <div className="mb-2 rounded-2xl border border-slate-200 bg-white p-3">
-            <div className="flex items-center justify-between">
-              <div className="text-xs font-semibold text-slate-900">Select a photo</div>
-              <button
-                type="button"
-                onClick={() => setPickerOpen(false)}
-                className="inline-flex items-center justify-center rounded-xl p-2 text-slate-600 hover:bg-slate-100"
-                aria-label="Close photo picker"
-              >
-                <X className="h-4 w-4" />
-              </button>
-            </div>
-
-            {pickerLoading && <div className="mt-2 text-sm text-slate-500">Loading photos…</div>}
-            {pickerError && <div className="mt-2 text-sm text-red-600">Failed to load photos: {pickerError}</div>}
-
-            {!pickerLoading && !pickerError && pickerPhotos.length === 0 && (
-              <div className="mt-2 text-sm text-slate-500">No photos available.</div>
-            )}
-
-            {!pickerLoading && !pickerError && pickerPhotos.length > 0 && (
-              <div className="mt-3 grid grid-cols-6 gap-2">
-                {pickerPhotos.map((p) => {
-                  const rel = p.thumbnail || p.url
-                  const src = rel ? toUrl(rel, API_BASE_URL) : null
-                  const isSelected = selectedPhotoId === p.id
-                  return (
-                    <button
-                      key={p.id}
-                      type="button"
-                      onClick={() => {
-                        setSelectedPhotoId(p.id)
-                        setPickerOpen(false)
-                      }}
-                      className={
-                        isSelected
-                          ? 'relative h-12 w-12 rounded-xl border-2 border-slate-900 overflow-hidden'
-                          : 'relative h-12 w-12 rounded-xl border border-slate-200 overflow-hidden hover:border-slate-400'
-                      }
-                      aria-label={`Attach photo ${p.id}`}
-                    >
-                      {src ? <img src={src} alt="" className="h-full w-full object-cover" /> : null}
-                    </button>
-                  )
-                })}
+          <div className="fixed inset-0 z-50 flex items-end sm:items-center justify-center p-4 bg-slate-900/20">
+            <div
+              role="dialog"
+              aria-modal="true"
+              aria-label="Photo picker"
+              className="w-full max-w-3xl rounded-2xl border border-slate-200 bg-white p-4"
+            >
+              <div className="flex items-center justify-between">
+                <div className="text-sm font-semibold text-slate-900">Select a photo</div>
+                <button
+                  type="button"
+                  onClick={() => setPickerOpen(false)}
+                  className="inline-flex items-center justify-center rounded-xl p-2 text-slate-600 hover:bg-slate-100"
+                  aria-label="Close photo picker"
+                >
+                  <X className="h-4 w-4" />
+                </button>
               </div>
-            )}
+
+              {pickerLoading && <div className="mt-3 text-sm text-slate-500">Loading photos…</div>}
+              {pickerError && (
+                <div className="mt-3 text-sm text-red-600">
+                  Failed to load photos: {pickerError}{' '}
+                  <button
+                    type="button"
+                    onClick={() => {
+                      setPickerError(null)
+                      setPickerReloadKey((v) => v + 1)
+                    }}
+                    className="underline"
+                  >
+                    Retry
+                  </button>
+                </div>
+              )}
+
+              {!pickerLoading && !pickerError && pickerPhotos.length === 0 && (
+                <div className="mt-3 text-sm text-slate-500">No photos available.</div>
+              )}
+
+              {!pickerLoading && !pickerError && pickerPhotos.length > 0 && (
+                <div className="mt-4 grid grid-cols-8 sm:grid-cols-10 gap-2">
+                  {pickerPhotos.map((p) => {
+                    const rel = p.thumbnail || p.url
+                    const src = rel ? toUrl(rel, API_BASE_URL) : null
+                    const isSelected = selectedPhotoId === p.id
+                    return (
+                      <button
+                        key={p.id}
+                        type="button"
+                        onClick={() => {
+                          setSelectedPhotoId(p.id)
+                          setPickerOpen(false)
+                        }}
+                        className={
+                          isSelected
+                            ? 'relative aspect-square w-full rounded-xl border-2 border-slate-900 overflow-hidden'
+                            : 'relative aspect-square w-full rounded-xl border border-slate-200 overflow-hidden hover:border-slate-400'
+                        }
+                        aria-label={`Attach photo ${p.id}`}
+                      >
+                        {src ? <img src={src} alt="" className="h-full w-full object-cover" /> : null}
+                      </button>
+                    )
+                  })}
+                </div>
+              )}
+            </div>
           </div>
         )}
 

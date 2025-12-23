@@ -237,6 +237,29 @@ global.Image = class {
 // Mock Supabase client
 vi.mock('../supabaseClient', () => ({
   supabase: {
+    from: vi.fn(() => {
+      const makeThenable = (result) => {
+        const builder = {
+          select: () => builder,
+          in: () => makeThenable({ data: [], error: null }),
+          eq: () => builder,
+          neq: () => builder,
+          limit: () => builder,
+          maybeSingle: () => makeThenable({ data: null, error: null }),
+          update: () => {
+            const updateBuilder = {
+              eq: () => updateBuilder,
+              then: (onFulfilled, onRejected) => Promise.resolve({ data: null, error: null }).then(onFulfilled, onRejected),
+            }
+            return updateBuilder
+          },
+          then: (onFulfilled, onRejected) => Promise.resolve(result).then(onFulfilled, onRejected),
+        }
+        return builder
+      }
+
+      return makeThenable({ data: [], error: null })
+    }),
     auth: {
       getSession: vi.fn().mockResolvedValue({ data: { session: { access_token: 'mock-token' } } }),
       onAuthStateChange: vi.fn().mockReturnValue({ data: { subscription: { unsubscribe: vi.fn() } } }),
