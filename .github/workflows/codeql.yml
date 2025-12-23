@@ -18,7 +18,7 @@ jobs:
     strategy:
       fail-fast: false
       matrix:
-        language: ["javascript-typescript"]
+        language: ["javascript-typescript", "actions"]
 
     steps:
       - name: Checkout repository
@@ -30,7 +30,10 @@ jobs:
           languages: ${{ matrix.language }}
           config-file: ./.github/codeql/codeql-config.yml
 
+      # Autobuild is only needed for compiled languages / JS projects.
+      # Skip it for "actions" to keep the job fast and avoid weirdness.
       - name: Autobuild
+        if: matrix.language == 'javascript-typescript'
         uses: github/codeql-action/autobuild@v3
 
       - name: Perform CodeQL Analysis
