@@ -33,7 +33,7 @@
     "*.{js,jsx}": "eslint --fix"
   },
   "dependencies": {
-    "@langchain/core": "^1.0.3",
+    "@langchain/core": "^1.1.8",
     "@langchain/langgraph": "^1.0.1",
     "@langchain/openai": "^1.1.0",
     "@supabase/supabase-js": "^2.84.0",
