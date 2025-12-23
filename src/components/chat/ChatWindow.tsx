@@ -103,6 +103,25 @@ export default function ChatWindow({ roomId }: ChatWindowProps) {
     }
   }, [senderIds])
 
+  // Mark room as read when opening
+  useEffect(() => {
+    if (!roomId || !user?.id) return
+
+    const markRead = async () => {
+      try {
+        await supabase
+          .from('room_members')
+          .update({ last_read_at: new Date().toISOString() })
+          .eq('room_id', roomId)
+          .eq('user_id', user.id)
+      } catch (err) {
+        if (import.meta.env.DEV) console.error('[ChatWindow] Failed to mark read:', err)
+      }
+    }
+
+    markRead()
+  }, [roomId, user?.id])
+
   useEffect(() => {
     let cancelled = false
 
