@@ -135,7 +135,7 @@ export function useUnreadMessages(userId: string | null | undefined): UseUnreadM
       .on(
         'postgres_changes',
         {
-          event: 'UPDATE',
+          event: '*',
           schema: 'public',
           table: 'room_members',
           filter: `user_id=eq.${userId}`,
