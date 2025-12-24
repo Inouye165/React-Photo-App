@@ -235,11 +235,24 @@ export default function ChatWindow({ roomId }: ChatWindowProps) {
     if (pickerPhotos.length) return
 
     let cancelled = false
+    const controller = new AbortController()
+    const HARD_TIMEOUT_MS = 12_000
+    const hardTimeoutId = setTimeout(() => {
+      if (cancelled) return
+      try {
+        controller.abort()
+      } catch {
+        // ignore
+      }
+      setPickerError((prev) => prev ?? `Timed out loading photos after ${HARD_TIMEOUT_MS / 1000}s`)
+      setPickerLoading(false)
+    }, HARD_TIMEOUT_MS)
+
     async function run(): Promise<void> {
       try {
         setPickerLoading(true)
         setPickerError(null)
-        const res = await getPhotos()
+        const res = await getPhotos(undefined, { signal: controller.signal, timeoutMs: HARD_TIMEOUT_MS })
         if (cancelled) return
         const list = (res?.success && Array.isArray(res.photos) ? res.photos : []) as Array<{ id: number | string; thumbnail?: string; url?: string }>
         const normalized = list
@@ -254,9 +267,17 @@ export default function ChatWindow({ roomId }: ChatWindowProps) {
         setPickerPhotos(normalized)
       } catch (err) {
         const message = err instanceof Error ? err.message : String(err)
-        if (!cancelled) setPickerError(message)
+        if (!cancelled) {
+          // AbortErrors are expected when the picker is closed or times out.
+          if (err && typeof err === 'object' && 'name' in err && (err as { name?: unknown }).name === 'AbortError') {
+            setPickerError((prev) => prev ?? 'Request cancelled')
+          } else {
+            setPickerError(message)
+          }
+        }
         if (import.meta.env.DEV) console.warn('[ChatWindow] Failed to load picker photos', err)
       } finally {
+        clearTimeout(hardTimeoutId)
         if (!cancelled) setPickerLoading(false)
       }
     }
@@ -264,6 +285,12 @@ export default function ChatWindow({ roomId }: ChatWindowProps) {
     run()
     return () => {
       cancelled = true
+      clearTimeout(hardTimeoutId)
+      try {
+        controller.abort()
+      } catch {
+        // ignore
+      }
     }
   }, [pickerOpen, pickerLoading, pickerPhotos.length, pickerReloadKey])
 
@@ -517,7 +544,13 @@ export default function ChatWindow({ roomId }: ChatWindowProps) {
               // Keep token warm so fetches that require Authorization can work immediately.
               // (Picker thumbnails are usually signed and don't need this, but it's safe.)
               void getAccessToken()
-              setPickerOpen((v) => !v)
+              setPickerOpen((v) => {
+                const next = !v
+                if (!next) {
+                  setPickerLoading(false)
+                }
+                return next
+              })
             }}
             className={
               !roomId || sending

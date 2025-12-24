@@ -123,7 +123,10 @@ export async function getPhotoStatus(): Promise<PhotoStatusResponse> {
 
 type GetPhotosInflightCache = Map<string, { ts: number; promise: Promise<GetPhotosResponse | undefined> }>
 
-export async function getPhotos(serverUrlOrEndpoint: string = `${API_BASE_URL}/photos`): Promise<GetPhotosResponse | undefined> {
+export async function getPhotos(
+  serverUrlOrEndpoint: string = `${API_BASE_URL}/photos`,
+  options?: { signal?: AbortSignal; timeoutMs?: number },
+): Promise<GetPhotosResponse | undefined> {
   let url = serverUrlOrEndpoint
   if (!/^https?:\/\//i.test(serverUrlOrEndpoint)) {
     if (['working', 'inprogress', 'finished'].includes(serverUrlOrEndpoint)) url = `${API_BASE_URL}/photos?state=${serverUrlOrEndpoint}`
@@ -144,7 +147,8 @@ export async function getPhotos(serverUrlOrEndpoint: string = `${API_BASE_URL}/p
       return await request<GetPhotosResponse>({
         path: url,
         headers: getHeadersForGetRequest(),
-        timeoutMs: 20000,
+        timeoutMs: Number.isFinite(options?.timeoutMs as number) ? (options?.timeoutMs as number) : 20000,
+        signal: options?.signal,
         limiter: directLimiter,
       })
     } catch (error) {
