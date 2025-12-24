@@ -7,6 +7,8 @@ function createRedisConnection() {
   return new IORedis(url, {
     maxRetriesPerRequest: null,
     enableReadyCheck: true,
+    // Fail fast when Redis is unreachable so API endpoints don't hang.
+    connectTimeout: Number(process.env.REDIS_CONNECT_TIMEOUT_MS || 2000),
   });
 }
 

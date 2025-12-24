@@ -13,6 +13,22 @@ let aiWorker = null;
 let redisAvailable = false;
 let initializationPromise = null;
 
+function withTimeout(promise, timeoutMs, label = 'operation') {
+  const ms = Number(timeoutMs);
+  if (!Number.isFinite(ms) || ms <= 0) return promise;
+  let id;
+  const timeoutPromise = new Promise((_, reject) => {
+    id = setTimeout(() => reject(new Error(`${label} timed out after ${ms}ms`)), ms);
+  });
+  return Promise.race([promise, timeoutPromise]).finally(() => {
+    try {
+      if (id) clearTimeout(id);
+    } catch {
+      /* ignore */
+    }
+  });
+}
+
 async function initializeQueue() {
   if (initializationPromise) return initializationPromise;
 
@@ -22,7 +38,8 @@ async function initializeQueue() {
         redisConnection = createRedisConnection(); // Create connection lazily
 
       // Force an auth/connection check up front.
-      await redisConnection.ping();
+      const pingTimeoutMs = Number(process.env.REDIS_PING_TIMEOUT_MS || 2000);
+      await withTimeout(redisConnection.ping(), pingTimeoutMs, 'Redis ping');
 
       aiQueue = new Queue(QUEUE_NAME, { connection: redisConnection });
       redisAvailable = true;
