@@ -12,6 +12,9 @@ describe('getPhotos timeout/abort', () => {
   beforeEach(() => {
     vi.useFakeTimers()
 
+    // Ensure we don't reuse a cached in-flight request from other tests.
+    ;(globalThis as any).__getPhotosInflight = undefined
+
     // A fetch mock that never resolves unless aborted.
     vi.stubGlobal(
       'fetch',
@@ -40,14 +43,20 @@ describe('getPhotos timeout/abort', () => {
   })
 
   it('aborts when timeoutMs elapses', async () => {
-    const expectation = expect(
-      getPhotos('https://example.com/photos?test=getPhotosTimeout', { timeoutMs: 12_000 }),
-    ).rejects.toMatchObject({ name: 'AbortError' })
+    const promise = getPhotos('https://example.com/photos?test=getPhotosTimeout', { timeoutMs: 12_000 })
+    // Attach a handler immediately to avoid unhandled rejection warnings.
+    // This does not change the promise value; it only marks the rejection as handled.
+    void promise.catch(() => {})
+
+    // getPhotos now awaits async auth header resolution before issuing the request.
+    // Flush microtasks so the request path reaches fetch.
+    await Promise.resolve()
+    await Promise.resolve()
 
     expect((globalThis.fetch as any)).toHaveBeenCalledTimes(1)
 
     await vi.advanceTimersByTimeAsync(12_001)
 
-    await expectation
+    await expect(promise).rejects.toMatchObject({ name: 'AbortError' })
   })
 })

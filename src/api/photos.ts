@@ -1,7 +1,7 @@
 import type { Photo } from '../types/photo'
 import type { ModelAllowlistResponse, PhotoState, PhotoStatusResponse } from '../types/api'
 import { request, ApiError, fetchWithNetworkFallback, isAbortError, API_BASE_URL, apiLimiter, stateUpdateLimiter, directLimiter } from './httpClient'
-import { getAuthHeaders, getHeadersForGetRequest } from './auth'
+import { getAuthHeaders, getAuthHeadersAsync, getHeadersForGetRequestAsync } from './auth'
 
 export type PhotoId = Photo['id']
 
@@ -43,6 +43,10 @@ export async function fetchProtectedBlobUrl(
 
   const doFetch = async (bypassCache = false) => {
     const headers = getAuthHeaders(false)
+    if (!headers.Authorization) {
+      const asyncHeaders = await getAuthHeadersAsync(false)
+      if (asyncHeaders.Authorization) headers.Authorization = asyncHeaders.Authorization
+    }
     if (bypassCache) {
       headers['Cache-Control'] = 'no-cache'
       headers['Pragma'] = 'no-cache'
@@ -106,9 +110,10 @@ export function revokeBlobUrl(url: string): void {
 
 export async function getPhotoStatus(): Promise<PhotoStatusResponse> {
   try {
+    const headers = await getHeadersForGetRequestAsync()
     return await request<PhotoStatusResponse>({
       path: '/photos/status',
-      headers: getHeadersForGetRequest(),
+      headers,
       timeoutMs: 10000,
     })
   } catch (error) {
@@ -144,9 +149,10 @@ export async function getPhotos(
 
   const fetchPromise = (async () => {
     try {
+      const headers = await getHeadersForGetRequestAsync()
       return await request<GetPhotosResponse>({
         path: url,
-        headers: getHeadersForGetRequest(),
+        headers,
         timeoutMs: Number.isFinite(options?.timeoutMs as number) ? (options?.timeoutMs as number) : 20000,
         signal: options?.signal,
         limiter: directLimiter,
@@ -191,9 +197,10 @@ export async function fetchModelAllowlist(serverUrl = `${API_BASE_URL}`): Promis
   const url = `${serverUrl}/photos/models`
   const fetchPromise = (async () => {
     try {
+      const headers = await getHeadersForGetRequestAsync()
       const json = await request<Record<string, unknown>>({
         path: url,
-        headers: getHeadersForGetRequest(),
+        headers,
         limiter: apiLimiter,
       })
       
@@ -233,9 +240,10 @@ export async function fetchModelAllowlist(serverUrl = `${API_BASE_URL}`): Promis
 
 export async function getDependencyStatus(serverUrl = `${API_BASE_URL}`): Promise<{ success: boolean; dependencies: Record<string, unknown> } | null> {
   try {
+    const headers = await getHeadersForGetRequestAsync()
     const json = await request<Record<string, unknown>>({
       path: `${serverUrl}/photos/dependencies`,
-      headers: getHeadersForGetRequest(),
+      headers,
       limiter: apiLimiter,
     })
     const dependencies =
@@ -363,9 +371,10 @@ export async function getPhoto(
   }
 
   try {
+    const headers = await getHeadersForGetRequestAsync()
     return await request<GetPhotoResponse>({
       path: url,
-      headers: getHeadersForGetRequest(),
+      headers,
     })
   } catch (error) {
     // Original code rethrows with status property

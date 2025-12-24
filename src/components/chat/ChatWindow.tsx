@@ -232,7 +232,6 @@ export default function ChatWindow({ roomId }: ChatWindowProps) {
 
   useEffect(() => {
     if (!pickerOpen) return
-    if (pickerLoading) return
     if (pickerPhotos.length) return
 
     let cancelled = false
@@ -293,7 +292,7 @@ export default function ChatWindow({ roomId }: ChatWindowProps) {
         // ignore
       }
     }
-  }, [pickerOpen, pickerLoading, pickerPhotos.length, pickerReloadKey])
+  }, [pickerOpen, pickerPhotos.length, pickerReloadKey, roomId])
 
   const canSend = Boolean(roomId) && !sending
 

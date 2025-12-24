@@ -1,16 +1,17 @@
 import type { CollectibleFormState, CollectibleRecord } from '../types/collectibles'
 import type { Photo } from '../types/photo'
 import { request, ApiError } from './httpClient'
-import { getAuthHeaders, getHeadersForGetRequest } from './auth'
+import { getAuthHeaders, getHeadersForGetRequestAsync } from './auth'
 
 type PhotoId = Photo['id']
 export type CollectibleId = CollectibleRecord['id']
 
 export async function fetchCollectibles(photoId: PhotoId): Promise<CollectibleRecord[] | undefined> {
   try {
+    const headers = await getHeadersForGetRequestAsync()
     const json = await request<{ success: boolean; error?: string; collectibles?: CollectibleRecord[] }>({
       path: `/photos/${photoId}/collectibles`,
-      headers: getHeadersForGetRequest(),
+      headers,
     })
     if (!json.success) throw new Error(json.error || 'Failed to fetch collectibles')
     return json.collectibles || []
