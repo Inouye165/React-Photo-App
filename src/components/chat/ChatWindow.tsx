@@ -10,6 +10,7 @@ import { supabase } from '../../supabaseClient'
 import type { ChatMessage } from '../../types/chat'
 import { useAuth } from '../../contexts/AuthContext'
 import { toUrl } from '../../utils/toUrl'
+import AuthenticatedImage from '../AuthenticatedImage'
 import ChatBubble from './ChatBubble'
 
 export interface ChatWindowProps {
@@ -504,6 +505,11 @@ export default function ChatWindow({ roomId }: ChatWindowProps) {
                   {pickerPhotos.map((p) => {
                     const rel = p.thumbnail || p.url
                     const src = rel ? toUrl(rel, API_BASE_URL) : null
+                    const isSignedThumbnail =
+                      typeof rel === 'string' &&
+                      rel.includes('/display/thumbnails/') &&
+                      rel.includes('sig=') &&
+                      rel.includes('exp=')
                     const isSelected = selectedPhotoId === p.id
                     return (
                       <button
@@ -520,7 +526,13 @@ export default function ChatWindow({ roomId }: ChatWindowProps) {
                         }
                         aria-label={`Attach photo ${p.id}`}
                       >
-                        {src ? <img src={src} alt="" className="h-full w-full object-cover" /> : null}
+                        {src ? (
+                          isSignedThumbnail ? (
+                            <img src={src} alt="" className="h-full w-full object-cover" />
+                          ) : (
+                            <AuthenticatedImage src={src} alt="" className="h-full w-full object-cover" />
+                          )
+                        ) : null}
                       </button>
                     )
                   })}
