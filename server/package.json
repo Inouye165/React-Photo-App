@@ -19,10 +19,10 @@
     "health": "node health-check.js",
     "lint": "eslint . --config ../eslint.config.js",
     "lint:fix": "eslint . --fix --config ../eslint.config.js",
-    "test:e2e": "playwright test",
-    "test:a11y": "playwright test ../../e2e/a11y.*",
-    "test:perf": "k6 run ../../perf/smoke.js",
-    "test:docker:smoke": "node ../../scripts/docker-smoke.js",
+    "test:e2e": "npm --prefix .. run test:e2e",
+    "test:a11y": "npm --prefix .. run test:a11y",
+    "test:perf": "k6 run ../perf/smoke.js",
+    "test:docker:smoke": "node ../scripts/docker-smoke.js",
     "prepare": ""
   },
   "dependencies": {
