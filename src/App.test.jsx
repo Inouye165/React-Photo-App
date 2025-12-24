@@ -150,10 +150,7 @@ describe('App Component - Session Expiration', () => {
   })
 })
 
-// SKIPPED: These tests exhaust 4GB heap even with aggressive component mocking
-// Root cause: App component itself loads heavy dependencies (map libraries, etc.)
-// TODO: Refactor App.jsx to be lighter or split into smaller testable units
-describe.skip('App Component - Smoke Tests', () => {
+describe('App Component - Smoke Tests', () => {
   const mockPhotos = [
     {
       id: 1,
