@@ -79,6 +79,33 @@ export default function useLocalPhotoPicker({
   const uploading = uploadPicker.status === 'uploading';
   const showPicker = uploadPicker.status !== 'closed';
 
+  const exifParseTimeoutMs = Number(import.meta.env.VITE_EXIF_PARSE_TIMEOUT_MS || 1500);
+
+  const parseExifWithTimeout = useCallback(
+    async (file: File) => {
+      if (!Number.isFinite(exifParseTimeoutMs) || exifParseTimeoutMs <= 0) {
+        return parse(file);
+      }
+
+      return await new Promise((resolve, reject) => {
+        const timer = setTimeout(() => {
+          reject(new Error(`EXIF parse timeout after ${exifParseTimeoutMs}ms`));
+        }, exifParseTimeoutMs);
+
+        Promise.resolve(parse(file))
+          .then((value) => {
+            clearTimeout(timer);
+            resolve(value);
+          })
+          .catch((err) => {
+            clearTimeout(timer);
+            reject(err);
+          });
+      });
+    },
+    [exifParseTimeoutMs],
+  );
+
   /**
    * Shared file processing logic: parses EXIF data from files
    * @security EXIF parsing wrapped in try-catch, continues on failure
@@ -109,7 +136,7 @@ export default function useLocalPhotoPicker({
         }
 
         try {
-          const exif = await parse(file);
+          const exif = await parseExifWithTimeout(file);
           const exifDate = exif?.DateTimeOriginal || exif?.CreateDate || exif?.DateTime || null;
           files.push({ name, file, exifDate, handle });
         } catch {
@@ -120,7 +147,7 @@ export default function useLocalPhotoPicker({
 
       pickerCommand.openPicker({ dirHandle, files });
     },
-    [pickerCommand]
+    [pickerCommand, parseExifWithTimeout]
   );
 
   /**
