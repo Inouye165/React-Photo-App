@@ -110,13 +110,71 @@ module.exports = function createPhotosRouter({ db, supabase }) {
     const reqId = Math.random().toString(36).slice(2, 10);
     try {
       const state = req.query.state;
+      
+      // PAGINATION: Parse and validate limit parameter
+      const DEFAULT_LIMIT = 50;
+      const MAX_LIMIT = 200;
+      const MIN_LIMIT = 1;
+      let limit = DEFAULT_LIMIT;
+      if (req.query.limit) {
+        const parsedLimit = Number(req.query.limit);
+        if (!Number.isInteger(parsedLimit) || parsedLimit < MIN_LIMIT || parsedLimit > MAX_LIMIT) {
+          logger.warn('[photos] Invalid limit parameter', { reqId, limit: req.query.limit });
+          return res.status(400).json({ 
+            success: false, 
+            error: `Invalid limit parameter. Must be integer between ${MIN_LIMIT} and ${MAX_LIMIT}`, 
+            reqId 
+          });
+        }
+        limit = parsedLimit;
+      }
+      
+      // PAGINATION: Parse and validate cursor parameter
+      let cursor = null;
+      if (req.query.cursor) {
+        try {
+          const decoded = Buffer.from(String(req.query.cursor), 'base64url').toString('utf8');
+          cursor = JSON.parse(decoded);
+          
+          // SECURITY: Validate cursor structure to prevent injection
+          if (!cursor || typeof cursor !== 'object' || !cursor.created_at || !cursor.id) {
+            throw new Error('Invalid cursor structure');
+          }
+          
+          // Validate created_at is ISO8601 format
+          if (typeof cursor.created_at !== 'string' || isNaN(Date.parse(cursor.created_at))) {
+            throw new Error('Invalid cursor created_at');
+          }
+          
+          // Validate id is a positive integer
+          if (!Number.isInteger(cursor.id) || cursor.id <= 0) {
+            throw new Error('Invalid cursor id');
+          }
+        } catch (cursorErr) {
+          logger.warn('[photos] Invalid cursor parameter', { 
+            reqId, 
+            cursor: req.query.cursor,
+            error: cursorErr && cursorErr.message 
+          });
+          return res.status(400).json({ 
+            success: false, 
+            error: 'Invalid cursor parameter', 
+            reqId 
+          });
+        }
+      }
+      
       // Protect against long-running DB queries causing the request to hang
       const DB_QUERY_TIMEOUT_MS = Number(process.env.DB_QUERY_TIMEOUT_MS || 10000);
 
       const listStart = Date.now();
       let rows;
       try {
-        rows = await photosDb.listPhotos(req.user.id, state, { timeoutMs: DB_QUERY_TIMEOUT_MS });
+        rows = await photosDb.listPhotos(req.user.id, state, { 
+          timeoutMs: DB_QUERY_TIMEOUT_MS,
+          limit,
+          cursor
+        });
       } catch (err) {
         const message = err && err.message ? String(err.message) : '';
         const isTimeout =
@@ -133,8 +191,25 @@ module.exports = function createPhotosRouter({ db, supabase }) {
       logger.info('[photos] listPhotos_ms', {
         reqId,
         state: state || null,
+        limit,
+        hasCursor: Boolean(cursor),
         ms: listMs,
       });
+      
+      // PAGINATION: Detect if there are more results and build next cursor
+      let nextCursor = null;
+      if (rows.length > limit) {
+        rows = rows.slice(0, limit); // Return only requested limit
+        
+        // Build cursor from last item in this page
+        const lastRow = rows[rows.length - 1];
+        const cursorObj = {
+          created_at: lastRow.created_at,
+          id: lastRow.id
+        };
+        nextCursor = Buffer.from(JSON.stringify(cursorObj), 'utf8').toString('base64url');
+      }
+      
       // Generate public URLs for each photo using Supabase Storage
       const mapStart = Date.now();
       const photosWithUrls = await Promise.all(rows.map(async (row) => {
@@ -211,7 +286,14 @@ module.exports = function createPhotosRouter({ db, supabase }) {
       });
       // Prevent caching so frontend always gets fresh filtered results
       res.set('Cache-Control', 'no-store');
-      res.json({ success: true, photos: photosWithUrls });
+      
+      // PAGINATION: Include nextCursor in response
+      res.json({ 
+        success: true, 
+        userId: req.user.id,
+        photos: photosWithUrls,
+        nextCursor: nextCursor
+      });
     } catch (err) {
       // Improved error logging for diagnostics
       logger.error('[photos] DB error', {

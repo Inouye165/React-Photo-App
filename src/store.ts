@@ -58,6 +58,8 @@ export interface StoreState extends UploadPickerSlice {
   metadataPhoto: Photo | null
   toolbarMessage: string
   toolbarSeverity: Severity
+  photosCursor: string | null
+  photosHasMore: boolean
 
   addPendingUploads: (files: File[]) => PendingUpload[]
   removePendingUpload: (tempId: string) => void
@@ -74,6 +76,8 @@ export interface StoreState extends UploadPickerSlice {
   setToolbarSeverity: (severity: Severity) => void
 
   setPhotos: (photos: Photo[]) => void
+  appendPhotos: (photos: Photo[], nextCursor: string | null, hasMore: boolean) => void
+  resetPhotos: (photos: Photo[], nextCursor: string | null, hasMore: boolean) => void
   removePhotoById: (id: Photo['id']) => void
   updatePhotoData: (id: Photo['id'], newData: Partial<Photo> & Record<string, unknown>) => void
   updatePhoto: (updatedPhoto: Partial<Photo> & { id: Photo['id'] }) => void
@@ -127,6 +131,8 @@ const isAiAnalysisComplete = (photo: Photo | null | undefined): boolean => {
 const useStore = create<StoreState>((set, get) => ({
   ...createUploadPickerSlice(set, get),
   photos: [],
+  photosCursor: null,
+  photosHasMore: false,
   toast: { message: '', severity: 'info' },
   // Support both a single legacy polling id and a Set of polling ids for concurrent polling
   pollingPhotoId: null,
@@ -222,6 +228,19 @@ const useStore = create<StoreState>((set, get) => ({
 
   // Photos slice
   setPhotos: (photos: Photo[]) => set({ photos }),
+  appendPhotos: (photos: Photo[], nextCursor: string | null, hasMore: boolean) =>
+    set((state) => {
+      // Deduplicate by photo ID
+      const existingIds = new Set(state.photos.map((p) => String(p.id)))
+      const newPhotos = photos.filter((p) => !existingIds.has(String(p.id)))
+      return {
+        photos: [...state.photos, ...newPhotos],
+        photosCursor: nextCursor,
+        photosHasMore: hasMore,
+      }
+    }),
+  resetPhotos: (photos: Photo[], nextCursor: string | null, hasMore: boolean) =>
+    set({ photos, photosCursor: nextCursor, photosHasMore: hasMore }),
   removePhotoById: (id: Photo['id']) => set((state) => ({ photos: state.photos.filter((p) => p.id !== id) })),
   // Update existing photo data or insert if missing (upsert)
   updatePhotoData: (id: Photo['id'], newData: Partial<Photo> & Record<string, unknown>) =>

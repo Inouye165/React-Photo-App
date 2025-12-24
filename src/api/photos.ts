@@ -12,7 +12,9 @@ export interface GetPhotoOptions {
 
 export interface GetPhotosResponse extends Record<string, unknown> {
   success: boolean
+  userId?: string
   photos?: Photo[]
+  nextCursor?: string | null
   error?: string
 }
 
@@ -128,15 +130,34 @@ export async function getPhotoStatus(): Promise<PhotoStatusResponse> {
 
 type GetPhotosInflightCache = Map<string, { ts: number; promise: Promise<GetPhotosResponse | undefined> }>
 
+export interface GetPhotosOptions {
+  signal?: AbortSignal
+  timeoutMs?: number
+  limit?: number
+  cursor?: string
+}
+
 export async function getPhotos(
   serverUrlOrEndpoint: string = `${API_BASE_URL}/photos`,
-  options?: { signal?: AbortSignal; timeoutMs?: number },
+  options?: GetPhotosOptions,
 ): Promise<GetPhotosResponse | undefined> {
   let url = serverUrlOrEndpoint
   if (!/^https?:\/\//i.test(serverUrlOrEndpoint)) {
     if (['working', 'inprogress', 'finished'].includes(serverUrlOrEndpoint)) url = `${API_BASE_URL}/photos?state=${serverUrlOrEndpoint}`
     else if (serverUrlOrEndpoint.startsWith('photos')) url = `${API_BASE_URL}/${serverUrlOrEndpoint}`
     else url = `${API_BASE_URL}/photos`
+  }
+  
+  // Add pagination query params if provided
+  if (options?.limit !== undefined || options?.cursor !== undefined) {
+    const urlObj = new URL(url, window.location.origin)
+    if (options.limit !== undefined) {
+      urlObj.searchParams.set('limit', String(options.limit))
+    }
+    if (options.cursor !== undefined) {
+      urlObj.searchParams.set('cursor', options.cursor)
+    }
+    url = urlObj.pathname + urlObj.search
   }
 
   const root = globalThis as typeof globalThis & { __getPhotosInflight?: GetPhotosInflightCache }

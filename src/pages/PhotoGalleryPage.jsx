@@ -44,6 +44,9 @@ export default function PhotoGalleryPage() {
   const {
     photos,
     loading,
+    loadingMore,
+    photosHasMore,
+    loadMorePhotos,
     pollingPhotoId,
     pollingPhotoIds,
     refreshPhotos,
@@ -176,6 +179,18 @@ export default function PhotoGalleryPage() {
             onSelectPhoto={handleSelectPhoto}
             getSignedUrl={getSignedUrl}
           />
+          
+          {photosHasMore && (
+            <div className="flex items-center justify-center py-8">
+              <button
+                onClick={loadMorePhotos}
+                disabled={loadingMore}
+                className="px-6 py-3 bg-blue-600 text-white rounded-lg hover:bg-blue-700 disabled:bg-gray-400 disabled:cursor-not-allowed transition-colors"
+              >
+                {loadingMore ? 'Loading...' : 'Load More Photos'}
+              </button>
+            </div>
+          )}
         </>
       )}
     </>

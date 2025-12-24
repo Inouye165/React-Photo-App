@@ -14,7 +14,11 @@ function usePhotoManagement() {
   const { user, authReady } = useAuth();
   const userId = user?.id;
   const photos = useStore((state) => state.photos);
+  const photosCursor = useStore((state) => state.photosCursor);
+  const photosHasMore = useStore((state) => state.photosHasMore);
   const setPhotos = useStore((state) => state.setPhotos);
+  const resetPhotos = useStore((state) => state.resetPhotos);
+  const appendPhotos = useStore((state) => state.appendPhotos);
   const updatePhotoData = useStore((state) => state.updatePhotoData);
   const removePhotoById = useStore((state) => state.removePhotoById);
   const moveToInprogress = useStore((state) => state.moveToInprogress);
@@ -37,6 +41,7 @@ function usePhotoManagement() {
   const setMetadataPhoto = useStore((state) => state.setMetadataPhoto);
 
   const [loading, setLoading] = useState(true);
+  const [loadingMore, setLoadingMore] = useState(false);
   const [editedCaption, setEditedCaption] = useState('');
   const [editedDescription, setEditedDescription] = useState('');
   const [editedKeywords, setEditedKeywords] = useState('');
@@ -64,7 +69,12 @@ function usePhotoManagement() {
         try {
           const response = endpoint ? await getPhotos(endpoint) : await getPhotos();
           if (controller.signal.aborted) return;
-          setPhotos((response && response.photos) || []);
+          
+          // Use resetPhotos for initial load to set pagination state
+          const photosData = (response && response.photos) || [];
+          const nextCursor = response && response.nextCursor;
+          const hasMore = Boolean(nextCursor);
+          resetPhotos(photosData, nextCursor, hasMore);
         } catch (error) {
           if (!controller.signal.aborted) {
             setBanner({ message: `Error loading photos from backend: ${error?.message || 'unknown'}`, severity: 'error' });
@@ -81,7 +91,44 @@ function usePhotoManagement() {
         promise: task,
       };
     },
-  [setPhotos, setBanner],
+  [resetPhotos, setBanner],
+  );
+  
+  const loadMorePhotos = useCallback(
+    async () => {
+      if (!photosCursor || !photosHasMore || loadingMore) {
+        return;
+      }
+      
+      const controller = new AbortController();
+      setLoadingMore(true);
+      
+      try {
+        const response = await getPhotos(undefined, { 
+          cursor: photosCursor,
+          signal: controller.signal 
+        });
+        
+        if (controller.signal.aborted) return;
+        
+        const photosData = (response && response.photos) || [];
+        const nextCursor = response && response.nextCursor;
+        const hasMore = Boolean(nextCursor);
+        appendPhotos(photosData, nextCursor, hasMore);
+      } catch (error) {
+        if (!controller.signal.aborted) {
+          setBanner({ 
+            message: `Error loading more photos: ${error?.message || 'unknown'}`, 
+            severity: 'error' 
+          });
+        }
+      } finally {
+        if (!controller.signal.aborted) {
+          setLoadingMore(false);
+        }
+      }
+    },
+    [photosCursor, photosHasMore, loadingMore, appendPhotos, setBanner]
   );
 
   useEffect(() => {
@@ -339,6 +386,9 @@ function usePhotoManagement() {
     photos,
   // toast, setToast removed
     loading,
+    loadingMore,
+    photosHasMore,
+    loadMorePhotos,
     view,
     setView,
     activePhotoId,
