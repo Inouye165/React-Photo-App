@@ -80,6 +80,32 @@ export default function useLocalPhotoPicker({
   const showPicker = uploadPicker.status !== 'closed';
 
   const exifParseTimeoutMs = Number(import.meta.env.VITE_EXIF_PARSE_TIMEOUT_MS || 1500);
+  const thumbnailTimeoutMs = Number(import.meta.env.VITE_THUMBNAIL_GENERATION_TIMEOUT_MS || 5000);
+
+  const generateThumbnailWithTimeout = useCallback(
+    async (file: File): Promise<Blob | null> => {
+      if (!Number.isFinite(thumbnailTimeoutMs) || thumbnailTimeoutMs <= 0) {
+        return await generateClientThumbnail(file);
+      }
+
+      return await new Promise((resolve, reject) => {
+        const timer = setTimeout(() => {
+          reject(new Error(`Thumbnail generation timeout after ${thumbnailTimeoutMs}ms`));
+        }, thumbnailTimeoutMs);
+
+        Promise.resolve(generateClientThumbnail(file))
+          .then((value) => {
+            clearTimeout(timer);
+            resolve(value);
+          })
+          .catch((err) => {
+            clearTimeout(timer);
+            reject(err);
+          });
+      });
+    },
+    [thumbnailTimeoutMs],
+  );
 
   const parseExifWithTimeout = useCallback(
     async (file: File) => {
@@ -249,10 +275,12 @@ export default function useLocalPhotoPicker({
           let thumbnailBlob: Blob | null = null;
 
           try {
-            thumbnailBlob = await generateClientThumbnail(photo.file);
+            thumbnailBlob = await generateThumbnailWithTimeout(photo.file);
           } catch (err) {
             // Graceful fallback: log and continue without thumbnail
-            console.warn(`Thumbnail generation failed for ${photo.name}:`, err);
+            if (import.meta.env.DEV) {
+              console.warn(`Thumbnail generation failed for ${photo.name}:`, err);
+            }
           }
 
           try {
@@ -266,14 +294,16 @@ export default function useLocalPhotoPicker({
 
             // Log compass direction (if available) from server response
             // Security: only log non-sensitive metadata
-            if (uploadResponse && uploadResponse.metadata) {
-              const direction = uploadResponse.metadata.compass_heading;
-              console.log(
-                `Photo '${photo.name}': Compass direction =`,
-                direction !== undefined ? direction : 'Not found'
-              );
-            } else {
-              console.log(`Photo '${photo.name}': No metadata returned from server.`);
+            if (import.meta.env.DEV) {
+              if (uploadResponse && uploadResponse.metadata) {
+                const direction = uploadResponse.metadata.compass_heading;
+                console.log(
+                  `Photo '${photo.name}': Compass direction =`,
+                  direction !== undefined ? direction : 'Not found'
+                );
+              } else {
+                console.log(`Photo '${photo.name}': No metadata returned from server.`);
+              }
             }
           } catch (error) {
             encounteredError = error as Error;
@@ -327,7 +357,7 @@ export default function useLocalPhotoPicker({
           let thumbnailBlob: Blob | null = null;
 
           try {
-            thumbnailBlob = await generateClientThumbnail(file);
+            thumbnailBlob = await generateThumbnailWithTimeout(file);
           } catch {
             // Continue without thumbnail
           }
