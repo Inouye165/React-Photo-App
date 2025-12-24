@@ -32,10 +32,12 @@ export function useChatRealtime(roomId: string | null, options?: { initialLimit?
   const subscriptionKey = useMemo(() => (normalizedRoomId ? `room:${normalizedRoomId}` : null), [normalizedRoomId])
 
   useEffect(() => {
-    console.log('Attempting Connection to Room:', normalizedRoomId)
-    if (!supabase) console.error('CRITICAL: Supabase client is NULL')
+    if (import.meta.env.DEV) {
+      console.log('Attempting Connection to Room:', normalizedRoomId)
+      console.log('Attempting to subscribe to room:', normalizedRoomId)
+    }
 
-    if (import.meta.env.DEV) console.log('Attempting to subscribe to room:', normalizedRoomId)
+    if (!supabase) console.error('CRITICAL: Supabase client is NULL')
     let cancelled = false
 
     const lastSubscriptionStatusRef: { current: string | null } = { current: null }
