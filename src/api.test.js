@@ -138,6 +138,19 @@ describe('api - Bearer Token Authentication Security', () => {
     });
   });
 
+  describe('getAuthHeadersAsync - Logout Safety', () => {
+    it('should NOT re-attach Authorization after explicit logout', async () => {
+      // In tests, supabase.auth.getSession is globally mocked to return a token.
+      // This check ensures explicit logout takes precedence over that session.
+      api.setAuthToken(null);
+
+      const headers = await api.getAuthHeadersAsync(false);
+
+      expect(headers['Authorization']).toBeUndefined();
+      expect(headers['Content-Type']).toBeUndefined();
+    });
+  });
+
   describe('getAccessToken - Token Retrieval', () => {
     it('should return cached token when set', () => {
       const testToken = 'cached-token';
