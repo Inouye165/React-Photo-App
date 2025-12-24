@@ -248,27 +248,63 @@ module.exports = function createDisplayRouter({ db }) {
         return res.status(500).json({ error: 'Internal server error: DB misconfiguration' });
       }
 
-      // Must be a room member
-      const membership = await db('room_members')
-        .where('room_id', roomId)
-        .andWhere('user_id', req.user.id)
-        .first();
+      // Chat membership + message linkage live in Supabase (and may not exist in the app DB).
+      // Use the server Supabase client (service role) to authorize chat media access.
+      const { data: membership, error: membershipError } = await supabase
+        .from('room_members')
+        .select('user_id')
+        .eq('room_id', roomId)
+        .eq('user_id', req.user.id)
+        .maybeSingle();
+
+      if (membershipError) {
+        logger.error('Chat display image: membership lookup failed', {
+          reqId,
+          roomId,
+          userId: req.user?.id,
+          error: membershipError.message,
+        });
+        return res.status(500).json({ error: 'Internal server error' });
+      }
 
       if (!membership) {
         return res.status(403).json({ error: 'Forbidden' });
       }
 
-      // Must be shared in this room, and photo must belong to the sender of that message.
-      const sharedPhoto = await db('messages as m')
-        .join('photos as p', 'p.id', 'm.photo_id')
-        .select('p.*')
-        .where('m.room_id', roomId)
-        .andWhere('m.photo_id', photoId)
-        .whereNotNull('m.photo_id')
-        .whereRaw('p.user_id = m.sender_id')
+      const { data: messageRow, error: messageError } = await supabase
+        .from('messages')
+        .select('id, room_id, sender_id, photo_id, created_at')
+        .eq('room_id', roomId)
+        .eq('photo_id', photoId)
+        .order('created_at', { ascending: false })
+        .limit(1)
+        .maybeSingle();
+
+      if (messageError) {
+        logger.error('Chat display image: message lookup failed', {
+          reqId,
+          roomId,
+          photoId,
+          error: messageError.message,
+        });
+        return res.status(500).json({ error: 'Internal server error' });
+      }
+
+      if (!messageRow) {
+        return res.status(404).json({ error: 'Photo not found' });
+      }
+
+      // Fetch photo metadata from app DB and enforce that the photo belongs to the sender.
+      const sharedPhoto = await db('photos')
+        .where('id', photoId)
         .first();
 
       if (!sharedPhoto) {
+        return res.status(404).json({ error: 'Photo not found' });
+      }
+
+      if (String(sharedPhoto.user_id) !== String(messageRow.sender_id)) {
+        // Defense-in-depth: a message can only reference the sender's own photo.
         return res.status(404).json({ error: 'Photo not found' });
       }
 
