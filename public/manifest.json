@@ -1,6 +1,6 @@
 {
-  "name": "Photo App",
-  "short_name": "Photos",
+  "name": "Lumina",
+  "short_name": "Lumina",
   "description": "AI-powered photo management with intelligent tagging and organization",
   "start_url": "/",
   "display": "standalone",

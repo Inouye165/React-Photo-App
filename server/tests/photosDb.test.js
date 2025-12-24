@@ -22,10 +22,13 @@ describe('photosDb service', () => {
 
   it('listPhotos queries by user and optional state', async () => {
     const rows = [{ id: 1 }, { id: 2 }];
-    // Patch returns for select+where+where pattern
+    // Patch returns for select+where+orderBy+where pattern
     db.mockReturnValueOnce({
       select: jest.fn().mockReturnThis(),
       where: jest.fn(function() { return this; }).mockImplementation(function() { return this; }),
+      orderBy: jest.fn().mockReturnThis(),
+      limit: jest.fn().mockReturnThis(),
+      timeout: jest.fn().mockReturnThis(),
       then: (cb) => cb(rows),
       // For async/await support (simulate .thenable)
       catch: jest.fn(),

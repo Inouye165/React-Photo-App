@@ -13,13 +13,37 @@ module.exports = function createPhotosDb({ db }) {
         'id', 'filename', 'state', 'metadata', 'hash', 'file_size',
         'caption', 'description', 'keywords', 'classification', 'created_at'
       ).where('user_id', userId);
+      
       if (state === 'working' || state === 'inprogress' || state === 'finished') {
         query = query.where({ state });
       }
+      
+      // Stable ordering for pagination: newest first, with id as tie-breaker
+      query = query.orderBy('created_at', 'desc').orderBy('id', 'desc');
+      
+      // PAGINATION: Apply cursor-based filtering if cursor provided
+      if (options.cursor) {
+        const { created_at, id } = options.cursor;
+        // For descending order: fetch rows "older than" the cursor tuple
+        query = query.where(function() {
+          this.where('created_at', '<', created_at)
+            .orWhere(function() {
+              this.where('created_at', '=', created_at)
+                .andWhere('id', '<', id);
+            });
+        });
+      }
+      
+      // PAGINATION: Apply limit if provided (add 1 to detect if more results exist)
+      if (options.limit && Number.isInteger(options.limit) && options.limit > 0) {
+        query = query.limit(options.limit + 1);
+      }
+      
       const timeoutMs = Number(options && options.timeoutMs);
       if (Number.isFinite(timeoutMs) && timeoutMs > 0 && typeof query.timeout === 'function') {
         query = query.timeout(timeoutMs, { cancel: true });
       }
+      
       return await query;
     },
     async getPhotoById(photoId, userId) {
