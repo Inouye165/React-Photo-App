@@ -1,136 +1,75 @@
 # Lumina
 
-![Status: High-Performance Engineering Prototype (Active Development)](https://img.shields.io/badge/status-high--performance--prototype-yellow.svg)
+![Status: Prototype](https://img.shields.io/badge/status-prototype-yellow.svg)
 [![Tests](https://img.shields.io/badge/tests-vitest%20%2B%20jest-brightgreen.svg)](TESTING.md)
 [![Security](https://img.shields.io/badge/security-JWT%20%2B%20RLS-blue.svg)](https://supabase.com/docs/guides/auth)
 [![HEIC Support](https://img.shields.io/badge/HEIC-Auto%20Convert-orange.svg)](https://en.wikipedia.org/wiki/High_Efficiency_Image_Format)
 [![React](https://img.shields.io/badge/React-19-61dafb.svg)](https://reactjs.org/)
-[![License](https://img.shields.io/badge/license-MIT-blue.svg)](LICENSE)
+[![License](https://img.shields.io/badge/license-Restricted-red.svg)](LICENSE)
 
-I built **Lumina** as a privacy-focused photo workspace to move beyond basic tutorials and dive into professional engineering standards. It is a long-term project tackling the "hard stuff" in web development: building for real-world security, ensuring the architecture can scale, and keeping the codebase maintainable over time.
+Lumina is a photo workspace I'm building. The main goal? Stop doing simple tutorials and actually build something that handles the messy, hard stuff—like real security, heavy file uploads, and architecture that doesn't fall apart.
 
-While the frontend is a work in progress, the backend and security have been treated as the core of the project from day one. The long-term goal is to turn this into a community platform where people can share and chat without ever compromising their data isolation or privacy.
+The frontend is still rough (I'm working on it), but I've spent a ton of time making the backend and security production-grade. Eventually, I want this to be a place where you can share photos without handing over your data to big tech.
 
 **Author:** Ron Inouye ([@Inouye165](https://github.com/Inouye165))
 
----
+## Why I'm Building This
 
-### 🎯 Why This Exists
+I wanted to see what it actually takes to ship a secure, cloud-deployed app. Not just the "happy path" you see in guides, but the real deal.
 
-This project started as a way to see what it takes to build a secure, cloud-deployed application at scale. Instead of just following a guide, the focus is on:
+My focus has been on:
+*   **Not breaking things:** Architecting it so I can add features later without rewriting everything.
+*   **Security that isn't fake:** Using Row-Level Security (RLS) from the start, not patching it in later.
+*   **Modern tools:** Getting my hands dirty with Supabase, Docker, and real deployment pipelines.
 
-* **Engineering for the long haul:** Building an architecture that doesn’t fall apart as it grows.
-* **Security as a habit:** Implementing Row-Level Security (RLS), strict data isolation, and safe defaults rather than "bolting them on" later.
-* **Modern Cloud Workflows:** Getting hands-on with Supabase, Railway, Vercel, and Docker.
+It's definitely an engineering prototype right now. I care more about the engine than the paint job.
 
-Lumina isn't meant to be a polished consumer product yet—it’s a high-performance engineering prototype. The focus is on the "under the hood" work over a flashy UI to demonstrate how a modern web stack should actually function.
+[Read the full backstory here](docs/PRODUCT_STORY.md)
 
-[Read the full journey: Product Story (Sept–Nov 2025)](docs/PRODUCT_STORY.md)
+## The Vibe
 
----
+*   **Privacy is the default:** Everything starts with "can other people see this?" (The answer should be no).
+*   **No Security Theater:** I'm trying to be honest about what's secure and what's still a WIP.
 
-### 🌱 Community & Values
+## The Tech Stack (The Interesting Parts)
 
-* **Welcoming to contributors**
-* **Privacy by default:** Every design choice starts with user data isolation and least-privilege access.
-* **Zero "Security Theater":** Aims for total transparency regarding security trade-offs.
+This isn't just a wrapper around an API. Here's what's actually happening under the hood:
 
----
+*   **Testing:** There are over 1,100 tests here. I'm trying to be disciplined about it.
+*   **Streaming Uploads:** No saving to disk first. Files stream directly to the cloud to keep the server light.
+*   **Background Jobs:** I'm using BullMQ and Redis to handle the heavy lifting (thumbnails, AI analysis) so the UI doesn't freeze.
+*   **AI Stuff:** Using LangGraph to organize the AI logic instead of just spaghetti-coding API calls.
+*   **HEIC Support:** Because iPhones exist, I added auto-conversion to JPEG.
 
-### 🔒 Privacy & User Isolation
+## Cool Features & Experiments
 
-The core of Lumina is the isolated workspace. Whether it’s your photos, EXIF metadata, or AI-generated descriptions, that data belongs to you alone. Any social features—like albums or chat—are strictly opt-in, permissioned, and auditable.
+### AI Photo Concierge
+I'm playing around with some AI features:
+*   **Detection:** It can spot dogs, food, etc.
+*   **Logic:** It tries to figure out if a food photo matches a restaurant, or if that comic book is a collectible.
+*   **Context:** It tries to name mountains or landmarks in the background.
 
----
+### Backend & Security
+*   **Zero-Disk Streaming:** Uploads go straight to Supabase.
+*   **Bearer Auth:** Standard token-based auth.
+*   **CSRF Protection:** Checking origins on state-changing requests.
+*   **Secret Scanning:** I have checks in place to stop me from committing API keys.
 
-### 💪 What’s Under the Hood
+## How Uploads Work
 
-This isn't a "hello world" app. Here is a look at the actual engineering involved:
+Most tutorials tell you to save a file to the server, then upload it. I hate that because it fills up the disk. Here's how I do it:
 
-| Area | What's Here |
-| --- | --- |
-| **Test Suite** | **1,166 tests** (476 frontend, 690 backend). These are real integration and unit tests, not placeholders. |
-| **Streaming Uploads** | Zero-disk architecture. Files stream straight to the cloud with hash verification to prevent bottlenecks. |
-| **Security Layers** | Hardened with RLS, Bearer auth, Origin allowlisting, and automated secret scanning. |
-| **Background Jobs** | Uses **BullMQ + Redis** to handle thumbnails, AI processing, and HEIC conversion so the main thread never hangs. |
-| **AI Pipeline** | Built with **LangGraph** workflows. It uses modular logic with built-in retries rather than messy, one-off API calls. |
-| **HEIC Conversion** | Automatic conversion to JPEG via Sharp, with a heic-convert fallback. |
+1.  **Stream:** Photo goes from you -> Supabase Storage.
+2.  **Verify:** We check the hash on the fly.
+3.  **Queue:** A background job picks it up.
+4.  **Process:** Workers extract the EXIF data, make thumbnails, and run the AI.
+5.  **Update:** The frontend refreshes the gallery immediately. Simple and effective.
 
-**Why bother?** Without this, you end up with a mess of API calls scattered everywhere. LangGraph keeps it organized and testable.
+## Running It Locally
 
----
+If you want to poke around:
 
-### ✨ Architectural Experiments & Features
-
-#### 🧠 AI Photo Concierge (Prototype)
-
-* **Unified Context Tab:** The EditPage was redesigned to stack the story description and map in a single view for better UX.
-* **Detection:** It identifies dogs, food, and over 100 other categories.
-* **Intelligent Logic:** It tries to cross-reference food photos with local restaurants via the Places API and can even estimate the value of collectibles (like Pyrex or comics).
-* **Landscape Awareness:** The AI attempts to name specific landmarks, mountains, or lakes found in your shots.
-
-#### 🏗️ Backend & Infrastructure
-
-* **Zero-Disk Streaming:** Uploads go directly to Supabase Storage, skipping local disk limits.
-* **Modular AI:** Using LangGraph to chain EXIF extraction, GPS lookups, and image analysis into a clean workflow.
-* **Robust Processing:** BullMQ handles the heavy lifting in the background.
-* **Data Safety:** Strict Postgres RLS ensures users can only ever touch their own data.
-
-#### 🔒 Security (Experimental)
-
-* **Bearer Auth:** API routes are locked down and require valid tokens.
-* **Secure Media:** Prefers signed URLs for thumbnails to keep assets private.
-* **Hardened Auth:** State-changing endpoints enforce strict Origin/Referer checks to stop CSRF without relying solely on tokens.
-* **Hygiene:** Uses `npm run secret-scan` to make sure no keys ever accidentally hit the repo.
-
-#### 💬 Chat & Notifications
-
-* **Smart Tracking:** Unread counts are tracked per-room using `last_read_at`.
-* **Context-Aware Popups:** If you’re already in a chat room, notifications for that room are silenced to stay out of your way.
-
----
-
-### ✅ Engineering Standards
-
-Here, "industry-leading" means:
-
-* Thinking about threat models before writing code.
-* Handling errors gracefully without leaking system info.
-* Keeping documentation alive and in sync with the code.
-* Watching for performance regressions during every refactor.
-
----
-
-### 📸 Photo Handling
-
-* **Optimistic Uploads:** The UI stays snappy; you can navigate away while the background workers handle the heavy lifting.
-* **Smart Gallery:** Includes lazy loading, date-range filtering, and a compass overlay for map pins to show which way the camera was pointing.
-
----
-
-### 🏗️ How the Upload Pipeline Works
-
-**Why bother?** Most tutorials teach "save to disk, then upload." That creates bottlenecks. Streaming straight to cloud storage skips that problem entirely.
-
-```
-upload
-  → stream to storage
-  → enqueue background job
-  → worker extracts EXIF, generates thumbnails
-  → (optional) AI enrichment
-```
-
-1. **Stream:** Photo moves from user to Supabase Storage (zero local disk).
-2. **Verify:** Integrity hash is calculated on the fly.
-3. **Queue:** BullMQ picks up the job.
-4. **Process:** Workers extract EXIF, make thumbnails, and trigger AI.
-5. **Poll:** The frontend polls a single source of truth (Zustand store) until the job is done.
-
----
-
-### 🚀 Quick Start (Local Dev)
-
-**Prerequisites:** Node.js 20+, Docker (for Postgres/Redis).
+**Prerequisites:** Node 20+, Docker (you need this for the DB and Redis).
 
 ```bash
 # 1. Install dependencies
@@ -146,35 +85,24 @@ cp server/.env.example server/.env
 # 4. Run migrations
 cd server && npx knex migrate:latest --knexfile knexfile.js && cd ..
 
-# 5. Start development (3 separate terminals)
+# 5. Start development (you'll need 3 terminals)
 npm run dev           # Frontend
 cd server && npm run dev # Backend
 cd server && npm run worker # Background Worker
-
 ```
 
-* **Frontend:** `http://localhost:5173`
-* **Backend:** `http://localhost:3001`
+**Heads up:**
+*   You need the worker running or thumbnails won't happen.
+*   If you don't have the Google Maps keys, the map stuff just won't work.
+*   The backend needs an OpenAI key to start (unless you're in test mode).
 
-Notes:
+## Docs
 
-* The worker is required for thumbnail generation and background enrichment.
-* If `Maps_API_KEY` / `GOOGLE_PLACES_API_KEY` is missing, Places-based enrichment will be disabled.
-* In non-test environments, the backend is configured to refuse startup if `OPENAI_API_KEY` is missing.
+*   [Dev Notes](docs/DEV.md)
+*   [Testing Guide](TESTING.md)
+*   [Roadmap](docs/ROADMAP.md)
+*   [Security Checklist](docs/SECURITY_CODING_MAINTENANCE.md)
 
----
+## License
 
-### 📖 Docs & Further Reading
-
-* [Development Notes (check-privilege)](docs/DEV.md)
-* [Testing Guide](TESTING.md)
-* [Roadmap](docs/ROADMAP.md)
-* [Security Maintenance Checklist](docs/SECURITY_CODING_MAINTENANCE.md)
-* [Backend README](server/README.md)
-* [TypeScript Refactoring Candidates](./typescript-refactor-candidates.md) - Files flagged for TS conversion
-
----
-
-### License
-
-MIT - see [LICENSE](LICENSE)
+**Restricted License.** Free to read and learn from, but you cannot use this commercially or redistribute it without permission. See [LICENSE](LICENSE) for details.
