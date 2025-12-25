@@ -128,6 +128,8 @@ const createUsersRouter = require('./routes/users');
 const createMetricsRouter = require('./routes/metrics');
 // const createAuthRouter = require('./routes/auth'); // Removed
 const createPublicRouter = require('./routes/public');
+const createEventsRouter = require('./routes/events');
+const { createSseManager } = require('./realtime/sseManager');
 const { configureSecurity, validateRequest, securityErrorHandler } = require('./middleware/security');
 const { authenticateToken } = require('./middleware/auth');
 
@@ -292,6 +294,10 @@ app.set('trust proxy', 1);
   // Mount photos API under '/photos' so routes like '/' and '/:id' defined
   // in `routes/photos.js` are accessible at '/photos' and '/photos/:id'.
   app.use('/photos', createPhotosRouter({ db, supabase }));
+
+  // Real-time photo processing events (Phase 1: single instance, in-memory fanout)
+  const sseManager = createSseManager({ heartbeatMs: 25_000, maxConnectionsPerUser: 3 });
+  app.use('/events', createEventsRouter({ authenticateToken, sseManager }));
   // Mount collectibles API under root so /photos/:id/collectibles works correctly
   app.use(authenticateToken, createCollectiblesRouter({ db }));
   app.use('/api/users', createUsersRouter({ db }));
