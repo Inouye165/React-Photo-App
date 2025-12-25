@@ -19,18 +19,34 @@
 import React, { useState, useEffect, useRef } from 'react';
 import { fetchProtectedBlobUrl, revokeBlobUrl } from '../api';
 
+interface AuthenticatedImageProps extends React.ImgHTMLAttributes<HTMLImageElement> {
+  src: string;
+  alt?: string;
+  className?: string;
+  loadingPlaceholder?: React.ReactNode;
+  errorPlaceholder?: React.ReactNode;
+  onLoad?: (e: React.SyntheticEvent<HTMLImageElement, Event>) => void;
+  onError?: (e: React.SyntheticEvent<HTMLImageElement, Event> | Error) => void;
+}
+
 /**
- * @param {Object} props
- * @param {string} props.src - The protected image URL (relative or absolute)
- * @param {string} props.alt - Alt text for the image
- * @param {string} [props.className] - CSS classes for the image
- * @param {React.ReactNode} [props.loadingPlaceholder] - Custom loading placeholder
- * @param {React.ReactNode} [props.errorPlaceholder] - Custom error placeholder
- * @param {Function} [props.onLoad] - Callback when image loads successfully
- * @param {Function} [props.onError] - Callback when image fails to load
- * @param {...any} props - Additional props passed to the img element
+ * AuthenticatedImage Component
+ * 
+ * Renders images that require Bearer token authentication.
+ * Uses fetchProtectedBlobUrl to fetch images with proper auth headers,
+ * then displays them using a blob URL.
+ * 
+ * This component is essential for the Bearer token auth migration since
+ * standard <img src="..."> tags cannot send Authorization headers.
+ * 
+ * Features:
+ * - Automatic Bearer token authentication via fetchProtectedBlobUrl
+ * - Loading state with customizable placeholder
+ * - Error handling with fallback display
+ * - Proper memory cleanup (revokes blob URLs on unmount)
+ * - Supports all standard img attributes
  */
-const AuthenticatedImage = ({
+const AuthenticatedImage: React.FC<AuthenticatedImageProps> = ({
   src,
   alt = '',
   className = '',
@@ -40,10 +56,10 @@ const AuthenticatedImage = ({
   onError,
   ...imgProps
 }) => {
-  const [blobUrl, setBlobUrl] = useState(null);
-  const [status, setStatus] = useState('idle'); // idle | loading | success | error
-  const blobUrlRef = useRef(null);
-  const abortControllerRef = useRef(null);
+  const [blobUrl, setBlobUrl] = useState<string | null>(null);
+  const [status, setStatus] = useState<'idle' | 'loading' | 'success' | 'error'>('idle');
+  const blobUrlRef = useRef<string | null>(null);
+  const abortControllerRef = useRef<AbortController | null>(null);
 
   useEffect(() => {
     // Skip if no src provided
@@ -69,14 +85,14 @@ const AuthenticatedImage = ({
     const loadImage = async () => {
       try {
         const url = await fetchProtectedBlobUrl(src, {
-          signal: abortControllerRef.current.signal
+          signal: abortControllerRef.current?.signal
         });
 
         // Store ref for cleanup
         blobUrlRef.current = url;
         setBlobUrl(url);
         setStatus('success');
-      } catch (err) {
+      } catch (err: any) {
         // Ignore abort errors (component unmounted or src changed)
         if (err.name === 'AbortError') {
           return;
@@ -104,12 +120,12 @@ const AuthenticatedImage = ({
   }, [src, onError]);
 
   // Handle successful image load
-  const handleLoad = (e) => {
+  const handleLoad = (e: React.SyntheticEvent<HTMLImageElement, Event>) => {
     onLoad?.(e);
   };
 
   // Handle image element error (e.g., corrupted image data)
-  const handleError = (e) => {
+  const handleError = (e: React.SyntheticEvent<HTMLImageElement, Event>) => {
     setStatus('error');
     onError?.(e);
   };
@@ -117,7 +133,7 @@ const AuthenticatedImage = ({
   // Loading state
   if (status === 'loading') {
     if (loadingPlaceholder) {
-      return loadingPlaceholder;
+      return <>{loadingPlaceholder}</>;
     }
     return (
       <div 
@@ -133,7 +149,7 @@ const AuthenticatedImage = ({
   // Error state
   if (status === 'error') {
     if (errorPlaceholder) {
-      return errorPlaceholder;
+      return <>{errorPlaceholder}</>;
     }
     return (
       <div 

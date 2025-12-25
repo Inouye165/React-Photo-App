@@ -15,11 +15,16 @@ import React, { useEffect, useState, useRef } from 'react';
 import { generateClientThumbnail } from '../utils/clientImageProcessing';
 import { getThumbnail, saveThumbnail } from '../utils/thumbnailCache';
 
+interface PlaceholderProps {
+  filename: string;
+  className?: string;
+}
+
 /**
  * HeicPlaceholder - A styled placeholder for HEIC files that couldn't be converted.
  * Shows a camera icon with HEIC badge to indicate the file type.
  */
-const HeicPlaceholder = ({ filename, className }) => (
+const HeicPlaceholder: React.FC<PlaceholderProps> = ({ filename, className }) => (
   <div 
     className={`flex flex-col items-center justify-center bg-gradient-to-br from-gray-100 to-gray-200 text-gray-600 ${className}`} 
     style={{ minHeight: '100px' }}
@@ -55,7 +60,7 @@ const HeicPlaceholder = ({ filename, className }) => (
 /**
  * GenericPlaceholder - Fallback placeholder for unsupported/errored images.
  */
-const GenericPlaceholder = ({ filename, className }) => {
+const GenericPlaceholder: React.FC<PlaceholderProps> = ({ filename, className }) => {
   const extension = filename?.split('.').pop()?.toUpperCase() || 'IMG';
   
   return (
@@ -81,6 +86,13 @@ const GenericPlaceholder = ({ filename, className }) => {
   );
 };
 
+interface ThumbnailProps {
+  file: File | null;
+  className?: string;
+  externalSrc?: string | null;
+  externalStatus?: 'pending' | 'processing' | 'success' | 'failed' | null;
+}
+
 /**
  * Thumbnail - Main component for displaying cached/generated thumbnails.
  * 
@@ -99,14 +111,14 @@ const GenericPlaceholder = ({ filename, className }) => {
  * @param {string} [props.externalSrc] - Pre-generated blob URL from useThumbnailQueue (bypasses internal generation)
  * @param {'pending'|'processing'|'success'|'failed'} [props.externalStatus] - Status from the queue
  */
-const Thumbnail = ({ file, className = '', externalSrc = null, externalStatus = null }) => {
-  const [src, setSrc] = useState(null);
+const Thumbnail: React.FC<ThumbnailProps> = ({ file, className = '', externalSrc = null, externalStatus = null }) => {
+  const [src, setSrc] = useState<string | null>(null);
   const [loadError, setLoadError] = useState(false);
   const [isLoading, setIsLoading] = useState(true);
   const [isHeicFallback, setIsHeicFallback] = useState(false);
   
   // Track current ObjectURL for cleanup
-  const objectUrlRef = useRef(null);
+  const objectUrlRef = useRef<string | null>(null);
   
   // Track if component is mounted to prevent state updates after unmount
   const mountedRef = useRef(true);

@@ -1,7 +1,7 @@
 import React from 'react';
-import { getGlobalLog } from './globalLog';
+import { getGlobalLog, LogEntry } from './globalLog';
 
-function useGlobalLogDisplay() {
+function useGlobalLogDisplay(): LogEntry[] {
   const [_, forceUpdate] = React.useState(0);
   React.useEffect(() => {
     const handler = () => forceUpdate(x => x + 1);

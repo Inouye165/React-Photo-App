@@ -1,8 +1,8 @@
-export function toUrl(path = '', base = '') {
+export function toUrl(path: string | null | undefined = '', base: string | undefined = ''): string {
+  if (!path) return base || '';
+
   try {
-    if (!path) return base || '';
-    
-    let url;
+    let url: URL;
     if (/^https?:\/\//i.test(path)) {
       url = new URL(path);
     } else if (base) {
