@@ -126,6 +126,7 @@ const createDebugRouter = require('./routes/debug');
 const createHealthRouter = require('./routes/health');
 const createPrivilegeRouter = require('./routes/privilege');
 const createUsersRouter = require('./routes/users');
+const createMetricsRouter = require('./routes/metrics');
 // const createAuthRouter = require('./routes/auth'); // Removed
 const createPublicRouter = require('./routes/public');
 const { configureSecurity, validateRequest, securityErrorHandler } = require('./middleware/security');
@@ -240,6 +241,10 @@ app.set('trust proxy', 1);
   app.use(express.json({ limit: '1mb' }));
   app.use(express.urlencoded({ limit: '1mb', extended: true }));
 
+  // Observability: lightweight Prometheus-style HTTP metrics (low-cardinality labels)
+  const metricsHttpMiddleware = require('./middleware/metricsHttp');
+  app.use(metricsHttpMiddleware);
+
   // Authentication routes (no auth required)
   const createAuthRouter = require('./routes/auth');
   app.use('/api/auth', createAuthRouter({ db }));
@@ -271,6 +276,9 @@ app.set('trust proxy', 1);
       res.json({ ip: req.ip, ips: req.ips, trustProxy: app.get('trust proxy') });
     });
   }
+
+  // Protected Prometheus metrics endpoint (no user auth; protected by internal token)
+  app.use('/metrics', createMetricsRouter());
 
   // Health check (no auth required). Mount at '/health' so router-root handlers
   // defined in `routes/health.js` become available at '/health'.

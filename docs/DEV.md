@@ -41,3 +41,25 @@ npm run check-privilege
 
 - Keep the server strict: remove any repair heuristics and text parsing once all clients consistently send valid JSON.
 - If CI coverage is needed, convert the simple check script into a proper test harness.
+
+5) Metrics (/metrics)
+
+- The server exposes a Prometheus-compatible scrape endpoint at `/metrics`.
+- SECURITY: This endpoint is NOT public and requires an internal token.
+
+Environment variables:
+
+- `METRICS_TOKEN` (required in production): shared secret for scrapes.
+- `METRICS_ALLOW_LOCALHOST=true` (optional): allows loopback scrapes without a token (dev convenience only).
+
+Scrape example (PowerShell):
+
+```pwsh
+$env:METRICS_TOKEN = "your-internal-metrics-token"
+curl -H "X-Metrics-Token: $env:METRICS_TOKEN" http://localhost:3001/metrics
+```
+
+Notes:
+
+- Metrics labels are low-cardinality (route templates like `/photos/:id`, not raw IDs).
+- No request IDs, user IDs, emails, filenames, tokens, or SQL text are included in metric labels.

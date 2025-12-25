@@ -2,6 +2,8 @@
 const knex = require('knex');
 const knexConfig = require('../knexfile');
 const logger = require('../logger');
+const metrics = require('../metrics');
+const { instrumentKnex } = require('../metrics/knex');
 
 // Determine the environment, defaulting to 'development'
 const environment = process.env.NODE_ENV || 'development';
@@ -69,6 +71,14 @@ if (config.client === 'pg') {
 logger.info(`[db] Initializing PostgreSQL connection for ${environment} environment`);
 
 const db = knex(config);
+
+// Observability: record query duration + low-cardinality operation/table labels.
+// SECURITY: Never emit raw SQL in metrics or logs.
+try {
+	instrumentKnex({ db, metrics });
+} catch (err) {
+	logger.warn('[db] Knex metrics instrumentation disabled:', err && err.message ? err.message : err);
+}
 
 // Handle connection errors gracefully
 db.on('query-error', (error) => {
