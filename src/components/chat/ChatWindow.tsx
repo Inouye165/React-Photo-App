@@ -232,7 +232,6 @@ export default function ChatWindow({ roomId }: ChatWindowProps) {
 
   useEffect(() => {
     if (!pickerOpen) return
-    if (pickerLoading) return
     if (pickerPhotos.length) return
 
     let cancelled = false
@@ -253,6 +252,7 @@ export default function ChatWindow({ roomId }: ChatWindowProps) {
       try {
         setPickerLoading(true)
         setPickerError(null)
+        // Load first page of photos (default limit 50 from backend) - sufficient for picker
         const res = await getPhotos(undefined, { signal: controller.signal, timeoutMs: HARD_TIMEOUT_MS })
         if (cancelled) return
         const list = (res?.success && Array.isArray(res.photos) ? res.photos : []) as Array<{ id: number | string; thumbnail?: string; url?: string }>
@@ -293,7 +293,7 @@ export default function ChatWindow({ roomId }: ChatWindowProps) {
         // ignore
       }
     }
-  }, [pickerOpen, pickerLoading, pickerPhotos.length, pickerReloadKey])
+  }, [pickerOpen, pickerPhotos.length, pickerReloadKey, roomId])
 
   const canSend = Boolean(roomId) && !sending
 

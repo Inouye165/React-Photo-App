@@ -53,6 +53,9 @@ describe('photos payload optimization', () => {
         return this;
       }),
       where: jest.fn().mockReturnThis(),
+      orderBy: jest.fn().mockReturnThis(),
+      limit: jest.fn().mockReturnThis(),
+      timeout: jest.fn().mockReturnThis(),
       first: jest.fn().mockResolvedValue(fullDbRow),
       then: function(cb) { 
         // Filter row to only selected columns if select was called
@@ -194,6 +197,9 @@ describe('photos payload optimization', () => {
       db.mockImplementation(() => ({
         select: selectMock,
         where: jest.fn().mockReturnThis(),
+        orderBy: jest.fn().mockReturnThis(),
+        limit: jest.fn().mockReturnThis(),
+        timeout: jest.fn().mockReturnThis(),
         then: (cb) => Promise.resolve([]).then(cb),
         catch: jest.fn().mockReturnThis()
       }));

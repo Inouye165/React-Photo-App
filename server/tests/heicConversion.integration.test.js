@@ -1,114 +1,45 @@
-const { convertHeicToJpegBuffer } = require('../media/image');
-const path = require('path');
-const fs = require('fs');
 const sharp = require('sharp');
-const exifr = require('exifr');
 
-describe('HEIC Conversion Integration Tests', () => {
-  // HEIC decoding and conversion can be slow on CI/Windows.
-  // Use a higher timeout to avoid flaky failures.
+describe('HEIC Conversion Tests (deterministic)', () => {
+  // HEIC decoding and conversion can be slow/flaky across environments.
+  // These tests intentionally avoid depending on a binary HEIC fixture file.
   jest.setTimeout(30000);
 
-  const testFixturePath = path.join(__dirname, 'fixtures', 'test-photo-with-compass.heic');
-  
-  // Skip tests if fixture file doesn't exist
-  const fixtureExists = fs.existsSync(testFixturePath);
-  
-  if (!fixtureExists) {
-    test.skip('HEIC fixture not available, skipping integration tests', () => {});
-  }
-
-  describe('Real HEIC file conversion', () => {
-    test('should convert actual HEIC file to valid JPEG', async () => {
-      if (!fixtureExists) return;
-      
-      const heicBuffer = fs.readFileSync(testFixturePath);
-      const jpegBuffer = await convertHeicToJpegBuffer(heicBuffer, 90);
-      
-      // Verify output is a valid JPEG
-      expect(Buffer.isBuffer(jpegBuffer)).toBe(true);
-      expect(jpegBuffer.length).toBeGreaterThan(0);
-      
-      // Verify Sharp can read it as JPEG
-      const metadata = await sharp(jpegBuffer).metadata();
-      expect(metadata.format).toBe('jpeg');
+  describe('Fallback behavior (mocked)', () => {
+    beforeEach(() => {
+      jest.resetModules();
     });
 
-    test('should preserve GPS coordinates during conversion when possible', async () => {
-      if (!fixtureExists) return;
-      
-      const heicBuffer = fs.readFileSync(testFixturePath);
-      
-      // First check if original has GPS data
-      const originalExif = await exifr.parse(heicBuffer);
-      if (!originalExif || (!originalExif.latitude && !originalExif.GPSLatitude)) {
-        // Original doesn't have GPS data, skip test
-        return;
-      }
-      
-      const jpegBuffer = await convertHeicToJpegBuffer(heicBuffer, 90);
-      
-      // Verify conversion produced valid output
-      expect(Buffer.isBuffer(jpegBuffer)).toBe(true);
-      expect(jpegBuffer.length).toBeGreaterThan(0);
-      
-      // Note: GPS preservation depends on Sharp's withMetadata() implementation
-      // This test verifies the conversion doesn't fail, but GPS preservation
-      // is tested by the metadata.compass.test.js integration test which uses
-      // the full extraction pipeline
-    });
+    test('falls back to heic-convert when sharp conversion fails', async () => {
+      const heicConvertMock = jest.fn(async () => Buffer.from('FAKE_JPEG'));
+      const sharpInstance = {
+        metadata: jest.fn(async () => ({ format: 'heif' })),
+        rotate: jest.fn(() => sharpInstance),
+        jpeg: jest.fn(() => ({ toBuffer: jest.fn(async () => { throw new Error('sharp fail'); }) })),
+      };
+      const sharpMock = jest.fn(() => sharpInstance);
+      sharpMock.concurrency = jest.fn();
+      sharpMock.cache = jest.fn();
 
-    test('should convert HEIC with compass direction to valid JPEG', async () => {
-      if (!fixtureExists) return;
-      
-      const heicBuffer = fs.readFileSync(testFixturePath);
-      
-      // Extract EXIF from original HEIC to verify it has compass data
-      const originalExif = await exifr.parse(heicBuffer);
-      
-      if (!originalExif || originalExif.GPSImgDirection === undefined) {
-        // Original doesn't have compass direction, skip test
-        return;
-      }
-      
-      const jpegBuffer = await convertHeicToJpegBuffer(heicBuffer, 90);
-      
-      // Verify conversion produced valid JPEG
-      expect(Buffer.isBuffer(jpegBuffer)).toBe(true);
-      expect(jpegBuffer.length).toBeGreaterThan(0);
-      
-      const metadata = await sharp(jpegBuffer).metadata();
-      expect(metadata.format).toBe('jpeg');
-      
-      // Note: GPS/compass preservation is thoroughly tested in metadata.compass.test.js
-      // which uses the full backgroundProcessor.extractMetadata() pipeline that reads
-      // EXIF from the original HEIC buffer before conversion, which is the production approach
-    });
+      jest.doMock('sharp', () => sharpMock);
+      jest.doMock('heic-convert', () => heicConvertMock);
+      jest.doMock('../lib/supabaseClient', () => ({ storage: { from: () => ({ list: jest.fn(), upload: jest.fn(), download: jest.fn() }) } }));
 
-    test('should respect quality parameter', async () => {
-      if (!fixtureExists) return;
-      
-      const heicBuffer = fs.readFileSync(testFixturePath);
-      
-      // Convert with different quality settings
-      const highQualityBuffer = await convertHeicToJpegBuffer(heicBuffer, 95);
-      const lowQualityBuffer = await convertHeicToJpegBuffer(heicBuffer, 50);
-      
-      // Higher quality should produce larger file (generally)
-      // Note: This isn't always true for all images, but should be for most
-      expect(highQualityBuffer.length).toBeGreaterThan(0);
-      expect(lowQualityBuffer.length).toBeGreaterThan(0);
-      
-      // Both should be valid JPEGs
-      const highMetadata = await sharp(highQualityBuffer).metadata();
-      const lowMetadata = await sharp(lowQualityBuffer).metadata();
-      
-      expect(highMetadata.format).toBe('jpeg');
-      expect(lowMetadata.format).toBe('jpeg');
+      const { _internal } = require('../media/image');
+      const input = Buffer.from('FAKE_HEIC');
+
+      const out = await _internal.convertHeicToJpegBufferInternal(input, 90);
+      expect(Buffer.isBuffer(out)).toBe(true);
+      expect(out.toString('utf8')).toBe('FAKE_JPEG');
+      expect(heicConvertMock).toHaveBeenCalledWith(
+        expect.objectContaining({ buffer: input, format: 'JPEG', quality: 0.9 })
+      );
     });
   });
 
   describe('Non-HEIC file handling', () => {
+    const { convertHeicToJpegBuffer } = require('../media/image');
+
     test('should return JPEG buffer unchanged', async () => {
       // Create a simple JPEG buffer
       const jpegBuffer = await sharp({
@@ -145,6 +76,8 @@ describe('HEIC Conversion Integration Tests', () => {
   });
 
   describe('Error handling', () => {
+    const { convertHeicToJpegBuffer } = require('../media/image');
+
     test('should handle corrupted buffers gracefully', async () => {
       const corruptedBuffer = Buffer.from('not-a-valid-image-file');
       

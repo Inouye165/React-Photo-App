@@ -91,7 +91,10 @@ export function useChatRealtime(roomId: string | null, options?: { initialLimit?
             const incomingRoomId = (payload.new as Record<string, unknown> | null | undefined)?.['room_id']
             if (typeof incomingRoomId === 'string' && incomingRoomId !== normalizedRoomId) return
             if (!payload.new) return
-            setMessages((prev) => [...prev, payload.new as unknown as ChatMessage])
+
+            const normalized = asChatMessage(payload.new)
+            if (!normalized) return
+            setMessages((prev) => upsertMessage(prev, normalized))
           },
         )
 

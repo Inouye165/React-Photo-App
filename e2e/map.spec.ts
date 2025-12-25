@@ -8,6 +8,13 @@ test.describe('Map Component', () => {
       window.__E2E_MODE__ = true;
     });
 
+    const corsHeaders = {
+      'Access-Control-Allow-Origin': 'http://127.0.0.1:5173',
+      'Access-Control-Allow-Credentials': 'true',
+      'Access-Control-Allow-Methods': 'GET, POST, PATCH, PUT, DELETE, OPTIONS',
+      'Access-Control-Allow-Headers': 'Content-Type, Authorization, X-E2E-User-ID',
+    };
+
     // E2E login: make request to get the auth cookie
     const loginResponse = await context.request.post('http://127.0.0.1:3001/api/test/e2e-login');
     expect(loginResponse.ok()).toBeTruthy();
@@ -28,10 +35,18 @@ test.describe('Map Component', () => {
 
     // Mock e2e-verify endpoint to ensure auth works
     await page.route('**/api/test/e2e-verify', async route => {
+      if (route.request().method() === 'OPTIONS') {
+        return route.fulfill({
+          status: 204,
+          headers: corsHeaders,
+          body: ''
+        });
+      }
       await route.fulfill({
+        status: 200,
+        contentType: 'application/json',
         headers: {
-          'Access-Control-Allow-Origin': 'http://127.0.0.1:5173',
-          'Access-Control-Allow-Credentials': 'true'
+          ...corsHeaders,
         },
         json: {
           success: true,
@@ -47,10 +62,18 @@ test.describe('Map Component', () => {
 
     // Mock current user profile (AuthContext fetchProfile -> GET /api/users/me)
     await page.route('**/api/users/me', async route => {
+      if (route.request().method() === 'OPTIONS') {
+        return route.fulfill({
+          status: 204,
+          headers: corsHeaders,
+          body: ''
+        });
+      }
       await route.fulfill({
+        status: 200,
+        contentType: 'application/json',
         headers: {
-          'Access-Control-Allow-Origin': 'http://127.0.0.1:5173',
-          'Access-Control-Allow-Credentials': 'true'
+          ...corsHeaders,
         },
         json: {
           success: true,
@@ -65,10 +88,18 @@ test.describe('Map Component', () => {
 
     // Accept terms endpoint (used by disclaimer modal flow)
     await page.route('**/api/users/accept-terms', async route => {
+      if (route.request().method() === 'OPTIONS') {
+        return route.fulfill({
+          status: 204,
+          headers: corsHeaders,
+          body: ''
+        });
+      }
       await route.fulfill({
+        status: 200,
+        contentType: 'application/json',
         headers: {
-          'Access-Control-Allow-Origin': 'http://127.0.0.1:5173',
-          'Access-Control-Allow-Credentials': 'true'
+          ...corsHeaders,
         },
         json: { success: true, data: { terms_accepted_at: new Date().toISOString() } },
       });
@@ -76,126 +107,137 @@ test.describe('Map Component', () => {
 
     // Preferences endpoint (AuthContext fetchPreferences)
     await page.route('**/api/users/me/preferences', async route => {
+      if (route.request().method() === 'OPTIONS') {
+        return route.fulfill({
+          status: 204,
+          headers: corsHeaders,
+          body: ''
+        });
+      }
       await route.fulfill({
+        status: 200,
+        contentType: 'application/json',
         headers: {
-          'Access-Control-Allow-Origin': 'http://127.0.0.1:5173',
-          'Access-Control-Allow-Credentials': 'true'
+          ...corsHeaders,
         },
         json: { success: true, data: { gradingScales: {} } },
       });
     });
 
-    // 3. Mock Photos List
-    const mockPhoto = {
-      id: 'test-photo-1',
-      filename: 'test-photo.jpg',
-      state: 'working',
-      caption: 'Map test photo',
-      url: 'data:image/gif;base64,R0lGODlhAQABAIAAAAAAAP///yH5BAEAAAAALAAAAAABAAEAAAIBRAA7',
-      thumbnail: 'data:image/gif;base64,R0lGODlhAQABAIAAAAAAAP///yH5BAEAAAAALAAAAAABAAEAAAIBRAA7',
-      file_size: 1234,
-      created_at: '2025-12-01T12:00:00Z',
-      latitude: 37.7749,
-      longitude: -122.4194,
-      metadata: {
-        GPS: {
-          latitude: 37.7749,
-          longitude: -122.4194,
-          imgDirection: 90
-        }
-      }
-    };
+    // 3. Mock Photos List (deterministic)
+    const mockPhotoId = '999';
+    const now = Math.floor(Date.now() / 1000);
 
-    // Single unified route handler for all /photos requests
-    await page.route('**/photos**', async route => {
+    // Photo list: only intercept the list endpoint (avoid swallowing subpaths)
+    await page.route('**/photos', async route => {
       const url = route.request().url();
-      const headers = {
-        'Access-Control-Allow-Origin': 'http://127.0.0.1:5173',
-        'Access-Control-Allow-Credentials': 'true'
-      };
-      
-      // Handle thumbnail-url endpoint
-      if (url.includes('/thumbnail-url')) {
-        await route.fulfill({
-          headers,
-          json: {
-            success: true,
-            url: 'data:image/gif;base64,R0lGODlhAQABAIAAAAAAAP///yH5BAEAAAAALAAAAAABAAEAAAIBRAA7'
-          }
-        });
-        return;
-      }
-      
-      // Handle dependencies
-      if (url.includes('/dependencies')) {
-        await route.fulfill({ 
-          headers,
-          json: { 
-            success: true, 
-            dependencies: { aiQueue: true } 
-          } 
-        });
-        return;
-      }
-      
-      // Handle models
-      if (url.includes('/models')) {
-        await route.fulfill({ 
-          headers,
-          json: { 
-            success: true, 
-            models: ['gpt-4-vision-preview'] 
-          } 
-        });
-        return;
+      const method = route.request().method();
+      if (!url.endsWith('/photos') && !url.includes('/photos?')) {
+        return route.continue();
       }
 
-      // Handle status for SmartRouter
-      if (url.includes('/status')) {
-        await route.fulfill({
-          headers,
-          json: {
-            success: true,
-            working: 1,
-            inprogress: 0,
-            finished: 0,
-            total: 1
-          }
-        });
-        return;
+      if (method === 'OPTIONS') {
+        return route.fulfill({ status: 204, headers: corsHeaders, body: '' });
       }
-      
-      // Handle single photo detail (test-photo-1 without thumbnail-url)
-      if (url.includes('/test-photo-1') && !url.includes('?')) {
-        await route.fulfill({ 
-          headers,
-          json: { 
-            success: true, 
-            photo: mockPhoto 
-          } 
-        });
-        return;
-      }
-      
-      // Default: photos list
-      await route.fulfill({ 
-        headers,
-        json: { 
+
+      await route.fulfill({
+        status: 200,
+        contentType: 'application/json',
+        headers: corsHeaders,
+        json: {
           success: true,
-          photos: [mockPhoto]
-        } 
+          photos: [
+            {
+              id: mockPhotoId,
+              filename: 'photo-999.jpg',
+              state: 'working',
+              caption: 'Map test photo',
+              thumbnail: `/photos/${mockPhotoId}/thumb`,
+              url: `/photos/${mockPhotoId}/blob`,
+              file_size: 1234,
+              created_at: '2025-12-01T12:00:00Z',
+              latitude: 37.7749,
+              longitude: -122.4194,
+              metadata: {
+                GPS: {
+                  latitude: 37.7749,
+                  longitude: -122.4194,
+                  imgDirection: 90,
+                },
+              },
+            },
+          ],
+        },
+      });
+    });
+
+    // Dependency status (used by SmartRouter/other UI bits)
+    await page.route('**/photos/dependencies', async route => {
+      if (route.request().method() === 'OPTIONS') {
+        return route.fulfill({ status: 204, headers: corsHeaders, body: '' });
+      }
+      await route.fulfill({
+        status: 200,
+        contentType: 'application/json',
+        headers: corsHeaders,
+        json: { success: true, dependencies: { aiQueue: true } },
+      });
+    });
+
+    // Signed thumbnail URL endpoint
+    await page.route(`**/photos/${mockPhotoId}/thumbnail-url`, async route => {
+      if (route.request().method() === 'OPTIONS') {
+        return route.fulfill({ status: 204, headers: corsHeaders, body: '' });
+      }
+      await route.fulfill({
+        status: 200,
+        contentType: 'application/json',
+        headers: corsHeaders,
+        json: { success: true, url: `/photos/${mockPhotoId}/thumb`, expiresAt: now + 3600 },
+      });
+    });
+
+    // Serve tiny PNG bytes for thumbnails and blobs
+    const png1x1 = Buffer.from(
+      'iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAADUlEQVR42mNk+M9QDwADhgGAWjR9awAAAABJRU5ErkJggg==',
+      'base64'
+    );
+
+    await page.route(`**/photos/${mockPhotoId}/thumb`, async route => {
+      await route.fulfill({
+        status: 200,
+        contentType: 'image/png',
+        headers: corsHeaders,
+        body: png1x1,
+      });
+    });
+
+    await page.route(`**/photos/${mockPhotoId}/blob`, async route => {
+      await route.fulfill({
+        status: 200,
+        contentType: 'image/png',
+        headers: corsHeaders,
+        body: png1x1,
       });
     });
 
     // 5. Mock Privilege
     await page.route('**/privilege', async route => {
+      if (route.request().method() === 'OPTIONS') {
+        return route.fulfill({
+          status: 204,
+          headers: corsHeaders,
+          body: ''
+        });
+      }
       await route.fulfill({ 
+        status: 200,
+        contentType: 'application/json',
         headers: {
-          'Access-Control-Allow-Origin': 'http://127.0.0.1:5173',
-          'Access-Control-Allow-Credentials': 'true'
+          ...corsHeaders,
         },
         json: route.request().method() === 'POST'
-          ? { success: true, privileges: { 'test-photo.jpg': 'owner' } }
+          ? { success: true, privileges: { 'photo-999.jpg': 'owner' } }
           : { success: true, privilege: 'owner' }
       });
     });
@@ -211,6 +253,9 @@ test.describe('Map Component', () => {
 
     // Wait for auth check and page to stabilize
     await page.waitForTimeout(2000);
+
+    // Ensure auth has settled (prevents racing photo fetch expectations)
+    await expect(page.getByText('e2e-test', { exact: true })).toBeVisible({ timeout: 10000 });
 
     // Wait for photo cards to render and open the detail view
     await expect(page.getByTestId('photo-card').first()).toBeVisible({ timeout: 15000 });

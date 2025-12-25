@@ -69,7 +69,7 @@ function configureSecurity(app) {
     legacyHeaders: false,
     skip: (req) => {
       // Skip rate limiting for health checks
-      return req.path === '/health';
+      return req.path === '/health' || req.path === '/metrics';
     }
   });
 

@@ -1,58 +1,34 @@
 jest.mock('../../poi/googlePlaces', () => ({ reverseGeocode: jest.fn(), nearbyPlaces: jest.fn() }));
 jest.mock('../../poi/foodPlaces', () => ({ nearbyFoodPlaces: jest.fn() }));
 jest.mock('../../poi/osmTrails', () => ({ nearbyTrailsFromOSM: jest.fn() }));
-jest.mock('../../openaiClient', () => ({ openai: { chat: { completions: { create: jest.fn() } } } }));
 
-const { openai } = require('../../openaiClient');
 const { reverseGeocode, nearbyPlaces } = require('../../poi/googlePlaces');
 const { nearbyFoodPlaces } = require('../../poi/foodPlaces');
 const { nearbyTrailsFromOSM } = require('../../poi/osmTrails');
+const { collectContext } = require('../collect_context');
 
-describe('Collect context graph integration', () => {
+describe('Collect context integration (no LangGraph dependency)', () => {
   beforeEach(() => jest.resetAllMocks());
 
-  // Skip this test because it requires real LangGraph functionality with ESM dependencies
-  // that cause issues in Jest. The LangGraph implementation is mocked in tests/setup.js
-  // to allow other tests to run without ESM import errors.
-  it.skip('runs collect_context and uses cached values in subsequent nodes', async () => {
-    // Stage responses
-    openai.chat.completions.create
-      // classify_image -> classification
-      .mockResolvedValueOnce({ choices: [{ message: { content: JSON.stringify({ classification: 'food' }) } }] })
-      // location_intelligence_agent -> location intel
-      .mockResolvedValueOnce({ choices: [{ message: { content: JSON.stringify({ city: 'Test City', region: 'CA', nearest_landmark: 'Test Park', nearest_park: 'Test Park', nearest_trail: 'unknown', description_addendum: 'test' }) } }] })
-      // food_metadata_agent -> model metadata
-      .mockResolvedValueOnce({ choices: [{ message: { content: JSON.stringify({ caption: 'Caption', description: 'A dish', dish_name: 'Noodle', keywords: ['noodle'] }) } }] });
-
+  it('collects food context while skipping generic POI lookups', async () => {
     reverseGeocode.mockResolvedValueOnce({ address: '123 Food St' });
-    // classification=food means skip generic POI in lexgraph; collect_context still should fetch nearbyFood
-    nearbyPlaces.mockResolvedValueOnce([]);
+    nearbyPlaces.mockResolvedValueOnce([{ placeId: 'p0', name: 'ShouldNotBeUsed' }]);
     nearbyFoodPlaces.mockResolvedValueOnce([{ placeId: 'p1', name: 'Food Place', address: '123 Food St' }]);
-    nearbyTrailsFromOSM.mockResolvedValueOnce([]);
+    nearbyTrailsFromOSM.mockResolvedValueOnce([{ id: 't1' }]);
 
-    const { app } = require('../graph');
-    // Build a minimal initial state
-    const initialState = {
-      filename: 'run.jpg',
-      imageBase64: 'FAKE',
-      imageMime: 'image/jpeg',
-      metadata: {},
-      gpsString: '37.123,-122.456',
-      classification: null,
-      poiAnalysis: null,
-      finalResult: null,
-      debugUsage: [],
-    };
+    const out = await collectContext({
+      lat: 37.123,
+      lon: -122.456,
+      classification: 'food',
+      fetchFood: true,
+      runId: 'test-run',
+    });
 
-    // Try common run methods on compiled graph
-    let runFn = app.run || app.execute || app.start || app.invoke || app.call || app;
-    if (typeof runFn === 'function') runFn = runFn.bind(app);
-    const result = await runFn(initialState);
-
-    expect(result.poiCache).toBeTruthy();
-    expect(result.poiCache.nearbyFood.length).toBeGreaterThanOrEqual(1);
-    // food_location_agent should see cached nearbyFood and set best_restaurant_candidate
-    expect(result.poiAnalysis).toBeTruthy();
-    expect(result.finalResult).toBeTruthy();
-  }, 10000);
+    expect(reverseGeocode).toHaveBeenCalled();
+    expect(nearbyFoodPlaces).toHaveBeenCalled();
+    // For food, we intentionally skip generic POI and OSM trails to reduce cost/noise.
+    expect(nearbyPlaces).not.toHaveBeenCalled();
+    expect(nearbyTrailsFromOSM).not.toHaveBeenCalled();
+    expect(out.nearbyFood.length).toBeGreaterThanOrEqual(1);
+  });
 });

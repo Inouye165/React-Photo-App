@@ -4,8 +4,16 @@ import { request, ApiError } from './httpClient'
 // --- Token Management ---
 let _cachedAccessToken: string | null = null
 
+type AuthTokenState = 'unknown' | 'set' | 'cleared'
+let _authTokenState: AuthTokenState = 'unknown'
+
+function canAttemptSessionRefresh(): boolean {
+  return _authTokenState !== 'cleared'
+}
+
 export function setAuthToken(token: string | null): void {
   _cachedAccessToken = token
+  _authTokenState = token ? 'set' : 'cleared'
 }
 
 export function getAccessToken(): string | null {
@@ -16,6 +24,37 @@ export function getHeadersForGetRequest(): Record<string, string> | undefined {
   if (_cachedAccessToken) {
     return { Authorization: `Bearer ${_cachedAccessToken}` }
   }
+  return undefined
+}
+
+export async function getHeadersForGetRequestAsync(): Promise<Record<string, string> | undefined> {
+  if (_cachedAccessToken) {
+    return { Authorization: `Bearer ${_cachedAccessToken}` }
+  }
+
+  if (!canAttemptSessionRefresh()) {
+    return undefined
+  }
+
+  try {
+    const {
+      data: { session },
+    } = await supabase.auth.getSession()
+
+    const token = session?.access_token
+    if (token) {
+      _cachedAccessToken = token
+      _authTokenState = 'set'
+      return { Authorization: `Bearer ${token}` }
+    }
+
+    // Session resolved but no token; treat as logged out.
+    _authTokenState = 'cleared'
+    return undefined
+  } catch {
+    // Fall through without token
+  }
+
   return undefined
 }
 
@@ -37,6 +76,10 @@ export async function getAuthHeadersAsync(includeContentType = true): Promise<Re
     headers['Content-Type'] = 'application/json'
   }
 
+  if (!canAttemptSessionRefresh() && !_cachedAccessToken) {
+    return headers
+  }
+
   try {
     const {
       data: { session },
@@ -44,6 +87,10 @@ export async function getAuthHeadersAsync(includeContentType = true): Promise<Re
     if (session?.access_token) {
       headers['Authorization'] = `Bearer ${session.access_token}`
       _cachedAccessToken = session.access_token
+      _authTokenState = 'set'
+    } else {
+      // Session resolved but no token; treat as logged out.
+      _authTokenState = 'cleared'
     }
   } catch {
     // Fall through without token
