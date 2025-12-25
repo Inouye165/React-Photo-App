@@ -42,7 +42,7 @@ const cursorSchema = z
       return;
     }
 
-    if (!(typeof cursor === 'object' && cursor !== null && 'created_at' in cursor && 'id' in cursor)) {
+    if (!(typeof cursor === 'object' && 'created_at' in cursor && 'id' in cursor)) {
       ctx.addIssue({ code: z.ZodIssueCode.custom, message: 'Invalid cursor parameter' });
       return;
     }
