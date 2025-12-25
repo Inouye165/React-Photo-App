@@ -56,7 +56,7 @@ describe('Toolbar Component', () => {
     expect(screen.getByText('View Inprogress')).toBeInTheDocument()
     expect(screen.getByText('View Finished')).toBeInTheDocument()
     expect(screen.getByText('Show Metadata')).toBeInTheDocument()
-    // Bulk "Recheck AI" was removed from the toolbar; ensure it's not present
+    // Bulk "Recheck AI" was removed from the toolbar; check that it's gone
     expect(screen.queryByText('Recheck AI')).not.toBeInTheDocument()
     expect(screen.getByText('Logout')).toBeInTheDocument() // Updated to match authenticated mock
   })

@@ -6,7 +6,7 @@ const { exiftool } = require('exiftool-vendored');
 const logger = require('../logger');
 
 /**
- * Extract comprehensive metadata from an image file using exiftool-vendored.
+ * Extract full metadata from an image file using exiftool-vendored.
  * Returns a normalized object with "Insight Data" (GPS, Lens, ISO, Model)
  * while ignoring "Editing Data" (color profiles, binary thumbnails).
  * 

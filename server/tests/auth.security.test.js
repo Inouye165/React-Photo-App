@@ -286,7 +286,7 @@ describe('Authentication Security Tests', () => {
         .set('Authorization', 'Bearer some-token')
         .expect(500);
 
-      // Ensure sensitive data is not leaked
+      // Verify sensitive data is not leaked
       expect(response.body.error).toBe('Internal server error');
       expect(response.body.error).not.toContain('Database');
       expect(response.body.error).not.toContain('postgres://');

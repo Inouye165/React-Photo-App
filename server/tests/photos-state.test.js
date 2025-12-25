@@ -52,7 +52,7 @@ beforeEach(() => {
 });
 
 test('PATCH /photos/:id/state moves photo, triggers fallback copy, and queues AI job (async)', async () => {
-  // Ensure default data is loaded
+  // Verify default data is loaded
   const photos = mockDbHelpers.getMockPhotos();
   expect(photos.length).toBeGreaterThan(0);
 

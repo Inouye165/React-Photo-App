@@ -39,7 +39,7 @@ export function getApiBaseUrl() {
 export function buildApiUrl(path) {
   const base = getApiBaseUrl();
   
-  // Ensure path starts with /
+  // Make sure the path starts with /
   if (!path.startsWith('/')) {
     path = `/${path}`;
   }

@@ -1,6 +1,6 @@
 /**
  * Tests for useCollectiblesForPhoto hook
- * Phase 2: Comprehensive coverage of collectibles logic extracted from EditPage
+ * Phase 2: Full coverage of collectibles logic extracted from EditPage
  */
 
 import { renderHook, waitFor } from '@testing-library/react'

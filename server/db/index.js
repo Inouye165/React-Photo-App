@@ -36,13 +36,13 @@ if (config.client === 'pg') {
 	} else if (config.connection && config.connection.connectionString) {
 		// Connection is already an object, clean up connection string
 		config.connection.connectionString = config.connection.connectionString.replace(/[?&]sslmode=[^&]+/, '');
-		// Ensure SSL config exists
+		// Make sure SSL config exists
 		if (!config.connection.ssl) {
 			config.connection.ssl = { rejectUnauthorized: false };
 		}
 	}
 
-	// Ensure pooled pg clients always have an error handler.
+	// Make sure pooled pg clients always have an error handler.
 	// Without this, certain server-initiated disconnects can emit an 'error'
 	// event on an idle client and crash the Node process.
 	const existingPool = config.pool || {};

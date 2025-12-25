@@ -806,7 +806,7 @@ async function updatePhotoAIMetadata(db, photoRow, storagePath, modelOverrides =
       hasPoiAnalysis: Boolean(ai?.poi_analysis),
     });
 
-    // Ensure non-null strings for DB and provide fallbacks when AI doesn't return a caption or keywords
+    // Use non-null strings for DB and provide fallbacks when AI doesn't return a caption or keywords
     const description = ai && ai.description ? String(ai.description).trim() : 'AI processing failed';
 
     // Generate a short caption fallback from the first sentence of the description if caption missing

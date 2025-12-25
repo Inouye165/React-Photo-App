@@ -524,7 +524,7 @@ describe('EditPage - TypeScript Phase 1', () => {
       test('shows Recheck AI button when not polling', async () => {
         const photo = { id: 999, url: '/protected/image.jpg', filename: 'image.jpg' }
         
-        // Ensure NOT polling
+        // Make sure we're NOT polling
         mockStoreState.pollingPhotoIds = new Set()
         mockStoreState.pollingPhotoId = null
         

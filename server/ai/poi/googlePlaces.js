@@ -148,7 +148,7 @@ async function nearbyPlaces(lat, lon, radius = 61, opts = {}) {
   }
 
   try {
-    // Use Promise.allSettled to ensure partial failures don't reject the entire batch
+    // Use Promise.allSettled so partial failures don't reject the entire batch
     const requests = types.map(async (type) => {
       const params = new URLSearchParams({
         location: `${lat},${lon}`,

@@ -329,7 +329,7 @@ export default function useLocalPhotoPicker({
 
   /**
    * Optimistic upload: close picker immediately and upload in background
-   * @security Fire-and-forget with comprehensive error handling
+   * @security Fire-and-forget with full error handling
    * @security No user blocking on upload failures
    */
   const handleUploadFilteredOptimistic = useCallback(

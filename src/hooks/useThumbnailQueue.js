@@ -289,7 +289,7 @@ export function useThumbnailQueue(files, options = {}) {
       processingRef.current.add(file.name);
 
       // Process thumbnail (don't await - let it run in parallel up to concurrency limit)
-      // CRITICAL: Use .catch() to ensure queue continues even if processing fails
+      // Important: Use .catch() so queue continues even if processing fails
       processThumbnail(file)
         .catch((err) => {
           console.warn(`Queue: thumbnail processing error for ${file.name}:`, err);

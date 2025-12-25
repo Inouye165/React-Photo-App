@@ -3,7 +3,7 @@ const path = require('path');
 const { Readable } = require('stream');
 const logger = require('../logger');
 
-// SECURITY: UUID validation regex for user IDs (Supabase uses UUIDs)
+// Check that user IDs look like real UUIDs (Supabase format).
 const UUID_REGEX = /^[0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i;
 const { signThumbnailUrl, DEFAULT_TTL_SECONDS } = require('../utils/urlSigning');
 const { addAIJob } = require('../queue');
@@ -19,7 +19,7 @@ const INTERNAL_MODEL_SET = new Set(INTERNAL_MODEL_NAMES);
 const FALLBACK_MODEL_ALLOWLIST = ['gpt-4o', 'gpt-4-vision-preview', 'gpt-3.5-turbo', 'gpt-5'];
 const MODEL_ALLOWLIST = DYNAMIC_MODEL_ALLOWLIST;
 
-// Seed the allowlist with a fallback so routes have sensible defaults before async loading completes.
+// Start with a default list of models so the API works immediately, even if the dynamic list hasn't loaded yet.
 const initialFallback = Array.from(new Set([...FALLBACK_MODEL_ALLOWLIST, ...INTERNAL_MODEL_NAMES]));
 DYNAMIC_MODEL_ALLOWLIST.push(...initialFallback);
 let LAST_ALLOWLIST_SOURCE = 'seed';
@@ -38,14 +38,14 @@ module.exports = function createPhotosRouter({ db, supabase }) {
   const photosAi = createPhotosAi({ addAIJob, MODEL_ALLOWLIST: [] });
   const photosState = createPhotosState({ db, storage: photosStorage });
 
-  // --- API: Lightweight photo status counts for Smart Routing ---
-  // Returns aggregated counts by state without fetching photo data
-  // Used by frontend SmartRouter to determine initial landing page
+  // --- API: Quick status counts for the dashboard ---
+  // Counts photos by state (working, finished, etc.) without loading the actual photo data.
+  // The frontend uses this to decide which page to show first.
   router.get('/status', authenticateToken, async (req, res) => {
     const reqId = Math.random().toString(36).slice(2, 10);
     try {
-      // SECURITY: Validate user ID is a valid UUID before using in query
-      // This prevents potential injection if auth middleware is compromised
+      // Make sure the user ID is a valid UUID before running the query.
+      // This stops SQL injection if something goes wrong with the auth check.
       const userId = req.user?.id;
       if (!userId || typeof userId !== 'string' || !UUID_REGEX.test(userId)) {
         logger.warn('[photos/status] Invalid user ID format', { reqId, userId: typeof userId });
@@ -63,8 +63,8 @@ module.exports = function createPhotosRouter({ db, supabase }) {
         new Promise((_, reject) => setTimeout(() => reject(new Error('DB query timeout')), DB_QUERY_TIMEOUT_MS)),
       ]);
 
-      // Transform array of {state, count} into object { working: N, inprogress: N, ... }
-      // SECURITY: Only accept known state values to prevent enumeration
+      // Convert the database rows into a simple object: { working: 5, finished: 10 }
+      // Only include states we know about. Ignore anything else.
       const VALID_STATES = ['working', 'inprogress', 'finished', 'error'];
       const result = {
         working: 0,
@@ -77,7 +77,7 @@ module.exports = function createPhotosRouter({ db, supabase }) {
       for (const row of counts) {
         const state = row.state;
         const count = Number(row.count) || 0;
-        // Only process known states - ignore any unexpected values
+        // Skip any weird states that shouldn't be there.
         if (VALID_STATES.includes(state)) {
           result[state] = count;
         }
@@ -87,8 +87,8 @@ module.exports = function createPhotosRouter({ db, supabase }) {
       res.set('Cache-Control', 'no-store');
       res.json({ success: true, ...result });
     } catch (err) {
-      // SECURITY: Log full error details server-side but don't expose to client
-      // CWE-209: Information Exposure Through an Error Message
+      // Log the full error here for debugging, but don't send it to the user.
+      // Prevents leaking internal details (CWE-209).
       logger.error('[photos/status] DB error', {
         reqId,
         endpoint: '/photos/status',

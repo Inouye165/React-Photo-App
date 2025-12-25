@@ -81,7 +81,7 @@ describe('IDOR Vulnerability in Legacy Display Route', () => {
   });
 
   test('Attacker SHOULD NOT be able to access victim photo', async () => {
-    // 1. Setup: Ensure victim photo exists (from previous test or new insert)
+    // 1. Setup: Make sure victim photo exists (from previous test or new insert)
     const victimId = 999;
     const filename = 'victim_secret_legacy_2.jpg';
     

@@ -195,7 +195,7 @@ describe('PhotoUploadForm Component', () => {
   it('displays filtered photos list correctly', () => {
     render(<PhotoUploadForm {...mockProps} />)
     
-    // Ensure thumbnails or filenames are displayed
+    // Check that thumbnails or filenames are visible
     expect(screen.getByText('photo1.jpg')).toBeInTheDocument()
     expect(screen.getByText('photo2.jpg')).toBeInTheDocument()
   })

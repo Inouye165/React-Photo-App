@@ -2,7 +2,7 @@
 /**
  * Backfill users table with user_ids from photos table
  * 
- * This script ensures that all user_ids referenced in the photos table
+ * This script verifies that all user_ids referenced in the photos table
  * have corresponding records in the users table.
  */
 

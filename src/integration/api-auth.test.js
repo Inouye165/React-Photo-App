@@ -1,7 +1,7 @@
 import { describe, it, expect, vi, beforeEach } from 'vitest';
 import * as api from '../api';
 
-// Ensure we're using the actual store, not a mock
+// Make sure we're using the actual store, not a mock
 vi.mock('../store', async () => {
   const actual = await vi.importActual('../store');
   return actual;
@@ -40,7 +40,7 @@ describe('Integration: API auth errors trigger UI banner', () => {
 
     let eventDetail = null;
 
-    // Use promise-based event listener (robust pattern from network tests)
+    // Use promise-based event listener (pattern from network tests)
     const eventPromise = new Promise((resolve) => {
       const listener = (event) => {
         eventDetail = event.detail;

@@ -12,7 +12,7 @@ function normalizeRouteLabel(route) {
     out = out.slice(0, -1);
   }
 
-  // Ensure route labels always start with '/'
+  // Make sure route labels always start with '/'
   if (!out.startsWith('/')) {
     out = '/' + out;
   }

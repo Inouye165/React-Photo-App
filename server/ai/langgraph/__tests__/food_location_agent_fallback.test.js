@@ -51,7 +51,7 @@ describe('food_location_agent fallback search', () => {
     // Do NOT override with state.__overrideNearby because we want the fallback path to call nearbyFoodPlaces
     // stub nearbyFoodPlaces to return fallback when radius matches fallback
 
-    // Replace the nearbyFoodPlaces module function before loading the graph to ensure graph uses the stub.
+    // Replace the nearbyFoodPlaces module function before loading the graph so the graph uses the stub.
     jest.resetModules();
     const poiModule = require('../../poi/foodPlaces');
     const originalNearbyFn = poiModule.nearbyFoodPlaces;

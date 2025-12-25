@@ -1,5 +1,5 @@
 // File: c:\Users\Ron\React-Photo-App\server\ai\langgraph\__tests__\food_location_agent.test.js
-// Ensure the default threshold is applied when the graph loads
+// Verify the default threshold is applied when the graph loads
 // Force the default threshold for this test suite and reload modules
 process.env.FOOD_POI_MATCH_SCORE_THRESHOLD = '2';
 jest.resetModules();

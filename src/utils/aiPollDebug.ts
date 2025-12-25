@@ -10,7 +10,7 @@ declare global {
     dumpAiPollTrace?: () => string;
   }
 }
-// Ensure trace globals exist as soon as this module is loaded.
+// Set up the trace globals immediately.
 // (Exporter should exist even if debug is disabled.)
 if (typeof window !== 'undefined') {
   window.__AI_POLL_TRACE = window.__AI_POLL_TRACE ?? [];

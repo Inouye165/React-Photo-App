@@ -100,7 +100,7 @@ export default function PhotoDetailPage() {
   const { id } = useParams();
   const navigate = useNavigate();
   const { user } = useAuth();
-  // Ensure parity with PhotoEditPage dependency context, even if unused.
+  // Match PhotoEditPage's context usage, even if we don't use it here.
   useOutletContext<unknown>();
 
   const photos = useStore((state) => state.photos) as Photo[];

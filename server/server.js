@@ -1,5 +1,5 @@
-// Load server/.env as the very first runtime config to ensure modules
-// that read process.env later see the correct values regardless of CWD.
+// Load server/.env first so everything else sees the right config.
+// This fixes issues where modules read process.env before we're ready.
 require('./env');
 
 // Version logging for deployment tracking
@@ -38,7 +38,7 @@ function presentOrMissing(value) {
 
 console.log('[server] Startup configuration diagnostics:');
 console.log(`[server]  - NODE_ENV = ${environment}`);
-// SECURITY: avoid printing any portion of secrets/URLs in production logs.
+// Don't print secrets in production logs.
 console.log(`[server]  - DATABASE_URL = ${isProduction ? presentOrMissing(process.env.DATABASE_URL) : (process.env.DATABASE_URL ? maskSecret(process.env.DATABASE_URL) : '(not set)')}`);
 console.log(`[server]  - SUPABASE_DB_URL = ${isProduction ? presentOrMissing(process.env.SUPABASE_DB_URL) : (process.env.SUPABASE_DB_URL ? maskSecret(process.env.SUPABASE_DB_URL) : '(not set)')}`);
 console.log(`[server]  - SUPABASE_URL = ${isProduction ? presentOrMissing(process.env.SUPABASE_URL) : (process.env.SUPABASE_URL ? maskSecret(process.env.SUPABASE_URL) : '(missing)')}`);
@@ -84,19 +84,18 @@ try {
 // Import logger for proper error logging
 const logger = require('./logger');
 
-// CRITICAL: Process lifecycle management for production environments
+// Handling crashes in production.
 // 
-// According to Node.js documentation (https://nodejs.org/api/process.html#event-uncaughtexception):
-// "It is not safe to resume normal operation after 'uncaughtException' because
-// the system may be in an undefined state."
+// Node.js docs say it's unsafe to keep going after an uncaught exception.
+// The system might be in a weird state.
 //
-// Production Strategy:
-// - Log the error with full stack trace for debugging
-// - Exit immediately with code 1 to signal failure to orchestrator
-// - Kubernetes/Docker will restart the pod to restore clean state
-// - This prevents data corruption and silent failures
+// So we:
+// 1. Log the error.
+// 2. Exit immediately.
+// 3. Let Docker/K8s restart us fresh.
+// This is safer than trying to limp along.
 //
-// This is standard practice at big-tech companies (Google, Meta, Netflix, etc.)
+// It's the standard way to handle this.
 process.on('unhandledRejection', (reason, promise) => {
   logger.error('UnhandledRejection at:', promise, 'reason:', reason);
   // Note: We don't exit on unhandled rejection by default
@@ -104,7 +103,7 @@ process.on('unhandledRejection', (reason, promise) => {
 });
 
 process.on('uncaughtException', (err) => {
-  // CRITICAL: Use fatal level to ensure this is always logged
+  // Important: Use fatal level so this is always logged
   logger.fatal('UncaughtException - Application in undefined state, exiting:', err);
   
   // Attempt to flush logs before exit (best effort)
@@ -225,7 +224,7 @@ app.set('trust proxy', 1);
   //
   // This is more secure than token-based CSRF for our use case because:
   // - No CSRF token exposure risk
-  // - Works seamlessly with <img> tags for authenticated image serving
+  // - Works with <img> tags for authenticated image serving
   // - Simpler client implementation (no token management)
   // - Defense-in-depth: Origin validation + SameSite cookies + HTTPS
   //

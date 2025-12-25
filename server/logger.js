@@ -78,7 +78,7 @@ function redact(arg, visited = new WeakSet()) {
         }
       }
       
-      // Special handling for Error objects to ensure message/stack are captured/redacted
+      // Special handling for Error objects to make sure message/stack are captured/redacted
       if (arg instanceof Error) {
         redacted.message = redact(arg.message, visited);
         redacted.stack = redact(arg.stack, visited);
@@ -296,7 +296,7 @@ class TinyLogger {
 
     const methodName = METHOD_MAP[normalized] || 'log';
     const method = typeof console[methodName] === 'function' ? console[methodName] : console.log;
-    // SAFETY: Ensure method exists and has apply before calling
+    // SAFETY: Check that method exists and has apply before calling
     // This prevents crashes when Jest or other tools modify console at runtime
     if (typeof method === 'function' && typeof method.apply === 'function') {
       try {
@@ -322,7 +322,7 @@ class TinyLogger {
 
 const rootLogger = new TinyLogger();
 
-// Wrap global console methods to ensure redaction everywhere
+// Wrap global console methods to apply redaction everywhere
 const originalConsole = {
   log: console.log ? console.log.bind(console) : null,
   warn: console.warn ? console.warn.bind(console) : null,

@@ -2,7 +2,7 @@ import React, { useEffect } from 'react';
 import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest';
 import { render, waitFor, cleanup, act } from '@testing-library/react';
 
-// Ensure we're using the actual store, not a mock
+// Make sure we're using the actual store, not a mock
 vi.mock('./store', async () => {
   const actual = await vi.importActual('./store');
   return actual;

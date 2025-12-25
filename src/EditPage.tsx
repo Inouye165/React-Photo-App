@@ -103,7 +103,7 @@ export default function EditPage({ photo, onClose: _onClose, onSave, onRecheckAI
   // toast logic removed
 
   // Use ?v=hash for cache busting. Prefer hash, fallback to updated_at if needed.
-  // This ensures browsers do not show stale pixels after image bytes change.
+  // This prevents browsers from showing stale pixels after image bytes change.
   // If hash is unavailable, updated_at is used as a fallback (may be less reliable).
   const version = sourcePhoto?.hash || sourcePhoto?.updated_at || '';
   const displayUrl = `${API_BASE_URL}${sourcePhoto?.url || photo?.url}${version ? `?v=${version}` : ''}`;

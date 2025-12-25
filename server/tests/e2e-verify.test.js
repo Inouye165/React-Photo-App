@@ -24,7 +24,7 @@ describe('E2E Verify Endpoint - /api/test/e2e-verify', () => {
 
   describe('Test/Dev Environment', () => {
     beforeEach(() => {
-      // Ensure we're in test mode
+      // Make sure we're in test mode
       process.env.NODE_ENV = 'test';
     });
 
@@ -48,7 +48,7 @@ describe('E2E Verify Endpoint - /api/test/e2e-verify', () => {
 
       expect(response.body.success).toBe(false);
       expect(response.body.error).toBe('No session cookie');
-      // Ensure no stack trace or internal details
+      // Verify no stack trace or internal details
       expect(response.body.stack).toBeUndefined();
     });
 
@@ -171,7 +171,7 @@ describe('E2E Verify Endpoint - /api/test/e2e-verify', () => {
         .set('Cookie', `authToken=${testToken}`)
         .expect(200);
 
-      // Ensure response matches the structure expected by AuthContext
+      // Verify response matches the structure expected by AuthContext
       expect(response.body).toHaveProperty('success');
       expect(response.body).toHaveProperty('user');
       expect(response.body.user).toHaveProperty('id');

@@ -3,7 +3,7 @@
 
 
 const { OpenAI } = require('openai');
-require('../env'); // Ensure env variables are loaded
+require('../env'); // Make sure env variables are loaded
 const auditLogger = require('./langgraph/audit_logger');
 const context = require('./langgraph/context');
 

@@ -141,7 +141,7 @@ describe('api - Bearer Token Authentication Security', () => {
   describe('getAuthHeadersAsync - Logout Safety', () => {
     it('should NOT re-attach Authorization after explicit logout', async () => {
       // In tests, supabase.auth.getSession is globally mocked to return a token.
-      // This check ensures explicit logout takes precedence over that session.
+      // This makes sure explicit logout overrides the session.
       api.setAuthToken(null);
 
       const headers = await api.getAuthHeadersAsync(false);
@@ -212,7 +212,7 @@ describe('api - Bearer Token Authentication Security', () => {
       const testToken = 'photos-token';
       api.setAuthToken(testToken);
       
-      // Clear cache to ensure fresh fetch
+      // Clear cache to force a fresh fetch
       if (globalThis.__getPhotosInflight) {
         globalThis.__getPhotosInflight.clear();
       }
@@ -234,7 +234,7 @@ describe('api - Bearer Token Authentication Security', () => {
     it('getPhotos should always include Authorization header with Bearer token', async () => {
       api.setAuthToken('photos-token');
 
-      // Clear cache to ensure fresh fetch
+      // Clear cache to force a fresh fetch
       if (globalThis.__getPhotosInflight) {
         globalThis.__getPhotosInflight.clear();
       }

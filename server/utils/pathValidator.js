@@ -23,7 +23,7 @@ function validateSafePath(filePath, allowedDirs) {
       path.resolve(os.tmpdir())
     ];
   } else {
-    // Ensure all provided allowedDirs are resolved
+    // Make sure all provided allowedDirs are resolved
     allowedDirs = allowedDirs.map(dir => path.resolve(dir));
   }
 

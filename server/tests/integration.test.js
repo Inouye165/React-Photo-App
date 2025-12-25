@@ -359,7 +359,7 @@ describe('Full Authentication and Image Access Integration', () => {
 
   describe('Token Refresh and Session Management', () => {
     test('should validate token before each image request', async () => {
-      // Make multiple requests to ensure token validation is consistent
+      // Make multiple requests to verify token validation is consistent
       for (let i = 0; i < 3; i++) {
         const response = await request(app)
           .get('/display/working/test.jpg')

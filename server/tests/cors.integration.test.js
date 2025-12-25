@@ -1,7 +1,7 @@
 /**
  * CORS Integration Tests
  * 
- * Comprehensive test coverage for CORS configuration:
+ * Full test coverage for CORS configuration:
  * - Test A: Localhost origin allowed (http://localhost:5173)
  * - Test B: Vercel production origin allowed (https://react-photo-app-eta.vercel.app)
  * - Test C: Disallowed origin rejected (https://evil.example.com)
@@ -12,7 +12,7 @@
  * - Test H: getAllowedOrigins() respects env configuration
  * - Test I: Single authoritative Access-Control-Allow-Origin header
  * 
- * These tests ensure the CORS configuration works correctly for:
+ * These tests verify the CORS configuration works correctly for:
  * - Local development (localhost:5173)
  * - Production (Vercel frontend)
  * - Secure rejection of unknown origins

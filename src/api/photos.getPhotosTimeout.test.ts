@@ -12,7 +12,7 @@ describe('getPhotos timeout/abort', () => {
   beforeEach(() => {
     vi.useFakeTimers()
 
-    // Ensure we don't reuse a cached in-flight request from other tests.
+    // Make sure we don't reuse a cached in-flight request from other tests.
     ;(globalThis as any).__getPhotosInflight = undefined
 
     // A fetch mock that never resolves unless aborted.

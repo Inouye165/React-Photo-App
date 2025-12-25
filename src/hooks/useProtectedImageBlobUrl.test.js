@@ -23,7 +23,7 @@ describe('useProtectedImageBlobUrl', () => {
   beforeEach(() => {
     vi.clearAllMocks()
 
-    // happy-dom usually provides this, but ensure it exists for stability.
+    // happy-dom usually provides this, but make sure it exists for stability.
     if (!globalThis.window.AbortController && globalThis.AbortController) {
       globalThis.window.AbortController = globalThis.AbortController
     }

@@ -226,7 +226,7 @@ async function createScaledThumbnail(
   // Step 1: Calculate safe dimensions
   let { width, height } = calculateScaledDimensions(img.width, img.height, maxSize);
 
-  // Safety check: ensure dimensions are reasonable
+  // Safety check: check that dimensions are reasonable
   if (width > MAX_IMAGEDATA_SIZE || height > MAX_IMAGEDATA_SIZE) {
     console.warn(`Image too large (${img.width}x${img.height}), scaling to safe size first`);
     const safeSize = calculateScaledDimensions(width, height, MAX_IMAGEDATA_SIZE);

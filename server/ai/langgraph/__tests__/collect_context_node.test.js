@@ -68,7 +68,7 @@ describe('collect_context node', () => {
     const state = { filename: 'f3.jpg', metadata: {}, gpsString: '37.123,-122.456', classification: 'scenery' };
     const withCache = await __testing.collect_context(state);
 
-    // Reset googlePlaces mocks - ensure later calls would throw if invoked
+    // Reset googlePlaces mocks so later calls throw if invoked
     nearbyPlaces.mockImplementation(() => { throw new Error('nearbyPlaces should not be called when poiCache is present'); });
 
     const { location_intelligence_agent } = __testing;

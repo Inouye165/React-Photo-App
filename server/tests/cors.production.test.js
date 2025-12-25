@@ -7,7 +7,7 @@
  * 3. Rejecting malicious origins
  * 4. Display endpoints (/display/thumbnails, /display/image)
  * 
- * This ensures proper CORS behavior in production deployments on Railway.
+ * This verifies proper CORS behavior in production deployments on Railway.
  */
 
 const request = require('supertest');

@@ -34,7 +34,7 @@ process.on('unhandledRejection', (reason, promise) => {
   // Only uncaughtException triggers process exit
 });
 
-// Simulate an uncaught exception after a brief delay to ensure handlers are registered
+// Simulate an uncaught exception after a brief delay so handlers are registered
 setImmediate(() => {
   throw new Error('Simulated uncaught exception for testing');
 });

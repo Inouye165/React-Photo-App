@@ -2,7 +2,7 @@ require('../../env');
 const logger = require('../../logger');
 const { haversineDistanceMeters } = require('./geoUtils');
 
-// TODO: Ensure the UI displays "© OpenStreetMap contributors" when surfacing OSM trail data.
+// TODO: Make sure the UI displays "© OpenStreetMap contributors" when surfacing OSM trail data.
 
 const ensureFetch = () => {
   if (typeof globalThis.fetch === 'function') return globalThis.fetch.bind(globalThis);

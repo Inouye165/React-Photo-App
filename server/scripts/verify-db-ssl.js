@@ -15,7 +15,7 @@
 
 const knex = require('knex');
 
-// Ensure we load environment variables
+// Make sure we load environment variables
 require('../env');
 
 async function verifyDbSsl() {

@@ -38,7 +38,7 @@ describe('Knex metrics instrumentation', () => {
     const totalMetric = await metrics.dbQueriesTotal.get();
     expect(totalMetric.values.some((v) => v.labels.operation === 'select' && v.labels.table === 'photos' && v.labels.result === 'ok')).toBe(true);
 
-    // SECURITY: ensure SQL text isn't accidentally present in label values.
+    // SECURITY: verify SQL text isn't accidentally present in label values.
     for (const v of [...durationMetric.values, ...totalMetric.values]) {
       for (const labelValue of Object.values(v.labels || {})) {
         const s = String(labelValue);

@@ -28,7 +28,7 @@ declare global {
 
 declare module 'react' {
   // HTML Input element capture attribute (for mobile camera)
-  // Module augmentation ensures this affects React's types rather than creating
+  // Module augmentation makes sure this affects React's types rather than creating
   // a new global interface that React would not use.
   interface HTMLAttributes<T> {
     capture?: boolean | 'user' | 'environment';

@@ -17,7 +17,7 @@ describe('Configuration Integrity', () => {
     const hasDangerousLibAlias = /find:\s*\/konva\\\/lib\\\/\.\*\//.test(configContent);
     const hasDangerousStringAlias = configContent.includes("'konva/lib/");
     
-    // We want to ensure we don't accidentally re-add the alias that breaks the app
+    // Make sure we don't accidentally re-add the alias that breaks the app
     expect(hasDangerousLibAlias).toBe(false);
     
     if (configContent.includes('alias:')) {

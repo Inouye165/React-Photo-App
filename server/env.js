@@ -1,7 +1,7 @@
 const path = require('path');
 // Idempotent environment loader for server scripts.
 // Use require('./env') from other server modules instead of calling dotenv.config()
-// multiple times. This ensures .env is loaded exactly once and is easy to mock
+// multiple times. This makes sure .env is loaded exactly once and is easy to mock
 // in tests by setting process.env beforehand.
 if (!process.env.__SERVER_ENV_LOADED) {
   try {

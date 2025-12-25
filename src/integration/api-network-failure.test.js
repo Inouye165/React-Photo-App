@@ -1,7 +1,7 @@
 import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest';
 import * as api from '../api';
 
-// Ensure we're using the actual store, not a mock
+// Make sure we're using the actual store, not a mock
 vi.mock('../store', async () => {
   const actual = await vi.importActual('../store');
   return actual;
@@ -246,7 +246,7 @@ describe('Integration: Network failure handling', () => {
 
   it('should preserve auth error handling when network is down', async () => {
     // Even if network errors exist, auth errors should still be handled properly
-    // This test ensures network error handling doesn't break existing auth error flow
+    // This test verifies network error handling doesn't break existing auth error flow
     
     let authEventFired = false;
     const authListener = () => {

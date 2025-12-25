@@ -351,7 +351,7 @@ const useStore = create<StoreState>((set, get) => ({
     let attempt = 0
     let nextAllowedAt = 0
 
-    // Ensure store indicates polling for this id
+    // Update the store to show we're polling this ID.
     set((state) => {
       const current = state.pollingPhotoIds || new Set()
       const filtered = Array.from(current).filter((value) => String(value) !== key)
@@ -404,7 +404,7 @@ const useStore = create<StoreState>((set, get) => ({
           elapsedMs,
           inFlight: true,
         })
-        // Ensure we don't stall if a tick fires while a request is still in-flight.
+        // Don't get stuck if we're still waiting for the last request.
         scheduleNext(baseIntervalMs)
         return
       }
@@ -422,7 +422,7 @@ const useStore = create<StoreState>((set, get) => ({
       }
 
       if (elapsedMs > hardTimeoutMs) {
-        // Explicit (non-silent) hard timeout: stop polling and ensure we don't
+        // Explicit (non-silent) hard timeout: stop polling and make sure we don't
         // leave the UI stuck showing "Analyzing..." forever.
         try {
           const existing = (get().photos || []).find((p) => String(p?.id) === String(id))

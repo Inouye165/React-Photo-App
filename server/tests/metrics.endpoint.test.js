@@ -53,7 +53,7 @@ describe('GET /metrics (Prometheus)', () => {
     // Forbidden high-cardinality strings/labels
     expect(body).not.toEqual(expect.stringContaining('requestId'));
 
-    // Ensure raw numeric path segments are not used as labels
+    // Verify raw numeric path segments are not used as labels
     expect(body).not.toMatch(/\/photos\/\d+/);
   });
 });

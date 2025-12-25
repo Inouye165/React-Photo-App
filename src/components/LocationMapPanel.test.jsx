@@ -302,7 +302,7 @@ describe('LocationMapPanel component', () => {
   describe('without Google Maps API key (OSM fallback)', () => {
     beforeEach(() => {
       vi.unstubAllEnvs();
-      // Explicitly ensure no API key is set
+      // Explicitly set API key to undefined
       vi.stubEnv('VITE_GOOGLE_MAPS_API_KEY', undefined);
     });
 

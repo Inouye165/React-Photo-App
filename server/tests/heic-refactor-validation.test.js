@@ -10,7 +10,7 @@ describe('HEIC Refactor Validation', () => {
 
   const os = require('os');
   test('should handle non-HEIC files correctly', async () => {
-    // Use OS temp dir to ensure path is allowed by validator
+    // Use OS temp dir so path is allowed by validator
     const testDir = os.tmpdir();
     const testFile = path.join(testDir, `test-heic-refactor-${Date.now()}.jpg`);
 
@@ -31,7 +31,7 @@ describe('HEIC Refactor Validation', () => {
   });
 
   test('should validate that heic-convert is imported correctly', () => {
-    // Ensure runtime dependencies exist in package.json and can be required
+    // Verify runtime dependencies exist in package.json and can be required
     const serverPkg = require(path.join(__dirname, '..', 'package.json'));
     const deps = serverPkg.dependencies || {};
     expect(deps['heic-convert']).toBeDefined();
@@ -61,7 +61,7 @@ describe('HEIC Refactor Validation', () => {
         const out = await convertHeicToJpegBuffer(buf, 90);
         expect(out).toBeInstanceOf(Buffer);
       } catch (err) {
-        // If it throws, ensure message contains markers used in the code path
+        // If it throws, verify message contains markers used in the code path
         const msg = String(err && err.message);
         expect(msg).toMatch(/Sharp error:/);
         expect(msg).toMatch(/Fallback error:/);

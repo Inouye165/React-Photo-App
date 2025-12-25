@@ -84,7 +84,7 @@ async function verifyMigrations(retryAttempt = 0) {
     } else if (cfg.connection && cfg.connection.connectionString) {
       // Remove sslmode from connection string if present
       cfg.connection.connectionString = cfg.connection.connectionString.replace(/[?&]sslmode=[^&]+/, '');
-      // Ensure SSL config exists with relaxed verification
+      // Make sure SSL config exists with relaxed verification
       cfg.connection.ssl = { rejectUnauthorized: false };
     }
   }

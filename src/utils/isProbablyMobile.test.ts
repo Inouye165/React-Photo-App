@@ -139,7 +139,7 @@ describe('isProbablyMobile', () => {
 
   describe('desktop detection', () => {
     it('should return false for typical desktop (no touch, fine pointer, wide viewport)', () => {
-      // Ensure no touch (ontouchstart should not exist)
+      // Verify no touch (ontouchstart should not exist)
       if ('ontouchstart' in globalThis.window) {
         Object.defineProperty(globalThis.window, 'ontouchstart', {
           value: undefined,

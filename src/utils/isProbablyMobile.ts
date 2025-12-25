@@ -14,7 +14,7 @@ export function isProbablyMobile(): boolean {
   if (typeof window === 'undefined') return false;
 
   // Heuristics: touch + coarse pointer OR touch + small-ish viewport.
-  // Avoid UA sniffing; keep this lightweight and robust in tests.
+  // Avoid UA sniffing; keep this lightweight and reliable in tests.
   const hasTouch =
     'ontouchstart' in window ||
     (typeof navigator !== 'undefined' && Number(navigator.maxTouchPoints || 0) > 0);

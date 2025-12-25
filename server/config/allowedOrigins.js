@@ -109,7 +109,7 @@ function getAllowedOrigins() {
  * Resolve an incoming request Origin against the allowlist.
  * 
  * SECURITY: This function is used when manually setting Access-Control-Allow-Origin
- * headers (e.g., in image serving routes). It ensures consistency with the main
+ * headers (e.g., in image serving routes). It maintains consistency with the main
  * CORS policy and guards against misconfiguration.
  * 
  * Security behavior:

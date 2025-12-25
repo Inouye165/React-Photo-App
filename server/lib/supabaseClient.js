@@ -2,7 +2,7 @@ const path = require('path');
 const { createClient } = require('@supabase/supabase-js');
 const logger = require('../logger');
 
-// Ensure environment variables are loaded when this module is required
+// Make sure environment variables are loaded when this module is required
 // by using the centralized loader. This avoids multiple dotenv.config calls
 // while still allowing scripts to require this file directly.
 try {

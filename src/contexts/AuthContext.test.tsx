@@ -222,7 +222,7 @@ describe('AuthContext profile fetching', () => {
     // The shared test fetch mock returns username: testuser
     expect(await screen.findByText('testuser')).toBeInTheDocument()
 
-    // Ensure profile endpoint was called at least once
+    // Verify profile endpoint was called at least once
     await waitFor(() => {
       expect(global.fetch).toHaveBeenCalledWith(
         expect.stringContaining('/api/users/me'),

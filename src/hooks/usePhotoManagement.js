@@ -366,7 +366,7 @@ function usePhotoManagement() {
       setPreviousActivePhotoId(null);
     } else {
       // If there was no previously selected photo, clear the active one
-      // to ensure the user sees the list view rather than the detail panel.
+      // to make sure the user sees the list view rather than the detail panel.
       setActivePhotoId(null);
     }
   }, [previousView, previousActivePhotoId, setView, setActivePhotoId, setEditingMode]);

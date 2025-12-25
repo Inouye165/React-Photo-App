@@ -411,7 +411,7 @@ export function AuthProvider({ children }: { children: ReactNode }): ReactNode {
       if (error) throw error
 
       // Set Bearer token in the api module BEFORE updating state
-      // This ensures API calls made after login have the token ready
+      // This makes sure the token is ready for any API calls that happen right after login.
       if (data.session?.access_token) {
         setAuthToken(data.session.access_token)
         // Token is now cached for Bearer auth - no cookie sync needed
@@ -529,7 +529,7 @@ export function AuthProvider({ children }: { children: ReactNode }): ReactNode {
       const { data, error } = await supabase.auth.updateUser({ password: newPassword })
       if (error) throw error
 
-      // Defense in depth: ensure the app token cache is refreshed from the current session.
+      // Just to be safe: refresh the token cache.
       // Supabase may or may not return a session directly from updateUser depending on server settings.
       const sessionFromUpdate = (data as unknown as { session?: Session | null }).session
       const accessTokenFromUpdate = sessionFromUpdate?.access_token

@@ -17,7 +17,7 @@ describe('store moveToInprogress', () => {
 
   beforeEach(async () => {
     vi.clearAllMocks();
-    // Ensure module-level state in store (like polling timer registries) is reset per test.
+    // Reset module-level state in store (like polling timer registries) per test.
     vi.resetModules();
 
     // Import the mocked API module and the real store after mocks are set up.

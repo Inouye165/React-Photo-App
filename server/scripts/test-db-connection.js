@@ -2,7 +2,7 @@
 // server/scripts/test-db-connection.js
 // Simple dev-only Postgres smoke test. Exits 0 on success, non-zero on failure.
 const path = require('path');
-// ensure env is loaded
+// make sure env is loaded
 require(path.join(__dirname, '..', 'env'));
 const { Client } = require('pg');
 
