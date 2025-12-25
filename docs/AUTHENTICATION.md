@@ -8,7 +8,7 @@ Lumina uses Supabase Auth for user sessions and validates access on the backend 
 
 ## Security Features
 
-### 🔐 JWT-Based Authentication
+### JWT-Based Authentication
 - Bearer tokens are required for protected API routes.
 - Query parameter tokens are intentionally not supported (URLs leak).
 - CSRF risk is reduced by the token model (not automatically attached like cookies) plus strict origin allowlisting on sensitive endpoints.
@@ -22,12 +22,12 @@ Authorization: Bearer <supabase_access_token>
 ```
 
 **Why Bearer tokens exclusively (no cookies)?**
-- ✅ **CSRF Immunity**: Tokens are not sent automatically by browsers, eliminating CSRF attack vectors
-- ✅ **Stateless**: No server-side session storage required (pure JWT validation)
-- ✅ **iOS/Mobile Safari compatibility**: No ITP cookie blocking issues
-- ✅ **Cross-origin ready**: Works seamlessly across origins
-- ✅ **No split-brain**: Frontend and backend sessions cannot get out of sync
-- ✅ **Standard HTTP**: Uses the standard `Authorization` header pattern
+- **CSRF Immunity**: Tokens are not sent automatically by browsers, eliminating CSRF attack vectors
+- **Stateless**: No server-side session storage required (pure JWT validation)
+- **iOS/Mobile Safari compatibility**: No ITP cookie blocking issues
+- **Cross-origin ready**: Works seamlessly across origins
+- **No split-brain**: Frontend and backend sessions cannot get out of sync
+- **Standard HTTP**: Uses the standard `Authorization` header pattern
 
 **Frontend Implementation:**
 - Token is sourced from Supabase's managed session (`supabase.auth.getSession()`)

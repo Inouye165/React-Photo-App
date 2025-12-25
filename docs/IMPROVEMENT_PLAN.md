@@ -4,7 +4,7 @@ This document contains the full list of phased TODO items and improvement plans 
 
 ---
 
-## 🔴 Phase 1: Critical Security & Stability (Do Immediately)
+## Phase 1: Critical Security & Stability (Do Immediately)
 *Fixes that prevent data loss, security breaches, and core functionality failures.*
 
 - [ ] **Fix "Split-Brain" Auth:** Remove/retire remaining legacy cookie auth paths (images/E2E) so auth is consistently Bearer-token based where feasible.
@@ -18,7 +18,7 @@ This document contains the full list of phased TODO items and improvement plans 
 - [ ] **Fix "Race Condition" in Collectibles:** Use SQL `ON CONFLICT` (Upsert) instead of "Check-then-Insert" logic.
 - [ ] **Create ADR Policy:** Add `docs/ADR_POLICY.md` (does not exist yet) or remove this item if ADRs won’t be used.
 
-## 🟠 Phase 2: High Priority Mobile Fixes & Crash Prevention
+## Phase 2: High Priority Mobile Fixes & Crash Prevention
 *Fixes that stop the app from looking broken on phones or crashing under load.*
 
 - [ ] **Fix "Off-Screen" Mobile Menu:** Remove fixed widths in `AppHeader.jsx` and hide text labels on mobile.
@@ -32,7 +32,7 @@ This document contains the full list of phased TODO items and improvement plans 
 - [ ] **Fix "Zombie" Process:** Ensure `process.exit(1)` is called on unhandled exceptions to allow Docker/Railway to restart the clean state.
 - [ ] **Fix "Silent Drop" Queues:** Implement an Outbox pattern for AI jobs so tasks aren't lost if Redis is down.
 
-## 🟡 Phase 3: Performance & "Native" Feel
+## Phase 3: Performance & "Native" Feel
 *Fixes that make the app feel fast and professional.*
 
 - [ ] **Implement Client-Side Compression:** Resize images to ~2048px in browser before uploading (Speed up uploads by 10x).
@@ -47,7 +47,7 @@ This document contains the full list of phased TODO items and improvement plans 
 - [ ] **Add PWA Manifest:** Create `manifest.json` to allow "Add to Home Screen" and remove the browser URL bar.
 - [ ] **Tiny Thumbnails:** Generate specific 150px thumbnails for mobile views to save bandwidth.
 
-## 🔵 Phase 4: Desktop Features & Code Hygiene
+## Phase 4: Desktop Features & Code Hygiene
 *Fixes for "Pro" users and long-term maintenance.*
 
 - [ ] **Add Drag & Drop Upload:** Allow desktop users to drag files directly onto the form.

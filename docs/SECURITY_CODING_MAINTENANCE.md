@@ -1,103 +1,80 @@
-# Security coding & maintenance
+# Security & Maintenance Guide
 
-This project treats security as everyday engineering work: make changes safely, keep dependencies current, and document trade-offs. This doc is intentionally practical — it’s a checklist to follow when touching auth, uploads, image serving, or anything that could impact user data isolation.
+Security isn't a "phase" we do at the end. It's the only reason this project exists. If we leak user photos, the whole thing is pointless.
 
-## The security “shape” of this app
+This doc is the "how to not mess up" guide for anyone touching the code.
 
-- The frontend uses Supabase for user sessions.
-- The backend is an Express API that expects `Authorization: Bearer <token>` for protected routes.
-- Image delivery is a special case because browsers don’t let `<img>` tags send custom headers. The preferred approach is signed thumbnail URLs; Bearer auth is also supported for programmatic fetches.
-- Some legacy cookie-based image access still exists as a temporary compatibility path and should be treated as deprecated.
+---
 
-## Before you code
+## The Security Model (Read This First)
 
-- Decide what user boundary you’re working within (single user, multi-user isolation, admin-only behavior).
-- Treat “derived data” (thumbnails, AI output, EXIF, GPS) as user data. It needs the same access controls.
-- Confirm how the change impacts:
-  - Authentication (Bearer token flow)
-  - Authorization (ownership checks / least privilege)
-  - Storage access (Supabase Storage paths and permissions)
-  - Logging (no secrets, no tokens, no private EXIF)
+We don't trust the frontend. Ever.
 
-## Everyday checks (fast)
+1.  **Auth is Bearer-Only:** The API expects `Authorization: Bearer <token>`. We don't do session cookies for the API because CSRF is a nightmare I don't want to deal with.
+2.  **Images are Special:** Browsers are dumb and won't send headers for `<img>` tags.
+    *   **Solution:** We use **Signed URLs** (short-lived tokens in the query string) for thumbnails.
+    *   **Legacy:** There is some old cookie code for compatibility. Treat it like radioactive waste. Don't touch it unless you're removing it.
+3.  **RLS is the Final Boss:** Even if the API code is buggy, the Database Row-Level Security (RLS) should prevent data leaks.
 
-Run these locally before opening a PR:
+---
+
+## Before You Commit
+
+Run these. I wrote them for a reason.
 
 ```bash
-# secret-like strings / accidental key commits
+# 1. Scan for secrets (don't commit API keys)
 npm run secret-scan
 
-# privilege / ownership checks (repo script)
+# 2. Check for privilege escalation bugs
 npm run check-privilege
 
-# lint + basic hygiene checks
-npm run lint
-
-# web tests
+# 3. Run the full test suite (it catches auth regressions)
 npm run test:run
-
-# server tests
 cd server && npm test
 ```
 
-If you’re changing anything in the server auth/image stack, prefer to run the server test suite even if the change feels “small”.
+---
 
-## Dependency maintenance
+## Coding Rules (The "Don't Get Fired" List)
 
-- Keep dependencies current, but do it deliberately:
-  - Update one major dependency at a time when possible.
-  - Read the changelog for auth/security libraries (Supabase client, Helmet, jsonwebtoken, express-rate-limit, zod).
-- Watch for “security regressions by upgrade” (changed defaults, stricter parsing, different CORS behavior).
-- When updating dependencies, run at least:
-  - `npm run test:run`
-  - `cd server && npm test`
+### 1. Auth & Access
+*   **Default to Deny:** Every new route must have `authenticateToken` middleware.
+*   **Check Ownership:** Just because a user is logged in doesn't mean they own `photo_123`. Always check `user_id === resource.owner_id`.
+*   **No "Magic" Access:** Don't create "admin" backdoors for debugging. Use the database directly if you need to fix data.
 
-## Secrets & environment hygiene
+### 2. Logging & Privacy
+*   **No Headers in Logs:** Request headers contain tokens. Never log `req.headers`.
+*   **No PII:** Don't log filenames if they contain user info.
+*   **Redact Everything:** If you're logging an error object, make sure it doesn't dump the entire user session.
 
-- Never commit secrets. Use `.env` locally and platform-managed secrets in production.
-- Prefer short-lived tokens where possible.
-- Assume anything placed in a URL can leak (logs, referers, browser history). Avoid token-in-query-string patterns.
+### 3. Dependencies
+*   **Update Deliberately:** Don't just `npm update` blindly. Read the changelogs for `jsonwebtoken`, `helmet`, and `supabase-js`.
+*   **Lockfiles Matter:** Commit your `package-lock.json`. It's the only thing keeping our supply chain sane.
 
-Related docs:
+---
 
-- [docs/SECRET_ROTATION.md](SECRET_ROTATION.md)
-- [SECURITY_REMEDIATION_SUMMARY.md](../SECURITY_REMEDIATION_SUMMARY.md)
+## Handling Images (The Tricky Part)
 
-## Logging & redaction
+Serving private images is hard.
 
-- Don’t log access tokens, cookies, or authorization headers.
-- Be careful when logging request objects — headers often contain secrets.
-- If you add new logs around uploads, avoid printing filenames/paths if they reveal user structure.
+*   **Do:** Use `useSignedThumbnails` hook in React. It handles the token rotation for you.
+*   **Don't:** Try to make `<img>` tags send Bearer tokens. It won't work.
+*   **Don't:** Put long-lived tokens in URLs. URLs get logged in proxy servers, browser history, and referer headers.
 
-## Auth changes (rules of thumb)
+---
 
-- Protected API routes should remain Bearer-only.
-- Treat cookie-based auth as deprecated unless you’re intentionally working on a removal/transition plan.
-- When adding a new route:
-  - Default to `authenticateToken` for protected data.
-  - Add explicit ownership checks.
-  - Return 401/403 intentionally (avoid leaking whether an object exists).
+## Review Checklist
 
-## Image serving changes
+When opening a PR, ask yourself:
 
-Because `<img>` cannot send `Authorization` headers:
+- [ ] Did I add a new endpoint? Does it check `auth.uid()`?
+- [ ] Can User A access User B's stuff by guessing an ID?
+- [ ] Did I add a `console.log` that prints a token?
+- [ ] Did I touch the `server/auth` folder? (If yes, add extra tests).
 
-- Prefer signed URLs for thumbnails.
-- If you add new image endpoints, be explicit about which access method they support.
-- Avoid adding new “token in URL” mechanisms.
+---
 
-## Review checklist (PR time)
+## When in Doubt...
 
-- Does any new endpoint expose user data without auth?
-- Can a user access another user’s photos by guessing an id/hash?
-- Did we introduce new debug routes, or widen an allowlist?
-- Did we add any logs that could leak EXIF/GPS, tokens, or internal IDs?
-- Are E2E-only routes still properly gated in non-production?
-
-## When in doubt
-
-If the safe behavior is ambiguous, bias toward:
-
-- returning `401`/`403` over a partial response,
-- removing data from responses (minimum necessary fields), and
-- documenting the decision in an adjacent doc or in the PR description.
+**Fail Closed.** Return a 401 or 403. It's better to break the app for one user than to leak data to everyone.

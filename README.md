@@ -24,8 +24,6 @@ My focus has been on:
 
 It's definitely an engineering prototype right now. I care more about the engine than the paint job.
 
-[Read the full backstory here](docs/PRODUCT_STORY.md)
-
 ## The Vibe
 
 *   **Privacy is the default:** Everything starts with "can other people see this?" (The answer should be no).
@@ -98,9 +96,8 @@ cd server && npm run worker # Background Worker
 
 ## Docs
 
-*   [Dev Notes](docs/DEV.md)
 *   [Testing Guide](TESTING.md)
-*   [Roadmap](docs/ROADMAP.md)
+*   [Project Status & Deep Dive](docs/STATUS.md)
 *   [Security Checklist](docs/SECURITY_CODING_MAINTENANCE.md)
 
 ## License

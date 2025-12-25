@@ -2,7 +2,7 @@
 
 This document lists the various scripts, tools, and tests available in the `React-Photo-App` repository. Use this as a reference to understand what each tool does and when to use it.
 
-## 🛠️ Environment & Setup Tools
+## Environment & Setup Tools
 
 | Script | Location | Purpose | Created |
 | :--- | :--- | :--- | :--- |
@@ -12,7 +12,7 @@ This document lists the various scripts, tools, and tests available in the `Reac
 | `populate-server-env.ps1` | `scripts/` | **Setup:** PowerShell script to help populate the server environment variables. | - |
 | `prepare.cjs` | `scripts/` | **Setup:** Runs `husky install` to set up git hooks. | - |
 
-## 🧪 Testing Scripts
+## Testing Scripts
 
 | Script | Location | Purpose |
 | :--- | :--- | :--- |
@@ -23,7 +23,7 @@ This document lists the various scripts, tools, and tests available in the `Reac
 | `secret-scan.cjs` | `scripts/` | **Security:** Scans the codebase for accidentally committed secrets. |
 | `deadcode-scan.cjs` | `scripts/` | **Maintenance:** Scans for unused code or exports. |
 
-## 📂 Database & Migration Tools
+## Database & Migration Tools
 
 | Script | Location | Purpose |
 | :--- | :--- | :--- |
@@ -32,7 +32,7 @@ This document lists the various scripts, tools, and tests available in the `Reac
 | `backfill-gps.js` | `scripts/` | **Data:** Backfills GPS data for photos that are missing it. |
 | `inspect-exif.js` | `server/scripts/` | **Debug:** Inspects EXIF data of a specific photo file. |
 
-## 🚀 How to Use
+## How to Use
 
 ### Verify Environment
 If you are setting up the project on a new machine or switching between Home/Office networks:

@@ -13,15 +13,19 @@ This doc is the practical “how to test this repo” guide: what to run, what t
 
 ### 1. Environment Setup
 ```bash
-# Clone and install dependencies
-git clone <your-repo-url>
-cd <your-repo-folder>
+# Install dependencies (Root + Server)
 npm install
 cd server && npm install && cd ..
+
+# Setup Environment Variables
+cp server/.env.example server/.env
 ```
 
-### 2. Start Both Servers
+### 2. Start Services & Servers
 ```bash
+# Start Database & Redis (Required for tests)
+docker-compose up -d db redis
+
 # Terminal 1: Backend server
 cd server && npm start
 
@@ -40,7 +44,7 @@ cd server && npm test
 
 ## Manual Testing Checklist
 
-### 🔐 Authentication System
+### Authentication System
 - [ ] **Initial Load**: Should show login form on first visit
 - [ ] **User Registration**: Create new account with username, email, password
 - [ ] **User Login**: Login with valid credentials
@@ -51,20 +55,20 @@ cd server && npm test
 - [ ] **Session Persistence**: Refresh page maintains login state
 - [ ] **Token Expiration**: Expired/invalid tokens trigger a re-login flow (and should never silently grant access)
 
-### 🖼️ Image Operations (Authenticated Users Only)
+### Image Operations (Authenticated Users Only)
 - [ ] **File/Folder Selection**: Select photos or folder for upload works (File picker on mobile/Safari/Firefox)
 - [ ] **Image Display**: All images load with authenticated URLs
 - [ ] **HEIC Conversion**: HEIC files display properly (converted to JPEG)
 - [ ] **Edit Mode**: Click edit on any image opens editor
 - [ ] **Image Authentication**: All image requests include auth tokens
 
-### 🔒 Security Testing
+### Security Testing
 - [ ] **Unauthenticated Access**: Cannot access images without login
 - [ ] **Invalid Tokens**: Expired/invalid tokens redirect to login
 - [ ] **CORS Headers**: No cross-origin errors in browser console
 - [ ] **Rate Limiting**: Multiple failed logins trigger rate limiting
 
-### 📁 Multi-Machine Workflow
+### Multi-Machine Workflow
 - [ ] **File Sync**: Missing image files show appropriate 404 errors
 - [ ] **Database Consistency**: App handles missing files gracefully
 - [ ] **Cross-Device Login**: Same account works on multiple machines
@@ -73,13 +77,11 @@ cd server && npm test
 This repo has frontend (Vitest) and backend (Jest) suites.
 
 ### Frontend (Vitest)
-As of the latest run, the frontend suite contains **476** tests across **182** test suites (475 passing, 1 skipped/pending).
+The frontend suite covers UI rendering, auth flows, and client-side logic.
+
 ```bash
 # Run with coverage
 npm run test:coverage
-
-# Produce a machine-readable summary (used for the counts above)
-npx vitest run --reporter=json --outputFile test-results/vitest-summary.json
 ```
 
 **Covers:**
@@ -89,12 +91,10 @@ npx vitest run --reporter=json --outputFile test-results/vitest-summary.json
 - Accessibility checks
 
 ### Backend (Jest)
-As of the latest run, the backend suite contains **690** tests across **95** test suites (684 passing, 6 skipped/pending).
+The backend suite covers API endpoints, security middleware, and database interactions.
+
 ```bash
 cd server && npm test
-
-# Produce a machine-readable summary (used for the counts above)
-cd server && npm test -- --json --outputFile ..\\test-results\\jest-server-summary.json
 ```
 
 **Covers:**
@@ -105,7 +105,7 @@ cd server && npm test -- --json --outputFile ..\\test-results\\jest-server-summa
 
 ## Common Issues & Solutions
 
-### 🚨 Authentication Issues
+### Authentication Issues
 **Problem**: Login button doesn't work
 - **Check**: Backend server running on port 3001
 - **Check**: Frontend can reach `http://localhost:3001/auth/*`
@@ -115,7 +115,7 @@ cd server && npm test -- --json --outputFile ..\\test-results\\jest-server-summa
 - **Check**: Signed thumbnail URLs are being used for `<img>` tags (preferred), or image fetches include `Authorization: Bearer <token>`.
 - **Check**: CORS allows your frontend origin.
 
-### 🖼️ HEIC Issues  
+### HEIC Issues  
 **Problem**: HEIC files not displaying
 - **Check**: Server logs for conversion errors
 - **Check**: Your Node dependencies installed cleanly (`npm install` in root + `server`)
@@ -125,7 +125,7 @@ cd server && npm test -- --json --outputFile ..\\test-results\\jest-server-summa
 - **Expected**: These can happen when a specific HEIC variant can't be decoded cleanly.
 - **Action**: Check server logs to confirm whether the fallback conversion succeeded; if both converters fail, the file may be skipped/rejected.
 
-### 🔧 Development Issues
+### Development Issues
 **Problem**: Port conflicts (EADDRINUSE)
 - **Solution**: `taskkill /F /IM node.exe` (Windows) or `pkill node` (Mac/Linux)
 
@@ -147,8 +147,8 @@ cd server && npm start  # Backend on :3001
 ```bash
 npm run build        # Build for production
 npm run preview      # Preview production build
-```
-
+``` and Redis. Reset your services and re-run migrations:
+docker-compose up -d db redis
 ### Test Database Reset
 ```bash
 # This project uses PostgreSQL. Reset your Postgres DB and re-run migrations:

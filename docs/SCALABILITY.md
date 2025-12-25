@@ -36,6 +36,6 @@ This document outlines the architectural decisions and optimizations implemented
 ## Summary of Limits
 | Resource | Old Limit | New Limit | Bottleneck Removed |
 | :--- | :--- | :--- | :--- |
-| **Concurrent Uploads** | ~10-20 (RAM bound) | Disk I/O bound (High) | ✅ Streaming |
-| **AI Jobs** | Blocked Web Server | Asynchronous / Scalable | ✅ Worker Process |
-| **DB Connections** | Fixed (10) | Configurable (e.g., 50+) | ✅ Pooling Env Vars |
+| **Concurrent Uploads** | ~10-20 (RAM bound) | Disk I/O bound (High) | Streaming |
+| **AI Jobs** | Blocked Web Server | Asynchronous / Scalable | Worker Process |
+| **DB Connections** | Fixed (10) | Configurable (e.g., 50+) | Pooling Env Vars |
