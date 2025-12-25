@@ -3,6 +3,8 @@ const { Queue, Worker: BullMQWorker } = require("bullmq");
 const path = require('path');
 const logger = require("../logger");
 const { createRedisConnection } = require("../redis/connection");
+const metrics = require('../metrics');
+const { attachBullmqWorkerMetrics } = require('../metrics/bullmq');
 
 const QUEUE_NAME = "ai-processing";
 
@@ -201,6 +203,9 @@ const startWorker = async () => {
       attempts: 5,
       backoff: { type: "exponential", delay: 60000 },
     });
+
+    // Observability: low-cardinality worker metrics (no job IDs/names in labels)
+    attachBullmqWorkerMetrics({ worker: aiWorker, queueName: QUEUE_NAME, metrics });
 
     aiWorker.on("completed", (job) =>
       logger.info(`[WORKER] Job ${job.id} (PhotoId: ${job.data.photoId}) completed.`)
