@@ -81,27 +81,7 @@ const photoIdParamsSchema = z.object({
   id: z.string().uuid({ message: 'Invalid photo id' }),
 });
 
-const photoMetadataPatchBodySchema = z
-  .object({
-    caption: z.union([z.string(), z.null()]).optional(),
-    description: z.union([z.string(), z.null()]).optional(),
-    keywords: z.union([z.string(), z.null()]).optional(),
-    textStyle: z.union([z.record(z.unknown()), z.null()]).optional(),
-  })
-  .superRefine((body, ctx) => {
-    const hasAtLeastOneField =
-      body.caption !== undefined ||
-      body.description !== undefined ||
-      body.keywords !== undefined ||
-      body.textStyle !== undefined;
-
-    if (!hasAtLeastOneField) {
-      ctx.addIssue({ code: z.ZodIssueCode.custom, message: 'Invalid request body' });
-    }
-  });
-
 module.exports = {
   photosListQuerySchema,
   photoIdParamsSchema,
-  photoMetadataPatchBodySchema,
 };

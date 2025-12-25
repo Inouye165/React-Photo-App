@@ -10,7 +10,10 @@ function getOrCreateRequestId(req) {
 
 function buildErrorEnvelope({ code, message, requestId }) {
   return {
-    error: {
+    success: false,
+    error: message,
+    reqId: requestId,
+    errorDetails: {
       code,
       message,
       requestId,
@@ -43,8 +46,7 @@ function validateRequest({ params, query, body } = {}) {
     if (params) {
       const result = params.safeParse(req.params);
       if (!result.success) {
-        const message = (result.error.issues && result.error.issues[0] && result.error.issues[0].message) || 'Invalid request parameters';
-        return res.status(400).json(buildErrorEnvelope({ code: 'BAD_REQUEST', message, requestId }));
+        return res.status(400).json(buildErrorEnvelope({ code: 'BAD_REQUEST', message: 'Invalid request', requestId }));
       }
       validated.params = result.data;
     }
@@ -52,8 +54,7 @@ function validateRequest({ params, query, body } = {}) {
     if (query) {
       const result = query.safeParse(req.query);
       if (!result.success) {
-        const message = (result.error.issues && result.error.issues[0] && result.error.issues[0].message) || 'Invalid query parameters';
-        return res.status(400).json(buildErrorEnvelope({ code: 'BAD_REQUEST', message, requestId }));
+        return res.status(400).json(buildErrorEnvelope({ code: 'BAD_REQUEST', message: 'Invalid request', requestId }));
       }
       validated.query = result.data;
     }
@@ -61,7 +62,7 @@ function validateRequest({ params, query, body } = {}) {
     if (body) {
       const result = body.safeParse(req.body);
       if (!result.success) {
-        return res.status(422).json(buildErrorEnvelope({ code: 'VALIDATION_ERROR', message: 'Invalid request body', requestId }));
+        return res.status(422).json(buildErrorEnvelope({ code: 'VALIDATION_ERROR', message: 'Validation failed', requestId }));
       }
       validated.body = result.data;
     }

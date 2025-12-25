@@ -26,9 +26,12 @@ describe('validateRequest middleware', () => {
       .expect(400);
 
     expect(response.body).toEqual({
-      error: {
+      success: false,
+      error: 'Invalid request',
+      reqId: 'req-params',
+      errorDetails: {
         code: 'BAD_REQUEST',
-        message: 'Invalid id',
+        message: 'Invalid request',
         requestId: 'req-params',
       },
     });
@@ -57,9 +60,16 @@ describe('validateRequest middleware', () => {
       .set('x-request-id', 'req-query')
       .expect(400);
 
-    expect(response.body.error.code).toBe('BAD_REQUEST');
-    expect(typeof response.body.error.message).toBe('string');
-    expect(response.body.error.requestId).toBe('req-query');
+    expect(response.body).toEqual({
+      success: false,
+      error: 'Invalid request',
+      reqId: 'req-query',
+      errorDetails: {
+        code: 'BAD_REQUEST',
+        message: 'Invalid request',
+        requestId: 'req-query',
+      },
+    });
   });
 
   test('invalid body returns 422 VALIDATION_ERROR envelope', async () => {
@@ -85,9 +95,12 @@ describe('validateRequest middleware', () => {
       .expect(422);
 
     expect(response.body).toEqual({
-      error: {
+      success: false,
+      error: 'Validation failed',
+      reqId: 'req-body',
+      errorDetails: {
         code: 'VALIDATION_ERROR',
-        message: 'Invalid request body',
+        message: 'Validation failed',
         requestId: 'req-body',
       },
     });

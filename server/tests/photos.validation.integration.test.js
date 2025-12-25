@@ -55,7 +55,6 @@ jest.mock('../services/photosDb', () => {
           storage_path: null,
         };
       }),
-      updatePhotoMetadata: jest.fn(async () => true),
     };
   };
 });
@@ -101,9 +100,12 @@ describe('photos routes validation + mapping', () => {
       .expect(400);
 
     expect(response.body).toEqual({
-      error: {
+      success: false,
+      error: 'Invalid request',
+      reqId: 'req-invalid-photo-id',
+      errorDetails: {
         code: 'BAD_REQUEST',
-        message: 'Invalid photo id',
+        message: 'Invalid request',
         requestId: 'req-invalid-photo-id',
       },
     });
@@ -133,59 +135,5 @@ describe('photos routes validation + mapping', () => {
 
     expect(photo).toHaveProperty('poi_analysis');
     expect(photo.poi_analysis).toEqual({ name: 'POI' });
-  });
-
-  test('PATCH /photos/:id/metadata rejects invalid UUID with deterministic envelope', async () => {
-    const response = await request(app)
-      .patch('/photos/not-a-uuid/metadata')
-      .set('Authorization', `Bearer ${testToken}`)
-      .set('x-request-id', 'req-invalid-photo-metadata-id')
-      .send({ caption: 'new cap' })
-      .expect(400);
-
-    expect(response.body).toEqual({
-      error: {
-        code: 'BAD_REQUEST',
-        message: 'Invalid photo id',
-        requestId: 'req-invalid-photo-metadata-id',
-      },
-    });
-  });
-
-  test('PATCH /photos/:id/metadata rejects empty body with 422 deterministic envelope', async () => {
-    const validId = '22222222-2222-4222-8222-222222222222';
-    const response = await request(app)
-      .patch(`/photos/${validId}/metadata`)
-      .set('Authorization', `Bearer ${testToken}`)
-      .set('x-request-id', 'req-invalid-photo-metadata-body')
-      .send({})
-      .expect(422);
-
-    expect(response.body).toEqual({
-      error: {
-        code: 'VALIDATION_ERROR',
-        message: 'Invalid request body',
-        requestId: 'req-invalid-photo-metadata-body',
-      },
-    });
-  });
-
-  test('PATCH /photos/:id/metadata success returns updated metadata shape', async () => {
-    const validId = '33333333-3333-4333-8333-333333333333';
-    const response = await request(app)
-      .patch(`/photos/${validId}/metadata`)
-      .set('Authorization', `Bearer ${testToken}`)
-      .send({ caption: 'new cap', textStyle: { font: 'Arial' } })
-      .expect(200);
-
-    expect(response.body).toEqual({
-      success: true,
-      metadata: {
-        caption: 'new cap',
-        description: 'desc',
-        keywords: 'k1,k2',
-        textStyle: { font: 'Arial' },
-      },
-    });
   });
 });

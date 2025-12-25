@@ -29,7 +29,7 @@ const { authenticateToken } = require('../middleware/auth');
 const { authenticateImageRequest } = require('../middleware/imageAuth');
 const { checkRedisAvailable } = require('../queue');
 const { validateRequest } = require('../validation/validateRequest');
-const { photosListQuerySchema, photoIdParamsSchema, photoMetadataPatchBodySchema } = require('../validation/schemas/photos');
+const { photosListQuerySchema, photoIdParamsSchema } = require('../validation/schemas/photos');
 const { mapPhotoRowToListDto, mapPhotoRowToDetailDto } = require('../serializers/photos');
 
 module.exports = function createPhotosRouter({ db, supabase }) {
@@ -353,40 +353,43 @@ module.exports = function createPhotosRouter({ db, supabase }) {
     }
   });
 
-  router.patch(
-    '/:id/metadata',
-    authenticateToken,
-    express.json(),
-    validateRequest({ params: photoIdParamsSchema, body: photoMetadataPatchBodySchema }),
-    async (req, res) => {
-      const { id } = req.validated.params;
-      try {
-        const photo = await photosDb.getPhotoById(id, req.user.id);
-        if (!photo) {
-          return res.status(404).json({ success: false, error: 'Photo not found' });
-        }
-
-        const { caption, description, keywords, textStyle } = req.validated.body;
-
-        const updated = await photosDb.updatePhotoMetadata(id, req.user.id, { caption, description, keywords, textStyle });
-        let parsedTextStyle = null;
-        if (textStyle !== undefined && textStyle !== null) {
-          try { parsedTextStyle = textStyle; } catch { logger.warn('Failed to parse text_style after update for photo', id); }
-        }
-
-        res.json({
-          success: !!updated,
-          metadata: {
-            caption: caption !== undefined ? caption : photo.caption,
-            description: description !== undefined ? description : photo.description,
-            keywords: keywords !== undefined ? keywords : photo.keywords,
-            textStyle: parsedTextStyle,
-          }
-        });
-      } catch (error) {
-        logger.error('Failed to update metadata for photo', id, error);
-        res.status(500).json({ success: false, error: error.message || 'Failed to update metadata' });
+  router.patch('/:id/metadata', authenticateToken, async (req, res) => {
+    const { id } = req.params;
+    try {
+      const photo = await photosDb.getPhotoById(id, req.user.id);
+      if (!photo) {
+        return res.status(404).json({ success: false, error: 'Photo not found' });
       }
+
+      const { caption, description, keywords, textStyle } = req.body || {};
+      if (
+        caption === undefined &&
+        description === undefined &&
+        keywords === undefined &&
+        textStyle === undefined
+      ) {
+        return res.status(400).json({ success: false, error: 'No metadata fields provided' });
+      }
+
+      const updated = await photosDb.updatePhotoMetadata(id, req.user.id, { caption, description, keywords, textStyle });
+      let parsedTextStyle = null;
+      if (textStyle !== undefined && textStyle !== null) {
+        try { parsedTextStyle = textStyle; } catch { logger.warn('Failed to parse text_style after update for photo', id); }
+      }
+
+      res.json({
+        success: !!updated,
+        metadata: {
+          caption: caption !== undefined ? caption : photo.caption,
+          description: description !== undefined ? description : photo.description,
+          keywords: keywords !== undefined ? keywords : photo.keywords,
+          textStyle: parsedTextStyle,
+        }
+      });
+    } catch (error) {
+      logger.error('Failed to update metadata for photo', id, error);
+      res.status(500).json({ success: false, error: error.message || 'Failed to update metadata' });
+    }
   });
 
   // --- Revert edited image endpoint ---
