@@ -31,6 +31,7 @@ const { checkRedisAvailable } = require('../queue');
 const { validateRequest } = require('../validation/validateRequest');
 const { photosListQuerySchema, photoIdParamsSchema } = require('../validation/schemas/photos');
 const { mapPhotoRowToListDto, mapPhotoRowToDetailDto } = require('../serializers/photos');
+const { getRedisClient } = require('../lib/redis');
 
 module.exports = function createPhotosRouter({ db, supabase }) {
   const router = express.Router();
@@ -118,6 +119,26 @@ module.exports = function createPhotosRouter({ db, supabase }) {
         ? req.validated.query.limit
         : DEFAULT_LIMIT;
       const cursor = req.validated && req.validated.query ? req.validated.query.cursor : null;
+
+      // CACHING: Check Redis for cached list response
+      // Key includes all query params to ensure correctness
+      const redis = getRedisClient();
+      const cacheKey = `photos:list:${req.user.id}:${state || 'all'}:${limit}:${cursor || 'start'}`;
+      
+      if (redis) {
+        try {
+          const cached = await redis.get(cacheKey);
+          if (cached) {
+            logger.info('[photos] Cache hit', { reqId, key: cacheKey });
+            res.set('X-Cache', 'HIT');
+            // Still prevent browser caching, but serve from Redis
+            res.set('Cache-Control', 'no-store'); 
+            return res.json(JSON.parse(cached));
+          }
+        } catch (err) {
+          logger.warn('[photos] Cache read error', { error: err.message });
+        }
+      }
       
       // Protect against long-running DB queries causing the request to hang
       const DB_QUERY_TIMEOUT_MS = Number(process.env.DB_QUERY_TIMEOUT_MS || 10000);
@@ -175,16 +196,28 @@ module.exports = function createPhotosRouter({ db, supabase }) {
         ms: mapMs,
         rowCount: Array.isArray(rows) ? rows.length : 0,
       });
-      // Prevent caching so frontend always gets fresh filtered results
-      res.set('Cache-Control', 'no-store');
-      
-      // PAGINATION: Include nextCursor in response
-      res.json({ 
+
+      const response = { 
         success: true, 
         userId: req.user.id,
         photos: photosWithUrls,
         nextCursor: nextCursor
-      });
+      };
+
+      // CACHING: Store in Redis for short duration (micro-caching)
+      // 10 seconds is enough to handle thundering herds without complex invalidation
+      if (redis) {
+        redis.set(cacheKey, JSON.stringify(response), 'EX', 10).catch(err => {
+          logger.warn('[photos] Cache write error', { error: err.message });
+        });
+      }
+
+      // Prevent caching so frontend always gets fresh filtered results
+      res.set('Cache-Control', 'no-store');
+      res.set('X-Cache', 'MISS');
+      
+      // PAGINATION: Include nextCursor in response
+      res.json(response);
     } catch (err) {
       // Improved error logging for diagnostics
       logger.error('[photos] DB error', {
@@ -247,7 +280,8 @@ module.exports = function createPhotosRouter({ db, supabase }) {
 
       const photo = mapPhotoRowToDetailDto(row);
 
-      res.set('Cache-Control', 'no-store');
+      // Allow browser caching for 60 seconds to reduce load on repeated visits
+      res.set('Cache-Control', 'private, max-age=60');
       return res.json({ success: true, photo });
     } catch (err) {
         logger.error('Error in GET /photos/:id', err);
