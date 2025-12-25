@@ -230,8 +230,15 @@ describe('GET /photos pagination', () => {
         .set('Authorization', `Bearer ${testToken}`)
         .expect(400);
 
-      expect(response.body.success).toBe(false);
-      expect(response.body.error).toContain('Invalid limit parameter');
+      expect(response.body).toHaveProperty('success', false);
+      expect(response.body).toHaveProperty('error', 'Invalid request');
+      expect(typeof response.body.reqId).toBe('string');
+      expect(response.body).toHaveProperty('errorDetails');
+      expect(response.body.errorDetails).toEqual({
+        code: 'BAD_REQUEST',
+        message: 'Invalid request',
+        requestId: response.body.reqId,
+      });
     });
 
     test('should reject invalid limit (too large)', async () => {
@@ -240,8 +247,15 @@ describe('GET /photos pagination', () => {
         .set('Authorization', `Bearer ${testToken}`)
         .expect(400);
 
-      expect(response.body.success).toBe(false);
-      expect(response.body.error).toContain('Invalid limit parameter');
+      expect(response.body).toHaveProperty('success', false);
+      expect(response.body).toHaveProperty('error', 'Invalid request');
+      expect(typeof response.body.reqId).toBe('string');
+      expect(response.body).toHaveProperty('errorDetails');
+      expect(response.body.errorDetails).toEqual({
+        code: 'BAD_REQUEST',
+        message: 'Invalid request',
+        requestId: response.body.reqId,
+      });
     });
 
     test('should reject invalid limit (non-integer)', async () => {
@@ -250,8 +264,15 @@ describe('GET /photos pagination', () => {
         .set('Authorization', `Bearer ${testToken}`)
         .expect(400);
 
-      expect(response.body.success).toBe(false);
-      expect(response.body.error).toContain('Invalid limit parameter');
+      expect(response.body).toHaveProperty('success', false);
+      expect(response.body).toHaveProperty('error', 'Invalid request');
+      expect(typeof response.body.reqId).toBe('string');
+      expect(response.body).toHaveProperty('errorDetails');
+      expect(response.body.errorDetails).toEqual({
+        code: 'BAD_REQUEST',
+        message: 'Invalid request',
+        requestId: response.body.reqId,
+      });
     });
 
     test('should reject malformed cursor', async () => {
@@ -260,8 +281,15 @@ describe('GET /photos pagination', () => {
         .set('Authorization', `Bearer ${testToken}`)
         .expect(400);
 
-      expect(response.body.success).toBe(false);
-      expect(response.body.error).toBe('Invalid cursor parameter');
+      expect(response.body).toHaveProperty('success', false);
+      expect(response.body).toHaveProperty('error', 'Invalid request');
+      expect(typeof response.body.reqId).toBe('string');
+      expect(response.body).toHaveProperty('errorDetails');
+      expect(response.body.errorDetails).toEqual({
+        code: 'BAD_REQUEST',
+        message: 'Invalid request',
+        requestId: response.body.reqId,
+      });
     });
 
     test('should reject cursor with missing fields', async () => {
@@ -273,8 +301,15 @@ describe('GET /photos pagination', () => {
         .set('Authorization', `Bearer ${testToken}`)
         .expect(400);
 
-      expect(response.body.success).toBe(false);
-      expect(response.body.error).toBe('Invalid cursor parameter');
+      expect(response.body).toHaveProperty('success', false);
+      expect(response.body).toHaveProperty('error', 'Invalid request');
+      expect(typeof response.body.reqId).toBe('string');
+      expect(response.body).toHaveProperty('errorDetails');
+      expect(response.body.errorDetails).toEqual({
+        code: 'BAD_REQUEST',
+        message: 'Invalid request',
+        requestId: response.body.reqId,
+      });
     });
 
     test('should enforce user scoping with cursor', async () => {
