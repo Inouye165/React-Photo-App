@@ -38,6 +38,7 @@ This isn't just a wrapper around an API. Here's what's actually happening under 
 *   **Background Jobs:** I'm using BullMQ and Redis to handle the heavy lifting (thumbnails, AI analysis) so the UI doesn't freeze.
 *   **AI Stuff:** Using LangGraph to organize the AI logic instead of just spaghetti-coding API calls.
 *   **HEIC Support:** Because iPhones exist, I added auto-conversion to JPEG.
+*   **Cursor-Based Pagination:** I implemented proper cursor pagination so the app doesn't choke when you have 10,000 photos.
 
 ## Cool Features & Experiments
 

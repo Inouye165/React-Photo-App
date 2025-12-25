@@ -39,6 +39,7 @@ Most tutorials show you a frontend talking to a database. That falls apart when 
 ### Infrastructure & Core
 - [x] **Streaming Uploads:** Direct-to-cloud piping. No disk usage.
 - [x] **HEIC Support:** Because iPhones are everywhere. Auto-converts to JPEG for the web.
+- [x] **Cursor Pagination:** Infinite scroll that actually scales. No `OFFSET` queries slowing down the DB.
 - [x] **Dockerized Dev Env:** Local Postgres and Redis that match production exactly.
 - [x] **Strict Content Security Policy (CSP):** I spent days fighting CSP headers so XSS attacks don't stand a chance.
 
