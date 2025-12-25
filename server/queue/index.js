@@ -5,8 +5,10 @@ const logger = require("../logger");
 const { createRedisConnection } = require("../redis/connection");
 const metrics = require('../metrics');
 const { attachBullmqWorkerMetrics } = require('../metrics/bullmq');
+const { randomUUID } = require('crypto');
 
 const QUEUE_NAME = "ai-processing";
+const PHOTO_STATUS_CHANNEL = 'photo:status:v1';
 
 // Internal state (lazy init)
 let redisConnection = null;
@@ -71,6 +73,73 @@ async function initializeQueue() {
 async function checkRedisAvailable() {
   await initializeQueue();
   return redisAvailable;
+}
+
+function shouldPublishTerminalFailure(job) {
+  const attempts = Number(job?.opts?.attempts) || 1;
+  const attemptsMade = Number(job?.attemptsMade) || 0;
+  // BullMQ emits 'failed' for each attempt. Only publish terminal failures.
+  return attemptsMade >= attempts;
+}
+
+async function publishPhotoStatus({ redis, db, status, photoId, jobId }) {
+  if (!redis || typeof redis.publish !== 'function') return { ok: false, reason: 'no_redis' };
+  if (!db || typeof db !== 'function') return { ok: false, reason: 'no_db' };
+  if (!photoId) return { ok: false, reason: 'no_photoId' };
+
+  try {
+    const row = await db('photos').where({ id: photoId }).select('user_id').first();
+    const userId = row?.user_id != null ? String(row.user_id) : null;
+    if (!userId) {
+      logger.warn('[WORKER] Photo status publish skipped: user_id missing', { photoId: String(photoId), status, jobId: jobId ? String(jobId) : undefined });
+      return { ok: false, reason: 'missing_userId' };
+    }
+
+    const payload = {
+      userId,
+      eventId: (typeof randomUUID === 'function') ? randomUUID() : `${Date.now()}`,
+      photoId: String(photoId),
+      status,
+      updatedAt: new Date().toISOString(),
+    };
+
+    await redis.publish(PHOTO_STATUS_CHANNEL, JSON.stringify(payload));
+    logger.info('[WORKER] Published photo status event', {
+      userId,
+      photoId: payload.photoId,
+      status,
+      eventId: payload.eventId,
+      jobId: jobId ? String(jobId) : undefined,
+    });
+
+    return { ok: true, payload };
+  } catch (err) {
+    // Best-effort: log safely and continue.
+    logger.warn('[WORKER] Failed to publish photo status event', {
+      photoId: String(photoId),
+      status,
+      jobId: jobId ? String(jobId) : undefined,
+      error: err?.message || String(err),
+    });
+    return { ok: false, reason: 'publish_failed' };
+  }
+}
+
+function attachPhotoStatusPublisher({ worker, redis, db }) {
+  if (!worker || typeof worker.on !== 'function') {
+    throw new Error('worker must be an EventEmitter-like object');
+  }
+
+  worker.on('completed', async (job) => {
+    const photoId = job?.data?.photoId;
+    await publishPhotoStatus({ redis, db, status: 'finished', photoId, jobId: job?.id });
+  });
+
+  worker.on('failed', async (job) => {
+    const photoId = job?.data?.photoId;
+    if (!shouldPublishTerminalFailure(job)) return;
+    await publishPhotoStatus({ redis, db, status: 'failed', photoId, jobId: job?.id });
+  });
 }
 
 const addAIJob = async (photoId, options = {}) => {
@@ -204,6 +273,14 @@ const startWorker = async () => {
       backoff: { type: "exponential", delay: 60000 },
     });
 
+    // Phase 2: publish status transitions to Redis for multi-instance SSE fanout.
+    // Best-effort: publish failures must never crash the worker.
+    try {
+      attachPhotoStatusPublisher({ worker: aiWorker, redis: redisConnection, db });
+    } catch (err) {
+      logger.warn('[WORKER] Failed to attach photo status publisher', { error: err?.message || String(err) });
+    }
+
     // Observability: low-cardinality worker metrics (no job IDs/names in labels)
     attachBullmqWorkerMetrics({ worker: aiWorker, queueName: QUEUE_NAME, metrics });
 
@@ -224,6 +301,13 @@ module.exports = {
   addAIJob,
   startWorker,
   checkRedisAvailable,
+};
+
+module.exports.__private__ = {
+  attachPhotoStatusPublisher,
+  publishPhotoStatus,
+  shouldPublishTerminalFailure,
+  PHOTO_STATUS_CHANNEL,
 };
 
 // Export live views (prevents “stale null” exports after lazy init)

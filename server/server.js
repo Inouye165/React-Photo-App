@@ -297,6 +297,16 @@ app.set('trust proxy', 1);
 
   // Real-time photo processing events (Phase 1: single instance, in-memory fanout)
   const sseManager = createSseManager({ heartbeatMs: 25_000, maxConnectionsPerUser: 3 });
+  // Phase 2: multi-instance readiness via Redis Pub/Sub fanout (best-effort)
+  try {
+    const { createPhotoStatusSubscriber } = require('./realtime/photoStatusSubscriber');
+    const subscriber = createPhotoStatusSubscriber({ sseManager });
+    subscriber.start().catch((err) => {
+      logger.error('[realtime] Failed to start photo status subscriber', err);
+    });
+  } catch (err) {
+    logger.error('[realtime] Failed to initialize photo status subscriber', err);
+  }
   app.use('/events', createEventsRouter({ authenticateToken, sseManager }));
   // Mount collectibles API under root so /photos/:id/collectibles works correctly
   app.use(authenticateToken, createCollectiblesRouter({ db }));
