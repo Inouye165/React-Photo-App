@@ -20,7 +20,7 @@ const thumbnailStore = createStore('thumbnail-cache-db', 'thumbnails');
  * @param {File} file - The file to generate a key for
  * @returns {string} - A unique cache key
  */
-export function generateCacheKey(file) {
+export function generateCacheKey(file: File): string {
   if (!file || !file.name) {
     throw new Error('Invalid file: file and file.name are required');
   }
@@ -33,7 +33,7 @@ export function generateCacheKey(file) {
  * @param {File} file - The file to look up
  * @returns {Promise<Blob|null>} - The cached thumbnail blob, or null if not found
  */
-export async function getThumbnail(file) {
+export async function getThumbnail(file: File): Promise<Blob | null> {
   try {
     const key = generateCacheKey(file);
     const cached = await get(key, thumbnailStore);
@@ -44,7 +44,7 @@ export async function getThumbnail(file) {
     }
     
     return null;
-  } catch (error) {
+  } catch (error: any) {
     // IndexedDB may fail (private browsing, quota exceeded, etc.)
     // Gracefully return null so the app continues to work
     console.warn('thumbnailCache: getThumbnail failed:', error.message || error);
@@ -59,7 +59,7 @@ export async function getThumbnail(file) {
  * @param {Blob} thumbnailBlob - The thumbnail blob to cache
  * @returns {Promise<boolean>} - True if saved successfully, false otherwise
  */
-export async function saveThumbnail(file, thumbnailBlob) {
+export async function saveThumbnail(file: File, thumbnailBlob: Blob): Promise<boolean> {
   try {
     if (!thumbnailBlob || !(thumbnailBlob instanceof Blob)) {
       return false;
@@ -68,7 +68,7 @@ export async function saveThumbnail(file, thumbnailBlob) {
     const key = generateCacheKey(file);
     await set(key, thumbnailBlob, thumbnailStore);
     return true;
-  } catch (error) {
+  } catch (error: any) {
     // IndexedDB may fail (quota exceeded, private browsing, etc.)
     // Log warning but don't throw - app should still work
     console.warn('thumbnailCache: saveThumbnail failed:', error.message || error);
@@ -83,12 +83,12 @@ export async function saveThumbnail(file, thumbnailBlob) {
  * @param {File} file - The file whose cache entry should be removed
  * @returns {Promise<boolean>} - True if removed successfully, false otherwise
  */
-export async function removeThumbnail(file) {
+export async function removeThumbnail(file: File): Promise<boolean> {
   try {
     const key = generateCacheKey(file);
     await del(key, thumbnailStore);
     return true;
-  } catch (error) {
+  } catch (error: any) {
     console.warn('thumbnailCache: removeThumbnail failed:', error.message || error);
     return false;
   }
@@ -101,7 +101,7 @@ export async function removeThumbnail(file) {
  * @param {File} file - The file to check
  * @returns {Promise<boolean>} - True if cached, false otherwise
  */
-export async function hasThumbnail(file) {
+export async function hasThumbnail(file: File): Promise<boolean> {
   try {
     const key = generateCacheKey(file);
     const cached = await get(key, thumbnailStore);

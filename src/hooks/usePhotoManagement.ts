@@ -9,6 +9,8 @@ import {
 } from '../api';
 import useStore from '../store';
 import { useAuth } from '../contexts/AuthContext';
+import type { Photo } from '../types/photo';
+import type { ViewState } from '../store';
 
 function usePhotoManagement() {
   const { user, authReady } = useAuth();
@@ -40,17 +42,18 @@ function usePhotoManagement() {
   const metadataPhoto = useStore((state) => state.metadataPhoto);
   const setMetadataPhoto = useStore((state) => state.setMetadataPhoto);
 
-  const [loading, setLoading] = useState(true);
-  const [loadingMore, setLoadingMore] = useState(false);
-  const [editedCaption, setEditedCaption] = useState('');
-  const [editedDescription, setEditedDescription] = useState('');
-  const [editedKeywords, setEditedKeywords] = useState('');
+  const [loading, setLoading] = useState<boolean>(true);
+  const [loadingMore, setLoadingMore] = useState<boolean>(false);
+  const [editedCaption, setEditedCaption] = useState<string>('');
+  const [editedDescription, setEditedDescription] = useState<string>('');
+  const [editedKeywords, setEditedKeywords] = useState<string>('');
+  
   // Track the previous view/page and activePhotoId so we can restore
   // the actual previous screen when closing the full-page editor.
-  const [previousView, setPreviousView] = useState(null);
-  const [previousActivePhotoId, setPreviousActivePhotoId] = useState(null);
+  const [previousView, setPreviousView] = useState<ViewState | null>(null);
+  const [previousActivePhotoId, setPreviousActivePhotoId] = useState<string | number | null>(null);
 
-  const lastActiveElementRef = useRef(null);
+  const lastActiveElementRef = useRef<HTMLElement | null>(null);
 
   const apiOrigin = useMemo(() => {
     try {
@@ -61,7 +64,7 @@ function usePhotoManagement() {
   }, []);
 
   const loadPhotos = useCallback(
-    (endpoint) => {
+    (endpoint?: string) => {
       const controller = new AbortController();
 
       const task = (async () => {
@@ -72,10 +75,10 @@ function usePhotoManagement() {
           
           // Use resetPhotos for initial load to set pagination state
           const photosData = (response && response.photos) || [];
-          const nextCursor = response && response.nextCursor;
+          const nextCursor = (response && response.nextCursor) || null;
           const hasMore = Boolean(nextCursor);
           resetPhotos(photosData, nextCursor, hasMore);
-        } catch (error) {
+        } catch (error: any) {
           if (!controller.signal.aborted) {
             setBanner({ message: `Error loading photos from backend: ${error?.message || 'unknown'}`, severity: 'error' });
           }
@@ -112,10 +115,10 @@ function usePhotoManagement() {
         if (controller.signal.aborted) return;
         
         const photosData = (response && response.photos) || [];
-        const nextCursor = response && response.nextCursor;
+        const nextCursor = (response && response.nextCursor) || null;
         const hasMore = Boolean(nextCursor);
         appendPhotos(photosData, nextCursor, hasMore);
-      } catch (error) {
+      } catch (error: any) {
         if (!controller.signal.aborted) {
           setBanner({ 
             message: `Error loading more photos: ${error?.message || 'unknown'}`, 
@@ -167,7 +170,7 @@ function usePhotoManagement() {
   }, [showMetadataModal, activePhoto, setMetadataPhoto]);
 
   useEffect(() => {
-    const onRunAi = (event) => {
+    const onRunAi = (event: any) => {
       try {
         const id = event?.detail?.photoId;
         if (id) startAiPolling(id);
@@ -175,7 +178,7 @@ function usePhotoManagement() {
         /* noop */
       }
     };
-    const onStorage = (event) => {
+    const onStorage = (event: StorageEvent) => {
       try {
         if (!event || event.key !== 'photo:run-ai') return;
         if (!event.newValue) return;
@@ -193,7 +196,7 @@ function usePhotoManagement() {
     return () => {
       try {
         if (typeof window !== 'undefined' && window.removeEventListener) {
-          window.removeEventListener('photo:run-ai', onRunAi);
+          window.removeEventListener('photo:run-ai', onRunAi as any);
           window.removeEventListener('storage', onStorage);
         }
       } catch {
@@ -203,7 +206,7 @@ function usePhotoManagement() {
   }, [startAiPolling]);
 
   useEffect(() => {
-    const onMessage = (event) => {
+    const onMessage = (event: MessageEvent) => {
       try {
         if (apiOrigin && event.origin && event.origin !== apiOrigin) return;
         const payload = event.data || {};
@@ -229,13 +232,13 @@ function usePhotoManagement() {
   }, [apiOrigin, updatePhotoData]);
 
   const handleRecheckSinglePhoto = useCallback(
-    async (photoId, model = null) => {
+    async (photoId: string | number, model: string | null = null) => {
       try {
         const response = await recheckPhotoAI(photoId, model);
         setBanner({ message: 'AI recheck initiated. Polling for results...', severity: 'info' });
         startAiPolling(photoId);
         return response;
-      } catch (error) {
+      } catch (error: any) {
         setBanner({ message: `AI recheck failed: ${error?.message || 'unknown'}`, severity: 'error' });
         throw error;
       }
@@ -244,14 +247,14 @@ function usePhotoManagement() {
   );
 
   const handleMoveToFinished = useCallback(
-    async (id) => {
+    async (id: string | number) => {
       try {
         await updatePhotoState(id, 'finished');
         setBanner({ message: 'Photo marked as finished', severity: 'success' });
         setEditingMode(null);
         setActivePhotoId(null);
         removePhotoById(id);
-      } catch (error) {
+      } catch (error: any) {
         setBanner({ message: `Error marking photo as finished: ${error?.message || error}`, severity: 'error' });
       }
     },
@@ -259,13 +262,13 @@ function usePhotoManagement() {
   );
 
   const handleMoveToWorking = useCallback(
-    async (id) => {
+    async (id: string | number) => {
       try {
         await updatePhotoState(id, 'working');
         const { promise } = loadPhotos();
         await promise;
         setBanner({ message: 'Photo moved back to working', severity: 'info' });
-      } catch (error) {
+      } catch (error: any) {
         setBanner({ message: `Error moving photo back to working: ${error?.message || error}`, severity: 'error' });
       }
     },
@@ -285,13 +288,13 @@ function usePhotoManagement() {
       });
       setEditingMode(null);
       setBanner({ message: 'Saved in app', severity: 'success' });
-    } catch (error) {
+    } catch (error: any) {
       setBanner({ message: `Save failed: ${error?.message || error}`, severity: 'error' });
     }
   }, [activePhoto, editedCaption, editedDescription, editedKeywords, updatePhotoData, setBanner, setEditingMode]);
 
   const handleDeletePhoto = useCallback(
-    async (id) => {
+    async (id: string | number) => {
       if (!confirm('Are you sure you want to delete this photo? This action cannot be undone.')) return;
       try {
         await deletePhoto(id);
@@ -301,7 +304,7 @@ function usePhotoManagement() {
           setActivePhotoId(null);
           setEditingMode(null);
         }
-      } catch (error) {
+      } catch (error: any) {
         if (error && (error.status === 401 || error.status === 403)) {
           window.location.reload();
           return;
@@ -312,10 +315,10 @@ function usePhotoManagement() {
   [activePhotoId, removePhotoById, setBanner, setActivePhotoId, setEditingMode],
   );
 
-  const handleEditPhoto = useCallback((photo, openFullPage = false) => {
+  const handleEditPhoto = useCallback((photo: Photo | null, openFullPage = false) => {
     if (!photo) return;
     try {
-      lastActiveElementRef.current = document.activeElement;
+      lastActiveElementRef.current = document.activeElement as HTMLElement;
     } catch {
       /* ignore focus capture failures */
     }
@@ -333,7 +336,7 @@ function usePhotoManagement() {
     }
   }, [view, activePhotoId, setActivePhotoId, setEditingMode]);
 
-  const handleSelectPhoto = useCallback((photo) => {
+  const handleSelectPhoto = useCallback((photo: Photo | null) => {
     setActivePhotoId(photo ? photo.id : null);
     setEditingMode(null);
   }, [setActivePhotoId, setEditingMode]);
@@ -372,7 +375,7 @@ function usePhotoManagement() {
   }, [previousView, previousActivePhotoId, setView, setActivePhotoId, setEditingMode]);
 
   const handleMoveToInprogress = useCallback(
-    async (id) => {
+    async (id: string | number) => {
       const result = await moveToInprogress(id);
       if (!result?.success) return result;
       setActivePhotoId(null);
