@@ -1,7 +1,7 @@
 export function toUrl(path: string | null | undefined = '', base: string | undefined = ''): string {
+  if (!path) return base || '';
+
   try {
-    if (!path) return base || '';
-    
     let url: URL;
     if (/^https?:\/\//i.test(path)) {
       url = new URL(path);
@@ -17,6 +17,6 @@ export function toUrl(path: string | null | undefined = '', base: string | undef
     return url.toString();
   } catch {
     // Fallback to original path if URL parsing fails to avoid breaking rendering
-    return path || '';
+    return path;
   }
 }
