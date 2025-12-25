@@ -28,6 +28,9 @@ let LAST_ALLOWLIST_UPDATED_AT = new Date().toISOString();
 const { authenticateToken } = require('../middleware/auth');
 const { authenticateImageRequest } = require('../middleware/imageAuth');
 const { checkRedisAvailable } = require('../queue');
+const { validateRequest } = require('../validation/validateRequest');
+const { photosListQuerySchema, photoIdParamsSchema, photoMetadataPatchBodySchema } = require('../validation/schemas/photos');
+const { mapPhotoRowToListDto, mapPhotoRowToDetailDto } = require('../serializers/photos');
 
 module.exports = function createPhotosRouter({ db, supabase }) {
   const router = express.Router();
@@ -106,63 +109,15 @@ module.exports = function createPhotosRouter({ db, supabase }) {
   // --- API: List all photos and metadata (include hash) ---
   // Router-root: defined here as '/' so mounting at '/photos' results in
   // final path '/photos'.
-  router.get('/', authenticateToken, async (req, res) => {
+  router.get('/', authenticateToken, validateRequest({ query: photosListQuerySchema }), async (req, res) => {
     const reqId = Math.random().toString(36).slice(2, 10);
     try {
-      const state = req.query.state;
-      
-      // PAGINATION: Parse and validate limit parameter
+      const state = req.validated && req.validated.query ? req.validated.query.state : undefined;
       const DEFAULT_LIMIT = 50;
-      const MAX_LIMIT = 200;
-      const MIN_LIMIT = 1;
-      let limit = DEFAULT_LIMIT;
-      if (req.query.limit) {
-        const parsedLimit = Number(req.query.limit);
-        if (!Number.isInteger(parsedLimit) || parsedLimit < MIN_LIMIT || parsedLimit > MAX_LIMIT) {
-          logger.warn('[photos] Invalid limit parameter', { reqId, limit: req.query.limit });
-          return res.status(400).json({ 
-            success: false, 
-            error: `Invalid limit parameter. Must be integer between ${MIN_LIMIT} and ${MAX_LIMIT}`, 
-            reqId 
-          });
-        }
-        limit = parsedLimit;
-      }
-      
-      // PAGINATION: Parse and validate cursor parameter
-      let cursor = null;
-      if (req.query.cursor) {
-        try {
-          const decoded = Buffer.from(String(req.query.cursor), 'base64url').toString('utf8');
-          cursor = JSON.parse(decoded);
-          
-          // SECURITY: Validate cursor structure to prevent injection
-          if (!cursor || typeof cursor !== 'object' || !cursor.created_at || !cursor.id) {
-            throw new Error('Invalid cursor structure');
-          }
-          
-          // Validate created_at is ISO8601 format
-          if (typeof cursor.created_at !== 'string' || isNaN(Date.parse(cursor.created_at))) {
-            throw new Error('Invalid cursor created_at');
-          }
-          
-          // Validate id is a positive integer
-          if (!Number.isInteger(cursor.id) || cursor.id <= 0) {
-            throw new Error('Invalid cursor id');
-          }
-        } catch (cursorErr) {
-          logger.warn('[photos] Invalid cursor parameter', { 
-            reqId, 
-            cursor: req.query.cursor,
-            error: cursorErr && cursorErr.message 
-          });
-          return res.status(400).json({ 
-            success: false, 
-            error: 'Invalid cursor parameter', 
-            reqId 
-          });
-        }
-      }
+      const limit = (req.validated && req.validated.query && Number.isInteger(req.validated.query.limit))
+        ? req.validated.query.limit
+        : DEFAULT_LIMIT;
+      const cursor = req.validated && req.validated.query ? req.validated.query.cursor : null;
       
       // Protect against long-running DB queries causing the request to hang
       const DB_QUERY_TIMEOUT_MS = Number(process.env.DB_QUERY_TIMEOUT_MS || 10000);
@@ -212,71 +167,7 @@ module.exports = function createPhotosRouter({ db, supabase }) {
       
       // Generate public URLs for each photo using Supabase Storage
       const mapStart = Date.now();
-      const photosWithUrls = await Promise.all(rows.map(async (row) => {
-        // text_style excluded from list view for payload optimization
-        // Parse only if present (for backwards compatibility)
-        let textStyle = null;
-        if (row.text_style) {
-          try {
-            textStyle = JSON.parse(row.text_style);
-          } catch (parseErr) {
-            logger.warn('Failed to parse text_style for photo', row.id, parseErr.message);
-          }
-        }
-        // Use relative paths for images.
-        // Thumbnails are returned as signed URLs so they can be loaded via <img>
-        // without Authorization headers (avoids cross-origin preflight).
-        let thumbnailUrl = null;
-        let photoUrl = null;
-        if (row.hash) {
-          const { sig, exp } = signThumbnailUrl(row.hash, DEFAULT_TTL_SECONDS);
-          thumbnailUrl = `/display/thumbnails/${row.hash}.jpg?sig=${encodeURIComponent(sig)}&exp=${exp}`;
-        }
-        // Use ID-based URL for photos to prevent ERR_CACHE_READ_FAILURE
-        // This eliminates the URL extension mismatch when HEIC is converted to JPEG
-        // Old: /display/working/photo.heic → Content-Type: image/jpeg (MISMATCH!)
-        // New: /display/image/123 → Content-Type: image/jpeg (NO MISMATCH!)
-        photoUrl = `/display/image/${row.id}`;
-        // ai_model_history excluded from list view for payload optimization
-        // Parse only if present (for backwards compatibility)
-        let parsedHistory = null;
-        if (row.ai_model_history) {
-          try { parsedHistory = JSON.parse(row.ai_model_history); } catch { parsedHistory = null; }
-        }
-        // poi_analysis excluded from list view for payload optimization
-        // Parse only if present (for backwards compatibility)
-        let parsedPoiAnalysis = null;
-        if (row.poi_analysis) {
-          try { 
-            parsedPoiAnalysis = typeof row.poi_analysis === 'string' 
-              ? JSON.parse(row.poi_analysis) 
-              : row.poi_analysis; 
-          } catch { parsedPoiAnalysis = null; }
-        }
-        
-        // OPTIMIZED: editedFilename, storagePath, aiModelHistory, poi_analysis
-        // are excluded from list view but gracefully default to null
-        return {
-          id: row.id,
-          filename: row.filename,
-          state: row.state,
-          metadata: typeof row.metadata === 'string' ? JSON.parse(row.metadata || '{}') : (row.metadata || {}),
-          hash: row.hash,
-          file_size: row.file_size,
-          caption: row.caption,
-          description: row.description,
-          keywords: row.keywords,
-          textStyle,
-          editedFilename: row.edited_filename || null,
-          storagePath: row.storage_path || null,
-          url: photoUrl,
-          thumbnail: thumbnailUrl,
-          aiModelHistory: parsedHistory,
-          poi_analysis: parsedPoiAnalysis,
-          // Expose collectible insights at top level for easier access
-          classification: row.classification,
-        };
-      }));
+      const photosWithUrls = rows.map((row) => mapPhotoRowToListDto(row, { signThumbnailUrl, ttlSeconds: DEFAULT_TTL_SECONDS }));
 
       const mapMs = Date.now() - mapStart;
       logger.info('[photos] mapPhotos_ms', {
@@ -348,51 +239,13 @@ module.exports = function createPhotosRouter({ db, supabase }) {
 
   // --- Metadata update endpoint ---
   // --- Single photo fetch endpoint ---
-  router.get('/:id', authenticateToken, async (req, res) => {
+  router.get('/:id', authenticateToken, validateRequest({ params: photoIdParamsSchema }), async (req, res) => {
     try {
-      const { id } = req.params;
+      const { id } = req.validated.params;
       const row = await photosDb.getPhotoById(id, req.user.id);
       if (!row) return res.status(404).json({ success: false, error: 'Photo not found' });
 
-      let textStyle = null;
-      if (row.text_style) {
-        try { textStyle = JSON.parse(row.text_style); } catch { textStyle = null; }
-      }
-
-      // Provide relative image URLs; /display/* is protected by the cookie auth middleware.
-      // Use ID-based URL for photos to prevent ERR_CACHE_READ_FAILURE
-      let url = null;
-      let thumbnail = null;
-      if (row.hash) thumbnail = `/display/thumbnails/${row.hash}.jpg`;
-      url = `/display/image/${row.id}`;
-
-      // Parse poi_analysis for collectibles insights
-      let parsedPoiAnalysis = null;
-      try { 
-        parsedPoiAnalysis = row.poi_analysis ? 
-          (typeof row.poi_analysis === 'string' ? JSON.parse(row.poi_analysis) : row.poi_analysis) 
-          : null; 
-      } catch { parsedPoiAnalysis = null; }
-
-      const photo = {
-        id: row.id,
-        filename: row.filename,
-        state: row.state,
-        metadata: JSON.parse(row.metadata || '{}'),
-        hash: row.hash,
-        file_size: row.file_size,
-        caption: row.caption,
-        description: row.description,
-        keywords: row.keywords,
-        textStyle,
-        editedFilename: row.edited_filename,
-        storagePath: row.storage_path,
-        url,
-        thumbnail,
-        aiModelHistory: (() => { try { return row.ai_model_history ? JSON.parse(row.ai_model_history) : null; } catch { return null; } })(),
-        poi_analysis: parsedPoiAnalysis,
-        classification: row.classification,
-      };
+      const photo = mapPhotoRowToDetailDto(row);
 
       res.set('Cache-Control', 'no-store');
       return res.json({ success: true, photo });
@@ -500,43 +353,40 @@ module.exports = function createPhotosRouter({ db, supabase }) {
     }
   });
 
-  router.patch('/:id/metadata', authenticateToken, async (req, res) => {
-    const { id } = req.params;
-    try {
-      const photo = await photosDb.getPhotoById(id, req.user.id);
-      if (!photo) {
-        return res.status(404).json({ success: false, error: 'Photo not found' });
-      }
-
-      const { caption, description, keywords, textStyle } = req.body || {};
-      if (
-        caption === undefined &&
-        description === undefined &&
-        keywords === undefined &&
-        textStyle === undefined
-      ) {
-        return res.status(400).json({ success: false, error: 'No metadata fields provided' });
-      }
-
-      const updated = await photosDb.updatePhotoMetadata(id, req.user.id, { caption, description, keywords, textStyle });
-      let parsedTextStyle = null;
-      if (textStyle !== undefined && textStyle !== null) {
-        try { parsedTextStyle = textStyle; } catch { logger.warn('Failed to parse text_style after update for photo', id); }
-      }
-
-      res.json({
-        success: !!updated,
-        metadata: {
-          caption: caption !== undefined ? caption : photo.caption,
-          description: description !== undefined ? description : photo.description,
-          keywords: keywords !== undefined ? keywords : photo.keywords,
-          textStyle: parsedTextStyle,
+  router.patch(
+    '/:id/metadata',
+    authenticateToken,
+    express.json(),
+    validateRequest({ params: photoIdParamsSchema, body: photoMetadataPatchBodySchema }),
+    async (req, res) => {
+      const { id } = req.validated.params;
+      try {
+        const photo = await photosDb.getPhotoById(id, req.user.id);
+        if (!photo) {
+          return res.status(404).json({ success: false, error: 'Photo not found' });
         }
-      });
-    } catch (error) {
-      logger.error('Failed to update metadata for photo', id, error);
-      res.status(500).json({ success: false, error: error.message || 'Failed to update metadata' });
-    }
+
+        const { caption, description, keywords, textStyle } = req.validated.body;
+
+        const updated = await photosDb.updatePhotoMetadata(id, req.user.id, { caption, description, keywords, textStyle });
+        let parsedTextStyle = null;
+        if (textStyle !== undefined && textStyle !== null) {
+          try { parsedTextStyle = textStyle; } catch { logger.warn('Failed to parse text_style after update for photo', id); }
+        }
+
+        res.json({
+          success: !!updated,
+          metadata: {
+            caption: caption !== undefined ? caption : photo.caption,
+            description: description !== undefined ? description : photo.description,
+            keywords: keywords !== undefined ? keywords : photo.keywords,
+            textStyle: parsedTextStyle,
+          }
+        });
+      } catch (error) {
+        logger.error('Failed to update metadata for photo', id, error);
+        res.status(500).json({ success: false, error: error.message || 'Failed to update metadata' });
+      }
   });
 
   // --- Revert edited image endpoint ---

@@ -230,8 +230,11 @@ describe('GET /photos pagination', () => {
         .set('Authorization', `Bearer ${testToken}`)
         .expect(400);
 
-      expect(response.body.success).toBe(false);
-      expect(response.body.error).toContain('Invalid limit parameter');
+      expect(response.body).toHaveProperty('error');
+      expect(response.body.error).toHaveProperty('code', 'BAD_REQUEST');
+      expect(response.body.error).toHaveProperty('message');
+      expect(response.body.error.message).toContain('Invalid limit parameter');
+      expect(typeof response.body.error.requestId).toBe('string');
     });
 
     test('should reject invalid limit (too large)', async () => {
@@ -240,8 +243,11 @@ describe('GET /photos pagination', () => {
         .set('Authorization', `Bearer ${testToken}`)
         .expect(400);
 
-      expect(response.body.success).toBe(false);
-      expect(response.body.error).toContain('Invalid limit parameter');
+      expect(response.body).toHaveProperty('error');
+      expect(response.body.error).toHaveProperty('code', 'BAD_REQUEST');
+      expect(response.body.error).toHaveProperty('message');
+      expect(response.body.error.message).toContain('Invalid limit parameter');
+      expect(typeof response.body.error.requestId).toBe('string');
     });
 
     test('should reject invalid limit (non-integer)', async () => {
@@ -250,8 +256,11 @@ describe('GET /photos pagination', () => {
         .set('Authorization', `Bearer ${testToken}`)
         .expect(400);
 
-      expect(response.body.success).toBe(false);
-      expect(response.body.error).toContain('Invalid limit parameter');
+      expect(response.body).toHaveProperty('error');
+      expect(response.body.error).toHaveProperty('code', 'BAD_REQUEST');
+      expect(response.body.error).toHaveProperty('message');
+      expect(response.body.error.message).toContain('Invalid limit parameter');
+      expect(typeof response.body.error.requestId).toBe('string');
     });
 
     test('should reject malformed cursor', async () => {
@@ -260,8 +269,10 @@ describe('GET /photos pagination', () => {
         .set('Authorization', `Bearer ${testToken}`)
         .expect(400);
 
-      expect(response.body.success).toBe(false);
-      expect(response.body.error).toBe('Invalid cursor parameter');
+      expect(response.body).toHaveProperty('error');
+      expect(response.body.error).toHaveProperty('code', 'BAD_REQUEST');
+      expect(response.body.error).toHaveProperty('message', 'Invalid cursor parameter');
+      expect(typeof response.body.error.requestId).toBe('string');
     });
 
     test('should reject cursor with missing fields', async () => {
@@ -273,8 +284,10 @@ describe('GET /photos pagination', () => {
         .set('Authorization', `Bearer ${testToken}`)
         .expect(400);
 
-      expect(response.body.success).toBe(false);
-      expect(response.body.error).toBe('Invalid cursor parameter');
+      expect(response.body).toHaveProperty('error');
+      expect(response.body.error).toHaveProperty('code', 'BAD_REQUEST');
+      expect(response.body.error).toHaveProperty('message', 'Invalid cursor parameter');
+      expect(typeof response.body.error.requestId).toBe('string');
     });
 
     test('should enforce user scoping with cursor', async () => {
