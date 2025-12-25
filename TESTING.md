@@ -58,6 +58,7 @@ cd server && npm test
 ### Image Operations (Authenticated Users Only)
 - [ ] **File/Folder Selection**: Select photos or folder for upload works (File picker on mobile/Safari/Firefox)
 - [ ] **Image Display**: All images load with authenticated URLs
+- [ ] **Pagination**: Scrolling down loads more photos (infinite scroll) without refreshing
 - [ ] **HEIC Conversion**: HEIC files display properly (converted to JPEG)
 - [ ] **Edit Mode**: Click edit on any image opens editor
 - [ ] **Image Authentication**: All image requests include auth tokens
