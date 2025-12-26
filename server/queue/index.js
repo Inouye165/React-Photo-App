@@ -76,10 +76,17 @@ async function checkRedisAvailable() {
 }
 
 function shouldPublishTerminalFailure(job) {
-  const attempts = Number(job?.opts?.attempts) || 1;
-  const attemptsMade = Number(job?.attemptsMade) || 0;
-  // BullMQ emits 'failed' for each attempt. Only publish terminal failures.
-  return attemptsMade >= attempts;
+  const rawAttempts = Number(job?.opts?.attempts);
+  const attempts = Number.isFinite(rawAttempts) && rawAttempts > 0 ? rawAttempts : 1;
+
+  const rawAttemptsMade = Number(job?.attemptsMade);
+  const attemptsMade = Number.isFinite(rawAttemptsMade) && rawAttemptsMade >= 0 ? rawAttemptsMade : 0;
+
+  // BullMQ emits 'failed' for each failed attempt. When the 'failed' event fires,
+  // attemptsMade is treated as the number of attempts completed *before* this failure.
+  // Therefore this failure is attempt #(attemptsMade + 1). Terminal means it was the
+  // last allowed attempt.
+  return (attemptsMade + 1) >= attempts;
 }
 
 async function publishPhotoStatus({ redis, db, status, photoId, jobId }) {
@@ -138,6 +145,11 @@ function attachPhotoStatusPublisher({ worker, redis, db }) {
   worker.on('failed', async (job) => {
     const photoId = job?.data?.photoId;
     if (!shouldPublishTerminalFailure(job)) return;
+
+    // Best-effort de-dupe: ensure we only publish terminal failed once per job object.
+    if (job && job.__photoStatusTerminalFailedPublished) return;
+    if (job) job.__photoStatusTerminalFailedPublished = true;
+
     await publishPhotoStatus({ redis, db, status: 'failed', photoId, jobId: job?.id });
   });
 }

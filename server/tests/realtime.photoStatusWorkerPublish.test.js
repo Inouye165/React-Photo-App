@@ -1,6 +1,26 @@
 const { EventEmitter } = require('events');
 
 describe('queue/index photo status publishing', () => {
+  test('shouldPublishTerminalFailure matches attempts matrix', () => {
+    const { __private__ } = require('../queue/index');
+    const { shouldPublishTerminalFailure } = __private__;
+
+    const cases = [
+      { attempts: 1, attemptsMade: 0, expected: true },
+      { attempts: 2, attemptsMade: 0, expected: false },
+      { attempts: 2, attemptsMade: 1, expected: true },
+      { attempts: 3, attemptsMade: 0, expected: false },
+      { attempts: 3, attemptsMade: 1, expected: false },
+      { attempts: 3, attemptsMade: 2, expected: true },
+    ];
+
+    for (const c of cases) {
+      expect(
+        shouldPublishTerminalFailure({ opts: { attempts: c.attempts }, attemptsMade: c.attemptsMade })
+      ).toBe(c.expected);
+    }
+  });
+
   test('on completed publishes status=finished', async () => {
     const { __private__ } = require('../queue/index');
     const { attachPhotoStatusPublisher, PHOTO_STATUS_CHANNEL } = __private__;
@@ -35,7 +55,7 @@ describe('queue/index photo status publishing', () => {
     }));
   });
 
-  test('on failed publishes status=failed only for terminal failure', async () => {
+  test('on failed publishes status=failed only for terminal failure (exactly once)', async () => {
     const { __private__ } = require('../queue/index');
     const { attachPhotoStatusPublisher } = __private__;
 
@@ -52,13 +72,14 @@ describe('queue/index photo status publishing', () => {
 
     attachPhotoStatusPublisher({ worker, redis, db });
 
-    // non-terminal failure (attemptsMade < attempts)
+    // non-terminal failure
     worker.emit('failed', { id: 'job2', data: { photoId: 'photo2' }, opts: { attempts: 3 }, attemptsMade: 1 });
     await new Promise((r) => setImmediate(r));
     expect(publish).toHaveBeenCalledTimes(0);
 
-    // terminal failure (attemptsMade >= attempts)
-    worker.emit('failed', { id: 'job2', data: { photoId: 'photo2' }, opts: { attempts: 3 }, attemptsMade: 3 });
+    // terminal failure (attemptsMade + 1 >= attempts)
+    const terminalJob = { id: 'job2', data: { photoId: 'photo2' }, opts: { attempts: 3 }, attemptsMade: 2 };
+    worker.emit('failed', terminalJob);
     await new Promise((r) => setImmediate(r));
     expect(publish).toHaveBeenCalledTimes(1);
     expect(JSON.parse(publish.mock.calls[0][1])).toEqual(expect.objectContaining({
@@ -66,5 +87,10 @@ describe('queue/index photo status publishing', () => {
       photoId: 'photo2',
       status: 'failed',
     }));
+
+    // emit again with same job object: should not publish twice
+    worker.emit('failed', terminalJob);
+    await new Promise((r) => setImmediate(r));
+    expect(publish).toHaveBeenCalledTimes(1);
   });
 });

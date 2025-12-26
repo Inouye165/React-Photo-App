@@ -300,10 +300,29 @@ app.set('trust proxy', 1);
   // Phase 2: multi-instance readiness via Redis Pub/Sub fanout (best-effort)
   try {
     const { createPhotoStatusSubscriber } = require('./realtime/photoStatusSubscriber');
-    const subscriber = createPhotoStatusSubscriber({ sseManager });
-    subscriber.start().catch((err) => {
+    const photoStatusSubscriber = createPhotoStatusSubscriber({ sseManager });
+
+    photoStatusSubscriber.start().catch((err) => {
       logger.error('[realtime] Failed to start photo status subscriber', err);
     });
+
+    const stopPhotoStatusSubscriber = async () => {
+      try {
+        await photoStatusSubscriber.stop();
+      } catch (err) {
+        logger.error('[realtime] Failed to stop photo status subscriber', err);
+      }
+    };
+
+    // Best-effort cleanup on graceful shutdown signals.
+    if (process.env.NODE_ENV !== 'test') {
+      process.once('SIGTERM', () => {
+        stopPhotoStatusSubscriber().finally(() => process.exit(0));
+      });
+      process.once('SIGINT', () => {
+        stopPhotoStatusSubscriber().finally(() => process.exit(0));
+      });
+    }
   } catch (err) {
     logger.error('[realtime] Failed to initialize photo status subscriber', err);
   }

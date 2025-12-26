@@ -55,59 +55,73 @@ function createPhotoStatusSubscriber(options = {}) {
   const log = options.logger || logger;
 
   let subscriber = null;
-  let started = false;
+  let startPromise = null;
 
   async function start() {
-    if (started) return { started: true, channel: CHANNEL };
-    started = true;
+    if (subscriber) return { started: true, channel: CHANNEL };
+    if (startPromise) return startPromise;
 
     if (!process.env.REDIS_URL) {
       log.info('[realtime] Redis not configured; photo status subscriber disabled');
       return { started: false, reason: 'no_redis_url' };
     }
 
-    subscriber = createRedisConnection();
+    startPromise = (async () => {
+      subscriber = createRedisConnection();
 
-    subscriber.on('error', (err) => {
-      // Log but never crash the API server.
-      log.error('[realtime] Redis subscriber error', err);
+      subscriber.on('error', (err) => {
+        // Log but never crash the API server.
+        log.error('[realtime] Redis subscriber error', err);
+      });
+
+      subscriber.on('message', (channel, message) => {
+        if (channel !== CHANNEL) return;
+
+        const payload = parseAndValidateMessage(message);
+        if (!payload) {
+          // Malformed or incomplete payload; ignore.
+          return;
+        }
+
+        // SECURITY: per-user publish only; never broadcast.
+        try {
+          sseManager.publishToUser(payload.userId, EVENT_NAME, payload);
+          log.info('[realtime] Forwarded photo status event', {
+            userId: payload.userId,
+            photoId: payload.photoId,
+            status: payload.status,
+            eventId: payload.eventId,
+          });
+        } catch (err) {
+          log.error('[realtime] Failed to forward photo status event', {
+            userId: payload.userId,
+            photoId: payload.photoId,
+            status: payload.status,
+            eventId: payload.eventId,
+            error: err?.message || String(err),
+          });
+        }
+      });
+
+      await subscriber.subscribe(CHANNEL);
+      log.info('[realtime] Photo status subscriber started', { channel: CHANNEL });
+      return { started: true, channel: CHANNEL };
+    })().finally(() => {
+      startPromise = null;
     });
 
-    subscriber.on('message', (channel, message) => {
-      if (channel !== CHANNEL) return;
-
-      const payload = parseAndValidateMessage(message);
-      if (!payload) {
-        // Malformed or incomplete payload; ignore.
-        return;
-      }
-
-      // SECURITY: per-user publish only; never broadcast.
-      try {
-        sseManager.publishToUser(payload.userId, EVENT_NAME, payload);
-        log.info('[realtime] Forwarded photo status event', {
-          userId: payload.userId,
-          photoId: payload.photoId,
-          status: payload.status,
-          eventId: payload.eventId,
-        });
-      } catch (err) {
-        log.error('[realtime] Failed to forward photo status event', {
-          userId: payload.userId,
-          photoId: payload.photoId,
-          status: payload.status,
-          eventId: payload.eventId,
-          error: err?.message || String(err),
-        });
-      }
-    });
-
-    await subscriber.subscribe(CHANNEL);
-    log.info('[realtime] Photo status subscriber started', { channel: CHANNEL });
-    return { started: true, channel: CHANNEL };
+    return startPromise;
   }
 
   async function stop() {
+    // If a start is in flight, wait for it so we can unsubscribe/quit safely.
+    if (startPromise) {
+      try {
+        await startPromise;
+      } catch {
+        // ignore
+      }
+    }
     if (!subscriber) return;
     try {
       await subscriber.unsubscribe(CHANNEL);
@@ -125,7 +139,6 @@ function createPhotoStatusSubscriber(options = {}) {
       // ignore
     }
     subscriber = null;
-    started = false;
   }
 
   return { start, stop };
