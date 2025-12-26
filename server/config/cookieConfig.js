@@ -43,6 +43,17 @@ function getSameSiteValue() {
     // Normalize to lowercase for consistent comparison
     const normalized = envValue.toLowerCase().trim();
     
+    // Enforce production-only SameSite=None to prevent confusing non-prod behavior
+    // and align with the deployment model where cross-origin cookies are only
+    // expected/required in production.
+    if (normalized === 'none' && process.env.NODE_ENV !== 'production') {
+      console.warn(
+        `[cookieConfig] COOKIE_SAME_SITE=none ignored because NODE_ENV is not production. ` +
+          `Defaulting to 'lax'.`
+      );
+      return 'lax';
+    }
+
     // Validate the value
     if (['none', 'lax', 'strict'].includes(normalized)) {
       return normalized;
@@ -68,14 +79,9 @@ function getSameSiteValue() {
  * @param {string} sameSiteValue - The SameSite value being used
  * @returns {boolean} Whether the Secure flag should be set
  */
-function getSecureFlag(sameSiteValue) {
-  // SameSite=None requires Secure=true (browsers reject otherwise)
-  if (sameSiteValue === 'none') {
-    return true;
-  }
-  
-  // In production, always use Secure (HTTPS expected)
-  // In development, don't require HTTPS
+function getSecureFlag(_sameSiteValue) {
+  // Policy: Secure cookies are only used in production.
+  // (SameSite=None is also production-only; when it is used, Secure must be true.)
   return process.env.NODE_ENV === 'production';
 }
 

@@ -280,6 +280,10 @@ export async function request<T>(options: RequestOptions): Promise<T> {
     limiter = apiLimiter,
   } = options
 
+  // CSRF (csurf) requires cookie round-trips. For unsafe methods we force
+  // credentials to be included so the csrf secret cookie is sent.
+  const effectiveCredentials: RequestCredentials = isUnsafeMethod(method) ? 'include' : credentials
+
   let url = path.startsWith('http') ? path : `${API_BASE_URL}${path}`
 
   if (query) {
@@ -298,7 +302,7 @@ export async function request<T>(options: RequestOptions): Promise<T> {
   const fetchOptions: RequestInit = {
     method,
     headers,
-    credentials,
+    credentials: effectiveCredentials,
     signal,
   }
 
@@ -307,7 +311,7 @@ export async function request<T>(options: RequestOptions): Promise<T> {
   if (isUnsafeMethod(method)) {
     const existingHeaderKey = Object.keys(headers).find((k) => k.toLowerCase() === 'x-csrf-token')
     if (!existingHeaderKey) {
-      const token = await getCsrfToken(credentials)
+      const token = await getCsrfToken(effectiveCredentials)
       if (token) {
         ;(fetchOptions.headers as Record<string, string>)['X-CSRF-Token'] = token
       }
@@ -331,6 +335,13 @@ export async function request<T>(options: RequestOptions): Promise<T> {
 
   let response: Response
   const doFetch = () => {
+    try {
+      // Debug: verify CSRF header is attached on unsafe requests.
+      const hdrs = fetchOptions.headers as unknown as Record<string, string> | undefined
+      console.log('Sending CSRF Header:', hdrs ? hdrs['X-CSRF-Token'] : undefined)
+    } catch {
+      /* ignore */
+    }
     if (timeoutMs) {
       const controller = new AbortController()
       const id = setTimeout(() => controller.abort(), timeoutMs)
