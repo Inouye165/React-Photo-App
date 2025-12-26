@@ -1,5 +1,6 @@
 import { test, expect } from '@playwright/test';
 import { acceptDisclaimer } from './helpers/disclaimer';
+import { fetchCsrfToken } from './helpers/csrf';
 
 test.describe('Map Component', () => {
   test('should render Google Maps and not the OpenStreetMap fallback', async ({ page, context }) => {
@@ -16,7 +17,10 @@ test.describe('Map Component', () => {
     };
 
     // E2E login: make request to get the auth cookie
-    const loginResponse = await context.request.post('http://127.0.0.1:3001/api/test/e2e-login');
+    const csrfToken = await fetchCsrfToken(context.request);
+    const loginResponse = await context.request.post('http://127.0.0.1:3001/api/test/e2e-login', {
+      headers: { 'X-CSRF-Token': csrfToken },
+    });
     expect(loginResponse.ok()).toBeTruthy();
     
     // Extract cookies and add them for 127.0.0.1

@@ -1,4 +1,5 @@
 import { test, expect } from '@playwright/test'
+import { fetchCsrfToken } from './helpers/csrf'
 import { acceptDisclaimer } from './helpers/disclaimer'
 
 // 1x1 transparent PNG
@@ -162,7 +163,10 @@ test('E2E chat: renders a photo message (recipient view)', async ({ page, contex
   })
 
   // Login: set backend cookie used by /api/test/e2e-verify
-  const loginResponse = await context.request.post('http://127.0.0.1:3001/api/test/e2e-login')
+  const csrfToken = await fetchCsrfToken(context.request)
+  const loginResponse = await context.request.post('http://127.0.0.1:3001/api/test/e2e-login', {
+    headers: { 'X-CSRF-Token': csrfToken },
+  })
   expect(loginResponse.ok()).toBeTruthy()
 
   const cookies = await context.cookies('http://127.0.0.1:3001')

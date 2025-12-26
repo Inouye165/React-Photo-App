@@ -20,6 +20,15 @@ function registerRoutes(app, { db, supabase, sseManager, logger }) {
   const { securityErrorHandler } = require('../middleware/security');
   const { authenticateToken } = require('../middleware/auth');
 
+  // CSRF token fetch endpoint for the SPA.
+  // csurf attaches req.csrfToken() when middleware is mounted.
+  app.get('/csrf', (req, res) => {
+    if (!req || typeof req.csrfToken !== 'function') {
+      return res.status(500).json({ success: false, error: 'CSRF not initialized' });
+    }
+    return res.json({ csrfToken: req.csrfToken() });
+  });
+
   // Authentication routes (no auth required)
   const createAuthRouter = require('../routes/auth');
   app.use('/api/auth', createAuthRouter({ db }));
@@ -86,6 +95,13 @@ function registerRoutes(app, { db, supabase, sseManager, logger }) {
 
   // Error handling middleware
   app.use((error, req, res, _next) => {
+    if (error && error.code === 'EBADCSRFTOKEN') {
+      return res.status(403).json({
+        success: false,
+        error: 'CSRF token mismatch or missing',
+      });
+    }
+
     if (error instanceof multer.MulterError) {
       if (error.code === 'LIMIT_FILE_SIZE') {
         return res.status(400).json({

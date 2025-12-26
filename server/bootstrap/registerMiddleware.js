@@ -4,6 +4,7 @@ function registerMiddleware(app) {
   const express = require('express');
   const cors = require('cors');
   const cookieParser = require('cookie-parser');
+  const csurf = require('csurf');
 
   const { configureSecurity, validateRequest } = require('../middleware/security');
 
@@ -46,6 +47,20 @@ function registerMiddleware(app) {
 
   // Cookie parser for secure httpOnly cookie authentication
   app.use(cookieParser());
+
+  // CSRF protection (cookie mode): mount after cookieParser and before routes.
+  // Applies to unsafe methods only (POST/PUT/PATCH/DELETE); safe methods are ignored.
+  app.use(
+    csurf({
+      cookie: {
+        key: 'csrfSecret',
+        httpOnly: true,
+        sameSite: 'lax',
+        secure: process.env.NODE_ENV === 'production',
+        path: '/',
+      },
+    })
+  );
 
   // Add request validation middleware
   app.use(validateRequest);

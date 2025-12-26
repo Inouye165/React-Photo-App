@@ -194,17 +194,27 @@ describe('api - Bearer Token Authentication Security', () => {
       const testToken = 'test-bearer-token';
       api.setAuthToken(testToken);
       
-      const fetchSpy = vi.fn().mockResolvedValue({
-        ok: true,
-        status: 200,
-        json: async () => ({ success: true })
+      const fetchSpy = vi.fn().mockImplementation(async (url) => {
+        if (String(url).endsWith('/csrf')) {
+          return {
+            ok: true,
+            status: 200,
+            json: async () => ({ csrfToken: 'test-csrf-token' }),
+          };
+        }
+        return {
+          ok: true,
+          status: 200,
+          json: async () => ({ success: true }),
+        };
       });
       global.fetch = fetchSpy;
 
       await api.updatePhotoState(1, 'finished');
 
       expect(fetchSpy).toHaveBeenCalled();
-      const fetchCall = fetchSpy.mock.calls[0];
+      const fetchCall = fetchSpy.mock.calls.find(([url, init]) => !String(url).endsWith('/csrf') && init && init.method === 'PATCH');
+      expect(fetchCall).toBeTruthy();
       expect(fetchCall[1].headers['Authorization']).toBe(`Bearer ${testToken}`);
     });
 
@@ -259,17 +269,27 @@ describe('api - Bearer Token Authentication Security', () => {
       const testToken = 'delete-token';
       api.setAuthToken(testToken);
       
-      const fetchSpy = vi.fn().mockResolvedValue({
-        ok: true,
-        status: 200,
-        json: async () => ({ success: true })
+      const fetchSpy = vi.fn().mockImplementation(async (url) => {
+        if (String(url).endsWith('/csrf')) {
+          return {
+            ok: true,
+            status: 200,
+            json: async () => ({ csrfToken: 'test-csrf-token' }),
+          };
+        }
+        return {
+          ok: true,
+          status: 200,
+          json: async () => ({ success: true }),
+        };
       });
       global.fetch = fetchSpy;
 
       await api.deletePhoto(123);
 
       expect(fetchSpy).toHaveBeenCalled();
-      const fetchCall = fetchSpy.mock.calls[0];
+      const fetchCall = fetchSpy.mock.calls.find(([url, init]) => !String(url).endsWith('/csrf') && init && init.method === 'DELETE');
+      expect(fetchCall).toBeTruthy();
       expect(fetchCall[1].headers['Authorization']).toBe(`Bearer ${testToken}`);
     });
 
@@ -277,10 +297,19 @@ describe('api - Bearer Token Authentication Security', () => {
       const testToken = 'upload-token';
       api.setAuthToken(testToken);
       
-      const fetchSpy = vi.fn().mockResolvedValue({
-        ok: true,
-        status: 200,
-        json: async () => ({ success: true })
+      const fetchSpy = vi.fn().mockImplementation(async (url) => {
+        if (String(url).endsWith('/csrf')) {
+          return {
+            ok: true,
+            status: 200,
+            json: async () => ({ csrfToken: 'test-csrf-token' }),
+          };
+        }
+        return {
+          ok: true,
+          status: 200,
+          json: async () => ({ success: true }),
+        };
       });
       global.fetch = fetchSpy;
 
@@ -288,7 +317,8 @@ describe('api - Bearer Token Authentication Security', () => {
       await api.uploadPhotoToServer(mockFile);
 
       expect(fetchSpy).toHaveBeenCalled();
-      const fetchCall = fetchSpy.mock.calls[0];
+      const fetchCall = fetchSpy.mock.calls.find(([url, init]) => !String(url).endsWith('/csrf') && init && init.method === 'POST');
+      expect(fetchCall).toBeTruthy();
       expect(fetchCall[1].headers['Authorization']).toBe(`Bearer ${testToken}`);
     });
   });
