@@ -69,6 +69,50 @@ function createMetrics() {
     registers: [registry],
   });
 
+  // --- Realtime photo processing events (SSE) ---
+  const realtimeActiveConnections = new promClient.Gauge({
+    name: 'realtime_active_connections',
+    help: 'Active realtime SSE connections',
+    registers: [registry],
+  });
+
+  const realtimeConnectsTotal = new promClient.Counter({
+    name: 'realtime_connects_total',
+    help: 'Total realtime SSE stream connects',
+    registers: [registry],
+  });
+
+  const realtimeDisconnectsTotal = new promClient.Counter({
+    name: 'realtime_disconnects_total',
+    help: 'Total realtime SSE stream disconnects',
+    registers: [registry],
+  });
+
+  const realtimeDisconnectReasonTotal = new promClient.Counter({
+    name: 'realtime_disconnect_reason_total',
+    help: 'Realtime SSE disconnects by reason',
+    labelNames: ['reason'],
+    registers: [registry],
+  });
+
+  const realtimeEventsPublishedTotal = new promClient.Counter({
+    name: 'realtime_events_published_total',
+    help: 'Total realtime photo.processing events published into SSE fanout',
+    registers: [registry],
+  });
+
+  const realtimeRedisPublishFailTotal = new promClient.Counter({
+    name: 'realtime_redis_publish_fail_total',
+    help: 'Total failures publishing realtime events to Redis',
+    registers: [registry],
+  });
+
+  const realtimeRedisSubscribeErrorTotal = new promClient.Counter({
+    name: 'realtime_redis_subscribe_error_total',
+    help: 'Total Redis subscribe/connection errors for realtime subscriber',
+    registers: [registry],
+  });
+
   function toLabelValue(value, fallback) {
     const s = value == null ? '' : String(value);
     const trimmed = s.trim();
@@ -130,6 +174,35 @@ function createMetrics() {
     metricsScrapeErrorsTotal.labels(toLabelValue(component, 'unknown')).inc();
   }
 
+  function setRealtimeActiveConnections(value) {
+    const n = Number(value);
+    realtimeActiveConnections.set(Number.isFinite(n) && n >= 0 ? n : 0);
+  }
+
+  function incRealtimeConnect() {
+    realtimeConnectsTotal.inc();
+  }
+
+  function incRealtimeDisconnect() {
+    realtimeDisconnectsTotal.inc();
+  }
+
+  function incRealtimeDisconnectReason(reason) {
+    realtimeDisconnectReasonTotal.labels(toLabelValue(reason, 'unknown')).inc();
+  }
+
+  function incRealtimeEventsPublished() {
+    realtimeEventsPublishedTotal.inc();
+  }
+
+  function incRealtimeRedisPublishFail() {
+    realtimeRedisPublishFailTotal.inc();
+  }
+
+  function incRealtimeRedisSubscribeError() {
+    realtimeRedisSubscribeErrorTotal.inc();
+  }
+
   return {
     promClient,
     registry,
@@ -142,12 +215,26 @@ function createMetrics() {
     dbQueryDurationMs,
     dbQueriesTotal,
     metricsScrapeErrorsTotal,
+    realtimeActiveConnections,
+    realtimeConnectsTotal,
+    realtimeDisconnectsTotal,
+    realtimeDisconnectReasonTotal,
+    realtimeEventsPublishedTotal,
+    realtimeRedisPublishFailTotal,
+    realtimeRedisSubscribeErrorTotal,
     observeHttpRequest,
     setBullmqQueueJobs,
     observeBullmqJobDuration,
     incBullmqJobFailure,
     observeDbQuery,
     incScrapeError,
+    setRealtimeActiveConnections,
+    incRealtimeConnect,
+    incRealtimeDisconnect,
+    incRealtimeDisconnectReason,
+    incRealtimeEventsPublished,
+    incRealtimeRedisPublishFail,
+    incRealtimeRedisSubscribeError,
   };
 }
 

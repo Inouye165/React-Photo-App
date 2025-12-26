@@ -66,6 +66,39 @@ describe('realtime/sseManager', () => {
     expect(payload).toContain('data: ');
   });
 
+  test('publishToUser uses upstream payload.eventId when provided', () => {
+    const res = { write: jest.fn() };
+    const mgr = createSseManager({ heartbeatMs: 0, generateId: () => 'evt-generated' });
+    mgr.addClient('u1', res);
+
+    mgr.publishToUser('u1', 'photo.processing', { eventId: 'evt-upstream', photoId: 'p1', status: 'finished' });
+
+    const payload = String(res.write.mock.calls[0][0]);
+    expect(payload).toContain('id: evt-upstream\n');
+  });
+
+  test('publishToUser drops connection on backpressure and records reason', () => {
+    const metrics = {
+      incRealtimeConnect: jest.fn(),
+      incRealtimeDisconnect: jest.fn(),
+      incRealtimeDisconnectReason: jest.fn(),
+      setRealtimeActiveConnections: jest.fn(),
+    };
+
+    const res = {
+      write: jest.fn(() => false),
+      end: jest.fn(),
+    };
+
+    const mgr = createSseManager({ heartbeatMs: 0, metrics });
+    mgr.addClient('u1', res);
+
+    mgr.publishToUser('u1', 'photo.processing', { photoId: 'p1', status: 'finished' });
+
+    expect(metrics.incRealtimeDisconnect).toHaveBeenCalled();
+    expect(metrics.incRealtimeDisconnectReason).toHaveBeenCalledWith('backpressure_drop');
+  });
+
   test('canAcceptClient enforces per-user cap', () => {
     const mgr = createSseManager({ heartbeatMs: 0, maxConnectionsPerUser: 1 });
     const res1 = { write: jest.fn() };

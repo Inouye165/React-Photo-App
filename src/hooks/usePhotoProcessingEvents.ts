@@ -72,6 +72,14 @@ function safeJsonParse(value: string): unknown {
   }
 }
 
+function parseUpdatedAtToMs(updatedAt: unknown): number | null {
+  if (typeof updatedAt !== 'string') return null
+  const s = updatedAt.trim()
+  if (!s) return null
+  const t = Date.parse(s)
+  return Number.isFinite(t) ? t : null
+}
+
 function mapStatusToPhotoState(status: PhotoProcessingStatus | undefined): Photo['state'] | undefined {
   if (status === 'finished') return 'finished'
   if (status === 'failed') return 'error'
@@ -107,6 +115,7 @@ export function usePhotoProcessingEvents(params: { authed: boolean }): UsePhotoP
   const failuresRef = useRef(0)
   const disabledForSessionRef = useRef(false)
   const dedupeRef = useRef(createEventDedupe(200))
+  const lastSeenTimestampMsRef = useRef<number | null>(null)
 
   const enabled = authed && photoEventsEnvEnabled && !disabledForSessionRef.current
 
@@ -211,6 +220,12 @@ export function usePhotoProcessingEvents(params: { authed: boolean }): UsePhotoP
       const parsed = safeJsonParse(frame.data)
       const payload = (parsed && typeof parsed === 'object') ? (parsed as PhotoProcessingPayload) : null
 
+      // Update last-seen timestamp for resumability before any early returns.
+      const ts = parseUpdatedAtToMs(payload?.updatedAt)
+      if (ts !== null) {
+        lastSeenTimestampMsRef.current = ts
+      }
+
       const dedupeId = extractDedupeId(frame, payload)
       if (dedupeId) {
         if (dedupeRef.current.has(dedupeId)) return
@@ -267,6 +282,7 @@ export function usePhotoProcessingEvents(params: { authed: boolean }): UsePhotoP
             // Never log token/payload. Intentionally silent.
           },
           signal: abort.signal,
+          since: lastSeenTimestampMsRef.current ?? undefined,
         })
 
         if (!mounted) {

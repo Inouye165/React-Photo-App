@@ -1,5 +1,8 @@
 const { createRedisConnection: defaultCreateRedisConnection } = require('../redis/connection');
 const logger = require('../logger');
+const metrics = require('../metrics');
+const { getRedisClient } = require('../lib/redis');
+const { createPhotoEventHistory } = require('./photoEventHistory');
 
 const CHANNEL = 'photo:status:v1';
 const EVENT_NAME = 'photo.processing';
@@ -53,9 +56,34 @@ function createPhotoStatusSubscriber(options = {}) {
 
   const createRedisConnection = options.createRedisConnection || defaultCreateRedisConnection;
   const log = options.logger || logger;
+  const m = options.metrics || metrics;
+  const photoEventHistory = options.photoEventHistory || createPhotoEventHistory({
+    redis: getRedisClient(),
+    ttlSeconds: Number(process.env.REALTIME_HISTORY_TTL_SECONDS || 600),
+    maxEntries: Number(process.env.REALTIME_HISTORY_MAX_ENTRIES || 200),
+    maxReplay: Number(process.env.REALTIME_HISTORY_MAX_REPLAY || 200),
+    logger: log,
+  });
 
   let subscriber = null;
   let startPromise = null;
+  let chain = Promise.resolve();
+
+  function withTimeout(promise, timeoutMs, label) {
+    const ms = Number(timeoutMs);
+    if (!Number.isFinite(ms) || ms <= 0) return promise;
+    let id;
+    const timeoutPromise = new Promise((resolve) => {
+      id = setTimeout(() => resolve({ ok: false, reason: `${label}_timeout` }), ms);
+    });
+    return Promise.race([promise, timeoutPromise]).finally(() => {
+      try {
+        if (id) clearTimeout(id);
+      } catch {
+        // ignore
+      }
+    });
+  }
 
   async function start() {
     if (subscriber) return { started: true, channel: CHANNEL };
@@ -72,9 +100,14 @@ function createPhotoStatusSubscriber(options = {}) {
       subscriber.on('error', (err) => {
         // Log but never crash the API server.
         log.error('[realtime] Redis subscriber error', err);
+        try {
+          m.incRealtimeRedisSubscribeError?.();
+        } catch {
+          // ignore
+        }
       });
 
-      subscriber.on('message', (channel, message) => {
+      const handleMessage = async (channel, message) => {
         if (channel !== CHANNEL) return;
 
         const payload = parseAndValidateMessage(message);
@@ -83,10 +116,23 @@ function createPhotoStatusSubscriber(options = {}) {
           return;
         }
 
+        // Best-effort bounded history write (must happen before fanout).
+        try {
+          await withTimeout(photoEventHistory.append(payload), Number(process.env.REALTIME_HISTORY_APPEND_TIMEOUT_MS || 75), 'history_append');
+        } catch {
+          // ignore
+        }
+
+        try {
+          m.incRealtimeEventsPublished?.();
+        } catch {
+          // ignore
+        }
+
         // SECURITY: per-user publish only; never broadcast.
         try {
           sseManager.publishToUser(payload.userId, EVENT_NAME, payload);
-          log.info('[realtime] Forwarded photo status event', {
+          log.debug('[realtime] Forwarded photo status event', {
             userId: payload.userId,
             photoId: payload.photoId,
             status: payload.status,
@@ -101,6 +147,11 @@ function createPhotoStatusSubscriber(options = {}) {
             error: err?.message || String(err),
           });
         }
+      };
+
+      subscriber.on('message', (channel, message) => {
+        // Preserve message ordering even if history writes are slow.
+        chain = chain.then(() => handleMessage(channel, message)).catch(() => handleMessage(channel, message));
       });
 
       await subscriber.subscribe(CHANNEL);

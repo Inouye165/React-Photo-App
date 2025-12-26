@@ -122,6 +122,11 @@ async function publishPhotoStatus({ redis, db, status, photoId, jobId }) {
     return { ok: true, payload };
   } catch (err) {
     // Best-effort: log safely and continue.
+    try {
+      metrics.incRealtimeRedisPublishFail?.();
+    } catch {
+      // ignore
+    }
     logger.warn('[WORKER] Failed to publish photo status event', {
       photoId: String(photoId),
       status,

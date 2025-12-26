@@ -8,6 +8,14 @@ describe('realtime/photoStatusSubscriber', () => {
     const publishToUser = jest.fn();
     const sseManager = { publishToUser };
 
+    const append = jest.fn().mockResolvedValue({ ok: true });
+    const photoEventHistory = { append };
+
+    const metrics = {
+      incRealtimeEventsPublished: jest.fn(),
+      incRealtimeRedisSubscribeError: jest.fn(),
+    };
+
     const handlers = {};
     const redis = {
       on: jest.fn((evt, fn) => {
@@ -21,7 +29,9 @@ describe('realtime/photoStatusSubscriber', () => {
     const subscriber = createPhotoStatusSubscriber({
       sseManager,
       createRedisConnection: () => redis,
-      logger: { info: jest.fn(), warn: jest.fn(), error: jest.fn() },
+      photoEventHistory,
+      metrics,
+      logger: { info: jest.fn(), warn: jest.fn(), error: jest.fn(), debug: jest.fn() },
     });
 
     await subscriber.start();
@@ -37,7 +47,13 @@ describe('realtime/photoStatusSubscriber', () => {
 
     handlers.message(CHANNEL, JSON.stringify(payload));
 
+    // message handler is queued; flush microtasks
+    await new Promise((r) => setImmediate(r));
+
+    expect(append).toHaveBeenCalledWith(expect.objectContaining(payload));
     expect(publishToUser).toHaveBeenCalledWith('u1', EVENT_NAME, expect.objectContaining(payload));
+    expect(append.mock.invocationCallOrder[0]).toBeLessThan(publishToUser.mock.invocationCallOrder[0]);
+    expect(metrics.incRealtimeEventsPublished).toHaveBeenCalled();
 
     await subscriber.stop();
 
