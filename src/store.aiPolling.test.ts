@@ -130,4 +130,19 @@ describe('store AI polling (single poller)', () => {
     expect(useStore.getState().pollingPhotoIds.has(1)).toBe(false);
     expect(useStore.getState().pollingPhotoId).toBeNull();
   });
+
+  it('does not issue polling requests while streaming is active', async () => {
+    const getPhoto = vi.mocked(api.getPhoto)
+    useStore.setState({ photoEventsStreamingActive: true } as any)
+
+    useStore.getState().startAiPolling(1, { intervalMs: 10, softTimeoutMs: 1000, hardTimeoutMs: 10000 })
+
+    await flushPromises()
+    await vi.advanceTimersByTimeAsync(50)
+    await flushPromises()
+
+    expect(getPhoto).not.toHaveBeenCalled()
+    // Spinner flags remain set while streaming is responsible for completion.
+    expect(useStore.getState().pollingPhotoIds.has(1)).toBe(true)
+  })
 });

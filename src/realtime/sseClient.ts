@@ -138,7 +138,10 @@ export async function connectPhotoEvents(params: ConnectPhotoEventsParams): Prom
 
   if (!response.ok) {
     controller.abort()
-    throw new Error(`SSE connect failed (HTTP ${response.status})`)
+    const err = new Error(`SSE connect failed (HTTP ${response.status})`)
+    // Attach status for callers to implement deterministic fallback behavior.
+    ;(err as Error & { status?: number }).status = response.status
+    throw err
   }
 
   const contentType = normalizeHeaderValue(response.headers.get('content-type'))
