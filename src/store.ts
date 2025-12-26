@@ -48,6 +48,10 @@ export interface StoreState extends UploadPickerSlice {
   toast: ToastState
   pollingPhotoId: Photo['id'] | null
   pollingPhotoIds: Set<Photo['id']>
+  // Phase 3: when true, client-side SSE updates are active and we should avoid
+  // running store-level HTTP polling loops to prevent duplicate network traffic.
+  // Spinner state is still represented by pollingPhotoIds.
+  photoEventsStreamingActive: boolean
   pendingUploads: PendingUpload[]
   banner: BannerState
   view: ViewState
@@ -86,6 +90,8 @@ export interface StoreState extends UploadPickerSlice {
   setPollingPhotoId: (id: Photo['id'] | null) => void
   addPollingId: (id: Photo['id']) => void
   removePollingId: (id: Photo['id']) => void
+
+  setPhotoEventsStreamingActive: (active: boolean, reason?: string) => void
 
   startAiPolling: (id: Photo['id'], opts?: AiPollingOptions) => void
   stopAiPolling: (id: Photo['id'], stopReason?: string) => void
@@ -137,6 +143,8 @@ const useStore = create<StoreState>((set, get) => ({
   // Support both a single legacy polling id and a Set of polling ids for concurrent polling
   pollingPhotoId: null,
   pollingPhotoIds: new Set(),
+
+  photoEventsStreamingActive: false,
 
   // Optimistic uploads - pending photos being uploaded
   pendingUploads: [],
@@ -332,6 +340,12 @@ const useStore = create<StoreState>((set, get) => ({
       return { pollingPhotoIds: new Set(filtered) }
     }),
 
+  setPhotoEventsStreamingActive: (active: boolean, reason?: string) => {
+    // SECURITY: never log tokens or event payloads.
+    aiPollDebug('photo_events_streaming_active', { active: Boolean(active), reason: reason || 'unknown' })
+    set({ photoEventsStreamingActive: Boolean(active) })
+  },
+
   // Start polling /photos/:id until the backend reports a terminal state.
   startAiPolling: (id: Photo['id'], opts: AiPollingOptions = {}) => {
     const key = String(id)
@@ -359,6 +373,13 @@ const useStore = create<StoreState>((set, get) => ({
       next.add(id)
       return { pollingPhotoId: id, pollingPhotoIds: next }
     })
+
+    // When SSE streaming is active, keep spinner flags but do not start
+    // an HTTP polling loop. This prevents duplicate traffic.
+    if (get().photoEventsStreamingActive) {
+      aiPollDebug('store_poll_start_skipped_streaming_active', { photoId: id })
+      return
+    }
 
     // Mark active immediately so repeated calls don't start competing pollers
     // before the first tick has a chance to schedule the next timeout.
@@ -391,11 +412,38 @@ const useStore = create<StoreState>((set, get) => ({
     }
 
     const scheduleNext = (delayMs: number) => {
+      if (get().photoEventsStreamingActive) {
+        aiPollDebug('store_poll_schedule_skipped_streaming_active', { photoId: id, delayMs })
+        if (aiPollingTimers.has(key)) aiPollingTimers.delete(key)
+        return
+      }
       const timer = setTimeout(tick, delayMs)
       aiPollingTimers.set(key, timer)
     }
 
     const tick = async () => {
+      if (get().photoEventsStreamingActive) {
+        // Pause/stop the poller without clearing spinner flags. Polling will be
+        // resumed by a future startAiPolling call if we fall back.
+        aiPollDebug('store_poll_tick_paused_streaming_active', { photoId: id })
+        const timer = aiPollingTimers.get(key)
+        if (timer) {
+          try {
+            clearTimeout(timer)
+          } catch {
+            /* ignore */
+          }
+          try {
+            clearInterval(timer)
+          } catch {
+            /* ignore */
+          }
+        }
+        if (aiPollingTimers.has(key)) aiPollingTimers.delete(key)
+        inFlight = false
+        return
+      }
+
       const elapsedMs = Date.now() - startedAt
       if (inFlight) {
         aiPollDebug('store_poll_tick_skipped_inFlight', {

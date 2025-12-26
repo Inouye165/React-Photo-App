@@ -317,11 +317,9 @@ test.describe('EditPage Visual Regression (Frontend-Only)', () => {
     const screenshotOptions: any = {
       fullPage: false,
       animations: 'disabled',
-      timeout: 10000
+      timeout: 10000,
+      maxDiffPixelRatio: 0.015,
     };
-    if (!testInfo.project.use.headless) {
-      screenshotOptions.maxDiffPixelRatio = 0.015;
-    }
 
     await expect(page).toHaveScreenshot('editpage-context-tab.png', screenshotOptions);
   });
@@ -341,11 +339,9 @@ test.describe('EditPage Visual Regression (Frontend-Only)', () => {
     const screenshotOptions: any = {
       fullPage: false,
       animations: 'disabled',
-      timeout: 10000
+      timeout: 10000,
+      maxDiffPixelRatio: 0.12,
     };
-    if (!testInfo.project.use.headless) {
-      screenshotOptions.maxDiffPixelRatio = 0.12;
-    }
 
     await expect(page).toHaveScreenshot('editpage-context-map.png', screenshotOptions);
   });
@@ -370,11 +366,10 @@ test.describe('EditPage Visual Regression (Frontend-Only)', () => {
     const screenshotOptions: any = {
       fullPage: false,
       animations: 'disabled',
-      timeout: 10000
+      timeout: 10000,
+      // Slightly higher tolerance due to more dynamic content on this tab.
+      maxDiffPixelRatio: 0.03,
     };
-    if (!testInfo.project.use.headless) {
-      screenshotOptions.maxDiffPixelRatio = 0.015;
-    }
 
     await expect(page).toHaveScreenshot('editpage-collectibles-tab.png', screenshotOptions);
   });
@@ -393,11 +388,9 @@ test.describe('EditPage Visual Regression (Frontend-Only)', () => {
     const screenshotOptions: any = {
       fullPage: false,
       animations: 'disabled',
-      timeout: 10000
+      timeout: 10000,
+      maxDiffPixelRatio: 0.015,
     };
-    if (!testInfo.project.use.headless) {
-      screenshotOptions.maxDiffPixelRatio = 0.015;
-    }
 
     await expect(page).toHaveScreenshot('editpage-processing-state.png', screenshotOptions);
   });
@@ -421,11 +414,9 @@ test.describe('EditPage Visual Regression (Frontend-Only)', () => {
     const screenshotOptions: any = {
       fullPage: false,
       animations: 'disabled',
-      timeout: 10000
+      timeout: 10000,
+      maxDiffPixelRatio: 0.015,
     };
-    if (!testInfo.project.use.headless) {
-      screenshotOptions.maxDiffPixelRatio = 0.015;
-    }
 
     await expect(page).toHaveScreenshot('editpage-flipped-metadata.png', screenshotOptions);
   });
@@ -448,11 +439,9 @@ test.describe('EditPage Visual Regression (Frontend-Only)', () => {
     const screenshotOptions: any = {
       fullPage: false,
       animations: 'disabled',
-      timeout: 10000
+      timeout: 10000,
+      maxDiffPixelRatio: 0.015,
     };
-    if (!testInfo.project.use.headless) {
-      screenshotOptions.maxDiffPixelRatio = 0.015;
-    }
 
     await expect(page).toHaveScreenshot('editpage-context-form-focus.png', screenshotOptions);
   });

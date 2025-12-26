@@ -1,10 +1,16 @@
 import { Navigate, Outlet, useLocation } from 'react-router-dom'
 
 import { useAuth } from '../contexts/AuthContext'
+import { usePhotoProcessingEvents } from '../hooks/usePhotoProcessingEvents'
 
 export default function IdentityGate() {
   const location = useLocation()
   const { user, authReady, profile, profileLoading, profileError } = useAuth()
+
+  // Phase 3: realtime SSE for photo processing completion.
+  // This is intentionally wired once at the top-level gate to avoid multiple
+  // concurrent streams per tab.
+  usePhotoProcessingEvents({ authed: Boolean(user && authReady) })
 
   // Not authenticated: AuthWrapper handles rendering the landing/login.
   if (!user) return <Outlet />
