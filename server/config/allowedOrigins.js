@@ -41,6 +41,20 @@ const DEFAULT_ORIGINS = [
 ];
 
 /**
+ * Normalize an origin string so it matches the browser Origin header format.
+ *
+ * Important: The browser Origin header never includes a trailing slash.
+ * If an env var contains one (e.g. https://app.example.com/), an exact
+ * string comparison will fail and CORS will be rejected.
+ */
+function normalizeOrigin(value) {
+  if (!value || typeof value !== 'string') return '';
+  const trimmed = value.trim();
+  if (!trimmed) return '';
+  return trimmed.endsWith('/') ? trimmed.slice(0, -1) : trimmed;
+}
+
+/**
  * Parse and return the complete list of allowed CORS origins.
  * 
  * Security note: When ALLOWED_ORIGINS is explicitly set, defaults are NOT included.
@@ -55,7 +69,7 @@ function getAllowedOrigins() {
   // If explicitly configured, use ONLY those origins (no defaults)
   if (process.env.ALLOWED_ORIGINS) {
     const explicit = process.env.ALLOWED_ORIGINS.split(',')
-      .map((value) => value.trim())
+      .map((value) => normalizeOrigin(value))
       .filter(Boolean); // Remove empty strings from trailing commas
     
     // Still support legacy env vars alongside explicit config
@@ -63,16 +77,16 @@ function getAllowedOrigins() {
     
     // FRONTEND_ORIGIN is always respected (simple single-origin config)
     if (process.env.FRONTEND_ORIGIN) {
-      origins.add(process.env.FRONTEND_ORIGIN.trim());
+      origins.add(normalizeOrigin(process.env.FRONTEND_ORIGIN));
     }
     
     if (process.env.CLIENT_ORIGIN) {
-      origins.add(process.env.CLIENT_ORIGIN.trim());
+      origins.add(normalizeOrigin(process.env.CLIENT_ORIGIN));
     }
     
     if (process.env.CLIENT_ORIGINS) {
       process.env.CLIENT_ORIGINS.split(',')
-        .map((value) => value.trim())
+        .map((value) => normalizeOrigin(value))
         .filter(Boolean)
         .forEach((value) => origins.add(value));
     }
@@ -81,11 +95,11 @@ function getAllowedOrigins() {
   }
   
   // Fallback: use defaults only when no explicit config exists
-  const origins = new Set(DEFAULT_ORIGINS);
+  const origins = new Set(DEFAULT_ORIGINS.map((o) => normalizeOrigin(o)).filter(Boolean));
   
   // FRONTEND_ORIGIN (simple single-origin config for production frontend)
   if (process.env.FRONTEND_ORIGIN) {
-    origins.add(process.env.FRONTEND_ORIGIN.trim());
+    origins.add(normalizeOrigin(process.env.FRONTEND_ORIGIN));
   }
   
   // Backward compatibility: CLIENT_ORIGIN (single origin)
