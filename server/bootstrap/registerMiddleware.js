@@ -50,13 +50,23 @@ function registerMiddleware(app) {
 
   // CSRF protection (cookie mode): mount after cookieParser and before routes.
   // Applies to unsafe methods only (POST/PUT/PATCH/DELETE); safe methods are ignored.
+  //
+  // Production note (cross-origin frontends like Vercel -> Railway):
+  // - Browsers will not include SameSite=Lax cookies on cross-site fetch() POST requests.
+  // - csurf cookie mode requires the secret cookie to round-trip, otherwise requests fail
+  //   with EBADCSRFTOKEN (403).
+  // - SameSite=None is required for cross-site cookie transmission, and Secure=true is
+  //   mandatory (browsers reject SameSite=None without Secure).
+  const isProduction = process.env.NODE_ENV === 'production';
+  const csrfCookieSameSite = isProduction ? 'none' : 'lax';
+  const csrfCookieSecure = csrfCookieSameSite === 'none' ? true : isProduction;
   app.use(
     csurf({
       cookie: {
         key: 'csrfSecret',
         httpOnly: true,
-        sameSite: 'lax',
-        secure: process.env.NODE_ENV === 'production',
+        sameSite: csrfCookieSameSite,
+        secure: csrfCookieSecure,
         path: '/',
       },
     })
