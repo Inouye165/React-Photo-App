@@ -30,7 +30,7 @@ export function createSseParser(onEvent: (frame: SseFrame) => void) {
   let dataLines: string[] = []
 
   const dispatch = () => {
-    // Ignore empty dispatches
+    // Ignore empty dispatches.
     if (!currentEvent && !currentId && dataLines.length === 0) return
 
     const data = dataLines.join('\n')
@@ -44,13 +44,13 @@ export function createSseParser(onEvent: (frame: SseFrame) => void) {
   const processLine = (rawLine: string) => {
     const line = rawLine.endsWith('\r') ? rawLine.slice(0, -1) : rawLine
 
-    // Blank line ends the event
+    // Blank line ends the event.
     if (line === '') {
       dispatch()
       return
     }
 
-    // Comment/heartbeat line (e.g. ": ping")
+    // Comment/heartbeat line (e.g. ": ping").
     if (line.startsWith(':')) return
 
     const idx = line.indexOf(':')
@@ -73,7 +73,7 @@ export function createSseParser(onEvent: (frame: SseFrame) => void) {
       return
     }
 
-    // Ignore other fields (retry, etc)
+    // Ignore other fields (retry, etc).
   }
 
   return {
@@ -91,8 +91,8 @@ export function createSseParser(onEvent: (frame: SseFrame) => void) {
       }
     },
     flush() {
-      // If the stream ends without a trailing newline, we should still process
-      // the final line, but only dispatch on a terminating blank line.
+      // If the stream ends without a trailing newline, process the final line.
+      // Only dispatch on a terminating blank line.
       if (buffer) {
         processLine(buffer)
         buffer = ''
@@ -173,7 +173,7 @@ export async function connectPhotoEvents(params: ConnectPhotoEventsParams): Prom
           parser.feedText(text)
         }
       }
-      // Flush any final decoded bytes
+      // Flush any final decoded bytes.
       try {
         const rest = decoder.decode(undefined, { stream: false })
         if (rest) parser.feedText(rest)

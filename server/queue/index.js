@@ -1,4 +1,3 @@
-// server/queue/index.js
 const { Queue, Worker: BullMQWorker } = require("bullmq");
 const path = require('path');
 const logger = require("../logger");
@@ -38,8 +37,8 @@ async function initializeQueue() {
 
   initializationPromise = (async () => {
     try {
-      // Create connection lazily so missing REDIS_URL doesn't crash module import (CI/tests).
-        redisConnection = createRedisConnection(); // Create connection lazily
+      // Lazy init so missing REDIS_URL doesn't crash tests/CI.
+      redisConnection = createRedisConnection();
 
       // Force an auth/connection check up front.
       const pingTimeoutMs = Number(process.env.REDIS_PING_TIMEOUT_MS || 2000);
@@ -57,7 +56,7 @@ async function initializeQueue() {
       aiQueue = null;
       aiWorker = null;
 
-      // Best-effort cleanup if we partially created a client.
+      // Cleanup if we partially created a client.
       try {
         redisConnection?.disconnect?.();
       } catch {
@@ -121,7 +120,7 @@ async function publishPhotoStatus({ redis, db, status, photoId, jobId }) {
 
     return { ok: true, payload };
   } catch (err) {
-    // Best-effort: log safely and continue.
+    // Non-fatal: log and continue.
     try {
       metrics.incRealtimeRedisPublishFail?.();
     } catch {
@@ -290,8 +289,8 @@ const startWorker = async () => {
       backoff: { type: "exponential", delay: 60000 },
     });
 
-    // Phase 2: publish status transitions to Redis for multi-instance SSE fanout.
-    // Best-effort: publish failures must never crash the worker.
+    // Publish status transitions to Redis for multi-instance SSE fanout.
+    // Publish failures should never crash the worker.
     try {
       attachPhotoStatusPublisher({ worker: aiWorker, redis: redisConnection, db });
     } catch (err) {

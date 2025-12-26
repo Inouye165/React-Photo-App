@@ -2,7 +2,7 @@ const { randomUUID } = require('crypto');
 
 function defaultGenerateId() {
   if (typeof randomUUID === 'function') return randomUUID();
-  // Fallback: not cryptographically strong, but sufficient for Phase 1 unit tests.
+  // Fallback for environments without crypto.randomUUID.
   return `${Date.now()}-${Math.random().toString(16).slice(2)}`;
 }
 
@@ -16,7 +16,7 @@ function formatSseEvent({ eventName, eventId, data }) {
 
   const payload = typeof data === 'string' ? data : JSON.stringify(data ?? {});
 
-  // SSE spec: lines end with \n and each event ends with a blank line.
+  // SSE framing: each field is a line; blank line terminates the event.
   return `event: ${eventName}\n` + `id: ${eventId}\n` + `data: ${payload}\n\n`;
 }
 
@@ -46,7 +46,7 @@ function createSseManager(options = {}) {
       // Node streams signal backpressure by returning false.
       if (ok === false) return { ok: false, reason: 'backpressure_drop' };
 
-      // Defense-in-depth: drop if writable buffer appears to be growing.
+      // Drop if the writable buffer keeps growing (slow client).
       const buffered = typeof res?.writableLength === 'number' ? res.writableLength : null;
       if (buffered !== null && buffered > maxBufferedBytes) {
         return { ok: false, reason: 'backpressure_drop' };
@@ -88,7 +88,7 @@ function createSseManager(options = {}) {
 
     if (heartbeatMs > 0) {
       record.heartbeat = setInterval(() => {
-        // SSE comment heartbeat (keeps proxies from closing idle connection)
+        // SSE comment heartbeat (keeps proxies from closing idle connections).
         const out = writeToRes(res, `: ping\n\n`);
         if (!out.ok) {
           removeClient(key, res, out.reason);
@@ -127,7 +127,7 @@ function createSseManager(options = {}) {
         }
         set.delete(record);
 
-        // Best-effort: end the response so Node stops buffering.
+        // End the response so Node stops buffering.
         try {
           if (typeof res?.end === 'function') res.end();
         } catch {
@@ -194,7 +194,7 @@ function createSseManager(options = {}) {
     canAcceptClient,
     getUserClientCount,
     formatSseEvent,
-    // For introspection/testing
+    // Test helper.
     _getAllUserIds: () => Array.from(clientsByUserId.keys()),
   };
 }

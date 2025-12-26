@@ -98,7 +98,7 @@ function createPhotoStatusSubscriber(options = {}) {
       subscriber = createRedisConnection();
 
       subscriber.on('error', (err) => {
-        // Log but never crash the API server.
+        // Log and continue; subscriber errors should not crash the API.
         log.error('[realtime] Redis subscriber error', err);
         try {
           m.incRealtimeRedisSubscribeError?.();
@@ -112,11 +112,11 @@ function createPhotoStatusSubscriber(options = {}) {
 
         const payload = parseAndValidateMessage(message);
         if (!payload) {
-          // Malformed or incomplete payload; ignore.
+          // Malformed or incomplete payload.
           return;
         }
 
-        // Best-effort bounded history write (must happen before fanout).
+        // Write to history before fanout; failures are non-fatal.
         try {
           await withTimeout(photoEventHistory.append(payload), Number(process.env.REALTIME_HISTORY_APPEND_TIMEOUT_MS || 75), 'history_append');
         } catch {
@@ -129,7 +129,7 @@ function createPhotoStatusSubscriber(options = {}) {
           // ignore
         }
 
-        // SECURITY: per-user publish only; never broadcast.
+        // Per-user publish only; never broadcast.
         try {
           sseManager.publishToUser(payload.userId, EVENT_NAME, payload);
           log.debug('[realtime] Forwarded photo status event', {
@@ -165,7 +165,7 @@ function createPhotoStatusSubscriber(options = {}) {
   }
 
   async function stop() {
-    // If a start is in flight, wait for it so we can unsubscribe/quit safely.
+    // If a start is in flight, wait so unsubscribe/quit is safe.
     if (startPromise) {
       try {
         await startPromise;

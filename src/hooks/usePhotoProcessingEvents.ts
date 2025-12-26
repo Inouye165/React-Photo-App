@@ -37,7 +37,7 @@ export function computeReconnectDelayMs(
   const raw = baseMs * Math.pow(2, Math.min(exp, 10))
   const capped = Math.min(maxMs, Math.max(baseMs, raw))
 
-  // jitter multiplier in [1-j, 1+j]
+  // Jitter multiplier in [1-j, 1+j].
   const r = Math.min(1, Math.max(0, random()))
   const mult = 1 + (r * 2 - 1) * jitterRatio
 
@@ -279,7 +279,7 @@ export function usePhotoProcessingEvents(params: { authed: boolean }): UsePhotoP
           token,
           onEvent: onFrame,
           onError: () => {
-            // Never log token/payload. Intentionally silent.
+            // Do not log token/payload.
           },
           signal: abort.signal,
           since: lastSeenTimestampMsRef.current ?? undefined,

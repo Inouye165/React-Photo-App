@@ -49,7 +49,7 @@ function instrumentAuthMiddleware(authenticateTokenMiddleware, opts = {}) {
       }
     };
 
-    // Preserve jest.fn identity in unit tests by patching implementation.
+    // Avoid replacing jest.fn mocks in unit tests.
     if (res && typeof res.json === 'function') {
       const jsonFn = res.json;
       if (jsonFn && jsonFn._isMockFunction && typeof jsonFn.mockImplementation === 'function') {
@@ -158,7 +158,7 @@ function createPhotosEventsHandler({ sseManager, photoEventHistory, log, metrics
       }
     }
 
-    // Register the client first so cleanup is guaranteed.
+    // Register after catch-up to avoid duplicate delivery during replay.
     sseManager.addClient(userId, res);
 
     // Cleanup on disconnect.
@@ -175,7 +175,7 @@ function createPhotosEventsHandler({ sseManager, photoEventHistory, log, metrics
       // ignore
     }
 
-    // Optional: emit an initial connected event to confirm stream health.
+    // Emit an initial event to confirm stream health.
     const connectedId = (typeof require('crypto').randomUUID === 'function') ? require('crypto').randomUUID() : `${Date.now()}`;
     const connectedPayload = { eventId: connectedId, connected: true, updatedAt: new Date().toISOString() };
     res.write(formatSseEvent({ eventName: 'connected', eventId: connectedId, data: connectedPayload }));
