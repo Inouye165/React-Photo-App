@@ -1,5 +1,5 @@
 import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest'
-import { request, __resetNetworkState, API_BASE_URL } from './httpClient'
+import { request, __resetNetworkState, API_BASE_URL, __resetCsrfTokenForTests } from './httpClient'
 
 // Mock fetch
 let fetchMock: any
@@ -9,6 +9,7 @@ describe('httpClient', () => {
     fetchMock = vi.fn()
     vi.stubGlobal('fetch', fetchMock)
     __resetNetworkState()
+    __resetCsrfTokenForTests()
     if ((global as any).__resetLimiters) {
         (global as any).__resetLimiters.forEach((fn: any) => fn())
     }
@@ -109,5 +110,36 @@ describe('httpClient', () => {
     vi.advanceTimersByTime(101)
     
     await expect(promise).rejects.toThrow(/aborted/i)
+  })
+
+  it('should attach X-CSRF-Token for unsafe methods', async () => {
+    fetchMock
+      .mockResolvedValueOnce({
+        ok: true,
+        status: 200,
+        json: async () => ({ csrfToken: 'test-csrf-token' }),
+      })
+      .mockResolvedValueOnce({
+        ok: true,
+        status: 200,
+        json: async () => ({ success: true }),
+      })
+
+    const result = await request<{ success: boolean }>({ path: '/test', method: 'POST', body: { a: 1 } })
+    expect(result).toEqual({ success: true })
+
+    // First call fetches /csrf
+    expect(fetchMock.mock.calls[0][0]).toBe(`${API_BASE_URL}/csrf`)
+    expect(fetchMock.mock.calls[0][1]).toEqual(expect.objectContaining({ method: 'GET', credentials: 'include' }))
+
+    // Second call is the actual request with the CSRF header
+    expect(fetchMock.mock.calls[1][0]).toBe(`${API_BASE_URL}/test`)
+    expect(fetchMock.mock.calls[1][1]).toEqual(
+      expect.objectContaining({
+        method: 'POST',
+        credentials: 'include',
+        headers: expect.objectContaining({ 'X-CSRF-Token': 'test-csrf-token' }),
+      })
+    )
   })
 })

@@ -71,6 +71,17 @@ Backend server for Lumina. Node.js + Express, covering authentication, uploads, 
    npm start
    ```
 
+### Server Entrypoint (Bootstrap/Loaders)
+
+The runtime entrypoint remains `server/server.js`, but it now delegates initialization into composable loaders under `server/bootstrap/`:
+
+- `bootstrap/loadEnv.js` and `bootstrap/validateConfig.js` run deterministic startup validation.
+- `bootstrap/createApp.js` builds the Express app (middleware + routes) without binding a port.
+- `bootstrap/startIntegrations.js` wires realtime/background integrations.
+- `bootstrap/shutdown.js` provides graceful shutdown hooks.
+
+For tests, prefer importing `server/bootstrap/createApp` to construct an app instance without starting a listener.
+
 ## 🏗️ Architecture
 
 - **API**: Express.js REST API

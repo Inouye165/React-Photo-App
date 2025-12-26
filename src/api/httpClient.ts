@@ -2,6 +2,47 @@ import { API_BASE_URL as CENTRAL_API_BASE_URL } from '../config/apiConfig'
 
 export const API_BASE_URL = CENTRAL_API_BASE_URL
 
+// --- CSRF Token (csurf) ---
+// The server exposes GET /csrf which returns { csrfToken } and sets the csurf secret cookie.
+// We attach X-CSRF-Token for unsafe methods to satisfy CSRF protection while keeping
+// credentials behavior unchanged.
+let _csrfToken: string | null = null
+let _csrfTokenPromise: Promise<string | null> | null = null
+
+export function __resetCsrfTokenForTests(): void {
+  _csrfToken = null
+  _csrfTokenPromise = null
+}
+
+function isUnsafeMethod(method: string): boolean {
+  return method === 'POST' || method === 'PUT' || method === 'PATCH' || method === 'DELETE'
+}
+
+async function getCsrfToken(credentials: RequestCredentials): Promise<string | null> {
+  if (_csrfToken) return _csrfToken
+  if (_csrfTokenPromise) return _csrfTokenPromise
+
+  _csrfTokenPromise = (async () => {
+    try {
+      const res = await fetchWithNetworkFallback(`${API_BASE_URL}/csrf`, {
+        method: 'GET',
+        credentials,
+      })
+      if (!res.ok) return null
+      const json = (await res.json().catch(() => null)) as { csrfToken?: unknown } | null
+      const token = json && typeof json.csrfToken === 'string' ? json.csrfToken : null
+      _csrfToken = token
+      return token
+    } catch {
+      return null
+    } finally {
+      _csrfTokenPromise = null
+    }
+  })()
+
+  return _csrfTokenPromise
+}
+
 export type ApiErrorDetails = {
   status?: number
   code?: string
@@ -259,6 +300,18 @@ export async function request<T>(options: RequestOptions): Promise<T> {
     headers,
     credentials,
     signal,
+  }
+
+  // Attach CSRF token for unsafe methods.
+  // Do this before body handling so callers can still override headers if needed.
+  if (isUnsafeMethod(method)) {
+    const existingHeaderKey = Object.keys(headers).find((k) => k.toLowerCase() === 'x-csrf-token')
+    if (!existingHeaderKey) {
+      const token = await getCsrfToken(credentials)
+      if (token) {
+        ;(fetchOptions.headers as Record<string, string>)['X-CSRF-Token'] = token
+      }
+    }
   }
 
   if (body) {

@@ -1,411 +1,51 @@
-// Load server/.env first so everything else sees the right config.
-// This fixes issues where modules read process.env before we're ready.
-require('./env');
+// Load env first, before any module reads process.env.
+require('./bootstrap/loadEnv').loadEnv();
+const bootstrap = require('./bootstrap');
 
-// Version logging for deployment tracking
-let APP_VERSION = null;
+// Validate required env/config deterministically.
 try {
-  APP_VERSION = require('./version.js').APP_VERSION;
-} catch {
-  // fallback: not critical
-}
-if (APP_VERSION) {
-  console.log('Starting server - version:', APP_VERSION);
-}
-
-// Validate required PostgreSQL configuration early
-if (!process.env.DATABASE_URL && !process.env.SUPABASE_DB_URL) {
-  console.error('[server] FATAL: PostgreSQL not configured');
-  console.error('[server] DATABASE_URL or SUPABASE_DB_URL is required');
-  console.error('[server] For local development, run: docker-compose up -d db');
-  console.error('[server] Then set DATABASE_URL in server/.env');
-  process.exit(1);
-}
-
-// Helpful startup logs to confirm database configuration
-const environment = process.env.NODE_ENV || 'development';
-const isProduction = String(environment).toLowerCase() === 'production';
-
-// Helper to mask secrets while showing short hint
-function maskSecret(value) {
-  if (!value) return '(missing)';
-  return '•••' + String(value).slice(-4);
-}
-
-function presentOrMissing(value) {
-  return value ? '(present)' : '(missing)';
-}
-
-console.log('[server] Startup configuration diagnostics:');
-console.log(`[server]  - NODE_ENV = ${environment}`);
-// Don't print secrets in production logs.
-console.log(`[server]  - DATABASE_URL = ${isProduction ? presentOrMissing(process.env.DATABASE_URL) : (process.env.DATABASE_URL ? maskSecret(process.env.DATABASE_URL) : '(not set)')}`);
-console.log(`[server]  - SUPABASE_DB_URL = ${isProduction ? presentOrMissing(process.env.SUPABASE_DB_URL) : (process.env.SUPABASE_DB_URL ? maskSecret(process.env.SUPABASE_DB_URL) : '(not set)')}`);
-console.log(`[server]  - SUPABASE_URL = ${isProduction ? presentOrMissing(process.env.SUPABASE_URL) : (process.env.SUPABASE_URL ? maskSecret(process.env.SUPABASE_URL) : '(missing)')}`);
-console.log(`[server]  - SUPABASE_SERVICE_ROLE_KEY = ${isProduction ? presentOrMissing(process.env.SUPABASE_SERVICE_ROLE_KEY) : (process.env.SUPABASE_SERVICE_ROLE_KEY ? `(present) ${maskSecret(process.env.SUPABASE_SERVICE_ROLE_KEY)}` : '(missing)')}`);
-console.log(`[server]  - SUPABASE_ANON_KEY = ${isProduction ? presentOrMissing(process.env.SUPABASE_ANON_KEY) : (process.env.SUPABASE_ANON_KEY ? `(present) ${maskSecret(process.env.SUPABASE_ANON_KEY)}` : '(missing)')}`);
-console.log(`[server]  - Database: PostgreSQL (all environments)`);
-console.log('[server] End diagnostics');
-
-// Warn if Google Places/Maps key missing — POI lookups will be disabled
-if (!process.env.GOOGLE_PLACES_API_KEY && !process.env.GOOGLE_MAPS_API_KEY) {
-  console.warn('[POI] GOOGLE_MAPS_API_KEY missing; POI lookups disabled');
-}
-
-// Validate critical AI keys before starting server to prevent API waste
-if (process.env.NODE_ENV !== 'test') {
-  const missingAIKeys = [];
-  
-  if (!process.env.OPENAI_API_KEY || process.env.OPENAI_API_KEY.trim() === '') {
-    missingAIKeys.push('OPENAI_API_KEY');
-  }
-  
-  if (missingAIKeys.length > 0) {
-    console.error('[server] FATAL: Required AI API keys missing');
-    missingAIKeys.forEach(key => console.error(`[server]  - ${key} is required`));
-    console.error('[server] AI pipeline will fail without these keys');
-    console.error('[server] Server startup blocked to prevent unnecessary API costs');
-    process.exit(1);
-  }
-  
-  console.log('[server] ✓ AI API keys present');
-}
-
-
-// Validate required environment variables (fail fast in production)
-try {
-  // Centralized config module validates production requirements.
-  require('./config/env').getConfig();
+  bootstrap.validateConfig();
 } catch (err) {
-  console.error('[server] FATAL:', err && err.message ? err.message : 'Invalid environment configuration');
+  const message = err && err.message ? err.message : String(err);
+  console.error(message);
   process.exit(1);
 }
 
-// Import logger for proper error logging
-const logger = require('./logger');
+const { logger, db, supabase } = bootstrap.createDependencies();
+bootstrap.registerProcessHandlers({ logger });
 
-// Handling crashes in production.
-// 
-// Node.js docs say it's unsafe to keep going after an uncaught exception.
-// The system might be in a weird state.
-//
-// So we:
-// 1. Log the error.
-// 2. Exit immediately.
-// 3. Let Docker/K8s restart us fresh.
-// This is safer than trying to limp along.
-//
-// It's the standard way to handle this.
-process.on('unhandledRejection', (reason, promise) => {
-  logger.error('UnhandledRejection at:', promise, 'reason:', reason);
-  // Note: We don't exit on unhandled rejection by default
-  // The application can often recover from promise rejections
-});
-
-process.on('uncaughtException', (err) => {
-  // Important: Use fatal level so this is always logged
-  logger.fatal('UncaughtException - Application in undefined state, exiting:', err);
-  
-  // Attempt to flush logs before exit (best effort)
-  // Most loggers flush synchronously on fatal, but we don't wait
-  
-  // MANDATORY: Exit with failure code for orchestrator to detect and restart
-  // Without this exit, the process hangs in an undefined state
-  process.exit(1);
-});
-
-const db = require('./db/index');
-const supabase = require('./lib/supabaseClient');
-const createPhotosRouter = require('./routes/photos');
-const createCollectiblesRouter = require('./routes/collectibles');
-  // Mount collectibles API under /api
-  // app.use('/api', createCollectiblesRouter({ db }));
-const createUploadsRouter = require('./routes/uploads');
-const createDebugRouter = require('./routes/debug');
-const createHealthRouter = require('./routes/health');
-const createPrivilegeRouter = require('./routes/privilege');
-const createUsersRouter = require('./routes/users');
-const createMetricsRouter = require('./routes/metrics');
-// const createAuthRouter = require('./routes/auth'); // Removed
-const createPublicRouter = require('./routes/public');
-const createEventsRouter = require('./routes/events');
-const { createSseManager } = require('./realtime/sseManager');
-const { configureSecurity, validateRequest, securityErrorHandler } = require('./middleware/security');
-const { authenticateToken } = require('./middleware/auth');
+// Create Express app and register middleware/routes.
+const { app, sseManager } = bootstrap.createApp({ logger, db, supabase });
 
 const PORT = process.env.PORT || 3001;
 
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-// --- Express app and routes ---
-const express = require('express');
-const multer = require('multer');
-const cors = require('cors');
-const cookieParser = require('cookie-parser');
-
-const app = express();
-// Trust first proxy (Heroku, Supabase, AWS ELB, etc.) for correct client IP resolution
-app.set('trust proxy', 1);
-  // Configure CORS origins early so preflight (OPTIONS) and error responses
-  // include the appropriate Access-Control-Allow-* headers before any
-  // validation or authentication middleware runs.
-  // This avoids cases where a validator or auth middleware rejects a
-  // preflight request without sending CORS headers, which causes the
-  // browser to block the request with a CORS error.
-  //
-  // SECURITY: Strict allowlist-based CORS policy
-  // - No regex patterns or IP range wildcards (prevents DNS rebinding)
-  // - Explicit origin check via Array.includes() only
-  // - Configure allowed origins via ALLOWED_ORIGINS environment variable
-  const { getAllowedOrigins } = require('./config/allowedOrigins');
-  const allowedOrigins = getAllowedOrigins();
-  // --- CORS Startup Logging ---
-  // Print allowed origins at startup (non-prod or DEBUG_CORS=true)
-  if (process.env.NODE_ENV !== 'production' || process.env.DEBUG_CORS === 'true') {
-    const logger = require('./logger');
-    logger.info(`[CORS] Allowed origins: ${allowedOrigins.join(', ')}`);
-  }
-  // --- Centralized CORS Middleware ---
-  // See config/allowedOrigins.js for full logic and documentation.
-  app.use(cors({
-    origin: function(origin, callback) {
-      const isAllowed = !origin || allowedOrigins.includes(origin);
-      if (process.env.NODE_ENV !== 'test' && process.env.DEBUG_CORS === 'true') {
-        // Extra debug logging if enabled
-        const logger = require('./logger');
-        logger.info('[CORS DEBUG]', { origin, isAllowed, allowedOrigins });
-      }
-      // Allow requests with no origin (e.g., server-to-server) or explicit allowed origins
-      if (isAllowed) {
-        return callback(null, origin);
-      }
-      // When origin not allowed, fail the CORS check. Browsers will block the request.
-      return callback(new Error('Not allowed by CORS'));
-    },
-    credentials: true, // Allow cookies to be sent
-    // Cache successful preflight results in browsers to reduce repeated OPTIONS overhead.
-    // SECURITY: This does not change the allowlist or credential policy; it only allows
-    // the browser to reuse the preflight decision for a period of time.
-    maxAge: Number(process.env.CORS_MAX_AGE_SECONDS || 600),
-    optionsSuccessStatus: 204
-  }));
-
-  // Configure security middleware after CORS so security headers are
-  // applied to responses that already include CORS headers.
-  configureSecurity(app);
-
-  // Cookie parser for secure httpOnly cookie authentication
-  // CSRF PROTECTION ARCHITECTURE:
-  // This application implements CSRF protection through Origin validation rather than
-  // traditional CSRF tokens. This approach is valid and recommended by OWASP:
-  // https://cheatsheetseries.owasp.org/cheatsheets/Cross-Site_Request_Forgery_Prevention_Cheat_Sheet.html#verifying-origin-with-standard-headers
-  //
-  // Implementation details:
-  // 1. GET requests to /display/* are CSRF-safe (read-only, no state changes)
-  // 2. POST requests to /api/auth/* are protected by verifyOrigin() middleware
-  //    which validates the Origin header against allowedOrigins whitelist
-  // 3. SameSite cookies provide additional CSRF protection in modern browsers
-  //
-  // This is more secure than token-based CSRF for our use case because:
-  // - No CSRF token exposure risk
-  // - Works with <img> tags for authenticated image serving
-  // - Simpler client implementation (no token management)
-  // - Defense-in-depth: Origin validation + SameSite cookies + HTTPS
-  //
-  // github/codeql/missing-csrf-middleware: False positive - Origin-based CSRF protection
-  // implemented in routes/auth.js via verifyOrigin() middleware
-  app.use(cookieParser());
-
-  // Add request validation middleware
-  app.use(validateRequest);
-  
-  // Limit request body size to mitigate DoS from huge payloads
-  // SECURITY: No rawBody capture to prevent memory exhaustion
-  app.use(express.json({ limit: '1mb' }));
-  app.use(express.urlencoded({ limit: '1mb', extended: true }));
-
-  // Observability: lightweight Prometheus-style HTTP metrics (low-cardinality labels)
-  const metricsHttpMiddleware = require('./middleware/metricsHttp');
-  app.use(metricsHttpMiddleware);
-
-  // Authentication routes (no auth required)
-  const createAuthRouter = require('./routes/auth');
-  app.use('/api/auth', createAuthRouter({ db }));
-
-  // Public API routes (no auth required) - mounted before auth middleware
-  app.use('/api/public', createPublicRouter({ db }));
-
-  // E2E/test-only routes
-  // Defense-in-depth: require explicit opt-in flag in addition to non-production.
-  // This prevents accidental exposure if NODE_ENV is misconfigured.
-  const { isE2EEnabled } = require('./config/e2eGate');
-  const e2eRouter = require('./routes/e2e');
-  app.use('/api/test', (req, res, next) => {
-    if (!isE2EEnabled()) {
-      return res.status(404).json({ success: false, error: 'Not found' });
-    }
-    return e2eRouter(req, res, next);
-  });
-
-  // SECURITY: Debug routes removed to prevent information disclosure
-  // Previously exposed environment variable configuration via /__diag/env
-
-  // app.use(createAuthRouter({ db })); // Removed
-
-
-  // Test-only endpoint for trust proxy regression test
-  if (process.env.NODE_ENV === 'test') {
-    app.get('/test-ip', (req, res) => {
-      res.json({ ip: req.ip, ips: req.ips, trustProxy: app.get('trust proxy') });
-    });
-  }
-
-  // Protected Prometheus metrics endpoint (no user auth; protected by internal token)
-  app.use('/metrics', createMetricsRouter());
-
-  // Health check (no auth required). Mount at '/health' so router-root handlers
-  // defined in `routes/health.js` become available at '/health'.
-  app.use('/health', createHealthRouter());
-
-  // Protected API routes (require authentication)
-  // Mount a dedicated display router at root so image URLs remain at
-  // '/display/*' while the photos API is mounted under '/photos'.
-  const createDisplayRouter = require('./routes/display');
-  app.use('/display', createDisplayRouter({ db }));
-
-  // Mount photos API under '/photos' so routes like '/' and '/:id' defined
-  // in `routes/photos.js` are accessible at '/photos' and '/photos/:id'.
-  app.use('/photos', createPhotosRouter({ db, supabase }));
-
-  // Real-time photo processing events (Phase 1: single instance, in-memory fanout)
-  const sseManager = createSseManager({ heartbeatMs: 25_000, maxConnectionsPerUser: 3 });
-  // Phase 2: multi-instance readiness via Redis Pub/Sub fanout (best-effort)
-  try {
-    const { createPhotoStatusSubscriber } = require('./realtime/photoStatusSubscriber');
-    const photoStatusSubscriber = createPhotoStatusSubscriber({ sseManager });
-
-    photoStatusSubscriber.start().catch((err) => {
-      logger.error('[realtime] Failed to start photo status subscriber', err);
-    });
-
-    const stopPhotoStatusSubscriber = async () => {
-      try {
-        await photoStatusSubscriber.stop();
-      } catch (err) {
-        logger.error('[realtime] Failed to stop photo status subscriber', err);
-      }
-    };
-
-    // Best-effort cleanup on graceful shutdown signals.
-    if (process.env.NODE_ENV !== 'test') {
-      process.once('SIGTERM', () => {
-        stopPhotoStatusSubscriber().finally(() => process.exit(0));
-      });
-      process.once('SIGINT', () => {
-        stopPhotoStatusSubscriber().finally(() => process.exit(0));
-      });
-    }
-  } catch (err) {
-    logger.error('[realtime] Failed to initialize photo status subscriber', err);
-  }
-  app.use('/events', createEventsRouter({ authenticateToken, sseManager }));
-  // Mount collectibles API under root so /photos/:id/collectibles works correctly
-  app.use(authenticateToken, createCollectiblesRouter({ db }));
-  app.use('/api/users', createUsersRouter({ db }));
-  app.use(authenticateToken, createUploadsRouter({ db }));
-  app.use(authenticateToken, createPrivilegeRouter({ db }));
-
-  // SECURITY: Debug/diagnostic routes are high risk.
-  // - In production, do NOT mount unless explicitly enabled.
-  // - In all environments, debug routes require normal authentication.
-  const shouldMountDebugRoutes = (process.env.NODE_ENV !== 'production') || (process.env.DEBUG_ROUTES_ENABLED === 'true');
-  if (shouldMountDebugRoutes) {
-    app.use(authenticateToken, createDebugRouter({ db }));
-  }
-
-  // Add security error handling middleware
-  app.use(securityErrorHandler);
-
-  // Generic JSON 404 handler: return JSON for all unmatched routes so responses
-  // conform to the OpenAPI contract (tests expect JSON, not HTML).
-  app.use((req, res) => {
-    res.status(404).json({
-      success: false,
-      error: 'Not found'
-    });
-  });
-
-  // Error handling middleware
-  app.use((error, req, res, _next) => {
-    // No attempt to repair malformed JSON here; let body-parser return errors so clients send valid JSON.
-
-    if (error instanceof multer.MulterError) {
-      if (error.code === 'LIMIT_FILE_SIZE') {
-        return res.status(400).json({
-          success: false,
-          error: 'File too large'
-        });
-      }
-    }
-    console.error('Server error:', error);
-    res.status(500).json({
-      success: false,
-      error: error.message || 'Internal server error'
-    });
-  });
-
-
-
-
-
 // Start server only if not in test mode
 if (process.env.NODE_ENV !== 'test') {
-  app.listen(PORT, () => {
+  const shutdownManager = bootstrap.createShutdownManager({ logger });
+
+  const server = app.listen(PORT, () => {
     console.log(`Photo upload server running on port ${PORT}`);
     console.log(`Health check: http://localhost:${PORT}/health`);
   });
 
-  // Non-blocking Supabase connectivity smoke-check: runs once on startup and
-  // logs whether Supabase storage or DB is reachable. This is intentionally
-  // non-blocking so server startup is not delayed by network issues. We also
-  // schedule periodic checks so connectivity problems are surfaced during
-  // longer-running development sessions.
- (async () => {
-    try {
-      const runSmoke = require('./smoke-supabase');
-      const supabase = require('./lib/supabaseClient');
-      // initial run
-      await runSmoke(supabase);
+  shutdownManager.register('httpServer', async () => {
+    await new Promise((resolve) => {
+      try {
+        server.close(() => resolve());
+      } catch {
+        resolve();
+      }
+    });
+  });
 
-      // schedule periodic non-blocking checks (every 10 minutes)
-      const intervalMs = Number(process.env.SUPABASE_SMOKE_INTERVAL_MS) || (10 * 60 * 1000);
-      setInterval(() => {
-        // run but don't await here (fire-and-forget; errors are logged inside)
-        runSmoke(supabase).catch((e) => console.warn('[supabase-smoke] periodic check failed:', e && e.message ? e.message : e));
-      }, intervalMs);
-    } catch (err) {
-      console.warn('[supabase-smoke] Skipped or failed to run smoke-check:', err && err.message ? err.message : err);
-    }
-  })();
+  const { handles } = bootstrap.startIntegrations({ logger, sseManager, supabase });
+  for (const h of handles) {
+    shutdownManager.register(h.name, h.stop);
+  }
+
+  bootstrap.installSignalHandlers({ logger, shutdownManager });
 }
 
 // Export after full configuration so tests/importers always get the complete app.
 module.exports = app;
+

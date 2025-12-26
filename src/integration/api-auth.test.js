@@ -310,11 +310,20 @@ describe('Integration: API auth errors trigger UI banner', () => {
   });
 
   it('Auth errors return gracefully without throwing (no app crash)', async () => {
-    // Mock fetch to return 401
-    global.fetch = vi.fn().mockResolvedValue({
-      ok: false,
-      status: 401,
-      json: async () => ({ error: 'Unauthorized' })
+    // Mock fetch to return 200 for CSRF bootstrap and 401 for everything else
+    global.fetch = vi.fn().mockImplementation(async (url) => {
+      if (String(url).endsWith('/csrf')) {
+        return {
+          ok: true,
+          status: 200,
+          json: async () => ({ csrfToken: 'test-csrf-token' }),
+        };
+      }
+      return {
+        ok: false,
+        status: 401,
+        json: async () => ({ error: 'Unauthorized' }),
+      };
     });
 
     // Set up minimal listener to prevent unhandled event warnings
@@ -333,8 +342,9 @@ describe('Integration: API auth errors trigger UI banner', () => {
       const result3 = await api.deletePhoto(2);
       expect(result3).toBeUndefined();
 
-      // Verify fetch was called for each API call
-      expect(global.fetch).toHaveBeenCalledTimes(3);
+      // Verify fetch was called for each API call (excluding CSRF prefetch)
+      const nonCsrfCalls = global.fetch.mock.calls.filter(([url]) => !String(url).endsWith('/csrf'));
+      expect(nonCsrfCalls).toHaveLength(3);
     } finally {
       window.removeEventListener('auth:session-expired', listener);
     }
