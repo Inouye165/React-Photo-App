@@ -28,13 +28,33 @@ async function getCsrfToken(credentials: RequestCredentials): Promise<string | n
         method: 'GET',
         credentials,
       })
-      if (!res.ok) return null
+
+      if (!res.ok) {
+        let detail: string | null = null
+        try {
+          detail = await res.text()
+        } catch {
+          /* ignore */
+        }
+        throw new Error(`CSRF fetch failed: ${res.status}${detail ? ` - ${detail}` : ''}`)
+      }
+
       const json = (await res.json().catch(() => null)) as { csrfToken?: unknown } | null
-      const token = json && typeof json.csrfToken === 'string' ? json.csrfToken : null
+      console.log('CSRF Fetch Response:', json)
+
+      const token =
+        json && typeof json.csrfToken === 'string' && json.csrfToken.trim().length > 0 ? json.csrfToken : null
+
+      if (!token) {
+        throw new Error('CSRF token missing from /csrf response')
+      }
+
+      // Cache the string token only.
       _csrfToken = token
       return token
-    } catch {
-      return null
+    } catch (err) {
+      // Fail closed: callers for unsafe methods should not proceed without CSRF.
+      throw err
     } finally {
       _csrfTokenPromise = null
     }
