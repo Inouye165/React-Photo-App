@@ -15,6 +15,7 @@ export type ConnectPhotoEventsParams = {
   onEvent: (frame: SseFrame) => void
   onError?: (err: unknown) => void
   signal?: AbortSignal
+  since?: string | number
 }
 
 function normalizeHeaderValue(value: string | null): string {
@@ -101,7 +102,7 @@ export function createSseParser(onEvent: (frame: SseFrame) => void) {
 }
 
 export async function connectPhotoEvents(params: ConnectPhotoEventsParams): Promise<SseClient> {
-  const { apiBaseUrl, token, onEvent, onError, signal } = params
+  const { apiBaseUrl, token, onEvent, onError, signal, since } = params
 
   if (!apiBaseUrl || typeof apiBaseUrl !== 'string') {
     throw new Error('apiBaseUrl is required')
@@ -117,7 +118,12 @@ export async function connectPhotoEvents(params: ConnectPhotoEventsParams): Prom
     else combinedSignal.addEventListener('abort', () => controller.abort(), { once: true })
   }
 
-  const url = `${apiBaseUrl.replace(/\/$/, '')}/events/photos`
+  const urlObj = new URL(`${apiBaseUrl.replace(/\/$/, '')}/events/photos`)
+  const sinceValue = since === undefined || since === null ? '' : String(since).trim()
+  if (sinceValue) {
+    urlObj.searchParams.set('since', sinceValue)
+  }
+  const url = urlObj.toString()
 
   const response = await fetch(url, {
     method: 'GET',

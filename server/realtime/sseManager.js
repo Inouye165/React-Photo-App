@@ -24,6 +24,8 @@ function createSseManager(options = {}) {
   const heartbeatMs = Number.isFinite(options.heartbeatMs) ? options.heartbeatMs : 25_000;
   const maxConnectionsPerUser = Number.isFinite(options.maxConnectionsPerUser) ? options.maxConnectionsPerUser : 3;
   const generateId = typeof options.generateId === 'function' ? options.generateId : defaultGenerateId;
+  const maxBufferedBytes = Number.isFinite(options.maxBufferedBytes) ? options.maxBufferedBytes : 64 * 1024;
+  const metrics = options.metrics || null;
 
   /** @type {Map<string, Set<{ res: any, heartbeat: NodeJS.Timeout | null }>>} */
   const clientsByUserId = new Map();
@@ -39,10 +41,20 @@ function createSseManager(options = {}) {
 
   function writeToRes(res, chunk) {
     try {
-      res.write(chunk);
-      return true;
+      const ok = res.write(chunk);
+
+      // Node streams signal backpressure by returning false.
+      if (ok === false) return { ok: false, reason: 'backpressure_drop' };
+
+      // Defense-in-depth: drop if writable buffer appears to be growing.
+      const buffered = typeof res?.writableLength === 'number' ? res.writableLength : null;
+      if (buffered !== null && buffered > maxBufferedBytes) {
+        return { ok: false, reason: 'backpressure_drop' };
+      }
+
+      return { ok: true };
     } catch {
-      return false;
+      return { ok: false, reason: 'error' };
     }
   }
 
@@ -52,19 +64,34 @@ function createSseManager(options = {}) {
       return { ok: false, reason: 'connection_cap' };
     }
 
-    const record = { res, heartbeat: null };
+    const record = { res, heartbeat: null, closed: false };
 
     if (!clientsByUserId.has(key)) {
       clientsByUserId.set(key, new Set());
     }
     clientsByUserId.get(key).add(record);
 
+    if (metrics && typeof metrics.incRealtimeConnect === 'function') {
+      try {
+        metrics.incRealtimeConnect();
+      } catch {
+        // ignore metrics errors
+      }
+    }
+    if (metrics && typeof metrics.setRealtimeActiveConnections === 'function') {
+      try {
+        metrics.setRealtimeActiveConnections(totalClientCount());
+      } catch {
+        // ignore
+      }
+    }
+
     if (heartbeatMs > 0) {
       record.heartbeat = setInterval(() => {
         // SSE comment heartbeat (keeps proxies from closing idle connection)
-        const ok = writeToRes(res, `: ping\n\n`);
-        if (!ok) {
-          removeClient(key, res);
+        const out = writeToRes(res, `: ping\n\n`);
+        if (!out.ok) {
+          removeClient(key, res, out.reason);
         }
       }, heartbeatMs);
 
@@ -77,18 +104,57 @@ function createSseManager(options = {}) {
     return { ok: true };
   }
 
-  function removeClient(userId, res) {
+  function totalClientCount() {
+    let n = 0;
+    for (const set of clientsByUserId.values()) n += set.size;
+    return n;
+  }
+
+  function removeClient(userId, res, reason) {
     const key = String(userId);
     const set = clientsByUserId.get(key);
     if (!set || set.size === 0) return;
 
     for (const record of set) {
       if (record.res === res) {
+        if (record.closed) {
+          return;
+        }
+        record.closed = true;
         if (record.heartbeat) {
           clearInterval(record.heartbeat);
           record.heartbeat = null;
         }
         set.delete(record);
+
+        // Best-effort: end the response so Node stops buffering.
+        try {
+          if (typeof res?.end === 'function') res.end();
+        } catch {
+          // ignore
+        }
+
+        if (metrics && typeof metrics.incRealtimeDisconnect === 'function') {
+          try {
+            metrics.incRealtimeDisconnect();
+          } catch {
+            // ignore
+          }
+        }
+        if (metrics && typeof metrics.incRealtimeDisconnectReason === 'function') {
+          try {
+            metrics.incRealtimeDisconnectReason(reason || 'client_close');
+          } catch {
+            // ignore
+          }
+        }
+        if (metrics && typeof metrics.setRealtimeActiveConnections === 'function') {
+          try {
+            metrics.setRealtimeActiveConnections(totalClientCount());
+          } catch {
+            // ignore
+          }
+        }
         break;
       }
     }
@@ -103,15 +169,16 @@ function createSseManager(options = {}) {
     const set = clientsByUserId.get(key);
     if (!set || set.size === 0) return { delivered: 0 };
 
-    const eventId = generateId();
+    const upstreamEventId = payload && typeof payload === 'object' ? payload.eventId : null;
+    const eventId = (typeof upstreamEventId === 'string' && upstreamEventId.trim()) ? upstreamEventId : generateId();
     const data = (payload && typeof payload === 'object') ? { ...payload, eventId } : { eventId, payload };
     const frame = formatSseEvent({ eventName, eventId, data });
 
     let delivered = 0;
     for (const record of Array.from(set)) {
-      const ok = writeToRes(record.res, frame);
-      if (!ok) {
-        removeClient(key, record.res);
+      const out = writeToRes(record.res, frame);
+      if (!out.ok) {
+        removeClient(key, record.res, out.reason);
         continue;
       }
       delivered += 1;
