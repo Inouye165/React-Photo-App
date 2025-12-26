@@ -44,7 +44,8 @@ const HEALTH_URL = { hostname: 'localhost', port: 3001, path: '/health', method:
 const INTEGRATION_ORIGIN = 'http://localhost:5173';
 const REGISTER_URL = { hostname: 'localhost', port: 3001, path: '/auth/register', method: 'POST', headers: { 'Content-Type': 'application/json', 'Origin': INTEGRATION_ORIGIN } };
 const LOGIN_URL = { hostname: 'localhost', port: 3001, path: '/auth/login', method: 'POST', headers: { 'Content-Type': 'application/json', 'Origin': INTEGRATION_ORIGIN } };
-const CSRF_URL = { hostname: 'localhost', port: 3001, path: '/auth/csrf', method: 'GET', headers: { 'Origin': INTEGRATION_ORIGIN } };
+// CSRF token endpoint (csurf): GET /csrf -> { csrfToken } and sets csrfSecret cookie.
+const CSRF_URL = { hostname: 'localhost', port: 3001, path: '/csrf', method: 'GET', headers: { 'Origin': INTEGRATION_ORIGIN } };
 const PRIV_URL = { hostname: 'localhost', port: 3001, path: '/privilege', method: 'POST', headers: { 'Content-Type': 'application/json', 'Origin': INTEGRATION_ORIGIN } };
 
 // Test user credentials for integration testing
@@ -120,7 +121,9 @@ async function getCsrfToken() {
   let csrfCookie = null;
   if (result.headers && result.headers['set-cookie']) {
     const sc = result.headers['set-cookie'];
-    const found = sc.find(c => c && c.startsWith('csrfToken='));
+    const setCookie = Array.isArray(sc) ? sc : [sc];
+    // csurf cookie mode sets a secret cookie; our server config uses key 'csrfSecret'.
+    const found = setCookie.find((c) => typeof c === 'string' && c.startsWith('csrfSecret='));
     if (found) csrfCookie = found.split(';')[0];
   }
   
@@ -128,8 +131,10 @@ async function getCsrfToken() {
 }
 
 async function registerAndLogin() {
-  // Always return the dummy token expected by the mock server
-  return { authToken: 'integration-test-token', csrfToken: null, csrfCookie: null };
+  // Always return the dummy token expected by the mock server.
+  // But DO fetch CSRF token/cookie for unsafe requests now that csurf is enabled.
+  const { csrfToken, csrfCookie } = await getCsrfToken();
+  return { authToken: 'integration-test-token', csrfToken, csrfCookie };
 }
 
 function postPrivilege({ authToken, csrfToken, csrfCookie }) {
@@ -137,7 +142,7 @@ function postPrivilege({ authToken, csrfToken, csrfCookie }) {
   const opts = Object.assign({}, PRIV_URL);
   const headersBase = Object.assign({}, PRIV_URL.headers, { 'Content-Length': Buffer.byteLength(JSON.stringify(payload)) });
   
-  if (csrfToken) headersBase['x-csrf-token'] = csrfToken;
+  if (csrfToken) headersBase['X-CSRF-Token'] = csrfToken;
   
   const cookies = [];
   if (typeof authToken === 'string' && authToken.startsWith('authToken=')) {
