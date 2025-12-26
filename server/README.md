@@ -97,6 +97,11 @@ Backend server for Lumina. Node.js + Express, covering authentication, uploads, 
 - `GET /display/image/:photoId` - Serve full-size image by ID
 - `POST /privilege` - Check file permissions (Authenticated, performs real-time ownership verification)
 
+### Real-time Events (SSE)
+- `GET /events/photos` - Server-Sent Events stream for photo processing updates (Authenticated)
+  - Emits `photo.processing` events only
+  - Kill switch: set `REALTIME_EVENTS_DISABLED=true` to return `503` and force clients to fall back to polling
+
 ### AI & Metadata
 - `POST /photos/:id/run-ai` - Trigger AI analysis
 - `POST /photos/:id/recheck-ai` - Re-run AI analysis on existing photo

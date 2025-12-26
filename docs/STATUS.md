@@ -58,6 +58,27 @@ I didn't just want "smart tags." I wanted a system that thinks.
 
 ---
 
+## Real-time Photo Processing Events (Stream-first)
+
+The app uses **Server-Sent Events (SSE)** to receive `photo.processing` updates as the backend finishes AI/image processing.
+
+### Feature flag + kill switch
+- **Client flag (default off):** set `VITE_ENABLE_PHOTO_EVENTS=true` to enable the SSE client.
+- **Server kill switch:** set `REALTIME_EVENTS_DISABLED=true` to make `/events/photos` return `503`.
+
+### Runtime behavior
+- When SSE is enabled and healthy, the client marks streaming as active and **does not run polling loops concurrently**.
+- If SSE is disabled (flag off), rejected (e.g., `503` kill switch / `429` connection cap), or fails repeatedly, the client **falls back to HTTP polling**.
+- To avoid flapping, after **3 consecutive connect/disconnect failures** in a single session the client prefers polling for the rest of that session.
+- Event application is **deduped** using event IDs to prevent double-updates.
+
+### How to verify locally
+- In DevTools Network, watch a long-lived request to `/events/photos` with response `Content-Type: text/event-stream`.
+- Trigger AI processing and observe `photo.processing` SSE frames.
+- Set `REALTIME_EVENTS_DISABLED=true` on the server and confirm `/events/photos` returns `503` and the UI continues updating via polling.
+
+---
+
 ## Future Ideas (The "Maybe" List)
 
 I'm not committing to dates. These are just things I want to explore when I have time.

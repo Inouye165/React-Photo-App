@@ -60,6 +60,24 @@ describe('usePhotoProcessingEvents', () => {
     vi.restoreAllMocks()
   })
 
+  const makeClient = () => {
+    let resolveClosed: (() => void) | null = null
+    const closed = new Promise<void>((resolve) => {
+      resolveClosed = resolve
+    })
+
+    return {
+      close: vi.fn(() => {
+        try {
+          resolveClosed?.()
+        } catch {
+          // ignore
+        }
+      }),
+      closed,
+    }
+  }
+
   it('computeReconnectDelayMs is deterministic with injected random', () => {
     expect(computeReconnectDelayMs(0, { random: () => 0.5, baseMs: 500, jitterRatio: 0.2 })).toBe(500)
     expect(computeReconnectDelayMs(1, { random: () => 0.5, baseMs: 500, jitterRatio: 0.2 })).toBe(1000)
@@ -98,5 +116,76 @@ describe('usePhotoProcessingEvents', () => {
 
     // After the 3rd failure, fallback should resume polling for pending IDs
     expect(startSpy).toHaveBeenCalled()
+  })
+
+  it('does not start polling when stream is healthy', async () => {
+    const startSpy = vi.spyOn(useStore.getState(), 'startAiPolling')
+
+    vi.mocked(connectPhotoEvents).mockResolvedValue(makeClient() as any)
+
+    renderHook(() => usePhotoProcessingEvents({ authed: true }))
+
+    // Allow the async connect to resolve.
+    await Promise.resolve()
+    await Promise.resolve()
+
+    expect(useStore.getState().photoEventsStreamingActive).toBe(true)
+    expect(startSpy).not.toHaveBeenCalled()
+  })
+
+  it('falls back to polling immediately on server kill switch (HTTP 503)', async () => {
+    const startSpy = vi.spyOn(useStore.getState(), 'startAiPolling')
+    const err = new Error('SSE connect failed (HTTP 503)') as Error & { status?: number }
+    err.status = 503
+
+    vi.mocked(connectPhotoEvents).mockRejectedValue(err)
+
+    renderHook(() => usePhotoProcessingEvents({ authed: true }))
+
+    await Promise.resolve()
+    await Promise.resolve()
+
+    // Should resume polling for pending IDs without waiting for 3 failures.
+    expect(startSpy).toHaveBeenCalledWith(1)
+  })
+
+  it('dedupes repeated photo.processing events (no double-apply)', async () => {
+    const updateSpy = vi.spyOn(useStore.getState(), 'updatePhoto')
+    const stopSpy = vi.spyOn(useStore.getState(), 'stopAiPolling')
+
+    let capturedOnEvent: ((frame: any) => void) | null = null
+    vi.mocked(connectPhotoEvents).mockImplementation(async (params: any) => {
+      capturedOnEvent = params?.onEvent
+      return makeClient() as any
+    })
+
+    renderHook(() => usePhotoProcessingEvents({ authed: true }))
+    await Promise.resolve()
+    await Promise.resolve()
+
+    expect(typeof capturedOnEvent).toBe('function')
+    if (!capturedOnEvent) throw new Error('expected SSE onEvent callback to be captured')
+    const onEvent: (frame: any) => void = capturedOnEvent as unknown as (frame: any) => void
+
+    const payload = {
+      eventId: 'evt-1',
+      photoId: '1',
+      status: 'finished',
+      updatedAt: new Date().toISOString(),
+    }
+
+    onEvent({
+      event: 'photo.processing',
+      id: 'evt-1',
+      data: JSON.stringify(payload),
+    })
+    onEvent({
+      event: 'photo.processing',
+      id: 'evt-1',
+      data: JSON.stringify(payload),
+    })
+
+    expect(updateSpy).toHaveBeenCalledTimes(1)
+    expect(stopSpy).toHaveBeenCalledTimes(1)
   })
 })

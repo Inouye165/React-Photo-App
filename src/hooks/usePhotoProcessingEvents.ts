@@ -123,7 +123,7 @@ export function usePhotoProcessingEvents(params: { authed: boolean }): UsePhotoP
     if (!enabled) {
       // Ensure we never leave the store in "streaming" mode if feature is disabled.
       try {
-        if (streamingActive) setStreamingActive(false, 'disabled')
+        setStreamingActive(false, 'disabled')
       } catch {
         // ignore
       }
@@ -318,11 +318,29 @@ export function usePhotoProcessingEvents(params: { authed: boolean }): UsePhotoP
           // ignore
         }
         scheduleReconnect()
-      } catch {
+      } catch (err) {
         if (!mounted) return
 
         clientRef.current = null
         abortRef.current = null
+
+        // Deterministic kill-switch / rejection handling:
+        // - 503: server-side disable switch (fallback to polling for this session)
+        // - 429: per-user connection cap (avoid flapping; fallback to polling)
+        const status = (err && typeof err === 'object' && 'status' in err)
+          ? Number((err as { status?: unknown }).status)
+          : NaN
+
+        if (status === 503 || status === 429) {
+          disabledForSessionRef.current = true
+          try {
+            setStreamingActive(false, status === 503 ? 'server_disabled' : 'too_many_connections')
+          } catch {
+            // ignore
+          }
+          resumePollingForPending(status === 503 ? 'server_disabled' : 'too_many_connections')
+          return
+        }
 
         failuresRef.current += 1
         try {
@@ -340,7 +358,7 @@ export function usePhotoProcessingEvents(params: { authed: boolean }): UsePhotoP
       mounted = false
       cleanupClient()
     }
-  }, [enabled, setStreamingActive, streamingActive])
+  }, [enabled, setStreamingActive])
 
   return {
     enabled,
