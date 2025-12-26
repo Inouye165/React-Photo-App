@@ -117,21 +117,26 @@ describe('Process Lifecycle - Uncaught Exception Handling', () => {
     expect(result.status).toBe(1);
   });
 
-  test('server.js should have proper uncaughtException handler', () => {
-    // Static analysis test: verify server.js has the correct pattern
+  test('server.js should delegate lifecycle handlers to bootstrap', () => {
+    // Static analysis: server.js should register lifecycle handlers via bootstrap.
     const serverPath = path.join(__dirname, '..', 'server.js');
     const serverCode = fs.readFileSync(serverPath, 'utf-8');
-    
+
+    expect(serverCode).toMatch(/registerProcessHandlers\s*\(/);
+  });
+
+  test('bootstrap/registerProcessHandlers.js should have proper uncaughtException handler', () => {
+    const handlerPath = path.join(__dirname, '..', 'bootstrap', 'registerProcessHandlers.js');
+    const handlerCode = fs.readFileSync(handlerPath, 'utf-8');
+
     // Should have an uncaughtException handler
-    expect(serverCode).toMatch(/process\.on\s*\(\s*['"]uncaughtException['"]/);
-    
+    expect(handlerCode).toMatch(/process\.on\s*\(\s*['"]uncaughtException['"]/);
+
     // Handler should call process.exit(1)
-    // This is the critical fix - the process MUST exit
-    expect(serverCode).toMatch(/process\.exit\s*\(\s*1\s*\)/);
-    
-    // Handler should log the error (using logger or console.error)
-    // Match either logger.fatal or logger.error or console.error
-    expect(serverCode).toMatch(/logger\.(fatal|error)|console\.error/);
+    expect(handlerCode).toMatch(/process\.exit\s*\(\s*1\s*\)/);
+
+    // Handler should log the error
+    expect(handlerCode).toMatch(/logger\.(fatal|error)|console\.error/);
   });
 
   test('documentation should reference big-tech standards', () => {
