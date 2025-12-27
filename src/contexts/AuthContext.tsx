@@ -5,7 +5,7 @@ import type { Session, User } from '@supabase/supabase-js'
 import { supabase } from '../supabaseClient'
 import useStore from '../store'
 import { API_BASE_URL } from '../config/apiConfig'
-import { request, setAuthToken } from '../api'
+import { setAuthToken } from '../api'
 import type { UserProfile } from '../api'
 
 declare global {
@@ -370,12 +370,6 @@ export function AuthProvider({ children }: { children: ReactNode }): ReactNode {
         setAuthReady(false)
         // Clear photo store to prevent stale data fetches
         useStore.getState().setPhotos([])
-
-        try {
-          await request<{ success: boolean }>({ path: '/api/auth/logout', method: 'POST' })
-        } catch {
-          // ignore
-        }
         return
       }
 
@@ -578,15 +572,6 @@ export function AuthProvider({ children }: { children: ReactNode }): ReactNode {
     try {
       // Clear Bearer token from the api module
       setAuthToken(null)
-
-      // Clear legacy httpOnly cookie (best effort, will be removed in future)
-      try {
-        await request<{ success: boolean }>({ path: '/api/auth/logout', method: 'POST' })
-      } catch (cookieError) {
-        if (import.meta.env.DEV) {
-          console.debug('Legacy cookie clear failed (expected if not using cookies):', cookieError)
-        }
-      }
 
       const { error } = await supabase.auth.signOut()
       if (error) throw error
