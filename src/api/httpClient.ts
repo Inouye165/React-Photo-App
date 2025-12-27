@@ -39,20 +39,20 @@ async function getCsrfToken(credentials: RequestCredentials): Promise<string | n
         throw new Error(`CSRF fetch failed: ${res.status}${detail ? ` - ${detail}` : ''}`)
       }
 
-      const json = (await res.json().catch(() => null)) as { csrfToken?: unknown } | null
-      console.log('CSRF Fetch Response:', json)
+      const data = (await res.json().catch(() => null)) as { csrfToken?: unknown } | null
+      console.log('CSRF API Response:', data)
 
       const token =
-        json && typeof json.csrfToken === 'string' && json.csrfToken.trim().length > 0 ? json.csrfToken : null
+        data && typeof data.csrfToken === 'string' && data.csrfToken.trim().length > 0 ? data.csrfToken : null
 
       if (!token) {
-        console.error('[CSRF] Token missing from /csrf response', { response: json })
+        console.error('[CSRF] Token missing from /csrf response', { response: data })
         throw new Error('CSRF token missing from /csrf response')
       }
 
       // Cache the string token only.
       _csrfToken = token
-      return token
+      return data.csrfToken as string
     } catch (err) {
       // Fail closed: callers for unsafe methods should not proceed without CSRF.
       const message = err instanceof Error ? err.message : String(err)
@@ -335,9 +335,13 @@ export async function request<T>(options: RequestOptions): Promise<T> {
     const existingHeaderKey = Object.keys(headers).find((k) => k.toLowerCase() === 'x-csrf-token')
     if (!existingHeaderKey) {
       const token = await getCsrfToken(effectiveCredentials)
-      if (token) {
-        ;(fetchOptions.headers as Record<string, string>)['X-CSRF-Token'] = token
+
+      // Ensure we always assign the header to the awaited token result.
+      if (!token) {
+        throw new Error('Abort: CSRF token could not be retrieved')
       }
+
+      ;(fetchOptions.headers as Record<string, string>)['X-CSRF-Token'] = token
     }
   }
 
@@ -358,13 +362,20 @@ export async function request<T>(options: RequestOptions): Promise<T> {
 
   let response: Response
   const doFetch = () => {
+    const hdrs = fetchOptions.headers as unknown as Record<string, string> | undefined
+    const csrfHeaderValue = hdrs ? hdrs['X-CSRF-Token'] : undefined
+
     try {
       // Debug: verify CSRF header is attached on unsafe requests.
-      const hdrs = fetchOptions.headers as unknown as Record<string, string> | undefined
-      console.log('Sending CSRF Header:', hdrs ? hdrs['X-CSRF-Token'] : undefined)
+      console.log('Sending CSRF Header:', csrfHeaderValue)
     } catch {
       /* ignore */
     }
+
+    if (isUnsafeMethod(method) && !csrfHeaderValue) {
+      throw new Error('Abort: CSRF token could not be retrieved')
+    }
+
     if (timeoutMs) {
       const controller = new AbortController()
       const id = setTimeout(() => controller.abort(), timeoutMs)
