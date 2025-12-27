@@ -36,6 +36,19 @@ export interface PendingUpload extends Omit<Photo, 'state'> {
   isTemporary: true
 }
 
+export type BackgroundUploadStatus = 'uploading' | 'success' | 'error'
+
+export interface BackgroundUploadEntry {
+  id: string
+  file: File
+  filename: string
+  size: number
+  startedAt: string
+  status: BackgroundUploadStatus
+  errorMessage?: string
+  classification?: string
+}
+
 export interface AiPollingOptions {
   intervalMs?: number
   maxIntervalMs?: number
@@ -53,6 +66,7 @@ export interface StoreState extends UploadPickerSlice {
   // Spinner state is still represented by pollingPhotoIds.
   photoEventsStreamingActive: boolean
   pendingUploads: PendingUpload[]
+  backgroundUploads: BackgroundUploadEntry[]
   banner: BannerState
   view: ViewState
   activePhotoId: Photo['id'] | null
@@ -68,6 +82,13 @@ export interface StoreState extends UploadPickerSlice {
   addPendingUploads: (files: File[]) => PendingUpload[]
   removePendingUpload: (tempId: string) => void
   clearPendingUploads: () => void
+
+  addBackgroundUploads: (files: File[], classification?: string) => string[]
+  markBackgroundUploadSuccess: (id: string) => void
+  markBackgroundUploadError: (id: string, message?: string) => void
+  clearCompletedBackgroundUploads: () => void
+  retryFailedBackgroundUploads: () => string[]
+  removeBackgroundUpload: (id: string) => void
 
   setBanner: (value: string | Partial<BannerState> | null | undefined) => void
   setView: (view: ViewState) => void
@@ -191,6 +212,79 @@ const useStore = create<StoreState>((set, get) => ({
       })
       return { pendingUploads: [] }
     }),
+
+  // Background uploads - persistent per-file status tracking (does not reuse pendingUploads)
+  backgroundUploads: [],
+  addBackgroundUploads: (files: File[], classification?: string) => {
+    const safeFiles = Array.isArray(files) ? files.filter(Boolean) : []
+    const now = Date.now()
+    const startedAt = new Date().toISOString()
+
+    const newEntries: BackgroundUploadEntry[] = safeFiles.map((file) => {
+      const id = `bg-${now}-${Math.random().toString(36).substr(2, 9)}`
+      return {
+        id,
+        file,
+        filename: file.name,
+        size: file.size,
+        startedAt,
+        status: 'uploading',
+        classification,
+      }
+    })
+
+    set((state) => ({ backgroundUploads: [...newEntries, ...(state.backgroundUploads || [])] }))
+    return newEntries.map((e) => e.id)
+  },
+  markBackgroundUploadSuccess: (id: string) =>
+    set((state) => ({
+      backgroundUploads: (state.backgroundUploads || []).map((u) =>
+        u.id === id
+          ? {
+              ...u,
+              status: 'success',
+              errorMessage: undefined,
+            }
+          : u,
+      ),
+    })),
+  markBackgroundUploadError: (id: string, message?: string) =>
+    set((state) => ({
+      backgroundUploads: (state.backgroundUploads || []).map((u) =>
+        u.id === id
+          ? {
+              ...u,
+              status: 'error',
+              errorMessage: typeof message === 'string' ? message : u.errorMessage,
+            }
+          : u,
+      ),
+    })),
+  clearCompletedBackgroundUploads: () =>
+    set((state) => ({
+      backgroundUploads: (state.backgroundUploads || []).filter((u) => u.status !== 'success'),
+    })),
+  retryFailedBackgroundUploads: () => {
+    const failedIds = (get().backgroundUploads || []).filter((u) => u.status === 'error').map((u) => u.id)
+    const restartedAt = new Date().toISOString()
+    set((state) => ({
+      backgroundUploads: (state.backgroundUploads || []).map((u) =>
+        u.status === 'error'
+          ? {
+              ...u,
+              status: 'uploading',
+              errorMessage: undefined,
+              startedAt: restartedAt,
+            }
+          : u,
+      ),
+    }))
+    return failedIds
+  },
+  removeBackgroundUpload: (id: string) =>
+    set((state) => ({
+      backgroundUploads: (state.backgroundUploads || []).filter((u) => u.id !== id),
+    })),
 
   // Persistent banner notification (alternative to toast)
   banner: { message: '', severity: 'info' },

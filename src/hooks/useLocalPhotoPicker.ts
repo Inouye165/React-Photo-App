@@ -343,6 +343,9 @@ export default function useLocalPhotoPicker({
       // Add placeholders to gallery immediately
       const pendingEntries = useStore.getState().addPendingUploads(files) || [];
 
+      // Track background uploads persistently (pending placeholders are removed after upload)
+      const backgroundUploadIds = useStore.getState().addBackgroundUploads(files, analysisType) || [];
+
       // Close the picker UI immediately so the user returns to the gallery
       pickerCommand.closePicker('optimistic-upload-start');
 
@@ -354,6 +357,7 @@ export default function useLocalPhotoPicker({
         for (let i = 0; i < files.length; i++) {
           const file = files[i];
           const tempId = pendingEntries[i]?.id;
+          const bgId = backgroundUploadIds[i];
           let thumbnailBlob: Blob | null = null;
 
           try {
@@ -364,8 +368,11 @@ export default function useLocalPhotoPicker({
 
           try {
             await uploadPhotoToServer(file, undefined, thumbnailBlob, { classification: analysisType });
-          } catch {
+            if (bgId) useStore.getState().markBackgroundUploadSuccess(bgId);
+          } catch (error) {
             errors.push(file?.name || 'unknown');
+            const message = error instanceof Error ? error.message : String(error);
+            if (bgId) useStore.getState().markBackgroundUploadError(bgId, message || 'Upload failed');
           } finally {
             if (tempId) {
               removePendingUpload(tempId);
