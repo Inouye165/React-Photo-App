@@ -42,7 +42,7 @@ This document contains the full list of phased TODO items and improvement plans 
 - [ ] **Fix "Data Gluttony":** Stop using `SELECT *`; only fetch columns needed for the view.
 - [ ] **Fix "Memory Bomb" Script:** Refactor maintenance scripts to use Streams instead of loading all rows into arrays.
 - [ ] **Decouple "Distributed Cron":** Move `setInterval` tasks out of the web server and into a dedicated Worker process.
-- [ ] **Switch to Signed URLs:** Stop proxying images through Node.js; generate temporary direct links to Supabase Storage.
+- [x] **Switch to Signed URLs:** Stop proxying images through Node.js; generate temporary direct links to Supabase Storage.
 - [ ] **Fix "Waterfall" Loading:** Move data fetching from Component `useEffect` to Router Loaders.
 - [ ] **Add PWA Manifest:** Create `manifest.json` to allow "Add to Home Screen" and remove the browser URL bar.
 - [ ] **Tiny Thumbnails:** Generate specific 150px thumbnails for mobile views to save bandwidth.
