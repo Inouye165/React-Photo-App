@@ -370,15 +370,6 @@ export function AuthProvider({ children }: { children: ReactNode }): ReactNode {
         setAuthReady(false)
         // Clear photo store to prevent stale data fetches
         useStore.getState().setPhotos([])
-
-        try {
-          await fetch(`${API_BASE_URL}/api/auth/logout`, {
-            method: 'POST',
-            credentials: 'include',
-          })
-        } catch {
-          // ignore
-        }
         return
       }
 
@@ -581,18 +572,6 @@ export function AuthProvider({ children }: { children: ReactNode }): ReactNode {
     try {
       // Clear Bearer token from the api module
       setAuthToken(null)
-
-      // Clear legacy httpOnly cookie (best effort, will be removed in future)
-      try {
-        await fetch(`${API_BASE_URL}/api/auth/logout`, {
-          method: 'POST',
-          credentials: 'include',
-        })
-      } catch (cookieError) {
-        if (import.meta.env.DEV) {
-          console.debug('Legacy cookie clear failed (expected if not using cookies):', cookieError)
-        }
-      }
 
       const { error } = await supabase.auth.signOut()
       if (error) throw error

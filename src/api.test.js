@@ -14,6 +14,7 @@ describe('uploadPhotoToServer FormData construction', () => {
     let formDataArg;
     global.fetch = vi.fn((url, opts) => {
       if (typeof url === 'string' && url.endsWith('/csrf')) {
+      if (String(url).endsWith('/csrf')) {
         return Promise.resolve({ ok: true, status: 200, json: async () => ({ csrfToken: 'test-csrf-token' }) });
       }
       formDataArg = opts.body;
@@ -43,6 +44,7 @@ describe('uploadPhotoToServer FormData construction', () => {
     let formDataArg;
     global.fetch = vi.fn((url, opts) => {
       if (typeof url === 'string' && url.endsWith('/csrf')) {
+      if (String(url).endsWith('/csrf')) {
         return Promise.resolve({ ok: true, status: 200, json: async () => ({ csrfToken: 'test-csrf-token' }) });
       }
       formDataArg = opts.body;

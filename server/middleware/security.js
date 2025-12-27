@@ -68,8 +68,20 @@ function configureSecurity(app) {
     standardHeaders: true,
     legacyHeaders: false,
     skip: (req) => {
+      const originalPath = String(req.originalUrl || req.url || req.path || '').split('?')[0];
+
       // Skip rate limiting for health checks
-      return req.path === '/health' || req.path === '/metrics';
+      if (originalPath === '/health' || originalPath === '/metrics') return true;
+
+      // Avoid overlapping rate limiters. These routes have their own, stricter limiters
+      // mounted below (apiLimiter/uploadLimiter) and/or inside routers (auth/public/e2e).
+      // Applying multiple express-rate-limit instances on the same request can trigger
+      // ERR_ERL_DOUBLE_COUNT (and also unintentionally double-count).
+      if (originalPath === '/api' || originalPath.startsWith('/api/')) return true;
+      if (originalPath === '/photos' || originalPath.startsWith('/photos/')) return true;
+      if (originalPath === '/upload' || originalPath.startsWith('/upload/')) return true;
+
+      return false;
     }
   });
 
@@ -97,6 +109,17 @@ function configureSecurity(app) {
     },
     standardHeaders: true,
     legacyHeaders: false,
+    skip: (req) => {
+      const originalPath = String(req.originalUrl || req.url || req.path || '').split('?')[0];
+
+      // These subrouters apply their own, endpoint-specific limiters.
+      // Skip here to avoid overlap/double counting.
+      if (originalPath === '/api/auth' || originalPath.startsWith('/api/auth/')) return true;
+      if (originalPath === '/api/public' || originalPath.startsWith('/api/public/')) return true;
+      if (originalPath === '/api/test' || originalPath.startsWith('/api/test/')) return true;
+
+      return false;
+    },
   });
 
   // Apply general rate limiting to all routes
