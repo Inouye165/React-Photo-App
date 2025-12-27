@@ -1,7 +1,7 @@
 import React, { useState, useEffect } from 'react';
 import { useAuth } from '../contexts/AuthContext';
 import LandingPage from '../pages/LandingPage';
-import DisclaimerModal from './DisclaimerModal';
+import DisclaimerModal from '../components/DisclaimerModal';
 import { API_BASE_URL } from '../config/apiConfig';
 
 interface AuthWrapperProps {

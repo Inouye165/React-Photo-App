@@ -3,6 +3,7 @@ const logger = require('../../logger');
 const { haversineDistanceMeters } = require('./geoUtils');
 
 // TODO: Make sure the UI displays "© OpenStreetMap contributors" when surfacing OSM trail data.
+// NOTE: Attribution is currently handled in src/components/LocationMapPanel.jsx
 
 const ensureFetch = () => {
   if (typeof globalThis.fetch === 'function') return globalThis.fetch.bind(globalThis);

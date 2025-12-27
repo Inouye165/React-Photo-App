@@ -26,6 +26,7 @@
     "prepare": ""
   },
   "dependencies": {
+    "@langchain/core": "^1.1.8",
     "@langchain/langgraph": "^1.0.1",
     "@langchain/openai": "^1.1.2",
     "@supabase/supabase-js": "^2.76.1",

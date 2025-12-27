@@ -9,7 +9,7 @@ import type { UploadResponse } from '../types/global';
 /**
  * Classification types for AI analysis
  */
-export type AnalysisType = 'scenery' | 'food' | 'receipt' | 'document' | 'collectible';
+export type AnalysisType = 'scenery' | 'food' | 'receipt' | 'document' | 'collectible' | 'todo';
 
 /**
  * File object with optional handle from File System Access API

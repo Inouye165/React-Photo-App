@@ -11,10 +11,12 @@ exports.up = async function(knex) {
     table.timestamp('terms_accepted_at').nullable();
   });
 
-  // Add comment for documentation
-  await knex.raw(`
-    COMMENT ON COLUMN users.terms_accepted_at IS 'Timestamp when user accepted experimental/beta terms. NULL means not accepted.';
-  `);
+  // Add comment for documentation (Postgres only)
+  if (knex.client.config.client === 'pg') {
+    await knex.raw(`
+      COMMENT ON COLUMN users.terms_accepted_at IS 'Timestamp when user accepted experimental/beta terms. NULL means not accepted.';
+    `);
+  }
 };
 
 /**

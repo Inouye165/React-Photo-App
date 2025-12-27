@@ -3,7 +3,7 @@ import { describe, it, expect, vi, beforeEach } from 'vitest';
 import { render, screen, waitFor } from '@testing-library/react';
 import { MemoryRouter, Routes, Route } from 'react-router-dom';
 import { AuthProvider } from './contexts/AuthContext';
-import AuthWrapper from './components/AuthWrapper';
+import AuthWrapper from './layouts/AuthWrapper';
 import MainLayout from './layouts/MainLayout.jsx';
 import PhotoGalleryPage from './pages/PhotoGalleryPage.jsx';
 import PhotoDetailPage from './pages/PhotoDetailPage.tsx';

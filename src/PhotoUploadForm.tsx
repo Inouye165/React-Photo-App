@@ -370,7 +370,7 @@ const PhotoUploadForm: React.FC<PhotoUploadFormProps> = ({
           >
             <option value="scenery">🏞️ Scenery &amp; Location</option>
             <option value="collectible">🏺 Collectible &amp; Appraisal</option>
-            <option value="todo" disabled>
+            <option value="todo">
               📝 Todo / Reminder
             </option>
           </select>

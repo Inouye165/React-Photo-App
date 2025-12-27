@@ -20,13 +20,15 @@ exports.up = async function(knex) {
     table.timestamp('updated_at').defaultTo(knex.fn.now());
   });
 
-  // Add comment for documentation
-  await knex.raw(`
-    COMMENT ON TABLE users IS 'Application users table storing preferences. id references Supabase auth.users.id';
-  `);
-  await knex.raw(`
-    COMMENT ON COLUMN users.preferences IS 'JSONB blob for user settings including gradingScales for collectibles';
-  `);
+  // Add comment for documentation (Postgres only)
+  if (knex.client.config.client === 'pg') {
+    await knex.raw(`
+      COMMENT ON TABLE users IS 'Application users table storing preferences. id references Supabase auth.users.id';
+    `);
+    await knex.raw(`
+      COMMENT ON COLUMN users.preferences IS 'JSONB blob for user settings including gradingScales for collectibles';
+    `);
+  }
 };
 
 /**

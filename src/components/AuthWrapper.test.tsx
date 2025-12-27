@@ -1,6 +1,6 @@
 import { describe, it, expect, vi, beforeEach } from 'vitest';
 import { render, screen } from '@testing-library/react';
-import AuthWrapper from './AuthWrapper';
+import AuthWrapper from '../layouts/AuthWrapper';
 
 const mockUseAuth = vi.fn();
 

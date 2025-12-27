@@ -95,7 +95,7 @@ module.exports = function createUploadsRouter({ db }) {
       const rawClassification = uploadResult?.fields?.classification;
       const normalizedClassification = (typeof rawClassification === 'string' ? rawClassification.trim() : '')
         .toLowerCase();
-      const classification = (normalizedClassification === 'collectible' || normalizedClassification === 'scenery')
+      const classification = (normalizedClassification === 'collectible' || normalizedClassification === 'scenery' || normalizedClassification === 'todo')
         ? normalizedClassification
         : 'scenery';
 

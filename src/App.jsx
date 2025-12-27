@@ -10,7 +10,7 @@ import PhotoDetailPage from './pages/PhotoDetailPage.tsx';
 import PhotoEditPage from './pages/PhotoEditPage.jsx';
 import UploadPage from './pages/UploadPage.jsx';
 import SettingsPage from './pages/SettingsPage.jsx';
-import AuthWrapper from './components/AuthWrapper';
+import AuthWrapper from './layouts/AuthWrapper';
 import ResetPasswordPage from './pages/ResetPasswordPage.jsx';
 import SetUsernamePage from './pages/SetUsernamePage.tsx';
 import ChatPage from './pages/ChatPage.tsx';

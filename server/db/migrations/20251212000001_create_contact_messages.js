@@ -9,15 +9,21 @@
  * @param {import('knex').Knex} knex
  */
 exports.up = async function(knex) {
-  // Ensure uuid-ossp extension is available for UUID generation
-  // This is safe to run multiple times (CREATE EXTENSION IF NOT EXISTS)
-  await knex.raw('CREATE EXTENSION IF NOT EXISTS "uuid-ossp"');
+  // Ensure uuid-ossp extension is available for UUID generation (Postgres only)
+  if (knex.client.config.client === 'pg') {
+    await knex.raw('CREATE EXTENSION IF NOT EXISTS "uuid-ossp"');
+  }
 
   await knex.schema.createTable('contact_messages', (table) => {
     // Primary key: UUID for security (non-enumerable IDs)
-    table.uuid('id')
-      .primary()
-      .defaultTo(knex.raw('uuid_generate_v4()'));
+    if (knex.client.config.client === 'pg') {
+      table.uuid('id')
+        .primary()
+        .defaultTo(knex.raw('uuid_generate_v4()'));
+    } else {
+      // SQLite fallback
+      table.uuid('id').primary();
+    }
 
     // Contact form fields with strict length limits
     table.string('name', 100).notNullable();
