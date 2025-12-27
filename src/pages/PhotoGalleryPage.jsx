@@ -1,4 +1,4 @@
-import React, { useEffect, useMemo } from 'react';
+import React, { useEffect, useMemo, useState } from 'react';
 import { useLocation, useNavigate, useOutletContext } from 'react-router-dom';
 import PhotoGallery from '../PhotoGallery.jsx';
 import PhotoUploadForm from '../PhotoUploadForm.jsx';
@@ -19,6 +19,11 @@ export default function PhotoGalleryPage() {
   const location = useLocation();
   const { setToolbarMessage } = useOutletContext();
   const { session } = useAuth();
+
+  const [searchQuery, setSearchQuery] = useState('');
+  const [statusFilter, setStatusFilter] = useState('all');
+  const [sortOrder, setSortOrder] = useState('newest');
+  const [density, setDensity] = useState('comfortable');
 
   const setBanner = useStore((state) => state.setBanner);
   const showMetadataModal = useStore((state) => state.showMetadataModal);
@@ -53,9 +58,8 @@ export default function PhotoGalleryPage() {
     handleDeletePhoto,
   } = usePhotoManagement();
 
-  const sortedPhotos = useMemo(() => {
-    const list = Array.isArray(photos) ? [...photos] : [];
-    const toTimestamp = (photo) => {
+  const toTimestamp = useMemo(() => {
+    return (photo) => {
       const dateStr = photo?.metadata?.DateTimeOriginal || photo?.metadata?.CreateDate || photo?.created_at;
       if (!dateStr) return 0;
       try {
@@ -66,14 +70,83 @@ export default function PhotoGalleryPage() {
         return 0;
       }
     };
+  }, []);
+
+  const getSearchHaystack = useMemo(() => {
+    const safeStr = (value) => (typeof value === 'string' ? value : value == null ? '' : String(value));
+    return (photo) => {
+      const parts = [
+        safeStr(photo?.caption),
+        safeStr(photo?.description),
+        safeStr(photo?.filename),
+        safeStr(photo?.name),
+        safeStr(photo?.original_filename),
+        safeStr(photo?.metadata?.FileName),
+        safeStr(photo?.metadata?.filename),
+      ];
+      return parts
+        .filter(Boolean)
+        .join(' ')
+        .toLowerCase();
+    };
+  }, []);
+
+  const matchesStatusFilter = useMemo(() => {
+    return (photo) => {
+      if (statusFilter === 'all') return true;
+      const state = String(photo?.state || '').toLowerCase();
+
+      if (statusFilter === 'finished') return state === 'finished';
+      if (statusFilter === 'inprogress') return state === 'working' || state === 'inprogress' || state === 'uploading';
+      if (statusFilter === 'error') return state === 'error';
+
+      return true;
+    };
+  }, [statusFilter]);
+
+  const normalizedSearch = useMemo(() => searchQuery.trim().toLowerCase(), [searchQuery]);
+  const matchesSearch = useMemo(() => {
+    return (photo) => {
+      if (!normalizedSearch) return true;
+      const haystack = getSearchHaystack(photo);
+      return haystack.includes(normalizedSearch);
+    };
+  }, [getSearchHaystack, normalizedSearch]);
+
+  const sortedPhotos = useMemo(() => {
+    const list = Array.isArray(photos) ? [...photos] : [];
+
+    if (sortOrder === 'oldest') {
+      list.sort((a, b) => toTimestamp(a) - toTimestamp(b));
+      return list;
+    }
+    if (sortOrder === 'name') {
+      const nameForSort = (photo) => {
+        const raw = photo?.filename || photo?.name || photo?.original_filename || photo?.metadata?.FileName || '';
+        return String(raw).toLowerCase();
+      };
+      list.sort((a, b) => nameForSort(a).localeCompare(nameForSort(b)));
+      return list;
+    }
+
+    // Default: newest first (matches current behavior)
     list.sort((a, b) => toTimestamp(b) - toTimestamp(a));
     return list;
-  }, [photos]);
+  }, [photos, sortOrder, toTimestamp]);
 
-  // Merge pending uploads with sorted photos (pending uploads at the top)
+  const filteredPendingUploads = useMemo(() => {
+    const list = Array.isArray(pendingUploads) ? pendingUploads : [];
+    return list.filter((p) => matchesStatusFilter(p) && matchesSearch(p));
+  }, [pendingUploads, matchesStatusFilter, matchesSearch]);
+
+  const filteredPhotos = useMemo(() => {
+    return sortedPhotos.filter((p) => matchesStatusFilter(p) && matchesSearch(p));
+  }, [sortedPhotos, matchesStatusFilter, matchesSearch]);
+
+  // Merge pending uploads with derived photos (pending uploads remain at the top)
   const allPhotos = useMemo(() => {
-    return [...pendingUploads, ...sortedPhotos];
-  }, [pendingUploads, sortedPhotos]);
+    return [...filteredPendingUploads, ...filteredPhotos];
+  }, [filteredPendingUploads, filteredPhotos]);
 
   const hasCachedPhotos = allPhotos && allPhotos.length > 0;
 
@@ -162,11 +235,105 @@ export default function PhotoGalleryPage() {
         </div>
       ) : (
         <>
-          {loading && hasCachedPhotos && (
-            <div className="flex items-center justify-center text-xs text-slate-400 mb-2">
-              <span>Refreshing…</span>
+          <div className="sticky top-0 z-10 bg-white border-b border-slate-200">
+            <div className="px-2 sm:px-6 py-3">
+              <div className="flex flex-col gap-2 sm:flex-row sm:flex-wrap sm:items-end sm:gap-3">
+                <div className="flex-1 min-w-[200px]">
+                  <label htmlFor="gallery-search" className="block text-xs font-medium text-slate-600">
+                    Search
+                  </label>
+                  <input
+                    id="gallery-search"
+                    type="search"
+                    value={searchQuery}
+                    onChange={(e) => setSearchQuery(e.target.value)}
+                    placeholder="Search caption, filename, description"
+                    className="mt-1 w-full rounded-lg border border-slate-300 bg-white px-3 py-2 text-sm text-slate-900 placeholder:text-slate-400 focus:outline-none focus:ring-2 focus:ring-slate-900/10"
+                    aria-label="Search photos"
+                  />
+                </div>
+
+                <div className="flex flex-col sm:flex-row gap-2 sm:gap-3">
+                  <div className="min-w-[160px]">
+                    <label htmlFor="gallery-filter" className="block text-xs font-medium text-slate-600">
+                      Filter
+                    </label>
+                    <select
+                      id="gallery-filter"
+                      value={statusFilter}
+                      onChange={(e) => setStatusFilter(e.target.value)}
+                      className="mt-1 w-full rounded-lg border border-slate-300 bg-white px-3 py-2 text-sm text-slate-900 focus:outline-none focus:ring-2 focus:ring-slate-900/10"
+                    >
+                      <option value="all">All</option>
+                      <option value="finished">Finished</option>
+                      <option value="inprogress">In progress</option>
+                      <option value="error">Error</option>
+                    </select>
+                  </div>
+
+                  <div className="min-w-[180px]">
+                    <label htmlFor="gallery-sort" className="block text-xs font-medium text-slate-600">
+                      Sort
+                    </label>
+                    <select
+                      id="gallery-sort"
+                      value={sortOrder}
+                      onChange={(e) => setSortOrder(e.target.value)}
+                      className="mt-1 w-full rounded-lg border border-slate-300 bg-white px-3 py-2 text-sm text-slate-900 focus:outline-none focus:ring-2 focus:ring-slate-900/10"
+                    >
+                      <option value="newest">Newest first</option>
+                      <option value="oldest">Oldest first</option>
+                      <option value="name">Name (A→Z)</option>
+                    </select>
+                  </div>
+
+                  <div className="min-w-[200px]">
+                    <span className="block text-xs font-medium text-slate-600">Density</span>
+                    <div className="mt-1 inline-flex rounded-lg border border-slate-300 bg-white p-0.5" role="group" aria-label="Gallery density">
+                      <button
+                        type="button"
+                        onClick={() => setDensity('comfortable')}
+                        aria-pressed={density === 'comfortable'}
+                        className={
+                          `px-3 py-2 text-sm rounded-md transition-colors ` +
+                          (density === 'comfortable' ? 'bg-slate-900 text-white' : 'text-slate-700 hover:bg-slate-100')
+                        }
+                      >
+                        Comfortable
+                      </button>
+                      <button
+                        type="button"
+                        onClick={() => setDensity('compact')}
+                        aria-pressed={density === 'compact'}
+                        className={
+                          `px-3 py-2 text-sm rounded-md transition-colors ` +
+                          (density === 'compact' ? 'bg-slate-900 text-white' : 'text-slate-700 hover:bg-slate-100')
+                        }
+                      >
+                        Compact
+                      </button>
+                    </div>
+                  </div>
+                </div>
+
+                <div className="flex items-center gap-3 sm:ml-auto">
+                  {loading && hasCachedPhotos && (
+                    <div className="flex items-center justify-center text-xs text-slate-400" aria-live="polite">
+                      <span>Refreshing…</span>
+                    </div>
+                  )}
+                  <button
+                    type="button"
+                    onClick={refreshPhotos}
+                    className="min-w-[44px] min-h-[44px] px-3 py-2 rounded-lg text-sm font-medium bg-transparent text-slate-600 hover:bg-slate-100 active:bg-slate-200"
+                    aria-label="Refresh photos"
+                  >
+                    Refresh
+                  </button>
+                </div>
+              </div>
             </div>
-          )}
+          </div>
           <PhotoGallery
             photos={allPhotos}
             privilegesMap={privilegesMap}
@@ -178,6 +345,7 @@ export default function PhotoGalleryPage() {
             handleDeletePhoto={handleDeletePhoto}
             onSelectPhoto={handleSelectPhoto}
             getSignedUrl={getSignedUrl}
+            density={density}
           />
           
           {photosHasMore && (

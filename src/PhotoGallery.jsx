@@ -13,48 +13,35 @@ import { API_BASE_URL } from './api';
 import PhotoCard from './components/PhotoCard.tsx';
 
 // Hook to get responsive column count and gap
-const useResponsiveGrid = () => {
+const useResponsiveGrid = (density) => {
   const [gridConfig, setGridConfig] = useState({ columns: 3, gap: 4 });
   
   useEffect(() => {
     const updateGrid = () => {
       const width = window.innerWidth;
-      if (width < 640) {
-        // Mobile: 3-column tight grid
-        setGridConfig({ columns: 3, gap: 4 }); // gap-1 = 4px
-      } else if (width < 768) {
-        setGridConfig({ columns: 2, gap: 16 });
-      } else if (width < 1024) {
-        setGridConfig({ columns: 3, gap: 24 });
-      } else if (width < 1280) {
-        setGridConfig({ columns: 3, gap: 24 });
-      } else {
-        setGridConfig({ columns: 4, gap: 24 });
-      }
+      const base = (() => {
+        if (width < 640) {
+          // Mobile: 3-column tight grid
+          return { columns: 3, gap: 4 }; // gap-1 = 4px
+        }
+        if (width < 768) return { columns: 2, gap: 16 };
+        if (width < 1024) return { columns: 3, gap: 24 };
+        if (width < 1280) return { columns: 3, gap: 24 };
+        return { columns: 4, gap: 24 };
+      })();
+
+      const isCompact = density === 'compact';
+      const adjustedGap = isCompact ? Math.max(2, Math.round(base.gap * 0.6)) : base.gap;
+      setGridConfig({ columns: base.columns, gap: adjustedGap });
     };
     
     updateGrid();
     window.addEventListener('resize', updateGrid);
     return () => window.removeEventListener('resize', updateGrid);
-  }, []);
+  }, [density]);
   
   return gridConfig;
 };
-
-// Grid components for react-virtuoso - with display names for React DevTools
-const GridList = React.forwardRef(function GridList({ style, children: _children, ...props }, ref) {
-  return (
-    <div
-      ref={ref}
-      {...props}
-      style={{
-        display: 'grid',
-        ...style,
-      }}
-      className="grid-gallery p-2 sm:p-6"
-    />
-  );
-});
 
 const GridItem = function GridItem({ children, ...props }) {
   return (
@@ -62,12 +49,6 @@ const GridItem = function GridItem({ children, ...props }) {
       {children}
     </div>
   );
-};
-
-// Grid components object for react-virtuoso
-const gridComponents = {
-  List: GridList,
-  Item: GridItem,
 };
 
 export default function PhotoGallery({ 
@@ -81,8 +62,10 @@ export default function PhotoGallery({
   handleDeletePhoto,
   onSelectPhoto,
   getSignedUrl,
+  density = 'comfortable',
 }) {
-  const { columns, gap } = useResponsiveGrid();
+  const { columns, gap } = useResponsiveGrid(density);
+  const paddingClass = density === 'compact' ? 'p-1 sm:p-3' : 'p-2 sm:p-6';
 
   const isPollingForId = useCallback((photoId) => {
     if (pollingPhotoIds && pollingPhotoIds.size) {
@@ -133,7 +116,7 @@ export default function PhotoGallery({
   if (photos.length < 50) {
     return (
       <div 
-        className="photo-gallery grid p-2 sm:p-6"
+        className={`photo-gallery grid ${paddingClass}`}
         style={gridStyle}
         data-testid="photo-gallery-grid"
       >
@@ -166,7 +149,7 @@ export default function PhotoGallery({
           ...gridStyle,
           ...style,
         }}
-        className="grid-gallery p-2 sm:p-6"
+        className={`grid-gallery ${paddingClass}`}
       />
     );
   });
@@ -178,10 +161,7 @@ export default function PhotoGallery({
       style={{ height: 'calc(100vh - 120px)' }}
       totalCount={photos.length}
       overscan={200}
-      components={{
-        ...gridComponents,
-        List: VirtualizedList,
-      }}
+      components={{ Item: GridItem, List: VirtualizedList }}
       itemContent={itemContent}
     />
   );
