@@ -103,6 +103,8 @@ describe('Streaming Upload Pipeline', () => {
   let mockDb;
   const FIXTURE_PATH = path.join(__dirname, 'fixtures');
   const TEST_IMAGE_PATH = path.join(FIXTURE_PATH, 'test-stream-image.jpg');
+  const TEST_HEIC_PATH = path.join(FIXTURE_PATH, 'test-stream-image.heic');
+  const TEST_BIN_PATH = path.join(FIXTURE_PATH, 'test-stream-bytes.bin');
 
   beforeAll(() => {
     // Create fixtures directory and a small test image
@@ -142,6 +144,18 @@ describe('Streaming Upload Pipeline', () => {
       0x00, 0x00, 0x00, 0xFF, 0xD9
     ]);
     fs.writeFileSync(TEST_IMAGE_PATH, minimalJpeg);
+
+    // Create a minimal ISO BMFF ftyp header that should be detected as HEIC.
+    // Note: this is not a fully valid HEIC file, but is sufficient for magic-byte sniffing tests.
+    const minimalHeicHeader = Buffer.concat([
+      Buffer.from([0x00, 0x00, 0x00, 0x18]), // box size (arbitrary)
+      Buffer.from('ftyp', 'ascii'),
+      Buffer.from('heic', 'ascii'),
+      Buffer.from([0x00, 0x00, 0x00, 0x00])
+    ]);
+    fs.writeFileSync(TEST_HEIC_PATH, minimalHeicHeader);
+
+    fs.writeFileSync(TEST_BIN_PATH, Buffer.from('this is not an image'));
   });
 
   afterAll(() => {
@@ -149,6 +163,12 @@ describe('Streaming Upload Pipeline', () => {
     try {
       if (fs.existsSync(TEST_IMAGE_PATH)) {
         fs.unlinkSync(TEST_IMAGE_PATH);
+      }
+      if (fs.existsSync(TEST_HEIC_PATH)) {
+        fs.unlinkSync(TEST_HEIC_PATH);
+      }
+      if (fs.existsSync(TEST_BIN_PATH)) {
+        fs.unlinkSync(TEST_BIN_PATH);
       }
       if (fs.existsSync(FIXTURE_PATH)) {
         fs.rmdirSync(FIXTURE_PATH);
@@ -305,6 +325,34 @@ describe('Streaming Upload Pipeline', () => {
       }
     });
 
+    it('should accept HEIC when claimed MIME is application/octet-stream but magic bytes indicate HEIC', async () => {
+      const response = await request(app)
+        .post('/uploads/upload')
+        .set('Authorization', 'Bearer valid-token')
+        .attach('photo', TEST_HEIC_PATH, {
+          filename: 'test.heic',
+          contentType: 'application/octet-stream'
+        });
+
+      expect(response.status).toBeGreaterThanOrEqual(200);
+      expect(response.status).toBeLessThan(300);
+      expect(response.body.success).toBe(true);
+    });
+
+    it('should fail closed: unknown claimed MIME with non-image bytes must return INVALID_FILE_SIGNATURE (415)', async () => {
+      const response = await request(app)
+        .post('/uploads/upload')
+        .set('Authorization', 'Bearer valid-token')
+        .attach('photo', TEST_BIN_PATH, {
+          filename: 'test.jpg',
+          contentType: 'application/octet-stream'
+        });
+
+      expect(response.status).toBe(415);
+      expect(response.body.success).toBe(false);
+      expect(response.body.code).toBe('INVALID_FILE_SIGNATURE');
+    });
+
     it('should handle empty file uploads', async () => {
       // Create an empty file
       const emptyFilePath = path.join(FIXTURE_PATH, 'empty.jpg');
@@ -356,6 +404,8 @@ describe('StreamUploader Module Unit Tests', () => {
   const { 
     sanitizeFilename, 
     isValidImageType, 
+    detectImageMimeFromMagicBytes,
+    MagicByteSniffer,
     SizeLimiter, 
     HashingStream,
     ALLOWED_IMAGE_EXTENSIONS,
@@ -396,6 +446,64 @@ describe('StreamUploader Module Unit Tests', () => {
     it('should reject non-image MIME types and extensions', () => {
       expect(isValidImageType('text/plain', 'test.txt')).toBe(false);
       expect(isValidImageType('application/pdf', 'test.pdf')).toBe(false);
+    });
+  });
+
+  describe('detectImageMimeFromMagicBytes (HEIC/HEIF brands)', () => {
+    function makeFtyp(brand) {
+      return Buffer.concat([
+        Buffer.from([0x00, 0x00, 0x00, 0x18]),
+        Buffer.from('ftyp', 'ascii'),
+        Buffer.from(brand, 'ascii'),
+        Buffer.from([0x00, 0x00, 0x00, 0x00])
+      ]);
+    }
+
+    it('should detect common HEIC brands as image/heic', () => {
+      const heicBrands = ['heic', 'heix', 'hevc', 'hevx', 'heim', 'heis', 'hevm', 'hevs'];
+      for (const brand of heicBrands) {
+        expect(detectImageMimeFromMagicBytes(makeFtyp(brand))).toBe('image/heic');
+      }
+    });
+
+    it('should detect common HEIF brands as image/heif', () => {
+      const heifBrands = ['heif', 'mif1', 'msf1'];
+      for (const brand of heifBrands) {
+        expect(detectImageMimeFromMagicBytes(makeFtyp(brand))).toBe('image/heif');
+      }
+    });
+  });
+
+  describe('MagicByteSniffer (unknown claimed MIME)', () => {
+    it('should validate based on detected MIME when claimed MIME is empty', (done) => {
+      const sniffer = new MagicByteSniffer({ claimedMime: '', peekBytes: 64 });
+      const chunks = [];
+      sniffer.on('data', (c) => chunks.push(c));
+      sniffer.on('validated', (detectedMime) => {
+        expect(detectedMime).toBe('image/heic');
+      });
+      sniffer.on('end', () => {
+        expect(Buffer.concat(chunks).length).toBeGreaterThan(0);
+        done();
+      });
+      sniffer.on('error', done);
+
+      sniffer.end(Buffer.concat([
+        Buffer.from([0x00, 0x00, 0x00, 0x18]),
+        Buffer.from('ftyp', 'ascii'),
+        Buffer.from('heic', 'ascii'),
+        Buffer.from([0x00, 0x00, 0x00, 0x00])
+      ]));
+    });
+
+    it('should fail closed when claimed MIME is empty and bytes do not match an allowed image signature', (done) => {
+      const sniffer = new MagicByteSniffer({ claimedMime: '', peekBytes: 64 });
+      sniffer.on('validated', () => done(new Error('Expected signature validation to fail')));
+      sniffer.on('error', (err) => {
+        expect(err.code).toBe('INVALID_FILE_SIGNATURE');
+        done();
+      });
+      sniffer.end(Buffer.from('not an image'));
     });
   });
 

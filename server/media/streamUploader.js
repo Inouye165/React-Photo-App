@@ -29,6 +29,11 @@ const ALLOWED_MIME_TYPES = [
   'image/webp'
 ];
 
+function isUnknownClaimedMimeType(mimetype) {
+  const normalized = String(mimetype || '').toLowerCase().trim();
+  return normalized === '' || normalized === 'application/octet-stream';
+}
+
 function isAllowedMimeType(mimetype) {
   if (!mimetype) return false;
   const normalized = String(mimetype).toLowerCase().trim();
@@ -96,8 +101,8 @@ function detectImageMimeFromMagicBytes(buffer) {
   // Offset 4-7 should be 'ftyp', then major brand at 8-11.
   if (buffer.length >= 12 && buffer.slice(4, 8).toString('ascii') === 'ftyp') {
     const brand = buffer.slice(8, 12).toString('ascii');
-    const heicBrands = new Set(['heic', 'heix', 'hevc', 'hevx']);
-    const heifBrands = new Set(['mif1', 'msf1', 'heif']);
+    const heicBrands = new Set(['heic', 'heix', 'hevc', 'hevx', 'heim', 'heis', 'hevm', 'hevs']);
+    const heifBrands = new Set(['heif', 'mif1', 'msf1']);
 
     if (heicBrands.has(brand) || heifBrands.has(brand)) {
       // NOTE: Some HEIC files use the generic 'mif1' brand.
@@ -166,6 +171,7 @@ class MagicByteSniffer extends Transform {
   constructor({ claimedMime, peekBytes = 64 }) {
     super();
     this.claimedMime = String(claimedMime || '').toLowerCase().trim();
+    this.claimedMimeUnknown = isUnknownClaimedMimeType(this.claimedMime);
     this.peekBytes = peekBytes;
     this.bufferedChunks = [];
     this.bufferedBytes = 0;
@@ -181,6 +187,7 @@ class MagicByteSniffer extends Transform {
 
   _matchesClaimed(detectedMime) {
     if (!detectedMime) return false;
+    if (this.claimedMimeUnknown) return true;
     return this.claimedMime === detectedMime || (isHeicFamily(this.claimedMime) && isHeicFamily(detectedMime));
   }
 
@@ -240,7 +247,8 @@ class MagicByteSniffer extends Transform {
 
     // Preserve historical semantics for empty uploads: let downstream detect EMPTY_FILE.
     if (this.bufferedBytes === 0) {
-      this._markValidated(this.claimedMime);
+      const fallbackMime = isAllowedMimeType(this.claimedMime) ? this.claimedMime : 'application/octet-stream';
+      this._markValidated(fallbackMime);
       callback();
       return;
     }
@@ -348,7 +356,8 @@ async function streamToSupabase(req, options = {}) {
 
         // Validate claimed MIME type (exact allowlist)
         const claimedMime = String(mimetype || '').toLowerCase().trim();
-        if (!isValidImageType(claimedMime, originalname)) {
+        const claimedUnknown = isUnknownClaimedMimeType(claimedMime);
+        if (!claimedUnknown && !isValidImageType(claimedMime, originalname)) {
           fileStream.resume(); // Drain the stream
           uploadError = new Error('Only image files are allowed');
           uploadError.code = 'INVALID_MIME_TYPE';
@@ -579,6 +588,8 @@ module.exports = {
   streamingUploadMiddleware,
   sanitizeFilename,
   isValidImageType,
+  detectImageMimeFromMagicBytes,
+  MagicByteSniffer,
   SizeLimiter,
   HashingStream,
   ALLOWED_IMAGE_EXTENSIONS,
