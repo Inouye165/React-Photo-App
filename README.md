@@ -33,32 +33,36 @@ It's definitely an engineering prototype right now. I care more about the engine
 
 This isn't just a wrapper around an API. Here's what's actually happening under the hood:
 
-*   **Testing:** There are over 1,100 tests here. I'm trying to be disciplined about it.
-*   **Streaming Uploads:** No saving to disk first. Files stream directly to the cloud to keep the server light.
-*   **Background Jobs:** I'm using BullMQ and Redis to handle the heavy lifting (thumbnails, AI analysis) so the UI doesn't freeze.
-*   **AI Stuff:** Using LangGraph to organize the AI logic instead of just spaghetti-coding API calls.
-*   **HEIC Support:** Because iPhones exist, I added auto-conversion to JPEG.
-*   **Cursor-Based Pagination:** I implemented proper cursor pagination so the app doesn't choke when you have 10,000 photos.
+*   **Frontend:** React 19 + Vite 7. I'm using Zustand for state because Redux is too much boilerplate. Tailwind 4 handles the styling.
+*   **Backend:** Node.js with Express. It's stateless and scales well.
+*   **Database:** PostgreSQL (via Supabase) with strict Row-Level Security (RLS). No "admin" keys in the frontend.
+*   **AI Orchestration:** I'm using LangGraph to build actual workflows, not just single prompts. It decides if a photo needs food analysis, collectible valuation, or just a scenery description.
+*   **Job Queue:** BullMQ + Redis. Heavy stuff like thumbnail generation and AI analysis happens in the background so the upload endpoint stays fast.
+*   **Streaming Uploads:** Files stream directly from the request to Supabase Storage. They never touch the server's disk.
+*   **Testing:** Over 1,100 tests using Vitest, Playwright, and Jest. I take testing seriously.
 
 ## Cool Features & Experiments
 
 ### AI Photo Concierge
-I'm playing around with some AI features:
-*   **Detection:** It can spot dogs, food, etc.
-*   **Logic:** It tries to figure out if a food photo matches a restaurant, or if that comic book is a collectible.
-*   **Context:** It tries to name mountains or landmarks in the background.
+I'm using LangGraph to create a "smart" agent that looks at your photos:
+*   **Smart Routing:** It classifies photos (Food, Collectible, Scenery) and picks the right "expert" agent to handle it.
+*   **Collectibles:** It tries to identify comic books or trading cards and even estimates their grade/value.
+*   **Location Intel:** If you take a picture of food, it tries to find the restaurant nearby using your GPS coordinates.
 
-### Backend & Security
-*   **Zero-Disk Streaming:** Uploads go straight to Supabase.
-*   **Bearer Auth:** Standard token-based auth.
-*   **CSRF Protection:** Checking origins on state-changing requests.
-*   **Secret Scanning:** I have checks in place to stop me from committing API keys.
+### Engineering & Security
+*   **Zero-Disk Architecture:** Uploads are streamed, verified, and hashed on the fly.
+*   **HEIC Support:** Automatic conversion for iPhone photos using `heic-convert` (server) and `heic2any` (client).
+*   **Security First:**
+    *   **RLS:** Database policies ensure users can only see their own data.
+    *   **Secret Scanning:** Custom scripts prevent me from committing API keys.
+    *   **Privilege Checks:** Automated audits to ensure no code is running with unnecessary permissions.
+*   **Observability:** Prometheus metrics are exposed for monitoring.
 
 ## How Uploads Work
 
 Most tutorials tell you to save a file to the server, then upload it. I hate that because it fills up the disk. Here's how I do it:
 
-1.  **Stream:** Photo goes from you -> Supabase Storage.
+1.  **Stream:** Photo streams from you -> Server -> Supabase Storage.
 2.  **Verify:** We check the hash on the fly.
 3.  **Queue:** A background job picks it up.
 4.  **Process:** Workers extract the EXIF data, make thumbnails, and run the AI.
@@ -92,7 +96,7 @@ cd server && npm run worker # Background Worker
 
 **Heads up:**
 *   You need the worker running or thumbnails won't happen.
-*   If you don't have the Google Maps keys, the map stuff just won't work.
+*   If you don't have the Google Maps keys, it falls back to OpenStreetMap.
 *   The backend needs an OpenAI key to start (unless you're in test mode).
 
 ## Docs
