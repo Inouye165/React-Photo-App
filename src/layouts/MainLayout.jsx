@@ -1,6 +1,7 @@
 import React, { useState, useEffect } from 'react';
 import { Outlet } from 'react-router-dom';
 import AppHeader from '../components/AppHeader.jsx';
+import UploadTray from '../components/uploads/UploadTray';
 import useStore from '../store';
 import { getDependencyStatus } from '../api';
 import { useAuth } from '../contexts/AuthContext';
@@ -179,6 +180,8 @@ export default function MainLayout() {
           toolbarMessage 
         }} />
       </div>
+
+      <UploadTray />
     </div>
   );
 }

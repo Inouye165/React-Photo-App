@@ -391,6 +391,7 @@ describe('Migration Integrity', () => {
     const mockKnex = {
       client: {
         config: {
+          // Migrations branch on knex.client.config.client (pg vs sqlite)
           client: 'sqlite3'
         }
       },
