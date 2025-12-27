@@ -99,6 +99,32 @@ cd server && npm run worker # Background Worker
 *   If you don't have the Google Maps keys, it falls back to OpenStreetMap.
 *   The backend needs an OpenAI key to start (unless you're in test mode).
 
+## How I Test This Thing
+
+I don't write tests just to get green badges. I write them so I can sleep at night after a refactor.
+
+### Frontend & Root
+Run these from the main folder:
+
+| Command | Why run it? |
+| :--- | :--- |
+| `npm test` | The standard React unit tests (Vitest). |
+| `npm run test:ui` | Opens the fancy Vitest UI. Good for debugging. |
+| `npm run test:e2e` | Fires up Playwright. You need the app running for this. |
+| `npm run test:maintainability` | **The big one.** Runs the architecture and migration checks below. |
+| `npm run test:arch` | Stops me from doing dumb stuff (like importing Pages into Components). |
+| `npm run test:size` | Yells if the bundle gets too fat (>500kB). |
+| `npm run test:migrations` | Spins up a temp DB to make sure migrations can actually roll back. |
+
+### Backend
+Run these inside `server/`:
+
+| Command | Why run it? |
+| :--- | :--- |
+| `npm test` | Backend unit tests (Jest). |
+| `npm run test:db` | Just checks if the DB connection is alive. |
+| `npm run verify:migrations` | Makes sure the schema matches the migration files. |
+
 ## Docs
 
 *   [Testing Guide](TESTING.md)
