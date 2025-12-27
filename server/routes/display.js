@@ -3,9 +3,70 @@ const express = require('express');
 const path = require('path');
 const { convertHeicToJpegBuffer } = require('../media/image');
 const supabase = require('../lib/supabaseClient');
+const { getRedisClient } = require('../lib/redis');
 const { authenticateImageRequest } = require('../middleware/imageAuth');
 const { verifyThumbnailSignature } = require('../utils/urlSigning');
 const logger = require('../logger');
+
+function nowEpochSeconds() {
+  return Math.floor(Date.now() / 1000);
+}
+
+function clampSignedUrlTtlSeconds(ttlSeconds) {
+  // Supabase signed URL TTL is in seconds.
+  // Safety: enforce a sane min/max to avoid accidental long-lived URLs.
+  const min = 60;
+  const max = 24 * 60 * 60;
+  const n = Number(ttlSeconds);
+  if (!Number.isFinite(n)) return min;
+  return Math.max(min, Math.min(n, max));
+}
+
+function ttlFromExpSeconds(expSeconds) {
+  const exp = Number(expSeconds);
+  if (!Number.isFinite(exp) || exp <= 0) return 60;
+  const ttl = exp - nowEpochSeconds();
+  return clampSignedUrlTtlSeconds(ttl);
+}
+
+async function getSignedUrlWithCache({ cacheKey, storagePath, ttlSeconds }) {
+  const ttl = clampSignedUrlTtlSeconds(ttlSeconds);
+  const redis = getRedisClient();
+
+  if (redis && cacheKey) {
+    try {
+      const cached = await redis.get(cacheKey);
+      if (cached) return cached;
+    } catch (err) {
+      logger.warn('[CDN Redirect] Redis read failed; proceeding without cache', {
+        cacheKey,
+        error: err && err.message ? err.message : String(err)
+      });
+    }
+  }
+
+  const { data, error } = await supabase.storage.from('photos').createSignedUrl(storagePath, ttl);
+  if (error || !data || !data.signedUrl) {
+    const message = error && error.message ? error.message : 'Failed to create signed URL';
+    throw new Error(message);
+  }
+
+  const signedUrl = data.signedUrl;
+
+  if (redis && cacheKey) {
+    const cacheTtl = Math.max(1, ttl - 5);
+    try {
+      await redis.setEx(cacheKey, cacheTtl, signedUrl);
+    } catch (err) {
+      logger.warn('[CDN Redirect] Redis write failed; proceeding without cache', {
+        cacheKey,
+        error: err && err.message ? err.message : String(err)
+      });
+    }
+  }
+
+  return signedUrl;
+}
 
 /**
  * Helper: Determine the original file extension from storage path or filename
@@ -119,12 +180,10 @@ module.exports = function createDisplayRouter({ db }) {
   router.get('/image/:photoId', authenticateImageRequest, async (req, res) => {
     const reqId = req.id || req.headers['x-request-id'] || null;
     res.set('Cross-Origin-Resource-Policy', 'cross-origin');
-    // TEMP: Force cache bypass for client troubleshooting (see src/api.js retry logic)
-    // TODO: Remove or tune this header for production cache performance
-    res.set('Cache-Control', 'no-store, max-age=0');
     const { photoId } = req.params;
-    // 1-year cache for immutable assets (hashed thumbnails, static images)
-    const IMAGE_CACHE_MAX_AGE = parseInt(process.env.IMAGE_CACHE_MAX_AGE, 10) || 31536000;
+    // Default TTL for redirect targets (seconds).
+    // Keep short-lived to limit exposure window; browser may cache the redirect briefly.
+    const SIGNED_URL_TTL_SECONDS = parseInt(process.env.IMAGE_SIGNED_URL_TTL_SECONDS, 10) || 600;
 
     try {
       if (typeof db !== 'function') {
@@ -152,10 +211,37 @@ module.exports = function createDisplayRouter({ db }) {
         return res.status(404).json({ error: 'Photo not found' });
       }
 
-      // Download from storage
       const storagePath = photo.storage_path || `${photo.state}/${photo.filename}`;
+      const ext = getOriginalExtension(storagePath, photo.filename);
+
+      // Non-HEIC: redirect client to short-lived Supabase signed URL (offload bytes)
+      if (!isHeicFormat(ext)) {
+        const cacheKey = `cdn:signed:image:${photoId}:${photo.updated_at || ''}`;
+
+        try {
+          const signedUrl = await getSignedUrlWithCache({
+            cacheKey,
+            storagePath,
+            ttlSeconds: SIGNED_URL_TTL_SECONDS
+          });
+
+          res.set('Cache-Control', 'private, max-age=60');
+          res.set('X-Redirect-Target', 'supabase-signed');
+          return res.redirect(302, signedUrl);
+        } catch (err) {
+          logger.warn('Display image by ID: signed URL generation failed; falling back to streaming', {
+            reqId,
+            photoId,
+            storagePath,
+            error: err && err.message ? err.message : String(err)
+          });
+          // Fall through to streaming fallback.
+        }
+      }
+
+      // HEIC/HEIF (or redirect failure): download and stream, converting HEIC to JPEG.
       const { data, error } = await supabase.storage.from('photos').download(storagePath);
-      
+
       if (error || !data) {
         logger.error('Display image by ID: storage error', {
           reqId,
@@ -163,12 +249,12 @@ module.exports = function createDisplayRouter({ db }) {
           storagePath,
           error: error ? error.message : 'Not found'
         });
+        res.set('Cache-Control', 'no-store');
         return res.status(404).json({ error: 'File not found in storage' });
       }
 
       const buffer = await data.arrayBuffer();
       const fileBuffer = Buffer.from(buffer);
-      const ext = getOriginalExtension(storagePath, photo.filename);
 
       // ETag based on content hash (guaranteed unique per file version)
       const etag = photo.hash || `${photo.file_size || ''}-${photo.updated_at || ''}-${photoId}`;
@@ -187,8 +273,8 @@ module.exports = function createDisplayRouter({ db }) {
         try {
           const jpegBuffer = await convertHeicToJpegBuffer(fileBuffer, 95);
           res.set('Content-Type', 'image/jpeg');
-          // Can use normal caching - no URL/Content-Type mismatch!
-          res.set('Cache-Control', `public, max-age=${IMAGE_CACHE_MAX_AGE}, immutable`);
+          // Authenticated media: avoid shared/proxy caching.
+          res.set('Cache-Control', 'private, max-age=60');
           return res.send(jpegBuffer);
         } catch (err) {
           logger.error('Display image by ID: HEIC conversion error', {
@@ -198,13 +284,14 @@ module.exports = function createDisplayRouter({ db }) {
             error: err.message,
             stack: err.stack
           });
+          res.set('Cache-Control', 'no-store');
           return res.status(500).json({ error: 'Image conversion failed' });
         }
       }
 
       // Non-HEIC: Serve with appropriate Content-Type
       res.set('Content-Type', getContentTypeForExtension(ext));
-      res.set('Cache-Control', `public, max-age=${IMAGE_CACHE_MAX_AGE}, immutable`);
+      res.set('Cache-Control', 'private, max-age=60');
       return res.send(fileBuffer);
 
     } catch (err) {
@@ -232,9 +319,9 @@ module.exports = function createDisplayRouter({ db }) {
   router.get('/chat-image/:roomId/:photoId', authenticateImageRequest, async (req, res) => {
     const reqId = req.id || req.headers['x-request-id'] || null;
     res.set('Cross-Origin-Resource-Policy', 'cross-origin');
-    res.set('Cache-Control', 'no-store, max-age=0');
 
     const { roomId, photoId } = req.params;
+    const SIGNED_URL_TTL_SECONDS = parseInt(process.env.CHAT_IMAGE_SIGNED_URL_TTL_SECONDS, 10) || 600;
 
     try {
       if (typeof db !== 'function') {
@@ -309,6 +396,32 @@ module.exports = function createDisplayRouter({ db }) {
       }
 
       const storagePath = sharedPhoto.storage_path || `${sharedPhoto.state}/${sharedPhoto.filename}`;
+      const ext = getOriginalExtension(storagePath, sharedPhoto.filename);
+
+      // Non-HEIC: redirect to signed URL (offload bytes)
+      if (!isHeicFormat(ext)) {
+        const cacheKey = `cdn:signed:chat:${roomId}:${photoId}:${sharedPhoto.updated_at || ''}`;
+        try {
+          const signedUrl = await getSignedUrlWithCache({
+            cacheKey,
+            storagePath,
+            ttlSeconds: SIGNED_URL_TTL_SECONDS
+          });
+          res.set('Cache-Control', 'private, max-age=60');
+          res.set('X-Redirect-Target', 'supabase-signed');
+          return res.redirect(302, signedUrl);
+        } catch (err) {
+          logger.warn('Chat display image: signed URL generation failed; falling back to streaming', {
+            reqId,
+            roomId,
+            photoId,
+            storagePath,
+            error: err && err.message ? err.message : String(err)
+          });
+          // Fall through to streaming.
+        }
+      }
+
       const { data, error } = await supabase.storage.from('photos').download(storagePath);
 
       if (error || !data) {
@@ -319,12 +432,12 @@ module.exports = function createDisplayRouter({ db }) {
           storagePath,
           error: error ? error.message : 'Not found'
         });
+        res.set('Cache-Control', 'no-store');
         return res.status(404).json({ error: 'File not found in storage' });
       }
 
       const buffer = await data.arrayBuffer();
       const fileBuffer = Buffer.from(buffer);
-      const ext = getOriginalExtension(storagePath, sharedPhoto.filename);
 
       const etag = sharedPhoto.hash || `${sharedPhoto.file_size || ''}-${sharedPhoto.updated_at || ''}-${photoId}`;
       res.set('ETag', `"${etag}"`);
@@ -351,6 +464,7 @@ module.exports = function createDisplayRouter({ db }) {
             error: err.message,
             stack: err.stack
           });
+          res.set('Cache-Control', 'no-store');
           return res.status(500).json({ error: 'Image conversion failed' });
         }
       }
@@ -382,7 +496,34 @@ module.exports = function createDisplayRouter({ db }) {
     try {
       // Handle thumbnail requests
       if (state === 'thumbnails') {
-        const storagePath = `thumbnails/${filename}`;
+        const hash = filename ? filename.replace(/\.jpg$/i, '') : null;
+        const normalizedFilename = filename && filename.toLowerCase().endsWith('.jpg') ? filename : `${hash}.jpg`;
+        const storagePath = `thumbnails/${normalizedFilename}`;
+
+        const isSignedThumbnailRequest = Boolean(sig && exp);
+        const ttlSeconds = isSignedThumbnailRequest ? ttlFromExpSeconds(exp) : 300;
+        const cacheKey = isSignedThumbnailRequest && hash ? `cdn:signed:thumb:${hash}:${exp}` : `cdn:signed:thumb:${normalizedFilename}`;
+
+        try {
+          const signedUrl = await getSignedUrlWithCache({
+            cacheKey,
+            storagePath,
+            ttlSeconds
+          });
+
+          res.set('Cache-Control', `${isSignedThumbnailRequest ? 'public' : 'private'}, max-age=${ttlSeconds}, immutable`);
+          res.set('X-Redirect-Target', 'supabase-signed');
+          return res.redirect(302, signedUrl);
+        } catch (err) {
+          logger.warn('Thumbnail redirect: signed URL generation failed; falling back to streaming', {
+            reqId,
+            filename,
+            storagePath,
+            error: err && err.message ? err.message : String(err)
+          });
+          // Fall back to existing streaming behavior.
+        }
+
         const { data, error } = await supabase.storage.from('photos').download(storagePath);
         if (error || !data) {
           logger.error('Display route error', {
@@ -393,22 +534,17 @@ module.exports = function createDisplayRouter({ db }) {
             error: error ? error.message : 'Not found',
             stack: error ? error.stack : undefined
           });
+          res.set('Cache-Control', 'no-store');
           return res.status(404).json({ error: 'Thumbnail not found' });
         }
+
         const buffer = await data.arrayBuffer();
         const fileBuffer = Buffer.from(buffer);
-        // ETag for thumbnails: use filename (thumbnails are content-addressed by hash)
-        const etag = filename;
+        const etag = normalizedFilename;
         res.set('ETag', etag);
         res.set('Content-Type', 'image/jpeg');
 
-        // Security/privacy hardening: Signed thumbnail URLs are user-private media.
-        // Keep long-lived browser caching, but avoid shared/proxy caching.
-        const isSignedThumbnailRequest = Boolean(sig && exp);
-        res.set(
-          'Cache-Control',
-          `${isSignedThumbnailRequest ? 'private' : 'public'}, max-age=${IMAGE_CACHE_MAX_AGE}, immutable`
-        );
+        res.set('Cache-Control', `${isSignedThumbnailRequest ? 'public' : 'private'}, max-age=${IMAGE_CACHE_MAX_AGE}, immutable`);
         if (req.headers['if-none-match'] && req.headers['if-none-match'] === etag) {
           return res.status(304).end();
         }

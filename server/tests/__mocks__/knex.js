@@ -67,10 +67,23 @@ const createMockQuery = () => {
   query._whereInConditions = {};
 
   // Override where/andWhere/orWhere to track conditions
-  const whereImpl = jest.fn(function (conditions) {
-    if (typeof conditions === 'object') {
-      Object.assign(query._whereConditions, conditions);
+  const whereImpl = jest.fn(function (...args) {
+    // Support both:
+    // - where({ id: 1, user_id: 1 })
+    // - where('id', 1)
+    if (args.length === 1) {
+      const conditions = args[0];
+      if (conditions && typeof conditions === 'object' && !Array.isArray(conditions)) {
+        Object.assign(query._whereConditions, conditions);
+      }
+      return query;
     }
+
+    const [column, value] = args;
+    if (typeof column === 'string') {
+      query._whereConditions[column] = value;
+    }
+
     return query;
   });
   query.where = whereImpl;

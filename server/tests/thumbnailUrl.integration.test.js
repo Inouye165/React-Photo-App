@@ -256,26 +256,28 @@ describe('Thumbnail URL API - Integration Tests', () => {
 
       const signedUrl = urlResponse.body.url;
 
-      // Mock Supabase storage response
+      // Mock Supabase signed URL response (redirect target)
       const supabase = require('../lib/supabaseClient');
-      const mockBuffer = Buffer.from('fake-jpeg-data');
-      supabase.storage.from = jest.fn().mockReturnValue({
-        download: jest.fn().mockResolvedValue({
-          data: new Blob([mockBuffer]),
+      const storageApi = {
+        createSignedUrl: jest.fn().mockResolvedValue({
+          data: { signedUrl: 'https://example.supabase.co/storage/v1/object/sign/photos/thumbnails/abc123.jpg?token=fake' },
           error: null
-        })
-      });
+        }),
+        download: jest.fn()
+      };
+      supabase.storage.from = jest.fn().mockReturnValue(storageApi);
 
       // Request thumbnail using signed URL (no auth header needed)
       const imageResponse = await request(app)
         .get(signedUrl)
-        .expect(200);
+        .expect(302);
 
-      expect(imageResponse.headers['content-type']).toBe('image/jpeg');
-      expect(imageResponse.headers['cache-control']).toContain('private');
+      expect(imageResponse.headers.location).toBeTruthy();
+      expect(imageResponse.headers.location).toMatch(/\/storage\/v1\/object\/sign\//);
+      expect(imageResponse.headers['cache-control']).toContain('max-age=');
       expect(imageResponse.headers['cache-control']).toContain('immutable');
-      expect(imageResponse.headers['cache-control']).toContain('max-age=31536000');
-      expect(imageResponse.body).toBeDefined();
+
+      expect(storageApi.download).not.toHaveBeenCalled();
     });
 
     test('should reject expired signed URL', async () => {
@@ -342,43 +344,45 @@ describe('Thumbnail URL API - Integration Tests', () => {
       // Mock cookie-based auth
       const mockCookie = `authToken=${testToken}`;
 
-      // Mock Supabase storage
+      // Mock Supabase signed URL response (redirect target)
       const supabase = require('../lib/supabaseClient');
-      const mockBuffer = Buffer.from('fake-jpeg-data');
       supabase.storage.from = jest.fn().mockReturnValue({
-        download: jest.fn().mockResolvedValue({
-          data: new Blob([mockBuffer]),
+        createSignedUrl: jest.fn().mockResolvedValue({
+          data: { signedUrl: 'https://example.supabase.co/storage/v1/object/sign/photos/thumbnails/legacy.jpg?token=fake' },
           error: null
-        })
+        }),
+        download: jest.fn()
       });
 
       // Request thumbnail without signature but with cookie
       const response = await request(app)
         .get(`/display/thumbnails/${testPhotoHash}.jpg`)
         .set('Cookie', [mockCookie])
-        .expect(200);
+        .expect(302);
 
-      expect(response.headers['content-type']).toBe('image/jpeg');
+      expect(response.headers.location).toBeTruthy();
+      expect(response.headers.location).toMatch(/\/storage\/v1\/object\/sign\//);
     });
 
     test('should still accept thumbnail requests with Bearer token (legacy)', async () => {
-      // Mock Supabase storage
+      // Mock Supabase signed URL response (redirect target)
       const supabase = require('../lib/supabaseClient');
-      const mockBuffer = Buffer.from('fake-jpeg-data');
       supabase.storage.from = jest.fn().mockReturnValue({
-        download: jest.fn().mockResolvedValue({
-          data: new Blob([mockBuffer]),
+        createSignedUrl: jest.fn().mockResolvedValue({
+          data: { signedUrl: 'https://example.supabase.co/storage/v1/object/sign/photos/thumbnails/legacy2.jpg?token=fake' },
           error: null
-        })
+        }),
+        download: jest.fn()
       });
 
       // Request thumbnail without signature but with Authorization header
       const response = await request(app)
         .get(`/display/thumbnails/${testPhotoHash}.jpg`)
         .set('Authorization', `Bearer ${testToken}`)
-        .expect(200);
+        .expect(302);
 
-      expect(response.headers['content-type']).toBe('image/jpeg');
+      expect(response.headers.location).toBeTruthy();
+      expect(response.headers.location).toMatch(/\/storage\/v1\/object\/sign\//);
     });
   });
 });
