@@ -5,7 +5,7 @@ import type { Session, User } from '@supabase/supabase-js'
 import { supabase } from '../supabaseClient'
 import useStore from '../store'
 import { API_BASE_URL } from '../config/apiConfig'
-import { setAuthToken } from '../api'
+import { request, setAuthToken } from '../api'
 import type { UserProfile } from '../api'
 
 declare global {
@@ -372,9 +372,9 @@ export function AuthProvider({ children }: { children: ReactNode }): ReactNode {
         useStore.getState().setPhotos([])
 
         try {
-          await fetch(`${API_BASE_URL}/api/auth/logout`, {
+          await request<{ success: boolean }>({
+            path: '/api/auth/logout',
             method: 'POST',
-            credentials: 'include',
           })
         } catch {
           // ignore
@@ -584,9 +584,9 @@ export function AuthProvider({ children }: { children: ReactNode }): ReactNode {
 
       // Clear legacy httpOnly cookie (best effort, will be removed in future)
       try {
-        await fetch(`${API_BASE_URL}/api/auth/logout`, {
+        await request<{ success: boolean }>({
+          path: '/api/auth/logout',
           method: 'POST',
-          credentials: 'include',
         })
       } catch (cookieError) {
         if (import.meta.env.DEV) {
