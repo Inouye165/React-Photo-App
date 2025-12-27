@@ -54,6 +54,29 @@ describe('uploadPhotoToServer FormData construction', () => {
     expect(keys).toContain('photo');
     expect(keys).not.toContain('thumbnail');
   });
+
+  it('should infer photo MIME type from extension when File.type is empty', async () => {
+    const dummyFile = new File(['main'], 'main.HEIC', { type: '' });
+    let formDataArg;
+    global.fetch = vi.fn((url, opts) => {
+      if (String(url).endsWith('/csrf')) {
+        return Promise.resolve({ ok: true, status: 200, json: async () => ({ csrfToken: 'test-csrf-token' }) });
+      }
+      formDataArg = opts.body;
+      return Promise.resolve({ ok: true, json: async () => ({ success: true }) });
+    });
+
+    await api.uploadPhotoToServer(dummyFile, '/upload');
+
+    const photoVal = formDataArg.get('photo');
+    expect(photoVal).toBeInstanceOf(File);
+    expect(photoVal.name).toBe('main.HEIC');
+    expect(photoVal.type).toBe('image/heic');
+
+    const photoArray = await photoVal.arrayBuffer();
+    const dummyArray = await dummyFile.arrayBuffer();
+    expect(new Uint8Array(photoArray)).toStrictEqual(new Uint8Array(dummyArray));
+  });
 });
 import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest';
 import * as api from './api';

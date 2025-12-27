@@ -44,3 +44,19 @@
 - Open the photo normally: `/display/image/:photoId` should redirect to a signed URL for `display/...jpg`
 - Fetch-safe path: `/display/image/:photoId?raw=1` should return `200` with `Content-Type: image/jpeg`
 
+## Issue: Legitimate HEIC/HEIF uploads rejected with 415 after streaming-upload refactor
+
+**Date:** December 27, 2025
+**Symptom:** Uploading a real HEIC/HEIF sometimes fails with `415 Unsupported Media Type` (often when the browser reports `File.type` as empty or `application/octet-stream`).
+
+**Root Cause:** The streaming upload pipeline enforced a strict allowlist on the *claimed* MIME type before running magic-byte signature validation. This caused legitimate uploads to be rejected when the browser supplied an empty/unknown MIME.
+
+**Resolution (security-first):**
+- Backend: only bypass the early claimed-MIME allowlist check when the claimed MIME is unknown (`''` or `application/octet-stream`) and rely on magic-byte detection to allowlist/deny (still fail-closed).
+- Backend: expanded ISO BMFF `ftyp` brand detection for HEIC/HEIF variants so real-world files validate reliably.
+- Frontend: when `File.type` is empty, infer a best-effort MIME from the filename extension (e.g., `.HEIC` → `image/heic`) by wrapping the original in a new `File`.
+
+**Tests added/updated:**
+- Server: streaming upload tests covering unknown claimed MIME + valid HEIC signature (allowed) and unknown claimed MIME + non-image bytes (rejected with `INVALID_FILE_SIGNATURE`).
+- Frontend: `uploadPhotoToServer` unit test verifying empty `File.type` is inferred from `.HEIC`.
+
