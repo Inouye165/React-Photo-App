@@ -219,18 +219,24 @@ module.exports = function createDisplayRouter({ db }) {
         return res.status(404).json({ error: 'Photo not found' });
       }
 
-      const storagePath = photo.storage_path || `${photo.state}/${photo.filename}`;
-      const ext = getOriginalExtension(storagePath, photo.filename);
+      const originalStoragePath = photo.storage_path || `${photo.state}/${photo.filename}`;
+      const originalExt = getOriginalExtension(originalStoragePath, photo.filename);
+      const originalIsHeic = isHeicFormat(originalExt);
+      const effectiveStoragePath = photo.display_path || originalStoragePath;
       const bypassRedirect = shouldBypassRedirect(req);
 
+      // If a display asset exists, use it for HEIC/HEIF.
+      // This removes request-time conversion after worker processing completes.
+      const usingDisplayAsset = Boolean(originalIsHeic && photo.display_path);
+
       // Non-HEIC: redirect client to short-lived Supabase signed URL (offload bytes)
-      if (!bypassRedirect && !isHeicFormat(ext)) {
+      if (!bypassRedirect && !originalIsHeic) {
         const cacheKey = `cdn:signed:image:${photoId}:${photo.updated_at || ''}`;
 
         try {
           const signedUrl = await getSignedUrlWithCache({
             cacheKey,
-            storagePath,
+            storagePath: originalStoragePath,
             ttlSeconds: SIGNED_URL_TTL_SECONDS
           });
 
@@ -241,21 +247,49 @@ module.exports = function createDisplayRouter({ db }) {
           logger.warn('Display image by ID: signed URL generation failed; falling back to streaming', {
             reqId,
             photoId,
-            storagePath,
+            storagePath: originalStoragePath,
             error: err && err.message ? err.message : String(err)
           });
           // Fall through to streaming fallback.
         }
       }
 
-      // HEIC/HEIF (or redirect failure): download and stream, converting HEIC to JPEG.
-      const { data, error } = await supabase.storage.from('photos').download(storagePath);
+      // HEIC/HEIF with display asset: redirect/stream the JPEG (no conversion).
+      if (originalIsHeic && photo.display_path && !bypassRedirect) {
+        const cacheKey = `cdn:signed:image:${photoId}:${photo.updated_at || ''}:display`;
+        try {
+          const signedUrl = await getSignedUrlWithCache({
+            cacheKey,
+            storagePath: effectiveStoragePath,
+            ttlSeconds: SIGNED_URL_TTL_SECONDS,
+          });
+
+          res.set('Cache-Control', 'private, max-age=60');
+          res.set('X-Redirect-Target', 'supabase-signed');
+          return res.redirect(302, signedUrl);
+        } catch (err) {
+          logger.warn('Display image by ID: signed URL generation failed for display asset; falling back to streaming', {
+            reqId,
+            photoId,
+            storagePath: effectiveStoragePath,
+            error: err && err.message ? err.message : String(err)
+          });
+          // Fall through to streaming.
+        }
+      }
+
+      // TEMP fallback:
+      // If the original is HEIC/HEIF and display_path is missing, we still do legacy
+      // request-time conversion for now. Remove once worker coverage is complete.
+
+      // Stream bytes (raw=1, redirect failure, or HEIC display asset) from the effective path.
+      const { data, error } = await supabase.storage.from('photos').download(effectiveStoragePath);
 
       if (error || !data) {
         logger.error('Display image by ID: storage error', {
           reqId,
           photoId,
-          storagePath,
+          storagePath: effectiveStoragePath,
           error: error ? error.message : 'Not found'
         });
         res.set('Cache-Control', 'no-store');
@@ -265,8 +299,11 @@ module.exports = function createDisplayRouter({ db }) {
       const buffer = await data.arrayBuffer();
       const fileBuffer = Buffer.from(buffer);
 
-      // ETag based on content hash (guaranteed unique per file version)
-      const etag = photo.hash || `${photo.file_size || ''}-${photo.updated_at || ''}-${photoId}`;
+      // ETag based on content hash where safe.
+      // For display assets, the bytes differ from the original HEIC so do not use the original hash.
+      const etag = usingDisplayAsset
+        ? `${photo.updated_at || ''}-${photoId}-display`
+        : (photo.hash || `${photo.file_size || ''}-${photo.updated_at || ''}-${photoId}`);
       res.set('ETag', `"${etag}"`);
       
       // Check If-None-Match for 304 response
@@ -278,7 +315,7 @@ module.exports = function createDisplayRouter({ db }) {
       // HEIC/HEIF: Convert to JPEG
       // Since URL has no extension, Content-Type: image/jpeg is accurate
       // and browser cache won't be confused
-      if (isHeicFormat(ext)) {
+      if (originalIsHeic && !photo.display_path) {
         try {
           const jpegBuffer = await convertHeicToJpegBuffer(fileBuffer, 95);
           res.set('Content-Type', 'image/jpeg');
@@ -289,7 +326,7 @@ module.exports = function createDisplayRouter({ db }) {
           logger.error('Display image by ID: HEIC conversion error', {
             reqId,
             photoId,
-            storagePath,
+            storagePath: effectiveStoragePath,
             error: err.message,
             stack: err.stack
           });
@@ -299,7 +336,7 @@ module.exports = function createDisplayRouter({ db }) {
       }
 
       // Non-HEIC: Serve with appropriate Content-Type
-      res.set('Content-Type', getContentTypeForExtension(ext));
+      res.set('Content-Type', usingDisplayAsset ? 'image/jpeg' : getContentTypeForExtension(originalExt));
       res.set('Cache-Control', 'private, max-age=60');
       return res.send(fileBuffer);
 
@@ -404,17 +441,21 @@ module.exports = function createDisplayRouter({ db }) {
         return res.status(404).json({ error: 'Photo not found' });
       }
 
-      const storagePath = sharedPhoto.storage_path || `${sharedPhoto.state}/${sharedPhoto.filename}`;
-      const ext = getOriginalExtension(storagePath, sharedPhoto.filename);
+      const originalStoragePath = sharedPhoto.storage_path || `${sharedPhoto.state}/${sharedPhoto.filename}`;
+      const originalExt = getOriginalExtension(originalStoragePath, sharedPhoto.filename);
+      const originalIsHeic = isHeicFormat(originalExt);
+      const effectiveStoragePath = sharedPhoto.display_path || originalStoragePath;
       const bypassRedirect = shouldBypassRedirect(req);
 
+      const usingDisplayAsset = Boolean(originalIsHeic && sharedPhoto.display_path);
+
       // Non-HEIC: redirect to signed URL (offload bytes)
-      if (!bypassRedirect && !isHeicFormat(ext)) {
+      if (!bypassRedirect && !originalIsHeic) {
         const cacheKey = `cdn:signed:chat:${roomId}:${photoId}:${sharedPhoto.updated_at || ''}`;
         try {
           const signedUrl = await getSignedUrlWithCache({
             cacheKey,
-            storagePath,
+            storagePath: originalStoragePath,
             ttlSeconds: SIGNED_URL_TTL_SECONDS
           });
           res.set('Cache-Control', 'private, max-age=60');
@@ -425,21 +466,49 @@ module.exports = function createDisplayRouter({ db }) {
             reqId,
             roomId,
             photoId,
-            storagePath,
+            storagePath: originalStoragePath,
             error: err && err.message ? err.message : String(err)
           });
           // Fall through to streaming.
         }
       }
 
-      const { data, error } = await supabase.storage.from('photos').download(storagePath);
+      // HEIC/HEIF with display asset: redirect/stream the JPEG (no conversion).
+      if (originalIsHeic && sharedPhoto.display_path && !bypassRedirect) {
+        const cacheKey = `cdn:signed:chat:${roomId}:${photoId}:${sharedPhoto.updated_at || ''}:display`;
+        try {
+          const signedUrl = await getSignedUrlWithCache({
+            cacheKey,
+            storagePath: effectiveStoragePath,
+            ttlSeconds: SIGNED_URL_TTL_SECONDS,
+          });
+          res.set('Cache-Control', 'private, max-age=60');
+          res.set('X-Redirect-Target', 'supabase-signed');
+          return res.redirect(302, signedUrl);
+        } catch (err) {
+          logger.warn('Chat display image: signed URL generation failed for display asset; falling back to streaming', {
+            reqId,
+            roomId,
+            photoId,
+            storagePath: effectiveStoragePath,
+            error: err && err.message ? err.message : String(err)
+          });
+          // Fall through to streaming.
+        }
+      }
+
+      // TEMP fallback:
+      // If the original is HEIC/HEIF and display_path is missing, we still do legacy
+      // request-time conversion for now. Remove once worker coverage is complete.
+
+      const { data, error } = await supabase.storage.from('photos').download(effectiveStoragePath);
 
       if (error || !data) {
         logger.error('Chat display image: storage error', {
           reqId,
           roomId,
           photoId,
-          storagePath,
+          storagePath: effectiveStoragePath,
           error: error ? error.message : 'Not found'
         });
         res.set('Cache-Control', 'no-store');
@@ -449,7 +518,9 @@ module.exports = function createDisplayRouter({ db }) {
       const buffer = await data.arrayBuffer();
       const fileBuffer = Buffer.from(buffer);
 
-      const etag = sharedPhoto.hash || `${sharedPhoto.file_size || ''}-${sharedPhoto.updated_at || ''}-${photoId}`;
+      const etag = usingDisplayAsset
+        ? `${sharedPhoto.updated_at || ''}-${photoId}-display`
+        : (sharedPhoto.hash || `${sharedPhoto.file_size || ''}-${sharedPhoto.updated_at || ''}-${photoId}`);
       res.set('ETag', `"${etag}"`);
 
       const clientEtag = req.headers['if-none-match'];
@@ -457,20 +528,18 @@ module.exports = function createDisplayRouter({ db }) {
         return res.status(304).end();
       }
 
-      const IMAGE_CACHE_MAX_AGE = parseInt(process.env.IMAGE_CACHE_MAX_AGE, 10) || 31536000;
-
-      if (isHeicFormat(ext)) {
+      if (originalIsHeic && !sharedPhoto.display_path) {
         try {
           const jpegBuffer = await convertHeicToJpegBuffer(fileBuffer, 95);
           res.set('Content-Type', 'image/jpeg');
-          res.set('Cache-Control', `private, max-age=${IMAGE_CACHE_MAX_AGE}, immutable`);
+          res.set('Cache-Control', 'private, max-age=60');
           return res.send(jpegBuffer);
         } catch (err) {
           logger.error('Chat display image: HEIC conversion error', {
             reqId,
             roomId,
             photoId,
-            storagePath,
+            storagePath: effectiveStoragePath,
             error: err.message,
             stack: err.stack
           });
@@ -479,8 +548,8 @@ module.exports = function createDisplayRouter({ db }) {
         }
       }
 
-      res.set('Content-Type', getContentTypeForExtension(ext));
-      res.set('Cache-Control', `private, max-age=${IMAGE_CACHE_MAX_AGE}, immutable`);
+      res.set('Content-Type', usingDisplayAsset ? 'image/jpeg' : getContentTypeForExtension(originalExt));
+      res.set('Cache-Control', 'private, max-age=60');
       return res.send(fileBuffer);
     } catch (err) {
       logger.error('Chat display image: unexpected error', {
