@@ -142,4 +142,86 @@ describe('httpClient', () => {
       })
     )
   })
+
+  it('should replace empty X-CSRF-Token header by fetching a token', async () => {
+    fetchMock
+      .mockResolvedValueOnce({
+        ok: true,
+        status: 200,
+        json: async () => ({ csrfToken: 'test-csrf-token' }),
+      })
+      .mockResolvedValueOnce({
+        ok: true,
+        status: 200,
+        json: async () => ({ success: true }),
+      })
+
+    const result = await request<{ success: boolean }>({
+      path: '/test',
+      method: 'POST',
+      body: { a: 1 },
+      headers: { 'X-CSRF-Token': '' },
+    })
+
+    expect(result).toEqual({ success: true })
+
+    // First call fetches /csrf
+    expect(fetchMock.mock.calls[0][0]).toBe(`${API_BASE_URL}/csrf`)
+
+    // Second call is the actual request with the overwritten CSRF header
+    expect(fetchMock.mock.calls[1][0]).toBe(`${API_BASE_URL}/test`)
+    expect(fetchMock.mock.calls[1][1]).toEqual(
+      expect.objectContaining({
+        method: 'POST',
+        credentials: 'include',
+        headers: expect.objectContaining({ 'X-CSRF-Token': 'test-csrf-token' }),
+      }),
+    )
+  })
+
+  it('should not overwrite a non-empty X-CSRF-Token header provided by the caller', async () => {
+    fetchMock.mockResolvedValue({
+      ok: true,
+      status: 200,
+      json: async () => ({ success: true }),
+    })
+
+    const result = await request<{ success: boolean }>({
+      path: '/test',
+      method: 'POST',
+      body: { a: 1 },
+      headers: { 'X-CSRF-Token': 'manual-token' },
+    })
+
+    expect(result).toEqual({ success: true })
+    expect(fetchMock).toHaveBeenCalledTimes(1)
+    expect(fetchMock.mock.calls[0][0]).toBe(`${API_BASE_URL}/test`)
+    expect(fetchMock.mock.calls[0][1]).toEqual(
+      expect.objectContaining({
+        method: 'POST',
+        credentials: 'include',
+        headers: expect.objectContaining({ 'X-CSRF-Token': 'manual-token' }),
+      }),
+    )
+  })
+
+  it('should fail closed and not send unsafe request when CSRF token retrieval fails', async () => {
+    fetchMock.mockResolvedValueOnce({
+      ok: false,
+      status: 500,
+      text: async () => 'nope',
+    })
+
+    await expect(
+      request({
+        path: '/test',
+        method: 'POST',
+        body: { a: 1 },
+      }),
+    ).rejects.toThrow('Abort: CSRF token could not be retrieved')
+
+    // CSRF bootstrap was attempted, but the unsafe request itself was never sent.
+    expect(fetchMock).toHaveBeenCalledTimes(1)
+    expect(fetchMock.mock.calls[0][0]).toBe(`${API_BASE_URL}/csrf`)
+  })
 })
