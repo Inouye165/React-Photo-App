@@ -1,25 +1,18 @@
 ## 🚀 Description
-This PR improves gallery load performance by eliminating Authorization-header thumbnail fetches (and their CORS preflights) while keeping access control intact.
+Fixes intermittent backend rate-limit flake/crash: `ERR_ERL_DOUBLE_COUNT` from overlapping `express-rate-limit` middleware.
 
 ## 🛠️ Changes
-### 🖼️ Signed thumbnail URLs in `/photos`
-- `/photos` now returns `photo.thumbnail` as a signed URL string:
-  - `/display/thumbnails/<hash>.jpg?sig=<...>&exp=<...>`
-- The display route already supports signature-only thumbnail requests:
-  - Valid signature → `200` without cookies/Authorization.
-  - Missing/invalid signature → falls back to legacy cookie/Bearer auth (or rejects).
+### 🧯 Prevent overlapping limiters from double-counting
+- Update global limiter configuration in `server/middleware/security.js` so a request is never processed by multiple limiters (global + per-prefix + per-router).
+- Uses `skip()` to ensure only the most specific limiter runs for:
+  - `/api/*` and `/photos/*` (handled by `apiLimiter`)
+  - `/upload/*` (handled by `uploadLimiter`)
+  - `/api/auth/*`, `/api/public/*`, `/api/test/*` (these routers have their own dedicated limiters)
 
-### ⚡ Frontend avoids per-photo signing calls
-- The client detects when `photo.thumbnail` is already signed and uses it directly.
-- This avoids making one `/photos/:id/thumbnail-url` request per photo during gallery render.
-
-## 📈 Expected Perf Impact
-- Fewer network round trips (no per-photo signed-url fetches for thumbnails).
-- No CORS preflight fanout for thumbnail loads (standard `<img src>` requests, no custom headers).
-- Better cache behavior due to stable signature windows.
+### 🧪 Regression coverage
+- Add a Jest regression test to ensure mounting `configureSecurity(app)` plus router-specific limiters does not throw `ERR_ERL_DOUBLE_COUNT`:
+  - `server/tests/ratelimit.doubleCount.test.js`
 
 ## ✅ Verification
-- Web: `npm run test:run -- src/hooks/useSignedThumbnails.test.js`
-- Server: `cd server && npm test -- thumbnailUrl.integration.test.js`
-- Lint: `npm run lint`
-- Typecheck: `npx tsc -p tsconfig.json --noEmit`
+- Server tests: `cd server && npm test`
+- Server lint: `cd server && npm run lint`
