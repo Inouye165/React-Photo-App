@@ -46,6 +46,7 @@ async function getCsrfToken(credentials: RequestCredentials): Promise<string | n
         json && typeof json.csrfToken === 'string' && json.csrfToken.trim().length > 0 ? json.csrfToken : null
 
       if (!token) {
+        console.error('[CSRF] Token missing from /csrf response', { response: json })
         throw new Error('CSRF token missing from /csrf response')
       }
 
@@ -54,6 +55,8 @@ async function getCsrfToken(credentials: RequestCredentials): Promise<string | n
       return token
     } catch (err) {
       // Fail closed: callers for unsafe methods should not proceed without CSRF.
+      const message = err instanceof Error ? err.message : String(err)
+      console.error('[CSRF] Token fetch failed', { message })
       throw err
     } finally {
       _csrfTokenPromise = null

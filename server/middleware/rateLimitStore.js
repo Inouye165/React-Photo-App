@@ -3,9 +3,12 @@ const { RedisStore } = require('rate-limit-redis');
 
 const logger = require('../logger');
 const { createRedisConnection } = require('../redis/connection');
-
-let cachedStore;
 let warned = false;
+
+// Reuse a single Redis connection (safe), but NEVER reuse the store instance.
+// express-rate-limit v8+ throws ERR_ERL_STORE_REUSE if the same store object is
+// passed to multiple limiters.
+let cachedRedisConnection;
 
 function warnOnce(err) {
   if (warned) return;
@@ -20,25 +23,27 @@ function warnOnce(err) {
  * back to an in-memory store to avoid changing route behavior.
  */
 function getRateLimitStore() {
-  if (cachedStore !== undefined) return cachedStore;
-
   const url = process.env.REDIS_URL;
   const isTestEnv = process.env.NODE_ENV === 'test';
   if (!url || isTestEnv) {
-    cachedStore = undefined;
     return undefined;
   }
 
-  try {
-    const redisConnection = createRedisConnection();
+  let store;
 
+  try {
+    if (!cachedRedisConnection) {
+      cachedRedisConnection = createRedisConnection();
+    }
+
+    // Create a unique store per limiter to avoid ERR_ERL_STORE_REUSE.
     const redisStore = new RedisStore({
-      sendCommand: (command, ...args) => redisConnection.call(command, ...args),
+      sendCommand: (command, ...args) => cachedRedisConnection.call(command, ...args),
     });
 
     const memoryStore = new rateLimit.MemoryStore();
 
-    cachedStore = {
+    store = {
       localKeys: false,
       prefix: redisStore.prefix,
 
@@ -118,10 +123,10 @@ function getRateLimitStore() {
     };
   } catch (err) {
     warnOnce(err);
-    cachedStore = undefined;
+    return undefined;
   }
 
-  return cachedStore;
+  return store;
 }
 
 module.exports = { getRateLimitStore };
