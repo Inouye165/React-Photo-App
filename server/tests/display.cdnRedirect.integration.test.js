@@ -175,6 +175,77 @@ describe('Display CDN redirect integration', () => {
     await db('photos').where({ id: photoId }).delete();
   });
 
+  test('GET /display/image/:photoId redirects for HEIC when display_path is present (no conversion)', async () => {
+    const filename = `cdn-heic-display-${uniqueSuffix()}.heic`;
+    const storagePath = `working/${filename}`;
+    const displayPath = `display/${TEST_USER_ID}/p-${uniqueSuffix()}.jpg`;
+
+    const photoId = await insertPhotoAndGetId(db, {
+      user_id: TEST_USER_ID,
+      filename,
+      state: 'working',
+      hash: `h-${filename}`,
+      file_size: 123,
+      metadata: '{}',
+      storage_path: storagePath,
+      display_path: displayPath,
+      created_at: new Date().toISOString(),
+      updated_at: new Date().toISOString()
+    });
+
+    storageApi.createSignedUrl.mockResolvedValue({
+      data: { signedUrl: `https://example.supabase.co/storage/v1/object/sign/photos/${displayPath}?token=fake` },
+      error: null
+    });
+
+    const res = await request(app)
+      .get(`/display/image/${photoId}`)
+      .set('Authorization', `Bearer ${authToken}`)
+      .expect(302);
+
+    expect(res.headers.location).toContain(displayPath);
+    expect(storageApi.download).not.toHaveBeenCalled();
+    expect(convertHeicToJpegBuffer).not.toHaveBeenCalled();
+
+    await db('photos').where({ id: photoId }).delete();
+  });
+
+  test('GET /display/image/:photoId?raw=1 streams JPEG for HEIC when display_path is present (no conversion)', async () => {
+    const filename = `cdn-heic-display-raw-${uniqueSuffix()}.heic`;
+    const storagePath = `working/${filename}`;
+    const displayPath = `display/${TEST_USER_ID}/p-${uniqueSuffix()}.jpg`;
+
+    const photoId = await insertPhotoAndGetId(db, {
+      user_id: TEST_USER_ID,
+      filename,
+      state: 'working',
+      hash: `h-${filename}`,
+      file_size: 123,
+      metadata: '{}',
+      storage_path: storagePath,
+      display_path: displayPath,
+      created_at: new Date().toISOString(),
+      updated_at: new Date().toISOString()
+    });
+
+    storageApi.download.mockResolvedValue({
+      data: new Blob([Buffer.from('fake-display-jpg')]),
+      error: null
+    });
+
+    const res = await request(app)
+      .get(`/display/image/${photoId}?raw=1`)
+      .set('Authorization', `Bearer ${authToken}`)
+      .expect(200);
+
+    expect(res.headers['content-type']).toBe('image/jpeg');
+    expect(storageApi.download).toHaveBeenCalled();
+    expect(storageApi.createSignedUrl).not.toHaveBeenCalled();
+    expect(convertHeicToJpegBuffer).not.toHaveBeenCalled();
+
+    await db('photos').where({ id: photoId }).delete();
+  });
+
   test('GET /display/image/:photoId?raw=1 streams bytes for non-HEIC (bypasses redirect)', async () => {
     const filename = `cdn-nonheic-raw-${uniqueSuffix()}.jpg`;
     const storagePath = `working/${filename}`;
@@ -308,6 +379,54 @@ describe('Display CDN redirect integration', () => {
     expect(res.headers['content-type']).toBe('image/jpeg');
     expect(convertHeicToJpegBuffer).toHaveBeenCalled();
     expect(storageApi.createSignedUrl).not.toHaveBeenCalled();
+
+    await db('photos').where({ id: photoId }).delete();
+  });
+
+  test('GET /display/chat-image/:roomId/:photoId redirects for HEIC when display_path is present (no conversion)', async () => {
+    const filename = `chat-heic-display-${uniqueSuffix()}.heic`;
+    const storagePath = `working/${filename}`;
+    const displayPath = `display/${CHAT_SENDER_USER_ID}/p-${uniqueSuffix()}.jpg`;
+
+    const photoId = await insertPhotoAndGetId(db, {
+      user_id: CHAT_SENDER_USER_ID,
+      filename,
+      state: 'working',
+      hash: `h-${filename}`,
+      file_size: 123,
+      metadata: '{}',
+      storage_path: storagePath,
+      display_path: displayPath,
+      created_at: new Date().toISOString(),
+      updated_at: new Date().toISOString()
+    });
+
+    supabase.from.mockImplementation((table) => {
+      if (table === 'room_members') {
+        return makeMaybeSingle({ data: { user_id: TEST_USER_ID }, error: null });
+      }
+      if (table === 'messages') {
+        return makeMessageQuery({
+          data: { id: 'm-display', room_id: 'r1', sender_id: CHAT_SENDER_USER_ID, photo_id: String(photoId), created_at: new Date().toISOString() },
+          error: null
+        });
+      }
+      throw new Error(`Unexpected supabase table: ${table}`);
+    });
+
+    storageApi.createSignedUrl.mockResolvedValue({
+      data: { signedUrl: `https://example.supabase.co/storage/v1/object/sign/photos/${displayPath}?token=fake` },
+      error: null
+    });
+
+    const res = await request(app)
+      .get(`/display/chat-image/r1/${photoId}`)
+      .set('Authorization', `Bearer ${authToken}`)
+      .expect(302);
+
+    expect(res.headers.location).toContain(displayPath);
+    expect(storageApi.download).not.toHaveBeenCalled();
+    expect(convertHeicToJpegBuffer).not.toHaveBeenCalled();
 
     await db('photos').where({ id: photoId }).delete();
   });

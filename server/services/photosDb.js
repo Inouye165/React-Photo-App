@@ -91,6 +91,15 @@ module.exports = function createPhotosDb({ db }) {
         .where({ id: photoId, user_id: userId })
         .update(fields);
       return count > 0;
+    },
+    async setPhotoDisplayPath({ photoId, displayPath }) {
+      const count = await db('photos')
+        .where({ id: photoId })
+        .update({
+          display_path: displayPath,
+          updated_at: new Date().toISOString(),
+        });
+      return count > 0;
     }
     // Add additional database operations as needed.
   };

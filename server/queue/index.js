@@ -188,6 +188,7 @@ const startWorker = async () => {
     const db = require("../db");
     const { updatePhotoAIMetadata } = require("../ai/service");
     const { processUploadedPhoto } = require("../media/backgroundProcessor");
+    const { ensureHeicDisplayAsset } = require('../media/heicDisplayAsset');
     const supabase = require('../lib/supabaseClient');
     const createPhotosStorage = require('../services/photosStorage');
     const createPhotosState = require('../services/photosState');
@@ -262,6 +263,29 @@ const startWorker = async () => {
             logger.warn(`[WORKER] State finalize failed for photoId ${photoId}; falling back to DB-only state update`, stateErr?.message || stateErr);
             await setPhotoStateFallback(photoId, 'finished');
           }
+        }
+
+        // Generate HEIC/HEIF display JPEG once per upload.
+        // Idempotent: if display_path already exists, no work is done.
+        // Non-fatal: failures leave display_path NULL so request-time fallback can still work.
+        try {
+          const freshPhoto = await db('photos')
+            .where({ id: photoId })
+            .select('id', 'user_id', 'filename', 'state', 'storage_path', 'display_path')
+            .first();
+
+          if (freshPhoto) {
+            await ensureHeicDisplayAsset({
+              db,
+              storageClient: supabase.storage.from('photos'),
+              photo: freshPhoto,
+            });
+          }
+        } catch (assetErr) {
+          logger.warn('[WORKER] HEIC display asset generation failed (non-fatal)', {
+            photoId: String(photoId),
+            error: assetErr?.message || String(assetErr),
+          });
         }
 
         logger.info(`[WORKER] Done photoId: ${photoId}`);
