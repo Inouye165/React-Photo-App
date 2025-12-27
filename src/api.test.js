@@ -13,6 +13,9 @@ describe('uploadPhotoToServer FormData construction', () => {
     const dummyThumb = new Blob(['thumb'], { type: 'image/jpeg' });
     let formDataArg;
     global.fetch = vi.fn((url, opts) => {
+      if (String(url).endsWith('/csrf')) {
+        return Promise.resolve({ ok: true, status: 200, json: async () => ({ csrfToken: 'test-csrf-token' }) });
+      }
       formDataArg = opts.body;
       return Promise.resolve({ ok: true, json: async () => ({ success: true }) });
     });
@@ -39,6 +42,9 @@ describe('uploadPhotoToServer FormData construction', () => {
     const dummyFile = new File(['main'], 'main.jpg', { type: 'image/jpeg' });
     let formDataArg;
     global.fetch = vi.fn((url, opts) => {
+      if (String(url).endsWith('/csrf')) {
+        return Promise.resolve({ ok: true, status: 200, json: async () => ({ csrfToken: 'test-csrf-token' }) });
+      }
       formDataArg = opts.body;
       return Promise.resolve({ ok: true, json: async () => ({ success: true }) });
     });
