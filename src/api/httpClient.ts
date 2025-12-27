@@ -219,12 +219,12 @@ function createLimiter(maxConcurrency = 6, name = 'default') {
   const queue: Array<() => void> = []
   
   // Hook for testing to reset state
-  if (process.env.NODE_ENV === 'test') {
-      (global as any).__resetLimiters = (global as any).__resetLimiters || [];
-      (global as any).__resetLimiters.push(() => {
-          active = 0;
-          queue.length = 0;
-      });
+  if (typeof process !== 'undefined' && process.env && process.env.NODE_ENV === 'test') {
+    ;(globalThis as any).__resetLimiters = (globalThis as any).__resetLimiters || []
+    ;(globalThis as any).__resetLimiters.push(() => {
+      active = 0
+      queue.length = 0
+    })
   }
 
   if (!apiMetrics.limiters[name]) apiMetrics.limiters[name] = { calls: 0, active: 0, queued: 0, maxActiveSeen: 0 }
@@ -351,36 +351,6 @@ export async function request<T>(options: RequestOptions): Promise<T> {
     signal,
   }
 
-  // Attach CSRF token for unsafe methods.
-  // Do this before body handling so callers can still override headers if needed.
-  if (isUnsafeMethod(method)) {
-    const existingHeaderKey = Object.keys(headers).find((k) => k.toLowerCase() === 'x-csrf-token')
-    const existingHeaderValue = existingHeaderKey ? (headers as Record<string, unknown>)[existingHeaderKey] : undefined
-    const hasValidExistingHeaderValue =
-      typeof existingHeaderValue === 'string' && existingHeaderValue.trim().length > 0
-
-    // Treat an empty/blank header as missing and overwrite it with a real token.
-    if (!hasValidExistingHeaderValue) {
-      let token: string
-      try {
-        token = await getCsrfToken(effectiveCredentials)
-      } catch (err) {
-        if (err instanceof ApiError && (err.status === 401 || err.status === 403)) {
-          handleAuthError(({ status: err.status } as unknown) as Response)
-          throw err
-        }
-        throw new Error('Abort: CSRF token could not be retrieved')
-      }
-
-      if (existingHeaderKey && existingHeaderKey !== 'X-CSRF-Token') {
-        delete (fetchOptions.headers as Record<string, string>)[existingHeaderKey]
-      }
-
-      // Always end with a properly cased header key.
-      ;(fetchOptions.headers as Record<string, string>)['X-CSRF-Token'] = token
-    }
-  }
-
   if (body) {
     if (body instanceof FormData) {
       fetchOptions.body = body
@@ -397,24 +367,53 @@ export async function request<T>(options: RequestOptions): Promise<T> {
   }
 
   let response: Response
-  const doFetch = () => {
-    const hdrs = fetchOptions.headers as unknown as Record<string, string> | undefined
+  const doFetch = async (): Promise<Response> => {
     const methodUpper = method.toUpperCase()
 
     if (isUnsafeMethod(methodUpper)) {
-      const csrfHeaderKey = hdrs ? Object.keys(hdrs).find((k) => k.toLowerCase() === 'x-csrf-token') : undefined
-      const csrfHeaderValue = csrfHeaderKey ? hdrs?.[csrfHeaderKey] : undefined
+      const hdrs = fetchOptions.headers as unknown as Record<string, string> | undefined
+      const existingHeaderKey = hdrs ? Object.keys(hdrs).find((k) => k.toLowerCase() === 'x-csrf-token') : undefined
+      const existingHeaderValue = existingHeaderKey ? hdrs?.[existingHeaderKey] : undefined
+      const hasValidExistingHeaderValue =
+        typeof existingHeaderValue === 'string' && existingHeaderValue.trim().length > 0
 
-      try {
-        console.log(`[CSRF] ${methodUpper} ${url} token=`, csrfHeaderValue)
-      } catch {
-        /* ignore */
+      if (!hasValidExistingHeaderValue) {
+        let token: string
+        try {
+          token = await getCsrfToken(effectiveCredentials)
+        } catch (err) {
+          if (err instanceof ApiError && (err.status === 401 || err.status === 403)) {
+            handleAuthError(({ status: err.status } as unknown) as Response)
+            throw err
+          }
+          throw new Error('Abort: CSRF token could not be retrieved')
+        }
+
+        if (!fetchOptions.headers) fetchOptions.headers = {}
+
+        if (existingHeaderKey && existingHeaderKey !== 'X-CSRF-Token') {
+          delete (fetchOptions.headers as Record<string, string>)[existingHeaderKey]
+        }
+        ;(fetchOptions.headers as Record<string, string>)['X-CSRF-Token'] = token
       }
 
+      // Fail-closed: never send an unsafe request without a real token.
+      const finalHeaders = fetchOptions.headers as unknown as Record<string, string> | undefined
+      const csrfHeaderKey = finalHeaders
+        ? Object.keys(finalHeaders).find((k) => k.toLowerCase() === 'x-csrf-token')
+        : undefined
+      const csrfHeaderValue = csrfHeaderKey ? finalHeaders?.[csrfHeaderKey] : undefined
       const hasValidCsrfHeaderValue = typeof csrfHeaderValue === 'string' && csrfHeaderValue.trim().length > 0
       if (!hasValidCsrfHeaderValue) {
-        // Fail-closed: never send an unsafe request without a real token.
         throw new Error('Abort: CSRF token could not be retrieved')
+      }
+
+      if (isCsrfDebugEnabled()) {
+        try {
+          console.log(`[CSRF] ${methodUpper} ${url} token=`, csrfHeaderValue)
+        } catch {
+          /* ignore */
+        }
       }
     }
 
@@ -427,8 +426,39 @@ export async function request<T>(options: RequestOptions): Promise<T> {
     return fetchWithNetworkFallback(url, fetchOptions)
   }
 
+  const isLikelyCsrfMismatch = async (res: Response): Promise<boolean> => {
+    const clone = (res as unknown as { clone?: () => Response }).clone?.()
+    if (!clone) return false
+
+    try {
+      const contentType = clone.headers?.get?.('content-type') || ''
+      if (contentType.includes('application/json')) {
+        const json = (await clone.json().catch(() => null)) as unknown
+        const haystack = JSON.stringify(json || '').toLowerCase()
+        return haystack.includes('csrf') || haystack.includes('ebadcsrftoken')
+      }
+      const text = await clone.text().catch(() => '')
+      const haystack = String(text || '').toLowerCase()
+      return haystack.includes('csrf') || haystack.includes('ebadcsrftoken')
+    } catch {
+      return false
+    }
+  }
+
+  let didRetryCsrf = false
   try {
     response = await limiter(doFetch)
+
+    // If we get a CSRF-looking 403, clear cached token and retry once.
+    if (!response.ok && response.status === 403 && isUnsafeMethod(method.toUpperCase()) && !didRetryCsrf) {
+      const shouldRetry = await isLikelyCsrfMismatch(response)
+      if (shouldRetry) {
+        didRetryCsrf = true
+        _csrfToken = null
+        _csrfTokenPromise = null
+        response = await limiter(doFetch)
+      }
+    }
   } catch (error) {
     throw error
   }

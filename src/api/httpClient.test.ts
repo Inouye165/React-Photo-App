@@ -3,6 +3,7 @@ import { request, __resetNetworkState, API_BASE_URL, __resetCsrfTokenForTests } 
 
 // Mock fetch
 let fetchMock: any
+let consoleLogSpy: ReturnType<typeof vi.spyOn> | undefined
 
 describe('httpClient', () => {
   beforeEach(() => {
@@ -14,9 +15,12 @@ describe('httpClient', () => {
         (global as any).__resetLimiters.forEach((fn: any) => fn())
     }
     vi.useFakeTimers()
+
+    consoleLogSpy = vi.spyOn(console, 'log').mockImplementation(() => {})
   })
 
   afterEach(() => {
+    consoleLogSpy?.mockRestore()
     vi.useRealTimers()
   })
 
@@ -223,5 +227,84 @@ describe('httpClient', () => {
     // CSRF bootstrap was attempted, but the unsafe request itself was never sent.
     expect(fetchMock).toHaveBeenCalledTimes(1)
     expect(fetchMock.mock.calls[0][0]).toBe(`${API_BASE_URL}/csrf`)
+  })
+
+  it('should not fetch CSRF token for GET requests', async () => {
+    fetchMock.mockResolvedValue({
+      ok: true,
+      status: 200,
+      json: async () => ({ success: true }),
+    })
+
+    const result = await request<{ success: boolean }>({
+      path: '/test',
+      method: 'GET',
+    })
+
+    expect(result).toEqual({ success: true })
+    expect(fetchMock).toHaveBeenCalledTimes(1)
+    expect(fetchMock).toHaveBeenCalledWith(`${API_BASE_URL}/test`, expect.anything())
+
+    const [, options] = fetchMock.mock.calls[0]
+    expect(options.headers).not.toHaveProperty('X-CSRF-Token')
+  })
+
+  it('should fail closed when /csrf response is missing csrfToken', async () => {
+    fetchMock.mockResolvedValueOnce({
+      ok: true,
+      status: 200,
+      json: async () => ({}),
+    })
+
+    await expect(
+      request({
+        path: '/test',
+        method: 'POST',
+        body: { name: 'test' },
+      }),
+    ).rejects.toThrow('Abort: CSRF token could not be retrieved')
+
+    // Should never send the unsafe request without a token.
+    expect(fetchMock).toHaveBeenCalledTimes(1)
+    expect(fetchMock.mock.calls[0][0]).toBe(`${API_BASE_URL}/csrf`)
+  })
+
+  it('should single-flight CSRF token fetch for concurrent unsafe requests', async () => {
+    let resolveCsrf!: (value: any) => void
+    const csrfPromise: Promise<any> = new Promise<any>((resolve) => {
+      resolveCsrf = resolve
+    })
+
+    fetchMock.mockImplementation((url: string) => {
+      if (url.endsWith('/csrf')) return csrfPromise
+      return Promise.resolve({
+        ok: true,
+        status: 200,
+        json: async () => ({ success: true }),
+      })
+    })
+
+    const p1 = request({ path: '/test', method: 'POST', body: { i: 1 } })
+    const p2 = request({ path: '/test', method: 'POST', body: { i: 2 } })
+
+    await Promise.resolve()
+
+    const csrfCallsBeforeResolve = fetchMock.mock.calls.filter(([u]: any[]) => String(u).endsWith('/csrf')).length
+    expect(csrfCallsBeforeResolve).toBe(1)
+
+    resolveCsrf({
+      ok: true,
+      status: 200,
+      json: async () => ({ csrfToken: 'test-csrf-token' }),
+    })
+
+    const [r1, r2] = await Promise.all([p1, p2])
+    expect(r1).toEqual({ success: true })
+    expect(r2).toEqual({ success: true })
+
+    const csrfCalls = fetchMock.mock.calls.filter(([u]: any[]) => String(u).endsWith('/csrf')).length
+    const testCalls = fetchMock.mock.calls.filter(([u]: any[]) => String(u).endsWith('/test')).length
+    expect(csrfCalls).toBe(1)
+    expect(testCalls).toBe(2)
   })
 })
