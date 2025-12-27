@@ -38,6 +38,26 @@ export async function fetchProtectedBlobUrl(
 ): Promise<string> {
   if (url.startsWith('blob:')) return url
 
+  const urlForProtectedFetch = (() => {
+    try {
+      const parsed = new URL(url, typeof window !== 'undefined' ? window.location.origin : undefined)
+      // When we fetch protected media via XHR/fetch, we include Authorization + credentials.
+      // Following a 302 redirect to Supabase Storage turns this into a credentialed CORS fetch,
+      // which browsers will block when the storage response uses wildcard ACAO.
+      // Force the backend to stream bytes for programmatic fetches.
+      if (parsed.pathname.startsWith('/display/') && !parsed.searchParams.has('raw')) {
+        parsed.searchParams.set('raw', '1')
+      }
+      return parsed.toString()
+    } catch {
+      // Best-effort fallback for non-URL strings
+      if (url.includes('/display/') && !url.includes('raw=')) {
+        return url + (url.includes('?') ? '&raw=1' : '?raw=1')
+      }
+      return url
+    }
+  })()
+
   if (!window.__imageCacheErrorLogged) window.__imageCacheErrorLogged = new Set()
 
   let signal = options?.signal
@@ -54,7 +74,7 @@ export async function fetchProtectedBlobUrl(
       headers['Pragma'] = 'no-cache'
     }
 
-    return fetchWithNetworkFallback(url, {
+    return fetchWithNetworkFallback(urlForProtectedFetch, {
       headers,
       credentials: 'include',
       cache: bypassCache ? 'no-store' : 'default',

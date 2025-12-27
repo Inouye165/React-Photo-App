@@ -104,6 +104,14 @@ function getContentTypeForExtension(ext) {
 module.exports = function createDisplayRouter({ db }) {
   const router = express.Router();
 
+  function shouldBypassRedirect(req) {
+    const raw = req && req.query ? req.query.raw : undefined;
+    if (raw === '1' || raw === 'true' || raw === true) return true;
+    const header = req && req.headers ? req.headers['x-bypass-redirect'] : undefined;
+    if (header === '1' || header === 'true') return true;
+    return false;
+  }
+
   /**
    * Middleware to handle thumbnail authentication
    * Supports both:
@@ -213,9 +221,10 @@ module.exports = function createDisplayRouter({ db }) {
 
       const storagePath = photo.storage_path || `${photo.state}/${photo.filename}`;
       const ext = getOriginalExtension(storagePath, photo.filename);
+      const bypassRedirect = shouldBypassRedirect(req);
 
       // Non-HEIC: redirect client to short-lived Supabase signed URL (offload bytes)
-      if (!isHeicFormat(ext)) {
+      if (!bypassRedirect && !isHeicFormat(ext)) {
         const cacheKey = `cdn:signed:image:${photoId}:${photo.updated_at || ''}`;
 
         try {
@@ -397,9 +406,10 @@ module.exports = function createDisplayRouter({ db }) {
 
       const storagePath = sharedPhoto.storage_path || `${sharedPhoto.state}/${sharedPhoto.filename}`;
       const ext = getOriginalExtension(storagePath, sharedPhoto.filename);
+      const bypassRedirect = shouldBypassRedirect(req);
 
       // Non-HEIC: redirect to signed URL (offload bytes)
-      if (!isHeicFormat(ext)) {
+      if (!bypassRedirect && !isHeicFormat(ext)) {
         const cacheKey = `cdn:signed:chat:${roomId}:${photoId}:${sharedPhoto.updated_at || ''}`;
         try {
           const signedUrl = await getSignedUrlWithCache({
