@@ -34,10 +34,6 @@ vi.mock('./api', async (importOriginal) => {
   };
 });
 
-vi.mock('./hooks/useAIPolling.jsx', () => ({
-  default: vi.fn(() => null),
-}));
-
 vi.mock('./hooks/usePhotoPrivileges.js', () => ({
   default: vi.fn(() => ({})),
 }));
