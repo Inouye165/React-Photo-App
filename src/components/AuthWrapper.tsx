@@ -73,32 +73,31 @@ const AuthWrapper = ({ children }: AuthWrapperProps) => {
 
     setIsAccepting(true);
     try {
-      const { getAuthHeaders } = await import('../api');
+      const { getAuthHeaders, request, ApiError } = await import('../api');
       const headers = getAuthHeaders() as Record<string, string>;
       // E2E Bypass: Add header if in E2E mode to avoid cookie issues
       if ((window as any).__E2E_MODE__) {
         headers['X-E2E-User-ID'] = '11111111-1111-4111-8111-111111111111';
       }
 
-      const response = await fetch(`${API_BASE_URL}/api/users/accept-terms`, {
+      // Use the centralized request() wrapper so CSRF headers/cookies are handled consistently.
+      await request<void>({
+        path: '/api/users/accept-terms',
         method: 'POST',
-        headers: headers as HeadersInit,
-        credentials: 'include'
+        headers,
       });
 
-      if (response.ok) {
-        // Store acceptance locally as well for quick checks
-        const userId = (user && typeof user === 'object' && user !== null && 'id' in user) ? (user as any).id : '';
-        localStorage.setItem(`terms_accepted_${userId}`, 'true');
-        setTermsAccepted(true);
-      } else {
-        const err = await response.json().catch(() => ({}));
-        console.error('Failed to record terms acceptance', err);
-        alert(`Failed to save acceptance: ${response.status} ${err.error || response.statusText}`);
-      }
+      // Store acceptance locally as well for quick checks
+      const userId = (user && typeof user === 'object' && user !== null && 'id' in user) ? (user as any).id : '';
+      localStorage.setItem(`terms_accepted_${userId}`, 'true');
+      setTermsAccepted(true);
     } catch (error) {
       console.error('Error accepting terms:', error);
-      alert('Network error. Please check your connection and try again.');
+      if (error instanceof ApiError) {
+        alert(`Failed to save acceptance: ${error.status ?? ''} ${error.message}`.trim());
+      } else {
+        alert('Network error. Please check your connection and try again.');
+      }
     } finally {
       setIsAccepting(false);
     }
