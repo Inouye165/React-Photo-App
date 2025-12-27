@@ -142,4 +142,59 @@ describe('httpClient', () => {
       })
     )
   })
+
+  it('should replace empty X-CSRF-Token header by fetching a token', async () => {
+    fetchMock
+      .mockResolvedValueOnce({
+        ok: true,
+        status: 200,
+        json: async () => ({ csrfToken: 'test-csrf-token' }),
+      })
+      .mockResolvedValueOnce({
+        ok: true,
+        status: 200,
+        json: async () => ({ success: true }),
+      })
+
+    const result = await request<{ success: boolean }>({
+      path: '/test',
+      method: 'POST',
+      body: { a: 1 },
+      headers: { 'X-CSRF-Token': '' },
+    })
+    expect(result).toEqual({ success: true })
+
+    // Should still fetch /csrf because the provided header value is blank.
+    expect(fetchMock.mock.calls[0][0]).toBe(`${API_BASE_URL}/csrf`)
+    expect(fetchMock.mock.calls[1][1]).toEqual(
+      expect.objectContaining({
+        headers: expect.objectContaining({ 'X-CSRF-Token': 'test-csrf-token' }),
+      }),
+    )
+  })
+
+  it('should not overwrite a non-empty X-CSRF-Token header provided by the caller', async () => {
+    fetchMock.mockResolvedValueOnce({
+      ok: true,
+      status: 200,
+      json: async () => ({ success: true }),
+    })
+
+    const result = await request<{ success: boolean }>({
+      path: '/test',
+      method: 'POST',
+      body: { a: 1 },
+      headers: { 'X-CSRF-Token': 'manual-token' },
+    })
+    expect(result).toEqual({ success: true })
+
+    // No /csrf fetch should occur.
+    expect(fetchMock).toHaveBeenCalledTimes(1)
+    expect(fetchMock.mock.calls[0][0]).toBe(`${API_BASE_URL}/test`)
+    expect(fetchMock.mock.calls[0][1]).toEqual(
+      expect.objectContaining({
+        headers: expect.objectContaining({ 'X-CSRF-Token': 'manual-token' }),
+      }),
+    )
+  })
 })

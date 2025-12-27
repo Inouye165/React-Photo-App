@@ -2,70 +2,6 @@ import { API_BASE_URL as CENTRAL_API_BASE_URL } from '../config/apiConfig'
 
 export const API_BASE_URL = CENTRAL_API_BASE_URL
 
-// --- CSRF Token (csurf) ---
-// The server exposes GET /csrf which returns { csrfToken } and sets the csurf secret cookie.
-// We attach X-CSRF-Token for unsafe methods to satisfy CSRF protection while keeping
-// credentials behavior unchanged.
-let _csrfToken: string | null = null
-let _csrfTokenPromise: Promise<string | null> | null = null
-
-export function __resetCsrfTokenForTests(): void {
-  _csrfToken = null
-  _csrfTokenPromise = null
-}
-
-function isUnsafeMethod(method: string): boolean {
-  return method === 'POST' || method === 'PUT' || method === 'PATCH' || method === 'DELETE'
-}
-
-async function getCsrfToken(credentials: RequestCredentials): Promise<string | null> {
-  if (_csrfToken) return _csrfToken
-  if (_csrfTokenPromise) return _csrfTokenPromise
-
-  _csrfTokenPromise = (async () => {
-    try {
-      const res = await fetchWithNetworkFallback(`${API_BASE_URL}/csrf`, {
-        method: 'GET',
-        credentials,
-      })
-
-      if (!res.ok) {
-        let detail: string | null = null
-        try {
-          detail = await res.text()
-        } catch {
-          /* ignore */
-        }
-        throw new Error(`CSRF fetch failed: ${res.status}${detail ? ` - ${detail}` : ''}`)
-      }
-
-      const data = (await res.json().catch(() => null)) as { csrfToken?: unknown } | null
-      console.log('CSRF API Response:', data)
-
-      const token =
-        data && typeof data.csrfToken === 'string' && data.csrfToken.trim().length > 0 ? data.csrfToken : null
-
-      if (!token) {
-        console.error('[CSRF] Token missing from /csrf response', { response: data })
-        throw new Error('CSRF token missing from /csrf response')
-      }
-
-      // Cache the string token only.
-      _csrfToken = token
-      return data.csrfToken as string
-    } catch (err) {
-      // Fail closed: callers for unsafe methods should not proceed without CSRF.
-      const message = err instanceof Error ? err.message : String(err)
-      console.error('[CSRF] Token fetch failed', { message })
-      throw err
-    } finally {
-      _csrfTokenPromise = null
-    }
-  })()
-
-  return _csrfTokenPromise
-}
-
 export type ApiErrorDetails = {
   status?: number
   code?: string
@@ -85,6 +21,92 @@ export class ApiError extends Error {
     this.code = options?.code
     this.details = options?.details
   }
+}
+
+// --- CSRF Token (csurf) ---
+// The server exposes GET /csrf which returns { csrfToken } and sets the csurf secret cookie.
+// We attach X-CSRF-Token for unsafe methods to satisfy CSRF protection while keeping
+// credentials behavior unchanged.
+let _csrfToken: string | null = null
+let _csrfTokenPromise: Promise<string> | null = null
+
+export function __resetCsrfTokenForTests(): void {
+  _csrfToken = null
+  _csrfTokenPromise = null
+}
+
+function isUnsafeMethod(method: string): boolean {
+  return method === 'POST' || method === 'PUT' || method === 'PATCH' || method === 'DELETE'
+}
+
+function isCsrfDebugEnabled(): boolean {
+  try {
+    // In dev: always log.
+    if (typeof import.meta !== 'undefined' && (import.meta as any).env?.DEV) return true
+
+    // In prod: only log if explicitly enabled.
+    if (typeof window !== 'undefined' && window.localStorage) {
+      return window.localStorage.getItem('DEBUG_CSRF') === '1'
+    }
+  } catch {
+    // ignore
+  }
+  return false
+}
+
+async function getCsrfToken(credentials: RequestCredentials): Promise<string> {
+  if (_csrfToken) return _csrfToken
+  if (_csrfTokenPromise) return _csrfTokenPromise
+
+  _csrfTokenPromise = (async () => {
+    try {
+      const res = await fetchWithNetworkFallback(`${API_BASE_URL}/csrf`, {
+        method: 'GET',
+        credentials,
+      })
+
+      if (!res.ok) {
+        // If the CSRF endpoint returns an auth error, preserve the existing auth-error flow.
+        if (res.status === 401 || res.status === 403) {
+          throw new ApiError('Authentication failed', { status: res.status, code: 'AUTH_ERROR' })
+        }
+
+        let detail: string | null = null
+        try {
+          detail = await res.text()
+        } catch {
+          /* ignore */
+        }
+        throw new Error(`CSRF fetch failed: ${res.status}${detail ? ` - ${detail}` : ''}`)
+      }
+
+      const data = (await res.json().catch(() => null)) as { csrfToken?: unknown } | null
+      if (isCsrfDebugEnabled()) {
+        console.log('CSRF API Response:', data)
+      }
+
+      const token =
+        data && typeof data.csrfToken === 'string' && data.csrfToken.trim().length > 0 ? data.csrfToken : null
+
+      if (!token) {
+        console.error('[CSRF] Token missing from /csrf response', { response: data })
+        throw new Error('CSRF token missing from /csrf response')
+      }
+
+      // Cache the string token only.
+      _csrfToken = token
+      return token
+    } catch (err) {
+      // Fail closed: callers for unsafe methods should not proceed without CSRF.
+      const message = err instanceof Error ? err.message : String(err)
+      console.error('[CSRF] Token fetch failed', { message })
+      throw err
+    } finally {
+      _csrfTokenPromise = null
+    }
+  })()
+
+  return _csrfTokenPromise
 }
 
 // --- Network Failure Tracking ---
@@ -333,15 +355,22 @@ export async function request<T>(options: RequestOptions): Promise<T> {
   // Do this before body handling so callers can still override headers if needed.
   if (isUnsafeMethod(method)) {
     const existingHeaderKey = Object.keys(headers).find((k) => k.toLowerCase() === 'x-csrf-token')
-    if (!existingHeaderKey) {
-      const token = await getCsrfToken(effectiveCredentials)
+    const existingHeaderValue = existingHeaderKey ? (headers as Record<string, unknown>)[existingHeaderKey] : undefined
+    const hasValidExistingHeaderValue =
+      typeof existingHeaderValue === 'string' && existingHeaderValue.trim().length > 0
 
-      // Ensure we always assign the header to the awaited token result.
-      if (!token) {
-        throw new Error('Abort: CSRF token could not be retrieved')
+    // Treat an empty/blank header as missing and overwrite it with a real token.
+    if (!hasValidExistingHeaderValue) {
+      try {
+        const token = await getCsrfToken(effectiveCredentials)
+        ;(fetchOptions.headers as Record<string, string>)['X-CSRF-Token'] = token
+      } catch (error) {
+        // Ensure auth-expired flows still work even if the CSRF handshake fails.
+        if (error instanceof ApiError && (error.status === 401 || error.status === 403)) {
+          handleAuthError(({ status: error.status } as unknown) as Response)
+        }
+        throw error
       }
-
-      ;(fetchOptions.headers as Record<string, string>)['X-CSRF-Token'] = token
     }
   }
 
@@ -363,16 +392,20 @@ export async function request<T>(options: RequestOptions): Promise<T> {
   let response: Response
   const doFetch = () => {
     const hdrs = fetchOptions.headers as unknown as Record<string, string> | undefined
-    const csrfHeaderValue = hdrs ? hdrs['X-CSRF-Token'] : undefined
+    const csrfHeaderKey = hdrs ? Object.keys(hdrs).find((k) => k.toLowerCase() === 'x-csrf-token') : undefined
+    const csrfHeaderValue = csrfHeaderKey ? hdrs?.[csrfHeaderKey] : undefined
+    const hasValidCsrfHeaderValue = typeof csrfHeaderValue === 'string' && csrfHeaderValue.trim().length > 0
 
     try {
       // Debug: verify CSRF header is attached on unsafe requests.
-      console.log('Sending CSRF Header:', csrfHeaderValue)
+      if (isCsrfDebugEnabled()) {
+        console.log('Sending CSRF Header:', csrfHeaderValue)
+      }
     } catch {
       /* ignore */
     }
 
-    if (isUnsafeMethod(method) && !csrfHeaderValue) {
+    if (isUnsafeMethod(method) && !hasValidCsrfHeaderValue) {
       throw new Error('Abort: CSRF token could not be retrieved')
     }
 

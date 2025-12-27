@@ -72,8 +72,11 @@ const AuthWrapper = ({ children }: AuthWrapperProps) => {
     if (!user) return;
 
     setIsAccepting(true);
+    let ApiErrorCtor: unknown = null;
     try {
-      const { getAuthHeaders, request, ApiError } = await import('../api');
+      const api = await import('../api');
+      const { getAuthHeaders, request } = api;
+      ApiErrorCtor = api.ApiError;
       const headers = getAuthHeaders() as Record<string, string>;
       // E2E Bypass: Add header if in E2E mode to avoid cookie issues
       if ((window as any).__E2E_MODE__) {
@@ -93,8 +96,9 @@ const AuthWrapper = ({ children }: AuthWrapperProps) => {
       setTermsAccepted(true);
     } catch (error) {
       console.error('Error accepting terms:', error);
-      if (error instanceof ApiError) {
-        alert(`Failed to save acceptance: ${error.status ?? ''} ${error.message}`.trim());
+      if (typeof ApiErrorCtor === 'function' && error instanceof (ApiErrorCtor as any)) {
+        const apiErr = error as { status?: number; message: string };
+        alert(`Failed to save acceptance: ${apiErr.status ?? ''} ${apiErr.message}`.trim());
       } else {
         alert('Network error. Please check your connection and try again.');
       }
