@@ -389,6 +389,11 @@ describe('Migration Integrity', () => {
     
     // Create a complete mock knex object
     const mockKnex = {
+      client: {
+        config: {
+          client: 'sqlite3'
+        }
+      },
       raw: jest.fn().mockResolvedValue(true),
       fn: {
         now: jest.fn().mockReturnValue('NOW()')

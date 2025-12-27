@@ -5,11 +5,6 @@ import { render, screen, waitFor, cleanup } from '@testing-library/react'
 // Mock environment variable globally
 vi.stubEnv('VITE_API_URL', 'http://localhost:3001')
 
-// Mock the AI Polling hook to prevent infinite loops
-vi.mock('./hooks/useAIPolling.jsx', () => ({
-  default: vi.fn()
-}))
-
 // Mock API functions
 vi.mock('./api', () => ({
   getPhotos: vi.fn(),
