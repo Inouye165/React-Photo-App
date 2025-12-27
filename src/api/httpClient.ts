@@ -28,41 +28,27 @@ export class ApiError extends Error {
 // We attach X-CSRF-Token for unsafe methods to satisfy CSRF protection while keeping
 // credentials behavior unchanged.
 let _csrfToken: string | null = null
-let _csrfTokenPromise: Promise<string> | null = null
+let csrfTokenPromise: Promise<string> | null = null
 
 export function __resetCsrfTokenForTests(): void {
   _csrfToken = null
-  _csrfTokenPromise = null
+  csrfTokenPromise = null
 }
 
 function isUnsafeMethod(method: string): boolean {
   return method === 'POST' || method === 'PUT' || method === 'PATCH' || method === 'DELETE'
 }
 
-function isCsrfDebugEnabled(): boolean {
-  try {
-    // In dev: always log.
-    if (typeof import.meta !== 'undefined' && (import.meta as any).env?.DEV) return true
-
-    // In prod: only log if explicitly enabled.
-    if (typeof window !== 'undefined' && window.localStorage) {
-      return window.localStorage.getItem('DEBUG_CSRF') === '1'
-    }
-  } catch {
-    // ignore
-  }
-  return false
-}
-
-async function getCsrfToken(credentials: RequestCredentials): Promise<string> {
+async function getCsrfToken(): Promise<string> {
   if (_csrfToken) return _csrfToken
-  if (_csrfTokenPromise) return _csrfTokenPromise
+  if (csrfTokenPromise) return csrfTokenPromise
 
-  _csrfTokenPromise = (async () => {
+  csrfTokenPromise = (async (): Promise<string> => {
     try {
       const res = await fetchWithNetworkFallback(`${API_BASE_URL}/csrf`, {
         method: 'GET',
-        credentials,
+        // CSRF bootstrap requires cookie round-trips.
+        credentials: 'include',
       })
 
       if (!res.ok) {
@@ -81,32 +67,26 @@ async function getCsrfToken(credentials: RequestCredentials): Promise<string> {
       }
 
       const data = (await res.json().catch(() => null)) as { csrfToken?: unknown } | null
-      if (isCsrfDebugEnabled()) {
-        console.log('CSRF API Response:', data)
-      }
+      console.log('CSRF API Response:', data)
 
-      const token =
-        data && typeof data.csrfToken === 'string' && data.csrfToken.trim().length > 0 ? data.csrfToken : null
-
-      if (!token) {
-        console.error('[CSRF] Token missing from /csrf response', { response: data })
-        throw new Error('CSRF token missing from /csrf response')
+      if (!data || typeof data.csrfToken !== 'string' || data.csrfToken.trim().length === 0) {
+        throw new Error('CSRF response missing csrfToken')
       }
 
       // Cache the string token only.
-      _csrfToken = token
-      return token
+      _csrfToken = data.csrfToken
+      return data.csrfToken
     } catch (err) {
       // Fail closed: callers for unsafe methods should not proceed without CSRF.
       const message = err instanceof Error ? err.message : String(err)
       console.error('[CSRF] Token fetch failed', { message })
       throw err
     } finally {
-      _csrfTokenPromise = null
+      csrfTokenPromise = null
     }
   })()
 
-  return _csrfTokenPromise
+  return csrfTokenPromise!
 }
 
 // --- Network Failure Tracking ---
@@ -219,12 +199,12 @@ function createLimiter(maxConcurrency = 6, name = 'default') {
   const queue: Array<() => void> = []
   
   // Hook for testing to reset state
-  if (process.env.NODE_ENV === 'test') {
-      (global as any).__resetLimiters = (global as any).__resetLimiters || [];
-      (global as any).__resetLimiters.push(() => {
-          active = 0;
-          queue.length = 0;
-      });
+  if (typeof process !== 'undefined' && process.env && process.env.NODE_ENV === 'test') {
+    ;(globalThis as any).__resetLimiters = (globalThis as any).__resetLimiters || []
+    ;(globalThis as any).__resetLimiters.push(() => {
+      active = 0
+      queue.length = 0
+    })
   }
 
   if (!apiMetrics.limiters[name]) apiMetrics.limiters[name] = { calls: 0, active: 0, queued: 0, maxActiveSeen: 0 }
@@ -351,36 +331,6 @@ export async function request<T>(options: RequestOptions): Promise<T> {
     signal,
   }
 
-  // Attach CSRF token for unsafe methods.
-  // Do this before body handling so callers can still override headers if needed.
-  if (isUnsafeMethod(method)) {
-    const existingHeaderKey = Object.keys(headers).find((k) => k.toLowerCase() === 'x-csrf-token')
-    const existingHeaderValue = existingHeaderKey ? (headers as Record<string, unknown>)[existingHeaderKey] : undefined
-    const hasValidExistingHeaderValue =
-      typeof existingHeaderValue === 'string' && existingHeaderValue.trim().length > 0
-
-    // Treat an empty/blank header as missing and overwrite it with a real token.
-    if (!hasValidExistingHeaderValue) {
-      let token: string
-      try {
-        token = await getCsrfToken(effectiveCredentials)
-      } catch (err) {
-        if (err instanceof ApiError && (err.status === 401 || err.status === 403)) {
-          handleAuthError(({ status: err.status } as unknown) as Response)
-          throw err
-        }
-        throw new Error('Abort: CSRF token could not be retrieved')
-      }
-
-      if (existingHeaderKey && existingHeaderKey !== 'X-CSRF-Token') {
-        delete (fetchOptions.headers as Record<string, string>)[existingHeaderKey]
-      }
-
-      // Always end with a properly cased header key.
-      ;(fetchOptions.headers as Record<string, string>)['X-CSRF-Token'] = token
-    }
-  }
-
   if (body) {
     if (body instanceof FormData) {
       fetchOptions.body = body
@@ -397,25 +347,43 @@ export async function request<T>(options: RequestOptions): Promise<T> {
   }
 
   let response: Response
-  const doFetch = () => {
-    const hdrs = fetchOptions.headers as unknown as Record<string, string> | undefined
+  const doFetch = async (): Promise<Response> => {
     const methodUpper = method.toUpperCase()
 
-    if (isUnsafeMethod(methodUpper)) {
-      const csrfHeaderKey = hdrs ? Object.keys(hdrs).find((k) => k.toLowerCase() === 'x-csrf-token') : undefined
-      const csrfHeaderValue = csrfHeaderKey ? hdrs?.[csrfHeaderKey] : undefined
+    const isUnsafe = isUnsafeMethod(methodUpper)
+    const headersObj = (fetchOptions.headers ??= {}) as Record<string, string>
 
-      try {
-        console.log(`[CSRF] ${methodUpper} ${url} token=`, csrfHeaderValue)
-      } catch {
-        /* ignore */
-      }
+    if (isUnsafe) {
+      const existingHeaderKey = Object.keys(headersObj).find((k) => k.toLowerCase() === 'x-csrf-token')
+      const existingHeaderValue = existingHeaderKey ? headersObj[existingHeaderKey] : undefined
+      const hasValidExistingHeaderValue =
+        typeof existingHeaderValue === 'string' && existingHeaderValue.trim().length > 0
 
-      const hasValidCsrfHeaderValue = typeof csrfHeaderValue === 'string' && csrfHeaderValue.trim().length > 0
-      if (!hasValidCsrfHeaderValue) {
-        // Fail-closed: never send an unsafe request without a real token.
-        throw new Error('Abort: CSRF token could not be retrieved')
+      // Normalize the header casing to avoid misleading logs like:
+      // "Sending CSRF Header: undefined" when the token is present under a different key casing.
+      if (hasValidExistingHeaderValue) {
+        if (existingHeaderKey && existingHeaderKey !== 'X-CSRF-Token') {
+          headersObj['X-CSRF-Token'] = existingHeaderValue
+          delete headersObj[existingHeaderKey]
+        }
+      } else {
+        try {
+          const token = await getCsrfToken()
+          headersObj['X-CSRF-Token'] = token
+        } catch (err) {
+          if (err instanceof ApiError && (err.status === 401 || err.status === 403)) {
+            handleAuthError(({ status: err.status } as unknown) as Response)
+            throw err
+          }
+          throw new Error('Abort: CSRF token could not be retrieved')
+        }
       }
+    }
+
+    // Immediately before sending the request: unsafe methods only.
+    if (isUnsafe) {
+      console.log('Sending CSRF Header:', headersObj['X-CSRF-Token'])
+      if (!headersObj['X-CSRF-Token']) throw new Error('Abort: CSRF token could not be retrieved')
     }
 
     if (timeoutMs) {
@@ -427,8 +395,39 @@ export async function request<T>(options: RequestOptions): Promise<T> {
     return fetchWithNetworkFallback(url, fetchOptions)
   }
 
+  const isLikelyCsrfMismatch = async (res: Response): Promise<boolean> => {
+    const clone = (res as unknown as { clone?: () => Response }).clone?.()
+    if (!clone) return false
+
+    try {
+      const contentType = clone.headers?.get?.('content-type') || ''
+      if (contentType.includes('application/json')) {
+        const json = (await clone.json().catch(() => null)) as unknown
+        const haystack = JSON.stringify(json || '').toLowerCase()
+        return haystack.includes('csrf') || haystack.includes('ebadcsrftoken')
+      }
+      const text = await clone.text().catch(() => '')
+      const haystack = String(text || '').toLowerCase()
+      return haystack.includes('csrf') || haystack.includes('ebadcsrftoken')
+    } catch {
+      return false
+    }
+  }
+
+  let didRetryCsrf = false
   try {
     response = await limiter(doFetch)
+
+    // If we get a CSRF-looking 403, clear cached token and retry once.
+    if (!response.ok && response.status === 403 && isUnsafeMethod(method.toUpperCase()) && !didRetryCsrf) {
+      const shouldRetry = await isLikelyCsrfMismatch(response)
+      if (shouldRetry) {
+        didRetryCsrf = true
+        _csrfToken = null
+        csrfTokenPromise = null
+        response = await limiter(doFetch)
+      }
+    }
   } catch (error) {
     throw error
   }
@@ -468,3 +467,9 @@ export async function request<T>(options: RequestOptions): Promise<T> {
     return {} as T
   }
 }
+
+// Verification checklist (browser devtools):
+// - In Network tab, for the failing POST (e.g. /api/users/accept-terms), verify:
+//   a) Request Headers include X-CSRF-Token with a real string
+//   b) Request includes cookies (cookie is present under the Cookies sub-tab)
+// - If cookies are missing, the issue is credentials: 'include' missing on that POST or a CORS/credentials config mismatch.
