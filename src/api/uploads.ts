@@ -5,6 +5,41 @@ export interface UploadPhotoOptions {
   classification?: string
 }
 
+function inferMimeTypeFromFilename(filename: string): string | undefined {
+  const ext = filename.split('.').pop()?.toLowerCase()
+  if (!ext) return undefined
+
+  switch (ext) {
+    case 'jpg':
+    case 'jpeg':
+      return 'image/jpeg'
+    case 'png':
+      return 'image/png'
+    case 'gif':
+      return 'image/gif'
+    case 'webp':
+      return 'image/webp'
+    case 'heic':
+      return 'image/heic'
+    case 'heif':
+      return 'image/heif'
+    default:
+      return undefined
+  }
+}
+
+function withInferredFileType(file: File): File {
+  if (file.type) return file
+
+  const inferredMimeType = inferMimeTypeFromFilename(file.name)
+  if (!inferredMimeType) return file
+
+  return new File([file], file.name, {
+    type: inferredMimeType,
+    lastModified: file.lastModified,
+  })
+}
+
 export async function uploadPhotoToServer(
   file: File,
   serverUrl: string | UploadPhotoOptions = `${API_BASE_URL}/upload`,
@@ -21,8 +56,10 @@ export async function uploadPhotoToServer(
     effectiveThumbnailBlob = thumbnailBlob
   }
 
+  const effectiveFile = withInferredFileType(file)
+
   const form = new FormData()
-  form.append('photo', file, file.name)
+  form.append('photo', effectiveFile, effectiveFile.name)
   if (effectiveThumbnailBlob) {
     form.append('thumbnail', effectiveThumbnailBlob, 'thumbnail.jpg')
   }
