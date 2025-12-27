@@ -47,6 +47,7 @@ export default function UploadPage() {
 
   // Optimistic upload handler
   const addPendingUploads = useStore((state) => state.addPendingUploads);
+  const addBackgroundUploads = useStore((state) => state.addBackgroundUploads);
 
   /**
    * Fire-and-forget upload logic with optimistic UI
@@ -70,6 +71,9 @@ export default function UploadPage() {
     // Add pending uploads to store (returns created temp entries)
     const pendingEntries = addPendingUploads(files) || [];
 
+    // Track background upload status persistently (does not rely on pendingUploads placeholders)
+    const backgroundUploadIds = addBackgroundUploads(files, analysisType) || [];
+
     // Navigate immediately
     navigate('/gallery', { replace: true, state: { suppressUploadPicker: true } });
 
@@ -79,11 +83,14 @@ export default function UploadPage() {
       const { getPhotos } = await import('../api');
       const { generateClientThumbnail } = await import('../utils/clientImageProcessing');
       const removePendingUpload = useStore.getState().removePendingUpload;
+      const markBackgroundUploadSuccess = useStore.getState().markBackgroundUploadSuccess;
+      const markBackgroundUploadError = useStore.getState().markBackgroundUploadError;
 
       const errors: string[] = [];
       for (let i = 0; i < files.length; i++) {
         const file = files[i];
         const tempId = pendingEntries[i]?.id;
+        const bgId = backgroundUploadIds[i];
         let thumbnailBlob: Blob | null = null;
         try {
           thumbnailBlob = await generateClientThumbnail(file);
@@ -92,8 +99,11 @@ export default function UploadPage() {
         }
         try {
           await uploadPhotoToServer(file, undefined, thumbnailBlob, { classification: analysisType });
-        } catch {
+          if (bgId) markBackgroundUploadSuccess(bgId);
+        } catch (error) {
           errors.push(file?.name || 'unknown');
+          const message = error instanceof Error ? error.message : String(error);
+          if (bgId) markBackgroundUploadError(bgId, message || 'Upload failed');
         }
 
         // Remove from pending uploads (use exact tempId when available)
