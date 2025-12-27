@@ -389,6 +389,12 @@ describe('Migration Integrity', () => {
     
     // Create a complete mock knex object
     const mockKnex = {
+      client: {
+        config: {
+          // Migrations branch on knex.client.config.client (pg vs sqlite)
+          client: 'sqlite3'
+        }
+      },
       raw: jest.fn().mockResolvedValue(true),
       fn: {
         now: jest.fn().mockReturnValue('NOW()')
