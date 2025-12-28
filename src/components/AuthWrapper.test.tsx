@@ -1,5 +1,6 @@
 import { describe, it, expect, vi, beforeEach } from 'vitest';
 import { render, screen } from '@testing-library/react';
+import { MemoryRouter } from 'react-router-dom';
 import AuthWrapper from '../layouts/AuthWrapper';
 
 const mockUseAuth = vi.fn();
@@ -22,9 +23,11 @@ describe('AuthWrapper', () => {
     mockUseAuth.mockReturnValue({ user: null, loading: false });
 
     render(
-      <AuthWrapper>
-        <div>Protected Content</div>
-      </AuthWrapper>
+      <MemoryRouter>
+        <AuthWrapper>
+          <div>Protected Content</div>
+        </AuthWrapper>
+      </MemoryRouter>
     );
 
     expect(screen.getByRole('heading', { name: 'Lumina' })).toBeInTheDocument();
@@ -34,9 +37,11 @@ describe('AuthWrapper', () => {
     mockUseAuth.mockReturnValue({ user: { id: 'user-1' }, loading: false });
 
     render(
-      <AuthWrapper>
-        <div>Protected Content</div>
-      </AuthWrapper>
+      <MemoryRouter>
+        <AuthWrapper>
+          <div>Protected Content</div>
+        </AuthWrapper>
+      </MemoryRouter>
     );
 
     expect(screen.getByText('Protected Content')).toBeInTheDocument();
@@ -46,9 +51,11 @@ describe('AuthWrapper', () => {
     mockUseAuth.mockReturnValue({ user: null, loading: true });
 
     render(
-      <AuthWrapper>
-        <div>Protected Content</div>
-      </AuthWrapper>
+      <MemoryRouter>
+        <AuthWrapper>
+          <div>Protected Content</div>
+        </AuthWrapper>
+      </MemoryRouter>
     );
 
     expect(screen.getByText('Loading...')).toBeInTheDocument();

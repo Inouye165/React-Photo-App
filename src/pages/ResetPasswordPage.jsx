@@ -15,7 +15,7 @@ const ResetPasswordPage = () => {
   const [processingRecoveryLink, setProcessingRecoveryLink] = useState(() => {
     const hash = window.location.hash || '';
     const search = window.location.search || '';
-    return hash.includes('type=recovery') || search.includes('code=');
+    return hash.includes('type=recovery') || hash.includes('type=invite') || search.includes('code=');
   });
 
   useEffect(() => {
@@ -31,6 +31,9 @@ const ResetPasswordPage = () => {
         // Hash-based recovery doesn't need this; code-based flows do.
         if (code && supabase?.auth?.exchangeCodeForSession) {
           await supabase.auth.exchangeCodeForSession(code);
+        } else {
+          // Hash flow: Give Supabase some time to process the hash and fire onAuthStateChange
+          await new Promise(resolve => setTimeout(resolve, 2000));
         }
       } catch {
         // If this fails, the lack of a session will trigger the redirect path after processing completes.

@@ -103,17 +103,17 @@ describe('Routing Implementation Tests', () => {
     it('renders PhotoGalleryPage (PhotoTable) at root path /', async () => {
       render(
         <AuthProvider>
-          <AuthWrapper>
-            <GlobalErrorBoundary>
-              <MemoryRouter initialEntries={['/']}>
+          <GlobalErrorBoundary>
+            <MemoryRouter initialEntries={['/']}>
+              <AuthWrapper>
                 <Routes>
                   <Route element={<MainLayout />}>
                     <Route index element={<PhotoGalleryPage />} />
                   </Route>
                 </Routes>
-              </MemoryRouter>
-            </GlobalErrorBoundary>
-          </AuthWrapper>
+              </AuthWrapper>
+            </MemoryRouter>
+          </GlobalErrorBoundary>
         </AuthProvider>
       );
 
@@ -128,18 +128,18 @@ describe('Routing Implementation Tests', () => {
       it('renders PhotoDetailPage at /photos/:id', async () => {
       render(
         <AuthProvider>
-          <AuthWrapper>
-            <GlobalErrorBoundary>
-              <MemoryRouter initialEntries={['/photos/1']}>
+          <GlobalErrorBoundary>
+            <MemoryRouter initialEntries={['/photos/1']}>
+              <AuthWrapper>
                 <Routes>
                   <Route element={<MainLayout />}>
                       <Route path="/photos/:id" element={<PhotoDetailPage />} />
                     <Route path="/photos/:id/edit" element={<PhotoEditPage />} />
                   </Route>
                 </Routes>
-              </MemoryRouter>
-            </GlobalErrorBoundary>
-          </AuthWrapper>
+              </AuthWrapper>
+            </MemoryRouter>
+          </GlobalErrorBoundary>
         </AuthProvider>
       );
 
@@ -152,17 +152,17 @@ describe('Routing Implementation Tests', () => {
     it('renders PhotoEditPage at /photos/:id/edit', async () => {
       render(
         <AuthProvider>
-          <AuthWrapper>
-            <GlobalErrorBoundary>
-              <MemoryRouter initialEntries={['/photos/1/edit']}>
+          <GlobalErrorBoundary>
+            <MemoryRouter initialEntries={['/photos/1/edit']}>
+              <AuthWrapper>
                 <Routes>
                   <Route element={<MainLayout />}>
                     <Route path="/photos/:id/edit" element={<PhotoEditPage />} />
                   </Route>
                 </Routes>
-              </MemoryRouter>
-            </GlobalErrorBoundary>
-          </AuthWrapper>
+              </AuthWrapper>
+            </MemoryRouter>
+          </GlobalErrorBoundary>
         </AuthProvider>
       );
 
@@ -178,17 +178,17 @@ describe('Routing Implementation Tests', () => {
     it('supports deep linking to /photos/:id/edit', async () => {
       render(
         <AuthProvider>
-          <AuthWrapper>
-            <GlobalErrorBoundary>
-              <MemoryRouter initialEntries={['/photos/2/edit']}>
+          <GlobalErrorBoundary>
+            <MemoryRouter initialEntries={['/photos/2/edit']}>
+              <AuthWrapper>
                 <Routes>
                   <Route element={<MainLayout />}>
                     <Route path="/photos/:id/edit" element={<PhotoEditPage />} />
                   </Route>
                 </Routes>
-              </MemoryRouter>
-            </GlobalErrorBoundary>
-          </AuthWrapper>
+              </AuthWrapper>
+            </MemoryRouter>
+          </GlobalErrorBoundary>
         </AuthProvider>
       );
 
@@ -201,17 +201,17 @@ describe('Routing Implementation Tests', () => {
     it('handles photo not found gracefully on edit page', async () => {
       render(
         <AuthProvider>
-          <AuthWrapper>
-            <GlobalErrorBoundary>
-              <MemoryRouter initialEntries={['/photos/999/edit']}>
+          <GlobalErrorBoundary>
+            <MemoryRouter initialEntries={['/photos/999/edit']}>
+              <AuthWrapper>
                 <Routes>
                   <Route element={<MainLayout />}>
                     <Route path="/photos/:id/edit" element={<PhotoEditPage />} />
                   </Route>
                 </Routes>
-              </MemoryRouter>
-            </GlobalErrorBoundary>
-          </AuthWrapper>
+              </AuthWrapper>
+            </MemoryRouter>
+          </GlobalErrorBoundary>
         </AuthProvider>
       );
 
@@ -267,17 +267,17 @@ describe('Routing Implementation Tests', () => {
     it('renders MainLayout with Toolbar for all routes', async () => {
       render(
         <AuthProvider>
-          <AuthWrapper>
-            <GlobalErrorBoundary>
-              <MemoryRouter initialEntries={['/']}>
+          <GlobalErrorBoundary>
+            <MemoryRouter initialEntries={['/']}>
+              <AuthWrapper>
                 <Routes>
                   <Route element={<MainLayout />}>
                     <Route index element={<PhotoGalleryPage />} />
                   </Route>
                 </Routes>
-              </MemoryRouter>
-            </GlobalErrorBoundary>
-          </AuthWrapper>
+              </AuthWrapper>
+            </MemoryRouter>
+          </GlobalErrorBoundary>
         </AuthProvider>
       );
 
@@ -291,9 +291,9 @@ describe('Routing Implementation Tests', () => {
     it('catches wildcard routes and redirects to gallery', async () => {
       render(
         <AuthProvider>
-          <AuthWrapper>
-            <GlobalErrorBoundary>
-              <MemoryRouter initialEntries={['/nonexistent-route']}>
+          <GlobalErrorBoundary>
+            <MemoryRouter initialEntries={['/nonexistent-route']}>
+              <AuthWrapper>
                 <Routes>
                   <Route element={<MainLayout />}>
                     <Route index element={<PhotoGalleryPage />} />
@@ -302,9 +302,9 @@ describe('Routing Implementation Tests', () => {
                     <Route path="*" element={<PhotoGalleryPage />} />
                   </Route>
                 </Routes>
-              </MemoryRouter>
-            </GlobalErrorBoundary>
-          </AuthWrapper>
+              </AuthWrapper>
+            </MemoryRouter>
+          </GlobalErrorBoundary>
         </AuthProvider>
       );
 

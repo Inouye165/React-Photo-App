@@ -1,4 +1,5 @@
 import React, { useState, useEffect } from 'react';
+import { useNavigate, useLocation } from 'react-router-dom';
 import { useAuth } from '../contexts/AuthContext';
 import LandingPage from '../pages/LandingPage';
 import DisclaimerModal from '../components/DisclaimerModal';
@@ -9,6 +10,17 @@ interface AuthWrapperProps {
 }
 const AuthWrapper = ({ children }: AuthWrapperProps) => {
   const { user, loading, authReady, logout } = useAuth();
+  const navigate = useNavigate();
+  const location = useLocation();
+
+  // Check for invite link in URL hash and redirect to reset password page
+  useEffect(() => {
+    if (window.location.hash.includes('type=invite')) {
+      // Preserve the hash so ResetPasswordPage can process it
+      navigate('/reset-password' + window.location.hash);
+    }
+  }, [navigate]);
+
   // Handler for Decline & Sign Out
   const handleDecline = async () => {
     await logout();
