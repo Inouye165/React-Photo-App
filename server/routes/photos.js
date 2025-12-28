@@ -124,7 +124,7 @@ module.exports = function createPhotosRouter({ db, supabase }) {
       // Key includes all query params to ensure correctness
       const redis = getRedisClient();
       const cacheKey = `photos:list:${req.user.id}:${state || 'all'}:${limit}:${cursor || 'start'}`;
-      
+
       if (redis) {
         try {
           const cached = await redis.get(cacheKey);
@@ -132,7 +132,7 @@ module.exports = function createPhotosRouter({ db, supabase }) {
             logger.info('[photos] Cache hit', { reqId, key: cacheKey });
             res.set('X-Cache', 'HIT');
             // Still prevent browser caching, but serve from Redis
-            res.set('Cache-Control', 'no-store'); 
+            res.set('Cache-Control', 'no-store');
             return res.json(JSON.parse(cached));
           }
         } catch (err) {
