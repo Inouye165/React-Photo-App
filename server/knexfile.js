@@ -51,10 +51,12 @@ const createPostgresConfig = (env) => ({
     directory: path.join(__dirname, 'db/migrations')
   },
   pool: {
-     min: parseInt(process.env.DB_POOL_MIN || (env === 'production' ? '0' : '2'), 10),
-     max: parseInt(process.env.DB_POOL_MAX || (env === 'production' ? '10' : '30'), 10),
+     min: parseInt(process.env.DB_POOL_MIN || (env === 'production' ? '2' : '2'), 10),
+     max: parseInt(process.env.DB_POOL_MAX || (env === 'production' ? '30' : '30'), 10),
     // Acquire timeout - how long to wait for a connection
     acquireTimeoutMillis: 30000,
+    // Create timeout - how long to wait when establishing a new connection
+    createTimeoutMillis: parseInt(process.env.DB_POOL_CREATE_TIMEOUT_MS || '30000', 10),
     // Idle timeout - destroy connections idle for this long
     idleTimeoutMillis: 30000,
     // Reap interval - check for idle connections this often
