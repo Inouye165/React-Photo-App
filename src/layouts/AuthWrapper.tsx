@@ -1,5 +1,5 @@
 import React, { useState, useEffect } from 'react';
-import { useNavigate, useLocation } from 'react-router-dom';
+import { useNavigate } from 'react-router-dom';
 import { useAuth } from '../contexts/AuthContext';
 import LandingPage from '../pages/LandingPage';
 import DisclaimerModal from '../components/DisclaimerModal';
@@ -11,7 +11,6 @@ interface AuthWrapperProps {
 const AuthWrapper = ({ children }: AuthWrapperProps) => {
   const { user, loading, authReady, logout } = useAuth();
   const navigate = useNavigate();
-  const location = useLocation();
 
   // Initialize state based on current hash to prevent rendering children during invite redirect
   const [isInviteRedirecting, setIsInviteRedirecting] = useState(() => {

@@ -223,6 +223,7 @@ module.exports = function createDisplayRouter({ db }) {
       const originalExt = getOriginalExtension(originalStoragePath, photo.filename);
       const originalIsHeic = isHeicFormat(originalExt);
       const effectiveStoragePath = photo.display_path || originalStoragePath;
+      const effectiveExt = getOriginalExtension(effectiveStoragePath, null);
       const bypassRedirect = shouldBypassRedirect(req);
 
       // If a display asset exists, use it for HEIC/HEIF.
@@ -236,7 +237,7 @@ module.exports = function createDisplayRouter({ db }) {
         try {
           const signedUrl = await getSignedUrlWithCache({
             cacheKey,
-            storagePath: originalStoragePath,
+            storagePath: effectiveStoragePath,
             ttlSeconds: SIGNED_URL_TTL_SECONDS
           });
 
@@ -336,7 +337,7 @@ module.exports = function createDisplayRouter({ db }) {
       }
 
       // Non-HEIC: Serve with appropriate Content-Type
-      res.set('Content-Type', usingDisplayAsset ? 'image/jpeg' : getContentTypeForExtension(originalExt));
+      res.set('Content-Type', getContentTypeForExtension(effectiveExt || originalExt));
       res.set('Cache-Control', 'private, max-age=60');
       return res.send(fileBuffer);
 
