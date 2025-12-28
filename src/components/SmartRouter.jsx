@@ -33,6 +33,16 @@ export default function SmartRouter() {
   useEffect(() => {
     // Wait for auth to be ready
     if (authLoading) return;
+
+    // If the user just arrived from a Supabase invite/recovery link, route them to account setup
+    // before any other gating/redirect logic (e.g., username gate) runs.
+    const hash = window.location.hash || '';
+    const search = window.location.search || '';
+    if (hash.includes('type=invite') || hash.includes('type=recovery') || search.includes('code=')) {
+      setStatus('redirecting');
+      navigate('/reset-password' + search + hash, { replace: true });
+      return;
+    }
     
     // If not authenticated, AuthWrapper will handle it
     if (!user) {

@@ -14,18 +14,26 @@ const AuthWrapper = ({ children }: AuthWrapperProps) => {
   const location = useLocation();
 
   // Initialize state based on current hash to prevent rendering children during invite redirect
-  const [isInviteRedirecting, setIsInviteRedirecting] = useState(() => 
-    window.location.hash.includes('type=invite')
-  );
+  const [isInviteRedirecting, setIsInviteRedirecting] = useState(() => {
+    const hash = window.location.hash || '';
+    const search = window.location.search || '';
+    // Supabase can return invite/recovery info via hash (implicit flow) or via ?code= (PKCE/code flow)
+    return hash.includes('type=invite') || hash.includes('type=recovery') || search.includes('code=');
+  });
 
   // Check for invite link in URL hash and redirect to reset password page
   useEffect(() => {
     if (isInviteRedirecting) {
       // Preserve the hash so ResetPasswordPage can process it
-      navigate('/reset-password' + window.location.hash);
-    } else if (window.location.hash.includes('type=invite')) {
-      // Handle case where hash changes after mount (unlikely but possible)
+      navigate('/reset-password' + (window.location.search || '') + (window.location.hash || ''));
+    } else {
+      const hash = window.location.hash || '';
+      const search = window.location.search || '';
+      if (hash.includes('type=invite') || hash.includes('type=recovery') || search.includes('code=')) {
+        // Handle case where hash/search changes after mount (unlikely but possible)
+        // and ensure we still redirect to the setup page.
       setIsInviteRedirecting(true);
+      }
     }
   }, [navigate, isInviteRedirecting]);
 
