@@ -1,7 +1,9 @@
 const { createClient } = require('@supabase/supabase-js');
+const crypto = require('crypto');
 const jwt = require('jsonwebtoken');
 const { getConfig } = require('../config/env');
 const { isE2EEnabled } = require('../config/e2eGate');
+const { getRedisClient } = require('../lib/redis');
 
 // Initialize Supabase client
 // In production, missing SUPABASE_* or JWT_SECRET will fail fast via config validation.
@@ -79,8 +81,56 @@ async function authenticateToken(req, res, next) {
       }
     }
 
-    // Verify token using Supabase Auth
-    const { data: { user }, error } = await supabase.auth.getUser(token);
+    let user;
+    let error;
+
+    // Cache validated Supabase user profiles in Redis to avoid repeated network calls.
+    // SECURITY: Never use the raw token as a cache key.
+    const redisClient = getRedisClient();
+    if (redisClient) {
+      const tokenHash = crypto.createHash('sha256').update(token).digest('hex');
+      const cacheKey = `auth:profile:${tokenHash}`;
+
+      try {
+        const cached = await redisClient.get(cacheKey);
+        if (cached) {
+          const parsed = JSON.parse(cached);
+          // Minimal validation to avoid throwing on malformed cache entries.
+          if (parsed && typeof parsed === 'object' && parsed.id && parsed.email) {
+            user = parsed;
+          }
+        }
+      } catch {
+        // Fail-open: if Redis is unavailable or cache is malformed, fall back to Supabase.
+      }
+
+      if (!user) {
+        // Verify token using Supabase Auth
+        const result = await supabase.auth.getUser(token);
+        user = result?.data?.user;
+        error = result?.error;
+
+        if (!error && user) {
+          const minimizedUser = {
+            id: user.id,
+            email: user.email,
+            user_metadata: user.user_metadata,
+            app_metadata: user.app_metadata
+          };
+
+          try {
+            await redisClient.setex(cacheKey, 300, JSON.stringify(minimizedUser));
+          } catch {
+            // Fail-open: do not block auth if Redis write fails.
+          }
+        }
+      }
+    } else {
+      // Verify token using Supabase Auth
+      const result = await supabase.auth.getUser(token);
+      user = result?.data?.user;
+      error = result?.error;
+    }
 
     if (error || !user) {
       return res.status(403).json({ success: false, error: 'Invalid token' });
