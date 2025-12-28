@@ -13,13 +13,21 @@ const AuthWrapper = ({ children }: AuthWrapperProps) => {
   const navigate = useNavigate();
   const location = useLocation();
 
+  // Initialize state based on current hash to prevent rendering children during invite redirect
+  const [isInviteRedirecting, setIsInviteRedirecting] = useState(() => 
+    window.location.hash.includes('type=invite')
+  );
+
   // Check for invite link in URL hash and redirect to reset password page
   useEffect(() => {
-    if (window.location.hash.includes('type=invite')) {
+    if (isInviteRedirecting) {
       // Preserve the hash so ResetPasswordPage can process it
       navigate('/reset-password' + window.location.hash);
+    } else if (window.location.hash.includes('type=invite')) {
+      // Handle case where hash changes after mount (unlikely but possible)
+      setIsInviteRedirecting(true);
     }
-  }, [navigate]);
+  }, [navigate, isInviteRedirecting]);
 
   // Handler for Decline & Sign Out
   const handleDecline = async () => {
@@ -117,6 +125,17 @@ const AuthWrapper = ({ children }: AuthWrapperProps) => {
       setIsAccepting(false);
     }
   };
+
+  if (isInviteRedirecting) {
+    return (
+      <div className="min-h-screen flex items-center justify-center bg-gray-50">
+        <div className="text-center">
+          <div className="inline-block animate-spin rounded-full h-12 w-12 border-b-2 border-indigo-600"></div>
+          <p className="mt-4 text-gray-600">Redirecting to account setup...</p>
+        </div>
+      </div>
+    );
+  }
 
   if (loading || checkingTerms) {
     return (

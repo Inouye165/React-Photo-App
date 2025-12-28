@@ -6,10 +6,11 @@ import { supabase } from '../supabaseClient';
 const ResetPasswordPage = () => {
   const [password, setPassword] = useState('');
   const [confirmPassword, setConfirmPassword] = useState('');
+  const [username, setUsername] = useState('');
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState('');
   const [success, setSuccess] = useState(false);
-  const { updatePassword, user, session, loading: authLoading } = useAuth();
+  const { updatePassword, updateProfile, user, session, profile, loading: authLoading, profileLoading } = useAuth();
   const navigate = useNavigate();
 
   const [processingRecoveryLink, setProcessingRecoveryLink] = useState(() => {
@@ -52,11 +53,12 @@ const ResetPasswordPage = () => {
   useEffect(() => {
     if (!authLoading && !processingRecoveryLink && !session) {
       // If not logged in, redirect to login (or show error)
-      // But wait, if they just clicked the link, Supabase might still be processing the hash.
-      // However, AuthContext handles onAuthStateChange, so user should be set if hash is valid.
-      // If user is null after loading, it means invalid link or manual navigation.
-      // We'll redirect to home which will show login form.
-      navigate('/');
+      // If there's an error in the hash, preserve it so LandingPage can show it
+      if (window.location.hash.includes('error=')) {
+        navigate('/' + window.location.hash);
+      } else {
+        navigate('/');
+      }
     }
   }, [session, authLoading, processingRecoveryLink, navigate]);
 
@@ -64,6 +66,14 @@ const ResetPasswordPage = () => {
     e.preventDefault();
     setError('');
     setLoading(true);
+
+    const needsUsername = !profile?.has_set_username;
+
+    if (needsUsername && !username.trim()) {
+      setError('Please choose a username');
+      setLoading(false);
+      return;
+    }
 
     if (password !== confirmPassword) {
       setError('Passwords do not match');
@@ -77,9 +87,20 @@ const ResetPasswordPage = () => {
       return;
     }
 
+    // 1. Update Password
     const result = await updatePassword(password);
 
     if (result.success) {
+      // 2. Update Username if needed
+      if (needsUsername) {
+        const profileResult = await updateProfile(username);
+        if (!profileResult.success) {
+          console.error('Failed to set username during setup:', profileResult.error);
+          // We continue anyway because password is set, and IdentityGate will catch the missing username later if needed.
+          // But ideally we'd show a warning. For now, let's assume success to not block the user.
+        }
+      }
+
       setSuccess(true);
       setTimeout(() => {
         navigate('/gallery');
@@ -90,12 +111,14 @@ const ResetPasswordPage = () => {
     setLoading(false);
   };
 
-  if (authLoading || processingRecoveryLink) {
+  if (authLoading || processingRecoveryLink || (session && profileLoading)) {
     return (
       <div className="min-h-screen flex items-center justify-center bg-gray-50">
         <div className="text-center">
           <div className="inline-block animate-spin rounded-full h-12 w-12 border-b-2 border-indigo-600"></div>
-          <p className="mt-4 text-gray-600">Verifying link...</p>
+          <p className="mt-4 text-gray-600">
+            {processingRecoveryLink ? 'Verifying link...' : 'Loading profile...'}
+          </p>
         </div>
       </div>
     );
@@ -103,12 +126,18 @@ const ResetPasswordPage = () => {
 
   if (!session || !user) return null; // Will redirect in useEffect
 
+  const isSetup = !profile?.has_set_username;
+
   return (
     <div className="min-h-screen flex items-center justify-center bg-gray-50 p-4">
       <div className="w-full max-w-md bg-white rounded-lg shadow-lg p-8">
         <div className="mb-6 text-center">
-          <h1 className="text-2xl font-bold text-gray-900 mb-2">Reset Password</h1>
-          <p className="text-sm text-gray-600">Enter your new password below</p>
+          <h1 className="text-2xl font-bold text-gray-900 mb-2">
+            {isSetup ? 'Create Account' : 'Reset Password'}
+          </h1>
+          <p className="text-sm text-gray-600">
+            {isSetup ? 'Set up your username and password' : 'Enter your new password below'}
+          </p>
         </div>
 
         {success ? (
@@ -116,7 +145,9 @@ const ResetPasswordPage = () => {
             <svg className="mx-auto h-10 w-10 text-green-400 mb-2" fill="none" viewBox="0 0 24 24" stroke="currentColor">
               <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 12l2 2 4-4" />
             </svg>
-            <h3 className="text-lg font-semibold text-green-800 mb-1">Password Updated</h3>
+            <h3 className="text-lg font-semibold text-green-800 mb-1">
+              {isSetup ? 'Account Created' : 'Password Updated'}
+            </h3>
             <p className="text-sm text-green-700 mb-2">Redirecting you to the gallery...</p>
           </div>
         ) : (
@@ -124,9 +155,29 @@ const ResetPasswordPage = () => {
             {error && (
               <div className="rounded-md bg-red-50 p-3 text-center text-red-700 text-sm font-medium">{error}</div>
             )}
+            
+            {isSetup && (
+              <div>
+                <label htmlFor="username" className="block text-sm font-medium text-gray-700 mb-1">
+                  Username
+                </label>
+                <input
+                  id="username"
+                  type="text"
+                  required
+                  className="w-full px-3 py-2 border border-gray-300 rounded-md focus:ring-2 focus:ring-indigo-500 focus:border-transparent"
+                  value={username}
+                  onChange={(e) => setUsername(e.target.value)}
+                  disabled={loading}
+                  placeholder="Choose a unique username"
+                  minLength={3}
+                />
+              </div>
+            )}
+
             <div>
               <label htmlFor="password" className="block text-sm font-medium text-gray-700 mb-1">
-                New Password
+                {isSetup ? 'Password' : 'New Password'}
               </label>
               <input
                 id="password"

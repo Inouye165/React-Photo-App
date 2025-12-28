@@ -1,5 +1,6 @@
 /// <reference types="vite/client" />
-import React, { useState } from 'react';
+import React, { useState, useEffect } from 'react';
+import { useLocation } from 'react-router-dom';
 import LoginForm from '../components/LoginForm';
 
 type ViewState = 'landing' | 'login' | 'contact';
@@ -14,13 +15,31 @@ interface ContactFormState {
 const API_BASE_URL = import.meta.env.VITE_API_URL || 'http://localhost:3001';
 
 const LandingPage: React.FC = () => {
+  const location = useLocation();
   const [view, setView] = useState<ViewState>('landing');
+  const [urlError, setUrlError] = useState<string | null>(null);
   const [contactForm, setContactForm] = useState<ContactFormState>({
     name: '',
     email: '',
     interest: 'general',
     message: ''
   });
+
+  useEffect(() => {
+    // Check for errors in URL hash (Supabase redirects with errors in hash)
+    if (location.hash && location.hash.includes('error=')) {
+      const params = new URLSearchParams(location.hash.substring(1)); // remove #
+      const errorDescription = params.get('error_description');
+      const errorCode = params.get('error_code');
+      
+      if (errorCode === 'otp_expired') {
+        setUrlError('Your invite link has expired. Please request a new one or log in if you already have an account.');
+      } else if (errorDescription) {
+        setUrlError(errorDescription.replace(/\+/g, ' '));
+      }
+    }
+  }, [location]);
+
   const [isSubmitting, setIsSubmitting] = useState(false);
   const [submitStatus, setSubmitStatus] = useState<{ type: 'success' | 'error'; message: string } | null>(null);
 
@@ -237,7 +256,12 @@ const LandingPage: React.FC = () => {
   return (
     <div className="min-h-screen flex flex-col md:flex-row bg-white">
       {renderBrandPanel()}
-      <div className="w-full md:w-1/2 p-8 md:p-12 lg:p-24 flex items-center justify-center bg-white">
+      <div className="w-full md:w-1/2 p-8 md:p-12 lg:p-24 flex flex-col items-center justify-center bg-white">
+        {urlError && (
+          <div className="w-full max-w-md mb-6 p-4 bg-red-50 border border-red-200 text-red-700 rounded-lg text-sm animate-fade-in">
+            {urlError}
+          </div>
+        )}
         {view === 'landing' && renderLandingView()}
         {view === 'contact' && renderContactView()}
         {view === 'login' && renderLoginView()}

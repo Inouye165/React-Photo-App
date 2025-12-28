@@ -1,5 +1,6 @@
 import { render, screen, fireEvent, waitFor } from '@testing-library/react';
 import { describe, it, expect, vi, beforeEach } from 'vitest';
+import { MemoryRouter } from 'react-router-dom';
 import LandingPage from './LandingPage';
 
 // Mock LoginForm since we don't need to test its internals here
@@ -12,8 +13,16 @@ describe('LandingPage', () => {
     vi.clearAllMocks();
   });
 
+  const renderWithRouter = (ui: React.ReactElement, { route = '/' } = {}) => {
+    return render(
+      <MemoryRouter initialEntries={[route]}>
+        {ui}
+      </MemoryRouter>
+    );
+  };
+
   it('renders the landing page correctly', () => {
-    render(<LandingPage />);
+    renderWithRouter(<LandingPage />);
     expect(screen.getByRole('heading', { name: 'Lumina' })).toBeInTheDocument();
     expect(
       screen.getByText(/Upload a photo, and I'll tell you what it is, where it was, or what it's worth\./i)
@@ -33,14 +42,14 @@ describe('LandingPage', () => {
   });
 
   it('switches to contact form when "Request Access" is clicked', () => {
-    render(<LandingPage />);
+    renderWithRouter(<LandingPage />);
     fireEvent.click(screen.getByText('Request Access'));
     expect(screen.getByText('Contact Us')).toBeInTheDocument();
     expect(screen.getByLabelText(/Name/i)).toBeInTheDocument();
   });
 
   it('switches to login form when "I have an account" is clicked', () => {
-    render(<LandingPage />);
+    renderWithRouter(<LandingPage />);
     fireEvent.click(screen.getByText('I have an account'));
     expect(screen.getByTestId('login-form')).toBeInTheDocument();
   });
@@ -51,7 +60,7 @@ describe('LandingPage', () => {
       json: async () => ({ success: true }),
     });
 
-    render(<LandingPage />);
+    renderWithRouter(<LandingPage />);
     fireEvent.click(screen.getByText('Request Access'));
 
     fireEvent.change(screen.getByLabelText(/Name/i), { target: { value: 'John Doe' } });
@@ -85,7 +94,7 @@ describe('LandingPage', () => {
       json: async () => ({ error: 'Server error' }),
     });
 
-    render(<LandingPage />);
+    renderWithRouter(<LandingPage />);
     fireEvent.click(screen.getByText('Request Access'));
 
     fireEvent.change(screen.getByLabelText(/Name/i), { target: { value: 'John Doe' } });
@@ -105,7 +114,7 @@ describe('LandingPage', () => {
       status: 429,
     });
 
-    render(<LandingPage />);
+    renderWithRouter(<LandingPage />);
     fireEvent.click(screen.getByText('Request Access'));
 
     fireEvent.change(screen.getByLabelText(/Name/i), { target: { value: 'John Doe' } });
@@ -117,5 +126,15 @@ describe('LandingPage', () => {
     await waitFor(() => {
       expect(screen.getByText(/Too many requests/i)).toBeInTheDocument();
     });
+  });
+
+  it('displays error message from URL hash', () => {
+    renderWithRouter(<LandingPage />, { route: '/#error=access_denied&error_description=Test+Error' });
+    expect(screen.getByText('Test Error')).toBeInTheDocument();
+  });
+
+  it('displays friendly message for otp_expired error', () => {
+    renderWithRouter(<LandingPage />, { route: '/#error=access_denied&error_code=otp_expired' });
+    expect(screen.getByText(/Your invite link has expired/i)).toBeInTheDocument();
   });
 });

@@ -30,7 +30,9 @@ describe('ResetPasswordPage', () => {
       loading: true,
       user: null,
       session: null,
+      profile: null,
       updatePassword: vi.fn(),
+      updateProfile: vi.fn(),
     });
 
     render(
@@ -39,7 +41,7 @@ describe('ResetPasswordPage', () => {
       </BrowserRouter>
     );
 
-    expect(screen.getByText('Verifying link...')).toBeInTheDocument();
+    expect(screen.getByText('Loading profile...')).toBeInTheDocument();
   });
 
   it('redirects to home if accessed without an active session', () => {
@@ -47,7 +49,9 @@ describe('ResetPasswordPage', () => {
       loading: false,
       user: null,
       session: null,
+      profile: null,
       updatePassword: vi.fn(),
+      updateProfile: vi.fn(),
     });
 
     render(
@@ -59,12 +63,14 @@ describe('ResetPasswordPage', () => {
     expect(mockNavigate).toHaveBeenCalledWith('/');
   });
 
-  it('renders form when user is logged in', () => {
+  it('renders reset password form for existing user (has username)', () => {
     useAuth.mockReturnValue({
       loading: false,
       user: { id: '123' },
       session: { access_token: 'token', user: { id: '123' } },
+      profile: { has_set_username: true },
       updatePassword: vi.fn(),
+      updateProfile: vi.fn(),
     });
 
     render(
@@ -73,7 +79,31 @@ describe('ResetPasswordPage', () => {
       </BrowserRouter>
     );
 
+    expect(screen.getByText('Reset Password')).toBeInTheDocument();
     expect(screen.getByLabelText('New Password')).toBeInTheDocument();
+    expect(screen.getByLabelText('Confirm Password')).toBeInTheDocument();
+    expect(screen.queryByLabelText('Username')).not.toBeInTheDocument();
+  });
+
+  it('renders create account form for new user (no username)', () => {
+    useAuth.mockReturnValue({
+      loading: false,
+      user: { id: '123' },
+      session: { access_token: 'token', user: { id: '123' } },
+      profile: { has_set_username: false },
+      updatePassword: vi.fn(),
+      updateProfile: vi.fn(),
+    });
+
+    render(
+      <BrowserRouter>
+        <ResetPasswordPage />
+      </BrowserRouter>
+    );
+
+    expect(screen.getByText('Create Account')).toBeInTheDocument();
+    expect(screen.getByLabelText('Username')).toBeInTheDocument();
+    expect(screen.getByLabelText('Password')).toBeInTheDocument();
     expect(screen.getByLabelText('Confirm Password')).toBeInTheDocument();
   });
 
@@ -82,7 +112,9 @@ describe('ResetPasswordPage', () => {
       loading: false,
       user: { id: '123' },
       session: { access_token: 'token', user: { id: '123' } },
+      profile: { has_set_username: true },
       updatePassword: vi.fn(),
+      updateProfile: vi.fn(),
     });
 
     render(
@@ -98,13 +130,73 @@ describe('ResetPasswordPage', () => {
     expect(screen.getByText('Passwords do not match')).toBeInTheDocument();
   });
 
+  it('calls updatePassword and redirects on success (existing user)', async () => {
+    const mockUpdatePassword = vi.fn().mockResolvedValue({ success: true });
+    useAuth.mockReturnValue({
+      loading: false,
+      user: { id: '123' },
+      session: { access_token: 'token', user: { id: '123' } },
+      profile: { has_set_username: true },
+      updatePassword: mockUpdatePassword,
+      updateProfile: vi.fn(),
+    });
+
+    render(
+      <BrowserRouter>
+        <ResetPasswordPage />
+      </BrowserRouter>
+    );
+
+    fireEvent.change(screen.getByLabelText('New Password'), { target: { value: 'password123' } });
+    fireEvent.change(screen.getByLabelText('Confirm Password'), { target: { value: 'password123' } });
+    fireEvent.click(screen.getByRole('button', { name: 'Update Password' }));
+
+    await waitFor(() => {
+      expect(mockUpdatePassword).toHaveBeenCalledWith('password123');
+      expect(screen.getByText('Password Updated')).toBeInTheDocument();
+    });
+  });
+
+  it('calls updatePassword AND updateProfile on success (new user)', async () => {
+    const mockUpdatePassword = vi.fn().mockResolvedValue({ success: true });
+    const mockUpdateProfile = vi.fn().mockResolvedValue({ success: true });
+    
+    useAuth.mockReturnValue({
+      loading: false,
+      user: { id: '123' },
+      session: { access_token: 'token', user: { id: '123' } },
+      profile: { has_set_username: false },
+      updatePassword: mockUpdatePassword,
+      updateProfile: mockUpdateProfile,
+    });
+
+    render(
+      <BrowserRouter>
+        <ResetPasswordPage />
+      </BrowserRouter>
+    );
+
+    fireEvent.change(screen.getByLabelText('Username'), { target: { value: 'newuser' } });
+    fireEvent.change(screen.getByLabelText('Password'), { target: { value: 'password123' } });
+    fireEvent.change(screen.getByLabelText('Confirm Password'), { target: { value: 'password123' } });
+    fireEvent.click(screen.getByRole('button', { name: 'Update Password' }));
+
+    await waitFor(() => {
+      expect(mockUpdatePassword).toHaveBeenCalledWith('password123');
+      expect(mockUpdateProfile).toHaveBeenCalledWith('newuser');
+      expect(screen.getByText('Account Created')).toBeInTheDocument();
+    });
+  });
+
   it('rejects passwords shorter than 6 characters', async () => {
     const mockUpdatePassword = vi.fn();
     useAuth.mockReturnValue({
       loading: false,
       user: { id: '123' },
       session: { access_token: 'token', user: { id: '123' } },
+      profile: { has_set_username: true },
       updatePassword: mockUpdatePassword,
+      updateProfile: vi.fn(),
     });
 
     render(
@@ -127,7 +219,9 @@ describe('ResetPasswordPage', () => {
       loading: false,
       user: { id: '123' },
       session: { access_token: 'token', user: { id: '123' } },
+      profile: { has_set_username: true },
       updatePassword: mockUpdatePassword,
+      updateProfile: vi.fn(),
     });
 
     render(
@@ -145,34 +239,5 @@ describe('ResetPasswordPage', () => {
     });
 
     expect(screen.getByText('Server error')).toBeInTheDocument();
-  });
-
-  it('calls updatePassword and redirects on success', async () => {
-    const mockUpdatePassword = vi.fn().mockResolvedValue({ success: true });
-    useAuth.mockReturnValue({
-      loading: false,
-      user: { id: '123' },
-      session: { access_token: 'token', user: { id: '123' } },
-      updatePassword: mockUpdatePassword,
-    });
-
-    render(
-      <BrowserRouter>
-        <ResetPasswordPage />
-      </BrowserRouter>
-    );
-
-    fireEvent.change(screen.getByLabelText('New Password'), { target: { value: 'newpassword' } });
-    fireEvent.change(screen.getByLabelText('Confirm Password'), { target: { value: 'newpassword' } });
-    fireEvent.click(screen.getByRole('button', { name: 'Update Password' }));
-
-    await waitFor(() => {
-      expect(mockUpdatePassword).toHaveBeenCalledWith('newpassword');
-    });
-
-    expect(screen.getByText('Password Updated')).toBeInTheDocument();
-    
-    // We can't easily test the setTimeout navigation without using fake timers, 
-    // but we can verify the success message is shown.
   });
 });
