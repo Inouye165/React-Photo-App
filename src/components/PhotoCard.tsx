@@ -227,6 +227,7 @@ export default function PhotoCard({
             <AuthenticatedImage
               src={imageUrl}
               alt={photo.caption || photo.filename || 'Photo thumbnail'}
+              loading="lazy"
               className={`w-full h-full object-cover transition-opacity duration-300 ${
                 imageLoaded ? 'opacity-100' : 'opacity-0'
               }`}
@@ -247,6 +248,7 @@ export default function PhotoCard({
             <img
               src={imageUrl}
               alt={photo.caption || photo.filename || 'Photo thumbnail'}
+              loading="lazy"
               className={`w-full h-full object-cover transition-opacity duration-300 ${
                 imageLoaded ? 'opacity-100' : 'opacity-0'
               }`}
@@ -261,7 +263,6 @@ export default function PhotoCard({
                   setImageError(true);
                 }
               }}
-              loading="lazy"
             />
           )
         ) : (

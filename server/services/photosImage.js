@@ -14,6 +14,26 @@ module.exports = function createPhotosImage({ sharp, exifr, crypto }) {
       // Sharp handles conversion
       return await sharp(inputBuffer).jpeg({ quality: 90 }).toBuffer();
     },
+
+    /**
+     * Convert an image buffer to WebP while preserving embedded metadata.
+     *
+     * NOTE: This preserves metadata that sharp can carry through the pipeline.
+     * Callers must extract/record EXIF from the original bytes separately if they
+     * need a normalized metadata object for DB/UI.
+     *
+     * @param {Buffer} inputBuffer
+     * @param {Object} [options]
+     * @param {number} [options.quality=80]
+     * @returns {Promise<Buffer>}
+     */
+    async convertToWebpWithMetadata(inputBuffer, options = {}) {
+      const quality = Number.isFinite(options.quality) ? options.quality : 80;
+      return await sharp(inputBuffer)
+        .withMetadata()
+        .webp({ quality })
+        .toBuffer();
+    },
     /**
      * Extract metadata (EXIF, GPS, etc.) from a buffer.
      * @param {Buffer} buffer

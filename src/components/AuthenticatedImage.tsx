@@ -50,6 +50,7 @@ const AuthenticatedImage: React.FC<AuthenticatedImageProps> = ({
   src,
   alt = '',
   className = '',
+  loading = 'lazy',
   loadingPlaceholder,
   errorPlaceholder,
   onLoad,
@@ -187,6 +188,7 @@ const AuthenticatedImage: React.FC<AuthenticatedImageProps> = ({
       className={className}
       onLoad={handleLoad}
       onError={handleError}
+      loading={loading}
       {...imgProps}
     />
   );

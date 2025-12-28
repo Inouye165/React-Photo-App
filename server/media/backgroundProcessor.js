@@ -17,6 +17,9 @@ const crypto = require('crypto');
 const supabase = require('../lib/supabaseClient');
 const logger = require('../logger');
 const { convertHeicToJpegBuffer } = require('./image');
+const createPhotosImage = require('../services/photosImage');
+
+const photosImage = createPhotosImage({ sharp, exifr, crypto });
 
 // Configure sharp for constrained resource usage
 sharp.concurrency(1);
@@ -245,6 +248,63 @@ function hashBuffer(buffer) {
   return crypto.createHash('sha256').update(buffer).digest('hex');
 }
 
+function getOriginalExtensionFromFilename(filename) {
+  const ext = filename ? String(filename).toLowerCase().split('.').pop() : '';
+  return ext ? `.${ext}` : '';
+}
+
+function buildDisplayWebpPath({ userId, photoId }) {
+  return `display/${String(userId)}/${String(photoId)}.webp`;
+}
+
+async function generateAndUploadDisplayWebp({ buffer, photo, storagePath }) {
+  if (!photo || photo.id == null || !photo.user_id) {
+    throw new Error('photo with id and user_id is required');
+  }
+
+  if (photo.display_path) {
+    return { skipped: true, reason: 'already_has_display_path' };
+  }
+
+  const filenameExt = getOriginalExtensionFromFilename(photo.filename);
+  const originalIsHeic = filenameExt === '.heic' || filenameExt === '.heif';
+  const displayPath = buildDisplayWebpPath({ userId: photo.user_id, photoId: photo.id });
+
+  try {
+    // CRITICAL: Preserve embedded metadata on the generated WebP.
+    // EXIF extraction for DB is handled separately (and earlier) from the original bytes.
+    const webpBuffer = await photosImage.convertToWebpWithMetadata(buffer, { quality: 80 });
+
+    const { error } = await supabase.storage
+      .from('photos')
+      .upload(displayPath, webpBuffer, {
+        contentType: 'image/webp',
+        upsert: true,
+        cacheControl: '31536000',
+      });
+
+    if (error) {
+      logger.warn('[Processor] WebP upload failed; will fall back', {
+        photoId: String(photo.id),
+        displayPath,
+        storagePath,
+        error: error?.message || String(error),
+      });
+      return { ok: false, reason: 'upload_failed', originalIsHeic };
+    }
+
+    return { ok: true, displayPath, originalIsHeic };
+  } catch (err) {
+    logger.warn('[Processor] WebP conversion failed; will fall back', {
+      photoId: String(photo.id),
+      displayPath,
+      storagePath,
+      error: err?.message || String(err),
+    });
+    return { ok: false, reason: 'convert_failed', originalIsHeic };
+  }
+}
+
 /**
  * Generates a thumbnail and uploads it to Supabase Storage.
  * 
@@ -339,7 +399,7 @@ async function generateAndUploadThumbnail(buffer, filename, hash) {
  * @returns {Promise<Object>} Processing result
  */
 async function processUploadedPhoto(db, photoId, options = {}) {
-  const { processMetadata: doMetadata = true, generateThumbnail: doThumbnail = true } = options;
+  const { processMetadata: doMetadata = true, generateThumbnail: doThumbnail = true, generateDisplay: doDisplay = true } = options;
 
   // Get photo record
   const photo = await db('photos').where({ id: photoId }).first();
@@ -392,6 +452,22 @@ async function processUploadedPhoto(db, photoId, options = {}) {
     }
   }
 
+  // Generate WebP display asset if requested.
+  // Resilience:
+  // - If WebP generation fails for non-HEIC, set display_path to the original storagePath.
+  // - If WebP generation fails for HEIC/HEIF, leave display_path NULL so existing
+  //   request-time HEIC conversion (or HEIC JPEG display-asset worker) remains safe.
+  if (doDisplay) {
+    const result = await generateAndUploadDisplayWebp({ buffer, photo, storagePath });
+    if (result && result.ok && result.displayPath) {
+      updates.display_path = result.displayPath;
+      logger.debug(`[Processor] Generated WebP display asset at ${result.displayPath}`);
+    } else if (result && !result.ok && !result.originalIsHeic) {
+      updates.display_path = storagePath;
+      logger.debug(`[Processor] WebP failed; falling back display_path to original ${storagePath}`);
+    }
+  }
+
   // Update database
   await db('photos').where({ id: photoId }).update(updates);
   logger.info(`[Processor] Updated photo ${photoId} with processed metadata`);
@@ -401,6 +477,7 @@ async function processUploadedPhoto(db, photoId, options = {}) {
     filename: photo.filename,
     metadataExtracted: doMetadata,
     thumbnailGenerated: doThumbnail,
+    displayGenerated: doDisplay,
     hash: updates.hash || photo.hash
   };
 }
@@ -411,5 +488,6 @@ module.exports = {
   extractMetadata,
   mergeMetadataPreservingLocationAndDate,
   generateAndUploadThumbnail,
+  generateAndUploadDisplayWebp,
   hashBuffer
 };

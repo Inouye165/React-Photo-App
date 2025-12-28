@@ -261,6 +261,7 @@ const Thumbnail: React.FC<ThumbnailProps> = ({ file, className = '', externalSrc
       <img 
         src={externalSrc} 
         alt={file?.name || ''} 
+        loading="lazy"
         className={`object-cover w-full h-full ${className}`}
         onError={() => {
           console.warn(`External thumbnail failed for ${file?.name}`);
@@ -327,6 +328,7 @@ const Thumbnail: React.FC<ThumbnailProps> = ({ file, className = '', externalSrc
     <img 
       src={src} 
       alt={file?.name || ''} 
+      loading="lazy"
       className={`object-cover w-full h-full ${className}`}
       onError={() => {
         setLoadError(true);
