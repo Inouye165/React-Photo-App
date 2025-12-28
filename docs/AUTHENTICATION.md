@@ -198,6 +198,22 @@ CORS_CREDENTIALS=true
 - Authentication error handling with auto-logout
 - Graceful handling of expired tokens
 
+## Supabase Invite Links (Recommended)
+
+Some email providers/security products automatically prefetch links in emails. Because Supabase invite links are one-time URLs, that prefetch can consume the link before the user clicks it, resulting in errors like `otp_expired`.
+
+To mitigate this, the frontend includes a lightweight intermediate page at `/confirm-invite` that requires an explicit click before navigating to the Supabase `{{ .ConfirmationURL }}`.
+
+### Invite email template snippet
+
+In the Supabase **Invite user** email template, set the invite button to your app first, passing the confirmation URL as an encoded query param:
+
+```html
+<a href="{{ .SiteURL }}/confirm-invite?confirmation_url={{ .ConfirmationURL | urlquery }}">Accept the invite</a>
+```
+
+After the user clicks **Continue** on `/confirm-invite`, the browser navigates to the Supabase confirmation URL, which then redirects back into the app. The app detects invite/recovery parameters and routes the user to `/reset-password` to complete setup.
+
 ## Production Deployment Checklist
 
 ### 🔧 Configuration

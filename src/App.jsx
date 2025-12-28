@@ -12,6 +12,7 @@ import UploadPage from './pages/UploadPage.jsx';
 import SettingsPage from './pages/SettingsPage.jsx';
 import AuthWrapper from './layouts/AuthWrapper';
 import ResetPasswordPage from './pages/ResetPasswordPage.jsx';
+import ConfirmInvitePage from './pages/ConfirmInvitePage';
 import SetUsernamePage from './pages/SetUsernamePage.tsx';
 import ChatPage from './pages/ChatPage.tsx';
 
@@ -47,6 +48,7 @@ function App() {
     <GlobalErrorBoundary>
       <BrowserRouter>
         <Routes>
+          <Route path="/confirm-invite" element={<ConfirmInvitePage />} />
           <Route path="/reset-password" element={<ResetPasswordPage />} />
           <Route element={<AuthWrapper><IdentityGate /></AuthWrapper>}>
             <Route element={<MainLayout />}>
