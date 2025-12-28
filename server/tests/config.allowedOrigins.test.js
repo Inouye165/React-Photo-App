@@ -15,6 +15,7 @@ describe('getAllowedOrigins', () => {
     delete process.env.FRONTEND_ORIGIN;
     delete process.env.CLIENT_ORIGIN;
     delete process.env.CLIENT_ORIGINS;
+    delete process.env.CORS_ORIGIN;
   });
 
   afterAll(() => {
@@ -134,6 +135,28 @@ describe('getAllowedOrigins', () => {
     
     expect(origins).toContain('https://legacy1.example.com');
     expect(origins).toContain('https://legacy2.example.com');
+  });
+
+  test('should support legacy CORS_ORIGIN (comma-separated)', () => {
+    process.env.CORS_ORIGIN = 'https://justmypeeps.org,https://www.justmypeeps.org';
+
+    const { getAllowedOrigins: getOrigins } = require('../config/allowedOrigins');
+    const origins = getOrigins();
+
+    expect(origins).toContain('https://justmypeeps.org');
+    expect(origins).toContain('https://www.justmypeeps.org');
+  });
+
+  test('should normalize CORS_ORIGIN (trim + strip trailing slash)', () => {
+    process.env.CORS_ORIGIN = ' https://justmypeeps.org/ , https://www.justmypeeps.org/ ';
+
+    const { getAllowedOrigins: getOrigins } = require('../config/allowedOrigins');
+    const origins = getOrigins();
+
+    expect(origins).toContain('https://justmypeeps.org');
+    expect(origins).toContain('https://www.justmypeeps.org');
+    expect(origins).not.toContain('https://justmypeeps.org/');
+    expect(origins).not.toContain('https://www.justmypeeps.org/');
   });
 
   describe('FRONTEND_ORIGIN support', () => {

@@ -90,6 +90,15 @@ function getAllowedOrigins() {
         .filter(Boolean)
         .forEach((value) => origins.add(value));
     }
+
+    // Legacy compatibility: CORS_ORIGIN (comma-separated)
+    // NOTE: This is kept for backward compatibility with older Railway env setups.
+    if (process.env.CORS_ORIGIN) {
+      process.env.CORS_ORIGIN.split(',')
+        .map((value) => normalizeOrigin(value))
+        .filter(Boolean)
+        .forEach((value) => origins.add(value));
+    }
     
     return Array.from(origins);
   }
@@ -112,6 +121,15 @@ function getAllowedOrigins() {
   if (process.env.CLIENT_ORIGINS) {
     process.env.CLIENT_ORIGINS.split(',')
       .map((value) => value.trim())
+      .filter(Boolean)
+      .forEach((value) => origins.add(value));
+  }
+
+  // Backward compatibility: CORS_ORIGIN (multi-origin)
+  // Historically used in this repo (see server/.env and env validation).
+  if (process.env.CORS_ORIGIN) {
+    process.env.CORS_ORIGIN.split(',')
+      .map((value) => normalizeOrigin(value))
       .filter(Boolean)
       .forEach((value) => origins.add(value));
   }

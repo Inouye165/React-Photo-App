@@ -22,24 +22,27 @@ function registerMiddleware(app) {
   }
 
   // --- Centralized CORS Middleware ---
-  app.use(
-    cors({
-      origin: function (origin, callback) {
-        const isAllowed = !origin || allowedOrigins.includes(origin);
-        if (process.env.NODE_ENV !== 'test' && process.env.DEBUG_CORS === 'true') {
-          const logger = require('../logger');
-          logger.info('[CORS DEBUG]', { origin, isAllowed, allowedOrigins });
-        }
-        if (isAllowed) {
-          return callback(null, origin);
-        }
-        return callback(new Error('Not allowed by CORS'));
-      },
-      credentials: true,
-      maxAge: Number(process.env.CORS_MAX_AGE_SECONDS || 600),
-      optionsSuccessStatus: 204,
-    })
-  );
+  const corsOptions = {
+    origin: function (origin, callback) {
+      const isAllowed = !origin || allowedOrigins.includes(origin);
+      if (process.env.NODE_ENV !== 'test' && process.env.DEBUG_CORS === 'true') {
+        const logger = require('../logger');
+        logger.info('[CORS DEBUG]', { origin, isAllowed, allowedOrigins });
+      }
+      if (isAllowed) {
+        return callback(null, origin);
+      }
+      return callback(new Error('Not allowed by CORS'));
+    },
+    credentials: true,
+    maxAge: Number(process.env.CORS_MAX_AGE_SECONDS || 600),
+    optionsSuccessStatus: 204,
+    methods: ['GET', 'POST', 'PUT', 'PATCH', 'DELETE', 'OPTIONS'],
+  };
+
+  // Ensure preflight requests succeed before any auth/validation middleware.
+  app.options('*', cors(corsOptions));
+  app.use(cors(corsOptions));
 
   // Configure security middleware after CORS so security headers are
   // applied to responses that already include CORS headers.
