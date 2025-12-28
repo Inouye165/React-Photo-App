@@ -10,6 +10,11 @@ export interface ChatBubbleProps {
 }
 
 export default function ChatBubble({ message, roomId, isOwn, senderLabel, timestampLabel }: ChatBubbleProps) {
+  const senderLabelTrimmed = (senderLabel ?? '').trim()
+  const isDeletedSender = message.sender_id == null || senderLabelTrimmed.length === 0
+  const displaySenderLabel = isDeletedSender ? 'Deleted User' : senderLabelTrimmed
+  const content = (message.content ?? '').trim()
+
   return (
     <div className={`flex ${isOwn ? 'justify-end' : 'justify-start'}`} data-testid={`chat-bubble-${message.id}`}>
       <div
@@ -20,10 +25,13 @@ export default function ChatBubble({ message, roomId, isOwn, senderLabel, timest
         }
       >
         <div className={`flex items-center justify-between gap-3 ${isOwn ? 'text-slate-200' : 'text-slate-500'}`}>
-          <span className="text-xs font-medium truncate">{senderLabel}</span>
+          <span className={`text-xs font-medium truncate ${isDeletedSender ? 'italic' : ''}`}>
+            {displaySenderLabel}
+            {isDeletedSender ? <span className="ml-1 text-[10px] font-normal opacity-80">(deleted)</span> : null}
+          </span>
           <span className="text-[11px] whitespace-nowrap">{timestampLabel}</span>
         </div>
-        {message.content.trim() ? (
+        {content ? (
           <p className={`mt-2 text-sm leading-relaxed whitespace-pre-wrap break-words ${isOwn ? 'text-white' : 'text-slate-800'}`}>
             {message.content}
           </p>
