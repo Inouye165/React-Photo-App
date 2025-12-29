@@ -60,6 +60,7 @@
     "npm": ">=10"
   },
   "overrides": {
+    "cookie": "0.7.0",
     "jest-openapi": {
       "openapi-validator": "0.14.1"
     }
