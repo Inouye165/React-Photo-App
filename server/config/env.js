@@ -10,6 +10,11 @@ const { validateEnv, getNodeEnv } = require('./env.validate');
 
 let cachedConfig = null;
 
+function normalizeUrlNoTrailingSlash(url) {
+  if (!url) return '';
+  return String(url).trim().replace(/\/+$/, '');
+}
+
 function readTrimmed(name) {
   const value = process.env[name];
   if (value == null) return '';
@@ -30,8 +35,10 @@ function buildConfig() {
     : (jwtSecretFromEnv || (isTest ? 'test-jwt-secret-key-for-testing-only' : 'dev-jwt-secret-not-for-production'));
 
   const supabaseUrl = readTrimmed('SUPABASE_URL');
+  const normalizedSupabaseUrl = normalizeUrlNoTrailingSlash(supabaseUrl);
   const supabaseAnonKey = readTrimmed('SUPABASE_ANON_KEY');
   const supabaseServiceRoleKey = readTrimmed('SUPABASE_SERVICE_ROLE_KEY');
+  const supabaseJwtSecret = readTrimmed('SUPABASE_JWT_SECRET');
 
   const thumbnailSigningSecretFromEnv = readTrimmed('THUMBNAIL_SIGNING_SECRET');
   const thumbnailSigningSecret = thumbnailSigningSecretFromEnv || jwtSecret;
@@ -44,9 +51,10 @@ function buildConfig() {
     jwtSecret,
 
     supabase: {
-      url: supabaseUrl,
+      url: normalizedSupabaseUrl,
       anonKey: supabaseAnonKey,
-      serviceRoleKey: supabaseServiceRoleKey
+      serviceRoleKey: supabaseServiceRoleKey,
+      jwtSecret: supabaseJwtSecret
     },
 
     thumbnailSigningSecret

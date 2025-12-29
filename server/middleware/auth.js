@@ -3,12 +3,22 @@ const crypto = require('crypto');
 const jwt = require('jsonwebtoken');
 const { getConfig } = require('../config/env');
 const { isE2EEnabled } = require('../config/e2eGate');
-const { getRedisClient } = require('../lib/redis');
+const { getRedisClient, setRedisValueWithTtl } = require('../lib/redis');
 
 // Initialize Supabase client
 // In production, missing SUPABASE_* or JWT_SECRET will fail fast via config validation.
 const config = getConfig();
 const supabase = createClient(config.supabase.url, config.supabase.anonKey);
+
+function normalizeUrlNoTrailingSlash(url) {
+  if (!url) return '';
+  return String(url).trim().replace(/\/+$/, '');
+}
+
+function expectedSupabaseIssuer(supabaseUrl) {
+  const normalized = normalizeUrlNoTrailingSlash(supabaseUrl);
+  return normalized ? `${normalized}/auth/v1` : '';
+}
 
 /**
  * Middleware to verify Supabase JWT token and authenticate users
@@ -40,7 +50,7 @@ async function authenticateToken(req, res, next) {
     });
   }
 
-  const token = authHeader.slice(7); // Remove 'Bearer ' prefix
+  const token = authHeader.slice(7).trim(); // Remove 'Bearer ' prefix
   
   if (!token) {
     return res.status(401).json({ 
@@ -78,6 +88,28 @@ async function authenticateToken(req, res, next) {
         }
       } catch {
         // Not a valid E2E token, continue to Supabase check
+      }
+    }
+
+    // If SUPABASE_JWT_SECRET is configured, verify JWT locally first.
+    // Security: this is an *additional* validation step; Supabase Auth remains
+    // the source of truth (revocation/session checks) via getUser().
+    if (config?.supabase?.jwtSecret) {
+      const issuer = expectedSupabaseIssuer(config?.supabase?.url || process.env.SUPABASE_URL);
+      try {
+        jwt.verify(token, config.supabase.jwtSecret, {
+          algorithms: ['HS256'],
+          issuer,
+          audience: 'authenticated'
+        });
+      } catch (verifyErr) {
+        if (process.env.AUTH_DEBUG_LOGS) {
+          console.warn('[auth] Invalid token', {
+            reason: verifyErr && verifyErr.name ? verifyErr.name : 'JWT_VERIFY_FAILED',
+            issuerExpected: issuer || '(missing)',
+          });
+        }
+        return res.status(403).json({ success: false, error: 'Invalid token' });
       }
     }
 
@@ -119,7 +151,7 @@ async function authenticateToken(req, res, next) {
           };
 
           try {
-            await redisClient.setex(cacheKey, 300, JSON.stringify(minimizedUser));
+            await setRedisValueWithTtl(redisClient, cacheKey, 300, JSON.stringify(minimizedUser));
           } catch {
             // Fail-open: do not block auth if Redis write fails.
           }
@@ -169,7 +201,7 @@ async function authenticateToken(req, res, next) {
           hasAuthHeader,
           tokenLen,
           tokenMeta,
-          backendSupabaseUrl
+          backendSupabaseUrl: normalizeUrlNoTrailingSlash(backendSupabaseUrl)
         });
       }
       return res.status(403).json({ success: false, error: 'Invalid token' });

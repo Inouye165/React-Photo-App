@@ -132,6 +132,10 @@ Run these inside `server/`:
 *   [Project Status & Deep Dive](docs/STATUS.md)
 *   [Security Checklist](docs/SECURITY_CODING_MAINTENANCE.md)
 
+## Technical Debt
+
+*   [TypeScript refactor candidates](typescript-refactor-candidates.md)
+
 ## License
 
 **Restricted License.** Free to read and learn from, but you cannot use this commercially or redistribute it without permission. See [LICENSE](LICENSE) for details.
