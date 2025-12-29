@@ -40,6 +40,10 @@ function buildConfig() {
   const supabaseServiceRoleKey = readTrimmed('SUPABASE_SERVICE_ROLE_KEY');
   const supabaseJwtSecret = readTrimmed('SUPABASE_JWT_SECRET');
 
+  // Server-side Google Places/Maps usage (POI + foodPlaces).
+  // In some environments only the frontend-prefixed var exists.
+  const googleMapsApiKey = readTrimmed('GOOGLE_MAPS_API_KEY') || readTrimmed('VITE_GOOGLE_MAPS_API_KEY');
+
   const thumbnailSigningSecretFromEnv = readTrimmed('THUMBNAIL_SIGNING_SECRET');
   const thumbnailSigningSecret = thumbnailSigningSecretFromEnv || jwtSecret;
 
@@ -55,6 +59,10 @@ function buildConfig() {
       anonKey: supabaseAnonKey,
       serviceRoleKey: supabaseServiceRoleKey,
       jwtSecret: supabaseJwtSecret
+    },
+
+    google: {
+      mapsApiKey: googleMapsApiKey
     },
 
     thumbnailSigningSecret

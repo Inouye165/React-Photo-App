@@ -31,6 +31,12 @@ if (!process.env.GOOGLE_MAPS_API_KEY && process.env.GOOGLE_PLACES_API_KEY) {
   process.env.GOOGLE_MAPS_API_KEY = process.env.GOOGLE_PLACES_API_KEY;
 }
 
+// Frontend builds often only set the Vite-prefixed env var.
+// Map it to the server-side name so backend diagnostics + POI tooling can run.
+if (!process.env.GOOGLE_MAPS_API_KEY && process.env.VITE_GOOGLE_MAPS_API_KEY) {
+  process.env.GOOGLE_MAPS_API_KEY = process.env.VITE_GOOGLE_MAPS_API_KEY;
+}
+
 // Back-compat alias used in some deployments/logs.
 // Prefer GOOGLE_MAPS_API_KEY, but accept MAPS_API_KEY if provided.
 if (!process.env.GOOGLE_MAPS_API_KEY && process.env.MAPS_API_KEY) {

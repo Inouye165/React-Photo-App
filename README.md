@@ -99,6 +99,7 @@ cd server && npm run worker # Background Worker
 *   You need the worker running or thumbnails won't happen.
 *   If you don't have the Google Maps keys, it falls back to OpenStreetMap.
 *   The backend needs an OpenAI key to start (unless you're in test mode).
+*   Ongoing cleanup targets: [TypeScript refactor candidates](typescript-refactor-candidates.md)
 
 ## How I Test This Thing
 

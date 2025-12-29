@@ -15,9 +15,45 @@ function normalizeUrlNoTrailingSlash(url) {
   return String(url).trim().replace(/\/+$/, '');
 }
 
+function tryParseUrl(url) {
+  try {
+    return new URL(String(url));
+  } catch {
+    return null;
+  }
+}
+
 function expectedSupabaseIssuer(supabaseUrl) {
+  // Supabase-issued JWTs use: iss = <projectOrigin>/auth/v1
+  // We canonicalize the configured URL to an origin so we can safely accept
+  // either a bare project URL or an accidental /auth/v1-suffixed config.
   const normalized = normalizeUrlNoTrailingSlash(supabaseUrl);
-  return normalized ? `${normalized}/auth/v1` : '';
+  const parsed = tryParseUrl(normalized);
+  if (!parsed) return '';
+  return `${parsed.origin}/auth/v1`;
+}
+
+function isIssuerForConfiguredSupabaseProject({ issuer, configuredSupabaseUrl }) {
+  // Security: do NOT use substring matching. Parse URLs and require exact
+  // origin match + exact expected auth issuer path.
+  const expected = expectedSupabaseIssuer(configuredSupabaseUrl);
+  const expectedUrl = tryParseUrl(expected);
+  const issuerUrl = tryParseUrl(issuer);
+  if (!expectedUrl || !issuerUrl) return false;
+
+  const issuerPath = String(issuerUrl.pathname || '').replace(/\/+$/, '');
+  const expectedPath = String(expectedUrl.pathname || '').replace(/\/+$/, '');
+
+  return issuerUrl.origin === expectedUrl.origin && issuerPath === expectedPath;
+}
+
+function isStrictAuthenticatedAudience(aud) {
+  // Supabase access tokens should use aud='authenticated'.
+  // jsonwebtoken's audience option is an inclusion check; we additionally require
+  // that the claim is exactly 'authenticated' to reduce spoofing surface.
+  if (aud === 'authenticated') return true;
+  if (Array.isArray(aud)) return aud.length === 1 && aud[0] === 'authenticated';
+  return false;
 }
 
 /**
@@ -95,18 +131,34 @@ async function authenticateToken(req, res, next) {
     // Security: this is an *additional* validation step; Supabase Auth remains
     // the source of truth (revocation/session checks) via getUser().
     if (config?.supabase?.jwtSecret) {
-      const issuer = expectedSupabaseIssuer(config?.supabase?.url || process.env.SUPABASE_URL);
+      const configuredSupabaseUrl = config?.supabase?.url || process.env.SUPABASE_URL;
+      const issuerExpected = expectedSupabaseIssuer(configuredSupabaseUrl);
       try {
-        jwt.verify(token, config.supabase.jwtSecret, {
+        const decoded = jwt.verify(token, config.supabase.jwtSecret, {
           algorithms: ['HS256'],
-          issuer,
+          // We validate `iss` ourselves using URL parsing to handle the /auth/v1
+          // suffix robustly and avoid false positives from string tricks.
           audience: 'authenticated'
         });
+
+        const tokenIssuer = decoded && typeof decoded === 'object' ? decoded.iss : undefined;
+        if (!isIssuerForConfiguredSupabaseProject({ issuer: tokenIssuer, configuredSupabaseUrl })) {
+          const err = new Error('JWT issuer mismatch');
+          err.name = 'JWT_ISSUER_MISMATCH';
+          throw err;
+        }
+
+        const tokenAud = decoded && typeof decoded === 'object' ? decoded.aud : undefined;
+        if (!isStrictAuthenticatedAudience(tokenAud)) {
+          const err = new Error('JWT audience mismatch');
+          err.name = 'JWT_AUDIENCE_MISMATCH';
+          throw err;
+        }
       } catch (verifyErr) {
         if (process.env.AUTH_DEBUG_LOGS) {
           console.warn('[auth] Invalid token', {
             reason: verifyErr && verifyErr.name ? verifyErr.name : 'JWT_VERIFY_FAILED',
-            issuerExpected: issuer || '(missing)',
+            issuerExpected: issuerExpected || '(missing)',
           });
         }
         return res.status(403).json({ success: false, error: 'Invalid token' });
