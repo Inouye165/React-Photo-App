@@ -15,3 +15,9 @@ Counts track how often a file has been flagged/touched as TypeScript migration-w
 | `src/components/SmartRouter.jsx` | 1 | Contains auth/onboarding routing logic; consider migrating to TypeScript/TSX. |
 
 - [ ] (Add files here)
+
+## Deprecation Tracking
+
+| Area | Package | Why it matters | Action |
+| --- | --- | --- | --- |
+| `server/package.json` | `csurf` | `csurf` is deprecated but still used for CSRF protection; it pulls `cookie` transitively, so security updates can get blocked and require overrides (e.g., CVE-2024-47764 remediation). | Replace with a maintained CSRF strategy for Express (e.g., double-submit cookie or a maintained CSRF middleware/library) and remove the legacy dependency. |
