@@ -3,6 +3,7 @@ import type { ReactNode } from 'react'
 import type { Session, User } from '@supabase/supabase-js'
 
 import { supabase } from '../supabaseClient'
+import { getSessionSingleflight } from '../lib/supabaseSession'
 import useStore from '../store'
 import { API_BASE_URL } from '../config/apiConfig'
 import { setAuthToken } from '../api'
@@ -322,9 +323,8 @@ export function AuthProvider({ children }: { children: ReactNode }): ReactNode {
     }
 
     // Normal Supabase auth flow
-    supabase.auth
-      .getSession()
-      .then(async ({ data: { session: currentSession } }: { data: { session: Session | null } }) => {
+    getSessionSingleflight()
+      .then(async (currentSession: Session | null) => {
         if (currentSession?.access_token) {
           // Set token in the api module for Bearer auth
           setAuthToken(currentSession.access_token)
@@ -533,9 +533,7 @@ export function AuthProvider({ children }: { children: ReactNode }): ReactNode {
         return { success: true }
       }
 
-      const {
-        data: { session: sessionFromGet },
-      } = await supabase.auth.getSession()
+      const sessionFromGet = await getSessionSingleflight()
 
       if (!sessionFromGet?.access_token) {
         // If we can't confirm a valid session after password update, force cleanup.
