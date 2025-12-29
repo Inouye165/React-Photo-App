@@ -70,6 +70,9 @@ export default function ChatWindow({ roomId, onOpenSidebar }: ChatWindowProps) {
   const [isAtBottom, setIsAtBottom] = useState<boolean>(true)
   const [unseenCount, setUnseenCount] = useState<number>(0)
 
+  const markReadTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null)
+  const lastMarkReadAtRef = useRef<number>(0)
+
   const senderIds = useMemo(() => {
     const ids = new Set<string>()
     for (const m of messages) ids.add(m.sender_id)
@@ -106,24 +109,49 @@ export default function ChatWindow({ roomId, onOpenSidebar }: ChatWindowProps) {
     }
   }, [senderIds])
 
+  const scheduleMarkRead = useCallback(
+    (reason: 'open' | 'at-bottom' | 'new-message') => {
+      if (!roomId || !user?.id) return
+
+      const now = Date.now()
+      // Avoid spamming updates during rapid message bursts / scroll events.
+      if (now - lastMarkReadAtRef.current < 750) return
+
+      if (markReadTimerRef.current) clearTimeout(markReadTimerRef.current)
+
+      markReadTimerRef.current = setTimeout(async () => {
+        markReadTimerRef.current = null
+        lastMarkReadAtRef.current = Date.now()
+
+        try {
+          const { error } = await supabase
+            .from('room_members')
+            .update({ last_read_at: new Date().toISOString() })
+            .eq('room_id', roomId)
+            .eq('user_id', user.id)
+
+          if (error) throw error
+        } catch (err) {
+          if (import.meta.env.DEV) console.error(`[ChatWindow] Failed to mark read (${reason}):`, err)
+        }
+      }, 250)
+    },
+    [roomId, user?.id],
+  )
+
   // Mark room as read when opening
   useEffect(() => {
     if (!roomId || !user?.id) return
+    scheduleMarkRead('open')
+  }, [roomId, user?.id, scheduleMarkRead])
 
-    const markRead = async () => {
-      try {
-        await supabase
-          .from('room_members')
-          .update({ last_read_at: new Date().toISOString() })
-          .eq('room_id', roomId)
-          .eq('user_id', user.id)
-      } catch (err) {
-        if (import.meta.env.DEV) console.error('[ChatWindow] Failed to mark read:', err)
-      }
-    }
-
-    markRead()
-  }, [roomId, user?.id])
+  // If new messages arrive while user is already at the bottom, treat them as viewed.
+  useEffect(() => {
+    if (!roomId || !user?.id) return
+    if (!isAtBottom) return
+    if (messages.length <= 0) return
+    scheduleMarkRead('new-message')
+  }, [roomId, user?.id, messages.length, isAtBottom, scheduleMarkRead])
 
   useEffect(() => {
     let cancelled = false
@@ -309,6 +337,7 @@ export default function ChatWindow({ roomId, onOpenSidebar }: ChatWindowProps) {
     setIsAtBottom(isNearBottom)
     if (isNearBottom) {
       setUnseenCount(0)
+      scheduleMarkRead('at-bottom')
     }
   }
 
