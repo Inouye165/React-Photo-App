@@ -23,7 +23,7 @@ const AuthWrapper = ({ children }: AuthWrapperProps) => {
   // Check for invite link in URL hash and redirect to reset password page
   useEffect(() => {
     if (isInviteRedirecting) {
-      // Preserve the hash so ResetPasswordPage can process it
+      // Preserve the hash so OnboardingPage can process it
       navigate('/reset-password' + (window.location.search || '') + (window.location.hash || ''));
     } else {
       const hash = window.location.hash || '';

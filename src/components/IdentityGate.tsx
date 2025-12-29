@@ -7,6 +7,10 @@ export default function IdentityGate() {
   const location = useLocation()
   const { user, authReady, profile, profileLoading, profileError } = useAuth()
 
+  // Allow the reset-password (account setup) flow to complete without being hijacked
+  // by the username gate. This keeps onboarding deterministic.
+  const isOnboardingPage = location.pathname === '/reset-password'
+
   // Phase 3: realtime SSE for photo processing completion.
   // This is intentionally wired once at the top-level gate to avoid multiple
   // concurrent streams per tab.
@@ -14,6 +18,9 @@ export default function IdentityGate() {
 
   // Not authenticated: AuthWrapper handles rendering the landing/login.
   if (!user) return <Outlet />
+
+  // If we are on the setup page, let the setup page handle its own logic.
+  if (isOnboardingPage) return <Outlet />
 
   // Wait until we have token readiness before calling it.
   if (!authReady) {
@@ -51,10 +58,8 @@ export default function IdentityGate() {
     )
   }
 
-  const onSetUsernamePage = location.pathname === '/set-username'
-
-  if (profile && profile.has_set_username === false && !onSetUsernamePage) {
-    return <Navigate to="/set-username" replace />
+  if (profile && profile.has_set_username === false) {
+    return <Navigate to="/reset-password" replace />
   }
 
   return <Outlet />

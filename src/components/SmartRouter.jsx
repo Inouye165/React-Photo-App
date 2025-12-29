@@ -57,10 +57,10 @@ export default function SmartRouter() {
     // If user hasn't set a username, redirect before doing any other work.
     if (user) {
       if (profileLoading) return;
-      const onSetUsernamePage = location.pathname === '/set-username';
-      if (!onSetUsernamePage && profile && profile.has_set_username === false) {
+      const onOnboardingPage = location.pathname === '/reset-password';
+      if (!onOnboardingPage && profile && profile.has_set_username === false) {
         setStatus('redirecting');
-        navigate('/set-username', { replace: true });
+        navigate('/reset-password', { replace: true });
         return;
       }
     }

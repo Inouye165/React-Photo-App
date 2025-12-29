@@ -60,7 +60,7 @@ describe('SmartRouter Component', () => {
   });
 
   describe('Smart Routing Logic', () => {
-    it('redirects to /set-username when user has not set a username', async () => {
+    it('redirects to /reset-password when user has not set a username', async () => {
       // Override AuthContext for this test
       const { useAuth } = await import('../contexts/AuthContext');
       // Use a stable return value across re-renders to avoid falling back
@@ -88,7 +88,7 @@ describe('SmartRouter Component', () => {
       );
 
       await waitFor(() => {
-        expect(mockNavigate).toHaveBeenCalledWith('/set-username', { replace: true });
+        expect(mockNavigate).toHaveBeenCalledWith('/reset-password', { replace: true });
       });
 
       expect(mockGetPhotoStatus).not.toHaveBeenCalled();
