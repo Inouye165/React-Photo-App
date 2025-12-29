@@ -8,13 +8,10 @@ const express = require('express');
 const request = require('supertest');
 const jwt = require('jsonwebtoken');
 
-type Request = import('express').Request;
-type Response = import('express').Response;
-
-const normalizedIssuerFromSupabaseUrl = (supabaseUrl: string | undefined): string => {
+function normalizedIssuerFromSupabaseUrl(supabaseUrl) {
   const normalized = String(supabaseUrl || '').trim().replace(/\/+$/, '');
   return `${normalized}/auth/v1`;
-};
+}
 
 describe('auth v2 (issuer + env mapping)', () => {
   beforeEach(() => {
@@ -40,8 +37,8 @@ describe('auth v2 (issuer + env mapping)', () => {
     const { authenticateToken } = require('../middleware/auth');
 
     const app = express();
-    app.get('/me', authenticateToken, (requestObj: Request & { user?: any }, responseObj: Response) => {
-      responseObj.json({ ok: true, userId: requestObj.user && requestObj.user.id });
+    app.get('/me', authenticateToken, (req, res) => {
+      res.json({ ok: true, userId: req.user && req.user.id });
     });
 
     const issuer = normalizedIssuerFromSupabaseUrl(process.env.SUPABASE_URL);
@@ -71,8 +68,8 @@ describe('auth v2 (issuer + env mapping)', () => {
     const { authenticateToken } = require('../middleware/auth');
 
     const app = express();
-    app.get('/me', authenticateToken, (_requestObj: Request, responseObj: Response) => {
-      responseObj.json({ ok: true });
+    app.get('/me', authenticateToken, (_req, res) => {
+      res.json({ ok: true });
     });
 
     const issuer = normalizedIssuerFromSupabaseUrl(process.env.SUPABASE_URL);
