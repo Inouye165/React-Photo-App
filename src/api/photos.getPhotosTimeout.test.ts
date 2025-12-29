@@ -50,8 +50,9 @@ describe('getPhotos timeout/abort', () => {
 
     // getPhotos now awaits async auth header resolution before issuing the request.
     // Flush microtasks so the request path reaches fetch.
-    await Promise.resolve()
-    await Promise.resolve()
+    for (let i = 0; i < 10; i++) {
+      await Promise.resolve()
+    }
 
     expect((globalThis.fetch as any)).toHaveBeenCalledTimes(1)
 

@@ -1,4 +1,4 @@
-import { supabase } from '../supabaseClient'
+import { getSessionSingleflight } from '../lib/supabaseSession'
 import { request, ApiError } from './httpClient'
 
 // --- Token Management ---
@@ -37,11 +37,8 @@ export async function getHeadersForGetRequestAsync(): Promise<Record<string, str
   }
 
   try {
-    const {
-      data: { session },
-    } = await supabase.auth.getSession()
-
-    const token = session?.access_token
+    const session = await getSessionSingleflight()
+    const token = session?.access_token ?? null
     if (token) {
       _cachedAccessToken = token
       _authTokenState = 'set'
@@ -81,12 +78,11 @@ export async function getAuthHeadersAsync(includeContentType = true): Promise<Re
   }
 
   try {
-    const {
-      data: { session },
-    } = await supabase.auth.getSession()
-    if (session?.access_token) {
-      headers['Authorization'] = `Bearer ${session.access_token}`
-      _cachedAccessToken = session.access_token
+    const session = await getSessionSingleflight()
+    const token = session?.access_token ?? null
+    if (token) {
+      headers['Authorization'] = `Bearer ${token}`
+      _cachedAccessToken = token
       _authTokenState = 'set'
     } else {
       // Session resolved but no token; treat as logged out.
