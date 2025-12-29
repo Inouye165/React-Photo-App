@@ -12,7 +12,9 @@ const request = require('supertest');
 describe('CORS: justmypeeps.org preflight + CSRF', () => {
   const originalEnv = process.env;
 
-  beforeEach(() => {
+  let app;
+
+  beforeAll(() => {
     jest.resetModules();
     process.env = { ...originalEnv };
 
@@ -36,6 +38,8 @@ describe('CORS: justmypeeps.org preflight + CSRF', () => {
     delete process.env.FRONTEND_ORIGIN;
     delete process.env.CLIENT_ORIGIN;
     delete process.env.CLIENT_ORIGINS;
+
+    app = require('../server');
   });
 
   afterAll(() => {
@@ -43,8 +47,6 @@ describe('CORS: justmypeeps.org preflight + CSRF', () => {
   });
 
   test('OPTIONS /csrf from https://www.justmypeeps.org returns required CORS headers', async () => {
-    const app = require('../server');
-
     const res = await request(app)
       .options('/csrf')
       .set('Origin', 'https://www.justmypeeps.org')
@@ -60,8 +62,6 @@ describe('CORS: justmypeeps.org preflight + CSRF', () => {
   });
 
   test('GET /csrf from https://justmypeeps.org includes Access-Control-Allow-Origin', async () => {
-    const app = require('../server');
-
     const res = await request(app)
       .get('/csrf')
       .set('Origin', 'https://justmypeeps.org')
@@ -74,8 +74,6 @@ describe('CORS: justmypeeps.org preflight + CSRF', () => {
   });
 
   test('OPTIONS /api/users/me from https://justmypeeps.org allows Authorization + X-CSRF-Token headers', async () => {
-    const app = require('../server');
-
     const res = await request(app)
       .options('/api/users/me')
       .set('Origin', 'https://justmypeeps.org')
@@ -90,8 +88,6 @@ describe('CORS: justmypeeps.org preflight + CSRF', () => {
   });
 
   test('Non-allowlisted origin does not receive Access-Control-Allow-Origin', async () => {
-    const app = require('../server');
-
     const res = await request(app)
       .options('/csrf')
       .set('Origin', 'https://evil.example.com')
