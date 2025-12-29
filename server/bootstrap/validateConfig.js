@@ -131,8 +131,12 @@ function logStartupDiagnostics() {
   }
 
   // Optional vars (warning-only).
-  if (!process.env.LANGCHAIN_API_KEY || process.env.LANGCHAIN_API_KEY.trim() === '') {
-    missingOptional.push('LANGCHAIN_API_KEY');
+  // Some deployments use LANGSMITH_API_KEY; treat it as equivalent.
+  if (
+    (!process.env.LANGCHAIN_API_KEY || process.env.LANGCHAIN_API_KEY.trim() === '') &&
+    (!process.env.LANGSMITH_API_KEY || process.env.LANGSMITH_API_KEY.trim() === '')
+  ) {
+    missingOptional.push('LANGCHAIN_API_KEY (or LANGSMITH_API_KEY)');
   }
 
   if (

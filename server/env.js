@@ -43,11 +43,36 @@ if (!process.env.GOOGLE_MAPS_API_KEY && process.env.MAPS_API_KEY) {
   process.env.GOOGLE_MAPS_API_KEY = process.env.MAPS_API_KEY;
 }
 
+function readTrimmedEnv(name) {
+  const value = process.env[name];
+  if (value == null) return '';
+  return typeof value === 'string' ? value.trim() : String(value).trim();
+}
+
+// LangSmith renamed / alternative env vars are common across deployments.
+// Normalize so the rest of the codebase can consistently rely on LANGCHAIN_*.
+// - API Key: LANGCHAIN_API_KEY (legacy) or LANGSMITH_API_KEY (common)
+// - Tracing: LANGCHAIN_TRACING_V2 or LANGSMITH_TRACING
+if (!readTrimmedEnv('LANGCHAIN_API_KEY') && readTrimmedEnv('LANGSMITH_API_KEY')) {
+  process.env.LANGCHAIN_API_KEY = process.env.LANGSMITH_API_KEY;
+}
+if (!readTrimmedEnv('LANGSMITH_API_KEY') && readTrimmedEnv('LANGCHAIN_API_KEY')) {
+  process.env.LANGSMITH_API_KEY = process.env.LANGCHAIN_API_KEY;
+}
+
+if (!readTrimmedEnv('LANGCHAIN_TRACING_V2') && readTrimmedEnv('LANGSMITH_TRACING')) {
+  process.env.LANGCHAIN_TRACING_V2 = process.env.LANGSMITH_TRACING;
+}
+if (!readTrimmedEnv('LANGSMITH_TRACING') && readTrimmedEnv('LANGCHAIN_TRACING_V2')) {
+  process.env.LANGSMITH_TRACING = process.env.LANGCHAIN_TRACING_V2;
+}
+
 // Safe default: If LangChain API key is missing, explicitly disable tracing
 // to prevent 403 errors from trace upload attempts
-if (!process.env.LANGCHAIN_API_KEY || process.env.LANGCHAIN_API_KEY.trim() === '') {
+if (!readTrimmedEnv('LANGCHAIN_API_KEY') && !readTrimmedEnv('LANGSMITH_API_KEY')) {
   process.env.LANGCHAIN_TRACING_V2 = 'false';
-  console.warn('[env] LangChain API key missing; disabling tracing to prevent network errors.');
+  process.env.LANGSMITH_TRACING = 'false';
+  console.warn('[env] LangChain/LangSmith API key missing; disabling tracing to prevent network errors.');
 }
 
 module.exports = process.env;

@@ -40,6 +40,11 @@ function buildConfig() {
   const supabaseServiceRoleKey = readTrimmed('SUPABASE_SERVICE_ROLE_KEY');
   const supabaseJwtSecret = readTrimmed('SUPABASE_JWT_SECRET');
 
+  // LangSmith/LangChain tracing support.
+  // Some deployments use LANGSMITH_* instead of LANGCHAIN_*.
+  const langchainApiKey = readTrimmed('LANGCHAIN_API_KEY') || readTrimmed('LANGSMITH_API_KEY');
+  const langchainTracingV2 = readTrimmed('LANGCHAIN_TRACING_V2') || readTrimmed('LANGSMITH_TRACING');
+
   // Server-side Google Places/Maps usage (POI + foodPlaces).
   // In some environments only the frontend-prefixed var exists.
   const googleMapsApiKey = readTrimmed('GOOGLE_MAPS_API_KEY') || readTrimmed('VITE_GOOGLE_MAPS_API_KEY');
@@ -63,6 +68,11 @@ function buildConfig() {
 
     google: {
       mapsApiKey: googleMapsApiKey
+    },
+
+    langchain: {
+      apiKey: langchainApiKey,
+      tracingV2: langchainTracingV2
     },
 
     thumbnailSigningSecret
