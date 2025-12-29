@@ -17,22 +17,22 @@ describe('env/langchain config', () => {
   });
 
   test('getConfig uses LANGCHAIN_API_KEY when set', () => {
-    process.env.LANGCHAIN_API_KEY = 'lsv2_test_langchain_key';
+    process.env.LANGCHAIN_API_KEY = 'unit-test-langchain-api-key';
 
     const { getConfig, __resetForTests } = require('../config/env');
     __resetForTests();
 
     const cfg = getConfig();
-    expect(cfg.langchain.apiKey).toBe('lsv2_test_langchain_key');
+    expect(cfg.langchain.apiKey).toBe('unit-test-langchain-api-key');
   });
 
   test('getConfig falls back to LANGSMITH_API_KEY when LANGCHAIN_API_KEY is missing', () => {
-    process.env.LANGSMITH_API_KEY = 'lsv2_test_langsmith_key';
+    process.env.LANGSMITH_API_KEY = 'unit-test-langsmith-api-key';
 
     const { getConfig, __resetForTests } = require('../config/env');
     __resetForTests();
 
     const cfg = getConfig();
-    expect(cfg.langchain.apiKey).toBe('lsv2_test_langsmith_key');
+    expect(cfg.langchain.apiKey).toBe('unit-test-langsmith-api-key');
   });
 });
