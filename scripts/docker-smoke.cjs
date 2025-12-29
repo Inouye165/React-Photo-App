@@ -42,12 +42,14 @@ async function main() {
         cleanup();
       })
       .on('error', (err) => {
-        console.error('Docker smoke: /health error', err);
+        const safeErr = String(err).replace(/[\r\n]+/g, ' ');
+        console.error('Docker smoke: /health error', safeErr);
         cleanup();
         process.exit(1);
       });
   } catch (err) {
-    console.error('Docker smoke: health check failed', err);
+    const safeErr = String(err).replace(/[\r\n]+/g, ' ');
+    console.error('Docker smoke: health check failed', safeErr);
     cleanup();
     process.exit(1);
   }

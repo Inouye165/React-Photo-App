@@ -39,8 +39,12 @@ const req = http.request(opts, (res) => {
 
 req.on('error', (e) => {
   const message = e && e.message ? e.message : String(e);
-  console.error('Request error:', message);
-  if (e && e.code) console.error('Error code:', e.code);
+  const safeMessage = String(message).replace(/[\r\n]+/g, ' ');
+  console.error('Request error:', safeMessage);
+  if (e && e.code) {
+    const safeCode = String(e.code).replace(/[\r\n]+/g, ' ');
+    console.error('Error code:', safeCode);
+  }
   console.error('Hint: ensure backend is running on http://localhost:3001');
   console.error('      try: cd server && npm start');
   process.exitCode = 1;
