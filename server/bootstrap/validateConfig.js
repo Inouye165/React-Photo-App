@@ -107,7 +107,55 @@ function logStartupDiagnostics() {
   console.log('[server]  - Database: PostgreSQL (all environments)');
   console.log('[server] End diagnostics');
 
-  if (!process.env.GOOGLE_PLACES_API_KEY && !process.env.GOOGLE_MAPS_API_KEY) {
+  // Summarize missing env vars with clear severity.
+  // Security: never log values, only presence/absence.
+  const missingCritical = [];
+  const missingOptional = [];
+
+  // Critical startup gates (validateConfig() will halt on these).
+  // - DB config is required in all non-test envs.
+  if (process.env.NODE_ENV !== 'test' && !process.env.DATABASE_URL && !process.env.SUPABASE_DB_URL) {
+    missingCritical.push('DATABASE_URL (or SUPABASE_DB_URL)');
+  }
+
+  // - AI key is required in all non-test envs by validateAiKeys().
+  if (process.env.NODE_ENV !== 'test' && (!process.env.OPENAI_API_KEY || process.env.OPENAI_API_KEY.trim() === '')) {
+    missingCritical.push('OPENAI_API_KEY');
+  }
+
+  // - Production requires these via config/env.validate.js
+  if (isProduction) {
+    if (!process.env.SUPABASE_URL || process.env.SUPABASE_URL.trim() === '') missingCritical.push('SUPABASE_URL');
+    if (!process.env.SUPABASE_ANON_KEY || process.env.SUPABASE_ANON_KEY.trim() === '') missingCritical.push('SUPABASE_ANON_KEY');
+    if (!process.env.JWT_SECRET || process.env.JWT_SECRET.trim() === '') missingCritical.push('JWT_SECRET');
+  }
+
+  // Optional vars (warning-only).
+  if (!process.env.LANGCHAIN_API_KEY || process.env.LANGCHAIN_API_KEY.trim() === '') {
+    missingOptional.push('LANGCHAIN_API_KEY');
+  }
+
+  if (
+    (!process.env.GOOGLE_MAPS_API_KEY || process.env.GOOGLE_MAPS_API_KEY.trim() === '') &&
+    (!process.env.GOOGLE_PLACES_API_KEY || process.env.GOOGLE_PLACES_API_KEY.trim() === '') &&
+    (!process.env.MAPS_API_KEY || process.env.MAPS_API_KEY.trim() === '')
+  ) {
+    missingOptional.push('GOOGLE_MAPS_API_KEY (or GOOGLE_PLACES_API_KEY / MAPS_API_KEY)');
+  }
+
+  // Recommended for server-side JWT verification (used by auth middleware when present).
+  if (!process.env.SUPABASE_JWT_SECRET || process.env.SUPABASE_JWT_SECRET.trim() === '') {
+    missingOptional.push('SUPABASE_JWT_SECRET');
+  }
+
+  if (missingCritical.length) {
+    console.warn('[server] Critical env missing; startup will fail:', missingCritical.join(', '));
+  }
+  if (missingOptional.length) {
+    console.warn('[server] Optional env missing; some features may be disabled:', missingOptional.join(', '));
+  }
+
+  if (!process.env.GOOGLE_PLACES_API_KEY && !process.env.GOOGLE_MAPS_API_KEY && !process.env.MAPS_API_KEY) {
     console.warn('[POI] GOOGLE_MAPS_API_KEY missing; POI lookups disabled');
   }
 

@@ -3,7 +3,7 @@ const express = require('express');
 const path = require('path');
 const { convertHeicToJpegBuffer } = require('../media/image');
 const supabase = require('../lib/supabaseClient');
-const { getRedisClient } = require('../lib/redis');
+const { getRedisClient, setRedisValueWithTtl } = require('../lib/redis');
 const { authenticateImageRequest } = require('../middleware/imageAuth');
 const { verifyThumbnailSignature } = require('../utils/urlSigning');
 const logger = require('../logger');
@@ -56,7 +56,7 @@ async function getSignedUrlWithCache({ cacheKey, storagePath, ttlSeconds }) {
   if (redis && cacheKey) {
     const cacheTtl = Math.max(1, ttl - 5);
     try {
-      await redis.setEx(cacheKey, cacheTtl, signedUrl);
+      await setRedisValueWithTtl(redis, cacheKey, cacheTtl, signedUrl);
     } catch (err) {
       logger.warn('[CDN Redirect] Redis write failed; proceeding without cache', {
         cacheKey,

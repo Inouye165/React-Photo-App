@@ -18,10 +18,23 @@ if (!process.env.__SERVER_ENV_LOADED) {
   }
 }
 
+// Normalize SUPABASE_URL to avoid subtle issuer / URL-join mismatches.
+// - Many Supabase-issued JWTs use `iss = <SUPABASE_URL>/auth/v1` (no trailing slash).
+// - Some config sources include a trailing slash; normalize to reduce drift.
+if (process.env.SUPABASE_URL && typeof process.env.SUPABASE_URL === 'string') {
+  process.env.SUPABASE_URL = process.env.SUPABASE_URL.trim().replace(/\/+$/, '');
+}
+
 // Normalize Google key aliases so worker code can rely on GOOGLE_MAPS_API_KEY even
 // if only the historical GOOGLE_PLACES_API_KEY value is set.
 if (!process.env.GOOGLE_MAPS_API_KEY && process.env.GOOGLE_PLACES_API_KEY) {
   process.env.GOOGLE_MAPS_API_KEY = process.env.GOOGLE_PLACES_API_KEY;
+}
+
+// Back-compat alias used in some deployments/logs.
+// Prefer GOOGLE_MAPS_API_KEY, but accept MAPS_API_KEY if provided.
+if (!process.env.GOOGLE_MAPS_API_KEY && process.env.MAPS_API_KEY) {
+  process.env.GOOGLE_MAPS_API_KEY = process.env.MAPS_API_KEY;
 }
 
 // Safe default: If LangChain API key is missing, explicitly disable tracing
