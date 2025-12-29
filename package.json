@@ -16,7 +16,7 @@
     "secret-scan": "node scripts/secret-scan.cjs",
     "check-privilege": "node scripts/check-privilege.cjs",
     "integration-test": "node scripts/integration-test.cjs",
-    "lint": "eslint . --cache && node scripts/repo-hygiene-gps-check.cjs",
+    "lint": "eslint . --cache && npm run type-check && node scripts/repo-hygiene-gps-check.cjs",
     "lint:fix": "eslint . --fix --cache",
     "lint:server": "eslint server --cache",
     "lint:web": "eslint src --cache",
