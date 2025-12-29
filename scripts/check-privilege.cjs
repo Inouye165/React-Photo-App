@@ -18,14 +18,32 @@ const req = http.request(opts, (res) => {
   res.on('data', (chunk) => data += chunk);
   res.on('end', () => {
     try {
+      const body = JSON.parse(data);
       console.log('Status:', res.statusCode);
-      console.log('Body:', JSON.parse(data));
+      console.log('Body:', body);
+
+      if (res.statusCode !== 200) {
+        process.exitCode = 1;
+      }
+
+      // Best-effort: if server returns a { success: false } payload, treat as failure.
+      if (body && typeof body === 'object' && body.success === false) {
+        process.exitCode = 1;
+      }
     } catch (e) {
       console.error('Failed to parse response:', e.message, 'raw:', data);
+      process.exitCode = 1;
     }
   });
 });
 
-req.on('error', (e) => console.error('Request error:', e.message));
+req.on('error', (e) => {
+  const message = e && e.message ? e.message : String(e);
+  console.error('Request error:', message);
+  if (e && e.code) console.error('Error code:', e.code);
+  console.error('Hint: ensure backend is running on http://localhost:3001');
+  console.error('      try: cd server && npm start');
+  process.exitCode = 1;
+});
 req.write(payload);
 req.end();

@@ -11,9 +11,8 @@ import PhotoEditPage from './pages/PhotoEditPage.jsx';
 import UploadPage from './pages/UploadPage.jsx';
 import SettingsPage from './pages/SettingsPage.jsx';
 import AuthWrapper from './layouts/AuthWrapper';
-import ResetPasswordPage from './pages/ResetPasswordPage.jsx';
 import ConfirmInvitePage from './pages/ConfirmInvitePage';
-import SetUsernamePage from './pages/SetUsernamePage.tsx';
+import OnboardingPage from './pages/OnboardingPage.tsx';
 import ChatPage from './pages/ChatPage.tsx';
 
 /**
@@ -49,11 +48,9 @@ function App() {
       <BrowserRouter>
         <Routes>
           <Route path="/confirm-invite" element={<ConfirmInvitePage />} />
-          <Route path="/reset-password" element={<ResetPasswordPage />} />
+          <Route path="/reset-password" element={<OnboardingPage />} />
           <Route element={<AuthWrapper><IdentityGate /></AuthWrapper>}>
             <Route element={<MainLayout />}>
-              <Route path="/set-username" element={<SetUsernamePage />} />
-
               {/* Smart Router - determines initial landing page based on photo state */}
               <Route index element={<SmartRouter />} />
               

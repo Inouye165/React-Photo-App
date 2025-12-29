@@ -54,6 +54,7 @@ I'm using LangGraph to create a "smart" agent that looks at your photos:
 *   **HEIC Support:** Automatic conversion for iPhone photos using `heic-convert` (server) and `heic2any` (client).
 *   **Security First:**
     *   **RLS:** Database policies ensure users can only see their own data.
+    *   **Unified onboarding:** Invite/recovery flows land on `/reset-password`, which atomically sets a strong password + required username before granting access.
     *   **Secret Scanning:** Custom scripts prevent me from committing API keys.
     *   **Privilege Checks:** Automated audits to ensure no code is running with unnecessary permissions.
 *   **Observability:** Prometheus metrics are exposed for monitoring.
