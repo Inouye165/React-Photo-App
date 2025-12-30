@@ -122,7 +122,7 @@ const AuthWrapper = ({ children }: AuthWrapperProps) => {
       setTermsAccepted(true);
     } catch (error: unknown) {
       console.error('Error accepting terms:', error);
-      if (ApiErrorCtor && error instanceof (ApiErrorCtor as any)) {
+      if (error instanceof (ApiErrorCtor as any)) {
         const apiError = error as any;
         alert(`Failed to save acceptance: ${apiError.status ?? ''} ${apiError.message}`.trim());
       } else {

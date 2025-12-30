@@ -183,7 +183,7 @@ function normalizeExifDate(value) {
 function buildGpsDate(meta) {
   if (!meta || !meta.GPSDateStamp) return null;
   const dateStamp = String(meta.GPSDateStamp).trim();
-  const dateMatch = dateStamp.match(/^([0-9]{44})[:-]([0-9]{2})[:-]([0-9]{2})$/);
+  const dateMatch = dateStamp.match(/^([0-9]{4})[:-]([0-9]{2})[:-]([0-9]{2})$/);
   if (!dateMatch) return null;
   let hours = '00';
   let minutes = '00';
@@ -448,7 +448,7 @@ async function processPhotoAI({ fileBuffer, filename, metadata, gps, device, isR
     filename,
     imageMime,
     imageBase64Length: imageBase64.length,
-    hasMetadata: Boolean(metadata && (typeof metadata === 'string' ? metadata.trim().length : Object.keys(metadata || {}).length)),
+    hasMetadata: Boolean(metadata && (typeof metadata === 'string' ? metadata.trim().length : Object.keys(metadata).length)),
     hasGps: Boolean(gps),
     hasDevice: Boolean(device),
     modelOverrideKeys: Object.keys(modelOverrides || {})
