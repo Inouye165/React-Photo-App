@@ -99,10 +99,8 @@ const AuthWrapper = ({ children }: AuthWrapperProps) => {
     if (!user) return;
 
     setIsAccepting(true);
-    let ApiErrorCtor: unknown = null;
     try {
-      const { getAuthHeaders, request, ApiError } = await import('../api');
-      ApiErrorCtor = ApiError;
+      const { getAuthHeaders, request } = await import('../api');
       const headers = getAuthHeaders() as Record<string, string>;
       // E2E Bypass: Add header if in E2E mode to avoid cookie issues
       if ((window as any).__E2E_MODE__) {
@@ -122,7 +120,8 @@ const AuthWrapper = ({ children }: AuthWrapperProps) => {
       setTermsAccepted(true);
     } catch (error: unknown) {
       console.error('Error accepting terms:', error);
-      if (error instanceof (ApiErrorCtor as any)) {
+      // Dynamic import means ApiError is not in scope here, so use duck typing
+      if (error && typeof error === 'object' && 'status' in error) {
         const apiError = error as any;
         alert(`Failed to save acceptance: ${apiError.status ?? ''} ${apiError.message}`.trim());
       } else {

@@ -182,7 +182,7 @@ function normalizeExifDate(value) {
 
 function buildGpsDate(meta) {
   if (!meta || !meta.GPSDateStamp) return null;
-  const dateStamp = String(meta.GPSDateStamp).trim();
+  const dateStamp = meta.GPSDateStamp.trim();
   const dateMatch = dateStamp.match(/^([0-9]{4})[:-]([0-9]{2})[:-]([0-9]{2})$/);
   if (!dateMatch) return null;
   let hours = '00';
