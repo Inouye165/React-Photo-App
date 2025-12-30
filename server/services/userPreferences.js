@@ -245,8 +245,7 @@ function createUserPreferencesService({ db }) {
           continue;
         }
         try {
-          // lgtm[js/remote-property-injection] - Safe: mergedScales is null-prototype and category is checked against prototype pollution keys.
-          Object.defineProperty(mergedScales, category, {
+          Object.defineProperty(mergedScales, category, { // lgtm[js/remote-property-injection] - Safe: mergedScales is null-prototype and category is checked against prototype pollution keys.
             value: scales,
             enumerable: true,
             configurable: true,
@@ -267,8 +266,7 @@ function createUserPreferencesService({ db }) {
         !Object.prototype.hasOwnProperty.call(mergedScales, category)
       ) {
         try {
-          // lgtm[js/remote-property-injection] - Safe: mergedScales is null-prototype and category is checked against prototype pollution keys.
-          Object.defineProperty(mergedScales, category, {
+          Object.defineProperty(mergedScales, category, { // lgtm[js/remote-property-injection] - Safe: mergedScales is null-prototype and category is checked against prototype pollution keys.
             value: [...DEFAULT_GRADING_SCALES[category]],
             enumerable: true,
             configurable: true,

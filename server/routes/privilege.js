@@ -12,8 +12,7 @@ function defineSafeMapEntry(target, key, value) {
     return;
   }
   try {
-    // lgtm[js/remote-property-injection] - Safe: target is a null-prototype object and key is guarded against prototype pollution keys.
-    Object.defineProperty(target, key, {
+    Object.defineProperty(target, key, { // lgtm[js/remote-property-injection] - Safe: target is a null-prototype object and key is guarded against prototype pollution keys.
       value,
       enumerable: true,
       configurable: true,

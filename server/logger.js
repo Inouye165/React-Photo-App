@@ -366,13 +366,11 @@ class TinyLogger {
     // This prevents crashes when Jest or other tools modify console at runtime
     if (typeof method === 'function' && typeof method.apply === 'function') {
       try {
-        // lgtm[js/log-injection] - Safe: CR/LF stripped from string args immediately before console sink (CWE-117 mitigation).
-        method.apply(console, safeArgs);
+        method.apply(console, safeArgs); // lgtm[js/log-injection] - Safe: CR/LF stripped from string args immediately before console sink (CWE-117 mitigation).
       } catch {
         // Fallback to direct call if apply fails (extremely rare, but defensive)
         try {
-          // lgtm[js/log-injection] - Safe: CR/LF stripped from string args immediately before console sink (CWE-117 mitigation).
-          method(...safeArgs);
+          method(...safeArgs); // lgtm[js/log-injection] - Safe: CR/LF stripped from string args immediately before console sink (CWE-117 mitigation).
         } catch {
           // Last resort: try to use process.stderr if available
           if (typeof process !== 'undefined' && process.stderr && typeof process.stderr.write === 'function') {
