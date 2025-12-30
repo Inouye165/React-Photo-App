@@ -12,7 +12,9 @@
 const UNSAFE_PROPERTY_KEYS = new Set(['__proto__', 'prototype', 'constructor']);
 
 function isSafePropertyKey(key) {
-  return typeof key === 'string' && !UNSAFE_PROPERTY_KEYS.has(key);
+  if (typeof key !== 'string') return false;
+  const lowered = key.toLowerCase();
+  return !UNSAFE_PROPERTY_KEYS.has(lowered);
 }
 
 /**
@@ -114,12 +116,7 @@ function createUserPreferencesService({ db }) {
     // Validate structure
     if (newPrefs.gradingScales) {
       for (const [category, scales] of Object.entries(newPrefs.gradingScales)) {
-        if (
-          typeof category !== 'string' ||
-          category === '__proto__' ||
-          category === 'constructor' ||
-          category === 'prototype'
-        ) {
+        if (!isSafePropertyKey(category)) {
           throw new Error(`Invalid grading scales category: ${category}`);
         }
         if (!Array.isArray(scales)) {
@@ -144,12 +141,7 @@ function createUserPreferencesService({ db }) {
       ? currentPrefs.gradingScales
       : {};
     for (const [category, scales] of Object.entries(currentScales)) {
-      if (
-        typeof category === 'string' &&
-        category !== '__proto__' &&
-        category !== 'constructor' &&
-        category !== 'prototype'
-      ) {
+      if (isSafePropertyKey(category)) {
         mergedGradingScalesMap.set(category, scales);
       }
     }
@@ -158,12 +150,7 @@ function createUserPreferencesService({ db }) {
       : null;
     if (incomingScales) {
       for (const [category, scales] of Object.entries(incomingScales)) {
-        if (
-          typeof category === 'string' &&
-          category !== '__proto__' &&
-          category !== 'constructor' &&
-          category !== 'prototype'
-        ) {
+        if (isSafePropertyKey(category)) {
           mergedGradingScalesMap.set(category, scales);
         }
       }
@@ -258,6 +245,7 @@ function createUserPreferencesService({ db }) {
           continue;
         }
         try {
+          // codeql[js/remote-property-injection] - Safe: mergedScales is null-prototype and category is checked against prototype pollution keys.
           Object.defineProperty(mergedScales, category, {
             value: scales,
             enumerable: true,
@@ -279,6 +267,7 @@ function createUserPreferencesService({ db }) {
         !Object.prototype.hasOwnProperty.call(mergedScales, category)
       ) {
         try {
+          // codeql[js/remote-property-injection] - Safe: mergedScales is null-prototype and category is checked against prototype pollution keys.
           Object.defineProperty(mergedScales, category, {
             value: [...DEFAULT_GRADING_SCALES[category]],
             enumerable: true,
