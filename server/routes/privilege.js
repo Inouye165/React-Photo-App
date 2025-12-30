@@ -7,6 +7,22 @@ function isSafePropertyKey(key) {
   return typeof key === 'string' && !UNSAFE_PROPERTY_KEYS.has(String(key).toLowerCase());
 }
 
+function defineSafeMapEntry(target, key, value) {
+  if (!isSafePropertyKey(key)) {
+    return;
+  }
+  try {
+    Object.defineProperty(target, key, {
+      value,
+      enumerable: true,
+      configurable: true,
+      writable: true
+    });
+  } catch {
+    // Best-effort: if defineProperty fails for any reason, skip the key.
+  }
+}
+
 module.exports = function createPrivilegeRouter({ db }) {
   const router = express.Router();
 
@@ -52,13 +68,13 @@ module.exports = function createPrivilegeRouter({ db }) {
           
           if (!ownerId) {
             // File not found in database - no permissions
-            privilegesMap[filename] = '';
+            defineSafeMapEntry(privilegesMap, filename, '');
           } else if (ownerId === req.user.id) {
             // User owns the file - full permissions
-            privilegesMap[filename] = 'RWX';
+            defineSafeMapEntry(privilegesMap, filename, 'RWX');
           } else {
             // User does not own the file - read-only (assuming public)
-            privilegesMap[filename] = 'R';
+            defineSafeMapEntry(privilegesMap, filename, 'R');
           }
         });
 

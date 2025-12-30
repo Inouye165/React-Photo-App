@@ -11,6 +11,8 @@ permissions:
 jobs:
   test-prod-csp:
     runs-on: ubuntu-latest
+    permissions:
+      contents: read
     env:
       HUSKY: 0
     steps:
@@ -32,6 +34,8 @@ jobs:
 
   ci:
     runs-on: ubuntu-latest
+    permissions:
+      contents: read
     services:
       postgres:
         image: postgres:15

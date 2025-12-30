@@ -257,7 +257,16 @@ function createUserPreferencesService({ db }) {
         if (!isSafePropertyKey(category)) {
           continue;
         }
-        mergedScales[category] = scales;
+        try {
+          Object.defineProperty(mergedScales, category, {
+            value: scales,
+            enumerable: true,
+            configurable: true,
+            writable: true
+          });
+        } catch {
+          // ignore
+        }
       }
     }
 
@@ -269,7 +278,16 @@ function createUserPreferencesService({ db }) {
         Object.prototype.hasOwnProperty.call(DEFAULT_GRADING_SCALES, category) &&
         !Object.prototype.hasOwnProperty.call(mergedScales, category)
       ) {
-        mergedScales[category] = [...DEFAULT_GRADING_SCALES[category]];
+        try {
+          Object.defineProperty(mergedScales, category, {
+            value: [...DEFAULT_GRADING_SCALES[category]],
+            enumerable: true,
+            configurable: true,
+            writable: true
+          });
+        } catch {
+          // ignore
+        }
       }
     }
 

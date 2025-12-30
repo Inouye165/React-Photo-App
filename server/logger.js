@@ -217,7 +217,7 @@ class TinyLogger {
         if (!isSafeObjectKey(key)) {
           continue;
         }
-        safeBindings[key] = sanitizeBindingValue(value);
+        defineSafeProperty(safeBindings, key, sanitizeBindingValue(value));
       }
       this.bindings = Object.freeze(safeBindings);
     } else {
@@ -304,13 +304,13 @@ class TinyLogger {
     if (this.bindings && typeof this.bindings === 'object') {
       for (const [key, value] of Object.entries(this.bindings)) {
         if (isSafeObjectKey(key)) {
-          combined[key] = sanitizeBindingValue(value);
+          defineSafeProperty(combined, key, sanitizeBindingValue(value));
         }
       }
     }
     for (const [key, value] of Object.entries(extraBindings)) {
       if (isSafeObjectKey(key)) {
-        combined[key] = sanitizeBindingValue(value);
+        defineSafeProperty(combined, key, sanitizeBindingValue(value));
       }
     }
     return new TinyLogger(combined);
@@ -346,9 +346,16 @@ class TinyLogger {
       return;
     }
     const preparedArgs = applyBindings(this.bindings, args);
-    
+
     // Redact arguments before logging or emitting
     const redactedArgs = preparedArgs.map(arg => redact(arg));
+
+    // Final sink hardening: strip CR/LF from strings right before writing
+    // to console to avoid log injection (CWE-117).
+    const safeArgs = redactedArgs.map(arg => {
+      if (typeof arg !== 'string') return arg;
+      return arg.replace(/[\r\n]/g, ' ');
+    });
 
     const methodName = METHOD_MAP[normalized] || 'log';
     const method = typeof console[methodName] === 'function' ? console[methodName] : console.log;
@@ -356,15 +363,15 @@ class TinyLogger {
     // This prevents crashes when Jest or other tools modify console at runtime
     if (typeof method === 'function' && typeof method.apply === 'function') {
       try {
-        method.apply(console, redactedArgs);
+        method.apply(console, safeArgs);
       } catch {
         // Fallback to direct call if apply fails (extremely rare, but defensive)
         try {
-          method(...redactedArgs);
+          method(...safeArgs);
         } catch {
           // Last resort: try to use process.stderr if available
           if (typeof process !== 'undefined' && process.stderr && typeof process.stderr.write === 'function') {
-            process.stderr.write(`[Logger Error] ${JSON.stringify(redactedArgs)}\n`);
+            process.stderr.write(`[Logger Error] ${JSON.stringify(safeArgs)}\n`);
           }
         }
       }
@@ -391,7 +398,8 @@ const originalConsole = {
   if (typeof console[method] === 'function' && originalConsole[method]) {
     console[method] = function(...args) {
       const redactedArgs = args.map(arg => redact(arg));
-      originalConsole[method](...redactedArgs);
+      const safeArgs = redactedArgs.map(arg => (typeof arg === 'string' ? arg.replace(/[\r\n]/g, ' ') : arg));
+      originalConsole[method](...safeArgs);
     };
   }
 });
