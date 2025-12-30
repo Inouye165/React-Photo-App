@@ -42,10 +42,12 @@ const req = http.request(opts, (res) => {
 
 req.on('error', (e) => {
   const message = e && e.message ? e.message : String(e);
-  const safeMessage = String(message).replace(/[\r\n]+/g, ' ');
+  // Sanitize to prevent log injection - remove control chars and limit length
+  const safeMessage = String(message).replace(/[\r\n\x00-\x1F\x7F-\x9F]+/g, ' ').substring(0, 500);
   console.error('Request error:', safeMessage);
   if (e && e.code) {
-    const safeCode = String(e.code).replace(/[\r\n]+/g, ' ');
+    // Sanitize to prevent log injection - remove control chars and limit length
+    const safeCode = String(e.code).replace(/[\r\n\x00-\x1F\x7F-\x9F]+/g, ' ').substring(0, 100);
     console.error('Error code:', safeCode);
   }
   console.error('Hint: ensure backend is running on http://localhost:3001');
