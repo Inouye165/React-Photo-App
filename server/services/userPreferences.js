@@ -114,6 +114,14 @@ function createUserPreferencesService({ db }) {
     // Validate structure
     if (newPrefs.gradingScales) {
       for (const [category, scales] of Object.entries(newPrefs.gradingScales)) {
+        if (
+          typeof category !== 'string' ||
+          category === '__proto__' ||
+          category === 'constructor' ||
+          category === 'prototype'
+        ) {
+          throw new Error(`Invalid grading scales category: ${category}`);
+        }
         if (!Array.isArray(scales)) {
           throw new Error(`Invalid grading scales for category: ${category}`);
         }
@@ -131,14 +139,43 @@ function createUserPreferencesService({ db }) {
     // Get current preferences
     const currentPrefs = await getPreferences(userId);
 
+    const mergedGradingScalesMap = new Map();
+    const currentScales = currentPrefs.gradingScales && typeof currentPrefs.gradingScales === 'object'
+      ? currentPrefs.gradingScales
+      : {};
+    for (const [category, scales] of Object.entries(currentScales)) {
+      if (
+        typeof category === 'string' &&
+        category !== '__proto__' &&
+        category !== 'constructor' &&
+        category !== 'prototype'
+      ) {
+        mergedGradingScalesMap.set(category, scales);
+      }
+    }
+    const incomingScales = newPrefs.gradingScales && typeof newPrefs.gradingScales === 'object'
+      ? newPrefs.gradingScales
+      : null;
+    if (incomingScales) {
+      for (const [category, scales] of Object.entries(incomingScales)) {
+        if (
+          typeof category === 'string' &&
+          category !== '__proto__' &&
+          category !== 'constructor' &&
+          category !== 'prototype'
+        ) {
+          mergedGradingScalesMap.set(category, scales);
+        }
+      }
+    }
+
+    const mergedGradingScales = Object.fromEntries(mergedGradingScalesMap);
+
     // Merge with new preferences (deep merge for gradingScales)
     const mergedPrefs = {
       ...currentPrefs,
       ...newPrefs,
-      gradingScales: {
-        ...(currentPrefs.gradingScales || {}),
-        ...(newPrefs.gradingScales || {})
-      }
+      gradingScales: mergedGradingScales
     };
 
     // Upsert in database (create user if doesn't exist)
@@ -215,11 +252,13 @@ function createUserPreferencesService({ db }) {
 
     // Merge defaults (existing user scales take precedence)
     const mergedScales = Object.create(null);
-    for (const category of Object.keys(currentScales)) {
-      if (!isSafePropertyKey(category)) {
-        continue;
+    if (currentScales && typeof currentScales === 'object') {
+      for (const [category, scales] of Object.entries(currentScales)) {
+        if (!isSafePropertyKey(category)) {
+          continue;
+        }
+        mergedScales[category] = scales;
       }
-      mergedScales[category] = currentScales[category];
     }
 
     for (const category of categoriesToLoad) {

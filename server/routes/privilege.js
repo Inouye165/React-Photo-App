@@ -4,7 +4,7 @@ const logger = require('../logger');
 const UNSAFE_PROPERTY_KEYS = new Set(['__proto__', 'prototype', 'constructor']);
 
 function isSafePropertyKey(key) {
-  return typeof key === 'string' && !UNSAFE_PROPERTY_KEYS.has(key);
+  return typeof key === 'string' && !UNSAFE_PROPERTY_KEYS.has(String(key).toLowerCase());
 }
 
 module.exports = function createPrivilegeRouter({ db }) {

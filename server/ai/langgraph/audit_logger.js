@@ -1,20 +1,15 @@
-const fs = require('fs');
-const path = require('path');
+const AUDIT_LOGGER_ENABLED = process.env.AI_AUDIT_LOGGER_ENABLED === 'true' && process.env.NODE_ENV !== 'production';
 
-const LOG_FILE_PATH = path.join(__dirname, '../../../langgraph_execution.md');
-
-// Ensure the file exists and write a startup message
-try {
-  fs.appendFileSync(LOG_FILE_PATH, `\n\n# Logger Initialized at ${new Date().toISOString()}\n`);
-  console.log(`[AuditLogger] Logging to ${LOG_FILE_PATH}`);
-} catch (err) {
-  console.error('[AuditLogger] Failed to initialize log file:', err);
+if (AUDIT_LOGGER_ENABLED) {
+  console.log(`[AuditLogger] Enabled (stdout)`);
 }
 
 function appendLog(content) {
+  if (!AUDIT_LOGGER_ENABLED) return;
   try {
-    fs.appendFileSync(LOG_FILE_PATH, content + '\n');
-    console.log('[AuditLogger] Wrote to file');
+    // Avoid writing potentially user-controlled content to local files.
+    // Emit to stdout for dev debugging instead.
+    console.log(content);
   } catch (err) {
     console.error('[AuditLogger] Failed to write to audit log:', err);
   }
@@ -123,14 +118,6 @@ function formatValue(value) {
 
 const auditLogger = {
   logGraphStart: (runId, initialState, runType = 'Standard') => {
-    // Clear the log file before starting a new graph
-    try {
-      fs.writeFileSync(LOG_FILE_PATH, '');
-      console.log('[AuditLogger] Log file cleared for new graph execution');
-    } catch (err) {
-      console.error('[AuditLogger] Failed to clear log file:', err);
-    }
-    
     const timestamp = formatTimestamp();
     const filename = initialState.filename || 'Unknown File';
     const separator = '\n' + '='.repeat(80) + '\n';

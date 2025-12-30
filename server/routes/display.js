@@ -104,12 +104,27 @@ function getContentTypeForExtension(ext) {
 module.exports = function createDisplayRouter({ db }) {
   const router = express.Router();
 
+  function isLoopbackRequest(req) {
+    const remote = req && req.socket ? req.socket.remoteAddress : undefined;
+    const ip = req && req.ip ? req.ip : undefined;
+    const candidates = [remote, ip].filter(Boolean).map(String);
+    return candidates.some(addr => addr === '127.0.0.1' || addr === '::1' || addr === '::ffff:127.0.0.1');
+  }
+
   function shouldBypassRedirect(req) {
-    const raw = req && req.query ? req.query.raw : undefined;
-    if (raw === '1' || raw === 'true' || raw === true) return true;
-    const header = req && req.headers ? req.headers['x-bypass-redirect'] : undefined;
-    if (header === '1' || header === 'true') return true;
-    return false;
+    // Security: bypassing redirects changes how bytes are served. Keep the
+    // escape hatch for local debugging only.
+
+    // Redirect bypass is only allowed under controlled server-side conditions.
+    // Never allow users to toggle this via query params or headers.
+    if (process.env.NODE_ENV === 'production') return false;
+    if (process.env.DISPLAY_BYPASS_REDIRECT !== '1') return false;
+
+    // In tests, supertest requests may not have a real remoteAddress.
+    if (process.env.NODE_ENV === 'test') return true;
+
+    if (!isLoopbackRequest(req)) return false;
+    return true;
   }
 
   /**

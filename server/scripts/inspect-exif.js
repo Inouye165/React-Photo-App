@@ -8,6 +8,7 @@
 const fs = require('fs');
 const path = require('path');
 const os = require('os');
+const crypto = require('crypto');
 // simple argv parsing to avoid extra deps
 const argv = process.argv.slice(2);
 let id = null;
@@ -27,9 +28,22 @@ async function downloadToTemp(storagePath, filenameHint) {
   if (error) throw new Error(`Supabase download error: ${error.message}`);
   const arrayBuffer = await data.arrayBuffer();
   const buf = Buffer.from(arrayBuffer);
-  const tmp = path.join(os.tmpdir(), `${Date.now()}-${filenameHint || 'photo'}`);
-  fs.writeFileSync(tmp, buf);
-  return tmp;
+
+  const tmpDir = fs.mkdtempSync(path.join(os.tmpdir(), 'photo-app-exif-'));
+  const safeHint = path.basename(String(filenameHint || 'photo')).replace(/[^a-zA-Z0-9._-]/g, '_');
+  const tmp = path.join(tmpDir, `${crypto.randomUUID()}-${safeHint}`);
+  // Create the file exclusively and restrict permissions (best-effort on Windows).
+  const fd = fs.openSync(tmp, 'wx', 0o600);
+  try {
+    fs.writeFileSync(fd, buf);
+  } finally {
+    try {
+      fs.closeSync(fd);
+    } catch {
+      // ignore
+    }
+  }
+  return { tmp, tmpDir };
 }
 
 async function inspectById(photoId) {
@@ -47,25 +61,41 @@ async function inspectById(photoId) {
   }
   console.log(JSON.stringify(rowMeta || {}, null, 2));
   console.log('Downloading from storage path:', storagePath);
-  const tmp = await downloadToTemp(storagePath, row.filename);
+  const { tmp, tmpDir } = await downloadToTemp(storagePath, row.filename);
   console.log('Saved temp file to:', tmp);
-  const meta = await exiftool.read(tmp);
-  console.log('EXIF parsed by exiftool:');
-  const keys = ['GPSLatitude','GPSLongitude','GPSLatitudeRef','GPSLongitudeRef','GPSAltitude','DateTimeOriginal','CreateDate','ModifyDate'];
-  const out = {};
-  for (const k of keys) if (meta[k] !== undefined) out[k] = meta[k];
-  console.log(JSON.stringify(out, null, 2));
-  await exiftool.end();
+  try {
+    const meta = await exiftool.read(tmp);
+    console.log('EXIF parsed by exiftool:');
+    const keys = ['GPSLatitude','GPSLongitude','GPSLatitudeRef','GPSLongitudeRef','GPSAltitude','DateTimeOriginal','CreateDate','ModifyDate'];
+    const out = {};
+    for (const k of keys) if (meta[k] !== undefined) out[k] = meta[k];
+    console.log(JSON.stringify(out, null, 2));
+  } finally {
+    await exiftool.end();
+    try {
+      fs.rmSync(tmpDir, { recursive: true, force: true });
+    } catch {
+      // ignore
+    }
+  }
 }
 
 async function inspectByPath(sp) {
   console.log('Downloading from storage path:', sp);
-  const tmp = await downloadToTemp(sp, path.basename(sp));
+  const { tmp, tmpDir } = await downloadToTemp(sp, path.basename(sp));
   console.log('Saved temp file to:', tmp);
-  const meta = await exiftool.read(tmp);
-  console.log('EXIF parsed by exiftool:');
-  console.log(JSON.stringify(meta, null, 2));
-  await exiftool.end();
+  try {
+    const meta = await exiftool.read(tmp);
+    console.log('EXIF parsed by exiftool:');
+    console.log(JSON.stringify(meta, null, 2));
+  } finally {
+    await exiftool.end();
+    try {
+      fs.rmSync(tmpDir, { recursive: true, force: true });
+    } catch {
+      // ignore
+    }
+  }
 }
 
 (async () => {
