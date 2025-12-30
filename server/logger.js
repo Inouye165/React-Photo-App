@@ -37,6 +37,8 @@ const SENSITIVE_KEYS = new Set([
   'cookie', 'set-cookie'
 ]);
 
+const UNSAFE_PROPERTY_KEYS = new Set(['__proto__', 'prototype', 'constructor']);
+
 // Regex to match key=value or key%3Dvalue in strings
 // Matches: (key)(separator)(value)
 // Separator can be =, :, %3D, %3A
@@ -56,7 +58,7 @@ function escapeLogNewlines(value) {
 function isSafeObjectKey(key) {
   if (typeof key !== 'string') return false;
   const lowered = key.toLowerCase();
-  if (lowered === '__proto__' || lowered === 'constructor' || lowered === 'prototype') return false;
+  if (UNSAFE_PROPERTY_KEYS.has(lowered)) return false;
   // Keep keys readable and bounded.
   if (key.length > 100) return false;
   return /^[a-zA-Z0-9._-]+$/.test(key);

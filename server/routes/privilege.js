@@ -1,16 +1,14 @@
 const express = require('express');
 const logger = require('../logger');
 
+const UNSAFE_PROPERTY_KEYS = new Set(['__proto__', 'prototype', 'constructor']);
+
+function isSafePropertyKey(key) {
+  return typeof key === 'string' && !UNSAFE_PROPERTY_KEYS.has(String(key).toLowerCase());
+}
+
 module.exports = function createPrivilegeRouter({ db }) {
   const router = express.Router();
-
-  function isSafeMapKey(value) {
-    if (typeof value !== 'string') return false;
-    if (value === '__proto__' || value === 'constructor' || value === 'prototype') {
-      return false;
-    }
-    return true;
-  }
 
   router.post('/privilege', async (req, res) => {
     try {
@@ -47,8 +45,7 @@ module.exports = function createPrivilegeRouter({ db }) {
         // Determine privileges based on ownership
         const privilegesMap = Object.create(null);
         filenames.forEach(filename => {
-          if (!isSafeMapKey(filename)) {
-            // Refuse dangerous keys that could mutate object prototypes.
+          if (!isSafePropertyKey(filename)) {
             return;
           }
           const ownerId = photoOwners.get(filename);
