@@ -2,7 +2,7 @@ import { useEffect, useRef, useState } from 'react';
 import { checkPrivilege, checkPrivilegesBatch } from '../api';
 
 export default function usePhotoPrivileges(photos) {
-  const [privilegesMap, setPrivilegesMap] = useState({});
+  const [privilegesMap, setPrivilegesMap] = useState(new Map());
   const lastCheckedFilenamesRef = useRef([]);
 
   useEffect(() => {
@@ -11,7 +11,7 @@ export default function usePhotoPrivileges(photos) {
     const loadPrivileges = async () => {
       if (!Array.isArray(photos) || photos.length === 0) {
         lastCheckedFilenamesRef.current = [];
-        setPrivilegesMap({});
+        setPrivilegesMap(new Map());
         return;
       }
 
@@ -25,21 +25,21 @@ export default function usePhotoPrivileges(photos) {
 
       lastCheckedFilenamesRef.current = filenames;
 
-      const initial = {};
+      const initial = new Map();
       // Avoid user-visible "Loading..." labels in the UI; render blank until privileges resolve.
-      for (const photo of photos) initial[photo.id] = '';
+      for (const photo of photos) initial.set(photo.id, '');
       setPrivilegesMap(initial);
 
-      let map = {};
+      let map = new Map();
       let batchSucceeded = false;
 
       try {
         const batchResult = await checkPrivilegesBatch(filenames);
-        if (batchResult && typeof batchResult === 'object') {
+        if (batchResult instanceof Map) {
           for (const photo of photos) {
-            const privilege = batchResult[photo.filename];
+            const privilege = batchResult.get(photo.filename);
             if (typeof privilege === 'string') {
-              map[photo.id] = privilege;
+              map.set(photo.id, privilege);
               continue;
             }
 
@@ -48,11 +48,11 @@ export default function usePhotoPrivileges(photos) {
               if (privilege.read || privilege.canRead) privArr.push('R');
               if (privilege.write || privilege.canWrite) privArr.push('W');
               if (privilege.execute || privilege.canExecute) privArr.push('X');
-              map[photo.id] = privArr.length > 0 ? privArr.join('') : '?';
+              map.set(photo.id, privArr.length > 0 ? privArr.join('') : '?');
               continue;
             }
 
-            map[photo.id] = '?';
+            map.set(photo.id, '?');
           }
 
           batchSucceeded = true;
@@ -62,7 +62,7 @@ export default function usePhotoPrivileges(photos) {
       }
 
       if (!batchSucceeded) {
-        map = {};
+        map = new Map();
         for (const photo of photos) {
           try {
             const result = await checkPrivilege(photo.filename);
@@ -82,13 +82,13 @@ export default function usePhotoPrivileges(photos) {
               if (rawPrivileges.canRead) privArr.push('R');
               if (rawPrivileges.canWrite) privArr.push('W');
               if (rawPrivileges.canExecute) privArr.push('X');
-              map[photo.id] = privArr.length > 0 ? privArr.join('') : '?';
+              map.set(photo.id, privArr.length > 0 ? privArr.join('') : '?');
             } else {
-              map[photo.id] = '?';
+              map.set(photo.id, '?');
             }
           } catch (error) {
             console.warn('[usePhotoPrivileges] Privilege check failed', photo.filename, error);
-            map[photo.id] = 'Err';
+            map.set(photo.id, 'Err');
           }
         }
       }

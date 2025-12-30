@@ -7,22 +7,6 @@ function isSafePropertyKey(key) {
   return typeof key === 'string' && !UNSAFE_PROPERTY_KEYS.has(String(key).toLowerCase());
 }
 
-function defineSafeMapEntry(target, key, value) {
-  if (!isSafePropertyKey(key)) {
-    return;
-  }
-  try {
-    Object.defineProperty(target, key, { // lgtm[js/remote-property-injection] - Safe: target is a null-prototype object and key is guarded against prototype pollution keys.
-      value,
-      enumerable: true,
-      configurable: true,
-      writable: true
-    });
-  } catch {
-    // Best-effort: if defineProperty fails for any reason, skip the key.
-  }
-}
-
 module.exports = function createPrivilegeRouter({ db }) {
   const router = express.Router();
 
@@ -36,14 +20,16 @@ module.exports = function createPrivilegeRouter({ db }) {
         });
       }
 
-      // Batch check: if 'filenames' is present, return a map keyed by filename
+      // Batch check: if 'filenames' is present, return an array of results.
+      // NOTE: We intentionally avoid returning an object keyed by user-provided
+      // filename to prevent remote property injection / prototype pollution concerns.
       if (Array.isArray(req.body.filenames)) {
         const filenames = req.body.filenames;
         
         if (filenames.length === 0) {
           return res.json({
             success: true,
-            privileges: {}
+            privileges: []
           });
         }
 
@@ -59,28 +45,28 @@ module.exports = function createPrivilegeRouter({ db }) {
         });
 
         // Determine privileges based on ownership
-        const privilegesMap = Object.create(null);
+        const privileges = [];
         filenames.forEach(filename => {
           if (!isSafePropertyKey(filename)) {
             return;
           }
           const ownerId = photoOwners.get(filename);
-          
+
           if (!ownerId) {
             // File not found in database - no permissions
-            defineSafeMapEntry(privilegesMap, filename, '');
+            privileges.push({ filename, access: '' });
           } else if (ownerId === req.user.id) {
             // User owns the file - full permissions
-            defineSafeMapEntry(privilegesMap, filename, 'RWX');
+            privileges.push({ filename, access: 'RWX' });
           } else {
             // User does not own the file - read-only (assuming public)
-            defineSafeMapEntry(privilegesMap, filename, 'R');
+            privileges.push({ filename, access: 'R' });
           }
         });
 
         return res.json({
           success: true,
-          privileges: privilegesMap
+          privileges
         });
       }
 

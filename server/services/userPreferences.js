@@ -234,19 +234,27 @@ function createUserPreferencesService({ db }) {
     const currentPrefs = await getPreferences(userId);
     const currentScales = currentPrefs.gradingScales || {};
 
-    // Determine which categories to load
-    const categoriesToLoad = categories || Object.keys(DEFAULT_GRADING_SCALES);
+    // Determine which categories to load.
+    // SECURITY: only allow categories that exist in DEFAULT_GRADING_SCALES.
+    // This prevents writing user-controlled keys onto objects.
+    const categoriesToLoadRaw = Array.isArray(categories) ? categories : Object.keys(DEFAULT_GRADING_SCALES);
+    const categoriesToLoad = categoriesToLoadRaw
+      .filter((c) => typeof c === 'string')
+      .filter((c) => isSafePropertyKey(c))
+      .filter((c) => Object.prototype.hasOwnProperty.call(DEFAULT_GRADING_SCALES, c));
 
-    // Merge defaults (existing user scales take precedence)
+    // Merge defaults (existing user scales take precedence) for allowlisted categories only.
     const mergedScales = Object.create(null);
-    if (currentScales && typeof currentScales === 'object') {
-      for (const [category, scales] of Object.entries(currentScales)) {
-        if (!isSafePropertyKey(category)) {
-          continue;
-        }
+    for (const category of categoriesToLoad) {
+      const hasUserScale =
+        currentScales &&
+        typeof currentScales === 'object' &&
+        Object.prototype.hasOwnProperty.call(currentScales, category);
+
+      if (hasUserScale) {
         try {
-          Object.defineProperty(mergedScales, category, { // lgtm[js/remote-property-injection] - Safe: mergedScales is null-prototype and category is checked against prototype pollution keys.
-            value: scales,
+          Object.defineProperty(mergedScales, category, {
+            value: currentScales[category],
             enumerable: true,
             configurable: true,
             writable: true
@@ -254,27 +262,18 @@ function createUserPreferencesService({ db }) {
         } catch {
           // ignore
         }
-      }
-    }
-
-    for (const category of categoriesToLoad) {
-      if (!isSafePropertyKey(category)) {
         continue;
       }
-      if (
-        Object.prototype.hasOwnProperty.call(DEFAULT_GRADING_SCALES, category) &&
-        !Object.prototype.hasOwnProperty.call(mergedScales, category)
-      ) {
-        try {
-          Object.defineProperty(mergedScales, category, { // lgtm[js/remote-property-injection] - Safe: mergedScales is null-prototype and category is checked against prototype pollution keys.
-            value: [...DEFAULT_GRADING_SCALES[category]],
-            enumerable: true,
-            configurable: true,
-            writable: true
-          });
-        } catch {
-          // ignore
-        }
+
+      try {
+        Object.defineProperty(mergedScales, category, {
+          value: [...DEFAULT_GRADING_SCALES[category]],
+          enumerable: true,
+          configurable: true,
+          writable: true
+        });
+      } catch {
+        // ignore
       }
     }
 

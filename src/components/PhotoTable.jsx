@@ -19,6 +19,12 @@ export default function PhotoTable({
   // Authentication now handled via httpOnly cookies OR signed URLs
   // For thumbnails, use signed URLs if getSignedUrl is provided
 
+  const getAccessLevel = (photoId) => {
+    if (!privilegesMap) return '';
+    if (privilegesMap instanceof Map) return privilegesMap.get(photoId) || '';
+    return privilegesMap?.[photoId] || '';
+  };
+
   if (loading) {
     return <div className="p-8 text-center text-gray-600">Loading photos...</div>;
   }
@@ -90,7 +96,7 @@ export default function PhotoTable({
               </div>
               <div className="col-span-1 text-gray-600 text-xs">{formatFileSize(photo.file_size)}</div>
               <div className="col-span-2 text-gray-600">{photo.state === 'working' ? 'working' : photo.state}</div>
-              <div className="col-span-2 text-gray-600">{privilegesMap[photo.id] || '...'}</div>
+              <div className="col-span-2 text-gray-600">{getAccessLevel(photo.id) || '...'}</div>
               <div className="col-span-1 text-green-700 font-mono text-xs">
                 {photo.hash ? <span title={photo.hash}>✔ {photo.hash.slice(-5)}</span> : '...'}
               </div>

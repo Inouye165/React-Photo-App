@@ -2,6 +2,52 @@ describe('Log Redaction Security', () => {
   let logger;
   let spies = {};
 
+  function getFirstCall() {
+    const ordered = [spies.log, spies.info, spies.warn, spies.error, spies.debug].filter(Boolean);
+    for (const spy of ordered) {
+      const first = spy.mock.calls[0];
+      if (first) return first;
+    }
+    return undefined;
+  }
+
+  function getLoggedOutput() {
+    const ordered = [spies.log, spies.info, spies.warn, spies.error, spies.debug].filter(Boolean);
+    return ordered.flatMap(spy => spy.mock.calls.map(call => String(call[0] ?? ''))).join('\n');
+  }
+
+  function getFirstLoggedPayload() {
+    const firstCall = getFirstCall();
+    if (!firstCall) return undefined;
+
+    const safeLine = String(firstCall[0] ?? '');
+    try {
+      const parsed = JSON.parse(safeLine);
+
+      if (Array.isArray(parsed)) {
+        const firstObject = parsed.find(
+          (value) => value !== null && typeof value === 'object' && !Array.isArray(value)
+        );
+        if (firstObject) return firstObject;
+      }
+
+      const first = Array.isArray(parsed) ? parsed[0] : parsed;
+      if (typeof first === 'string') {
+        const trimmed = first.trim();
+        if ((trimmed.startsWith('{') && trimmed.endsWith('}')) || (trimmed.startsWith('[') && trimmed.endsWith(']'))) {
+          try {
+            return JSON.parse(trimmed);
+          } catch {
+            return first;
+          }
+        }
+      }
+      return first;
+    } catch {
+      return undefined;
+    }
+  }
+
   beforeEach(() => {
     jest.resetModules();
     
@@ -30,7 +76,7 @@ describe('Log Redaction Security', () => {
     // info maps to log in TinyLogger
     const calls = spies.log.mock.calls;
     expect(calls.length).toBeGreaterThan(0);
-    const output = calls.map(args => args.join(' ')).join('\n');
+    const output = getLoggedOutput();
     
     expect(output).toContain('token=[REDACTED]');
     expect(output).not.toContain('secret123');
@@ -48,10 +94,8 @@ describe('Log Redaction Security', () => {
     };
     
     logger.info(sensitiveData);
-    
-    const calls = spies.log.mock.calls;
-    // Helper to stringify objects for checking
-    const output = calls.map(args => args.map(a => typeof a === 'object' ? JSON.stringify(a) : a).join(' ')).join('\n');
+
+    const output = getLoggedOutput();
     
     expect(output).toContain('[REDACTED]');
     expect(output).not.toContain('superSecretPassword');
@@ -61,9 +105,8 @@ describe('Log Redaction Security', () => {
 
   test('redacts URL-encoded parameters', () => {
     logger.info('Redirecting to /login?redirect=https%3A%2F%2Fsite.com%3Ftoken%3DbadToken');
-    
-    const calls = spies.log.mock.calls;
-    const output = calls.map(args => args.join(' ')).join('\n');
+
+    const output = getLoggedOutput();
     
     expect(output).toContain('token%3D[REDACTED]');
     expect(output).not.toContain('badToken');
@@ -75,19 +118,17 @@ describe('Log Redaction Security', () => {
     
     expect(() => logger.info(circular)).not.toThrow();
     
-    const calls = spies.log.mock.calls;
-    const arg = calls[0][0];
+    const firstPayload = getFirstLoggedPayload();
     // The redact function returns an object where circular ref is replaced by string '[Circular]'
-    expect(arg.self).toBe('[Circular]');
+    expect(firstPayload?.self).toBe('[Circular]');
   });
 
   test('global console.log is wrapped and redacts', () => {
     // console.log is the WRAPPER now.
     // It calls originalConsole.log (the SPY).
     console.log('System startup with secret=hiddenKey');
-    
-    const calls = spies.log.mock.calls;
-    const output = calls.map(args => args.join(' ')).join('\n');
+
+    const output = getLoggedOutput();
     
     expect(output).toContain('secret=[REDACTED]');
     expect(output).not.toContain('hiddenKey');
@@ -100,12 +141,10 @@ describe('Log Redaction Security', () => {
     };
     
     logger.info(headers);
-    
-    const calls = spies.log.mock.calls;
-    const arg = calls[0][0];
-    
-    expect(arg.Authorization).toBe('[REDACTED]');
-    expect(JSON.stringify(arg)).not.toContain('secret-token-value');
+
+    const firstPayload = getFirstLoggedPayload();
+    expect(firstPayload?.Authorization).toBe('[REDACTED]');
+    expect(JSON.stringify(firstPayload)).not.toContain('secret-token-value');
   });
 
   test('redacts Cookie and Set-Cookie headers', () => {
@@ -118,15 +157,14 @@ describe('Log Redaction Security', () => {
 
     logger.info(headers);
 
-    const calls = spies.log.mock.calls;
-    const arg = calls[0][0];
+    const firstPayload = getFirstLoggedPayload();
 
-    expect(arg.cookie).toBe('[REDACTED]');
-    expect(arg['set-cookie']).toBe('[REDACTED]');
-    expect(arg.Cookie).toBe('[REDACTED]');
-    expect(arg['Set-Cookie']).toBe('[REDACTED]');
+    expect(firstPayload?.cookie).toBe('[REDACTED]');
+    expect(firstPayload?.['set-cookie']).toBe('[REDACTED]');
+    expect(firstPayload?.Cookie).toBe('[REDACTED]');
+    expect(firstPayload?.['Set-Cookie']).toBe('[REDACTED]');
 
-    const output = JSON.stringify(arg);
+    const output = JSON.stringify(firstPayload);
     expect(output).not.toContain('super-secret-cookie');
     expect(output).not.toContain('another-secret');
   });

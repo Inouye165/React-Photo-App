@@ -26,6 +26,17 @@ const METHOD_MAP = Object.freeze({
   trace: typeof console.debug === 'function' ? 'debug' : 'log'
 });
 
+// Capture the original console methods early so our internal logger sink
+// doesn't route through our own global console wrappers (which would otherwise
+// double-encode output).
+const ORIGINAL_CONSOLE = {
+  log: typeof console.log === 'function' ? console.log.bind(console) : null,
+  warn: typeof console.warn === 'function' ? console.warn.bind(console) : null,
+  error: typeof console.error === 'function' ? console.error.bind(console) : null,
+  info: typeof console.info === 'function' ? console.info.bind(console) : null,
+  debug: typeof console.debug === 'function' ? console.debug.bind(console) : null
+};
+
 const subscribers = {
   log: new Set(),
   error: new Set(),
@@ -353,29 +364,20 @@ class TinyLogger {
     // Redact arguments before logging or emitting
     const redactedArgs = preparedArgs.map(arg => redact(arg));
 
-    // Final sink hardening: strip CR/LF from strings right before writing
-    // to console to avoid log injection (CWE-117).
-    const safeArgs = redactedArgs.map(arg => {
-      if (typeof arg !== 'string') return arg;
-      return arg.replace(/[\r\n]/g, ' ');
-    });
+    // Final sink hardening: emit a single-line string to the console.
+    // This avoids multiline log injection (CWE-117) and is easier for CodeQL
+    // to reason about than passing arbitrary objects/args.
+    const safeLine = JSON.stringify(redactedArgs).replace(/[\r\n]/g, ' ');
 
     const methodName = METHOD_MAP[normalized] || 'log';
-    const method = typeof console[methodName] === 'function' ? console[methodName] : console.log;
-    // SAFETY: Check that method exists and has apply before calling
-    // This prevents crashes when Jest or other tools modify console at runtime
-    if (typeof method === 'function' && typeof method.apply === 'function') {
+    const sink = ORIGINAL_CONSOLE[methodName] || ORIGINAL_CONSOLE.log;
+    if (typeof sink === 'function') {
       try {
-        method.apply(console, safeArgs); // lgtm[js/log-injection] - Safe: CR/LF stripped from string args immediately before console sink (CWE-117 mitigation).
+        sink(safeLine);
       } catch {
-        // Fallback to direct call if apply fails (extremely rare, but defensive)
-        try {
-          method(...safeArgs); // lgtm[js/log-injection] - Safe: CR/LF stripped from string args immediately before console sink (CWE-117 mitigation).
-        } catch {
-          // Last resort: try to use process.stderr if available
-          if (typeof process !== 'undefined' && process.stderr && typeof process.stderr.write === 'function') {
-            process.stderr.write(`[Logger Error] ${JSON.stringify(safeArgs)}\n`);
-          }
+        // Last resort: try to use process.stderr if available
+        if (typeof process !== 'undefined' && process.stderr && typeof process.stderr.write === 'function') {
+          process.stderr.write(`[Logger Error] ${safeLine}\n`);
         }
       }
     }
@@ -389,20 +391,12 @@ class TinyLogger {
 const rootLogger = new TinyLogger();
 
 // Wrap global console methods to apply redaction everywhere
-const originalConsole = {
-  log: console.log ? console.log.bind(console) : null,
-  warn: console.warn ? console.warn.bind(console) : null,
-  error: console.error ? console.error.bind(console) : null,
-  info: console.info ? console.info.bind(console) : null,
-  debug: console.debug ? console.debug.bind(console) : null,
-};
-
 ['log', 'warn', 'error', 'info', 'debug'].forEach(method => {
-  if (typeof console[method] === 'function' && originalConsole[method]) {
+  if (typeof console[method] === 'function' && ORIGINAL_CONSOLE[method]) {
     console[method] = function(...args) {
       const redactedArgs = args.map(arg => redact(arg));
-      const safeArgs = redactedArgs.map(arg => (typeof arg === 'string' ? arg.replace(/[\r\n]/g, ' ') : arg));
-      originalConsole[method](...safeArgs);
+      const safeLine = JSON.stringify(redactedArgs).replace(/[\r\n]/g, ' ');
+      ORIGINAL_CONSOLE[method](safeLine);
     };
   }
 });
