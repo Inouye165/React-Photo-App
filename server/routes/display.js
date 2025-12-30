@@ -141,7 +141,7 @@ module.exports = function createDisplayRouter({ db }) {
     
     // Validate state parameter to prevent security bypass
     // Only allow known valid states from a whitelist
-    const VALID_STATES = ['thumbnails', 'images', 'originals'];
+    const VALID_STATES = ['thumbnails', 'images', 'originals', 'working', 'inprogress', 'finished'];
     if (!VALID_STATES.includes(state)) {
       return res.status(400).json({
         success: false,
