@@ -10,6 +10,13 @@ const { getRedisClient, setRedisValueWithTtl } = require('../lib/redis');
 const config = getConfig();
 const supabase = createClient(config.supabase.url, config.supabase.anonKey);
 
+function isLoopbackRequest(req) {
+  const remote = req && req.socket ? req.socket.remoteAddress : undefined;
+  const ip = req && req.ip ? req.ip : undefined;
+  const candidates = [remote, ip].filter(Boolean).map(String);
+  return candidates.some(addr => addr === '127.0.0.1' || addr === '::1' || addr === '::ffff:127.0.0.1');
+}
+
 function normalizeUrlNoTrailingSlash(url) {
   if (!url) return '';
   return String(url).trim().replace(/\/+$/, '');
@@ -97,7 +104,7 @@ async function authenticateToken(req, res, next) {
 
   try {
     // 0. Check for E2E test token (only in non-production)
-    if (isE2EEnabled()) {
+    if (isE2EEnabled() && isLoopbackRequest(req)) {
       // Allow header-based bypass for E2E tests (avoids cookie issues)
       if (req.headers['x-e2e-user-id'] === '11111111-1111-4111-8111-111111111111') {
         req.user = {

@@ -59,6 +59,12 @@ const DEFAULT_GRADING_SCALES = {
  * @returns {Object} User preferences service methods
  */
 function createUserPreferencesService({ db }) {
+  function isSafeRecordKey(value) {
+    if (typeof value !== 'string') return false;
+    if (value === '__proto__' || value === 'constructor' || value === 'prototype') return false;
+    return true;
+  }
+
   /**
    * Get user preferences (grading scales).
    * 
@@ -108,6 +114,9 @@ function createUserPreferencesService({ db }) {
     // Validate structure
     if (newPrefs.gradingScales) {
       for (const [category, scales] of Object.entries(newPrefs.gradingScales)) {
+        if (!isSafeRecordKey(category)) {
+          throw new Error(`Invalid grading scales category: ${category}`);
+        }
         if (!Array.isArray(scales)) {
           throw new Error(`Invalid grading scales for category: ${category}`);
         }
@@ -125,14 +134,31 @@ function createUserPreferencesService({ db }) {
     // Get current preferences
     const currentPrefs = await getPreferences(userId);
 
+    const mergedGradingScales = Object.create(null);
+    const currentScales = currentPrefs.gradingScales && typeof currentPrefs.gradingScales === 'object'
+      ? currentPrefs.gradingScales
+      : {};
+    for (const [category, scales] of Object.entries(currentScales)) {
+      if (isSafeRecordKey(category)) {
+        mergedGradingScales[category] = scales;
+      }
+    }
+    const incomingScales = newPrefs.gradingScales && typeof newPrefs.gradingScales === 'object'
+      ? newPrefs.gradingScales
+      : null;
+    if (incomingScales) {
+      for (const [category, scales] of Object.entries(incomingScales)) {
+        if (isSafeRecordKey(category)) {
+          mergedGradingScales[category] = scales;
+        }
+      }
+    }
+
     // Merge with new preferences (deep merge for gradingScales)
     const mergedPrefs = {
       ...currentPrefs,
       ...newPrefs,
-      gradingScales: {
-        ...(currentPrefs.gradingScales || {}),
-        ...(newPrefs.gradingScales || {})
-      }
+      gradingScales: mergedGradingScales
     };
 
     // Upsert in database (create user if doesn't exist)

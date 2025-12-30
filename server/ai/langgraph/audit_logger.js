@@ -3,15 +3,20 @@ const path = require('path');
 
 const LOG_FILE_PATH = path.join(__dirname, '../../../langgraph_execution.md');
 
+const AUDIT_LOGGER_ENABLED = process.env.AI_AUDIT_LOGGER_ENABLED === 'true' && process.env.NODE_ENV !== 'production';
+
 // Ensure the file exists and write a startup message
-try {
-  fs.appendFileSync(LOG_FILE_PATH, `\n\n# Logger Initialized at ${new Date().toISOString()}\n`);
-  console.log(`[AuditLogger] Logging to ${LOG_FILE_PATH}`);
-} catch (err) {
-  console.error('[AuditLogger] Failed to initialize log file:', err);
+if (AUDIT_LOGGER_ENABLED) {
+  try {
+    fs.appendFileSync(LOG_FILE_PATH, `\n\n# Logger Initialized at ${new Date().toISOString()}\n`);
+    console.log(`[AuditLogger] Logging to ${LOG_FILE_PATH}`);
+  } catch (err) {
+    console.error('[AuditLogger] Failed to initialize log file:', err);
+  }
 }
 
 function appendLog(content) {
+  if (!AUDIT_LOGGER_ENABLED) return;
   try {
     fs.appendFileSync(LOG_FILE_PATH, content + '\n');
     console.log('[AuditLogger] Wrote to file');

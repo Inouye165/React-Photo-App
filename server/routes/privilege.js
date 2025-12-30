@@ -4,6 +4,14 @@ const logger = require('../logger');
 module.exports = function createPrivilegeRouter({ db }) {
   const router = express.Router();
 
+  function isSafeMapKey(value) {
+    if (typeof value !== 'string') return false;
+    if (value === '__proto__' || value === 'constructor' || value === 'prototype') {
+      return false;
+    }
+    return true;
+  }
+
   router.post('/privilege', async (req, res) => {
     try {
       // Require authentication - req.user should be set by authenticateToken middleware
@@ -37,8 +45,12 @@ module.exports = function createPrivilegeRouter({ db }) {
         });
 
         // Determine privileges based on ownership
-        const privilegesMap = {};
+        const privilegesMap = Object.create(null);
         filenames.forEach(filename => {
+          if (!isSafeMapKey(filename)) {
+            // Refuse dangerous keys that could mutate object prototypes.
+            return;
+          }
           const ownerId = photoOwners.get(filename);
           
           if (!ownerId) {

@@ -46,11 +46,19 @@ const SENSITIVE_REGEX = new RegExp(
   'gi'
 );
 
+function escapeLogNewlines(value) {
+  if (typeof value !== 'string') return value;
+  // Avoid log injection by preventing user-controlled CR/LF from creating
+  // fake log entries or confusing multiline logs.
+  return value.replace(/\r/g, '\\r').replace(/\n/g, '\\n');
+}
+
 function redact(arg, visited = new WeakSet()) {
   if (arg === null || arg === undefined) return arg;
 
   if (typeof arg === 'string') {
-    return arg.replace(SENSITIVE_REGEX, '$1$2[REDACTED]');
+    const redacted = arg.replace(SENSITIVE_REGEX, '$1$2[REDACTED]');
+    return escapeLogNewlines(redacted);
   }
 
   if (typeof arg === 'object') {
@@ -63,7 +71,9 @@ function redact(arg, visited = new WeakSet()) {
       }
 
       // Handle plain objects and errors
-      const redacted = {};
+      // Use a null-prototype object to avoid prototype pollution via keys like
+      // __proto__/constructor/prototype.
+      const redacted = Object.create(null);
       for (const key in arg) {
         // We iterate over all properties including prototype for Error objects usually, 
         // but for plain objects just own properties.

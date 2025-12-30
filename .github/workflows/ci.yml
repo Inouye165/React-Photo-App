@@ -5,6 +5,9 @@ name: CI
   pull_request:
     branches: [ main ]
 
+permissions:
+  contents: read
+
 jobs:
   test-prod-csp:
     runs-on: ubuntu-latest

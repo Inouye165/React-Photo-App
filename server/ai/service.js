@@ -677,7 +677,8 @@ async function updatePhotoAIMetadata(db, photoRow, storagePath, modelOverrides =
       
       // Extract metadata from original file before any processing
       const os = require('os');
-      const tmpFilePath = path.join(os.tmpdir(), `metadata_extract_${Date.now()}_${photoRow.filename}`);
+      const tmpDirPath = fs.mkdtempSync(path.join(os.tmpdir(), 'photo-app-metadata-'));
+      const tmpFilePath = path.join(tmpDirPath, 'metadata_extract.bin');
       let richMetadata = null;
       
       try {
@@ -696,11 +697,9 @@ async function updatePhotoAIMetadata(db, photoRow, storagePath, modelOverrides =
         logger.error('[Metadata Debug] Failed to extract metadata:', metaErr.message || metaErr, metaErr.stack);
         // Don't throw - continue without rich metadata
       } finally {
-        // Clean up temp file
+        // Clean up temp directory
         try {
-          if (fs.existsSync(tmpFilePath)) {
-            fs.unlinkSync(tmpFilePath);
-          }
+          fs.rmSync(tmpDirPath, { recursive: true, force: true });
         } catch (cleanupErr) {
           logger.warn('[Metadata Debug] Failed to cleanup temp file:', cleanupErr.message);
         }

@@ -31,7 +31,9 @@ const req = http.request(opts, (res) => {
         process.exitCode = 1;
       }
     } catch (e) {
-      console.error('Failed to parse response:', e.message, 'raw:', data);
+      const safeRaw = String(data).replace(/[\r\n]+/g, ' ');
+      const safeMsg = String(e && e.message ? e.message : e).replace(/[\r\n]+/g, ' ');
+      console.error('Failed to parse response:', safeMsg, 'raw:', safeRaw);
       process.exitCode = 1;
     }
   });
