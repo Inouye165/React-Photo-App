@@ -114,14 +114,12 @@ module.exports = function createDisplayRouter({ db }) {
   function shouldBypassRedirect(req) {
     // Security: bypassing redirects changes how bytes are served. Keep the
     // escape hatch for local debugging only.
+
+    // Redirect bypass is only allowed under controlled server-side conditions.
+    // Never allow users to toggle this via query params or headers.
     if (process.env.NODE_ENV === 'production') return false;
     if (!isLoopbackRequest(req)) return false;
-
-    const raw = req && req.query ? req.query.raw : undefined;
-    if (raw === '1' || raw === 'true' || raw === true) return true;
-    const header = req && req.headers ? req.headers['x-bypass-redirect'] : undefined;
-    if (header === '1' || header === 'true') return true;
-    return false;
+    return process.env.DISPLAY_BYPASS_REDIRECT === '1';
   }
 
   /**

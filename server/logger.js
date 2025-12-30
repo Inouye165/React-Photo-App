@@ -53,6 +53,20 @@ function escapeLogNewlines(value) {
   return value.replace(/\r/g, '\\r').replace(/\n/g, '\\n');
 }
 
+function isSafeObjectKey(key) {
+  if (typeof key !== 'string') return false;
+  const lowered = key.toLowerCase();
+  if (lowered === '__proto__' || lowered === 'constructor' || lowered === 'prototype') return false;
+  // Keep keys readable and bounded.
+  if (key.length > 100) return false;
+  return /^[a-zA-Z0-9._-]+$/.test(key);
+}
+
+function sanitizeBindingValue(value) {
+  if (value === null || value === undefined) return '';
+  return escapeLogNewlines(String(value));
+}
+
 function redact(arg, visited = new WeakSet()) {
   if (arg === null || arg === undefined) return arg;
 
@@ -79,6 +93,9 @@ function redact(arg, visited = new WeakSet()) {
         // but for plain objects just own properties.
         // However, for Error objects, message and stack are often not enumerable.
         if (Object.prototype.hasOwnProperty.call(arg, key)) {
+          if (!isSafeObjectKey(key)) {
+            continue;
+          }
           const lowerKey = key.toLowerCase();
           if (SENSITIVE_KEYS.has(lowerKey)) {
             redacted[key] = '[REDACTED]';
@@ -159,7 +176,8 @@ function applyBindings(bindings, args) {
   }
 
   const prefix = Object.entries(bindings)
-    .map(([key, value]) => `${key}=${value}`)
+    .filter(([key]) => isSafeObjectKey(key))
+    .map(([key, value]) => `${key}=${sanitizeBindingValue(value)}`)
     .join(' ');
 
   if (!prefix) {
@@ -185,7 +203,14 @@ function emit(event, payload) {
 class TinyLogger {
   constructor(bindings) {
     if (bindings && typeof bindings === 'object' && Object.keys(bindings).length > 0) {
-      this.bindings = Object.freeze({ ...bindings });
+      const safeBindings = Object.create(null);
+      for (const [key, value] of Object.entries(bindings)) {
+        if (!isSafeObjectKey(key)) {
+          continue;
+        }
+        safeBindings[key] = sanitizeBindingValue(value);
+      }
+      this.bindings = Object.freeze(safeBindings);
     } else {
       this.bindings = undefined;
     }
@@ -266,8 +291,20 @@ class TinyLogger {
     if (!extraBindings || typeof extraBindings !== 'object' || Object.keys(extraBindings).length === 0) {
       return new TinyLogger(this.bindings);
     }
-    const base = this.bindings ? { ...this.bindings } : {};
-    return new TinyLogger({ ...base, ...extraBindings });
+    const combined = Object.create(null);
+    if (this.bindings && typeof this.bindings === 'object') {
+      for (const [key, value] of Object.entries(this.bindings)) {
+        if (isSafeObjectKey(key)) {
+          combined[key] = sanitizeBindingValue(value);
+        }
+      }
+    }
+    for (const [key, value] of Object.entries(extraBindings)) {
+      if (isSafeObjectKey(key)) {
+        combined[key] = sanitizeBindingValue(value);
+      }
+    }
+    return new TinyLogger(combined);
   }
 
   trace(...args) {

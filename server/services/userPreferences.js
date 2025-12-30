@@ -228,8 +228,16 @@ function createUserPreferencesService({ db }) {
     const categoriesToLoad = categories || Object.keys(DEFAULT_GRADING_SCALES);
 
     // Merge defaults (existing user scales take precedence)
-    const mergedScales = { ...currentScales };
+    const mergedScales = Object.create(null);
+    if (currentScales && typeof currentScales === 'object') {
+      for (const [category, scales] of Object.entries(currentScales)) {
+        if (isSafeRecordKey(category)) {
+          mergedScales[category] = scales;
+        }
+      }
+    }
     for (const category of categoriesToLoad) {
+      if (!isSafeRecordKey(category)) continue;
       if (DEFAULT_GRADING_SCALES[category] && !mergedScales[category]) {
         mergedScales[category] = [...DEFAULT_GRADING_SCALES[category]];
       }

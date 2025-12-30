@@ -32,7 +32,17 @@ async function downloadToTemp(storagePath, filenameHint) {
   const tmpDir = fs.mkdtempSync(path.join(os.tmpdir(), 'photo-app-exif-'));
   const safeHint = path.basename(String(filenameHint || 'photo')).replace(/[^a-zA-Z0-9._-]/g, '_');
   const tmp = path.join(tmpDir, `${crypto.randomUUID()}-${safeHint}`);
-  fs.writeFileSync(tmp, buf, { flag: 'wx' });
+  // Create the file exclusively and restrict permissions (best-effort on Windows).
+  const fd = fs.openSync(tmp, 'wx', 0o600);
+  try {
+    fs.writeFileSync(fd, buf);
+  } finally {
+    try {
+      fs.closeSync(fd);
+    } catch {
+      // ignore
+    }
+  }
   return { tmp, tmpDir };
 }
 

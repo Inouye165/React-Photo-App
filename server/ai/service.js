@@ -24,8 +24,8 @@ if (!process.env.OPENAI_API_KEY) {
 // Native OpenAI client (singleton)
 const openai = require('./openaiClient');
 const { convertHeicToJpegBuffer } = require('../media/image');
-const { extractMetadata } = require('../media/exif');
 const sharp = require('sharp');
+const exifr = require('exifr');
 
 // Hard limit for AI processing file size (20 MB)
 const supabase = require('../lib/supabaseClient');
@@ -421,12 +421,20 @@ async function processPhotoAI({ fileBuffer, filename, metadata, gps, device, isR
   if (ext === '.heic' || ext === '.heif') {
     imageBuffer = await convertHeicToJpegBuffer(fileBuffer, 95);
     imageMime = 'image/jpeg';
-    try {
-      const debugPath = path.join(__dirname, 'debug_image.jpg');
-      fs.writeFileSync(debugPath, imageBuffer);
-      logger.debug(`[Graph Debug] Saved intermediate JPEG buffer to ${debugPath}`);
-    } catch (e) {
-      logger.error(`[Graph Debug] Failed to write debug image: ${e.message}`);
+    if (allowDevDebug && process.env.NODE_ENV !== 'production') {
+      try {
+        const os = require('os');
+        const debugPath = path.join(os.tmpdir(), `photo-app-ai-debug-${Date.now()}-${crypto.randomUUID()}.jpg`);
+        const fd = fs.openSync(debugPath, 'wx', 0o600);
+        try {
+          fs.writeFileSync(fd, imageBuffer);
+        } finally {
+          try { fs.closeSync(fd); } catch { /* ignore */ }
+        }
+        logger.debug(`[Graph Debug] Saved intermediate JPEG buffer to ${debugPath}`);
+      } catch (e) {
+        logger.error(`[Graph Debug] Failed to write debug image: ${e.message}`);
+      }
     }
   } else {
     imageBuffer = fileBuffer;
@@ -676,33 +684,59 @@ async function updatePhotoAIMetadata(db, photoRow, storagePath, modelOverrides =
       const originalBuffer = Buffer.from(arrayBuffer);
       
       // Extract metadata from original file before any processing
-      const os = require('os');
-      const tmpDirPath = fs.mkdtempSync(path.join(os.tmpdir(), 'photo-app-metadata-'));
-      const tmpFilePath = path.join(tmpDirPath, 'metadata_extract.bin');
       let richMetadata = null;
       
       try {
-        // Write original buffer to temp file for exiftool to read
-        fs.writeFileSync(tmpFilePath, originalBuffer);
-        logger.debug('[AI Debug] [updatePhotoAIMetadata] Wrote temp file for metadata extraction:', tmpFilePath);
-        logger.debug('[AI Debug] [updatePhotoAIMetadata] Extracting metadata from original file...');
-        richMetadata = await extractMetadata(tmpFilePath);
-        logger.debug('[AI Debug] [updatePhotoAIMetadata] Extracted rich metadata:', {
-          hasCreatedAt: Boolean(richMetadata.created_at),
-          hasGps: Boolean(richMetadata.gps),
-          hasDevice: Boolean(richMetadata.device && richMetadata.device.make),
-          hasExposure: Boolean(richMetadata.exposure && richMetadata.exposure.iso)
+        logger.debug('[AI Debug] [updatePhotoAIMetadata] Extracting metadata from original buffer...');
+        const exif = await exifr.parse(originalBuffer, {
+          tiff: true,
+          ifd0: true,
+          exif: true,
+          gps: true,
+          xmp: true,
+          icc: true,
+          iptc: true,
+          translateKeys: true,
+          translateValues: true
         });
+
+        if (exif && typeof exif === 'object') {
+          const latRaw = exif.GPSLatitude ?? exif.latitude;
+          const lonRaw = exif.GPSLongitude ?? exif.longitude;
+          const lat = dmsArrayToDecimal(latRaw, exif.GPSLatitudeRef);
+          const lon = dmsArrayToDecimal(lonRaw, exif.GPSLongitudeRef);
+
+          richMetadata = {
+            created_at: exif.DateTimeOriginal || exif.CreateDate || exif.DateCreated || exif.DateTimeDigitized || exif.ModifyDate || null,
+            gps: (typeof lat === 'number' && typeof lon === 'number') ? {
+              lat,
+              lon,
+              alt: toNumber(exif.GPSAltitude),
+              direction: normalizeDegrees(toNumber(exif.GPSImgDirection ?? exif.GPSDestBearing))
+            } : null,
+            device: {
+              make: exif.Make || null,
+              model: exif.Model || null,
+              lens: exif.LensModel || exif.Lens || null
+            },
+            exposure: {
+              iso: toNumber(exif.ISO),
+              f_stop: toNumber(exif.FNumber),
+              shutter_speed: toNumber(exif.ExposureTime),
+              flash_fired: exif.Flash != null ? Boolean(toNumber(exif.Flash)) : null
+            }
+          };
+
+          logger.debug('[AI Debug] [updatePhotoAIMetadata] Extracted rich metadata (buffer):', {
+            hasCreatedAt: Boolean(richMetadata.created_at),
+            hasGps: Boolean(richMetadata.gps),
+            hasDevice: Boolean(richMetadata.device && (richMetadata.device.make || richMetadata.device.model)),
+            hasExposure: Boolean(richMetadata.exposure && richMetadata.exposure.iso)
+          });
+        }
       } catch (metaErr) {
         logger.error('[Metadata Debug] Failed to extract metadata:', metaErr.message || metaErr, metaErr.stack);
         // Don't throw - continue without rich metadata
-      } finally {
-        // Clean up temp directory
-        try {
-          fs.rmSync(tmpDirPath, { recursive: true, force: true });
-        } catch (cleanupErr) {
-          logger.warn('[Metadata Debug] Failed to cleanup temp file:', cleanupErr.message);
-        }
       }
 
       let fileBuffer;
