@@ -4,6 +4,20 @@ const jwt = require('jsonwebtoken');
 process.env.NODE_ENV = 'test';
 process.env.JWT_SECRET = 'test-jwt-secret-display-cdn';
 
+async function withDisplayBypassRedirect(fn) {
+  const prev = process.env.DISPLAY_BYPASS_REDIRECT;
+  process.env.DISPLAY_BYPASS_REDIRECT = '1';
+  try {
+    return await fn();
+  } finally {
+    if (prev === undefined) {
+      delete process.env.DISPLAY_BYPASS_REDIRECT;
+    } else {
+      process.env.DISPLAY_BYPASS_REDIRECT = prev;
+    }
+  }
+}
+
 jest.mock('../media/image', () => ({
   convertHeicToJpegBuffer: jest.fn()
 }));
@@ -210,7 +224,7 @@ describe('Display CDN redirect integration', () => {
     await db('photos').where({ id: photoId }).delete();
   });
 
-  test('GET /display/image/:photoId?raw=1 streams JPEG for HEIC when display_path is present (no conversion)', async () => {
+  test('GET /display/image/:photoId streams JPEG for HEIC when display_path is present (no conversion)', async () => withDisplayBypassRedirect(async () => {
     const filename = `cdn-heic-display-raw-${uniqueSuffix()}.heic`;
     const storagePath = `working/${filename}`;
     const displayPath = `display/${TEST_USER_ID}/p-${uniqueSuffix()}.jpg`;
@@ -234,7 +248,7 @@ describe('Display CDN redirect integration', () => {
     });
 
     const res = await request(app)
-      .get(`/display/image/${photoId}?raw=1`)
+      .get(`/display/image/${photoId}`)
       .set('Authorization', `Bearer ${authToken}`)
       .expect(200);
 
@@ -244,9 +258,9 @@ describe('Display CDN redirect integration', () => {
     expect(convertHeicToJpegBuffer).not.toHaveBeenCalled();
 
     await db('photos').where({ id: photoId }).delete();
-  });
+  }));
 
-  test('GET /display/image/:photoId?raw=1 streams bytes for non-HEIC (bypasses redirect)', async () => {
+  test('GET /display/image/:photoId streams bytes for non-HEIC (bypasses redirect)', async () => withDisplayBypassRedirect(async () => {
     const filename = `cdn-nonheic-raw-${uniqueSuffix()}.jpg`;
     const storagePath = `working/${filename}`;
 
@@ -273,7 +287,7 @@ describe('Display CDN redirect integration', () => {
     });
 
     const res = await request(app)
-      .get(`/display/image/${photoId}?raw=1`)
+      .get(`/display/image/${photoId}`)
       .set('Authorization', `Bearer ${authToken}`)
       .expect(200);
 
@@ -283,7 +297,7 @@ describe('Display CDN redirect integration', () => {
     expect(convertHeicToJpegBuffer).not.toHaveBeenCalled();
 
     await db('photos').where({ id: photoId }).delete();
-  });
+  }));
 
   test('GET /display/chat-image/:roomId/:photoId redirects for non-HEIC and does not download/convert', async () => {
     const filename = `chat-nonheic-${uniqueSuffix()}.jpg`;
@@ -431,7 +445,7 @@ describe('Display CDN redirect integration', () => {
     await db('photos').where({ id: photoId }).delete();
   });
 
-  test('GET /display/chat-image/:roomId/:photoId?raw=1 streams bytes for non-HEIC (bypasses redirect)', async () => {
+  test('GET /display/chat-image/:roomId/:photoId streams bytes for non-HEIC (bypasses redirect)', async () => withDisplayBypassRedirect(async () => {
     const filename = `chat-nonheic-raw-${uniqueSuffix()}.jpg`;
     const storagePath = `working/${filename}`;
 
@@ -471,7 +485,7 @@ describe('Display CDN redirect integration', () => {
     });
 
     const res = await request(app)
-      .get(`/display/chat-image/r1/${photoId}?raw=1`)
+      .get(`/display/chat-image/r1/${photoId}`)
       .set('Authorization', `Bearer ${authToken}`)
       .expect(200);
 
@@ -481,5 +495,5 @@ describe('Display CDN redirect integration', () => {
     expect(convertHeicToJpegBuffer).not.toHaveBeenCalled();
 
     await db('photos').where({ id: photoId }).delete();
-  });
+  }));
 });
