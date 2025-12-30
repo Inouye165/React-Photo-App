@@ -43,8 +43,9 @@ async function main() {
       })
       .on('error', (err) => {
         // Sanitize error to prevent log injection - remove control chars and limit length
-        const safeErr = String(err).replace(/[\r\n\x00-\x1F\x7F-\x9F]+/g, ' ').substring(0, 500);
-        console.error('Docker smoke: /health error', safeErr);
+        const errMessage = err && err.message ? err.message : String(err);
+        const safeErr = errMessage.replace(/[\r\n\x00-\x1F\x7F-\x9F]+/g, ' ').substring(0, 500);
+        console.error('Docker smoke: /health error:', safeErr);
         cleanup();
         process.exit(1);
       });
