@@ -414,15 +414,13 @@ export async function request<T>(options: RequestOptions): Promise<T> {
     }
   }
 
-  let didRetryCsrf = false
   try {
     response = await limiter(doFetch)
 
     // If we get a CSRF-looking 403, clear cached token and retry once.
-    if (!response.ok && response.status === 403 && isUnsafeMethod(method.toUpperCase()) && !didRetryCsrf) {
+    if (!response.ok && response.status === 403 && isUnsafeMethod(method.toUpperCase())) {
       const shouldRetry = await isLikelyCsrfMismatch(response)
       if (shouldRetry) {
-        didRetryCsrf = true
         _csrfToken = null
         csrfTokenPromise = null
         response = await limiter(doFetch)

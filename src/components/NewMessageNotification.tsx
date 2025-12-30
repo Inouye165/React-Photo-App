@@ -73,7 +73,7 @@ export default function NewMessageNotification({
         bg-slate-900 text-white rounded-2xl shadow-2xl
         p-4 flex items-start gap-3
         transition-all duration-300 ease-out
-        ${isVisible ? 'opacity-100 translate-y-0' : 'opacity-0 -translate-y-2'}
+        opacity-100 translate-y-0
       `}
     >
       <div className="flex-shrink-0 mt-0.5">
