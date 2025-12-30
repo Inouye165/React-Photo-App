@@ -356,7 +356,12 @@ describe('LocationMapPanel component', () => {
 
   describe('heading and directional arrow', () => {
     beforeEach(() => {
-      import.meta.env.VITE_GOOGLE_MAPS_API_KEY = 'test-api-key';
+      // import.meta.env is effectively read-only under Vite/Vitest; use Vitest's env stubbing.
+      vi.stubEnv('VITE_GOOGLE_MAPS_API_KEY', 'test-api-key');
+    });
+
+    afterEach(() => {
+      vi.unstubAllEnvs();
     });
 
     it('passes heading to DirectionalArrow via marker', () => {

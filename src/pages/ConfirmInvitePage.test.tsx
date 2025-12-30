@@ -7,6 +7,8 @@ describe('ConfirmInvitePage', () => {
   const originalAssign = window.location.assign;
 
   beforeEach(() => {
+    vi.stubEnv('VITE_SUPABASE_URL', 'https://project.supabase.co');
+
     // JSDOM allows spying on location.assign in most setups.
     // We still patch it defensively in case it is non-configurable.
     try {
@@ -17,6 +19,8 @@ describe('ConfirmInvitePage', () => {
   });
 
   afterEach(() => {
+    vi.unstubAllEnvs();
+
     try {
       window.location.assign = originalAssign;
     } catch {
