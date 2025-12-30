@@ -128,35 +128,20 @@ module.exports = function createDisplayRouter({ db }) {
   }
 
   /**
-   * Middleware to handle thumbnail authentication
+   * Middleware for thumbnail authentication ONLY
    * Supports both:
    * 1. Signed URLs (preferred for <img> tags) - no cookie needed
    * 2. Cookie/Bearer token (legacy, backward compatibility)
    * 
-   * Only applies to thumbnail requests (state === 'thumbnails')
+   * SECURITY: This middleware is ONLY attached to the /thumbnails/:filename route.
+   * The authentication decision is controlled by the route pattern, not user input.
    */
-  function authenticateThumbnailOrImage(req, res, next) {
-    const { state, filename } = req.params;
+  function authenticateThumbnail(req, res, next) {
+    const { filename } = req.params;
     const { sig, exp } = req.query;
     
-    // Validate state parameter to prevent security bypass
-    // Only allow known valid states from a whitelist
-    const VALID_STATES = ['thumbnails', 'images', 'originals', 'working', 'inprogress', 'finished'];
-    if (!VALID_STATES.includes(state)) {
-      return res.status(400).json({
-        success: false,
-        error: 'Invalid state parameter'
-      });
-    }
-    
-    // SECURITY: Signature-based authentication bypass is ONLY allowed for thumbnails
-    // This is a security-sensitive decision point that must be controlled by the application,
-    // not just the user-provided state parameter.
-    // We verify BOTH the state value AND the presence of valid signature parameters.
-    const isSignedThumbnailRequest = (state === 'thumbnails' && sig && exp);
-    
-    // For signed thumbnail requests, validate signature instead of requiring auth
-    if (isSignedThumbnailRequest) {
+    // If signature parameters are present, validate them
+    if (sig && exp) {
       // Extract hash from filename - must be valid format
       const hash = filename ? filename.replace(/\.jpg$/i, '') : null;
       
@@ -189,8 +174,27 @@ module.exports = function createDisplayRouter({ db }) {
       return next();
     }
     
-    // For all other cases (non-thumbnails, or thumbnails without valid signature),
-    // require full cookie/token authentication
+    // No signature present - require full authentication
+    return authenticateImageRequest(req, res, next);
+  }
+
+  /**
+   * Middleware for non-thumbnail image states
+   * ALWAYS requires full authentication (no signature bypass)
+   */
+  function authenticateOtherStates(req, res, next) {
+    const { state } = req.params;
+    
+    // Validate state parameter against whitelist
+    const VALID_STATES = ['images', 'originals', 'working', 'inprogress', 'finished'];
+    if (!VALID_STATES.includes(state)) {
+      return res.status(400).json({
+        success: false,
+        error: 'Invalid state parameter'
+      });
+    }
+    
+    // Always require full authentication for non-thumbnail states
     return authenticateImageRequest(req, res, next);
   }
 
@@ -596,73 +600,85 @@ module.exports = function createDisplayRouter({ db }) {
     }
   });
 
-  // Legacy filename-based route (kept for backward compatibility)
-  router.get('/:state/:filename', authenticateThumbnailOrImage, async (req, res) => {
+  // Thumbnail route with optional signature-based authentication
+  router.get('/thumbnails/:filename', authenticateThumbnail, async (req, res) => {
     const reqId = req.id || req.headers['x-request-id'] || null;
     res.set('Cross-Origin-Resource-Policy', 'cross-origin');
-    const { state, filename } = req.params;
+    const { filename } = req.params;
     const { sig, exp } = req.query || {};
-    // 1-year cache for immutable assets (hashed thumbnails, static images)
+    const state = 'thumbnails'; // Hardcoded - not from user input
+    // 1-year cache for immutable assets (hashed thumbnails)
     const IMAGE_CACHE_MAX_AGE = parseInt(process.env.IMAGE_CACHE_MAX_AGE, 10) || 31536000;
 
     try {
-      // Handle thumbnail requests
-      if (state === 'thumbnails') {
-        const hash = filename ? filename.replace(/\.jpg$/i, '') : null;
-        const normalizedFilename = filename && filename.toLowerCase().endsWith('.jpg') ? filename : `${hash}.jpg`;
-        const storagePath = `thumbnails/${normalizedFilename}`;
+      const hash = filename ? filename.replace(/\.jpg$/i, '') : null;
+      const normalizedFilename = filename && filename.toLowerCase().endsWith('.jpg') ? filename : `${hash}.jpg`;
+      const storagePath = `thumbnails/${normalizedFilename}`;
 
-        const isSignedThumbnailRequest = Boolean(sig && exp);
-        const ttlSeconds = isSignedThumbnailRequest ? ttlFromExpSeconds(exp) : 300;
-        const cacheKey = isSignedThumbnailRequest && hash ? `cdn:signed:thumb:${hash}:${exp}` : `cdn:signed:thumb:${normalizedFilename}`;
+      const isSignedThumbnailRequest = Boolean(sig && exp);
+      const ttlSeconds = isSignedThumbnailRequest ? ttlFromExpSeconds(exp) : 300;
+      const cacheKey = isSignedThumbnailRequest && hash ? `cdn:signed:thumb:${hash}:${exp}` : `cdn:signed:thumb:${normalizedFilename}`;
 
-        try {
-          const signedUrl = await getSignedUrlWithCache({
-            cacheKey,
-            storagePath,
-            ttlSeconds
-          });
+      try {
+        const signedUrl = await getSignedUrlWithCache({
+          cacheKey,
+          storagePath,
+          ttlSeconds
+        });
 
-          res.set('Cache-Control', `${isSignedThumbnailRequest ? 'public' : 'private'}, max-age=${ttlSeconds}, immutable`);
-          res.set('X-Redirect-Target', 'supabase-signed');
-          return res.redirect(302, signedUrl);
-        } catch (err) {
-          logger.warn('Thumbnail redirect: signed URL generation failed; falling back to streaming', {
-            reqId,
-            filename,
-            storagePath,
-            error: err && err.message ? err.message : String(err)
-          });
-          // Fall back to existing streaming behavior.
-        }
-
-        const { data, error } = await supabase.storage.from('photos').download(storagePath);
-        if (error || !data) {
-          logger.error('Display route error', {
-            reqId,
-            filename,
-            state,
-            storagePath,
-            error: error ? error.message : 'Not found',
-            stack: error ? error.stack : undefined
-          });
-          res.set('Cache-Control', 'no-store');
-          return res.status(404).json({ error: 'Thumbnail not found' });
-        }
-
-        const buffer = await data.arrayBuffer();
-        const fileBuffer = Buffer.from(buffer);
-        const etag = normalizedFilename;
-        res.set('ETag', etag);
-        res.set('Content-Type', 'image/jpeg');
-
-        res.set('Cache-Control', `${isSignedThumbnailRequest ? 'public' : 'private'}, max-age=${IMAGE_CACHE_MAX_AGE}, immutable`);
-        if (req.headers['if-none-match'] && req.headers['if-none-match'] === etag) {
-          return res.status(304).end();
-        }
-        return res.send(fileBuffer);
+        res.set('Cache-Control', `${isSignedThumbnailRequest ? 'public' : 'private'}, max-age=${ttlSeconds}, immutable`);
+        res.set('X-Redirect-Target', 'supabase-signed');
+        return res.redirect(302, signedUrl);
+      } catch (err) {
+        logger.warn('Thumbnail redirect: signed URL generation failed; falling back to streaming', {
+          reqId,
+          filename,
+          storagePath,
+          error: err && err.message ? err.message : String(err)
+        });
+        // Fall back to existing streaming behavior.
       }
 
+      const { data, error } = await supabase.storage.from('photos').download(storagePath);
+      if (error || !data) {
+        logger.error('Display route error', {
+          reqId,
+          filename,
+          state,
+          storagePath,
+          error: error ? error.message : 'Not found',
+          stack: error ? error.stack : undefined
+        });
+        res.set('Cache-Control', 'no-store');
+        return res.status(404).json({ error: 'Thumbnail not found' });
+      }
+
+      const arrayBuffer = await data.arrayBuffer();
+      const buffer = Buffer.from(arrayBuffer);
+      res.set('Content-Type', 'image/jpeg');
+      res.set('Cache-Control', `${isSignedThumbnailRequest ? 'public' : 'private'}, max-age=${IMAGE_CACHE_MAX_AGE}, immutable`);
+      res.send(buffer);
+    } catch (err) {
+      logger.error('Thumbnail route error', {
+        reqId,
+        filename,
+        error: err.message,
+        stack: err.stack
+      });
+      res.set('Cache-Control', 'no-store');
+      return res.status(500).json({ error: 'Internal server error' });
+    }
+  });
+
+  // Other states route (always requires full authentication)
+  router.get('/:state/:filename', authenticateOtherStates, async (req, res) => {
+    const reqId = req.id || req.headers['x-request-id'] || null;
+    res.set('Cross-Origin-Resource-Policy', 'cross-origin');
+    const { state, filename } = req.params;
+    // 1-year cache for immutable assets (static images)
+    const IMAGE_CACHE_MAX_AGE = parseInt(process.env.IMAGE_CACHE_MAX_AGE, 10) || 31536000;
+
+    try {
       // Originals: strict DB lookup (use db('photos') for compatibility)
 
       if (typeof db !== 'function') {
