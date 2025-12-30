@@ -149,9 +149,21 @@ beforeAll(async () => {
 });
 
 afterAll(async () => {
+  const sleep = (ms) => new Promise((r) => setTimeout(r, ms));
+
   // Clean up test files
   if (fs.existsSync(testImagePath)) {
-    fs.rmSync(testImagePath, { recursive: true, force: true });
+    // On Windows, files can remain momentarily locked after being served.
+    // Best-effort cleanup: retry briefly, then ignore.
+    for (let attempt = 1; attempt <= 3; attempt++) {
+      try {
+        fs.rmSync(testImagePath, { recursive: true, force: true });
+        break;
+      } catch {
+        if (attempt === 3) break;
+        await sleep(100 * attempt);
+      }
+    }
   }
   
   // Clean up working directory test files
@@ -159,7 +171,11 @@ afterAll(async () => {
   testFiles.forEach(file => {
     const filePath = path.join(workingDir, file);
     if (fs.existsSync(filePath)) {
-      fs.unlinkSync(filePath);
+      try {
+        fs.unlinkSync(filePath);
+      } catch {
+        // Best-effort cleanup
+      }
     }
   });
 

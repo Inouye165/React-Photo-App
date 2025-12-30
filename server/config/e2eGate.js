@@ -10,7 +10,12 @@ const { getNodeEnv } = require('./env.validate');
 
 function isE2EEnabled() {
   const nodeEnv = getNodeEnv();
+  // Security hardening:
+  // - Never enable E2E surfaces in production.
+  // - Only enable in automated test runs (NODE_ENV=test), never in dev/staging,
+  //   to reduce the chance of accidental exposure.
   if (nodeEnv === 'production') return false;
+  if (nodeEnv !== 'test') return false;
   return process.env.E2E_ROUTES_ENABLED === 'true';
 }
 

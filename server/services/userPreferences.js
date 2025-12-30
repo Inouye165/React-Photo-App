@@ -12,7 +12,27 @@
 const UNSAFE_PROPERTY_KEYS = new Set(['__proto__', 'prototype', 'constructor']);
 
 function isSafePropertyKey(key) {
-  return typeof key === 'string' && !UNSAFE_PROPERTY_KEYS.has(key);
+  if (typeof key !== 'string') return false;
+  const normalized = String(key);
+  const lowered = normalized.toLowerCase();
+  if (UNSAFE_PROPERTY_KEYS.has(lowered)) return false;
+  if (normalized.length === 0 || normalized.length > 100) return false;
+  // Category keys are human-readable, but keep them bounded and predictable.
+  return /^[a-zA-Z0-9 ._\-]+$/.test(normalized);
+}
+
+function defineSafeProperty(target, key, value) {
+  if (!isSafePropertyKey(key)) return;
+  try {
+    Object.defineProperty(target, key, {
+      value,
+      enumerable: true,
+      configurable: true,
+      writable: true
+    });
+  } catch {
+    // Best-effort: if defineProperty fails, skip the key.
+  }
 }
 
 /**
@@ -115,10 +135,7 @@ function createUserPreferencesService({ db }) {
     if (newPrefs.gradingScales) {
       for (const [category, scales] of Object.entries(newPrefs.gradingScales)) {
         if (
-          typeof category !== 'string' ||
-          category === '__proto__' ||
-          category === 'constructor' ||
-          category === 'prototype'
+          !isSafePropertyKey(category)
         ) {
           throw new Error(`Invalid grading scales category: ${category}`);
         }
@@ -144,12 +161,7 @@ function createUserPreferencesService({ db }) {
       ? currentPrefs.gradingScales
       : {};
     for (const [category, scales] of Object.entries(currentScales)) {
-      if (
-        typeof category === 'string' &&
-        category !== '__proto__' &&
-        category !== 'constructor' &&
-        category !== 'prototype'
-      ) {
+      if (isSafePropertyKey(category)) {
         mergedGradingScalesMap.set(category, scales);
       }
     }
@@ -158,12 +170,7 @@ function createUserPreferencesService({ db }) {
       : null;
     if (incomingScales) {
       for (const [category, scales] of Object.entries(incomingScales)) {
-        if (
-          typeof category === 'string' &&
-          category !== '__proto__' &&
-          category !== 'constructor' &&
-          category !== 'prototype'
-        ) {
+        if (isSafePropertyKey(category)) {
           mergedGradingScalesMap.set(category, scales);
         }
       }
@@ -214,7 +221,10 @@ function createUserPreferencesService({ db }) {
     }
 
     const preferences = await getPreferences(userId);
-    const scales = preferences.gradingScales?.[category];
+    const gradingScales = preferences && typeof preferences === 'object' ? preferences.gradingScales : undefined;
+    const scales = gradingScales && typeof gradingScales === 'object'
+      ? Object.getOwnPropertyDescriptor(gradingScales, category)?.value
+      : undefined;
 
     if (!scales || !Array.isArray(scales)) {
       // Fall back to defaults
@@ -257,7 +267,7 @@ function createUserPreferencesService({ db }) {
         if (!isSafePropertyKey(category)) {
           continue;
         }
-        mergedScales[category] = scales;
+        defineSafeProperty(mergedScales, category, scales);
       }
     }
 
@@ -269,7 +279,7 @@ function createUserPreferencesService({ db }) {
         Object.prototype.hasOwnProperty.call(DEFAULT_GRADING_SCALES, category) &&
         !Object.prototype.hasOwnProperty.call(mergedScales, category)
       ) {
-        mergedScales[category] = [...DEFAULT_GRADING_SCALES[category]];
+        defineSafeProperty(mergedScales, category, [...DEFAULT_GRADING_SCALES[category]]);
       }
     }
 
