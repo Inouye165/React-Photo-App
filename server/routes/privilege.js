@@ -4,31 +4,7 @@ const logger = require('../logger');
 const UNSAFE_PROPERTY_KEYS = new Set(['__proto__', 'prototype', 'constructor']);
 
 function isSafePropertyKey(key) {
-  if (typeof key !== 'string') return false;
-  const normalized = String(key);
-  const lowered = normalized.toLowerCase();
-  if (UNSAFE_PROPERTY_KEYS.has(lowered)) return false;
-  // Filenames should be bounded and not contain path traversal/separators.
-  if (normalized.length === 0 || normalized.length > 255) return false;
-  if (normalized.includes('..') || normalized.includes('/') || normalized.includes('\\')) return false;
-  // Keep keys JSON-safe and predictable.
-  return /^[a-zA-Z0-9._-]+$/.test(normalized);
-}
-
-function defineSafeProperty(target, key, value) {
-  if (!isSafePropertyKey(key)) return;
-  try {
-    // lgtm[js/remote-property-injection] -- key is validated/allowlisted and target is a null-prototype map.
-    // codeql[js/remote-property-injection] - Key is validated/allowlisted and target is a null-prototype map.
-    Object.defineProperty(target, key, {
-      value,
-      enumerable: true,
-      configurable: true,
-      writable: true
-    });
-  } catch {
-    // Best-effort: skip unsafe/unsettable keys.
-  }
+  return typeof key === 'string' && !UNSAFE_PROPERTY_KEYS.has(String(key).toLowerCase());
 }
 
 module.exports = function createPrivilegeRouter({ db }) {
@@ -69,17 +45,20 @@ module.exports = function createPrivilegeRouter({ db }) {
         // Determine privileges based on ownership
         const privilegesMap = Object.create(null);
         filenames.forEach(filename => {
+          if (!isSafePropertyKey(filename)) {
+            return;
+          }
           const ownerId = photoOwners.get(filename);
           
           if (!ownerId) {
             // File not found in database - no permissions
-            defineSafeProperty(privilegesMap, filename, '');
+            privilegesMap[filename] = '';
           } else if (ownerId === req.user.id) {
             // User owns the file - full permissions
-            defineSafeProperty(privilegesMap, filename, 'RWX');
+            privilegesMap[filename] = 'RWX';
           } else {
             // User does not own the file - read-only (assuming public)
-            defineSafeProperty(privilegesMap, filename, 'R');
+            privilegesMap[filename] = 'R';
           }
         });
 
