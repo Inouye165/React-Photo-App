@@ -424,7 +424,8 @@ async function processPhotoAI({ fileBuffer, filename, metadata, gps, device, isR
     if (allowDevDebug && process.env.NODE_ENV !== 'production') {
       try {
         const os = require('os');
-        const debugPath = path.join(os.tmpdir(), `photo-app-ai-debug-${Date.now()}-${crypto.randomUUID()}.jpg`);
+        const debugDir = fs.mkdtempSync(path.join(os.tmpdir(), 'photo-app-ai-debug-'));
+        const debugPath = path.join(debugDir, `${crypto.randomUUID()}.jpg`);
         const fd = fs.openSync(debugPath, 'wx', 0o600);
         try {
           fs.writeFileSync(fd, imageBuffer);

@@ -2,6 +2,7 @@ const request = require('supertest');
 const express = require('express');
 const path = require('path');
 const fs = require('fs');
+const os = require('os');
 const jwt = require('jsonwebtoken');
 const rateLimit = require('express-rate-limit'); //
 const { authenticateImageRequest } = require('../middleware/imageAuth');
@@ -19,9 +20,10 @@ const { convertHeicToJpegBuffer } = require('../media/image');
 describe('Display Endpoint with HEIC Support', () => {
   let app;
   let validToken;
-  const testImageDir = path.join(__dirname, 'test-images');
+  let testImageDir;
 
   beforeAll(() => {
+    testImageDir = fs.mkdtempSync(path.join(os.tmpdir(), 'photo-app-test-images-'));
     // Set env variable so validator allows test image directory
     process.env.TEST_IMAGE_DIR = testImageDir;
 
@@ -108,11 +110,6 @@ describe('Display Endpoint with HEIC Support', () => {
       }
     });
 
-    // Create test images directory and files
-    if (!fs.existsSync(testImageDir)) {
-      fs.mkdirSync(testImageDir, { recursive: true });
-    }
-    
     // Create test files
     fs.writeFileSync(path.join(testImageDir, 'test.jpg'), 'fake-jpeg-data');
     fs.writeFileSync(path.join(testImageDir, 'test.heic'), 'fake-heic-data');

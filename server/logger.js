@@ -69,6 +69,20 @@ function sanitizeBindingValue(value) {
   return escapeLogNewlines(String(value));
 }
 
+function defineSafeProperty(target, key, value) {
+  if (!isSafeObjectKey(key)) return;
+  try {
+    Object.defineProperty(target, key, {
+      value,
+      enumerable: true,
+      configurable: true,
+      writable: true
+    });
+  } catch {
+    // Best-effort: if defineProperty fails for any reason, skip the key.
+  }
+}
+
 function redact(arg, visited = new WeakSet()) {
   if (arg === null || arg === undefined) return arg;
 
@@ -90,28 +104,21 @@ function redact(arg, visited = new WeakSet()) {
       // Use a null-prototype object to avoid prototype pollution via keys like
       // __proto__/constructor/prototype.
       const redacted = Object.create(null);
-      for (const key in arg) {
-        // We iterate over all properties including prototype for Error objects usually, 
-        // but for plain objects just own properties.
-        // However, for Error objects, message and stack are often not enumerable.
-        if (Object.prototype.hasOwnProperty.call(arg, key)) {
-          if (!isSafeObjectKey(key)) {
-            continue;
-          }
-          const lowerKey = key.toLowerCase();
-          if (SENSITIVE_KEYS.has(lowerKey)) {
-            redacted[key] = '[REDACTED]';
-          } else {
-            redacted[key] = redact(arg[key], visited);
-          }
+
+      for (const key of Object.keys(arg)) {
+        const lowerKey = String(key).toLowerCase();
+        if (SENSITIVE_KEYS.has(lowerKey)) {
+          defineSafeProperty(redacted, key, '[REDACTED]');
+        } else {
+          defineSafeProperty(redacted, key, redact(arg[key], visited));
         }
       }
       
       // Special handling for Error objects to make sure message/stack are captured/redacted
       if (arg instanceof Error) {
-        redacted.message = redact(arg.message, visited);
-        redacted.stack = redact(arg.stack, visited);
-        redacted.name = arg.name;
+        defineSafeProperty(redacted, 'message', redact(arg.message, visited));
+        defineSafeProperty(redacted, 'stack', redact(arg.stack, visited));
+        defineSafeProperty(redacted, 'name', arg.name);
         // Copy any other properties that might have been missed if not enumerable
         // (though usually custom props on Error are enumerable)
       }
