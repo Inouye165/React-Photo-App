@@ -139,7 +139,7 @@ function createUserPreferencesService({ db }) {
     // Get current preferences
     const currentPrefs = await getPreferences(userId);
 
-    const mergedGradingScales = Object.create(null);
+    const mergedGradingScalesMap = new Map();
     const currentScales = currentPrefs.gradingScales && typeof currentPrefs.gradingScales === 'object'
       ? currentPrefs.gradingScales
       : {};
@@ -150,7 +150,7 @@ function createUserPreferencesService({ db }) {
         category !== 'constructor' &&
         category !== 'prototype'
       ) {
-        mergedGradingScales[category] = scales;
+        mergedGradingScalesMap.set(category, scales);
       }
     }
     const incomingScales = newPrefs.gradingScales && typeof newPrefs.gradingScales === 'object'
@@ -164,10 +164,12 @@ function createUserPreferencesService({ db }) {
           category !== 'constructor' &&
           category !== 'prototype'
         ) {
-          mergedGradingScales[category] = scales;
+          mergedGradingScalesMap.set(category, scales);
         }
       }
     }
+
+    const mergedGradingScales = Object.fromEntries(mergedGradingScalesMap);
 
     // Merge with new preferences (deep merge for gradingScales)
     const mergedPrefs = {
