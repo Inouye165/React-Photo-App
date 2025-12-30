@@ -37,6 +37,12 @@ const SENSITIVE_KEYS = new Set([
   'cookie', 'set-cookie'
 ]);
 
+const UNSAFE_PROPERTY_KEYS = new Set(['__proto__', 'prototype', 'constructor']);
+
+function isSafePropertyKey(key) {
+  return typeof key === 'string' && !UNSAFE_PROPERTY_KEYS.has(key);
+}
+
 // Regex to match key=value or key%3Dvalue in strings
 // Matches: (key)(separator)(value)
 // Separator can be =, :, %3D, %3A
@@ -63,12 +69,15 @@ function redact(arg, visited = new WeakSet()) {
       }
 
       // Handle plain objects and errors
-      const redacted = {};
+      const redacted = Object.create(null);
       for (const key in arg) {
         // We iterate over all properties including prototype for Error objects usually, 
         // but for plain objects just own properties.
         // However, for Error objects, message and stack are often not enumerable.
         if (Object.prototype.hasOwnProperty.call(arg, key)) {
+          if (!isSafePropertyKey(key)) {
+            continue;
+          }
           const lowerKey = key.toLowerCase();
           if (SENSITIVE_KEYS.has(lowerKey)) {
             redacted[key] = '[REDACTED]';

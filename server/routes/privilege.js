@@ -1,6 +1,12 @@
 const express = require('express');
 const logger = require('../logger');
 
+const UNSAFE_PROPERTY_KEYS = new Set(['__proto__', 'prototype', 'constructor']);
+
+function isSafePropertyKey(key) {
+  return typeof key === 'string' && !UNSAFE_PROPERTY_KEYS.has(key);
+}
+
 module.exports = function createPrivilegeRouter({ db }) {
   const router = express.Router();
 
@@ -37,8 +43,11 @@ module.exports = function createPrivilegeRouter({ db }) {
         });
 
         // Determine privileges based on ownership
-        const privilegesMap = {};
+        const privilegesMap = Object.create(null);
         filenames.forEach(filename => {
+          if (!isSafePropertyKey(filename)) {
+            return;
+          }
           const ownerId = photoOwners.get(filename);
           
           if (!ownerId) {

@@ -9,6 +9,12 @@
 
 'use strict';
 
+const UNSAFE_PROPERTY_KEYS = new Set(['__proto__', 'prototype', 'constructor']);
+
+function isSafePropertyKey(key) {
+  return typeof key === 'string' && !UNSAFE_PROPERTY_KEYS.has(key);
+}
+
 /**
  * Default grading scales for common collectible categories.
  * Users can load these as starter packs.
@@ -166,12 +172,18 @@ function createUserPreferencesService({ db }) {
       return null;
     }
 
+    if (!isSafePropertyKey(category)) {
+      return null;
+    }
+
     const preferences = await getPreferences(userId);
     const scales = preferences.gradingScales?.[category];
 
     if (!scales || !Array.isArray(scales)) {
       // Fall back to defaults
-      const defaultScales = DEFAULT_GRADING_SCALES[category];
+      const defaultScales = Object.prototype.hasOwnProperty.call(DEFAULT_GRADING_SCALES, category)
+        ? DEFAULT_GRADING_SCALES[category]
+        : null;
       if (!defaultScales) return null;
       
       const match = defaultScales.find(s => s.label === label);
@@ -202,9 +214,22 @@ function createUserPreferencesService({ db }) {
     const categoriesToLoad = categories || Object.keys(DEFAULT_GRADING_SCALES);
 
     // Merge defaults (existing user scales take precedence)
-    const mergedScales = { ...currentScales };
+    const mergedScales = Object.create(null);
+    for (const category of Object.keys(currentScales)) {
+      if (!isSafePropertyKey(category)) {
+        continue;
+      }
+      mergedScales[category] = currentScales[category];
+    }
+
     for (const category of categoriesToLoad) {
-      if (DEFAULT_GRADING_SCALES[category] && !mergedScales[category]) {
+      if (!isSafePropertyKey(category)) {
+        continue;
+      }
+      if (
+        Object.prototype.hasOwnProperty.call(DEFAULT_GRADING_SCALES, category) &&
+        !Object.prototype.hasOwnProperty.call(mergedScales, category)
+      ) {
         mergedScales[category] = [...DEFAULT_GRADING_SCALES[category]];
       }
     }
