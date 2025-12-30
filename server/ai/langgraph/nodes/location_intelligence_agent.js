@@ -202,7 +202,7 @@ async function location_intelligence_agent(state) {
 
   const userPrompt = LOCATION_INTEL_USER_PROMPT.replace('{structuredContext}', JSON.stringify(structuredContext, null, 2));
 
-  let locationIntel = buildLocationIntelDefaults();
+  let locationIntel;
   try {
     const response = await openai.chat.completions.create({
       model: locationModel,

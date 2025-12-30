@@ -1,14 +1,10 @@
 const { spawn } = require('child_process');
 const path = require('path');
-const fs = require('fs');
 require('dotenv').config();
 require('dotenv').config({ path: path.join(__dirname, '../server/.env') });
-const { createClient } = require('@supabase/supabase-js');
 
 // --- MOCK SUPABASE AUTH SERVER ---
 const http = require('http');
-let mockServer;
-let mockPort;
 
 async function startMockSupabaseServer() {
   return new Promise((resolve, reject) => {

@@ -40,7 +40,7 @@ describe('store AI polling (single poller)', () => {
   });
 
   it('continues polling until API returns terminal state and then clears spinner flags', async () => {
-    const getPhoto = vi.mocked(api.getPhoto)
+    const getPhoto = vi.mocked(api.getPhoto);
     getPhoto
       .mockResolvedValueOnce({ photo: { id: 1, url: '/photos/1.jpg', state: 'inprogress', caption: 'Processing...' } })
       .mockResolvedValueOnce({ photo: { id: 1, url: '/photos/1.jpg', state: 'finished', caption: 'Done' } });
@@ -63,7 +63,7 @@ describe('store AI polling (single poller)', () => {
   });
 
   it('does not stop early on a transient error and still reaches terminal state', async () => {
-    const getPhoto = vi.mocked(api.getPhoto)
+    const getPhoto = vi.mocked(api.getPhoto);
     getPhoto
       .mockRejectedValueOnce(new Error('network blip'))
       .mockResolvedValueOnce({ photo: { id: 1, url: '/photos/1.jpg', state: 'finished', caption: 'Done' } });
@@ -87,7 +87,7 @@ describe('store AI polling (single poller)', () => {
   });
 
   it('hard-timeout is explicit (does not silently stop while state stays inprogress)', async () => {
-    const getPhoto = vi.mocked(api.getPhoto)
+    const getPhoto = vi.mocked(api.getPhoto);
     getPhoto.mockResolvedValue({ photo: { id: 1, url: '/photos/1.jpg', state: 'inprogress', caption: 'Processing...' } });
 
     useStore.getState().startAiPolling(1, { intervalMs: 1, softTimeoutMs: 1, hardTimeoutMs: 5, maxIntervalMs: 5 });
@@ -106,7 +106,7 @@ describe('store AI polling (single poller)', () => {
   });
 
   it('stops after 5 consecutive errors (but not before)', async () => {
-    const getPhoto = vi.mocked(api.getPhoto)
+    const getPhoto = vi.mocked(api.getPhoto);
     getPhoto.mockRejectedValue(new Error('network down'));
 
     useStore.getState().startAiPolling(1, {

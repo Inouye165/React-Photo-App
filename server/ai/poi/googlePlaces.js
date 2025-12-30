@@ -25,10 +25,8 @@ const API_KEY =
   process.env.GOOGLE_MAPS_API_KEY ||
   process.env.GOOGLE_PLACES_API_KEY ||
   process.env.GOOGLE_API_KEY;
-let warned = false;
-if (!API_KEY && !warned) {
+if (!API_KEY) {
   logger.warn('[POI] GOOGLE_MAPS_API_KEY missing; skipping POI lookups');
-  warned = true;
 }
 
 

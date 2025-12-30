@@ -37,7 +37,7 @@ export function useChatTyping({ roomId, userId, supabase, participants }: UseCha
   );
 
   useEffect(() => {
-    const supabaseAny = supabase as any
+    const supabaseAny = supabase as any;
 
     // Cleanup previous channel
     if (channelRef.current) {
@@ -91,7 +91,7 @@ export function useChatTyping({ roomId, userId, supabase, participants }: UseCha
     };
   }, [roomId, userId, supabase]);
 
-  const typingUsernames = useMemo(() => Array.from(typingUsers).map(getUsername), [typingUsers, getUsername])
+  const typingUsernames = useMemo(() => Array.from(typingUsers).map(getUsername), [typingUsers, getUsername]);
 
   // Call on input change
   const sendTyping = useCallback(

@@ -104,7 +104,7 @@ vi.mock('./PhotoUploadForm', () => ({
 // Mock ImageCanvasEditor to avoid react-konva issues
 vi.mock('./ImageCanvasEditor', () => ({
   default: ({ onSave }) => React.createElement('div', { 'data-testid': 'image-canvas-editor' }, React.createElement('button', { onClick: () => onSave({ textStyle: {} }) }, 'Save'))
-}))
+}));
 
 // We need to mock the api module BEFORE importing App so App imports the mocked functions.
 const photosStore = [];

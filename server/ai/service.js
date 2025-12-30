@@ -457,7 +457,7 @@ async function processPhotoAI({ fileBuffer, filename, metadata, gps, device, isR
   let meta = {};
   if (typeof metadata === 'string') {
     try {
-      meta = JSON.parse(metadata || '{}');
+      meta = JSON.parse(metadata);
     } catch (parseErr) {
       logger.warn('[AI] Failed to parse metadata string; using empty metadata.', parseErr.message || parseErr);
       meta = {};

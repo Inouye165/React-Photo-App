@@ -58,7 +58,7 @@ function redactUrl(url) {
 // Default radiusMeters is now 50 (164 feet)
 // Expand to a configurable maximum radius (meters) when looking for restaurants
 // Add env var FOOD_PLACES_MAX_RADIUS_METERS to allow config in CI/Prod
-const FOOD_PLACES_MAX_RADIUS_METERS = Number(process.env.FOOD_PLACES_MAX_RADIUS_METERS || process.env.FOOD_PLACES_MAX_RADIUS_METERS || 1000);
+const FOOD_PLACES_MAX_RADIUS_METERS = Number(process.env.FOOD_PLACES_MAX_RADIUS_METERS || 1000);
 const FOOD_PLACES_START_RADIUS_METERS = Number(process.env.FOOD_PLACES_START_RADIUS_METERS || 50);
 
 async function nearbyFoodPlaces(lat, lon, radiusMeters = 15.24, opts = {}) {
