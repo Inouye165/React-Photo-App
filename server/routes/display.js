@@ -145,7 +145,7 @@ module.exports = function createDisplayRouter({ db }) {
       // Extract hash from filename - must be valid format
       const hash = filename ? filename.replace(/\.jpg$/i, '') : null;
       
-      if (!hash || hash.length < 10) { // Basic validation: hash should be meaningful
+      if (!hash) {
         return res.status(400).json({
           success: false,
           error: 'Invalid filename'
