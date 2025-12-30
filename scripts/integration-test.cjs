@@ -39,6 +39,8 @@ const SERVER_CMD = 'node';
 const SERVER_ARGS = ['server/server.js'];
 const HEALTH_URL = { hostname: 'localhost', port: 3001, path: '/health', method: 'GET' };
 const INTEGRATION_ORIGIN = 'http://localhost:5173';
+// CSRF token endpoint (csurf): GET /csrf -> { csrfToken } and sets csrfSecret cookie.
+const CSRF_URL = { hostname: 'localhost', port: 3001, path: '/csrf', method: 'GET', headers: { 'Origin': INTEGRATION_ORIGIN } };
 
 // Test user credentials for integration testing
 const TEST_USER = {
