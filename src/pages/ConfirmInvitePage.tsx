@@ -1,6 +1,33 @@
 import { useMemo, useState } from 'react';
 import { useLocation } from 'react-router-dom';
 
+function getConfiguredSupabaseHostname(): string | null {
+  try {
+    const raw =
+      typeof import.meta !== 'undefined' && import.meta.env?.VITE_SUPABASE_URL
+        ? String(import.meta.env.VITE_SUPABASE_URL)
+        : '';
+    if (!raw) return null;
+    return new URL(raw).hostname.toLowerCase();
+  } catch {
+    return null;
+  }
+}
+
+function isAllowedSupabaseVerifyUrl(url: URL, configuredSupabaseHostname: string | null): boolean {
+  if (url.protocol !== 'https:' && url.protocol !== 'http:') return false;
+
+  const hostname = url.hostname.toLowerCase();
+  const allowedHost = configuredSupabaseHostname
+    ? hostname === configuredSupabaseHostname
+    : hostname.endsWith('.supabase.co') || hostname.endsWith('.supabase.in');
+
+  if (!allowedHost) return false;
+  if (!url.pathname.includes('/auth/v1/verify')) return false;
+
+  return true;
+}
+
 export default function ConfirmInvitePage() {
   const location = useLocation();
   const [error, setError] = useState<string | null>(null);
@@ -19,12 +46,21 @@ export default function ConfirmInvitePage() {
       // best-effort
     }
 
+    let url: URL;
+    try {
+      url = new URL(decoded);
+    } catch {
+      return null;
+    }
+
+    const configuredSupabaseHostname = getConfiguredSupabaseHostname();
+    if (!isAllowedSupabaseVerifyUrl(url, configuredSupabaseHostname)) return null;
+
     // If the confirmation URL is a Supabase verify link for an invite/recovery,
     // force redirect_to to our reset-password route.
     // This makes the post-verify landing page deterministic even if the Supabase
     // project Site URL is set to the root.
     try {
-      const url = new URL(decoded);
       const verificationType = url.searchParams.get('type');
       const isVerifyEndpoint = url.pathname.includes('/auth/v1/verify');
 
@@ -39,7 +75,7 @@ export default function ConfirmInvitePage() {
       // If it's not a valid URL, just pass it through.
     }
 
-    return decoded;
+    return url.toString();
   }, [location.search]);
 
   const onContinue = () => {
