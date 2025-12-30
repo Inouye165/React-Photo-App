@@ -190,8 +190,8 @@ function buildGpsDate(meta) {
   let seconds = '00';
   if (Array.isArray(meta.GPSTimeStamp)) {
     const [h = 0, m = 0, s = 0] = meta.GPSTimeStamp;
-    const hNum = toNumber(h) || 0;
-    const mNum = toNumber(m) || 0;
+    const hNum = toNumber(h) ?? 0;
+    const mNum = toNumber(m) ?? 0;
     const sNum = toNumber(s);
     hours = String(Math.floor(hNum)).padStart(2, '0');
     minutes = String(Math.floor(mNum)).padStart(2, '0');
@@ -455,7 +455,7 @@ async function processPhotoAI({ fileBuffer, filename, metadata, gps, device, isR
   });
 
   let meta = {};
-  if (typeof metadata === 'string') {
+  if (typeof metadata === 'string' && metadata) {
     try {
       meta = JSON.parse(metadata);
     } catch (parseErr) {
