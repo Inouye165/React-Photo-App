@@ -234,27 +234,35 @@ function createUserPreferencesService({ db }) {
     const currentPrefs = await getPreferences(userId);
     const currentScales = currentPrefs.gradingScales || {};
 
-    // Determine which categories to load.
-    // SECURITY: only allow categories that exist in DEFAULT_GRADING_SCALES.
-    // This prevents writing user-controlled keys onto objects.
-    const categoriesToLoadRaw = Array.isArray(categories) ? categories : Object.keys(DEFAULT_GRADING_SCALES);
-    const categoriesToLoad = categoriesToLoadRaw
-      .filter((c) => typeof c === 'string')
-      .filter((c) => isSafePropertyKey(c))
-      .filter((c) => Object.prototype.hasOwnProperty.call(DEFAULT_GRADING_SCALES, c));
+    // STRATEGY: To satisfy CodeQL's taint tracking, avoid writing ANY user-derived
+    // values as property keys. Instead, iterate over KNOWN default category keys
+    // (from DEFAULT_GRADING_SCALES) and only copy user data if the user explicitly
+    // requested that category in the allowlist.
+    const userRequestedSet = new Set(
+      Array.isArray(categories)
+        ? categories.filter((c) => typeof c === 'string' && isSafePropertyKey(c))
+        : Object.keys(DEFAULT_GRADING_SCALES)
+    );
 
-    // Merge defaults (existing user scales take precedence) for allowlisted categories only.
     const mergedScales = Object.create(null);
-    for (const category of categoriesToLoad) {
+
+    // Iterate over KNOWN category keys from defaults (not user input).
+    for (const knownCategory of Object.keys(DEFAULT_GRADING_SCALES)) {
+      // Skip if user didn't request this category
+      if (!userRequestedSet.has(knownCategory)) {
+        continue;
+      }
+
       const hasUserScale =
         currentScales &&
         typeof currentScales === 'object' &&
-        Object.prototype.hasOwnProperty.call(currentScales, category);
+        Object.prototype.hasOwnProperty.call(currentScales, knownCategory);
 
       if (hasUserScale) {
         try {
-          Object.defineProperty(mergedScales, category, {
-            value: currentScales[category],
+          // knownCategory is from DEFAULT_GRADING_SCALES keys (not tainted by user input)
+          Object.defineProperty(mergedScales, knownCategory, {
+            value: currentScales[knownCategory],
             enumerable: true,
             configurable: true,
             writable: true
@@ -266,8 +274,8 @@ function createUserPreferencesService({ db }) {
       }
 
       try {
-        Object.defineProperty(mergedScales, category, {
-          value: [...DEFAULT_GRADING_SCALES[category]],
+        Object.defineProperty(mergedScales, knownCategory, {
+          value: [...DEFAULT_GRADING_SCALES[knownCategory]],
           enumerable: true,
           configurable: true,
           writable: true
