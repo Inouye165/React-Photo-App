@@ -26,6 +26,17 @@ const METHOD_MAP = Object.freeze({
   trace: typeof console.debug === 'function' ? 'debug' : 'log'
 });
 
+// Capture the original console methods early so our internal logger sink
+// doesn't route through our own global console wrappers (which would otherwise
+// double-encode output).
+const ORIGINAL_CONSOLE = {
+  log: typeof console.log === 'function' ? console.log.bind(console) : null,
+  warn: typeof console.warn === 'function' ? console.warn.bind(console) : null,
+  error: typeof console.error === 'function' ? console.error.bind(console) : null,
+  info: typeof console.info === 'function' ? console.info.bind(console) : null,
+  debug: typeof console.debug === 'function' ? console.debug.bind(console) : null
+};
+
 const subscribers = {
   log: new Set(),
   error: new Set(),
@@ -72,6 +83,7 @@ function sanitizeBindingValue(value) {
 function defineSafeProperty(target, key, value) {
   if (!isSafeObjectKey(key)) return;
   try {
+    // lgtm[js/remote-property-injection] - Safe: key is allowlisted by isSafeObjectKey and target is a null-prototype object in all call sites.
     Object.defineProperty(target, key, {
       value,
       enumerable: true,
@@ -217,7 +229,7 @@ class TinyLogger {
         if (!isSafeObjectKey(key)) {
           continue;
         }
-        safeBindings[key] = sanitizeBindingValue(value);
+        defineSafeProperty(safeBindings, key, sanitizeBindingValue(value));
       }
       this.bindings = Object.freeze(safeBindings);
     } else {
@@ -304,13 +316,15 @@ class TinyLogger {
     if (this.bindings && typeof this.bindings === 'object') {
       for (const [key, value] of Object.entries(this.bindings)) {
         if (isSafeObjectKey(key)) {
-          combined[key] = sanitizeBindingValue(value);
+          // codeql[js/remote-property-injection] - Safe: combined is null-prototype and key is allowlisted by isSafeObjectKey before defineProperty.
+          defineSafeProperty(combined, key, sanitizeBindingValue(value));
         }
       }
     }
     for (const [key, value] of Object.entries(extraBindings)) {
       if (isSafeObjectKey(key)) {
-        combined[key] = sanitizeBindingValue(value);
+        // codeql[js/remote-property-injection] - Safe: combined is null-prototype and key is allowlisted by isSafeObjectKey before defineProperty.
+        defineSafeProperty(combined, key, sanitizeBindingValue(value));
       }
     }
     return new TinyLogger(combined);
@@ -346,26 +360,24 @@ class TinyLogger {
       return;
     }
     const preparedArgs = applyBindings(this.bindings, args);
-    
+
     // Redact arguments before logging or emitting
     const redactedArgs = preparedArgs.map(arg => redact(arg));
 
+    // Final sink hardening: emit a single-line string to the console.
+    // This avoids multiline log injection (CWE-117) and is easier for CodeQL
+    // to reason about than passing arbitrary objects/args.
+    const safeLine = JSON.stringify(redactedArgs).replace(/[\r\n]/g, ' ');
+
     const methodName = METHOD_MAP[normalized] || 'log';
-    const method = typeof console[methodName] === 'function' ? console[methodName] : console.log;
-    // SAFETY: Check that method exists and has apply before calling
-    // This prevents crashes when Jest or other tools modify console at runtime
-    if (typeof method === 'function' && typeof method.apply === 'function') {
+    const sink = ORIGINAL_CONSOLE[methodName] || ORIGINAL_CONSOLE.log;
+    if (typeof sink === 'function') {
       try {
-        method.apply(console, redactedArgs);
+        sink(safeLine);
       } catch {
-        // Fallback to direct call if apply fails (extremely rare, but defensive)
-        try {
-          method(...redactedArgs);
-        } catch {
-          // Last resort: try to use process.stderr if available
-          if (typeof process !== 'undefined' && process.stderr && typeof process.stderr.write === 'function') {
-            process.stderr.write(`[Logger Error] ${JSON.stringify(redactedArgs)}\n`);
-          }
+        // Last resort: try to use process.stderr if available
+        if (typeof process !== 'undefined' && process.stderr && typeof process.stderr.write === 'function') {
+          process.stderr.write(`[Logger Error] ${safeLine}\n`);
         }
       }
     }
@@ -379,19 +391,12 @@ class TinyLogger {
 const rootLogger = new TinyLogger();
 
 // Wrap global console methods to apply redaction everywhere
-const originalConsole = {
-  log: console.log ? console.log.bind(console) : null,
-  warn: console.warn ? console.warn.bind(console) : null,
-  error: console.error ? console.error.bind(console) : null,
-  info: console.info ? console.info.bind(console) : null,
-  debug: console.debug ? console.debug.bind(console) : null,
-};
-
 ['log', 'warn', 'error', 'info', 'debug'].forEach(method => {
-  if (typeof console[method] === 'function' && originalConsole[method]) {
+  if (typeof console[method] === 'function' && ORIGINAL_CONSOLE[method]) {
     console[method] = function(...args) {
       const redactedArgs = args.map(arg => redact(arg));
-      originalConsole[method](...redactedArgs);
+      const safeLine = JSON.stringify(redactedArgs).replace(/[\r\n]/g, ' ');
+      ORIGINAL_CONSOLE[method](safeLine);
     };
   }
 });

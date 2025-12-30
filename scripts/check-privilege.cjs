@@ -19,8 +19,9 @@ const req = http.request(opts, (res) => {
   res.on('end', () => {
     try {
       const body = JSON.parse(data);
+      const safeBody = String(JSON.stringify(body)).replace(/[\r\n]+/g, ' ');
       console.log('Status:', res.statusCode);
-      console.log('Body:', body);
+      console.log('Body:', safeBody);
 
       if (res.statusCode !== 200) {
         process.exitCode = 1;

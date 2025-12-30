@@ -20,6 +20,12 @@ let nonOwnerToken = 'non-owner-token';
 const ownerId = 'owner-uuid-123';
 const nonOwnerId = 'non-owner-uuid-456';
 
+function getAccess(privileges, filename) {
+  if (!Array.isArray(privileges)) return undefined;
+  const entry = privileges.find(p => p && typeof p === 'object' && p.filename === filename);
+  return entry && typeof entry.access === 'string' ? entry.access : undefined;
+}
+
 beforeEach(() => {
   app = express();
   app.use(express.json());
@@ -105,7 +111,7 @@ describe('Privilege Endpoint - Ownership Checks', () => {
       expect(res.status).toBe(200);
       expect(res.body.success).toBe(true);
       expect(res.body.privileges).toBeDefined();
-      expect(res.body.privileges['owner-photo.jpg']).toBe('RWX');
+      expect(getAccess(res.body.privileges, 'owner-photo.jpg')).toBe('RWX');
     });
 
     test('Owner receives RWX for multiple owned photos', async () => {
@@ -134,8 +140,8 @@ describe('Privilege Endpoint - Ownership Checks', () => {
 
       expect(res.status).toBe(200);
       expect(res.body.success).toBe(true);
-      expect(res.body.privileges['owner-photo-1.jpg']).toBe('RWX');
-      expect(res.body.privileges['owner-photo-2.jpg']).toBe('RWX');
+      expect(getAccess(res.body.privileges, 'owner-photo-1.jpg')).toBe('RWX');
+      expect(getAccess(res.body.privileges, 'owner-photo-2.jpg')).toBe('RWX');
     });
   });
 
@@ -159,11 +165,11 @@ describe('Privilege Endpoint - Ownership Checks', () => {
       expect(res.status).toBe(200);
       expect(res.body.success).toBe(true);
       expect(res.body.privileges).toBeDefined();
-      expect(res.body.privileges['owner-photo.jpg']).toBe('R');
+      expect(getAccess(res.body.privileges, 'owner-photo.jpg')).toBe('R');
       
       // Verify no write or execute permissions
-      expect(res.body.privileges['owner-photo.jpg']).not.toContain('W');
-      expect(res.body.privileges['owner-photo.jpg']).not.toContain('X');
+      expect(getAccess(res.body.privileges, 'owner-photo.jpg')).not.toContain('W');
+      expect(getAccess(res.body.privileges, 'owner-photo.jpg')).not.toContain('X');
     });
 
     test('Non-owner receives R only for multiple other user photos', async () => {
@@ -192,8 +198,8 @@ describe('Privilege Endpoint - Ownership Checks', () => {
 
       expect(res.status).toBe(200);
       expect(res.body.success).toBe(true);
-      expect(res.body.privileges['owner-photo-1.jpg']).toBe('R');
-      expect(res.body.privileges['owner-photo-2.jpg']).toBe('R');
+      expect(getAccess(res.body.privileges, 'owner-photo-1.jpg')).toBe('R');
+      expect(getAccess(res.body.privileges, 'owner-photo-2.jpg')).toBe('R');
     });
   });
 
@@ -225,8 +231,8 @@ describe('Privilege Endpoint - Ownership Checks', () => {
 
       expect(res.status).toBe(200);
       expect(res.body.success).toBe(true);
-      expect(res.body.privileges['my-photo.jpg']).toBe('RWX');
-      expect(res.body.privileges['their-photo.jpg']).toBe('R');
+      expect(getAccess(res.body.privileges, 'my-photo.jpg')).toBe('RWX');
+      expect(getAccess(res.body.privileges, 'their-photo.jpg')).toBe('R');
     });
 
     test('Handles large batch with mixed ownership efficiently', async () => {
@@ -252,10 +258,10 @@ describe('Privilege Endpoint - Ownership Checks', () => {
       expect(res.body.success).toBe(true);
       
       // Even-numbered photos belong to owner (RWX), odd to non-owner (R)
-      expect(res.body.privileges['photo-2.jpg']).toBe('RWX');
-      expect(res.body.privileges['photo-4.jpg']).toBe('RWX');
-      expect(res.body.privileges['photo-1.jpg']).toBe('R');
-      expect(res.body.privileges['photo-3.jpg']).toBe('R');
+      expect(getAccess(res.body.privileges, 'photo-2.jpg')).toBe('RWX');
+      expect(getAccess(res.body.privileges, 'photo-4.jpg')).toBe('RWX');
+      expect(getAccess(res.body.privileges, 'photo-1.jpg')).toBe('R');
+      expect(getAccess(res.body.privileges, 'photo-3.jpg')).toBe('R');
     });
   });
 
@@ -269,7 +275,7 @@ describe('Privilege Endpoint - Ownership Checks', () => {
 
       expect(res.status).toBe(200);
       expect(res.body.success).toBe(true);
-      expect(res.body.privileges['non-existent.jpg']).toBe('');
+      expect(getAccess(res.body.privileges, 'non-existent.jpg')).toBe('');
     });
 
     test('Returns mixed permissions for found and not-found files', async () => {
@@ -290,8 +296,8 @@ describe('Privilege Endpoint - Ownership Checks', () => {
 
       expect(res.status).toBe(200);
       expect(res.body.success).toBe(true);
-      expect(res.body.privileges['exists.jpg']).toBe('RWX');
-      expect(res.body.privileges['not-exists.jpg']).toBe('');
+      expect(getAccess(res.body.privileges, 'exists.jpg')).toBe('RWX');
+      expect(getAccess(res.body.privileges, 'not-exists.jpg')).toBe('');
     });
   });
 
@@ -326,7 +332,7 @@ describe('Privilege Endpoint - Ownership Checks', () => {
 
       expect(res.status).toBe(200);
       expect(res.body.success).toBe(true);
-      expect(res.body.privileges).toEqual({});
+      expect(res.body.privileges).toEqual([]);
     });
 
     test('Legacy single file check returns restricted permissions', async () => {
@@ -380,11 +386,11 @@ describe('Privilege Endpoint - Ownership Checks', () => {
         .send({ filenames: ['sensitive-photo.jpg'] });
 
       expect(res.status).toBe(200);
-      expect(res.body.privileges['sensitive-photo.jpg']).toBe('R');
+      expect(getAccess(res.body.privileges, 'sensitive-photo.jpg')).toBe('R');
       
       // Critical: Verify no destructive permissions granted
-      expect(res.body.privileges['sensitive-photo.jpg']).not.toContain('W');
-      expect(res.body.privileges['sensitive-photo.jpg']).not.toContain('X');
+      expect(getAccess(res.body.privileges, 'sensitive-photo.jpg')).not.toContain('W');
+      expect(getAccess(res.body.privileges, 'sensitive-photo.jpg')).not.toContain('X');
     });
   });
 });

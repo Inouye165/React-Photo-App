@@ -67,6 +67,12 @@ export default function PhotoGallery({
   const { columns, gap } = useResponsiveGrid(density);
   const paddingClass = density === 'compact' ? 'p-1 sm:p-3' : 'p-2 sm:p-6';
 
+  const getAccessLevel = useCallback((photoId) => {
+    if (!privilegesMap) return '';
+    if (privilegesMap instanceof Map) return privilegesMap.get(photoId) || '';
+    return privilegesMap?.[photoId] || '';
+  }, [privilegesMap]);
+
   const isPollingForId = useCallback((photoId) => {
     if (pollingPhotoIds && pollingPhotoIds.size) {
       for (const value of pollingPhotoIds) {
@@ -85,7 +91,7 @@ export default function PhotoGallery({
       <PhotoCard
         key={photo.id || photo.name}
         photo={photo}
-        accessLevel={privilegesMap?.[photo.id] || ''}
+        accessLevel={getAccessLevel(photo.id)}
         isPolling={isPollingForId(photo.id)}
         apiBaseUrl={API_BASE_URL}
         getSignedUrl={getSignedUrl}
@@ -95,7 +101,7 @@ export default function PhotoGallery({
         onDelete={handleDeletePhoto}
       />
     );
-  }, [photos, privilegesMap, isPollingForId, getSignedUrl, onSelectPhoto, handleEditPhoto, handleMoveToInprogress, handleMoveToWorking, handleDeletePhoto]);
+  }, [photos, getAccessLevel, isPollingForId, getSignedUrl, onSelectPhoto, handleEditPhoto, handleMoveToInprogress, handleMoveToWorking, handleDeletePhoto]);
 
   // Dynamic grid style based on screen size
   const gridStyle = useMemo(() => ({
@@ -124,7 +130,7 @@ export default function PhotoGallery({
           <PhotoCard
             key={photo.id || photo.name}
             photo={photo}
-            accessLevel={privilegesMap?.[photo.id] || ''}
+            accessLevel={getAccessLevel(photo.id)}
             isPolling={isPollingForId(photo.id)}
             apiBaseUrl={API_BASE_URL}
             getSignedUrl={getSignedUrl}

@@ -11,6 +11,8 @@ permissions:
 jobs:
   integration:
     runs-on: ubuntu-latest
+    permissions:
+      contents: read
     services:
       postgres:
         image: postgres:15

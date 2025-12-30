@@ -62,12 +62,13 @@ export async function checkPrivilege(relPath: string, serverUrl = `${API_BASE_UR
   }
 }
 
-type PrivBatchCache = Map<string, { ts: number; promise: Promise<Record<string, unknown>> }>
+type PrivilegesBatchResult = Map<string, unknown>
+type PrivBatchCache = Map<string, { ts: number; promise: Promise<PrivilegesBatchResult> }>
 
 export async function checkPrivilegesBatch(
   filenames: string[],
   serverUrl = `${API_BASE_URL}/privilege`,
-): Promise<Record<string, unknown>> {
+): Promise<PrivilegesBatchResult> {
   let safe = filenames
   if (!Array.isArray(safe)) safe = []
 
@@ -83,11 +84,33 @@ export async function checkPrivilegesBatch(
   const CHUNK_SIZE = 12
   const maxAttempts = 4
   const sleep = (ms: number) => new Promise((r) => setTimeout(r, ms))
-  const results: Record<string, unknown> = {}
+  const results: PrivilegesBatchResult = new Map()
 
-  async function postChunk(chunk: string[], attempt = 1): Promise<Record<string, unknown> | null> {
+  function mergePrivileges(payload: unknown): void {
+    if (!payload) return
+
+    // New server shape: [{ filename, access }]
+    if (Array.isArray(payload)) {
+      for (const entry of payload) {
+        if (!entry || typeof entry !== 'object') continue
+        const obj = entry as { filename?: unknown; access?: unknown }
+        if (typeof obj.filename !== 'string') continue
+        results.set(obj.filename, typeof obj.access === 'string' ? obj.access : '')
+      }
+      return
+    }
+
+    // Legacy server shape: { [filename]: access }
+    if (typeof payload === 'object') {
+      for (const [k, v] of Object.entries(payload as Record<string, unknown>)) {
+        results.set(k, v)
+      }
+    }
+  }
+
+  async function postChunk(chunk: string[], attempt = 1): Promise<unknown | null> {
     try {
-      const json = await request<{ success?: boolean; error?: string; privileges?: Record<string, unknown> }>({
+      const json = await request<{ success?: boolean; error?: string; privileges?: unknown }>({
         path: serverUrl,
         method: 'POST',
         headers: getAuthHeaders(),
@@ -96,7 +119,7 @@ export async function checkPrivilegesBatch(
       })
       
       if (!json.success) throw new Error('Batch privilege check error: ' + (json.error || 'unknown'))
-      return json.privileges || {}
+      return json.privileges
     } catch (e: unknown) {
       if (e instanceof ApiError && (e.status === 401 || e.status === 403)) {
         logPrivilegeAuthIssueOnce({
@@ -127,7 +150,7 @@ export async function checkPrivilegesBatch(
     for (let i = 0; i < safe.length; i += CHUNK_SIZE) {
       const chunk = safe.slice(i, i + CHUNK_SIZE)
       const chunkRes = await postChunk(chunk, 1)
-      if (chunkRes && typeof chunkRes === 'object') Object.assign(results, chunkRes)
+      mergePrivileges(chunkRes)
     }
     return results
   })()
