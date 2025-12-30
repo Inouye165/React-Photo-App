@@ -69,7 +69,6 @@ let shouldStop = false;
  */
 function runTest(runNumber) {
   return new Promise((resolve) => {
-    const startTime = Date.now();
     const testProcess = spawn('npm', ['test'], {
       cwd: targetPath,
       shell: true,
