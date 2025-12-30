@@ -72,7 +72,7 @@ function sanitizeBindingValue(value) {
 function defineSafeProperty(target, key, value) {
   if (!isSafeObjectKey(key)) return;
   try {
-    // codeql[js/remote-property-injection] - Safe: key is allowlisted by isSafeObjectKey and target is a null-prototype object in all call sites.
+    // lgtm[js/remote-property-injection] - Safe: key is allowlisted by isSafeObjectKey and target is a null-prototype object in all call sites.
     Object.defineProperty(target, key, {
       value,
       enumerable: true,
@@ -366,12 +366,12 @@ class TinyLogger {
     // This prevents crashes when Jest or other tools modify console at runtime
     if (typeof method === 'function' && typeof method.apply === 'function') {
       try {
-        // codeql[js/log-injection] - Safe: CR/LF stripped from string args immediately before console sink (CWE-117 mitigation).
+        // lgtm[js/log-injection] - Safe: CR/LF stripped from string args immediately before console sink (CWE-117 mitigation).
         method.apply(console, safeArgs);
       } catch {
         // Fallback to direct call if apply fails (extremely rare, but defensive)
         try {
-          // codeql[js/log-injection] - Safe: CR/LF stripped from string args immediately before console sink (CWE-117 mitigation).
+          // lgtm[js/log-injection] - Safe: CR/LF stripped from string args immediately before console sink (CWE-117 mitigation).
           method(...safeArgs);
         } catch {
           // Last resort: try to use process.stderr if available
