@@ -674,7 +674,7 @@ module.exports = function createPhotosRouter({ db, supabase }) {
         if (buffer) {
           const metadata = await extractMetadata(buffer, filename);
           if (metadata && Object.keys(metadata).length > 0) {
-            let merged = metadata;
+            let merged;
             try {
               const existing = typeof photo.metadata === 'string' ? JSON.parse(photo.metadata || '{}') : (photo.metadata || {});
               merged = mergeMetadataPreservingLocationAndDate(existing, metadata);
@@ -754,7 +754,7 @@ module.exports = function createPhotosRouter({ db, supabase }) {
       }
 
       // Update database (merge to preserve existing GPS/date if extraction is incomplete)
-      let merged = metadata;
+      let merged;
       try {
         const existing = typeof photo.metadata === 'string' ? JSON.parse(photo.metadata || '{}') : (photo.metadata || {});
         merged = mergeMetadataPreservingLocationAndDate(existing, metadata);

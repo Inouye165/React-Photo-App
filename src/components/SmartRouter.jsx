@@ -77,15 +77,7 @@ export default function SmartRouter() {
         if (!result) throw new Error('Invalid API response');
 
         // Determine the best route based on photo counts
-        let targetPath = '/upload'; // Default fallback
-
-        if (result.total === 0) {
-          // No photos at all - go to upload page
-          targetPath = '/upload';
-        } else {
-          // Any photos - unified gallery
-          targetPath = '/gallery';
-        }
+        const targetPath = result.total === 0 ? '/upload' : '/gallery';
 
         setStatus('redirecting');
         navigate(targetPath, { replace: true });

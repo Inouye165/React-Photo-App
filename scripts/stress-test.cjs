@@ -57,8 +57,7 @@ console.log();
 const results = {
   passed: 0,
   failed: 0,
-  errors: [],
-  startTime: Date.now()
+  errors: []
 };
 
 let runningTests = 0;
