@@ -32,8 +32,10 @@ const req = http.request(opts, (res) => {
         process.exitCode = 1;
       }
     } catch (e) {
-      const safeRaw = String(data).replace(/[\r\n]+/g, ' ');
-      const safeMsg = String(e && e.message ? e.message : e).replace(/[\r\n]+/g, ' ');
+      // Sanitize to prevent log injection - remove control chars and limit length
+      const safeRaw = String(data).replace(/[\r\n\x00-\x1F\x7F-\x9F]+/g, ' ').substring(0, 500);
+      const errMsg = e && e.message ? e.message : String(e);
+      const safeMsg = errMsg.replace(/[\r\n\x00-\x1F\x7F-\x9F]+/g, ' ').substring(0, 200);
       console.error('Failed to parse response:', safeMsg, 'raw:', safeRaw);
       process.exitCode = 1;
     }
@@ -43,7 +45,7 @@ const req = http.request(opts, (res) => {
 req.on('error', (e) => {
   const message = e && e.message ? e.message : String(e);
   // Sanitize to prevent log injection - remove control chars and limit length
-  const safeMessage = String(message).replace(/[\r\n\x00-\x1F\x7F-\x9F]+/g, ' ').substring(0, 500);
+  const safeMessage = message.replace(/[\r\n\x00-\x1F\x7F-\x9F]+/g, ' ').substring(0, 500);
   console.error('Request error:', safeMessage);
   if (e && e.code) {
     // Sanitize to prevent log injection - remove control chars and limit length

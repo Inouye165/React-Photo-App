@@ -42,9 +42,9 @@ async function main() {
         cleanup();
       })
       .on('error', (err) => {
-        // Sanitize error to prevent log injection - remove control chars and limit length
-        const safeErr = String(err).replace(/[\r\n\x00-\x1F\x7F-\x9F]+/g, ' ').substring(0, 500);
-        console.error('Docker smoke: /health error', safeErr);
+        // Log generic error message without user-controlled content to prevent log injection
+        console.error('Docker smoke: /health request failed');
+        // Error details available for debugging if needed: err.code, err.message
         cleanup();
         process.exit(1);
       });
