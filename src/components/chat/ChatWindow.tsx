@@ -591,7 +591,7 @@ export default function ChatWindow({ roomId, onOpenSidebar }: ChatWindowProps) {
         >
           <button
             type="button"
-            disabled={!roomId || sending}
+            disabled={sending}
             onClick={() => {
               // Keep token warm so fetches that require Authorization can work immediately.
               // (Picker thumbnails are usually signed and don't need this, but it's safe.)

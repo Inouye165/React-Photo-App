@@ -60,7 +60,6 @@ const results = {
   errors: []
 };
 
-let runningTests = 0;
 let completedTests = 0;
 let shouldStop = false;
 

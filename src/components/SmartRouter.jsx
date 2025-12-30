@@ -55,14 +55,12 @@ export default function SmartRouter() {
 
     // Identity Gate (defense in depth):
     // If user hasn't set a username, redirect before doing any other work.
-    if (user) {
-      if (profileLoading) return;
-      const onOnboardingPage = location.pathname === '/reset-password';
-      if (!onOnboardingPage && profile && profile.has_set_username === false) {
-        setStatus('redirecting');
-        navigate('/reset-password', { replace: true });
-        return;
-      }
+    if (profileLoading) return;
+    const onOnboardingPage = location.pathname === '/reset-password';
+    if (!onOnboardingPage && profile && profile.has_set_username === false) {
+      setStatus('redirecting');
+      navigate('/reset-password', { replace: true });
+      return;
     }
 
     let cancelled = false;
