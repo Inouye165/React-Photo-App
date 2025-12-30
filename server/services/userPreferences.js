@@ -65,12 +65,6 @@ const DEFAULT_GRADING_SCALES = {
  * @returns {Object} User preferences service methods
  */
 function createUserPreferencesService({ db }) {
-  function isSafeRecordKey(value) {
-    if (typeof value !== 'string') return false;
-    if (value === '__proto__' || value === 'constructor' || value === 'prototype') return false;
-    return true;
-  }
-
   /**
    * Get user preferences (grading scales).
    * 
@@ -120,7 +114,12 @@ function createUserPreferencesService({ db }) {
     // Validate structure
     if (newPrefs.gradingScales) {
       for (const [category, scales] of Object.entries(newPrefs.gradingScales)) {
-        if (!isSafeRecordKey(category)) {
+        if (
+          typeof category !== 'string' ||
+          category === '__proto__' ||
+          category === 'constructor' ||
+          category === 'prototype'
+        ) {
           throw new Error(`Invalid grading scales category: ${category}`);
         }
         if (!Array.isArray(scales)) {
@@ -145,7 +144,12 @@ function createUserPreferencesService({ db }) {
       ? currentPrefs.gradingScales
       : {};
     for (const [category, scales] of Object.entries(currentScales)) {
-      if (isSafeRecordKey(category)) {
+      if (
+        typeof category === 'string' &&
+        category !== '__proto__' &&
+        category !== 'constructor' &&
+        category !== 'prototype'
+      ) {
         mergedGradingScales[category] = scales;
       }
     }
@@ -154,7 +158,12 @@ function createUserPreferencesService({ db }) {
       : null;
     if (incomingScales) {
       for (const [category, scales] of Object.entries(incomingScales)) {
-        if (isSafeRecordKey(category)) {
+        if (
+          typeof category === 'string' &&
+          category !== '__proto__' &&
+          category !== 'constructor' &&
+          category !== 'prototype'
+        ) {
           mergedGradingScales[category] = scales;
         }
       }
