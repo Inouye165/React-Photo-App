@@ -24,6 +24,7 @@ function isSafePropertyKey(key) {
 function defineSafeProperty(target, key, value) {
   if (!isSafePropertyKey(key)) return;
   try {
+    // lgtm[js/remote-property-injection] -- key is validated/allowlisted and target is a plain data object.
     Object.defineProperty(target, key, {
       value,
       enumerable: true,
