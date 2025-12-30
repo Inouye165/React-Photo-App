@@ -604,11 +604,7 @@ export default function ChatWindow({ roomId, onOpenSidebar }: ChatWindowProps) {
                 return next
               })
             }}
-            className={
-              !roomId || sending
-                ? 'inline-flex items-center justify-center h-10 w-10 rounded-2xl bg-slate-200 text-slate-500 cursor-not-allowed'
-                : 'inline-flex items-center justify-center h-10 w-10 rounded-2xl bg-slate-100 text-slate-700 hover:bg-slate-200'
-            }
+            className="inline-flex items-center justify-center h-10 w-10 rounded-2xl bg-slate-100 text-slate-700 hover:bg-slate-200 disabled:bg-slate-200 disabled:text-slate-500 disabled:cursor-not-allowed"
             aria-label="Attach photo"
           >
             <ImageIcon className="h-5 w-5" />

@@ -58,7 +58,7 @@ export default function SmartRouter() {
     if (user) {
       if (profileLoading) return;
       const onOnboardingPage = location.pathname === '/reset-password';
-      if (!onOnboardingPage && profile && profile.has_set_username === false) {
+      if (!onOnboardingPage && profile?.has_set_username === false) {
         setStatus('redirecting');
         navigate('/reset-password', { replace: true });
         return;

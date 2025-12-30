@@ -43,15 +43,10 @@ const req = http.request(opts, (res) => {
 });
 
 req.on('error', (e) => {
-  const message = e && e.message ? e.message : String(e);
-  // Sanitize to prevent log injection - remove control chars and limit length
-  const safeMessage = message.replace(/[\r\n\x00-\x1F\x7F-\x9F]+/g, ' ').substring(0, 500);
-  console.error('Request error:', safeMessage);
-  if (e && e.code) {
-    // Sanitize to prevent log injection - remove control chars and limit length
-    const safeCode = String(e.code).replace(/[\r\n\x00-\x1F\x7F-\x9F]+/g, ' ').substring(0, 100);
-    console.error('Error code:', safeCode);
-  }
+  // CodeQL log injection fix: Use fixed strings only, no user-controlled data
+  // SOURCE: e.message/e.code (untrusted) → SINK: console.error
+  // FIX: Log fixed message only; error details available for debugging if needed
+  console.error('Request failed while checking privilege endpoint');
   console.error('Hint: ensure backend is running on http://localhost:3001');
   console.error('      try: cd server && npm start');
   process.exitCode = 1;

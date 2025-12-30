@@ -131,7 +131,7 @@ async function location_intelligence_agent(state) {
     parsed = {};
   }
 
-    await logApiCall('location_intelligence_agent', { structuredContext: { coords, reverse, nearby, osmTrails }, prompt: LOCATION_INTEL_SYSTEM_PROMPT }, { parsed, reverseResult: reverse, nearbyPlaces: nearby, osmTrails }, end - start, { raw });
+  await logApiCall('location_intelligence_agent', { structuredContext: { coords, reverse, nearby, osmTrails }, prompt: LOCATION_INTEL_SYSTEM_PROMPT }, { parsed, reverseResult: reverse, nearbyPlaces: nearby, osmTrails }, end - start, { raw });
 
   const locationIntel = {
     city: parsed.city || (reverse?.city || 'unknown'),
