@@ -38,10 +38,15 @@ const getSslConfig = (env) => {
 const createPostgresConfig = (env) => ({
   client: 'pg',
   connection: {
-    // Prefer SUPABASE_DB_URL (pooler) over DATABASE_URL (direct) because the
-    // direct endpoint may have DNS/connectivity issues from local networks.
-    // The pooler endpoint (port 6543) is more reliable for development.
-    connectionString: process.env.SUPABASE_DB_URL || process.env.DATABASE_URL,
+    // Prefer SUPABASE_DB_URL (pooler) over DATABASE_URL (direct) in dev/test
+    // because the pooler endpoint (port 6543) is often more reliable.
+    //
+    // For production migrations/DDL, you may want to provide a direct URL via
+    // SUPABASE_DB_URL_MIGRATIONS to avoid PgBouncer/transaction quirks.
+    connectionString:
+      (env === 'production' && process.env.SUPABASE_DB_URL_MIGRATIONS)
+        ? process.env.SUPABASE_DB_URL_MIGRATIONS
+        : (process.env.SUPABASE_DB_URL || process.env.DATABASE_URL),
     ssl: getSslConfig(env),
     // Keepalive settings to prevent connection drops
     keepAlive: true,
