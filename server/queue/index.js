@@ -1,5 +1,6 @@
 const { Queue, Worker: BullMQWorker } = require("bullmq");
 const path = require('path');
+const fs = require('fs');
 const logger = require("../logger");
 const { createRedisConnection } = require("../redis/connection");
 const metrics = require('../metrics');
@@ -177,6 +178,20 @@ const addAIJob = async (photoId, options = {}) => {
   return aiQueue.add("process-photo-ai", jobData);
 };
 
+const addAppAssessmentJob = async (assessmentId) => {
+  await initializeQueue();
+
+  if (!redisAvailable || !aiQueue) {
+    throw new Error("Queue service unavailable - Redis connection required");
+  }
+
+  if (!assessmentId) {
+    throw new Error('assessmentId is required');
+  }
+
+  return aiQueue.add('run-app-assessment', { assessmentId });
+};
+
 const startWorker = async () => {
   await initializeQueue();
 
@@ -206,7 +221,52 @@ const startWorker = async () => {
       });
     }
 
-    const processor = async (job) => {
+    function safeReadFile(absPath) {
+      try {
+        return fs.readFileSync(absPath, 'utf8');
+      } catch (err) {
+        return `/* READ_FAILED: ${absPath} :: ${err?.message || String(err)} */`;
+      }
+    }
+
+    function buildBalancedRubricPrompt({ commitHash, files }) {
+      const header = [
+        'You are an expert senior engineer performing an internal codebase assessment.',
+        'HALLUCINATION GUARD: Only use evidence found in the provided files. If you cannot find evidence, say so explicitly.',
+        'Return STRICT JSON ONLY (no markdown, no prose outside JSON).',
+        '',
+        `Commit hash: ${commitHash || 'unknown'}`,
+        '',
+        'Balanced Rubric (0-100 per category):',
+        '- security (35%)',
+        '- correctness (25%)',
+        '- reliability (15%)',
+        '- maintainability (15%)',
+        '- performance (10%)',
+        '',
+        'Output JSON schema:',
+        '{',
+        '  "scores": {"security": number, "correctness": number, "reliability": number, "maintainability": number, "performance": number},',
+        '  "final_grade": number,',
+        '  "overall_summary": string,',
+        '  "findings": [',
+        '    {"area": string, "title": string, "evidence": string, "impact": string, "recommendation": string}',
+        '  ]',
+        '}',
+        '',
+        'Provided files:',
+      ].join('\n');
+
+      const body = Object.entries(files)
+        .map(([name, content]) => {
+          return [`\n===== FILE: ${name} =====\n`, content, '\n'].join('');
+        })
+        .join('\n');
+
+      return `${header}\n${body}`;
+    }
+
+    async function processPhotoAIJob(job) {
       const { photoId, modelOverrides, processMetadata, generateThumbnail } = job.data || {};
       logger.info(`[WORKER] Processing job for photoId: ${photoId}`);
 
@@ -303,6 +363,99 @@ const startWorker = async () => {
         }
         throw err;
       }
+    }
+
+    async function processAppAssessmentJob(job) {
+      const { assessmentId } = job.data || {};
+      if (!assessmentId) throw new Error('assessmentId missing');
+
+      const createAssessmentsDb = require('../services/assessmentsDb');
+      const assessmentsDb = createAssessmentsDb({ db });
+      const { openai } = require('../ai/openaiClient');
+
+      const assessment = await assessmentsDb.getAssessmentById(assessmentId);
+      if (!assessment) throw new Error(`Assessment ${assessmentId} not found`);
+
+      const files = {
+        'server/middleware/security.js': safeReadFile(path.resolve(__dirname, '..', 'middleware', 'security.js')),
+        'server/routes/photos.js': safeReadFile(path.resolve(__dirname, '..', 'routes', 'photos.js')),
+        'server/services/photosDb.js': safeReadFile(path.resolve(__dirname, '..', 'services', 'photosDb.js')),
+      };
+
+      const model = process.env.OPENAI_MODEL || 'gpt-4o-mini';
+      const prompt = buildBalancedRubricPrompt({ commitHash: assessment.commit_hash, files });
+
+      const traceLog = {
+        prompt,
+        commit_hash: assessment.commit_hash || null,
+        captured_at: new Date().toISOString(),
+        files,
+        model,
+      };
+
+      try {
+        const response = await openai.chat.completions.create({
+          model,
+          messages: [
+            { role: 'system', content: 'You are a precise code auditor.' },
+            { role: 'user', content: prompt },
+          ],
+          temperature: 0.2,
+        });
+
+        const responseText = response?.choices?.[0]?.message?.content || '';
+        let parsed = null;
+        try {
+          parsed = responseText ? JSON.parse(responseText) : null;
+        } catch {
+          parsed = null;
+        }
+
+        await assessmentsDb.setAssessmentResult({
+          id: assessmentId,
+          raw_ai_response: {
+            model: response?.model || model,
+            responseText,
+            parsed,
+            usage: response?.usage || null,
+          },
+          trace_log: traceLog,
+          status: 'pending_review',
+        });
+
+        return { ok: true };
+      } catch (err) {
+        const errorPayload = {
+          error: err?.message || String(err),
+        };
+
+        try {
+          await assessmentsDb.setAssessmentResult({
+            id: assessmentId,
+            raw_ai_response: errorPayload,
+            trace_log: traceLog,
+            status: 'pending_review',
+          });
+        } catch (persistErr) {
+          logger.warn('[WORKER] Failed to persist assessment error payload', {
+            assessmentId: String(assessmentId),
+            error: persistErr?.message || String(persistErr),
+          });
+        }
+
+        throw err;
+      }
+    }
+
+    const processor = async (job) => {
+      const name = job?.name;
+      if (name === 'run-app-assessment') {
+        logger.info(`[WORKER] Processing app assessment job ${job?.id} (assessmentId: ${job?.data?.assessmentId})`);
+        return processAppAssessmentJob(job);
+      }
+
+      // Default/legacy
+      return processPhotoAIJob(job);
     };
 
     aiWorker = new BullMQWorker(QUEUE_NAME, processor, {
@@ -339,6 +492,7 @@ const startWorker = async () => {
 
 module.exports = {
   addAIJob,
+  addAppAssessmentJob,
   startWorker,
   checkRedisAvailable,
 };

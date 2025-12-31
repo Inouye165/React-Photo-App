@@ -16,6 +16,8 @@
 const { Router } = require('express');
 const { createClient } = require('@supabase/supabase-js');
 const { getConfig } = require('../config/env');
+const createAssessmentsDb = require('../services/assessmentsDb');
+const { addAppAssessmentJob, checkRedisAvailable } = require('../queue');
 
 // Email validation regex (safe pattern to prevent ReDoS)
 // Limits length and uses specific character sets to avoid catastrophic backtracking
@@ -24,6 +26,17 @@ const EMAIL_REGEX = /^[a-zA-Z0-9.!#$%&'*+/=?^_`{|}~-]{1,64}@[a-zA-Z0-9](?:[a-zA-
 function createAdminRouter({ db }) {
   const router = Router();
   const config = getConfig();
+  const assessmentsDb = createAssessmentsDb({ db });
+
+  function ensureAdmin(req, res) {
+    // Redundant with mount-time middleware, but keeps the endpoints self-defensive.
+    const role = req?.user?.role || req?.user?.app_metadata?.role;
+    if (role !== 'admin') {
+      res.status(403).json({ success: false, error: 'Forbidden' });
+      return false;
+    }
+    return true;
+  }
 
   // Initialize Supabase Admin Client with Service Role Key
   // SECURITY: Service Role Key bypasses RLS and must NEVER be exposed to frontend
@@ -180,6 +193,87 @@ function createAdminRouter({ db }) {
         success: false,
         error: 'Internal server error'
       });
+    }
+  });
+
+  /**
+   * POST /api/admin/assessments/trigger
+   *
+   * Creates a new assessment record and enqueues a BullMQ job to generate it.
+   *
+   * @body {string?} commit_hash
+   * @returns {object} { success: true, data: { id, jobId } }
+   */
+  router.post('/assessments/trigger', async (req, res) => {
+    try {
+      if (!ensureAdmin(req, res)) return;
+
+      const redisOk = await checkRedisAvailable();
+      if (!redisOk) {
+        return res.status(503).json({ success: false, error: 'Queue service unavailable' });
+      }
+
+      const commit_hash = req?.body?.commit_hash;
+      const created = await assessmentsDb.createAssessment({ commit_hash });
+
+      const job = await addAppAssessmentJob(created.id);
+
+      return res.json({
+        success: true,
+        data: {
+          id: created.id,
+          jobId: job?.id || null,
+        },
+      });
+    } catch (err) {
+      return res.status(500).json({ success: false, error: err?.message || 'Internal server error' });
+    }
+  });
+
+  /**
+   * GET /api/admin/assessments
+   *
+   * Lists assessments for admin review.
+   */
+  router.get('/assessments', async (req, res) => {
+    try {
+      if (!ensureAdmin(req, res)) return;
+
+      const status = req.query.status;
+      const limit = req.query.limit;
+      const offset = req.query.offset;
+
+      const rows = await assessmentsDb.listAssessments({ limit, offset, status });
+      return res.json({ success: true, data: rows });
+    } catch (err) {
+      return res.status(500).json({ success: false, error: err?.message || 'Internal server error' });
+    }
+  });
+
+  /**
+   * PATCH /api/admin/assessments/:id/confirm
+   *
+   * Confirms or rejects an assessment.
+   * SECURITY: Server recomputes final_grade on confirm/reject.
+   *
+   * @body {string} reviewer_id
+   * @body {string?} notes
+   * @body {'confirmed'|'rejected'} decision
+   */
+  router.patch('/assessments/:id/confirm', async (req, res) => {
+    try {
+      if (!ensureAdmin(req, res)) return;
+
+      const id = req.params.id;
+      const reviewer_id = req?.body?.reviewer_id;
+      const notes = req?.body?.notes;
+      const decision = req?.body?.decision;
+
+      const updated = await assessmentsDb.confirmAssessment({ id, reviewer_id, notes, decision });
+      return res.json({ success: true, data: updated });
+    } catch (err) {
+      const code = err?.statusCode || 500;
+      return res.status(code).json({ success: false, error: err?.message || 'Internal server error' });
     }
   });
 
