@@ -19,6 +19,27 @@ type AssessmentRow = {
   trace_log: unknown
 }
 
+function asObject(value: unknown): Record<string, unknown> | null {
+  if (!value || typeof value !== 'object') return null
+  return value as Record<string, unknown>
+}
+
+function extractProviderModel(row: AssessmentRow): { provider: string; model: string } {
+  const raw = asObject(row.raw_ai_response)
+  const provider = raw && typeof raw.provider === 'string' ? raw.provider : ''
+  const model = raw && typeof raw.model === 'string' ? raw.model : ''
+  return { provider, model }
+}
+
+function extractSuggestedGrade(row: AssessmentRow): number | null {
+  const raw = asObject(row.raw_ai_response)
+  const direct = raw?.final_grade
+  if (typeof direct === 'number' && Number.isFinite(direct)) return direct
+  const parsed = asObject(raw?.parsed)
+  const parsedGrade = parsed?.final_grade
+  return typeof parsedGrade === 'number' && Number.isFinite(parsedGrade) ? parsedGrade : null
+}
+
 function statusBadgeClass(status: AssessmentStatus): string {
   switch (status) {
     case 'confirmed':
@@ -45,6 +66,13 @@ export default function AdminAssessmentHistory() {
   const [loading, setLoading] = useState(false)
   const [triggering, setTriggering] = useState(false)
   const [error, setError] = useState<string | null>(null)
+
+  const [externalProvider, setExternalProvider] = useState('')
+  const [externalModel, setExternalModel] = useState('')
+  const [externalPrompt, setExternalPrompt] = useState('')
+  const [externalResponse, setExternalResponse] = useState('')
+  const [externalGrade, setExternalGrade] = useState('')
+  const [savingExternal, setSavingExternal] = useState(false)
 
   async function load() {
     setLoading(true)
@@ -95,6 +123,58 @@ export default function AdminAssessmentHistory() {
     }
   }
 
+  async function submitExternalAssessment() {
+    setSavingExternal(true)
+    setError(null)
+    try {
+      const provider = externalProvider.trim()
+      const model = externalModel.trim()
+      const responseText = externalResponse.trim()
+      const prompt = externalPrompt
+
+      if (!provider) throw new Error('LLM provider is required')
+      if (!model) throw new Error('Model is required')
+      if (!responseText) throw new Error('Response text is required')
+
+      const maybeGrade = externalGrade.trim()
+      const gradeNum = maybeGrade ? Number(maybeGrade) : null
+      const final_grade = gradeNum != null && Number.isFinite(gradeNum) ? gradeNum : undefined
+
+      const headers = await getAuthHeadersAsync(true)
+      const json = await request<{ success?: boolean; data?: { id?: string }; error?: string }>(
+        {
+          path: '/api/admin/assessments/external',
+          method: 'POST',
+          headers,
+          body: {
+            commit_hash: null,
+            llm_provider: provider,
+            llm_model: model,
+            prompt,
+            responseText,
+            final_grade,
+          },
+        },
+      )
+
+      if (!json?.success) throw new Error(json?.error || 'Failed to create external assessment')
+
+      setExternalProvider('')
+      setExternalModel('')
+      setExternalPrompt('')
+      setExternalResponse('')
+      setExternalGrade('')
+
+      await load()
+      window.scrollTo({ top: 0, behavior: 'smooth' })
+    } catch (e) {
+      const msg = e instanceof ApiError ? e.message : (e as Error)?.message
+      setError(msg || 'Failed to save external assessment')
+    } finally {
+      setSavingExternal(false)
+    }
+  }
+
   useEffect(() => {
     if (!isAdmin) return
     load()
@@ -132,6 +212,72 @@ export default function AdminAssessmentHistory() {
         </div>
       </div>
 
+      <div className="mb-6 border border-gray-200 rounded p-4">
+        <h2 className="text-lg font-medium mb-2">Add External Assessment</h2>
+        <p className="text-sm text-gray-600 mb-3">
+          Paste a review result from ChatGPT/Gemini (or other LLM). Optionally include the numeric grade.
+        </p>
+        <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
+          <div>
+            <label className="block text-sm font-medium text-gray-800 mb-1">LLM provider</label>
+            <input
+              value={externalProvider}
+              onChange={(e) => setExternalProvider(e.target.value)}
+              className="w-full border border-gray-300 rounded p-2 text-sm"
+              placeholder="e.g., openai, google, anthropic"
+            />
+          </div>
+          <div>
+            <label className="block text-sm font-medium text-gray-800 mb-1">Model</label>
+            <input
+              value={externalModel}
+              onChange={(e) => setExternalModel(e.target.value)}
+              className="w-full border border-gray-300 rounded p-2 text-sm"
+              placeholder="e.g., gpt-4.1, gemini-2.0"
+            />
+          </div>
+          <div>
+            <label className="block text-sm font-medium text-gray-800 mb-1">Suggested grade (optional)</label>
+            <input
+              value={externalGrade}
+              onChange={(e) => setExternalGrade(e.target.value)}
+              className="w-full border border-gray-300 rounded p-2 text-sm"
+              placeholder="e.g., 82.5"
+              inputMode="decimal"
+            />
+          </div>
+          <div className="md:col-span-2">
+            <label className="block text-sm font-medium text-gray-800 mb-1">Prompt (optional)</label>
+            <textarea
+              value={externalPrompt}
+              onChange={(e) => setExternalPrompt(e.target.value)}
+              rows={3}
+              className="w-full border border-gray-300 rounded p-2 text-sm"
+              placeholder="Paste the prompt you used (if you have it)…"
+            />
+          </div>
+          <div className="md:col-span-2">
+            <label className="block text-sm font-medium text-gray-800 mb-1">Response text</label>
+            <textarea
+              value={externalResponse}
+              onChange={(e) => setExternalResponse(e.target.value)}
+              rows={6}
+              className="w-full border border-gray-300 rounded p-2 text-sm"
+              placeholder="Paste the model's response…"
+            />
+          </div>
+        </div>
+        <div className="mt-3 flex items-center justify-end">
+          <button
+            onClick={submitExternalAssessment}
+            disabled={savingExternal}
+            className="px-3 py-2 rounded bg-green-600 text-white hover:bg-green-700 disabled:opacity-50"
+          >
+            {savingExternal ? 'Saving…' : 'Save External Assessment'}
+          </button>
+        </div>
+      </div>
+
       {error ? <div className="mb-4 p-3 rounded border border-red-200 bg-red-50 text-red-700">{error}</div> : null}
 
       <div className="overflow-x-auto border border-gray-200 rounded">
@@ -140,6 +286,8 @@ export default function AdminAssessmentHistory() {
             <tr>
               <th className="p-3 font-medium text-gray-700">Created</th>
               <th className="p-3 font-medium text-gray-700">Status</th>
+              <th className="p-3 font-medium text-gray-700">LLM</th>
+              <th className="p-3 font-medium text-gray-700">AI Grade</th>
               <th className="p-3 font-medium text-gray-700">Commit</th>
               <th className="p-3 font-medium text-gray-700">Final Grade</th>
               <th className="p-3 font-medium text-gray-700">Reviewer</th>
@@ -149,13 +297,13 @@ export default function AdminAssessmentHistory() {
           <tbody>
             {loading ? (
               <tr>
-                <td className="p-3 text-gray-600" colSpan={6}>
+                <td className="p-3 text-gray-600" colSpan={8}>
                   Loading…
                 </td>
               </tr>
             ) : rows.length === 0 ? (
               <tr>
-                <td className="p-3 text-gray-600" colSpan={6}>
+                <td className="p-3 text-gray-600" colSpan={8}>
                   No assessments yet.
                 </td>
               </tr>
@@ -167,6 +315,19 @@ export default function AdminAssessmentHistory() {
                     <span className={`inline-flex items-center px-2 py-1 rounded text-xs font-medium ${statusBadgeClass(r.status)}`}>
                       {r.status}
                     </span>
+                  </td>
+                  <td className="p-3 text-gray-700">
+                    {(() => {
+                      const { provider, model } = extractProviderModel(r)
+                      const label = [provider, model].filter(Boolean).join(' / ')
+                      return label || '-'
+                    })()}
+                  </td>
+                  <td className="p-3 text-gray-700">
+                    {(() => {
+                      const g = extractSuggestedGrade(r)
+                      return typeof g === 'number' ? g.toFixed(2) : '-'
+                    })()}
                   </td>
                   <td className="p-3 text-gray-700">{r.commit_hash || '-'}</td>
                   <td className="p-3 text-gray-700">{typeof r.final_grade === 'number' ? r.final_grade.toFixed(2) : '-'}</td>

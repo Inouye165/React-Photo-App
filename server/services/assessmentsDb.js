@@ -46,6 +46,56 @@ module.exports = function createAssessmentsDb({ db }) {
   return {
     computeFinalGradeFromRaw,
 
+    async createExternalAssessment({ commit_hash, llm_provider, llm_model, prompt, responseText, final_grade }) {
+      const provider = typeof llm_provider === 'string' ? llm_provider.trim() : '';
+      const model = typeof llm_model === 'string' ? llm_model.trim() : '';
+      const promptText = typeof prompt === 'string' ? prompt : '';
+      const respText = typeof responseText === 'string' ? responseText : '';
+
+      const suggestedGrade = typeof final_grade === 'number' && Number.isFinite(final_grade) ? final_grade : null;
+
+      if (!provider) {
+        const err = new Error('llm_provider is required');
+        err.statusCode = 400;
+        throw err;
+      }
+      if (!model) {
+        const err = new Error('llm_model is required');
+        err.statusCode = 400;
+        throw err;
+      }
+      if (!respText) {
+        const err = new Error('responseText is required');
+        err.statusCode = 400;
+        throw err;
+      }
+
+      const insertRow = {
+        status: 'pending_review',
+        commit_hash: commit_hash || null,
+        raw_ai_response: {
+          provider,
+          model,
+          responseText: respText,
+          final_grade: suggestedGrade,
+        },
+        trace_log: {
+          source: 'external',
+          provider,
+          model,
+          prompt: promptText,
+          captured_at: new Date().toISOString(),
+        },
+        final_grade: null,
+        reviewer_id: null,
+        notes: null,
+        updated_at: db.fn.now(),
+      };
+
+      const rows = await db('app_assessments').insert(insertRow).returning('*');
+      return rows?.[0];
+    },
+
     async createAssessment({ commit_hash }) {
       const insertRow = {
         status: 'pending_review',

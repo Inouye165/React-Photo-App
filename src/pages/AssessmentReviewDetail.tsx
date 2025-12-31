@@ -49,6 +49,28 @@ export default function AssessmentReviewDetail() {
     return asObject(p) as ParsedAssessment | null
   }, [row])
 
+  const providerModel = useMemo(() => {
+    const raw = asObject(row?.raw_ai_response)
+    const provider = raw && typeof raw.provider === 'string' ? raw.provider : ''
+    const model = raw && typeof raw.model === 'string' ? raw.model : ''
+    return { provider, model }
+  }, [row])
+
+  const responseText: string = useMemo(() => {
+    const raw = asObject(row?.raw_ai_response)
+    const text = raw?.responseText
+    return typeof text === 'string' ? text : ''
+  }, [row])
+
+  const suggestedGrade: number | null = useMemo(() => {
+    const raw = asObject(row?.raw_ai_response)
+    const direct = raw?.final_grade
+    if (typeof direct === 'number' && Number.isFinite(direct)) return direct
+    const p = asObject(raw?.parsed)
+    const pg = p?.final_grade
+    return typeof pg === 'number' && Number.isFinite(pg) ? pg : null
+  }, [row])
+
   const promptText: string = useMemo(() => {
     const tl = asObject(row?.trace_log)
     const prompt = tl?.prompt
@@ -62,17 +84,16 @@ export default function AssessmentReviewDetail() {
     setError(null)
     try {
       const headers = await getAuthHeadersAsync(false)
-      const json = await request<{ success?: boolean; data?: AssessmentRow[]; error?: string }>({
-        path: '/api/admin/assessments?limit=100&offset=0',
+      const json = await request<{ success?: boolean; data?: AssessmentRow; error?: string }>({
+        path: `/api/admin/assessments/${encodeURIComponent(id)}`,
         method: 'GET',
         headers,
       })
       if (!json?.success) throw new Error(json?.error || 'Failed to load assessment')
 
-      const found = (json.data || []).find((r) => r.id === id) || null
+      const found = json.data || null
       setRow(found)
       setNotes(found?.notes || '')
-      if (!found) setError('Assessment not found in the latest list.')
     } catch (e) {
       const msg = e instanceof ApiError ? e.message : (e as Error)?.message
       setError(msg || 'Failed to load')
@@ -160,6 +181,12 @@ export default function AssessmentReviewDetail() {
 
             <div className="text-sm text-gray-700 mb-3">
               <div>Commit: {row.commit_hash || '-'}</div>
+              <div>
+                LLM: {providerModel.provider || '-'} / {providerModel.model || '-'}
+              </div>
+              <div>
+                AI suggested grade: {typeof suggestedGrade === 'number' ? suggestedGrade.toFixed(2) : '-'}
+              </div>
               <div>Final grade (server): {typeof row.final_grade === 'number' ? row.final_grade.toFixed(2) : '-'}</div>
             </div>
 
@@ -172,6 +199,13 @@ export default function AssessmentReviewDetail() {
               <div className="text-sm font-medium text-gray-800 mb-1">Scores</div>
               <pre className="text-xs bg-gray-50 border border-gray-200 rounded p-2 overflow-auto">
                 {JSON.stringify(parsed?.scores || null, null, 2)}
+              </pre>
+            </div>
+
+            <div className="mb-3">
+              <div className="text-sm font-medium text-gray-800 mb-1">Raw response</div>
+              <pre className="text-xs bg-gray-50 border border-gray-200 rounded p-2 overflow-auto whitespace-pre-wrap">
+                {responseText || '—'}
               </pre>
             </div>
 
