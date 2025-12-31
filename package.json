@@ -5,6 +5,8 @@
   "type": "module",
   "scripts": {
     "dev": "vite",
+    "start": "npm --prefix server start",
+    "worker": "npm --prefix server run worker",
     "build": "vite build",
     "pretest": "node scripts/validate-keys.cjs && node scripts/repo-hygiene-gps-check.cjs",
     "test": "vitest run",
