@@ -156,7 +156,8 @@ module.exports = function createAssessmentsDb({ db }) {
 
         if (safeStatus) q.where({ status: safeStatus });
 
-        return q;
+        const rows = await q;
+        return rows;
       } catch (err) {
         throw normalizeAssessmentsDbError(err);
       }
@@ -164,7 +165,8 @@ module.exports = function createAssessmentsDb({ db }) {
 
     async getAssessmentById(id) {
       try {
-        return db('app_assessments').where({ id }).first();
+        const row = await db('app_assessments').where({ id }).first();
+        return row;
       } catch (err) {
         throw normalizeAssessmentsDbError(err);
       }
