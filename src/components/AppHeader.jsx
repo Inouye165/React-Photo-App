@@ -2,7 +2,7 @@ import React, { useEffect, useState } from 'react';
 import { NavLink, useNavigate, useLocation } from 'react-router-dom';
 import { useAuth } from '../contexts/AuthContext';
 import useStore from '../store';
-import { ChevronLeft, ChevronRight, Upload, Grid3X3, Edit3, LogOut, MessageSquare } from 'lucide-react';
+import { ChevronLeft, ChevronRight, Upload, Grid3X3, Edit3, LogOut, MessageSquare, Shield } from 'lucide-react';
 import { useUnreadMessages } from '../hooks/useUnreadMessages';
 import NewMessageNotification from './NewMessageNotification';
 
@@ -27,6 +27,9 @@ export default function AppHeader({
   const canUseChat = Boolean(profile?.has_set_username);
   const { unreadCount, unreadByRoom } = useUnreadMessages(user?.id);
   const [dismissedAtUnreadCount, setDismissedAtUnreadCount] = useState(0);
+  
+  // Check if user has admin role
+  const isAdmin = user?.app_metadata?.role === 'admin';
 
   const isGalleryPage = location.pathname === '/gallery' || location.pathname === '/';
   const isEditPage = /^\/photos\/[^/]+\/edit$/.test(location.pathname);
@@ -225,6 +228,19 @@ export default function AppHeader({
             )}
           </div>
         )}
+        
+        {/* Admin link - only visible to admin users */}
+        {isAdmin && (
+          <NavTabLink
+            to="/admin"
+            onClick={() => {
+              closePicker('nav-admin');
+            }}
+            icon={Shield}
+            label="Admin"
+            testId="nav-admin"
+          />
+        )}
       </nav>
 
       {/* Right Section - User & Logout */}
@@ -245,6 +261,15 @@ export default function AppHeader({
               <span className="hidden md:block max-w-[80px] truncate">
                 {profile?.username || 'User'}
               </span>
+              {/* Admin badge */}
+              {isAdmin && (
+                <span 
+                  className="px-2 py-0.5 bg-purple-100 text-purple-700 text-[10px] font-semibold rounded-full"
+                  title="Administrator"
+                >
+                  ADMIN
+                </span>
+              )}
             </div>
             
             {/* Logout button - always visible, 44px touch target */}

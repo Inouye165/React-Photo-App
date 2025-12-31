@@ -16,9 +16,10 @@ function registerRoutes(app, { db, supabase, sseManager, logger }) {
   const createMetricsRouter = require('../routes/metrics');
   const createPublicRouter = require('../routes/public');
   const createEventsRouter = require('../routes/events');
+  const createAdminRouter = require('../routes/admin');
 
   const { securityErrorHandler } = require('../middleware/security');
-  const { authenticateToken } = require('../middleware/auth');
+  const { authenticateToken, requireRole } = require('../middleware/auth');
 
   // CSRF token fetch endpoint for the SPA.
   // csurf attaches req.csrfToken() when middleware is mounted.
@@ -72,6 +73,9 @@ function registerRoutes(app, { db, supabase, sseManager, logger }) {
   app.use('/api/users', createUsersRouter({ db }));
   app.use(authenticateToken, createUploadsRouter({ db }));
   app.use(authenticateToken, createPrivilegeRouter({ db }));
+  
+  // Admin routes (protected by authenticateToken + requireRole('admin'))
+  app.use('/api/admin', authenticateToken, requireRole('admin'), createAdminRouter({ db }));
 
   // SECURITY: Debug/diagnostic routes are high risk.
   // - In production, do NOT mount unless explicitly enabled.

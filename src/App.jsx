@@ -14,6 +14,7 @@ import AuthWrapper from './layouts/AuthWrapper';
 import ConfirmInvitePage from './pages/ConfirmInvitePage';
 import OnboardingPage from './pages/OnboardingPage.tsx';
 import ChatPage from './pages/ChatPage.tsx';
+import AdminDashboard from './pages/AdminDashboard.tsx';
 
 /**
  * App - Root component with routing and error boundary
@@ -62,6 +63,9 @@ function App() {
               
               {/* Settings page */}
               <Route path="/settings" element={<SettingsPage />} />
+
+              {/* Admin dashboard - protected route */}
+              <Route path="/admin" element={<AdminDashboard />} />
 
               {/* Community chat */}
               <Route path="/chat" element={<ChatPage />} />
