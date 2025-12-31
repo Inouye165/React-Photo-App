@@ -20,6 +20,7 @@ const collect_context = require('./nodes/collect_context');
 // Sprint 1 Nodes
 const identify_collectible = require('./nodes/identify_collectible');
 const valuate_collectible = require('./nodes/valuate_collectible');
+const confirm_collectible = require('./nodes/confirm_collectible');
 // Node food_metadata_agent -> implemented in ./nodes/food_metadata_agent.js
 
 function wrapNode(name, nodeFn, filePath) {
@@ -82,6 +83,15 @@ function needPoi(state) {
   return Boolean(state.poiAnalysis?.gpsString);
 }
 
+function route_after_confirm_collectible(state) {
+  const status = state?.collectible?.review?.status || null;
+  if (status === 'pending' || status === 'rejected') {
+    logger.info('[LangGraph] Router: confirm_collectible ended early', { status });
+    return END;
+  }
+  return 'valuate_collectible';
+}
+
 // --- Build the LangGraph workflow ---
 const workflow = new StateGraph({
   // Use explicit channels with reducers defined in state.js
@@ -100,6 +110,7 @@ workflow.addNode('food_metadata_agent', wrapNode('food_metadata_agent', food_met
 workflow.addNode('collect_context', wrapNode('collect_context', collect_context, require.resolve('./nodes/collect_context')));
 // Sprint 1 Nodes
 workflow.addNode('identify_collectible', wrapNode('identify_collectible', identify_collectible, require.resolve('./nodes/identify_collectible')));
+workflow.addNode('confirm_collectible', wrapNode('confirm_collectible', confirm_collectible, require.resolve('./nodes/confirm_collectible')));
 workflow.addNode('valuate_collectible', wrapNode('valuate_collectible', valuate_collectible, require.resolve('./nodes/valuate_collectible')));
 
 // 2. Set the entry point
@@ -141,7 +152,15 @@ workflow.addEdge('food_location_agent', 'food_metadata_agent');
 workflow.addEdge('food_metadata_agent', END);
 
 // Sprint 1 Edges
-workflow.addEdge('identify_collectible', 'valuate_collectible');
+workflow.addEdge('identify_collectible', 'confirm_collectible');
+workflow.addConditionalEdges(
+  'confirm_collectible',
+  route_after_confirm_collectible,
+  {
+    valuate_collectible: 'valuate_collectible',
+    __end__: END,
+  }
+);
 workflow.addEdge('valuate_collectible', 'describe_collectible');
 
 // 5. Compile the app

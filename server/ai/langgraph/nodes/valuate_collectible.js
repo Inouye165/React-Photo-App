@@ -104,20 +104,34 @@ async function valuate_collectible(state) {
   try {
     logger.info('[LangGraph] valuate_collectible: Enter');
     logger.info('[LangGraph] valuate_collectible: Enter with state', {
-      collectible_id: state.collectible_id || null,
-      collectible_category: state.collectible_category || null,
+      collectible_id: state.collectible?.identification?.id || null,
+      collectible_category: state.collectible?.identification?.category || null,
       classification: state.classification || null,
       classification_raw: state.classification_raw || null,
-      hasCollectibleId: !!state.collectible_id,
+      hasCollectibleId: !!state.collectible?.identification?.id,
+      reviewStatus: state.collectible?.review?.status || null,
     });
 
-    const { collectible_id, collectible_category } = state;
+    const collectible = state.collectible || {};
+    const identification = collectible.identification || null;
+    const reviewStatus = collectible.review?.status || null;
+    const collectible_id = identification?.id || null;
+    const collectible_category = identification?.category || null;
+
+    if (reviewStatus !== 'confirmed') {
+      logger.warn('[LangGraph] valuate_collectible: Review not confirmed; skipping valuation', {
+        reviewStatus,
+        collectible_id,
+        collectible_category,
+      });
+      return state;
+    }
 
     if (!collectible_id) {
       logger.warn('[LangGraph] valuate_collectible: No ID found, skipping', {
         classification: state.classification || null,
         classification_raw: state.classification_raw || null,
-        collectible_category: state.collectible_category || null,
+        collectible_category,
       });
       return state;
     }
@@ -221,7 +235,12 @@ Determine the value range.`
 
     return {
       ...state,
-      collectible_valuation: valuation,
+      collectible: {
+        ...collectible,
+        identification,
+        review: collectible.review || null,
+        valuation,
+      },
     };
 
   } catch (err) {

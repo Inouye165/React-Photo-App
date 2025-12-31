@@ -15,6 +15,33 @@ Focus ONLY on the item identity.`;
 async function identify_collectible(state) {
   try {
     logger.info('[LangGraph] identify_collectible: Enter');
+
+    // HITL resume path: if a human override is provided, skip the LLM call.
+    if (state.collectibleOverride && typeof state.collectibleOverride.id === 'string' && state.collectibleOverride.id.trim()) {
+      const override = state.collectibleOverride;
+      const prev = state.collectible || {};
+
+      logger.info('[LangGraph] identify_collectible: Using human override; skipping AI identify', {
+        id: override.id,
+        category: override.category || null,
+      });
+
+      return {
+        ...state,
+        collectible: {
+          ...prev,
+          identification: {
+            id: override.id.trim(),
+            category: (override.category ?? prev.identification?.category ?? null),
+            confidence: 1,
+            fields: (override.fields ?? prev.identification?.fields ?? null),
+            source: 'human',
+          },
+          review: prev.review || null,
+          valuation: prev.valuation || null,
+        },
+      };
+    }
     
     const response = await openai.chat.completions.create({
       model: 'gpt-4o',
@@ -56,11 +83,21 @@ async function identify_collectible(state) {
       collectible_category: parsed.category,
     });
 
+    const prev = state.collectible || {};
     return {
       ...state,
-      collectible_id: parsed.id,
-      collectible_id_confidence: parsed.confidence,
-      collectible_category: parsed.category,
+      collectible: {
+        ...prev,
+        identification: {
+          id: parsed.id ?? null,
+          category: parsed.category ?? null,
+          confidence: (typeof parsed.confidence === 'number' ? parsed.confidence : null),
+          fields: parsed.fields ?? null,
+          source: 'ai',
+        },
+        review: prev.review || null,
+        valuation: prev.valuation || null,
+      },
     };
   } catch (err) {
     logger.error('[LangGraph] identify_collectible: Error', err);

@@ -95,6 +95,37 @@ function sanitizeValue(value, depth = 0) {
           high: val.high,
           marketDataPoints: Array.isArray(val.market_data) ? val.market_data.length : 0
         };
+      } else if (key === 'collectible' && value[key]) {
+        const c = value[key] || {};
+        sanitized[key] = {
+          identification: c.identification
+            ? {
+                id: c.identification.id,
+                category: c.identification.category,
+                confidence: c.identification.confidence,
+                source: c.identification.source,
+              }
+            : null,
+          review: c.review
+            ? {
+                status: c.review.status,
+                ticketId: c.review.ticketId,
+                confirmedBy: c.review.confirmedBy,
+                confirmedAt: c.review.confirmedAt,
+                version: c.review.version,
+                expiresAt: c.review.expiresAt,
+                editHistoryCount: Array.isArray(c.review.editHistory) ? c.review.editHistory.length : 0,
+              }
+            : null,
+          valuationSummary: c.valuation
+            ? {
+                currency: c.valuation.currency,
+                low: c.valuation.low,
+                high: c.valuation.high,
+                marketDataPoints: Array.isArray(c.valuation.market_data) ? c.valuation.market_data.length : 0,
+              }
+            : null,
+        };
       } else if (key === 'poiCache' && depth > 0) {
         sanitized[key] = '[Omitted for brevity]';
       } else {

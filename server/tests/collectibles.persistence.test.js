@@ -60,21 +60,29 @@ describe('Sprint 2: Collectibles Market Data Persistence', () => {
       });
 
       const state = {
-        collectible_id: 'Test Comic #1',
-        collectible_category: 'Comics'
+        collectible: {
+          identification: {
+            id: 'Test Comic #1',
+            category: 'Comics',
+            confidence: 0.99,
+            fields: {},
+            source: 'ai',
+          },
+          review: { status: 'confirmed' },
+        },
       };
 
       const result = await valuate_collectible(state);
 
-      expect(result.collectible_valuation).toBeDefined();
-      expect(result.collectible_valuation.low).toBe(100);
-      expect(result.collectible_valuation.high).toBe(200);
-      expect(result.collectible_valuation.market_data).toHaveLength(2);
+      expect(result.collectible?.valuation).toBeDefined();
+      expect(result.collectible?.valuation?.low).toBe(100);
+      expect(result.collectible?.valuation?.high).toBe(200);
+      expect(result.collectible?.valuation?.market_data).toHaveLength(2);
       
       // Verify price sanitization (string "$175.50" -> number 175.5)
-      expect(result.collectible_valuation.market_data[0].price).toBe(150);
-      expect(result.collectible_valuation.market_data[1].price).toBe(175.5);
-      expect(result.collectible_valuation.market_data[0].venue).toBe('eBay');
+      expect(result.collectible?.valuation?.market_data?.[0]?.price).toBe(150);
+      expect(result.collectible?.valuation?.market_data?.[1]?.price).toBe(175.5);
+      expect(result.collectible?.valuation?.market_data?.[0]?.venue).toBe('eBay');
     });
 
     test('should sanitize prices with $ and commas', async () => {
@@ -95,13 +103,21 @@ describe('Sprint 2: Collectibles Market Data Persistence', () => {
       });
 
       const result = await valuate_collectible({
-        collectible_id: 'Rare Item',
-        collectible_category: 'Toys'
+        collectible: {
+          identification: {
+            id: 'Rare Item',
+            category: 'Toys',
+            confidence: 0.99,
+            fields: {},
+            source: 'ai',
+          },
+          review: { status: 'confirmed' },
+        },
       });
 
-      expect(result.collectible_valuation.low).toBe(1000);
-      expect(result.collectible_valuation.high).toBe(2500.99);
-      expect(result.collectible_valuation.market_data[0].price).toBe(1200);
+      expect(result.collectible?.valuation?.low).toBe(1000);
+      expect(result.collectible?.valuation?.high).toBe(2500.99);
+      expect(result.collectible?.valuation?.market_data?.[0]?.price).toBe(1200);
     });
 
     test('should handle missing market_data gracefully', async () => {
@@ -123,13 +139,21 @@ describe('Sprint 2: Collectibles Market Data Persistence', () => {
       });
 
       const result = await valuate_collectible({
-        collectible_id: 'Old Item',
-        collectible_category: 'Misc'
+        collectible: {
+          identification: {
+            id: 'Old Item',
+            category: 'Misc',
+            confidence: 0.99,
+            fields: {},
+            source: 'ai',
+          },
+          review: { status: 'confirmed' },
+        },
       });
 
-      expect(result.collectible_valuation.low).toBe(50);
-      expect(result.collectible_valuation.high).toBe(100);
-      expect(result.collectible_valuation.market_data).toEqual([]);
+      expect(result.collectible?.valuation?.low).toBe(50);
+      expect(result.collectible?.valuation?.high).toBe(100);
+      expect(result.collectible?.valuation?.market_data).toEqual([]);
     });
 
     test('should filter out invalid prices in market_data', async () => {
@@ -153,14 +177,22 @@ describe('Sprint 2: Collectibles Market Data Persistence', () => {
       });
 
       const result = await valuate_collectible({
-        collectible_id: 'Test Item',
-        collectible_category: 'Test'
+        collectible: {
+          identification: {
+            id: 'Test Item',
+            category: 'Test',
+            confidence: 0.99,
+            fields: {},
+            source: 'ai',
+          },
+          review: { status: 'confirmed' },
+        },
       });
 
       // Should only have 2 valid entries (150 and 200)
-      expect(result.collectible_valuation.market_data).toHaveLength(2);
-      expect(result.collectible_valuation.market_data[0].price).toBe(150);
-      expect(result.collectible_valuation.market_data[1].price).toBe(200);
+      expect(result.collectible?.valuation?.market_data).toHaveLength(2);
+      expect(result.collectible?.valuation?.market_data?.[0]?.price).toBe(150);
+      expect(result.collectible?.valuation?.market_data?.[1]?.price).toBe(200);
     });
 
     test('should sanitize URLs and reject malformed ones', async () => {
@@ -183,14 +215,22 @@ describe('Sprint 2: Collectibles Market Data Persistence', () => {
       });
 
       const result = await valuate_collectible({
-        collectible_id: 'URL Test Item',
-        collectible_category: 'Test'
+        collectible: {
+          identification: {
+            id: 'URL Test Item',
+            category: 'Test',
+            confidence: 0.99,
+            fields: {},
+            source: 'ai',
+          },
+          review: { status: 'confirmed' },
+        },
       });
 
-      expect(result.collectible_valuation.market_data).toHaveLength(3);
-      expect(result.collectible_valuation.market_data[0].url).toBe('https://valid.com/item');
-      expect(result.collectible_valuation.market_data[1].url).toBeNull(); // Invalid protocol
-      expect(result.collectible_valuation.market_data[2].url).toBeNull(); // Empty
+      expect(result.collectible?.valuation?.market_data).toHaveLength(3);
+      expect(result.collectible?.valuation?.market_data?.[0]?.url).toBe('https://valid.com/item');
+      expect(result.collectible?.valuation?.market_data?.[1]?.url).toBeNull(); // Invalid protocol
+      expect(result.collectible?.valuation?.market_data?.[2]?.url).toBeNull(); // Empty
     });
   });
 

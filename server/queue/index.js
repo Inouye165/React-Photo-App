@@ -174,6 +174,7 @@ const addAIJob = async (photoId, options = {}) => {
 
   if (options.processMetadata !== undefined) jobData.processMetadata = options.processMetadata;
   if (options.generateThumbnail !== undefined) jobData.generateThumbnail = options.generateThumbnail;
+  if (options.collectibleOverride !== undefined) jobData.collectibleOverride = options.collectibleOverride;
 
   return aiQueue.add("process-photo-ai", jobData);
 };
@@ -267,7 +268,7 @@ const startWorker = async () => {
     }
 
     async function processPhotoAIJob(job) {
-      const { photoId, modelOverrides, processMetadata, generateThumbnail } = job.data || {};
+      const { photoId, modelOverrides, processMetadata, generateThumbnail, collectibleOverride } = job.data || {};
       logger.info(`[WORKER] Processing job for photoId: ${photoId}`);
 
       const photo = await db("photos").where({ id: photoId }).first();
@@ -284,7 +285,7 @@ const startWorker = async () => {
           });
         }
 
-        const aiResult = await updatePhotoAIMetadata(db, photo, storagePath, modelOverrides);
+        const aiResult = await updatePhotoAIMetadata(db, photo, storagePath, modelOverrides, { collectibleOverride });
 
         if (!aiResult) {
           const fresh = await db('photos').where({ id: photoId }).select('ai_retry_count').first();

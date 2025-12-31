@@ -413,7 +413,21 @@ const { AnalysisResultSchema } = require('./schemas');
  * @returns {Promise<Object>} Resolves with an object: { caption, description, keywords }.
  * @throws Error when the workflow returns an error or omits the final result payload.
  */
-async function processPhotoAI({ fileBuffer, filename, metadata, gps, device, isRecheck = false }, modelOverrides = {}) {
+function sanitizeCollectibleOverride(input) {
+  if (!input || typeof input !== 'object') return null;
+  const rawId = typeof input.id === 'string' ? input.id.trim() : '';
+  if (!rawId) return null;
+
+  // Keep this fairly permissive; downstream valuation sanitizes further.
+  const id = rawId.slice(0, 200);
+  const category = (typeof input.category === 'string' && input.category.trim()) ? input.category.trim().slice(0, 80) : null;
+  const confirmedBy = (typeof input.confirmedBy === 'string' && input.confirmedBy.trim()) ? input.confirmedBy.trim().slice(0, 80) : null;
+  const fields = (input.fields !== undefined ? input.fields : null);
+
+  return { id, category, fields, confirmedBy };
+}
+
+async function processPhotoAI({ fileBuffer, filename, metadata, gps, device, isRecheck = false, collectibleOverride = null }, modelOverrides = {}) {
   let imageBuffer;
   let imageMime;
   const ext = path.extname(filename).toLowerCase();
@@ -480,6 +494,7 @@ async function processPhotoAI({ fileBuffer, filename, metadata, gps, device, isR
   // <<< ADDED
 
   const runId = crypto.randomUUID();
+  const sanitizedOverride = sanitizeCollectibleOverride(collectibleOverride);
   const initialState = {
     runId,
     filename,
@@ -490,6 +505,7 @@ async function processPhotoAI({ fileBuffer, filename, metadata, gps, device, isR
     gpsString: gps || null,
     device: device || null,
     modelOverrides: modelOverrides || {},
+    collectibleOverride: sanitizedOverride,
     classification: null,
     poiAnalysis: null,
     rich_search_context: null,
@@ -569,7 +585,9 @@ async function processPhotoAI({ fileBuffer, filename, metadata, gps, device, isR
     ...finalState.finalResult,
     classification: finalState.classification,
     poiAnalysis: finalState.poiAnalysis,
-    collectibleInsights: finalState.collectibleInsights
+    collectibleInsights: (finalState.finalResult && finalState.finalResult.collectibleInsights)
+      ? finalState.finalResult.collectibleInsights
+      : finalState.collectibleInsights
   };
 
   // Validate with Zod
@@ -609,7 +627,7 @@ async function processPhotoAI({ fileBuffer, filename, metadata, gps, device, isR
  * @returns {Promise<Object|null>} Returns the AI result object on success, or null when processing failed or retried.
  * @throws Will re-throw unexpected errors only in rare cases; normally returns null on recoverable failures.
  */
-async function updatePhotoAIMetadata(db, photoRow, storagePath, modelOverrides = {}) {
+async function updatePhotoAIMetadata(db, photoRow, storagePath, modelOverrides = {}, options = {}) {
   try {
     logger.debug('[AI Debug] [updatePhotoAIMetadata] Called with', {
       photoId: photoRow.id,
@@ -812,7 +830,8 @@ async function updatePhotoAIMetadata(db, photoRow, storagePath, modelOverrides =
         metadata: enrichedMeta, 
         gps, 
         device,
-        isRecheck
+        isRecheck,
+        collectibleOverride: options && options.collectibleOverride ? options.collectibleOverride : null,
       }, modelOverrides);
       logger.debug('[AI Debug] [updatePhotoAIMetadata] processPhotoAI result keys', ai ? Object.keys(ai) : null);
     } catch (error) {
@@ -888,11 +907,16 @@ async function updatePhotoAIMetadata(db, photoRow, storagePath, modelOverrides =
 
     // --- TRANSACTIONAL WRITE: update photos and insert collectible (if any) atomically ---
     await db.transaction(async trx => {
+      const collectibleReviewStatus = ai?.collectibleInsights?.review?.status || null;
+      const hasConfirmedCollectible = collectibleReviewStatus === 'confirmed';
+
       // Determine which "extra" AI data to save. The graph returns *either*
       // poiAnalysis (for scenery/food) or collectibleInsights (for collectibles).
       // We save whichever one is present to the 'poi_analysis' JSONB column.
       const extraData = (ai && ai.collectibleInsights)
-        ? ai.collectibleInsights
+        ? (hasConfirmedCollectible
+          ? ai.collectibleInsights
+          : { review: ai.collectibleInsights.review || { status: collectibleReviewStatus } })
         : (ai && ai.poiAnalysis)
           ? ai.poiAnalysis
           : null;
@@ -905,9 +929,11 @@ async function updatePhotoAIMetadata(db, photoRow, storagePath, modelOverrides =
           : null;
 
       const dbUpdates = {
-        caption,
-        description,
-        keywords,
+        // If collectible review is pending/rejected, avoid saving a description
+        // based on an unconfirmed (possibly wrong) identification.
+        caption: hasConfirmedCollectible ? caption : 'Collectible (Review Needed)',
+        description: hasConfirmedCollectible ? description : 'Human confirmation is required before valuation and description will be generated.',
+        keywords: hasConfirmedCollectible ? keywords : 'collectible,review,pending',
         ai_retry_count: 0,
         poi_analysis: JSON.stringify(extraData || null),
         classification: classificationType
@@ -915,8 +941,9 @@ async function updatePhotoAIMetadata(db, photoRow, storagePath, modelOverrides =
       logger.debug('[AI Debug] [updatePhotoAIMetadata] Writing AI metadata to DB (transaction).');
       await trx('photos').where({ id: photoRow.id }).update(dbUpdates);
 
-      // If collectibleInsights exists, insert into collectibles table
-      if (ai && ai.collectibleInsights) {
+      // If collectibleInsights exists AND is confirmed, insert into collectibles table.
+      // Never persist unconfirmed/misidentified details.
+      if (ai && ai.collectibleInsights && hasConfirmedCollectible) {
         // Construct the History Entry for AI analysis versioning
         const historyEntry = {
           timestamp: new Date().toISOString(),

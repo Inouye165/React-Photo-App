@@ -1,4 +1,5 @@
 const identify_collectible = require('../nodes/identify_collectible');
+const confirm_collectible = require('../nodes/confirm_collectible');
 const valuate_collectible = require('../nodes/valuate_collectible');
 const describe_collectible = require('../nodes/describe_collectible');
 const { openai } = require('../../openaiClient');
@@ -51,8 +52,12 @@ describe('Sprint 1 Collectible Flow Integration', () => {
     const state1 = { imageBase64: 'fake_base64', imageMime: 'image/jpeg' };
     const result1 = await identify_collectible(state1);
 
-    expect(result1.collectible_id).toBe('Action Comic #1');
-    expect(result1.collectible_category).toBe('Comics');
+    expect(result1.collectible?.identification?.id).toBe('Action Comic #1');
+    expect(result1.collectible?.identification?.category).toBe('Comics');
+
+    // 1.5 Confirm gate (valuation requires confirmed review)
+    const result1b = await confirm_collectible(result1);
+    expect(result1b.collectible?.review?.status).toBe('confirmed');
 
     // 2. Test valuate_collectible (Sprint 2: now returns market_data array)
     // Note: googleSearchTool.invoke is already mocked in beforeEach with schema validation
@@ -76,17 +81,17 @@ describe('Sprint 1 Collectible Flow Integration', () => {
       }]
     });
 
-    const result2 = await valuate_collectible(result1);
+    const result2 = await valuate_collectible(result1b);
 
-    expect(result2.collectible_valuation).toBeDefined();
-    expect(result2.collectible_valuation.low).toBe(1000000);
-    expect(result2.collectible_valuation.high).toBe(2000000);
-    expect(result2.collectible_valuation.market_data).toBeDefined();
-    expect(result2.collectible_valuation.market_data).toHaveLength(2);
-    expect(result2.collectible_valuation.market_data[0].price).toBe(1500000);
-    expect(result2.collectible_valuation.market_data[0].venue).toBe('eBay');
-    expect(result2.collectible_valuation.market_data[0].condition_label).toBe('CGC 9.0');
-    expect(result2.collectible_valuation.market_data[1].condition_label).toBe('NM+');
+    expect(result2.collectible?.valuation).toBeDefined();
+    expect(result2.collectible?.valuation?.low).toBe(1000000);
+    expect(result2.collectible?.valuation?.high).toBe(2000000);
+    expect(result2.collectible?.valuation?.market_data).toBeDefined();
+    expect(result2.collectible?.valuation?.market_data).toHaveLength(2);
+    expect(result2.collectible?.valuation?.market_data?.[0]?.price).toBe(1500000);
+    expect(result2.collectible?.valuation?.market_data?.[0]?.venue).toBe('eBay');
+    expect(result2.collectible?.valuation?.market_data?.[0]?.condition_label).toBe('CGC 9.0');
+    expect(result2.collectible?.valuation?.market_data?.[1]?.condition_label).toBe('NM+');
     expect(googleSearchTool.invoke).toHaveBeenCalledTimes(3);
 
     // 3. Test describe_collectible
@@ -143,15 +148,23 @@ describe('Sprint 1 Collectible Flow Integration', () => {
     });
 
     const result = await valuate_collectible({
-      collectible_id: 'Vintage Toy',
-      collectible_category: 'Toys'
+      collectible: {
+        identification: {
+          id: 'Vintage Toy',
+          category: 'Toys',
+          confidence: 0.99,
+          fields: {},
+          source: 'ai',
+        },
+        review: { status: 'confirmed' },
+      },
     });
 
-    expect(result.collectible_valuation).toBeDefined();
-    expect(result.collectible_valuation.low).toBe(400);
-    expect(result.collectible_valuation.high).toBe(600);
-    expect(result.collectible_valuation.market_data).toEqual([]);
-    expect(result.collectible_valuation.found_at).toContain('http://example.com/item');
+    expect(result.collectible?.valuation).toBeDefined();
+    expect(result.collectible?.valuation?.low).toBe(400);
+    expect(result.collectible?.valuation?.high).toBe(600);
+    expect(result.collectible?.valuation?.market_data).toEqual([]);
+    expect(result.collectible?.valuation?.found_at).toContain('http://example.com/item');
   });
 
   test('Valuate sanitizes price strings with $ and commas', async () => {
@@ -172,12 +185,75 @@ describe('Sprint 1 Collectible Flow Integration', () => {
     });
 
     const result = await valuate_collectible({
-      collectible_id: 'Test Item',
-      collectible_category: 'Test'
+      collectible: {
+        identification: {
+          id: 'Test Item',
+          category: 'Test',
+          confidence: 0.99,
+          fields: {},
+          source: 'ai',
+        },
+        review: { status: 'confirmed' },
+      },
     });
 
-    expect(result.collectible_valuation.low).toBe(1234.56);
-    expect(result.collectible_valuation.high).toBe(5678.90);
-    expect(result.collectible_valuation.market_data[0].price).toBe(2500);
+    expect(result.collectible?.valuation?.low).toBe(1234.56);
+    expect(result.collectible?.valuation?.high).toBe(5678.90);
+    expect(result.collectible?.valuation?.market_data?.[0]?.price).toBe(2500);
+  });
+
+  test('HITL override: Uses human identification before valuation/description', async () => {
+    // If the human provides an override, identify_collectible must NOT call OpenAI.
+    const overrideState = {
+      imageBase64: 'fake_base64',
+      imageMime: 'image/jpeg',
+      collectibleOverride: {
+        id: 'Pyrex Butterprint Mixing Bowl 403',
+        category: 'Kitchenware',
+        confirmedBy: 'user-123',
+      },
+    };
+
+    const identified = await identify_collectible(overrideState);
+    expect(openai.chat.completions.create).not.toHaveBeenCalled();
+    expect(identified.collectible?.identification?.id).toBe('Pyrex Butterprint Mixing Bowl 403');
+    expect(identified.collectible?.identification?.source).toBe('human');
+
+    const confirmed = await confirm_collectible(identified);
+    expect(confirmed.collectible?.review?.status).toBe('confirmed');
+    expect(confirmed.collectible?.review?.confirmedBy).toBe('user-123');
+
+    // Valuation + description should now use the overridden ID.
+    openai.chat.completions.create.mockResolvedValueOnce({
+      choices: [{
+        message: {
+          content: JSON.stringify({
+            valuation: { low: 40, high: 90, currency: 'USD' },
+            market_data: [{ price: 65, venue: 'eBay', url: 'https://example.com', date_seen: '2025-11-30' }],
+            reasoning: 'Test override valuation'
+          })
+        }
+      }]
+    });
+
+    const valued = await valuate_collectible(confirmed);
+    expect(googleSearchTool.invoke).toHaveBeenCalled();
+
+    openai.chat.completions.create.mockResolvedValueOnce({
+      choices: [{
+        message: {
+          content: JSON.stringify({
+            description: 'A classic Pyrex Butterprint bowl with a collector-friendly value range.',
+            caption: 'Pyrex Butterprint 403',
+            keywords: ['pyrex', 'butterprint', 'kitchenware'],
+            priceSources: []
+          })
+        }
+      }]
+    });
+
+    const described = await describe_collectible(valued);
+    expect(described.finalResult?.collectibleInsights?.identification?.id).toBe('Pyrex Butterprint Mixing Bowl 403');
+    expect(described.finalResult?.collectibleInsights?.review?.status).toBe('confirmed');
   });
 });

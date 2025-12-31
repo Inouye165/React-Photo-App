@@ -695,6 +695,7 @@ module.exports = function createPhotosRouter({ db, supabase }) {
 
       // Always enqueue a job for rechecking AI metadata
       const modelOverride = req.body && req.body.model ? req.body.model : (req.query && req.query.model ? req.query.model : null);
+      const collectibleOverride = req.body && req.body.collectibleOverride ? req.body.collectibleOverride : null;
       if (modelOverride && !photosAi.isModelAllowed(modelOverride)) {
         return res.status(400).json({ success: false, error: 'Unsupported model override', allowedModels: MODEL_ALLOWLIST });
       }
@@ -703,6 +704,12 @@ module.exports = function createPhotosRouter({ db, supabase }) {
       }
       const jobOptions = {};
       if (modelOverride) jobOptions.modelOverrides = { router: modelOverride, scenery: modelOverride, collectible: modelOverride };
+      if (collectibleOverride) {
+        if (typeof collectibleOverride !== 'object' || typeof collectibleOverride.id !== 'string' || !collectibleOverride.id.trim()) {
+          return res.status(400).json({ success: false, error: 'collectibleOverride must be an object with a non-empty string id' });
+        }
+        jobOptions.collectibleOverride = collectibleOverride;
+      }
       try {
         await photosAi.enqueuePhotoAiJob(photo.id, jobOptions);
       } catch (err) {

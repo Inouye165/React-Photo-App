@@ -102,25 +102,30 @@ async function describe_collectible(state) {
   try {
     logger.info('[LangGraph] describe_collectible node invoked');
 
+    const collectible = state.collectible || null;
+    const identification = collectible?.identification || null;
+    const review = collectible?.review || null;
+    const valuation = collectible?.valuation || null;
+
     // Check if we have collectible data to work with
     let analysisContext = {};
     
     // Sprint 1 Optimization Path
-    if (state.collectible_id && state.collectible_valuation) {
+    if (identification?.id && valuation) {
       logger.info('[LangGraph] describe_collectible: Using Sprint 1 optimized data');
       analysisContext = {
-        category: state.collectible_category || 'Collectible',
+        category: identification.category || 'Collectible',
         condition: { label: 'Not assessed in rapid mode' },
         value: { 
-          min: state.collectible_valuation.low, 
-          max: state.collectible_valuation.high, 
-          currency: state.collectible_valuation.currency 
+          min: valuation.low, 
+          max: valuation.high, 
+          currency: valuation.currency 
         },
-        specifics: { "Identified Item": state.collectible_id },
-        categoryReasoning: `Identified as ${state.collectible_id} with confidence ${state.collectible_id_confidence}`,
-        valueReasoning: state.collectible_valuation.reasoning,
+        specifics: { "Identified Item": identification.id },
+        categoryReasoning: `Identified as ${identification.id} with confidence ${identification.confidence}`,
+        valueReasoning: valuation.reasoning,
         confidences: {
-          category: state.collectible_id_confidence,
+          category: identification.confidence,
           value: 0.8
         }
       };
@@ -130,8 +135,8 @@ async function describe_collectible(state) {
       const collectibleResult = state.collectibleResult;
       if (!collectibleResult || collectibleResult.status !== 'success' || !collectibleResult.collectibleData) {
         logger.info('[LangGraph] describe_collectible: Using generic fallback (no valuation/collectibleResult)', {
-          collectible_id: state.collectible_id || null,
-          hasValuation: !!state.collectible_valuation,
+          collectible_id: identification?.id || null,
+          hasValuation: !!valuation,
           hasCollectibleResult: !!state.collectibleResult,
           error: state.error || null,
         });
@@ -142,7 +147,11 @@ async function describe_collectible(state) {
             caption: 'Collectible Item',
             description: 'This appears to be a collectible item. Analysis was not available.',
             keywords: ['collectible'],
-            classification: state.classification
+            classification: state.classification,
+            collectibleInsights: {
+              identification: identification || null,
+              review: review || null,
+            }
           }
         };
       }
@@ -172,7 +181,7 @@ async function describe_collectible(state) {
     const searchResults = state.collectibleSearchResults || [];
     
     // Also include market_data from valuation if available (Sprint 2)
-    const marketData = state.collectible_valuation?.market_data || [];
+    const marketData = valuation?.market_data || [];
     
     // Parse search results to extract actual URLs and snippets
     const formattedSearchResults = searchResults.map(result => {
@@ -269,6 +278,8 @@ Create an engaging description that a collector would appreciate.`;
       keywords: parsed.keywords || [cat, 'collectible'],
       classification: state.classification,
       collectibleInsights: {
+        identification: identification || null,
+        review: review || null,
         category: analysisContext.category,
         condition: analysisContext.condition,
         valuation: {
@@ -278,6 +289,8 @@ Create an engaging description that a collector would appreciate.`;
           reasoning: analysisContext.valueReasoning,
           priceSources: parsed.priceSources || []
         },
+        // Preserve raw market_data points for DB history + price tracking
+        market_data: marketData,
         specifics: analysisContext.specifics,
         confidences: analysisContext.confidences
       }

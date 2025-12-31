@@ -52,23 +52,65 @@ const AppState = z.object({
     collectibleInsights: z.any().optional(),
   }).nullable(),
 
-  // --- Collectible-specific state ---
-  // Sprint 1: Direct identification and valuation fields
-  collectible_id: z.string().nullable().optional(),
-  collectible_id_confidence: z.number().nullable().optional(),
-  collectible_category: z.string().nullable().optional(),
-  collectible_valuation: z.object({
-    low: z.number().nullable(),
-    high: z.number().nullable(),
-    currency: z.string(),
-    reasoning: z.string().optional(),
-    market_data: z.array(z.object({
-      price: z.number(),
-      venue: z.string(),
-      url: z.string().nullable(),
-      date_seen: z.string().optional()
-    })).optional()
-  }).nullable().optional(),
+  // --- Collectible (canonical) ---
+  // Canonical structure for HITL identification + review + valuation.
+  collectible: z
+    .object({
+      identification: z
+        .object({
+          id: z.string().nullable(),
+          category: z.string().nullable(),
+          confidence: z.number().nullable(),
+          fields: z.any().nullable().optional(),
+          source: z.enum(['ai', 'human']).nullable(),
+        })
+        .nullable(),
+      review: z
+        .object({
+          status: z.enum(['pending', 'confirmed', 'rejected']).nullable(),
+          ticketId: z.string().nullable(),
+          confirmedBy: z.string().nullable(),
+          confirmedAt: z.string().nullable(),
+          editHistory: z.array(z.any()).optional(),
+          version: z.number().nullable().optional(),
+          expiresAt: z.string().nullable().optional(),
+        })
+        .nullable(),
+      valuation: z
+        .object({
+          low: z.number().nullable(),
+          high: z.number().nullable(),
+          currency: z.string(),
+          reasoning: z.string().optional(),
+          market_data: z
+            .array(
+              z.object({
+                price: z.number(),
+                venue: z.string(),
+                url: z.string().nullable(),
+                date_seen: z.string().optional(),
+                condition_label: z.string().nullable().optional(),
+              })
+            )
+            .optional(),
+        })
+        .nullable()
+        .optional(),
+    })
+    .nullable()
+    .optional(),
+
+  // Optional human override to be applied before any further collectible AI work.
+  // Intended for HITL resume flows.
+  collectibleOverride: z
+    .object({
+      id: z.string(),
+      category: z.string().nullable().optional(),
+      fields: z.any().nullable().optional(),
+      confirmedBy: z.string().nullable().optional(),
+    })
+    .nullable()
+    .optional(),
 
   // Result from handle_collectible node containing structured analysis data
   collectibleResult: z.object({
