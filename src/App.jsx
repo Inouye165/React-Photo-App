@@ -15,6 +15,8 @@ import ConfirmInvitePage from './pages/ConfirmInvitePage';
 import OnboardingPage from './pages/OnboardingPage.tsx';
 import ChatPage from './pages/ChatPage.tsx';
 import AdminDashboard from './pages/AdminDashboard.tsx';
+import AdminAssessmentHistory from './pages/AdminAssessmentHistory.tsx';
+import AssessmentReviewDetail from './pages/AssessmentReviewDetail.tsx';
 
 /**
  * App - Root component with routing and error boundary
@@ -66,6 +68,8 @@ function App() {
 
               {/* Admin dashboard - protected route */}
               <Route path="/admin" element={<AdminDashboard />} />
+              <Route path="/admin/assessments" element={<AdminAssessmentHistory />} />
+              <Route path="/admin/assessments/:id" element={<AssessmentReviewDetail />} />
 
               {/* Community chat */}
               <Route path="/chat" element={<ChatPage />} />
