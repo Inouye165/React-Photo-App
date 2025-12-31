@@ -79,7 +79,7 @@ const AuthWrapper = ({ children }: AuthWrapperProps) => {
           // Or we need to add this to the preferences endpoint response
           
           // Temporary: Check localStorage as fallback (will be replaced by DB check)
-          const userId = (typeof user === 'object' && user !== null && 'id' in user) ? (user as any).id : '';
+          const userId = String((user as any)?.id ?? '');
           const localAcceptance = localStorage.getItem(`terms_accepted_${userId}`);
           setTermsAccepted(!!localAcceptance);
         }
@@ -115,7 +115,7 @@ const AuthWrapper = ({ children }: AuthWrapperProps) => {
       });
 
       // Store acceptance locally as well for quick checks
-      const userId = (typeof user === 'object' && user !== null && 'id' in user) ? (user as any).id : '';
+      const userId = String((user as any)?.id ?? '');
       localStorage.setItem(`terms_accepted_${userId}`, 'true');
       setTermsAccepted(true);
     } catch (error: unknown) {
