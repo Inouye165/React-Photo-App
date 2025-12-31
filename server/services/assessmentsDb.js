@@ -42,6 +42,28 @@ function computeFinalGradeFromRaw(rawAiResponse) {
   return Number.isFinite(grade) ? grade : null;
 }
 
+function normalizeAssessmentsDbError(err) {
+  const code = err?.code || err?.original?.code || err?.cause?.code;
+  const message = typeof err?.message === 'string' ? err.message : '';
+
+  // Postgres: 42P01 = undefined_table, 42703 = undefined_column
+  // These generally indicate migrations haven't been applied in the target environment.
+  const isMissingTable = code === '42P01' || /relation\s+"app_assessments"\s+does\s+not\s+exist/i.test(message);
+  const isMissingColumn = code === '42703' || /column\s+"[^"]+"\s+of\s+relation\s+"app_assessments"\s+does\s+not\s+exist/i.test(message);
+
+  if (isMissingTable || isMissingColumn) {
+    const e = new Error(
+      'Assessments storage is not initialized in this environment. Run server database migrations to create/update the app_assessments table.',
+    );
+    e.statusCode = 503;
+    e.code = isMissingTable ? 'ASSESSMENTS_TABLE_MISSING' : 'ASSESSMENTS_SCHEMA_OUT_OF_DATE';
+    e.details = { dbCode: code || null };
+    return e;
+  }
+
+  return err;
+}
+
 module.exports = function createAssessmentsDb({ db }) {
   return {
     computeFinalGradeFromRaw,
@@ -92,8 +114,12 @@ module.exports = function createAssessmentsDb({ db }) {
         updated_at: db.fn.now(),
       };
 
-      const rows = await db('app_assessments').insert(insertRow).returning('*');
-      return rows?.[0];
+      try {
+        const rows = await db('app_assessments').insert(insertRow).returning('*');
+        return rows?.[0];
+      } catch (err) {
+        throw normalizeAssessmentsDbError(err);
+      }
     },
 
     async createAssessment({ commit_hash }) {
@@ -108,8 +134,12 @@ module.exports = function createAssessmentsDb({ db }) {
         updated_at: db.fn.now(),
       };
 
-      const rows = await db('app_assessments').insert(insertRow).returning('*');
-      return rows?.[0];
+      try {
+        const rows = await db('app_assessments').insert(insertRow).returning('*');
+        return rows?.[0];
+      } catch (err) {
+        throw normalizeAssessmentsDbError(err);
+      }
     },
 
     async listAssessments({ limit = 50, offset = 0, status } = {}) {
@@ -117,19 +147,27 @@ module.exports = function createAssessmentsDb({ db }) {
       const safeOffset = Math.max(0, Number(offset) || 0);
       const safeStatus = status ? sanitizeStatus(status) : null;
 
-      const q = db('app_assessments')
-        .select('*')
-        .orderBy('created_at', 'desc')
-        .limit(safeLimit)
-        .offset(safeOffset);
+      try {
+        const q = db('app_assessments')
+          .select('*')
+          .orderBy('created_at', 'desc')
+          .limit(safeLimit)
+          .offset(safeOffset);
 
-      if (safeStatus) q.where({ status: safeStatus });
+        if (safeStatus) q.where({ status: safeStatus });
 
-      return q;
+        return q;
+      } catch (err) {
+        throw normalizeAssessmentsDbError(err);
+      }
     },
 
     async getAssessmentById(id) {
-      return db('app_assessments').where({ id }).first();
+      try {
+        return db('app_assessments').where({ id }).first();
+      } catch (err) {
+        throw normalizeAssessmentsDbError(err);
+      }
     },
 
     async setAssessmentResult({ id, raw_ai_response, trace_log, status }) {
@@ -143,8 +181,12 @@ module.exports = function createAssessmentsDb({ db }) {
 
       if (safeStatus) patch.status = safeStatus;
 
-      const rows = await db('app_assessments').where({ id }).update(patch).returning('*');
-      return rows?.[0];
+      try {
+        const rows = await db('app_assessments').where({ id }).update(patch).returning('*');
+        return rows?.[0];
+      } catch (err) {
+        throw normalizeAssessmentsDbError(err);
+      }
     },
 
     async confirmAssessment({ id, reviewer_id, notes, decision }) {
@@ -160,7 +202,12 @@ module.exports = function createAssessmentsDb({ db }) {
         throw err;
       }
 
-      const existing = await db('app_assessments').where({ id }).first();
+      let existing;
+      try {
+        existing = await db('app_assessments').where({ id }).first();
+      } catch (err) {
+        throw normalizeAssessmentsDbError(err);
+      }
       if (!existing) {
         const err = new Error('Assessment not found');
         err.statusCode = 404;
@@ -174,18 +221,22 @@ module.exports = function createAssessmentsDb({ db }) {
 
       const final_grade = computeFinalGradeFromRaw(existing.raw_ai_response);
 
-      const rows = await db('app_assessments')
-        .where({ id })
-        .update({
-          status: safeDecision,
-          reviewer_id,
-          notes: notes ?? null,
-          final_grade,
-          updated_at: db.fn.now(),
-        })
-        .returning('*');
+      try {
+        const rows = await db('app_assessments')
+          .where({ id })
+          .update({
+            status: safeDecision,
+            reviewer_id,
+            notes: notes ?? null,
+            final_grade,
+            updated_at: db.fn.now(),
+          })
+          .returning('*');
 
-      return rows?.[0];
+        return rows?.[0];
+      } catch (err) {
+        throw normalizeAssessmentsDbError(err);
+      }
     },
   };
 };

@@ -14,6 +14,8 @@
     "test:db": "node scripts/test-db-connection.js",
     "verify:env": "node scripts/verify-env.js",
     "verify:migrations": "node scripts/check-migrations.js",
+    "db:migrate": "knex migrate:latest --knexfile knexfile.js",
+    "db:migrate:status": "knex migrate:status --knexfile knexfile.js",
     "test:ci": "jest",
     "test:watch": "jest --watch",
     "health": "node health-check.js",

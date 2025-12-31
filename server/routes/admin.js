@@ -246,7 +246,12 @@ function createAdminRouter({ db }) {
       const rows = await assessmentsDb.listAssessments({ limit, offset, status });
       return res.json({ success: true, data: rows });
     } catch (err) {
-      return res.status(500).json({ success: false, error: err?.message || 'Internal server error' });
+      const status = err?.statusCode || 500;
+      return res.status(status).json({
+        success: false,
+        error: err?.message || 'Internal server error',
+        code: err?.code,
+      });
     }
   });
 
@@ -263,7 +268,12 @@ function createAdminRouter({ db }) {
       if (!row) return res.status(404).json({ success: false, error: 'Assessment not found' });
       return res.json({ success: true, data: row });
     } catch (err) {
-      return res.status(500).json({ success: false, error: err?.message || 'Internal server error' });
+      const status = err?.statusCode || 500;
+      return res.status(status).json({
+        success: false,
+        error: err?.message || 'Internal server error',
+        code: err?.code,
+      });
     }
   });
 
@@ -302,7 +312,11 @@ function createAdminRouter({ db }) {
       return res.json({ success: true, data: { id: created.id } });
     } catch (err) {
       const code = err?.statusCode || 500;
-      return res.status(code).json({ success: false, error: err?.message || 'Internal server error' });
+      return res.status(code).json({
+        success: false,
+        error: err?.message || 'Internal server error',
+        code: err?.code,
+      });
     }
   });
 
@@ -329,7 +343,11 @@ function createAdminRouter({ db }) {
       return res.json({ success: true, data: updated });
     } catch (err) {
       const code = err?.statusCode || 500;
-      return res.status(code).json({ success: false, error: err?.message || 'Internal server error' });
+      return res.status(code).json({
+        success: false,
+        error: err?.message || 'Internal server error',
+        code: err?.code,
+      });
     }
   });
 
