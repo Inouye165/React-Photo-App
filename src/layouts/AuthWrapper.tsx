@@ -115,7 +115,7 @@ const AuthWrapper = ({ children }: AuthWrapperProps) => {
       });
 
       // Store acceptance locally as well for quick checks
-      const userId = (user && typeof user === 'object' && 'id' in user) ? (user as any).id : '';
+      const userId = (typeof user === 'object' && user !== null && 'id' in user) ? (user as any).id : '';
       localStorage.setItem(`terms_accepted_${userId}`, 'true');
       setTermsAccepted(true);
     } catch (error: unknown) {
