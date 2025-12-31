@@ -251,6 +251,62 @@ function createAdminRouter({ db }) {
   });
 
   /**
+   * GET /api/admin/assessments/:id
+   *
+   * Fetch a single assessment (includes raw_ai_response + trace_log).
+   */
+  router.get('/assessments/:id', async (req, res) => {
+    try {
+      if (!ensureAdmin(req, res)) return;
+      const id = req.params.id;
+      const row = await assessmentsDb.getAssessmentById(id);
+      if (!row) return res.status(404).json({ success: false, error: 'Assessment not found' });
+      return res.json({ success: true, data: row });
+    } catch (err) {
+      return res.status(500).json({ success: false, error: err?.message || 'Internal server error' });
+    }
+  });
+
+  /**
+   * POST /api/admin/assessments/external
+   *
+   * Creates an assessment record from an external LLM review (e.g., ChatGPT/Gemini).
+   *
+   * @body {string} llm_provider
+   * @body {string} llm_model
+   * @body {string?} commit_hash
+   * @body {string?} prompt
+   * @body {string} responseText
+   * @body {number?} final_grade
+   */
+  router.post('/assessments/external', async (req, res) => {
+    try {
+      if (!ensureAdmin(req, res)) return;
+
+      const commit_hash = req?.body?.commit_hash;
+      const llm_provider = req?.body?.llm_provider;
+      const llm_model = req?.body?.llm_model;
+      const prompt = req?.body?.prompt;
+      const responseText = req?.body?.responseText;
+      const final_grade = req?.body?.final_grade;
+
+      const created = await assessmentsDb.createExternalAssessment({
+        commit_hash,
+        llm_provider,
+        llm_model,
+        prompt,
+        responseText,
+        final_grade: typeof final_grade === 'number' ? final_grade : undefined,
+      });
+
+      return res.json({ success: true, data: { id: created.id } });
+    } catch (err) {
+      const code = err?.statusCode || 500;
+      return res.status(code).json({ success: false, error: err?.message || 'Internal server error' });
+    }
+  });
+
+  /**
    * PATCH /api/admin/assessments/:id/confirm
    *
    * Confirms or rejects an assessment.

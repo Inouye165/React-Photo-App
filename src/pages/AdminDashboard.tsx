@@ -14,6 +14,7 @@
 
 import React, { useState, useEffect } from 'react';
 import { useAuth } from '../contexts/AuthContext';
+import { Link } from 'react-router-dom';
 import { Users, Sparkles, Mail, CheckCircle, XCircle, AlertCircle } from 'lucide-react';
 
 interface PhotoSuggestion {
@@ -180,9 +181,17 @@ export default function AdminDashboard() {
     <div className="min-h-screen bg-gray-50">
       <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-8">
         {/* Header */}
-        <div className="mb-8">
-          <h1 className="text-3xl font-bold text-gray-900 mb-2">Admin Dashboard</h1>
-          <p className="text-gray-600">Manage users and review AI-generated content</p>
+        <div className="mb-8 flex items-start justify-between gap-4">
+          <div>
+            <h1 className="text-3xl font-bold text-gray-900 mb-2">Admin Dashboard</h1>
+            <p className="text-gray-600">Manage users and review AI-generated content</p>
+          </div>
+          <Link
+            to="/admin/assessments"
+            className="px-3 py-2 rounded bg-blue-600 text-white hover:bg-blue-700"
+          >
+            Assessments
+          </Link>
         </div>
 
         {/* Tabs */}
