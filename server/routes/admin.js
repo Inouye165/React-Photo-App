@@ -17,8 +17,9 @@ const { Router } = require('express');
 const { createClient } = require('@supabase/supabase-js');
 const { getConfig } = require('../config/env');
 
-// Email validation regex (RFC 5322 simplified)
-const EMAIL_REGEX = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
+// Email validation regex (safe pattern to prevent ReDoS)
+// Limits length and uses specific character sets to avoid catastrophic backtracking
+const EMAIL_REGEX = /^[a-zA-Z0-9.!#$%&'*+/=?^_`{|}~-]{1,64}@[a-zA-Z0-9](?:[a-zA-Z0-9-]{0,61}[a-zA-Z0-9])?(?:\.[a-zA-Z0-9](?:[a-zA-Z0-9-]{0,61}[a-zA-Z0-9])?)*$/;
 
 function createAdminRouter({ db }) {
   const router = Router();
