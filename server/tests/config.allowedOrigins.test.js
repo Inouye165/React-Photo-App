@@ -198,6 +198,36 @@ describe('getAllowedOrigins', () => {
       expect(origins).not.toContain('  https://my-app.vercel.app  ');
     });
 
+    test('should include both apex + www for FRONTEND_ORIGIN apex domain', () => {
+      process.env.FRONTEND_ORIGIN = 'https://justmypeeps.org';
+
+      const { getAllowedOrigins: getOrigins } = require('../config/allowedOrigins');
+      const origins = getOrigins();
+
+      expect(origins).toContain('https://justmypeeps.org');
+      expect(origins).toContain('https://www.justmypeeps.org');
+    });
+
+    test('should include both www + apex when FRONTEND_ORIGIN is www host', () => {
+      process.env.FRONTEND_ORIGIN = 'https://www.justmypeeps.org';
+
+      const { getAllowedOrigins: getOrigins } = require('../config/allowedOrigins');
+      const origins = getOrigins();
+
+      expect(origins).toContain('https://www.justmypeeps.org');
+      expect(origins).toContain('https://justmypeeps.org');
+    });
+
+    test('should not auto-add www variants for non-apex hosts', () => {
+      process.env.FRONTEND_ORIGIN = 'https://react-photo-il8l0cuz2-ron-inouyes-projects.vercel.app';
+
+      const { getAllowedOrigins: getOrigins } = require('../config/allowedOrigins');
+      const origins = getOrigins();
+
+      expect(origins).toContain('https://react-photo-il8l0cuz2-ron-inouyes-projects.vercel.app');
+      expect(origins).not.toContain('https://www.react-photo-il8l0cuz2-ron-inouyes-projects.vercel.app');
+    });
+
     test('should deduplicate FRONTEND_ORIGIN if already in ALLOWED_ORIGINS', () => {
       const vercelOrigin = 'https://react-photo-il8l0cuz2-ron-inouyes-projects.vercel.app';
       process.env.ALLOWED_ORIGINS = vercelOrigin;

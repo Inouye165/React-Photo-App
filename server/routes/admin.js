@@ -197,6 +197,135 @@ function createAdminRouter({ db }) {
   });
 
   /**
+   * GET /api/admin/comments
+   *
+   * Fetch all comments for admin moderation with author and photo info.
+   *
+   * Query parameters:
+   * - is_reviewed: Filter by review status (optional, 'true' or 'false')
+   * - limit: Number of records to return (default: 50, max: 200)
+   * - offset: Pagination offset (default: 0)
+   *
+   * @returns {object} { success: true, data: CommentWithDetails[], total: number }
+   */
+  router.get('/comments', async (req, res) => {
+    try {
+      if (!ensureAdmin(req, res)) return;
+
+      const isReviewed = req.query.is_reviewed;
+      const limit = Math.min(parseInt(req.query.limit, 10) || 50, 200);
+      const offset = parseInt(req.query.offset, 10) || 0;
+
+      let query = `
+        SELECT
+          c.id,
+          c.photo_id,
+          c.user_id,
+          c.content,
+          c.is_reviewed,
+          c.created_at,
+          c.updated_at,
+          u.username,
+          p.filename
+        FROM comments c
+        LEFT JOIN users u ON c.user_id = u.id
+        LEFT JOIN photos p ON c.photo_id = p.id
+      `;
+
+      const params = [];
+      let paramIndex = 1;
+
+      // Add is_reviewed filter if provided
+      if (isReviewed === 'true' || isReviewed === 'false') {
+        query += ` WHERE c.is_reviewed = $${paramIndex}`;
+        params.push(isReviewed === 'true');
+        paramIndex++;
+      }
+
+      // Add ordering and pagination
+      query += ` ORDER BY c.created_at DESC LIMIT $${paramIndex} OFFSET $${paramIndex + 1}`;
+      params.push(limit, offset);
+
+      const result = await db.query(query, params);
+
+      // Get total count for pagination
+      let countQuery = 'SELECT COUNT(*) as total FROM comments';
+      const countParams = [];
+      if (isReviewed === 'true' || isReviewed === 'false') {
+        countQuery += ' WHERE is_reviewed = $1';
+        countParams.push(isReviewed === 'true');
+      }
+
+      const countResult = await db.query(countQuery, countParams);
+      const total = parseInt(countResult.rows[0]?.total || '0', 10);
+
+      return res.json({
+        success: true,
+        data: result.rows,
+        total,
+        limit,
+        offset
+      });
+    } catch (err) {
+      console.error('[admin] Comments error:', err);
+      return res.status(500).json({
+        success: false,
+        error: 'Internal server error'
+      });
+    }
+  });
+
+  /**
+   * PATCH /api/admin/comments/:id/review
+   *
+   * Mark a comment as reviewed.
+   *
+   * @param {number} id - Comment ID
+   * @returns {object} { success: true, data: Comment }
+   */
+  router.patch('/comments/:id/review', async (req, res) => {
+    try {
+      if (!ensureAdmin(req, res)) return;
+
+      const commentId = parseInt(req.params.id, 10);
+
+      if (Number.isNaN(commentId) || commentId <= 0) {
+        return res.status(400).json({
+          success: false,
+          error: 'Valid comment ID is required'
+        });
+      }
+
+      const updateQuery = `
+        UPDATE comments
+        SET is_reviewed = true, updated_at = NOW()
+        WHERE id = $1
+        RETURNING *
+      `;
+
+      const result = await db.query(updateQuery, [commentId]);
+
+      if (result.rows.length === 0) {
+        return res.status(404).json({
+          success: false,
+          error: 'Comment not found'
+        });
+      }
+
+      return res.json({
+        success: true,
+        data: result.rows[0]
+      });
+    } catch (err) {
+      console.error('[admin] Review comment error:', err);
+      return res.status(500).json({
+        success: false,
+        error: 'Internal server error'
+      });
+    }
+  });
+
+  /**
    * POST /api/admin/assessments/trigger
    *
    * Creates a new assessment record and enqueues a BullMQ job to generate it.

@@ -72,7 +72,7 @@ if (!readTrimmedEnv('LANGSMITH_TRACING') && readTrimmedEnv('LANGCHAIN_TRACING_V2
 if (!readTrimmedEnv('LANGCHAIN_API_KEY') && !readTrimmedEnv('LANGSMITH_API_KEY')) {
   process.env.LANGCHAIN_TRACING_V2 = 'false';
   process.env.LANGSMITH_TRACING = 'false';
-  console.warn('[env] LangChain/LangSmith API key missing; disabling tracing to prevent network errors.');
+  console.log('[env] LangChain/LangSmith API key missing; disabling tracing to prevent network errors.');
 }
 
 module.exports = process.env;

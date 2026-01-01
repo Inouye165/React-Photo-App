@@ -23,7 +23,15 @@ export function getApiBaseUrl() {
 
   // Default to localhost for development
   if (!base || base.trim() === '') {
-    base = 'http://localhost:3001';
+    // Prefer a same-host fallback to avoid subtle cookie/CORS issues when the app
+    // is accessed via 127.0.0.1 instead of localhost (or vice versa).
+    // This is especially important for E2E flows that rely on httpOnly cookies.
+    if (typeof window !== 'undefined' && window.location && window.location.hostname) {
+      const protocol = window.location.protocol === 'https:' ? 'https' : 'http';
+      base = `${protocol}://${window.location.hostname}:3001`;
+    } else {
+      base = 'http://localhost:3001';
+    }
   }
 
   // Normalize: strip trailing slash

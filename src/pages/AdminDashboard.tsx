@@ -15,7 +15,7 @@
 import React, { useState, useEffect } from 'react';
 import { useAuth } from '../contexts/AuthContext';
 import { Link } from 'react-router-dom';
-import { Users, Sparkles, Mail, CheckCircle, XCircle, AlertCircle } from 'lucide-react';
+import { Users, Sparkles, Mail, CheckCircle, XCircle, AlertCircle, MessageSquare } from 'lucide-react';
 import { getAuthHeadersAsync } from '../api/auth';
 import { request } from '../api/httpClient';
 
@@ -47,7 +47,34 @@ interface SuggestionsResponse {
   error?: string;
 }
 
-type TabType = 'invites' | 'suggestions';
+interface AdminComment {
+  id: number;
+  photo_id: number;
+  user_id: string;
+  content: string;
+  is_reviewed: boolean;
+  created_at: string;
+  updated_at: string;
+  username: string | null;
+  filename: string | null;
+}
+
+interface CommentsResponse {
+  success: boolean;
+  data?: AdminComment[];
+  total?: number;
+  limit?: number;
+  offset?: number;
+  error?: string;
+}
+
+interface ReviewCommentResponse {
+  success: boolean;
+  data?: AdminComment;
+  error?: string;
+}
+
+type TabType = 'invites' | 'suggestions' | 'comments';
 
 const EMAIL_REGEX = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
 
@@ -67,6 +94,13 @@ export default function AdminDashboard() {
   const [stateFilter, setStateFilter] = useState<string>('');
   const [total, setTotal] = useState(0);
 
+  // Comments tab state
+  const [comments, setComments] = useState<AdminComment[]>([]);
+  const [commentsLoading, setCommentsLoading] = useState(false);
+  const [commentsError, setCommentsError] = useState<string | null>(null);
+  const [reviewedFilter, setReviewedFilter] = useState<string>('');
+  const [commentsTotal, setCommentsTotal] = useState(0);
+
   // Verify admin role
   const isAdmin = user?.app_metadata?.role === 'admin';
 
@@ -74,7 +108,10 @@ export default function AdminDashboard() {
     if (activeTab === 'suggestions') {
       fetchSuggestions();
     }
-  }, [activeTab, stateFilter]);
+    if (activeTab === 'comments') {
+      fetchComments();
+    }
+  }, [activeTab, stateFilter, reviewedFilter]);
 
   const fetchSuggestions = async () => {
     setSuggestionsLoading(true);
@@ -111,6 +148,69 @@ export default function AdminDashboard() {
       console.error('[admin] Fetch suggestions error:', err);
     } finally {
       setSuggestionsLoading(false);
+    }
+  };
+
+  const fetchComments = async () => {
+    setCommentsLoading(true);
+    setCommentsError(null);
+
+    try {
+      const headers = await getAuthHeadersAsync(false);
+
+      const query: Record<string, string> = {
+        limit: '50',
+        offset: '0'
+      };
+
+      if (reviewedFilter) {
+        query.is_reviewed = reviewedFilter;
+      }
+
+      const data = await request<CommentsResponse>({
+        path: '/api/admin/comments',
+        method: 'GET',
+        query,
+        headers
+      });
+
+      if (!data.success) {
+        throw new Error(data.error || 'Failed to fetch comments');
+      }
+
+      setComments(data.data || []);
+      setCommentsTotal(data.total || 0);
+    } catch (err) {
+      const message = err instanceof Error ? err.message : 'Failed to load comments';
+      setCommentsError(message);
+      console.error('[admin] Fetch comments error:', err);
+    } finally {
+      setCommentsLoading(false);
+    }
+  };
+
+  const handleMarkReviewed = async (commentId: number) => {
+    try {
+      const headers = await getAuthHeadersAsync(false);
+
+      const data = await request<ReviewCommentResponse>({
+        path: `/api/admin/comments/${commentId}/review`,
+        method: 'PATCH',
+        headers
+      });
+
+      if (!data.success) {
+        throw new Error(data.error || 'Failed to mark comment as reviewed');
+      }
+
+      // Update local state
+      setComments(prev =>
+        prev.map(c => (c.id === commentId ? { ...c, is_reviewed: true } : c))
+      );
+    } catch (err) {
+      const message = err instanceof Error ? err.message : 'Failed to update comment';
+      console.error('[admin] Review comment error:', err);
+      alert(message);
     }
   };
 
@@ -212,6 +312,19 @@ export default function AdminDashboard() {
               >
                 <Sparkles size={18} />
                 <span>Suggestions Review</span>
+              </button>
+              <button
+                onClick={() => setActiveTab('comments')}
+                className={`
+                  flex items-center gap-2 px-6 py-4 text-sm font-medium border-b-2 transition-colors
+                  ${activeTab === 'comments'
+                    ? 'border-blue-500 text-blue-600'
+                    : 'border-transparent text-gray-500 hover:text-gray-700 hover:border-gray-300'
+                  }
+                `}
+              >
+                <MessageSquare size={18} />
+                <span>Comments</span>
               </button>
             </nav>
           </div>
@@ -343,6 +456,106 @@ export default function AdminDashboard() {
                             </pre>
                           </div>
                         )}
+                      </div>
+                    ))}
+                  </div>
+                )}
+              </div>
+            )}
+
+            {/* Comments Tab */}
+            {activeTab === 'comments' && (
+              <div>
+                <div className="flex items-center justify-between mb-6">
+                  <div>
+                    <h2 className="text-xl font-semibold text-gray-900">Comment Moderation</h2>
+                    <p className="text-sm text-gray-600 mt-1">
+                      {commentsTotal} comment{commentsTotal !== 1 ? 's' : ''} to review
+                    </p>
+                  </div>
+
+                  <div className="flex items-center gap-2">
+                    <label htmlFor="reviewed-filter" className="text-sm font-medium text-gray-700">
+                      Filter:
+                    </label>
+                    <select
+                      id="reviewed-filter"
+                      value={reviewedFilter}
+                      onChange={(e) => setReviewedFilter(e.target.value)}
+                      className="px-3 py-2 border border-gray-300 rounded-lg text-sm focus:ring-2 focus:ring-blue-500 focus:border-blue-500"
+                    >
+                      <option value="">All Comments</option>
+                      <option value="false">Pending Review</option>
+                      <option value="true">Reviewed</option>
+                    </select>
+                  </div>
+                </div>
+
+                {commentsLoading ? (
+                  <div className="text-center py-12">
+                    <div className="inline-block animate-spin rounded-full h-8 w-8 border-4 border-gray-300 border-t-blue-600"></div>
+                    <p className="mt-4 text-gray-600">Loading comments...</p>
+                  </div>
+                ) : commentsError ? (
+                  <div className="bg-red-50 border border-red-200 rounded-lg p-4 text-red-800">
+                    <p className="font-medium">Error loading comments</p>
+                    <p className="text-sm mt-1">{commentsError}</p>
+                  </div>
+                ) : comments.length === 0 ? (
+                  <div className="text-center py-12 text-gray-500">
+                    <MessageSquare className="mx-auto h-12 w-12 mb-4 opacity-50" />
+                    <p>No comments found</p>
+                  </div>
+                ) : (
+                  <div className="space-y-4">
+                    {comments.map((comment) => (
+                      <div key={comment.id} className="bg-gray-50 rounded-lg p-4 border border-gray-200">
+                        <div className="flex items-start justify-between mb-3">
+                          <div>
+                            <h3 className="font-medium text-gray-900">
+                              {comment.username || 'Anonymous'} on {comment.filename || `Photo #${comment.photo_id}`}
+                            </h3>
+                            <p className="text-sm text-gray-500">
+                              {new Date(comment.created_at).toLocaleDateString('en-US', {
+                                month: 'short',
+                                day: 'numeric',
+                                year: 'numeric',
+                                hour: '2-digit',
+                                minute: '2-digit'
+                              })}
+                            </p>
+                          </div>
+                          <div className="flex items-center gap-2">
+                            {comment.is_reviewed ? (
+                              <span className="px-3 py-1 bg-green-100 text-green-800 text-xs font-medium rounded-full flex items-center gap-1">
+                                <CheckCircle size={14} />
+                                Reviewed
+                              </span>
+                            ) : (
+                              <button
+                                onClick={() => handleMarkReviewed(comment.id)}
+                                className="px-3 py-1 bg-blue-100 text-blue-800 text-xs font-medium rounded-full hover:bg-blue-200 transition-colors"
+                              >
+                                Mark Reviewed
+                              </button>
+                            )}
+                          </div>
+                        </div>
+
+                        <div className="bg-white rounded border border-gray-200 p-3">
+                          <p className="text-sm text-gray-700 whitespace-pre-wrap break-words">
+                            {comment.content}
+                          </p>
+                        </div>
+
+                        <div className="mt-2 flex gap-2">
+                          <Link
+                            to={`/photos/${comment.photo_id}`}
+                            className="text-xs text-blue-600 hover:underline"
+                          >
+                            View Photo →
+                          </Link>
+                        </div>
                       </div>
                     ))}
                   </div>

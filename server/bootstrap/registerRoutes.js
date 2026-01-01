@@ -17,6 +17,7 @@ function registerRoutes(app, { db, supabase, sseManager, logger }) {
   const createPublicRouter = require('../routes/public');
   const createEventsRouter = require('../routes/events');
   const createAdminRouter = require('../routes/admin');
+  const createCommentsRouter = require('../routes/comments');
 
   const { securityErrorHandler } = require('../middleware/security');
   const { authenticateToken, requireRole } = require('../middleware/auth');
@@ -73,6 +74,9 @@ function registerRoutes(app, { db, supabase, sseManager, logger }) {
   app.use('/api/users', createUsersRouter({ db }));
   app.use(authenticateToken, createUploadsRouter({ db }));
   app.use(authenticateToken, createPrivilegeRouter({ db }));
+
+  // Comments routes (protected by authenticateToken)
+  app.use('/api/comments', authenticateToken, createCommentsRouter({ db }));
   
   // Admin routes (protected by authenticateToken + requireRole('admin'))
   app.use('/api/admin', authenticateToken, requireRole('admin'), createAdminRouter({ db }));
