@@ -17,7 +17,7 @@ import { useAuth } from '../contexts/AuthContext';
 import { Link } from 'react-router-dom';
 import { Users, Sparkles, Mail, CheckCircle, XCircle, AlertCircle } from 'lucide-react';
 import { getAuthHeadersAsync } from '../api/auth';
-import { API_BASE_URL } from '../config/apiConfig';
+import { request } from '../api/httpClient';
 
 interface PhotoSuggestion {
   id: string;
@@ -81,25 +81,25 @@ export default function AdminDashboard() {
     setSuggestionsError(null);
 
     try {
-      const headers = await getAuthHeadersAsync(true);
+      const headers = await getAuthHeadersAsync(false);
 
-      const params = new URLSearchParams({
+      const query: Record<string, string> = {
         limit: '50',
         offset: '0'
-      });
+      };
       
       if (stateFilter) {
-        params.append('state', stateFilter);
+        query.state = stateFilter;
       }
 
-      const response = await fetch(`${API_BASE_URL}/api/admin/suggestions?${params}`, {
+      const data = await request<SuggestionsResponse>({
+        path: '/api/admin/suggestions',
         method: 'GET',
+        query,
         headers
       });
 
-      const data: SuggestionsResponse = await response.json();
-
-      if (!response.ok || !data.success) {
+      if (!data.success) {
         throw new Error(data.error || 'Failed to fetch suggestions');
       }
 
@@ -128,17 +128,16 @@ export default function AdminDashboard() {
     setInviteLoading(true);
 
     try {
-      const headers = await getAuthHeadersAsync(true);
+      const headers = await getAuthHeadersAsync(false);
 
-      const response = await fetch(`${API_BASE_URL}/api/admin/invite`, {
+      const data = await request<InviteResponse>({
+        path: '/api/admin/invite',
         method: 'POST',
         headers,
-        body: JSON.stringify({ email: trimmedEmail })
+        body: { email: trimmedEmail }
       });
 
-      const data: InviteResponse = await response.json();
-
-      if (!response.ok || !data.success) {
+      if (!data.success) {
         throw new Error(data.error || 'Failed to send invitation');
       }
 
