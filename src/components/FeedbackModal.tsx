@@ -53,8 +53,9 @@ export default function FeedbackModal({ onClose }: FeedbackModalProps) {
       } else {
         setError('Failed to submit feedback');
       }
-    } catch (err) {
-      setError('Failed to submit feedback. Please try again.');
+    } catch (err: unknown) {
+      const message = err instanceof Error ? err.message : 'Failed to submit feedback. Please try again.';
+      setError(message);
     } finally {
       setIsSubmitting(false);
     }
