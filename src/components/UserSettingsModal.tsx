@@ -1,0 +1,298 @@
+import React, { useState } from 'react';
+import { X, Lock, AlertCircle, CheckCircle, Eye, EyeOff } from 'lucide-react';
+import { supabase } from '../supabaseClient';
+
+interface UserSettingsModalProps {
+  onClose: () => void;
+}
+
+type ActiveTab = 'password';
+
+/**
+ * UserSettingsModal - Modal for user account settings
+ * 
+ * Currently supports:
+ * - Password change (via Supabase Auth)
+ * 
+ * Future expansion:
+ * - Email preferences
+ * - Notification settings
+ * - Privacy settings
+ */
+export default function UserSettingsModal({ onClose }: UserSettingsModalProps) {
+  const [activeTab, setActiveTab] = useState<ActiveTab>('password');
+
+  return (
+    <div 
+      className="fixed inset-0 z-[100] flex items-center justify-center p-4 bg-black/50"
+      onClick={(e) => e.target === e.currentTarget && onClose()}
+    >
+      <div 
+        className="w-full max-w-lg bg-white rounded-xl shadow-2xl animate-in fade-in zoom-in-95 duration-200"
+        role="dialog"
+        aria-labelledby="settings-modal-title"
+        aria-modal="true"
+      >
+        {/* Header */}
+        <div className="flex items-center justify-between px-6 py-4 border-b border-slate-200">
+          <h2 id="settings-modal-title" className="text-lg font-semibold text-slate-900">
+            Settings
+          </h2>
+          <button
+            onClick={onClose}
+            aria-label="Close"
+            className="p-2 -mr-2 text-slate-400 hover:text-slate-600 
+                       hover:bg-slate-100 rounded-lg transition-colors"
+          >
+            <X size={20} />
+          </button>
+        </div>
+
+        {/* Tab Navigation */}
+        <div className="flex border-b border-slate-200">
+          <button
+            onClick={() => setActiveTab('password')}
+            className={`flex items-center gap-2 px-6 py-3 text-sm font-medium border-b-2 transition-colors
+                        ${activeTab === 'password'
+                          ? 'border-blue-500 text-blue-600'
+                          : 'border-transparent text-slate-500 hover:text-slate-700'
+                        }`}
+          >
+            <Lock size={16} />
+            Password
+          </button>
+          {/* Future tabs can be added here */}
+        </div>
+
+        {/* Content */}
+        <div className="p-6">
+          {activeTab === 'password' && <PasswordChangeForm />}
+        </div>
+      </div>
+    </div>
+  );
+}
+
+/**
+ * PasswordChangeForm - Form for changing user password
+ */
+function PasswordChangeForm() {
+  const [newPassword, setNewPassword] = useState('');
+  const [confirmPassword, setConfirmPassword] = useState('');
+  const [showPassword, setShowPassword] = useState(false);
+  const [isSubmitting, setIsSubmitting] = useState(false);
+  const [error, setError] = useState<string | null>(null);
+  const [success, setSuccess] = useState(false);
+
+  const MIN_PASSWORD_LENGTH = 8;
+
+  const validatePassword = (): string | null => {
+    if (newPassword.length < MIN_PASSWORD_LENGTH) {
+      return `Password must be at least ${MIN_PASSWORD_LENGTH} characters`;
+    }
+    if (newPassword !== confirmPassword) {
+      return 'Passwords do not match';
+    }
+    // Check for at least one number and one letter
+    if (!/[0-9]/.test(newPassword)) {
+      return 'Password must contain at least one number';
+    }
+    if (!/[a-zA-Z]/.test(newPassword)) {
+      return 'Password must contain at least one letter';
+    }
+    return null;
+  };
+
+  const handleSubmit = async (e: React.FormEvent) => {
+    e.preventDefault();
+    
+    const validationError = validatePassword();
+    if (validationError) {
+      setError(validationError);
+      return;
+    }
+
+    setIsSubmitting(true);
+    setError(null);
+
+    try {
+      const { error: updateError } = await supabase.auth.updateUser({
+        password: newPassword,
+      });
+
+      if (updateError) {
+        throw updateError;
+      }
+
+      setSuccess(true);
+      setNewPassword('');
+      setConfirmPassword('');
+    } catch (err: unknown) {
+      const message = err instanceof Error ? err.message : 'Failed to update password';
+      setError(message);
+    } finally {
+      setIsSubmitting(false);
+    }
+  };
+
+  if (success) {
+    return (
+      <div className="py-8 text-center">
+        <CheckCircle className="w-16 h-16 mx-auto text-green-500 mb-4" />
+        <h3 className="text-lg font-medium text-slate-900 mb-2">
+          Password Updated!
+        </h3>
+        <p className="text-sm text-slate-500">
+          Your password has been changed successfully.
+        </p>
+      </div>
+    );
+  }
+
+  return (
+    <form onSubmit={handleSubmit} className="space-y-4">
+      <p className="text-sm text-slate-500 mb-4">
+        Choose a strong password with at least 8 characters, including letters and numbers.
+      </p>
+
+      {/* New Password */}
+      <div>
+        <label 
+          htmlFor="new-password"
+          className="block text-sm font-medium text-slate-700 mb-1"
+        >
+          New Password
+        </label>
+        <div className="relative">
+          <input
+            id="new-password"
+            type={showPassword ? 'text' : 'password'}
+            value={newPassword}
+            onChange={(e) => setNewPassword(e.target.value)}
+            placeholder="Enter new password"
+            className="w-full px-3 py-2 pr-10 border border-slate-300 rounded-lg
+                       text-sm text-slate-900 placeholder:text-slate-400
+                       focus:ring-2 focus:ring-blue-500 focus:border-blue-500"
+            autoComplete="new-password"
+          />
+          <button
+            type="button"
+            onClick={() => setShowPassword(!showPassword)}
+            className="absolute right-2 top-1/2 -translate-y-1/2 p-1 text-slate-400 
+                       hover:text-slate-600 rounded transition-colors"
+            aria-label={showPassword ? 'Hide password' : 'Show password'}
+          >
+            {showPassword ? <EyeOff size={18} /> : <Eye size={18} />}
+          </button>
+        </div>
+      </div>
+
+      {/* Confirm Password */}
+      <div>
+        <label 
+          htmlFor="confirm-password"
+          className="block text-sm font-medium text-slate-700 mb-1"
+        >
+          Confirm Password
+        </label>
+        <input
+          id="confirm-password"
+          type={showPassword ? 'text' : 'password'}
+          value={confirmPassword}
+          onChange={(e) => setConfirmPassword(e.target.value)}
+          placeholder="Confirm new password"
+          className="w-full px-3 py-2 border border-slate-300 rounded-lg
+                     text-sm text-slate-900 placeholder:text-slate-400
+                     focus:ring-2 focus:ring-blue-500 focus:border-blue-500"
+          autoComplete="new-password"
+        />
+      </div>
+
+      {/* Password strength indicator */}
+      {newPassword && (
+        <div className="text-xs">
+          <div className="flex items-center gap-2 mb-1">
+            <span className="text-slate-500">Password strength:</span>
+            <PasswordStrengthIndicator password={newPassword} />
+          </div>
+          <ul className="text-slate-500 space-y-0.5 ml-1">
+            <li className={newPassword.length >= MIN_PASSWORD_LENGTH ? 'text-green-600' : ''}>
+              {newPassword.length >= MIN_PASSWORD_LENGTH ? '✓' : '○'} At least 8 characters
+            </li>
+            <li className={/[a-zA-Z]/.test(newPassword) ? 'text-green-600' : ''}>
+              {/[a-zA-Z]/.test(newPassword) ? '✓' : '○'} Contains a letter
+            </li>
+            <li className={/[0-9]/.test(newPassword) ? 'text-green-600' : ''}>
+              {/[0-9]/.test(newPassword) ? '✓' : '○'} Contains a number
+            </li>
+          </ul>
+        </div>
+      )}
+
+      {/* Error */}
+      {error && (
+        <div className="flex items-center gap-2 p-3 bg-red-50 text-red-700 rounded-lg text-sm">
+          <AlertCircle size={16} className="flex-shrink-0" />
+          <span>{error}</span>
+        </div>
+      )}
+
+      {/* Submit */}
+      <button
+        type="submit"
+        disabled={isSubmitting || !newPassword || !confirmPassword}
+        className="w-full flex items-center justify-center gap-2 px-4 py-2.5 text-sm font-medium
+                   text-white bg-blue-600 hover:bg-blue-700
+                   disabled:bg-slate-300 disabled:cursor-not-allowed
+                   rounded-lg transition-colors"
+      >
+        {isSubmitting ? (
+          <>
+            <span className="w-4 h-4 border-2 border-white/30 border-t-white rounded-full animate-spin" />
+            Updating...
+          </>
+        ) : (
+          'Update Password'
+        )}
+      </button>
+    </form>
+  );
+}
+
+/**
+ * PasswordStrengthIndicator - Visual indicator for password strength
+ */
+function PasswordStrengthIndicator({ password }: { password: string }) {
+  const getStrength = (): { level: number; label: string; color: string } => {
+    let score = 0;
+    
+    if (password.length >= 8) score++;
+    if (password.length >= 12) score++;
+    if (/[a-z]/.test(password) && /[A-Z]/.test(password)) score++;
+    if (/[0-9]/.test(password)) score++;
+    if (/[^a-zA-Z0-9]/.test(password)) score++;
+    
+    if (score <= 1) return { level: 1, label: 'Weak', color: 'bg-red-500' };
+    if (score <= 2) return { level: 2, label: 'Fair', color: 'bg-amber-500' };
+    if (score <= 3) return { level: 3, label: 'Good', color: 'bg-blue-500' };
+    return { level: 4, label: 'Strong', color: 'bg-green-500' };
+  };
+
+  const { level, label, color } = getStrength();
+
+  return (
+    <div className="flex items-center gap-2">
+      <div className="flex gap-1">
+        {[1, 2, 3, 4].map((i) => (
+          <div
+            key={i}
+            className={`w-6 h-1.5 rounded-full ${i <= level ? color : 'bg-slate-200'}`}
+          />
+        ))}
+      </div>
+      <span className={level <= 1 ? 'text-red-600' : level <= 2 ? 'text-amber-600' : level <= 3 ? 'text-blue-600' : 'text-green-600'}>
+        {label}
+      </span>
+    </div>
+  );
+}

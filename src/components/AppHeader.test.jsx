@@ -166,12 +166,13 @@ describe('AppHeader Component', () => {
     expect(forwardButton).toHaveAttribute('aria-label', 'Go forward');
   });
 
-  it('renders logout button with accessible label', () => {
+  it('renders user menu trigger with accessible label', () => {
     render(<AppHeader />);
     
-    const logoutButton = screen.getByTestId('logout-button');
-    expect(logoutButton).toBeInTheDocument();
-    expect(logoutButton).toHaveAttribute('aria-label', 'Sign out');
+    const userMenuTrigger = screen.getByTestId('user-menu-trigger');
+    expect(userMenuTrigger).toBeInTheDocument();
+    expect(userMenuTrigger).toHaveAttribute('aria-label', 'User menu');
+    expect(userMenuTrigger).toHaveAttribute('aria-haspopup', 'true');
   });
 
   describe('Touch Target Accessibility (Fat Finger Rule)', () => {
@@ -205,12 +206,11 @@ describe('AppHeader Component', () => {
       expect(forwardButton.className).toMatch(/h-11/);
     });
 
-    it('logout button has minimum 44px touch target', () => {
+    it('user menu trigger has minimum 44px touch target', () => {
       render(<AppHeader />);
       
-      const logoutButton = screen.getByTestId('logout-button');
-      expect(logoutButton.className).toMatch(/min-w-\[44px\]/);
-      expect(logoutButton.className).toMatch(/min-h-\[44px\]/);
+      const userMenuTrigger = screen.getByTestId('user-menu-trigger');
+      expect(userMenuTrigger.className).toMatch(/min-h-\[44px\]/);
     });
   });
 
@@ -226,13 +226,14 @@ describe('AppHeader Component', () => {
       expect(labelSpan?.className).toMatch(/hidden\s+sm:inline/);
     });
 
-    it('logout button text hidden on mobile', () => {
+    it('user menu shows username hidden on mobile', () => {
       render(<AppHeader />);
       
-      const logoutButton = screen.getByTestId('logout-button');
-      const labelSpan = logoutButton.querySelector('span');
+      const userMenuTrigger = screen.getByTestId('user-menu-trigger');
+      const usernameSpan = userMenuTrigger.querySelector('span.hidden');
       
-      expect(labelSpan?.className).toMatch(/hidden\s+sm:inline/);
+      // Username span should be hidden on mobile (md:block)
+      expect(usernameSpan?.className).toMatch(/hidden/);
     });
   });
 

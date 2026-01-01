@@ -1,0 +1,192 @@
+import { useState, useRef, useEffect } from 'react';
+import { LogOut, MessageSquareText, Settings, ChevronDown } from 'lucide-react';
+import { useAuth } from '../contexts/AuthContext';
+import FeedbackModal from './FeedbackModal';
+import UserSettingsModal from './UserSettingsModal';
+
+/**
+ * UserMenu - Dropdown menu triggered by clicking the user avatar
+ * 
+ * Contains:
+ * - Send Feedback (opens modal for app-wide feedback/suggestions)
+ * - Settings (password change, preferences)
+ * - Logout
+ * 
+ * Fat Finger Rule: All touch targets ≥ 44x44px
+ */
+export default function UserMenu() {
+  const { user, logout, profile } = useAuth();
+  const [isOpen, setIsOpen] = useState(false);
+  const [showFeedbackModal, setShowFeedbackModal] = useState(false);
+  const [showSettingsModal, setShowSettingsModal] = useState(false);
+  const menuRef = useRef<HTMLDivElement>(null);
+  
+  // Check if user has admin role
+  const isAdmin = user?.app_metadata?.role === 'admin';
+  const displayName = profile?.username || 'User';
+  const initial = displayName.charAt(0).toUpperCase();
+
+  // Close menu when clicking outside
+  useEffect(() => {
+    function handleClickOutside(event: MouseEvent) {
+      if (menuRef.current && !menuRef.current.contains(event.target as Node)) {
+        setIsOpen(false);
+      }
+    }
+
+    if (isOpen) {
+      document.addEventListener('mousedown', handleClickOutside);
+      return () => document.removeEventListener('mousedown', handleClickOutside);
+    }
+  }, [isOpen]);
+
+  // Close menu on escape key
+  useEffect(() => {
+    function handleEscape(event: KeyboardEvent) {
+      if (event.key === 'Escape') {
+        setIsOpen(false);
+      }
+    }
+
+    if (isOpen) {
+      document.addEventListener('keydown', handleEscape);
+      return () => document.removeEventListener('keydown', handleEscape);
+    }
+  }, [isOpen]);
+
+  const handleLogout = () => {
+    setIsOpen(false);
+    logout();
+  };
+
+  const handleFeedback = () => {
+    setIsOpen(false);
+    setShowFeedbackModal(true);
+  };
+
+  const handleSettings = () => {
+    setIsOpen(false);
+    setShowSettingsModal(true);
+  };
+
+  if (!user) return null;
+
+  return (
+    <>
+      <div className="relative" ref={menuRef}>
+        {/* Trigger Button - User Avatar */}
+        <button
+          onClick={() => setIsOpen(!isOpen)}
+          data-testid="user-menu-trigger"
+          aria-expanded={isOpen}
+          aria-haspopup="true"
+          aria-label="User menu"
+          className="flex items-center gap-1.5 min-h-[44px] px-2 sm:px-3
+                     rounded-lg border border-slate-200 bg-white
+                     text-slate-600 text-xs sm:text-sm font-medium
+                     hover:bg-slate-50 hover:border-slate-300
+                     active:bg-slate-100 transition-all touch-manipulation"
+        >
+          {/* Avatar */}
+          <div className="w-7 h-7 rounded-full bg-slate-200 flex items-center justify-center
+                          text-xs font-semibold text-slate-600">
+            {initial}
+          </div>
+          
+          {/* Username - hidden on mobile */}
+          <span className="hidden md:block max-w-[80px] truncate">
+            {displayName}
+          </span>
+          
+          {/* Admin badge */}
+          {isAdmin && (
+            <span 
+              className="hidden sm:inline px-2 py-0.5 bg-purple-100 text-purple-700 text-[10px] font-semibold rounded-full"
+              title="Administrator"
+            >
+              ADMIN
+            </span>
+          )}
+          
+          {/* Chevron indicator */}
+          <ChevronDown 
+            size={14} 
+            className={`text-slate-400 transition-transform ${isOpen ? 'rotate-180' : ''}`}
+          />
+        </button>
+
+        {/* Dropdown Menu */}
+        {isOpen && (
+          <div 
+            className="absolute right-0 top-full mt-1 w-56 py-1
+                       bg-white rounded-lg shadow-lg border border-slate-200
+                       z-50 animate-in fade-in slide-in-from-top-2 duration-150"
+            role="menu"
+            aria-orientation="vertical"
+          >
+            {/* User info header */}
+            <div className="px-4 py-3 border-b border-slate-100">
+              <p className="text-sm font-medium text-slate-900 truncate">
+                {displayName}
+              </p>
+              <p className="text-xs text-slate-500 truncate">
+                {user.email}
+              </p>
+            </div>
+
+            {/* Menu Items */}
+            <div className="py-1">
+              <button
+                onClick={handleFeedback}
+                data-testid="user-menu-feedback"
+                role="menuitem"
+                className="w-full flex items-center gap-3 px-4 py-3
+                           text-sm text-slate-700 hover:bg-slate-50
+                           transition-colors touch-manipulation"
+              >
+                <MessageSquareText size={18} className="text-slate-400" />
+                Send Feedback
+              </button>
+              
+              <button
+                onClick={handleSettings}
+                data-testid="user-menu-settings"
+                role="menuitem"
+                className="w-full flex items-center gap-3 px-4 py-3
+                           text-sm text-slate-700 hover:bg-slate-50
+                           transition-colors touch-manipulation"
+              >
+                <Settings size={18} className="text-slate-400" />
+                Settings
+              </button>
+            </div>
+
+            {/* Logout */}
+            <div className="border-t border-slate-100 py-1">
+              <button
+                onClick={handleLogout}
+                data-testid="user-menu-logout"
+                role="menuitem"
+                className="w-full flex items-center gap-3 px-4 py-3
+                           text-sm text-red-600 hover:bg-red-50
+                           transition-colors touch-manipulation"
+              >
+                <LogOut size={18} />
+                Sign Out
+              </button>
+            </div>
+          </div>
+        )}
+      </div>
+
+      {/* Modals */}
+      {showFeedbackModal && (
+        <FeedbackModal onClose={() => setShowFeedbackModal(false)} />
+      )}
+      
+      {showSettingsModal && (
+        <UserSettingsModal onClose={() => setShowSettingsModal(false)} />
+      )}
+    </>
+  );
+}
