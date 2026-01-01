@@ -17,6 +17,7 @@ import { useAuth } from '../contexts/AuthContext';
 import { Link } from 'react-router-dom';
 import { Users, Sparkles, Mail, CheckCircle, XCircle, AlertCircle } from 'lucide-react';
 import { getAuthHeadersAsync } from '../api/auth';
+import { API_BASE_URL } from '../config/apiConfig';
 
 interface PhotoSuggestion {
   id: string;
@@ -91,7 +92,7 @@ export default function AdminDashboard() {
         params.append('state', stateFilter);
       }
 
-      const response = await fetch(`/api/admin/suggestions?${params}`, {
+      const response = await fetch(`${API_BASE_URL}/api/admin/suggestions?${params}`, {
         method: 'GET',
         headers
       });
@@ -129,7 +130,7 @@ export default function AdminDashboard() {
     try {
       const headers = await getAuthHeadersAsync(true);
 
-      const response = await fetch('/api/admin/invite', {
+      const response = await fetch(`${API_BASE_URL}/api/admin/invite`, {
         method: 'POST',
         headers,
         body: JSON.stringify({ email: trimmedEmail })
