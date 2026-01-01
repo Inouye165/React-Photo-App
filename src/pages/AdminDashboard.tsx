@@ -16,6 +16,7 @@ import React, { useState, useEffect } from 'react';
 import { useAuth } from '../contexts/AuthContext';
 import { Link } from 'react-router-dom';
 import { Users, Sparkles, Mail, CheckCircle, XCircle, AlertCircle } from 'lucide-react';
+import { getAuthHeadersAsync } from '../api/auth';
 
 interface PhotoSuggestion {
   id: string;
@@ -79,10 +80,7 @@ export default function AdminDashboard() {
     setSuggestionsError(null);
 
     try {
-      const token = localStorage.getItem('auth_token');
-      if (!token) {
-        throw new Error('No authentication token');
-      }
+      const headers = await getAuthHeadersAsync(true);
 
       const params = new URLSearchParams({
         limit: '50',
@@ -95,10 +93,7 @@ export default function AdminDashboard() {
 
       const response = await fetch(`/api/admin/suggestions?${params}`, {
         method: 'GET',
-        headers: {
-          'Authorization': `Bearer ${token}`,
-          'Content-Type': 'application/json'
-        }
+        headers
       });
 
       const data: SuggestionsResponse = await response.json();
@@ -132,17 +127,11 @@ export default function AdminDashboard() {
     setInviteLoading(true);
 
     try {
-      const token = localStorage.getItem('auth_token');
-      if (!token) {
-        throw new Error('No authentication token');
-      }
+      const headers = await getAuthHeadersAsync(true);
 
       const response = await fetch('/api/admin/invite', {
         method: 'POST',
-        headers: {
-          'Authorization': `Bearer ${token}`,
-          'Content-Type': 'application/json'
-        },
+        headers,
         body: JSON.stringify({ email: trimmedEmail })
       });
 
