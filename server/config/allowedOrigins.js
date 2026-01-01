@@ -54,6 +54,48 @@ function normalizeOrigin(value) {
   return trimmed.endsWith('/') ? trimmed.slice(0, -1) : trimmed;
 }
 
+function isProbablyIpHost(hostname) {
+  if (!hostname) return false;
+  // IPv6 (very rough): contains ':'
+  if (hostname.includes(':')) return true;
+  // IPv4
+  return /^\d{1,3}(?:\.\d{1,3}){3}$/.test(hostname);
+}
+
+function addSingleOriginWithWwwVariants(origins, rawOrigin) {
+  const normalized = normalizeOrigin(rawOrigin);
+  if (!normalized) return;
+
+  origins.add(normalized);
+
+  // Heuristic: only add www-variants for apex domains (example.com).
+  // Avoid adding nonsense variants for localhost/IPs or already-subdomained hosts.
+  try {
+    const url = new URL(normalized);
+    const hostname = url.hostname;
+
+    if (!hostname || hostname === 'localhost' || isProbablyIpHost(hostname)) return;
+
+    if (hostname.startsWith('www.')) {
+      const withoutWww = hostname.slice(4);
+      if (!withoutWww) return;
+      const withoutUrl = new URL(url.toString());
+      withoutUrl.hostname = withoutWww;
+      origins.add(withoutUrl.origin);
+      return;
+    }
+
+    const labels = hostname.split('.').filter(Boolean);
+    if (labels.length !== 2) return;
+
+    const withUrl = new URL(url.toString());
+    withUrl.hostname = `www.${hostname}`;
+    origins.add(withUrl.origin);
+  } catch {
+    // If it's not a valid URL, just keep the normalized value.
+  }
+}
+
 /**
  * Parse and return the complete list of allowed CORS origins.
  * 
@@ -77,11 +119,11 @@ function getAllowedOrigins() {
     
     // FRONTEND_ORIGIN is always respected (simple single-origin config)
     if (process.env.FRONTEND_ORIGIN) {
-      origins.add(normalizeOrigin(process.env.FRONTEND_ORIGIN));
+      addSingleOriginWithWwwVariants(origins, process.env.FRONTEND_ORIGIN);
     }
     
     if (process.env.CLIENT_ORIGIN) {
-      origins.add(normalizeOrigin(process.env.CLIENT_ORIGIN));
+      addSingleOriginWithWwwVariants(origins, process.env.CLIENT_ORIGIN);
     }
     
     if (process.env.CLIENT_ORIGINS) {
@@ -108,13 +150,13 @@ function getAllowedOrigins() {
   
   // FRONTEND_ORIGIN (simple single-origin config for production frontend)
   if (process.env.FRONTEND_ORIGIN) {
-    origins.add(normalizeOrigin(process.env.FRONTEND_ORIGIN));
+    addSingleOriginWithWwwVariants(origins, process.env.FRONTEND_ORIGIN);
   }
   
   // Backward compatibility: CLIENT_ORIGIN (single origin)
   const envOrigin = process.env.CLIENT_ORIGIN;
   if (envOrigin) {
-    origins.add(envOrigin.trim());
+    addSingleOriginWithWwwVariants(origins, envOrigin);
   }
   
   // Backward compatibility: CLIENT_ORIGINS (multi-origin)
