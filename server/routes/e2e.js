@@ -17,10 +17,11 @@ router.use(e2eGateMiddleware);
 // Explicit rate limiting for E2E auth-like endpoints.
 // Note: These routes are always disabled in production by the E2E gate.
 const isTestEnv = process.env.NODE_ENV === 'test';
+const isExplicitE2EEnabled = process.env.E2E_ROUTES_ENABLED === 'true';
 const e2eLimiter = rateLimit({
   windowMs: 15 * 60 * 1000, // 15 minutes
   // Keep tests stable (avoid flakiness), but still satisfy scanners and protect dev usage.
-  max: isTestEnv ? 1000 : 30,
+  max: isTestEnv || isExplicitE2EEnabled ? 1000 : 30,
   store: getRateLimitStore(),
   message: {
     success: false,
@@ -39,11 +40,17 @@ const config = getConfig();
 // and only used for automated E2E testing. The token is stored in an httpOnly
 // cookie which is the secure pattern for session management.
 router.post('/e2e-login', (req, res) => {
+  const requestedRole = req && req.body && typeof req.body.role === 'string' ? req.body.role : 'admin';
+  const role = requestedRole === 'admin' ? 'admin' : 'user';
+
   const user = {
     id: '11111111-1111-4111-8111-111111111111',
     username: 'e2e-test',
-    role: 'admin',
-    email: 'e2e@example.com'
+    role,
+    // Keep legacy email for admin role to avoid breaking existing tests.
+    email: role === 'admin' ? 'e2e@example.com' : 'e2e-user@example.com',
+    app_metadata: { role },
+    user_metadata: { username: 'e2e-test' }
   };
   // Sign a JWT for the test user
   // lgtm[js/clear-text-storage-of-sensitive-data]
@@ -51,9 +58,9 @@ router.post('/e2e-login', (req, res) => {
     const token = jwt.sign(
       { 
         sub: '11111111-1111-4111-8111-111111111111',
-        email: 'e2e@example.com',
+        email: user.email,
         username: 'e2e-test',
-        role: 'admin'
+        role
       },
       config.jwtSecret,
       { expiresIn: '1h' }
@@ -81,13 +88,19 @@ router.get('/e2e-verify', (req, res) => {
     const decoded = jwt.verify(token, config.jwtSecret);
     // Check if this is an E2E test token
     if (decoded.sub === '11111111-1111-4111-8111-111111111111') {
+      const role = decoded.role === 'admin' ? 'admin' : 'user';
+      const email = typeof decoded.email === 'string' ? decoded.email : (role === 'admin' ? 'e2e@example.com' : 'e2e-user@example.com');
+      const username = typeof decoded.username === 'string' ? decoded.username : 'e2e-test';
       return res.json({
         success: true,
         user: {
+          // Mimic Supabase User shape enough for frontend role checks.
           id: decoded.sub,
-          username: decoded.username,
-          role: decoded.role,
-          email: decoded.email
+          email,
+          role,
+          app_metadata: { role },
+          user_metadata: { username },
+          username
         }
       });
     }

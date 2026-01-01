@@ -15,29 +15,64 @@
  */
 
 import { test, expect } from '@playwright/test';
+import { acceptDisclaimer } from './helpers/disclaimer';
 
-// Helper to create test user with specific role
-async function loginAsUser(page, role = 'user') {
-  // Navigate to login
-  await page.goto('/');
-  
-  // If already logged in, log out first
-  const logoutButton = page.getByTestId('logout-button');
-  if (await logoutButton.isVisible()) {
-    await logoutButton.click();
-    await page.waitForURL('/');
-  }
+async function loginAsUser(page, role: 'admin' | 'user' = 'user') {
+  // Force E2E mode in the SPA even if the dev server was reused without --mode e2e.
+  await page.addInitScript(() => {
+    window.__E2E_MODE__ = true;
+  });
 
-  // Use E2E test credentials (from e2e/fixtures/testUsers.js or similar)
-  const testEmail = role === 'admin' ? 'admin@test.com' : 'user@test.com';
-  const testPassword = 'TestPassword123!';
+  // Deterministic E2E auth: mock the E2E session check to return the requested role.
+  await page.route('**/api/test/e2e-verify', async (route) => {
+    await route.fulfill({
+      json: {
+        success: true,
+        user: {
+          id: role === 'admin' ? 'e2e-admin-user' : 'e2e-normal-user',
+          email: role === 'admin' ? 'e2e-admin@example.com' : 'e2e-user@example.com',
+          username: 'e2e-test',
+          role,
+          app_metadata: { role },
+          user_metadata: { username: 'e2e-test' },
+        },
+      },
+    });
+  });
 
-  await page.fill('input[type="email"]', testEmail);
-  await page.fill('input[type="password"]', testPassword);
-  await page.click('button[type="submit"]');
-  
-  // Wait for successful login
-  await page.waitForURL(/\/gallery|\/upload/);
+  // Provide minimal user profile endpoints used by the UI.
+  await page.route('**/api/users/me', async (route) => {
+    await route.fulfill({
+      headers: {
+        'Access-Control-Allow-Origin': 'http://127.0.0.1:5173',
+        'Access-Control-Allow-Credentials': 'true',
+      },
+      json: {
+        success: true,
+        data: {
+          id: role === 'admin' ? 'e2e-admin-user' : 'e2e-normal-user',
+          username: 'e2e-test',
+          has_set_username: true,
+        },
+      },
+    });
+  });
+
+  await page.route('**/api/users/accept-terms', async (route) => {
+    await route.fulfill({
+      headers: {
+        'Access-Control-Allow-Origin': 'http://127.0.0.1:5173',
+        'Access-Control-Allow-Credentials': 'true',
+      },
+      json: { success: true, data: { terms_accepted_at: new Date().toISOString() } },
+    });
+  });
+
+  await page.goto('/gallery');
+  await acceptDisclaimer(page);
+
+  // Ensure auth state has been established before assertions.
+  await expect(page.getByTestId('logout-button')).toBeVisible();
 }
 
 test.describe('Admin Badge and Navigation', () => {
@@ -46,7 +81,7 @@ test.describe('Admin Badge and Navigation', () => {
     await page.goto('/gallery');
 
     // Check for admin badge
-    const adminBadge = page.locator('text=ADMIN');
+    const adminBadge = page.getByText('ADMIN', { exact: true });
     await expect(adminBadge).toBeVisible();
   });
 
@@ -64,7 +99,7 @@ test.describe('Admin Badge and Navigation', () => {
     await page.goto('/gallery');
 
     // Admin badge should not exist
-    const adminBadge = page.locator('text=ADMIN');
+    const adminBadge = page.getByText('ADMIN', { exact: true });
     await expect(adminBadge).not.toBeVisible();
   });
 
@@ -233,7 +268,7 @@ test.describe('Admin Role Verification', () => {
     await loginAsUser(page, 'admin');
     await page.goto('/gallery');
 
-    const adminBadge = page.locator('text=ADMIN');
+    const adminBadge = page.getByText('ADMIN', { exact: true });
     await expect(adminBadge).toBeVisible();
 
     // Check for admin badge styling (purple theme)
