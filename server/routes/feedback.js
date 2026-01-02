@@ -1,132 +1,120 @@
 /**
- * Feedback Routes
+ * Feedback API Routes
  *
- * App-wide user feedback/suggestions endpoint.
- * Feedback is stored in the comments table with photo_id = NULL.
+ * Public endpoint for collecting lightweight product feedback.
  *
- * SECURITY:
- * - All routes protected by authenticateToken middleware (mounted at bootstrap)
- * - Content length validation prevents payload attacks
- * - Rate limiting via recent feedback check
- *
- * Endpoints:
- * - POST /api/feedback - Submit app-wide feedback
+ * Notes:
+ * - No authentication required (avoid 401 when clients submit feedback without a bearer token)
+ * - CSRF protection is handled globally via csurf middleware
+ * - Rate limiting + validation help prevent abuse
  */
 
-const { Router } = require('express');
+'use strict';
 
-// Constants
-const MAX_CONTENT_LENGTH = 2000; // Characters
-const RATE_LIMIT_WINDOW_MS = 60_000; // 1 minute
-const MAX_FEEDBACK_PER_WINDOW = 3;
-const VALID_TYPES = ['suggestion', 'bug', 'question', 'other'];
+const express = require('express');
+const rateLimit = require('express-rate-limit');
+const { body, validationResult } = require('express-validator');
+const logger = require('../logger');
+const { getRateLimitStore } = require('../middleware/rateLimitStore');
 
+function createFeedbackRateLimiter() {
+  const isProduction = process.env.NODE_ENV === 'production';
+
+  return rateLimit({
+    windowMs: 60 * 60 * 1000,
+    max: isProduction ? 30 : 300,
+    store: getRateLimitStore(),
+    standardHeaders: true,
+    legacyHeaders: false,
+    message: {
+      success: false,
+      error: 'Too many feedback submissions. Please try again later.',
+    },
+    validate: {
+      trustProxy: false,
+      xForwardedForHeader: false,
+    },
+  });
+}
+
+const feedbackValidation = [
+  body('message')
+    .trim()
+    .notEmpty()
+    .withMessage('Message is required')
+    .isLength({ max: 4000 })
+    .withMessage('Message must be 4000 characters or less'),
+
+  body('category')
+    .optional()
+    .trim()
+    .isLength({ max: 80 })
+    .withMessage('Category must be 80 characters or less'),
+
+  body('url')
+    .optional()
+    .trim()
+    .isLength({ max: 2000 })
+    .withMessage('URL must be 2000 characters or less'),
+
+  body('context')
+    .optional({ nullable: true })
+    // accept object/array/primitive; we store JSON as-is
+    .custom(() => true),
+];
+
+/**
+ * @param {Object} options
+ * @param {import('knex').Knex} options.db
+ */
 function createFeedbackRouter({ db }) {
-  const router = Router();
+  if (!db) throw new Error('db is required');
 
-  /**
-   * POST /api/feedback
-   *
-   * Submit app-wide feedback to administrators.
-   *
-   * SECURITY PATH:
-   * - SOURCE: req.body.type, req.body.content (user-provided input)
-   * - VALIDATION: type enum, content length, rate limiting
-   * - SINK: database insert to comments table with photo_id = NULL
-   *
-   * @body {string} type - Feedback type: suggestion, bug, question, other
-   * @body {string} content - Feedback text (required, max 2000 chars)
-   * @returns {object} { success: true, data: { id, type, created_at } }
-   */
-  router.post('/', async (req, res) => {
+  const router = express.Router();
+  const limiter = createFeedbackRateLimiter();
+
+  router.post('/', limiter, feedbackValidation, async (req, res) => {
     try {
-      const userId = req.user?.id;
-
-      if (!userId) {
-        return res.status(401).json({
-          success: false,
-          error: 'Authentication required',
-        });
-      }
-
-      const { type, content } = req.body;
-
-      // Validate type
-      if (!type || !VALID_TYPES.includes(type)) {
+      const errors = validationResult(req);
+      if (!errors.isEmpty()) {
         return res.status(400).json({
           success: false,
-          error: `Invalid feedback type. Must be one of: ${VALID_TYPES.join(', ')}`,
+          error: 'Validation failed',
+          details: errors.array().map((e) => ({
+            field: e.path,
+            message: e.msg,
+          })),
         });
       }
 
-      // Validate content
-      if (!content || typeof content !== 'string') {
-        return res.status(400).json({
-          success: false,
-          error: 'Feedback content is required',
-        });
-      }
+      const { message, category, url, context } = req.body || {};
 
-      const trimmedContent = content.trim();
+      const record = {
+        message,
+        category: category || null,
+        url: url || null,
+        context: context ?? null,
+        ip_address: req.ip,
+        user_agent: req.headers['user-agent'] || null,
+        status: 'new',
+      };
 
-      if (trimmedContent.length === 0) {
-        return res.status(400).json({
-          success: false,
-          error: 'Feedback content cannot be empty',
-        });
-      }
+      const [inserted] = await db('feedback_messages').insert(record).returning(['id', 'created_at']);
 
-      if (trimmedContent.length > MAX_CONTENT_LENGTH) {
-        return res.status(400).json({
-          success: false,
-          error: `Feedback content must be ${MAX_CONTENT_LENGTH} characters or less`,
-        });
-      }
+      logger.info('[feedback] Submitted', {
+        id: inserted && inserted.id,
+        ip: req.ip,
+      });
 
-      // Rate limiting: Check recent feedback from this user
-      const windowStart = new Date(Date.now() - RATE_LIMIT_WINDOW_MS);
-      const recentCount = await db('comments')
-        .where('user_id', userId)
-        .whereNull('photo_id') // Feedback has no photo_id
-        .where('created_at', '>=', windowStart)
-        .count('id as count')
-        .first();
-
-      if (recentCount && Number(recentCount.count) >= MAX_FEEDBACK_PER_WINDOW) {
-        return res.status(429).json({
-          success: false,
-          error: 'Too many feedback submissions. Please wait before submitting again.',
-        });
-      }
-
-      // Insert feedback (stored as comment with photo_id = NULL)
-      // The 'type' is stored in the content with a prefix for admin review
-      const feedbackContent = `[${type.toUpperCase()}] ${trimmedContent}`;
-      
-      const [inserted] = await db('comments')
-        .insert({
-          photo_id: null, // NULL indicates app-wide feedback
-          user_id: userId,
-          content: feedbackContent,
-          reviewed: false,
-          created_at: new Date(),
-          updated_at: new Date(),
-        })
-        .returning(['id', 'created_at']);
-
-      return res.status(201).json({
+      return res.status(200).json({
         success: true,
-        data: {
-          id: inserted.id,
-          type,
-          created_at: inserted.created_at,
-        },
+        id: inserted && inserted.id,
       });
     } catch (error) {
-      console.error('[feedback] POST / error:', error);
+      logger.error('[feedback] Error:', error);
       return res.status(500).json({
         success: false,
-        error: 'Failed to submit feedback',
+        error: 'An error occurred while processing your request. Please try again later.',
       });
     }
   });
