@@ -15,6 +15,7 @@ function registerRoutes(app, { db, supabase, sseManager, logger }) {
   const createUsersRouter = require('../routes/users');
   const createMetricsRouter = require('../routes/metrics');
   const createPublicRouter = require('../routes/public');
+  const createFeedbackRouter = require('../routes/feedback');
   const createEventsRouter = require('../routes/events');
   const createAdminRouter = require('../routes/admin');
 
@@ -36,6 +37,9 @@ function registerRoutes(app, { db, supabase, sseManager, logger }) {
 
   // Public API routes (no auth required) - mounted before auth middleware
   app.use('/api/public', createPublicRouter({ db }));
+
+  // Public feedback endpoint (no auth required)
+  app.use('/api/feedback', createFeedbackRouter({ db }));
 
   // E2E/test-only routes
   const { isE2EEnabled } = require('../config/e2eGate');
