@@ -9,6 +9,17 @@ describe('Sprint 1 Router Logic', () => {
     expect(result).toBe('identify_collectible');
   });
 
+  test.each([
+    'collectible',
+    'Collectable comics',
+    'collectibles',
+    'collectables - comics',
+  ])('should route collectible variants (%s) to identify_collectible', (classification) => {
+    const state = { classification };
+    const result = route_after_context(state);
+    expect(result).toBe('identify_collectible');
+  });
+
   test('should route "scenery" to location_intelligence_agent', () => {
     const state = { classification: 'scenery' };
     const result = route_after_context(state);
