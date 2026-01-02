@@ -25,6 +25,9 @@ export default function FeedbackModal({ onClose }: FeedbackModalProps) {
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
+
+    // Prevent double-submit while a request is in-flight.
+    if (isSubmitting) return;
     
     const trimmedContent = content.trim();
     if (!trimmedContent) {
