@@ -141,6 +141,8 @@ function createAdminRouter({ db }) {
    */
   router.get('/suggestions', async (req, res) => {
     try {
+      if (!ensureAdmin(req, res)) return;
+
       const state = req.query.state;
       const limit = Math.min(parseInt(req.query.limit, 10) || 50, 200);
       const offset = parseInt(req.query.offset, 10) || 0;
@@ -189,6 +191,14 @@ function createAdminRouter({ db }) {
       });
     } catch (err) {
       console.error('[admin] Suggestions error:', err);
+      console.error('[admin] Error details:', {
+        message: err.message,
+        stack: err.stack,
+        query: req.query,
+        dbAvailable: !!db,
+        userId: req.user?.id,
+        userRole: req.user?.role || req.user?.app_metadata?.role
+      });
       return res.status(500).json({
         success: false,
         error: 'Internal server error'
@@ -268,6 +278,14 @@ function createAdminRouter({ db }) {
       });
     } catch (err) {
       console.error('[admin] Comments error:', err);
+      console.error('[admin] Error details:', {
+        message: err.message,
+        stack: err.stack,
+        query: req.query,
+        dbAvailable: !!db,
+        userId: req.user?.id,
+        userRole: req.user?.role || req.user?.app_metadata?.role
+      });
       return res.status(500).json({
         success: false,
         error: 'Internal server error'
