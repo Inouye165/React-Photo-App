@@ -147,44 +147,33 @@ function createAdminRouter({ db }) {
       const limit = Math.min(parseInt(req.query.limit, 10) || 50, 200);
       const offset = parseInt(req.query.offset, 10) || 0;
 
-      let query = `
-        SELECT 
-          id, user_id, filename, ai_generated_metadata, 
-          state, created_at, updated_at
-        FROM photos
-        WHERE ai_generated_metadata IS NOT NULL
-      `;
-
-      const params = [];
-      let paramIndex = 1;
+      // Build query using Knex query builder
+      let query = db('photos')
+        .select('id', 'user_id', 'filename', 'ai_generated_metadata', 'state', 'created_at', 'updated_at')
+        .whereNotNull('ai_generated_metadata');
 
       // Add state filter if provided
       if (state && typeof state === 'string') {
-        query += ` AND state = $${paramIndex}`;
-        params.push(state);
-        paramIndex++;
+        query = query.where('state', state);
       }
 
       // Add ordering and pagination
-      query += ` ORDER BY updated_at DESC LIMIT $${paramIndex} OFFSET $${paramIndex + 1}`;
-      params.push(limit, offset);
-
-      const result = await db.query(query, params);
+      const result = await query
+        .orderBy('updated_at', 'desc')
+        .limit(limit)
+        .offset(offset);
 
       // Get total count for pagination
-      let countQuery = 'SELECT COUNT(*) as total FROM photos WHERE ai_generated_metadata IS NOT NULL';
-      const countParams = [];
+      let countQuery = db('photos').whereNotNull('ai_generated_metadata');
       if (state && typeof state === 'string') {
-        countQuery += ' AND state = $1';
-        countParams.push(state);
+        countQuery = countQuery.where('state', state);
       }
-
-      const countResult = await db.query(countQuery, countParams);
-      const total = parseInt(countResult.rows[0]?.total || '0', 10);
+      const countResult = await countQuery.count('* as total');
+      const total = parseInt(countResult[0]?.total || '0', 10);
 
       return res.json({
         success: true,
-        data: result.rows,
+        data: result,
         total,
         limit,
         offset
@@ -226,52 +215,44 @@ function createAdminRouter({ db }) {
       const limit = Math.min(parseInt(req.query.limit, 10) || 50, 200);
       const offset = parseInt(req.query.offset, 10) || 0;
 
-      let query = `
-        SELECT
-          c.id,
-          c.photo_id,
-          c.user_id,
-          c.content,
-          c.is_reviewed,
-          c.created_at,
-          c.updated_at,
-          u.username,
-          p.filename
-        FROM comments c
-        LEFT JOIN users u ON c.user_id = u.id
-        LEFT JOIN photos p ON c.photo_id = p.id
-      `;
-
-      const params = [];
-      let paramIndex = 1;
+      // Build query using Knex query builder with joins
+      let query = db('comments as c')
+        .select(
+          'c.id',
+          'c.photo_id',
+          'c.user_id',
+          'c.content',
+          'c.is_reviewed',
+          'c.created_at',
+          'c.updated_at',
+          'u.username',
+          'p.filename'
+        )
+        .leftJoin('users as u', 'c.user_id', 'u.id')
+        .leftJoin('photos as p', 'c.photo_id', 'p.id');
 
       // Add is_reviewed filter if provided
       if (isReviewed === 'true' || isReviewed === 'false') {
-        query += ` WHERE c.is_reviewed = $${paramIndex}`;
-        params.push(isReviewed === 'true');
-        paramIndex++;
+        query = query.where('c.is_reviewed', isReviewed === 'true');
       }
 
       // Add ordering and pagination
-      query += ` ORDER BY c.created_at DESC LIMIT $${paramIndex} OFFSET $${paramIndex + 1}`;
-      params.push(limit, offset);
-
-      const result = await db.query(query, params);
+      const result = await query
+        .orderBy('c.created_at', 'desc')
+        .limit(limit)
+        .offset(offset);
 
       // Get total count for pagination
-      let countQuery = 'SELECT COUNT(*) as total FROM comments';
-      const countParams = [];
+      let countQuery = db('comments');
       if (isReviewed === 'true' || isReviewed === 'false') {
-        countQuery += ' WHERE is_reviewed = $1';
-        countParams.push(isReviewed === 'true');
+        countQuery = countQuery.where('is_reviewed', isReviewed === 'true');
       }
-
-      const countResult = await db.query(countQuery, countParams);
-      const total = parseInt(countResult.rows[0]?.total || '0', 10);
+      const countResult = await countQuery.count('* as total');
+      const total = parseInt(countResult[0]?.total || '0', 10);
 
       return res.json({
         success: true,
-        data: result.rows,
+        data: result,
         total,
         limit,
         offset
@@ -314,16 +295,16 @@ function createAdminRouter({ db }) {
         });
       }
 
-      const updateQuery = `
-        UPDATE comments
-        SET is_reviewed = true, updated_at = NOW()
-        WHERE id = $1
-        RETURNING *
-      `;
+      // Update using Knex query builder
+      const result = await db('comments')
+        .where('id', commentId)
+        .update({
+          is_reviewed: true,
+          updated_at: db.fn.now()
+        })
+        .returning('*');
 
-      const result = await db.query(updateQuery, [commentId]);
-
-      if (result.rows.length === 0) {
+      if (result.length === 0) {
         return res.status(404).json({
           success: false,
           error: 'Comment not found'
@@ -332,7 +313,7 @@ function createAdminRouter({ db }) {
 
       return res.json({
         success: true,
-        data: result.rows[0]
+        data: result[0]
       });
     } catch (err) {
       console.error('[admin] Review comment error:', err);
