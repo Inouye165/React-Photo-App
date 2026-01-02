@@ -82,15 +82,38 @@ function createTestApp(db) {
 const createMockDb = () => {
   const mockFn = jest.fn((tableName) => {
     if (tableName === 'photos') {
-      return {
-        where: jest.fn().mockReturnThis(),
-        whereNotNull: jest.fn().mockReturnThis(),
-        orderBy: jest.fn().mockReturnThis(),
-        limit: jest.fn().mockReturnThis(),
-        offset: jest.fn().mockReturnThis(),
-        count: jest.fn().mockResolvedValue([{ count: '0' }]),
-        select: jest.fn().mockResolvedValue([])
+      const createChain = () => {
+        const chain = {
+          where: jest.fn(function() { return this; }),
+          whereNotNull: jest.fn(function() { return this; }),
+          orderBy: jest.fn(function() { return this; }),
+          limit: jest.fn(function() { return this; }),
+          offset: jest.fn(function() { return this; }),
+          count: jest.fn().mockResolvedValue([{ total: '0' }]),
+          select: jest.fn(function() { return this; }),
+          then: jest.fn((resolve) => resolve([]))
+        };
+        return chain;
       };
+      return createChain();
+    }
+    if (tableName === 'comments' || tableName === 'comments as c') {
+      const createChain = () => {
+        const chain = {
+          where: jest.fn(function() { return this; }),
+          orderBy: jest.fn(function() { return this; }),
+          limit: jest.fn(function() { return this; }),
+          offset: jest.fn(function() { return this; }),
+          update: jest.fn(function() { return this; }),
+          returning: jest.fn().mockResolvedValue([{ id: 1, is_reviewed: true }]),
+          count: jest.fn().mockResolvedValue([{ total: '0' }]),
+          select: jest.fn(function() { return this; }),
+          leftJoin: jest.fn(function() { return this; }),
+          then: jest.fn((resolve) => resolve([]))
+        };
+        return chain;
+      };
+      return createChain();
     }
     return {
       where: jest.fn().mockReturnThis(),
@@ -98,10 +121,10 @@ const createMockDb = () => {
     };
   });
   
-  // Add query method for raw SQL
-  mockFn.query = jest.fn().mockResolvedValue({
-    rows: []
-  });
+  // Add fn.now() for Knex function support
+  mockFn.fn = {
+    now: jest.fn(() => 'NOW()')
+  };
   
   return mockFn;
 };
@@ -281,11 +304,68 @@ describe('Admin Routes', () => {
     });
   });
 
+  describe('GET /api/admin/comments', () => {
+    it('should reject requests without authentication', async () => {
+      const response = await request(app)
+        .get('/api/admin/comments')
+        .set('x-csrf-token', csrfToken)
+        .set('Cookie', [`csrfToken=${csrfToken}`]);
+
+      expect(response.status).toBe(401);
+      expect(response.body.success).toBe(false);
+    });
+
+    it('should reject requests from non-admin users (403 Forbidden)', async () => {
+      const response = await request(app)
+        .get('/api/admin/comments')
+        .set('Authorization', `Bearer ${userToken}`)
+        .set('x-csrf-token', csrfToken)
+        .set('Cookie', [`csrfToken=${csrfToken}`]);
+
+      expect(response.status).toBe(403);
+      expect(response.body.success).toBe(false);
+    });
+
+    it('should return comments for admin users using Knex query builder', async () => {
+      const response = await request(app)
+        .get('/api/admin/comments')
+        .set('Authorization', `Bearer ${adminToken}`)
+        .set('x-csrf-token', csrfToken)
+        .set('Cookie', [`csrfToken=${csrfToken}`]);
+
+      expect(response.status).toBe(200);
+      expect(response.body.success).toBe(true);
+      expect(Array.isArray(response.body.data)).toBe(true);
+      expect(typeof response.body.total).toBe('number');
+      
+      // Verify Knex-style query methods were called (not db.query)
+      expect(mockDb).toHaveBeenCalledWith('comments as c');
+    });
+  });
+
+  describe('PATCH /api/admin/comments/:id/review', () => {
+    it('should mark comment as reviewed using Knex query builder', async () => {
+      const response = await request(app)
+        .patch('/api/admin/comments/123/review')
+        .set('Authorization', `Bearer ${adminToken}`)
+        .set('x-csrf-token', csrfToken)
+        .set('Cookie', [`csrfToken=${csrfToken}`]);
+
+      expect(response.status).toBe(200);
+      expect(response.body.success).toBe(true);
+      expect(response.body.data.is_reviewed).toBe(true);
+      
+      // Verify Knex-style update was called (not db.query)
+      expect(mockDb).toHaveBeenCalledWith('comments');
+    });
+  });
+
   describe('Security - Role-Based Access Control (RBAC)', () => {
     it('should verify requireRole middleware blocks non-admin access', async () => {
       const endpoints = [
         { method: 'post', path: '/api/admin/invite', body: { email: 'test@example.com' } },
-        { method: 'get', path: '/api/admin/suggestions', body: null }
+        { method: 'get', path: '/api/admin/suggestions', body: null },
+        { method: 'get', path: '/api/admin/comments', body: null }
       ];
 
       for (const endpoint of endpoints) {
@@ -306,7 +386,8 @@ describe('Admin Routes', () => {
 
     it('should verify admin token grants access to all endpoints', async () => {
       const endpoints = [
-        { method: 'get', path: '/api/admin/suggestions' }
+        { method: 'get', path: '/api/admin/suggestions' },
+        { method: 'get', path: '/api/admin/comments' }
       ];
 
       for (const endpoint of endpoints) {
