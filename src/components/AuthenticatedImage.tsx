@@ -98,8 +98,9 @@ const AuthenticatedImage: React.FC<AuthenticatedImageProps> = ({
         if (err.name === 'AbortError') {
           return;
         }
-        
-        console.error('[AuthenticatedImage] Failed to load image:', src, err.message);
+
+        // Avoid logging signed URLs or other untrusted strings.
+        console.error('[AuthenticatedImage] Failed to load image');
         setStatus('error');
         onError?.(err);
       }
