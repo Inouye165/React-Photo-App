@@ -10,13 +10,12 @@ type FeedbackType = 'suggestion' | 'bug' | 'question' | 'other';
 
 /**
  * FeedbackModal - Modal for submitting app-wide feedback/suggestions to admin
- * 
- * This is for general app feedback, not photo-specific comments.
+ * * This is for general app feedback, not photo-specific comments.
  * Feedback is stored in the comments table with photoId = null.
  */
 export default function FeedbackModal({ onClose }: FeedbackModalProps) {
   const [feedbackType, setFeedbackType] = useState<FeedbackType>('suggestion');
-  const [content, setContent] = useState('');
+  const [message, setMessage] = useState(''); // Renamed from content for backend consistency
   const [isSubmitting, setIsSubmitting] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [success, setSuccess] = useState(false);
@@ -29,8 +28,8 @@ export default function FeedbackModal({ onClose }: FeedbackModalProps) {
     // Prevent double-submit while a request is in-flight.
     if (isSubmitting) return;
     
-    const trimmedContent = content.trim();
-    if (!trimmedContent) {
+    const trimmedMessage = message.trim();
+    if (!trimmedMessage) {
       setError('Please enter your feedback');
       return;
     }
@@ -44,7 +43,7 @@ export default function FeedbackModal({ onClose }: FeedbackModalProps) {
         method: 'POST',
         body: {
           type: feedbackType,
-          content: trimmedContent,
+          message: trimmedMessage, // Backend specifically requires "message"
         },
       });
 
@@ -57,8 +56,8 @@ export default function FeedbackModal({ onClose }: FeedbackModalProps) {
         setError('Failed to submit feedback');
       }
     } catch (err: unknown) {
-      const message = err instanceof Error ? err.message : 'Failed to submit feedback. Please try again.';
-      setError(message);
+      const errorMessage = err instanceof Error ? err.message : 'Failed to submit feedback. Please try again.';
+      setError(errorMessage);
     } finally {
       setIsSubmitting(false);
     }
@@ -147,8 +146,8 @@ export default function FeedbackModal({ onClose }: FeedbackModalProps) {
                 </label>
                 <textarea
                   id="feedback-content"
-                  value={content}
-                  onChange={(e) => setContent(e.target.value)}
+                  value={message}
+                  onChange={(e) => setMessage(e.target.value)}
                   placeholder="Tell us what you think, report a bug, or suggest an improvement..."
                   maxLength={MAX_LENGTH}
                   rows={5}
@@ -160,9 +159,9 @@ export default function FeedbackModal({ onClose }: FeedbackModalProps) {
                 />
                 <div className="flex justify-end mt-1">
                   <span className={`text-xs ${
-                    content.length > MAX_LENGTH * 0.9 ? 'text-amber-600' : 'text-slate-400'
+                    message.length > MAX_LENGTH * 0.9 ? 'text-amber-600' : 'text-slate-400'
                   }`}>
-                    {content.length}/{MAX_LENGTH}
+                    {message.length}/{MAX_LENGTH}
                   </span>
                 </div>
               </div>
@@ -188,7 +187,7 @@ export default function FeedbackModal({ onClose }: FeedbackModalProps) {
               </button>
               <button
                 type="submit"
-                disabled={isSubmitting || !content.trim()}
+                disabled={isSubmitting || !message.trim()}
                 className="flex items-center gap-2 px-4 py-2 text-sm font-medium
                            text-white bg-blue-600 hover:bg-blue-700
                            disabled:bg-slate-300 disabled:cursor-not-allowed
