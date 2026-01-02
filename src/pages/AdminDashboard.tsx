@@ -74,7 +74,29 @@ interface ReviewCommentResponse {
   error?: string;
 }
 
-type TabType = 'invites' | 'suggestions' | 'comments';
+interface AdminFeedbackMessage {
+  id: string;
+  message: string;
+  category: string | null;
+  status: string;
+  url: string | null;
+  context: unknown;
+  ip_address: string | null;
+  user_agent: string | null;
+  created_at: string;
+  updated_at: string;
+}
+
+interface FeedbackResponse {
+  success: boolean;
+  data?: AdminFeedbackMessage[];
+  total?: number;
+  limit?: number;
+  offset?: number;
+  error?: string;
+}
+
+type TabType = 'invites' | 'suggestions' | 'comments' | 'feedback';
 
 const EMAIL_REGEX = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
 
@@ -101,6 +123,15 @@ export default function AdminDashboard() {
   const [reviewedFilter, setReviewedFilter] = useState<string>('');
   const [commentsTotal, setCommentsTotal] = useState(0);
 
+  // Feedback tab state
+  const [feedback, setFeedback] = useState<AdminFeedbackMessage[]>([]);
+  const [feedbackLoading, setFeedbackLoading] = useState(false);
+  const [feedbackError, setFeedbackError] = useState<string | null>(null);
+  const [feedbackStatusFilter, setFeedbackStatusFilter] = useState<string>('');
+  const [feedbackTotal, setFeedbackTotal] = useState(0);
+  const [feedbackOffset, setFeedbackOffset] = useState(0);
+  const feedbackLimit = 50;
+
   // Verify admin role
   const isAdmin = user?.app_metadata?.role === 'admin';
 
@@ -111,7 +142,50 @@ export default function AdminDashboard() {
     if (activeTab === 'comments') {
       fetchComments();
     }
-  }, [activeTab, stateFilter, reviewedFilter]);
+    if (activeTab === 'feedback') {
+      fetchFeedback({ offset: 0, append: false });
+    }
+  }, [activeTab, stateFilter, reviewedFilter, feedbackStatusFilter]);
+
+  const fetchFeedback = async ({ offset, append }: { offset: number; append: boolean }) => {
+    setFeedbackLoading(true);
+    setFeedbackError(null);
+
+    try {
+      const headers = await getAuthHeadersAsync(false);
+
+      const query: Record<string, string> = {
+        limit: String(feedbackLimit),
+        offset: String(offset),
+      };
+
+      if (feedbackStatusFilter) {
+        query.status = feedbackStatusFilter;
+      }
+
+      const data = await request<FeedbackResponse>({
+        path: '/api/admin/feedback',
+        method: 'GET',
+        query,
+        headers,
+      });
+
+      if (!data.success) {
+        throw new Error(data.error || 'Failed to fetch feedback');
+      }
+
+      const rows = data.data || [];
+      setFeedback(prev => (append ? [...prev, ...rows] : rows));
+      setFeedbackTotal(data.total || 0);
+      setFeedbackOffset((data.offset || offset) + (data.limit || feedbackLimit));
+    } catch (err) {
+      const message = err instanceof Error ? err.message : 'Failed to load feedback';
+      setFeedbackError(message);
+      console.error('[admin] Fetch feedback error:', err);
+    } finally {
+      setFeedbackLoading(false);
+    }
+  };
 
   const fetchSuggestions = async () => {
     setSuggestionsLoading(true);
@@ -325,6 +399,19 @@ export default function AdminDashboard() {
               >
                 <MessageSquare size={18} />
                 <span>Comments</span>
+              </button>
+              <button
+                onClick={() => setActiveTab('feedback')}
+                className={`
+                  flex items-center gap-2 px-6 py-4 text-sm font-medium border-b-2 transition-colors
+                  ${activeTab === 'feedback'
+                    ? 'border-blue-500 text-blue-600'
+                    : 'border-transparent text-gray-500 hover:text-gray-700 hover:border-gray-300'
+                  }
+                `}
+              >
+                <MessageSquare size={18} />
+                <span>Feedback</span>
               </button>
             </nav>
           </div>
@@ -558,6 +645,116 @@ export default function AdminDashboard() {
                         </div>
                       </div>
                     ))}
+                  </div>
+                )}
+              </div>
+            )}
+
+            {/* Feedback Tab */}
+            {activeTab === 'feedback' && (
+              <div>
+                <div className="flex items-center justify-between mb-6">
+                  <div>
+                    <h2 className="text-xl font-semibold text-gray-900">Feedback Moderation</h2>
+                    <p className="text-sm text-gray-600 mt-1">
+                      {feedbackTotal} message{feedbackTotal !== 1 ? 's' : ''} submitted by users
+                    </p>
+                  </div>
+
+                  <div className="flex items-center gap-2">
+                    <label htmlFor="feedback-status-filter" className="text-sm font-medium text-gray-700">
+                      Filter:
+                    </label>
+                    <select
+                      id="feedback-status-filter"
+                      value={feedbackStatusFilter}
+                      onChange={(e) => setFeedbackStatusFilter(e.target.value)}
+                      className="px-3 py-2 border border-gray-300 rounded-lg text-sm focus:ring-2 focus:ring-blue-500 focus:border-blue-500"
+                    >
+                      <option value="">All Statuses</option>
+                      <option value="new">New</option>
+                      <option value="reviewed">Reviewed</option>
+                      <option value="resolved">Resolved</option>
+                    </select>
+                  </div>
+                </div>
+
+                {feedbackLoading && feedback.length === 0 ? (
+                  <div className="text-center py-12">
+                    <div className="inline-block animate-spin rounded-full h-8 w-8 border-4 border-gray-300 border-t-blue-600"></div>
+                    <p className="mt-4 text-gray-600">Loading feedback...</p>
+                  </div>
+                ) : feedbackError ? (
+                  <div className="bg-red-50 border border-red-200 rounded-lg p-4 text-red-800">
+                    <p className="font-medium">Error loading feedback</p>
+                    <p className="text-sm mt-1">{feedbackError}</p>
+                  </div>
+                ) : feedback.length === 0 ? (
+                  <div className="text-center py-12 text-gray-500">
+                    <MessageSquare className="mx-auto h-12 w-12 mb-4 opacity-50" />
+                    <p>No feedback messages found</p>
+                  </div>
+                ) : (
+                  <div className="space-y-4">
+                    {feedback.map((item) => (
+                      <div key={item.id} className="bg-gray-50 rounded-lg p-4 border border-gray-200">
+                        <div className="flex items-start justify-between mb-3 gap-4">
+                          <div className="min-w-0">
+                            <h3 className="font-medium text-gray-900 truncate">
+                              {item.category ? item.category : 'General'}
+                            </h3>
+                            <p className="text-sm text-gray-500">
+                              Status: <span className="font-medium">{item.status}</span> •
+                              Submitted: {new Date(item.created_at).toLocaleString()}
+                            </p>
+                            {item.url && (
+                              <p className="text-xs text-gray-500 mt-1 break-all">
+                                URL: {item.url}
+                              </p>
+                            )}
+                          </div>
+
+                          <span className="px-3 py-1 bg-blue-100 text-blue-800 text-xs font-medium rounded-full">
+                            Feedback
+                          </span>
+                        </div>
+
+                        {/* XSS: Render as plain text (React escapes by default). */}
+                        <div className="bg-white rounded border border-gray-200 p-3">
+                          <p className="text-sm text-gray-700 whitespace-pre-wrap break-words">
+                            {item.message}
+                          </p>
+                        </div>
+
+                        <div className="mt-3 grid grid-cols-1 sm:grid-cols-2 gap-2 text-xs text-gray-600">
+                          <div className="break-all">IP: {item.ip_address || '—'}</div>
+                          <div className="break-all">UA: {item.user_agent || '—'}</div>
+                        </div>
+
+                        {item.context != null && (
+                          <div className="mt-3 bg-white rounded border border-gray-200 p-3">
+                            <p className="text-xs font-medium text-gray-700 mb-2">Context:</p>
+                            <pre className="text-xs text-gray-600 overflow-x-auto">
+                              {typeof item.context === 'string'
+                                ? item.context
+                                : JSON.stringify(item.context, null, 2)}
+                            </pre>
+                          </div>
+                        )}
+                      </div>
+                    ))}
+
+                    {feedback.length < feedbackTotal && (
+                      <div className="pt-2">
+                        <button
+                          onClick={() => fetchFeedback({ offset: feedbackOffset, append: true })}
+                          disabled={feedbackLoading}
+                          className="px-4 py-2 rounded-lg bg-blue-600 text-white hover:bg-blue-700 disabled:opacity-50 disabled:cursor-not-allowed"
+                        >
+                          {feedbackLoading ? 'Loading…' : 'Load more'}
+                        </button>
+                      </div>
+                    )}
                   </div>
                 )}
               </div>
