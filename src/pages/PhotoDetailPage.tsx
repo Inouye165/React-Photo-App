@@ -1,6 +1,6 @@
-import { useEffect, useMemo, useState } from 'react';
+import { useEffect, useMemo, useState, useCallback } from 'react';
 import { Link, useNavigate, useOutletContext, useParams } from 'react-router-dom';
-import { ArrowLeft, Image as ImageIcon, MessageCircle, Pencil } from 'lucide-react';
+import { ArrowLeft, Image as ImageIcon, MessageCircle, Pencil, Send } from 'lucide-react';
 import type { Photo } from '../types/photo';
 import { API_BASE_URL, getOrCreateRoom } from '../api';
 import useStore from '../store';
@@ -9,6 +9,31 @@ import LocationMapPanel from '../components/LocationMapPanel.jsx';
 import formatFileSize from '../utils/formatFileSize';
 import { aiPollDebug } from '../utils/aiPollDebug';
 import { useAuth } from '../contexts/AuthContext';
+import { request } from '../api/httpClient';
+import { getAuthHeadersAsync } from '../api/auth';
+
+interface Comment {
+  id: number;
+  photo_id: number;
+  user_id: string;
+  content: string;
+  is_reviewed: boolean;
+  created_at: string;
+  updated_at: string;
+  username: string | null;
+}
+
+interface CommentsResponse {
+  success: boolean;
+  data?: Comment[];
+  error?: string;
+}
+
+interface CommentCreateResponse {
+  success: boolean;
+  data?: Comment;
+  error?: string;
+}
 
 function normalizeClassification(photo: Photo | undefined): string {
   const raw = (photo?.classification || photo?.ai_analysis?.classification || '')
@@ -147,6 +172,91 @@ export default function PhotoDetailPage() {
     const range = formatValuationRange(est?.min, est?.max, currency);
     return range || '$45 - $60';
   })();
+
+  // Comments state
+  const [comments, setComments] = useState<Comment[]>([]);
+  const [commentsLoading, setCommentsLoading] = useState(false);
+  const [commentsError, setCommentsError] = useState<string | null>(null);
+  const [newComment, setNewComment] = useState('');
+  const [submitLoading, setSubmitLoading] = useState(false);
+  const [submitError, setSubmitError] = useState<string | null>(null);
+
+  // Fetch comments for the photo
+  const fetchComments = useCallback(async () => {
+    if (!id) return;
+    
+    setCommentsLoading(true);
+    setCommentsError(null);
+
+    try {
+      const headers = await getAuthHeadersAsync(false);
+      const data = await request<CommentsResponse>({
+        path: `/api/comments/${id}`,
+        method: 'GET',
+        headers,
+      });
+
+      if (!data.success) {
+        throw new Error(data.error || 'Failed to fetch comments');
+      }
+
+      setComments(data.data || []);
+    } catch (err) {
+      const message = err instanceof Error ? err.message : 'Failed to load comments';
+      setCommentsError(message);
+      console.error('[comments] Fetch error:', err);
+    } finally {
+      setCommentsLoading(false);
+    }
+  }, [id]);
+
+  // Load comments when photo loads
+  useEffect(() => {
+    if (photo?.id) {
+      fetchComments();
+    }
+  }, [photo?.id, fetchComments]);
+
+  // Submit new comment
+  const handleSubmitComment = async (e: React.FormEvent) => {
+    e.preventDefault();
+    
+    if (!user || !photo?.id) return;
+    
+    const trimmed = newComment.trim();
+    if (!trimmed) return;
+
+    setSubmitLoading(true);
+    setSubmitError(null);
+
+    try {
+      const headers = await getAuthHeadersAsync(false);
+      const data = await request<CommentCreateResponse>({
+        path: '/api/comments',
+        method: 'POST',
+        headers,
+        body: {
+          photoId: photo.id,
+          content: trimmed,
+        },
+      });
+
+      if (!data.success) {
+        throw new Error(data.error || 'Failed to post comment');
+      }
+
+      setNewComment('');
+      // Refresh comments to include the new one with username
+      await fetchComments();
+    } catch (err) {
+      const message = err instanceof Error ? err.message : 'Failed to post comment';
+      setSubmitError(message);
+      console.error('[comments] Submit error:', err);
+    } finally {
+      setSubmitLoading(false);
+    }
+  };
+
 
   const [dmLoading, setDmLoading] = useState<boolean>(false);
   const [dmError, setDmError] = useState<string | null>(null);
@@ -340,6 +450,89 @@ export default function PhotoDetailPage() {
                   <dd className="text-slate-800">{photo.metadata?.LensModel || '—'}</dd>
                 </div>
               </dl>
+            </div>
+
+            {/* Comments Section */}
+            <div className="rounded-2xl border border-slate-200 bg-white p-4" data-testid="photo-comments-section">
+              <h2 className="text-sm font-semibold text-slate-900 mb-4">Comments</h2>
+
+              {/* Comment Form */}
+              {user ? (
+                <form onSubmit={handleSubmitComment} className="mb-4">
+                  <div className="flex gap-2">
+                    <textarea
+                      value={newComment}
+                      onChange={(e) => setNewComment(e.target.value)}
+                      placeholder="Add a comment..."
+                      maxLength={2000}
+                      rows={2}
+                      className="flex-1 px-3 py-2 border border-slate-200 rounded-lg text-sm resize-none focus:ring-2 focus:ring-blue-500 focus:border-blue-500"
+                      disabled={submitLoading}
+                      data-testid="comment-input"
+                    />
+                    <button
+                      type="submit"
+                      disabled={submitLoading || !newComment.trim()}
+                      className="self-end px-4 py-2 bg-slate-900 text-white rounded-lg hover:bg-slate-800 disabled:opacity-50 disabled:cursor-not-allowed flex items-center gap-2"
+                      data-testid="comment-submit"
+                    >
+                      <Send size={16} />
+                      <span className="sr-only sm:not-sr-only">{submitLoading ? 'Posting...' : 'Post'}</span>
+                    </button>
+                  </div>
+                  {submitError && (
+                    <p className="mt-2 text-sm text-red-600" role="alert">
+                      {submitError}
+                    </p>
+                  )}
+                </form>
+              ) : (
+                <p className="mb-4 text-sm text-slate-500">
+                  <Link to="/login" className="text-blue-600 hover:underline">Sign in</Link> to leave a comment.
+                </p>
+              )}
+
+              {/* Comments List */}
+              {commentsLoading ? (
+                <div className="text-center py-4">
+                  <div className="inline-block animate-spin rounded-full h-5 w-5 border-2 border-slate-300 border-t-slate-600"></div>
+                  <p className="mt-2 text-sm text-slate-500">Loading comments...</p>
+                </div>
+              ) : commentsError ? (
+                <div className="text-sm text-red-600" role="alert">
+                  {commentsError}
+                </div>
+              ) : comments.length === 0 ? (
+                <p className="text-sm text-slate-500" data-testid="no-comments">
+                  No comments yet. Be the first to comment!
+                </p>
+              ) : (
+                <div className="space-y-3" data-testid="comments-list">
+                  {comments.map((comment) => (
+                    <div
+                      key={comment.id}
+                      className="p-3 bg-slate-50 rounded-lg"
+                      data-testid={`comment-${comment.id}`}
+                    >
+                      <div className="flex items-center justify-between mb-1">
+                        <span className="text-sm font-medium text-slate-900">
+                          {comment.username || 'Anonymous'}
+                        </span>
+                        <span className="text-xs text-slate-500">
+                          {new Date(comment.created_at).toLocaleDateString('en-US', {
+                            month: 'short',
+                            day: 'numeric',
+                            year: 'numeric',
+                          })}
+                        </span>
+                      </div>
+                      <p className="text-sm text-slate-700 whitespace-pre-wrap break-words">
+                        {comment.content}
+                      </p>
+                    </div>
+                  ))}
+                </div>
+              )}
             </div>
           </div>
         </div>

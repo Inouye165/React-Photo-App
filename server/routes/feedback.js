@@ -99,9 +99,7 @@ function createFeedbackRouter({ db }) {
         status: 'new',
       };
 
-      const [inserted] = await db('feedback_messages')
-        .insert(record)
-        .returning(['id', 'created_at']);
+      const [inserted] = await db('feedback_messages').insert(record).returning(['id', 'created_at']);
 
       logger.info('[feedback] Submitted', {
         id: inserted && inserted.id,

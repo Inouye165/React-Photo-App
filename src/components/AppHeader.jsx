@@ -2,9 +2,10 @@ import React, { useEffect, useState } from 'react';
 import { NavLink, useNavigate, useLocation } from 'react-router-dom';
 import { useAuth } from '../contexts/AuthContext';
 import useStore from '../store';
-import { ChevronLeft, ChevronRight, Upload, Grid3X3, Edit3, LogOut, MessageSquare, Shield } from 'lucide-react';
+import { ChevronLeft, ChevronRight, Upload, Grid3X3, Edit3, MessageSquare, Shield } from 'lucide-react';
 import { useUnreadMessages } from '../hooks/useUnreadMessages';
 import NewMessageNotification from './NewMessageNotification';
+import UserMenu from './UserMenu';
 
 /**
  * AppHeader - Mobile-first responsive navigation header
@@ -20,7 +21,7 @@ export default function AppHeader({
 }) {
   const navigate = useNavigate();
   const location = useLocation();
-  const { user, logout, profile } = useAuth();
+  const { user, profile } = useAuth();
   const lastEditedPhotoId = useStore(state => state.lastEditedPhotoId);
   const closePicker = useStore(state => state.pickerCommand.closePicker);
 
@@ -53,10 +54,6 @@ export default function AppHeader({
 
   const handleForward = () => {
     window.history.forward();
-  };
-
-  const handleLogout = () => {
-    logout();
   };
 
   const handleEditClick = () => {
@@ -243,52 +240,11 @@ export default function AppHeader({
         )}
       </nav>
 
-      {/* Right Section - User & Logout */}
+      {/* Right Section - User Menu */}
       <div className="flex items-center gap-1 sm:gap-2 min-w-0 flex-shrink-0">
         {rightContent}
         
-        {user && (
-          <div className="flex items-center gap-1 sm:gap-2">
-            {/* User avatar - always visible */}
-            <div 
-              className="hidden sm:flex items-center gap-1.5 text-xs text-slate-500"
-              title={profile?.username || 'User'}
-            >
-              <div className="w-7 h-7 rounded-full bg-slate-200 flex items-center justify-center
-                            text-xs font-semibold text-slate-600">
-                {(profile?.username || 'U').charAt(0).toUpperCase()}
-              </div>
-              <span className="hidden md:block max-w-[80px] truncate">
-                {profile?.username || 'User'}
-              </span>
-              {/* Admin badge */}
-              {isAdmin && (
-                <span 
-                  className="px-2 py-0.5 bg-purple-100 text-purple-700 text-[10px] font-semibold rounded-full"
-                  title="Administrator"
-                >
-                  ADMIN
-                </span>
-              )}
-            </div>
-            
-            {/* Logout button - always visible, 44px touch target */}
-            <button
-              onClick={handleLogout}
-              data-testid="logout-button"
-              aria-label="Sign out"
-              className="flex items-center justify-center gap-1.5
-                        min-w-[44px] min-h-[44px] px-2 sm:px-3
-                        rounded-lg border border-slate-200 bg-white
-                        text-slate-500 text-xs sm:text-sm font-medium
-                        hover:bg-slate-50 hover:border-slate-300
-                        active:bg-slate-100 transition-all touch-manipulation"
-            >
-              <LogOut size={16} />
-              <span className="hidden sm:inline">Logout</span>
-            </button>
-          </div>
-        )}
+        {user && <UserMenu />}
       </div>
     </header>
     </>
