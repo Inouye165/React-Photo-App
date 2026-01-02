@@ -6,6 +6,7 @@ const logger = require('../../logger');
 const { graphChannels } = require('./state');
 const auditLogger = require('./audit_logger');
 const context = require('./context');
+const { normalizeClassification, isCollectablesClassification } = require('./classification_helpers');
 
 // Node implementations
 const classify_image = require('./nodes/classify_image');
@@ -43,9 +44,8 @@ function wrapNode(name, nodeFn, filePath) {
 // --- Router: Decides next node after collect_context ---
 function route_after_context(state) {
   if (state.error) return END;
-  const classification = String(state.classification || '').toLowerCase().trim();
-  
-  if (classification === 'collectables') {
+
+  if (isCollectablesClassification(state.classification)) {
     logger.info('[LangGraph] Router: Fast-tracking collectible');
     return 'identify_collectible';
   }
@@ -60,18 +60,27 @@ function route_after_location(state) {
     return END;
   }
 
-  const classification = String(state.classification || '').toLowerCase().trim();
-  logger.info(`[LangGraph] Router: Routing after location intel for "${classification}"`);
+  const raw = state.classification;
+  const c = normalizeClassification(raw);
+  const routeKey = isCollectablesClassification(c)
+    ? 'collectible'
+    : /\bfood\b/.test(c)
+      ? 'food'
+      : c === 'scenery' || c.includes('scenery')
+        ? 'scenery'
+        : 'other';
 
-  if (classification === 'collectables') {
+  logger.info('[LangGraph] Router: Routing after location intel', { routeKey });
+
+  if (routeKey === 'collectible') {
     return 'handle_collectible';
   }
 
-  if (classification === 'food') {
+  if (routeKey === 'food') {
     return 'food_location_agent';
   }
 
-  if (needPoi(state) && (classification === 'scenery' || classification.includes('scenery'))) {
+  if (routeKey === 'scenery' && needPoi(state)) {
     return 'decide_scene_label';
   }
 
@@ -165,6 +174,15 @@ workflow.addEdge('valuate_collectible', 'describe_collectible');
 
 // 5. Compile the app
 const app = workflow.compile();
-module.exports = { app, __testing: { food_location_agent, food_metadata_agent, location_intelligence_agent, route_after_context } };
+module.exports = {
+  app,
+  __testing: {
+    food_location_agent,
+    food_metadata_agent,
+    location_intelligence_agent,
+    route_after_context,
+    route_after_location,
+  },
+};
 // Export the collect_context node for unit testing
 module.exports.__testing.collect_context = collect_context;
