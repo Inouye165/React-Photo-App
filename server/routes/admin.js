@@ -325,6 +325,87 @@ function createAdminRouter({ db }) {
   });
 
   /**
+   * GET /api/admin/feedback
+   *
+   * Fetch user-submitted feedback messages for admin moderation.
+   *
+   * Query parameters:
+   * - status: Filter by feedback status (optional, e.g., 'new')
+   * - limit: Number of records to return (default: 50, max: 200)
+   * - offset: Pagination offset (default: 0)
+   *
+   * SECURITY PATH:
+   * - SOURCE: req.query.status / req.query.limit / req.query.offset (user-controlled)
+   * - VALIDATION: numeric parsing + clamping; status allowlist pattern + length
+   * - SINK: db('feedback_messages') query builder (parameterized SQL)
+   * - PATH: validated query params -> Knex where/limit/offset -> database
+   *
+   * @returns {object} { success: true, data: FeedbackMessage[], total: number, limit: number, offset: number }
+   */
+  router.get('/feedback', async (req, res) => {
+    try {
+      if (!ensureAdmin(req, res)) return;
+
+      const status = req.query.status;
+      const limit = Math.min(parseInt(req.query.limit, 10) || 50, 200);
+      const offset = Math.max(parseInt(req.query.offset, 10) || 0, 0);
+
+      // SECURITY: Basic allowlist for status to prevent weird/unexpected values.
+      // (Knex is parameterized, but we still validate to reduce log/UX surprises.)
+      const statusFilter =
+        typeof status === 'string' && status.length > 0
+          ? status.trim().toLowerCase()
+          : null;
+
+      if (statusFilter && (statusFilter.length > 50 || !/^[a-z0-9_-]+$/i.test(statusFilter))) {
+        return res.status(400).json({ success: false, error: 'Invalid status filter' });
+      }
+
+      let query = db('feedback_messages')
+        .select(
+          'id',
+          'message',
+          'category',
+          'status',
+          'url',
+          'context',
+          'ip_address',
+          'user_agent',
+          'created_at',
+          'updated_at'
+        );
+
+      if (statusFilter) {
+        query = query.where('status', statusFilter);
+      }
+
+      const result = await query
+        .orderBy('created_at', 'desc')
+        .limit(limit)
+        .offset(offset);
+
+      let countQuery = db('feedback_messages');
+      if (statusFilter) {
+        countQuery = countQuery.where('status', statusFilter);
+      }
+      const countResult = await countQuery.count('* as total');
+      const total = parseInt(countResult[0]?.total || '0', 10);
+
+      return res.json({
+        success: true,
+        data: result,
+        total,
+        limit,
+        offset,
+      });
+    } catch (err) {
+      // SECURITY: Avoid logging tainted strings from req.query or feedback contents.
+      console.error('[admin] Feedback error:', err);
+      return res.status(500).json({ success: false, error: 'Internal server error' });
+    }
+  });
+
+  /**
    * POST /api/admin/assessments/trigger
    *
    * Creates a new assessment record and enqueues a BullMQ job to generate it.

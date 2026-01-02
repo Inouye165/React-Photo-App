@@ -127,6 +127,16 @@ Run these inside `server/`:
 | `npm run test:db` | Just checks if the DB connection is alive. |
 | `npm run verify:migrations` | Makes sure the schema matches the migration files. |
 
+## Admin
+
+The app includes an admin-only dashboard at `/admin` (requires a user with `app_metadata.role = admin`).
+
+Current admin tabs:
+- Invites
+- Suggestions Review
+- Comments Moderation
+- Feedback Moderation
+
 ## Docs
 
 *   [Testing Guide](TESTING.md)
