@@ -435,6 +435,27 @@ describe('api - Bearer Token Authentication Security', () => {
       // credentials: 'include' is kept for backward compatibility
       expect(fetchCall[1].credentials).toBe('include');
     });
+
+    it('should omit credentials for Supabase Storage signed URLs (no cookies needed)', async () => {
+      api.setAuthToken('test-token');
+
+      const mockBlob = new Blob(['test'], { type: 'image/jpeg' });
+      const fetchSpy = vi.fn().mockResolvedValue({
+        ok: true,
+        status: 200,
+        blob: async () => mockBlob
+      });
+      global.fetch = fetchSpy;
+
+      await api.fetchProtectedBlobUrl(
+        'https://project.supabase.co/storage/v1/object/sign/photos/test.jpg?token=abc.def.ghi'
+      );
+
+      const fetchCall = fetchSpy.mock.calls[0];
+      expect(fetchCall[1].credentials).toBe('omit');
+      // Signed URLs do not require Authorization headers.
+      expect(fetchCall[1].headers?.Authorization).toBeUndefined();
+    });
   });
 });
 

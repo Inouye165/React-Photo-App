@@ -38,6 +38,36 @@ export async function fetchProtectedBlobUrl(
 ): Promise<string> {
   if (url.startsWith('blob:')) return url
 
+  const configuredSupabaseHostname: string | null = (() => {
+    try {
+      const supabaseUrl =
+        (typeof import.meta !== 'undefined' && (import.meta as any)?.env?.VITE_SUPABASE_URL
+          ? String((import.meta as any).env.VITE_SUPABASE_URL)
+          : null) ||
+        null
+      if (!supabaseUrl) return null
+      return new URL(supabaseUrl).hostname
+    } catch {
+      return null
+    }
+  })()
+
+  const isSupabaseStorageSignedUrl = (candidate: string): boolean => {
+    try {
+      const parsed = new URL(candidate, typeof window !== 'undefined' ? window.location.origin : undefined)
+      if (!parsed.pathname.includes('/storage/v1/')) return false
+
+      const isKnownSupabaseHostname =
+        (configuredSupabaseHostname ? parsed.hostname === configuredSupabaseHostname : false) ||
+        parsed.hostname.endsWith('.supabase.co') ||
+        parsed.hostname.endsWith('.supabase.in')
+
+      return isKnownSupabaseHostname
+    } catch {
+      return candidate.includes('/storage/v1/')
+    }
+  }
+
   const urlForProtectedFetch = (() => {
     try {
       const parsed = new URL(url, typeof window !== 'undefined' ? window.location.origin : undefined)
@@ -63,9 +93,11 @@ export async function fetchProtectedBlobUrl(
   let signal = options?.signal
   // Legacy argument support omitted for strictness, assuming callers update or use options
 
+  const shouldOmitCredentials = isSupabaseStorageSignedUrl(urlForProtectedFetch)
+
   const doFetch = async (bypassCache = false) => {
-    const headers = getAuthHeaders(false)
-    if (!headers.Authorization) {
+    const headers: Record<string, string> = shouldOmitCredentials ? {} : getAuthHeaders(false)
+    if (!shouldOmitCredentials && !headers.Authorization) {
       const asyncHeaders = await getAuthHeadersAsync(false)
       if (asyncHeaders.Authorization) headers.Authorization = asyncHeaders.Authorization
     }
@@ -76,7 +108,9 @@ export async function fetchProtectedBlobUrl(
 
     return fetchWithNetworkFallback(urlForProtectedFetch, {
       headers,
-      credentials: 'include',
+      // Supabase Storage signed URLs do not need cookies. A credentialed fetch
+      // is blocked by browsers when the response uses `Access-Control-Allow-Origin: *`.
+      credentials: shouldOmitCredentials ? 'omit' : 'include',
       cache: bypassCache ? 'no-store' : 'default',
       signal,
     })
@@ -108,10 +142,11 @@ export async function fetchProtectedBlobUrl(
     }
   }
 
-  const logKey = `${url}`
+  // Never log signed URLs or untrusted strings.
+  const logKey = shouldOmitCredentials ? 'supabase-storage' : `${url}`
   if (!window.__imageCacheErrorLogged.has(logKey)) {
     window.__imageCacheErrorLogged.add(logKey)
-    const photoId = url.match(/\/display\/image\/(\d+)/)?.[1] || url
+    const photoId = shouldOmitCredentials ? 'supabase-storage' : url.match(/\/display\/image\/(\d+)/)?.[1] || url
     const err = lastError as { name?: unknown; message?: unknown }
     console.warn('[image-cache-error]', {
       photoId,
