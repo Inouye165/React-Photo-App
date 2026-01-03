@@ -93,11 +93,22 @@ export async function fetchProtectedBlobUrl(
   let signal = options?.signal
   // Legacy argument support omitted for strictness, assuming callers update or use options
 
-  const shouldOmitCredentials = isSupabaseStorageSignedUrl(urlForProtectedFetch)
+  const shouldUseImageProxy = isSupabaseStorageSignedUrl(urlForProtectedFetch)
+  const urlForFetch = shouldUseImageProxy
+    ? `${API_BASE_URL}/api/image-proxy?url=${encodeURIComponent(urlForProtectedFetch)}`
+    : urlForProtectedFetch
+
+  // When fetching via the backend image proxy, we authenticate to our own API
+  // with Bearer token but omit cookies to avoid accidental credential forwarding.
+  const shouldOmitCredentials = shouldUseImageProxy
 
   const doFetch = async (bypassCache = false) => {
-    const headers: Record<string, string> = shouldOmitCredentials ? {} : getAuthHeaders(false)
-    if (!shouldOmitCredentials && !headers.Authorization) {
+    const headers: Record<string, string> = shouldUseImageProxy ? getAuthHeaders(false) : (shouldOmitCredentials ? {} : getAuthHeaders(false))
+    if (shouldUseImageProxy && !headers.Authorization) {
+      const asyncHeaders = await getAuthHeadersAsync(false)
+      if (asyncHeaders.Authorization) headers.Authorization = asyncHeaders.Authorization
+    }
+    if (!shouldUseImageProxy && !shouldOmitCredentials && !headers.Authorization) {
       const asyncHeaders = await getAuthHeadersAsync(false)
       if (asyncHeaders.Authorization) headers.Authorization = asyncHeaders.Authorization
     }
@@ -106,7 +117,7 @@ export async function fetchProtectedBlobUrl(
       headers['Pragma'] = 'no-cache'
     }
 
-    return fetchWithNetworkFallback(urlForProtectedFetch, {
+    return fetchWithNetworkFallback(urlForFetch, {
       headers,
       // Supabase Storage signed URLs do not need cookies. A credentialed fetch
       // is blocked by browsers when the response uses `Access-Control-Allow-Origin: *`.
@@ -143,10 +154,10 @@ export async function fetchProtectedBlobUrl(
   }
 
   // Never log signed URLs or untrusted strings.
-  const logKey = shouldOmitCredentials ? 'supabase-storage' : `${url}`
+  const logKey = shouldOmitCredentials ? 'image-proxy' : `${url}`
   if (!window.__imageCacheErrorLogged.has(logKey)) {
     window.__imageCacheErrorLogged.add(logKey)
-    const photoId = shouldOmitCredentials ? 'supabase-storage' : url.match(/\/display\/image\/(\d+)/)?.[1] || url
+    const photoId = shouldOmitCredentials ? 'image-proxy' : url.match(/\/display\/image\/(\d+)/)?.[1] || url
     const err = lastError as { name?: unknown; message?: unknown }
     console.warn('[image-cache-error]', {
       photoId,

@@ -51,6 +51,9 @@ Backend server for Lumina. Node.js + Express, covering authentication, uploads, 
    **Optional but recommended:**
    - `SUPABASE_SERVICE_ROLE_KEY` - Server-side operations (falls back to ANON_KEY)
 
+  **Required if using the image proxy (recommended in production):**
+  - `IMAGE_PROXY_ALLOWED_HOSTS` - Comma-separated host allowlist for `/api/image-proxy` (e.g. your Supabase project host)
+
 4. **Start Redis:**
    ```bash
    docker run -d --name photo-app-redis -p 6379:6379 redis:7.2-alpine
