@@ -98,17 +98,9 @@ export async function fetchProtectedBlobUrl(
     ? `${API_BASE_URL}/api/image-proxy?url=${encodeURIComponent(urlForProtectedFetch)}`
     : urlForProtectedFetch
 
-  // When fetching via the backend image proxy, we authenticate to our own API
-  // with Bearer token but omit cookies to avoid accidental credential forwarding.
-  const shouldOmitCredentials = shouldUseImageProxy
-
   const doFetch = async (bypassCache = false) => {
-    const headers: Record<string, string> = shouldUseImageProxy ? getAuthHeaders(false) : (shouldOmitCredentials ? {} : getAuthHeaders(false))
-    if (shouldUseImageProxy && !headers.Authorization) {
-      const asyncHeaders = await getAuthHeadersAsync(false)
-      if (asyncHeaders.Authorization) headers.Authorization = asyncHeaders.Authorization
-    }
-    if (!shouldUseImageProxy && !shouldOmitCredentials && !headers.Authorization) {
+    const headers: Record<string, string> = getAuthHeaders(false)
+    if (!headers.Authorization) {
       const asyncHeaders = await getAuthHeadersAsync(false)
       if (asyncHeaders.Authorization) headers.Authorization = asyncHeaders.Authorization
     }
@@ -119,9 +111,9 @@ export async function fetchProtectedBlobUrl(
 
     return fetchWithNetworkFallback(urlForFetch, {
       headers,
-      // Supabase Storage signed URLs do not need cookies. A credentialed fetch
-      // is blocked by browsers when the response uses `Access-Control-Allow-Origin: *`.
-      credentials: shouldOmitCredentials ? 'omit' : 'include',
+      // Never send cookies/credentials for image fetches to avoid
+      // wildcard-origin vs credentialed-request CORS failures.
+      credentials: 'omit',
       cache: bypassCache ? 'no-store' : 'default',
       signal,
     })
@@ -154,10 +146,10 @@ export async function fetchProtectedBlobUrl(
   }
 
   // Never log signed URLs or untrusted strings.
-  const logKey = shouldOmitCredentials ? 'image-proxy' : `${url}`
+  const logKey = shouldUseImageProxy ? 'image-proxy' : `${url}`
   if (!window.__imageCacheErrorLogged.has(logKey)) {
     window.__imageCacheErrorLogged.add(logKey)
-    const photoId = shouldOmitCredentials ? 'image-proxy' : url.match(/\/display\/image\/(\d+)/)?.[1] || url
+    const photoId = shouldUseImageProxy ? 'image-proxy' : url.match(/\/display\/image\/(\d+)/)?.[1] || url
     const err = lastError as { name?: unknown; message?: unknown }
     console.warn('[image-cache-error]', {
       photoId,
