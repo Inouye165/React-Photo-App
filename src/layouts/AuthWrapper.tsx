@@ -3,7 +3,6 @@ import { useNavigate } from 'react-router-dom';
 import { useAuth } from '../contexts/AuthContext';
 import LandingPage from '../pages/LandingPage';
 import DisclaimerModal from '../components/DisclaimerModal';
-import { API_BASE_URL } from '../config/apiConfig';
 
 interface AuthWrapperProps {
   children: React.ReactNode;
