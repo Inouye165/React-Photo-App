@@ -1,5 +1,6 @@
 const { openai } = require('../../openaiClient');
 const logger = require('../../../logger');
+const { performVisualSearch } = require('../../langchain/tools/visualSearchTool');
 
 const IDENTIFY_SYSTEM_PROMPT = `You are an expert visual identifier of collectibles.
 Your ONLY job is to identify the item in the image as precisely as possible.
@@ -43,10 +44,22 @@ async function identify_collectible(state) {
       };
     }
     
+    // Execute visual search to ground LLM identification
+    const visualMatches = await performVisualSearch(state.imageBase64);
+    
+    // Build web research context if matches exist
+    let webContext = '';
+    if (visualMatches && visualMatches.length > 0) {
+      webContext = '\n\n## Web Research Context\n' +
+        'The following visually similar items were found on the web:\n' +
+        visualMatches.map((m, i) => `${i + 1}. ${m.title} - ${m.link}`).join('\n') +
+        '\n\nCross-reference the visual attributes of the item in the photo against these titles to select the most accurate pattern or edition name.';
+    }
+
     const response = await openai.chat.completions.create({
       model: 'gpt-4o',
       messages: [
-        { role: 'system', content: IDENTIFY_SYSTEM_PROMPT },
+        { role: 'system', content: IDENTIFY_SYSTEM_PROMPT + webContext },
         {
           role: 'user',
           content: [
@@ -86,6 +99,7 @@ async function identify_collectible(state) {
     const prev = state.collectible || {};
     return {
       ...state,
+      visualMatches: visualMatches || null,
       collectible: {
         ...prev,
         identification: {
