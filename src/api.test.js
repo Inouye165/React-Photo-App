@@ -418,7 +418,7 @@ describe('api - Bearer Token Authentication Security', () => {
       expect(result).toBe(blobUrl);
     });
 
-    it('should include credentials for backward compatibility during transition', async () => {
+    it('should omit credentials for all image fetches to avoid CORS failures', async () => {
       api.setAuthToken('test-token');
       
       const mockBlob = new Blob(['test'], { type: 'image/jpeg' });
@@ -432,8 +432,8 @@ describe('api - Bearer Token Authentication Security', () => {
       await api.fetchProtectedBlobUrl('http://example.com/image.jpg');
 
       const fetchCall = fetchSpy.mock.calls[0];
-      // credentials: 'include' is kept for backward compatibility
-      expect(fetchCall[1].credentials).toBe('include');
+      // credentials: 'omit' prevents wildcard-origin vs credentialed-request CORS conflicts
+      expect(fetchCall[1].credentials).toBe('omit');
     });
 
     it('should omit credentials for Supabase Storage signed URLs (no cookies needed)', async () => {
