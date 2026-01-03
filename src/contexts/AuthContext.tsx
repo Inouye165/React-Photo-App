@@ -84,23 +84,18 @@ function getErrorMessage(err: unknown): string {
 async function fetchPreferences(): Promise<UserPreferences> {
   try {
     // Import dynamically to avoid circular dependency
-    const { getAuthHeaders } = await import('../api')
-    const response = await fetch(`${API_BASE_URL}/api/users/me/preferences`, {
+    const { getAuthHeaders, request } = await import('../api')
+    const response = await request<{ success?: unknown; data?: unknown }>({
+      path: '/api/users/me/preferences',
       method: 'GET',
       headers: getAuthHeaders(),
     })
 
-    if (response.ok) {
-      const json = (await response.json().catch(() => null)) as
-        | { success?: unknown; data?: unknown }
-        | null
-
-      if (json && json.success && json.data && typeof json.data === 'object') {
-        const prefs = json.data as Record<string, unknown>
-        const gradingScales =
-          prefs.gradingScales && typeof prefs.gradingScales === 'object' ? (prefs.gradingScales as Record<string, unknown>) : {}
-        return { ...prefs, gradingScales }
-      }
+    if (response && response.success && response.data && typeof response.data === 'object') {
+      const prefs = response.data as Record<string, unknown>
+      const gradingScales =
+        prefs.gradingScales && typeof prefs.gradingScales === 'object' ? (prefs.gradingScales as Record<string, unknown>) : {}
+      return { ...prefs, gradingScales }
     }
 
     return { ...defaultPreferences }
@@ -115,26 +110,19 @@ async function fetchPreferences(): Promise<UserPreferences> {
  */
 async function patchPreferences(newPrefs: Partial<UserPreferences>): Promise<UserPreferences | null> {
   try {
-    const { getAuthHeaders } = await import('../api')
-    const response = await fetch(`${API_BASE_URL}/api/users/me/preferences`, {
+    const { getAuthHeaders, request } = await import('../api')
+    const response = await request<{ success?: unknown; data?: unknown }>({
+      path: '/api/users/me/preferences',
       method: 'PATCH',
       headers: getAuthHeaders(),
-      body: JSON.stringify(newPrefs),
+      body: newPrefs,
     })
 
-    if (response.ok) {
-      const json = (await response.json().catch(() => null)) as
-        | { success?: unknown; data?: unknown }
-        | null
-
-      if (json && json.success && json.data && typeof json.data === 'object') {
-        const prefs = json.data as Record<string, unknown>
-        const gradingScales =
-          prefs.gradingScales && typeof prefs.gradingScales === 'object' ? (prefs.gradingScales as Record<string, unknown>) : {}
-        return { ...prefs, gradingScales }
-      }
-
-      return null
+    if (response && response.success && response.data && typeof response.data === 'object') {
+      const prefs = response.data as Record<string, unknown>
+      const gradingScales =
+        prefs.gradingScales && typeof prefs.gradingScales === 'object' ? (prefs.gradingScales as Record<string, unknown>) : {}
+      return { ...prefs, gradingScales }
     }
 
     return null
@@ -149,26 +137,19 @@ async function patchPreferences(newPrefs: Partial<UserPreferences>): Promise<Use
  */
 async function loadDefaultPreferences(categories: string[] | null = null): Promise<UserPreferences | null> {
   try {
-    const { getAuthHeaders } = await import('../api')
-    const response = await fetch(`${API_BASE_URL}/api/users/me/preferences/load-defaults`, {
+    const { getAuthHeaders, request } = await import('../api')
+    const response = await request<{ success?: unknown; data?: unknown }>({
+      path: '/api/users/me/preferences/load-defaults',
       method: 'POST',
       headers: getAuthHeaders(),
-      body: JSON.stringify({ categories }),
+      body: { categories },
     })
 
-    if (response.ok) {
-      const json = (await response.json().catch(() => null)) as
-        | { success?: unknown; data?: unknown }
-        | null
-
-      if (json && json.success && json.data && typeof json.data === 'object') {
-        const prefs = json.data as Record<string, unknown>
-        const gradingScales =
-          prefs.gradingScales && typeof prefs.gradingScales === 'object' ? (prefs.gradingScales as Record<string, unknown>) : {}
-        return { ...prefs, gradingScales }
-      }
-
-      return null
+    if (response && response.success && response.data && typeof response.data === 'object') {
+      const prefs = response.data as Record<string, unknown>
+      const gradingScales =
+        prefs.gradingScales && typeof prefs.gradingScales === 'object' ? (prefs.gradingScales as Record<string, unknown>) : {}
+      return { ...prefs, gradingScales }
     }
 
     return null

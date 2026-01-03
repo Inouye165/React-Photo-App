@@ -3,7 +3,6 @@ import { useNavigate } from 'react-router-dom';
 import { useAuth } from '../contexts/AuthContext';
 import LandingPage from '../pages/LandingPage';
 import DisclaimerModal from '../components/DisclaimerModal';
-import { API_BASE_URL } from '../config/apiConfig';
 
 interface AuthWrapperProps {
   children: React.ReactNode;
@@ -56,33 +55,30 @@ const AuthWrapper = ({ children }: AuthWrapperProps) => {
     const checkTermsAcceptance = async () => {
       try {
         // Import dynamically to avoid circular dependency
-        const { getAuthHeaders } = await import('../api');
+        const { getAuthHeaders, request } = await import('../api');
         const headers = getAuthHeaders() as Record<string, string>;
         // E2E Bypass: Add header if in E2E mode to avoid cookie issues
         if ((window as any).__E2E_MODE__) {
           headers['X-E2E-User-ID'] = '11111111-1111-4111-8111-111111111111';
         }
 
-        const response = await fetch(`${API_BASE_URL}/api/users/me/preferences`, {
+        await request({
+          path: '/api/users/me/preferences',
           method: 'GET',
-          headers: headers as HeadersInit,
-          credentials: 'include'
+          headers,
         });
         
-        if (response.ok) {
-          await response.json();
-          // Check if the user record has terms_accepted_at
-          // Note: This endpoint returns preferences, but we need to check the users table
-          // Let's make a dedicated call or check if the backend returns this info
-          
-          // For now, we'll check via the user metadata if available
-          // Or we need to add this to the preferences endpoint response
-          
-          // Temporary: Check localStorage as fallback (will be replaced by DB check)
-          const userId = String((user as any)?.id ?? '');
-          const localAcceptance = localStorage.getItem(`terms_accepted_${userId}`);
-          setTermsAccepted(!!localAcceptance);
-        }
+        // Check if the user record has terms_accepted_at
+        // Note: This endpoint returns preferences, but we need to check the users table
+        // Let's make a dedicated call or check if the backend returns this info
+        
+        // For now, we'll check via the user metadata if available
+        // Or we need to add this to the preferences endpoint response
+        
+        // Temporary: Check localStorage as fallback (will be replaced by DB check)
+        const userId = String((user as any)?.id ?? '');
+        const localAcceptance = localStorage.getItem(`terms_accepted_${userId}`);
+        setTermsAccepted(!!localAcceptance);
       } catch (error) {
         console.error('Failed to check terms acceptance:', error);
         // On error, assume terms not accepted to be safe
