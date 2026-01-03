@@ -453,8 +453,9 @@ describe('api - Bearer Token Authentication Security', () => {
 
       const fetchCall = fetchSpy.mock.calls[0];
       expect(fetchCall[1].credentials).toBe('omit');
-      // Signed URLs do not require Authorization headers.
-      expect(fetchCall[1].headers?.Authorization).toBeUndefined();
+      // Signed URLs are fetched via the backend image proxy; the request is to our API,
+      // so it SHOULD include Authorization (but still omit cookies/credentials).
+      expect(fetchCall[1].headers?.Authorization).toBeDefined();
     });
   });
 });
