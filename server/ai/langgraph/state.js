@@ -42,6 +42,20 @@ const AppState = z.object({
   // The specific context snippets from the fallback web search
   rich_search_context: z.string().nullable(),
 
+  // --- Visual Search Results ---
+  // Top visual matches from Google Lens (SerpApi) for grounding collectible identification
+  visualMatches: z
+    .array(
+      z.object({
+        title: z.string(),
+        link: z.string(),
+        thumbnail: z.string(),
+        source: z.string(),
+      })
+    )
+    .nullable()
+    .optional(),
+
   // --- Step 3: Narrative/Final Output ---
   // The final JSON result from the Scenery or Collectible agent
   finalResult: z.object({

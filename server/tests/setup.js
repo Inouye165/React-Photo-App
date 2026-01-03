@@ -56,6 +56,16 @@ jest.mock('@langchain/openai', () => ({
   }))
 }));
 
+// Mock SerpApi for visual search tests
+jest.mock('serpapi', () => ({
+  getJson: jest.fn().mockResolvedValue({
+    visual_matches: [
+      { title: 'Test Collectible 1', link: 'https://example.com/1', thumbnail: 'thumb1.jpg', source: 'example.com' },
+      { title: 'Test Collectible 2', link: 'https://example.com/2', thumbnail: 'thumb2.jpg', source: 'example.com' }
+    ]
+  })
+}));
+
 // Mock environment variables for tests
 process.env.NODE_ENV = 'test';
 process.env.DATABASE_URL = 'postgresql://test:test@localhost:5432/test';
@@ -65,6 +75,8 @@ process.env.SUPABASE_SERVICE_ROLE_KEY = 'test-service-role-key';
 process.env.JWT_SECRET = 'test-jwt-secret-key-for-testing-only';
 // Provide a dummy OpenAI API key for tests so modules that validate at load time do not throw
 process.env.OPENAI_API_KEY = process.env.OPENAI_API_KEY || 'test-openai-api-key';
+// Provide a dummy SerpApi key for tests (visual search will gracefully skip if not configured)
+process.env.SERPAPI_API_KEY = process.env.SERPAPI_API_KEY || 'test-serpapi-key';
 
 // Provide LangSmith defaults so tests do not depend on local .env
 // LangChain environment variables removed.
