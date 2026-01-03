@@ -19,6 +19,7 @@ function registerRoutes(app, { db, supabase, sseManager, logger }) {
   const createEventsRouter = require('../routes/events');
   const createAdminRouter = require('../routes/admin');
   const createCommentsRouter = require('../routes/comments');
+  const createImageProxyRouter = require('../routes/imageProxy');
 
   const { securityErrorHandler } = require('../middleware/security');
   const { authenticateToken, requireRole } = require('../middleware/auth');
@@ -41,6 +42,10 @@ function registerRoutes(app, { db, supabase, sseManager, logger }) {
 
   // Public feedback endpoint (no auth required)
   app.use('/api/feedback', createFeedbackRouter({ db }));
+
+  // Image proxy endpoint (auth required)
+  // Used to fetch remote images server-side to avoid browser CORS limitations.
+  app.use('/api/image-proxy', authenticateToken, createImageProxyRouter());
 
   // E2E/test-only routes
   const { isE2EEnabled } = require('../config/e2eGate');
