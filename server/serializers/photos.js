@@ -47,6 +47,19 @@ function mapPhotoRowToDetailDto(row) {
   const url = `/display/image/${row.id}`;
   const originalUrl = `/photos/${row.id}/original`;
 
+  let collectible_insights = null;
+  if (row.collectible_value_min != null || row.collectible_value_max != null) {
+    collectible_insights = {
+      estimatedValue: {
+        min: row.collectible_value_min,
+        max: row.collectible_value_max,
+        currency: row.collectible_currency || 'USD'
+      },
+      category: row.collectible_category,
+      specifics: safeParseObject(row.collectible_specifics)
+    };
+  }
+
   return {
     id: row.id,
     filename: row.filename,
@@ -65,6 +78,7 @@ function mapPhotoRowToDetailDto(row) {
     thumbnail,
     aiModelHistory,
     poi_analysis: poiAnalysis,
+    collectible_insights,
     classification: row.classification,
   };
 }

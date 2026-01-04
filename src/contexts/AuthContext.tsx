@@ -286,6 +286,7 @@ export function AuthProvider({ children }: { children: ReactNode }): ReactNode {
       checkE2ESession()
         .then(async (e2eUser) => {
           if (e2eUser) {
+            console.log('AuthContext E2E User:', e2eUser);
             // E2E test mode - bypass Supabase auth
             isE2ERef.current = true
             setAuthToken('e2e-test-token')

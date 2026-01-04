@@ -47,6 +47,7 @@ const defaultUsers = [
 const createMockQuery = () => {
   const query = {
     select: jest.fn().mockReturnThis(),
+    leftJoin: jest.fn().mockReturnThis(),
     where: jest.fn().mockReturnThis(),
     andWhere: jest.fn().mockReturnThis(),
     orWhere: jest.fn().mockReturnThis(),
@@ -118,8 +119,9 @@ const createTableQuery = (table) => {
       if (Object.keys(query._whereConditions).length > 0) {
         photos = photos.filter(photo => {
           return Object.entries(query._whereConditions).every(([key, value]) => {
+            const cleanKey = key.includes('.') ? key.split('.')[1] : key;
             // Allow loose equality to match numeric DB ids against string params
-            return photo[key] == value;
+            return photo[cleanKey] == value;
           });
         });
       }
@@ -144,8 +146,9 @@ const createTableQuery = (table) => {
       if (Object.keys(query._whereConditions).length > 0) {
         photos = photos.filter(photo => {
           return Object.entries(query._whereConditions).every(([key, value]) => {
+            const cleanKey = key.includes('.') ? key.split('.')[1] : key;
             // Allow loose equality to match numeric DB ids against string params
-            return photo[key] == value;
+            return photo[cleanKey] == value;
           });
         });
       }
@@ -183,8 +186,9 @@ const createTableQuery = (table) => {
       for (const [id, photo] of Array.from(mockPhotos.entries())) {
         if (Object.keys(query._whereConditions).length > 0) {
           const matches = Object.entries(query._whereConditions).every(([key, value]) => {
+            const cleanKey = key.includes('.') ? key.split('.')[1] : key;
             // Allow loose equality to match numeric DB ids against string params
-            return photo[key] == value;
+            return photo[cleanKey] == value;
           });
           if (!matches) continue;
         }

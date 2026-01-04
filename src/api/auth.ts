@@ -63,6 +63,10 @@ export function getAuthHeaders(includeContentType = true): Record<string, string
   if (_cachedAccessToken) {
     headers['Authorization'] = `Bearer ${_cachedAccessToken}`
   }
+  // E2E Bypass: Add header if in E2E mode
+  if (typeof window !== 'undefined' && (window as any).__E2E_MODE__) {
+    headers['X-E2E-User-ID'] = '11111111-1111-4111-8111-111111111111';
+  }
   return headers
 }
 
@@ -71,6 +75,11 @@ export async function getAuthHeadersAsync(includeContentType = true): Promise<Re
 
   if (includeContentType) {
     headers['Content-Type'] = 'application/json'
+  }
+
+  // E2E Bypass: Add header if in E2E mode
+  if (typeof window !== 'undefined' && (window as any).__E2E_MODE__) {
+    headers['X-E2E-User-ID'] = '11111111-1111-4111-8111-111111111111';
   }
 
   if (!canAttemptSessionRefresh() && !_cachedAccessToken) {

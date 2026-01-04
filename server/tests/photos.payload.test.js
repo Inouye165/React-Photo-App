@@ -14,6 +14,7 @@ describe('photos payload optimization', () => {
     // Create a chainable mock object
     queryMock = {
       select: jest.fn().mockReturnThis(),
+      leftJoin: jest.fn().mockReturnThis(),
       where: jest.fn().mockReturnThis(),
       orderBy: jest.fn().mockReturnThis(),
       limit: jest.fn().mockReturnThis(),
@@ -60,12 +61,15 @@ describe('photos payload optimization', () => {
   });
 
   describe('getPhotoById - Full Payload', () => {
-    it('should NOT restrict columns (implying SELECT *)', async () => {
+    it('should request full payload including collectible insights', async () => {
       await photosDb.getPhotoById(1, 'user123');
       
-      // Should not call select(), implying all columns are returned
-      expect(queryMock.select).not.toHaveBeenCalled();
-      expect(queryMock.where).toHaveBeenCalledWith({ id: 1, user_id: 'user123' });
+      expect(queryMock.select).toHaveBeenCalled();
+      const selectedColumns = queryMock.select.mock.calls[0];
+      expect(selectedColumns).toContain('photos.*');
+      expect(selectedColumns).toContain('collectibles.value_min as collectible_value_min');
+      
+      expect(queryMock.where).toHaveBeenCalledWith({ 'photos.id': 1, 'photos.user_id': 'user123' });
       expect(queryMock.first).toHaveBeenCalled();
     });
   });

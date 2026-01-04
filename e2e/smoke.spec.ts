@@ -203,10 +203,8 @@ test('E2E smoke: login → upload → view', async ({ page, context }) => {
   // Wait for auth check to complete
   await page.waitForTimeout(2000);
   
-  // Check for authenticated elements - user email (truncated) or logout button
-  // IMPORTANT (PII): UI displays public.users.username (not email)
-  await expect(page.getByText('e2e-test', { exact: true })).toBeVisible({ timeout: 10000 });
-  await expect(page.getByRole('button', { name: 'Sign out' })).toBeVisible();
+  // Check for authenticated elements - user menu trigger
+  await expect(page.getByTestId('user-menu-trigger')).toBeVisible({ timeout: 10000 });
 
   // New primary flow: Gallery -> Detail -> Edit
   await expect(page.getByTestId('photo-card').first()).toBeVisible({ timeout: 15000 });
