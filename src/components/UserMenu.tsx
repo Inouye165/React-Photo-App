@@ -22,6 +22,7 @@ export default function UserMenu() {
   const menuRef = useRef<HTMLDivElement>(null);
   
   // Check if user has admin role
+  console.log('UserMenu user:', user);
   const isAdmin = user?.app_metadata?.role === 'admin';
   const displayName = profile?.username || 'User';
   const initial = displayName.charAt(0).toUpperCase();

@@ -47,7 +47,18 @@ module.exports = function createPhotosDb({ db }) {
       return await query;
     },
     async getPhotoById(photoId, userId) {
-      return await db('photos').where({ id: photoId, user_id: userId }).first();
+      return await db('photos')
+        .leftJoin('collectibles', 'photos.id', 'collectibles.photo_id')
+        .select(
+          'photos.*',
+          'collectibles.value_min as collectible_value_min',
+          'collectibles.value_max as collectible_value_max',
+          'collectibles.currency as collectible_currency',
+          'collectibles.category as collectible_category',
+          'collectibles.specifics as collectible_specifics'
+        )
+        .where({ 'photos.id': photoId, 'photos.user_id': userId })
+        .first();
     },
     async updatePhotoMetadata(photoId, userId, metadata) {
       const fields = {};

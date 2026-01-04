@@ -7,6 +7,7 @@ describe('photosDb service', () => {
     const queryChain = () => {
       const obj = {
         select: jest.fn().mockReturnThis(),
+        leftJoin: jest.fn().mockReturnThis(),
         where: jest.fn().mockReturnThis(),
         first: jest.fn(),
         update: jest.fn(),
@@ -43,6 +44,8 @@ describe('photosDb service', () => {
   it('getPhotoById returns the photo for user', async () => {
     const onePhoto = { id: 1 };
     db.mockReturnValueOnce({
+      leftJoin: jest.fn().mockReturnThis(),
+      select: jest.fn().mockReturnThis(),
       where: jest.fn().mockReturnThis(),
       first: jest.fn().mockResolvedValue(onePhoto)
     });

@@ -82,6 +82,22 @@ function isStrictAuthenticatedAudience(aud) {
  * - Tokens are NEVER logged or exposed in error messages
  */
 async function authenticateToken(req, res, next) {
+  // 0. Check for E2E test header (only in non-production)
+  // This allows E2E tests to bypass Bearer token requirement if they send the special header
+  if (isE2EEnabled() && isLoopbackRequest(req)) {
+    const e2eHeader = req.headers['x-e2e-user-id'];
+    if (e2eHeader === '11111111-1111-4111-8111-111111111111') {
+      req.user = {
+        id: e2eHeader,
+        email: 'admin@example.com',
+        username: 'admin',
+        role: 'admin'
+      };
+      req.authSource = 'e2e-header';
+      return next();
+    }
+  }
+
   // REQUIRED: Extract Bearer token from Authorization header
   // This is the ONLY supported authentication method
   const authHeader = req.headers.authorization;
