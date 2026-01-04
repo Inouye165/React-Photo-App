@@ -51,8 +51,8 @@ function mapPhotoRowToDetailDto(row) {
   if (row.collectible_value_min != null || row.collectible_value_max != null) {
     collectible_insights = {
       estimatedValue: {
-        min: row.collectible_value_min,
-        max: row.collectible_value_max,
+        min: row.collectible_value_min != null ? parseFloat(row.collectible_value_min) : null,
+        max: row.collectible_value_max != null ? parseFloat(row.collectible_value_max) : null,
         currency: row.collectible_currency || 'USD'
       },
       category: row.collectible_category,
