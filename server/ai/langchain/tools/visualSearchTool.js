@@ -21,9 +21,11 @@ async function performVisualSearch(imageBase64) {
   }
 
   try {
+    // Use 'image' parameter instead of 'url' to avoid 414 error
+    // SerpApi accepts base64 directly in the 'image' field for POST requests
     const response = await getJson({
       engine: 'google_lens',
-      url: `data:image/jpeg;base64,${imageBase64}`,
+      image: imageBase64,  // Send base64 directly, not as data URI
       api_key: apiKey,
     });
 
