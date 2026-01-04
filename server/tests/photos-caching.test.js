@@ -50,7 +50,8 @@ jest.mock('../services/photosDb', () => {
     listPhotos: jest.fn().mockResolvedValue([
       { id: 1, filename: 'test.jpg', created_at: new Date(), state: 'finished' }
     ]),
-    getPhotoById: jest.fn().mockResolvedValue({ id: 1, filename: 'test.jpg' })
+    getPhotoById: jest.fn().mockResolvedValue({ id: 1, filename: 'test.jpg' }),
+    getPhotoByAnyId: jest.fn().mockResolvedValue({ id: 1, filename: 'test.jpg' })
   });
 });
 

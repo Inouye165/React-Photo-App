@@ -4,6 +4,56 @@
  * Use dependency injection for db for easy testing/mocking.
  */
 module.exports = function createPhotosDb({ db }) {
+  const UUID_REGEX = /^[0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i;
+  const NUMERIC_ID_REGEX = /^\d+$/;
+
+  async function resolvePhotoPrimaryId(anyId, userId) {
+    const raw = typeof anyId === 'string' ? anyId.trim() : String(anyId);
+    const isUuid = UUID_REGEX.test(raw);
+    const isNumeric = NUMERIC_ID_REGEX.test(raw);
+
+    // If it's already a UUID, prefer it as-is.
+    if (isUuid) return raw;
+
+    // If numeric, try legacy photos.photo_id first (UUID-primary schema), then fall back to photos.id.
+    if (isNumeric) {
+      const numericId = Number(raw);
+
+      try {
+        const row = await db('photos')
+          .select('id')
+          .where({ user_id: userId })
+          .andWhere('photo_id', numericId)
+          .first();
+        if (row && row.id) return row.id;
+      } catch {
+        // If the column doesn't exist (or other schema mismatch), fall back below.
+      }
+
+      // Fall back to matching by primary key for test/legacy environments where photos.id is numeric.
+      {
+        const row = await db('photos')
+          .select('id')
+          .where({ user_id: userId, id: numericId })
+          .first();
+        if (row && row.id) return row.id;
+      }
+
+      // Also try string form in case ids are stored as text.
+      {
+        const row = await db('photos')
+          .select('id')
+          .where({ user_id: userId, id: raw })
+          .first();
+        if (row && row.id) return row.id;
+      }
+
+      return null;
+    }
+
+    return null;
+  }
+
   return {
     async listPhotos(userId, state, options = {}) {
       // OPTIMIZED: Select only lite columns for list view to reduce payload size
@@ -59,6 +109,16 @@ module.exports = function createPhotosDb({ db }) {
         )
         .where({ 'photos.id': photoId, 'photos.user_id': userId })
         .first();
+    },
+
+    async resolvePhotoPrimaryId(anyId, userId) {
+      return await resolvePhotoPrimaryId(anyId, userId);
+    },
+
+    async getPhotoByAnyId(anyId, userId) {
+      const resolvedId = await resolvePhotoPrimaryId(anyId, userId);
+      if (!resolvedId) return null;
+      return await this.getPhotoById(resolvedId, userId);
     },
     async updatePhotoMetadata(photoId, userId, metadata) {
       const fields = {};
