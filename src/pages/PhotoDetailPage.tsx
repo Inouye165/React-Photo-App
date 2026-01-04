@@ -413,7 +413,7 @@ export default function PhotoDetailPage() {
 
           {/* Smart Content / Value section */}
           <div className="mt-6 space-y-4" data-testid="photo-detail-smart-content">
-            {isCollectible && valuationRange ? (
+            {isCollectible && valuationRange && (
               <div className="rounded-2xl border border-slate-200 bg-white p-4">
                 <h2 className="text-sm font-semibold text-slate-900">Valuation Estimate</h2>
                 <p className="mt-2 text-2xl font-bold text-slate-900" data-testid="photo-detail-valuation">
@@ -421,8 +421,8 @@ export default function PhotoDetailPage() {
                 </p>
                 <p className="mt-1 text-xs text-slate-500">Estimate only. Actual value may vary.</p>
               </div>
-            ) : null}
-            {!isCollectible ? (
+            )}
+            {!isCollectible && (
               <div className="rounded-2xl border border-slate-200 bg-white overflow-hidden">
                 <div className="px-4 py-3 border-b border-slate-100">
                   <h2 className="text-sm font-semibold text-slate-900">Location</h2>
