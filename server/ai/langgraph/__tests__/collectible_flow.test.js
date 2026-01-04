@@ -84,8 +84,9 @@ describe('Sprint 1 Collectible Flow Integration', () => {
     const result2 = await valuate_collectible(result1b);
 
     expect(result2.collectible?.valuation).toBeDefined();
-    expect(result2.collectible?.valuation?.low).toBe(1000000);
-    expect(result2.collectible?.valuation?.high).toBe(2000000);
+    // low/high must be derived from numeric market_data (NUMERIC CONSISTENCY rule)
+    expect(result2.collectible?.valuation?.low).toBe(1500000);
+    expect(result2.collectible?.valuation?.high).toBe(1800000);
     expect(result2.collectible?.valuation?.market_data).toBeDefined();
     expect(result2.collectible?.valuation?.market_data).toHaveLength(2);
     expect(result2.collectible?.valuation?.market_data?.[0]?.price).toBe(1500000);
@@ -197,8 +198,9 @@ describe('Sprint 1 Collectible Flow Integration', () => {
       },
     });
 
-    expect(result.collectible?.valuation?.low).toBe(1234.56);
-    expect(result.collectible?.valuation?.high).toBe(5678.90);
+    // low/high must be derived from numeric market_data (NUMERIC CONSISTENCY rule)
+    expect(result.collectible?.valuation?.low).toBe(2500);
+    expect(result.collectible?.valuation?.high).toBe(2500);
     expect(result.collectible?.valuation?.market_data?.[0]?.price).toBe(2500);
   });
 

@@ -75,8 +75,9 @@ describe('Sprint 2: Collectibles Market Data Persistence', () => {
       const result = await valuate_collectible(state);
 
       expect(result.collectible?.valuation).toBeDefined();
-      expect(result.collectible?.valuation?.low).toBe(100);
-      expect(result.collectible?.valuation?.high).toBe(200);
+      // low/high must be derived from numeric market_data (NUMERIC CONSISTENCY rule)
+      expect(result.collectible?.valuation?.low).toBe(150);
+      expect(result.collectible?.valuation?.high).toBe(175.5);
       expect(result.collectible?.valuation?.market_data).toHaveLength(2);
       
       // Verify price sanitization (string "$175.50" -> number 175.5)
@@ -115,8 +116,9 @@ describe('Sprint 2: Collectibles Market Data Persistence', () => {
         },
       });
 
-      expect(result.collectible?.valuation?.low).toBe(1000);
-      expect(result.collectible?.valuation?.high).toBe(2500.99);
+      // low/high must be derived from numeric market_data (NUMERIC CONSISTENCY rule)
+      expect(result.collectible?.valuation?.low).toBe(1200);
+      expect(result.collectible?.valuation?.high).toBe(1200);
       expect(result.collectible?.valuation?.market_data?.[0]?.price).toBe(1200);
     });
 
