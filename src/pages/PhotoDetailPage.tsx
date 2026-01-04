@@ -2,7 +2,7 @@ import { useEffect, useMemo, useState, useCallback } from 'react';
 import { Link, useNavigate, useOutletContext, useParams } from 'react-router-dom';
 import { ArrowLeft, Image as ImageIcon, MessageCircle, Pencil, Send } from 'lucide-react';
 import type { Photo } from '../types/photo';
-import { API_BASE_URL, getOrCreateRoom } from '../api';
+import { API_BASE_URL, getOrCreateRoom, getPhoto } from '../api';
 import useStore from '../store';
 import { useProtectedImageBlobUrl } from '../hooks/useProtectedImageBlobUrl';
 import LocationMapPanel from '../components/LocationMapPanel.jsx';
@@ -129,6 +129,7 @@ export default function PhotoDetailPage() {
   useOutletContext<unknown>();
 
   const photos = useStore((state) => state.photos) as Photo[];
+  const updatePhoto = useStore((state) => state.updatePhoto);
   const pollingPhotoIds = useStore((state) => state.pollingPhotoIds) as Set<unknown>;
   const photo = useMemo(() => photos.find((p) => String(p.id) === String(id)), [photos, id]);
 
@@ -141,6 +142,19 @@ export default function PhotoDetailPage() {
   }, [pollingPhotoIds, photo?.id]);
 
   const stateLabel = useMemo(() => formatStateLabel(photo?.state), [photo?.state]);
+
+  useEffect(() => {
+    if (id) {
+      // Fetch fresh photo details (including collectibles) on mount
+      getPhoto(Number(id))
+        .then((res) => {
+          if (res.success && res.photo) {
+            updatePhoto({ ...res.photo, id: Number(id) });
+          }
+        })
+        .catch((err) => console.error('Failed to fetch photo details:', err));
+    }
+  }, [id, updatePhoto]);
 
   useEffect(() => {
     aiPollDebug('ui_photoDetail_status', {
