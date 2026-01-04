@@ -233,7 +233,7 @@ Create an engaging description that a collector would appreciate.`;
         { role: 'system', content: DESCRIBE_COLLECTIBLE_SYSTEM_PROMPT },
         { role: 'user', content: userPrompt }
       ],
-      max_tokens: 512,
+      max_tokens: 2048,  // Increased from 512 to prevent JSON truncation
       temperature: 0.7,
       response_format: { type: 'json_object' }
     });
@@ -244,7 +244,8 @@ Create an engaging description that a collector would appreciate.`;
     } catch (parseError) {
       logger.error('[LangGraph] describe_collectible: Failed to parse response', {
         error: parseError.message,
-        raw: response.choices[0].message.content?.substring(0, 500)
+        raw: response.choices[0].message.content?.substring(0, 2000),  // Show more context for debugging
+        fullLength: response.choices[0].message.content?.length
       });
       
       const cat = typeof analysisContext.category === 'string' ? analysisContext.category : (analysisContext.category?.value || 'Item');
