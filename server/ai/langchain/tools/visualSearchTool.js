@@ -27,6 +27,8 @@ async function performVisualSearch(imageBase64) {
     // Strip data URI prefix if present to minimize payload size
     const cleanBase64 = imageBase64.replace(/^data:image\/[a-z]+;base64,/, '');
     
+    console.log(`[VisualSearch] Sending POST request, payload size: ${cleanBase64.length}`);
+
     // MUST use POST to avoid 414 error - do NOT use SerpApi's getJson (uses GET)
     const response = await axios.post('https://serpapi.com/search', {
       engine: 'google_lens',
