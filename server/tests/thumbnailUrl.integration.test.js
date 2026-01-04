@@ -15,37 +15,19 @@ describe('Thumbnail URL API - Integration Tests', () => {
   let testPhotoId;
   let testPhotoHash;
 
-  beforeAll(async () => {
-    // Create test user
-    testUserId = 'test-user-' + Date.now();
-    
-    // Generate test token
+  beforeAll(() => {
+    // Supabase auth is mocked in tests to return user id=1.
+    testUserId = 1;
     testToken = jwt.sign(
-      { id: testUserId, email: 'test@example.com', sub: testUserId },
+      { id: testUserId, email: 'test@example.com', sub: String(testUserId) },
       process.env.JWT_SECRET,
       { expiresIn: '1h' }
     );
+  });
 
-    // Get the actual user ID from a test request to see what Supabase returns
-    const testResponse = await request(app)
-      .get('/photos')
-      .set('Authorization', `Bearer ${testToken}`);
-    
-    // If this succeeds, we can get the user_id from the auth middleware
-    // Otherwise, we'll use a default test user ID (1) that exists in Supabase
-    if (testResponse.status === 200) {
-      // Auth worked, photos belong to the Supabase user
-      // We need to use their ID. Let's fetch an existing photo if any
-      const existingPhotos = await db('photos').select('user_id').limit(1);
-      if (existingPhotos && existingPhotos.length > 0) {
-        testUserId = existingPhotos[0].user_id;
-      } else {
-        // No existing photos, assume user_id = 1 (common test user)
-        testUserId = 1;
-      }
-    }
-
-    // Create test photo with hash using the correct user_id
+  beforeEach(async () => {
+    // Global test setup clears and reloads the mock DB before each test,
+    // so we must insert our fixtures after that.
     const insertResult = await db('photos').insert({
       user_id: testUserId,
       filename: 'test-photo.jpg',
@@ -58,22 +40,23 @@ describe('Thumbnail URL API - Integration Tests', () => {
       updated_at: new Date().toISOString()
     });
 
-    // Handle different return values for SQLite vs PostgreSQL
     if (Array.isArray(insertResult) && insertResult.length > 0) {
-      // PostgreSQL or SQLite returning array
       testPhotoId = typeof insertResult[0] === 'object' ? insertResult[0].id : insertResult[0];
     } else {
       testPhotoId = insertResult;
     }
 
-    // Fetch the photo to get all fields including hash
     const photo = await db('photos').where({ id: testPhotoId }).first();
-    testPhotoHash = photo.hash;
+    testPhotoHash = photo?.hash;
+  });
+
+  afterEach(async () => {
+    if (testPhotoId != null) {
+      await db('photos').where({ id: testPhotoId }).delete();
+    }
   });
 
   afterAll(async () => {
-    // Clean up test data
-    await db('photos').where({ user_id: testUserId }).delete();
     await db.destroy();
   });
 

@@ -30,31 +30,19 @@ describe('REGRESSION: Thumbnail 401 after security refactor', () => {
   let testToken;
   let testPhotos;
 
-  beforeAll(async () => {
-    // Simulate user authentication
-    testUserId = 'regression-test-user-' + Date.now();
-    
+  beforeAll(() => {
+    // Supabase auth is mocked in tests to return user id=1.
+    testUserId = 1;
     testToken = jwt.sign(
-      { id: testUserId, email: 'regression@example.com', sub: testUserId },
+      { id: testUserId, email: 'regression@example.com', sub: String(testUserId) },
       process.env.JWT_SECRET,
       { expiresIn: '1h' }
     );
+  });
 
-    // Get the actual user ID from Supabase auth
-    const testResponse = await request(app)
-      .get('/photos')
-      .set('Authorization', `Bearer ${testToken}`);
-    
-    if (testResponse.status === 200) {
-      const existingPhotos = await db('photos').select('user_id').limit(1);
-      if (existingPhotos && existingPhotos.length > 0) {
-        testUserId = existingPhotos[0].user_id;
-      } else {
-        testUserId = 1;
-      }
-    }
-
-    // Create test photos (simulating uploaded photos with thumbnails)
+  beforeEach(async () => {
+    // Global test setup clears and reloads the mock DB before each test,
+    // so we must insert our fixtures after that.
     const photosData = [
       {
         user_id: testUserId,
@@ -76,20 +64,15 @@ describe('REGRESSION: Thumbnail 401 after security refactor', () => {
       }
     ];
 
-    const insertResult = await db('photos').insert(photosData);
-    
-    // Handle different return values
-    if (Array.isArray(insertResult) && insertResult.length > 0) {
-      // Fetch the actual photos to get all fields
-      testPhotos = await db('photos').where({ user_id: testUserId }).select('*');
-    } else {
-      testPhotos = await db('photos').where({ user_id: testUserId }).select('*');
-    }
+    await db('photos').insert(photosData);
+    testPhotos = await db('photos').where({ user_id: testUserId }).select('*');
+  });
+
+  afterEach(async () => {
+    await db('photos').where({ user_id: testUserId }).delete();
   });
 
   afterAll(async () => {
-    // Clean up
-    await db('photos').where({ user_id: testUserId }).delete();
     await db.destroy();
   });
 

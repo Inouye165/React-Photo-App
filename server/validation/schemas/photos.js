@@ -78,7 +78,13 @@ const photosListQuerySchema = z.object({
 });
 
 const photoIdParamsSchema = z.object({
-  id: z.string().uuid({ message: 'Invalid photo id' }),
+  id: z.preprocess(
+    (v) => (typeof v === 'string' ? v.trim() : v),
+    z.union([
+      z.string().uuid({ message: 'Invalid photo id' }),
+      z.string().regex(/^\d+$/, { message: 'Invalid photo id' }),
+    ]),
+  ),
 });
 
 module.exports = {

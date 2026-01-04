@@ -275,7 +275,7 @@ module.exports = function createPhotosRouter({ db, supabase }) {
   router.get('/:id', authenticateToken, validateRequest({ params: photoIdParamsSchema }), async (req, res) => {
     try {
       const { id } = req.validated.params;
-      const row = await photosDb.getPhotoById(id, req.user.id);
+      const row = await photosDb.getPhotoByAnyId(id, req.user.id);
       if (!row) return res.status(404).json({ success: false, error: 'Photo not found' });
 
       const photo = mapPhotoRowToDetailDto(row);
@@ -298,9 +298,14 @@ module.exports = function createPhotosRouter({ db, supabase }) {
     try {
       const { id } = req.validated.params;
 
+      const resolvedId = await photosDb.resolvePhotoPrimaryId(id, req.user.id);
+      if (!resolvedId) {
+        return res.status(404).json({ success: false, error: 'Photo not found' });
+      }
+
       const row = await db('photos')
         .select(['id', 'user_id', 'original_path', 'storage_path', 'original_filename', 'filename'])
-        .where({ id, user_id: req.user.id })
+        .where({ id: resolvedId, user_id: req.user.id })
         .first();
 
       if (!row) {
@@ -314,7 +319,7 @@ module.exports = function createPhotosRouter({ db, supabase }) {
 
       const { data, error } = await supabase.storage.from('photos').createSignedUrl(objectPath, 60);
       if (error || !data?.signedUrl) {
-        logger.error('[photos/:id/original] Failed to create signed URL', { photoId: id, error: error?.message });
+        logger.error('[photos/:id/original] Failed to create signed URL', { photoId: resolvedId, requestedId: id, error: error?.message });
         return res.status(500).json({ success: false, error: 'Failed to create download URL' });
       }
 
@@ -366,7 +371,7 @@ module.exports = function createPhotosRouter({ db, supabase }) {
       const { id } = req.params;
       
       // Fetch photo and verify ownership
-      const photo = await photosDb.getPhotoById(id, req.user.id);
+      const photo = await photosDb.getPhotoByAnyId(id, req.user.id);
 
       if (!photo) {
         logger.warn('Thumbnail URL request for non-existent or unauthorized photo', {
@@ -433,7 +438,12 @@ module.exports = function createPhotosRouter({ db, supabase }) {
   router.patch('/:id/metadata', authenticateToken, async (req, res) => {
     const { id } = req.params;
     try {
-      const photo = await photosDb.getPhotoById(id, req.user.id);
+      const resolvedId = await photosDb.resolvePhotoPrimaryId(id, req.user.id);
+      if (!resolvedId) {
+        return res.status(404).json({ success: false, error: 'Photo not found' });
+      }
+
+      const photo = await photosDb.getPhotoById(resolvedId, req.user.id);
       if (!photo) {
         return res.status(404).json({ success: false, error: 'Photo not found' });
       }
@@ -448,7 +458,7 @@ module.exports = function createPhotosRouter({ db, supabase }) {
         return res.status(400).json({ success: false, error: 'No metadata fields provided' });
       }
 
-      const updated = await photosDb.updatePhotoMetadata(id, req.user.id, { caption, description, keywords, textStyle });
+      const updated = await photosDb.updatePhotoMetadata(resolvedId, req.user.id, { caption, description, keywords, textStyle });
       let parsedTextStyle = null;
       if (textStyle !== undefined && textStyle !== null) {
         try { parsedTextStyle = textStyle; } catch { logger.warn('Failed to parse text_style after update for photo', id); }
@@ -473,7 +483,12 @@ module.exports = function createPhotosRouter({ db, supabase }) {
   router.patch('/:id/revert', authenticateToken, express.json(), async (req, res) => {
     const { id } = req.params;
     try {
-      const row = await photosDb.getPhotoById(id, req.user.id);
+      const resolvedId = await photosDb.resolvePhotoPrimaryId(id, req.user.id);
+      if (!resolvedId) {
+        return res.status(404).json({ success: false, error: 'Photo not found' });
+      }
+
+      const row = await photosDb.getPhotoById(resolvedId, req.user.id);
       if (!row) {
         return res.status(404).json({ success: false, error: 'Photo not found' });
       }
@@ -489,7 +504,7 @@ module.exports = function createPhotosRouter({ db, supabase }) {
         logger.warn('Failed to delete edited file from Supabase storage:', deleteError);
       }
 
-      await photosDb.updatePhotoEditedFilename(id, req.user.id, null);
+      await photosDb.updatePhotoEditedFilename(resolvedId, req.user.id, null);
       res.json({ success: true });
     } catch (error) {
       logger.error('Failed to revert photo', id, error);
@@ -501,7 +516,12 @@ module.exports = function createPhotosRouter({ db, supabase }) {
   router.delete('/:id', authenticateToken, async (req, res) => {
     try {
       const { id } = req.params;
-      const row = await photosDb.getPhotoById(id, req.user.id);
+      const resolvedId = await photosDb.resolvePhotoPrimaryId(id, req.user.id);
+      if (!resolvedId) {
+        return res.status(404).json({ success: false, error: 'Photo not found' });
+      }
+
+      const row = await photosDb.getPhotoById(resolvedId, req.user.id);
       if (!row) {
         return res.status(404).json({ success: false, error: 'Photo not found' });
       }
@@ -536,7 +556,7 @@ module.exports = function createPhotosRouter({ db, supabase }) {
       }
 
       // Delete from database
-      await photosDb.deletePhoto(id, req.user.id);
+      await photosDb.deletePhoto(resolvedId, req.user.id);
       res.json({ success: true, message: 'Photo deleted successfully' });
     } catch (err) {
       logger.error('Delete photo error:', err);
@@ -551,7 +571,7 @@ module.exports = function createPhotosRouter({ db, supabase }) {
       if (!['working', 'inprogress', 'finished'].includes(state)) {
         return res.status(400).json({ success: false, error: 'Invalid state' });
       }
-      const row = await photosDb.getPhotoById(id, req.user.id);
+      const row = await photosDb.getPhotoByAnyId(id, req.user.id);
       if (!row) {
         return res.status(404).json({ success: false, error: 'Photo not found' });
       }
@@ -589,7 +609,10 @@ module.exports = function createPhotosRouter({ db, supabase }) {
     try { imageBuffer = Buffer.from(base64Data, 'base64'); } catch { return res.status(400).json({ success: false, error: 'Unable to decode image data' }); }
     if (!imageBuffer || imageBuffer.length === 0) return res.status(400).json({ success: false, error: 'Image data is empty' });
     try {
-      const photoRow = await photosDb.getPhotoById(photoId, req.user.id);
+      const resolvedId = await photosDb.resolvePhotoPrimaryId(photoId, req.user.id);
+      if (!resolvedId) return res.status(404).json({ success: false, error: 'Photo not found' });
+
+      const photoRow = await photosDb.getPhotoById(resolvedId, req.user.id);
       if (!photoRow) return res.status(404).json({ success: false, error: 'Photo not found' });
       // Generate unique edited filename
       const originalExt = path.extname(photoRow.filename);
@@ -640,7 +663,7 @@ module.exports = function createPhotosRouter({ db, supabase }) {
       const newKeywords = keywords !== undefined ? keywords : photoRow.keywords;
       const newTextStyleJson = textStyle === undefined ? photoRow.text_style : textStyle === null ? null : JSON.stringify(textStyle);
 
-      await photosDb.updatePhoto(photoId, req.user.id, {
+      await photosDb.updatePhoto(resolvedId, req.user.id, {
         edited_filename: editedFilename,
         caption: newCaption,
         description: newDescription,
@@ -686,7 +709,7 @@ module.exports = function createPhotosRouter({ db, supabase }) {
   router.post('/:id/recheck-ai', authenticateToken, async (req, res) => {
     try {
       // Ensure photo exists
-      const photo = await photosDb.getPhotoById(req.params.id, req.user.id);
+      const photo = await photosDb.getPhotoByAnyId(req.params.id, req.user.id);
       if (!photo) {
         return res.status(404).json({ error: 'Photo not found' });
       }
@@ -769,7 +792,7 @@ module.exports = function createPhotosRouter({ db, supabase }) {
   // Re-extracts EXIF metadata from the stored photo file
   router.post('/:id/reextract-metadata', authenticateToken, async (req, res) => {
     try {
-      const photo = await photosDb.getPhotoById(req.params.id, req.user.id);
+      const photo = await photosDb.getPhotoByAnyId(req.params.id, req.user.id);
       if (!photo) {
         return res.status(404).json({ error: 'Photo not found' });
       }
@@ -833,7 +856,7 @@ module.exports = function createPhotosRouter({ db, supabase }) {
   router.post('/:id/run-ai', authenticateToken, async (req, res) => {
     try {
       // Re-fetch the photo to ensure it exists
-      const photo = await photosDb.getPhotoById(req.params.id, req.user.id);
+      const photo = await photosDb.getPhotoByAnyId(req.params.id, req.user.id);
       if (!photo) {
         return res.status(404).json({ error: 'Photo not found' });
       }
