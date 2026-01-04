@@ -457,7 +457,7 @@ async function streamToSupabase(req, options = {}) {
       } 
       // Handle Thumbnail
       else if (name === 'thumbnail') {
-        thumbnailMime = mimetype;
+        thumbnailMime = isUnknownClaimedMimeType(mimetype) ? null : mimetype;
         
         fileStream.on('data', (chunk) => {
           if (thumbnailTooLarge) return;

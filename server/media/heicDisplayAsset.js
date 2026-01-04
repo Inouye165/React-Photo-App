@@ -73,6 +73,9 @@ async function ensureHeicDisplayAsset({ db, storageClient, photo }) {
     .where({ id: photoId })
     .update({
       display_path: displayPath,
+      display_mime: 'image/jpeg',
+      derivatives_status: 'ready',
+      derivatives_error: null,
       updated_at: new Date().toISOString(),
     });
 

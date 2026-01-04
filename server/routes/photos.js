@@ -290,6 +290,49 @@ module.exports = function createPhotosRouter({ db, supabase }) {
   });
 
   /**
+   * GET /photos/:id/original
+   * Export/download the original uploaded bytes (no conversion).
+   * Returns a short-lived signed storage URL via redirect.
+   */
+  router.get('/:id/original', authenticateToken, validateRequest({ params: photoIdParamsSchema }), async (req, res) => {
+    try {
+      const { id } = req.validated.params;
+
+      const row = await db('photos')
+        .select(['id', 'user_id', 'original_path', 'storage_path', 'original_filename', 'filename'])
+        .where({ id, user_id: req.user.id })
+        .first();
+
+      if (!row) {
+        return res.status(404).json({ success: false, error: 'Photo not found' });
+      }
+
+      const objectPath = row.original_path || row.storage_path;
+      if (!objectPath) {
+        return res.status(409).json({ success: false, error: 'Original not available' });
+      }
+
+      const { data, error } = await supabase.storage.from('photos').createSignedUrl(objectPath, 60);
+      if (error || !data?.signedUrl) {
+        logger.error('[photos/:id/original] Failed to create signed URL', { photoId: id, error: error?.message });
+        return res.status(500).json({ success: false, error: 'Failed to create download URL' });
+      }
+
+      const rawName = String(row.original_filename || row.filename || `photo-${row.id}`);
+      const baseName = path.posix.basename(rawName.replace(/\\/g, '/')).trim() || `photo-${row.id}`;
+      const safeName = baseName.slice(0, 180).replace(/[^a-zA-Z0-9._ -]/g, '_');
+
+      const signedUrl = new URL(data.signedUrl);
+      signedUrl.searchParams.set('download', safeName);
+
+      return res.redirect(302, signedUrl.toString());
+    } catch (err) {
+      logger.error('Error in GET /photos/:id/original', err);
+      return res.status(500).json({ success: false, error: 'Original download failed' });
+    }
+  });
+
+  /**
    * GET /photos/:id/thumbnail-url
    * Generate a signed, time-limited URL for accessing a photo's thumbnail
    * 

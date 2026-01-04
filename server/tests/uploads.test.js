@@ -134,7 +134,7 @@ describe('Uploads Router with Streaming Architecture', () => {
       expect(response.body.success).toBe(true);
       expect(response.body.filename).toMatch(/^[a-f0-9-]{36}-test-fixture-upload\.jpg$/i);
       expect(response.body.hash).toBeDefined();
-      expect(response.body.path).toMatch(/^working\//);
+      expect(response.body.path).toMatch(/^original\/\d+\//);
     });
 
     it('should return error when no file uploaded', async () => {
