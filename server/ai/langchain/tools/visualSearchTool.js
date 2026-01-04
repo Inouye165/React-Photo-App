@@ -1,8 +1,11 @@
-const { getJson } = require('serpapi');
+const axios = require('axios');
 
 /**
  * Performs Google Lens visual search using SerpApi.
  * Returns top 5 visual matches for grounding LLM identification in web data.
+ * 
+ * CRITICAL: Uses POST request to avoid Cloudflare 414 Request-URI Too Large errors.
+ * The SerpApi library's getJson() defaults to GET which puts the base64 image in the URL.
  * 
  * @param {string} imageBase64 Base64-encoded image without data URI prefix
  * @returns {Promise<Array<{title: string, link: string, thumbnail: string, source: string}>>} Visual matches (empty array on error)
@@ -21,15 +24,22 @@ async function performVisualSearch(imageBase64) {
   }
 
   try {
-    // Use 'image' parameter instead of 'url' to avoid 414 error
-    // SerpApi accepts base64 directly in the 'image' field for POST requests
-    const response = await getJson({
+    // Strip data URI prefix if present to minimize payload size
+    const cleanBase64 = imageBase64.replace(/^data:image\/[a-z]+;base64,/, '');
+    
+    // MUST use POST to avoid 414 error - do NOT use SerpApi's getJson (uses GET)
+    const response = await axios.post('https://serpapi.com/search', {
       engine: 'google_lens',
-      image: imageBase64,  // Send base64 directly, not as data URI
+      image: cleanBase64,
       api_key: apiKey,
+    }, {
+      headers: {
+        'Content-Type': 'application/json',
+      },
+      timeout: 30000,
     });
 
-    const matches = response.visual_matches || [];
+    const matches = response.data?.visual_matches || [];
     
     // Filter and normalize top 5 results
     const visualMatches = matches

@@ -37,7 +37,9 @@ const DEFAULT_ORIGINS = [
   'http://localhost:5173',   // Vite default port
   'http://localhost:5174',   // Vite alternative port
   'http://127.0.0.1:5173',   // IPv4 loopback (Playwright/baseURL)
-  'http://127.0.0.1:5174'    // IPv4 loopback alternative
+  'http://127.0.0.1:5174',   // IPv4 loopback alternative
+  'https://justmypeeps.org', // Production domain
+  'https://www.justmypeeps.org' // Production domain with www
 ];
 
 /**

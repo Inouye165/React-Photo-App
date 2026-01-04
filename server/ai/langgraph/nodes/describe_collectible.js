@@ -239,27 +239,50 @@ Create an engaging description that a collector would appreciate.`;
     });
 
     let parsed;
+    const rawContent = response.choices[0].message.content;
+    
     try {
-      parsed = JSON.parse(response.choices[0].message.content);
+      parsed = JSON.parse(rawContent);
     } catch (parseError) {
       logger.error('[LangGraph] describe_collectible: Failed to parse response', {
         error: parseError.message,
-        raw: response.choices[0].message.content?.substring(0, 2000),  // Show more context for debugging
-        fullLength: response.choices[0].message.content?.length
+        raw: rawContent?.substring(0, 2000),
+        fullLength: rawContent?.length
       });
       
-      const cat = typeof analysisContext.category === 'string' ? analysisContext.category : (analysisContext.category?.value || 'Item');
-      const cond = analysisContext.condition?.label || analysisContext.condition?.value?.label || 'Unknown';
-      const valMin = analysisContext.value?.min || '?';
-      const valMax = analysisContext.value?.max || '?';
-      const valCurr = analysisContext.value?.currency || 'USD';
+      // RESCUE PARSER: Extract partial JSON from truncated response
+      try {
+        // Try to extract description field even if JSON is incomplete
+        const descMatch = rawContent?.match(/"description"\s*:\s*"((?:[^"]|\\")*)"/s);
+        const captionMatch = rawContent?.match(/"caption"\s*:\s*"((?:[^"]|\\")*)"/s);
+        const keywordsMatch = rawContent?.match(/"keywords"\s*:\s*\[(.*?)\]/s);
+        
+        if (descMatch) {
+          logger.info('[LangGraph] describe_collectible: Rescued partial JSON with regex');
+          parsed = {
+            description: descMatch[1].replace(/\\n/g, '\n').replace(/\\"/g, '"'),
+            caption: captionMatch ? captionMatch[1].replace(/\\n/g, '\n').replace(/\\"/g, '"') : 'Collectible Item',
+            keywords: keywordsMatch ? JSON.parse('[' + keywordsMatch[1] + ']') : ['collectible']
+          };
+        } else {
+          throw new Error('Regex rescue failed');
+        }
+      } catch (rescueError) {
+        logger.warn('[LangGraph] describe_collectible: Regex rescue also failed', { rescueError: rescueError.message });
+        
+        const cat = typeof analysisContext.category === 'string' ? analysisContext.category : (analysisContext.category?.value || 'Item');
+        const cond = analysisContext.condition?.label || analysisContext.condition?.value?.label || 'Unknown';
+        const valMin = analysisContext.value?.min || '?';
+        const valMax = analysisContext.value?.max || '?';
+        const valCurr = analysisContext.value?.currency || 'USD';
 
-      // Fall back to template description
-      parsed = {
-        description: `This ${cat} is in ${cond} condition. Estimated value: $${valMin}-$${valMax} ${valCurr}.`,
-        caption: `${cat} - ${cond}`,
-        keywords: [cat, cond, 'collectible']
-      };
+        // Final fallback to template description
+        parsed = {
+          description: `This ${cat} is in ${cond} condition. Estimated value: $${valMin}-$${valMax} ${valCurr}.`,
+          caption: `${cat} - ${cond}`,
+          keywords: [cat, cond, 'collectible']
+        };
+      }
     }
 
     logger.info('[LangGraph] describe_collectible: Generated rich description', {
