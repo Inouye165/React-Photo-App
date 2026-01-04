@@ -422,6 +422,10 @@ async function processUploadedPhoto(db, photoId, options = {}) {
     updated_at: new Date().toISOString()
   };
 
+  // Default: keep pending until we successfully persist derivative info.
+  // Upload route seeds this to 'pending' for new photos.
+  updates.derivatives_error = null;
+
   // Extract metadata if requested
   if (doMetadata) {
     const metadata = await extractMetadata(buffer, photo.filename);
@@ -448,7 +452,13 @@ async function processUploadedPhoto(db, photoId, options = {}) {
     const hash = updates.hash || photo.hash;
     const thumbnailPath = await generateAndUploadThumbnail(buffer, photo.filename, hash);
     if (thumbnailPath) {
+      updates.thumb_path = thumbnailPath;
+      updates.thumb_mime = 'image/jpeg';
       logger.debug(`[Processor] Generated thumbnail at ${thumbnailPath}`);
+    } else {
+      // Best-effort: flag failure so UI can reflect it and retries can be triggered later.
+      updates.derivatives_status = 'failed';
+      updates.derivatives_error = 'thumbnail_generation_failed';
     }
   }
 
@@ -461,11 +471,22 @@ async function processUploadedPhoto(db, photoId, options = {}) {
     const result = await generateAndUploadDisplayWebp({ buffer, photo, storagePath });
     if (result && result.ok && result.displayPath) {
       updates.display_path = result.displayPath;
+      updates.display_mime = 'image/webp';
       logger.debug(`[Processor] Generated WebP display asset at ${result.displayPath}`);
     } else if (result && !result.ok && !result.originalIsHeic) {
       updates.display_path = storagePath;
+      // Display falls back to the original bytes for non-HEIC.
+      updates.display_mime = photo.original_mime || null;
       logger.debug(`[Processor] WebP failed; falling back display_path to original ${storagePath}`);
     }
+  }
+
+  // If we have both thumbnail and a display path, the derivatives are ready.
+  // HEIC may still be pending here if display_path wasn't set (handled later by HEIC display-asset worker).
+  const effectiveDisplayPath = updates.display_path || photo.display_path;
+  const effectiveThumbPath = updates.thumb_path || photo.thumb_path;
+  if (effectiveDisplayPath && effectiveThumbPath && updates.derivatives_status !== 'failed') {
+    updates.derivatives_status = 'ready';
   }
 
   // Update database

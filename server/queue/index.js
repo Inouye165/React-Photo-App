@@ -282,6 +282,7 @@ const startWorker = async () => {
           await processUploadedPhoto(db, photoId, {
             processMetadata: processMetadata !== false,
             generateThumbnail: generateThumbnail !== false,
+            generateDisplay: true,
           });
         }
 
@@ -310,15 +311,24 @@ const startWorker = async () => {
         if (photo.state !== 'finished') {
           try {
             const userId = photo.user_id;
-            const fromState = photo.storage_path ? String(photo.storage_path).split('/')[0] : (photo.state || 'inprogress');
-            const toState = 'finished';
-            const filenameForMove = photo.storage_path
-              ? path.posix.basename(String(photo.storage_path))
-              : photo.filename;
-            const result = await photosState.transitionState(photoId, userId, fromState, toState, filenameForMove, photo.storage_path);
-            if (!result?.success) {
-              logger.warn(`[WORKER] Storage transition failed for photoId ${photoId}; falling back to DB-only state update`, result?.error);
+            const storagePathStr = photo.storage_path ? String(photo.storage_path) : '';
+            const isPinnedOriginal = storagePathStr.startsWith('original/');
+
+            if (isPinnedOriginal) {
+              // New architecture: originals live under original/<photoId>/... and should not be moved
+              // by the legacy state-based storage transitions.
               await setPhotoStateFallback(photoId, 'finished');
+            } else {
+              const fromState = photo.storage_path ? storagePathStr.split('/')[0] : (photo.state || 'inprogress');
+              const toState = 'finished';
+              const filenameForMove = photo.storage_path
+                ? path.posix.basename(storagePathStr)
+                : photo.filename;
+              const result = await photosState.transitionState(photoId, userId, fromState, toState, filenameForMove, photo.storage_path);
+              if (!result?.success) {
+                logger.warn(`[WORKER] Storage transition failed for photoId ${photoId}; falling back to DB-only state update`, result?.error);
+                await setPhotoStateFallback(photoId, 'finished');
+              }
             }
           } catch (stateErr) {
             logger.warn(`[WORKER] State finalize failed for photoId ${photoId}; falling back to DB-only state update`, stateErr?.message || stateErr);

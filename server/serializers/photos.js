@@ -13,6 +13,7 @@ function mapPhotoRowToListDto(row, { signThumbnailUrl, ttlSeconds } = {}) {
   }
 
   const photoUrl = `/display/image/${row.id}`;
+  const originalUrl = `/photos/${row.id}/original`;
 
   return {
     id: row.id,
@@ -28,6 +29,7 @@ function mapPhotoRowToListDto(row, { signThumbnailUrl, ttlSeconds } = {}) {
     editedFilename: row.edited_filename || null,
     storagePath: row.storage_path || null,
     url: photoUrl,
+    originalUrl,
     thumbnail: thumbnailUrl,
     aiModelHistory,
     poi_analysis: poiAnalysis,
@@ -43,6 +45,7 @@ function mapPhotoRowToDetailDto(row) {
 
   const thumbnail = row.hash ? `/display/thumbnails/${row.hash}.jpg` : null;
   const url = `/display/image/${row.id}`;
+  const originalUrl = `/photos/${row.id}/original`;
 
   return {
     id: row.id,
@@ -58,6 +61,7 @@ function mapPhotoRowToDetailDto(row) {
     editedFilename: row.edited_filename,
     storagePath: row.storage_path,
     url,
+    originalUrl,
     thumbnail,
     aiModelHistory,
     poi_analysis: poiAnalysis,

@@ -231,11 +231,11 @@ describe('Streaming Upload Pipeline', () => {
 
       // Verify file was uploaded to mock storage
       const mockFiles = mockStorageHelpers.getMockFiles();
-      const uploadedFile = mockFiles.find(([key]) => key.startsWith('photos/working/'));
+      const uploadedFile = mockFiles.find(([key]) => key.startsWith('photos/original/'));
       
       expect(uploadedFile).toBeDefined();
       expect(response.body.success).toBe(true);
-      expect(response.body.path).toMatch(/^working\//);
+      expect(response.body.path).toMatch(/^original\/\d+\//);
     });
   });
 

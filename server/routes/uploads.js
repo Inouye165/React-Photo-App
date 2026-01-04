@@ -1,10 +1,18 @@
 const express = require('express');
+const path = require('path');
 const supabase = require('../lib/supabaseClient');
 const logger = require('../logger');
 const { streamToSupabase } = require('../media/streamUploader');
 const { addAIJob, checkRedisAvailable } = require('../queue/index');
 const { extractMetadata } = require('../media/backgroundProcessor');
 const { sanitizePhotoMetadata } = require('../media/metadataSanitizer');
+
+function sanitizeOriginalFilename(originalName) {
+  const raw = typeof originalName === 'string' ? originalName : '';
+  const base = path.posix.basename(raw.replace(/\\/g, '/'));
+  const trimmed = base.trim().slice(0, 180) || 'upload';
+  return trimmed.replace(/[^a-zA-Z0-9._-]/g, '_');
+}
 
 /**
  * Streaming uploads router.
@@ -46,6 +54,7 @@ module.exports = function createUploadsRouter({ db }) {
   router.post('/upload', async (req, res) => {
     let storagePath = null;
     let uploadSucceeded = false;
+    let photoId = null;
 
     try {
       // Auth check
@@ -150,6 +159,12 @@ module.exports = function createUploadsRouter({ db }) {
           hash: uploadResult.hash,
           file_size: uploadResult.size,
           storage_path: storagePath,
+          original_path: null,
+          original_mime: uploadResult.mimetype || null,
+          original_filename: uploadResult.originalname || null,
+          original_size_bytes: uploadResult.size || null,
+          derivatives_status: 'pending',
+          derivatives_error: null,
           user_id: req.user.id,
           created_at: now,
           updated_at: now,
@@ -158,6 +173,57 @@ module.exports = function createUploadsRouter({ db }) {
           metadata: JSON.stringify(Object.keys(sanitizedMetadata).length > 0 ? sanitizedMetadata : { pending: true })
         })
         .returning(['id', 'filename', 'hash', 'storage_path']);
+
+      photoId = insertedPhoto.id;
+
+      // Move the stored original into a deterministic, export-friendly prefix.
+      // This preserves the uploaded bytes unchanged.
+      const finalOriginalPath = `original/${String(photoId)}/${sanitizeOriginalFilename(uploadResult.originalname || uploadResult.filename)}`;
+
+      const bucket = supabase.storage.from('photos');
+
+      // Some tests provide a lightweight Supabase mock that doesn't implement `move`.
+      // Treat the move as optional: if it's unavailable, keep the upload under `working/`.
+      if (typeof bucket.move === 'function') {
+        try {
+          const moveResult = await bucket.move(storagePath, finalOriginalPath);
+          if (moveResult?.error) {
+            throw new Error(moveResult.error.message || 'Failed to move original');
+          }
+
+          storagePath = finalOriginalPath;
+          await db('photos')
+            .where({ id: photoId })
+            .update({
+              storage_path: storagePath,
+              original_path: storagePath,
+              updated_at: new Date().toISOString(),
+            });
+        } catch (moveErr) {
+          // Compensating transaction: do not leave a row pointing at a temp path.
+          try {
+            await bucket.remove([storagePath]);
+          } catch {
+            /* ignore */
+          }
+          try {
+            if (photoId) {
+              await db('photos').where({ id: photoId }).del();
+            }
+          } catch {
+            /* ignore */
+          }
+          throw moveErr;
+        }
+      } else {
+        // Maintain invariants: if we don't move, treat the uploaded path as the original.
+        await db('photos')
+          .where({ id: photoId })
+          .update({
+            original_path: storagePath,
+            updated_at: new Date().toISOString(),
+          });
+      }
 
       // Enqueue background job for heavy processing
       // (EXIF extraction, thumbnail generation, AI metadata)

@@ -37,6 +37,7 @@ describe('serializers/photos mappers', () => {
         aiModelHistory: { models: ['gpt-5'] },
         poi_analysis: { name: 'Test POI', confidence: 0.95 },
         url: '/display/image/123',
+        originalUrl: '/photos/123/original',
         classification: 'scenery',
       })
     );
@@ -72,6 +73,7 @@ describe('serializers/photos mappers', () => {
     expect(dto.poi_analysis).toEqual({ x: 1 });
     expect(dto.aiModelHistory).toBeNull();
     expect(dto.url).toBe('/display/image/5');
+    expect(dto.originalUrl).toBe('/photos/5/original');
     expect(dto.thumbnail).toBeNull();
   });
 });

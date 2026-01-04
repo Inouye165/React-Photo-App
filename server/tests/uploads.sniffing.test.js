@@ -95,6 +95,6 @@ describe('Uploads - Signature sniffing', () => {
     expect([200, 202]).toContain(res.status);
     expect(res.body).toBeTruthy();
     expect(res.body.success).toBe(true);
-    expect(res.body.path).toMatch(/^working\//);
+    expect(res.body.path).toMatch(/^original\/\d+\//);
   });
 });
