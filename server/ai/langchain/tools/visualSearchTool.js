@@ -1,11 +1,18 @@
 const axios = require('axios');
+const crypto = require('crypto');
+const supabase = require('../../../lib/supabaseClient');
 
 /**
  * Performs Google Lens visual search using SerpApi.
  * Returns top 5 visual matches for grounding LLM identification in web data.
  * 
- * CRITICAL: Uses POST request to avoid Cloudflare 414 Request-URI Too Large errors.
- * The SerpApi library's getJson() defaults to GET which puts the base64 image in the URL.
+ * STRATEGY:
+ * 1. Upload base64 image to Supabase Storage (temp file)
+ * 2. Generate signed URL
+ * 3. Call SerpApi with the URL (GET request)
+ * 4. Cleanup temp file
+ * 
+ * This avoids 414 URI Too Long errors (GET with base64) and 404 errors (POST not supported).
  * 
  * @param {string} imageBase64 Base64-encoded image without data URI prefix
  * @returns {Promise<Array<{title: string, link: string, thumbnail: string, source: string}>>} Visual matches (empty array on error)
@@ -23,20 +30,53 @@ async function performVisualSearch(imageBase64) {
     return [];
   }
 
-  try {
-    // Strip data URI prefix if present to minimize payload size
-    const cleanBase64 = imageBase64.replace(/^data:image\/[a-z]+;base64,/, '');
-    
-    console.log(`[VisualSearch] Sending POST request, payload size: ${cleanBase64.length}`);
+  let tempPath = null;
 
-    // MUST use POST to avoid 414 error - do NOT use SerpApi's getJson (uses GET)
-    const response = await axios.post('https://serpapi.com/search', {
-      engine: 'google_lens',
-      image: cleanBase64,
-      api_key: apiKey,
-    }, {
-      headers: {
-        'Content-Type': 'application/json',
+  try {
+    // 1. Prepare image buffer
+    // Handle both raw base64 and data URI
+    const match = imageBase64.match(/^data:(image\/[a-z]+);base64,/);
+    const contentType = match ? match[1] : 'image/jpeg';
+    const cleanBase64 = imageBase64.replace(/^data:image\/[a-z]+;base64,/, '');
+    const buffer = Buffer.from(cleanBase64, 'base64');
+    
+    // 2. Upload to Supabase Storage (temp file)
+    // Use 'photos' bucket as it's guaranteed to exist. Use a 'temp' folder.
+    const randomId = crypto.randomBytes(16).toString('hex');
+    const filename = `visual-search-${randomId}.jpg`;
+    tempPath = `temp/${filename}`;
+
+    console.log(`[VisualSearch] Uploading temp image to ${tempPath} (${buffer.length} bytes)`);
+
+    const { error: uploadError } = await supabase.storage
+      .from('photos')
+      .upload(tempPath, buffer, {
+        contentType,
+        upsert: true
+      });
+
+    if (uploadError) {
+      throw new Error(`Upload failed: ${uploadError.message}`);
+    }
+
+    // 3. Generate Signed URL (valid for 5 minutes)
+    const { data: signedData, error: signError } = await supabase.storage
+      .from('photos')
+      .createSignedUrl(tempPath, 300);
+
+    if (signError || !signedData?.signedUrl) {
+      throw new Error(`Signed URL generation failed: ${signError?.message}`);
+    }
+
+    const imageUrl = signedData.signedUrl;
+    console.log(`[VisualSearch] Generated signed URL for SerpApi`);
+
+    // 4. Call SerpApi with the URL (GET request)
+    const response = await axios.get('https://serpapi.com/search', {
+      params: {
+        engine: 'google_lens',
+        url: imageUrl,
+        api_key: apiKey,
       },
       timeout: 30000,
     });
@@ -60,7 +100,20 @@ async function performVisualSearch(imageBase64) {
   } catch (error) {
     // Log error but return empty array so graph can proceed with LLM-only fallback
     console.error('[VisualSearch] API error:', error instanceof Error ? error.message : error);
+    if (axios.isAxiosError(error) && error.response) {
+      console.error('[VisualSearch] SerpApi Response:', error.response.status, error.response.data);
+    }
     return [];
+  } finally {
+    // 5. Cleanup temp file
+    if (tempPath) {
+      try {
+        await supabase.storage.from('photos').remove([tempPath]);
+        console.log(`[VisualSearch] Cleaned up temp file ${tempPath}`);
+      } catch (cleanupError) {
+        console.warn(`[VisualSearch] Failed to cleanup temp file: ${cleanupError.message}`);
+      }
+    }
   }
 }
 
