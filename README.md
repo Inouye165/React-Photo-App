@@ -123,7 +123,7 @@ Run these inside `server/`:
 
 | Command | Why run it? |
 | :--- | :--- |
-| `npm test` | Backend unit tests (Jest). |
+| `npm test` | Backend unit tests (Jest). (Run from `server/`, not repo root.) |
 | `npm run test:db` | Just checks if the DB connection is alive. |
 | `npm run verify:migrations` | Makes sure the schema matches the migration files. |
 
