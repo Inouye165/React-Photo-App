@@ -138,6 +138,26 @@ function normalizeCurrencyPrefix(currency: unknown): string {
   return token;
 }
 
+function pickFirstDefined<T>(...values: T[]): T | undefined {
+  for (const value of values) {
+    if (value !== undefined) return value;
+  }
+  return undefined;
+}
+
+function getAiValuationCandidate(photo: Photo | undefined): { min?: unknown; max?: unknown; currency?: unknown } | null {
+  const raw = photo?.ai_analysis?.collectibleInsights?.valuation as unknown;
+  if (!raw || typeof raw !== 'object') return null;
+
+  const v = raw as Record<string, unknown>;
+  const min = pickFirstDefined(v.lowEstimateUSD, v.low_estimate_usd, v.min, v.low);
+  const max = pickFirstDefined(v.highEstimateUSD, v.high_estimate_usd, v.max, v.high);
+  const currency = pickFirstDefined(v.currency, v.currencyCode, v.currency_code);
+
+  if (min == null && max == null) return null;
+  return { min, max, currency };
+}
+
 function formatValuationRange(min: unknown, max: unknown, currency = '$'): string | null {
   const safeMin = toFiniteNumber(min);
   const safeMax = toFiniteNumber(max);
@@ -183,7 +203,11 @@ export default function PhotoDetailPage() {
           if (isValuationDebugEnabled()) {
             try {
               console.debug('[valuationRange] getPhoto response', res);
-              console.debug('[valuationRange] getPhoto.response.photo.collectible_insights', res && (res as { photo?: unknown }).photo);
+              console.debug(
+                '[valuationRange] getPhoto.response.photo.collectible_insights',
+                (res as { photo?: { collectible_insights?: unknown } } | null | undefined)?.photo
+                  ?.collectible_insights,
+              );
             } catch {
               // ignore debug log errors
             }
@@ -220,13 +244,7 @@ export default function PhotoDetailPage() {
   const valuationRange = (() => {
     const debug = isValuationDebugEnabled();
 
-    const aiValuation = photo?.ai_analysis?.collectibleInsights?.valuation
-      ? {
-          min: photo.ai_analysis.collectibleInsights.valuation.lowEstimateUSD,
-          max: photo.ai_analysis.collectibleInsights.valuation.highEstimateUSD,
-          currency: photo.ai_analysis.collectibleInsights.valuation.currency,
-        }
-      : null;
+    const aiValuation = getAiValuationCandidate(photo);
 
     const candidates = [
       { source: 'poi_analysis.estimatedValue', value: photo?.poi_analysis?.estimatedValue },
