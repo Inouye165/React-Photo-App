@@ -106,9 +106,41 @@ function ClassificationBadge({ classification }: { classification: string }) {
   );
 }
 
+function isValuationDebugEnabled(): boolean {
+  try {
+    return typeof window !== 'undefined' && window.localStorage.getItem('debug:valuation') === '1';
+  } catch {
+    return false;
+  }
+}
+
+function toFiniteNumber(value: unknown): number | null {
+  if (typeof value === 'number') return Number.isFinite(value) ? value : null;
+  if (typeof value === 'string') {
+    const trimmed = value.trim();
+    if (!trimmed) return null;
+    const n = Number(trimmed);
+    return Number.isFinite(n) ? n : null;
+  }
+  return null;
+}
+
+function hasValuationRange(est: unknown): boolean {
+  if (!est || typeof est !== 'object') return false;
+  const maybe = est as { min?: unknown; max?: unknown };
+  return toFiniteNumber(maybe.min) != null || toFiniteNumber(maybe.max) != null;
+}
+
+function normalizeCurrencyPrefix(currency: unknown): string {
+  if (typeof currency !== 'string' || !currency.trim()) return '$';
+  const token = currency.trim();
+  if (token === 'USD') return '$';
+  return token;
+}
+
 function formatValuationRange(min: unknown, max: unknown, currency = '$'): string | null {
-  const safeMin = Number.isFinite(min as number) ? (min as number) : null;
-  const safeMax = Number.isFinite(max as number) ? (max as number) : null;
+  const safeMin = toFiniteNumber(min);
+  const safeMax = toFiniteNumber(max);
   if (safeMin == null && safeMax == null) return null;
   const fmt = (n: number) => `${currency}${Math.round(n)}`;
   if (safeMin != null && safeMax != null) return `${fmt(safeMin)} - ${fmt(safeMax)}`;
@@ -148,6 +180,14 @@ export default function PhotoDetailPage() {
       // Fetch fresh photo details (including collectibles) on mount
       getPhoto(Number(id))
         .then((res) => {
+          if (isValuationDebugEnabled()) {
+            try {
+              console.debug('[valuationRange] getPhoto response', res);
+              console.debug('[valuationRange] getPhoto.response.photo.collectible_insights', res && (res as { photo?: unknown }).photo);
+            } catch {
+              // ignore debug log errors
+            }
+          }
           if (res.success && res.photo) {
             updatePhoto({ ...res.photo, id: Number(id) });
           }
@@ -178,12 +218,37 @@ export default function PhotoDetailPage() {
   const { imageBlobUrl, fetchError, isLoading, retry } = useProtectedImageBlobUrl(displayUrl);
 
   const valuationRange = (() => {
-    const est =
-      photo?.poi_analysis?.estimatedValue ||
-      photo?.collectible_insights?.estimatedValue ||
-      photo?.ai_analysis?.collectibleInsights?.estimatedValue;
-    const currency = est?.currency && typeof est.currency === 'string' ? est.currency : '$';
+    const debug = isValuationDebugEnabled();
+
+    const aiValuation = photo?.ai_analysis?.collectibleInsights?.valuation
+      ? {
+          min: photo.ai_analysis.collectibleInsights.valuation.lowEstimateUSD,
+          max: photo.ai_analysis.collectibleInsights.valuation.highEstimateUSD,
+          currency: photo.ai_analysis.collectibleInsights.valuation.currency,
+        }
+      : null;
+
+    const candidates = [
+      { source: 'poi_analysis.estimatedValue', value: photo?.poi_analysis?.estimatedValue },
+      { source: 'collectible_insights.estimatedValue', value: photo?.collectible_insights?.estimatedValue },
+      { source: 'ai_analysis.collectibleInsights.estimatedValue', value: photo?.ai_analysis?.collectibleInsights?.estimatedValue },
+      { source: 'ai_analysis.collectibleInsights.valuation', value: aiValuation },
+    ];
+
+    const chosen = candidates.find((c) => hasValuationRange(c.value));
+    const est = chosen?.value as { min?: unknown; max?: unknown; currency?: unknown } | undefined;
+
+    const currency = normalizeCurrencyPrefix(est?.currency);
     const range = formatValuationRange(est?.min, est?.max, currency);
+
+    if (debug) {
+      console.debug('[valuationRange] candidates', candidates);
+      console.debug('[valuationRange] chosen', chosen?.source || null);
+      console.debug('[valuationRange] raw est', est);
+      console.debug('[valuationRange] parsed', { min: toFiniteNumber(est?.min), max: toFiniteNumber(est?.max), currency });
+      console.debug('[valuationRange] range', range);
+    }
+
     return range || 'Unknown'; // Show 'Unknown' instead of hardcoded fallback
   })();
 
