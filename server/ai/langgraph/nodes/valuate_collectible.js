@@ -94,6 +94,8 @@ You MUST return a JSON object with this exact schema:
 }
 
 IMPORTANT:
+- PROMO/RARE ITEM RULE: If the identification includes keywords like 'Rare', 'Test', 'Promo', or 'Dianthus', you MUST prioritize specific matches for that pattern. Discard and ignore price points for 'Common' or 'Standard' variants of the same brand (e.g., ignore standard 'Snowflake' prices if the item is 'Dianthus').
+- NUMERIC CONSISTENCY: The 'valuation.low' and 'valuation.high' fields MUST be strictly derived from the numeric values you extract into the 'market_data' array. Do not average rare items with common noise.
 - Extract EACH individual price point you find into the market_data array.
 - The "price" field MUST be a plain number (e.g., 1200.00), NOT a string with $ or commas.
 - Look for condition/grade information in the title or snippet (e.g. "CGC 9.8", "NM", "VF", "chipped", "excellent condition", "with lid") and put it in "condition_label".
@@ -102,6 +104,18 @@ IMPORTANT:
 
 async function valuate_collectible(state) {
   try {
+    // State purity: always clear any previous valuation immediately (even if we early-return)
+    // to prevent legacy anchoring when an item is re-identified.
+    const collectibleFromState = (state && state.collectible && typeof state.collectible === 'object')
+      ? state.collectible
+      : null;
+    const collectibleCleared = collectibleFromState
+      ? { ...collectibleFromState, valuation: null }
+      : collectibleFromState;
+    const stateCleared = collectibleFromState
+      ? { ...state, collectible: collectibleCleared }
+      : { ...state, collectible: collectibleFromState };
+
     logger.info('[LangGraph] valuate_collectible: Enter');
     logger.info('[LangGraph] valuate_collectible: Enter with state', {
       collectible_id: state.collectible?.identification?.id || null,
@@ -112,7 +126,7 @@ async function valuate_collectible(state) {
       reviewStatus: state.collectible?.review?.status || null,
     });
 
-    const collectible = state.collectible || {};
+    const collectible = stateCleared.collectible || {};
     const identification = collectible.identification || null;
     const reviewStatus = collectible.review?.status || null;
     const collectible_id = identification?.id || null;
@@ -124,7 +138,7 @@ async function valuate_collectible(state) {
         collectible_id,
         collectible_category,
       });
-      return state;
+      return stateCleared;
     }
 
     if (!collectible_id) {
@@ -133,11 +147,17 @@ async function valuate_collectible(state) {
         classification_raw: state.classification_raw || null,
         collectible_category,
       });
-      return state;
+      return stateCleared;
     }
 
     // 1. Sanitize Input (Basic prevention of prompt injection via item names)
     const sanitizedId = collectible_id.replace(/[^\w\s\-\,\.\#]/g, '').trim();
+
+    // Validation logging: confirms we are valuing the newly identified target (not a previous run)
+    logger.info('[LangGraph] valuate_collectible: Identified Target (sanitizedId)', {
+      sanitizedId,
+      collectible_category,
+    });
     
     // 2. Prepare Parallel Search Queries
     const queries = [
@@ -166,7 +186,7 @@ async function valuate_collectible(state) {
         { role: 'system', content: VALUATE_SYSTEM_PROMPT },
         {
           role: 'user',
-          content: `Item: ${sanitizedId} (Category: ${collectible_category})
+          content: `Identified Target: ${sanitizedId} (Category: ${collectible_category})
           
 Search Results:
 ${combinedSearchResults}
@@ -211,6 +231,15 @@ Determine the value range.`
               };
             })
             .filter(Boolean); // Remove nulls
+
+          // Enforce numeric consistency: low/high must be derived from extracted market_data.
+          if (normalizedValuation.market_data.length > 0) {
+            const prices = normalizedValuation.market_data.map(md => md.price).filter(p => typeof p === 'number');
+            if (prices.length > 0) {
+              normalizedValuation.low = Math.min(...prices);
+              normalizedValuation.high = Math.max(...prices);
+            }
+          }
         }
       } else {
         // Old format fallback: { low, high, currency, found_at, reasoning }
@@ -234,11 +263,11 @@ Determine the value range.`
     logger.info('[LangGraph] valuate_collectible: Market data points:', valuation.market_data?.length || 0);
 
     return {
-      ...state,
+      ...stateCleared,
       collectible: {
-        ...collectible,
+        ...(collectibleCleared || {}),
         identification,
-        review: collectible.review || null,
+        review: (collectibleCleared && collectibleCleared.review) ? collectibleCleared.review : null,
         valuation,
       },
     };
