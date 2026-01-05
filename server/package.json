@@ -34,7 +34,7 @@
     "@langchain/langgraph": "^1.0.1",
     "@langchain/openai": "^1.1.2",
     "@supabase/supabase-js": "^2.76.1",
-    "axios": "^1.7.9",
+    "axios": "^1.13.2",
     "bcryptjs": "^3.0.2",
     "bullmq": "^5.61.0",
     "busboy": "^1.6.0",
@@ -78,6 +78,8 @@
     "@babel/preset-env": "^7.28.5",
     "@eslint/js": "^9.38.0",
     "@playwright/test": "^1.56.1",
+    "@types/express": "^5.0.6",
+    "@types/node": "^25.0.3",
     "babel-jest": "^30.2.0",
     "eslint": "^9.38.0",
     "eslint-plugin-react": "^7.37.5",
@@ -86,7 +88,8 @@
     "jest": "^29.7.0",
     "jest-openapi": "0.14.1",
     "nodemon": "^3.0.1",
-    "supertest": "^6.3.3"
+    "supertest": "^6.3.3",
+    "typescript": "^5.9.3"
   },
   "jest": {
     "testEnvironment": "node",
