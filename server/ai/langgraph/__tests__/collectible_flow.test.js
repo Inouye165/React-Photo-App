@@ -4,13 +4,18 @@ const valuate_collectible = require('../nodes/valuate_collectible');
 const describe_collectible = require('../nodes/describe_collectible');
 const { openai } = require('../../openaiClient');
 const { googleSearchTool } = require('../../langchain/tools/searchTool');
+const { performVisualSearch } = require('../../langchain/tools/visualSearchTool');
 
 jest.mock('../../openaiClient');
 jest.mock('../../langchain/tools/searchTool');
+jest.mock('../../langchain/tools/visualSearchTool');
 
 describe('Sprint 1 Collectible Flow Integration', () => {
   beforeEach(() => {
     jest.clearAllMocks();
+    
+    // Set up performVisualSearch mock to return empty array by default
+    performVisualSearch.mockResolvedValue([]);
     
     // Set up googleSearchTool mock with schema validation
     googleSearchTool.invoke.mockImplementation(async (input) => {
@@ -257,5 +262,54 @@ describe('Sprint 1 Collectible Flow Integration', () => {
     const described = await describe_collectible(valued);
     expect(described.finalResult?.collectibleInsights?.identification?.id).toBe('Pyrex Butterprint Mixing Bowl 403');
     expect(described.finalResult?.collectibleInsights?.review?.status).toBe('confirmed');
+  });
+
+  test('HITL pending: Identification is visible in finalResult when review is required', async () => {
+    // Set environment to force review
+    process.env.COLLECTIBLES_FORCE_REVIEW = 'true';
+
+    // Mock visual search to return Google Lens results
+    performVisualSearch.mockResolvedValueOnce([
+      { title: 'Marvel Power Pack #1 CGC', link: 'https://example.com/powerpack1' }
+    ]);
+
+    openai.chat.completions.create.mockResolvedValueOnce({
+      choices: [{
+        message: {
+          content: JSON.stringify({
+            id: 'Marvel Power Pack #1',
+            confidence: 0.95,
+            category: 'Comics'
+          })
+        }
+      }]
+    });
+
+    const state1 = { 
+      imageBase64: 'fake_base64', 
+      imageMime: 'image/jpeg'
+    };
+    const result1 = await identify_collectible(state1);
+
+    expect(result1.collectible?.identification?.id).toBe('Marvel Power Pack #1');
+    expect(result1.visualMatches).toBeDefined();
+    expect(result1.visualMatches).toHaveLength(1);
+
+    const result1b = await confirm_collectible(result1);
+    
+    // Should be pending due to forced review
+    expect(result1b.collectible?.review?.status).toBe('pending');
+    
+    // CRITICAL: finalResult must include identification for HITL
+    expect(result1b.finalResult).toBeDefined();
+    expect(result1b.finalResult.description).toBe('AI suggests this identification. Please approve or edit to continue to valuation.');
+    expect(result1b.finalResult.collectibleInsights.identification).toBeDefined();
+    expect(result1b.finalResult.collectibleInsights.identification.id).toBe('Marvel Power Pack #1');
+    expect(result1b.finalResult.collectibleInsights.identification.category).toBe('Comics');
+    expect(result1b.finalResult.collectibleInsights.visualMatches).toBeDefined();
+    expect(result1b.finalResult.collectibleInsights.visualMatches).toHaveLength(1);
+
+    // Clean up
+    delete process.env.COLLECTIBLES_FORCE_REVIEW;
   });
 });

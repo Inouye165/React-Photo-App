@@ -180,13 +180,14 @@ async function confirm_collectible(state) {
     // End-early pattern: produce a safe final result so the pipeline can finish.
     finalResult: {
       caption: identification.category ? `${identification.category} (Review Needed)` : 'Collectible (Review Needed)',
-      // Avoid persisting or presenting a confident narrative about a potentially wrong ID.
-      description: 'Human confirmation is required before valuation and description will be generated.',
+      // Include AI identification for user review (HITL gate)
+      description: 'AI suggests this identification. Please approve or edit to continue to valuation.',
       keywords: 'collectible,review,pending',
       classification: state.classification || 'collectables',
       collectibleInsights: {
-        // Deliberately omit the AI identification from the pending payload
-        // to avoid persisting/echoing misidentifications as part of saved metadata.
+        // Include AI identification and visual matches for user review
+        identification: identification,
+        visualMatches: state.visualMatches || null,
         review: { status: 'pending', ticketId, threshold, confidence },
       },
     },
