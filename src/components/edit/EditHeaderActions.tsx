@@ -31,7 +31,7 @@ export default function EditHeaderActions({
         </div>
       ) : (
         <button
-          onClick={onRecheckClick}
+          onClick={() => onRecheckClick()}
           disabled={!aiReady}
           className={styles.recheckButton}
         >

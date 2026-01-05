@@ -370,14 +370,23 @@ export async function recheckInprogressPhotos(serverUrl = `${API_BASE_URL}/photo
   }
 }
 
-export async function recheckPhotoAI(photoId: PhotoId, model: string | null = null, serverUrl = `${API_BASE_URL}`): Promise<unknown> {
+export async function recheckPhotoAI(
+  photoId: PhotoId, 
+  model: string | null = null, 
+  options: { collectibleOverride?: { id: string; category?: string; fields?: Record<string, unknown>; confirmedBy?: string } } = {},
+  serverUrl = `${API_BASE_URL}`
+): Promise<unknown> {
   const url = `${serverUrl}/photos/${photoId}/run-ai`
   try {
+    const body: { model?: string; collectibleOverride?: unknown } = {}
+    if (model) body.model = model
+    if (options.collectibleOverride) body.collectibleOverride = options.collectibleOverride
+    
     const json = await request({
       path: url,
       method: 'POST',
       headers: getAuthHeaders(),
-      body: model ? { model } : undefined,
+      body: Object.keys(body).length > 0 ? body : undefined,
       limiter: apiLimiter,
     })
     

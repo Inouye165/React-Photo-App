@@ -262,7 +262,7 @@ describe('EditPage - TypeScript Phase 1', () => {
       fireEvent.click(screen.getByText('Recheck AI'))
 
       await waitFor(() => {
-        expect(onRecheckAI).toHaveBeenCalledWith(456, null)
+        expect(onRecheckAI).toHaveBeenCalledWith(456, null, undefined)
       })
     })
 
@@ -453,7 +453,7 @@ describe('EditPage - TypeScript Phase 1', () => {
         fireEvent.click(screen.getByText('Recheck AI'))
 
         await waitFor(() => {
-          expect(onRecheckAI).toHaveBeenCalledWith(789, null)
+          expect(onRecheckAI).toHaveBeenCalledWith(789, null, undefined)
           expect(onRecheckAI).toHaveBeenCalledTimes(1)
         })
       })
