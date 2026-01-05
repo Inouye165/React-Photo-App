@@ -58,7 +58,32 @@ Alternative POI source for trail data when the Places provider doesn't return re
 
 ## LangGraph Workflows
 
-The `langgraph/` directory contains state machines for multi-step AI workflows, including GPS validation, POI inference, and caption generation.
+The `langgraph/` directory contains state machines for multi-step AI workflows, including GPS validation, POI inference, caption generation, and collectible identification.
+
+### Collectibles Pipeline
+
+The collectibles pipeline identifies and values items in photos through a multi-stage process:
+
+1. **Classification** → Detects if image contains a collectible item
+2. **Identification** → AI identifies the specific item (e.g., "1952 Mickey Mantle Baseball Card")
+3. **Confirmation (HITL Gate)** → **MANDATORY human review** - ALL identifications require approval
+4. **Valuation** → Market research and price estimation (only after confirmation)
+5. **Description** → Final metadata generation
+
+#### Human-in-the-Loop (HITL) Enforcement
+
+**CRITICAL**: The confirmation gate (`confirm_collectible.js`) enforces mandatory human review for ALL collectible identifications, regardless of AI confidence score.
+
+- **No Auto-Confirmation**: Even 100% confidence identifications require user approval
+- **Workflow Termination**: Pipeline stops at `END` after identification until user provides override
+- **Resume Path**: User submits `collectibleOverride` with corrected/approved data to proceed
+- **Edit Page Integration**: `finalResult.collectibleInsights.identification` contains AI suggestion for form pre-population
+
+**Environment Variables** (deprecated for HITL enforcement):
+- `COLLECTIBLES_REVIEW_THRESHOLD` - No longer used (all identifications require review)
+- `COLLECTIBLES_FORCE_REVIEW` - No longer needed (review is always enforced)
+
+**Security**: User overrides are sanitized via `safeTrimString()` before persisting to state/database.
 
 ## Food/Nutrition Analysis
 

@@ -60,9 +60,25 @@ describe('Sprint 1 Collectible Flow Integration', () => {
     expect(result1.collectible?.identification?.id).toBe('Action Comic #1');
     expect(result1.collectible?.identification?.category).toBe('Comics');
 
-    // 1.5 Confirm gate (valuation requires confirmed review)
+    // 1.5 Confirm gate (MANDATORY HITL: even high confidence requires human review)
     const result1b = await confirm_collectible(result1);
-    expect(result1b.collectible?.review?.status).toBe('confirmed');
+    expect(result1b.collectible?.review?.status).toBe('pending');
+    expect(result1b.finalResult).toBeDefined();
+    expect(result1b.finalResult?.collectibleInsights?.identification?.id).toBe('Action Comic #1');
+    expect(result1b.finalResult?.collectibleInsights?.identification?.category).toBe('Comics');
+    expect(result1b.finalResult?.collectibleInsights?.identification?.confidence).toBe(0.95);
+    
+    // Graph should terminate here; to proceed, we need a human override
+    // Simulate human approval with collectibleOverride
+    const humanApproved = await confirm_collectible({
+      ...result1,
+      collectibleOverride: {
+        id: 'Action Comic #1',
+        category: 'Comics',
+        confirmedBy: 'user-456'
+      }
+    });
+    expect(humanApproved.collectible?.review?.status).toBe('confirmed');
 
     // 2. Test valuate_collectible (Sprint 2: now returns market_data array)
     // Note: googleSearchTool.invoke is already mocked in beforeEach with schema validation
@@ -86,7 +102,7 @@ describe('Sprint 1 Collectible Flow Integration', () => {
       }]
     });
 
-    const result2 = await valuate_collectible(result1b);
+    const result2 = await valuate_collectible(humanApproved);
 
     expect(result2.collectible?.valuation).toBeDefined();
     // low/high must be derived from numeric market_data (NUMERIC CONSISTENCY rule)
@@ -262,7 +278,225 @@ describe('Sprint 1 Collectible Flow Integration', () => {
     const described = await describe_collectible(valued);
     expect(described.finalResult?.collectibleInsights?.identification?.id).toBe('Pyrex Butterprint Mixing Bowl 403');
     expect(described.finalResult?.collectibleInsights?.review?.status).toBe('confirmed');
+  });​
+265
+    openai.chat.completions.create.mockResolvedValueOnce({
+266
+      choices: [{
+267
+        message: {
+268
+          content: JSON.stringify({
+269
+            description: 'A classic Pyrex Butterprint bowl with a collector-friendly value range.',
+270
+            caption: 'Pyrex Butterprint 403',
+271
+            keywords: ['pyrex', 'butterprint', 'kitchenware'],
+272
+            priceSources: []
+273
+          })
+274
+        }
+275
+      }]
+276
+    });
+277
+​
+278
+    const described = await describe_collectible(valued);
+279
+    expect(described.finalResult?.collectibleInsights?.identification?.id).toBe('Pyrex Butterprint Mixing Bowl 403');
+280
+    expect(described.finalResult?.collectibleInsights?.review?.status).toBe('confirmed');
+281
   });
+282
+​
+ |  | 
+283
+ 
+284
+ 
+  test('HITL pending: Identification is visible in finalResult when review is required', async () => {
+285
+ 
+    // Set environment to force review
+286
+ 
+    process.env.COLLECTIBLES_FORCE_REVIEW = 'true';
+287
+ 
+​
+288
+ 
+    // Mock visual search to return Google Lens results
+289
+ 
+    performVisualSearch.mockResolvedValueOnce([
+290
+ 
+      { title: 'Marvel Power Pack #1 CGC', link: 'https://example.com/powerpack1' }
+291
+ 
+    ]);
+292
+ 
+​
+293
+ 
+    openai.chat.completions.create.mockResolvedValueOnce({
+294
+ 
+      choices: [{
+295
+ 
+        message: {
+296
+ 
+          content: JSON.stringify({
+297
+ 
+            id: 'Marvel Power Pack #1',
+298
+ 
+            confidence: 0.95,
+299
+ 
+            category: 'Comics'
+300
+ 
+          })
+301
+ 
+        }
+302
+ 
+      }]
+303
+ 
+    });
+304
+ 
+​
+305
+ 
+    const state1 = { 
+306
+ 
+      imageBase64: 'fake_base64', 
+307
+ 
+      imageMime: 'image/jpeg'
+308
+ 
+    };
+309
+ 
+    const result1 = await identify_collectible(state1);
+310
+ 
+​
+311
+ 
+    expect(result1.collectible?.identification?.id).toBe('Marvel Power Pack #1');
+312
+ 
+    expect(result1.visualMatches).toBeDefined();
+313
+ 
+    expect(result1.visualMatches).toHaveLength(1);
+314
+ 
+​
+315
+ 
+    const result1b = await confirm_collectible(result1);
+316
+ 
+    
+317
+ 
+    // Should be pending due to forced review
+318
+ 
+    expect(result1b.collectible?.review?.status).toBe('pending');
+319
+ 
+    
+320
+ 
+    // CRITICAL: finalResult must include identification for HITL
+321
+ 
+    expect(result1b.finalResult).toBeDefined();
+322
+ 
+    expect(result1b.finalResult.description).toBe('AI suggests this identification. Please approve or edit to continue to valuation.');
+323
+ 
+    expect(result1b.finalResult.collectibleInsights.identification).toBeDefined();
+324
+ 
+    expect(result1b.finalResult.collectibleInsights.identification.id).toBe('Marvel Power Pack #1');
+325
+ 
+    expect(result1b.finalResult.collectibleInsights.identification.category).toBe('Comics');
+326
+ 
+    expect(result1b.finalResult.collectibleInsights.visualMatches).toBeDefined();
+327
+ 
+    expect(result1b.finalResult.collectibleInsights.visualMatches).toHaveLength(1);
+328
+ 
+​
+329
+ 
+    // Clean up
+330
+ 
+    delete process.env.COLLECTIBLES_FORCE_REVIEW;
+331
+ 
+332
+ 
+  test('Mandatory HITL: 100% confidence still requires human review', async () => {
+333
+ 
+    // Even with perfect confidence (1.0), the system must not auto-confirm
+334
+ 
+    const perfectConfidenceState = {
+335
+ 
+      imageBase64: 'fake_base64',
+336
+ 
+      imageMime: 'image/jpeg',
+337
+ 
+      collectible: {
+338
+ 
+        identification: {
+339
+ 
+          id: 'Mickey Mantle 1952 Topps #311',
+340
+ 
+          category: 'Sports Cards',
+341
+ 
+          confidence: 1.0, // Perfect confidence
+342
+ 
+          fields: { year: '1952', player: 'Mickey Mantle' },
+343
+ 
+          source: 'ai',
 
   test('HITL pending: Identification is visible in finalResult when review is required', async () => {
     // Set environment to force review
@@ -311,5 +545,57 @@ describe('Sprint 1 Collectible Flow Integration', () => {
 
     // Clean up
     delete process.env.COLLECTIBLES_FORCE_REVIEW;
+  test('Mandatory HITL: 100% confidence still requires human review', async () => {
+    // Even with perfect confidence (1.0), the system must not auto-confirm
+    const perfectConfidenceState = {
+      imageBase64: 'fake_base64',
+      imageMime: 'image/jpeg',
+      collectible: {
+        identification: {
+          id: 'Mickey Mantle 1952 Topps #311',
+          category: 'Sports Cards',
+          confidence: 1.0, // Perfect confidence
+          fields: { year: '1952', player: 'Mickey Mantle' },
+          source: 'ai',
+        },
+      },
+    };
+
+    const result = await confirm_collectible(perfectConfidenceState);
+    
+    // Must be pending, never auto-confirmed
+    expect(result.collectible?.review?.status).toBe('pending');
+    expect(result.finalResult).toBeDefined();
+    
+    // finalResult must include identification data for Edit Page
+    expect(result.finalResult?.collectibleInsights?.identification?.id).toBe('Mickey Mantle 1952 Topps #311');
+    expect(result.finalResult?.collectibleInsights?.identification?.category).toBe('Sports Cards');
+    expect(result.finalResult?.collectibleInsights?.identification?.confidence).toBe(1.0);
+    expect(result.finalResult?.collectibleInsights?.identification?.source).toBe('ai');
+    
+    // Verify that finalResult includes pending review status
+    expect(result.finalResult?.collectibleInsights?.review?.status).toBe('pending');
+  });
+
+  test('HITL gate: Low confidence also requires review', async () => {
+    const lowConfidenceState = {
+      imageBase64: 'fake_base64',
+      imageMime: 'image/jpeg',
+      collectible: {
+        identification: {
+          id: 'Unknown Vintage Item',
+          category: 'Antiques',
+          confidence: 0.45, // Low confidence
+          fields: null,
+          source: 'ai',
+        },
+      },
+    };
+
+    const result = await confirm_collectible(lowConfidenceState);
+    
+    expect(result.collectible?.review?.status).toBe('pending');
+    expect(result.finalResult?.collectibleInsights?.identification?.confidence).toBe(0.45);
+    expect(result.finalResult?.collectibleInsights?.review?.status).toBe('pending');
   });
 });
