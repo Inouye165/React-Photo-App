@@ -30,9 +30,13 @@ function registerMiddleware(app) {
         logger.info('[CORS DEBUG]', { origin, isAllowed, allowedOrigins });
       }
       if (isAllowed) {
-        return callback(null, origin);
+        // If there is no Origin header (same-origin, curl, server-to-server), allow.
+        // `cors` treats `true` as "reflect request origin".
+        return callback(null, origin || true);
       }
-      return callback(new Error('Not allowed by CORS'));
+      const err = new Error('Not allowed by CORS');
+      err.code = 'CORS_NOT_ALLOWED';
+      return callback(err);
     },
     credentials: true,
     maxAge: Number(process.env.CORS_MAX_AGE_SECONDS || 600),
@@ -43,6 +47,14 @@ function registerMiddleware(app) {
   // Ensure preflight requests succeed before any auth/validation middleware.
   app.options('*', cors(corsOptions));
   app.use(cors(corsOptions));
+
+  // Convert CORS denials into a clean 403 (avoid leaking internal error details).
+  app.use((err, req, res, next) => {
+    if (err && (err.code === 'CORS_NOT_ALLOWED' || err.message === 'Not allowed by CORS')) {
+      return res.status(403).json({ success: false, error: 'Origin not allowed' });
+    }
+    return next(err);
+  });
 
   // Configure security middleware after CORS so security headers are
   // applied to responses that already include CORS headers.

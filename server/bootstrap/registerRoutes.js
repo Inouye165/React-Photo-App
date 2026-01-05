@@ -112,6 +112,15 @@ function registerRoutes(app, { db, supabase, sseManager, logger }) {
 
   // Error handling middleware
   app.use((error, req, res, _next) => {
+    const isProd = process.env.NODE_ENV === 'production';
+
+    if (error && (error.code === 'CORS_NOT_ALLOWED' || error.message === 'Not allowed by CORS')) {
+      return res.status(403).json({
+        success: false,
+        error: 'Origin not allowed',
+      });
+    }
+
     if (error && error.code === 'EBADCSRFTOKEN') {
       return res.status(403).json({
         success: false,
@@ -127,10 +136,27 @@ function registerRoutes(app, { db, supabase, sseManager, logger }) {
         });
       }
     }
-    console.error('Server error:', error);
-    res.status(500).json({
+
+    // Log full error server-side, but don't leak details to clients.
+    try {
+      if (logger && typeof logger.error === 'function') {
+        logger.error('[server] Unhandled error', {
+          method: req?.method,
+          path: req?.originalUrl || req?.url,
+          message: error?.message,
+          code: error?.code,
+          stack: error?.stack,
+        });
+      } else {
+        console.error('Server error:', error);
+      }
+    } catch {
+      // never crash error handler
+    }
+
+    return res.status(500).json({
       success: false,
-      error: error.message || 'Internal server error',
+      error: isProd ? 'Internal server error' : (error && error.message ? error.message : 'Internal server error'),
     });
   });
 

@@ -382,7 +382,6 @@ export async function request<T>(options: RequestOptions): Promise<T> {
 
     // Immediately before sending the request: unsafe methods only.
     if (isUnsafe) {
-      console.log('Sending CSRF Header:', headersObj['X-CSRF-Token'])
       if (!headersObj['X-CSRF-Token']) throw new Error('Abort: CSRF token could not be retrieved')
     }
 
