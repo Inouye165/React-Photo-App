@@ -77,6 +77,45 @@ const mockCollectibleData = {
   certNumber: '12345678'
 };
 
+// Photo detail mocks used by /photos/:id GET/PATCH in route interception.
+// Keep shapes compatible with src/types/photo.ts (many fields are optional).
+const mockBasePhoto = {
+  ...mockPhotos[0],
+  url: '/photos/999/blob',
+  // Match app-side naming conventions (snake_case)
+  taken_at: mockPhotos[0].takenAt,
+  // Keep context tab stable: avoid populating lots of metadata fields
+  metadata: {},
+} as const;
+
+const mockCollectiblePhoto = {
+  ...mockPhotos[1],
+  url: '/photos/1000/blob',
+  taken_at: mockPhotos[1].takenAt,
+  metadata: {},
+  classification: 'collectible',
+  // Support both legacy and current locations for collectible insights.
+  collectible_insights: {
+    estimatedValue: { min: 100, max: 200, currency: 'USD' },
+    category: 'Trading Card',
+    specifics: {
+      grade: mockCollectibleData.grade,
+      certNumber: mockCollectibleData.certNumber,
+    },
+  },
+  ai_analysis: {
+    classification: 'collectible',
+    collectibleInsights: {
+      estimatedValue: { min: 100, max: 200, currency: 'USD' },
+      category: 'Trading Card',
+      specifics: {
+        grade: mockCollectibleData.grade,
+        certNumber: mockCollectibleData.certNumber,
+      },
+    },
+  },
+} as const;
+
 // Helper to create mock image buffer
 function getMockImageBuffer(): Buffer {
   // 1x1 transparent PNG

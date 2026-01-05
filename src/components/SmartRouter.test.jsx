@@ -2,7 +2,7 @@ import React from 'react';
 import { describe, it, expect, vi, beforeEach } from 'vitest';
 import { render, screen, waitFor } from '@testing-library/react';
 import { MemoryRouter, Routes, Route, useLocation } from 'react-router-dom';
-import SmartRouter from './SmartRouter.jsx';
+import SmartRouter from './SmartRouter.tsx';
 
 // Track navigation
 const mockNavigate = vi.fn();
