@@ -12,7 +12,6 @@
  * - Edit button - switches to edit mode to modify before confirming
  */
 
-import React from 'react';
 import type { CollectibleAiAnalysis } from '../types/collectibles';
 import styles from './CollectiblePendingReview.module.css';
 
