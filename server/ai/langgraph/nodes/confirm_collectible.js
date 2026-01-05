@@ -1,16 +1,5 @@
 const logger = require('../../../logger');
 
-function getThreshold() {
-  const raw = process.env.COLLECTIBLES_REVIEW_THRESHOLD;
-  const parsed = raw ? Number(raw) : 0.75;
-  if (!Number.isFinite(parsed) || parsed <= 0 || parsed >= 1) return 0.75;
-  return parsed;
-}
-
-function forceReviewEnabled() {
-  return String(process.env.COLLECTIBLES_FORCE_REVIEW || '').toLowerCase() === 'true';
-}
-
 function isoNow() {
   return new Date().toISOString();
 }
@@ -28,20 +17,18 @@ function safeTrimString(val) {
 
 /**
  * HITL gate for collectible identification.
- *
- * Option A (recommended): end early when review is required.
- * - If confidence >= threshold and not forced: auto-confirm and proceed.
- * - If confidence < threshold or forced: set pending review, attach ticketId, and produce a finalResult that indicates pending.
+ * * Logic:
+ * 1. If a 'collectibleOverride' exists (human input), confirm it and proceed.
+ * 2. If no override exists, always set status to 'pending' to force a human review.
+ * 3. Include the AI identification data and visual matches in the finalResult 
+ * so the "Edit Page" can display them for approval.
  */
 async function confirm_collectible(state) {
   const runId = state.runId || null;
-  const threshold = getThreshold();
-  const force = forceReviewEnabled();
-
   const current = state.collectible || {};
   const identification = current.identification || null;
 
-  // HITL resume path: if a human override is provided, treat it as confirmed and proceed.
+  // 1. HITL resume path: If you provide an override from the Edit Page
   if (state.collectibleOverride && safeTrimString(state.collectibleOverride.id)) {
     const override = state.collectibleOverride;
     const nextId = safeTrimString(override.id);
@@ -90,6 +77,7 @@ async function confirm_collectible(state) {
     };
   }
 
+  // 2. Handle missing identification
   if (!identification || !identification.id) {
     logger.warn('[LangGraph] confirm_collectible: Missing identification; ending as rejected');
     return {
@@ -119,49 +107,20 @@ async function confirm_collectible(state) {
     };
   }
 
-  // If already confirmed (e.g., resume flow), pass through.
+  // 3. Already confirmed pass-through
   if (current.review?.status === 'confirmed') {
     logger.info('[LangGraph] confirm_collectible: Already confirmed; pass-through');
     return state;
   }
 
+  // 4. MANDATORY HITL GATE: Always set to Pending for review
   const confidence = typeof identification.confidence === 'number' ? identification.confidence : null;
-  const needsReview = force || confidence === null || confidence < threshold;
-
-  if (!needsReview) {
-    logger.info('[LangGraph] confirm_collectible: Auto-confirming', {
-      id: identification.id,
-      category: identification.category,
-      confidence,
-      threshold,
-    });
-
-    return {
-      ...state,
-      collectible: {
-        ...current,
-        review: {
-          status: 'confirmed',
-          ticketId: current.review?.ticketId || runId,
-          confirmedBy: 'system',
-          confirmedAt: isoNow(),
-          editHistory: current.review?.editHistory || [],
-          version: current.review?.version ?? 1,
-          expiresAt: current.review?.expiresAt || isoPlusHours(24),
-        },
-      },
-    };
-  }
-
-  logger.info('[LangGraph] confirm_collectible: Pending human review', {
-    id: identification.id,
-    category: identification.category,
-    confidence,
-    threshold,
-    force,
-  });
-
   const ticketId = current.review?.ticketId || runId;
+
+  logger.info('[LangGraph] confirm_collectible: HITL gate enforced - requiring human review', {
+    id: identification.id,
+    confidence
+  });
 
   return {
     ...state,
@@ -177,18 +136,20 @@ async function confirm_collectible(state) {
         expiresAt: isoPlusHours(24),
       },
     },
-    // End-early pattern: produce a safe final result so the pipeline can finish.
+    // End-early pattern: send AI data to frontend so the user can see it to Approve or Edit
     finalResult: {
       caption: identification.category ? `${identification.category} (Review Needed)` : 'Collectible (Review Needed)',
-      // Include AI identification for user review (HITL gate)
       description: 'AI suggests this identification. Please approve or edit to continue to valuation.',
       keywords: 'collectible,review,pending',
       classification: state.classification || 'collectables',
       collectibleInsights: {
-        // Include AI identification and visual matches for user review
-        identification: identification,
-        visualMatches: state.visualMatches || null,
-        review: { status: 'pending', ticketId, threshold, confidence },
+        identification: identification, // The "AI Guess" for the form
+        visualMatches: state.visualMatches || null, // Google Lens results
+        review: { 
+          status: 'pending', 
+          ticketId, 
+          confidence 
+        },
       },
     },
   };

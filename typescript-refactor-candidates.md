@@ -16,6 +16,7 @@ Counts track how often a file has been flagged/touched as TypeScript migration-w
 | `src/App.jsx` | 2 | Routing is security-critical; consider migrating to TypeScript/TSX for safer route composition. Touched for admin route. |
 | `src/components/SmartRouter.jsx` | 1 | Contains auth/onboarding routing logic; consider migrating to TypeScript/TSX. |
 | `src/components/AppHeader.jsx` | 1 | Navigation component with role-based UI (admin badge); TypeScript would improve type safety for user metadata. |
+| `server/ai/langgraph/nodes/confirm_collectible.js` | 1 | HITL gate with user override validation; contains security-sensitive state transitions and user input handling via safeTrimString. |
 
 - [ ] (Add files here)
 
