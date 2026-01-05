@@ -11,6 +11,9 @@ function createApp(options = {}) {
 
   const app = express();
 
+  // Reduce passive fingerprinting.
+  app.disable('x-powered-by');
+
   // Trust first proxy (Heroku, Supabase, AWS ELB, etc.) for correct client IP resolution
   app.set('trust proxy', 1);
 
