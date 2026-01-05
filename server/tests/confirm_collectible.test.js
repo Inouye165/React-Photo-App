@@ -44,14 +44,14 @@ describe('confirm_collectible', () => {
     expect(result.finalResult.collectibleInsights.review.status).toBe('pending');
   });
 
-  test('auto-confirms when confidence >= threshold', async () => {
+  test('requires human review even with high confidence (HITL gate)', async () => {
     const state = {
       runId: 'test-run-456',
       collectible: {
         identification: {
           id: 'Action Comics #1',
           category: 'Comic Book',
-          confidence: 0.95, // Above threshold
+          confidence: 0.95, // Above threshold but still requires HITL
           fields: null,
           source: 'ai',
         },
@@ -60,9 +60,10 @@ describe('confirm_collectible', () => {
 
     const result = await confirm_collectible(state);
 
-    expect(result.collectible.review.status).toBe('confirmed');
-    expect(result.collectible.review.confirmedBy).toBe('system');
-    expect(result.finalResult).toBeUndefined();
+    // HITL gate: always requires human review, never auto-confirms
+    expect(result.collectible.review.status).toBe('pending');
+    expect(result.finalResult).toBeDefined();
+    expect(result.finalResult.collectibleInsights.identification.id).toBe('Action Comics #1');
   });
 
   test('forces review when COLLECTIBLES_FORCE_REVIEW is true', async () => {
