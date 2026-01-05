@@ -58,7 +58,7 @@ function isPhotoStatusResult(value: unknown): value is PhotoStatusResult {
  * - Prevents "Photo not found" flash on initial load
  * - Enables deep linking via URL query params
  */
-export default function SmartRouter(): JSX.Element | null {
+export default function SmartRouter() {
   const navigate = useNavigate();
   const location = useLocation();
   const { user, loading: authLoading, cookieReady, profile, profileLoading } = useAuth() as AuthContextValue;

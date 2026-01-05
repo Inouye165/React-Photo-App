@@ -34,7 +34,7 @@ declare global {
  * - /photos/:id : Photo detail view (read-only)
  * - /photos/:id/edit : Photo edit view (modern editor)
  */
-function App(): JSX.Element {
+function App() {
   // Dev-only global error logging setup
   useEffect(() => {
     if (!(import.meta?.env?.DEV)) return;
