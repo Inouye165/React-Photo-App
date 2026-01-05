@@ -105,7 +105,7 @@ export default function PhotoEditPage() {
     // User can manually navigate away when done
   };
 
-  const handleRecheckAI = async (photoId, model) => {
+  const handleRecheckAI = async (photoId, model, options = {}) => {
     if (!aiDependenciesReady) {
       setBanner({ 
         message: 'AI services unavailable. Start required Docker containers to re-enable processing.', 
@@ -116,7 +116,7 @@ export default function PhotoEditPage() {
 
     try {
       const { recheckPhotoAI } = await import('../api');
-      const response = await recheckPhotoAI(photoId, model);
+      const response = await recheckPhotoAI(photoId, model, options);
       setBanner({ message: 'AI recheck initiated. Polling for results...', severity: 'info' });
       useStore.getState().startAiPolling(photoId);
       return response;

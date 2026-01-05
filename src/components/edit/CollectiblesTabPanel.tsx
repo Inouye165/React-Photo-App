@@ -16,6 +16,7 @@ import type { Photo } from '../../types/photo';
 import type { CollectibleRecord, CollectibleFormState, CollectibleAiAnalysis } from '../../types/collectibles';
 import CollectibleDetailView from '../CollectibleDetailView';
 import CollectibleEditorPanel from '../CollectibleEditorPanel';
+import CollectiblePendingReview from '../CollectiblePendingReview';
 import styles from './CollectiblesTabPanel.module.css';
 
 export interface CollectiblesTabPanelProps {
@@ -29,6 +30,8 @@ export interface CollectiblesTabPanelProps {
   hasCollectibleData: boolean;
   onViewModeChange: (mode: 'view' | 'edit') => void;
   onCollectibleChange: (formState: CollectibleFormState) => void;
+  onApproveIdentification?: () => void;
+  onEditIdentification?: () => void;
 }
 
 /**
@@ -44,7 +47,27 @@ export default function CollectiblesTabPanel({
   collectibleAiAnalysis,
   onViewModeChange,
   onCollectibleChange,
+  onApproveIdentification,
+  onEditIdentification,
 }: CollectiblesTabPanelProps) {
+  // Check if we're in pending HITL review state
+  const isPending = collectibleAiAnalysis?.review?.status === 'pending';
+  const hasIdentification = collectibleAiAnalysis?.identification?.id;
+  const showPendingReview = isPending && hasIdentification;
+
+  // Show pending review UI if status is pending
+  if (showPendingReview && collectibleAiAnalysis) {
+    return (
+      <div className={styles.container}>
+        <CollectiblePendingReview
+          aiAnalysis={collectibleAiAnalysis}
+          onApprove={onApproveIdentification || (() => console.warn('onApproveIdentification not provided'))}
+          onEdit={onEditIdentification || (() => console.warn('onEditIdentification not provided'))}
+        />
+      </div>
+    );
+  }
+
   return (
     <div className={styles.container}>
       {/* View/Edit Toggle */}

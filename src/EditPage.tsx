@@ -21,7 +21,7 @@ interface EditPageProps {
   photo: Photo;
   onClose?: () => void;
   onSave: (photo: Photo) => Promise<void>;
-  onRecheckAI?: (photoId: number | string, model: string | null) => Promise<void>;
+  onRecheckAI?: (photoId: number | string, model: string | null, options?: { collectibleOverride?: { id: string; category?: string; fields?: Record<string, unknown>; confirmedBy?: string } }) => Promise<void>;
   aiReady?: boolean;
 }
 
@@ -195,6 +195,36 @@ export default function EditPage({ photo, onClose: _onClose, onSave, onRecheckAI
     }
   }
 
+  // === HITL Collectible Identification Handlers ===
+  const handleApproveIdentification = async () => {
+    if (!collectibleAiAnalysis?.identification) {
+      console.warn('[EditPage] No identification to approve');
+      return;
+    }
+
+    try {
+      // Send collectibleOverride to recheck-ai endpoint to resume the graph
+      const identification = collectibleAiAnalysis.identification;
+      await handleRecheckAi({
+        collectibleOverride: {
+          id: identification.id || '',
+          category: identification.category,
+          fields: identification.fields,
+          confirmedBy: 'user-approval',
+        }
+      });
+      console.log('[EditPage] Identification approved, graph resuming');
+    } catch (err) {
+      console.error('[EditPage] Failed to approve identification:', err);
+    }
+  };
+
+  const handleEditIdentification = () => {
+    // Switch to edit mode so user can modify the AI suggestion
+    setCollectibleViewMode('edit');
+    console.log('[EditPage] Switching to edit mode for identification modification');
+  };
+
   
   return (
     <EditPageShell>
@@ -275,6 +305,8 @@ export default function EditPage({ photo, onClose: _onClose, onSave, onRecheckAI
                   hasCollectibleData={hasCollectibleData}
                   onViewModeChange={setCollectibleViewMode}
                   onCollectibleChange={handleCollectibleChange}
+                  onApproveIdentification={handleApproveIdentification}
+                  onEditIdentification={handleEditIdentification}
                 />
               )}
             </div>

@@ -42,5 +42,24 @@ export interface CollectibleAiAnalysis {
   };
   confidence?: number;
   notes?: string;
+  // HITL gate fields
+  identification?: {
+    id?: string;
+    category?: string;
+    confidence?: number;
+    fields?: Record<string, unknown>;
+    source?: 'ai' | 'human';
+  };
+  visualMatches?: Array<{
+    title: string;
+    link: string;
+    thumbnail?: string;
+    source?: string;
+  }>;
+  review?: {
+    status?: 'pending' | 'confirmed' | 'rejected';
+    ticketId?: string;
+    confidence?: number;
+  };
   [key: string]: unknown;
 }

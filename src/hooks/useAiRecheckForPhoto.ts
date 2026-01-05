@@ -5,7 +5,7 @@ import type { Photo } from '../types/photo'
 interface UseAiRecheckForPhotoParams {
   photoId: number | string
   aiReady: boolean
-  onRecheckAI?: (photoId: number | string, model: string | null) => Promise<void>
+  onRecheckAI?: (photoId: number | string, model: string | null, options?: { collectibleOverride?: { id: string; category?: string; fields?: Record<string, unknown>; confirmedBy?: string } }) => Promise<void>
   sourcePhoto?: Photo
   onAiUpdateDetected?: (updates: { caption?: string; description?: string; keywords?: string }) => void
 }
@@ -13,7 +13,7 @@ interface UseAiRecheckForPhotoParams {
 interface UseAiRecheckForPhotoResult {
   isPolling: boolean
   recheckingAI: boolean
-  handleRecheckAi: () => void
+  handleRecheckAi: (options?: { collectibleOverride?: { id: string; category?: string; fields?: Record<string, unknown>; confirmedBy?: string } }) => void
 }
 
 /**
@@ -52,11 +52,11 @@ export function useAiRecheckForPhoto({
   const doneTimeoutRef = useRef<ReturnType<typeof setTimeout> | null>(null)
 
   // Handle recheck AI button click
-  const handleRecheckAi = () => {
+  const handleRecheckAi = (options?: { collectibleOverride?: { id: string; category?: string; fields?: Record<string, unknown>; confirmedBy?: string } }) => {
     if (!aiReady || !onRecheckAI) return
     
     setRecheckingAI(true)
-    onRecheckAI(photoId, null).finally(() => setRecheckingAI(false))
+    onRecheckAI(photoId, null, options).finally(() => setRecheckingAI(false))
   }
 
   // Watch polling state and photo updates to detect AI completion
