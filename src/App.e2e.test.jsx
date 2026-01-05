@@ -148,7 +148,7 @@ vi.mock('./api', () => {
 });
 
 // Now import App (which will use the mocked api module)
-import App from './App.jsx';
+import App from './App.tsx';
 
 describe('App E2E - upload flow', () => {
   beforeEach(() => {
