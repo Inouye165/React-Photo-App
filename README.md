@@ -105,6 +105,31 @@ cd server && npm run worker # Background Worker
 
 I don't write tests just to get green badges. I write them so I can sleep at night after a refactor.
 
+### Pre-commit Test Suite
+
+**Run these before every commit to catch issues locally that would fail CI:**
+
+```bash
+# Quick pre-commit check (recommended minimum)
+npm run lint && npm test && cd server && npm test && cd ..
+
+# Full pre-commit check (matches CI exactly)
+npm run lint && \
+npm test && \
+npm run test:maintainability && \
+npm run test:e2e && \
+cd server && npm test && cd ..
+```
+
+**What each test catches:**
+- `npm run lint` - ESLint + TypeScript type-check + GPS hygiene check (catches JSX namespace errors, type mismatches, import issues)
+- `npm test` - Frontend unit tests (541 tests)
+- `npm run test:maintainability` - Architecture rules + migration integrity (catches dead code, import violations, broken migrations)
+- `npm run test:e2e` - Playwright end-to-end tests (29 tests, requires app running)
+- `cd server && npm test` - Backend unit tests (810 tests)
+
+**Pro tip:** The `lint` command includes `type-check` which is what caught the JSX namespace errors. Always run it before committing TypeScript changes.
+
 ### Frontend & Root
 Run these from the main folder:
 
