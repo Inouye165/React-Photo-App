@@ -14,6 +14,8 @@ import EditTabs from './components/edit/EditTabs'
 import ContextTabPanel from './components/edit/ContextTabPanel'
 import PhotoStackPanel from './components/edit/PhotoStackPanel'
 import CollectiblesTabPanel from './components/edit/CollectiblesTabPanel'
+import CollectibleReviewModal from './components/hitl/CollectibleReviewModal'
+import type { CollectibleOverride } from './components/hitl/CollectibleIdentificationEditor'
 import shellStyles from './components/edit/EditPageShell.module.css'
 import type { Photo, TextStyle } from './types/photo'
 
@@ -196,26 +198,21 @@ export default function EditPage({ photo, onClose: _onClose, onSave, onRecheckAI
   }
 
   // === HITL Collectible Identification Handlers ===
-  const handleApproveIdentification = async () => {
-    if (!collectibleAiAnalysis?.identification) {
-      console.warn('[EditPage] No identification to approve');
-      return;
-    }
-
+  const handleApproveIdentification = async (override: CollectibleOverride) => {
     try {
-      // Send collectibleOverride to recheck-ai endpoint to resume the graph
-      const identification = collectibleAiAnalysis.identification;
-      await handleRecheckAi({
-        collectibleOverride: {
-          id: identification.id || '',
-          category: identification.category,
-          fields: identification.fields,
-          confirmedBy: 'user-approval',
-        }
-      });
-      console.log('[EditPage] Identification approved, graph resuming');
+      console.log('[EditPage] Approving identification, resuming graph');
+      await handleRecheckAi({ collectibleOverride: override });
     } catch (err) {
       console.error('[EditPage] Failed to approve identification:', err);
+    }
+  };
+
+  const handleEditSaveIdentification = async (override: CollectibleOverride) => {
+    try {
+      console.log('[EditPage] Saving edited identification, resuming graph');
+      await handleRecheckAi({ collectibleOverride: override });
+    } catch (err) {
+      console.error('[EditPage] Failed to save edited identification:', err);
     }
   };
 
@@ -225,9 +222,23 @@ export default function EditPage({ photo, onClose: _onClose, onSave, onRecheckAI
     console.log('[EditPage] Switching to edit mode for identification modification');
   };
 
+  // Compute whether to show HITL review modal
+  const shouldShowReviewModal = 
+    COLLECTIBLES_UI_ENABLED && 
+    sourcePhoto?.poi_analysis?.review?.status === 'pending';
+
   
   return (
     <EditPageShell>
+      {/* HITL Review Modal - Auto-opens when pending */}
+      <CollectibleReviewModal
+        open={shouldShowReviewModal}
+        collectibleAiAnalysis={sourcePhoto?.poi_analysis}
+        onApprove={handleApproveIdentification}
+        onEditSave={handleEditSaveIdentification}
+        isProcessing={recheckingAI}
+      />
+
       {/* Consistent App Header */}
       <AppHeader 
         rightContent={

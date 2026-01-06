@@ -376,11 +376,25 @@ export async function recheckPhotoAI(
   options: { collectibleOverride?: { id: string; category?: string; fields?: Record<string, unknown>; confirmedBy?: string } } = {},
   serverUrl = `${API_BASE_URL}`
 ): Promise<unknown> {
-  const url = `${serverUrl}/photos/${photoId}/run-ai`
+  const url = `${serverUrl}/photos/${photoId}/recheck-ai`
   try {
     const body: { model?: string; collectibleOverride?: unknown } = {}
     if (model) body.model = model
-    if (options.collectibleOverride) body.collectibleOverride = options.collectibleOverride
+    
+    // Handle legacy nested shape: { identification: { id, name, category } } → { id, category, fields: { name } }
+    if (options.collectibleOverride) {
+      const override = options.collectibleOverride as any
+      if (override.identification && typeof override.identification === 'object') {
+        body.collectibleOverride = {
+          id: override.identification.id,
+          category: override.identification.category,
+          confirmedBy: override.confirmedBy,
+          fields: { name: override.identification.name || override.identification.id }
+        }
+      } else {
+        body.collectibleOverride = override
+      }
+    }
     
     const json = await request({
       path: url,
