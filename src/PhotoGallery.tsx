@@ -35,9 +35,8 @@ interface PhotoGalleryProps {
   density?: DensityMode;
 }
 
-interface GridItemProps {
+interface GridItemProps extends React.HTMLAttributes<HTMLDivElement> {
   children?: React.ReactNode;
-  [key: string]: unknown;
 }
 
 // Hook to get responsive column count and gap
@@ -71,7 +70,7 @@ const useResponsiveGrid = (density: DensityMode): GridConfig => {
   return gridConfig;
 };
 
-const GridItem = function GridItem({ children, ...props }: GridItemProps): JSX.Element {
+const GridItem = function GridItem({ children, ...props }: GridItemProps): React.JSX.Element {
   return (
     <div {...props} className="photo-grid-item">
       {children}
@@ -91,7 +90,7 @@ export default function PhotoGallery({
   onSelectPhoto,
   getSignedUrl,
   density = 'comfortable',
-}: PhotoGalleryProps): JSX.Element {
+}: PhotoGalleryProps): React.JSX.Element {
   const { columns, gap } = useResponsiveGrid(density);
   const paddingClass = density === 'compact' ? 'p-1 sm:p-3' : 'p-2 sm:p-6';
 
@@ -111,7 +110,7 @@ export default function PhotoGallery({
   }, [pollingPhotoIds, pollingPhotoId]);
   
   // Memoize the item renderer
-  const itemContent = useCallback((index: number): JSX.Element | null => {
+  const itemContent = useCallback((index: number): React.JSX.Element | null => {
     const photo = photos[index];
     if (!photo) return null;
     
