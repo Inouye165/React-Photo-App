@@ -1,6 +1,6 @@
 import React, { useEffect, useMemo, useState } from 'react';
 import { useLocation, useNavigate, useOutletContext } from 'react-router-dom';
-import PhotoGallery from '../PhotoGallery.jsx';
+import PhotoGallery from '../PhotoGallery';
 import PhotoUploadForm from '../PhotoUploadForm.jsx';
 import MetadataModal from '../components/MetadataModal.jsx';
 import usePhotoPrivileges from '../hooks/usePhotoPrivileges';

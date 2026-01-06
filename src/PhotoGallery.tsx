@@ -8,18 +8,46 @@
  * - Performance: Uses react-virtuoso for smooth scrolling
  */
 import React, { useState, useEffect, useCallback, useMemo } from 'react';
-import { VirtuosoGrid } from 'react-virtuoso';
+import { VirtuosoGrid, ListProps } from 'react-virtuoso';
 import { API_BASE_URL } from './api';
-import PhotoCard from './components/PhotoCard.tsx';
+import PhotoCard, { type PhotoCardProps } from './components/PhotoCard';
+
+type PhotoCardPhoto = PhotoCardProps['photo'];
+
+interface GridConfig {
+  columns: number;
+  gap: number;
+}
+
+type DensityMode = 'comfortable' | 'compact';
+
+interface PhotoGalleryProps {
+  photos: PhotoCardPhoto[];
+  privilegesMap?: Map<number | string, string> | Record<number | string, string> | null;
+  pollingPhotoId?: number | string | null;
+  pollingPhotoIds?: Set<number | string>;
+  handleMoveToInprogress: (id: PhotoCardPhoto['id']) => void;
+  handleEditPhoto: (photo: PhotoCardPhoto) => void;
+  handleMoveToWorking: (id: PhotoCardPhoto['id']) => void;
+  handleDeletePhoto: (id: PhotoCardPhoto['id']) => void;
+  onSelectPhoto?: (photo: PhotoCardPhoto) => void;
+  getSignedUrl?: (photo: PhotoCardPhoto, variant?: 'full' | 'thumb') => string | null;
+  density?: DensityMode;
+}
+
+interface GridItemProps {
+  children?: React.ReactNode;
+  [key: string]: unknown;
+}
 
 // Hook to get responsive column count and gap
-const useResponsiveGrid = (density) => {
-  const [gridConfig, setGridConfig] = useState({ columns: 3, gap: 4 });
+const useResponsiveGrid = (density: DensityMode): GridConfig => {
+  const [gridConfig, setGridConfig] = useState<GridConfig>({ columns: 3, gap: 4 });
   
   useEffect(() => {
-    const updateGrid = () => {
+    const updateGrid = (): void => {
       const width = window.innerWidth;
-      const base = (() => {
+      const base = ((): GridConfig => {
         if (width < 640) {
           // Mobile: 3-column tight grid
           return { columns: 3, gap: 4 }; // gap-1 = 4px
@@ -43,7 +71,7 @@ const useResponsiveGrid = (density) => {
   return gridConfig;
 };
 
-const GridItem = function GridItem({ children, ...props }) {
+const GridItem = function GridItem({ children, ...props }: GridItemProps): JSX.Element {
   return (
     <div {...props} className="photo-grid-item">
       {children}
@@ -63,17 +91,17 @@ export default function PhotoGallery({
   onSelectPhoto,
   getSignedUrl,
   density = 'comfortable',
-}) {
+}: PhotoGalleryProps): JSX.Element {
   const { columns, gap } = useResponsiveGrid(density);
   const paddingClass = density === 'compact' ? 'p-1 sm:p-3' : 'p-2 sm:p-6';
 
-  const getAccessLevel = useCallback((photoId) => {
+  const getAccessLevel = useCallback((photoId: number | string): string => {
     if (!privilegesMap) return '';
     if (privilegesMap instanceof Map) return privilegesMap.get(photoId) || '';
     return privilegesMap?.[photoId] || '';
   }, [privilegesMap]);
 
-  const isPollingForId = useCallback((photoId) => {
+  const isPollingForId = useCallback((photoId: number | string): boolean => {
     if (pollingPhotoIds && pollingPhotoIds.size) {
       for (const value of pollingPhotoIds) {
         if (String(value) === String(photoId)) return true;
@@ -83,7 +111,7 @@ export default function PhotoGallery({
   }, [pollingPhotoIds, pollingPhotoId]);
   
   // Memoize the item renderer
-  const itemContent = useCallback((index) => {
+  const itemContent = useCallback((index: number): JSX.Element | null => {
     const photo = photos[index];
     if (!photo) return null;
     
@@ -145,20 +173,22 @@ export default function PhotoGallery({
   }
 
   // Custom List component with proper display name for large list virtualization
-  const VirtualizedList = React.forwardRef(function VirtualizedList({ style, children: _children, ...props }, ref) {
-    return (
-      <div
-        ref={ref}
-        {...props}
-        style={{
-          display: 'grid',
-          ...gridStyle,
-          ...style,
-        }}
-        className={`grid-gallery ${paddingClass}`}
-      />
-    );
-  });
+  const VirtualizedList = React.forwardRef<HTMLDivElement, ListProps>(
+    function VirtualizedList({ style, children: _children, ...props }, ref) {
+      return (
+        <div
+          ref={ref}
+          {...props}
+          style={{
+            display: 'grid',
+            ...gridStyle,
+            ...style,
+          }}
+          className={`grid-gallery ${paddingClass}`}
+        />
+      );
+    }
+  );
 
   // For large lists, use virtualization
   return (
