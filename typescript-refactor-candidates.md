@@ -17,6 +17,9 @@ Counts track how often a file has been flagged/touched as TypeScript migration-w
 | `src/components/SmartRouter.jsx` | 1 | Contains auth/onboarding routing logic; consider migrating to TypeScript/TSX. |
 | `src/components/AppHeader.jsx` | 1 | Navigation component with role-based UI (admin badge); TypeScript would improve type safety for user metadata. |
 | `server/ai/langgraph/nodes/confirm_collectible.js` | 1 | HITL gate with user override validation; contains security-sensitive state transitions and user input handling via safeTrimString. |
+| `server/services/photosDb.js` | 1 | Modified during HITL bug fix; critical path logic. Contains database query resolution with UUID/numeric fallback logic. |
+| `src/pages/PhotoEditPage.jsx` | 1 | Modified during HITL bug fix; critical path logic. Contains photo editing workflow with AI polling and state management. |
+| `server/routes/photos.js` | 1 | Modified during HITL bug fix; critical path logic. Contains recheck-ai endpoint with Human Override detection. |
 
 - [ ] (Add files here)
 

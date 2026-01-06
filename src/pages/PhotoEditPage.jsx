@@ -19,7 +19,7 @@ export default function PhotoEditPage() {
   const setEditingMode = useStore((state) => state.setEditingMode);
   const setActivePhotoId = useStore((state) => state.setActivePhotoId);
   const pollingPhotoIds = useStore((state) => state.pollingPhotoIds);
-  const startAiPolling = useStore((state) => state.startAiPolling);
+  // startAiPolling removed - auto-polling disabled (see commented useEffect below)
   
   const photo = photos.find((p) => String(p.id) === String(id));
 
@@ -35,8 +35,12 @@ export default function PhotoEditPage() {
     });
   }, [photo?.id, photo?.state, id, pollingPhotoIds]);
 
-  // Auto-start polling if photo appears to still be processing
-  // (has placeholder caption or empty AI metadata)
+  // DISABLED: Auto-start polling creates race conditions with manual edits
+  // Users must now explicitly click "Analyze" or "Recheck" to trigger AI processing
+  // See: fix/hitl-db-error-ux - HITL workflow UX improvement
+  /*
+  // Note: To re-enable, uncomment this block AND add back:
+  // const startAiPolling = useStore((state) => state.startAiPolling);
   useEffect(() => {
     if (!photo || !photo.id) return;
     // Skip if already polling this photo
@@ -65,12 +69,13 @@ export default function PhotoEditPage() {
         descriptionLen: typeof photo.description === 'string' ? photo.description.length : null,
       });
       try {
-        startAiPolling(photo.id);
+        // startAiPolling(photo.id); // Requires uncommenting the store selector above
       } catch {
         // ignore polling start errors
       }
     }
-  }, [photo, pollingPhotoIds, startAiPolling]);
+  }, [photo, pollingPhotoIds]);
+  */
 
   const handleClose = () => {
     setEditingMode(null);
@@ -96,6 +101,12 @@ export default function PhotoEditPage() {
   };
 
   const handleSave = async (updated) => {
+    console.log('[PhotoEditPage] handleSave called', {
+      photoId: updated.id,
+      hasCaption: !!updated.caption,
+      hasDescription: !!updated.description,
+      timestamp: new Date().toISOString()
+    });
     useStore.getState().setPhotos((prev) =>
       prev.map((p) => (p.id === updated.id ? { ...p, ...updated } : p)),
     );
@@ -106,6 +117,14 @@ export default function PhotoEditPage() {
   };
 
   const handleRecheckAI = async (photoId, model, options = {}) => {
+    console.log('[PhotoEditPage] handleRecheckAI called', {
+      photoId,
+      model,
+      options,
+      isHumanOverride: options.isHumanOverride || false,
+      timestamp: new Date().toISOString()
+    });
+    
     if (!aiDependenciesReady) {
       setBanner({ 
         message: 'AI services unavailable. Start required Docker containers to re-enable processing.', 
