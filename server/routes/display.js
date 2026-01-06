@@ -117,12 +117,15 @@ module.exports = function createDisplayRouter({ db }) {
 
     // Redirect bypass is only allowed under controlled server-side conditions.
     // Never allow users to toggle this via query params or headers.
+    // This function uses ONLY environment variables and server-controlled checks.
     if (process.env.NODE_ENV === 'production') return false;
     if (process.env.DISPLAY_BYPASS_REDIRECT !== '1') return false;
 
     // In tests, supertest requests may not have a real remoteAddress.
     if (process.env.NODE_ENV === 'test') return true;
 
+    // Additional loopback check for non-test environments
+    // This validates the source IP is from localhost only
     if (!isLoopbackRequest(req)) return false;
     return true;
   }
@@ -149,10 +152,10 @@ module.exports = function createDisplayRouter({ db }) {
     // after cryptographic verification via verifyThumbnailSignature(), which uses
     // HMAC-SHA256 with a server-side secret. An attacker cannot forge valid signatures.
     // This pattern is equivalent to JWT bearer tokens (also user-provided but cryptographically verified).
+    
+    // First verify that we have signature parameters
     const hasSignatureParams = Boolean(sig && exp);
     
-    // lgtm[js/user-controlled-bypass]
-    // codeql[js/user-controlled-bypass]
     if (hasSignatureParams) {
       // Extract hash from filename - must be valid format
       const hash = filename ? filename.replace(/\.jpg$/i, '') : null;

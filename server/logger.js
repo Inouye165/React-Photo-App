@@ -83,7 +83,9 @@ function sanitizeBindingValue(value) {
 function defineSafeProperty(target, key, value) {
   if (!isSafeObjectKey(key)) return;
   try {
-    // lgtm[js/remote-property-injection] - Safe: key is allowlisted by isSafeObjectKey and target is a null-prototype object in all call sites.
+    // Safe: key is validated by isSafeObjectKey which only allows alphanumeric + [._-]
+    // and explicitly blocks __proto__, prototype, constructor.
+    // Target is always a null-prototype object in all call sites.
     Object.defineProperty(target, key, {
       value,
       enumerable: true,
@@ -316,14 +318,14 @@ class TinyLogger {
     if (this.bindings && typeof this.bindings === 'object') {
       for (const [key, value] of Object.entries(this.bindings)) {
         if (isSafeObjectKey(key)) {
-          // codeql[js/remote-property-injection] - Safe: combined is null-prototype and key is allowlisted by isSafeObjectKey before defineProperty.
+          // Safe: key validated by isSafeObjectKey, combined is null-prototype
           defineSafeProperty(combined, key, sanitizeBindingValue(value));
         }
       }
     }
     for (const [key, value] of Object.entries(extraBindings)) {
       if (isSafeObjectKey(key)) {
-        // codeql[js/remote-property-injection] - Safe: combined is null-prototype and key is allowlisted by isSafeObjectKey before defineProperty.
+        // Safe: key validated by isSafeObjectKey, combined is null-prototype
         defineSafeProperty(combined, key, sanitizeBindingValue(value));
       }
     }
