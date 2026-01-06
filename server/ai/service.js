@@ -913,10 +913,10 @@ async function updatePhotoAIMetadata(db, photoRow, storagePath, modelOverrides =
       // Determine which "extra" AI data to save. The graph returns *either*
       // poiAnalysis (for scenery/food) or collectibleInsights (for collectibles).
       // We save whichever one is present to the 'poi_analysis' JSONB column.
+      // IMPORTANT: For pending/rejected collectibles, save the FULL collectibleInsights
+      // so the frontend can display the AI identification and Google Lens results for review.
       const extraData = (ai && ai.collectibleInsights)
-        ? (hasConfirmedCollectible
-          ? ai.collectibleInsights
-          : { review: ai.collectibleInsights.review || { status: collectibleReviewStatus } })
+        ? ai.collectibleInsights  // Save full insights including identification & visualMatches
         : (ai && ai.poiAnalysis)
           ? ai.poiAnalysis
           : null;
