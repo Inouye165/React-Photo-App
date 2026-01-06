@@ -15,22 +15,10 @@ module.exports = function createPhotosDb({ db }) {
     // If it's already a UUID, prefer it as-is.
     if (isUuid) return raw;
 
-    // If numeric, try legacy photos.photo_id first (UUID-primary schema), then fall back to photos.id.
+    // If numeric, match by primary key for test/legacy environments where photos.id is numeric.
     if (isNumeric) {
       const numericId = Number(raw);
-
-      try {
-        const row = await db('photos')
-          .select('id')
-          .where({ user_id: userId })
-          .andWhere('photo_id', numericId)
-          .first();
-        if (row && row.id) return row.id;
-      } catch {
-        // If the column doesn't exist (or other schema mismatch), fall back below.
-      }
-
-      // Fall back to matching by primary key for test/legacy environments where photos.id is numeric.
+      
       {
         const row = await db('photos')
           .select('id')

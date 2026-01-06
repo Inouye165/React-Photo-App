@@ -708,6 +708,18 @@ module.exports = function createPhotosRouter({ db, supabase }) {
   // route for client-side single-photo rechecks.
   router.post('/:id/recheck-ai', authenticateToken, async (req, res) => {
     try {
+      // Detect if this is a Human Override (Accept) action from HITL workflow
+      const isHumanOverride = req.body && req.body.isHumanOverride === true;
+      const actionType = isHumanOverride ? 'Human Override (Accept)' : 'Standard AI Recheck';
+      
+      logger.info(`[recheck-ai] ${actionType} initiated`, {
+        photoId: req.params.id,
+        userId: req.user.id,
+        isHumanOverride,
+        model: req.body?.model || req.query?.model || 'default',
+        timestamp: new Date().toISOString()
+      });
+      
       // Ensure photo exists
       const photo = await photosDb.getPhotoByAnyId(req.params.id, req.user.id);
       if (!photo) {
