@@ -30,7 +30,7 @@ export interface CollectiblesTabPanelProps {
   hasCollectibleData: boolean;
   onViewModeChange: (mode: 'view' | 'edit') => void;
   onCollectibleChange: (formState: CollectibleFormState) => void;
-  onApproveIdentification?: () => void;
+  onApproveIdentification?: (override: any) => void;
   onEditIdentification?: () => void;
 }
 
@@ -51,11 +51,12 @@ export default function CollectiblesTabPanel({
   onEditIdentification,
 }: CollectiblesTabPanelProps) {
   // Check if we're in pending HITL review state
+  // IMPORTANT FIX: Don't force pending review UI when user explicitly switches to edit mode
   const isPending = collectibleAiAnalysis?.review?.status === 'pending';
   const hasIdentification = collectibleAiAnalysis?.identification?.id;
-  const showPendingReview = isPending && hasIdentification;
+  const showPendingReview = isPending && hasIdentification && collectibleViewMode !== 'edit';
 
-  // Show pending review UI if status is pending
+  // Show pending review UI if status is pending AND not in edit mode
   if (showPendingReview && collectibleAiAnalysis) {
     return (
       <div className={styles.container}>

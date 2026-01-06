@@ -17,7 +17,7 @@ import styles from './CollectiblePendingReview.module.css';
 
 export interface CollectiblePendingReviewProps {
   aiAnalysis: CollectibleAiAnalysis;
-  onApprove: () => void;
+  onApprove: (override?: any) => void;
   onEdit: () => void;
 }
 
