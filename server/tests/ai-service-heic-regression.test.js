@@ -71,8 +71,12 @@ describe('updatePhotoAIMetadata HEIC regression', () => {
       ai_retry_count: 0
     };
     const storagePath = 'inprogress/photo.HEIC';
+    // Use a Supabase-like URL that matches the expected origin in tests
+    const mockSignedUrl = process.env.SUPABASE_URL 
+      ? `${process.env.SUPABASE_URL}/storage/v1/object/sign/photos/${storagePath}`
+      : 'http://example.com/photo.HEIC';
     supabase.storage.from().createSignedUrl.mockResolvedValue({
-      data: { signedUrl: 'http://example.com/photo.HEIC' },
+      data: { signedUrl: mockSignedUrl },
       error: null
     });
     const mockArrayBuffer = new ArrayBuffer(8);
@@ -97,8 +101,12 @@ describe('updatePhotoAIMetadata HEIC regression', () => {
       ai_retry_count: 0
     };
     const storagePath = 'inprogress/photo.jpg';
+    // Use a Supabase-like URL that matches the expected origin in tests
+    const mockSignedUrl = process.env.SUPABASE_URL 
+      ? `${process.env.SUPABASE_URL}/storage/v1/object/sign/photos/${storagePath}`
+      : 'http://example.com/photo.jpg';
     supabase.storage.from().createSignedUrl.mockResolvedValue({
-      data: { signedUrl: 'http://example.com/photo.jpg' },
+      data: { signedUrl: mockSignedUrl },
       error: null
     });
     const { Readable } = require('stream');
