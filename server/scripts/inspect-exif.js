@@ -29,6 +29,10 @@ async function downloadToTemp(storagePath, filenameHint) {
   const arrayBuffer = await data.arrayBuffer();
   const buf = Buffer.from(arrayBuffer);
 
+  // SECURITY: Create secure temporary directory and file
+  // mkdtempSync creates a unique directory with permissions 0o700 (owner-only)
+  // Combined with openSync 'wx' mode (exclusive creation) and 0o600 permissions,
+  // this prevents race conditions and unauthorized access.
   const tmpDir = fs.mkdtempSync(path.join(os.tmpdir(), 'photo-app-exif-'));
   const safeHint = path.basename(String(filenameHint || 'photo')).replace(/[^a-zA-Z0-9._-]/g, '_');
   const tmp = path.join(tmpDir, `${crypto.randomUUID()}-${safeHint}`);
