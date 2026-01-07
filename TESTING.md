@@ -8,6 +8,7 @@ This doc is the practical “how to test this repo” guide: what to run, what t
 - npm 10+
 - Modern web browser (Chrome, Edge recommended)
 - (HEIC/HEIF conversion uses Sharp + `heic-convert` fallback)
+- **Gitleaks** (for secret scanning) - Install via `winget install gitleaks.gitleaks` (Windows) or `brew install gitleaks` (macOS)
 
 ## Quick Start Testing
 
@@ -40,6 +41,9 @@ npm run test:run
 
 # Backend tests
 cd server && npm test
+
+# Secret Scan (Security)
+npm run secret-scan:local
 ```
 
 ## Manual Testing Checklist

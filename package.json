@@ -16,6 +16,7 @@
     "prepare": "husky install",
     "check-env": "node scripts/verify-env.cjs",
     "secret-scan": "node scripts/secret-scan.cjs",
+    "secret-scan:local": "gitleaks detect --source . --no-banner --redact",
     "check-privilege": "node scripts/check-privilege.cjs",
     "integration-test": "node scripts/integration-test.cjs",
     "lint": "eslint . --cache && npm run type-check && node scripts/repo-hygiene-gps-check.cjs",
