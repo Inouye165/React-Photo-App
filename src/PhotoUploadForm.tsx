@@ -513,9 +513,8 @@ const PhotoUploadForm: React.FC<PhotoUploadFormProps> = ({
                     const isSelected = selectedKeys.has(key);
                     
                     // Get thumbnail URL from queue
-                    const queueData = thumbnailQueue as { thumbnails?: Record<string, string>; status?: Record<string, 'pending' | 'processing' | 'success' | 'failed'> } | null;
-                    const thumbnailUrl = queueData?.thumbnails?.[photo.file.name];
-                    const thumbnailStatus = queueData?.status?.[photo.file.name];
+                    const thumbnailUrl = thumbnailQueue?.thumbnails.get(photo.file.name);
+                    const thumbnailStatus = thumbnailQueue?.status.get(photo.file.name);
                     
                     // Format file date for display
                     const fileDate = photo.exifDate ? new Date(photo.exifDate) : new Date(photo.file.lastModified);
