@@ -758,6 +758,15 @@ module.exports = function createPhotosRouter({ db, supabase }) {
         
         try {
           await photosAi.enqueuePhotoAiJob(photo.id, jobOptions);
+          
+          // Force immediate state update so frontend polling sees the change instantly
+          // This prevents race condition where user clicks Accept multiple times
+          await photosDb.updatePhoto(photo.id, req.user.id, { 
+            state: 'inprogress',
+            updated_at: new Date().toISOString()
+          });
+          
+          logger.info(`[Recheck-AI] Updated photo ${photo.id} state to inprogress for immediate UI feedback`);
         } catch (err) {
           logger.error('[Recheck-AI] Failed to enqueue AI job with override:', err && err.message);
           return res.status(500).json({ error: 'Failed to enqueue AI processing job' });
@@ -826,6 +835,14 @@ module.exports = function createPhotosRouter({ db, supabase }) {
       
       try {
         await photosAi.enqueuePhotoAiJob(photo.id, jobOptions);
+        
+        // Force immediate state update so frontend polling sees the change instantly
+        await photosDb.updatePhoto(photo.id, req.user.id, { 
+          state: 'inprogress',
+          updated_at: new Date().toISOString()
+        });
+        
+        logger.info(`[Recheck-AI] Updated photo ${photo.id} state to inprogress for immediate UI feedback`);
       } catch (err) {
         logger.error('[Recheck-AI] Failed to enqueue AI recheck job:', err && err.message);
         return res.status(500).json({ error: 'Failed to enqueue AI processing job' });
