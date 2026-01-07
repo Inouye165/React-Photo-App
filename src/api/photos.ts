@@ -2,6 +2,7 @@ import type { Photo } from '../types/photo'
 import type { ModelAllowlistResponse, PhotoState, PhotoStatusResponse } from '../types/api'
 import { request, ApiError, fetchWithNetworkFallback, isAbortError, API_BASE_URL, apiLimiter, stateUpdateLimiter, directLimiter } from './httpClient'
 import { getAuthHeaders, getAuthHeadersAsync, getHeadersForGetRequestAsync } from './auth'
+import { retryWithBackoff } from './retryWithBackoff'
 
 export type PhotoId = Photo['id']
 
@@ -229,13 +230,39 @@ export async function getPhotos(
   const fetchPromise = (async () => {
     try {
       const headers = await getHeadersForGetRequestAsync()
-      return await request<GetPhotosResponse>({
-        path: url,
-        headers,
-        timeoutMs: Number.isFinite(options?.timeoutMs as number) ? (options?.timeoutMs as number) : 20000,
-        signal: options?.signal,
-        limiter: directLimiter,
-      })
+      
+      // Wrap the request with retry logic for resilience
+      return await retryWithBackoff(
+        async () => {
+          return await request<GetPhotosResponse>({
+            path: url,
+            headers,
+            timeoutMs: Number.isFinite(options?.timeoutMs as number) ? (options?.timeoutMs as number) : 20000,
+            signal: options?.signal,
+            limiter: directLimiter,
+          })
+        },
+        {
+          maxAttempts: 3,
+          initialDelayMs: 1000,
+          maxDelayMs: 5000,
+          signal: options?.signal,
+          shouldRetry: (error, _attempt) => {
+            // Don't retry auth errors
+            if (error instanceof ApiError && (error.status === 401 || error.status === 403)) {
+              return false
+            }
+            // Retry on 500 errors and timeouts
+            if (error instanceof ApiError && error.status === 500) {
+              return true
+            }
+            if (error instanceof Error && /timeout|timed out/i.test(error.message)) {
+              return true
+            }
+            return false
+          }
+        }
+      )
     } catch (error) {
       if (error instanceof ApiError && (error.status === 401 || error.status === 403)) return undefined
       throw error

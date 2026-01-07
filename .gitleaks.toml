@@ -1,0 +1,42 @@
+# Gitleaks configuration for React-Photo-App
+# Documentation: https://github.com/gitleaks/gitleaks#configuration
+
+title = "Gitleaks config for React-Photo-App"
+
+[extend]
+# useDefault will extend the base configuration with all default gitleaks rules
+useDefault = true
+
+[allowlist]
+description = "Allowlist for false positives and documentation examples"
+
+# Ignore specific commits with documentation examples
+commits = [
+  "2a12e30844991c0787d44ffcb44a4c3eecc7c3aa",  # DB_QUERY_TIMEOUT_FIX.md curl example
+  "161bbcb441df14f7c7ad80bb9c4c337bc47c8be9",  # TESTING.md curl example
+  "a464ccd7d14aeee11f33dbd39d55971e6351debe",  # test-api.js test tokens
+]
+
+# Ignore test files
+paths = [
+  '''^.*_test\.js$''',
+  '''^.*\.test\.js$''',
+  '''^.*\.test\.ts$''',
+  '''^.*\.spec\.js$''',
+  '''^server/tests/.*$''',
+  '''^src/.*\.test\..*$''',
+  '''^server/test-api\.js$''',  # Test script with example tokens
+]
+
+# Stopwords (literal strings to ignore)
+stopwords = [
+  "YOUR_TOKEN",
+  "<YOUR_TOKEN>",
+  "your_token",
+  "test_token",
+  "test-jwt-secret-key-for-testing-only",
+  "test_openai_key",
+  "test_google_key",
+  "test-service-role-key",
+  "test-anon-key",
+]

@@ -114,10 +114,14 @@ module.exports = function createPhotosRouter({ db, supabase }) {
     const reqId = Math.random().toString(36).slice(2, 10);
     try {
       const state = req.validated && req.validated.query ? req.validated.query.state : undefined;
-      const DEFAULT_LIMIT = 50;
-      const limit = (req.validated && req.validated.query && Number.isInteger(req.validated.query.limit))
+      // Reduce default limit to prevent DB timeouts on large datasets
+      const DEFAULT_LIMIT = Number(process.env.PHOTOS_DEFAULT_LIMIT) || 20;
+      const MAX_LIMIT = Number(process.env.PHOTOS_MAX_LIMIT) || 100;
+      const requestedLimit = (req.validated && req.validated.query && Number.isInteger(req.validated.query.limit))
         ? req.validated.query.limit
         : DEFAULT_LIMIT;
+      // Cap the limit to prevent abuse
+      const limit = Math.min(requestedLimit, MAX_LIMIT);
       const cursor = req.validated && req.validated.query ? req.validated.query.cursor : null;
 
       // CACHING: Check Redis for cached list response
@@ -168,7 +172,9 @@ module.exports = function createPhotosRouter({ db, supabase }) {
         reqId,
         state: state || null,
         limit,
+        requestedLimit: req.validated?.query?.limit,
         hasCursor: Boolean(cursor),
+        rowCount: rows.length,
         ms: listMs,
       });
       

@@ -89,8 +89,8 @@ describe('Photos Route Caching', () => {
     expect(mockRedis.get).toHaveBeenCalled();
     expect(mockRedis.set).toHaveBeenCalled();
     
-    // Verify cache key format
-    const expectedKey = `photos:list:00000000-0000-0000-0000-000000000000:all:50:start`;
+    // Verify cache key format (updated default limit from 50 to 20)
+    const expectedKey = `photos:list:00000000-0000-0000-0000-000000000000:all:20:start`;
     expect(mockRedis.get).toHaveBeenCalledWith(expectedKey);
   });
 
