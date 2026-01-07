@@ -287,29 +287,13 @@ describe('PhotoCard Component', () => {
       expect(defaultProps.onApprove).toHaveBeenCalledWith(mockPhoto.id);
     });
 
-    it('shows confirmation dialog before delete', async () => {
+    it('calls onDelete immediately without confirmation (handler does confirmation)', async () => {
       const user = userEvent.setup();
-      const confirmSpy = vi.spyOn(window, 'confirm').mockReturnValue(false);
-      render(<PhotoCard {...defaultProps} />);
-
-      await user.click(screen.getByTestId('photo-card-delete-btn'));
-
-      expect(confirmSpy).toHaveBeenCalledWith(
-        'Are you sure you want to delete this photo? This action cannot be undone.'
-      );
-      expect(defaultProps.onDelete).not.toHaveBeenCalled();
-      confirmSpy.mockRestore();
-    });
-
-    it('calls onDelete with photo id when confirmed', async () => {
-      const user = userEvent.setup();
-      const confirmSpy = vi.spyOn(window, 'confirm').mockReturnValue(true);
       render(<PhotoCard {...defaultProps} />);
 
       await user.click(screen.getByTestId('photo-card-delete-btn'));
 
       expect(defaultProps.onDelete).toHaveBeenCalledWith(mockPhoto.id);
-      confirmSpy.mockRestore();
     });
 
     it('enables Delete button for RWX permissions', () => {
@@ -375,15 +359,13 @@ describe('PhotoCard Component', () => {
       expect(defaultProps.onApprove).toHaveBeenCalledWith(workingPhoto.id);
     });
 
-    it('calls onDelete with photo id when Delete confirmed in working state', async () => {
+    it('calls onDelete with photo id in working state', async () => {
       const user = userEvent.setup();
-      const confirmSpy = vi.spyOn(window, 'confirm').mockReturnValue(true);
       render(<PhotoCard {...defaultProps} photo={workingPhoto} />);
 
       await user.click(screen.getByTestId('photo-card-delete-btn'));
 
       expect(defaultProps.onDelete).toHaveBeenCalledWith(workingPhoto.id);
-      confirmSpy.mockRestore();
     });
   });
 
@@ -404,15 +386,13 @@ describe('PhotoCard Component', () => {
       expect(screen.queryByTestId('photo-card-approve-btn')).not.toBeInTheDocument();
     });
 
-    it('calls onDelete with photo id when Delete confirmed in finished state', async () => {
+    it('calls onDelete with photo id in finished state', async () => {
       const user = userEvent.setup();
-      const confirmSpy = vi.spyOn(window, 'confirm').mockReturnValue(true);
       render(<PhotoCard {...defaultProps} photo={finishedPhoto} />);
 
       await user.click(screen.getByTestId('photo-card-delete-btn'));
 
       expect(defaultProps.onDelete).toHaveBeenCalledWith(finishedPhoto.id);
-      confirmSpy.mockRestore();
     });
 
     it('disables Delete button for finished photos when user has read-only access', () => {
