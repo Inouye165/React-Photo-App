@@ -36,7 +36,11 @@
     "test:maintainability": "npm run test:arch && npm run test:migrations"
   },
   "lint-staged": {
-    "*.{js,jsx}": "eslint --fix"
+    "*.{js,jsx}": "eslint --fix",
+    "*.{ts,tsx}": [
+      "eslint --fix",
+      "bash -c 'npm run type-check'"
+    ]
   },
   "dependencies": {
     "@langchain/core": "^1.1.8",
