@@ -115,9 +115,11 @@ function getAllowedOrigins() {
     const explicit = process.env.ALLOWED_ORIGINS.split(',')
       .map((value) => normalizeOrigin(value))
       .filter(Boolean); // Remove empty strings from trailing commas
-    
+
     // Still support legacy env vars alongside explicit config
-    const origins = new Set(explicit);
+    // Expand any apex domain entries to include www variants.
+    const origins = new Set();
+    explicit.forEach((value) => addSingleOriginWithWwwVariants(origins, value));
     
     // FRONTEND_ORIGIN is always respected (simple single-origin config)
     if (process.env.FRONTEND_ORIGIN) {
@@ -132,7 +134,7 @@ function getAllowedOrigins() {
       process.env.CLIENT_ORIGINS.split(',')
         .map((value) => normalizeOrigin(value))
         .filter(Boolean)
-        .forEach((value) => origins.add(value));
+        .forEach((value) => addSingleOriginWithWwwVariants(origins, value));
     }
 
     // Legacy compatibility: CORS_ORIGIN (comma-separated)
@@ -141,7 +143,7 @@ function getAllowedOrigins() {
       process.env.CORS_ORIGIN.split(',')
         .map((value) => normalizeOrigin(value))
         .filter(Boolean)
-        .forEach((value) => origins.add(value));
+        .forEach((value) => addSingleOriginWithWwwVariants(origins, value));
     }
     
     return Array.from(origins);
@@ -166,7 +168,7 @@ function getAllowedOrigins() {
     process.env.CLIENT_ORIGINS.split(',')
       .map((value) => value.trim())
       .filter(Boolean)
-      .forEach((value) => origins.add(value));
+      .forEach((value) => addSingleOriginWithWwwVariants(origins, value));
   }
 
   // Backward compatibility: CORS_ORIGIN (multi-origin)
@@ -175,7 +177,7 @@ function getAllowedOrigins() {
     process.env.CORS_ORIGIN.split(',')
       .map((value) => normalizeOrigin(value))
       .filter(Boolean)
-      .forEach((value) => origins.add(value));
+      .forEach((value) => addSingleOriginWithWwwVariants(origins, value));
   }
   
   return Array.from(origins);
