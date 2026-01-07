@@ -385,6 +385,79 @@ async function generateAndUploadThumbnail(buffer, filename, hash) {
 }
 
 /**
+ * Generates a grid-optimized small thumbnail and uploads it to Supabase Storage.
+ *
+ * Target: ~320px max dimension for fast gallery grid rendering.
+ *
+ * @param {Buffer} buffer - Original image data
+ * @param {string} filename - Original filename
+ * @param {string} hash - File hash (used as thumbnail filename)
+ * @returns {Promise<string|null>} Thumbnail path or null on failure
+ */
+async function generateAndUploadSmallThumbnail(buffer, filename, hash) {
+  const thumbnailPath = `thumbnails/${hash}-sm.jpg`;
+
+  try {
+    const { data: existingList } = await supabase.storage
+      .from('photos')
+      .list('thumbnails', { search: `${hash}-sm.jpg` });
+
+    if (existingList && existingList.length > 0) {
+      return thumbnailPath;
+    }
+
+    const ext = filename.toLowerCase().split('.').pop();
+
+    let thumbnailBuffer;
+    try {
+      thumbnailBuffer = await sharp(buffer)
+        .rotate()
+        .resize(320, 320, { fit: 'inside' })
+        .jpeg({ quality: 80 })
+        .toBuffer();
+    } catch (err) {
+      if (ext === 'heic' || ext === 'heif') {
+        try {
+          const jpegBuffer = await convertHeicToJpegBuffer(buffer, 90);
+          thumbnailBuffer = await sharp(jpegBuffer)
+            .rotate()
+            .resize(320, 320, { fit: 'inside' })
+            .jpeg({ quality: 80 })
+            .toBuffer();
+        } catch (fallbackErr) {
+          logger.warn(`HEIC fallback conversion failed for small thumbnail:`, fallbackErr.message);
+          return null;
+        }
+      } else {
+        logger.error(`Small thumbnail generation failed for ${filename}:`, err.message);
+        return null;
+      }
+    }
+
+    const { error } = await supabase.storage
+      .from('photos')
+      .upload(thumbnailPath, thumbnailBuffer, {
+        contentType: 'image/jpeg',
+        upsert: false,
+        cacheControl: '31536000'
+      });
+
+    if (error) {
+      if (error.message?.includes('duplicate') || error.message?.includes('already exists')) {
+        return thumbnailPath;
+      }
+      logger.error(`Failed to upload small thumbnail:`, error);
+      return null;
+    }
+
+    return thumbnailPath;
+  } catch (err) {
+    logger.error(`Small thumbnail generation failed for ${filename}:`, err.message);
+    return null;
+  }
+}
+
+/**
  * Process a photo that was uploaded via streaming.
  * 
  * This is the main entry point for background processing.
@@ -460,6 +533,14 @@ async function processUploadedPhoto(db, photoId, options = {}) {
       updates.derivatives_status = 'failed';
       updates.derivatives_error = 'thumbnail_generation_failed';
     }
+
+    // Best-effort: generate a smaller grid thumbnail. Do not fail the whole job if this fails.
+    // UI will fall back to the standard thumbnail when thumb_small_path is missing.
+    const smallPath = await generateAndUploadSmallThumbnail(buffer, photo.filename, hash);
+    if (smallPath) {
+      updates.thumb_small_path = smallPath;
+      logger.debug(`[Processor] Generated small thumbnail at ${smallPath}`);
+    }
   }
 
   // Generate WebP display asset if requested.
@@ -509,6 +590,7 @@ module.exports = {
   extractMetadata,
   mergeMetadataPreservingLocationAndDate,
   generateAndUploadThumbnail,
+  generateAndUploadSmallThumbnail,
   generateAndUploadDisplayWebp,
   hashBuffer
 };

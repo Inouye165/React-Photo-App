@@ -18,6 +18,7 @@ type PhotoCardPhoto = Omit<Photo, 'state' | 'url'> & {
   url?: string;
   state?: Photo['state'] | 'uploading';
   thumbnail?: string | null;
+  smallThumbnail?: string | null;
   isTemporary?: boolean;
   file?: File;
   name?: string;
@@ -120,7 +121,7 @@ export default function PhotoCard({
 }: PhotoCardProps) {
   const [imageError, setImageError] = useState(false);
   const [imageLoaded, setImageLoaded] = useState(false);
-  const [useThumbnail, setUseThumbnail] = useState(true);
+  const [thumbVariant, setThumbVariant] = useState<'small' | 'large' | null>(null);
 
   const status = getStatusBadge(photo.state);
   const title = getDisplayTitle(photo);
@@ -144,6 +145,15 @@ export default function PhotoCard({
   // Disable interaction for uploading photos
   const isUploading = photo.state === 'uploading' || !!photo.isTemporary;
 
+  useEffect(() => {
+    // Reset thumbnail variant when photo changes.
+    if (photo?.smallThumbnail) setThumbVariant('small');
+    else if (photo?.thumbnail) setThumbVariant('large');
+    else setThumbVariant(null);
+    setImageError(false);
+    setImageLoaded(false);
+  }, [photo?.id, photo?.smallThumbnail, photo?.thumbnail]);
+
   // Get image URL - prefer thumbnail for performance, fallback to full image
   const getImageUrl = (): { url: string | null; needsAuth: boolean } => {
     // Optimistic uploads use local blob URLs; never require auth for these.
@@ -151,14 +161,29 @@ export default function PhotoCard({
       return { url: photo.url, needsAuth: false };
     }
 
-    if (photo.thumbnail && useThumbnail) {
-      const signedUrl = getSignedUrl ? getSignedUrl(photo) : null;
+    // Gallery grid should never fall back to full-resolution images automatically.
+    // If thumbnails fail, we show a placeholder instead.
+    const selectedThumb = thumbVariant === 'small' ? photo.smallThumbnail : thumbVariant === 'large' ? photo.thumbnail : null;
+    if (selectedThumb) {
+      // If URL is already absolute/public, render directly.
+      if (
+        typeof selectedThumb === 'string' &&
+        (selectedThumb.startsWith('blob:') ||
+          selectedThumb.startsWith('data:') ||
+          selectedThumb.startsWith('http'))
+      ) {
+        return { url: selectedThumb, needsAuth: false };
+      }
+
+      const signedUrl = getSignedUrl ? getSignedUrl(photo, 'thumb') : null;
       if (signedUrl) {
         return { url: signedUrl, needsAuth: false };
       }
-      // No signed URL - need authenticated fetch
-      return { url: toUrl(photo.thumbnail, apiBaseUrl), needsAuth: true };
+
+      // Relative thumbnails require authenticated fetch.
+      return { url: toUrl(selectedThumb, apiBaseUrl), needsAuth: true };
     }
+
     if (photo.url) {
       // Public URLs (blob/data/http) should render directly without AuthenticatedImage.
       if (
@@ -169,12 +194,10 @@ export default function PhotoCard({
       ) {
         return { url: photo.url, needsAuth: false };
       }
-      const signedUrl = getSignedUrl ? getSignedUrl(photo, 'full') : null;
-      if (signedUrl) {
-        return { url: signedUrl, needsAuth: false };
-      }
-      // No signed URL - need authenticated fetch
-      return { url: toUrl(photo.url, apiBaseUrl), needsAuth: true };
+
+      // NOTE: For grid rendering we do not automatically load the full image.
+      // If no thumbnail is available, show placeholder.
+      return { url: null, needsAuth: false };
     }
     return { url: null, needsAuth: false };
   };
@@ -233,14 +256,14 @@ export default function PhotoCard({
               }`}
               onLoad={() => setImageLoaded(true)}
               onError={() => {
-                // If thumbnail failed, try falling back to full image
-                if (useThumbnail && photo.thumbnail && photo.url) {
-                  setUseThumbnail(false);
+                if (thumbVariant === 'small' && photo.thumbnail) {
+                  setThumbVariant('large');
                   setImageLoaded(false);
                   setImageError(false);
-                } else {
-                  setImageError(true);
+                  return;
                 }
+                setThumbVariant(null);
+                setImageError(true);
               }}
               loadingPlaceholder={<div className="absolute inset-0 bg-slate-200 animate-pulse" />}
             />
@@ -254,20 +277,20 @@ export default function PhotoCard({
               }`}
               onLoad={() => setImageLoaded(true)}
               onError={() => {
-                // If thumbnail failed, try falling back to full image
-                if (useThumbnail && photo.thumbnail && photo.url) {
-                  setUseThumbnail(false);
+                if (thumbVariant === 'small' && photo.thumbnail) {
+                  setThumbVariant('large');
                   setImageLoaded(false);
                   setImageError(false);
-                } else {
-                  setImageError(true);
+                  return;
                 }
+                setThumbVariant(null);
+                setImageError(true);
               }}
             />
           )
         ) : (
           /* Fallback Placeholder */
-          <div className="absolute inset-0 flex flex-col items-center justify-center bg-slate-100 text-slate-400">
+          <div className="absolute inset-0 flex flex-col items-center justify-center bg-slate-100 text-slate-400" data-testid="photo-card-placeholder">
             <ImageIcon size={48} strokeWidth={1} />
             <span className="text-xs mt-2">{imageError ? 'Failed to load' : 'No preview'}</span>
           </div>

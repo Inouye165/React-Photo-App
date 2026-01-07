@@ -21,6 +21,7 @@ describe('PhotoCard Component', () => {
     description: 'Captured during golden hour',
     keywords: 'sunset, nature, sky',
     thumbnail: '/thumbnails/test-photo_thumb.jpg',
+    smallThumbnail: null,
     metadata: {
       DateTimeOriginal: '2024:06:15 18:30:00',
     },
@@ -158,6 +159,19 @@ describe('PhotoCard Component', () => {
       expect(img.getAttribute('src')).toContain('/thumbnails/test-photo_thumb.jpg');
     });
 
+    it('prioritizes smallThumbnail over thumbnail when provided', () => {
+      const photoWithSmall: PhotoCardProps['photo'] = {
+        ...mockPhoto,
+        smallThumbnail: 'https://cdn.example.com/thumbnails/small.jpg?token=abc',
+        thumbnail: 'https://cdn.example.com/thumbnails/large.jpg?token=def',
+      };
+
+      render(<PhotoCard {...defaultProps} photo={photoWithSmall} getSignedUrl={undefined} />);
+
+      const img = screen.getByAltText('A beautiful sunset');
+      expect(img.getAttribute('src')).toContain('small.jpg');
+    });
+
     it('shows loading skeleton while image loads', () => {
       render(<PhotoCard {...defaultProps} />);
 
@@ -182,11 +196,43 @@ describe('PhotoCard Component', () => {
       });
     });
 
+    it('regression: if both thumbnails fail, it shows placeholder and does NOT fall back to full photo.url', async () => {
+      const photoWithThumbsAndUrl: PhotoCardProps['photo'] = {
+        ...mockPhoto,
+        url: '/display/image/1',
+        smallThumbnail: 'https://cdn.example.com/thumbnails/small.jpg?token=abc',
+        thumbnail: 'https://cdn.example.com/thumbnails/large.jpg?token=def',
+      };
+
+      render(<PhotoCard {...defaultProps} photo={photoWithThumbsAndUrl} getSignedUrl={undefined} />);
+
+      // First attempt: small thumbnail
+      const firstImg = screen.getByAltText('A beautiful sunset');
+      expect(firstImg.getAttribute('src')).toContain('small.jpg');
+      fireEvent.error(firstImg);
+
+      // Second attempt: large thumbnail
+      const secondImg = await screen.findByAltText('A beautiful sunset');
+      expect(secondImg.getAttribute('src')).toContain('large.jpg');
+      fireEvent.error(secondImg);
+
+      await waitFor(() => {
+        expect(screen.getByTestId('photo-card-placeholder')).toBeInTheDocument();
+      });
+
+      // Ensure we never swapped to the full image URL.
+      const imgs = screen.queryAllByRole('img');
+      imgs.forEach((img) => {
+        const src = img.getAttribute('src') || '';
+        expect(src).not.toContain('/display/image/1');
+      });
+    });
+
     it('uses getSignedUrl when provided', () => {
       const mockGetSignedUrl = vi.fn().mockReturnValue('https://signed-url.com/photo.jpg');
       render(<PhotoCard {...defaultProps} getSignedUrl={mockGetSignedUrl} />);
 
-      expect(mockGetSignedUrl).toHaveBeenCalledWith(mockPhoto);
+      expect(mockGetSignedUrl).toHaveBeenCalledWith(mockPhoto, 'thumb');
       const img = screen.getByAltText('A beautiful sunset');
       expect(img.getAttribute('src')).toBe('https://signed-url.com/photo.jpg');
     });
