@@ -130,6 +130,12 @@ const createTestApp = ({ photosDb, photosAi }) => {
         
         await photosAi.enqueuePhotoAiJob(photo.id, jobOptions);
         
+        // Force immediate state update so frontend polling sees the change instantly
+        await photosDb.updatePhoto(photo.id, req.user.id, { 
+          state: 'inprogress',
+          updated_at: new Date().toISOString()
+        });
+        
         return res.status(202).json({ 
           message: 'AI recheck queued with human override (metadata extraction skipped).', 
           photoId: photo.id 
@@ -175,6 +181,12 @@ const createTestApp = ({ photosDb, photosAi }) => {
       }
       
       await photosAi.enqueuePhotoAiJob(photo.id, jobOptions);
+      
+      // Force immediate state update so frontend polling sees the change instantly
+      await photosDb.updatePhoto(photo.id, req.user.id, { 
+        state: 'inprogress',
+        updated_at: new Date().toISOString()
+      });
       
       return res.status(202).json({ 
         message: 'AI recheck queued (metadata re-extracted).', 
@@ -266,7 +278,17 @@ describe('POST /photos/:id/recheck-ai optimization', () => {
       expect(response.body.message).toMatch(/metadata extraction skipped/i);
       expect(mockDownloadFromStorage).not.toHaveBeenCalled();
       expect(mockExtractMetadata).not.toHaveBeenCalled();
-      expect(photosDb.updatePhoto).not.toHaveBeenCalled();
+      
+      // Verify state is immediately updated for frontend polling (race condition fix)
+      expect(photosDb.updatePhoto).toHaveBeenCalledWith(
+        PHOTO_ID,
+        USER_ID_1,
+        expect.objectContaining({
+          state: 'inprogress',
+          updated_at: expect.any(String)
+        })
+      );
+      
       expect(photosAi.enqueuePhotoAiJob).toHaveBeenCalledWith(
         PHOTO_ID,
         expect.objectContaining({
@@ -343,7 +365,29 @@ describe('POST /photos/:id/recheck-ai optimization', () => {
       expect(response.body.message).toMatch(/metadata re-extracted/i);
       expect(mockDownloadFromStorage).toHaveBeenCalledWith('test.jpg');
       expect(mockExtractMetadata).toHaveBeenCalled();
-      expect(photosDb.updatePhoto).toHaveBeenCalled();
+      
+      // Verify both metadata update AND state update are called
+      expect(photosDb.updatePhoto).toHaveBeenCalledTimes(2);
+      
+      // First call: metadata update
+      expect(photosDb.updatePhoto).toHaveBeenCalledWith(
+        PHOTO_ID,
+        USER_ID_1,
+        expect.objectContaining({
+          metadata: expect.any(String)
+        })
+      );
+      
+      // Second call: state update for race condition fix
+      expect(photosDb.updatePhoto).toHaveBeenCalledWith(
+        PHOTO_ID,
+        USER_ID_1,
+        expect.objectContaining({
+          state: 'inprogress',
+          updated_at: expect.any(String)
+        })
+      );
+      
       expect(photosAi.enqueuePhotoAiJob).toHaveBeenCalledWith(
         PHOTO_ID,
         expect.not.objectContaining({ collectibleOverride: expect.anything() })
