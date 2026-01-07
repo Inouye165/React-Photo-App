@@ -103,7 +103,20 @@ describe('getAllowedOrigins', () => {
     // This prevents accidental security holes in production
     expect(origins).toContain('https://production.example.com');
     expect(origins).not.toContain('http://localhost:5173');
-    expect(origins.length).toBe(1);
+    // Note: we may add safe apex/www variants for two-label domains.
+  });
+
+  test('should include both apex + www when ALLOWED_ORIGINS contains an apex domain', () => {
+    process.env.ALLOWED_ORIGINS = 'https://justmypeeps.org';
+
+    const { getAllowedOrigins: getOrigins } = require('../config/allowedOrigins');
+    const origins = getOrigins();
+
+    // Ensure production `www` traffic works even if env only sets apex.
+    expect(origins).toContain('https://justmypeeps.org');
+    expect(origins).toContain('https://www.justmypeeps.org');
+    // And we still keep the “no defaults when explicitly set” security guarantee.
+    expect(origins).not.toContain('http://localhost:5173');
   });
 
   test('should handle trailing commas gracefully', () => {
