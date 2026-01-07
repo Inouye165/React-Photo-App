@@ -123,8 +123,8 @@ const PhotoUploadForm: React.FC<PhotoUploadFormProps> = ({
   const userTouchedSelectionRef = useRef(false);
   const lastListKeyRef = useRef('');
 
-  // Analysis type state
-  const [analysisType, setAnalysisType] = useState<AnalysisType>('scenery');
+  // Analysis type state - default to 'none' so users opt-in to AI analysis
+  const [analysisType, setAnalysisType] = useState<AnalysisType>('none');
 
   /**
    * Keep selection stable across re-renders and filtering
@@ -368,6 +368,7 @@ const PhotoUploadForm: React.FC<PhotoUploadFormProps> = ({
             className="border border-gray-300 rounded px-3 py-1.5 text-sm focus:ring-2 focus:ring-blue-500 outline-none bg-white min-h-[44px]"
             aria-label="Analysis Type"
           >
+            <option value="none">📷 Photo Only (No Analysis)</option>
             <option value="scenery">🏞️ Scenery &amp; Location</option>
             <option value="collectible">🏺 Collectible &amp; Appraisal</option>
             <option value="todo">

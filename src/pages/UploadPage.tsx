@@ -55,7 +55,7 @@ export default function UploadPage() {
    */
   const handleOptimisticUpload = async (
     photosToUpload: UploadPickerLocalPhoto[],
-    analysisType: AnalysisType = 'scenery'
+    analysisType: AnalysisType = 'none'
   ) => {
     const files = (Array.isArray(photosToUpload) ? photosToUpload : [])
       .map((p) => p?.file)
@@ -122,6 +122,10 @@ export default function UploadPage() {
       try {
         const response = await getPhotos();
         useStore.getState().setPhotos((response && response.photos) || []);
+        
+        // Dispatch a custom event to notify PhotoGalleryPage to refresh
+        // This ensures the gallery updates even if the store update doesn't trigger re-render
+        window.dispatchEvent(new CustomEvent('photos-uploaded', { detail: { count: files.length } }));
       } catch {
         /* no-op */
       }

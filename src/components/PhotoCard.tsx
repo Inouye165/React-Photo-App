@@ -217,9 +217,7 @@ export default function PhotoCard({
   const handleDelete = (e: React.MouseEvent) => {
     e.stopPropagation();
     if (!canWrite) return;
-    if (window.confirm('Are you sure you want to delete this photo? This action cannot be undone.')) {
-      onDelete?.(photo.id);
-    }
+    onDelete?.(photo.id);
   };
 
   return (

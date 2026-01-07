@@ -8,8 +8,9 @@ import type { UploadResponse } from '../types/global';
 
 /**
  * Classification types for AI analysis
+ * 'none' = skip AI analysis, just store the photo
  */
-export type AnalysisType = 'scenery' | 'food' | 'receipt' | 'document' | 'collectible' | 'todo';
+export type AnalysisType = 'none' | 'scenery' | 'food' | 'receipt' | 'document' | 'collectible' | 'todo';
 
 /**
  * File object with optional handle from File System Access API
@@ -263,7 +264,7 @@ export default function useLocalPhotoPicker({
    * @security No sensitive metadata in logs (file names only)
    */
   const handleUploadFiltered = useCallback(
-    async (subsetToUpload?: UploadPickerLocalPhoto[], analysisType: AnalysisType = 'scenery') => {
+    async (subsetToUpload?: UploadPickerLocalPhoto[], analysisType: AnalysisType = 'none') => {
       const photosToUpload = Array.isArray(subsetToUpload) ? subsetToUpload : filteredLocalPhotos;
       if (photosToUpload.length === 0) return;
 
@@ -333,7 +334,7 @@ export default function useLocalPhotoPicker({
    * @security No user blocking on upload failures
    */
   const handleUploadFilteredOptimistic = useCallback(
-    (subsetToUpload?: UploadPickerLocalPhoto[], analysisType: AnalysisType = 'scenery') => {
+    (subsetToUpload?: UploadPickerLocalPhoto[], analysisType: AnalysisType = 'none') => {
       const photosToUpload = Array.isArray(subsetToUpload) ? subsetToUpload : filteredLocalPhotos;
       if (photosToUpload.length === 0) return;
 
