@@ -113,8 +113,9 @@ WHERE tablename = 'photos'
 ### Performance Test
 ```bash
 # Check query execution time
+# Replace <YOUR_TOKEN> with your actual JWT token
 curl -w "@curl-format.txt" -o /dev/null -s \
-  -H "Authorization: Bearer YOUR_TOKEN" \
+  -H "Authorization: Bearer <YOUR_TOKEN>" \
   https://api.justmypeeps.org/photos
 ```
 
