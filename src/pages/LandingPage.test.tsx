@@ -4,7 +4,7 @@ import { MemoryRouter } from 'react-router-dom';
 import LandingPage from './LandingPage';
 
 // Mock LoginForm since we don't need to test its internals here
-vi.mock('../components/LoginForm', () => ({
+vi.mock('../components/LoginForm.tsx', () => ({
   default: () => <div data-testid="login-form">Login Form</div>
 }));
 

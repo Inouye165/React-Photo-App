@@ -11,7 +11,7 @@ import {
 import type { Photo } from '../types/photo';
 import formatFileSize from '../utils/formatFileSize';
 import { toUrl } from '../utils/toUrl';
-import AuthenticatedImage from './AuthenticatedImage.jsx';
+import AuthenticatedImage from './AuthenticatedImage.tsx';
 import { aiPollDebug } from '../utils/aiPollDebug';
 
 type PhotoCardPhoto = Omit<Photo, 'state' | 'url'> & {
