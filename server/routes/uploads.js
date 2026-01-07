@@ -101,10 +101,12 @@ module.exports = function createUploadsRouter({ db }) {
 
       // Intent-based uploads: accept a lightweight classification/intent hint
       // from multipart form fields. Default to 'scenery' if missing/invalid.
+      // If 'none' is specified, skip AI analysis entirely.
       const rawClassification = uploadResult?.fields?.classification;
       const normalizedClassification = (typeof rawClassification === 'string' ? rawClassification.trim() : '')
         .toLowerCase();
-      const classification = (normalizedClassification === 'collectible' || normalizedClassification === 'scenery' || normalizedClassification === 'todo')
+      const validClassifications = ['collectible', 'scenery', 'todo', 'none'];
+      const classification = validClassifications.includes(normalizedClassification)
         ? normalizedClassification
         : 'scenery';
 
@@ -227,15 +229,18 @@ module.exports = function createUploadsRouter({ db }) {
 
       // Enqueue background job for heavy processing
       // (EXIF extraction, thumbnail generation, AI metadata)
+      // Skip AI analysis if classification is 'none' (user opted out)
       let jobEnqueued = false;
       try {
-        const redisAvailable = await checkRedisAvailable();
-        if (redisAvailable) {
-          await addAIJob(insertedPhoto.id, {
-            processMetadata: true,
-            generateThumbnail: true
-          });
-          jobEnqueued = true;
+        if (classification !== 'none') {
+          const redisAvailable = await checkRedisAvailable();
+          if (redisAvailable) {
+            await addAIJob(insertedPhoto.id, {
+              processMetadata: true,
+              generateThumbnail: true
+            });
+            jobEnqueued = true;
+          }
         }
       } catch (queueErr) {
         // Queue not available - client can trigger processing manually

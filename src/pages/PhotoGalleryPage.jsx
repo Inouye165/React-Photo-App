@@ -58,6 +58,16 @@ export default function PhotoGalleryPage() {
     handleDeletePhoto,
   } = usePhotoManagement();
 
+  // Listen for upload completion events to refresh the gallery
+  useEffect(() => {
+    const handlePhotosUploaded = () => {
+      refreshPhotos();
+    };
+    
+    window.addEventListener('photos-uploaded', handlePhotosUploaded);
+    return () => window.removeEventListener('photos-uploaded', handlePhotosUploaded);
+  }, [refreshPhotos]);
+
   const toTimestamp = useMemo(() => {
     return (photo) => {
       const dateStr = photo?.metadata?.DateTimeOriginal || photo?.metadata?.CreateDate || photo?.created_at;

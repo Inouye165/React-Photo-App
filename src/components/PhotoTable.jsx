@@ -138,9 +138,7 @@ export default function PhotoTable({
                 <button
                   onClick={(event) => {
                     event.stopPropagation();
-                    if (window.confirm('Are you sure you want to delete this photo? This action cannot be undone.')) {
-                      onDeletePhoto(photo.id);
-                    }
+                    onDeletePhoto(photo.id);
                   }}
                   className="bg-red-500 hover:bg-red-700 text-white px-2 py-1 rounded text-xs"
                   data-testid="photo-table-delete-btn"
