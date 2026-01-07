@@ -1,0 +1,16 @@
+#!/usr/bin/env sh
+. "$(dirname -- "$0")/_/husky.sh"
+
+# Run gitleaks before push if available
+if command -v gitleaks >/dev/null 2>&1; then
+  echo "🔍 Running gitleaks scan..."
+  gitleaks detect --source . --no-banner --redact
+  if [ $? -ne 0 ]; then
+    echo "❌ Gitleaks found potential secrets. Please review and fix before pushing."
+    exit 1
+  fi
+  echo "✅ No secrets detected"
+else
+  echo "⚠️  Gitleaks not installed. Skipping secret scan."
+  echo "   Install with: winget install gitleaks.gitleaks"
+fi
