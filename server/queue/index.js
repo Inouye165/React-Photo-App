@@ -389,7 +389,7 @@ const startWorker = async () => {
 
       const files = {
         'server/middleware/security.js': safeReadFile(path.resolve(__dirname, '..', 'middleware', 'security.js')),
-        'server/routes/photos.js': safeReadFile(path.resolve(__dirname, '..', 'routes', 'photos.js')),
+        'server/routes/photos.ts': safeReadFile(path.resolve(__dirname, '..', 'routes', 'photos.ts')),
         'server/services/photosDb.js': safeReadFile(path.resolve(__dirname, '..', 'services', 'photosDb.js')),
       };
 
