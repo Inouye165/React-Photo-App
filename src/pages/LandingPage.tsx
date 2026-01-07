@@ -1,7 +1,7 @@
 /// <reference types="vite/client" />
 import React, { useState, useEffect } from 'react';
 import { useLocation } from 'react-router-dom';
-import LoginForm from '../components/LoginForm';
+import LoginForm from '../components/LoginForm.tsx';
 
 type ViewState = 'landing' | 'login' | 'contact';
 

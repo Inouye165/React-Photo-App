@@ -2,7 +2,7 @@ import React, { useEffect, useState, useRef, useCallback, CSSProperties } from '
 import { useVirtualizer } from '@tanstack/react-virtual';
 import useStore from './store';
 import { useThumbnailQueue } from './hooks/useThumbnailQueue';
-import Thumbnail from './components/Thumbnail.jsx';
+import Thumbnail from './components/Thumbnail.tsx';
 import { isProbablyMobile } from './utils/isProbablyMobile';
 import type { UploadPickerLocalPhoto } from './store/uploadPickerSlice';
 import type { AnalysisType } from './hooks/useLocalPhotoPicker';

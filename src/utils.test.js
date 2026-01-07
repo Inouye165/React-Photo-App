@@ -3,7 +3,7 @@ import { describe, it, expect } from 'vitest'
 // Test utility functions that are exported or can be easily tested
 describe('Utility Functions', () => {
   describe('formatFileSize', () => {
-    // Since formatFileSize is inside App.jsx, we'll test the concept
+    // Keep this test independent of app wiring.
     const formatFileSize = (bytes) => {
       if (!bytes || bytes === 0) return '0 B'
       const k = 1024

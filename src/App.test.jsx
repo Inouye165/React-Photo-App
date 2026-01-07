@@ -58,7 +58,7 @@ vi.mock('./components/MetadataModal', () => ({
   default: () => React.createElement('div', { 'data-testid': 'metadata-modal' }, 'Metadata Modal')
 }))
 
-import App from './App'
+import App from './App.tsx'
 import { getPhotos, checkPrivilegesBatch } from './api'
 import useStore from './store'
 

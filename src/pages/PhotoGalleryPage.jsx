@@ -1,7 +1,7 @@
 import React, { useEffect, useMemo, useState } from 'react';
 import { useLocation, useNavigate, useOutletContext } from 'react-router-dom';
 import PhotoGallery from '../PhotoGallery';
-import PhotoUploadForm from '../PhotoUploadForm.jsx';
+import PhotoUploadForm from '../PhotoUploadForm.tsx';
 import MetadataModal from '../components/MetadataModal.jsx';
 import usePhotoPrivileges from '../hooks/usePhotoPrivileges';
 import useLocalPhotoPicker from '../hooks/useLocalPhotoPicker';

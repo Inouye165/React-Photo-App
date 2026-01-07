@@ -37,7 +37,7 @@ vi.mock('react-router-dom', async () => {
   };
 });
 
-import SettingsPage from './SettingsPage.jsx';
+import SettingsPage from './SettingsPage.tsx';
 
 describe('SettingsPage', () => {
   beforeEach(() => {
