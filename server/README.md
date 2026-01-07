@@ -119,6 +119,9 @@ For tests, prefer importing `server/bootstrap/createApp` to construct an app ins
 ### AI & Metadata
 - `POST /photos/:id/run-ai` - Trigger AI analysis
 - `POST /photos/:id/recheck-ai` - Re-run AI analysis on existing photo
+  - Supports `collectibleOverride` in request body for Human-in-the-Loop (HITL) Accept action
+  - **Performance Optimization**: When `collectibleOverride` is present, skips storage download and metadata extraction (lightweight JSON operation)
+  - Standard recheck (without override) downloads image and re-extracts metadata before analysis
 - `POST /photos/:id/reextract-metadata` - Re-extract EXIF metadata
 - `GET /photos/models` - List available AI models
 - `GET /photos/dependencies` - Check AI dependencies status

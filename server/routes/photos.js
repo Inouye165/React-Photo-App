@@ -708,44 +708,91 @@ module.exports = function createPhotosRouter({ db, supabase }) {
   // route for client-side single-photo rechecks.
   router.post('/:id/recheck-ai', authenticateToken, async (req, res) => {
     try {
+      // Extract collectibleOverride at the very top to determine processing path
+      const collectibleOverride = req.body && req.body.collectibleOverride ? req.body.collectibleOverride : null;
+      const modelOverride = req.body && req.body.model ? req.body.model : (req.query && req.query.model ? req.query.model : null);
+      
       // Detect if this is a Human Override (Accept) action from HITL workflow
       const isHumanOverride = req.body && req.body.isHumanOverride === true;
       const actionType = isHumanOverride ? 'Human Override (Accept)' : 'Standard AI Recheck';
       
-      logger.info(`[recheck-ai] ${actionType} initiated`, {
+      logger.info(`[Recheck-AI] ${actionType} initiated`, {
         photoId: req.params.id,
         userId: req.user.id,
         isHumanOverride,
-        model: req.body?.model || req.query?.model || 'default',
+        hasCollectibleOverride: !!collectibleOverride,
+        model: modelOverride || 'default',
         timestamp: new Date().toISOString()
       });
       
-      // Ensure photo exists
+      // Ensure photo exists and user has access
       const photo = await photosDb.getPhotoByAnyId(req.params.id, req.user.id);
       if (!photo) {
         return res.status(404).json({ error: 'Photo not found' });
       }
 
-      // Re-extract metadata from the photo file first
+      // Validate model override if provided
+      if (modelOverride && !photosAi.isModelAllowed(modelOverride)) {
+        return res.status(400).json({ success: false, error: 'Unsupported model override', allowedModels: MODEL_ALLOWLIST });
+      }
+      if (modelOverride === 'gpt-image-1') {
+        return res.status(400).json({ success: false, error: 'gpt-image-1 is an image-generation model and cannot be used for text analysis. Choose a vision-analysis model (e.g., gpt-4o-mini).' });
+      }
+
+      // Validate collectibleOverride structure if provided
+      if (collectibleOverride) {
+        if (typeof collectibleOverride !== 'object' || typeof collectibleOverride.id !== 'string' || !collectibleOverride.id.trim()) {
+          return res.status(400).json({ success: false, error: 'collectibleOverride must be an object with a non-empty string id' });
+        }
+      }
+
+      // CONDITIONAL LOGIC: Skip metadata re-extraction if collectibleOverride is present
+      if (collectibleOverride) {
+        logger.info(`[Recheck-AI] Skipping metadata re-extraction due to Human Override for photo ${photo.id}`);
+        
+        // Enqueue job directly with override - no file I/O needed
+        const jobOptions = { collectibleOverride };
+        if (modelOverride) {
+          jobOptions.modelOverrides = { router: modelOverride, scenery: modelOverride, collectible: modelOverride };
+        }
+        
+        try {
+          await photosAi.enqueuePhotoAiJob(photo.id, jobOptions);
+        } catch (err) {
+          logger.error('[Recheck-AI] Failed to enqueue AI job with override:', err && err.message);
+          return res.status(500).json({ error: 'Failed to enqueue AI processing job' });
+        }
+        
+        return res.status(202).json({ 
+          message: 'AI recheck queued with human override (metadata extraction skipped).', 
+          photoId: photo.id 
+        });
+      }
+
+      // STANDARD RECHECK PATH: Re-extract metadata from storage
       try {
         const { downloadFromStorage, extractMetadata, mergeMetadataPreservingLocationAndDate } = require('../media/backgroundProcessor');
         
-        logger.info(`Re-extracting metadata for photo ${photo.id} during recheck-ai`);
+        logger.info(`[Recheck-AI] Re-extracting metadata for photo ${photo.id}`);
         
         let buffer;
         let filename = photo.filename;
         
+        // Wrap storage download in try/catch to prevent crashes
         try {
           buffer = await downloadFromStorage(photo.filename);
-        } catch {
+        } catch (downloadErr) {
+          logger.warn(`[Recheck-AI] Failed to download original file for photo ${photo.id}, attempting processed version:`, downloadErr.message);
+          
           // Try processed version if original fails
           const processedFilename = photo.filename.replace(/\.heic$/i, '.heic.processed.jpg');
           try {
             buffer = await downloadFromStorage(processedFilename);
             filename = processedFilename;
-          } catch (err2) {
-            logger.warn(`Could not re-extract metadata for photo ${photo.id}: ${err2.message}`);
+          } catch (processedErr) {
+            logger.warn(`[Recheck-AI] Could not download any version of photo ${photo.id}:`, processedErr.message);
             // Don't fail the whole recheck if metadata extraction fails
+            // Continue to enqueue job with existing data
           }
         }
 
@@ -757,45 +804,39 @@ module.exports = function createPhotosRouter({ db, supabase }) {
               const existing = typeof photo.metadata === 'string' ? JSON.parse(photo.metadata || '{}') : (photo.metadata || {});
               merged = mergeMetadataPreservingLocationAndDate(existing, metadata);
             } catch (mergeErr) {
-              logger.warn(`Metadata merge failed for photo ${photo.id} during recheck-ai: ${mergeErr.message}`);
+              logger.warn(`[Recheck-AI] Metadata merge failed for photo ${photo.id}:`, mergeErr.message);
               merged = metadata;
             }
             await photosDb.updatePhoto(photo.id, req.user.id, {
               metadata: JSON.stringify(merged)
             });
-            logger.info(`Successfully re-extracted metadata for photo ${photo.id}`);
+            logger.info(`[Recheck-AI] Successfully re-extracted metadata for photo ${photo.id}`);
           }
         }
       } catch (metadataError) {
-        logger.warn(`Metadata re-extraction failed for photo ${photo.id}:`, metadataError.message);
+        logger.warn(`[Recheck-AI] Metadata re-extraction failed for photo ${photo.id}:`, metadataError.message);
         // Continue with AI processing even if metadata extraction fails
       }
 
-      // Always enqueue a job for rechecking AI metadata
-      const modelOverride = req.body && req.body.model ? req.body.model : (req.query && req.query.model ? req.query.model : null);
-      const collectibleOverride = req.body && req.body.collectibleOverride ? req.body.collectibleOverride : null;
-      if (modelOverride && !photosAi.isModelAllowed(modelOverride)) {
-        return res.status(400).json({ success: false, error: 'Unsupported model override', allowedModels: MODEL_ALLOWLIST });
-      }
-      if (modelOverride === 'gpt-image-1') {
-        return res.status(400).json({ success: false, error: 'gpt-image-1 is an image-generation model and cannot be used for text analysis. Choose a vision-analysis model (e.g., gpt-4o-mini).' });
-      }
+      // Enqueue AI job for standard recheck
       const jobOptions = {};
-      if (modelOverride) jobOptions.modelOverrides = { router: modelOverride, scenery: modelOverride, collectible: modelOverride };
-      if (collectibleOverride) {
-        if (typeof collectibleOverride !== 'object' || typeof collectibleOverride.id !== 'string' || !collectibleOverride.id.trim()) {
-          return res.status(400).json({ success: false, error: 'collectibleOverride must be an object with a non-empty string id' });
-        }
-        jobOptions.collectibleOverride = collectibleOverride;
+      if (modelOverride) {
+        jobOptions.modelOverrides = { router: modelOverride, scenery: modelOverride, collectible: modelOverride };
       }
+      
       try {
         await photosAi.enqueuePhotoAiJob(photo.id, jobOptions);
       } catch (err) {
-        logger.error('Failed to enqueue AI recheck job:', err && err.message);
+        logger.error('[Recheck-AI] Failed to enqueue AI recheck job:', err && err.message);
+        return res.status(500).json({ error: 'Failed to enqueue AI processing job' });
       }
-      return res.status(202).json({ message: 'AI recheck queued (metadata re-extracted).', photoId: photo.id });
+      
+      return res.status(202).json({ 
+        message: 'AI recheck queued (metadata re-extracted).', 
+        photoId: photo.id 
+      });
     } catch (error) {
-      logger.error('Error processing AI recheck:', error);
+      logger.error('[Recheck-AI] Error processing AI recheck:', error);
       return res.status(500).json({ error: 'Failed to process AI recheck' });
     }
   });
