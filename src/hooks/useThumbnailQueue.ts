@@ -25,35 +25,91 @@ import { generateClientThumbnail } from '../utils/clientImageProcessing';
 import { getThumbnail, saveThumbnail } from '../utils/thumbnailCache';
 
 /**
+ * Processing status for individual thumbnails
+ */
+export type ThumbnailStatus = 'pending' | 'processing' | 'success' | 'failed';
+
+/**
+ * Progress tracking for overall thumbnail processing
+ */
+export interface ThumbnailProgress {
+  /** Number of thumbnails completed (successfully or failed) */
+  completed: number;
+  /** Total number of thumbnails to process */
+  total: number;
+  /** Number of thumbnails that failed to process */
+  failed: number;
+}
+
+/**
+ * Configuration options for thumbnail queue processing
+ */
+export interface UseThumbnailQueueOptions {
+  /** Number of concurrent thumbnail operations (default: 4) */
+  concurrency?: number;
+  /** Milliseconds between state flush cycles (default: 200) */
+  batchInterval?: number;
+}
+
+/**
+ * Return value from useThumbnailQueue hook
+ */
+export interface UseThumbnailQueueResult {
+  /** Map of filename to thumbnail blob URL */
+  thumbnails: Map<string, string>;
+  /** Map of filename to processing status */
+  status: Map<string, ThumbnailStatus>;
+  /** Overall progress information */
+  progress: ThumbnailProgress;
+  /** Whether all thumbnails have been processed */
+  isComplete: boolean;
+}
+
+/**
+ * Internal buffer for batched state updates
+ */
+interface PendingUpdates {
+  thumbnails: Map<string, string>;
+  status: Map<string, ThumbnailStatus>;
+  completedDelta: number;
+  failedDelta: number;
+}
+
+/**
  * Queue-based thumbnail processor with batched state updates
  * 
- * @param {File[]} files - Array of image files to process
- * @param {Object} options - Configuration options
- * @param {number} [options.concurrency=4] - Number of concurrent thumbnail operations
- * @param {number} [options.batchInterval=200] - Milliseconds between state flush cycles
- * @returns {Object} - Processing state and thumbnail URLs
+ * @param files - Array of image files to process
+ * @param options - Configuration options
+ * @returns Processing state and thumbnail URLs
  */
-export function useThumbnailQueue(files, options = {}) {
+export function useThumbnailQueue(
+  files: File[],
+  options: UseThumbnailQueueOptions = {}
+): UseThumbnailQueueResult {
   const {
     concurrency = 4,        // Increased from 2 for better throughput
     batchInterval = 200,    // Flush buffered updates every 200ms
   } = options;
 
   // Map of filename -> thumbnail blob URL
-  const [thumbnails, setThumbnails] = useState(new Map());
+  const [thumbnails, setThumbnails] = useState<Map<string, string>>(new Map());
   
   // Map of filename -> processing status
-  const [status, setStatus] = useState(new Map());
+  const [status, setStatus] = useState<Map<string, ThumbnailStatus>>(new Map());
   
   // Overall progress
-  const [progress, setProgress] = useState({ completed: 0, total: 0, failed: 0 });
+  const [progress, setProgress] = useState<ThumbnailProgress>({ 
+    completed: 0, 
+    total: 0, 
+    failed: 0 
+  });
   
   // Queue management refs
-  const queueRef = useRef([]);
-  const processingRef = useRef(new Set());
-  const mountedRef = useRef(true);
-  const processedFilesRef = useRef(new Set()); // Track which files we've already processed
-  const generatedUrlsRef = useRef(new Set());  // Track generated URLs for cleanup
+  const queueRef = useRef<File[]>([]);
+  const processingRef = useRef<Set<string>>(new Set());
+  const mountedRef = useRef<boolean>(true);
+  const processedFilesRef = useRef<Set<string>>(new Set()); // Track which files we've already processed
+  const generatedUrlsRef = useRef<Set<string>>(new Set());  // Track generated URLs for cleanup
 
   /**
    * Staging Buffer for Batched State Updates
@@ -68,7 +124,7 @@ export function useThumbnailQueue(files, options = {}) {
    * - completedDelta: Number of newly completed items since last flush
    * - failedDelta: Number of newly failed items since last flush
    */
-  const pendingUpdatesRef = useRef({
+  const pendingUpdatesRef = useRef<PendingUpdates>({
     thumbnails: new Map(),
     status: new Map(),
     completedDelta: 0,
@@ -190,10 +246,10 @@ export function useThumbnailQueue(files, options = {}) {
    * instead of calling setState directly. The flush loop will batch
    * these updates periodically.
    * 
-   * @param {File} file - The file to process
-   * @returns {Promise<string|null>} - The blob URL or null on failure
+   * @param file - The file to process
+   * @returns The blob URL or null on failure
    */
-  const processThumbnail = useCallback(async (file) => {
+  const processThumbnail = useCallback(async (file: File): Promise<string | null> => {
     if (!mountedRef.current) return null;
 
     const fileName = file.name;
@@ -276,7 +332,7 @@ export function useThumbnailQueue(files, options = {}) {
    * 1. State updates are now batched (no per-file setState thrashing)
    * 2. Browser's task scheduler handles yielding naturally
    */
-  const processQueueRef = useRef(null);
+  const processQueueRef = useRef<(() => Promise<void>) | null>(null);
   
   // Store the actual processing function in a ref to avoid dependency loops
   processQueueRef.current = async () => {
@@ -325,7 +381,7 @@ export function useThumbnailQueue(files, options = {}) {
   }, [files]);
 
   // Store files in a ref so we can access current value without dependency
-  const filesRef = useRef(files);
+  const filesRef = useRef<File[]>(files);
   filesRef.current = files;
 
   // Initialize queue when files actually change (based on stable key)
@@ -356,7 +412,7 @@ export function useThumbnailQueue(files, options = {}) {
     setProgress({ completed: 0, total: currentFiles.length, failed: 0 });
     
     // Initialize status for all files
-    const initialStatus = new Map();
+    const initialStatus = new Map<string, ThumbnailStatus>();
     currentFiles.forEach(file => {
       if (!existingFileNames.has(file.name)) {
         initialStatus.set(file.name, 'pending');
