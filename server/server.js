@@ -1,6 +1,3 @@
-// Allow requiring TypeScript modules at runtime (e.g., routes/*.ts).
-require('ts-node/register/transpile-only');
-
 // Load env first, before any module reads process.env.
 require('./bootstrap/loadEnv').loadEnv();
 const bootstrap = require('./bootstrap');
