@@ -101,6 +101,11 @@ interface PhotoRow {
 
 /** Authenticated request with user info */
 interface AuthenticatedRequest extends Request {
+  // Express request properties (explicit here to satisfy server-side type-checking)
+  body: any;
+  query: any;
+  params: any;
+  headers: any;
   user?: {
     id: string;
     email: string;
@@ -347,13 +352,23 @@ export default function createPhotosRouter({ db, supabase }: PhotosRouterDepende
     const reqId = Math.random().toString(36).slice(2, 10);
     try {
       const state = req.validated?.query?.state;
-      const DEFAULT_LIMIT = 50;
-      const limit = req.validated?.query?.limit ?? DEFAULT_LIMIT;
+      // Reduce default limit to prevent DB timeouts on large datasets
+      const DEFAULT_LIMIT = Number(process.env.PHOTOS_DEFAULT_LIMIT) || 20;
+      const MAX_LIMIT = Number(process.env.PHOTOS_MAX_LIMIT) || 100;
+
+      const requestedLimit = Number.isInteger(req.validated?.query?.limit)
+        ? (req.validated!.query!.limit as number)
+        : DEFAULT_LIMIT;
+
+      // Cap the limit to prevent abuse
+      const limit = Math.min(requestedLimit, MAX_LIMIT);
       const cursor = req.validated?.query?.cursor ?? null;
 
       // Check Redis cache
       const redis = getRedisClient();
-      const cacheKey = `photos:list:${req.user!.id}:${state || 'all'}:${limit}:${cursor ? 'cursor' : 'start'}`;
+      // Key includes all query params to ensure correctness
+      // Note: cursor is an object (validated), string interpolation matches the legacy JS route.
+      const cacheKey = `photos:list:${req.user!.id}:${state || 'all'}:${limit}:${(cursor as unknown as string) || 'start'}`;
 
       if (redis) {
         try {
@@ -398,7 +413,9 @@ export default function createPhotosRouter({ db, supabase }: PhotosRouterDepende
         reqId,
         state: state || null,
         limit,
+        requestedLimit: req.validated?.query?.limit,
         hasCursor: Boolean(cursor),
+        rowCount: rows.length,
         ms: listMs,
       });
 

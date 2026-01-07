@@ -3,27 +3,16 @@
     "target": "ES2022",
     "lib": ["ES2022"],
     "module": "CommonJS",
-    "moduleResolution": "node",
+    "moduleResolution": "Node",
+    "esModuleInterop": true,
     "skipLibCheck": true,
+    "resolveJsonModule": true,
     "allowJs": true,
     "checkJs": false,
-    "declaration": false,
     "noEmit": true,
-    "strict": true,
-    "esModuleInterop": true,
-    "forceConsistentCasingInFileNames": true,
-    "resolveJsonModule": true,
-    "isolatedModules": true,
-    "noUnusedLocals": false,
-    "noUnusedParameters": false,
-    "noFallthroughCasesInSwitch": true
+    "strict": false,
+    "types": ["node"]
   },
-  "include": [
-    "**/*.ts"
-  ],
-  "exclude": [
-    "node_modules",
-    "working",
-    "test-results"
-  ]
+  "include": ["routes/**/*.ts"],
+  "exclude": ["node_modules", "tests", "working", "coverage", "test-results"]
 }

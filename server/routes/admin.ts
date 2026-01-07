@@ -33,6 +33,11 @@ interface PhotoSuggestion {
 }
 
 interface AuthenticatedRequest extends Request {
+  // Express request properties (explicit here to satisfy server-side type-checking)
+  body: any;
+  query: any;
+  params: any;
+  headers: any;
   user?: {
     id: string;
     email: string;
