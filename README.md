@@ -41,6 +41,21 @@ This isn't just a wrapper around an API. Here's what's actually happening under 
 *   **Streaming Uploads:** Files stream directly from the request to Supabase Storage. They never touch the server's disk.
 *   **Testing:** Over 1,100 tests using Vitest, Playwright, and Jest. I take testing seriously.
 
+## Security Checks
+
+I use `gitleaks` to prevent API keys and secrets from being committed.
+
+**Installation:**
+*   **Windows:** `winget install gitleaks.gitleaks`
+*   **macOS:** `brew install gitleaks`
+*   **Linux:** Follow instructions at [gitleaks.io](https://gitleaks.io)
+
+**Running the Scan:**
+```bash
+# Run local secret scan
+npm run secret-scan:local
+```
+
 ## Cool Features & Experiments
 
 ### AI Photo Concierge
