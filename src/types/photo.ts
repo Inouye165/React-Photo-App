@@ -38,6 +38,10 @@ export interface Photo {
   // GPS coordinates
   latitude?: number;
   longitude?: number;
+
+  // Derivative URLs
+  thumbnail?: string | null;
+  smallThumbnail?: string | null;
 }
 
 export interface TextStyle {

@@ -194,7 +194,14 @@ module.exports = function createPhotosRouter({ db, supabase }) {
       
       // Generate public URLs for each photo using Supabase Storage
       const mapStart = Date.now();
-      const photosWithUrls = rows.map((row) => mapPhotoRowToListDto(row, { signThumbnailUrl, ttlSeconds: DEFAULT_TTL_SECONDS }));
+      const PHOTOS_LIST_THUMB_TTL_SECONDS = 3600;
+      const photosWithUrls = await Promise.all(
+        rows.map((row) => mapPhotoRowToListDto(row, {
+          supabaseClient: supabase,
+          ttlSeconds: PHOTOS_LIST_THUMB_TTL_SECONDS,
+          signThumbnailUrl,
+        }))
+      );
 
       const mapMs = Date.now() - mapStart;
       logger.info('[photos] mapPhotos_ms', {

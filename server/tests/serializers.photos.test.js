@@ -1,7 +1,7 @@
 const { mapPhotoRowToListDto, mapPhotoRowToDetailDto } = require('../serializers/photos');
 
 describe('serializers/photos mappers', () => {
-  test('mapPhotoRowToListDto produces stable shape and parses JSON-ish fields', () => {
+  test('mapPhotoRowToListDto produces stable shape and parses JSON-ish fields', async () => {
     const row = {
       id: 123,
       filename: 'a.jpg',
@@ -20,9 +20,19 @@ describe('serializers/photos mappers', () => {
       classification: 'scenery',
     };
 
-    const dto = mapPhotoRowToListDto(row, {
+    const mockSupabase = {
+      storage: {
+        from: () => ({
+          createSignedUrl: async (p) => ({ data: { signedUrl: `https://cdn.example.com/${p}?token=abc` }, error: null })
+        })
+      }
+    };
+
+    const dto = await mapPhotoRowToListDto(row, {
+      supabaseClient: mockSupabase,
+      ttlSeconds: 3600,
+      // Backward-compat fallback (should not be used when supabaseClient works)
       signThumbnailUrl: () => ({ sig: 'sig', exp: 123456 }),
-      ttlSeconds: 900,
     });
 
     expect(dto).toEqual(
@@ -42,9 +52,32 @@ describe('serializers/photos mappers', () => {
       })
     );
 
-    expect(dto.thumbnail).toContain('/display/thumbnails/h123.jpg');
-    expect(dto.thumbnail).toContain('sig=');
-    expect(dto.thumbnail).toContain('exp=');
+    expect(dto.thumbnail).toContain('https://cdn.example.com/thumbnails/h123.jpg');
+    expect(dto.thumbnail).toContain('token=');
+  });
+
+  test('mapPhotoRowToListDto returns signed smallThumbnail when thumb_small_path exists', async () => {
+    const row = {
+      id: 7,
+      filename: 'a.jpg',
+      state: 'finished',
+      metadata: '{}',
+      hash: 'h7',
+      thumb_path: 'thumbnails/h7.jpg',
+      thumb_small_path: 'thumbnails/h7-sm.jpg',
+    };
+
+    const mockSupabase = {
+      storage: {
+        from: () => ({
+          createSignedUrl: async (p) => ({ data: { signedUrl: `https://cdn.example.com/${p}?token=abc` }, error: null })
+        })
+      }
+    };
+
+    const dto = await mapPhotoRowToListDto(row, { supabaseClient: mockSupabase, ttlSeconds: 3600 });
+    expect(dto.smallThumbnail).toContain('https://cdn.example.com/thumbnails/h7-sm.jpg');
+    expect(dto.smallThumbnail).toContain('token=');
   });
 
   test('mapPhotoRowToDetailDto preserves metadata default {} and parses JSON-ish fields', () => {

@@ -3,8 +3,11 @@ import { API_BASE_URL } from '../api';
 
 function isSignedThumbnailUrl(thumbnailUrl) {
   if (!thumbnailUrl || typeof thumbnailUrl !== 'string') return false;
-  // Only treat /display/thumbnails URLs with both sig and exp as signed.
-  // This is a conservative check to avoid accidentally treating unrelated URLs as signed.
+
+  // 1) Absolute URLs (e.g., Supabase signed CDN URLs) are already usable in <img> tags.
+  if (/^https?:\/\//i.test(thumbnailUrl)) return true;
+
+  // 2) Server-relative /display/thumbnails URLs with both sig and exp are signed.
   return (
     thumbnailUrl.includes('/display/thumbnails/') &&
     thumbnailUrl.includes('sig=') &&
@@ -268,8 +271,10 @@ export default function useSignedThumbnails(photos, token) {
       return null;
     }
 
-    // If /photos already provided a signed thumbnail URL, use it directly.
+    // If /photos already provided a usable thumbnail URL, use it directly.
     if (type === 'thumbnail' && isSignedThumbnailUrl(photo.thumbnail)) {
+      // Absolute URLs should be returned as-is.
+      if (photo.thumbnail.startsWith('http')) return photo.thumbnail;
       return `${API_BASE_URL}${photo.thumbnail}`;
     }
 
