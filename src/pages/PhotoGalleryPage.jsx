@@ -46,16 +46,6 @@ export default function PhotoGalleryPage() {
     navigate(`${location.pathname}${location.search}`, { replace: true, state: null });
   }, [location?.state?.suppressUploadPicker, location.pathname, location.search, navigate]);
 
-  // Listen for upload completion events to refresh the gallery
-  useEffect(() => {
-    const handlePhotosUploaded = () => {
-      refreshPhotos();
-    };
-    
-    window.addEventListener('photos-uploaded', handlePhotosUploaded);
-    return () => window.removeEventListener('photos-uploaded', handlePhotosUploaded);
-  }, [refreshPhotos]);
-
   const {
     photos,
     loading,
@@ -67,6 +57,16 @@ export default function PhotoGalleryPage() {
     refreshPhotos,
     handleDeletePhoto,
   } = usePhotoManagement();
+
+  // Listen for upload completion events to refresh the gallery
+  useEffect(() => {
+    const handlePhotosUploaded = () => {
+      refreshPhotos();
+    };
+    
+    window.addEventListener('photos-uploaded', handlePhotosUploaded);
+    return () => window.removeEventListener('photos-uploaded', handlePhotosUploaded);
+  }, [refreshPhotos]);
 
   const toTimestamp = useMemo(() => {
     return (photo) => {
