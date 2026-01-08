@@ -85,8 +85,12 @@ export default function UploadPage() {
       const removePendingUpload = useStore.getState().removePendingUpload;
       const markBackgroundUploadSuccess = useStore.getState().markBackgroundUploadSuccess;
       const markBackgroundUploadError = useStore.getState().markBackgroundUploadError;
+      const markPhotoAsJustUploaded = useStore.getState().markPhotoAsJustUploaded;
+      const startAiPolling = useStore.getState().startAiPolling;
 
       const errors: string[] = [];
+      const uploadedPhotoIds: number[] = [];
+      
       for (let i = 0; i < files.length; i++) {
         const file = files[i];
         const tempId = pendingEntries[i]?.id;
@@ -98,8 +102,13 @@ export default function UploadPage() {
           /* no-op: error intentionally ignored */
         }
         try {
-          await uploadPhotoToServer(file, undefined, thumbnailBlob, { classification: analysisType });
+          const uploadResult = await uploadPhotoToServer(file, undefined, thumbnailBlob, { classification: analysisType });
           if (bgId) markBackgroundUploadSuccess(bgId);
+          
+          // Track the uploaded photo ID for later processing
+          if (uploadResult && typeof uploadResult === 'object' && 'photoId' in uploadResult && uploadResult.photoId) {
+            uploadedPhotoIds.push(uploadResult.photoId as number);
+          }
         } catch (error) {
           errors.push(file?.name || 'unknown');
           const message = error instanceof Error ? error.message : String(error);
@@ -121,7 +130,15 @@ export default function UploadPage() {
       // Refresh the gallery data once uploads finish so real server photos appear
       try {
         const response = await getPhotos();
-        useStore.getState().setPhotos((response && response.photos) || []);
+        const photos = (response && response.photos) || [];
+        useStore.getState().setPhotos(photos);
+        
+        // Mark just-uploaded photos and start polling for state transitions
+        uploadedPhotoIds.forEach((photoId) => {
+          markPhotoAsJustUploaded(photoId);
+          // Start polling to catch the transition from 'working' to 'inprogress'
+          startAiPolling(photoId, { intervalMs: 1000, maxIntervalMs: 5000 });
+        });
         
         // Dispatch a custom event to notify PhotoGalleryPage to refresh
         // This ensures the gallery updates even if the store update doesn't trigger re-render

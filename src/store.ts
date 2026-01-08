@@ -65,6 +65,8 @@ export interface StoreState extends UploadPickerSlice {
   // running store-level HTTP polling loops to prevent duplicate network traffic.
   // Spinner state is still represented by pollingPhotoIds.
   photoEventsStreamingActive: boolean
+  // Track photos that just finished uploading and are transitioning from 'working' to 'inprogress'
+  justUploadedPhotoIds: Set<Photo['id']>
   pendingUploads: PendingUpload[]
   backgroundUploads: BackgroundUploadEntry[]
   banner: BannerState
@@ -82,6 +84,10 @@ export interface StoreState extends UploadPickerSlice {
   addPendingUploads: (files: File[]) => PendingUpload[]
   removePendingUpload: (tempId: string) => void
   clearPendingUploads: () => void
+
+  markPhotoAsJustUploaded: (id: Photo['id']) => void
+  removeJustUploadedMark: (id: Photo['id']) => void
+  isPhotoJustUploaded: (id: Photo['id']) => boolean
 
   addBackgroundUploads: (files: File[], classification?: string) => string[]
   markBackgroundUploadSuccess: (id: string) => void
@@ -166,6 +172,7 @@ const useStore = create<StoreState>((set, get) => ({
   pollingPhotoIds: new Set(),
 
   photoEventsStreamingActive: false,
+  justUploadedPhotoIds: new Set(),
 
   // Optimistic uploads - pending photos being uploaded
   pendingUploads: [],
@@ -285,6 +292,23 @@ const useStore = create<StoreState>((set, get) => ({
     set((state) => ({
       backgroundUploads: (state.backgroundUploads || []).filter((u) => u.id !== id),
     })),
+
+  // Just-uploaded photo tracking - marks photos that need transition spinner
+  markPhotoAsJustUploaded: (id: Photo['id']) =>
+    set((state) => {
+      const newSet = new Set(state.justUploadedPhotoIds)
+      newSet.add(id)
+      return { justUploadedPhotoIds: newSet }
+    }),
+  removeJustUploadedMark: (id: Photo['id']) =>
+    set((state) => {
+      const newSet = new Set(state.justUploadedPhotoIds)
+      newSet.delete(id)
+      return { justUploadedPhotoIds: newSet }
+    }),
+  isPhotoJustUploaded: (id: Photo['id']) => {
+    return get().justUploadedPhotoIds.has(id)
+  },
 
   // Persistent banner notification (alternative to toast)
   banner: { message: '', severity: 'info' },
