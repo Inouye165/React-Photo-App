@@ -535,15 +535,6 @@ const useStore = create<StoreState>((set, get) => ({
       return { pollingPhotoId: id, pollingPhotoIds: next }
     })
 
-    // When SSE streaming is active, keep spinner flags but do not start
-    // an HTTP polling loop. This prevents duplicate traffic.
-    if (get().photoEventsStreamingActive) {
-      aiPollDebug('store_poll_start_skipped_streaming_active', { photoId: id })
-      return
-    }
-
-    // When SSE streaming is active, keep spinner flags but do not start
-    // an HTTP polling loop. This prevents duplicate traffic.
     // REMOVED: Guard clause that prevented polling when photoEventsStreamingActive.
     // Polling now runs concurrently with SSE for maximum reliability.
 
