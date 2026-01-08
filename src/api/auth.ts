@@ -14,6 +14,7 @@ function canAttemptSessionRefresh(): boolean {
 export function setAuthToken(token: string | null): void {
   _cachedAccessToken = token
   _authTokenState = token ? 'set' : 'cleared'
+  console.log(`[API Auth] Token updated. State: ${_authTokenState.toUpperCase()}`)
 }
 
 export function getAccessToken(): string | null {
@@ -62,6 +63,8 @@ export function getAuthHeaders(includeContentType = true): Record<string, string
   }
   if (_cachedAccessToken) {
     headers['Authorization'] = `Bearer ${_cachedAccessToken}`
+  } else {
+    console.warn('[API Auth] getAuthHeaders called with no cached token present')
   }
   // E2E Bypass: Add header if in E2E mode
   if (typeof window !== 'undefined' && (window as any).__E2E_MODE__) {
