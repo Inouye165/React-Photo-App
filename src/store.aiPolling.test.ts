@@ -131,7 +131,7 @@ describe('store AI polling (single poller)', () => {
     expect(useStore.getState().pollingPhotoId).toBeNull();
   });
 
-  it('does not issue polling requests while streaming is active', async () => {
+  it('continues polling even when streaming is active (dual-mode)', async () => {
     const getPhoto = vi.mocked(api.getPhoto)
     useStore.setState({ photoEventsStreamingActive: true } as any)
 
@@ -141,8 +141,10 @@ describe('store AI polling (single poller)', () => {
     await vi.advanceTimersByTimeAsync(50)
     await flushPromises()
 
-    expect(getPhoto).not.toHaveBeenCalled()
-    // Spinner flags remain set while streaming is responsible for completion.
+    // Dual-mode: Polling continues even when streaming is active to provide guaranteed fallback.
+    expect(getPhoto).toHaveBeenCalled()
+    expect(getPhoto).toHaveBeenCalledWith(1, { cacheBust: true })
+    // Spinner flags remain set while polling is active.
     expect(useStore.getState().pollingPhotoIds.has(1)).toBe(true)
   })
 });
