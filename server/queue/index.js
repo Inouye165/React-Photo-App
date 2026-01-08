@@ -163,6 +163,7 @@ const addAIJob = async (photoId, options = {}) => {
   await initializeQueue();
 
   if (!redisAvailable || !aiQueue) {
+    logger.warn('[QUEUE] Cannot add AI job - Redis unavailable', { photoId });
     throw new Error("Queue service unavailable - Redis connection required");
   }
 
@@ -176,7 +177,10 @@ const addAIJob = async (photoId, options = {}) => {
   if (options.generateThumbnail !== undefined) jobData.generateThumbnail = options.generateThumbnail;
   if (options.collectibleOverride !== undefined) jobData.collectibleOverride = options.collectibleOverride;
 
-  return aiQueue.add("process-photo-ai", jobData);
+  logger.info('[QUEUE] Adding AI job', { photoId, options: Object.keys(options) });
+  const job = await aiQueue.add("process-photo-ai", jobData);
+  logger.info('[QUEUE] AI job added successfully', { photoId, jobId: job.id });
+  return job;
 };
 
 const addAppAssessmentJob = async (assessmentId) => {
