@@ -288,14 +288,9 @@ module.exports = function createUploadsRouter({ db }) {
           }
         } else {
           // When classification is 'none', user opted out of AI analysis
-          // Transition photo directly to 'finished' state since no processing is needed
-          await db('photos')
-            .where({ id: photoId })
-            .update({
-              state: 'finished',
-              updated_at: new Date().toISOString(),
-            });
-          logger.info('[upload] Photo marked finished (no AI analysis requested)', { photoId, userId: req.user.id, classification });
+          // Keep photo in 'working' state so it shows "Queue" badge with "Analyze" button
+          // User can manually trigger analysis later if desired
+          logger.info('[upload] Photo stays in working state (no AI analysis requested)', { photoId, userId: req.user.id, classification });
         }
       } catch (queueErr) {
         // Queue not available - client can trigger processing manually
