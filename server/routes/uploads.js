@@ -273,6 +273,16 @@ module.exports = function createUploadsRouter({ db }) {
               generateThumbnail: true
             });
             jobEnqueued = true;
+            
+            // CRITICAL: Transition photo from 'working' to 'inprogress' to signal AI processing has started
+            // This ensures client-side polling can track the AI job and update UI accordingly
+            await db('photos')
+              .where({ id: photoId })
+              .update({
+                state: 'inprogress',
+                updated_at: new Date().toISOString(),
+              });
+            logger.info('[upload] Photo transitioned to inprogress', { photoId, userId: req.user.id });
           }
         }
       } catch (queueErr) {
