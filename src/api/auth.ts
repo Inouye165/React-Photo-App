@@ -64,7 +64,7 @@ export function getAuthHeaders(includeContentType = true): Record<string, string
   if (_cachedAccessToken) {
     headers['Authorization'] = `Bearer ${_cachedAccessToken}`
   } else {
-    console.warn('[API Auth] getAuthHeaders called with no cached token present')
+    console.warn('[API Auth] Generating headers with NO cached token! Request will likely fail 401.')
   }
   // E2E Bypass: Add header if in E2E mode
   if (typeof window !== 'undefined' && (window as any).__E2E_MODE__) {

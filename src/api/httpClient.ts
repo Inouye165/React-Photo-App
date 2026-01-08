@@ -265,13 +265,14 @@ export function getApiMetrics(): ApiMetrics {
 export function handleAuthError(response: Response | null): boolean {
   if (!response) return false
   if (response.status === 401 || response.status === 403) {
-    console.warn(`[HTTP] Auth Error ${response.status}: Dispatching session-expired event to stop polling`)
+    console.error(`[HTTP] Auth Error detected (${response.status}). Dispatching session-expired event.`)
     try {
       window.dispatchEvent(
         new CustomEvent('auth:session-expired', {
           detail: { status: response.status },
         }),
       )
+      console.log('[HTTP] session-expired event dispatched successfully')
     } catch (err) {
       console.error('[HTTP] Failed to dispatch auth:session-expired event:', err)
     }
