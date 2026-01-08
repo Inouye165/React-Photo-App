@@ -83,3 +83,146 @@ describe('store moveToInprogress', () => {
     stopAllPolling();
   });
 });
+
+describe('store stale state protection', () => {
+  let useStore: typeof import('./store').default;
+
+  beforeEach(async () => {
+    vi.clearAllMocks();
+    vi.resetModules();
+    ({ default: useStore } = await vi.importActual('./store'));
+  });
+
+  describe('setPhotos', () => {
+    it('keeps terminal state when incoming photo has pending state', () => {
+      // Setup: Photo in finished state
+      useStore.setState({
+        photos: [
+          { 
+            id: 1, 
+            url: '/api/photos/1/blob', 
+            state: 'finished',
+            caption: 'Analysis complete',
+            description: 'Detailed analysis'
+          },
+        ],
+      });
+
+      // Act: Call setPhotos with same photo in inprogress state (stale cache)
+      useStore.getState().setPhotos([
+        { 
+          id: 1, 
+          url: '/api/photos/1/blob', 
+          state: 'inprogress',
+          caption: 'Processing...',
+          description: 'Processing...'
+        },
+      ]);
+
+      // Assert: Photo should remain in finished state
+      const photos = useStore.getState().photos;
+      const photo = photos.find((p) => p.id === 1);
+      expect(photo).toBeTruthy();
+      expect(photo?.state).toBe('finished');
+      expect(photo?.caption).toBe('Analysis complete');
+    });
+
+    it('keeps error state when incoming photo has working state', () => {
+      useStore.setState({
+        photos: [
+          { id: 2, url: '/api/photos/2/blob', state: 'error' },
+        ],
+      });
+
+      useStore.getState().setPhotos([
+        { id: 2, url: '/api/photos/2/blob', state: 'working' },
+      ]);
+
+      const photo = useStore.getState().photos.find((p) => p.id === 2);
+      expect(photo?.state).toBe('error');
+    });
+
+    it('allows progression from pending to terminal state', () => {
+      useStore.setState({
+        photos: [
+          { id: 3, url: '/api/photos/3/blob', state: 'inprogress' },
+        ],
+      });
+
+      useStore.getState().setPhotos([
+        { id: 3, url: '/api/photos/3/blob', state: 'finished' },
+      ]);
+
+      const photo = useStore.getState().photos.find((p) => p.id === 3);
+      expect(photo?.state).toBe('finished');
+    });
+
+    it('allows normal updates between non-terminal states', () => {
+      useStore.setState({
+        photos: [
+          { id: 4, url: '/api/photos/4/blob', state: 'working' },
+        ],
+      });
+
+      useStore.getState().setPhotos([
+        { id: 4, url: '/api/photos/4/blob', state: 'inprogress' },
+      ]);
+
+      const photo = useStore.getState().photos.find((p) => p.id === 4);
+      expect(photo?.state).toBe('inprogress');
+    });
+
+    it('handles new photos correctly', () => {
+      useStore.setState({ photos: [] });
+
+      useStore.getState().setPhotos([
+        { id: 5, url: '/api/photos/5/blob', state: 'working' },
+      ]);
+
+      const photos = useStore.getState().photos;
+      expect(photos).toHaveLength(1);
+      expect(photos[0].state).toBe('working');
+    });
+  });
+
+  describe('appendPhotos', () => {
+    it('applies stale protection when appending', () => {
+      useStore.setState({
+        photos: [
+          { id: 1, url: '/api/photos/1/blob', state: 'finished' },
+        ],
+      });
+
+      // Try to append the same photo with stale state
+      useStore.getState().appendPhotos(
+        [{ id: 1, url: '/api/photos/1/blob', state: 'inprogress' }],
+        null,
+        false
+      );
+
+      const photos = useStore.getState().photos;
+      expect(photos).toHaveLength(1);
+      const photo = photos.find((p) => p.id === 1);
+      expect(photo?.state).toBe('finished');
+    });
+
+    it('appends new photos normally', () => {
+      useStore.setState({
+        photos: [
+          { id: 1, url: '/api/photos/1/blob', state: 'finished' },
+        ],
+      });
+
+      useStore.getState().appendPhotos(
+        [{ id: 2, url: '/api/photos/2/blob', state: 'working' }],
+        'cursor-123',
+        true
+      );
+
+      const photos = useStore.getState().photos;
+      expect(photos).toHaveLength(2);
+      expect(useStore.getState().photosCursor).toBe('cursor-123');
+      expect(useStore.getState().photosHasMore).toBe(true);
+    });
+  });
+});

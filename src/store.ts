@@ -160,6 +160,40 @@ const isAiAnalysisComplete = (photo: Photo | null | undefined): boolean => {
   return false
 }
 
+/**
+ * Stale State Protection: Merge incoming photos with existing local photos,
+ * prioritizing terminal states over pending states to prevent cache staleness
+ * from reverting completed analysis.
+ * 
+ * Rule: If local photo is terminal (finished/error) and incoming is pending
+ * (working/inprogress), keep the local photo.
+ */
+const mergePhotosWithStaleProtection = (
+  existingPhotos: Photo[],
+  incomingPhotos: Photo[]
+): Photo[] => {
+  const existingMap = new Map(existingPhotos.map((p) => [String(p.id), p]))
+  
+  return incomingPhotos.map((incoming) => {
+    const existing = existingMap.get(String(incoming.id))
+    if (!existing) return incoming
+    
+    const existingIsTerminal = existing.state === 'finished' || existing.state === 'error'
+    const incomingIsPending = incoming.state === 'working' || incoming.state === 'inprogress'
+    
+    if (existingIsTerminal && incomingIsPending) {
+      debug('[store] stale-protection: keeping terminal state', {
+        id: existing.id,
+        existingState: existing.state,
+        incomingState: incoming.state,
+      })
+      return existing
+    }
+    
+    return incoming
+  })
+}
+
 // Minimal Zustand store for photos and ui state (polling, toast)
 const useStore = create<StoreState>((set, get) => ({
   ...createUploadPickerSlice(set, get),
@@ -353,14 +387,19 @@ const useStore = create<StoreState>((set, get) => ({
   setToolbarSeverity: (severity: Severity) => set({ toolbarSeverity: severity }),
 
   // Photos slice
-  setPhotos: (photos: Photo[]) => set({ photos }),
+  setPhotos: (photos: Photo[]) =>
+    set((state) => ({
+      photos: mergePhotosWithStaleProtection(state.photos, photos),
+    })),
   appendPhotos: (photos: Photo[], nextCursor: string | null, hasMore: boolean) =>
     set((state) => {
       // Deduplicate by photo ID
       const existingIds = new Set(state.photos.map((p) => String(p.id)))
       const newPhotos = photos.filter((p) => !existingIds.has(String(p.id)))
+      // Apply stale protection to the combined list
+      const combined = [...state.photos, ...newPhotos]
       return {
-        photos: [...state.photos, ...newPhotos],
+        photos: mergePhotosWithStaleProtection(state.photos, combined),
         photosCursor: nextCursor,
         photosHasMore: hasMore,
       }
