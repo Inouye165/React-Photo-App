@@ -148,14 +148,26 @@ const getErrorStatus = (err: unknown): number | null => {
 
 const isAiAnalysisComplete = (photo: Photo | null | undefined): boolean => {
   if (!photo) return false
+  
   // Prefer the explicit state machine from the backend.
   if (photo.state === 'finished' || photo.state === 'error') return true
 
   // Backstop: some AI failures may be encoded in text fields.
-  const caption = typeof photo.caption === 'string' ? photo.caption.trim().toLowerCase() : ''
-  const description = typeof photo.description === 'string' ? photo.description.trim().toLowerCase() : ''
+  const caption = typeof photo.caption === 'string' ? photo.caption.trim() : ''
+  const description = typeof photo.description === 'string' ? photo.description.trim() : ''
   const failedMarker = 'ai processing failed'
-  if (caption === failedMarker || description === failedMarker) return true
+  if (caption.toLowerCase() === failedMarker || description.toLowerCase() === failedMarker) return true
+
+  // Safety valve: If photo has meaningful AI-generated content, consider it complete
+  // even if state hasn't transitioned to 'finished'. This prevents infinite polling
+  // when the worker fails to update state but AI processing actually completed.
+  const hasCaption = caption.length > 0 && caption.toLowerCase() !== 'untitled'
+  const hasDescription = description.length > 0
+  
+  // If photo is in 'inprogress' state and has at least caption AND description, it's done
+  if (photo.state === 'inprogress' && hasCaption && hasDescription) {
+    return true
+  }
 
   return false
 }
