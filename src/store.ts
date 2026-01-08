@@ -499,6 +499,11 @@ const useStore = create<StoreState>((set, get) => ({
       return
     }
 
+    // When SSE streaming is active, keep spinner flags but do not start
+    // an HTTP polling loop. This prevents duplicate traffic.
+    // REMOVED: Guard clause that prevented polling when photoEventsStreamingActive.
+    // Polling now runs concurrently with SSE for maximum reliability.
+
     // Mark active immediately so repeated calls don't start competing pollers
     // before the first tick has a chance to schedule the next timeout.
     aiPollingTimers.set(key, null)
@@ -530,37 +535,15 @@ const useStore = create<StoreState>((set, get) => ({
     }
 
     const scheduleNext = (delayMs: number) => {
-      if (get().photoEventsStreamingActive) {
-        aiPollDebug('store_poll_schedule_skipped_streaming_active', { photoId: id, delayMs })
-        if (aiPollingTimers.has(key)) aiPollingTimers.delete(key)
-        return
-      }
+      // REMOVED: Guard clause that prevented scheduling when photoEventsStreamingActive.
+      // Polling now runs concurrently with SSE for maximum reliability.
       const timer = setTimeout(tick, delayMs)
       aiPollingTimers.set(key, timer)
     }
 
     const tick = async () => {
-      if (get().photoEventsStreamingActive) {
-        // Pause/stop the poller without clearing spinner flags. Polling will be
-        // resumed by a future startAiPolling call if we fall back.
-        aiPollDebug('store_poll_tick_paused_streaming_active', { photoId: id })
-        const timer = aiPollingTimers.get(key)
-        if (timer) {
-          try {
-            clearTimeout(timer)
-          } catch {
-            /* ignore */
-          }
-          try {
-            clearInterval(timer)
-          } catch {
-            /* ignore */
-          }
-        }
-        if (aiPollingTimers.has(key)) aiPollingTimers.delete(key)
-        inFlight = false
-        return
-      }
+      // REMOVED: Guard clause that paused polling when photoEventsStreamingActive.
+      // Polling now runs concurrently with SSE for maximum reliability.
 
       const elapsedMs = Date.now() - startedAt
       if (inFlight) {
