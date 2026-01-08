@@ -1,23 +1,39 @@
 import React from 'react';
 import { useNavigate } from 'react-router-dom';
+import type { NavigateFunction } from 'react-router-dom';
+import type { User } from '@supabase/supabase-js';
 import { useAuth } from './contexts/AuthContext';
 import useStore from './store';
+import type { Photo } from './types/photo';
 
-const sevStyles = {
+type Severity = 'info' | 'success' | 'warning' | 'error';
+
+interface SeverityStyle {
+  bg: string;
+  text: string;
+}
+
+const sevStyles: Record<Severity, SeverityStyle> = {
   info: { bg: '#3b82f6', text: '#f1f5f9' },
   success: { bg: '#16a34a', text: '#f0fdf4' },
   warning: { bg: '#f59e0b', text: '#1f2937' },
   error: { bg: '#dc2626', text: '#fff' },
 };
 
+interface ToolbarProps {
+  toolbarMessage?: string;
+  toolbarSeverity?: Severity;
+  onClearToolbarMessage?: () => void;
+}
+
 export default function Toolbar({
   // new: a small persistent message area in the toolbar
   toolbarMessage,
   toolbarSeverity = 'info',
   onClearToolbarMessage
-}) {
+}: ToolbarProps): React.ReactElement {
   const { user, logout } = useAuth();
-  const navigate = useNavigate();
+  const navigate: NavigateFunction = useNavigate();
   const isAuthenticated = !!user;
 
   // Connect to store
@@ -26,13 +42,13 @@ export default function Toolbar({
   const setActivePhotoId = useStore((state) => state.setActivePhotoId);
   const setShowMetadataModal = useStore((state) => state.setShowMetadataModal);
   const setMetadataPhoto = useStore((state) => state.setMetadataPhoto);
-  const activePhoto = useStore((state) => {
+  const activePhoto = useStore((state): Photo | null => {
     const activePhotoId = state.activePhotoId;
     if (activePhotoId == null) return null;
     return state.photos.find((photo) => String(photo.id) === String(activePhotoId)) || null;
   });
 
-  const handleAuthAction = () => {
+  const handleAuthAction = (): void => {
     if (isAuthenticated) {
       logout();
     } else {
@@ -43,7 +59,7 @@ export default function Toolbar({
   };
 
   // Navigate to gallery with specific view using URL query params
-  const handleViewChange = (viewName) => {
+  const handleViewChange = (viewName: 'working' | 'inprogress' | 'finished'): void => {
     setView(viewName);
     setEditingMode(null);
     setActivePhotoId(null);
@@ -53,16 +69,19 @@ export default function Toolbar({
   };
 
   // Navigate to upload page
-  const handleUploadClick = () => {
+  const handleUploadClick = (): void => {
     navigate('/upload');
   };
 
-  const handleShowMetadata = () => {
+  const handleShowMetadata = (): void => {
     if (activePhoto) {
       setMetadataPhoto(activePhoto);
       setShowMetadataModal(true);
     }
   };
+
+  const typedUser = user as User | null;
+  const severityStyle = sevStyles[toolbarSeverity] ?? sevStyles.info;
 
   return (
     <nav
@@ -111,7 +130,7 @@ export default function Toolbar({
       </div>
       <div style={{ marginLeft: "auto", display: 'flex', alignItems: 'center', gap: '12px' }}>
         {toolbarMessage ? (
-          <div style={{ display: 'flex', alignItems: 'center', gap: '8px', background: (sevStyles[toolbarSeverity]?.bg || sevStyles.info.bg), color: (sevStyles[toolbarSeverity]?.text || sevStyles.info.text), padding: '6px 10px', borderRadius: '6px', fontSize: '0.95rem' }} role="status" aria-live="polite">
+          <div style={{ display: 'flex', alignItems: 'center', gap: '8px', background: severityStyle.bg, color: severityStyle.text, padding: '6px 10px', borderRadius: '6px', fontSize: '0.95rem' }} role="status" aria-live="polite">
             <span>{toolbarMessage}</span>
             {typeof onClearToolbarMessage === 'function' && (
               <button onClick={onClearToolbarMessage} title="Dismiss" style={{ background: 'transparent', border: 'none', fontSize: '1rem', cursor: 'pointer', color: '#1f2937' }}>×</button>
@@ -134,10 +153,10 @@ export default function Toolbar({
                   fontWeight: 'bold'
                 }}
               >
-                {user?.email?.charAt(0).toUpperCase() || 'U'}
+                {typedUser?.email?.charAt(0).toUpperCase() || 'U'}
               </div>
               <span style={{ fontSize: '0.9rem', opacity: '0.9' }}>
-                {user?.email}
+                {typedUser?.email}
               </span>
             </div>
             <button
