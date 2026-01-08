@@ -91,6 +91,14 @@ export default function UploadPage() {
       const errors: string[] = [];
       const uploadedPhotoIds: number[] = [];
       
+      // DEBUG LOGGING: Log upload batch start (REMOVE AFTER FIX)
+      console.log('[DEBUG:CLIENT] Starting upload batch', {
+        fileCount: files.length,
+        analysisType,
+        analysisTypeValue: JSON.stringify(analysisType),
+        timestamp: new Date().toISOString()
+      });
+      
       for (let i = 0; i < files.length; i++) {
         const file = files[i];
         const tempId = pendingEntries[i]?.id;
@@ -101,8 +109,27 @@ export default function UploadPage() {
         } catch {
           /* no-op: error intentionally ignored */
         }
+        
+        // DEBUG LOGGING: Log upload options (REMOVE AFTER FIX)
+        console.log('[DEBUG:CLIENT] Uploading file', {
+          fileName: file.name,
+          fileSize: file.size,
+          fileType: file.type,
+          classification: analysisType,
+          classificationValue: JSON.stringify(analysisType),
+          hasThumbnail: !!thumbnailBlob
+        });
+        
         try {
           const uploadResult = await uploadPhotoToServer(file, undefined, thumbnailBlob, { classification: analysisType });
+          
+          // DEBUG LOGGING: Log upload result (REMOVE AFTER FIX)
+          console.log('[DEBUG:CLIENT] Upload result received', {
+            fileName: file.name,
+            uploadResult: uploadResult,
+            hasPhotoId: !!(uploadResult && typeof uploadResult === 'object' && 'photoId' in uploadResult)
+          });
+          
           if (bgId) markBackgroundUploadSuccess(bgId);
           
           // Track the uploaded photo ID for later processing
@@ -134,7 +161,22 @@ export default function UploadPage() {
         useStore.getState().setPhotos(photos);
         
         // Mark just-uploaded photos and start polling for state transitions
+        // DEBUG LOGGING: Log polling initialization (REMOVE AFTER FIX)
+        console.log('[DEBUG:CLIENT] Initializing polling for uploaded photos', {
+          photoIds: uploadedPhotoIds,
+          count: uploadedPhotoIds.length,
+          analysisType,
+          timestamp: new Date().toISOString()
+        });
+        
         uploadedPhotoIds.forEach((photoId) => {
+          // DEBUG LOGGING: Log individual polling start (REMOVE AFTER FIX)
+          console.log('[DEBUG:CLIENT] Starting AI polling for photo', {
+            photoId,
+            intervalMs: 1000,
+            maxIntervalMs: 5000
+          });
+          
           markPhotoAsJustUploaded(photoId);
           // Start polling to catch the transition from 'working' to 'inprogress'
           startAiPolling(photoId, { intervalMs: 1000, maxIntervalMs: 5000 });

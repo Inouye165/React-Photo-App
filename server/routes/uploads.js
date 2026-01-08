@@ -264,15 +264,47 @@ module.exports = function createUploadsRouter({ db }) {
       // (EXIF extraction, thumbnail generation, AI metadata)
       // Skip AI analysis if classification is 'none' (user opted out)
       let jobEnqueued = false;
+      
+      // DEBUG LOGGING: Log classification and AI eligibility (REMOVE AFTER FIX)
+      logger.info('[DEBUG:UPLOAD] AI job eligibility check', {
+        photoId,
+        userId: req.user.id,
+        classification: classification,
+        classificationIsNone: classification === 'none',
+        classificationValue: JSON.stringify(classification),
+        classificationLength: classification ? classification.length : 0,
+        classificationBytes: classification ? Buffer.from(classification).toString('hex') : null
+      });
+      
       try {
         if (classification !== 'none') {
+          // DEBUG LOGGING: Entering AI job queueing block (REMOVE AFTER FIX)
+          logger.info('[DEBUG:UPLOAD] Classification is NOT none, checking Redis...', { 
+            photoId,
+            classification 
+          });
+          
           const redisAvailable = await checkRedisAvailable();
+          
+          // DEBUG LOGGING: Redis availability result (REMOVE AFTER FIX)
+          logger.info('[DEBUG:UPLOAD] Redis availability check result', {
+            photoId,
+            redisAvailable,
+            redisType: typeof redisAvailable
+          });
+          
           if (redisAvailable) {
+            // DEBUG LOGGING: About to enqueue AI job (REMOVE AFTER FIX)
+            logger.info('[DEBUG:UPLOAD] Enqueuing AI job...', { photoId });
+            
             await addAIJob(insertedPhoto.id, {
               processMetadata: true,
               generateThumbnail: true
             });
             jobEnqueued = true;
+            
+            // DEBUG LOGGING: AI job enqueued successfully (REMOVE AFTER FIX)
+            logger.info('[DEBUG:UPLOAD] AI job enqueued successfully', { photoId });
             
             // CRITICAL: Transition photo from 'working' to 'inprogress' to signal AI processing has started
             // This ensures client-side polling can track the AI job and update UI accordingly
@@ -283,9 +315,24 @@ module.exports = function createUploadsRouter({ db }) {
                 updated_at: new Date().toISOString(),
               });
             logger.info('[upload] Photo transitioned to inprogress', { photoId, userId: req.user.id });
+          } else {
+            // DEBUG LOGGING: Redis not available (REMOVE AFTER FIX)
+            logger.warn('[DEBUG:UPLOAD] Redis not available, skipping AI job', { photoId });
           }
+        } else {
+          // DEBUG LOGGING: Classification is 'none', skipping AI (REMOVE AFTER FIX)
+          logger.info('[DEBUG:UPLOAD] Classification is none, skipping AI job', { 
+            photoId,
+            classification 
+          });
         }
       } catch (queueErr) {
+        // DEBUG LOGGING: Queue error caught (REMOVE AFTER FIX)
+        logger.error('[DEBUG:UPLOAD] Queue error', {
+          photoId,
+          error: queueErr.message,
+          stack: queueErr.stack
+        });
         // Queue not available - client can trigger processing manually
         logger.warn('Could not enqueue background job:', queueErr.message);
       }

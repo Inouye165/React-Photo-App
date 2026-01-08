@@ -622,6 +622,14 @@ const useStore = create<StoreState>((set, get) => ({
       inFlight = true
       attempt += 1
 
+      // DEBUG LOGGING: Log polling tick execution (REMOVE AFTER FIX)
+      console.log('[DEBUG:POLL] Polling tick executing', {
+        photoId: id,
+        attempt,
+        elapsedMs,
+        timestamp: new Date().toISOString()
+      });
+
       aiPollDebug('store_poll_tick', {
         photoId: id,
         attempt,
@@ -681,6 +689,18 @@ const useStore = create<StoreState>((set, get) => ({
 
         const isTerminal = stateValue === 'finished' || stateValue === 'error'
         const isAiComplete = isAiAnalysisComplete(photo)
+
+        // DEBUG LOGGING: Log photo state after fetch (REMOVE AFTER FIX)
+        console.log('[DEBUG:POLL] Photo state fetched', {
+          photoId: id,
+          state: stateValue,
+          isTerminal,
+          isAiComplete,
+          hasCaption: !!photo?.caption,
+          hasDescription: !!photo?.description,
+          attempt,
+          elapsedMs
+        });
 
         aiPollDebug('store_poll_result', {
           photoId: id,
