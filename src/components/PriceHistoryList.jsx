@@ -2,6 +2,15 @@ import React from 'react';
 import PropTypes from 'prop-types';
 
 /**
+ * @typedef {Object} PriceHistoryRecord
+ * @property {string|number} [id]
+ * @property {string} [date_seen]
+ * @property {string} [venue]
+ * @property {string|number} [price]
+ * @property {string} [url]
+ */
+
+/**
  * PriceHistoryList - Ledger-style display of price history records
  * 
  * Shows a scrollable table with:
@@ -9,6 +18,9 @@ import PropTypes from 'prop-types';
  * - Venue (source)
  * - Price
  * - View link (external URL)
+ */
+/**
+ * @param {{ history?: PriceHistoryRecord[]; loading?: boolean; currency?: string }} props
  */
 export default function PriceHistoryList({ history = [], loading = false, currency = 'USD' }) {
   // Format date for display
