@@ -167,6 +167,10 @@ const isAiAnalysisComplete = (photo: Photo | null | undefined): boolean => {
  * 
  * Rule: If local photo is terminal (finished/error) and incoming is pending
  * (working/inprogress), keep the local photo.
+ * 
+ * @param existingPhotos - Current photos in the store
+ * @param incomingPhotos - New photos from server (may contain stale data)
+ * @returns Merged photo list with stale protection applied
  */
 const mergePhotosWithStaleProtection = (
   existingPhotos: Photo[],
