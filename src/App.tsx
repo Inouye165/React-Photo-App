@@ -2,7 +2,7 @@ import { useEffect } from 'react';
 import { BrowserRouter, Routes, Route } from 'react-router-dom';
 import { logGlobalError } from './utils/globalLog';
 import GlobalErrorBoundary from './components/GlobalErrorBoundary.jsx';
-import MainLayout from './layouts/MainLayout.jsx';
+import MainLayout from './layouts/MainLayout';
 import SmartRouter from './components/SmartRouter.tsx';
 import IdentityGate from './components/IdentityGate.tsx';
 import PhotoGalleryPage from './pages/PhotoGalleryPage.jsx';

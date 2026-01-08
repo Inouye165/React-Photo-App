@@ -1,8 +1,11 @@
 import React, { useEffect, useState } from 'react';
 import { NavLink, useNavigate, useLocation } from 'react-router-dom';
+import type { User } from '@supabase/supabase-js';
 import { useAuth } from '../contexts/AuthContext';
+import type { UserProfile } from '../api';
 import useStore from '../store';
 import { ChevronLeft, ChevronRight, Upload, Grid3X3, Edit3, MessageSquare, Shield } from 'lucide-react';
+import type { LucideIcon } from 'lucide-react';
 import { useUnreadMessages } from '../hooks/useUnreadMessages';
 import NewMessageNotification from './NewMessageNotification';
 import UserMenu from './UserMenu';
@@ -16,47 +19,68 @@ import UserMenu from './UserMenu';
  * - Fat Finger Rule: All touch targets ≥ 44x44px
  * - PWA-ready fixed header with safe-area-inset support
  */
+
+interface AppHeaderProps {
+  rightContent?: React.ReactNode;
+}
+
+interface NavTabProps {
+  isActive: boolean;
+  onClick: () => void;
+  icon: LucideIcon;
+  label: string;
+  testId: string;
+}
+
+interface NavTabLinkProps {
+  to: string;
+  icon: LucideIcon;
+  label: string;
+  testId: string;
+  onClick?: () => void;
+}
+
 export default function AppHeader({ 
   rightContent,
-}) {
+}: AppHeaderProps): React.ReactElement {
   const navigate = useNavigate();
   const location = useLocation();
   const { user, profile } = useAuth();
   const lastEditedPhotoId = useStore(state => state.lastEditedPhotoId);
   const closePicker = useStore(state => state.pickerCommand.closePicker);
 
-  const canUseChat = Boolean(profile?.has_set_username);
+  const canUseChat = Boolean((profile as UserProfile | null)?.has_set_username);
   const { unreadCount, unreadByRoom } = useUnreadMessages(user?.id);
-  const [dismissedAtUnreadCount, setDismissedAtUnreadCount] = useState(0);
+  const [dismissedAtUnreadCount, setDismissedAtUnreadCount] = useState<number>(0);
   
   // Check if user has admin role
-  const isAdmin = user?.app_metadata?.role === 'admin';
+  const isAdmin = (user as User | null)?.app_metadata?.role === 'admin';
 
   const isGalleryPage = location.pathname === '/gallery' || location.pathname === '/';
   const isEditPage = /^\/photos\/[^/]+\/edit$/.test(location.pathname);
   const isUploadPage = location.pathname === '/upload';
 
-  const currentPhotoId = (() => {
+  const currentPhotoId = ((): string | null => {
     const match = location.pathname.match(/^\/photos\/([^/]+)(?:\/edit)?$/);
     return match ? match[1] : null;
   })();
 
-  const currentChatRoomId = (() => {
+  const currentChatRoomId = ((): string | null => {
     const match = location.pathname.match(/^\/chat\/([^/?#]+)(?:[/?#].*)?$/);
     return match ? decodeURIComponent(match[1]) : null;
   })();
 
-  const handleBack = () => {
+  const handleBack = (): void => {
     if (window.history.length > 1) {
       window.history.back();
     }
   };
 
-  const handleForward = () => {
+  const handleForward = (): void => {
     window.history.forward();
   };
 
-  const handleEditClick = () => {
+  const handleEditClick = (): void => {
     closePicker('nav-edit');
     if (currentPhotoId) {
       navigate(`/photos/${currentPhotoId}/edit`);
@@ -68,7 +92,7 @@ export default function AppHeader({
   };
 
   // Tab button component for DRY code
-  const NavTab = ({ isActive, onClick, icon: Icon, label, testId }) => (
+  const NavTab = ({ isActive, onClick, icon: Icon, label, testId }: NavTabProps): React.ReactElement => (
     <button
       onClick={onClick}
       data-testid={testId}
@@ -89,7 +113,7 @@ export default function AppHeader({
     </button>
   );
 
-  const NavTabLink = ({ to, icon: Icon, label, testId, onClick }) => (
+  const NavTabLink = ({ to, icon: Icon, label, testId, onClick }: NavTabLinkProps): React.ReactElement => (
     <NavLink
       to={to}
       onClick={onClick}
