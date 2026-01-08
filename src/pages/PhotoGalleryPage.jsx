@@ -153,9 +153,29 @@ export default function PhotoGalleryPage() {
     return sortedPhotos.filter((p) => matchesStatusFilter(p) && matchesSearch(p));
   }, [sortedPhotos, matchesStatusFilter, matchesSearch]);
 
-  // Merge pending uploads with derived photos (pending uploads remain at the top)
+  // Merge pending uploads with derived photos with deduplication
+  // If a real photo exists (even with state='working'), remove the pending placeholder
   const allPhotos = useMemo(() => {
-    return [...filteredPendingUploads, ...filteredPhotos];
+    // Create a map of real photos by filename for quick lookup
+    const realPhotosByFilename = new Map();
+    filteredPhotos.forEach((photo) => {
+      const filename = photo?.filename || photo?.original_filename || photo?.name;
+      if (filename) {
+        realPhotosByFilename.set(filename.toLowerCase(), photo);
+      }
+    });
+
+    // Filter out pending uploads that have a matching real photo
+    const deduplicatedPending = filteredPendingUploads.filter((pending) => {
+      const pendingFilename = pending?.filename || pending?.name;
+      if (!pendingFilename) return true; // Keep if no filename to match
+      
+      // Check if a real photo with this filename exists
+      const hasRealPhoto = realPhotosByFilename.has(pendingFilename.toLowerCase());
+      return !hasRealPhoto; // Only keep pending if no real photo exists
+    });
+
+    return [...deduplicatedPending, ...filteredPhotos];
   }, [filteredPendingUploads, filteredPhotos]);
 
   const hasCachedPhotos = allPhotos && allPhotos.length > 0;

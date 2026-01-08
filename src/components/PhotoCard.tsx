@@ -13,6 +13,7 @@ import formatFileSize from '../utils/formatFileSize';
 import { toUrl } from '../utils/toUrl';
 import AuthenticatedImage from './AuthenticatedImage.tsx';
 import { aiPollDebug } from '../utils/aiPollDebug';
+import useStore from '../store';
 
 type PhotoCardPhoto = Omit<Photo, 'state' | 'url'> & {
   url?: string;
@@ -123,11 +124,22 @@ export default function PhotoCard({
   const [imageLoaded, setImageLoaded] = useState(false);
   const [thumbVariant, setThumbVariant] = useState<'small' | 'large' | null>(null);
 
+  // Check if this photo was just uploaded and needs transition spinner
+  const isJustUploaded = useStore((state) => state.justUploadedPhotoIds.has(photo.id));
+  const removeJustUploadedMark = useStore((state) => state.removeJustUploadedMark);
+
   const status = getStatusBadge(photo.state);
   const title = getDisplayTitle(photo);
   const date = formatDate(photo);
   const fileSize = formatFileSize(photo.file_size);
   const access = formatAccessLevel(accessLevel);
+
+  // Remove just-uploaded mark when photo transitions away from 'working' state
+  useEffect(() => {
+    if (isJustUploaded && photo.state !== 'working') {
+      removeJustUploadedMark(photo.id);
+    }
+  }, [isJustUploaded, photo.state, photo.id, removeJustUploadedMark]);
 
   useEffect(() => {
     aiPollDebug('ui_photoCard_status', {
@@ -142,8 +154,10 @@ export default function PhotoCard({
   const canWrite =
     !!accessLevel && (accessLevel.includes('W') || accessLevel.toLowerCase().includes('write'));
 
-  // Disable interaction for uploading photos
+  // Disable interaction for uploading photos or just-uploaded photos still in 'working' state
   const isUploading = photo.state === 'uploading' || !!photo.isTemporary;
+  const isTransitioning = isJustUploaded && photo.state === 'working';
+  const showTransitionSpinner = isTransitioning;
 
   useEffect(() => {
     // Reset thumbnail variant when photo changes.
@@ -227,7 +241,7 @@ export default function PhotoCard({
         borderRadius: '24px',
         boxShadow: '0 10px 25px -5px rgba(0, 0, 0, 0.1), 0 8px 10px -6px rgba(0, 0, 0, 0.1)',
       }}
-      onClick={() => !isUploading && onSelect?.(photo)}
+      onClick={() => !isUploading && !isTransitioning && onSelect?.(photo)}
       data-testid="photo-card"
       role="article"
       aria-label={`Photo: ${title}`}
@@ -305,8 +319,19 @@ export default function PhotoCard({
           </div>
         )}
 
+        {/* Transition Spinner - for just-uploaded photos still in 'working' state */}
+        {showTransitionSpinner && !isUploading && (
+          <div className="absolute inset-0 bg-indigo-900/60 flex items-center justify-center backdrop-blur-sm">
+            <div className="text-center">
+              <div className="w-12 h-12 border-4 border-white border-t-transparent rounded-full animate-spin mb-3" />
+              <p className="text-white text-sm font-medium">Processing...</p>
+            </div>
+            <span className="sr-only">Processing</span>
+          </div>
+        )}
+
         {/* Polling Overlay */}
-        {isPolling && !isUploading && (
+        {isPolling && !isUploading && !showTransitionSpinner && (
           <div className="absolute inset-0 bg-black/40 flex items-center justify-center">
             <div className="w-8 h-8 border-3 border-white border-t-transparent rounded-full animate-spin" />
             <span className="sr-only">Processing</span>
