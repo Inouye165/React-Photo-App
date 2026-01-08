@@ -136,10 +136,10 @@ export default function UploadPage() {
         // Mark just-uploaded photos and start polling for state transitions
         // Only poll if AI analysis was requested (classification !== 'none')
         uploadedPhotoIds.forEach((photoId) => {
-          markPhotoAsJustUploaded(photoId);
-          
-          // Skip polling if user opted out of AI analysis
+          // Only show transition spinner and poll if AI analysis is requested
+          // For 'none' classification, photo stays in 'working' state with no processing
           if (analysisType !== 'none') {
+            markPhotoAsJustUploaded(photoId);
             // Start polling to catch the transition from 'working' to 'inprogress' to 'finished'
             startAiPolling(photoId, { intervalMs: 1000, maxIntervalMs: 5000 });
           }
