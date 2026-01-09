@@ -240,6 +240,10 @@ async function fetchFollowingSafeRedirects(safeUrl, fetchOptions, { allowedHosts
     // 4. Credential blocking - URLs with embedded credentials are rejected
     // 5. Redirect validation - Each redirect is re-validated against the same rules
     const sanitizedUrl = currentSafeUrl.toSanitizedString();
+    // CodeQL: This is a false positive. The URL is validated through validateUrlForProxy()
+    // which enforces: allowlist, DNS resolution (blocks private IPs), protocol, and credentials.
+    // See SsrfSafeUrl class and validateUrlForProxy() function above.
+    // lgtm[js/request-forgery]
     const res = await fetch(sanitizedUrl, { ...fetchOptions, redirect: 'manual' });
 
     if (res.status >= 300 && res.status < 400 && res.headers && res.headers.get('location')) {
