@@ -25,11 +25,19 @@ describe('Image Proxy Route', () => {
     process.env.NODE_ENV = 'test';
     process.env.IMAGE_PROXY_ALLOWED_HOSTS = 'example.com';
     global.fetch = jest.fn();
+
+    jest.resetModules();
+    jest.doMock('dns', () => ({
+      promises: {
+        lookup: jest.fn().mockResolvedValue([{ address: '93.184.216.34', family: 4 }]),
+      },
+    }));
   });
 
   afterEach(() => {
     delete process.env.IMAGE_PROXY_ALLOWED_HOSTS;
     jest.resetAllMocks();
+    jest.dontMock('dns');
   });
 
   it('forwards Range and returns key upstream headers', async () => {

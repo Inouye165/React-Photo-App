@@ -3,6 +3,8 @@
 const express = require('express');
 const dns = require('dns').promises;
 const net = require('net');
+const ipaddr = require('ipaddr.js');
+const { Agent } = require('undici');
 const { Readable } = require('stream');
 const { pipeline } = require('stream/promises');
 
@@ -19,7 +21,7 @@ class SsrfSafeUrl {
    * @param {string} search - URL search/query string
    * @param {string} hash - URL hash
    */
-  constructor(protocol, hostname, port, pathname, search, hash) {
+  constructor(protocol, hostname, port, pathname, search, hash, pinnedAddress, pinnedFamily) {
     // Store validated components as immutable primitives
     this._protocol = String(protocol);
     this._hostname = String(hostname);
@@ -27,6 +29,8 @@ class SsrfSafeUrl {
     this._pathname = String(pathname || '/');
     this._search = String(search || '');
     this._hash = String(hash || '');
+    this._pinnedAddress = pinnedAddress ? String(pinnedAddress) : '';
+    this._pinnedFamily = pinnedFamily ? Number(pinnedFamily) : 0;
     Object.freeze(this);
   }
 
@@ -47,6 +51,14 @@ class SsrfSafeUrl {
 
   get protocol() {
     return this._protocol;
+  }
+
+  get pinnedAddress() {
+    return this._pinnedAddress;
+  }
+
+  get pinnedFamily() {
+    return this._pinnedFamily;
   }
 }
 
@@ -105,13 +117,22 @@ async function validateUrlForProxy(url, allowedHosts, options = {}) {
   }
 
   // 4. DNS/IP validation (blocks private IPs) - use validated hostname
-  await assertHostSafeForProxy(validatedHostname);
+  const pinned = await assertHostSafeForProxy(validatedHostname);
 
   // All checks passed - construct SsrfSafeUrl from VALIDATED components
   // validatedProtocol is a literal string ('https:' or 'http:')
   // validatedHostname comes from allowlist (trusted source)
   // pathname/search/hash are safe to pass through (they don't affect SSRF targeting)
-  return new SsrfSafeUrl(validatedProtocol, validatedHostname, port, pathname, search, hash);
+  return new SsrfSafeUrl(
+    validatedProtocol,
+    validatedHostname,
+    port,
+    pathname,
+    search,
+    hash,
+    pinned.address,
+    pinned.family
+  );
 }
 
 function parseAllowedHosts(raw) {
@@ -157,66 +178,112 @@ function hostMatchesAllowlist(hostname, allowedHosts) {
 }
 
 function isPrivateIp(ip) {
-  if (!ip) return true;
+  return !isPublicIp(ip);
+}
+
+function isPublicIp(ip) {
+  if (!ip) return false;
   const normalized = String(ip);
+  const family = net.isIP(normalized);
+  if (!family) return false;
 
-  if (net.isIP(normalized) === 4) {
-    const parts = normalized.split('.').map((n) => Number(n));
-    if (parts.length !== 4 || parts.some((n) => Number.isNaN(n))) return true;
+  try {
+    let addr = ipaddr.parse(normalized);
+    if (addr.kind() === 'ipv6' && addr.isIPv4MappedAddress()) {
+      addr = addr.toIPv4Address();
+    }
 
-    const [a, b] = parts;
-    if (a === 10) return true;
-    if (a === 127) return true;
-    if (a === 169 && b === 254) return true;
-    if (a === 192 && b === 168) return true;
-    if (a === 172 && b >= 16 && b <= 31) return true;
-
+    const range = addr.range();
+    // Only allow globally routable unicast addresses.
+    return range === 'unicast';
+  } catch {
     return false;
   }
+}
 
-  if (net.isIP(normalized) === 6) {
-    const lower = normalized.toLowerCase();
-    if (lower === '::1') return true;
-    if (lower.startsWith('fc') || lower.startsWith('fd')) return true; // fc00::/7 unique local
-    if (lower.startsWith('fe80')) return true; // fe80::/10 link-local
-    return false;
-  }
+async function resolveHostnameToAddresses(hostname) {
+  // dns.lookup returns an array of { address, family } when all=true.
+  return dns.lookup(hostname, { all: true, verbatim: true });
+}
 
-  return true;
+function pickPreferredPublicAddress(records) {
+  const ipv4 = (records || []).find((r) => r && r.family === 4);
+  if (ipv4) return ipv4;
+  const ipv6 = (records || []).find((r) => r && r.family === 6);
+  if (ipv6) return ipv6;
+  return null;
 }
 
 async function assertHostSafeForProxy(hostname) {
-  // Defense-in-depth: in production, resolve DNS and block private IPs.
-  // In non-prod/test, we skip DNS resolution to keep dev/test deterministic.
-  if (process.env.NODE_ENV !== 'production') {
-    // Still block direct IP literals.
-    if (net.isIP(hostname)) {
-      if (isPrivateIp(hostname)) {
-        const err = new Error('Target host resolves to a private IP');
-        err.code = 'IMAGE_PROXY_PRIVATE_IP';
-        throw err;
-      }
-    }
-    return;
+  // Network-layer validation:
+  // 1) Resolve hostname to IP addresses
+  // 2) Reject any private/reserved/non-public address
+  // 3) Return one pinned public IP to be used by the outbound connection
+
+  const h = String(hostname || '').trim();
+  if (!h) {
+    const err = new Error('Target host is required');
+    err.code = 'IMAGE_PROXY_PRIVATE_IP';
+    throw err;
   }
 
-  if (net.isIP(hostname)) {
-    if (isPrivateIp(hostname)) {
+  // If the hostname is already an IP literal, validate it directly.
+  if (net.isIP(h)) {
+    if (!isPublicIp(h)) {
       const err = new Error('Target host resolves to a private IP');
       err.code = 'IMAGE_PROXY_PRIVATE_IP';
       throw err;
     }
-    return;
+    return { address: h, family: net.isIP(h) };
   }
 
-  const lookups = await dns.lookup(hostname, { all: true, verbatim: true });
-  for (const rec of lookups || []) {
-    if (isPrivateIp(rec.address)) {
+  let lookups;
+  try {
+    lookups = await resolveHostnameToAddresses(h);
+  } catch {
+    const err = new Error('DNS resolution failed');
+    err.code = 'IMAGE_PROXY_PRIVATE_IP';
+    throw err;
+  }
+
+  if (!Array.isArray(lookups) || lookups.length === 0) {
+    const err = new Error('DNS resolution failed');
+    err.code = 'IMAGE_PROXY_PRIVATE_IP';
+    throw err;
+  }
+
+  for (const rec of lookups) {
+    if (!rec || !isPublicIp(rec.address)) {
       const err = new Error('Target host resolves to a private IP');
       err.code = 'IMAGE_PROXY_PRIVATE_IP';
       throw err;
     }
   }
+
+  const picked = pickPreferredPublicAddress(lookups);
+  if (!picked) {
+    const err = new Error('DNS resolution failed');
+    err.code = 'IMAGE_PROXY_PRIVATE_IP';
+    throw err;
+  }
+
+  return { address: picked.address, family: picked.family };
+}
+
+function createPinnedDispatcher(pinnedAddress, pinnedFamily) {
+  const address = String(pinnedAddress || '');
+  const family = Number(pinnedFamily || 0);
+  if (!address || !family) return null;
+
+  // Pin outbound connections to the already-validated public IP.
+  // This prevents DNS rebinding between validation and connection.
+  return new Agent({
+    connect: {
+      lookup(_hostname, _options, callback) {
+        callback(null, address, family);
+      },
+    },
+  });
 }
 
 function pickUpstreamHeadersForClient(upstreamHeaders) {
@@ -263,6 +330,7 @@ async function fetchFollowingSafeRedirects(safeUrl, fetchOptions, { allowedHosts
   }
 
   let currentSafeUrl = safeUrl;
+  let cleanup = null;
 
   for (let i = 0; i <= maxRedirects; i += 1) {
     // SECURITY: The URL is reconstructed from validated components in SsrfSafeUrl.
@@ -270,7 +338,20 @@ async function fetchFollowingSafeRedirects(safeUrl, fetchOptions, { allowedHosts
     // Protocol is restricted to http/https (https-only in production).
     // Credentials are blocked. Redirects are re-validated through validateUrlForProxy().
     const sanitizedUrl = currentSafeUrl.toSanitizedString();
-    const res = await fetch(sanitizedUrl, { ...fetchOptions, redirect: 'manual' });
+
+    // codeql[js/request-forgery] - URL host is allowlisted; DNS resolves to public IPs only; connection is pinned to the validated IP (DNS-rebinding resistant).
+    const dispatcher = createPinnedDispatcher(currentSafeUrl.pinnedAddress, currentSafeUrl.pinnedFamily);
+    cleanup = dispatcher
+      ? async () => {
+          try {
+            await dispatcher.close();
+          } catch {
+            // ignore
+          }
+        }
+      : null;
+
+    const res = await fetch(sanitizedUrl, { ...fetchOptions, redirect: 'manual', dispatcher });
 
     if (res.status >= 300 && res.status < 400 && res.headers && res.headers.get('location')) {
       const loc = res.headers.get('location');
@@ -294,7 +375,7 @@ async function fetchFollowingSafeRedirects(safeUrl, fetchOptions, { allowedHosts
       continue;
     }
 
-    return res;
+    return { res, cleanup };
   }
 
   throw new Error('Too many redirects');
@@ -367,7 +448,7 @@ function createImageProxyRouter() {
       const timeout = setTimeout(() => controller.abort(), timeoutMs);
 
       // Pass the validated SsrfSafeUrl instance to fetchFollowingSafeRedirects
-      const upstreamRes = await fetchFollowingSafeRedirects(
+      const { res: upstreamRes, cleanup } = await fetchFollowingSafeRedirects(
         validatedUrl,
         {
           method: req.method,
@@ -398,12 +479,14 @@ function createImageProxyRouter() {
 
       // HEAD should not include a body
       if (req.method === 'HEAD') {
+        if (cleanup) await cleanup();
         return res.end();
       }
 
       // Stream response body
       if (!upstreamRes.body) {
         const buf = Buffer.from(await upstreamRes.arrayBuffer());
+        if (cleanup) await cleanup();
         return res.send(buf);
       }
 
@@ -414,16 +497,19 @@ function createImageProxyRouter() {
       if (isWebReadableStream) {
         const nodeStream = Readable.fromWeb(body);
         await pipeline(nodeStream, res);
+        if (cleanup) await cleanup();
         return undefined;
       }
 
       if (isNodeReadableStream) {
         await pipeline(body, res);
+        if (cleanup) await cleanup();
         return undefined;
       }
 
       // Fallback: buffer
       const buf = Buffer.from(await upstreamRes.arrayBuffer());
+      if (cleanup) await cleanup();
       return res.send(buf);
     } catch (err) {
       const message = err instanceof Error ? err.message : 'Image proxy failed';
