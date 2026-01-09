@@ -12,24 +12,18 @@ function parseAllowedHosts(raw) {
     .split(',')
     .map((s) => s.trim())
     .filter(Boolean)
-    .map((h) => h.toLowerCase());
+    .map((h) => h.toLowerCase())
+    // Only allow explicit hostnames. Patterns (e.g. "*.example.com" or ".example.com")
+    // are intentionally excluded for SSRF defense.
+    .filter((h) => !h.includes('*') && !h.startsWith('.'));
 }
 
 function pickExplicitAllowlistedHost(hostname, allowedHosts) {
   const h = String(hostname || '').toLowerCase();
   if (!h) return null;
 
-  // For SSRF defense and to help static analysis, we only treat *explicit*
-  // hostnames as allowlisted. Suffix patterns (e.g. ".example.com" or
-  // "*.example.com") are intentionally not considered a hard allowlist here.
-  for (const entry of allowedHosts) {
-    if (!entry) continue;
-    if (entry.includes('*')) continue;
-    if (entry.startsWith('.')) continue;
-    if (entry === h) return entry;
-  }
-
-  return null;
+  // `allowedHosts` is pre-filtered to contain only explicit hostnames.
+  return allowedHosts.includes(h) ? h : null;
 }
 
 function isPrivateIp(ip) {
@@ -142,12 +136,8 @@ function normalizeAndValidateProxyTarget(rawUrl, { allowedHosts }) {
     throw err;
   }
 
-  // Normalize host and strip any non-standard ports.
-  target.hostname = allowlistedHost;
-  target.username = '';
-  target.password = '';
-  target.hash = '';
-
+  // Validate and normalize ports.
+  let normalizedPort = '';
   if (target.port) {
     const port = Number(target.port);
     const allowedPorts = new Set([80, 443]);
@@ -162,6 +152,8 @@ function normalizeAndValidateProxyTarget(rawUrl, { allowedHosts }) {
       err.code = 'IMAGE_PROXY_PORT_NOT_ALLOWED';
       throw err;
     }
+
+    normalizedPort = String(port);
   }
 
   // Basic path hardening (prevents weirdness like backslashes and traversal).
@@ -171,7 +163,18 @@ function normalizeAndValidateProxyTarget(rawUrl, { allowedHosts }) {
     throw err;
   }
 
-  return target;
+  // Reconstruct a fresh URL from trusted components. This breaks the taint chain
+  // (CodeQL) from the original user-provided URL while keeping the validated
+  // path/query.
+  const base = `${target.protocol}//${allowlistedHost}${normalizedPort ? `:${normalizedPort}` : ''}`;
+  const safe = new URL(base);
+  safe.pathname = target.pathname;
+  safe.search = target.search;
+  safe.hash = '';
+  safe.username = '';
+  safe.password = '';
+
+  return safe;
 }
 
 function pickUpstreamHeadersForClient(upstreamHeaders) {
