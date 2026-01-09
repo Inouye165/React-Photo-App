@@ -15,19 +15,21 @@ function parseAllowedHosts(raw) {
     .map((h) => h.toLowerCase());
 }
 
-function hostMatchesAllowlist(hostname, allowedHosts) {
+function pickExplicitAllowlistedHost(hostname, allowedHosts) {
   const h = String(hostname || '').toLowerCase();
-  if (!h) return false;
+  if (!h) return null;
 
+  // For SSRF defense and to help static analysis, we only treat *explicit*
+  // hostnames as allowlisted. Suffix patterns (e.g. ".example.com" or
+  // "*.example.com") are intentionally not considered a hard allowlist here.
   for (const entry of allowedHosts) {
-    if (entry === h) return true;
-
-    // Allow suffix matching via patterns like ".example.com" or "*.example.com"
-    const suffix = entry.startsWith('*.') ? entry.slice(1) : entry;
-    if (suffix.startsWith('.') && h.endsWith(suffix)) return true;
+    if (!entry) continue;
+    if (entry.includes('*')) continue;
+    if (entry.startsWith('.')) continue;
+    if (entry === h) return entry;
   }
 
-  return false;
+  return null;
 }
 
 function isPrivateIp(ip) {
@@ -61,8 +63,8 @@ function isPrivateIp(ip) {
 
 async function assertHostSafeForProxy(hostname) {
   // Defense-in-depth: in production, resolve DNS and block private IPs.
-  // In non-prod/test, we skip DNS resolution to keep dev/test deterministic.
-  if (process.env.NODE_ENV !== 'production') {
+  // In test, we skip DNS resolution to keep unit tests deterministic.
+  if (process.env.NODE_ENV === 'test') {
     // Still block direct IP literals.
     if (net.isIP(hostname)) {
       if (isPrivateIp(hostname)) {
@@ -91,6 +93,85 @@ async function assertHostSafeForProxy(hostname) {
       throw err;
     }
   }
+}
+
+function normalizeAndValidateProxyTarget(rawUrl, { allowedHosts }) {
+  let target;
+  try {
+    target = new URL(rawUrl);
+  } catch {
+    const err = new Error('Invalid url');
+    err.code = 'IMAGE_PROXY_INVALID_URL';
+    throw err;
+  }
+
+  // No credentials in URL
+  if (target.username || target.password) {
+    const err = new Error('URL credentials are not allowed');
+    err.code = 'IMAGE_PROXY_CREDENTIALS';
+    throw err;
+  }
+
+  // Protocol restrictions
+  const isHttp = target.protocol === 'http:';
+  const isHttps = target.protocol === 'https:';
+  if (!isHttp && !isHttps) {
+    const err = new Error('Only http/https URLs are supported');
+    err.code = 'IMAGE_PROXY_PROTOCOL';
+    throw err;
+  }
+
+  if (isHttp && process.env.NODE_ENV === 'production') {
+    const err = new Error('HTTP URLs are not allowed in production');
+    err.code = 'IMAGE_PROXY_HTTP_IN_PROD';
+    throw err;
+  }
+
+  // Allowlist: secure-by-default
+  if (!allowedHosts.length) {
+    const err = new Error('Image proxy is not configured');
+    err.code = 'IMAGE_PROXY_NOT_CONFIGURED';
+    throw err;
+  }
+
+  // Only allow explicit hostnames from the server-provided allowlist.
+  const allowlistedHost = pickExplicitAllowlistedHost(target.hostname, allowedHosts);
+  if (!allowlistedHost) {
+    const err = new Error('Target host not allowlisted');
+    err.code = 'IMAGE_PROXY_HOST_NOT_ALLOWED';
+    throw err;
+  }
+
+  // Normalize host and strip any non-standard ports.
+  target.hostname = allowlistedHost;
+  target.username = '';
+  target.password = '';
+  target.hash = '';
+
+  if (target.port) {
+    const port = Number(target.port);
+    const allowedPorts = new Set([80, 443]);
+    if (!Number.isInteger(port) || !allowedPorts.has(port)) {
+      const err = new Error('Target port not allowed');
+      err.code = 'IMAGE_PROXY_PORT_NOT_ALLOWED';
+      throw err;
+    }
+
+    if (process.env.NODE_ENV === 'production' && port !== 443) {
+      const err = new Error('Target port not allowed in production');
+      err.code = 'IMAGE_PROXY_PORT_NOT_ALLOWED';
+      throw err;
+    }
+  }
+
+  // Basic path hardening (prevents weirdness like backslashes and traversal).
+  if (target.pathname.includes('\\') || target.pathname.includes('..')) {
+    const err = new Error('Target path not allowed');
+    err.code = 'IMAGE_PROXY_PATH_NOT_ALLOWED';
+    throw err;
+  }
+
+  return target;
 }
 
 function pickUpstreamHeadersForClient(upstreamHeaders) {
@@ -131,38 +212,16 @@ function buildUpstreamRequestHeaders(req) {
 }
 
 async function fetchFollowingSafeRedirects(url, fetchOptions, { allowedHosts, maxRedirects = 3 }) {
-  let current = new URL(url);
+  let current = normalizeAndValidateProxyTarget(url, { allowedHosts });
+  await assertHostSafeForProxy(current.hostname);
 
   for (let i = 0; i <= maxRedirects; i += 1) {
-    // SECURITY: This fetch is protected against SSRF via multiple layers:
-    // 1. hostMatchesAllowlist() - Only explicitly allowed hosts can be accessed
-    // 2. assertHostSafeForProxy() - DNS resolution blocks private/internal IPs
-    // 3. Protocol restriction - Only http/https allowed (https-only in production)
-    // 4. Credential blocking - URLs with embedded credentials are rejected
-    // 5. Redirect validation - Each redirect is re-validated against the same rules
-    // lgtm[js/request-forgery]
     const res = await fetch(current.toString(), { ...fetchOptions, redirect: 'manual' });
 
     if (res.status >= 300 && res.status < 400 && res.headers && res.headers.get('location')) {
       const loc = res.headers.get('location');
-      const nextUrl = new URL(loc, current);
-
-      if (nextUrl.username || nextUrl.password) {
-        throw new Error('Credentials in redirect URL are not allowed');
-      }
-
-      if (!['https:', 'http:'].includes(nextUrl.protocol)) {
-        throw new Error('Redirect protocol not allowed');
-      }
-
-      if (nextUrl.protocol === 'http:' && process.env.NODE_ENV === 'production') {
-        throw new Error('HTTP redirects not allowed in production');
-      }
-
-      if (!hostMatchesAllowlist(nextUrl.hostname, allowedHosts)) {
-        throw new Error('Redirect host not allowlisted');
-      }
-
+      const candidate = new URL(loc, current);
+      const nextUrl = normalizeAndValidateProxyTarget(candidate.toString(), { allowedHosts });
       await assertHostSafeForProxy(nextUrl.hostname);
 
       // Exhaust body to avoid resource leaks before redirecting
@@ -205,38 +264,7 @@ function createImageProxyRouter() {
         return res.status(400).json({ success: false, error: 'url query param is required' });
       }
 
-      let target;
-      try {
-        target = new URL(rawUrl);
-      } catch {
-        return res.status(400).json({ success: false, error: 'Invalid url' });
-      }
-
-      // No credentials in URL
-      if (target.username || target.password) {
-        return res.status(400).json({ success: false, error: 'URL credentials are not allowed' });
-      }
-
-      // Protocol restrictions
-      const isHttp = target.protocol === 'http:';
-      const isHttps = target.protocol === 'https:';
-      if (!isHttp && !isHttps) {
-        return res.status(400).json({ success: false, error: 'Only http/https URLs are supported' });
-      }
-
-      if (isHttp && process.env.NODE_ENV === 'production') {
-        return res.status(400).json({ success: false, error: 'HTTP URLs are not allowed in production' });
-      }
-
-      // Allowlist: secure-by-default
-      if (!allowedHosts.length) {
-        return res.status(403).json({ success: false, error: 'Image proxy is not configured' });
-      }
-
-      if (!hostMatchesAllowlist(target.hostname, allowedHosts)) {
-        return res.status(403).json({ success: false, error: 'Target host not allowlisted' });
-      }
-
+      const target = normalizeAndValidateProxyTarget(rawUrl, { allowedHosts });
       await assertHostSafeForProxy(target.hostname);
 
       const controller = new AbortController();
@@ -310,6 +338,33 @@ function createImageProxyRouter() {
 
       if (err && typeof err === 'object' && err.code === 'IMAGE_PROXY_PRIVATE_IP') {
         return res.status(403).json({ success: false, error: 'Target not allowed' });
+      }
+
+      if (err && typeof err === 'object' && typeof err.code === 'string') {
+        const code = err.code;
+        const clientMsg =
+          code === 'IMAGE_PROXY_INVALID_URL'
+            ? 'Invalid url'
+            : code === 'IMAGE_PROXY_CREDENTIALS'
+              ? 'URL credentials are not allowed'
+              : code === 'IMAGE_PROXY_PROTOCOL'
+                ? 'Only http/https URLs are supported'
+                : code === 'IMAGE_PROXY_HTTP_IN_PROD'
+                  ? 'HTTP URLs are not allowed in production'
+                  : code === 'IMAGE_PROXY_NOT_CONFIGURED'
+                    ? 'Image proxy is not configured'
+                    : code === 'IMAGE_PROXY_HOST_NOT_ALLOWED'
+                      ? 'Target host not allowlisted'
+                      : code === 'IMAGE_PROXY_PORT_NOT_ALLOWED'
+                        ? 'Target port not allowed'
+                        : code === 'IMAGE_PROXY_PATH_NOT_ALLOWED'
+                          ? 'Target path not allowed'
+                          : null;
+
+        if (clientMsg) {
+          const status = code === 'IMAGE_PROXY_NOT_CONFIGURED' ? 403 : 400;
+          return res.status(status).json({ success: false, error: clientMsg });
+        }
       }
 
       return res.status(502).json({ success: false, error: message });
