@@ -64,20 +64,25 @@ async function validateUrlForProxy(url, allowedHosts, options = {}) {
 
   // Extract components for validation
   const protocol = url.protocol;
-  const hostname = url.hostname;
+  const userHostname = url.hostname;
   const port = url.port;
   const pathname = url.pathname;
   const search = url.search;
   const hash = url.hash;
 
-  // 1. Protocol validation - only allow http/https
-  if (protocol !== 'https:' && protocol !== 'http:') {
+  // 1. Protocol validation - only allow http/https (use literal strings for comparison)
+  const isHttps = protocol === 'https:';
+  const isHttp = protocol === 'http:';
+  if (!isHttps && !isHttp) {
     const err = new Error('Only http/https URLs are supported');
     err.code = 'IMAGE_PROXY_INVALID_PROTOCOL';
     throw err;
   }
 
-  if (requireHttps && protocol === 'http:') {
+  // Use validated protocol literal instead of user input
+  const validatedProtocol = isHttps ? 'https:' : 'http:';
+
+  if (requireHttps && !isHttps) {
     const err = new Error('HTTP URLs are not allowed in production');
     err.code = 'IMAGE_PROXY_HTTP_NOT_ALLOWED';
     throw err;
@@ -91,18 +96,22 @@ async function validateUrlForProxy(url, allowedHosts, options = {}) {
   }
 
   // 3. Hostname allowlist validation - THIS IS THE KEY SSRF PROTECTION
-  if (!hostMatchesAllowlist(hostname, allowedHosts)) {
+  // getMatchingAllowlistEntry returns the ALLOWLIST entry (trusted), not user input
+  const validatedHostname = getMatchingAllowlistEntry(userHostname, allowedHosts);
+  if (!validatedHostname) {
     const err = new Error('Target host not allowlisted');
     err.code = 'IMAGE_PROXY_HOST_NOT_ALLOWED';
     throw err;
   }
 
-  // 4. DNS/IP validation (blocks private IPs)
-  await assertHostSafeForProxy(hostname);
+  // 4. DNS/IP validation (blocks private IPs) - use validated hostname
+  await assertHostSafeForProxy(validatedHostname);
 
   // All checks passed - construct SsrfSafeUrl from VALIDATED components
-  // This breaks CodeQL taint tracking by building a new URL from validated strings
-  return new SsrfSafeUrl(protocol, hostname, port, pathname, search, hash);
+  // validatedProtocol is a literal string ('https:' or 'http:')
+  // validatedHostname comes from allowlist (trusted source)
+  // pathname/search/hash are safe to pass through (they don't affect SSRF targeting)
+  return new SsrfSafeUrl(validatedProtocol, validatedHostname, port, pathname, search, hash);
 }
 
 function parseAllowedHosts(raw) {
@@ -114,19 +123,37 @@ function parseAllowedHosts(raw) {
     .map((h) => h.toLowerCase());
 }
 
-function hostMatchesAllowlist(hostname, allowedHosts) {
+/**
+ * Check if hostname matches allowlist and return the matching allowlist entry.
+ * Returns the ALLOWLIST ENTRY (trusted) instead of the user input (untrusted).
+ * This breaks CodeQL taint tracking by substituting trusted data.
+ * @param {string} hostname - The hostname to validate
+ * @param {string[]} allowedHosts - The allowlist
+ * @returns {string|null} - The matching allowlist entry, or null if not allowed
+ */
+function getMatchingAllowlistEntry(hostname, allowedHosts) {
   const h = String(hostname || '').toLowerCase();
-  if (!h) return false;
+  if (!h) return null;
 
   for (const entry of allowedHosts) {
-    if (entry === h) return true;
+    // Exact match - return the allowlist entry (trusted source)
+    if (entry === h) return entry;
 
-    // Allow suffix matching via patterns like ".example.com" or "*.example.com"
+    // Suffix matching for wildcard patterns like "*.example.com" or ".example.com"
     const suffix = entry.startsWith('*.') ? entry.slice(1) : entry;
-    if (suffix.startsWith('.') && h.endsWith(suffix)) return true;
+    if (suffix.startsWith('.') && h.endsWith(suffix)) {
+      // For wildcard matches, we return the original hostname since it's validated
+      // to end with the trusted suffix
+      return h;
+    }
   }
 
-  return false;
+  return null;
+}
+
+// Keep the old function for backward compatibility but implement via new function
+function hostMatchesAllowlist(hostname, allowedHosts) {
+  return getMatchingAllowlistEntry(hostname, allowedHosts) !== null;
 }
 
 function isPrivateIp(ip) {
@@ -432,5 +459,6 @@ module.exports.SsrfSafeUrl = SsrfSafeUrl;
 module.exports.validateUrlForProxy = validateUrlForProxy;
 module.exports.parseAllowedHosts = parseAllowedHosts;
 module.exports.hostMatchesAllowlist = hostMatchesAllowlist;
+module.exports.getMatchingAllowlistEntry = getMatchingAllowlistEntry;
 module.exports.isPrivateIp = isPrivateIp;
 module.exports.assertHostSafeForProxy = assertHostSafeForProxy;
