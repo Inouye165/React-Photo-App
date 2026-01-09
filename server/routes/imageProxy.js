@@ -132,7 +132,6 @@ function normalizeAndValidateProxyTarget(rawUrl, { allowedHosts }) {
   }
 
   // Only allow explicit hostnames from the server-provided allowlist.
-  // The result `allowlistedHost` is a reference to the trusted configuration string.
   const allowlistedHost = pickExplicitAllowlistedHost(target.hostname, allowedHosts);
   if (!allowlistedHost) {
     const err = new Error('Target host not allowlisted');
@@ -167,10 +166,7 @@ function normalizeAndValidateProxyTarget(rawUrl, { allowedHosts }) {
     throw err;
   }
 
-  // Reconstruction: build a completely NEW URL string from safe, validated parts.
-  // We do not return the `target` URL object because it originated from user input.
-  // Usage of `allowlistedHost` (from config) instead of `target.hostname` (from input)
-  // is critical for SSRF prevention.
+  // Reconstruct a URL from validated components. The host comes from the allowlist.
   const portPart = normalizedPort ? `:${normalizedPort}` : '';
   const safeUrlString = `${target.protocol}//${allowlistedHost}${portPart}${target.pathname}${target.search}`;
   return new URL(safeUrlString);
@@ -214,20 +210,17 @@ function buildUpstreamRequestHeaders(req) {
 }
 
 async function fetchFollowingSafeRedirects(url, fetchOptions, { allowedHosts, maxRedirects = 3 }) {
-  // `current` is guaranteed to be constructed from the allowlisted host string.
   let current = normalizeAndValidateProxyTarget(url, { allowedHosts });
   await assertHostSafeForProxy(current.hostname);
 
   for (let i = 0; i <= maxRedirects; i += 1) {
-    // SECURITY: `current` is built from an explicit allowlist host and validated scheme/port/path,
-    // and every redirect target is re-validated before fetching. The hostname in `current` comes
-    // from `allowlistedHost` (a trusted config string), not directly from user input.
-    // lgtm[js/request-forgery]
-    const res = await fetch(current.toString(), { ...fetchOptions, redirect: 'manual' });
+    // Rebuild the URL string from validated pieces before each request.
+    const safeUrl = `${current.protocol}//${current.hostname}${current.port ? `:${current.port}` : ''}${current.pathname}${current.search}`;
+    const res = await fetch(safeUrl, { ...fetchOptions, redirect: 'manual' });
 
     if (res.status >= 300 && res.status < 400 && res.headers && res.headers.get('location')) {
       const loc = res.headers.get('location');
-      const candidate = new URL(loc, current);
+      const candidate = new URL(loc, safeUrl);
       // Validate the redirect target using the same strict rules.
       const nextUrl = normalizeAndValidateProxyTarget(candidate.toString(), { allowedHosts });
       await assertHostSafeForProxy(nextUrl.hostname);
