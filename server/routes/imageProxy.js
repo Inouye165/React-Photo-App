@@ -219,10 +219,11 @@ async function fetchFollowingSafeRedirects(url, fetchOptions, { allowedHosts, ma
   await assertHostSafeForProxy(current.hostname);
 
   for (let i = 0; i <= maxRedirects; i += 1) {
+    // SECURITY: `current` is built from an explicit allowlist host and validated scheme/port/path,
+    // and every redirect target is re-validated before fetching. The hostname in `current` comes
+    // from `allowlistedHost` (a trusted config string), not directly from user input.
     // lgtm[js/request-forgery]
-    // codeql[js/request-forgery] `current` is built from an explicit allowlist host and validated scheme/port/path,
-    // and every redirect target is re-validated before fetching.
-    const res = await fetch(current.toString(), { ...fetchOptions, redirect: 'manual' }); // lgtm[js/request-forgery]
+    const res = await fetch(current.toString(), { ...fetchOptions, redirect: 'manual' });
 
     if (res.status >= 300 && res.status < 400 && res.headers && res.headers.get('location')) {
       const loc = res.headers.get('location');
@@ -254,7 +255,7 @@ async function fetchFollowingSafeRedirects(url, fetchOptions, { allowedHosts, ma
  * GET /api/image-proxy?url=https://...
  *
  * Goals:
- * - Stream bytes (don’t buffer large images)
+ * - Stream bytes (don't buffer large images)
  * - Forward the important image headers (Content-Type, ETag, Range support)
  * - Prevent SSRF / open-proxy abuse via strict allowlist
  */
