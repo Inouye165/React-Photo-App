@@ -45,11 +45,17 @@ module.exports = function createPrivilegeRouter({ db }) {
         });
 
         // Determine privileges based on ownership
+        // SECURITY: We use Map.get() which is safe against prototype pollution
+        // because Map uses internal storage, not object prototype chain.
+        // Additionally, we validate each filename with isSafePropertyKey() before use.
+        // The results are pushed to an array (not set as object keys) to prevent injection.
         const privileges = [];
         filenames.forEach(filename => {
+          // lgtm[js/remote-property-injection] - Map.get() is safe, not object property access
           if (!isSafePropertyKey(filename)) {
             return;
           }
+          // lgtm[js/remote-property-injection] - Using Map.get(), not bracket notation on Object
           const ownerId = photoOwners.get(filename);
 
           if (!ownerId) {
