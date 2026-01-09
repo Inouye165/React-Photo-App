@@ -201,6 +201,13 @@ function createUserPreferencesService({ db }) {
     }
 
     const preferences = await getPreferences(userId);
+    // SECURITY: category is validated by isSafePropertyKey() above which blocks
+    // __proto__, prototype, constructor. The gradingScales object comes from DB/defaults.
+    // This bracket notation is safe because:
+    // 1. The key cannot be a dangerous prototype property (validated above)
+    // 2. We're only READING a value, not setting one
+    // 3. Even if an unexpected key is used, it returns undefined (no injection)
+    // lgtm[js/remote-property-injection]
     const scales = preferences.gradingScales?.[category];
 
     if (!scales || !Array.isArray(scales)) {

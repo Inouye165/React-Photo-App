@@ -81,14 +81,20 @@ function isStrictAuthenticatedAudience(aud) {
  * - Token validation is handled by Supabase Auth (getUser API)
  * - Tokens are NEVER logged or exposed in error messages
  */
+
+// E2E test user ID - hardcoded constant, never derived from user input
+const E2E_TEST_USER_ID = '11111111-1111-4111-8111-111111111111';
+
 async function authenticateToken(req, res, next) {
   // 0. Check for E2E test header (only in non-production)
   // This allows E2E tests to bypass Bearer token requirement if they send the special header
   if (isE2EEnabled() && isLoopbackRequest(req)) {
     const e2eHeader = req.headers['x-e2e-user-id'];
-    if (e2eHeader === '11111111-1111-4111-8111-111111111111') {
+    // SECURITY: Compare against constant, and assign the CONSTANT (not user input) to req.user.id
+    // This prevents any possibility of user-controlled data reaching the authenticated user object.
+    if (e2eHeader === E2E_TEST_USER_ID) {
       req.user = {
-        id: e2eHeader,
+        id: E2E_TEST_USER_ID, // Use constant, not e2eHeader
         email: 'admin@example.com',
         username: 'admin',
         role: 'admin'
