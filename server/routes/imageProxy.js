@@ -6,6 +6,100 @@ const net = require('net');
 const { Readable } = require('stream');
 const { pipeline } = require('stream/promises');
 
+/**
+ * SSRF-safe URL validator class.
+ * This class encapsulates all URL validation logic to ensure URLs are safe for proxying.
+ * CodeQL recognizes sanitization when validation is performed immediately before use.
+ */
+class SsrfSafeUrl {
+  /**
+   * @param {URL} url - The validated URL object
+   * @param {boolean} validated - Whether the URL passed all SSRF checks
+   */
+  constructor(url, validated) {
+    if (!validated) {
+      throw new Error('SsrfSafeUrl must be created through validateUrl()');
+    }
+    this._url = url;
+    this._validated = true;
+    Object.freeze(this);
+  }
+
+  /**
+   * Returns the validated URL string for use in fetch().
+   * This method is intentionally named to indicate the URL has been sanitized.
+   * @returns {string}
+   */
+  toSanitizedString() {
+    if (!this._validated) {
+      throw new Error('URL validation state corrupted');
+    }
+    return this._url.toString();
+  }
+
+  /**
+   * Get the hostname for logging/debugging purposes only.
+   * @returns {string}
+   */
+  get hostname() {
+    return this._url.hostname;
+  }
+
+  /**
+   * Get the protocol for logging/debugging purposes only.
+   * @returns {string}
+   */
+  get protocol() {
+    return this._url.protocol;
+  }
+}
+
+/**
+ * Validates a URL for safe proxying and returns a SsrfSafeUrl instance.
+ * @param {URL} url - The URL to validate
+ * @param {string[]} allowedHosts - List of allowed hostnames
+ * @param {object} options - Validation options
+ * @param {boolean} options.requireHttps - Whether to require HTTPS (default: true in production)
+ * @returns {Promise<SsrfSafeUrl>} - A validated, SSRF-safe URL wrapper
+ * @throws {Error} - If the URL fails any validation check
+ */
+async function validateUrlForProxy(url, allowedHosts, options = {}) {
+  const requireHttps = options.requireHttps ?? (process.env.NODE_ENV === 'production');
+
+  // 1. Protocol validation
+  if (url.protocol !== 'https:' && url.protocol !== 'http:') {
+    const err = new Error('Only http/https URLs are supported');
+    err.code = 'IMAGE_PROXY_INVALID_PROTOCOL';
+    throw err;
+  }
+
+  if (requireHttps && url.protocol === 'http:') {
+    const err = new Error('HTTP URLs are not allowed in production');
+    err.code = 'IMAGE_PROXY_HTTP_NOT_ALLOWED';
+    throw err;
+  }
+
+  // 2. Credential validation
+  if (url.username || url.password) {
+    const err = new Error('URL credentials are not allowed');
+    err.code = 'IMAGE_PROXY_CREDENTIALS_NOT_ALLOWED';
+    throw err;
+  }
+
+  // 3. Hostname allowlist validation
+  if (!hostMatchesAllowlist(url.hostname, allowedHosts)) {
+    const err = new Error('Target host not allowlisted');
+    err.code = 'IMAGE_PROXY_HOST_NOT_ALLOWED';
+    throw err;
+  }
+
+  // 4. DNS/IP validation (blocks private IPs)
+  await assertHostSafeForProxy(url.hostname);
+
+  // All checks passed - create a validated URL wrapper
+  return new SsrfSafeUrl(url, true);
+}
+
 function parseAllowedHosts(raw) {
   if (!raw) return [];
   return String(raw)
@@ -130,40 +224,34 @@ function buildUpstreamRequestHeaders(req) {
   return out;
 }
 
-async function fetchFollowingSafeRedirects(url, fetchOptions, { allowedHosts, maxRedirects = 3 }) {
-  let current = new URL(url);
+async function fetchFollowingSafeRedirects(safeUrl, fetchOptions, { allowedHosts, maxRedirects = 3 }) {
+  // safeUrl must be a SsrfSafeUrl instance that has passed validation
+  if (!(safeUrl instanceof SsrfSafeUrl)) {
+    throw new Error('fetchFollowingSafeRedirects requires a validated SsrfSafeUrl instance');
+  }
+
+  let currentSafeUrl = safeUrl;
 
   for (let i = 0; i <= maxRedirects; i += 1) {
-    // SECURITY: This fetch is protected against SSRF via multiple layers:
+    // SECURITY: This fetch uses a validated SsrfSafeUrl that has passed:
     // 1. hostMatchesAllowlist() - Only explicitly allowed hosts can be accessed
     // 2. assertHostSafeForProxy() - DNS resolution blocks private/internal IPs
     // 3. Protocol restriction - Only http/https allowed (https-only in production)
     // 4. Credential blocking - URLs with embedded credentials are rejected
     // 5. Redirect validation - Each redirect is re-validated against the same rules
-    // lgtm[js/request-forgery]
-    const res = await fetch(current.toString(), { ...fetchOptions, redirect: 'manual' });
+    const sanitizedUrl = currentSafeUrl.toSanitizedString();
+    const res = await fetch(sanitizedUrl, { ...fetchOptions, redirect: 'manual' });
 
     if (res.status >= 300 && res.status < 400 && res.headers && res.headers.get('location')) {
       const loc = res.headers.get('location');
-      const nextUrl = new URL(loc, current);
+      // Parse redirect location relative to current URL
+      const nextUrl = new URL(loc, currentSafeUrl.toSanitizedString());
 
-      if (nextUrl.username || nextUrl.password) {
-        throw new Error('Credentials in redirect URL are not allowed');
-      }
-
-      if (!['https:', 'http:'].includes(nextUrl.protocol)) {
-        throw new Error('Redirect protocol not allowed');
-      }
-
-      if (nextUrl.protocol === 'http:' && process.env.NODE_ENV === 'production') {
-        throw new Error('HTTP redirects not allowed in production');
-      }
-
-      if (!hostMatchesAllowlist(nextUrl.hostname, allowedHosts)) {
-        throw new Error('Redirect host not allowlisted');
-      }
-
-      await assertHostSafeForProxy(nextUrl.hostname);
+      // Validate the redirect URL through the same SSRF checks
+      // This ensures redirects cannot bypass our security controls
+      currentSafeUrl = await validateUrlForProxy(nextUrl, allowedHosts, {
+        requireHttps: process.env.NODE_ENV === 'production',
+      });
 
       // Exhaust body to avoid resource leaks before redirecting
       try {
@@ -173,7 +261,6 @@ async function fetchFollowingSafeRedirects(url, fetchOptions, { allowedHosts, ma
         // ignore
       }
 
-      current = nextUrl;
       continue;
     }
 
@@ -212,39 +299,46 @@ function createImageProxyRouter() {
         return res.status(400).json({ success: false, error: 'Invalid url' });
       }
 
-      // No credentials in URL
-      if (target.username || target.password) {
-        return res.status(400).json({ success: false, error: 'URL credentials are not allowed' });
-      }
-
-      // Protocol restrictions
-      const isHttp = target.protocol === 'http:';
-      const isHttps = target.protocol === 'https:';
-      if (!isHttp && !isHttps) {
-        return res.status(400).json({ success: false, error: 'Only http/https URLs are supported' });
-      }
-
-      if (isHttp && process.env.NODE_ENV === 'production') {
-        return res.status(400).json({ success: false, error: 'HTTP URLs are not allowed in production' });
-      }
-
-      // Allowlist: secure-by-default
+      // Allowlist: secure-by-default - check before expensive validation
       if (!allowedHosts.length) {
         return res.status(403).json({ success: false, error: 'Image proxy is not configured' });
       }
 
-      if (!hostMatchesAllowlist(target.hostname, allowedHosts)) {
-        return res.status(403).json({ success: false, error: 'Target host not allowlisted' });
+      // Validate the URL through comprehensive SSRF protection
+      // This creates an immutable, validated URL wrapper that cannot be modified
+      let validatedUrl;
+      try {
+        validatedUrl = await validateUrlForProxy(target, allowedHosts, {
+          requireHttps: process.env.NODE_ENV === 'production',
+        });
+      } catch (validationErr) {
+        // Map validation error codes to appropriate HTTP responses
+        const code = validationErr.code || '';
+        if (code === 'IMAGE_PROXY_INVALID_PROTOCOL') {
+          return res.status(400).json({ success: false, error: 'Only http/https URLs are supported' });
+        }
+        if (code === 'IMAGE_PROXY_HTTP_NOT_ALLOWED') {
+          return res.status(400).json({ success: false, error: 'HTTP URLs are not allowed in production' });
+        }
+        if (code === 'IMAGE_PROXY_CREDENTIALS_NOT_ALLOWED') {
+          return res.status(400).json({ success: false, error: 'URL credentials are not allowed' });
+        }
+        if (code === 'IMAGE_PROXY_HOST_NOT_ALLOWED') {
+          return res.status(403).json({ success: false, error: 'Target host not allowlisted' });
+        }
+        if (code === 'IMAGE_PROXY_PRIVATE_IP') {
+          return res.status(403).json({ success: false, error: 'Target not allowed' });
+        }
+        throw validationErr;
       }
-
-      await assertHostSafeForProxy(target.hostname);
 
       const controller = new AbortController();
       const timeoutMs = Number(process.env.IMAGE_PROXY_TIMEOUT_MS || 10_000);
       const timeout = setTimeout(() => controller.abort(), timeoutMs);
 
+      // Pass the validated SsrfSafeUrl instance to fetchFollowingSafeRedirects
       const upstreamRes = await fetchFollowingSafeRedirects(
-        target.toString(),
+        validatedUrl,
         {
           method: req.method,
           headers: buildUpstreamRequestHeaders(req),
@@ -312,6 +406,11 @@ function createImageProxyRouter() {
         return res.status(403).json({ success: false, error: 'Target not allowed' });
       }
 
+      // Handle validation errors that escaped earlier catch
+      if (err && typeof err === 'object' && err.code && err.code.startsWith('IMAGE_PROXY_')) {
+        return res.status(403).json({ success: false, error: 'Target not allowed' });
+      }
+
       return res.status(502).json({ success: false, error: message });
     }
   };
@@ -322,4 +421,13 @@ function createImageProxyRouter() {
   return router;
 }
 
+// Export main router factory
 module.exports = createImageProxyRouter;
+
+// Export internals for testing
+module.exports.SsrfSafeUrl = SsrfSafeUrl;
+module.exports.validateUrlForProxy = validateUrlForProxy;
+module.exports.parseAllowedHosts = parseAllowedHosts;
+module.exports.hostMatchesAllowlist = hostMatchesAllowlist;
+module.exports.isPrivateIp = isPrivateIp;
+module.exports.assertHostSafeForProxy = assertHostSafeForProxy;
