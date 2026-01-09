@@ -163,18 +163,11 @@ function normalizeAndValidateProxyTarget(rawUrl, { allowedHosts }) {
     throw err;
   }
 
-  // Reconstruct a fresh URL from trusted components. This breaks the taint chain
-  // (CodeQL) from the original user-provided URL while keeping the validated
-  // path/query.
-  const base = `${target.protocol}//${allowlistedHost}${normalizedPort ? `:${normalizedPort}` : ''}`;
-  const safe = new URL(base);
-  safe.pathname = target.pathname;
-  safe.search = target.search;
-  safe.hash = '';
-  safe.username = '';
-  safe.password = '';
-
-  return safe;
+  // Reconstruction: build a completely NEW URL string from safe, validated parts.
+  // We do not return the `target` URL object because it originated from user input.
+  const portPart = normalizedPort ? `:${normalizedPort}` : '';
+  const safeUrlString = `${target.protocol}//${allowlistedHost}${portPart}${target.pathname}${target.search}`;
+  return new URL(safeUrlString);
 }
 
 function pickUpstreamHeadersForClient(upstreamHeaders) {
