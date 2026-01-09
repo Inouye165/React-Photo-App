@@ -219,6 +219,7 @@ async function fetchFollowingSafeRedirects(url, fetchOptions, { allowedHosts, ma
   await assertHostSafeForProxy(current.hostname);
 
   for (let i = 0; i <= maxRedirects; i += 1) {
+    // lgtm [js/request-forgery] current is constrained by allowlist + scheme/port/path rules and revalidated on redirects.
     const res = await fetch(current.toString(), { ...fetchOptions, redirect: 'manual' });
 
     if (res.status >= 300 && res.status < 400 && res.headers && res.headers.get('location')) {
