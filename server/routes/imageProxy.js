@@ -215,8 +215,8 @@ function buildUpstreamRequestHeaders(req) {
   return out;
 }
 
-async function fetchFollowingSafeRedirects(url, fetchOptions, { allowedHosts, maxRedirects = 3 }) {
-  let current = normalizeAndValidateProxyTarget(url, { allowedHosts });
+async function fetchFollowingSafeRedirects(validatedComponents, fetchOptions, { allowedHosts, maxRedirects = 3 }) {
+  let current = validatedComponents;
   await assertHostSafeForProxy(current.hostname);
 
   for (let i = 0; i <= maxRedirects; i += 1) {
@@ -276,12 +276,8 @@ function createImageProxyRouter() {
       const timeoutMs = Number(process.env.IMAGE_PROXY_TIMEOUT_MS || 10_000);
       const timeout = setTimeout(() => controller.abort(), timeoutMs);
 
-      // Build URL string from validated components.
-      const portPart = target.port ? `:${target.port}` : '';
-      const targetUrl = `${target.protocol}//${target.hostname}${portPart}${target.pathname}${target.search}`;
-
       const upstreamRes = await fetchFollowingSafeRedirects(
-        targetUrl,
+        target,
         {
           method: req.method,
           headers: buildUpstreamRequestHeaders(req),
