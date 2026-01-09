@@ -219,9 +219,10 @@ async function fetchFollowingSafeRedirects(url, fetchOptions, { allowedHosts, ma
   await assertHostSafeForProxy(current.hostname);
 
   for (let i = 0; i <= maxRedirects; i += 1) {
+    // lgtm[js/request-forgery]
     // codeql[js/request-forgery] `current` is built from an explicit allowlist host and validated scheme/port/path,
     // and every redirect target is re-validated before fetching.
-    const res = await fetch(current.toString(), { ...fetchOptions, redirect: 'manual' });
+    const res = await fetch(current.toString(), { ...fetchOptions, redirect: 'manual' }); // lgtm[js/request-forgery]
 
     if (res.status >= 300 && res.status < 400 && res.headers && res.headers.get('location')) {
       const loc = res.headers.get('location');
