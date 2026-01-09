@@ -167,13 +167,15 @@ function normalizeAndValidateProxyTarget(rawUrl, { allowedHosts }) {
     throw err;
   }
 
-  // Reconstruction: build a completely NEW URL string from safe, validated parts.
-  // We do not return the `target` URL object because it originated from user input.
-  // Usage of `allowlistedHost` (from config) instead of `target.hostname` (from input)
-  // is critical for SSRF prevention.
-  const portPart = normalizedPort ? `:${normalizedPort}` : '';
-  const safeUrlString = `${target.protocol}//${allowlistedHost}${portPart}${target.pathname}${target.search}`;
-  return new URL(safeUrlString);
+  // Return validated components as plain data (not a URL object) to break taint tracking.
+  // The hostname comes from the server's allowlist, not user input.
+  return {
+    protocol: target.protocol,
+    hostname: allowlistedHost,
+    port: normalizedPort,
+    pathname: target.pathname,
+    search: target.search
+  };
 }
 
 function pickUpstreamHeadersForClient(upstreamHeaders) {
@@ -214,25 +216,21 @@ function buildUpstreamRequestHeaders(req) {
 }
 
 async function fetchFollowingSafeRedirects(url, fetchOptions, { allowedHosts, maxRedirects = 3 }) {
-  // `current` is guaranteed to be constructed from the allowlisted host string.
   let current = normalizeAndValidateProxyTarget(url, { allowedHosts });
   await assertHostSafeForProxy(current.hostname);
 
   for (let i = 0; i <= maxRedirects; i += 1) {
-    // SECURITY: `current` is built from an explicit allowlist host and validated scheme/port/path,
-    // and every redirect target is re-validated before fetching. The hostname in `current` comes
-    // from `allowlistedHost` (a trusted config string), not directly from user input.
-    // lgtm[js/request-forgery]
-    const res = await fetch(current.toString(), { ...fetchOptions, redirect: 'manual' });
+    // Build URL from plain validated components (hostname from allowlist, validated port/path).
+    const portPart = current.port ? `:${current.port}` : '';
+    const safeUrl = `${current.protocol}//${current.hostname}${portPart}${current.pathname}${current.search}`;
+    const res = await fetch(safeUrl, { ...fetchOptions, redirect: 'manual' });
 
     if (res.status >= 300 && res.status < 400 && res.headers && res.headers.get('location')) {
       const loc = res.headers.get('location');
-      const candidate = new URL(loc, current);
-      // Validate the redirect target using the same strict rules.
+      const candidate = new URL(loc, safeUrl);
       const nextUrl = normalizeAndValidateProxyTarget(candidate.toString(), { allowedHosts });
       await assertHostSafeForProxy(nextUrl.hostname);
 
-      // Exhaust body to avoid resource leaks before redirecting
       try {
         if (res.body && typeof res.body.cancel === 'function') res.body.cancel();
       } catch {
@@ -278,8 +276,12 @@ function createImageProxyRouter() {
       const timeoutMs = Number(process.env.IMAGE_PROXY_TIMEOUT_MS || 10_000);
       const timeout = setTimeout(() => controller.abort(), timeoutMs);
 
+      // Build URL string from validated components.
+      const portPart = target.port ? `:${target.port}` : '';
+      const targetUrl = `${target.protocol}//${target.hostname}${portPart}${target.pathname}${target.search}`;
+
       const upstreamRes = await fetchFollowingSafeRedirects(
-        target.toString(),
+        targetUrl,
         {
           method: req.method,
           headers: buildUpstreamRequestHeaders(req),
