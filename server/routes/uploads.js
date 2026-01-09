@@ -6,7 +6,7 @@ const { streamToSupabase } = require('../media/streamUploader');
 const { addAIJob, checkRedisAvailable } = require('../queue/index');
 const { extractMetadata } = require('../media/backgroundProcessor');
 const { sanitizePhotoMetadata } = require('../media/metadataSanitizer');
-const { getRedisClient } = require('../lib/redis');
+// Cache invalidation uses invalidatePhotosListCacheForUserId from ../lib/redis
 
 function sanitizeOriginalFilename(originalName) {
   const raw = typeof originalName === 'string' ? originalName : '';
@@ -229,35 +229,19 @@ module.exports = function createUploadsRouter({ db }) {
       }
 
       // CRITICAL: Invalidate photos:list cache for this user
-      // This ensures the frontend immediately sees the new photo without stale cached data
-      const redis = getRedisClient();
-      if (redis) {
-        try {
-          // Build cache key pattern matching photos.ts: photos:list:{userId}:{state}:{limit}:{cursor}
-          // We need to invalidate all possible cache keys for this user
-          // Pattern: photos:list:{userId}:*
-          const cacheKeyPattern = `photos:list:${req.user.id}:*`;
-          
-          // Redis KEYS command (use cautiously - only for small cache sets)
-          // Alternative: use SCAN for production systems with many keys
-          const keys = await redis.keys(cacheKeyPattern);
-          
-          if (keys && keys.length > 0) {
-            await redis.del(...keys);
-            logger.info('[upload] Cache invalidated', { 
-              userId: req.user.id, 
-              keysDeleted: keys.length,
-              photoId 
+      // This ensures the frontend immediately sees the new photo without stale cached data.
+      // Uses a per-user Redis Set index (no KEYS/SCAN on the hot path).
+      {
+        const { invalidatePhotosListCacheForUserId } = require('../lib/redis');
+        invalidatePhotosListCacheForUserId(req.user.id).then((result) => {
+          if (result && result.ok) {
+            logger.info('[upload] Cache invalidated', {
+              userId: req.user.id,
+              keysDeleted: result.keysDeleted,
+              photoId,
             });
           }
-        } catch (cacheErr) {
-          // Cache invalidation failure should not block the upload
-          logger.warn('[upload] Cache invalidation failed', { 
-            error: cacheErr.message,
-            userId: req.user.id,
-            photoId 
-          });
-        }
+        });
       }
 
       // Enqueue background job for heavy processing

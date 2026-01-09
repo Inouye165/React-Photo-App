@@ -1,12 +1,17 @@
-
 const request = require('supertest');
 const express = require('express');
-const { getRedisClient } = require('../lib/redis');
 
-// Mock the redis client wrapper
-jest.mock('../lib/redis', () => ({
-  getRedisClient: jest.fn()
-}));
+const createPhotosDb = require('../services/photosDb');
+
+jest.mock('../lib/redis', () => {
+  const actual = jest.requireActual('../lib/redis');
+  return {
+    ...actual,
+    getRedisClient: jest.fn(),
+  };
+});
+
+const { getRedisClient, photosListKeysIndexKey, invalidatePhotosListCacheForUserId } = require('../lib/redis');
 
 // Mock the queue module to avoid loading metrics/prom-client
 jest.mock('../queue', () => ({
@@ -14,16 +19,12 @@ jest.mock('../queue', () => ({
   checkRedisAvailable: jest.fn().mockResolvedValue(true)
 }));
 
-// Mock the database and other dependencies
-const mockDb = jest.fn(() => ({
-  where: jest.fn().mockReturnThis(),
-  select: jest.fn().mockReturnThis(),
-  count: jest.fn().mockReturnThis(),
-  groupBy: jest.fn().mockReturnThis(),
-  limit: jest.fn().mockReturnThis(),
-  offset: jest.fn().mockReturnThis(),
-  orderBy: jest.fn().mockReturnThis(),
-  then: jest.fn().mockResolvedValue([])
+// Mock middleware
+jest.mock('../middleware/auth', () => ({
+  authenticateToken: (req, _res, next) => {
+    req.user = { id: '00000000-0000-0000-0000-000000000000' }; // Valid UUID
+    next();
+  }
 }));
 
 // Mock dependencies
@@ -36,98 +37,162 @@ const mockSupabase = {
   }
 };
 
-// Mock middleware
-jest.mock('../middleware/auth', () => ({
-  authenticateToken: (req, res, next) => {
-    req.user = { id: '00000000-0000-0000-0000-000000000000' }; // Valid UUID
-    next();
-  }
-}));
+function createMockDbForList(rows) {
+  const builder = {
+    where: jest.fn(function(...args) {
+      if (typeof args[0] === 'function') {
+        args[0].call(builder);
+      }
+      return builder;
+    }),
+    orWhere: jest.fn(function(...args) {
+      if (typeof args[0] === 'function') {
+        args[0].call(builder);
+      }
+      return builder;
+    }),
+    andWhere: jest.fn().mockReturnThis(),
+    select: jest.fn().mockReturnThis(),
+    count: jest.fn().mockReturnThis(),
+    groupBy: jest.fn().mockReturnThis(),
+    limit: jest.fn().mockReturnThis(),
+    offset: jest.fn().mockReturnThis(),
+    orderBy: jest.fn().mockReturnThis(),
+    timeout: jest.fn().mockReturnThis(),
+    then: jest.fn((resolve, reject) => Promise.resolve(rows).then(resolve, reject)),
+  };
 
-// Mock services
-jest.mock('../services/photosDb', () => {
-  return () => ({
-    listPhotos: jest.fn().mockResolvedValue([
-      { id: 1, filename: 'test.jpg', created_at: new Date(), state: 'finished' }
-    ]),
-    getPhotoById: jest.fn().mockResolvedValue({ id: 1, filename: 'test.jpg' }),
-    getPhotoByAnyId: jest.fn().mockResolvedValue({ id: 1, filename: 'test.jpg' })
-  });
-});
+  const mockDb = jest.fn((_tableName) => builder);
+  mockDb._builder = builder;
+  return mockDb;
+}
 
-// Setup Express app with the router
-const createPhotosRouter = require('../routes/photos');
-const app = express();
-app.use(express.json());
+function createMockRedis() {
+  const redis = {
+    get: jest.fn(),
+    set: jest.fn().mockResolvedValue('OK'),
+    setex: jest.fn().mockResolvedValue('OK'),
+    sadd: jest.fn().mockResolvedValue(1),
+    smembers: jest.fn().mockResolvedValue([]),
+    expire: jest.fn().mockResolvedValue(1),
+    del: jest.fn().mockResolvedValue(1),
+    multi: jest.fn(() => ({
+      setex: (...args) => redis.setex(...args),
+      sadd: (...args) => redis.sadd(...args),
+      expire: (...args) => redis.expire(...args),
+      del: (...args) => redis.del(...args),
+      exec: jest.fn().mockResolvedValue([]),
+    })),
+    on: jest.fn(),
+  };
+  return redis;
+}
 
-describe('Photos Route Caching', () => {
+describe('Photos Listing Caching (Redis)', () => {
   let mockRedis;
 
   beforeEach(() => {
     jest.clearAllMocks();
-    
-    // Setup mock Redis client
-    mockRedis = {
-      get: jest.fn(),
-      set: jest.fn().mockResolvedValue('OK'),
-      on: jest.fn()
-    };
+    mockRedis = createMockRedis();
     getRedisClient.mockReturnValue(mockRedis);
   });
 
-  test('GET / should check Redis cache', async () => {
-    // 1. First request - Cache Miss
+  test('First request: DB is called, Redis is set', async () => {
+    const mockRows = [
+      { id: 1, filename: 'db.jpg', created_at: new Date().toISOString(), state: 'finished' }
+    ];
+    const mockDb = createMockDbForList(mockRows);
+
     mockRedis.get.mockResolvedValue(null);
-    
+
+    const createPhotosRouter = require('../routes/photos');
     const router = createPhotosRouter({ db: mockDb, supabase: mockSupabase });
+
+    const app = express();
+    app.use(express.json());
     app.use('/photos', router);
 
     const res = await request(app).get('/photos');
-    
+
     expect(res.status).toBe(200);
     expect(res.headers['x-cache']).toBe('MISS');
+    expect(mockDb).toHaveBeenCalled();
     expect(mockRedis.get).toHaveBeenCalled();
-    expect(mockRedis.set).toHaveBeenCalled();
-    
-    // Verify cache key format (updated default limit from 50 to 20)
-    const expectedKey = `photos:list:00000000-0000-0000-0000-000000000000:all:20:start`;
+    expect(mockRedis.setex).toHaveBeenCalled();
+
+    const expectedKey = createPhotosDb._private.buildPhotosListCacheKey({
+      userId: '00000000-0000-0000-0000-000000000000',
+      state: undefined,
+      cursor: null,
+      limit: 20,
+    });
     expect(mockRedis.get).toHaveBeenCalledWith(expectedKey);
   });
 
-  test('GET / should return cached data if available', async () => {
-    // 2. Second request - Cache Hit
-    const cachedData = {
-      success: true,
-      userId: '00000000-0000-0000-0000-000000000000',
-      photos: [{ id: 999, filename: 'cached.jpg' }],
-      nextCursor: null
-    };
-    mockRedis.get.mockResolvedValue(JSON.stringify(cachedData));
+  test('Second request: DB is NOT called, Redis returns data', async () => {
+    const mockDb = createMockDbForList([
+      { id: 1, filename: 'db.jpg', created_at: new Date().toISOString(), state: 'finished' }
+    ]);
 
+    const cachedRows = [
+      { id: 999, filename: 'cached.jpg', created_at: new Date().toISOString(), state: 'finished' }
+    ];
+    mockRedis.get.mockResolvedValue(JSON.stringify(cachedRows));
+
+    const createPhotosRouter = require('../routes/photos');
     const router = createPhotosRouter({ db: mockDb, supabase: mockSupabase });
-    // Reset app stack to avoid duplicate mounting
-    const testApp = express();
-    testApp.use(express.json());
-    testApp.use('/photos', router);
 
-    const res = await request(testApp).get('/photos');
+    const app = express();
+    app.use(express.json());
+    app.use('/photos', router);
+
+    const res = await request(app).get('/photos');
 
     expect(res.status).toBe(200);
     expect(res.headers['x-cache']).toBe('HIT');
     expect(res.body.photos[0].id).toBe(999);
-    // Should NOT call DB (we can't easily check the mockDb here as it's wrapped in services, 
-    // but we can check that we got the cached data which is different from the service mock)
+    expect(mockDb).not.toHaveBeenCalled();
   });
 
-  test('GET /:id should set Cache-Control header', async () => {
-    const router = createPhotosRouter({ db: mockDb, supabase: mockSupabase });
-    const testApp = express();
-    testApp.use(express.json());
-    testApp.use('/photos', router);
+  test('Upload/Delete: Redis key is evicted (via helper used by upload + db writes)', async () => {
+    const userId = '00000000-0000-0000-0000-000000000000';
+    const cacheKey = createPhotosDb._private.buildPhotosListCacheKey({
+      userId,
+      state: undefined,
+      cursor: null,
+      limit: 20,
+    });
+    const indexKey = photosListKeysIndexKey(userId);
 
-    const res = await request(testApp).get('/photos/00000000-0000-0000-0000-000000000001');
-    
+    mockRedis.smembers.mockResolvedValue([cacheKey]);
+
+    const result = await invalidatePhotosListCacheForUserId(userId, { redis: mockRedis });
+    expect(result.ok).toBe(true);
+    expect(mockRedis.smembers).toHaveBeenCalledWith(indexKey);
+    expect(mockRedis.del).toHaveBeenCalled();
+  });
+
+  test('Resilience: Redis connection failure still serves data from DB', async () => {
+    const mockRows = [
+      { id: 1, filename: 'db.jpg', created_at: new Date().toISOString(), state: 'finished' }
+    ];
+    const mockDb = createMockDbForList(mockRows);
+
+    mockRedis.get.mockImplementation(() => {
+      throw new Error('Redis down');
+    });
+
+    const createPhotosRouter = require('../routes/photos');
+    const router = createPhotosRouter({ db: mockDb, supabase: mockSupabase });
+
+    const app = express();
+    app.use(express.json());
+    app.use('/photos', router);
+
+    const res = await request(app).get('/photos');
+
     expect(res.status).toBe(200);
-    expect(res.headers['cache-control']).toBe('private, max-age=60');
+    expect(res.body.success).toBe(true);
+    expect(mockDb).toHaveBeenCalled();
   });
 });

@@ -50,7 +50,6 @@ const { checkRedisAvailable } = require('../queue');
 const { validateRequest } = require('../validation/validateRequest');
 const { photosListQuerySchema, photoIdParamsSchema } = require('../validation/schemas/photos');
 const { mapPhotoRowToListDto, mapPhotoRowToDetailDto } = require('../serializers/photos');
-const { getRedisClient } = require('../lib/redis');
 
 // ============================================================================
 // Types & Interfaces
@@ -364,26 +363,8 @@ export default function createPhotosRouter({ db, supabase }: PhotosRouterDepende
       const limit = Math.min(requestedLimit, MAX_LIMIT);
       const cursor = req.validated?.query?.cursor ?? null;
 
-      // Check Redis cache
-      const redis = getRedisClient();
-      // Key includes all query params to ensure correctness
-      // Note: cursor is an object (validated), string interpolation matches the legacy JS route.
-      const cacheKey = `photos:list:${req.user!.id}:${state || 'all'}:${limit}:${(cursor as unknown as string) || 'start'}`;
-
-      if (redis) {
-        try {
-          const cached = await redis.get(cacheKey);
-          if (cached) {
-            logger.info('[photos] Cache hit', { reqId, key: cacheKey });
-            res.set('X-Cache', 'HIT');
-            res.set('Cache-Control', 'no-store');
-            return res.json(JSON.parse(cached));
-          }
-        } catch (err) {
-          const error = err as Error;
-          logger.warn('[photos] Cache read error', { error: error.message });
-        }
-      }
+      // Listing caching is handled inside photosDb.listPhotos (Redis-backed, user-scoped).
+      const cacheInfo: { hit?: boolean } = {};
 
       const DB_QUERY_TIMEOUT_MS = Number(process.env.DB_QUERY_TIMEOUT_MS || 10000);
 
@@ -393,7 +374,8 @@ export default function createPhotosRouter({ db, supabase }: PhotosRouterDepende
         rows = await photosDb.listPhotos(req.user!.id, state, {
           timeoutMs: DB_QUERY_TIMEOUT_MS,
           limit,
-          cursor
+          cursor,
+          cacheInfo,
         });
       } catch (err) {
         const error = err as Error & { name?: string };
@@ -459,15 +441,8 @@ export default function createPhotosRouter({ db, supabase }: PhotosRouterDepende
         nextCursor
       };
 
-      // Cache in Redis (10 second micro-cache)
-      if (redis) {
-        redis.set(cacheKey, JSON.stringify(response), 'EX', 10).catch((err: Error) => {
-          logger.warn('[photos] Cache write error', { error: err.message });
-        });
-      }
-
       res.set('Cache-Control', 'no-store');
-      res.set('X-Cache', 'MISS');
+      res.set('X-Cache', cacheInfo.hit ? 'HIT' : 'MISS');
       res.json(response);
     } catch (err) {
       const error = err as Error;

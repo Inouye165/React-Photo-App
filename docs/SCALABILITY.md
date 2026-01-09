@@ -33,6 +33,21 @@ This document outlines the architectural decisions and optimizations implemented
 - **Configurable Pool:** Production configuration now uses `DB_POOL_MIN` and `DB_POOL_MAX` environment variables.
 - **Tuning:** This allows the application to be tuned to match the specific PostgreSQL tier (e.g., Supabase Transaction Pooler) without code changes.
 
+## 5. Caching Strategy (Redis Result Cache)
+**Problem:** Listing large photo libraries can create sustained database load (repeated `GET /photos` refreshes, pagination, polling).
+
+**Solution:** Implemented a Redis-backed result cache at the **service layer** (`photosDb.listPhotos`) to reduce repeated DB reads.
+
+- **Cache Key:** `photos:list:{userId}:{cursor}:{limit}`
+    - `userId` is normalized and scoped to the authenticated user.
+    - `cursor` is stored as a hashed token (derived from validated query state + cursor tuple) to avoid embedding raw user input in keys.
+    - `limit` is the validated/capped page size.
+- **TTL:** 300 seconds (5 minutes).
+- **Routing Note:** The previous short-lived route-level micro-cache was removed to avoid double-caching and to keep `X-Cache` behavior consistent; the route now reflects the service-layer cache hit/miss.
+- **Atomic-ish Writes:** Prefer `MULTI/EXEC` when supported to set the cached value and record the key in a per-user index set.
+- **Invalidation:** On successful upload, delete, or list-affecting updates, the cache is invalidated **per user** using a Redis Set index (`photos:list:keys:{userId}`), avoiding `KEYS/SCAN` on the hot path.
+- **Resilience:** If Redis is not configured or is temporarily unavailable, the application gracefully falls back to direct DB queries (cache is best-effort).
+
 ## Summary of Limits
 | Resource | Old Limit | New Limit | Bottleneck Removed |
 | :--- | :--- | :--- | :--- |
