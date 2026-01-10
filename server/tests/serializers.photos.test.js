@@ -20,19 +20,9 @@ describe('serializers/photos mappers', () => {
       classification: 'scenery',
     };
 
-    const mockSupabase = {
-      storage: {
-        from: () => ({
-          createSignedUrl: async (p) => ({ data: { signedUrl: `https://cdn.example.com/${p}?token=abc` }, error: null })
-        })
-      }
-    };
-
     const dto = await mapPhotoRowToListDto(row, {
-      supabaseClient: mockSupabase,
       ttlSeconds: 3600,
-      // Backward-compat fallback (should not be used when supabaseClient works)
-      signThumbnailUrl: () => ({ sig: 'sig', exp: 123456 }),
+      signThumbnailUrl: () => ({ sig: 'testsig', exp: 123 }),
     });
 
     expect(dto).toEqual(
@@ -52,8 +42,7 @@ describe('serializers/photos mappers', () => {
       })
     );
 
-    expect(dto.thumbnail).toContain('https://cdn.example.com/thumbnails/h123.jpg');
-    expect(dto.thumbnail).toContain('token=');
+    expect(dto.thumbnail).toBe('/display/thumbnails/h123.jpg?sig=testsig&exp=123');
   });
 
   test('mapPhotoRowToListDto returns signed smallThumbnail when thumb_small_path exists', async () => {
@@ -67,17 +56,13 @@ describe('serializers/photos mappers', () => {
       thumb_small_path: 'thumbnails/h7-sm.jpg',
     };
 
-    const mockSupabase = {
-      storage: {
-        from: () => ({
-          createSignedUrl: async (p) => ({ data: { signedUrl: `https://cdn.example.com/${p}?token=abc` }, error: null })
-        })
-      }
-    };
+    const dto = await mapPhotoRowToListDto(row, {
+      ttlSeconds: 3600,
+      signThumbnailUrl: () => ({ sig: 'testsig', exp: 123 }),
+    });
 
-    const dto = await mapPhotoRowToListDto(row, { supabaseClient: mockSupabase, ttlSeconds: 3600 });
-    expect(dto.smallThumbnail).toContain('https://cdn.example.com/thumbnails/h7-sm.jpg');
-    expect(dto.smallThumbnail).toContain('token=');
+    expect(dto.thumbnail).toBe('/display/thumbnails/h7.jpg?sig=testsig&exp=123');
+    expect(dto.smallThumbnail).toBe('/display/thumbnails/h7-sm.jpg?sig=testsig&exp=123');
   });
 
   test('mapPhotoRowToDetailDto preserves metadata default {} and parses JSON-ish fields', () => {

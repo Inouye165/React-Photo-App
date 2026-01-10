@@ -189,6 +189,16 @@ export default function PhotoCard({
         return { url: selectedThumb, needsAuth: false };
       }
 
+      // Server-signed display thumbnails can be rendered directly without Bearer auth.
+      if (
+        typeof selectedThumb === 'string' &&
+        selectedThumb.includes('/display/thumbnails/') &&
+        selectedThumb.includes('sig=') &&
+        selectedThumb.includes('exp=')
+      ) {
+        return { url: toUrl(selectedThumb, apiBaseUrl), needsAuth: false };
+      }
+
       const signedUrl = getSignedUrl ? getSignedUrl(photo, 'thumb') : null;
       if (signedUrl) {
         return { url: signedUrl, needsAuth: false };
