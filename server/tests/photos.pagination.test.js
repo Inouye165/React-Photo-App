@@ -73,12 +73,24 @@ jest.mock('../services/photosDb', () => {
 
 const createPhotosRouter = require('../routes/photos');
 
+let createSignedUrlSpy;
+
 function buildApp() {
   const app = express();
   const fakeDb = () => {
     throw new Error('DB should not be used in pagination tests');
   };
-  const fakeSupabase = { storage: { from: () => ({}) } };
+
+  createSignedUrlSpy = jest.fn(() => {
+    throw new Error('Supabase signing should not be called by GET /photos');
+  });
+  const fakeSupabase = {
+    storage: {
+      from: () => ({
+        createSignedUrl: createSignedUrlSpy,
+      }),
+    },
+  };
   app.use('/photos', createPhotosRouter({ db: fakeDb, supabase: fakeSupabase }));
   return app;
 }
@@ -374,6 +386,28 @@ describe('GET /photos pagination', () => {
       expect(photo.thumbnail).toMatch(/\/display\/thumbnails\//);
       expect(photo.thumbnail).toContain('sig=');
       expect(photo.thumbnail).toContain('exp=');
+    });
+
+    test('should not call Supabase createSignedUrl when listing photos', async () => {
+      const response = await request(app)
+        .get('/photos?limit=3')
+        .set('Authorization', `Bearer ${testToken}`)
+        .expect(200);
+
+      expect(response.body.success).toBe(true);
+      expect(Array.isArray(response.body.photos)).toBe(true);
+      expect(response.body.photos.length).toBeGreaterThan(0);
+
+      // Regression: listing should not do per-row Supabase signing.
+      expect(createSignedUrlSpy).toBeDefined();
+      expect(createSignedUrlSpy).not.toHaveBeenCalled();
+
+      for (const photo of response.body.photos) {
+        expect(photo.thumbnail).toBeTruthy();
+        expect(photo.thumbnail).toMatch(/\/display\/thumbnails\//);
+        expect(photo.thumbnail).toContain('sig=');
+        expect(photo.thumbnail).toContain('exp=');
+      }
     });
   });
 });
