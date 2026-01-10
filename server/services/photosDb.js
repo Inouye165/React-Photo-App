@@ -18,6 +18,25 @@ module.exports = function createPhotosDb({ db }) {
 
   const PHOTOS_LIST_CACHE_TTL_SECONDS = 300;
 
+  // Some unit/integration tests use mocked DBs or partial schemas.
+  // Cache a best-effort check for whether photos.collectible_id exists.
+  let _hasCollectibleIdColumnPromise = null;
+  async function hasCollectibleIdColumn() {
+    if (_hasCollectibleIdColumnPromise) return _hasCollectibleIdColumnPromise;
+
+    _hasCollectibleIdColumnPromise = (async () => {
+      try {
+        const hasColumnFn = db?.schema?.hasColumn;
+        if (typeof hasColumnFn !== 'function') return false;
+        return await hasColumnFn.call(db.schema, 'photos', 'collectible_id');
+      } catch {
+        return false;
+      }
+    })();
+
+    return _hasCollectibleIdColumnPromise;
+  }
+
   function buildPhotosListCacheKey({ userId, cursor, limit, state }) {
     const userKey = normalizeCacheUserId(userId);
 
@@ -139,6 +158,12 @@ module.exports = function createPhotosDb({ db }) {
         'id', 'filename', 'state', 'metadata', 'hash', 'file_size',
         'caption', 'description', 'keywords', 'classification', 'created_at'
       ).where('user_id', userId);
+
+      // Collectible-attached photos must not appear in the main gallery feed.
+      // Guard this for older/mocked schemas that don't have the column.
+      if (await hasCollectibleIdColumn()) {
+        query = query.whereNull('collectible_id');
+      }
       
       if (state === 'working' || state === 'inprogress' || state === 'finished') {
         query = query.where({ state });
