@@ -400,7 +400,7 @@ export default function PhotoCard({
               {photo.state === 'inprogress' && (
                 <button
                   onClick={handleEdit}
-                  className="flex-1 flex items-center justify-center gap-2 px-3 py-2 bg-slate-900 hover:bg-slate-800 text-white text-sm font-medium rounded-full transition-colors"
+                  className="flex-1 min-h-[44px] flex items-center justify-center gap-2 px-3 py-2 bg-slate-900 hover:bg-slate-800 text-white text-sm font-medium rounded-full transition-colors"
                   aria-label="Edit photo"
                   data-testid="photo-card-edit-btn"
                 >
@@ -413,7 +413,7 @@ export default function PhotoCard({
               {photo.state === 'working' && (
                 <button
                   onClick={handleApprove}
-                  className="flex-1 flex items-center justify-center gap-2 px-3 py-2 bg-indigo-600 hover:bg-indigo-700 text-white text-sm font-medium rounded-full transition-colors"
+                  className="flex-1 min-h-[44px] flex items-center justify-center gap-2 px-3 py-2 bg-indigo-600 hover:bg-indigo-700 text-white text-sm font-medium rounded-full transition-colors"
                   aria-label="Analyze photo with AI"
                   data-testid="photo-card-approve-btn"
                 >
@@ -430,7 +430,7 @@ export default function PhotoCard({
                     // This triggers the "move to working" action
                     onApprove?.(photo.id);
                   }}
-                  className="flex items-center justify-center gap-2 px-3 py-2 bg-slate-100 hover:bg-slate-200 text-slate-600 text-sm font-medium rounded-full transition-colors"
+                  className="min-h-[44px] flex items-center justify-center gap-2 px-3 py-2 bg-slate-100 hover:bg-slate-200 text-slate-600 text-sm font-medium rounded-full transition-colors"
                   aria-label="Return photo to queue"
                   data-testid="photo-card-return-btn"
                 >
@@ -442,7 +442,7 @@ export default function PhotoCard({
               <button
                 onClick={handleDelete}
                 disabled={!canWrite}
-                className={`flex items-center justify-center p-2 rounded-full transition-colors ${
+                className={`w-11 h-11 flex items-center justify-center rounded-full transition-colors ${
                   canWrite
                     ? 'bg-red-50 hover:bg-red-100 text-red-600'
                     : 'bg-slate-50 text-slate-300 cursor-not-allowed'
