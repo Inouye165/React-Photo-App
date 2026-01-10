@@ -3,6 +3,10 @@ import React from 'react';
 import type { Photo } from '../types/photo';
 import type { CollectibleRecord } from '../types/collectibles';
 
+import { uploadPhotoToServer } from '../api/uploads';
+import { request, API_BASE_URL } from '../api/httpClient';
+import { getHeadersForGetRequestAsync } from '../api/auth';
+
 import PriceRangeVisual from './PriceRangeVisual';
 import PriceHistoryList from './PriceHistoryList';
 
@@ -64,6 +68,25 @@ type PriceHistoryRecord = {
   [key: string]: unknown;
 };
 
+type CollectiblePhotoDto = {
+  id: Id;
+  url?: string;
+  thumbnail?: string | null;
+  smallThumbnail?: string | null;
+  filename?: string;
+  created_at?: string;
+  [key: string]: unknown;
+};
+
+function resolveMediaUrl(maybeUrl: unknown): string | null {
+  if (typeof maybeUrl !== 'string') return null;
+  const url = maybeUrl.trim();
+  if (!url) return null;
+  if (url.startsWith('http') || url.startsWith('blob:') || url.startsWith('data:')) return url;
+  const normalized = url.startsWith('/') ? url : `/${url}`;
+  return `${API_BASE_URL}${normalized}`;
+}
+
 type Valuation = {
   lowEstimateUSD?: number | string;
   highEstimateUSD?: number | string;
@@ -109,6 +132,13 @@ export default function CollectibleDetailView({ photo, collectibleData, aiInsigh
   const [historyData, setHistoryData] = React.useState<PriceHistoryRecord[] | null>(null);
   const [historyError, setHistoryError] = React.useState<string | null>(null);
 
+  // Auxiliary (collectible-attached) photos
+  const [collectiblePhotos, setCollectiblePhotos] = React.useState<CollectiblePhotoDto[]>([]);
+  const [collectiblePhotosLoading, setCollectiblePhotosLoading] = React.useState(false);
+  const [collectiblePhotosError, setCollectiblePhotosError] = React.useState<string | null>(null);
+  const [collectiblePhotosUploading, setCollectiblePhotosUploading] = React.useState(false);
+  const fileInputRef = React.useRef<HTMLInputElement | null>(null);
+
   // Get insights from either the collectible data or directly from photo
   const insights: unknown =
     aiInsights || collectibleData?.ai_analysis_history?.[0]?.result || photo?.poi_analysis || null;
@@ -128,6 +158,69 @@ export default function CollectibleDetailView({ photo, collectibleData, aiInsigh
   }, [insights]);
 
   const description = photo?.description || '';
+
+  const fetchCollectiblePhotos = React.useCallback(async () => {
+    const collectibleId = collectibleData?.id;
+    if (!collectibleId) {
+      setCollectiblePhotos([]);
+      return;
+    }
+
+    setCollectiblePhotosLoading(true);
+    setCollectiblePhotosError(null);
+
+    try {
+      const headers = await getHeadersForGetRequestAsync();
+      const json = await request<{ success: boolean; error?: string; photos?: CollectiblePhotoDto[] }>({
+        path: `/collectibles/${collectibleId}/photos`,
+        headers: headers || {},
+      });
+
+      if (!json.success) throw new Error(json.error || 'Failed to load collectible photos');
+      setCollectiblePhotos(Array.isArray(json.photos) ? json.photos : []);
+    } catch (err) {
+      setCollectiblePhotosError(getErrorMessage(err) || 'Failed to load collectible photos');
+      setCollectiblePhotos([]);
+    } finally {
+      setCollectiblePhotosLoading(false);
+    }
+  }, [collectibleData?.id]);
+
+  React.useEffect(() => {
+    void fetchCollectiblePhotos();
+  }, [fetchCollectiblePhotos]);
+
+  const handleAddCollectiblePhotosClick = React.useCallback(() => {
+    if (!collectibleData?.id) return;
+    fileInputRef.current?.click();
+  }, [collectibleData?.id]);
+
+  const handleCollectiblePhotoFilesSelected = React.useCallback(
+    async (files: FileList | null) => {
+      const collectibleId = collectibleData?.id;
+      if (!collectibleId) return;
+      if (!files || files.length === 0) return;
+
+      setCollectiblePhotosUploading(true);
+      setCollectiblePhotosError(null);
+
+      try {
+        for (const file of Array.from(files)) {
+          await uploadPhotoToServer(file, {
+            classification: 'none',
+            collectibleId,
+          });
+        }
+
+        await fetchCollectiblePhotos();
+      } catch (err) {
+        setCollectiblePhotosError(getErrorMessage(err) || 'Failed to upload collectible photos');
+      } finally {
+        setCollectiblePhotosUploading(false);
+      }
+    },
+    [collectibleData?.id, fetchCollectiblePhotos]
+  );
 
   // Extract valuation data - memoized to prevent dependency issues
   const valuation = React.useMemo<Valuation>(() => {
@@ -220,6 +313,20 @@ export default function CollectibleDetailView({ photo, collectibleData, aiInsigh
         overflowY: 'auto',
       }}
     >
+      <input
+        ref={fileInputRef}
+        type="file"
+        accept="image/*,.heic,.heif"
+        multiple
+        style={{ display: 'none' }}
+        onChange={(e) => {
+          const files = e.currentTarget.files;
+          // Reset selection so choosing the same file twice still triggers onChange.
+          e.currentTarget.value = '';
+          void handleCollectiblePhotoFilesSelected(files);
+        }}
+      />
+
       {/* Header with Category Badge */}
       <div
         style={{
@@ -252,6 +359,119 @@ export default function CollectibleDetailView({ photo, collectibleData, aiInsigh
           >
             {getConfidenceLabel(confidences.category).text}
           </span>
+        )}
+      </div>
+
+      {/* Reference Photos (auxiliary photos attached to this collectible) */}
+      <div
+        style={{
+          backgroundColor: '#f8fafc',
+          borderRadius: '16px',
+          padding: '20px',
+          border: '1px solid #e2e8f0',
+          display: 'flex',
+          flexDirection: 'column',
+          gap: '12px',
+        }}
+      >
+        <div
+          style={{
+            display: 'flex',
+            alignItems: 'center',
+            justifyContent: 'space-between',
+            gap: '12px',
+          }}
+        >
+          <h4
+            style={{
+              margin: 0,
+              fontSize: '11px',
+              fontWeight: 700,
+              color: '#94a3b8',
+              textTransform: 'uppercase',
+              letterSpacing: '0.5px',
+            }}
+          >
+            🖼️ Reference Photos
+          </h4>
+
+          <button
+            type="button"
+            onClick={handleAddCollectiblePhotosClick}
+            disabled={!collectibleData?.id || collectiblePhotosUploading}
+            style={{
+              padding: '8px 12px',
+              borderRadius: '10px',
+              border: '1px solid #e2e8f0',
+              backgroundColor: collectibleData?.id ? '#ffffff' : '#f1f5f9',
+              color: '#334155',
+              fontSize: '12px',
+              fontWeight: 600,
+              cursor: collectibleData?.id && !collectiblePhotosUploading ? 'pointer' : 'not-allowed',
+              opacity: collectiblePhotosUploading ? 0.7 : 1,
+            }}
+          >
+            {collectiblePhotosUploading ? 'Uploading…' : 'Add Photos'}
+          </button>
+        </div>
+
+        {collectiblePhotosError && (
+          <div style={{ fontSize: '12px', color: '#b91c1c' }}>{collectiblePhotosError}</div>
+        )}
+
+        {collectiblePhotosLoading ? (
+          <div style={{ fontSize: '12px', color: '#64748b' }}>Loading photos…</div>
+        ) : collectibleData?.id && collectiblePhotos.length === 0 ? (
+          <div style={{ fontSize: '12px', color: '#64748b' }}>No reference photos yet.</div>
+        ) : (
+          <div
+            style={{
+              display: 'grid',
+              gridTemplateColumns: 'repeat(auto-fill, minmax(120px, 1fr))',
+              gap: '10px',
+            }}
+          >
+            {collectiblePhotos.map((p) => {
+              const src =
+                resolveMediaUrl(p.smallThumbnail) || resolveMediaUrl(p.thumbnail) || resolveMediaUrl(p.url);
+
+              return (
+                <div
+                  key={String(p.id)}
+                  style={{
+                    borderRadius: '12px',
+                    overflow: 'hidden',
+                    border: '1px solid #e2e8f0',
+                    backgroundColor: '#ffffff',
+                  }}
+                  title={typeof p.filename === 'string' ? p.filename : undefined}
+                >
+                  {src ? (
+                    <img
+                      src={src}
+                      alt={typeof p.filename === 'string' ? p.filename : 'Collectible reference photo'}
+                      style={{ width: '100%', height: '110px', objectFit: 'cover', display: 'block' }}
+                      loading="lazy"
+                    />
+                  ) : (
+                    <div
+                      style={{
+                        width: '100%',
+                        height: '110px',
+                        display: 'flex',
+                        alignItems: 'center',
+                        justifyContent: 'center',
+                        fontSize: '12px',
+                        color: '#64748b',
+                      }}
+                    >
+                      No preview
+                    </div>
+                  )}
+                </div>
+              );
+            })}
+          </div>
         )}
       </div>
 

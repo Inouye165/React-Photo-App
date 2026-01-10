@@ -138,7 +138,9 @@ module.exports = function createPhotosDb({ db }) {
       let query = db('photos').select(
         'id', 'filename', 'state', 'metadata', 'hash', 'file_size',
         'caption', 'description', 'keywords', 'classification', 'created_at'
-      ).where('user_id', userId);
+      ).where('user_id', userId)
+        // Collectible-attached photos must not appear in the main gallery feed.
+        .whereNull('collectible_id');
       
       if (state === 'working' || state === 'inprogress' || state === 'finished') {
         query = query.where({ state });

@@ -1,9 +1,56 @@
 const express = require('express');
 const createCollectiblesService = require('../services/collectiblesService');
+const { mapPhotoRowToListDto } = require('../serializers/photos');
 
 module.exports = function createCollectiblesRouter({ db }) {
   const router = express.Router();
   const collectiblesService = createCollectiblesService({ db });
+
+  // GET /collectibles/:collectibleId/photos - Get auxiliary photos attached to a collectible
+  router.get('/collectibles/:collectibleId/photos', async (req, res) => {
+    try {
+      const { collectibleId } = req.params;
+
+      const collectible = await db('collectibles')
+        .where({ id: collectibleId, user_id: req.user.id })
+        .select('id')
+        .first();
+
+      if (!collectible) {
+        return res.status(404).json({ success: false, error: 'Collectible not found' });
+      }
+
+      // Select the columns required by the photo serializer.
+      const rows = await db('photos')
+        .select(
+          'id',
+          'filename',
+          'state',
+          'metadata',
+          'hash',
+          'file_size',
+          'caption',
+          'description',
+          'keywords',
+          'classification',
+          'storage_path',
+          'edited_filename',
+          'text_style',
+          'ai_model_history',
+          'poi_analysis',
+          'thumb_path',
+          'thumb_small_path'
+        )
+        .where({ user_id: req.user.id, collectible_id: collectibleId })
+        .orderBy('created_at', 'desc')
+        .orderBy('id', 'desc');
+
+      const photos = await Promise.all(rows.map((row) => mapPhotoRowToListDto(row)));
+      res.json({ success: true, photos });
+    } catch (err) {
+      res.status(500).json({ success: false, error: err.message });
+    }
+  });
 
   // GET /collectibles/:collectibleId/history - Get price history for a collectible
   router.get('/collectibles/:collectibleId/history', async (req, res) => {

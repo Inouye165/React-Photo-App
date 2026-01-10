@@ -56,6 +56,7 @@ module.exports = function createUploadsRouter({ db }) {
     let storagePath = null;
     let uploadSucceeded = false;
     let photoId = null;
+    let collectibleId = null;
 
     try {
       // Auth check
@@ -124,6 +125,35 @@ module.exports = function createUploadsRouter({ db }) {
         });
       }
 
+      // Optional: associate this upload to an existing collectible.
+      // Accept from multipart fields (preferred) or query params as a fallback.
+      {
+        const rawCollectibleId =
+          uploadResult?.fields?.collectibleId ??
+          uploadResult?.fields?.collectible_id ??
+          req.query?.collectibleId ??
+          req.query?.collectible_id;
+
+        if (rawCollectibleId !== undefined && rawCollectibleId !== null && String(rawCollectibleId).trim() !== '') {
+          const parsed = Number(String(rawCollectibleId).trim());
+          if (!Number.isInteger(parsed) || parsed <= 0) {
+            return res.status(400).json({ success: false, error: 'Invalid collectibleId' });
+          }
+
+          // SECURITY: ensure the collectible belongs to the authenticated user.
+          const collectible = await db('collectibles')
+            .where({ id: parsed, user_id: req.user.id })
+            .select('id')
+            .first();
+
+          if (!collectible) {
+            return res.status(404).json({ success: false, error: 'Collectible not found' });
+          }
+
+          collectibleId = parsed;
+        }
+      }
+
       // IMMEDIATE EXIF EXTRACTION: Extract metadata right after upload
       // This allows the frontend to display compass direction immediately
       let immediateMetadata = {};
@@ -172,6 +202,7 @@ module.exports = function createUploadsRouter({ db }) {
           created_at: now,
           updated_at: now,
           classification,
+          collectible_id: collectibleId,
           // Store immediate metadata or mark as pending
           metadata: JSON.stringify(Object.keys(sanitizedMetadata).length > 0 ? sanitizedMetadata : { pending: true })
         })
@@ -250,7 +281,15 @@ module.exports = function createUploadsRouter({ db }) {
       let jobEnqueued = false;
       
       try {
-        if (classification !== 'none') {
+        // CRITICAL: If this upload is attached to a collectible, bypass queue-based processing.
+        // These photos are auxiliary and must upload fast.
+        if (collectibleId) {
+          logger.info('[upload] Skipping background processing (collectible upload)', {
+            photoId,
+            userId: req.user.id,
+            collectibleId,
+          });
+        } else if (classification !== 'none') {
           const redisAvailable = await checkRedisAvailable();
           
           if (redisAvailable) {
