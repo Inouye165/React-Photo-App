@@ -48,6 +48,25 @@ This document outlines the architectural decisions and optimizations implemented
 - **Invalidation:** On successful upload, delete, or list-affecting updates, the cache is invalidated **per user** using a Redis Set index (`photos:list:keys:{userId}`), avoiding `KEYS/SCAN` on the hot path.
 - **Resilience:** If Redis is not configured or is temporarily unavailable, the application gracefully falls back to direct DB queries (cache is best-effort).
 
+## 6. Error Handling & Resilience
+**Goal:** Preserve correct behavior under partial failures (Redis down, worker stalls) and reduce security risk from stale auth state.
+
+- **Auth Profile Cache (Security-Sensitive):**
+    - Cached Supabase user profile is stored under `auth:profile:{tokenHash}` with TTL 300s (token is hashed; raw tokens never appear in Redis keys).
+    - **Immediate invalidation support:** per-user index set (`auth:profile:keys:{userId}`) + an `auth:profile:invalidatedAt:{userId}` guard.
+    - On a security event (role change, revocation, etc.), call `invalidateAuthProfileCacheForUserId(userId)` to evict known cached entries and prevent older cached profiles from being reused.
+    - **Fail-open:** if Redis is unavailable or cache entries are malformed, auth falls back to `supabase.auth.getUser()`.
+
+- **Worker Lock Hardening (BullMQ):**
+    - `lockDuration = 60s` and `stalledInterval = 30s` to detect stuck workers faster and reduce “ghost ownership” windows.
+    - Retry behavior is configured at job enqueue time (`attempts = 5`, exponential backoff with 60s delay).
+
+## 7. Monitoring & Tracing
+**Goal:** Make production incidents diagnosable with low-cardinality signals.
+
+- **Request Correlation:** A sanitized `x-request-id` is attached to each request and echoed in the response header. When the API enqueues an AI job, it propagates the same request ID into the job payload, and the worker includes it in job completion/failure logs.
+- **Metrics:** Prometheus-style metrics are exposed via `/metrics` and include BullMQ worker/job counters and duration histograms.
+
 ## Summary of Limits
 | Resource | Old Limit | New Limit | Bottleneck Removed |
 | :--- | :--- | :--- | :--- |

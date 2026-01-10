@@ -122,6 +122,7 @@ interface AuthenticatedRequest extends Request {
     };
   };
   id?: string;
+  requestId?: string;
 }
 
 /** Status counts response */
@@ -789,7 +790,7 @@ export default function createPhotosRouter({ db, supabase }: PhotosRouterDepende
       }
       if (state === 'inprogress') {
         try {
-          await photosAi.enqueuePhotoAiJob(row.id);
+          await photosAi.enqueuePhotoAiJob(row.id, { requestId: req.requestId });
         } catch (err) {
           const error = err as Error;
           logger.error('Failed to enqueue AI job:', error?.message);
@@ -972,7 +973,9 @@ export default function createPhotosRouter({ db, supabase }: PhotosRouterDepende
       if (modelOverride === 'gpt-image-1') {
         return res.status(400).json({ success: false, error: 'gpt-image-1 is an image-generation model and cannot be used for text analysis. Choose a vision-analysis model (e.g., gpt-4o-mini).' } as ErrorResponse);
       }
-      const jobOptions: { modelOverrides?: Record<string, string>; collectibleOverride?: Record<string, unknown> } = {};
+      const jobOptions: { modelOverrides?: Record<string, string>; collectibleOverride?: Record<string, unknown>; requestId?: string } = {
+        requestId: req.requestId,
+      };
       if (modelOverride) jobOptions.modelOverrides = { router: modelOverride, scenery: modelOverride, collectible: modelOverride };
       if (collectibleOverride) {
         if (typeof collectibleOverride !== 'object' || typeof collectibleOverride.id !== 'string' || !collectibleOverride.id.trim()) {
@@ -1076,7 +1079,7 @@ export default function createPhotosRouter({ db, supabase }: PhotosRouterDepende
       if (modelOverride === 'gpt-image-1') {
         return res.status(400).json({ success: false, error: 'gpt-image-1 is an image-generation model and cannot be used for text analysis. Choose a vision-analysis model (e.g., gpt-4o-mini).' } as ErrorResponse);
       }
-      const jobOptions: { modelOverrides?: Record<string, string> } = {};
+      const jobOptions: { modelOverrides?: Record<string, string>; requestId?: string } = { requestId: req.requestId };
       if (modelOverride) jobOptions.modelOverrides = { router: modelOverride, scenery: modelOverride, collectible: modelOverride };
       await photosAi.enqueuePhotoAiJob(photo.id, jobOptions);
       return res.status(202).json({

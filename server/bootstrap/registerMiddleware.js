@@ -7,6 +7,7 @@ function registerMiddleware(app) {
   const csurf = require('csurf');
 
   const { configureSecurity, validateRequest } = require('../middleware/security');
+  const { requestIdMiddleware } = require('../middleware/requestId');
 
   // Configure CORS origins early so preflight (OPTIONS) and error responses
   // include the appropriate Access-Control-Allow-* headers before any
@@ -58,6 +59,8 @@ function registerMiddleware(app) {
 
   // Configure security middleware after CORS so security headers are
   // applied to responses that already include CORS headers.
+  // Establish a sanitized request ID early for logging/trace correlation.
+  app.use(requestIdMiddleware);
   configureSecurity(app);
 
   // Cookie parser for secure httpOnly cookie authentication

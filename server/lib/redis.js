@@ -67,6 +67,101 @@ function photosListKeysIndexKey(userId) {
   return `photos:list:keys:${userKey}`;
 }
 
+function authProfileKeysIndexKey(userId) {
+  const userKey = normalizeCacheUserId(userId);
+  return `auth:profile:keys:${userKey}`;
+}
+
+function authProfileInvalidatedAtKey(userId) {
+  const userKey = normalizeCacheUserId(userId);
+  return `auth:profile:invalidatedAt:${userKey}`;
+}
+
+async function recordAuthProfileCacheKeyForUserId(userId, cacheKey, ttlSeconds, { redis } = {}) {
+  const client = redis || getRedisClient();
+  if (!client) return { ok: false, reason: 'redis-not-configured' };
+  if (!cacheKey || typeof cacheKey !== 'string') return { ok: false, reason: 'invalid-cacheKey' };
+
+  const indexKey = authProfileKeysIndexKey(userId);
+  const ttl = Number(ttlSeconds);
+  const seconds = Number.isFinite(ttl) && ttl > 0 ? Math.max(1, Math.floor(ttl)) : 300;
+
+  try {
+    await saddCompat(client, indexKey, cacheKey);
+    await expireCompat(client, indexKey, seconds);
+    return { ok: true };
+  } catch (err) {
+    logger.warn('[Redis] auth:profile index update failed', {
+      error: err instanceof Error ? err.message : String(err),
+      userId: typeof userId === 'string' ? userId : String(userId),
+    });
+    return { ok: false, reason: 'redis-error' };
+  }
+}
+
+async function getAuthProfileInvalidatedAtMs(userId, { redis } = {}) {
+  const client = redis || getRedisClient();
+  if (!client || typeof client.get !== 'function') return null;
+
+  try {
+    const raw = await client.get(authProfileInvalidatedAtKey(userId));
+    const parsed = Number(raw);
+    return Number.isFinite(parsed) && parsed > 0 ? parsed : null;
+  } catch {
+    return null;
+  }
+}
+
+/**
+ * Best-effort invalidation for all cached auth profiles for a user.
+ *
+ * Intended for security-sensitive events (role changes, revocation, etc.).
+ * Uses a per-user Redis Set index + an invalidatedAt timestamp guard.
+ */
+async function invalidateAuthProfileCacheForUserId(userId, { redis } = {}) {
+  const client = redis || getRedisClient();
+  if (!client) return { ok: false, reason: 'redis-not-configured', keysDeleted: 0 };
+
+  const indexKey = authProfileKeysIndexKey(userId);
+  const invalidatedKey = authProfileInvalidatedAtKey(userId);
+  const nowMs = Date.now();
+
+  // Keep invalidation guards around longer than the profile TTL so late/straggler
+  // caches don't resurrect old auth state.
+  const invalidateTtlSeconds = 86400;
+
+  try {
+    const keys = await smembersCompat(client, indexKey);
+    const toDelete = Array.isArray(keys) ? keys.filter((k) => typeof k === 'string' && k) : [];
+
+    // Write the invalidation guard first (best effort).
+    try {
+      await setRedisValueWithTtl(client, invalidatedKey, invalidateTtlSeconds, String(nowMs));
+    } catch {
+      // Fail-open: cache invalidation should never block the caller.
+    }
+
+    // Prefer MULTI/EXEC when available.
+    const usedMulti = await runMultiCompat(client, [
+      ...(toDelete.length ? [{ name: 'del', args: toDelete }] : []),
+      { name: 'del', args: [indexKey] },
+    ]);
+
+    if (!usedMulti) {
+      if (toDelete.length) await delCompat(client, toDelete);
+      await delCompat(client, [indexKey]);
+    }
+
+    return { ok: true, keysDeleted: toDelete.length, invalidatedAtMs: nowMs };
+  } catch (err) {
+    logger.warn('[Redis] auth:profile invalidation failed', {
+      error: err instanceof Error ? err.message : String(err),
+      userId: typeof userId === 'string' ? userId : String(userId),
+    });
+    return { ok: false, reason: 'redis-error', keysDeleted: 0 };
+  }
+}
+
 /**
  * Best-effort invalidation for all cached photo listing results for a user.
  *
@@ -172,6 +267,11 @@ module.exports = {
   setRedisValueWithTtl,
   normalizeCacheUserId,
   photosListKeysIndexKey,
+  authProfileKeysIndexKey,
+  authProfileInvalidatedAtKey,
+  recordAuthProfileCacheKeyForUserId,
+  getAuthProfileInvalidatedAtMs,
+  invalidateAuthProfileCacheForUserId,
   invalidatePhotosListCacheForUserId,
   // Intentionally exported for compatibility across redis client implementations.
   // Keep these helpers internal-ish; tests can mock around them.

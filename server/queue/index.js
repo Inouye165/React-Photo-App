@@ -6,6 +6,7 @@ const { createRedisConnection } = require("../redis/connection");
 const metrics = require('../metrics');
 const { attachBullmqWorkerMetrics } = require('../metrics/bullmq');
 const { randomUUID } = require('crypto');
+const { sanitizeRequestId } = require('../lib/requestId');
 
 const QUEUE_NAME = "ai-processing";
 const PHOTO_STATUS_CHANNEL = 'photo:status:v1';
@@ -169,6 +170,9 @@ const addAIJob = async (photoId, options = {}) => {
 
   const jobData = { photoId };
 
+  const requestId = sanitizeRequestId(options.requestId);
+  if (requestId) jobData.requestId = requestId;
+
   // Back-compat: some callers used `models` instead of `modelOverrides`.
   const overrides = options.modelOverrides ?? options.models;
   if (overrides) jobData.modelOverrides = overrides;
@@ -177,9 +181,20 @@ const addAIJob = async (photoId, options = {}) => {
   if (options.generateThumbnail !== undefined) jobData.generateThumbnail = options.generateThumbnail;
   if (options.collectibleOverride !== undefined) jobData.collectibleOverride = options.collectibleOverride;
 
-  logger.info('[QUEUE] Adding AI job', { photoId, options: Object.keys(options) });
-  const job = await aiQueue.add("process-photo-ai", jobData);
-  logger.info('[QUEUE] AI job added successfully', { photoId, jobId: job.id });
+  const jobOpts = {
+    // Preserve existing retry intent (was previously set on the Worker, which
+    // BullMQ does not use for job retries).
+    attempts: 5,
+    backoff: { type: "exponential", delay: 60000 },
+  };
+
+  logger.info('[QUEUE] Adding AI job', {
+    photoId,
+    requestId: requestId || undefined,
+    options: Object.keys(options).filter((k) => k !== 'requestId'),
+  });
+  const job = await aiQueue.add("process-photo-ai", jobData, jobOpts);
+  logger.info('[QUEUE] AI job added successfully', { photoId, jobId: job.id, requestId: requestId || undefined });
   return job;
 };
 
@@ -475,10 +490,9 @@ const startWorker = async () => {
 
     aiWorker = new BullMQWorker(QUEUE_NAME, processor, {
       connection: redisConnection,
-      lockDuration: 300000,
+      lockDuration: 60000,
+      stalledInterval: 30000,
       concurrency: 2,
-      attempts: 5,
-      backoff: { type: "exponential", delay: 60000 },
     });
 
     // Publish status transitions to Redis for multi-instance SSE fanout.
@@ -492,12 +506,23 @@ const startWorker = async () => {
     // Observability: low-cardinality worker metrics (no job IDs/names in labels)
     attachBullmqWorkerMetrics({ worker: aiWorker, queueName: QUEUE_NAME, metrics });
 
-    aiWorker.on("completed", (job) =>
-      logger.info(`[WORKER] Job ${job.id} (PhotoId: ${job.data.photoId}) completed.`)
-    );
-    aiWorker.on("failed", (job, err) =>
-      logger.warn(`[WORKER] Job ${job?.id} failed: ${err?.message || err}`)
-    );
+    aiWorker.on("completed", (job) => {
+      logger.info('[WORKER] Job completed', {
+        jobId: job?.id,
+        name: job?.name,
+        photoId: job?.data?.photoId,
+        requestId: sanitizeRequestId(job?.data?.requestId) || undefined,
+      });
+    });
+    aiWorker.on("failed", (job, err) => {
+      logger.warn('[WORKER] Job failed', {
+        jobId: job?.id,
+        name: job?.name,
+        photoId: job?.data?.photoId,
+        requestId: sanitizeRequestId(job?.data?.requestId) || undefined,
+        error: err?.message || String(err),
+      });
+    });
 
     logger.info("[WORKER] Started and listening for jobs");
   }
