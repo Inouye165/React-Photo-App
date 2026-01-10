@@ -109,7 +109,7 @@ export default function AppHeader({
       `}
     >
       <Icon size={16} className="flex-shrink-0" />
-      <span className="hidden sm:inline">{label}</span>
+      <span className="hidden md:inline">{label}</span>
     </button>
   );
 
@@ -130,7 +130,7 @@ export default function AppHeader({
       `}
     >
       <Icon size={16} className="flex-shrink-0" />
-      <span className="hidden sm:inline">{label}</span>
+      <span className="hidden md:inline">{label}</span>
     </NavLink>
   );
 
@@ -167,7 +167,7 @@ export default function AppHeader({
       <div className="flex items-center gap-1 sm:gap-2 min-w-0 flex-shrink-0">
         {/* Logo - hidden on very small screens */}
         <span className="hidden xs:flex items-center gap-1 font-bold text-sm text-slate-900 whitespace-nowrap">
-          📷 <span className="hidden sm:inline">Lumina</span>
+          📷 <span className="hidden md:inline">Lumina</span>
         </span>
         
         {/* Navigation Arrows */}
@@ -198,7 +198,7 @@ export default function AppHeader({
       </div>
 
       {/* Center Section - Navigation Tabs */}
-      <nav className="flex items-center gap-0.5 sm:gap-1 px-1 sm:px-2 py-1 
+      <nav className="flex-1 min-w-0 flex items-center gap-0.5 sm:gap-1 px-1 sm:px-2 py-1 
                       bg-slate-50 rounded-lg border border-slate-200 
                       overflow-x-auto scrollbar-hide">
         <NavTab
