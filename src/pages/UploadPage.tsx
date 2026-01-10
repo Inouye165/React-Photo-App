@@ -415,14 +415,7 @@ export default function UploadPage() {
           <div style={{ marginTop: '24px' }}>
             <button
               onClick={handleClose}
-              style={{
-                fontSize: '14px',
-                color: '#64748b',
-                background: 'none',
-                border: 'none',
-                cursor: 'pointer',
-                textDecoration: 'underline',
-              }}
+              className="min-h-[44px] inline-flex items-center justify-center px-2 text-sm text-slate-500 underline"
             >
               Go to Gallery →
             </button>

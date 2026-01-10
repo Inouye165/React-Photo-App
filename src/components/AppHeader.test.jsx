@@ -215,15 +215,15 @@ describe('AppHeader Component', () => {
   });
 
   describe('Responsive Behavior', () => {
-    it('has hidden text labels on mobile (sm:inline class)', () => {
+    it('has hidden text labels on mobile (md:inline class)', () => {
       render(<AppHeader />);
       
       // Check that labels use responsive classes
       const uploadButton = screen.getByTestId('nav-upload');
       const labelSpan = uploadButton.querySelector('span');
       
-      // Labels should have hidden sm:inline classes
-      expect(labelSpan?.className).toMatch(/hidden\s+sm:inline/);
+      // Labels should have hidden md:inline classes
+      expect(labelSpan?.className).toMatch(/hidden\s+md:inline/);
     });
 
     it('user menu shows username hidden on mobile', () => {
