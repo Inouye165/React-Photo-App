@@ -414,15 +414,13 @@ export default function createPhotosRouter({ db, supabase }: PhotosRouterDepende
         nextCursor = Buffer.from(JSON.stringify(cursorObj), 'utf8').toString('base64url');
       }
 
-      // Map rows to DTOs with embedded signed CDN thumbnail URLs
+      // Map rows to DTOs with server-signed /display/thumbnails URLs (no per-row Supabase signing).
       const mapStart = Date.now();
       const PHOTOS_LIST_THUMB_TTL_SECONDS = 3600;
       const photosWithUrls: PhotoListDto[] = await Promise.all(
         rows.map((row: PhotoRow) =>
           mapPhotoRowToListDto(row, {
-            supabaseClient: supabase,
             ttlSeconds: PHOTOS_LIST_THUMB_TTL_SECONDS,
-            // Backward-compat fallback if CDN signing fails.
             signThumbnailUrl,
           })
         )
