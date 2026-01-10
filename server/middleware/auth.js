@@ -3,7 +3,12 @@ const crypto = require('crypto');
 const jwt = require('jsonwebtoken');
 const { getConfig } = require('../config/env');
 const { isE2EEnabled } = require('../config/e2eGate');
-const { getRedisClient, setRedisValueWithTtl } = require('../lib/redis');
+const {
+  getRedisClient,
+  setRedisValueWithTtl,
+  recordAuthProfileCacheKeyForUserId,
+  getAuthProfileInvalidatedAtMs,
+} = require('../lib/redis');
 
 // Initialize Supabase client
 // In production, missing SUPABASE_* or JWT_SECRET will fail fast via config validation.
@@ -84,6 +89,16 @@ function isStrictAuthenticatedAudience(aud) {
 
 // E2E test user ID - hardcoded constant, never derived from user input
 const E2E_TEST_USER_ID = '11111111-1111-4111-8111-111111111111';
+
+function isAuthProfileCacheEntryValid({ cachedAtMs, invalidatedAtMs }) {
+  const cached = Number(cachedAtMs);
+  const invalidated = Number(invalidatedAtMs);
+
+  if (!Number.isFinite(invalidated) || invalidated <= 0) return true;
+  // If we cannot prove the cache was written after invalidation, treat it as stale.
+  if (!Number.isFinite(cached) || cached <= 0) return false;
+  return cached > invalidated;
+}
 
 async function authenticateToken(req, res, next) {
   // 0. Check for E2E test header (only in non-production)
@@ -198,7 +213,11 @@ async function authenticateToken(req, res, next) {
           const parsed = JSON.parse(cached);
           // Minimal validation to avoid throwing on malformed cache entries.
           if (parsed && typeof parsed === 'object' && parsed.id && parsed.email) {
-            user = parsed;
+            const invalidatedAtMs = await getAuthProfileInvalidatedAtMs(parsed.id, { redis: redisClient });
+            const cachedAtMs = parsed.cachedAtMs ?? parsed.cachedAt;
+            if (isAuthProfileCacheEntryValid({ cachedAtMs, invalidatedAtMs })) {
+              user = parsed;
+            }
           }
         }
       } catch {
@@ -216,11 +235,13 @@ async function authenticateToken(req, res, next) {
             id: user.id,
             email: user.email,
             user_metadata: user.user_metadata,
-            app_metadata: user.app_metadata
+            app_metadata: user.app_metadata,
+            cachedAtMs: Date.now(),
           };
 
           try {
             await setRedisValueWithTtl(redisClient, cacheKey, 300, JSON.stringify(minimizedUser));
+            await recordAuthProfileCacheKeyForUserId(user.id, cacheKey, 300, { redis: redisClient });
           } catch {
             // Fail-open: do not block auth if Redis write fails.
           }
@@ -321,5 +342,8 @@ function requireRole(...roles) {
 
 module.exports = {
   authenticateToken,
-  requireRole
+  requireRole,
+  __private__: {
+    isAuthProfileCacheEntryValid,
+  },
 };

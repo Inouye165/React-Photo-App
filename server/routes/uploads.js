@@ -256,7 +256,8 @@ module.exports = function createUploadsRouter({ db }) {
           if (redisAvailable) {
             await addAIJob(insertedPhoto.id, {
               processMetadata: true,
-              generateThumbnail: true
+              generateThumbnail: true,
+              requestId: req.requestId,
             });
             jobEnqueued = true;
             

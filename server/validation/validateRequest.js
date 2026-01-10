@@ -1,12 +1,6 @@
 // Zod is used via schema.safeParse; do not import unused symbols.
 
-function getOrCreateRequestId(req) {
-  const existing = req.requestId || req.id || req.headers?.['x-request-id'] || req.headers?.['x-requestid'];
-  if (existing && typeof existing === 'string') return existing;
-  const generated = Math.random().toString(36).slice(2, 10);
-  req.requestId = generated;
-  return generated;
-}
+const { getOrCreateRequestId } = require('../lib/requestId');
 
 function buildErrorEnvelope({ code, message, requestId }) {
   return {
