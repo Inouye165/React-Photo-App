@@ -146,15 +146,24 @@ module.exports = function createUploadsRouter({ db }) {
           req.query?.collectibleId ??
           req.query?.collectible_id;
 
-        if (rawCollectibleId !== undefined && rawCollectibleId !== null && String(rawCollectibleId).trim() !== '') {
-          const parsed = Number(String(rawCollectibleId).trim());
-          if (!Number.isInteger(parsed) || parsed <= 0) {
+        const normalizedRaw =
+          rawCollectibleId === undefined || rawCollectibleId === null
+            ? ''
+            : String(rawCollectibleId).trim();
+
+        const parsedCollectibleId =
+          normalizedRaw && normalizedRaw !== 'undefined' && normalizedRaw !== 'null'
+            ? parseInt(normalizedRaw, 10)
+            : null;
+
+        if (parsedCollectibleId !== null) {
+          if (!Number.isInteger(parsedCollectibleId) || Number.isNaN(parsedCollectibleId) || parsedCollectibleId <= 0) {
             return res.status(400).json({ success: false, error: 'Invalid collectibleId' });
           }
 
           // SECURITY: ensure the collectible belongs to the authenticated user.
           const collectible = await db('collectibles')
-            .where({ id: parsed, user_id: req.user.id })
+            .where({ id: parsedCollectibleId, user_id: req.user.id })
             .select('id')
             .first();
 
@@ -162,7 +171,7 @@ module.exports = function createUploadsRouter({ db }) {
             return res.status(404).json({ success: false, error: 'Collectible not found' });
           }
 
-          collectibleId = parsed;
+          collectibleId = parsedCollectibleId;
         }
       }
 
