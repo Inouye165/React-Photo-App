@@ -337,16 +337,21 @@ export default function useLocalPhotoPicker({
    * @security No user blocking on upload failures
    */
   const handleUploadFilteredOptimistic = useCallback(
-    (subsetToUpload?: UploadPickerLocalPhoto[], analysisType: AnalysisType = 'none', collectibleIdOverride?: string) => {
+    (subsetToUpload?: UploadPickerLocalPhoto[], analysisType: AnalysisType = 'none', collectibleId?: string) => {
       const photosToUpload = Array.isArray(subsetToUpload) ? subsetToUpload : filteredLocalPhotos;
       if (photosToUpload.length === 0) return;
 
       const files = photosToUpload.map((p) => p?.file).filter(Boolean);
       if (files.length === 0) return;
 
+      console.log(
+        `[Picker] Selected ${files.length} files for upload. Target Collectible: ${collectibleId || 'None'}`
+      );
+      files.forEach((f) => console.log(`[Picker] Processing file: ${f.name}`));
+
       const effectiveCollectibleId =
-        typeof collectibleIdOverride === 'string' && collectibleIdOverride.trim()
-          ? collectibleIdOverride.trim()
+        typeof collectibleId === 'string' && collectibleId.trim()
+          ? collectibleId.trim()
           : collectibleId != null
             ? String(collectibleId)
             : undefined;

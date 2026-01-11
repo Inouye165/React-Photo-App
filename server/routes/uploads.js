@@ -101,6 +101,8 @@ module.exports = function createUploadsRouter({ db }) {
       storagePath = uploadResult.path;
       uploadSucceeded = true;
 
+      logger.info('[Upload] File streamed to Supabase:', storagePath);
+
       // Intent-based uploads: accept a lightweight classification/intent hint
       // from multipart form fields. Default to 'scenery' if missing/invalid.
       // If 'none' is specified, skip AI analysis entirely.
@@ -185,6 +187,7 @@ module.exports = function createUploadsRouter({ db }) {
       const sanitizedMetadata = sanitizePhotoMetadata(immediateMetadata, { storeGpsCoords });
 
       const now = new Date().toISOString();
+      logger.info('[Upload] Saving to DB. Filename:', uploadResult.filename, 'CollectibleID:', collectibleId);
       const [insertedPhoto] = await db('photos')
         .insert({
           filename: uploadResult.filename,
@@ -202,7 +205,7 @@ module.exports = function createUploadsRouter({ db }) {
           created_at: now,
           updated_at: now,
           classification,
-          collectible_id: collectibleId,
+          collectible_id: collectibleId || null,
           // Store immediate metadata or mark as pending
           metadata: JSON.stringify(Object.keys(sanitizedMetadata).length > 0 ? sanitizedMetadata : { pending: true })
         })
