@@ -139,7 +139,6 @@ export default function CollectibleDetailView({ photo, collectibleData, aiInsigh
   const [collectiblePhotos, setCollectiblePhotos] = React.useState<CollectiblePhotoDto[]>([]);
   const [collectiblePhotosLoading, setCollectiblePhotosLoading] = React.useState(false);
   const [collectiblePhotosError, setCollectiblePhotosError] = React.useState<string | null>(null);
-  const fileInputRef = React.useRef<HTMLInputElement | null>(null);
 
   const pendingUploads = useStore((state) => state.pendingUploads);
 
@@ -221,7 +220,7 @@ export default function CollectibleDetailView({ photo, collectibleData, aiInsigh
     void fetchCollectiblePhotos();
   }, [fetchCollectiblePhotos]);
 
-  const { handleNativeSelection, handleUploadFilteredOptimistic } = useLocalPhotoPicker({
+  const { handleNativeSelection, handleUploadFilteredOptimistic, fileInputRef } = useLocalPhotoPicker({
     onUploadComplete: fetchCollectiblePhotos,
     collectibleId: collectibleData?.id ?? null,
   });
@@ -241,13 +240,9 @@ export default function CollectibleDetailView({ photo, collectibleData, aiInsigh
 
   const onFileChange = React.useCallback(
     async (e: React.ChangeEvent<HTMLInputElement>) => {
-      try {
-        // 1. Parse EXIF/Thumbnails and stage files
-        await handleNativeSelection(e);
-      } finally {
-        // Reset selection so choosing the same file twice still triggers onChange.
-        e.currentTarget.value = '';
-      }
+      // 1. Parse EXIF/Thumbnails and stage files
+      // Note: input reset is handled inside useLocalPhotoPicker via fileInputRef.
+      await handleNativeSelection(e);
 
       // 2. Trigger the upload IMMEDIATELY
       // Ensure we pass the current collectible ID and 'none' classification
