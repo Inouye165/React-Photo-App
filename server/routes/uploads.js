@@ -151,12 +151,22 @@ module.exports = function createUploadsRouter({ db }) {
             ? ''
             : String(rawCollectibleId).trim();
 
+        logger.info('[Upload Debug] Raw ID:', rawCollectibleId, 'Normalized:', normalizedRaw);
+
         const parsedCollectibleId =
           normalizedRaw && normalizedRaw !== 'undefined' && normalizedRaw !== 'null'
             ? parseInt(normalizedRaw, 10)
             : null;
 
+        logger.info('[Upload Debug] Parsed Integer:', parsedCollectibleId);
+
         if (parsedCollectibleId !== null) {
+          logger.info(
+            '[Upload Debug] Running ownership check for User:',
+            req.user.id,
+            'Collectible:',
+            parsedCollectibleId,
+          );
           if (!Number.isInteger(parsedCollectibleId) || Number.isNaN(parsedCollectibleId) || parsedCollectibleId <= 0) {
             return res.status(400).json({ success: false, error: 'Invalid collectibleId' });
           }
@@ -166,6 +176,8 @@ module.exports = function createUploadsRouter({ db }) {
             .where({ id: parsedCollectibleId, user_id: req.user.id })
             .select('id')
             .first();
+
+          logger.info('[Upload Debug] DB Result:', collectible ? 'Found' : 'Not Found');
 
           if (!collectible) {
             return res.status(404).json({ success: false, error: 'Collectible not found' });
