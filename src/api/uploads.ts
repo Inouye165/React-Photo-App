@@ -60,9 +60,12 @@ export async function uploadPhotoToServer(
   const effectiveFile = withInferredFileType(file)
 
   const form = new FormData()
-  form.append('photo', effectiveFile, effectiveFile.name)
-  if (effectiveThumbnailBlob) {
-    form.append('thumbnail', effectiveThumbnailBlob, 'thumbnail.jpg')
+
+  // IMPORTANT (busboy/streaming): append non-file fields first so they are available
+  // when the file stream is processed server-side.
+  const collectibleId = (effectiveOptions as UploadPhotoOptions | undefined)?.collectibleId
+  if (typeof collectibleId === 'string' && collectibleId.trim()) {
+    form.append('collectibleId', collectibleId.trim())
   }
 
   const classification = effectiveOptions?.classification
@@ -70,9 +73,9 @@ export async function uploadPhotoToServer(
     form.append('classification', classification.trim())
   }
 
-  const collectibleId = (effectiveOptions as UploadPhotoOptions | undefined)?.collectibleId
-  if (typeof collectibleId === 'string' && collectibleId.trim()) {
-    form.append('collectibleId', collectibleId.trim())
+  form.append('photo', effectiveFile, effectiveFile.name)
+  if (effectiveThumbnailBlob) {
+    form.append('thumbnail', effectiveThumbnailBlob, 'thumbnail.jpg')
   }
 
   try {
