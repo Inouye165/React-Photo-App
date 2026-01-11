@@ -103,6 +103,16 @@ module.exports = function createUploadsRouter({ db }) {
 
       logger.info('[Upload] File streamed to Supabase:', storagePath);
 
+      // Debug: confirm which multipart fields arrived (keys only; avoid logging values).
+      try {
+        const fieldKeys = uploadResult?.fields && typeof uploadResult.fields === 'object'
+          ? Object.keys(uploadResult.fields)
+          : [];
+        logger.info('[Upload] Multipart fields received:', fieldKeys);
+      } catch {
+        // ignore logging errors
+      }
+
       // Intent-based uploads: accept a lightweight classification/intent hint
       // from multipart form fields. Default to 'scenery' if missing/invalid.
       // If 'none' is specified, skip AI analysis entirely.
