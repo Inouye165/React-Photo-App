@@ -3,6 +3,8 @@ import React from 'react';
 import type { Photo } from '../types/photo';
 import type { CollectibleRecord } from '../types/collectibles';
 
+import useStore from '../store';
+
 import { uploadPhotoToServer } from '../api/uploads';
 import { request, API_BASE_URL } from '../api/httpClient';
 import { getHeadersForGetRequestAsync } from '../api/auth';
@@ -139,6 +141,8 @@ export default function CollectibleDetailView({ photo, collectibleData, aiInsigh
   const [collectiblePhotosUploading, setCollectiblePhotosUploading] = React.useState(false);
   const fileInputRef = React.useRef<HTMLInputElement | null>(null);
 
+  const pendingUploads = useStore((state) => state.pendingUploads);
+
   // Get insights from either the collectible data or directly from photo
   const insights: unknown =
     aiInsights || collectibleData?.ai_analysis_history?.[0]?.result || photo?.poi_analysis || null;
@@ -186,6 +190,33 @@ export default function CollectibleDetailView({ photo, collectibleData, aiInsigh
     }
   }, [collectibleData?.id]);
 
+  const mergedCollectiblePhotos = React.useMemo<CollectiblePhotoDto[]>(() => {
+    const collectibleId = collectibleData?.id;
+    const serverPhotos = Array.isArray(collectiblePhotos) ? collectiblePhotos : [];
+
+    if (!collectibleId) return serverPhotos;
+
+    const pendingForCollectible = (Array.isArray(pendingUploads) ? pendingUploads : [])
+      .filter((p) => String(p?.collectibleId || '') === String(collectibleId))
+      .map((p) =>
+        ({
+          id: String(p.id),
+          url: p.url,
+          filename: p.filename,
+          created_at: p.created_at,
+          isTemporary: true,
+          uploading: true,
+          state: p.state,
+        }) as CollectiblePhotoDto
+      );
+
+    if (pendingForCollectible.length === 0) return serverPhotos;
+
+    const existingIds = new Set(serverPhotos.map((p) => String(p?.id)));
+    const toPrepend = pendingForCollectible.filter((p) => !existingIds.has(String(p?.id)));
+    return [...toPrepend, ...serverPhotos];
+  }, [collectibleData?.id, collectiblePhotos, pendingUploads]);
+
   React.useEffect(() => {
     void fetchCollectiblePhotos();
   }, [fetchCollectiblePhotos]);
@@ -201,11 +232,16 @@ export default function CollectibleDetailView({ photo, collectibleData, aiInsigh
       if (!collectibleId) return;
       if (!files || files.length === 0) return;
 
+      const fileArray = Array.from(files);
+
+      // Add context-aware pending previews immediately (only visible in this collectible view).
+      const pendingEntries = useStore.getState().addPendingUploads(fileArray, collectibleId) || [];
+
       setCollectiblePhotosUploading(true);
       setCollectiblePhotosError(null);
 
       try {
-        for (const file of Array.from(files)) {
+        for (const file of fileArray) {
           await uploadPhotoToServer(file, {
             classification: 'none',
             collectibleId,
@@ -216,6 +252,12 @@ export default function CollectibleDetailView({ photo, collectibleData, aiInsigh
       } catch (err) {
         setCollectiblePhotosError(getErrorMessage(err) || 'Failed to upload collectible photos');
       } finally {
+        // Remove pending previews after we attempted to refresh the server list.
+        // This triggers URL.revokeObjectURL via the store implementation.
+        const removePendingUpload = useStore.getState().removePendingUpload;
+        pendingEntries.forEach((p) => {
+          if (p?.id) removePendingUpload(p.id);
+        });
         setCollectiblePhotosUploading(false);
       }
     },
@@ -421,7 +463,7 @@ export default function CollectibleDetailView({ photo, collectibleData, aiInsigh
 
         {collectiblePhotosLoading ? (
           <div style={{ fontSize: '12px', color: '#64748b' }}>Loading photos…</div>
-        ) : collectibleData?.id && collectiblePhotos.length === 0 ? (
+        ) : collectibleData?.id && mergedCollectiblePhotos.length === 0 ? (
           <div style={{ fontSize: '12px', color: '#64748b' }}>No reference photos yet.</div>
         ) : (
           <div
@@ -431,9 +473,12 @@ export default function CollectibleDetailView({ photo, collectibleData, aiInsigh
               gap: '10px',
             }}
           >
-            {collectiblePhotos.map((p) => {
+            {mergedCollectiblePhotos.map((p) => {
               const src =
                 resolveMediaUrl(p.smallThumbnail) || resolveMediaUrl(p.thumbnail) || resolveMediaUrl(p.url);
+
+              const isUploading = Boolean((p as unknown as { uploading?: unknown; isTemporary?: unknown })?.uploading) ||
+                Boolean((p as unknown as { uploading?: unknown; isTemporary?: unknown })?.isTemporary);
 
               return (
                 <div
@@ -443,6 +488,8 @@ export default function CollectibleDetailView({ photo, collectibleData, aiInsigh
                     overflow: 'hidden',
                     border: '1px solid #e2e8f0',
                     backgroundColor: '#ffffff',
+                    position: 'relative',
+                    opacity: isUploading ? 0.75 : 1,
                   }}
                   title={typeof p.filename === 'string' ? p.filename : undefined}
                 >
@@ -466,6 +513,25 @@ export default function CollectibleDetailView({ photo, collectibleData, aiInsigh
                       }}
                     >
                       No preview
+                    </div>
+                  )}
+
+                  {isUploading && (
+                    <div
+                      style={{
+                        position: 'absolute',
+                        inset: 0,
+                        display: 'flex',
+                        alignItems: 'center',
+                        justifyContent: 'center',
+                        background: 'rgba(15, 23, 42, 0.35)',
+                        color: '#ffffff',
+                        fontSize: '12px',
+                        fontWeight: 700,
+                      }}
+                      aria-label="Uploading"
+                    >
+                      Uploading…
                     </div>
                   )}
                 </div>

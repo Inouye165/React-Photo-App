@@ -145,8 +145,9 @@ function usePhotoManagement() {
     return cancel;
   }, [authReady, userId, loadPhotos]);
 
-  const refreshPhotos = useCallback(() => {
-    loadPhotos();
+  const refreshPhotos = useCallback(async () => {
+    const { promise } = loadPhotos();
+    await promise;
   }, [loadPhotos]);
 
   const activePhoto = useMemo(() => {
