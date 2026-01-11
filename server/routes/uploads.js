@@ -171,19 +171,38 @@ module.exports = function createUploadsRouter({ db }) {
             return res.status(400).json({ success: false, error: 'Invalid collectibleId' });
           }
 
-          // SECURITY: ensure the collectible belongs to the authenticated user.
-          const collectible = await db('collectibles')
-            .where({ id: parsedCollectibleId, user_id: req.user.id })
-            .select('id')
+          // --- DIAGNOSTIC START ---
+          // 1. Fetch by ID only (ignore user for a moment) to prove record exists
+          const debugCollectible = await db('collectibles')
+            .where({ id: parsedCollectibleId })
+            .select('id', 'user_id')
             .first();
 
-          logger.info('[Upload Debug] DB Result:', collectible ? 'Found' : 'Not Found');
-
-          if (!collectible) {
-            return res.status(404).json({ success: false, error: 'Collectible not found' });
+          if (!debugCollectible) {
+            logger.error(
+              `[Upload Diagnostic] Collectible ${parsedCollectibleId} does NOT exist in DB (globally).`,
+            );
+            return res.status(404).json({ success: false, error: 'Collectible does not exist' });
           }
 
+          const dbOwner = String(debugCollectible.user_id).trim();
+          const reqUser = String(req.user.id).trim();
+          const isMatch = dbOwner === reqUser;
+
+          logger.info(`[Upload Diagnostic] Found Collectible: ${debugCollectible.id}`);
+          logger.info(`[Upload Diagnostic] DB Owner:   '${dbOwner}' (Length: ${dbOwner.length})`);
+          logger.info(`[Upload Diagnostic] Req User:   '${reqUser}' (Length: ${reqUser.length})`);
+          logger.info(`[Upload Diagnostic] Match?:     ${isMatch}`);
+
+          // 2. Check User
+          if (!isMatch) {
+            logger.error('[Upload Diagnostic] OWNER MISMATCH. Rejecting.');
+            return res.status(403).json({ success: false, error: 'Ownership mismatch' });
+          }
+
+          // Success
           collectibleId = parsedCollectibleId;
+          // --- DIAGNOSTIC END ---
         }
       }
 
