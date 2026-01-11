@@ -1,4 +1,5 @@
-import { useRef, useMemo, CSSProperties } from 'react';
+import { useRef, useMemo, useState, useCallback, CSSProperties } from 'react';
+import type { ChangeEvent, DragEvent, KeyboardEvent } from 'react';
 import useStore from '../store';
 import { useNavigate } from 'react-router-dom';
 import PhotoUploadForm from '../PhotoUploadForm';
@@ -30,6 +31,9 @@ import type { AnalysisType } from '../hooks/useLocalPhotoPicker';
  */
 export default function UploadPage() {
   const navigate = useNavigate();
+
+  const [isDragging, setIsDragging] = useState(false);
+  const dragCounterRef = useRef(0);
 
   const {
     filteredLocalPhotos,
@@ -166,10 +170,64 @@ export default function UploadPage() {
   // Refs for fallback file inputs (Safari/Firefox/mobile)
   const galleryInputRef = useRef<HTMLInputElement>(null);
   const cameraInputRef = useRef<HTMLInputElement>(null);
+  const folderInputRef = useRef<HTMLInputElement>(null);
 
   // Track if user has selected a folder
   const hasSelectedFolder = filteredLocalPhotos.length > 0;
   const isMobile = isProbablyMobile();
+
+  const passFilesToNativeSelection = useCallback(
+    (incomingFiles: File[]) => {
+      const filesArray = Array.isArray(incomingFiles) ? incomingFiles : [];
+      if (filesArray.length === 0) return;
+
+      const dt = new DataTransfer();
+      for (const file of filesArray) {
+        try {
+          dt.items.add(file);
+        } catch {
+          // Ignore invalid items
+        }
+      }
+      const synthetic = { target: { files: dt.files } } as unknown as ChangeEvent<HTMLInputElement>;
+      void handleNativeSelection(synthetic);
+    },
+    [handleNativeSelection]
+  );
+
+  const handleDragEnter = useCallback((e: DragEvent<HTMLDivElement>) => {
+    e.preventDefault();
+    e.stopPropagation();
+    dragCounterRef.current += 1;
+    setIsDragging(true);
+  }, []);
+
+  const handleDragOver = useCallback((e: DragEvent<HTMLDivElement>) => {
+    e.preventDefault();
+    e.stopPropagation();
+    if (!isDragging) setIsDragging(true);
+  }, [isDragging]);
+
+  const handleDragLeave = useCallback((e: DragEvent<HTMLDivElement>) => {
+    e.preventDefault();
+    e.stopPropagation();
+    dragCounterRef.current = Math.max(0, dragCounterRef.current - 1);
+    if (dragCounterRef.current === 0) setIsDragging(false);
+  }, []);
+
+  const handleDrop = useCallback(
+    (e: DragEvent<HTMLDivElement>) => {
+      e.preventDefault();
+      e.stopPropagation();
+
+      dragCounterRef.current = 0;
+      setIsDragging(false);
+
+      const droppedFiles = Array.from(e.dataTransfer?.files || []);
+      passFilesToNativeSelection(droppedFiles);
+    },
+    [passFilesToNativeSelection]
+  );
 
   // Extract files for queue processing
   const files = useMemo(() => filteredLocalPhotos.map((p) => p.file).filter(Boolean), [filteredLocalPhotos]);
@@ -192,6 +250,20 @@ export default function UploadPage() {
     } else {
       galleryInputRef.current?.click();
     }
+  };
+
+  const handleStartFolderUpload = () => {
+    if (typeof window.showDirectoryPicker === 'function' && !isMobile) {
+      void handleSelectFolder();
+      return;
+    }
+    folderInputRef.current?.click();
+  };
+
+  const handleDropZoneKeyDown = (e: KeyboardEvent<HTMLDivElement>) => {
+    if (e.key !== 'Enter' && e.key !== ' ') return;
+    e.preventDefault();
+    handleStartUpload();
   };
 
   const handleChooseFromGallery = () => {
@@ -296,7 +368,20 @@ export default function UploadPage() {
   if (!hasSelectedFolder) {
     return (
       <div style={containerStyle}>
-        <div style={cardStyle}>
+        <div
+          className={`w-full max-w-[500px] p-2 rounded-2xl border-2 border-dashed transition-colors ${
+            isDragging ? 'border-blue-500 bg-blue-50' : 'border-slate-200 bg-transparent'
+          }`}
+          onDragEnter={handleDragEnter}
+          onDragOver={handleDragOver}
+          onDragLeave={handleDragLeave}
+          onDrop={handleDrop}
+          tabIndex={0}
+          role="button"
+          aria-label="Upload photos. Drag and drop images here, or press Enter to select."
+          onKeyDown={handleDropZoneKeyDown}
+        >
+          <div style={cardStyle}>
           {/* Icon */}
           <div style={iconContainerStyle}>
             <svg
@@ -368,24 +453,46 @@ export default function UploadPage() {
               </button>
             </div>
           ) : (
-            <button
-              type="button"
-              onClick={handleStartUpload}
-              style={primaryButtonStyle}
-              onMouseEnter={(e) => {
-                e.currentTarget.style.transform = 'translateY(-2px)';
-                e.currentTarget.style.boxShadow = '0 6px 20px rgba(79, 70, 229, 0.5)';
-              }}
-              onMouseLeave={(e) => {
-                e.currentTarget.style.transform = 'translateY(0)';
-                e.currentTarget.style.boxShadow = '0 4px 12px rgba(79, 70, 229, 0.4)';
-              }}
-            >
-              <svg width="20" height="20" fill="none" stroke="currentColor" viewBox="0 0 24 24" strokeWidth="2">
-                <path d="M22 19a2 2 0 01-2 2H4a2 2 0 01-2-2V5a2 2 0 012-2h5l2 3h9a2 2 0 012 2z" />
-              </svg>
-              Select Photos
-            </button>
+            <div style={{ display: 'flex', flexDirection: 'column', gap: '12px' }}>
+              <button
+                type="button"
+                onClick={handleStartUpload}
+                style={primaryButtonStyle}
+                onMouseEnter={(e) => {
+                  e.currentTarget.style.transform = 'translateY(-2px)';
+                  e.currentTarget.style.boxShadow = '0 6px 20px rgba(79, 70, 229, 0.5)';
+                }}
+                onMouseLeave={(e) => {
+                  e.currentTarget.style.transform = 'translateY(0)';
+                  e.currentTarget.style.boxShadow = '0 4px 12px rgba(79, 70, 229, 0.4)';
+                }}
+              >
+                <svg width="20" height="20" fill="none" stroke="currentColor" viewBox="0 0 24 24" strokeWidth="2">
+                  <path d="M22 19a2 2 0 01-2 2H4a2 2 0 01-2-2V5a2 2 0 012-2h5l2 3h9a2 2 0 012 2z" />
+                </svg>
+                Select Photos
+              </button>
+
+              <button
+                type="button"
+                onClick={handleStartFolderUpload}
+                style={secondaryButtonStyle}
+                aria-label="Upload Folder"
+                onMouseEnter={(e) => {
+                  e.currentTarget.style.transform = 'translateY(-2px)';
+                  e.currentTarget.style.boxShadow = '0 6px 20px rgba(0, 0, 0, 0.10)';
+                }}
+                onMouseLeave={(e) => {
+                  e.currentTarget.style.transform = 'translateY(0)';
+                  e.currentTarget.style.boxShadow = '0 4px 12px rgba(0, 0, 0, 0.06)';
+                }}
+              >
+                <svg width="20" height="20" fill="none" stroke="currentColor" viewBox="0 0 24 24" strokeWidth="2">
+                  <path d="M3 7a2 2 0 012-2h4l2 2h8a2 2 0 012 2v10a2 2 0 01-2 2H5a2 2 0 01-2-2V7z" />
+                </svg>
+                Upload Folder
+              </button>
+            </div>
           )}
 
           {/* Hidden inputs: gallery (no capture) + camera (capture="environment") */}
@@ -398,6 +505,17 @@ export default function UploadPage() {
             ref={galleryInputRef}
             onChange={handleNativeSelection}
             data-testid="gallery-input"
+          />
+          <input
+            type="file"
+            accept="image/*,.heic,.heif,.png,.jpg,.jpeg"
+            multiple
+            className="hidden"
+            style={{ display: 'none' }}
+            ref={folderInputRef}
+            onChange={handleNativeSelection}
+            data-testid="uploadpage-folder-input"
+            {...({ webkitdirectory: '', directory: '' } as any)}
           />
           <input
             type="file"
@@ -453,6 +571,7 @@ export default function UploadPage() {
               </div>
             ))}
           </div>
+          </div>
         </div>
       </div>
     );
@@ -460,22 +579,36 @@ export default function UploadPage() {
 
   // Once folder is selected, show the full upload form
   return (
-    <div style={{ position: 'relative', minHeight: 'calc(100vh - 80px)' }}>
-      <PhotoUploadForm
-        startDate={startDate}
-        endDate={endDate}
-        setStartDate={setStartDate}
-        setEndDate={setEndDate}
-        uploading={uploading}
-        filteredLocalPhotos={filteredLocalPhotos}
-        handleUploadFiltered={handleOptimisticUpload}
-        onReopenFolder={handleSelectFolder}
-        handleNativeSelection={handleNativeSelection}
-        isStandalonePage={true}
-        closeReason="upload-page-close"
-        onClose={handleClose}
-        thumbnailData={thumbnailQueue}
-      />
+    <div
+      className={`p-2 rounded-2xl border-2 border-dashed transition-colors ${
+        isDragging ? 'border-blue-500 bg-blue-50' : 'border-slate-200 bg-transparent'
+      }`}
+      onDragEnter={handleDragEnter}
+      onDragOver={handleDragOver}
+      onDragLeave={handleDragLeave}
+      onDrop={handleDrop}
+      tabIndex={0}
+      role="button"
+      aria-label="Upload photos. Drag and drop images here, or press Enter to select."
+      onKeyDown={handleDropZoneKeyDown}
+    >
+      <div style={{ position: 'relative', minHeight: 'calc(100vh - 80px)' }}>
+        <PhotoUploadForm
+          startDate={startDate}
+          endDate={endDate}
+          setStartDate={setStartDate}
+          setEndDate={setEndDate}
+          uploading={uploading}
+          filteredLocalPhotos={filteredLocalPhotos}
+          handleUploadFiltered={handleOptimisticUpload}
+          onReopenFolder={handleSelectFolder}
+          handleNativeSelection={handleNativeSelection}
+          isStandalonePage={true}
+          closeReason="upload-page-close"
+          onClose={handleClose}
+          thumbnailData={thumbnailQueue}
+        />
+      </div>
     </div>
   );
 }
