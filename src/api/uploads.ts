@@ -3,7 +3,7 @@ import { getAuthHeaders } from './auth'
 
 export interface UploadPhotoOptions {
   classification?: string
-  collectibleId?: number | string
+  collectibleId?: string
 }
 
 function inferMimeTypeFromFilename(filename: string): string | undefined {
@@ -71,8 +71,8 @@ export async function uploadPhotoToServer(
   }
 
   const collectibleId = (effectiveOptions as UploadPhotoOptions | undefined)?.collectibleId
-  if (collectibleId !== undefined && collectibleId !== null && String(collectibleId).trim()) {
-    form.append('collectibleId', String(collectibleId).trim())
+  if (typeof collectibleId === 'string' && collectibleId.trim()) {
+    form.append('collectibleId', collectibleId.trim())
   }
 
   try {

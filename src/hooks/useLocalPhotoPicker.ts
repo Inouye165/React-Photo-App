@@ -43,7 +43,8 @@ interface UseLocalPhotoPickerReturn {
   ) => Promise<void>;
   handleUploadFilteredOptimistic: (
     subsetToUpload?: UploadPickerLocalPhoto[],
-    analysisType?: AnalysisType
+    analysisType?: AnalysisType,
+    collectibleId?: string
   ) => void;
   showPicker: boolean;
   startDate: string;
@@ -336,15 +337,22 @@ export default function useLocalPhotoPicker({
    * @security No user blocking on upload failures
    */
   const handleUploadFilteredOptimistic = useCallback(
-    (subsetToUpload?: UploadPickerLocalPhoto[], analysisType: AnalysisType = 'none') => {
+    (subsetToUpload?: UploadPickerLocalPhoto[], analysisType: AnalysisType = 'none', collectibleIdOverride?: string) => {
       const photosToUpload = Array.isArray(subsetToUpload) ? subsetToUpload : filteredLocalPhotos;
       if (photosToUpload.length === 0) return;
 
       const files = photosToUpload.map((p) => p?.file).filter(Boolean);
       if (files.length === 0) return;
 
+      const effectiveCollectibleId =
+        typeof collectibleIdOverride === 'string' && collectibleIdOverride.trim()
+          ? collectibleIdOverride.trim()
+          : collectibleId != null
+            ? String(collectibleId)
+            : undefined;
+
       // Add placeholders to gallery immediately
-      const pendingEntries = useStore.getState().addPendingUploads(files, collectibleId) || [];
+      const pendingEntries = useStore.getState().addPendingUploads(files, effectiveCollectibleId) || [];
 
       // Track background uploads persistently (pending placeholders are removed after upload)
       const backgroundUploadIds = useStore.getState().addBackgroundUploads(files, analysisType) || [];
@@ -370,7 +378,10 @@ export default function useLocalPhotoPicker({
           }
 
           try {
-            await uploadPhotoToServer(file, undefined, thumbnailBlob, { classification: analysisType });
+            await uploadPhotoToServer(file, undefined, thumbnailBlob, {
+              classification: analysisType,
+              collectibleId: effectiveCollectibleId,
+            });
             if (bgId) useStore.getState().markBackgroundUploadSuccess(bgId);
 
             // Refetch/invalidate gallery before removing the local preview so the UI
