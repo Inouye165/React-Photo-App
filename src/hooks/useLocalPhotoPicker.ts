@@ -35,6 +35,7 @@ interface UseLocalPhotoPickerOptions {
  */
 interface UseLocalPhotoPickerReturn {
   filteredLocalPhotos: UploadPickerLocalPhoto[];
+  fileInputRef: React.MutableRefObject<HTMLInputElement | null>;
   handleSelectFolder: () => Promise<void>;
   handleNativeSelection: (event: React.ChangeEvent<HTMLInputElement>) => Promise<void>;
   handleUploadFiltered: (
@@ -77,6 +78,7 @@ export default function useLocalPhotoPicker({
   const uploadPicker = useStore((state) => state.uploadPicker);
   const pickerCommand = useStore((state) => state.pickerCommand);
   const workingDirHandleRef = useRef<FileSystemDirectoryHandle | null>(null);
+  const fileInputRef = useRef<HTMLInputElement | null>(null);
 
   const startDate = uploadPicker.filters.startDate;
   const endDate = uploadPicker.filters.endDate;
@@ -215,8 +217,17 @@ export default function useLocalPhotoPicker({
    */
   const handleNativeSelection = useCallback(
     async (event: React.ChangeEvent<HTMLInputElement>) => {
-      const inputFiles = Array.from(event.target.files || []);
-      await processFiles(inputFiles, null);
+      const inputEl = event.currentTarget;
+      const inputFiles = Array.from(inputEl?.files || []);
+      try {
+        await processFiles(inputFiles, null);
+      } finally {
+        if (fileInputRef.current) {
+          fileInputRef.current.value = '';
+        } else if (inputEl) {
+          inputEl.value = '';
+        }
+      }
     },
     [processFiles]
   );
@@ -425,6 +436,7 @@ export default function useLocalPhotoPicker({
 
   return {
     filteredLocalPhotos,
+    fileInputRef,
     handleSelectFolder,
     handleNativeSelection,
     handleUploadFiltered,
