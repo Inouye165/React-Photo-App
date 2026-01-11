@@ -483,10 +483,15 @@ async function streamToSupabase(req, options = {}) {
     });
 
     busboy.on('field', (name, value) => {
-      if (name !== 'classification') return;
+      // Capture lightweight non-file fields (e.g. classification, collectibleId)
+      // so they are available to the upload route after streaming finishes.
       try {
+        const key = typeof name === 'string' ? name : String(name);
+        if (!key) return;
+
         const raw = typeof value === 'string' ? value : String(value);
-        fields.classification = raw.slice(0, 64);
+        // Keep this small to avoid memory issues / abuse.
+        fields[key] = raw.slice(0, 256);
       } catch {
         // ignore malformed field
       }
