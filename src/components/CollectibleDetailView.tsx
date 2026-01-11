@@ -5,7 +5,8 @@ import type { CollectibleRecord } from '../types/collectibles';
 
 import useStore from '../store';
 
-import { uploadPhotoToServer } from '../api/uploads';
+import useLocalPhotoPicker from '../hooks/useLocalPhotoPicker';
+
 import { request, API_BASE_URL } from '../api/httpClient';
 import { getHeadersForGetRequestAsync } from '../api/auth';
 
@@ -138,7 +139,6 @@ export default function CollectibleDetailView({ photo, collectibleData, aiInsigh
   const [collectiblePhotos, setCollectiblePhotos] = React.useState<CollectiblePhotoDto[]>([]);
   const [collectiblePhotosLoading, setCollectiblePhotosLoading] = React.useState(false);
   const [collectiblePhotosError, setCollectiblePhotosError] = React.useState<string | null>(null);
-  const [collectiblePhotosUploading, setCollectiblePhotosUploading] = React.useState(false);
   const fileInputRef = React.useRef<HTMLInputElement | null>(null);
 
   const pendingUploads = useStore((state) => state.pendingUploads);
@@ -221,47 +221,41 @@ export default function CollectibleDetailView({ photo, collectibleData, aiInsigh
     void fetchCollectiblePhotos();
   }, [fetchCollectiblePhotos]);
 
+  const { handleNativeSelection, handleUploadFilteredOptimistic } = useLocalPhotoPicker({
+    onUploadComplete: fetchCollectiblePhotos,
+    collectibleId: collectibleData?.id ?? null,
+  });
+
+  const collectiblePhotosUploading = React.useMemo(() => {
+    const collectibleId = collectibleData?.id;
+    if (!collectibleId) return false;
+    return (Array.isArray(pendingUploads) ? pendingUploads : []).some(
+      (p) => String(p?.collectibleId || '') === String(collectibleId),
+    );
+  }, [collectibleData?.id, pendingUploads]);
+
   const handleAddCollectiblePhotosClick = React.useCallback(() => {
     if (!collectibleData?.id) return;
     fileInputRef.current?.click();
   }, [collectibleData?.id]);
 
-  const handleCollectiblePhotoFilesSelected = React.useCallback(
-    async (files: FileList | null) => {
-      const collectibleId = collectibleData?.id;
-      if (!collectibleId) return;
-      if (!files || files.length === 0) return;
-
-      const fileArray = Array.from(files);
-
-      // Add context-aware pending previews immediately (only visible in this collectible view).
-      const pendingEntries = useStore.getState().addPendingUploads(fileArray, collectibleId) || [];
-
-      setCollectiblePhotosUploading(true);
-      setCollectiblePhotosError(null);
-
+  const onFileChange = React.useCallback(
+    async (e: React.ChangeEvent<HTMLInputElement>) => {
       try {
-        for (const file of fileArray) {
-          await uploadPhotoToServer(file, {
-            classification: 'none',
-            collectibleId,
-          });
-        }
-
-        await fetchCollectiblePhotos();
-      } catch (err) {
-        setCollectiblePhotosError(getErrorMessage(err) || 'Failed to upload collectible photos');
+        // 1. Parse EXIF/Thumbnails and stage files
+        await handleNativeSelection(e);
       } finally {
-        // Remove pending previews after we attempted to refresh the server list.
-        // This triggers URL.revokeObjectURL via the store implementation.
-        const removePendingUpload = useStore.getState().removePendingUpload;
-        pendingEntries.forEach((p) => {
-          if (p?.id) removePendingUpload(p.id);
-        });
-        setCollectiblePhotosUploading(false);
+        // Reset selection so choosing the same file twice still triggers onChange.
+        e.currentTarget.value = '';
+      }
+
+      // 2. Trigger the upload IMMEDIATELY
+      // Ensure we pass the current collectible ID and 'none' classification
+      if (collectibleData?.id) {
+        handleUploadFilteredOptimistic(undefined, 'none', String(collectibleData.id));
       }
     },
-    [collectibleData?.id, fetchCollectiblePhotos]
+    [collectibleData?.id, handleNativeSelection, handleUploadFilteredOptimistic]
   );
 
   // Extract valuation data - memoized to prevent dependency issues
@@ -362,10 +356,7 @@ export default function CollectibleDetailView({ photo, collectibleData, aiInsigh
         multiple
         style={{ display: 'none' }}
         onChange={(e) => {
-          const files = e.currentTarget.files;
-          // Reset selection so choosing the same file twice still triggers onChange.
-          e.currentTarget.value = '';
-          void handleCollectiblePhotoFilesSelected(files);
+          void onFileChange(e);
         }}
       />
 
