@@ -27,6 +27,7 @@ interface FileWithHandle {
 interface UseLocalPhotoPickerOptions {
   onUploadComplete?: () => void | Promise<void>;
   onUploadSuccess?: (count: number) => void;
+  collectibleId?: string | number | null;
 }
 
 /**
@@ -70,6 +71,7 @@ interface UseLocalPhotoPickerReturn {
 export default function useLocalPhotoPicker({
   onUploadComplete,
   onUploadSuccess,
+  collectibleId,
 }: UseLocalPhotoPickerOptions): UseLocalPhotoPickerReturn {
   const uploadPicker = useStore((state) => state.uploadPicker);
   const pickerCommand = useStore((state) => state.pickerCommand);
@@ -342,7 +344,7 @@ export default function useLocalPhotoPicker({
       if (files.length === 0) return;
 
       // Add placeholders to gallery immediately
-      const pendingEntries = useStore.getState().addPendingUploads(files) || [];
+      const pendingEntries = useStore.getState().addPendingUploads(files, collectibleId) || [];
 
       // Track background uploads persistently (pending placeholders are removed after upload)
       const backgroundUploadIds = useStore.getState().addBackgroundUploads(files, analysisType) || [];
@@ -370,6 +372,16 @@ export default function useLocalPhotoPicker({
           try {
             await uploadPhotoToServer(file, undefined, thumbnailBlob, { classification: analysisType });
             if (bgId) useStore.getState().markBackgroundUploadSuccess(bgId);
+
+            // Refetch/invalidate gallery before removing the local preview so the UI
+            // can swap from blob → server photo without disappearing/flicker.
+            if (typeof onUploadComplete === 'function') {
+              try {
+                await onUploadComplete();
+              } catch {
+                // Ignore callback errors
+              }
+            }
           } catch (error) {
             errors.push(file?.name || 'unknown');
             const message = error instanceof Error ? error.message : String(error);
@@ -394,16 +406,10 @@ export default function useLocalPhotoPicker({
           });
         }
 
-        if (typeof onUploadComplete === 'function') {
-          try {
-            await onUploadComplete();
-          } catch {
-            // Ignore callback errors
-          }
-        }
+        // onUploadComplete is already invoked per-success above to avoid flicker.
       });
     },
-    [filteredLocalPhotos, onUploadComplete, onUploadSuccess, pickerCommand]
+    [collectibleId, filteredLocalPhotos, onUploadComplete, onUploadSuccess, pickerCommand]
   );
 
   return {

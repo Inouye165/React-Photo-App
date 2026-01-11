@@ -11,6 +11,7 @@ import React, { useState, useEffect, useCallback, useMemo } from 'react';
 import { VirtuosoGrid, ListProps } from 'react-virtuoso';
 import { API_BASE_URL } from './api';
 import PhotoCard, { type PhotoCardProps } from './components/PhotoCard';
+import useStore from './store';
 
 type PhotoCardPhoto = PhotoCardProps['photo'];
 
@@ -91,8 +92,30 @@ export default function PhotoGallery({
   getSignedUrl,
   density = 'comfortable',
 }: PhotoGalleryProps): React.JSX.Element {
+  const pendingUploads = useStore((state) => state.pendingUploads);
   const { columns, gap } = useResponsiveGrid(density);
   const paddingClass = density === 'compact' ? 'p-1 sm:p-3' : 'p-2 sm:p-6';
+
+  const mergedPhotos = useMemo(() => {
+    const serverPhotosRaw = Array.isArray(photos) ? photos : [];
+    // Ensure collectible-scoped pending entries never show up in main gallery.
+    const serverPhotos = serverPhotosRaw.filter((p) => {
+      const maybeCollectibleId = (p as unknown as { collectibleId?: unknown })?.collectibleId;
+      return !maybeCollectibleId || String(maybeCollectibleId).trim() === '';
+    });
+
+    const pendingRaw = Array.isArray(pendingUploads) ? (pendingUploads as unknown as PhotoCardPhoto[]) : [];
+    const pending = pendingRaw.filter((p) => {
+      const maybeCollectibleId = (p as unknown as { collectibleId?: unknown })?.collectibleId;
+      return !maybeCollectibleId || String(maybeCollectibleId).trim() === '';
+    });
+
+    if (pending.length === 0) return serverPhotos;
+
+    const existingIds = new Set(serverPhotos.map((p) => String(p?.id)));
+    const toPrepend = pending.filter((p) => !existingIds.has(String(p?.id)));
+    return [...toPrepend, ...serverPhotos];
+  }, [photos, pendingUploads]);
 
   const getAccessLevel = useCallback((photoId: number | string): string => {
     if (!privilegesMap) return '';
@@ -111,7 +134,7 @@ export default function PhotoGallery({
   
   // Memoize the item renderer
   const itemContent = useCallback((index: number): React.JSX.Element | null => {
-    const photo = photos[index];
+    const photo = mergedPhotos[index];
     if (!photo) return null;
     
     return (
@@ -137,7 +160,7 @@ export default function PhotoGallery({
   }), [columns, gap]);
 
   // Empty state
-  if (!photos || photos.length === 0) {
+  if (!mergedPhotos || mergedPhotos.length === 0) {
     return (
       <div className="flex items-center justify-center h-64 text-slate-700">
         <p>No photos to display.</p>
@@ -146,14 +169,14 @@ export default function PhotoGallery({
   }
 
   // For small lists (< 50 photos), use simple rendering to avoid virtualization overhead
-  if (photos.length < 50) {
+  if (mergedPhotos.length < 50) {
     return (
       <div 
         className={`photo-gallery grid ${paddingClass}`}
         style={gridStyle}
         data-testid="photo-gallery-grid"
       >
-        {photos.map((photo) => (
+        {mergedPhotos.map((photo) => (
           <PhotoCard
             key={photo.id || photo.name}
             photo={photo}
@@ -194,7 +217,7 @@ export default function PhotoGallery({
     <VirtuosoGrid
       data-testid="photo-gallery-grid"
       style={{ height: 'calc(100vh - 120px)' }}
-      totalCount={photos.length}
+      totalCount={mergedPhotos.length}
       overscan={200}
       components={{ Item: GridItem, List: VirtualizedList }}
       itemContent={itemContent}

@@ -23,18 +23,23 @@ export type EditingMode = null | 'inline' | 'full'
 
 type PendingUploadState = 'uploading' | PhotoState
 
-export interface PendingUpload extends Omit<Photo, 'state'> {
+export interface PendingPhoto extends Omit<Photo, 'state'> {
   id: string
   file: File
   url: string
   name: string
   filename: string
   state: PendingUploadState
+  uploading: true
+  collectibleId?: string
   created_at: string
   file_size: number
   caption: string
   isTemporary: true
 }
+
+// Back-compat name (some parts of the app refer to these as uploads).
+export type PendingUpload = PendingPhoto
 
 export type BackgroundUploadStatus = 'uploading' | 'success' | 'error'
 
@@ -67,7 +72,7 @@ export interface StoreState extends UploadPickerSlice {
   photoEventsStreamingActive: boolean
   // Track photos that just finished uploading and are transitioning from 'working' to 'inprogress'
   justUploadedPhotoIds: Set<Photo['id']>
-  pendingUploads: PendingUpload[]
+  pendingUploads: PendingPhoto[]
   backgroundUploads: BackgroundUploadEntry[]
   banner: BannerState
   view: ViewState
@@ -81,7 +86,7 @@ export interface StoreState extends UploadPickerSlice {
   photosCursor: string | null
   photosHasMore: boolean
 
-  addPendingUploads: (files: File[]) => PendingUpload[]
+  addPendingUploads: (files: File[], collectibleId?: string | number | null) => PendingPhoto[]
   removePendingUpload: (tempId: string) => void
   clearPendingUploads: () => void
 
@@ -198,6 +203,20 @@ const mergePhotosWithStaleProtection = (
   })
 }
 
+const createPendingId = (): string => {
+  try {
+    const cryptoObj = typeof crypto !== 'undefined' ? crypto : undefined
+    if (cryptoObj && typeof cryptoObj.randomUUID === 'function') {
+      return `temp-${cryptoObj.randomUUID()}`
+    }
+  } catch {
+    // Fall through to non-crypto fallback.
+  }
+
+  // Fallback for older browsers / test environments.
+  return `temp-${Date.now()}-${Math.random().toString(36).slice(2, 10)}`
+}
+
 // Minimal Zustand store for photos and ui state (polling, toast)
 const useStore = create<StoreState>((set, get) => ({
   ...createUploadPickerSlice(set, get),
@@ -214,13 +233,17 @@ const useStore = create<StoreState>((set, get) => ({
 
   // Optimistic uploads - pending photos being uploaded
   pendingUploads: [],
-  addPendingUploads: (files: File[]) => {
+  addPendingUploads: (files: File[], collectibleId?: string | number | null) => {
     const safeFiles = Array.isArray(files) ? files.filter(Boolean) : []
-    const now = Date.now()
     const createdAt = new Date().toISOString()
 
-    const newPending: PendingUpload[] = safeFiles.map((file) => {
-      const id = `temp-${now}-${Math.random().toString(36).substr(2, 9)}`
+    const normalizedCollectibleId =
+      collectibleId === undefined || collectibleId === null || String(collectibleId).trim() === ''
+        ? undefined
+        : String(collectibleId).trim()
+
+    const newPending: PendingPhoto[] = safeFiles.map((file) => {
+      const id = createPendingId()
       return {
         id,
         file,
@@ -228,6 +251,8 @@ const useStore = create<StoreState>((set, get) => ({
         name: file.name,
         filename: file.name,
         state: 'uploading',
+        uploading: true,
+        collectibleId: normalizedCollectibleId,
         created_at: createdAt,
         file_size: file.size,
         caption: '',
