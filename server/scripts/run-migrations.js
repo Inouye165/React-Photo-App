@@ -21,6 +21,11 @@ function resolveKnexEnv() {
 }
 
 async function runMigrations() {
+  if (process.env.SKIP_RUN_MIGRATIONS === 'true') {
+    console.log('[migrations] SKIP_RUN_MIGRATIONS=true -> skipping migrations');
+    return;
+  }
+
   const knex = require('knex');
   const knexfile = require(path.join(__dirname, '..', 'knexfile'));
 

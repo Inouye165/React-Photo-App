@@ -4,10 +4,11 @@
   "description": "Backend server for photo upload and storage",
   "main": "server.js",
   "scripts": {
-    "start": "node server.js",
-    "prestart": "node scripts/check-migrations.js && node scripts/run-migrations.js",
+    "build": "tsc -p tsconfig.json",
+    "start": "node dist/server.js",
+    "prestart": "node dist/scripts/check-migrations.js && node dist/scripts/run-migrations.js",
     "dev": "nodemon server.js",
-    "worker": "node worker.js",
+    "worker": "node dist/worker.js",
     "dev:worker": "nodemon worker.js",
     "pretest": "node scripts/validate-keys.js",
     "test": "jest",
@@ -60,7 +61,6 @@
     "rate-limit-redis": "^4.3.1",
     "serpapi": "^2.1.0",
     "sharp": "^0.34.4",
-    "ts-node": "^10.9.2",
     "zod": "^3.25.76"
   },
   "engines": {
@@ -91,6 +91,7 @@
     "jest-openapi": "0.14.1",
     "nodemon": "^3.0.1",
     "supertest": "^6.3.3",
+    "ts-node": "^10.9.2",
     "typescript": "^5.9.3"
   },
   "jest": {

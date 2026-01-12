@@ -29,7 +29,15 @@ const validatePoolRange = ({ min, max }) => {
 };
 
 // CA certificate path for production SSL
-const CA_CERT_PATH = path.join(__dirname, 'prod-ca-2021.crt');
+const resolveCaCertPath = () => {
+  const direct = path.join(__dirname, 'prod-ca-2021.crt');
+  if (fs.existsSync(direct)) return direct;
+
+  // When running from compiled output (server/dist), the cert lives one level up (server/).
+  return path.join(__dirname, '..', 'prod-ca-2021.crt');
+};
+
+const CA_CERT_PATH = resolveCaCertPath();
 
 // Load CA certificate for production - called at config creation time
 const loadCaCert = () => {
