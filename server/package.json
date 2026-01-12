@@ -5,10 +5,10 @@
   "main": "server.js",
   "scripts": {
     "build": "tsc -p tsconfig.json",
-    "start": "node server.js",
-    "prestart": "node scripts/check-migrations.js && node scripts/run-migrations.js",
+    "start": "node dist/server.js",
+    "prestart": "npm run build && node dist/scripts/check-migrations.js && node dist/scripts/run-migrations.js",
     "dev": "nodemon server.js",
-    "worker": "node worker.js",
+    "worker": "node dist/worker.js",
     "dev:worker": "nodemon worker.js",
     "pretest": "node scripts/validate-keys.js",
     "test": "jest",
