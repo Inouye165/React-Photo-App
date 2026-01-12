@@ -30,6 +30,33 @@ function normalizeSinceParam(raw) {
   return s;
 }
 
+function extractSinceRaw(req) {
+  const query = req && req.query ? req.query : null;
+  const hasQuerySince = Boolean(query && Object.prototype.hasOwnProperty.call(query, 'since'));
+  if (hasQuerySince) {
+    return { sinceRaw: query.since, sinceSource: 'query' };
+  }
+
+  let headerValue;
+  try {
+    headerValue = typeof req?.get === 'function' ? req.get('Last-Event-ID') : undefined;
+  } catch {
+    headerValue = undefined;
+  }
+
+  if (headerValue === undefined || headerValue === null || String(headerValue).trim() === '') {
+    const h = req && req.headers ? req.headers : null;
+    const fallback = h ? h['last-event-id'] : undefined;
+    headerValue = Array.isArray(fallback) ? fallback[0] : fallback;
+  }
+
+  if (headerValue !== undefined && headerValue !== null && String(headerValue).trim() !== '') {
+    return { sinceRaw: headerValue, sinceSource: 'header' };
+  }
+
+  return { sinceRaw: undefined, sinceSource: 'none' };
+}
+
 function instrumentAuthMiddleware(authenticateTokenMiddleware, opts = {}) {
   const m = opts.metrics || null;
 
@@ -126,7 +153,13 @@ function createPhotosEventsHandler({ sseManager, photoEventHistory, log, metrics
     }
 
     // Catch-up (bounded): replay missed photo.processing events for this user.
-    const since = normalizeSinceParam(req.query && req.query.since);
+    const { sinceRaw, sinceSource } = extractSinceRaw(req);
+    const since = normalizeSinceParam(sinceRaw);
+    try {
+      log?.debug?.('[realtime] SSE resume since source', { userId, requestId, sinceSource });
+    } catch {
+      // ignore
+    }
     if (photoEventHistory && typeof photoEventHistory.getCatchupEvents === 'function') {
       try {
         const out = await photoEventHistory.getCatchupEvents({ userId, since });
@@ -181,7 +214,7 @@ function createPhotosEventsHandler({ sseManager, photoEventHistory, log, metrics
     res.write(formatSseEvent({ eventName: 'connected', eventId: connectedId, data: connectedPayload }));
 
     try {
-      log?.info?.('[realtime] SSE client connected', { userId, requestId, since: since || undefined });
+      log?.info?.('[realtime] SSE client connected', { userId, requestId });
     } catch {
       // ignore
     }

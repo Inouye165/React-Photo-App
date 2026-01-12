@@ -5,6 +5,10 @@ function createReqRes({ userId } = {}) {
     user: userId ? { id: userId } : undefined,
     headers: {},
     query: {},
+    get: jest.fn((name) => {
+      const key = String(name || '').toLowerCase();
+      return req.headers[key];
+    }),
     on: jest.fn(),
   };
 
@@ -147,6 +151,36 @@ describe('routes/events GET /events/photos (unit)', () => {
     expect(writes[0]).toContain('event: photo.processing\n');
     expect(writes[0]).toContain('id: evt-old\n');
     expect(writes.some((w) => w.includes('event: connected\n'))).toBe(true);
+  });
+
+  test('Last-Event-ID header is used for catch-up when query since is absent', async () => {
+    const sseManager = {
+      canAcceptClient: () => true,
+      addClient: jest.fn(() => ({ ok: true })),
+      removeClient: jest.fn(),
+    };
+
+    const authenticateToken = (req, _res, next) => {
+      req.user = { id: 'user-1' };
+      next();
+    };
+
+    const photoEventHistory = {
+      getCatchupEvents: jest.fn().mockResolvedValue({ ok: true, events: [] }),
+    };
+
+    const router = createEventsRouter({ authenticateToken, sseManager, photoEventHistory });
+    const layer = router.stack.find((l) => l.route && l.route.path === '/photos');
+    const handlers = layer.route.stack.map((s) => s.handle);
+
+    const { req, res } = createReqRes({ userId: 'user-1' });
+    req.headers['last-event-id'] = 'evt_123';
+
+    await runAuthed(handlers, req, res);
+
+    expect(photoEventHistory.getCatchupEvents).toHaveBeenCalledWith({ userId: 'user-1', since: 'evt_123' });
+    expect(res.status).toHaveBeenCalledWith(200);
+    expect(res._headers['Content-Type']).toBe('text/event-stream');
   });
 
   test('connection cap returns 429 JSON and does not start a stream', () => {

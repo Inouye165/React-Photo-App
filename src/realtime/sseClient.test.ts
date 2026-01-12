@@ -1,6 +1,6 @@
-import { describe, it, expect } from 'vitest'
+import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest'
 
-import { createSseParser } from './sseClient'
+import { connectPhotoEvents, createSseParser } from './sseClient'
 
 describe('realtime/sseClient - SSE parsing', () => {
   it('parses a complete SSE frame and dispatches on blank line', () => {
@@ -61,5 +61,49 @@ describe('realtime/sseClient - SSE parsing', () => {
     parser.feedText(': comment\n\n')
 
     expect(frames).toHaveLength(0)
+  })
+})
+
+describe('realtime/sseClient - connectPhotoEvents', () => {
+  const originalFetch = globalThis.fetch
+
+  beforeEach(() => {
+    vi.restoreAllMocks()
+  })
+
+  afterEach(() => {
+    globalThis.fetch = originalFetch
+  })
+
+  it('sends Last-Event-ID header when since is provided', async () => {
+    const read = vi.fn().mockResolvedValue({ value: undefined, done: true })
+    const releaseLock = vi.fn()
+    const getReader = vi.fn(() => ({ read, releaseLock }))
+
+    const fetchSpy = vi.fn().mockResolvedValue({
+      ok: true,
+      status: 200,
+      headers: new Headers({ 'content-type': 'text/event-stream' }),
+      body: { getReader },
+    })
+
+    globalThis.fetch = fetchSpy as any
+
+    const client = await connectPhotoEvents({
+      apiBaseUrl: 'http://api',
+      token: 't',
+      since: 'evt_123',
+      onEvent: () => {},
+    })
+
+    expect(fetchSpy).toHaveBeenCalledTimes(1)
+    const init = fetchSpy.mock.calls[0][1] as RequestInit
+    const headers = init.headers as Record<string, string>
+
+    expect(headers.Authorization).toBe('Bearer t')
+    expect(headers.Accept).toBe('text/event-stream')
+    expect(headers['Last-Event-ID']).toBe('evt_123')
+
+    await client.closed
   })
 })
