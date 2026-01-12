@@ -6,6 +6,25 @@ html, body {
   font-size: 13px;
 }
 
+/* ========================================
+   Masonry (react-masonry-css)
+   ======================================== */
+
+.masonry-grid {
+  display: flex;
+  width: auto;
+  margin-left: calc(var(--masonry-gutter, 16px) * -1);
+}
+
+.masonry-grid_column {
+  padding-left: var(--masonry-gutter, 16px);
+  background-clip: padding-box;
+}
+
+.masonry-grid_column > * {
+  margin-bottom: var(--masonry-gutter, 16px);
+}
+
 /* Make table rows more compact */
 .table-row-compact > div {
   padding-top: 0.25rem;
