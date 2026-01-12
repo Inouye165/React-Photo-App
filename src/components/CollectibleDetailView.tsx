@@ -349,11 +349,7 @@ export default function CollectibleDetailView({ photo, collectibleData, aiInsigh
         type="file"
         accept="image/*,.heic,.heif"
         multiple
-        style={{ display: 'none' }}
-        onClick={(e) => {
-          // Force clear the value so the same file can be selected again
-          (e.currentTarget as HTMLInputElement).value = '';
-        }}
+        style={{ opacity: 0, position: 'absolute', zIndex: -1, width: 0, height: 0 }}
         onChange={(e) => {
           void onFileChange(e);
         }}

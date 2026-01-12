@@ -218,7 +218,11 @@ export default function useLocalPhotoPicker({
   const handleNativeSelection = useCallback(
     async (event: React.ChangeEvent<HTMLInputElement>) => {
       const inputEl = (event?.currentTarget || event?.target) as HTMLInputElement | null;
-      const inputFiles = Array.from(inputEl?.files || []);
+      const files = inputEl?.files;
+      const inputFiles = Array.from(files || []);
+
+      // Force reset the input so the same file can be selected again later
+      if (inputEl) inputEl.value = '';
       try {
         await processFiles(inputFiles, null);
       } finally {
