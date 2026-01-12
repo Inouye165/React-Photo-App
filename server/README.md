@@ -70,7 +70,8 @@ Backend server for Lumina. Node.js + Express, covering authentication, uploads, 
    # Development (with auto-restart)
    npm run dev
 
-   # Production
+  # Production (build -> run)
+  npm run build
    npm start
    ```
 

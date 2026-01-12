@@ -1,12 +1,16 @@
 const path = require('path');
+const fs = require('fs');
 // Idempotent environment loader for server scripts.
 // Use require('./env') from other server modules instead of calling dotenv.config()
 // multiple times. This makes sure .env is loaded exactly once and is easy to mock
 // in tests by setting process.env beforehand.
 if (!process.env.__SERVER_ENV_LOADED) {
   try {
-    // Prefer the server/.env file next to this loader
-    const envPath = path.join(__dirname, '.env');
+    // Prefer the server/.env file next to this loader.
+    // When running compiled output (server/dist), this loader lives in dist/, so
+    // fall back to ../.env.
+    const candidatePaths = [path.join(__dirname, '.env'), path.join(__dirname, '..', '.env')];
+    const envPath = candidatePaths.find((p) => fs.existsSync(p)) || candidatePaths[0];
     require('dotenv').config({ path: envPath });
     // Mark as loaded so subsequent requires are no-ops
     process.env.__SERVER_ENV_LOADED = '1';

@@ -9,10 +9,21 @@
     "resolveJsonModule": true,
     "allowJs": true,
     "checkJs": false,
-    "noEmit": true,
+    "rootDir": ".",
+    "outDir": "./dist",
+    "noEmit": false,
     "strict": false,
     "types": ["node"]
   },
-  "include": ["routes/**/*.ts"],
-  "exclude": ["node_modules", "tests", "working", "coverage", "test-results"]
+  "include": ["**/*.ts", "**/*.js"],
+  "exclude": [
+    "node_modules",
+    "dist",
+    "build",
+    "tests",
+    "working",
+    "coverage",
+    "test-results",
+    "routes/photos.js"
+  ]
 }
