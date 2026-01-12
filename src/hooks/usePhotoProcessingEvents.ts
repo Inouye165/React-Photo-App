@@ -116,6 +116,7 @@ export function usePhotoProcessingEvents(params: { authed: boolean }): UsePhotoP
   const disabledForSessionRef = useRef(false)
   const dedupeRef = useRef(createEventDedupe(200))
   const lastSeenTimestampMsRef = useRef<number | null>(null)
+  const lastSeenEventIdRef = useRef<string | null>(null)
 
   const enabled = authed && photoEventsEnvEnabled && !disabledForSessionRef.current
 
@@ -217,6 +218,10 @@ export function usePhotoProcessingEvents(params: { authed: boolean }): UsePhotoP
       // Only accept the single event type we support.
       if (frame.event !== 'photo.processing') return
 
+      if (frame.id && typeof frame.id === 'string' && frame.id.trim()) {
+        lastSeenEventIdRef.current = frame.id
+      }
+
       const parsed = safeJsonParse(frame.data)
       const payload = (parsed && typeof parsed === 'object') ? (parsed as PhotoProcessingPayload) : null
 
@@ -282,7 +287,7 @@ export function usePhotoProcessingEvents(params: { authed: boolean }): UsePhotoP
             // Do not log token/payload.
           },
           signal: abort.signal,
-          since: lastSeenTimestampMsRef.current ?? undefined,
+          since: lastSeenEventIdRef.current ?? lastSeenTimestampMsRef.current ?? undefined,
         })
 
         if (!mounted) {

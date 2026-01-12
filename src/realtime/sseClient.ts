@@ -125,13 +125,18 @@ export async function connectPhotoEvents(params: ConnectPhotoEventsParams): Prom
   }
   const url = urlObj.toString()
 
+  const headers: Record<string, string> = {
+    Authorization: `Bearer ${token}`,
+    Accept: 'text/event-stream',
+    'Cache-Control': 'no-cache',
+  }
+  if (sinceValue) {
+    headers['Last-Event-ID'] = sinceValue
+  }
+
   const response = await fetch(url, {
     method: 'GET',
-    headers: {
-      Authorization: `Bearer ${token}`,
-      Accept: 'text/event-stream',
-      'Cache-Control': 'no-cache',
-    },
+    headers,
     signal: controller.signal,
     cache: 'no-store',
   })

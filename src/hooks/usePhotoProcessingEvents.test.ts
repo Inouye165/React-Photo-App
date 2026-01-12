@@ -188,4 +188,55 @@ describe('usePhotoProcessingEvents', () => {
     expect(updateSpy).toHaveBeenCalledTimes(1)
     expect(stopSpy).toHaveBeenCalledTimes(1)
   })
+
+  it('reconnect prefers last seen SSE frame id over timestamp', async () => {
+    let capturedOnEvent: ((frame: any) => void) | null = null
+
+    const client1 = makeClient()
+    const client2 = makeClient()
+
+    vi.mocked(connectPhotoEvents)
+      .mockImplementationOnce(async (params: any) => {
+        capturedOnEvent = params?.onEvent
+        return client1 as any
+      })
+      .mockResolvedValueOnce(client2 as any)
+
+    renderHook(() => usePhotoProcessingEvents({ authed: true }))
+
+    await Promise.resolve()
+    await Promise.resolve()
+
+    expect(vi.mocked(connectPhotoEvents).mock.calls[0][0]).toEqual(
+      expect.objectContaining({ since: undefined }),
+    )
+
+    expect(typeof capturedOnEvent).toBe('function')
+    if (typeof capturedOnEvent !== 'function') throw new Error('expected SSE onEvent callback to be captured')
+
+    const onEvent: (frame: any) => void = capturedOnEvent
+    onEvent({
+      event: 'photo.processing',
+      id: 'evt_123',
+      data: JSON.stringify({
+        eventId: 'evt_payload',
+        photoId: '1',
+        status: 'processing',
+        updatedAt: '2020-01-01T00:00:00.000Z',
+      }),
+    })
+
+    client1.close()
+
+    await Promise.resolve()
+    await Promise.resolve()
+
+    await vi.advanceTimersByTimeAsync(1000)
+    await Promise.resolve()
+    await Promise.resolve()
+
+    expect(vi.mocked(connectPhotoEvents).mock.calls[1][0]).toEqual(
+      expect.objectContaining({ since: 'evt_123' }),
+    )
+  })
 })
