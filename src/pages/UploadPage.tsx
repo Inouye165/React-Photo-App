@@ -377,7 +377,7 @@ export default function UploadPage() {
           onDragLeave={handleDragLeave}
           onDrop={handleDrop}
           tabIndex={0}
-          role="button"
+          role="region"
           aria-label="Upload photos. Drag and drop images here, or press Enter to select."
           onKeyDown={handleDropZoneKeyDown}
         >
@@ -588,7 +588,7 @@ export default function UploadPage() {
       onDragLeave={handleDragLeave}
       onDrop={handleDrop}
       tabIndex={0}
-      role="button"
+      role="region"
       aria-label="Upload photos. Drag and drop images here, or press Enter to select."
       onKeyDown={handleDropZoneKeyDown}
     >
