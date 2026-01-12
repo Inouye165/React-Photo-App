@@ -195,6 +195,34 @@ NODE_ENV=production node scripts/verify-db-ssl.js
 **Updating the CA Certificate:**
 If your database provider rotates their CA certificate, replace `prod-ca-2021.crt` with the new certificate from your provider.
 
+### Production Scaling & Connection Pooling
+
+When deploying behind an **external connection pooler** (PgBouncer, Supabase Transaction Pooler), the application should generally use a **smaller internal pool** so you don't exhaust the pooler's server-side connections.
+
+This server supports environment-driven Knex pool tuning:
+
+- `DB_POOL_MIN` (default: `2`) - Minimum number of connections Knex keeps in the pool.
+- `DB_POOL_MAX` (default: `30`) - Maximum number of connections Knex opens.
+
+And supports an opt-in SSL mode for transaction/pooler setups:
+
+- `DB_SSL_REJECT_UNAUTHORIZED`
+  - If set to the literal string `false`, production will use `rejectUnauthorized: false` and **will not** load `prod-ca-2021.crt`.
+  - If unset, production remains **secure-by-default**: `rejectUnauthorized: true` and requires `prod-ca-2021.crt`.
+
+**Example: Supabase Transaction Pooler / PgBouncer-style deployment**
+
+```bash
+# Keep the app pool small; let PgBouncer manage concurrency
+DB_POOL_MIN=2
+DB_POOL_MAX=10
+
+# External pooler handles SSL/TLS termination/validation
+DB_SSL_REJECT_UNAUTHORIZED=false
+```
+
+> **Security note:** Setting `DB_SSL_REJECT_UNAUTHORIZED=false` reduces TLS verification guarantees. Only use it when you fully trust the network path to your pooler and your pooler enforces TLS appropriately.
+
 ### Privilege Endpoint
 
 The `/privilege` endpoint provides fine-grained access control by checking file ownership in real-time:
