@@ -1,4 +1,4 @@
-import React, { useEffect, useMemo, useState } from 'react';
+import React, { useEffect, useMemo, useRef, useState } from 'react';
 import { useLocation, useNavigate, useOutletContext } from 'react-router-dom';
 import PhotoGallery from '../PhotoGallery';
 import PhotoUploadForm from '../PhotoUploadForm.tsx';
@@ -6,6 +6,7 @@ import MetadataModal from '../components/MetadataModal.jsx';
 import usePhotoPrivileges from '../hooks/usePhotoPrivileges';
 import useLocalPhotoPicker from '../hooks/useLocalPhotoPicker';
 import usePhotoManagement from '../hooks/usePhotoManagement';
+import useIntersectionObserver from '../hooks/useIntersectionObserver';
 import useStore from '../store';
 import { useAuth } from '../contexts/AuthContext';
 import useSignedThumbnails from '../hooks/useSignedThumbnails';
@@ -57,6 +58,15 @@ export default function PhotoGalleryPage() {
     refreshPhotos,
     handleDeletePhoto,
   } = usePhotoManagement();
+
+  const sentinelRef = useRef(null);
+  const isIntersecting = useIntersectionObserver(sentinelRef, { rootMargin: '400px' });
+
+  useEffect(() => {
+    if (isIntersecting && photosHasMore && !loadingMore) {
+      loadMorePhotos();
+    }
+  }, [isIntersecting, photosHasMore, loadingMore, loadMorePhotos]);
 
   // Listen for upload completion events to refresh the gallery
   useEffect(() => {
@@ -379,14 +389,13 @@ export default function PhotoGalleryPage() {
           />
           
           {photosHasMore && (
-            <div className="flex items-center justify-center py-8">
-              <button
-                onClick={loadMorePhotos}
-                disabled={loadingMore}
-                className="px-6 py-3 bg-blue-600 text-white rounded-lg hover:bg-blue-700 disabled:bg-gray-400 disabled:cursor-not-allowed transition-colors"
-              >
-                {loadingMore ? 'Loading...' : 'Load More Photos'}
-              </button>
+            <div ref={sentinelRef} className="flex items-center justify-center py-8" aria-label="Load more sentinel">
+              {loadingMore && (
+                <div
+                  className="h-8 w-8 rounded-full border-4 border-slate-200 border-t-slate-600 animate-spin"
+                  aria-label="Loading more photos"
+                />
+              )}
             </div>
           )}
         </>
