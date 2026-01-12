@@ -9,7 +9,7 @@
     "prestart": "npm run build && node dist/scripts/check-migrations.js && node dist/scripts/run-migrations.js",
     "dev": "nodemon server.js",
     "worker": "node dist/worker.js",
-    "dev:worker": "nodemon worker.js",
+    "dev:worker": "nodemon --exec ts-node worker.ts",
     "pretest": "node scripts/validate-keys.js",
     "test": "jest",
     "test:db": "node scripts/test-db-connection.js",

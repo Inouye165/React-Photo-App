@@ -8,13 +8,13 @@
  * This module intentionally performs minimal logic so the queue module can
  * be unit tested independently.
  */
-// server/worker.js
+// server/worker.ts
 
 // This file is the entry point for the worker process.
 // It imports the worker instance from the queue module,
 // which automatically starts it and connects it to Redis.
-require('./env'); // centralized, idempotent env loader
-const logger = require('./logger');
+import './env'; // centralized, idempotent env loader
+import logger from './logger';
 console.log('[AI Debug] Worker entrypoint reached');
 logger.info('Starting AI Worker...');
 
@@ -44,7 +44,7 @@ if (process.env.NODE_ENV !== 'production' && !process.env.GOOGLE_MAPS_API_KEY) {
 // Start the worker
 (async () => {
   try {
-    const { startWorker } = require('./queue/index');
+    const { startWorker } = await import('./queue/index');
     const { aiWorker, redisAvailable } = await startWorker();
     
     if (redisAvailable && aiWorker) {
