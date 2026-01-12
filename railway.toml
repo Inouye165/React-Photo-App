@@ -2,4 +2,4 @@
 builder = "nixpacks"
 
 [build.nixpacksPlan]
-phases = { setup = { nixPkgs = ["nodejs_20"] }, install = { cmds = ["npm install", "cd server && npm install"] }, build = { cmds = ["npm run build"] } }
+phases = { setup = { nixPkgs = ["nodejs_20"] }, install = { cmds = ["npm install", "cd server && npm install"] }, build = { cmds = ["npm --prefix server run build", "npm run build"] } }
