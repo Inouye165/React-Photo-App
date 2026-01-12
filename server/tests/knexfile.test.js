@@ -11,7 +11,11 @@ const getTrackedEnvSnapshot = () => ({
   DB_POOL_MAX: process.env.DB_POOL_MAX,
   DB_POOL_ACQUIRE_TIMEOUT: process.env.DB_POOL_ACQUIRE_TIMEOUT,
   DB_POOL_IDLE_TIMEOUT: process.env.DB_POOL_IDLE_TIMEOUT,
-  DB_SSL_REJECT_UNAUTHORIZED: process.env.DB_SSL_REJECT_UNAUTHORIZED
+  DB_SSL_REJECT_UNAUTHORIZED: process.env.DB_SSL_REJECT_UNAUTHORIZED,
+  DB_READ_REPLICA_HOSTS: process.env.DB_READ_REPLICA_HOSTS,
+  SUPABASE_DB_URL: process.env.SUPABASE_DB_URL,
+  SUPABASE_DB_URL_MIGRATIONS: process.env.SUPABASE_DB_URL_MIGRATIONS,
+  DATABASE_URL: process.env.DATABASE_URL
 });
 
 const restoreTrackedEnv = (snapshot) => {
@@ -53,7 +57,11 @@ describe('knexfile.js SSL configuration', () => {
       DB_POOL_MAX: undefined,
       DB_POOL_ACQUIRE_TIMEOUT: undefined,
       DB_POOL_IDLE_TIMEOUT: undefined,
-      DB_SSL_REJECT_UNAUTHORIZED: undefined
+      DB_SSL_REJECT_UNAUTHORIZED: undefined,
+      DB_READ_REPLICA_HOSTS: undefined,
+      SUPABASE_DB_URL: undefined,
+      SUPABASE_DB_URL_MIGRATIONS: undefined,
+      DATABASE_URL: undefined
     });
   });
 
@@ -213,6 +221,67 @@ describe('knexfile.js SSL configuration', () => {
       expect(knexfile.development.client).toBe('pg');
       expect(knexfile.test.client).toBe('pg');
       expect(knexfile.production.client).toBe('pg');
+    });
+  });
+
+  describe('Read replicas (DB_READ_REPLICA_HOSTS)', () => {
+    it('should preserve legacy single-connection structure when env var is missing', () => {
+      applyTrackedEnv({
+        SUPABASE_DB_URL: 'postgresql://user:pass@primary.example.com:5432/postgres'
+      });
+
+      const knexfile = loadKnexfile();
+
+      expect(knexfile.development.connection).toHaveProperty('connectionString');
+      expect(knexfile.development.connection).not.toHaveProperty('write');
+      expect(knexfile.development.connection).not.toHaveProperty('read');
+    });
+
+    it('should generate { write, read: [...] } when DB_READ_REPLICA_HOSTS is set', () => {
+      applyTrackedEnv({
+        SUPABASE_DB_URL: 'postgresql://user:pass@primary.example.com:5432/postgres?sslmode=require',
+        DB_READ_REPLICA_HOSTS: 'replica-1.example.com, replica-2.example.com'
+      });
+
+      const knexfile = loadKnexfile();
+
+      expect(knexfile.development.connection).toHaveProperty('write');
+      expect(knexfile.development.connection).toHaveProperty('read');
+      expect(Array.isArray(knexfile.development.connection.read)).toBe(true);
+      expect(knexfile.development.connection.read.length).toBe(2);
+
+      const writeUrl = new URL(knexfile.development.connection.write.connectionString);
+      expect(writeUrl.host).toBe('primary.example.com:5432');
+
+      const readUrl1 = new URL(knexfile.development.connection.read[0].connectionString);
+      const readUrl2 = new URL(knexfile.development.connection.read[1].connectionString);
+      // Replicas inherit the primary port unless a replica host explicitly overrides it.
+      expect(readUrl1.host).toBe('replica-1.example.com:5432');
+      expect(readUrl2.host).toBe('replica-2.example.com:5432');
+      expect(readUrl1.username).toBe(writeUrl.username);
+      expect(readUrl1.password).toBe(writeUrl.password);
+      expect(readUrl1.pathname).toBe(writeUrl.pathname);
+      expect(readUrl1.search).toBe(writeUrl.search);
+
+      // SSL config should be preserved for replicas as well
+      expect(knexfile.development.connection.read[0].ssl).toEqual(knexfile.development.connection.write.ssl);
+      expect(knexfile.development.connection.read[1].ssl).toEqual(knexfile.development.connection.write.ssl);
+    });
+
+    it('should propagate strict production SSL settings to replicas', () => {
+      applyTrackedEnv({
+        SUPABASE_DB_URL: 'postgresql://user:pass@primary.example.com:5432/postgres',
+        DB_READ_REPLICA_HOSTS: 'replica-1.example.com'
+      });
+
+      const knexfile = loadKnexfile();
+
+      expect(knexfile.production.connection).toHaveProperty('write');
+      expect(knexfile.production.connection).toHaveProperty('read');
+      expect(knexfile.production.connection.write.ssl.rejectUnauthorized).toBe(true);
+      expect(knexfile.production.connection.read[0].ssl.rejectUnauthorized).toBe(true);
+      expect(knexfile.production.connection.write.ssl.ca).toBeDefined();
+      expect(knexfile.production.connection.read[0].ssl.ca).toBe(knexfile.production.connection.write.ssl.ca);
     });
   });
 });
