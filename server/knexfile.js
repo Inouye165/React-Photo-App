@@ -16,6 +16,35 @@ const parseIntEnv = (name, defaultValue) => {
   return parsed;
 };
 
+const parseCommaSeparatedHosts = (raw) => {
+  if (raw === undefined || raw === null) return null;
+  const trimmed = String(raw).trim();
+  if (trimmed === '') return null;
+  const hosts = trimmed
+    .split(',')
+    .map((h) => h.trim())
+    .filter(Boolean);
+  if (hosts.length === 0) {
+    throw new Error('[FATAL] DB_READ_REPLICA_HOSTS is set but contains no valid hosts');
+  }
+  return hosts;
+};
+
+const replaceHostInConnectionString = (connectionString, newHost) => {
+  if (!connectionString) {
+    throw new Error('[FATAL] Cannot configure read replicas: missing SUPABASE_DB_URL/DATABASE_URL');
+  }
+  try {
+    const url = new URL(String(connectionString));
+    // newHost may be host or host:port
+    url.host = String(newHost);
+    return url.toString();
+  } catch {
+    // Do not include the connection string in the error message.
+    throw new Error('[FATAL] Cannot configure read replicas: invalid database connection string');
+  }
+};
+
 const isEnvFalse = (name) => {
   const raw = process.env[name];
   if (raw === undefined || raw === null) return false;
@@ -75,23 +104,42 @@ const createPostgresConfig = (env) => {
   const poolMax = parseIntEnv('DB_POOL_MAX', 30);
   validatePoolRange({ min: poolMin, max: poolMax });
 
-  return {
-  client: 'pg',
-  connection: {
+  const connectionString =
+    (env === 'production' && process.env.SUPABASE_DB_URL_MIGRATIONS)
+      ? process.env.SUPABASE_DB_URL_MIGRATIONS
+      : (process.env.SUPABASE_DB_URL || process.env.DATABASE_URL);
+
+  const baseConnection = {
     // Prefer SUPABASE_DB_URL (pooler) over DATABASE_URL (direct) in dev/test
     // because the pooler endpoint (port 6543) is often more reliable.
     //
     // For production migrations/DDL, you may want to provide a direct URL via
     // SUPABASE_DB_URL_MIGRATIONS to avoid PgBouncer/transaction quirks.
-    connectionString:
-      (env === 'production' && process.env.SUPABASE_DB_URL_MIGRATIONS)
-        ? process.env.SUPABASE_DB_URL_MIGRATIONS
-        : (process.env.SUPABASE_DB_URL || process.env.DATABASE_URL),
+    connectionString,
     ssl: getSslConfig(env),
     // Keepalive settings to prevent connection drops
     keepAlive: true,
     keepAliveInitialDelayMillis: 10000
-  },
+  };
+
+  const readReplicaHosts = parseCommaSeparatedHosts(process.env.DB_READ_REPLICA_HOSTS);
+  const connection = readReplicaHosts
+    ? {
+        write: { ...baseConnection, ssl: baseConnection.ssl ? { ...baseConnection.ssl } : baseConnection.ssl },
+        read: readReplicaHosts.map((host) => {
+          const replicaConnectionString = replaceHostInConnectionString(connectionString, host);
+          return {
+            ...baseConnection,
+            connectionString: replicaConnectionString,
+            ssl: baseConnection.ssl ? { ...baseConnection.ssl } : baseConnection.ssl
+          };
+        })
+      }
+    : baseConnection;
+
+  return {
+  client: 'pg',
+  connection,
   migrations: {
     directory: path.join(__dirname, 'db/migrations')
   },

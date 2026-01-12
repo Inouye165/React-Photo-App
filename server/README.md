@@ -224,6 +224,33 @@ DB_SSL_REJECT_UNAUTHORIZED=false
 
 > **Security note:** Setting `DB_SSL_REJECT_UNAUTHORIZED=false` reduces TLS verification guarantees. Only use it when you fully trust the network path to your pooler and your pooler enforces TLS appropriately.
 
+#### Read Replicas (Read/Write Splitting)
+
+To scale read-heavy workloads beyond a single primary database node, Knex can optionally route read queries to **read replicas**.
+
+Set:
+
+- `DB_READ_REPLICA_HOSTS` - Comma-separated list of replica hostnames (or `host:port`).
+
+**Behavior:**
+
+- If `DB_READ_REPLICA_HOSTS` is **unset**, Knex uses the legacy single `connection` object (no behavior change).
+- If `DB_READ_REPLICA_HOSTS` is **set**, `knexfile.js` constructs `connection` as `{ write: ..., read: [...] }`.
+  - **Write** uses the configured primary connection string (`SUPABASE_DB_URL_MIGRATIONS` in production if provided, else `SUPABASE_DB_URL` / `DATABASE_URL`).
+  - **Read** clones the same connection settings (user/password/database/port/SSL/keepalive) but swaps only the hostname for each replica.
+
+**Example:**
+
+```bash
+# Primary connection string (writer)
+SUPABASE_DB_URL=postgresql://user:pass@primary.example.com:5432/postgres
+
+# Read replicas (comma-separated)
+DB_READ_REPLICA_HOSTS=replica-1.example.com,replica-2.example.com
+```
+
+> **Security note:** Production SSL settings (CA + `rejectUnauthorized`) are applied to replica connections as well.
+
 ### Privilege Endpoint
 
 The `/privilege` endpoint provides fine-grained access control by checking file ownership in real-time:
