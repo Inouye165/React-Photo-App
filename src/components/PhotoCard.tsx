@@ -257,7 +257,7 @@ export default function PhotoCard({
       aria-label={`Photo: ${title}`}
     >
       {/* Thumbnail Section */}
-      <div className="relative aspect-[4/3] bg-slate-100 overflow-hidden">
+      <div className="relative bg-slate-100 overflow-hidden min-h-[120px]">
         {/* Loading Skeleton */}
         {!imageLoaded && !imageError && imageUrl && !isUploading && (
           <div
@@ -273,7 +273,7 @@ export default function PhotoCard({
               src={imageUrl}
               alt={photo.caption || photo.filename || 'Photo thumbnail'}
               loading="lazy"
-              className={`w-full h-full object-cover transition-opacity duration-300 ${
+              className={`block w-full h-auto transition-opacity duration-300 ${
                 imageLoaded ? 'opacity-100' : 'opacity-0'
               }`}
               onLoad={() => setImageLoaded(true)}
@@ -294,7 +294,7 @@ export default function PhotoCard({
               src={imageUrl}
               alt={photo.caption || photo.filename || 'Photo thumbnail'}
               loading="lazy"
-              className={`w-full h-full object-cover transition-opacity duration-300 ${
+              className={`block w-full h-auto transition-opacity duration-300 ${
                 imageLoaded ? 'opacity-100' : 'opacity-0'
               }`}
               onLoad={() => setImageLoaded(true)}

@@ -7,8 +7,8 @@
  * - Virtualization: Only renders visible items (handles 1000+ photos)
  * - Performance: Uses react-virtuoso for smooth scrolling
  */
-import React, { useState, useEffect, useCallback, useMemo } from 'react';
-import { VirtuosoGrid, ListProps } from 'react-virtuoso';
+import React, { useCallback, useMemo } from 'react';
+import Masonry from 'react-masonry-css';
 import { API_BASE_URL } from './api';
 import PhotoCard, { type PhotoCardProps } from './components/PhotoCard';
 import useStore from './store';
@@ -16,7 +16,6 @@ import useStore from './store';
 type PhotoCardPhoto = PhotoCardProps['photo'];
 
 interface GridConfig {
-  columns: number;
   gap: number;
 }
 
@@ -36,47 +35,8 @@ interface PhotoGalleryProps {
   density?: DensityMode;
 }
 
-interface GridItemProps extends React.HTMLAttributes<HTMLDivElement> {
-  children?: React.ReactNode;
-}
-
-// Hook to get responsive column count and gap
-const useResponsiveGrid = (density: DensityMode): GridConfig => {
-  const [gridConfig, setGridConfig] = useState<GridConfig>({ columns: 3, gap: 4 });
-  
-  useEffect(() => {
-    const updateGrid = (): void => {
-      const width = window.innerWidth;
-      const base = ((): GridConfig => {
-        if (width < 640) {
-          // Mobile: 3-column tight grid
-          return { columns: 3, gap: 4 }; // gap-1 = 4px
-        }
-        if (width < 768) return { columns: 2, gap: 16 };
-        if (width < 1024) return { columns: 3, gap: 24 };
-        if (width < 1280) return { columns: 3, gap: 24 };
-        return { columns: 4, gap: 24 };
-      })();
-
-      const isCompact = density === 'compact';
-      const adjustedGap = isCompact ? Math.max(2, Math.round(base.gap * 0.6)) : base.gap;
-      setGridConfig({ columns: base.columns, gap: adjustedGap });
-    };
-    
-    updateGrid();
-    window.addEventListener('resize', updateGrid);
-    return () => window.removeEventListener('resize', updateGrid);
-  }, [density]);
-  
-  return gridConfig;
-};
-
-const GridItem = function GridItem({ children, ...props }: GridItemProps): React.JSX.Element {
-  return (
-    <div {...props} className="photo-grid-item">
-      {children}
-    </div>
-  );
+const getMasonryGap = (density: DensityMode): GridConfig => {
+  return { gap: density === 'compact' ? 8 : 16 };
 };
 
 export default function PhotoGallery({ 
@@ -93,7 +53,7 @@ export default function PhotoGallery({
   density = 'comfortable',
 }: PhotoGalleryProps): React.JSX.Element {
   const pendingUploads = useStore((state) => state.pendingUploads);
-  const { columns, gap } = useResponsiveGrid(density);
+  const { gap } = getMasonryGap(density);
   const paddingClass = density === 'compact' ? 'p-1 sm:p-3' : 'p-2 sm:p-6';
 
   const mergedPhotos = useMemo(() => {
@@ -131,33 +91,16 @@ export default function PhotoGallery({
     }
     return pollingPhotoId != null && String(pollingPhotoId) === String(photoId);
   }, [pollingPhotoIds, pollingPhotoId]);
-  
-  // Memoize the item renderer
-  const itemContent = useCallback((index: number): React.JSX.Element | null => {
-    const photo = mergedPhotos[index];
-    if (!photo) return null;
-    
-    return (
-      <PhotoCard
-        key={photo.id || photo.name}
-        photo={photo}
-        accessLevel={getAccessLevel(photo.id)}
-        isPolling={isPollingForId(photo.id)}
-        apiBaseUrl={API_BASE_URL}
-        getSignedUrl={getSignedUrl}
-        onSelect={onSelectPhoto}
-        onEdit={handleEditPhoto}
-        onApprove={photo.state === 'working' ? handleMoveToInprogress : handleMoveToWorking}
-        onDelete={handleDeletePhoto}
-      />
-    );
-  }, [photos, getAccessLevel, isPollingForId, getSignedUrl, onSelectPhoto, handleEditPhoto, handleMoveToInprogress, handleMoveToWorking, handleDeletePhoto]);
 
-  // Dynamic grid style based on screen size
-  const gridStyle = useMemo(() => ({
-    gridTemplateColumns: `repeat(${columns}, minmax(0, 1fr))`,
-    gap: `${gap}px`,
-  }), [columns, gap]);
+  const masonryBreakpoints = useMemo(() => {
+    // 3 cols desktop, 2 cols tablet, 1 col mobile
+    return {
+      default: 3,
+      1024: 3,
+      768: 2,
+      640: 1,
+    };
+  }, []);
 
   // Empty state
   if (!mergedPhotos || mergedPhotos.length === 0) {
@@ -168,12 +111,20 @@ export default function PhotoGallery({
     );
   }
 
-  // For small lists (< 50 photos), use simple rendering to avoid virtualization overhead
-  if (mergedPhotos.length < 50) {
-    return (
-      <div 
-        className={`photo-gallery grid ${paddingClass}`}
-        style={gridStyle}
+  const masonryStyle = useMemo(() => {
+    return {
+      ['--masonry-gutter' as unknown as string]: `${gap}px`,
+    } as React.CSSProperties;
+  }, [gap]);
+
+  // Masonry layout uses natural document flow so the page-level infinite-scroll sentinel
+  // (rendered after this component) stays at the bottom of the document.
+  return (
+    <div className={paddingClass} style={masonryStyle}>
+      <Masonry
+        breakpointCols={masonryBreakpoints}
+        className="masonry-grid"
+        columnClassName="masonry-grid_column"
         data-testid="photo-gallery-grid"
       >
         {mergedPhotos.map((photo) => (
@@ -190,37 +141,7 @@ export default function PhotoGallery({
             onDelete={handleDeletePhoto}
           />
         ))}
-      </div>
-    );
-  }
-
-  // Custom List component with proper display name for large list virtualization
-  const VirtualizedList = React.forwardRef<HTMLDivElement, ListProps>(
-    function VirtualizedList({ style, children: _children, ...props }, ref) {
-      return (
-        <div
-          ref={ref}
-          {...props}
-          style={{
-            display: 'grid',
-            ...gridStyle,
-            ...style,
-          }}
-          className={`grid-gallery ${paddingClass}`}
-        />
-      );
-    }
-  );
-
-  // For large lists, use virtualization
-  return (
-    <VirtuosoGrid
-      data-testid="photo-gallery-grid"
-      style={{ height: 'calc(100vh - 120px)' }}
-      totalCount={mergedPhotos.length}
-      overscan={200}
-      components={{ Item: GridItem, List: VirtualizedList }}
-      itemContent={itemContent}
-    />
+      </Masonry>
+    </div>
   );
 }
