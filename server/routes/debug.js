@@ -39,13 +39,6 @@ module.exports = function createDebugRouter({ db }) {
 
   // SECURITY: Defense-in-depth guard for operational/debug routes.
   router.use((req, res, next) => {
-    const isProduction = (process.env.NODE_ENV === 'production');
-    const debugRoutesEnabled = (process.env.DEBUG_ROUTES_ENABLED === 'true');
-
-    if (isProduction && !debugRoutesEnabled) {
-      return res.status(404).json({ success: false, error: 'Not found' });
-    }
-
     const adminToken = process.env.DEBUG_ADMIN_TOKEN;
     if (adminToken && adminToken.trim() !== '') {
       const provided = req.get('x-debug-token');

@@ -90,14 +90,10 @@ function registerRoutes(app, { db, supabase, sseManager, logger }) {
   // Admin routes (protected by authenticateToken + requireRole('admin'))
   app.use('/api/admin', authenticateToken, requireRole('admin'), createAdminRouter({ db }));
 
-  // SECURITY: Debug/diagnostic routes are high risk.
-  // - In production, do NOT mount unless explicitly enabled.
-  // - In all environments, debug routes require normal authentication.
-  const shouldMountDebugRoutes =
-    process.env.NODE_ENV !== 'production' || process.env.DEBUG_ROUTES_ENABLED === 'true';
-  if (shouldMountDebugRoutes) {
-    app.use(authenticateToken, createDebugRouter({ db }));
-  }
+  // Debug/diagnostic routes require normal authentication.
+  // NOTE: Mounted in all environments; additional hardening can be done inside the router
+  // (e.g., DEBUG_ADMIN_TOKEN header gate).
+  app.use(authenticateToken, createDebugRouter({ db }));
 
   // Add security error handling middleware
   app.use(securityErrorHandler);
