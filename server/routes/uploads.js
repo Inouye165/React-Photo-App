@@ -330,31 +330,29 @@ module.exports = function createUploadsRouter({ db }) {
 
       // Enqueue background job for heavy processing
       // (EXIF extraction, thumbnail generation, AI metadata)
-      // Skip AI analysis if classification is 'none' (user opted out)
+      // All uploads go through the queue for derivative generation.
+      // AI analysis is selectively enabled server-side.
       let jobEnqueued = false;
       
       try {
-        // CRITICAL: If this upload is attached to a collectible, bypass queue-based processing.
-        // These photos are auxiliary and must upload fast.
-        if (collectibleId) {
-          logger.info('[upload] Skipping background processing (collectible upload)', {
-            photoId,
-            userId: req.user.id,
-            collectibleId,
+        const redisAvailable = await checkRedisAvailable();
+
+        if (redisAvailable) {
+          // SECURITY: derive AI decision server-side; client cannot override.
+          const runAiAnalysis = !collectibleId && classification !== 'none';
+
+          await addAIJob(insertedPhoto.id, {
+            processMetadata: true,
+            generateThumbnail: true,
+            runAiAnalysis,
+            requestId: req.requestId,
           });
-        } else if (classification !== 'none') {
-          const redisAvailable = await checkRedisAvailable();
-          
-          if (redisAvailable) {
-            await addAIJob(insertedPhoto.id, {
-              processMetadata: true,
-              generateThumbnail: true,
-              requestId: req.requestId,
-            });
-            jobEnqueued = true;
-            
-            // Transition photo from 'working' to 'inprogress' to signal AI processing has started
-            // This ensures client-side polling can track the AI job and update UI accordingly
+          jobEnqueued = true;
+
+          // Maintain existing state semantics:
+          // - Only set state=inprogress when AI analysis is going to run.
+          // - Otherwise, keep the current state (typically 'working').
+          if (runAiAnalysis) {
             await db('photos')
               .where({ id: photoId })
               .update({
@@ -362,12 +360,19 @@ module.exports = function createUploadsRouter({ db }) {
                 updated_at: new Date().toISOString(),
               });
             logger.info('[upload] Photo transitioned to inprogress', { photoId, userId: req.user.id });
+          } else {
+            logger.info('[upload] Enqueued derivatives-only job (no AI analysis)', {
+              photoId,
+              userId: req.user.id,
+              collectibleId: collectibleId || null,
+              classification,
+            });
           }
         } else {
-          // When classification is 'none', user opted out of AI analysis
-          // Keep photo in 'working' state so it shows "Queue" badge with "Analyze" button
-          // User can manually trigger analysis later if desired
-          logger.info('[upload] Photo stays in working state (no AI analysis requested)', { photoId, userId: req.user.id, classification });
+          logger.info('[upload] Queue unavailable; skipping background processing', {
+            photoId,
+            userId: req.user.id,
+          });
         }
       } catch (queueErr) {
         // Queue not available - client can trigger processing manually

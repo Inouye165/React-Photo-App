@@ -25,6 +25,8 @@ Counts track how often a file has been flagged/touched as TypeScript migration-w
 | `server/services/photosDb.js` | 2 | Reason: Complex caching logic and API boundaries. |
 | `src/pages/PhotoEditPage.jsx` | 1 | Modified during HITL bug fix; critical path logic. Contains photo editing workflow with AI polling and state management. |
 | `server/routes/photos.js` | 3 | Modified during HITL bug fix and Accept flow optimization; also modified for build process (pre-compile pipeline), candidate for full TS conversion. |
+| `server/routes/uploads.js` | 1 | Modified during collectible pipeline fix; complex logic needs type safety. |
+| `server/queue/index.js` | 1 | Modified during collectible pipeline fix; complex logic needs type safety. |
 
 - [ ] (Add files here)
 

@@ -12,6 +12,7 @@ import { getHeadersForGetRequestAsync } from '../api/auth';
 
 import PriceRangeVisual from './PriceRangeVisual';
 import PriceHistoryList from './PriceHistoryList';
+import AuthenticatedImage from './AuthenticatedImage';
 
 type Id = string | number;
 
@@ -460,8 +461,8 @@ export default function CollectibleDetailView({ photo, collectibleData, aiInsigh
             }}
           >
             {mergedCollectiblePhotos.map((p) => {
-              const src =
-                resolveMediaUrl(p.smallThumbnail) || resolveMediaUrl(p.thumbnail) || resolveMediaUrl(p.url);
+              const thumbnailSrc = resolveMediaUrl(p.smallThumbnail) || resolveMediaUrl(p.thumbnail);
+              const fallbackSrc = thumbnailSrc ? null : resolveMediaUrl(p.url);
 
               const isUploading = Boolean((p as unknown as { uploading?: unknown; isTemporary?: unknown })?.uploading) ||
                 Boolean((p as unknown as { uploading?: unknown; isTemporary?: unknown })?.isTemporary);
@@ -479,9 +480,16 @@ export default function CollectibleDetailView({ photo, collectibleData, aiInsigh
                   }}
                   title={typeof p.filename === 'string' ? p.filename : undefined}
                 >
-                  {src ? (
+                  {thumbnailSrc ? (
                     <img
-                      src={src}
+                      src={thumbnailSrc}
+                      alt={typeof p.filename === 'string' ? p.filename : 'Collectible reference photo'}
+                      style={{ width: '100%', height: '110px', objectFit: 'cover', display: 'block' }}
+                      loading="lazy"
+                    />
+                  ) : fallbackSrc ? (
+                    <AuthenticatedImage
+                      src={fallbackSrc}
                       alt={typeof p.filename === 'string' ? p.filename : 'Collectible reference photo'}
                       style={{ width: '100%', height: '110px', objectFit: 'cover', display: 'block' }}
                       loading="lazy"

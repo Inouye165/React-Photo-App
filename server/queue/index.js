@@ -179,6 +179,8 @@ const addAIJob = async (photoId, options = {}) => {
 
   if (options.processMetadata !== undefined) jobData.processMetadata = options.processMetadata;
   if (options.generateThumbnail !== undefined) jobData.generateThumbnail = options.generateThumbnail;
+  if (options.generateDisplay !== undefined) jobData.generateDisplay = options.generateDisplay;
+  if (options.runAiAnalysis !== undefined) jobData.runAiAnalysis = options.runAiAnalysis;
   if (options.collectibleOverride !== undefined) jobData.collectibleOverride = options.collectibleOverride;
 
   const jobOpts = {
@@ -287,8 +289,11 @@ const startWorker = async () => {
     }
 
     async function processPhotoAIJob(job) {
-      const { photoId, modelOverrides, processMetadata, generateThumbnail, collectibleOverride } = job.data || {};
+      const { photoId, modelOverrides, processMetadata, generateThumbnail, runAiAnalysis, collectibleOverride } = job.data || {};
       logger.info(`[WORKER] Processing job for photoId: ${photoId}`);
+
+      // Back-compat: jobs that predate `runAiAnalysis` should behave like legacy AI jobs.
+      const shouldRunAiAnalysis = runAiAnalysis !== false;
 
       const photo = await db("photos").where({ id: photoId }).first();
       if (!photo) throw new Error(`Photo with ID ${photoId} not found.`);
@@ -296,63 +301,68 @@ const startWorker = async () => {
       const storagePath = photo.storage_path || `${photo.state}/${photo.filename}`;
 
       try {
-        // Optional background steps for streaming uploads.
-        if (processMetadata || generateThumbnail) {
-          await processUploadedPhoto(db, photoId, {
-            processMetadata: processMetadata !== false,
-            generateThumbnail: generateThumbnail !== false,
-            generateDisplay: true,
-          });
-        }
+        // Always run derivative generation for browser compatibility.
+        await processUploadedPhoto(db, photoId, {
+          processMetadata: processMetadata !== false,
+          generateThumbnail: generateThumbnail !== false,
+          generateDisplay: true,
+        });
 
-        const aiResult = await updatePhotoAIMetadata(db, photo, storagePath, modelOverrides, { collectibleOverride });
+        if (shouldRunAiAnalysis) {
+          const aiResult = await updatePhotoAIMetadata(db, photo, storagePath, modelOverrides, { collectibleOverride });
 
-        if (!aiResult) {
-          const fresh = await db('photos').where({ id: photoId }).select('ai_retry_count').first();
-          const retries = Number(fresh?.ai_retry_count) || 0;
+          if (!aiResult) {
+            const fresh = await db('photos').where({ id: photoId }).select('ai_retry_count').first();
+            const retries = Number(fresh?.ai_retry_count) || 0;
 
-          if (retries >= AI_MAX_RETRIES) {
-            logger.warn(`[WORKER] AI permanent failure for photoId: ${photoId}; marking state=error`);
-            try {
-              // Best-effort: storage move is not required to prevent UI from being stuck.
-              await setPhotoStateFallback(photoId, 'error');
-            } catch (stateErr) {
-              logger.error(`[WORKER] Failed to mark photoId ${photoId} error: ${stateErr?.message || stateErr}`);
-            }
-            return;
-          }
-
-          // Trigger BullMQ retry.
-          throw new Error(`AI processing failed for photoId ${photoId} (retry_count=${retries})`);
-        }
-
-        // AI succeeded: finalize state to finished.
-        if (photo.state !== 'finished') {
-          try {
-            const userId = photo.user_id;
-            const storagePathStr = photo.storage_path ? String(photo.storage_path) : '';
-            const isPinnedOriginal = storagePathStr.startsWith('original/');
-
-            if (isPinnedOriginal) {
-              // New architecture: originals live under original/<photoId>/... and should not be moved
-              // by the legacy state-based storage transitions.
-              await setPhotoStateFallback(photoId, 'finished');
-            } else {
-              const fromState = photo.storage_path ? storagePathStr.split('/')[0] : (photo.state || 'inprogress');
-              const toState = 'finished';
-              const filenameForMove = photo.storage_path
-                ? path.posix.basename(storagePathStr)
-                : photo.filename;
-              const result = await photosState.transitionState(photoId, userId, fromState, toState, filenameForMove, photo.storage_path);
-              if (!result?.success) {
-                logger.warn(`[WORKER] Storage transition failed for photoId ${photoId}; falling back to DB-only state update`, result?.error);
-                await setPhotoStateFallback(photoId, 'finished');
+            if (retries >= AI_MAX_RETRIES) {
+              logger.warn(`[WORKER] AI permanent failure for photoId: ${photoId}; marking state=error`);
+              try {
+                // Best-effort: storage move is not required to prevent UI from being stuck.
+                await setPhotoStateFallback(photoId, 'error');
+              } catch (stateErr) {
+                logger.error(`[WORKER] Failed to mark photoId ${photoId} error: ${stateErr?.message || stateErr}`);
               }
+              return;
             }
-          } catch (stateErr) {
-            logger.warn(`[WORKER] State finalize failed for photoId ${photoId}; falling back to DB-only state update`, stateErr?.message || stateErr);
-            await setPhotoStateFallback(photoId, 'finished');
+
+            // Trigger BullMQ retry.
+            throw new Error(`AI processing failed for photoId ${photoId} (retry_count=${retries})`);
           }
+
+          // AI succeeded: finalize state to finished.
+          if (photo.state !== 'finished') {
+            try {
+              const userId = photo.user_id;
+              const storagePathStr = photo.storage_path ? String(photo.storage_path) : '';
+              const isPinnedOriginal = storagePathStr.startsWith('original/');
+
+              if (isPinnedOriginal) {
+                // New architecture: originals live under original/<photoId>/... and should not be moved
+                // by the legacy state-based storage transitions.
+                await setPhotoStateFallback(photoId, 'finished');
+              } else {
+                const fromState = photo.storage_path ? storagePathStr.split('/')[0] : (photo.state || 'inprogress');
+                const toState = 'finished';
+                const filenameForMove = photo.storage_path
+                  ? path.posix.basename(storagePathStr)
+                  : photo.filename;
+                const result = await photosState.transitionState(photoId, userId, fromState, toState, filenameForMove, photo.storage_path);
+                if (!result?.success) {
+                  logger.warn(`[WORKER] Storage transition failed for photoId ${photoId}; falling back to DB-only state update`, result?.error);
+                  await setPhotoStateFallback(photoId, 'finished');
+                }
+              }
+            } catch (stateErr) {
+              logger.warn(`[WORKER] State finalize failed for photoId ${photoId}; falling back to DB-only state update`, stateErr?.message || stateErr);
+              await setPhotoStateFallback(photoId, 'finished');
+            }
+          }
+        } else {
+          logger.info('[WORKER] Skipping AI analysis (derivatives-only job)', {
+            photoId: String(photoId),
+            requestId: sanitizeRequestId(job?.data?.requestId) || undefined,
+          });
         }
 
         // Generate HEIC/HEIF display JPEG once per upload.
