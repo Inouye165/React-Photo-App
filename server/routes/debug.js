@@ -5,6 +5,34 @@ const supabase = require('../lib/supabaseClient');
 const logger = require('../logger');
 // NEW IMPORT: Required for the fix
 const { addAIJob } = require('../queue');
+const path = require('path');
+
+function buildExistsChecker(storage) {
+  return async function exists(storagePath) {
+    const normalized = String(storagePath || '').trim();
+    if (!normalized) return { exists: false, reason: 'empty_path' };
+
+    // Supabase list() requires directory + search; it does not accept full path.
+    const dir = path.posix.dirname(normalized);
+    const file = path.posix.basename(normalized);
+    try {
+      const { data, error } = await storage.from('photos').list(dir === '.' ? '' : dir, { search: file });
+      if (error) return { exists: false, reason: error.message || 'list_failed' };
+      const found = Array.isArray(data) && data.some((x) => x && x.name === file);
+      return { exists: found, reason: found ? 'found' : 'not_found' };
+    } catch (err) {
+      return { exists: false, reason: err && err.message ? err.message : String(err) };
+    }
+  };
+}
+
+async function enqueueRepairJob(photoId) {
+  await addAIJob(photoId, {
+    runAiAnalysis: false,
+    generateThumbnail: true,
+    generateDisplay: true,
+  });
+}
 
 module.exports = function createDebugRouter({ db }) {
   const router = express.Router();
@@ -32,7 +60,7 @@ module.exports = function createDebugRouter({ db }) {
   // ==================================================================
   // NEW MAINTENANCE ROUTE (Added for Collectible Fix)
   // ==================================================================
-  router.get('/fix-collectibles', async (req, res) => {
+  const fixCollectiblesHandler = async (req, res) => {
     try {
       logger.info('[Maintenance] Starting collectible repair job via DEBUG...');
       
@@ -73,6 +101,87 @@ module.exports = function createDebugRouter({ db }) {
         success: false, 
         error: err.message 
       });
+    }
+  };
+
+  // NOTE: These are GET routes (safe methods) so they do not require CSRF tokens.
+  // Debug routes are already protected by JWT auth + optional DEBUG_ADMIN_TOKEN.
+  router.get('/fix-collectibles', fixCollectiblesHandler);
+  router.get('/debug/fix-collectibles', fixCollectiblesHandler);
+
+  // Repair a specific photo by ID (useful when a single HEIC isn't rendering).
+  // Example: GET /debug/repair-photo?id=123
+  router.get('/debug/repair-photo', async (req, res) => {
+    try {
+      const id = Number(req.query.id);
+      if (!id) return res.status(400).json({ success: false, error: 'id is required' });
+
+      const photo = await db('photos')
+        .where({ id, user_id: req.user.id })
+        .select('id')
+        .first();
+
+      if (!photo) return res.status(404).json({ success: false, error: 'not found' });
+
+      await enqueueRepairJob(photo.id);
+      return res.json({
+        success: true,
+        message: `Enqueued photo ${photo.id} for repair. Wait ~1 minute and refresh.`,
+      });
+    } catch (err) {
+      logger.error('[Maintenance] /debug/repair-photo failed:', err);
+      return res.status(500).json({ success: false, error: err.message });
+    }
+  });
+
+  // Diagnose "not linking to Supabase" issues by checking whether the DB paths
+  // actually exist in the Supabase Storage bucket.
+  // Example: GET /debug/photo-storage-check?id=123
+  router.get('/debug/photo-storage-check', async (req, res) => {
+    try {
+      const id = Number(req.query.id);
+      if (!id) return res.status(400).json({ success: false, error: 'id is required' });
+
+      const photo = await db('photos')
+        .where({ id, user_id: req.user.id })
+        .select('id', 'filename', 'state', 'storage_path', 'display_path', 'updated_at')
+        .first();
+
+      if (!photo) return res.status(404).json({ success: false, error: 'not found' });
+
+      const exists = buildExistsChecker(supabase.storage);
+      const fallbackPath = `${photo.state}/${photo.filename}`;
+
+      const candidates = Array.from(
+        new Set([
+          photo.storage_path,
+          fallbackPath,
+          photo.display_path,
+        ].filter(Boolean).map(String))
+      );
+
+      const results = {};
+      for (const p of candidates) {
+        results[p] = await exists(p);
+      }
+
+      return res.json({
+        success: true,
+        photo: {
+          id: photo.id,
+          filename: photo.filename,
+          state: photo.state,
+          storage_path: photo.storage_path,
+          display_path: photo.display_path,
+          updated_at: photo.updated_at,
+        },
+        checkedPaths: results,
+        hint:
+          'If storage_path is missing/not_found, the DB is pointing at a non-existent object in Supabase Storage. If display_path is missing, enqueue /debug/repair-photo or run /debug/fix-collectibles for bulk.',
+      });
+    } catch (err) {
+      logger.error('[Debug] /debug/photo-storage-check failed:', err);
+      return res.status(500).json({ success: false, error: err.message });
     }
   });
 
