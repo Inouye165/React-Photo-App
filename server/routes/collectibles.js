@@ -1,6 +1,7 @@
 const express = require('express');
 const createCollectiblesService = require('../services/collectiblesService');
 const { mapPhotoRowToListDto } = require('../serializers/photos');
+const { signThumbnailUrl } = require('../utils/urlSigning');
 
 module.exports = function createCollectiblesRouter({ db }) {
   const router = express.Router();
@@ -45,7 +46,17 @@ module.exports = function createCollectiblesRouter({ db }) {
         .orderBy('created_at', 'desc')
         .orderBy('id', 'desc');
 
-      const photos = await Promise.all(rows.map((row) => mapPhotoRowToListDto(row)));
+      // Use server-signed /display/thumbnails URLs so browsers can render thumbnails
+      // without cookies or Authorization headers.
+      const COLLECTIBLES_THUMB_TTL_SECONDS = 3600;
+      const photos = await Promise.all(
+        rows.map((row) =>
+          mapPhotoRowToListDto(row, {
+            ttlSeconds: COLLECTIBLES_THUMB_TTL_SECONDS,
+            signThumbnailUrl,
+          })
+        )
+      );
       res.json({ success: true, photos });
     } catch (err) {
       res.status(500).json({ success: false, error: err.message });

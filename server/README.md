@@ -155,6 +155,32 @@ This project uses **BullMQ** and **Redis** to process long-running tasks asynchr
 
 *Note: You must have a Redis server running for these features to work.*
 
+### Collectible “Reference Photos” (Derivatives-Only)
+
+Collectible reference photos are optimized to **skip expensive AI analysis** while still generating browser-safe assets (thumbnails + display JPEG/WebP). The server derives `runAiAnalysis` server-side so clients cannot force AI work.
+
+**Expected behavior**
+- Uploading a collectible reference photo enqueues a background job.
+- The worker **always** generates derivatives (`thumb_*`, `display_path`).
+- AI metadata (`analysis_data` / AI enrichment) is **skipped** for collectible reference photos.
+
+**Manual verification checklist**
+1. Upload a collectible reference photo.
+2. Confirm it appears in the UI immediately (or with a loading state).
+3. Confirm `photos.display_path` becomes populated after processing.
+4. Confirm AI metadata is empty/skipped for the reference photo.
+
+**Backfill broken reference photos**
+If you already have collectible photos missing `display_path`, run:
+
+```bash
+# Preview what will be queued
+node server/scripts/fix-collectible-thumbnails.js --dry-run
+
+# Queue up to 100 repairs
+node server/scripts/fix-collectible-thumbnails.js --limit 100
+```
+
 ## 🔐 Security
 
 > **Update (December 2025):** Protected API routes require `Authorization: Bearer <token>`. A deprecated cookie fallback may exist only for legacy image access/E2E and will be removed.
