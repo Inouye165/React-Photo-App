@@ -24,9 +24,6 @@
     "working",
     "coverage",
     "test-results",
-    "routes/photos.js",
-    "routes/debug.js",
-    "./routes/debug.js",
-    "**/routes/debug.js"
+    "routes/photos.js"
   ]
 }
