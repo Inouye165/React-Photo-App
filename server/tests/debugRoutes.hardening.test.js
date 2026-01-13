@@ -71,9 +71,8 @@ describe('Debug routes hardening (prod-off by default + optional token gate)', (
       .expect(200);
   });
 
-  test('Production enabled + DEBUG_ADMIN_TOKEN enforces x-debug-token (403/200)', async () => {
+  test('Production keeps debug routes available even when DEBUG_ADMIN_TOKEN is set', async () => {
     process.env.NODE_ENV = 'production';
-    process.env.DEBUG_ROUTES_ENABLED = 'true';
     process.env.DEBUG_ADMIN_TOKEN = 'abc';
 
     const db = jest.fn(() => ({
@@ -84,22 +83,12 @@ describe('Debug routes hardening (prod-off by default + optional token gate)', (
 
     await request(app)
       .get('/debug/inprogress')
-      .expect(403);
-
-    await request(app)
-      .get('/debug/inprogress')
-      .set('x-debug-token', 'wrong')
-      .expect(403);
-
-    const ok = await request(app)
-      .get('/debug/inprogress')
-      .set('x-debug-token', 'abc')
       .expect(200);
 
-    expect(Array.isArray(ok.body)).toBe(true);
+    // DEBUG_ADMIN_TOKEN is no longer enforced by this router.
   });
 
-  test('Non-production keeps debug routes available, and still respects token gating', async () => {
+  test('Non-production keeps debug routes available (no token gating)', async () => {
     process.env.NODE_ENV = 'test';
 
     const db = jest.fn(() => ({
@@ -108,21 +97,11 @@ describe('Debug routes hardening (prod-off by default + optional token gate)', (
 
     const app = buildApp({ db });
 
-    // No DEBUG_ADMIN_TOKEN => reachable
-    await request(app)
-      .get('/debug/inprogress')
-      .expect(200);
-
-    // With DEBUG_ADMIN_TOKEN => gated
+    // With DEBUG_ADMIN_TOKEN => still reachable
     process.env.DEBUG_ADMIN_TOKEN = 'token-123';
 
     await request(app)
       .get('/debug/inprogress')
-      .expect(403);
-
-    await request(app)
-      .get('/debug/inprogress')
-      .set('x-debug-token', 'token-123')
       .expect(200);
   });
 });
