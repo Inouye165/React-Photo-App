@@ -7,7 +7,7 @@
     "build": "tsc -p tsconfig.json",
     "start": "node dist/server.js",
     "prestart": "npm run build && node dist/scripts/check-migrations.js && node dist/scripts/run-migrations.js",
-    "dev": "nodemon server.js",
+    "dev": "nodemon --watch . --ext js,ts,json --ignore dist --exec \"npm run build && node dist/server.js\"",
     "worker": "node dist/worker.js",
     "dev:worker": "nodemon --exec ts-node worker.ts",
     "pretest": "node scripts/validate-keys.js",
