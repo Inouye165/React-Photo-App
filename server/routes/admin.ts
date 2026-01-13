@@ -17,6 +17,10 @@ import { Router, Request, Response } from 'express';
 import { createClient } from '@supabase/supabase-js';
 import { getConfig } from '../config/env';
 
+// Queue helpers (CommonJS export)
+// eslint-disable-next-line @typescript-eslint/no-var-requires
+const { addAIJob, checkRedisAvailable } = require('../queue');
+
 // Types
 interface AdminInviteRequest {
   email: string;
@@ -38,6 +42,8 @@ interface AuthenticatedRequest extends Request {
   query: any;
   params: any;
   headers: any;
+  db?: any;
+  requestId?: string;
   user?: {
     id: string;
     email: string;
@@ -209,6 +215,79 @@ function createAdminRouter({ db }: { db: any }): Router {
         success: false,
         error: 'Internal server error'
       });
+    }
+  });
+
+  /**
+   * POST /api/admin/maintenance/fix-collectibles
+   *
+   * Enqueue repairs for collectible reference photos missing display assets.
+   * Designed for hosting environments without SSH/terminal access.
+   *
+   * Query:
+   * - photos where collectible_id IS NOT NULL
+   * - and display_path IS NULL
+   * - limited to 100 per request to avoid timeouts
+   *
+   * Enqueue options:
+   * - runAiAnalysis: false (skip expensive AI)
+   * - generateThumbnail: true
+   * - generateDisplay: true
+   */
+  router.post('/maintenance/fix-collectibles', async (req: AuthenticatedRequest, res: Response) => {
+    try {
+      const requestDb = req.db || db;
+      if (!requestDb) {
+        return res.status(500).json({ success: false, error: 'Database unavailable' });
+      }
+
+      const redisOk = await checkRedisAvailable();
+      if (!redisOk) {
+        return res.status(503).json({ success: false, error: 'Queue service unavailable' });
+      }
+
+      let rows: Array<{ id: number; storage_path?: string | null }> = [];
+
+      if (typeof requestDb.query === 'function') {
+        const result = await requestDb.query(
+          'SELECT id, storage_path FROM photos WHERE collectible_id IS NOT NULL AND display_path IS NULL LIMIT 100'
+        );
+        rows = Array.isArray(result?.rows) ? result.rows : [];
+      } else if (typeof requestDb === 'function') {
+        // Fallback for Knex-style db function
+        rows = await requestDb('photos')
+          .select('id', 'storage_path')
+          .whereNotNull('collectible_id')
+          .whereNull('display_path')
+          .limit(100);
+      } else {
+        return res.status(500).json({ success: false, error: 'Database unavailable' });
+      }
+
+      let enqueued = 0;
+      for (const row of rows) {
+        const photoId = row && typeof row.id === 'number' ? row.id : null;
+        if (!photoId) continue;
+
+        try {
+          await addAIJob(photoId, {
+            runAiAnalysis: false,
+            generateThumbnail: true,
+            generateDisplay: true,
+            requestId: req.requestId,
+          });
+          enqueued += 1;
+        } catch (err: any) {
+          console.warn('[admin] Failed to enqueue collectible repair job', {
+            photoId: String(photoId),
+            error: err?.message || String(err),
+          });
+        }
+      }
+
+      return res.json({ success: true, count: enqueued });
+    } catch (err: any) {
+      return res.status(500).json({ success: false, error: err?.message || 'Internal server error' });
     }
   });
 
