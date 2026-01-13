@@ -32,7 +32,7 @@ module.exports = function createDebugRouter({ db }) {
   // ==================================================================
   // NEW MAINTENANCE ROUTE (Added for Collectible Fix)
   // ==================================================================
-  router.post('/fix-collectibles', async (req, res) => {
+  router.get('/fix-collectibles', async (req, res) => {
     try {
       logger.info('[Maintenance] Starting collectible repair job via DEBUG...');
       
