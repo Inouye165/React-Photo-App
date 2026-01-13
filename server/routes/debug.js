@@ -3,19 +3,18 @@ const { processAllUnprocessedInprogress, extractLatLon } = require('../ai/servic
 const { generateThumbnail } = require('../media/image');
 const supabase = require('../lib/supabaseClient');
 const logger = require('../logger');
+// NEW IMPORT: Required for the fix
+const { addAIJob } = require('../queue');
 
 module.exports = function createDebugRouter({ db }) {
   const router = express.Router();
 
   // SECURITY: Defense-in-depth guard for operational/debug routes.
-  // - Production default: disabled (return 404) unless DEBUG_ROUTES_ENABLED=true
-  // - Optional admin header gate: if DEBUG_ADMIN_TOKEN is set, require x-debug-token
   router.use((req, res, next) => {
     const isProduction = (process.env.NODE_ENV === 'production');
     const debugRoutesEnabled = (process.env.DEBUG_ROUTES_ENABLED === 'true');
 
     if (isProduction && !debugRoutesEnabled) {
-      // Match the app-wide JSON 404 shape to avoid leaking route existence.
       return res.status(404).json({ success: false, error: 'Not found' });
     }
 
@@ -30,10 +29,61 @@ module.exports = function createDebugRouter({ db }) {
     return next();
   });
 
+  // ==================================================================
+  // NEW MAINTENANCE ROUTE (Added for Collectible Fix)
+  // ==================================================================
+  router.post('/fix-collectibles', async (req, res) => {
+    try {
+      logger.info('[Maintenance] Starting collectible repair job via DEBUG...');
+      
+      // 1. Find collectibles with missing display assets
+      const photos = await db('photos')
+        .whereNotNull('collectible_id')
+        .whereNull('display_path')
+        .select('id', 'filename', 'storage_path')
+        .limit(100);
+
+      if (photos.length === 0) {
+        return res.json({ success: true, count: 0, message: 'No broken collectibles found.' });
+      }
+
+      logger.info(`[Maintenance] Found ${photos.length} broken collectibles.`);
+
+      // 2. Enqueue them for processing
+      let count = 0;
+      for (const p of photos) {
+        // Enqueue the job with AI disabled but image generation ENABLED
+        await addAIJob(p.id, {
+          runAiAnalysis: false,    // Skip expensive AI
+          generateThumbnail: true, // Force image processing
+          generateDisplay: true
+        });
+        count++;
+      }
+
+      res.json({ 
+        success: true, 
+        count, 
+        message: `Enqueued ${count} photos for repair. Wait 1 minute and refresh.` 
+      });
+
+    } catch (err) {
+      logger.error('[Maintenance] Repair failed:', err);
+      res.status(500).json({ 
+        success: false, 
+        error: err.message 
+      });
+    }
+  });
+
+  // ==================================================================
+  // EXISTING ROUTES (Preserved)
+  // ==================================================================
+
   // Add endpoint to recheck/reprocess all inprogress files for AI metadata
   router.post('/photos/recheck-inprogress', (req, res) => {
     try {
-  logger.info('[RECHECK] /photos/recheck-inprogress endpoint called');
+      logger.info('[RECHECK] /photos/recheck-inprogress endpoint called');
       processAllUnprocessedInprogress(db);
       res.json({ success: true });
     } catch (err) {
@@ -42,9 +92,7 @@ module.exports = function createDebugRouter({ db }) {
     }
   });
 
-  // Debug endpoint to list all inprogress files in the database
-  // Authentication required: This endpoint requires a valid JWT token in ALL environments
-  // SECURITY: Filter by user_id to prevent information leakage
+  // Debug endpoint to list all inprogress files
   router.get('/debug/inprogress', async (req, res) => {
     try {
       const rows = await db('photos').where({ state: 'inprogress', user_id: req.user.id });
@@ -55,9 +103,7 @@ module.exports = function createDebugRouter({ db }) {
     }
   });
 
-  // Dev endpoint: re-run GPS extraction on a DB row and return coordinates
-  // Authentication required: This endpoint requires a valid JWT token in ALL environments
-  // SECURITY: Filter by user_id to prevent information leakage
+  // Dev endpoint: re-run GPS extraction
   router.get('/dev/reextract-gps', async (req, res) => {
     try {
       const id = Number(req.query.id);
@@ -81,8 +127,7 @@ module.exports = function createDebugRouter({ db }) {
     }
   });
 
-  // Debug endpoint to reset ai_retry_count for all HEIC files
-  // SECURITY: Filter by user_id to prevent cross-user modifications
+  // Debug endpoint to reset ai_retry_count
   router.post('/debug/reset-ai-retry', async (req, res) => {
     try {
       const result = await db('photos')
@@ -97,7 +142,6 @@ module.exports = function createDebugRouter({ db }) {
   });
 
   // Debug endpoint to regenerate missing thumbnails
-  // SECURITY: Filter by user_id to prevent processing other users' photos
   router.post('/debug/regenerate-thumbnails', async (req, res) => {
     try {
       const rows = await db('photos')
@@ -110,16 +154,12 @@ module.exports = function createDebugRouter({ db }) {
       
       for (const row of rows) {
         const _thumbnailPath = `thumbnails/${row.hash}.jpg`;
-        
-        // Check if thumbnail exists in Supabase Storage
         const { data: existingThumbnail } = await supabase.storage
           .from('photos')
           .list('thumbnails', { search: `${row.hash}.jpg` });
         
         if (!existingThumbnail || existingThumbnail.length === 0) {
           missing++;
-          
-          // Download the original file and generate thumbnail
           const storagePath = row.storage_path || `${row.state}/${row.filename}`;
           const { data: fileData, error } = await supabase.storage
             .from('photos')
@@ -156,34 +196,16 @@ module.exports = function createDebugRouter({ db }) {
   // Test storage connection
   router.get('/storage', async (req, res) => {
     try {
-      // List files in the bucket
-      const { data, error } = await supabase.storage.from('photos').list('', {
-        limit: 1
-      });
+      const { data, error } = await supabase.storage.from('photos').list('', { limit: 1 });
+      if (error) return res.status(500).json({ success: false, error: error.message, details: error });
       
-      if (error) {
-        return res.status(500).json({ success: false, error: error.message, details: error });
-      }
-      
-      // Create a test file
       const testContent = Buffer.from('test', 'utf8');
       const { data: uploadData, error: uploadError } = await supabase.storage
         .from('photos')
-        .upload('test-file.txt', testContent, {
-          contentType: 'text/plain',
-          upsert: true
-        });
+        .upload('test-file.txt', testContent, { contentType: 'text/plain', upsert: true });
       
-      if (uploadError) {
-        return res.status(500).json({ 
-          success: false, 
-          error: uploadError.message, 
-          details: uploadError,
-          listWorked: true 
-        });
-      }
+      if (uploadError) return res.status(500).json({ success: false, error: uploadError.message, details: uploadError, listWorked: true });
       
-      // Clean up test file
       await supabase.storage.from('photos').remove(['test-file.txt']);
       
       res.json({ 
