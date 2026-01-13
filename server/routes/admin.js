@@ -17,7 +17,7 @@ const { Router } = require('express');
 const { createClient } = require('@supabase/supabase-js');
 const { getConfig } = require('../config/env');
 const createAssessmentsDb = require('../services/assessmentsDb');
-const { addAppAssessmentJob, checkRedisAvailable } = require('../queue');
+const { addAIJob, addAppAssessmentJob, checkRedisAvailable } = require('../queue/index');
 
 // Email validation regex (safe pattern to prevent ReDoS)
 // Limits length and uses specific character sets to avoid catastrophic backtracking
@@ -557,6 +557,69 @@ function createAdminRouter({ db }) {
         error: err?.message || 'Internal server error',
         code: err?.code,
       });
+    }
+  });
+
+  /**
+   * POST /api/admin/maintenance/fix-collectibles
+   *
+   * Enqueue repairs for collectible reference photos missing display assets.
+   * Designed for hosting environments without SSH/terminal access.
+   *
+   * Query:
+   * - photos where collectible_id IS NOT NULL
+   * - and display_path IS NULL
+   * - limited to 100 per request to avoid timeouts
+   *
+   * Enqueue options:
+   * - runAiAnalysis: false (skip expensive AI)
+   * - generateThumbnail: true
+   * - generateDisplay: true
+   */
+  router.post('/maintenance/fix-collectibles', async (req, res) => {
+    try {
+      if (!ensureAdmin(req, res)) return;
+
+      const requestDb = req.db || db;
+      if (!requestDb || typeof requestDb !== 'function') {
+        return res.status(500).json({ success: false, error: 'Database unavailable' });
+      }
+
+      const redisOk = await checkRedisAvailable();
+      if (!redisOk) {
+        return res.status(503).json({ success: false, error: 'Queue service unavailable' });
+      }
+
+      const rows = await requestDb('photos')
+        .select('id', 'storage_path')
+        .whereNotNull('collectible_id')
+        .whereNull('display_path')
+        .limit(100);
+
+      let enqueued = 0;
+      for (const row of rows || []) {
+        const photoId = row && typeof row.id === 'number' ? row.id : null;
+        if (!photoId) continue;
+
+        try {
+          await addAIJob(photoId, {
+            runAiAnalysis: false,
+            generateThumbnail: true,
+            generateDisplay: true,
+            requestId: req.requestId,
+          });
+          enqueued += 1;
+        } catch (err) {
+          console.warn('[admin] Failed to enqueue collectible repair job', {
+            photoId: String(photoId),
+            error: err?.message || String(err),
+          });
+        }
+      }
+
+      return res.json({ success: true, count: enqueued });
+    } catch (err) {
+      return res.status(500).json({ success: false, error: err?.message || 'Internal server error' });
     }
   });
 
