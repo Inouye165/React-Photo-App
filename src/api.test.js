@@ -577,7 +577,7 @@ describe('api - handleAuthError', () => {
       json: async () => ({ error: 'Token expired' })
     });
 
-    await api.deletePhoto(123);
+    await expect(api.deletePhoto(123)).rejects.toMatchObject({ status: 401 });
 
     // Verify the event contains the status code
     const eventCalls = dispatchEventSpy.mock.calls;

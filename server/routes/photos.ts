@@ -719,52 +719,106 @@ export default function createPhotosRouter({ db, supabase }: PhotosRouterDepende
   // ============================================================================
   // DELETE /:id - Delete photo
   // ============================================================================
-  router.delete('/:id', authenticateToken, async (req: AuthenticatedRequest, res: Response) => {
-    try {
-      const { id } = req.params;
-      const resolvedId = await photosDb.resolvePhotoPrimaryId(id, req.user!.id);
-      if (!resolvedId) {
-        return res.status(404).json({ success: false, error: 'Photo not found' } as ErrorResponse);
-      }
-
-      const row = await photosDb.getPhotoById(resolvedId, req.user!.id);
-      if (!row) {
-        return res.status(404).json({ success: false, error: 'Photo not found' } as ErrorResponse);
-      }
-
-      const filePath = row.storage_path || `${row.state}/${row.filename}`;
-      const { error: deleteError } = await photosStorage.deletePhotos([filePath]);
-
-      if (deleteError) {
-        logger.warn('Failed to delete file from Supabase storage:', deleteError);
-      }
-
-      if (row.edited_filename) {
-        const editedPath = `inprogress/${row.edited_filename}`;
-        const { error: editedDeleteError } = await photosStorage.deletePhotos([editedPath]);
-
-        if (editedDeleteError) {
-          logger.warn('Failed to delete edited file from Supabase storage:', editedDeleteError);
+  router.delete(
+    '/:id',
+    authenticateToken,
+    validateRequest({ params: photoIdParamsSchema }),
+    async (req: AuthenticatedRequest, res: Response) => {
+      try {
+        const { id } = req.validated!.params!;
+        const resolvedId = await photosDb.resolvePhotoPrimaryId(id, req.user!.id);
+        if (!resolvedId) {
+          return res.status(404).json({ success: false, error: 'Photo not found' } as ErrorResponse);
         }
-      }
 
-      if (row.hash) {
-        const thumbnailPath = `thumbnails/${row.hash}.jpg`;
-        const { error: thumbDeleteError } = await photosStorage.deletePhotos([thumbnailPath]);
-
-        if (thumbDeleteError) {
-          logger.warn('Failed to delete thumbnail from Supabase storage:', thumbDeleteError);
+        const row = await photosDb.getPhotoById(resolvedId, req.user!.id);
+        if (!row) {
+          return res.status(404).json({ success: false, error: 'Photo not found' } as ErrorResponse);
         }
-      }
 
-      await photosDb.deletePhoto(resolvedId, req.user!.id);
-      res.json({ success: true, message: 'Photo deleted successfully' });
-    } catch (err) {
-      const error = err as Error;
-      logger.error('Delete photo error:', error);
-      res.status(500).json({ success: false, error: error.message } as ErrorResponse);
-    }
-  });
+        const mainPath = row.storage_path || `${row.state}/${row.filename}`;
+        const servedPath = row.display_path || mainPath;
+
+        const legacyLargeThumbPath = row.hash ? `thumbnails/${row.hash}.jpg` : null;
+        const legacySmallThumbPath = row.hash ? `thumbnails/${row.hash}-sm.jpg` : null;
+
+        const thumbLargePath = row.thumb_path || legacyLargeThumbPath;
+        const thumbSmallPath = row.thumb_small_path || legacySmallThumbPath;
+        const editedPath = row.edited_filename ? `inprogress/${row.edited_filename}` : null;
+
+        const paths = new Set<string>();
+        const addPath = (p: unknown) => {
+          if (typeof p !== 'string') return;
+          const trimmed = p.trim();
+          if (!trimmed) return;
+          paths.add(trimmed);
+        };
+
+        // Derivatives first (prevent orphan thumbnails), served asset last.
+        addPath(thumbSmallPath);
+        addPath(thumbLargePath);
+        addPath(editedPath);
+
+        // Primary objects (may overlap).
+        addPath(row.original_path);
+        addPath(mainPath);
+        addPath(row.display_path);
+
+        const ordered: string[] = [];
+        const pushIfPresent = (p: string | null) => {
+          if (!p) return;
+          if (paths.has(p)) ordered.push(p);
+        };
+
+        // Derivatives
+        pushIfPresent(thumbSmallPath);
+        pushIfPresent(thumbLargePath);
+        pushIfPresent(editedPath);
+
+        // Non-served primary objects (best-effort ordering)
+        if (servedPath !== mainPath) pushIfPresent(mainPath);
+        if (row.original_path && row.original_path !== servedPath) pushIfPresent(row.original_path);
+        if (row.display_path && row.display_path !== servedPath) pushIfPresent(row.display_path);
+
+        // Served asset last
+        pushIfPresent(servedPath);
+
+        const seen = new Set<string>();
+        const deleteList = ordered.filter((p) => {
+          if (seen.has(p)) return false;
+          seen.add(p);
+          return true;
+        });
+
+        // Storage deletion MUST succeed before deleting the DB row.
+        for (const objectPath of deleteList) {
+          const { error: deleteError } = await photosStorage.deletePhotos([objectPath]);
+          if (deleteError) {
+            logger.warn('[photos/delete] Storage delete failed; aborting DB delete', {
+              photoId: resolvedId,
+              requestedId: id,
+              objectPath,
+              error: deleteError?.message || String(deleteError),
+            });
+            return res
+              .status(500)
+              .json({ success: false, error: 'Failed to delete photo from storage. Please retry.' } as ErrorResponse);
+          }
+        }
+
+        const deleted = await photosDb.deletePhoto(resolvedId, req.user!.id);
+        if (!deleted) {
+          return res.status(404).json({ success: false, error: 'Photo not found' } as ErrorResponse);
+        }
+
+        return res.json({ success: true, message: 'Photo deleted successfully' });
+      } catch (err) {
+        const error = err as Error;
+        logger.error('Delete photo error:', error);
+        return res.status(500).json({ success: false, error: error.message } as ErrorResponse);
+      }
+    },
+  );
 
   // ============================================================================
   // PATCH /:id/state - Transition photo state
