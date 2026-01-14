@@ -45,7 +45,7 @@ interface UseLocalPhotoPickerReturn {
   handleUploadFilteredOptimistic: (
     subsetToUpload?: UploadPickerLocalPhoto[],
     analysisType?: AnalysisType,
-    collectibleId?: string
+    overrideCollectibleId?: string
   ) => void;
   showPicker: boolean;
   startDate: string;
@@ -58,16 +58,13 @@ interface UseLocalPhotoPickerReturn {
 
 /**
  * Custom hook for managing local photo selection and upload
- * 
- * Provides two file selection methods:
+ * * Provides two file selection methods:
  * - Modern: File System Access API (showDirectoryPicker) for Chrome/Edge
  * - Fallback: Standard file input for Safari/Firefox/mobile
- * 
- * @security Input validation on all file operations
+ * * @security Input validation on all file operations
  * @security EXIF parsing errors handled gracefully
  * @security Upload errors isolated per file (one failure doesn't block others)
- * 
- * @param options - Hook configuration options
+ * * @param options - Hook configuration options
  * @returns Photo picker state and handlers
  */
 export default function useLocalPhotoPicker({
@@ -255,6 +252,24 @@ export default function useLocalPhotoPicker({
     });
   }, [uploadPicker.localPhotos, startDate, endDate]);
 
+  const getFreshFilteredLocalPhotos = useCallback((): UploadPickerLocalPhoto[] => {
+    const { uploadPicker: freshUploadPicker } = useStore.getState();
+    const localPhotos = freshUploadPicker.localPhotos || [];
+    if (localPhotos.length === 0) return [];
+
+    const freshStartDate = freshUploadPicker.filters.startDate;
+    const freshEndDate = freshUploadPicker.filters.endDate;
+    if (!freshStartDate && !freshEndDate) return localPhotos;
+
+    return localPhotos.filter((photo) => {
+      const rawDate = photo.exifDate ? new Date(photo.exifDate) : new Date(photo.file.lastModified);
+      const start = freshStartDate ? new Date(freshStartDate) : null;
+      const end = freshEndDate ? new Date(`${freshEndDate}T23:59:59`) : null;
+
+      return (!start || rawDate >= start) && (!end || rawDate <= end);
+    });
+  }, []);
+
   /**
    * Update start date filter
    */
@@ -352,23 +367,26 @@ export default function useLocalPhotoPicker({
    * @security No user blocking on upload failures
    */
   const handleUploadFilteredOptimistic = useCallback(
-    (subsetToUpload?: UploadPickerLocalPhoto[], analysisType: AnalysisType = 'none', collectibleId?: string) => {
-      const photosToUpload = Array.isArray(subsetToUpload) ? subsetToUpload : filteredLocalPhotos;
+    (subsetToUpload?: UploadPickerLocalPhoto[], analysisType: AnalysisType = 'none', overrideCollectibleId?: string) => {
+      const photosToUpload = Array.isArray(subsetToUpload) ? subsetToUpload : getFreshFilteredLocalPhotos();
       if (photosToUpload.length === 0) return;
 
       const files = photosToUpload.map((p) => p?.file).filter(Boolean);
       if (files.length === 0) return;
 
+      // Use override if provided, otherwise fallback to prop
+      const targetId = overrideCollectibleId ?? collectibleId;
+
       console.log(
-        `[Picker] Selected ${files.length} files for upload. Target Collectible: ${collectibleId || 'None'}`
+        `[Picker] Selected ${files.length} files for upload. Target Collectible: ${targetId || 'None'}`
       );
       files.forEach((f) => console.log(`[Picker] Processing file: ${f.name}`));
 
       const effectiveCollectibleId =
-        typeof collectibleId === 'string' && collectibleId.trim()
-          ? collectibleId.trim()
-          : collectibleId != null
-            ? String(collectibleId)
+        typeof targetId === 'string' && targetId.trim()
+          ? targetId.trim()
+          : targetId != null
+            ? String(targetId)
             : undefined;
 
       // Add placeholders to gallery immediately
@@ -440,7 +458,7 @@ export default function useLocalPhotoPicker({
         // onUploadComplete is already invoked per-success above to avoid flicker.
       });
     },
-    [collectibleId, filteredLocalPhotos, onUploadComplete, onUploadSuccess, pickerCommand]
+    [collectibleId, getFreshFilteredLocalPhotos, onUploadComplete, onUploadSuccess, pickerCommand]
   );
 
   return {
