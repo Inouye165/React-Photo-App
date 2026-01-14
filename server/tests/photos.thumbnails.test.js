@@ -1,5 +1,10 @@
 let sharp;
 
+// Mock HEIC conversion so we can simulate decoder/plugin errors deterministically.
+jest.mock('../media/image', () => ({
+  convertHeicToJpegBuffer: jest.fn(),
+}));
+
 // Mock sharp + supabase client before requiring backgroundProcessor
 jest.mock('sharp');
 
@@ -31,6 +36,7 @@ jest.mock('../logger', () => ({
 describe('processUploadedPhoto tiered thumbnails', () => {
   let backgroundProcessor;
   let supabase;
+  let image;
 
   beforeEach(() => {
     jest.resetModules();
@@ -43,6 +49,7 @@ describe('processUploadedPhoto tiered thumbnails', () => {
     // Re-require modules after resetModules so mocks apply.
     supabase = require('../lib/supabaseClient');
     backgroundProcessor = require('../media/backgroundProcessor');
+    image = require('../media/image');
 
     const mockSharpInstance = {
       resize: jest.fn().mockReturnThis(),
@@ -102,5 +109,54 @@ describe('processUploadedPhoto tiered thumbnails', () => {
       thumb_path: 'thumbnails/abc123.jpg',
       thumb_small_path: 'thumbnails/abc123-sm.jpg',
     }));
+  });
+
+  test('processUploadedPhoto marks derivatives failed when HEIC decoder is missing', async () => {
+    const photoRow = {
+      id: 1,
+      user_id: 'u1',
+      filename: 'test.heic',
+      storage_path: 'working/test.heic',
+      hash: 'abc123',
+      metadata: '{}',
+    };
+
+    const db = createDbMock(photoRow);
+
+    // Force the direct sharp() thumbnail path to fail so code tries HEIC fallback.
+    let call = 0;
+    const mockSharpInstance = {
+      resize: jest.fn().mockReturnThis(),
+      rotate: jest.fn().mockReturnThis(),
+      jpeg: jest.fn().mockReturnThis(),
+      toBuffer: jest.fn().mockImplementation(async () => {
+        call += 1;
+        throw new Error(call === 1 ? 'Input buffer contains unsupported image format' : 'unsupported');
+      }),
+    };
+    sharp.mockReturnValue(mockSharpInstance);
+
+    // Simulate missing HEIF/HEIC decoder/plugin on the server.
+    image.convertHeicToJpegBuffer.mockRejectedValue(new Error('heif: No decoding plugin installed'));
+
+    await backgroundProcessor.processUploadedPhoto(db, 1, {
+      processMetadata: false,
+      generateThumbnail: true,
+      generateDisplay: false,
+    });
+
+    expect(db.__state.updated).toEqual(
+      expect.objectContaining({
+        derivatives_status: 'failed',
+        derivatives_error: 'heif_decoder_missing',
+      }),
+    );
+
+    const logger = require('../logger');
+    expect(logger.error).toHaveBeenCalled();
+    expect(logger.error).toHaveBeenCalledWith(
+      expect.stringContaining('heic_thumbnail_fallback_failed'),
+      expect.objectContaining({ code: 'heif_decoder_missing' }),
+    );
   });
 });

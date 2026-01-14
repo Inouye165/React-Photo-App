@@ -88,7 +88,34 @@ export async function uploadPhotoToServer(
   } catch (error) {
     if (error instanceof ApiError && (error.status === 401 || error.status === 403)) return undefined
     if (error instanceof ApiError) {
-        throw new Error('Upload failed')
+      const status = typeof error.status === 'number' ? error.status : null
+      const details = error.details as unknown
+      const code =
+        details && typeof details === 'object' && 'code' in (details as Record<string, unknown>)
+          ? String((details as Record<string, unknown>).code || '')
+          : ''
+
+      // Prefer stable server codes over free-form messages.
+      if (status === 413 || code === 'LIMIT_FILE_SIZE') {
+        throw new Error('File is too large')
+      }
+      if (status === 415 && code === 'INVALID_FILE_SIGNATURE') {
+        throw new Error('That file does not appear to be a valid image')
+      }
+      if (status === 415 || code === 'INVALID_MIME_TYPE') {
+        throw new Error('Unsupported file type')
+      }
+      if (status === 400 && code === 'NO_FILE') {
+        throw new Error('No file was selected')
+      }
+      if (status === 400 && code === 'EMPTY_FILE') {
+        throw new Error('The selected file is empty')
+      }
+      if (status && status >= 500) {
+        throw new Error('Server error while uploading')
+      }
+
+      throw new Error('Upload failed')
     }
     throw error
   }

@@ -52,6 +52,7 @@ export interface BackgroundUploadEntry {
   status: BackgroundUploadStatus
   errorMessage?: string
   classification?: string
+  photoId?: Photo['id']
 }
 
 export interface AiPollingOptions {
@@ -97,6 +98,7 @@ export interface StoreState extends UploadPickerSlice {
   addBackgroundUploads: (files: File[], classification?: string) => string[]
   markBackgroundUploadSuccess: (id: string) => void
   markBackgroundUploadError: (id: string, message?: string) => void
+  setBackgroundUploadPhotoId: (id: string, photoId: Photo['id']) => void
   clearCompletedBackgroundUploads: () => void
   retryFailedBackgroundUploads: () => string[]
   removeBackgroundUpload: (id: string) => void
@@ -127,6 +129,8 @@ export interface StoreState extends UploadPickerSlice {
 
   startAiPolling: (id: Photo['id'], opts?: AiPollingOptions) => void
   stopAiPolling: (id: Photo['id'], stopReason?: string) => void
+  startDerivativesPolling: (id: Photo['id'], opts?: AiPollingOptions) => void
+  stopDerivativesPolling: (id: Photo['id'], stopReason?: string) => void
   moveToInprogress: (id: Photo['id']) => Promise<{ success: true } | { success: false; error: unknown }>
 }
 
@@ -143,6 +147,33 @@ const debug = (...args: unknown[]) => {
 // Avoid adding additional polling loops in hooks/components (they can
 // race, stop early, and leave photo.state stale).
 const aiPollingTimers: Map<string, ReturnType<typeof setTimeout> | null> = new Map()
+
+// Derivatives polling tracks background image processing (thumbnails/display assets).
+const derivativesPollingTimers: Map<string, ReturnType<typeof setTimeout> | null> = new Map()
+
+const isDerivativesComplete = (photo: Photo | null | undefined): boolean => {
+  if (!photo) return false
+  return photo.derivativesStatus === 'ready' || photo.derivativesStatus === 'failed'
+}
+
+const derivativesErrorMessage = (code: unknown): string => {
+  const normalized = typeof code === 'string' ? code : ''
+  switch (normalized) {
+    case 'heif_decoder_missing':
+      return 'HEIC/HEIF processing is not available on the server (missing decoder).'
+    case 'corrupt_or_unsupported_image':
+      return 'This image appears to be corrupted or in an unsupported format.'
+    case 'image_processing_timeout':
+      return 'Image processing timed out. Please try again.'
+    case 'thumbnail_upload_failed':
+    case 'small_thumbnail_upload_failed':
+      return 'Upload succeeded, but the server failed to save thumbnails.'
+    case 'thumbnail_generation_failed':
+    case 'image_processing_failed':
+    default:
+      return 'Upload succeeded, but the server failed to process the image.'
+  }
+}
 
 const getErrorStatus = (err: unknown): number | null => {
   if (!err || typeof err !== 'object') return null
@@ -330,6 +361,17 @@ const useStore = create<StoreState>((set, get) => ({
           : u,
       ),
     })),
+  setBackgroundUploadPhotoId: (id: string, photoId: Photo['id']) =>
+    set((state) => ({
+      backgroundUploads: (state.backgroundUploads || []).map((u) =>
+        u.id === id
+          ? {
+              ...u,
+              photoId,
+            }
+          : u,
+      ),
+    })),
   clearCompletedBackgroundUploads: () =>
     set((state) => ({
       backgroundUploads: (state.backgroundUploads || []).filter((u) => u.status !== 'success'),
@@ -344,6 +386,7 @@ const useStore = create<StoreState>((set, get) => ({
               ...u,
               status: 'uploading',
               errorMessage: undefined,
+              photoId: undefined,
               startedAt: restartedAt,
             }
           : u,
@@ -873,6 +916,81 @@ const useStore = create<StoreState>((set, get) => ({
         pollingPhotoId: shouldClearLegacy ? null : state.pollingPhotoId,
       }
     })
+  },
+
+  startDerivativesPolling: (id: Photo['id'], opts?: AiPollingOptions) => {
+    const photoId = String(id)
+
+    // Avoid duplicate pollers.
+    if (derivativesPollingTimers.has(photoId)) return
+
+    const intervalMs = Math.max(250, Number(opts?.intervalMs) || 1000)
+    const maxIntervalMs = Math.max(intervalMs, Number(opts?.maxIntervalMs) || 5000)
+    const softTimeoutMs = Math.max(1000, Number(opts?.softTimeoutMs) || 15_000)
+    const hardTimeoutMs = Math.max(2000, Number(opts?.hardTimeoutMs) || 60_000)
+    const start = Date.now()
+
+    let currentInterval = intervalMs
+
+    const tick = async () => {
+      try {
+        get().addPollingId(id)
+        const response = await getPhoto(id, { cacheBust: true })
+        const photo = response?.photo || null
+
+        if (photo && typeof photo === 'object') {
+          // Merge minimal fields into store photo list.
+          const patch = photo as unknown as Partial<Photo> & Record<string, unknown>
+          get().updatePhotoData(id, patch)
+        }
+
+        if (isDerivativesComplete(photo)) {
+          if (photo?.derivativesStatus === 'failed') {
+            const message = derivativesErrorMessage(photo?.derivativesError)
+            get().setBanner({ message, severity: 'error' })
+
+            // Best-effort: mark any background upload entry associated to this photoId.
+            const related = (get().backgroundUploads || []).find((u) => String(u.photoId) === photoId)
+            if (related) {
+              get().markBackgroundUploadError(related.id, message)
+            }
+          }
+          get().stopDerivativesPolling(id, 'derivatives_complete')
+          return
+        }
+
+        const elapsed = Date.now() - start
+        if (elapsed > hardTimeoutMs) {
+          get().stopDerivativesPolling(id, 'derivatives_hard_timeout')
+          return
+        }
+
+        // Backoff after soft timeout to reduce network chatter.
+        if (elapsed > softTimeoutMs) {
+          currentInterval = Math.min(maxIntervalMs, Math.round(currentInterval * 1.4))
+        }
+      } catch {
+        // Keep polling for a bit; transient failures should not break UX.
+      } finally {
+        const existing = derivativesPollingTimers.get(photoId)
+        if (existing !== null) {
+          const timer = setTimeout(() => void tick(), currentInterval)
+          derivativesPollingTimers.set(photoId, timer)
+        }
+        get().removePollingId(id)
+      }
+    }
+
+    // Mark as active and kick off.
+    derivativesPollingTimers.set(photoId, null)
+    void tick()
+  },
+
+  stopDerivativesPolling: (id: Photo['id'], _stopReason?: string) => {
+    const photoId = String(id)
+    const timer = derivativesPollingTimers.get(photoId)
+    if (timer) clearTimeout(timer)
+    derivativesPollingTimers.delete(photoId)
   },
 
   // Action: move a photo to inprogress and start polling for AI results

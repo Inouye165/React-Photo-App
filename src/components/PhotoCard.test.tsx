@@ -185,6 +185,20 @@ describe('PhotoCard Component', () => {
       expect(screen.getByText('No preview')).toBeInTheDocument();
     });
 
+    it('shows "Processing Failed" placeholder when derivativesStatus is failed (even if thumbnails exist)', () => {
+      const photoDerivativesFailed: PhotoCardProps['photo'] = {
+        ...mockPhoto,
+        derivativesStatus: 'failed',
+        thumbnail: '/thumbnails/test-photo_thumb.jpg',
+        smallThumbnail: 'https://cdn.example.com/thumbnails/small.jpg?token=abc',
+      };
+
+      render(<PhotoCard {...defaultProps} photo={photoDerivativesFailed} getSignedUrl={undefined} />);
+
+      expect(screen.getByText('Processing Failed')).toBeInTheDocument();
+      expect(screen.queryByAltText('A beautiful sunset')).not.toBeInTheDocument();
+    });
+
     it('shows error fallback when image fails to load', async () => {
       render(<PhotoCard {...defaultProps} />);
 

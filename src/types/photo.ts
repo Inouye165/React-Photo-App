@@ -42,6 +42,11 @@ export interface Photo {
   // Derivative URLs
   thumbnail?: string | null;
   smallThumbnail?: string | null;
+
+  // Background image derivative processing status (thumbnails/display assets)
+  derivativesStatus?: 'pending' | 'ready' | 'failed' | null;
+  // Stable error code (never a stack trace)
+  derivativesError?: string | null;
 }
 
 export interface TextStyle {

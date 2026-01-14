@@ -14,6 +14,7 @@
 const sharp = require('sharp');
 const exifr = require('exifr');
 const crypto = require('crypto');
+const path = require('path');
 const supabase = require('../lib/supabaseClient');
 const logger = require('../logger');
 const { convertHeicToJpegBuffer } = require('./image');
@@ -24,6 +25,43 @@ const photosImage = createPhotosImage({ sharp, exifr, crypto });
 // Configure sharp for constrained resource usage
 sharp.concurrency(1);
 sharp.cache({ memory: 50, files: 10, items: 100 });
+
+function sanitizeFilenameForLog(filename) {
+  const raw = typeof filename === 'string' ? filename : '';
+  const base = path.posix.basename(raw.replace(/\\/g, '/'));
+  const trimmed = base.trim().slice(0, 180) || 'unknown';
+  return trimmed.replace(/[^a-zA-Z0-9._-]/g, '_');
+}
+
+function classifyImageProcessingError(err) {
+  const message = err && typeof err.message === 'string' ? err.message : '';
+  const lowered = message.toLowerCase();
+
+  if (
+    lowered.includes('no decoding plugin installed') ||
+    lowered.includes('no decoding plugin') ||
+    lowered.includes('heif:') ||
+    lowered.includes('libheif') ||
+    lowered.includes('heif plugin')
+  ) {
+    return { code: 'heif_decoder_missing' };
+  }
+
+  if (
+    lowered.includes('unsupported image format') ||
+    lowered.includes('input buffer contains unsupported image format') ||
+    lowered.includes('corrupt') ||
+    lowered.includes('invalid')
+  ) {
+    return { code: 'corrupt_or_unsupported_image' };
+  }
+
+  if (lowered.includes('timeout') || lowered.includes('timed out') || lowered.includes('etimedout')) {
+    return { code: 'image_processing_timeout' };
+  }
+
+  return { code: 'image_processing_failed' };
+}
 
 function safeParseJson(value, fallback = {}) {
   if (!value) return fallback;
@@ -233,7 +271,10 @@ async function extractMetadata(buffer, filename) {
 
     return metadata;
   } catch (err) {
-    logger.warn(`Failed to extract EXIF for ${filename}:`, err.message);
+    logger.warn('[Processor] exif_extract_failed', {
+      filename: sanitizeFilenameForLog(filename),
+      error: err,
+    });
     return {};
   }
 }
@@ -313,7 +354,7 @@ async function generateAndUploadDisplayWebp({ buffer, photo, storagePath }) {
  * @param {string} hash - File hash (used as thumbnail filename)
  * @returns {Promise<string|null>} Thumbnail path or null on failure
  */
-async function generateAndUploadThumbnail(buffer, filename, hash) {
+async function generateAndUploadThumbnail(buffer, filename, hash, ctx = null) {
   const thumbnailPath = `thumbnails/${hash}.jpg`;
 
   try {
@@ -349,12 +390,30 @@ async function generateAndUploadThumbnail(buffer, filename, hash) {
             .jpeg({ quality: 85 })
             .toBuffer();
         } catch (fallbackErr) {
-          logger.warn(`HEIC fallback conversion failed for thumbnail:`, fallbackErr.message);
+          const classification = classifyImageProcessingError(fallbackErr);
+          if (ctx && typeof ctx === 'object') {
+            ctx.errorCode = classification.code;
+            ctx.errorStage = 'heic_fallback_thumbnail';
+          }
+          logger.error('[Processor] heic_thumbnail_fallback_failed', {
+            filename: sanitizeFilenameForLog(filename),
+            code: classification.code,
+            error: fallbackErr,
+          });
           return null;
         }
       } else {
         // Not HEIC or fallback failed
-        logger.error(`Thumbnail generation failed for ${filename}:`, err.message);
+        const classification = classifyImageProcessingError(err);
+        if (ctx && typeof ctx === 'object') {
+          ctx.errorCode = classification.code;
+          ctx.errorStage = 'direct_thumbnail';
+        }
+        logger.error('[Processor] thumbnail_generation_failed', {
+          filename: sanitizeFilenameForLog(filename),
+          code: classification.code,
+          error: err,
+        });
         return null;
       }
     }
@@ -373,13 +432,30 @@ async function generateAndUploadThumbnail(buffer, filename, hash) {
       if (error.message?.includes('duplicate') || error.message?.includes('already exists')) {
         return thumbnailPath;
       }
-      logger.error(`Failed to upload thumbnail:`, error);
+      if (ctx && typeof ctx === 'object') {
+        ctx.errorCode = 'thumbnail_upload_failed';
+        ctx.errorStage = 'upload_thumbnail';
+      }
+      logger.error('[Processor] thumbnail_upload_failed', {
+        filename: sanitizeFilenameForLog(filename),
+        code: 'thumbnail_upload_failed',
+        error,
+      });
       return null;
     }
 
     return thumbnailPath;
   } catch (err) {
-    logger.error(`Thumbnail generation failed for ${filename}:`, err.message);
+    const classification = classifyImageProcessingError(err);
+    if (ctx && typeof ctx === 'object') {
+      ctx.errorCode = classification.code;
+      ctx.errorStage = 'thumbnail_outer';
+    }
+    logger.error('[Processor] thumbnail_generation_failed', {
+      filename: sanitizeFilenameForLog(filename),
+      code: classification.code,
+      error: err,
+    });
     return null;
   }
 }
@@ -394,7 +470,7 @@ async function generateAndUploadThumbnail(buffer, filename, hash) {
  * @param {string} hash - File hash (used as thumbnail filename)
  * @returns {Promise<string|null>} Thumbnail path or null on failure
  */
-async function generateAndUploadSmallThumbnail(buffer, filename, hash) {
+async function generateAndUploadSmallThumbnail(buffer, filename, hash, ctx = null) {
   const thumbnailPath = `thumbnails/${hash}-sm.jpg`;
 
   try {
@@ -425,11 +501,29 @@ async function generateAndUploadSmallThumbnail(buffer, filename, hash) {
             .jpeg({ quality: 80 })
             .toBuffer();
         } catch (fallbackErr) {
-          logger.warn(`HEIC fallback conversion failed for small thumbnail:`, fallbackErr.message);
+          const classification = classifyImageProcessingError(fallbackErr);
+          if (ctx && typeof ctx === 'object' && !ctx.errorCode) {
+            ctx.errorCode = classification.code;
+            ctx.errorStage = 'heic_fallback_small_thumbnail';
+          }
+          logger.error('[Processor] heic_small_thumbnail_fallback_failed', {
+            filename: sanitizeFilenameForLog(filename),
+            code: classification.code,
+            error: fallbackErr,
+          });
           return null;
         }
       } else {
-        logger.error(`Small thumbnail generation failed for ${filename}:`, err.message);
+        const classification = classifyImageProcessingError(err);
+        if (ctx && typeof ctx === 'object' && !ctx.errorCode) {
+          ctx.errorCode = classification.code;
+          ctx.errorStage = 'direct_small_thumbnail';
+        }
+        logger.error('[Processor] small_thumbnail_generation_failed', {
+          filename: sanitizeFilenameForLog(filename),
+          code: classification.code,
+          error: err,
+        });
         return null;
       }
     }
@@ -446,13 +540,30 @@ async function generateAndUploadSmallThumbnail(buffer, filename, hash) {
       if (error.message?.includes('duplicate') || error.message?.includes('already exists')) {
         return thumbnailPath;
       }
-      logger.error(`Failed to upload small thumbnail:`, error);
+      if (ctx && typeof ctx === 'object' && !ctx.errorCode) {
+        ctx.errorCode = 'small_thumbnail_upload_failed';
+        ctx.errorStage = 'upload_small_thumbnail';
+      }
+      logger.error('[Processor] small_thumbnail_upload_failed', {
+        filename: sanitizeFilenameForLog(filename),
+        code: 'small_thumbnail_upload_failed',
+        error,
+      });
       return null;
     }
 
     return thumbnailPath;
   } catch (err) {
-    logger.error(`Small thumbnail generation failed for ${filename}:`, err.message);
+    const classification = classifyImageProcessingError(err);
+    if (ctx && typeof ctx === 'object' && !ctx.errorCode) {
+      ctx.errorCode = classification.code;
+      ctx.errorStage = 'small_thumbnail_outer';
+    }
+    logger.error('[Processor] small_thumbnail_generation_failed', {
+      filename: sanitizeFilenameForLog(filename),
+      code: classification.code,
+      error: err,
+    });
     return null;
   }
 }
@@ -485,11 +596,15 @@ async function processUploadedPhoto(db, photoId, options = {}) {
     throw new Error(`Photo ${photoId} has no storage_path`);
   }
 
-  logger.info(`[Processor] Processing photo ${photoId} (${photo.filename}) from ${storagePath}`);
+  logger.info('[Processor] processing_photo', {
+    photoId: String(photoId),
+    filename: sanitizeFilenameForLog(photo.filename),
+    storagePath,
+  });
 
   // Download the file
   const buffer = await downloadFromStorage(storagePath);
-  logger.debug(`[Processor] Downloaded ${buffer.length} bytes`);
+  logger.debug('[Processor] downloaded_original', { photoId: String(photoId), bytes: buffer.length });
 
   const updates = {
     updated_at: new Date().toISOString()
@@ -508,38 +623,43 @@ async function processUploadedPhoto(db, photoId, options = {}) {
     // Only write metadata if we actually have something meaningful (prevents wiping existing GPS/date).
     if (isNonEmptyObject(mergedMeta)) {
       updates.metadata = JSON.stringify(mergedMeta);
-      logger.debug(`[Processor] Extracted metadata with ${Object.keys(metadata || {}).length} fields (merged)`);
+      logger.debug('[Processor] extracted_metadata', {
+        photoId: String(photoId),
+        fields: Object.keys(metadata || {}).length,
+      });
     } else {
-      logger.warn(`[Processor] Skipping metadata update for photo ${photoId}: extraction returned empty and existing metadata was empty`);
+      logger.warn('[Processor] metadata_empty_skip_update', { photoId: String(photoId) });
     }
   }
 
   // Verify/update hash if needed
   if (!photo.hash || photo.hash === 'pending') {
     updates.hash = hashBuffer(buffer);
-    logger.debug(`[Processor] Calculated hash: ${updates.hash}`);
+    logger.debug('[Processor] calculated_hash', { photoId: String(photoId) });
   }
 
   // Generate thumbnail if requested
   if (doThumbnail) {
     const hash = updates.hash || photo.hash;
-    const thumbnailPath = await generateAndUploadThumbnail(buffer, photo.filename, hash);
+    const thumbCtx = { errorCode: null, errorStage: null };
+    const thumbnailPath = await generateAndUploadThumbnail(buffer, photo.filename, hash, thumbCtx);
     if (thumbnailPath) {
       updates.thumb_path = thumbnailPath;
       updates.thumb_mime = 'image/jpeg';
-      logger.debug(`[Processor] Generated thumbnail at ${thumbnailPath}`);
+      logger.debug('[Processor] generated_thumbnail', { photoId: String(photoId) });
     } else {
       // Best-effort: flag failure so UI can reflect it and retries can be triggered later.
       updates.derivatives_status = 'failed';
-      updates.derivatives_error = 'thumbnail_generation_failed';
+      updates.derivatives_error = thumbCtx.errorCode || 'thumbnail_generation_failed';
     }
 
     // Best-effort: generate a smaller grid thumbnail. Do not fail the whole job if this fails.
     // UI will fall back to the standard thumbnail when thumb_small_path is missing.
-    const smallPath = await generateAndUploadSmallThumbnail(buffer, photo.filename, hash);
+    const smallCtx = { errorCode: null, errorStage: null };
+    const smallPath = await generateAndUploadSmallThumbnail(buffer, photo.filename, hash, smallCtx);
     if (smallPath) {
       updates.thumb_small_path = smallPath;
-      logger.debug(`[Processor] Generated small thumbnail at ${smallPath}`);
+      logger.debug('[Processor] generated_small_thumbnail', { photoId: String(photoId) });
     }
   }
 
@@ -553,12 +673,12 @@ async function processUploadedPhoto(db, photoId, options = {}) {
     if (result && result.ok && result.displayPath) {
       updates.display_path = result.displayPath;
       updates.display_mime = 'image/webp';
-      logger.debug(`[Processor] Generated WebP display asset at ${result.displayPath}`);
+      logger.debug('[Processor] generated_display_asset', { photoId: String(photoId) });
     } else if (result && !result.ok && !result.originalIsHeic) {
       updates.display_path = storagePath;
       // Display falls back to the original bytes for non-HEIC.
       updates.display_mime = photo.original_mime || null;
-      logger.debug(`[Processor] WebP failed; falling back display_path to original ${storagePath}`);
+      logger.debug('[Processor] display_fallback_to_original', { photoId: String(photoId) });
     }
   }
 
@@ -572,7 +692,11 @@ async function processUploadedPhoto(db, photoId, options = {}) {
 
   // Update database
   await db('photos').where({ id: photoId }).update(updates);
-  logger.info(`[Processor] Updated photo ${photoId} with processed metadata`);
+  logger.info('[Processor] updated_photo', {
+    photoId: String(photoId),
+    derivatives_status: updates.derivatives_status || null,
+    derivatives_error: updates.derivatives_error || null,
+  });
 
   return {
     photoId,

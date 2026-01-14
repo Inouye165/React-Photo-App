@@ -8,7 +8,7 @@ import { defineConfig } from 'eslint/config'
 export default defineConfig([
   {
   // Ignores for the entire project
-  ignores: ['dist', 'node_modules', 'build/', 'coverage/', '*.min.js'],
+  ignores: ['dist', 'server/dist/**', 'node_modules', 'build/', 'coverage/', '*.min.js'],
   },
   {
     // Configuration for frontend application files
