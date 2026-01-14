@@ -158,6 +158,7 @@ export default function PhotoCard({
   const isUploading = photo.state === 'uploading' || !!photo.isTemporary;
   const isTransitioning = isJustUploaded && photo.state === 'working';
   const showTransitionSpinner = isTransitioning;
+  const derivativesFailed = !isUploading && photo.derivativesStatus === 'failed';
 
   useEffect(() => {
     // Reset thumbnail variant when photo changes.
@@ -259,7 +260,7 @@ export default function PhotoCard({
       {/* Thumbnail Section */}
       <div className="relative bg-slate-100 overflow-hidden min-h-[120px]">
         {/* Loading Skeleton */}
-        {!imageLoaded && !imageError && imageUrl && !isUploading && (
+        {!derivativesFailed && !imageLoaded && !imageError && imageUrl && !isUploading && (
           <div
             className="absolute inset-0 bg-slate-200 animate-pulse"
             data-testid="photo-card-skeleton"
@@ -267,7 +268,7 @@ export default function PhotoCard({
         )}
 
         {/* Actual Image - use AuthenticatedImage when Bearer auth is required */}
-        {imageUrl && !imageError ? (
+        {!derivativesFailed && imageUrl && !imageError ? (
           needsAuth ? (
             <AuthenticatedImage
               src={imageUrl}
@@ -314,7 +315,9 @@ export default function PhotoCard({
           /* Fallback Placeholder */
           <div className="absolute inset-0 flex flex-col items-center justify-center bg-slate-100 text-slate-400" data-testid="photo-card-placeholder">
             <ImageIcon size={48} strokeWidth={1} />
-            <span className="text-xs mt-2">{imageError ? 'Failed to load' : 'No preview'}</span>
+            <span className="text-xs mt-2">
+              {derivativesFailed ? 'Processing Failed' : imageError ? 'Failed to load' : 'No preview'}
+            </span>
           </div>
         )}
 

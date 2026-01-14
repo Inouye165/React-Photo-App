@@ -53,6 +53,7 @@ module.exports = function createUploadsRouter({ db }) {
    * or 200 OK with immediate processing result.
    */
   router.post('/upload', async (req, res) => {
+    const reqId = Math.random().toString(36).slice(2, 10);
     let storagePath = null;
     let uploadSucceeded = false;
     let photoId = null;
@@ -75,40 +76,55 @@ module.exports = function createUploadsRouter({ db }) {
       } catch (err) {
         // Handle specific error types with appropriate HTTP status codes
         if (err.code === 'LIMIT_FILE_SIZE') {
-          return res.status(413).json({ success: false, error: 'File too large' });
+          return res.status(413).json({ success: false, error: 'File too large', code: 'LIMIT_FILE_SIZE' });
         }
         if (err.code === 'INVALID_MIME_TYPE') {
-          return res.status(415).json({ success: false, error: err.message });
+          // Preserve legacy user-facing message (safe) for compatibility.
+          return res.status(415).json({ success: false, error: err.message || 'Only image files are allowed', code: 'INVALID_MIME_TYPE' });
         }
         if (err.code === 'INVALID_FILE_SIGNATURE') {
           return res.status(415).json({
             success: false,
-            error: err.message,
+            error: 'File is not a valid image',
             code: 'INVALID_FILE_SIGNATURE'
           });
         }
         if (err.code === 'NO_FILE') {
-          return res.status(400).json({ success: false, error: 'No file uploaded' });
+          return res.status(400).json({ success: false, error: 'No file uploaded', code: 'NO_FILE' });
         }
         if (err.code === 'EMPTY_FILE') {
-          return res.status(400).json({ success: false, error: 'Empty file uploaded' });
+          return res.status(400).json({ success: false, error: 'Empty file uploaded', code: 'EMPTY_FILE' });
+        }
+
+        // Preserve legacy user-facing message for Supabase upload failures.
+        if (err && err.message === 'Failed to upload to storage') {
+          return res.status(500).json({
+            success: false,
+            error: 'Failed to upload to storage',
+            code: 'STORAGE_UPLOAD_FAILED',
+          });
         }
         
-        logger.error('Stream upload error:', err);
-        return res.status(500).json({ success: false, error: 'Failed to upload to storage' });
+        logger.error('[Upload] stream_to_supabase_failed', {
+          reqId,
+          userId: req.user && req.user.id ? String(req.user.id) : null,
+          code: err && err.code ? String(err.code) : null,
+          error: err,
+        });
+        return res.status(500).json({ success: false, error: 'Upload failed', code: 'UPLOAD_FAILED', reqId });
       }
 
       storagePath = uploadResult.path;
       uploadSucceeded = true;
 
-      logger.info('[Upload] File streamed to Supabase:', storagePath);
+      logger.info('[Upload] file_streamed_to_storage', { reqId, storagePath });
 
       // Debug: confirm which multipart fields arrived (keys only; avoid logging values).
       try {
         const fieldKeys = uploadResult?.fields && typeof uploadResult.fields === 'object'
           ? Object.keys(uploadResult.fields)
           : [];
-        logger.info('[Upload] Multipart fields received:', fieldKeys);
+        logger.info('[Upload] multipart_fields_received', { reqId, fieldKeys });
       } catch {
         // ignore logging errors
       }
@@ -151,22 +167,21 @@ module.exports = function createUploadsRouter({ db }) {
             ? ''
             : String(rawCollectibleId).trim();
 
-        logger.info('[Upload Debug] Raw ID:', rawCollectibleId, 'Normalized:', normalizedRaw);
+        logger.info('[Upload] collectible_id_parse_raw', { reqId, hasValue: Boolean(normalizedRaw) });
 
         const parsedCollectibleId =
           normalizedRaw && normalizedRaw !== 'undefined' && normalizedRaw !== 'null'
             ? parseInt(normalizedRaw, 10)
             : null;
 
-        logger.info('[Upload Debug] Parsed Integer:', parsedCollectibleId);
+        logger.info('[Upload] collectible_id_parse_result', { reqId, parsedCollectibleId: parsedCollectibleId == null ? null : String(parsedCollectibleId) });
 
         if (parsedCollectibleId !== null) {
-          logger.info(
-            '[Upload Debug] Running ownership check for User:',
-            req.user.id,
-            'Collectible:',
-            parsedCollectibleId,
-          );
+          logger.info('[Upload] collectible_ownership_check', {
+            reqId,
+            userId: String(req.user.id),
+            collectibleId: String(parsedCollectibleId),
+          });
           if (!Number.isInteger(parsedCollectibleId) || Number.isNaN(parsedCollectibleId) || parsedCollectibleId <= 0) {
             return res.status(400).json({ success: false, error: 'Invalid collectibleId' });
           }
@@ -179,9 +194,7 @@ module.exports = function createUploadsRouter({ db }) {
             .first();
 
           if (!debugCollectible) {
-            logger.error(
-              `[Upload Diagnostic] Collectible ${parsedCollectibleId} does NOT exist in DB (globally).`,
-            );
+            logger.error('[Upload] collectible_not_found', { reqId, collectibleId: String(parsedCollectibleId) });
             return res.status(404).json({ success: false, error: 'Collectible does not exist' });
           }
 
@@ -189,14 +202,15 @@ module.exports = function createUploadsRouter({ db }) {
           const reqUser = String(req.user.id).trim();
           const isMatch = dbOwner === reqUser;
 
-          logger.info(`[Upload Diagnostic] Found Collectible: ${debugCollectible.id}`);
-          logger.info(`[Upload Diagnostic] DB Owner:   '${dbOwner}' (Length: ${dbOwner.length})`);
-          logger.info(`[Upload Diagnostic] Req User:   '${reqUser}' (Length: ${reqUser.length})`);
-          logger.info(`[Upload Diagnostic] Match?:     ${isMatch}`);
+          logger.info('[Upload] collectible_owner_check', {
+            reqId,
+            collectibleId: String(debugCollectible.id),
+            match: isMatch,
+          });
 
           // 2. Check User
           if (!isMatch) {
-            logger.error('[Upload Diagnostic] OWNER MISMATCH. Rejecting.');
+            logger.error('[Upload] collectible_owner_mismatch', { reqId, collectibleId: String(parsedCollectibleId) });
             return res.status(403).json({ success: false, error: 'Ownership mismatch' });
           }
 
@@ -228,7 +242,11 @@ module.exports = function createUploadsRouter({ db }) {
           });
         }
       } catch (metadataErr) {
-        logger.warn('Immediate metadata extraction failed:', metadataErr.message);
+        logger.warn('[Upload] immediate_metadata_extraction_failed', {
+          reqId,
+          filename: sanitizeOriginalFilename(uploadResult?.filename),
+          error: metadataErr,
+        });
         // Continue with upload even if metadata extraction fails
       }
 

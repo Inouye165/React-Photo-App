@@ -37,6 +37,26 @@ module.exports = function createPhotosDb({ db }) {
     return _hasCollectibleIdColumnPromise;
   }
 
+  // Some environments (tests/old DBs) may not have the derivatives columns yet.
+  // Cache a best-effort check to avoid failing queries.
+  let _hasDerivativesColumnsPromise = null;
+  async function hasDerivativesColumns() {
+    if (_hasDerivativesColumnsPromise) return _hasDerivativesColumnsPromise;
+
+    _hasDerivativesColumnsPromise = (async () => {
+      try {
+        const hasColumnFn = db?.schema?.hasColumn;
+        if (typeof hasColumnFn !== 'function') return false;
+        // Use derivatives_status as the feature flag column.
+        return await hasColumnFn.call(db.schema, 'photos', 'derivatives_status');
+      } catch {
+        return false;
+      }
+    })();
+
+    return _hasDerivativesColumnsPromise;
+  }
+
   function buildPhotosListCacheKey({ userId, cursor, limit, state }) {
     const userKey = normalizeCacheUserId(userId);
 
@@ -154,10 +174,25 @@ module.exports = function createPhotosDb({ db }) {
       // OPTIMIZED: Select only lite columns for list view to reduce payload size
       // Heavy fields (poi_analysis, ai_model_history, text_style, storage_path, edited_filename)
       // are excluded - use getPhotoById for full detail view
-      let query = db('photos').select(
-        'id', 'filename', 'state', 'metadata', 'hash', 'file_size',
-        'caption', 'description', 'keywords', 'classification', 'created_at'
-      ).where('user_id', userId);
+      const columns = [
+        'id',
+        'filename',
+        'state',
+        'metadata',
+        'hash',
+        'file_size',
+        'caption',
+        'description',
+        'keywords',
+        'classification',
+        'created_at',
+      ];
+
+      if (await hasDerivativesColumns()) {
+        columns.push('derivatives_status', 'derivatives_error', 'thumb_path', 'thumb_small_path');
+      }
+
+      let query = db('photos').select(...columns).where('user_id', userId);
 
       // Collectible-attached photos must not appear in the main gallery feed.
       // Guard this for older/mocked schemas that don't have the column.

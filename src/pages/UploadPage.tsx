@@ -89,8 +89,10 @@ export default function UploadPage() {
       const removePendingUpload = useStore.getState().removePendingUpload;
       const markBackgroundUploadSuccess = useStore.getState().markBackgroundUploadSuccess;
       const markBackgroundUploadError = useStore.getState().markBackgroundUploadError;
+      const setBackgroundUploadPhotoId = useStore.getState().setBackgroundUploadPhotoId;
       const markPhotoAsJustUploaded = useStore.getState().markPhotoAsJustUploaded;
       const startAiPolling = useStore.getState().startAiPolling;
+      const startDerivativesPolling = useStore.getState().startDerivativesPolling;
 
       const errors: string[] = [];
       const uploadedPhotoIds: number[] = [];
@@ -111,7 +113,11 @@ export default function UploadPage() {
           
           // Track the uploaded photo ID for later processing
           if (uploadResult && typeof uploadResult === 'object' && 'photoId' in uploadResult && uploadResult.photoId) {
-            uploadedPhotoIds.push(uploadResult.photoId as number);
+            const serverPhotoId = uploadResult.photoId as number;
+            uploadedPhotoIds.push(serverPhotoId);
+            if (bgId) setBackgroundUploadPhotoId(bgId, serverPhotoId);
+            // Poll for derivative-processing completion so async failures surface to the user.
+            startDerivativesPolling(serverPhotoId, { intervalMs: 1000, maxIntervalMs: 5000, hardTimeoutMs: 60000 });
           }
         } catch (error) {
           errors.push(file?.name || 'unknown');

@@ -8,6 +8,44 @@ const fs = require('fs');
 const fsPromises = require('fs').promises;
 const supabase = require('../lib/supabaseClient');
 const { validateSafePath } = require('../utils/pathValidator');
+const logger = require('../logger');
+
+function sanitizeFilenameForLog(filename) {
+  const raw = typeof filename === 'string' ? filename : '';
+  const base = path.posix.basename(raw.replace(/\\/g, '/'));
+  const trimmed = base.trim().slice(0, 180) || 'unknown';
+  return trimmed.replace(/[^a-zA-Z0-9._-]/g, '_');
+}
+
+function classifyImageProcessingError(err) {
+  const message = err && typeof err.message === 'string' ? err.message : '';
+  const lowered = message.toLowerCase();
+
+  if (
+    lowered.includes('no decoding plugin installed') ||
+    lowered.includes('no decoding plugin') ||
+    lowered.includes('heif:') ||
+    lowered.includes('libheif') ||
+    lowered.includes('heif plugin')
+  ) {
+    return { code: 'heif_decoder_missing' };
+  }
+
+  if (
+    lowered.includes('unsupported image format') ||
+    lowered.includes('input buffer contains unsupported image format') ||
+    lowered.includes('corrupt') ||
+    lowered.includes('invalid')
+  ) {
+    return { code: 'corrupt_or_unsupported_image' };
+  }
+
+  if (lowered.includes('timeout') || lowered.includes('timed out') || lowered.includes('etimedout')) {
+    return { code: 'image_processing_timeout' };
+  }
+
+  return { code: 'image_processing_failed' };
+}
 
 // ============================================================================
 // CONCURRENCY LIMITING FOR IMAGE PROCESSING (DoS Protection)
@@ -187,8 +225,14 @@ async function generateThumbnail(input, hash) {
               .resize(800, 800, { fit: 'inside' })
               .jpeg({ quality: 85 })
               .toBuffer();
-          } catch {
-            // Sharp thumbnail generation failed (logging removed)
+          } catch (err) {
+            const classification = classifyImageProcessingError(err);
+            logger.error('[image] thumbnail_heic_fallback_failed', {
+              code: classification.code,
+              inputType: typeof input,
+              filename: typeof input === 'string' ? sanitizeFilenameForLog(input) : null,
+              error: err,
+            });
             return null;
           }
         } else {
@@ -306,6 +350,20 @@ async function convertHeicToJpegBufferInternal(input, quality = 90) {
       });
       return outputBuffer;
     } catch (fallbackErr) {
+      const sharpClassification = classifyImageProcessingError(err);
+      const fallbackClassification = classifyImageProcessingError(fallbackErr);
+      const effectiveCode =
+        sharpClassification.code === 'heif_decoder_missing' || fallbackClassification.code === 'heif_decoder_missing'
+          ? 'heif_decoder_missing'
+          : sharpClassification.code;
+
+      logger.error('[image] heic_conversion_failed', {
+        code: effectiveCode,
+        inputType: typeof input,
+        filename: typeof input === 'string' ? sanitizeFilenameForLog(input) : null,
+        sharpError: err,
+        fallbackError: fallbackErr,
+      });
       // Error message intentionally follows the format used in tests:
       // "Sharp error: <msg>, Fallback error: <msg>" and references
       // "heic-convert fallback" in comments above.
