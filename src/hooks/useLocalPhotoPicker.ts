@@ -1,7 +1,7 @@
 import { useCallback, useMemo, useRef } from 'react';
 import { parse } from 'exifr';
 import { uploadPhotoToServer } from '../api';
-import { generateClientThumbnail } from '../utils/clientImageProcessing';
+import { compressForUpload, generateClientThumbnail } from '../utils/clientImageProcessing';
 import useStore from '../store';
 import type { UploadPickerLocalPhoto } from '../store/uploadPickerSlice';
 import type { UploadResponse } from '../types/global';
@@ -133,6 +133,40 @@ export default function useLocalPhotoPicker({
       });
     },
     [exifParseTimeoutMs],
+  );
+
+  const isHeicLikeFile = useCallback((file: File): boolean => {
+    const name = file?.name?.toLowerCase() || '';
+    const type = file?.type?.toLowerCase() || '';
+    return (
+      name.endsWith('.heic') ||
+      name.endsWith('.heif') ||
+      type === 'image/heic' ||
+      type === 'image/heif'
+    );
+  }, []);
+
+  const toJpegFileName = useCallback((originalName: string): string => {
+    if (/\.(heic|heif)$/i.test(originalName)) {
+      return originalName.replace(/\.(heic|heif)$/i, '.jpg');
+    }
+
+    const lastDot = originalName.lastIndexOf('.');
+    if (lastDot === -1) return `${originalName}.jpg`;
+    return `${originalName.slice(0, lastDot)}.jpg`;
+  }, []);
+
+  const convertToJpegIfHeic = useCallback(
+    async (file: File): Promise<File> => {
+      if (!isHeicLikeFile(file)) return file;
+
+      const result = await compressForUpload(file);
+      return new File([result.blob], toJpegFileName(file.name), {
+        type: 'image/jpeg',
+        lastModified: file.lastModified,
+      });
+    },
+    [isHeicLikeFile, toJpegFileName]
   );
 
   /**
@@ -306,10 +340,20 @@ export default function useLocalPhotoPicker({
 
       try {
         for (const photo of photosToUpload) {
+          let fileForUpload: File;
           let thumbnailBlob: Blob | null = null;
 
           try {
-            thumbnailBlob = await generateThumbnailWithTimeout(photo.file);
+            fileForUpload = await convertToJpegIfHeic(photo.file);
+          } catch (err) {
+            encounteredError = err as Error;
+            const message = err instanceof Error ? err.message : String(err);
+            pickerCommand.markUploadFailure(photo.id, message || 'HEIC conversion failed');
+            continue;
+          }
+
+          try {
+            thumbnailBlob = await generateThumbnailWithTimeout(fileForUpload);
           } catch (err) {
             // Graceful fallback: log and continue without thumbnail
             if (import.meta.env.DEV) {
@@ -319,7 +363,7 @@ export default function useLocalPhotoPicker({
 
           try {
             const uploadResponse = (await uploadPhotoToServer(
-              photo.file,
+              fileForUpload,
               undefined,
               thumbnailBlob,
               { classification: analysisType }
@@ -358,7 +402,7 @@ export default function useLocalPhotoPicker({
         pickerCommand.finishUploads(encounteredError ? 'error' : 'complete');
       }
     },
-    [filteredLocalPhotos, onUploadComplete, onUploadSuccess, pickerCommand]
+    [convertToJpegIfHeic, filteredLocalPhotos, generateThumbnailWithTimeout, onUploadComplete, onUploadSuccess, pickerCommand]
   );
 
   /**
@@ -408,15 +452,26 @@ export default function useLocalPhotoPicker({
           const tempId = pendingEntries[i]?.id;
           const bgId = backgroundUploadIds[i];
           let thumbnailBlob: Blob | null = null;
+          let fileForUpload: File;
 
           try {
-            thumbnailBlob = await generateThumbnailWithTimeout(file);
+            fileForUpload = await convertToJpegIfHeic(file);
+          } catch (error) {
+            errors.push(file?.name || 'unknown');
+            const message = error instanceof Error ? error.message : String(error);
+            if (bgId) useStore.getState().markBackgroundUploadError(bgId, message || 'HEIC conversion failed');
+            if (tempId) removePendingUpload(tempId);
+            continue;
+          }
+
+          try {
+            thumbnailBlob = await generateThumbnailWithTimeout(fileForUpload);
           } catch {
             // Continue without thumbnail
           }
 
           try {
-            await uploadPhotoToServer(file, undefined, thumbnailBlob, {
+            await uploadPhotoToServer(fileForUpload, undefined, thumbnailBlob, {
               classification: analysisType,
               collectibleId: effectiveCollectibleId,
             });
@@ -458,7 +513,15 @@ export default function useLocalPhotoPicker({
         // onUploadComplete is already invoked per-success above to avoid flicker.
       });
     },
-    [collectibleId, getFreshFilteredLocalPhotos, onUploadComplete, onUploadSuccess, pickerCommand]
+    [
+      collectibleId,
+      convertToJpegIfHeic,
+      generateThumbnailWithTimeout,
+      getFreshFilteredLocalPhotos,
+      onUploadComplete,
+      onUploadSuccess,
+      pickerCommand,
+    ]
   );
 
   return {
