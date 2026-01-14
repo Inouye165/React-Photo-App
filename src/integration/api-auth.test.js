@@ -168,12 +168,17 @@ describe('Integration: API auth errors trigger UI banner', () => {
       window.addEventListener('auth:session-expired', listener);
     });
 
-    // Make multiple concurrent API calls
-    await Promise.all([
+    // Make multiple concurrent API calls.
+    // NOTE: deletePhoto is a strict mutation and should reject on auth failures.
+    const results = await Promise.allSettled([
       api.getPhotos(),
       api.updatePhotoState(1, 'finished'),
-      api.deletePhoto(2)
+      api.deletePhoto(2),
     ]);
+
+    expect(results[0].status).toBe('fulfilled');
+    expect(results[1].status).toBe('fulfilled');
+    expect(results[2].status).toBe('rejected');
 
     // Wait for events with timeout
     const allEventsFired = await Promise.race([
@@ -339,8 +344,7 @@ describe('Integration: API auth errors trigger UI banner', () => {
       const result2 = await api.updatePhotoState(1, 'finished');
       expect(result2).toBeUndefined();
 
-      const result3 = await api.deletePhoto(2);
-      expect(result3).toBeUndefined();
+      await expect(api.deletePhoto(2)).rejects.toMatchObject({ status: 401 });
 
       // Verify fetch was called for each API call (excluding CSRF prefetch)
       const nonCsrfCalls = global.fetch.mock.calls.filter(([url]) => !String(url).endsWith('/csrf'));
