@@ -9,6 +9,7 @@ import useLocalPhotoPicker from '../hooks/useLocalPhotoPicker';
 
 import { request, API_BASE_URL } from '../api/httpClient';
 import { getHeadersForGetRequestAsync } from '../api/auth';
+import { deletePhoto } from '../api/photos';
 
 import PriceRangeVisual from './PriceRangeVisual';
 import PriceHistoryList from './PriceHistoryList';
@@ -141,7 +142,12 @@ export default function CollectibleDetailView({ photo, collectibleData, aiInsigh
   const [collectiblePhotosLoading, setCollectiblePhotosLoading] = React.useState(false);
   const [collectiblePhotosError, setCollectiblePhotosError] = React.useState<string | null>(null);
 
+  // Confirm-before-delete state (mandatory)
+  const [photoToDelete, setPhotoToDelete] = React.useState<string | null>(null);
+  const [deleteSubmitting, setDeleteSubmitting] = React.useState(false);
+
   const pendingUploads = useStore((state) => state.pendingUploads);
+  const setBanner = useStore((state) => state.setBanner);
 
   // Get insights from either the collectible data or directly from photo
   const insights: unknown =
@@ -220,6 +226,43 @@ export default function CollectibleDetailView({ photo, collectibleData, aiInsigh
   React.useEffect(() => {
     void fetchCollectiblePhotos();
   }, [fetchCollectiblePhotos]);
+
+  const selectedPhotoToDelete = React.useMemo(() => {
+    if (!photoToDelete) return null;
+    return mergedCollectiblePhotos.find((p) => String(p?.id) === String(photoToDelete)) || null;
+  }, [mergedCollectiblePhotos, photoToDelete]);
+
+  const handleRequestDeletePhoto = React.useCallback(
+    (id: Id) => {
+      setCollectiblePhotosError(null);
+      setPhotoToDelete(String(id));
+    },
+    [],
+  );
+
+  const handleCancelDelete = React.useCallback(() => {
+    if (deleteSubmitting) return;
+    setPhotoToDelete(null);
+  }, [deleteSubmitting]);
+
+  const handleConfirmDelete = React.useCallback(async () => {
+    if (!photoToDelete) return;
+    if (deleteSubmitting) return;
+
+    setDeleteSubmitting(true);
+    setCollectiblePhotosError(null);
+    try {
+      await deletePhoto(photoToDelete);
+      setPhotoToDelete(null);
+      await fetchCollectiblePhotos();
+      setBanner({ message: 'Photo deleted', severity: 'success' });
+    } catch (err) {
+      setCollectiblePhotosError(getErrorMessage(err) || 'Failed to delete photo');
+      setBanner({ message: 'Failed to delete photo', severity: 'error' });
+    } finally {
+      setDeleteSubmitting(false);
+    }
+  }, [deleteSubmitting, fetchCollectiblePhotos, photoToDelete, setBanner]);
 
   const { handleNativeSelection, handleUploadFilteredOptimistic, fileInputRef } = useLocalPhotoPicker({
     onUploadComplete: fetchCollectiblePhotos,
@@ -480,6 +523,34 @@ export default function CollectibleDetailView({ photo, collectibleData, aiInsigh
                   }}
                   title={typeof p.filename === 'string' ? p.filename : undefined}
                 >
+                  {!isUploading && (
+                    <button
+                      type="button"
+                      aria-label="Delete photo"
+                      onClick={() => handleRequestDeletePhoto(p.id)}
+                      style={{
+                        position: 'absolute',
+                        top: '8px',
+                        right: '8px',
+                        width: '30px',
+                        height: '30px',
+                        borderRadius: '10px',
+                        border: '1px solid rgba(148, 163, 184, 0.6)',
+                        background: 'rgba(255, 255, 255, 0.92)',
+                        color: '#b91c1c',
+                        fontSize: '16px',
+                        fontWeight: 800,
+                        cursor: 'pointer',
+                        display: 'flex',
+                        alignItems: 'center',
+                        justifyContent: 'center',
+                      }}
+                      title="Delete"
+                    >
+                      🗑️
+                    </button>
+                  )}
+
                   {thumbnailSrc ? (
                     <img
                       src={thumbnailSrc}
@@ -534,6 +605,104 @@ export default function CollectibleDetailView({ photo, collectibleData, aiInsigh
           </div>
         )}
       </div>
+
+      {photoToDelete && (
+        <div
+          role="dialog"
+          aria-modal="true"
+          aria-label="Delete Photo Confirmation"
+          onClick={handleCancelDelete}
+          style={{
+            position: 'fixed',
+            inset: 0,
+            background: 'rgba(2, 6, 23, 0.55)',
+            display: 'flex',
+            alignItems: 'center',
+            justifyContent: 'center',
+            padding: '16px',
+            zIndex: 1000,
+          }}
+        >
+          <div
+            onClick={(e) => e.stopPropagation()}
+            style={{
+              width: '100%',
+              maxWidth: '420px',
+              borderRadius: '16px',
+              background: '#ffffff',
+              border: '1px solid #e2e8f0',
+              padding: '16px',
+              boxShadow: '0 20px 60px rgba(0,0,0,0.25)',
+            }}
+          >
+            <div style={{ display: 'flex', alignItems: 'start', justifyContent: 'space-between', gap: '12px' }}>
+              <div>
+                <div style={{ fontSize: '16px', fontWeight: 800, color: '#0f172a' }}>Delete Photo?</div>
+                <div style={{ marginTop: '6px', fontSize: '13px', color: '#475569' }}>This action cannot be undone.</div>
+                {selectedPhotoToDelete?.filename && (
+                  <div style={{ marginTop: '8px', fontSize: '12px', color: '#94a3b8' }}>{String(selectedPhotoToDelete.filename)}</div>
+                )}
+              </div>
+              <button
+                type="button"
+                onClick={handleCancelDelete}
+                disabled={deleteSubmitting}
+                aria-label="Close"
+                style={{
+                  border: '1px solid #e2e8f0',
+                  background: '#ffffff',
+                  borderRadius: '10px',
+                  width: '34px',
+                  height: '34px',
+                  cursor: deleteSubmitting ? 'not-allowed' : 'pointer',
+                  color: '#334155',
+                  fontSize: '18px',
+                  lineHeight: '18px',
+                }}
+              >
+                ×
+              </button>
+            </div>
+
+            <div style={{ display: 'flex', justifyContent: 'flex-end', gap: '10px', marginTop: '16px' }}>
+              <button
+                type="button"
+                onClick={handleCancelDelete}
+                disabled={deleteSubmitting}
+                style={{
+                  padding: '10px 12px',
+                  borderRadius: '10px',
+                  border: '1px solid #e2e8f0',
+                  background: '#ffffff',
+                  color: '#334155',
+                  fontSize: '13px',
+                  fontWeight: 700,
+                  cursor: deleteSubmitting ? 'not-allowed' : 'pointer',
+                }}
+              >
+                Cancel
+              </button>
+              <button
+                type="button"
+                onClick={() => void handleConfirmDelete()}
+                disabled={deleteSubmitting}
+                style={{
+                  padding: '10px 12px',
+                  borderRadius: '10px',
+                  border: '1px solid #991b1b',
+                  background: deleteSubmitting ? '#fecaca' : '#ef4444',
+                  color: '#ffffff',
+                  fontSize: '13px',
+                  fontWeight: 800,
+                  cursor: deleteSubmitting ? 'not-allowed' : 'pointer',
+                }}
+              >
+                {deleteSubmitting ? 'Deleting…' : 'Delete'}
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
 
       {/* Story / Description */}
       <div

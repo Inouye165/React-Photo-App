@@ -464,25 +464,13 @@ export async function updatePhotoCaption(id: PhotoId, caption: string, serverUrl
   }
 }
 
-export async function deletePhoto(id: PhotoId, serverUrl = `${API_BASE_URL}`): Promise<unknown> {
-  try {
-    return await request({
-      path: `${serverUrl}/photos/${id}`,
-      method: 'DELETE',
-      headers: getAuthHeaders(),
-      limiter: apiLimiter,
-    })
-  } catch (error) {
-    if (error instanceof ApiError && (error.status === 401 || error.status === 403)) return undefined
-    // Original code returns true if JSON parsing fails but status is ok.
-    // request throws if status is not ok.
-    // If request returns empty object (204), it returns {}.
-    // Original code: return await res.json() catch return true.
-    // My request returns {} for 204.
-    // If it was 200 OK but not JSON, request returns {}.
-    // So returning the result of request is fine, but maybe I should return true if it's empty?
-    return true
-  }
+export async function deletePhoto(id: PhotoId, serverUrl = `${API_BASE_URL}`): Promise<void> {
+  await request({
+    path: `${serverUrl}/photos/${id}`,
+    method: 'DELETE',
+    headers: getAuthHeaders(),
+    limiter: apiLimiter,
+  })
 }
 
 export async function getPhoto(
