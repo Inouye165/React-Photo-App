@@ -1,6 +1,22 @@
 import { useCallback, useEffect, useRef, useState } from 'react'
 import { fetchProtectedBlobUrl, isAbortError, revokeBlobUrl } from '../api'
 
+interface UseProtectedImageBlobUrlOptions {
+  deps?: unknown[]
+}
+
+interface UseProtectedImageBlobUrlResult {
+  imageBlobUrl: string | null
+  fetchError: boolean
+  isLoading: boolean
+  retry: () => void
+}
+
+type FetchRanState = {
+  lastUrl?: string
+  [key: string]: boolean | string | undefined
+}
+
 /**
  * useProtectedImageBlobUrl
  *
@@ -17,26 +33,29 @@ import { fetchProtectedBlobUrl, isAbortError, revokeBlobUrl } from '../api'
  *
  * Security: this hook does not log URLs, tokens, or session details.
  */
-export function useProtectedImageBlobUrl(displayUrl, options = {}) {
+export function useProtectedImageBlobUrl(
+  displayUrl: string | null | undefined,
+  options: UseProtectedImageBlobUrlOptions = {}
+): UseProtectedImageBlobUrlResult {
   const deps = Array.isArray(options?.deps) ? options.deps : []
 
-  const [imageBlobUrl, setImageBlobUrl] = useState(null)
+  const [imageBlobUrl, setImageBlobUrl] = useState<string | null>(null)
   const [fetchError, setFetchError] = useState(false)
   const [retryCount, setRetryCount] = useState(0)
 
   // Dev double-fetch guard: only fetch once per image key
-  const fetchRanRef = useRef({})
-  const abortControllerRef = useRef(null)
+  const fetchRanRef = useRef<FetchRanState>({})
+  const abortControllerRef = useRef<AbortController | null>(null)
 
   const retry = useCallback(() => {
-    setRetryCount(c => c + 1)
+    setRetryCount((c) => c + 1)
   }, [])
 
   useEffect(() => {
     if (!displayUrl) return undefined
 
     let mounted = true
-    let currentObjectUrl = null
+    let currentObjectUrl: string | null = null
 
     // Match previous behavior: clear error at the start of a (re)fetch cycle.
     setFetchError(false)
