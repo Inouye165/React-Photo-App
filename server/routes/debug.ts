@@ -6,7 +6,6 @@ const logger = require('../logger');
 const { addAIJob } = require('../queue');
 const path = require('path');
 
-// Type definition for the request
 interface AuthenticatedRequest extends Request {
   user?: { id: string; role?: string };
 }
@@ -14,11 +13,11 @@ interface AuthenticatedRequest extends Request {
 export default function createDebugRouter({ db }: { db: any }) {
   const router = Router();
 
-  // ------------------------------------------------------------------
+  // ==================================================================
   // MAINTENANCE: Fix Broken Collectibles
-  // Security block REMOVED to ensure this runs in production
-  // ------------------------------------------------------------------
-  router.get('/fix-collectibles', async (req: Request, res: Response) => {
+  // MOUNTED AT /api/debug/fix-collectibles to pass Frontend Proxy
+  // ==================================================================
+  router.get('/api/debug/fix-collectibles', async (req: Request, res: Response) => {
     try {
       console.log('[Maintenance] Starting collectible repair job via DEBUG...');
       
@@ -34,7 +33,6 @@ export default function createDebugRouter({ db }: { db: any }) {
 
       let count = 0;
       for (const p of photos) {
-        // Enqueue job: AI disabled, Image Gen enabled
         await addAIJob(p.id, {
           runAiAnalysis: false,
           generateThumbnail: true,
@@ -55,10 +53,11 @@ export default function createDebugRouter({ db }: { db: any }) {
     }
   });
 
-  // ------------------------------------------------------------------
+  // ==================================================================
   // EXISTING ROUTES
-  // ------------------------------------------------------------------
+  // ==================================================================
 
+  // Note: /photos/... works because the proxy likely allows /photos
   router.post('/photos/recheck-inprogress', (req: Request, res: Response) => {
     try {
       processAllUnprocessedInprogress(db);
@@ -68,6 +67,17 @@ export default function createDebugRouter({ db }: { db: any }) {
     }
   });
 
+  // Updated to include /api prefix to ensure accessibility
+  router.get('/api/debug/inprogress', async (req: AuthenticatedRequest, res: Response) => {
+    try {
+      const rows = await db('photos').where({ state: 'inprogress', user_id: req.user?.id });
+      res.json(rows);
+    } catch (err: any) {
+      res.status(500).json({ error: err.message });
+    }
+  });
+
+  // Keep old path for backward compatibility if needed, but add /api version
   router.get('/debug/inprogress', async (req: AuthenticatedRequest, res: Response) => {
     try {
       const rows = await db('photos').where({ state: 'inprogress', user_id: req.user?.id });
@@ -77,47 +87,7 @@ export default function createDebugRouter({ db }: { db: any }) {
     }
   });
 
-  router.get('/dev/reextract-gps', async (req: AuthenticatedRequest, res: Response) => {
-    try {
-      const id = Number(req.query.id);
-      if (!id) return res.status(400).json({ error: 'id is required' });
-      const row = await db('photos').where({ id, user_id: req.user?.id }).first();
-      if (!row) return res.status(404).json({ error: 'not found' });
-      const meta = (typeof row.metadata === 'string') ? JSON.parse(row.metadata || '{}') : (row.metadata || {});
-      const coords = extractLatLon(meta);
-      return res.json({
-        id: row.id,
-        filename: row.filename,
-        gpsString: (coords && coords.lat != null) ? `${coords.lat},${coords.lon}` : null
-      });
-    } catch (e) {
-      return res.status(500).json({ error: String(e) });
-    }
-  });
-
-  router.post('/debug/reset-ai-retry', async (req: AuthenticatedRequest, res: Response) => {
-    try {
-      const result = await db('photos')
-        .where('filename', 'like', '%.HEIC')
-        .andWhere('user_id', req.user?.id)
-        .update({ ai_retry_count: 0 });
-      res.json({ updated: result });
-    } catch (err: any) {
-      res.status(500).json({ error: err.message });
-    }
-  });
-
-  router.get('/storage', async (req: Request, res: Response) => {
-     try {
-       const { data } = await supabase.storage.from('photos').list('', { limit: 1 });
-       res.json({ success: true, files: data });
-     } catch(err: any) {
-       res.status(500).json({ error: err.message });
-     }
-  });
-
   return router;
 };
 
-// CommonJS compatibility
 module.exports = createDebugRouter;
