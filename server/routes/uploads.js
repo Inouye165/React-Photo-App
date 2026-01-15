@@ -351,7 +351,6 @@ module.exports = function createUploadsRouter({ db }) {
       // All uploads go through the queue for derivative generation.
       // AI analysis is selectively enabled server-side.
       let jobEnqueued = false;
-      let fallbackProcessed = false;
       
       try {
         const redisAvailable = await checkRedisAvailable();
@@ -413,7 +412,6 @@ module.exports = function createUploadsRouter({ db }) {
             generateThumbnail: true,
             generateDisplay: true,
           });
-          fallbackProcessed = true;
           logger.info('[upload] Fallback processing completed', { photoId, userId: req.user.id });
         } catch (fallbackErr) {
           logger.warn('[upload] Fallback processing failed', {
@@ -433,7 +431,7 @@ module.exports = function createUploadsRouter({ db }) {
                             immediateMetadata.GPSDestBearing || 
                             null;
       
-      const processing = jobEnqueued ? 'queued' : (fallbackProcessed ? 'immediate' : 'manual');
+      const processing = jobEnqueued ? 'queued' : 'immediate';
 
       res.status(statusCode).json({
         success: true,
