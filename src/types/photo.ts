@@ -42,6 +42,9 @@ export interface Photo {
   // Derivative URLs
   thumbnail?: string | null;
   smallThumbnail?: string | null;
+  thumbnailUrl?: string | null;
+  smallThumbnailUrl?: string | null;
+  fullUrl?: string | null;
 
   // Background image derivative processing status (thumbnails/display assets)
   derivativesStatus?: 'pending' | 'ready' | 'failed' | null;

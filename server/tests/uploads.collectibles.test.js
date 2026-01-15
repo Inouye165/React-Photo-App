@@ -352,9 +352,15 @@ describe('Collectible upload pipeline', () => {
     expect(photos[0].thumbnail).toContain('/display/thumbnails/abc.jpg');
     expect(photos[0].thumbnail).toContain('sig=');
     expect(photos[0].thumbnail).toContain('exp=');
+    expect(photos[0].thumbnailUrl).toContain('/display/thumbnails/abc.jpg');
+    expect(photos[0].thumbnailUrl).toContain('sig=');
+    expect(photos[0].thumbnailUrl).toContain('exp=');
 
     expect(photos[0].smallThumbnail).toContain('/display/thumbnails/abc-sm.jpg');
     expect(photos[0].smallThumbnail).toContain('sig=');
     expect(photos[0].smallThumbnail).toContain('exp=');
+    expect(photos[0].smallThumbnailUrl).toContain('/display/thumbnails/abc-sm.jpg');
+    expect(photos[0].smallThumbnailUrl).toContain('sig=');
+    expect(photos[0].smallThumbnailUrl).toContain('exp=');
   });
 });

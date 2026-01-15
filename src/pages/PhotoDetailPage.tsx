@@ -195,6 +195,8 @@ export default function PhotoDetailPage() {
 
   const stateLabel = useMemo(() => formatStateLabel(photo?.state), [photo?.state]);
 
+  const [useFullRes, setUseFullRes] = useState(false);
+
   useEffect(() => {
     if (id) {
       // Fetch fresh photo details (including collectibles) on mount
@@ -229,15 +231,32 @@ export default function PhotoDetailPage() {
     });
   }, [photo?.id, photo?.state, id, isPolling, stateLabel]);
 
+  useEffect(() => {
+    setUseFullRes(false);
+  }, [photo?.id]);
+
   const title = getDisplayTitle(photo);
   const classification = normalizeClassification(photo);
   const isCollectible = classification === 'collectible';
 
-  // Use ?v=hash for cache busting (parity with EditPage)
+  // Use ?v=hash for cache busting (parity with EditPage) when safe.
   const version = photo?.hash || photo?.updated_at || '';
-  const displayUrl = photo?.url
-    ? `${API_BASE_URL}${photo.url}${version ? `?v=${version}` : ''}`
-    : null;
+  const thumbnailUrl = photo?.thumbnailUrl ?? photo?.thumbnail ?? null;
+  const fullUrl = photo?.fullUrl ?? photo?.url ?? null;
+  const rawDisplayUrl = useFullRes ? fullUrl : thumbnailUrl;
+
+  const displayUrl = (() => {
+    if (!rawDisplayUrl) return null;
+    if (rawDisplayUrl.startsWith('http') || rawDisplayUrl.startsWith('blob:') || rawDisplayUrl.startsWith('data:')) {
+      return rawDisplayUrl;
+    }
+    const baseUrl = `${API_BASE_URL}${rawDisplayUrl}`;
+    if (!version) return baseUrl;
+    if (rawDisplayUrl.includes('sig=') || rawDisplayUrl.includes('exp=')) {
+      return baseUrl;
+    }
+    return `${baseUrl}${rawDisplayUrl.includes('?') ? '&' : '?'}v=${version}`;
+  })();
 
   const { imageBlobUrl, fetchError, isLoading, retry } = useProtectedImageBlobUrl(displayUrl);
 
@@ -468,6 +487,18 @@ export default function PhotoDetailPage() {
               </div>
             )}
           </div>
+          {fullUrl && !useFullRes && (
+            <div className="px-4 pb-4">
+              <button
+                type="button"
+                onClick={() => setUseFullRes(true)}
+                className="inline-flex items-center gap-2 px-4 py-2 rounded-full bg-white border border-slate-200 text-slate-700 hover:bg-slate-50"
+                data-testid="photo-detail-load-full"
+              >
+                Load full resolution
+              </button>
+            </div>
+          )}
         </div>
 
         {/* Right: info / metadata */}

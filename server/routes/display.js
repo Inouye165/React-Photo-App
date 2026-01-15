@@ -16,7 +16,7 @@ function clampSignedUrlTtlSeconds(ttlSeconds) {
   // Supabase signed URL TTL is in seconds.
   // Safety: enforce a sane min/max to avoid accidental long-lived URLs.
   const min = 60;
-  const max = 24 * 60 * 60;
+  const max = 300;
   const n = Number(ttlSeconds);
   if (!Number.isFinite(n)) return min;
   return Math.max(min, Math.min(n, max));
@@ -103,6 +103,16 @@ function getContentTypeForExtension(ext) {
 
 module.exports = function createDisplayRouter({ db }) {
   const router = express.Router();
+
+  function isMediaRedirectEnabled() {
+    const raw = String(process.env.MEDIA_REDIRECT_ENABLED || '').trim().toLowerCase();
+    if (process.env.NODE_ENV === 'test') {
+      return raw === 'true' || raw === '1';
+    }
+    if (raw === 'false' || raw === '0') return false;
+    if (raw === 'true' || raw === '1') return true;
+    return true;
+  }
 
   function isLoopbackRequest(req) {
     const remote = req && req.socket ? req.socket.remoteAddress : undefined;
@@ -247,7 +257,7 @@ module.exports = function createDisplayRouter({ db }) {
     const { photoId } = req.params;
     // Default TTL for redirect targets (seconds).
     // Keep short-lived to limit exposure window; browser may cache the redirect briefly.
-    const SIGNED_URL_TTL_SECONDS = parseInt(process.env.IMAGE_SIGNED_URL_TTL_SECONDS, 10) || 600;
+    const SIGNED_URL_TTL_SECONDS = parseInt(process.env.IMAGE_SIGNED_URL_TTL_SECONDS, 10) || 300;
 
     try {
       if (typeof db !== 'function') {
@@ -281,13 +291,14 @@ module.exports = function createDisplayRouter({ db }) {
       const effectiveStoragePath = photo.display_path || originalStoragePath;
       const effectiveExt = getOriginalExtension(effectiveStoragePath, null);
       const bypassRedirect = shouldBypassRedirect(req);
+      const redirectEnabled = isMediaRedirectEnabled() && !bypassRedirect;
 
       // If a display asset exists, use it for HEIC/HEIF.
       // This removes request-time conversion after worker processing completes.
       const usingDisplayAsset = Boolean(originalIsHeic && photo.display_path);
 
       // Non-HEIC: redirect client to short-lived Supabase signed URL (offload bytes)
-      if (!bypassRedirect && !originalIsHeic) {
+      if (redirectEnabled && !originalIsHeic) {
         const cacheKey = `cdn:signed:image:${photoId}:${photo.updated_at || ''}`;
 
         try {
@@ -297,22 +308,23 @@ module.exports = function createDisplayRouter({ db }) {
             ttlSeconds: SIGNED_URL_TTL_SECONDS
           });
 
-          res.set('Cache-Control', 'private, max-age=60');
+          res.set('Cache-Control', 'private, no-store');
           res.set('X-Redirect-Target', 'supabase-signed');
           return res.redirect(302, signedUrl);
         } catch (err) {
-          logger.warn('Display image by ID: signed URL generation failed; falling back to streaming', {
+          logger.warn('Display image by ID: signed URL generation failed', {
             reqId,
             photoId,
             storagePath: originalStoragePath,
             error: err && err.message ? err.message : String(err)
           });
-          // Fall through to streaming fallback.
+          res.set('Cache-Control', 'no-store');
+          return res.status(502).json({ error: 'Failed to access media' });
         }
       }
 
       // HEIC/HEIF with display asset: redirect/stream the JPEG (no conversion).
-      if (originalIsHeic && photo.display_path && !bypassRedirect) {
+      if (originalIsHeic && photo.display_path && redirectEnabled) {
         const cacheKey = `cdn:signed:image:${photoId}:${photo.updated_at || ''}:display`;
         try {
           const signedUrl = await getSignedUrlWithCache({
@@ -321,17 +333,18 @@ module.exports = function createDisplayRouter({ db }) {
             ttlSeconds: SIGNED_URL_TTL_SECONDS,
           });
 
-          res.set('Cache-Control', 'private, max-age=60');
+          res.set('Cache-Control', 'private, no-store');
           res.set('X-Redirect-Target', 'supabase-signed');
           return res.redirect(302, signedUrl);
         } catch (err) {
-          logger.warn('Display image by ID: signed URL generation failed for display asset; falling back to streaming', {
+          logger.warn('Display image by ID: signed URL generation failed for display asset', {
             reqId,
             photoId,
             storagePath: effectiveStoragePath,
             error: err && err.message ? err.message : String(err)
           });
-          // Fall through to streaming.
+          res.set('Cache-Control', 'no-store');
+          return res.status(502).json({ error: 'Failed to access media' });
         }
       }
 
@@ -424,7 +437,7 @@ module.exports = function createDisplayRouter({ db }) {
     res.set('Cross-Origin-Resource-Policy', 'cross-origin');
 
     const { roomId, photoId } = req.params;
-    const SIGNED_URL_TTL_SECONDS = parseInt(process.env.CHAT_IMAGE_SIGNED_URL_TTL_SECONDS, 10) || 600;
+    const SIGNED_URL_TTL_SECONDS = parseInt(process.env.CHAT_IMAGE_SIGNED_URL_TTL_SECONDS, 10) || 300;
 
     try {
       if (typeof db !== 'function') {
@@ -503,11 +516,12 @@ module.exports = function createDisplayRouter({ db }) {
       const originalIsHeic = isHeicFormat(originalExt);
       const effectiveStoragePath = sharedPhoto.display_path || originalStoragePath;
       const bypassRedirect = shouldBypassRedirect(req);
+      const redirectEnabled = isMediaRedirectEnabled() && !bypassRedirect;
 
       const usingDisplayAsset = Boolean(originalIsHeic && sharedPhoto.display_path);
 
       // Non-HEIC: redirect to signed URL (offload bytes)
-      if (!bypassRedirect && !originalIsHeic) {
+      if (redirectEnabled && !originalIsHeic) {
         const cacheKey = `cdn:signed:chat:${roomId}:${photoId}:${sharedPhoto.updated_at || ''}`;
         try {
           const signedUrl = await getSignedUrlWithCache({
@@ -515,23 +529,24 @@ module.exports = function createDisplayRouter({ db }) {
             storagePath: originalStoragePath,
             ttlSeconds: SIGNED_URL_TTL_SECONDS
           });
-          res.set('Cache-Control', 'private, max-age=60');
+          res.set('Cache-Control', 'private, no-store');
           res.set('X-Redirect-Target', 'supabase-signed');
           return res.redirect(302, signedUrl);
         } catch (err) {
-          logger.warn('Chat display image: signed URL generation failed; falling back to streaming', {
+          logger.warn('Chat display image: signed URL generation failed', {
             reqId,
             roomId,
             photoId,
             storagePath: originalStoragePath,
             error: err && err.message ? err.message : String(err)
           });
-          // Fall through to streaming.
+          res.set('Cache-Control', 'no-store');
+          return res.status(502).json({ error: 'Failed to access media' });
         }
       }
 
       // HEIC/HEIF with display asset: redirect/stream the JPEG (no conversion).
-      if (originalIsHeic && sharedPhoto.display_path && !bypassRedirect) {
+      if (originalIsHeic && sharedPhoto.display_path && redirectEnabled) {
         const cacheKey = `cdn:signed:chat:${roomId}:${photoId}:${sharedPhoto.updated_at || ''}:display`;
         try {
           const signedUrl = await getSignedUrlWithCache({
@@ -539,18 +554,19 @@ module.exports = function createDisplayRouter({ db }) {
             storagePath: effectiveStoragePath,
             ttlSeconds: SIGNED_URL_TTL_SECONDS,
           });
-          res.set('Cache-Control', 'private, max-age=60');
+          res.set('Cache-Control', 'private, no-store');
           res.set('X-Redirect-Target', 'supabase-signed');
           return res.redirect(302, signedUrl);
         } catch (err) {
-          logger.warn('Chat display image: signed URL generation failed for display asset; falling back to streaming', {
+          logger.warn('Chat display image: signed URL generation failed for display asset', {
             reqId,
             roomId,
             photoId,
             storagePath: effectiveStoragePath,
             error: err && err.message ? err.message : String(err)
           });
-          // Fall through to streaming.
+          res.set('Cache-Control', 'no-store');
+          return res.status(502).json({ error: 'Failed to access media' });
         }
       }
 
@@ -629,6 +645,7 @@ module.exports = function createDisplayRouter({ db }) {
     const state = 'thumbnails'; // Hardcoded - not from user input
     // 1-year cache for immutable assets (hashed thumbnails)
     const IMAGE_CACHE_MAX_AGE = parseInt(process.env.IMAGE_CACHE_MAX_AGE, 10) || 31536000;
+    const redirectEnabled = isMediaRedirectEnabled();
 
     try {
       const hash = filename ? filename.replace(/\.jpg$/i, '') : null;
@@ -639,24 +656,27 @@ module.exports = function createDisplayRouter({ db }) {
       const ttlSeconds = isSignedThumbnailRequest ? ttlFromExpSeconds(exp) : 300;
       const cacheKey = isSignedThumbnailRequest && hash ? `cdn:signed:thumb:${hash}:${exp}` : `cdn:signed:thumb:${normalizedFilename}`;
 
-      try {
-        const signedUrl = await getSignedUrlWithCache({
-          cacheKey,
-          storagePath,
-          ttlSeconds
-        });
+      if (redirectEnabled) {
+        try {
+          const signedUrl = await getSignedUrlWithCache({
+            cacheKey,
+            storagePath,
+            ttlSeconds
+          });
 
-        res.set('Cache-Control', `${isSignedThumbnailRequest ? 'public' : 'private'}, max-age=${ttlSeconds}, immutable`);
-        res.set('X-Redirect-Target', 'supabase-signed');
-        return res.redirect(302, signedUrl);
-      } catch (err) {
-        logger.warn('Thumbnail redirect: signed URL generation failed; falling back to streaming', {
-          reqId,
-          filename,
-          storagePath,
-          error: err && err.message ? err.message : String(err)
-        });
-        // Fall back to existing streaming behavior.
+          res.set('Cache-Control', 'private, no-store');
+          res.set('X-Redirect-Target', 'supabase-signed');
+          return res.redirect(302, signedUrl);
+        } catch (err) {
+          logger.warn('Thumbnail redirect: signed URL generation failed', {
+            reqId,
+            filename,
+            storagePath,
+            error: err && err.message ? err.message : String(err)
+          });
+          res.set('Cache-Control', 'no-store');
+          return res.status(502).json({ error: 'Failed to access media' });
+        }
       }
 
       const { data, error } = await supabase.storage.from('photos').download(storagePath);
@@ -697,6 +717,7 @@ module.exports = function createDisplayRouter({ db }) {
     const { state, filename } = req.params;
     // 1-year cache for immutable assets (static images)
     const IMAGE_CACHE_MAX_AGE = parseInt(process.env.IMAGE_CACHE_MAX_AGE, 10) || 31536000;
+    const redirectEnabled = isMediaRedirectEnabled();
 
     try {
       // Originals: strict DB lookup (use db('photos') for compatibility)
@@ -735,6 +756,33 @@ module.exports = function createDisplayRouter({ db }) {
       }
 
       const storagePath = photo.storage_path || `${state}/${filename}`;
+      const ext = path.extname(filename).toLowerCase();
+      const isHeic = isHeicFormat(ext);
+
+      if (redirectEnabled && !isHeic) {
+        const cacheKey = `cdn:signed:state:${state}:${photo.id}:${photo.updated_at || ''}`;
+        try {
+          const signedUrl = await getSignedUrlWithCache({
+            cacheKey,
+            storagePath,
+            ttlSeconds: 300
+          });
+          res.set('Cache-Control', 'private, no-store');
+          res.set('X-Redirect-Target', 'supabase-signed');
+          return res.redirect(302, signedUrl);
+        } catch (err) {
+          logger.warn('Display state image: signed URL generation failed', {
+            reqId,
+            filename,
+            state,
+            storagePath,
+            error: err && err.message ? err.message : String(err)
+          });
+          res.set('Cache-Control', 'no-store');
+          return res.status(502).json({ error: 'Failed to access media' });
+        }
+      }
+
       const { data, error } = await supabase.storage.from('photos').download(storagePath);
       if (error || !data) {
         logger.error('Display route error', {
@@ -750,7 +798,7 @@ module.exports = function createDisplayRouter({ db }) {
 
       const buffer = await data.arrayBuffer();
       const fileBuffer = Buffer.from(buffer);
-      const ext = path.extname(filename).toLowerCase();
+      
 
       // ETag header: always set, fallback if hash missing
       let etag = photo.hash;

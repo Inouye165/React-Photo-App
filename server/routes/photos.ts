@@ -158,11 +158,15 @@ interface PhotoListDto {
   editedFilename?: string | null;
   storagePath?: string | null;
   url: string;
+  fullUrl?: string | null;
   originalUrl: string;
   thumbnail?: string | null;
   aiModelHistory?: unknown;
   poi_analysis?: unknown;
   classification?: string;
+  thumbnailUrl?: string | null;
+  smallThumbnail?: string | null;
+  smallThumbnailUrl?: string | null;
 }
 
 /** Photo detail DTO */
@@ -512,7 +516,10 @@ export default function createPhotosRouter({ db, supabase }: PhotosRouterDepende
       const row = await photosDb.getPhotoByAnyId(id, req.user!.id);
       if (!row) return res.status(404).json({ success: false, error: 'Photo not found' } as ErrorResponse);
 
-      const photo: PhotoDetailDto = mapPhotoRowToDetailDto(row);
+      const photo: PhotoDetailDto = mapPhotoRowToDetailDto(row, {
+        ttlSeconds: 3600,
+        signThumbnailUrl,
+      });
       res.set('Cache-Control', 'private, max-age=60');
       return res.json({ success: true, photo });
     } catch (err) {
