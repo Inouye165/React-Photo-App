@@ -35,8 +35,8 @@ async function startMockSupabaseServer() {
   });
 }
 
-const SERVER_CMD = 'node';
-const SERVER_ARGS = ['server/server.js'];
+const SERVER_CMD = 'npx';
+const SERVER_ARGS = ['tsx', 'server/server.ts'];
 const HEALTH_URL = { hostname: 'localhost', port: 3001, path: '/health', method: 'GET' };
 const INTEGRATION_ORIGIN = 'http://localhost:5173';
 // CSRF token endpoint (csurf): GET /csrf -> { csrfToken } and sets csrfSecret cookie.

@@ -6,7 +6,7 @@ const jwt = require('jsonwebtoken');
 const logger = require('../logger');
 
 const SERVER_DIR = path.join(__dirname, '..');
-const SERVER_ENTRY = path.join(SERVER_DIR, 'server.js');
+const SERVER_ENTRY = path.join(SERVER_DIR, 'server.ts');
 const PORT = process.env.PORT || 3001;
 const { getConfig } = require('../config/env');
 const JWT_SECRET = getConfig().jwtSecret;
@@ -72,7 +72,7 @@ async function main() {
     ALLOW_DEV_DEBUG: 'true'
   });
 
-  const child = spawn(process.execPath, [SERVER_ENTRY], {
+  const child = spawn('npx', ['tsx', SERVER_ENTRY], {
     cwd: SERVER_DIR,
     env,
     stdio: ['ignore', 'pipe', 'pipe']

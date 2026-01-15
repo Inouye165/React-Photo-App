@@ -2,10 +2,10 @@
   "name": "photo-app-server",
   "version": "1.0.0",
   "description": "Backend server for photo upload and storage",
-  "main": "server.js",
+  "main": "server.ts",
   "scripts": {
     "build": "tsc -p tsconfig.json",
-    "start": "node dist/server.js",
+    "start": "tsx server.ts",
     "prestart": "npm run build && node dist/scripts/check-migrations.js && node dist/scripts/run-migrations.js",
     "dev": "nodemon --watch . --ext js,ts,json --ignore dist --exec \"npm run build && node dist/server.js\"",
     "worker": "node dist/worker.js",
@@ -97,6 +97,7 @@
     "nodemon": "^3.0.1",
     "supertest": "^6.3.3",
     "ts-node": "^10.9.2",
+    "tsx": "^4.21.0",
     "typescript": "^5.9.3"
   },
   "jest": {
