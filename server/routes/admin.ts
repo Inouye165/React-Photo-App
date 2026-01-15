@@ -17,9 +17,11 @@ import { Router, Request, Response } from 'express';
 import { createClient } from '@supabase/supabase-js';
 import { getConfig } from '../config/env';
 
+const createAssessmentsDb = require('../services/assessmentsDb');
+
 // Queue helpers (CommonJS export)
 // eslint-disable-next-line @typescript-eslint/no-var-requires
-const { addAIJob, checkRedisAvailable } = require('../queue');
+const { addAIJob, addAppAssessmentJob, checkRedisAvailable } = require('../queue/index');
 
 // Types
 interface AdminInviteRequest {
@@ -49,6 +51,9 @@ interface AuthenticatedRequest extends Request {
     email: string;
     username: string;
     role: string;
+    app_metadata?: {
+      role?: string;
+    };
   };
 }
 
@@ -59,6 +64,17 @@ const EMAIL_REGEX = /^[a-zA-Z0-9.!#$%&'*+/=?^_`{|}~-]{1,64}@[a-zA-Z0-9](?:[a-zA-
 function createAdminRouter({ db }: { db: any }): Router {
   const router = Router();
   const config = getConfig();
+  const assessmentsDb = createAssessmentsDb({ db });
+
+  function ensureAdmin(req: AuthenticatedRequest, res: Response): boolean {
+    // Redundant with mount-time middleware, but keeps the endpoints self-defensive.
+    const role = req?.user?.role || req?.user?.app_metadata?.role;
+    if (role !== 'admin') {
+      res.status(403).json({ success: false, error: 'Forbidden' });
+      return false;
+    }
+    return true;
+  }
 
   // Initialize Supabase Admin Client with Service Role Key
   // SECURITY: Service Role Key bypasses RLS and must NEVER be exposed to frontend
@@ -163,57 +179,375 @@ function createAdminRouter({ db }: { db: any }): Router {
    */
   router.get('/suggestions', async (req: AuthenticatedRequest, res: Response) => {
     try {
+      if (!ensureAdmin(req, res)) return;
+
       const state = req.query.state as string | undefined;
       const limit = Math.min(parseInt(req.query.limit as string, 10) || 50, 200);
       const offset = parseInt(req.query.offset as string, 10) || 0;
 
-      let query = `
-        SELECT 
-          id, user_id, filename, ai_generated_metadata, 
-          state, created_at, updated_at
-        FROM photos
-        WHERE ai_generated_metadata IS NOT NULL
-      `;
-
-      const params: any[] = [];
-      let paramIndex = 1;
+      // Build query using Knex query builder
+      let query = db('photos')
+        .select('id', 'user_id', 'filename', 'ai_generated_metadata', 'state', 'created_at', 'updated_at')
+        .whereNotNull('ai_generated_metadata');
 
       // Add state filter if provided
       if (state && typeof state === 'string') {
-        query += ` AND state = $${paramIndex}`;
-        params.push(state);
-        paramIndex++;
+        query = query.where('state', state);
       }
 
       // Add ordering and pagination
-      query += ` ORDER BY updated_at DESC LIMIT $${paramIndex} OFFSET $${paramIndex + 1}`;
-      params.push(limit, offset);
-
-      const result = await db.query(query, params);
+      const result = await query.orderBy('updated_at', 'desc').limit(limit).offset(offset);
 
       // Get total count for pagination
-      let countQuery = 'SELECT COUNT(*) as total FROM photos WHERE ai_generated_metadata IS NOT NULL';
-      const countParams: any[] = [];
+      let countQuery = db('photos').whereNotNull('ai_generated_metadata');
       if (state && typeof state === 'string') {
-        countQuery += ' AND state = $1';
-        countParams.push(state);
+        countQuery = countQuery.where('state', state);
       }
-
-      const countResult = await db.query(countQuery, countParams);
-      const total = parseInt(countResult.rows[0]?.total || '0', 10);
+      const countResult = await countQuery.count('* as total');
+      const total = parseInt(countResult[0]?.total || '0', 10);
 
       return res.json({
         success: true,
-        data: result.rows as PhotoSuggestion[],
+        data: result as PhotoSuggestion[],
         total,
         limit,
         offset
       });
     } catch (err) {
       console.error('[admin] Suggestions error:', err);
+      console.error('[admin] Error details:', {
+        message: (err as Error)?.message,
+        stack: (err as Error)?.stack,
+        query: req.query,
+        dbAvailable: !!db,
+        userId: req.user?.id,
+        userRole: req.user?.role || req.user?.app_metadata?.role
+      });
       return res.status(500).json({
         success: false,
         error: 'Internal server error'
+      });
+    }
+  });
+
+  /**
+   * GET /api/admin/comments
+   *
+   * Fetch all comments for admin moderation with author and photo info.
+   */
+  router.get('/comments', async (req: AuthenticatedRequest, res: Response) => {
+    try {
+      if (!ensureAdmin(req, res)) return;
+
+      const isReviewed = req.query.is_reviewed as string | undefined;
+      const limit = Math.min(parseInt(req.query.limit as string, 10) || 50, 200);
+      const offset = parseInt(req.query.offset as string, 10) || 0;
+
+      // Build query using Knex query builder with joins
+      let query = db('comments as c')
+        .select(
+          'c.id',
+          'c.photo_id',
+          'c.user_id',
+          'c.content',
+          'c.is_reviewed',
+          'c.created_at',
+          'c.updated_at',
+          'u.username',
+          'p.filename'
+        )
+        .leftJoin('users as u', 'c.user_id', 'u.id')
+        .leftJoin('photos as p', 'c.photo_id', 'p.id');
+
+      // Add is_reviewed filter if provided
+      if (isReviewed === 'true' || isReviewed === 'false') {
+        query = query.where('c.is_reviewed', isReviewed === 'true');
+      }
+
+      // Add ordering and pagination
+      const result = await query.orderBy('c.created_at', 'desc').limit(limit).offset(offset);
+
+      // Get total count for pagination
+      let countQuery = db('comments');
+      if (isReviewed === 'true' || isReviewed === 'false') {
+        countQuery = countQuery.where('is_reviewed', isReviewed === 'true');
+      }
+      const countResult = await countQuery.count('* as total');
+      const total = parseInt(countResult[0]?.total || '0', 10);
+
+      return res.json({
+        success: true,
+        data: result,
+        total,
+        limit,
+        offset
+      });
+    } catch (err) {
+      console.error('[admin] Comments error:', err);
+      console.error('[admin] Error details:', {
+        message: (err as Error)?.message,
+        stack: (err as Error)?.stack,
+        query: req.query,
+        dbAvailable: !!db,
+        userId: req.user?.id,
+        userRole: req.user?.role || req.user?.app_metadata?.role
+      });
+      return res.status(500).json({
+        success: false,
+        error: 'Internal server error'
+      });
+    }
+  });
+
+  /**
+   * PATCH /api/admin/comments/:id/review
+   *
+   * Mark a comment as reviewed.
+   */
+  router.patch('/comments/:id/review', async (req: AuthenticatedRequest, res: Response) => {
+    try {
+      if (!ensureAdmin(req, res)) return;
+
+      const commentId = parseInt(req.params.id, 10);
+
+      if (Number.isNaN(commentId) || commentId <= 0) {
+        return res.status(400).json({
+          success: false,
+          error: 'Valid comment ID is required'
+        });
+      }
+
+      // Update using Knex query builder
+      const result = await db('comments')
+        .where('id', commentId)
+        .update({
+          is_reviewed: true,
+          updated_at: db.fn.now()
+        })
+        .returning('*');
+
+      if (result.length === 0) {
+        return res.status(404).json({
+          success: false,
+          error: 'Comment not found'
+        });
+      }
+
+      return res.json({
+        success: true,
+        data: result[0]
+      });
+    } catch (err) {
+      console.error('[admin] Review comment error:', err);
+      return res.status(500).json({
+        success: false,
+        error: 'Internal server error'
+      });
+    }
+  });
+
+  /**
+   * GET /api/admin/feedback
+   *
+   * Fetch user-submitted feedback messages for admin moderation.
+   */
+  router.get('/feedback', async (req: AuthenticatedRequest, res: Response) => {
+    try {
+      if (!ensureAdmin(req, res)) return;
+
+      const status = req.query.status as string | undefined;
+      const limit = Math.min(parseInt(req.query.limit as string, 10) || 50, 200);
+      const offset = Math.max(parseInt(req.query.offset as string, 10) || 0, 0);
+
+      // SECURITY: Basic allowlist for status to prevent weird/unexpected values.
+      // (Knex is parameterized, but we still validate to reduce log/UX surprises.)
+      const statusFilter =
+        typeof status === 'string' && status.length > 0
+          ? status.trim().toLowerCase()
+          : null;
+
+      if (statusFilter && (statusFilter.length > 50 || !/^[a-z0-9_-]+$/i.test(statusFilter))) {
+        return res.status(400).json({ success: false, error: 'Invalid status filter' });
+      }
+
+      let query = db('feedback_messages')
+        .select(
+          'id',
+          'message',
+          'category',
+          'status',
+          'url',
+          'context',
+          'ip_address',
+          'user_agent',
+          'created_at',
+          'updated_at'
+        );
+
+      if (statusFilter) {
+        query = query.where('status', statusFilter);
+      }
+
+      const result = await query.orderBy('created_at', 'desc').limit(limit).offset(offset);
+
+      let countQuery = db('feedback_messages');
+      if (statusFilter) {
+        countQuery = countQuery.where('status', statusFilter);
+      }
+      const countResult = await countQuery.count('* as total');
+      const total = parseInt(countResult[0]?.total || '0', 10);
+
+      return res.json({
+        success: true,
+        data: result,
+        total,
+        limit,
+        offset,
+      });
+    } catch (err) {
+      // SECURITY: Avoid logging tainted strings from req.query or feedback contents.
+      console.error('[admin] Feedback error:', err);
+      return res.status(500).json({ success: false, error: 'Internal server error' });
+    }
+  });
+
+  /**
+   * POST /api/admin/assessments/trigger
+   *
+   * Creates a new assessment record and enqueues a BullMQ job to generate it.
+   */
+  router.post('/assessments/trigger', async (req: AuthenticatedRequest, res: Response) => {
+    try {
+      if (!ensureAdmin(req, res)) return;
+
+      const redisOk = await checkRedisAvailable();
+      if (!redisOk) {
+        return res.status(503).json({ success: false, error: 'Queue service unavailable' });
+      }
+
+      const commit_hash = req?.body?.commit_hash;
+      const created = await assessmentsDb.createAssessment({ commit_hash });
+
+      const job = await addAppAssessmentJob(created.id);
+
+      return res.json({
+        success: true,
+        data: {
+          id: created.id,
+          jobId: job?.id || null,
+        },
+      });
+    } catch (err) {
+      return res.status(500).json({ success: false, error: (err as Error)?.message || 'Internal server error' });
+    }
+  });
+
+  /**
+   * GET /api/admin/assessments
+   *
+   * Lists assessments for admin review.
+   */
+  router.get('/assessments', async (req: AuthenticatedRequest, res: Response) => {
+    try {
+      if (!ensureAdmin(req, res)) return;
+
+      const status = req.query.status;
+      const limit = req.query.limit;
+      const offset = req.query.offset;
+
+      const rows = await assessmentsDb.listAssessments({ limit, offset, status });
+      return res.json({ success: true, data: rows });
+    } catch (err: any) {
+      const status = err?.statusCode || 500;
+      return res.status(status).json({
+        success: false,
+        error: err?.message || 'Internal server error',
+        code: err?.code,
+      });
+    }
+  });
+
+  /**
+   * GET /api/admin/assessments/:id
+   *
+   * Fetch a single assessment (includes raw_ai_response + trace_log).
+   */
+  router.get('/assessments/:id', async (req: AuthenticatedRequest, res: Response) => {
+    try {
+      if (!ensureAdmin(req, res)) return;
+      const id = req.params.id;
+      const row = await assessmentsDb.getAssessmentById(id);
+      if (!row) return res.status(404).json({ success: false, error: 'Assessment not found' });
+      return res.json({ success: true, data: row });
+    } catch (err: any) {
+      const status = err?.statusCode || 500;
+      return res.status(status).json({
+        success: false,
+        error: err?.message || 'Internal server error',
+        code: err?.code,
+      });
+    }
+  });
+
+  /**
+   * POST /api/admin/assessments/external
+   *
+   * Creates an assessment record from an external LLM review (e.g., ChatGPT/Gemini).
+   */
+  router.post('/assessments/external', async (req: AuthenticatedRequest, res: Response) => {
+    try {
+      if (!ensureAdmin(req, res)) return;
+
+      const commit_hash = req?.body?.commit_hash;
+      const llm_provider = req?.body?.llm_provider;
+      const llm_model = req?.body?.llm_model;
+      const prompt = req?.body?.prompt;
+      const responseText = req?.body?.responseText;
+      const final_grade = req?.body?.final_grade;
+
+      const created = await assessmentsDb.createExternalAssessment({
+        commit_hash,
+        llm_provider,
+        llm_model,
+        prompt,
+        responseText,
+        final_grade: typeof final_grade === 'number' ? final_grade : undefined,
+      });
+
+      return res.json({ success: true, data: { id: created.id } });
+    } catch (err: any) {
+      const code = err?.statusCode || 500;
+      return res.status(code).json({
+        success: false,
+        error: err?.message || 'Internal server error',
+        code: err?.code,
+      });
+    }
+  });
+
+  /**
+   * PATCH /api/admin/assessments/:id/confirm
+   *
+   * Confirms or rejects an assessment.
+   * SECURITY: Server recomputes final_grade on confirm/reject.
+   */
+  router.patch('/assessments/:id/confirm', async (req: AuthenticatedRequest, res: Response) => {
+    try {
+      if (!ensureAdmin(req, res)) return;
+
+      const id = req.params.id;
+      const reviewer_id = req?.body?.reviewer_id;
+      const notes = req?.body?.notes;
+      const decision = req?.body?.decision;
+
+      const updated = await assessmentsDb.confirmAssessment({ id, reviewer_id, notes, decision });
+      return res.json({ success: true, data: updated });
+    } catch (err: any) {
+      const code = err?.statusCode || 500;
+      return res.status(code).json({
+        success: false,
+        error: err?.message || 'Internal server error',
+        code: err?.code,
       });
     }
   });
@@ -236,8 +570,10 @@ function createAdminRouter({ db }: { db: any }): Router {
    */
   router.post('/maintenance/fix-collectibles', async (req: AuthenticatedRequest, res: Response) => {
     try {
+      if (!ensureAdmin(req, res)) return;
+
       const requestDb = req.db || db;
-      if (!requestDb) {
+      if (!requestDb || typeof requestDb !== 'function') {
         return res.status(500).json({ success: false, error: 'Database unavailable' });
       }
 
@@ -246,23 +582,11 @@ function createAdminRouter({ db }: { db: any }): Router {
         return res.status(503).json({ success: false, error: 'Queue service unavailable' });
       }
 
-      let rows: Array<{ id: number; storage_path?: string | null }> = [];
-
-      if (typeof requestDb.query === 'function') {
-        const result = await requestDb.query(
-          'SELECT id, storage_path FROM photos WHERE collectible_id IS NOT NULL AND display_path IS NULL LIMIT 100'
-        );
-        rows = Array.isArray(result?.rows) ? result.rows : [];
-      } else if (typeof requestDb === 'function') {
-        // Fallback for Knex-style db function
-        rows = await requestDb('photos')
-          .select('id', 'storage_path')
-          .whereNotNull('collectible_id')
-          .whereNull('display_path')
-          .limit(100);
-      } else {
-        return res.status(500).json({ success: false, error: 'Database unavailable' });
-      }
+      const rows: Array<{ id: number; storage_path?: string | null }> = await requestDb('photos')
+        .select('id', 'storage_path')
+        .whereNotNull('collectible_id')
+        .whereNull('display_path')
+        .limit(100);
 
       let enqueued = 0;
       for (const row of rows) {
