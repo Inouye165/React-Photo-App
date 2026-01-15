@@ -67,7 +67,6 @@ async function getCsrfToken(): Promise<string> {
       }
 
       const data = (await res.json().catch(() => null)) as { csrfToken?: unknown } | null
-      console.log('CSRF API Response:', data)
 
       if (!data || typeof data.csrfToken !== 'string' || data.csrfToken.trim().length === 0) {
         throw new Error('CSRF response missing csrfToken')
