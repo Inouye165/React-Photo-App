@@ -69,7 +69,7 @@ function main() {
   }
 
   // Known entry points and files to ignore
-  const entryPoints = new Set(['server/server.js','server/worker.js','src/main.jsx','vite.config.js']);
+  const entryPoints = new Set(['server/server.ts','server/worker.js','src/main.jsx','vite.config.js']);
   const keepPatterns = [/server\/db\/migrations\//, /server\/tests\//, /tests\//, /^dist\//, /^public\//, /^docs\//, /vitest.config.js/];
 
   const candidates = [];

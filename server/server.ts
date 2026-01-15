@@ -1,5 +1,7 @@
 // Load env first, before any module reads process.env.
 require('./bootstrap/loadEnv').loadEnv();
+const { initTracing } = require('./observability/tracing');
+const tracing = initTracing({ serviceName: 'lumina-web' }) as { shutdown: () => Promise<void> };
 const bootstrap = require('./bootstrap');
 
 // Validate required env/config deterministically.
@@ -23,13 +25,15 @@ const PORT = process.env.PORT || 3001;
 if (process.env.NODE_ENV !== 'test') {
   const shutdownManager = bootstrap.createShutdownManager({ logger });
 
+  shutdownManager.register('otel', () => tracing.shutdown());
+
   const server = app.listen(PORT, () => {
     console.log(`Photo upload server running on port ${PORT}`);
     console.log(`Health check: http://localhost:${PORT}/health`);
   });
 
   shutdownManager.register('httpServer', async () => {
-    await new Promise((resolve) => {
+    await new Promise<void>((resolve) => {
       try {
         server.close(() => resolve());
       } catch {
@@ -48,4 +52,3 @@ if (process.env.NODE_ENV !== 'test') {
 
 // Export after full configuration so tests/importers always get the complete app.
 module.exports = app;
-

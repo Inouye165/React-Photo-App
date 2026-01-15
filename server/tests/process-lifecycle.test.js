@@ -117,9 +117,9 @@ describe('Process Lifecycle - Uncaught Exception Handling', () => {
     expect(result.status).toBe(1);
   });
 
-  test('server.js should delegate lifecycle handlers to bootstrap', () => {
-    // Static analysis: server.js should register lifecycle handlers via bootstrap.
-    const serverPath = path.join(__dirname, '..', 'server.js');
+  test('server.ts should delegate lifecycle handlers to bootstrap', () => {
+    // Static analysis: server.ts should register lifecycle handlers via bootstrap.
+    const serverPath = path.join(__dirname, '..', 'server.ts');
     const serverCode = fs.readFileSync(serverPath, 'utf-8');
 
     expect(serverCode).toMatch(/registerProcessHandlers\s*\(/);

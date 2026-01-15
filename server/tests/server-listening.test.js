@@ -3,7 +3,7 @@
  * server not listening in certain NODE_ENV configurations.
  * 
  * Original Issue: Integration tests failed with "Health timeout" because
- * server.js only starts listening when NODE_ENV !== 'test' (line 222).
+ * server.ts only starts listening when NODE_ENV !== 'test'.
  * Integration tests need the server to actually listen on a port.
  * 
  * Fix: Integration tests use NODE_ENV=development with DATABASE_URL configured for PostgreSQL
@@ -24,7 +24,7 @@ describe('Server listening behavior', () => {
     
     // Clear require cache for server module
     Object.keys(require.cache).forEach(key => {
-      if (key.includes('server.js')) {
+      if (key.includes('server.ts')) {
         delete require.cache[key];
       }
     });
@@ -78,10 +78,10 @@ describe('Server listening behavior', () => {
   });
 
   test('server should be configured to listen in development mode', () => {
-    // Read server.js to verify the listening logic
+    // Read server.ts to verify the listening logic
     const fs = require('fs');
     const path = require('path');
-    const serverCode = fs.readFileSync(path.join(__dirname, '../server.js'), 'utf-8');
+    const serverCode = fs.readFileSync(path.join(__dirname, '../server.ts'), 'utf-8');
     
     // Verify the conditional listening code exists
     expect(serverCode).toMatch(/if\s*\(\s*process\.env\.NODE_ENV\s*!==\s*['"]test['"]\s*\)/);

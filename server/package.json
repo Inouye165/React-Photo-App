@@ -2,10 +2,10 @@
   "name": "photo-app-server",
   "version": "1.0.0",
   "description": "Backend server for photo upload and storage",
-  "main": "server.js",
+  "main": "server.ts",
   "scripts": {
     "build": "tsc -p tsconfig.json",
-    "start": "node dist/server.js",
+    "start": "tsx server.ts",
     "prestart": "npm run build && node dist/scripts/check-migrations.js && node dist/scripts/run-migrations.js",
     "dev": "nodemon --watch . --ext js,ts,json --ignore dist --exec \"npm run build && node dist/server.js\"",
     "worker": "node dist/worker.js",
@@ -34,6 +34,10 @@
     "@langchain/core": "^1.1.8",
     "@langchain/langgraph": "^1.0.1",
     "@langchain/openai": "^1.1.2",
+    "@opentelemetry/api": "^1.9.0",
+    "@opentelemetry/auto-instrumentations-node": "^0.68.0",
+    "@opentelemetry/exporter-trace-otlp-http": "^0.210.0",
+    "@opentelemetry/sdk-node": "^0.210.0",
     "@supabase/supabase-js": "^2.76.1",
     "axios": "^1.13.2",
     "bcryptjs": "^3.0.2",
@@ -93,6 +97,7 @@
     "nodemon": "^3.0.1",
     "supertest": "^6.3.3",
     "ts-node": "^10.9.2",
+    "tsx": "^4.21.0",
     "typescript": "^5.9.3"
   },
   "jest": {
