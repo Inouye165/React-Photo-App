@@ -5,7 +5,7 @@ import { MemoryRouter, Routes, Route } from 'react-router-dom';
 import { AuthProvider } from './contexts/AuthContext';
 import AuthWrapper from './layouts/AuthWrapper';
 import MainLayout from './layouts/MainLayout';
-import PhotoGalleryPage from './pages/PhotoGalleryPage.jsx';
+import PhotoGalleryPage from './pages/PhotoGalleryPage';
 import PhotoDetailPage from './pages/PhotoDetailPage.tsx';
 import PhotoEditPage from './pages/PhotoEditPage.tsx';
 import GlobalErrorBoundary from './components/GlobalErrorBoundary.jsx';
