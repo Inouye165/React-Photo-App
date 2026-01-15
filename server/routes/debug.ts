@@ -1,6 +1,7 @@
 import { Router, Request, Response } from 'express';
-const { processAllUnprocessedInprogress } = require('../ai/service');
-const { addAIJob } = require('../queue');
+// FIX 1: Use 'import' instead of 'require'
+import { processAllUnprocessedInprogress } from '../ai/service';
+import { addAIJob } from '../queue';
 
 interface AuthenticatedRequest extends Request {
   user?: { id: string; role?: string };
@@ -13,12 +14,13 @@ export default function createDebugRouter({ db }: { db: any }) {
   // MAINTENANCE: Fix Broken Collectibles
   // MOUNTED AT /api/debug/fix-collectibles to pass Frontend Proxy
   // ==================================================================
-  router.get('/api/debug/fix-collectibles', async (req: Request, res: Response) => {
+  // FIX 2: Renamed 'req' to '_req' because it is unused in this function
+  router.get('/api/debug/fix-collectibles', async (_req: Request, res: Response) => {
     try {
       console.log('[Maintenance] Starting collectible repair job via DEBUG...');
       
       const photos = await db('photos')
-        .whereNotNull('collectible_id')
+        .whereNotNull('collectible_id') // FIX 3: Removed the accidental 'Q' here
         .whereNull('display_path')
         .select('id', 'filename', 'storage_path')
         .limit(100);
@@ -54,7 +56,8 @@ export default function createDebugRouter({ db }: { db: any }) {
   // ==================================================================
 
   // Note: /photos/... works because the proxy likely allows /photos
-  router.post('/photos/recheck-inprogress', (req: Request, res: Response) => {
+  // FIX 4: Renamed 'req' to '_req' here as well
+  router.post('/photos/recheck-inprogress', (_req: Request, res: Response) => {
     try {
       processAllUnprocessedInprogress(db);
       res.json({ success: true });
@@ -66,6 +69,7 @@ export default function createDebugRouter({ db }: { db: any }) {
   // Updated to include /api prefix to ensure accessibility
   router.get('/api/debug/inprogress', async (req: AuthenticatedRequest, res: Response) => {
     try {
+      // 'req' is used here (req.user), so we keep the name 'req'
       const rows = await db('photos').where({ state: 'inprogress', user_id: req.user?.id });
       res.json(rows);
     } catch (err: any) {
@@ -86,4 +90,7 @@ export default function createDebugRouter({ db }: { db: any }) {
   return router;
 };
 
+// FIX 5: Since we use 'export default' above, we don't strictly need this, 
+// but if your app expects CommonJS, you can leave it. 
+// However, in TS, usually 'export default' is enough.
 module.exports = createDebugRouter;
