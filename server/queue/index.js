@@ -7,6 +7,7 @@ const metrics = require('../metrics');
 const { attachBullmqWorkerMetrics } = require('../metrics/bullmq');
 const { randomUUID } = require('crypto');
 const { sanitizeRequestId } = require('../lib/requestId');
+const { context, propagation, trace } = require('@opentelemetry/api');
 
 const QUEUE_NAME = "ai-processing";
 const PHOTO_STATUS_CHANNEL = 'photo:status:v1';
@@ -17,6 +18,7 @@ let aiQueue = null;
 let aiWorker = null;
 let redisAvailable = false;
 let initializationPromise = null;
+const tracer = trace.getTracer('bullmq');
 
 function withTimeout(promise, timeoutMs, label = 'operation') {
   const ms = Number(timeoutMs);
@@ -88,6 +90,37 @@ function shouldPublishTerminalFailure(job) {
   // Therefore this failure is attempt #(attemptsMade + 1). Terminal means it was the
   // last allowed attempt.
   return (attemptsMade + 1) >= attempts;
+}
+
+function isTracingEnabled() {
+  const flag = (process.env.OTEL_ENABLED || '').toLowerCase();
+  return flag === 'true' || flag === '1';
+}
+
+function injectTraceContext(jobData) {
+  if (!isTracingEnabled()) return;
+  const activeSpan = trace.getSpan(context.active());
+  if (!activeSpan || typeof activeSpan.spanContext !== 'function') return;
+
+  const spanContext = activeSpan.spanContext();
+  if (!trace.isSpanContextValid(spanContext)) return;
+
+  const carrier = {};
+  propagation.inject(context.active(), carrier);
+  if (carrier.traceparent) {
+    jobData.traceContext = {
+      traceparent: carrier.traceparent,
+      tracestate: carrier.tracestate,
+    };
+  }
+}
+
+function extractParentContext(traceContext) {
+  if (!isTracingEnabled()) return context.active();
+  if (!traceContext || (!traceContext.traceparent && !traceContext.tracestate)) {
+    return context.active();
+  }
+  return propagation.extract(context.active(), traceContext);
 }
 
 async function publishPhotoStatus({ redis, db, status, photoId, jobId }) {
@@ -190,14 +223,33 @@ const addAIJob = async (photoId, options = {}) => {
     backoff: { type: "exponential", delay: 60000 },
   };
 
-  logger.info('[QUEUE] Adding AI job', {
-    photoId,
-    requestId: requestId || undefined,
-    options: Object.keys(options).filter((k) => k !== 'requestId'),
-  });
-  const job = await aiQueue.add("process-photo-ai", jobData, jobOpts);
-  logger.info('[QUEUE] AI job added successfully', { photoId, jobId: job.id, requestId: requestId || undefined });
-  return job;
+  const jobName = 'process-photo-ai';
+
+  return tracer.startActiveSpan(
+    'bullmq.enqueue',
+    {
+      attributes: {
+        'queue.name': QUEUE_NAME,
+        'job.name': jobName,
+      },
+    },
+    async (span) => {
+      try {
+        injectTraceContext(jobData);
+
+        logger.info('[QUEUE] Adding AI job', {
+          photoId,
+          requestId: requestId || undefined,
+          options: Object.keys(options).filter((k) => k !== 'requestId'),
+        });
+        const job = await aiQueue.add(jobName, jobData, jobOpts);
+        logger.info('[QUEUE] AI job added successfully', { photoId, jobId: job.id, requestId: requestId || undefined });
+        return job;
+      } finally {
+        if (span && typeof span.end === 'function') span.end();
+      }
+    }
+  );
 };
 
 const addAppAssessmentJob = async (assessmentId) => {
@@ -488,14 +540,52 @@ const startWorker = async () => {
     }
 
     const processor = async (job) => {
-      const name = job?.name;
-      if (name === 'run-app-assessment') {
-        logger.info(`[WORKER] Processing app assessment job ${job?.id} (assessmentId: ${job?.data?.assessmentId})`);
-        return processAppAssessmentJob(job);
+      const name = job?.name || 'unknown';
+
+      if (!isTracingEnabled()) {
+        if (name === 'run-app-assessment') {
+          logger.info(`[WORKER] Processing app assessment job ${job?.id} (assessmentId: ${job?.data?.assessmentId})`);
+          return processAppAssessmentJob(job);
+        }
+
+        // Default/legacy
+        return processPhotoAIJob(job);
       }
 
-      // Default/legacy
-      return processPhotoAIJob(job);
+      const parentContext = extractParentContext(job?.data?.traceContext);
+      const attemptsMade = Number(job?.attemptsMade);
+      const attempt = Number.isFinite(attemptsMade) ? attemptsMade + 1 : undefined;
+
+      const attributes = {
+        'queue.name': QUEUE_NAME,
+        'job.name': name,
+      };
+
+      if (job?.id != null) attributes['job.id'] = String(job.id);
+      if (attempt != null) attributes['job.attempt'] = attempt;
+
+      return tracer.startActiveSpan(
+        'bullmq.process',
+        { attributes },
+        parentContext,
+        async (span) => {
+          try {
+            if (name === 'run-app-assessment') {
+              logger.info(`[WORKER] Processing app assessment job ${job?.id} (assessmentId: ${job?.data?.assessmentId})`);
+              return processAppAssessmentJob(job);
+            }
+
+            // Default/legacy
+            return processPhotoAIJob(job);
+          } catch (err) {
+            if (span?.recordException) span.recordException(err);
+            if (span?.setStatus) span.setStatus({ code: 2, message: err?.message || String(err) });
+            throw err;
+          } finally {
+            if (span && typeof span.end === 'function') span.end();
+          }
+        }
+      );
     };
 
     aiWorker = new BullMQWorker(QUEUE_NAME, processor, {

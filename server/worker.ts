@@ -14,7 +14,9 @@
 // It imports the worker instance from the queue module,
 // which automatically starts it and connects it to Redis.
 import './env'; // centralized, idempotent env loader
+import { initTracing } from './observability/tracing';
 import logger from './logger';
+const tracing = initTracing({ serviceName: 'lumina-worker' });
 console.log('[AI Debug] Worker entrypoint reached');
 logger.info('Starting AI Worker...');
 
@@ -53,6 +55,11 @@ if (process.env.NODE_ENV !== 'production' && !process.env.GOOGLE_MAPS_API_KEY) {
       // Keep the process alive
       process.on('SIGINT', async () => {
         logger.info('[WORKER] Shutting down gracefully...');
+        try {
+          await tracing.shutdown();
+        } catch {
+          // best-effort
+        }
         if (aiWorker) {
           await aiWorker.close();
         }

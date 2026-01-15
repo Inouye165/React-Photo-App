@@ -1,5 +1,7 @@
 // Load env first, before any module reads process.env.
 require('./bootstrap/loadEnv').loadEnv();
+const { initTracing } = require('./observability/tracing');
+const tracing = initTracing({ serviceName: 'lumina-web' });
 const bootstrap = require('./bootstrap');
 
 // Validate required env/config deterministically.
@@ -22,6 +24,8 @@ const PORT = process.env.PORT || 3001;
 // Start server only if not in test mode
 if (process.env.NODE_ENV !== 'test') {
   const shutdownManager = bootstrap.createShutdownManager({ logger });
+
+  shutdownManager.register('otel', () => tracing.shutdown());
 
   const server = app.listen(PORT, () => {
     console.log(`Photo upload server running on port ${PORT}`);
