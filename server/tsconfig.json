@@ -24,6 +24,7 @@
     "working",
     "coverage",
     "test-results",
-    "routes/photos.js"
+    "routes/photos.js",
+    "bootstrap/registerRoutes.js"
   ]
 }
