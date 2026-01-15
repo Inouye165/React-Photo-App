@@ -1,10 +1,6 @@
 import { Router, Request, Response } from 'express';
-const { processAllUnprocessedInprogress, extractLatLon } = require('../ai/service');
-const { generateThumbnail } = require('../media/image');
-const supabase = require('../lib/supabaseClient');
-const logger = require('../logger');
+const { processAllUnprocessedInprogress } = require('../ai/service');
 const { addAIJob } = require('../queue');
-const path = require('path');
 
 interface AuthenticatedRequest extends Request {
   user?: { id: string; role?: string };
