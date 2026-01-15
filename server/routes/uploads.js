@@ -397,6 +397,31 @@ module.exports = function createUploadsRouter({ db }) {
         logger.warn('Could not enqueue background job:', queueErr.message);
       }
 
+      // If the queue is unavailable, attempt a best-effort synchronous fallback
+      // for metadata + thumbnails so derivatives are not stuck pending forever.
+      const fallbackFlag = String(process.env.UPLOAD_FALLBACK_PROCESSING || '').toLowerCase();
+      const fallbackEnabled = fallbackFlag
+        ? ['1', 'true', 'yes', 'on'].includes(fallbackFlag)
+        : process.env.NODE_ENV !== 'test';
+
+      if (!jobEnqueued && fallbackEnabled) {
+        try {
+          const { processUploadedPhoto } = require('../media/backgroundProcessor');
+          await processUploadedPhoto(db, insertedPhoto.id, {
+            processMetadata: true,
+            generateThumbnail: true,
+            generateDisplay: true,
+          });
+          logger.info('[upload] Fallback processing completed', { photoId, userId: req.user.id });
+        } catch (fallbackErr) {
+          logger.warn('[upload] Fallback processing failed', {
+            photoId,
+            userId: req.user.id,
+            error: fallbackErr,
+          });
+        }
+      }
+
       // Return 202 Accepted (async processing in background)
       // Or 200 OK if no background queue
       const statusCode = jobEnqueued ? 202 : 200;
@@ -406,13 +431,15 @@ module.exports = function createUploadsRouter({ db }) {
                             immediateMetadata.GPSDestBearing || 
                             null;
       
+      const processing = jobEnqueued ? 'queued' : 'immediate';
+
       res.status(statusCode).json({
         success: true,
         filename: uploadResult.filename,
         hash: uploadResult.hash,
         path: storagePath,
         photoId: insertedPhoto.id,
-        processing: jobEnqueued ? 'queued' : 'immediate',
+        processing,
         // Include immediate metadata in response (especially compass direction)
         metadata: {
           ...immediateMetadata,
