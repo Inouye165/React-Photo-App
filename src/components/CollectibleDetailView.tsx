@@ -11,6 +11,8 @@ import { request, API_BASE_URL } from '../api/httpClient';
 import { getHeadersForGetRequestAsync } from '../api/auth';
 import { deletePhoto } from '../api/photos';
 
+import { Trash2 } from 'lucide-react';
+
 import PriceRangeVisual from './PriceRangeVisual';
 import PriceHistoryList from './PriceHistoryList';
 import AuthenticatedImage from './AuthenticatedImage';
@@ -513,6 +515,7 @@ export default function CollectibleDetailView({ photo, collectibleData, aiInsigh
               return (
                 <div
                   key={String(p.id)}
+                  className="collectible-ref-photo-tile"
                   style={{
                     borderRadius: '12px',
                     overflow: 'hidden',
@@ -528,26 +531,10 @@ export default function CollectibleDetailView({ photo, collectibleData, aiInsigh
                       type="button"
                       aria-label="Delete photo"
                       onClick={() => handleRequestDeletePhoto(p.id)}
-                      style={{
-                        position: 'absolute',
-                        top: '8px',
-                        right: '8px',
-                        width: '30px',
-                        height: '30px',
-                        borderRadius: '10px',
-                        border: '1px solid rgba(148, 163, 184, 0.6)',
-                        background: 'rgba(255, 255, 255, 0.92)',
-                        color: '#b91c1c',
-                        fontSize: '16px',
-                        fontWeight: 800,
-                        cursor: 'pointer',
-                        display: 'flex',
-                        alignItems: 'center',
-                        justifyContent: 'center',
-                      }}
+                      className="collectible-ref-photo-delete"
                       title="Delete"
                     >
-                      🗑️
+                      <Trash2 size={14} aria-hidden="true" focusable="false" />
                     </button>
                   )}
 
