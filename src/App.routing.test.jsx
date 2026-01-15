@@ -34,11 +34,11 @@ vi.mock('./api', async (importOriginal) => {
   };
 });
 
-vi.mock('./hooks/usePhotoPrivileges.js', () => ({
+vi.mock('./hooks/usePhotoPrivileges', () => ({
   default: vi.fn(() => ({})),
 }));
 
-vi.mock('./hooks/useLocalPhotoPicker.js', () => ({
+vi.mock('./hooks/useLocalPhotoPicker', () => ({
   default: vi.fn(() => ({
     filteredLocalPhotos: [],
     handleSelectFolder: vi.fn(),
@@ -51,7 +51,7 @@ vi.mock('./hooks/useLocalPhotoPicker.js', () => ({
   })),
 }));
 
-vi.mock('./hooks/useSignedThumbnails.js', () => ({
+vi.mock('./hooks/useSignedThumbnails', () => ({
   default: vi.fn(() => ({
     getSignedUrl: vi.fn((url) => url),
   })),
