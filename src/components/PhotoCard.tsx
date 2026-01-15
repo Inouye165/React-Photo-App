@@ -124,6 +124,9 @@ export default function PhotoCard({
   const [imageLoaded, setImageLoaded] = useState(false);
   const [thumbVariant, setThumbVariant] = useState<'small' | 'large' | null>(null);
 
+  const smallThumbnail = photo.smallThumbnailUrl ?? photo.smallThumbnail ?? null;
+  const mediumThumbnail = photo.thumbnailUrl ?? photo.thumbnail ?? null;
+
   // Check if this photo was just uploaded and needs transition spinner
   const isJustUploaded = useStore((state) => state.justUploadedPhotoIds.has(photo.id));
   const removeJustUploadedMark = useStore((state) => state.removeJustUploadedMark);
@@ -162,12 +165,12 @@ export default function PhotoCard({
 
   useEffect(() => {
     // Reset thumbnail variant when photo changes.
-    if (photo?.smallThumbnail) setThumbVariant('small');
-    else if (photo?.thumbnail) setThumbVariant('large');
+    if (smallThumbnail) setThumbVariant('small');
+    else if (mediumThumbnail) setThumbVariant('large');
     else setThumbVariant(null);
     setImageError(false);
     setImageLoaded(false);
-  }, [photo?.id, photo?.smallThumbnail, photo?.thumbnail]);
+  }, [photo?.id, smallThumbnail, mediumThumbnail]);
 
   // Get image URL - prefer thumbnail for performance, fallback to full image
   const getImageUrl = (): { url: string | null; needsAuth: boolean } => {
@@ -178,7 +181,7 @@ export default function PhotoCard({
 
     // Gallery grid should never fall back to full-resolution images automatically.
     // If thumbnails fail, we show a placeholder instead.
-    const selectedThumb = thumbVariant === 'small' ? photo.smallThumbnail : thumbVariant === 'large' ? photo.thumbnail : null;
+    const selectedThumb = thumbVariant === 'small' ? smallThumbnail : thumbVariant === 'large' ? mediumThumbnail : null;
     if (selectedThumb) {
       // If URL is already absolute/public, render directly.
       if (
@@ -274,12 +277,15 @@ export default function PhotoCard({
               src={imageUrl}
               alt={photo.caption || photo.filename || 'Photo thumbnail'}
               loading="lazy"
+              decoding="async"
+              width={320}
+              height={240}
               className={`block w-full h-auto transition-opacity duration-300 ${
                 imageLoaded ? 'opacity-100' : 'opacity-0'
               }`}
               onLoad={() => setImageLoaded(true)}
               onError={() => {
-                if (thumbVariant === 'small' && photo.thumbnail) {
+                if (thumbVariant === 'small' && mediumThumbnail) {
                   setThumbVariant('large');
                   setImageLoaded(false);
                   setImageError(false);
@@ -295,12 +301,15 @@ export default function PhotoCard({
               src={imageUrl}
               alt={photo.caption || photo.filename || 'Photo thumbnail'}
               loading="lazy"
+              decoding="async"
+              width={320}
+              height={240}
               className={`block w-full h-auto transition-opacity duration-300 ${
                 imageLoaded ? 'opacity-100' : 'opacity-0'
               }`}
               onLoad={() => setImageLoaded(true)}
               onError={() => {
-                if (thumbVariant === 'small' && photo.thumbnail) {
+                if (thumbVariant === 'small' && mediumThumbnail) {
                   setThumbVariant('large');
                   setImageLoaded(false);
                   setImageError(false);

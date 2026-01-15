@@ -3,6 +3,8 @@ const jwt = require('jsonwebtoken');
 
 process.env.NODE_ENV = 'test';
 process.env.JWT_SECRET = 'test-jwt-secret-display-cdn';
+const PREV_MEDIA_REDIRECT_ENABLED = process.env.MEDIA_REDIRECT_ENABLED;
+process.env.MEDIA_REDIRECT_ENABLED = 'true';
 
 async function withDisplayBypassRedirect(fn) {
   const prev = process.env.DISPLAY_BYPASS_REDIRECT;
@@ -21,6 +23,28 @@ async function withDisplayBypassRedirect(fn) {
 jest.mock('../media/image', () => ({
   convertHeicToJpegBuffer: jest.fn()
 }));
+
+jest.mock('../lib/redis', () => {
+  const redisStore = new Map();
+  const mockRedis = {
+    get: jest.fn((key) => Promise.resolve(redisStore.get(key) ?? null)),
+    set: jest.fn((key, value) => {
+      redisStore.set(key, value);
+      return Promise.resolve('OK');
+    })
+  };
+
+  return {
+    getRedisClient: jest.fn(() => mockRedis),
+    setRedisValueWithTtl: jest.fn(async (client, key, _ttlSeconds, value) => {
+      await client.set(key, value, 'EX');
+    }),
+    __mock: {
+      redisStore,
+      mockRedis
+    }
+  };
+});
 
 const { convertHeicToJpegBuffer } = require('../media/image');
 
@@ -95,6 +119,7 @@ jest.mock('../lib/supabaseClient', () => {
 const app = require('../server');
 const db = require('../db/index');
 const supabase = require('../lib/supabaseClient');
+const redis = require('../lib/redis');
 
 const storageApi = supabase.__mock.storageApi;
 
@@ -112,10 +137,18 @@ describe('Display CDN redirect integration', () => {
     jest.clearAllMocks();
     storageApi.createSignedUrl.mockReset();
     storageApi.download.mockReset();
+    if (redis.__mock?.redisStore) {
+      redis.__mock.redisStore.clear();
+    }
   });
 
   afterAll(async () => {
     await db.destroy();
+    if (PREV_MEDIA_REDIRECT_ENABLED === undefined) {
+      delete process.env.MEDIA_REDIRECT_ENABLED;
+    } else {
+      process.env.MEDIA_REDIRECT_ENABLED = PREV_MEDIA_REDIRECT_ENABLED;
+    }
   });
 
   test('GET /display/image/:photoId redirects for non-HEIC and does not download/convert', async () => {
@@ -147,9 +180,49 @@ describe('Display CDN redirect integration', () => {
     expect(res.headers.location).toBeTruthy();
     expect(res.headers.location).toMatch(/\/storage\/v1\/object\/sign\//);
     expect(res.headers['cache-control']).toContain('private');
+    expect(res.headers['cache-control']).toContain('no-store');
+    expect(res.headers['cache-control']).toContain('no-store');
 
     expect(storageApi.download).not.toHaveBeenCalled();
     expect(convertHeicToJpegBuffer).not.toHaveBeenCalled();
+
+    await db('photos').where({ id: photoId }).delete();
+  });
+
+  test('GET /display/image/:photoId reuses cached signed URL', async () => {
+    const filename = `cdn-cache-${uniqueSuffix()}.jpg`;
+    const storagePath = `working/${filename}`;
+
+    const photoId = await insertPhotoAndGetId(db, {
+      user_id: TEST_USER_ID,
+      filename,
+      state: 'working',
+      hash: `h-${filename}`,
+      file_size: 123,
+      metadata: '{}',
+      storage_path: storagePath,
+      created_at: new Date().toISOString(),
+      updated_at: new Date().toISOString()
+    });
+
+    storageApi.createSignedUrl.mockResolvedValue({
+      data: { signedUrl: `https://example.supabase.co/storage/v1/object/sign/photos/${storagePath}?token=fake` },
+      error: null
+    });
+
+    const first = await request(app)
+      .get(`/display/image/${photoId}`)
+      .set('Authorization', `Bearer ${authToken}`)
+      .expect(302);
+
+    const second = await request(app)
+      .get(`/display/image/${photoId}`)
+      .set('Authorization', `Bearer ${authToken}`)
+      .expect(302);
+
+    expect(first.headers.location).toBeTruthy();
+    expect(second.headers.location).toBe(first.headers.location);
+    expect(storageApi.createSignedUrl).toHaveBeenCalledTimes(1);
 
     await db('photos').where({ id: photoId }).delete();
   });
@@ -218,6 +291,8 @@ describe('Display CDN redirect integration', () => {
       .expect(302);
 
     expect(res.headers.location).toContain(displayPath);
+    expect(res.headers['cache-control']).toContain('private');
+    expect(res.headers['cache-control']).toContain('no-store');
     expect(storageApi.download).not.toHaveBeenCalled();
     expect(convertHeicToJpegBuffer).not.toHaveBeenCalled();
 

@@ -57,10 +57,11 @@ export default function PhotoTable({
             <div className="grid grid-cols-15 gap-4 text-sm items-center">
               <div className="col-span-2">
                 <div className="relative inline-block">
-                  {photo.thumbnail ? (
+                  {photo.thumbnail || photo.thumbnailUrl || photo.smallThumbnailUrl ? (
                     (() => {
+                      const preferredThumb = photo.smallThumbnailUrl || photo.thumbnailUrl || photo.thumbnail;
                       const signedUrl = getSignedUrl ? getSignedUrl(photo) : null;
-                      const imageUrl = signedUrl || toUrl(photo.thumbnail, apiBaseUrl);
+                      const imageUrl = signedUrl || toUrl(preferredThumb, apiBaseUrl);
                       const needsAuth = !signedUrl;
                       
                       return needsAuth ? (
@@ -68,12 +69,18 @@ export default function PhotoTable({
                           src={imageUrl}
                           alt={photo.filename}
                           className="max-h-20 rounded shadow bg-white"
+                          decoding="async"
+                          width={80}
+                          height={80}
                         />
                       ) : (
                         <img
                           src={imageUrl}
                           alt={photo.filename}
                           className="max-h-20 rounded shadow bg-white"
+                          decoding="async"
+                          width={80}
+                          height={80}
                         />
                       );
                     })()

@@ -6,14 +6,14 @@ import { API_BASE_URL } from '../api';
 describe('useSignedThumbnails Hook', () => {
   const mockToken = 'test-token-123';
   const mockPhotos = [
-    { id: 1, thumbnail: '/display/thumbnails/hash1.jpg' },
-    { id: 2, thumbnail: '/display/thumbnails/hash2.jpg' },
-    { id: 3, thumbnail: '/display/thumbnails/hash3.jpg' },
+    { id: 1, thumbnailUrl: '/display/thumbnails/hash1.jpg' },
+    { id: 2, thumbnailUrl: '/display/thumbnails/hash2.jpg' },
+    { id: 3, thumbnailUrl: '/display/thumbnails/hash3.jpg' },
   ];
 
   const mockPhotosAlreadySigned = [
-    { id: 1, thumbnail: '/display/thumbnails/hash1.jpg?sig=test-sig&exp=123456' },
-    { id: 2, thumbnail: '/display/thumbnails/hash2.jpg?sig=test-sig&exp=123456' },
+    { id: 1, thumbnailUrl: '/display/thumbnails/hash1.jpg?sig=test-sig&exp=123456' },
+    { id: 2, thumbnailUrl: '/display/thumbnails/hash2.jpg?sig=test-sig&exp=123456' },
   ];
 
   beforeEach(() => {

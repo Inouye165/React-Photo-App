@@ -6,7 +6,10 @@ type PhotoId = string | number;
 type PhotoForSignedThumbnails = {
   id: PhotoId;
   thumbnail?: string | null;
+  thumbnailUrl?: string | null;
+  smallThumbnailUrl?: string | null;
   url?: string | null;
+  fullUrl?: string | null;
 };
 
 type SignedThumbnail = {
@@ -153,12 +156,13 @@ export default function useSignedThumbnails(
 
     const photosToFetch = photos.filter((photo) => {
       const key = String(photo.id);
+      const thumbUrl = photo.thumbnailUrl || photo.thumbnail || null;
       return (
-        !!photo.thumbnail &&
+        !!thumbUrl &&
         photo.id !== undefined &&
         !fetchedPhotoIds.current.has(key) &&
         !signedUrls[key] &&
-        !isSignedThumbnailUrl(photo.thumbnail) &&
+        !isSignedThumbnailUrl(thumbUrl) &&
         !noThumbnailPhotoIds.current.has(key)
       );
     });
@@ -224,20 +228,22 @@ export default function useSignedThumbnails(
         return null;
       }
 
-      if (type === 'full' && photo.url) {
-        if (photo.url.startsWith('http') || photo.url.startsWith('data:')) {
-          return photo.url;
+      if (type === 'full') {
+        const fullUrl = photo.fullUrl || photo.url;
+        if (fullUrl && (fullUrl.startsWith('http') || fullUrl.startsWith('data:'))) {
+          return fullUrl;
         }
         return null;
       }
 
-      if (!photo.thumbnail) {
+      const thumbUrl = photo.thumbnailUrl || photo.thumbnail;
+      if (!thumbUrl) {
         return null;
       }
 
-      if (type === 'thumbnail' && isSignedThumbnailUrl(photo.thumbnail)) {
-        if (photo.thumbnail.startsWith('http')) return photo.thumbnail;
-        return `${API_BASE_URL}${photo.thumbnail}`;
+      if (type === 'thumbnail' && isSignedThumbnailUrl(thumbUrl)) {
+        if (thumbUrl.startsWith('http')) return thumbUrl;
+        return `${API_BASE_URL}${thumbUrl}`;
       }
 
       const signed = signedUrls[String(photo.id)];

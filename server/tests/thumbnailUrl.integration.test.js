@@ -5,6 +5,8 @@ const jwt = require('jsonwebtoken');
 process.env.NODE_ENV = 'test';
 process.env.JWT_SECRET = 'test-jwt-secret-thumbnail-integration';
 process.env.THUMBNAIL_SIGNING_SECRET = 'test-thumbnail-signing-secret';
+const PREV_MEDIA_REDIRECT_ENABLED = process.env.MEDIA_REDIRECT_ENABLED;
+process.env.MEDIA_REDIRECT_ENABLED = 'true';
 
 const app = require('../server');
 const db = require('../db/index');
@@ -58,6 +60,11 @@ describe('Thumbnail URL API - Integration Tests', () => {
 
   afterAll(async () => {
     await db.destroy();
+    if (PREV_MEDIA_REDIRECT_ENABLED === undefined) {
+      delete process.env.MEDIA_REDIRECT_ENABLED;
+    } else {
+      process.env.MEDIA_REDIRECT_ENABLED = PREV_MEDIA_REDIRECT_ENABLED;
+    }
   });
 
   describe('GET /photos/:id/thumbnail-url', () => {
@@ -226,6 +233,11 @@ describe('Thumbnail URL API - Integration Tests', () => {
       const listed = response.body.photos.find((p) => p && p.id === testPhotoId);
       expect(listed).toBeTruthy();
       expect(listed.thumbnail).toMatch(/\/display\/thumbnails\/[a-z0-9]+\.jpg\?sig=.*&exp=\d+/);
+      expect(listed.thumbnailUrl).toMatch(/\/display\/thumbnails\/[a-z0-9]+\.jpg\?sig=.*&exp=\d+/);
+      expect(listed.smallThumbnailUrl || listed.smallThumbnail).toMatch(/\/display\/thumbnails\/[a-z0-9]+\.jpg\?sig=.*&exp=\d+/);
+      if (listed.smallThumbnailUrl) {
+        expect(listed.smallThumbnailUrl).toBe(listed.thumbnailUrl);
+      }
     });
   });
 
@@ -257,8 +269,8 @@ describe('Thumbnail URL API - Integration Tests', () => {
 
       expect(imageResponse.headers.location).toBeTruthy();
       expect(imageResponse.headers.location).toMatch(/\/storage\/v1\/object\/sign\//);
-      expect(imageResponse.headers['cache-control']).toContain('max-age=');
-      expect(imageResponse.headers['cache-control']).toContain('immutable');
+      expect(imageResponse.headers['cache-control']).toContain('private');
+      expect(imageResponse.headers['cache-control']).toContain('no-store');
 
       expect(storageApi.download).not.toHaveBeenCalled();
     });

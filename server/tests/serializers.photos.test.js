@@ -43,6 +43,9 @@ describe('serializers/photos mappers', () => {
     );
 
     expect(dto.thumbnail).toBe('/display/thumbnails/h123.jpg?sig=testsig&exp=123');
+    expect(dto.thumbnailUrl).toBe('/display/thumbnails/h123.jpg?sig=testsig&exp=123');
+    expect(dto.smallThumbnail).toBe('/display/thumbnails/h123.jpg?sig=testsig&exp=123');
+    expect(dto.smallThumbnailUrl).toBe('/display/thumbnails/h123.jpg?sig=testsig&exp=123');
   });
 
   test('mapPhotoRowToListDto returns signed smallThumbnail when thumb_small_path exists', async () => {
@@ -63,6 +66,8 @@ describe('serializers/photos mappers', () => {
 
     expect(dto.thumbnail).toBe('/display/thumbnails/h7.jpg?sig=testsig&exp=123');
     expect(dto.smallThumbnail).toBe('/display/thumbnails/h7-sm.jpg?sig=testsig&exp=123');
+    expect(dto.thumbnailUrl).toBe('/display/thumbnails/h7.jpg?sig=testsig&exp=123');
+    expect(dto.smallThumbnailUrl).toBe('/display/thumbnails/h7-sm.jpg?sig=testsig&exp=123');
   });
 
   test('mapPhotoRowToDetailDto preserves metadata default {} and parses JSON-ish fields', () => {
@@ -84,14 +89,20 @@ describe('serializers/photos mappers', () => {
       classification: 'scenery',
     };
 
-    const dto = mapPhotoRowToDetailDto(row);
+    const dto = mapPhotoRowToDetailDto(row, {
+      ttlSeconds: 3600,
+      signThumbnailUrl: () => ({ sig: 'testsig', exp: 123 }),
+    });
 
     expect(dto.metadata).toEqual({});
     expect(dto.textStyle).toEqual({ size: 12 });
     expect(dto.poi_analysis).toEqual({ x: 1 });
     expect(dto.aiModelHistory).toBeNull();
     expect(dto.url).toBe('/display/image/5');
+    expect(dto.fullUrl).toBe('/display/image/5');
     expect(dto.originalUrl).toBe('/photos/5/original');
     expect(dto.thumbnail).toBeNull();
+    expect(dto.thumbnailUrl).toBeNull();
+    expect(dto.smallThumbnailUrl).toBeNull();
   });
 });

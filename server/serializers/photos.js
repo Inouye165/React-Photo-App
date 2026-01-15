@@ -42,6 +42,7 @@ async function mapPhotoRowToListDto(row, { signThumbnailUrl, ttlSeconds } = {}) 
   const smallThumbnailUrl = smallThumbPath
     ? buildSignedThumbnailDisplayUrl(smallThumbPath, { signThumbnailUrl, ttlSeconds })
     : null;
+  const resolvedSmallThumbnailUrl = smallThumbnailUrl || thumbnailUrl;
 
   const photoUrl = `/display/image/${row.id}`;
   const originalUrl = `/photos/${row.id}/original`;
@@ -64,21 +65,35 @@ async function mapPhotoRowToListDto(row, { signThumbnailUrl, ttlSeconds } = {}) 
     url: photoUrl,
     originalUrl,
     thumbnail: thumbnailUrl,
-    smallThumbnail: smallThumbnailUrl,
+    smallThumbnail: resolvedSmallThumbnailUrl,
+    thumbnailUrl,
+    smallThumbnailUrl: resolvedSmallThumbnailUrl,
     aiModelHistory,
     poi_analysis: poiAnalysis,
     classification: row.classification,
   };
 }
 
-function mapPhotoRowToDetailDto(row) {
+function mapPhotoRowToDetailDto(row, { signThumbnailUrl, ttlSeconds } = {}) {
   const metadata = safeParseObject(row.metadata) || {};
   const textStyle = safeParseObject(row.text_style);
   const aiModelHistory = row.ai_model_history ? safeParseUnknown(row.ai_model_history) : null;
   const poiAnalysis = row.poi_analysis ? safeParseUnknown(row.poi_analysis) : null;
 
-  const thumbnail = row.hash ? `/display/thumbnails/${row.hash}.jpg` : null;
+  const largeThumbPath = row.thumb_path || (row.hash ? `thumbnails/${row.hash}.jpg` : null);
+  const smallThumbPath = row.thumb_small_path || null;
+  const directThumbnailUrl = row.hash ? `/display/thumbnails/${row.hash}.jpg` : null;
+
+  const thumbnailUrl = largeThumbPath
+    ? buildSignedThumbnailDisplayUrl(largeThumbPath, { signThumbnailUrl, ttlSeconds }) || directThumbnailUrl
+    : directThumbnailUrl;
+  const smallThumbnailUrl = smallThumbPath
+    ? buildSignedThumbnailDisplayUrl(smallThumbPath, { signThumbnailUrl, ttlSeconds })
+    : null;
+  const resolvedSmallThumbnailUrl = smallThumbnailUrl || thumbnailUrl;
+
   const url = `/display/image/${row.id}`;
+  const fullUrl = url;
   const originalUrl = `/photos/${row.id}/original`;
 
   let collectible_insights = null;
@@ -111,7 +126,11 @@ function mapPhotoRowToDetailDto(row) {
     storagePath: row.storage_path,
     url,
     originalUrl,
-    thumbnail,
+    thumbnail: thumbnailUrl,
+    smallThumbnail: resolvedSmallThumbnailUrl,
+    thumbnailUrl,
+    smallThumbnailUrl: resolvedSmallThumbnailUrl,
+    fullUrl,
     aiModelHistory,
     poi_analysis: poiAnalysis,
     collectible_insights,
