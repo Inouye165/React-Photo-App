@@ -5,7 +5,7 @@ import GlobalErrorBoundary from './components/GlobalErrorBoundary.jsx';
 import MainLayout from './layouts/MainLayout';
 import SmartRouter from './components/SmartRouter.tsx';
 import IdentityGate from './components/IdentityGate.tsx';
-import PhotoGalleryPage from './pages/PhotoGalleryPage.jsx';
+import PhotoGalleryPage from './pages/PhotoGalleryPage';
 import PhotoDetailPage from './pages/PhotoDetailPage.tsx';
 import PhotoEditPage from './pages/PhotoEditPage.tsx';
 import UploadPage from './pages/UploadPage.tsx';
