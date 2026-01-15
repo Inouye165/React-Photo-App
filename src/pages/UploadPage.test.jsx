@@ -21,7 +21,7 @@ vi.mock('react-router-dom', async () => {
   };
 });
 
-vi.mock('../hooks/useLocalPhotoPicker.js', () => ({
+vi.mock('../hooks/useLocalPhotoPicker', () => ({
   default: () => ({
     filteredLocalPhotos: [],
     handleSelectFolder: vi.fn(),
