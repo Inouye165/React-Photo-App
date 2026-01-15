@@ -69,6 +69,7 @@
   },
   "overrides": {
     "cookie": "0.7.0",
+    "diff": "8.0.3",
     "jest-openapi": {
       "openapi-validator": "0.14.1"
     }
