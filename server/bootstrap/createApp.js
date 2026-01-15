@@ -7,7 +7,17 @@ function createApp(options = {}) {
   const supabase = options.supabase || require('../lib/supabaseClient');
 
   const { registerMiddleware } = require('./registerMiddleware');
-  const { registerRoutes } = require('./registerRoutes');
+  let registerRoutes;
+  try {
+    ({ registerRoutes } = require('./registerRoutes'));
+  } catch (error) {
+    const message = error && error.message ? String(error.message) : '';
+    if (error && error.code === 'MODULE_NOT_FOUND' && message.includes('registerRoutes')) {
+      ({ registerRoutes } = require('./registerRoutes.ts'));
+    } else {
+      throw error;
+    }
+  }
 
   const app = express();
 
