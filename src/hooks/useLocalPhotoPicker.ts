@@ -1,16 +1,11 @@
 import { useCallback, useMemo, useRef } from 'react';
 import { parse } from 'exifr';
 import { uploadPhotoToServer } from '../api';
-import { compressForUpload, generateClientThumbnail } from '../utils/clientImageProcessing';
 import useStore from '../store';
 import type { UploadPickerLocalPhoto } from '../store/uploadPickerSlice';
 import type { UploadResponse } from '../types/global';
-
-/**
- * Classification types for AI analysis
- * 'none' = skip AI analysis, just store the photo
- */
-export type AnalysisType = 'none' | 'scenery' | 'food' | 'receipt' | 'document' | 'collectible' | 'todo';
+import type { AnalysisType } from '../types/uploads';
+import { convertToJpegIfHeic, createThumbnailGenerator, startBackgroundUpload } from '../utils/uploadPipeline';
 
 /**
  * File object with optional handle from File System Access API
@@ -85,30 +80,7 @@ export default function useLocalPhotoPicker({
   const exifParseTimeoutMs = Number(import.meta.env.VITE_EXIF_PARSE_TIMEOUT_MS || 1500);
   const thumbnailTimeoutMs = Number(import.meta.env.VITE_THUMBNAIL_GENERATION_TIMEOUT_MS || 5000);
 
-  const generateThumbnailWithTimeout = useCallback(
-    async (file: File): Promise<Blob | null> => {
-      if (!Number.isFinite(thumbnailTimeoutMs) || thumbnailTimeoutMs <= 0) {
-        return await generateClientThumbnail(file);
-      }
-
-      return await new Promise((resolve, reject) => {
-        const timer = setTimeout(() => {
-          reject(new Error(`Thumbnail generation timeout after ${thumbnailTimeoutMs}ms`));
-        }, thumbnailTimeoutMs);
-
-        Promise.resolve(generateClientThumbnail(file))
-          .then((value) => {
-            clearTimeout(timer);
-            resolve(value);
-          })
-          .catch((err) => {
-            clearTimeout(timer);
-            reject(err);
-          });
-      });
-    },
-    [thumbnailTimeoutMs],
-  );
+  const generateThumbnailWithTimeout = useCallback(createThumbnailGenerator(thumbnailTimeoutMs), [thumbnailTimeoutMs]);
 
   const parseExifWithTimeout = useCallback(
     async (file: File) => {
@@ -135,39 +107,7 @@ export default function useLocalPhotoPicker({
     [exifParseTimeoutMs],
   );
 
-  const isHeicLikeFile = useCallback((file: File): boolean => {
-    const name = file?.name?.toLowerCase() || '';
-    const type = file?.type?.toLowerCase() || '';
-    return (
-      name.endsWith('.heic') ||
-      name.endsWith('.heif') ||
-      type === 'image/heic' ||
-      type === 'image/heif'
-    );
-  }, []);
-
-  const toJpegFileName = useCallback((originalName: string): string => {
-    if (/\.(heic|heif)$/i.test(originalName)) {
-      return originalName.replace(/\.(heic|heif)$/i, '.jpg');
-    }
-
-    const lastDot = originalName.lastIndexOf('.');
-    if (lastDot === -1) return `${originalName}.jpg`;
-    return `${originalName.slice(0, lastDot)}.jpg`;
-  }, []);
-
-  const convertToJpegIfHeic = useCallback(
-    async (file: File): Promise<File> => {
-      if (!isHeicLikeFile(file)) return file;
-
-      const result = await compressForUpload(file);
-      return new File([result.blob], toJpegFileName(file.name), {
-        type: 'image/jpeg',
-        lastModified: file.lastModified,
-      });
-    },
-    [isHeicLikeFile, toJpegFileName]
-  );
+  const convertToJpegIfHeicSafe = useCallback((file: File) => convertToJpegIfHeic(file), []);
 
   /**
    * Shared file processing logic: parses EXIF data from files
@@ -344,7 +284,7 @@ export default function useLocalPhotoPicker({
           let thumbnailBlob: Blob | null = null;
 
           try {
-            fileForUpload = await convertToJpegIfHeic(photo.file);
+            fileForUpload = await convertToJpegIfHeicSafe(photo.file);
           } catch (err) {
             encounteredError = err as Error;
             const message = err instanceof Error ? err.message : String(err);
@@ -402,7 +342,7 @@ export default function useLocalPhotoPicker({
         pickerCommand.finishUploads(encounteredError ? 'error' : 'complete');
       }
     },
-    [convertToJpegIfHeic, filteredLocalPhotos, generateThumbnailWithTimeout, onUploadComplete, onUploadSuccess, pickerCommand]
+    [convertToJpegIfHeicSafe, filteredLocalPhotos, generateThumbnailWithTimeout, onUploadComplete, onUploadSuccess, pickerCommand]
   );
 
   /**
@@ -433,94 +373,28 @@ export default function useLocalPhotoPicker({
             ? String(targetId)
             : undefined;
 
-      // Add placeholders to gallery immediately
-      const pendingEntries = useStore.getState().addPendingUploads(files, effectiveCollectibleId) || [];
-
-      // Track background uploads persistently (pending placeholders are removed after upload)
-      const backgroundUploadIds = useStore.getState().addBackgroundUploads(files, analysisType) || [];
-
       // Close the picker UI immediately so the user returns to the gallery
       pickerCommand.closePicker('optimistic-upload-start');
 
-      // Fire-and-forget background upload
-      Promise.resolve().then(async () => {
-        const removePendingUpload = useStore.getState().removePendingUpload;
-        const errors: string[] = [];
-
-        for (let i = 0; i < files.length; i++) {
-          const file = files[i];
-          const tempId = pendingEntries[i]?.id;
-          const bgId = backgroundUploadIds[i];
-          let thumbnailBlob: Blob | null = null;
-          let fileForUpload: File;
-
-          try {
-            fileForUpload = await convertToJpegIfHeic(file);
-          } catch (error) {
-            errors.push(file?.name || 'unknown');
-            const message = error instanceof Error ? error.message : String(error);
-            if (bgId) useStore.getState().markBackgroundUploadError(bgId, message || 'HEIC conversion failed');
-            if (tempId) removePendingUpload(tempId);
-            continue;
-          }
-
-          try {
-            thumbnailBlob = await generateThumbnailWithTimeout(fileForUpload);
-          } catch {
-            // Continue without thumbnail
-          }
-
-          try {
-            await uploadPhotoToServer(fileForUpload, undefined, thumbnailBlob, {
-              classification: analysisType,
-              collectibleId: effectiveCollectibleId,
-            });
-            if (bgId) useStore.getState().markBackgroundUploadSuccess(bgId);
-
-            // Refetch/invalidate gallery before removing the local preview so the UI
-            // can swap from blob → server photo without disappearing/flicker.
-            if (typeof onUploadComplete === 'function') {
-              try {
-                await onUploadComplete();
-              } catch {
-                // Ignore callback errors
-              }
-            }
-          } catch (error) {
-            errors.push(file?.name || 'unknown');
-            const message = error instanceof Error ? error.message : String(error);
-            if (bgId) useStore.getState().markBackgroundUploadError(bgId, message || 'Upload failed');
-          } finally {
-            if (tempId) {
-              removePendingUpload(tempId);
-            }
-          }
-        }
-
-        if (errors.length === 0) {
-          if (typeof onUploadSuccess === 'function') {
-            onUploadSuccess(files.length);
-          }
-        } else {
-          useStore.getState().setBanner({
-            message: `Upload failed for: ${errors.slice(0, 3).join(', ')}${
-              errors.length > 3 ? ` (+${errors.length - 3} more)` : ''
-            }`,
-            severity: 'error',
-          });
-        }
-
-        // onUploadComplete is already invoked per-success above to avoid flicker.
+      startBackgroundUpload({
+        files,
+        analysisType,
+        collectibleId: effectiveCollectibleId,
+        onUploadComplete,
+        onUploadSuccess,
+        generateThumbnail: generateThumbnailWithTimeout,
+        convertToJpeg: convertToJpegIfHeicSafe,
       });
     },
     [
       collectibleId,
-      convertToJpegIfHeic,
+      convertToJpegIfHeicSafe,
       generateThumbnailWithTimeout,
       getFreshFilteredLocalPhotos,
       onUploadComplete,
       onUploadSuccess,
       pickerCommand,
+      startBackgroundUpload,
     ]
   );
 

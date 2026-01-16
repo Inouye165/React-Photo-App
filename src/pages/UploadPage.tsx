@@ -7,7 +7,7 @@ import useLocalPhotoPicker from '../hooks/useLocalPhotoPicker';
 import { useThumbnailQueue } from '../hooks/useThumbnailQueue';
 import { isProbablyMobile } from '../utils/isProbablyMobile';
 import type { UploadPickerLocalPhoto } from '../store/uploadPickerSlice';
-import type { AnalysisType } from '../hooks/useLocalPhotoPicker';
+import type { AnalysisType } from '../types/uploads';
 
 /**
  * UploadPage - Dedicated page for photo uploads
