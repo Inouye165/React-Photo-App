@@ -71,7 +71,7 @@ function createE2eToken() {
 }
 
 describe('API versioning v1 aliases', () => {
-  let app;
+  let app: Awaited<ReturnType<typeof buildApp>>;
 
   beforeAll(() => {
     app = buildApp();
