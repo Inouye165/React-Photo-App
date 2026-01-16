@@ -8,7 +8,7 @@ import MainLayout from './layouts/MainLayout';
 import PhotoGalleryPage from './pages/PhotoGalleryPage';
 import PhotoDetailPage from './pages/PhotoDetailPage.tsx';
 import PhotoEditPage from './pages/PhotoEditPage.tsx';
-import GlobalErrorBoundary from './components/GlobalErrorBoundary.jsx';
+import GlobalErrorBoundary from './components/GlobalErrorBoundary';
 import { uploadPickerInitialState } from './store/uploadPickerSlice';
 
 // Import store after mock setup
