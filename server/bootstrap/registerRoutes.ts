@@ -192,6 +192,7 @@ export function registerRoutes(app: Application, { db, supabase, sseManager, log
   );
   const collectiblesRouter = createCollectiblesRouter({ db });
   app.use(authenticateToken, collectiblesRouter);
+  app.use('/api/v1', authenticateToken, collectiblesRouter);
   const usersRouter = createUsersRouter({ db });
   app.use(
     '/api/users',
@@ -231,7 +232,6 @@ export function registerRoutes(app: Application, { db, supabase, sseManager, log
   // NOTE: Mounted in all environments; additional hardening can be done inside the router
   // (e.g., DEBUG_ADMIN_TOKEN header gate).
   app.use(authenticateToken, createDebugRouter({ db }));
-  app.use('/api/v1', authenticateToken, collectiblesRouter);
 
   // Add security error handling middleware
   app.use(securityErrorHandler);
