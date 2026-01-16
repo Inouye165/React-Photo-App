@@ -88,7 +88,7 @@ vi.mock('./components/CollectibleEditorPanel.jsx', () => ({
 }))
 
 // Mock CollectibleDetailView
-vi.mock('./components/CollectibleDetailView.jsx', () => ({
+vi.mock('./components/CollectibleDetailView', () => ({
   default: () => React.createElement('div', { 
     'data-testid': 'collectible-detail-view' 
   }, 'Mock Collectible Details')
