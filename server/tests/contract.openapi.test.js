@@ -12,7 +12,7 @@ describe('API contract (OpenAPI)', () => {
     jestOpenAPI(require('path').join(__dirname, '../openapi.yml'));
     app = express();
     app.use('/health', createHealthRouter());
-    app.use('/photos', createPhotosRouter({ db, supabase }));
+    app.use('/api/v1/photos', createPhotosRouter({ db, supabase }));
   });
 
   it('GET /health matches OpenAPI spec', async () => {
@@ -20,8 +20,8 @@ describe('API contract (OpenAPI)', () => {
     expect(res).toSatisfyApiSpec();
   });
 
-  it('GET /photos matches OpenAPI spec', async () => {
-    const res = await request(app).get('/photos');
+  it('GET /api/v1/photos matches OpenAPI spec', async () => {
+    const res = await request(app).get('/api/v1/photos');
     expect(res).toSatisfyApiSpec();
   });
 });

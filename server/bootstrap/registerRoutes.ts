@@ -17,6 +17,33 @@ type CsrfRequest = Request & {
   csrfToken?: () => string;
 };
 
+type LegacyRouteMapping = {
+  legacyBase: string;
+  successorBase: string;
+};
+
+const LEGACY_API_SUNSET = new Date(Date.now() + 120 * 24 * 60 * 60 * 1000).toUTCString();
+
+function createLegacyApiDeprecationMiddleware(mappings: LegacyRouteMapping[]) {
+  return (req: Request, res: Response, next: NextFunction) => {
+    res.setHeader('Deprecation', 'true');
+    res.setHeader('Sunset', LEGACY_API_SUNSET);
+
+    const originalUrl = req.originalUrl || req.url || '';
+    const match = mappings.find((mapping) => originalUrl.startsWith(mapping.legacyBase));
+
+    const successorUrl = match
+      ? `${match.successorBase}${originalUrl.slice(match.legacyBase.length)}`
+      : `${mappings[0]?.successorBase || ''}${req.path || ''}`;
+
+    if (successorUrl) {
+      res.setHeader('Link', `<${successorUrl}>; rel="successor-version"`);
+    }
+
+    return next();
+  };
+}
+
 export function registerRoutes(app: Application, { db, supabase, sseManager, logger }: RegisterRoutesDeps) {
   if (!app) throw new Error('app is required');
   if (!db) throw new Error('db is required');
@@ -54,27 +81,60 @@ export function registerRoutes(app: Application, { db, supabase, sseManager, log
 
   // Authentication routes (no auth required)
   const createAuthRouter = require('../routes/auth');
-  app.use('/api/auth', createAuthRouter({ db }));
+  const authRouter = createAuthRouter({ db });
+  app.use(
+    '/api/auth',
+    createLegacyApiDeprecationMiddleware([{ legacyBase: '/api/auth', successorBase: '/api/v1/auth' }]),
+    authRouter
+  );
+  app.use('/api/v1/auth', authRouter);
 
   // Public API routes (no auth required) - mounted before auth middleware
-  app.use('/api/public', createPublicRouter({ db }));
+  const publicRouter = createPublicRouter({ db });
+  app.use(
+    '/api/public',
+    createLegacyApiDeprecationMiddleware([{ legacyBase: '/api/public', successorBase: '/api/v1/public' }]),
+    publicRouter
+  );
+  app.use('/api/v1/public', publicRouter);
 
   // Public feedback endpoint (no auth required)
-  app.use('/api/feedback', createFeedbackRouter({ db }));
+  const feedbackRouter = createFeedbackRouter({ db });
+  app.use(
+    '/api/feedback',
+    createLegacyApiDeprecationMiddleware([{ legacyBase: '/api/feedback', successorBase: '/api/v1/feedback' }]),
+    feedbackRouter
+  );
+  app.use('/api/v1/feedback', feedbackRouter);
 
   // Image proxy endpoint (auth required)
   // Used to fetch remote images server-side to avoid browser CORS limitations.
-  app.use('/api/image-proxy', authenticateToken, createImageProxyRouter());
+  const imageProxyRouter = createImageProxyRouter();
+  app.use(
+    '/api/image-proxy',
+    createLegacyApiDeprecationMiddleware([
+      { legacyBase: '/api/image-proxy', successorBase: '/api/v1/image-proxy' },
+    ]),
+    authenticateToken,
+    imageProxyRouter
+  );
+  app.use('/api/v1/image-proxy', authenticateToken, imageProxyRouter);
 
   // E2E/test-only routes
   const { isE2EEnabled } = require('../config/e2eGate');
   const e2eRouter = require('../routes/e2e');
-  app.use('/api/test', (req: Request, res: Response, next: NextFunction) => {
+  const e2eGate = (req: Request, res: Response, next: NextFunction) => {
     if (!isE2EEnabled()) {
       return res.status(404).json({ success: false, error: 'Not found' });
     }
     return e2eRouter(req, res, next);
-  });
+  };
+  app.use(
+    '/api/test',
+    createLegacyApiDeprecationMiddleware([{ legacyBase: '/api/test', successorBase: '/api/v1/test' }]),
+    e2eGate
+  );
+  app.use('/api/v1/test', e2eGate);
 
   // Test-only endpoint for trust proxy regression test
   if (process.env.NODE_ENV === 'test') {
@@ -91,28 +151,87 @@ export function registerRoutes(app: Application, { db, supabase, sseManager, log
 
   // Protected API routes (require authentication)
   const createDisplayRouter = require('../routes/display');
-  app.use('/display', createDisplayRouter({ db }));
+  const displayRouter = createDisplayRouter({ db });
+  app.use(
+    '/display',
+    createLegacyApiDeprecationMiddleware([{ legacyBase: '/display', successorBase: '/api/v1/display' }]),
+    displayRouter
+  );
+  app.use('/api/v1/display', displayRouter);
 
-  app.use('/photos', createPhotosRouter({ db, supabase }));
+  const photosRouter = createPhotosRouter({ db, supabase });
+  app.use(
+    '/photos',
+    createLegacyApiDeprecationMiddleware([{ legacyBase: '/photos', successorBase: '/api/v1/photos' }]),
+    photosRouter
+  );
+  app.use('/api/v1/photos', photosRouter);
 
-  app.use('/events', createEventsRouter({ authenticateToken, sseManager }));
+  const eventsRouter = createEventsRouter({ authenticateToken, sseManager });
+  app.use(
+    '/events',
+    createLegacyApiDeprecationMiddleware([{ legacyBase: '/events', successorBase: '/api/v1/events' }]),
+    eventsRouter
+  );
+  app.use('/api/v1/events', eventsRouter);
 
   // Mount collectibles API under root so /photos/:id/collectibles works correctly
-  app.use(authenticateToken, createCollectiblesRouter({ db }));
-  app.use('/api/users', createUsersRouter({ db }));
-  app.use(authenticateToken, createUploadsRouter({ db }));
-  app.use(authenticateToken, createPrivilegeRouter({ db }));
+  app.use(
+    '/collectibles',
+    createLegacyApiDeprecationMiddleware([
+      { legacyBase: '/collectibles', successorBase: '/api/v1/collectibles' },
+    ])
+  );
+  app.use(
+    '/upload',
+    createLegacyApiDeprecationMiddleware([{ legacyBase: '/upload', successorBase: '/api/v1/upload' }])
+  );
+  app.use(
+    '/privilege',
+    createLegacyApiDeprecationMiddleware([{ legacyBase: '/privilege', successorBase: '/api/v1/privilege' }])
+  );
+  const collectiblesRouter = createCollectiblesRouter({ db });
+  app.use(authenticateToken, collectiblesRouter);
+  const usersRouter = createUsersRouter({ db });
+  app.use(
+    '/api/users',
+    createLegacyApiDeprecationMiddleware([{ legacyBase: '/api/users', successorBase: '/api/v1/users' }]),
+    usersRouter
+  );
+  app.use('/api/v1/users', usersRouter);
+  const uploadsRouter = createUploadsRouter({ db });
+  app.use(authenticateToken, uploadsRouter);
+  app.use('/api/v1', authenticateToken, uploadsRouter);
+  const privilegeRouter = createPrivilegeRouter({ db });
+  app.use(authenticateToken, privilegeRouter);
+  app.use('/api/v1', authenticateToken, privilegeRouter);
 
   // Comments routes (protected by authenticateToken)
-  app.use('/api/comments', authenticateToken, createCommentsRouter({ db }));
+  const commentsRouter = createCommentsRouter({ db });
+  app.use(
+    '/api/comments',
+    createLegacyApiDeprecationMiddleware([{ legacyBase: '/api/comments', successorBase: '/api/v1/comments' }]),
+    authenticateToken,
+    commentsRouter
+  );
+  app.use('/api/v1/comments', authenticateToken, commentsRouter);
 
   // Admin routes (protected by authenticateToken + requireRole('admin'))
-  app.use('/api/admin', authenticateToken, requireRole('admin'), createAdminRouter({ db }));
+  const adminRouter = createAdminRouter({ db });
+  app.use(
+    '/api/admin',
+    createLegacyApiDeprecationMiddleware([{ legacyBase: '/api/admin', successorBase: '/api/v1/admin' }]),
+    authenticateToken,
+    requireRole('admin'),
+    adminRouter
+  );
+  app.use('/api/v1/admin', authenticateToken, requireRole('admin'), adminRouter);
 
   // Debug/diagnostic routes require normal authentication.
   // NOTE: Mounted in all environments; additional hardening can be done inside the router
   // (e.g., DEBUG_ADMIN_TOKEN header gate).
   app.use(authenticateToken, createDebugRouter({ db }));
+  app.use('/api/v1', authenticateToken, collectiblesRouter);
 
   // Add security error handling middleware
   app.use(securityErrorHandler);
