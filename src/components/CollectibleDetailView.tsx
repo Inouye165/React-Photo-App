@@ -6,6 +6,7 @@ import type { CollectibleRecord } from '../types/collectibles';
 import useStore from '../store';
 
 import useLocalPhotoPicker from '../hooks/useLocalPhotoPicker';
+import LuminaCaptureSession from './LuminaCaptureSession';
 
 import { request, API_BASE_URL } from '../api/httpClient';
 import { getHeadersForGetRequestAsync } from '../api/auth';
@@ -143,6 +144,7 @@ export default function CollectibleDetailView({ photo, collectibleData, aiInsigh
   const [collectiblePhotos, setCollectiblePhotos] = React.useState<CollectiblePhotoDto[]>([]);
   const [collectiblePhotosLoading, setCollectiblePhotosLoading] = React.useState(false);
   const [collectiblePhotosError, setCollectiblePhotosError] = React.useState<string | null>(null);
+  const [captureOpen, setCaptureOpen] = React.useState(false);
 
   // Confirm-before-delete state (mandatory)
   const [photoToDelete, setPhotoToDelete] = React.useState<string | null>(null);
@@ -284,6 +286,18 @@ export default function CollectibleDetailView({ photo, collectibleData, aiInsigh
     fileInputRef.current?.click();
   }, [collectibleData?.id]);
 
+  const handleOpenCaptureSession = React.useCallback(() => {
+    if (!collectibleData?.id) {
+      setBanner({ message: 'Select a collectible before adding photos.', severity: 'warning' });
+      return;
+    }
+    setCaptureOpen(true);
+  }, [collectibleData?.id, setBanner]);
+
+  const handleCloseCaptureSession = React.useCallback(() => {
+    setCaptureOpen(false);
+  }, []);
+
   const onFileChange = React.useCallback(
     async (e: React.ChangeEvent<HTMLInputElement>) => {
       // 1. Parse EXIF/Thumbnails and stage files
@@ -379,7 +393,8 @@ export default function CollectibleDetailView({ photo, collectibleData, aiInsigh
   }, [valuation, collectibleData]);
 
   return (
-    <div
+    <>
+      <div
       className="collectible-detail-view"
       style={{
         display: 'flex',
@@ -469,24 +484,43 @@ export default function CollectibleDetailView({ photo, collectibleData, aiInsigh
             🖼️ Reference Photos
           </h4>
 
-          <button
-            type="button"
-            onClick={handleAddCollectiblePhotosClick}
-            disabled={!collectibleData?.id || collectiblePhotosUploading}
-            style={{
-              padding: '8px 12px',
-              borderRadius: '10px',
-              border: '1px solid #e2e8f0',
-              backgroundColor: collectibleData?.id ? '#ffffff' : '#f1f5f9',
-              color: '#334155',
-              fontSize: '12px',
-              fontWeight: 600,
-              cursor: collectibleData?.id && !collectiblePhotosUploading ? 'pointer' : 'not-allowed',
-              opacity: collectiblePhotosUploading ? 0.7 : 1,
-            }}
-          >
-            {collectiblePhotosUploading ? 'Uploading…' : 'Add Photos'}
-          </button>
+          <div style={{ display: 'flex', gap: '8px', flexWrap: 'wrap' }}>
+            <button
+              type="button"
+              onClick={handleOpenCaptureSession}
+              disabled={!collectibleData?.id}
+              style={{
+                padding: '8px 12px',
+                borderRadius: '10px',
+                border: '1px solid #e2e8f0',
+                backgroundColor: collectibleData?.id ? '#0f172a' : '#f1f5f9',
+                color: collectibleData?.id ? '#ffffff' : '#94a3b8',
+                fontSize: '12px',
+                fontWeight: 600,
+                cursor: collectibleData?.id ? 'pointer' : 'not-allowed',
+              }}
+            >
+              Capture Session
+            </button>
+            <button
+              type="button"
+              onClick={handleAddCollectiblePhotosClick}
+              disabled={!collectibleData?.id || collectiblePhotosUploading}
+              style={{
+                padding: '8px 12px',
+                borderRadius: '10px',
+                border: '1px solid #e2e8f0',
+                backgroundColor: collectibleData?.id ? '#ffffff' : '#f1f5f9',
+                color: '#334155',
+                fontSize: '12px',
+                fontWeight: 600,
+                cursor: collectibleData?.id && !collectiblePhotosUploading ? 'pointer' : 'not-allowed',
+                opacity: collectiblePhotosUploading ? 0.7 : 1,
+              }}
+            >
+              {collectiblePhotosUploading ? 'Uploading…' : 'Add Photos'}
+            </button>
+          </div>
         </div>
 
         {collectiblePhotosError && (
@@ -1144,6 +1178,14 @@ export default function CollectibleDetailView({ photo, collectibleData, aiInsigh
           )}
         </div>
       )}
-    </div>
+      </div>
+      <LuminaCaptureSession
+        open={captureOpen}
+        collectibleId={collectibleData?.id ?? null}
+        onClose={handleCloseCaptureSession}
+        onUploadComplete={fetchCollectiblePhotos}
+        onFallbackToLibrary={handleAddCollectiblePhotosClick}
+      />
+    </>
   );
 }

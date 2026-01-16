@@ -5,7 +5,7 @@ import { useThumbnailQueue } from './hooks/useThumbnailQueue';
 import Thumbnail from './components/Thumbnail.tsx';
 import { isProbablyMobile } from './utils/isProbablyMobile';
 import type { UploadPickerLocalPhoto } from './store/uploadPickerSlice';
-import type { AnalysisType } from './hooks/useLocalPhotoPicker';
+import type { AnalysisType } from './types/uploads';
 
 /**
  * Custom hook to get responsive column count based on viewport width
