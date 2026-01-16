@@ -39,7 +39,7 @@ This isn't just a wrapper around an API. Here's what's actually happening under 
 *   **AI Orchestration:** I'm using LangGraph to build actual workflows, not just single prompts. It decides if a photo needs food analysis, collectible valuation, or just a scenery description.
 *   **Job Queue:** BullMQ + Redis. Heavy stuff like thumbnail generation and AI analysis happens in the background so the upload endpoint stays fast.
 *   **Streaming Uploads:** Files stream directly from the request to Supabase Storage. They never touch the server's disk.
-*   **Testing:** Over 1,100 tests using Vitest, Playwright, and Jest. I take testing seriously.
+*   **Testing:** Vitest, Playwright, and Jest. I take testing seriously.
 
 ## Security Checks
 
@@ -140,10 +140,10 @@ cd server && npm test && cd ..
 
 **What each test catches:**
 - `npm run lint` - ESLint + TypeScript type-check + GPS hygiene check (catches JSX namespace errors, type mismatches, import issues)
-- `npm test` - Frontend unit tests (541 tests)
+- `npm test` - Frontend unit tests (Vitest)
 - `npm run test:maintainability` - Architecture rules + migration integrity (catches dead code, import violations, broken migrations)
-- `npm run test:e2e` - Playwright end-to-end tests (29 tests, requires app running)
-- `cd server && npm test` - Backend unit tests (810 tests)
+- `npm run test:e2e` - Playwright end-to-end tests (requires app running)
+- `cd server && npm test` - Backend unit tests (Jest)
 
 **Pro tip:** The `lint` command includes `type-check` which is what caught the JSX namespace errors. Always run it before committing TypeScript changes.
 
@@ -173,11 +173,12 @@ Run these inside `server/`:
 
 The app includes an admin-only dashboard at `/admin` (requires a user with `app_metadata.role = admin`).
 
-Current admin tabs:
+Current admin sections:
 - Invites
 - Suggestions Review
-- Comments Moderation
-- Feedback Moderation
+- Comments
+- Feedback
+- Assessments
 
 ## Docs
 
