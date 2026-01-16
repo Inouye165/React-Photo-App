@@ -8,12 +8,34 @@ type GlobalErrorBoundaryProps = {
 /**
  * Fallback component displayed when an error is caught
  */
+function getErrorMessage(error: unknown): string {
+  if (error instanceof Error) return error.message;
+  if (typeof error === 'string') return error;
+  if (error && typeof error === 'object' && 'message' in error) {
+    const message = (error as { message?: unknown }).message;
+    if (typeof message === 'string') return message;
+  }
+  return 'An unexpected error occurred';
+}
+
+function getErrorStack(error: unknown): string | undefined {
+  if (error instanceof Error) return error.stack;
+  if (error && typeof error === 'object' && 'stack' in error) {
+    const stack = (error as { stack?: unknown }).stack;
+    return typeof stack === 'string' ? stack : undefined;
+  }
+  return undefined;
+}
+
 function ErrorFallback({ error, resetErrorBoundary }: FallbackProps) {
   const handleGoHome = () => {
     resetErrorBoundary();
     // Use window.location for navigation to avoid Router dependency
     window.location.href = '/';
   };
+
+  const errorMessage = getErrorMessage(error);
+  const errorStack = getErrorStack(error);
 
   return (
     <div
@@ -43,7 +65,7 @@ function ErrorFallback({ error, resetErrorBoundary }: FallbackProps) {
 
         <div className="bg-red-50 border border-red-200 rounded-md p-4 mb-6">
           <p className="text-sm text-red-800 font-mono break-words">
-            {error?.message || 'An unexpected error occurred'}
+            {errorMessage}
           </p>
         </div>
 
@@ -62,13 +84,13 @@ function ErrorFallback({ error, resetErrorBoundary }: FallbackProps) {
           </button>
         </div>
 
-        {import.meta.env.DEV && error?.stack && (
+        {import.meta.env.DEV && errorStack && (
           <details className="mt-6">
             <summary className="cursor-pointer text-sm text-gray-600 hover:text-gray-900">
               View stack trace
             </summary>
             <pre className="mt-2 text-xs bg-gray-100 p-3 rounded overflow-auto max-h-64 text-gray-800">
-              {error.stack}
+              {errorStack}
             </pre>
           </details>
         )}
@@ -82,7 +104,7 @@ function ErrorFallback({ error, resetErrorBoundary }: FallbackProps) {
  * Catches errors anywhere in the component tree and displays a fallback UI
  */
 export default function GlobalErrorBoundary({ children }: GlobalErrorBoundaryProps) {
-  const handleError = (error: Error, errorInfo: ErrorInfo) => {
+  const handleError = (error: unknown, errorInfo: ErrorInfo) => {
     // Log to console
     console.error('Global Error Boundary caught an error:', error, errorInfo);
 
