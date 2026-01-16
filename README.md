@@ -39,7 +39,7 @@ This isn't just a wrapper around an API. Here's what's actually happening under 
 *   **AI Orchestration:** I'm using LangGraph to build actual workflows, not just single prompts. It decides if a photo needs food analysis, collectible valuation, or just a scenery description.
 *   **Job Queue:** BullMQ + Redis. Heavy stuff like thumbnail generation and AI analysis happens in the background so the upload endpoint stays fast.
 *   **Streaming Uploads:** Files stream directly from the request to Supabase Storage. They never touch the server's disk.
-*   **Testing:** Over 1,100 tests using Vitest, Playwright, and Jest. I take testing seriously.
+*   **Testing:** A large test suite using Vitest, Playwright, and Jest. I take testing seriously.
 
 ## Security Checks
 
@@ -140,10 +140,10 @@ cd server && npm test && cd ..
 
 **What each test catches:**
 - `npm run lint` - ESLint + TypeScript type-check + GPS hygiene check (catches JSX namespace errors, type mismatches, import issues)
-- `npm test` - Frontend unit tests (541 tests)
+- `npm test` - Frontend unit tests (Vitest)
 - `npm run test:maintainability` - Architecture rules + migration integrity (catches dead code, import violations, broken migrations)
-- `npm run test:e2e` - Playwright end-to-end tests (29 tests, requires app running)
-- `cd server && npm test` - Backend unit tests (810 tests)
+- `npm run test:e2e` - Playwright end-to-end tests (requires app running)
+- `cd server && npm test` - Backend unit tests (Jest)
 
 **Pro tip:** The `lint` command includes `type-check` which is what caught the JSX namespace errors. Always run it before committing TypeScript changes.
 
@@ -153,8 +153,16 @@ Run these from the main folder:
 | Command | Why run it? |
 | :--- | :--- |
 | `npm test` | The standard React unit tests (Vitest). |
+| `npm run test:run` | Same as `npm test` (explicit “run” mode). |
 | `npm run test:ui` | Opens the fancy Vitest UI. Good for debugging. |
+| `npm run test:coverage` | Generates coverage reports for frontend tests. |
+| `npm run type-check` | TypeScript checks (frontend + server type-checks). |
+| `npm run integration-test` | Runs scripted integration checks (see `scripts/integration-test.cjs`). |
 | `npm run test:e2e` | Fires up Playwright. You need the app running for this. |
+| `npm run test:a11y` | Accessibility-focused Playwright checks. |
+| `npm run test:perf` | Performance smoke test (k6). |
+| `npm run test:docker:smoke` | Docker-based smoke test for local containers. |
+| `npm run test:stress` | Stress test runner (see `scripts/stress-test.cjs`). |
 | `npm run test:maintainability` | **The big one.** Runs the architecture and migration checks below. |
 | `npm run test:arch` | Stops me from doing dumb stuff (like importing Pages into Components). |
 | `npm run test:size` | Yells if the bundle gets too fat (>500kB). |
@@ -166,8 +174,8 @@ Run these inside `server/`:
 | Command | Why run it? |
 | :--- | :--- |
 | `npm test` | Backend unit tests (Jest). (Run from `server/`, not repo root.) |
-| `npm run test:db` | Just checks if the DB connection is alive. |
-| `npm run verify:migrations` | Makes sure the schema matches the migration files. |
+
+> Note: backend has additional scripts under `server/package.json` (DB checks, migrations verification, etc.).
 
 ## Admin
 

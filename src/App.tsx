@@ -1,7 +1,7 @@
 import { useEffect } from 'react';
 import { BrowserRouter, Routes, Route } from 'react-router-dom';
 import { logGlobalError } from './utils/globalLog';
-import GlobalErrorBoundary from './components/GlobalErrorBoundary.jsx';
+import GlobalErrorBoundary from './components/GlobalErrorBoundary';
 import MainLayout from './layouts/MainLayout';
 import SmartRouter from './components/SmartRouter.tsx';
 import IdentityGate from './components/IdentityGate.tsx';

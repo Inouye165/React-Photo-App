@@ -1,10 +1,10 @@
-import React from 'react';
-import { ErrorBoundary } from 'react-error-boundary';
+import { type ReactNode } from 'react';
+import { ErrorBoundary, type FallbackProps } from 'react-error-boundary';
 
 /**
  * Fallback component displayed when an error is caught
  */
-function ErrorFallback({ error, resetErrorBoundary }) {
+function ErrorFallback({ error, resetErrorBoundary }: FallbackProps) {
   const handleGoHome = () => {
     resetErrorBoundary();
     // Use window.location for navigation to avoid Router dependency
@@ -12,35 +12,23 @@ function ErrorFallback({ error, resetErrorBoundary }) {
   };
 
   return (
-    <div 
-      role="alert"
-      className="min-h-screen flex items-center justify-center bg-gray-50 px-4"
-    >
+    <div role="alert" className="min-h-screen flex items-center justify-center bg-gray-50 px-4">
       <div className="max-w-md w-full bg-white rounded-lg shadow-lg p-8">
         <div className="flex items-center justify-center w-16 h-16 mx-auto bg-red-100 rounded-full mb-4">
-          <svg 
-            className="w-8 h-8 text-red-600" 
-            fill="none" 
-            stroke="currentColor" 
-            viewBox="0 0 24 24"
-          >
-            <path 
-              strokeLinecap="round" 
-              strokeLinejoin="round" 
-              strokeWidth={2} 
-              d="M12 9v2m0 4h.01m-6.938 4h13.856c1.54 0 2.502-1.667 1.732-3L13.732 4c-.77-1.333-2.694-1.333-3.464 0L3.34 16c-.77 1.333.192 3 1.732 3z" 
+          <svg className="w-8 h-8 text-red-600" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+            <path
+              strokeLinecap="round"
+              strokeLinejoin="round"
+              strokeWidth={2}
+              d="M12 9v2m0 4h.01m-6.938 4h13.856c1.54 0 2.502-1.667 1.732-3L13.732 4c-.77-1.333-2.694-1.333-3.464 0L3.34 16c-.77 1.333.192 3 1.732 3z"
             />
           </svg>
         </div>
 
-        <h1 className="text-2xl font-bold text-gray-900 text-center mb-4">
-          Something went wrong
-        </h1>
+        <h1 className="text-2xl font-bold text-gray-900 text-center mb-4">Something went wrong</h1>
 
         <div className="bg-red-50 border border-red-200 rounded-md p-4 mb-6">
-          <p className="text-sm text-red-800 font-mono break-words">
-            {error?.message || 'An unexpected error occurred'}
-          </p>
+          <p className="text-sm text-red-800 font-mono break-words">{error?.message || 'An unexpected error occurred'}</p>
         </div>
 
         <div className="flex gap-3">
@@ -60,12 +48,8 @@ function ErrorFallback({ error, resetErrorBoundary }) {
 
         {import.meta.env.DEV && error?.stack && (
           <details className="mt-6">
-            <summary className="cursor-pointer text-sm text-gray-600 hover:text-gray-900">
-              View stack trace
-            </summary>
-            <pre className="mt-2 text-xs bg-gray-100 p-3 rounded overflow-auto max-h-64 text-gray-800">
-              {error.stack}
-            </pre>
+            <summary className="cursor-pointer text-sm text-gray-600 hover:text-gray-900">View stack trace</summary>
+            <pre className="mt-2 text-xs bg-gray-100 p-3 rounded overflow-auto max-h-64 text-gray-800">{error.stack}</pre>
           </details>
         )}
       </div>
@@ -73,12 +57,16 @@ function ErrorFallback({ error, resetErrorBoundary }) {
   );
 }
 
+type Props = {
+  children: ReactNode;
+};
+
 /**
  * Global Error Boundary wrapper
  * Catches errors anywhere in the component tree and displays a fallback UI
  */
-export default function GlobalErrorBoundary({ children }) {
-  const handleError = (error, errorInfo) => {
+export default function GlobalErrorBoundary({ children }: Props) {
+  const handleError = (error: Error, errorInfo: unknown) => {
     // Log to console
     console.error('Global Error Boundary caught an error:', error, errorInfo);
 

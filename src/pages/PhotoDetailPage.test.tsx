@@ -22,7 +22,7 @@ vi.mock('../api', async (importOriginal: () => Promise<unknown>) => {
   };
 });
 
-vi.mock('../components/LocationMapPanel.jsx', () => ({
+vi.mock('../components/LocationMapPanel', () => ({
   default: function MockLocationMapPanel() {
     return <div data-testid="mock-location-map" />;
   },

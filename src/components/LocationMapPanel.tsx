@@ -1,19 +1,32 @@
-import React, { useState, useEffect, useMemo } from 'react';
-import { APIProvider, Map, AdvancedMarker} from '@vis.gl/react-google-maps';
+import { useEffect, useMemo, useState, type CSSProperties, type ReactNode } from 'react';
+import { APIProvider, Map, AdvancedMarker } from '@vis.gl/react-google-maps';
 import { getPhotoLocation } from './LocationMapUtils';
 
-const containerStyle = {
+type LatLngLiteral = {
+  lat: number;
+  lng: number;
+};
+
+type PhotoLocation = LatLngLiteral & {
+  heading?: number;
+};
+
+const containerStyle: CSSProperties = {
   width: '100%',
   height: '100%'
 };
 
-const defaultCenter = {
+const defaultCenter: LatLngLiteral = {
   lat: 0,
   lng: 0
 };
 
+type DirectionalArrowProps = {
+  heading?: number;
+};
+
 // Directional Arrow Icon Component
-const DirectionalArrow = ({ heading = 0 }) => (
+const DirectionalArrow = ({ heading = 0 }: DirectionalArrowProps) => (
   <div
     style={{
       transform: `rotate(${heading}deg)`,
@@ -24,27 +37,46 @@ const DirectionalArrow = ({ heading = 0 }) => (
       justifyContent: 'center'
     }}
   >
-    <svg width="32" height="32" viewBox="0 0 24 24" fill="none" xmlns="http://www.w3.org/2000/svg" style={{ filter: 'drop-shadow(0px 2px 4px rgba(0,0,0,0.5))' }}>
+    <svg
+      width="32"
+      height="32"
+      viewBox="0 0 24 24"
+      fill="none"
+      xmlns="http://www.w3.org/2000/svg"
+      style={{ filter: 'drop-shadow(0px 2px 4px rgba(0,0,0,0.5))' }}
+    >
       <path d="M12 2L19 21L12 17L5 21L12 2Z" fill="#4285F4" stroke="white" strokeWidth="2" strokeLinejoin="round" />
     </svg>
   </div>
 );
 
-export default function LocationMapPanel({ photo }) {
-  const apiKey = import.meta.env.VITE_GOOGLE_MAPS_API_KEY;
-  const mapId = import.meta.env.VITE_GOOGLE_MAPS_MAP_ID || 'DEMO_MAP_ID';
+type Props = {
+  // Photo shape varies across app; keep permissive for now.
+  photo: unknown;
+};
+
+export default function LocationMapPanel({ photo }: Props) {
+  const rawApiKey = import.meta.env.VITE_GOOGLE_MAPS_API_KEY;
+  const apiKey = rawApiKey ? String(rawApiKey) : '';
+
+  const rawMapId = import.meta.env.VITE_GOOGLE_MAPS_MAP_ID;
+  const mapId = rawMapId ? String(rawMapId) : 'DEMO_MAP_ID';
+
   const isE2E = import.meta.env.VITE_E2E === 'true';
 
   // Memoize location calculation to avoid unnecessary recalculations
-  const location = useMemo(() => getPhotoLocation(photo), [photo]);
-  const hasLocation = location != null && !isNaN(location.lat) && !isNaN(location.lng);
-  const center = useMemo(() => hasLocation ? location : defaultCenter, [location, hasLocation]);
+  const location = useMemo<PhotoLocation | null>(
+    () => (getPhotoLocation(photo as Record<string, unknown>) as PhotoLocation | null),
+    [photo]
+  );
+  const hasLocation = location != null && !Number.isNaN(location.lat) && !Number.isNaN(location.lng);
+  const center = useMemo<LatLngLiteral>(() => (hasLocation ? location : defaultCenter), [location, hasLocation]);
   const heading = location?.heading || 0;
 
   // Controlled map state for proper recentering when photo changes
-  const [mapCenter, setMapCenter] = useState(center);
+  const [mapCenter, setMapCenter] = useState<LatLngLiteral>(center);
   // Zoom level 19 ≈ ~300ft altitude (street-level detail)
-  const [mapZoom, setMapZoom] = useState(19);
+  const [mapZoom, setMapZoom] = useState<number>(19);
 
   // Update map center when photo location changes
   useEffect(() => {
@@ -55,7 +87,7 @@ export default function LocationMapPanel({ photo }) {
   }, [center, hasLocation]);
 
   // Render logic (never call hooks conditionally)
-  let content = null;
+  let content: ReactNode = null;
   if (isE2E && hasLocation) {
     content = (
       <div className="h-full w-full bg-gray-100 flex flex-col items-center justify-center text-gray-600 p-4 text-center">
@@ -87,15 +119,19 @@ export default function LocationMapPanel({ photo }) {
             />
           </div>
           <div className="p-2 text-xs text-gray-600 bg-gray-100">
-            Map provided by OpenStreetMap as a fallback. For the full interactive map, open
-            &nbsp;<a target="_blank" rel="noreferrer" href={osmLink} className="text-blue-600 underline">OpenStreetMap</a>.
+            Map provided by OpenStreetMap as a fallback. For the full interactive map, open&nbsp;
+            <a target="_blank" rel="noreferrer" href={osmLink} className="text-blue-600 underline">
+              OpenStreetMap
+            </a>
+            .
           </div>
         </div>
       );
     } else {
       content = (
         <div className="flex items-center justify-center h-full bg-gray-100 text-gray-500 text-sm p-4 text-center">
-          Map configuration missing. Please set <code>VITE_GOOGLE_MAPS_API_KEY</code> in your Vite root `.env` (see <code>.env.example</code>) and restart the dev server.
+          Map configuration missing. Please set <code>VITE_GOOGLE_MAPS_API_KEY</code> in your Vite root `.env` (see{' '}
+          <code>.env.example</code>) and restart the dev server.
         </div>
       );
     }
@@ -113,8 +149,8 @@ export default function LocationMapPanel({ photo }) {
           <Map
             center={mapCenter}
             zoom={mapZoom}
-            onCenterChanged={(e) => setMapCenter(e.detail.center)}
-            onZoomChanged={(e) => setMapZoom(e.detail.zoom)}
+            onCenterChanged={(e: any) => setMapCenter(e.detail.center)}
+            onZoomChanged={(e: any) => setMapZoom(e.detail.zoom)}
             mapId={mapId} // Optional: set via VITE_GOOGLE_MAPS_MAP_ID; a default is used for demo
             disableDefaultUI={false}
             zoomControl={true}
@@ -122,7 +158,7 @@ export default function LocationMapPanel({ photo }) {
             mapTypeControl={true}
             fullscreenControl={true}
             mapTypeControlOptions={{
-              position: 3, // TOP_RIGHT
+              position: 3 // TOP_RIGHT
             }}
           >
             <AdvancedMarker position={center}>
