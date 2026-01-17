@@ -13,6 +13,10 @@ vi.mock('../hooks/usePhotoProcessingEvents', () => ({
   usePhotoProcessingEvents: vi.fn(),
 }))
 
+vi.mock('../hooks/useCaptureIntentListener', () => ({
+  useCaptureIntentListener: vi.fn(),
+}))
+
 describe('IdentityGate', () => {
   beforeEach(() => {
     vi.clearAllMocks()
