@@ -393,6 +393,18 @@ module.exports = function createDisplayRouter({ db }) {
           res.set('Cache-Control', 'private, max-age=60');
           return res.send(jpegBuffer);
         } catch (err) {
+          if (err && (err.code === 'IMAGE_PROCESSING_QUEUE_FULL' || err.code === 'IMAGE_PROCESSING_QUEUE_TIMEOUT')) {
+            logger.warn('Display image by ID: HEIC conversion queue busy', {
+              reqId,
+              photoId,
+              storagePath: effectiveStoragePath,
+              error: err.message,
+              code: err.code
+            });
+            res.set('Cache-Control', 'no-store');
+            res.set('Retry-After', '10');
+            return res.status(503).json({ error: 'Image processing busy, please retry.' });
+          }
           logger.error('Display image by ID: HEIC conversion error', {
             reqId,
             photoId,
@@ -608,6 +620,19 @@ module.exports = function createDisplayRouter({ db }) {
           res.set('Cache-Control', 'private, max-age=60');
           return res.send(jpegBuffer);
         } catch (err) {
+          if (err && (err.code === 'IMAGE_PROCESSING_QUEUE_FULL' || err.code === 'IMAGE_PROCESSING_QUEUE_TIMEOUT')) {
+            logger.warn('Chat display image: HEIC conversion queue busy', {
+              reqId,
+              roomId,
+              photoId,
+              storagePath: effectiveStoragePath,
+              error: err.message,
+              code: err.code
+            });
+            res.set('Cache-Control', 'no-store');
+            res.set('Retry-After', '10');
+            return res.status(503).json({ error: 'Image processing busy, please retry.' });
+          }
           logger.error('Chat display image: HEIC conversion error', {
             reqId,
             roomId,
@@ -825,6 +850,18 @@ module.exports = function createDisplayRouter({ db }) {
           res.set('Vary', 'Accept');
           return res.send(jpegBuffer);
         } catch (err) {
+          if (err && (err.code === 'IMAGE_PROCESSING_QUEUE_FULL' || err.code === 'IMAGE_PROCESSING_QUEUE_TIMEOUT')) {
+            logger.warn('Display route image conversion queue busy', {
+              reqId,
+              filename,
+              state,
+              storagePath,
+              error: err.message,
+              code: err.code
+            });
+            res.set('Retry-After', '10');
+            return res.status(503).json({ error: 'Image processing busy, please retry.' });
+          }
           logger.error('Display route error', {
             reqId,
             filename,

@@ -90,6 +90,39 @@ describe('Image Processing Concurrency Limiting', () => {
       expect(stats.active).toBe(0);
       expect(stats.pending).toBe(0);
     });
+
+    test('should reject when queue is full', async () => {
+      imageModule = require('../media/image');
+      const limiter = new imageModule.ConcurrencyLimiter(1, { maxQueue: 1, queueTimeoutMs: 1000 });
+
+      const slow = () => new Promise(resolve => setTimeout(resolve, 50));
+
+      const first = limiter.limit(slow);
+      const second = limiter.limit(slow);
+      const third = limiter.limit(slow).catch(err => err);
+
+      const error = await third;
+      expect(error).toBeInstanceOf(Error);
+      expect(error.code).toBe('IMAGE_PROCESSING_QUEUE_FULL');
+
+      await Promise.all([first, second]);
+    });
+
+    test('should reject when queued too long', async () => {
+      imageModule = require('../media/image');
+      const limiter = new imageModule.ConcurrencyLimiter(1, { maxQueue: 1, queueTimeoutMs: 20 });
+
+      const slow = () => new Promise(resolve => setTimeout(resolve, 80));
+
+      const first = limiter.limit(slow);
+      const timed = limiter.limit(slow).catch(err => err);
+
+      const error = await timed;
+      expect(error).toBeInstanceOf(Error);
+      expect(error.code).toBe('IMAGE_PROCESSING_QUEUE_TIMEOUT');
+
+      await first;
+    });
   });
 
   describe('Concurrency Queue Behavior', () => {
