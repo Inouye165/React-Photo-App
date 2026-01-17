@@ -1,7 +1,9 @@
 {
   "compilerOptions": {
+    /* Base Options */
     "target": "ES2022",
     "lib": ["ES2022", "DOM", "DOM.Iterable"],
+    "types": ["vite/client"],
     "module": "ESNext",
     "skipLibCheck": true,
 
@@ -13,15 +15,15 @@
     "noEmit": true,
     "jsx": "react-jsx",
 
-    /* Linting */
+    /* Linting - Strictness (Your Preferences) */
     "strict": true,
-    "noUnusedLocals": true,
-    "noUnusedParameters": true,
+    "noUnusedLocals": true,      // KEEPS IT CLEAN: Flags variables you defined but didn't use.
+    "noUnusedParameters": true,  // KEEPS IT CLEAN: Flags function args you don't use.
     "noFallthroughCasesInSwitch": true,
 
-    /* Interop - allow gradual migration from JS */
-    "allowJs": true,
-    "checkJs": false,
+    /* The "Hybrid Mode" Settings */
+    "allowJs": true,           // Critical: Lets your app run with a mix of .js and .ts files.
+    "checkJs": false,          // Critical: Ignores errors in old JS files so you can focus only on the file you are converting.
     "esModuleInterop": true,
     "forceConsistentCasingInFileNames": true,
     "resolveJsonModule": true
