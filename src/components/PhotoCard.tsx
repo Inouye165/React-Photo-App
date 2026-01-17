@@ -248,6 +248,22 @@ export default function PhotoCard({
     onDelete?.(photo.id);
   };
 
+  const handleCardSelect = () => {
+    if (isUploading || isTransitioning) return;
+    onSelect?.(photo);
+  };
+
+  const handleCardKeyDown = (e: React.KeyboardEvent<HTMLDivElement>) => {
+    // Only trigger when the card itself is focused (not when events bubble from child buttons).
+    if (e.currentTarget !== e.target) return;
+    if (isUploading || isTransitioning) return;
+
+    if (e.key === 'Enter' || e.key === ' ' || e.key === 'Spacebar') {
+      e.preventDefault();
+      onSelect?.(photo);
+    }
+  };
+
   return (
     <div
       className="bg-white rounded-3xl shadow-lg hover:shadow-xl transition-shadow duration-200 overflow-hidden cursor-pointer group"
@@ -255,10 +271,13 @@ export default function PhotoCard({
         borderRadius: '24px',
         boxShadow: '0 10px 25px -5px rgba(0, 0, 0, 0.1), 0 8px 10px -6px rgba(0, 0, 0, 0.1)',
       }}
-      onClick={() => !isUploading && !isTransitioning && onSelect?.(photo)}
+      onClick={handleCardSelect}
+      onKeyDown={handleCardKeyDown}
+      tabIndex={0}
       data-testid="photo-card"
-      role="article"
+      role="button"
       aria-label={`Photo: ${title}`}
+      aria-disabled={isUploading || isTransitioning}
     >
       {/* Thumbnail Section */}
       <div className="relative bg-slate-100 overflow-hidden min-h-[120px]">
