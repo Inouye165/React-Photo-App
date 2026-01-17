@@ -5,6 +5,7 @@ import CollectibleDetailView from './CollectibleDetailView';
 import type { Photo } from '../types/photo';
 import type { CollectibleRecord } from '../types/collectibles';
 import { startBackgroundUpload } from '../utils/uploadPipeline';
+import { request } from '../api/httpClient';
 
 vi.mock('../hooks/useLocalPhotoPicker', () => ({
   default: () => ({
@@ -107,5 +108,23 @@ describe('CollectibleDetailView capture session', () => {
     expect(startBackgroundUpload).toHaveBeenCalledWith(
       expect.objectContaining({ collectibleId: 123 })
     );
+  });
+
+  test('refetches reference photos on collectible-photos-changed event', async () => {
+    const requestMock = vi.mocked(request);
+
+    render(<CollectibleDetailView photo={mockPhoto} collectibleData={mockCollectible} />);
+
+    // Initial fetch on mount
+    await waitFor(() => expect(requestMock).toHaveBeenCalled());
+    const callsAfterMount = requestMock.mock.calls.length;
+
+    window.dispatchEvent(
+      new CustomEvent('collectible-photos-changed', {
+        detail: { collectibleId: '123', photoId: '999' },
+      })
+    );
+
+    await waitFor(() => expect(requestMock.mock.calls.length).toBeGreaterThan(callsAfterMount));
   });
 });

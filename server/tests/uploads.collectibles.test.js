@@ -61,6 +61,8 @@ describe('Collectible upload pipeline', () => {
     }));
 
     const createUploadsRouter = require('../routes/uploads');
+    const publishToUser = jest.fn();
+    const sseManager = { publishToUser };
 
     // Minimal DB mock for uploads.js
     const photos = new Map();
@@ -123,7 +125,7 @@ describe('Collectible upload pipeline', () => {
       req.requestId = 'test-request-id';
       next();
     });
-    app.use('/uploads', createUploadsRouter({ db: mockDb }));
+    app.use('/uploads', createUploadsRouter({ db: mockDb, sseManager }));
 
     const res = await request(app)
       .post('/uploads/upload?collectible_id=1')
@@ -137,6 +139,16 @@ describe('Collectible upload pipeline', () => {
         generateThumbnail: true,
         processMetadata: true,
         runAiAnalysis: false,
+      })
+    );
+
+    expect(publishToUser).toHaveBeenCalledWith(
+      '1',
+      'collectible.photos.changed',
+      expect.objectContaining({
+        collectibleId: '1',
+        photoId: expect.any(String),
+        createdAt: expect.any(String),
       })
     );
   });

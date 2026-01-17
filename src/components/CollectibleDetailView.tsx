@@ -235,6 +235,25 @@ export default function CollectibleDetailView({ photo, collectibleData, aiInsigh
     void fetchCollectiblePhotos();
   }, [fetchCollectiblePhotos]);
 
+  React.useEffect(() => {
+    const collectibleId = collectibleData?.id;
+    if (!collectibleId) return;
+    if (typeof window === 'undefined' || !window.addEventListener) return;
+
+    const onCollectiblePhotosChanged = (event: Event) => {
+      const custom = event as CustomEvent;
+      const detail = custom?.detail as { collectibleId?: unknown } | undefined;
+      if (!detail) return;
+      if (String(detail.collectibleId ?? '') !== String(collectibleId)) return;
+      void fetchCollectiblePhotos();
+    };
+
+    window.addEventListener('collectible-photos-changed', onCollectiblePhotosChanged);
+    return () => {
+      window.removeEventListener('collectible-photos-changed', onCollectiblePhotosChanged);
+    };
+  }, [collectibleData?.id, fetchCollectiblePhotos]);
+
   const selectedPhotoToDelete = React.useMemo(() => {
     if (!photoToDelete) return null;
     return mergedCollectiblePhotos.find((p) => String(p?.id) === String(photoToDelete)) || null;
