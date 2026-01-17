@@ -1,6 +1,6 @@
 'use strict';
 
-const LEVEL_PRIORITY = Object.freeze({
+const LEVEL_PRIORITY = {
   silent: -1,
   fatal: 0,
   error: 10,
@@ -8,28 +8,53 @@ const LEVEL_PRIORITY = Object.freeze({
   info: 30,
   debug: 40,
   trace: 50
-});
+} as const;
 
-const LEVEL_ALIASES = Object.freeze({
+type LogLevelName = keyof typeof LEVEL_PRIORITY;
+type ConsoleMethodName = 'log' | 'warn' | 'error' | 'info' | 'debug';
+type LoggerEvent = 'log' | 'error' | 'levelChange';
+
+const LEVEL_ALIASES: Partial<Record<string, LogLevelName>> = {
   off: 'silent',
   none: 'silent',
   warning: 'warn',
   err: 'error'
-});
+};
 
-const METHOD_MAP = Object.freeze({
+const METHOD_MAP: Record<LogLevelName, ConsoleMethodName> = {
   fatal: 'error',
   error: 'error',
   warn: 'warn',
   info: 'log',
   debug: typeof console.debug === 'function' ? 'debug' : 'log',
-  trace: typeof console.debug === 'function' ? 'debug' : 'log'
-});
+  trace: typeof console.debug === 'function' ? 'debug' : 'log',
+  silent: 'log'
+};
+
+type LoggerBindings = Readonly<Record<string, string>>;
+
+type LogEventPayload = {
+  level: LogLevelName;
+  args: unknown[];
+  bindings?: LoggerBindings;
+};
+
+type LoggerEventPayloadMap = {
+  log: LogEventPayload;
+  error: LogEventPayload;
+  levelChange: LogLevelName;
+};
+
+type LoggerHandler<K extends LoggerEvent> = (payload: LoggerEventPayloadMap[K]) => void;
+
+type SubscriberMap = {
+  [K in LoggerEvent]: Set<LoggerHandler<K>>;
+};
 
 // Capture the original console methods early so our internal logger sink
 // doesn't route through our own global console wrappers (which would otherwise
 // double-encode output).
-const ORIGINAL_CONSOLE = {
+const ORIGINAL_CONSOLE: Record<ConsoleMethodName, ((...args: unknown[]) => void) | null> = {
   log: typeof console.log === 'function' ? console.log.bind(console) : null,
   warn: typeof console.warn === 'function' ? console.warn.bind(console) : null,
   error: typeof console.error === 'function' ? console.error.bind(console) : null,
@@ -37,10 +62,10 @@ const ORIGINAL_CONSOLE = {
   debug: typeof console.debug === 'function' ? console.debug.bind(console) : null
 };
 
-const subscribers = {
-  log: new Set(),
-  error: new Set(),
-  levelChange: new Set()
+const subscribers: SubscriberMap = {
+  log: new Set<LoggerHandler<'log'>>(),
+  error: new Set<LoggerHandler<'error'>>(),
+  levelChange: new Set<LoggerHandler<'levelChange'>>()
 };
 
 const SENSITIVE_KEYS = new Set([
@@ -59,14 +84,14 @@ const SENSITIVE_REGEX = new RegExp(
   'gi'
 );
 
-function escapeLogNewlines(value) {
+function escapeLogNewlines(value: unknown): unknown {
   if (typeof value !== 'string') return value;
   // Avoid log injection by preventing user-controlled CR/LF from creating
   // fake log entries or confusing multiline logs.
   return value.replace(/\r/g, '\\r').replace(/\n/g, '\\n');
 }
 
-function isSafeObjectKey(key) {
+function isSafeObjectKey(key: unknown): key is string {
   // SECURITY: This function validates keys BEFORE any property access occurs.
   // It prevents prototype pollution by:
   // 1. Rejecting non-string keys
@@ -87,12 +112,13 @@ function isSafeObjectKey(key) {
   return /^[a-zA-Z0-9._-]+$/.test(key);
 }
 
-function sanitizeBindingValue(value) {
+function sanitizeBindingValue(value: unknown): string {
   if (value === null || value === undefined) return '';
-  return escapeLogNewlines(String(value));
+  const sanitized = escapeLogNewlines(String(value));
+  return typeof sanitized === 'string' ? sanitized : String(sanitized);
 }
 
-function defineSafeProperty(target, key, value) {
+function defineSafeProperty(target: Record<string, unknown>, key: string, value: unknown): void {
   if (!isSafeObjectKey(key)) return;
   try {
     // Safe: key is validated by isSafeObjectKey which only allows alphanumeric + [._-]
@@ -109,7 +135,7 @@ function defineSafeProperty(target, key, value) {
   }
 }
 
-function redact(arg, visited = new WeakSet()) {
+function redact(arg: unknown, visited: WeakSet<object> = new WeakSet<object>()): unknown {
   if (arg === null || arg === undefined) return arg;
 
   if (typeof arg === 'string') {
@@ -123,20 +149,20 @@ function redact(arg, visited = new WeakSet()) {
 
     try {
       if (Array.isArray(arg)) {
-        return arg.map(item => redact(item, visited));
+        return arg.map((item) => redact(item, visited));
       }
 
       // Handle plain objects and errors
       // Use a null-prototype object to avoid prototype pollution via keys like
       // __proto__/constructor/prototype.
-      const redacted = Object.create(null);
+      const redacted = Object.create(null) as Record<string, unknown>;
 
       for (const key of Object.keys(arg)) {
         const lowerKey = String(key).toLowerCase();
         if (SENSITIVE_KEYS.has(lowerKey)) {
           defineSafeProperty(redacted, key, '[REDACTED]');
         } else {
-          defineSafeProperty(redacted, key, redact(arg[key], visited));
+          defineSafeProperty(redacted, key, redact((arg as Record<string, unknown>)[key], visited));
         }
       }
       
@@ -158,7 +184,7 @@ function redact(arg, visited = new WeakSet()) {
   return arg;
 }
 
-function normalizeLevel(input) {
+function normalizeLevel(input: unknown): LogLevelName {
   if (input === undefined || input === null || input === '') {
     return 'info';
   }
@@ -169,7 +195,7 @@ function normalizeLevel(input) {
       // Fallback to default level instead of crashing
       return 'info';
     }
-    return entry[0];
+    return entry[0] as LogLevelName;
   }
 
   const lowered = String(input).trim().toLowerCase();
@@ -177,7 +203,7 @@ function normalizeLevel(input) {
     return 'info';
   }
   const alias = LEVEL_ALIASES[lowered];
-  const levelName = alias || lowered;
+  const levelName = alias || (lowered as LogLevelName);
   if (!Object.prototype.hasOwnProperty.call(LEVEL_PRIORITY, levelName)) {
     // Fallback to default level instead of crashing
     return 'info';
@@ -185,7 +211,7 @@ function normalizeLevel(input) {
   return levelName;
 }
 
-function resolveDefaultLevel() {
+function resolveDefaultLevel(): LogLevelName {
   const envLevel = process.env.SERVER_LOG_LEVEL || process.env.LOG_LEVEL;
   if (envLevel) {
     return normalizeLevel(envLevel);
@@ -196,16 +222,16 @@ function resolveDefaultLevel() {
   return 'info';
 }
 
-let currentLevel = resolveDefaultLevel();
+let currentLevel: LogLevelName = resolveDefaultLevel();
 
-function shouldLog(levelName) {
+function shouldLog(levelName: LogLevelName): boolean {
   if (levelName === 'silent') {
     return false;
   }
   return LEVEL_PRIORITY[levelName] <= LEVEL_PRIORITY[currentLevel];
 }
 
-function applyBindings(bindings, args) {
+function applyBindings(bindings: LoggerBindings | undefined, args: unknown[]): unknown[] {
   if (!bindings || Object.keys(bindings).length === 0) {
     return args;
   }
@@ -226,19 +252,22 @@ function applyBindings(bindings, args) {
   return [prefix, ...args];
 }
 
-function emit(event, payload) {
-  if (!subscribers[event]) {
+function emit<K extends LoggerEvent>(event: K, payload: LoggerEventPayloadMap[K]): void {
+  const handlers = subscribers[event];
+  if (!handlers) {
     return;
   }
-  for (const handler of subscribers[event]) {
+  for (const handler of handlers) {
     handler(payload);
   }
 }
 
 class TinyLogger {
-  constructor(bindings) {
+  private readonly bindings?: LoggerBindings;
+
+  constructor(bindings?: Record<string, unknown>) {
     if (bindings && typeof bindings === 'object' && Object.keys(bindings).length > 0) {
-      const safeBindings = Object.create(null);
+      const safeBindings = Object.create(null) as Record<string, string>;
       for (const [key, value] of Object.entries(bindings)) {
         if (!isSafeObjectKey(key)) {
           continue;
@@ -251,7 +280,7 @@ class TinyLogger {
     }
   }
 
-  static setLevel(level) {
+  static setLevel(level: unknown): void {
     const normalized = normalizeLevel(level);
     if (normalized === currentLevel) {
       return;
@@ -260,16 +289,16 @@ class TinyLogger {
     emit('levelChange', currentLevel);
   }
 
-  static getLevel() {
+  static getLevel(): LogLevelName {
     return currentLevel;
   }
 
-  static isLevelEnabled(level) {
+  static isLevelEnabled(level: unknown): boolean {
     const normalized = normalizeLevel(level);
     return shouldLog(normalized);
   }
 
-  static withLevel(level, fn) {
+  static withLevel<T>(level: unknown, fn: () => T): T {
     const prev = currentLevel;
     TinyLogger.setLevel(level);
     try {
@@ -279,54 +308,56 @@ class TinyLogger {
     }
   }
 
-  static on(event, handler) {
-    if (!subscribers[event]) {
+  static on<K extends LoggerEvent>(event: K, handler: LoggerHandler<K>): () => void {
+    const handlers = subscribers[event];
+    if (!handlers) {
       throw new Error(`Unknown logger event: ${event}`);
     }
-    subscribers[event].add(handler);
+    handlers.add(handler as LoggerHandler<typeof event>);
     return () => TinyLogger.off(event, handler);
   }
 
-  static off(event, handler) {
-    if (!subscribers[event]) {
+  static off<K extends LoggerEvent>(event: K, handler: LoggerHandler<K>): void {
+    const handlers = subscribers[event];
+    if (!handlers) {
       return;
     }
-    subscribers[event].delete(handler);
+    handlers.delete(handler as LoggerHandler<typeof event>);
   }
 
-  static reset() {
+  static reset(): void {
     currentLevel = resolveDefaultLevel();
   }
 
-  setLevel(level) {
+  setLevel(level: unknown): void {
     TinyLogger.setLevel(level);
   }
 
-  getLevel() {
+  getLevel(): LogLevelName {
     return TinyLogger.getLevel();
   }
 
-  isLevelEnabled(level) {
+  isLevelEnabled(level: unknown): boolean {
     return TinyLogger.isLevelEnabled(level);
   }
 
-  withLevel(level, fn) {
+  withLevel<T>(level: unknown, fn: () => T): T {
     return TinyLogger.withLevel(level, fn);
   }
 
-  on(event, handler) {
+  on<K extends LoggerEvent>(event: K, handler: LoggerHandler<K>): () => void {
     return TinyLogger.on(event, handler);
   }
 
-  off(event, handler) {
-    return TinyLogger.off(event, handler);
+  off<K extends LoggerEvent>(event: K, handler: LoggerHandler<K>): void {
+    TinyLogger.off(event, handler);
   }
 
-  child(extraBindings) {
+  child(extraBindings?: Record<string, unknown>): TinyLogger {
     if (!extraBindings || typeof extraBindings !== 'object' || Object.keys(extraBindings).length === 0) {
-      return new TinyLogger(this.bindings);
+      return new TinyLogger(this.bindings ? { ...this.bindings } : undefined);
     }
-    const combined = Object.create(null);
+    const combined = Object.create(null) as Record<string, string>;
     if (this.bindings && typeof this.bindings === 'object') {
       for (const [key, value] of Object.entries(this.bindings)) {
         if (isSafeObjectKey(key)) {
@@ -344,31 +375,31 @@ class TinyLogger {
     return new TinyLogger(combined);
   }
 
-  trace(...args) {
+  trace(...args: unknown[]): void {
     this.#log('trace', args);
   }
 
-  debug(...args) {
+  debug(...args: unknown[]): void {
     this.#log('debug', args);
   }
 
-  info(...args) {
+  info(...args: unknown[]): void {
     this.#log('info', args);
   }
 
-  warn(...args) {
+  warn(...args: unknown[]): void {
     this.#log('warn', args);
   }
 
-  error(...args) {
+  error(...args: unknown[]): void {
     this.#log('error', args);
   }
 
-  fatal(...args) {
+  fatal(...args: unknown[]): void {
     this.#log('fatal', args);
   }
 
-  #log(levelName, args) {
+  #log(levelName: LogLevelName, args: unknown[]): void {
     const normalized = normalizeLevel(levelName);
     if (!shouldLog(normalized)) {
       return;
@@ -376,7 +407,7 @@ class TinyLogger {
     const preparedArgs = applyBindings(this.bindings, args);
 
     // Redact arguments before logging or emitting
-    const redactedArgs = preparedArgs.map(arg => redact(arg));
+    const redactedArgs = preparedArgs.map((arg) => redact(arg));
 
     // Final sink hardening: emit a single-line string to the console.
     // This avoids multiline log injection (CWE-117) and is easier for CodeQL
@@ -405,27 +436,51 @@ class TinyLogger {
 const rootLogger = new TinyLogger();
 
 // Wrap global console methods to apply redaction everywhere
-['log', 'warn', 'error', 'info', 'debug'].forEach(method => {
-  if (typeof console[method] === 'function' && ORIGINAL_CONSOLE[method]) {
-    console[method] = function(...args) {
-      const redactedArgs = args.map(arg => redact(arg));
+const consoleMethods: ConsoleMethodName[] = ['log', 'warn', 'error', 'info', 'debug'];
+for (const method of consoleMethods) {
+  const original = ORIGINAL_CONSOLE[method];
+  const consoleMethod = console[method] as ((...args: unknown[]) => void) | undefined;
+  if (typeof consoleMethod === 'function' && original) {
+    console[method] = (...args: unknown[]) => {
+      const redactedArgs = args.map((arg) => redact(arg));
       const safeLine = JSON.stringify(redactedArgs).replace(/[\r\n]/g, ' ');
-      ORIGINAL_CONSOLE[method](safeLine);
+      original(safeLine);
     };
   }
-});
+}
 
-module.exports = rootLogger;
-module.exports.TinyLogger = TinyLogger;
-module.exports.setLevel = TinyLogger.setLevel;
-module.exports.getLevel = TinyLogger.getLevel;
-module.exports.isLevelEnabled = TinyLogger.isLevelEnabled;
-module.exports.withLevel = TinyLogger.withLevel;
-module.exports.on = TinyLogger.on;
-module.exports.off = TinyLogger.off;
-module.exports.child = (bindings) => rootLogger.child(bindings);
-module.exports.reset = TinyLogger.reset;
-module.exports.levels = Object.freeze({ ...LEVEL_PRIORITY });
-module.exports.normalizeLevel = normalizeLevel;
-module.exports.defaultLevel = resolveDefaultLevel;
-module.exports._subscribers = subscribers;
+const levels: Readonly<Record<LogLevelName, number>> = Object.freeze({ ...LEVEL_PRIORITY });
+
+interface LoggerExport extends TinyLogger {
+  TinyLogger: typeof TinyLogger;
+  setLevel: typeof TinyLogger.setLevel;
+  getLevel: typeof TinyLogger.getLevel;
+  isLevelEnabled: typeof TinyLogger.isLevelEnabled;
+  withLevel: typeof TinyLogger.withLevel;
+  on: typeof TinyLogger.on;
+  off: typeof TinyLogger.off;
+  child: (bindings?: Record<string, unknown>) => TinyLogger;
+  reset: typeof TinyLogger.reset;
+  levels: Readonly<Record<LogLevelName, number>>;
+  normalizeLevel: typeof normalizeLevel;
+  defaultLevel: typeof resolveDefaultLevel;
+  _subscribers: SubscriberMap;
+}
+
+const exportedLogger = Object.assign(rootLogger, {
+  TinyLogger,
+  setLevel: TinyLogger.setLevel,
+  getLevel: TinyLogger.getLevel,
+  isLevelEnabled: TinyLogger.isLevelEnabled,
+  withLevel: TinyLogger.withLevel,
+  on: TinyLogger.on,
+  off: TinyLogger.off,
+  child: (bindings?: Record<string, unknown>) => rootLogger.child(bindings),
+  reset: TinyLogger.reset,
+  levels,
+  normalizeLevel,
+  defaultLevel: resolveDefaultLevel,
+  _subscribers: subscribers
+}) as LoggerExport;
+
+export = exportedLogger;

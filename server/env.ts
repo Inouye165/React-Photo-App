@@ -1,5 +1,7 @@
-const path = require('path');
-const fs = require('fs');
+import path from 'path';
+import fs from 'fs';
+import dotenv from 'dotenv';
+
 // Idempotent environment loader for server scripts.
 // Use require('./env') from other server modules instead of calling dotenv.config()
 // multiple times. This makes sure .env is loaded exactly once and is easy to mock
@@ -10,15 +12,16 @@ if (!process.env.__SERVER_ENV_LOADED) {
     // When running compiled output (server/dist), this loader lives in dist/, so
     // fall back to ../.env.
     const candidatePaths = [path.join(__dirname, '.env'), path.join(__dirname, '..', '.env')];
-    const envPath = candidatePaths.find((p) => fs.existsSync(p)) || candidatePaths[0];
-    require('dotenv').config({ path: envPath });
+    const envPath = candidatePaths.find((candidate) => fs.existsSync(candidate)) ?? candidatePaths[0];
+    dotenv.config({ path: envPath });
     // Mark as loaded so subsequent requires are no-ops
     process.env.__SERVER_ENV_LOADED = '1';
   } catch (err) {
     // If dotenv isn't available or load fails, don't crash here; callers
     // should validate required env vars at runtime. Keep a console warn to
     // aid debugging.
-    console.warn('[env] Failed to load server/.env:', err && err.message ? err.message : err);
+    const message = err instanceof Error ? err.message : String(err);
+    console.warn('[env] Failed to load server/.env:', message);
   }
 }
 
@@ -47,7 +50,7 @@ if (!process.env.GOOGLE_MAPS_API_KEY && process.env.MAPS_API_KEY) {
   process.env.GOOGLE_MAPS_API_KEY = process.env.MAPS_API_KEY;
 }
 
-function readTrimmedEnv(name) {
+function readTrimmedEnv(name: string): string {
   const value = process.env[name];
   if (value == null) return '';
   return typeof value === 'string' ? value.trim() : String(value).trim();
@@ -79,4 +82,5 @@ if (!readTrimmedEnv('LANGCHAIN_API_KEY') && !readTrimmedEnv('LANGSMITH_API_KEY')
   console.log('[env] LangChain/LangSmith API key missing; disabling tracing to prevent network errors.');
 }
 
-module.exports = process.env;
+const exportedEnv: NodeJS.ProcessEnv = process.env;
+export = exportedEnv;
