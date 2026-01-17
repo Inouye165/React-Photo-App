@@ -239,4 +239,31 @@ describe('usePhotoProcessingEvents', () => {
       expect.objectContaining({ since: 'evt_123' }),
     )
   })
+
+  it('dispatches collectible-photos-changed for collectible.photos.changed frames', async () => {
+    const dispatchSpy = vi.spyOn(window, 'dispatchEvent')
+
+    let capturedOnEvent: ((frame: any) => void) | null = null
+    vi.mocked(connectPhotoEvents).mockImplementation(async (params: any) => {
+      capturedOnEvent = params?.onEvent
+      return makeClient() as any
+    })
+
+    renderHook(() => usePhotoProcessingEvents({ authed: true }))
+    await Promise.resolve()
+    await Promise.resolve()
+
+    if (!capturedOnEvent) throw new Error('expected SSE onEvent callback to be captured')
+    const onEvent: (frame: any) => void = capturedOnEvent as any
+
+    onEvent({
+      event: 'collectible.photos.changed',
+      id: 'evt-coll-1',
+      data: JSON.stringify({ collectibleId: '123', photoId: '456' }),
+    })
+
+    expect(dispatchSpy).toHaveBeenCalledWith(
+      expect.objectContaining({ type: 'collectible-photos-changed' }),
+    )
+  })
 })

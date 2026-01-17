@@ -210,7 +210,7 @@ export function registerRoutes(app: Application, { db, supabase, sseManager, log
     usersRouter
   );
   app.use('/api/v1/users', usersRouter);
-  const uploadsRouter = createUploadsRouter({ db });
+  const uploadsRouter = createUploadsRouter({ db, sseManager });
   app.use(authenticateToken, uploadsRouter);
   app.use('/api/v1', authenticateToken, uploadsRouter);
   const privilegeRouter = createPrivilegeRouter({ db });
