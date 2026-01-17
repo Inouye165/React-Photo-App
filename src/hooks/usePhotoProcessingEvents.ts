@@ -215,8 +215,21 @@ export function usePhotoProcessingEvents(params: { authed: boolean }): UsePhotoP
     }
 
     const onFrame = (frame: SseFrame) => {
-      // Only accept the single event type we support.
-      if (frame.event !== 'photo.processing') return
+      if (frame.event && frame.event !== 'photo.processing') {
+        if (frame.event === 'capture.intent') {
+          const payload = safeJsonParse(frame.data)
+          if (payload && typeof payload === 'object') {
+            try {
+              if (typeof window !== 'undefined' && window.dispatchEvent) {
+                window.dispatchEvent(new CustomEvent('capture-intent', { detail: payload }))
+              }
+            } catch {
+              // ignore event dispatch errors
+            }
+          }
+        }
+        return
+      }
 
       if (frame.id && typeof frame.id === 'string' && frame.id.trim()) {
         lastSeenEventIdRef.current = frame.id

@@ -21,7 +21,7 @@ export function isProbablyMobile(): boolean {
 
   const coarsePointer =
     typeof window.matchMedia === 'function' &&
-    window.matchMedia('(pointer: coarse)').matches;
+    Boolean(window.matchMedia('(pointer: coarse)')?.matches);
 
   const smallViewport = typeof window.innerWidth === 'number' && window.innerWidth <= 900;
 

@@ -11,6 +11,8 @@ import LuminaCaptureSession from './LuminaCaptureSession';
 import { request, API_BASE_URL } from '../api/httpClient';
 import { getHeadersForGetRequestAsync } from '../api/auth';
 import { deletePhoto } from '../api/photos';
+import { openCaptureIntent } from '../api/captureIntents';
+import { isProbablyMobile } from '../utils/isProbablyMobile';
 
 import { Trash2 } from 'lucide-react';
 
@@ -145,6 +147,7 @@ export default function CollectibleDetailView({ photo, collectibleData, aiInsigh
   const [collectiblePhotosLoading, setCollectiblePhotosLoading] = React.useState(false);
   const [collectiblePhotosError, setCollectiblePhotosError] = React.useState<string | null>(null);
   const [captureOpen, setCaptureOpen] = React.useState(false);
+  const [captureIntentSubmitting, setCaptureIntentSubmitting] = React.useState(false);
 
   // Confirm-before-delete state (mandatory)
   const [photoToDelete, setPhotoToDelete] = React.useState<string | null>(null);
@@ -172,6 +175,7 @@ export default function CollectibleDetailView({ photo, collectibleData, aiInsigh
   }, [insights]);
 
   const description = photo?.description || '';
+  const captureSearch = typeof window !== 'undefined' ? window.location.search : '';
 
   const fetchCollectiblePhotos = React.useCallback(async () => {
     const collectibleId = collectibleData?.id;
@@ -294,9 +298,58 @@ export default function CollectibleDetailView({ photo, collectibleData, aiInsigh
     setCaptureOpen(true);
   }, [collectibleData?.id, setBanner]);
 
+  const handleCaptureOnPhone = React.useCallback(async () => {
+    if (captureIntentSubmitting) return;
+    if (!photo?.id || !collectibleData?.id) {
+      setBanner({ message: 'Select a collectible before capturing on phone.', severity: 'warning' });
+      return;
+    }
+
+    setCaptureIntentSubmitting(true);
+    try {
+      const intent = await openCaptureIntent({
+        photoId: photo.id,
+        collectibleId: collectibleData.id,
+      });
+      if (!intent) {
+        setBanner({ message: 'Unable to create capture intent. Please try again.', severity: 'error' });
+      } else {
+        setBanner({ message: 'Ready on your phone', severity: 'info' });
+      }
+    } catch (err) {
+      setBanner({ message: getErrorMessage(err) || 'Failed to start phone capture', severity: 'error' });
+    } finally {
+      setCaptureIntentSubmitting(false);
+    }
+  }, [captureIntentSubmitting, collectibleData?.id, photo?.id, setBanner]);
+
   const handleCloseCaptureSession = React.useCallback(() => {
     setCaptureOpen(false);
   }, []);
+
+  React.useEffect(() => {
+    if (!photo?.id || !collectibleData?.id) return;
+    if (typeof window === 'undefined') return;
+    if (captureOpen) return;
+
+    const params = new URLSearchParams(captureSearch);
+    if (params.get('capture') !== '1') return;
+
+    const paramCollectibleId = params.get('collectibleId');
+    if (paramCollectibleId && String(collectibleData.id) !== String(paramCollectibleId)) return;
+
+    setCaptureOpen(true);
+
+    params.delete('capture');
+    params.delete('collectibleId');
+    const search = params.toString();
+    const nextUrl = `${window.location.pathname}${search ? `?${search}` : ''}${window.location.hash || ''}`;
+    try {
+      window.history.replaceState({}, '', nextUrl);
+    } catch {
+      // ignore history errors
+    }
+  }, [captureOpen, captureSearch, collectibleData?.id, photo?.id]);
 
   const onFileChange = React.useCallback(
     async (e: React.ChangeEvent<HTMLInputElement>) => {
@@ -485,6 +538,26 @@ export default function CollectibleDetailView({ photo, collectibleData, aiInsigh
           </h4>
 
           <div style={{ display: 'flex', gap: '8px', flexWrap: 'wrap' }}>
+            {!isProbablyMobile() && (
+              <button
+                type="button"
+                onClick={() => void handleCaptureOnPhone()}
+                disabled={!collectibleData?.id || captureIntentSubmitting}
+                style={{
+                  padding: '8px 12px',
+                  borderRadius: '10px',
+                  border: '1px solid #e2e8f0',
+                  backgroundColor: collectibleData?.id ? '#0ea5e9' : '#f1f5f9',
+                  color: collectibleData?.id ? '#ffffff' : '#94a3b8',
+                  fontSize: '12px',
+                  fontWeight: 600,
+                  cursor: collectibleData?.id ? 'pointer' : 'not-allowed',
+                  opacity: captureIntentSubmitting ? 0.7 : 1,
+                }}
+              >
+                {captureIntentSubmitting ? 'Sending…' : 'Capture on Phone'}
+              </button>
+            )}
             <button
               type="button"
               onClick={handleOpenCaptureSession}

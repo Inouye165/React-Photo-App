@@ -54,6 +54,13 @@ export default function EditPage({ photo, onClose: _onClose, onSave, onRecheckAI
 
   // === Collectibles Tab State (via hook) ===
   const [activeTab, setActiveTab] = useState<'context' | 'collectibles'>('context');
+  useEffect(() => {
+    if (typeof window === 'undefined') return
+    const params = new URLSearchParams(window.location.search)
+    if (params.get('capture') === '1') {
+      setActiveTab('collectibles')
+    }
+  }, [photo?.id])
   const {
     collectibleData,
     collectibleLoading,

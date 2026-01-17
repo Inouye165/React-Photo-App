@@ -2,6 +2,7 @@ import { Navigate, Outlet, useLocation } from 'react-router-dom'
 
 import { useAuth } from '../contexts/AuthContext'
 import { usePhotoProcessingEvents } from '../hooks/usePhotoProcessingEvents'
+import { useCaptureIntentListener } from '../hooks/useCaptureIntentListener'
 
 export default function IdentityGate() {
   const location = useLocation()
@@ -15,6 +16,7 @@ export default function IdentityGate() {
   // This is intentionally wired once at the top-level gate to avoid multiple
   // concurrent streams per tab.
   usePhotoProcessingEvents({ authed: Boolean(user && authReady) })
+  useCaptureIntentListener({ enabled: Boolean(user && authReady) })
 
   // Not authenticated: AuthWrapper handles rendering the landing/login.
   if (!user) return <Outlet />
