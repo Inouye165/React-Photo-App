@@ -61,8 +61,18 @@ function classifyImageProcessingError(err) {
  * Provides p-limit compatible API without ESM import issues.
  */
 class ConcurrencyLimiter {
-  constructor(maxConcurrency) {
-    this.maxConcurrency = maxConcurrency;
+  constructor(maxConcurrency, options = {}) {
+    if (maxConcurrency && typeof maxConcurrency === 'object') {
+      options = maxConcurrency;
+      maxConcurrency = options.maxConcurrency;
+    }
+
+    const resolvedMax = Number.isFinite(maxConcurrency) ? maxConcurrency : 1;
+    this.maxConcurrency = Math.max(1, Math.floor(resolvedMax));
+    const resolvedQueue = Number.isFinite(options.maxQueue) ? options.maxQueue : 100;
+    this.maxQueue = Math.max(0, Math.floor(resolvedQueue));
+    const resolvedTimeout = Number.isFinite(options.queueTimeoutMs) ? options.queueTimeoutMs : 30000;
+    this.queueTimeoutMs = Math.max(0, Math.floor(resolvedTimeout));
     this.currentCount = 0;
     this.queue = [];
   }
@@ -75,7 +85,15 @@ class ConcurrencyLimiter {
    */
   limit(fn) {
     return new Promise((resolve, reject) => {
+      const entry = {
+        cancelled: false,
+        timer: null,
+        run: null,
+      };
+
       const execute = async () => {
+        if (entry.cancelled) return;
+        if (entry.timer) clearTimeout(entry.timer);
         this.currentCount++;
         try {
           const result = await fn();
@@ -88,18 +106,41 @@ class ConcurrencyLimiter {
         }
       };
 
+      entry.run = execute;
+
       if (this.currentCount < this.maxConcurrency) {
         execute();
-      } else {
-        this.queue.push(execute);
+        return;
       }
+
+      if (this.maxQueue === 0 || this.queue.length >= this.maxQueue) {
+        const err = new Error('Image processing queue is full');
+        err.code = 'IMAGE_PROCESSING_QUEUE_FULL';
+        reject(err);
+        return;
+      }
+
+      if (this.queueTimeoutMs > 0) {
+        entry.timer = setTimeout(() => {
+          if (entry.cancelled) return;
+          entry.cancelled = true;
+          const idx = this.queue.indexOf(entry);
+          if (idx !== -1) this.queue.splice(idx, 1);
+          const err = new Error('Image processing queue timed out');
+          err.code = 'IMAGE_PROCESSING_QUEUE_TIMEOUT';
+          reject(err);
+        }, this.queueTimeoutMs);
+      }
+
+      this.queue.push(entry);
     });
   }
 
   processQueue() {
-    if (this.queue.length > 0 && this.currentCount < this.maxConcurrency) {
+    while (this.queue.length > 0 && this.currentCount < this.maxConcurrency) {
       const next = this.queue.shift();
-      next();
+      if (!next || next.cancelled) continue;
+      next.run();
     }
   }
 
@@ -108,7 +149,9 @@ class ConcurrencyLimiter {
     return {
       active: this.currentCount,
       pending: this.queue.length,
-      maxConcurrency: this.maxConcurrency
+      maxConcurrency: this.maxConcurrency,
+      maxQueue: this.maxQueue,
+      queueTimeoutMs: this.queueTimeoutMs
     };
   }
 }
@@ -117,7 +160,9 @@ class ConcurrencyLimiter {
 // We keep this low to prevent resource exhaustion
 const cpuCount = os.cpus().length;
 const maxConcurrency = Math.min(Math.max(1, Math.floor(cpuCount / 2)), 2);
-const imageProcessingLimiter = new ConcurrencyLimiter(maxConcurrency);
+const maxQueue = Number.parseInt(process.env.IMAGE_PROCESSING_QUEUE_LIMIT || '100', 10);
+const queueTimeoutMs = Number.parseInt(process.env.IMAGE_PROCESSING_QUEUE_TIMEOUT_MS || '30000', 10);
+const imageProcessingLimiter = new ConcurrencyLimiter(maxConcurrency, { maxQueue, queueTimeoutMs });
 
 /**
  * Get the concurrency limiter instance.
