@@ -5,7 +5,7 @@ import type { Photo } from '../types/photo';
 import { API_BASE_URL, getOrCreateRoom, getPhoto } from '../api';
 import useStore from '../store';
 import { useProtectedImageBlobUrl } from '../hooks/useProtectedImageBlobUrl';
-import LocationMapPanel from '../components/LocationMapPanel.jsx';
+import LocationMapPanel from '../components/LocationMapPanel';
 import formatFileSize from '../utils/formatFileSize';
 import { aiPollDebug } from '../utils/aiPollDebug';
 import { useAuth } from '../contexts/AuthContext';
