@@ -91,7 +91,8 @@ describe('CollectibleDetailView capture session', () => {
   test('opens capture session from collectible detail view', async () => {
     render(<CollectibleDetailView photo={mockPhoto} collectibleData={mockCollectible} />);
 
-    fireEvent.click(screen.getByRole('button', { name: /Capture Session/i }));
+    fireEvent.click(screen.getByRole('button', { name: /Add Reference Photo/i }));
+    fireEvent.click(screen.getByRole('menuitem', { name: /Use Webcam/i }));
     expect(screen.getByRole('dialog', { name: /Lumina capture session/i })).toBeInTheDocument();
 
     await waitFor(() =>
@@ -102,7 +103,8 @@ describe('CollectibleDetailView capture session', () => {
   test('upload action calls upload pipeline with collectible id', async () => {
     render(<CollectibleDetailView photo={mockPhoto} collectibleData={mockCollectible} />);
 
-    fireEvent.click(screen.getByRole('button', { name: /Capture Session/i }));
+    fireEvent.click(screen.getByRole('button', { name: /Add Reference Photo/i }));
+    fireEvent.click(screen.getByRole('menuitem', { name: /Use Webcam/i }));
 
     const input = await screen.findByTestId('lumina-library-input');
     const file = new File(['test'], 'ref.jpg', { type: 'image/jpeg' });
@@ -155,7 +157,8 @@ describe('CollectibleDetailView capture session', () => {
       expect(requestMock).toHaveBeenCalled();
       const callsAfterMount = requestMock.mock.calls.length;
 
-      fireEvent.click(screen.getByRole('button', { name: /Capture on Phone/i }));
+      fireEvent.click(screen.getByRole('button', { name: /Add Reference Photo/i }));
+      fireEvent.click(screen.getByRole('menuitem', { name: /Connect to Phone/i }));
 
       // openCaptureIntent resolves immediately (flush microtasks).
       await Promise.resolve();

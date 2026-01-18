@@ -14,7 +14,7 @@ import { deletePhoto } from '../api/photos';
 import { openCaptureIntent } from '../api/captureIntents';
 import { isProbablyMobile } from '../utils/isProbablyMobile';
 
-import { Trash2 } from 'lucide-react';
+import { ChevronDown, Trash2 } from 'lucide-react';
 
 import PriceRangeVisual from './PriceRangeVisual';
 import PriceHistoryList from './PriceHistoryList';
@@ -148,6 +148,10 @@ export default function CollectibleDetailView({ photo, collectibleData, aiInsigh
   const [collectiblePhotosError, setCollectiblePhotosError] = React.useState<string | null>(null);
   const [captureOpen, setCaptureOpen] = React.useState(false);
   const [captureIntentSubmitting, setCaptureIntentSubmitting] = React.useState(false);
+  const [addReferenceActionOpen, setAddReferenceActionOpen] = React.useState(false);
+  const [isProcessingSelection, setIsProcessingSelection] = React.useState(false);
+
+  const addReferenceActionRef = React.useRef<HTMLDivElement | null>(null);
 
   // Confirm-before-delete state (mandatory)
   const [photoToDelete, setPhotoToDelete] = React.useState<string | null>(null);
@@ -368,6 +372,33 @@ export default function CollectibleDetailView({ photo, collectibleData, aiInsigh
     collectibleId: collectibleData?.id ?? null,
   });
 
+  const closeAddReferenceMenu = React.useCallback(() => {
+    setAddReferenceActionOpen(false);
+  }, []);
+
+  React.useEffect(() => {
+    if (!addReferenceActionOpen) return;
+    if (typeof document === 'undefined') return;
+
+    const handleClickOutside = (event: MouseEvent) => {
+      if (!addReferenceActionRef.current) return;
+      if (!addReferenceActionRef.current.contains(event.target as Node)) {
+        setAddReferenceActionOpen(false);
+      }
+    };
+
+    const handleEscape = (event: KeyboardEvent) => {
+      if (event.key === 'Escape') setAddReferenceActionOpen(false);
+    };
+
+    document.addEventListener('mousedown', handleClickOutside);
+    document.addEventListener('keydown', handleEscape);
+    return () => {
+      document.removeEventListener('mousedown', handleClickOutside);
+      document.removeEventListener('keydown', handleEscape);
+    };
+  }, [addReferenceActionOpen]);
+
   const collectiblePhotosUploading = React.useMemo(() => {
     const collectibleId = collectibleData?.id;
     if (!collectibleId) return false;
@@ -447,17 +478,43 @@ export default function CollectibleDetailView({ photo, collectibleData, aiInsigh
 
   const onFileChange = React.useCallback(
     async (e: React.ChangeEvent<HTMLInputElement>) => {
-      // 1. Parse EXIF/Thumbnails and stage files
-      // Note: input reset is handled inside useLocalPhotoPicker via fileInputRef.
-      await handleNativeSelection(e);
+      setIsProcessingSelection(true);
 
-      // 2. Trigger the upload IMMEDIATELY
-      // Ensure we pass the current collectible ID and 'none' classification
-      if (collectibleData?.id) {
+      // Snapshot the selection immediately (Safari/Firefox can lose `files` after async work).
+      const inputEl = (e?.currentTarget || e?.target) as HTMLInputElement | null;
+      const selectedFiles = Array.from(inputEl?.files || []);
+
+      try {
+        if (selectedFiles.length === 0) return;
+
+        if (!collectibleData?.id) {
+          setBanner({ message: 'Select a collectible before adding photos.', severity: 'warning' });
+          return;
+        }
+
+        // 1) Stage files (EXIF/thumbnail parsing, HEIC handling is downstream)
+        await handleNativeSelection(e);
+
+        // 2) Guard against race: only upload if this selection actually staged something.
+        const selectedNames = new Set(selectedFiles.map((file) => file.name));
+        const staged = useStore.getState().uploadPicker?.localPhotos || [];
+        const hasStagedSelection = staged.some((item) => selectedNames.has(item?.file?.name || item?.name));
+        if (!hasStagedSelection) {
+          setBanner({ message: 'No photos were staged for upload.', severity: 'warning' });
+          return;
+        }
+
+        // 3) Trigger upload immediately for the collectible with explicit classification.
         handleUploadFilteredOptimistic(undefined, 'none', String(collectibleData.id));
+      } catch (err) {
+        const message = getErrorMessage(err) || 'Failed to process selected image(s).';
+        setCollectiblePhotosError(message);
+        setBanner({ message, severity: 'error' });
+      } finally {
+        setIsProcessingSelection(false);
       }
     },
-    [collectibleData?.id, handleNativeSelection, handleUploadFilteredOptimistic]
+    [collectibleData?.id, handleNativeSelection, handleUploadFilteredOptimistic, setBanner]
   );
 
   // Extract valuation data - memoized to prevent dependency issues
@@ -632,63 +689,137 @@ export default function CollectibleDetailView({ photo, collectibleData, aiInsigh
           </h4>
 
           <div style={{ display: 'flex', gap: '8px', flexWrap: 'wrap' }}>
-            {!isProbablyMobile() && (
+            <div ref={addReferenceActionRef} style={{ position: 'relative' }}>
               <button
                 type="button"
-                onClick={() => void handleCaptureOnPhone()}
-                disabled={!collectibleData?.id || captureIntentSubmitting}
+                onClick={() => setAddReferenceActionOpen((prev) => !prev)}
+                aria-haspopup="menu"
+                aria-expanded={addReferenceActionOpen}
+                disabled={!collectibleData?.id}
                 style={{
                   padding: '8px 12px',
                   borderRadius: '10px',
                   border: '1px solid #e2e8f0',
-                  backgroundColor: collectibleData?.id ? '#0ea5e9' : '#f1f5f9',
+                  backgroundColor: collectibleData?.id ? '#0f172a' : '#f1f5f9',
                   color: collectibleData?.id ? '#ffffff' : '#94a3b8',
                   fontSize: '12px',
-                  fontWeight: 600,
+                  fontWeight: 700,
                   cursor: collectibleData?.id ? 'pointer' : 'not-allowed',
-                  opacity: captureIntentSubmitting ? 0.7 : 1,
+                  opacity: collectiblePhotosUploading || isProcessingSelection ? 0.85 : 1,
+                  display: 'inline-flex',
+                  alignItems: 'center',
+                  gap: '6px',
                 }}
               >
-                {captureIntentSubmitting ? 'Sending…' : 'Capture on Phone'}
+                {isProcessingSelection
+                  ? 'Processing Image…'
+                  : collectiblePhotosUploading
+                    ? 'Uploading…'
+                    : 'Add Reference Photo'}
+                <ChevronDown size={14} aria-hidden="true" focusable="false" />
               </button>
-            )}
-            <button
-              type="button"
-              onClick={handleOpenCaptureSession}
-              disabled={!collectibleData?.id}
-              style={{
-                padding: '8px 12px',
-                borderRadius: '10px',
-                border: '1px solid #e2e8f0',
-                backgroundColor: collectibleData?.id ? '#0f172a' : '#f1f5f9',
-                color: collectibleData?.id ? '#ffffff' : '#94a3b8',
-                fontSize: '12px',
-                fontWeight: 600,
-                cursor: collectibleData?.id ? 'pointer' : 'not-allowed',
-              }}
-            >
-              Capture Session
-            </button>
-            <button
-              type="button"
-              onClick={handleAddCollectiblePhotosClick}
-              disabled={!collectibleData?.id || collectiblePhotosUploading}
-              style={{
-                padding: '8px 12px',
-                borderRadius: '10px',
-                border: '1px solid #e2e8f0',
-                backgroundColor: collectibleData?.id ? '#ffffff' : '#f1f5f9',
-                color: '#334155',
-                fontSize: '12px',
-                fontWeight: 600,
-                cursor: collectibleData?.id && !collectiblePhotosUploading ? 'pointer' : 'not-allowed',
-                opacity: collectiblePhotosUploading ? 0.7 : 1,
-              }}
-            >
-              {collectiblePhotosUploading ? 'Uploading…' : 'Add Photos'}
-            </button>
+
+              {addReferenceActionOpen && (
+                <div
+                  role="menu"
+                  aria-orientation="vertical"
+                  style={{
+                    position: 'absolute',
+                    right: 0,
+                    top: 'calc(100% + 6px)',
+                    minWidth: '200px',
+                    backgroundColor: '#ffffff',
+                    border: '1px solid #e2e8f0',
+                    borderRadius: '12px',
+                    boxShadow: '0 10px 25px rgba(15, 23, 42, 0.12)',
+                    padding: '6px',
+                    zIndex: 20,
+                  }}
+                >
+                  <button
+                    type="button"
+                    role="menuitem"
+                    onClick={() => {
+                      closeAddReferenceMenu();
+                      handleAddCollectiblePhotosClick();
+                    }}
+                    disabled={!collectibleData?.id || collectiblePhotosUploading || isProcessingSelection}
+                    style={{
+                      width: '100%',
+                      textAlign: 'left',
+                      padding: '10px 10px',
+                      borderRadius: '10px',
+                      border: 'none',
+                      background: 'transparent',
+                      color: '#0f172a',
+                      fontSize: '12px',
+                      fontWeight: 600,
+                      cursor: 'pointer',
+                      opacity: collectiblePhotosUploading || isProcessingSelection ? 0.65 : 1,
+                    }}
+                  >
+                    Upload File
+                  </button>
+
+                  <button
+                    type="button"
+                    role="menuitem"
+                    onClick={() => {
+                      closeAddReferenceMenu();
+                      handleOpenCaptureSession();
+                    }}
+                    disabled={!collectibleData?.id}
+                    style={{
+                      width: '100%',
+                      textAlign: 'left',
+                      padding: '10px 10px',
+                      borderRadius: '10px',
+                      border: 'none',
+                      background: 'transparent',
+                      color: '#0f172a',
+                      fontSize: '12px',
+                      fontWeight: 600,
+                      cursor: 'pointer',
+                    }}
+                  >
+                    Use Webcam
+                  </button>
+
+                  {!isProbablyMobile() && (
+                    <button
+                      type="button"
+                      role="menuitem"
+                      onClick={() => {
+                        closeAddReferenceMenu();
+                        void handleCaptureOnPhone();
+                      }}
+                      disabled={!collectibleData?.id || captureIntentSubmitting}
+                      style={{
+                        width: '100%',
+                        textAlign: 'left',
+                        padding: '10px 10px',
+                        borderRadius: '10px',
+                        border: 'none',
+                        background: 'transparent',
+                        color: '#0f172a',
+                        fontSize: '12px',
+                        fontWeight: 600,
+                        cursor: captureIntentSubmitting ? 'not-allowed' : 'pointer',
+                        opacity: captureIntentSubmitting ? 0.65 : 1,
+                      }}
+                    >
+                      {captureIntentSubmitting ? 'Connecting…' : 'Connect to Phone'}
+                    </button>
+                  )}
+                </div>
+              )}
+            </div>
           </div>
         </div>
+
+        {isProcessingSelection && (
+          <div style={{ fontSize: '12px', color: '#475569' }}>Processing image…</div>
+        )}
 
         {collectiblePhotosError && (
           <div style={{ fontSize: '12px', color: '#b91c1c' }}>{collectiblePhotosError}</div>
