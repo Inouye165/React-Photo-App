@@ -109,6 +109,21 @@ export default function useLocalPhotoPicker({
 
   const convertToJpegIfHeicSafe = useCallback((file: File) => convertToJpegIfHeic(file), []);
 
+  const supportedExtensions = useMemo(
+    () => new Set(['.jpg', '.jpeg', '.png', '.gif', '.heic', '.heif', '.webp']),
+    []
+  );
+
+  const getExtension = useCallback((name: string) => {
+    const lastDot = name.lastIndexOf('.');
+    return lastDot >= 0 ? name.slice(lastDot).toLowerCase() : '';
+  }, []);
+
+  const isSupportedImageFile = useCallback(
+    (file: File) => file.type.startsWith('image/') || supportedExtensions.has(getExtension(file.name)),
+    [getExtension, supportedExtensions]
+  );
+
   /**
    * Shared file processing logic: parses EXIF data from files
    * @security EXIF parsing wrapped in try-catch, continues on failure
@@ -116,6 +131,8 @@ export default function useLocalPhotoPicker({
    */
   const processFiles = useCallback(
     async (fileList: (File | FileWithHandle)[], dirHandle: FileSystemDirectoryHandle | null = null) => {
+      const seenKeys = new Set<string>();
+      const skipped: Array<{ name: string; reason: string }> = [];
       const files: Array<{
         name: string;
         file: File;
@@ -138,6 +155,23 @@ export default function useLocalPhotoPicker({
           handle = (fileObj.handle as FileSystemFileHandle) || null;
         }
 
+        if (!file || file.size === 0) {
+          skipped.push({ name, reason: 'empty-file' });
+          continue;
+        }
+
+        if (!isSupportedImageFile(file)) {
+          skipped.push({ name, reason: 'unsupported-type' });
+          continue;
+        }
+
+        const dedupeKey = `${name}::${file.size}::${file.lastModified}`;
+        if (seenKeys.has(dedupeKey)) {
+          skipped.push({ name, reason: 'duplicate' });
+          continue;
+        }
+        seenKeys.add(dedupeKey);
+
         try {
           const exif = await parseExifWithTimeout(file);
           const exifDate = exif?.DateTimeOriginal || exif?.CreateDate || exif?.DateTime || null;
@@ -148,9 +182,13 @@ export default function useLocalPhotoPicker({
         }
       }
 
+      if (import.meta.env.DEV && skipped.length > 0) {
+        console.warn('[Picker] Skipped files during selection:', skipped);
+      }
+
       pickerCommand.openPicker({ dirHandle, files });
     },
-    [pickerCommand, parseExifWithTimeout]
+    [isSupportedImageFile, pickerCommand, parseExifWithTimeout]
   );
 
   /**
