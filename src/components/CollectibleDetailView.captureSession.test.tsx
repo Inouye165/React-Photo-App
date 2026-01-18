@@ -6,6 +6,7 @@ import type { Photo } from '../types/photo';
 import type { CollectibleRecord } from '../types/collectibles';
 import { startBackgroundUpload } from '../utils/uploadPipeline';
 import { request } from '../api/httpClient';
+import { openCaptureIntent } from '../api/captureIntents';
 
 vi.mock('../hooks/useLocalPhotoPicker', () => ({
   default: () => ({
@@ -26,6 +27,10 @@ vi.mock('../api/auth', () => ({
 
 vi.mock('../api/photos', () => ({
   deletePhoto: vi.fn().mockResolvedValue(undefined),
+}));
+
+vi.mock('../api/captureIntents', () => ({
+  openCaptureIntent: vi.fn(),
 }));
 
 vi.mock('../utils/uploadPipeline', () => ({
@@ -126,5 +131,49 @@ describe('CollectibleDetailView capture session', () => {
     );
 
     await waitFor(() => expect(requestMock.mock.calls.length).toBeGreaterThan(callsAfterMount));
+  });
+
+  test('polls for new reference photos after Capture on Phone starts', async () => {
+    vi.useFakeTimers();
+    try {
+      const requestMock = vi.mocked(request);
+      const openMock = vi.mocked(openCaptureIntent);
+
+      openMock.mockResolvedValue({
+        id: 'intent-1',
+        photoId: 1,
+        collectibleId: 123,
+        state: 'open',
+      } as any);
+
+      render(<CollectibleDetailView photo={mockPhoto} collectibleData={mockCollectible} />);
+
+      // Initial fetch on mount (flush microtasks; no timers involved).
+      await Promise.resolve();
+      await Promise.resolve();
+      await Promise.resolve();
+      expect(requestMock).toHaveBeenCalled();
+      const callsAfterMount = requestMock.mock.calls.length;
+
+      fireEvent.click(screen.getByRole('button', { name: /Capture on Phone/i }));
+
+      // openCaptureIntent resolves immediately (flush microtasks).
+      await Promise.resolve();
+      await Promise.resolve();
+      expect(openMock).toHaveBeenCalledTimes(1);
+
+      // startCollectiblePhotoWatch triggers an immediate poll.
+      await Promise.resolve();
+      await Promise.resolve();
+      expect(requestMock.mock.calls.length).toBeGreaterThan(callsAfterMount);
+
+      const callsAfterImmediate = requestMock.mock.calls.length;
+      await vi.advanceTimersByTimeAsync(2600);
+      await Promise.resolve();
+      await Promise.resolve();
+      expect(requestMock.mock.calls.length).toBeGreaterThan(callsAfterImmediate);
+    } finally {
+      vi.useRealTimers();
+    }
   });
 });
