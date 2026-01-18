@@ -153,6 +153,39 @@ export async function getOrCreateRoom(otherUserId: string): Promise<ChatRoom> {
   return room as ChatRoom
 }
 
+export async function createGroupRoom(name: string, memberIds: string[]): Promise<ChatRoom> {
+  const userId = await requireAuthedUserId()
+  const trimmedName = name.trim()
+  if (!trimmedName) throw new Error('Group name is required')
+
+  const uniqueMembers = [...new Set(memberIds)].filter((id) => typeof id === 'string' && id && id !== userId)
+  if (uniqueMembers.length < 2) throw new Error('Pick at least 2 people for a group chat')
+
+  const { data: room, error: roomError } = await supabase
+    .from('rooms')
+    .insert({ name: trimmedName, is_group: true })
+    .select('id, name, is_group, created_at')
+    .single()
+
+  if (roomError) throw roomError
+  if (!room) throw new Error('Failed to create group room')
+
+  const { error: selfMemberError } = await supabase
+    .from('room_members')
+    .insert({ room_id: (room as ChatRoom).id, user_id: userId })
+
+  if (selfMemberError) throw selfMemberError
+
+  const memberRows = uniqueMembers.map((id) => ({ room_id: (room as ChatRoom).id, user_id: id }))
+  const { error: membersError } = await supabase
+    .from('room_members')
+    .insert(memberRows)
+
+  if (membersError) throw membersError
+
+  return room as ChatRoom
+}
+
 export async function sendMessage(roomId: string, content: string, photoId?: PhotoId | null): Promise<ChatMessage> {
   const userId = await requireAuthedUserId()
   if (!roomId) throw new Error('Missing roomId')
