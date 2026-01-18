@@ -177,11 +177,11 @@ export default function CollectibleDetailView({ photo, collectibleData, aiInsigh
   const description = photo?.description || '';
   const captureSearch = typeof window !== 'undefined' ? window.location.search : '';
 
-  const fetchCollectiblePhotos = React.useCallback(async () => {
+  const loadCollectiblePhotos = React.useCallback(async (): Promise<CollectiblePhotoDto[]> => {
     const collectibleId = collectibleData?.id;
     if (!collectibleId) {
       setCollectiblePhotos([]);
-      return;
+      return [];
     }
 
     setCollectiblePhotosLoading(true);
@@ -195,14 +195,80 @@ export default function CollectibleDetailView({ photo, collectibleData, aiInsigh
       });
 
       if (!json.success) throw new Error(json.error || 'Failed to load collectible photos');
-      setCollectiblePhotos(Array.isArray(json.photos) ? json.photos : []);
+      const next = Array.isArray(json.photos) ? json.photos : [];
+      setCollectiblePhotos(next);
+      return next;
     } catch (err) {
       setCollectiblePhotosError(getErrorMessage(err) || 'Failed to load collectible photos');
       setCollectiblePhotos([]);
+      return [];
     } finally {
       setCollectiblePhotosLoading(false);
     }
   }, [collectibleData?.id]);
+
+  const fetchCollectiblePhotos = React.useCallback(async (): Promise<void> => {
+    await loadCollectiblePhotos();
+  }, [loadCollectiblePhotos]);
+
+  const collectiblePhotoWatchTimerRef = React.useRef<ReturnType<typeof setInterval> | null>(null);
+  const collectiblePhotoWatchDeadlineRef = React.useRef<number | null>(null);
+  const collectiblePhotoWatchBaselineRef = React.useRef<Set<string> | null>(null);
+  const collectiblePhotoWatchInFlightRef = React.useRef(false);
+
+  const stopCollectiblePhotoWatch = React.useCallback(() => {
+    if (collectiblePhotoWatchTimerRef.current) {
+      try {
+        clearInterval(collectiblePhotoWatchTimerRef.current);
+      } catch {
+        // ignore
+      }
+      collectiblePhotoWatchTimerRef.current = null;
+    }
+    collectiblePhotoWatchDeadlineRef.current = null;
+    collectiblePhotoWatchBaselineRef.current = null;
+    collectiblePhotoWatchInFlightRef.current = false;
+  }, []);
+
+  const pollCollectiblePhotosOnce = React.useCallback(async () => {
+    const deadline = collectiblePhotoWatchDeadlineRef.current;
+    if (!deadline || Date.now() > deadline) {
+      stopCollectiblePhotoWatch();
+      return;
+    }
+    if (collectiblePhotoWatchInFlightRef.current) return;
+
+    collectiblePhotoWatchInFlightRef.current = true;
+    try {
+      const latest = await loadCollectiblePhotos();
+      const baseline = collectiblePhotoWatchBaselineRef.current;
+      if (baseline && Array.isArray(latest)) {
+        const hasNew = latest.some((p) => !baseline.has(String(p?.id)));
+        if (hasNew) {
+          stopCollectiblePhotoWatch();
+        }
+      }
+    } finally {
+      collectiblePhotoWatchInFlightRef.current = false;
+    }
+  }, [loadCollectiblePhotos, stopCollectiblePhotoWatch]);
+
+  const startCollectiblePhotoWatch = React.useCallback(() => {
+    stopCollectiblePhotoWatch();
+
+    const collectibleId = collectibleData?.id;
+    if (!collectibleId) return;
+
+    collectiblePhotoWatchBaselineRef.current = new Set(
+      (Array.isArray(collectiblePhotos) ? collectiblePhotos : []).map((p) => String(p?.id)),
+    );
+    collectiblePhotoWatchDeadlineRef.current = Date.now() + 90_000;
+
+    void pollCollectiblePhotosOnce();
+    collectiblePhotoWatchTimerRef.current = setInterval(() => {
+      void pollCollectiblePhotosOnce();
+    }, 2_500);
+  }, [collectibleData?.id, collectiblePhotos, pollCollectiblePhotosOnce, stopCollectiblePhotoWatch]);
 
   const mergedCollectiblePhotos = React.useMemo<CollectiblePhotoDto[]>(() => {
     const collectibleId = collectibleData?.id;
@@ -234,6 +300,12 @@ export default function CollectibleDetailView({ photo, collectibleData, aiInsigh
   React.useEffect(() => {
     void fetchCollectiblePhotos();
   }, [fetchCollectiblePhotos]);
+
+  React.useEffect(() => {
+    return () => {
+      stopCollectiblePhotoWatch();
+    };
+  }, [stopCollectiblePhotoWatch]);
 
   React.useEffect(() => {
     const collectibleId = collectibleData?.id;
@@ -334,13 +406,16 @@ export default function CollectibleDetailView({ photo, collectibleData, aiInsigh
         setBanner({ message: 'Unable to create capture intent. Please try again.', severity: 'error' });
       } else {
         setBanner({ message: 'Ready on your phone', severity: 'info' });
+        // Fallback: poll for the new reference photo in case SSE is disabled,
+        // blocked by infra/proxies, or the event is missed.
+        startCollectiblePhotoWatch();
       }
     } catch (err) {
       setBanner({ message: getErrorMessage(err) || 'Failed to start phone capture', severity: 'error' });
     } finally {
       setCaptureIntentSubmitting(false);
     }
-  }, [captureIntentSubmitting, collectibleData?.id, photo?.id, setBanner]);
+  }, [captureIntentSubmitting, collectibleData?.id, photo?.id, setBanner, startCollectiblePhotoWatch]);
 
   const handleCloseCaptureSession = React.useCallback(() => {
     setCaptureOpen(false);
