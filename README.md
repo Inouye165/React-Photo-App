@@ -185,6 +185,7 @@ Current admin sections:
 *   [Testing Guide](TESTING.md)
 *   [Project Status & Deep Dive](docs/STATUS.md)
 *   [Security Checklist](docs/SECURITY_CODING_MAINTENANCE.md)
+*   [Group Chat Brainstorming](docs/CHAT_GROUP_BRAINSTORM.md)
 
 ## Technical Debt
 
