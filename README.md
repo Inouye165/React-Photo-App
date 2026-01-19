@@ -116,6 +116,7 @@ cd server && npm run worker # Background Worker
 *   The backend needs an OpenAI key to start (unless you're in test mode).
 *   Media delivery redirects are controlled by `MEDIA_REDIRECT_ENABLED` in [server/.env.example](server/.env.example) to offload image bytes to storage/CDN.
 *   **HITL Collectibles UI:** Set `VITE_ENABLE_COLLECTIBLES_UI=true` in your frontend `.env` to enable the Human-in-the-Loop collectible identification workflow. This provides a modal UI for reviewing and confirming AI-identified collectibles before continuing the analysis pipeline.
+*   **Build guard (optional):** Set `BUILD_ID` on the server and `VITE_BUILD_ID` on the frontend to detect new deployments and force a clean reload. If unset, both fall back to `dev`.
 *   Ongoing cleanup targets: [TypeScript refactor candidates](typescript-refactor-candidates.md)
 
 ## How I Test This Thing

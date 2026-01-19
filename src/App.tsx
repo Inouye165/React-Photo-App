@@ -17,6 +17,7 @@ import ChatPage from './pages/ChatPage.tsx';
 import AdminDashboard from './pages/AdminDashboard.tsx';
 import AdminAssessmentHistory from './pages/AdminAssessmentHistory.tsx';
 import AssessmentReviewDetail from './pages/AssessmentReviewDetail.tsx';
+import useBuildGuard from './hooks/useBuildGuard';
 
 declare global {
   interface Window {
@@ -35,6 +36,8 @@ declare global {
  * - /photos/:id/edit : Photo edit view (modern editor)
  */
 function App() {
+  useBuildGuard();
+
   // Dev-only global error logging setup
   useEffect(() => {
     if (!(import.meta?.env?.DEV)) return;
