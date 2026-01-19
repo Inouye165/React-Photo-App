@@ -49,7 +49,8 @@ export default function ChatWindow({ roomId, onOpenSidebar }: ChatWindowProps) {
   const [selectedPhotoId, setSelectedPhotoId] = useState<number | null>(null)
   const [pickerReloadKey, setPickerReloadKey] = useState<number>(0)
 
-  const [idToUsername, setIdToUsername] = useState<Record<string, string | null>>({})
+  const [memberIds, setMemberIds] = useState<string[]>([])
+  const [memberDirectory, setMemberDirectory] = useState<Record<string, string | null>>({})
   const [header, setHeader] = useState<ChatHeaderState>({ title: 'Conversation', isGroup: false, otherUserId: null })
 
   // Typing indicator hook (best-effort; no UI crash if Realtime unavailable)
@@ -57,7 +58,7 @@ export default function ChatWindow({ roomId, onOpenSidebar }: ChatWindowProps) {
     roomId: roomId ?? '',
     userId: user?.id ?? '',
     supabase,
-    participants: Object.entries(idToUsername).map(([id, username]) => ({
+    participants: Object.entries(memberDirectory).map(([id, username]) => ({
       userId: id,
       username: username ?? undefined,
     })),
@@ -73,22 +74,40 @@ export default function ChatWindow({ roomId, onOpenSidebar }: ChatWindowProps) {
   const markReadTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null)
   const lastMarkReadAtRef = useRef<number>(0)
 
-  const senderIds = useMemo(() => {
-    const ids = new Set<string>()
-    for (const m of messages) ids.add(m.sender_id)
-    return [...ids]
-  }, [messages])
-
   useEffect(() => {
     let cancelled = false
 
     async function run(): Promise<void> {
-      if (!senderIds.length) {
-        setIdToUsername({})
+      if (!roomId) {
+        setMemberIds([])
+        setMemberDirectory({})
         return
       }
 
-      const { data, error: usersError } = await supabase.from('users').select('id, username').in('id', senderIds)
+      const { data: members, error: membersError } = await supabase
+        .from('room_members')
+        .select('user_id')
+        .eq('room_id', roomId)
+
+      if (membersError) throw membersError
+
+      const ids = (members ?? [])
+        .map((row) => (row as { user_id?: unknown }).user_id)
+        .filter((id): id is string => typeof id === 'string')
+
+      const uniqueIds = [...new Set(ids)]
+      setMemberIds(uniqueIds)
+
+      if (!uniqueIds.length) {
+        setMemberDirectory({})
+        return
+      }
+
+      const { data, error: usersError } = await supabase
+        .from('users')
+        .select('id, username')
+        .in('id', uniqueIds)
+
       if (usersError) throw usersError
 
       const next: Record<string, string | null> = {}
@@ -97,17 +116,17 @@ export default function ChatWindow({ roomId, onOpenSidebar }: ChatWindowProps) {
         next[row.id] = typeof row.username === 'string' ? row.username : null
       }
 
-      if (!cancelled) setIdToUsername(next)
+      if (!cancelled) setMemberDirectory(next)
     }
 
     run().catch((err) => {
-      if (import.meta.env.DEV) console.debug('[ChatWindow] Failed to resolve usernames:', err)
+      if (import.meta.env.DEV) console.debug('[ChatWindow] Failed to resolve room members:', err)
     })
 
     return () => {
       cancelled = true
     }
-  }, [senderIds])
+  }, [roomId])
 
   const scheduleMarkRead = useCallback(
     (reason: 'open' | 'at-bottom' | 'new-message') => {
@@ -390,8 +409,16 @@ export default function ChatWindow({ roomId, onOpenSidebar }: ChatWindowProps) {
     if (user?.id && message.sender_id === user.id) {
       return profile?.username?.trim() || 'You'
     }
-    return idToUsername[message.sender_id]?.trim() || 'Unknown'
+    return memberDirectory[message.sender_id]?.trim() || 'Unknown'
   }
+
+  const memberLabels = useMemo(() => {
+    if (!memberIds.length) return []
+    return memberIds.map((id) => {
+      if (user?.id && id === user.id) return profile?.username?.trim() || 'You'
+      return memberDirectory[id]?.trim() || 'Unknown'
+    })
+  }, [memberIds, memberDirectory, profile?.username, user?.id])
 
   if (!roomId) {
     return (
@@ -422,6 +449,9 @@ export default function ChatWindow({ roomId, onOpenSidebar }: ChatWindowProps) {
             <div className="h-2 w-2 rounded-full bg-green-500" aria-label="Online" />
           )}
           <h2 className="text-sm font-semibold text-slate-900 truncate">{header.title}</h2>
+        </div>
+        <div className="mt-1 text-xs text-slate-500 truncate" aria-label="Chat members">
+          {memberLabels.length > 0 ? `Members: ${memberLabels.join(', ')}` : 'Members unavailable'}
         </div>
       </div>
 
