@@ -65,7 +65,7 @@ describe('LandingPage', () => {
 
     fireEvent.change(screen.getByLabelText(/Name/i), { target: { value: 'John Doe' } });
     fireEvent.change(screen.getByLabelText(/Email/i), { target: { value: 'john@example.com' } });
-    fireEvent.change(screen.getByLabelText(/Message/i), { target: { value: 'Hello!' } });
+    fireEvent.change(screen.getByLabelText(/Access request/i), { target: { value: 'Hello!' } });
 
     fireEvent.click(screen.getByText('Send Message'));
 
@@ -81,7 +81,7 @@ describe('LandingPage', () => {
       body: JSON.stringify({
         name: 'John Doe',
         email: 'john@example.com',
-        interest: 'general',
+        subject: 'Access Request: General Inquiry',
         message: 'Hello!'
       })
     }));
@@ -99,7 +99,7 @@ describe('LandingPage', () => {
 
     fireEvent.change(screen.getByLabelText(/Name/i), { target: { value: 'John Doe' } });
     fireEvent.change(screen.getByLabelText(/Email/i), { target: { value: 'john@example.com' } });
-    fireEvent.change(screen.getByLabelText(/Message/i), { target: { value: 'Hello!' } });
+    fireEvent.change(screen.getByLabelText(/Access request/i), { target: { value: 'Hello!' } });
 
     fireEvent.click(screen.getByText('Send Message'));
 
@@ -119,7 +119,7 @@ describe('LandingPage', () => {
 
     fireEvent.change(screen.getByLabelText(/Name/i), { target: { value: 'John Doe' } });
     fireEvent.change(screen.getByLabelText(/Email/i), { target: { value: 'john@example.com' } });
-    fireEvent.change(screen.getByLabelText(/Message/i), { target: { value: 'Hello!' } });
+    fireEvent.change(screen.getByLabelText(/Access request/i), { target: { value: 'Hello!' } });
 
     fireEvent.click(screen.getByText('Send Message'));
 

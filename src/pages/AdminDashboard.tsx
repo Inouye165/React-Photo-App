@@ -15,7 +15,7 @@
 import React, { useState, useEffect } from 'react';
 import { useAuth } from '../contexts/AuthContext';
 import { Link } from 'react-router-dom';
-import { Users, Sparkles, Mail, CheckCircle, XCircle, AlertCircle, MessageSquare } from 'lucide-react';
+import { Users, Sparkles, Mail, CheckCircle, XCircle, AlertCircle, MessageSquare, Inbox, Trash2 } from 'lucide-react';
 import { getAuthHeadersAsync } from '../api/auth';
 import { request } from '../api/httpClient';
 
@@ -96,7 +96,28 @@ interface FeedbackResponse {
   error?: string;
 }
 
-type TabType = 'invites' | 'suggestions' | 'comments' | 'feedback';
+interface AccessRequest {
+  id: string;
+  name: string;
+  email: string;
+  subject: string | null;
+  message: string;
+  status: string;
+  ip_address: string | null;
+  created_at: string;
+  updated_at: string;
+}
+
+interface AccessRequestsResponse {
+  success: boolean;
+  data?: AccessRequest[];
+  total?: number;
+  limit?: number;
+  offset?: number;
+  error?: string;
+}
+
+type TabType = 'invites' | 'suggestions' | 'comments' | 'feedback' | 'access-requests';
 
 const EMAIL_REGEX = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
 
@@ -132,6 +153,14 @@ export default function AdminDashboard() {
   const [feedbackOffset, setFeedbackOffset] = useState(0);
   const feedbackLimit = 50;
 
+  // Access requests tab state
+  const [accessRequests, setAccessRequests] = useState<AccessRequest[]>([]);
+  const [accessRequestsLoading, setAccessRequestsLoading] = useState(false);
+  const [accessRequestsError, setAccessRequestsError] = useState<string | null>(null);
+  const [accessRequestsTotal, setAccessRequestsTotal] = useState(0);
+  const [accessRequestsOffset, setAccessRequestsOffset] = useState(0);
+  const accessRequestsLimit = 50;
+
   // Verify admin role
   const isAdmin = user?.app_metadata?.role === 'admin';
 
@@ -145,7 +174,46 @@ export default function AdminDashboard() {
     if (activeTab === 'feedback') {
       fetchFeedback({ offset: 0, append: false });
     }
+    if (activeTab === 'access-requests') {
+      fetchAccessRequests({ offset: 0, append: false });
+    }
   }, [activeTab, stateFilter, reviewedFilter, feedbackStatusFilter]);
+
+  const fetchAccessRequests = async ({ offset, append }: { offset: number; append: boolean }) => {
+    setAccessRequestsLoading(true);
+    setAccessRequestsError(null);
+
+    try {
+      const headers = await getAuthHeadersAsync(false);
+
+      const query: Record<string, string> = {
+        limit: String(accessRequestsLimit),
+        offset: String(offset),
+      };
+
+      const data = await request<AccessRequestsResponse>({
+        path: '/api/admin/access-requests',
+        method: 'GET',
+        query,
+        headers,
+      });
+
+      if (!data.success) {
+        throw new Error(data.error || 'Failed to fetch access requests');
+      }
+
+      const rows = data.data || [];
+      setAccessRequests(prev => (append ? [...prev, ...rows] : rows));
+      setAccessRequestsTotal(data.total || 0);
+      setAccessRequestsOffset((data.offset || offset) + (data.limit || accessRequestsLimit));
+    } catch (err) {
+      const message = err instanceof Error ? err.message : 'Failed to load access requests';
+      setAccessRequestsError(message);
+      console.error('[admin] Fetch access requests error:', err);
+    } finally {
+      setAccessRequestsLoading(false);
+    }
+  };
 
   const fetchFeedback = async ({ offset, append }: { offset: number; append: boolean }) => {
     setFeedbackLoading(true);
@@ -326,6 +394,32 @@ export default function AdminDashboard() {
     }
   };
 
+  const handleDeleteAccessRequest = async (requestId: string) => {
+    const confirmed = window.confirm('Delete this access request? This cannot be undone.');
+    if (!confirmed) return;
+
+    try {
+      const headers = await getAuthHeadersAsync(false);
+
+      const data = await request<{ success: boolean; error?: string }>({
+        path: `/api/admin/access-requests/${requestId}`,
+        method: 'DELETE',
+        headers,
+      });
+
+      if (!data.success) {
+        throw new Error(data.error || 'Failed to delete access request');
+      }
+
+      setAccessRequests(prev => prev.filter(item => item.id !== requestId));
+      setAccessRequestsTotal(prev => Math.max(prev - 1, 0));
+    } catch (err) {
+      const message = err instanceof Error ? err.message : 'Failed to delete access request';
+      console.error('[admin] Delete access request error:', err);
+      alert(message);
+    }
+  };
+
   if (!isAdmin) {
     return (
       <div className="min-h-screen flex items-center justify-center bg-gray-50">
@@ -412,6 +506,19 @@ export default function AdminDashboard() {
               >
                 <MessageSquare size={18} />
                 <span>Feedback</span>
+              </button>
+              <button
+                onClick={() => setActiveTab('access-requests')}
+                className={`
+                  flex items-center gap-2 px-6 py-4 text-sm font-medium border-b-2 transition-colors
+                  ${activeTab === 'access-requests'
+                    ? 'border-blue-500 text-blue-600'
+                    : 'border-transparent text-gray-500 hover:text-gray-700 hover:border-gray-300'
+                  }
+                `}
+              >
+                <Inbox size={18} />
+                <span>Access Requests</span>
               </button>
             </nav>
           </div>
@@ -752,6 +859,85 @@ export default function AdminDashboard() {
                           className="px-4 py-2 rounded-lg bg-blue-600 text-white hover:bg-blue-700 disabled:opacity-50 disabled:cursor-not-allowed"
                         >
                           {feedbackLoading ? 'Loading…' : 'Load more'}
+                        </button>
+                      </div>
+                    )}
+                  </div>
+                )}
+              </div>
+            )}
+
+            {/* Access Requests Tab */}
+            {activeTab === 'access-requests' && (
+              <div>
+                <div className="flex items-center justify-between mb-6">
+                  <div>
+                    <h2 className="text-xl font-semibold text-gray-900">Access Requests</h2>
+                    <p className="text-sm text-gray-600 mt-1">
+                      {accessRequestsTotal} request{accessRequestsTotal !== 1 ? 's' : ''} submitted from the login page
+                    </p>
+                  </div>
+                </div>
+
+                {accessRequestsLoading && accessRequests.length === 0 ? (
+                  <div className="text-center py-12">
+                    <div className="inline-block animate-spin rounded-full h-8 w-8 border-4 border-gray-300 border-t-blue-600"></div>
+                    <p className="mt-4 text-gray-600">Loading access requests...</p>
+                  </div>
+                ) : accessRequestsError ? (
+                  <div className="bg-red-50 border border-red-200 rounded-lg p-4 text-red-800">
+                    <p className="font-medium">Error loading access requests</p>
+                    <p className="text-sm mt-1">{accessRequestsError}</p>
+                  </div>
+                ) : accessRequests.length === 0 ? (
+                  <div className="text-center py-12 text-gray-500">
+                    <Inbox className="mx-auto h-12 w-12 mb-4 opacity-50" />
+                    <p>No access requests found</p>
+                  </div>
+                ) : (
+                  <div className="space-y-4">
+                    {accessRequests.map((item) => (
+                      <div key={item.id} className="bg-gray-50 rounded-lg p-4 border border-gray-200">
+                        <div className="flex items-start justify-between mb-3 gap-4">
+                          <div className="min-w-0">
+                            <h3 className="font-medium text-gray-900 truncate">
+                              {item.subject || 'Access Request'}
+                            </h3>
+                            <p className="text-sm text-gray-500">
+                              {item.name} • {item.email}
+                            </p>
+                            <p className="text-xs text-gray-500 mt-1">
+                              Submitted: {new Date(item.created_at).toLocaleString()}
+                            </p>
+                          </div>
+
+                          <button
+                            onClick={() => handleDeleteAccessRequest(item.id)}
+                            className="flex items-center gap-1 px-3 py-1 bg-red-100 text-red-700 text-xs font-medium rounded-full hover:bg-red-200 transition-colors"
+                          >
+                            <Trash2 size={14} />
+                            Delete
+                          </button>
+                        </div>
+
+                        <div className="bg-white rounded border border-gray-200 p-3">
+                          <p className="text-sm text-gray-700 whitespace-pre-wrap break-words">
+                            {item.message}
+                          </p>
+                        </div>
+
+                        <div className="mt-3 text-xs text-gray-600 break-all">IP: {item.ip_address || '—'}</div>
+                      </div>
+                    ))}
+
+                    {accessRequests.length < accessRequestsTotal && (
+                      <div className="pt-2">
+                        <button
+                          onClick={() => fetchAccessRequests({ offset: accessRequestsOffset, append: true })}
+                          disabled={accessRequestsLoading}
+                          className="px-4 py-2 rounded-lg bg-blue-600 text-white hover:bg-blue-700 disabled:opacity-50 disabled:cursor-not-allowed"
+                        >
+                          {accessRequestsLoading ? 'Loading…' : 'Load more'}
                         </button>
                       </div>
                     )}
