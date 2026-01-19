@@ -8,6 +8,7 @@ import IdentityGate from './components/IdentityGate.tsx';
 import PhotoGalleryPage from './pages/PhotoGalleryPage';
 import PhotoDetailPage from './pages/PhotoDetailPage.tsx';
 import PhotoEditPage from './pages/PhotoEditPage.tsx';
+import CollectiblePhotoPage from './pages/CollectiblePhotoPage.tsx';
 import UploadPage from './pages/UploadPage.tsx';
 import SettingsPage from './pages/SettingsPage.tsx';
 import AuthWrapper from './layouts/AuthWrapper';
@@ -89,6 +90,9 @@ function App() {
 
               {/* Photo edit view */}
               <Route path="/photos/:id/edit" element={<PhotoEditPage />} />
+
+              {/* Collectible detail view (main + reference carousel) */}
+              <Route path="/collectibles/photos/:id" element={<CollectiblePhotoPage />} />
 
               {/* Catch-all redirect to SmartRouter */}
               <Route path="*" element={<SmartRouter />} />
