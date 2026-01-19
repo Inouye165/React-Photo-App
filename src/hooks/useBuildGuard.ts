@@ -8,21 +8,20 @@ export const BUILD_GUARD_STORAGE_KEY = 'build_guard_forced_at'
 export const BUILD_GUARD_THROTTLE_MS = 30_000
 export const BUILD_GUARD_INTERVAL_MS = 120_000
 
+export const SERVER_BOOT_ID_STORAGE_KEY = 'serverBootId:v1'
+
 export type BuildGuardMismatchResult = 'reloaded' | 'throttled'
 export type BuildGuardCheckResult = 'ok' | 'reloaded' | 'throttled' | 'error'
 
-export function getClientBuildId(): string {
-  try {
-    return import.meta.env.VITE_BUILD_ID || 'dev'
-  } catch {
-    return 'dev'
-  }
+function getAccessToken(session: unknown): string | null {
+  const token = (session as { access_token?: unknown } | null)?.access_token
+  return typeof token === 'string' && token.length > 0 ? token : null
 }
 
-export async function fetchServerBuildId(
+export async function fetchServerMeta(
   buildMetaUrl: string,
   fetcher: typeof fetch = fetch,
-): Promise<string | null> {
+): Promise<{ buildId: string; bootId: string } | null> {
   try {
     const response = await fetcher(buildMetaUrl, {
       method: 'GET',
@@ -33,10 +32,11 @@ export async function fetchServerBuildId(
 
     if (!response.ok) return null
 
-    const data = (await response.json()) as { buildId?: unknown }
+    const data = (await response.json()) as { buildId?: unknown; bootId?: unknown }
     if (!data || typeof data.buildId !== 'string') return null
+    if (typeof data.bootId !== 'string') return null
 
-    return data.buildId
+    return { buildId: data.buildId, bootId: data.bootId }
   } catch {
     return null
   }
@@ -56,22 +56,21 @@ export function isBuildGuardThrottled(
 export async function handleBuildMismatch(options: {
   logout?: () => Promise<void>
   clearAuthState?: () => void
-  logoutEndpoint: string
   fetcher?: typeof fetch
   storage?: Storage
   now?: () => number
   throttleMs?: number
   reload?: () => void
+  serverBootId: string
 }): Promise<BuildGuardMismatchResult> {
   const {
     logout,
     clearAuthState,
-    logoutEndpoint,
-    fetcher = fetch,
     storage = window.sessionStorage,
     now = () => Date.now(),
     throttleMs = BUILD_GUARD_THROTTLE_MS,
     reload = () => window.location.replace(window.location.href),
+    serverBootId,
   } = options
 
   const nowMs = now()
@@ -86,13 +85,9 @@ export async function handleBuildMismatch(options: {
   }
 
   try {
-    await fetcher(logoutEndpoint, {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      credentials: 'same-origin',
-    })
+    storage.setItem(SERVER_BOOT_ID_STORAGE_KEY, serverBootId)
   } catch {
-    // ignore logout endpoint failure
+    // ignore storage failures
   }
 
   try {
@@ -119,30 +114,38 @@ export async function handleBuildMismatch(options: {
 }
 
 export async function checkBuildIdOnce(options: {
-  clientBuildId: string
   buildMetaUrl: string
-  handleMismatch: () => Promise<BuildGuardMismatchResult>
+  handleMismatch: (serverBootId: string) => Promise<BuildGuardMismatchResult>
   fetcher?: typeof fetch
+  storage?: Storage
 }): Promise<BuildGuardCheckResult> {
-  const { clientBuildId, buildMetaUrl, handleMismatch, fetcher = fetch } = options
+  const { buildMetaUrl, handleMismatch, fetcher = fetch, storage = window.sessionStorage } = options
 
-  const serverBuildId = await fetchServerBuildId(buildMetaUrl, fetcher)
-  if (!serverBuildId) return 'error'
+  const meta = await fetchServerMeta(buildMetaUrl, fetcher)
+  if (!meta) return 'error'
 
-  if (serverBuildId === clientBuildId) return 'ok'
+  const storedBootId = storage.getItem(SERVER_BOOT_ID_STORAGE_KEY)
+  if (!storedBootId) {
+    try {
+      storage.setItem(SERVER_BOOT_ID_STORAGE_KEY, meta.bootId)
+    } catch {
+      // ignore storage failures
+    }
+    return 'ok'
+  }
 
-  return handleMismatch()
+  if (storedBootId === meta.bootId) return 'ok'
+
+  return handleMismatch(meta.bootId)
 }
 
 export default function useBuildGuard(): void {
-  const { logout } = useAuth()
+  const { logout, session } = useAuth()
   const isCheckingRef = useRef(false)
   const hasReloadedRef = useRef(false)
 
   useEffect(() => {
     const buildMetaUrl = buildApiUrl('/api/meta')
-    const logoutEndpoint = buildApiUrl('/api/auth/logout')
-    const clientBuildId = getClientBuildId()
 
     const clearAuthState = () => {
       setAuthToken(null)
@@ -155,17 +158,21 @@ export default function useBuildGuard(): void {
 
     const runCheck = async () => {
       if (isCheckingRef.current || hasReloadedRef.current) return
+
+      // If the user isn't authenticated, don't store or compare boot ids.
+      if (!getAccessToken(session)) return
+
       isCheckingRef.current = true
 
       const result = await checkBuildIdOnce({
-        clientBuildId,
         buildMetaUrl,
         fetcher: fetch,
-        handleMismatch: () =>
+        storage: window.sessionStorage,
+        handleMismatch: (serverBootId) =>
           handleBuildMismatch({
             logout,
             clearAuthState,
-            logoutEndpoint,
+            serverBootId,
           }),
       })
 
@@ -200,5 +207,5 @@ export default function useBuildGuard(): void {
       document.removeEventListener('visibilitychange', handleVisibilityChange)
       window.clearInterval(intervalId)
     }
-  }, [logout])
+  }, [logout, session])
 }

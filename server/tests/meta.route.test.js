@@ -27,7 +27,9 @@ describe('GET /api/meta', () => {
 
     const response = await request(app).get('/api/meta').expect(200)
 
-    expect(response.body).toEqual({ buildId: 'build-123' })
+    expect(response.body.buildId).toBe('build-123')
+    expect(typeof response.body.bootId).toBe('string')
+    expect(response.body.bootId.length).toBeGreaterThan(0)
     expect(response.headers['cache-control']).toMatch(/no-store/i)
   })
 
@@ -40,5 +42,14 @@ describe('GET /api/meta', () => {
 
     expect(typeof response.body.buildId).toBe('string')
     expect(response.body.buildId).toBe(resolveBuildId())
+    expect(typeof response.body.bootId).toBe('string')
+  })
+
+  test('bootId is stable across requests in a single process', async () => {
+    const app = createTestApp()
+    const first = await request(app).get('/api/meta').expect(200)
+    const second = await request(app).get('/api/meta').expect(200)
+
+    expect(first.body.bootId).toBe(second.body.bootId)
   })
 })
