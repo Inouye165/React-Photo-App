@@ -10,6 +10,8 @@ interface ContactFormState {
   email: string;
   interest: string;
   message: string;
+  buildSkills: string;
+  buildContribution: string;
 }
 
 const API_BASE_URL = import.meta.env.VITE_API_URL || 'http://localhost:3001';
@@ -22,7 +24,9 @@ const LandingPage: React.FC = () => {
     name: '',
     email: '',
     interest: 'general',
-    message: ''
+    message: '',
+    buildSkills: '',
+    buildContribution: ''
   });
 
   useEffect(() => {
@@ -45,8 +49,50 @@ const LandingPage: React.FC = () => {
 
   const handleContactSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
-    setIsSubmitting(true);
     setSubmitStatus(null);
+
+    const trimmedMessage = contactForm.message.trim();
+    if (!trimmedMessage) {
+      setSubmitStatus({ type: 'error', message: 'Please add your access request.' });
+      return;
+    }
+
+    if (contactForm.interest === 'build') {
+      const trimmedSkills = contactForm.buildSkills.trim();
+      const trimmedContribution = contactForm.buildContribution.trim();
+      if (!trimmedSkills || !trimmedContribution) {
+        setSubmitStatus({ type: 'error', message: 'Please include your skills and what you can bring to the build.' });
+        return;
+      }
+    }
+
+    setIsSubmitting(true);
+
+    const interestLabels: Record<string, string> = {
+      general: 'General Inquiry',
+      beta: 'Beta Access (Closed)',
+      support: 'Support',
+      build: 'Help Build',
+    };
+
+    const subjectLabel = interestLabels[contactForm.interest] || 'General Inquiry';
+    const subject = `Access Request: ${subjectLabel}`;
+
+    const messageParts = [trimmedMessage];
+    if (contactForm.interest === 'build') {
+      messageParts.push(
+        '',
+        `Skills: ${contactForm.buildSkills.trim()}`,
+        `What I can bring: ${contactForm.buildContribution.trim()}`
+      );
+    }
+
+    const payload = {
+      name: contactForm.name.trim(),
+      email: contactForm.email.trim(),
+      subject,
+      message: messageParts.join('\n')
+    };
 
     try {
       const response = await fetch(`${API_BASE_URL}/api/public/contact`, {
@@ -54,12 +100,19 @@ const LandingPage: React.FC = () => {
         headers: {
           'Content-Type': 'application/json',
         },
-        body: JSON.stringify(contactForm),
+        body: JSON.stringify(payload),
       });
 
       if (response.ok) {
         setSubmitStatus({ type: 'success', message: 'Message sent successfully! We will be in touch.' });
-        setContactForm({ name: '', email: '', interest: 'general', message: '' });
+        setContactForm({
+          name: '',
+          email: '',
+          interest: 'general',
+          message: '',
+          buildSkills: '',
+          buildContribution: ''
+        });
       } else if (response.status === 429) {
         setSubmitStatus({ type: 'error', message: 'Too many requests. Please try again in an hour.' });
       } else {
@@ -203,14 +256,54 @@ const LandingPage: React.FC = () => {
             disabled={isSubmitting}
           >
             <option value="general">General Inquiry</option>
-            <option value="beta">Beta Access</option>
+            <option value="beta">Beta Access (Closed)</option>
             <option value="support">Support</option>
-            <option value="enterprise">Enterprise</option>
+            <option value="build">Help Build</option>
           </select>
         </div>
 
+        {contactForm.interest === 'beta' && (
+          <div className="rounded-lg border border-amber-200 bg-amber-50 px-4 py-3 text-xs text-amber-800">
+            Beta access is closed for now. We can still keep your request on file for future openings.
+          </div>
+        )}
+
+        {contactForm.interest === 'build' && (
+          <div className="space-y-4">
+            <div>
+              <label htmlFor="build-skills" className="block text-sm font-medium text-slate-700 mb-1">
+                Skills & experience
+              </label>
+              <textarea
+                id="build-skills"
+                required
+                rows={3}
+                className="w-full px-4 py-2 border border-slate-300 rounded-lg focus:ring-2 focus:ring-indigo-500 focus:border-indigo-500 outline-none transition-all resize-none"
+                value={contactForm.buildSkills}
+                onChange={e => setContactForm(prev => ({ ...prev, buildSkills: e.target.value }))}
+                disabled={isSubmitting}
+              />
+            </div>
+
+            <div>
+              <label htmlFor="build-contribution" className="block text-sm font-medium text-slate-700 mb-1">
+                What you can bring to the build
+              </label>
+              <textarea
+                id="build-contribution"
+                required
+                rows={3}
+                className="w-full px-4 py-2 border border-slate-300 rounded-lg focus:ring-2 focus:ring-indigo-500 focus:border-indigo-500 outline-none transition-all resize-none"
+                value={contactForm.buildContribution}
+                onChange={e => setContactForm(prev => ({ ...prev, buildContribution: e.target.value }))}
+                disabled={isSubmitting}
+              />
+            </div>
+          </div>
+        )}
+
         <div>
-          <label htmlFor="message" className="block text-sm font-medium text-slate-700 mb-1">Message</label>
+          <label htmlFor="message" className="block text-sm font-medium text-slate-700 mb-1">Access request</label>
           <textarea
             id="message"
             required
@@ -220,6 +313,7 @@ const LandingPage: React.FC = () => {
             onChange={e => setContactForm(prev => ({ ...prev, message: e.target.value }))}
             disabled={isSubmitting}
           />
+          <p className="mt-1 text-xs text-slate-500">Include the access you need and any relevant context.</p>
         </div>
 
         <button

@@ -51,3 +51,30 @@ describe('AdminDashboard - Feedback tab', () => {
     expect(call.method).toBe('GET');
   });
 });
+
+describe('AdminDashboard - Access requests tab', () => {
+  beforeEach(() => {
+    requestMock.mockReset();
+    mockAuthState = { user: { app_metadata: { role: 'admin' } } };
+  });
+
+  it('fetches access requests when clicked', async () => {
+    requestMock.mockResolvedValue({ success: true, data: [], total: 0, limit: 50, offset: 0 });
+
+    render(
+      <MemoryRouter>
+        <AdminDashboard />
+      </MemoryRouter>
+    );
+
+    fireEvent.click(screen.getByText('Access Requests'));
+
+    await waitFor(() => {
+      expect(requestMock).toHaveBeenCalled();
+    });
+
+    const call = requestMock.mock.calls.find(Boolean)?.[0];
+    expect(call.path).toBe('/api/admin/access-requests');
+    expect(call.method).toBe('GET');
+  });
+});
