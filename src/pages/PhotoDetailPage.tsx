@@ -5,12 +5,13 @@ import type { Photo } from '../types/photo';
 import { API_BASE_URL, getOrCreateRoom, getPhoto } from '../api';
 import useStore from '../store';
 import { useProtectedImageBlobUrl } from '../hooks/useProtectedImageBlobUrl';
+import { useCollectiblesForPhoto } from '../hooks/useCollectiblesForPhoto';
 import LocationMapPanel from '../components/LocationMapPanel';
 import formatFileSize from '../utils/formatFileSize';
 import { aiPollDebug } from '../utils/aiPollDebug';
 import { useAuth } from '../contexts/AuthContext';
 import { request } from '../api/httpClient';
-import { getAuthHeadersAsync } from '../api/auth';
+import { getAuthHeadersAsync, getHeadersForGetRequestAsync } from '../api/auth';
 
 interface Comment {
   id: number;
@@ -35,6 +36,18 @@ interface CommentCreateResponse {
   error?: string;
 }
 
+type Id = string | number;
+
+type CollectiblePhotoDto = {
+  id: Id;
+  url?: string;
+  thumbnail?: string | null;
+  smallThumbnail?: string | null;
+  filename?: string;
+  created_at?: string;
+  [key: string]: unknown;
+};
+
 function normalizeClassification(photo: Photo | undefined): string {
   const raw = (photo?.classification || photo?.ai_analysis?.classification || '')
     .toLowerCase()
@@ -53,6 +66,15 @@ function getDisplayTitle(photo: Photo | undefined): string {
 function getDescription(photo: Photo | undefined): string {
   const d = (photo?.description || '').trim();
   return d || 'No description available.';
+}
+
+function resolveMediaUrl(maybeUrl: unknown): string | null {
+  if (typeof maybeUrl !== 'string') return null;
+  const url = maybeUrl.trim();
+  if (!url) return null;
+  if (url.startsWith('http') || url.startsWith('blob:') || url.startsWith('data:')) return url;
+  const normalized = url.startsWith('/') ? url : `/${url}`;
+  return `${API_BASE_URL}${normalized}`;
 }
 
 function getDisplayDate(photo: Photo | undefined): string {
@@ -196,6 +218,12 @@ export default function PhotoDetailPage() {
   const stateLabel = useMemo(() => formatStateLabel(photo?.state), [photo?.state]);
 
   const [useFullRes, setUseFullRes] = useState(false);
+  const [referencePhotos, setReferencePhotos] = useState<CollectiblePhotoDto[]>([]);
+  const [referenceLoading, setReferenceLoading] = useState(false);
+  const [referenceError, setReferenceError] = useState<string | null>(null);
+  const [selectedRefId, setSelectedRefId] = useState<string | null>(null);
+
+  const { collectibleData } = useCollectiblesForPhoto({ photo, enabled: true });
 
   useEffect(() => {
     if (id) {
@@ -233,7 +261,50 @@ export default function PhotoDetailPage() {
 
   useEffect(() => {
     setUseFullRes(false);
+    setSelectedRefId(null);
   }, [photo?.id]);
+
+  useEffect(() => {
+    const collectibleId = collectibleData?.id;
+    if (!collectibleId) {
+      setReferencePhotos([]);
+      return;
+    }
+
+    let cancelled = false;
+
+    async function loadReferencePhotos() {
+      setReferenceLoading(true);
+      setReferenceError(null);
+
+      try {
+        const headers = await getHeadersForGetRequestAsync();
+        const json = await request<{ success: boolean; error?: string; photos?: CollectiblePhotoDto[] }>({
+          path: `/collectibles/${collectibleId}/photos`,
+          headers: headers || {},
+        });
+
+        if (!json.success) throw new Error(json.error || 'Failed to load reference photos');
+        if (cancelled) return;
+
+        const next = Array.isArray(json.photos) ? json.photos : [];
+        setReferencePhotos(next);
+      } catch (err) {
+        if (cancelled) return;
+        const message = err instanceof Error ? err.message : String(err);
+        setReferenceError(message || 'Failed to load reference photos');
+        setReferencePhotos([]);
+      } finally {
+        if (!cancelled) setReferenceLoading(false);
+      }
+    }
+
+    void loadReferencePhotos();
+
+    return () => {
+      cancelled = true;
+    };
+  }, [collectibleData?.id]);
 
   const title = getDisplayTitle(photo);
   const classification = normalizeClassification(photo);
@@ -258,7 +329,27 @@ export default function PhotoDetailPage() {
     return `${baseUrl}${rawDisplayUrl.includes('?') ? '&' : '?'}v=${version}`;
   })();
 
-  const { imageBlobUrl, fetchError, isLoading, retry } = useProtectedImageBlobUrl(displayUrl);
+  const selectedRef = useMemo(() => {
+    if (!selectedRefId) return null;
+    return (Array.isArray(referencePhotos) ? referencePhotos : []).find(
+      (p) => String(p?.id) === String(selectedRefId),
+    ) || null;
+  }, [referencePhotos, selectedRefId]);
+
+  const selectedRefDisplayUrl = useMemo(() => {
+    if (!selectedRef) return null;
+    return (
+      resolveMediaUrl(selectedRef.url) ||
+      resolveMediaUrl(selectedRef.thumbnail) ||
+      resolveMediaUrl(selectedRef.smallThumbnail)
+    );
+  }, [selectedRef]);
+
+  const effectiveDisplayUrl = selectedRefDisplayUrl || displayUrl;
+
+  const gatedDisplayUrl = effectiveDisplayUrl && (selectedRefDisplayUrl || photo?.url) ? effectiveDisplayUrl : null;
+
+  const { imageBlobUrl, fetchError, isLoading, retry } = useProtectedImageBlobUrl(gatedDisplayUrl);
 
   const valuationRange = (() => {
     const debug = isValuationDebugEnabled();
@@ -487,7 +578,7 @@ export default function PhotoDetailPage() {
               </div>
             )}
           </div>
-          {fullUrl && !useFullRes && (
+          {fullUrl && !useFullRes && !selectedRef && (
             <div className="px-4 pb-4">
               <button
                 type="button"
@@ -497,6 +588,77 @@ export default function PhotoDetailPage() {
               >
                 Load full resolution
               </button>
+            </div>
+          )}
+
+          {isCollectible && (
+            <div className="px-4 pb-4">
+              <div className="rounded-2xl border border-slate-200 bg-white p-4">
+                <div className="flex items-center justify-between gap-4">
+                  <h2 className="text-sm font-semibold text-slate-900">Reference photos</h2>
+                  <div className="flex items-center gap-2">
+                    {selectedRef && (
+                      <button
+                        type="button"
+                        onClick={() => setSelectedRefId(null)}
+                        className="px-3 py-1.5 rounded-full bg-slate-100 text-slate-700 hover:bg-slate-200 text-xs"
+                      >
+                        Back to main
+                      </button>
+                    )}
+                  </div>
+                </div>
+
+                {referenceLoading && <span className="text-xs text-slate-500">Loading…</span>}
+
+                {referenceError && <div className="mt-3 text-sm text-red-600">{referenceError}</div>}
+
+                {!referenceLoading && referencePhotos.length === 0 ? (
+                  <p className="mt-3 text-sm text-slate-600">No reference photos yet.</p>
+                ) : (
+                  <div className="mt-3 flex gap-3 overflow-x-auto pb-2" style={{ WebkitOverflowScrolling: 'touch' }}>
+                    {referencePhotos.map((p) => {
+                      const thumb =
+                        resolveMediaUrl(p.smallThumbnail) ||
+                        resolveMediaUrl(p.thumbnail) ||
+                        resolveMediaUrl(p.url);
+
+                      const isSelected = selectedRefId != null && String(selectedRefId) === String(p.id);
+
+                      return (
+                        <button
+                          key={String(p.id)}
+                          type="button"
+                          onClick={() => setSelectedRefId(String(p.id))}
+                          className={
+                            isSelected
+                              ? 'shrink-0 rounded-xl border-2 border-indigo-500 bg-white overflow-hidden'
+                              : 'shrink-0 rounded-xl border border-slate-200 bg-white overflow-hidden hover:border-slate-300'
+                          }
+                          style={{ width: 96, height: 96 }}
+                          title={typeof p.filename === 'string' ? p.filename : undefined}
+                          aria-label={typeof p.filename === 'string' ? p.filename : 'Reference photo'}
+                        >
+                          {thumb ? (
+                            <img
+                              src={thumb}
+                              alt={typeof p.filename === 'string' ? p.filename : 'Reference photo'}
+                              className="w-full h-full object-cover"
+                              loading="lazy"
+                            />
+                          ) : (
+                            <div className="w-full h-full flex items-center justify-center text-xs text-slate-500 bg-slate-50">
+                              No preview
+                            </div>
+                          )}
+                        </button>
+                      );
+                    })}
+                  </div>
+                )}
+
+                <p className="mt-2 text-xs text-slate-500">Tip: click a reference thumbnail to view it larger.</p>
+              </div>
             </div>
           )}
         </div>
