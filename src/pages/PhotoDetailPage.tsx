@@ -547,7 +547,7 @@ export default function PhotoDetailPage() {
 
   return (
     <div
-      className="bg-white rounded-3xl shadow-lg overflow-hidden h-[100dvh] flex flex-col"
+      className="bg-white rounded-3xl shadow-lg overflow-hidden h-[calc(100dvh-84px)] max-h-[calc(100dvh-84px)] flex flex-col min-h-0"
       data-testid="photo-detail-page"
     >
       {/* Top actions */}
@@ -616,9 +616,9 @@ export default function PhotoDetailPage() {
       {/* Responsive layout: stacked on mobile, split on desktop */}
       <div className="flex-1 min-h-0 flex flex-col lg:flex-row overflow-hidden">
         {/* Left: image + references */}
-        <div className="lg:w-1/2 bg-slate-100 p-4 flex flex-col gap-3 min-h-0">
-          <div className="rounded-2xl border border-slate-200 bg-white overflow-hidden">
-            <div className="h-[38vh] sm:h-[42vh] lg:h-[45vh] max-h-[420px] relative">
+        <div className="lg:w-1/2 bg-slate-100 p-4 flex flex-col gap-3 min-h-0 overflow-hidden">
+          <div className="rounded-2xl border border-slate-200 bg-white overflow-hidden flex-1 min-h-0">
+            <div className="h-full min-h-0 relative">
               {isLoading && <div className="absolute inset-0 bg-slate-200 animate-pulse" />}
 
               {imageBlobUrl && !fetchError ? (
@@ -654,7 +654,7 @@ export default function PhotoDetailPage() {
           )}
 
           {isCollectible && (
-            <div className="rounded-2xl border border-slate-200 bg-white p-3">
+            <div className="rounded-2xl border border-slate-200 bg-white p-3 shrink-0">
                 <div className="flex items-center justify-between gap-4">
                   <h2 className="text-sm font-semibold text-slate-900">Reference photos</h2>
                   <div className="flex items-center gap-2">
