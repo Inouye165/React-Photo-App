@@ -250,8 +250,9 @@ export default function PhotoGalleryPage() {
 
   const handleSelectPhoto = (photo: PhotoCardPhoto) => {
     if (photo) {
+      const photoId = (photo as { photo_id?: unknown })?.photo_id ?? photo.id
       // Navigate to read-only detail page when clicking photo thumbnail
-      navigate(`/photos/${photo.id}`)
+      navigate(`/photos/${photoId}`)
     }
   }
 
