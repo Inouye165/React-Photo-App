@@ -1,67 +1,82 @@
-import React, { useEffect, useRef } from 'react';
+import { useEffect, useRef } from 'react'
+import type { ReactElement } from 'react'
+import type { Photo } from '../types/photo'
 
-const FOCUSABLE_SELECTOR = 'button,[href],input,select,textarea,[tabindex]:not([tabindex="-1"])';
+const FOCUSABLE_SELECTOR = 'button,[href],input,select,textarea,[tabindex]:not([tabindex="-1"])'
 
-export default function MetadataModal({ photo, onClose }) {
-  const dialogRef = useRef(null);
-  const closeButtonRef = useRef(null);
+export interface MetadataModalProps {
+  photo: Photo | null | undefined
+  onClose: () => void
+}
+
+export default function MetadataModal({ photo, onClose }: MetadataModalProps): ReactElement | null {
+  const dialogRef = useRef<HTMLDivElement | null>(null)
+  const closeButtonRef = useRef<HTMLButtonElement | null>(null)
 
   useEffect(() => {
-    if (!photo) return;
-    if (typeof document === 'undefined') return;
+    if (!photo) return
+    if (typeof document === 'undefined') return
 
-    const previouslyFocused = document.activeElement;
+    const previouslyFocused = document.activeElement
+
     const focusInitial = () => {
       try {
-        closeButtonRef.current?.focus?.();
+        closeButtonRef.current?.focus()
       } catch {
-        /* ignore */
+        // ignore
       }
-    };
+    }
 
-    const handleKeyDown = (event) => {
+    const handleKeyDown = (event: KeyboardEvent) => {
       if (event.key === 'Escape') {
-        event.preventDefault();
-        onClose();
-        return;
+        event.preventDefault()
+        onClose()
+        return
       }
-      if (event.key !== 'Tab') return;
+      if (event.key !== 'Tab') return
 
-      const root = dialogRef.current;
-      if (!root) return;
-      const focusable = Array.from(root.querySelectorAll(FOCUSABLE_SELECTOR)).filter((node) => !node.hasAttribute('disabled'));
+      const root = dialogRef.current
+      if (!root) return
+
+      const focusable = Array.from(root.querySelectorAll(FOCUSABLE_SELECTOR)).filter(
+        (node): node is HTMLElement => node instanceof HTMLElement && !node.hasAttribute('disabled'),
+      )
       if (focusable.length === 0) {
-        event.preventDefault();
-        return;
+        event.preventDefault()
+        return
       }
-      const first = focusable[0];
-      const last = focusable[focusable.length - 1];
-      const active = document.activeElement;
+
+      const first = focusable[0]
+      const last = focusable[focusable.length - 1]
+      const active = document.activeElement
+
       if (event.shiftKey) {
-        if (active === first || !root.contains(active)) {
-          event.preventDefault();
-          last.focus();
+        if (active === first || !(active instanceof HTMLElement) || !root.contains(active)) {
+          event.preventDefault()
+          last.focus()
         }
       } else if (active === last) {
-        event.preventDefault();
-        first.focus();
+        event.preventDefault()
+        first.focus()
       }
-    };
+    }
 
-    focusInitial();
-    document.addEventListener('keydown', handleKeyDown);
+    focusInitial()
+    document.addEventListener('keydown', handleKeyDown)
 
     return () => {
-      document.removeEventListener('keydown', handleKeyDown);
+      document.removeEventListener('keydown', handleKeyDown)
       try {
-        previouslyFocused?.focus?.();
+        if (previouslyFocused instanceof HTMLElement) {
+          previouslyFocused.focus()
+        }
       } catch {
-        /* ignore */
+        // ignore
       }
-    };
-  }, [photo, onClose]);
+    }
+  }, [photo, onClose])
 
-  if (!photo) return null;
+  if (!photo) return null
 
   return (
     <div
@@ -102,5 +117,5 @@ export default function MetadataModal({ photo, onClose }) {
         </div>
       </div>
     </div>
-  );
+  )
 }

@@ -2,7 +2,7 @@ import { useEffect, useMemo, useRef, useState } from 'react'
 import { useLocation, useNavigate, useOutletContext } from 'react-router-dom'
 import PhotoGallery from '../PhotoGallery'
 import PhotoUploadForm from '../PhotoUploadForm.tsx'
-import MetadataModal from '../components/MetadataModal.jsx'
+import MetadataModal from '../components/MetadataModal'
 import type { PhotoCardProps } from '../components/PhotoCard'
 import usePhotoPrivileges from '../hooks/usePhotoPrivileges'
 import type { PhotoPrivilegePhoto } from '../hooks/usePhotoPrivileges'
@@ -250,9 +250,9 @@ export default function PhotoGalleryPage() {
 
   const handleSelectPhoto = (photo: PhotoCardPhoto) => {
     if (photo) {
-      const photoId = (photo as { photo_id?: unknown })?.photo_id ?? photo.id
-      // Navigate to read-only detail page when clicking photo thumbnail
-      navigate(`/photos/${photoId}`)
+    const photoId = (photo as { photo_id?: unknown })?.photo_id ?? photo.id
+    // Navigate to read-only detail page when clicking photo thumbnail
+    navigate(`/photos/${photoId}`)
     }
   }
 

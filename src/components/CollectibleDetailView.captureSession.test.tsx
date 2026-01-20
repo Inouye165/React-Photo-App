@@ -5,6 +5,8 @@ import CollectibleDetailView from './CollectibleDetailView';
 import type { Photo } from '../types/photo';
 import type { CollectibleRecord } from '../types/collectibles';
 import { startBackgroundUpload } from '../utils/uploadPipeline';
+import { request } from '../api/httpClient';
+import { openCaptureIntent } from '../api/captureIntents';
 
 vi.mock('../hooks/useLocalPhotoPicker', () => ({
   default: () => ({
@@ -25,6 +27,10 @@ vi.mock('../api/auth', () => ({
 
 vi.mock('../api/photos', () => ({
   deletePhoto: vi.fn().mockResolvedValue(undefined),
+}));
+
+vi.mock('../api/captureIntents', () => ({
+  openCaptureIntent: vi.fn(),
 }));
 
 vi.mock('../utils/uploadPipeline', () => ({
@@ -85,7 +91,8 @@ describe('CollectibleDetailView capture session', () => {
   test('opens capture session from collectible detail view', async () => {
     render(<CollectibleDetailView photo={mockPhoto} collectibleData={mockCollectible} />);
 
-    fireEvent.click(screen.getByRole('button', { name: /Capture Session/i }));
+    fireEvent.click(screen.getByRole('button', { name: /Add Reference Photo/i }));
+    fireEvent.click(screen.getByRole('menuitem', { name: /Use Webcam/i }));
     expect(screen.getByRole('dialog', { name: /Lumina capture session/i })).toBeInTheDocument();
 
     await waitFor(() =>
@@ -96,7 +103,8 @@ describe('CollectibleDetailView capture session', () => {
   test('upload action calls upload pipeline with collectible id', async () => {
     render(<CollectibleDetailView photo={mockPhoto} collectibleData={mockCollectible} />);
 
-    fireEvent.click(screen.getByRole('button', { name: /Capture Session/i }));
+    fireEvent.click(screen.getByRole('button', { name: /Add Reference Photo/i }));
+    fireEvent.click(screen.getByRole('menuitem', { name: /Use Webcam/i }));
 
     const input = await screen.findByTestId('lumina-library-input');
     const file = new File(['test'], 'ref.jpg', { type: 'image/jpeg' });
@@ -107,5 +115,68 @@ describe('CollectibleDetailView capture session', () => {
     expect(startBackgroundUpload).toHaveBeenCalledWith(
       expect.objectContaining({ collectibleId: 123 })
     );
+  });
+
+  test('refetches reference photos on collectible-photos-changed event', async () => {
+    const requestMock = vi.mocked(request);
+
+    render(<CollectibleDetailView photo={mockPhoto} collectibleData={mockCollectible} />);
+
+    // Initial fetch on mount
+    await waitFor(() => expect(requestMock).toHaveBeenCalled());
+    const callsAfterMount = requestMock.mock.calls.length;
+
+    window.dispatchEvent(
+      new CustomEvent('collectible-photos-changed', {
+        detail: { collectibleId: '123', photoId: '999' },
+      })
+    );
+
+    await waitFor(() => expect(requestMock.mock.calls.length).toBeGreaterThan(callsAfterMount));
+  });
+
+  test('polls for new reference photos after Capture on Phone starts', async () => {
+    vi.useFakeTimers();
+    try {
+      const requestMock = vi.mocked(request);
+      const openMock = vi.mocked(openCaptureIntent);
+
+      openMock.mockResolvedValue({
+        id: 'intent-1',
+        photoId: 1,
+        collectibleId: 123,
+        state: 'open',
+      } as any);
+
+      render(<CollectibleDetailView photo={mockPhoto} collectibleData={mockCollectible} />);
+
+      // Initial fetch on mount (flush microtasks; no timers involved).
+      await Promise.resolve();
+      await Promise.resolve();
+      await Promise.resolve();
+      expect(requestMock).toHaveBeenCalled();
+      const callsAfterMount = requestMock.mock.calls.length;
+
+      fireEvent.click(screen.getByRole('button', { name: /Add Reference Photo/i }));
+      fireEvent.click(screen.getByRole('menuitem', { name: /Connect to Phone/i }));
+
+      // openCaptureIntent resolves immediately (flush microtasks).
+      await Promise.resolve();
+      await Promise.resolve();
+      expect(openMock).toHaveBeenCalledTimes(1);
+
+      // startCollectiblePhotoWatch triggers an immediate poll.
+      await Promise.resolve();
+      await Promise.resolve();
+      expect(requestMock.mock.calls.length).toBeGreaterThan(callsAfterMount);
+
+      const callsAfterImmediate = requestMock.mock.calls.length;
+      await vi.advanceTimersByTimeAsync(2600);
+      await Promise.resolve();
+      await Promise.resolve();
+      expect(requestMock.mock.calls.length).toBeGreaterThan(callsAfterImmediate);
+    } finally {
+      vi.useRealTimers();
+    }
   });
 });

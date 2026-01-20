@@ -2,7 +2,7 @@ import { useEffect, useMemo, useRef, useState } from 'react'
 
 import { SquarePen, X } from 'lucide-react'
 
-import { fetchRooms, getOrCreateRoom, searchUsers, type UserSearchResult } from '../../api'
+import { createGroupRoom, fetchRooms, getOrCreateRoom, searchUsers, type UserSearchResult } from '../../api'
 import { supabase } from '../../supabaseClient'
 import type { ChatRoom } from '../../types/chat'
 import { useAuth } from '../../contexts/AuthContext'
@@ -42,6 +42,9 @@ export default function ChatSidebar({ selectedRoomId, onSelectRoom }: ChatSideba
   const [searchText, setSearchText] = useState<string>('')
 
   const [isDiscoveryOpen, setIsDiscoveryOpen] = useState<boolean>(false)
+  const [createMode, setCreateMode] = useState<'direct' | 'group'>('direct')
+  const [groupName, setGroupName] = useState<string>('')
+  const [selectedUsers, setSelectedUsers] = useState<UserSearchResult[]>([])
   const [userQuery, setUserQuery] = useState<string>('')
   const [userSearchState, setUserSearchState] = useState<UserSearchState>({ status: 'idle', users: [] })
   const [userSearchError, setUserSearchError] = useState<string | null>(null)
@@ -136,6 +139,9 @@ export default function ChatSidebar({ selectedRoomId, onSelectRoom }: ChatSideba
     setUserSearchState({ status: 'idle', users: [] })
     setUserSearchError(null)
     setCreatingRoom(false)
+    setCreateMode('direct')
+    setGroupName('')
+    setSelectedUsers([])
   }, [isDiscoveryOpen])
 
   useEffect(() => {
@@ -229,6 +235,17 @@ export default function ChatSidebar({ selectedRoomId, onSelectRoom }: ChatSideba
     return rooms.filter((room) => (roomIdToSearchKey[room.id] ?? '').includes(q))
   }, [rooms, roomIdToSearchKey, searchText])
 
+  const selectedUserIds = useMemo(() => new Set(selectedUsers.map((u) => u.id)), [selectedUsers])
+
+  function handleModeChange(next: 'direct' | 'group'): void {
+    setCreateMode(next)
+    setUserSearchError(null)
+    if (next === 'direct') {
+      setGroupName('')
+      setSelectedUsers([])
+    }
+  }
+
   async function onPickUser(target: UserSearchResult): Promise<void> {
     if (!target?.id) return
     if (user?.id && target.id === user.id) {
@@ -249,6 +266,40 @@ export default function ChatSidebar({ selectedRoomId, onSelectRoom }: ChatSideba
       setCreatingRoom(false)
     }
   }
+
+  function onToggleGroupUser(target: UserSearchResult): void {
+    if (!target?.id) return
+    if (user?.id && target.id === user.id) {
+      setUserSearchError('You cannot add yourself to a group.')
+      return
+    }
+
+    setSelectedUsers((prev) => {
+      const next = prev.filter((u) => u.id !== target.id)
+      if (next.length !== prev.length) return next
+      return [...prev, target]
+    })
+  }
+
+  async function onCreateGroup(): Promise<void> {
+    try {
+      setCreatingRoom(true)
+      setUserSearchError(null)
+      const room = await createGroupRoom(groupName, selectedUsers.map((u) => u.id))
+      onSelectRoom(room.id)
+      setIsDiscoveryOpen(false)
+    } catch (err) {
+      const message = err instanceof Error ? err.message : String(err)
+      setUserSearchError(message)
+    } finally {
+      setCreatingRoom(false)
+    }
+  }
+
+  const minGroupMembers = 2
+  const trimmedGroupName = groupName.trim()
+  const canCreateGroup =
+    createMode === 'group' && Boolean(trimmedGroupName) && selectedUsers.length >= minGroupMembers && !creatingRoom
 
   return (
     <aside className="w-full sm:w-80 shrink-0 border-r border-slate-200 bg-white" aria-label="Chat rooms">
@@ -364,7 +415,9 @@ export default function ChatSidebar({ selectedRoomId, onSelectRoom }: ChatSideba
             <div className="px-5 py-4 border-b border-slate-200 flex items-center justify-between gap-3">
               <div className="min-w-0">
                 <h3 className="text-sm font-semibold text-slate-900">New message</h3>
-                <p className="mt-1 text-xs text-slate-500">Search by username</p>
+                <p className="mt-1 text-xs text-slate-500">
+                  {createMode === 'group' ? 'Create a group chat' : 'Search by username'}
+                </p>
               </div>
               <button
                 type="button"
@@ -377,6 +430,70 @@ export default function ChatSidebar({ selectedRoomId, onSelectRoom }: ChatSideba
             </div>
 
             <div className="px-5 py-4">
+              <div className="flex items-center gap-2">
+                <button
+                  type="button"
+                  onClick={() => handleModeChange('direct')}
+                  aria-pressed={createMode === 'direct'}
+                  className={
+                    createMode === 'direct'
+                      ? 'rounded-full bg-slate-900 px-3 py-1.5 text-xs font-semibold text-white'
+                      : 'rounded-full border border-slate-200 px-3 py-1.5 text-xs font-semibold text-slate-700 hover:bg-slate-50'
+                  }
+                >
+                  Direct message
+                </button>
+                <button
+                  type="button"
+                  onClick={() => handleModeChange('group')}
+                  aria-pressed={createMode === 'group'}
+                  className={
+                    createMode === 'group'
+                      ? 'rounded-full bg-slate-900 px-3 py-1.5 text-xs font-semibold text-white'
+                      : 'rounded-full border border-slate-200 px-3 py-1.5 text-xs font-semibold text-slate-700 hover:bg-slate-50'
+                  }
+                >
+                  Group chat
+                </button>
+              </div>
+
+              {createMode === 'group' && (
+                <div className="mt-4 space-y-3">
+                  <label className="block text-xs font-semibold text-slate-700" htmlFor="group-name">
+                    Group name
+                  </label>
+                  <input
+                    id="group-name"
+                    type="text"
+                    value={groupName}
+                    onChange={(e) => setGroupName(e.target.value)}
+                    placeholder="Family, Collectors, Weekend crew"
+                    className="w-full rounded-xl border border-slate-200 bg-white px-3 py-2 text-sm text-slate-900 placeholder:text-slate-400 focus:outline-none focus:ring-2 focus:ring-slate-900/10"
+                  />
+                  <div className="text-xs text-slate-500">Pick at least {minGroupMembers} people.</div>
+
+                  {selectedUsers.length > 0 && (
+                    <div className="flex flex-wrap gap-2" aria-label="Selected group members">
+                      {selectedUsers.map((u) => {
+                        const username =
+                          typeof u.username === 'string' && u.username.trim() ? u.username.trim() : 'Unknown'
+                        return (
+                          <button
+                            key={u.id}
+                            type="button"
+                            onClick={() => onToggleGroupUser(u)}
+                            className="flex items-center gap-2 rounded-full border border-slate-200 px-3 py-1 text-xs text-slate-700 hover:bg-slate-50"
+                          >
+                            <span className="truncate max-w-[140px]">{username}</span>
+                            <span aria-hidden="true">×</span>
+                          </button>
+                        )
+                      })}
+                    </div>
+                  )}
+                </div>
+              )}
+
               <input
                 ref={searchInputRef}
                 type="search"
@@ -384,7 +501,7 @@ export default function ChatSidebar({ selectedRoomId, onSelectRoom }: ChatSideba
                 onChange={(e) => setUserQuery(e.target.value)}
                 placeholder="Type a username…"
                 aria-label="Search users"
-                className="w-full rounded-xl border border-slate-200 bg-white px-3 py-2 text-sm text-slate-900 placeholder:text-slate-400 focus:outline-none focus:ring-2 focus:ring-slate-900/10"
+                className="mt-4 w-full rounded-xl border border-slate-200 bg-white px-3 py-2 text-sm text-slate-900 placeholder:text-slate-400 focus:outline-none focus:ring-2 focus:ring-slate-900/10"
               />
 
               {(userSearchError || (userSearchState.status === 'error' ? userSearchState.error : null)) && (
@@ -410,13 +527,21 @@ export default function ChatSidebar({ selectedRoomId, onSelectRoom }: ChatSideba
                   <ul className="space-y-1" aria-label="User search results">
                     {userSearchState.users.map((u) => {
                       const username = typeof u.username === 'string' && u.username.trim() ? u.username.trim() : 'Unknown'
+                      const isSelf = Boolean(user?.id) && u.id === user?.id
+                      const isSelected = selectedUserIds.has(u.id)
+                      const actionLabel = isSelected ? 'Remove' : 'Add'
                       return (
                         <li key={u.id}>
                           <button
                             type="button"
-                            onClick={() => onPickUser(u)}
-                            disabled={creatingRoom}
-                            className="w-full rounded-xl border border-slate-200 px-3 py-2 text-left hover:bg-slate-50 disabled:opacity-60"
+                            onClick={() => (createMode === 'group' ? onToggleGroupUser(u) : onPickUser(u))}
+                            disabled={creatingRoom || (createMode === 'group' && isSelf)}
+                            aria-pressed={createMode === 'group' ? isSelected : undefined}
+                            className={
+                              createMode === 'group' && isSelected
+                                ? 'w-full rounded-xl border border-slate-200 px-3 py-2 text-left bg-slate-50'
+                                : 'w-full rounded-xl border border-slate-200 px-3 py-2 text-left hover:bg-slate-50 disabled:opacity-60'
+                            }
                             data-testid={`chat-user-result-${u.id}`}
                           >
                             <div className="flex items-center gap-3">
@@ -435,6 +560,17 @@ export default function ChatSidebar({ selectedRoomId, onSelectRoom }: ChatSideba
                                   <div className="mt-0.5 text-xs text-slate-500">This is you</div>
                                 )}
                               </div>
+                              {createMode === 'group' && !isSelf && (
+                                <span
+                                  className={
+                                    isSelected
+                                      ? 'ml-auto rounded-full bg-slate-900 px-2 py-0.5 text-[10px] font-semibold text-white'
+                                      : 'ml-auto rounded-full border border-slate-200 px-2 py-0.5 text-[10px] font-semibold text-slate-700'
+                                  }
+                                >
+                                  {actionLabel}
+                                </span>
+                              )}
                             </div>
                           </button>
                         </li>
@@ -443,6 +579,28 @@ export default function ChatSidebar({ selectedRoomId, onSelectRoom }: ChatSideba
                   </ul>
                 )}
               </div>
+
+              {createMode === 'group' && (
+                <div className="mt-4 flex items-center justify-between gap-3">
+                  <div className="text-xs text-slate-500">
+                    {selectedUsers.length < minGroupMembers
+                      ? `${minGroupMembers - selectedUsers.length} more needed`
+                      : `${selectedUsers.length} selected`}
+                  </div>
+                  <button
+                    type="button"
+                    onClick={onCreateGroup}
+                    disabled={!canCreateGroup}
+                    className={
+                      canCreateGroup
+                        ? 'rounded-xl bg-slate-900 px-4 py-2 text-xs font-semibold text-white hover:bg-slate-800'
+                        : 'rounded-xl bg-slate-200 px-4 py-2 text-xs font-semibold text-slate-500 cursor-not-allowed'
+                    }
+                  >
+                    {creatingRoom ? 'Creating…' : 'Create group'}
+                  </button>
+                </div>
+              )}
             </div>
           </div>
         </div>

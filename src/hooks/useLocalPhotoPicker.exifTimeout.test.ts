@@ -94,4 +94,40 @@ describe('useLocalPhotoPicker - EXIF timeout', () => {
       ],
     });
   });
+
+  it('filters unsupported, empty, and duplicate files during selection', async () => {
+    parse.mockResolvedValue({});
+
+    const { result } = renderHook(() => useLocalPhotoPicker({}));
+
+    const lastModified = 1712345678901;
+    const goodFile = new File(['abc'], 'photo.jpg', { type: 'image/jpeg', lastModified });
+    const dupFile = new File(['abc'], 'photo.jpg', { type: 'image/jpeg', lastModified });
+    const emptyFile = new File([], 'empty.jpg', { type: 'image/jpeg', lastModified });
+    const txtFile = new File(['x'], 'notes.txt', { type: 'text/plain', lastModified });
+
+    const event: any = {
+      target: {
+        files: [goodFile, dupFile, emptyFile, txtFile],
+      },
+    };
+
+    await result.current.handleNativeSelection(event);
+
+    const storeModule: any = await import('../store');
+    const openPicker = storeModule.default.getState().pickerCommand.openPicker;
+
+    expect(openPicker).toHaveBeenCalledTimes(1);
+    expect(openPicker).toHaveBeenCalledWith({
+      dirHandle: null,
+      files: [
+        {
+          name: 'photo.jpg',
+          file: goodFile,
+          exifDate: null,
+          handle: null,
+        },
+      ],
+    });
+  });
 });

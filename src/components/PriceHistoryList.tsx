@@ -1,37 +1,58 @@
-import React from 'react';
-import PropTypes from 'prop-types';
+import type { CSSProperties } from 'react';
 
-/**
- * @typedef {Object} PriceHistoryRecord
- * @property {string|number} [id]
- * @property {string} [date_seen]
- * @property {string} [venue]
- * @property {string|number} [price]
- * @property {string} [url]
- */
+export type PriceHistoryRecord = {
+  id?: string | number;
+  date_seen?: string;
+  venue?: string;
+  price?: string | number;
+  url?: string;
+};
+
+export type PriceHistoryListProps = {
+  history?: PriceHistoryRecord[];
+  loading?: boolean;
+  currency?: string;
+};
+
+// Shared styles
+const headerCellStyle: CSSProperties = {
+  padding: '10px 12px',
+  textAlign: 'left',
+  fontWeight: 600,
+  color: '#475569',
+  fontSize: '11px',
+  textTransform: 'uppercase',
+  letterSpacing: '0.5px',
+};
+
+const cellStyle: CSSProperties = {
+  padding: '10px 12px',
+  color: '#334155',
+};
 
 /**
  * PriceHistoryList - Ledger-style display of price history records
- * 
+ *
  * Shows a scrollable table with:
  * - Date
  * - Venue (source)
  * - Price
  * - View link (external URL)
  */
-/**
- * @param {{ history?: PriceHistoryRecord[]; loading?: boolean; currency?: string }} props
- */
-export default function PriceHistoryList({ history = [], loading = false, currency = 'USD' }) {
+export default function PriceHistoryList({
+  history = [],
+  loading = false,
+  currency = 'USD',
+}: PriceHistoryListProps) {
   // Format date for display
-  const formatDate = (dateString) => {
+  const formatDate = (dateString?: string) => {
     if (!dateString) return '—';
     try {
       const date = new Date(dateString);
       return date.toLocaleDateString('en-US', {
         year: 'numeric',
         month: 'short',
-        day: 'numeric'
+        day: 'numeric',
       });
     } catch {
       return '—';
@@ -39,25 +60,25 @@ export default function PriceHistoryList({ history = [], loading = false, curren
   };
 
   // Format price with currency
-  const formatPrice = (price) => {
+  const formatPrice = (price?: string | number) => {
     if (price === null || price === undefined) return '—';
-    const numPrice = typeof price === 'number' ? price : parseFloat(price);
+    const numPrice = typeof price === 'number' ? price : Number.parseFloat(price);
     if (Number.isNaN(numPrice)) return '—';
-    
+
     return new Intl.NumberFormat('en-US', {
       style: 'currency',
-      currency: currency
+      currency,
     }).format(numPrice);
   };
 
   if (loading) {
     return (
-      <div 
+      <div
         style={{
           padding: '24px',
           textAlign: 'center',
           color: '#64748b',
-          fontSize: '14px'
+          fontSize: '14px',
         }}
         data-testid="price-history-loading"
       >
@@ -68,13 +89,13 @@ export default function PriceHistoryList({ history = [], loading = false, curren
 
   if (!history || history.length === 0) {
     return (
-      <div 
+      <div
         style={{
           padding: '24px',
           textAlign: 'center',
           color: '#94a3b8',
           fontSize: '14px',
-          fontStyle: 'italic'
+          fontStyle: 'italic',
         }}
         data-testid="price-history-empty"
       >
@@ -84,11 +105,11 @@ export default function PriceHistoryList({ history = [], loading = false, curren
   }
 
   return (
-    <div 
+    <div
       className="price-history-list"
       style={{
         overflowX: 'auto',
-        WebkitOverflowScrolling: 'touch'
+        WebkitOverflowScrolling: 'touch',
       }}
       data-testid="price-history-list"
     >
@@ -97,14 +118,14 @@ export default function PriceHistoryList({ history = [], loading = false, curren
           width: '100%',
           minWidth: '400px',
           borderCollapse: 'collapse',
-          fontSize: '13px'
+          fontSize: '13px',
         }}
       >
         <thead>
           <tr
             style={{
               borderBottom: '2px solid #e2e8f0',
-              backgroundColor: '#f8fafc'
+              backgroundColor: '#f8fafc',
             }}
           >
             <th style={headerCellStyle}>Date</th>
@@ -116,16 +137,14 @@ export default function PriceHistoryList({ history = [], loading = false, curren
         <tbody>
           {history.map((record, index) => (
             <tr
-              key={record.id || index}
+              key={record.id ?? index}
               style={{
                 backgroundColor: index % 2 === 0 ? '#ffffff' : '#f8fafc',
-                borderBottom: '1px solid #e2e8f0'
+                borderBottom: '1px solid #e2e8f0',
               }}
               data-testid={`price-history-row-${index}`}
             >
-              <td style={cellStyle}>
-                {formatDate(record.date_seen)}
-              </td>
+              <td style={cellStyle}>{formatDate(record.date_seen)}</td>
               <td style={cellStyle}>
                 {/* React automatically escapes this - XSS safe */}
                 {record.venue || '—'}
@@ -146,13 +165,13 @@ export default function PriceHistoryList({ history = [], loading = false, curren
                       padding: '4px 8px',
                       borderRadius: '4px',
                       backgroundColor: '#eff6ff',
-                      display: 'inline-block'
+                      display: 'inline-block',
                     }}
-                    onMouseEnter={(e) => {
-                      e.currentTarget.style.backgroundColor = '#dbeafe';
+                    onMouseEnter={(event) => {
+                      event.currentTarget.style.backgroundColor = '#dbeafe';
                     }}
-                    onMouseLeave={(e) => {
-                      e.currentTarget.style.backgroundColor = '#eff6ff';
+                    onMouseLeave={(event) => {
+                      event.currentTarget.style.backgroundColor = '#eff6ff';
                     }}
                   >
                     View
@@ -168,31 +187,3 @@ export default function PriceHistoryList({ history = [], loading = false, curren
     </div>
   );
 }
-
-// Shared styles
-const headerCellStyle = {
-  padding: '10px 12px',
-  textAlign: 'left',
-  fontWeight: 600,
-  color: '#475569',
-  fontSize: '11px',
-  textTransform: 'uppercase',
-  letterSpacing: '0.5px'
-};
-
-const cellStyle = {
-  padding: '10px 12px',
-  color: '#334155'
-};
-
-PriceHistoryList.propTypes = {
-  history: PropTypes.arrayOf(PropTypes.shape({
-    id: PropTypes.oneOfType([PropTypes.string, PropTypes.number]),
-    date_seen: PropTypes.string,
-    venue: PropTypes.string,
-    price: PropTypes.oneOfType([PropTypes.string, PropTypes.number]),
-    url: PropTypes.string
-  })),
-  loading: PropTypes.bool,
-  currency: PropTypes.string
-};

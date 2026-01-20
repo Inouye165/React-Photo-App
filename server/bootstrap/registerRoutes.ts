@@ -63,6 +63,7 @@ export function registerRoutes(app: Application, { db, supabase, sseManager, log
   const createPublicRouter = require('../routes/public');
   const createFeedbackRouter = require('../routes/feedback');
   const createEventsRouter = require('../routes/events');
+  const createMetaRouter = require('../routes/meta');
   const createAdminRouter = require('../routes/admin');
   const createCommentsRouter = require('../routes/comments');
   const createImageProxyRouter = require('../routes/imageProxy');
@@ -150,6 +151,9 @@ export function registerRoutes(app: Application, { db, supabase, sseManager, log
   // Health check (no auth required).
   app.use('/health', createHealthRouter());
 
+  // Build metadata (no auth required).
+  app.use('/api/meta', createMetaRouter());
+
   // Protected API routes (require authentication)
   const createDisplayRouter = require('../routes/display');
   const displayRouter = createDisplayRouter({ db });
@@ -210,7 +214,7 @@ export function registerRoutes(app: Application, { db, supabase, sseManager, log
     usersRouter
   );
   app.use('/api/v1/users', usersRouter);
-  const uploadsRouter = createUploadsRouter({ db });
+  const uploadsRouter = createUploadsRouter({ db, sseManager });
   app.use(authenticateToken, uploadsRouter);
   app.use('/api/v1', authenticateToken, uploadsRouter);
   const privilegeRouter = createPrivilegeRouter({ db });

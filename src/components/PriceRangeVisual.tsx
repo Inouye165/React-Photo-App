@@ -1,5 +1,14 @@
-import React from 'react';
-import PropTypes from 'prop-types';
+import type { ReactElement } from 'react';
+
+type PriceValue = number | string;
+
+export interface PriceRangeVisualProps {
+  min: PriceValue;
+  max: PriceValue;
+  value: PriceValue;
+  currency?: string;
+  label?: string;
+}
 
 /**
  * PriceRangeVisual - Visual representation of price range with current value marker
@@ -10,54 +19,51 @@ import PropTypes from 'prop-types';
  * Safety: Handles edge cases like min === max (single point) and
  * clamps marker position between 0% and 100% for outliers.
  */
-export default function PriceRangeVisual({ 
-  min, 
-  max, 
-  value, 
+export default function PriceRangeVisual({
+  min,
+  max,
+  value,
   currency = 'USD',
-  label = 'Current Value'
-}) {
-  // Format price with currency
-  const formatPrice = (price) => {
-    if (price === null || price === undefined) return '—';
-    const numPrice = typeof price === 'number' ? price : parseFloat(price);
-    if (Number.isNaN(numPrice)) return '—';
-    
+  label = 'Current Value',
+}: PriceRangeVisualProps): ReactElement {
+  const toNumber = (input: PriceValue): number => {
+    return typeof input === 'number' ? input : Number.parseFloat(input);
+  };
+
+  const formatPrice = (price: PriceValue, currencyCode: string): string => {
+    const numericPrice = toNumber(price);
+    if (Number.isNaN(numericPrice)) return '—';
+
     return new Intl.NumberFormat('en-US', {
       style: 'currency',
-      currency: currency,
+      currency: currencyCode,
       minimumFractionDigits: 0,
-      maximumFractionDigits: 0
-    }).format(numPrice);
+      maximumFractionDigits: 0,
+    }).format(numericPrice);
   };
 
   // Calculate marker position (0-100%)
   // Handle edge case: min === max (show at 50% as single point)
   // Clamp between 0% and 100% for outliers
-  const calculatePosition = () => {
-    const numMin = typeof min === 'number' ? min : parseFloat(min);
-    const numMax = typeof max === 'number' ? max : parseFloat(max);
-    const numValue = typeof value === 'number' ? value : parseFloat(value);
+  const calculatePosition = (): number => {
+    const numMin = toNumber(min);
+    const numMax = toNumber(max);
+    const numValue = toNumber(value);
 
-    // If any values are invalid, return center
-    if (Number.isNaN(numMin) || Number.isNaN(numMax) || Number.isNaN(numValue)) {
-      return 50;
-    }
+    if (Number.isNaN(numMin) || Number.isNaN(numMax) || Number.isNaN(numValue)) return 50;
+    if (numMax === numMin) return 50;
 
-    // Handle edge case: min equals max (single point)
-    if (numMax === numMin) {
-      return 50;
-    }
-
-    // Calculate percentage
     const percentage = ((numValue - numMin) / (numMax - numMin)) * 100;
-
-    // Clamp between 0 and 100 for outliers
     return Math.max(0, Math.min(100, percentage));
   };
 
   const markerPosition = calculatePosition();
-  const isSinglePoint = min === max;
+  const isSinglePoint = (() => {
+    const numMin = toNumber(min);
+    const numMax = toNumber(max);
+    if (Number.isNaN(numMin) || Number.isNaN(numMax)) return false;
+    return numMax === numMin;
+  })();
 
   return (
     <div 
@@ -91,7 +97,7 @@ export default function PriceRangeVisual({
           fontWeight: 600,
           color: '#1e40af'
         }}>
-          {label}: {formatPrice(value)}
+          {label}: {formatPrice(value, currency)}
         </span>
       </div>
 
@@ -165,7 +171,7 @@ export default function PriceRangeVisual({
           }}
           data-testid="price-range-min"
         >
-          {formatPrice(min)}
+          {formatPrice(min, currency)}
         </span>
         {!isSinglePoint && (
           <span 
@@ -176,18 +182,10 @@ export default function PriceRangeVisual({
             }}
             data-testid="price-range-max"
           >
-            {formatPrice(max)}
+            {formatPrice(max, currency)}
           </span>
         )}
       </div>
     </div>
   );
 }
-
-PriceRangeVisual.propTypes = {
-  min: PropTypes.oneOfType([PropTypes.number, PropTypes.string]).isRequired,
-  max: PropTypes.oneOfType([PropTypes.number, PropTypes.string]).isRequired,
-  value: PropTypes.oneOfType([PropTypes.number, PropTypes.string]).isRequired,
-  currency: PropTypes.string,
-  label: PropTypes.string
-};

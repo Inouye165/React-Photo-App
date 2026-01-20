@@ -1,5 +1,12 @@
-import React, { useState } from 'react';
-import { Lock, Server, Sparkles } from 'lucide-react';
+import { useState } from 'react'
+import type { ChangeEvent } from 'react'
+import { Lock, Server, Sparkles } from 'lucide-react'
+
+export interface DisclaimerModalProps {
+  onAccept: () => void
+  onDeny: () => void
+  isAccepting?: boolean
+}
 
 /**
  * DisclaimerModal - Blocking modal requiring users to accept experimental terms
@@ -11,14 +18,14 @@ import { Lock, Server, Sparkles } from 'lucide-react';
  * - Checkbox confirmation required before enabling accept button
  * - Professional styling matching app aesthetic
  */
-export default function DisclaimerModal({ onAccept, onDeny, isAccepting = false }) {
-  const [hasReadAndUnderstood, setHasReadAndUnderstood] = useState(false);
+export default function DisclaimerModal({ onAccept, onDeny, isAccepting = false }: DisclaimerModalProps) {
+  const [hasReadAndUnderstood, setHasReadAndUnderstood] = useState(false)
 
   const handleAccept = () => {
     if (hasReadAndUnderstood && !isAccepting) {
-      onAccept();
+      onAccept()
     }
-  } 
+  }
 
   return (
     <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-slate-900/70 backdrop-blur-sm transition-opacity">
@@ -101,7 +108,7 @@ export default function DisclaimerModal({ onAccept, onDeny, isAccepting = false 
               <input
                 type="checkbox"
                 checked={hasReadAndUnderstood}
-                onChange={(e) => setHasReadAndUnderstood(e.target.checked)}
+                onChange={(e: ChangeEvent<HTMLInputElement>) => setHasReadAndUnderstood(e.target.checked)}
                 className="w-5 h-5 mt-0.5 rounded border-slate-300 text-indigo-600 focus:ring-2 focus:ring-indigo-500 focus:ring-offset-2 cursor-pointer"
                 disabled={isAccepting}
               />
@@ -130,5 +137,5 @@ export default function DisclaimerModal({ onAccept, onDeny, isAccepting = false 
         </div>
       </div>
     </div>
-  );
+  )
 }

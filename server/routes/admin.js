@@ -406,6 +406,88 @@ function createAdminRouter({ db }) {
   });
 
   /**
+   * GET /api/admin/access-requests
+   *
+   * Fetch access request submissions from the public contact form.
+   * Only returns subjects prefixed with "Access Request:".
+   *
+   * Query parameters:
+   * - limit: Number of records to return (default: 50, max: 200)
+   * - offset: Pagination offset (default: 0)
+   */
+  router.get('/access-requests', async (req, res) => {
+    try {
+      if (!ensureAdmin(req, res)) return;
+
+      const limit = Math.min(parseInt(req.query.limit, 10) || 50, 200);
+      const offset = Math.max(parseInt(req.query.offset, 10) || 0, 0);
+      const subjectPrefix = 'Access Request:';
+
+      const result = await db('contact_messages')
+        .select(
+          'id',
+          'name',
+          'email',
+          'subject',
+          'message',
+          'status',
+          'ip_address',
+          'created_at',
+          'updated_at'
+        )
+        .where('subject', 'like', `${subjectPrefix}%`)
+        .orderBy('created_at', 'desc')
+        .limit(limit)
+        .offset(offset);
+
+      const countResult = await db('contact_messages')
+        .where('subject', 'like', `${subjectPrefix}%`)
+        .count('* as total');
+
+      const total = parseInt(countResult[0]?.total || '0', 10);
+
+      return res.json({
+        success: true,
+        data: result,
+        total,
+        limit,
+        offset,
+      });
+    } catch (err) {
+      console.error('[admin] Access requests error:', err);
+      return res.status(500).json({ success: false, error: 'Internal server error' });
+    }
+  });
+
+  /**
+   * DELETE /api/admin/access-requests/:id
+   *
+   * Permanently delete an access request.
+   */
+  router.delete('/access-requests/:id', async (req, res) => {
+    try {
+      if (!ensureAdmin(req, res)) return;
+
+      const requestId = String(req.params.id || '').trim();
+      const isUuid = /^[0-9a-fA-F-]{36}$/.test(requestId);
+
+      if (!requestId || !isUuid) {
+        return res.status(400).json({ success: false, error: 'Valid request ID is required' });
+      }
+
+      const deleted = await db('contact_messages').where('id', requestId).del();
+      if (!deleted) {
+        return res.status(404).json({ success: false, error: 'Access request not found' });
+      }
+
+      return res.json({ success: true });
+    } catch (err) {
+      console.error('[admin] Delete access request error:', err);
+      return res.status(500).json({ success: false, error: 'Internal server error' });
+    }
+  });
+
+  /**
    * POST /api/admin/assessments/trigger
    *
    * Creates a new assessment record and enqueues a BullMQ job to generate it.

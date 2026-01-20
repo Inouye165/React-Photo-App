@@ -427,6 +427,28 @@ describe('PhotoCard Component', () => {
       expect(defaultProps.onSelect).toHaveBeenCalledWith(mockPhoto);
     });
 
+    it('calls onSelect with photo when Enter is pressed on the card', async () => {
+      const user = userEvent.setup();
+      render(<PhotoCard {...defaultProps} />);
+
+      const card = screen.getByTestId('photo-card');
+      card.focus();
+      await user.keyboard('{Enter}');
+
+      expect(defaultProps.onSelect).toHaveBeenCalledWith(mockPhoto);
+    });
+
+    it('calls onSelect with photo when Space is pressed on the card', async () => {
+      const user = userEvent.setup();
+      render(<PhotoCard {...defaultProps} />);
+
+      const card = screen.getByTestId('photo-card');
+      card.focus();
+      await user.keyboard(' ');
+
+      expect(defaultProps.onSelect).toHaveBeenCalledWith(mockPhoto);
+    });
+
     it('does not trigger onSelect when action button is clicked', async () => {
       const user = userEvent.setup();
       render(<PhotoCard {...defaultProps} />);
@@ -443,7 +465,8 @@ describe('PhotoCard Component', () => {
       render(<PhotoCard {...defaultProps} />);
 
       const card = screen.getByTestId('photo-card');
-      expect(card).toHaveAttribute('role', 'article');
+      expect(card).toHaveAttribute('role', 'button');
+      expect(card).toHaveAttribute('tabindex', '0');
       expect(card).toHaveAttribute('aria-label', 'Photo: A beautiful sunset');
     });
 

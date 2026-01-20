@@ -216,8 +216,9 @@ export function usePhotoProcessingEvents(params: { authed: boolean }): UsePhotoP
 
     const onFrame = (frame: SseFrame) => {
       if (frame.event && frame.event !== 'photo.processing') {
+        const payload = safeJsonParse(frame.data)
+
         if (frame.event === 'capture.intent') {
-          const payload = safeJsonParse(frame.data)
           if (payload && typeof payload === 'object') {
             try {
               if (typeof window !== 'undefined' && window.dispatchEvent) {
@@ -227,7 +228,22 @@ export function usePhotoProcessingEvents(params: { authed: boolean }): UsePhotoP
               // ignore event dispatch errors
             }
           }
+          return
         }
+
+        if (frame.event === 'collectible.photos.changed') {
+          if (payload && typeof payload === 'object') {
+            try {
+              if (typeof window !== 'undefined' && window.dispatchEvent) {
+                window.dispatchEvent(new CustomEvent('collectible-photos-changed', { detail: payload }))
+              }
+            } catch {
+              // ignore event dispatch errors
+            }
+          }
+          return
+        }
+
         return
       }
 
