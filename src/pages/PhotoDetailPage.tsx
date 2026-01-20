@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useState, useCallback } from 'react';
+import { useEffect, useMemo, useState, useCallback, useRef } from 'react';
 import { Link, useNavigate, useOutletContext, useParams } from 'react-router-dom';
 import { ArrowLeft, Image as ImageIcon, MessageCircle, Pencil, Send } from 'lucide-react';
 import type { Photo } from '../types/photo';
@@ -222,6 +222,10 @@ export default function PhotoDetailPage() {
   const [referenceLoading, setReferenceLoading] = useState(false);
   const [referenceError, setReferenceError] = useState<string | null>(null);
   const [selectedRefId, setSelectedRefId] = useState<string | null>(null);
+  const [zoomedRef, setZoomedRef] = useState<{ url: string; title: string } | null>(null);
+  const referenceCarouselRef = useRef<HTMLDivElement | null>(null);
+  const referenceAutoScrollRef = useRef<number | null>(null);
+  const referenceAutoScrollDirectionRef = useRef(1);
 
   const { collectibleData } = useCollectiblesForPhoto({ photo, enabled: true });
 
@@ -262,6 +266,7 @@ export default function PhotoDetailPage() {
   useEffect(() => {
     setUseFullRes(false);
     setSelectedRefId(null);
+    setZoomedRef(null);
   }, [photo?.id]);
 
   useEffect(() => {
@@ -305,6 +310,60 @@ export default function PhotoDetailPage() {
       cancelled = true;
     };
   }, [collectibleData?.id]);
+
+  useEffect(() => {
+    const container = referenceCarouselRef.current;
+    if (!container) return;
+
+    const stopAutoScroll = () => {
+      if (referenceAutoScrollRef.current != null) {
+        window.clearInterval(referenceAutoScrollRef.current);
+        referenceAutoScrollRef.current = null;
+      }
+    };
+
+    const startAutoScroll = () => {
+      if (!container) return;
+      if (container.scrollWidth <= container.clientWidth) return;
+
+      stopAutoScroll();
+      referenceAutoScrollDirectionRef.current = 1;
+      referenceAutoScrollRef.current = window.setInterval(() => {
+        const maxScrollLeft = container.scrollWidth - container.clientWidth;
+        if (maxScrollLeft <= 0) return;
+
+        const next = container.scrollLeft + 1.5 * referenceAutoScrollDirectionRef.current;
+
+        if (next >= maxScrollLeft) {
+          referenceAutoScrollDirectionRef.current = -1;
+        } else if (next <= 0) {
+          referenceAutoScrollDirectionRef.current = 1;
+        }
+
+        container.scrollLeft = Math.min(maxScrollLeft, Math.max(0, next));
+      }, 35);
+    };
+
+    const handleResize = () => {
+      stopAutoScroll();
+      startAutoScroll();
+    };
+
+    const handleMouseEnter = () => stopAutoScroll();
+    const handleMouseLeave = () => startAutoScroll();
+
+    startAutoScroll();
+    window.addEventListener('resize', handleResize);
+    container.addEventListener('mouseenter', handleMouseEnter);
+    container.addEventListener('mouseleave', handleMouseLeave);
+
+    return () => {
+      stopAutoScroll();
+      window.removeEventListener('resize', handleResize);
+      container.removeEventListener('mouseenter', handleMouseEnter);
+      container.removeEventListener('mouseleave', handleMouseLeave);
+    };
+  }, [referencePhotos.length]);
 
   const title = getDisplayTitle(photo);
   const classification = normalizeClassification(photo);
@@ -487,7 +546,10 @@ export default function PhotoDetailPage() {
   }
 
   return (
-    <div className="bg-white rounded-3xl shadow-lg overflow-hidden" data-testid="photo-detail-page">
+    <div
+      className="bg-white rounded-3xl shadow-lg overflow-hidden h-[100dvh] flex flex-col"
+      data-testid="photo-detail-page"
+    >
       {/* Top actions */}
       <div className="flex items-center justify-between gap-3 p-4 sm:p-6 border-b border-slate-200">
         <button
@@ -552,48 +614,47 @@ export default function PhotoDetailPage() {
       )}
 
       {/* Responsive layout: stacked on mobile, split on desktop */}
-      <div className="flex flex-col lg:flex-row">
-        {/* Left: sticky image */}
-        <div className="lg:w-1/2 lg:sticky lg:top-4 lg:self-start bg-slate-100">
-          <div className="aspect-[4/3] sm:aspect-[16/10] lg:aspect-auto lg:h-[calc(100vh-200px)] relative">
-            {isLoading && <div className="absolute inset-0 bg-slate-200 animate-pulse" />}
+      <div className="flex-1 min-h-0 flex flex-col lg:flex-row overflow-hidden">
+        {/* Left: image + references */}
+        <div className="lg:w-1/2 bg-slate-100 p-4 flex flex-col gap-3 min-h-0">
+          <div className="rounded-2xl border border-slate-200 bg-white overflow-hidden">
+            <div className="h-[38vh] sm:h-[42vh] lg:h-[45vh] max-h-[420px] relative">
+              {isLoading && <div className="absolute inset-0 bg-slate-200 animate-pulse" />}
 
-            {imageBlobUrl && !fetchError ? (
-              <img src={imageBlobUrl} alt={title} className="w-full h-full object-contain" />
-            ) : fetchError ? (
-              <div className="absolute inset-0 flex flex-col items-center justify-center text-slate-500 p-6 text-center">
-                <ImageIcon size={48} strokeWidth={1} />
-                <p className="mt-2 text-sm">Failed to load image.</p>
-                <button
-                  onClick={retry}
-                  className="mt-4 inline-flex items-center gap-2 px-4 py-2 rounded-full bg-white border border-slate-200 text-slate-700 hover:bg-slate-50"
-                >
-                  Retry
-                </button>
-              </div>
-            ) : (
-              <div className="absolute inset-0 flex flex-col items-center justify-center text-slate-500 p-6 text-center">
-                <ImageIcon size={48} strokeWidth={1} />
-                <p className="mt-2 text-sm">No image available.</p>
-              </div>
-            )}
+              {imageBlobUrl && !fetchError ? (
+                <img src={imageBlobUrl} alt={title} className="w-full h-full object-contain" />
+              ) : fetchError ? (
+                <div className="absolute inset-0 flex flex-col items-center justify-center text-slate-500 p-6 text-center">
+                  <ImageIcon size={48} strokeWidth={1} />
+                  <p className="mt-2 text-sm">Failed to load image.</p>
+                  <button
+                    onClick={retry}
+                    className="mt-4 inline-flex items-center gap-2 px-3 py-1.5 rounded-full bg-white border border-slate-200 text-slate-700 hover:bg-slate-50 text-xs"
+                  >
+                    Retry
+                  </button>
+                </div>
+              ) : (
+                <div className="absolute inset-0 flex flex-col items-center justify-center text-slate-500 p-6 text-center">
+                  <ImageIcon size={48} strokeWidth={1} />
+                  <p className="mt-2 text-sm">No image available.</p>
+                </div>
+              )}
+            </div>
           </div>
           {fullUrl && !useFullRes && !selectedRef && (
-            <div className="px-4 pb-4">
-              <button
-                type="button"
-                onClick={() => setUseFullRes(true)}
-                className="inline-flex items-center gap-2 px-4 py-2 rounded-full bg-white border border-slate-200 text-slate-700 hover:bg-slate-50"
-                data-testid="photo-detail-load-full"
-              >
-                Load full resolution
-              </button>
-            </div>
+            <button
+              type="button"
+              onClick={() => setUseFullRes(true)}
+              className="self-start inline-flex items-center gap-2 px-3 py-1.5 rounded-full bg-white border border-slate-200 text-slate-700 hover:bg-slate-50 text-xs"
+              data-testid="photo-detail-load-full"
+            >
+              Load full resolution
+            </button>
           )}
 
           {isCollectible && (
-            <div className="px-4 pb-4">
-              <div className="rounded-2xl border border-slate-200 bg-white p-4">
+            <div className="rounded-2xl border border-slate-200 bg-white p-3">
                 <div className="flex items-center justify-between gap-4">
                   <h2 className="text-sm font-semibold text-slate-900">Reference photos</h2>
                   <div className="flex items-center gap-2">
@@ -616,12 +677,19 @@ export default function PhotoDetailPage() {
                 {!referenceLoading && referencePhotos.length === 0 ? (
                   <p className="mt-3 text-sm text-slate-600">No reference photos yet.</p>
                 ) : (
-                  <div className="mt-3 flex gap-3 overflow-x-auto pb-2" style={{ WebkitOverflowScrolling: 'touch' }}>
+                  <div
+                    ref={referenceCarouselRef}
+                    className="mt-3 flex gap-3 overflow-x-auto pb-2 pr-2"
+                    style={{ WebkitOverflowScrolling: 'touch' }}
+                  >
                     {referencePhotos.map((p) => {
                       const thumb =
                         resolveMediaUrl(p.smallThumbnail) ||
                         resolveMediaUrl(p.thumbnail) ||
                         resolveMediaUrl(p.url);
+
+                      const zoomTarget =
+                        resolveMediaUrl(p.url) || resolveMediaUrl(p.thumbnail) || resolveMediaUrl(p.smallThumbnail);
 
                       const isSelected = selectedRefId != null && String(selectedRefId) === String(p.id);
 
@@ -629,11 +697,19 @@ export default function PhotoDetailPage() {
                         <button
                           key={String(p.id)}
                           type="button"
-                          onClick={() => setSelectedRefId(String(p.id))}
+                          onClick={() => {
+                            setSelectedRefId(String(p.id));
+                            if (zoomTarget) {
+                              setZoomedRef({
+                                url: zoomTarget,
+                                title: typeof p.filename === 'string' ? p.filename : 'Reference photo',
+                              });
+                            }
+                          }}
                           className={
                             isSelected
-                              ? 'shrink-0 rounded-xl border-2 border-indigo-500 bg-white overflow-hidden'
-                              : 'shrink-0 rounded-xl border border-slate-200 bg-white overflow-hidden hover:border-slate-300'
+                              ? 'group shrink-0 rounded-xl border-2 border-indigo-500 bg-white overflow-visible'
+                              : 'group shrink-0 rounded-xl border border-slate-200 bg-white overflow-visible hover:border-slate-300'
                           }
                           style={{ width: 96, height: 96 }}
                           title={typeof p.filename === 'string' ? p.filename : undefined}
@@ -643,11 +719,11 @@ export default function PhotoDetailPage() {
                             <img
                               src={thumb}
                               alt={typeof p.filename === 'string' ? p.filename : 'Reference photo'}
-                              className="w-full h-full object-cover"
+                              className="w-full h-full object-cover rounded-xl transition-transform duration-200 ease-out group-hover:scale-125"
                               loading="lazy"
                             />
                           ) : (
-                            <div className="w-full h-full flex items-center justify-center text-xs text-slate-500 bg-slate-50">
+                            <div className="w-full h-full flex items-center justify-center text-xs text-slate-500 bg-slate-50 rounded-xl">
                               No preview
                             </div>
                           )}
@@ -658,13 +734,12 @@ export default function PhotoDetailPage() {
                 )}
 
                 <p className="mt-2 text-xs text-slate-500">Tip: click a reference thumbnail to view it larger.</p>
-              </div>
             </div>
           )}
         </div>
 
         {/* Right: info / metadata */}
-        <div className="lg:w-1/2 p-4 sm:p-6 overflow-visible lg:overflow-auto">
+        <div className="lg:w-1/2 p-4 sm:p-5 overflow-y-auto min-h-0">
           {/* Header section */}
           <div className="flex items-start justify-between gap-3">
             <div className="min-w-0">
@@ -688,11 +763,11 @@ export default function PhotoDetailPage() {
           </div>
 
           {/* Smart Content / Value section */}
-          <div className="mt-6 space-y-4" data-testid="photo-detail-smart-content">
+          <div className="mt-4 space-y-3" data-testid="photo-detail-smart-content">
             {isCollectible && (
-              <div className="rounded-2xl border border-slate-200 bg-white p-4">
+              <div className="rounded-2xl border border-slate-200 bg-white p-3">
                 <h2 className="text-sm font-semibold text-slate-900">Valuation Estimate</h2>
-                <p className="mt-2 text-2xl font-bold text-slate-900" data-testid="photo-detail-valuation">
+                <p className="mt-1 text-2xl font-bold text-slate-900" data-testid="photo-detail-valuation">
                   {valuationRange}
                 </p>
                 <p className="mt-1 text-xs text-slate-500">Estimate only. Actual value may vary.</p>
@@ -703,13 +778,13 @@ export default function PhotoDetailPage() {
                 <div className="px-4 py-3 border-b border-slate-100">
                   <h2 className="text-sm font-semibold text-slate-900">Location</h2>
                 </div>
-                <div className="h-64">
+                <div className="h-52">
                   <LocationMapPanel photo={photo} />
                 </div>
               </div>
             )}
 
-            <div className="rounded-2xl border border-slate-200 bg-white p-4">
+            <div className="rounded-2xl border border-slate-200 bg-white p-3">
               <h2 className="text-sm font-semibold text-slate-900">Description</h2>
               <p
                 className="mt-2 text-sm leading-relaxed text-slate-700"
@@ -719,7 +794,7 @@ export default function PhotoDetailPage() {
               </p>
             </div>
 
-            <div className="rounded-2xl border border-slate-200 bg-white p-4">
+            <div className="rounded-2xl border border-slate-200 bg-white p-3">
               <h2 className="text-sm font-semibold text-slate-900">Metadata</h2>
               <dl className="mt-3 grid grid-cols-1 sm:grid-cols-2 gap-x-6 gap-y-3 text-sm">
                 <div>
@@ -744,8 +819,11 @@ export default function PhotoDetailPage() {
             </div>
 
             {/* Comments Section */}
-            <div className="rounded-2xl border border-slate-200 bg-white p-4" data-testid="photo-comments-section">
-              <h2 className="text-sm font-semibold text-slate-900 mb-4">Comments</h2>
+            <div
+              className="rounded-2xl border border-slate-200 bg-white p-3 flex flex-col min-h-0"
+              data-testid="photo-comments-section"
+            >
+              <h2 className="text-sm font-semibold text-slate-900 mb-3">Comments</h2>
 
               {/* Comment Form */}
               {user ? (
@@ -784,50 +862,72 @@ export default function PhotoDetailPage() {
               )}
 
               {/* Comments List */}
-              {commentsLoading ? (
-                <div className="text-center py-4">
-                  <div className="inline-block animate-spin rounded-full h-5 w-5 border-2 border-slate-300 border-t-slate-600"></div>
-                  <p className="mt-2 text-sm text-slate-500">Loading comments...</p>
-                </div>
-              ) : commentsError ? (
-                <div className="text-sm text-red-600" role="alert">
-                  {commentsError}
-                </div>
-              ) : comments.length === 0 ? (
-                <p className="text-sm text-slate-500" data-testid="no-comments">
-                  No comments yet. Be the first to comment!
-                </p>
-              ) : (
-                <div className="space-y-3" data-testid="comments-list">
-                  {comments.map((comment) => (
-                    <div
-                      key={comment.id}
-                      className="p-3 bg-slate-50 rounded-lg"
-                      data-testid={`comment-${comment.id}`}
-                    >
-                      <div className="flex items-center justify-between mb-1">
-                        <span className="text-sm font-medium text-slate-900">
-                          {comment.username || 'Anonymous'}
-                        </span>
-                        <span className="text-xs text-slate-500">
-                          {new Date(comment.created_at).toLocaleDateString('en-US', {
-                            month: 'short',
-                            day: 'numeric',
-                            year: 'numeric',
-                          })}
-                        </span>
+              <div className="flex-1 min-h-0 overflow-y-auto pr-2">
+                {commentsLoading ? (
+                  <div className="text-center py-4">
+                    <div className="inline-block animate-spin rounded-full h-5 w-5 border-2 border-slate-300 border-t-slate-600"></div>
+                    <p className="mt-2 text-sm text-slate-500">Loading comments...</p>
+                  </div>
+                ) : commentsError ? (
+                  <div className="text-sm text-red-600" role="alert">
+                    {commentsError}
+                  </div>
+                ) : comments.length === 0 ? (
+                  <p className="text-sm text-slate-500" data-testid="no-comments">
+                    No comments yet. Be the first to comment!
+                  </p>
+                ) : (
+                  <div className="space-y-3" data-testid="comments-list">
+                    {comments.map((comment) => (
+                      <div
+                        key={comment.id}
+                        className="p-3 bg-slate-50 rounded-lg"
+                        data-testid={`comment-${comment.id}`}
+                      >
+                        <div className="flex items-center justify-between mb-1">
+                          <span className="text-sm font-medium text-slate-900">
+                            {comment.username || 'Anonymous'}
+                          </span>
+                          <span className="text-xs text-slate-500">
+                            {new Date(comment.created_at).toLocaleDateString('en-US', {
+                              month: 'short',
+                              day: 'numeric',
+                              year: 'numeric',
+                            })}
+                          </span>
+                        </div>
+                        <p className="text-sm text-slate-700 whitespace-pre-wrap break-words">
+                          {comment.content}
+                        </p>
                       </div>
-                      <p className="text-sm text-slate-700 whitespace-pre-wrap break-words">
-                        {comment.content}
-                      </p>
-                    </div>
-                  ))}
-                </div>
-              )}
+                    ))}
+                  </div>
+                )}
+              </div>
             </div>
           </div>
         </div>
       </div>
+
+      {zoomedRef && (
+        <div
+          className="fixed inset-0 z-50 bg-slate-950/70 flex items-center justify-center p-4"
+          onClick={() => setZoomedRef(null)}
+          role="dialog"
+          aria-modal="true"
+        >
+          <div
+            className="max-h-full max-w-[90vw] rounded-2xl bg-white p-3 shadow-2xl"
+            onClick={(event) => event.stopPropagation()}
+          >
+            <img
+              src={zoomedRef.url}
+              alt={zoomedRef.title}
+              className="max-h-[80vh] max-w-[85vw] object-contain rounded-xl"
+            />
+          </div>
+        </div>
+      )}
     </div>
   );
 }
