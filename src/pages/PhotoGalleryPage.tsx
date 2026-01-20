@@ -24,12 +24,6 @@ type OutletCtx = {
 
 type PhotoCardPhoto = PhotoCardProps['photo']
 
-function normalizeClassification(photo: PhotoCardPhoto | null | undefined): string {
-  const raw = (photo?.classification || photo?.ai_analysis?.classification || '').toLowerCase().trim()
-  if (raw === 'collectables' || raw === 'collectible') return 'collectible'
-  return raw || 'unknown'
-}
-
 /**
  * PhotoGalleryPage - Main gallery view showing the photo card grid
  * Route: /gallery
@@ -256,16 +250,9 @@ export default function PhotoGalleryPage() {
 
   const handleSelectPhoto = (photo: PhotoCardPhoto) => {
     if (photo) {
-      const classification = normalizeClassification(photo)
-
-      // Collectibles get a dedicated view (main + reference carousel)
-      if (classification === 'collectible') {
-        navigate(`/collectibles/photos/${photo.id}`)
-        return
-      }
-
-      // Default: read-only detail page
-      navigate(`/photos/${photo.id}`)
+    const photoId = (photo as { photo_id?: unknown })?.photo_id ?? photo.id
+    // Navigate to read-only detail page when clicking photo thumbnail
+    navigate(`/photos/${photoId}`)
     }
   }
 
