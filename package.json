@@ -62,6 +62,7 @@
     "lucide-react": "^0.555.0",
     "nanoid": "^5.0.7",
     "openai": "^6.8.1",
+    "photo-app": "file:",
     "react": "^19.1.1",
     "react-dom": "^19.1.1",
     "react-error-boundary": "^6.0.0",
@@ -108,6 +109,9 @@
     "typescript": "^5.9.3",
     "vite": "^7.2.6",
     "vitest": "^3.2.4"
+  },
+  "overrides": {
+    "tar": "7.5.5"
   },
   "size-limit": [
     {
