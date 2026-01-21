@@ -1,7 +1,8 @@
 import type { Photo } from '../types/photo'
-import type { ChatMessage, ChatRoom } from '../types/chat'
+import type { ChatMessage, ChatRoom, ChatRoomMetadata, ChatRoomType } from '../types/chat'
 import { supabase } from '../supabaseClient'
-import { API_BASE_URL } from './httpClient'
+import { API_BASE_URL, request } from './httpClient'
+import { getAuthHeadersAsync } from './auth'
 
 type PhotoId = Photo['id']
 
@@ -80,7 +81,7 @@ export async function fetchRooms(): Promise<ChatRoom[]> {
 
   const { data: rooms, error: roomsError } = await supabase
     .from('rooms')
-    .select('id, name, is_group, created_at')
+    .select('id, name, is_group, created_at, type, metadata')
     .in('id', uniqueRoomIds)
 
   if (roomsError) throw roomsError
@@ -117,7 +118,7 @@ export async function getOrCreateRoom(otherUserId: string): Promise<ChatRoom> {
 
     const { data: rooms, error: roomsError } = await supabase
       .from('rooms')
-      .select('id, name, is_group, created_at')
+      .select('id, name, is_group, created_at, type, metadata')
       .in('id', uniqueCommon)
       .eq('is_group', false)
 
@@ -133,7 +134,7 @@ export async function getOrCreateRoom(otherUserId: string): Promise<ChatRoom> {
   const { data: room, error: roomError } = await supabase
     .from('rooms')
     .insert({ name: null, is_group: false })
-    .select('id, name, is_group, created_at')
+    .select('id, name, is_group, created_at, type, metadata')
     .single()
 
   if (roomError) throw roomError
@@ -164,7 +165,7 @@ export async function createGroupRoom(name: string, memberIds: string[]): Promis
   const { data: room, error: roomError } = await supabase
     .from('rooms')
     .insert({ name: trimmedName, is_group: true })
-    .select('id, name, is_group, created_at')
+    .select('id, name, is_group, created_at, type, metadata')
     .single()
 
   if (roomError) throw roomError
@@ -203,4 +204,26 @@ export async function sendMessage(roomId: string, content: string, photoId?: Pho
   if (error) throw error
   if (!data) throw new Error('Failed to send message')
   return data as ChatMessage
+}
+
+export async function patchChatRoom(
+  roomId: string,
+  updates: { type?: ChatRoomType; metadata?: Partial<ChatRoomMetadata> },
+): Promise<{ success: true; room: ChatRoom }> {
+  if (!roomId) throw new Error('Missing roomId')
+
+  const headers = await getAuthHeadersAsync(true)
+
+  const response = await request<{ success: true; room: ChatRoom }>({
+    path: `/api/v1/chat/rooms/${roomId}`,
+    method: 'PATCH',
+    headers,
+    body: updates,
+  })
+
+  if (!response?.success) {
+    throw new Error('Failed to update chat room')
+  }
+
+  return response
 }

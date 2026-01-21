@@ -68,6 +68,7 @@ export function registerRoutes(app: Application, { db, supabase, sseManager, log
   const createCommentsRouter = require('../routes/comments');
   const createImageProxyRouter = require('../routes/imageProxy');
   const createCaptureIntentsRouter = require('../routes/captureIntents');
+  const createChatRouter = require('../routes/chat');
 
   const { securityErrorHandler } = require('../middleware/security');
   const { authenticateToken, requireRole } = require('../middleware/auth');
@@ -241,6 +242,10 @@ export function registerRoutes(app: Application, { db, supabase, sseManager, log
     adminRouter
   );
   app.use('/api/v1/admin', authenticateToken, requireRole('admin'), adminRouter);
+
+  // Chat room purpose/config endpoints (auth required).
+  const chatRouter = createChatRouter({ db });
+  app.use('/api/v1/chat', authenticateToken, chatRouter);
 
   // Debug/diagnostic routes require normal authentication.
   // NOTE: Mounted in all environments; additional hardening can be done inside the router

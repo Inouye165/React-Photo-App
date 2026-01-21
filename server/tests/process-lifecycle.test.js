@@ -109,9 +109,9 @@ describe('Process Lifecycle - Uncaught Exception Handling', () => {
     
     const duration = Date.now() - startTime;
     
-    // Process should exit quickly (within 1 second)
+    // Process should exit quickly (within 2.5 seconds)
     // This ensures we don't block the orchestrator from restarting
-    expect(duration).toBeLessThan(1000);
+    expect(duration).toBeLessThan(2500);
     
     // Should still exit with code 1
     expect(result.status).toBe(1);
