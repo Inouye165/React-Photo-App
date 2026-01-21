@@ -29,13 +29,13 @@ export function toNumber(value: unknown): number | null {
     return toNumber(value[0]);
   }
   if (typeof value === 'object') {
-    if (value && 'numerator' in value && 'denominator' in value) {
+    if ('numerator' in value && 'denominator' in value) {
       const numerator = toNumber((value as { numerator?: unknown }).numerator);
       const denominator = toNumber((value as { denominator?: unknown }).denominator) || 1;
       if (numerator === null) return null;
       return numerator / denominator;
     }
-    if (value && 'value' in value) {
+    if ('value' in value) {
       return toNumber((value as { value?: unknown }).value);
     }
     const values = Object.values(value as Record<string, unknown>);
