@@ -37,7 +37,7 @@ function formatTime(iso: string): string {
 
 export default function ChatWindow({ roomId, onOpenSidebar }: ChatWindowProps) {
   const { user, profile } = useAuth()
-  const { messages, loading, error } = useChatRealtime(roomId)
+  const { messages, loading, error } = useChatRealtime(roomId, { userId: user?.id ?? null })
   const { isUserOnline } = usePresence(user?.id)
 
   const [draft, setDraft] = useState<string>('')
@@ -80,10 +80,18 @@ export default function ChatWindow({ roomId, onOpenSidebar }: ChatWindowProps) {
   const lastMarkReadAtRef = useRef<number>(0)
 
   useEffect(() => {
+    setMemberIds([])
+    setMemberDirectory({})
+    setHeader({ title: 'Conversation', isGroup: false, otherUserId: null })
+    setRoomType('general')
+    setRoomMetadata({})
+  }, [user?.id])
+
+  useEffect(() => {
     let cancelled = false
 
     async function run(): Promise<void> {
-      if (!roomId) {
+      if (!roomId || !user?.id) {
         setMemberIds([])
         setMemberDirectory({})
         return
@@ -131,7 +139,7 @@ export default function ChatWindow({ roomId, onOpenSidebar }: ChatWindowProps) {
     return () => {
       cancelled = true
     }
-  }, [roomId])
+  }, [roomId, user?.id])
 
   const scheduleMarkRead = useCallback(
     (reason: 'open' | 'at-bottom' | 'new-message') => {
@@ -181,7 +189,7 @@ export default function ChatWindow({ roomId, onOpenSidebar }: ChatWindowProps) {
     let cancelled = false
 
     async function run(): Promise<void> {
-      if (!roomId) {
+      if (!roomId || !user?.id) {
         setHeader({ title: 'Conversation', isGroup: false, otherUserId: null })
         setRoomType('general')
         setRoomMetadata({})
@@ -214,11 +222,6 @@ export default function ChatWindow({ roomId, onOpenSidebar }: ChatWindowProps) {
 
       if (isGroup) {
         if (!cancelled) setHeader({ title: roomName?.trim() || 'Group chat', isGroup: true, otherUserId: null })
-        return
-      }
-
-      if (!user?.id) {
-        if (!cancelled) setHeader({ title: roomName?.trim() || 'Direct message', isGroup: false, otherUserId: null })
         return
       }
 

@@ -55,6 +55,13 @@ export default function ChatSidebar({ selectedRoomId, onSelectRoom }: ChatSideba
     let cancelled = false
 
     async function run(): Promise<void> {
+      if (!user?.id) {
+        setRoomToOtherUsername({})
+        setRoomToOtherUserId({})
+        setRoomState({ status: 'ready', rooms: [] })
+        return
+      }
+
       try {
         setRoomState({ status: 'loading' })
         const rooms = await fetchRooms()
@@ -71,7 +78,7 @@ export default function ChatSidebar({ selectedRoomId, onSelectRoom }: ChatSideba
     return () => {
       cancelled = true
     }
-  }, [])
+  }, [user?.id])
 
   useEffect(() => {
     if (!isDiscoveryOpen) return

@@ -14,8 +14,12 @@ export interface UseChatRealtimeResult {
   upsertLocalMessage: (message: ChatMessage) => void
 }
 
-export function useChatRealtime(roomId: string | null, options?: { initialLimit?: number }): UseChatRealtimeResult {
+export function useChatRealtime(
+  roomId: string | null,
+  options?: { initialLimit?: number; userId?: string | null },
+): UseChatRealtimeResult {
   const initialLimit = options?.initialLimit ?? 50
+  const userId = options?.userId ?? null
 
   const normalizedRoomId = typeof roomId === 'string' ? roomId.trim() : roomId
 
@@ -43,7 +47,7 @@ export function useChatRealtime(roomId: string | null, options?: { initialLimit?
     const lastSubscriptionStatusRef: { current: string | null } = { current: null }
 
     async function run(): Promise<void> {
-      if (!normalizedRoomId) {
+      if (!normalizedRoomId || !userId) {
         setMessages([])
         setLoading(false)
         setError(null)
@@ -137,7 +141,7 @@ export function useChatRealtime(roomId: string | null, options?: { initialLimit?
         }
       }
     }
-  }, [roomId, normalizedRoomId, initialLimit, subscriptionKey])
+  }, [roomId, normalizedRoomId, initialLimit, subscriptionKey, userId])
 
   return { messages, loading, error, upsertLocalMessage }
 }

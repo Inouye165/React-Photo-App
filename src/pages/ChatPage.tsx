@@ -1,13 +1,16 @@
-import { useCallback, useEffect, useState } from 'react'
+import { useCallback, useEffect, useRef, useState } from 'react'
 import { useNavigate, useParams } from 'react-router-dom'
 
 import ChatSidebar from '../components/chat/ChatSidebar'
 import ChatWindow from '../components/chat/ChatWindow'
+import { useAuth } from '../contexts/AuthContext'
 
 export default function ChatPage() {
   const navigate = useNavigate()
   const params = useParams()
   const roomId = typeof params.roomId === 'string' ? params.roomId : null
+  const { user } = useAuth()
+  const prevUserIdRef = useRef<string | null>(user?.id ?? null)
 
   const [drawerOpen, setDrawerOpen] = useState(false)
 
@@ -26,6 +29,14 @@ export default function ChatPage() {
       window.removeEventListener('keydown', onKeyDown)
     }
   }, [drawerOpen])
+
+  useEffect(() => {
+    const nextUserId = user?.id ?? null
+    if (prevUserIdRef.current !== nextUserId) {
+      prevUserIdRef.current = nextUserId
+      navigate('/chat', { replace: true })
+    }
+  }, [navigate, user?.id])
 
   const onSelectRoom = useCallback(
     (nextRoomId: string) => {
@@ -46,11 +57,11 @@ export default function ChatPage() {
   return (
     <div className="relative flex flex-col sm:flex-row h-[calc(100vh-88px)]" data-testid="chat-page">
       <div className={`${roomId ? 'hidden sm:block' : 'block'} w-full sm:w-auto`}>
-        <ChatSidebar selectedRoomId={roomId} onSelectRoom={onSelectRoom} />
+        <ChatSidebar key={user?.id ?? 'anon'} selectedRoomId={roomId} onSelectRoom={onSelectRoom} />
       </div>
 
       <div className={`${roomId ? 'block' : 'hidden sm:block'} flex-1`}>
-        <ChatWindow roomId={roomId} onOpenSidebar={openDrawer} />
+        <ChatWindow key={user?.id ?? 'anon'} roomId={roomId} onOpenSidebar={openDrawer} />
       </div>
 
       {drawerOpen && roomId && (
