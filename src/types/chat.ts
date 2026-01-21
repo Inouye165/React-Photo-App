@@ -41,6 +41,7 @@ export interface ChatRoom {
   name: string | null
   is_group: boolean
   created_at: string
+  created_by?: string | null
   type: ChatRoomType
   metadata: ChatRoomMetadata
 }

@@ -42,6 +42,10 @@ cd server && npm test
 *   **Default to Deny:** Every new route must have `authenticateToken` middleware.
 *   **Check Ownership:** Just because a user is logged in doesn't mean they own `photo_123`. Always check `user_id === resource.owner_id`.
 *   **No "Magic" Access:** Don't create "admin" backdoors for debugging. Use the database directly if you need to fix data.
+*   **RLS Policy Discipline:**
+    *   Never add permissive policies with `USING (true)` or `WITH CHECK (true)`.
+    *   All RLS changes must be migrations (no manual dashboard edits).
+    *   PRs touching RLS must list the exact policies added/removed and include a `pg_policies` review.
 
 ### 2. Logging & Privacy
 *   **No Headers in Logs:** Request headers contain tokens. Never log `req.headers`.
