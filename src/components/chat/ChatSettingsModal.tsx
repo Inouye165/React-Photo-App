@@ -7,18 +7,36 @@ interface ChatSettingsModalProps {
   onClose: () => void
   roomType: ChatRoomType
   metadata: ChatRoomMetadata | null
+  currentUserId?: string | null
   onSave: (patch: { type: ChatRoomType; metadata: ChatRoomMetadata }) => Promise<void>
 }
 
-export default function ChatSettingsModal({ isOpen, onClose, roomType, metadata, onSave }: ChatSettingsModalProps) {
+export default function ChatSettingsModal({
+  isOpen,
+  onClose,
+  roomType,
+  metadata,
+  currentUserId,
+  onSave,
+}: ChatSettingsModalProps) {
   const [selectedType, setSelectedType] = useState<ChatRoomType>(roomType)
   const [locationAddress, setLocationAddress] = useState<string>(metadata?.potluck?.location?.address || '')
+  const [hostMessage, setHostMessage] = useState<string>(metadata?.potluck?.hostNotes?.message || '')
+  const [hostInstructions, setHostInstructions] = useState<string>(metadata?.potluck?.hostNotes?.instructions || '')
 
   useEffect(() => {
     if (!isOpen) return
     setSelectedType(roomType)
     setLocationAddress(metadata?.potluck?.location?.address || '')
-  }, [isOpen, metadata?.potluck?.location?.address, roomType])
+    setHostMessage(metadata?.potluck?.hostNotes?.message || '')
+    setHostInstructions(metadata?.potluck?.hostNotes?.instructions || '')
+  }, [
+    isOpen,
+    metadata?.potluck?.hostNotes?.instructions,
+    metadata?.potluck?.hostNotes?.message,
+    metadata?.potluck?.location?.address,
+    roomType,
+  ])
 
   if (!isOpen) return null
 
@@ -27,9 +45,17 @@ export default function ChatSettingsModal({ isOpen, onClose, roomType, metadata,
     const newMetadata: ChatRoomMetadata = { ...baseMetadata }
 
     if (selectedType === 'potluck') {
+      const trimmedMessage = hostMessage.trim()
+      const trimmedInstructions = hostInstructions.trim()
+      const existingHostNotes = newMetadata.potluck?.hostNotes
+      const hasHostUpdate =
+        trimmedMessage !== (existingHostNotes?.message ?? '') ||
+        trimmedInstructions !== (existingHostNotes?.instructions ?? '')
+
       newMetadata.potluck = {
         ...newMetadata.potluck,
         items: newMetadata.potluck?.items || [],
+        allergies: newMetadata.potluck?.allergies || [],
         location: locationAddress
           ? {
               address: locationAddress,
@@ -37,6 +63,17 @@ export default function ChatSettingsModal({ isOpen, onClose, roomType, metadata,
               lng: -122.4194,
             }
           : undefined,
+        hostNotes:
+          trimmedMessage || trimmedInstructions
+            ? hasHostUpdate
+              ? {
+                  message: trimmedMessage,
+                  instructions: trimmedInstructions || undefined,
+                  createdAt: new Date().toISOString(),
+                  createdByUserId: currentUserId ?? existingHostNotes?.createdByUserId ?? null,
+                }
+              : existingHostNotes
+            : undefined,
       }
     }
 
@@ -98,6 +135,26 @@ export default function ChatSettingsModal({ isOpen, onClose, roomType, metadata,
                 <p className="text-xs text-slate-500">
                   This will show a map at the top of the chat for all members.
                 </p>
+              </div>
+              <div className="space-y-2">
+                <label className="text-sm font-medium text-slate-700">Host Notes</label>
+                <textarea
+                  value={hostMessage}
+                  onChange={(e) => setHostMessage(e.target.value)}
+                  placeholder="Share context for attendees..."
+                  rows={3}
+                  className="w-full rounded-lg border border-slate-200 text-sm p-3 focus:ring-2 focus:ring-orange-500/20 focus:border-orange-500"
+                />
+              </div>
+              <div className="space-y-2">
+                <label className="text-sm font-medium text-slate-700">Special Instructions</label>
+                <textarea
+                  value={hostInstructions}
+                  onChange={(e) => setHostInstructions(e.target.value)}
+                  placeholder="Dietary notes, setup details, timing..."
+                  rows={2}
+                  className="w-full rounded-lg border border-slate-200 text-sm p-3 focus:ring-2 focus:ring-orange-500/20 focus:border-orange-500"
+                />
               </div>
             </div>
           )}
