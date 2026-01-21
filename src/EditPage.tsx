@@ -32,6 +32,20 @@ export default function EditPage({ photo, onClose: _onClose, onSave, onRecheckAI
   const authContext = useAuth();
   const session = authContext?.session || null;
   
+  const logDev = (...args: unknown[]) => {
+    if (import.meta.env.DEV) {
+      // eslint-disable-next-line no-console
+      console.log(...args);
+    }
+  };
+  
+  const debugDev = (...args: unknown[]) => {
+    if (import.meta.env.DEV) {
+      // eslint-disable-next-line no-console
+      console.debug(...args);
+    }
+  };
+  
   // Prefer the live photo from the global store when available so this editor
   // always displays the freshest AI-updated content. Fall back to the prop.
   const reactivePhoto = useStore(state => state.photos.find((p: Photo) => String(p.id) === String(photo?.id)) || photo)
@@ -94,7 +108,7 @@ export default function EditPage({ photo, onClose: _onClose, onSave, onRecheckAI
   // Keep the editor fields in sync with the incoming photo prop.
   // CRITICAL DEBUG LOG: Confirms prop is reactive and update is running
   useEffect(() => {
-    console.debug('[EditPage SYNC] Photo source updated. New Caption:', (sourcePhoto || photo)?.caption, 'New ID:', (sourcePhoto || photo)?.id);
+    debugDev('[EditPage SYNC] Photo source updated. New Caption:', (sourcePhoto || photo)?.caption, 'New ID:', (sourcePhoto || photo)?.id);
 
     const latest = sourcePhoto || photo
     setCaption(latest?.caption || '')
@@ -168,7 +182,7 @@ export default function EditPage({ photo, onClose: _onClose, onSave, onRecheckAI
   }
 
   const handleCanvasSave = async (dataURL: string, newTextStyle: TextStyle) => {
-    console.log('Canvas saved with caption overlay!');
+    logDev('Canvas saved with caption overlay!');
     setSaving(true);
     try {
       setTextStyle(newTextStyle);
@@ -191,7 +205,7 @@ export default function EditPage({ photo, onClose: _onClose, onSave, onRecheckAI
       }
 
       const result = await response.json();
-      console.log('Captioned image saved:', result);
+      logDev('Captioned image saved:', result);
 
       const updated: Photo = { ...photo, caption, description, keywords, textStyle: newTextStyle };
       await onSave(updated);
@@ -207,7 +221,7 @@ export default function EditPage({ photo, onClose: _onClose, onSave, onRecheckAI
   // === HITL Collectible Identification Handlers ===
   const handleApproveIdentification = async (override: CollectibleOverride) => {
     try {
-      console.log('[EditPage] Approving identification, resuming graph');
+      logDev('[EditPage] Approving identification, resuming graph');
       await handleRecheckAi({ collectibleOverride: override });
     } catch (err) {
       console.error('[EditPage] Failed to approve identification:', err);
@@ -216,7 +230,7 @@ export default function EditPage({ photo, onClose: _onClose, onSave, onRecheckAI
 
   const handleEditSaveIdentification = async (override: CollectibleOverride) => {
     try {
-      console.log('[EditPage] Saving edited identification, resuming graph');
+      logDev('[EditPage] Saving edited identification, resuming graph');
       await handleRecheckAi({ collectibleOverride: override });
     } catch (err) {
       console.error('[EditPage] Failed to save edited identification:', err);
@@ -226,7 +240,7 @@ export default function EditPage({ photo, onClose: _onClose, onSave, onRecheckAI
   const handleEditIdentification = () => {
     // Switch to edit mode so user can modify the AI suggestion
     setCollectibleViewMode('edit');
-    console.log('[EditPage] Switching to edit mode for identification modification');
+    logDev('[EditPage] Switching to edit mode for identification modification');
   };
 
   // Compute whether to show HITL review modal
