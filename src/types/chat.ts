@@ -1,8 +1,32 @@
+export type ChatRoomType = 'general' | 'potluck'
+
+export type PotluckItem = {
+  id: string
+  label: string
+  claimedByUserId: string | null
+}
+
+export type PotluckData = {
+  location?: {
+    address: string
+    lat: number
+    lng: number
+  }
+  items: PotluckItem[]
+}
+
+export type ChatRoomMetadata = {
+  potluck?: PotluckData
+  [key: string]: unknown
+}
+
 export interface ChatRoom {
   id: string
   name: string | null
   is_group: boolean
   created_at: string
+  type: ChatRoomType
+  metadata: ChatRoomMetadata
 }
 
 export interface RoomMember {

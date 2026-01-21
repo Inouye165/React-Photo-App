@@ -1,17 +1,19 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 
-import { ArrowDown, Image as ImageIcon, X } from 'lucide-react'
+import { ArrowDown, Image as ImageIcon, Settings, X } from 'lucide-react'
 
-import { API_BASE_URL, getAccessToken, getPhotos, sendMessage } from '../../api'
+import { API_BASE_URL, getAccessToken, getPhotos, patchChatRoom, sendMessage } from '../../api'
 import { useChatRealtime } from '../../hooks/useChatRealtime'
 import { usePresence } from '../../hooks/usePresence'
 import { useChatTyping } from '../../hooks/useChatTyping'
 import { supabase } from '../../supabaseClient'
-import type { ChatMessage } from '../../types/chat'
+import type { ChatMessage, ChatRoomMetadata, ChatRoomType } from '../../types/chat'
 import { useAuth } from '../../contexts/AuthContext'
 import { toUrl } from '../../utils/toUrl'
 import AuthenticatedImage from '../AuthenticatedImage'
 import ChatBubble from './ChatBubble'
+import ChatSettingsModal from './ChatSettingsModal'
+import PotluckWidget from './widgets/PotluckWidget'
 
 export interface ChatWindowProps {
   roomId: string | null
@@ -19,7 +21,7 @@ export interface ChatWindowProps {
 }
 
 type UserRow = { id: string; username: string | null }
-type RoomRow = { id: string; name: string | null; is_group: boolean | null }
+type RoomRow = { id: string; name: string | null; is_group: boolean | null; type?: string | null; metadata?: unknown }
 
 type ChatHeaderState = {
   title: string
@@ -52,6 +54,9 @@ export default function ChatWindow({ roomId, onOpenSidebar }: ChatWindowProps) {
   const [memberIds, setMemberIds] = useState<string[]>([])
   const [memberDirectory, setMemberDirectory] = useState<Record<string, string | null>>({})
   const [header, setHeader] = useState<ChatHeaderState>({ title: 'Conversation', isGroup: false, otherUserId: null })
+  const [roomType, setRoomType] = useState<ChatRoomType>('general')
+  const [roomMetadata, setRoomMetadata] = useState<ChatRoomMetadata>({})
+  const [isSettingsOpen, setIsSettingsOpen] = useState<boolean>(false)
 
   // Typing indicator hook (best-effort; no UI crash if Realtime unavailable)
   const { typingUsernames, handleInputChange, handleInputSubmit } = useChatTyping({
@@ -178,14 +183,18 @@ export default function ChatWindow({ roomId, onOpenSidebar }: ChatWindowProps) {
     async function run(): Promise<void> {
       if (!roomId) {
         setHeader({ title: 'Conversation', isGroup: false, otherUserId: null })
+        setRoomType('general')
+        setRoomMetadata({})
         return
       }
 
       setHeader({ title: 'Conversation', isGroup: false, otherUserId: null })
+      setRoomType('general')
+      setRoomMetadata({})
 
       const { data: room, error: roomError } = await supabase
         .from('rooms')
-        .select('id, name, is_group')
+        .select('id, name, is_group, type, metadata')
         .eq('id', roomId)
         .maybeSingle()
 
@@ -194,6 +203,14 @@ export default function ChatWindow({ roomId, onOpenSidebar }: ChatWindowProps) {
       const roomRow = (room ?? null) as RoomRow | null
       const isGroup = Boolean(roomRow?.is_group)
       const roomName = typeof roomRow?.name === 'string' ? roomRow?.name : null
+      const resolvedType: ChatRoomType = roomRow?.type === 'potluck' ? 'potluck' : 'general'
+      const resolvedMetadata =
+        roomRow?.metadata && typeof roomRow.metadata === 'object' ? (roomRow.metadata as ChatRoomMetadata) : {}
+
+      if (!cancelled) {
+        setRoomType(resolvedType)
+        setRoomMetadata(resolvedMetadata)
+      }
 
       if (isGroup) {
         if (!cancelled) setHeader({ title: roomName?.trim() || 'Group chat', isGroup: true, otherUserId: null })
@@ -420,6 +437,23 @@ export default function ChatWindow({ roomId, onOpenSidebar }: ChatWindowProps) {
     })
   }, [memberIds, memberDirectory, profile?.username, user?.id])
 
+  const handlePatchRoom = useCallback(
+    async (updates: { type?: ChatRoomType; metadata?: ChatRoomMetadata }) => {
+      if (!roomId) return
+      try {
+        const response = await patchChatRoom(roomId, updates)
+        const updatedRoom = response.room
+        setRoomType(updatedRoom.type)
+        setRoomMetadata(updatedRoom.metadata || {})
+      } catch (err) {
+        if (import.meta.env.DEV) {
+          console.debug('[ChatWindow] Failed to update room settings:', err)
+        }
+      }
+    },
+    [roomId],
+  )
+
   if (!roomId) {
     return (
       <section className="flex-1 flex items-center justify-center p-6 bg-slate-50" aria-label="Chat window">
@@ -449,6 +483,16 @@ export default function ChatWindow({ roomId, onOpenSidebar }: ChatWindowProps) {
             <div className="h-2 w-2 rounded-full bg-green-500" aria-label="Online" />
           )}
           <h2 className="text-sm font-semibold text-slate-900 truncate">{header.title}</h2>
+          <div className="ml-auto flex items-center gap-2">
+            <button
+              type="button"
+              onClick={() => setIsSettingsOpen(true)}
+              className="inline-flex items-center justify-center h-9 w-9 rounded-xl text-slate-600 hover:bg-slate-100"
+              aria-label="Chat settings"
+            >
+              <Settings className="h-4 w-4" />
+            </button>
+          </div>
         </div>
         <div className="mt-1 text-xs text-slate-500 truncate" aria-label="Chat members">
           {memberLabels.length > 0 ? `Members: ${memberLabels.join(', ')}` : 'Members unavailable'}
@@ -461,6 +505,13 @@ export default function ChatWindow({ roomId, onOpenSidebar }: ChatWindowProps) {
         className="flex-1 overflow-auto p-4 sm:p-6 space-y-3" 
         data-testid="chat-messages"
       >
+        {roomType === 'potluck' && (
+          <PotluckWidget
+            metadata={roomMetadata}
+            currentUserId={user?.id ?? null}
+            onUpdate={async (newMeta) => handlePatchRoom({ metadata: newMeta })}
+          />
+        )}
         {loading && <div className="text-sm text-slate-500">Loading messages…</div>}
         {error && <div className="text-sm text-red-600">Failed to load messages: {error}</div>}
 
@@ -670,6 +721,14 @@ export default function ChatWindow({ roomId, onOpenSidebar }: ChatWindowProps) {
           </div>
         )}
       </div>
+
+      <ChatSettingsModal
+        isOpen={isSettingsOpen}
+        onClose={() => setIsSettingsOpen(false)}
+        roomType={roomType}
+        metadata={roomMetadata}
+        onSave={async (patch) => handlePatchRoom(patch)}
+      />
     </section>
   )
 }
