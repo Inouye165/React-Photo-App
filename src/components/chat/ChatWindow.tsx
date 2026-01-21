@@ -337,6 +337,9 @@ export default function ChatWindow({ roomId, onOpenSidebar }: ChatWindowProps) {
     prevMessageCountRef.current = messages.length
   }, [roomId, messages.length, isAtBottom])
 
+  const currentUserIsOwner = Boolean(user?.id && memberProfiles[user.id]?.isOwner)
+  const canEditSettings = !header.isGroup || currentUserIsOwner
+
   useEffect(() => {
     setDraft('')
     setSendError(null)
@@ -351,6 +354,12 @@ export default function ChatWindow({ roomId, onOpenSidebar }: ChatWindowProps) {
     setIsMembersOpen(false)
     prevMessageCountRef.current = 0
   }, [roomId])
+
+  useEffect(() => {
+    if (!canEditSettings) {
+      setIsSettingsOpen(false)
+    }
+  }, [canEditSettings])
 
   useEffect(() => {
     if (!pickerOpen) return
@@ -506,6 +515,7 @@ export default function ChatWindow({ roomId, onOpenSidebar }: ChatWindowProps) {
     })
   }, [memberDirectory, memberIds, memberProfiles])
 
+
   const handlePatchRoom = useCallback(
     async (updates: { type?: ChatRoomType; metadata?: ChatRoomMetadata }) => {
       if (!roomId) return
@@ -563,14 +573,16 @@ export default function ChatWindow({ roomId, onOpenSidebar }: ChatWindowProps) {
                 <Users className="h-4 w-4" />
               </button>
             )}
-            <button
-              type="button"
-              onClick={() => setIsSettingsOpen(true)}
-              className="inline-flex items-center justify-center h-9 w-9 rounded-xl text-slate-600 hover:bg-slate-100"
-              aria-label="Chat settings"
-            >
-              <Settings className="h-4 w-4" />
-            </button>
+            {canEditSettings && (
+              <button
+                type="button"
+                onClick={() => setIsSettingsOpen(true)}
+                className="inline-flex items-center justify-center h-9 w-9 rounded-xl text-slate-600 hover:bg-slate-100"
+                aria-label="Chat settings"
+              >
+                <Settings className="h-4 w-4" />
+              </button>
+            )}
           </div>
         </div>
         <div className="mt-1 text-xs text-slate-500 truncate" aria-label="Chat members">
@@ -801,14 +813,16 @@ export default function ChatWindow({ roomId, onOpenSidebar }: ChatWindowProps) {
         )}
       </div>
 
-      <ChatSettingsModal
-        isOpen={isSettingsOpen}
-        onClose={() => setIsSettingsOpen(false)}
-        roomType={roomType}
-        metadata={roomMetadata}
-        currentUserId={user?.id ?? null}
-        onSave={async (patch) => handlePatchRoom(patch)}
-      />
+      {canEditSettings && (
+        <ChatSettingsModal
+          isOpen={isSettingsOpen}
+          onClose={() => setIsSettingsOpen(false)}
+          roomType={roomType}
+          metadata={roomMetadata}
+          currentUserId={user?.id ?? null}
+          onSave={async (patch) => handlePatchRoom(patch)}
+        />
+      )}
       {roomId && header.isGroup && (
         <ChatMembersModal
           isOpen={isMembersOpen}

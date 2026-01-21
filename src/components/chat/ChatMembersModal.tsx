@@ -183,7 +183,7 @@ export default function ChatMembersModal({
                 const label = resolveDisplayName(member, currentUserId)
                 const isSelf = Boolean(currentUserId && member.userId === currentUserId)
                 const isMemberOwner = member.isOwner
-                const ownerLabel = isMemberOwner ? `${label} (Owner)` : label
+                const ownerLabel = isMemberOwner ? `${label}` : label
                 const canRemove = isOwner && !isSelf
                 const canToggleOwner = isCreator && !isSelf
                 const wouldBeLastOwner = isMemberOwner && ownersCount <= 1
@@ -203,7 +203,14 @@ export default function ChatMembersModal({
                       <div className="h-8 w-8 rounded-full bg-slate-200" aria-hidden="true" />
                     )}
                     <div className="flex-1 min-w-0">
-                      <div className="text-sm font-medium text-slate-900 truncate">{ownerLabel}</div>
+                      <div className="text-sm font-medium text-slate-900 truncate">
+                        {ownerLabel}
+                        {isMemberOwner && (
+                          <span className="ml-2 rounded-full bg-emerald-50 px-2 py-0.5 text-[11px] font-semibold text-emerald-700">
+                            Owner
+                          </span>
+                        )}
+                      </div>
                     </div>
                     <div className="flex items-center gap-2">
                       {canToggleOwner && (
