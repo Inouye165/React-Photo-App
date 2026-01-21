@@ -1,6 +1,6 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 
-import { ArrowDown, Image as ImageIcon, Settings, X } from 'lucide-react'
+import { ArrowDown, Image as ImageIcon, Settings, Users, X } from 'lucide-react'
 
 import { API_BASE_URL, getAccessToken, getPhotos, patchChatRoom, sendMessage } from '../../api'
 import { useChatRealtime } from '../../hooks/useChatRealtime'
@@ -12,6 +12,7 @@ import { useAuth } from '../../contexts/AuthContext'
 import { toUrl } from '../../utils/toUrl'
 import AuthenticatedImage from '../AuthenticatedImage'
 import ChatBubble from './ChatBubble'
+import ChatMembersModal from './ChatMembersModal'
 import ChatSettingsModal from './ChatSettingsModal'
 import PotluckWidget from './widgets/PotluckWidget'
 
@@ -21,7 +22,20 @@ export interface ChatWindowProps {
 }
 
 type UserRow = { id: string; username: string | null }
-type RoomRow = { id: string; name: string | null; is_group: boolean | null; type?: string | null; metadata?: unknown }
+type RoomRow = {
+  id: string
+  name: string | null
+  is_group: boolean | null
+  type?: string | null
+  metadata?: unknown
+  created_by?: string | null
+}
+
+type MemberProfile = {
+  username: string | null
+  avatarUrl: string | null
+  isOwner: boolean
+}
 
 type ChatHeaderState = {
   title: string
@@ -53,10 +67,13 @@ export default function ChatWindow({ roomId, onOpenSidebar }: ChatWindowProps) {
 
   const [memberIds, setMemberIds] = useState<string[]>([])
   const [memberDirectory, setMemberDirectory] = useState<Record<string, string | null>>({})
+  const [memberProfiles, setMemberProfiles] = useState<Record<string, MemberProfile>>({})
   const [header, setHeader] = useState<ChatHeaderState>({ title: 'Conversation', isGroup: false, otherUserId: null })
   const [roomType, setRoomType] = useState<ChatRoomType>('general')
   const [roomMetadata, setRoomMetadata] = useState<ChatRoomMetadata>({})
+  const [createdBy, setCreatedBy] = useState<string | null>(null)
   const [isSettingsOpen, setIsSettingsOpen] = useState<boolean>(false)
+  const [isMembersOpen, setIsMembersOpen] = useState<boolean>(false)
 
   // Typing indicator hook (best-effort; no UI crash if Realtime unavailable)
   const { typingUsernames, handleInputChange, handleInputSubmit } = useChatTyping({
@@ -82,54 +99,88 @@ export default function ChatWindow({ roomId, onOpenSidebar }: ChatWindowProps) {
   useEffect(() => {
     setMemberIds([])
     setMemberDirectory({})
+    setMemberProfiles({})
     setHeader({ title: 'Conversation', isGroup: false, otherUserId: null })
     setRoomType('general')
     setRoomMetadata({})
+    setCreatedBy(null)
   }, [user?.id])
+
+  const fetchMemberRoster = useCallback(async () => {
+    if (!roomId || !user?.id) {
+      return {
+        ids: [] as string[],
+        directory: {} as Record<string, string | null>,
+        profiles: {} as Record<string, MemberProfile>,
+      }
+    }
+
+    const { data: members, error: membersError } = await supabase
+      .from('room_members')
+      .select('user_id, is_owner')
+      .eq('room_id', roomId)
+
+    if (membersError) throw membersError
+
+    const memberRows = (members ?? []) as Array<{ user_id?: unknown; is_owner?: unknown }>
+    const ids = memberRows.map((row) => row.user_id).filter((id): id is string => typeof id === 'string')
+    const uniqueIds = [...new Set(ids)]
+
+    const baseProfiles: Record<string, MemberProfile> = {}
+    for (const row of memberRows) {
+      if (typeof row.user_id !== 'string') continue
+      baseProfiles[row.user_id] = {
+        username: null,
+        avatarUrl: null,
+        isOwner: Boolean(row.is_owner),
+      }
+    }
+
+    if (!uniqueIds.length) {
+      return {
+        ids: uniqueIds,
+        directory: {},
+        profiles: baseProfiles,
+      }
+    }
+
+    const { data, error: usersError } = await supabase
+      .from('users')
+      .select('id, username, avatar_url')
+      .in('id', uniqueIds)
+
+    if (usersError) throw usersError
+
+    const nextDirectory: Record<string, string | null> = {}
+    const nextProfiles: Record<string, MemberProfile> = { ...baseProfiles }
+    for (const row of (data ?? []) as Array<UserRow & { avatar_url?: string | null }>) {
+      if (typeof row.id !== 'string') continue
+      const username = typeof row.username === 'string' ? row.username : null
+      nextDirectory[row.id] = username
+      const existing = nextProfiles[row.id]
+      nextProfiles[row.id] = {
+        username,
+        avatarUrl: typeof row.avatar_url === 'string' ? row.avatar_url : null,
+        isOwner: existing?.isOwner ?? false,
+      }
+    }
+
+    return {
+      ids: uniqueIds,
+      directory: nextDirectory,
+      profiles: nextProfiles,
+    }
+  }, [roomId, user?.id])
 
   useEffect(() => {
     let cancelled = false
 
     async function run(): Promise<void> {
-      if (!roomId || !user?.id) {
-        setMemberIds([])
-        setMemberDirectory({})
-        return
-      }
-
-      const { data: members, error: membersError } = await supabase
-        .from('room_members')
-        .select('user_id')
-        .eq('room_id', roomId)
-
-      if (membersError) throw membersError
-
-      const ids = (members ?? [])
-        .map((row) => (row as { user_id?: unknown }).user_id)
-        .filter((id): id is string => typeof id === 'string')
-
-      const uniqueIds = [...new Set(ids)]
-      setMemberIds(uniqueIds)
-
-      if (!uniqueIds.length) {
-        setMemberDirectory({})
-        return
-      }
-
-      const { data, error: usersError } = await supabase
-        .from('users')
-        .select('id, username')
-        .in('id', uniqueIds)
-
-      if (usersError) throw usersError
-
-      const next: Record<string, string | null> = {}
-      for (const row of (data ?? []) as UserRow[]) {
-        if (typeof row.id !== 'string') continue
-        next[row.id] = typeof row.username === 'string' ? row.username : null
-      }
-
-      if (!cancelled) setMemberDirectory(next)
+      const roster = await fetchMemberRoster()
+      if (cancelled) return
+      setMemberIds(roster.ids)
+      setMemberDirectory(roster.directory)
+      setMemberProfiles(roster.profiles)
     }
 
     run().catch((err) => {
@@ -139,7 +190,7 @@ export default function ChatWindow({ roomId, onOpenSidebar }: ChatWindowProps) {
     return () => {
       cancelled = true
     }
-  }, [roomId, user?.id])
+  }, [fetchMemberRoster])
 
   const scheduleMarkRead = useCallback(
     (reason: 'open' | 'at-bottom' | 'new-message') => {
@@ -193,6 +244,7 @@ export default function ChatWindow({ roomId, onOpenSidebar }: ChatWindowProps) {
         setHeader({ title: 'Conversation', isGroup: false, otherUserId: null })
         setRoomType('general')
         setRoomMetadata({})
+        setCreatedBy(null)
         return
       }
 
@@ -202,7 +254,7 @@ export default function ChatWindow({ roomId, onOpenSidebar }: ChatWindowProps) {
 
       const { data: room, error: roomError } = await supabase
         .from('rooms')
-        .select('id, name, is_group, type, metadata')
+        .select('id, name, is_group, type, metadata, created_by')
         .eq('id', roomId)
         .maybeSingle()
 
@@ -218,6 +270,7 @@ export default function ChatWindow({ roomId, onOpenSidebar }: ChatWindowProps) {
       if (!cancelled) {
         setRoomType(resolvedType)
         setRoomMetadata(resolvedMetadata)
+        setCreatedBy(typeof roomRow?.created_by === 'string' ? roomRow.created_by : null)
       }
 
       if (isGroup) {
@@ -295,6 +348,7 @@ export default function ChatWindow({ roomId, onOpenSidebar }: ChatWindowProps) {
     setSelectedPhotoId(null)
     setUnseenCount(0)
     setIsAtBottom(true)
+    setIsMembersOpen(false)
     prevMessageCountRef.current = 0
   }, [roomId])
 
@@ -440,6 +494,18 @@ export default function ChatWindow({ roomId, onOpenSidebar }: ChatWindowProps) {
     })
   }, [memberIds, memberDirectory, profile?.username, user?.id])
 
+  const membersForModal = useMemo(() => {
+    return memberIds.map((id) => {
+      const profileRow = memberProfiles[id]
+      return {
+        userId: id,
+        username: profileRow?.username ?? memberDirectory[id] ?? null,
+        avatarUrl: profileRow?.avatarUrl ?? null,
+        isOwner: Boolean(profileRow?.isOwner),
+      }
+    })
+  }, [memberDirectory, memberIds, memberProfiles])
+
   const handlePatchRoom = useCallback(
     async (updates: { type?: ChatRoomType; metadata?: ChatRoomMetadata }) => {
       if (!roomId) return
@@ -487,6 +553,16 @@ export default function ChatWindow({ roomId, onOpenSidebar }: ChatWindowProps) {
           )}
           <h2 className="text-sm font-semibold text-slate-900 truncate">{header.title}</h2>
           <div className="ml-auto flex items-center gap-2">
+            {header.isGroup && (
+              <button
+                type="button"
+                onClick={() => setIsMembersOpen(true)}
+                className="inline-flex items-center justify-center h-9 w-9 rounded-xl text-slate-600 hover:bg-slate-100"
+                aria-label="Manage members"
+              >
+                <Users className="h-4 w-4" />
+              </button>
+            )}
             <button
               type="button"
               onClick={() => setIsSettingsOpen(true)}
@@ -733,6 +809,23 @@ export default function ChatWindow({ roomId, onOpenSidebar }: ChatWindowProps) {
         currentUserId={user?.id ?? null}
         onSave={async (patch) => handlePatchRoom(patch)}
       />
+      {roomId && header.isGroup && (
+        <ChatMembersModal
+          isOpen={isMembersOpen}
+          onClose={() => setIsMembersOpen(false)}
+          roomId={roomId}
+          isGroup={header.isGroup}
+          currentUserId={user?.id ?? null}
+          createdBy={createdBy}
+          members={membersForModal}
+          onRefreshMembers={async () => {
+            const roster = await fetchMemberRoster()
+            setMemberIds(roster.ids)
+            setMemberDirectory(roster.directory)
+            setMemberProfiles(roster.profiles)
+          }}
+        />
+      )}
     </section>
   )
 }

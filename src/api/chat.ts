@@ -24,7 +24,10 @@ async function requireAuthedUserId(): Promise<string> {
   }
 
   const { data, error } = await supabase.auth.getUser()
-  if (error) throw error
+  if (error) {
+    const message = error.message || 'Unable to add member to this chat.'
+    throw new Error(message)
+  }
   const id = data?.user?.id
   if (!id) throw new Error('Not authenticated')
   return id
@@ -48,7 +51,10 @@ export async function searchUsers(query: string): Promise<UserSearchResult[]> {
     .ilike('username', `%${q}%`)
     .limit(20)
 
-  if (error) throw error
+  if (error) {
+    const message = error.message || 'Unable to remove that member.'
+    throw new Error(message)
+  }
 
   const rows = (data ?? []) as Array<Partial<UserSearchResult>>
   return rows
@@ -142,7 +148,7 @@ export async function getOrCreateRoom(otherUserId: string): Promise<ChatRoom> {
 
   const { error: selfMemberError } = await supabase
     .from('room_members')
-    .insert({ room_id: (room as ChatRoom).id, user_id: userId })
+    .insert({ room_id: (room as ChatRoom).id, user_id: userId, is_owner: true })
 
   if (selfMemberError) throw selfMemberError
 
@@ -173,7 +179,7 @@ export async function createGroupRoom(name: string, memberIds: string[]): Promis
 
   const { error: selfMemberError } = await supabase
     .from('room_members')
-    .insert({ room_id: (room as ChatRoom).id, user_id: userId })
+    .insert({ room_id: (room as ChatRoom).id, user_id: userId, is_owner: true })
 
   if (selfMemberError) throw selfMemberError
 
@@ -185,6 +191,66 @@ export async function createGroupRoom(name: string, memberIds: string[]): Promis
   if (membersError) throw membersError
 
   return room as ChatRoom
+}
+
+export async function addRoomMember(roomId: string, userId: string): Promise<void> {
+  const currentUserId = await requireAuthedUserId()
+  if (!roomId) throw new Error('Missing roomId')
+  if (!userId) throw new Error('Missing userId')
+  if (userId === currentUserId) throw new Error('You are already a member')
+
+  const { error } = await supabase
+    .from('room_members')
+    .insert({ room_id: roomId, user_id: userId, is_owner: false })
+
+  if (error) {
+    const message = error.message || 'Unable to leave this chat.'
+    throw new Error(message)
+  }
+}
+
+export async function removeRoomMember(roomId: string, userId: string): Promise<void> {
+  await requireAuthedUserId()
+  if (!roomId) throw new Error('Missing roomId')
+  if (!userId) throw new Error('Missing userId')
+
+  const { error } = await supabase
+    .from('room_members')
+    .delete()
+    .eq('room_id', roomId)
+    .eq('user_id', userId)
+
+  if (error) {
+    const message = error.message || 'Unable to update owner permissions.'
+    throw new Error(message)
+  }
+}
+
+export async function quitRoom(roomId: string): Promise<void> {
+  const currentUserId = await requireAuthedUserId()
+  if (!roomId) throw new Error('Missing roomId')
+
+  const { error } = await supabase
+    .from('room_members')
+    .delete()
+    .eq('room_id', roomId)
+    .eq('user_id', currentUserId)
+
+  if (error) throw error
+}
+
+export async function setRoomOwner(roomId: string, userId: string, isOwner: boolean): Promise<void> {
+  await requireAuthedUserId()
+  if (!roomId) throw new Error('Missing roomId')
+  if (!userId) throw new Error('Missing userId')
+
+  const { error } = await supabase
+    .from('room_members')
+    .update({ is_owner: isOwner })
+    .eq('room_id', roomId)
+    .eq('user_id', userId)
+
+  if (error) throw error
 }
 
 export async function sendMessage(roomId: string, content: string, photoId?: PhotoId | null): Promise<ChatMessage> {
