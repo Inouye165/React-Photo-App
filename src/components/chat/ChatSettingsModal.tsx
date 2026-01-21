@@ -47,6 +47,7 @@ export default function ChatSettingsModal({
     if (selectedType === 'potluck') {
       const trimmedMessage = hostMessage.trim()
       const trimmedInstructions = hostInstructions.trim()
+      const trimmedLocation = locationAddress.trim()
       const existingHostNotes = newMetadata.potluck?.hostNotes
       const hasHostUpdate =
         trimmedMessage !== (existingHostNotes?.message ?? '') ||
@@ -56,9 +57,9 @@ export default function ChatSettingsModal({
         ...newMetadata.potluck,
         items: newMetadata.potluck?.items || [],
         allergies: newMetadata.potluck?.allergies || [],
-        location: locationAddress
+        location: trimmedLocation
           ? {
-              address: locationAddress,
+              address: trimmedLocation,
               lat: 37.7749,
               lng: -122.4194,
             }
