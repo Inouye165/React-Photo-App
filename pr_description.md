@@ -1,29 +1,18 @@
 ## 🚀 Description
-Adds an admin-only “App Assessments” workflow, including support for manually pasting external LLM reviews (e.g. ChatGPT/Gemini) and storing provider/model/prompt/response so grades can be compared over time.
+Fixes potluck event geocoding by adding Mapbox address autocomplete/validation, removing hardcoded coordinates, and tightening map sizing in the edit context view.
 
 ## 🛠️ Changes
-### 🔐 Admin API
-- Add single-record fetch endpoint: `GET /api/admin/assessments/:id`.
-- Add external/manual create endpoint: `POST /api/admin/assessments/external`.
-
-### 🧠 External assessment storage
-- Persist provider, model, optional prompt, and full response text into existing JSONB fields (no new migration).
-- Preserve existing confirm/recompute semantics (server remains the source of truth for confirmed grade).
-
-### 🧾 Admin UI
-- Make the feature discoverable from Admin Dashboard.
-- Add “Add External Assessment” form on assessment history.
-- Improve detail view reliability by fetching by id instead of relying on list pagination.
+- Added Mapbox Geocoding v6 autocomplete with structured input, address validation, and low-confidence warnings.
+- Saved potluck locations using geocoded coordinates (or address-only when no match).
+- Reduced map container height to a compact max 300px in the edit context panel.
+- Documented the Mapbox access token in the frontend env template.
 
 ## 📁 Files Touched
-- Backend: `server/routes/admin.js`, `server/services/assessmentsDb.js`
-- Frontend: `src/pages/AdminDashboard.tsx`, `src/pages/AdminAssessmentHistory.tsx`, `src/pages/AssessmentReviewDetail.tsx`
+- Frontend: `src/components/chat/ChatSettingsModal.tsx`, `src/components/edit/ContextTabPanel.module.css`, `src/types/chat.ts`
+- Config: `.env.example`
 
 ## ✅ Verification
-Ran locally (Windows):
-- Frontend tests: `npm test`
-- Server tests: `npm --prefix server test`
+- npx vitest run
 
-## 🔒 Scope
-- No dependency changes.
-- No schema changes for provider/model/prompt/response (stored in existing JSONB columns).
+## 🔒 Notes
+- Requires `VITE_MAPBOX_ACCESS_TOKEN` to enable autocomplete suggestions.

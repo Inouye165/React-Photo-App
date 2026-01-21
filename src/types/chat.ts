@@ -23,8 +23,8 @@ export type PotluckAllergy = {
 export type PotluckData = {
   location?: {
     address: string
-    lat: number
-    lng: number
+    lat?: number | null
+    lng?: number | null
   }
   items: PotluckItem[]
   hostNotes?: PotluckHostNotes
