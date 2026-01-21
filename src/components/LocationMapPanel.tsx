@@ -160,6 +160,7 @@ export default function LocationMapPanel({ photo }: LocationMapPanelProps) {
             fullscreenControl={true}
             mapTypeControlOptions={{
               position: 3, // TOP_RIGHT
+              style: 2, // DROPDOWN_MENU
             }}
           >
             <AdvancedMarker position={center}>
