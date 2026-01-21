@@ -133,7 +133,7 @@ export async function getOrCreateRoom(otherUserId: string): Promise<ChatRoom> {
 
   const { data: room, error: roomError } = await supabase
     .from('rooms')
-    .insert({ name: null, is_group: false })
+    .insert({ name: null, is_group: false, created_by: userId })
     .select('id, name, is_group, created_at, type, metadata')
     .single()
 
@@ -164,7 +164,7 @@ export async function createGroupRoom(name: string, memberIds: string[]): Promis
 
   const { data: room, error: roomError } = await supabase
     .from('rooms')
-    .insert({ name: trimmedName, is_group: true })
+    .insert({ name: trimmedName, is_group: true, created_by: userId })
     .select('id, name, is_group, created_at, type, metadata')
     .single()
 
