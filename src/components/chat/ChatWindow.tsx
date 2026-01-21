@@ -727,6 +727,7 @@ export default function ChatWindow({ roomId, onOpenSidebar }: ChatWindowProps) {
         onClose={() => setIsSettingsOpen(false)}
         roomType={roomType}
         metadata={roomMetadata}
+        currentUserId={user?.id ?? null}
         onSave={async (patch) => handlePatchRoom(patch)}
       />
     </section>

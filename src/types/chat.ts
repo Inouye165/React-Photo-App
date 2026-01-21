@@ -6,6 +6,20 @@ export type PotluckItem = {
   claimedByUserId: string | null
 }
 
+export type PotluckHostNotes = {
+  message: string
+  instructions?: string
+  createdAt: string
+  createdByUserId?: string | null
+}
+
+export type PotluckAllergy = {
+  id: string
+  label: string
+  addedByUserId: string | null
+  createdAt: string
+}
+
 export type PotluckData = {
   location?: {
     address: string
@@ -13,6 +27,8 @@ export type PotluckData = {
     lng: number
   }
   items: PotluckItem[]
+  hostNotes?: PotluckHostNotes
+  allergies?: PotluckAllergy[]
 }
 
 export type ChatRoomMetadata = {
