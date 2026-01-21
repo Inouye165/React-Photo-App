@@ -31,7 +31,7 @@ vi.mock('../../hooks/useChatRealtime', () => ({ useChatRealtime: () => ({ messag
 vi.mock('../../hooks/usePresence', () => ({ usePresence: () => ({ isUserOnline: () => false }) }))
 vi.mock('../../hooks/useChatTyping', () => ({ useChatTyping: () => ({ typingUsernames: [], handleInputChange: () => {}, handleInputSubmit: () => {} }) }))
 vi.mock('./ChatBubble', () => ({ default: () => null }))
-vi.mock('lucide-react', () => ({ ArrowDown: () => null, Image: () => null, X: () => null }))
+vi.mock('lucide-react', () => ({ ArrowDown: () => null, Image: () => null, Settings: () => null, Users: () => null, X: () => null }))
 
 import ChatWindow from './ChatWindow'
 

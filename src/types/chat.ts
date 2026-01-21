@@ -49,6 +49,7 @@ export interface ChatRoom {
 export interface RoomMember {
   room_id: string
   user_id: string
+  is_owner?: boolean
 }
 
 export type MessageId = number
