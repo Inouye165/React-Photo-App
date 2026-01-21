@@ -7,39 +7,39 @@
 [![React](https://img.shields.io/badge/React-19-61dafb.svg)](https://reactjs.org/)
 [![License](https://img.shields.io/badge/license-Restricted-red.svg)](LICENSE)
 
-Lumina is a photo workspace I'm building. The main goal? Stop doing simple tutorials and actually build something that handles the messy, hard stuff—like real security, heavy file uploads, and architecture that doesn't fall apart.
+Lumina is a personal photo workspace project focused on secure uploads, background processing, and privacy-friendly defaults.
 
-The frontend is still rough (I'm working on it), but I've spent a ton of time making the backend and security production-grade. Eventually, I want this to be a place where you can share photos without handing over your data to big tech.
+The frontend is a work in progress, while the backend and security pieces are the primary focus. The long-term goal is a private photo space without relying on big-tech social platforms.
 
 **Author:** Ron Inouye ([@Inouye165](https://github.com/Inouye165))
 
 ## Why I'm Building This
 
-I wanted to see what it actually takes to ship a secure, cloud-deployed app. Not just the "happy path" you see in guides, but the real deal.
+I wanted to understand what it takes to ship a secure, cloud-deployed app beyond the “happy path.”
 
 My focus has been on:
-*   **Not breaking things:** Architecting it so I can add features later without rewriting everything.
-*   **Security that isn't fake:** Using Row-Level Security (RLS) from the start, not patching it in later.
-*   **Modern tools:** Getting my hands dirty with Supabase, Docker, and real deployment pipelines.
+*   **Maintainability:** Structuring the codebase so new features don’t require rewrites.
+*   **Security first:** Using Row-Level Security (RLS) from the start.
+*   **Modern tooling:** Supabase, Docker, and production-style deployment workflows.
 
-It's definitely an engineering prototype right now. I care more about the engine than the paint job.
+It’s an engineering prototype with more emphasis on reliability than UI polish.
 
-## The Vibe
+## Principles
 
-*   **Privacy is the default:** Everything starts with "can other people see this?" (The answer should be no).
-*   **No Security Theater:** I'm trying to be honest about what's secure and what's still a WIP.
+*   **Privacy by default:** Access is restricted unless explicitly shared.
+*   **No security theater:** Document what’s secure and what is still in progress.
 
 ## The Tech Stack (The Interesting Parts)
 
-This isn't just a wrapper around an API. Here's what's actually happening under the hood:
+Key parts of the stack:
 
-*   **Frontend:** React 19 + Vite 7. I'm using Zustand for state because Redux is too much boilerplate. Tailwind 4 handles the styling.
-*   **Backend:** Node.js with Express. It's stateless and scales well.
+*   **Frontend:** React 19 + Vite 7. Zustand for state. Tailwind 4 for styling.
+*   **Backend:** Node.js with Express (stateless).
 *   **Database:** PostgreSQL (via Supabase) with strict Row-Level Security (RLS). No "admin" keys in the frontend.
-*   **AI Orchestration:** I'm using LangGraph to build actual workflows, not just single prompts. It decides if a photo needs food analysis, collectible valuation, or just a scenery description.
+*   **AI Orchestration:** LangGraph pipelines route photos to food, collectible, or scenery analysis.
 *   **Job Queue:** BullMQ + Redis. Heavy stuff like thumbnail generation and AI analysis happens in the background so the upload endpoint stays fast.
 *   **Streaming Uploads:** Files stream directly from the request to Supabase Storage. They never touch the server's disk.
-*   **Testing:** Vitest, Playwright, and Jest. I take testing seriously.
+*   **Testing:** Vitest, Playwright, and Jest.
 
 ## Security Checks
 
@@ -59,17 +59,17 @@ npm run secret-scan:local
 ## Cool Features & Experiments
 
 ### AI Photo Concierge
-I'm using LangGraph to create a "smart" agent that looks at your photos:
-*   **Smart Routing:** It classifies photos (Food, Collectible, Scenery) and picks the right "expert" agent to handle it.
-*   **Collectibles:** It tries to identify comic books or trading cards and even estimates their grade/value.
-*   **Location Intel:** If you take a picture of food, it tries to find the restaurant nearby using your GPS coordinates.
+LangGraph drives analysis workflows for photos:
+*   **Routing:** Classifies photos (food, collectible, scenery) and selects the matching analysis path.
+*   **Collectibles:** Attempts identification and produces estimated condition/value signals.
+*   **Location Intel:** Uses GPS coordinates to look up nearby places when Google Places keys are configured.
 
 ### Engineering & Security
 *   **Zero-Disk Architecture:** Uploads are streamed, verified, and hashed on the fly.
-*   **HEIC Support:** Automatic conversion for iPhone photos using `heic-convert` (server) and `heic2any` (client).
+*   **HEIC Support:** Automatic conversion using `heic-convert` (server) and `heic2any` (client).
 *   **Security First:**
     *   **RLS:** Database policies ensure users can only see their own data.
-    *   **Unified onboarding:** Invite/recovery flows land on `/reset-password`, which atomically sets a strong password + required username before granting access.
+    *   **Unified onboarding:** Invite/recovery flows land on `/reset-password` to set a password and (for new users) a username.
     *   **Secret Scanning:** Custom scripts prevent me from committing API keys.
     *   **Privilege Checks:** Automated audits to ensure no code is running with unnecessary permissions.
 *   **Observability:** Prometheus metrics are exposed for monitoring.
@@ -112,7 +112,7 @@ cd server && npm run worker # Background Worker
 
 **Heads up:**
 *   You need the worker running or thumbnails won't happen.
-*   If you don't have the Google Maps keys, it falls back to OpenStreetMap.
+*   If Google Maps keys are missing, POI lookups are skipped.
 *   The backend needs an OpenAI key to start (unless you're in test mode).
 *   Media delivery redirects are controlled by `MEDIA_REDIRECT_ENABLED` in [server/.env.example](server/.env.example) to offload image bytes to storage/CDN.
 *   **HITL Collectibles UI:** Set `VITE_ENABLE_COLLECTIBLES_UI=true` in your frontend `.env` to enable the Human-in-the-Loop collectible identification workflow. This provides a modal UI for reviewing and confirming AI-identified collectibles before continuing the analysis pipeline.
@@ -121,7 +121,7 @@ cd server && npm run worker # Background Worker
 
 ## How I Test This Thing
 
-I don't write tests just to get green badges. I write them so I can sleep at night after a refactor.
+Tests are intended to catch regressions before CI.
 
 ### Pre-commit Test Suite
 
