@@ -1,0 +1,25 @@
+#!/usr/bin/env bash
+set -euo pipefail
+
+if [[ "${SKIP_TESTS:-}" != "" ]]; then
+  if [[ "${SKIP_TESTS_REASON:-}" == "" ]]; then
+    echo "SKIP_TESTS is set but SKIP_TESTS_REASON is empty."
+    echo "Provide a reason or unset SKIP_TESTS to run the full test suite."
+    exit 1
+  fi
+  echo "Skipping tests due to SKIP_TESTS. Reason: ${SKIP_TESTS_REASON}"
+  exit 0
+fi
+
+ROOT_DIR="$(git rev-parse --show-toplevel)"
+cd "$ROOT_DIR"
+
+printf "\nRunning required test suite before push...\n\n"
+
+npm run lint
+npm test
+npm run test:maintainability
+npm run test:e2e
+(cd server && npm test)
+
+printf "\nAll required tests passed. Proceeding with push.\n"
