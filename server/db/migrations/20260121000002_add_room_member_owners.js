@@ -16,14 +16,29 @@ exports.up = async function up(knex) {
   }
 
   const hasRooms = await knex.schema.hasTable('rooms')
-  if (hasRooms) {
-    await knex.raw(`
-      UPDATE public.room_members rm
-      SET is_owner = true
-      FROM public.rooms r
-      WHERE r.id = rm.room_id
-        AND r.created_by = rm.user_id;
-    `)
+  const hasCreatedBy = hasRooms ? await knex.schema.hasColumn('rooms', 'created_by') : false
+  if (hasRooms && hasCreatedBy) {
+    const client = knex.client.config.client
+    if (client === 'pg') {
+      await knex.raw(`
+        UPDATE public.room_members rm
+        SET is_owner = true
+        FROM public.rooms r
+        WHERE r.id = rm.room_id
+          AND r.created_by = rm.user_id;
+      `)
+    } else {
+      await knex.raw(`
+        UPDATE room_members
+        SET is_owner = 1
+        WHERE EXISTS (
+          SELECT 1
+          FROM rooms r
+          WHERE r.id = room_members.room_id
+            AND r.created_by = room_members.user_id
+        );
+      `)
+    }
   }
 }
 
