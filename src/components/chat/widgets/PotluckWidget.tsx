@@ -154,7 +154,7 @@ export default function PotluckWidget({
                               : 'text-xs text-slate-600 font-medium mt-0.5 truncate'
                           }
                         >
-                          {claimedByAdmin ? 'Claimed by Admin ' : 'Claimed by '}
+                          {'Claimed by '}
                           <span className={claimedByAdmin ? 'text-emerald-700' : 'text-slate-700'}>
                             {claimedByLabel}
                           </span>

@@ -495,13 +495,19 @@ export default function ChatWindow({ roomId, onOpenSidebar }: ChatWindowProps) {
     return memberDirectory[message.sender_id]?.trim() || 'Unknown'
   }
 
-  const memberLabels = useMemo(() => {
+  const memberDisplay = useMemo(() => {
     if (!memberIds.length) return []
     return memberIds.map((id) => {
-      if (user?.id && id === user.id) return profile?.username?.trim() || 'You'
-      return memberDirectory[id]?.trim() || 'Unknown'
+      const label = user?.id && id === user.id
+        ? profile?.username?.trim() || 'You'
+        : memberDirectory[id]?.trim() || 'Unknown'
+      return {
+        id,
+        label,
+        isOwner: Boolean(memberProfiles[id]?.isOwner),
+      }
     })
-  }, [memberIds, memberDirectory, profile?.username, user?.id])
+  }, [memberIds, memberDirectory, memberProfiles, profile?.username, user?.id])
 
   const membersForModal = useMemo(() => {
     return memberIds.map((id) => {
@@ -593,7 +599,21 @@ export default function ChatWindow({ roomId, onOpenSidebar }: ChatWindowProps) {
           </div>
         </div>
         <div className="mt-1 text-xs text-slate-500 truncate" aria-label="Chat members">
-          {memberLabels.length > 0 ? `Members: ${memberLabels.join(', ')}` : 'Members unavailable'}
+          {memberDisplay.length > 0 ? (
+            <span>
+              Members:{' '}
+              {memberDisplay.map((member, index) => (
+                <span key={member.id}>
+                  <span className={member.isOwner ? 'text-emerald-700 font-semibold' : 'text-slate-600'}>
+                    {member.label}
+                  </span>
+                  {index < memberDisplay.length - 1 ? ', ' : ''}
+                </span>
+              ))}
+            </span>
+          ) : (
+            'Members unavailable'
+          )}
         </div>
       </div>
 
