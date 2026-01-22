@@ -1,5 +1,5 @@
 import { useEffect, useMemo, useState } from 'react'
-import { MapPin, X } from 'lucide-react'
+import { Check, MapPin, X } from 'lucide-react'
 import type { ChatRoomMetadata, ChatRoomType } from '../../types/chat'
 
 interface ChatSettingsModalProps {
@@ -38,7 +38,10 @@ const parseStructuredAddress = (value: string): ParsedAddress => {
 
   if (parts.length === 0) return {}
 
-  const [addressLine1, place, regionPostal, country] = parts
+  const addressLine1 = parts[0]
+  const place = parts[1]
+  const regionPostal = parts[2]
+  const country = parts.length > 3 ? parts.slice(3).join(', ') : undefined
   let region: string | undefined
   let postcode: string | undefined
 
@@ -62,7 +65,11 @@ const parseStructuredAddress = (value: string): ParsedAddress => {
 const isAddressFormatValid = (value: string) => {
   const trimmed = value.trim()
   if (!trimmed) return true
-  return /\d+\s+[^,]+,\s*[^,]+,\s*[A-Za-z]{2}\b/.test(trimmed)
+  const parsed = parseStructuredAddress(trimmed)
+  const addressLine1 = parsed.addressLine1 || ''
+  const hasStreet = /\d/.test(addressLine1)
+  const hasCity = Boolean(parsed.place)
+  return hasStreet && hasCity
 }
 
 export default function ChatSettingsModal({
@@ -76,8 +83,11 @@ export default function ChatSettingsModal({
   const mapboxToken = import.meta.env.VITE_MAPBOX_ACCESS_TOKEN
   const [selectedType, setSelectedType] = useState<ChatRoomType>(roomType)
   const [locationAddress, setLocationAddress] = useState<string>(metadata?.potluck?.location?.address || '')
-  const [hostMessage, setHostMessage] = useState<string>(metadata?.potluck?.hostNotes?.message || '')
-  const [hostInstructions, setHostInstructions] = useState<string>(metadata?.potluck?.hostNotes?.instructions || '')
+  const [eventDetails, setEventDetails] = useState<string>(
+    [metadata?.potluck?.hostNotes?.message, metadata?.potluck?.hostNotes?.instructions]
+      .filter(Boolean)
+      .join('\n\n')
+  )
   const [suggestions, setSuggestions] = useState<MapboxSuggestion[]>([])
   const [selectedSuggestion, setSelectedSuggestion] = useState<MapboxSuggestion | null>(null)
   const [bestSuggestion, setBestSuggestion] = useState<MapboxSuggestion | null>(null)
@@ -94,8 +104,11 @@ export default function ChatSettingsModal({
     if (!isOpen) return
     setSelectedType(roomType)
     setLocationAddress(metadata?.potluck?.location?.address || '')
-    setHostMessage(metadata?.potluck?.hostNotes?.message || '')
-    setHostInstructions(metadata?.potluck?.hostNotes?.instructions || '')
+    setEventDetails(
+      [metadata?.potluck?.hostNotes?.message, metadata?.potluck?.hostNotes?.instructions]
+        .filter(Boolean)
+        .join('\n\n')
+    )
     setSuggestions([])
     setSelectedSuggestion(null)
     setBestSuggestion(null)
@@ -269,13 +282,14 @@ export default function ChatSettingsModal({
     const newMetadata: ChatRoomMetadata = { ...baseMetadata }
 
     if (selectedType === 'potluck') {
-      const trimmedMessage = hostMessage.trim()
-      const trimmedInstructions = hostInstructions.trim()
+      const trimmedDetails = eventDetails.trim()
       const trimmedLocation = locationAddress.trim()
       const existingHostNotes = newMetadata.potluck?.hostNotes
+      const existingDetails = [existingHostNotes?.message, existingHostNotes?.instructions]
+        .filter(Boolean)
+        .join('\n\n')
       const hasHostUpdate =
-        trimmedMessage !== (existingHostNotes?.message ?? '') ||
-        trimmedInstructions !== (existingHostNotes?.instructions ?? '')
+        trimmedDetails !== existingDetails
 
       const resolvedSuggestion = selectedSuggestion || bestSuggestion
       const resolvedLocation = trimmedLocation
@@ -297,17 +311,16 @@ export default function ChatSettingsModal({
         items: newMetadata.potluck?.items || [],
         allergies: newMetadata.potluck?.allergies || [],
         location: resolvedLocation,
-        hostNotes:
-          trimmedMessage || trimmedInstructions
-            ? hasHostUpdate
-              ? {
-                  message: trimmedMessage,
-                  instructions: trimmedInstructions || undefined,
-                  createdAt: new Date().toISOString(),
-                  createdByUserId: currentUserId ?? existingHostNotes?.createdByUserId ?? null,
-                }
-              : existingHostNotes
-            : undefined,
+        hostNotes: trimmedDetails
+          ? hasHostUpdate
+            ? {
+                message: trimmedDetails,
+                instructions: undefined,
+                createdAt: new Date().toISOString(),
+                createdByUserId: currentUserId ?? existingHostNotes?.createdByUserId ?? null,
+              }
+            : existingHostNotes
+          : undefined,
       }
     }
 
@@ -325,7 +338,7 @@ export default function ChatSettingsModal({
           </button>
         </div>
 
-        <div className="p-6 space-y-6">
+        <div className="p-6 pb-5 space-y-5">
           <div className="space-y-3">
             <label className="text-sm font-medium text-slate-700">Chat Purpose</label>
             <div className="grid grid-cols-2 gap-3">
@@ -337,23 +350,29 @@ export default function ChatSettingsModal({
                     : 'border-slate-200 text-slate-600 hover:bg-slate-50'
                 }`}
               >
-                💬 General
+                <span className="inline-flex items-center gap-2">
+                  {selectedType === 'general' && <Check className="h-4 w-4 text-blue-600" />}
+                  <span>💬 General</span>
+                </span>
               </button>
               <button
                 onClick={() => setSelectedType('potluck')}
                 className={`p-3 rounded-xl border text-sm font-medium transition-all ${
                   selectedType === 'potluck'
-                    ? 'border-orange-500 bg-orange-50 text-orange-700 ring-1 ring-orange-500'
+                    ? 'border-orange-500 bg-orange-100 text-orange-800 ring-1 ring-orange-500'
                     : 'border-slate-200 text-slate-600 hover:bg-slate-50'
                 }`}
               >
-                🍲 Potluck
+                <span className="inline-flex items-center gap-2">
+                  {selectedType === 'potluck' && <Check className="h-4 w-4 text-orange-700" />}
+                  <span>🍲 Potluck</span>
+                </span>
               </button>
             </div>
           </div>
 
           {selectedType === 'potluck' && (
-            <div className="space-y-4 pt-4 border-t border-slate-100 animate-in fade-in slide-in-from-top-4">
+            <div className="space-y-5 pt-4 border-t border-slate-100 animate-in fade-in slide-in-from-top-4">
               <div className="space-y-2">
                 <label className="text-sm font-medium text-slate-700">Event Location</label>
                 <div className="relative">
@@ -404,7 +423,7 @@ export default function ChatSettingsModal({
                   )}
                 </div>
                 {!addressFormatValid && locationAddress.trim() && (
-                  <div className="text-xs text-amber-600">
+                  <div className="text-sm text-amber-800">
                     Address looks incomplete. Use format like “123 Main St, City, CA”.
                   </div>
                 )}
@@ -426,7 +445,7 @@ export default function ChatSettingsModal({
                   </div>
                 )}
                 {confidenceWarning && (
-                  <div className="text-xs text-amber-600">{confidenceWarning}</div>
+                  <div className="text-sm text-amber-800">{confidenceWarning}</div>
                 )}
                 {suggestionError && (
                   <div className="text-xs text-red-600">{suggestionError}</div>
@@ -444,22 +463,12 @@ export default function ChatSettingsModal({
                 </p>
               </div>
               <div className="space-y-2">
-                <label className="text-sm font-medium text-slate-700">Host Notes</label>
+                <label className="text-sm font-medium text-slate-700">Event Details &amp; Instructions</label>
                 <textarea
-                  value={hostMessage}
-                  onChange={(e) => setHostMessage(e.target.value)}
-                  placeholder="Share context for attendees..."
-                  rows={3}
-                  className="w-full rounded-lg border border-slate-200 text-sm p-3 focus:ring-2 focus:ring-orange-500/20 focus:border-orange-500"
-                />
-              </div>
-              <div className="space-y-2">
-                <label className="text-sm font-medium text-slate-700">Special Instructions</label>
-                <textarea
-                  value={hostInstructions}
-                  onChange={(e) => setHostInstructions(e.target.value)}
-                  placeholder="Dietary notes, setup details, timing..."
-                  rows={2}
+                  value={eventDetails}
+                  onChange={(e) => setEventDetails(e.target.value)}
+                  placeholder="Share context, dietary notes, setup details, timing..."
+                  rows={4}
                   className="w-full rounded-lg border border-slate-200 text-sm p-3 focus:ring-2 focus:ring-orange-500/20 focus:border-orange-500"
                 />
               </div>
