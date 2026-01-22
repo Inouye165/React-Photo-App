@@ -600,6 +600,7 @@ export default function ChatWindow({ roomId, onOpenSidebar }: ChatWindowProps) {
           <PotluckWidget
             metadata={roomMetadata}
             currentUserId={user?.id ?? null}
+            memberDirectory={memberDirectory}
             onUpdate={async (newMeta) => handlePatchRoom({ metadata: newMeta })}
           />
         )}
