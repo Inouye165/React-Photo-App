@@ -7,6 +7,7 @@ interface PotluckWidgetProps {
   metadata: ChatRoomMetadata
   currentUserId: string | null
   memberDirectory?: Record<string, string | null>
+  memberProfiles?: Record<string, { avatarUrl: string | null }>
   ownerIds?: Set<string>
   onUpdate: (meta: ChatRoomMetadata) => Promise<void>
 }
@@ -15,6 +16,7 @@ export default function PotluckWidget({
   metadata,
   currentUserId,
   memberDirectory,
+  memberProfiles,
   ownerIds,
   onUpdate,
 }: PotluckWidgetProps) {
@@ -139,6 +141,14 @@ export default function PotluckWidget({
                 const isClaimedByMe = item.claimedByUserId === currentUserId
                 const claimedByLabel = resolveClaimedBy(item.claimedByUserId ?? null)
                 const claimedByAdmin = isAdminClaim(item.claimedByUserId ?? null)
+                const claimedByAvatar = item.claimedByUserId
+                  ? memberProfiles?.[item.claimedByUserId]?.avatarUrl ?? null
+                  : null
+                const claimButtonLabel = isClaimedByMe
+                  ? "I'm bringing this"
+                  : isClaimed
+                    ? `Claimed by ${claimedByLabel ?? 'Unknown'}`
+                    : 'Claim item'
 
                 return (
                   <li key={item.id} className="flex items-center justify-between gap-3">
@@ -165,6 +175,7 @@ export default function PotluckWidget({
                     <button
                       onClick={() => handleClaim(item.id)}
                       disabled={isClaimed && !isClaimedByMe}
+                      aria-label={claimButtonLabel}
                       className={`
                         text-xs px-2 py-1 rounded-full border transition-colors flex items-center gap-1
                         ${
@@ -181,9 +192,17 @@ export default function PotluckWidget({
                           <CheckCircle className="w-3 h-3" /> I'm bringing this
                         </>
                       ) : isClaimed ? (
-                        <>
-                          <CheckCircle className="w-3 h-3" /> Claimed
-                        </>
+                        claimedByAvatar ? (
+                          <img
+                            src={claimedByAvatar}
+                            alt={`Claimed by ${claimedByLabel ?? 'member'}`}
+                            className="h-4 w-4 rounded-full object-cover border border-white"
+                          />
+                        ) : (
+                          <>
+                            <CheckCircle className="w-3 h-3" /> Claimed
+                          </>
+                        )
                       ) : (
                         <>
                           <Circle className="w-3 h-3" /> Claim
@@ -233,7 +252,6 @@ export default function PotluckWidget({
                 </div>
               ) : null}
             </div>
-
             <div className="rounded-xl border border-slate-200 bg-white/60 p-3">
               <div className="flex items-center justify-between">
                 <div className="flex items-center gap-2">
