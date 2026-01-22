@@ -19,9 +19,7 @@ const req = http.request(opts, (res) => {
   res.on('end', () => {
     try {
       const body = JSON.parse(data);
-      const safeBody = String(JSON.stringify(body)).replace(/[\r\n]+/g, ' ');
       console.log('Status:', res.statusCode);
-      console.log('Body:', safeBody);
 
       if (res.statusCode !== 200) {
         process.exitCode = 1;
@@ -31,12 +29,9 @@ const req = http.request(opts, (res) => {
       if (body && typeof body === 'object' && body.success === false) {
         process.exitCode = 1;
       }
-    } catch (e) {
-      // Sanitize to prevent log injection - remove control chars and limit length
-      const safeRaw = String(data).replace(/[\r\n\x00-\x1F\x7F-\x9F]+/g, ' ').substring(0, 500);
-      const errMsg = e && e.message ? e.message : String(e);
-      const safeMsg = errMsg.replace(/[\r\n\x00-\x1F\x7F-\x9F]+/g, ' ').substring(0, 200);
-      console.error('Failed to parse response:', safeMsg, 'raw:', safeRaw);
+    } catch {
+      console.error('Failed to parse /privilege response');
+      console.error('Hint: ensure backend is running on http://localhost:3001');
       process.exitCode = 1;
     }
   });
