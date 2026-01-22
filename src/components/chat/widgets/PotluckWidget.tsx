@@ -1,4 +1,4 @@
-import { useMemo, useState } from 'react'
+import { useCallback, useMemo, useState } from 'react'
 import { AlertTriangle, CheckCircle, Circle, MapPin, Plus } from 'lucide-react'
 import type { ChatRoomMetadata, PotluckAllergy, PotluckItem } from '../../../types/chat'
 import LocationMapPanel from '../../LocationMapPanel'
@@ -6,10 +6,11 @@ import LocationMapPanel from '../../LocationMapPanel'
 interface PotluckWidgetProps {
   metadata: ChatRoomMetadata
   currentUserId: string | null
+  memberDirectory?: Record<string, string | null>
   onUpdate: (meta: ChatRoomMetadata) => Promise<void>
 }
 
-export default function PotluckWidget({ metadata, currentUserId, onUpdate }: PotluckWidgetProps) {
+export default function PotluckWidget({ metadata, currentUserId, memberDirectory, onUpdate }: PotluckWidgetProps) {
   const potluck = metadata.potluck || { items: [], allergies: [] }
   const items = potluck.items || []
   const location = potluck.location
@@ -25,6 +26,16 @@ export default function PotluckWidget({ metadata, currentUserId, onUpdate }: Pot
     if (Number.isNaN(date.getTime())) return null
     return date.toLocaleString([], { dateStyle: 'medium', timeStyle: 'short' })
   }, [hostNotes?.createdAt])
+
+  const resolveClaimedBy = useCallback(
+    (userId: string | null) => {
+      if (!userId) return null
+      if (currentUserId && userId === currentUserId) return 'You'
+      const username = memberDirectory?.[userId]
+      return username?.trim() || 'Unknown'
+    },
+    [currentUserId, memberDirectory],
+  )
 
   const handleClaim = async (itemId: string) => {
     if (!currentUserId) return
@@ -111,12 +122,20 @@ export default function PotluckWidget({ metadata, currentUserId, onUpdate }: Pot
               {items.map((item) => {
                 const isClaimed = !!item.claimedByUserId
                 const isClaimedByMe = item.claimedByUserId === currentUserId
+                const claimedByLabel = resolveClaimedBy(item.claimedByUserId ?? null)
 
                 return (
                   <li key={item.id} className="flex items-center justify-between gap-3">
-                    <span className={`text-sm ${isClaimed ? 'text-slate-400 line-through' : 'text-slate-700'}`}>
-                      {item.label}
-                    </span>
+                    <div className="min-w-0">
+                      <div className={`text-sm ${isClaimed ? 'text-slate-400 line-through' : 'text-slate-700'}`}>
+                        {item.label}
+                      </div>
+                      {isClaimed && claimedByLabel && (
+                        <div className="text-xs text-emerald-700 font-medium mt-0.5 truncate">
+                          Claimed by {claimedByLabel}
+                        </div>
+                      )}
+                    </div>
 
                     <button
                       onClick={() => handleClaim(item.id)}
