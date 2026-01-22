@@ -31,6 +31,21 @@ cd server
 npm run test:ci
 ```
 
+## Mandatory tests before push
+
+This repo enforces a pre-push hook that runs the full test suite. Pushes are blocked
+unless all tests pass.
+
+If you **must** skip tests, you must supply a reason:
+
+```powershell
+$env:SKIP_TESTS = "1"
+$env:SKIP_TESTS_REASON = "Explain why there is no valid test to run"
+git push
+```
+
+If you set `SKIP_TESTS` without `SKIP_TESTS_REASON`, the hook will fail.
+
 ## Dependency Management
 
 - We use Dependabot to keep dependencies tracked and to open upgrade PRs.

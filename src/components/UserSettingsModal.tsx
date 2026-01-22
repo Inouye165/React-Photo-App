@@ -24,7 +24,7 @@ type ActiveTab = 'profile' | 'password';
  * - Privacy settings
  */
 export default function UserSettingsModal({ onClose }: UserSettingsModalProps) {
-  const [activeTab, setActiveTab] = useState<ActiveTab>('profile');
+  const [activeTab, setActiveTab] = useState<ActiveTab>('password');
 
   return (
     <div 
@@ -32,7 +32,7 @@ export default function UserSettingsModal({ onClose }: UserSettingsModalProps) {
       onClick={(e) => e.target === e.currentTarget && onClose()}
     >
       <div 
-        className="w-full max-w-lg bg-white rounded-xl shadow-2xl animate-in fade-in zoom-in-95 duration-200"
+        className="w-full max-w-lg bg-white rounded-xl shadow-2xl animate-in fade-in zoom-in-95 duration-200 max-h-[85dvh] overflow-hidden flex flex-col"
         role="dialog"
         aria-labelledby="settings-modal-title"
         aria-modal="true"
@@ -55,17 +55,6 @@ export default function UserSettingsModal({ onClose }: UserSettingsModalProps) {
         {/* Tab Navigation */}
         <div className="flex border-b border-slate-200">
           <button
-            onClick={() => setActiveTab('profile')}
-            className={`flex items-center gap-2 px-6 py-3 text-sm font-medium border-b-2 transition-colors
-                        ${activeTab === 'profile'
-                          ? 'border-blue-500 text-blue-600'
-                          : 'border-transparent text-slate-500 hover:text-slate-700'
-                        }`}
-          >
-            <User size={16} />
-            Profile
-          </button>
-          <button
             onClick={() => setActiveTab('password')}
             className={`flex items-center gap-2 px-6 py-3 text-sm font-medium border-b-2 transition-colors
                         ${activeTab === 'password'
@@ -76,11 +65,22 @@ export default function UserSettingsModal({ onClose }: UserSettingsModalProps) {
             <Lock size={16} />
             Password
           </button>
+          <button
+            onClick={() => setActiveTab('profile')}
+            className={`flex items-center gap-2 px-6 py-3 text-sm font-medium border-b-2 transition-colors
+                        ${activeTab === 'profile'
+                          ? 'border-blue-500 text-blue-600'
+                          : 'border-transparent text-slate-500 hover:text-slate-700'
+                        }`}
+          >
+            <User size={16} />
+            Profile
+          </button>
           {/* Future tabs can be added here */}
         </div>
 
         {/* Content */}
-        <div className="p-6">
+        <div className="p-6 overflow-y-auto">
           {activeTab === 'profile' && <ProfileSettingsForm />}
           {activeTab === 'password' && <PasswordChangeForm />}
         </div>
