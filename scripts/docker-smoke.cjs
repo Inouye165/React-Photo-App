@@ -49,9 +49,7 @@ async function main() {
         process.exit(1);
       });
   } catch (err) {
-    // Sanitize error to prevent log injection - remove control chars and limit length
-    const safeErr = String(err).replace(/[\r\n\x00-\x1F\x7F-\x9F]+/g, ' ').substring(0, 500);
-    console.error('Docker smoke: health check failed', safeErr);
+    console.error('Docker smoke: health check failed');
     cleanup();
     process.exit(1);
   }
