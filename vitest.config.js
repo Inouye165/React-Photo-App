@@ -37,8 +37,8 @@ export default defineConfig({
   },
   resolve: {
     alias: {
-      heic2any: path.resolve(__dirname, '__mocks__/heic2any.js'),
-      'heic-to': path.resolve(__dirname, '__mocks__/heic-to.js'),
+      heic2any: path.resolve(__dirname, '__mocks__/heic2any.ts'),
+      'heic-to': path.resolve(__dirname, '__mocks__/heic-to.ts'),
     },
   },
 });
