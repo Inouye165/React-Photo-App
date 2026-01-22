@@ -81,6 +81,7 @@ export default function ChatSettingsModal({
   const [suggestions, setSuggestions] = useState<MapboxSuggestion[]>([])
   const [selectedSuggestion, setSelectedSuggestion] = useState<MapboxSuggestion | null>(null)
   const [bestSuggestion, setBestSuggestion] = useState<MapboxSuggestion | null>(null)
+  const [isAddressFocused, setIsAddressFocused] = useState(false)
   const [isFetchingSuggestions, setIsFetchingSuggestions] = useState(false)
   const [suggestionError, setSuggestionError] = useState<string | null>(null)
   const [confidenceWarning, setConfidenceWarning] = useState<string | null>(null)
@@ -98,6 +99,7 @@ export default function ChatSettingsModal({
     setSuggestions([])
     setSelectedSuggestion(null)
     setBestSuggestion(null)
+    setIsAddressFocused(false)
     setIsFetchingSuggestions(false)
     setSuggestionError(null)
     setConfidenceWarning(null)
@@ -363,22 +365,29 @@ export default function ChatSettingsModal({
                       setLocationAddress(e.target.value)
                       setSelectedSuggestion(null)
                     }}
+                    onFocus={() => setIsAddressFocused(true)}
+                    onBlur={() => {
+                      setIsAddressFocused(false)
+                      setSuggestions([])
+                    }}
                     placeholder="Enter address..."
                     className={`w-full pl-9 pr-4 py-2 rounded-lg border text-sm focus:ring-2 focus:ring-orange-500/20 focus:border-orange-500 ${
                       addressFormatValid ? 'border-slate-200' : 'border-amber-400'
                     }`}
                   />
-                  {suggestions.length > 0 && (
+                  {isAddressFocused && suggestions.length > 0 && (
                     <div className="absolute left-0 right-0 mt-2 rounded-lg border border-slate-200 bg-white shadow-lg z-10 overflow-hidden">
                       <ul className="max-h-52 overflow-auto text-sm">
                         {suggestions.map((suggestion) => (
                           <li key={suggestion.id}>
                             <button
                               type="button"
+                              onMouseDown={(event) => event.preventDefault()}
                               onClick={() => {
                                 setLocationAddress(suggestion.fullAddress)
                                 setSelectedSuggestion(suggestion)
                                 setSuggestions([])
+                                setIsAddressFocused(false)
                                 setDidYouMean(null)
                               }}
                               className="w-full text-left px-3 py-2 hover:bg-slate-50 flex flex-col"
