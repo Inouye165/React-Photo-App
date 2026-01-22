@@ -301,12 +301,22 @@ function sanitizeFilename(originalname) {
  * @param {Object} options - Upload options
  * @param {number} options.maxFileSize - Maximum file size in bytes
  * @param {string} options.fieldName - Expected field name for file (default: 'photo')
+ * @param {string} options.bucket - Supabase Storage bucket (default: 'photos')
+ * @param {string} options.pathPrefix - Storage path prefix (default: 'working')
+ * @param {string} options.storagePath - Explicit storage path override
+ * @param {boolean} options.upsert - Allow overwrite (default: false)
+ * @param {string} options.cacheControl - Cache-Control header (default: '31536000')
  * @returns {Promise<Object>} Upload result with filename, hash, path, size
  */
 async function streamToSupabase(req, options = {}) {
   const maxFileSize = options.maxFileSize || Number(process.env.UPLOAD_MAX_BYTES || 10 * 1024 * 1024);
   const fieldName = options.fieldName || 'photo';
   const userEmail = options.userEmail || null; // User email for scoped hashing
+  const bucket = options.bucket || 'photos';
+  const pathPrefix = options.pathPrefix || 'working';
+  const storagePathOverride = options.storagePath || null;
+  const allowUpsert = options.upsert === true;
+  const cacheControl = options.cacheControl || '31536000';
 
   return new Promise((resolve, reject) => {
     // Check content-type before creating busboy
@@ -367,7 +377,7 @@ async function streamToSupabase(req, options = {}) {
         // SECURITY: Magic-byte sniffing BEFORE uploading to Supabase.
         // Implemented as a Transform to avoid unsafe unshift() on ended streams.
         const filename = sanitizeFilename(originalname);
-        const storagePath = `working/${filename}`;
+        const storagePath = storagePathOverride || `${pathPrefix}/${filename}`;
 
         const sniffer = new MagicByteSniffer({ claimedMime, peekBytes: 64 });
         const sizeLimiter = new SizeLimiter(maxFileSize);
@@ -405,13 +415,13 @@ async function streamToSupabase(req, options = {}) {
           const detectedMime = await validatedPromise;
 
           const { data, error } = await supabase.storage
-            .from('photos')
+            .from(bucket)
             .upload(storagePath, passThrough, {
               // SECURITY: Use detected content type; do not trust client-provided MIME.
               contentType: detectedMime,
               duplex: 'half', // Required for streaming uploads
-              upsert: false,
-              cacheControl: '31536000' // 1 year cache for immutable content-addressed files
+              upsert: allowUpsert,
+              cacheControl
             });
 
           if (error) {
@@ -425,7 +435,7 @@ async function streamToSupabase(req, options = {}) {
           const totalBytes = sizeLimiter.getTotalBytes();
           if (totalBytes === 0) {
             // Clean up the empty file from storage
-            await supabase.storage.from('photos').remove([storagePath]);
+            await supabase.storage.from(bucket).remove([storagePath]);
             const err = new Error('Empty file uploaded');
             err.code = 'EMPTY_FILE';
             throw err;
@@ -438,6 +448,7 @@ async function streamToSupabase(req, options = {}) {
             mimetype: detectedMime,
             hash: hashingStream.getHash(),
             path: storagePath,
+            bucket,
             size: totalBytes,
             supabaseData: data
           };

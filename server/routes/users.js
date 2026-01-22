@@ -13,6 +13,8 @@ const express = require('express');
 const createUserPreferencesService = require('../services/userPreferences');
 const { authenticateToken } = require('../middleware/auth');
 const logger = require('../logger');
+const supabase = require('../lib/supabaseClient');
+const { streamToSupabase } = require('../media/streamUploader');
 
 /**
  * Factory function to create users router.
@@ -28,6 +30,9 @@ function createUsersRouter({ db }) {
   const USERNAME_MIN_LEN = 3;
   const USERNAME_MAX_LEN = 30;
   const USERNAME_REGEX = /^[A-Za-z0-9_]+$/;
+  const AVATAR_MAX_BYTES = Number(process.env.AVATAR_MAX_BYTES || 2 * 1024 * 1024);
+  const AVATAR_BUCKET = process.env.AVATAR_BUCKET || 'avatars';
+  const AVATAR_PATH_PREFIX = process.env.AVATAR_PATH_PREFIX || 'users';
 
   // All routes require authentication
   router.use(authenticateToken);
@@ -47,7 +52,7 @@ function createUsersRouter({ db }) {
       }
 
       const row = await db('users')
-        .select('id', 'username', 'has_set_username')
+        .select('id', 'username', 'has_set_username', 'avatar_url')
         .where({ id: userId })
         .first();
 
@@ -60,6 +65,7 @@ function createUsersRouter({ db }) {
             id: userId,
             username: null,
             has_set_username: false,
+            avatar_url: null,
           },
         });
       }
@@ -70,6 +76,7 @@ function createUsersRouter({ db }) {
           id: row.id,
           username: row.username ?? null,
           has_set_username: Boolean(row.has_set_username),
+          avatar_url: row.avatar_url ?? null,
         },
       });
     } catch (error) {
@@ -139,7 +146,10 @@ function createUsersRouter({ db }) {
           updated_at: db.fn.now(),
         });
 
-      const updated = await db('users').select('id', 'username', 'has_set_username').where({ id: userId }).first();
+      const updated = await db('users')
+        .select('id', 'username', 'has_set_username', 'avatar_url')
+        .where({ id: userId })
+        .first();
 
       return res.json({
         success: true,
@@ -147,11 +157,91 @@ function createUsersRouter({ db }) {
           id: updated?.id ?? userId,
           username: updated?.username ?? username,
           has_set_username: updated ? Boolean(updated.has_set_username) : true,
+          avatar_url: updated?.avatar_url ?? null,
         },
       });
     } catch (error) {
       logger.error('[users] PATCH /me error:', error);
       return res.status(500).json({ success: false, error: 'Failed to update profile' });
+    }
+  });
+
+  /**
+   * POST /api/users/me/avatar
+   * Uploads and sets the current user's avatar.
+   */
+  router.post('/me/avatar', async (req, res) => {
+    try {
+      const userId = req.user?.id;
+      if (!userId) {
+        return res.status(401).json({ success: false, error: 'Authentication required' });
+      }
+
+      let uploadResult;
+      try {
+        uploadResult = await streamToSupabase(req, {
+          maxFileSize: AVATAR_MAX_BYTES,
+          fieldName: 'avatar',
+          bucket: AVATAR_BUCKET,
+          pathPrefix: AVATAR_PATH_PREFIX,
+          storagePath: `${AVATAR_PATH_PREFIX}/${userId}.jpg`,
+          upsert: true,
+          cacheControl: '3600',
+        });
+      } catch (err) {
+        if (err.code === 'LIMIT_FILE_SIZE') {
+          return res.status(413).json({ success: false, error: 'File too large', code: 'LIMIT_FILE_SIZE' });
+        }
+        if (err.code === 'INVALID_MIME_TYPE' || err.code === 'INVALID_FILE_SIGNATURE') {
+          return res.status(415).json({ success: false, error: 'Only valid image files are allowed', code: err.code });
+        }
+        if (err.code === 'NO_FILE') {
+          return res.status(400).json({ success: false, error: 'No file uploaded', code: 'NO_FILE' });
+        }
+        if (err.code === 'EMPTY_FILE') {
+          return res.status(400).json({ success: false, error: 'Empty file uploaded', code: 'EMPTY_FILE' });
+        }
+        throw err;
+      }
+
+      const { data: publicData } = supabase.storage
+        .from(uploadResult.bucket || AVATAR_BUCKET)
+        .getPublicUrl(uploadResult.path);
+
+      const avatarUrl = publicData?.publicUrl || null;
+
+      await db('users')
+        .insert({
+          id: userId,
+          avatar_url: avatarUrl,
+          avatar_updated_at: db.fn.now(),
+          created_at: db.fn.now(),
+          updated_at: db.fn.now(),
+        })
+        .onConflict('id')
+        .merge({
+          avatar_url: avatarUrl,
+          avatar_updated_at: db.fn.now(),
+          updated_at: db.fn.now(),
+        });
+
+      const updated = await db('users')
+        .select('id', 'username', 'has_set_username', 'avatar_url')
+        .where({ id: userId })
+        .first();
+
+      return res.json({
+        success: true,
+        data: {
+          id: updated?.id ?? userId,
+          username: updated?.username ?? null,
+          has_set_username: updated ? Boolean(updated.has_set_username) : false,
+          avatar_url: updated?.avatar_url ?? avatarUrl,
+        },
+      });
+    } catch (error) {
+      logger.error('[users] POST /me/avatar error:', error);
+      return res.status(500).json({ success: false, error: 'Failed to update avatar' });
     }
   });
 

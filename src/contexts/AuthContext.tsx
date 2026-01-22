@@ -43,6 +43,7 @@ export interface AuthContextValue {
   loadDefaultScales: (categories?: string[] | null) => Promise<AuthActionResult<{ data: UserPreferences }>>
 
   updateProfile: (username: string) => Promise<AuthActionResult<{ profile: UserProfile }>>
+  updateAvatar: (file: File) => Promise<AuthActionResult<{ profile: UserProfile }>>
 
   login: (email: string, password: string) => Promise<AuthActionResult<{ user: User | null }>>
   register: (
@@ -627,6 +628,23 @@ export function AuthProvider({ children }: { children: ReactNode }): ReactNode {
     }
   }
 
+  const updateAvatar = async (file: File): Promise<AuthActionResult<{ profile: UserProfile }>> => {
+    try {
+      const { updateAvatar: apiUpdateAvatar } = await import('../api')
+      const updated = await apiUpdateAvatar(file)
+      if (!updated) {
+        return { success: false, error: 'Failed to update avatar' }
+      }
+
+      setProfile(updated)
+      lastProfileUserIdRef.current = updated.id
+      setProfileError(null)
+      return { success: true, profile: updated }
+    } catch (err) {
+      return { success: false, error: getErrorMessage(err) }
+    }
+  }
+
   const value: AuthContextValue = {
     user,
     session,
@@ -641,6 +659,7 @@ export function AuthProvider({ children }: { children: ReactNode }): ReactNode {
     updatePreferences,
     loadDefaultScales,
     updateProfile,
+    updateAvatar,
     login,
     register,
     logout,
