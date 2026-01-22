@@ -33,6 +33,53 @@ function createUsersRouter({ db }) {
   const AVATAR_MAX_BYTES = Number(process.env.AVATAR_MAX_BYTES || 2 * 1024 * 1024);
   const AVATAR_BUCKET = process.env.AVATAR_BUCKET || 'avatars';
   const AVATAR_PATH_PREFIX = process.env.AVATAR_PATH_PREFIX || 'users';
+  const AVATAR_BUCKET_PUBLIC = process.env.AVATAR_BUCKET_PUBLIC
+    ? String(process.env.AVATAR_BUCKET_PUBLIC).toLowerCase() !== 'false'
+    : true;
+
+  let avatarBucketChecked = false;
+  let avatarBucketReady = false;
+
+  async function ensureAvatarBucketExists() {
+    if (avatarBucketReady) return true;
+    if (avatarBucketChecked) return avatarBucketReady;
+
+    avatarBucketChecked = true;
+
+    if (!supabase?.storage || typeof supabase.storage.listBuckets !== 'function') {
+      logger.warn('[users] Supabase storage listBuckets unavailable; skipping avatar bucket preflight.');
+      return true;
+    }
+
+    const { data, error } = await supabase.storage.listBuckets();
+    if (error) {
+      logger.warn('[users] Supabase storage listBuckets failed; skipping avatar bucket preflight.', error);
+      return true;
+    }
+
+    const hasBucket = Array.isArray(data) && data.some((bucket) => bucket?.name === AVATAR_BUCKET);
+    if (hasBucket) {
+      avatarBucketReady = true;
+      return true;
+    }
+
+    if (typeof supabase.storage.createBucket !== 'function') {
+      logger.error('[users] Supabase storage createBucket unavailable; cannot create avatar bucket.');
+      return false;
+    }
+
+    const { error: createError } = await supabase.storage.createBucket(AVATAR_BUCKET, {
+      public: AVATAR_BUCKET_PUBLIC
+    });
+
+    if (createError) {
+      logger.error('[users] Failed to create avatar bucket:', createError);
+      return false;
+    }
+
+    avatarBucketReady = true;
+    return true;
+  }
 
   // All routes require authentication
   router.use(authenticateToken);
@@ -175,6 +222,15 @@ function createUsersRouter({ db }) {
       const userId = req.user?.id;
       if (!userId) {
         return res.status(401).json({ success: false, error: 'Authentication required' });
+      }
+
+      const avatarBucketOk = await ensureAvatarBucketExists();
+      if (!avatarBucketOk) {
+        return res.status(500).json({
+          success: false,
+          error: 'Avatar storage bucket is not available',
+          code: 'AVATAR_BUCKET_MISSING'
+        });
       }
 
       let uploadResult;
