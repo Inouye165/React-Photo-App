@@ -28,11 +28,11 @@ export default function UserSettingsModal({ onClose }: UserSettingsModalProps) {
 
   return (
     <div 
-      className="fixed inset-0 z-[100] flex items-start justify-center px-4 pt-24 pb-6 bg-black/50 overflow-y-auto"
+      className="fixed inset-0 z-[200] flex items-start justify-center px-4 pt-4 pb-6 overflow-y-auto"
       onClick={(e) => e.target === e.currentTarget && onClose()}
     >
       <div 
-        className="w-full max-w-lg mt-4 bg-white rounded-xl shadow-2xl animate-in fade-in zoom-in-95 duration-200 max-h-[calc(100dvh-8rem)] overflow-hidden flex flex-col"
+        className="w-full max-w-lg bg-white rounded-xl shadow-2xl animate-in fade-in zoom-in-95 duration-200 max-h-[calc(100dvh-2rem)] overflow-hidden flex flex-col"
         role="dialog"
         aria-labelledby="settings-modal-title"
         aria-modal="true"
