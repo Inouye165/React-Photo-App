@@ -628,6 +628,7 @@ export default function ChatWindow({ roomId, onOpenSidebar }: ChatWindowProps) {
             metadata={roomMetadata}
             currentUserId={user?.id ?? null}
             memberDirectory={memberDirectory}
+            memberProfiles={memberProfiles}
             ownerIds={ownerIdSet}
             onUpdate={async (newMeta) => handlePatchRoom({ metadata: newMeta })}
           />
