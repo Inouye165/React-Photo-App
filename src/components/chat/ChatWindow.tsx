@@ -516,6 +516,13 @@ export default function ChatWindow({ roomId, onOpenSidebar }: ChatWindowProps) {
   }, [memberDirectory, memberIds, memberProfiles])
 
 
+    const ownerIdSet = useMemo(() => {
+      const owners = new Set<string>()
+      for (const [id, profileRow] of Object.entries(memberProfiles)) {
+        if (profileRow?.isOwner) owners.add(id)
+      }
+      return owners
+    }, [memberProfiles])
   const handlePatchRoom = useCallback(
     async (updates: { type?: ChatRoomType; metadata?: ChatRoomMetadata }) => {
       if (!roomId) return
@@ -601,6 +608,7 @@ export default function ChatWindow({ roomId, onOpenSidebar }: ChatWindowProps) {
             metadata={roomMetadata}
             currentUserId={user?.id ?? null}
             memberDirectory={memberDirectory}
+            ownerIds={ownerIdSet}
             onUpdate={async (newMeta) => handlePatchRoom({ metadata: newMeta })}
           />
         )}

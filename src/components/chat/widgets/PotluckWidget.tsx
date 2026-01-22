@@ -7,10 +7,17 @@ interface PotluckWidgetProps {
   metadata: ChatRoomMetadata
   currentUserId: string | null
   memberDirectory?: Record<string, string | null>
+  ownerIds?: Set<string>
   onUpdate: (meta: ChatRoomMetadata) => Promise<void>
 }
 
-export default function PotluckWidget({ metadata, currentUserId, memberDirectory, onUpdate }: PotluckWidgetProps) {
+export default function PotluckWidget({
+  metadata,
+  currentUserId,
+  memberDirectory,
+  ownerIds,
+  onUpdate,
+}: PotluckWidgetProps) {
   const potluck = metadata.potluck || { items: [], allergies: [] }
   const items = potluck.items || []
   const location = potluck.location
@@ -35,6 +42,14 @@ export default function PotluckWidget({ metadata, currentUserId, memberDirectory
       return username?.trim() || 'Unknown'
     },
     [currentUserId, memberDirectory],
+  )
+
+  const isAdminClaim = useCallback(
+    (userId: string | null) => {
+      if (!userId) return false
+      return ownerIds?.has(userId) ?? false
+    },
+    [ownerIds],
   )
 
   const handleClaim = async (itemId: string) => {
@@ -123,6 +138,7 @@ export default function PotluckWidget({ metadata, currentUserId, memberDirectory
                 const isClaimed = !!item.claimedByUserId
                 const isClaimedByMe = item.claimedByUserId === currentUserId
                 const claimedByLabel = resolveClaimedBy(item.claimedByUserId ?? null)
+                const claimedByAdmin = isAdminClaim(item.claimedByUserId ?? null)
 
                 return (
                   <li key={item.id} className="flex items-center justify-between gap-3">
@@ -131,8 +147,17 @@ export default function PotluckWidget({ metadata, currentUserId, memberDirectory
                         {item.label}
                       </div>
                       {isClaimed && claimedByLabel && (
-                        <div className="text-xs text-emerald-700 font-medium mt-0.5 truncate">
-                          Claimed by {claimedByLabel}
+                        <div
+                          className={
+                            claimedByAdmin
+                              ? 'text-xs text-emerald-700 font-semibold mt-0.5 truncate'
+                              : 'text-xs text-slate-600 font-medium mt-0.5 truncate'
+                          }
+                        >
+                          {claimedByAdmin ? 'Claimed by Admin ' : 'Claimed by '}
+                          <span className={claimedByAdmin ? 'text-emerald-700' : 'text-slate-700'}>
+                            {claimedByLabel}
+                          </span>
                         </div>
                       )}
                     </div>
