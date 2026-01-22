@@ -1,4 +1,5 @@
 import React, { useEffect, useMemo, useRef, useState } from 'react';
+import { createPortal } from 'react-dom';
 import { X, Lock, AlertCircle, CheckCircle, Eye, EyeOff, User, ImagePlus } from 'lucide-react';
 import Cropper, { type Area } from 'react-easy-crop';
 import { supabase } from '../supabaseClient';
@@ -26,12 +27,12 @@ type ActiveTab = 'profile' | 'password';
 export default function UserSettingsModal({ onClose }: UserSettingsModalProps) {
   const [activeTab, setActiveTab] = useState<ActiveTab>('password');
 
-  return (
-    <div 
+  const modal = (
+    <div
       className="fixed inset-0 z-[200] flex items-start justify-center px-4 pt-4 pb-6 overflow-y-auto"
       onClick={(e) => e.target === e.currentTarget && onClose()}
     >
-      <div 
+      <div
         className="w-full max-w-lg bg-white rounded-xl shadow-2xl animate-in fade-in zoom-in-95 duration-200 max-h-[calc(100dvh-2rem)] overflow-hidden flex flex-col"
         role="dialog"
         aria-labelledby="settings-modal-title"
@@ -87,6 +88,12 @@ export default function UserSettingsModal({ onClose }: UserSettingsModalProps) {
       </div>
     </div>
   );
+
+  if (typeof document === 'undefined') {
+    return modal;
+  }
+
+  return createPortal(modal, document.body);
 }
 
 function isSupportedAvatarFile(file: File): boolean {
