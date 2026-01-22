@@ -176,16 +176,27 @@ export default function PotluckWidget({
                       onClick={() => handleClaim(item.id)}
                       disabled={isClaimed && !isClaimedByMe}
                       aria-label={claimButtonLabel}
-                      className={`
-                        text-xs px-2 py-1 rounded-full border transition-colors flex items-center gap-1
-                        ${
-                          isClaimedByMe
-                            ? 'bg-green-50 border-green-200 text-green-700 hover:bg-green-100'
-                            : isClaimed
+                      className={
+                        claimedByAvatar && !isClaimedByMe
+                          ? `
+                          h-10 w-10 rounded-full border transition-colors flex items-center justify-center
+                          ${
+                            isClaimed
                               ? 'bg-slate-100 border-slate-200 text-slate-500 cursor-not-allowed'
                               : 'bg-white border-slate-200 text-slate-600 hover:border-orange-300 hover:text-orange-600'
-                        }
-                      `}
+                          }
+                        `
+                          : `
+                          text-xs px-2 py-1 rounded-full border transition-colors flex items-center gap-1
+                          ${
+                            isClaimedByMe
+                              ? 'bg-green-50 border-green-200 text-green-700 hover:bg-green-100'
+                              : isClaimed
+                                ? 'bg-slate-100 border-slate-200 text-slate-500 cursor-not-allowed'
+                                : 'bg-white border-slate-200 text-slate-600 hover:border-orange-300 hover:text-orange-600'
+                          }
+                        `
+                      }
                     >
                       {isClaimedByMe ? (
                         <>
@@ -196,7 +207,7 @@ export default function PotluckWidget({
                           <img
                             src={claimedByAvatar}
                             alt={`Claimed by ${claimedByLabel ?? 'member'}`}
-                            className="h-4 w-4 rounded-full object-cover border border-white"
+                            className="h-8 w-8 rounded-full object-cover"
                           />
                         ) : (
                           <>
