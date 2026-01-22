@@ -26,6 +26,7 @@ export default function UserMenu() {
   const isAdmin = user?.app_metadata?.role === 'admin';
   const displayName = profile?.username || 'User';
   const initial = displayName.charAt(0).toUpperCase();
+  const avatarUrl = profile?.avatar_url || null;
 
   // Close menu when clicking outside
   useEffect(() => {
@@ -90,8 +91,12 @@ export default function UserMenu() {
         >
           {/* Avatar */}
           <div className="w-7 h-7 rounded-full bg-slate-200 flex items-center justify-center
-                          text-xs font-semibold text-slate-600">
-            {initial}
+                          text-xs font-semibold text-slate-600 overflow-hidden">
+            {avatarUrl ? (
+              <img src={avatarUrl} alt="User avatar" className="w-full h-full object-cover" />
+            ) : (
+              initial
+            )}
           </div>
           
           {/* Username - hidden on mobile */}

@@ -1,12 +1,16 @@
-import React, { useState } from 'react';
-import { X, Lock, AlertCircle, CheckCircle, Eye, EyeOff } from 'lucide-react';
+import React, { useEffect, useMemo, useRef, useState } from 'react';
+import { X, Lock, AlertCircle, CheckCircle, Eye, EyeOff, User, ImagePlus } from 'lucide-react';
+import Cropper, { type Area } from 'react-easy-crop';
 import { supabase } from '../supabaseClient';
+import { useAuth } from '../contexts/AuthContext';
+import { compressForUpload } from '../utils/clientImageProcessing';
+import { AVATAR_OUTPUT_SIZE, createAvatarBlob } from '../utils/avatarCropper';
 
 interface UserSettingsModalProps {
   onClose: () => void;
 }
 
-type ActiveTab = 'password';
+type ActiveTab = 'profile' | 'password';
 
 /**
  * UserSettingsModal - Modal for user account settings
@@ -20,7 +24,7 @@ type ActiveTab = 'password';
  * - Privacy settings
  */
 export default function UserSettingsModal({ onClose }: UserSettingsModalProps) {
-  const [activeTab, setActiveTab] = useState<ActiveTab>('password');
+  const [activeTab, setActiveTab] = useState<ActiveTab>('profile');
 
   return (
     <div 
@@ -51,6 +55,17 @@ export default function UserSettingsModal({ onClose }: UserSettingsModalProps) {
         {/* Tab Navigation */}
         <div className="flex border-b border-slate-200">
           <button
+            onClick={() => setActiveTab('profile')}
+            className={`flex items-center gap-2 px-6 py-3 text-sm font-medium border-b-2 transition-colors
+                        ${activeTab === 'profile'
+                          ? 'border-blue-500 text-blue-600'
+                          : 'border-transparent text-slate-500 hover:text-slate-700'
+                        }`}
+          >
+            <User size={16} />
+            Profile
+          </button>
+          <button
             onClick={() => setActiveTab('password')}
             className={`flex items-center gap-2 px-6 py-3 text-sm font-medium border-b-2 transition-colors
                         ${activeTab === 'password'
@@ -66,11 +81,303 @@ export default function UserSettingsModal({ onClose }: UserSettingsModalProps) {
 
         {/* Content */}
         <div className="p-6">
+          {activeTab === 'profile' && <ProfileSettingsForm />}
           {activeTab === 'password' && <PasswordChangeForm />}
         </div>
       </div>
     </div>
   );
+}
+
+function isSupportedAvatarFile(file: File): boolean {
+  const type = file.type?.toLowerCase() || ''
+  const name = file.name?.toLowerCase() || ''
+  if (type.startsWith('image/')) return true
+  return name.endsWith('.heic') || name.endsWith('.heif')
+}
+
+function ProfileSettingsForm() {
+  const { profile, updateProfile, updateAvatar } = useAuth();
+  const fileInputRef = useRef<HTMLInputElement | null>(null)
+
+  const [username, setUsername] = useState(profile?.username ?? '')
+  const [usernameError, setUsernameError] = useState<string | null>(null)
+  const [usernameSuccess, setUsernameSuccess] = useState(false)
+  const [isSavingUsername, setIsSavingUsername] = useState(false)
+
+  const [avatarSourceUrl, setAvatarSourceUrl] = useState<string | null>(null)
+  const [avatarError, setAvatarError] = useState<string | null>(null)
+  const [avatarSuccess, setAvatarSuccess] = useState(false)
+  const [isUploadingAvatar, setIsUploadingAvatar] = useState(false)
+  const [crop, setCrop] = useState({ x: 0, y: 0 })
+  const [zoom, setZoom] = useState(1)
+  const [croppedAreaPixels, setCroppedAreaPixels] = useState<Area | null>(null)
+
+  useEffect(() => {
+    setUsername(profile?.username ?? '')
+  }, [profile?.username])
+
+  useEffect(() => {
+    return () => {
+      if (avatarSourceUrl) {
+        URL.revokeObjectURL(avatarSourceUrl)
+      }
+    }
+  }, [avatarSourceUrl])
+
+  const currentAvatarUrl = useMemo(() => profile?.avatar_url ?? null, [profile?.avatar_url])
+
+  const handleUsernameSubmit = async (e: React.FormEvent) => {
+    e.preventDefault()
+    setUsernameError(null)
+    setUsernameSuccess(false)
+
+    const trimmed = username.trim()
+    if (trimmed.length < 3) {
+      setUsernameError('Username must be at least 3 characters')
+      return
+    }
+    if (trimmed.length > 30) {
+      setUsernameError('Username must be at most 30 characters')
+      return
+    }
+    if (!/^[A-Za-z0-9_]+$/.test(trimmed)) {
+      setUsernameError('Username may only contain letters, numbers, and underscores')
+      return
+    }
+
+    setIsSavingUsername(true)
+    const result = await updateProfile(trimmed)
+    setIsSavingUsername(false)
+    if (!result.success) {
+      setUsernameError(result.error)
+      return
+    }
+    setUsernameSuccess(true)
+  }
+
+  const handleAvatarFileChange = async (event: React.ChangeEvent<HTMLInputElement>) => {
+    const file = event.target.files?.[0]
+    if (!file) return
+
+    setAvatarError(null)
+    setAvatarSuccess(false)
+
+    if (!isSupportedAvatarFile(file)) {
+      setAvatarError('Please select a valid image file')
+      return
+    }
+
+    try {
+      const processed = await compressForUpload(file, { maxSize: 2048, quality: 0.92 })
+      const normalizedFile = new File([processed.blob], `avatar-${Date.now()}.jpg`, {
+        type: 'image/jpeg',
+      })
+      if (avatarSourceUrl) {
+        URL.revokeObjectURL(avatarSourceUrl)
+      }
+      setAvatarSourceUrl(URL.createObjectURL(normalizedFile))
+      setCrop({ x: 0, y: 0 })
+      setZoom(1)
+      setCroppedAreaPixels(null)
+    } catch (err) {
+      setAvatarError(err instanceof Error ? err.message : 'Failed to prepare image')
+    }
+  }
+
+  const handleAvatarUpload = async () => {
+    if (!avatarSourceUrl || !croppedAreaPixels) {
+      setAvatarError('Please select and crop an image first')
+      return
+    }
+
+    setIsUploadingAvatar(true)
+    setAvatarError(null)
+    setAvatarSuccess(false)
+
+    try {
+      const blob = await createAvatarBlob(avatarSourceUrl, croppedAreaPixels, AVATAR_OUTPUT_SIZE, 0.9)
+      const file = new File([blob], `avatar-${Date.now()}.jpg`, { type: 'image/jpeg' })
+      const result = await updateAvatar(file)
+      if (!result.success) {
+        setAvatarError(result.error)
+        setIsUploadingAvatar(false)
+        return
+      }
+      setAvatarSuccess(true)
+      if (avatarSourceUrl) {
+        URL.revokeObjectURL(avatarSourceUrl)
+      }
+      setAvatarSourceUrl(null)
+      setCrop({ x: 0, y: 0 })
+      setZoom(1)
+      setCroppedAreaPixels(null)
+    } catch (err) {
+      setAvatarError(err instanceof Error ? err.message : 'Failed to update avatar')
+    } finally {
+      setIsUploadingAvatar(false)
+    }
+  }
+
+  return (
+    <div className="space-y-6">
+      <div>
+        <h3 className="text-sm font-semibold text-slate-900 mb-2">Profile</h3>
+        <p className="text-xs text-slate-500">Update your display name and avatar photo.</p>
+      </div>
+
+      {/* Avatar Section */}
+      <div className="space-y-4">
+        <div className="flex items-center gap-4">
+          <div className="w-16 h-16 rounded-full bg-slate-200 overflow-hidden flex items-center justify-center text-lg font-semibold text-slate-600">
+            {currentAvatarUrl ? (
+              <img src={currentAvatarUrl} alt="Current avatar" className="w-full h-full object-cover" />
+            ) : (
+              (profile?.username?.[0] || 'U').toUpperCase()
+            )}
+          </div>
+          <div className="space-y-1">
+            <p className="text-sm font-medium text-slate-800">Avatar</p>
+            <p className="text-xs text-slate-500">Best results use a clear face photo.</p>
+          </div>
+        </div>
+
+        <input
+          ref={fileInputRef}
+          type="file"
+          accept="image/*,.heic,.heif,.png,.jpg,.jpeg,.webp"
+          className="hidden"
+          onChange={handleAvatarFileChange}
+        />
+
+        <button
+          type="button"
+          onClick={() => fileInputRef.current?.click()}
+          className="inline-flex items-center gap-2 px-3 py-2 text-sm font-medium text-slate-700
+                     bg-slate-100 hover:bg-slate-200 rounded-lg transition-colors"
+        >
+          <ImagePlus size={16} />
+          Choose Image
+        </button>
+
+        {avatarSourceUrl && (
+          <div className="space-y-3">
+            <div className="relative w-full h-64 bg-slate-900 rounded-xl overflow-hidden">
+              <Cropper
+                image={avatarSourceUrl}
+                crop={crop}
+                zoom={zoom}
+                aspect={1}
+                cropShape="round"
+                onCropChange={setCrop}
+                onZoomChange={setZoom}
+                onCropComplete={(_, croppedPixels) => setCroppedAreaPixels(croppedPixels)}
+              />
+            </div>
+            <div className="flex items-center gap-3">
+              <label className="text-xs text-slate-500">Zoom</label>
+              <input
+                type="range"
+                min={1}
+                max={3}
+                step={0.1}
+                value={zoom}
+                onChange={(event) => setZoom(Number(event.target.value))}
+                className="flex-1"
+              />
+              <span className="text-xs text-slate-500">{zoom.toFixed(1)}x</span>
+            </div>
+            <p className="text-xs text-slate-500">
+              Drag to center your avatar. Output size: {AVATAR_OUTPUT_SIZE}×{AVATAR_OUTPUT_SIZE}px.
+            </p>
+            <button
+              type="button"
+              onClick={handleAvatarUpload}
+              disabled={isUploadingAvatar}
+              className="w-full flex items-center justify-center gap-2 px-4 py-2.5 text-sm font-medium
+                         text-white bg-blue-600 hover:bg-blue-700
+                         disabled:bg-slate-300 disabled:cursor-not-allowed
+                         rounded-lg transition-colors"
+            >
+              {isUploadingAvatar ? (
+                <>
+                  <span className="w-4 h-4 border-2 border-white/30 border-t-white rounded-full animate-spin" />
+                  Saving Avatar...
+                </>
+              ) : (
+                'Save Avatar'
+              )}
+            </button>
+          </div>
+        )}
+
+        {avatarError && (
+          <div className="flex items-center gap-2 p-3 bg-red-50 text-red-700 rounded-lg text-sm">
+            <AlertCircle size={16} className="flex-shrink-0" />
+            <span>{avatarError}</span>
+          </div>
+        )}
+
+        {avatarSuccess && (
+          <div className="flex items-center gap-2 p-3 bg-green-50 text-green-700 rounded-lg text-sm">
+            <CheckCircle size={16} className="flex-shrink-0" />
+            <span>Avatar updated successfully.</span>
+          </div>
+        )}
+      </div>
+
+      {/* Username Section */}
+      <form onSubmit={handleUsernameSubmit} className="space-y-3">
+        <div>
+          <label htmlFor="username" className="block text-sm font-medium text-slate-700 mb-1">
+            Username
+          </label>
+          <input
+            id="username"
+            value={username}
+            onChange={(event) => setUsername(event.target.value)}
+            placeholder="Enter a username"
+            className="w-full px-3 py-2 border border-slate-300 rounded-lg text-sm text-slate-900
+                       placeholder:text-slate-400 focus:ring-2 focus:ring-blue-500 focus:border-blue-500"
+            autoComplete="username"
+          />
+        </div>
+        <p className="text-xs text-slate-500">Letters, numbers, and underscores only (3–30 characters).</p>
+
+        {usernameError && (
+          <div className="flex items-center gap-2 p-3 bg-red-50 text-red-700 rounded-lg text-sm">
+            <AlertCircle size={16} className="flex-shrink-0" />
+            <span>{usernameError}</span>
+          </div>
+        )}
+
+        {usernameSuccess && (
+          <div className="flex items-center gap-2 p-3 bg-green-50 text-green-700 rounded-lg text-sm">
+            <CheckCircle size={16} className="flex-shrink-0" />
+            <span>Username updated successfully.</span>
+          </div>
+        )}
+
+        <button
+          type="submit"
+          disabled={isSavingUsername}
+          className="w-full flex items-center justify-center gap-2 px-4 py-2.5 text-sm font-medium
+                     text-white bg-blue-600 hover:bg-blue-700
+                     disabled:bg-slate-300 disabled:cursor-not-allowed
+                     rounded-lg transition-colors"
+        >
+          {isSavingUsername ? (
+            <>
+              <span className="w-4 h-4 border-2 border-white/30 border-t-white rounded-full animate-spin" />
+              Updating...
+            </>
+          ) : (
+            'Update Username'
+          )}
+        </button>
+      </form>
+    </div>
+  )
 }
 
 /**

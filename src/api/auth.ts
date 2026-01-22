@@ -112,6 +112,7 @@ export interface UserProfile {
   id: string
   username: string | null
   has_set_username: boolean
+  avatar_url?: string | null
   created_at?: string | null
   updated_at?: string | null
 }
@@ -150,6 +151,28 @@ export async function updateProfile(username: string): Promise<UserProfile | und
       if (error.status === 409) {
         throw new Error(error.message || 'Username is already taken')
       }
+    }
+    throw error
+  }
+}
+
+export async function updateAvatar(file: File): Promise<UserProfile | undefined> {
+  try {
+    const form = new FormData()
+    form.append('avatar', file, file.name)
+
+    const json = await request<{ success?: boolean; data?: unknown; error?: string }>({
+      path: '/api/users/me/avatar',
+      method: 'POST',
+      headers: getAuthHeaders(false),
+      body: form,
+    })
+
+    if (!json || !json.success) throw new Error(json?.error || 'Failed to update avatar')
+    return json.data as UserProfile
+  } catch (error) {
+    if (error instanceof ApiError && (error.status === 401 || error.status === 403)) {
+      return undefined
     }
     throw error
   }
