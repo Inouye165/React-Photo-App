@@ -7,8 +7,7 @@
 */
 const fs = require('fs');
 const path = require('path');
-const os = require('os');
-const crypto = require('crypto');
+const tmp = require('tmp');
 // simple argv parsing to avoid extra deps
 const argv = process.argv.slice(2);
 let id = null;
@@ -23,31 +22,29 @@ const supabase = require('../lib/supabaseClient');
 const db = require('../db');
 const { exiftool } = require('exiftool-vendored');
 
+tmp.setGracefulCleanup();
+
+function createTempFile(filenameHint) {
+  const safeHint = path.basename(String(filenameHint || 'photo')).replace(/[^a-zA-Z0-9._-]/g, '_');
+  const tmpFile = tmp.fileSync({
+    prefix: 'photo-app-exif-',
+    postfix: `-${safeHint}`,
+    mode: 0o600,
+    discardDescriptor: true,
+    keep: true,
+  });
+  return { tmpPath: tmpFile.name, cleanup: tmpFile.removeCallback };
+}
+
 async function downloadToTemp(storagePath, filenameHint) {
   const { data, error } = await supabase.storage.from('photos').download(storagePath);
   if (error) throw new Error(`Supabase download error: ${error.message}`);
   const arrayBuffer = await data.arrayBuffer();
   const buf = Buffer.from(arrayBuffer);
 
-  // SECURITY: Create secure temporary directory and file
-  // mkdtempSync creates a unique directory with permissions 0o700 (owner-only)
-  // Combined with openSync 'wx' mode (exclusive creation) and 0o600 permissions,
-  // this prevents race conditions and unauthorized access.
-  const tmpDir = fs.mkdtempSync(path.join(os.tmpdir(), 'photo-app-exif-'));
-  const safeHint = path.basename(String(filenameHint || 'photo')).replace(/[^a-zA-Z0-9._-]/g, '_');
-  const tmp = path.join(tmpDir, `${crypto.randomUUID()}-${safeHint}`);
-  // Create the file exclusively and restrict permissions (best-effort on Windows).
-  const fd = fs.openSync(tmp, 'wx', 0o600);
-  try {
-    fs.writeFileSync(fd, buf);
-  } finally {
-    try {
-      fs.closeSync(fd);
-    } catch {
-      // ignore
-    }
-  }
-  return { tmp, tmpDir };
+  const { tmpPath, cleanup } = createTempFile(filenameHint);
+  fs.writeFileSync(tmpPath, buf, { mode: 0o600 });
+  return { tmp: tmpPath, cleanup };
 }
 
 async function inspectById(photoId) {
@@ -65,7 +62,7 @@ async function inspectById(photoId) {
   }
   console.log(JSON.stringify(rowMeta || {}, null, 2));
   console.log('Downloading from storage path:', storagePath);
-  const { tmp, tmpDir } = await downloadToTemp(storagePath, row.filename);
+  const { tmp, cleanup } = await downloadToTemp(storagePath, row.filename);
   console.log('Saved temp file to:', tmp);
   try {
     const meta = await exiftool.read(tmp);
@@ -76,17 +73,13 @@ async function inspectById(photoId) {
     console.log(JSON.stringify(out, null, 2));
   } finally {
     await exiftool.end();
-    try {
-      fs.rmSync(tmpDir, { recursive: true, force: true });
-    } catch {
-      // ignore
-    }
+    cleanup();
   }
 }
 
 async function inspectByPath(sp) {
   console.log('Downloading from storage path:', sp);
-  const { tmp, tmpDir } = await downloadToTemp(sp, path.basename(sp));
+  const { tmp, cleanup } = await downloadToTemp(sp, path.basename(sp));
   console.log('Saved temp file to:', tmp);
   try {
     const meta = await exiftool.read(tmp);
@@ -94,11 +87,7 @@ async function inspectByPath(sp) {
     console.log(JSON.stringify(meta, null, 2));
   } finally {
     await exiftool.end();
-    try {
-      fs.rmSync(tmpDir, { recursive: true, force: true });
-    } catch {
-      // ignore
-    }
+    cleanup();
   }
 }
 
