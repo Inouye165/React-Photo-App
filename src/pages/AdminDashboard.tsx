@@ -38,6 +38,12 @@ interface InviteResponse {
   error?: string;
 }
 
+interface SmsTestResponse {
+  success: boolean;
+  message?: string;
+  error?: string;
+}
+
 interface SuggestionsResponse {
   success: boolean;
   data?: PhotoSuggestion[];
@@ -129,6 +135,10 @@ export default function AdminDashboard() {
   const [inviteEmail, setInviteEmail] = useState('');
   const [inviteLoading, setInviteLoading] = useState(false);
   const [inviteMessage, setInviteMessage] = useState<{ type: 'success' | 'error'; text: string } | null>(null);
+
+  // SMS test state
+  const [smsTestLoading, setSmsTestLoading] = useState(false);
+  const [smsTestMessage, setSmsTestMessage] = useState<{ type: 'success' | 'error'; text: string } | null>(null);
   
   // Suggestions tab state
   const [suggestions, setSuggestions] = useState<PhotoSuggestion[]>([]);
@@ -394,6 +404,33 @@ export default function AdminDashboard() {
     }
   };
 
+  const handleSmsTest = async () => {
+    setSmsTestMessage(null);
+    setSmsTestLoading(true);
+
+    try {
+      const headers = await getAuthHeadersAsync(false);
+
+      const data = await request<SmsTestResponse>({
+        path: '/api/admin/sms/test',
+        method: 'POST',
+        headers
+      });
+
+      if (!data.success) {
+        throw new Error(data.error || 'Failed to send test SMS');
+      }
+
+      setSmsTestMessage({ type: 'success', text: data.message || 'Test SMS sent' });
+    } catch (err) {
+      const message = err instanceof Error ? err.message : 'Failed to send test SMS';
+      setSmsTestMessage({ type: 'error', text: message });
+      console.error('[admin] SMS test error:', err);
+    } finally {
+      setSmsTestLoading(false);
+    }
+  };
+
   const handleDeleteAccessRequest = async (requestId: string) => {
     const confirmed = window.confirm('Delete this access request? This cannot be undone.');
     if (!confirmed) return;
@@ -578,6 +615,40 @@ export default function AdminDashboard() {
                     </div>
                   )}
                 </form>
+
+                <div className="mt-10 border-t border-gray-200 pt-6">
+                  <h3 className="text-lg font-semibold text-gray-900 mb-2">SMS Notifications</h3>
+                  <p className="text-sm text-gray-600 mb-4">
+                    Send a test SMS to the admin number. The message includes the current date and time.
+                  </p>
+                  <div className="flex flex-wrap items-center gap-3">
+                    <button
+                      type="button"
+                      onClick={handleSmsTest}
+                      disabled={smsTestLoading}
+                      className="px-4 py-2 rounded-lg bg-blue-600 text-white hover:bg-blue-700 disabled:opacity-50 disabled:cursor-not-allowed transition-colors"
+                    >
+                      {smsTestLoading ? 'Sending...' : 'Send SMS Test'}
+                    </button>
+                    {smsTestMessage && (
+                      <div
+                        className={
+                          `flex items-center gap-2 px-3 py-2 rounded-lg text-sm ` +
+                          (smsTestMessage.type === 'success'
+                            ? 'bg-green-50 text-green-800 border border-green-200'
+                            : 'bg-red-50 text-red-800 border border-red-200')
+                        }
+                      >
+                        {smsTestMessage.type === 'success' ? (
+                          <CheckCircle size={18} />
+                        ) : (
+                          <XCircle size={18} />
+                        )}
+                        <span>{smsTestMessage.text}</span>
+                      </div>
+                    )}
+                  </div>
+                </div>
               </div>
             )}
 
