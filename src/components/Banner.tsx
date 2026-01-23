@@ -1,4 +1,4 @@
-import React from 'react';
+import type { ReactNode } from 'react'
 
 const severityStyles = {
   info: {
@@ -21,12 +21,26 @@ const severityStyles = {
     container: 'bg-red-600',
     iconColor: 'text-red-100',
   },
-};
+} satisfies Record<BannerSeverity, SeverityStyle>
 
-export default function Banner({ message, severity = 'info', onClose }) {
-  if (!message) return null;
+type BannerSeverity = 'info' | 'success' | 'warning' | 'error'
 
-  const { icon, container, iconColor } = severityStyles[severity] || severityStyles.info;
+type SeverityStyle = {
+  icon: ReactNode
+  container: string
+  iconColor: string
+}
+
+export type BannerProps = {
+  message?: string | null
+  severity?: BannerSeverity
+  onClose?: () => void
+}
+
+export default function Banner({ message, severity = 'info', onClose }: BannerProps) {
+  if (!message) return null
+
+  const { icon, container, iconColor } = severityStyles[severity] || severityStyles.info
 
   return (
     <div
@@ -36,7 +50,9 @@ export default function Banner({ message, severity = 'info', onClose }) {
       style={{ position: 'fixed', top: 72, left: 16, right: 16 }}
     >
       <div className="flex items-center gap-2">
-        <span className={iconColor} aria-hidden="true">{icon}</span>
+        <span className={iconColor} aria-hidden="true">
+          {icon}
+        </span>
         <span>{message}</span>
       </div>
       <button
@@ -49,5 +65,5 @@ export default function Banner({ message, severity = 'info', onClose }) {
         ×
       </button>
     </div>
-  );
+  )
 }
