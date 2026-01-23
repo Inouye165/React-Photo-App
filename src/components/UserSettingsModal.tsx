@@ -212,9 +212,6 @@ function ProfileSettingsForm() {
         return
       }
       setAvatarSuccess(true)
-      if (avatarSourceUrl) {
-        URL.revokeObjectURL(avatarSourceUrl)
-      }
       setAvatarSourceUrl(null)
       setCrop({ x: 0, y: 0 })
       setZoom(1)
