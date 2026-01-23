@@ -1,6 +1,7 @@
 import fs from 'fs';
 import path from 'path';
 import crypto from 'crypto';
+import tmp from 'tmp';
 import type { Knex } from 'knex';
 
 import '../env';
@@ -29,6 +30,8 @@ import { generateCaptionFallback, generateKeywordsFallback } from './keywordFall
 const { app: aiGraph } = require('./langgraph/graph');
 
 const allowDevDebug = process.env.ALLOW_DEV_DEBUG === 'true';
+
+tmp.setGracefulCleanup();
 
 if (!process.env.OPENAI_API_KEY) {
   if (process.env.NODE_ENV === 'test') {
@@ -112,20 +115,15 @@ export async function processPhotoAI(
     imageMime = 'image/jpeg';
     if (allowDevDebug && process.env.NODE_ENV !== 'production') {
       try {
-        const os = require('os');
-        const debugDir = fs.mkdtempSync(path.join(os.tmpdir(), 'photo-app-ai-debug-'));
-        const debugPath = path.join(debugDir, `${crypto.randomUUID()}.jpg`);
-        const fd = fs.openSync(debugPath, 'wx', 0o600);
-        try {
-          fs.writeFileSync(fd, imageBuffer);
-        } finally {
-          try {
-            fs.closeSync(fd);
-          } catch {
-            // ignore
-          }
-        }
-        logger.debug(`[Graph Debug] Saved intermediate JPEG buffer to ${debugPath}`);
+        const tmpFile = tmp.fileSync({
+          prefix: 'photo-app-ai-debug-',
+          postfix: '.jpg',
+          mode: 0o600,
+          discardDescriptor: true,
+          keep: true,
+        });
+        fs.writeFileSync(tmpFile.name, imageBuffer, { mode: 0o600 });
+        logger.debug(`[Graph Debug] Saved intermediate JPEG buffer to ${tmpFile.name}`);
       } catch (e: unknown) {
         logger.error(`[Graph Debug] Failed to write debug image: ${(e as Error)?.message || String(e)}`);
       }
