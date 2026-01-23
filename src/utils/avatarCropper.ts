@@ -1,4 +1,9 @@
-import type { Area } from 'react-easy-crop'
+export type Area = {
+  x: number;
+  y: number;
+  width: number;
+  height: number;
+}
 
 export const AVATAR_OUTPUT_SIZE = 512
 
