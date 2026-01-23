@@ -38,6 +38,18 @@ interface PhotoSuggestion {
   updated_at: string;
 }
 
+interface AccessRequestRow {
+  id: string | number;
+  name: string | null;
+  email: string | null;
+  subject: string | null;
+  message: string | null;
+  status: string | null;
+  ip_address: string | null;
+  created_at: string;
+  updated_at: string;
+}
+
 interface AuthenticatedRequest extends Request {
   // Express request properties (explicit here to satisfy server-side type-checking)
   body: any;
@@ -74,6 +86,63 @@ function createAdminRouter({ db }: { db: any }): Router {
       return false;
     }
     return true;
+  }
+
+  function parsePaginationInt(
+    value: unknown,
+    defaultValue: number,
+    options: { min: number; max?: number }
+  ): { type: 'ok'; value: number } | { type: 'error'; error: string } {
+    if (value === undefined || value === null || value === '') {
+      return { type: 'ok', value: defaultValue };
+    }
+
+    if (typeof value !== 'string') {
+      return { type: 'error', error: 'Invalid pagination value' };
+    }
+
+    const parsed = Number.parseInt(value, 10);
+    if (!Number.isFinite(parsed) || Number.isNaN(parsed)) {
+      return { type: 'error', error: 'Invalid pagination value' };
+    }
+
+    if (parsed < options.min) {
+      return { type: 'error', error: 'Invalid pagination value' };
+    }
+
+    if (typeof options.max === 'number' && parsed > options.max) {
+      return { type: 'error', error: 'Invalid pagination value' };
+    }
+
+    return { type: 'ok', value: parsed };
+  }
+
+  function parseAccessRequestId(
+    value: unknown
+  ): { type: 'ok'; value: string | number } | { type: 'error'; error: string } {
+    if (typeof value !== 'string') {
+      return { type: 'error', error: 'Valid access request ID is required' };
+    }
+
+    const trimmed = value.trim();
+    if (!trimmed) {
+      return { type: 'error', error: 'Valid access request ID is required' };
+    }
+
+    if (/^\d+$/.test(trimmed)) {
+      const numericId = Number.parseInt(trimmed, 10);
+      if (!Number.isFinite(numericId) || numericId <= 0) {
+        return { type: 'error', error: 'Valid access request ID is required' };
+      }
+      return { type: 'ok', value: numericId };
+    }
+
+    const uuidRegex = /^[0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i;
+    if (!uuidRegex.test(trimmed)) {
+      return { type: 'error', error: 'Valid access request ID is required' };
+    }
+
+    return { type: 'ok', value: trimmed };
   }
 
   // Initialize Supabase Admin Client with Service Role Key
@@ -162,6 +231,81 @@ function createAdminRouter({ db }: { db: any }): Router {
         success: false,
         error: 'Internal server error'
       });
+    }
+  });
+
+  /**
+   * GET /api/admin/access-requests
+   *
+   * Fetch access requests stored in contact_messages.
+   *
+   * Query parameters:
+   * - limit: Number of records to return (default: 50, max: 200)
+   * - offset: Pagination offset (default: 0)
+   */
+  router.get('/access-requests', async (req: AuthenticatedRequest, res: Response) => {
+    try {
+      if (!ensureAdmin(req, res)) return;
+
+      const limitResult = parsePaginationInt(req.query.limit, 50, { min: 0, max: 200 });
+      if (limitResult.type === 'error') {
+        return res.status(400).json({ success: false, error: limitResult.error });
+      }
+
+      const offsetResult = parsePaginationInt(req.query.offset, 0, { min: 0 });
+      if (offsetResult.type === 'error') {
+        return res.status(400).json({ success: false, error: offsetResult.error });
+      }
+
+      const limit = limitResult.value;
+      const offset = offsetResult.value;
+
+      const result = await db('contact_messages')
+        .select('id', 'name', 'email', 'subject', 'message', 'status', 'ip_address', 'created_at', 'updated_at')
+        .orderBy('created_at', 'desc')
+        .limit(limit)
+        .offset(offset);
+
+      const countResult = await db('contact_messages').count('* as total');
+      const total = Number.parseInt(countResult[0]?.total || '0', 10);
+
+      return res.json({
+        success: true,
+        data: result as AccessRequestRow[],
+        total,
+        limit,
+        offset,
+      });
+    } catch (err) {
+      console.error('[admin] Access requests error:', err);
+      return res.status(500).json({ success: false, error: 'Internal server error' });
+    }
+  });
+
+  /**
+   * DELETE /api/admin/access-requests/:id
+   *
+   * Delete an access request by ID.
+   */
+  router.delete('/access-requests/:id', async (req: AuthenticatedRequest, res: Response) => {
+    try {
+      if (!ensureAdmin(req, res)) return;
+
+      const idResult = parseAccessRequestId(req.params.id);
+      if (idResult.type === 'error') {
+        return res.status(400).json({ success: false, error: idResult.error });
+      }
+
+      const deletedCount = await db('contact_messages').where('id', idResult.value).del();
+
+      if (!deletedCount) {
+        return res.status(404).json({ success: false, error: 'Access request not found' });
+      }
+
+      return res.json({ success: true });
+    } catch (err) {
+      console.error('[admin] Access requests delete error:', err);
+      return res.status(500).json({ success: false, error: 'Internal server error' });
     }
   });
 
