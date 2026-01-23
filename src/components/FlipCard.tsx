@@ -1,27 +1,28 @@
-import React from 'react';
+import type { ReactNode } from 'react'
+
+export type FlipCardProps = {
+  isFlipped?: boolean
+  onFlip?: () => void
+  frontContent?: ReactNode
+  backContent?: ReactNode
+  className?: string
+}
 
 /**
  * FlipCard Component
  * A 3D flip card with front and back faces using CSS transforms.
  * Front side flip button is in the toolbar (ImageCanvasEditor).
  * Back side has its own flip button to return to photo.
- * 
- * Props:
- * - isFlipped: boolean - Controls whether the card shows front (false) or back (true)
- * - onFlip: function - Callback when flip button is clicked
- * - frontContent: ReactNode - Content for the front face (photo)
- * - backContent: ReactNode - Content for the back face (metadata/keywords)
- * - className: string - Additional classes for the container
  */
-export default function FlipCard({ 
-  isFlipped = false, 
-  onFlip, 
-  frontContent, 
-  backContent, 
-  className = '' 
-}) {
+export default function FlipCard({
+  isFlipped = false,
+  onFlip,
+  frontContent,
+  backContent,
+  className = '',
+}: FlipCardProps) {
   return (
-    <div 
+    <div
       className={`flip-card-container ${className}`}
       style={{
         perspective: '1000px',
@@ -30,7 +31,7 @@ export default function FlipCard({
         position: 'relative',
       }}
     >
-      <div 
+      <div
         className="flip-card-inner"
         style={{
           position: 'relative',
@@ -42,7 +43,7 @@ export default function FlipCard({
         }}
       >
         {/* Front Face - Photo */}
-        <div 
+        <div
           className="flip-card-front"
           style={{
             position: 'absolute',
@@ -59,7 +60,7 @@ export default function FlipCard({
         </div>
 
         {/* Back Face - Metadata & Keywords */}
-        <div 
+        <div
           className="flip-card-back"
           style={{
             position: 'absolute',
@@ -74,12 +75,12 @@ export default function FlipCard({
           }}
         >
           {backContent}
-          
+
           {/* Flip Back Button - Only on back face */}
           <button
-            onClick={(e) => {
-              e.stopPropagation();
-              onFlip && onFlip();
+            onClick={(event) => {
+              event.stopPropagation()
+              onFlip?.()
             }}
             aria-label="Show photo"
             title="Back to Photo"
@@ -100,14 +101,14 @@ export default function FlipCard({
               zIndex: 10,
             }}
           >
-            <svg 
-              width="18" 
-              height="18" 
-              viewBox="0 0 24 24" 
-              fill="none" 
-              stroke="#ffffff" 
-              strokeWidth="2" 
-              strokeLinecap="round" 
+            <svg
+              width="18"
+              height="18"
+              viewBox="0 0 24 24"
+              fill="none"
+              stroke="#ffffff"
+              strokeWidth="2"
+              strokeLinecap="round"
               strokeLinejoin="round"
             >
               <rect x="3" y="3" width="18" height="18" rx="2" ry="2" />
@@ -118,5 +119,5 @@ export default function FlipCard({
         </div>
       </div>
     </div>
-  );
+  )
 }
