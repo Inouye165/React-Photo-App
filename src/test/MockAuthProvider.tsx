@@ -1,15 +1,35 @@
-import React from 'react'
+import React, { type ReactNode } from 'react'
 import { vi } from 'vitest'
 
+export type MockAuthValues = {
+  user?: unknown
+  session?: unknown
+  token?: string | null
+  loading?: boolean
+  login?: (...args: unknown[]) => unknown
+  register?: (...args: unknown[]) => unknown
+  logout?: (...args: unknown[]) => unknown
+  signInWithPhone?: (...args: unknown[]) => unknown
+  verifyPhoneOtp?: (...args: unknown[]) => unknown
+  resetPassword?: (...args: unknown[]) => unknown
+  isAuthenticated?: boolean
+  [key: string]: unknown
+}
+
+type MockAuthProviderProps = {
+  children?: ReactNode
+  mockAuthValues?: MockAuthValues
+}
+
 // Create a mock AuthContext
-const AuthContext = React.createContext()
+const AuthContext = React.createContext<MockAuthValues | undefined>(undefined)
 
 // Mock AuthProvider for testing
 // NOTE: Updated to match strict AuthProvider behavior
 // By default, loading is FALSE (tests assume auth is already initialized)
 // Set mockAuthValues.loading = true to test loading states
-const MockAuthProvider = ({ children, mockAuthValues = {} }) => {
-  const defaultValues = {
+const MockAuthProvider = ({ children, mockAuthValues = {} }: MockAuthProviderProps) => {
+  const defaultValues: MockAuthValues = {
     user: null,
     session: null,
     token: null,
@@ -21,7 +41,7 @@ const MockAuthProvider = ({ children, mockAuthValues = {} }) => {
     verifyPhoneOtp: vi.fn(),
     resetPassword: vi.fn(),
     isAuthenticated: false,
-    ...mockAuthValues
+    ...mockAuthValues,
   }
 
   // Match AuthProvider behavior: if loading, don't render children
@@ -36,11 +56,7 @@ const MockAuthProvider = ({ children, mockAuthValues = {} }) => {
     )
   }
 
-  return (
-    <AuthContext.Provider value={defaultValues}>
-      {children}
-    </AuthContext.Provider>
-  )
+  return <AuthContext.Provider value={defaultValues}>{children}</AuthContext.Provider>
 }
 
 export default MockAuthProvider
