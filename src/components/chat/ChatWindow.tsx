@@ -853,7 +853,7 @@ export default function ChatWindow({ roomId, onOpenSidebar }: ChatWindowProps) {
           onSave={async (patch) => handlePatchRoom(patch)}
         />
       )}
-      {roomId && header.isGroup && (
+      {header.isGroup && (
         <ChatMembersModal
           isOpen={isMembersOpen}
           onClose={() => setIsMembersOpen(false)}
