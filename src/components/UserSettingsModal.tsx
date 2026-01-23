@@ -1,11 +1,11 @@
 import React, { useEffect, useMemo, useRef, useState } from 'react';
 import { createPortal } from 'react-dom';
 import { X, Lock, AlertCircle, CheckCircle, Eye, EyeOff, User, ImagePlus } from 'lucide-react';
-import Cropper, { type Area } from 'react-easy-crop';
+import Cropper from 'react-easy-crop';
 import { supabase } from '../supabaseClient';
 import { useAuth } from '../contexts/AuthContext';
 import { compressForUpload } from '../utils/clientImageProcessing';
-import { AVATAR_OUTPUT_SIZE, createAvatarBlob } from '../utils/avatarCropper';
+import { AVATAR_OUTPUT_SIZE, createAvatarBlob, type Area } from '../utils/avatarCropper';
 
 interface UserSettingsModalProps {
   onClose: () => void;
@@ -275,7 +275,7 @@ function ProfileSettingsForm() {
                 cropShape="round"
                 onCropChange={setCrop}
                 onZoomChange={setZoom}
-                onCropComplete={(_, croppedPixels) => setCroppedAreaPixels(croppedPixels)}
+                onCropComplete={(_: Area, croppedPixels: Area) => setCroppedAreaPixels(croppedPixels)}
               />
             </div>
             <div className="flex items-center gap-3">

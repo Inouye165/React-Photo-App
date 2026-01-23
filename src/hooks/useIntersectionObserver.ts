@@ -1,7 +1,7 @@
 import { useEffect, useState, type RefObject } from 'react';
 
 export default function useIntersectionObserver<T extends Element>(
-  elementRef: RefObject<T | null>,
+  elementRef: RefObject<T | null> | null,
   options: IntersectionObserverInit = {}
 ): boolean | undefined {
   const { threshold = 0, root = null, rootMargin = '0px' } = options;
@@ -14,9 +14,7 @@ export default function useIntersectionObserver<T extends Element>(
     if (typeof IntersectionObserver === 'undefined') return;
 
     const observer = new IntersectionObserver(
-      ([nextEntry]) => {
-        setEntry(nextEntry);
-      },
+      ([nextEntry]) => setEntry(nextEntry),
       { threshold, root, rootMargin }
     );
 
