@@ -12,15 +12,7 @@ export default defineConfig(({ mode }) => {
   console.log(`[vite] VITE_E2E: ${process.env.VITE_E2E}`);
   return {
   plugins: [react()],
-  resolve: {
-    alias: {
-      // Provide a test/runtime shim for react-easy-crop to avoid
-      // import-resolution errors in Vitest/Vite when the package
-      // is missing ESM entrypoints in the test environment.
-      'react-easy-crop': path.resolve(__dirname, 'src/components/CropperShim.tsx'),
-    },
-  },
-  // WARNING: Do not add aliases for konva packages here.
+  // WARNING: Do not add aliases for 'konva' or 'konva/lib/...' here.
   // It breaks react-konva which relies on internal structure.
   optimizeDeps: {
     include: ['konva', 'react-konva']
