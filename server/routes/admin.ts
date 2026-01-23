@@ -16,6 +16,7 @@
 import { Router, Request, Response } from 'express';
 import { createClient } from '@supabase/supabase-js';
 import { getConfig } from '../config/env';
+import { sendAdminAlert } from '../services/sms';
 
 const createAssessmentsDb = require('../services/assessmentsDb');
 
@@ -231,6 +232,30 @@ function createAdminRouter({ db }: { db: any }): Router {
         success: false,
         error: 'Internal server error'
       });
+    }
+  });
+
+  /**
+   * POST /api/admin/sms/test
+   *
+   * Send a test SMS to the configured admin phone number.
+   */
+  router.post('/sms/test', async (req: AuthenticatedRequest, res: Response) => {
+    try {
+      if (!ensureAdmin(req, res)) return;
+
+      const timestamp = new Date().toLocaleString();
+      const alertMessage = `SMS Test - ${timestamp}`;
+
+      await sendAdminAlert(alertMessage);
+
+      return res.json({
+        success: true,
+        message: `SMS test sent (${timestamp})`
+      });
+    } catch (err) {
+      console.error('[admin] SMS test error:', err);
+      return res.status(500).json({ success: false, error: 'Internal server error' });
     }
   });
 
