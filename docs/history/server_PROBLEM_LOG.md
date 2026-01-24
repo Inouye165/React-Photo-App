@@ -27,7 +27,7 @@
 
 **Root Cause (Suspected):**
 - `server/sanity-check-db.js` and all direct Postgres connection points must use `ssl: { rejectUnauthorized: false }` for Supabase.
-- The main app and most scripts were correct, but `sanity-check-db.js` was missing this SSL config.
+- The frontend app and most scripts were correct, but `sanity-check-db.js` was missing this SSL config.
 - Inconsistent or missing SSL config can cause connection failures, especially on first attempts.
 
 **Fix:**

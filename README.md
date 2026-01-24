@@ -149,7 +149,7 @@ cd server && npm test && cd ..
 **Pro tip:** The `lint` command includes `type-check` which is what caught the JSX namespace errors. Always run it before committing TypeScript changes.
 
 ### Frontend & Root
-Run these from the main folder:
+Run these from the repository root:
 
 | Command | Why run it? |
 | :--- | :--- |
