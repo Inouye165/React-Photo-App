@@ -45,19 +45,13 @@ describe('routes/events GET /events/photos (unit)', () => {
     }
   }
 
-  test('authenticated request sets SSE headers and writes an initial event', () => {
-    const sseManager = {
-      canAcceptClient: () => true,
-      addClient: jest.fn(() => ({ ok: true })),
-      removeClient: jest.fn(),
-    };
-
+  test('authenticated request returns 426 for WebSocket upgrade', () => {
     const authenticateToken = (req, _res, next) => {
       req.user = { id: 'user-1' };
       next();
     };
 
-    const router = createEventsRouter({ authenticateToken, sseManager });
+    const router = createEventsRouter({ authenticateToken });
 
     const layer = router.stack.find((l) => l.route && l.route.path === '/photos');
     expect(layer).toBeTruthy();
@@ -68,39 +62,24 @@ describe('routes/events GET /events/photos (unit)', () => {
     const { req, res } = createReqRes({ userId: 'user-1' });
 
     return runAuthed(handlers, req, res).then(() => {
-      expect(res.status).toHaveBeenCalledWith(200);
-      expect(res._headers['Content-Type']).toBe('text/event-stream');
-      expect(res._headers['Cache-Control']).toBe('no-cache');
-      expect(res._headers.Connection).toBe('keep-alive');
-      expect(sseManager.addClient).toHaveBeenCalled();
-      expect(req.on).toHaveBeenCalledWith('close', expect.any(Function));
-      expect(res.write).toHaveBeenCalled();
-
-      const firstWrite = String(res.write.mock.calls[0][0]);
-      expect(firstWrite).toContain('event: connected\n');
-      expect(firstWrite).toContain('id:');
-      expect(firstWrite).toContain('data:');
-      expect(firstWrite.endsWith('\n\n')).toBe(true);
+      expect(res.status).toHaveBeenCalledWith(426);
+      expect(res.json).toHaveBeenCalledWith(expect.objectContaining({
+        success: false,
+        error: 'WebSocket upgrade required',
+      }));
     });
-
   });
 
   test('kill switch returns 503 JSON and does not start a stream', async () => {
     const prev = process.env.REALTIME_EVENTS_DISABLED;
     process.env.REALTIME_EVENTS_DISABLED = '1';
 
-    const sseManager = {
-      canAcceptClient: () => true,
-      addClient: jest.fn(() => ({ ok: true })),
-      removeClient: jest.fn(),
-    };
-
     const authenticateToken = (req, _res, next) => {
       req.user = { id: 'user-1' };
       next();
     };
 
-    const router = createEventsRouter({ authenticateToken, sseManager, photoEventHistory: { getCatchupEvents: jest.fn() } });
+    const router = createEventsRouter({ authenticateToken });
     const layer = router.stack.find((l) => l.route && l.route.path === '/photos');
     const handlers = layer.route.stack.map((s) => s.handle);
 
@@ -110,114 +89,15 @@ describe('routes/events GET /events/photos (unit)', () => {
     expect(res.status).toHaveBeenCalledWith(503);
     expect(res.json).toHaveBeenCalledWith(expect.objectContaining({ success: false, error: 'Real-time events disabled' }));
     expect(res.write).not.toHaveBeenCalled();
-    expect(sseManager.addClient).not.toHaveBeenCalled();
 
     if (prev === undefined) delete process.env.REALTIME_EVENTS_DISABLED;
     else process.env.REALTIME_EVENTS_DISABLED = prev;
   });
 
-  test('since catch-up events are written before connected event', async () => {
-    const sseManager = {
-      canAcceptClient: () => true,
-      addClient: jest.fn(() => ({ ok: true })),
-      removeClient: jest.fn(),
-    };
-
-    const authenticateToken = (req, _res, next) => {
-      req.user = { id: 'user-1' };
-      next();
-    };
-
-    const photoEventHistory = {
-      getCatchupEvents: jest.fn().mockResolvedValue({
-        ok: true,
-        events: [
-          { userId: 'user-1', eventId: 'evt-old', photoId: 'p1', status: 'processing', updatedAt: new Date().toISOString(), ts: Date.now() - 1000 },
-        ],
-      }),
-    };
-
-    const router = createEventsRouter({ authenticateToken, sseManager, photoEventHistory });
-    const layer = router.stack.find((l) => l.route && l.route.path === '/photos');
-    const handlers = layer.route.stack.map((s) => s.handle);
-
-    const { req, res } = createReqRes({ userId: 'user-1' });
-    req.query = { since: String(Date.now() - 10_000) };
-
-    await runAuthed(handlers, req, res);
-
-    expect(res.write).toHaveBeenCalled();
-    const writes = res.write.mock.calls.map((c) => String(c[0]));
-    expect(writes[0]).toContain('event: photo.processing\n');
-    expect(writes[0]).toContain('id: evt-old\n');
-    expect(writes.some((w) => w.includes('event: connected\n'))).toBe(true);
-  });
-
-  test('Last-Event-ID header is used for catch-up when query since is absent', async () => {
-    const sseManager = {
-      canAcceptClient: () => true,
-      addClient: jest.fn(() => ({ ok: true })),
-      removeClient: jest.fn(),
-    };
-
-    const authenticateToken = (req, _res, next) => {
-      req.user = { id: 'user-1' };
-      next();
-    };
-
-    const photoEventHistory = {
-      getCatchupEvents: jest.fn().mockResolvedValue({ ok: true, events: [] }),
-    };
-
-    const router = createEventsRouter({ authenticateToken, sseManager, photoEventHistory });
-    const layer = router.stack.find((l) => l.route && l.route.path === '/photos');
-    const handlers = layer.route.stack.map((s) => s.handle);
-
-    const { req, res } = createReqRes({ userId: 'user-1' });
-    req.headers['last-event-id'] = 'evt_123';
-
-    await runAuthed(handlers, req, res);
-
-    expect(photoEventHistory.getCatchupEvents).toHaveBeenCalledWith({ userId: 'user-1', since: 'evt_123' });
-    expect(res.status).toHaveBeenCalledWith(200);
-    expect(res._headers['Content-Type']).toBe('text/event-stream');
-  });
-
-  test('connection cap returns 429 JSON and does not start a stream', () => {
-    const sseManager = {
-      canAcceptClient: () => false,
-      addClient: jest.fn(),
-      removeClient: jest.fn(),
-    };
-
-    const authenticateToken = (req, _res, next) => {
-      req.user = { id: 'user-1' };
-      next();
-    };
-
-    const router = createEventsRouter({ authenticateToken, sseManager });
-    const layer = router.stack.find((l) => l.route && l.route.path === '/photos');
-    const handlers = layer.route.stack.map((s) => s.handle);
-
-    const { req, res } = createReqRes({ userId: 'user-1' });
-    handlers[0](req, res, () => handlers[1](req, res));
-
-    expect(res.status).toHaveBeenCalledWith(429);
-    expect(res.json).toHaveBeenCalledWith({ success: false, error: 'Too many concurrent event streams' });
-    expect(res.write).not.toHaveBeenCalled();
-    expect(sseManager.addClient).not.toHaveBeenCalled();
-  });
-
   test('unauthenticated request is rejected by auth middleware before handler', () => {
-    const sseManager = {
-      canAcceptClient: () => true,
-      addClient: jest.fn(),
-      removeClient: jest.fn(),
-    };
-
     const authenticateToken = (_req, res, _next) => res.status(401).json({ success: false, error: 'Unauthorized' });
 
-    const router = createEventsRouter({ authenticateToken, sseManager });
+    const router = createEventsRouter({ authenticateToken });
     const layer = router.stack.find((l) => l.route && l.route.path === '/photos');
     const handlers = layer.route.stack.map((s) => s.handle);
 
@@ -226,7 +106,6 @@ describe('routes/events GET /events/photos (unit)', () => {
 
     expect(res.status).toHaveBeenCalledWith(401);
     expect(res.json).toHaveBeenCalledWith({ success: false, error: 'Unauthorized' });
-    expect(sseManager.addClient).not.toHaveBeenCalled();
     expect(res.write).not.toHaveBeenCalled();
   });
 });

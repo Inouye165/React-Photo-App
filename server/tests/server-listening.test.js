@@ -85,7 +85,8 @@ describe('Server listening behavior', () => {
     
     // Verify the conditional listening code exists
     expect(serverCode).toMatch(/if\s*\(\s*process\.env\.NODE_ENV\s*!==\s*['"]test['"]\s*\)/);
-    expect(serverCode).toMatch(/app\.listen\s*\(\s*PORT/);
+    expect(serverCode).toMatch(/http\.createServer\s*\(\s*app\s*\)/);
+    expect(serverCode).toMatch(/server\.listen\s*\(\s*PORT/);
     
     // This ensures the pattern remains in place
   });

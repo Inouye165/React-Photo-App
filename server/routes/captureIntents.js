@@ -20,7 +20,7 @@ function ensureUuidLike(value) {
   return s;
 }
 
-function createCaptureIntentsRouter({ db, sseManager } = {}) {
+function createCaptureIntentsRouter({ db, socketManager } = {}) {
   if (!db) throw new Error('db is required');
 
   const router = Router();
@@ -64,8 +64,8 @@ function createCaptureIntentsRouter({ db, sseManager } = {}) {
       const intent = await service.openIntent(userId, { photoId, collectibleId });
 
       try {
-        if (sseManager && typeof sseManager.publishToUser === 'function' && intent) {
-          sseManager.publishToUser(userId, 'capture.intent', {
+        if (socketManager && typeof socketManager.publishToUser === 'function' && intent) {
+          socketManager.publishToUser(userId, 'capture.intent', {
             id: intent.id,
             photoId: intent.photoId,
             collectibleId: intent.collectibleId,

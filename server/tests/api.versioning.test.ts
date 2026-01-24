@@ -45,13 +45,13 @@ function buildApp() {
       }),
     },
   };
-  const fakeSseManager = {
+  const fakeSocketManager = {
     addClient: jest.fn(),
     removeClient: jest.fn(),
     send: jest.fn(),
   };
 
-  registerRoutes(app, { db: fakeDb, supabase: fakeSupabase, sseManager: fakeSseManager });
+  registerRoutes(app, { db: fakeDb, supabase: fakeSupabase, socketManager: fakeSocketManager });
   return app;
 }
 

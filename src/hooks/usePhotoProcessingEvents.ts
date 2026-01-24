@@ -3,7 +3,7 @@ import { useEffect, useMemo, useRef } from 'react'
 import useStore from '../store'
 import type { Photo } from '../types/photo'
 import { API_BASE_URL, getAccessToken } from '../api'
-import { connectPhotoEvents, type SseFrame, type SseClient } from '../realtime/sseClient'
+import { connectPhotoSocket, type SocketMessage, type SocketClient } from '../realtime/socketClient'
 
 type PhotoProcessingStatus = 'queued' | 'processing' | 'finished' | 'failed'
 
@@ -64,14 +64,6 @@ export function createEventDedupe(maxSize = 200) {
   }
 }
 
-function safeJsonParse(value: string): unknown {
-  try {
-    return JSON.parse(value)
-  } catch {
-    return null
-  }
-}
-
 function parseUpdatedAtToMs(updatedAt: unknown): number | null {
   if (typeof updatedAt !== 'string') return null
   const s = updatedAt.trim()
@@ -87,9 +79,9 @@ function mapStatusToPhotoState(status: PhotoProcessingStatus | undefined): Photo
   return undefined
 }
 
-function extractDedupeId(frame: SseFrame, payload: PhotoProcessingPayload | null): string | null {
-  const fromFrame = frame?.id
-  if (fromFrame && typeof fromFrame === 'string' && fromFrame.trim()) return fromFrame
+function extractDedupeId(message: SocketMessage, payload: PhotoProcessingPayload | null): string | null {
+  const fromMessage = message?.eventId
+  if (fromMessage && typeof fromMessage === 'string' && fromMessage.trim()) return fromMessage
   const fromPayload = payload?.eventId
   if (fromPayload && typeof fromPayload === 'string' && fromPayload.trim()) return fromPayload
   return null
@@ -108,17 +100,16 @@ export function usePhotoProcessingEvents(params: { authed: boolean }): UsePhotoP
   const streamingActive = useStore((s) => s.photoEventsStreamingActive)
   const setStreamingActive = useStore((s) => s.setPhotoEventsStreamingActive)
 
-  const clientRef = useRef<SseClient | null>(null)
+  const clientRef = useRef<SocketClient | null>(null)
   const abortRef = useRef<AbortController | null>(null)
   const reconnectTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null)
 
   const failuresRef = useRef(0)
-  const disabledForSessionRef = useRef(false)
   const dedupeRef = useRef(createEventDedupe(200))
   const lastSeenTimestampMsRef = useRef<number | null>(null)
   const lastSeenEventIdRef = useRef<string | null>(null)
 
-  const enabled = authed && photoEventsEnvEnabled && !disabledForSessionRef.current
+  const enabled = authed && photoEventsEnvEnabled
 
   useEffect(() => {
     if (!enabled) {
@@ -174,51 +165,23 @@ export function usePhotoProcessingEvents(params: { authed: boolean }): UsePhotoP
       }
     }
 
-    const resumePollingForPending = (reason: string) => {
-      try {
-        const state = useStore.getState()
-        const ids = Array.from(state.pollingPhotoIds || [])
-        for (const id of ids) {
-          try {
-            state.startAiPolling(id)
-          } catch {
-            // ignore per-id
-          }
-        }
-      } catch {
-        // ignore
-      }
-
-      void reason
-    }
-
     const scheduleReconnect = () => {
       clearReconnectTimer()
 
-      const failures = failuresRef.current
-      if (failures >= 3) {
-        disabledForSessionRef.current = true
-        try {
-          setStreamingActive(false, 'too_many_failures')
-        } catch {
-          // ignore
-        }
-        resumePollingForPending('too_many_failures')
-        return
-      }
-
-      const delayMs = computeReconnectDelayMs(failures)
+      const delayMs = computeReconnectDelayMs(failuresRef.current)
       reconnectTimerRef.current = setTimeout(() => {
         reconnectTimerRef.current = null
         void start()
       }, delayMs)
     }
 
-    const onFrame = (frame: SseFrame) => {
-      if (frame.event && frame.event !== 'photo.processing') {
-        const payload = safeJsonParse(frame.data)
+    const onMessage = (message: SocketMessage) => {
+      if (!message || typeof message !== 'object') return
 
-        if (frame.event === 'capture.intent') {
+      if (message.type && message.type !== 'photo.processing') {
+        const payload = message.payload
+
+        if (message.type === 'capture.intent') {
           if (payload && typeof payload === 'object') {
             try {
               if (typeof window !== 'undefined' && window.dispatchEvent) {
@@ -231,7 +194,7 @@ export function usePhotoProcessingEvents(params: { authed: boolean }): UsePhotoP
           return
         }
 
-        if (frame.event === 'collectible.photos.changed') {
+        if (message.type === 'collectible.photos.changed') {
           if (payload && typeof payload === 'object') {
             try {
               if (typeof window !== 'undefined' && window.dispatchEvent) {
@@ -247,12 +210,13 @@ export function usePhotoProcessingEvents(params: { authed: boolean }): UsePhotoP
         return
       }
 
-      if (frame.id && typeof frame.id === 'string' && frame.id.trim()) {
-        lastSeenEventIdRef.current = frame.id
+      if (message.eventId && typeof message.eventId === 'string' && message.eventId.trim()) {
+        lastSeenEventIdRef.current = message.eventId
       }
 
-      const parsed = safeJsonParse(frame.data)
-      const payload = (parsed && typeof parsed === 'object') ? (parsed as PhotoProcessingPayload) : null
+      const payload = (message.payload && typeof message.payload === 'object')
+        ? (message.payload as PhotoProcessingPayload)
+        : null
 
       // Update last-seen timestamp for resumability before any early returns.
       const ts = parseUpdatedAtToMs(payload?.updatedAt)
@@ -260,7 +224,7 @@ export function usePhotoProcessingEvents(params: { authed: boolean }): UsePhotoP
         lastSeenTimestampMsRef.current = ts
       }
 
-      const dedupeId = extractDedupeId(frame, payload)
+      const dedupeId = extractDedupeId(message, payload)
       if (dedupeId) {
         if (dedupeRef.current.has(dedupeId)) return
         dedupeRef.current.add(dedupeId)
@@ -308,10 +272,10 @@ export function usePhotoProcessingEvents(params: { authed: boolean }): UsePhotoP
       abortRef.current = abort
 
       try {
-        const client = await connectPhotoEvents({
+        const client = await connectPhotoSocket({
           apiBaseUrl: API_BASE_URL,
           token,
-          onEvent: onFrame,
+          onMessage,
           onError: () => {
             // Do not log token/payload.
           },
@@ -358,24 +322,6 @@ export function usePhotoProcessingEvents(params: { authed: boolean }): UsePhotoP
         clientRef.current = null
         abortRef.current = null
 
-        // Deterministic kill-switch / rejection handling:
-        // - 503: server-side disable switch (fallback to polling for this session)
-        // - 429: per-user connection cap (avoid flapping; fallback to polling)
-        const status = (err && typeof err === 'object' && 'status' in err)
-          ? Number((err as { status?: unknown }).status)
-          : NaN
-
-        if (status === 503 || status === 429) {
-          disabledForSessionRef.current = true
-          try {
-            setStreamingActive(false, status === 503 ? 'server_disabled' : 'too_many_connections')
-          } catch {
-            // ignore
-          }
-          resumePollingForPending(status === 503 ? 'server_disabled' : 'too_many_connections')
-          return
-        }
-
         failuresRef.current += 1
         try {
           setStreamingActive(false, 'connect_failed')
@@ -397,6 +343,6 @@ export function usePhotoProcessingEvents(params: { authed: boolean }): UsePhotoP
   return {
     enabled,
     streaming: Boolean(enabled && streamingActive),
-    fallbackToPolling: Boolean(!enabled || disabledForSessionRef.current),
+    fallbackToPolling: false,
   }
 }

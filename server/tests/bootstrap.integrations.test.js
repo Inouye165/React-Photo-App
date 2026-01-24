@@ -51,7 +51,7 @@ describe('bootstrap/startIntegrations + shutdown', () => {
     const { createShutdownManager } = require('../bootstrap/shutdown');
 
     // Importing/creating app must not start integrations.
-    const { sseManager } = createApp({
+    const { socketManager } = createApp({
       db: createKnexStub(),
       supabase: createSupabaseStub(),
       logger: console,
@@ -60,7 +60,7 @@ describe('bootstrap/startIntegrations + shutdown', () => {
     expect(createPhotoStatusSubscriber).not.toHaveBeenCalled();
     expect(start).not.toHaveBeenCalled();
 
-    const { handles } = startIntegrations({ logger: console, sseManager, supabase: createSupabaseStub() });
+    const { handles } = startIntegrations({ logger: console, socketManager, supabase: createSupabaseStub() });
 
     expect(createPhotoStatusSubscriber).toHaveBeenCalledTimes(1);
     expect(start).toHaveBeenCalledTimes(1);
