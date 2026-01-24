@@ -24,7 +24,7 @@ interface ContactRequestBody {
 
 /**
  * Create rate limiter with environment-aware configuration
- * Production: Strict limits (5 requests/hour)
+ * Production: Strict limits (50 requests/hour)
  * Development/Test: Relaxed limits (100 requests/hour)
  */
 function createContactRateLimiter() {
@@ -32,7 +32,7 @@ function createContactRateLimiter() {
 
   return rateLimit({
     windowMs: 60 * 60 * 1000, // 1 hour window
-    max: isProduction ? 5 : 100,
+    max: isProduction ? 50 : 100,
     store: getRateLimitStore(),
     standardHeaders: true, // Return rate limit info in the `RateLimit-*` headers
     legacyHeaders: false, // Disable the `X-RateLimit-*` headers
