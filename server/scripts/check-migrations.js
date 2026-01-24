@@ -41,8 +41,8 @@ async function verifyMigrations(retryAttempt = 0) {
   // IMPORTANT: Use the same environment selection logic as server/db/index.js
   // Previously, this script had "auto-detect" logic that switched to 'production'
   // config when SUPABASE_DB_URL was present, even in development. This caused
-  // SSL/connection failures because production config expects strict SSL with
-  // CA certificates, while the main server uses relaxed SSL in development.
+    // SSL/connection failures because production config expects strict SSL with
+    // CA certificates, while the backend uses relaxed SSL in development.
   //
   // The fix: Always respect NODE_ENV, just like db/index.js does.
   const isTestRuntime = process.env.NODE_ENV === 'test' || typeof process.env.JEST_WORKER_ID !== 'undefined';

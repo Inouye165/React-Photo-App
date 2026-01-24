@@ -194,7 +194,7 @@ module.exports = function createPhotosDb({ db }) {
 
       let query = db('photos').select(...columns).where('user_id', userId);
 
-      // Collectible-attached photos must not appear in the main gallery feed.
+      // Collectible-attached photos must not appear in the frontend gallery feed.
       // Guard this for older/mocked schemas that don't have the column.
       if (await hasCollectibleIdColumn()) {
         query = query.whereNull('collectible_id');

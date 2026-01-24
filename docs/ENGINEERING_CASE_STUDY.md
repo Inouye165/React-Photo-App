@@ -301,7 +301,7 @@ Lumina has effectively grown into a **small, production-ready SaaS-style platfor
 
 **The Problem**
 The application exhibited a "Split Personality" behavior where it behaved like two completely different applications depending on the entry point:
-- **Personality A (`node server.js`):** The main server started successfully. It correctly identified the environment as `development`, used relaxed security settings (no strict SSL), and connected to the database without issues.
+- **Personality A (`node server.js`):** The backend started successfully. It correctly identified the environment as `development`, used relaxed security settings (no strict SSL), and connected to the database without issues.
 - **Personality B (`npm start` -> `check-migrations.js`):** The pre-start migration check failed immediately with a misleading error: `Knex: Timeout acquiring a connection. The pool is probably full.`
 
 **Root Cause Analysis**
@@ -324,7 +324,7 @@ We implemented a multi-layered fix to ensure consistency and reliability:
 3. **Better Diagnostics:** We added a "pre-flight" connection check to `check-migrations.js` using a raw `pg` client. This bypasses Knex's pool logic to report the *actual* error (e.g., `ENOTFOUND`, `ECONNREFUSED`, `SSL Error`) instead of a generic timeout.
 
 **Lessons Learned**
-- **Single Source of Truth:** Helper scripts (migrations, seeds, tests) must share the *exact same* configuration logic as the main application. Never duplicate environment detection logic.
+- **Single Source of Truth:** Helper scripts (migrations, seeds, tests) must share the *exact same* configuration logic as the backend. Never duplicate environment detection logic.
 - **Don't Trust Generic Errors:** "Timeout" often means "Unreachable," not "Busy." Always verify basic connectivity (ping, DNS) before tuning pool sizes.
 - **Local != Production:** Just because you are connecting to a production database (Supabase) doesn't mean your *runtime environment* is production. Your local machine is still a development environment.
 

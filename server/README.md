@@ -193,7 +193,7 @@ node server/scripts/fix-collectible-thumbnails.js --limit 100
   - **Production**: Set `FRONTEND_ORIGIN` environment variable to your deployed frontend URL (e.g., `https://your-frontend.example.com`)
   - **Local Dev**: Automatically includes `http://localhost:5173` (Vite), `http://localhost:3000`, `http://localhost:5174`
   - **Security**: Only explicitly whitelisted origins receive CORS headers; credentials enabled for secure cookie/token auth
-  - **Centralized**: All origin resolution uses `server/config/allowedOrigins.js` helpers (`resolveAllowedOrigin`, `isOriginAllowed`) for consistency across main CORS middleware, image auth, and auth routes
+  - **Centralized**: All origin resolution uses `server/config/allowedOrigins.js` helpers (`resolveAllowedOrigin`, `isOriginAllowed`) for consistency across backend CORS middleware (see `server/server.js`), image auth, and auth routes
 - **SSL Certificate Validation**: Production enforces strict SSL with CA certificate verification (see below).
 - **Ownership-Based Access Control**: The `/privilege` endpoint performs real-time database verification to ensure users can only modify or delete their own content. This prevents IDOR (Insecure Direct Object Reference) vulnerabilities.
 - **Secure Role Storage**: User roles are stored in `app_metadata` (server-controlled) instead of `user_metadata` (client-writable) to prevent privilege escalation attacks.

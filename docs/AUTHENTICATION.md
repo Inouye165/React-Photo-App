@@ -42,7 +42,7 @@ Authorization: Bearer <supabase_access_token>
 
 ## Terms of Service & Beta Disclaimer
 
-The application requires an explicit acceptance step before an authenticated user can access the main app UI.
+The application requires an explicit acceptance step before an authenticated user can access the frontend UI.
 
 - **Enforcement:** The frontend `AuthWrapper` component blocks rendering the authenticated application shell until terms are accepted.
 - **Persistence:** Acceptance is recorded in the database on the `users.terms_accepted_at` column.

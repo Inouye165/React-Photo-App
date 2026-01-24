@@ -21,7 +21,7 @@
  * - Requests from unknown origins get no CORS headers or are rejected (never a wildcard). This is by design.
  *
  * === Where this is used ===
- * - Main CORS middleware in server/server.js
+ * - Backend CORS middleware (server/server.js)
  * - All image/thumbnail routes (via imageAuth and display.js)
  *
  * === Security ===
