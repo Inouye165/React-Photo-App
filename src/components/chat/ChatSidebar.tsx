@@ -81,6 +81,21 @@ export default function ChatSidebar({ selectedRoomId, onSelectRoom }: ChatSideba
   }, [user?.id])
 
   useEffect(() => {
+    function onRoomRemoved() {
+      // Re-fetch rooms when notified a room was removed/left.
+      // Best-effort: ignore errors here.
+      fetchRooms()
+        .then((rooms) => setRoomState({ status: 'ready', rooms }))
+        .catch((err) => {
+          if (import.meta.env.DEV) console.debug('[ChatSidebar] Failed to refresh rooms after removal:', err)
+        })
+    }
+
+    window.addEventListener('room:removed', onRoomRemoved as EventListener)
+    return () => window.removeEventListener('room:removed', onRoomRemoved as EventListener)
+  }, [])
+
+  useEffect(() => {
     if (!isDiscoveryOpen) return
 
     // Focus input when opening

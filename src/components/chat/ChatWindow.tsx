@@ -2,7 +2,8 @@ import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 
 import { ArrowDown, Image as ImageIcon, Settings, Users, X } from 'lucide-react'
 
-import { API_BASE_URL, getAccessToken, getPhotos, patchChatRoom, sendMessage } from '../../api'
+import { API_BASE_URL, getAccessToken, getPhotos, patchChatRoom, sendMessage, leaveOrDeleteRoom } from '../../api'
+import { useNavigate } from 'react-router-dom'
 import { useChatRealtime } from '../../hooks/useChatRealtime'
 import { usePresence } from '../../hooks/usePresence'
 import { useChatTyping } from '../../hooks/useChatTyping'
@@ -74,6 +75,7 @@ export default function ChatWindow({ roomId, onOpenSidebar }: ChatWindowProps) {
   const [createdBy, setCreatedBy] = useState<string | null>(null)
   const [isSettingsOpen, setIsSettingsOpen] = useState<boolean>(false)
   const [isMembersOpen, setIsMembersOpen] = useState<boolean>(false)
+  const navigate = useNavigate()
 
   // Typing indicator hook (best-effort; no UI crash if Realtime unavailable)
   const { typingUsernames, handleInputChange, handleInputSubmit } = useChatTyping({
@@ -546,6 +548,25 @@ export default function ChatWindow({ roomId, onOpenSidebar }: ChatWindowProps) {
     [roomId],
   )
 
+    const handleLeaveRoom = useCallback(async (): Promise<void> => {
+      if (!roomId) return
+      await leaveOrDeleteRoom(roomId)
+
+      // Notify other UI (sidebar) to refresh and optimistically remove room.
+      try {
+        window.dispatchEvent(new CustomEvent('room:removed', { detail: { roomId } }))
+      } catch {
+        // ignore
+      }
+
+      // Navigate back to chat root
+      try {
+        navigate('/chat')
+      } catch {
+        // fallback: nothing
+      }
+    }, [roomId, navigate])
+
   if (!roomId) {
     return (
       <section className="flex-1 flex items-center justify-center p-6 bg-slate-50" aria-label="Chat window">
@@ -851,6 +872,8 @@ export default function ChatWindow({ roomId, onOpenSidebar }: ChatWindowProps) {
           metadata={roomMetadata}
           currentUserId={user?.id ?? null}
           onSave={async (patch) => handlePatchRoom(patch)}
+          onLeave={handleLeaveRoom}
+          isGroup={header.isGroup}
         />
       )}
       {header.isGroup && (
