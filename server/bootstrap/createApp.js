@@ -1,6 +1,19 @@
 function createApp(options = {}) {
   const express = require('express');
-  const { createSseManager } = require('../realtime/sseManager');
+  let createSocketManager;
+  try {
+    ({ createSocketManager } = require('../realtime/SocketManager'));
+  } catch (error) {
+    const message = error && error.message ? String(error.message) : '';
+    if (error && error.code === 'MODULE_NOT_FOUND' && message.includes('SocketManager')) {
+      ({ createSocketManager } = require('../realtime/SocketManager.ts'));
+    } else {
+      throw error;
+    }
+  }
+  const { createPhotoEventHistory } = require('../realtime/photoEventHistory');
+  const { getRedisClient } = require('../lib/redis');
+  const metrics = require('../metrics');
 
   const logger = options.logger || require('../logger');
   const db = options.db || require('../db/index');
@@ -29,12 +42,26 @@ function createApp(options = {}) {
 
   registerMiddleware(app);
 
-  // Real-time photo processing events (Phase 1: single instance, in-memory fanout)
-  const sseManager = createSseManager({ heartbeatMs: 25_000, maxConnectionsPerUser: 3 });
+  // Real-time photo processing events (WebSocket fanout)
+  const photoEventHistory = createPhotoEventHistory({
+    redis: getRedisClient(),
+    ttlSeconds: Number(process.env.REALTIME_HISTORY_TTL_SECONDS || 600),
+    maxEntries: Number(process.env.REALTIME_HISTORY_MAX_ENTRIES || 200),
+    maxReplay: Number(process.env.REALTIME_HISTORY_MAX_REPLAY || 200),
+    logger,
+  });
 
-  registerRoutes(app, { db, supabase, sseManager, logger });
+  const socketManager = createSocketManager({
+    heartbeatMs: 25_000,
+    maxConnectionsPerUser: 3,
+    metrics,
+    logger,
+    photoEventHistory,
+  });
 
-  return { app, sseManager };
+  registerRoutes(app, { db, supabase, socketManager, logger });
+
+  return { app, socketManager };
 }
 
 module.exports = {

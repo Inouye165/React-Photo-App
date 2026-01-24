@@ -37,7 +37,7 @@ function sanitizeOriginalFilename(originalName) {
  * - Scales horizontally (stateless)
  */
 
-module.exports = function createUploadsRouter({ db, sseManager } = {}) {
+module.exports = function createUploadsRouter({ db, socketManager } = {}) {
   const router = express.Router();
 
   // Enforce upload size limit from env (default 10MB)
@@ -350,8 +350,8 @@ module.exports = function createUploadsRouter({ db, sseManager } = {}) {
       // browser tabs so the CollectibleDetailView can refetch its reference-photos list.
       // Publish only after the DB row exists and storage_path invariants are satisfied.
       try {
-        if (collectibleId && photoId && sseManager && typeof sseManager.publishToUser === 'function') {
-          sseManager.publishToUser(String(req.user.id), 'collectible.photos.changed', {
+        if (collectibleId && photoId && socketManager && typeof socketManager.publishToUser === 'function') {
+          socketManager.publishToUser(String(req.user.id), 'collectible.photos.changed', {
             collectibleId: String(collectibleId),
             photoId: String(photoId),
             createdAt: new Date().toISOString(),

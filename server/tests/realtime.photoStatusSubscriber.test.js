@@ -6,7 +6,7 @@ describe('realtime/photoStatusSubscriber', () => {
     process.env.REDIS_URL = process.env.REDIS_URL || 'redis://localhost:6379';
 
     const publishToUser = jest.fn();
-    const sseManager = { publishToUser };
+    const socketManager = { publishToUser };
 
     const append = jest.fn().mockResolvedValue({ ok: true });
     const photoEventHistory = { append };
@@ -27,7 +27,7 @@ describe('realtime/photoStatusSubscriber', () => {
     };
 
     const subscriber = createPhotoStatusSubscriber({
-      sseManager,
+      socketManager,
       createRedisConnection: () => redis,
       photoEventHistory,
       metrics,

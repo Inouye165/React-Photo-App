@@ -62,7 +62,7 @@ describe('Collectible upload pipeline', () => {
 
     const createUploadsRouter = require('../routes/uploads');
     const publishToUser = jest.fn();
-    const sseManager = { publishToUser };
+    const socketManager = { publishToUser };
 
     // Minimal DB mock for uploads.js
     const photos = new Map();
@@ -125,7 +125,7 @@ describe('Collectible upload pipeline', () => {
       req.requestId = 'test-request-id';
       next();
     });
-    app.use('/uploads', createUploadsRouter({ db: mockDb, sseManager }));
+    app.use('/uploads', createUploadsRouter({ db: mockDb, socketManager }));
 
     const res = await request(app)
       .post('/uploads/upload?collectible_id=1')

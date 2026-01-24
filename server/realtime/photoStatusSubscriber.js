@@ -49,9 +49,9 @@ function parseAndValidateMessage(raw) {
 }
 
 function createPhotoStatusSubscriber(options = {}) {
-  const sseManager = options.sseManager;
-  if (!sseManager || typeof sseManager.publishToUser !== 'function') {
-    throw new Error('sseManager with publishToUser is required');
+  const socketManager = options.socketManager;
+  if (!socketManager || typeof socketManager.publishToUser !== 'function') {
+    throw new Error('socketManager with publishToUser is required');
   }
 
   const createRedisConnection = options.createRedisConnection || defaultCreateRedisConnection;
@@ -131,7 +131,7 @@ function createPhotoStatusSubscriber(options = {}) {
 
         // Per-user publish only; never broadcast.
         try {
-          sseManager.publishToUser(payload.userId, EVENT_NAME, payload);
+          socketManager.publishToUser(payload.userId, EVENT_NAME, payload);
           log.debug('[realtime] Forwarded photo status event', {
             userId: payload.userId,
             photoId: payload.photoId,

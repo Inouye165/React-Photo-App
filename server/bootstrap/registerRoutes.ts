@@ -9,7 +9,7 @@ type Logger = {
 type RegisterRoutesDeps = {
   db: unknown;
   supabase: unknown;
-  sseManager: unknown;
+  socketManager: unknown;
   logger?: Logger;
 };
 
@@ -44,11 +44,11 @@ function createLegacyApiDeprecationMiddleware(mappings: LegacyRouteMapping[]) {
   };
 }
 
-export function registerRoutes(app: Application, { db, supabase, sseManager, logger }: RegisterRoutesDeps) {
+export function registerRoutes(app: Application, { db, supabase, socketManager, logger }: RegisterRoutesDeps) {
   if (!app) throw new Error('app is required');
   if (!db) throw new Error('db is required');
   if (!supabase) throw new Error('supabase is required');
-  if (!sseManager) throw new Error('sseManager is required');
+  if (!socketManager) throw new Error('socketManager is required');
 
   const multer = require('multer');
 
@@ -173,7 +173,7 @@ export function registerRoutes(app: Application, { db, supabase, sseManager, log
   );
   app.use('/api/v1/photos', photosRouter);
 
-  const eventsRouter = createEventsRouter({ authenticateToken, sseManager });
+  const eventsRouter = createEventsRouter({ authenticateToken, socketManager });
   app.use(
     '/events',
     createLegacyApiDeprecationMiddleware([{ legacyBase: '/events', successorBase: '/api/v1/events' }]),
@@ -181,7 +181,7 @@ export function registerRoutes(app: Application, { db, supabase, sseManager, log
   );
   app.use('/api/v1/events', eventsRouter);
 
-  const captureIntentsRouter = createCaptureIntentsRouter({ db, sseManager });
+  const captureIntentsRouter = createCaptureIntentsRouter({ db, socketManager });
   app.use(
     '/capture-intents',
     createLegacyApiDeprecationMiddleware([{ legacyBase: '/capture-intents', successorBase: '/api/v1/capture-intents' }]),
@@ -215,7 +215,7 @@ export function registerRoutes(app: Application, { db, supabase, sseManager, log
     usersRouter
   );
   app.use('/api/v1/users', usersRouter);
-  const uploadsRouter = createUploadsRouter({ db, sseManager });
+  const uploadsRouter = createUploadsRouter({ db, socketManager });
   app.use(authenticateToken, uploadsRouter);
   app.use('/api/v1', authenticateToken, uploadsRouter);
   const privilegeRouter = createPrivilegeRouter({ db });

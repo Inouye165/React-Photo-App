@@ -17,7 +17,7 @@ const { logger, db, supabase } = bootstrap.createDependencies();
 bootstrap.registerProcessHandlers({ logger });
 
 // Create Express app and register middleware/routes.
-const { app, sseManager } = bootstrap.createApp({ logger, db, supabase });
+const { app, socketManager } = bootstrap.createApp({ logger, db, supabase });
 
 const PORT = process.env.PORT || 3001;
 
@@ -27,7 +27,29 @@ if (process.env.NODE_ENV !== 'test') {
 
   shutdownManager.register('otel', () => tracing.shutdown());
 
-  const server = app.listen(PORT, () => {
+  const http = require('http');
+  const server = http.createServer(app);
+
+  server.on('upgrade', (req: any, socket: any, head: any) => {
+    try {
+      const url = new URL(req.url || '/', 'http://localhost');
+      const pathname = url.pathname;
+      if (pathname === '/events/photos' || pathname === '/api/v1/events/photos') {
+        socketManager.handleUpgrade(req, socket, head);
+        return;
+      }
+    } catch {
+      // ignore
+    }
+
+    try {
+      socket.destroy();
+    } catch {
+      // ignore
+    }
+  });
+
+  server.listen(PORT, () => {
     console.log(`Photo upload server running on port ${PORT}`);
     console.log(`Health check: http://localhost:${PORT}/health`);
   });
@@ -42,7 +64,15 @@ if (process.env.NODE_ENV !== 'test') {
     });
   });
 
-  const { handles } = bootstrap.startIntegrations({ logger, sseManager, supabase });
+  shutdownManager.register('websockets', async () => {
+    try {
+      socketManager.closeAll?.('server_shutdown');
+    } catch {
+      // ignore
+    }
+  });
+
+  const { handles } = bootstrap.startIntegrations({ logger, socketManager, supabase });
   for (const h of handles) {
     shutdownManager.register(h.name, h.stop);
   }

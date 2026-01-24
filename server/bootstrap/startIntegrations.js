@@ -1,4 +1,4 @@
-function startIntegrations({ logger, sseManager, supabase }) {
+function startIntegrations({ logger, socketManager, supabase }) {
   if (!logger) logger = require('../logger');
 
   const handles = [];
@@ -6,7 +6,7 @@ function startIntegrations({ logger, sseManager, supabase }) {
   // Phase 2: multi-instance readiness via Redis Pub/Sub fanout (best-effort)
   try {
     const { createPhotoStatusSubscriber } = require('../realtime/photoStatusSubscriber');
-    const photoStatusSubscriber = createPhotoStatusSubscriber({ sseManager });
+    const photoStatusSubscriber = createPhotoStatusSubscriber({ socketManager });
 
     photoStatusSubscriber.start().catch((err) => {
       logger.error('[realtime] Failed to start photo status subscriber', err);
