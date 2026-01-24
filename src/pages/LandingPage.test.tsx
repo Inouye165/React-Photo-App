@@ -57,6 +57,10 @@ describe('LandingPage', () => {
   it('handles successful form submission', async () => {
     (global.fetch as any).mockResolvedValueOnce({
       ok: true,
+      json: async () => ({ csrfToken: 'test-csrf-token' }),
+    });
+    (global.fetch as any).mockResolvedValueOnce({
+      ok: true,
       json: async () => ({ success: true }),
     });
 
@@ -76,18 +80,30 @@ describe('LandingPage', () => {
       expect(screen.getByText(/Message sent successfully/i)).toBeInTheDocument();
     });
 
-    expect(global.fetch).toHaveBeenCalledWith(expect.stringContaining('/api/public/contact'), expect.objectContaining({
-      method: 'POST',
-      body: JSON.stringify({
-        name: 'John Doe',
-        email: 'john@example.com',
-        subject: 'Access Request: General Inquiry',
-        message: 'Hello!'
+    expect(global.fetch).toHaveBeenCalledWith(
+      expect.stringContaining('/api/public/contact'),
+      expect.objectContaining({
+        method: 'POST',
+        credentials: 'include',
+        headers: expect.objectContaining({
+          'Content-Type': 'application/json',
+          'x-csrf-token': 'test-csrf-token',
+        }),
+        body: JSON.stringify({
+          name: 'John Doe',
+          email: 'john@example.com',
+          subject: 'Access Request: General Inquiry',
+          message: 'Hello!'
+        })
       })
-    }));
+    );
   });
 
   it('handles API errors correctly', async () => {
+    (global.fetch as any).mockResolvedValueOnce({
+      ok: true,
+      json: async () => ({ csrfToken: 'test-csrf-token' }),
+    });
     (global.fetch as any).mockResolvedValueOnce({
       ok: false,
       status: 500,
@@ -109,6 +125,10 @@ describe('LandingPage', () => {
   });
 
   it('handles rate limit errors correctly', async () => {
+    (global.fetch as any).mockResolvedValueOnce({
+      ok: true,
+      json: async () => ({ csrfToken: 'test-csrf-token' }),
+    });
     (global.fetch as any).mockResolvedValueOnce({
       ok: false,
       status: 429,

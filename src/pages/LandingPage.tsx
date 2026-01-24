@@ -16,6 +16,24 @@ interface ContactFormState {
 
 const API_BASE_URL = import.meta.env.VITE_API_URL || 'http://localhost:3001';
 
+const fetchCsrfToken = async (): Promise<string> => {
+  const response = await fetch(`${API_BASE_URL}/csrf`, {
+    method: 'GET',
+    credentials: 'include',
+  });
+
+  if (!response.ok) {
+    throw new Error('Failed to fetch CSRF token');
+  }
+
+  const data = (await response.json().catch(() => null)) as { csrfToken?: unknown } | null;
+  if (!data || typeof data.csrfToken !== 'string' || data.csrfToken.trim().length === 0) {
+    throw new Error('Invalid CSRF token response');
+  }
+
+  return data.csrfToken;
+};
+
 const LandingPage: React.FC = () => {
   const location = useLocation();
   const [view, setView] = useState<ViewState>('landing');
@@ -95,11 +113,20 @@ const LandingPage: React.FC = () => {
     };
 
     try {
+      let csrfToken: string;
+      try {
+        csrfToken = await fetchCsrfToken();
+      } catch {
+        setSubmitStatus({ type: 'error', message: 'Failed to send message. Please try again.' });
+        return;
+      }
       const response = await fetch(`${API_BASE_URL}/api/public/contact`, {
         method: 'POST',
         headers: {
           'Content-Type': 'application/json',
+          'x-csrf-token': csrfToken,
         },
+        credentials: 'include',
         body: JSON.stringify(payload),
       });
 
