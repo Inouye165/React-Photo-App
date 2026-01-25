@@ -136,3 +136,5 @@ async function authenticateImageRequest(req, res, next) {
 module.exports = {
   authenticateImageRequest
 };
+
+export {};

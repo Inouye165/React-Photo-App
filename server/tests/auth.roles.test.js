@@ -288,7 +288,7 @@ describe('Role Security Tests - Privilege Escalation Prevention', () => {
       const fs = require('fs');
       const path = require('path');
       
-      const authMiddlewarePath = path.join(__dirname, '../middleware/auth.js');
+      const authMiddlewarePath = path.join(__dirname, '../middleware/auth.ts');
       const authMiddlewareContent = fs.readFileSync(authMiddlewarePath, 'utf8');
       
       // Verify the vulnerable pattern is NOT present
@@ -310,7 +310,7 @@ describe('Role Security Tests - Privilege Escalation Prevention', () => {
       const fs = require('fs');
       const path = require('path');
       
-      const authMiddlewarePath = path.join(__dirname, '../middleware/auth.js');
+      const authMiddlewarePath = path.join(__dirname, '../middleware/auth.ts');
       const authMiddlewareContent = fs.readFileSync(authMiddlewarePath, 'utf8');
       
       // Verify there's a comment about security or app_metadata
