@@ -25,7 +25,7 @@
     "lint:web": "eslint src --cache",
     "format": "eslint . --fix --cache",
     "format:check": "eslint . --cache --max-warnings 0",
-    "type-check": "tsc -p tsconfig.json --noEmit && tsc --noEmit --target ES2022 --module commonjs --esModuleInterop --skipLibCheck server/tests/auth.middleware.test.ts server/tests/auth.v2.test.ts server/tests/redis.wrapper.test.ts && tsc -p server/tsconfig.json --noEmit",
+    "type-check": "tsc -p tsconfig.json --noEmit && tsc --noEmit --target ES2022 --module commonjs --esModuleInterop --skipLibCheck server/tests/auth.middleware.test.ts server/tests/auth.v2.test.ts server/tests/redis.wrapper.test.ts && tsc -p server/tsconfig.typecheck.json",
     "preview": "vite preview",
     "test:e2e": "playwright test",
     "test:a11y": "playwright test e2e/a11y.*",
