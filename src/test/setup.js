@@ -267,6 +267,8 @@ vi.mock('../supabaseClient', () => ({
       signUp: vi.fn().mockResolvedValue({ data: { user: { id: '1', email: 'test@example.com' } }, error: null }),
       signOut: vi.fn().mockResolvedValue({ error: null }),
     }
+    ,
+    rpc: vi.fn(() => Promise.resolve({ data: null, error: null }))
   }
 }))
 

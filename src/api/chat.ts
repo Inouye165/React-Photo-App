@@ -239,6 +239,22 @@ export async function quitRoom(roomId: string): Promise<void> {
   if (error) throw error
 }
 
+export async function leaveOrDeleteRoom(roomId: string): Promise<void> {
+  await requireAuthedUserId()
+  if (!roomId) throw new Error('Missing roomId')
+
+  // Call Postgres RPC that will either soft-delete the room (if owner) or mark
+  // the membership deleted (soft delete via deleted_at). Expect RLS to filter by deleted_at IS NULL.
+  const { error } = await supabase.rpc('leave_or_delete_room', { target_room_id: roomId })
+
+  if (error) {
+    const message = error.message || 'Unable to leave or delete the chat.'
+    throw new Error(message)
+  }
+
+  return
+}
+
 export async function setRoomOwner(roomId: string, userId: string, isOwner: boolean): Promise<void> {
   await requireAuthedUserId()
   if (!roomId) throw new Error('Missing roomId')

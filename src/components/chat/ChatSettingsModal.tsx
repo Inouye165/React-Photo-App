@@ -9,6 +9,8 @@ interface ChatSettingsModalProps {
   metadata: ChatRoomMetadata | null
   currentUserId?: string | null
   onSave: (patch: { type: ChatRoomType; metadata: ChatRoomMetadata }) => Promise<void>
+  onLeave?: () => Promise<void>
+  isGroup?: boolean
 }
 
 type MapboxSuggestion = {
@@ -79,6 +81,8 @@ export default function ChatSettingsModal({
   metadata,
   currentUserId,
   onSave,
+  onLeave,
+  isGroup,
 }: ChatSettingsModalProps) {
   const mapboxToken = import.meta.env.VITE_MAPBOX_ACCESS_TOKEN
   const [selectedType, setSelectedType] = useState<ChatRoomType>(roomType)
@@ -476,17 +480,61 @@ export default function ChatSettingsModal({
           )}
         </div>
 
-        <div className="p-4 border-t border-slate-100 bg-slate-50 flex justify-end gap-3">
-          <button onClick={onClose} className="px-4 py-2 text-sm font-medium text-slate-600 hover:text-slate-800">
-            Cancel
-          </button>
+        <Footer onClose={onClose} handleSave={handleSave} onLeave={onLeave} isGroup={isGroup} />
+      </div>
+    </div>
+  )
+}
+
+function Footer({ onClose, handleSave, onLeave, isGroup }: any) {
+  const [leaving, setLeaving] = useState(false)
+  const [leaveError, setLeaveError] = useState<string | null>(null)
+
+  const doLeave = async () => {
+    if (!onLeave) return
+    const confirmed = window.confirm(isGroup ? 'Leave this group?' : 'Delete this direct message?')
+    if (!confirmed) return
+    try {
+      setLeaveError(null)
+      setLeaving(true)
+      await onLeave()
+      try {
+        onClose()
+      } catch {
+        // ignore
+      }
+    } catch (err) {
+      const message = err instanceof Error ? err.message : String(err)
+      setLeaveError(message)
+    } finally {
+      setLeaving(false)
+    }
+  }
+
+  return (
+    <div className="p-4 border-t border-slate-100 bg-slate-50 flex justify-between items-center gap-3">
+      <div className="flex-1">
+        {leaveError && <div className="text-sm text-red-600">{leaveError}</div>}
+      </div>
+      <div className="flex items-center gap-3">
+        {onLeave && (
           <button
-            onClick={handleSave}
-            className="px-4 py-2 text-sm font-medium text-white bg-blue-600 rounded-lg hover:bg-blue-700 shadow-sm"
+            onClick={doLeave}
+            disabled={leaving}
+            className="px-4 py-2 text-sm font-medium text-white bg-rose-600 rounded-lg hover:bg-rose-700 shadow-sm"
           >
-            Save Changes
+            {leaving ? 'Working…' : isGroup ? 'Leave Group' : 'Delete Chat'}
           </button>
-        </div>
+        )}
+        <button onClick={onClose} className="px-4 py-2 text-sm font-medium text-slate-600 hover:text-slate-800">
+          Cancel
+        </button>
+        <button
+          onClick={handleSave}
+          className="px-4 py-2 text-sm font-medium text-white bg-blue-600 rounded-lg hover:bg-blue-700 shadow-sm"
+        >
+          Save Changes
+        </button>
       </div>
     </div>
   )
