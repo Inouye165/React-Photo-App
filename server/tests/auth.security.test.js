@@ -175,8 +175,8 @@ describe('Authentication Security Tests', () => {
       const fs = require('fs');
       const path = require('path');
       
-      const authMiddlewarePath = path.join(__dirname, '../middleware/auth.js');
-      const authRoutesPath = path.join(__dirname, '../routes/auth.js');
+      const authMiddlewarePath = path.join(__dirname, '../middleware/auth.ts');
+      const authRoutesPath = path.join(__dirname, '../routes/auth.ts');
       
       const authMiddlewareContent = fs.readFileSync(authMiddlewarePath, 'utf8');
       const authRoutesContent = fs.readFileSync(authRoutesPath, 'utf8');

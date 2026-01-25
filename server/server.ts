@@ -82,3 +82,5 @@ if (process.env.NODE_ENV !== 'test') {
 
 // Export after full configuration so tests/importers always get the complete app.
 module.exports = app;
+
+export {};

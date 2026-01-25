@@ -65,7 +65,7 @@ function verifyOrigin(req, res, next) {
  * Factory function to create auth router
  * Handles authentication-related endpoints including cookie-based session management
  */
-function createAuthRouter({ db: _db } = {}) {
+function createAuthRouter({ db: _db }: { db?: unknown } = {}) {
   const router = express.Router();
 
   // Apply rate limiting and origin verification to all auth routes
@@ -130,3 +130,5 @@ function createAuthRouter({ db: _db } = {}) {
 }
 
 module.exports = createAuthRouter;
+
+export {};
