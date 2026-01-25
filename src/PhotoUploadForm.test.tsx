@@ -1,3 +1,4 @@
+// @ts-nocheck
 import React from 'react'
 import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest'
 import { render, screen, fireEvent } from '@testing-library/react'
@@ -26,7 +27,7 @@ vi.mock('@tanstack/react-virtual', () => ({
 
 
 // Mock Thumbnail component
-vi.mock('./components/Thumbnail.jsx', () => ({
+vi.mock('./components/Thumbnail.tsx', () => ({
   default: () => <div data-testid="thumbnail-mock" />
 }));
 

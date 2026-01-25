@@ -1,3 +1,4 @@
+// @ts-nocheck
 import '@testing-library/jest-dom/vitest'
 import { vi, afterEach, beforeEach } from 'vitest'
 import { cleanup } from '@testing-library/react'
@@ -109,6 +110,10 @@ const mockApiResponses = {
 vi.mock('../contexts/AuthContext', () => {
   const mockAuthContext = {
     user: { id: 1, username: 'testuser' },
+    authReady: true,
+    profile: { has_set_username: true },
+    profileLoading: false,
+    profileError: null,
     token: 'mock-jwt-token',
     loading: false,
     login: vi.fn().mockResolvedValue({ success: true }),
@@ -135,13 +140,30 @@ const localStorageMock = {
   getItem: vi.fn((key) => {
     if (key === 'token') return 'mock-jwt-token';
     if (key === 'user') return JSON.stringify({ id: 1, username: 'testuser' });
+    if (String(key || '').startsWith('terms_accepted_')) return 'true';
     return null;
   }),
   setItem: vi.fn(),
   removeItem: vi.fn(),
   clear: vi.fn(),
 }
-global.localStorage = localStorageMock
+
+const defineLocalStorage = (target) => {
+  try {
+    Object.defineProperty(target, 'localStorage', {
+      value: localStorageMock,
+      configurable: true,
+      writable: true,
+    })
+  } catch {
+    // Ignore if the property is non-configurable/read-only in this environment.
+  }
+}
+
+defineLocalStorage(globalThis)
+if (typeof window !== 'undefined') {
+  defineLocalStorage(window)
+}
 
 // Mock window.showDirectoryPicker for File System Access API tests
 global.showDirectoryPicker = vi.fn()
@@ -235,119 +257,172 @@ global.Image = class {
 }
 
 // Mock Supabase client
-vi.mock('../supabaseClient', () => ({
-  supabase: {
-    from: vi.fn(() => {
-      const makeThenable = (result) => {
-        const builder = {
-          select: () => builder,
-          in: () => makeThenable({ data: [], error: null }),
-          eq: () => builder,
-          neq: () => builder,
-          limit: () => builder,
-          maybeSingle: () => makeThenable({ data: null, error: null }),
-          update: () => {
-            const updateBuilder = {
-              eq: () => updateBuilder,
-              then: (onFulfilled, onRejected) => Promise.resolve({ data: null, error: null }).then(onFulfilled, onRejected),
-            }
-            return updateBuilder
-          },
-          then: (onFulfilled, onRejected) => Promise.resolve(result).then(onFulfilled, onRejected),
-        }
-        return builder
-      }
-
-      return makeThenable({ data: [], error: null })
-    }),
-    auth: {
-      getSession: vi.fn().mockResolvedValue({ data: { session: { access_token: 'mock-token' } } }),
-      onAuthStateChange: vi.fn().mockReturnValue({ data: { subscription: { unsubscribe: vi.fn() } } }),
-      signInWithPassword: vi.fn().mockResolvedValue({ data: { user: { id: '1', email: 'test@example.com' } }, error: null }),
-      signUp: vi.fn().mockResolvedValue({ data: { user: { id: '1', email: 'test@example.com' } }, error: null }),
-      signOut: vi.fn().mockResolvedValue({ error: null }),
-    }
-    ,
-    rpc: vi.fn(() => Promise.resolve({ data: null, error: null }))
+vi.mock('../supabaseClient', () => {
+  const channelMock = {
+    on: vi.fn().mockReturnThis(),
+    subscribe: vi.fn().mockReturnThis(),
+    unsubscribe: vi.fn(),
   }
-}))
+
+  return {
+    supabase: {
+      from: vi.fn(() => {
+        const makeThenable = (result) => {
+          const builder = {
+            select: () => builder,
+            in: () => makeThenable({ data: [], error: null }),
+            eq: () => builder,
+            neq: () => builder,
+            limit: () => builder,
+            maybeSingle: () => makeThenable({ data: null, error: null }),
+            update: () => {
+              const updateBuilder = {
+                eq: () => updateBuilder,
+                then: (onFulfilled, onRejected) => Promise.resolve({ data: null, error: null }).then(onFulfilled, onRejected),
+              }
+              return updateBuilder
+            },
+            then: (onFulfilled, onRejected) => Promise.resolve(result).then(onFulfilled, onRejected),
+          }
+          return builder
+        }
+
+        return makeThenable({ data: [], error: null })
+      }),
+      channel: vi.fn(() => channelMock),
+      removeChannel: vi.fn(),
+      auth: {
+        getSession: vi.fn().mockResolvedValue({ data: { session: { access_token: 'mock-token' } } }),
+        onAuthStateChange: vi.fn().mockReturnValue({ data: { subscription: { unsubscribe: vi.fn() } } }),
+        signInWithPassword: vi.fn().mockResolvedValue({ data: { user: { id: '1', email: 'test@example.com' } }, error: null }),
+        signUp: vi.fn().mockResolvedValue({ data: { user: { id: '1', email: 'test@example.com' } }, error: null }),
+        signOut: vi.fn().mockResolvedValue({ error: null }),
+      },
+      rpc: vi.fn(() => Promise.resolve({ data: null, error: null })),
+    },
+  }
+})
 
 // CRITICAL FIX: Create a factory function that returns fresh state for each test
-const createDefaultState = () => ({
-  photos: [],
-  toast: { message: '', severity: 'info' },
-  banner: { message: '', severity: 'info' },
-  view: 'working',
-  activePhotoId: null,
-  editingMode: null,
-  showMetadataModal: false,
-  metadataPhoto: null,
-  uploadPicker: { ...uploadPickerInitialState },
-  toolbarMessage: '',
-  toolbarSeverity: 'info',
-  pollingPhotoId: null,
-  pollingPhotoIds: new Set(),
-  justUploadedPhotoIds: new Set(),
-  pendingUploads: [],
-  backgroundUploads: [],
-  setPhotos: vi.fn(),
-  setBanner: vi.fn(),
-  setToast: vi.fn(),
-  setView: vi.fn(),
-  setActivePhotoId: vi.fn(),
-  setEditingMode: vi.fn(),
-  setShowMetadataModal: vi.fn(),
-  setMetadataPhoto: vi.fn(),
-  setToolbarMessage: vi.fn(),
-  setToolbarSeverity: vi.fn(),
-  setPollingPhotoId: vi.fn(),
-  addPollingId: vi.fn(),
-  removePollingId: vi.fn(),
-  startAiPolling: vi.fn(),
-  stopAiPolling: vi.fn(),
-  updatePhotoData: vi.fn(),
-  updatePhoto: vi.fn(),
-  removePhotoById: vi.fn(),
-  moveToInprogress: vi.fn(),
-  markPhotoAsJustUploaded: vi.fn(),
-  removeJustUploadedMark: vi.fn(),
-  isPhotoJustUploaded: vi.fn(),
-  addPendingUploads: vi.fn(),
-  removePendingUpload: vi.fn(),
-  clearPendingUploads: vi.fn(),
-  pickerCommand: {
-    openPicker: vi.fn(),
-    closePicker: vi.fn(),
-    resetPicker: vi.fn(),
-    setFilters: vi.fn(),
-    queuePhotos: vi.fn(),
-    startUpload: vi.fn(),
-    markUploadSuccess: vi.fn(),
-    markUploadFailure: vi.fn(),
-    finishUploads: vi.fn(),
-  },
-})
+let defaultState
+
+const createDefaultState = () => {
+  const state = {
+    photos: [],
+    photosCursor: null,
+    photosHasMore: false,
+    toast: { message: '', severity: 'info' },
+    banner: { message: '', severity: 'info' },
+    view: 'working',
+    activePhotoId: null,
+    editingMode: null,
+    showMetadataModal: false,
+    metadataPhoto: null,
+    uploadPicker: { ...uploadPickerInitialState },
+    toolbarMessage: '',
+    toolbarSeverity: 'info',
+    pollingPhotoId: null,
+    pollingPhotoIds: new Set(),
+    justUploadedPhotoIds: new Set(),
+    pendingUploads: [],
+    backgroundUploads: [],
+    setPhotos: vi.fn(),
+    appendPhotos: vi.fn(),
+    resetPhotos: vi.fn(),
+    setBanner: vi.fn(),
+    setToast: vi.fn(),
+    setView: vi.fn(),
+    setActivePhotoId: vi.fn(),
+    setEditingMode: vi.fn(),
+    setShowMetadataModal: vi.fn(),
+    setMetadataPhoto: vi.fn(),
+    setToolbarMessage: vi.fn(),
+    setToolbarSeverity: vi.fn(),
+    setPollingPhotoId: vi.fn(),
+    addPollingId: vi.fn(),
+    removePollingId: vi.fn(),
+    startAiPolling: vi.fn(),
+    stopAiPolling: vi.fn(),
+    updatePhotoData: vi.fn(),
+    updatePhoto: vi.fn(),
+    removePhotoById: vi.fn(),
+    moveToInprogress: vi.fn(),
+    markPhotoAsJustUploaded: vi.fn(),
+    removeJustUploadedMark: vi.fn(),
+    isPhotoJustUploaded: vi.fn(),
+    addPendingUploads: vi.fn(),
+    removePendingUpload: vi.fn(),
+    clearPendingUploads: vi.fn(),
+    pickerCommand: {
+      openPicker: vi.fn(),
+      closePicker: vi.fn(),
+      resetPicker: vi.fn(),
+      setFilters: vi.fn(),
+      queuePhotos: vi.fn(),
+      startUpload: vi.fn(),
+      markUploadSuccess: vi.fn(),
+      markUploadFailure: vi.fn(),
+      finishUploads: vi.fn(),
+    },
+  }
+
+  state.setBanner = vi.fn((banner) => {
+    state.banner = { ...state.banner, ...banner }
+  })
+
+  state.setPhotos = vi.fn((photos) => {
+    state.photos = Array.isArray(photos) ? photos : []
+  })
+
+  state.resetPhotos = vi.fn((photos, nextCursor, hasMore) => {
+    state.photos = Array.isArray(photos) ? photos : []
+    state.photosCursor = nextCursor ?? null
+    state.photosHasMore = Boolean(hasMore)
+  })
+
+  state.appendPhotos = vi.fn((photos, nextCursor, hasMore) => {
+    const next = Array.isArray(photos) ? photos : []
+    state.photos = [...state.photos, ...next]
+    state.photosCursor = nextCursor ?? null
+    state.photosHasMore = Boolean(hasMore)
+  })
+
+  return state
+}
+
+const resetDefaultState = () => {
+  defaultState = createDefaultState()
+  return defaultState
+}
+
+resetDefaultState()
 
 // Mock Zustand store with fresh state for each test
 vi.mock('../store', () => {
-  return {
-    default: vi.fn((selector) => {
-      const defaultState = createDefaultState()
-      
-      if (typeof selector === 'function') {
-        return selector(defaultState)
-      }
-      return defaultState
-    })
+  const useStore = vi.fn((selector) => {
+    if (typeof selector === 'function') {
+      return selector(defaultState)
+    }
+    return defaultState
+  })
+
+  useStore.getState = () => defaultState
+  useStore.setState = (partial) => {
+    const nextState = typeof partial === 'function' ? partial(defaultState) : partial
+    Object.assign(defaultState, nextState)
   }
+
+  return { default: useStore }
 })
 
 // Reset mocks before each test
 beforeEach(() => {
   vi.clearAllMocks();
+  resetDefaultState()
   localStorageMock.getItem.mockImplementation((key) => {
     if (key === 'token') return 'mock-jwt-token';
     if (key === 'user') return JSON.stringify({ id: 1, username: 'testuser' });
+    if (String(key || '').startsWith('terms_accepted_')) return 'true';
     return null;
   });
 });

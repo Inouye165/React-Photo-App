@@ -1,3 +1,4 @@
+// @ts-nocheck
 /**
  * Unit Tests for Client-Side Image Processing Utility
  * 

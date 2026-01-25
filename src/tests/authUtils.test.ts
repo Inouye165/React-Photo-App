@@ -1,3 +1,4 @@
+// @ts-nocheck
 import { describe, test, expect } from 'vitest';
 
 describe('auth utils - placeholder', () => {

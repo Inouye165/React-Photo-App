@@ -1,3 +1,4 @@
+// @ts-nocheck
 import React from 'react';
 import { describe, it, expect, vi, beforeEach } from 'vitest';
 import { render, screen, waitFor } from '@testing-library/react';
@@ -64,6 +65,10 @@ vi.mock('./hooks/useUnreadMessages', () => ({
     loading: false,
     markAllAsRead: vi.fn(),
   })),
+}));
+
+vi.mock('./layouts/AuthWrapper', () => ({
+  default: ({ children }) => React.createElement(React.Fragment, null, children),
 }));
 
 vi.mock('./supabaseClient', () => ({

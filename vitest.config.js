@@ -14,7 +14,7 @@ export default defineConfig({
       '**/App.test.jsx', // Exclude memory-heavy App.test.jsx (covered by App.auth.test.jsx)
     ],
     environment: 'happy-dom',
-    setupFiles: ['./src/test/setup.js'],
+    setupFiles: ['./src/test/setup.ts'],
     // CRITICAL: Use forks with single fork to prevent memory accumulation
     pool: 'forks',
     poolOptions: {

@@ -1,6 +1,5 @@
 // @vitest-environment jsdom
 
-import React from 'react';
 import { describe, it, expect, vi } from 'vitest';
 import { render, screen } from '@testing-library/react';
 import { MemoryRouter, Routes, Route, Outlet } from 'react-router-dom';
@@ -8,7 +7,7 @@ import PhotoGalleryPage from './PhotoGalleryPage';
 
 // Mock the PhotoGallery component to avoid deep rendering.
 // Note: vi.mock is hoisted; avoid referencing top-level variables inside the factory.
-vi.mock('../PhotoGallery.jsx', async () => {
+vi.mock('../PhotoGallery.tsx', async () => {
   const React = await import('react');
   const GalleryMock = () => React.createElement('div', { 'data-testid': 'gallery-mock' });
   GalleryMock.displayName = 'GalleryMock';
@@ -66,7 +65,7 @@ vi.mock('../store', () => {
     moveToInprogress: vi.fn(async () => ({ success: true })),
   };
 
-  const useStore = (selector) => selector(mockState);
+  const useStore = (selector: (state: typeof mockState) => unknown) => selector(mockState);
   useStore.getState = () => mockState;
   return { default: useStore };
 });

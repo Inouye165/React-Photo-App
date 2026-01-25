@@ -1,3 +1,4 @@
+// @ts-nocheck
 /**
  * Tests for Thumbnail Cache Utility
  * 
