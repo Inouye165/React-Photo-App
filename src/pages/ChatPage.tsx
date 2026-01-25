@@ -13,6 +13,7 @@ export default function ChatPage() {
   const prevUserIdRef = useRef<string | null>(user?.id ?? null)
 
   const [drawerOpen, setDrawerOpen] = useState(false)
+  const [isChatCollapsed, setIsChatCollapsed] = useState(false)
 
   useEffect(() => {
     if (!drawerOpen) return
@@ -54,18 +55,25 @@ export default function ChatPage() {
     setDrawerOpen(false)
   }, [])
 
+  const gridColumns = isChatCollapsed
+    ? 'lg:grid-cols-[60px_minmax(0,1fr)]'
+    : 'lg:grid-cols-[minmax(320px,480px)_minmax(0,1fr)]'
+
   return (
-    <div className="relative flex flex-col sm:flex-row h-[calc(100vh-88px)]" data-testid="chat-page">
-      <div className={`${roomId ? 'hidden sm:block' : 'block'} w-full sm:w-auto`}>
-        <ChatSidebar key={user?.id ?? 'anon'} selectedRoomId={roomId} onSelectRoom={onSelectRoom} />
-      </div>
+    <div
+      className={`relative grid h-screen overflow-hidden grid-cols-1 ${gridColumns} bg-slate-100`}
+      data-testid="chat-page"
+    >
+      <ChatWindow
+        key={user?.id ?? 'anon'}
+        roomId={roomId}
+        onOpenSidebar={openDrawer}
+        isChatCollapsed={isChatCollapsed}
+        onToggleCollapse={() => setIsChatCollapsed((prev) => !prev)}
+      />
 
-      <div className={`${roomId ? 'block' : 'hidden sm:block'} flex-1`}>
-        <ChatWindow key={user?.id ?? 'anon'} roomId={roomId} onOpenSidebar={openDrawer} />
-      </div>
-
-      {drawerOpen && roomId && (
-        <div className="sm:hidden fixed inset-0 z-50" role="dialog" aria-modal="true" aria-label="Chat rooms">
+      {drawerOpen && (
+        <div className="fixed inset-0 z-50" role="dialog" aria-modal="true" aria-label="Chat rooms">
           <button
             type="button"
             className="absolute inset-0 bg-black/40"
