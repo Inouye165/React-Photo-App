@@ -324,7 +324,10 @@ export default function ChatSidebar({ selectedRoomId, onSelectRoom }: ChatSideba
     createMode === 'group' && Boolean(trimmedGroupName) && selectedUsers.length >= minGroupMembers && !creatingRoom
 
   return (
-    <aside className="w-full sm:w-80 shrink-0 border-r border-slate-200 bg-white" aria-label="Chat rooms">
+    <aside
+      className="w-full sm:w-80 shrink-0 border-r border-slate-200 bg-white h-full flex flex-col"
+      aria-label="Chat rooms"
+    >
       <div className="p-4 border-b border-slate-200">
         <div className="flex items-start justify-between gap-3">
           <div className="min-w-0">
@@ -355,7 +358,7 @@ export default function ChatSidebar({ selectedRoomId, onSelectRoom }: ChatSideba
         </div>
       </div>
 
-      <div className="p-2">
+      <div className="p-2 flex-1 overflow-auto">
         {roomState.status === 'loading' && (
           <div className="p-3 text-sm text-slate-500">Loading conversations…</div>
         )}

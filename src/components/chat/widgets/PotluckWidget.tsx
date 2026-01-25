@@ -1,5 +1,5 @@
 import { useCallback, useMemo, useState } from 'react'
-import { AlertTriangle, CheckCircle, Circle, MapPin, Plus } from 'lucide-react'
+import { AlertTriangle, CheckCircle, Circle, MapPin, Maximize2, Minimize2, Plus } from 'lucide-react'
 import type { ChatRoomMetadata, PotluckAllergy, PotluckItem } from '../../../types/chat'
 import LocationMapPanel from '../../LocationMapPanel'
 
@@ -10,6 +10,8 @@ interface PotluckWidgetProps {
   memberProfiles?: Record<string, { avatarUrl: string | null }>
   ownerIds?: Set<string>
   onUpdate: (meta: ChatRoomMetadata) => Promise<void>
+  isExpanded?: boolean
+  onToggleExpand?: () => void
 }
 
 export default function PotluckWidget({
@@ -19,6 +21,8 @@ export default function PotluckWidget({
   memberProfiles,
   ownerIds,
   onUpdate,
+  isExpanded,
+  onToggleExpand,
 }: PotluckWidgetProps) {
   const potluck = metadata.potluck || { items: [], allergies: [] }
   const items = potluck.items || []
@@ -119,12 +123,24 @@ export default function PotluckWidget({
     : null
 
   return (
-    <div className="bg-white border border-slate-200 rounded-xl overflow-hidden shadow-sm mb-4">
+    <div className="bg-white border border-slate-200 rounded-xl overflow-hidden shadow-sm">
       <div className="bg-orange-50 px-4 py-2 border-b border-orange-100 flex items-center justify-between">
         <h3 className="text-sm font-semibold text-orange-800 flex items-center gap-2">🍲 Potluck Board</h3>
-        <span className="text-xs text-orange-600 font-medium">
-          {items.filter((i) => i.claimedByUserId).length} / {items.length} items
-        </span>
+        <div className="flex items-center gap-2">
+          <span className="text-xs text-orange-600 font-medium">
+            {items.filter((i) => i.claimedByUserId).length} / {items.length} items
+          </span>
+          {onToggleExpand && (
+            <button
+              type="button"
+              onClick={onToggleExpand}
+              className="inline-flex items-center justify-center h-7 w-7 rounded-lg text-orange-700 hover:bg-orange-100"
+              aria-label={isExpanded ? 'Collapse potluck widget' : 'Expand potluck widget'}
+            >
+              {isExpanded ? <Minimize2 className="h-4 w-4" /> : <Maximize2 className="h-4 w-4" />}
+            </button>
+          )}
+        </div>
       </div>
 
       <div className="p-4">
@@ -151,7 +167,10 @@ export default function PotluckWidget({
                     : 'Claim item'
 
                 return (
-                  <li key={item.id} className="flex items-center justify-between gap-3">
+                  <li
+                    key={item.id}
+                    className="flex items-center justify-between gap-3 rounded-lg px-2 py-2 -mx-2 transition-colors hover:bg-orange-50/60"
+                  >
                     <div className="min-w-0">
                       <div className={`text-sm ${isClaimed ? 'text-slate-400 line-through' : 'text-slate-700'}`}>
                         {item.label}
