@@ -1,3 +1,4 @@
+// @ts-nocheck
 import { describe, it, expect } from 'vitest'
 
 // Test utility functions that are exported or can be easily tested

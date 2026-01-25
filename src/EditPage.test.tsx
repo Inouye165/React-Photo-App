@@ -27,7 +27,7 @@ vi.mock('./contexts/AuthContext', () => ({
 }))
 
 // Mock AppHeader to avoid router/store coupling in this test suite
-vi.mock('./components/AppHeader.jsx', () => ({
+vi.mock('./components/AppHeader.tsx', () => ({
   default: ({ rightContent }: any) => React.createElement('div', { 'data-testid': 'app-header' }, rightContent)
 }))
 
@@ -77,7 +77,7 @@ vi.mock('./components/PhotoMetadataBack', () => ({
 }))
 
 // Mock CollectibleEditorPanel
-vi.mock('./components/CollectibleEditorPanel.jsx', () => ({
+vi.mock('./components/CollectibleEditorPanel.tsx', () => ({
   default: ({ photoId, onChange }: any) => {
     return React.createElement('div', { 
       'data-testid': 'collectible-editor-panel',

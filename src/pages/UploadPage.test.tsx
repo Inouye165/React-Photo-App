@@ -1,3 +1,4 @@
+// @ts-nocheck
 import React from 'react';
 import { render, screen } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
@@ -35,11 +36,11 @@ vi.mock('../hooks/useLocalPhotoPicker', () => ({
   }),
 }));
 
-vi.mock('../hooks/useThumbnailQueue.js', () => ({
+vi.mock('../hooks/useThumbnailQueue.ts', () => ({
   useThumbnailQueue: () => ({}),
 }));
 
-vi.mock('../PhotoUploadForm.jsx', () => ({
+vi.mock('../PhotoUploadForm.tsx', () => ({
   default: () => <div>PhotoUploadForm</div>,
 }));
 

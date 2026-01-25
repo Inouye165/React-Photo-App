@@ -1,3 +1,4 @@
+// @ts-nocheck
 import React from 'react';
 import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest';
 import { render, screen, fireEvent, waitFor, cleanup } from '@testing-library/react';
@@ -26,7 +27,7 @@ vi.mock('../contexts/AuthContext', () => ({
 }));
 
 // Import component after mocking
-import CollectibleEditorPanel from './CollectibleEditorPanel.jsx';
+import CollectibleEditorPanel from './CollectibleEditorPanel.tsx';
 
 describe('CollectibleEditorPanel', () => {
   beforeEach(() => {

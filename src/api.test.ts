@@ -1,3 +1,4 @@
+// @ts-nocheck
 describe('uploadPhotoToServer FormData construction', () => {
   let originalFetch;
   beforeEach(() => {

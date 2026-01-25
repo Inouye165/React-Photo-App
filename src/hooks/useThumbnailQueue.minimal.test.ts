@@ -1,3 +1,4 @@
+// @ts-nocheck
 /**
  * useThumbnailQueue Hook Tests
  * 

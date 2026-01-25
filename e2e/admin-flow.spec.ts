@@ -121,8 +121,8 @@ test.describe('Admin Dashboard Access Control', () => {
     await expect(page.locator('h1:has-text("Admin Dashboard")')).toBeVisible();
     
     // Should see tabs
-    await expect(page.locator('text=Invites')).toBeVisible();
-    await expect(page.locator('text=Suggestions Review')).toBeVisible();
+    await expect(page.getByRole('button', { name: /^Invites$/ })).toBeVisible();
+    await expect(page.getByRole('button', { name: /^Suggestions Review$/ })).toBeVisible();
   });
 
   test('non-admin users cannot access /admin route', async ({ page }) => {
