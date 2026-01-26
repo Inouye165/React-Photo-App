@@ -7,3 +7,5 @@ function loadEnv() {
 module.exports = {
   loadEnv,
 };
+
+export {};

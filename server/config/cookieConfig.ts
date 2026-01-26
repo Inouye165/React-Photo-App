@@ -133,3 +133,5 @@ module.exports = {
   getSameSiteValue,
   getSecureFlag
 };
+
+export {};

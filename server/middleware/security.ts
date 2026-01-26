@@ -188,3 +188,5 @@ module.exports = {
   validateRequest,
   securityErrorHandler
 };
+
+export {};

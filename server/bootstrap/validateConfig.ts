@@ -189,3 +189,5 @@ function validateConfig() {
 module.exports = {
   validateConfig,
 };
+
+export {};

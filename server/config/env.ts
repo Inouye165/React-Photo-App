@@ -79,18 +79,13 @@ function buildConfig() {
   };
 }
 
-function getConfig() {
+export function getConfig() {
   if (cachedConfig) return cachedConfig;
   cachedConfig = buildConfig();
   return cachedConfig;
 }
 
 // Test helper: allow isolated module reload patterns.
-function __resetForTests() {
+export function __resetForTests() {
   cachedConfig = null;
 }
-
-module.exports = {
-  getConfig,
-  __resetForTests
-};

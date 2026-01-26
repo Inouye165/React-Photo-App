@@ -130,3 +130,5 @@ function getRateLimitStore() {
 }
 
 module.exports = { getRateLimitStore };
+
+export {};
