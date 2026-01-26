@@ -220,11 +220,20 @@ function isSignatureInvalid(
  * Should be used on the /display/thumbnails/:filename route.
  */
 export function validateSignedUrl(req: Request, res: Response, next: NextFunction): void {
-  const { filename } = req.params;
+  const rawFilename = req.params.filename;
+  const filename = Array.isArray(rawFilename) ? undefined : rawFilename;
   const { sig, exp } = req.query;
 
+  if (typeof filename !== 'string' || filename.length === 0) {
+    res.status(400).json({
+      success: false,
+      error: 'Invalid filename'
+    });
+    return;
+  }
+
   // Extract hash from filename (remove .jpg extension)
-  const hash = filename ? filename.replace(/\.jpg$/i, '') : null;
+  const hash = filename.replace(/\.jpg$/i, '');
 
   if (!hash) {
     res.status(400).json({
