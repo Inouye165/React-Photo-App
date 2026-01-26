@@ -1,5 +1,6 @@
-const crypto = require('crypto');
-const { getConfig } = require('../config/env');
+import crypto from 'crypto';
+import type { NextFunction, Request, Response } from 'express';
+import { getConfig } from '../config/env';
 
 /**
  * URL Signing Utility for Secure Thumbnail Access
@@ -16,6 +17,15 @@ const { getConfig } = require('../config/env');
  * @module urlSigning
  */
 
+type SignatureVerificationResult =
+  | { valid: true }
+  | { valid: false; reason: string };
+
+type SignedThumbnailParams = {
+  sig: string;
+  exp: number;
+};
+
 // Centralized signing secret:
 // - Production requires JWT_SECRET (and optionally THUMBNAIL_SIGNING_SECRET).
 // - Non-prod gets a safe default JWT secret if not provided.
@@ -26,13 +36,13 @@ const SECRET = getConfig().thumbnailSigningSecret;
  * Short enough to limit exposure window, long enough for normal browsing
  * @deprecated TTL is now calculated based on time windows for cache stability
  */
-const DEFAULT_TTL_SECONDS = 15 * 60;
+export const DEFAULT_TTL_SECONDS = 15 * 60;
 
 /**
  * Time window size in seconds (24 hours)
  * Signatures remain stable within each window for improved browser caching
  */
-const TIME_WINDOW_SECONDS = 24 * 60 * 60; // 86400 seconds
+export const TIME_WINDOW_SECONDS = 24 * 60 * 60; // 86400 seconds
 
 /**
  * Generate HMAC-SHA256 signature for a thumbnail URL
@@ -45,12 +55,8 @@ const TIME_WINDOW_SECONDS = 24 * 60 * 60; // 86400 seconds
  * - Tampering with the path (e.g., changing the hash)
  * - Tampering with the expiration time
  * - Using the signature for different resources
- * 
- * @param {string} hash - Thumbnail hash (filename without extension)
- * @param {number} expiresAt - Unix timestamp (seconds) when URL expires
- * @returns {string} Base64url-encoded signature
  */
-function generateSignature(hash, expiresAt) {
+function generateSignature(hash: string, expiresAt: number): string {
   if (!hash || typeof hash !== 'string') {
     throw new Error('Hash must be a non-empty string');
   }
@@ -79,15 +85,13 @@ function generateSignature(hash, expiresAt) {
  * All signatures generated within the same time window will be identical,
  * enabling browser caching of signed URLs.
  * 
- * @param {string} hash - Thumbnail hash (filename without extension)
- * @param {number} [ttlSeconds=900] - Time-to-live in seconds (deprecated, ignored - uses time windows)
- * @returns {{sig: string, exp: number}} Query parameters for signed URL
- * 
- * @example
- * const params = signThumbnailUrl('abc123');
- * const url = `/display/thumbnails/abc123.jpg?sig=${params.sig}&exp=${params.exp}`;
+ * @param hash - Thumbnail hash (filename without extension)
+ * @param ttlSeconds - Time-to-live in seconds (deprecated, ignored - uses time windows)
  */
-function signThumbnailUrl(hash, ttlSeconds = DEFAULT_TTL_SECONDS) {
+export function signThumbnailUrl(
+  hash: string,
+  ttlSeconds: number = DEFAULT_TTL_SECONDS
+): SignedThumbnailParams {
   if (!hash || typeof hash !== 'string') {
     throw new Error('Hash must be a non-empty string');
   }
@@ -120,19 +124,12 @@ function signThumbnailUrl(hash, ttlSeconds = DEFAULT_TTL_SECONDS) {
  * 2. The URL has not expired
  * 
  * Uses constant-time comparison to prevent timing attacks.
- * 
- * @param {string} hash - Thumbnail hash from URL path
- * @param {string} providedSig - Signature from query parameter
- * @param {number|string} providedExp - Expiration timestamp from query parameter
- * @returns {{valid: boolean, reason?: string}} Validation result
- * 
- * @example
- * const result = verifyThumbnailSignature('abc123', req.query.sig, req.query.exp);
- * if (!result.valid) {
- *   return res.status(403).json({ error: 'Invalid signature' });
- * }
  */
-function verifyThumbnailSignature(hash, providedSig, providedExp) {
+export function verifyThumbnailSignature(
+  hash: string,
+  providedSig: string | undefined,
+  providedExp: number | string | undefined
+): SignatureVerificationResult {
   // Validate inputs
   if (!hash || typeof hash !== 'string') {
     return { valid: false, reason: 'Invalid hash' };
@@ -146,7 +143,7 @@ function verifyThumbnailSignature(hash, providedSig, providedExp) {
 
   // Parse expiration timestamp
   const expiresAt = typeof providedExp === 'number' ? providedExp : parseInt(providedExp, 10);
-  if (isNaN(expiresAt) || expiresAt <= 0) {
+  if (Number.isNaN(expiresAt) || expiresAt <= 0) {
     return { valid: false, reason: 'Invalid expiration timestamp' };
   }
 
@@ -157,7 +154,7 @@ function verifyThumbnailSignature(hash, providedSig, providedExp) {
   }
 
   // Generate expected signature
-  let expectedSig;
+  let expectedSig: string;
   try {
     expectedSig = generateSignature(hash, expiresAt);
   } catch {
@@ -182,6 +179,38 @@ function verifyThumbnailSignature(hash, providedSig, providedExp) {
   return { valid: true };
 }
 
+function normalizeQueryValue(value: unknown): string | number | undefined {
+  if (typeof value === 'string' || typeof value === 'number') {
+    return value;
+  }
+  if (Array.isArray(value)) {
+    const first = value[0];
+    if (typeof first === 'string' || typeof first === 'number') {
+      return first;
+    }
+  }
+  return undefined;
+}
+
+function normalizeQueryString(value: unknown): string | undefined {
+  if (typeof value === 'string') {
+    return value;
+  }
+  if (Array.isArray(value)) {
+    const first = value[0];
+    if (typeof first === 'string') {
+      return first;
+    }
+  }
+  return undefined;
+}
+
+function isSignatureInvalid(
+  result: SignatureVerificationResult
+): result is { valid: false; reason: string } {
+  return result.valid === false;
+}
+
 /**
  * Express middleware to validate signed thumbnail URLs
  * 
@@ -189,17 +218,8 @@ function verifyThumbnailSignature(hash, providedSig, providedExp) {
  * If valid, allows the request to proceed. If invalid, returns 403.
  * 
  * Should be used on the /display/thumbnails/:filename route.
- * 
- * @param {object} req - Express request object
- * @param {object} res - Express response object
- * @param {function} next - Express next middleware function
- * 
- * @example
- * router.get('/thumbnails/:filename', validateSignedUrl, async (req, res) => {
- *   // Serve thumbnail...
- * });
  */
-function validateSignedUrl(req, res, next) {
+export function validateSignedUrl(req: Request, res: Response, next: NextFunction): void {
   const { filename } = req.params;
   const { sig, exp } = req.query;
 
@@ -207,34 +227,31 @@ function validateSignedUrl(req, res, next) {
   const hash = filename ? filename.replace(/\.jpg$/i, '') : null;
 
   if (!hash) {
-    return res.status(400).json({
+    res.status(400).json({
       success: false,
       error: 'Invalid filename'
     });
+    return;
   }
 
-  // Verify signature
-  const result = verifyThumbnailSignature(hash, sig, exp);
+  const sigValue = normalizeQueryString(sig);
+  const expValue = normalizeQueryValue(exp);
 
-  if (!result.valid) {
+  // Verify signature
+  const result = verifyThumbnailSignature(hash, sigValue, expValue);
+
+  if (isSignatureInvalid(result)) {
     // Log for security monitoring (but don't expose reason to client)
-    const reqId = req.id || req.headers['x-request-id'] || 'unknown';
+    const reqId = (req as Request & { id?: string }).id || req.headers['x-request-id'] || 'unknown';
     console.warn(`[urlSigning] Invalid signature: ${result.reason} (reqId: ${reqId})`);
     
-    return res.status(403).json({
+    res.status(403).json({
       success: false,
       error: 'Forbidden'
     });
+    return;
   }
 
   // Signature valid - allow request to proceed
   next();
 }
-
-module.exports = {
-  signThumbnailUrl,
-  verifyThumbnailSignature,
-  validateSignedUrl,
-  DEFAULT_TTL_SECONDS,
-  TIME_WINDOW_SECONDS
-};
