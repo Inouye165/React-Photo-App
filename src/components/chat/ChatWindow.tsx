@@ -3,12 +3,9 @@ import type { ReactNode } from 'react'
 
 import {
   ArrowDown,
-  ChevronsLeft,
-  ChevronsRight,
   Image as ImageIcon,
   MapPin,
   Maximize2,
-  MessageSquare,
   Minimize2,
   Settings,
   Users,
@@ -30,12 +27,11 @@ import ChatMembersModal from './ChatMembersModal'
 import ChatSettingsModal from './ChatSettingsModal'
 import PotluckWidget from './widgets/PotluckWidget'
 import LocationMapPanel from '../LocationMapPanel'
+import { IdentityGateInline, useIdentityGateStatus } from '../IdentityGate'
 
 export interface ChatWindowProps {
   roomId: string | null
-  onOpenSidebar?: () => void
-  isChatCollapsed?: boolean
-  onToggleCollapse?: () => void
+  showIdentityGate?: boolean
 }
 
 type UserRow = { id: string; username: string | null }
@@ -75,12 +71,7 @@ function formatTime(iso: string): string {
   return d.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })
 }
 
-export default function ChatWindow({
-  roomId,
-  onOpenSidebar,
-  isChatCollapsed,
-  onToggleCollapse,
-}: ChatWindowProps) {
+export default function ChatWindow({ roomId, showIdentityGate }: ChatWindowProps) {
   const { user, profile } = useAuth()
   const { messages, loading, error } = useChatRealtime(roomId, { userId: user?.id ?? null })
   const { isUserOnline } = usePresence(user?.id)
@@ -611,8 +602,8 @@ export default function ChatWindow({
   const handleToggleWidget = (key: DashboardWidgetKey) => {
     setExpandedWidget((prev) => (prev === key ? null : key))
   }
-
-  const collapseButtonLabel = isChatCollapsed ? 'Expand chat column' : 'Collapse chat column'
+  const gateStatus = useIdentityGateStatus()
+  const shouldShowIdentityGate = Boolean(showIdentityGate) && gateStatus.type !== 'allow'
 
   function DashboardCard({ title, onToggleExpand, isExpanded, children }: DashboardCardProps) {
     return (
@@ -635,6 +626,30 @@ export default function ChatWindow({
     )
   }
 
+  if (shouldShowIdentityGate) {
+    return (
+      <>
+        <section
+          className="flex flex-col h-full min-h-0 bg-slate-50 border-r border-slate-200"
+          aria-label="Chat window"
+        >
+          <div className="flex items-center justify-between px-4 py-3 border-b border-slate-200 bg-white">
+            <span className="text-sm font-semibold text-slate-900">Join room</span>
+          </div>
+          <div className="flex-1 min-h-0 p-4 sm:p-6">
+            <IdentityGateInline status={gateStatus} />
+          </div>
+        </section>
+
+        <section className="relative h-full min-h-0 bg-slate-50" aria-label="Dashboard widgets">
+          <div className="h-full flex items-center justify-center p-6 text-sm text-slate-500">
+            Complete your profile to join this room.
+          </div>
+        </section>
+      </>
+    )
+  }
+
   if (!roomId) {
     return (
       <>
@@ -643,29 +658,7 @@ export default function ChatWindow({
           aria-label="Chat window"
         >
           <div className="flex items-center justify-between px-4 py-3 border-b border-slate-200 bg-white">
-            <div className="flex items-center gap-2">
-              {onToggleCollapse && (
-                <button
-                  type="button"
-                  onClick={onToggleCollapse}
-                  className="inline-flex items-center justify-center h-8 w-8 rounded-lg text-slate-600 hover:bg-slate-100"
-                  aria-label={collapseButtonLabel}
-                >
-                  {isChatCollapsed ? <ChevronsRight className="h-4 w-4" /> : <ChevronsLeft className="h-4 w-4" />}
-                </button>
-              )}
-              <span className="text-sm font-semibold text-slate-900">Chat</span>
-            </div>
-            {typeof onOpenSidebar === 'function' && (
-              <button
-                type="button"
-                onClick={onOpenSidebar}
-                className="inline-flex items-center justify-center h-8 w-8 rounded-lg text-slate-600 hover:bg-slate-100"
-                aria-label="Open chat rooms"
-              >
-                <Users className="h-4 w-4" />
-              </button>
-            )}
+            <span className="text-sm font-semibold text-slate-900">Chat</span>
           </div>
           <div className="flex-1 min-h-0 flex items-center justify-center p-6">
             <div className="max-w-md text-center">
@@ -684,124 +677,59 @@ export default function ChatWindow({
     )
   }
 
-  if (isChatCollapsed) {
-    return (
-      <>
-        <section
-          className="flex flex-col h-full min-h-0 bg-slate-50 border-r border-slate-200"
-          aria-label="Chat window collapsed"
-        >
-          <div className="flex items-center justify-center px-2 py-3 border-b border-slate-200 bg-white">
-            {onToggleCollapse && (
-              <button
-                type="button"
-                onClick={onToggleCollapse}
-                className="inline-flex items-center justify-center h-8 w-8 rounded-lg text-slate-600 hover:bg-slate-100"
-                aria-label={collapseButtonLabel}
-              >
-                <ChevronsRight className="h-4 w-4" />
-              </button>
-            )}
-          </div>
-          <div className="flex-1 flex items-center justify-center">
-            <MessageSquare className="h-5 w-5 text-slate-400" aria-hidden="true" />
-          </div>
-          {typeof onOpenSidebar === 'function' && (
-            <div className="pb-3 flex items-center justify-center">
-              <button
-                type="button"
-                onClick={onOpenSidebar}
-                className="inline-flex items-center justify-center h-8 w-8 rounded-lg text-slate-600 hover:bg-slate-100"
-                aria-label="Open chat rooms"
-              >
-                <Users className="h-4 w-4" />
-              </button>
-            </div>
-          )}
-        </section>
-
-        <section className="relative h-full min-h-0 bg-slate-50" aria-label="Dashboard widgets">
-          <div className="h-full flex items-center justify-center p-6 text-sm text-slate-500">
-            Expand the chat column to view messages.
-          </div>
-        </section>
-      </>
-    )
-  }
-
   return (
     <>
       <section
         className="flex flex-col h-full min-h-0 bg-slate-50 border-r border-slate-200 relative"
         aria-label="Chat window"
       >
-      <div className="border-b border-slate-200 bg-white px-4 py-3 sm:px-6">
-        <div className="flex items-center gap-2 min-w-0">
-          {onToggleCollapse && (
-            <button
-              type="button"
-              onClick={onToggleCollapse}
-              className="inline-flex items-center justify-center h-8 w-8 rounded-lg text-slate-600 hover:bg-slate-100"
-              aria-label={collapseButtonLabel}
-            >
-              <ChevronsLeft className="h-4 w-4" />
-            </button>
-          )}
-          {typeof onOpenSidebar === 'function' && (
-            <button
-              type="button"
-              onClick={onOpenSidebar}
-              className="inline-flex items-center justify-center h-8 w-8 rounded-lg text-slate-600 hover:bg-slate-100"
-              aria-label="Open chat rooms"
-            >
-              <Users className="h-4 w-4" />
-            </button>
-          )}
-          {!header.isGroup && header.otherUserId && isUserOnline(header.otherUserId) && (
-            <div className="h-2 w-2 rounded-full bg-green-500" aria-label="Online" />
-          )}
-          <h2 className="text-sm font-semibold text-slate-900 truncate">{header.title}</h2>
-          <div className="ml-auto flex items-center gap-2">
-            {header.isGroup && (
-              <button
-                type="button"
-                onClick={() => setIsMembersOpen(true)}
-                className="inline-flex items-center justify-center h-9 w-9 rounded-xl text-slate-600 hover:bg-slate-100"
-                aria-label="Manage members"
-              >
-                <Users className="h-4 w-4" />
-              </button>
+        <div className="border-b border-slate-200 bg-white px-4 py-3 sm:px-6">
+          <div className="flex items-center gap-2 min-w-0">
+            {!header.isGroup && header.otherUserId && isUserOnline(header.otherUserId) && (
+              <div className="h-2 w-2 rounded-full bg-green-500" aria-label="Online" />
             )}
-            {canEditSettings && (
-              <button
-                type="button"
-                onClick={() => setIsSettingsOpen(true)}
-                className="inline-flex items-center justify-center h-9 w-9 rounded-xl text-slate-600 hover:bg-slate-100"
-                aria-label="Chat settings"
-              >
-                <Settings className="h-4 w-4" />
-              </button>
+            <h2 className="text-sm font-semibold text-slate-900 truncate">{header.title}</h2>
+            <div className="ml-auto flex items-center gap-2">
+              {header.isGroup && (
+                <button
+                  type="button"
+                  onClick={() => setIsMembersOpen(true)}
+                  className="inline-flex items-center justify-center h-9 w-9 rounded-xl text-slate-600 hover:bg-slate-100"
+                  aria-label="Manage members"
+                >
+                  <Users className="h-4 w-4" />
+                </button>
+              )}
+              {canEditSettings && (
+                <button
+                  type="button"
+                  onClick={() => setIsSettingsOpen(true)}
+                  className="inline-flex items-center justify-center h-9 w-9 rounded-xl text-slate-600 hover:bg-slate-100"
+                  aria-label="Chat settings"
+                >
+                  <Settings className="h-4 w-4" />
+                </button>
+              )}
+            </div>
+          </div>
+          <div className="mt-1 text-xs text-slate-500 truncate" aria-label="Chat members">
+            {memberDisplay.length > 0 ? (
+              <span>
+                Members:{' '}
+                {memberDisplay.map((member, index) => (
+                  <span key={member.id}>
+                    <span className={member.isOwner ? 'text-emerald-700 font-semibold' : 'text-slate-600'}>
+                      {member.label}
+                    </span>
+                    {index < memberDisplay.length - 1 ? ', ' : ''}
+                  </span>
+                ))}
+              </span>
+            ) : (
+              'Members unavailable'
             )}
           </div>
         </div>
-        <div className="mt-1 text-xs text-slate-500 truncate" aria-label="Chat members">
-          {memberDisplay.length > 0 ? (
-            <span>
-              Members:{' '}
-              {memberDisplay.map((member, index) => (
-                <span key={member.id}>
-                  <span className={member.isOwner ? 'text-emerald-700 font-semibold' : 'text-slate-600'}>
-                    {member.label}
-                  </span>
-                  {index < memberDisplay.length - 1 ? ', ' : ''}
-                </span>
-              ))}
-            </span>
-          ) : (
-            'Members unavailable'
-          )}
-        </div>
-      </div>
 
       <div 
         ref={scrollContainerRef}

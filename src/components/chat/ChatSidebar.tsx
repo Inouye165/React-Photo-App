@@ -1,6 +1,6 @@
 import { useEffect, useMemo, useRef, useState } from 'react'
 
-import { SquarePen, X } from 'lucide-react'
+import { ChevronsLeft, ChevronsRight, SquarePen, X } from 'lucide-react'
 
 import { createGroupRoom, fetchRooms, getOrCreateRoom, searchUsers, type UserSearchResult } from '../../api'
 import { supabase } from '../../supabaseClient'
@@ -11,6 +11,8 @@ import { usePresence } from '../../hooks/usePresence'
 export interface ChatSidebarProps {
   selectedRoomId: string | null
   onSelectRoom: (roomId: string) => void
+  isCollapsed?: boolean
+  onToggleCollapse?: () => void
 }
 
 type RoomListState =
@@ -32,7 +34,12 @@ function formatRoomTitle(room: ChatRoom, otherUsername: string | null): string {
   return 'Group chat'
 }
 
-export default function ChatSidebar({ selectedRoomId, onSelectRoom }: ChatSidebarProps) {
+export default function ChatSidebar({
+  selectedRoomId,
+  onSelectRoom,
+  isCollapsed = false,
+  onToggleCollapse,
+}: ChatSidebarProps) {
   const { user } = useAuth()
   const { isUserOnline } = usePresence(user?.id)
 
@@ -323,42 +330,65 @@ export default function ChatSidebar({ selectedRoomId, onSelectRoom }: ChatSideba
   const canCreateGroup =
     createMode === 'group' && Boolean(trimmedGroupName) && selectedUsers.length >= minGroupMembers && !creatingRoom
 
+  const collapseButtonLabel = isCollapsed ? 'Expand chat sidebar' : 'Collapse chat sidebar'
+
   return (
     <aside
-      className="w-full sm:w-80 shrink-0 border-r border-slate-200 bg-white h-full flex flex-col"
+      className={`shrink-0 border-r border-slate-200 bg-white h-full flex flex-col ${
+        isCollapsed ? 'w-[60px]' : 'w-full sm:w-80'
+      }`}
       aria-label="Chat rooms"
     >
-      <div className="p-4 border-b border-slate-200">
-        <div className="flex items-start justify-between gap-3">
-          <div className="min-w-0">
-            <h2 className="text-sm font-semibold text-slate-900">Chats</h2>
-            <p className="mt-1 text-xs text-slate-500">Your recent conversations</p>
+      <div className={`border-b border-slate-200 ${isCollapsed ? 'p-2' : 'p-4'}`}>
+        <div className={`flex items-start gap-3 ${isCollapsed ? 'justify-center' : 'justify-between'}`}>
+          <div className={`flex items-start gap-3 ${isCollapsed ? 'justify-center' : ''}`}>
+            {onToggleCollapse && (
+              <button
+                type="button"
+                onClick={onToggleCollapse}
+                className="shrink-0 inline-flex items-center justify-center h-8 w-8 rounded-lg text-slate-600 hover:bg-slate-100"
+                aria-label={collapseButtonLabel}
+              >
+                {isCollapsed ? <ChevronsRight className="h-4 w-4" /> : <ChevronsLeft className="h-4 w-4" />}
+              </button>
+            )}
+            {!isCollapsed && (
+              <div className="min-w-0">
+                <h2 className="text-sm font-semibold text-slate-900">Chats</h2>
+                <p className="mt-1 text-xs text-slate-500">Your recent conversations</p>
+              </div>
+            )}
           </div>
 
-          <button
-            type="button"
-            onClick={() => setIsDiscoveryOpen(true)}
-            className="shrink-0 rounded-xl border border-slate-200 bg-white p-2 text-slate-700 hover:bg-slate-50"
-            aria-label="New message"
-            data-testid="chat-new-message"
-          >
-            <SquarePen className="h-4 w-4" />
-          </button>
+          {!isCollapsed && (
+            <button
+              type="button"
+              onClick={() => setIsDiscoveryOpen(true)}
+              className="shrink-0 rounded-xl border border-slate-200 bg-white p-2 text-slate-700 hover:bg-slate-50"
+              aria-label="New message"
+              data-testid="chat-new-message"
+            >
+              <SquarePen className="h-4 w-4" />
+            </button>
+          )}
         </div>
 
-        <div className="mt-3">
-          <input
-            type="search"
-            value={searchText}
-            onChange={(e) => setSearchText(e.target.value)}
-            placeholder="Search"
-            aria-label="Search chats"
-            className="w-full rounded-xl border border-slate-200 bg-white px-3 py-2 text-sm text-slate-900 placeholder:text-slate-400 focus:outline-none focus:ring-2 focus:ring-slate-900/10"
-          />
-        </div>
+        {!isCollapsed && (
+          <div className="mt-3">
+            <input
+              type="search"
+              value={searchText}
+              onChange={(e) => setSearchText(e.target.value)}
+              placeholder="Search"
+              aria-label="Search chats"
+              className="w-full rounded-xl border border-slate-200 bg-white px-3 py-2 text-sm text-slate-900 placeholder:text-slate-400 focus:outline-none focus:ring-2 focus:ring-slate-900/10"
+            />
+          </div>
+        )}
       </div>
 
-      <div className="p-2 flex-1 overflow-auto">
+      {!isCollapsed && (
+        <div className="p-2 flex-1 overflow-auto">
         {roomState.status === 'loading' && (
           <div className="p-3 text-sm text-slate-500">Loading conversations…</div>
         )}
@@ -423,7 +453,8 @@ export default function ChatSidebar({ selectedRoomId, onSelectRoom }: ChatSideba
             })}
           </ul>
         )}
-      </div>
+        </div>
+      )}
 
       {isDiscoveryOpen && (
         <div
