@@ -628,7 +628,7 @@ export default function ChatWindow({ roomId, showIdentityGate }: ChatWindowProps
 
   if (shouldShowIdentityGate) {
     return (
-      <>
+      <div className="grid h-full min-h-0 grid-cols-1 lg:grid-cols-[minmax(0,1fr)_minmax(0,420px)]">
         <section
           className="flex flex-col h-full min-h-0 bg-slate-50 border-r border-slate-200"
           aria-label="Chat window"
@@ -646,13 +646,13 @@ export default function ChatWindow({ roomId, showIdentityGate }: ChatWindowProps
             Complete your profile to join this room.
           </div>
         </section>
-      </>
+      </div>
     )
   }
 
   if (!roomId) {
     return (
-      <>
+      <div className="grid h-full min-h-0 grid-cols-1 lg:grid-cols-[minmax(0,1fr)_minmax(0,420px)]">
         <section
           className="flex flex-col h-full min-h-0 bg-slate-50 border-r border-slate-200"
           aria-label="Chat window"
@@ -673,12 +673,12 @@ export default function ChatWindow({ roomId, showIdentityGate }: ChatWindowProps
             Pick a room to see planning widgets.
           </div>
         </section>
-      </>
+      </div>
     )
   }
 
   return (
-    <>
+    <div className="grid h-full min-h-0 grid-cols-1 lg:grid-cols-[minmax(0,1fr)_minmax(0,420px)]">
       <section
         className="flex flex-col h-full min-h-0 bg-slate-50 border-r border-slate-200 relative"
         aria-label="Chat window"
@@ -980,9 +980,9 @@ export default function ChatWindow({ roomId, showIdentityGate }: ChatWindowProps
 
       <section className="relative h-full min-h-0 bg-slate-50" aria-label="Dashboard widgets">
         <div className="h-full overflow-auto p-4">
-          <div className="grid gap-4 lg:grid-cols-2 auto-rows-min">
+          <div className="flex flex-col gap-4">
             {roomType === 'potluck' && (
-              <div className="lg:col-span-2">
+              <div>
                 <PotluckWidget
                   metadata={roomMetadata}
                   currentUserId={user?.id ?? null}
@@ -1139,6 +1139,6 @@ export default function ChatWindow({ roomId, showIdentityGate }: ChatWindowProps
           </div>
         )}
       </section>
-    </>
+    </div>
   )
 }
