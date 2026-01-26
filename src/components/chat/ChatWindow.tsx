@@ -628,7 +628,7 @@ export default function ChatWindow({ roomId, showIdentityGate }: ChatWindowProps
 
   if (shouldShowIdentityGate) {
     return (
-      <div className="grid h-full min-h-0 grid-cols-1 lg:grid-cols-[minmax(0,1fr)_minmax(0,420px)]">
+      <div className="grid h-full min-h-0 grid-cols-1 md:grid-cols-[minmax(0,1fr)_minmax(0,420px)]">
         <section
           className="flex flex-col h-full min-h-0 bg-slate-50 border-r border-slate-200"
           aria-label="Chat window"
@@ -652,7 +652,7 @@ export default function ChatWindow({ roomId, showIdentityGate }: ChatWindowProps
 
   if (!roomId) {
     return (
-      <div className="grid h-full min-h-0 grid-cols-1 lg:grid-cols-[minmax(0,1fr)_minmax(0,420px)]">
+      <div className="grid h-full min-h-0 grid-cols-1 md:grid-cols-[minmax(0,1fr)_minmax(0,420px)]">
         <section
           className="flex flex-col h-full min-h-0 bg-slate-50 border-r border-slate-200"
           aria-label="Chat window"
@@ -678,7 +678,7 @@ export default function ChatWindow({ roomId, showIdentityGate }: ChatWindowProps
   }
 
   return (
-    <div className="grid h-full min-h-0 grid-cols-1 lg:grid-cols-[minmax(0,1fr)_minmax(0,420px)]">
+    <div className="grid h-full min-h-0 grid-cols-1 md:grid-cols-[minmax(0,1fr)_minmax(0,420px)]">
       <section
         className="flex flex-col h-full min-h-0 bg-slate-50 border-r border-slate-200 relative"
         aria-label="Chat window"
