@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
+import { useCallback, useEffect, useMemo, useRef } from 'react'
 import { useLocation, useNavigate, useParams } from 'react-router-dom'
 
 import ChatSidebar from '../components/chat/ChatSidebar'
@@ -12,7 +12,6 @@ export default function ChatPage() {
   const roomId = typeof params.roomId === 'string' ? params.roomId : null
   const { user } = useAuth()
   const prevUserIdRef = useRef<string | null>(user?.id ?? null)
-  const [isSidebarCollapsed, setIsSidebarCollapsed] = useState(false)
 
   useEffect(() => {
     const nextUserId = user?.id ?? null
@@ -29,10 +28,6 @@ export default function ChatPage() {
     [navigate],
   )
 
-  const gridColumns = isSidebarCollapsed
-    ? 'lg:grid-cols-[60px_minmax(0,1fr)]'
-    : 'lg:grid-cols-[minmax(320px,480px)_minmax(0,1fr)]'
-
   const isJoiningRoom = useMemo(() => {
     const params = new URLSearchParams(location.search)
     return Boolean(params.get('code'))
@@ -40,19 +35,19 @@ export default function ChatPage() {
 
   return (
     <div
-      className={`relative grid h-full min-h-0 overflow-hidden grid-cols-1 ${gridColumns} bg-slate-100`}
+      className="relative grid h-screen min-h-0 overflow-hidden grid-cols-1 lg:grid-cols-[minmax(320px,420px)_minmax(0,1fr)]"
       data-testid="chat-page"
     >
       <ChatSidebar
         selectedRoomId={roomId}
         onSelectRoom={onSelectRoom}
-        isCollapsed={isSidebarCollapsed}
-        onToggleCollapse={() => setIsSidebarCollapsed((prev) => !prev)}
+        showIdentityGate={isJoiningRoom}
       />
       <ChatWindow
         key={user?.id ?? 'anon'}
         roomId={roomId}
         showIdentityGate={isJoiningRoom}
+        mode="workspace"
       />
     </div>
   )
