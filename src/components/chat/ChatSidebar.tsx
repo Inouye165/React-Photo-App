@@ -334,14 +334,14 @@ export default function ChatSidebar({
 
   return (
     <aside
-      className={`shrink-0 border-r border-slate-200 bg-white h-full flex flex-col ${
+      className={`shrink-0 border-r border-slate-200 bg-white h-full min-h-0 flex flex-col ${
         isCollapsed ? 'w-[60px]' : 'w-full sm:w-80'
       }`}
       aria-label="Chat rooms"
     >
       <div className={`border-b border-slate-200 ${isCollapsed ? 'p-2' : 'p-4'}`}>
-        <div className={`flex items-start gap-3 ${isCollapsed ? 'justify-center' : 'justify-between'}`}>
-          <div className={`flex items-start gap-3 ${isCollapsed ? 'justify-center' : ''}`}>
+        <div className="flex items-center gap-3 justify-between">
+          <div className="flex items-center gap-3">
             {onToggleCollapse && (
               <button
                 type="button"
@@ -388,7 +388,7 @@ export default function ChatSidebar({
       </div>
 
       {!isCollapsed && (
-        <div className="p-2 flex-1 overflow-auto">
+        <div className="p-2 flex-1 min-h-0 overflow-auto">
         {roomState.status === 'loading' && (
           <div className="p-3 text-sm text-slate-500">Loading conversations…</div>
         )}
