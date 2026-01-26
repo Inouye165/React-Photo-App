@@ -469,7 +469,7 @@ const startWorker = async () => {
       if (!assessment) throw new Error(`Assessment ${assessmentId} not found`);
 
       const files = {
-        'server/middleware/security.js': safeReadFile(path.resolve(__dirname, '..', 'middleware', 'security.js')),
+        'server/middleware/security.ts': safeReadFile(path.resolve(__dirname, '..', 'middleware', 'security.ts')),
         'server/routes/photos.ts': safeReadFile(path.resolve(__dirname, '..', 'routes', 'photos.ts')),
         'server/services/photosDb.js': safeReadFile(path.resolve(__dirname, '..', 'services', 'photosDb.js')),
       };

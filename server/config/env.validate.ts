@@ -8,6 +8,7 @@
 
 const PROD_REQUIRED = ['SUPABASE_URL', 'SUPABASE_ANON_KEY', 'JWT_SECRET'];
 
+
 function getNodeEnv(nodeEnv = process.env.NODE_ENV) {
   return String(nodeEnv || 'development').toLowerCase();
 }
@@ -18,7 +19,7 @@ function isMissingEnvValue(value) {
   return value.trim() === '';
 }
 
-function validateEnv(options = {}) {
+function validateEnv(options: { nodeEnv?: string; required?: string[] } = {}) {
   const nodeEnv = getNodeEnv(options.nodeEnv);
   const required = options.required || (nodeEnv === 'production' ? PROD_REQUIRED : []);
 
@@ -35,3 +36,5 @@ function validateEnv(options = {}) {
 }
 
 module.exports = { PROD_REQUIRED, validateEnv, getNodeEnv };
+
+export {};
