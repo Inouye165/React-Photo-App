@@ -22,6 +22,7 @@ interface PotluckWidgetProps {
   onUpdate: (meta: ChatRoomMetadata) => Promise<void>
   isExpanded?: boolean
   onToggleExpand?: () => void
+  showLocationMap?: boolean
 }
 
 export default function PotluckWidget({
@@ -33,6 +34,7 @@ export default function PotluckWidget({
   onUpdate,
   isExpanded,
   onToggleExpand,
+  showLocationMap = true,
 }: PotluckWidgetProps) {
   const potluck = metadata.potluck || { items: [], allergies: [] }
   const items = potluck.items || []
@@ -360,24 +362,26 @@ export default function PotluckWidget({
             </div>
           </div>
 
-          <div className="flex lg:justify-end">
-            {hasLatLng ? (
-              <div className="rounded-lg overflow-hidden aspect-square w-full max-w-[240px] border border-slate-200 relative">
-                <LocationMapPanel photo={mapPhoto} />
-                <div className="absolute bottom-0 left-0 right-0 bg-white/90 backdrop-blur text-xs p-1 px-2 truncate border-t border-slate-200">
-                  <MapPin className="w-3 h-3 inline mr-1 text-slate-500" />
-                  {addressLabel ?? 'Address pending'}
+          {showLocationMap && (
+            <div className="flex lg:justify-end">
+              {hasLatLng ? (
+                <div className="rounded-lg overflow-hidden aspect-square w-full max-w-[240px] border border-slate-200 relative">
+                  <LocationMapPanel photo={mapPhoto} />
+                  <div className="absolute bottom-0 left-0 right-0 bg-white/90 backdrop-blur text-xs p-1 px-2 truncate border-t border-slate-200">
+                    <MapPin className="w-3 h-3 inline mr-1 text-slate-500" />
+                    {addressLabel ?? 'Address pending'}
+                  </div>
                 </div>
-              </div>
-            ) : (
-              <div className="aspect-square w-full max-w-[240px] rounded-lg border border-dashed border-slate-200 flex flex-col items-center justify-center text-xs text-slate-500 px-3 text-center">
-                <div>Map location pending</div>
-                {addressLabel ? (
-                  <div className="mt-1 text-[11px] text-slate-500 truncate w-full">{addressLabel}</div>
-                ) : null}
-              </div>
-            )}
-          </div>
+              ) : (
+                <div className="aspect-square w-full max-w-[240px] rounded-lg border border-dashed border-slate-200 flex flex-col items-center justify-center text-xs text-slate-500 px-3 text-center">
+                  <div>Map location pending</div>
+                  {addressLabel ? (
+                    <div className="mt-1 text-[11px] text-slate-500 truncate w-full">{addressLabel}</div>
+                  ) : null}
+                </div>
+              )}
+            </div>
+          )}
         </div>
         )}
       </div>

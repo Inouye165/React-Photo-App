@@ -32,6 +32,7 @@ import { IdentityGateInline, useIdentityGateStatus } from '../IdentityGate'
 export interface ChatWindowProps {
   roomId: string | null
   showIdentityGate?: boolean
+  mode?: 'workspace' | 'conversation'
 }
 
 type UserRow = { id: string; username: string | null }
@@ -56,8 +57,6 @@ type ChatHeaderState = {
   otherUserId: string | null
 }
 
-type DashboardWidgetKey = 'potluck' | 'map' | 'details'
-
 type DashboardCardProps = {
   title: string
   onToggleExpand?: () => void
@@ -71,10 +70,11 @@ function formatTime(iso: string): string {
   return d.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })
 }
 
-export default function ChatWindow({ roomId, showIdentityGate }: ChatWindowProps) {
+export default function ChatWindow({ roomId, showIdentityGate, mode = 'workspace' }: ChatWindowProps) {
   const { user, profile } = useAuth()
   const { messages, loading, error } = useChatRealtime(roomId, { userId: user?.id ?? null })
   const { isUserOnline } = usePresence(user?.id)
+  const isConversationMode = mode === 'conversation'
 
   const [draft, setDraft] = useState<string>('')
   const [sending, setSending] = useState<boolean>(false)
@@ -96,7 +96,6 @@ export default function ChatWindow({ roomId, showIdentityGate }: ChatWindowProps
   const [createdBy, setCreatedBy] = useState<string | null>(null)
   const [isSettingsOpen, setIsSettingsOpen] = useState<boolean>(false)
   const [isMembersOpen, setIsMembersOpen] = useState<boolean>(false)
-  const [expandedWidget, setExpandedWidget] = useState<DashboardWidgetKey | null>(null)
   const navigate = useNavigate()
 
   // Typing indicator hook (best-effort; no UI crash if Realtime unavailable)
@@ -368,7 +367,6 @@ export default function ChatWindow({ roomId, showIdentityGate }: ChatWindowProps
     setDraft('')
     setSendError(null)
     setSending(false)
-    setExpandedWidget(null)
     setPickerOpen(false)
     setPickerError(null)
     setPickerLoading(false)
@@ -599,17 +597,8 @@ export default function ChatWindow({ roomId, showIdentityGate }: ChatWindowProps
     ? { metadata: { latitude: potluckLocation?.lat, longitude: potluckLocation?.lng } }
     : null
 
-  const handleToggleWidget = (key: DashboardWidgetKey) => {
-    setExpandedWidget((prev) => (prev === key ? null : key))
-  }
   const gateStatus = useIdentityGateStatus()
   const shouldShowIdentityGate = Boolean(showIdentityGate) && gateStatus.type !== 'allow'
-
-  useEffect(() => {
-    if (roomType === 'potluck' && expandedWidget === 'map') {
-      setExpandedWidget(null)
-    }
-  }, [expandedWidget, roomType])
 
   function DashboardCard({ title, onToggleExpand, isExpanded, children }: DashboardCardProps) {
     return (
@@ -634,39 +623,51 @@ export default function ChatWindow({ roomId, showIdentityGate }: ChatWindowProps
 
   if (shouldShowIdentityGate) {
     return (
-      <div className="grid h-full min-h-0 grid-cols-1 md:grid-cols-[minmax(0,1fr)_minmax(0,420px)]">
+      <div
+        className={`grid h-full min-h-0 grid-cols-1 ${
+          isConversationMode ? '' : 'md:grid-cols-[minmax(0,1fr)_minmax(0,420px)]'
+        }`}
+      >
         <section
-          className="flex flex-col h-full min-h-0 bg-slate-50 border-r border-slate-200"
+          className="flex flex-col h-full min-h-0 border-r border-slate-200"
           aria-label="Chat window"
         >
           <div className="flex items-center justify-between px-4 py-3 border-b border-slate-200 bg-white">
             <span className="text-sm font-semibold text-slate-900">Join room</span>
           </div>
-          <div className="flex-1 min-h-0 p-4 sm:p-6">
-            <IdentityGateInline status={gateStatus} />
+          <div className="flex-1 min-h-0 overflow-auto">
+            <div className="p-4 sm:p-6">
+              <IdentityGateInline status={gateStatus} />
+            </div>
           </div>
         </section>
 
-        <section className="relative h-full min-h-0 bg-slate-50" aria-label="Dashboard widgets">
-          <div className="h-full flex items-center justify-center p-6 text-sm text-slate-500">
-            Complete your profile to join this room.
-          </div>
-        </section>
+        {!isConversationMode && (
+          <section className="relative h-full min-h-0" aria-label="Dashboard widgets">
+            <div className="h-full flex items-center justify-center text-sm text-slate-500">
+              Complete your profile to join this room.
+            </div>
+          </section>
+        )}
       </div>
     )
   }
 
   if (!roomId) {
     return (
-      <div className="grid h-full min-h-0 grid-cols-1 md:grid-cols-[minmax(0,1fr)_minmax(0,420px)]">
+      <div
+        className={`grid h-full min-h-0 grid-cols-1 ${
+          isConversationMode ? '' : 'md:grid-cols-[minmax(0,1fr)_minmax(0,420px)]'
+        }`}
+      >
         <section
-          className="flex flex-col h-full min-h-0 bg-slate-50 border-r border-slate-200"
+          className="flex flex-col h-full min-h-0 border-r border-slate-200"
           aria-label="Chat window"
         >
           <div className="flex items-center justify-between px-4 py-3 border-b border-slate-200 bg-white">
             <span className="text-sm font-semibold text-slate-900">Chat</span>
           </div>
-          <div className="flex-1 min-h-0 flex items-center justify-center p-6">
+          <div className="flex-1 min-h-0 flex items-center justify-center">
             <div className="max-w-md text-center">
               <h2 className="text-base font-semibold text-slate-900">Select a conversation</h2>
               <p className="mt-2 text-sm text-slate-600">Choose a room to start chatting.</p>
@@ -674,88 +675,71 @@ export default function ChatWindow({ roomId, showIdentityGate }: ChatWindowProps
           </div>
         </section>
 
-        <section className="relative h-full min-h-0 bg-slate-50" aria-label="Dashboard widgets">
-          <div className="h-full flex items-center justify-center p-6 text-sm text-slate-500">
-            Pick a room to see planning widgets.
-          </div>
-        </section>
+        {!isConversationMode && (
+          <section className="relative h-full min-h-0" aria-label="Dashboard widgets">
+            <div className="h-full flex items-center justify-center text-sm text-slate-500">
+              Pick a room to see planning widgets.
+            </div>
+          </section>
+        )}
       </div>
     )
   }
 
-  return (
-    <div className="grid h-full min-h-0 grid-cols-1 md:grid-cols-[minmax(0,1fr)_minmax(0,420px)]">
-      <section
-        className="flex flex-col h-full min-h-0 bg-slate-50 border-r border-slate-200 relative"
-        aria-label="Chat window"
-      >
-        {roomType === 'potluck' && (
-          <div className="border-b border-slate-200 bg-white px-4 py-4 sm:px-6 shrink-0">
-            <PotluckWidget
-              metadata={roomMetadata}
-              currentUserId={user?.id ?? null}
-              memberDirectory={memberDirectory}
-              memberProfiles={memberProfiles}
-              ownerIds={ownerIdSet}
-              onUpdate={async (newMeta) => handlePatchRoom({ metadata: newMeta })}
-              isExpanded={expandedWidget === 'potluck'}
-              onToggleExpand={() => handleToggleWidget('potluck')}
-            />
-          </div>
-        )}
-
-        <div className="border-b border-slate-200 bg-white px-4 py-3 sm:px-6">
-          <div className="flex items-center gap-2 min-w-0">
-            {!header.isGroup && header.otherUserId && isUserOnline(header.otherUserId) && (
-              <div className="h-2 w-2 rounded-full bg-green-500" aria-label="Online" />
+  const chatThread = (
+    <section className="flex flex-col h-full min-h-0 relative" aria-label="Chat window">
+      <div className="border-b border-slate-200 bg-white px-4 py-3">
+        <div className="flex items-center gap-2 min-w-0">
+          {!header.isGroup && header.otherUserId && isUserOnline(header.otherUserId) && (
+            <div className="h-2 w-2 rounded-full bg-green-500" aria-label="Online" />
+          )}
+          <h2 className="text-sm font-semibold text-slate-900 truncate">{header.title}</h2>
+          <div className="ml-auto flex items-center gap-2">
+            {header.isGroup && (
+              <button
+                type="button"
+                onClick={() => setIsMembersOpen(true)}
+                className="inline-flex items-center justify-center h-9 w-9 rounded-xl text-slate-600 hover:bg-slate-100"
+                aria-label="Manage members"
+              >
+                <Users className="h-4 w-4" />
+              </button>
             )}
-            <h2 className="text-sm font-semibold text-slate-900 truncate">{header.title}</h2>
-            <div className="ml-auto flex items-center gap-2">
-              {header.isGroup && (
-                <button
-                  type="button"
-                  onClick={() => setIsMembersOpen(true)}
-                  className="inline-flex items-center justify-center h-9 w-9 rounded-xl text-slate-600 hover:bg-slate-100"
-                  aria-label="Manage members"
-                >
-                  <Users className="h-4 w-4" />
-                </button>
-              )}
-              {canEditSettings && (
-                <button
-                  type="button"
-                  onClick={() => setIsSettingsOpen(true)}
-                  className="inline-flex items-center justify-center h-9 w-9 rounded-xl text-slate-600 hover:bg-slate-100"
-                  aria-label="Chat settings"
-                >
-                  <Settings className="h-4 w-4" />
-                </button>
-              )}
-            </div>
-          </div>
-          <div className="mt-1 text-xs text-slate-500 truncate" aria-label="Chat members">
-            {memberDisplay.length > 0 ? (
-              <span>
-                Members:{' '}
-                {memberDisplay.map((member, index) => (
-                  <span key={member.id}>
-                    <span className={member.isOwner ? 'text-emerald-700 font-semibold' : 'text-slate-600'}>
-                      {member.label}
-                    </span>
-                    {index < memberDisplay.length - 1 ? ', ' : ''}
-                  </span>
-                ))}
-              </span>
-            ) : (
-              'Members unavailable'
+            {canEditSettings && (
+              <button
+                type="button"
+                onClick={() => setIsSettingsOpen(true)}
+                className="inline-flex items-center justify-center h-9 w-9 rounded-xl text-slate-600 hover:bg-slate-100"
+                aria-label="Chat settings"
+              >
+                <Settings className="h-4 w-4" />
+              </button>
             )}
           </div>
         </div>
+        <div className="mt-1 text-xs text-slate-500 truncate" aria-label="Chat members">
+          {memberDisplay.length > 0 ? (
+            <span>
+              Members:{' '}
+              {memberDisplay.map((member, index) => (
+                <span key={member.id}>
+                  <span className={member.isOwner ? 'text-emerald-700 font-semibold' : 'text-slate-600'}>
+                    {member.label}
+                  </span>
+                  {index < memberDisplay.length - 1 ? ', ' : ''}
+                </span>
+              ))}
+            </span>
+          ) : (
+            'Members unavailable'
+          )}
+        </div>
+      </div>
 
-      <div 
+      <div
         ref={scrollContainerRef}
         onScroll={checkIfAtBottom}
-        className="flex-1 overflow-auto p-4 sm:p-6 space-y-3" 
+        className="flex-1 overflow-auto px-4 py-3 space-y-3"
         data-testid="chat-messages"
       >
         {loading && <div className="text-sm text-slate-500">Loading messages…</div>}
@@ -782,7 +766,6 @@ export default function ChatWindow({ roomId, showIdentityGate }: ChatWindowProps
         <div ref={bottomRef} />
       </div>
 
-      {/* New messages notification pill */}
       {unseenCount > 0 && (
         <div className="absolute bottom-20 left-1/2 -translate-x-1/2 z-10">
           <button
@@ -920,8 +903,6 @@ export default function ChatWindow({ roomId, showIdentityGate }: ChatWindowProps
             type="button"
             disabled={sending}
             onClick={() => {
-              // Keep token warm so fetches that require Authorization can work immediately.
-              // (Picker thumbnails are usually signed and don't need this, but it's safe.)
               getAccessToken()
               setPickerOpen((v) => {
                 const next = !v
@@ -958,7 +939,6 @@ export default function ChatWindow({ roomId, showIdentityGate }: ChatWindowProps
             {sending ? 'Sending…' : 'Send'}
           </button>
         </form>
-        {/* Typing indicator UI */}
         {typingUsernames.length > 0 && (
           <div className="mt-2 text-xs text-slate-500" data-testid="chat-typing-indicator">
             {typingUsernames.length === 1
@@ -997,154 +977,55 @@ export default function ChatWindow({ roomId, showIdentityGate }: ChatWindowProps
           }}
         />
       )}
+    </section>
+  )
+
+  if (isConversationMode) {
+    return chatThread
+  }
+
+  return (
+    <div className="grid h-full min-h-0 grid-cols-1 md:grid-cols-[minmax(0,1fr)_minmax(0,360px)]">
+      <section className="flex flex-col h-full min-h-0 border-r border-slate-200" aria-label="Potluck board">
+        <div className="flex-1 min-h-0 overflow-auto">
+          {roomType === 'potluck' ? (
+            <PotluckWidget
+              metadata={roomMetadata}
+              currentUserId={user?.id ?? null}
+              memberDirectory={memberDirectory}
+              memberProfiles={memberProfiles}
+              ownerIds={ownerIdSet}
+              onUpdate={async (newMeta) => handlePatchRoom({ metadata: newMeta })}
+              showLocationMap={false}
+            />
+          ) : (
+            <div className="h-full flex items-center justify-center text-sm text-slate-500">
+              Potluck board will appear in potluck rooms.
+            </div>
+          )}
+        </div>
       </section>
 
-      <section className="relative h-full min-h-0 bg-slate-50" aria-label="Dashboard widgets">
-        <div className="h-full overflow-auto p-4">
-          <div className="flex flex-col gap-4">
-            {roomType !== 'potluck' && (
-              <DashboardCard
-                title="Location"
-                isExpanded={expandedWidget === 'map'}
-                onToggleExpand={() => handleToggleWidget('map')}
-              >
-                {hasLatLng ? (
-                  <div className="rounded-xl overflow-hidden border border-slate-200">
-                    <div className="aspect-video w-full relative">
-                      <LocationMapPanel photo={mapPhoto} />
-                    </div>
-                    <div className="flex items-center gap-2 px-3 py-2 text-xs text-slate-600 border-t border-slate-200">
-                      <MapPin className="h-3 w-3 text-slate-500" />
-                      <span className="truncate">{addressLabel ?? 'Address pending'}</span>
-                    </div>
-                  </div>
-                ) : (
-                  <div className="rounded-xl border border-dashed border-slate-200 p-4 text-xs text-slate-500 text-center">
-                    Location map will appear once coordinates are added.
-                  </div>
-                )}
-              </DashboardCard>
-            )}
-
-            <DashboardCard
-              title="Details"
-              isExpanded={expandedWidget === 'details'}
-              onToggleExpand={() => handleToggleWidget('details')}
-            >
-              <div className="space-y-3">
-                <div>
-                  <div className="text-xs uppercase tracking-wide text-slate-500">Room</div>
-                  <div className="text-xs text-slate-500">Type: {roomType === 'potluck' ? 'Potluck' : 'General'}</div>
+      <section className="relative h-full min-h-0" aria-label="Location map">
+        <div className="h-full overflow-auto">
+          <DashboardCard title="Location">
+            {hasLatLng ? (
+              <div className="rounded-xl overflow-hidden border border-slate-200">
+                <div className="aspect-video w-full relative">
+                  <LocationMapPanel photo={mapPhoto} />
                 </div>
-                <div>
-                  <div className="text-xs uppercase tracking-wide text-slate-500">Members</div>
-                  <div className="mt-2 flex flex-wrap gap-2">
-                    {memberDisplay.length > 0 ? (
-                      memberDisplay.map((member) => (
-                        <span
-                          key={member.id}
-                          className={
-                            member.isOwner
-                              ? 'inline-flex items-center rounded-full bg-emerald-50 text-emerald-700 border border-emerald-200 px-2 py-0.5 text-xs'
-                              : 'inline-flex items-center rounded-full bg-slate-100 text-slate-700 border border-slate-200 px-2 py-0.5 text-xs'
-                          }
-                        >
-                          {member.label}
-                        </span>
-                      ))
-                    ) : (
-                      <span className="text-xs text-slate-500">Members unavailable.</span>
-                    )}
-                  </div>
+                <div className="flex items-center gap-2 px-3 py-2 text-xs text-slate-600 border-t border-slate-200">
+                  <MapPin className="h-3 w-3 text-slate-500" />
+                  <span className="truncate">{addressLabel ?? 'Address pending'}</span>
                 </div>
-                {createdBy && (
-                  <div>
-                    <div className="text-xs uppercase tracking-wide text-slate-500">Created by</div>
-                    <div className="text-sm text-slate-700">{memberDirectory[createdBy] ?? 'Unknown'}</div>
-                  </div>
-                )}
               </div>
-            </DashboardCard>
-          </div>
+            ) : (
+              <div className="rounded-xl border border-dashed border-slate-200 p-4 text-xs text-slate-500 text-center">
+                Location map will appear once coordinates are added.
+              </div>
+            )}
+          </DashboardCard>
         </div>
-
-        {expandedWidget && (
-          <div className="absolute inset-0 z-20 bg-slate-50/95 backdrop-blur-sm p-4">
-            <div className="h-full overflow-auto">
-              {expandedWidget === 'potluck' && roomType === 'potluck' && (
-                <PotluckWidget
-                  metadata={roomMetadata}
-                  currentUserId={user?.id ?? null}
-                  memberDirectory={memberDirectory}
-                  memberProfiles={memberProfiles}
-                  ownerIds={ownerIdSet}
-                  onUpdate={async (newMeta) => handlePatchRoom({ metadata: newMeta })}
-                  isExpanded
-                  onToggleExpand={() => handleToggleWidget('potluck')}
-                />
-              )}
-              {expandedWidget === 'map' && roomType !== 'potluck' && (
-                <DashboardCard title="Location" isExpanded onToggleExpand={() => handleToggleWidget('map')}>
-                  {hasLatLng ? (
-                    <div className="rounded-xl overflow-hidden border border-slate-200">
-                      <div className="aspect-video w-full relative">
-                        <LocationMapPanel photo={mapPhoto} />
-                      </div>
-                      <div className="flex items-center gap-2 px-3 py-2 text-xs text-slate-600 border-t border-slate-200">
-                        <MapPin className="h-3 w-3 text-slate-500" />
-                        <span className="truncate">{addressLabel ?? 'Address pending'}</span>
-                      </div>
-                    </div>
-                  ) : (
-                    <div className="rounded-xl border border-dashed border-slate-200 p-4 text-xs text-slate-500 text-center">
-                      Location map will appear once coordinates are added.
-                    </div>
-                  )}
-                </DashboardCard>
-              )}
-              {expandedWidget === 'details' && (
-                <DashboardCard title="Details" isExpanded onToggleExpand={() => handleToggleWidget('details')}>
-                  <div className="space-y-3">
-                    <div>
-                      <div className="text-xs uppercase tracking-wide text-slate-500">Room</div>
-                      <div className="text-sm font-semibold text-slate-900">{header.title}</div>
-                      <div className="text-xs text-slate-500">
-                        Type: {roomType === 'potluck' ? 'Potluck' : 'General'}
-                      </div>
-                    </div>
-                    <div>
-                      <div className="text-xs uppercase tracking-wide text-slate-500">Members</div>
-                      <div className="mt-2 flex flex-wrap gap-2">
-                        {memberDisplay.length > 0 ? (
-                          memberDisplay.map((member) => (
-                            <span
-                              key={member.id}
-                              className={
-                                member.isOwner
-                                  ? 'inline-flex items-center rounded-full bg-emerald-50 text-emerald-700 border border-emerald-200 px-2 py-0.5 text-xs'
-                                  : 'inline-flex items-center rounded-full bg-slate-100 text-slate-700 border border-slate-200 px-2 py-0.5 text-xs'
-                              }
-                            >
-                              {member.label}
-                            </span>
-                          ))
-                        ) : (
-                          <span className="text-xs text-slate-500">Members unavailable.</span>
-                        )}
-                      </div>
-                    </div>
-                    {createdBy && (
-                      <div>
-                        <div className="text-xs uppercase tracking-wide text-slate-500">Created by</div>
-                        <div className="text-sm text-slate-700">{memberDirectory[createdBy] ?? 'Unknown'}</div>
-                      </div>
-                    )}
-                  </div>
-                </DashboardCard>
-              )}
-            </div>
-          </div>
-        )}
       </section>
     </div>
   )
