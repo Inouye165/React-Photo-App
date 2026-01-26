@@ -1,5 +1,15 @@
 import { useCallback, useMemo, useState } from 'react'
-import { AlertTriangle, CheckCircle, Circle, MapPin, Maximize2, Minimize2, Plus } from 'lucide-react'
+import {
+  AlertTriangle,
+  CheckCircle,
+  ChevronDown,
+  ChevronUp,
+  Circle,
+  MapPin,
+  Maximize2,
+  Minimize2,
+  Plus,
+} from 'lucide-react'
 import type { ChatRoomMetadata, PotluckAllergy, PotluckItem } from '../../../types/chat'
 import LocationMapPanel from '../../LocationMapPanel'
 
@@ -32,6 +42,15 @@ export default function PotluckWidget({
 
   const [newItemLabel, setNewItemLabel] = useState('')
   const [newAllergyLabel, setNewAllergyLabel] = useState('')
+  const [isCollapsed, setIsCollapsed] = useState(false)
+
+  const itemSummary = useMemo(() => {
+    const total = items.length
+    const needed = items.filter((item) => !item.claimedByUserId).length
+    const itemLabel = total === 1 ? 'item' : 'items'
+    const needLabel = needed === 1 ? 'need' : 'needs'
+    return `${total} ${itemLabel}, ${needed} ${needLabel}`
+  }, [items])
 
   const formattedHostDate = useMemo(() => {
     if (!hostNotes?.createdAt) return null
@@ -122,11 +141,39 @@ export default function PotluckWidget({
     ? { metadata: { latitude: location?.lat, longitude: location?.lng } }
     : null
 
+  const hostNotesBlock = (
+    <div className="rounded-xl border border-slate-200 bg-white/60 p-3">
+      <div className="flex items-center justify-between">
+        <h4 className="text-sm font-semibold text-slate-800">Host Notes</h4>
+        {formattedHostDate && <span className="text-xs text-slate-500">{formattedHostDate}</span>}
+      </div>
+      {hostNotes?.message ? (
+        <p className="mt-2 text-sm text-slate-700 leading-relaxed whitespace-pre-line">{hostNotes.message}</p>
+      ) : (
+        <p className="mt-2 text-sm text-slate-500">No host notes yet.</p>
+      )}
+      {hostNotes?.instructions ? (
+        <div className="mt-3 rounded-lg bg-slate-50 border border-slate-200 p-2 text-xs text-slate-600">
+          <div className="font-semibold text-slate-700">Special instructions</div>
+          <p className="mt-1 whitespace-pre-line">{hostNotes.instructions}</p>
+        </div>
+      ) : null}
+    </div>
+  )
+
   return (
     <div className="bg-white border border-slate-200 rounded-xl overflow-hidden shadow-sm">
       <div className="bg-orange-50 px-4 py-2 border-b border-orange-100 flex items-center justify-between">
         <h3 className="text-sm font-semibold text-orange-800 flex items-center gap-2">🍲 Potluck Board</h3>
         <div className="flex items-center gap-2">
+          <button
+            type="button"
+            onClick={() => setIsCollapsed((prev) => !prev)}
+            className="inline-flex items-center justify-center h-7 w-7 rounded-lg text-orange-700 hover:bg-orange-100"
+            aria-label={isCollapsed ? 'Expand potluck summary' : 'Collapse potluck summary'}
+          >
+            {isCollapsed ? <ChevronDown className="h-4 w-4" /> : <ChevronUp className="h-4 w-4" />}
+          </button>
           <span className="text-xs text-orange-600 font-medium">
             {items.filter((i) => i.claimedByUserId).length} / {items.length} items
           </span>
@@ -144,7 +191,13 @@ export default function PotluckWidget({
       </div>
 
       <div className="p-4">
-        <div className="grid gap-4 lg:grid-cols-[1.15fr_1.35fr_0.9fr]">
+        {isCollapsed ? (
+          <div className="space-y-3">
+            <div className="text-sm text-slate-600">{itemSummary}</div>
+            {hostNotesBlock}
+          </div>
+        ) : (
+          <div className="grid gap-4 lg:grid-cols-[1.15fr_1.35fr_0.9fr]">
           <div className="space-y-3">
             <div className="flex items-center justify-between">
               <h4 className="text-sm font-semibold text-slate-800">Dishes</h4>
@@ -263,25 +316,7 @@ export default function PotluckWidget({
           </div>
 
           <div className="space-y-4">
-            <div className="rounded-xl border border-slate-200 bg-white/60 p-3">
-              <div className="flex items-center justify-between">
-                <h4 className="text-sm font-semibold text-slate-800">Host Notes</h4>
-                {formattedHostDate && <span className="text-xs text-slate-500">{formattedHostDate}</span>}
-              </div>
-              {hostNotes?.message ? (
-                <p className="mt-2 text-sm text-slate-700 leading-relaxed whitespace-pre-line">
-                  {hostNotes.message}
-                </p>
-              ) : (
-                <p className="mt-2 text-sm text-slate-500">No host notes yet.</p>
-              )}
-              {hostNotes?.instructions ? (
-                <div className="mt-3 rounded-lg bg-slate-50 border border-slate-200 p-2 text-xs text-slate-600">
-                  <div className="font-semibold text-slate-700">Special instructions</div>
-                  <p className="mt-1 whitespace-pre-line">{hostNotes.instructions}</p>
-                </div>
-              ) : null}
-            </div>
+            {hostNotesBlock}
             <div className="rounded-xl border border-slate-200 bg-white/60 p-3">
               <div className="flex items-center justify-between">
                 <div className="flex items-center gap-2">
@@ -344,6 +379,7 @@ export default function PotluckWidget({
             )}
           </div>
         </div>
+        )}
       </div>
     </div>
   )
