@@ -40,7 +40,7 @@ export default function ChatPage() {
 
   return (
     <div
-      className={`relative grid h-screen overflow-hidden grid-cols-1 ${gridColumns} bg-slate-100`}
+      className={`relative grid h-full min-h-0 overflow-hidden grid-cols-1 ${gridColumns} bg-slate-100`}
       data-testid="chat-page"
     >
       <ChatSidebar
