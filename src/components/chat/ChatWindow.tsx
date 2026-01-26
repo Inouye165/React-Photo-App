@@ -363,7 +363,6 @@ export default function ChatWindow({ roomId, showIdentityGate }: ChatWindowProps
 
   const currentUserIsOwner = Boolean(user?.id && memberProfiles[user.id]?.isOwner)
   const canEditSettings = !header.isGroup || currentUserIsOwner
-  const showPotluckHeader = roomType === 'potluck'
 
   useEffect(() => {
     setDraft('')
@@ -679,10 +678,13 @@ export default function ChatWindow({ roomId, showIdentityGate }: ChatWindowProps
   }
 
   return (
-    <div className="grid h-full min-h-0 grid-rows-[auto_minmax(0,1fr)]">
-      {showPotluckHeader && (
-        <section className="bg-slate-50 border-b border-slate-200" aria-label="Potluck overview">
-          <div className="px-4 pb-4 pt-0 sm:px-6 sm:pb-6 sm:pt-0">
+    <div className="grid h-full min-h-0 grid-cols-1 md:grid-cols-[minmax(0,1fr)_minmax(0,420px)]">
+      <section
+        className="flex flex-col h-full min-h-0 bg-slate-50 border-r border-slate-200 relative"
+        aria-label="Chat window"
+      >
+        {roomType === 'potluck' && (
+          <div className="border-b border-slate-200 bg-white px-4 py-4 sm:px-6">
             <PotluckWidget
               metadata={roomMetadata}
               currentUserId={user?.id ?? null}
@@ -694,13 +696,8 @@ export default function ChatWindow({ roomId, showIdentityGate }: ChatWindowProps
               onToggleExpand={() => handleToggleWidget('potluck')}
             />
           </div>
-        </section>
-      )}
-      <div className="grid min-h-0 grid-cols-1 md:grid-cols-[minmax(0,1fr)_minmax(0,420px)]">
-        <section
-          className="flex flex-col h-full min-h-0 bg-slate-50 border-r border-slate-200 relative"
-          aria-label="Chat window"
-        >
+        )}
+
         <div className="border-b border-slate-200 bg-white px-4 py-3 sm:px-6">
           <div className="flex items-center gap-2 min-w-0">
             {!header.isGroup && header.otherUserId && isUserOnline(header.otherUserId) && (
@@ -994,16 +991,16 @@ export default function ChatWindow({ roomId, showIdentityGate }: ChatWindowProps
           }}
         />
       )}
-        </section>
+      </section>
 
-        <section className="relative h-full min-h-0 bg-slate-50" aria-label="Dashboard widgets">
-          <div className="h-full overflow-auto p-4">
-            <div className="flex flex-col gap-4">
-              <DashboardCard
-                title="Location"
-                isExpanded={expandedWidget === 'map'}
-                onToggleExpand={() => handleToggleWidget('map')}
-              >
+      <section className="relative h-full min-h-0 bg-slate-50" aria-label="Dashboard widgets">
+        <div className="h-full overflow-auto p-4">
+          <div className="flex flex-col gap-4">
+            <DashboardCard
+              title="Location"
+              isExpanded={expandedWidget === 'map'}
+              onToggleExpand={() => handleToggleWidget('map')}
+            >
               {hasLatLng ? (
                 <div className="rounded-xl overflow-hidden border border-slate-200">
                   <div className="aspect-video w-full relative">
@@ -1019,13 +1016,13 @@ export default function ChatWindow({ roomId, showIdentityGate }: ChatWindowProps
                   Location map will appear once coordinates are added.
                 </div>
               )}
-              </DashboardCard>
+            </DashboardCard>
 
-              <DashboardCard
-                title="Details"
-                isExpanded={expandedWidget === 'details'}
-                onToggleExpand={() => handleToggleWidget('details')}
-              >
+            <DashboardCard
+              title="Details"
+              isExpanded={expandedWidget === 'details'}
+              onToggleExpand={() => handleToggleWidget('details')}
+            >
               <div className="space-y-3">
                 <div>
                   <div className="text-xs uppercase tracking-wide text-slate-500">Room</div>
@@ -1060,9 +1057,9 @@ export default function ChatWindow({ roomId, showIdentityGate }: ChatWindowProps
                   </div>
                 )}
               </div>
-              </DashboardCard>
-            </div>
+            </DashboardCard>
           </div>
+        </div>
 
         {expandedWidget && (
           <div className="absolute inset-0 z-20 bg-slate-50/95 backdrop-blur-sm p-4">
@@ -1141,8 +1138,7 @@ export default function ChatWindow({ roomId, showIdentityGate }: ChatWindowProps
             </div>
           </div>
         )}
-        </section>
-      </div>
+      </section>
     </div>
   )
 }
