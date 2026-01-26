@@ -605,6 +605,12 @@ export default function ChatWindow({ roomId, showIdentityGate }: ChatWindowProps
   const gateStatus = useIdentityGateStatus()
   const shouldShowIdentityGate = Boolean(showIdentityGate) && gateStatus.type !== 'allow'
 
+  useEffect(() => {
+    if (roomType === 'potluck' && expandedWidget === 'map') {
+      setExpandedWidget(null)
+    }
+  }, [expandedWidget, roomType])
+
   function DashboardCard({ title, onToggleExpand, isExpanded, children }: DashboardCardProps) {
     return (
       <section className="bg-white rounded-xl border border-slate-200 shadow-sm overflow-hidden">
@@ -684,7 +690,7 @@ export default function ChatWindow({ roomId, showIdentityGate }: ChatWindowProps
         aria-label="Chat window"
       >
         {roomType === 'potluck' && (
-          <div className="border-b border-slate-200 bg-white px-4 py-4 sm:px-6">
+          <div className="border-b border-slate-200 bg-white px-4 py-4 sm:px-6 shrink-0">
             <PotluckWidget
               metadata={roomMetadata}
               currentUserId={user?.id ?? null}
@@ -996,27 +1002,29 @@ export default function ChatWindow({ roomId, showIdentityGate }: ChatWindowProps
       <section className="relative h-full min-h-0 bg-slate-50" aria-label="Dashboard widgets">
         <div className="h-full overflow-auto p-4">
           <div className="flex flex-col gap-4">
-            <DashboardCard
-              title="Location"
-              isExpanded={expandedWidget === 'map'}
-              onToggleExpand={() => handleToggleWidget('map')}
-            >
-              {hasLatLng ? (
-                <div className="rounded-xl overflow-hidden border border-slate-200">
-                  <div className="aspect-video w-full relative">
-                    <LocationMapPanel photo={mapPhoto} />
+            {roomType !== 'potluck' && (
+              <DashboardCard
+                title="Location"
+                isExpanded={expandedWidget === 'map'}
+                onToggleExpand={() => handleToggleWidget('map')}
+              >
+                {hasLatLng ? (
+                  <div className="rounded-xl overflow-hidden border border-slate-200">
+                    <div className="aspect-video w-full relative">
+                      <LocationMapPanel photo={mapPhoto} />
+                    </div>
+                    <div className="flex items-center gap-2 px-3 py-2 text-xs text-slate-600 border-t border-slate-200">
+                      <MapPin className="h-3 w-3 text-slate-500" />
+                      <span className="truncate">{addressLabel ?? 'Address pending'}</span>
+                    </div>
                   </div>
-                  <div className="flex items-center gap-2 px-3 py-2 text-xs text-slate-600 border-t border-slate-200">
-                    <MapPin className="h-3 w-3 text-slate-500" />
-                    <span className="truncate">{addressLabel ?? 'Address pending'}</span>
+                ) : (
+                  <div className="rounded-xl border border-dashed border-slate-200 p-4 text-xs text-slate-500 text-center">
+                    Location map will appear once coordinates are added.
                   </div>
-                </div>
-              ) : (
-                <div className="rounded-xl border border-dashed border-slate-200 p-4 text-xs text-slate-500 text-center">
-                  Location map will appear once coordinates are added.
-                </div>
-              )}
-            </DashboardCard>
+                )}
+              </DashboardCard>
+            )}
 
             <DashboardCard
               title="Details"
@@ -1026,7 +1034,6 @@ export default function ChatWindow({ roomId, showIdentityGate }: ChatWindowProps
               <div className="space-y-3">
                 <div>
                   <div className="text-xs uppercase tracking-wide text-slate-500">Room</div>
-                  <div className="text-sm font-semibold text-slate-900">{header.title}</div>
                   <div className="text-xs text-slate-500">Type: {roomType === 'potluck' ? 'Potluck' : 'General'}</div>
                 </div>
                 <div>
@@ -1076,7 +1083,7 @@ export default function ChatWindow({ roomId, showIdentityGate }: ChatWindowProps
                   onToggleExpand={() => handleToggleWidget('potluck')}
                 />
               )}
-              {expandedWidget === 'map' && (
+              {expandedWidget === 'map' && roomType !== 'potluck' && (
                 <DashboardCard title="Location" isExpanded onToggleExpand={() => handleToggleWidget('map')}>
                   {hasLatLng ? (
                     <div className="rounded-xl overflow-hidden border border-slate-200">
