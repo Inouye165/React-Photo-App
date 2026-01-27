@@ -202,8 +202,11 @@ export default function WhiteboardCanvas({
     }
   }, [resizeCanvas])
 
+  // --- FIX START: prevent reconnect loop on token refresh ---
+  const hasAuth = !!token
   useEffect(() => {
-    if (!token) {
+    // If logged out or no token provided, idle state
+    if (!hasAuth || !token) {
       setStatus('idle')
       return
     }
@@ -219,6 +222,9 @@ export default function WhiteboardCanvas({
 
     transport.onEvent(handleIncoming)
 
+    // IMPORTANT: We use the 'token' from the closure (the one that existed when we connected).
+    // Updates to the 'token' string (refreshes) will NOT trigger this effect again
+    // because we removed 'token' from the dependency array below.
     transport
       .connect(boardId, token)
       .then(() => {
@@ -232,7 +238,9 @@ export default function WhiteboardCanvas({
       cancelled = true
       transport.disconnect()
     }
-  }, [boardId, drawEvent, effectiveSourceId, resetCanvasState, token, transport])
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [boardId, hasAuth, transport, effectiveSourceId, resetCanvasState]) 
+  // --- FIX END ---
 
   const emitEvent = useCallback((evt: WhiteboardStrokeEvent) => {
     drawEvent(evt, true)

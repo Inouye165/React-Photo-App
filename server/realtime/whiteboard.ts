@@ -163,16 +163,19 @@ export function createWhiteboardMessageHandler({
       const { boardId } = parsed.data;
       const allowed = await isMember(db, boardId, record.userId);
       if (!allowed) {
+        console.warn('[whiteboard] join forbidden', { boardId, userId: record.userId });
         send('whiteboard:error', { code: 'forbidden' });
         return true;
       }
 
       const out = joinRoom(record, boardId);
       if (!out.ok) {
+        console.warn('[whiteboard] join failed', { boardId, reason: out.reason });
         send('whiteboard:error', { code: 'join_failed' });
         return true;
       }
 
+      console.log('[whiteboard] user joined', { boardId, userId: record.userId });
       send('whiteboard:joined', { boardId });
 
       try {
@@ -247,11 +250,11 @@ export function createWhiteboardMessageHandler({
       if (type === 'stroke:end') {
         await pruneEvents(db, boardId);
       }
-    } catch {
-      // ignore persistence errors to keep realtime usable
+    } catch (err) {
+      console.error('[whiteboard] persistEvent failed:', err);
     }
 
-    publishToRoom(boardId, type, {
+    const result = publishToRoom(boardId, type, {
       boardId,
       strokeId,
       x,
@@ -261,6 +264,10 @@ export function createWhiteboardMessageHandler({
       color,
       width,
     });
+
+    if (result.delivered === 0) {
+      console.warn('[whiteboard] publishToRoom delivered to 0 clients', { boardId, type });
+    }
 
     return true;
   };
