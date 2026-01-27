@@ -7,6 +7,8 @@ const SOURCE_ID_MAX_LENGTH = 64;
 const MAX_PAYLOAD_BYTES = 2048;
 const MAX_EVENTS_PER_WINDOW = 240;
 const RATE_LIMIT_WINDOW_MS = 5000;
+const MAX_HISTORY_EVENTS = 5000;
+const MAX_EVENTS_PER_BOARD = 20000;
 
 const BoardIdSchema = z.string().uuid().max(BOARD_ID_MAX_LENGTH);
 
@@ -45,6 +47,17 @@ type RateState = {
   count: number;
 };
 
+type StoredWhiteboardEvent = {
+  event_type: 'stroke:start' | 'stroke:move' | 'stroke:end';
+  stroke_id: string;
+  x: number;
+  y: number;
+  t: number;
+  source_id: string | null;
+  color: string | null;
+  width: number | null;
+};
+
 function payloadByteLength(payload: unknown): number {
   try {
     return Buffer.byteLength(JSON.stringify(payload));
@@ -73,6 +86,54 @@ function shouldRateLimit(state: RateState | undefined, now: number) {
 async function isMember(db: Knex, boardId: string, userId: string): Promise<boolean> {
   const row = await db('room_members').where({ room_id: boardId, user_id: userId }).first();
   return Boolean(row);
+}
+
+async function fetchHistory(db: Knex, boardId: string): Promise<StoredWhiteboardEvent[]> {
+  const rows = await db('whiteboard_events')
+    .select('event_type', 'stroke_id', 'x', 'y', 't', 'source_id', 'color', 'width')
+    .where({ board_id: boardId })
+    .orderBy('id', 'desc')
+    .limit(MAX_HISTORY_EVENTS);
+
+  return rows.reverse() as StoredWhiteboardEvent[];
+}
+
+async function persistEvent(db: Knex, event: {
+  boardId: string;
+  type: 'stroke:start' | 'stroke:move' | 'stroke:end';
+  strokeId: string;
+  x: number;
+  y: number;
+  t: number;
+  sourceId?: string;
+  color?: string;
+  width?: number;
+}) {
+  await db('whiteboard_events').insert({
+    board_id: event.boardId,
+    event_type: event.type,
+    stroke_id: event.strokeId,
+    x: event.x,
+    y: event.y,
+    t: event.t,
+    source_id: event.sourceId ?? null,
+    color: event.color ?? null,
+    width: event.width ?? null,
+  });
+}
+
+async function pruneEvents(db: Knex, boardId: string) {
+  await db('whiteboard_events')
+    .where('board_id', boardId)
+    .whereNotIn(
+      'id',
+      db('whiteboard_events')
+        .select('id')
+        .where('board_id', boardId)
+        .orderBy('id', 'desc')
+        .limit(MAX_EVENTS_PER_BOARD),
+    )
+    .del();
 }
 
 export function createWhiteboardMessageHandler({
@@ -113,6 +174,24 @@ export function createWhiteboardMessageHandler({
       }
 
       send('whiteboard:joined', { boardId });
+
+      try {
+        const history = await fetchHistory(db, boardId);
+        for (const evt of history) {
+          send(evt.event_type, {
+            boardId,
+            strokeId: evt.stroke_id,
+            x: evt.x,
+            y: evt.y,
+            t: evt.t,
+            color: evt.color ?? undefined,
+            width: evt.width ?? undefined,
+          });
+        }
+      } catch {
+        // ignore history failures to keep realtime usable
+      }
+
       return true;
     }
 
@@ -161,6 +240,15 @@ export function createWhiteboardMessageHandler({
     if (rateDecision.limited) {
       send('whiteboard:error', { code: 'rate_limited' });
       return true;
+    }
+
+    try {
+      await persistEvent(db, { boardId, type, strokeId, x, y, t, sourceId, color, width });
+      if (type === 'stroke:end') {
+        await pruneEvents(db, boardId);
+      }
+    } catch {
+      // ignore persistence errors to keep realtime usable
     }
 
     publishToRoom(boardId, type, {

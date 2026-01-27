@@ -60,6 +60,15 @@ export default function WhiteboardCanvas({
     return canvas.getContext('2d')
   }, [])
 
+  const resetCanvasState = useCallback(() => {
+    eventsRef.current = []
+    activeStrokesRef.current = new Map()
+    const ctx = getContext()
+    const canvas = canvasRef.current
+    if (!ctx || !canvas) return
+    ctx.clearRect(0, 0, canvas.width, canvas.height)
+  }, [getContext])
+
   const normalizePoint = useCallback((clientX: number, clientY: number) => {
     const canvas = canvasRef.current
     const wrapper = wrapperRef.current
@@ -201,6 +210,7 @@ export default function WhiteboardCanvas({
 
     let cancelled = false
     setStatus('connecting')
+    resetCanvasState()
 
     const handleIncoming = (evt: WhiteboardStrokeEvent) => {
       if (effectiveSourceId && evt.sourceId && evt.sourceId === effectiveSourceId) return
@@ -222,7 +232,7 @@ export default function WhiteboardCanvas({
       cancelled = true
       transport.disconnect()
     }
-  }, [boardId, drawEvent, effectiveSourceId, token, transport])
+  }, [boardId, drawEvent, effectiveSourceId, resetCanvasState, token, transport])
 
   const emitEvent = useCallback((evt: WhiteboardStrokeEvent) => {
     drawEvent(evt, true)
