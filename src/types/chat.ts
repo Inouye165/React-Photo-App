@@ -1,4 +1,4 @@
-export type ChatRoomType = 'general' | 'potluck'
+export type ChatRoomType = 'general' | 'potluck' | 'collaboration'
 
 export type PotluckItem = {
   id: string

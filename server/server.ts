@@ -34,7 +34,12 @@ if (process.env.NODE_ENV !== 'test') {
     try {
       const url = new URL(req.url || '/', 'http://localhost');
       const pathname = url.pathname;
-      if (pathname === '/events/photos' || pathname === '/api/v1/events/photos') {
+      if (
+        pathname === '/events/photos' ||
+        pathname === '/api/v1/events/photos' ||
+        pathname === '/events/whiteboard' ||
+        pathname === '/api/v1/events/whiteboard'
+      ) {
         socketManager.handleUpgrade(req, socket, head);
         return;
       }

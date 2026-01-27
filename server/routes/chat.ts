@@ -11,7 +11,7 @@ type AuthenticatedRequest = Request & {
 };
 
 const PatchRoomBodySchema = z.object({
-  type: z.enum(['general', 'potluck']).optional(),
+  type: z.enum(['general', 'potluck', 'collaboration']).optional(),
   metadata: z.record(z.unknown()).optional(),
 });
 
@@ -29,7 +29,10 @@ export default function createChatRouter({ db }: { db: Knex }) {
     async (req: AuthenticatedRequest, res, next) => {
     try {
       const { roomId } = req.params as { roomId: string };
-      const { type, metadata } = req.body as { type?: 'general' | 'potluck'; metadata?: Record<string, unknown> };
+      const { type, metadata } = req.body as {
+        type?: 'general' | 'potluck' | 'collaboration';
+        metadata?: Record<string, unknown>;
+      };
       const userId = req.user?.id;
 
       if (!userId) {

@@ -12,6 +12,17 @@ function createApp(options = {}) {
     }
   }
   const { createPhotoEventHistory } = require('../realtime/photoEventHistory');
+  let createWhiteboardMessageHandler;
+  try {
+    ({ createWhiteboardMessageHandler } = require('../realtime/whiteboard'));
+  } catch (error) {
+    const message = error && error.message ? String(error.message) : '';
+    if (error && error.code === 'MODULE_NOT_FOUND' && message.includes('whiteboard')) {
+      ({ createWhiteboardMessageHandler } = require('../realtime/whiteboard.ts'));
+    } else {
+      throw error;
+    }
+  }
   const { getRedisClient } = require('../lib/redis');
   const metrics = require('../metrics');
 
@@ -51,12 +62,15 @@ function createApp(options = {}) {
     logger,
   });
 
+  const whiteboardMessageHandler = createWhiteboardMessageHandler({ db });
+
   const socketManager = createSocketManager({
     heartbeatMs: 25_000,
     maxConnectionsPerUser: 3,
     metrics,
     logger,
     photoEventHistory,
+    clientMessageHandler: whiteboardMessageHandler,
   });
 
   registerRoutes(app, { db, supabase, socketManager, logger });

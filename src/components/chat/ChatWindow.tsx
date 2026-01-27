@@ -13,7 +13,7 @@ import {
 } from 'lucide-react'
 
 import { API_BASE_URL, getAccessToken, getPhotos, patchChatRoom, sendMessage, leaveOrDeleteRoom } from '../../api'
-import { useNavigate } from 'react-router-dom'
+import { Link, useNavigate } from 'react-router-dom'
 import { useChatRealtime } from '../../hooks/useChatRealtime'
 import { usePresence } from '../../hooks/usePresence'
 import { useChatTyping } from '../../hooks/useChatTyping'
@@ -28,6 +28,7 @@ import ChatSettingsModal from './ChatSettingsModal'
 import PotluckWidget from './widgets/PotluckWidget'
 import LocationMapPanel from '../LocationMapPanel'
 import { IdentityGateInline, useIdentityGateStatus } from '../IdentityGate'
+import WhiteboardViewer from '../whiteboard/WhiteboardViewer'
 
 export interface ChatWindowProps {
   roomId: string | null
@@ -286,7 +287,8 @@ export default function ChatWindow({ roomId, showIdentityGate, mode = 'workspace
       const roomRow = (room ?? null) as RoomRow | null
       const isGroup = Boolean(roomRow?.is_group)
       const roomName = typeof roomRow?.name === 'string' ? roomRow?.name : null
-      const resolvedType: ChatRoomType = roomRow?.type === 'potluck' ? 'potluck' : 'general'
+      const resolvedType: ChatRoomType =
+        roomRow?.type === 'potluck' ? 'potluck' : roomRow?.type === 'collaboration' ? 'collaboration' : 'general'
       const resolvedMetadata =
         roomRow?.metadata && typeof roomRow.metadata === 'object' ? (roomRow.metadata as ChatRoomMetadata) : {}
 
@@ -596,6 +598,7 @@ export default function ChatWindow({ roomId, showIdentityGate, mode = 'workspace
   const mapPhoto = hasLatLng
     ? { metadata: { latitude: potluckLocation?.lat, longitude: potluckLocation?.lng } }
     : null
+  const isCollaboration = roomType === 'collaboration'
 
   const gateStatus = useIdentityGateStatus()
   const shouldShowIdentityGate = Boolean(showIdentityGate) && gateStatus.type !== 'allow'
@@ -986,9 +989,20 @@ export default function ChatWindow({ roomId, showIdentityGate, mode = 'workspace
 
   return (
     <div className="grid h-full min-h-0 grid-cols-1 md:grid-cols-[minmax(0,1fr)_minmax(0,360px)]">
-      <section className="flex flex-col h-full min-h-0 border-r border-slate-200" aria-label="Potluck board">
+      <section
+        className="flex flex-col h-full min-h-0 border-r border-slate-200"
+        aria-label={isCollaboration ? 'Collaboration board' : 'Potluck board'}
+      >
         <div className="flex-1 min-h-0 overflow-auto">
-          {roomType === 'potluck' ? (
+          {isCollaboration ? (
+            roomId ? (
+              <WhiteboardViewer boardId={roomId} className="h-full" />
+            ) : (
+              <div className="h-full flex items-center justify-center text-sm text-slate-500">
+                Select a room to start collaborating.
+              </div>
+            )
+          ) : roomType === 'potluck' ? (
             <PotluckWidget
               metadata={roomMetadata}
               currentUserId={user?.id ?? null}
@@ -1006,25 +1020,46 @@ export default function ChatWindow({ roomId, showIdentityGate, mode = 'workspace
         </div>
       </section>
 
-      <section className="relative h-full min-h-0" aria-label="Location map">
+      <section className="relative h-full min-h-0" aria-label={isCollaboration ? 'Pad mode' : 'Location map'}>
         <div className="h-full overflow-auto">
-          <DashboardCard title="Location">
-            {hasLatLng ? (
-              <div className="rounded-xl overflow-hidden border border-slate-200">
-                <div className="aspect-video w-full relative">
-                  <LocationMapPanel photo={mapPhoto} />
-                </div>
-                <div className="flex items-center gap-2 px-3 py-2 text-xs text-slate-600 border-t border-slate-200">
-                  <MapPin className="h-3 w-3 text-slate-500" />
-                  <span className="truncate">{addressLabel ?? 'Address pending'}</span>
-                </div>
+          {isCollaboration ? (
+            <DashboardCard title="Pad mode">
+              <div className="space-y-3 text-sm text-slate-600">
+                <p>Open pad mode on a phone or tablet to draw. Strokes appear here live.</p>
+                {roomId ? (
+                  <Link
+                    to={`/chat/${roomId}/pad`}
+                    target="_blank"
+                    rel="noreferrer"
+                    className="inline-flex items-center justify-center rounded-lg bg-slate-900 px-4 py-2 text-sm font-semibold text-white hover:bg-slate-800"
+                  >
+                    Open pad mode
+                  </Link>
+                ) : (
+                  <span className="text-xs text-slate-500">Select a room to enable pad mode.</span>
+                )}
+                <div className="text-xs text-slate-500">Tip: keep the pad screen awake while drawing.</div>
               </div>
-            ) : (
-              <div className="rounded-xl border border-dashed border-slate-200 p-4 text-xs text-slate-500 text-center">
-                Location map will appear once coordinates are added.
-              </div>
-            )}
-          </DashboardCard>
+            </DashboardCard>
+          ) : (
+            <DashboardCard title="Location">
+              {hasLatLng ? (
+                <div className="rounded-xl overflow-hidden border border-slate-200">
+                  <div className="aspect-video w-full relative">
+                    <LocationMapPanel photo={mapPhoto} />
+                  </div>
+                  <div className="flex items-center gap-2 px-3 py-2 text-xs text-slate-600 border-t border-slate-200">
+                    <MapPin className="h-3 w-3 text-slate-500" />
+                    <span className="truncate">{addressLabel ?? 'Address pending'}</span>
+                  </div>
+                </div>
+              ) : (
+                <div className="rounded-xl border border-dashed border-slate-200 p-4 text-xs text-slate-500 text-center">
+                  Location map will appear once coordinates are added.
+                </div>
+              )}
+            </DashboardCard>
+          )}
         </div>
       </section>
     </div>
