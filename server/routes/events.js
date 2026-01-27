@@ -87,6 +87,39 @@ function createPhotosEventsHandler({ log, metrics: m }) {
     }
 
     try {
+      log?.info?.('[realtime] WebSocket upgrade required', { requestId });
+    } catch {
+      // ignore
+    }
+
+    return res.status(426).json({
+      success: false,
+      error: 'WebSocket upgrade required',
+      requestId,
+    });
+  };
+}
+
+function createWhiteboardEventsHandler({ log, metrics: m }) {
+  return async (req, res) => {
+    const requestId = getOrCreateRequestId(req);
+
+    if (isRealtimeDisabled()) {
+      return res.status(503).json({ success: false, error: 'Real-time events disabled', requestId });
+    }
+
+    const userId = req.user && req.user.id ? String(req.user.id) : null;
+
+    if (!userId) {
+      try {
+        m?.incRealtimeDisconnectReason?.('auth_fail');
+      } catch {
+        // ignore
+      }
+      return res.status(401).json({ success: false, error: 'Unauthorized', requestId });
+    }
+
+    try {
       log?.info?.('[realtime] WebSocket upgrade required', { userId, requestId });
     } catch {
       // ignore
@@ -110,6 +143,12 @@ module.exports = function createEventsRouter(options = {}) {
     '/photos',
     instrumentAuthMiddleware(authenticateToken, { metrics: m }),
     createPhotosEventsHandler({ log, metrics: m })
+  );
+
+  router.get(
+    '/whiteboard',
+    instrumentAuthMiddleware(authenticateToken, { metrics: m }),
+    createWhiteboardEventsHandler({ log, metrics: m })
   );
 
   return router;

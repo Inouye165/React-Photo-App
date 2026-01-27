@@ -15,6 +15,7 @@ import AuthWrapper from './layouts/AuthWrapper';
 import ConfirmInvitePage from './pages/ConfirmInvitePage';
 import OnboardingPage from './pages/OnboardingPage.tsx';
 import ChatPage from './pages/ChatPage.tsx';
+import ChatPadPage from './pages/ChatPadPage.tsx';
 import AdminDashboard from './pages/AdminDashboard.tsx';
 import AdminAssessmentHistory from './pages/AdminAssessmentHistory.tsx';
 import AssessmentReviewDetail from './pages/AssessmentReviewDetail.tsx';
@@ -63,6 +64,7 @@ function App() {
           <Route path="/confirm-invite" element={<ConfirmInvitePage />} />
           <Route path="/reset-password" element={<OnboardingPage />} />
           <Route element={<AuthWrapper><IdentityGate /></AuthWrapper>}>
+            <Route path="/chat/:roomId/pad" element={<ChatPadPage />} />
             <Route element={<MainLayout />}>
               {/* Smart Router - determines initial landing page based on photo state */}
               <Route index element={<SmartRouter />} />

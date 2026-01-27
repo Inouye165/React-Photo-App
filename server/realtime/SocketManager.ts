@@ -58,6 +58,7 @@ type SocketMessage = {
 type ClientMessage = {
   type: string;
   roomId?: string;
+  payload?: unknown;
 };
 
 type SocketRecord = {
@@ -67,6 +68,15 @@ type SocketRecord = {
   isAlive: boolean;
   closed: boolean;
 };
+
+type ClientMessageHandler = (args: {
+  record: SocketRecord;
+  message: ClientMessage;
+  send: (type: string, payload?: unknown) => void;
+  joinRoom: (record: SocketRecord, roomId: string) => { ok: boolean; reason?: string; roomId?: string };
+  leaveRoom: (record: SocketRecord, roomId: string) => { ok: boolean; reason?: string; roomId?: string };
+  publishToRoom: (roomId: string, eventName: string, payload?: Record<string, unknown>) => { delivered: number; eventId?: string };
+}) => boolean | Promise<boolean>;
 
 function writeHttpResponse(socket: any, statusCode: number, message: string) {
   const statusText = STATUS_TEXT[statusCode] || 'Error';
@@ -98,6 +108,7 @@ export function createSocketManager(options: {
   logger?: typeof logger;
   authenticateToken?: typeof defaultAuthenticateToken;
   photoEventHistory?: PhotoEventHistory | null;
+  clientMessageHandler?: ClientMessageHandler | null;
 } = {}) {
   const heartbeatMs = Number.isFinite(options.heartbeatMs) ? Number(options.heartbeatMs) : 25_000;
   const maxConnectionsPerUser = Number.isFinite(options.maxConnectionsPerUser) ? Number(options.maxConnectionsPerUser) : 3;
@@ -107,6 +118,7 @@ export function createSocketManager(options: {
   const log = options.logger || logger;
   const authenticateToken = options.authenticateToken || defaultAuthenticateToken;
   const photoEventHistory = options.photoEventHistory || null;
+  const clientMessageHandler = options.clientMessageHandler || null;
 
   const wss = new WebSocketServer({ noServer: true });
   const clientsByUserId = new Map<string, Set<SocketRecord>>();
@@ -228,8 +240,8 @@ export function createSocketManager(options: {
       removeClient(key, ws, 'error');
     });
 
-    ws.on('message', (data: any) => {
-      handleIncomingMessage(record, data);
+    ws.on('message', (data: unknown) => {
+      void handleIncomingMessage(record, data);
     });
 
     return record;
@@ -342,7 +354,7 @@ export function createSocketManager(options: {
     return { ok: true, roomId: normalized };
   }
 
-  function handleIncomingMessage(record: SocketRecord, data: any) {
+  async function handleIncomingMessage(record: SocketRecord, data: unknown) {
     let payload: ClientMessage | null = null;
 
     if (typeof data === 'string') {
@@ -384,6 +396,25 @@ export function createSocketManager(options: {
     if (type === 'PING') {
       sendToRecord(record, { type: 'PONG', payload: { ts: Date.now() } });
       return;
+    }
+
+    if (clientMessageHandler) {
+      try {
+        const handled = await clientMessageHandler({
+          record,
+          message: payload,
+          send: (messageType, messagePayload) => {
+            sendToRecord(record, { type: messageType, payload: messagePayload });
+          },
+          joinRoom,
+          leaveRoom,
+          publishToRoom,
+        });
+
+        if (handled) return;
+      } catch {
+        return;
+      }
     }
 
     if (type === 'JOIN_ROOM') {
@@ -505,7 +536,7 @@ export function createSocketManager(options: {
       }
     } catch (err) {
       try {
-        log?.warn?.('[realtime] Catch-up replay failed', { userId: record.userId, error: err?.message || String(err) });
+        log?.warn?.('[realtime] Catch-up replay failed', { error: err?.message || String(err) });
       } catch {
         // ignore
       }
@@ -536,7 +567,7 @@ export function createSocketManager(options: {
     });
 
     try {
-      log?.info?.('[realtime] WebSocket client connected', { userId });
+      log?.info?.('[realtime] WebSocket client connected');
     } catch {
       // ignore
     }

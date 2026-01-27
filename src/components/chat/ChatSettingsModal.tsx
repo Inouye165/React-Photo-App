@@ -345,7 +345,7 @@ export default function ChatSettingsModal({
         <div className="p-6 pb-5 space-y-5">
           <div className="space-y-3">
             <label className="text-sm font-medium text-slate-700">Chat Purpose</label>
-            <div className="grid grid-cols-2 gap-3">
+            <div className="grid grid-cols-1 sm:grid-cols-3 gap-3">
               <button
                 onClick={() => setSelectedType('general')}
                 className={`p-3 rounded-xl border text-sm font-medium transition-all ${
@@ -357,6 +357,19 @@ export default function ChatSettingsModal({
                 <span className="inline-flex items-center gap-2">
                   {selectedType === 'general' && <Check className="h-4 w-4 text-blue-600" />}
                   <span>💬 General</span>
+                </span>
+              </button>
+              <button
+                onClick={() => setSelectedType('collaboration')}
+                className={`p-3 rounded-xl border text-sm font-medium transition-all ${
+                  selectedType === 'collaboration'
+                    ? 'border-indigo-500 bg-indigo-50 text-indigo-700 ring-1 ring-indigo-500'
+                    : 'border-slate-200 text-slate-600 hover:bg-slate-50'
+                }`}
+              >
+                <span className="inline-flex items-center gap-2">
+                  {selectedType === 'collaboration' && <Check className="h-4 w-4 text-indigo-600" />}
+                  <span>🧑‍🤝‍🧑 Collaboration</span>
                 </span>
               </button>
               <button
