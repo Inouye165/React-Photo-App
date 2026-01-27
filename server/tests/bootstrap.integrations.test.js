@@ -46,7 +46,7 @@ describe('bootstrap/startIntegrations + shutdown', () => {
     // Avoid real timers/network; keep smoke-check lightweight.
     jest.doMock('../smoke-supabase', () => jest.fn(async () => true));
 
-    const { createApp } = require('../bootstrap/createApp');
+    const { createApp } = require('../bootstrap/createApp.ts');
     const { startIntegrations } = require('../bootstrap/startIntegrations');
     const { createShutdownManager } = require('../bootstrap/shutdown');
 
