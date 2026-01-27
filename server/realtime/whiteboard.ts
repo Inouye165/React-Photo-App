@@ -153,6 +153,14 @@ export function createWhiteboardMessageHandler({
   }: HandlerArgs): Promise<boolean> {
     const type = typeof message.type === 'string' ? message.type : '';
 
+    // --- FIX START: Heartbeat Whitelist ---
+    // Allow 'ping' messages without action. 
+    // Returning true tells the socket server "This message was handled, don't close the connection."
+    if (type === 'ping') {
+      return true;
+    }
+    // --- FIX END ---
+
     if (type === 'whiteboard:join') {
       const parsed = z.object({ boardId: BoardIdSchema }).safeParse(message.payload);
       if (!parsed.success) {
