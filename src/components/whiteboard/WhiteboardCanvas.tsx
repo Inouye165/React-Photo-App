@@ -8,6 +8,7 @@ const DEFAULT_WIDTH = 2
 const MAX_BUFFERED_EVENTS = 5000
 const MIN_MOVE_INTERVAL_MS = 12
 const MIN_MOVE_DISTANCE = 0.002
+const HEARTBEAT_INTERVAL_MS = 20000 // Send a ping every 20 seconds
 
 type WhiteboardCanvasProps = {
   boardId: string
@@ -202,10 +203,8 @@ export default function WhiteboardCanvas({
     }
   }, [resizeCanvas])
 
-  // --- FIX START: prevent reconnect loop on token refresh ---
   const hasAuth = !!token
   useEffect(() => {
-    // If logged out or no token provided, idle state
     if (!hasAuth || !token) {
       setStatus('idle')
       return
@@ -222,9 +221,6 @@ export default function WhiteboardCanvas({
 
     transport.onEvent(handleIncoming)
 
-    // IMPORTANT: We use the 'token' from the closure (the one that existed when we connected).
-    // Updates to the 'token' string (refreshes) will NOT trigger this effect again
-    // because we removed 'token' from the dependency array below.
     transport
       .connect(boardId, token)
       .then(() => {
@@ -234,13 +230,25 @@ export default function WhiteboardCanvas({
         if (!cancelled) setStatus('error')
       })
 
+    // --- FIX START: Heartbeat/Ping ---
+    // Keep the connection alive by sending a ping every 20 seconds.
+    // This prevents the server/load balancer from closing the socket due to inactivity.
+    const pingInterval = setInterval(() => {
+      if (!cancelled) {
+        // We cast to 'any' here because 'ping' isn't in your strict types yet, 
+        // but it's enough to keep the TCP connection open.
+        transport.send({ type: 'ping', boardId } as any)
+      }
+    }, HEARTBEAT_INTERVAL_MS)
+    // --- FIX END ---
+
     return () => {
       cancelled = true
+      clearInterval(pingInterval) // Stop pinging on unmount
       transport.disconnect()
     }
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [boardId, hasAuth, transport, effectiveSourceId, resetCanvasState]) 
-  // --- FIX END ---
+  }, [boardId, hasAuth, transport, effectiveSourceId, resetCanvasState])
 
   const emitEvent = useCallback((evt: WhiteboardStrokeEvent) => {
     drawEvent(evt, true)
