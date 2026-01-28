@@ -159,6 +159,8 @@ export function createWhiteboardMessageHandler({
     }
 
     if (type === 'ping') {
+      const boardId = (message.payload as { boardId?: string })?.boardId;
+      send('pong', { payload: { boardId, t: Date.now() } });
       return true;
     }
 

@@ -17,7 +17,9 @@ type SocketMessage = {
 }
 
 const STROKE_TYPES: ReadonlySet<StrokeEventType> = new Set(['stroke:start', 'stroke:move', 'stroke:end'])
-const KEEP_ALIVE_INTERVAL_MS = 5000 
+const KEEP_ALIVE_INTERVAL_MS = 5000
+const PONG_TIMEOUT_MS = 15000
+const MAX_BUFFERED_SEND = 2000
 
 // [DEBUG] Logging disabled for performance
 const debugLog = (label: string, data?: any) => {
@@ -56,6 +58,14 @@ function asStrokeEvent(message: SocketMessage): WhiteboardStrokeEvent | null {
     width: data.width,
     sourceId: data.sourceId,
   }
+}
+
+function unwrapPayload(message: SocketMessage): any {
+  const payload = message.payload
+  if (payload && typeof payload === 'object' && 'payload' in payload) {
+    return (payload as { payload?: any }).payload ?? payload
+  }
+  return payload
 }
 
 function toWebSocketUrl(apiBaseUrl: string, token: string): string {
@@ -98,6 +108,10 @@ export function createSocketTransport({
   let reconnectTimer: any = null
   let reconnectAttempts = 0
   let manualClose = false
+  let joined = false
+  let pendingEvents: WhiteboardStrokeEvent[] = []
+  let lastPongAt = 0
+  let lastPongWarnAt = 0
 
   const reconnectConfig = {
     enabled: true,
@@ -182,13 +196,45 @@ export function createSocketTransport({
 
   const startKeepAlive = (boardId: string) => {
     stopKeepAlive()
+    lastPongAt = Date.now()
     keepAliveTimer = setInterval(() => {
       if (ws && ws.readyState === WebSocket.OPEN) {
         try {
-          ws.send(JSON.stringify({ type: 'ping', payload: { boardId } }))
+          const now = Date.now()
+          ws.send(JSON.stringify({ type: 'ping', payload: { boardId, t: now } }))
+          if (now - lastPongAt > PONG_TIMEOUT_MS) {
+            if (now - lastPongWarnAt > PONG_TIMEOUT_MS) {
+              lastPongWarnAt = now
+              console.warn('[WB] Pong timeout, closing socket', { boardId })
+            }
+            try { ws.close() } catch {}
+          }
         } catch {}
       }
     }, KEEP_ALIVE_INTERVAL_MS)
+  }
+
+  const queueEvent = (event: WhiteboardStrokeEvent) => {
+    pendingEvents.push(event)
+    if (pendingEvents.length > MAX_BUFFERED_SEND) {
+      pendingEvents.splice(0, pendingEvents.length - MAX_BUFFERED_SEND)
+      console.warn('[WB] Send queue overflow, dropping oldest events', { boardId: event.boardId })
+    }
+  }
+
+  const flushPending = () => {
+    if (!ws || ws.readyState !== WebSocket.OPEN || !joined) return
+    if (!pendingEvents.length) return
+    const batch = pendingEvents
+    pendingEvents = []
+    for (const event of batch) {
+      try {
+        ws.send(JSON.stringify({ type: event.type, payload: { ...event, boardId: event.boardId } }))
+      } catch {
+        queueEvent(event)
+      }
+    }
+    console.log('[WB] Flushed queued events', { count: batch.length })
   }
 
   const connect = async (boardId: string, token: string) => {
@@ -219,9 +265,10 @@ export function createSocketTransport({
       registerAbort()
 
       ws.addEventListener('open', () => {
-        console.log('[WB] Connected') 
+        console.log('[WB] Connected', { boardId })
         opened = true
         clearReconnect()
+        joined = false
         try {
           ws?.send(JSON.stringify({ type: 'whiteboard:join', payload: { boardId } }))
           startKeepAlive(boardId)
@@ -235,6 +282,19 @@ export function createSocketTransport({
           const parsed = JSON.parse(data) as SocketMessage
 
           // Only log explicit server errors (low frequency)
+          if (parsed.type === 'pong') {
+            lastPongAt = Date.now()
+            return
+          }
+
+          if (parsed.type === 'whiteboard:joined') {
+            const joinedBoardId = unwrapPayload(parsed)?.boardId
+            if (!joinedBoardId || joinedBoardId === boardId) {
+              joined = true
+              flushPending()
+            }
+          }
+
           if (parsed.type === 'whiteboard:error') {
             console.error('[WB] Server Error:', parsed.payload)
           }
@@ -265,6 +325,7 @@ export function createSocketTransport({
           reconnectAttempts,
           lastTokenPresent: Boolean(lastToken && lastToken.trim()),
         })
+        joined = false
         stopKeepAlive()
         cleanupAbort(handleAbort)
         connectPromise = null
@@ -281,11 +342,16 @@ export function createSocketTransport({
   return {
     connect,
     send: (event: WhiteboardStrokeEvent) => {
-      if (!ws || ws.readyState !== WebSocket.OPEN) return
+      if (!ws || ws.readyState !== WebSocket.OPEN || !joined) {
+        queueEvent(event)
+        return
+      }
       const payload = { ...event, boardId: event.boardId }
       try {
         ws.send(JSON.stringify({ type: event.type, payload }))
-      } catch {}
+      } catch {
+        queueEvent(event)
+      }
     },
     onEvent: (handler: WhiteboardEventHandler) => {
       handlers.add(handler)
@@ -295,6 +361,8 @@ export function createSocketTransport({
       clearReconnect()
       stopKeepAlive()
       handlers.clear()
+      pendingEvents = []
+      joined = false
       const boardId = activeBoardId
       activeBoardId = null
       connectPromise = null
