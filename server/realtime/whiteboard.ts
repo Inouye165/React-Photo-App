@@ -155,10 +155,7 @@ export function createWhiteboardMessageHandler({
     const type = typeof message.type === 'string' ? message.type : '';
 
     // --- Heartbeat Whitelist ---
-    // Allow 'ping' messages without action. 
-    // Returning true tells the socket server "This message was handled, don't close the connection."
     if (type === 'ping') {
-      // Uncomment for debugging: console.log('[whiteboard] keepalive ping', { userId: record.userId, socketId: record.id });
       return true;
     }
 
@@ -206,7 +203,7 @@ export function createWhiteboardMessageHandler({
           });
         }
       } catch {
-        // ignore history failures to keep realtime usable
+        // ignore history failures
       }
 
       return true;
@@ -245,10 +242,23 @@ export function createWhiteboardMessageHandler({
 
     const { boardId, strokeId, x, y, t, sourceId, color, width } = parsed.data;
 
+    // --- FIX: Self-Healing Join ---
     if (!record.rooms.has(boardId)) {
-      send('whiteboard:error', { code: 'not_joined' });
-      return true;
+      const allowed = await isMember(db, boardId, record.userId);
+      if (allowed) {
+        const out = joinRoom(record, boardId);
+        if (out.ok) {
+          console.log('[whiteboard] auto-rejoined user', { userId: record.userId, boardId });
+        } else {
+          send('whiteboard:error', { code: 'not_joined' });
+          return true;
+        }
+      } else {
+        send('whiteboard:error', { code: 'forbidden' });
+        return true;
+      }
     }
+    // --- FIX END ---
 
     const now = Date.now();
     const currentState = rateStateByRecord.get(record);
@@ -280,13 +290,9 @@ export function createWhiteboardMessageHandler({
     });
 
     if (result.delivered === 0) {
-      console.warn('[whiteboard] publishToRoom delivered to 0 clients', { 
-        boardId, 
-        type, 
-        senderSocketId: record.id,
-        senderUserId: record.userId,
-        senderRoomCount: record.rooms.size 
-      });
+      // NOTE: This log might still appear if YOU are the only one in the room.
+      // But it will no longer block you from drawing or re-joining.
+      // console.warn('[whiteboard] publishToRoom delivered to 0 clients', { boardId });
     }
 
     return true;
