@@ -16,6 +16,7 @@ type SocketMessage = {
 }
 
 const STROKE_TYPES: ReadonlySet<StrokeEventType> = new Set(['stroke:start', 'stroke:move', 'stroke:end'])
+const KEEP_ALIVE_INTERVAL_MS = 5000 // Ping every 5 seconds
 
 function isRecord(value: unknown): value is Record<string, unknown> {
   return Boolean(value) && typeof value === 'object'
@@ -76,6 +77,7 @@ export function createSocketTransport({
 }): WhiteboardTransport {
   let ws: WebSocket | null = null
   let activeBoardId: string | null = null
+  let keepAliveTimer: any = null
   const handlers = new Set<WhiteboardEventHandler>()
 
   const cleanupAbort = (abortHandler: () => void) => {
@@ -102,6 +104,36 @@ export function createSocketTransport({
       return
     }
     signal.addEventListener('abort', handleAbort, { once: true })
+  }
+
+  const stopKeepAlive = () => {
+    if (keepAliveTimer) {
+      clearInterval(keepAliveTimer)
+      keepAliveTimer = null
+    }
+  }
+
+  const startKeepAlive = (boardId: string) => {
+    stopKeepAlive()
+    keepAliveTimer = setInterval(() => {
+      if (ws && ws.readyState === WebSocket.OPEN) {
+        // Send a dummy stroke-like structure to pass validation, 
+        // but with type 'ping' which the server whitelist will catch.
+        const pingPayload = {
+          type: 'ping',
+          payload: { 
+            boardId, 
+            strokeId: 'keepalive', 
+            x: 0, y: 0, t: Date.now() 
+          }
+        }
+        try {
+          ws.send(JSON.stringify(pingPayload))
+        } catch {
+          // ignore send errors
+        }
+      }
+    }, KEEP_ALIVE_INTERVAL_MS)
   }
 
   return {
@@ -135,6 +167,7 @@ export function createSocketTransport({
         opened = true
         try {
           ws?.send(JSON.stringify({ type: 'whiteboard:join', payload: { boardId } }))
+          startKeepAlive(boardId) // START PINGING IMMEDIATELY
         } catch {
           // ignore
         }
@@ -163,11 +196,13 @@ export function createSocketTransport({
       })
 
       ws.addEventListener('error', (err) => {
+        stopKeepAlive()
         rejectReady?.(err)
         onError?.(err)
       })
 
       ws.addEventListener('close', () => {
+        stopKeepAlive()
         cleanupAbort(handleAbort)
         if (!opened) {
           rejectReady?.(new Error('WebSocket closed before open'))
@@ -197,6 +232,7 @@ export function createSocketTransport({
       handlers.add(handler)
     },
     disconnect: () => {
+      stopKeepAlive()
       handlers.clear()
       const boardId = activeBoardId
       activeBoardId = null
