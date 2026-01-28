@@ -73,10 +73,20 @@ export function createSocketTransport({
   apiBaseUrl,
   onError,
   signal,
+  getToken,
+  reconnect,
 }: {
   apiBaseUrl: string
   onError?: (err: unknown) => void
   signal?: AbortSignal
+  getToken?: () => string | null
+  reconnect?: {
+    enabled?: boolean
+    maxRetries?: number
+    baseDelayMs?: number
+    maxDelayMs?: number
+    jitter?: number
+  }
 }): WhiteboardTransport {
   let ws: WebSocket | null = null
   let activeBoardId: string | null = null
@@ -84,6 +94,19 @@ export function createSocketTransport({
   const handlers = new Set<WhiteboardEventHandler>()
   let connectPromise: Promise<void> | null = null
   let connectKey: string | null = null
+  let lastToken: string | null = null
+  let reconnectTimer: any = null
+  let reconnectAttempts = 0
+  let manualClose = false
+
+  const reconnectConfig = {
+    enabled: true,
+    maxRetries: 6,
+    baseDelayMs: 500,
+    maxDelayMs: 8000,
+    jitter: 0.2,
+    ...(reconnect || {}),
+  }
 
   const cleanupAbort = (abortHandler: () => void) => {
     if (!signal) return
@@ -109,6 +132,44 @@ export function createSocketTransport({
     }
   }
 
+  const clearReconnect = () => {
+    if (reconnectTimer) {
+      clearTimeout(reconnectTimer)
+      reconnectTimer = null
+    }
+    reconnectAttempts = 0
+  }
+
+  const resolveReconnectToken = () => {
+    const nextToken = getToken ? getToken() : lastToken
+    const trimmed = typeof nextToken === 'string' ? nextToken.trim() : ''
+    return trimmed ? trimmed : null
+  }
+
+  const scheduleReconnect = () => {
+    if (!reconnectConfig.enabled || manualClose) return
+    const boardId = activeBoardId
+    if (!boardId) return
+    if (reconnectAttempts >= reconnectConfig.maxRetries) return
+
+    const token = resolveReconnectToken()
+    if (!token) return
+
+    const attempt = reconnectAttempts + 1
+    reconnectAttempts = attempt
+    const expDelay = reconnectConfig.baseDelayMs * Math.pow(2, attempt - 1)
+    const cappedDelay = Math.min(expDelay, reconnectConfig.maxDelayMs)
+    const jitterRange = cappedDelay * reconnectConfig.jitter
+    const delay = Math.max(0, cappedDelay - jitterRange + Math.random() * jitterRange * 2)
+
+    reconnectTimer = setTimeout(() => {
+      reconnectTimer = null
+      connect(boardId, token).catch(() => {
+        scheduleReconnect()
+      })
+    }, delay)
+  }
+
   const startKeepAlive = (boardId: string) => {
     stopKeepAlive()
     keepAliveTimer = setInterval(() => {
@@ -120,8 +181,7 @@ export function createSocketTransport({
     }, KEEP_ALIVE_INTERVAL_MS)
   }
 
-  return {
-    connect: async (boardId: string, token: string) => {
+  const connect = async (boardId: string, token: string) => {
       const nextKey = `${boardId}::${token || ''}`
       if (connectPromise && connectKey === nextKey) {
         return connectPromise
@@ -131,6 +191,8 @@ export function createSocketTransport({
       }
 
       connectKey = nextKey
+      manualClose = false
+      lastToken = token
       const url = toWebSocketUrl(apiBaseUrl, token)
       debugLog('Connecting', { boardId, url })
       ws = new WebSocket(url)
@@ -149,6 +211,7 @@ export function createSocketTransport({
       ws.addEventListener('open', () => {
         console.log('[WB] Connected') 
         opened = true
+        clearReconnect()
         try {
           ws?.send(JSON.stringify({ type: 'whiteboard:join', payload: { boardId } }))
           startKeepAlive(boardId)
@@ -182,19 +245,23 @@ export function createSocketTransport({
         onError?.(err)
       })
 
-      ws.addEventListener('close', () => {
-        console.log('[WB] Disconnected')
+      ws.addEventListener('close', (evt) => {
+        console.log(`[WB] Disconnected (Code: ${evt.code}${evt.reason ? `, Reason: ${evt.reason}` : ''})`)
         stopKeepAlive()
         cleanupAbort(handleAbort)
         connectPromise = null
         connectKey = null
         if (!opened) rejectReady?.(new Error('WebSocket closed before open'))
+        scheduleReconnect()
       })
 
       connectPromise = ready
       try { await ready } catch (err) { cleanupAbort(handleAbort); throw err }
       finally { connectPromise = null }
-    },
+    }
+
+  return {
+    connect,
     send: (event: WhiteboardStrokeEvent) => {
       if (!ws || ws.readyState !== WebSocket.OPEN) return
       const payload = { ...event, boardId: event.boardId }
@@ -206,6 +273,8 @@ export function createSocketTransport({
       handlers.add(handler)
     },
     disconnect: () => {
+      manualClose = true
+      clearReconnect()
       stopKeepAlive()
       handlers.clear()
       const boardId = activeBoardId
