@@ -7,8 +7,6 @@ const SOURCE_ID_MAX_LENGTH = 64;
 const MAX_PAYLOAD_BYTES = 2048;
 const MAX_EVENTS_PER_WINDOW = 240;
 const RATE_LIMIT_WINDOW_MS = 5000;
-const MAX_HISTORY_EVENTS = 5000;
-const MAX_EVENTS_PER_BOARD = 20000;
 
 const BoardIdSchema = z.string().uuid().max(BOARD_ID_MAX_LENGTH);
 
@@ -29,7 +27,6 @@ type ClientMessage = {
 };
 
 type SocketRecord = {
-  id: string;
   userId: string;
   rooms: Set<string>;
 };
@@ -46,17 +43,6 @@ type HandlerArgs = {
 type RateState = {
   windowStart: number;
   count: number;
-};
-
-type StoredWhiteboardEvent = {
-  event_type: 'stroke:start' | 'stroke:move' | 'stroke:end';
-  stroke_id: string;
-  x: number;
-  y: number;
-  t: number;
-  source_id: string | null;
-  color: string | null;
-  width: number | null;
 };
 
 function payloadByteLength(payload: unknown): number {
@@ -89,54 +75,6 @@ async function isMember(db: Knex, boardId: string, userId: string): Promise<bool
   return Boolean(row);
 }
 
-async function fetchHistory(db: Knex, boardId: string): Promise<StoredWhiteboardEvent[]> {
-  const rows = await db('whiteboard_events')
-    .select('event_type', 'stroke_id', 'x', 'y', 't', 'source_id', 'color', 'width')
-    .where({ board_id: boardId })
-    .orderBy('id', 'desc')
-    .limit(MAX_HISTORY_EVENTS);
-
-  return rows.reverse() as StoredWhiteboardEvent[];
-}
-
-async function persistEvent(db: Knex, event: {
-  boardId: string;
-  type: 'stroke:start' | 'stroke:move' | 'stroke:end';
-  strokeId: string;
-  x: number;
-  y: number;
-  t: number;
-  sourceId?: string;
-  color?: string;
-  width?: number;
-}) {
-  await db('whiteboard_events').insert({
-    board_id: event.boardId,
-    event_type: event.type,
-    stroke_id: event.strokeId,
-    x: event.x,
-    y: event.y,
-    t: event.t,
-    source_id: event.sourceId ?? null,
-    color: event.color ?? null,
-    width: event.width ?? null,
-  });
-}
-
-async function pruneEvents(db: Knex, boardId: string) {
-  await db('whiteboard_events')
-    .where('board_id', boardId)
-    .whereNotIn(
-      'id',
-      db('whiteboard_events')
-        .select('id')
-        .where('board_id', boardId)
-        .orderBy('id', 'desc')
-        .limit(MAX_EVENTS_PER_BOARD),
-    )
-    .del();
-}
-
 export function createWhiteboardMessageHandler({
   db,
 }: {
@@ -154,11 +92,6 @@ export function createWhiteboardMessageHandler({
   }: HandlerArgs): Promise<boolean> {
     const type = typeof message.type === 'string' ? message.type : '';
 
-    // --- FIX 1: Heartbeat Whitelist ---
-    if (type === 'ping') {
-      return true;
-    }
-
     if (type === 'whiteboard:join') {
       const parsed = z.object({ boardId: BoardIdSchema }).safeParse(message.payload);
       if (!parsed.success) {
@@ -169,43 +102,17 @@ export function createWhiteboardMessageHandler({
       const { boardId } = parsed.data;
       const allowed = await isMember(db, boardId, record.userId);
       if (!allowed) {
-        console.warn('[whiteboard] join forbidden', { boardId, userId: record.userId });
         send('whiteboard:error', { code: 'forbidden' });
         return true;
       }
 
       const out = joinRoom(record, boardId);
       if (!out.ok) {
-        console.warn('[whiteboard] join failed', { boardId, reason: out.reason });
         send('whiteboard:error', { code: 'join_failed' });
         return true;
       }
 
-      console.log('[whiteboard] user joined', { 
-        boardId, 
-        userId: record.userId, 
-        socketId: record.id,
-        roomCount: record.rooms.size 
-      });
       send('whiteboard:joined', { boardId });
-
-      try {
-        const history = await fetchHistory(db, boardId);
-        for (const evt of history) {
-          send(evt.event_type, {
-            boardId,
-            strokeId: evt.stroke_id,
-            x: evt.x,
-            y: evt.y,
-            t: evt.t,
-            color: evt.color ?? undefined,
-            width: evt.width ?? undefined,
-          });
-        }
-      } catch {
-        // ignore history failures
-      }
-
       return true;
     }
 
@@ -242,21 +149,9 @@ export function createWhiteboardMessageHandler({
 
     const { boardId, strokeId, x, y, t, sourceId, color, width } = parsed.data;
 
-    // --- FIX 2: Self-Healing Join ---
     if (!record.rooms.has(boardId)) {
-      const allowed = await isMember(db, boardId, record.userId);
-      if (allowed) {
-        const out = joinRoom(record, boardId);
-        if (out.ok) {
-          console.log('[whiteboard] auto-rejoined user', { userId: record.userId, boardId });
-        } else {
-          send('whiteboard:error', { code: 'not_joined' });
-          return true;
-        }
-      } else {
-        send('whiteboard:error', { code: 'forbidden' });
-        return true;
-      }
+      send('whiteboard:error', { code: 'not_joined' });
+      return true;
     }
 
     const now = Date.now();
@@ -268,16 +163,7 @@ export function createWhiteboardMessageHandler({
       return true;
     }
 
-    try {
-      await persistEvent(db, { boardId, type, strokeId, x, y, t, sourceId, color, width });
-      if (type === 'stroke:end') {
-        await pruneEvents(db, boardId);
-      }
-    } catch (err) {
-      console.error('[whiteboard] persistEvent failed:', err);
-    }
-
-    const result = publishToRoom(boardId, type, {
+    publishToRoom(boardId, type, {
       boardId,
       strokeId,
       x,
@@ -287,10 +173,6 @@ export function createWhiteboardMessageHandler({
       color,
       width,
     });
-
-    if (result.delivered === 0) {
-      // console.warn('[whiteboard] publishToRoom delivered to 0 clients', { boardId });
-    }
 
     return true;
   };

@@ -1,4 +1,4 @@
-const createEventsRouter = require('../routes/events.ts');
+const createEventsRouter = require('../routes/events');
 
 function createReqRes({ userId } = {}) {
   const req = {

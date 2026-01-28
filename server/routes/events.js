@@ -1,31 +1,18 @@
-import type { Request, Response, NextFunction } from 'express';
-
 const express = require('express');
 const { authenticateToken: defaultAuthenticateToken } = require('../middleware/auth');
 const metrics = require('../metrics');
 const logger = require('../logger');
 const { getOrCreateRequestId } = require('../validation/validateRequest');
 
-type Metrics = {
-  incRealtimeDisconnectReason?: (reason: string) => void;
-};
-
-type Logger = {
-  info?: (message: string, meta?: Record<string, unknown>) => void;
-};
-
 function isRealtimeDisabled() {
   const v = String(process.env.REALTIME_EVENTS_DISABLED || '').trim().toLowerCase();
   return v === '1' || v === 'true' || v === 'yes';
 }
 
-function instrumentAuthMiddleware(
-  authenticateTokenMiddleware: (req: Request, res: Response, next: NextFunction) => unknown,
-  opts: { metrics?: Metrics | null } = {},
-) {
+function instrumentAuthMiddleware(authenticateTokenMiddleware, opts = {}) {
   const m = opts.metrics || null;
 
-  return (req: Request, res: Response, next: NextFunction) => {
+  return (req, res, next) => {
     let recorded = false;
 
     const recordIfAuthFail = () => {
@@ -43,16 +30,16 @@ function instrumentAuthMiddleware(
 
     // Avoid replacing jest.fn mocks in unit tests.
     if (res && typeof res.json === 'function') {
-      const jsonFn = res.json as unknown as { _isMockFunction?: boolean; mockImplementation?: Function; getMockImplementation?: Function };
+      const jsonFn = res.json;
       if (jsonFn && jsonFn._isMockFunction && typeof jsonFn.mockImplementation === 'function') {
         const currentImpl = jsonFn.getMockImplementation ? jsonFn.getMockImplementation() : null;
-        jsonFn.mockImplementation((...args: unknown[]) => {
+        jsonFn.mockImplementation((...args) => {
           recordIfAuthFail();
           return currentImpl ? currentImpl(...args) : res;
         });
       } else {
         const originalJson = res.json.bind(res);
-        res.json = (...args: unknown[]) => {
+        res.json = (...args) => {
           recordIfAuthFail();
           return originalJson(...args);
         };
@@ -60,16 +47,16 @@ function instrumentAuthMiddleware(
     }
 
     if (res && typeof res.end === 'function') {
-      const endFn = res.end as unknown as { _isMockFunction?: boolean; mockImplementation?: Function; getMockImplementation?: Function };
+      const endFn = res.end;
       if (endFn && endFn._isMockFunction && typeof endFn.mockImplementation === 'function') {
         const currentImpl = endFn.getMockImplementation ? endFn.getMockImplementation() : null;
-        endFn.mockImplementation((...args: unknown[]) => {
+        endFn.mockImplementation((...args) => {
           recordIfAuthFail();
           return currentImpl ? currentImpl(...args) : undefined;
         });
       } else {
         const originalEnd = res.end.bind(res);
-        res.end = (...args: unknown[]) => {
+        res.end = (...args) => {
           recordIfAuthFail();
           return originalEnd(...args);
         };
@@ -80,15 +67,15 @@ function instrumentAuthMiddleware(
   };
 }
 
-function createPhotosEventsHandler({ log, metrics: m }: { log?: Logger | null; metrics?: Metrics | null }) {
-  return async (req: Request, res: Response) => {
+function createPhotosEventsHandler({ log, metrics: m }) {
+  return async (req, res) => {
     const requestId = getOrCreateRequestId(req);
 
     if (isRealtimeDisabled()) {
       return res.status(503).json({ success: false, error: 'Real-time events disabled', requestId });
     }
 
-    const userId = (req as Request & { user?: { id?: string } }).user && (req as Request & { user?: { id?: string } }).user?.id ? String((req as Request & { user?: { id?: string } }).user?.id) : null;
+    const userId = req.user && req.user.id ? String(req.user.id) : null;
 
     if (!userId) {
       try {
@@ -113,15 +100,15 @@ function createPhotosEventsHandler({ log, metrics: m }: { log?: Logger | null; m
   };
 }
 
-function createWhiteboardEventsHandler({ log, metrics: m }: { log?: Logger | null; metrics?: Metrics | null }) {
-  return async (req: Request, res: Response) => {
+function createWhiteboardEventsHandler({ log, metrics: m }) {
+  return async (req, res) => {
     const requestId = getOrCreateRequestId(req);
 
     if (isRealtimeDisabled()) {
       return res.status(503).json({ success: false, error: 'Real-time events disabled', requestId });
     }
 
-    const userId = (req as Request & { user?: { id?: string } }).user && (req as Request & { user?: { id?: string } }).user?.id ? String((req as Request & { user?: { id?: string } }).user?.id) : null;
+    const userId = req.user && req.user.id ? String(req.user.id) : null;
 
     if (!userId) {
       try {
@@ -146,7 +133,7 @@ function createWhiteboardEventsHandler({ log, metrics: m }: { log?: Logger | nul
   };
 }
 
-module.exports = function createEventsRouter(options: { authenticateToken?: (req: Request, res: Response, next: NextFunction) => unknown; logger?: Logger; metrics?: Metrics } = {}) {
+module.exports = function createEventsRouter(options = {}) {
   const authenticateToken = options.authenticateToken || defaultAuthenticateToken;
   const log = options.logger || logger;
   const m = options.metrics || metrics;
@@ -155,13 +142,13 @@ module.exports = function createEventsRouter(options: { authenticateToken?: (req
   router.get(
     '/photos',
     instrumentAuthMiddleware(authenticateToken, { metrics: m }),
-    createPhotosEventsHandler({ log, metrics: m }),
+    createPhotosEventsHandler({ log, metrics: m })
   );
 
   router.get(
     '/whiteboard',
     instrumentAuthMiddleware(authenticateToken, { metrics: m }),
-    createWhiteboardEventsHandler({ log, metrics: m }),
+    createWhiteboardEventsHandler({ log, metrics: m })
   );
 
   return router;
