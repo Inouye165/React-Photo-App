@@ -1,28 +1,14 @@
-function createApp(options = {}) {
+type CreateAppOptions = {
+  logger?: unknown;
+  db?: unknown;
+  supabase?: unknown;
+};
+
+function createApp(options: CreateAppOptions = {}) {
   const express = require('express');
-  let createSocketManager;
-  try {
-    ({ createSocketManager } = require('../realtime/SocketManager'));
-  } catch (error) {
-    const message = error && error.message ? String(error.message) : '';
-    if (error && error.code === 'MODULE_NOT_FOUND' && message.includes('SocketManager')) {
-      ({ createSocketManager } = require('../realtime/SocketManager.ts'));
-    } else {
-      throw error;
-    }
-  }
+  const { createSocketManager } = require('../realtime/SocketManager');
   const { createPhotoEventHistory } = require('../realtime/photoEventHistory');
-  let createWhiteboardMessageHandler;
-  try {
-    ({ createWhiteboardMessageHandler } = require('../realtime/whiteboard'));
-  } catch (error) {
-    const message = error && error.message ? String(error.message) : '';
-    if (error && error.code === 'MODULE_NOT_FOUND' && message.includes('whiteboard')) {
-      ({ createWhiteboardMessageHandler } = require('../realtime/whiteboard.ts'));
-    } else {
-      throw error;
-    }
-  }
+  const { createWhiteboardMessageHandler } = require('../realtime/whiteboard');
   const { getRedisClient } = require('../lib/redis');
   const metrics = require('../metrics');
 
@@ -31,17 +17,7 @@ function createApp(options = {}) {
   const supabase = options.supabase || require('../lib/supabaseClient');
 
   const { registerMiddleware } = require('./registerMiddleware');
-  let registerRoutes;
-  try {
-    ({ registerRoutes } = require('./registerRoutes'));
-  } catch (error) {
-    const message = error && error.message ? String(error.message) : '';
-    if (error && error.code === 'MODULE_NOT_FOUND' && message.includes('registerRoutes')) {
-      ({ registerRoutes } = require('./registerRoutes.ts'));
-    } else {
-      throw error;
-    }
-  }
+  const { registerRoutes } = require('./registerRoutes');
 
   const app = express();
 

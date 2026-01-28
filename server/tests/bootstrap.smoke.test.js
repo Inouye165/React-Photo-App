@@ -35,7 +35,7 @@ function createSupabaseStub() {
 
 describe('bootstrap/createApp (smoke)', () => {
   test('creates app, installs core middleware, and mounts /health', async () => {
-    const { createApp } = require('../bootstrap/createApp');
+    const { createApp } = require('../bootstrap/createApp.ts');
 
     const db = createKnexStub();
     const supabase = createSupabaseStub();
