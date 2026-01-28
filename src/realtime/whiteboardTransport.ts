@@ -148,12 +148,20 @@ export function createSocketTransport({
 
   const scheduleReconnect = () => {
     if (!reconnectConfig.enabled || manualClose) return
+    if (reconnectTimer) return
     const boardId = activeBoardId
     if (!boardId) return
     if (reconnectAttempts >= reconnectConfig.maxRetries) return
 
     const token = resolveReconnectToken()
-    if (!token) return
+    if (!token) {
+      const delay = Math.min(reconnectConfig.baseDelayMs, reconnectConfig.maxDelayMs)
+      reconnectTimer = setTimeout(() => {
+        reconnectTimer = null
+        scheduleReconnect()
+      }, delay)
+      return
+    }
 
     const attempt = reconnectAttempts + 1
     reconnectAttempts = attempt
