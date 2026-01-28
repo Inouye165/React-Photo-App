@@ -82,6 +82,8 @@ export function createSocketTransport({
   let activeBoardId: string | null = null
   let keepAliveTimer: any = null
   const handlers = new Set<WhiteboardEventHandler>()
+  let connectPromise: Promise<void> | null = null
+  let connectKey: string | null = null
 
   const cleanupAbort = (abortHandler: () => void) => {
     if (!signal) return
@@ -120,6 +122,15 @@ export function createSocketTransport({
 
   return {
     connect: async (boardId: string, token: string) => {
+      const nextKey = `${boardId}::${token || ''}`
+      if (connectPromise && connectKey === nextKey) {
+        return connectPromise
+      }
+      if (ws && ws.readyState === WebSocket.OPEN && activeBoardId === boardId) {
+        return
+      }
+
+      connectKey = nextKey
       const url = toWebSocketUrl(apiBaseUrl, token)
       debugLog('Connecting', { boardId, url })
       ws = new WebSocket(url)
@@ -175,10 +186,14 @@ export function createSocketTransport({
         console.log('[WB] Disconnected')
         stopKeepAlive()
         cleanupAbort(handleAbort)
+        connectPromise = null
+        connectKey = null
         if (!opened) rejectReady?.(new Error('WebSocket closed before open'))
       })
 
+      connectPromise = ready
       try { await ready } catch (err) { cleanupAbort(handleAbort); throw err }
+      finally { connectPromise = null }
     },
     send: (event: WhiteboardStrokeEvent) => {
       if (!ws || ws.readyState !== WebSocket.OPEN) return
@@ -195,6 +210,8 @@ export function createSocketTransport({
       handlers.clear()
       const boardId = activeBoardId
       activeBoardId = null
+      connectPromise = null
+      connectKey = null
       if (ws && boardId && ws.readyState === WebSocket.OPEN) {
         try {
           ws.send(JSON.stringify({ type: 'whiteboard:leave', payload: { boardId } }))
