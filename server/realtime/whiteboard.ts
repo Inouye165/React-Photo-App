@@ -29,6 +29,7 @@ type ClientMessage = {
 };
 
 type SocketRecord = {
+  id: string;
   userId: string;
   rooms: Set<string>;
 };
@@ -153,13 +154,13 @@ export function createWhiteboardMessageHandler({
   }: HandlerArgs): Promise<boolean> {
     const type = typeof message.type === 'string' ? message.type : '';
 
-    // --- FIX START: Heartbeat Whitelist ---
+    // --- Heartbeat Whitelist ---
     // Allow 'ping' messages without action. 
     // Returning true tells the socket server "This message was handled, don't close the connection."
     if (type === 'ping') {
+      // Uncomment for debugging: console.log('[whiteboard] keepalive ping', { userId: record.userId, socketId: record.id });
       return true;
     }
-    // --- FIX END ---
 
     if (type === 'whiteboard:join') {
       const parsed = z.object({ boardId: BoardIdSchema }).safeParse(message.payload);
@@ -183,7 +184,12 @@ export function createWhiteboardMessageHandler({
         return true;
       }
 
-      console.log('[whiteboard] user joined', { boardId, userId: record.userId });
+      console.log('[whiteboard] user joined', { 
+        boardId, 
+        userId: record.userId, 
+        socketId: record.id,
+        roomCount: record.rooms.size 
+      });
       send('whiteboard:joined', { boardId });
 
       try {
@@ -274,7 +280,13 @@ export function createWhiteboardMessageHandler({
     });
 
     if (result.delivered === 0) {
-      console.warn('[whiteboard] publishToRoom delivered to 0 clients', { boardId, type });
+      console.warn('[whiteboard] publishToRoom delivered to 0 clients', { 
+        boardId, 
+        type, 
+        senderSocketId: record.id,
+        senderUserId: record.userId,
+        senderRoomCount: record.rooms.size 
+      });
     }
 
     return true;
