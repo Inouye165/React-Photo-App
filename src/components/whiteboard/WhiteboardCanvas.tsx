@@ -8,7 +8,7 @@ const DEFAULT_WIDTH = 2
 const MAX_BUFFERED_EVENTS = 5000
 const MIN_MOVE_INTERVAL_MS = 12
 const MIN_MOVE_DISTANCE = 0.002
-const HEARTBEAT_INTERVAL_MS = 10000 // Check health every 10s
+const HEARTBEAT_INTERVAL_MS = 5000 // Safety margin against load balancer timeouts (usually 10-60s)
 
 type WhiteboardCanvasProps = {
   boardId: string
@@ -250,11 +250,18 @@ export default function WhiteboardCanvas({
     const pingInterval = setInterval(() => {
       if (cancelled) return
 
-      // Try to send a ping
+      // Try to send a ping with valid schema fields to pass server validation
       try {
-        transport.send({ type: 'ping', boardId } as any)
+        transport.send({ 
+          type: 'ping', 
+          boardId,
+          strokeId: 'ping',
+          x: 0, 
+          y: 0, 
+          t: 0 
+        } as any)
       } catch (err) {
-        console.warn("Whiteboard ping failed, forcing reconnect", err)
+        console.warn('[whiteboard] ping failed, forcing reconnect', err)
         // If ping fails (socket closed), increment version to trigger useEffect re-run
         setConnectionVersion(v => v + 1)
       }
