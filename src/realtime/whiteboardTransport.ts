@@ -13,6 +13,9 @@ type SocketMessage = {
   type: string
   payload?: unknown
   eventId?: string
+  // Allow flat properties for legacy/broadcast compatibility
+  boardId?: string
+  [key: string]: any
 }
 
 const STROKE_TYPES: ReadonlySet<StrokeEventType> = new Set(['stroke:start', 'stroke:move', 'stroke:end'])
@@ -30,21 +33,39 @@ function isRecord(value: unknown): value is Record<string, unknown> {
 
 function asStrokeEvent(message: SocketMessage): WhiteboardStrokeEvent | null {
   if (!STROKE_TYPES.has(message.type as StrokeEventType)) return null
-  if (!isRecord(message.payload)) return null
 
-  const boardId = message.payload.boardId
-  const strokeId = message.payload.strokeId
-  const x = message.payload.x
-  const y = message.payload.y
-  const t = message.payload.t
+  // --- ROBUST PAYLOAD EXTRACTION ---
+  let data: any = message.payload;
 
-  if (typeof boardId !== 'string' || boardId.trim().length === 0) return null
-  if (typeof strokeId !== 'string' || strokeId.trim().length === 0) return null
-  if (typeof x !== 'number' || typeof y !== 'number' || typeof t !== 'number') return null
+  // Case 1: Double-wrapped (e.g. { payload: { payload: { ... } } })
+  if (isRecord(data) && isRecord(data.payload)) {
+    data = data.payload;
+  }
+  // Case 2: Flat message (e.g. { type: '...', boardId: '...' })
+  else if (!data && 'boardId' in message) {
+    data = message;
+  }
+  
+  if (!isRecord(data)) {
+    console.warn('[WB-CLIENT] ❌ Ignored: Payload is not a record', message);
+    return null;
+  }
 
-  const color = typeof message.payload.color === 'string' ? message.payload.color : undefined
-  const width = typeof message.payload.width === 'number' ? message.payload.width : undefined
-  const sourceId = typeof message.payload.sourceId === 'string' ? message.payload.sourceId : undefined
+  const { boardId, strokeId, x, y, t, color, width, sourceId } = data as any;
+
+  // --- DETAILED VALIDATION LOGGING ---
+  if (typeof boardId !== 'string' || boardId.trim().length === 0) {
+    console.warn('[WB-CLIENT] ❌ Ignored: Missing/Invalid boardId', data);
+    return null;
+  }
+  if (typeof strokeId !== 'string' || strokeId.trim().length === 0) {
+    console.warn('[WB-CLIENT] ❌ Ignored: Missing/Invalid strokeId', data);
+    return null;
+  }
+  if (typeof x !== 'number' || typeof y !== 'number' || typeof t !== 'number') {
+    console.warn('[WB-CLIENT] ❌ Ignored: Invalid coordinates/time', { x, y, t });
+    return null;
+  }
 
   return {
     type: message.type as StrokeEventType,
@@ -53,9 +74,9 @@ function asStrokeEvent(message: SocketMessage): WhiteboardStrokeEvent | null {
     x,
     y,
     t,
-    color,
-    width,
-    sourceId,
+    color: typeof color === 'string' ? color : undefined,
+    width: typeof width === 'number' ? width : undefined,
+    sourceId: typeof sourceId === 'string' ? sourceId : undefined,
   }
 }
 
@@ -124,11 +145,7 @@ export function createSocketTransport({
     stopKeepAlive()
     keepAliveTimer = setInterval(() => {
       if (ws && ws.readyState === WebSocket.OPEN) {
-        // debugLog('Sending KeepAlive Ping', { boardId }) // Uncomment if needed
-        const pingPayload = {
-          type: 'ping',
-          payload: { boardId }
-        }
+        const pingPayload = { type: 'ping', payload: { boardId } }
         try {
           ws.send(JSON.stringify(pingPayload))
         } catch (err) {
@@ -164,6 +181,7 @@ export function createSocketTransport({
         debugLog('Socket OPEN')
         opened = true
         try {
+          // Send JOIN
           const joinMsg = { type: 'whiteboard:join', payload: { boardId } }
           debugLog('Sending JOIN', joinMsg)
           ws?.send(JSON.stringify(joinMsg))
@@ -187,10 +205,8 @@ export function createSocketTransport({
           }
 
           if (parsed) {
-            // [DEBUG] Log ALL incoming messages
-            debugLog('Received Message', { type: parsed.type, payload: parsed.payload })
+            // debugLog('Received Message', { type: parsed.type }) // Reduced noise
 
-            // [DEBUG] Explicitly catch errors the client was previously ignoring
             if (parsed.type === 'whiteboard:error') {
                 console.error('[WB-CLIENT] ❌ SERVER ERROR:', parsed.payload)
             }
@@ -199,7 +215,8 @@ export function createSocketTransport({
             if (event) {
                 handlers.forEach((handler) => handler(event))
             } else if (!['ping', 'whiteboard:joined'].includes(parsed.type)) {
-                debugLog('Message Ignored (No Handler/Not Stroke)', parsed.type)
+                // If it's a stroke but wasn't parsed, we warned inside asStrokeEvent
+                // debugLog('Message Ignored (No Handler/Not Stroke)', parsed.type) 
             }
           }
         } catch (err) {
@@ -233,15 +250,15 @@ export function createSocketTransport({
     },
     send: (event: WhiteboardStrokeEvent) => {
       if (!ws || ws.readyState !== WebSocket.OPEN) {
-        debugLog('Cannot send: Socket not open', { readyState: ws?.readyState })
+        debugLog('Cannot send: Socket not open')
         return
       }
+      // Send as standard payload structure
       const payload = {
         ...event,
         boardId: event.boardId,
       }
       try {
-        // debugLog('Sending Stroke', { type: event.type, id: event.strokeId }) // Uncomment to trace strokes
         ws.send(JSON.stringify({ type: event.type, payload }))
       } catch (err) {
         debugLog('Send Failed', err)
@@ -259,15 +276,9 @@ export function createSocketTransport({
       if (ws && boardId && ws.readyState === WebSocket.OPEN) {
         try {
           ws.send(JSON.stringify({ type: 'whiteboard:leave', payload: { boardId } }))
-        } catch {
-          // ignore
-        }
+        } catch { /* ignore */ }
       }
-      try {
-        ws?.close()
-      } catch {
-        // ignore
-      }
+      try { ws?.close() } catch { /* ignore */ }
       ws = null
       cleanupAbort(handleAbort)
     },
