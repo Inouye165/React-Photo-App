@@ -198,6 +198,7 @@ export function createWhiteboardMessageHandler({
 
       try {
         const history = await fetchHistory(db, boardId);
+        console.log('[whiteboard] history replay', { boardId, count: history.length });
         for (const evt of history) {
           send(evt.event_type, {
             payload: {

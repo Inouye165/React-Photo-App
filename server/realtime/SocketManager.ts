@@ -234,7 +234,13 @@ export function createSocketManager(options: {
       record.isAlive = true;
     });
 
-    ws.on('close', () => {
+    ws.on('close', (code?: number, reason?: Buffer) => {
+      const reasonText = reason ? reason.toString('utf-8') : '';
+      try {
+        log?.info?.('[realtime] WebSocket client closed', { userId: key, socketId: record.id, code, reason: reasonText });
+      } catch {
+        // ignore
+      }
       removeClient(key, ws, 'client_close');
     });
 
@@ -275,6 +281,16 @@ export function createSocketManager(options: {
     try {
       const buffered = typeof record.ws.bufferedAmount === 'number' ? record.ws.bufferedAmount : 0;
       if (buffered > maxBufferedBytes) {
+        try {
+          log?.warn?.('[realtime] Backpressure drop', {
+            userId: record.userId,
+            socketId: record.id,
+            bufferedAmount: buffered,
+            maxBufferedBytes,
+          });
+        } catch {
+          // ignore
+        }
         removeClient(record.userId, record.ws, 'backpressure_drop');
         try {
           record.ws.close?.();
