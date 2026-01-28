@@ -155,6 +155,7 @@ export function createSocketTransport({
 
     const token = resolveReconnectToken()
     if (!token) {
+      console.warn('[WB] Reconnect skipped (missing token)', { boardId })
       const delay = Math.min(reconnectConfig.baseDelayMs, reconnectConfig.maxDelayMs)
       reconnectTimer = setTimeout(() => {
         reconnectTimer = null
@@ -170,6 +171,7 @@ export function createSocketTransport({
     const jitterRange = cappedDelay * reconnectConfig.jitter
     const delay = Math.max(0, cappedDelay - jitterRange + Math.random() * jitterRange * 2)
 
+    console.warn('[WB] Reconnect scheduled', { boardId, attempt, delay: Math.round(delay) })
     reconnectTimer = setTimeout(() => {
       reconnectTimer = null
       connect(boardId, token).catch(() => {
@@ -255,6 +257,14 @@ export function createSocketTransport({
 
       ws.addEventListener('close', (evt) => {
         console.log(`[WB] Disconnected (Code: ${evt.code}${evt.reason ? `, Reason: ${evt.reason}` : ''})`)
+        console.warn('[WB] Close diagnostics', {
+          boardId: activeBoardId,
+          readyState: ws?.readyState,
+          wasOpen: opened,
+          manualClose,
+          reconnectAttempts,
+          lastTokenPresent: Boolean(lastToken && lastToken.trim()),
+        })
         stopKeepAlive()
         cleanupAbort(handleAbort)
         connectPromise = null
