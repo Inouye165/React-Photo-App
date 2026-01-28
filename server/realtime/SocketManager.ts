@@ -62,6 +62,7 @@ type ClientMessage = {
 };
 
 type SocketRecord = {
+  id: string;
   ws: any;
   userId: string;
   rooms: Set<string>;
@@ -218,7 +219,8 @@ export function createSocketManager(options: {
 
   function addClient(userId: string, ws: any) {
     const key = String(userId);
-    const record: SocketRecord = { ws, userId: key, rooms: new Set(), isAlive: true, closed: false };
+    const socketId = generateId();
+    const record: SocketRecord = { id: socketId, ws, userId: key, rooms: new Set(), isAlive: true, closed: false };
 
     if (!clientsByUserId.has(key)) {
       clientsByUserId.set(key, new Set());
@@ -557,7 +559,7 @@ export function createSocketManager(options: {
       return;
     }
 
-    const tempRecord: SocketRecord = { ws, userId, rooms: new Set(), isAlive: true, closed: false };
+    const tempRecord: SocketRecord = { id: generateId(), ws, userId, rooms: new Set(), isAlive: true, closed: false };
     await sendCatchup(tempRecord, since);
 
     const record = addClient(userId, ws);
