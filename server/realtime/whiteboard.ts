@@ -193,13 +193,12 @@ export function createWhiteboardMessageHandler({
         socketId: record.id,
         roomCount: record.rooms.size 
       });
-      // FIX: Wrapped in payload
+      
       send('whiteboard:joined', { payload: { boardId } });
 
       try {
         const history = await fetchHistory(db, boardId);
         for (const evt of history) {
-          // FIX: Wrapped in payload
           send(evt.event_type, {
             payload: {
               boardId,
@@ -291,9 +290,9 @@ export function createWhiteboardMessageHandler({
       console.error('[whiteboard] persistEvent failed:', err);
     }
 
-    // FIX: Wrapped in payload so publishToRoom sends { type: '...', payload: { ... } }
+    // --- REVERTED TO ORIGINAL (FLAT) ---
+    // The "Smart Client" will handle this whether SocketManager wraps it or not.
     const result = publishToRoom(boardId, type, {
-      payload: {
         boardId,
         strokeId,
         x,
@@ -302,7 +301,6 @@ export function createWhiteboardMessageHandler({
         sourceId,
         color,
         width,
-      }
     });
 
     if (result.delivered === 0) {
