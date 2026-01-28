@@ -1,5 +1,5 @@
 import { useCallback, useEffect, useState } from 'react'
-import { getAccessToken, getHeadersForGetRequestAsync } from '../api'
+import { getAccessToken, getHeadersForGetRequestAsync, onAuthTokenChange } from '../api'
 
 type TokenState = {
   token: string | null
@@ -52,8 +52,14 @@ export function useRealtimeToken(): { token: string | null; status: TokenState['
       }
     })
 
+    const unsubscribe = onAuthTokenChange((token) => {
+      if (cancelled) return
+      setState({ token, status: token ? 'ready' : 'error' })
+    })
+
     return () => {
       cancelled = true
+      unsubscribe()
     }
   }, [resolveToken])
 
