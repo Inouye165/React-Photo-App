@@ -154,7 +154,11 @@ export function createWhiteboardMessageHandler({
   }: HandlerArgs): Promise<boolean> {
     const type = typeof message.type === 'string' ? message.type : '';
 
-    // --- FIX 1: Heartbeat Whitelist ---
+    // [DEBUG] Central Logger
+    if (type !== 'ping') { // reduce noise
+      console.log('[WB-SERVER] Msg:', { type, userId: record.userId, boardId: (message.payload as any)?.boardId });
+    }
+
     if (type === 'ping') {
       return true;
     }
@@ -162,12 +166,17 @@ export function createWhiteboardMessageHandler({
     if (type === 'whiteboard:join') {
       const parsed = z.object({ boardId: BoardIdSchema }).safeParse(message.payload);
       if (!parsed.success) {
+        console.error('[WB-SERVER] Join Failed: Invalid Schema', parsed.error);
         send('whiteboard:error', { code: 'invalid_request' });
         return true;
       }
 
       const { boardId } = parsed.data;
+      
+      // [DEBUG] Log the membership check result
       const allowed = await isMember(db, boardId, record.userId);
+      console.log('[WB-SERVER] Join Authorization:', { userId: record.userId, boardId, allowed });
+
       if (!allowed) {
         console.warn('[whiteboard] join forbidden', { boardId, userId: record.userId });
         send('whiteboard:error', { code: 'forbidden' });
@@ -236,6 +245,7 @@ export function createWhiteboardMessageHandler({
     });
 
     if (!parsed.success) {
+      console.error('[WB-SERVER] Stroke Invalid', parsed.error);
       send('whiteboard:error', { code: 'invalid_request' });
       return true;
     }
@@ -244,16 +254,21 @@ export function createWhiteboardMessageHandler({
 
     // --- FIX 2: Self-Healing Join ---
     if (!record.rooms.has(boardId)) {
+      // [DEBUG] Log this auto-rejoin attempt
+      console.log('[WB-SERVER] User sent stroke but not in room. Attempting recovery.', { userId: record.userId, boardId });
+      
       const allowed = await isMember(db, boardId, record.userId);
       if (allowed) {
         const out = joinRoom(record, boardId);
         if (out.ok) {
           console.log('[whiteboard] auto-rejoined user', { userId: record.userId, boardId });
         } else {
+          console.error('[WB-SERVER] Auto-rejoin failed', { reason: out.reason });
           send('whiteboard:error', { code: 'not_joined' });
           return true;
         }
       } else {
+        console.error('[WB-SERVER] Stroke rejected: User not allowed in room', { userId: record.userId, boardId });
         send('whiteboard:error', { code: 'forbidden' });
         return true;
       }
