@@ -154,8 +154,7 @@ export function createWhiteboardMessageHandler({
   }: HandlerArgs): Promise<boolean> {
     const type = typeof message.type === 'string' ? message.type : '';
 
-    // [DEBUG] Central Logger
-    if (type !== 'ping') { // reduce noise
+    if (type !== 'ping') {
       console.log('[WB-SERVER] Msg:', { type, userId: record.userId, boardId: (message.payload as any)?.boardId });
     }
 
@@ -166,27 +165,25 @@ export function createWhiteboardMessageHandler({
     if (type === 'whiteboard:join') {
       const parsed = z.object({ boardId: BoardIdSchema }).safeParse(message.payload);
       if (!parsed.success) {
-        console.error('[WB-SERVER] Join Failed: Invalid Schema', parsed.error);
-        send('whiteboard:error', { code: 'invalid_request' });
+        send('whiteboard:error', { payload: { code: 'invalid_request' } });
         return true;
       }
 
       const { boardId } = parsed.data;
       
-      // [DEBUG] Log the membership check result
       const allowed = await isMember(db, boardId, record.userId);
       console.log('[WB-SERVER] Join Authorization:', { userId: record.userId, boardId, allowed });
 
       if (!allowed) {
         console.warn('[whiteboard] join forbidden', { boardId, userId: record.userId });
-        send('whiteboard:error', { code: 'forbidden' });
+        send('whiteboard:error', { payload: { code: 'forbidden' } });
         return true;
       }
 
       const out = joinRoom(record, boardId);
       if (!out.ok) {
         console.warn('[whiteboard] join failed', { boardId, reason: out.reason });
-        send('whiteboard:error', { code: 'join_failed' });
+        send('whiteboard:error', { payload: { code: 'join_failed' } });
         return true;
       }
 
@@ -196,19 +193,23 @@ export function createWhiteboardMessageHandler({
         socketId: record.id,
         roomCount: record.rooms.size 
       });
-      send('whiteboard:joined', { boardId });
+      // FIX: Wrapped in payload
+      send('whiteboard:joined', { payload: { boardId } });
 
       try {
         const history = await fetchHistory(db, boardId);
         for (const evt of history) {
+          // FIX: Wrapped in payload
           send(evt.event_type, {
-            boardId,
-            strokeId: evt.stroke_id,
-            x: evt.x,
-            y: evt.y,
-            t: evt.t,
-            color: evt.color ?? undefined,
-            width: evt.width ?? undefined,
+            payload: {
+              boardId,
+              strokeId: evt.stroke_id,
+              x: evt.x,
+              y: evt.y,
+              t: evt.t,
+              color: evt.color ?? undefined,
+              width: evt.width ?? undefined,
+            }
           });
         }
       } catch {
@@ -221,13 +222,13 @@ export function createWhiteboardMessageHandler({
     if (type === 'whiteboard:leave') {
       const parsed = z.object({ boardId: BoardIdSchema }).safeParse(message.payload);
       if (!parsed.success) {
-        send('whiteboard:error', { code: 'invalid_request' });
+        send('whiteboard:error', { payload: { code: 'invalid_request' } });
         return true;
       }
 
       const { boardId } = parsed.data;
       leaveRoom(record, boardId);
-      send('whiteboard:left', { boardId });
+      send('whiteboard:left', { payload: { boardId } });
       return true;
     }
 
@@ -236,7 +237,7 @@ export function createWhiteboardMessageHandler({
     }
 
     if (payloadByteLength(message.payload) > MAX_PAYLOAD_BYTES) {
-      send('whiteboard:error', { code: 'payload_too_large' });
+      send('whiteboard:error', { payload: { code: 'payload_too_large' } });
       return true;
     }
 
@@ -246,15 +247,13 @@ export function createWhiteboardMessageHandler({
 
     if (!parsed.success) {
       console.error('[WB-SERVER] Stroke Invalid', parsed.error);
-      send('whiteboard:error', { code: 'invalid_request' });
+      send('whiteboard:error', { payload: { code: 'invalid_request' } });
       return true;
     }
 
     const { boardId, strokeId, x, y, t, sourceId, color, width } = parsed.data;
 
-    // --- FIX 2: Self-Healing Join ---
     if (!record.rooms.has(boardId)) {
-      // [DEBUG] Log this auto-rejoin attempt
       console.log('[WB-SERVER] User sent stroke but not in room. Attempting recovery.', { userId: record.userId, boardId });
       
       const allowed = await isMember(db, boardId, record.userId);
@@ -264,12 +263,12 @@ export function createWhiteboardMessageHandler({
           console.log('[whiteboard] auto-rejoined user', { userId: record.userId, boardId });
         } else {
           console.error('[WB-SERVER] Auto-rejoin failed', { reason: out.reason });
-          send('whiteboard:error', { code: 'not_joined' });
+          send('whiteboard:error', { payload: { code: 'not_joined' } });
           return true;
         }
       } else {
         console.error('[WB-SERVER] Stroke rejected: User not allowed in room', { userId: record.userId, boardId });
-        send('whiteboard:error', { code: 'forbidden' });
+        send('whiteboard:error', { payload: { code: 'forbidden' } });
         return true;
       }
     }
@@ -279,7 +278,7 @@ export function createWhiteboardMessageHandler({
     const rateDecision = shouldRateLimit(currentState, now);
     rateStateByRecord.set(record, rateDecision.next);
     if (rateDecision.limited) {
-      send('whiteboard:error', { code: 'rate_limited' });
+      send('whiteboard:error', { payload: { code: 'rate_limited' } });
       return true;
     }
 
@@ -292,15 +291,18 @@ export function createWhiteboardMessageHandler({
       console.error('[whiteboard] persistEvent failed:', err);
     }
 
+    // FIX: Wrapped in payload so publishToRoom sends { type: '...', payload: { ... } }
     const result = publishToRoom(boardId, type, {
-      boardId,
-      strokeId,
-      x,
-      y,
-      t,
-      sourceId,
-      color,
-      width,
+      payload: {
+        boardId,
+        strokeId,
+        x,
+        y,
+        t,
+        sourceId,
+        color,
+        width,
+      }
     });
 
     if (result.delivered === 0) {
