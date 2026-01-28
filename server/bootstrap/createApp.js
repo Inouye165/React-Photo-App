@@ -1,14 +1,28 @@
-type CreateAppOptions = {
-  logger?: unknown;
-  db?: unknown;
-  supabase?: unknown;
-};
-
-function createApp(options: CreateAppOptions = {}) {
+function createApp(options = {}) {
   const express = require('express');
-  const { createSocketManager } = require('../realtime/SocketManager');
+  let createSocketManager;
+  try {
+    ({ createSocketManager } = require('../realtime/SocketManager'));
+  } catch (error) {
+    const message = error && error.message ? String(error.message) : '';
+    if (error && error.code === 'MODULE_NOT_FOUND' && message.includes('SocketManager')) {
+      ({ createSocketManager } = require('../realtime/SocketManager.ts'));
+    } else {
+      throw error;
+    }
+  }
   const { createPhotoEventHistory } = require('../realtime/photoEventHistory');
-  const { createWhiteboardMessageHandler } = require('../realtime/whiteboard');
+  let createWhiteboardMessageHandler;
+  try {
+    ({ createWhiteboardMessageHandler } = require('../realtime/whiteboard'));
+  } catch (error) {
+    const message = error && error.message ? String(error.message) : '';
+    if (error && error.code === 'MODULE_NOT_FOUND' && message.includes('whiteboard')) {
+      ({ createWhiteboardMessageHandler } = require('../realtime/whiteboard.ts'));
+    } else {
+      throw error;
+    }
+  }
   const { getRedisClient } = require('../lib/redis');
   const metrics = require('../metrics');
 
@@ -17,7 +31,17 @@ function createApp(options: CreateAppOptions = {}) {
   const supabase = options.supabase || require('../lib/supabaseClient');
 
   const { registerMiddleware } = require('./registerMiddleware');
-  const { registerRoutes } = require('./registerRoutes');
+  let registerRoutes;
+  try {
+    ({ registerRoutes } = require('./registerRoutes'));
+  } catch (error) {
+    const message = error && error.message ? String(error.message) : '';
+    if (error && error.code === 'MODULE_NOT_FOUND' && message.includes('registerRoutes')) {
+      ({ registerRoutes } = require('./registerRoutes.ts'));
+    } else {
+      throw error;
+    }
+  }
 
   const app = express();
 

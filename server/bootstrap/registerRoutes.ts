@@ -62,7 +62,7 @@ export function registerRoutes(app: Application, { db, supabase, socketManager, 
   const createMetricsRouter = require('../routes/metrics');
   const createPublicRouter = require('../routes/public');
   const createFeedbackRouter = require('../routes/feedback');
-  const createEventsRouter = require('../routes/events.ts');
+  const createEventsRouter = require('../routes/events');
   const createMetaRouter = require('../routes/meta');
   const createAdminRouter = require('../routes/admin');
   const createCommentsRouter = require('../routes/comments');

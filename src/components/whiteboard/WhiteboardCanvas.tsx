@@ -44,14 +44,7 @@ export default function WhiteboardCanvas({
   const eventsRef = useRef<WhiteboardStrokeEvent[]>([])
   const activeStrokesRef = useRef<Map<string, StrokeState>>(new Map())
   const pointerStatesRef = useRef<Map<number, { strokeId: string; lastSentAt: number; x: number; y: number }>>(new Map())
-  
   const [status, setStatus] = useState<'idle' | 'connecting' | 'connected' | 'error'>('idle')
-  
-  // FIX 4: Use a ref for token so background refreshes don't kill the socket
-  const tokenRef = useRef(token)
-  useEffect(() => {
-    tokenRef.current = token
-  }, [token])
 
   const effectiveSourceId = useMemo(() => sourceId ?? null, [sourceId])
   const generateId = useCallback(() => {
@@ -66,15 +59,6 @@ export default function WhiteboardCanvas({
     if (!canvas) return null
     return canvas.getContext('2d')
   }, [])
-
-  const resetCanvasState = useCallback(() => {
-    eventsRef.current = []
-    activeStrokesRef.current = new Map()
-    const ctx = getContext()
-    const canvas = canvasRef.current
-    if (!ctx || !canvas) return
-    ctx.clearRect(0, 0, canvas.width, canvas.height)
-  }, [getContext])
 
   const normalizePoint = useCallback((clientX: number, clientY: number) => {
     const canvas = canvasRef.current
@@ -210,16 +194,13 @@ export default function WhiteboardCanvas({
   }, [resizeCanvas])
 
   useEffect(() => {
-    // Check initial token
-    const activeToken = tokenRef.current
-    if (!activeToken) {
+    if (!token) {
       setStatus('idle')
       return
     }
 
     let cancelled = false
     setStatus('connecting')
-    resetCanvasState()
 
     const handleIncoming = (evt: WhiteboardStrokeEvent) => {
       if (effectiveSourceId && evt.sourceId && evt.sourceId === effectiveSourceId) return
@@ -228,9 +209,8 @@ export default function WhiteboardCanvas({
 
     transport.onEvent(handleIncoming)
 
-    // Pass the initial token. Subsequent refreshes won't trigger this effect.
     transport
-      .connect(boardId, activeToken)
+      .connect(boardId, token)
       .then(() => {
         if (!cancelled) setStatus('connected')
       })
@@ -242,9 +222,7 @@ export default function WhiteboardCanvas({
       cancelled = true
       transport.disconnect()
     }
-    // We intentionally exclude 'token' to prevent the refresh loop
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [boardId, transport, effectiveSourceId, resetCanvasState]) 
+  }, [boardId, drawEvent, effectiveSourceId, token, transport])
 
   const emitEvent = useCallback((evt: WhiteboardStrokeEvent) => {
     drawEvent(evt, true)
