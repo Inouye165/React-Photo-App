@@ -1,4 +1,4 @@
-import { useMemo } from 'react'
+import { useEffect, useMemo, useRef } from 'react'
 import { API_BASE_URL } from '../../api'
 import { createSocketTransport } from '../../realtime/whiteboardTransport'
 import WhiteboardCanvas from './WhiteboardCanvas'
@@ -11,8 +11,12 @@ type WhiteboardViewerProps = {
 
 export default function WhiteboardViewer({ boardId, className }: WhiteboardViewerProps) {
   const { token, status } = useRealtimeToken()
+  const tokenRef = useRef(token)
+  useEffect(() => {
+    tokenRef.current = token
+  }, [token])
   const transport = useMemo(
-    () => createSocketTransport({ apiBaseUrl: API_BASE_URL }),
+    () => createSocketTransport({ apiBaseUrl: API_BASE_URL, getToken: () => tokenRef.current }),
     [boardId],
   )
 
