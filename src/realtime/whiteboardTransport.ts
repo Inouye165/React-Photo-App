@@ -11,9 +11,7 @@ export type WhiteboardTransport = {
 
 type SocketMessage = {
   type: string
-  payload?: unknown
-  eventId?: string
-  // Allow flat properties for legacy/broadcast compatibility
+  payload?: any
   boardId?: string
   [key: string]: any
 }
@@ -21,51 +19,31 @@ type SocketMessage = {
 const STROKE_TYPES: ReadonlySet<StrokeEventType> = new Set(['stroke:start', 'stroke:move', 'stroke:end'])
 const KEEP_ALIVE_INTERVAL_MS = 5000 
 
-// [DEBUG] Logging Helper
+// [DEBUG] Logging disabled for performance
 const debugLog = (label: string, data?: any) => {
-  const timestamp = new Date().toISOString().split('T')[1]; // HH:mm:ss.sss
-  console.log(`%c[WB-CLIENT ${timestamp}] ${label}`, 'color: #00bcd4; font-weight: bold;', data || '');
-}
-
-function isRecord(value: unknown): value is Record<string, unknown> {
-  return Boolean(value) && typeof value === 'object'
+  void label
+  void data
+  // console.log(`[WB-CLIENT] ${label}`, data || '');
 }
 
 function asStrokeEvent(message: SocketMessage): WhiteboardStrokeEvent | null {
   if (!STROKE_TYPES.has(message.type as StrokeEventType)) return null
 
-  // --- ROBUST PAYLOAD EXTRACTION ---
-  let data: any = message.payload;
+  // 1. Unwrap - Handles both { payload: { x: 1 }} and { x: 1 }
+  let data = message.payload || message;
+  if (data.payload) data = data.payload;
 
-  // Case 1: Double-wrapped (e.g. { payload: { payload: { ... } } })
-  if (isRecord(data) && isRecord(data.payload)) {
-    data = data.payload;
-  }
-  // Case 2: Flat message (e.g. { type: '...', boardId: '...' })
-  else if (!data && 'boardId' in message) {
-    data = message;
-  }
+  // 2. Extract
+  const boardId = data.boardId || message.boardId;
+  const strokeId = data.strokeId;
   
-  if (!isRecord(data)) {
-    console.warn('[WB-CLIENT] ❌ Ignored: Payload is not a record', message);
-    return null;
-  }
+  // 3. Validation - If missing, we ignore silently to prevent console floods
+  if (!boardId || !strokeId) return null;
 
-  const { boardId, strokeId, x, y, t, color, width, sourceId } = data as any;
-
-  // --- DETAILED VALIDATION LOGGING ---
-  if (typeof boardId !== 'string' || boardId.trim().length === 0) {
-    console.warn('[WB-CLIENT] ❌ Ignored: Missing/Invalid boardId', data);
-    return null;
-  }
-  if (typeof strokeId !== 'string' || strokeId.trim().length === 0) {
-    console.warn('[WB-CLIENT] ❌ Ignored: Missing/Invalid strokeId', data);
-    return null;
-  }
-  if (typeof x !== 'number' || typeof y !== 'number' || typeof t !== 'number') {
-    console.warn('[WB-CLIENT] ❌ Ignored: Invalid coordinates/time', { x, y, t });
-    return null;
-  }
+  // 4. Robust Coords - Default to 0 instead of failing if undefined
+  const x = typeof data.x === 'number' ? data.x : 0;
+  const y = typeof data.y === 'number' ? data.y : 0;
+  const t = typeof data.t === 'number' ? data.t : Date.now();
 
   return {
     type: message.type as StrokeEventType,
@@ -74,9 +52,9 @@ function asStrokeEvent(message: SocketMessage): WhiteboardStrokeEvent | null {
     x,
     y,
     t,
-    color: typeof color === 'string' ? color : undefined,
-    width: typeof width === 'number' ? width : undefined,
-    sourceId: typeof sourceId === 'string' ? sourceId : undefined,
+    color: data.color,
+    width: data.width,
+    sourceId: data.sourceId,
   }
 }
 
@@ -85,11 +63,9 @@ function toWebSocketUrl(apiBaseUrl: string, token: string): string {
   const url = new URL(base)
   const protocol = url.protocol === 'https:' ? 'wss:' : 'ws:'
   const wsUrl = new URL(`${protocol}//${url.host}/events/whiteboard`)
-
   const tokenValue = token.trim()
   if (!tokenValue) throw new Error('token is required')
   wsUrl.searchParams.set('token', tokenValue)
-
   return wsUrl.toString()
 }
 
@@ -111,26 +87,16 @@ export function createSocketTransport({
     if (!signal) return
     try {
       signal.removeEventListener('abort', abortHandler)
-    } catch {
-      // ignore
-    }
+    } catch {}
   }
 
   const handleAbort = () => {
-    debugLog('Aborting connection')
-    try {
-      ws?.close()
-    } catch {
-      // ignore
-    }
+    try { ws?.close() } catch {}
   }
 
   const registerAbort = () => {
     if (!signal) return
-    if (signal.aborted) {
-      handleAbort()
-      return
-    }
+    if (signal.aborted) { handleAbort(); return }
     signal.addEventListener('abort', handleAbort, { once: true })
   }
 
@@ -145,25 +111,17 @@ export function createSocketTransport({
     stopKeepAlive()
     keepAliveTimer = setInterval(() => {
       if (ws && ws.readyState === WebSocket.OPEN) {
-        const pingPayload = { type: 'ping', payload: { boardId } }
         try {
-          ws.send(JSON.stringify(pingPayload))
-        } catch (err) {
-          debugLog('KeepAlive Send Failed', err)
-        }
+          ws.send(JSON.stringify({ type: 'ping', payload: { boardId } }))
+        } catch {}
       }
     }, KEEP_ALIVE_INTERVAL_MS)
   }
 
   return {
     connect: async (boardId: string, token: string) => {
-      if (!apiBaseUrl || typeof apiBaseUrl !== 'string') throw new Error('apiBaseUrl is required')
-      if (!boardId || typeof boardId !== 'string') throw new Error('boardId is required')
-      if (!token || typeof token !== 'string') throw new Error('token is required')
-
       const url = toWebSocketUrl(apiBaseUrl, token)
-      debugLog('Connecting...', { boardId, url })
-      
+      debugLog('Connecting', { boardId, url })
       ws = new WebSocket(url)
       activeBoardId = boardId
 
@@ -178,97 +136,61 @@ export function createSocketTransport({
       registerAbort()
 
       ws.addEventListener('open', () => {
-        debugLog('Socket OPEN')
+        console.log('[WB] Connected') 
         opened = true
         try {
-          // Send JOIN
-          const joinMsg = { type: 'whiteboard:join', payload: { boardId } }
-          debugLog('Sending JOIN', joinMsg)
-          ws?.send(JSON.stringify(joinMsg))
+          ws?.send(JSON.stringify({ type: 'whiteboard:join', payload: { boardId } }))
           startKeepAlive(boardId)
-        } catch (err) {
-          debugLog('Error sending JOIN', err)
-        }
+        } catch {}
         resolveReady?.()
       })
 
       ws.addEventListener('message', async (evt) => {
         try {
-          const data = evt?.data
-          let parsed: SocketMessage | null = null
+          const data = typeof evt.data === 'string' ? evt.data : await evt.data.text()
+          const parsed = JSON.parse(data) as SocketMessage
 
-          if (typeof data === 'string') {
-            parsed = JSON.parse(data) as SocketMessage
-          } else if (data instanceof Blob) {
-            const text = await data.text()
-            parsed = JSON.parse(text) as SocketMessage
+          // Only log explicit server errors (low frequency)
+          if (parsed.type === 'whiteboard:error') {
+            console.error('[WB] Server Error:', parsed.payload)
           }
 
-          if (parsed) {
-            // debugLog('Received Message', { type: parsed.type }) // Reduced noise
-
-            if (parsed.type === 'whiteboard:error') {
-                console.error('[WB-CLIENT] ❌ SERVER ERROR:', parsed.payload)
-            }
-
-            const event = asStrokeEvent(parsed)
-            if (event) {
-                handlers.forEach((handler) => handler(event))
-            } else if (!['ping', 'whiteboard:joined'].includes(parsed.type)) {
-                // If it's a stroke but wasn't parsed, we warned inside asStrokeEvent
-                // debugLog('Message Ignored (No Handler/Not Stroke)', parsed.type) 
-            }
+          const event = asStrokeEvent(parsed)
+          if (event) {
+            handlers.forEach((handler) => handler(event))
           }
         } catch (err) {
-          debugLog('Message Processing Failed', err)
-          onError?.(err)
+          // ignore parse errors to keep stream smooth
         }
       })
 
       ws.addEventListener('error', (err) => {
-        console.error('[WB-CLIENT] ❌ Socket Error Event:', err)
+        console.error('[WB] Socket error', err)
         stopKeepAlive()
         rejectReady?.(err)
         onError?.(err)
       })
 
-      ws.addEventListener('close', (evt) => {
-        debugLog('Socket CLOSED', { code: evt.code, reason: evt.reason, wasClean: evt.wasClean })
+      ws.addEventListener('close', () => {
+        console.log('[WB] Disconnected')
         stopKeepAlive()
         cleanupAbort(handleAbort)
-        if (!opened) {
-          rejectReady?.(new Error('WebSocket closed before open'))
-        }
+        if (!opened) rejectReady?.(new Error('WebSocket closed before open'))
       })
 
-      try {
-        await ready
-      } catch (err) {
-        cleanupAbort(handleAbort)
-        throw err
-      }
+      try { await ready } catch (err) { cleanupAbort(handleAbort); throw err }
     },
     send: (event: WhiteboardStrokeEvent) => {
-      if (!ws || ws.readyState !== WebSocket.OPEN) {
-        debugLog('Cannot send: Socket not open')
-        return
-      }
-      // Send as standard payload structure
-      const payload = {
-        ...event,
-        boardId: event.boardId,
-      }
+      if (!ws || ws.readyState !== WebSocket.OPEN) return
+      const payload = { ...event, boardId: event.boardId }
       try {
         ws.send(JSON.stringify({ type: event.type, payload }))
-      } catch (err) {
-        debugLog('Send Failed', err)
-      }
+      } catch {}
     },
     onEvent: (handler: WhiteboardEventHandler) => {
       handlers.add(handler)
     },
     disconnect: () => {
-      debugLog('Disconnecting manually')
       stopKeepAlive()
       handlers.clear()
       const boardId = activeBoardId
@@ -276,9 +198,9 @@ export function createSocketTransport({
       if (ws && boardId && ws.readyState === WebSocket.OPEN) {
         try {
           ws.send(JSON.stringify({ type: 'whiteboard:leave', payload: { boardId } }))
-        } catch { /* ignore */ }
+        } catch {}
       }
-      try { ws?.close() } catch { /* ignore */ }
+      try { ws?.close() } catch {}
       ws = null
       cleanupAbort(handleAbort)
     },
