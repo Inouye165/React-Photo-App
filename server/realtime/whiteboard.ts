@@ -154,7 +154,7 @@ export function createWhiteboardMessageHandler({
   }: HandlerArgs): Promise<boolean> {
     const type = typeof message.type === 'string' ? message.type : '';
 
-    // --- Heartbeat Whitelist ---
+    // --- FIX 1: Heartbeat Whitelist ---
     if (type === 'ping') {
       return true;
     }
@@ -242,7 +242,7 @@ export function createWhiteboardMessageHandler({
 
     const { boardId, strokeId, x, y, t, sourceId, color, width } = parsed.data;
 
-    // --- FIX: Self-Healing Join ---
+    // --- FIX 2: Self-Healing Join ---
     if (!record.rooms.has(boardId)) {
       const allowed = await isMember(db, boardId, record.userId);
       if (allowed) {
@@ -258,7 +258,6 @@ export function createWhiteboardMessageHandler({
         return true;
       }
     }
-    // --- FIX END ---
 
     const now = Date.now();
     const currentState = rateStateByRecord.get(record);
@@ -290,8 +289,6 @@ export function createWhiteboardMessageHandler({
     });
 
     if (result.delivered === 0) {
-      // NOTE: This log might still appear if YOU are the only one in the room.
-      // But it will no longer block you from drawing or re-joining.
       // console.warn('[whiteboard] publishToRoom delivered to 0 clients', { boardId });
     }
 

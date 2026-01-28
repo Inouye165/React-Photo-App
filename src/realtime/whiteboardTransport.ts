@@ -16,7 +16,8 @@ type SocketMessage = {
 }
 
 const STROKE_TYPES: ReadonlySet<StrokeEventType> = new Set(['stroke:start', 'stroke:move', 'stroke:end'])
-const KEEP_ALIVE_INTERVAL_MS = 5000 // Ping every 5 seconds
+// --- FIX 3: Ping every 5 seconds to prevent load balancer timeout ---
+const KEEP_ALIVE_INTERVAL_MS = 5000 
 
 function isRecord(value: unknown): value is Record<string, unknown> {
   return Boolean(value) && typeof value === 'object'
@@ -117,15 +118,9 @@ export function createSocketTransport({
     stopKeepAlive()
     keepAliveTimer = setInterval(() => {
       if (ws && ws.readyState === WebSocket.OPEN) {
-        // Send a dummy stroke-like structure to pass validation, 
-        // but with type 'ping' which the server whitelist will catch.
         const pingPayload = {
           type: 'ping',
-          payload: { 
-            boardId, 
-            strokeId: 'keepalive', 
-            x: 0, y: 0, t: Date.now() 
-          }
+          payload: { boardId }
         }
         try {
           ws.send(JSON.stringify(pingPayload))
@@ -138,22 +133,15 @@ export function createSocketTransport({
 
   return {
     connect: async (boardId: string, token: string) => {
-      if (!apiBaseUrl || typeof apiBaseUrl !== 'string') {
-        throw new Error('apiBaseUrl is required')
-      }
-      if (!boardId || typeof boardId !== 'string') {
-        throw new Error('boardId is required')
-      }
-      if (!token || typeof token !== 'string') {
-        throw new Error('token is required')
-      }
+      if (!apiBaseUrl || typeof apiBaseUrl !== 'string') throw new Error('apiBaseUrl is required')
+      if (!boardId || typeof boardId !== 'string') throw new Error('boardId is required')
+      if (!token || typeof token !== 'string') throw new Error('token is required')
 
       const url = toWebSocketUrl(apiBaseUrl, token)
       ws = new WebSocket(url)
       activeBoardId = boardId
 
       let opened = false
-
       let resolveReady: (() => void) | null = null
       let rejectReady: ((err: unknown) => void) | null = null
       const ready = new Promise<void>((resolve, reject) => {
@@ -167,7 +155,7 @@ export function createSocketTransport({
         opened = true
         try {
           ws?.send(JSON.stringify({ type: 'whiteboard:join', payload: { boardId } }))
-          startKeepAlive(boardId) // START PINGING IMMEDIATELY
+          startKeepAlive(boardId)
         } catch {
           // ignore
         }
@@ -183,7 +171,6 @@ export function createSocketTransport({
             if (event) handlers.forEach((handler) => handler(event))
             return
           }
-
           if (data instanceof Blob) {
             const text = await data.text()
             const parsed = JSON.parse(text) as SocketMessage

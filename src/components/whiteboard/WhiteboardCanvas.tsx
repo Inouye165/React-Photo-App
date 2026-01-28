@@ -8,7 +8,6 @@ const DEFAULT_WIDTH = 2
 const MAX_BUFFERED_EVENTS = 5000
 const MIN_MOVE_INTERVAL_MS = 12
 const MIN_MOVE_DISTANCE = 0.002
-const HEARTBEAT_INTERVAL_MS = 10000 // Check health every 10s
 
 type WhiteboardCanvasProps = {
   boardId: string
@@ -47,11 +46,8 @@ export default function WhiteboardCanvas({
   const pointerStatesRef = useRef<Map<number, { strokeId: string; lastSentAt: number; x: number; y: number }>>(new Map())
   
   const [status, setStatus] = useState<'idle' | 'connecting' | 'connected' | 'error'>('idle')
-  // We use a "version" counter to force reconnection when the socket dies
-  const [connectionVersion, setConnectionVersion] = useState(0)
-
-  // Keep a ref to the latest token so we can reconnect with it 
-  // WITHOUT adding 'token' to the useEffect dependency array (which causes loops)
+  
+  // FIX 4: Use a ref for token so background refreshes don't kill the socket
   const tokenRef = useRef(token)
   useEffect(() => {
     tokenRef.current = token
@@ -213,9 +209,8 @@ export default function WhiteboardCanvas({
     }
   }, [resizeCanvas])
 
-  // --- CONNECTION MANAGEMENT ---
   useEffect(() => {
-    // 1. If no token, we can't connect.
+    // Check initial token
     const activeToken = tokenRef.current
     if (!activeToken) {
       setStatus('idle')
@@ -224,10 +219,6 @@ export default function WhiteboardCanvas({
 
     let cancelled = false
     setStatus('connecting')
-    
-    // Only reset canvas if we are connecting to a NEW board, 
-    // otherwise we might want to keep the strokes during a quick reconnect.
-    // For safety, we just reset to avoid dupes.
     resetCanvasState()
 
     const handleIncoming = (evt: WhiteboardStrokeEvent) => {
@@ -237,6 +228,7 @@ export default function WhiteboardCanvas({
 
     transport.onEvent(handleIncoming)
 
+    // Pass the initial token. Subsequent refreshes won't trigger this effect.
     transport
       .connect(boardId, activeToken)
       .then(() => {
@@ -246,39 +238,17 @@ export default function WhiteboardCanvas({
         if (!cancelled) setStatus('error')
       })
 
-    // --- WATCHDOG / HEARTBEAT ---
-    const pingInterval = setInterval(() => {
-      if (cancelled) return
-
-      // Try to send a ping
-      try {
-        transport.send({ type: 'ping', boardId } as any)
-      } catch (err) {
-        console.warn("Whiteboard ping failed, forcing reconnect", err)
-        // If ping fails (socket closed), increment version to trigger useEffect re-run
-        setConnectionVersion(v => v + 1)
-      }
-    }, HEARTBEAT_INTERVAL_MS)
-
     return () => {
       cancelled = true
-      clearInterval(pingInterval)
       transport.disconnect()
     }
-    // Dependency on 'connectionVersion' ensures we reconnect when the watchdog barks
-    // We intentionally OMIT 'token' from deps to avoid the refresh loop.
+    // We intentionally exclude 'token' to prevent the refresh loop
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [boardId, connectionVersion, transport, effectiveSourceId, resetCanvasState])
+  }, [boardId, transport, effectiveSourceId, resetCanvasState]) 
 
   const emitEvent = useCallback((evt: WhiteboardStrokeEvent) => {
     drawEvent(evt, true)
-    try {
-      transport.send(evt)
-    } catch (e) {
-      // If send fails, assume disconnected -> trigger reconnect
-      console.warn("Send failed, reconnecting...")
-      setConnectionVersion(v => v + 1)
-    }
+    transport.send(evt)
   }, [drawEvent, transport])
 
   const handlePointerDown = useCallback((event: PointerEvent<HTMLCanvasElement>) => {
@@ -398,7 +368,7 @@ export default function WhiteboardCanvas({
       {status !== 'connected' && (
         <div className="absolute inset-0 flex items-center justify-center rounded-2xl bg-white/80 text-sm text-slate-600">
           {status === 'error'
-            ? 'Reconnecting...'
+            ? 'Unable to connect to whiteboard.'
             : token
               ? 'Connecting whiteboard…'
               : 'Sign in to use the whiteboard.'}
