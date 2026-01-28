@@ -9,6 +9,8 @@ const MAX_EVENTS_PER_WINDOW = 240;
 const RATE_LIMIT_WINDOW_MS = 5000;
 const MAX_HISTORY_EVENTS = 5000;
 const MAX_EVENTS_PER_BOARD = 20000;
+const HISTORY_REPLAY_BATCH_SIZE = 50;
+const HISTORY_REPLAY_DELAY_MS = 5;
 
 const BoardIdSchema = z.string().uuid().max(BOARD_ID_MAX_LENGTH);
 
@@ -69,6 +71,11 @@ function payloadByteLength(payload: unknown): number {
 
 function isStrokeEventType(value: string): value is 'stroke:start' | 'stroke:move' | 'stroke:end' {
   return value === 'stroke:start' || value === 'stroke:move' || value === 'stroke:end';
+}
+
+function delay(ms: number) {
+  if (!ms) return Promise.resolve();
+  return new Promise<void>((resolve) => setTimeout(resolve, ms));
 }
 
 function shouldRateLimit(state: RateState | undefined, now: number) {
@@ -201,18 +208,24 @@ export function createWhiteboardMessageHandler({
       try {
         const history = await fetchHistory(db, boardId);
         console.log('[whiteboard] history replay', { boardId, count: history.length });
-        for (const evt of history) {
-          send(evt.event_type, {
-            payload: {
-              boardId,
-              strokeId: evt.stroke_id,
-              x: evt.x,
-              y: evt.y,
-              t: evt.t,
-              color: evt.color ?? undefined,
-              width: evt.width ?? undefined,
-            }
-          });
+        for (let i = 0; i < history.length; i += HISTORY_REPLAY_BATCH_SIZE) {
+          const batch = history.slice(i, i + HISTORY_REPLAY_BATCH_SIZE);
+          for (const evt of batch) {
+            send(evt.event_type, {
+              payload: {
+                boardId,
+                strokeId: evt.stroke_id,
+                x: evt.x,
+                y: evt.y,
+                t: evt.t,
+                color: evt.color ?? undefined,
+                width: evt.width ?? undefined,
+              }
+            });
+          }
+          if (i + HISTORY_REPLAY_BATCH_SIZE < history.length) {
+            await delay(HISTORY_REPLAY_DELAY_MS);
+          }
         }
       } catch {
         // ignore history failures
