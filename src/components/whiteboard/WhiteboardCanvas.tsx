@@ -48,6 +48,7 @@ export default function WhiteboardCanvas({
   const pointerStatesRef = useRef<Map<number, { strokeId: string; lastSentAt: number; x: number; y: number }>>(new Map())
   const animationFrameRef = useRef<number | null>(null)
   const historyCursorRef = useRef<WhiteboardHistoryCursor | null>(null)
+  const tokenReady = Boolean(token)
   
   const [status, setStatus] = useState<'idle' | 'connecting' | 'connected' | 'error'>('idle')
   
@@ -265,7 +266,7 @@ export default function WhiteboardCanvas({
     }
     // We intentionally exclude 'token' to prevent the refresh loop
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [boardId, transport, effectiveSourceId, resetCanvasState, redrawFromBuffer]) 
+  }, [boardId, transport, effectiveSourceId, resetCanvasState, redrawFromBuffer, tokenReady]) 
 
   const emitEvent = useCallback((evt: WhiteboardStrokeEvent) => {
     enqueueEvent(evt)
