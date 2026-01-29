@@ -127,6 +127,7 @@ module.exports = function createWhiteboardRouter({ db }: { db: Knex }) {
       try {
         const boardId = await handleRequest(req, res);
         if (!boardId) return undefined;
+        console.log('[WB-HTTP] history request', { boardId, userId: req.user?.id });
         const payload = await buildPayload(boardId);
 
         res.setHeader('Cache-Control', 'no-store');
@@ -158,6 +159,7 @@ module.exports = function createWhiteboardRouter({ db }: { db: Knex }) {
       try {
         const boardId = await handleRequest(req, res);
         if (!boardId) return undefined;
+        console.log('[WB-HTTP] snapshot request', { boardId, userId: req.user?.id });
         const payload = await buildPayload(boardId);
 
         if (shouldGzip(req)) {
