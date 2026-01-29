@@ -150,7 +150,7 @@ export function createWhiteboardMessageHandler({
   }: HandlerArgs): Promise<boolean> {
     const type = typeof message.type === 'string' ? message.type : '';
 
-    if (type !== 'ping') {
+    if (type !== 'ping' && !isStrokeEventType(type)) {
       console.log('[WB-SERVER] Msg:', { type, userId: record.userId, boardId: (message.payload as any)?.boardId });
     }
 
