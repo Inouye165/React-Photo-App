@@ -5,7 +5,7 @@ export type WhiteboardEventHandler = (event: WhiteboardEvent) => void
 export type WhiteboardTransport = {
   connect: (boardId: string, token: string, cursor?: WhiteboardHistoryCursor | null) => Promise<void>
   send: (event: WhiteboardEvent) => void
-  onEvent: (handler: WhiteboardEventHandler) => void
+  onEvent: (handler: WhiteboardEventHandler) => () => void
   disconnect: () => void
 }
 
@@ -380,6 +380,9 @@ export function createSocketTransport({
     },
     onEvent: (handler: WhiteboardEventHandler) => {
       handlers.add(handler)
+      return () => {
+        handlers.delete(handler)
+      }
     },
     disconnect: () => {
       manualClose = true

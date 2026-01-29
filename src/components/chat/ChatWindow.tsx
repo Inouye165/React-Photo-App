@@ -13,7 +13,7 @@ import {
 } from 'lucide-react'
 
 import { API_BASE_URL, getAccessToken, getPhotos, patchChatRoom, sendMessage, leaveOrDeleteRoom } from '../../api'
-import { Link, useNavigate } from 'react-router-dom'
+import { useNavigate } from 'react-router-dom'
 import { useChatRealtime } from '../../hooks/useChatRealtime'
 import { usePresence } from '../../hooks/usePresence'
 import { useChatTyping } from '../../hooks/useChatTyping'
@@ -29,6 +29,7 @@ import PotluckWidget from './widgets/PotluckWidget'
 import LocationMapPanel from '../LocationMapPanel'
 import { IdentityGateInline, useIdentityGateStatus } from '../IdentityGate'
 import WhiteboardViewer from '../whiteboard/WhiteboardViewer'
+import { openSingletonWindow } from '../../utils/openSingletonWindow'
 
 export interface ChatWindowProps {
   roomId: string | null
@@ -76,6 +77,10 @@ export default function ChatWindow({ roomId, showIdentityGate, mode = 'workspace
   const { messages, loading, error } = useChatRealtime(roomId, { userId: user?.id ?? null })
   const { isUserOnline } = usePresence(user?.id)
   const isConversationMode = mode === 'conversation'
+  const handleOpenPad = useCallback(() => {
+    if (!roomId) return
+    openSingletonWindow(`/chat/${roomId}/pad`, `whiteboard-pad-${roomId}`)
+  }, [roomId])
 
   const [draft, setDraft] = useState<string>('')
   const [sending, setSending] = useState<boolean>(false)
@@ -1027,14 +1032,13 @@ export default function ChatWindow({ roomId, showIdentityGate, mode = 'workspace
               <div className="space-y-3 text-sm text-slate-600">
                 <p>Open pad mode on a phone or tablet to draw. Strokes appear here live.</p>
                 {roomId ? (
-                  <Link
-                    to={`/chat/${roomId}/pad`}
-                    target="_blank"
-                    rel="noreferrer"
+                  <button
+                    type="button"
+                    onClick={handleOpenPad}
                     className="inline-flex items-center justify-center rounded-lg bg-slate-900 px-4 py-2 text-sm font-semibold text-white hover:bg-slate-800"
                   >
                     Open pad mode
-                  </Link>
+                  </button>
                 ) : (
                   <span className="text-xs text-slate-500">Select a room to enable pad mode.</span>
                 )}

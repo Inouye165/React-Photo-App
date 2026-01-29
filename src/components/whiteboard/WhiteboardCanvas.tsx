@@ -4,6 +4,12 @@ import type { WhiteboardEvent, WhiteboardHistoryCursor, WhiteboardStrokeEvent } 
 import type { WhiteboardTransport } from '../../realtime/whiteboardTransport'
 import { fetchWhiteboardSnapshot } from '../../api/whiteboard'
 import { normalizeHistoryEvents } from '../../realtime/whiteboardReplay'
+import {
+  appendWhiteboardSnapshotCache,
+  clearWhiteboardSnapshotCache,
+  getWhiteboardSnapshotCache,
+  setWhiteboardSnapshotCache,
+} from '../../realtime/whiteboardSnapshotCache'
 
 const DEFAULT_COLOR = '#111827'
 const DEFAULT_WIDTH = 2
@@ -214,15 +220,26 @@ export default function WhiteboardCanvas({
         if (ctx && canvas) {
           ctx.clearRect(0, 0, canvas.width, canvas.height)
         }
+        clearWhiteboardSnapshotCache(boardId)
         return
       }
       enqueueEvent(evt)
+      appendWhiteboardSnapshotCache(boardId, evt)
     }
 
-    transport.onEvent(handleIncoming)
+    const unsubscribe = transport.onEvent(handleIncoming)
 
     const loadSnapshot = async () => {
       try {
+        const cached = getWhiteboardSnapshotCache(boardId)
+        if (cached?.events.length) {
+          drawingBufferRef.current = cached.events
+          historyCursorRef.current = cached.cursor ?? null
+          redrawFromBuffer()
+        } else if (cached?.cursor) {
+          historyCursorRef.current = cached.cursor
+        }
+
         const snapshot = await fetchWhiteboardSnapshot({
           boardId,
           token: activeToken,
@@ -234,6 +251,7 @@ export default function WhiteboardCanvas({
           const trimmed = normalized.slice(-MAX_BUFFERED_EVENTS)
           drawingBufferRef.current = trimmed
           historyCursorRef.current = snapshot.cursor ?? null
+          setWhiteboardSnapshotCache(boardId, trimmed, snapshot.cursor ?? null)
           redrawFromBuffer()
         }
       } catch (err) {
@@ -262,6 +280,7 @@ export default function WhiteboardCanvas({
     return () => {
       cancelled = true
       abortController.abort()
+      unsubscribe()
       transport.disconnect()
     }
     // We intentionally exclude 'token' to prevent the refresh loop
