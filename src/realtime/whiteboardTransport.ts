@@ -52,10 +52,10 @@ function asStrokeEvent(message: SocketMessage): WhiteboardStrokeEvent | null {
   // 3. Validation - If missing, we ignore silently to prevent console floods
   if (!boardId || !strokeId) return null;
 
-  // 4. Robust Coords - Default to 0 instead of failing if undefined
-  const x = typeof data.x === 'number' ? data.x : 0;
-  const y = typeof data.y === 'number' ? data.y : 0;
-  const t = typeof data.t === 'number' ? data.t : Date.now();
+  const x = typeof data.x === 'number' && Number.isFinite(data.x) ? data.x : null
+  const y = typeof data.y === 'number' && Number.isFinite(data.y) ? data.y : null
+  if (x === null || y === null) return null
+  const t = typeof data.t === 'number' && Number.isFinite(data.t) ? data.t : Date.now()
 
   return {
     type: message.type as StrokeEventType,

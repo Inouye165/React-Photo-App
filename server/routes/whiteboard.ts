@@ -1,10 +1,11 @@
 import type { Request, Response } from 'express';
 import express from 'express';
 import type { Knex } from 'knex';
-import { z } from 'zod';
 import { gzip } from 'zlib';
 import { promisify } from 'util';
+import { z } from 'zod';
 import { validateRequest } from '../validation/validateRequest';
+
 const gzipAsync = promisify(gzip);
 const BOARD_ID_MAX_LENGTH = 64;
 const MAX_HISTORY_EVENTS = 5000;
@@ -89,6 +90,7 @@ module.exports = function createWhiteboardRouter({ db }: { db: Knex }) {
       x: evt.x,
       y: evt.y,
       t: evt.t,
+      seq: normalizeSeq(evt.id) ?? undefined,
       color: evt.color ?? undefined,
       width: evt.width ?? undefined,
       sourceId: evt.source_id ?? undefined,
@@ -126,6 +128,22 @@ module.exports = function createWhiteboardRouter({ db }: { db: Knex }) {
         const boardId = await handleRequest(req, res);
         if (!boardId) return undefined;
         const payload = await buildPayload(boardId);
+
+        res.setHeader('Cache-Control', 'no-store');
+        res.setHeader('Vary', 'Accept-Encoding');
+
+        if (shouldGzip(req)) {
+          try {
+            const json = JSON.stringify(payload);
+            const compressed = await gzipAsync(json);
+            res.setHeader('Content-Encoding', 'gzip');
+            res.setHeader('Content-Type', 'application/json; charset=utf-8');
+            return res.status(200).send(compressed);
+          } catch {
+            // Fall back to uncompressed JSON if gzip fails.
+          }
+        }
+
         return res.json(payload);
       } catch {
         return res.status(500).json({ success: false, error: 'Internal server error' });
@@ -156,6 +174,7 @@ module.exports = function createWhiteboardRouter({ db }: { db: Knex }) {
           }
         }
 
+        res.setHeader('Cache-Control', 'no-store');
         return res.json(payload);
       } catch {
         return res.status(500).json({ success: false, error: 'Internal server error' });

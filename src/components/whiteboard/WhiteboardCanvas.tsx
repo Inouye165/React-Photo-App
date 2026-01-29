@@ -1,8 +1,9 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import type { PointerEvent } from 'react'
-import type { WhiteboardEvent, WhiteboardStrokeEvent } from '../../types/whiteboard'
+import type { WhiteboardEvent, WhiteboardHistoryCursor, WhiteboardStrokeEvent } from '../../types/whiteboard'
 import type { WhiteboardTransport } from '../../realtime/whiteboardTransport'
 import { fetchWhiteboardSnapshot } from '../../api/whiteboard'
+import { normalizeHistoryEvents } from '../../realtime/whiteboardReplay'
 
 const DEFAULT_COLOR = '#111827'
 const DEFAULT_WIDTH = 2
@@ -46,6 +47,7 @@ export default function WhiteboardCanvas({
   const activeStrokesRef = useRef<Map<string, StrokeState>>(new Map())
   const pointerStatesRef = useRef<Map<number, { strokeId: string; lastSentAt: number; x: number; y: number }>>(new Map())
   const animationFrameRef = useRef<number | null>(null)
+  const historyCursorRef = useRef<WhiteboardHistoryCursor | null>(null)
   
   const [status, setStatus] = useState<'idle' | 'connecting' | 'connected' | 'error'>('idle')
   
@@ -227,31 +229,34 @@ export default function WhiteboardCanvas({
         })
         if (cancelled) return
         if (Array.isArray(snapshot.events)) {
-          const trimmed = snapshot.events.slice(-MAX_BUFFERED_EVENTS)
+          const normalized = normalizeHistoryEvents(snapshot.events)
+          const trimmed = normalized.slice(-MAX_BUFFERED_EVENTS)
           drawingBufferRef.current = trimmed
+          historyCursorRef.current = snapshot.cursor ?? null
           redrawFromBuffer()
         }
       } catch (err) {
         if (cancelled) return
         const name = err && typeof err === 'object' && 'name' in err ? String((err as { name?: unknown }).name) : ''
         if (name === 'AbortError') return
+        if (!cancelled) setStatus('error')
+        return
+      }
+    }
+
+    const loadAndConnect = async () => {
+      await loadSnapshot()
+      if (cancelled) return
+      try {
+        await transport.connect(boardId, activeToken, historyCursorRef.current)
+        if (!cancelled) setStatus('connected')
+      } catch {
+        if (!cancelled) setStatus('error')
       }
     }
 
     // Pass the initial token. Subsequent refreshes won't trigger this effect.
-    loadSnapshot()
-      .catch(() => undefined)
-      .finally(() => {
-        if (cancelled) return
-        transport
-          .connect(boardId, activeToken)
-          .then(() => {
-            if (!cancelled) setStatus('connected')
-          })
-          .catch(() => {
-            if (!cancelled) setStatus('error')
-          })
-      })
+    loadAndConnect().catch(() => undefined)
 
     return () => {
       cancelled = true

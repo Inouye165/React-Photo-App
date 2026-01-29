@@ -183,7 +183,9 @@ describe('whiteboard history route', () => {
     expect(Array.isArray(res.body.events)).toBe(true)
     expect(res.body.events.length).toBe(2)
     expect(res.body.events[0].type).toBe('stroke:start')
+    expect(res.body.events[0].seq).toBe(1)
     expect(res.body.events[1].type).toBe('stroke:move')
+    expect(res.body.events[1].seq).toBe(2)
     expect(res.body.cursor).toEqual({ lastSeq: 2, lastTs: null })
   })
 
