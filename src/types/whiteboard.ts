@@ -7,6 +7,7 @@ export type WhiteboardStrokeEvent = {
   x: number
   y: number
   t: number
+  seq?: number
   sourceId?: string
   color?: string
   width?: number

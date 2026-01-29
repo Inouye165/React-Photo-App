@@ -1,6 +1,7 @@
 import type { Request, Response } from 'express';
 import express from 'express';
 import type { Knex } from 'knex';
+import { gzipSync } from 'zlib';
 import { z } from 'zod';
 import { validateRequest } from '../validation/validateRequest';
 
@@ -68,6 +69,11 @@ async function fetchHistory(db: Knex, boardId: string): Promise<{ events: Whiteb
   };
 }
 
+function wantsGzip(acceptEncoding: string | undefined): boolean {
+  if (!acceptEncoding) return false;
+  return acceptEncoding.toLowerCase().includes('gzip');
+}
+
 module.exports = function createWhiteboardRouter({ db }: { db: Knex }) {
   if (!db) throw new Error('db is required');
 
@@ -101,12 +107,25 @@ module.exports = function createWhiteboardRouter({ db }: { db: Knex }) {
           x: evt.x,
           y: evt.y,
           t: evt.t,
+          seq: normalizeSeq(evt.id) ?? undefined,
           color: evt.color ?? undefined,
           width: evt.width ?? undefined,
           sourceId: evt.source_id ?? undefined,
         }));
 
-        return res.json({ boardId, events: mapped, cursor });
+        const payload = { boardId, events: mapped, cursor };
+        res.setHeader('Cache-Control', 'no-store');
+        res.setHeader('Vary', 'Accept-Encoding');
+
+        if (wantsGzip(req.headers['accept-encoding'])) {
+          const body = Buffer.from(JSON.stringify(payload));
+          const zipped = gzipSync(body);
+          res.setHeader('Content-Encoding', 'gzip');
+          res.setHeader('Content-Type', 'application/json; charset=utf-8');
+          return res.status(200).send(zipped);
+        }
+
+        return res.json(payload);
       } catch {
         return res.status(500).json({ success: false, error: 'Internal server error' });
       }

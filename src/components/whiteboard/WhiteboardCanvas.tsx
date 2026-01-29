@@ -3,6 +3,7 @@ import type { PointerEvent } from 'react'
 import type { WhiteboardEvent, WhiteboardStrokeEvent, WhiteboardHistoryCursor } from '../../types/whiteboard'
 import type { WhiteboardTransport } from '../../realtime/whiteboardTransport'
 import { fetchWhiteboardHistory } from '../../api'
+import { normalizeHistoryEvents } from '../../realtime/whiteboardReplay'
 
 const DEFAULT_COLOR = '#111827'
 const DEFAULT_WIDTH = 2
@@ -228,7 +229,7 @@ export default function WhiteboardCanvas({
           signal: controller.signal,
         })
         if (cancelled) return
-        drawingBufferRef.current = history.events
+        drawingBufferRef.current = normalizeHistoryEvents(history.events)
         historyCursorRef.current = history.cursor
         redrawFromBuffer()
       } catch {
