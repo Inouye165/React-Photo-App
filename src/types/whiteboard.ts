@@ -11,3 +11,12 @@ export type WhiteboardStrokeEvent = {
   color?: string
   width?: number
 }
+
+export type WhiteboardClearEvent = {
+  type: 'whiteboard:clear'
+  boardId: string
+  t: number
+  sourceId?: string
+}
+
+export type WhiteboardEvent = WhiteboardStrokeEvent | WhiteboardClearEvent
