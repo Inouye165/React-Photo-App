@@ -3,6 +3,7 @@ import { request, ApiError } from './httpClient'
 
 // --- Token Management ---
 let _cachedAccessToken: string | null = null
+const tokenListeners = new Set<(token: string | null) => void>()
 
 type AuthTokenState = 'unknown' | 'set' | 'cleared'
 let _authTokenState: AuthTokenState = 'unknown'
@@ -12,9 +13,23 @@ function canAttemptSessionRefresh(): boolean {
 }
 
 export function setAuthToken(token: string | null): void {
+  if (_cachedAccessToken === token) return
   _cachedAccessToken = token
   _authTokenState = token ? 'set' : 'cleared'
   console.log(`[API Auth] Token updated. State: ${_authTokenState.toUpperCase()}`)
+
+  for (const listener of tokenListeners) {
+    try {
+      listener(token)
+    } catch {
+      // ignore
+    }
+  }
+}
+
+export function onAuthTokenChange(listener: (token: string | null) => void): () => void {
+  tokenListeners.add(listener)
+  return () => tokenListeners.delete(listener)
 }
 
 export function getAccessToken(): string | null {
@@ -41,8 +56,7 @@ export async function getHeadersForGetRequestAsync(): Promise<Record<string, str
     const session = await getSessionSingleflight()
     const token = session?.access_token ?? null
     if (token) {
-      _cachedAccessToken = token
-      _authTokenState = 'set'
+      setAuthToken(token)
       return { Authorization: `Bearer ${token}` }
     }
 
@@ -94,8 +108,7 @@ export async function getAuthHeadersAsync(includeContentType = true): Promise<Re
     const token = session?.access_token ?? null
     if (token) {
       headers['Authorization'] = `Bearer ${token}`
-      _cachedAccessToken = token
-      _authTokenState = 'set'
+      setAuthToken(token)
     } else {
       // Session resolved but no token; treat as logged out.
       _authTokenState = 'cleared'

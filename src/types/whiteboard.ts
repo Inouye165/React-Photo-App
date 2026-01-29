@@ -12,9 +12,18 @@ export type WhiteboardStrokeEvent = {
   width?: number
 }
 
+export type WhiteboardClearEvent = {
+  type: 'whiteboard:clear'
+  boardId: string
+  t: number
+  sourceId?: string
+}
+
+export type WhiteboardEvent = WhiteboardStrokeEvent | WhiteboardClearEvent
+
 export type WhiteboardHistoryCursor = {
-  lastSeq: number
-  lastTs: string | null
+  lastSeq?: number
+  lastTs?: string | null
 }
 
 export type WhiteboardHistoryResponse = {

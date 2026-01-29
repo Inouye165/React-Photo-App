@@ -1,6 +1,6 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import type { PointerEvent } from 'react'
-import type { WhiteboardStrokeEvent } from '../../types/whiteboard'
+import type { WhiteboardEvent, WhiteboardStrokeEvent } from '../../types/whiteboard'
 import type { WhiteboardTransport } from '../../realtime/whiteboardTransport'
 import { fetchWhiteboardSnapshot } from '../../api/whiteboard'
 
@@ -42,9 +42,10 @@ export default function WhiteboardCanvas({
 }: WhiteboardCanvasProps) {
   const canvasRef = useRef<HTMLCanvasElement | null>(null)
   const wrapperRef = useRef<HTMLDivElement | null>(null)
-  const eventsRef = useRef<WhiteboardStrokeEvent[]>([])
+  const drawingBufferRef = useRef<WhiteboardStrokeEvent[]>([])
   const activeStrokesRef = useRef<Map<string, StrokeState>>(new Map())
   const pointerStatesRef = useRef<Map<number, { strokeId: string; lastSentAt: number; x: number; y: number }>>(new Map())
+  const animationFrameRef = useRef<number | null>(null)
   
   const [status, setStatus] = useState<'idle' | 'connecting' | 'connected' | 'error'>('idle')
   
@@ -69,7 +70,7 @@ export default function WhiteboardCanvas({
   }, [])
 
   const resetCanvasState = useCallback(() => {
-    eventsRef.current = []
+    drawingBufferRef.current = []
     activeStrokesRef.current = new Map()
     const ctx = getContext()
     const canvas = canvasRef.current
@@ -89,52 +90,15 @@ export default function WhiteboardCanvas({
     return { x, y }
   }, [])
 
-  const drawEvent = useCallback((evt: WhiteboardStrokeEvent, recordEvent: boolean) => {
-    const ctx = getContext()
-    const canvas = canvasRef.current
-    if (!ctx || !canvas) return
-
-    const color = evt.color ?? DEFAULT_COLOR
-    const width = evt.width ?? DEFAULT_WIDTH
-    const active = activeStrokesRef.current
-
-    if (evt.type === 'stroke:start') {
-      active.set(evt.strokeId, { x: evt.x, y: evt.y, color, width })
-      ctx.strokeStyle = color
-      ctx.lineWidth = width
-      ctx.lineCap = 'round'
-      ctx.lineJoin = 'round'
-      ctx.beginPath()
-      ctx.moveTo(evt.x * canvas.width / window.devicePixelRatio, evt.y * canvas.height / window.devicePixelRatio)
-      ctx.lineTo(evt.x * canvas.width / window.devicePixelRatio, evt.y * canvas.height / window.devicePixelRatio)
-      ctx.stroke()
-    } else {
-      const prev = active.get(evt.strokeId)
-      const start = prev ?? { x: evt.x, y: evt.y, color, width }
-      ctx.strokeStyle = start.color
-      ctx.lineWidth = start.width
-      ctx.lineCap = 'round'
-      ctx.lineJoin = 'round'
-      ctx.beginPath()
-      ctx.moveTo(start.x * canvas.width / window.devicePixelRatio, start.y * canvas.height / window.devicePixelRatio)
-      ctx.lineTo(evt.x * canvas.width / window.devicePixelRatio, evt.y * canvas.height / window.devicePixelRatio)
-      ctx.stroke()
-      active.set(evt.strokeId, { x: evt.x, y: evt.y, color: start.color, width: start.width })
-      if (evt.type === 'stroke:end') {
-        active.delete(evt.strokeId)
-      }
+  const enqueueEvent = useCallback((evt: WhiteboardStrokeEvent) => {
+    const list = drawingBufferRef.current
+    list.push(evt)
+    if (list.length > MAX_BUFFERED_EVENTS) {
+      list.splice(0, list.length - MAX_BUFFERED_EVENTS)
     }
+  }, [])
 
-    if (recordEvent) {
-      const list = eventsRef.current
-      list.push(evt)
-      if (list.length > MAX_BUFFERED_EVENTS) {
-        list.splice(0, list.length - MAX_BUFFERED_EVENTS)
-      }
-    }
-  }, [getContext])
-
-  const replayEvents = useCallback(() => {
+  const redrawFromBuffer = useCallback(() => {
     const ctx = getContext()
     const canvas = canvasRef.current
     if (!ctx || !canvas) return
@@ -142,7 +106,7 @@ export default function WhiteboardCanvas({
     ctx.clearRect(0, 0, canvas.width, canvas.height)
     const tempActive = new Map<string, StrokeState>()
 
-    for (const evt of eventsRef.current) {
+    for (const evt of drawingBufferRef.current) {
       const color = evt.color ?? DEFAULT_COLOR
       const width = evt.width ?? DEFAULT_WIDTH
       if (evt.type === 'stroke:start') {
@@ -193,9 +157,9 @@ export default function WhiteboardCanvas({
       if (ctx) {
         ctx.setTransform(dpr, 0, 0, dpr, 0, 0)
       }
-      replayEvents()
+      redrawFromBuffer()
     }
-  }, [replayEvents])
+  }, [redrawFromBuffer])
 
   useEffect(() => {
     resizeCanvas()
@@ -211,6 +175,20 @@ export default function WhiteboardCanvas({
   }, [resizeCanvas])
 
   useEffect(() => {
+    const loop = () => {
+      redrawFromBuffer()
+      animationFrameRef.current = requestAnimationFrame(loop)
+    }
+    animationFrameRef.current = requestAnimationFrame(loop)
+    return () => {
+      if (animationFrameRef.current) {
+        cancelAnimationFrame(animationFrameRef.current)
+        animationFrameRef.current = null
+      }
+    }
+  }, [redrawFromBuffer])
+
+  useEffect(() => {
     // Check initial token
     const activeToken = tokenRef.current
     if (!activeToken) {
@@ -223,9 +201,19 @@ export default function WhiteboardCanvas({
     setStatus('connecting')
     resetCanvasState()
 
-    const handleIncoming = (evt: WhiteboardStrokeEvent) => {
+    const handleIncoming = (evt: WhiteboardEvent) => {
       if (effectiveSourceId && evt.sourceId && evt.sourceId === effectiveSourceId) return
-      drawEvent(evt, true)
+      if (evt.type === 'whiteboard:clear') {
+        drawingBufferRef.current = []
+        activeStrokesRef.current = new Map()
+        const ctx = getContext()
+        const canvas = canvasRef.current
+        if (ctx && canvas) {
+          ctx.clearRect(0, 0, canvas.width, canvas.height)
+        }
+        return
+      }
+      enqueueEvent(evt)
     }
 
     transport.onEvent(handleIncoming)
@@ -240,8 +228,8 @@ export default function WhiteboardCanvas({
         if (cancelled) return
         if (Array.isArray(snapshot.events)) {
           const trimmed = snapshot.events.slice(-MAX_BUFFERED_EVENTS)
-          eventsRef.current = trimmed
-          replayEvents()
+          drawingBufferRef.current = trimmed
+          redrawFromBuffer()
         }
       } catch (err) {
         if (cancelled) return
@@ -272,12 +260,27 @@ export default function WhiteboardCanvas({
     }
     // We intentionally exclude 'token' to prevent the refresh loop
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [boardId, transport, effectiveSourceId, resetCanvasState, replayEvents]) 
+  }, [boardId, transport, effectiveSourceId, resetCanvasState, redrawFromBuffer]) 
 
   const emitEvent = useCallback((evt: WhiteboardStrokeEvent) => {
-    drawEvent(evt, true)
+    enqueueEvent(evt)
     transport.send(evt)
-  }, [drawEvent, transport])
+  }, [enqueueEvent, transport])
+
+  const handleErase = useCallback(() => {
+    drawingBufferRef.current = []
+    activeStrokesRef.current = new Map()
+    const ctx = getContext()
+    const canvas = canvasRef.current
+    if (!ctx || !canvas) return
+    ctx.clearRect(0, 0, canvas.width, canvas.height)
+    transport.send({
+      type: 'whiteboard:clear',
+      boardId,
+      t: Date.now(),
+      sourceId: effectiveSourceId ?? undefined,
+    })
+  }, [boardId, effectiveSourceId, getContext, transport])
 
   const handlePointerDown = useCallback((event: PointerEvent<HTMLCanvasElement>) => {
     if (mode !== 'pad') return
@@ -393,6 +396,16 @@ export default function WhiteboardCanvas({
         onPointerUp={handlePointerUp}
         onPointerCancel={handlePointerCancel}
       />
+      <div className="absolute right-3 top-3 z-10">
+        <button
+          type="button"
+          onClick={handleErase}
+          className="rounded-md border border-slate-200 bg-white/90 px-3 py-1 text-xs font-semibold text-slate-700 shadow-sm hover:bg-white"
+          aria-label="Erase whiteboard"
+        >
+          Erase
+        </button>
+      </div>
       {status !== 'connected' && (
         <div className="absolute inset-0 flex items-center justify-center rounded-2xl bg-white/80 text-sm text-slate-600">
           {status === 'error'

@@ -1,4 +1,3 @@
-import type { Knex } from 'knex';
 import { z } from 'zod';
 
 const BOARD_ID_MAX_LENGTH = 64;
@@ -7,7 +6,6 @@ const SOURCE_ID_MAX_LENGTH = 64;
 const MAX_PAYLOAD_BYTES = 2048;
 const MAX_EVENTS_PER_WINDOW = 240;
 const RATE_LIMIT_WINDOW_MS = 5000;
-const MAX_HISTORY_EVENTS = 5000;
 const MAX_EVENTS_PER_BOARD = 20000;
 
 const BoardIdSchema = z.string().uuid().max(BOARD_ID_MAX_LENGTH);
@@ -48,16 +46,18 @@ type RateState = {
   count: number;
 };
 
-type StoredWhiteboardEvent = {
-  event_type: 'stroke:start' | 'stroke:move' | 'stroke:end';
-  stroke_id: string;
-  x: number;
-  y: number;
-  t: number;
-  source_id: string | null;
-  color: string | null;
-  width: number | null;
+type WhiteboardQuery = {
+  select: (...columns: string[]) => WhiteboardQuery;
+  where: (columnOrConditions: string | Record<string, unknown>, value?: unknown) => WhiteboardQuery;
+  orderBy: (column: string, direction?: 'asc' | 'desc') => WhiteboardQuery;
+  limit: (value: number) => WhiteboardQuery;
+  whereNotIn: (column: string, values: unknown) => WhiteboardQuery;
+  insert: (data: Record<string, unknown>) => Promise<unknown> | WhiteboardQuery;
+  del: () => Promise<unknown>;
+  first: () => Promise<unknown>;
 };
+
+type WhiteboardDb = (tableName: string) => WhiteboardQuery;
 
 function payloadByteLength(payload: unknown): number {
   try {
@@ -70,6 +70,7 @@ function payloadByteLength(payload: unknown): number {
 function isStrokeEventType(value: string): value is 'stroke:start' | 'stroke:move' | 'stroke:end' {
   return value === 'stroke:start' || value === 'stroke:move' || value === 'stroke:end';
 }
+
 
 function shouldRateLimit(state: RateState | undefined, now: number) {
   if (!state || now - state.windowStart >= RATE_LIMIT_WINDOW_MS) {
@@ -84,22 +85,13 @@ function shouldRateLimit(state: RateState | undefined, now: number) {
   };
 }
 
-async function isMember(db: Knex, boardId: string, userId: string): Promise<boolean> {
+async function isMember(db: WhiteboardDb, boardId: string, userId: string): Promise<boolean> {
   const row = await db('room_members').where({ room_id: boardId, user_id: userId }).first();
   return Boolean(row);
 }
 
-async function fetchHistory(db: Knex, boardId: string): Promise<StoredWhiteboardEvent[]> {
-  const rows = await db('whiteboard_events')
-    .select('event_type', 'stroke_id', 'x', 'y', 't', 'source_id', 'color', 'width')
-    .where({ board_id: boardId })
-    .orderBy('id', 'desc')
-    .limit(MAX_HISTORY_EVENTS);
 
-  return rows.reverse() as StoredWhiteboardEvent[];
-}
-
-async function persistEvent(db: Knex, event: {
+async function persistEvent(db: WhiteboardDb, event: {
   boardId: string;
   type: 'stroke:start' | 'stroke:move' | 'stroke:end';
   strokeId: string;
@@ -123,7 +115,7 @@ async function persistEvent(db: Knex, event: {
   });
 }
 
-async function pruneEvents(db: Knex, boardId: string) {
+async function pruneEvents(db: WhiteboardDb, boardId: string) {
   await db('whiteboard_events')
     .where('board_id', boardId)
     .whereNotIn(
@@ -137,10 +129,14 @@ async function pruneEvents(db: Knex, boardId: string) {
     .del();
 }
 
+async function clearHistory(db: WhiteboardDb, boardId: string) {
+  await db('whiteboard_events').where({ board_id: boardId }).del();
+}
+
 export function createWhiteboardMessageHandler({
   db,
 }: {
-  db: Knex;
+  db: WhiteboardDb;
 }) {
   const rateStateByRecord = new WeakMap<SocketRecord, RateState>();
 
@@ -154,30 +150,46 @@ export function createWhiteboardMessageHandler({
   }: HandlerArgs): Promise<boolean> {
     const type = typeof message.type === 'string' ? message.type : '';
 
-    // --- FIX 1: Heartbeat Whitelist ---
+    if (type !== 'ping') {
+      console.log('[WB-SERVER] Msg:', { type, userId: record.userId, boardId: (message.payload as any)?.boardId });
+    }
+
     if (type === 'ping') {
+      const boardId = (message.payload as { boardId?: string })?.boardId;
+      send('pong', { payload: { boardId, t: Date.now() } });
       return true;
     }
 
     if (type === 'whiteboard:join') {
-      const parsed = z.object({ boardId: BoardIdSchema }).safeParse(message.payload);
+      const parsed = z.object({
+        boardId: BoardIdSchema,
+        cursor: z
+          .object({
+            lastSeq: z.number().int().nonnegative().optional(),
+            lastTs: z.string().datetime().nullable().optional(),
+          })
+          .optional(),
+      }).safeParse(message.payload);
       if (!parsed.success) {
-        send('whiteboard:error', { code: 'invalid_request' });
+        send('whiteboard:error', { payload: { code: 'invalid_request' } });
         return true;
       }
 
       const { boardId } = parsed.data;
+      
       const allowed = await isMember(db, boardId, record.userId);
+      console.log('[WB-SERVER] Join Authorization:', { userId: record.userId, boardId, allowed });
+
       if (!allowed) {
         console.warn('[whiteboard] join forbidden', { boardId, userId: record.userId });
-        send('whiteboard:error', { code: 'forbidden' });
+        send('whiteboard:error', { payload: { code: 'forbidden' } });
         return true;
       }
 
       const out = joinRoom(record, boardId);
       if (!out.ok) {
         console.warn('[whiteboard] join failed', { boardId, reason: out.reason });
-        send('whiteboard:error', { code: 'join_failed' });
+        send('whiteboard:error', { payload: { code: 'join_failed' } });
         return true;
       }
 
@@ -187,9 +199,37 @@ export function createWhiteboardMessageHandler({
         socketId: record.id,
         roomCount: record.rooms.size 
       });
-      send('whiteboard:joined', { boardId });
+      
+      send('whiteboard:joined', { payload: { boardId } });
+      return true;
+    }
 
-      // perf: history is fetched via HTTP snapshots to avoid WS backpressure.
+    if (type === 'whiteboard:clear') {
+      const parsed = z.object({ boardId: BoardIdSchema }).safeParse(message.payload);
+      if (!parsed.success) {
+        send('whiteboard:error', { payload: { code: 'invalid_request' } });
+        return true;
+      }
+
+      const { boardId } = parsed.data;
+      const allowed = await isMember(db, boardId, record.userId);
+      if (!allowed) {
+        console.warn('[whiteboard] clear forbidden', { boardId, userId: record.userId });
+        send('whiteboard:error', { payload: { code: 'forbidden' } });
+        return true;
+      }
+
+      try {
+        await clearHistory(db, boardId);
+      } catch (err) {
+        console.error('[whiteboard] clearHistory failed:', err);
+      }
+
+      publishToRoom(boardId, 'whiteboard:clear', {
+        boardId,
+        t: Date.now(),
+        sourceId: record.userId,
+      });
 
       return true;
     }
@@ -197,13 +237,13 @@ export function createWhiteboardMessageHandler({
     if (type === 'whiteboard:leave') {
       const parsed = z.object({ boardId: BoardIdSchema }).safeParse(message.payload);
       if (!parsed.success) {
-        send('whiteboard:error', { code: 'invalid_request' });
+        send('whiteboard:error', { payload: { code: 'invalid_request' } });
         return true;
       }
 
       const { boardId } = parsed.data;
       leaveRoom(record, boardId);
-      send('whiteboard:left', { boardId });
+      send('whiteboard:left', { payload: { boardId } });
       return true;
     }
 
@@ -212,7 +252,7 @@ export function createWhiteboardMessageHandler({
     }
 
     if (payloadByteLength(message.payload) > MAX_PAYLOAD_BYTES) {
-      send('whiteboard:error', { code: 'payload_too_large' });
+      send('whiteboard:error', { payload: { code: 'payload_too_large' } });
       return true;
     }
 
@@ -221,25 +261,29 @@ export function createWhiteboardMessageHandler({
     });
 
     if (!parsed.success) {
-      send('whiteboard:error', { code: 'invalid_request' });
+      console.error('[WB-SERVER] Stroke Invalid', parsed.error);
+      send('whiteboard:error', { payload: { code: 'invalid_request' } });
       return true;
     }
 
     const { boardId, strokeId, x, y, t, sourceId, color, width } = parsed.data;
 
-    // --- FIX 2: Self-Healing Join ---
     if (!record.rooms.has(boardId)) {
+      console.log('[WB-SERVER] User sent stroke but not in room. Attempting recovery.', { userId: record.userId, boardId });
+      
       const allowed = await isMember(db, boardId, record.userId);
       if (allowed) {
         const out = joinRoom(record, boardId);
         if (out.ok) {
           console.log('[whiteboard] auto-rejoined user', { userId: record.userId, boardId });
         } else {
-          send('whiteboard:error', { code: 'not_joined' });
+          console.error('[WB-SERVER] Auto-rejoin failed', { reason: out.reason });
+          send('whiteboard:error', { payload: { code: 'not_joined' } });
           return true;
         }
       } else {
-        send('whiteboard:error', { code: 'forbidden' });
+        console.error('[WB-SERVER] Stroke rejected: User not allowed in room', { userId: record.userId, boardId });
+        send('whiteboard:error', { payload: { code: 'forbidden' } });
         return true;
       }
     }
@@ -249,7 +293,7 @@ export function createWhiteboardMessageHandler({
     const rateDecision = shouldRateLimit(currentState, now);
     rateStateByRecord.set(record, rateDecision.next);
     if (rateDecision.limited) {
-      send('whiteboard:error', { code: 'rate_limited' });
+      send('whiteboard:error', { payload: { code: 'rate_limited' } });
       return true;
     }
 
@@ -262,15 +306,17 @@ export function createWhiteboardMessageHandler({
       console.error('[whiteboard] persistEvent failed:', err);
     }
 
+    // --- REVERTED TO ORIGINAL (FLAT) ---
+    // The "Smart Client" will handle this whether SocketManager wraps it or not.
     const result = publishToRoom(boardId, type, {
-      boardId,
-      strokeId,
-      x,
-      y,
-      t,
-      sourceId,
-      color,
-      width,
+        boardId,
+        strokeId,
+        x,
+        y,
+        t,
+        sourceId,
+        color,
+        width,
     });
 
     if (result.delivered === 0) {

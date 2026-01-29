@@ -1,36 +1,30 @@
 /* eslint-env jest */
 
-import type { Knex } from 'knex'
 import { createWhiteboardMessageHandler } from '../realtime/whiteboard'
 
-type RoomMembersQuery = {
-  where: (conditions: { room_id: string; user_id: string }) => { first: () => Promise<{ id: string } | null> }
-}
-
-type MockDb = ((tableName: string) => RoomMembersQuery)
-
-function createMockDb(): MockDb {
-  return ((tableName: string) => {
-    if (tableName !== 'room_members') {
-      throw new Error(`Unexpected table: ${tableName}`)
-    }
-    return {
-      where: () => ({
-        first: async () => ({ id: 'room-1' }),
-      }),
-    }
-  }) as MockDb
+type MockDb = (tableName: string) => {
+  where: (conditions: Record<string, string>) => { first: () => Promise<unknown> }
 }
 
 describe('whiteboard realtime join', () => {
   test('does not replay history on join', async () => {
-    const db = createMockDb()
-    const handler = createWhiteboardMessageHandler({ db: db as unknown as Knex })
+    const db: MockDb = (tableName: string) => {
+      if (tableName !== 'room_members') {
+        throw new Error(`Unexpected table: ${tableName}`)
+      }
+      return {
+        where: () => ({
+          first: () => Promise.resolve({ id: 1 }),
+        }),
+      }
+    }
+
+    const handler = createWhiteboardMessageHandler({ db })
 
     const send = jest.fn()
-    const joinRoom = jest.fn().mockReturnValue({ ok: true })
-    const leaveRoom = jest.fn()
-    const publishToRoom = jest.fn()
+    const joinRoom = jest.fn().mockReturnValue({ ok: true, roomId: 'room-1' })
+    const leaveRoom = jest.fn().mockReturnValue({ ok: true })
+    const publishToRoom = jest.fn().mockReturnValue({ delivered: 0 })
 
     const record = {
       id: 'socket-1',
@@ -40,7 +34,7 @@ describe('whiteboard realtime join', () => {
 
     const message = {
       type: 'whiteboard:join',
-      payload: { boardId: '11111111-1111-4111-8111-111111111111' },
+      payload: { boardId: '11111111-1111-4111-8111-111111111111', cursor: { lastSeq: 12 } },
     }
 
     await handler({
@@ -52,7 +46,7 @@ describe('whiteboard realtime join', () => {
       publishToRoom,
     })
 
-    expect(send).toHaveBeenCalledWith('whiteboard:joined', { boardId: message.payload.boardId })
+    expect(send).toHaveBeenCalledWith('whiteboard:joined', { payload: { boardId: message.payload.boardId } })
 
     const historyEvents = send.mock.calls.filter(([type]) =>
       type === 'stroke:start' || type === 'stroke:move' || type === 'stroke:end',
