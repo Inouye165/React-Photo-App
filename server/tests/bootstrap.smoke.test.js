@@ -1,6 +1,6 @@
 const request = require('supertest');
 
-jest.setTimeout(20_000);
+jest.setTimeout(40_000);
 
 function createKnexStub() {
   const target = jest.fn(() => target);

@@ -1,4 +1,3 @@
-import type { Knex } from 'knex';
 import { z } from 'zod';
 
 const BOARD_ID_MAX_LENGTH = 64;
@@ -7,10 +6,7 @@ const SOURCE_ID_MAX_LENGTH = 64;
 const MAX_PAYLOAD_BYTES = 2048;
 const MAX_EVENTS_PER_WINDOW = 240;
 const RATE_LIMIT_WINDOW_MS = 5000;
-const MAX_HISTORY_EVENTS = 5000;
 const MAX_EVENTS_PER_BOARD = 20000;
-const HISTORY_REPLAY_BATCH_SIZE = 50;
-const HISTORY_REPLAY_DELAY_MS = 5;
 
 const BoardIdSchema = z.string().uuid().max(BOARD_ID_MAX_LENGTH);
 
@@ -50,16 +46,18 @@ type RateState = {
   count: number;
 };
 
-type StoredWhiteboardEvent = {
-  event_type: 'stroke:start' | 'stroke:move' | 'stroke:end';
-  stroke_id: string;
-  x: number;
-  y: number;
-  t: number;
-  source_id: string | null;
-  color: string | null;
-  width: number | null;
+type WhiteboardQuery = {
+  select: (...columns: string[]) => WhiteboardQuery;
+  where: (columnOrConditions: string | Record<string, unknown>, value?: unknown) => WhiteboardQuery;
+  orderBy: (column: string, direction?: 'asc' | 'desc') => WhiteboardQuery;
+  limit: (value: number) => WhiteboardQuery;
+  whereNotIn: (column: string, values: unknown) => WhiteboardQuery;
+  insert: (data: Record<string, unknown>) => Promise<unknown> | WhiteboardQuery;
+  del: () => Promise<unknown>;
+  first: () => Promise<unknown>;
 };
+
+type WhiteboardDb = (tableName: string) => WhiteboardQuery;
 
 function payloadByteLength(payload: unknown): number {
   try {
@@ -73,10 +71,6 @@ function isStrokeEventType(value: string): value is 'stroke:start' | 'stroke:mov
   return value === 'stroke:start' || value === 'stroke:move' || value === 'stroke:end';
 }
 
-function delay(ms: number) {
-  if (!ms) return Promise.resolve();
-  return new Promise<void>((resolve) => setTimeout(resolve, ms));
-}
 
 function shouldRateLimit(state: RateState | undefined, now: number) {
   if (!state || now - state.windowStart >= RATE_LIMIT_WINDOW_MS) {
@@ -91,22 +85,13 @@ function shouldRateLimit(state: RateState | undefined, now: number) {
   };
 }
 
-async function isMember(db: Knex, boardId: string, userId: string): Promise<boolean> {
+async function isMember(db: WhiteboardDb, boardId: string, userId: string): Promise<boolean> {
   const row = await db('room_members').where({ room_id: boardId, user_id: userId }).first();
   return Boolean(row);
 }
 
-async function fetchHistory(db: Knex, boardId: string): Promise<StoredWhiteboardEvent[]> {
-  const rows = await db('whiteboard_events')
-    .select('event_type', 'stroke_id', 'x', 'y', 't', 'source_id', 'color', 'width')
-    .where({ board_id: boardId })
-    .orderBy('id', 'desc')
-    .limit(MAX_HISTORY_EVENTS);
 
-  return rows.reverse() as StoredWhiteboardEvent[];
-}
-
-async function persistEvent(db: Knex, event: {
+async function persistEvent(db: WhiteboardDb, event: {
   boardId: string;
   type: 'stroke:start' | 'stroke:move' | 'stroke:end';
   strokeId: string;
@@ -130,7 +115,7 @@ async function persistEvent(db: Knex, event: {
   });
 }
 
-async function pruneEvents(db: Knex, boardId: string) {
+async function pruneEvents(db: WhiteboardDb, boardId: string) {
   await db('whiteboard_events')
     .where('board_id', boardId)
     .whereNotIn(
@@ -144,14 +129,14 @@ async function pruneEvents(db: Knex, boardId: string) {
     .del();
 }
 
-async function clearHistory(db: Knex, boardId: string) {
+async function clearHistory(db: WhiteboardDb, boardId: string) {
   await db('whiteboard_events').where({ board_id: boardId }).del();
 }
 
 export function createWhiteboardMessageHandler({
   db,
 }: {
-  db: Knex;
+  db: WhiteboardDb;
 }) {
   const rateStateByRecord = new WeakMap<SocketRecord, RateState>();
 
@@ -176,7 +161,15 @@ export function createWhiteboardMessageHandler({
     }
 
     if (type === 'whiteboard:join') {
-      const parsed = z.object({ boardId: BoardIdSchema }).safeParse(message.payload);
+      const parsed = z.object({
+        boardId: BoardIdSchema,
+        cursor: z
+          .object({
+            lastSeq: z.number().int().nonnegative().optional(),
+            lastTs: z.string().datetime().nullable().optional(),
+          })
+          .optional(),
+      }).safeParse(message.payload);
       if (!parsed.success) {
         send('whiteboard:error', { payload: { code: 'invalid_request' } });
         return true;
@@ -208,33 +201,6 @@ export function createWhiteboardMessageHandler({
       });
       
       send('whiteboard:joined', { payload: { boardId } });
-
-      try {
-        const history = await fetchHistory(db, boardId);
-        console.log('[whiteboard] history replay', { boardId, count: history.length });
-        for (let i = 0; i < history.length; i += HISTORY_REPLAY_BATCH_SIZE) {
-          const batch = history.slice(i, i + HISTORY_REPLAY_BATCH_SIZE);
-          for (const evt of batch) {
-            send(evt.event_type, {
-              payload: {
-                boardId,
-                strokeId: evt.stroke_id,
-                x: evt.x,
-                y: evt.y,
-                t: evt.t,
-                color: evt.color ?? undefined,
-                width: evt.width ?? undefined,
-              }
-            });
-          }
-          if (i + HISTORY_REPLAY_BATCH_SIZE < history.length) {
-            await delay(HISTORY_REPLAY_DELAY_MS);
-          }
-        }
-      } catch {
-        // ignore history failures
-      }
-
       return true;
     }
 

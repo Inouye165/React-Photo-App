@@ -69,6 +69,7 @@ export function registerRoutes(app: Application, { db, supabase, socketManager, 
   const createImageProxyRouter = require('../routes/imageProxy');
   const createCaptureIntentsRouter = require('../routes/captureIntents');
   const createChatRouter = require('../routes/chat');
+  const createWhiteboardRouter = require('../routes/whiteboard');
 
   const { securityErrorHandler } = require('../middleware/security');
   const { authenticateToken, requireRole } = require('../middleware/auth');
@@ -189,6 +190,15 @@ export function registerRoutes(app: Application, { db, supabase, socketManager, 
     captureIntentsRouter
   );
   app.use('/api/v1/capture-intents', authenticateToken, captureIntentsRouter);
+
+  const whiteboardRouter = createWhiteboardRouter({ db });
+  app.use(
+    '/api/whiteboard',
+    createLegacyApiDeprecationMiddleware([{ legacyBase: '/api/whiteboard', successorBase: '/api/v1/whiteboard' }]),
+    authenticateToken,
+    whiteboardRouter
+  );
+  app.use('/api/v1/whiteboard', authenticateToken, whiteboardRouter);
 
   // Mount collectibles API under root so /photos/:id/collectibles works correctly
   app.use(
