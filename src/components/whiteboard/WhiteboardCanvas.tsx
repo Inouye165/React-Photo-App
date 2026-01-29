@@ -1,6 +1,6 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import type { PointerEvent } from 'react'
-import type { WhiteboardStrokeEvent } from '../../types/whiteboard'
+import type { WhiteboardEvent, WhiteboardStrokeEvent } from '../../types/whiteboard'
 import type { WhiteboardTransport } from '../../realtime/whiteboardTransport'
 
 const DEFAULT_COLOR = '#111827'
@@ -199,8 +199,18 @@ export default function WhiteboardCanvas({
     setStatus('connecting')
     resetCanvasState()
 
-    const handleIncoming = (evt: WhiteboardStrokeEvent) => {
+    const handleIncoming = (evt: WhiteboardEvent) => {
       if (effectiveSourceId && evt.sourceId && evt.sourceId === effectiveSourceId) return
+      if (evt.type === 'whiteboard:clear') {
+        drawingBufferRef.current = []
+        activeStrokesRef.current = new Map()
+        const ctx = getContext()
+        const canvas = canvasRef.current
+        if (ctx && canvas) {
+          ctx.clearRect(0, 0, canvas.width, canvas.height)
+        }
+        return
+      }
       enqueueEvent(evt)
     }
 
@@ -236,7 +246,13 @@ export default function WhiteboardCanvas({
     const canvas = canvasRef.current
     if (!ctx || !canvas) return
     ctx.clearRect(0, 0, canvas.width, canvas.height)
-  }, [getContext])
+    transport.send({
+      type: 'whiteboard:clear',
+      boardId,
+      t: Date.now(),
+      sourceId: effectiveSourceId ?? undefined,
+    })
+  }, [boardId, effectiveSourceId, getContext, transport])
 
   const handlePointerDown = useCallback((event: PointerEvent<HTMLCanvasElement>) => {
     if (mode !== 'pad') return

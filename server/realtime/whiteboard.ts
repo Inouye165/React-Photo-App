@@ -144,6 +144,10 @@ async function pruneEvents(db: Knex, boardId: string) {
     .del();
 }
 
+async function clearHistory(db: Knex, boardId: string) {
+  await db('whiteboard_events').where({ board_id: boardId }).del();
+}
+
 export function createWhiteboardMessageHandler({
   db,
 }: {
@@ -230,6 +234,36 @@ export function createWhiteboardMessageHandler({
       } catch {
         // ignore history failures
       }
+
+      return true;
+    }
+
+    if (type === 'whiteboard:clear') {
+      const parsed = z.object({ boardId: BoardIdSchema }).safeParse(message.payload);
+      if (!parsed.success) {
+        send('whiteboard:error', { payload: { code: 'invalid_request' } });
+        return true;
+      }
+
+      const { boardId } = parsed.data;
+      const allowed = await isMember(db, boardId, record.userId);
+      if (!allowed) {
+        console.warn('[whiteboard] clear forbidden', { boardId, userId: record.userId });
+        send('whiteboard:error', { payload: { code: 'forbidden' } });
+        return true;
+      }
+
+      try {
+        await clearHistory(db, boardId);
+      } catch (err) {
+        console.error('[whiteboard] clearHistory failed:', err);
+      }
+
+      publishToRoom(boardId, 'whiteboard:clear', {
+        boardId,
+        t: Date.now(),
+        sourceId: record.userId,
+      });
 
       return true;
     }

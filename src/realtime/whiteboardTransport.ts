@@ -1,10 +1,10 @@
-import type { WhiteboardStrokeEvent, StrokeEventType } from '../types/whiteboard'
+import type { WhiteboardEvent, WhiteboardStrokeEvent, StrokeEventType, WhiteboardClearEvent } from '../types/whiteboard'
 
-export type WhiteboardEventHandler = (event: WhiteboardStrokeEvent) => void
+export type WhiteboardEventHandler = (event: WhiteboardEvent) => void
 
 export type WhiteboardTransport = {
   connect: (boardId: string, token: string) => Promise<void>
-  send: (event: WhiteboardStrokeEvent) => void
+  send: (event: WhiteboardEvent) => void
   onEvent: (handler: WhiteboardEventHandler) => void
   disconnect: () => void
 }
@@ -26,6 +26,16 @@ const debugLog = (label: string, data?: any) => {
   void label
   void data
   // console.log(`[WB-CLIENT] ${label}`, data || '');
+}
+
+function asClearEvent(message: SocketMessage): WhiteboardClearEvent | null {
+  if (message.type !== 'whiteboard:clear') return null
+  const payload = unwrapPayload(message) || message.payload || message
+  const boardId = payload?.boardId || message.boardId
+  if (!boardId) return null
+  const t = typeof payload?.t === 'number' ? payload.t : Date.now()
+  const sourceId = typeof payload?.sourceId === 'string' ? payload.sourceId : undefined
+  return { type: 'whiteboard:clear', boardId, t, sourceId }
 }
 
 function asStrokeEvent(message: SocketMessage): WhiteboardStrokeEvent | null {
@@ -299,9 +309,14 @@ export function createSocketTransport({
             console.error('[WB] Server Error:', parsed.payload)
           }
 
-          const event = asStrokeEvent(parsed)
-          if (event) {
-            handlers.forEach((handler) => handler(event))
+          const strokeEvent = asStrokeEvent(parsed)
+          if (strokeEvent) {
+            handlers.forEach((handler) => handler(strokeEvent))
+            return
+          }
+          const clearEvent = asClearEvent(parsed)
+          if (clearEvent) {
+            handlers.forEach((handler) => handler(clearEvent))
           }
         } catch (err) {
           // ignore parse errors to keep stream smooth
@@ -341,16 +356,20 @@ export function createSocketTransport({
 
   return {
     connect,
-    send: (event: WhiteboardStrokeEvent) => {
+    send: (event: WhiteboardEvent) => {
       if (!ws || ws.readyState !== WebSocket.OPEN || !joined) {
-        queueEvent(event)
+        if (event.type !== 'whiteboard:clear') {
+          queueEvent(event)
+        }
         return
       }
       const payload = { ...event, boardId: event.boardId }
       try {
         ws.send(JSON.stringify({ type: event.type, payload }))
       } catch {
-        queueEvent(event)
+        if (event.type !== 'whiteboard:clear') {
+          queueEvent(event)
+        }
       }
     },
     onEvent: (handler: WhiteboardEventHandler) => {
