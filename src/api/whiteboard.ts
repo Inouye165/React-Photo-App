@@ -1,5 +1,5 @@
 import { request } from './httpClient'
-import type { WhiteboardHistoryResponse } from '../types/whiteboard'
+import type { WhiteboardHistoryResponse, WhiteboardSnapshotResponse } from '../types/whiteboard'
 
 export async function fetchWhiteboardHistory(options: {
   boardId: string
@@ -14,6 +14,25 @@ export async function fetchWhiteboardHistory(options: {
 
   return request<WhiteboardHistoryResponse>({
     path: `/api/whiteboard/${encodeURIComponent(boardId)}/history`,
+    method: 'GET',
+    headers,
+    signal,
+  })
+}
+
+export async function fetchWhiteboardSnapshot(options: {
+  boardId: string
+  token: string
+  signal?: AbortSignal
+}): Promise<WhiteboardSnapshotResponse> {
+  const { boardId, token, signal } = options
+
+  const headers: Record<string, string> = {
+    Authorization: `Bearer ${token}`,
+  }
+
+  return request<WhiteboardSnapshotResponse>({
+    path: `/api/whiteboard/${encodeURIComponent(boardId)}/snapshot`,
     method: 'GET',
     headers,
     signal,

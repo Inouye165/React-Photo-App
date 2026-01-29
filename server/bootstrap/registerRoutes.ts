@@ -182,15 +182,6 @@ export function registerRoutes(app: Application, { db, supabase, socketManager, 
   );
   app.use('/api/v1/events', eventsRouter);
 
-  const captureIntentsRouter = createCaptureIntentsRouter({ db, socketManager });
-  app.use(
-    '/capture-intents',
-    createLegacyApiDeprecationMiddleware([{ legacyBase: '/capture-intents', successorBase: '/api/v1/capture-intents' }]),
-    authenticateToken,
-    captureIntentsRouter
-  );
-  app.use('/api/v1/capture-intents', authenticateToken, captureIntentsRouter);
-
   const whiteboardRouter = createWhiteboardRouter({ db });
   app.use(
     '/api/whiteboard',
@@ -199,6 +190,15 @@ export function registerRoutes(app: Application, { db, supabase, socketManager, 
     whiteboardRouter
   );
   app.use('/api/v1/whiteboard', authenticateToken, whiteboardRouter);
+
+  const captureIntentsRouter = createCaptureIntentsRouter({ db, socketManager });
+  app.use(
+    '/capture-intents',
+    createLegacyApiDeprecationMiddleware([{ legacyBase: '/capture-intents', successorBase: '/api/v1/capture-intents' }]),
+    authenticateToken,
+    captureIntentsRouter
+  );
+  app.use('/api/v1/capture-intents', authenticateToken, captureIntentsRouter);
 
   // Mount collectibles API under root so /photos/:id/collectibles works correctly
   app.use(
