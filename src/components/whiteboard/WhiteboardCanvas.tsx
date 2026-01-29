@@ -1,8 +1,8 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import type { PointerEvent } from 'react'
-import type { WhiteboardEvent, WhiteboardStrokeEvent, WhiteboardHistoryCursor } from '../../types/whiteboard'
+import type { WhiteboardEvent, WhiteboardStrokeEvent } from '../../types/whiteboard'
 import type { WhiteboardTransport } from '../../realtime/whiteboardTransport'
-import { fetchWhiteboardHistory } from '../../api'
+import { fetchWhiteboardSnapshot } from '../../api/whiteboard'
 
 const DEFAULT_COLOR = '#111827'
 const DEFAULT_WIDTH = 2
@@ -46,7 +46,6 @@ export default function WhiteboardCanvas({
   const activeStrokesRef = useRef<Map<string, StrokeState>>(new Map())
   const pointerStatesRef = useRef<Map<number, { strokeId: string; lastSentAt: number; x: number; y: number }>>(new Map())
   const animationFrameRef = useRef<number | null>(null)
-  const historyCursorRef = useRef<WhiteboardHistoryCursor | null>(null)
   
   const [status, setStatus] = useState<'idle' | 'connecting' | 'connected' | 'error'>('idle')
   
@@ -198,10 +197,9 @@ export default function WhiteboardCanvas({
     }
 
     let cancelled = false
+    const abortController = new AbortController()
     setStatus('connecting')
     resetCanvasState()
-
-    const controller = new AbortController()
 
     const handleIncoming = (evt: WhiteboardEvent) => {
       if (effectiveSourceId && evt.sourceId && evt.sourceId === effectiveSourceId) return
@@ -220,35 +218,44 @@ export default function WhiteboardCanvas({
 
     transport.onEvent(handleIncoming)
 
-    const loadHistoryAndConnect = async () => {
+    const loadSnapshot = async () => {
       try {
-        const history = await fetchWhiteboardHistory({
+        const snapshot = await fetchWhiteboardSnapshot({
           boardId,
           token: activeToken,
-          signal: controller.signal,
+          signal: abortController.signal,
         })
         if (cancelled) return
-        drawingBufferRef.current = history.events
-        historyCursorRef.current = history.cursor
-        redrawFromBuffer()
-      } catch {
-        if (!cancelled) setStatus('error')
-        return
-      }
-
-      try {
-        await transport.connect(boardId, activeToken, historyCursorRef.current)
-        if (!cancelled) setStatus('connected')
-      } catch {
-        if (!cancelled) setStatus('error')
+        if (Array.isArray(snapshot.events)) {
+          const trimmed = snapshot.events.slice(-MAX_BUFFERED_EVENTS)
+          drawingBufferRef.current = trimmed
+          redrawFromBuffer()
+        }
+      } catch (err) {
+        if (cancelled) return
+        const name = err && typeof err === 'object' && 'name' in err ? String((err as { name?: unknown }).name) : ''
+        if (name === 'AbortError') return
       }
     }
 
-    loadHistoryAndConnect()
+    // Pass the initial token. Subsequent refreshes won't trigger this effect.
+    loadSnapshot()
+      .catch(() => undefined)
+      .finally(() => {
+        if (cancelled) return
+        transport
+          .connect(boardId, activeToken)
+          .then(() => {
+            if (!cancelled) setStatus('connected')
+          })
+          .catch(() => {
+            if (!cancelled) setStatus('error')
+          })
+      })
 
     return () => {
       cancelled = true
-      controller.abort()
+      abortController.abort()
       transport.disconnect()
     }
     // We intentionally exclude 'token' to prevent the refresh loop

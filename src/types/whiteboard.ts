@@ -31,3 +31,5 @@ export type WhiteboardHistoryResponse = {
   events: WhiteboardStrokeEvent[]
   cursor: WhiteboardHistoryCursor
 }
+
+export type WhiteboardSnapshotResponse = WhiteboardHistoryResponse
