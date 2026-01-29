@@ -29,9 +29,9 @@ type WhiteboardEventRow = {
   id: number | string;
   event_type: 'stroke:start' | 'stroke:move' | 'stroke:end';
   stroke_id: string;
-  x: number;
-  y: number;
-  t: number;
+  x: number | string;
+  y: number | string;
+  t: number | string;
   source_id: string | null;
   color: string | null;
   width: number | null;
@@ -45,6 +45,11 @@ type HistoryCursor = {
 function normalizeSeq(value: number | string): number | null {
   const seq = typeof value === 'string' ? Number(value) : value;
   return Number.isFinite(seq) ? Number(seq) : null;
+}
+
+function normalizeNumber(value: number | string): number | null {
+  const num = typeof value === 'string' ? Number(value) : value;
+  return Number.isFinite(num) ? Number(num) : null;
 }
 
 async function isMember(db: Knex, boardId: string, userId: string): Promise<boolean> {
@@ -84,18 +89,26 @@ module.exports = function createWhiteboardRouter({ db }: { db: Knex }) {
   const buildPayload = async (boardId: string) => {
     const { events, cursor } = await fetchHistory(db, boardId);
     console.log('[WB-HTTP] history rows', { boardId, count: events.length, lastSeq: cursor.lastSeq });
-    const mapped = events.map((evt) => ({
-      type: evt.event_type,
-      boardId,
-      strokeId: evt.stroke_id,
-      x: evt.x,
-      y: evt.y,
-      t: evt.t,
-      seq: normalizeSeq(evt.id) ?? undefined,
-      color: evt.color ?? undefined,
-      width: evt.width ?? undefined,
-      sourceId: evt.source_id ?? undefined,
-    }));
+    const mapped = events
+      .map((evt) => {
+        const x = normalizeNumber(evt.x);
+        const y = normalizeNumber(evt.y);
+        const t = normalizeNumber(evt.t);
+        if (x === null || y === null || t === null) return null;
+        return {
+          type: evt.event_type,
+          boardId,
+          strokeId: evt.stroke_id,
+          x,
+          y,
+          t,
+          seq: normalizeSeq(evt.id) ?? undefined,
+          color: evt.color ?? undefined,
+          width: evt.width ?? undefined,
+          sourceId: evt.source_id ?? undefined,
+        };
+      })
+      .filter((evt): evt is NonNullable<typeof evt> => Boolean(evt));
     return { boardId, events: mapped, cursor };
   };
 
