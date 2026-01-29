@@ -1,7 +1,11 @@
 /* eslint-env jest */
 
+/// <reference path="./jest-globals.d.ts" />
+
+export {}
+
 import express, { type NextFunction, type Request, type Response } from 'express'
-import request from 'supertest'
+const request = require('supertest')
 
 const createWhiteboardRouter = require('../routes/whiteboard')
 
