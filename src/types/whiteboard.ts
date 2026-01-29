@@ -11,3 +11,16 @@ export type WhiteboardStrokeEvent = {
   color?: string
   width?: number
 }
+
+export type WhiteboardHistoryCursor = {
+  lastSeq: number
+  lastTs: string | null
+}
+
+export type WhiteboardHistoryResponse = {
+  boardId: string
+  events: WhiteboardStrokeEvent[]
+  cursor: WhiteboardHistoryCursor
+}
+
+export type WhiteboardSnapshotResponse = WhiteboardHistoryResponse

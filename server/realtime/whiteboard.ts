@@ -189,22 +189,7 @@ export function createWhiteboardMessageHandler({
       });
       send('whiteboard:joined', { boardId });
 
-      try {
-        const history = await fetchHistory(db, boardId);
-        for (const evt of history) {
-          send(evt.event_type, {
-            boardId,
-            strokeId: evt.stroke_id,
-            x: evt.x,
-            y: evt.y,
-            t: evt.t,
-            color: evt.color ?? undefined,
-            width: evt.width ?? undefined,
-          });
-        }
-      } catch {
-        // ignore history failures
-      }
+      // perf: history is fetched via HTTP snapshots to avoid WS backpressure.
 
       return true;
     }

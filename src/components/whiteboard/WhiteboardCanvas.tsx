@@ -2,6 +2,7 @@ import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import type { PointerEvent } from 'react'
 import type { WhiteboardStrokeEvent } from '../../types/whiteboard'
 import type { WhiteboardTransport } from '../../realtime/whiteboardTransport'
+import { fetchWhiteboardSnapshot } from '../../api/whiteboard'
 
 const DEFAULT_COLOR = '#111827'
 const DEFAULT_WIDTH = 2
@@ -218,6 +219,7 @@ export default function WhiteboardCanvas({
     }
 
     let cancelled = false
+    const abortController = new AbortController()
     setStatus('connecting')
     resetCanvasState()
 
@@ -228,23 +230,49 @@ export default function WhiteboardCanvas({
 
     transport.onEvent(handleIncoming)
 
+    const loadSnapshot = async () => {
+      try {
+        const snapshot = await fetchWhiteboardSnapshot({
+          boardId,
+          token: activeToken,
+          signal: abortController.signal,
+        })
+        if (cancelled) return
+        if (Array.isArray(snapshot.events)) {
+          const trimmed = snapshot.events.slice(-MAX_BUFFERED_EVENTS)
+          eventsRef.current = trimmed
+          replayEvents()
+        }
+      } catch (err) {
+        if (cancelled) return
+        const name = err && typeof err === 'object' && 'name' in err ? String((err as { name?: unknown }).name) : ''
+        if (name === 'AbortError') return
+      }
+    }
+
     // Pass the initial token. Subsequent refreshes won't trigger this effect.
-    transport
-      .connect(boardId, activeToken)
-      .then(() => {
-        if (!cancelled) setStatus('connected')
-      })
-      .catch(() => {
-        if (!cancelled) setStatus('error')
+    loadSnapshot()
+      .catch(() => undefined)
+      .finally(() => {
+        if (cancelled) return
+        transport
+          .connect(boardId, activeToken)
+          .then(() => {
+            if (!cancelled) setStatus('connected')
+          })
+          .catch(() => {
+            if (!cancelled) setStatus('error')
+          })
       })
 
     return () => {
       cancelled = true
+      abortController.abort()
       transport.disconnect()
     }
     // We intentionally exclude 'token' to prevent the refresh loop
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [boardId, transport, effectiveSourceId, resetCanvasState]) 
+  }, [boardId, transport, effectiveSourceId, resetCanvasState, replayEvents]) 
 
   const emitEvent = useCallback((evt: WhiteboardStrokeEvent) => {
     drawEvent(evt, true)
