@@ -83,6 +83,7 @@ module.exports = function createWhiteboardRouter({ db }: { db: Knex }) {
 
   const buildPayload = async (boardId: string) => {
     const { events, cursor } = await fetchHistory(db, boardId);
+    console.log('[WB-HTTP] history rows', { boardId, count: events.length, lastSeq: cursor.lastSeq });
     const mapped = events.map((evt) => ({
       type: evt.event_type,
       boardId,
@@ -129,6 +130,7 @@ module.exports = function createWhiteboardRouter({ db }: { db: Knex }) {
         if (!boardId) return undefined;
         console.log('[WB-HTTP] history request', { boardId, userId: req.user?.id });
         const payload = await buildPayload(boardId);
+        console.log('[WB-HTTP] history response', { boardId, count: payload.events.length, lastSeq: payload.cursor.lastSeq });
 
         res.setHeader('Cache-Control', 'no-store');
         res.setHeader('Vary', 'Accept-Encoding');
@@ -161,6 +163,7 @@ module.exports = function createWhiteboardRouter({ db }: { db: Knex }) {
         if (!boardId) return undefined;
         console.log('[WB-HTTP] snapshot request', { boardId, userId: req.user?.id });
         const payload = await buildPayload(boardId);
+        console.log('[WB-HTTP] snapshot response', { boardId, count: payload.events.length, lastSeq: payload.cursor.lastSeq });
 
         if (shouldGzip(req)) {
           try {

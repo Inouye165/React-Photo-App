@@ -113,6 +113,11 @@ async function persistEvent(db: WhiteboardDb, event: {
     color: event.color ?? null,
     width: event.width ?? null,
   });
+  console.log('[WB-DB] persisted event', {
+    boardId: event.boardId,
+    type: event.type,
+    strokeId: event.strokeId,
+  });
 }
 
 async function pruneEvents(db: WhiteboardDb, boardId: string) {
@@ -131,6 +136,7 @@ async function pruneEvents(db: WhiteboardDb, boardId: string) {
 
 async function clearHistory(db: WhiteboardDb, boardId: string) {
   await db('whiteboard_events').where({ board_id: boardId }).del();
+  console.log('[WB-DB] cleared history', { boardId });
 }
 
 export function createWhiteboardMessageHandler({
