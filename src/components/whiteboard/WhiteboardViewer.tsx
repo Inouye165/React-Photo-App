@@ -1,6 +1,6 @@
 import { useEffect, useMemo, useRef } from 'react'
 import { API_BASE_URL } from '../../api'
-import { createSocketTransport } from '../../realtime/whiteboardTransport'
+import { acquireWhiteboardTransport } from '../../realtime/whiteboardTransportRegistry'
 import WhiteboardCanvas from './WhiteboardCanvas'
 import { useRealtimeToken } from '../../hooks/useRealtimeToken'
 
@@ -16,9 +16,11 @@ export default function WhiteboardViewer({ boardId, className }: WhiteboardViewe
     tokenRef.current = token
   }, [token])
   const transport = useMemo(
-    () => createSocketTransport({ apiBaseUrl: API_BASE_URL, getToken: () => tokenRef.current }),
+    () => acquireWhiteboardTransport({ apiBaseUrl: API_BASE_URL, boardId, getToken: () => tokenRef.current }),
     [boardId],
   )
+
+  useEffect(() => () => transport.disconnect(), [transport])
 
   if (status === 'error') {
     return (
