@@ -1,9 +1,9 @@
-import type { WhiteboardEvent, WhiteboardStrokeEvent, StrokeEventType, WhiteboardClearEvent } from '../types/whiteboard'
+import type { WhiteboardEvent, WhiteboardStrokeEvent, StrokeEventType, WhiteboardClearEvent, WhiteboardHistoryCursor } from '../types/whiteboard'
 
 export type WhiteboardEventHandler = (event: WhiteboardEvent) => void
 
 export type WhiteboardTransport = {
-  connect: (boardId: string, token: string) => Promise<void>
+  connect: (boardId: string, token: string, cursor?: WhiteboardHistoryCursor | null) => Promise<void>
   send: (event: WhiteboardEvent) => void
   onEvent: (handler: WhiteboardEventHandler) => void
   disconnect: () => void
@@ -122,6 +122,7 @@ export function createSocketTransport({
   let pendingEvents: WhiteboardStrokeEvent[] = []
   let lastPongAt = 0
   let lastPongWarnAt = 0
+  let joinCursor: WhiteboardHistoryCursor | null = null
 
   const reconnectConfig = {
     enabled: true,
@@ -198,7 +199,7 @@ export function createSocketTransport({
     console.warn('[WB] Reconnect scheduled', { boardId, attempt, delay: Math.round(delay) })
     reconnectTimer = setTimeout(() => {
       reconnectTimer = null
-      connect(boardId, token).catch(() => {
+      connect(boardId, token, joinCursor).catch(() => {
         scheduleReconnect()
       })
     }, delay)
@@ -247,7 +248,7 @@ export function createSocketTransport({
     console.log('[WB] Flushed queued events', { count: batch.length })
   }
 
-  const connect = async (boardId: string, token: string) => {
+  const connect = async (boardId: string, token: string, cursor?: WhiteboardHistoryCursor | null) => {
       const nextKey = `${boardId}::${token || ''}`
       if (connectPromise && connectKey === nextKey) {
         return connectPromise
@@ -259,6 +260,7 @@ export function createSocketTransport({
       connectKey = nextKey
       manualClose = false
       lastToken = token
+      joinCursor = cursor ?? null
       const url = toWebSocketUrl(apiBaseUrl, token)
       debugLog('Connecting', { boardId, url })
       ws = new WebSocket(url)
@@ -280,7 +282,11 @@ export function createSocketTransport({
         clearReconnect()
         joined = false
         try {
-          ws?.send(JSON.stringify({ type: 'whiteboard:join', payload: { boardId } }))
+          const joinPayload: Record<string, unknown> = { boardId }
+          if (joinCursor) {
+            joinPayload.cursor = joinCursor
+          }
+          ws?.send(JSON.stringify({ type: 'whiteboard:join', payload: joinPayload }))
           startKeepAlive(boardId)
         } catch {}
         resolveReady?.()

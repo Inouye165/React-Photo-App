@@ -1,7 +1,8 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import type { PointerEvent } from 'react'
-import type { WhiteboardEvent, WhiteboardStrokeEvent } from '../../types/whiteboard'
+import type { WhiteboardEvent, WhiteboardStrokeEvent, WhiteboardHistoryCursor } from '../../types/whiteboard'
 import type { WhiteboardTransport } from '../../realtime/whiteboardTransport'
+import { fetchWhiteboardHistory } from '../../api'
 
 const DEFAULT_COLOR = '#111827'
 const DEFAULT_WIDTH = 2
@@ -45,6 +46,7 @@ export default function WhiteboardCanvas({
   const activeStrokesRef = useRef<Map<string, StrokeState>>(new Map())
   const pointerStatesRef = useRef<Map<number, { strokeId: string; lastSentAt: number; x: number; y: number }>>(new Map())
   const animationFrameRef = useRef<number | null>(null)
+  const historyCursorRef = useRef<WhiteboardHistoryCursor | null>(null)
   
   const [status, setStatus] = useState<'idle' | 'connecting' | 'connected' | 'error'>('idle')
   
@@ -199,6 +201,8 @@ export default function WhiteboardCanvas({
     setStatus('connecting')
     resetCanvasState()
 
+    const controller = new AbortController()
+
     const handleIncoming = (evt: WhiteboardEvent) => {
       if (effectiveSourceId && evt.sourceId && evt.sourceId === effectiveSourceId) return
       if (evt.type === 'whiteboard:clear') {
@@ -216,23 +220,40 @@ export default function WhiteboardCanvas({
 
     transport.onEvent(handleIncoming)
 
-    // Pass the initial token. Subsequent refreshes won't trigger this effect.
-    transport
-      .connect(boardId, activeToken)
-      .then(() => {
-        if (!cancelled) setStatus('connected')
-      })
-      .catch(() => {
+    const loadHistoryAndConnect = async () => {
+      try {
+        const history = await fetchWhiteboardHistory({
+          boardId,
+          token: activeToken,
+          signal: controller.signal,
+        })
+        if (cancelled) return
+        drawingBufferRef.current = history.events
+        historyCursorRef.current = history.cursor
+        redrawFromBuffer()
+      } catch {
         if (!cancelled) setStatus('error')
-      })
+        return
+      }
+
+      try {
+        await transport.connect(boardId, activeToken, historyCursorRef.current)
+        if (!cancelled) setStatus('connected')
+      } catch {
+        if (!cancelled) setStatus('error')
+      }
+    }
+
+    loadHistoryAndConnect()
 
     return () => {
       cancelled = true
+      controller.abort()
       transport.disconnect()
     }
     // We intentionally exclude 'token' to prevent the refresh loop
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [boardId, transport, effectiveSourceId, resetCanvasState]) 
+  }, [boardId, transport, effectiveSourceId, resetCanvasState, redrawFromBuffer]) 
 
   const emitEvent = useCallback((evt: WhiteboardStrokeEvent) => {
     enqueueEvent(evt)
