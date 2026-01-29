@@ -1,5 +1,9 @@
 /* eslint-env jest */
 
+/// <reference path="./jest-globals.d.ts" />
+
+export {}
+
 import { createWhiteboardMessageHandler } from '../realtime/whiteboard'
 
 type MockDb = (tableName: string) => {
