@@ -5,6 +5,7 @@ import type { WhiteboardTransport } from '../../realtime/whiteboardTransport'
 import { fetchWhiteboardSnapshot } from '../../api/whiteboard'
 import { normalizeHistoryEvents } from '../../realtime/whiteboardReplay'
 import { whiteboardDebugLog } from '../../realtime/whiteboardDebug'
+import { BOARD_ASPECT, computeContainedRect, type ContainedRect } from './whiteboardAspect'
 import {
   appendWhiteboardSnapshotCache,
   clearWhiteboardSnapshotCache,
@@ -57,6 +58,7 @@ export default function WhiteboardCanvas({
   const historyCursorRef = useRef<WhiteboardHistoryCursor | null>(null)
   const isLoadingSnapshotRef = useRef(false)
   const pendingEventsRef = useRef<WhiteboardEvent[]>([])
+  const surfaceRectRef = useRef<ContainedRect>({ left: 0, top: 0, width: 0, height: 0 })
   const tokenReady = Boolean(token)
   
   const [status, setStatus] = useState<'idle' | 'connecting' | 'connected' | 'error'>('idle')
@@ -96,9 +98,15 @@ export default function WhiteboardCanvas({
     if (!canvas || !wrapper) return null
     const rect = wrapper.getBoundingClientRect()
     if (rect.width <= 0 || rect.height <= 0) return null
+    const surface = surfaceRectRef.current
+    if (surface.width <= 0 || surface.height <= 0) return null
 
-    const x = clamp01((clientX - rect.left) / rect.width)
-    const y = clamp01((clientY - rect.top) / rect.height)
+    const offsetX = clientX - rect.left - surface.left
+    const offsetY = clientY - rect.top - surface.top
+    if (offsetX < 0 || offsetY < 0 || offsetX > surface.width || offsetY > surface.height) return null
+
+    const x = clamp01(offsetX / surface.width)
+    const y = clamp01(offsetY / surface.height)
     return { x, y }
   }, [])
 
@@ -164,9 +172,20 @@ export default function WhiteboardCanvas({
     if (!canvas || !wrapper) return
 
     const rect = wrapper.getBoundingClientRect()
+    if (rect.width <= 0 || rect.height <= 0) return
+
+    const surface = computeContainedRect(rect.width, rect.height, BOARD_ASPECT)
+    surfaceRectRef.current = surface
+
+    canvas.style.position = 'absolute'
+    canvas.style.left = `${surface.left}px`
+    canvas.style.top = `${surface.top}px`
+    canvas.style.width = `${surface.width}px`
+    canvas.style.height = `${surface.height}px`
+
     const dpr = window.devicePixelRatio || 1
-    const width = Math.max(1, Math.floor(rect.width * dpr))
-    const height = Math.max(1, Math.floor(rect.height * dpr))
+    const width = Math.max(1, Math.floor(surface.width * dpr))
+    const height = Math.max(1, Math.floor(surface.height * dpr))
 
     if (canvas.width !== width || canvas.height !== height) {
       canvas.width = width
@@ -468,7 +487,7 @@ export default function WhiteboardCanvas({
     >
       <canvas
         ref={canvasRef}
-        className="h-full w-full bg-white rounded-2xl"
+        className="bg-white rounded-2xl"
         aria-label={mode === 'pad' ? 'Whiteboard pad' : 'Whiteboard view'}
         onPointerDown={handlePointerDown}
         onPointerMove={handlePointerMove}
