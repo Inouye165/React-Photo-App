@@ -7,6 +7,7 @@ const MAX_PAYLOAD_BYTES = 2048;
 const MAX_EVENTS_PER_WINDOW = 240;
 const RATE_LIMIT_WINDOW_MS = 5000;
 const MAX_EVENTS_PER_BOARD = 20000;
+const MAX_DELTA_EVENTS = 5000;
 const WHITEBOARD_DEBUG = true;
 
 function wbDebugLog(label: string, data?: Record<string, unknown>): void {
@@ -58,7 +59,7 @@ type RateState = {
 
 type WhiteboardQuery = {
   select: (...columns: string[]) => WhiteboardQuery;
-  where: (columnOrConditions: string | Record<string, unknown>, value?: unknown) => WhiteboardQuery;
+  where: (columnOrConditions: string | Record<string, unknown>, value?: unknown, value2?: unknown) => WhiteboardQuery;
   orderBy: (column: string, direction?: 'asc' | 'desc') => WhiteboardQuery;
   limit: (value: number) => WhiteboardQuery;
   whereNotIn: (column: string, values: unknown) => WhiteboardQuery;
@@ -75,6 +76,16 @@ function payloadByteLength(payload: unknown): number {
   } catch {
     return MAX_PAYLOAD_BYTES + 1;
   }
+}
+
+function normalizeSeq(value: unknown): number | null {
+  const seq = typeof value === 'string' ? Number(value) : typeof value === 'number' ? value : null;
+  return seq !== null && Number.isFinite(seq) ? Number(seq) : null;
+}
+
+function normalizeNumber(value: unknown): number | null {
+  const num = typeof value === 'string' ? Number(value) : typeof value === 'number' ? value : null;
+  return num !== null && Number.isFinite(num) ? Number(num) : null;
 }
 
 function isStrokeEventType(value: string): value is 'stroke:start' | 'stroke:move' | 'stroke:end' {
@@ -111,8 +122,8 @@ async function persistEvent(db: WhiteboardDb, event: {
   sourceId?: string;
   color?: string;
   width?: number;
-}) {
-  await db('whiteboard_events').insert({
+}): Promise<number | null> {
+  const inserted = await (db('whiteboard_events') as any).insert({
     board_id: event.boardId,
     event_type: event.type,
     stroke_id: event.strokeId,
@@ -122,12 +133,56 @@ async function persistEvent(db: WhiteboardDb, event: {
     source_id: event.sourceId ?? null,
     color: event.color ?? null,
     width: event.width ?? null,
-  });
+  }, ['id']);
   console.log('[WB-DB] persisted event', {
     boardId: event.boardId,
     type: event.type,
     strokeId: event.strokeId,
   });
+  if (Array.isArray(inserted) && inserted.length) {
+    const row = inserted[0] as { id?: unknown } | number | string;
+    const id = typeof row === 'object' && row !== null && 'id' in row ? (row as { id?: unknown }).id : row;
+    const seq = normalizeSeq(id);
+    if (seq !== null) return seq;
+  }
+  const fallback = await db('whiteboard_events')
+    .select('id')
+    .where({ board_id: event.boardId })
+    .orderBy('id', 'desc')
+    .first();
+  const fallbackId = typeof fallback === 'object' && fallback !== null && 'id' in fallback ? (fallback as { id?: unknown }).id : null;
+  return normalizeSeq(fallbackId);
+}
+
+async function fetchEventsAfterSeq(db: WhiteboardDb, boardId: string, lastSeq: number): Promise<Array<Record<string, unknown>>> {
+  const rows = await (db('whiteboard_events') as any)
+    .select('id', 'event_type', 'stroke_id', 'x', 'y', 't', 'source_id', 'color', 'width')
+    .where('board_id', boardId)
+    .where('id', '>', lastSeq)
+    .orderBy('id', 'asc')
+    .limit(MAX_DELTA_EVENTS);
+
+  return rows
+    .map((evt: any) => {
+      const x = normalizeNumber(evt.x);
+      const y = normalizeNumber(evt.y);
+      const t = normalizeNumber(evt.t);
+      const seq = normalizeSeq(evt.id);
+      if (x === null || y === null || t === null || seq === null) return null;
+      return {
+        type: evt.event_type,
+        boardId,
+        strokeId: evt.stroke_id,
+        x,
+        y,
+        t,
+        seq,
+        sourceId: evt.source_id ?? undefined,
+        color: evt.color ?? undefined,
+        width: evt.width ?? undefined,
+      };
+    })
+    .filter((evt): evt is Record<string, unknown> => Boolean(evt));
 }
 
 async function pruneEvents(db: WhiteboardDb, boardId: string) {
@@ -142,7 +197,7 @@ async function pruneEvents(db: WhiteboardDb, boardId: string) {
         .limit(MAX_EVENTS_PER_BOARD),
     )
     .del();
-      wbDebugLog('history:prune', { boardId, maxEvents: MAX_EVENTS_PER_BOARD });
+  wbDebugLog('history:prune', { boardId, maxEvents: MAX_EVENTS_PER_BOARD });
 }
 
 async function clearHistory(db: WhiteboardDb, boardId: string) {
@@ -219,6 +274,18 @@ export function createWhiteboardMessageHandler({
       });
       
       send('whiteboard:joined', { payload: { boardId } });
+      const lastSeq = parsed.data.cursor?.lastSeq;
+      if (typeof lastSeq === 'number' && Number.isFinite(lastSeq) && lastSeq > 0) {
+        try {
+          const missing = await fetchEventsAfterSeq(db, boardId, lastSeq);
+          for (const evt of missing) {
+            send((evt as { type: string }).type, evt);
+          }
+          wbDebugLog('history:delta', { boardId, fromSeq: lastSeq, count: missing.length });
+        } catch (err) {
+          wbDebugLog('history:delta:error', { boardId, fromSeq: lastSeq });
+        }
+      }
       return true;
     }
 
@@ -323,33 +390,31 @@ export function createWhiteboardMessageHandler({
     }
 
     try {
-      await persistEvent(db, { boardId, type, strokeId, x, y, t, sourceId, color, width });
-      wbDebugLog('stroke:persisted', { boardId, type, strokeId });
+      const seq = await persistEvent(db, { boardId, type, strokeId, x, y, t, sourceId, color, width });
+      wbDebugLog('stroke:persisted', { boardId, type, strokeId, seq: seq ?? undefined });
       if (type === 'stroke:end') {
         await pruneEvents(db, boardId);
       }
+      const result = publishToRoom(boardId, type, {
+          boardId,
+          strokeId,
+          x,
+          y,
+          t,
+          seq: seq ?? undefined,
+          sourceId,
+          color,
+          width,
+      });
+
+      if (result.delivered === 0) {
+        // console.warn('[whiteboard] publishToRoom delivered to 0 clients', { boardId });
+      }
+      return true;
     } catch (err) {
       console.error('[whiteboard] persistEvent failed:', err);
       wbDebugLog('stroke:persisted:error', { boardId, type, strokeId });
     }
-
-    // --- REVERTED TO ORIGINAL (FLAT) ---
-    // The "Smart Client" will handle this whether SocketManager wraps it or not.
-    const result = publishToRoom(boardId, type, {
-        boardId,
-        strokeId,
-        x,
-        y,
-        t,
-        sourceId,
-        color,
-        width,
-    });
-
-    if (result.delivered === 0) {
-      // console.warn('[whiteboard] publishToRoom delivered to 0 clients', { boardId });
-    }
-
     return true;
   };
 }

@@ -104,6 +104,12 @@ export default function WhiteboardCanvas({
 
   const enqueueEvent = useCallback((evt: WhiteboardStrokeEvent) => {
     const list = drawingBufferRef.current
+    const last = list[list.length - 1]
+    if (typeof evt.seq === 'number' && typeof last?.seq === 'number' && evt.seq < last.seq) {
+      const normalized = normalizeHistoryEvents([...list, evt])
+      drawingBufferRef.current = normalized.slice(-MAX_BUFFERED_EVENTS)
+      return
+    }
     list.push(evt)
     if (list.length > MAX_BUFFERED_EVENTS) {
       list.splice(0, list.length - MAX_BUFFERED_EVENTS)
