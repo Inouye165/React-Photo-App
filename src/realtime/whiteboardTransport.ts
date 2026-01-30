@@ -226,6 +226,11 @@ export function createSocketTransport({
     if (pendingEvents.length > MAX_BUFFERED_SEND) {
       pendingEvents.splice(0, pendingEvents.length - MAX_BUFFERED_SEND)
       console.warn('[WB] Send queue overflow, dropping oldest events', { boardId: event.boardId })
+      whiteboardDebugLog('socket:queue:overflow', {
+        boardId: event.boardId,
+        max: MAX_BUFFERED_SEND,
+        pending: pendingEvents.length,
+      })
     }
   }
 
@@ -367,6 +372,10 @@ export function createSocketTransport({
       if (!ws || ws.readyState !== WebSocket.OPEN || !joined) {
         if (event.type !== 'whiteboard:clear') {
           queueEvent(event)
+          whiteboardDebugLog('socket:queue:buffered', {
+            boardId: event.boardId,
+            type: event.type,
+          })
         }
         return
       }
@@ -376,6 +385,10 @@ export function createSocketTransport({
       } catch {
         if (event.type !== 'whiteboard:clear') {
           queueEvent(event)
+          whiteboardDebugLog('socket:queue:send-failed', {
+            boardId: event.boardId,
+            type: event.type,
+          })
         }
       }
     },
