@@ -7,6 +7,16 @@ const MAX_PAYLOAD_BYTES = 2048;
 const MAX_EVENTS_PER_WINDOW = 240;
 const RATE_LIMIT_WINDOW_MS = 5000;
 const MAX_EVENTS_PER_BOARD = 20000;
+const WHITEBOARD_DEBUG = true;
+
+function wbDebugLog(label: string, data?: Record<string, unknown>): void {
+  if (!WHITEBOARD_DEBUG) return;
+  if (data) {
+    console.log('[WB-DEBUG]', label, data);
+    return;
+  }
+  console.log('[WB-DEBUG]', label);
+}
 
 const BoardIdSchema = z.string().uuid().max(BOARD_ID_MAX_LENGTH);
 
@@ -132,11 +142,13 @@ async function pruneEvents(db: WhiteboardDb, boardId: string) {
         .limit(MAX_EVENTS_PER_BOARD),
     )
     .del();
+      wbDebugLog('history:prune', { boardId, maxEvents: MAX_EVENTS_PER_BOARD });
 }
 
 async function clearHistory(db: WhiteboardDb, boardId: string) {
   await db('whiteboard_events').where({ board_id: boardId }).del();
   console.log('[WB-DB] cleared history', { boardId });
+  wbDebugLog('history:clear', { boardId });
 }
 
 export function createWhiteboardMessageHandler({
@@ -259,6 +271,7 @@ export function createWhiteboardMessageHandler({
 
     if (payloadByteLength(message.payload) > MAX_PAYLOAD_BYTES) {
       send('whiteboard:error', { payload: { code: 'payload_too_large' } });
+      wbDebugLog('stroke:rejected:payload_too_large', { boardId: (message.payload as any)?.boardId });
       return true;
     }
 
@@ -269,6 +282,7 @@ export function createWhiteboardMessageHandler({
     if (!parsed.success) {
       console.error('[WB-SERVER] Stroke Invalid', parsed.error);
       send('whiteboard:error', { payload: { code: 'invalid_request' } });
+      wbDebugLog('stroke:rejected:invalid_request');
       return true;
     }
 
@@ -276,20 +290,24 @@ export function createWhiteboardMessageHandler({
 
     if (!record.rooms.has(boardId)) {
       console.log('[WB-SERVER] User sent stroke but not in room. Attempting recovery.', { userId: record.userId, boardId });
+      wbDebugLog('stroke:not_in_room', { userId: record.userId, boardId });
       
       const allowed = await isMember(db, boardId, record.userId);
       if (allowed) {
         const out = joinRoom(record, boardId);
         if (out.ok) {
           console.log('[whiteboard] auto-rejoined user', { userId: record.userId, boardId });
+          wbDebugLog('stroke:auto_rejoin', { userId: record.userId, boardId });
         } else {
           console.error('[WB-SERVER] Auto-rejoin failed', { reason: out.reason });
           send('whiteboard:error', { payload: { code: 'not_joined' } });
+          wbDebugLog('stroke:rejected:auto_rejoin_failed', { userId: record.userId, boardId, reason: out.reason });
           return true;
         }
       } else {
         console.error('[WB-SERVER] Stroke rejected: User not allowed in room', { userId: record.userId, boardId });
         send('whiteboard:error', { payload: { code: 'forbidden' } });
+        wbDebugLog('stroke:rejected:forbidden', { userId: record.userId, boardId });
         return true;
       }
     }
@@ -300,16 +318,19 @@ export function createWhiteboardMessageHandler({
     rateStateByRecord.set(record, rateDecision.next);
     if (rateDecision.limited) {
       send('whiteboard:error', { payload: { code: 'rate_limited' } });
+      wbDebugLog('stroke:rejected:rate_limited', { userId: record.userId, boardId });
       return true;
     }
 
     try {
       await persistEvent(db, { boardId, type, strokeId, x, y, t, sourceId, color, width });
+      wbDebugLog('stroke:persisted', { boardId, type, strokeId });
       if (type === 'stroke:end') {
         await pruneEvents(db, boardId);
       }
     } catch (err) {
       console.error('[whiteboard] persistEvent failed:', err);
+      wbDebugLog('stroke:persisted:error', { boardId, type, strokeId });
     }
 
     // --- REVERTED TO ORIGINAL (FLAT) ---
