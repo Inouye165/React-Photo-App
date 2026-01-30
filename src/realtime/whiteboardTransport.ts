@@ -51,6 +51,7 @@ function asStrokeEvent(message: SocketMessage): WhiteboardStrokeEvent | null {
   const y = typeof data.y === 'number' && Number.isFinite(data.y) ? data.y : null
   if (x === null || y === null) return null
   const t = typeof data.t === 'number' && Number.isFinite(data.t) ? data.t : Date.now()
+  const seq = typeof data.seq === 'number' && Number.isFinite(data.seq) ? data.seq : undefined
 
   return {
     type: message.type as StrokeEventType,
@@ -59,6 +60,7 @@ function asStrokeEvent(message: SocketMessage): WhiteboardStrokeEvent | null {
     x,
     y,
     t,
+    seq,
     color: data.color,
     width: data.width,
     sourceId: data.sourceId,

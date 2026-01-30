@@ -1,4 +1,5 @@
 import type { WhiteboardHistoryCursor, WhiteboardStrokeEvent } from '../types/whiteboard'
+import { normalizeHistoryEvents } from './whiteboardReplay'
 
 const MAX_CACHED_EVENTS = 5000
 
@@ -30,7 +31,10 @@ export function setWhiteboardSnapshotCache(
 export function appendWhiteboardSnapshotCache(boardId: string, event: WhiteboardStrokeEvent): void {
   const entry = cache.get(boardId)
   const nextEvents = entry ? [...entry.events, event] : [event]
-  const trimmed = nextEvents.length > MAX_CACHED_EVENTS ? nextEvents.slice(-MAX_CACHED_EVENTS) : nextEvents
+  const last = entry?.events[entry.events.length - 1]
+  const needsSort = typeof event.seq === 'number' && typeof last?.seq === 'number' && event.seq < last.seq
+  const ordered = needsSort ? normalizeHistoryEvents(nextEvents) : nextEvents
+  const trimmed = ordered.length > MAX_CACHED_EVENTS ? ordered.slice(-MAX_CACHED_EVENTS) : ordered
   cache.set(boardId, {
     events: trimmed,
     cursor: entry?.cursor ?? null,
