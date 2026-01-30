@@ -267,6 +267,15 @@ export function createSocketManager(options: {
         set.delete(record);
         removeFromRooms(record);
         recordMetricsDisconnect(reason || 'client_close');
+        try {
+          log?.debug?.('[realtime] WebSocket client disconnected', {
+            userId: key,
+            socketId: record.id,
+            reason: reason || 'client_close',
+          });
+        } catch {
+          // ignore
+        }
         break;
       }
     }
@@ -497,10 +506,19 @@ export function createSocketManager(options: {
       return;
     }
 
+    const url = new URL(req.url || '/', 'http://localhost');
+    const tokenParam = url.searchParams.get('token') || url.searchParams.get('access_token') || '';
+    const hasTokenParam = Boolean(tokenParam && tokenParam.trim());
+
     const origin = req.headers.origin ? String(req.headers.origin) : '';
     if (origin && !isOriginAllowed(origin)) {
       try {
         metrics?.incRealtimeDisconnectReason?.('origin_reject');
+      } catch {
+        // ignore
+      }
+      try {
+        log?.warn?.('[realtime] WebSocket upgrade rejected', { reason: 'origin_reject', origin });
       } catch {
         // ignore
       }
@@ -515,6 +533,17 @@ export function createSocketManager(options: {
       } catch {
         // ignore
       }
+      try {
+        log?.warn?.('[realtime] WebSocket upgrade rejected', {
+          reason: 'auth_fail',
+          status: auth.status || 401,
+          error: auth.error || 'Unauthorized',
+          origin,
+          hasTokenParam,
+        });
+      } catch {
+        // ignore
+      }
       writeHttpResponse(socket, auth.status || 401, auth.error || 'Unauthorized');
       return;
     }
@@ -525,11 +554,18 @@ export function createSocketManager(options: {
       } catch {
         // ignore
       }
+      try {
+        log?.warn?.('[realtime] WebSocket upgrade rejected', {
+          reason: 'connection_cap',
+          userId: auth.userId,
+          origin,
+        });
+      } catch {
+        // ignore
+      }
       writeHttpResponse(socket, 429, 'Too many concurrent event streams');
       return;
     }
-
-    const url = new URL(req.url || '/', 'http://localhost');
     const since = url.searchParams.get('since') || undefined;
     (req as any).realtimeContext = { userId: auth.userId, since };
 

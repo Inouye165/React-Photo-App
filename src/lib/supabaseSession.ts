@@ -1,6 +1,7 @@
 import type { Session } from '@supabase/supabase-js'
 
 import { supabase } from './supabaseClient'
+import { authDebug } from '../utils/authDebug'
 
 let inFlight: Promise<Session | null> | null = null
 
@@ -23,15 +24,26 @@ function isInvalidRefreshTokenError(err: unknown): boolean {
 }
 
 export async function getSessionSingleflight(): Promise<Session | null> {
-  if (inFlight) return inFlight
+  if (inFlight) {
+    authDebug('getSessionSingleflight:reuse-inflight')
+    return inFlight
+  }
 
   inFlight = (async (): Promise<Session | null> => {
     try {
+      authDebug('getSessionSingleflight:request')
       const { data, error } = await supabase.auth.getSession()
       if (error) throw error
+      authDebug('getSessionSingleflight:success', {
+        hasSession: Boolean(data.session),
+        expiresAt: data.session?.expires_at ?? null,
+      })
       return data.session ?? null
     } catch (err: unknown) {
       if (isInvalidRefreshTokenError(err)) {
+        authDebug('getSessionSingleflight:invalid_refresh_token', {
+          message: getErrorMessage(err),
+        })
         try {
           await supabase.auth.signOut()
         } catch {
@@ -39,6 +51,7 @@ export async function getSessionSingleflight(): Promise<Session | null> {
         }
         return null
       }
+      authDebug('getSessionSingleflight:error', { message: getErrorMessage(err) })
       throw err
     } finally {
       inFlight = null
