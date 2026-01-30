@@ -42,6 +42,9 @@ coverage/
 # Local doc diffs
 documentation_changes.txt
 
+# Local documents folder
+documents/
+
 # Prevent committed GPS/EXIF test data
 server/server_photos.json
 *.tmp
