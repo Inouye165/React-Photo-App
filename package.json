@@ -63,6 +63,7 @@
     "nanoid": "^5.0.7",
     "openai": "^6.8.1",
     "photo-app": "file:",
+    "qrcode.react": "^4.2.0",
     "react": "^19.1.1",
     "react-dom": "^19.1.1",
     "react-easy-crop": "^5.5.6",
