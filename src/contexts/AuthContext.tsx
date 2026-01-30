@@ -8,6 +8,7 @@ import useStore from '../store'
 import { API_BASE_URL } from '../config/apiConfig'
 import { setAuthToken } from '../api'
 import type { UserProfile } from '../api'
+import { authDebug } from '../utils/authDebug'
 
 declare global {
   interface Window {
@@ -308,6 +309,12 @@ export function AuthProvider({ children }: { children: ReactNode }): ReactNode {
     // Normal Supabase auth flow
     getSessionSingleflight()
       .then(async (currentSession: Session | null) => {
+        authDebug('init:getSessionSingleflight', {
+          hasSession: Boolean(currentSession),
+          hasToken: Boolean(currentSession?.access_token),
+          expiresAt: currentSession?.expires_at ?? null,
+          userId: currentSession?.user?.id ?? null,
+        })
         if (currentSession?.access_token) {
           // Set token in the api module for Bearer auth
           setAuthToken(currentSession.access_token)
@@ -322,6 +329,7 @@ export function AuthProvider({ children }: { children: ReactNode }): ReactNode {
         setUser(currentSession?.user ?? null)
       })
       .catch((error: unknown) => {
+        authDebug('init:error', { message: getErrorMessage(error) })
         console.error('Auth session initialization error:', error)
         setSession(null)
         setUser(null)
@@ -343,7 +351,16 @@ export function AuthProvider({ children }: { children: ReactNode }): ReactNode {
         return
       }
 
+      authDebug('onAuthStateChange', {
+        event,
+        hasSession: Boolean(nextSession),
+        hasToken: Boolean(nextSession?.access_token),
+        expiresAt: nextSession?.expires_at ?? null,
+        userId: nextSession?.user?.id ?? null,
+      })
+
       if ((event === 'TOKEN_REFRESHED' || event === 'SIGNED_OUT') && !nextSession) {
+        authDebug('onAuthStateChange:session_lost', { event })
         if (import.meta.env.DEV) {
           console.debug('[AuthContext] Session lost during refresh, cleaning up')
         }
@@ -396,12 +413,15 @@ export function AuthProvider({ children }: { children: ReactNode }): ReactNode {
       setSession(data.session)
       setUser(data.user)
 
+      authDebug('login:success', { userId: data.user?.id ?? null })
+
       // Allow onAuthStateChange to work again
       loginInProgressRef.current = false
 
       return { success: true, user: data.user }
     } catch (err) {
       loginInProgressRef.current = false
+      authDebug('login:error', { message: getErrorMessage(err) })
       console.error('Login error:', err)
       return { success: false, error: getErrorMessage(err) }
     }
@@ -551,6 +571,7 @@ export function AuthProvider({ children }: { children: ReactNode }): ReactNode {
 
   const logout = async (): Promise<void> => {
     try {
+      authDebug('logout:start')
       // Clear Bearer token from the api module
       setAuthToken(null)
 
@@ -562,7 +583,9 @@ export function AuthProvider({ children }: { children: ReactNode }): ReactNode {
       setPreferences({ ...defaultPreferences })
       // Clear photo store to prevent stale data
       useStore.getState().setPhotos([])
+      authDebug('logout:success')
     } catch (err) {
+      authDebug('logout:error', { message: getErrorMessage(err) })
       console.error('Logout error:', err)
     }
   }

@@ -1,5 +1,6 @@
 import { getSessionSingleflight } from '../lib/supabaseSession'
 import { request, ApiError } from './httpClient'
+import { authDebug } from '../utils/authDebug'
 
 // --- Token Management ---
 let _cachedAccessToken: string | null = null
@@ -14,9 +15,15 @@ function canAttemptSessionRefresh(): boolean {
 
 export function setAuthToken(token: string | null): void {
   if (_cachedAccessToken === token) return
+  const prevState = _authTokenState
   _cachedAccessToken = token
   _authTokenState = token ? 'set' : 'cleared'
   console.log(`[API Auth] Token updated. State: ${_authTokenState.toUpperCase()}`)
+  authDebug('token:update', {
+    prevState,
+    nextState: _authTokenState,
+    hasToken: Boolean(token),
+  })
 
   for (const listener of tokenListeners) {
     try {
@@ -49,21 +56,26 @@ export async function getHeadersForGetRequestAsync(): Promise<Record<string, str
   }
 
   if (!canAttemptSessionRefresh()) {
+    authDebug('headers:get:refresh_skipped', { reason: 'token_state_cleared' })
     return undefined
   }
 
   try {
+    authDebug('headers:get:refresh_attempt')
     const session = await getSessionSingleflight()
     const token = session?.access_token ?? null
     if (token) {
       setAuthToken(token)
+      authDebug('headers:get:refresh_success', { hasToken: true })
       return { Authorization: `Bearer ${token}` }
     }
 
     // Session resolved but no token; treat as logged out.
     _authTokenState = 'cleared'
+    authDebug('headers:get:refresh_empty', { hasToken: false })
     return undefined
   } catch {
+    authDebug('headers:get:refresh_error')
     // Fall through without token
   }
 
@@ -100,20 +112,25 @@ export async function getAuthHeadersAsync(includeContentType = true): Promise<Re
   }
 
   if (!canAttemptSessionRefresh() && !_cachedAccessToken) {
+    authDebug('headers:auth:refresh_skipped', { reason: 'token_state_cleared' })
     return headers
   }
 
   try {
+    authDebug('headers:auth:refresh_attempt')
     const session = await getSessionSingleflight()
     const token = session?.access_token ?? null
     if (token) {
       headers['Authorization'] = `Bearer ${token}`
       setAuthToken(token)
+      authDebug('headers:auth:refresh_success', { hasToken: true })
     } else {
       // Session resolved but no token; treat as logged out.
       _authTokenState = 'cleared'
+      authDebug('headers:auth:refresh_empty', { hasToken: false })
     }
   } catch {
+    authDebug('headers:auth:refresh_error')
     // Fall through without token
   }
 
