@@ -119,6 +119,19 @@ cd server && npm run worker # Background Worker
 *   **Restart guard (optional):** The client compares a server-provided per-process `bootId` (from `/api/meta`) against `sessionStorage` to force a re-login only when the backend process restarts. `buildId` is still exposed for diagnostics, but is not used to log users out.
 *   Ongoing cleanup targets: [TypeScript refactor candidates](typescript-refactor-candidates.md)
 
+## Debugging
+
+### Whiteboard debug logging (scoped)
+Whiteboard debug logs are **scoped** and **off by default**. Enable them only when you are troubleshooting whiteboard sync issues.
+
+**Available flags (client-side):**
+- `?wbDebug=1` (or `?whiteboardDebug=1`) in the URL query string.
+- `localStorage` key: `wb:debug` set to `1`, `true`, `yes`, or `on`.
+
+**Notes:**
+- These flags only affect whiteboard logs. They do **not** enable global debug logging.
+- Logs are intentionally low-frequency (connection, join, snapshot load, and replay stats).
+
 ## How I Test This Thing
 
 Tests are intended to catch regressions before CI.

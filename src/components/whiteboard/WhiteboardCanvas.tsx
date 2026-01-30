@@ -4,6 +4,7 @@ import type { WhiteboardEvent, WhiteboardHistoryCursor, WhiteboardStrokeEvent } 
 import type { WhiteboardTransport } from '../../realtime/whiteboardTransport'
 import { fetchWhiteboardSnapshot } from '../../api/whiteboard'
 import { normalizeHistoryEvents } from '../../realtime/whiteboardReplay'
+import { whiteboardDebugLog } from '../../realtime/whiteboardDebug'
 import {
   appendWhiteboardSnapshotCache,
   clearWhiteboardSnapshotCache,
@@ -54,6 +55,8 @@ export default function WhiteboardCanvas({
   const pointerStatesRef = useRef<Map<number, { strokeId: string; lastSentAt: number; x: number; y: number }>>(new Map())
   const animationFrameRef = useRef<number | null>(null)
   const historyCursorRef = useRef<WhiteboardHistoryCursor | null>(null)
+  const isLoadingSnapshotRef = useRef(false)
+  const pendingEventsRef = useRef<WhiteboardEvent[]>([])
   const tokenReady = Boolean(token)
   
   const [status, setStatus] = useState<'idle' | 'connecting' | 'connected' | 'error'>('idle')
@@ -212,6 +215,15 @@ export default function WhiteboardCanvas({
 
     const handleIncoming = (evt: WhiteboardEvent) => {
       if (effectiveSourceId && evt.sourceId && evt.sourceId === effectiveSourceId) return
+
+      if (isLoadingSnapshotRef.current) {
+        if (pendingEventsRef.current.length === 0) {
+          whiteboardDebugLog('snapshot:buffer:start', { boardId })
+        }
+        pendingEventsRef.current.push(evt)
+        return
+      }
+
       if (evt.type === 'whiteboard:clear') {
         drawingBufferRef.current = []
         activeStrokesRef.current = new Map()
@@ -229,15 +241,46 @@ export default function WhiteboardCanvas({
 
     const unsubscribe = transport.onEvent(handleIncoming)
 
+    const applyPendingEvents = () => {
+      if (!pendingEventsRef.current.length) return
+      const buffered = pendingEventsRef.current
+      pendingEventsRef.current = []
+      let strokeCount = 0
+      let clearCount = 0
+      for (const evt of buffered) {
+        if (effectiveSourceId && evt.sourceId && evt.sourceId === effectiveSourceId) continue
+        if (evt.type === 'whiteboard:clear') {
+          clearCount += 1
+          drawingBufferRef.current = []
+          activeStrokesRef.current = new Map()
+          const ctx = getContext()
+          const canvas = canvasRef.current
+          if (ctx && canvas) {
+            ctx.clearRect(0, 0, canvas.width, canvas.height)
+          }
+          clearWhiteboardSnapshotCache(boardId)
+          continue
+        }
+        strokeCount += 1
+        enqueueEvent(evt)
+        appendWhiteboardSnapshotCache(boardId, evt)
+      }
+      whiteboardDebugLog('snapshot:buffer:replay', { boardId, strokes: strokeCount, clears: clearCount })
+    }
+
     const loadSnapshot = async () => {
+      isLoadingSnapshotRef.current = true
+      whiteboardDebugLog('snapshot:load:start', { boardId })
       try {
         const cached = getWhiteboardSnapshotCache(boardId)
         if (cached?.events.length) {
           drawingBufferRef.current = cached.events
           historyCursorRef.current = cached.cursor ?? null
           redrawFromBuffer()
+          whiteboardDebugLog('snapshot:cache:events', { boardId, count: cached.events.length })
         } else if (cached?.cursor) {
           historyCursorRef.current = cached.cursor
+          whiteboardDebugLog('snapshot:cache:cursor', { boardId, cursor: cached.cursor })
         }
 
         const snapshot = await fetchWhiteboardSnapshot({
@@ -253,6 +296,7 @@ export default function WhiteboardCanvas({
           historyCursorRef.current = snapshot.cursor ?? null
           setWhiteboardSnapshotCache(boardId, trimmed, snapshot.cursor ?? null)
           redrawFromBuffer()
+          whiteboardDebugLog('snapshot:load:success', { boardId, count: trimmed.length })
         }
       } catch (err) {
         if (cancelled) return
@@ -260,6 +304,10 @@ export default function WhiteboardCanvas({
         if (name === 'AbortError') return
         if (!cancelled) setStatus('error')
         return
+      } finally {
+        isLoadingSnapshotRef.current = false
+        whiteboardDebugLog('snapshot:load:complete', { boardId, pending: pendingEventsRef.current.length })
+        applyPendingEvents()
       }
     }
 

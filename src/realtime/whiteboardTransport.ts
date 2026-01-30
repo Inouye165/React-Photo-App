@@ -1,4 +1,5 @@
 import type { WhiteboardEvent, WhiteboardStrokeEvent, StrokeEventType, WhiteboardClearEvent, WhiteboardHistoryCursor } from '../types/whiteboard'
+import { whiteboardDebugLog } from './whiteboardDebug'
 
 export type WhiteboardEventHandler = (event: WhiteboardEvent) => void
 
@@ -21,12 +22,6 @@ const KEEP_ALIVE_INTERVAL_MS = 5000
 const PONG_TIMEOUT_MS = 15000
 const MAX_BUFFERED_SEND = 2000
 
-// [DEBUG] Logging disabled for performance
-const debugLog = (label: string, data?: any) => {
-  void label
-  void data
-  // console.log(`[WB-CLIENT] ${label}`, data || '');
-}
 
 function asClearEvent(message: SocketMessage): WhiteboardClearEvent | null {
   if (message.type !== 'whiteboard:clear') return null
@@ -197,6 +192,7 @@ export function createSocketTransport({
     const delay = Math.max(0, cappedDelay - jitterRange + Math.random() * jitterRange * 2)
 
     console.warn('[WB] Reconnect scheduled', { boardId, attempt, delay: Math.round(delay) })
+    whiteboardDebugLog('socket:reconnect:scheduled', { boardId, attempt, delay: Math.round(delay) })
     reconnectTimer = setTimeout(() => {
       reconnectTimer = null
       connect(boardId, token, joinCursor).catch(() => {
@@ -246,6 +242,7 @@ export function createSocketTransport({
       }
     }
     console.log('[WB] Flushed queued events', { count: batch.length })
+    whiteboardDebugLog('socket:queue:flushed', { count: batch.length })
   }
 
   const connect = async (boardId: string, token: string, cursor?: WhiteboardHistoryCursor | null) => {
@@ -262,7 +259,7 @@ export function createSocketTransport({
       lastToken = token
       joinCursor = cursor ?? null
       const url = toWebSocketUrl(apiBaseUrl, token)
-      debugLog('Connecting', { boardId, url })
+      whiteboardDebugLog('socket:connect', { boardId })
       ws = new WebSocket(url)
       activeBoardId = boardId
 
@@ -278,6 +275,7 @@ export function createSocketTransport({
 
       ws.addEventListener('open', () => {
         console.log('[WB] Connected', { boardId })
+        whiteboardDebugLog('socket:open', { boardId })
         opened = true
         clearReconnect()
         joined = false
@@ -287,6 +285,7 @@ export function createSocketTransport({
             joinPayload.cursor = joinCursor
           }
           ws?.send(JSON.stringify({ type: 'whiteboard:join', payload: joinPayload }))
+          whiteboardDebugLog('socket:join:sent', { boardId, hasCursor: Boolean(joinCursor) })
           startKeepAlive(boardId)
         } catch {}
         resolveReady?.()
@@ -308,6 +307,7 @@ export function createSocketTransport({
             if (!joinedBoardId || joinedBoardId === boardId) {
               joined = true
               flushPending()
+              whiteboardDebugLog('socket:join:ack', { boardId })
             }
           }
 
@@ -338,6 +338,7 @@ export function createSocketTransport({
 
       ws.addEventListener('close', (evt) => {
         console.log(`[WB] Disconnected (Code: ${evt.code}${evt.reason ? `, Reason: ${evt.reason}` : ''})`)
+        whiteboardDebugLog('socket:close', { boardId: activeBoardId, code: evt.code, reason: evt.reason })
         console.warn('[WB] Close diagnostics', {
           boardId: activeBoardId,
           readyState: ws?.readyState,
