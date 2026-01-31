@@ -591,6 +591,12 @@ const DEFAULT_APP_STATE: Pick<AppState, 'viewBackgroundColor' | 'gridSize' | 'th
   theme: 'light',
 }
 
+const STROKE_WIDTH_REMAP: Record<number, number> = {
+  1: 0.1,
+  2: 1.0,
+  3: 5.0,
+}
+
 type ExcalidrawWhiteboardCanvasProps = {
   boardId: string
   token: string | null
@@ -842,15 +848,41 @@ export default function WhiteboardCanvas({ boardId, token, mode, className }: Ex
       const map = mapRef.current
       if (!doc || !map) return
 
+      let nextElements = elements
+      let nextAppState = appState
+      const remappedWidth = STROKE_WIDTH_REMAP[appState.currentItemStrokeWidth]
+
+      if (remappedWidth && appState.currentItemStrokeWidth !== remappedWidth) {
+        const selectedIds = appState.selectedElementIds ?? {}
+        if (Object.keys(selectedIds).length) {
+          nextElements = elements.map((element) =>
+            selectedIds[element.id] ? { ...element, strokeWidth: remappedWidth } : element,
+          )
+        }
+        nextAppState = {
+          ...appState,
+          currentItemStrokeWidth: remappedWidth,
+        }
+
+        suppressSyncRef.current = true
+        excalidrawApiRef.current?.updateScene({
+          elements: nextElements,
+          appState: nextAppState,
+        })
+        requestAnimationFrame(() => {
+          suppressSyncRef.current = false
+        })
+      }
+
       if (isLocallyDrawingRef.current) {
         // Keep in-progress strokes local; commit the final scene on pointer up.
-        pendingLocalSceneRef.current = { elements, appState, files }
+        pendingLocalSceneRef.current = { elements: nextElements, appState: nextAppState, files }
         return
       }
 
       doc.transact(() => {
-        map.set('elements', elements)
-        map.set('appState', pickPersistedAppState(appState))
+        map.set('elements', nextElements)
+        map.set('appState', pickPersistedAppState(nextAppState))
         map.set('files', files)
         map.set('updatedAt', Date.now())
       }, LOCAL_ORIGIN)
