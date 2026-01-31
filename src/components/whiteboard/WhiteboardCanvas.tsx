@@ -1,12 +1,23 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import type { PointerEvent } from 'react'
+import { Excalidraw } from '@excalidraw/excalidraw'
+import type {
+  AppState,
+  BinaryFiles,
+  ExcalidrawImperativeAPI,
+  ExcalidrawInitialDataState,
+} from '@excalidraw/excalidraw/types'
+import '@excalidraw/excalidraw/index.css'
+import * as Y from 'yjs'
 import type { WhiteboardEvent, WhiteboardHistoryCursor, WhiteboardStrokeAck, WhiteboardStrokeEvent } from '../../types/whiteboard'
 import type { WhiteboardTransport } from '../../realtime/whiteboardTransport'
+import { API_BASE_URL } from '../../api'
 import { fetchWhiteboardSnapshot } from '../../api/whiteboard'
 import { normalizeHistoryEvents } from '../../realtime/whiteboardReplay'
 import { whiteboardDebugLog } from '../../realtime/whiteboardDebug'
 import { BOARD_ASPECT, computeContainedRect, type ContainedRect } from './whiteboardAspect'
 import { createStrokePersistenceQueue, createStrokeSegmenter } from '../../realtime/whiteboardStrokeQueue'
+import { createWhiteboardYjsProvider } from '../../realtime/whiteboardYjsProvider'
 import {
   appendWhiteboardSnapshotCache,
   clearWhiteboardSnapshotCache,
@@ -42,7 +53,10 @@ function clamp01(value: number): number {
   return value
 }
 
-export default function WhiteboardCanvas({
+/**
+ * @deprecated Legacy point-stream canvas retained for reference.
+ */
+export function LegacyWhiteboardCanvas({
   boardId,
   token,
   transport,
@@ -565,5 +579,238 @@ export default function WhiteboardCanvas({
         </div>
       )}
     </div>
+  )
+}
+
+const LOCAL_ORIGIN = Symbol('whiteboard-local')
+
+const DEFAULT_APP_STATE: Pick<AppState, 'viewBackgroundColor' | 'gridSize' | 'theme'> = {
+  viewBackgroundColor: '#ffffff',
+  gridSize: 0,
+  theme: 'light',
+}
+
+type ExcalidrawWhiteboardCanvasProps = {
+  boardId: string
+  token: string | null
+  mode: 'viewer' | 'pad'
+  className?: string
+}
+
+type PersistedAppState = Pick<AppState, 'viewBackgroundColor' | 'gridSize' | 'theme'>
+type ExcalidrawElement = ReturnType<ExcalidrawImperativeAPI['getSceneElements']>[number]
+
+type ConnectionStatus = 'idle' | 'connecting' | 'connected' | 'disconnected' | 'error'
+
+function resolveAppState(value: unknown): PersistedAppState {
+  if (!value || typeof value !== 'object') return DEFAULT_APP_STATE
+  const candidate = value as Partial<PersistedAppState>
+  const theme = candidate.theme
+  return {
+    viewBackgroundColor:
+      typeof candidate.viewBackgroundColor === 'string'
+        ? candidate.viewBackgroundColor
+        : DEFAULT_APP_STATE.viewBackgroundColor,
+    gridSize:
+      typeof candidate.gridSize === 'number'
+        ? candidate.gridSize
+        : DEFAULT_APP_STATE.gridSize,
+    theme: theme === 'dark' || theme === 'light' || theme === 'system' ? theme : DEFAULT_APP_STATE.theme,
+  }
+}
+
+function resolveFiles(value: unknown): BinaryFiles {
+  if (!value || typeof value !== 'object') return {}
+  return value as BinaryFiles
+}
+
+function resolveElements(value: unknown): ExcalidrawElement[] | null {
+  if (!Array.isArray(value)) return null
+  return value as ExcalidrawElement[]
+}
+
+function pickPersistedAppState(appState: AppState): PersistedAppState {
+  return {
+    viewBackgroundColor: appState.viewBackgroundColor,
+    gridSize: appState.gridSize,
+    theme: appState.theme,
+  }
+}
+
+export default function WhiteboardCanvas({ boardId, token, mode, className }: ExcalidrawWhiteboardCanvasProps) {
+  const [connectionStatus, setConnectionStatus] = useState<ConnectionStatus>('idle')
+  const [viewModeEnabled, setViewModeEnabled] = useState(mode === 'viewer')
+  const [initialData, setInitialData] = useState<ExcalidrawInitialDataState | null>(null)
+
+  const excalidrawApiRef = useRef<ExcalidrawImperativeAPI | null>(null)
+  const docRef = useRef<Y.Doc | null>(null)
+  const mapRef = useRef<Y.Map<unknown> | null>(null)
+  const suppressSyncRef = useRef(false)
+
+  useEffect(() => {
+    setViewModeEnabled(mode === 'viewer')
+  }, [mode])
+
+  const applySceneFromYjs = useCallback(() => {
+    const map = mapRef.current
+    if (!map) return
+
+    const elements = resolveElements(map.get('elements'))
+    if (!elements) return
+
+    const appState = resolveAppState(map.get('appState'))
+    const files = resolveFiles(map.get('files'))
+
+    const scene: ExcalidrawInitialDataState = {
+      elements,
+      appState: {
+        ...appState,
+        viewModeEnabled,
+      },
+      files,
+    }
+
+    if (!excalidrawApiRef.current) {
+      setInitialData(scene)
+      return
+    }
+
+    const currentState = excalidrawApiRef.current.getAppState()
+    suppressSyncRef.current = true
+    excalidrawApiRef.current.updateScene({
+      elements: scene.elements,
+      appState: {
+        ...currentState,
+        ...scene.appState,
+        viewModeEnabled,
+      },
+    })
+    requestAnimationFrame(() => {
+      suppressSyncRef.current = false
+    })
+  }, [viewModeEnabled])
+
+  useEffect(() => {
+    if (!token) {
+      setConnectionStatus('idle')
+      return
+    }
+
+    setConnectionStatus('connecting')
+    const provider = createWhiteboardYjsProvider({
+      apiBaseUrl: API_BASE_URL,
+      boardId,
+      token,
+      onStatus: (status) => {
+        setConnectionStatus(status === 'connected' ? 'connected' : 'disconnected')
+      },
+    })
+
+    docRef.current = provider.doc
+    mapRef.current = provider.doc.getMap('excalidraw')
+
+    const handleSync = (isSynced: boolean) => {
+      if (!isSynced) return
+      applySceneFromYjs()
+    }
+
+    const handleUpdate = (_update: Uint8Array, origin: unknown) => {
+      if (origin === LOCAL_ORIGIN) return
+      applySceneFromYjs()
+    }
+
+    provider.provider.on('sync', handleSync)
+    provider.doc.on('update', handleUpdate)
+
+    return () => {
+      provider.provider.off('sync', handleSync)
+      provider.doc.off('update', handleUpdate)
+      provider.destroy()
+      docRef.current = null
+      mapRef.current = null
+    }
+  }, [applySceneFromYjs, boardId, token])
+
+  useEffect(() => {
+    if (!excalidrawApiRef.current) return
+    const currentState = excalidrawApiRef.current.getAppState()
+    suppressSyncRef.current = true
+    excalidrawApiRef.current.updateScene({
+      appState: {
+        ...currentState,
+        viewModeEnabled,
+      },
+    })
+    requestAnimationFrame(() => {
+      suppressSyncRef.current = false
+    })
+  }, [viewModeEnabled])
+
+  const handleChange = useCallback(
+    (elements: readonly ExcalidrawElement[], appState: AppState, files: BinaryFiles) => {
+      if (suppressSyncRef.current) return
+      const doc = docRef.current
+      const map = mapRef.current
+      if (!doc || !map) return
+
+      doc.transact(() => {
+        map.set('elements', elements)
+        map.set('appState', pickPersistedAppState(appState))
+        map.set('files', files)
+        map.set('updatedAt', Date.now())
+      }, LOCAL_ORIGIN)
+    },
+    [],
+  )
+
+  const toggleLabel = viewModeEnabled ? 'Switch to draw mode' : 'Switch to view mode'
+  const statusLabel = useMemo(() => {
+    switch (connectionStatus) {
+      case 'connected':
+        return 'Connected'
+      case 'connecting':
+        return 'Connecting…'
+      case 'disconnected':
+        return 'Disconnected'
+      case 'error':
+        return 'Error'
+      default:
+        return 'Idle'
+    }
+  }, [connectionStatus])
+
+  return (
+    <section className={`flex h-full w-full flex-col gap-3 ${className || ''}`} aria-label="Collaborative whiteboard">
+      <header className="flex flex-wrap items-center justify-between gap-2">
+        <div>
+          <p className="text-sm font-semibold text-slate-900">Whiteboard</p>
+          <p className="text-xs text-slate-500" aria-live="polite">
+            Status: {statusLabel}
+          </p>
+        </div>
+        <div className="flex items-center gap-2">
+          <button
+            type="button"
+            className="rounded-full border border-slate-200 px-3 py-1 text-xs font-medium text-slate-700 transition hover:border-slate-300 hover:text-slate-900"
+            onClick={() => setViewModeEnabled((prev) => !prev)}
+            aria-pressed={viewModeEnabled}
+            aria-label={toggleLabel}
+          >
+            {viewModeEnabled ? 'View mode' : 'Draw mode'}
+          </button>
+        </div>
+      </header>
+      <div className="min-h-0 flex-1 rounded-2xl border border-slate-200 bg-white">
+        <Excalidraw
+          excalidrawAPI={(api) => {
+            excalidrawApiRef.current = api
+          }}
+          initialData={initialData ?? undefined}
+          viewModeEnabled={viewModeEnabled}
+          zenModeEnabled={viewModeEnabled}
+          onChange={handleChange}
+        />
+      </div>
+    </section>
   )
 }
