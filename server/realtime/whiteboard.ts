@@ -8,15 +8,7 @@ const MAX_EVENTS_PER_WINDOW = 240;
 const RATE_LIMIT_WINDOW_MS = 5000;
 const MAX_EVENTS_PER_BOARD = 20000;
 const MAX_DELTA_EVENTS = 5000;
-const WHITEBOARD_DIAGNOSTICS_INTERVAL_MS = 5000;
-
-function isTruthy(value: string | undefined): boolean {
-  if (!value) return false;
-  const normalized = value.trim().toLowerCase();
-  return normalized === '1' || normalized === 'true' || normalized === 'yes' || normalized === 'on';
-}
-
-const WHITEBOARD_DEBUG = isTruthy(process.env.WHITEBOARD_DEBUG);
+const WHITEBOARD_DEBUG = true;
 
 function wbDebugLog(label: string, data?: Record<string, unknown>): void {
   if (!WHITEBOARD_DEBUG) return;
@@ -25,74 +17,6 @@ function wbDebugLog(label: string, data?: Record<string, unknown>): void {
     return;
   }
   console.log('[WB-DEBUG]', label);
-}
-
-type RejectReason = 'rate_limited' | 'payload_too_large' | 'invalid_payload';
-
-type DiagnosticsEntry = {
-  boardId: string;
-  strokeId: string;
-  reason: RejectReason | 'accepted';
-  count: number;
-};
-
-const UNKNOWN_ID = 'unknown';
-
-function isRecord(value: unknown): value is Record<string, unknown> {
-  return typeof value === 'object' && value !== null;
-}
-
-function extractIds(payload: unknown): { boardId: string; strokeId: string } {
-  if (!isRecord(payload)) {
-    return { boardId: UNKNOWN_ID, strokeId: UNKNOWN_ID };
-  }
-  const boardId = typeof payload.boardId === 'string' ? payload.boardId : UNKNOWN_ID;
-  const strokeId = typeof payload.strokeId === 'string' ? payload.strokeId : UNKNOWN_ID;
-  return { boardId, strokeId };
-}
-
-function createDiagnostics(enabled: boolean) {
-  if (!enabled) {
-    return {
-      recordAccepted: (_boardId: string, _strokeId: string) => undefined,
-      recordRejected: (_reason: RejectReason, _boardId: string, _strokeId: string) => undefined,
-    };
-  }
-
-  const accepted = new Map<string, DiagnosticsEntry>();
-  const rejected = new Map<string, DiagnosticsEntry>();
-
-  const buildKey = (boardId: string, strokeId: string, reason: DiagnosticsEntry['reason']) =>
-    `${boardId}:${strokeId}:${reason}`;
-
-  const record = (map: Map<string, DiagnosticsEntry>, reason: DiagnosticsEntry['reason'], boardId: string, strokeId: string) => {
-    const key = buildKey(boardId, strokeId, reason);
-    const existing = map.get(key);
-    if (existing) {
-      existing.count += 1;
-      return;
-    }
-    map.set(key, { boardId, strokeId, reason, count: 1 });
-  };
-
-  const flush = () => {
-    if (accepted.size === 0 && rejected.size === 0) return;
-    for (const entry of accepted.values()) {
-      console.log('[WB-DIAG]', entry);
-    }
-    for (const entry of rejected.values()) {
-      console.log('[WB-DIAG]', entry);
-    }
-    accepted.clear();
-    rejected.clear();
-  };
-
-  setInterval(flush, WHITEBOARD_DIAGNOSTICS_INTERVAL_MS);
-
-  return {
-    recordAccepted: (boardId: string, strokeId: string) => record(accepted, 'accepted', boardId, strokeId),
-    recordRejected: (reason: RejectReason, boardId: string, strokeId: string) => record(rejected, reason, boardId, strokeId),
-  };
 }
 
 const BoardIdSchema = z.string().uuid().max(BOARD_ID_MAX_LENGTH);
@@ -309,7 +233,6 @@ export function createWhiteboardMessageHandler({
   db: WhiteboardDb;
 }) {
   const rateStateByRecord = new WeakMap<SocketRecord, RateState>();
-  const diagnostics = createDiagnostics(WHITEBOARD_DEBUG);
 
   return async function handleWhiteboardMessage({
     record,
@@ -436,8 +359,6 @@ export function createWhiteboardMessageHandler({
 
     if (payloadByteLength(message.payload) > MAX_PAYLOAD_BYTES) {
       send('whiteboard:error', { payload: { code: 'payload_too_large' } });
-      const ids = extractIds(message.payload);
-      diagnostics.recordRejected('payload_too_large', ids.boardId, ids.strokeId);
       wbDebugLog('stroke:rejected:payload_too_large', { boardId: (message.payload as any)?.boardId });
       return true;
     }
@@ -449,8 +370,6 @@ export function createWhiteboardMessageHandler({
     if (!parsed.success) {
       console.error('[WB-SERVER] Stroke Invalid', parsed.error);
       send('whiteboard:error', { payload: { code: 'invalid_request' } });
-      const ids = extractIds(message.payload);
-      diagnostics.recordRejected('invalid_payload', ids.boardId, ids.strokeId);
       wbDebugLog('stroke:rejected:invalid_request');
       return true;
     }
@@ -487,14 +406,12 @@ export function createWhiteboardMessageHandler({
     rateStateByRecord.set(record, rateDecision.next);
     if (rateDecision.limited) {
       send('whiteboard:error', { payload: { code: 'rate_limited' } });
-      diagnostics.recordRejected('rate_limited', boardId, strokeId);
       wbDebugLog('stroke:rejected:rate_limited', { userId: record.userId, boardId });
       return true;
     }
 
     try {
       const result = await persistEvent(db, { boardId, type, strokeId, x, y, t, segmentIndex, sourceId, color, width });
-      diagnostics.recordAccepted(boardId, strokeId);
       wbDebugLog('stroke:persisted', { boardId, type, strokeId, seq: result.seq ?? undefined });
 
       if (typeof segmentIndex === 'number') {
