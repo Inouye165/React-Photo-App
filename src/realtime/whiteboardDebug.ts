@@ -2,7 +2,8 @@ type DebugFlagValue = string | null | undefined
 
 const WHITEBOARD_DEBUG_QUERY_KEYS = ['wbDebug', 'whiteboardDebug']
 const WHITEBOARD_DEBUG_STORAGE_KEY = 'wb:debug'
-const FORCE_WHITEBOARD_DEBUG = true
+const ENV_WHITEBOARD_DEBUG = import.meta.env?.VITE_WHITEBOARD_DEBUG
+const FORCE_WHITEBOARD_DEBUG = isTruthy(ENV_WHITEBOARD_DEBUG)
 
 let cachedEnabled: boolean | null = null
 
@@ -15,8 +16,8 @@ function isTruthy(value: DebugFlagValue): boolean {
 export function isWhiteboardDebugEnabled(): boolean {
   if (cachedEnabled !== null) return cachedEnabled
 
-  if (FORCE_WHITEBOARD_DEBUG) {
-    cachedEnabled = true
+  if (!FORCE_WHITEBOARD_DEBUG) {
+    cachedEnabled = false
     return cachedEnabled
   }
 
