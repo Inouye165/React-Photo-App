@@ -646,6 +646,9 @@ export default function WhiteboardCanvas({ boardId, token, mode, className }: Ex
   const docRef = useRef<Y.Doc | null>(null)
   const mapRef = useRef<Y.Map<unknown> | null>(null)
   const suppressSyncRef = useRef(false)
+  const isLocallyDrawingRef = useRef(false)
+  const pendingRemoteSyncRef = useRef(false)
+  const pointerGuardCleanupRef = useRef<(() => void) | null>(null)
 
   useEffect(() => {
     setViewModeEnabled(mode === 'viewer')
@@ -690,6 +693,35 @@ export default function WhiteboardCanvas({ boardId, token, mode, className }: Ex
     })
   }, [viewModeEnabled])
 
+  const applyPendingRemoteScene = useCallback(() => {
+    if (!pendingRemoteSyncRef.current) return
+    pendingRemoteSyncRef.current = false
+    applySceneFromYjs()
+  }, [applySceneFromYjs])
+
+  const registerPointerGuard = useCallback(
+    (api: ExcalidrawImperativeAPI | null) => {
+      if (!api || pointerGuardCleanupRef.current) return
+
+      // Guard: If the local user is actively drawing, pause remote scene updates.
+      const offPointerDown = api.onPointerDown(() => {
+        isLocallyDrawingRef.current = true
+      })
+
+      const offPointerUp = api.onPointerUp(() => {
+        isLocallyDrawingRef.current = false
+        // Re-apply the latest remote state after the local stroke completes.
+        applyPendingRemoteScene()
+      })
+
+      pointerGuardCleanupRef.current = () => {
+        offPointerDown()
+        offPointerUp()
+      }
+    },
+    [applyPendingRemoteScene],
+  )
+
   useEffect(() => {
     if (!token) {
       setConnectionStatus('idle')
@@ -711,11 +743,19 @@ export default function WhiteboardCanvas({ boardId, token, mode, className }: Ex
 
     const handleSync = (isSynced: boolean) => {
       if (!isSynced) return
+      if (isLocallyDrawingRef.current) {
+        pendingRemoteSyncRef.current = true
+        return
+      }
       applySceneFromYjs()
     }
 
     const handleUpdate = (_update: Uint8Array, origin: unknown) => {
       if (origin === LOCAL_ORIGIN) return
+      if (isLocallyDrawingRef.current) {
+        pendingRemoteSyncRef.current = true
+        return
+      }
       applySceneFromYjs()
     }
 
@@ -730,6 +770,13 @@ export default function WhiteboardCanvas({ boardId, token, mode, className }: Ex
       mapRef.current = null
     }
   }, [applySceneFromYjs, boardId, token])
+
+  useEffect(() => {
+    return () => {
+      pointerGuardCleanupRef.current?.()
+      pointerGuardCleanupRef.current = null
+    }
+  }, [])
 
   useEffect(() => {
     if (!excalidrawApiRef.current) return
@@ -804,6 +851,7 @@ export default function WhiteboardCanvas({ boardId, token, mode, className }: Ex
         <Excalidraw
           excalidrawAPI={(api) => {
             excalidrawApiRef.current = api
+            registerPointerGuard(api)
           }}
           initialData={initialData ?? undefined}
           viewModeEnabled={viewModeEnabled}
