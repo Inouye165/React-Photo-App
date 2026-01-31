@@ -34,11 +34,20 @@ export default defineConfig({
     isolate: true,
     // Disable threads entirely
     threads: false,
+    deps: {
+      inline: ['@excalidraw/excalidraw', 'roughjs'],
+    },
+  },
+  server: {
+    deps: {
+      inline: ['@excalidraw/excalidraw', 'roughjs'],
+    },
   },
   resolve: {
     alias: {
       heic2any: path.resolve(__dirname, '__mocks__/heic2any.ts'),
       'heic-to': path.resolve(__dirname, '__mocks__/heic-to.ts'),
+      'roughjs/bin/rough': path.resolve(__dirname, 'node_modules/roughjs/bin/rough.js'),
     },
   },
 });
