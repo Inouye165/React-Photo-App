@@ -31,22 +31,6 @@ export type WhiteboardStrokeAck = {
   seq?: number
 }
 
-export type WhiteboardServerErrorCode =
-  | 'rate_limited'
-  | 'payload_too_large'
-  | 'invalid_request'
-  | 'invalid_payload'
-  | 'forbidden'
-  | 'join_failed'
-  | 'not_joined'
-  | 'unknown'
-
-export type WhiteboardServerError = {
-  code: WhiteboardServerErrorCode
-  boardId?: string
-  strokeId?: string
-}
-
 export type WhiteboardHistoryCursor = {
   lastSeq?: number
   lastTs?: string | null

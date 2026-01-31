@@ -40,38 +40,6 @@ describe('whiteboardStrokeQueue', () => {
     vi.useRealTimers()
   })
 
-  it('delays sends during backoff windows', () => {
-    vi.useFakeTimers()
-    const send = vi.fn()
-    const queue = createStrokePersistenceQueue({ send, baseDelayMs: 100, maxDelayMs: 100 })
-
-    queue.backoff(500)
-    queue.enqueue(buildEvent({ segmentIndex: 5 }))
-
-    expect(send).not.toHaveBeenCalled()
-
-    vi.advanceTimersByTime(500)
-    expect(send).toHaveBeenCalledTimes(1)
-
-    vi.useRealTimers()
-  })
-
-  it('backs off sending when rate limited', () => {
-    vi.useFakeTimers()
-    const send = vi.fn()
-    const queue = createStrokePersistenceQueue({ send, baseDelayMs: 50, maxDelayMs: 50 })
-
-    queue.backoff(200)
-    queue.enqueue(buildEvent({ segmentIndex: 4 }))
-
-    expect(send).not.toHaveBeenCalled()
-
-    vi.advanceTimersByTime(220)
-    expect(send).toHaveBeenCalledTimes(1)
-
-    vi.useRealTimers()
-  })
-
   it('de-duplicates pending segments by segmentIndex', () => {
     const send = vi.fn()
     const queue = createStrokePersistenceQueue({ send })

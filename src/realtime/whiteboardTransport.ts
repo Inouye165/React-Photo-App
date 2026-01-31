@@ -1,16 +1,14 @@
-import type { WhiteboardEvent, WhiteboardStrokeEvent, StrokeEventType, WhiteboardClearEvent, WhiteboardHistoryCursor, WhiteboardStrokeAck, WhiteboardServerError } from '../types/whiteboard'
+import type { WhiteboardEvent, WhiteboardStrokeEvent, StrokeEventType, WhiteboardClearEvent, WhiteboardHistoryCursor, WhiteboardStrokeAck } from '../types/whiteboard'
 import { whiteboardDebugLog } from './whiteboardDebug'
 
 export type WhiteboardEventHandler = (event: WhiteboardEvent) => void
 export type WhiteboardAckHandler = (ack: WhiteboardStrokeAck) => void
-export type WhiteboardServerErrorHandler = (error: WhiteboardServerError) => void
 
 export type WhiteboardTransport = {
   connect: (boardId: string, token: string, cursor?: WhiteboardHistoryCursor | null) => Promise<void>
   send: (event: WhiteboardEvent) => void
   onEvent: (handler: WhiteboardEventHandler) => () => void
   onAck: (handler: WhiteboardAckHandler) => () => void
-  onServerError: (handler: WhiteboardServerErrorHandler) => () => void
   disconnect: () => void
 }
 
@@ -26,25 +24,6 @@ const STROKE_TYPES: ReadonlySet<StrokeEventType> = new Set(['stroke:start', 'str
 const KEEP_ALIVE_INTERVAL_MS = 5000
 const PONG_TIMEOUT_MS = 15000
 const MAX_BUFFERED_SEND = 2000
-
-const SERVER_ERROR_CODE_VALUES = [
-  'rate_limited',
-  'payload_too_large',
-  'invalid_request',
-  'invalid_payload',
-  'forbidden',
-  'join_failed',
-  'not_joined',
-  'unknown',
-] as const
-
-type ServerErrorCodeValue = typeof SERVER_ERROR_CODE_VALUES[number]
-
-const SERVER_ERROR_CODES: ReadonlySet<string> = new Set(SERVER_ERROR_CODE_VALUES)
-
-function isServerErrorCode(value: unknown): value is ServerErrorCodeValue {
-  return typeof value === 'string' && SERVER_ERROR_CODES.has(value)
-}
 
 
 function asClearEvent(message: SocketMessage): WhiteboardClearEvent | null {
@@ -118,16 +97,6 @@ function unwrapPayload(message: SocketMessage): any {
   return payload
 }
 
-function asServerError(message: SocketMessage): WhiteboardServerError | null {
-  if (message.type !== 'whiteboard:error') return null
-  const payload = unwrapPayload(message) || message.payload || message
-  const codeValue = typeof payload?.code === 'string' ? payload.code : 'unknown'
-  const code = isServerErrorCode(codeValue) ? codeValue : 'unknown'
-  const boardId = typeof payload?.boardId === 'string' ? payload.boardId : undefined
-  const strokeId = typeof payload?.strokeId === 'string' ? payload.strokeId : undefined
-  return { code, boardId, strokeId }
-}
-
 function toWebSocketUrl(apiBaseUrl: string, token: string): string {
   const base = apiBaseUrl.replace(/\/$/, '')
   const url = new URL(base)
@@ -163,7 +132,6 @@ export function createSocketTransport({
   let keepAliveTimer: any = null
   const handlers = new Set<WhiteboardEventHandler>()
   const ackHandlers = new Set<WhiteboardAckHandler>()
-  const serverErrorHandlers = new Set<WhiteboardServerErrorHandler>()
   let connectPromise: Promise<void> | null = null
   let connectKey: string | null = null
   let lastToken: string | null = null
@@ -373,10 +341,8 @@ export function createSocketTransport({
             }
           }
 
-          const serverError = asServerError(parsed)
-          if (serverError) {
-            serverErrorHandlers.forEach((handler) => handler(serverError))
-            whiteboardDebugLog('socket:error', { code: serverError.code })
+          if (parsed.type === 'whiteboard:error') {
+            console.error('[WB] Server Error:', parsed.payload)
           }
 
           const ack = asAckEvent(parsed)
@@ -469,19 +435,12 @@ export function createSocketTransport({
         ackHandlers.delete(handler)
       }
     },
-    onServerError: (handler: WhiteboardServerErrorHandler) => {
-      serverErrorHandlers.add(handler)
-      return () => {
-        serverErrorHandlers.delete(handler)
-      }
-    },
     disconnect: () => {
       manualClose = true
       clearReconnect()
       stopKeepAlive()
       handlers.clear()
       ackHandlers.clear()
-      serverErrorHandlers.clear()
       pendingEvents = []
       joined = false
       const boardId = activeBoardId
