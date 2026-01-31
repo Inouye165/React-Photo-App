@@ -18,6 +18,7 @@ import { whiteboardDebugLog } from '../../realtime/whiteboardDebug'
 import { BOARD_ASPECT, computeContainedRect, type ContainedRect } from './whiteboardAspect'
 import { createStrokePersistenceQueue, createStrokeSegmenter } from '../../realtime/whiteboardStrokeQueue'
 import { createWhiteboardYjsProvider } from '../../realtime/whiteboardYjsProvider'
+import type { WhiteboardYjsProvider } from '../../realtime/whiteboardYjsProvider'
 import {
   appendWhiteboardSnapshotCache,
   clearWhiteboardSnapshotCache,
@@ -582,7 +583,7 @@ export function LegacyWhiteboardCanvas({
   )
 }
 
-const LOCAL_ORIGIN = Symbol('whiteboard-local')
+const LOCAL_ORIGIN = { origin: 'local' } as const
 
 const DEFAULT_APP_STATE: Pick<AppState, 'viewBackgroundColor' | 'gridSize' | 'theme'> = {
   viewBackgroundColor: '#ffffff',
@@ -643,16 +644,27 @@ export default function WhiteboardCanvas({ boardId, token, mode, className }: Ex
   const [initialData, setInitialData] = useState<ExcalidrawInitialDataState | null>(null)
 
   const excalidrawApiRef = useRef<ExcalidrawImperativeAPI | null>(null)
+  const yjsProviderRef = useRef<WhiteboardYjsProvider | null>(null)
+  const viewModeEnabledRef = useRef(viewModeEnabled)
   const docRef = useRef<Y.Doc | null>(null)
   const mapRef = useRef<Y.Map<unknown> | null>(null)
   const suppressSyncRef = useRef(false)
   const isLocallyDrawingRef = useRef(false)
   const pendingRemoteSyncRef = useRef(false)
+  const pendingLocalSceneRef = useRef<{
+    elements: readonly ExcalidrawElement[]
+    appState: AppState
+    files: BinaryFiles
+  } | null>(null)
   const pointerGuardCleanupRef = useRef<(() => void) | null>(null)
 
   useEffect(() => {
     setViewModeEnabled(mode === 'viewer')
   }, [mode])
+
+  useEffect(() => {
+    viewModeEnabledRef.current = viewModeEnabled
+  }, [viewModeEnabled])
 
   const applySceneFromYjs = useCallback(() => {
     const map = mapRef.current
@@ -699,17 +711,41 @@ export default function WhiteboardCanvas({ boardId, token, mode, className }: Ex
     applySceneFromYjs()
   }, [applySceneFromYjs])
 
+  const updateAwarenessState = useCallback((isViewMode: boolean) => {
+    const awareness = yjsProviderRef.current?.provider.awareness
+    if (!awareness) return
+    awareness.setLocalStateField('mode', isViewMode ? 'viewer' : 'draw')
+    awareness.setLocalStateField('canWrite', !isViewMode)
+  }, [])
+
+  const commitPendingLocalScene = useCallback(() => {
+    const pending = pendingLocalSceneRef.current
+    if (!pending) return
+    const doc = docRef.current
+    const map = mapRef.current
+    if (!doc || !map) return
+
+    pendingLocalSceneRef.current = null
+    doc.transact(() => {
+      map.set('elements', pending.elements)
+      map.set('appState', pickPersistedAppState(pending.appState))
+      map.set('files', pending.files)
+      map.set('updatedAt', Date.now())
+    }, LOCAL_ORIGIN)
+  }, [])
+
   const registerPointerGuard = useCallback(
     (api: ExcalidrawImperativeAPI | null) => {
       if (!api || pointerGuardCleanupRef.current) return
 
-      // Guard: If the local user is actively drawing, pause remote scene updates.
+      // Sync pause: keep remote updates from clobbering local pointer strokes mid-draw.
       const offPointerDown = api.onPointerDown(() => {
         isLocallyDrawingRef.current = true
       })
 
       const offPointerUp = api.onPointerUp(() => {
         isLocallyDrawingRef.current = false
+        commitPendingLocalScene()
         // Re-apply the latest remote state after the local stroke completes.
         applyPendingRemoteScene()
       })
@@ -719,7 +755,7 @@ export default function WhiteboardCanvas({ boardId, token, mode, className }: Ex
         offPointerUp()
       }
     },
-    [applyPendingRemoteScene],
+    [applyPendingRemoteScene, commitPendingLocalScene],
   )
 
   useEffect(() => {
@@ -740,10 +776,13 @@ export default function WhiteboardCanvas({ boardId, token, mode, className }: Ex
 
     docRef.current = provider.doc
     mapRef.current = provider.doc.getMap('excalidraw')
+    yjsProviderRef.current = provider
+    updateAwarenessState(viewModeEnabledRef.current)
 
     const handleSync = (isSynced: boolean) => {
       if (!isSynced) return
       if (isLocallyDrawingRef.current) {
+        // Sync pause: delay remote scene application while the local stroke is active.
         pendingRemoteSyncRef.current = true
         return
       }
@@ -753,6 +792,7 @@ export default function WhiteboardCanvas({ boardId, token, mode, className }: Ex
     const handleUpdate = (_update: Uint8Array, origin: unknown) => {
       if (origin === LOCAL_ORIGIN) return
       if (isLocallyDrawingRef.current) {
+        // Sync pause: delay remote scene application while the local stroke is active.
         pendingRemoteSyncRef.current = true
         return
       }
@@ -766,10 +806,11 @@ export default function WhiteboardCanvas({ boardId, token, mode, className }: Ex
       provider.provider.off('sync', handleSync)
       provider.doc.off('update', handleUpdate)
       provider.destroy()
+      yjsProviderRef.current = null
       docRef.current = null
       mapRef.current = null
     }
-  }, [applySceneFromYjs, boardId, token])
+  }, [applySceneFromYjs, boardId, token, updateAwarenessState])
 
   useEffect(() => {
     return () => {
@@ -791,7 +832,8 @@ export default function WhiteboardCanvas({ boardId, token, mode, className }: Ex
     requestAnimationFrame(() => {
       suppressSyncRef.current = false
     })
-  }, [viewModeEnabled])
+    updateAwarenessState(viewModeEnabled)
+  }, [updateAwarenessState, viewModeEnabled])
 
   const handleChange = useCallback(
     (elements: readonly ExcalidrawElement[], appState: AppState, files: BinaryFiles) => {
@@ -799,6 +841,12 @@ export default function WhiteboardCanvas({ boardId, token, mode, className }: Ex
       const doc = docRef.current
       const map = mapRef.current
       if (!doc || !map) return
+
+      if (isLocallyDrawingRef.current) {
+        // Keep in-progress strokes local; commit the final scene on pointer up.
+        pendingLocalSceneRef.current = { elements, appState, files }
+        return
+      }
 
       doc.transact(() => {
         map.set('elements', elements)
