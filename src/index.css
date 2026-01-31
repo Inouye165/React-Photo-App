@@ -7,6 +7,40 @@ html, body {
 }
 
 /* ========================================
+   Excalidraw Menu Branding
+   ======================================== */
+
+/* This targets the logo and branding specifically */
+.dropdown-menu-item[aria-label*="Excalidraw"],
+.main-menu-footer,
+.excalidraw-menu-logo {
+  display: none !important;
+}
+
+@media (max-width: 768px) {
+  .excalidraw-menu-logo,
+  .mobile-menu-header .excalidraw-link {
+    display: none !important;
+  }
+
+  .main-menu-footer,
+  .dropdown-menu-column > a[href*="excalidraw.com"] {
+    display: none !important;
+  }
+
+  .stack-wrapper,
+  .dropdown-menu {
+    padding-bottom: env(safe-area-inset-bottom, 0px);
+  }
+}
+
+.dropdown-menu-item.excalidraw-link,
+footer.main-menu-footer,
+a[aria-label="GitHub"] {
+  display: none !important;
+}
+
+/* ========================================
    Masonry (react-masonry-css)
    ======================================== */
 
