@@ -1,6 +1,4 @@
-import { useEffect, useMemo, useRef } from 'react'
-import { API_BASE_URL } from '../../api'
-import { acquireWhiteboardTransport } from '../../realtime/whiteboardTransportRegistry'
+import { useEffect, useRef } from 'react'
 import WhiteboardCanvas from './WhiteboardCanvas'
 import { useRealtimeToken } from '../../hooks/useRealtimeToken'
 
@@ -15,13 +13,6 @@ export default function WhiteboardViewer({ boardId, className }: WhiteboardViewe
   useEffect(() => {
     tokenRef.current = token
   }, [token])
-  const transport = useMemo(
-    () => acquireWhiteboardTransport({ apiBaseUrl: API_BASE_URL, boardId, getToken: () => tokenRef.current }),
-    [boardId],
-  )
-
-  useEffect(() => () => transport.disconnect(), [transport])
-
   if (status === 'error') {
     return (
       <div className={`flex h-full items-center justify-center rounded-2xl border border-dashed border-slate-200 text-sm text-slate-500 ${className || ''}`}>
@@ -34,7 +25,6 @@ export default function WhiteboardViewer({ boardId, className }: WhiteboardViewe
     <WhiteboardCanvas
       boardId={boardId}
       token={token}
-      transport={transport}
       mode="viewer"
       className={className}
     />

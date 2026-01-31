@@ -1,3 +1,6 @@
+/**
+ * @deprecated Legacy point-stream transport. Use Yjs + Excalidraw provider instead.
+ */
 import type { WhiteboardEvent, WhiteboardStrokeEvent, StrokeEventType, WhiteboardClearEvent, WhiteboardHistoryCursor, WhiteboardStrokeAck } from '../types/whiteboard'
 import { whiteboardDebugLog } from './whiteboardDebug'
 
