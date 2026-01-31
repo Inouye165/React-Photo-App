@@ -1,12 +1,14 @@
-import type { WhiteboardEvent, WhiteboardStrokeEvent, StrokeEventType, WhiteboardClearEvent, WhiteboardHistoryCursor } from '../types/whiteboard'
+import type { WhiteboardEvent, WhiteboardStrokeEvent, StrokeEventType, WhiteboardClearEvent, WhiteboardHistoryCursor, WhiteboardStrokeAck } from '../types/whiteboard'
 import { whiteboardDebugLog } from './whiteboardDebug'
 
 export type WhiteboardEventHandler = (event: WhiteboardEvent) => void
+export type WhiteboardAckHandler = (ack: WhiteboardStrokeAck) => void
 
 export type WhiteboardTransport = {
   connect: (boardId: string, token: string, cursor?: WhiteboardHistoryCursor | null) => Promise<void>
   send: (event: WhiteboardEvent) => void
   onEvent: (handler: WhiteboardEventHandler) => () => void
+  onAck: (handler: WhiteboardAckHandler) => () => void
   disconnect: () => void
 }
 
@@ -16,6 +18,7 @@ type SocketMessage = {
   boardId?: string
   [key: string]: any
 }
+
 
 const STROKE_TYPES: ReadonlySet<StrokeEventType> = new Set(['stroke:start', 'stroke:move', 'stroke:end'])
 const KEEP_ALIVE_INTERVAL_MS = 5000
@@ -52,6 +55,9 @@ function asStrokeEvent(message: SocketMessage): WhiteboardStrokeEvent | null {
   if (x === null || y === null) return null
   const t = typeof data.t === 'number' && Number.isFinite(data.t) ? data.t : Date.now()
   const seq = typeof data.seq === 'number' && Number.isFinite(data.seq) ? data.seq : undefined
+  const segmentIndex = typeof data.segmentIndex === 'number' && Number.isFinite(data.segmentIndex)
+    ? data.segmentIndex
+    : undefined
 
   return {
     type: message.type as StrokeEventType,
@@ -61,10 +67,26 @@ function asStrokeEvent(message: SocketMessage): WhiteboardStrokeEvent | null {
     y,
     t,
     seq,
+    segmentIndex,
     color: data.color,
     width: data.width,
     sourceId: data.sourceId,
   }
+}
+
+function asAckEvent(message: SocketMessage): WhiteboardStrokeAck | null {
+  if (message.type !== 'whiteboard:ack') return null
+  const payload = unwrapPayload(message) || message.payload || message
+  const boardId = payload?.boardId || message.boardId
+  const strokeId = payload?.strokeId
+  const segmentIndex = payload?.segmentIndex
+  if (!boardId || !strokeId) return null
+  if (typeof segmentIndex !== 'number' || !Number.isFinite(segmentIndex)) return null
+  const type = typeof payload?.type === 'string' && STROKE_TYPES.has(payload.type as StrokeEventType)
+    ? (payload.type as StrokeEventType)
+    : undefined
+  const seq = typeof payload?.seq === 'number' && Number.isFinite(payload.seq) ? payload.seq : undefined
+  return { boardId, strokeId, segmentIndex, type, seq }
 }
 
 function unwrapPayload(message: SocketMessage): any {
@@ -109,6 +131,7 @@ export function createSocketTransport({
   let activeBoardId: string | null = null
   let keepAliveTimer: any = null
   const handlers = new Set<WhiteboardEventHandler>()
+  const ackHandlers = new Set<WhiteboardAckHandler>()
   let connectPromise: Promise<void> | null = null
   let connectKey: string | null = null
   let lastToken: string | null = null
@@ -322,6 +345,12 @@ export function createSocketTransport({
             console.error('[WB] Server Error:', parsed.payload)
           }
 
+          const ack = asAckEvent(parsed)
+          if (ack) {
+            ackHandlers.forEach((handler) => handler(ack))
+            return
+          }
+
           const strokeEvent = asStrokeEvent(parsed)
           if (strokeEvent) {
             handlers.forEach((handler) => handler(strokeEvent))
@@ -400,11 +429,18 @@ export function createSocketTransport({
         handlers.delete(handler)
       }
     },
+    onAck: (handler: WhiteboardAckHandler) => {
+      ackHandlers.add(handler)
+      return () => {
+        ackHandlers.delete(handler)
+      }
+    },
     disconnect: () => {
       manualClose = true
       clearReconnect()
       stopKeepAlive()
       handlers.clear()
+      ackHandlers.clear()
       pendingEvents = []
       joined = false
       const boardId = activeBoardId

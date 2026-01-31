@@ -60,6 +60,7 @@ function createLease(entry: TransportEntry): WhiteboardTransport {
     },
     send: (event) => entry.transport.send(event),
     onEvent: (handler) => entry.transport.onEvent(handler),
+    onAck: (handler) => entry.transport.onAck(handler),
     disconnect: () => releaseTransport(entry.boardId),
   }
 }

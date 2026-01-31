@@ -8,6 +8,7 @@ export type WhiteboardStrokeEvent = {
   y: number
   t: number
   seq?: number
+  segmentIndex?: number
   sourceId?: string
   color?: string
   width?: number
@@ -21,6 +22,14 @@ export type WhiteboardClearEvent = {
 }
 
 export type WhiteboardEvent = WhiteboardStrokeEvent | WhiteboardClearEvent
+
+export type WhiteboardStrokeAck = {
+  boardId: string
+  strokeId: string
+  segmentIndex: number
+  type?: StrokeEventType
+  seq?: number
+}
 
 export type WhiteboardHistoryCursor = {
   lastSeq?: number

@@ -27,6 +27,7 @@ const StrokeEventSchema = z.object({
   x: z.number().min(0).max(1),
   y: z.number().min(0).max(1),
   t: z.number().int().nonnegative(),
+  segmentIndex: z.number().int().nonnegative().optional(),
   sourceId: z.string().min(1).max(SOURCE_ID_MAX_LENGTH).optional(),
   color: z.string().regex(/^#[0-9a-fA-F]{6}$/).optional(),
   width: z.number().min(1).max(24).optional(),
@@ -119,44 +120,63 @@ async function persistEvent(db: WhiteboardDb, event: {
   x: number;
   y: number;
   t: number;
+  segmentIndex?: number;
   sourceId?: string;
   color?: string;
   width?: number;
-}): Promise<number | null> {
-  const inserted = await (db('whiteboard_events') as any).insert({
+}): Promise<{ seq: number | null; inserted: boolean }> {
+  const insertRow = {
     board_id: event.boardId,
     event_type: event.type,
     stroke_id: event.strokeId,
     x: event.x,
     y: event.y,
     t: event.t,
+    segment_index: typeof event.segmentIndex === 'number' ? event.segmentIndex : null,
     source_id: event.sourceId ?? null,
     color: event.color ?? null,
     width: event.width ?? null,
-  }, ['id']);
-  console.log('[WB-DB] persisted event', {
-    boardId: event.boardId,
-    type: event.type,
-    strokeId: event.strokeId,
-  });
+  };
+
+  const insertQuery = (db('whiteboard_events') as any).insert(insertRow, ['id']);
+  if (typeof event.segmentIndex === 'number' && typeof insertQuery.onConflict === 'function') {
+    insertQuery.onConflict(['board_id', 'stroke_id', 'segment_index']).ignore();
+  }
+
+  const inserted = await insertQuery;
   if (Array.isArray(inserted) && inserted.length) {
     const row = inserted[0] as { id?: unknown } | number | string;
     const id = typeof row === 'object' && row !== null && 'id' in row ? (row as { id?: unknown }).id : row;
     const seq = normalizeSeq(id);
-    if (seq !== null) return seq;
+    if (seq !== null) return { seq, inserted: true };
+    return { seq: null, inserted: true };
   }
+
+  if (typeof event.segmentIndex === 'number') {
+    const existing = await db('whiteboard_events')
+      .select('id')
+      .where({
+        board_id: event.boardId,
+        stroke_id: event.strokeId,
+        segment_index: event.segmentIndex,
+      })
+      .first();
+    const existingId = typeof existing === 'object' && existing !== null && 'id' in existing ? (existing as { id?: unknown }).id : null;
+    return { seq: normalizeSeq(existingId), inserted: false };
+  }
+
   const fallback = await db('whiteboard_events')
     .select('id')
     .where({ board_id: event.boardId })
     .orderBy('id', 'desc')
     .first();
   const fallbackId = typeof fallback === 'object' && fallback !== null && 'id' in fallback ? (fallback as { id?: unknown }).id : null;
-  return normalizeSeq(fallbackId);
+  return { seq: normalizeSeq(fallbackId), inserted: false };
 }
 
 async function fetchEventsAfterSeq(db: WhiteboardDb, boardId: string, lastSeq: number): Promise<Array<Record<string, unknown>>> {
   const rows = await (db('whiteboard_events') as any)
-    .select('id', 'event_type', 'stroke_id', 'x', 'y', 't', 'source_id', 'color', 'width')
+    .select('id', 'event_type', 'stroke_id', 'x', 'y', 't', 'segment_index', 'source_id', 'color', 'width')
     .where('board_id', boardId)
     .where('id', '>', lastSeq)
     .orderBy('id', 'asc')
@@ -177,6 +197,7 @@ async function fetchEventsAfterSeq(db: WhiteboardDb, boardId: string, lastSeq: n
         y,
         t,
         seq,
+        segmentIndex: typeof evt.segment_index === 'number' ? evt.segment_index : undefined,
         sourceId: evt.source_id ?? undefined,
         color: evt.color ?? undefined,
         width: evt.width ?? undefined,
@@ -353,7 +374,7 @@ export function createWhiteboardMessageHandler({
       return true;
     }
 
-    const { boardId, strokeId, x, y, t, sourceId, color, width } = parsed.data;
+    const { boardId, strokeId, x, y, t, sourceId, color, width, segmentIndex } = parsed.data;
 
     if (!record.rooms.has(boardId)) {
       console.log('[WB-SERVER] User sent stroke but not in room. Attempting recovery.', { userId: record.userId, boardId });
@@ -390,25 +411,41 @@ export function createWhiteboardMessageHandler({
     }
 
     try {
-      const seq = await persistEvent(db, { boardId, type, strokeId, x, y, t, sourceId, color, width });
-      wbDebugLog('stroke:persisted', { boardId, type, strokeId, seq: seq ?? undefined });
-      if (type === 'stroke:end') {
-        await pruneEvents(db, boardId);
+      const result = await persistEvent(db, { boardId, type, strokeId, x, y, t, segmentIndex, sourceId, color, width });
+      wbDebugLog('stroke:persisted', { boardId, type, strokeId, seq: result.seq ?? undefined });
+
+      if (typeof segmentIndex === 'number') {
+        send('whiteboard:ack', {
+          payload: {
+            boardId,
+            strokeId,
+            segmentIndex,
+            type,
+            seq: result.seq ?? undefined,
+          },
+        });
       }
-      const result = publishToRoom(boardId, type, {
+
+      if (result.inserted) {
+        if (type === 'stroke:end') {
+          await pruneEvents(db, boardId);
+        }
+        const publishResult = publishToRoom(boardId, type, {
           boardId,
           strokeId,
           x,
           y,
           t,
-          seq: seq ?? undefined,
+          seq: result.seq ?? undefined,
+          segmentIndex,
           sourceId,
           color,
           width,
-      });
+        });
 
-      if (result.delivered === 0) {
-        // console.warn('[whiteboard] publishToRoom delivered to 0 clients', { boardId });
+        if (publishResult.delivered === 0) {
+          // console.warn('[whiteboard] publishToRoom delivered to 0 clients', { boardId });
+        }
       }
       return true;
     } catch (err) {

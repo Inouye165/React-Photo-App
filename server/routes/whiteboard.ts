@@ -32,6 +32,7 @@ type WhiteboardEventRow = {
   x: number | string;
   y: number | string;
   t: number | string;
+  segment_index: number | null;
   source_id: string | null;
   color: string | null;
   width: number | null;
@@ -59,7 +60,7 @@ async function isMember(db: Knex, boardId: string, userId: string): Promise<bool
 
 async function fetchHistory(db: Knex, boardId: string): Promise<{ events: WhiteboardEventRow[]; cursor: HistoryCursor }> {
   const rows = await db<WhiteboardEventRow>('whiteboard_events')
-    .select('id', 'event_type', 'stroke_id', 'x', 'y', 't', 'source_id', 'color', 'width')
+    .select('id', 'event_type', 'stroke_id', 'x', 'y', 't', 'segment_index', 'source_id', 'color', 'width')
     .where('board_id', boardId)
     .orderBy('id', 'asc')
     .limit(MAX_HISTORY_EVENTS);
@@ -103,6 +104,7 @@ module.exports = function createWhiteboardRouter({ db }: { db: Knex }) {
           y,
           t,
           seq: normalizeSeq(evt.id) ?? undefined,
+          segmentIndex: typeof evt.segment_index === 'number' ? evt.segment_index : undefined,
           color: evt.color ?? undefined,
           width: evt.width ?? undefined,
           sourceId: evt.source_id ?? undefined,
