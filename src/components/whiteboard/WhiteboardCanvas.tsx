@@ -1,11 +1,12 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import type { PointerEvent } from 'react'
-import type { WhiteboardEvent, WhiteboardHistoryCursor, WhiteboardStrokeEvent } from '../../types/whiteboard'
+import type { WhiteboardEvent, WhiteboardHistoryCursor, WhiteboardStrokeAck, WhiteboardStrokeEvent } from '../../types/whiteboard'
 import type { WhiteboardTransport } from '../../realtime/whiteboardTransport'
 import { fetchWhiteboardSnapshot } from '../../api/whiteboard'
 import { normalizeHistoryEvents } from '../../realtime/whiteboardReplay'
 import { whiteboardDebugLog } from '../../realtime/whiteboardDebug'
 import { BOARD_ASPECT, computeContainedRect, type ContainedRect } from './whiteboardAspect'
+import { createStrokePersistenceQueue, createStrokeSegmenter } from '../../realtime/whiteboardStrokeQueue'
 import {
   appendWhiteboardSnapshotCache,
   clearWhiteboardSnapshotCache,
@@ -60,6 +61,8 @@ export default function WhiteboardCanvas({
   const pendingEventsRef = useRef<WhiteboardEvent[]>([])
   const surfaceRectRef = useRef<ContainedRect>({ left: 0, top: 0, width: 0, height: 0 })
   const tokenReady = Boolean(token)
+  const strokeQueueRef = useRef<ReturnType<typeof createStrokePersistenceQueue> | null>(null)
+  const segmenterRef = useRef(createStrokeSegmenter())
   
   const [status, setStatus] = useState<'idle' | 'connecting' | 'connected' | 'error'>('idle')
   
@@ -265,6 +268,9 @@ export default function WhiteboardCanvas({
     }
 
     const unsubscribe = transport.onEvent(handleIncoming)
+    const unsubscribeAck = transport.onAck((ack: WhiteboardStrokeAck) => {
+      strokeQueueRef.current?.ack(ack)
+    })
 
     const applyPendingEvents = () => {
       if (!pendingEventsRef.current.length) return
@@ -354,16 +360,54 @@ export default function WhiteboardCanvas({
       cancelled = true
       abortController.abort()
       unsubscribe()
+      unsubscribeAck()
       transport.disconnect()
     }
     // We intentionally exclude 'token' to prevent the refresh loop
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [boardId, transport, effectiveSourceId, resetCanvasState, redrawFromBuffer, tokenReady]) 
 
+  useEffect(() => {
+    const queue = createStrokePersistenceQueue({
+      send: (event) => transport.send(event),
+    })
+    strokeQueueRef.current = queue
+
+    const handleVisibility = () => {
+      if (document.visibilityState === 'hidden') {
+        queue.flush('visibility')
+      }
+    }
+
+    const handlePageHide = () => {
+      queue.flush('unmount')
+    }
+
+    const handleOnline = () => {
+      queue.flush('manual')
+    }
+
+    document.addEventListener('visibilitychange', handleVisibility)
+    window.addEventListener('pagehide', handlePageHide)
+    window.addEventListener('online', handleOnline)
+
+    return () => {
+      document.removeEventListener('visibilitychange', handleVisibility)
+      window.removeEventListener('pagehide', handlePageHide)
+      window.removeEventListener('online', handleOnline)
+      queue.flush('unmount')
+      queue.stop()
+      segmenterRef.current.reset()
+    }
+  }, [transport])
+
   const emitEvent = useCallback((evt: WhiteboardStrokeEvent) => {
     enqueueEvent(evt)
-    transport.send(evt)
-  }, [enqueueEvent, transport])
+    if (typeof evt.segmentIndex !== 'number') {
+      return
+    }
+    strokeQueueRef.current?.enqueue({ ...evt, segmentIndex: evt.segmentIndex })
+  }, [enqueueEvent])
 
   const handleErase = useCallback(() => {
     drawingBufferRef.current = []
@@ -398,6 +442,7 @@ export default function WhiteboardCanvas({
 
     event.currentTarget.setPointerCapture(event.pointerId)
 
+    const segmentIndex = segmenterRef.current.nextSegmentIndex(strokeId)
     emitEvent({
       type: 'stroke:start',
       boardId,
@@ -405,6 +450,7 @@ export default function WhiteboardCanvas({
       x: point.x,
       y: point.y,
       t: Date.now(),
+      segmentIndex,
       sourceId: effectiveSourceId ?? undefined,
       color: DEFAULT_COLOR,
       width: DEFAULT_WIDTH,
@@ -431,6 +477,7 @@ export default function WhiteboardCanvas({
     state.x = point.x
     state.y = point.y
 
+    const segmentIndex = segmenterRef.current.nextSegmentIndex(state.strokeId)
     emitEvent({
       type: 'stroke:move',
       boardId,
@@ -438,6 +485,7 @@ export default function WhiteboardCanvas({
       x: point.x,
       y: point.y,
       t: Date.now(),
+      segmentIndex,
       sourceId: effectiveSourceId ?? undefined,
       color: DEFAULT_COLOR,
       width: DEFAULT_WIDTH,
@@ -449,8 +497,8 @@ export default function WhiteboardCanvas({
     if (!state) return
     pointerStatesRef.current.delete(pointerId)
 
-    const point = normalizePoint(clientX, clientY)
-    if (!point) return
+    const point = normalizePoint(clientX, clientY) ?? { x: state.x, y: state.y }
+    const segmentIndex = segmenterRef.current.nextSegmentIndex(state.strokeId)
 
     emitEvent({
       type: 'stroke:end',
@@ -459,10 +507,13 @@ export default function WhiteboardCanvas({
       x: point.x,
       y: point.y,
       t: Date.now(),
+      segmentIndex,
       sourceId: effectiveSourceId ?? undefined,
       color: DEFAULT_COLOR,
       width: DEFAULT_WIDTH,
     })
+    strokeQueueRef.current?.flush('stroke-end')
+    segmenterRef.current.clearStroke(state.strokeId)
   }, [boardId, effectiveSourceId, emitEvent, normalizePoint])
 
   const handlePointerUp = useCallback((event: PointerEvent<HTMLCanvasElement>) => {
