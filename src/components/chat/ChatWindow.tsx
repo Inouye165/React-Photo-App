@@ -29,6 +29,7 @@ import PotluckWidget from './widgets/PotluckWidget'
 import LocationMapPanel from '../LocationMapPanel'
 import { IdentityGateInline, useIdentityGateStatus } from '../IdentityGate'
 import WhiteboardViewer from '../whiteboard/WhiteboardViewer'
+import { openSingletonWindow } from '../../utils/openSingletonWindow'
 
 export interface ChatWindowProps {
   roomId: string | null
@@ -76,7 +77,10 @@ export default function ChatWindow({ roomId, showIdentityGate, mode = 'workspace
   const { messages, loading, error } = useChatRealtime(roomId, { userId: user?.id ?? null })
   const { isUserOnline } = usePresence(user?.id)
   const isConversationMode = mode === 'conversation'
-  
+  const handleOpenPad = useCallback(() => {
+    if (!roomId) return
+    openSingletonWindow(`/chat/${roomId}/pad`, `whiteboard-pad-${roomId}`)
+  }, [roomId])
 
   const [draft, setDraft] = useState<string>('')
   const [sending, setSending] = useState<boolean>(false)
@@ -988,12 +992,10 @@ export default function ChatWindow({ roomId, showIdentityGate, mode = 'workspace
     return chatThread
   }
 
-  const showRightPanel = !isCollaboration
-
   return (
-    <div className={showRightPanel ? 'grid h-full min-h-0 grid-cols-1 md:grid-cols-[minmax(0,1fr)_minmax(0,360px)]' : 'h-full min-h-0'}>
+    <div className="grid h-full min-h-0 grid-cols-1 md:grid-cols-[minmax(0,1fr)_minmax(0,360px)]">
       <section
-        className={`flex flex-col h-full min-h-0 ${showRightPanel ? 'border-r border-slate-200' : ''}`}
+        className="flex flex-col h-full min-h-0 border-r border-slate-200"
         aria-label={isCollaboration ? 'Collaboration board' : 'Potluck board'}
       >
         <div className="flex-1 min-h-0 overflow-auto">
@@ -1023,9 +1025,27 @@ export default function ChatWindow({ roomId, showIdentityGate, mode = 'workspace
         </div>
       </section>
 
-      {showRightPanel ? (
-        <section className="relative h-full min-h-0" aria-label="Location map">
-          <div className="h-full overflow-auto">
+      <section className="relative h-full min-h-0" aria-label={isCollaboration ? 'Pad mode' : 'Location map'}>
+        <div className="h-full overflow-auto">
+          {isCollaboration ? (
+            <DashboardCard title="Pad mode">
+              <div className="space-y-3 text-sm text-slate-600">
+                <p>Open pad mode on a phone or tablet to draw. Strokes appear here live.</p>
+                {roomId ? (
+                  <button
+                    type="button"
+                    onClick={handleOpenPad}
+                    className="inline-flex items-center justify-center rounded-lg bg-slate-900 px-4 py-2 text-sm font-semibold text-white hover:bg-slate-800"
+                  >
+                    Open pad mode
+                  </button>
+                ) : (
+                  <span className="text-xs text-slate-500">Select a room to enable pad mode.</span>
+                )}
+                <div className="text-xs text-slate-500">Tip: keep the pad screen awake while drawing.</div>
+              </div>
+            </DashboardCard>
+          ) : (
             <DashboardCard title="Location">
               {hasLatLng ? (
                 <div className="rounded-xl overflow-hidden border border-slate-200">
@@ -1043,9 +1063,9 @@ export default function ChatWindow({ roomId, showIdentityGate, mode = 'workspace
                 </div>
               )}
             </DashboardCard>
-          </div>
-        </section>
-      ) : null}
+          )}
+        </div>
+      </section>
     </div>
   )
 }

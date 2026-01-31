@@ -1,9 +1,8 @@
 import { useEffect, useMemo, useRef } from 'react'
 import { API_BASE_URL } from '../../api'
 import { acquireWhiteboardTransport } from '../../realtime/whiteboardTransportRegistry'
-import { useRealtimeToken } from '../../hooks/useRealtimeToken'
 import WhiteboardCanvas from './WhiteboardCanvas'
-import WhiteboardOverlayToolbar from './WhiteboardOverlayToolbar'
+import { useRealtimeToken } from '../../hooks/useRealtimeToken'
 
 type WhiteboardViewerProps = {
   boardId: string
@@ -32,14 +31,12 @@ export default function WhiteboardViewer({ boardId, className }: WhiteboardViewe
   }
 
   return (
-    <WhiteboardOverlayToolbar boardId={boardId} className={className}>
-      <WhiteboardCanvas
-        boardId={boardId}
-        token={token}
-        transport={transport}
-        mode="viewer"
-        className="h-full"
-      />
-    </WhiteboardOverlayToolbar>
+    <WhiteboardCanvas
+      boardId={boardId}
+      token={token}
+      transport={transport}
+      mode="viewer"
+      className={className}
+    />
   )
 }
