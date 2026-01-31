@@ -1,8 +1,9 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
-import type { PointerEvent } from 'react'
+import type { ChangeEvent, PointerEvent } from 'react'
 import { Excalidraw, MainMenu } from '@excalidraw/excalidraw'
 import type {
   AppState,
+  BinaryFileData,
   BinaryFiles,
   ExcalidrawImperativeAPI,
   ExcalidrawInitialDataState,
@@ -655,6 +656,7 @@ export default function WhiteboardCanvas({ boardId, token, mode, className }: Ex
   const viewModeEnabledRef = useRef(viewModeEnabled)
   const docRef = useRef<Y.Doc | null>(null)
   const mapRef = useRef<Y.Map<unknown> | null>(null)
+  const fileInputRef = useRef<HTMLInputElement | null>(null)
   const suppressSyncRef = useRef(false)
   const isLocallyDrawingRef = useRef(false)
   const pendingRemoteSyncRef = useRef(false)
@@ -680,6 +682,13 @@ export default function WhiteboardCanvas({ boardId, token, mode, className }: Ex
   useEffect(() => {
     viewModeEnabledRef.current = viewModeEnabled
   }, [viewModeEnabled])
+
+  const generateId = useCallback(() => {
+    if (typeof globalThis.crypto?.randomUUID === 'function') {
+      return globalThis.crypto.randomUUID()
+    }
+    return `${Date.now()}-${Math.random().toString(16).slice(2)}`
+  }, [])
 
   const applySceneFromYjs = useCallback(() => {
     const map = mapRef.current
@@ -731,6 +740,117 @@ export default function WhiteboardCanvas({ boardId, token, mode, className }: Ex
     if (!awareness) return
     awareness.setLocalStateField('mode', isViewMode ? 'viewer' : 'draw')
     awareness.setLocalStateField('canWrite', !isViewMode)
+  }, [])
+
+  const readFileAsDataUrl = useCallback((file: File) => {
+    return new Promise<string>((resolve, reject) => {
+      const reader = new FileReader()
+      reader.onload = () => {
+        if (typeof reader.result === 'string') {
+          resolve(reader.result)
+        } else {
+          reject(new Error('Unable to read image data.'))
+        }
+      }
+      reader.onerror = () => {
+        reject(reader.error ?? new Error('Unable to read image data.'))
+      }
+      reader.readAsDataURL(file)
+    })
+  }, [])
+
+  const loadImageDimensions = useCallback((dataUrl: string) => {
+    return new Promise<{ width: number; height: number }>((resolve, reject) => {
+      const image = new Image()
+      image.onload = () => {
+        resolve({
+          width: image.naturalWidth || image.width,
+          height: image.naturalHeight || image.height,
+        })
+      }
+      image.onerror = () => reject(new Error('Unable to load image.'))
+      image.src = dataUrl
+    })
+  }, [])
+
+  const handleImageUpload = useCallback(
+    async (event: ChangeEvent<HTMLInputElement>) => {
+      const file = event.target.files?.[0]
+      event.target.value = ''
+      if (!file) return
+
+      const api = excalidrawApiRef.current
+      if (!api) return
+
+      try {
+        const dataUrl = await readFileAsDataUrl(file)
+        const dimensions = await loadImageDimensions(dataUrl)
+        const width = Math.max(1, dimensions.width)
+        const height = Math.max(1, dimensions.height)
+        const fileId = generateId() as BinaryFileData['id']
+        const elementId = generateId()
+        const now = Date.now()
+        const elements = api.getSceneElements()
+        const imageIndex = elements[0]?.index ?? 'a'
+
+        const fileData: BinaryFileData = {
+          id: fileId,
+          dataURL: dataUrl as BinaryFileData['dataURL'],
+          mimeType: (file.type || 'image/png') as BinaryFileData['mimeType'],
+          created: now,
+          lastRetrieved: now,
+        }
+
+        api.addFiles([fileData])
+
+        const imageElement = {
+          id: elementId,
+          type: 'image',
+          x: 0,
+          y: 0,
+          width,
+          height,
+          angle: 0,
+          strokeColor: 'transparent',
+          backgroundColor: 'transparent',
+          fillStyle: 'solid',
+          strokeWidth: 1,
+          strokeStyle: 'solid',
+          roughness: 0,
+          opacity: 100,
+          groupIds: [],
+          frameId: null,
+          roundness: null,
+          seed: Math.floor(Math.random() * 2 ** 31),
+          version: 1,
+          versionNonce: Math.floor(Math.random() * 2 ** 31),
+          index: imageIndex,
+          isDeleted: false,
+          boundElements: null,
+          updated: now,
+          link: null,
+          locked: true,
+          fileId,
+          scale: [1, 1],
+          crop: null,
+          status: 'pending',
+        } as ExcalidrawElement
+
+        api.updateScene({
+          elements: [imageElement, ...elements],
+        })
+      } catch (error) {
+        whiteboardDebugLog('whiteboard:background:upload:error', {
+          boardId,
+          message: error instanceof Error ? error.message : String(error),
+        })
+      }
+    },
+    [boardId, generateId, loadImageDimensions, readFileAsDataUrl],
+  )
+
+  const handleBackgroundSelect = useCallback(() => {
+    fileInputRef.current?.click()
   }, [])
 
   const commitPendingLocalScene = useCallback(() => {
@@ -976,6 +1096,27 @@ export default function WhiteboardCanvas({ boardId, token, mode, className }: Ex
           </p>
         </div>
         <div className="flex items-center gap-2">
+          {mode === 'pad' && (
+            <>
+              <input
+                ref={fileInputRef}
+                type="file"
+                accept="image/*"
+                onChange={handleImageUpload}
+                className="hidden"
+                aria-hidden="true"
+                tabIndex={-1}
+              />
+              <button
+                type="button"
+                className="rounded-full border border-slate-200 px-3 py-1 text-xs font-medium text-slate-700 transition hover:border-slate-300 hover:text-slate-900"
+                onClick={handleBackgroundSelect}
+                aria-label="Set background image"
+              >
+                Set Background
+              </button>
+            </>
+          )}
           <button
             type="button"
             className="rounded-full border border-slate-200 px-3 py-1 text-xs font-medium text-slate-700 transition hover:border-slate-300 hover:text-slate-900"
