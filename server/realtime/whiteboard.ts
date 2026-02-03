@@ -12,7 +12,6 @@ const MAX_EVENTS_PER_WINDOW = process.env.NODE_ENV === 'development' ? 10000 : 2
 const RATE_LIMIT_WINDOW_MS = 5000;
 const MAX_EVENTS_PER_BOARD = 20000;
 const MAX_DELTA_EVENTS = 5000;
-<<<<<<< HEAD
 const WHITEBOARD_DIAGNOSTICS_INTERVAL_MS = 5000;
 const WHITEBOARD_DEBUG = process.env.NODE_ENV === 'development';
 
@@ -90,78 +89,6 @@ function createDiagnostics(enabled: boolean) {
     recordRejected: (reason: RejectReason, boardId: string, strokeId: string) => record(rejected, reason, boardId, strokeId),
   };
 }
-=======
-const WHITEBOARD_DIAGNOSTICS_INTERVAL_MS = 5000;
-const WHITEBOARD_DEBUG = process.env.NODE_ENV === 'development';
-
-type RejectReason = 'rate_limited' | 'payload_too_large' | 'invalid_payload';
-
-type DiagnosticsEntry = {
-  boardId: string;
-  strokeId: string;
-  reason: RejectReason | 'accepted';
-  count: number;
-};
-
-const UNKNOWN_ID = 'unknown';
-
-function isRecord(value: unknown): value is Record<string, unknown> {
-  return typeof value === 'object' && value !== null;
-}
-
-function extractIds(payload: unknown): { boardId: string; strokeId: string } {
-  if (!isRecord(payload)) {
-    return { boardId: UNKNOWN_ID, strokeId: UNKNOWN_ID };
-  }
-  const boardId = typeof payload.boardId === 'string' ? payload.boardId : UNKNOWN_ID;
-  const strokeId = typeof payload.strokeId === 'string' ? payload.strokeId : UNKNOWN_ID;
-  return { boardId, strokeId };
-}
-
-function createDiagnostics(enabled: boolean) {
-  if (!enabled) {
-    return {
-      recordAccepted: (_boardId: string, _strokeId: string) => undefined,
-      recordRejected: (_reason: RejectReason, _boardId: string, _strokeId: string) => undefined,
-    };
-  }
-
-  const accepted = new Map<string, DiagnosticsEntry>();
-  const rejected = new Map<string, DiagnosticsEntry>();
-
-  const buildKey = (boardId: string, strokeId: string, reason: DiagnosticsEntry['reason']) =>
-    `${boardId}:${strokeId}:${reason}`;
-
-  const record = (map: Map<string, DiagnosticsEntry>, reason: DiagnosticsEntry['reason'], boardId: string, strokeId: string) => {
-    const key = buildKey(boardId, strokeId, reason);
-    const existing = map.get(key);
-    if (existing) {
-      existing.count += 1;
-      return;
-    }
-    map.set(key, { boardId, strokeId, reason, count: 1 });
-  };
-
-  const flush = () => {
-    if (accepted.size === 0 && rejected.size === 0) return;
-    for (const entry of accepted.values()) {
-      console.log('[WB-DIAG]', entry);
-    }
-    for (const entry of rejected.values()) {
-      console.log('[WB-DIAG]', entry);
-    }
-    accepted.clear();
-    rejected.clear();
-  };
-
-  setInterval(flush, WHITEBOARD_DIAGNOSTICS_INTERVAL_MS);
-
-  return {
-    recordAccepted: (boardId: string, strokeId: string) => record(accepted, 'accepted', boardId, strokeId),
-    recordRejected: (reason: RejectReason, boardId: string, strokeId: string) => record(rejected, reason, boardId, strokeId),
-  };
-}
->>>>>>> 726ce85 (Add migration existence guards and whiteboard ack/error handling)
 
 function wbDebugLog(label: string, data?: Record<string, unknown>): void {
   if (!WHITEBOARD_DEBUG) return;
