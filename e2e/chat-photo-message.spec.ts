@@ -1,6 +1,7 @@
 import { test, expect } from '@playwright/test'
 import { fetchCsrfToken } from './helpers/csrf'
 import { acceptDisclaimer } from './helpers/disclaimer'
+import { mockCoreApi } from './helpers/mockCoreApi'
 
 // 1x1 transparent PNG
 const ONE_BY_ONE_PNG = Buffer.from(
@@ -9,6 +10,7 @@ const ONE_BY_ONE_PNG = Buffer.from(
 )
 
 test('E2E chat: renders a photo message (recipient view)', async ({ page, context }) => {
+  await mockCoreApi(page)
   await page.addInitScript(() => {
     window.__E2E_MODE__ = true
   })

@@ -1,9 +1,11 @@
 import { test, expect } from '@playwright/test';
 import { acceptDisclaimer } from './helpers/disclaimer';
 import { fetchCsrfToken } from './helpers/csrf';
+import { mockCoreApi } from './helpers/mockCoreApi';
 
 test.describe('Map Component', () => {
   test('should render Google Maps and not the OpenStreetMap fallback', async ({ page, context }) => {
+    await mockCoreApi(page);
     // Inject E2E mode flag
     await page.addInitScript(() => {
       window.__E2E_MODE__ = true;

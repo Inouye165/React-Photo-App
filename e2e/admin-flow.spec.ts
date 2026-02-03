@@ -16,8 +16,10 @@
 
 import { test, expect } from '@playwright/test';
 import { acceptDisclaimer } from './helpers/disclaimer';
+import { mockCoreApi } from './helpers/mockCoreApi';
 
 async function loginAsUser(page, role: 'admin' | 'user' = 'user') {  page.on('console', msg => console.log(`BROWSER LOG: ${msg.text()}`));  // Force E2E mode in the SPA even if the dev server was reused without --mode e2e.
+  await mockCoreApi(page);
   await page.addInitScript(() => {
     window.__E2E_MODE__ = true;
   });
