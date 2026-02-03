@@ -2,8 +2,10 @@ import { test, expect } from '@playwright/test';
 import AxeBuilder from '@axe-core/playwright';
 import { acceptDisclaimer } from './helpers/disclaimer';
 import { fetchCsrfToken } from './helpers/csrf';
+import { mockCoreApi } from './helpers/mockCoreApi';
 
 test('A11y: gallery page', async ({ page, context }) => {
+  await mockCoreApi(page);
   // Set up route mocks FIRST before any requests
   await page.route('**/api/test/e2e-verify', async route => {
     await route.fulfill({

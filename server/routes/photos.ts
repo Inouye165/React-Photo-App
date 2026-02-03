@@ -1,32 +1,6 @@
 /**
- * Photos Routes - TypeScript
- * 
- * REST API endpoints for photo management: listing, fetching, updating metadata,
- * state transitions, AI processing, and image display.
- * 
- * SECURITY:
- * - All routes protected by authenticateToken middleware
- * - User ownership validated via req.user.id on all operations
- * - UUID validation prevents SQL injection
- * - Rate limiting applied at the application level
- * 
- * Endpoints:
- * - GET /photos/status - Dashboard status counts by state
- * - GET /photos - List photos with pagination and filtering
- * - GET /photos/models - Available AI models
- * - GET /photos/dependencies - Check service dependencies
- * - GET /photos/:id - Single photo details
- * - GET /photos/:id/original - Download original file
- * - GET /photos/:id/thumbnail-url - Generate signed thumbnail URL
- * - PATCH /photos/:id/metadata - Update photo metadata
- * - PATCH /photos/:id/revert - Revert edited image
- * - DELETE /photos/:id - Delete photo
- * - PATCH /photos/:id/state - Transition photo state
- * - POST /photos/save-captioned-image - Save edited image with captions
- * - POST /photos/:id/recheck-ai - Re-run AI analysis
- * - POST /photos/:id/reextract-metadata - Re-extract EXIF metadata
- * - POST /photos/:id/run-ai - Queue AI processing
- * - GET /photos/display/:state/:filename - Serve images from storage
+ * Photos router: HTTP boundaries only.
+ * Keep workflow-heavy logic in service helpers so handlers stay readable.
  */
 
 import express, { Router, Request, Response } from 'express';
@@ -50,6 +24,12 @@ const { checkRedisAvailable } = require('../queue');
 const { validateRequest } = require('../validation/validateRequest');
 const { photosListQuerySchema, photoIdParamsSchema } = require('../validation/schemas/photos');
 const { mapPhotoRowToListDto, mapPhotoRowToDetailDto } = require('../serializers/photos');
+const {
+  buildDeleteList,
+  reextractMetadataWorkflow,
+  sanitizeDownloadName,
+  saveCaptionedImageWorkflow,
+} = require('../services/photosWorkflows');
 
 // ============================================================================
 // Types & Interfaces
@@ -561,9 +541,11 @@ export default function createPhotosRouter({ db, supabase }: PhotosRouterDepende
         return res.status(500).json({ success: false, error: 'Failed to create download URL' } as ErrorResponse);
       }
 
-      const rawName = String(row.original_filename || row.filename || `photo-${row.id}`);
-      const baseName = path.posix.basename(rawName.replace(/\\/g, '/')).trim() || `photo-${row.id}`;
-      const safeName = baseName.slice(0, 180).replace(/[^a-zA-Z0-9._ -]/g, '_');
+      const safeName = sanitizeDownloadName({
+        id: row.id,
+        original_filename: row.original_filename,
+        filename: row.filename,
+      });
 
       const signedUrl = new URL(data.signedUrl);
       signedUrl.searchParams.set('download', safeName);
@@ -743,59 +725,7 @@ export default function createPhotosRouter({ db, supabase }: PhotosRouterDepende
           return res.status(404).json({ success: false, error: 'Photo not found' } as ErrorResponse);
         }
 
-        const mainPath = row.storage_path || `${row.state}/${row.filename}`;
-        const servedPath = row.display_path || mainPath;
-
-        const legacyLargeThumbPath = row.hash ? `thumbnails/${row.hash}.jpg` : null;
-        const legacySmallThumbPath = row.hash ? `thumbnails/${row.hash}-sm.jpg` : null;
-
-        const thumbLargePath = row.thumb_path || legacyLargeThumbPath;
-        const thumbSmallPath = row.thumb_small_path || legacySmallThumbPath;
-        const editedPath = row.edited_filename ? `inprogress/${row.edited_filename}` : null;
-
-        const paths = new Set<string>();
-        const addPath = (p: unknown) => {
-          if (typeof p !== 'string') return;
-          const trimmed = p.trim();
-          if (!trimmed) return;
-          paths.add(trimmed);
-        };
-
-        // Derivatives first (prevent orphan thumbnails), served asset last.
-        addPath(thumbSmallPath);
-        addPath(thumbLargePath);
-        addPath(editedPath);
-
-        // Primary objects (may overlap).
-        addPath(row.original_path);
-        addPath(mainPath);
-        addPath(row.display_path);
-
-        const ordered: string[] = [];
-        const pushIfPresent = (p: string | null) => {
-          if (!p) return;
-          if (paths.has(p)) ordered.push(p);
-        };
-
-        // Derivatives
-        pushIfPresent(thumbSmallPath);
-        pushIfPresent(thumbLargePath);
-        pushIfPresent(editedPath);
-
-        // Non-served primary objects (best-effort ordering)
-        if (servedPath !== mainPath) pushIfPresent(mainPath);
-        if (row.original_path && row.original_path !== servedPath) pushIfPresent(row.original_path);
-        if (row.display_path && row.display_path !== servedPath) pushIfPresent(row.display_path);
-
-        // Served asset last
-        pushIfPresent(servedPath);
-
-        const seen = new Set<string>();
-        const deleteList = ordered.filter((p) => {
-          if (seen.has(p)) return false;
-          seen.add(p);
-          return true;
-        });
+        const deleteList = buildDeleteList(row);
 
         // Storage deletion MUST succeed before deleting the DB row.
         for (const objectPath of deleteList) {
@@ -870,100 +800,58 @@ export default function createPhotosRouter({ db, supabase }: PhotosRouterDepende
   router.post('/save-captioned-image', authenticateToken, async (req: AuthenticatedRequest, res: Response) => {
     const { photoId, dataURL, caption, description, keywords, textStyle } = (req.body || {}) as SaveCaptionedImageBody;
     if (!photoId) return res.status(400).json({ success: false, error: 'photoId is required' } as ErrorResponse);
-    if (typeof dataURL !== 'string' || !dataURL.startsWith('data:')) return res.status(400).json({ success: false, error: 'Invalid image dataURL' } as ErrorResponse);
-    const dataUrlMatch = dataURL.match(/^data:(image\/[a-zA-Z0-9.+-]+);base64,(.+)$/);
-    if (!dataUrlMatch) return res.status(400).json({ success: false, error: 'Unsupported data URL format' } as ErrorResponse);
-    const base64Data = dataUrlMatch[2];
-    let imageBuffer: Buffer;
-    try { imageBuffer = Buffer.from(base64Data, 'base64'); } catch { return res.status(400).json({ success: false, error: 'Unable to decode image data' } as ErrorResponse); }
-    if (!imageBuffer || imageBuffer.length === 0) return res.status(400).json({ success: false, error: 'Image data is empty' } as ErrorResponse);
+
     try {
-      const resolvedId = await photosDb.resolvePhotoPrimaryId(photoId, req.user!.id);
-      if (!resolvedId) return res.status(404).json({ success: false, error: 'Photo not found' } as ErrorResponse);
-
-      const photoRow = await photosDb.getPhotoById(resolvedId, req.user!.id);
-      if (!photoRow) return res.status(404).json({ success: false, error: 'Photo not found' } as ErrorResponse);
-
-      const originalExt = path.extname(photoRow.filename);
-      const baseName = path.basename(photoRow.filename, originalExt);
-      let editedFilename = `${baseName}-edit.jpg`;
-      let counter = 1;
-
-      while (true) {
-        const { data: existingFiles } = await photosStorage.listPhotos('inprogress', { search: editedFilename });
-
-        if (!existingFiles || existingFiles.length === 0) {
-          break;
-        }
-
-        editedFilename = `${baseName}-edit-${counter}.jpg`;
-        counter++;
-      }
-
-      const orientedBuffer = await photosImage.convertHeicToJpeg(imageBuffer);
-      const editedPath = `inprogress/${editedFilename}`;
-      const { error: uploadError } = await photosStorage.uploadPhoto(editedPath, orientedBuffer, { contentType: 'image/jpeg', duplex: false });
-      if (uploadError) {
-        logger.error('Supabase upload error for edited image:', uploadError);
-        return res.status(500).json({ success: false, error: 'Failed to upload edited image to storage' } as ErrorResponse);
-      }
-
-      let metadata: Record<string, unknown> = {};
-      try { metadata = await photosImage.extractMetadata(orientedBuffer); } catch (metaErr) { const err = metaErr as Error; logger.warn('Failed to parse metadata for edited image', err?.message); }
-
-      let mergedMetadata = metadata || {};
-      try {
-        const { mergeMetadataPreservingLocationAndDate } = require('../media/backgroundProcessor');
-        const existingMeta = typeof photoRow.metadata === 'string' ? JSON.parse(photoRow.metadata || '{}') : (photoRow.metadata || {});
-        mergedMetadata = mergeMetadataPreservingLocationAndDate(existingMeta, metadata);
-      } catch (mergeErr) {
-        const err = mergeErr as Error;
-        logger.warn('Failed to merge metadata for edited image; falling back to extracted metadata only', err?.message);
-      }
-
-      const newHash = photosImage.computeHash(orientedBuffer);
-      const now = new Date().toISOString();
-
-      const newCaption = caption !== undefined ? caption : photoRow.caption;
-      const newDescription = description !== undefined ? description : photoRow.description;
-      const newKeywords = keywords !== undefined ? keywords : photoRow.keywords;
-      const newTextStyleJson = textStyle === undefined ? photoRow.text_style : textStyle === null ? null : JSON.stringify(textStyle);
-
-      await photosDb.updatePhoto(resolvedId, req.user!.id, {
-        edited_filename: editedFilename,
-        caption: newCaption,
-        description: newDescription,
-        keywords: newKeywords,
-        text_style: newTextStyleJson,
-        metadata: JSON.stringify(mergedMetadata || {}),
-        hash: newHash,
-        file_size: orientedBuffer.length,
-        storage_path: editedPath,
-        updated_at: now
+      const result = await saveCaptionedImageWorkflow({
+        photoId,
+        userId: req.user!.id,
+        dataURL,
+        caption,
+        description,
+        keywords,
+        textStyle,
+        photosDb,
+        photosStorage,
+        photosImage,
+        logger,
       });
 
       let parsedTextStyle: TextStyle | null = null;
-      if (newTextStyleJson) {
-        try { parsedTextStyle = JSON.parse(newTextStyleJson as string); } catch { logger.warn('Failed to parse text_style after save for photo', photoId); }
+      if (result.textStyleJson) {
+        try { parsedTextStyle = JSON.parse(result.textStyleJson); } catch { logger.warn('Failed to parse text_style after save for photo', photoId); }
       }
 
       res.json({
         success: true,
         id: photoId,
-        filename: photoRow.filename,
-        editedFilename,
-        state: photoRow.state,
-        caption: newCaption,
-        description: newDescription,
-        keywords: newKeywords,
+        filename: result.photo.filename,
+        editedFilename: result.editedFilename,
+        state: result.photo.state,
+        caption: result.caption,
+        description: result.description,
+        keywords: result.keywords,
         textStyle: parsedTextStyle,
-        hash: newHash,
-        fileSize: orientedBuffer.length,
-        metadata: mergedMetadata,
-        storagePath: editedPath
+        hash: result.hash,
+        fileSize: result.fileSize,
+        metadata: result.metadata,
+        storagePath: result.editedPath,
       });
     } catch (err) {
       const error = err as Error;
+      const badRequestErrors = new Set([
+        'Invalid image dataURL',
+        'Unsupported data URL format',
+        'Unable to decode image data',
+        'Image data is empty',
+      ]);
+
+      if (badRequestErrors.has(error.message)) {
+        return res.status(400).json({ success: false, error: error.message } as ErrorResponse);
+      }
+      if (error.message === 'Photo not found') {
+        return res.status(404).json({ success: false, error: error.message } as ErrorResponse);
+      }
+
       logger.error('Failed to save captioned image for photo', error);
       res.status(500).json({ success: false, error: error.message || 'Failed to save captioned image' } as ErrorResponse);
     }
@@ -979,49 +867,13 @@ export default function createPhotosRouter({ db, supabase }: PhotosRouterDepende
         return res.status(404).json({ error: 'Photo not found' });
       }
 
-      try {
-        const { downloadFromStorage, extractMetadata, mergeMetadataPreservingLocationAndDate } = require('../media/backgroundProcessor');
-
-        logger.info(`Re-extracting metadata for photo ${photo.id} during recheck-ai`);
-
-        let buffer: Buffer | undefined;
-        let filename = photo.filename;
-
-        try {
-          buffer = await downloadFromStorage(photo.filename);
-        } catch {
-          const processedFilename = photo.filename.replace(/\.heic$/i, '.heic.processed.jpg');
-          try {
-            buffer = await downloadFromStorage(processedFilename);
-            filename = processedFilename;
-          } catch (err2) {
-            const error = err2 as Error;
-            logger.warn(`Could not re-extract metadata for photo ${photo.id}: ${error.message}`);
-          }
-        }
-
-        if (buffer) {
-          const metadata = await extractMetadata(buffer, filename);
-          if (metadata && Object.keys(metadata).length > 0) {
-            let merged;
-            try {
-              const existing = typeof photo.metadata === 'string' ? JSON.parse(photo.metadata || '{}') : (photo.metadata || {});
-              merged = mergeMetadataPreservingLocationAndDate(existing, metadata);
-            } catch (mergeErr) {
-              const err = mergeErr as Error;
-              logger.warn(`Metadata merge failed for photo ${photo.id} during recheck-ai: ${err.message}`);
-              merged = metadata;
-            }
-            await photosDb.updatePhoto(photo.id, req.user!.id, {
-              metadata: JSON.stringify(merged)
-            });
-            logger.info(`Successfully re-extracted metadata for photo ${photo.id}`);
-          }
-        }
-      } catch (metadataError) {
-        const err = metadataError as Error;
-        logger.warn(`Metadata re-extraction failed for photo ${photo.id}:`, err.message);
-      }
+      await reextractMetadataWorkflow({
+        photo,
+        userId: req.user!.id,
+        photosDb,
+        logger,
+        strict: false,
+      });
 
       const body = req.body as AiRecheckBody;
       const modelOverride = body?.model || (req.query?.model as string) || null;
@@ -1066,56 +918,28 @@ export default function createPhotosRouter({ db, supabase }: PhotosRouterDepende
         return res.status(404).json({ error: 'Photo not found' });
       }
 
-      const { downloadFromStorage, extractMetadata, mergeMetadataPreservingLocationAndDate } = require('../media/backgroundProcessor');
-
-      logger.info(`Re-extracting metadata for photo ${photo.id}`);
-
-      let buffer: Buffer | undefined;
-      let filename = photo.filename;
-
-      try {
-        buffer = await downloadFromStorage(photo.filename);
-      } catch {
-        const processedFilename = photo.filename.replace(/\.heic$/i, '.heic.processed.jpg');
-        try {
-          buffer = await downloadFromStorage(processedFilename);
-          filename = processedFilename;
-        } catch (err2) {
-          const error = err2 as Error;
-          logger.error(`Failed to download photo ${photo.id}:`, error.message);
-          return res.status(500).json({ error: 'Failed to download photo from storage' });
-        }
-      }
-
-      const metadata = await extractMetadata(buffer, filename);
-
-      if (!metadata || Object.keys(metadata).length === 0) {
-        return res.status(500).json({ error: 'Failed to extract metadata' });
-      }
-
-      let merged;
-      try {
-        const existing = typeof photo.metadata === 'string' ? JSON.parse(photo.metadata || '{}') : (photo.metadata || {});
-        merged = mergeMetadataPreservingLocationAndDate(existing, metadata);
-      } catch (mergeErr) {
-        const err = mergeErr as Error;
-        logger.warn(`Metadata merge failed for photo ${photo.id} during reextract-metadata: ${err.message}`);
-        merged = metadata;
-      }
-      await photosDb.updatePhoto(photo.id, req.user!.id, {
-        metadata: JSON.stringify(merged)
+      const merged = await reextractMetadataWorkflow({
+        photo,
+        userId: req.user!.id,
+        photosDb,
+        logger,
+        strict: true,
       });
-
-      logger.info(`Successfully re-extracted metadata for photo ${photo.id}`);
 
       return res.status(200).json({
         message: 'Metadata re-extracted successfully',
         photoId: photo.id,
-        hasGPS: !!(merged.latitude && merged.longitude),
-        hasHeading: !!(merged.GPSImgDirection || merged.GPS?.imgDirection)
+        hasGPS: !!(merged?.latitude && merged?.longitude),
+        hasHeading: !!(merged?.GPSImgDirection || merged?.GPS?.imgDirection)
       });
     } catch (err) {
       const error = err as Error;
+      if (error.message === 'Failed to download photo from storage') {
+        return res.status(500).json({ error: error.message });
+      }
+      if (error.message === 'Failed to extract metadata') {
+        return res.status(500).json({ error: error.message });
+      }
       logger.error('Error re-extracting metadata:', error);
       return res.status(500).json({ error: 'Failed to re-extract metadata' });
     }

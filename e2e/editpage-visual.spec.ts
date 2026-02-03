@@ -2,6 +2,11 @@
 import { test, expect } from '@playwright/test';
 import type { Route, Page } from '@playwright/test';
 import { acceptDisclaimer } from './helpers/disclaimer';
+import { mockCoreApi } from './helpers/mockCoreApi';
+
+test.beforeEach(async ({ page }) => {
+  await mockCoreApi(page);
+});
 
 /**
  * Stabilization helper for screenshots in headed mode.
@@ -192,6 +197,31 @@ test.describe('EditPage Visual Regression (Frontend-Only)', () => {
       // 2. Dependencies endpoint
       if (pathname === '/photos/dependencies') {
         return fulfill({ success: true, dependencies: { aiQueue: true } });
+      }
+
+      // 2a. Build metadata
+      if (pathname === '/api/meta') {
+        return fulfill({ buildId: 'e2e-build', bootId: 'e2e-boot' });
+      }
+
+      // 2b. Comments API
+      if (pathname.startsWith('/api/comments')) {
+        if (method === 'GET') {
+          return fulfill({ success: true, data: [] });
+        }
+        if (method === 'POST') {
+          return fulfill({
+            success: true,
+            data: {
+              id: 'e2e-comment-1',
+              photo_id: null,
+              content: '',
+              created_at: new Date().toISOString(),
+              user_id: 'e2e-user',
+            },
+          });
+        }
+        return fulfill({}, 405);
       }
 
       // 3. User preferences

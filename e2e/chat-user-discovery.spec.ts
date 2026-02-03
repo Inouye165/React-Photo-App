@@ -1,8 +1,10 @@
 import { test, expect } from '@playwright/test'
 import { acceptDisclaimer } from './helpers/disclaimer'
 import { fetchCsrfToken } from './helpers/csrf'
+import { mockCoreApi } from './helpers/mockCoreApi'
 
 test('E2E chat: user discovery → start DM (no photo required)', async ({ page, context }) => {
+  await mockCoreApi(page)
   await page.addInitScript(() => {
     window.__E2E_MODE__ = true
   })
@@ -285,6 +287,12 @@ test('E2E chat: user discovery → start DM (no photo required)', async ({ page,
   // Auto-navigate to /chat/:roomId and close modal
   await expect(page).toHaveURL(new RegExp(`/chat/${room.id}$`), { timeout: 10000 })
   await expect(modal).not.toBeVisible({ timeout: 10000 })
+
+  // Ensure chat view is active on narrow layouts.
+  const openChatButton = page.getByRole('button', { name: 'Open chat' })
+  if (await openChatButton.isVisible()) {
+    await openChatButton.click()
+  }
 
   // Chat window loads
   await expect(page.getByTestId('chat-messages')).toBeVisible({ timeout: 10000 })

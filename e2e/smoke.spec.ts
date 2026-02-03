@@ -1,8 +1,10 @@
 import { test, expect } from '@playwright/test';
 import { acceptDisclaimer } from './helpers/disclaimer';
 import { fetchCsrfToken } from './helpers/csrf';
+import { mockCoreApi } from './helpers/mockCoreApi';
 
 test('E2E smoke: login → upload → view', async ({ page, context }) => {
+  await mockCoreApi(page);
   // Set E2E mode flag in window object
   await page.addInitScript(() => {
     window.__E2E_MODE__ = true;
