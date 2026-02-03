@@ -46,6 +46,7 @@
     ]
   },
   "dependencies": {
+    "@excalidraw/excalidraw": "^0.18.0",
     "@langchain/core": "^1.1.8",
     "@langchain/langgraph": "^1.0.1",
     "@langchain/openai": "^1.1.0",
@@ -72,7 +73,10 @@
     "react-masonry-css": "^1.0.16",
     "react-router-dom": "^7.12.0",
     "react-virtuoso": "^4.17.0",
+    "roughjs": "^4.6.6",
     "twilio": "^5.12.0",
+    "y-websocket": "^1.5.4",
+    "yjs": "^13.6.27",
     "zustand": "^5.0.8"
   },
   "engines": {

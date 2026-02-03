@@ -17,7 +17,7 @@ const { logger, db, supabase } = bootstrap.createDependencies();
 bootstrap.registerProcessHandlers({ logger });
 
 // Create Express app and register middleware/routes.
-const { app, socketManager } = bootstrap.createApp({ logger, db, supabase });
+const { app, socketManager, whiteboardYjsServer } = bootstrap.createApp({ logger, db, supabase });
 
 const PORT = process.env.PORT || 3001;
 
@@ -34,13 +34,13 @@ if (process.env.NODE_ENV !== 'test') {
     try {
       const url = new URL(req.url || '/', 'http://localhost');
       const pathname = url.pathname;
-      if (
-        pathname === '/events/photos' ||
-        pathname === '/api/v1/events/photos' ||
-        pathname === '/events/whiteboard' ||
-        pathname === '/api/v1/events/whiteboard'
-      ) {
+      if (pathname === '/events/photos' || pathname === '/api/v1/events/photos') {
         socketManager.handleUpgrade(req, socket, head);
+        return;
+      }
+
+      if (pathname.startsWith('/events/whiteboard') || pathname.startsWith('/api/v1/events/whiteboard')) {
+        whiteboardYjsServer?.handleUpgrade(req, socket, head);
         return;
       }
     } catch {
@@ -72,6 +72,14 @@ if (process.env.NODE_ENV !== 'test') {
   shutdownManager.register('websockets', async () => {
     try {
       socketManager.closeAll?.('server_shutdown');
+    } catch {
+      // ignore
+    }
+  });
+
+  shutdownManager.register('whiteboard', async () => {
+    try {
+      whiteboardYjsServer?.closeAll?.();
     } catch {
       // ignore
     }

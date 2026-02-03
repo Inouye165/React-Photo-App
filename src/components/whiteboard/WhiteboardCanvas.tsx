@@ -1,12 +1,25 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
-import type { PointerEvent } from 'react'
+import type { ChangeEvent, PointerEvent } from 'react'
+import { Excalidraw, MainMenu } from '@excalidraw/excalidraw'
+import type {
+  AppState,
+  BinaryFileData,
+  BinaryFiles,
+  ExcalidrawImperativeAPI,
+  ExcalidrawInitialDataState,
+} from '@excalidraw/excalidraw/types'
+import '@excalidraw/excalidraw/index.css'
+import * as Y from 'yjs'
 import type { WhiteboardEvent, WhiteboardHistoryCursor, WhiteboardStrokeAck, WhiteboardStrokeEvent } from '../../types/whiteboard'
 import type { WhiteboardTransport } from '../../realtime/whiteboardTransport'
+import { API_BASE_URL } from '../../api'
 import { fetchWhiteboardSnapshot } from '../../api/whiteboard'
 import { normalizeHistoryEvents } from '../../realtime/whiteboardReplay'
 import { whiteboardDebugLog } from '../../realtime/whiteboardDebug'
 import { BOARD_ASPECT, computeContainedRect, type ContainedRect } from './whiteboardAspect'
 import { createStrokePersistenceQueue, createStrokeSegmenter } from '../../realtime/whiteboardStrokeQueue'
+import { createWhiteboardYjsProvider } from '../../realtime/whiteboardYjsProvider'
+import type { WhiteboardYjsProvider } from '../../realtime/whiteboardYjsProvider'
 import {
   appendWhiteboardSnapshotCache,
   clearWhiteboardSnapshotCache,
@@ -42,7 +55,10 @@ function clamp01(value: number): number {
   return value
 }
 
-export default function WhiteboardCanvas({
+/**
+ * @deprecated Legacy point-stream canvas retained for reference.
+ */
+export function LegacyWhiteboardCanvas({
   boardId,
   token,
   transport,
@@ -565,5 +581,584 @@ export default function WhiteboardCanvas({
         </div>
       )}
     </div>
+  )
+}
+
+const LOCAL_ORIGIN = { origin: 'local' } as const
+
+const DEFAULT_APP_STATE: Pick<AppState, 'viewBackgroundColor' | 'gridSize' | 'theme'> = {
+  viewBackgroundColor: '#ffffff',
+  gridSize: 0,
+  theme: 'light',
+}
+
+const STROKE_WIDTH_REMAP: Record<number, number> = {
+  1: 0.1,
+  2: 1.0,
+  3: 5.0,
+}
+
+type ExcalidrawWhiteboardCanvasProps = {
+  boardId: string
+  token: string | null
+  mode: 'viewer' | 'pad'
+  className?: string
+}
+
+type PersistedAppState = Pick<AppState, 'viewBackgroundColor' | 'gridSize' | 'theme'>
+type ExcalidrawElement = ReturnType<ExcalidrawImperativeAPI['getSceneElements']>[number]
+
+type ConnectionStatus = 'idle' | 'connecting' | 'connected' | 'disconnected' | 'error'
+
+function resolveAppState(value: unknown): PersistedAppState {
+  if (!value || typeof value !== 'object') return DEFAULT_APP_STATE
+  const candidate = value as Partial<PersistedAppState>
+  const theme = candidate.theme
+  return {
+    viewBackgroundColor:
+      typeof candidate.viewBackgroundColor === 'string'
+        ? candidate.viewBackgroundColor
+        : DEFAULT_APP_STATE.viewBackgroundColor,
+    gridSize:
+      typeof candidate.gridSize === 'number'
+        ? candidate.gridSize
+        : DEFAULT_APP_STATE.gridSize,
+    theme: theme === 'dark' || theme === 'light' || theme === 'system' ? theme : DEFAULT_APP_STATE.theme,
+  }
+}
+
+function resolveFiles(value: unknown): BinaryFiles {
+  if (!value || typeof value !== 'object') return {}
+  return value as BinaryFiles
+}
+
+function resolveElements(value: unknown): ExcalidrawElement[] | null {
+  if (!Array.isArray(value)) return null
+  return value as ExcalidrawElement[]
+}
+
+function pickPersistedAppState(appState: AppState): PersistedAppState {
+  return {
+    viewBackgroundColor: appState.viewBackgroundColor,
+    gridSize: appState.gridSize,
+    theme: appState.theme,
+  }
+}
+
+export default function WhiteboardCanvas({ boardId, token, mode, className }: ExcalidrawWhiteboardCanvasProps) {
+  const [connectionStatus, setConnectionStatus] = useState<ConnectionStatus>('idle')
+  const [viewModeEnabled, setViewModeEnabled] = useState(mode === 'viewer')
+  const [initialData, setInitialData] = useState<ExcalidrawInitialDataState | null>(null)
+  const [isSynced, setIsSynced] = useState(false)
+
+  const excalidrawApiRef = useRef<ExcalidrawImperativeAPI | null>(null)
+  const yjsProviderRef = useRef<WhiteboardYjsProvider | null>(null)
+  const viewModeEnabledRef = useRef(viewModeEnabled)
+  const docRef = useRef<Y.Doc | null>(null)
+  const mapRef = useRef<Y.Map<unknown> | null>(null)
+  const fileInputRef = useRef<HTMLInputElement | null>(null)
+  const suppressSyncRef = useRef(false)
+  const isLocallyDrawingRef = useRef(false)
+  const pendingRemoteSyncRef = useRef(false)
+  const isResettingRef = useRef(false)
+  const lastNonEmptySceneRef = useRef(false)
+  const pendingLocalSceneRef = useRef<{
+    elements: readonly ExcalidrawElement[]
+    appState: AppState
+    files: BinaryFiles
+  } | null>(null)
+  const pointerGuardCleanupRef = useRef<(() => void) | null>(null)
+
+  useEffect(() => {
+    setViewModeEnabled(mode === 'viewer')
+  }, [mode])
+
+  useEffect(() => {
+    if (!token) {
+      setIsSynced(false)
+    }
+  }, [token])
+
+  useEffect(() => {
+    viewModeEnabledRef.current = viewModeEnabled
+  }, [viewModeEnabled])
+
+  const generateId = useCallback(() => {
+    if (typeof globalThis.crypto?.randomUUID === 'function') {
+      return globalThis.crypto.randomUUID()
+    }
+    return `${Date.now()}-${Math.random().toString(16).slice(2)}`
+  }, [])
+
+  const applySceneFromYjs = useCallback(() => {
+    const map = mapRef.current
+    if (!map) return
+
+    const elements = resolveElements(map.get('elements'))
+    if (!elements) return
+
+    const appState = resolveAppState(map.get('appState'))
+    const files = resolveFiles(map.get('files'))
+
+    const scene: ExcalidrawInitialDataState = {
+      elements,
+      appState: {
+        ...appState,
+        viewModeEnabled,
+      },
+      files,
+    }
+
+    if (!excalidrawApiRef.current) {
+      setInitialData(scene)
+      return
+    }
+
+    const currentState = excalidrawApiRef.current.getAppState()
+    suppressSyncRef.current = true
+    excalidrawApiRef.current.updateScene({
+      elements: scene.elements,
+      appState: {
+        ...currentState,
+        ...scene.appState,
+        viewModeEnabled,
+      },
+    })
+    requestAnimationFrame(() => {
+      suppressSyncRef.current = false
+    })
+  }, [viewModeEnabled])
+
+  const applyPendingRemoteScene = useCallback(() => {
+    if (!pendingRemoteSyncRef.current) return
+    pendingRemoteSyncRef.current = false
+    applySceneFromYjs()
+  }, [applySceneFromYjs])
+
+  const updateAwarenessState = useCallback((isViewMode: boolean) => {
+    const awareness = yjsProviderRef.current?.provider.awareness
+    if (!awareness) return
+    awareness.setLocalStateField('mode', isViewMode ? 'viewer' : 'draw')
+    awareness.setLocalStateField('canWrite', !isViewMode)
+  }, [])
+
+  const readFileAsDataUrl = useCallback((file: File) => {
+    return new Promise<string>((resolve, reject) => {
+      const reader = new FileReader()
+      reader.onload = () => {
+        if (typeof reader.result === 'string') {
+          resolve(reader.result)
+        } else {
+          reject(new Error('Unable to read image data.'))
+        }
+      }
+      reader.onerror = () => {
+        reject(reader.error ?? new Error('Unable to read image data.'))
+      }
+      reader.readAsDataURL(file)
+    })
+  }, [])
+
+  const loadImageDimensions = useCallback((dataUrl: string) => {
+    return new Promise<{ width: number; height: number }>((resolve, reject) => {
+      const image = new Image()
+      image.onload = () => {
+        resolve({
+          width: image.naturalWidth || image.width,
+          height: image.naturalHeight || image.height,
+        })
+      }
+      image.onerror = () => reject(new Error('Unable to load image.'))
+      image.src = dataUrl
+    })
+  }, [])
+
+  const handleImageUpload = useCallback(
+    async (event: ChangeEvent<HTMLInputElement>) => {
+      const file = event.target.files?.[0]
+      event.target.value = ''
+      if (!file) return
+
+      const api = excalidrawApiRef.current
+      if (!api) return
+
+      try {
+        const dataUrl = await readFileAsDataUrl(file)
+        const dimensions = await loadImageDimensions(dataUrl)
+        const width = Math.max(1, dimensions.width)
+        const height = Math.max(1, dimensions.height)
+        const fileId = generateId() as BinaryFileData['id']
+        const elementId = generateId()
+        const now = Date.now()
+        const elements = api.getSceneElements()
+        const imageIndex = elements[0]?.index ?? 'a'
+
+        const fileData: BinaryFileData = {
+          id: fileId,
+          dataURL: dataUrl as BinaryFileData['dataURL'],
+          mimeType: (file.type || 'image/png') as BinaryFileData['mimeType'],
+          created: now,
+          lastRetrieved: now,
+        }
+
+        api.addFiles([fileData])
+
+        const imageElement = {
+          id: elementId,
+          type: 'image',
+          x: 0,
+          y: 0,
+          width,
+          height,
+          angle: 0,
+          strokeColor: 'transparent',
+          backgroundColor: 'transparent',
+          fillStyle: 'solid',
+          strokeWidth: 1,
+          strokeStyle: 'solid',
+          roughness: 0,
+          opacity: 100,
+          groupIds: [],
+          frameId: null,
+          roundness: null,
+          seed: Math.floor(Math.random() * 2 ** 31),
+          version: 1,
+          versionNonce: Math.floor(Math.random() * 2 ** 31),
+          index: imageIndex,
+          isDeleted: false,
+          boundElements: null,
+          updated: now,
+          link: null,
+          locked: true,
+          fileId,
+          scale: [1, 1],
+          crop: null,
+          status: 'pending',
+        } as ExcalidrawElement
+
+        api.updateScene({
+          elements: [imageElement, ...elements],
+        })
+      } catch (error) {
+        whiteboardDebugLog('whiteboard:background:upload:error', {
+          boardId,
+          message: error instanceof Error ? error.message : String(error),
+        })
+      }
+    },
+    [boardId, generateId, loadImageDimensions, readFileAsDataUrl],
+  )
+
+  const handleBackgroundSelect = useCallback(() => {
+    fileInputRef.current?.click()
+  }, [])
+
+  const commitPendingLocalScene = useCallback(() => {
+    const pending = pendingLocalSceneRef.current
+    if (!pending) return
+    const doc = docRef.current
+    const map = mapRef.current
+    if (!doc || !map) return
+
+    pendingLocalSceneRef.current = null
+    doc.transact(() => {
+      map.set('elements', pending.elements)
+      map.set('appState', pickPersistedAppState(pending.appState))
+      map.set('files', pending.files)
+      map.set('updatedAt', Date.now())
+    }, LOCAL_ORIGIN)
+  }, [])
+
+  const registerPointerGuard = useCallback(
+    (api: ExcalidrawImperativeAPI | null) => {
+      if (!api || pointerGuardCleanupRef.current) return
+
+      // Sync pause: keep remote updates from clobbering local pointer strokes mid-draw.
+      const offPointerDown = api.onPointerDown(() => {
+        isLocallyDrawingRef.current = true
+      })
+
+      const offPointerUp = api.onPointerUp(() => {
+        isLocallyDrawingRef.current = false
+        commitPendingLocalScene()
+        // Re-apply the latest remote state after the local stroke completes.
+        applyPendingRemoteScene()
+      })
+
+      pointerGuardCleanupRef.current = () => {
+        offPointerDown()
+        offPointerUp()
+      }
+    },
+    [applyPendingRemoteScene, commitPendingLocalScene],
+  )
+
+  const handleReset = useCallback(() => {
+    const doc = docRef.current
+    const map = mapRef.current
+    const api = excalidrawApiRef.current
+
+    isResettingRef.current = true
+    pendingLocalSceneRef.current = null
+
+    if (api) {
+      const currentState = api.getAppState()
+      if (api.getSceneElements().length) {
+        suppressSyncRef.current = true
+        api.updateScene({
+          elements: [],
+          appState: currentState,
+        })
+        requestAnimationFrame(() => {
+          suppressSyncRef.current = false
+        })
+      }
+    }
+
+    if (doc && map) {
+      doc.transact(() => {
+        map.set('elements', [])
+        map.set('files', {})
+        map.set('appState', api ? pickPersistedAppState(api.getAppState()) : DEFAULT_APP_STATE)
+        map.set('updatedAt', Date.now())
+        const shared = doc.getArray('excalidraw')
+        if (shared.length) {
+          shared.delete(0, shared.length)
+        }
+      }, LOCAL_ORIGIN)
+    }
+
+    requestAnimationFrame(() => {
+      isResettingRef.current = false
+      lastNonEmptySceneRef.current = false
+    })
+  }, [])
+
+  useEffect(() => {
+    if (!token) {
+      setConnectionStatus('idle')
+      return
+    }
+
+    setConnectionStatus('connecting')
+    setIsSynced(false)
+    const provider = createWhiteboardYjsProvider({
+      apiBaseUrl: API_BASE_URL,
+      boardId,
+      token,
+      onStatus: (status) => {
+        setConnectionStatus(status === 'connected' ? 'connected' : 'disconnected')
+      },
+    })
+
+    docRef.current = provider.doc
+    mapRef.current = provider.doc.getMap('excalidraw')
+    yjsProviderRef.current = provider
+    updateAwarenessState(viewModeEnabledRef.current)
+
+    const handleSync = (synced: boolean) => {
+      if (!synced) return
+      // Sync handshake: only render Excalidraw after the provider reports a full sync.
+      setIsSynced(true)
+      if (isLocallyDrawingRef.current) {
+        // Sync pause: delay remote scene application while the local stroke is active.
+        pendingRemoteSyncRef.current = true
+        return
+      }
+      applySceneFromYjs()
+    }
+
+    const handleUpdate = (_update: Uint8Array, origin: unknown) => {
+      if (origin === LOCAL_ORIGIN) return
+      if (isLocallyDrawingRef.current) {
+        // Sync pause: delay remote scene application while the local stroke is active.
+        pendingRemoteSyncRef.current = true
+        return
+      }
+      applySceneFromYjs()
+    }
+
+    provider.provider.on('sync', handleSync)
+    provider.doc.on('update', handleUpdate)
+
+    return () => {
+      provider.provider.off('sync', handleSync)
+      provider.doc.off('update', handleUpdate)
+      provider.destroy()
+      yjsProviderRef.current = null
+      docRef.current = null
+      mapRef.current = null
+      setIsSynced(false)
+    }
+  }, [applySceneFromYjs, boardId, token, updateAwarenessState])
+
+  useEffect(() => {
+    return () => {
+      pointerGuardCleanupRef.current?.()
+      pointerGuardCleanupRef.current = null
+    }
+  }, [])
+
+  useEffect(() => {
+    if (!excalidrawApiRef.current) return
+    const currentState = excalidrawApiRef.current.getAppState()
+    suppressSyncRef.current = true
+    excalidrawApiRef.current.updateScene({
+      appState: {
+        ...currentState,
+        viewModeEnabled,
+      },
+    })
+    requestAnimationFrame(() => {
+      suppressSyncRef.current = false
+    })
+    updateAwarenessState(viewModeEnabled)
+  }, [updateAwarenessState, viewModeEnabled])
+
+  const handleChange = useCallback(
+    (elements: readonly ExcalidrawElement[], appState: AppState, files: BinaryFiles) => {
+      if (suppressSyncRef.current) return
+      const doc = docRef.current
+      const map = mapRef.current
+      if (!doc || !map) return
+
+      let nextElements = elements
+      let nextAppState = appState
+      const remappedWidth = STROKE_WIDTH_REMAP[appState.currentItemStrokeWidth]
+
+      if (remappedWidth && appState.currentItemStrokeWidth !== remappedWidth) {
+        const selectedIds = appState.selectedElementIds ?? {}
+        if (Object.keys(selectedIds).length) {
+          nextElements = elements.map((element) =>
+            selectedIds[element.id] ? { ...element, strokeWidth: remappedWidth } : element,
+          )
+        }
+        nextAppState = {
+          ...appState,
+          currentItemStrokeWidth: remappedWidth,
+        }
+
+        suppressSyncRef.current = true
+        excalidrawApiRef.current?.updateScene({
+          elements: nextElements,
+          appState: nextAppState,
+        })
+        requestAnimationFrame(() => {
+          suppressSyncRef.current = false
+        })
+      }
+
+      if (!elements.length && lastNonEmptySceneRef.current && !isResettingRef.current) {
+        handleReset()
+      }
+
+      lastNonEmptySceneRef.current = elements.length > 0
+
+      if (isLocallyDrawingRef.current) {
+        // Keep in-progress strokes local; commit the final scene on pointer up.
+        pendingLocalSceneRef.current = { elements: nextElements, appState: nextAppState, files }
+        return
+      }
+
+      doc.transact(() => {
+        map.set('elements', nextElements)
+        map.set('appState', pickPersistedAppState(nextAppState))
+        map.set('files', files)
+        map.set('updatedAt', Date.now())
+      }, LOCAL_ORIGIN)
+    },
+    [handleReset],
+  )
+
+  const toggleLabel = viewModeEnabled ? 'Switch to draw mode' : 'Switch to view mode'
+  const statusLabel = useMemo(() => {
+    switch (connectionStatus) {
+      case 'connected':
+        return 'Connected'
+      case 'connecting':
+        return 'Connecting…'
+      case 'disconnected':
+        return 'Disconnected'
+      case 'error':
+        return 'Error'
+      default:
+        return 'Idle'
+    }
+  }, [connectionStatus])
+
+  return (
+    <section className={`flex h-full w-full flex-col gap-3 ${className || ''}`} aria-label="Collaborative whiteboard">
+      <header className="flex flex-wrap items-center justify-between gap-2">
+        <div>
+          <p className="text-sm font-semibold text-slate-900">Whiteboard</p>
+          <p className="text-xs text-slate-500" aria-live="polite">
+            Status: {statusLabel}
+          </p>
+        </div>
+        <div className="flex items-center gap-2">
+          {mode === 'pad' && (
+            <>
+              <input
+                ref={fileInputRef}
+                type="file"
+                accept="image/*"
+                onChange={handleImageUpload}
+                className="hidden"
+                aria-hidden="true"
+                tabIndex={-1}
+              />
+              <button
+                type="button"
+                className="rounded-full border border-slate-200 px-3 py-1 text-xs font-medium text-slate-700 transition hover:border-slate-300 hover:text-slate-900"
+                onClick={handleBackgroundSelect}
+                aria-label="Set background image"
+              >
+                Set Background
+              </button>
+            </>
+          )}
+          <button
+            type="button"
+            className="rounded-full border border-slate-200 px-3 py-1 text-xs font-medium text-slate-700 transition hover:border-slate-300 hover:text-slate-900"
+            onClick={() => setViewModeEnabled((prev) => !prev)}
+            aria-pressed={viewModeEnabled}
+            aria-label={toggleLabel}
+          >
+            {viewModeEnabled ? 'View mode' : 'Draw mode'}
+          </button>
+        </div>
+      </header>
+      <div className="min-h-0 flex-1 rounded-2xl border border-slate-200 bg-white">
+        {!isSynced ? (
+          <div className="flex h-full w-full items-center justify-center rounded-2xl bg-white">
+            <div className="flex items-center gap-3 text-sm text-slate-600" role="status" aria-live="polite">
+              <span className="inline-flex h-4 w-4 animate-spin rounded-full border-2 border-slate-300 border-t-slate-600" />
+              Connecting to Room…
+            </div>
+          </div>
+        ) : (
+          <Excalidraw
+            excalidrawAPI={(api) => {
+              excalidrawApiRef.current = api
+              registerPointerGuard(api)
+            }}
+            initialData={initialData ?? undefined}
+            viewModeEnabled={viewModeEnabled}
+            zenModeEnabled={viewModeEnabled}
+            onChange={handleChange}
+          >
+            <MainMenu>
+              <MainMenu.DefaultItems.LoadScene />
+              <MainMenu.DefaultItems.SaveToActiveFile />
+              <MainMenu.DefaultItems.Export />
+              <MainMenu.DefaultItems.ClearCanvas />
+              <MainMenu.Separator />
+              <MainMenu.DefaultItems.ToggleTheme />
+              <MainMenu.DefaultItems.ChangeCanvasBackground />
+            </MainMenu>
+          </Excalidraw>
+        )}
+      </div>
+    </section>
   )
 }

@@ -8,7 +8,7 @@ function createApp(options: CreateAppOptions = {}) {
   const express = require('express');
   const { createSocketManager } = require('../realtime/SocketManager');
   const { createPhotoEventHistory } = require('../realtime/photoEventHistory');
-  const { createWhiteboardMessageHandler } = require('../realtime/whiteboard');
+  const { createWhiteboardYjsServer } = require('../realtime/whiteboard');
   const { getRedisClient } = require('../lib/redis');
   const metrics = require('../metrics');
 
@@ -38,7 +38,7 @@ function createApp(options: CreateAppOptions = {}) {
     logger,
   });
 
-  const whiteboardMessageHandler = createWhiteboardMessageHandler({ db });
+  const whiteboardYjsServer = createWhiteboardYjsServer({ db, logger, metrics });
 
   const socketManager = createSocketManager({
     heartbeatMs: 25_000,
@@ -46,12 +46,12 @@ function createApp(options: CreateAppOptions = {}) {
     metrics,
     logger,
     photoEventHistory,
-    clientMessageHandler: whiteboardMessageHandler,
+    clientMessageHandler: null,
   });
 
   registerRoutes(app, { db, supabase, socketManager, logger });
 
-  return { app, socketManager };
+  return { app, socketManager, whiteboardYjsServer };
 }
 
 module.exports = {

@@ -1,6 +1,4 @@
-import { useEffect, useMemo, useRef } from 'react'
-import { API_BASE_URL } from '../../api'
-import { acquireWhiteboardTransport } from '../../realtime/whiteboardTransportRegistry'
+import { useEffect, useRef } from 'react'
 import { useRealtimeToken } from '../../hooks/useRealtimeToken'
 import WhiteboardCanvas from './WhiteboardCanvas'
 
@@ -15,19 +13,6 @@ export default function WhiteboardPad({ boardId, className }: WhiteboardPadProps
   useEffect(() => {
     tokenRef.current = token
   }, [token])
-  const transport = useMemo(
-    () => acquireWhiteboardTransport({ apiBaseUrl: API_BASE_URL, boardId, getToken: () => tokenRef.current }),
-    [boardId],
-  )
-
-  useEffect(() => () => transport.disconnect(), [transport])
-  const sourceId = useMemo(() => {
-    if (typeof globalThis.crypto?.randomUUID === 'function') {
-      return globalThis.crypto.randomUUID()
-    }
-    return `${Date.now()}-${Math.random().toString(16).slice(2)}`
-  }, [])
-
   return (
     <div className={`flex h-full w-full flex-col ${className || ''}`}>
       <div className="flex items-center justify-between pb-3">
@@ -43,9 +28,7 @@ export default function WhiteboardPad({ boardId, className }: WhiteboardPadProps
         <WhiteboardCanvas
           boardId={boardId}
           token={token}
-          transport={transport}
           mode="pad"
-          sourceId={sourceId}
           className="h-full"
         />
       </div>
