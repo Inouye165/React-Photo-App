@@ -90,9 +90,25 @@ If you want to poke around:
 
 **Prerequisites:** Node 20+, Docker (you need this for the DB and Redis).
 
-```bash
-# 1. Install dependencies
-npm install
+### Startup sequence (copy/paste checklist)
+
+1. **Start Docker** (DB + Redis)
+    - `docker-compose up -d db redis`
+    - If Docker is already running, skip to step 2.
+2. **Install dependencies**
+    - Repo root: `npm install`
+    - Server: `cd server && npm install && cd ..`
+3. **Create env files**
+    - `cp server/.env.example server/.env`
+    - Fill in required keys (notably `OPENAI_API_KEY`, `SUPABASE_URL`, `SUPABASE_ANON_KEY`, `JWT_SECRET`).
+4. **Run migrations**
+    - `cd server && npx knex migrate:latest --knexfile knexfile.js && cd ..`
+5. **Start the app (3 terminals)**
+    - Frontend: `npm run dev`
+    - Backend: `cd server && npm run dev`
+    - Worker: `cd server && npm run worker`
+6. **Wait for startup**
+   - Allow 10-15 seconds for all services to fully initialize before accessing the app at http://localhost:5173/
 cd server && npm install && cd ..
 
 # 2. Spin up local services
@@ -118,6 +134,12 @@ cd server && npm run worker # Background Worker
 *   **HITL Collectibles UI:** Set `VITE_ENABLE_COLLECTIBLES_UI=true` in your frontend `.env` to enable the Human-in-the-Loop collectible identification workflow. This provides a modal UI for reviewing and confirming AI-identified collectibles before continuing the analysis pipeline.
 *   **Restart guard (optional):** The client compares a server-provided per-process `bootId` (from `/api/meta`) against `sessionStorage` to force a re-login only when the backend process restarts. `buildId` is still exposed for diagnostics, but is not used to log users out.
 *   Ongoing cleanup targets: [TypeScript refactor candidates](typescript-refactor-candidates.md)
+
+### Local Supabase (Studio UI)
+
+If you want a Railway-like browser UI (auth/users, tables, policies), run the local Supabase stack and open Studio.
+
+See [docs/LOCAL_SUPABASE.md](docs/LOCAL_SUPABASE.md) for setup.
 
 ## Debugging
 

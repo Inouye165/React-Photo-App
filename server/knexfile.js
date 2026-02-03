@@ -82,6 +82,19 @@ const loadCaCert = () => {
 
 // SSL configuration based on environment
 const getSslConfig = (env) => {
+  const sslDisabled = String(process.env.DB_SSL_DISABLED || '').trim().toLowerCase();
+  const isDisabled = sslDisabled === '1' || sslDisabled === 'true' || sslDisabled === 'yes';
+
+  // If running in local development, allow explicitly disabling SSL to match
+  // typical local Postgres setups (e.g., Docker Postgres without TLS).
+  if (process.env.NODE_ENV === 'development' || env === 'development') {
+    return isDisabled ? false : { rejectUnauthorized: false };
+  }
+
+  if (env !== 'production' && isDisabled) {
+    return false;
+  }
+
   if (env === 'production') {
     if (isEnvFalse('DB_SSL_REJECT_UNAUTHORIZED')) {
       // External pooler / transaction mode: allow the pooler to handle SSL.

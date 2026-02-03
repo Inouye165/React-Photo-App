@@ -62,7 +62,7 @@ export function registerRoutes(app: Application, { db, supabase, socketManager, 
   const createMetricsRouter = require('../routes/metrics');
   const createPublicRouter = require('../routes/public');
   const createFeedbackRouter = require('../routes/feedback');
-  const createEventsRouter = require('../routes/events.ts');
+  const createEventsRouter = require('../routes/events');
   const createMetaRouter = require('../routes/meta');
   const createAdminRouter = require('../routes/admin');
   const createCommentsRouter = require('../routes/comments');
@@ -77,10 +77,43 @@ export function registerRoutes(app: Application, { db, supabase, socketManager, 
   // CSRF token fetch endpoint for the SPA.
   // csurf attaches req.csrfToken() when middleware is mounted.
   app.get('/csrf', (req: CsrfRequest, res: Response) => {
+    // In development and test environments the csurf middleware may be
+    // intentionally disabled to simplify local dev and E2E runs. If so,
+    // return a stable dev bypass token instead of calling req.csrfToken()
+    // which would throw when the middleware is unmounted.
+    // If running in dev/test or E2E mode, return the stable dev bypass.
+    let e2eEnabled = false;
+    try {
+      // The e2e gate helper is used below; load it lazily to avoid circular deps.
+      // It returns true when the test harness intends to run E2E-only routes.
+      // eslint-disable-next-line @typescript-eslint/no-var-requires
+      const { isE2EEnabled } = require('../config/e2eGate');
+      e2eEnabled = typeof isE2EEnabled === 'function' ? isE2EEnabled() : false;
+    } catch {
+      e2eEnabled = false;
+    }
+
+    if (process.env.NODE_ENV === 'development' || e2eEnabled) {
+      try {
+        return res.json({ csrfToken: 'dev-bypass' });
+      } catch (err) {
+        return res.status(500).json({ success: false, error: 'CSRF dev-bypass failed' });
+      }
+    }
+
     if (!req || typeof req.csrfToken !== 'function') {
       return res.status(500).json({ success: false, error: 'CSRF not initialized' });
     }
-    return res.json({ csrfToken: req.csrfToken() });
+
+    try {
+      return res.json({ csrfToken: req.csrfToken() });
+    } catch (err) {
+      // Defensive: log the error and return 500 instead of crashing the app.
+      const message = err && typeof (err as Error).message === 'string' ? (err as Error).message : String(err);
+      // eslint-disable-next-line no-console
+      console.error('[routes:/csrf] req.csrfToken() threw:', message);
+      return res.status(500).json({ success: false, error: 'CSRF token generation failed' });
+    }
   });
 
   // Authentication routes (no auth required)

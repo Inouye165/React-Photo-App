@@ -19,6 +19,22 @@ export default defineConfig(({ mode }) => {
   },
   server: {
     host: '0.0.0.0',
+    // Proxy API requests to the local backend so the browser can use httpOnly
+    // cookies without cross-origin issues during development.
+    proxy: {
+      '/api': {
+        target: 'http://localhost:3001',
+        changeOrigin: true,
+        secure: false,
+        rewrite: (path) => path,
+      },
+      // Optional: proxy CSRF and other top-level endpoints if used directly
+      '/csrf': {
+        target: 'http://localhost:3001',
+        changeOrigin: true,
+        secure: false,
+      }
+    }
   },
   test: {
     globals: true,

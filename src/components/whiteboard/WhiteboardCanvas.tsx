@@ -10,7 +10,7 @@ import type {
 } from '@excalidraw/excalidraw/types'
 import '@excalidraw/excalidraw/index.css'
 import * as Y from 'yjs'
-import type { WhiteboardEvent, WhiteboardHistoryCursor, WhiteboardStrokeAck, WhiteboardStrokeEvent } from '../../types/whiteboard'
+import type { WhiteboardEvent, WhiteboardHistoryCursor, WhiteboardServerError, WhiteboardStrokeAck, WhiteboardStrokeEvent } from '../../types/whiteboard'
 import type { WhiteboardTransport } from '../../realtime/whiteboardTransport'
 import { API_BASE_URL } from '../../api'
 import { fetchWhiteboardSnapshot } from '../../api/whiteboard'
@@ -30,8 +30,11 @@ import {
 const DEFAULT_COLOR = '#111827'
 const DEFAULT_WIDTH = 2
 const MAX_BUFFERED_EVENTS = 5000
-const MIN_MOVE_INTERVAL_MS = 12
+const MIN_MOVE_INTERVAL_MS = import.meta.env.DEV ? 12 : 25
 const MIN_MOVE_DISTANCE = 0.002
+const RATE_LIMIT_BACKOFF_MS = 2000
+const RATE_LIMIT_BACKOFF_INTERVAL_MS = 40
+const MAX_RATE_LIMIT_INTERVAL_MS = 80
 
 type WhiteboardCanvasProps = {
   boardId: string
@@ -79,6 +82,14 @@ export function LegacyWhiteboardCanvas({
   const tokenReady = Boolean(token)
   const strokeQueueRef = useRef<ReturnType<typeof createStrokePersistenceQueue> | null>(null)
   const segmenterRef = useRef(createStrokeSegmenter())
+  const rateLimitUntilRef = useRef(0)
+  const rateLimitIntervalRef = useRef(MIN_MOVE_INTERVAL_MS)
+  const errorCountersRef = useRef({
+    rateLimited: 0,
+    payloadTooLarge: 0,
+    invalidPayload: 0,
+    other: 0,
+  })
   
   const [status, setStatus] = useState<'idle' | 'connecting' | 'connected' | 'error'>('idle')
   
@@ -389,6 +400,46 @@ export function LegacyWhiteboardCanvas({
     })
     strokeQueueRef.current = queue
 
+    const unsubscribeError = transport.onServerError((error: WhiteboardServerError) => {
+      const counters = errorCountersRef.current
+      let reason: 'rate_limited' | 'payload_too_large' | 'invalid_payload' | 'other' = 'other'
+      if (error.code === 'rate_limited') {
+        counters.rateLimited += 1
+        reason = 'rate_limited'
+        const now = performance.now()
+        rateLimitUntilRef.current = now + RATE_LIMIT_BACKOFF_MS
+        rateLimitIntervalRef.current = Math.min(
+          Math.max(rateLimitIntervalRef.current, RATE_LIMIT_BACKOFF_INTERVAL_MS),
+          MAX_RATE_LIMIT_INTERVAL_MS,
+        )
+        queue.backoff(RATE_LIMIT_BACKOFF_MS)
+      } else if (error.code === 'payload_too_large') {
+        counters.payloadTooLarge += 1
+        reason = 'payload_too_large'
+      } else if (error.code === 'invalid_request' || error.code === 'invalid_payload') {
+        counters.invalidPayload += 1
+        reason = 'invalid_payload'
+      } else {
+        counters.other += 1
+      }
+
+      const activeIterator = pointerStatesRef.current.values().next()
+      const activeStrokeId = activeIterator.done ? undefined : activeIterator.value.strokeId
+      const now = performance.now()
+      const backoffActive = now < rateLimitUntilRef.current
+      const minIntervalMs = backoffActive ? rateLimitIntervalRef.current : MIN_MOVE_INTERVAL_MS
+
+      whiteboardDebugLog('stroke:error', {
+        code: error.code,
+        reason,
+        strokeId: activeStrokeId,
+        sendMode: 'segment-queue',
+        minIntervalMs,
+        baseMinIntervalMs: MIN_MOVE_INTERVAL_MS,
+        minDistance: MIN_MOVE_DISTANCE,
+      })
+    })
+
     const handleVisibility = () => {
       if (document.visibilityState === 'hidden') {
         queue.flush('visibility')
@@ -411,6 +462,7 @@ export function LegacyWhiteboardCanvas({
       document.removeEventListener('visibilitychange', handleVisibility)
       window.removeEventListener('pagehide', handlePageHide)
       window.removeEventListener('online', handleOnline)
+      unsubscribeError()
       queue.flush('unmount')
       queue.stop()
       segmenterRef.current.reset()
@@ -486,8 +538,11 @@ export function LegacyWhiteboardCanvas({
     const dx = point.x - state.x
     const dy = point.y - state.y
     const distance = Math.sqrt(dx * dx + dy * dy)
-
-    if (now - state.lastSentAt < MIN_MOVE_INTERVAL_MS && distance < MIN_MOVE_DISTANCE) return
+    if (now >= rateLimitUntilRef.current && rateLimitIntervalRef.current !== MIN_MOVE_INTERVAL_MS) {
+      rateLimitIntervalRef.current = MIN_MOVE_INTERVAL_MS
+    }
+    const minIntervalMs = now < rateLimitUntilRef.current ? rateLimitIntervalRef.current : MIN_MOVE_INTERVAL_MS
+    if (now - state.lastSentAt < minIntervalMs && distance < MIN_MOVE_DISTANCE) return
 
     state.lastSentAt = now
     state.x = point.x

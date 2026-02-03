@@ -240,6 +240,9 @@ async function setRedisValueWithTtl(client, key, ttlSeconds, value) {
  * Handles connection errors gracefully.
  */
 function getRedisClient() {
+  if (process.env.NODE_ENV === 'test') {
+    return null;
+  }
   if (redisClient) return redisClient;
 
   if (!process.env.REDIS_URL) {

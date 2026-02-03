@@ -17,6 +17,12 @@ interface ContactFormState {
 const API_BASE_URL = import.meta.env.VITE_API_URL || 'http://localhost:3001';
 
 const fetchCsrfToken = async (): Promise<string> => {
+  // If running in Vite dev mode, the backend may have CSRF disabled —
+  // skip the bootstrap fetch to avoid failing the flow.
+  if (import.meta.env.DEV) {
+    return ''
+  }
+
   const response = await fetch(`${API_BASE_URL}/csrf`, {
     method: 'GET',
     credentials: 'include',
@@ -120,12 +126,15 @@ const LandingPage: React.FC = () => {
         setSubmitStatus({ type: 'error', message: 'Failed to send message. Please try again.' });
         return;
       }
+
+      const headers: Record<string, string> = {
+        'Content-Type': 'application/json',
+      }
+      if (csrfToken) headers['x-csrf-token'] = csrfToken
+
       const response = await fetch(`${API_BASE_URL}/api/public/contact`, {
         method: 'POST',
-        headers: {
-          'Content-Type': 'application/json',
-          'x-csrf-token': csrfToken,
-        },
+        headers,
         credentials: 'include',
         body: JSON.stringify(payload),
       });

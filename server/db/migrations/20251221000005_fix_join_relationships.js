@@ -18,19 +18,32 @@ exports.up = async function up(knex) {
   if (!isPg) return
 
   // Ensure schema usage (defensive; required by PostgREST roles).
-  try {
-    await knex.raw('GRANT USAGE ON SCHEMA public TO anon, authenticated;')
-  } catch {
-    // ignore if roles don't exist
-  }
+  await knex.raw(`
+    DO $$
+    BEGIN
+      IF EXISTS (SELECT 1 FROM pg_roles WHERE rolname = 'anon') THEN
+        GRANT USAGE ON SCHEMA public TO anon;
+      END IF;
+      IF EXISTS (SELECT 1 FROM pg_roles WHERE rolname = 'authenticated') THEN
+        GRANT USAGE ON SCHEMA public TO authenticated;
+      END IF;
+    END $$;
+  `)
 
   // Ensure explicit table grants (RLS still gates rows).
-  try {
-    await knex.raw('GRANT SELECT, INSERT ON TABLE public.rooms TO anon, authenticated;')
-    await knex.raw('GRANT SELECT, INSERT ON TABLE public.room_members TO anon, authenticated;')
-  } catch {
-    // ignore if roles don't exist
-  }
+  await knex.raw(`
+    DO $$
+    BEGIN
+      IF EXISTS (SELECT 1 FROM pg_roles WHERE rolname = 'anon') THEN
+        GRANT SELECT, INSERT ON TABLE public.rooms TO anon;
+        GRANT SELECT, INSERT ON TABLE public.room_members TO anon;
+      END IF;
+      IF EXISTS (SELECT 1 FROM pg_roles WHERE rolname = 'authenticated') THEN
+        GRANT SELECT, INSERT ON TABLE public.rooms TO authenticated;
+        GRANT SELECT, INSERT ON TABLE public.room_members TO authenticated;
+      END IF;
+    END $$;
+  `)
 
   // Ensure a deterministic FK constraint name for PostgREST embeddings.
   // We want: public.room_members(room_id) -> public.rooms(id)
@@ -80,10 +93,17 @@ exports.down = async function down(knex) {
 
   // We avoid dropping the FK on down() because it is semantically part of the schema.
   // Only revert grants best-effort.
-  try {
-    await knex.raw('REVOKE SELECT, INSERT ON TABLE public.rooms FROM anon, authenticated;')
-    await knex.raw('REVOKE SELECT, INSERT ON TABLE public.room_members FROM anon, authenticated;')
-  } catch {
-    // ignore
-  }
+  await knex.raw(`
+    DO $$
+    BEGIN
+      IF EXISTS (SELECT 1 FROM pg_roles WHERE rolname = 'anon') THEN
+        REVOKE SELECT, INSERT ON TABLE public.rooms FROM anon;
+        REVOKE SELECT, INSERT ON TABLE public.room_members FROM anon;
+      END IF;
+      IF EXISTS (SELECT 1 FROM pg_roles WHERE rolname = 'authenticated') THEN
+        REVOKE SELECT, INSERT ON TABLE public.rooms FROM authenticated;
+        REVOKE SELECT, INSERT ON TABLE public.room_members FROM authenticated;
+      END IF;
+    END $$;
+  `)
 }

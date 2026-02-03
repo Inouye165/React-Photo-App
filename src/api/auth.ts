@@ -18,7 +18,14 @@ export function setAuthToken(token: string | null): void {
   const prevState = _authTokenState
   _cachedAccessToken = token
   _authTokenState = token ? 'set' : 'cleared'
+  // Diagnostic: explicit log when token is updated in-memory
   console.log(`[API Auth] Token updated. State: ${_authTokenState.toUpperCase()}`)
+  if (token) {
+    // For debugging only: show token length and tail to help correlate with server logs
+    console.log(`[API Auth] Token set (len=${String(token.length)}): ${token.slice(0, 6)}...${token.slice(-6)}`)
+  } else {
+    console.log('[API Auth] Token cleared')
+  }
   authDebug('token:update', {
     prevState,
     nextState: _authTokenState,
@@ -40,7 +47,10 @@ export function onAuthTokenChange(listener: (token: string | null) => void): () 
 }
 
 export function getAccessToken(): string | null {
-  return _cachedAccessToken
+  // Diagnostic: log token retrieval from in-memory cache
+  const t = _cachedAccessToken
+  console.log('[API Auth] getAccessToken called. Has cached token:', Boolean(t))
+  return t
 }
 
 export function getHeadersForGetRequest(): Record<string, string> | undefined {
@@ -89,6 +99,7 @@ export function getAuthHeaders(includeContentType = true): Record<string, string
   }
   if (_cachedAccessToken) {
     headers['Authorization'] = `Bearer ${_cachedAccessToken}`
+    console.log('[API Auth] getAuthHeaders returning Authorization header (from cache)')
   } else {
     console.warn('[API Auth] Generating headers with NO cached token! Request will likely fail 401.')
   }
@@ -122,6 +133,7 @@ export async function getAuthHeadersAsync(includeContentType = true): Promise<Re
     const token = session?.access_token ?? null
     if (token) {
       headers['Authorization'] = `Bearer ${token}`
+      console.log('[API Auth] getAuthHeadersAsync acquired token from session')
       setAuthToken(token)
       authDebug('headers:auth:refresh_success', { hasToken: true })
     } else {

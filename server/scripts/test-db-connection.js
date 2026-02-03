@@ -13,8 +13,12 @@ const { Client } = require('pg');
     process.exit(1);
   }
 
+  const isSslDisabled = String(process.env.DB_SSL_DISABLED || '').trim().toLowerCase() === 'true';
   // Use ssl.rejectUnauthorized=false for common managed PG hosts (Supabase).
-  const client = new Client({ connectionString: url, ssl: { rejectUnauthorized: false } });
+  const client = new Client({
+    connectionString: url,
+    ssl: isSslDisabled ? false : { rejectUnauthorized: false }
+  });
   try {
     await client.connect();
     const { rows } = await client.query('SELECT 1 AS ok;');

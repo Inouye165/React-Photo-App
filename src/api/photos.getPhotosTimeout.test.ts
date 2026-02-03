@@ -53,6 +53,7 @@ describe('getPhotos timeout/abort', () => {
     for (let i = 0; i < 10; i++) {
       await Promise.resolve()
     }
+    await vi.advanceTimersByTimeAsync(0)
 
     expect((globalThis.fetch as any)).toHaveBeenCalledTimes(1)
 

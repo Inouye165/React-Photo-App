@@ -74,18 +74,25 @@ async function verifyMigrations(retryAttempt = 0) {
   // Handle SSL configuration for PostgreSQL - match db/index.js behavior exactly
   // This ensures the migration script connects the same way the server does.
   if (cfg.client === 'pg') {
+    const envIsDev = env === 'development' || process.env.NODE_ENV === 'development';
     if (typeof cfg.connection === 'string') {
       // Remove sslmode from connection string as we'll use the ssl object instead
       const connStr = cfg.connection.replace(/[?&]sslmode=[^&]+/, '');
       cfg.connection = {
         connectionString: connStr,
-        ssl: { rejectUnauthorized: false }
+        // In development we prefer no SSL because local Postgres often doesn't support it.
+        ssl: envIsDev ? false : { rejectUnauthorized: false }
       };
     } else if (cfg.connection && cfg.connection.connectionString) {
       // Remove sslmode from connection string if present
       cfg.connection.connectionString = cfg.connection.connectionString.replace(/[?&]sslmode=[^&]+/, '');
-      // Make sure SSL config exists with relaxed verification
-      cfg.connection.ssl = { rejectUnauthorized: false };
+      // Respect explicit false from knexfile: if the config set ssl=false, do not override.
+      if (cfg.connection.ssl === false || envIsDev) {
+        cfg.connection.ssl = false;
+      } else {
+        // Make sure SSL config exists with relaxed verification
+        cfg.connection.ssl = { rejectUnauthorized: false };
+      }
     }
   }
 
@@ -105,7 +112,7 @@ async function verifyMigrations(retryAttempt = 0) {
     const { Client } = require('pg');
     const testClient = new Client({
       connectionString,
-      ssl: cfg.connection?.ssl || { rejectUnauthorized: false },
+      ssl: cfg.connection?.ssl === false ? false : (cfg.connection?.ssl ?? { rejectUnauthorized: false }),
       connectionTimeoutMillis: 10000 // 10 second timeout for pre-flight
     });
     

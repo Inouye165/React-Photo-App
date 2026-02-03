@@ -10,15 +10,8 @@
 const request = require('supertest');
 const express = require('express');
 
-// Mock Supabase
-const mockGetUser = jest.fn();
-jest.mock('@supabase/supabase-js', () => ({
-  createClient: () => ({
-    auth: {
-      getUser: mockGetUser
-    }
-  })
-}));
+// Use shared Supabase mock from test setup
+const { __mockGetUser: mockGetUser } = require('./__mocks__/supabase');
 
 // Mock database
 const mockInsert = jest.fn().mockReturnThis();
