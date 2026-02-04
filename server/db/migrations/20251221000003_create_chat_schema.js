@@ -13,6 +13,22 @@ exports.up = async function up(knex) {
   const client = knex.client.config.client
   const isPg = client === 'pg' || client === 'postgresql'
 
+  if (isPg) {
+    await knex.raw('CREATE EXTENSION IF NOT EXISTS "pgcrypto"');
+  }
+
+  const hasAuthSchema = isPg
+    ? (await knex.raw(
+        "SELECT 1 FROM information_schema.schemata WHERE schema_name = 'auth' LIMIT 1;"
+      )).rows.length > 0
+    : false
+
+  const hasAuthUid = isPg
+    ? (await knex.raw(
+        "SELECT 1 FROM pg_proc p JOIN pg_namespace n ON n.oid = p.pronamespace WHERE n.nspname = 'auth' AND p.proname = 'uid' LIMIT 1;"
+      )).rows.length > 0
+    : false
+
   const hasRooms = await knex.schema.hasTable('rooms')
   if (!hasRooms) {
     await knex.schema.createTable('rooms', (table) => {
@@ -57,7 +73,7 @@ exports.up = async function up(knex) {
       // We add the FK via raw SQL (cross-schema) for PostgreSQL.
     })
 
-    if (isPg) {
+    if (isPg && hasAuthSchema) {
       await knex.raw(`
         ALTER TABLE "room_members"
         ADD CONSTRAINT "room_members_user_id_foreign"
@@ -73,18 +89,21 @@ exports.up = async function up(knex) {
     })
   }
 
-  if (isPg) {
+  if (isPg && hasAuthUid) {
     // Enable RLS
     await knex.raw('ALTER TABLE "rooms" ENABLE ROW LEVEL SECURITY;')
     await knex.raw('ALTER TABLE "room_members" ENABLE ROW LEVEL SECURITY;')
 
     // Table privileges for Supabase roles (defensive; avoids 403 from missing grants)
-    try {
-      await knex.raw('GRANT SELECT, INSERT ON "rooms" TO authenticated;')
-      await knex.raw('GRANT SELECT, INSERT ON "room_members" TO authenticated;')
-    } catch {
-      // Ignore if roles don't exist (non-Supabase Postgres)
-    }
+    await knex.raw(`
+      DO $$
+      BEGIN
+        IF EXISTS (SELECT 1 FROM pg_roles WHERE rolname = 'authenticated') THEN
+          GRANT SELECT, INSERT ON "rooms" TO authenticated;
+          GRANT SELECT, INSERT ON "room_members" TO authenticated;
+        END IF;
+      END $$;
+    `)
 
     // Drop policies if they already exist (idempotent)
     await knex.raw('DROP POLICY IF EXISTS "rooms_select_member" ON "rooms";')

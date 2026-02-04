@@ -97,8 +97,8 @@ describe('AuthContext.updatePassword', () => {
       },
     })
 
-    // Session after password update
-    mockGetSession.mockResolvedValueOnce({
+    // Session after password update (and any subsequent refreshes)
+    mockGetSession.mockResolvedValue({
       data: {
         session: {
           access_token: 'new-token',
@@ -193,7 +193,7 @@ describe('AuthContext profile fetching', () => {
     vi.clearAllMocks()
 
     // Initial provider mount session
-    mockGetSession.mockResolvedValueOnce({
+    mockGetSession.mockResolvedValue({
       data: {
         session: {
           access_token: 'old-token',

@@ -165,35 +165,78 @@ async function authenticateToken(req, res, next) {
     if (config?.supabase?.jwtSecret) {
       const configuredSupabaseUrl = config?.supabase?.url || process.env.SUPABASE_URL;
       const issuerExpected = expectedSupabaseIssuer(configuredSupabaseUrl);
-      try {
-        const decoded = jwt.verify(token, config.supabase.jwtSecret, {
-          algorithms: ['HS256'],
-          // We validate `iss` ourselves using URL parsing to handle the /auth/v1
-          // suffix robustly and avoid false positives from string tricks.
-          audience: 'authenticated'
-        });
-
-        const tokenIssuer = decoded && typeof decoded === 'object' ? decoded.iss : undefined;
-        if (!isIssuerForConfiguredSupabaseProject({ issuer: tokenIssuer, configuredSupabaseUrl })) {
-          const err = new Error('JWT issuer mismatch');
-          err.name = 'JWT_ISSUER_MISMATCH';
-          throw err;
+      const headerAlg = (() => {
+        try {
+          const decodedHeader = jwt.decode(token, { complete: true });
+          return decodedHeader && typeof decodedHeader === 'object'
+            ? decodedHeader.header?.alg
+            : undefined;
+        } catch {
+          return undefined;
         }
+      })();
 
-        const tokenAud = decoded && typeof decoded === 'object' ? decoded.aud : undefined;
-        if (!isStrictAuthenticatedAudience(tokenAud)) {
-          const err = new Error('JWT audience mismatch');
-          err.name = 'JWT_AUDIENCE_MISMATCH';
-          throw err;
+      const decodedPayload = (() => {
+        try {
+          const decoded = jwt.decode(token);
+          return decoded && typeof decoded === 'object' ? decoded : undefined;
+        } catch {
+          return undefined;
         }
-      } catch (verifyErr) {
-        if (process.env.AUTH_DEBUG_LOGS) {
-          console.warn('[auth] Invalid token', {
-            reason: verifyErr && verifyErr.name ? verifyErr.name : 'JWT_VERIFY_FAILED',
-            issuerExpected: issuerExpected || '(missing)',
+      })();
+
+      const precheckIssuer = decodedPayload?.iss;
+      const precheckAud = decodedPayload?.aud;
+      const hasExpectedIssuer = Boolean(precheckIssuer) && isIssuerForConfiguredSupabaseProject({
+        issuer: precheckIssuer,
+        configuredSupabaseUrl,
+      });
+      const shouldVerifyLocally = headerAlg === 'HS256' && hasExpectedIssuer;
+
+      if (shouldVerifyLocally) {
+        try {
+          const decoded = jwt.verify(token, config.supabase.jwtSecret, {
+            algorithms: ['HS256', 'ES256'],
+            // We validate `iss` ourselves using URL parsing to handle the /auth/v1
+            // suffix robustly and avoid false positives from string tricks.
+            audience: 'authenticated'
           });
+
+          const tokenIssuer = decoded && typeof decoded === 'object' ? decoded.iss : undefined;
+          if (!isIssuerForConfiguredSupabaseProject({ issuer: tokenIssuer, configuredSupabaseUrl })) {
+            const err = new Error('JWT issuer mismatch');
+            err.name = 'JWT_ISSUER_MISMATCH';
+            throw err;
+          }
+
+          const tokenAud = decoded && typeof decoded === 'object' ? decoded.aud : undefined;
+          if (!isStrictAuthenticatedAudience(tokenAud)) {
+            const err = new Error('JWT audience mismatch');
+            err.name = 'JWT_AUDIENCE_MISMATCH';
+            throw err;
+          }
+        } catch (verifyErr) {
+          // Always surface a concise verification error to server logs to aid
+          // local debugging (but do NOT log the token itself).
+          try {
+            const name = verifyErr && verifyErr.name ? verifyErr.name : 'JWT_VERIFY_FAILED'
+            const msg = verifyErr && verifyErr.message ? verifyErr.message : String(verifyErr)
+            // eslint-disable-next-line no-console
+            console.error('[auth] JWT verification failed:', { name, message: msg, issuerExpected: issuerExpected || '(missing)' })
+          } catch (logErr) {
+            // eslint-disable-next-line no-console
+            console.error('[auth] JWT verification failed (logging error)', String(logErr))
+          }
+
+          if (process.env.AUTH_DEBUG_LOGS) {
+            console.warn('[auth] Invalid token', {
+              reason: verifyErr && verifyErr.name ? verifyErr.name : 'JWT_VERIFY_FAILED',
+              issuerExpected: issuerExpected || '(missing)',
+            });
+          }
+
+          return res.status(403).json({ success: false, error: 'Invalid token' });
         }
-        return res.status(403).json({ success: false, error: 'Invalid token' });
       }
     }
 
@@ -255,7 +298,8 @@ async function authenticateToken(req, res, next) {
     }
 
     if (error || !user) {
-      if (process.env.AUTH_DEBUG_LOGS) {
+      // Always log invalid token details to server logs to aid debugging in local/dev.
+      try {
         const origin = req.headers.origin;
         const ua = req.headers['user-agent'];
         const hasAuthHeader = Boolean(req.headers.authorization);
@@ -278,22 +322,29 @@ async function authenticateToken(req, res, next) {
               iss: payload?.iss,
               aud: payload?.aud,
               sub: payload?.sub,
-              exp: payload?.exp
+              exp: payload?.exp,
             };
           } catch {
             return { parse: 'failed' };
           }
         })();
 
-        console.warn('[auth] Invalid token', {
+        console.error('[auth] Invalid token', {
           origin,
           ua,
           hasAuthHeader,
           tokenLen,
           tokenMeta,
-          backendSupabaseUrl: normalizeUrlNoTrailingSlash(backendSupabaseUrl)
+          backendSupabaseUrl: normalizeUrlNoTrailingSlash(backendSupabaseUrl),
         });
+      } catch (logErr) {
+        console.error('[auth] Failed to log invalid token details', logErr);
       }
+
+      if (process.env.AUTH_DEBUG_LOGS) {
+        console.warn('[auth] Invalid token (debug)', { reason: error?.message || 'no user', backendSupabaseUrl: config?.supabase?.url });
+      }
+
       return res.status(403).json({ success: false, error: 'Invalid token' });
     }
 

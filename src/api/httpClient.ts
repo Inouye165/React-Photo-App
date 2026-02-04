@@ -29,10 +29,20 @@ export class ApiError extends Error {
 // credentials behavior unchanged.
 let _csrfToken: string | null = null
 let csrfTokenPromise: Promise<string> | null = null
+let _forceDevMode: boolean | null = null
 
 export function __resetCsrfTokenForTests(): void {
   _csrfToken = null
   csrfTokenPromise = null
+}
+
+export function __setDevModeForTests(value: boolean | null): void {
+  _forceDevMode = value
+}
+
+function isDevMode(): boolean {
+  if (_forceDevMode !== null) return _forceDevMode
+  return import.meta.env.DEV
 }
 
 function isUnsafeMethod(method: string): boolean {
@@ -87,6 +97,7 @@ async function getCsrfToken(): Promise<string> {
 
   return csrfTokenPromise!
 }
+
 
 // --- Network Failure Tracking ---
 let isNetworkDown = false
@@ -350,47 +361,114 @@ export async function request<T>(options: RequestOptions): Promise<T> {
   let response: Response
   const doFetch = async (): Promise<Response> => {
     const methodUpper = method.toUpperCase()
-
     const isUnsafe = isUnsafeMethod(methodUpper)
     const headersObj = (fetchOptions.headers ??= {}) as Record<string, string>
 
-    if (isUnsafe) {
-      const existingHeaderKey = Object.keys(headersObj).find((k) => k.toLowerCase() === 'x-csrf-token')
-      const existingHeaderValue = existingHeaderKey ? headersObj[existingHeaderKey] : undefined
-      const hasValidExistingHeaderValue =
-        typeof existingHeaderValue === 'string' && existingHeaderValue.trim().length > 0
-
-      // Normalize the header casing to avoid misleading logs like:
-      // "Sending CSRF Header: undefined" when the token is present under a different key casing.
-      if (hasValidExistingHeaderValue) {
-        if (existingHeaderKey && existingHeaderKey !== 'X-CSRF-Token') {
-          headersObj['X-CSRF-Token'] = existingHeaderValue
-          delete headersObj[existingHeaderKey]
+    // Ensure we have the latest Authorization header by asking the auth module
+    // for fresh headers at request time. Use dynamic import to avoid circular
+    // import cycles at module-evaluation time.
+    try {
+      const authMod = await import('./auth')
+      if (authMod && typeof authMod.getAuthHeadersAsync === 'function') {
+        const fresh = await authMod.getAuthHeadersAsync(false)
+        if (fresh && fresh.Authorization) {
+          headersObj['Authorization'] = fresh.Authorization
         }
+      }
+    } catch (err) {
+      // Non-fatal - continue without Authorization header
+    }
+
+    // Detect dev mode via Vite's import.meta.env.DEV. In development the
+    // backend may have CSRF disabled (local dev convenience) so skip the
+    // CSRF bootstrap and header injection entirely to avoid aborting.
+    const isDev = isDevMode()
+
+    if (isUnsafe) {
+      if (isDev) {
+        // In dev mode we intentionally skip CSRF token fetch and header.
+        // This allows local POST/PATCH/DELETE requests to succeed when the
+        // backend has csurf disabled for development.
       } else {
-        try {
-          const token = await getCsrfToken()
-          headersObj['X-CSRF-Token'] = token
-        } catch (err) {
-          if (err instanceof ApiError && (err.status === 401 || err.status === 403)) {
-            handleAuthError(({ status: err.status } as unknown) as Response)
-            throw err
+        const existingHeaderKey = Object.keys(headersObj).find((k) => k.toLowerCase() === 'x-csrf-token')
+        const existingHeaderValue = existingHeaderKey ? headersObj[existingHeaderKey] : undefined
+        const hasValidExistingHeaderValue =
+          typeof existingHeaderValue === 'string' && existingHeaderValue.trim().length > 0
+
+        // Normalize the header casing to avoid misleading logs like:
+        // "Sending CSRF Header: undefined" when the token is present under a different key casing.
+        if (hasValidExistingHeaderValue) {
+          if (existingHeaderKey && existingHeaderKey !== 'X-CSRF-Token') {
+            headersObj['X-CSRF-Token'] = existingHeaderValue
+            delete headersObj[existingHeaderKey]
           }
-          throw new Error('Abort: CSRF token could not be retrieved')
+        } else {
+          try {
+            const token = await getCsrfToken()
+            headersObj['X-CSRF-Token'] = token
+          } catch (err) {
+            if (err instanceof ApiError && (err.status === 401 || err.status === 403)) {
+              handleAuthError(({ status: err.status } as unknown) as Response)
+              throw err
+            }
+            throw new Error('Abort: CSRF token could not be retrieved')
+          }
         }
       }
     }
 
     // Immediately before sending the request: unsafe methods only.
     if (isUnsafe) {
-      if (!headersObj['X-CSRF-Token']) throw new Error('Abort: CSRF token could not be retrieved')
+      // In dev we allow unsafe calls without CSRF (backend may have csurf disabled).
+      if (!isDev && !headersObj['X-CSRF-Token']) throw new Error('Abort: CSRF token could not be retrieved')
+    }
+
+    // Diagnostic: log the Authorization header immediately before sending.
+    try {
+      const authHeader = headersObj['Authorization']
+      // eslint-disable-next-line no-console
+      console.log('[HTTP] Sending Authorization header:', authHeader)
+      if (typeof authHeader === 'string') {
+        if (!authHeader.startsWith('Bearer ')) {
+          console.warn('[HTTP] Authorization header format unexpected (missing "Bearer ")', authHeader)
+        } else if (authHeader.trim() === 'Bearer') {
+          console.warn('[HTTP] Authorization header contains empty token')
+        }
+      } else if (authHeader !== undefined) {
+        console.warn('[HTTP] Authorization header is not a string', authHeader)
+      }
+    } catch {
+      /* ignore */
     }
 
     if (timeoutMs) {
       const controller = new AbortController()
       const id = setTimeout(() => controller.abort(), timeoutMs)
       const combinedSignal = signal || controller.signal // Simple logic, ideally merge signals
-      return fetchWithNetworkFallback(url, { ...fetchOptions, signal: combinedSignal }).finally(() => clearTimeout(id))
+
+      const abortPromise = new Promise<never>((_, reject) => {
+        const onAbort = () => {
+          const err = new Error('The user aborted a request')
+          ;(err as Error & { name?: string }).name = 'AbortError'
+          reject(err)
+        }
+
+        if (combinedSignal?.aborted) {
+          onAbort()
+          return
+        }
+
+        try {
+          combinedSignal?.addEventListener?.('abort', onAbort, { once: true })
+        } catch {
+          // ignore - fallback to fetch rejection when available
+        }
+      })
+
+      return Promise.race([
+        fetchWithNetworkFallback(url, { ...fetchOptions, signal: combinedSignal }),
+        abortPromise,
+      ]).finally(() => clearTimeout(id))
     }
     return fetchWithNetworkFallback(url, fetchOptions)
   }

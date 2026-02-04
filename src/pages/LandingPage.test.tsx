@@ -57,10 +57,6 @@ describe('LandingPage', () => {
   it('handles successful form submission', async () => {
     (global.fetch as any).mockResolvedValueOnce({
       ok: true,
-      json: async () => ({ csrfToken: 'test-csrf-token' }),
-    });
-    (global.fetch as any).mockResolvedValueOnce({
-      ok: true,
       json: async () => ({ success: true }),
     });
 
@@ -87,7 +83,6 @@ describe('LandingPage', () => {
         credentials: 'include',
         headers: expect.objectContaining({
           'Content-Type': 'application/json',
-          'x-csrf-token': 'test-csrf-token',
         }),
         body: JSON.stringify({
           name: 'John Doe',
@@ -100,10 +95,6 @@ describe('LandingPage', () => {
   });
 
   it('handles API errors correctly', async () => {
-    (global.fetch as any).mockResolvedValueOnce({
-      ok: true,
-      json: async () => ({ csrfToken: 'test-csrf-token' }),
-    });
     (global.fetch as any).mockResolvedValueOnce({
       ok: false,
       status: 500,
@@ -125,10 +116,6 @@ describe('LandingPage', () => {
   });
 
   it('handles rate limit errors correctly', async () => {
-    (global.fetch as any).mockResolvedValueOnce({
-      ok: true,
-      json: async () => ({ csrfToken: 'test-csrf-token' }),
-    });
     (global.fetch as any).mockResolvedValueOnce({
       ok: false,
       status: 429,

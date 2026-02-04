@@ -14,11 +14,35 @@ exports.up = async function up(knex) {
   if (!isPg) return
 
   // 1) Force schema usage grants
-  await knex.raw('GRANT USAGE ON SCHEMA public TO authenticated, anon, service_role;')
+  await knex.raw(`
+    DO $$
+    BEGIN
+      IF EXISTS (SELECT 1 FROM pg_roles WHERE rolname = 'anon') THEN
+        GRANT USAGE ON SCHEMA public TO anon;
+      END IF;
+      IF EXISTS (SELECT 1 FROM pg_roles WHERE rolname = 'authenticated') THEN
+        GRANT USAGE ON SCHEMA public TO authenticated;
+      END IF;
+      IF EXISTS (SELECT 1 FROM pg_roles WHERE rolname = 'service_role') THEN
+        GRANT USAGE ON SCHEMA public TO service_role;
+      END IF;
+    END $$;
+  `)
 
   // 2) Force broad table + sequence grants (debug)
-  await knex.raw('GRANT ALL ON ALL TABLES IN SCHEMA public TO authenticated, service_role;')
-  await knex.raw('GRANT ALL ON ALL SEQUENCES IN SCHEMA public TO authenticated, service_role;')
+  await knex.raw(`
+    DO $$
+    BEGIN
+      IF EXISTS (SELECT 1 FROM pg_roles WHERE rolname = 'authenticated') THEN
+        GRANT ALL ON ALL TABLES IN SCHEMA public TO authenticated;
+        GRANT ALL ON ALL SEQUENCES IN SCHEMA public TO authenticated;
+      END IF;
+      IF EXISTS (SELECT 1 FROM pg_roles WHERE rolname = 'service_role') THEN
+        GRANT ALL ON ALL TABLES IN SCHEMA public TO service_role;
+        GRANT ALL ON ALL SEQUENCES IN SCHEMA public TO service_role;
+      END IF;
+    END $$;
+  `)
 
   // 3) Ensure RLS is enabled (policies below are permissive)
   await knex.raw('ALTER TABLE public.rooms ENABLE ROW LEVEL SECURITY;')
@@ -31,24 +55,14 @@ exports.up = async function up(knex) {
   await knex.raw('DROP POLICY IF EXISTS "Debug select" ON public.rooms;')
 
   await knex.raw(`
-    CREATE POLICY "Allow authenticated insert" ON public.rooms
-    FOR INSERT
-    TO authenticated
-    WITH CHECK (true);
-  `)
-
-  await knex.raw(`
-    CREATE POLICY "Allow authenticated insert" ON public.room_members
-    FOR INSERT
-    TO authenticated
-    WITH CHECK (true);
-  `)
-
-  await knex.raw(`
-    CREATE POLICY "Debug select" ON public.rooms
-    FOR SELECT
-    TO authenticated
-    USING (true);
+    DO $$
+    BEGIN
+      IF EXISTS (SELECT 1 FROM pg_roles WHERE rolname = 'authenticated') THEN
+        EXECUTE 'CREATE POLICY "Allow authenticated insert" ON public.rooms FOR INSERT TO authenticated WITH CHECK (true)';
+        EXECUTE 'CREATE POLICY "Allow authenticated insert" ON public.room_members FOR INSERT TO authenticated WITH CHECK (true)';
+        EXECUTE 'CREATE POLICY "Debug select" ON public.rooms FOR SELECT TO authenticated USING (true)';
+      END IF;
+    END $$;
   `)
 }
 

@@ -148,8 +148,15 @@ function logStartupDiagnostics() {
   }
 
   // Recommended for server-side JWT verification (used by auth middleware when present).
+  // SUPABASE_JWT_SECRET: recommended for local server-side JWT verification.
+  // Treat as optional during development but required outside development
+  // so the server can validate Supabase JWTs locally and avoid auth fallbacks.
   if (!process.env.SUPABASE_JWT_SECRET || process.env.SUPABASE_JWT_SECRET.trim() === '') {
-    missingOptional.push('SUPABASE_JWT_SECRET');
+    if (process.env.NODE_ENV === 'development') {
+      missingOptional.push('SUPABASE_JWT_SECRET');
+    } else {
+      missingCritical.push('SUPABASE_JWT_SECRET');
+    }
   }
 
   if (missingCritical.length) {

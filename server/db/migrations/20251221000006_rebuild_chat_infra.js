@@ -22,19 +22,31 @@ exports.up = async function up(knex) {
   const isPg = client === 'pg' || client === 'postgresql'
   if (!isPg) return
 
-  // Basic grants (RLS still controls which rows are visible).
-  try {
-    await knex.raw('GRANT USAGE ON SCHEMA public TO anon, authenticated, service_role;')
-  } catch {
-    // ignore if roles don't exist
-  }
+  const hasAuthUid = (await knex.raw(
+    "SELECT 1 FROM pg_proc p JOIN pg_namespace n ON n.oid = p.pronamespace WHERE n.nspname = 'auth' AND p.proname = 'uid' LIMIT 1;"
+  )).rows.length > 0
 
-  try {
-    await knex.raw('GRANT SELECT, INSERT, UPDATE, DELETE ON TABLE public.rooms TO authenticated, service_role;')
-    await knex.raw('GRANT SELECT, INSERT, UPDATE, DELETE ON TABLE public.room_members TO authenticated, service_role;')
-  } catch {
-    // ignore if roles don't exist
-  }
+  // Basic grants (RLS still controls which rows are visible).
+  await knex.raw(`
+    DO $$
+    BEGIN
+      IF EXISTS (SELECT 1 FROM pg_roles WHERE rolname = 'anon') THEN
+        GRANT USAGE ON SCHEMA public TO anon;
+      END IF;
+      IF EXISTS (SELECT 1 FROM pg_roles WHERE rolname = 'authenticated') THEN
+        GRANT USAGE ON SCHEMA public TO authenticated;
+        GRANT SELECT, INSERT, UPDATE, DELETE ON TABLE public.rooms TO authenticated;
+        GRANT SELECT, INSERT, UPDATE, DELETE ON TABLE public.room_members TO authenticated;
+      END IF;
+      IF EXISTS (SELECT 1 FROM pg_roles WHERE rolname = 'service_role') THEN
+        GRANT USAGE ON SCHEMA public TO service_role;
+        GRANT SELECT, INSERT, UPDATE, DELETE ON TABLE public.rooms TO service_role;
+        GRANT SELECT, INSERT, UPDATE, DELETE ON TABLE public.room_members TO service_role;
+      END IF;
+    END $$;
+  `)
+
+  if (!hasAuthUid) return
 
   // Helper used to avoid RLS recursion in policies.
   // SECURITY DEFINER runs as the function owner (typically postgres in Supabase)

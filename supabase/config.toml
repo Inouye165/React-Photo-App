@@ -1,0 +1,24 @@
+# Supabase local development configuration
+# Generated for local studio + API stack.
+
+project_id = "photo-app"
+
+[api]
+# Local API (PostgREST + Auth) port
+port = 54321
+
+[db]
+# Local Postgres port used by Supabase
+port = 54324
+
+[studio]
+# Supabase Studio (web UI)
+port = 54323
+
+[inbucket]
+# Email testing UI/SMTP (avoid port conflicts)
+port = 54326
+
+# Optional: use SQL migrations in supabase/migrations
+[migrations]
+# Default settings are sufficient for local usage.

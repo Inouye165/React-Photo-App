@@ -78,17 +78,25 @@ function registerMiddleware(app) {
   const isProduction = process.env.NODE_ENV === 'production';
   const csrfCookieSameSite = isProduction ? 'none' : 'lax';
   const csrfCookieSecure = csrfCookieSameSite === 'none' ? true : isProduction;
-  app.use(
-    csurf({
-      cookie: {
-        key: 'csrfSecret',
-        httpOnly: true,
-        sameSite: csrfCookieSameSite,
-        secure: csrfCookieSecure,
-        path: '/',
-      },
-    })
-  );
+  // In development we disable csurf to avoid EBADCSRFTOKEN during local
+  // dev flows where the frontend dev server and backend may not round-trip
+  // the secret cookie. Enable csurf for all other environments.
+  if (process.env.NODE_ENV === 'development') {
+    const logger = require('../logger');
+    logger.info('[CSRF] csurf disabled in development (NODE_ENV=development)');
+  } else {
+    app.use(
+      csurf({
+        cookie: {
+          key: 'csrfSecret',
+          httpOnly: true,
+          sameSite: csrfCookieSameSite,
+          secure: csrfCookieSecure,
+          path: '/',
+        },
+      })
+    );
+  }
 
   // Add request validation middleware
   app.use(validateRequest);

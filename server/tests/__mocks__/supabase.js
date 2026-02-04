@@ -261,5 +261,6 @@ const mockStorageHelpers = {
 
 module.exports = {
   createClient: jest.fn(() => createMockSupabaseClient()),
-  mockStorageHelpers
+  mockStorageHelpers,
+  __mockGetUser: mockGetUser
 };

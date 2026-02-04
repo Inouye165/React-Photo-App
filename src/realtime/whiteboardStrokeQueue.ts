@@ -46,6 +46,7 @@ export function createStrokePersistenceQueue(options: StrokeQueueOptions) {
   const isOnline = options.isOnline ?? (() => (typeof navigator !== 'undefined' ? navigator.onLine : true))
 
   let retryTimer: ReturnType<typeof setTimeout> | null = null
+  let cooldownUntil = 0
 
   const clearRetry = () => {
     if (retryTimer) {
@@ -77,9 +78,16 @@ export function createStrokePersistenceQueue(options: StrokeQueueOptions) {
     }
   }
 
-  const flush = (_reason: 'enqueue' | 'retry' | 'manual' | 'stroke-end' | 'visibility' | 'unmount' = 'manual') => {
+  const flush = (_reason: 'enqueue' | 'retry' | 'manual' | 'stroke-end' | 'visibility' | 'unmount' | 'backoff' = 'manual') => {
     if (pending.size === 0) {
       clearRetry()
+      return
+    }
+
+    const now = Date.now()
+    const bypassCooldown = _reason === 'unmount' || _reason === 'stroke-end'
+    if (!bypassCooldown && now < cooldownUntil) {
+      scheduleRetry(Math.max(0, cooldownUntil - now))
       return
     }
 
@@ -101,6 +109,13 @@ export function createStrokePersistenceQueue(options: StrokeQueueOptions) {
     }
   }
 
+  const backoff = (durationMs: number) => {
+    const now = Date.now()
+    const nextCooldown = now + Math.max(0, durationMs)
+    cooldownUntil = Math.max(cooldownUntil, nextCooldown)
+    scheduleRetry(Math.max(0, cooldownUntil - now))
+  }
+
   const getPendingCount = () => pending.size
 
   const stop = () => {
@@ -112,6 +127,7 @@ export function createStrokePersistenceQueue(options: StrokeQueueOptions) {
     enqueue,
     ack,
     flush,
+    backoff,
     stop,
     getPendingCount,
   }

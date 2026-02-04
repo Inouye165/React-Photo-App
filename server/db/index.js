@@ -25,7 +25,10 @@ if (!process.env.DATABASE_URL && !process.env.SUPABASE_DB_URL) {
 const config = knexConfig[environment];
 
 // Handle SSL configuration for PostgreSQL
-if (config.client === 'pg') {
+const sslDisabled = String(process.env.DB_SSL_DISABLED || '').trim().toLowerCase();
+const isSslDisabled = sslDisabled === '1' || sslDisabled === 'true' || sslDisabled === 'yes';
+
+if (config.client === 'pg' && !isSslDisabled) {
 	if (typeof config.connection === 'string') {
 		// Connection is a plain string, convert to object with SSL config
 		const cs = config.connection.replace(/[?&]sslmode=[^&]+/, '');
