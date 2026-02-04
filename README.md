@@ -109,6 +109,8 @@ If you want to poke around:
     - Worker: `cd server && npm run worker`
 6. **Wait for startup**
    - Allow 10-15 seconds for all services to fully initialize before accessing the app at http://localhost:5173/
+
+For a step-by-step sandbox guide (including common startup issues and fixes), see [docs/LOCAL_SANDBOX_SETUP.md](docs/LOCAL_SANDBOX_SETUP.md).
 cd server && npm install && cd ..
 
 # 2. Spin up local services
