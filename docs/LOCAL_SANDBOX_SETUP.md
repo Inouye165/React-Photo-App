@@ -4,19 +4,22 @@ This guide documents a full local sandbox setup for the app, plus common issues 
 
 ## Prerequisites
 
-- Node.js 20+
+- Node.js **20.11+ and <23** (required)
+- npm 10+
 - Docker Desktop (running)
+
+> **Why this matters:** Using Node 23+ can cause install or runtime failures.
 
 ## Quick Setup (Checklist)
 
 1. **Start Docker services (Postgres + Redis)**
    - `docker-compose up -d db redis`
-2. **Install dependencies**
+2. **Install dependencies (always after a pull)**
    - Repo root: `npm install`
    - Server: `cd server && npm install && cd ..`
-3. **Create env files**
+3. **Create env file**
    - `cp server/.env.example server/.env`
-   - Fill in required keys (`OPENAI_API_KEY`, `SUPABASE_URL`, `SUPABASE_ANON_KEY`, `JWT_SECRET`, etc.)
+   - Fill in required keys: `OPENAI_API_KEY`, `SUPABASE_URL`, `SUPABASE_ANON_KEY`, `JWT_SECRET`.
 4. **Run migrations**
    - `cd server && npx knex migrate:latest --knexfile knexfile.js && cd ..`
 5. **Start the app (3 terminals)**
@@ -24,11 +27,21 @@ This guide documents a full local sandbox setup for the app, plus common issues 
    - Backend: `cd server && npm run dev`
    - Worker: `cd server && npm run worker`
 6. **Open the app**
-   - http://localhost:5173/
+   - App: http://localhost:5173/
+   - If 5173 is busy, Vite will pick the next port (check the terminal).
 
 ---
 
 ## Problems & Fixes
+### 0) Missing dependencies after a pull (most common)
+**Symptom:**
+`Cannot find module 'yjs'` or `Failed to resolve import "@excalidraw/excalidraw"`.
+
+**Fix:**
+- Re-run installs **in both places**:
+   - `npm install`
+   - `cd server && npm install && cd ..`
+
 
 ### 1) Redis container name conflict
 **Symptom:**
@@ -68,3 +81,10 @@ This guide documents a full local sandbox setup for the app, plus common issues 
 - Missing Google Maps keys disables POI lookups.
 - The backend requires an OpenAI key unless in test mode.
 - Media redirects are controlled via `MEDIA_REDIRECT_ENABLED` in `server/.env`.
+
+## Local Supabase Dashboard
+
+If you run the local Supabase stack, the dashboard (Studio) is available here:
+- Supabase Studio: http://localhost:54323/
+
+See [docs/LOCAL_SUPABASE.md](docs/LOCAL_SUPABASE.md) for the full local Supabase setup steps.
