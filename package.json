@@ -56,7 +56,7 @@
     "idb-keyval": "^6.2.2",
     "konva": "^10.0.2",
     "lucide-react": "^0.555.0",
-    "nanoid": "^5.0.7",
+    "nanoid": "^5.0.9",
     "photo-app": "file:",
     "react": "^19.1.1",
     "react-dom": "^19.1.1",
@@ -113,7 +113,17 @@
     "vitest": "^3.2.4"
   },
   "overrides": {
-    "tar": "7.5.5"
+    "@excalidraw/excalidraw": {
+      "nanoid": "3.3.11"
+    },
+    "@excalidraw/mermaid-to-excalidraw": {
+      "nanoid": "5.0.9",
+      "mermaid": "10.9.4",
+      "dompurify": "3.2.4"
+    },
+    "mermaid": "10.9.4",
+    "dompurify": "3.2.4",
+    "tar": "7.5.7"
   },
   "size-limit": [
     {

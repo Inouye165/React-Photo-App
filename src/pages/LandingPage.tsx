@@ -129,8 +129,8 @@ const LandingPage: React.FC = () => {
 
       const headers: Record<string, string> = {
         'Content-Type': 'application/json',
-      }
-      if (csrfToken) headers['x-csrf-token'] = csrfToken
+      };
+      if (csrfToken) headers['x-csrf-token'] = csrfToken;
 
       const response = await fetch(`${API_BASE_URL}/api/public/contact`, {
         method: 'POST',

@@ -1,4 +1,7 @@
 // @ts-nocheck
+import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest';
+import * as api from './api';
+
 describe('uploadPhotoToServer FormData construction', () => {
   let originalFetch;
   beforeEach(() => {
@@ -79,8 +82,6 @@ describe('uploadPhotoToServer FormData construction', () => {
     expect(new Uint8Array(photoArray)).toStrictEqual(new Uint8Array(dummyArray));
   });
 });
-import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest';
-import * as api from './api';
 
 /**
  * Tests for Bearer Token Authentication
