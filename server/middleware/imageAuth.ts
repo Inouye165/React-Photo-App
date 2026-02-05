@@ -1,6 +1,6 @@
 const { createClient } = require('@supabase/supabase-js');
 const jwt = require('jsonwebtoken');
-const { resolveAllowedOrigin } = require('../config/allowedOrigins');
+const { resolveAllowedOrigin, isOriginAllowed } = require('../config/allowedOrigins');
 const { getConfig } = require('../config/env');
 
 // Centralized config:
@@ -33,7 +33,8 @@ async function authenticateImageRequest(req, res, next) {
   // This ensures CORS headers match the incoming request origin when allowed
   const allowedOrigins = require('../config/allowedOrigins').getAllowedOrigins();
   const resolvedOrigin = resolveAllowedOrigin(requestOrigin);
-  const originIsAllowed = Boolean(resolvedOrigin) && allowedOrigins.includes(resolvedOrigin);
+  // Use centralized allowlist check which permits requests with no Origin (server-to-server)
+  const originIsAllowed = isOriginAllowed(requestOrigin);
 
   // Always set CORP header for images to allow cross-origin loading
   res.header('Cross-Origin-Resource-Policy', 'cross-origin');
