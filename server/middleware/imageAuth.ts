@@ -56,23 +56,20 @@ async function authenticateImageRequest(req, res, next) {
     });
   }
 
-  // SECURITY: Only set Access-Control-Allow-Credentials when the incoming
-  // Origin is explicitly allowlisted and matches the request header.
-  const originIsExplicitlyAllowlisted =
-    !!requestOrigin &&
-    originIsAllowed &&
-    Array.isArray(allowedOrigins) &&
-    allowedOrigins.includes(requestOrigin);
-
-  if (originIsExplicitlyAllowlisted) {
+  // SECURITY: Only allow CORS with credentials for explicitly allowlisted origins
+  // This prevents credential leakage to untrusted domains
+  if (requestOrigin && Array.isArray(allowedOrigins) && allowedOrigins.includes(requestOrigin)) {
+    // Origin is explicitly allowlisted - allow credentials
     res.header('Access-Control-Allow-Origin', requestOrigin);
-    res.header('Vary', 'Origin');
     res.header('Access-Control-Allow-Credentials', 'true');
-  } else if (requestOrigin && resolvedOrigin && resolvedOrigin !== 'null' && resolvedOrigin !== '*') {
-    // For non-credential cross-origin requests, mirror a safe resolved origin.
-    // SECURITY: Do NOT set Access-Control-Allow-Credentials for non-allowlisted origins
-    res.header('Access-Control-Allow-Origin', resolvedOrigin);
     res.header('Vary', 'Origin');
+  } else if (!requestOrigin) {
+    // No Origin header (server-to-server requests) - allow without CORS headers
+    // Browser requests always include Origin, so this is safe
+  } else {
+    // Origin is not allowlisted - deny access
+    // Note: we already checked isOriginAllowed() above and returned 403 if not allowed
+    // This else block should rarely execute
   }
   res.header('Access-Control-Allow-Headers', 'Origin, X-Requested-With, Content-Type, Accept, Authorization');
   res.header('Access-Control-Allow-Methods', 'GET, POST, OPTIONS, PUT, DELETE');
