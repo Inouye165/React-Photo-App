@@ -1000,13 +1000,7 @@ export default function ChatWindow({ roomId, showIdentityGate, mode = 'workspace
       >
         <div className="flex-1 min-h-0 overflow-auto">
           {isCollaboration ? (
-            roomId ? (
-              <WhiteboardViewer boardId={roomId} className="h-full" />
-            ) : (
-              <div className="h-full flex items-center justify-center text-sm text-slate-500">
-                Select a room to start collaborating.
-              </div>
-            )
+            <WhiteboardViewer boardId={roomId} className="h-full" />
           ) : roomType === 'potluck' ? (
             <PotluckWidget
               metadata={roomMetadata}
@@ -1031,17 +1025,13 @@ export default function ChatWindow({ roomId, showIdentityGate, mode = 'workspace
             <DashboardCard title="Pad mode">
               <div className="space-y-3 text-sm text-slate-600">
                 <p>Open pad mode on a phone or tablet to draw. Strokes appear here live.</p>
-                {roomId ? (
-                  <button
-                    type="button"
-                    onClick={handleOpenPad}
-                    className="inline-flex items-center justify-center rounded-lg bg-slate-900 px-4 py-2 text-sm font-semibold text-white hover:bg-slate-800"
-                  >
-                    Open pad mode
-                  </button>
-                ) : (
-                  <span className="text-xs text-slate-500">Select a room to enable pad mode.</span>
-                )}
+                <button
+                  type="button"
+                  onClick={handleOpenPad}
+                  className="inline-flex items-center justify-center rounded-lg bg-slate-900 px-4 py-2 text-sm font-semibold text-white hover:bg-slate-800"
+                >
+                  Open pad mode
+                </button>
                 <div className="text-xs text-slate-500">Tip: keep the pad screen awake while drawing.</div>
               </div>
             </DashboardCard>

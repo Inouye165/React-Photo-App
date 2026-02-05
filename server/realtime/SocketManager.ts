@@ -177,7 +177,7 @@ export function createSocketManager(options: {
     }
     if (reason) {
       try {
-        metrics?.incRealtimeDisconnectReason?.(reason || 'client_close');
+        metrics?.incRealtimeDisconnectReason?.(reason);
       } catch {
         // ignore
       }

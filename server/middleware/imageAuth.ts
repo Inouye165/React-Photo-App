@@ -31,8 +31,10 @@ async function authenticateImageRequest(req, res, next) {
 
   // SECURITY: Use centralized origin resolution - never hardcode localhost:5173
   // This ensures CORS headers match the incoming request origin when allowed
-  const originIsAllowed = isOriginAllowed(requestOrigin);
+  const allowedOrigins = require('../config/allowedOrigins').getAllowedOrigins();
   const resolvedOrigin = resolveAllowedOrigin(requestOrigin);
+  // Use centralized allowlist check which permits requests with no Origin (server-to-server)
+  const originIsAllowed = isOriginAllowed(requestOrigin);
 
   // Always set CORP header for images to allow cross-origin loading
   res.header('Cross-Origin-Resource-Policy', 'cross-origin');
@@ -42,7 +44,7 @@ async function authenticateImageRequest(req, res, next) {
       requestOrigin: req.get('origin') || req.get('Origin'),
       resolvedOrigin,
       allowed: originIsAllowed,
-      allowedOrigins: require('../config/allowedOrigins').getAllowedOrigins(),
+      allowedOrigins,
       path: req.path
     });
   }

@@ -186,7 +186,6 @@ async function authenticateToken(req, res, next) {
       })();
 
       const precheckIssuer = decodedPayload?.iss;
-      const precheckAud = decodedPayload?.aud;
       const hasExpectedIssuer = Boolean(precheckIssuer) && isIssuerForConfiguredSupabaseProject({
         issuer: precheckIssuer,
         configuredSupabaseUrl,
@@ -219,13 +218,13 @@ async function authenticateToken(req, res, next) {
           // Always surface a concise verification error to server logs to aid
           // local debugging (but do NOT log the token itself).
           try {
-            const name = verifyErr && verifyErr.name ? verifyErr.name : 'JWT_VERIFY_FAILED'
-            const msg = verifyErr && verifyErr.message ? verifyErr.message : String(verifyErr)
+            const name = verifyErr && verifyErr.name ? verifyErr.name : 'JWT_VERIFY_FAILED';
+            const msg = verifyErr && verifyErr.message ? verifyErr.message : String(verifyErr);
             // eslint-disable-next-line no-console
-            console.error('[auth] JWT verification failed:', { name, message: msg, issuerExpected: issuerExpected || '(missing)' })
+            console.error('[auth] JWT verification failed:', { name, message: msg, issuerExpected: issuerExpected || '(missing)' });
           } catch (logErr) {
             // eslint-disable-next-line no-console
-            console.error('[auth] JWT verification failed (logging error)', String(logErr))
+            console.error('[auth] JWT verification failed (logging error)', String(logErr));
           }
 
           if (process.env.AUTH_DEBUG_LOGS) {

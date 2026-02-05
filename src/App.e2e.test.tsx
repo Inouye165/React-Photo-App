@@ -6,6 +6,7 @@ import { vi, beforeEach, afterEach, describe, it, expect } from 'vitest';
 // TanStack Virtual relies on ResizeObserver; the test DOM environment can provide a partial implementation.
 // Provide a minimal, stable polyfill so PhotoUploadForm can mount.
 class TestResizeObserver {
+  constructor(_callback?: ResizeObserverCallback) {}
   observe() {}
   unobserve() {}
   disconnect() {}

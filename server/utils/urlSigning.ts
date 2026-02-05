@@ -44,6 +44,10 @@ export const DEFAULT_TTL_SECONDS = 15 * 60;
  */
 export const TIME_WINDOW_SECONDS = 24 * 60 * 60; // 86400 seconds
 
+function sanitizeLogValue(value: string): string {
+  return value.replace(/[\r\n]/g, '');
+}
+
 /**
  * Generate HMAC-SHA256 signature for a thumbnail URL
  * 
@@ -252,7 +256,9 @@ export function validateSignedUrl(req: Request, res: Response, next: NextFunctio
   if (isSignatureInvalid(result)) {
     // Log for security monitoring (but don't expose reason to client)
     const reqId = (req as Request & { id?: string }).id || req.headers['x-request-id'] || 'unknown';
-    console.warn(`[urlSigning] Invalid signature: ${result.reason} (reqId: ${reqId})`);
+    const safeReason = sanitizeLogValue(result.reason);
+    const safeReqId = sanitizeLogValue(String(reqId));
+    console.warn(`[urlSigning] Invalid signature: ${safeReason} (reqId: ${safeReqId})`);
     
     res.status(403).json({
       success: false,
