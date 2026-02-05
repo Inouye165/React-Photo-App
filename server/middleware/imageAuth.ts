@@ -56,29 +56,22 @@ async function authenticateImageRequest(req, res, next) {
     });
   }
 
-  // SECURITY: Only set Access-Control-Allow-Origin if we have a valid, non-"null" origin.
-  // This protects against misconfigurations where "null" could be treated as allowed.
-  // Setting Access-Control-Allow-Origin to "null" with credentials is a security risk (CWE-942).
-  // Defense-in-depth: even if resolveAllowedOrigin is misconfigured, this guard prevents the issue.
-  // CodeQL/OWASP: Only set credentials header if also setting a valid allowlisted origin.
-  // This prevents CORS credential leaks (CWE-942).
-  // Only set CORS origin and credentials when it's safe.
-  // Requirements:
-  // - There must be an incoming Origin header (browser-initiated request).
-  // - The origin must be allowlisted via centralized check (`isOriginAllowed`).
-  // - The resolved origin must be a concrete origin (not '*' or 'null').
-  // - Only set `Access-Control-Allow-Credentials` when the computed allowed
-  //   origin exactly matches the incoming `Origin` header to prevent header
-  //   spoofing and credential leaks (defense-in-depth for CWE-942).
-  if (requestOrigin && originIsAllowed && resolvedOrigin && resolvedOrigin !== 'null' && resolvedOrigin !== '*') {
-    // If the resolved allowlisted origin exactly matches the request Origin,
-    // it is safe to enable credentials. Otherwise, set the origin header
-    // without credentials as a conservative fallback.
+  // SECURITY: Only set Access-Control-Allow-Credentials when the incoming
+  // Origin is explicitly allowlisted and matches the request header.
+  const originIsExplicitlyAllowlisted =
+    !!requestOrigin &&
+    originIsAllowed &&
+    Array.isArray(allowedOrigins) &&
+    allowedOrigins.includes(requestOrigin);
+
+  if (originIsExplicitlyAllowlisted) {
+    res.header('Access-Control-Allow-Origin', requestOrigin);
+    res.header('Vary', 'Origin');
+    res.header('Access-Control-Allow-Credentials', 'true');
+  } else if (requestOrigin && resolvedOrigin && resolvedOrigin !== 'null' && resolvedOrigin !== '*') {
+    // For non-credential cross-origin requests, mirror a safe resolved origin.
     res.header('Access-Control-Allow-Origin', resolvedOrigin);
     res.header('Vary', 'Origin');
-    if (resolvedOrigin === requestOrigin) {
-      res.header('Access-Control-Allow-Credentials', 'true');
-    }
   }
   res.header('Access-Control-Allow-Headers', 'Origin, X-Requested-With, Content-Type, Accept, Authorization');
   res.header('Access-Control-Allow-Methods', 'GET, POST, OPTIONS, PUT, DELETE');
