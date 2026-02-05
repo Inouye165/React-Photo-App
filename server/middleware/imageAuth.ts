@@ -70,6 +70,7 @@ async function authenticateImageRequest(req, res, next) {
     res.header('Access-Control-Allow-Credentials', 'true');
   } else if (requestOrigin && resolvedOrigin && resolvedOrigin !== 'null' && resolvedOrigin !== '*') {
     // For non-credential cross-origin requests, mirror a safe resolved origin.
+    // SECURITY: Do NOT set Access-Control-Allow-Credentials for non-allowlisted origins
     res.header('Access-Control-Allow-Origin', resolvedOrigin);
     res.header('Vary', 'Origin');
   }
