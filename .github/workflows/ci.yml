@@ -86,8 +86,8 @@ jobs:
           rm -rf server/node_modules server/package-lock.json
           npm install --no-audit --no-fund --prefix server
 
-      - name: Verify single OpenAI
-        run: npm ls openai
+      - name: Verify single OpenAI (server)
+        run: npm ls openai --prefix server
 
       - name: Lint
         run: npm run lint
