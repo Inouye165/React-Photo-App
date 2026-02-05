@@ -37,6 +37,16 @@ function isNonEmptyString(value: unknown): value is string {
   return typeof value === 'string' && value.trim().length > 0;
 }
 
+const MAX_WS_PAYLOAD_BYTES = Number.parseInt(process.env.WS_MAX_PAYLOAD_BYTES || '', 10) || 16 * 1024 * 1024;
+
+function payloadByteLength(payload: unknown): number {
+  if (typeof payload === 'string') return Buffer.byteLength(payload, 'utf-8');
+  if (payload instanceof Buffer) return payload.length;
+  if (payload instanceof ArrayBuffer) return payload.byteLength;
+  if (ArrayBuffer.isView(payload)) return payload.byteLength;
+  return 0;
+}
+
 type Metrics = {
   incRealtimeConnect?: () => void;
   incRealtimeDisconnect?: () => void;
@@ -121,11 +131,24 @@ export function createSocketManager(options: {
   const photoEventHistory = options.photoEventHistory || null;
   const clientMessageHandler = options.clientMessageHandler || null;
 
-  const wss = new WebSocketServer({ noServer: true });
+  const wss = new WebSocketServer({
+    noServer: true,
+    maxPayload: MAX_WS_PAYLOAD_BYTES,
+    perMessageDeflate: false,
+  });
   const clientsByUserId = new Map<string, Set<SocketRecord>>();
   const rooms = new Map<string, Set<SocketRecord>>();
 
   let heartbeatTimer: NodeJS.Timeout | null = null;
+
+  try {
+    log?.info?.('[realtime] WS config', {
+      maxPayloadBytes: MAX_WS_PAYLOAD_BYTES,
+      perMessageDeflate: false,
+    });
+  } catch {
+    // ignore
+  }
 
   function totalClientCount() {
     let n = 0;
@@ -245,11 +268,47 @@ export function createSocketManager(options: {
     });
 
     ws.on('error', () => {
+      try {
+        log?.warn?.('[realtime] WebSocket client error', { userId: key, socketId: record.id });
+      } catch {
+        // ignore
+      }
       removeClient(key, ws, 'error');
     });
 
     ws.on('message', (data: unknown) => {
-      void handleIncomingMessage(record, data);
+      const size = payloadByteLength(data);
+      if (size > MAX_WS_PAYLOAD_BYTES) {
+        try {
+          log?.warn?.('[realtime] Incoming WS payload exceeds limit', {
+            userId: key,
+            socketId: record.id,
+            size,
+            maxPayloadBytes: MAX_WS_PAYLOAD_BYTES,
+          });
+        } catch {
+          // ignore
+        }
+      }
+      try {
+        void handleIncomingMessage(record, data);
+      } catch (err) {
+        try {
+          log?.warn?.('[realtime] Message handler error; closing socket', {
+            userId: key,
+            socketId: record.id,
+            error: err instanceof Error ? err.message : String(err),
+          });
+        } catch {
+          // ignore
+        }
+        removeClient(key, ws, 'message_error');
+        try {
+          ws.close?.();
+        } catch {
+          // ignore
+        }
+      }
     });
 
     return record;

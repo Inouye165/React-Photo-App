@@ -38,3 +38,22 @@ export async function fetchWhiteboardSnapshot(options: {
     signal,
   })
 }
+
+export async function fetchWhiteboardWsToken(options: {
+  boardId: string
+  token: string
+  signal?: AbortSignal
+}): Promise<{ token: string; expiresInMs: number }> {
+  const { boardId, token, signal } = options
+
+  const headers: Record<string, string> = {
+    Authorization: `Bearer ${token}`,
+  }
+
+  return request<{ token: string; expiresInMs: number }>({
+    path: `/api/whiteboard/${encodeURIComponent(boardId)}/ws-token`,
+    method: 'POST',
+    headers,
+    signal,
+  })
+}

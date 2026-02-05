@@ -5,6 +5,7 @@ import { gzip } from 'zlib';
 import { promisify } from 'util';
 import { z } from 'zod';
 import { validateRequest } from '../validation/validateRequest';
+import { createWhiteboardWsToken } from '../realtime/whiteboardWsTokens';
 
 const gzipAsync = promisify(gzip);
 const BOARD_ID_MAX_LENGTH = 64;
@@ -167,6 +168,23 @@ module.exports = function createWhiteboardRouter({ db }: { db: Knex }) {
         return res.status(500).json({ success: false, error: 'Internal server error' });
       }
     }
+  );
+
+  router.post(
+    '/:boardId/ws-token',
+    validateRequest({ params: BoardIdParamsSchema }),
+    async (req: AuthenticatedRequest, res: Response) => {
+      try {
+        const boardId = await handleRequest(req, res);
+        if (!boardId) return undefined;
+        const userId = req.user?.id ? String(req.user.id) : '';
+        const ticket = createWhiteboardWsToken({ boardId, userId });
+        res.setHeader('Cache-Control', 'no-store');
+        return res.status(200).json({ success: true, token: ticket.token, expiresInMs: ticket.expiresInMs });
+      } catch {
+        return res.status(500).json({ success: false, error: 'Internal server error' });
+      }
+    },
   );
 
   router.get(

@@ -1,5 +1,5 @@
 import React, { useState, useEffect } from 'react';
-import { Outlet } from 'react-router-dom';
+import { Outlet, useLocation } from 'react-router-dom';
 import AppHeader from '../components/AppHeader';
 import UploadTray from '../components/uploads/UploadTray';
 import useStore from '../store';
@@ -22,6 +22,7 @@ export interface MainLayoutOutletContext {
  * Manages toolbar, banners, and dependency status checks
  */
 export default function MainLayout(): React.ReactElement {
+  const location = useLocation();
   const { user, authReady } = useAuth();
   const banner = useStore((state) => state.banner);
   const setBanner = useStore((state) => state.setBanner);
@@ -122,6 +123,7 @@ export default function MainLayout(): React.ReactElement {
   // Build status message for header
   const statusMessage = dependencyWarning || toolbarMessage || banner?.message;
   const bannerSeverity: Severity = (banner as BannerState | null)?.severity ?? 'info';
+  const isChatRoute = location.pathname.startsWith('/chat');
 
   return (
     <div
@@ -178,11 +180,9 @@ export default function MainLayout(): React.ReactElement {
       </div>
 
       {/* Main content area with consistent padding */}
-      <div 
-        className="flex-1 overflow-auto" 
-        style={{ 
-          padding: '16px',
-        }}
+      <div
+        className={`flex-1 ${isChatRoute ? 'overflow-hidden' : 'overflow-auto'}`}
+        style={isChatRoute ? undefined : { padding: '16px' }}
       >
         <Outlet context={{ 
           aiDependenciesReady, 

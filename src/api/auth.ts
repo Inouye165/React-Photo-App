@@ -1,5 +1,6 @@
 import { getSessionSingleflight } from '../lib/supabaseSession'
 import { request, ApiError } from './httpClient'
+import { setAuthHeaderProvider } from './authHeaderProvider'
 import { authDebug } from '../utils/authDebug'
 
 // --- Token Management ---
@@ -18,14 +19,6 @@ export function setAuthToken(token: string | null): void {
   const prevState = _authTokenState
   _cachedAccessToken = token
   _authTokenState = token ? 'set' : 'cleared'
-  // Diagnostic: explicit log when token is updated in-memory
-  console.log(`[API Auth] Token updated. State: ${_authTokenState.toUpperCase()}`)
-  if (token) {
-    // For debugging only: show token length and tail to help correlate with server logs
-    console.log(`[API Auth] Token set (len=${String(token.length)}): ${token.slice(0, 6)}...${token.slice(-6)}`)
-  } else {
-    console.log('[API Auth] Token cleared')
-  }
   authDebug('token:update', {
     prevState,
     nextState: _authTokenState,
@@ -47,22 +40,33 @@ export function onAuthTokenChange(listener: (token: string | null) => void): () 
 }
 
 export function getAccessToken(): string | null {
-  // Diagnostic: log token retrieval from in-memory cache
   const t = _cachedAccessToken
-  console.log('[API Auth] getAccessToken called. Has cached token:', Boolean(t))
   return t
 }
 
 export function getHeadersForGetRequest(): Record<string, string> | undefined {
+  const headers: Record<string, string> = {}
   if (_cachedAccessToken) {
-    return { Authorization: `Bearer ${_cachedAccessToken}` }
+    headers.Authorization = `Bearer ${_cachedAccessToken}`
   }
-  return undefined
+  if (typeof window !== 'undefined' && (window as any).__E2E_MODE__) {
+    headers['X-E2E-User-ID'] = '11111111-1111-4111-8111-111111111111'
+  }
+  return Object.keys(headers).length ? headers : undefined
 }
 
 export async function getHeadersForGetRequestAsync(): Promise<Record<string, string> | undefined> {
+  const headers: Record<string, string> = {}
   if (_cachedAccessToken) {
-    return { Authorization: `Bearer ${_cachedAccessToken}` }
+    headers.Authorization = `Bearer ${_cachedAccessToken}`
+  }
+
+  if (typeof window !== 'undefined' && (window as any).__E2E_MODE__) {
+    headers['X-E2E-User-ID'] = '11111111-1111-4111-8111-111111111111'
+  }
+
+  if (Object.keys(headers).length) {
+    return headers
   }
 
   if (!canAttemptSessionRefresh()) {
@@ -77,19 +81,20 @@ export async function getHeadersForGetRequestAsync(): Promise<Record<string, str
     if (token) {
       setAuthToken(token)
       authDebug('headers:get:refresh_success', { hasToken: true })
-      return { Authorization: `Bearer ${token}` }
+      headers.Authorization = `Bearer ${token}`
+      return headers
     }
 
     // Session resolved but no token; treat as logged out.
     _authTokenState = 'cleared'
     authDebug('headers:get:refresh_empty', { hasToken: false })
-    return undefined
+    return Object.keys(headers).length ? headers : undefined
   } catch {
     authDebug('headers:get:refresh_error')
     // Fall through without token
   }
 
-  return undefined
+  return Object.keys(headers).length ? headers : undefined
 }
 
 export function getAuthHeaders(includeContentType = true): Record<string, string> {
@@ -99,9 +104,6 @@ export function getAuthHeaders(includeContentType = true): Record<string, string
   }
   if (_cachedAccessToken) {
     headers['Authorization'] = `Bearer ${_cachedAccessToken}`
-    console.log('[API Auth] getAuthHeaders returning Authorization header (from cache)')
-  } else {
-    console.warn('[API Auth] Generating headers with NO cached token! Request will likely fail 401.')
   }
   // E2E Bypass: Add header if in E2E mode
   if (typeof window !== 'undefined' && (window as any).__E2E_MODE__) {
@@ -133,7 +135,6 @@ export async function getAuthHeadersAsync(includeContentType = true): Promise<Re
     const token = session?.access_token ?? null
     if (token) {
       headers['Authorization'] = `Bearer ${token}`
-      console.log('[API Auth] getAuthHeadersAsync acquired token from session')
       setAuthToken(token)
       authDebug('headers:auth:refresh_success', { hasToken: true })
     } else {
@@ -148,6 +149,8 @@ export async function getAuthHeadersAsync(includeContentType = true): Promise<Re
 
   return headers
 }
+
+setAuthHeaderProvider(() => getAuthHeadersAsync(false))
 
 // --- User Profile ---
 export interface UserProfile {

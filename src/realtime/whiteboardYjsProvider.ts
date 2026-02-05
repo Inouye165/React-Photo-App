@@ -21,14 +21,15 @@ export function createWhiteboardYjsProvider(options: {
   apiBaseUrl: string
   boardId: string
   token: string
+  wsToken?: string
   onStatus?: (status: WhiteboardYjsConnectionStatus) => void
 }): WhiteboardYjsProvider {
-  const { apiBaseUrl, boardId, token, onStatus } = options
+  const { apiBaseUrl, boardId, token, wsToken, onStatus } = options
   const doc = new Y.Doc()
   const wsUrl = buildWhiteboardWebsocketUrl(apiBaseUrl)
 
   const provider = new WebsocketProvider(wsUrl, boardId, doc, {
-    params: { token },
+    params: wsToken ? { ws_token: wsToken } : { token },
   })
 
   provider.on('status', (event: { status: WhiteboardYjsConnectionStatus }) => {

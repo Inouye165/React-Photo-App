@@ -14,7 +14,7 @@ export default function WhiteboardPad({ boardId, className }: WhiteboardPadProps
     tokenRef.current = token
   }, [token])
   return (
-    <div className={`flex h-full w-full flex-col ${className || ''}`}>
+    <div className={`mx-auto flex h-full w-full max-w-full flex-col ${className || ''}`} style={{ maxWidth: '100%', margin: '0 auto' }}>
       <div className="flex items-center justify-between pb-3">
         <div>
           <div className="text-sm font-semibold text-slate-900">Pad Mode</div>
