@@ -62,10 +62,23 @@ async function authenticateImageRequest(req, res, next) {
   // Defense-in-depth: even if resolveAllowedOrigin is misconfigured, this guard prevents the issue.
   // CodeQL/OWASP: Only set credentials header if also setting a valid allowlisted origin.
   // This prevents CORS credential leaks (CWE-942).
-  if (resolvedOrigin && resolvedOrigin !== 'null') {
+  // Only set CORS origin and credentials when it's safe.
+  // Requirements:
+  // - There must be an incoming Origin header (browser-initiated request).
+  // - The origin must be allowlisted via centralized check (`isOriginAllowed`).
+  // - The resolved origin must be a concrete origin (not '*' or 'null').
+  // - Only set `Access-Control-Allow-Credentials` when the computed allowed
+  //   origin exactly matches the incoming `Origin` header to prevent header
+  //   spoofing and credential leaks (defense-in-depth for CWE-942).
+  if (requestOrigin && originIsAllowed && resolvedOrigin && resolvedOrigin !== 'null' && resolvedOrigin !== '*') {
+    // If the resolved allowlisted origin exactly matches the request Origin,
+    // it is safe to enable credentials. Otherwise, set the origin header
+    // without credentials as a conservative fallback.
     res.header('Access-Control-Allow-Origin', resolvedOrigin);
     res.header('Vary', 'Origin');
-    res.header('Access-Control-Allow-Credentials', 'true');
+    if (resolvedOrigin === requestOrigin) {
+      res.header('Access-Control-Allow-Credentials', 'true');
+    }
   }
   res.header('Access-Control-Allow-Headers', 'Origin, X-Requested-With, Content-Type, Accept, Authorization');
   res.header('Access-Control-Allow-Methods', 'GET, POST, OPTIONS, PUT, DELETE');
