@@ -1,4 +1,5 @@
 import { API_BASE_URL as CENTRAL_API_BASE_URL } from '../config/apiConfig'
+import { getAuthHeadersFromProvider } from './authHeaderProvider'
 
 export const API_BASE_URL = CENTRAL_API_BASE_URL
 
@@ -364,18 +365,14 @@ export async function request<T>(options: RequestOptions): Promise<T> {
     const isUnsafe = isUnsafeMethod(methodUpper)
     const headersObj = (fetchOptions.headers ??= {}) as Record<string, string>
 
-    // Ensure we have the latest Authorization header by asking the auth module
-    // for fresh headers at request time. Use dynamic import to avoid circular
-    // import cycles at module-evaluation time.
+    // Ensure we have the latest Authorization header by asking the auth header
+    // provider (registered by the auth module) for fresh headers at request time.
     try {
-      const authMod = await import('./auth')
-      if (authMod && typeof authMod.getAuthHeadersAsync === 'function') {
-        const fresh = await authMod.getAuthHeadersAsync(false)
-        if (fresh && fresh.Authorization) {
-          headersObj['Authorization'] = fresh.Authorization
-        }
+      const fresh = await getAuthHeadersFromProvider()
+      if (fresh && fresh.Authorization) {
+        headersObj['Authorization'] = fresh.Authorization
       }
-    } catch (err) {
+    } catch {
       // Non-fatal - continue without Authorization header
     }
 
@@ -421,24 +418,6 @@ export async function request<T>(options: RequestOptions): Promise<T> {
     if (isUnsafe) {
       // In dev we allow unsafe calls without CSRF (backend may have csurf disabled).
       if (!isDev && !headersObj['X-CSRF-Token']) throw new Error('Abort: CSRF token could not be retrieved')
-    }
-
-    // Diagnostic: log the Authorization header immediately before sending.
-    try {
-      const authHeader = headersObj['Authorization']
-      // eslint-disable-next-line no-console
-      console.log('[HTTP] Sending Authorization header:', authHeader)
-      if (typeof authHeader === 'string') {
-        if (!authHeader.startsWith('Bearer ')) {
-          console.warn('[HTTP] Authorization header format unexpected (missing "Bearer ")', authHeader)
-        } else if (authHeader.trim() === 'Bearer') {
-          console.warn('[HTTP] Authorization header contains empty token')
-        }
-      } else if (authHeader !== undefined) {
-        console.warn('[HTTP] Authorization header is not a string', authHeader)
-      }
-    } catch {
-      /* ignore */
     }
 
     if (timeoutMs) {

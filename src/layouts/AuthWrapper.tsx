@@ -53,14 +53,12 @@ const AuthWrapper = ({ children }: AuthWrapperProps) => {
     }
 
     const checkTermsAcceptance = async () => {
-      console.log('[AuthWrapper] checkTermsAcceptance START', { userId: (user as any)?.id, authReady })
       try {
         // Import dynamically to avoid circular dependency
         const api = await import('../api');
         const getAuthHeadersSync = api.getAuthHeaders
         const getAuthHeadersAsync = api.getAuthHeadersAsync
         const headersSync = getAuthHeadersSync ? (getAuthHeadersSync() as Record<string, string>) : {}
-        console.log('[AuthWrapper] getAuthHeaders (sync) returned', headersSync)
         // E2E Bypass: Add header if in E2E mode to avoid cookie issues
         if ((window as any).__E2E_MODE__) {
           headersSync['X-E2E-User-ID'] = '11111111-1111-4111-8111-111111111111';
@@ -71,10 +69,8 @@ const AuthWrapper = ({ children }: AuthWrapperProps) => {
         if (typeof getAuthHeadersAsync === 'function') {
           try {
             const asyncHeaders = (await getAuthHeadersAsync()) || {}
-            console.log('[AuthWrapper] getAuthHeadersAsync returned', asyncHeaders)
             headers = { ...headers, ...asyncHeaders }
           } catch (err) {
-            console.warn('[AuthWrapper] getAuthHeadersAsync failed', err)
           }
         }
 
@@ -94,7 +90,6 @@ const AuthWrapper = ({ children }: AuthWrapperProps) => {
         // Temporary: Check localStorage as fallback (will be replaced by DB check)
         const userId = String((user as any)?.id ?? '');
         const localAcceptance = localStorage.getItem(`terms_accepted_${userId}`);
-        console.log('[AuthWrapper] checkTermsAcceptance: setting termsAccepted from local fallback', { localAcceptance })
         setTermsAccepted(!!localAcceptance);
       } catch (error) {
         console.error('Failed to check terms acceptance:', error);
@@ -117,7 +112,6 @@ const AuthWrapper = ({ children }: AuthWrapperProps) => {
         const getAuthHeadersSync = api.getAuthHeaders
         const getAuthHeadersAsync = api.getAuthHeadersAsync
         const headersSync = getAuthHeadersSync ? (getAuthHeadersSync() as Record<string, string>) : {}
-        console.log('[AuthWrapper] handleAcceptTerms - headers (sync):', headersSync)
         if ((window as any).__E2E_MODE__) {
           headersSync['X-E2E-User-ID'] = '11111111-1111-4111-8111-111111111111';
         }
@@ -126,15 +120,12 @@ const AuthWrapper = ({ children }: AuthWrapperProps) => {
         if (typeof getAuthHeadersAsync === 'function') {
           try {
             const asyncHeaders = await getAuthHeadersAsync()
-            console.log('[AuthWrapper] handleAcceptTerms - headers (async):', asyncHeaders)
             headers = { ...headers, ...asyncHeaders }
           } catch (err) {
-            console.warn('[AuthWrapper] getAuthHeadersAsync failed in accept flow', err)
           }
         }
 
         // Use the centralized request() wrapper so CSRF headers/cookies are handled consistently.
-        console.log('[AuthWrapper] Sending accept-terms request with headers:', headers)
         await api.request<void>({
           path: '/api/users/accept-terms',
           method: 'POST',

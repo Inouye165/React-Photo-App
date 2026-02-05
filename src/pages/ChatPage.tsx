@@ -35,7 +35,7 @@ export default function ChatPage() {
 
   return (
     <div
-      className="relative grid h-screen min-h-0 overflow-hidden grid-cols-1 lg:grid-cols-[minmax(320px,420px)_minmax(0,1fr)]"
+      className="relative grid h-full min-h-0 overflow-hidden grid-cols-1 lg:grid-cols-[minmax(320px,420px)_minmax(0,1fr)]"
       data-testid="chat-page"
     >
       <ChatSidebar

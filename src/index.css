@@ -7,8 +7,38 @@ html, body {
 }
 
 /* ========================================
+   Whiteboard Layout
+   ======================================== */
+
+.whiteboard-shell {
+  max-width: 100%;
+  margin: 0 auto;
+}
+
+.whiteboard-header {
+  padding: 8px 12px;
+  border-bottom: 1px solid #e2e8f0;
+  background: #ffffff;
+  position: sticky;
+  top: 0;
+  z-index: 5;
+}
+
+/* ========================================
    Excalidraw Menu Branding
    ======================================== */
+
+/* Ensure Excalidraw toolbars stay visible in whiteboard views */
+.excalidraw .layer-ui,
+.excalidraw .App-toolbar,
+.excalidraw .App-menu,
+.excalidraw .App-toolbar-container {
+  display: block !important;
+  visibility: visible !important;
+  opacity: 1 !important;
+  pointer-events: auto !important;
+  z-index: 5 !important;
+}
 
 /* This targets the logo and branding specifically */
 .dropdown-menu-item[aria-label*="Excalidraw"],

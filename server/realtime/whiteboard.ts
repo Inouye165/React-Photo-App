@@ -3,11 +3,13 @@ import type { IncomingMessage } from 'http';
 import type { Knex } from 'knex';
 import { WebSocketServer } from 'ws';
 import * as Y from 'yjs';
+import { consumeWhiteboardWsToken } from './whiteboardWsTokens';
 
 const BOARD_ID_MAX_LENGTH = 64;
 const STROKE_ID_MAX_LENGTH = 64;
 const SOURCE_ID_MAX_LENGTH = 64;
 const MAX_PAYLOAD_BYTES = 2048;
+const MAX_WS_PAYLOAD_BYTES = Number.parseInt(process.env.WS_MAX_PAYLOAD_BYTES || '', 10) || 16 * 1024 * 1024;
 const MAX_EVENTS_PER_WINDOW = process.env.NODE_ENV === 'development' ? 10000 : 240;
 const RATE_LIMIT_WINDOW_MS = 5000;
 const MAX_EVENTS_PER_BOARD = 20000;
@@ -632,8 +634,17 @@ export function createWhiteboardYjsServer({
   logger?: WhiteboardLogger | null;
   metrics?: WhiteboardMetrics | null;
 }) {
-  const wss = new WebSocketServer({ noServer: true });
+  const wss = new WebSocketServer({
+    noServer: true,
+    maxPayload: MAX_WS_PAYLOAD_BYTES,
+    perMessageDeflate: false,
+  });
   const docStates = new Map<string, { loaded: boolean; listenerAttached: boolean; persistTimer: NodeJS.Timeout | null }>();
+
+  logger?.info?.('[whiteboard] WS config', {
+    maxPayloadBytes: MAX_WS_PAYLOAD_BYTES,
+    perMessageDeflate: false,
+  });
 
   const loadDocFromDb = async (boardId: string, doc: Y.Doc) => {
     const row = await db<WhiteboardDocRow>(WHITEBOARD_DOC_TABLE)
@@ -690,11 +701,7 @@ export function createWhiteboardYjsServer({
     docStates.set(boardId, state);
   };
 
-  const authenticateUpgrade = async (req: IncomingMessage) => {
-    const url = new URL(req.url || '/', 'http://localhost');
-    const tokenRaw = url.searchParams.get('token') || url.searchParams.get('access_token') || '';
-    const token = tokenRaw.trim();
-
+  const authenticateUpgrade = async (req: IncomingMessage, token: string) => {
     if (!token) {
       return { ok: false, status: 401, error: 'Authorization header with Bearer token required' } as const;
     }
@@ -753,7 +760,23 @@ export function createWhiteboardYjsServer({
     }
     const boardId = parsed.data;
 
-    const auth = await authenticateUpgrade(req);
+    const wsTokenRaw = url.searchParams.get('ws_token') || '';
+    const wsToken = wsTokenRaw.trim();
+    let auth: { ok: boolean; status?: number; error?: string; userId?: string } | null = null;
+
+    if (wsToken) {
+      const consumed = consumeWhiteboardWsToken({ token: wsToken, boardId });
+      if (consumed.ok) {
+        auth = { ok: true, userId: consumed.userId };
+      } else {
+        auth = { ok: false, status: 401, error: 'Unauthorized' };
+      }
+    } else {
+      const tokenRaw = url.searchParams.get('token') || url.searchParams.get('access_token') || '';
+      const token = tokenRaw.trim();
+      auth = await authenticateUpgrade(req, token);
+    }
+
     if (!auth.ok || !auth.userId) {
       try {
         metrics?.incRealtimeDisconnectReason?.('auth_fail');
@@ -790,7 +813,27 @@ export function createWhiteboardYjsServer({
       return;
     }
 
+    conn.on?.('error', (err: unknown) => {
+      const message = err instanceof Error ? err.message : String(err);
+      logger?.warn?.('[whiteboard] WS client error', { boardId, message });
+      try {
+        conn.close?.();
+      } catch {
+        // ignore
+      }
+    });
+
+    conn.on?.('close', (code?: number, reason?: Buffer) => {
+      const reasonText = reason ? reason.toString('utf-8') : '';
+      logger?.info?.('[whiteboard] WS client closed', { boardId, code, reason: reasonText });
+    });
+
     yws.setupWSConnection(conn, req, { docName: boardId, gc: true });
+  });
+
+  wss.on('error', (err: unknown) => {
+    const message = err instanceof Error ? err.message : String(err);
+    logger?.warn?.('[whiteboard] WS server error', { message });
   });
 
   const closeAll = () => {

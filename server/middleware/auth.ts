@@ -298,51 +298,14 @@ async function authenticateToken(req, res, next) {
     }
 
     if (error || !user) {
-      // Always log invalid token details to server logs to aid debugging in local/dev.
       try {
         const origin = req.headers.origin;
-        const ua = req.headers['user-agent'];
-        const hasAuthHeader = Boolean(req.headers.authorization);
-        const tokenLen = typeof token === 'string' ? token.length : 0;
-        const backendSupabaseUrl = config?.supabase?.url || process.env.SUPABASE_URL;
-
-        const tokenMeta = (() => {
-          try {
-            if (typeof token !== 'string') return { parse: 'failed' };
-            const parts = token.split('.');
-            if (parts.length !== 3) return { parse: 'failed' };
-
-            const payloadB64Url = parts[1];
-            const payloadB64 = payloadB64Url.replace(/-/g, '+').replace(/_/g, '/');
-            const padded = payloadB64.padEnd(Math.ceil(payloadB64.length / 4) * 4, '=');
-            const payloadJson = Buffer.from(padded, 'base64').toString('utf8');
-            const payload = JSON.parse(payloadJson);
-
-            return {
-              iss: payload?.iss,
-              aud: payload?.aud,
-              sub: payload?.sub,
-              exp: payload?.exp,
-            };
-          } catch {
-            return { parse: 'failed' };
-          }
-        })();
-
-        console.error('[auth] Invalid token', {
+        console.warn('[auth] Invalid token', {
           origin,
-          ua,
-          hasAuthHeader,
-          tokenLen,
-          tokenMeta,
-          backendSupabaseUrl: normalizeUrlNoTrailingSlash(backendSupabaseUrl),
+          reason: error?.message || 'no user',
         });
       } catch (logErr) {
-        console.error('[auth] Failed to log invalid token details', logErr);
-      }
-
-      if (process.env.AUTH_DEBUG_LOGS) {
-        console.warn('[auth] Invalid token (debug)', { reason: error?.message || 'no user', backendSupabaseUrl: config?.supabase?.url });
+        console.error('[auth] Failed to log invalid token summary', logErr);
       }
 
       return res.status(403).json({ success: false, error: 'Invalid token' });
