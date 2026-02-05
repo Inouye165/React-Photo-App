@@ -56,16 +56,20 @@ async function authenticateImageRequest(req, res, next) {
     });
   }
 
-  // SECURITY: Only set Access-Control-Allow-Origin if we have a valid, non-"null" origin.
-  // This protects against misconfigurations where "null" could be treated as allowed.
-  // Setting Access-Control-Allow-Origin to "null" with credentials is a security risk (CWE-942).
-  // Defense-in-depth: even if resolveAllowedOrigin is misconfigured, this guard prevents the issue.
-  // CodeQL/OWASP: Only set credentials header if also setting a valid allowlisted origin.
-  // This prevents CORS credential leaks (CWE-942).
-  if (resolvedOrigin && resolvedOrigin !== 'null') {
-    res.header('Access-Control-Allow-Origin', resolvedOrigin);
-    res.header('Vary', 'Origin');
+  // SECURITY: Only allow CORS with credentials for explicitly allowlisted origins
+  // This prevents credential leakage to untrusted domains
+  if (requestOrigin && Array.isArray(allowedOrigins) && allowedOrigins.includes(requestOrigin)) {
+    // Origin is explicitly allowlisted - allow credentials
+    res.header('Access-Control-Allow-Origin', requestOrigin);
     res.header('Access-Control-Allow-Credentials', 'true');
+    res.header('Vary', 'Origin');
+  } else if (!requestOrigin) {
+    // No Origin header (server-to-server requests) - allow without CORS headers
+    // Browser requests always include Origin, so this is safe
+  } else {
+    // Origin is not allowlisted - deny access
+    // Note: we already checked isOriginAllowed() above and returned 403 if not allowed
+    // This else block should rarely execute
   }
   res.header('Access-Control-Allow-Headers', 'Origin, X-Requested-With, Content-Type, Accept, Authorization');
   res.header('Access-Control-Allow-Methods', 'GET, POST, OPTIONS, PUT, DELETE');
