@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
+import { forwardRef, useCallback, useEffect, useImperativeHandle, useMemo, useRef, useState } from 'react'
 import type { ChangeEvent, PointerEvent } from 'react'
 import { Excalidraw, MainMenu } from '@excalidraw/excalidraw'
 import type {
@@ -658,6 +658,9 @@ type ExcalidrawWhiteboardCanvasProps = {
   token: string | null
   mode: 'viewer' | 'pad'
   className?: string
+  onViewModeChange?: (enabled: boolean) => void
+  onBackgroundFitModeChange?: (mode: BackgroundFitMode) => void
+  onHasBackgroundChange?: (hasBackground: boolean) => void
 }
 
 type PersistedAppState = Pick<AppState, 'viewBackgroundColor' | 'gridSize' | 'theme'>
@@ -666,9 +669,14 @@ type ExcalidrawElement = ReturnType<ExcalidrawImperativeAPI['getSceneElements']>
 const isBackgroundElement = (element: { type?: string; locked?: boolean }) =>
   element.type === 'image' && element.locked === true
 
-type ConnectionStatus = 'idle' | 'connecting' | 'connected' | 'disconnected' | 'error'
 type BackgroundFitMode = 'width' | 'contain'
-const BOARD_FRAME_PADDING = 8
+
+export type WhiteboardCanvasHandle = {
+  openBackgroundPicker: () => void
+  clearBackground: () => void
+  toggleBackgroundFitMode: () => void
+  toggleViewMode: () => void
+}
 
 function resolveAppState(value: unknown): PersistedAppState {
   if (!value || typeof value !== 'object') return DEFAULT_APP_STATE
@@ -738,8 +746,19 @@ function simplifyFreedrawElements(elements: readonly ExcalidrawElement[]) {
   return { elements: next, changed }
 }
 
-export default function WhiteboardCanvas({ boardId, token, mode, className }: ExcalidrawWhiteboardCanvasProps) {
-  const [connectionStatus, setConnectionStatus] = useState<ConnectionStatus>('idle')
+const WhiteboardCanvas = forwardRef<WhiteboardCanvasHandle, ExcalidrawWhiteboardCanvasProps>(
+  (
+    {
+      boardId,
+      token,
+      mode,
+      className,
+      onViewModeChange,
+      onBackgroundFitModeChange,
+      onHasBackgroundChange,
+    },
+    ref,
+  ) => {
   const [viewModeEnabled, setViewModeEnabled] = useState(mode === 'viewer')
   const [initialData, setInitialData] = useState<ExcalidrawInitialDataState | null>(null)
   const [isSynced, setIsSynced] = useState(false)
@@ -780,26 +799,29 @@ export default function WhiteboardCanvas({ boardId, token, mode, className }: Ex
     viewModeEnabledRef.current = viewModeEnabled
   }, [viewModeEnabled])
 
+  useEffect(() => {
+    onViewModeChange?.(viewModeEnabled)
+  }, [onViewModeChange, viewModeEnabled])
+
+  useEffect(() => {
+    onBackgroundFitModeChange?.(backgroundFitMode)
+  }, [backgroundFitMode, onBackgroundFitModeChange])
+
+  useEffect(() => {
+    onHasBackgroundChange?.(hasBackground)
+  }, [hasBackground, onHasBackgroundChange])
+
   const updateBoardRect = useCallback(() => {
     const frame = boardFrameRef.current
     if (!frame) return
     const rect = frame.getBoundingClientRect()
     if (rect.width <= 0 || rect.height <= 0) return
 
-    const innerWidth = Math.max(0, rect.width - BOARD_FRAME_PADDING * 2)
-    const innerHeight = Math.max(0, rect.height - BOARD_FRAME_PADDING * 2)
-    const height = innerWidth / BOARD_ASPECT
-    const surface = {
-      left: 0,
-      top: (innerHeight - height) / 2,
-      width: innerWidth,
-      height,
-    }
     setBoardRect({
-      left: BOARD_FRAME_PADDING + surface.left,
-      top: BOARD_FRAME_PADDING + surface.top,
-      width: surface.width,
-      height: surface.height,
+      left: 0,
+      top: 0,
+      width: rect.width,
+      height: rect.height,
     })
   }, [])
 
@@ -896,6 +918,7 @@ export default function WhiteboardCanvas({ boardId, token, mode, className }: Ex
       appState: {
         ...appState,
         viewModeEnabled,
+        zenModeEnabled: false,
       },
       files,
     }
@@ -915,6 +938,7 @@ export default function WhiteboardCanvas({ boardId, token, mode, className }: Ex
         ...currentState,
         ...scene.appState,
         viewModeEnabled,
+        zenModeEnabled: false,
       },
     })
     requestAnimationFrame(() => {
@@ -1034,6 +1058,7 @@ export default function WhiteboardCanvas({ boardId, token, mode, className }: Ex
         api.updateScene({
           elements: [imageElement, ...elementsToKeep],
         })
+        setHasBackground(true)
       } catch (error) {
         whiteboardDebugLog('whiteboard:background:upload:error', {
           boardId,
@@ -1089,9 +1114,24 @@ export default function WhiteboardCanvas({ boardId, token, mode, className }: Ex
     }, LOCAL_ORIGIN)
   }, [])
 
-  const handleBackgroundSelect = useCallback(() => {
-    fileInputRef.current?.click()
-  }, [])
+  useImperativeHandle(
+    ref,
+    () => ({
+      openBackgroundPicker: () => {
+        fileInputRef.current?.click()
+      },
+      clearBackground: () => {
+        handleBackgroundClear()
+      },
+      toggleBackgroundFitMode: () => {
+        setBackgroundFitMode((prev) => (prev === 'width' ? 'contain' : 'width'))
+      },
+      toggleViewMode: () => {
+        setViewModeEnabled((prev) => !prev)
+      },
+    }),
+    [handleBackgroundClear],
+  )
 
   const commitPendingLocalScene = useCallback(() => {
     const pending = pendingLocalSceneRef.current
@@ -1189,7 +1229,6 @@ export default function WhiteboardCanvas({ boardId, token, mode, className }: Ex
 
   useEffect(() => {
     if (!token) {
-      setConnectionStatus('idle')
       return
     }
 
@@ -1199,7 +1238,6 @@ export default function WhiteboardCanvas({ boardId, token, mode, className }: Ex
 
     const startProvider = (wsToken?: string) => {
       if (canceled) return
-      setConnectionStatus('connecting')
       setIsSynced(false)
 
       const provider = createWhiteboardYjsProvider({
@@ -1207,9 +1245,6 @@ export default function WhiteboardCanvas({ boardId, token, mode, className }: Ex
         boardId,
         token,
         wsToken,
-        onStatus: (status) => {
-          setConnectionStatus(status === 'connected' ? 'connected' : 'disconnected')
-        },
       })
 
       docRef.current = provider.doc
@@ -1286,6 +1321,7 @@ export default function WhiteboardCanvas({ boardId, token, mode, className }: Ex
       appState: {
         ...currentState,
         viewModeEnabled,
+        zenModeEnabled: false,
       },
     })
     requestAnimationFrame(() => {
@@ -1363,90 +1399,20 @@ export default function WhiteboardCanvas({ boardId, token, mode, className }: Ex
     [handleReset],
   )
 
-  const toggleLabel = viewModeEnabled ? 'Switch to draw mode' : 'Switch to view mode'
-  const statusLabel = useMemo(() => {
-    switch (connectionStatus) {
-      case 'connected':
-        return 'Connected'
-      case 'connecting':
-        return 'Connecting…'
-      case 'disconnected':
-        return 'Disconnected'
-      case 'error':
-        return 'Error'
-      default:
-        return 'Idle'
-    }
-  }, [connectionStatus])
-
   return (
     <section className={`whiteboard-shell flex h-full w-full flex-col ${className || ''}`} aria-label="Collaborative whiteboard">
-      <header className="whiteboard-header flex flex-wrap items-center justify-between gap-2">
-        <div>
-          <p className="text-sm font-semibold text-slate-900">Whiteboard</p>
-          <p className="text-xs text-slate-500" aria-live="polite">
-            Status: {statusLabel}
-          </p>
-        </div>
-        <div className="flex items-center gap-2">
-          {mode === 'pad' && (
-            <>
-              <input
-                ref={fileInputRef}
-                type="file"
-                accept="image/*"
-                onChange={handleImageUpload}
-                className="hidden"
-                aria-hidden="true"
-                tabIndex={-1}
-              />
-              <button
-                type="button"
-                className="rounded-full border border-slate-200 px-3 py-1 text-xs font-medium text-slate-700 transition hover:border-slate-300 hover:text-slate-900"
-                onClick={handleBackgroundSelect}
-                aria-label="Set background image"
-              >
-                Set Background
-              </button>
-              <button
-                type="button"
-                className="rounded-full border border-slate-200 px-3 py-1 text-xs font-medium text-slate-700 transition hover:border-slate-300 hover:text-slate-900"
-                onClick={() => setBackgroundFitMode((prev) => (prev === 'width' ? 'contain' : 'width'))}
-                aria-label={backgroundFitMode === 'width' ? 'Show full image' : 'Fit to width'}
-              >
-                {backgroundFitMode === 'width' ? 'Show full image' : 'Fit width'}
-              </button>
-              <button
-                type="button"
-                className="rounded-full border border-slate-200 px-3 py-1 text-xs font-medium text-slate-700 transition hover:border-slate-300 hover:text-slate-900 disabled:cursor-not-allowed disabled:border-slate-100 disabled:text-slate-300"
-                onClick={handleBackgroundClear}
-                aria-label="Clear background image"
-                disabled={!hasBackground}
-              >
-                Clear Background
-              </button>
-            </>
-          )}
-          <button
-            type="button"
-            className="rounded-full border border-slate-200 px-3 py-1 text-xs font-medium text-slate-700 transition hover:border-slate-300 hover:text-slate-900"
-            onClick={() => setViewModeEnabled((prev) => !prev)}
-            aria-pressed={viewModeEnabled}
-            aria-label={toggleLabel}
-          >
-            {viewModeEnabled ? 'View mode' : 'Draw mode'}
-          </button>
-        </div>
-      </header>
+      <input
+        ref={fileInputRef}
+        type="file"
+        accept="image/*"
+        onChange={handleImageUpload}
+        className="hidden"
+        aria-hidden="true"
+        tabIndex={-1}
+      />
       <div ref={boardFrameRef} className="relative min-h-0 flex-1 bg-transparent p-1">
         <div
-          className="absolute overflow-hidden rounded-lg bg-white"
-          style={{
-            left: boardRect.left,
-            top: boardRect.top,
-            width: boardRect.width,
-            height: boardRect.height,
-          }}
+          className="relative h-full w-full overflow-visible rounded-lg bg-white"
         >
           {!isSynced ? (
             <div className="flex h-full w-full items-center justify-center rounded-xl bg-white">
@@ -1463,7 +1429,7 @@ export default function WhiteboardCanvas({ boardId, token, mode, className }: Ex
               }}
               initialData={initialData ?? undefined}
               viewModeEnabled={viewModeEnabled}
-              zenModeEnabled={viewModeEnabled}
+              zenModeEnabled={false}
               onChange={handleChange}
             >
               <MainMenu>
@@ -1481,4 +1447,9 @@ export default function WhiteboardCanvas({ boardId, token, mode, className }: Ex
       </div>
     </section>
   )
-}
+  },
+)
+
+WhiteboardCanvas.displayName = 'WhiteboardCanvas'
+
+export default WhiteboardCanvas

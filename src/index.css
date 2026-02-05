@@ -28,6 +28,18 @@ html, body {
    Excalidraw Menu Branding
    ======================================== */
 
+/* Ensure Excalidraw toolbars stay visible in whiteboard views */
+.excalidraw .layer-ui,
+.excalidraw .App-toolbar,
+.excalidraw .App-menu,
+.excalidraw .App-toolbar-container {
+  display: block !important;
+  visibility: visible !important;
+  opacity: 1 !important;
+  pointer-events: auto !important;
+  z-index: 5 !important;
+}
+
 /* This targets the logo and branding specifically */
 .dropdown-menu-item[aria-label*="Excalidraw"],
 .main-menu-footer,
