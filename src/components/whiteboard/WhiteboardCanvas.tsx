@@ -826,6 +826,7 @@ const WhiteboardCanvas = forwardRef<WhiteboardCanvasHandle, ExcalidrawWhiteboard
     appState: AppState
     files: BinaryFiles
   } | null>(null)
+  const needsFinalCommitRef = useRef(false)
   const pendingSyncRef = useRef<{
     elements: readonly ExcalidrawElement[]
     appState: AppState
@@ -1235,26 +1236,38 @@ const WhiteboardCanvas = forwardRef<WhiteboardCanvasHandle, ExcalidrawWhiteboard
     [flushSceneToYjs],
   )
 
-  const commitPendingLocalScene = useCallback(() => {
-    const pending = pendingLocalSceneRef.current
+  const commitPendingLocalScene = useCallback((scene?: {
+    elements: readonly ExcalidrawElement[]
+    appState: AppState
+    files: BinaryFiles
+  }) => {
+    const pending = scene ?? pendingLocalSceneRef.current
     if (!pending) return
+    const api = excalidrawApiRef.current
+    const latest = api
+      ? {
+          elements: api.getSceneElements(),
+          appState: api.getAppState(),
+          files: pending.files,
+        }
+      : pending
     if (syncThrottleTimerRef.current !== null) {
       window.clearTimeout(syncThrottleTimerRef.current)
       syncThrottleTimerRef.current = null
     }
     pendingSyncRef.current = null
     // Apply stroke-width remap for any pending selected elements (do this off the hot-path)
-    let nextElements = pending.elements
-    let nextAppState = pending.appState
-    const remappedWidth = STROKE_WIDTH_REMAP[pending.appState.currentItemStrokeWidth]
-    if (remappedWidth && pending.appState.currentItemStrokeWidth !== remappedWidth) {
-      const selectedIds = pending.appState.selectedElementIds ?? {}
+    let nextElements = latest.elements
+    let nextAppState = latest.appState
+    const remappedWidth = STROKE_WIDTH_REMAP[latest.appState.currentItemStrokeWidth]
+    if (remappedWidth && latest.appState.currentItemStrokeWidth !== remappedWidth) {
+      const selectedIds = latest.appState.selectedElementIds ?? {}
       if (Object.keys(selectedIds).length) {
-        nextElements = pending.elements.map((element) =>
+        nextElements = latest.elements.map((element) =>
           selectedIds[element.id] ? { ...element, strokeWidth: remappedWidth } : element,
         )
       }
-      nextAppState = { ...pending.appState, currentItemStrokeWidth: remappedWidth }
+      nextAppState = { ...latest.appState, currentItemStrokeWidth: remappedWidth }
     }
 
     // Run freedraw simplification only on commit (pointer-up / idle)
@@ -1275,7 +1288,7 @@ const WhiteboardCanvas = forwardRef<WhiteboardCanvasHandle, ExcalidrawWhiteboard
     // Reflect background presence after commit to avoid React churn while drawing
     setHasBackground((simplified.elements ?? nextElements).some(isBackgroundElement))
 
-    flushSceneToYjs({ elements: simplified.elements, appState: nextAppState, files: pending.files })
+    flushSceneToYjs({ elements: simplified.elements, appState: nextAppState, files: latest.files })
   }, [flushSceneToYjs])
 
   const registerPointerGuard = useCallback(
@@ -1285,13 +1298,12 @@ const WhiteboardCanvas = forwardRef<WhiteboardCanvasHandle, ExcalidrawWhiteboard
       // Sync pause: keep remote updates from clobbering local pointer strokes mid-draw.
       const offPointerDown = api.onPointerDown(() => {
         isLocallyDrawingRef.current = true
+        needsFinalCommitRef.current = false
       })
 
       const offPointerUp = api.onPointerUp(() => {
         isLocallyDrawingRef.current = false
-        commitPendingLocalScene()
-        // Re-apply the latest remote state after the local stroke completes.
-        applyPendingRemoteScene()
+        needsFinalCommitRef.current = true
       })
 
       pointerGuardCleanupRef.current = () => {
@@ -1523,6 +1535,15 @@ const WhiteboardCanvas = forwardRef<WhiteboardCanvasHandle, ExcalidrawWhiteboard
         return
       }
 
+      // Finalize the local stroke on the first change after pointer-up.
+      if (needsFinalCommitRef.current) {
+        needsFinalCommitRef.current = false
+        commitPendingLocalScene({ elements: nextElements, appState: nextAppState, files })
+        // Re-apply the latest remote state after the local stroke completes.
+        applyPendingRemoteScene()
+        return
+      }
+
       // Off the hot path: simplify freedraw elements and update scene if needed.
       const simplified = simplifyFreedrawElements(nextElements)
       if (simplified.changed && excalidrawApiRef.current) {
@@ -1542,7 +1563,7 @@ const WhiteboardCanvas = forwardRef<WhiteboardCanvasHandle, ExcalidrawWhiteboard
 
       scheduleSceneSync({ elements: nextElements, appState: nextAppState, files })
     },
-    [handleReset, scheduleSceneSync],
+    [applyPendingRemoteScene, commitPendingLocalScene, handleReset, scheduleSceneSync],
   )
 
   return (
