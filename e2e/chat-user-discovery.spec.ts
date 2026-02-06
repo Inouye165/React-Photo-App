@@ -1,9 +1,8 @@
 import { test, expect } from '@playwright/test'
 import { acceptDisclaimer } from './helpers/disclaimer'
-import { fetchCsrfToken } from './helpers/csrf'
 import { mockCoreApi } from './helpers/mockCoreApi'
 
-test('E2E chat: user discovery → start DM (no photo required)', async ({ page, context }) => {
+test('E2E chat: user discovery → start DM (no photo required)', async ({ page }) => {
   await mockCoreApi(page)
   await page.addInitScript(() => {
     window.__E2E_MODE__ = true
@@ -112,7 +111,7 @@ test('E2E chat: user discovery → start DM (no photo required)', async ({ page,
   let hasCreatedRoom = false
 
   // Users search
-  await page.route('**/__supabase/rest/v1/users**', async (route) => {
+  await page.route('**/rest/v1/users**', async (route) => {
     const method = route.request().method()
     if (method === 'OPTIONS') {
       return route.fulfill({ status: 204, headers: corsHeaders, body: '' })
@@ -143,7 +142,7 @@ test('E2E chat: user discovery → start DM (no photo required)', async ({ page,
   // Room members lookups (fetchRooms + dm intersection logic)
   const roomMembers: Array<{ room_id: string; user_id: string }> = []
 
-  await page.route('**/__supabase/rest/v1/room_members**', async (route) => {
+  await page.route('**/rest/v1/room_members**', async (route) => {
     const method = route.request().method()
     if (method === 'OPTIONS') {
       return route.fulfill({ status: 204, headers: corsHeaders, body: '' })
@@ -199,7 +198,7 @@ test('E2E chat: user discovery → start DM (no photo required)', async ({ page,
   })
 
   // Create room (getOrCreateRoom)
-  await page.route('**/__supabase/rest/v1/rooms**', async (route) => {
+  await page.route('**/rest/v1/rooms**', async (route) => {
     const method = route.request().method()
     if (method === 'OPTIONS') {
       return route.fulfill({ status: 204, headers: corsHeaders, body: '' })
@@ -219,7 +218,7 @@ test('E2E chat: user discovery → start DM (no photo required)', async ({ page,
   })
 
   // Messages initial fetch
-  await page.route('**/__supabase/rest/v1/messages**', async (route) => {
+  await page.route('**/rest/v1/messages**', async (route) => {
     const method = route.request().method()
     if (method === 'OPTIONS') {
       return route.fulfill({ status: 204, headers: corsHeaders, body: '' })
@@ -234,7 +233,7 @@ test('E2E chat: user discovery → start DM (no photo required)', async ({ page,
   })
 
   // Minimal: avoid navigation flakiness by ensuring any auth endpoints don't hard-fail if called
-  await page.route('**/__supabase/auth/v1/**', async (route) => {
+  await page.route('**/auth/v1/**', async (route) => {
     const method = route.request().method()
     if (method === 'OPTIONS') {
       return route.fulfill({ status: 204, headers: corsHeaders, body: '' })
@@ -242,28 +241,6 @@ test('E2E chat: user discovery → start DM (no photo required)', async ({ page,
     // Return 200 with empty body for incidental calls; chat auth is bypassed in E2E via api.ts
     return route.fulfill({ status: 200, contentType: 'application/json', headers: corsHeaders, body: JSON.stringify({}) })
   })
-
-  // Login: set backend cookie used by /api/test/e2e-verify
-  const csrfToken = await fetchCsrfToken(context.request)
-  const loginResponse = await context.request.post('http://127.0.0.1:3001/api/test/e2e-login', {
-    headers: { 'X-CSRF-Token': csrfToken },
-  })
-  expect(loginResponse.ok()).toBeTruthy()
-
-  const cookies = await context.cookies('http://127.0.0.1:3001')
-  for (const cookie of cookies) {
-    await context.addCookies([
-      {
-        name: cookie.name,
-        value: cookie.value,
-        domain: '127.0.0.1',
-        path: '/',
-        httpOnly: cookie.httpOnly,
-        secure: cookie.secure,
-        sameSite: cookie.sameSite,
-      },
-    ])
-  }
 
   await page.goto('http://127.0.0.1:5173/chat', { waitUntil: 'networkidle' })
   await acceptDisclaimer(page)

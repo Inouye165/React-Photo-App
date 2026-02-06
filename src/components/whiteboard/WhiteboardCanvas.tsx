@@ -713,7 +713,7 @@ function pickPersistedAppState(appState: AppState): PersistedAppState {
   }
 }
 
-const FREEDRAW_MIN_POINT_DISTANCE = 1.25
+const FREEDRAW_MIN_POINT_DISTANCE = 0
 const SYNC_THROTTLE_MS = 80
 
 function simplifyFreedrawPoints(points: ReadonlyArray<[number, number]>) {
@@ -745,6 +745,21 @@ function simplifyFreedrawElements(elements: readonly ExcalidrawElement[]) {
     return { ...element, points: simplified }
   })
   return { elements: next, changed }
+}
+
+function summarizeFreedraw(elements: readonly ExcalidrawElement[]) {
+  let count = 0
+  let totalPoints = 0
+  let maxPoints = 0
+  for (const element of elements) {
+    if (element.type !== 'freedraw') continue
+    const points = (element as { points?: ReadonlyArray<[number, number]> }).points
+    if (!points || !Array.isArray(points)) continue
+    count += 1
+    totalPoints += points.length
+    if (points.length > maxPoints) maxPoints = points.length
+  }
+  return { count, totalPoints, maxPoints }
 }
 
 function arePersistedAppStatesEqual(a: PersistedAppState | null, b: PersistedAppState | null) {
@@ -837,6 +852,8 @@ const WhiteboardCanvas = forwardRef<WhiteboardCanvasHandle, ExcalidrawWhiteboard
   const lastSyncedAppStateRef = useRef<PersistedAppState | null>(null)
   const lastSyncedFilesRef = useRef<string[] | null>(null)
   const pointerGuardCleanupRef = useRef<(() => void) | null>(null)
+  const excalidrawReadyRef = useRef(false)
+  const idleCommitTimerRef = useRef<number | null>(null)
 
   useEffect(() => {
     setViewModeEnabled(mode === 'viewer')
@@ -847,6 +864,10 @@ const WhiteboardCanvas = forwardRef<WhiteboardCanvasHandle, ExcalidrawWhiteboard
       setIsSynced(false)
     }
   }, [token])
+
+  useEffect(() => {
+    whiteboardDebugLog('whiteboard:mount', { boardId, mode })
+  }, [boardId, mode])
 
   useEffect(() => {
     viewModeEnabledRef.current = viewModeEnabled
@@ -1242,15 +1263,25 @@ const WhiteboardCanvas = forwardRef<WhiteboardCanvasHandle, ExcalidrawWhiteboard
     files: BinaryFiles
   }) => {
     const pending = scene ?? pendingLocalSceneRef.current
-    if (!pending) return
+    let resolved = pending
+    if (!resolved) {
+      const api = excalidrawApiRef.current
+      const map = mapRef.current
+      if (!api || !map) return
+      resolved = {
+        elements: api.getSceneElements(),
+        appState: api.getAppState(),
+        files: resolveFiles(map.get('files')),
+      }
+    }
     const api = excalidrawApiRef.current
     const latest = api
       ? {
           elements: api.getSceneElements(),
           appState: api.getAppState(),
-          files: pending.files,
+          files: resolved.files,
         }
-      : pending
+      : resolved
     if (syncThrottleTimerRef.current !== null) {
       window.clearTimeout(syncThrottleTimerRef.current)
       syncThrottleTimerRef.current = null
@@ -1271,7 +1302,9 @@ const WhiteboardCanvas = forwardRef<WhiteboardCanvasHandle, ExcalidrawWhiteboard
     }
 
     // Run freedraw simplification only on commit (pointer-up / idle)
+    const beforeSummary = summarizeFreedraw(nextElements)
     const simplified = simplifyFreedrawElements(nextElements)
+    const afterSummary = summarizeFreedraw(simplified.elements)
 
     pendingLocalSceneRef.current = null
     if (simplified.changed && excalidrawApiRef.current) {
@@ -1289,6 +1322,13 @@ const WhiteboardCanvas = forwardRef<WhiteboardCanvasHandle, ExcalidrawWhiteboard
     setHasBackground((simplified.elements ?? nextElements).some(isBackgroundElement))
 
     flushSceneToYjs({ elements: simplified.elements, appState: nextAppState, files: latest.files })
+    whiteboardDebugLog('whiteboard:commit', {
+      elements: simplified.elements.length,
+      files: Object.keys(latest.files || {}).length,
+      background: (simplified.elements ?? nextElements).some(isBackgroundElement),
+      freedrawBefore: beforeSummary,
+      freedrawAfter: afterSummary,
+    })
   }, [flushSceneToYjs])
 
   const registerPointerGuard = useCallback(
@@ -1299,11 +1339,32 @@ const WhiteboardCanvas = forwardRef<WhiteboardCanvasHandle, ExcalidrawWhiteboard
       const offPointerDown = api.onPointerDown(() => {
         isLocallyDrawingRef.current = true
         needsFinalCommitRef.current = false
+        whiteboardDebugLog('whiteboard:pointer:down', { boardId })
       })
 
       const offPointerUp = api.onPointerUp(() => {
-        isLocallyDrawingRef.current = false
-        needsFinalCommitRef.current = true
+        // Keep local-drawing guard enabled until after the final commit.
+        isLocallyDrawingRef.current = true
+        needsFinalCommitRef.current = false
+        const finalize = () => {
+          const apiSnapshot = excalidrawApiRef.current
+          const elementCount = apiSnapshot ? apiSnapshot.getSceneElements().length : 0
+          const pendingCount = pendingLocalSceneRef.current?.elements.length ?? null
+          commitPendingLocalScene()
+          applyPendingRemoteScene()
+          isLocallyDrawingRef.current = false
+          whiteboardDebugLog('whiteboard:pointer:commit', {
+            boardId,
+            elementCount,
+            pendingCount,
+            viewMode: viewModeEnabledRef.current,
+          })
+        }
+        if (typeof window !== 'undefined' && typeof window.requestAnimationFrame === 'function') {
+          window.requestAnimationFrame(() => finalize())
+        } else {
+          setTimeout(() => finalize(), 0)
+        }
       })
 
       pointerGuardCleanupRef.current = () => {
@@ -1394,6 +1455,7 @@ const WhiteboardCanvas = forwardRef<WhiteboardCanvasHandle, ExcalidrawWhiteboard
         if (!synced) return
         // Sync handshake: only render Excalidraw after the provider reports a full sync.
         setIsSynced(true)
+        whiteboardDebugLog('whiteboard:sync', { boardId })
         if (isLocallyDrawingRef.current) {
           // Sync pause: delay remote scene application while the local stroke is active.
           pendingRemoteSyncRef.current = true
@@ -1465,6 +1527,10 @@ const WhiteboardCanvas = forwardRef<WhiteboardCanvasHandle, ExcalidrawWhiteboard
         window.clearTimeout(syncThrottleTimerRef.current)
         syncThrottleTimerRef.current = null
       }
+      if (idleCommitTimerRef.current !== null) {
+        window.clearTimeout(idleCommitTimerRef.current)
+        idleCommitTimerRef.current = null
+      }
     }
   }, [])
 
@@ -1489,6 +1555,23 @@ const WhiteboardCanvas = forwardRef<WhiteboardCanvasHandle, ExcalidrawWhiteboard
     (elements: readonly ExcalidrawElement[], appState: AppState, files: BinaryFiles) => {
       if (suppressSyncRef.current) return
       if (!docRef.current || !mapRef.current) return
+
+      isLocallyDrawingRef.current = true
+      needsFinalCommitRef.current = false
+      if (idleCommitTimerRef.current !== null) {
+        window.clearTimeout(idleCommitTimerRef.current)
+      }
+      idleCommitTimerRef.current = window.setTimeout(() => {
+        idleCommitTimerRef.current = null
+        if (!isLocallyDrawingRef.current) return
+        commitPendingLocalScene()
+        applyPendingRemoteScene()
+        isLocallyDrawingRef.current = false
+        whiteboardDebugLog('whiteboard:idle:commit', {
+          boardId,
+          elementCount: excalidrawApiRef.current?.getSceneElements().length ?? 0,
+        })
+      }, 180)
 
       // Avoid heavy transforms and React churn on the hot drawing path.
       const remappedWidth = STROKE_WIDTH_REMAP[appState.currentItemStrokeWidth]
@@ -1591,6 +1674,13 @@ const WhiteboardCanvas = forwardRef<WhiteboardCanvasHandle, ExcalidrawWhiteboard
               excalidrawAPI={(api) => {
                 excalidrawApiRef.current = api
                 registerPointerGuard(api)
+                if (!excalidrawReadyRef.current) {
+                  excalidrawReadyRef.current = true
+                  whiteboardDebugLog('whiteboard:excalidraw:ready', {
+                    boardId,
+                    viewMode: viewModeEnabledRef.current,
+                  })
+                }
               }}
               initialData={initialData ?? undefined}
               viewModeEnabled={viewModeEnabled}

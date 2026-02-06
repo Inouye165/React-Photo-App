@@ -2,7 +2,7 @@ type DebugFlagValue = string | null | undefined
 
 const WHITEBOARD_DEBUG_QUERY_KEYS = ['wbDebug', 'whiteboardDebug']
 const WHITEBOARD_DEBUG_STORAGE_KEY = 'wb:debug'
-const FORCE_WHITEBOARD_DEBUG = true
+const FORCE_WHITEBOARD_DEBUG = false
 
 let cachedEnabled: boolean | null = null
 

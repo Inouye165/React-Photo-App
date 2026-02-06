@@ -1,5 +1,4 @@
 import { test, expect } from '@playwright/test'
-import { fetchCsrfToken } from './helpers/csrf'
 import { acceptDisclaimer } from './helpers/disclaimer'
 import { mockCoreApi } from './helpers/mockCoreApi'
 
@@ -9,7 +8,7 @@ const ONE_BY_ONE_PNG = Buffer.from(
   'base64',
 )
 
-test('E2E chat: renders a photo message (recipient view)', async ({ page, context }) => {
+test('E2E chat: renders a photo message (recipient view)', async ({ page }) => {
   await mockCoreApi(page)
   await page.addInitScript(() => {
     window.__E2E_MODE__ = true
@@ -92,7 +91,7 @@ test('E2E chat: renders a photo message (recipient view)', async ({ page, contex
     created_at: new Date().toISOString(),
   }
 
-  await page.route('**/__supabase/rest/v1/rooms**', async (route) => {
+  await page.route('**/rest/v1/rooms**', async (route) => {
     const method = route.request().method()
     if (method === 'OPTIONS') return route.fulfill({ status: 204, headers: corsHeaders, body: '' })
     if (method === 'GET') {
@@ -106,14 +105,14 @@ test('E2E chat: renders a photo message (recipient view)', async ({ page, contex
     return route.fulfill({ status: 200, contentType: 'application/json', headers: corsHeaders, body: JSON.stringify(room) })
   })
 
-  await page.route('**/__supabase/rest/v1/room_members**', async (route) => {
+  await page.route('**/rest/v1/room_members**', async (route) => {
     const method = route.request().method()
     if (method === 'OPTIONS') return route.fulfill({ status: 204, headers: corsHeaders, body: '' })
     return route.fulfill({ status: 200, contentType: 'application/json', headers: corsHeaders, body: JSON.stringify([]) })
   })
 
   // Messages initial fetch returns one message with photo_id
-  await page.route('**/__supabase/rest/v1/messages**', async (route) => {
+  await page.route('**/rest/v1/messages**', async (route) => {
     const method = route.request().method()
     if (method === 'OPTIONS') {
       return route.fulfill({ status: 204, headers: corsHeaders, body: '' })
@@ -144,7 +143,7 @@ test('E2E chat: renders a photo message (recipient view)', async ({ page, contex
   })
 
   // Minimal auth endpoint stub
-  await page.route('**/__supabase/auth/v1/**', async (route) => {
+  await page.route('**/auth/v1/**', async (route) => {
     const method = route.request().method()
     if (method === 'OPTIONS') {
       return route.fulfill({ status: 204, headers: corsHeaders, body: '' })
@@ -163,28 +162,6 @@ test('E2E chat: renders a photo message (recipient view)', async ({ page, contex
       body: ONE_BY_ONE_PNG,
     })
   })
-
-  // Login: set backend cookie used by /api/test/e2e-verify
-  const csrfToken = await fetchCsrfToken(context.request)
-  const loginResponse = await context.request.post('http://127.0.0.1:3001/api/test/e2e-login', {
-    headers: { 'X-CSRF-Token': csrfToken },
-  })
-  expect(loginResponse.ok()).toBeTruthy()
-
-  const cookies = await context.cookies('http://127.0.0.1:3001')
-  for (const cookie of cookies) {
-    await context.addCookies([
-      {
-        name: cookie.name,
-        value: cookie.value,
-        domain: '127.0.0.1',
-        path: '/',
-        httpOnly: cookie.httpOnly,
-        secure: cookie.secure,
-        sameSite: cookie.sameSite,
-      },
-    ])
-  }
 
   await page.goto(`http://127.0.0.1:5173/chat/${room.id}`, { waitUntil: 'networkidle' })
   await acceptDisclaimer(page)

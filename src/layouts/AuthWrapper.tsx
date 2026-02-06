@@ -52,6 +52,12 @@ const AuthWrapper = ({ children }: AuthWrapperProps) => {
       return;
     }
 
+    if ((window as any).__E2E_MODE__) {
+      setTermsAccepted(true);
+      setCheckingTerms(false);
+      return;
+    }
+
     const checkTermsAcceptance = async () => {
       try {
         // Import dynamically to avoid circular dependency

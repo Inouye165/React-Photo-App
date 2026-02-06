@@ -1,9 +1,8 @@
 import { test, expect } from '@playwright/test';
 import { acceptDisclaimer } from './helpers/disclaimer';
-import { fetchCsrfToken } from './helpers/csrf';
 import { mockCoreApi } from './helpers/mockCoreApi';
 
-test('E2E smoke: login → upload → view', async ({ page, context }) => {
+test('E2E smoke: login → upload → view', async ({ page }) => {
   await mockCoreApi(page);
   // Set E2E mode flag in window object
   await page.addInitScript(() => {
@@ -172,29 +171,6 @@ test('E2E smoke: login → upload → view', async ({ page, context }) => {
       body: png1x1,
     });
   });
-
-  // E2E login: make request to get the auth cookie
-  const csrfToken = await fetchCsrfToken(context.request);
-  const loginResponse = await context.request.post('http://127.0.0.1:3001/api/test/e2e-login', {
-    headers: { 'X-CSRF-Token': csrfToken },
-  });
-  expect(loginResponse.ok()).toBeTruthy();
-  
-  // Extract cookies from the response and add them to the browser context for localhost
-  const cookies = await context.cookies('http://127.0.0.1:3001');
-  
-  // Re-add cookies for localhost (any port) so they're sent to port 5173 as well
-  for (const cookie of cookies) {
-    await context.addCookies([{
-      name: cookie.name,
-      value: cookie.value,
-      domain: '127.0.0.1',
-      path: '/',
-      httpOnly: cookie.httpOnly,
-      secure: cookie.secure,
-      sameSite: cookie.sameSite
-    }]);
-  }
 
   // Go directly to gallery (avoid SmartRouter redirects affecting stability)
   await page.goto('http://127.0.0.1:5173/gallery', { waitUntil: 'networkidle' });
