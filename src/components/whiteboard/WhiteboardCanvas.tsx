@@ -1481,6 +1481,7 @@ const WhiteboardCanvas = forwardRef<WhiteboardCanvasHandle, ExcalidrawWhiteboard
       // Avoid heavy transforms and React churn on the hot drawing path.
       const remappedWidth = STROKE_WIDTH_REMAP[appState.currentItemStrokeWidth]
       let nextAppState = appState
+      let nextElements = elements
 
       // If a remap is required, defer mutation of elements to commit time when drawing.
       if (remappedWidth && appState.currentItemStrokeWidth !== remappedWidth) {
@@ -1488,7 +1489,7 @@ const WhiteboardCanvas = forwardRef<WhiteboardCanvasHandle, ExcalidrawWhiteboard
           // If not actively drawing, apply remap immediately for UX consistency.
           const selectedIds = appState.selectedElementIds ?? {}
           if (Object.keys(selectedIds).length) {
-            const nextElements = elements.map((element) =>
+            nextElements = elements.map((element) =>
               selectedIds[element.id] ? { ...element, strokeWidth: remappedWidth } : element,
             )
             suppressSyncRef.current = true
@@ -1523,7 +1524,6 @@ const WhiteboardCanvas = forwardRef<WhiteboardCanvasHandle, ExcalidrawWhiteboard
       }
 
       // Off the hot path: simplify freedraw elements and update scene if needed.
-      let nextElements = elements
       const simplified = simplifyFreedrawElements(nextElements)
       if (simplified.changed && excalidrawApiRef.current) {
         suppressSyncRef.current = true
