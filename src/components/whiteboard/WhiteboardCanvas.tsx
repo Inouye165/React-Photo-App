@@ -1523,15 +1523,13 @@ const WhiteboardCanvas = forwardRef<WhiteboardCanvasHandle, ExcalidrawWhiteboard
         }
       }
 
-      if (!elements.length && lastNonEmptySceneRef.current && !isResettingRef.current) {
-        handleReset()
-      }
+      // Excalidraw can emit transient empty frames; don't auto-reset based on onChange.
 
       // When actively drawing, keep local ink immediate and still publish throttled updates to Yjs.
       if (isLocallyDrawingRef.current) {
-        pendingLocalSceneRef.current = { elements, appState: nextAppState, files }
+        pendingLocalSceneRef.current = { elements: nextElements, appState: nextAppState, files }
         // Throttled publish while drawing (uses existing scheduleSceneSync logic)
-        scheduleSceneSync({ elements, appState: nextAppState, files })
+        scheduleSceneSync({ elements: nextElements, appState: nextAppState, files })
         return
       }
 
