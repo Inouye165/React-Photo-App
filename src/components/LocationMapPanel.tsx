@@ -55,7 +55,7 @@ const DirectionalArrow = ({ heading = 0 }: { heading?: number }) => (
 export default function LocationMapPanel({ photo }: LocationMapPanelProps) {
   const apiKey = import.meta.env.VITE_GOOGLE_MAPS_API_KEY;
   const mapId = import.meta.env.VITE_GOOGLE_MAPS_MAP_ID || 'DEMO_MAP_ID';
-  const isE2E = import.meta.env.VITE_E2E === 'true';
+  const isE2E = import.meta.env.VITE_E2E === 'true' || (typeof window !== 'undefined' && (window as any).__E2E_MODE__ === true);
 
   // Memoize location calculation to avoid unnecessary recalculations
   const location = useMemo(() => getPhotoLocation(photo), [photo]);

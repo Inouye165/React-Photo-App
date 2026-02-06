@@ -1,10 +1,9 @@
 import { test, expect } from '@playwright/test';
 import { acceptDisclaimer } from './helpers/disclaimer';
-import { fetchCsrfToken } from './helpers/csrf';
 import { mockCoreApi } from './helpers/mockCoreApi';
 
 test.describe('Map Component', () => {
-  test('should render Google Maps and not the OpenStreetMap fallback', async ({ page, context }) => {
+  test('should render Google Maps and not the OpenStreetMap fallback', async ({ page }) => {
     await mockCoreApi(page);
     // Inject E2E mode flag
     await page.addInitScript(() => {
@@ -17,27 +16,6 @@ test.describe('Map Component', () => {
       'Access-Control-Allow-Methods': 'GET, POST, PATCH, PUT, DELETE, OPTIONS',
       'Access-Control-Allow-Headers': 'Content-Type, Authorization, X-E2E-User-ID',
     };
-
-    // E2E login: make request to get the auth cookie
-    const csrfToken = await fetchCsrfToken(context.request);
-    const loginResponse = await context.request.post('http://127.0.0.1:3001/api/test/e2e-login', {
-      headers: { 'X-CSRF-Token': csrfToken },
-    });
-    expect(loginResponse.ok()).toBeTruthy();
-    
-    // Extract cookies and add them for 127.0.0.1
-    const cookies = await context.cookies('http://127.0.0.1:3001');
-    for (const cookie of cookies) {
-      await context.addCookies([{
-        name: cookie.name,
-        value: cookie.value,
-        domain: '127.0.0.1',
-        path: '/',
-        httpOnly: cookie.httpOnly,
-        secure: cookie.secure,
-        sameSite: cookie.sameSite
-      }]);
-    }
 
     // Mock e2e-verify endpoint to ensure auth works
     await page.route('**/api/test/e2e-verify', async route => {

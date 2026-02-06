@@ -3,6 +3,8 @@ import { LogOut, MessageSquareText, Settings, ChevronDown } from 'lucide-react';
 import { useAuth } from '../contexts/AuthContext';
 import FeedbackModal from './FeedbackModal';
 import UserSettingsModal from './UserSettingsModal';
+import { API_BASE_URL } from '../api/httpClient';
+import { FRONTEND_BUILD_TIMESTAMP, FRONTEND_VERSION } from '../version';
 
 /**
  * UserMenu - Dropdown menu triggered by clicking the user avatar
@@ -19,10 +21,15 @@ export default function UserMenu() {
   const [isOpen, setIsOpen] = useState(false);
   const [showFeedbackModal, setShowFeedbackModal] = useState(false);
   const [showSettingsModal, setShowSettingsModal] = useState(false);
+  const [aboutInfo, setAboutInfo] = useState<{
+    backendVersion: string | null;
+    backendTimestamp: string | null;
+    backendCommit: string | null;
+  } | null>(null);
+  const [aboutError, setAboutError] = useState<string | null>(null);
   const menuRef = useRef<HTMLDivElement>(null);
   
   // Check if user has admin role
-  console.log('UserMenu user:', user);
   const isAdmin = user?.app_metadata?.role === 'admin';
   const displayName = profile?.username || 'User';
   const initial = displayName.charAt(0).toUpperCase();
@@ -55,6 +62,45 @@ export default function UserMenu() {
       return () => document.removeEventListener('keydown', handleEscape);
     }
   }, [isOpen]);
+
+  useEffect(() => {
+    if (!isOpen) return;
+    if (aboutInfo || aboutError) return;
+
+    let cancelled = false;
+
+    const loadAbout = async () => {
+      try {
+        const response = await fetch(`${API_BASE_URL}/health`, {
+          credentials: 'include',
+          headers: { Accept: 'application/json' },
+        });
+        if (!response.ok) {
+          throw new Error(`Health status ${response.status}`);
+        }
+        const data = (await response.json()) as {
+          version?: string | null;
+          timestamp?: string | null;
+          commit?: string | null;
+        };
+        if (cancelled) return;
+        setAboutInfo({
+          backendVersion: typeof data.version === 'string' ? data.version : null,
+          backendTimestamp: typeof data.timestamp === 'string' ? data.timestamp : null,
+          backendCommit: typeof data.commit === 'string' ? data.commit : null,
+        });
+      } catch (err) {
+        if (cancelled) return;
+        setAboutError(err instanceof Error ? err.message : 'Unable to load backend version');
+      }
+    };
+
+    void loadAbout();
+
+    return () => {
+      cancelled = true;
+    };
+  }, [aboutError, aboutInfo, isOpen]);
 
   const handleLogout = () => {
     setIsOpen(false);
@@ -165,6 +211,38 @@ export default function UserMenu() {
                 <Settings size={18} className="text-slate-400" />
                 Settings
               </button>
+            </div>
+
+            {/* About */}
+            <div className="border-t border-slate-100 px-4 py-3">
+              <p className="text-xs font-semibold uppercase tracking-wide text-slate-400">About</p>
+              <div className="mt-2 space-y-1 text-xs text-slate-600">
+                <div className="flex items-center justify-between gap-2">
+                  <span className="text-slate-500">Frontend</span>
+                  <span className="font-medium text-slate-700">{FRONTEND_VERSION}</span>
+                </div>
+                <div className="flex items-center justify-between gap-2">
+                  <span className="text-slate-500">Frontend Time</span>
+                  <span className="font-medium text-slate-700">{FRONTEND_BUILD_TIMESTAMP}</span>
+                </div>
+                <div className="flex items-center justify-between gap-2">
+                  <span className="text-slate-500">Backend</span>
+                  <span className="font-medium text-slate-700">{aboutInfo?.backendVersion || '—'}</span>
+                </div>
+                <div className="flex items-center justify-between gap-2">
+                  <span className="text-slate-500">Backend Time</span>
+                  <span className="font-medium text-slate-700">{aboutInfo?.backendTimestamp || '—'}</span>
+                </div>
+                {aboutInfo?.backendCommit && (
+                  <div className="flex items-center justify-between gap-2">
+                    <span className="text-slate-500">Backend Commit</span>
+                    <span className="font-medium text-slate-700">{aboutInfo.backendCommit}</span>
+                  </div>
+                )}
+                {aboutError && (
+                  <div className="text-[11px] text-amber-600">{aboutError}</div>
+                )}
+              </div>
             </div>
 
             {/* Logout */}

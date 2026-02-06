@@ -1,10 +1,9 @@
 import { test, expect } from '@playwright/test';
 import AxeBuilder from '@axe-core/playwright';
 import { acceptDisclaimer } from './helpers/disclaimer';
-import { fetchCsrfToken } from './helpers/csrf';
 import { mockCoreApi } from './helpers/mockCoreApi';
 
-test('A11y: upload page', async ({ page, context }) => {
+test('A11y: upload page', async ({ page }) => {
   await mockCoreApi(page);
   // Set up route mocks FIRST before any requests
   await page.route('**/api/test/e2e-verify', async route => {
@@ -47,27 +46,6 @@ test('A11y: upload page', async ({ page, context }) => {
       json: { success: true, data: { terms_accepted_at: new Date().toISOString() } },
     });
   });
-
-  // E2E login: make request to get the auth cookie
-  const csrfToken = await fetchCsrfToken(context.request);
-  const loginResponse = await context.request.post('http://127.0.0.1:3001/api/test/e2e-login', {
-    headers: { 'X-CSRF-Token': csrfToken },
-  });
-  expect(loginResponse.ok()).toBeTruthy();
-  
-  // Extract cookies and add them for localhost
-  const cookies = await context.cookies('http://127.0.0.1:3001');
-  for (const cookie of cookies) {
-    await context.addCookies([{
-      name: cookie.name,
-      value: cookie.value,
-      domain: '127.0.0.1',
-      path: '/',
-      httpOnly: cookie.httpOnly,
-      secure: cookie.secure,
-      sameSite: cookie.sameSite
-    }]);
-  }
 
   await page.goto('http://127.0.0.1:5173/upload');
   

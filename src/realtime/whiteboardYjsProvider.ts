@@ -20,7 +20,7 @@ export function buildWhiteboardWebsocketUrl(apiBaseUrl: string): string {
 export function createWhiteboardYjsProvider(options: {
   apiBaseUrl: string
   boardId: string
-  token: string
+  token?: string | null
   wsToken?: string
   onStatus?: (status: WhiteboardYjsConnectionStatus) => void
 }): WhiteboardYjsProvider {
@@ -28,8 +28,12 @@ export function createWhiteboardYjsProvider(options: {
   const doc = new Y.Doc()
   const wsUrl = buildWhiteboardWebsocketUrl(apiBaseUrl)
 
+  const params: Record<string, string> = {}
+  if (wsToken) params.ws_token = wsToken
+  else if (token) params.token = token
+
   const provider = new WebsocketProvider(wsUrl, boardId, doc, {
-    params: wsToken ? { ws_token: wsToken } : { token },
+    params,
   })
 
   provider.on('status', (event: { status: WhiteboardYjsConnectionStatus }) => {

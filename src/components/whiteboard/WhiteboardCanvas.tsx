@@ -713,7 +713,8 @@ function pickPersistedAppState(appState: AppState): PersistedAppState {
   }
 }
 
-const FREEDRAW_MIN_POINT_DISTANCE = 1.25
+const FREEDRAW_MIN_POINT_DISTANCE = 0
+const SYNC_THROTTLE_MS = 80
 
 function simplifyFreedrawPoints(points: ReadonlyArray<[number, number]>) {
   if (points.length <= 2) return points
@@ -744,6 +745,63 @@ function simplifyFreedrawElements(elements: readonly ExcalidrawElement[]) {
     return { ...element, points: simplified }
   })
   return { elements: next, changed }
+}
+
+function summarizeFreedraw(elements: readonly ExcalidrawElement[]) {
+  let count = 0
+  let totalPoints = 0
+  let maxPoints = 0
+  for (const element of elements) {
+    if (element.type !== 'freedraw') continue
+    const points = (element as { points?: ReadonlyArray<[number, number]> }).points
+    if (!points || !Array.isArray(points)) continue
+    count += 1
+    totalPoints += points.length
+    if (points.length > maxPoints) maxPoints = points.length
+  }
+  return { count, totalPoints, maxPoints }
+}
+
+function arePersistedAppStatesEqual(a: PersistedAppState | null, b: PersistedAppState | null) {
+  if (!a || !b) return false
+  return a.viewBackgroundColor === b.viewBackgroundColor && a.gridSize === b.gridSize && a.theme === b.theme
+}
+
+function buildElementVersionMap(elements: readonly ExcalidrawElement[]) {
+  const map = new Map<string, { version: number; versionNonce: number }>()
+  for (const element of elements) {
+    const version = typeof element.version === 'number' ? element.version : -1
+    const versionNonce = typeof element.versionNonce === 'number' ? element.versionNonce : -1
+    map.set(element.id, { version, versionNonce })
+  }
+  return map
+}
+
+function haveElementsChanged(
+  elements: readonly ExcalidrawElement[],
+  lastMap: Map<string, { version: number; versionNonce: number }> | null,
+) {
+  if (!lastMap || lastMap.size !== elements.length) return true
+  for (const element of elements) {
+    const prev = lastMap.get(element.id)
+    if (!prev) return true
+    const version = typeof element.version === 'number' ? element.version : -1
+    const versionNonce = typeof element.versionNonce === 'number' ? element.versionNonce : -1
+    if (prev.version !== version || prev.versionNonce !== versionNonce) return true
+  }
+  return false
+}
+
+function getFileKeys(files: BinaryFiles) {
+  return Object.keys(files).sort()
+}
+
+function areFileKeysEqual(a: string[] | null, b: string[]) {
+  if (!a || a.length !== b.length) return false
+  for (let i = 0; i < a.length; i += 1) {
+    if (a[i] !== b[i]) return false
+  }
+  return true
 }
 
 const WhiteboardCanvas = forwardRef<WhiteboardCanvasHandle, ExcalidrawWhiteboardCanvasProps>(
@@ -783,7 +841,19 @@ const WhiteboardCanvas = forwardRef<WhiteboardCanvasHandle, ExcalidrawWhiteboard
     appState: AppState
     files: BinaryFiles
   } | null>(null)
+  const needsFinalCommitRef = useRef(false)
+  const pendingSyncRef = useRef<{
+    elements: readonly ExcalidrawElement[]
+    appState: AppState
+    files: BinaryFiles
+  } | null>(null)
+  const syncThrottleTimerRef = useRef<number | null>(null)
+  const lastSyncedElementsRef = useRef<Map<string, { version: number; versionNonce: number }> | null>(null)
+  const lastSyncedAppStateRef = useRef<PersistedAppState | null>(null)
+  const lastSyncedFilesRef = useRef<string[] | null>(null)
   const pointerGuardCleanupRef = useRef<(() => void) | null>(null)
+  const excalidrawReadyRef = useRef(false)
+  const idleCommitTimerRef = useRef<number | null>(null)
 
   useEffect(() => {
     setViewModeEnabled(mode === 'viewer')
@@ -794,6 +864,10 @@ const WhiteboardCanvas = forwardRef<WhiteboardCanvasHandle, ExcalidrawWhiteboard
       setIsSynced(false)
     }
   }, [token])
+
+  useEffect(() => {
+    whiteboardDebugLog('whiteboard:mount', { boardId, mode })
+  }, [boardId, mode])
 
   useEffect(() => {
     viewModeEnabledRef.current = viewModeEnabled
@@ -906,6 +980,10 @@ const WhiteboardCanvas = forwardRef<WhiteboardCanvasHandle, ExcalidrawWhiteboard
   const applySceneFromYjs = useCallback(() => {
     const map = mapRef.current
     if (!map) return
+    if (isLocallyDrawingRef.current) {
+      pendingRemoteSyncRef.current = true
+      return
+    }
 
     const elements = resolveElements(map.get('elements'))
     if (!elements) return
@@ -924,6 +1002,9 @@ const WhiteboardCanvas = forwardRef<WhiteboardCanvasHandle, ExcalidrawWhiteboard
     }
 
     setHasBackground(elements.some(isBackgroundElement))
+    lastSyncedElementsRef.current = buildElementVersionMap(elements)
+    lastSyncedAppStateRef.current = appState
+    lastSyncedFilesRef.current = getFileKeys(files)
 
     if (!excalidrawApiRef.current) {
       setInitialData(scene)
@@ -1133,33 +1214,122 @@ const WhiteboardCanvas = forwardRef<WhiteboardCanvasHandle, ExcalidrawWhiteboard
     [handleBackgroundClear],
   )
 
-  const commitPendingLocalScene = useCallback(() => {
-    const pending = pendingLocalSceneRef.current
-    if (!pending) return
-    const doc = docRef.current
-    const map = mapRef.current
-    if (!doc || !map) return
+  const flushSceneToYjs = useCallback(
+    (scene: { elements: readonly ExcalidrawElement[]; appState: AppState; files: BinaryFiles }) => {
+      const doc = docRef.current
+      const map = mapRef.current
+      if (!doc || !map) return
 
-    const simplified = simplifyFreedrawElements(pending.elements)
+      const persistedAppState = pickPersistedAppState(scene.appState)
+      const fileKeys = getFileKeys(scene.files)
+      const elementsChanged = haveElementsChanged(scene.elements, lastSyncedElementsRef.current)
+      const appStateChanged = !arePersistedAppStatesEqual(lastSyncedAppStateRef.current, persistedAppState)
+      const filesChanged = !areFileKeysEqual(lastSyncedFilesRef.current, fileKeys)
+
+      if (!elementsChanged && !appStateChanged && !filesChanged) return
+
+      doc.transact(() => {
+        map.set('elements', scene.elements)
+        map.set('appState', persistedAppState)
+        map.set('files', scene.files)
+        map.set('updatedAt', Date.now())
+      }, LOCAL_ORIGIN)
+
+      lastSyncedElementsRef.current = buildElementVersionMap(scene.elements)
+      lastSyncedAppStateRef.current = persistedAppState
+      lastSyncedFilesRef.current = fileKeys
+    },
+    [],
+  )
+
+  const scheduleSceneSync = useCallback(
+    (scene: { elements: readonly ExcalidrawElement[]; appState: AppState; files: BinaryFiles }) => {
+      pendingSyncRef.current = scene
+      if (syncThrottleTimerRef.current !== null) return
+      syncThrottleTimerRef.current = window.setTimeout(() => {
+        syncThrottleTimerRef.current = null
+        const pending = pendingSyncRef.current
+        if (!pending) return
+        pendingSyncRef.current = null
+        flushSceneToYjs(pending)
+      }, SYNC_THROTTLE_MS)
+    },
+    [flushSceneToYjs],
+  )
+
+  const commitPendingLocalScene = useCallback((scene?: {
+    elements: readonly ExcalidrawElement[]
+    appState: AppState
+    files: BinaryFiles
+  }) => {
+    const pending = scene ?? pendingLocalSceneRef.current
+    let resolved = pending
+    if (!resolved) {
+      const api = excalidrawApiRef.current
+      const map = mapRef.current
+      if (!api || !map) return
+      resolved = {
+        elements: api.getSceneElements(),
+        appState: api.getAppState(),
+        files: resolveFiles(map.get('files')),
+      }
+    }
+    const api = excalidrawApiRef.current
+    const latest = api
+      ? {
+          elements: api.getSceneElements(),
+          appState: api.getAppState(),
+          files: resolved.files,
+        }
+      : resolved
+    if (syncThrottleTimerRef.current !== null) {
+      window.clearTimeout(syncThrottleTimerRef.current)
+      syncThrottleTimerRef.current = null
+    }
+    pendingSyncRef.current = null
+    // Apply stroke-width remap for any pending selected elements (do this off the hot-path)
+    let nextElements = latest.elements
+    let nextAppState = latest.appState
+    const remappedWidth = STROKE_WIDTH_REMAP[latest.appState.currentItemStrokeWidth]
+    if (remappedWidth && latest.appState.currentItemStrokeWidth !== remappedWidth) {
+      const selectedIds = latest.appState.selectedElementIds ?? {}
+      if (Object.keys(selectedIds).length) {
+        nextElements = latest.elements.map((element) =>
+          selectedIds[element.id] ? { ...element, strokeWidth: remappedWidth } : element,
+        )
+      }
+      nextAppState = { ...latest.appState, currentItemStrokeWidth: remappedWidth }
+    }
+
+    // Run freedraw simplification only on commit (pointer-up / idle)
+    const beforeSummary = summarizeFreedraw(nextElements)
+    const simplified = simplifyFreedrawElements(nextElements)
+    const afterSummary = summarizeFreedraw(simplified.elements)
 
     pendingLocalSceneRef.current = null
     if (simplified.changed && excalidrawApiRef.current) {
       suppressSyncRef.current = true
       excalidrawApiRef.current.updateScene({
         elements: simplified.elements,
-        appState: pending.appState,
+        appState: nextAppState,
       })
       requestAnimationFrame(() => {
         suppressSyncRef.current = false
       })
     }
-    doc.transact(() => {
-      map.set('elements', simplified.elements)
-      map.set('appState', pickPersistedAppState(pending.appState))
-      map.set('files', pending.files)
-      map.set('updatedAt', Date.now())
-    }, LOCAL_ORIGIN)
-  }, [])
+
+    // Reflect background presence after commit to avoid React churn while drawing
+    setHasBackground((simplified.elements ?? nextElements).some(isBackgroundElement))
+
+    flushSceneToYjs({ elements: simplified.elements, appState: nextAppState, files: latest.files })
+    whiteboardDebugLog('whiteboard:commit', {
+      elements: simplified.elements.length,
+      files: Object.keys(latest.files || {}).length,
+      background: (simplified.elements ?? nextElements).some(isBackgroundElement),
+      freedrawBefore: beforeSummary,
+      freedrawAfter: afterSummary,
+    })
+  }, [flushSceneToYjs])
 
   const registerPointerGuard = useCallback(
     (api: ExcalidrawImperativeAPI | null) => {
@@ -1168,13 +1338,33 @@ const WhiteboardCanvas = forwardRef<WhiteboardCanvasHandle, ExcalidrawWhiteboard
       // Sync pause: keep remote updates from clobbering local pointer strokes mid-draw.
       const offPointerDown = api.onPointerDown(() => {
         isLocallyDrawingRef.current = true
+        needsFinalCommitRef.current = false
+        whiteboardDebugLog('whiteboard:pointer:down', { boardId })
       })
 
       const offPointerUp = api.onPointerUp(() => {
-        isLocallyDrawingRef.current = false
-        commitPendingLocalScene()
-        // Re-apply the latest remote state after the local stroke completes.
-        applyPendingRemoteScene()
+        // Keep local-drawing guard enabled until after the final commit.
+        isLocallyDrawingRef.current = true
+        needsFinalCommitRef.current = false
+        const finalize = () => {
+          const apiSnapshot = excalidrawApiRef.current
+          const elementCount = apiSnapshot ? apiSnapshot.getSceneElements().length : 0
+          const pendingCount = pendingLocalSceneRef.current?.elements.length ?? null
+          commitPendingLocalScene()
+          applyPendingRemoteScene()
+          isLocallyDrawingRef.current = false
+          whiteboardDebugLog('whiteboard:pointer:commit', {
+            boardId,
+            elementCount,
+            pendingCount,
+            viewMode: viewModeEnabledRef.current,
+          })
+        }
+        if (typeof window !== 'undefined' && typeof window.requestAnimationFrame === 'function') {
+          window.requestAnimationFrame(() => finalize())
+        } else {
+          setTimeout(() => finalize(), 0)
+        }
       })
 
       pointerGuardCleanupRef.current = () => {
@@ -1220,6 +1410,15 @@ const WhiteboardCanvas = forwardRef<WhiteboardCanvasHandle, ExcalidrawWhiteboard
       }, LOCAL_ORIGIN)
     }
 
+    pendingSyncRef.current = null
+    if (syncThrottleTimerRef.current !== null) {
+      window.clearTimeout(syncThrottleTimerRef.current)
+      syncThrottleTimerRef.current = null
+    }
+    lastSyncedElementsRef.current = new Map()
+    lastSyncedAppStateRef.current = api ? pickPersistedAppState(api.getAppState()) : DEFAULT_APP_STATE
+    lastSyncedFilesRef.current = []
+
     requestAnimationFrame(() => {
       isResettingRef.current = false
       lastNonEmptySceneRef.current = false
@@ -1256,6 +1455,7 @@ const WhiteboardCanvas = forwardRef<WhiteboardCanvasHandle, ExcalidrawWhiteboard
         if (!synced) return
         // Sync handshake: only render Excalidraw after the provider reports a full sync.
         setIsSynced(true)
+        whiteboardDebugLog('whiteboard:sync', { boardId })
         if (isLocallyDrawingRef.current) {
           // Sync pause: delay remote scene application while the local stroke is active.
           pendingRemoteSyncRef.current = true
@@ -1285,6 +1485,14 @@ const WhiteboardCanvas = forwardRef<WhiteboardCanvasHandle, ExcalidrawWhiteboard
         docRef.current = null
         mapRef.current = null
         setIsSynced(false)
+        pendingSyncRef.current = null
+        lastSyncedElementsRef.current = null
+        lastSyncedAppStateRef.current = null
+        lastSyncedFilesRef.current = null
+        if (syncThrottleTimerRef.current !== null) {
+          window.clearTimeout(syncThrottleTimerRef.current)
+          syncThrottleTimerRef.current = null
+        }
       }
     }
 
@@ -1314,6 +1522,19 @@ const WhiteboardCanvas = forwardRef<WhiteboardCanvasHandle, ExcalidrawWhiteboard
   }, [])
 
   useEffect(() => {
+    return () => {
+      if (syncThrottleTimerRef.current !== null) {
+        window.clearTimeout(syncThrottleTimerRef.current)
+        syncThrottleTimerRef.current = null
+      }
+      if (idleCommitTimerRef.current !== null) {
+        window.clearTimeout(idleCommitTimerRef.current)
+        idleCommitTimerRef.current = null
+      }
+    }
+  }, [])
+
+  useEffect(() => {
     if (!excalidrawApiRef.current) return
     const currentState = excalidrawApiRef.current.getAppState()
     suppressSyncRef.current = true
@@ -1333,40 +1554,78 @@ const WhiteboardCanvas = forwardRef<WhiteboardCanvasHandle, ExcalidrawWhiteboard
   const handleChange = useCallback(
     (elements: readonly ExcalidrawElement[], appState: AppState, files: BinaryFiles) => {
       if (suppressSyncRef.current) return
-      const doc = docRef.current
-      const map = mapRef.current
-      if (!doc || !map) return
+      if (!docRef.current || !mapRef.current) return
 
-      let nextElements = elements
-      let nextAppState = appState
+      isLocallyDrawingRef.current = true
+      needsFinalCommitRef.current = false
+      if (idleCommitTimerRef.current !== null) {
+        window.clearTimeout(idleCommitTimerRef.current)
+      }
+      idleCommitTimerRef.current = window.setTimeout(() => {
+        idleCommitTimerRef.current = null
+        if (!isLocallyDrawingRef.current) return
+        commitPendingLocalScene()
+        applyPendingRemoteScene()
+        isLocallyDrawingRef.current = false
+        whiteboardDebugLog('whiteboard:idle:commit', {
+          boardId,
+          elementCount: excalidrawApiRef.current?.getSceneElements().length ?? 0,
+        })
+      }, 180)
+
+      // Avoid heavy transforms and React churn on the hot drawing path.
       const remappedWidth = STROKE_WIDTH_REMAP[appState.currentItemStrokeWidth]
+      let nextAppState = appState
+      let nextElements = elements
 
+      // If a remap is required, defer mutation of elements to commit time when drawing.
       if (remappedWidth && appState.currentItemStrokeWidth !== remappedWidth) {
-        const selectedIds = appState.selectedElementIds ?? {}
-        if (Object.keys(selectedIds).length) {
-          nextElements = elements.map((element) =>
-            selectedIds[element.id] ? { ...element, strokeWidth: remappedWidth } : element,
-          )
+        if (!isLocallyDrawingRef.current) {
+          // If not actively drawing, apply remap immediately for UX consistency.
+          const selectedIds = appState.selectedElementIds ?? {}
+          if (Object.keys(selectedIds).length) {
+            nextElements = elements.map((element) =>
+              selectedIds[element.id] ? { ...element, strokeWidth: remappedWidth } : element,
+            )
+            suppressSyncRef.current = true
+            excalidrawApiRef.current?.updateScene({
+              elements: nextElements,
+              appState: { ...appState, currentItemStrokeWidth: remappedWidth },
+            })
+            requestAnimationFrame(() => {
+              suppressSyncRef.current = false
+            })
+            // update local values for scheduling below
+            nextAppState = { ...appState, currentItemStrokeWidth: remappedWidth }
+          } else {
+            nextAppState = { ...appState, currentItemStrokeWidth: remappedWidth }
+          }
+        } else {
+          // While drawing: don't run updateScene or expensive element maps here.
+          nextAppState = { ...appState, currentItemStrokeWidth: remappedWidth }
         }
-        nextAppState = {
-          ...appState,
-          currentItemStrokeWidth: remappedWidth,
-        }
-
-        suppressSyncRef.current = true
-        excalidrawApiRef.current?.updateScene({
-          elements: nextElements,
-          appState: nextAppState,
-        })
-        requestAnimationFrame(() => {
-          suppressSyncRef.current = false
-        })
       }
 
-      if (!elements.length && lastNonEmptySceneRef.current && !isResettingRef.current) {
-        handleReset()
+      // Excalidraw can emit transient empty frames; don't auto-reset based on onChange.
+
+      // When actively drawing, keep local ink immediate and still publish throttled updates to Yjs.
+      if (isLocallyDrawingRef.current) {
+        pendingLocalSceneRef.current = { elements: nextElements, appState: nextAppState, files }
+        // Throttled publish while drawing (uses existing scheduleSceneSync logic)
+        scheduleSceneSync({ elements: nextElements, appState: nextAppState, files })
+        return
       }
 
+      // Finalize the local stroke on the first change after pointer-up.
+      if (needsFinalCommitRef.current) {
+        needsFinalCommitRef.current = false
+        commitPendingLocalScene({ elements: nextElements, appState: nextAppState, files })
+        // Re-apply the latest remote state after the local stroke completes.
+        applyPendingRemoteScene()
+        return
+      }
+
+      // Off the hot path: simplify freedraw elements and update scene if needed.
       const simplified = simplifyFreedrawElements(nextElements)
       if (simplified.changed && excalidrawApiRef.current) {
         suppressSyncRef.current = true
@@ -1383,20 +1642,9 @@ const WhiteboardCanvas = forwardRef<WhiteboardCanvasHandle, ExcalidrawWhiteboard
       lastNonEmptySceneRef.current = nextElements.length > 0
       setHasBackground(nextElements.some(isBackgroundElement))
 
-      if (isLocallyDrawingRef.current) {
-        // Keep in-progress strokes local; commit the final scene on pointer up.
-        pendingLocalSceneRef.current = { elements: nextElements, appState: nextAppState, files }
-        return
-      }
-
-      doc.transact(() => {
-        map.set('elements', nextElements)
-        map.set('appState', pickPersistedAppState(nextAppState))
-        map.set('files', files)
-        map.set('updatedAt', Date.now())
-      }, LOCAL_ORIGIN)
+      scheduleSceneSync({ elements: nextElements, appState: nextAppState, files })
     },
-    [handleReset],
+    [applyPendingRemoteScene, commitPendingLocalScene, handleReset, scheduleSceneSync],
   )
 
   return (
@@ -1426,6 +1674,13 @@ const WhiteboardCanvas = forwardRef<WhiteboardCanvasHandle, ExcalidrawWhiteboard
               excalidrawAPI={(api) => {
                 excalidrawApiRef.current = api
                 registerPointerGuard(api)
+                if (!excalidrawReadyRef.current) {
+                  excalidrawReadyRef.current = true
+                  whiteboardDebugLog('whiteboard:excalidraw:ready', {
+                    boardId,
+                    viewMode: viewModeEnabledRef.current,
+                  })
+                }
               }}
               initialData={initialData ?? undefined}
               viewModeEnabled={viewModeEnabled}
