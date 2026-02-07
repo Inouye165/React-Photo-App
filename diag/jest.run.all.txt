@@ -1,7 +1,0 @@
-This repo uses Vitest (see package.json scripts: `npm run test`, `npm run test:run`).
-
-If you see a prompt like "Need to install jest@… Ok to proceed?", it likely came from running a
-standalone `jest` command or an old local setup. Prefer running:
-
-- `npm run test` (watch)
-- `npm run test:run` (CI/run mode)
