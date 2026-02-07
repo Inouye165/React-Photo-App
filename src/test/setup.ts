@@ -430,6 +430,9 @@ beforeEach(() => {
 // CRITICAL FIX: Aggressive cleanup after each test
 afterEach(() => {
   cleanup();
+
+  // Ensure no leaked DOM nodes remain between tests.
+  document.body.innerHTML = '';
   
   // Clear all timers
   vi.clearAllTimers();

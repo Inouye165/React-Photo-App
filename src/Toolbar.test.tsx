@@ -7,6 +7,13 @@ import userEvent from '@testing-library/user-event'
 import Toolbar from './Toolbar'
 import useStore from './store'
 
+vi.mock('./contexts/AuthContext', () => ({
+  useAuth: vi.fn(() => ({
+    user: { email: 'tester@example.com' },
+    logout: vi.fn(),
+  })),
+}))
+
 // Mock the store
 vi.mock('./store', () => ({
   default: vi.fn(),

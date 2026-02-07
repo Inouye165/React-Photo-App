@@ -9,7 +9,7 @@ port = 54321
 
 [db]
 # Local Postgres port used by Supabase
-port = 54324
+port = 54330
 
 [studio]
 # Supabase Studio (web UI)

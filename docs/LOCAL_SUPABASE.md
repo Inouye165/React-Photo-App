@@ -27,18 +27,25 @@ When `supabase start` finishes, it prints the local `anon` and `service_role` ke
 Set these in [server/.env](../server/.env):
 
 ```bash
-SUPABASE_URL=http://localhost:54321
+SUPABASE_URL=http://127.0.0.1:54321
 SUPABASE_ANON_KEY=<local anon key>
 SUPABASE_SERVICE_ROLE_KEY=<local service role key>
 SUPABASE_JWT_SECRET=<local jwt secret>
 ```
 
-For the DB URL, use the local Supabase Postgres port (default 54322):
+For the DB URL, use the local Supabase Postgres port shown by `supabase status` (example below uses 54330):
 
 ```bash
-SUPABASE_DB_URL=postgresql://postgres:postgres@localhost:54322/postgres
-SUPABASE_DB_URL_MIGRATIONS=postgresql://postgres:postgres@localhost:54322/postgres
-DATABASE_URL=postgresql://postgres:postgres@localhost:54322/postgres
+SUPABASE_DB_URL=postgresql://postgres:postgres@127.0.0.1:54330/postgres
+SUPABASE_DB_URL_MIGRATIONS=postgresql://postgres:postgres@127.0.0.1:54330/postgres
+DATABASE_URL=postgresql://postgres:postgres@127.0.0.1:54330/postgres
+```
+
+Also set the frontend URL in the repo root `.env`:
+
+```bash
+VITE_SUPABASE_URL=http://127.0.0.1:54321
+VITE_SUPABASE_ANON_KEY=<local anon key>
 ```
 
 ## 5) Apply migrations
@@ -48,6 +55,115 @@ supabase db push
 ```
 
 That applies the SQL migrations from [supabase/migrations](../supabase/migrations).
+
+---
+
+## Desktop verification (2026-02-07)
+
+This desktop setup was verified with:
+
+- `supabase status` Project URL: `http://127.0.0.1:54321`
+- DB URL: `postgresql://postgres:postgres@127.0.0.1:54330/postgres`
+- Realtime: running, but required extra steps for local chat (see checklist below)
+
+If you move to another computer, re-run `supabase status` and update all URLs/ports in `.env` and `server/.env` to match that machine.
+
+## Local chat realtime checklist (desktop)
+
+If chat messages only appear after refresh, apply these fixes in order:
+
+1. Ensure realtime publication includes tables:
+
+```sql
+ALTER PUBLICATION supabase_realtime ADD TABLE public.messages;
+ALTER PUBLICATION supabase_realtime ADD TABLE public.room_members;
+```
+
+2. If realtime logs show RLS errors, disable RLS for local dev (messages + room_members):
+
+```sql
+ALTER TABLE public.messages DISABLE ROW LEVEL SECURITY;
+ALTER TABLE public.room_members DISABLE ROW LEVEL SECURITY;
+```
+
+3. Reload PostgREST schema cache after DDL:
+
+```sql
+select pg_notify('pgrst','reload schema');
+```
+
+4. Restart realtime container:
+
+```bash
+docker restart supabase_realtime_photo-app
+```
+
+---
+
+## Super-Fast Recovery (desktop)
+
+These are the three fastest fixes for the most time-consuming local failures.
+
+### 1) Ghost Port Rule (54321 vs 55431)
+
+**Symptom:** `ECONNREFUSED` or `404` during login or REST calls.
+
+**Fix (10 seconds):**
+
+- Run `docker ps` and find the host port mapped to `supabase_kong_photo-app`.
+- If it is not `54321`, update both `.env` and `server/.env` to match the new port.
+
+### 2) SSL Handshake Timeout
+
+**Symptom:** `Knex: Timeout acquiring a connection` even though the DB connection test says OK.
+
+**Fix (fast):**
+
+- Ensure `DB_SSL_DISABLED=true` in `server/.env`.
+- Local Docker Postgres usually does not speak SSL; Knex will wait forever if SSL is enabled.
+
+### 3) PostgREST Cache Reload
+
+**Symptom:** PostgREST returns `400` for a column that exists in the DB.
+
+**Fix (5 seconds):**
+
+```sql
+select pg_notify('pgrst','reload schema');
+```
+
+Run it after any DDL change (columns, policies, table changes).
+
+## Laptop troubleshooting considerations
+
+If your laptop worked yesterday but stops after today’s changes, check:
+
+- **Port drift**: `supabase status` may show different ports (update `.env` + `server/.env`).
+- **Old auth tokens**: clear browser storage and re-sign in after DB reset.
+- **Missing migrations**: if `last_read_at` errors appear, run `supabase db push`.
+- **Realtime publication empty**: verify `supabase_realtime` contains `messages` + `room_members`.
+- **Realtime blocked by RLS**: apply the local dev RLS disable for `messages` + `room_members`.
+
+Additional guidance for the laptop:
+
+- Test before changing anything. If it still works, keep its config.
+- If it fails, the highest-probability culprit is stale auth (clear browser LocalStorage `sb-` keys).
+- Verify the Kong port via `docker ps` (look for `supabase_kong_<project>` and use that port).
+- Confirm realtime publication includes `messages` + `room_members`.
+
+Troubleshooting priority:
+
+1. Clear LocalStorage `sb-` keys.
+2. Check Kong port via `docker ps` and update `.env` + `server/.env` if it drifted.
+3. Verify realtime publication includes `messages` and `room_members`.
+
+If the laptop uses a separate stack name, confirm you are pointing to the correct Kong/DB containers and not mixing ports from the desktop.
+
+---
+
+## Port pinning (optional but recommended)
+
+To avoid port drift, set explicit ports in `supabase/config.toml` and ensure they do not conflict with other local services. This keeps Supabase stable across restarts.
 
 ---
 

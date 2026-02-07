@@ -119,6 +119,20 @@ Whiteboard debug logs are **scoped** and **off by default**. Enable them only wh
 
 Tests are intended to catch regressions before CI.
 
+### Test Profiles (what I mean when I say “run tests”)
+
+These names are intentionally unambiguous so there’s no guessing:
+
+**CI Preflight (push-ready)**  
+Run this when you want high confidence before pushing to GitHub for CI. Fast, no app runtime required.
+
+```bash
+npm run lint && npm test && cd server && npm test && cd ..
+```
+
+**CI-Matching Suite (matches CI exactly)**  
+Run this when you want to mirror the full CI expectations locally. **Requires the app running** for Playwright.
+
 ### Pre-commit Test Suite
 
 **Run these before every commit to catch issues locally that would fail CI:**

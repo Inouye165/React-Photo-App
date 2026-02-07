@@ -1,5 +1,14 @@
 import { describe, expect, it, vi } from 'vitest'
 
+vi.mock('../supabaseClient', () => ({
+  supabase: {
+    auth: {
+      getSession: vi.fn(),
+      signOut: vi.fn(),
+    },
+  },
+}))
+
 describe('supabaseSession', () => {
   it('singleflights concurrent getSession calls', async () => {
     vi.resetModules()

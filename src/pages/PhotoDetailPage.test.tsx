@@ -1,5 +1,5 @@
 import { describe, it, expect, vi, beforeEach } from 'vitest';
-import { render, screen } from '@testing-library/react';
+import { render, within } from '@testing-library/react';
 import { MemoryRouter, Routes, Route } from 'react-router-dom';
 import PhotoDetailPage from './PhotoDetailPage.tsx';
 import { uploadPickerInitialState } from '../store/uploadPickerSlice';
@@ -21,6 +21,10 @@ vi.mock('../api', async (importOriginal: () => Promise<unknown>) => {
     revokeBlobUrl: vi.fn(),
   };
 });
+
+vi.mock('../contexts/AuthContext', () => ({
+  useAuth: () => ({ user: { id: 'user-1' } }),
+}));
 
 vi.mock('../components/LocationMapPanel', () => ({
   default: function MockLocationMapPanel() {
@@ -67,9 +71,10 @@ describe('PhotoDetailPage', () => {
       ],
     });
 
-    renderAt('/photos/10');
+    const { container } = renderAt('/photos/10');
+    const scope = within(container);
 
-    const state = await screen.findByTestId('photo-detail-state');
+    const state = await scope.findByTestId('photo-detail-state');
     expect(state).toHaveTextContent('Analyzing...');
   });
 
@@ -87,9 +92,10 @@ describe('PhotoDetailPage', () => {
       ],
     });
 
-    renderAt('/photos/10');
+    const { container } = renderAt('/photos/10');
+    const scope = within(container);
 
-    const state = await screen.findByTestId('photo-detail-state');
+    const state = await scope.findByTestId('photo-detail-state');
     expect(state).toHaveTextContent('Analyzing...');
   });
 
@@ -106,9 +112,10 @@ describe('PhotoDetailPage', () => {
       ],
     });
 
-    renderAt('/photos/11');
+    const { container } = renderAt('/photos/11');
+    const scope = within(container);
 
-    const state = await screen.findByTestId('photo-detail-state');
+    const state = await scope.findByTestId('photo-detail-state');
     expect(state).toHaveTextContent('Queue');
   });
 
@@ -125,9 +132,10 @@ describe('PhotoDetailPage', () => {
       ],
     });
 
-    renderAt('/photos/12');
+    const { container } = renderAt('/photos/12');
+    const scope = within(container);
 
-    const state = await screen.findByTestId('photo-detail-state');
+    const state = await scope.findByTestId('photo-detail-state');
     expect(state).toHaveTextContent('Done');
   });
 
@@ -143,9 +151,10 @@ describe('PhotoDetailPage', () => {
       ],
     });
 
-    renderAt('/photos/1');
+    const { container } = renderAt('/photos/1');
+    const scope = within(container);
 
-    const editLink = await screen.findByTestId('photo-detail-edit');
+    const editLink = await scope.findByTestId('photo-detail-edit');
     expect(editLink).toBeInTheDocument();
     expect(editLink).toHaveAttribute('href', '/photos/1/edit');
   });
@@ -162,9 +171,10 @@ describe('PhotoDetailPage', () => {
       ],
     });
 
-    renderAt('/photos/2');
+    const { container } = renderAt('/photos/2');
+    const scope = within(container);
 
-    const badge = await screen.findByTestId('photo-detail-classification-badge');
+    const badge = await scope.findByTestId('photo-detail-classification-badge');
     expect(badge).toHaveTextContent('Collectible');
   });
 
@@ -180,9 +190,10 @@ describe('PhotoDetailPage', () => {
       ],
     });
 
-    renderAt('/photos/3');
+    const { container } = renderAt('/photos/3');
+    const scope = within(container);
 
-    const badge = await screen.findByTestId('photo-detail-classification-badge');
+    const badge = await scope.findByTestId('photo-detail-classification-badge');
     expect(badge).toHaveTextContent('Scenery');
   });
 });
