@@ -74,7 +74,7 @@ function formatTime(iso: string): string {
 
 export default function ChatWindow({ roomId, showIdentityGate, mode = 'workspace' }: ChatWindowProps) {
   const { user, profile } = useAuth()
-  const { messages, loading, error } = useChatRealtime(roomId, { userId: user?.id ?? null })
+  const { messages, loading, error, upsertLocalMessage } = useChatRealtime(roomId, { userId: user?.id ?? null })
   const { isUserOnline } = usePresence(user?.id)
   const isConversationMode = mode === 'conversation'
   const handleOpenPad = useCallback(() => {
@@ -494,7 +494,8 @@ export default function ChatWindow({ roomId, showIdentityGate, mode = 'workspace
     try {
       setSending(true)
       setSendError(null)
-      await sendMessage(roomId, trimmed, selectedPhotoId)
+      const sent = await sendMessage(roomId, trimmed, selectedPhotoId)
+      upsertLocalMessage(sent)
       setDraft('')
       setSelectedPhotoId(null)
       setPickerOpen(false)

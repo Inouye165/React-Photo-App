@@ -1,5 +1,5 @@
 import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest';
-import { render, screen, fireEvent } from '@testing-library/react';
+import { render, fireEvent, within } from '@testing-library/react';
 import { MemoryRouter, Routes, Route } from 'react-router-dom';
 import ConfirmInvitePage from './ConfirmInvitePage';
 
@@ -33,7 +33,7 @@ describe('ConfirmInvitePage', () => {
       'https://project.supabase.co/auth/v1/verify?token=abc&type=invite&redirect_to=https://example.com'
     );
 
-    render(
+    const { container } = render(
       <MemoryRouter initialEntries={[`/confirm-invite?confirmation_url=${encoded}`]}>
         <Routes>
           <Route path="/confirm-invite" element={<ConfirmInvitePage />} />
@@ -41,9 +41,10 @@ describe('ConfirmInvitePage', () => {
       </MemoryRouter>
     );
 
-    expect(screen.getByText('Accept your invite')).toBeInTheDocument();
+    const scope = within(container);
+    expect(scope.getByText('Accept your invite')).toBeInTheDocument();
 
-    fireEvent.click(screen.getByRole('button', { name: 'Continue' }));
+    fireEvent.click(scope.getByRole('button', { name: 'Continue' }));
 
     const expected = new URL('https://project.supabase.co/auth/v1/verify?token=abc&type=invite&redirect_to=https://example.com');
     expected.searchParams.set('redirect_to', `${window.location.origin}/reset-password`);
@@ -52,7 +53,7 @@ describe('ConfirmInvitePage', () => {
   });
 
   it('disables continue when confirmation_url is missing', () => {
-    render(
+    const { container } = render(
       <MemoryRouter initialEntries={[`/confirm-invite`]}>
         <Routes>
           <Route path="/confirm-invite" element={<ConfirmInvitePage />} />
@@ -60,6 +61,7 @@ describe('ConfirmInvitePage', () => {
       </MemoryRouter>
     );
 
-    expect(screen.getByRole('button', { name: 'Continue' })).toBeDisabled();
+    const scope = within(container);
+    expect(scope.getByRole('button', { name: 'Continue' })).toBeDisabled();
   });
 });

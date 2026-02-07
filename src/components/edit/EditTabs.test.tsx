@@ -1,4 +1,4 @@
-import { render, screen } from '@testing-library/react';
+import { render, within } from '@testing-library/react';
 import { describe, it, expect, vi } from 'vitest';
 import userEvent from '@testing-library/user-event';
 import EditTabs from './EditTabs';
@@ -6,7 +6,7 @@ import EditTabs from './EditTabs';
 describe('EditTabs', () => {
   it('renders Context tab by default', () => {
     const onTabChange = vi.fn();
-    render(
+    const { container } = render(
       <EditTabs
         activeTab="context"
         onTabChange={onTabChange}
@@ -16,13 +16,14 @@ describe('EditTabs', () => {
       />
     );
 
-    expect(screen.getByText('Context')).toBeInTheDocument();
-    expect(screen.queryByText('Collectibles')).not.toBeInTheDocument();
+    const scope = within(container);
+    expect(scope.getByText('Context')).toBeInTheDocument();
+    expect(scope.queryByText('Collectibles')).not.toBeInTheDocument();
   });
 
   it('renders Collectibles tab when showCollectiblesTab is true', () => {
     const onTabChange = vi.fn();
-    render(
+    const { container } = render(
       <EditTabs
         activeTab="context"
         onTabChange={onTabChange}
@@ -32,13 +33,14 @@ describe('EditTabs', () => {
       />
     );
 
-    expect(screen.getByText('Collectibles')).toBeInTheDocument();
+    const scope = within(container);
+    expect(scope.getByText('Collectibles')).toBeInTheDocument();
   });
 
   it('calls onTabChange when Context tab is clicked', async () => {
     const user = userEvent.setup();
     const onTabChange = vi.fn();
-    render(
+    const { container } = render(
       <EditTabs
         activeTab="collectibles"
         onTabChange={onTabChange}
@@ -48,14 +50,15 @@ describe('EditTabs', () => {
       />
     );
 
-    await user.click(screen.getByText('Context'));
+    const scope = within(container);
+    await user.click(scope.getByText('Context'));
     expect(onTabChange).toHaveBeenCalledWith('context');
   });
 
   it('calls onTabChange when Collectibles tab is clicked', async () => {
     const user = userEvent.setup();
     const onTabChange = vi.fn();
-    render(
+    const { container } = render(
       <EditTabs
         activeTab="context"
         onTabChange={onTabChange}
@@ -65,7 +68,8 @@ describe('EditTabs', () => {
       />
     );
 
-    await user.click(screen.getByText('Collectibles'));
+    const scope = within(container);
+    await user.click(scope.getByText('Collectibles'));
     expect(onTabChange).toHaveBeenCalledWith('collectibles');
   });
 

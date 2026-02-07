@@ -36,6 +36,7 @@ vi.mock('./hooks/useUnreadMessages', () => ({
   })),
 }))
 
+
 // Mock EXIF parsing
 vi.mock('exifr', () => ({
   parse: vi.fn(),

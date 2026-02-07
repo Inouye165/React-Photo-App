@@ -9,8 +9,9 @@ export default defineConfig({
     exclude: [
       '**/node_modules/**',
       '**/dist/**',
-      'server/**',
+      '**/server/**',
       'e2e/**',
+      'React-Photo-App/**',
       '**/App.test.jsx', // Exclude memory-heavy App.test.jsx (covered by App.auth.test.jsx)
     ],
     environment: 'happy-dom',

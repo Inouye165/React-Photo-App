@@ -1,10 +1,10 @@
 // @ts-nocheck
 import React from 'react';
-import { render, screen } from '@testing-library/react';
+import { render, screen, within } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
 import { describe, it, expect, vi, beforeEach } from 'vitest';
 import UploadPage from './UploadPage';
-import { BrowserRouter } from 'react-router-dom';
+import { MemoryRouter } from 'react-router-dom';
 
 vi.mock('../utils/isProbablyMobile', () => ({
   isProbablyMobile: vi.fn(),
@@ -51,14 +51,16 @@ describe('UploadPage', () => {
   });
 
   it('renders the hidden gallery + camera inputs with correct attributes', () => {
-    render(
-      <BrowserRouter>
+    const { container } = render(
+      <MemoryRouter>
         <UploadPage />
-      </BrowserRouter>
+      </MemoryRouter>
     );
 
-    const galleryInput = screen.getByTestId('gallery-input');
-    const cameraInput = screen.getByTestId('camera-input');
+    const scope = within(container);
+
+    const galleryInput = scope.getByTestId('gallery-input');
+    const cameraInput = scope.getByTestId('camera-input');
 
     expect(galleryInput).toBeInTheDocument();
     expect(cameraInput).toBeInTheDocument();
@@ -76,34 +78,38 @@ describe('UploadPage', () => {
     isProbablyMobile.mockReturnValue(true);
 
     const user = userEvent.setup();
-    render(
-      <BrowserRouter>
+    const { container } = render(
+      <MemoryRouter>
         <UploadPage />
-      </BrowserRouter>
+      </MemoryRouter>
     );
 
-    const galleryInput = screen.getByTestId('gallery-input');
-    const cameraInput = screen.getByTestId('camera-input');
+    const scope = within(container);
+
+    const galleryInput = scope.getByTestId('gallery-input');
+    const cameraInput = scope.getByTestId('camera-input');
     galleryInput.click = vi.fn();
     cameraInput.click = vi.fn();
 
-    await user.click(screen.getByRole('button', { name: /choose from gallery/i }));
+    await user.click(scope.getByRole('button', { name: /choose from gallery/i }));
     expect(galleryInput.click).toHaveBeenCalled();
 
-    await user.click(screen.getByRole('button', { name: /take photo/i }));
+    await user.click(scope.getByRole('button', { name: /take photo/i }));
     expect(cameraInput.click).toHaveBeenCalled();
   });
 
   it('displays the correct button text for file selection', () => {
-    render(
-      <BrowserRouter>
+    const { container } = render(
+      <MemoryRouter>
         <UploadPage />
-      </BrowserRouter>
+      </MemoryRouter>
     );
+
+    const scope = within(container);
 
     // Verify the main action button text matches the new behavior
     // It should be "Select Photos"
-    const button = screen.getByRole('button', { name: /select photos/i });
+    const button = scope.getByRole('button', { name: /select photos/i });
     expect(button).toBeInTheDocument();
   });
 });

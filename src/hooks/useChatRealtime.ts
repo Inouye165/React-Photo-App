@@ -28,6 +28,7 @@ export function useChatRealtime(
   const [error, setError] = useState<string | null>(null)
 
   const channelRef = useRef<RealtimeChannel | null>(null)
+  const channelNameRef = useRef<string | null>(null)
 
   const upsertLocalMessage = (message: ChatMessage) => {
     setMessages((prev) => upsertMessage(prev, message))
@@ -83,7 +84,11 @@ export function useChatRealtime(
         if (!cancelled) setMessages(sortMessages(initial))
 
         // Realtime subscription
-        const channelName = subscriptionKey || `room:${normalizedRoomId}`
+        if (!channelNameRef.current || channelNameRef.current.startsWith('room:') === false) {
+          const suffix = Math.random().toString(36).slice(2, 8)
+          channelNameRef.current = `${subscriptionKey || `room:${normalizedRoomId}`}:${userId || 'anon'}:${suffix}`
+        }
+        const channelName = channelNameRef.current
         const channel = supabase.channel(channelName)
         channelRef.current = channel
 
@@ -132,6 +137,7 @@ export function useChatRealtime(
       cancelled = true
       const ch = channelRef.current
       channelRef.current = null
+      channelNameRef.current = null
       if (ch) {
         try {
           void ch.unsubscribe()

@@ -4,7 +4,7 @@
  */
 
 import React from 'react'
-import { render, screen, fireEvent } from '@testing-library/react'
+import { render, fireEvent, within } from '@testing-library/react'
 import { describe, test, expect, vi } from 'vitest'
 import CollectiblesTabPanel from './CollectiblesTabPanel'
 import type { Photo } from '../../types/photo'
@@ -52,31 +52,34 @@ describe('CollectiblesTabPanel', () => {
 
   describe('View/Edit Toggle', () => {
     test('renders view and edit buttons', () => {
-      render(<CollectiblesTabPanel {...defaultProps} />)
+      const { container } = render(<CollectiblesTabPanel {...defaultProps} />)
+      const scope = within(container)
 
-      expect(screen.getByText('📋 View Details')).toBeInTheDocument()
-      expect(screen.getByText('✏️ Edit')).toBeInTheDocument()
+      expect(scope.getByText('📋 View Details')).toBeInTheDocument()
+      expect(scope.getByText('✏️ Edit')).toBeInTheDocument()
     })
 
     test('view button is active when collectibleViewMode is "view"', () => {
-      render(<CollectiblesTabPanel {...defaultProps} collectibleViewMode="view" />)
+      const { container } = render(<CollectiblesTabPanel {...defaultProps} collectibleViewMode="view" />)
+      const scope = within(container)
 
-      const viewButton = screen.getByText('📋 View Details')
+      const viewButton = scope.getByText('📋 View Details')
       // Phase 5: Check for active class instead of inline styles (now uses CSS Modules)
       expect(viewButton.className).toContain('active')
     })
 
     test('edit button is active when collectibleViewMode is "edit"', () => {
-      render(<CollectiblesTabPanel {...defaultProps} collectibleViewMode="edit" />)
+      const { container } = render(<CollectiblesTabPanel {...defaultProps} collectibleViewMode="edit" />)
+      const scope = within(container)
 
-      const editButton = screen.getByText('✏️ Edit')
+      const editButton = scope.getByText('✏️ Edit')
       // Phase 5: Check for active class instead of inline styles (now uses CSS Modules)
       expect(editButton.className).toContain('active')
     })
 
     test('clicking view button calls onViewModeChange with "view"', () => {
       const onViewModeChange = vi.fn()
-      render(
+      const { container } = render(
         <CollectiblesTabPanel
           {...defaultProps}
           collectibleViewMode="edit"
@@ -84,13 +87,14 @@ describe('CollectiblesTabPanel', () => {
         />
       )
 
-      fireEvent.click(screen.getByText('📋 View Details'))
+      const scope = within(container)
+      fireEvent.click(scope.getByText('📋 View Details'))
       expect(onViewModeChange).toHaveBeenCalledWith('view')
     })
 
     test('clicking edit button calls onViewModeChange with "edit"', () => {
       const onViewModeChange = vi.fn()
-      render(
+      const { container } = render(
         <CollectiblesTabPanel
           {...defaultProps}
           collectibleViewMode="view"
@@ -98,43 +102,48 @@ describe('CollectiblesTabPanel', () => {
         />
       )
 
-      fireEvent.click(screen.getByText('✏️ Edit'))
+      const scope = within(container)
+      fireEvent.click(scope.getByText('✏️ Edit'))
       expect(onViewModeChange).toHaveBeenCalledWith('edit')
     })
   })
 
   describe('AI Detection Badge', () => {
     test('shows AI detection badge when isCollectiblePhoto is true', () => {
-      render(<CollectiblesTabPanel {...defaultProps} isCollectiblePhoto={true} />)
+      const { container } = render(<CollectiblesTabPanel {...defaultProps} isCollectiblePhoto={true} />)
+      const scope = within(container)
 
-      expect(screen.getByText('✓ AI Detected Collectible')).toBeInTheDocument()
+      expect(scope.getByText('✓ AI Detected Collectible')).toBeInTheDocument()
     })
 
     test('does not show AI detection badge when isCollectiblePhoto is false', () => {
-      render(<CollectiblesTabPanel {...defaultProps} isCollectiblePhoto={false} />)
+      const { container } = render(<CollectiblesTabPanel {...defaultProps} isCollectiblePhoto={false} />)
+      const scope = within(container)
 
-      expect(screen.queryByText('✓ AI Detected Collectible')).not.toBeInTheDocument()
+      expect(scope.queryByText('✓ AI Detected Collectible')).not.toBeInTheDocument()
     })
   })
 
   describe('Loading State', () => {
     test('shows loading message when collectibleLoading is true', () => {
-      render(<CollectiblesTabPanel {...defaultProps} collectibleLoading={true} />)
+      const { container } = render(<CollectiblesTabPanel {...defaultProps} collectibleLoading={true} />)
+      const scope = within(container)
 
-      expect(screen.getByText('Loading collectible data...')).toBeInTheDocument()
+      expect(scope.getByText('Loading collectible data...')).toBeInTheDocument()
     })
 
     test('does not render CollectibleDetailView or CollectibleEditorPanel when loading', () => {
-      render(<CollectiblesTabPanel {...defaultProps} collectibleLoading={true} />)
+      const { container } = render(<CollectiblesTabPanel {...defaultProps} collectibleLoading={true} />)
+      const scope = within(container)
 
-      expect(screen.queryByTestId('collectible-detail-view')).not.toBeInTheDocument()
-      expect(screen.queryByTestId('collectible-editor-panel')).not.toBeInTheDocument()
+      expect(scope.queryByTestId('collectible-detail-view')).not.toBeInTheDocument()
+      expect(scope.queryByTestId('collectible-editor-panel')).not.toBeInTheDocument()
     })
   })
 
   describe('View Mode Content', () => {
     test('renders CollectibleDetailView when in view mode', () => {
-      render(
+      const { container } = render(
         <CollectiblesTabPanel
           {...defaultProps}
           collectibleViewMode="view"
@@ -142,47 +151,51 @@ describe('CollectiblesTabPanel', () => {
         />
       )
 
-      expect(screen.getByTestId('collectible-detail-view')).toBeInTheDocument()
+      const scope = within(container)
+      expect(scope.getByTestId('collectible-detail-view')).toBeInTheDocument()
     })
 
     test('does not render CollectibleEditorPanel when in view mode', () => {
-      render(
+      const { container } = render(
         <CollectiblesTabPanel
           {...defaultProps}
           collectibleViewMode="view"
         />
       )
 
-      expect(screen.queryByTestId('collectible-editor-panel')).not.toBeInTheDocument()
+      const scope = within(container)
+      expect(scope.queryByTestId('collectible-editor-panel')).not.toBeInTheDocument()
     })
   })
 
   describe('Edit Mode Content', () => {
     test('renders CollectibleEditorPanel when in edit mode', () => {
-      render(
+      const { container } = render(
         <CollectiblesTabPanel
           {...defaultProps}
           collectibleViewMode="edit"
         />
       )
 
-      expect(screen.getByTestId('collectible-editor-panel')).toBeInTheDocument()
+      const scope = within(container)
+      expect(scope.getByTestId('collectible-editor-panel')).toBeInTheDocument()
     })
 
     test('does not render CollectibleDetailView when in edit mode', () => {
-      render(
+      const { container } = render(
         <CollectiblesTabPanel
           {...defaultProps}
           collectibleViewMode="edit"
         />
       )
 
-      expect(screen.queryByTestId('collectible-detail-view')).not.toBeInTheDocument()
+      const scope = within(container)
+      expect(scope.queryByTestId('collectible-detail-view')).not.toBeInTheDocument()
     })
 
     test('CollectibleEditorPanel onChange calls onCollectibleChange', () => {
       const onCollectibleChange = vi.fn()
-      render(
+      const { container } = render(
         <CollectiblesTabPanel
           {...defaultProps}
           collectibleViewMode="edit"
@@ -190,7 +203,8 @@ describe('CollectiblesTabPanel', () => {
         />
       )
 
-      const editorPanel = screen.getByTestId('collectible-editor-panel')
+      const scope = within(container)
+      const editorPanel = scope.getByTestId('collectible-editor-panel')
       fireEvent.click(editorPanel) // Trigger onChange mock
 
       expect(onCollectibleChange).toHaveBeenCalledWith({ category: 'test' })
@@ -199,7 +213,7 @@ describe('CollectiblesTabPanel', () => {
 
   describe('Tip Footer', () => {
     test('shows tip footer when not a collectible photo and no collectible data', () => {
-      render(
+      const { container } = render(
         <CollectiblesTabPanel
           {...defaultProps}
           isCollectiblePhoto={false}
@@ -207,11 +221,12 @@ describe('CollectiblesTabPanel', () => {
         />
       )
 
-      expect(screen.getByText(/Add collectible details to track estimated values/)).toBeInTheDocument()
+      const scope = within(container)
+      expect(scope.getByText(/Add collectible details to track estimated values/)).toBeInTheDocument()
     })
 
     test('does not show tip footer when isCollectiblePhoto is true', () => {
-      render(
+      const { container } = render(
         <CollectiblesTabPanel
           {...defaultProps}
           isCollectiblePhoto={true}
@@ -219,11 +234,12 @@ describe('CollectiblesTabPanel', () => {
         />
       )
 
-      expect(screen.queryByText(/Add collectible details to track estimated values/)).not.toBeInTheDocument()
+      const scope = within(container)
+      expect(scope.queryByText(/Add collectible details to track estimated values/)).not.toBeInTheDocument()
     })
 
     test('does not show tip footer when hasCollectibleData is true', () => {
-      render(
+      const { container } = render(
         <CollectiblesTabPanel
           {...defaultProps}
           isCollectiblePhoto={false}
@@ -231,11 +247,12 @@ describe('CollectiblesTabPanel', () => {
         />
       )
 
-      expect(screen.queryByText(/Add collectible details to track estimated values/)).not.toBeInTheDocument()
+      const scope = within(container)
+      expect(scope.queryByText(/Add collectible details to track estimated values/)).not.toBeInTheDocument()
     })
 
     test('does not show tip footer when both flags are true', () => {
-      render(
+      const { container } = render(
         <CollectiblesTabPanel
           {...defaultProps}
           isCollectiblePhoto={true}
@@ -243,7 +260,8 @@ describe('CollectiblesTabPanel', () => {
         />
       )
 
-      expect(screen.queryByText(/Add collectible details to track estimated values/)).not.toBeInTheDocument()
+      const scope = within(container)
+      expect(scope.queryByText(/Add collectible details to track estimated values/)).not.toBeInTheDocument()
     })
   })
 
@@ -277,20 +295,22 @@ describe('CollectiblesTabPanel', () => {
 
   describe('Accessibility', () => {
     test('buttons have proper semantic structure', () => {
-      render(<CollectiblesTabPanel {...defaultProps} />)
+      const { container } = render(<CollectiblesTabPanel {...defaultProps} />)
+      const scope = within(container)
 
-      const viewButton = screen.getByText('📋 View Details')
-      const editButton = screen.getByText('✏️ Edit')
+      const viewButton = scope.getByText('📋 View Details')
+      const editButton = scope.getByText('✏️ Edit')
 
       expect(viewButton.tagName).toBe('BUTTON')
       expect(editButton.tagName).toBe('BUTTON')
     })
 
     test('buttons are keyboard accessible (have cursor pointer)', () => {
-      render(<CollectiblesTabPanel {...defaultProps} />)
+      const { container } = render(<CollectiblesTabPanel {...defaultProps} />)
+      const scope = within(container)
 
-      const viewButton = screen.getByText('📋 View Details')
-      const editButton = screen.getByText('✏️ Edit')
+      const viewButton = scope.getByText('📋 View Details')
+      const editButton = scope.getByText('✏️ Edit')
 
       // Phase 5: Cursor pointer is now applied via CSS Module class, check that class is present
       expect(viewButton.className).toContain('toggleButton')

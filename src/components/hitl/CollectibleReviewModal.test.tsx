@@ -1,4 +1,4 @@
-import { render, screen, fireEvent } from '@testing-library/react';
+import { render, fireEvent, within } from '@testing-library/react';
 import { describe, test, expect, vi } from 'vitest';
 import CollectibleReviewModal from './CollectibleReviewModal';
 import type { CollectibleAiAnalysis } from '../../types/photo';
@@ -48,7 +48,7 @@ describe('CollectibleReviewModal', () => {
   });
 
   test('renders review view when open and pending', () => {
-    render(
+    const { container } = render(
       <CollectibleReviewModal
         open={true}
         collectibleAiAnalysis={mockCollectibleAnalysis}
@@ -57,17 +57,20 @@ describe('CollectibleReviewModal', () => {
       />
     );
 
-    expect(screen.getByText('Review Identification')).toBeInTheDocument();
-    expect(screen.getByText('SCOTT-C3')).toBeInTheDocument();
-    expect(screen.getByText('stamp')).toBeInTheDocument();
-    expect(screen.getByText('United States 1918 Curtiss Jenny')).toBeInTheDocument();
-    expect(screen.getByText('92%')).toBeInTheDocument();
-    expect(screen.getByRole('button', { name: /approve/i })).toBeInTheDocument();
-    expect(screen.getByRole('button', { name: /edit/i })).toBeInTheDocument();
+    const dialog = within(container).getByRole('dialog', { name: /review identification/i });
+    const dialogScope = within(dialog);
+
+    expect(dialogScope.getByText('Review Identification')).toBeInTheDocument();
+    expect(dialogScope.getByText('SCOTT-C3')).toBeInTheDocument();
+    expect(dialogScope.getByText('stamp')).toBeInTheDocument();
+    expect(dialogScope.getByText('United States 1918 Curtiss Jenny')).toBeInTheDocument();
+    expect(dialogScope.getByText('92%')).toBeInTheDocument();
+    expect(dialogScope.getByRole('button', { name: /approve/i })).toBeInTheDocument();
+    expect(dialogScope.getByRole('button', { name: /edit/i })).toBeInTheDocument();
   });
 
   test('clicking Edit shows editor form', () => {
-    render(
+    const { container } = render(
       <CollectibleReviewModal
         open={true}
         collectibleAiAnalysis={mockCollectibleAnalysis}
@@ -76,20 +79,23 @@ describe('CollectibleReviewModal', () => {
       />
     );
 
-    const editButton = screen.getByRole('button', { name: /edit/i });
+    const dialog = within(container).getByRole('dialog', { name: /review identification/i });
+    const dialogScope = within(dialog);
+
+    const editButton = dialogScope.getByRole('button', { name: /edit/i });
     fireEvent.click(editButton);
 
     // Editor form should be visible
-    expect(screen.getByLabelText(/^ID/)).toBeInTheDocument();
-    expect(screen.getByLabelText(/^Category/)).toBeInTheDocument();
-    expect(screen.getByLabelText(/Name \(Optional\)/)).toBeInTheDocument();
-    expect(screen.getByRole('button', { name: /save/i })).toBeInTheDocument();
-    expect(screen.getByRole('button', { name: /cancel/i })).toBeInTheDocument();
+    expect(dialogScope.getByLabelText(/^ID/)).toBeInTheDocument();
+    expect(dialogScope.getByLabelText(/^Category/)).toBeInTheDocument();
+    expect(dialogScope.getByLabelText(/Name \(Optional\)/)).toBeInTheDocument();
+    expect(dialogScope.getByRole('button', { name: /save/i })).toBeInTheDocument();
+    expect(dialogScope.getByRole('button', { name: /cancel/i })).toBeInTheDocument();
   });
 
   test('approve button calls onApprove with correct override', () => {
     const onApprove = vi.fn();
-    render(
+    const { container } = render(
       <CollectibleReviewModal
         open={true}
         collectibleAiAnalysis={mockCollectibleAnalysis}
@@ -98,7 +104,10 @@ describe('CollectibleReviewModal', () => {
       />
     );
 
-    const approveButton = screen.getByRole('button', { name: /approve/i });
+    const dialog = within(container).getByRole('dialog', { name: /review identification/i });
+    const dialogScope = within(dialog);
+
+    const approveButton = dialogScope.getByRole('button', { name: /approve/i });
     fireEvent.click(approveButton);
 
     expect(onApprove).toHaveBeenCalledWith({
@@ -111,7 +120,7 @@ describe('CollectibleReviewModal', () => {
 
   test('editing and saving calls onEditSave with override', () => {
     const onEditSave = vi.fn();
-    render(
+    const { container } = render(
       <CollectibleReviewModal
         open={true}
         collectibleAiAnalysis={mockCollectibleAnalysis}
@@ -120,15 +129,18 @@ describe('CollectibleReviewModal', () => {
       />
     );
 
+    const dialog = within(container).getByRole('dialog', { name: /review identification/i });
+    const dialogScope = within(dialog);
+
     // Switch to edit mode
-    fireEvent.click(screen.getByRole('button', { name: /edit/i }));
+    fireEvent.click(dialogScope.getByRole('button', { name: /edit/i }));
 
     // Modify the ID field
-    const idInput = screen.getByLabelText(/^ID/) as HTMLInputElement;
+    const idInput = dialogScope.getByLabelText(/^ID/) as HTMLInputElement;
     fireEvent.change(idInput, { target: { value: 'SCOTT-C3a' } });
 
     // Click Save
-    const saveButton = screen.getByRole('button', { name: /save/i });
+    const saveButton = dialogScope.getByRole('button', { name: /save/i });
     fireEvent.click(saveButton);
 
     expect(onEditSave).toHaveBeenCalledWith({
@@ -140,7 +152,7 @@ describe('CollectibleReviewModal', () => {
   });
 
   test('cancel button returns to review view', () => {
-    render(
+    const { container } = render(
       <CollectibleReviewModal
         open={true}
         collectibleAiAnalysis={mockCollectibleAnalysis}
@@ -149,20 +161,23 @@ describe('CollectibleReviewModal', () => {
       />
     );
 
+    const dialog = within(container).getByRole('dialog', { name: /review identification/i });
+    const dialogScope = within(dialog);
+
     // Switch to edit mode
-    fireEvent.click(screen.getByRole('button', { name: /edit/i }));
-    expect(screen.getByLabelText(/^ID/)).toBeInTheDocument();
+    fireEvent.click(dialogScope.getByRole('button', { name: /edit/i }));
+    expect(dialogScope.getByLabelText(/^ID/)).toBeInTheDocument();
 
     // Click Cancel
-    fireEvent.click(screen.getByRole('button', { name: /cancel/i }));
+    fireEvent.click(dialogScope.getByRole('button', { name: /cancel/i }));
 
     // Should be back to review view
-    expect(screen.getByRole('button', { name: /approve/i })).toBeInTheDocument();
-    expect(screen.queryByLabelText(/^ID/)).not.toBeInTheDocument();
+    expect(dialogScope.getByRole('button', { name: /approve/i })).toBeInTheDocument();
+    expect(dialogScope.queryByLabelText(/^ID/)).not.toBeInTheDocument();
   });
 
   test('shows processing state when isProcessing is true', () => {
-    render(
+    const { container } = render(
       <CollectibleReviewModal
         open={true}
         collectibleAiAnalysis={mockCollectibleAnalysis}
@@ -172,10 +187,13 @@ describe('CollectibleReviewModal', () => {
       />
     );
 
-    const approveButton = screen.getByRole('button', { name: /resuming/i });
+    const dialog = within(container).getByRole('dialog', { name: /review identification/i });
+    const dialogScope = within(dialog);
+
+    const approveButton = dialogScope.getByRole('button', { name: /resuming/i });
     expect(approveButton).toBeDisabled();
-    
-    const editButton = screen.getByRole('button', { name: /edit/i });
+
+    const editButton = dialogScope.getByRole('button', { name: /edit/i });
     expect(editButton).toBeDisabled();
   });
 });

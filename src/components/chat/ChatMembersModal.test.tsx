@@ -1,5 +1,5 @@
 import { describe, expect, it, vi } from 'vitest'
-import { fireEvent, render, screen, waitFor } from '@testing-library/react'
+import { fireEvent, render, waitFor, within } from '@testing-library/react'
 import ChatMembersModal, { type ChatMemberSummary } from './ChatMembersModal'
 
 const mockAddRoomMember = vi.fn()
@@ -32,7 +32,7 @@ const baseMembers: ChatMemberSummary[] = [
 
 describe('ChatMembersModal', () => {
   it('hides privileged controls for non-owners', () => {
-    render(
+    const { container } = render(
       <ChatMembersModal
         isOpen
         onClose={vi.fn()}
@@ -45,9 +45,10 @@ describe('ChatMembersModal', () => {
       />,
     )
 
-    expect(screen.queryByText(/add member/i)).toBeNull()
-    expect(screen.queryByRole('button', { name: /remove/i })).toBeNull()
-    expect(screen.queryByRole('button', { name: /promote to owner/i })).toBeNull()
+    const scope = within(container)
+    expect(scope.queryByText(/add member/i)).toBeNull()
+    expect(scope.queryByRole('button', { name: /remove/i })).toBeNull()
+    expect(scope.queryByRole('button', { name: /promote to owner/i })).toBeNull()
   })
 
   it('allows owners to add a member', async () => {
@@ -56,7 +57,7 @@ describe('ChatMembersModal', () => {
     ])
     mockAddRoomMember.mockResolvedValueOnce(undefined)
 
-    render(
+    const { container } = render(
       <ChatMembersModal
         isOpen
         onClose={vi.fn()}
@@ -69,12 +70,13 @@ describe('ChatMembersModal', () => {
       />,
     )
 
-    fireEvent.change(screen.getByLabelText(/search users/i), { target: { value: 'ri' } })
-    fireEvent.click(screen.getByRole('button', { name: /search/i }))
+    const scope = within(container)
+    fireEvent.change(scope.getByLabelText(/search users/i), { target: { value: 'ri' } })
+    fireEvent.click(scope.getByRole('button', { name: /search/i }))
 
     await waitFor(() => expect(mockSearchUsers).toHaveBeenCalledWith('ri'))
 
-    fireEvent.click(screen.getByRole('button', { name: /add/i }))
+    fireEvent.click(scope.getByRole('button', { name: /add/i }))
 
     await waitFor(() => expect(mockAddRoomMember).toHaveBeenCalledWith('room-1', 'user-3'))
   })
@@ -82,7 +84,7 @@ describe('ChatMembersModal', () => {
   it('quits chat and navigates away', async () => {
     mockQuitRoom.mockResolvedValueOnce(undefined)
 
-    render(
+    const { container } = render(
       <ChatMembersModal
         isOpen
         onClose={vi.fn()}
@@ -95,14 +97,15 @@ describe('ChatMembersModal', () => {
       />,
     )
 
-    fireEvent.click(screen.getByRole('button', { name: /quit chat/i }))
+    const scope = within(container)
+    fireEvent.click(scope.getByRole('button', { name: /quit chat/i }))
 
     await waitFor(() => expect(mockQuitRoom).toHaveBeenCalledWith('room-1'))
     await waitFor(() => expect(mockNavigate).toHaveBeenCalledWith('/chat'))
   })
 
   it('shows promote controls for the creator only', () => {
-    const { rerender } = render(
+    const { container, rerender } = render(
       <ChatMembersModal
         isOpen
         onClose={vi.fn()}
@@ -115,7 +118,8 @@ describe('ChatMembersModal', () => {
       />,
     )
 
-    expect(screen.getByRole('button', { name: /promote to owner/i })).toBeInTheDocument()
+    const scope = within(container)
+    expect(scope.getByRole('button', { name: /promote to owner/i })).toBeInTheDocument()
 
     rerender(
       <ChatMembersModal
@@ -130,6 +134,6 @@ describe('ChatMembersModal', () => {
       />,
     )
 
-    expect(screen.queryByRole('button', { name: /promote to owner/i })).toBeNull()
+    expect(scope.queryByRole('button', { name: /promote to owner/i })).toBeNull()
   })
 })
