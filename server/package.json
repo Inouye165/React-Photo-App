@@ -112,6 +112,9 @@
   },
   "jest": {
     "testEnvironment": "node",
+    "setupFiles": [
+      "<rootDir>/tests/test-env-ci.js"
+    ],
     "setupFilesAfterEnv": [
       "<rootDir>/tests/setup.js"
     ],

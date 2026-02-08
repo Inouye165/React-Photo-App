@@ -1228,16 +1228,40 @@ const WhiteboardCanvas = forwardRef<WhiteboardCanvasHandle, ExcalidrawWhiteboard
 
       if (!elementsChanged && !appStateChanged && !filesChanged) return
 
+      whiteboardDebugLog('yjs:flush', {
+        elementsChanged,
+        appStateChanged,
+        filesChanged,
+      })
+
       doc.transact(() => {
-        map.set('elements', scene.elements)
-        map.set('appState', persistedAppState)
-        map.set('files', scene.files)
-        map.set('updatedAt', Date.now())
+        let didSet = false
+        if (elementsChanged) {
+          map.set('elements', scene.elements)
+          didSet = true
+        }
+        if (appStateChanged) {
+          map.set('appState', persistedAppState)
+          didSet = true
+        }
+        if (filesChanged) {
+          map.set('files', scene.files)
+          didSet = true
+        }
+        if (didSet) {
+          map.set('updatedAt', Date.now())
+        }
       }, LOCAL_ORIGIN)
 
-      lastSyncedElementsRef.current = buildElementVersionMap(scene.elements)
-      lastSyncedAppStateRef.current = persistedAppState
-      lastSyncedFilesRef.current = fileKeys
+      if (elementsChanged) {
+        lastSyncedElementsRef.current = buildElementVersionMap(scene.elements)
+      }
+      if (appStateChanged) {
+        lastSyncedAppStateRef.current = persistedAppState
+      }
+      if (filesChanged) {
+        lastSyncedFilesRef.current = fileKeys
+      }
     },
     [],
   )

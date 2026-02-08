@@ -62,6 +62,19 @@ const ORIGINAL_CONSOLE: Record<ConsoleMethodName, ((...args: unknown[]) => void)
   debug: typeof console.debug === 'function' ? console.debug.bind(console) : null
 };
 
+// When we wrap console methods below we keep a reference to the previous
+// console function (the one we replaced). This lets the TinyLogger #log
+// implementation call the underlying function directly to avoid double
+// encoding (wrapper -> sink -> wrapper recursion) while still allowing
+// test harnesses or runtime overrides to be respected when possible.
+const PREV_CONSOLE: Record<ConsoleMethodName, ((...args: unknown[]) => void) | null> = {
+  log: null,
+  warn: null,
+  error: null,
+  info: null,
+  debug: null
+};
+
 const subscribers: SubscriberMap = {
   log: new Set<LoggerHandler<'log'>>(),
   error: new Set<LoggerHandler<'error'>>(),
@@ -415,15 +428,23 @@ class TinyLogger {
     const safeLine = JSON.stringify(redactedArgs).replace(/[\r\n]/g, ' ');
 
     const methodName = METHOD_MAP[normalized] || 'log';
-    const sink = ORIGINAL_CONSOLE[methodName] || ORIGINAL_CONSOLE.log;
-    if (typeof sink === 'function') {
-      try {
-        sink(safeLine);
-      } catch {
-        // Last resort: try to use process.stderr if available
-        if (typeof process !== 'undefined' && process.stderr && typeof process.stderr.write === 'function') {
-          process.stderr.write(`[Logger Error] ${safeLine}\n`);
-        }
+    // Prefer the current console method so test harnesses and mocks that override
+    // `console.warn`/`console.error` can suppress or redirect logs. Fall back to
+    // the captured original console method if the runtime `console` lacks the
+    // method (very unlikely).
+    // Prefer calling the previous console method if we installed a wrapper
+    // for it above. This prevents double-encoding when the global console
+    // method is our wrapper. If no previous method exists, fall back to the
+    // current runtime console method or the captured original.
+    const prev = PREV_CONSOLE[methodName];
+    const runtimeConsoleMethod = prev || (console as any)[methodName];
+    const sink = (typeof runtimeConsoleMethod === 'function') ? runtimeConsoleMethod.bind(console) : (ORIGINAL_CONSOLE[methodName] || ORIGINAL_CONSOLE.log);
+    try {
+      sink(safeLine);
+    } catch {
+      // Last resort: try to use process.stderr if available
+      if (typeof process !== 'undefined' && process.stderr && typeof process.stderr.write === 'function') {
+        process.stderr.write(`[Logger Error] ${safeLine}\n`);
       }
     }
     emit('log', { level: normalized, args: redactedArgs, bindings: this.bindings });
@@ -438,13 +459,19 @@ const rootLogger = new TinyLogger();
 // Wrap global console methods to apply redaction everywhere
 const consoleMethods: ConsoleMethodName[] = ['log', 'warn', 'error', 'info', 'debug'];
 for (const method of consoleMethods) {
-  const original = ORIGINAL_CONSOLE[method];
   const consoleMethod = console[method] as ((...args: unknown[]) => void) | undefined;
-  if (typeof consoleMethod === 'function' && original) {
+  if (typeof consoleMethod === 'function') {
+    const boundPrev = consoleMethod.bind(console);
+    PREV_CONSOLE[method] = boundPrev;
     console[method] = (...args: unknown[]) => {
       const redactedArgs = args.map((arg) => redact(arg));
       const safeLine = JSON.stringify(redactedArgs).replace(/[\r\n]/g, ' ');
-      original(safeLine);
+      try {
+        boundPrev(safeLine);
+      } catch {
+        const original = ORIGINAL_CONSOLE[method] || ORIGINAL_CONSOLE.log;
+        if (original) original(safeLine);
+      }
     };
   }
 }

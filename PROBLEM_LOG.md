@@ -1,5 +1,20 @@
 # Problem Log
 
+## Issue: Redis not reachable (ECONNREFUSED) during local sandbox startup
+
+**Date:** February 8, 2026
+**Symptom:** Backend and worker log repeated `ECONNREFUSED` / `Redis connection required to start worker` while starting the local sandbox.
+**Context:** `docker-compose up -d db redis` failed with `Bind for 0.0.0.0:6379 failed: port is already allocated`. A pre-existing container (`local-redis`) was already publishing 6379, and a stale `photo-app-redis` container existed without a published port.
+
+**Resolution:**
+- Stop/remove the conflicting container (`local-redis`).
+- Remove the stale `photo-app-redis` container and re-run `docker-compose up -d redis`.
+- Verify Redis port is published (e.g., `docker ps` shows `0.0.0.0:6379->6379/tcp`).
+
+**How to validate:**
+- Backend starts without Redis errors.
+- Worker starts and connects to Redis successfully.
+
 ## Issue: Database Connection Failure (SSL)
 
 **Date:** December 2, 2025
