@@ -16,18 +16,19 @@
 import './env'; // centralized, idempotent env loader
 import { initTracing } from './observability/tracing';
 import logger from './logger';
+import { isAiEnabled, shouldRequireOpenAiKey } from './utils/aiEnabled';
 const tracing = initTracing({ serviceName: 'lumina-worker' });
 console.log('[AI Debug] Worker entrypoint reached');
 logger.info('Starting AI Worker...');
 
 // Validate critical AI keys before starting worker to prevent API waste
-if (process.env.NODE_ENV !== 'test') {
+if (shouldRequireOpenAiKey()) {
   const missingAIKeys = [];
-  
+
   if (!process.env.OPENAI_API_KEY || process.env.OPENAI_API_KEY.trim() === '') {
     missingAIKeys.push('OPENAI_API_KEY');
   }
-  
+
   if (missingAIKeys.length > 0) {
     console.error('[worker] FATAL: Required AI API keys missing');
     missingAIKeys.forEach(key => console.error(`[worker]  - ${key} is required`));
@@ -35,8 +36,10 @@ if (process.env.NODE_ENV !== 'test') {
     console.error('[worker] Worker startup blocked to prevent unnecessary API costs');
     process.exit(1);
   }
-  
+
   console.log('[worker] ✓ AI API keys present');
+} else if (!isAiEnabled()) {
+  logger.info('[worker] AI disabled; skipping OpenAI key validation and AI processing');
 }
 
 if (process.env.NODE_ENV !== 'production' && !process.env.GOOGLE_MAPS_API_KEY) {

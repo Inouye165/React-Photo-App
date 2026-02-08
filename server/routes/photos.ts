@@ -21,6 +21,7 @@ const createPhotosState = require('../services/photosState');
 const { authenticateToken } = require('../middleware/auth');
 const { authenticateImageRequest } = require('../middleware/imageAuth');
 const { checkRedisAvailable } = require('../queue');
+const { isAiEnabled } = require('../utils/aiEnabled');
 const { validateRequest } = require('../validation/validateRequest');
 const { photosListQuerySchema, photoIdParamsSchema } = require('../validation/schemas/photos');
 const { mapPhotoRowToListDto, mapPhotoRowToDetailDto } = require('../serializers/photos');
@@ -862,6 +863,10 @@ export default function createPhotosRouter({ db, supabase }: PhotosRouterDepende
   // ============================================================================
   router.post('/:id/recheck-ai', authenticateToken, async (req: AuthenticatedRequest, res: Response) => {
     try {
+      if (!isAiEnabled()) {
+        return res.status(503).json({ success: false, error: 'AI is disabled. Set AI_ENABLED=true (or ENABLE_AI=true) to enable.' } as ErrorResponse);
+      }
+
       const photo = await photosDb.getPhotoByAnyId(req.params.id, req.user!.id);
       if (!photo) {
         return res.status(404).json({ error: 'Photo not found' });
@@ -950,6 +955,10 @@ export default function createPhotosRouter({ db, supabase }: PhotosRouterDepende
   // ============================================================================
   router.post('/:id/run-ai', authenticateToken, async (req: AuthenticatedRequest, res: Response) => {
     try {
+      if (!isAiEnabled()) {
+        return res.status(503).json({ success: false, error: 'AI is disabled. Set AI_ENABLED=true (or ENABLE_AI=true) to enable.' } as ErrorResponse);
+      }
+
       const photo = await photosDb.getPhotoByAnyId(req.params.id, req.user!.id);
       if (!photo) {
         return res.status(404).json({ error: 'Photo not found' });

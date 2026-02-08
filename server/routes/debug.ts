@@ -1,7 +1,6 @@
 import { Router, Request, Response } from 'express';
-// FIX 1: Use 'import' instead of 'require'
-import { processAllUnprocessedInprogress } from '../ai/service';
 import { addAIJob } from '../queue';
+import { isAiEnabled } from '../utils/aiEnabled';
 
 interface AuthenticatedRequest extends Request {
   user?: { id: string; role?: string };
@@ -59,6 +58,11 @@ export default function createDebugRouter({ db }: { db: any }) {
   // FIX 4: Renamed 'req' to '_req' here as well
   router.post('/photos/recheck-inprogress', (_req: Request, res: Response) => {
     try {
+      if (!isAiEnabled()) {
+        return res.status(503).json({ success: false, error: 'AI is disabled. Set AI_ENABLED=true (or ENABLE_AI=true) to enable.' });
+      }
+
+      const { processAllUnprocessedInprogress } = require('../ai/service');
       processAllUnprocessedInprogress(db);
       res.json({ success: true });
     } catch (err: any) {

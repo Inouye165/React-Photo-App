@@ -1,6 +1,8 @@
 const fs = require('fs');
 const path = require('path');
 
+process.env.AI_ENABLED = process.env.AI_ENABLED || 'true';
+
 // Mock the convertHeicToJpegBuffer to avoid relying on real ImageMagick/sharp
 jest.mock('../media/image', () => ({
   convertHeicToJpegBuffer: jest.fn(async (_filePath, _quality) => Buffer.from('fakejpeg')),

@@ -35,7 +35,8 @@ Backend server for Lumina. Node.js + Express, covering authentication, uploads, 
    - `SUPABASE_URL` - Your Supabase project URL
    - `SUPABASE_ANON_KEY` - Supabase anon public key
   - `JWT_SECRET` - Server secret used for internal signing (e.g., non-prod/E2E test tokens); not the Supabase access token secret
-  - `OPENAI_API_KEY` - Required for startup in non-test environments (AI pipeline dependency)
+  - `AI_ENABLED` - Enable/disable AI features (default: false in non-production, true in production)
+  - `OPENAI_API_KEY` - Required only when `AI_ENABLED=true` (AI pipeline dependency)
   - `DATABASE_URL` or `SUPABASE_DB_URL` - Postgres connection string:
 
     In production, the server is configured to **fail fast** (exit on startup) if `SUPABASE_URL`, `SUPABASE_ANON_KEY`, or `JWT_SECRET` are missing or empty.

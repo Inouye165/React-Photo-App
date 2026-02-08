@@ -1,4 +1,5 @@
 const { BootError } = require('./bootError');
+const { isAiEnabled, shouldRequireOpenAiKey } = require('../utils/aiEnabled');
 
 function maskSecret(value) {
   if (!value) return '(missing)';
@@ -23,7 +24,7 @@ function validateDatabaseConfig() {
 }
 
 function validateAiKeys() {
-  if (process.env.NODE_ENV === 'test') return;
+  if (!shouldRequireOpenAiKey()) return;
 
   const missing = [];
   if (!process.env.OPENAI_API_KEY || process.env.OPENAI_API_KEY.trim() === '') {
@@ -35,7 +36,8 @@ function validateAiKeys() {
   const message = [
     '[server] FATAL: Required AI API keys missing',
     ...missing.map((k) => `[server]  - ${k} is required`),
-    '[server] AI pipeline will fail without these keys',
+    '[server] AI is enabled; AI pipeline will fail without these keys',
+    '[server] To disable AI, set AI_ENABLED=false (or ENABLE_AI=false)',
     '[server] Server startup blocked to prevent unnecessary API costs',
   ].join('\n');
 
@@ -55,9 +57,12 @@ function validateCentralConfig() {
 function logStartupDiagnostics() {
   const environment = process.env.NODE_ENV || 'development';
   const isProduction = String(environment).toLowerCase() === 'production';
+  const aiEnabled = isAiEnabled();
+  const requireAiKey = shouldRequireOpenAiKey();
 
   console.log('[server] Startup configuration diagnostics:');
   console.log(`[server]  - NODE_ENV = ${environment}`);
+  console.log(`[server]  - AI_ENABLED = ${aiEnabled ? 'true' : 'false'}`);
   // Don't print secrets in production logs.
   console.log(
     `[server]  - DATABASE_URL = ${
@@ -118,8 +123,8 @@ function logStartupDiagnostics() {
     missingCritical.push('DATABASE_URL (or SUPABASE_DB_URL)');
   }
 
-  // - AI key is required in all non-test envs by validateAiKeys().
-  if (process.env.NODE_ENV !== 'test' && (!process.env.OPENAI_API_KEY || process.env.OPENAI_API_KEY.trim() === '')) {
+  // - AI key is required only when AI is enabled.
+  if (requireAiKey && (!process.env.OPENAI_API_KEY || process.env.OPENAI_API_KEY.trim() === '')) {
     missingCritical.push('OPENAI_API_KEY');
   }
 
@@ -168,6 +173,10 @@ function logStartupDiagnostics() {
 
   if (!process.env.GOOGLE_PLACES_API_KEY && !process.env.GOOGLE_MAPS_API_KEY && !process.env.MAPS_API_KEY) {
     console.warn('[POI] GOOGLE_MAPS_API_KEY missing; POI lookups disabled');
+  }
+
+  if (!aiEnabled) {
+    console.log('[server] AI is disabled; skipping OpenAI key validation');
   }
 
   return { environment, isProduction };
