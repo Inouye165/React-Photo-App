@@ -1235,16 +1235,22 @@ const WhiteboardCanvas = forwardRef<WhiteboardCanvasHandle, ExcalidrawWhiteboard
       })
 
       doc.transact(() => {
+        let didSet = false
         if (elementsChanged) {
           map.set('elements', scene.elements)
+          didSet = true
         }
         if (appStateChanged) {
           map.set('appState', persistedAppState)
+          didSet = true
         }
         if (filesChanged) {
           map.set('files', scene.files)
+          didSet = true
         }
-        map.set('updatedAt', Date.now())
+        if (didSet) {
+          map.set('updatedAt', Date.now())
+        }
       }, LOCAL_ORIGIN)
 
       if (elementsChanged) {
