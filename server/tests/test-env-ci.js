@@ -10,30 +10,68 @@ if (!process.env.OPENAI_API_KEY) {
 
 // Set test environment
 process.env.NODE_ENV = 'test';
+// Only enable noisy-log filtering in CI to avoid changing local dev behavior.
+// Prefer CI-only suppression to keep production/runtime logging unchanged.
+const CI_MODE = process.env.CI === 'true' || process.env.CI === '1';
 
-// Mock console methods to reduce noise in CI
-const originalError = console.error;
-const originalWarn = console.warn;
+if (CI_MODE) {
+  // Mock console methods to reduce noise in CI
+  const originalError = console.error;
+  const originalWarn = console.warn;
 
-console.error = (...args) => {
-  // Only show real errors, suppress test-related noise
-  if (args[0] && typeof args[0] === 'string') {
-    if (args[0].includes('Metadata/hash extraction failed') ||
-        args[0].includes('Supabase upload error') ||
-        args[0].includes('[CONVERT]')) {
-      return;
+  // Narrow allowlist of substrings to suppress. Keep this minimal and
+  // specific so we don't accidentally silence important errors.
+  const WARN_SUPPRESS = [
+    'Suspicious request detected',
+    'Security error from'
+  ];
+
+  const ERROR_SUPPRESS = [
+    // Jest worker teardown noise (non-failing) — noisy in CI logs.
+    'A worker process has failed to exit gracefully',
+    'has been force exited'
+  ];
+
+  // Some modules emit noisy informational logs via console.log during tests
+  // (e.g. Google Places debug lines, VisualSearch helpers). Add a very
+  // narrow list for CI to keep logs readable while preserving other output.
+  const LOG_SUPPRESS = [
+    '[infer_poi]',
+    '[VisualSearch]'
+  ];
+
+  console.error = (...args) => {
+    const flat = args.map(a => {
+      if (typeof a === 'string') return a;
+      try { return JSON.stringify(a); } catch { return String(a); }
+    }).join(' ');
+    for (const s of ERROR_SUPPRESS) {
+      if (flat.includes(s)) return; // drop this known, non-failing noise
     }
-  }
-  originalError.apply(console, args);
-};
+    originalError.apply(console, args);
+  };
 
-console.warn = (...args) => {
-  // Suppress security test warnings
-  if (args[0] && typeof args[0] === 'string') {
-    if (args[0].includes('Suspicious request detected') ||
-        args[0].includes('Security error from')) {
-      return;
+  console.warn = (...args) => {
+    const flat = args.map(a => {
+      if (typeof a === 'string') return a;
+      try { return JSON.stringify(a); } catch { return String(a); }
+    }).join(' ');
+    for (const s of WARN_SUPPRESS) {
+      if (flat.includes(s)) return; // drop these expected security warnings
     }
-  }
-  originalWarn.apply(console, args);
-};
+    originalWarn.apply(console, args);
+  };
+
+  // Suppress a few noisy informational logs in CI only.
+  const originalLog = console.log;
+  console.log = (...args) => {
+    const flat = args.map(a => {
+      if (typeof a === 'string') return a;
+      try { return JSON.stringify(a); } catch { return String(a); }
+    }).join(' ');
+    for (const s of LOG_SUPPRESS) {
+      if (flat.includes(s)) return;
+    }
+    originalLog.apply(console, args);
+  };
+}
