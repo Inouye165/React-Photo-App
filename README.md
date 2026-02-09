@@ -91,6 +91,16 @@ If you want to poke around:
 **Local setup:** See the single source of truth in [docs/LOCAL_SANDBOX_SETUP.md](docs/LOCAL_SANDBOX_SETUP.md).
 It includes prerequisites, step-by-step setup, and common fixes.
 
+**Minimal restart (already set up):**
+Assumes dependencies are installed and `server/.env` is valid.
+1. Start services: `docker-compose up -d db redis`
+2. Backend API: `npm --prefix server start`
+3. Worker: `npm run worker`
+4. Frontend: `npm run dev`
+5. Quick checks: http://127.0.0.1:3001/health and http://localhost:5173/
+
+If anything fails, see [docs/RESTART_APP.md](docs/RESTART_APP.md) for focused restart troubleshooting.
+
 **Local Supabase:** See [docs/LOCAL_SUPABASE.md](docs/LOCAL_SUPABASE.md) for dashboard setup.
 
 **Heads up:**
