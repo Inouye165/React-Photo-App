@@ -26,6 +26,7 @@ import {
   getWhiteboardSnapshotCache,
   setWhiteboardSnapshotCache,
 } from '../../realtime/whiteboardSnapshotCache'
+import { compressForUpload } from '../../utils/clientImageProcessing'
 
 const DEFAULT_COLOR = '#111827'
 const DEFAULT_WIDTH = 2
@@ -653,6 +654,12 @@ const STROKE_WIDTH_REMAP: Record<number, number> = {
   3: 5.0,
 }
 
+function toWebpFileName(originalName: string): string {
+  const lastDot = originalName.lastIndexOf('.')
+  if (lastDot === -1) return `${originalName}.webp`
+  return `${originalName.slice(0, lastDot)}.webp`
+}
+
 type ExcalidrawWhiteboardCanvasProps = {
   boardId: string
   token: string | null
@@ -676,6 +683,11 @@ export type BackgroundInfo = {
   name: string
   sizeBytes: number
   fileId?: string
+  originalSizeBytes?: number
+  originalType?: string
+  convertedSizeBytes?: number
+  convertedType?: string
+  convertedName?: string
 }
 
 export type WhiteboardCanvasHandle = {
@@ -716,15 +728,36 @@ function resolveBackgroundInfo(value: unknown): BackgroundInfo | null {
   if (!value || typeof value !== 'object') return null
   const candidate = value as Partial<BackgroundInfo>
   if (typeof candidate.name !== 'string' || candidate.name.trim().length === 0) return null
-  if (typeof candidate.sizeBytes !== 'number' || !Number.isFinite(candidate.sizeBytes) || candidate.sizeBytes < 0) {
+  const sizeBytes =
+    typeof candidate.sizeBytes === 'number' && Number.isFinite(candidate.sizeBytes) && candidate.sizeBytes >= 0
+      ? candidate.sizeBytes
+      : typeof candidate.convertedSizeBytes === 'number' && Number.isFinite(candidate.convertedSizeBytes) && candidate.convertedSizeBytes >= 0
+        ? candidate.convertedSizeBytes
+        : null
+  if (sizeBytes === null) {
     return null
   }
   const info: BackgroundInfo = {
     name: candidate.name.trim(),
-    sizeBytes: candidate.sizeBytes,
+    sizeBytes,
   }
   if (typeof candidate.fileId === 'string') {
     info.fileId = candidate.fileId
+  }
+  if (typeof candidate.originalSizeBytes === 'number') {
+    info.originalSizeBytes = candidate.originalSizeBytes
+  }
+  if (typeof candidate.originalType === 'string') {
+    info.originalType = candidate.originalType
+  }
+  if (typeof candidate.convertedSizeBytes === 'number') {
+    info.convertedSizeBytes = candidate.convertedSizeBytes
+  }
+  if (typeof candidate.convertedType === 'string') {
+    info.convertedType = candidate.convertedType
+  }
+  if (typeof candidate.convertedName === 'string') {
+    info.convertedName = candidate.convertedName
   }
   return info
 }
@@ -1035,6 +1068,13 @@ const WhiteboardCanvas = forwardRef<WhiteboardCanvasHandle, ExcalidrawWhiteboard
     const hasBackgroundElement = elements.some(isBackgroundElement)
     setHasBackground(hasBackgroundElement)
     setBackgroundInfo(hasBackgroundElement ? nextBackgroundInfo : null)
+    whiteboardDebugLog('whiteboard:remote:apply', {
+      boardId,
+      elements: elements.length,
+      files: Object.keys(files).length,
+      hasBackground: hasBackgroundElement,
+      backgroundFileId: nextBackgroundInfo?.fileId ?? null,
+    })
     lastSyncedElementsRef.current = buildElementVersionMap(elements)
     lastSyncedAppStateRef.current = appState
     lastSyncedFilesRef.current = getFileKeys(files)
@@ -1045,6 +1085,10 @@ const WhiteboardCanvas = forwardRef<WhiteboardCanvasHandle, ExcalidrawWhiteboard
     }
 
     const currentState = excalidrawApiRef.current.getAppState()
+    const fileEntries = Object.values(files)
+    if (fileEntries.length) {
+      excalidrawApiRef.current.addFiles(fileEntries)
+    }
     suppressSyncRef.current = true
     excalidrawApiRef.current.updateScene({
       elements: scene.elements,
@@ -1073,7 +1117,7 @@ const WhiteboardCanvas = forwardRef<WhiteboardCanvasHandle, ExcalidrawWhiteboard
     awareness.setLocalStateField('canWrite', !isViewMode)
   }, [])
 
-  const readFileAsDataUrl = useCallback((file: File) => {
+  const readFileAsDataUrl = useCallback((file: Blob) => {
     return new Promise<string>((resolve, reject) => {
       const reader = new FileReader()
       reader.onload = () => {
@@ -1114,7 +1158,19 @@ const WhiteboardCanvas = forwardRef<WhiteboardCanvasHandle, ExcalidrawWhiteboard
       if (!api) return
 
       try {
-        const dataUrl = await readFileAsDataUrl(file)
+        const originalName = file.name?.trim() || 'Background image'
+        const originalType = file.type || 'image/*'
+        const originalSizeBytes = file.size
+        const compression = await compressForUpload(file)
+        const convertedName = toWebpFileName(originalName)
+        const convertedType = 'image/webp'
+        const convertedSizeBytes = compression.compressedSize
+        const convertedFile = new File([compression.blob], convertedName, {
+          type: convertedType,
+          lastModified: file.lastModified,
+        })
+
+        const dataUrl = await readFileAsDataUrl(convertedFile)
         const dimensions = await loadImageDimensions(dataUrl)
         const rawWidth = Math.max(1, dimensions.width)
         const rawHeight = Math.max(1, dimensions.height)
@@ -1128,7 +1184,7 @@ const WhiteboardCanvas = forwardRef<WhiteboardCanvasHandle, ExcalidrawWhiteboard
 
         whiteboardDebugLog('whiteboard:background:upload:start', {
           boardId,
-          fileType: file.type || 'image/png',
+          fileType: convertedType,
           width: fitted.width,
           height: fitted.height,
           hasIndex: typeof imageIndex === 'string',
@@ -1138,7 +1194,7 @@ const WhiteboardCanvas = forwardRef<WhiteboardCanvasHandle, ExcalidrawWhiteboard
         const fileData: BinaryFileData = {
           id: fileId,
           dataURL: dataUrl as BinaryFileData['dataURL'],
-          mimeType: (file.type || 'image/png') as BinaryFileData['mimeType'],
+          mimeType: convertedType as BinaryFileData['mimeType'],
           created: now,
           lastRetrieved: now,
         }
@@ -1183,9 +1239,14 @@ const WhiteboardCanvas = forwardRef<WhiteboardCanvasHandle, ExcalidrawWhiteboard
         })
         setHasBackground(true)
         const nextBackgroundInfo: BackgroundInfo = {
-          name: file.name?.trim() || 'Background image',
-          sizeBytes: file.size,
+          name: originalName,
+          sizeBytes: convertedSizeBytes,
           fileId,
+          originalSizeBytes,
+          originalType,
+          convertedSizeBytes,
+          convertedType,
+          convertedName,
         }
         setBackgroundInfo(nextBackgroundInfo)
 

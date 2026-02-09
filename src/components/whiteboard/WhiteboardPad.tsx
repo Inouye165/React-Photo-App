@@ -94,11 +94,18 @@ const WhiteboardPad = forwardRef<WhiteboardCanvasHandle, WhiteboardPadProps>(
             </button>
           </div>
           {backgroundInfo && (
-            <div className="absolute right-4 top-16 z-20 max-w-[240px] rounded-lg bg-white/90 px-2 py-1 text-[11px] text-slate-700 shadow-sm backdrop-blur opacity-0 transition-opacity group-hover:opacity-100 pointer-events-none">
+            <div className="absolute right-4 top-16 z-20 max-w-[260px] rounded-lg bg-white/90 px-2 py-1 text-[11px] text-slate-700 shadow-sm backdrop-blur opacity-0 transition-opacity group-hover:opacity-100 pointer-events-none">
               <div className="truncate font-semibold" title={backgroundInfo.name}>
                 {backgroundInfo.name}
               </div>
-              <div className="text-[10px] text-slate-500">{formatBytes(backgroundInfo.sizeBytes)}</div>
+              {backgroundInfo.originalSizeBytes !== undefined && backgroundInfo.convertedSizeBytes !== undefined ? (
+                <div className="text-[10px] text-slate-500">
+                  {formatBytes(backgroundInfo.originalSizeBytes)} {backgroundInfo.originalType || 'image/*'} {'->'}{' '}
+                  {formatBytes(backgroundInfo.convertedSizeBytes)} {backgroundInfo.convertedType || 'image/webp'}
+                </div>
+              ) : (
+                <div className="text-[10px] text-slate-500">{formatBytes(backgroundInfo.sizeBytes)}</div>
+              )}
             </div>
           )}
           <WhiteboardCanvas
