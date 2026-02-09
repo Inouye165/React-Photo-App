@@ -119,14 +119,14 @@ describe('API versioning v1 aliases', () => {
 
   test('display thumbnails respond on legacy and v1', async () => {
     const legacyRes = await request(app)
-      .get('/display/thumbnails/abc.jpg?sig=invalid&exp=1');
+      .get('/display/thumbnails/abc.webp?sig=invalid&exp=1');
 
     expect(legacyRes.status).toBe(403);
     expect(legacyRes.headers.deprecation).toBe('true');
     expect(legacyRes.headers.link).toContain('/api/v1/display');
 
     const v1Res = await request(app)
-      .get('/api/v1/display/thumbnails/abc.jpg?sig=invalid&exp=1');
+      .get('/api/v1/display/thumbnails/abc.webp?sig=invalid&exp=1');
 
     expect(v1Res.status).toBe(403);
     expect(v1Res.headers.deprecation).toBeUndefined();

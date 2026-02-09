@@ -29,7 +29,7 @@ describe('Thumbnail Generation Fixes', () => {
     mockSharpInstance = {
       resize: jest.fn().mockReturnThis(),
       rotate: jest.fn().mockReturnThis(),
-      jpeg: jest.fn().mockReturnThis(),
+      webp: jest.fn().mockReturnThis(),
       toBuffer: jest.fn().mockResolvedValue(Buffer.from('thumbnail-data')),
       metadata: jest.fn().mockResolvedValue({ format: 'jpeg' }),
       withMetadata: jest.fn().mockReturnThis()
@@ -57,8 +57,8 @@ describe('Thumbnail Generation Fixes', () => {
       // Verify resize dimensions - 800x800 for high-DPI display support
       expect(mockSharpInstance.resize).toHaveBeenCalledWith(800, 800, { fit: 'inside' });
 
-      // Verify jpeg quality - increased to 85 for better visual quality
-      expect(mockSharpInstance.jpeg).toHaveBeenCalledWith({ quality: 85 });
+      // Verify webp quality for thumbnails
+      expect(mockSharpInstance.webp).toHaveBeenCalledWith({ quality: 80 });
     });
   });
 
@@ -82,6 +82,9 @@ describe('Thumbnail Generation Fixes', () => {
       
       // Verify resize is called with 800x800 for high-DPI display support
       expect(mockSharpInstance.resize).toHaveBeenCalledWith(800, 800, { fit: 'inside' });
+
+      // Verify webp output is requested
+      expect(mockSharpInstance.webp).toHaveBeenCalledWith({ quality: 80 });
     });
   });
 });

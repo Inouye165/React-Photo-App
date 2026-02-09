@@ -7,14 +7,14 @@ import { API_BASE_URL } from '../api';
 describe('useSignedThumbnails Hook', () => {
   const mockToken = 'test-token-123';
   const mockPhotos = [
-    { id: 1, thumbnailUrl: '/display/thumbnails/hash1.jpg' },
-    { id: 2, thumbnailUrl: '/display/thumbnails/hash2.jpg' },
-    { id: 3, thumbnailUrl: '/display/thumbnails/hash3.jpg' },
+    { id: 1, thumbnailUrl: '/display/thumbnails/hash1.webp' },
+    { id: 2, thumbnailUrl: '/display/thumbnails/hash2.webp' },
+    { id: 3, thumbnailUrl: '/display/thumbnails/hash3.webp' },
   ];
 
   const mockPhotosAlreadySigned = [
-    { id: 1, thumbnailUrl: '/display/thumbnails/hash1.jpg?sig=test-sig&exp=123456' },
-    { id: 2, thumbnailUrl: '/display/thumbnails/hash2.jpg?sig=test-sig&exp=123456' },
+    { id: 1, thumbnailUrl: '/display/thumbnails/hash1.webp?sig=test-sig&exp=123456' },
+    { id: 2, thumbnailUrl: '/display/thumbnails/hash2.webp?sig=test-sig&exp=123456' },
   ];
 
   beforeEach(() => {
@@ -36,7 +36,7 @@ describe('useSignedThumbnails Hook', () => {
 
       // getSignedUrl should return full URL with API base immediately
       const fullUrl = result.current.getSignedUrl(mockPhotosAlreadySigned[0]);
-      expect(fullUrl).toBe(`${API_BASE_URL}/display/thumbnails/hash1.jpg?sig=test-sig&exp=123456`);
+      expect(fullUrl).toBe(`${API_BASE_URL}/display/thumbnails/hash1.webp?sig=test-sig&exp=123456`);
     });
 
     it('should fetch signed URLs for all photos with thumbnails', async () => {
@@ -48,7 +48,7 @@ describe('useSignedThumbnails Hook', () => {
           status: 200,
           json: async () => ({
             success: true,
-            url: `/display/thumbnails/hash${photoId}.jpg?sig=test-sig&exp=123456`,
+            url: `/display/thumbnails/hash${photoId}.webp?sig=test-sig&exp=123456`,
             expiresAt: 123456
           })
         });
@@ -82,7 +82,7 @@ describe('useSignedThumbnails Hook', () => {
           status: 200,
           json: async () => ({
             success: true,
-            url: `/display/thumbnails/hash${photoId}.jpg?sig=test-sig&exp=123456`,
+            url: `/display/thumbnails/hash${photoId}.webp?sig=test-sig&exp=123456`,
             expiresAt: 123456
           })
         });
@@ -96,7 +96,7 @@ describe('useSignedThumbnails Hook', () => {
 
       // getSignedUrl should return full URL with API base
       const fullUrl = result.current.getSignedUrl(mockPhotos[0]);
-      expect(fullUrl).toBe(`${API_BASE_URL}/display/thumbnails/hash1.jpg?sig=test-sig&exp=123456`);
+      expect(fullUrl).toBe(`${API_BASE_URL}/display/thumbnails/hash1.webp?sig=test-sig&exp=123456`);
     });
 
     it('should return null when signed URL not available (requires AuthenticatedImage)', async () => {
@@ -270,7 +270,7 @@ describe('useSignedThumbnails Hook', () => {
     it('should skip photos without thumbnails', async () => {
       const photosWithoutThumbnails = [
         { id: 1, thumbnail: null },
-        { id: 2, thumbnail: '/display/thumbnails/hash2.jpg' },
+        { id: 2, thumbnail: '/display/thumbnails/hash2.webp' },
       ];
 
       global.fetch.mockResolvedValue({
@@ -278,7 +278,7 @@ describe('useSignedThumbnails Hook', () => {
         status: 200,
         json: async () => ({
           success: true,
-          url: '/display/thumbnails/hash2.jpg?sig=test-sig&exp=123456',
+          url: '/display/thumbnails/hash2.webp?sig=test-sig&exp=123456',
           expiresAt: 123456
         })
       });
@@ -311,7 +311,7 @@ describe('useSignedThumbnails Hook', () => {
         status: 200,
         json: async () => ({
           success: true,
-          url: '/display/thumbnails/hash1.jpg?sig=test-sig&exp=123456',
+          url: '/display/thumbnails/hash1.webp?sig=test-sig&exp=123456',
           expiresAt: 123456
         })
       });

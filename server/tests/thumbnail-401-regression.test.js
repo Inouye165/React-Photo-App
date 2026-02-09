@@ -141,7 +141,7 @@ describe('REGRESSION: Thumbnail 401 after security refactor', () => {
           .expect(200); // Should NOT return 401!
 
         // Verify image response
-        expect(imageResponse.headers['content-type']).toBe('image/jpeg');
+        expect(imageResponse.headers['content-type']).toBe('image/webp');
         expect(imageResponse.body).toBeDefined();
 
         // SUCCESS: Thumbnail loaded without 401 error!
@@ -151,7 +151,7 @@ describe('REGRESSION: Thumbnail 401 after security refactor', () => {
 
   test('Regression check: Unsigned thumbnail URLs should still require auth', async () => {
     // This ensures we didn't accidentally open up all thumbnails
-    const unsignedUrl = '/display/thumbnails/regression-hash-001.jpg';
+    const unsignedUrl = '/display/thumbnails/regression-hash-001.webp';
 
     // Attempt to access without signature and without auth
     const response = await request(app)
@@ -194,7 +194,7 @@ describe('REGRESSION: Thumbnail 401 after security refactor', () => {
         .get(url)
         .expect(200);
 
-      expect(response.headers['content-type']).toBe('image/jpeg');
+      expect(response.headers['content-type']).toBe('image/webp');
     }
   });
 
@@ -230,7 +230,7 @@ describe('REGRESSION: Thumbnail 401 after security refactor', () => {
 
     // All thumbnails should load successfully
     responses.forEach(response => {
-      expect(response.headers['content-type']).toBe('image/jpeg');
+      expect(response.headers['content-type']).toBe('image/webp');
     });
 
     // No 401 errors!

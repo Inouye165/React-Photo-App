@@ -72,7 +72,7 @@ const mockApiResponses = {
         hash: 'abc123',
         file_size: 1024000,
         metadata: { DateTimeOriginal: '2024-01-01 12:00:00' },
-        thumbnail: '/display/thumbnails/abc123.jpg'
+        thumbnail: '/display/thumbnails/abc123.webp'
       },
       {
         id: 2,
@@ -81,7 +81,7 @@ const mockApiResponses = {
         hash: 'def456',
         file_size: 2048000,
         metadata: { DateTimeOriginal: '2024-01-02 12:00:00' },
-        thumbnail: '/display/thumbnails/def456.jpg'
+        thumbnail: '/display/thumbnails/def456.webp'
       }
     ]
   },

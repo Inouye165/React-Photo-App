@@ -303,7 +303,7 @@ describe('CORS Integration Tests', () => {
       });
 
       const response = await request(app)
-        .get('/display/thumbnails/abc123.jpg')
+        .get('/display/thumbnails/abc123.webp')
         .set('Origin', LOCALHOST_ORIGIN)
         .expect(200);
 
@@ -343,7 +343,7 @@ describe('CORS Integration Tests', () => {
       });
 
       const response = await request(app)
-        .get('/display/thumbnails/abc123.jpg')
+        .get('/display/thumbnails/abc123.webp')
         .set('Origin', EVIL_ORIGIN)
         .expect(403);
 

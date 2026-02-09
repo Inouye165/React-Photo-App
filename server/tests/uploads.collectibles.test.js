@@ -162,8 +162,8 @@ describe('Collectible upload pipeline', () => {
 
     const processUploadedPhoto = jest.fn(async (db, photoId) => {
       await db('photos').where({ id: photoId }).update({
-        thumb_path: 'thumbnails/abc.jpg',
-        thumb_small_path: 'thumbnails/abc-sm.jpg',
+        thumb_path: 'thumbnails/abc.webp',
+        thumb_small_path: 'thumbnails/abc-sm.webp',
         display_path: 'display/1/1.webp',
         display_mime: 'image/webp',
       });
@@ -334,8 +334,8 @@ describe('Collectible upload pipeline', () => {
                     text_style: null,
                     ai_model_history: null,
                     poi_analysis: null,
-                    thumb_path: 'thumbnails/abc.jpg',
-                    thumb_small_path: 'thumbnails/abc-sm.jpg',
+                    thumb_path: 'thumbnails/abc.webp',
+                    thumb_small_path: 'thumbnails/abc-sm.webp',
                   },
                 ]),
               }),
@@ -361,17 +361,17 @@ describe('Collectible upload pipeline', () => {
     const photos = Array.isArray(res.body.photos) ? res.body.photos : [];
     expect(photos.length).toBeGreaterThan(0);
 
-    expect(photos[0].thumbnail).toContain('/display/thumbnails/abc.jpg');
+    expect(photos[0].thumbnail).toContain('/display/thumbnails/abc.webp');
     expect(photos[0].thumbnail).toContain('sig=');
     expect(photos[0].thumbnail).toContain('exp=');
-    expect(photos[0].thumbnailUrl).toContain('/display/thumbnails/abc.jpg');
+    expect(photos[0].thumbnailUrl).toContain('/display/thumbnails/abc.webp');
     expect(photos[0].thumbnailUrl).toContain('sig=');
     expect(photos[0].thumbnailUrl).toContain('exp=');
 
-    expect(photos[0].smallThumbnail).toContain('/display/thumbnails/abc-sm.jpg');
+    expect(photos[0].smallThumbnail).toContain('/display/thumbnails/abc-sm.webp');
     expect(photos[0].smallThumbnail).toContain('sig=');
     expect(photos[0].smallThumbnail).toContain('exp=');
-    expect(photos[0].smallThumbnailUrl).toContain('/display/thumbnails/abc-sm.jpg');
+    expect(photos[0].smallThumbnailUrl).toContain('/display/thumbnails/abc-sm.webp');
     expect(photos[0].smallThumbnailUrl).toContain('sig=');
     expect(photos[0].smallThumbnailUrl).toContain('exp=');
   });

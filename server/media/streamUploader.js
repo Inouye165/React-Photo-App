@@ -544,10 +544,10 @@ async function streamToSupabase(req, options = {}) {
         if (result && result.hash && thumbnailBuffer.length > 0 && !thumbnailTooLarge) {
           try {
             const fullThumbnailBuffer = Buffer.concat(thumbnailBuffer);
-            const thumbPath = `thumbnails/${result.hash}.jpg`;
+            const thumbPath = `thumbnails/${result.hash}.webp`;
             
             await supabase.storage.from('photos').upload(thumbPath, fullThumbnailBuffer, {
-              contentType: thumbnailMime || 'image/jpeg',
+              contentType: thumbnailMime || 'image/webp',
               upsert: true,
               cacheControl: '31536000'
             });

@@ -1,5 +1,5 @@
 import React, { useCallback, useEffect, useMemo, useRef, useState } from 'react';
-import { convertToJpegIfHeic, createThumbnailGenerator, startBackgroundUpload } from '../utils/uploadPipeline';
+import { convertToWebpForUpload, createThumbnailGenerator, startBackgroundUpload } from '../utils/uploadPipeline';
 
 export type LuminaCaptureSessionPhoto = {
   id: string;
@@ -263,7 +263,7 @@ export default function LuminaCaptureSession({
       onUploadComplete,
       onUploadSuccess,
       generateThumbnail: generateThumbnailWithTimeout,
-      convertToJpeg: convertToJpegIfHeic,
+      convertToWebp: convertToWebpForUpload,
     });
 
     handleClose();

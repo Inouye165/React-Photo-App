@@ -172,7 +172,7 @@ module.exports = function createDisplayRouter({ db }) {
     
     if (hasSignatureParams) {
       // Extract hash from filename - must be valid format
-      const hash = filename ? filename.replace(/\.jpg$/i, '') : null;
+      const hash = filename ? filename.replace(/\.webp$/i, '') : null;
       
       if (!hash) {
         return res.status(400).json({
@@ -673,8 +673,8 @@ module.exports = function createDisplayRouter({ db }) {
     const redirectEnabled = isMediaRedirectEnabled();
 
     try {
-      const hash = filename ? filename.replace(/\.jpg$/i, '') : null;
-      const normalizedFilename = filename && filename.toLowerCase().endsWith('.jpg') ? filename : `${hash}.jpg`;
+      const hash = filename ? filename.replace(/\.webp$/i, '') : null;
+      const normalizedFilename = filename && filename.toLowerCase().endsWith('.webp') ? filename : `${hash}.webp`;
       const storagePath = `thumbnails/${normalizedFilename}`;
 
       const isSignedThumbnailRequest = Boolean(sig && exp);
@@ -720,7 +720,7 @@ module.exports = function createDisplayRouter({ db }) {
 
       const arrayBuffer = await data.arrayBuffer();
       const buffer = Buffer.from(arrayBuffer);
-      res.set('Content-Type', 'image/jpeg');
+      res.set('Content-Type', 'image/webp');
       res.set('Cache-Control', `${isSignedThumbnailRequest ? 'public' : 'private'}, max-age=${IMAGE_CACHE_MAX_AGE}, immutable`);
       res.send(buffer);
     } catch (err) {

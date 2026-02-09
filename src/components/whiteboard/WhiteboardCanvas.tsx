@@ -26,6 +26,7 @@ import {
   getWhiteboardSnapshotCache,
   setWhiteboardSnapshotCache,
 } from '../../realtime/whiteboardSnapshotCache'
+import { compressForUpload } from '../../utils/clientImageProcessing'
 
 const DEFAULT_COLOR = '#111827'
 const DEFAULT_WIDTH = 2
@@ -653,6 +654,12 @@ const STROKE_WIDTH_REMAP: Record<number, number> = {
   3: 5.0,
 }
 
+function toWebpFileName(originalName: string): string {
+  const lastDot = originalName.lastIndexOf('.')
+  if (lastDot === -1) return `${originalName}.webp`
+  return `${originalName.slice(0, lastDot)}.webp`
+}
+
 type ExcalidrawWhiteboardCanvasProps = {
   boardId: string
   token: string | null
@@ -661,6 +668,7 @@ type ExcalidrawWhiteboardCanvasProps = {
   onViewModeChange?: (enabled: boolean) => void
   onBackgroundFitModeChange?: (mode: BackgroundFitMode) => void
   onHasBackgroundChange?: (hasBackground: boolean) => void
+  onBackgroundInfoChange?: (info: BackgroundInfo | null) => void
 }
 
 type PersistedAppState = Pick<AppState, 'viewBackgroundColor' | 'gridSize' | 'theme'>
@@ -670,6 +678,17 @@ const isBackgroundElement = (element: { type?: string; locked?: boolean }) =>
   element.type === 'image' && element.locked === true
 
 type BackgroundFitMode = 'width' | 'contain'
+
+export type BackgroundInfo = {
+  name: string
+  sizeBytes: number
+  fileId?: string
+  originalSizeBytes?: number
+  originalType?: string
+  convertedSizeBytes?: number
+  convertedType?: string
+  convertedName?: string
+}
 
 export type WhiteboardCanvasHandle = {
   openBackgroundPicker: () => void
@@ -703,6 +722,44 @@ function resolveFiles(value: unknown): BinaryFiles {
 function resolveElements(value: unknown): ExcalidrawElement[] | null {
   if (!Array.isArray(value)) return null
   return value as ExcalidrawElement[]
+}
+
+function resolveBackgroundInfo(value: unknown): BackgroundInfo | null {
+  if (!value || typeof value !== 'object') return null
+  const candidate = value as Partial<BackgroundInfo>
+  if (typeof candidate.name !== 'string' || candidate.name.trim().length === 0) return null
+  const sizeBytes =
+    typeof candidate.sizeBytes === 'number' && Number.isFinite(candidate.sizeBytes) && candidate.sizeBytes >= 0
+      ? candidate.sizeBytes
+      : typeof candidate.convertedSizeBytes === 'number' && Number.isFinite(candidate.convertedSizeBytes) && candidate.convertedSizeBytes >= 0
+        ? candidate.convertedSizeBytes
+        : null
+  if (sizeBytes === null) {
+    return null
+  }
+  const info: BackgroundInfo = {
+    name: candidate.name.trim(),
+    sizeBytes,
+  }
+  if (typeof candidate.fileId === 'string') {
+    info.fileId = candidate.fileId
+  }
+  if (typeof candidate.originalSizeBytes === 'number') {
+    info.originalSizeBytes = candidate.originalSizeBytes
+  }
+  if (typeof candidate.originalType === 'string') {
+    info.originalType = candidate.originalType
+  }
+  if (typeof candidate.convertedSizeBytes === 'number') {
+    info.convertedSizeBytes = candidate.convertedSizeBytes
+  }
+  if (typeof candidate.convertedType === 'string') {
+    info.convertedType = candidate.convertedType
+  }
+  if (typeof candidate.convertedName === 'string') {
+    info.convertedName = candidate.convertedName
+  }
+  return info
 }
 
 function pickPersistedAppState(appState: AppState): PersistedAppState {
@@ -814,6 +871,7 @@ const WhiteboardCanvas = forwardRef<WhiteboardCanvasHandle, ExcalidrawWhiteboard
       onViewModeChange,
       onBackgroundFitModeChange,
       onHasBackgroundChange,
+      onBackgroundInfoChange,
     },
     ref,
   ) => {
@@ -821,6 +879,7 @@ const WhiteboardCanvas = forwardRef<WhiteboardCanvasHandle, ExcalidrawWhiteboard
   const [initialData, setInitialData] = useState<ExcalidrawInitialDataState | null>(null)
   const [isSynced, setIsSynced] = useState(false)
   const [hasBackground, setHasBackground] = useState(false)
+  const [backgroundInfo, setBackgroundInfo] = useState<BackgroundInfo | null>(null)
   const [boardRect, setBoardRect] = useState<ContainedRect>({ left: 0, top: 0, width: 0, height: 0 })
   const [backgroundFitMode, setBackgroundFitMode] = useState<BackgroundFitMode>('width')
 
@@ -884,6 +943,10 @@ const WhiteboardCanvas = forwardRef<WhiteboardCanvasHandle, ExcalidrawWhiteboard
   useEffect(() => {
     onHasBackgroundChange?.(hasBackground)
   }, [hasBackground, onHasBackgroundChange])
+
+  useEffect(() => {
+    onBackgroundInfoChange?.(backgroundInfo)
+  }, [backgroundInfo, onBackgroundInfoChange])
 
   const updateBoardRect = useCallback(() => {
     const frame = boardFrameRef.current
@@ -990,6 +1053,7 @@ const WhiteboardCanvas = forwardRef<WhiteboardCanvasHandle, ExcalidrawWhiteboard
 
     const appState = resolveAppState(map.get('appState'))
     const files = resolveFiles(map.get('files'))
+    const nextBackgroundInfo = resolveBackgroundInfo(map.get('backgroundInfo'))
 
     const scene: ExcalidrawInitialDataState = {
       elements,
@@ -1001,7 +1065,16 @@ const WhiteboardCanvas = forwardRef<WhiteboardCanvasHandle, ExcalidrawWhiteboard
       files,
     }
 
-    setHasBackground(elements.some(isBackgroundElement))
+    const hasBackgroundElement = elements.some(isBackgroundElement)
+    setHasBackground(hasBackgroundElement)
+    setBackgroundInfo(hasBackgroundElement ? nextBackgroundInfo : null)
+    whiteboardDebugLog('whiteboard:remote:apply', {
+      boardId,
+      elements: elements.length,
+      files: Object.keys(files).length,
+      hasBackground: hasBackgroundElement,
+      backgroundFileId: nextBackgroundInfo?.fileId ?? null,
+    })
     lastSyncedElementsRef.current = buildElementVersionMap(elements)
     lastSyncedAppStateRef.current = appState
     lastSyncedFilesRef.current = getFileKeys(files)
@@ -1012,6 +1085,10 @@ const WhiteboardCanvas = forwardRef<WhiteboardCanvasHandle, ExcalidrawWhiteboard
     }
 
     const currentState = excalidrawApiRef.current.getAppState()
+    const fileEntries = Object.values(files)
+    if (fileEntries.length) {
+      excalidrawApiRef.current.addFiles(fileEntries)
+    }
     suppressSyncRef.current = true
     excalidrawApiRef.current.updateScene({
       elements: scene.elements,
@@ -1040,7 +1117,7 @@ const WhiteboardCanvas = forwardRef<WhiteboardCanvasHandle, ExcalidrawWhiteboard
     awareness.setLocalStateField('canWrite', !isViewMode)
   }, [])
 
-  const readFileAsDataUrl = useCallback((file: File) => {
+  const readFileAsDataUrl = useCallback((file: Blob) => {
     return new Promise<string>((resolve, reject) => {
       const reader = new FileReader()
       reader.onload = () => {
@@ -1081,7 +1158,19 @@ const WhiteboardCanvas = forwardRef<WhiteboardCanvasHandle, ExcalidrawWhiteboard
       if (!api) return
 
       try {
-        const dataUrl = await readFileAsDataUrl(file)
+        const originalName = file.name?.trim() || 'Background image'
+        const originalType = file.type || 'image/*'
+        const originalSizeBytes = file.size
+        const compression = await compressForUpload(file)
+        const convertedName = toWebpFileName(originalName)
+        const convertedType = 'image/webp'
+        const convertedSizeBytes = compression.compressedSize
+        const convertedFile = new File([compression.blob], convertedName, {
+          type: convertedType,
+          lastModified: file.lastModified,
+        })
+
+        const dataUrl = await readFileAsDataUrl(convertedFile)
         const dimensions = await loadImageDimensions(dataUrl)
         const rawWidth = Math.max(1, dimensions.width)
         const rawHeight = Math.max(1, dimensions.height)
@@ -1095,7 +1184,7 @@ const WhiteboardCanvas = forwardRef<WhiteboardCanvasHandle, ExcalidrawWhiteboard
 
         whiteboardDebugLog('whiteboard:background:upload:start', {
           boardId,
-          fileType: file.type || 'image/png',
+          fileType: convertedType,
           width: fitted.width,
           height: fitted.height,
           hasIndex: typeof imageIndex === 'string',
@@ -1105,7 +1194,7 @@ const WhiteboardCanvas = forwardRef<WhiteboardCanvasHandle, ExcalidrawWhiteboard
         const fileData: BinaryFileData = {
           id: fileId,
           dataURL: dataUrl as BinaryFileData['dataURL'],
-          mimeType: (file.type || 'image/png') as BinaryFileData['mimeType'],
+          mimeType: convertedType as BinaryFileData['mimeType'],
           created: now,
           lastRetrieved: now,
         }
@@ -1149,6 +1238,26 @@ const WhiteboardCanvas = forwardRef<WhiteboardCanvasHandle, ExcalidrawWhiteboard
           elements: [imageElement, ...elementsToKeep],
         })
         setHasBackground(true)
+        const nextBackgroundInfo: BackgroundInfo = {
+          name: originalName,
+          sizeBytes: convertedSizeBytes,
+          fileId,
+          originalSizeBytes,
+          originalType,
+          convertedSizeBytes,
+          convertedType,
+          convertedName,
+        }
+        setBackgroundInfo(nextBackgroundInfo)
+
+        const doc = docRef.current
+        const map = mapRef.current
+        if (doc && map) {
+          doc.transact(() => {
+            map.set('backgroundInfo', nextBackgroundInfo)
+            map.set('updatedAt', Date.now())
+          }, LOCAL_ORIGIN)
+        }
         whiteboardDebugLog('whiteboard:background:upload:success', {
           boardId,
           elementId,
@@ -1188,6 +1297,7 @@ const WhiteboardCanvas = forwardRef<WhiteboardCanvasHandle, ExcalidrawWhiteboard
 
     lastNonEmptySceneRef.current = elementsToKeep.length > 0
     setHasBackground(false)
+    setBackgroundInfo(null)
 
     const doc = docRef.current
     const map = mapRef.current
@@ -1207,6 +1317,7 @@ const WhiteboardCanvas = forwardRef<WhiteboardCanvasHandle, ExcalidrawWhiteboard
       map.set('elements', elementsToKeep)
       map.set('appState', pickPersistedAppState(currentState))
       map.set('files', nextFiles)
+      map.delete('backgroundInfo')
       map.set('updatedAt', Date.now())
     }, LOCAL_ORIGIN)
   }, [])

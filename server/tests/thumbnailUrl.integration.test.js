@@ -81,7 +81,7 @@ describe('Thumbnail URL API - Integration Tests', () => {
 
       // URL should contain hash (or part of it), sig, and exp parameters
       // Note: Database may truncate hash, so check for the beginning
-      expect(response.body.url).toMatch(/\/display\/thumbnails\/[a-z0-9]+\.jpg\?sig=.*&exp=\d+/);
+      expect(response.body.url).toMatch(/\/display\/thumbnails\/[a-z0-9]+\.webp\?sig=.*&exp=\d+/);
       expect(response.body.url).toContain('sig=');
       expect(response.body.url).toContain('exp=');
 
@@ -187,7 +187,7 @@ describe('Thumbnail URL API - Integration Tests', () => {
 
       // Parse URL
       expect(url).toMatch(/^\/display\/thumbnails\//);
-      expect(url).toContain(`.jpg`);
+      expect(url).toContain(`.webp`);
 
       // Extract query parameters
       const urlObj = new URL(url, 'http://localhost');
@@ -232,9 +232,9 @@ describe('Thumbnail URL API - Integration Tests', () => {
 
       const listed = response.body.photos.find((p) => p && p.id === testPhotoId);
       expect(listed).toBeTruthy();
-      expect(listed.thumbnail).toMatch(/\/display\/thumbnails\/[a-z0-9]+\.jpg\?sig=.*&exp=\d+/);
-      expect(listed.thumbnailUrl).toMatch(/\/display\/thumbnails\/[a-z0-9]+\.jpg\?sig=.*&exp=\d+/);
-      expect(listed.smallThumbnailUrl || listed.smallThumbnail).toMatch(/\/display\/thumbnails\/[a-z0-9]+\.jpg\?sig=.*&exp=\d+/);
+      expect(listed.thumbnail).toMatch(/\/display\/thumbnails\/[a-z0-9]+\.webp\?sig=.*&exp=\d+/);
+      expect(listed.thumbnailUrl).toMatch(/\/display\/thumbnails\/[a-z0-9]+\.webp\?sig=.*&exp=\d+/);
+      expect(listed.smallThumbnailUrl || listed.smallThumbnail).toMatch(/\/display\/thumbnails\/[a-z0-9]+\.webp\?sig=.*&exp=\d+/);
       if (listed.smallThumbnailUrl) {
         expect(listed.smallThumbnailUrl).toBe(listed.thumbnailUrl);
       }
@@ -255,7 +255,7 @@ describe('Thumbnail URL API - Integration Tests', () => {
       const supabase = require('../lib/supabaseClient');
       const storageApi = {
         createSignedUrl: jest.fn().mockResolvedValue({
-          data: { signedUrl: 'https://example.supabase.co/storage/v1/object/sign/photos/thumbnails/abc123.jpg?token=fake' },
+          data: { signedUrl: 'https://example.supabase.co/storage/v1/object/sign/photos/thumbnails/abc123.webp?token=fake' },
           error: null
         }),
         download: jest.fn()
@@ -280,10 +280,10 @@ describe('Thumbnail URL API - Integration Tests', () => {
       const pastExp = Math.floor(Date.now() / 1000) - 100;
       const crypto = require('crypto');
       const SECRET = process.env.THUMBNAIL_SIGNING_SECRET;
-      const message = `thumbnails/${testPhotoHash}.jpg:${pastExp}`;
+      const message = `thumbnails/${testPhotoHash}.webp:${pastExp}`;
       const sig = crypto.createHmac('sha256', SECRET).update(message).digest('base64url');
 
-      const expiredUrl = `/display/thumbnails/${testPhotoHash}.jpg?sig=${encodeURIComponent(sig)}&exp=${pastExp}`;
+      const expiredUrl = `/display/thumbnails/${testPhotoHash}.webp?sig=${encodeURIComponent(sig)}&exp=${pastExp}`;
 
       const response = await request(app)
         .get(expiredUrl)
@@ -302,7 +302,7 @@ describe('Thumbnail URL API - Integration Tests', () => {
       const originalUrl = urlResponse.body.url;
 
       // Tamper with the hash in the URL path by replacing any hash pattern with 'tampered123'
-      const tamperedUrl = originalUrl.replace(/\/thumbnails\/[a-z0-9]+\.jpg/, '/thumbnails/tampered123.jpg');
+      const tamperedUrl = originalUrl.replace(/\/thumbnails\/[a-z0-9]+\.webp/, '/thumbnails/tampered123.webp');
 
       const response = await request(app)
         .get(tamperedUrl)
@@ -312,7 +312,7 @@ describe('Thumbnail URL API - Integration Tests', () => {
     });
 
     test('should reject request with missing signature', async () => {
-      const url = `/display/thumbnails/${testPhotoHash}.jpg`;
+      const url = `/display/thumbnails/${testPhotoHash}.webp`;
 
       // Without signature, should fall back to cookie/token auth and fail
       const response = await request(app)
@@ -324,7 +324,7 @@ describe('Thumbnail URL API - Integration Tests', () => {
 
     test('should reject request with invalid signature format', async () => {
       const exp = Math.floor(Date.now() / 1000) + 900;
-      const url = `/display/thumbnails/${testPhotoHash}.jpg?sig=invalid-sig&exp=${exp}`;
+      const url = `/display/thumbnails/${testPhotoHash}.webp?sig=invalid-sig&exp=${exp}`;
 
       const response = await request(app)
         .get(url)
@@ -343,7 +343,7 @@ describe('Thumbnail URL API - Integration Tests', () => {
       const supabase = require('../lib/supabaseClient');
       supabase.storage.from = jest.fn().mockReturnValue({
         createSignedUrl: jest.fn().mockResolvedValue({
-          data: { signedUrl: 'https://example.supabase.co/storage/v1/object/sign/photos/thumbnails/legacy.jpg?token=fake' },
+          data: { signedUrl: 'https://example.supabase.co/storage/v1/object/sign/photos/thumbnails/legacy.webp?token=fake' },
           error: null
         }),
         download: jest.fn()
@@ -351,7 +351,7 @@ describe('Thumbnail URL API - Integration Tests', () => {
 
       // Request thumbnail without signature but with cookie
       const response = await request(app)
-        .get(`/display/thumbnails/${testPhotoHash}.jpg`)
+        .get(`/display/thumbnails/${testPhotoHash}.webp`)
         .set('Cookie', [mockCookie])
         .expect(302);
 
@@ -364,7 +364,7 @@ describe('Thumbnail URL API - Integration Tests', () => {
       const supabase = require('../lib/supabaseClient');
       supabase.storage.from = jest.fn().mockReturnValue({
         createSignedUrl: jest.fn().mockResolvedValue({
-          data: { signedUrl: 'https://example.supabase.co/storage/v1/object/sign/photos/thumbnails/legacy2.jpg?token=fake' },
+          data: { signedUrl: 'https://example.supabase.co/storage/v1/object/sign/photos/thumbnails/legacy2.webp?token=fake' },
           error: null
         }),
         download: jest.fn()
@@ -372,7 +372,7 @@ describe('Thumbnail URL API - Integration Tests', () => {
 
       // Request thumbnail without signature but with Authorization header
       const response = await request(app)
-        .get(`/display/thumbnails/${testPhotoHash}.jpg`)
+        .get(`/display/thumbnails/${testPhotoHash}.webp`)
         .set('Authorization', `Bearer ${testToken}`)
         .expect(302);
 

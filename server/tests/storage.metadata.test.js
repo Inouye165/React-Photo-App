@@ -75,10 +75,10 @@ describe('Storage Cache Metadata', () => {
 
       // Verify upload was called with cacheControl metadata
       expect(uploadMock).toHaveBeenCalledWith(
-        `thumbnails/${testHash}.jpg`,
+        `thumbnails/${testHash}.webp`,
         expect.any(Buffer),
         expect.objectContaining({
-          contentType: 'image/jpeg',
+          contentType: 'image/webp',
           cacheControl: '31536000'
         })
       );

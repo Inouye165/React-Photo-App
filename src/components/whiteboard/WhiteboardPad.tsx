@@ -1,6 +1,6 @@
 import { forwardRef, useEffect, useImperativeHandle, useRef, useState } from 'react'
 import { useRealtimeToken } from '../../hooks/useRealtimeToken'
-import WhiteboardCanvas, { type WhiteboardCanvasHandle } from './WhiteboardCanvas'
+import WhiteboardCanvas, { type BackgroundInfo, type WhiteboardCanvasHandle } from './WhiteboardCanvas'
 
 type BackgroundFitMode = 'width' | 'contain'
 
@@ -10,16 +10,28 @@ type WhiteboardPadProps = {
   onViewModeChange?: (enabled: boolean) => void
   onBackgroundFitModeChange?: (mode: BackgroundFitMode) => void
   onHasBackgroundChange?: (hasBackground: boolean) => void
+  onBackgroundInfoChange?: (info: BackgroundInfo | null) => void
 }
 
 const WhiteboardPad = forwardRef<WhiteboardCanvasHandle, WhiteboardPadProps>(
-  ({ boardId, className, onViewModeChange, onBackgroundFitModeChange, onHasBackgroundChange }, ref) => {
+  (
+    {
+      boardId,
+      className,
+      onViewModeChange,
+      onBackgroundFitModeChange,
+      onHasBackgroundChange,
+      onBackgroundInfoChange,
+    },
+    ref,
+  ) => {
     const { token } = useRealtimeToken()
     const tokenRef = useRef(token)
     const canvasRef = useRef<WhiteboardCanvasHandle>(null)
     const [viewModeEnabled, setViewModeEnabled] = useState(false)
     const [backgroundFitMode, setBackgroundFitMode] = useState<BackgroundFitMode>('width')
     const [hasBackground, setHasBackground] = useState(false)
+    const [backgroundInfo, setBackgroundInfo] = useState<BackgroundInfo | null>(null)
     useEffect(() => {
       tokenRef.current = token
     }, [token])
@@ -29,9 +41,22 @@ const WhiteboardPad = forwardRef<WhiteboardCanvasHandle, WhiteboardPadProps>(
       toggleBackgroundFitMode: () => canvasRef.current?.toggleBackgroundFitMode(),
       toggleViewMode: () => canvasRef.current?.toggleViewMode(),
     }))
+    const formatBytes = (bytes: number) => {
+      if (!Number.isFinite(bytes) || bytes <= 0) return '0 B'
+      const units = ['B', 'KB', 'MB', 'GB']
+      let size = bytes
+      let unitIndex = 0
+      while (size >= 1024 && unitIndex < units.length - 1) {
+        size /= 1024
+        unitIndex += 1
+      }
+      const rounded = size >= 10 || unitIndex === 0 ? Math.round(size) : Math.round(size * 10) / 10
+      return `${rounded} ${units[unitIndex]}`
+    }
+
     return (
       <div className={`flex h-full w-full flex-col ${className || ''}`}>
-        <div className="relative flex-1 min-h-0">
+        <div className="relative flex-1 min-h-0 group">
           <div className="absolute right-4 top-4 z-20 flex flex-wrap items-center gap-2">
             <button
               type="button"
@@ -68,6 +93,21 @@ const WhiteboardPad = forwardRef<WhiteboardCanvasHandle, WhiteboardPadProps>(
               {viewModeEnabled ? 'Draw mode' : 'View mode'}
             </button>
           </div>
+          {backgroundInfo && (
+            <div className="absolute right-4 top-16 z-20 max-w-[260px] rounded-lg bg-white/90 px-2 py-1 text-[11px] text-slate-700 shadow-sm backdrop-blur opacity-0 transition-opacity group-hover:opacity-100 pointer-events-none">
+              <div className="truncate font-semibold" title={backgroundInfo.name}>
+                {backgroundInfo.name}
+              </div>
+              {backgroundInfo.originalSizeBytes !== undefined && backgroundInfo.convertedSizeBytes !== undefined ? (
+                <div className="text-[10px] text-slate-500">
+                  {formatBytes(backgroundInfo.originalSizeBytes)} {backgroundInfo.originalType || 'image/*'} {'->'}{' '}
+                  {formatBytes(backgroundInfo.convertedSizeBytes)} {backgroundInfo.convertedType || 'image/webp'}
+                </div>
+              ) : (
+                <div className="text-[10px] text-slate-500">{formatBytes(backgroundInfo.sizeBytes)}</div>
+              )}
+            </div>
+          )}
           <WhiteboardCanvas
             ref={canvasRef}
             boardId={boardId}
@@ -85,6 +125,10 @@ const WhiteboardPad = forwardRef<WhiteboardCanvasHandle, WhiteboardPadProps>(
             onHasBackgroundChange={(has) => {
               setHasBackground(has)
               onHasBackgroundChange?.(has)
+            }}
+            onBackgroundInfoChange={(info) => {
+              setBackgroundInfo(info)
+              onBackgroundInfoChange?.(info)
             }}
           />
         </div>

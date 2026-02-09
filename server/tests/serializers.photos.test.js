@@ -42,10 +42,10 @@ describe('serializers/photos mappers', () => {
       })
     );
 
-    expect(dto.thumbnail).toBe('/display/thumbnails/h123.jpg?sig=testsig&exp=123');
-    expect(dto.thumbnailUrl).toBe('/display/thumbnails/h123.jpg?sig=testsig&exp=123');
-    expect(dto.smallThumbnail).toBe('/display/thumbnails/h123.jpg?sig=testsig&exp=123');
-    expect(dto.smallThumbnailUrl).toBe('/display/thumbnails/h123.jpg?sig=testsig&exp=123');
+    expect(dto.thumbnail).toBe('/display/thumbnails/h123.webp?sig=testsig&exp=123');
+    expect(dto.thumbnailUrl).toBe('/display/thumbnails/h123.webp?sig=testsig&exp=123');
+    expect(dto.smallThumbnail).toBe('/display/thumbnails/h123.webp?sig=testsig&exp=123');
+    expect(dto.smallThumbnailUrl).toBe('/display/thumbnails/h123.webp?sig=testsig&exp=123');
   });
 
   test('mapPhotoRowToListDto returns signed smallThumbnail when thumb_small_path exists', async () => {
@@ -55,8 +55,8 @@ describe('serializers/photos mappers', () => {
       state: 'finished',
       metadata: '{}',
       hash: 'h7',
-      thumb_path: 'thumbnails/h7.jpg',
-      thumb_small_path: 'thumbnails/h7-sm.jpg',
+      thumb_path: 'thumbnails/h7.webp',
+      thumb_small_path: 'thumbnails/h7-sm.webp',
     };
 
     const dto = await mapPhotoRowToListDto(row, {
@@ -64,10 +64,10 @@ describe('serializers/photos mappers', () => {
       signThumbnailUrl: () => ({ sig: 'testsig', exp: 123 }),
     });
 
-    expect(dto.thumbnail).toBe('/display/thumbnails/h7.jpg?sig=testsig&exp=123');
-    expect(dto.smallThumbnail).toBe('/display/thumbnails/h7-sm.jpg?sig=testsig&exp=123');
-    expect(dto.thumbnailUrl).toBe('/display/thumbnails/h7.jpg?sig=testsig&exp=123');
-    expect(dto.smallThumbnailUrl).toBe('/display/thumbnails/h7-sm.jpg?sig=testsig&exp=123');
+    expect(dto.thumbnail).toBe('/display/thumbnails/h7.webp?sig=testsig&exp=123');
+    expect(dto.smallThumbnail).toBe('/display/thumbnails/h7-sm.webp?sig=testsig&exp=123');
+    expect(dto.thumbnailUrl).toBe('/display/thumbnails/h7.webp?sig=testsig&exp=123');
+    expect(dto.smallThumbnailUrl).toBe('/display/thumbnails/h7-sm.webp?sig=testsig&exp=123');
   });
 
   test('mapPhotoRowToDetailDto preserves metadata default {} and parses JSON-ish fields', () => {

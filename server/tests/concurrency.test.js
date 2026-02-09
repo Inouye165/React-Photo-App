@@ -11,7 +11,9 @@ jest.mock('sharp', () => {
     metadata: jest.fn().mockResolvedValue({ format: 'jpeg' }),
     rotate: jest.fn().mockReturnThis(),
     resize: jest.fn().mockReturnThis(),
+    withMetadata: jest.fn().mockReturnThis(),
     jpeg: jest.fn().mockReturnThis(),
+    webp: jest.fn().mockReturnThis(),
     toBuffer: jest.fn().mockResolvedValue(Buffer.from('mock-thumbnail'))
   }));
   mockSharp.concurrency = jest.fn();
@@ -239,7 +241,9 @@ describe('Image Processing Concurrency Limiting', () => {
           metadata: jest.fn().mockResolvedValue({ format: 'jpeg' }),
           rotate: jest.fn().mockReturnThis(),
           resize: jest.fn().mockReturnThis(),
+          withMetadata: jest.fn().mockReturnThis(),
           jpeg: jest.fn().mockReturnThis(),
+          webp: jest.fn().mockReturnThis(),
           toBuffer: jest.fn().mockResolvedValue(Buffer.from('mock'))
         }));
         mockSharp.concurrency = jest.fn();
@@ -276,9 +280,9 @@ describe('Image Processing Concurrency Limiting', () => {
       
       // All should return thumbnail paths
       expect(results).toEqual([
-        'thumbnails/hash1.jpg',
-        'thumbnails/hash2.jpg',
-        'thumbnails/hash3.jpg'
+        'thumbnails/hash1.webp',
+        'thumbnails/hash2.webp',
+        'thumbnails/hash3.webp'
       ]);
     });
   });

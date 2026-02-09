@@ -121,8 +121,8 @@ describe('DELETE /photos/:id (secure deletion)', () => {
       'finished/p1.jpg',
       'display/p1.jpg',
       'original/p1.jpg',
-      'thumbnails/h1.jpg',
-      'thumbnails/h1-sm.jpg',
+      'thumbnails/h1.webp',
+      'thumbnails/h1-sm.webp',
       'inprogress/edited-p1.jpg',
     ]);
 
@@ -135,8 +135,8 @@ describe('DELETE /photos/:id (secure deletion)', () => {
       display_path: 'display/p1.jpg',
       original_path: 'original/p1.jpg',
       hash: 'h1',
-      thumb_path: 'thumbnails/h1.jpg',
-      thumb_small_path: 'thumbnails/h1-sm.jpg',
+      thumb_path: 'thumbnails/h1.webp',
+      thumb_small_path: 'thumbnails/h1-sm.webp',
       edited_filename: 'edited-p1.jpg',
     });
 
@@ -196,7 +196,7 @@ describe('DELETE /photos/:id (secure deletion)', () => {
 
   test('abort safety: if storage deletion fails, returns 500 and DB row remains', async () => {
     const storageState = new Set([
-      'thumbnails/fail-sm.jpg',
+      'thumbnails/fail-sm.webp',
       'finished/p3.jpg',
     ]);
 
@@ -207,10 +207,10 @@ describe('DELETE /photos/:id (secure deletion)', () => {
       state: 'finished',
       storage_path: 'finished/p3.jpg',
       // Ensure the first attempted delete is a deterministic failing path
-      thumb_small_path: 'thumbnails/fail-sm.jpg',
+      thumb_small_path: 'thumbnails/fail-sm.webp',
     });
 
-    const failingPaths = new Set(['thumbnails/fail-sm.jpg']);
+    const failingPaths = new Set(['thumbnails/fail-sm.webp']);
 
     const { app, removeMock } = buildApp({ storageState, failingPaths });
 
@@ -227,11 +227,11 @@ describe('DELETE /photos/:id (secure deletion)', () => {
 
     // Only the failing delete attempt should have been made; DB delete not called.
     expect(removeMock).toHaveBeenCalledTimes(1);
-    expect(removeMock).toHaveBeenCalledWith(['thumbnails/fail-sm.jpg']);
+    expect(removeMock).toHaveBeenCalledWith(['thumbnails/fail-sm.webp']);
     expect(mockLastPhotosDb.deletePhoto).not.toHaveBeenCalled();
 
     // Storage objects remain
-    expect(storageState.has('thumbnails/fail-sm.jpg')).toBe(true);
+    expect(storageState.has('thumbnails/fail-sm.webp')).toBe(true);
     expect(storageState.has('finished/p3.jpg')).toBe(true);
   });
 });
