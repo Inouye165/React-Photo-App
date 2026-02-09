@@ -58,7 +58,7 @@
     "ioredis": "^5.8.2",
     "jsonwebtoken": "^9.0.2",
     "knex": "^3.1.0",
-    "langsmith": "^0.3.77",
+    "langsmith": "^0.4.6",
     "multer": "^2.0.2",
     "node-fetch": "^3.3.1",
     "openai": "^6.8.1",
