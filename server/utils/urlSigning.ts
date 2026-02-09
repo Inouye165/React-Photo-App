@@ -52,7 +52,7 @@ function sanitizeLogValue(value: string): string {
  * Generate HMAC-SHA256 signature for a thumbnail URL
  * 
  * The signature is computed over:
- * - Resource path (e.g., "thumbnails/abc123.jpg")
+ * - Resource path (e.g., "thumbnails/abc123.webp")
  * - Expiration timestamp
  * 
  * This prevents:
@@ -69,7 +69,7 @@ function generateSignature(hash: string, expiresAt: number): string {
   }
 
   // Construct the message to sign: resource path + expiration
-  const message = `thumbnails/${hash}.jpg:${expiresAt}`;
+  const message = `thumbnails/${hash}.webp:${expiresAt}`;
   
   // Generate HMAC-SHA256 signature
   const hmac = crypto.createHmac('sha256', SECRET);
@@ -236,8 +236,8 @@ export function validateSignedUrl(req: Request, res: Response, next: NextFunctio
     return;
   }
 
-  // Extract hash from filename (remove .jpg extension)
-  const hash = filename.replace(/\.jpg$/i, '');
+  // Extract hash from filename (remove .webp extension)
+  const hash = filename.replace(/\.webp$/i, '');
 
   if (!hash) {
     res.status(400).json({

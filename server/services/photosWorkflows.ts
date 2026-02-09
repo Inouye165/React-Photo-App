@@ -128,8 +128,8 @@ export async function findAvailableEditedFilename(photosStorage: PhotosStorage, 
 export function buildDeleteList(row: PhotoRow): string[] {
   const mainPath = row.storage_path || `${row.state}/${row.filename}`;
   const servedPath = row.display_path || mainPath;
-  const legacyLargeThumbPath = row.hash ? `thumbnails/${row.hash}.jpg` : null;
-  const legacySmallThumbPath = row.hash ? `thumbnails/${row.hash}-sm.jpg` : null;
+  const legacyLargeThumbPath = row.hash ? `thumbnails/${row.hash}.webp` : null;
+  const legacySmallThumbPath = row.hash ? `thumbnails/${row.hash}-sm.webp` : null;
 
   const thumbLargePath = row.thumb_path || legacyLargeThumbPath;
   const thumbSmallPath = row.thumb_small_path || legacySmallThumbPath;

@@ -5,7 +5,7 @@ import useStore from '../store';
 import type { UploadPickerLocalPhoto } from '../store/uploadPickerSlice';
 import type { UploadResponse } from '../types/global';
 import type { AnalysisType } from '../types/uploads';
-import { convertToJpegIfHeic, createThumbnailGenerator, startBackgroundUpload } from '../utils/uploadPipeline';
+import { convertToWebpForUpload, createThumbnailGenerator, startBackgroundUpload } from '../utils/uploadPipeline';
 
 /**
  * File object with optional handle from File System Access API
@@ -107,7 +107,7 @@ export default function useLocalPhotoPicker({
     [exifParseTimeoutMs],
   );
 
-  const convertToJpegIfHeicSafe = useCallback((file: File) => convertToJpegIfHeic(file), []);
+  const convertToWebpForUploadSafe = useCallback((file: File) => convertToWebpForUpload(file), []);
 
   const supportedExtensions = useMemo(
     () => new Set(['.jpg', '.jpeg', '.png', '.gif', '.heic', '.heif', '.webp']),
@@ -322,7 +322,7 @@ export default function useLocalPhotoPicker({
           let thumbnailBlob: Blob | null = null;
 
           try {
-            fileForUpload = await convertToJpegIfHeicSafe(photo.file);
+            fileForUpload = await convertToWebpForUploadSafe(photo.file);
           } catch (err) {
             encounteredError = err as Error;
             const message = err instanceof Error ? err.message : String(err);
@@ -380,7 +380,7 @@ export default function useLocalPhotoPicker({
         pickerCommand.finishUploads(encounteredError ? 'error' : 'complete');
       }
     },
-    [convertToJpegIfHeicSafe, filteredLocalPhotos, generateThumbnailWithTimeout, onUploadComplete, onUploadSuccess, pickerCommand]
+    [convertToWebpForUploadSafe, filteredLocalPhotos, generateThumbnailWithTimeout, onUploadComplete, onUploadSuccess, pickerCommand]
   );
 
   /**
@@ -421,12 +421,12 @@ export default function useLocalPhotoPicker({
         onUploadComplete,
         onUploadSuccess,
         generateThumbnail: generateThumbnailWithTimeout,
-        convertToJpeg: convertToJpegIfHeicSafe,
+        convertToWebp: convertToWebpForUploadSafe,
       });
     },
     [
       collectibleId,
-      convertToJpegIfHeicSafe,
+      convertToWebpForUploadSafe,
       generateThumbnailWithTimeout,
       getFreshFilteredLocalPhotos,
       onUploadComplete,

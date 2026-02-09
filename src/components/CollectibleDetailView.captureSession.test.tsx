@@ -34,7 +34,7 @@ vi.mock('../api/captureIntents', () => ({
 }));
 
 vi.mock('../utils/uploadPipeline', () => ({
-  convertToJpegIfHeic: vi.fn(async (file: File) => file),
+  convertToWebpForUpload: vi.fn(async (file: File) => file),
   createThumbnailGenerator: vi.fn(() => vi.fn(async () => null)),
   startBackgroundUpload: vi.fn(),
 }));

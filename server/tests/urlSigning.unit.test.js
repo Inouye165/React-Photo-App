@@ -185,7 +185,7 @@ describe('URL Signing - Unit Tests', () => {
       const hash = 'abc123def456';
       const { sig, exp } = signThumbnailUrl(hash, 900);
 
-      mockReq.params.filename = `${hash}.jpg`;
+      mockReq.params.filename = `${hash}.webp`;
       mockReq.query = { sig, exp };
 
       validateSignedUrl(mockReq, mockRes, mockNext);
@@ -198,7 +198,7 @@ describe('URL Signing - Unit Tests', () => {
       const hash = 'abc123';
       const { exp } = signThumbnailUrl(hash, 900);
 
-      mockReq.params.filename = `${hash}.jpg`;
+      mockReq.params.filename = `${hash}.webp`;
       mockReq.query = { sig: 'invalid-signature', exp };
 
       validateSignedUrl(mockReq, mockRes, mockNext);
@@ -216,7 +216,7 @@ describe('URL Signing - Unit Tests', () => {
       const { sig } = signThumbnailUrl(hash, 900);
       const expiredExp = Math.floor(Date.now() / 1000) - 100;
 
-      mockReq.params.filename = `${hash}.jpg`;
+      mockReq.params.filename = `${hash}.webp`;
       mockReq.query = { sig, exp: expiredExp };
 
       validateSignedUrl(mockReq, mockRes, mockNext);
@@ -243,7 +243,7 @@ describe('URL Signing - Unit Tests', () => {
       const hash = 'abc123';
       const { sig, exp } = signThumbnailUrl(hash, 900);
 
-      mockReq.params.filename = `${hash}.JPG`; // Uppercase
+      mockReq.params.filename = `${hash}.WEBP`; // Uppercase
       mockReq.query = { sig, exp };
 
       validateSignedUrl(mockReq, mockRes, mockNext);
@@ -260,7 +260,7 @@ describe('URL Signing - Unit Tests', () => {
       // Generate signature multiple times with same inputs
       const crypto = require('crypto');
       const SECRET = process.env.THUMBNAIL_SIGNING_SECRET;
-      const message = `thumbnails/${hash}.jpg:${exp}`;
+      const message = `thumbnails/${hash}.webp:${exp}`;
       
       const sig1 = crypto.createHmac('sha256', SECRET).update(message).digest('base64url');
       const sig2 = crypto.createHmac('sha256', SECRET).update(message).digest('base64url');
@@ -311,7 +311,7 @@ describe('URL Signing - Unit Tests', () => {
       // Note: In real scenario, this would be a different server instance
       const crypto = require('crypto');
       const differentSecret = 'different-secret';
-      const message = `thumbnails/${hash}.jpg:${exp}`;
+      const message = `thumbnails/${hash}.webp:${exp}`;
       const expectedSigWithDifferentSecret = crypto.createHmac('sha256', differentSecret)
         .update(message)
         .digest('base64url');

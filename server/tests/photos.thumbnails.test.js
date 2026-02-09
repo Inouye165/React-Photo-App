@@ -54,7 +54,8 @@ describe('processUploadedPhoto tiered thumbnails', () => {
     const mockSharpInstance = {
       resize: jest.fn().mockReturnThis(),
       rotate: jest.fn().mockReturnThis(),
-      jpeg: jest.fn().mockReturnThis(),
+      withMetadata: jest.fn().mockReturnThis(),
+      webp: jest.fn().mockReturnThis(),
       toBuffer: jest.fn().mockResolvedValue(Buffer.from('thumb-bytes')),
     };
 
@@ -82,7 +83,7 @@ describe('processUploadedPhoto tiered thumbnails', () => {
     return builder;
   }
 
-  test('processUploadedPhoto uploads both thumbnails/<hash>.jpg and thumbnails/<hash>-sm.jpg and sets thumb_small_path', async () => {
+  test('processUploadedPhoto uploads both thumbnails/<hash>.webp and thumbnails/<hash>-sm.webp and sets thumb_small_path', async () => {
     const photoRow = {
       id: 1,
       user_id: 'u1',
@@ -102,12 +103,12 @@ describe('processUploadedPhoto tiered thumbnails', () => {
 
     // Ensure we checked for existing objects for both sizes.
     expect(supabase.storage.from).toHaveBeenCalledWith('photos');
-    expect(supabase.__mocks.list).toHaveBeenCalledWith('thumbnails', expect.objectContaining({ search: 'abc123.jpg' }));
-    expect(supabase.__mocks.list).toHaveBeenCalledWith('thumbnails', expect.objectContaining({ search: 'abc123-sm.jpg' }));
+    expect(supabase.__mocks.list).toHaveBeenCalledWith('thumbnails', expect.objectContaining({ search: 'abc123.webp' }));
+    expect(supabase.__mocks.list).toHaveBeenCalledWith('thumbnails', expect.objectContaining({ search: 'abc123-sm.webp' }));
 
     expect(db.__state.updated).toEqual(expect.objectContaining({
-      thumb_path: 'thumbnails/abc123.jpg',
-      thumb_small_path: 'thumbnails/abc123-sm.jpg',
+      thumb_path: 'thumbnails/abc123.webp',
+      thumb_small_path: 'thumbnails/abc123-sm.webp',
     }));
   });
 
@@ -128,7 +129,8 @@ describe('processUploadedPhoto tiered thumbnails', () => {
     const mockSharpInstance = {
       resize: jest.fn().mockReturnThis(),
       rotate: jest.fn().mockReturnThis(),
-      jpeg: jest.fn().mockReturnThis(),
+      withMetadata: jest.fn().mockReturnThis(),
+      webp: jest.fn().mockReturnThis(),
       toBuffer: jest.fn().mockImplementation(async () => {
         call += 1;
         throw new Error(call === 1 ? 'Input buffer contains unsupported image format' : 'unsupported');

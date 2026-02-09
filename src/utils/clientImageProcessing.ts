@@ -3,7 +3,7 @@
  * 
  * Handles client-side image operations including:
  * - Thumbnail generation with memory-safe processing
- * - Upload compression (resize to max 2048px, JPEG 85%)
+ * - Upload compression (resize to max 2048px, WebP 80%)
  * - HEIC to JPEG conversion
  * 
  * @security Input validation on all file operations
@@ -93,7 +93,7 @@ let heicToLoader: Promise<HeicToConverter> | undefined;
 const MAX_THUMBNAIL_SIZE = 400; // Maximum dimension for thumbnails
 const MAX_IMAGEDATA_SIZE = 2000; // Safety limit before ImageData creation
 const MAX_UPLOAD_SIZE = 2048; // Maximum dimension for upload compression
-const UPLOAD_JPEG_QUALITY = 0.85; // 85% JPEG quality for uploads
+const UPLOAD_WEBP_QUALITY = 0.8; // 80% WebP quality for uploads
 
 // ==================== Private Helper Functions ====================
 
@@ -274,8 +274,8 @@ async function createScaledThumbnail(
           reject(new Error('Failed to create blob from canvas'));
         }
       },
-      'image/jpeg',
-      0.85 // Good quality for thumbnails
+      'image/webp',
+      0.8 // Good quality for thumbnails
     );
   });
 
@@ -537,7 +537,7 @@ export async function generateClientThumbnailBatch(
  * 
  * Designed to run BEFORE uploading to the server:
  * - Resizes images larger than 2048px (width or height)
- * - Converts to JPEG at 85% quality
+ * - Converts to WebP at 80% quality
  * - Handles HEIC files automatically
  * - Preserves aspect ratio
  * 
@@ -552,7 +552,7 @@ export async function compressForUpload(
   file: File,
   options: Omit<CompressionOptions, 'onProgress'> = {}
 ): Promise<CompressionResult> {
-  const { maxSize = MAX_UPLOAD_SIZE, quality = UPLOAD_JPEG_QUALITY } = options;
+  const { maxSize = MAX_UPLOAD_SIZE, quality = UPLOAD_WEBP_QUALITY } = options;
 
   if (!file) {
     throw new Error('No file provided for compression');
@@ -579,7 +579,7 @@ export async function compressForUpload(
       }
 
       if (!isHeic) {
-        sourceBlob = new Blob([arrayBuffer], { type: file.type || 'image/jpeg' });
+        sourceBlob = new Blob([arrayBuffer], { type: file.type || 'image/webp' });
       }
     } catch {
       // Continue with original file
@@ -622,7 +622,7 @@ export async function compressForUpload(
   ctx.imageSmoothingQuality = 'high';
   ctx.drawImage(img, 0, 0, width, height);
 
-  // Convert to JPEG blob
+  // Convert to WebP blob
   const blob = await new Promise<Blob>((resolve, reject) => {
     canvas.toBlob(
       (result) => {
@@ -632,7 +632,7 @@ export async function compressForUpload(
           reject(new Error('Failed to create blob from canvas'));
         }
       },
-      'image/jpeg',
+      'image/webp',
       quality
     );
   });

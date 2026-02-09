@@ -75,7 +75,7 @@ export async function uploadPhotoToServer(
 
   form.append('photo', effectiveFile, effectiveFile.name)
   if (effectiveThumbnailBlob) {
-    form.append('thumbnail', effectiveThumbnailBlob, 'thumbnail.jpg')
+    form.append('thumbnail', effectiveThumbnailBlob, 'thumbnail.webp')
   }
 
   try {

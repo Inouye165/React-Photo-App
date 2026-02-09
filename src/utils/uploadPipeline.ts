@@ -10,7 +10,7 @@ export type UploadPipelineOptions = {
   onUploadComplete?: () => void | Promise<void>;
   onUploadSuccess?: (count: number) => void;
   generateThumbnail?: (file: File) => Promise<Blob | null>;
-  convertToJpeg?: (file: File) => Promise<File>;
+  convertToWebp?: (file: File) => Promise<File>;
 };
 
 const DEFAULT_THUMBNAIL_TIMEOUT_MS = Number(import.meta.env.VITE_THUMBNAIL_GENERATION_TIMEOUT_MS || 5000);
@@ -22,28 +22,16 @@ export function normalizeCollectibleId(value?: string | number | null): string |
   return normalized ? normalized : undefined;
 }
 
-export function isHeicLikeFile(file: File): boolean {
-  const name = file?.name?.toLowerCase() || '';
-  const type = file?.type?.toLowerCase() || '';
-  return name.endsWith('.heic') || name.endsWith('.heif') || type === 'image/heic' || type === 'image/heif';
-}
-
-export function toJpegFileName(originalName: string): string {
-  if (/\.(heic|heif)$/i.test(originalName)) {
-    return originalName.replace(/\.(heic|heif)$/i, '.jpg');
-  }
-
+export function toWebpFileName(originalName: string): string {
   const lastDot = originalName.lastIndexOf('.');
-  if (lastDot === -1) return `${originalName}.jpg`;
-  return `${originalName.slice(0, lastDot)}.jpg`;
+  if (lastDot === -1) return `${originalName}.webp`;
+  return `${originalName.slice(0, lastDot)}.webp`;
 }
 
-export async function convertToJpegIfHeic(file: File): Promise<File> {
-  if (!isHeicLikeFile(file)) return file;
-
+export async function convertToWebpForUpload(file: File): Promise<File> {
   const result = await compressForUpload(file);
-  return new File([result.blob], toJpegFileName(file.name), {
-    type: 'image/jpeg',
+  return new File([result.blob], toWebpFileName(file.name), {
+    type: 'image/webp',
     lastModified: file.lastModified,
   });
 }
@@ -79,7 +67,7 @@ export function startBackgroundUpload({
   onUploadComplete,
   onUploadSuccess,
   generateThumbnail,
-  convertToJpeg,
+  convertToWebp,
 }: UploadPipelineOptions): void {
   const safeFiles = Array.isArray(files) ? files.filter(Boolean) : [];
   if (safeFiles.length === 0) return;
@@ -87,7 +75,7 @@ export function startBackgroundUpload({
   const effectiveCollectibleId = normalizeCollectibleId(collectibleId);
   const pendingEntries = useStore.getState().addPendingUploads(safeFiles, effectiveCollectibleId) || [];
   const backgroundUploadIds = useStore.getState().addBackgroundUploads(safeFiles, analysisType) || [];
-  const toJpeg = convertToJpeg || convertToJpegIfHeic;
+  const toWebp = convertToWebp || convertToWebpForUpload;
   const buildThumbnail = generateThumbnail || createThumbnailGenerator();
 
   Promise.resolve().then(async () => {
@@ -102,7 +90,7 @@ export function startBackgroundUpload({
       let fileForUpload: File;
 
       try {
-        fileForUpload = await toJpeg(file);
+        fileForUpload = await toWebp(file);
       } catch (error) {
         errors.push(file?.name || 'unknown');
         const message = error instanceof Error ? error.message : String(error);

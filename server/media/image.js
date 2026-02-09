@@ -218,14 +218,16 @@ async function hashFile(input, userEmail = null) {
 }
 
 
+const THUMBNAIL_WEBP_QUALITY = 80;
+
 async function generateThumbnail(input, hash) {
-  const thumbnailPath = `thumbnails/${hash}.jpg`;
+  const thumbnailPath = `thumbnails/${hash}.webp`;
   
   try {
     // Check if thumbnail already exists in Supabase Storage
     const { data: existingThumbnail } = await supabase.storage
       .from('photos')
-      .list('thumbnails', { search: `${hash}.jpg` });
+      .list('thumbnails', { search: `${hash}.webp` });
     
     if (existingThumbnail && existingThumbnail.length > 0) {
       return thumbnailPath; // Thumbnail already exists
@@ -258,7 +260,8 @@ async function generateThumbnail(input, hash) {
         thumbnailBuffer = await sharp(sanitizedInput)
           .rotate()
           .resize(800, 800, { fit: 'inside' })
-          .jpeg({ quality: 85 })
+          .withMetadata()
+          .webp({ quality: THUMBNAIL_WEBP_QUALITY })
           .toBuffer();
       } catch {
         // If direct processing failed and it's HEIC, try the fallback conversion
@@ -268,7 +271,8 @@ async function generateThumbnail(input, hash) {
             thumbnailBuffer = await sharp(jpegBuffer)
               .rotate()
               .resize(800, 800, { fit: 'inside' })
-              .jpeg({ quality: 85 })
+              .withMetadata()
+              .webp({ quality: THUMBNAIL_WEBP_QUALITY })
               .toBuffer();
           } catch (err) {
             const classification = classifyImageProcessingError(err);
@@ -289,7 +293,7 @@ async function generateThumbnail(input, hash) {
       const { data: _data, error } = await supabase.storage
         .from('photos')
         .upload(thumbnailPath, thumbnailBuffer, {
-          contentType: 'image/jpeg',
+          contentType: 'image/webp',
           duplex: false
         });
 
@@ -531,7 +535,8 @@ async function ingestPhoto(db, storagePath, filename, state, input, userId, user
       updated_at: now
     }).onConflict('filename').merge();
     
-    await generateThumbnail(input, hash);
+    const thumbnailSource = typeof input === 'string' ? sanitizedInput : input;
+    await generateThumbnail(thumbnailSource, hash);
     return { duplicate: false, hash };
   } catch {
     // Metadata/hash extraction failed for file (logging removed)

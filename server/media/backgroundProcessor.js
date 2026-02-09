@@ -26,6 +26,9 @@ const photosImage = createPhotosImage({ sharp, exifr, crypto });
 sharp.concurrency(1);
 sharp.cache({ memory: 50, files: 10, items: 100 });
 
+const THUMBNAIL_WEBP_QUALITY = 80;
+const SMALL_THUMBNAIL_WEBP_QUALITY = 75;
+
 function sanitizeFilenameForLog(filename) {
   const raw = typeof filename === 'string' ? filename : '';
   const base = path.posix.basename(raw.replace(/\\/g, '/'));
@@ -355,13 +358,13 @@ async function generateAndUploadDisplayWebp({ buffer, photo, storagePath }) {
  * @returns {Promise<string|null>} Thumbnail path or null on failure
  */
 async function generateAndUploadThumbnail(buffer, filename, hash, ctx = null) {
-  const thumbnailPath = `thumbnails/${hash}.jpg`;
+  const thumbnailPath = `thumbnails/${hash}.webp`;
 
   try {
     // Check if thumbnail already exists
     const { data: existingList } = await supabase.storage
       .from('photos')
-      .list('thumbnails', { search: `${hash}.jpg` });
+      .list('thumbnails', { search: `${hash}.webp` });
 
     if (existingList && existingList.length > 0) {
       return thumbnailPath; // Already exists
@@ -376,7 +379,8 @@ async function generateAndUploadThumbnail(buffer, filename, hash, ctx = null) {
       thumbnailBuffer = await sharp(buffer)
         .rotate() // Auto-rotate based on EXIF orientation
         .resize(800, 800, { fit: 'inside' })
-        .jpeg({ quality: 85 })
+        .withMetadata()
+        .webp({ quality: THUMBNAIL_WEBP_QUALITY })
         .toBuffer();
     } catch (err) {
       // If direct processing failed and it's HEIC, try the fallback conversion
@@ -387,7 +391,8 @@ async function generateAndUploadThumbnail(buffer, filename, hash, ctx = null) {
           thumbnailBuffer = await sharp(jpegBuffer)
             .rotate() // Auto-rotate based on EXIF orientation
             .resize(800, 800, { fit: 'inside' })
-            .jpeg({ quality: 85 })
+            .withMetadata()
+            .webp({ quality: THUMBNAIL_WEBP_QUALITY })
             .toBuffer();
         } catch (fallbackErr) {
           const classification = classifyImageProcessingError(fallbackErr);
@@ -422,7 +427,7 @@ async function generateAndUploadThumbnail(buffer, filename, hash, ctx = null) {
     const { error } = await supabase.storage
       .from('photos')
       .upload(thumbnailPath, thumbnailBuffer, {
-        contentType: 'image/jpeg',
+        contentType: 'image/webp',
         upsert: false,
         cacheControl: '31536000' // 1 year cache for immutable content-addressed files
       });
@@ -471,12 +476,12 @@ async function generateAndUploadThumbnail(buffer, filename, hash, ctx = null) {
  * @returns {Promise<string|null>} Thumbnail path or null on failure
  */
 async function generateAndUploadSmallThumbnail(buffer, filename, hash, ctx = null) {
-  const thumbnailPath = `thumbnails/${hash}-sm.jpg`;
+  const thumbnailPath = `thumbnails/${hash}-sm.webp`;
 
   try {
     const { data: existingList } = await supabase.storage
       .from('photos')
-      .list('thumbnails', { search: `${hash}-sm.jpg` });
+      .list('thumbnails', { search: `${hash}-sm.webp` });
 
     if (existingList && existingList.length > 0) {
       return thumbnailPath;
@@ -489,7 +494,8 @@ async function generateAndUploadSmallThumbnail(buffer, filename, hash, ctx = nul
       thumbnailBuffer = await sharp(buffer)
         .rotate()
         .resize(320, 320, { fit: 'inside' })
-        .jpeg({ quality: 80 })
+        .withMetadata()
+        .webp({ quality: SMALL_THUMBNAIL_WEBP_QUALITY })
         .toBuffer();
     } catch (err) {
       if (ext === 'heic' || ext === 'heif') {
@@ -498,7 +504,8 @@ async function generateAndUploadSmallThumbnail(buffer, filename, hash, ctx = nul
           thumbnailBuffer = await sharp(jpegBuffer)
             .rotate()
             .resize(320, 320, { fit: 'inside' })
-            .jpeg({ quality: 80 })
+            .withMetadata()
+            .webp({ quality: SMALL_THUMBNAIL_WEBP_QUALITY })
             .toBuffer();
         } catch (fallbackErr) {
           const classification = classifyImageProcessingError(fallbackErr);
@@ -531,7 +538,7 @@ async function generateAndUploadSmallThumbnail(buffer, filename, hash, ctx = nul
     const { error } = await supabase.storage
       .from('photos')
       .upload(thumbnailPath, thumbnailBuffer, {
-        contentType: 'image/jpeg',
+        contentType: 'image/webp',
         upsert: false,
         cacheControl: '31536000'
       });
@@ -645,7 +652,7 @@ async function processUploadedPhoto(db, photoId, options = {}) {
     const thumbnailPath = await generateAndUploadThumbnail(buffer, photo.filename, hash, thumbCtx);
     if (thumbnailPath) {
       updates.thumb_path = thumbnailPath;
-      updates.thumb_mime = 'image/jpeg';
+      updates.thumb_mime = 'image/webp';
       logger.debug('[Processor] generated_thumbnail', { photoId: String(photoId) });
     } else {
       // Best-effort: flag failure so UI can reflect it and retries can be triggered later.

@@ -92,7 +92,7 @@ describe('Multipart Uploads (Photo + Thumbnail)', () => {
     const response = await request(app)
       .post('/uploads/upload')
       .attach('photo', photoBuffer, 'photo.jpg')
-      .attach('thumbnail', thumbnailBuffer, 'thumbnail.jpg');
+      .attach('thumbnail', thumbnailBuffer, 'thumbnail.webp');
 
     expect(response.status).toBe(200);
     
@@ -109,7 +109,7 @@ describe('Multipart Uploads (Photo + Thumbnail)', () => {
     
     // Check thumbnail headers
     expect(thumbnailUpload[2]).toMatchObject({
-      contentType: 'image/jpeg',
+      contentType: 'image/webp',
       cacheControl: '31536000'
     });
   });
@@ -122,7 +122,7 @@ describe('Multipart Uploads (Photo + Thumbnail)', () => {
     const response = await request(app)
       .post('/uploads/upload')
       .attach('photo', photoBuffer, 'photo.jpg')
-      .attach('thumbnail', largeThumbnail, 'thumbnail.jpg');
+      .attach('thumbnail', largeThumbnail, 'thumbnail.webp');
 
     expect(response.status).toBe(200);
 

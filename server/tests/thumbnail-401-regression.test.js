@@ -151,7 +151,7 @@ describe('REGRESSION: Thumbnail 401 after security refactor', () => {
 
   test('Regression check: Unsigned thumbnail URLs should still require auth', async () => {
     // This ensures we didn't accidentally open up all thumbnails
-    const unsignedUrl = '/display/thumbnails/regression-hash-001.jpg';
+    const unsignedUrl = '/display/thumbnails/regression-hash-001.webp';
 
     // Attempt to access without signature and without auth
     const response = await request(app)

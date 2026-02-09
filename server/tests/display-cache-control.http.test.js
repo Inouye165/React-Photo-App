@@ -71,7 +71,7 @@ describe('Display redirect Cache-Control (HTTP regression)', () => {
     });
 
     const res = await request(app)
-      .get(`/display/thumbnails/testhash.jpg?sig=fake&exp=${exp}`)
+      .get(`/display/thumbnails/testhash.webp?sig=fake&exp=${exp}`)
       .expect(302);
 
     expect(storageApi.createSignedUrl).toHaveBeenCalledTimes(1);
@@ -96,7 +96,7 @@ describe('Display redirect Cache-Control (HTTP regression)', () => {
     const token = makeTestBearerToken();
 
     const res = await request(app)
-      .get('/display/thumbnails/testhash.jpg')
+      .get('/display/thumbnails/testhash.webp')
       .set('Authorization', `Bearer ${token}`)
       .expect(302);
 

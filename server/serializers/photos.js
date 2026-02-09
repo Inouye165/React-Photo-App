@@ -10,8 +10,8 @@ function extractThumbnailBasename(storagePath) {
 
   const base = path.posix.basename(storagePath);
   if (!base || base === '.' || base === '..') return null;
-  if (!base.endsWith('.jpg')) return null;
-  if (!/^[a-zA-Z0-9_.-]+\.jpg$/.test(base)) return null;
+  if (!base.endsWith('.webp')) return null;
+  if (!/^[a-zA-Z0-9_.-]+\.webp$/.test(base)) return null;
   return base;
 }
 
@@ -20,7 +20,7 @@ function buildSignedThumbnailDisplayUrl(storagePath, { signThumbnailUrl, ttlSeco
   if (!base) return null;
   if (typeof signThumbnailUrl !== 'function') return null;
 
-  const hashBase = base.slice(0, -'.jpg'.length);
+  const hashBase = base.slice(0, -'.webp'.length);
   const ttl = Number(ttlSeconds);
   const { sig, exp } = Number.isFinite(ttl) ? signThumbnailUrl(hashBase, ttl) : signThumbnailUrl(hashBase);
 
@@ -33,7 +33,7 @@ async function mapPhotoRowToListDto(row, { signThumbnailUrl, ttlSeconds } = {}) 
   const aiModelHistory = row.ai_model_history ? safeParseUnknown(row.ai_model_history) : null;
   const poiAnalysis = row.poi_analysis ? safeParseUnknown(row.poi_analysis) : null;
 
-  const largeThumbPath = row.thumb_path || (row.hash ? `thumbnails/${row.hash}.jpg` : null);
+  const largeThumbPath = row.thumb_path || (row.hash ? `thumbnails/${row.hash}.webp` : null);
   const smallThumbPath = row.thumb_small_path || null;
 
   const thumbnailUrl = largeThumbPath
@@ -80,9 +80,9 @@ function mapPhotoRowToDetailDto(row, { signThumbnailUrl, ttlSeconds } = {}) {
   const aiModelHistory = row.ai_model_history ? safeParseUnknown(row.ai_model_history) : null;
   const poiAnalysis = row.poi_analysis ? safeParseUnknown(row.poi_analysis) : null;
 
-  const largeThumbPath = row.thumb_path || (row.hash ? `thumbnails/${row.hash}.jpg` : null);
+  const largeThumbPath = row.thumb_path || (row.hash ? `thumbnails/${row.hash}.webp` : null);
   const smallThumbPath = row.thumb_small_path || null;
-  const directThumbnailUrl = row.hash ? `/display/thumbnails/${row.hash}.jpg` : null;
+  const directThumbnailUrl = row.hash ? `/display/thumbnails/${row.hash}.webp` : null;
 
   const thumbnailUrl = largeThumbPath
     ? buildSignedThumbnailDisplayUrl(largeThumbPath, { signThumbnailUrl, ttlSeconds }) || directThumbnailUrl

@@ -98,7 +98,7 @@ describe('Production CORS Configuration', () => {
       });
 
       const response = await request(app)
-        .get('/display/thumbnails/test-hash-123.jpg')
+        .get('/display/thumbnails/test-hash-123.webp')
         .set('Origin', PRODUCTION_VERCEL_URL)
         .expect(200);
 
@@ -150,7 +150,7 @@ describe('Production CORS Configuration', () => {
       });
 
       const response = await request(app)
-        .get('/display/thumbnails/test-hash-123.jpg')
+        .get('/display/thumbnails/test-hash-123.webp')
         .set('Origin', LOCALHOST_DEV_URL)
         .expect(200);
 
@@ -200,7 +200,7 @@ describe('Production CORS Configuration', () => {
       });
 
       const response = await request(app)
-        .get('/display/thumbnails/test-hash-123.jpg')
+        .get('/display/thumbnails/test-hash-123.webp')
         .set('Origin', 'https://evil.com')
         .expect(403);
 
@@ -248,7 +248,7 @@ describe('Production CORS Configuration', () => {
       });
 
       const response = await request(app)
-        .options('/display/thumbnails/test-hash-123.jpg')
+        .options('/display/thumbnails/test-hash-123.webp')
         .set('Origin', PRODUCTION_VERCEL_URL)
         .set('Access-Control-Request-Method', 'GET')
         .expect(204);

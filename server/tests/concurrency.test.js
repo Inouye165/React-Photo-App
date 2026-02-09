@@ -276,9 +276,9 @@ describe('Image Processing Concurrency Limiting', () => {
       
       // All should return thumbnail paths
       expect(results).toEqual([
-        'thumbnails/hash1.jpg',
-        'thumbnails/hash2.jpg',
-        'thumbnails/hash3.jpg'
+        'thumbnails/hash1.webp',
+        'thumbnails/hash2.webp',
+        'thumbnails/hash3.webp'
       ]);
     });
   });

@@ -594,7 +594,7 @@ export default function createPhotosRouter({ db, supabase }: PhotosRouterDepende
       }
 
       const { sig, exp } = signThumbnailUrl(photo.hash, DEFAULT_TTL_SECONDS);
-      const signedUrl = `/display/thumbnails/${photo.hash}.jpg?sig=${encodeURIComponent(sig)}&exp=${exp}`;
+      const signedUrl = `/display/thumbnails/${photo.hash}.webp?sig=${encodeURIComponent(sig)}&exp=${exp}`;
 
       logger.info('Generated signed thumbnail URL', {
         reqId,
