@@ -172,7 +172,7 @@ module.exports = function createDisplayRouter({ db }) {
     
     if (hasSignatureParams) {
       // Extract hash from filename - must be valid format
-      const hash = filename ? filename.replace(/\.jpg$/i, '') : null;
+      const hash = filename ? filename.replace(/\.webp$/i, '') : null;
       
       if (!hash) {
         return res.status(400).json({

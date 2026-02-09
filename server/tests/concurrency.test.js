@@ -12,6 +12,7 @@ jest.mock('sharp', () => {
     rotate: jest.fn().mockReturnThis(),
     resize: jest.fn().mockReturnThis(),
     jpeg: jest.fn().mockReturnThis(),
+    webp: jest.fn().mockReturnThis(),
     toBuffer: jest.fn().mockResolvedValue(Buffer.from('mock-thumbnail'))
   }));
   mockSharp.concurrency = jest.fn();

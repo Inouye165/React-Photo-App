@@ -78,7 +78,7 @@ describe('Storage Cache Metadata', () => {
         `thumbnails/${testHash}.webp`,
         expect.any(Buffer),
         expect.objectContaining({
-          contentType: 'image/jpeg',
+          contentType: 'image/webp',
           cacheControl: '31536000'
         })
       );
