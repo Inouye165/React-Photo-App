@@ -2,6 +2,8 @@
 const fs = require('fs');
 const path = require('path');
 
+process.env.AI_ENABLED = process.env.AI_ENABLED || 'true';
+
 jest.mock('../ai/langgraph/graph', () => ({
   app: { invoke: jest.fn() }
 }));

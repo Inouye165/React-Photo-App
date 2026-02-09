@@ -8,6 +8,7 @@ import '../env';
 import logger from '../logger';
 import auditLogger from './langgraph/audit_logger';
 import openai from './openaiClient';
+import { isAiEnabled } from '../utils/aiEnabled';
 import { convertHeicToJpegBuffer } from '../media/image';
 import sharp from 'sharp';
 import exifr from 'exifr';
@@ -33,11 +34,20 @@ const allowDevDebug = process.env.ALLOW_DEV_DEBUG === 'true';
 
 tmp.setGracefulCleanup();
 
-if (!process.env.OPENAI_API_KEY) {
-  if (process.env.NODE_ENV === 'test') {
-    logger.warn('OPENAI_API_KEY not set — skipping fail-fast in test environment.');
-  } else {
-    throw new Error('OPENAI_API_KEY not set in .env');
+function createAiDisabledError(): Error & { code?: string } {
+  const err = new Error('AI is disabled. Set AI_ENABLED=true (or ENABLE_AI=true) to enable.') as Error & { code?: string };
+  err.code = 'AI_DISABLED';
+  return err;
+}
+
+function ensureAiReady(): void {
+  if (!isAiEnabled()) {
+    throw createAiDisabledError();
+  }
+  if (!process.env.OPENAI_API_KEY || process.env.OPENAI_API_KEY.trim() === '') {
+    const err = new Error('OPENAI_API_KEY not set in .env') as Error & { code?: string };
+    err.code = 'MISSING_AI_KEYS';
+    throw err;
   }
 }
 
@@ -106,6 +116,7 @@ export async function processPhotoAI(
   { fileBuffer, filename, metadata, gps, device, isRecheck = false, collectibleOverride = null }: ProcessPhotoAIOptions,
   modelOverrides: ModelOverrides = {},
 ) {
+  ensureAiReady();
   let imageBuffer: Buffer;
   let imageMime: string;
   const ext = path.extname(filename).toLowerCase();
@@ -295,6 +306,7 @@ export async function updatePhotoAIMetadata(
   modelOverrides: ModelOverrides = {},
   options: { collectibleOverride?: CollectibleOverrideInput } = {},
 ) {
+  ensureAiReady();
   try {
     logger.debug('[AI Debug] [updatePhotoAIMetadata] Called with', {
       photoId: photoRow.id,
@@ -694,6 +706,7 @@ export function isAIFailed(val: string | null | undefined): boolean {
 }
 
 export async function processAllUnprocessedInprogress(db: Knex) {
+  ensureAiReady();
   try {
     const rows = await db('photos')
       .where('state', 'inprogress')

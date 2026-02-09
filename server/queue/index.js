@@ -8,6 +8,7 @@ const { attachBullmqWorkerMetrics } = require('../metrics/bullmq');
 const { randomUUID } = require('crypto');
 const { sanitizeRequestId } = require('../lib/requestId');
 const { context, propagation, trace } = require('@opentelemetry/api');
+const { isAiEnabled } = require('../utils/aiEnabled');
 
 const QUEUE_NAME = "ai-processing";
 const PHOTO_STATUS_CHANNEL = 'photo:status:v1';
@@ -344,8 +345,9 @@ const startWorker = async () => {
       const { photoId, modelOverrides, processMetadata, generateThumbnail, runAiAnalysis, collectibleOverride } = job.data || {};
       logger.info(`[WORKER] Processing job for photoId: ${photoId}`);
 
+      const aiEnabled = isAiEnabled();
       // Back-compat: jobs that predate `runAiAnalysis` should behave like legacy AI jobs.
-      const shouldRunAiAnalysis = runAiAnalysis !== false;
+      const shouldRunAiAnalysis = runAiAnalysis !== false && aiEnabled;
 
       const photo = await db("photos").where({ id: photoId }).first();
       if (!photo) throw new Error(`Photo with ID ${photoId} not found.`);
@@ -411,7 +413,8 @@ const startWorker = async () => {
             }
           }
         } else {
-          logger.info('[WORKER] Skipping AI analysis (derivatives-only job)', {
+          const reason = aiEnabled ? 'derivatives-only job' : 'AI disabled';
+          logger.info(`[WORKER] Skipping AI analysis (${reason})`, {
             photoId: String(photoId),
             requestId: sanitizeRequestId(job?.data?.requestId) || undefined,
           });

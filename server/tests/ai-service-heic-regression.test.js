@@ -1,3 +1,5 @@
+process.env.AI_ENABLED = process.env.AI_ENABLED || 'true';
+
 const { updatePhotoAIMetadata } = require('../ai/service');
 const { convertHeicToJpegBuffer } = require('../media/image');
 const sharp = require('sharp');
