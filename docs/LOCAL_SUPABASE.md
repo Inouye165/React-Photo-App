@@ -24,6 +24,22 @@ Studio is where you can manage users, auth, tables, and policies.
 
 When `supabase start` finishes, it prints the local `anon` and `service_role` keys.
 
+For the full set (including JWT secret), run:
+
+```bash
+supabase status --output json
+```
+
+Map the values from that output like this:
+
+- `API_URL` -> `SUPABASE_URL`
+- `ANON_KEY` -> `SUPABASE_ANON_KEY`
+- `SERVICE_ROLE_KEY` -> `SUPABASE_SERVICE_ROLE_KEY`
+- `JWT_SECRET` -> `SUPABASE_JWT_SECRET`
+- `DB_URL` -> `SUPABASE_DB_URL` and `SUPABASE_DB_URL_MIGRATIONS`
+- `S3_PROTOCOL_ACCESS_KEY_ID` -> `SUPABASE_STORAGE_ACCESS_KEY_ID`
+- `S3_PROTOCOL_ACCESS_KEY_SECRET` -> `SUPABASE_STORAGE_SECRET_KEY`
+
 Set these in [server/.env](../server/.env):
 
 ```bash
@@ -46,6 +62,7 @@ Also set the frontend URL in the repo root `.env`:
 ```bash
 VITE_SUPABASE_URL=http://127.0.0.1:54321
 VITE_SUPABASE_ANON_KEY=<local anon key>
+VITE_API_URL=http://localhost:3001
 ```
 
 ## 5) Apply migrations
@@ -67,6 +84,12 @@ This desktop setup was verified with:
 - Realtime: running, but required extra steps for local chat (see checklist below)
 
 If you move to another computer, re-run `supabase status` and update all URLs/ports in `.env` and `server/.env` to match that machine.
+
+If the DB port shown in `supabase status` does not match reality, check Docker directly and update your env files to the mapped port:
+
+```bash
+docker ps --format "table {{.Names}}\t{{.Ports}}" | findstr supabase_db
+```
 
 ## Local chat realtime checklist (desktop)
 

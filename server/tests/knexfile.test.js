@@ -7,6 +7,7 @@ const path = require('path');
 const fs = require('fs');
 
 const getTrackedEnvSnapshot = () => ({
+  __SERVER_ENV_LOADED: process.env.__SERVER_ENV_LOADED,
   DB_POOL_MIN: process.env.DB_POOL_MIN,
   DB_POOL_MAX: process.env.DB_POOL_MAX,
   DB_POOL_ACQUIRE_TIMEOUT: process.env.DB_POOL_ACQUIRE_TIMEOUT,
@@ -54,6 +55,7 @@ describe('knexfile.js SSL configuration', () => {
   beforeEach(() => {
     envSnapshot = getTrackedEnvSnapshot();
     applyTrackedEnv({
+      __SERVER_ENV_LOADED: '1',
       DB_POOL_MIN: undefined,
       DB_POOL_MAX: undefined,
       DB_POOL_ACQUIRE_TIMEOUT: undefined,

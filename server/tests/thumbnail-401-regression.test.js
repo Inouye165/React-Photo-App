@@ -5,6 +5,20 @@ const jwt = require('jsonwebtoken');
 process.env.NODE_ENV = 'test';
 process.env.JWT_SECRET = 'test-jwt-secret-regression';
 process.env.THUMBNAIL_SIGNING_SECRET = 'test-thumbnail-signing-secret-regression';
+const PREV_MEDIA_REDIRECT_ENABLED = process.env.MEDIA_REDIRECT_ENABLED;
+process.env.MEDIA_REDIRECT_ENABLED = 'false';
+
+// Mock Supabase storage (must load before app)
+jest.mock('../lib/supabaseClient', () => ({
+  storage: {
+    from: jest.fn(() => ({
+      download: jest.fn(() => Promise.resolve({
+        data: new Blob([Buffer.from('fake-jpeg-data')]),
+        error: null
+      }))
+    }))
+  }
+}));
 
 const app = require('../server');
 const db = require('../db/index');
@@ -73,6 +87,11 @@ describe('REGRESSION: Thumbnail 401 after security refactor', () => {
   });
 
   afterAll(async () => {
+    if (PREV_MEDIA_REDIRECT_ENABLED === undefined) {
+      delete process.env.MEDIA_REDIRECT_ENABLED;
+    } else {
+      process.env.MEDIA_REDIRECT_ENABLED = PREV_MEDIA_REDIRECT_ENABLED;
+    }
     await db.destroy();
   });
 

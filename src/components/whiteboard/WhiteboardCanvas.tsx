@@ -1091,7 +1091,16 @@ const WhiteboardCanvas = forwardRef<WhiteboardCanvasHandle, ExcalidrawWhiteboard
         const now = Date.now()
         const elements = api.getSceneElements()
         const elementsToKeep = elements.filter((element) => !isBackgroundElement(element))
-        const imageIndex = elementsToKeep[0]?.index ?? 'a'
+        const imageIndex = typeof elementsToKeep[0]?.index === 'string' ? elementsToKeep[0]?.index : undefined
+
+        whiteboardDebugLog('whiteboard:background:upload:start', {
+          boardId,
+          fileType: file.type || 'image/png',
+          width: fitted.width,
+          height: fitted.height,
+          hasIndex: typeof imageIndex === 'string',
+          elementCount: elements.length,
+        })
 
         const fileData: BinaryFileData = {
           id: fileId,
@@ -1124,7 +1133,7 @@ const WhiteboardCanvas = forwardRef<WhiteboardCanvasHandle, ExcalidrawWhiteboard
           seed: Math.floor(Math.random() * 2 ** 31),
           version: 1,
           versionNonce: Math.floor(Math.random() * 2 ** 31),
-          index: imageIndex,
+          ...(imageIndex ? { index: imageIndex } : {}),
           isDeleted: false,
           boundElements: null,
           updated: now,
@@ -1140,6 +1149,13 @@ const WhiteboardCanvas = forwardRef<WhiteboardCanvasHandle, ExcalidrawWhiteboard
           elements: [imageElement, ...elementsToKeep],
         })
         setHasBackground(true)
+        whiteboardDebugLog('whiteboard:background:upload:success', {
+          boardId,
+          elementId,
+          fileId,
+          hasIndex: Boolean(imageIndex),
+          elementCount: elementsToKeep.length + 1,
+        })
       } catch (error) {
         whiteboardDebugLog('whiteboard:background:upload:error', {
           boardId,

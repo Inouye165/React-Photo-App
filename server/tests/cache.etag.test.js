@@ -1,5 +1,8 @@
 const request = require('supertest');
 
+const PREV_MEDIA_REDIRECT_ENABLED = process.env.MEDIA_REDIRECT_ENABLED;
+process.env.MEDIA_REDIRECT_ENABLED = 'false';
+
 // Mock Supabase
 const mockGetUser = jest.fn();
 jest.mock('@supabase/supabase-js', () => ({
@@ -10,10 +13,7 @@ jest.mock('@supabase/supabase-js', () => ({
   })
 }));
 
-const app = require('../server');
-const db = require('../db');
-
-// Mock Supabase storage download
+// Mock Supabase storage download (must load before app)
 jest.mock('../lib/supabaseClient', () => ({
   storage: {
     from: jest.fn(() => ({
@@ -24,6 +24,9 @@ jest.mock('../lib/supabaseClient', () => ({
     }))
   }
 }));
+
+const app = require('../server');
+const db = require('../db');
 
 describe('ETag/304 cache', () => {
   let authToken = 'valid-token';
@@ -49,6 +52,11 @@ describe('ETag/304 cache', () => {
   });
 
   afterAll(async () => {
+    if (PREV_MEDIA_REDIRECT_ENABLED === undefined) {
+      delete process.env.MEDIA_REDIRECT_ENABLED;
+    } else {
+      process.env.MEDIA_REDIRECT_ENABLED = PREV_MEDIA_REDIRECT_ENABLED;
+    }
     // Clean up test data
     if (testPhotoId) {
       await db('photos').where({ id: testPhotoId }).delete();

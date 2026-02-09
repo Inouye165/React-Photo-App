@@ -1,5 +1,46 @@
 # Problem Log
 
+## Issue: Local sandbox setup on laptop required env + port corrections
+
+**Date:** February 8, 2026 (Laptop)
+**Symptom:** `knex migrate:latest` timed out with `Knex: Timeout acquiring a connection`, backend/worker reported DB connection failures, and Supabase storage checks failed.
+**Context:** Local Supabase was running, but the DB port from `supabase status` did not match the actual Docker port mapping. The server `.env` still pointed at the Docker Compose Postgres defaults instead of the Supabase DB port, causing connection timeouts.
+
+**Resolution:**
+- Confirmed actual Supabase DB port with `docker ps`.
+- Updated `SUPABASE_DB_URL` and `SUPABASE_DB_URL_MIGRATIONS` to the mapped DB port.
+- Kept `DB_SSL_DISABLED=true` for local Postgres/Supabase.
+
+**How to validate:**
+- `npx knex migrate:latest --knexfile knexfile.js` returns `Already up to date`.
+- Backend logs show `[db] Database connection verified`.
+
+## Issue: Worker failed to start because REDIS_URL missing
+
+**Date:** February 8, 2026 (Laptop)
+**Symptom:** Worker crashed with `Redis connection required to start worker` and queue disabled logs.
+**Context:** Redis container was running, but `REDIS_URL` was missing in `server/.env`.
+
+**Resolution:**
+- Set `REDIS_URL=redis://localhost:6379` in `server/.env`.
+
+**How to validate:**
+- Worker starts without Redis errors.
+- Backend logs show photo status subscriber started.
+
+## Issue: Node version out of range causes install warnings
+
+**Date:** February 8, 2026 (Laptop)
+**Symptom:** `npm install` shows `EBADENGINE Unsupported engine` warnings.
+**Context:** Local Node version was `v24.9.0`, while repo requires `>=20.11 <23`.
+
+**Resolution:**
+- Pin Node 20 (nvm-windows or Volta) before installing dependencies.
+
+**How to validate:**
+- `node -v` reports 20.x.
+- `npm install` completes without EBADENGINE warnings.
+
 ## Issue: Redis not reachable (ECONNREFUSED) during local sandbox startup
 
 **Date:** February 8, 2026
