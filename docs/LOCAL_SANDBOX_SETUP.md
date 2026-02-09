@@ -5,6 +5,8 @@ This guide documents a full local sandbox setup for the app, plus common issues 
 ## Prerequisites
 
 - Node.js **20.11+ and <23** (required)
+   - If you see engine warnings during `npm install`, you are likely on Node 23+.
+   - Use nvm-windows or Volta to pin Node 20 for this repo.
 - npm 10+
 - Docker Desktop (running)
 
@@ -14,12 +16,23 @@ This guide documents a full local sandbox setup for the app, plus common issues 
 
 1. **Start Docker services (Postgres + Redis)**
    - `docker-compose up -d db redis`
+   - If you use local Supabase for Postgres, you can skip the `db` service and run only Redis: `docker-compose up -d redis`.
 2. **Install dependencies (always after a pull)**
    - Repo root: `npm install`
    - Server: `cd server && npm install && cd ..`
 3. **Create env file**
-   - `cp server/.env.example server/.env`
-   - Fill in required keys: `OPENAI_API_KEY`, `SUPABASE_URL`, `SUPABASE_ANON_KEY`, `JWT_SECRET`.
+    - If you already have a server env file, back it up first:
+       - PowerShell: `Copy-Item server\.env server\.env.backup-YYYYMMDD-HHMMSS`
+    - Create the new env file:
+       - `cp server/.env.example server/.env`
+    - Set local DB + Redis values for Docker Compose:
+       - `SUPABASE_DB_URL=postgresql://photoapp:photoapp_dev@localhost:5432/photoapp`
+       - `SUPABASE_DB_URL_MIGRATIONS=postgresql://photoapp:photoapp_dev@localhost:5432/photoapp`
+       - `DB_SSL_DISABLED=true`
+       - `REDIS_URL=redis://localhost:6379`
+    - Fill in required keys: `OPENAI_API_KEY`, `SUPABASE_URL`, `SUPABASE_ANON_KEY`, `JWT_SECRET`.
+       - If you do not set Supabase values, storage/auth features will fail (see [docs/LOCAL_SUPABASE.md](docs/LOCAL_SUPABASE.md)).
+       - If you are using local Supabase, pull the values via `supabase status --output json` and update the DB URL + keys to match that output.
 4. **Run migrations**
    - `cd server && npx knex migrate:latest --knexfile knexfile.js && cd ..`
 5. **Start the app (3 terminals)**
@@ -65,7 +78,20 @@ This guide documents a full local sandbox setup for the app, plus common issues 
 
 ---
 
-### 3) Backend fails to start: port 3001 in use
+### 3) Knex migration timeout (local Docker Postgres)
+**Symptom:**
+`Knex: Timeout acquiring a connection`
+
+**Fix:**
+- Ensure DB URL uses Docker Compose credentials:
+   - `SUPABASE_DB_URL=postgresql://photoapp:photoapp_dev@localhost:5432/photoapp`
+   - `SUPABASE_DB_URL_MIGRATIONS=postgresql://photoapp:photoapp_dev@localhost:5432/photoapp`
+- Disable SSL for local Postgres:
+   - `DB_SSL_DISABLED=true`
+
+---
+
+### 4) Backend fails to start: port 3001 in use
 **Symptom:**
 `listen EADDRINUSE: address already in use :::3001`
 
