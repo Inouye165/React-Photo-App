@@ -1345,6 +1345,58 @@ const WhiteboardCanvas = forwardRef<WhiteboardCanvasHandle, ExcalidrawWhiteboard
     setBackgroundCompletedCrop(convertToPixelCrop(nextCrop, backgroundImageSize.width, backgroundImageSize.height))
   }, [backgroundAspectValue, backgroundImageSize, buildBackgroundCrop])
 
+  // Refs and state for pointer-drag panning of the crop viewport.
+  const cropViewportRef = useRef<HTMLDivElement | null>(null)
+  const panStateRef = useRef({
+    active: false,
+    startX: 0,
+    startY: 0,
+    scrollLeft: 0,
+    scrollTop: 0,
+    pointerId: undefined as number | undefined,
+  })
+
+  const onImagePointerDown = useCallback((event: React.PointerEvent<HTMLImageElement>) => {
+    if (event.button !== 0) return
+    const viewport = cropViewportRef.current
+    if (!viewport) return
+    panStateRef.current = {
+      active: true,
+      startX: event.clientX,
+      startY: event.clientY,
+      scrollLeft: viewport.scrollLeft,
+      scrollTop: viewport.scrollTop,
+      pointerId: event.pointerId,
+    }
+    try {
+      (event.target as HTMLImageElement).setPointerCapture(event.pointerId)
+    } catch {
+      // ignore
+    }
+  }, [])
+
+  const onImagePointerMove = useCallback((event: React.PointerEvent<HTMLImageElement>) => {
+    const state = panStateRef.current
+    if (!state.active || state.pointerId !== event.pointerId) return
+    const viewport = cropViewportRef.current
+    if (!viewport) return
+    const dx = event.clientX - state.startX
+    const dy = event.clientY - state.startY
+    viewport.scrollLeft = Math.max(0, state.scrollLeft - dx)
+    viewport.scrollTop = Math.max(0, state.scrollTop - dy)
+  }, [])
+
+  const onImagePointerUp = useCallback((event: React.PointerEvent<HTMLImageElement>) => {
+    const state = panStateRef.current
+    if (!state.active) return
+    panStateRef.current.active = false
+    try {
+      (event.target as HTMLImageElement).releasePointerCapture(event.pointerId)
+    } catch {
+      // ignore
+    }
+  }, [])
+
   const handleBackgroundCropSave = useCallback(async () => {
     if (!backgroundCropSource || !backgroundCompletedCrop || backgroundCompletedCrop.width <= 0 || backgroundCompletedCrop.height <= 0) {
       setBackgroundCropError('Please select a crop area first')
@@ -1968,7 +2020,7 @@ const WhiteboardCanvas = forwardRef<WhiteboardCanvasHandle, ExcalidrawWhiteboard
               </button>
             </div>
             <div className="flex min-h-0 flex-1 flex-col px-5 py-4">
-              <div className="relative min-h-0 flex-1 overflow-auto rounded-xl bg-slate-900">
+              <div ref={cropViewportRef} className="relative min-h-0 flex-1 overflow-auto rounded-xl bg-slate-900">
                 <div className="flex min-h-full min-w-full items-center justify-center p-4">
                   <ReactCrop
                     crop={backgroundCrop}
@@ -1991,8 +2043,12 @@ const WhiteboardCanvas = forwardRef<WhiteboardCanvasHandle, ExcalidrawWhiteboard
                         setBackgroundCrop(nextCrop)
                         setBackgroundCompletedCrop(convertToPixelCrop(nextCrop, width, height))
                       }}
-                      className="max-h-full max-w-full object-contain"
-                      style={{ transform: `scale(${backgroundZoom})`, transformOrigin: 'center' }}
+                      onPointerDown={onImagePointerDown}
+                      onPointerMove={onImagePointerMove}
+                      onPointerUp={onImagePointerUp}
+                      onPointerCancel={onImagePointerUp}
+                      className="max-h-full max-w-full object-contain cursor-grab"
+                      style={{ transform: `scale(${backgroundZoom})`, transformOrigin: 'center', touchAction: 'none' }}
                     />
                   </ReactCrop>
                 </div>
@@ -2047,6 +2103,7 @@ const WhiteboardCanvas = forwardRef<WhiteboardCanvasHandle, ExcalidrawWhiteboard
                   />
                   <span>{backgroundZoom.toFixed(2)}x</span>
                 </div>
+                <p className="mt-2 w-full text-xs text-slate-400">Tip: Click or touch and drag the image to pan the crop area when zoomed (or scroll inside the viewport).</p>
               </div>
               {backgroundCropError && (
                 <div className="mt-3 rounded-lg bg-red-50 px-3 py-2 text-xs text-red-700">
