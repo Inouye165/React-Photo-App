@@ -926,6 +926,7 @@ const WhiteboardCanvas = forwardRef<WhiteboardCanvasHandle, ExcalidrawWhiteboard
   const [backgroundCrop, setBackgroundCrop] = useState<Crop>({ unit: '%', width: 90, height: 90, x: 5, y: 5 })
   const [backgroundCompletedCrop, setBackgroundCompletedCrop] = useState<PixelCrop | null>(null)
   const [backgroundImageSize, setBackgroundImageSize] = useState<{ width: number; height: number } | null>(null)
+  const [backgroundImageDisplaySize, setBackgroundImageDisplaySize] = useState<{ width: number; height: number } | null>(null)
   const [backgroundZoom, setBackgroundZoom] = useState(1)
   const [backgroundAspect, setBackgroundAspect] = useState<'landscape' | 'portrait' | 'free'>('landscape')
   const [backgroundSaving, setBackgroundSaving] = useState(false)
@@ -1177,6 +1178,7 @@ const WhiteboardCanvas = forwardRef<WhiteboardCanvasHandle, ExcalidrawWhiteboard
     setBackgroundCrop({ unit: '%', width: 90, height: 90, x: 5, y: 5 })
     setBackgroundCompletedCrop(null)
     setBackgroundImageSize(null)
+    setBackgroundImageDisplaySize(null)
     setBackgroundZoom(1)
     setBackgroundAspect('landscape')
     const url = URL.createObjectURL(file)
@@ -1411,11 +1413,17 @@ const WhiteboardCanvas = forwardRef<WhiteboardCanvasHandle, ExcalidrawWhiteboard
 
     try {
       const zoom = Math.max(0.1, backgroundZoom)
+      const scaleX = backgroundImageSize && backgroundImageDisplaySize
+        ? backgroundImageSize.width / Math.max(1, backgroundImageDisplaySize.width * zoom)
+        : 1 / zoom
+      const scaleY = backgroundImageSize && backgroundImageDisplaySize
+        ? backgroundImageSize.height / Math.max(1, backgroundImageDisplaySize.height * zoom)
+        : 1 / zoom
       const adjustedCrop = {
-        x: Math.max(0, backgroundCompletedCrop.x / zoom),
-        y: Math.max(0, backgroundCompletedCrop.y / zoom),
-        width: Math.max(1, backgroundCompletedCrop.width / zoom),
-        height: Math.max(1, backgroundCompletedCrop.height / zoom),
+        x: Math.max(0, backgroundCompletedCrop.x * scaleX),
+        y: Math.max(0, backgroundCompletedCrop.y * scaleY),
+        width: Math.max(1, backgroundCompletedCrop.width * scaleX),
+        height: Math.max(1, backgroundCompletedCrop.height * scaleY),
       }
 
       if (backgroundImageSize) {
@@ -1455,7 +1463,7 @@ const WhiteboardCanvas = forwardRef<WhiteboardCanvasHandle, ExcalidrawWhiteboard
     } finally {
       setBackgroundSaving(false)
     }
-  }, [applyBackgroundFile, backgroundCropSource, backgroundCompletedCrop, backgroundImageSize, backgroundZoom])
+  }, [applyBackgroundFile, backgroundCropSource, backgroundCompletedCrop, backgroundImageDisplaySize, backgroundImageSize, backgroundZoom])
 
   const handleBackgroundCropCancel = useCallback(() => {
     setBackgroundCropSource(null)
@@ -2063,7 +2071,10 @@ const WhiteboardCanvas = forwardRef<WhiteboardCanvasHandle, ExcalidrawWhiteboard
                         const image = event.currentTarget
                         const width = image.naturalWidth || image.width
                         const height = image.naturalHeight || image.height
+                        const displayWidth = image.clientWidth || image.width
+                        const displayHeight = image.clientHeight || image.height
                         setBackgroundImageSize({ width, height })
+                        setBackgroundImageDisplaySize({ width: displayWidth, height: displayHeight })
                         const nextCrop = buildBackgroundCrop(width, height, backgroundAspectValue)
                         setBackgroundCrop(nextCrop)
                         setBackgroundCompletedCrop(convertToPixelCrop(nextCrop, width, height))
