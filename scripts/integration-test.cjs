@@ -1,11 +1,14 @@
 const { spawn } = require('child_process');
 const path = require('path');
+const jwt = require('jsonwebtoken');
 require('dotenv').config();
 require('dotenv').config({ path: path.join(__dirname, '../server/.env') });
 
 // --- MOCK SUPABASE AUTH SERVER ---
 const http = require('http');
 let mockServer;
+
+const E2E_TEST_USER_ID = '11111111-1111-4111-8111-111111111111';
 
 async function startMockSupabaseServer() {
   return new Promise((resolve, reject) => {
@@ -35,13 +38,15 @@ async function startMockSupabaseServer() {
   });
 }
 
-const SERVER_CMD = 'npx';
-const SERVER_ARGS = ['tsx', 'server/server.ts'];
-const HEALTH_URL = { hostname: 'localhost', port: 3001, path: '/health', method: 'GET' };
+const TSX_BIN = path.join(__dirname, '..', 'node_modules', '.bin', process.platform === 'win32' ? 'tsx.cmd' : 'tsx');
+const SERVER_CMD = TSX_BIN;
+const SERVER_ARGS = ['server/server.ts'];
+const INTEGRATION_PORT = Number(process.env.INTEGRATION_TEST_PORT) || (3100 + Math.floor(Math.random() * 1000));
+const HEALTH_URL = { hostname: 'localhost', port: INTEGRATION_PORT, path: '/health', method: 'GET' };
 const INTEGRATION_ORIGIN = 'http://localhost:5173';
 // CSRF token endpoint (csurf): GET /csrf -> { csrfToken } and sets csrfSecret cookie.
-const CSRF_URL = { hostname: 'localhost', port: 3001, path: '/csrf', method: 'GET', headers: { 'Origin': INTEGRATION_ORIGIN } };
-const PRIV_URL = { hostname: 'localhost', port: 3001, path: '/privilege', method: 'POST', headers: { 'Content-Type': 'application/json', 'Origin': INTEGRATION_ORIGIN } };
+const CSRF_URL = { hostname: 'localhost', port: INTEGRATION_PORT, path: '/csrf', method: 'GET', headers: { 'Origin': INTEGRATION_ORIGIN } };
+const PRIV_URL = { hostname: 'localhost', port: INTEGRATION_PORT, path: '/privilege', method: 'POST', headers: { 'Content-Type': 'application/json', 'Origin': INTEGRATION_ORIGIN } };
 
 function waitForHealth(timeout = 10000, interval = 200) {
   return new Promise((resolve, reject) => {
@@ -66,7 +71,7 @@ function makeRequest(url, payload = null) {
     const opts = Object.assign({}, url);
     if (payload) {
       const payloadStr = JSON.stringify(payload);
-      opts.headers = Object.assign({}, url.headers, { 'Content-Length': Buffer.byteLength(payloadStr) });
+      opts.headers = Object.assign({}, opts.headers || url.headers || {}, { 'Content-Length': Buffer.byteLength(payloadStr) });
     }
     
     const req = http.request(opts, (res) => {
@@ -89,6 +94,23 @@ function makeRequest(url, payload = null) {
     }
     req.end();
   });
+}
+
+function terminateServer(proc) {
+  if (!proc) return;
+  if (process.platform === 'win32') {
+    try {
+      spawn('taskkill', ['/T', '/F', '/PID', String(proc.pid)], { stdio: 'ignore' });
+      return;
+    } catch {
+      // Fall through to default kill
+    }
+  }
+  try {
+    proc.kill('SIGTERM');
+  } catch {
+    // ignore
+  }
 }
 
 async function getCsrfToken() {
@@ -119,16 +141,30 @@ async function getCsrfToken() {
 }
 
 async function registerAndLogin() {
-  // Always return the dummy token expected by the mock server.
-  // But DO fetch CSRF token/cookie for unsafe requests now that csurf is enabled.
+  // Generate an E2E test JWT so the auth middleware can validate locally.
+  // Still fetch CSRF token/cookie for unsafe requests now that csurf is enabled.
   const { csrfToken, csrfCookie } = await getCsrfToken();
-  return { authToken: 'integration-test-token', csrfToken, csrfCookie };
+  const jwtSecret = process.env.JWT_SECRET || 'test-jwt-secret-key-for-testing-only';
+  const authToken = jwt.sign(
+    {
+      id: E2E_TEST_USER_ID,
+      sub: E2E_TEST_USER_ID,
+      email: 'integration-test@example.com',
+      username: 'integration-test',
+      role: 'user',
+    },
+    jwtSecret,
+    { expiresIn: '5m' }
+  );
+
+  return { authToken, csrfToken, csrfCookie };
 }
 
 function postPrivilege({ authToken, csrfToken, csrfCookie }) {
   const payload = { relPath: 'test-file.jpg' };
   const opts = Object.assign({}, PRIV_URL);
   const headersBase = Object.assign({}, PRIV_URL.headers, { 'Content-Length': Buffer.byteLength(JSON.stringify(payload)) });
+  headersBase['x-integration-test-user-id'] = E2E_TEST_USER_ID;
   
   if (csrfToken) headersBase['X-CSRF-Token'] = csrfToken;
   
@@ -149,7 +185,7 @@ function postPrivilege({ authToken, csrfToken, csrfCookie }) {
   if (typeof authToken === 'string' && !authToken.startsWith('authToken=')) {
     opts.headers['Authorization'] = `Bearer ${authToken}`;
   }
-  
+
   return makeRequest(opts, payload);
 }
 
@@ -163,13 +199,35 @@ function postPrivilege({ authToken, csrfToken, csrfCookie }) {
   // Start the mock Supabase Auth server
   const { server: mockSrv, port: mockPort } = await startMockSupabaseServer();
   mockServer = mockSrv;
-  process.env.SUPABASE_URL = `http://localhost:${mockPort}`;
+  const mockSupabaseUrl = `http://localhost:${mockPort}`;
+  const integrationJwtSecret = process.env.SUPABASE_JWT_SECRET || 'test-supabase-jwt-secret';
+  const integrationAuthSecret = process.env.JWT_SECRET || 'test-jwt-secret-key-for-testing-only';
+  process.env.NODE_ENV = 'development';
+  process.env.PORT = String(INTEGRATION_PORT);
+  process.env.SUPABASE_URL = mockSupabaseUrl;
   process.env.SUPABASE_ANON_KEY = 'test-anon-key';
+  process.env.SUPABASE_JWT_SECRET = integrationJwtSecret;
+  process.env.JWT_SECRET = integrationAuthSecret;
+  process.env.E2E_ROUTES_ENABLED = 'true';
 
   console.log('Started mock Supabase Auth server on port', mockPort);
   console.log('Starting server with PostgreSQL...');
   
-  const srv = spawn(SERVER_CMD, SERVER_ARGS, { stdio: ['ignore', 'pipe', 'pipe'] });
+  const srv = spawn(SERVER_CMD, SERVER_ARGS, {
+    stdio: ['ignore', 'pipe', 'pipe'],
+    shell: process.platform === 'win32',
+    env: {
+      ...process.env,
+      NODE_ENV: 'development',
+      PORT: String(INTEGRATION_PORT),
+      SUPABASE_URL: mockSupabaseUrl,
+      SUPABASE_ANON_KEY: 'test-anon-key',
+      SUPABASE_JWT_SECRET: integrationJwtSecret,
+      JWT_SECRET: integrationAuthSecret,
+      E2E_ROUTES_ENABLED: 'true',
+      __SERVER_ENV_LOADED: '1',
+    },
+  });
 
   srv.stdout.on('data', (d) => process.stdout.write(`[server stdout] ${d}`));
   srv.stderr.on('data', (d) => process.stderr.write(`[server stderr] ${d}`));
@@ -191,18 +249,18 @@ function postPrivilege({ authToken, csrfToken, csrfCookie }) {
 
     if (res.status === 200 && res.body && res.body.success) {
       console.log('Integration test passed - authentication and privilege check working');
-      srv.kill();
+      terminateServer(srv);
       mockServer.close();
       process.exit(0);
     } else {
       console.error('Integration test failed: unexpected privilege response');
-      srv.kill();
+      terminateServer(srv);
       mockServer.close();
       process.exit(1);
     }
   } catch (err) {
     console.error('Integration test error:', err && err.message ? err.message : err);
-    try { srv.kill(); } catch (e) {}
+    try { terminateServer(srv); } catch (e) {}
     try { mockServer.close(); } catch (e) {}
     process.exit(1);
   }

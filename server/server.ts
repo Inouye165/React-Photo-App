@@ -21,8 +21,8 @@ const { app, socketManager, whiteboardYjsServer } = bootstrap.createApp({ logger
 
 const PORT = process.env.PORT || 3001;
 
-// Start server only if not in test mode
-if (process.env.NODE_ENV !== 'test') {
+// Start server only if not in test mode unless explicitly running integration tests
+if (process.env.NODE_ENV !== 'test' || process.env.INTEGRATION_TESTS === 'true') {
   const shutdownManager = bootstrap.createShutdownManager({ logger });
 
   shutdownManager.register('otel', () => tracing.shutdown());

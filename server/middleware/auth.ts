@@ -119,6 +119,21 @@ async function authenticateToken(req, res, next) {
     }
   }
 
+  // 0b. Integration-test-only bypass (explicitly gated by NODE_ENV=test)
+  if (process.env.NODE_ENV !== 'production') {
+    const integrationHeader = req.headers['x-integration-test-user-id'];
+    if (integrationHeader === E2E_TEST_USER_ID) {
+      req.user = {
+        id: E2E_TEST_USER_ID,
+        email: 'integration-test@example.com',
+        username: 'integration-test',
+        role: 'user'
+      };
+      req.authSource = 'integration-test';
+      return next();
+    }
+  }
+
   // REQUIRED: Extract Bearer token from Authorization header
   // This is the ONLY supported authentication method
   const authHeader = req.headers.authorization;

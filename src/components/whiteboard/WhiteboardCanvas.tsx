@@ -1,6 +1,8 @@
 import { forwardRef, useCallback, useEffect, useImperativeHandle, useMemo, useRef, useState } from 'react'
 import type { ChangeEvent, PointerEvent } from 'react'
 import { Excalidraw, MainMenu } from '@excalidraw/excalidraw'
+import ReactCrop, { centerCrop, convertToPixelCrop, makeAspectCrop, type Crop, type PixelCrop } from 'react-image-crop'
+import 'react-image-crop/dist/ReactCrop.css'
 import type {
   AppState,
   BinaryFileData,
@@ -17,6 +19,7 @@ import { fetchWhiteboardSnapshot, fetchWhiteboardWsToken } from '../../api/white
 import { normalizeHistoryEvents } from '../../realtime/whiteboardReplay'
 import { whiteboardDebugLog } from '../../realtime/whiteboardDebug'
 import { BOARD_ASPECT, computeContainedRect, type ContainedRect } from './whiteboardAspect'
+import LuminaCaptureSession from '../LuminaCaptureSession'
 import { createStrokePersistenceQueue, createStrokeSegmenter } from '../../realtime/whiteboardStrokeQueue'
 import { createWhiteboardYjsProvider } from '../../realtime/whiteboardYjsProvider'
 import type { WhiteboardYjsProvider } from '../../realtime/whiteboardYjsProvider'
@@ -26,6 +29,7 @@ import {
   getWhiteboardSnapshotCache,
   setWhiteboardSnapshotCache,
 } from '../../realtime/whiteboardSnapshotCache'
+import { createCroppedBlob } from '../../utils/avatarCropper'
 import { compressForUpload } from '../../utils/clientImageProcessing'
 
 const DEFAULT_COLOR = '#111827'
@@ -36,6 +40,7 @@ const MIN_MOVE_DISTANCE = 0.002
 const RATE_LIMIT_BACKOFF_MS = 2000
 const RATE_LIMIT_BACKOFF_INTERVAL_MS = 40
 const MAX_RATE_LIMIT_INTERVAL_MS = 80
+const MAX_BACKGROUND_CROP_DIMENSION = 3072
 
 type WhiteboardCanvasProps = {
   boardId: string
@@ -57,6 +62,19 @@ function clamp01(value: number): number {
   if (value < 0) return 0
   if (value > 1) return 1
   return value
+}
+
+function formatBytes(bytes: number): string {
+  if (!Number.isFinite(bytes) || bytes <= 0) return '0 B'
+  const units = ['B', 'KB', 'MB', 'GB']
+  let size = bytes
+  let unitIndex = 0
+  while (size >= 1024 && unitIndex < units.length - 1) {
+    size /= 1024
+    unitIndex += 1
+  }
+  const rounded = size >= 10 || unitIndex === 0 ? Math.round(size) : Math.round(size * 10) / 10
+  return `${rounded} ${units[unitIndex]}`
 }
 
 /**
@@ -914,6 +932,26 @@ const WhiteboardCanvas = forwardRef<WhiteboardCanvasHandle, ExcalidrawWhiteboard
   const excalidrawReadyRef = useRef(false)
   const idleCommitTimerRef = useRef<number | null>(null)
 
+  const [backgroundPickerOpen, setBackgroundPickerOpen] = useState(false)
+  const [backgroundCaptureOpen, setBackgroundCaptureOpen] = useState(false)
+  const [backgroundCropSource, setBackgroundCropSource] = useState<{ file: File; url: string } | null>(null)
+  const [backgroundCropError, setBackgroundCropError] = useState<string | null>(null)
+  const [backgroundCrop, setBackgroundCrop] = useState<Crop>({ unit: '%', width: 90, height: 90, x: 5, y: 5 })
+  const [backgroundCompletedCrop, setBackgroundCompletedCrop] = useState<PixelCrop | null>(null)
+  const [backgroundImageSize, setBackgroundImageSize] = useState<{ width: number; height: number } | null>(null)
+  const [backgroundImageDisplaySize, setBackgroundImageDisplaySize] = useState<{ width: number; height: number } | null>(null)
+  const [backgroundZoom, setBackgroundZoom] = useState(1)
+  const [backgroundAspect, setBackgroundAspect] = useState<'landscape' | 'portrait' | 'free'>('landscape')
+  const [backgroundSaving, setBackgroundSaving] = useState(false)
+
+  useEffect(() => {
+    return () => {
+      if (backgroundCropSource) {
+        URL.revokeObjectURL(backgroundCropSource.url)
+      }
+    }
+  }, [backgroundCropSource])
+
   useEffect(() => {
     setViewModeEnabled(mode === 'viewer')
   }, [mode])
@@ -1148,12 +1186,42 @@ const WhiteboardCanvas = forwardRef<WhiteboardCanvasHandle, ExcalidrawWhiteboard
     })
   }, [])
 
-  const handleImageUpload = useCallback(
-    async (event: ChangeEvent<HTMLInputElement>) => {
+  const startBackgroundCrop = useCallback(async (file: File) => {
+    setBackgroundCropError(null)
+    setBackgroundCrop({ unit: '%', width: 90, height: 90, x: 5, y: 5 })
+    setBackgroundCompletedCrop(null)
+    setBackgroundImageSize(null)
+    setBackgroundImageDisplaySize(null)
+    setBackgroundZoom(1)
+    setBackgroundAspect('landscape')
+
+    try {
+      // Compress to WebP first to ensure cropping matches displayed image
+      const compression = await compressForUpload(file)
+      const webpFile = new File([compression.blob], toWebpFileName(file.name), {
+        type: 'image/webp',
+        lastModified: file.lastModified,
+      })
+      const url = URL.createObjectURL(webpFile)
+      setBackgroundCropSource({ file: webpFile, url })
+    } catch (error) {
+      setBackgroundCropError(error instanceof Error ? error.message : 'Failed to prepare image for cropping')
+    }
+  }, [])
+
+  const handleBackgroundFilePick = useCallback(
+    (event: ChangeEvent<HTMLInputElement>) => {
       const file = event.target.files?.[0]
       event.target.value = ''
       if (!file) return
+      setBackgroundPickerOpen(false)
+      startBackgroundCrop(file)
+    },
+    [startBackgroundCrop],
+  )
 
+  const applyBackgroundFile = useCallback(
+    async (file: File) => {
       const api = excalidrawApiRef.current
       if (!api) return
 
@@ -1161,14 +1229,29 @@ const WhiteboardCanvas = forwardRef<WhiteboardCanvasHandle, ExcalidrawWhiteboard
         const originalName = file.name?.trim() || 'Background image'
         const originalType = file.type || 'image/*'
         const originalSizeBytes = file.size
-        const compression = await compressForUpload(file)
-        const convertedName = toWebpFileName(originalName)
-        const convertedType = 'image/webp'
-        const convertedSizeBytes = compression.compressedSize
-        const convertedFile = new File([compression.blob], convertedName, {
-          type: convertedType,
-          lastModified: file.lastModified,
-        })
+
+        let convertedFile: File
+        let convertedType: string
+        let convertedSizeBytes: number
+        let convertedName: string
+        let compression: { blob: Blob; compressedSize: number } | null = null
+
+        // Skip compression if already WebP (e.g., from cropping)
+        if (file.type === 'image/webp') {
+          convertedFile = file
+          convertedType = 'image/webp'
+          convertedSizeBytes = file.size
+          convertedName = originalName
+        } else {
+          compression = await compressForUpload(file)
+          convertedName = toWebpFileName(originalName)
+          convertedType = 'image/webp'
+          convertedSizeBytes = compression.compressedSize
+          convertedFile = new File([compression.blob], convertedName, {
+            type: convertedType,
+            lastModified: file.lastModified,
+          })
+        }
 
         const dataUrl = await readFileAsDataUrl(convertedFile)
         const dimensions = await loadImageDimensions(dataUrl)
@@ -1199,7 +1282,10 @@ const WhiteboardCanvas = forwardRef<WhiteboardCanvasHandle, ExcalidrawWhiteboard
           lastRetrieved: now,
         }
 
-        api.addFiles([fileData])
+        await Promise.resolve(api.addFiles([fileData]))
+        if (typeof window !== 'undefined') {
+          await new Promise<void>((resolve) => requestAnimationFrame(() => resolve()))
+        }
 
         const imageElement = {
           id: elementId,
@@ -1231,32 +1317,57 @@ const WhiteboardCanvas = forwardRef<WhiteboardCanvasHandle, ExcalidrawWhiteboard
           fileId,
           scale: [1, 1],
           crop: null,
-          status: 'pending',
+          status: 'saved',
         } as ExcalidrawElement
 
         api.updateScene({
           elements: [imageElement, ...elementsToKeep],
+          appState: api.getAppState(),
         })
         setHasBackground(true)
         const nextBackgroundInfo: BackgroundInfo = {
           name: originalName,
           sizeBytes: convertedSizeBytes,
           fileId,
-          originalSizeBytes,
-          originalType,
-          convertedSizeBytes,
-          convertedType,
-          convertedName,
+          ...(file.type === 'image/webp' ? {
+            // For already WebP files (e.g., cropped results), treat as both original and converted
+            originalSizeBytes: originalSizeBytes,
+            originalType: 'image/webp',
+            convertedSizeBytes: originalSizeBytes,
+            convertedType: 'image/webp',
+            convertedName: originalName,
+          } : {
+            // For newly compressed files
+            originalSizeBytes,
+            originalType,
+            convertedSizeBytes,
+            convertedType,
+            convertedName,
+          }),
         }
         setBackgroundInfo(nextBackgroundInfo)
 
         const doc = docRef.current
         const map = mapRef.current
         if (doc && map) {
+          const currentFiles = resolveFiles(map.get('files'))
+          const nextFiles = {
+            ...currentFiles,
+            [fileId]: fileData,
+          } as BinaryFiles
           doc.transact(() => {
+            map.set('elements', [imageElement, ...elementsToKeep])
+            map.set('files', nextFiles)
             map.set('backgroundInfo', nextBackgroundInfo)
             map.set('updatedAt', Date.now())
           }, LOCAL_ORIGIN)
+          if (typeof window !== 'undefined') {
+            requestAnimationFrame(() => {
+              applySceneFromYjs()
+            })
+          } else {
+            applySceneFromYjs()
+          }
         }
         whiteboardDebugLog('whiteboard:background:upload:success', {
           boardId,
@@ -1266,14 +1377,172 @@ const WhiteboardCanvas = forwardRef<WhiteboardCanvasHandle, ExcalidrawWhiteboard
           elementCount: elementsToKeep.length + 1,
         })
       } catch (error) {
+        const message = error instanceof Error ? error.message : 'Failed to set background image'
         whiteboardDebugLog('whiteboard:background:upload:error', {
           boardId,
-          message: error instanceof Error ? error.message : String(error),
+          message,
         })
+        throw error instanceof Error ? error : new Error(message)
       }
     },
-    [backgroundFitMode, boardId, computeBackgroundRect, generateId, loadImageDimensions, readFileAsDataUrl],
+    [applySceneFromYjs, backgroundFitMode, boardId, computeBackgroundRect, generateId, loadImageDimensions, readFileAsDataUrl],
   )
+
+  const backgroundAspectValue = useMemo(() => {
+    if (backgroundAspect === 'free') return undefined
+    return backgroundAspect === 'landscape' ? 16 / 9 : 9 / 16
+  }, [backgroundAspect])
+
+  const buildBackgroundCrop = useCallback(
+    (imageWidth: number, imageHeight: number, aspect?: number) => {
+      if (!imageWidth || !imageHeight) {
+        return { unit: '%', width: 90, height: 90, x: 5, y: 5 } as Crop
+      }
+      if (aspect) {
+        return centerCrop(
+          makeAspectCrop({ unit: '%', width: 90 }, aspect, imageWidth, imageHeight),
+          imageWidth,
+          imageHeight,
+        )
+      }
+      return centerCrop({ unit: '%', width: 90, height: 90 }, imageWidth, imageHeight)
+    },
+    [],
+  )
+
+  useEffect(() => {
+    if (!backgroundImageSize) return
+    const nextCrop = buildBackgroundCrop(backgroundImageSize.width, backgroundImageSize.height, backgroundAspectValue)
+    setBackgroundCrop(nextCrop)
+    setBackgroundCompletedCrop(convertToPixelCrop(nextCrop, backgroundImageSize.width, backgroundImageSize.height))
+  }, [backgroundAspectValue, backgroundImageSize, buildBackgroundCrop])
+
+  // Refs and state for pointer-drag panning of the crop viewport.
+  const cropViewportRef = useRef<HTMLDivElement | null>(null)
+  const panStateRef = useRef({
+    active: false,
+    startX: 0,
+    startY: 0,
+    scrollLeft: 0,
+    scrollTop: 0,
+    pointerId: undefined as number | undefined,
+  })
+
+  const onImagePointerDown = useCallback((event: React.PointerEvent<HTMLImageElement>) => {
+    if (event.button !== 0) return
+    const viewport = cropViewportRef.current
+    if (!viewport) return
+    panStateRef.current = {
+      active: true,
+      startX: event.clientX,
+      startY: event.clientY,
+      scrollLeft: viewport.scrollLeft,
+      scrollTop: viewport.scrollTop,
+      pointerId: event.pointerId,
+    }
+    try {
+      (event.target as HTMLImageElement).setPointerCapture(event.pointerId)
+    } catch {
+      // ignore
+    }
+  }, [])
+
+  const onImagePointerMove = useCallback((event: React.PointerEvent<HTMLImageElement>) => {
+    const state = panStateRef.current
+    if (!state.active || state.pointerId !== event.pointerId) return
+    const viewport = cropViewportRef.current
+    if (!viewport) return
+    const dx = event.clientX - state.startX
+    const dy = event.clientY - state.startY
+    viewport.scrollLeft = Math.max(0, state.scrollLeft - dx)
+    viewport.scrollTop = Math.max(0, state.scrollTop - dy)
+  }, [])
+
+  const onImagePointerUp = useCallback((event: React.PointerEvent<HTMLImageElement>) => {
+    const state = panStateRef.current
+    if (!state.active) return
+    panStateRef.current.active = false
+    try {
+      (event.target as HTMLImageElement).releasePointerCapture(event.pointerId)
+    } catch {
+      // ignore
+    }
+  }, [])
+
+  const handleBackgroundCropSave = useCallback(async () => {
+    if (!backgroundCropSource || !backgroundCompletedCrop || backgroundCompletedCrop.width <= 0 || backgroundCompletedCrop.height <= 0) {
+      setBackgroundCropError('Please select a crop area first')
+      return
+    }
+
+    setBackgroundSaving(true)
+    setBackgroundCropError(null)
+
+    try {
+      const zoom = Math.max(0.1, backgroundZoom)
+      const scaleX = backgroundImageSize && backgroundImageDisplaySize
+        ? backgroundImageSize.width / Math.max(1, backgroundImageDisplaySize.width * zoom)
+        : 1 / zoom
+      const scaleY = backgroundImageSize && backgroundImageDisplaySize
+        ? backgroundImageSize.height / Math.max(1, backgroundImageDisplaySize.height * zoom)
+        : 1 / zoom
+      const adjustedCrop = {
+        x: Math.max(0, backgroundCompletedCrop.x * scaleX),
+        y: Math.max(0, backgroundCompletedCrop.y * scaleY),
+        width: Math.max(1, backgroundCompletedCrop.width * scaleX),
+        height: Math.max(1, backgroundCompletedCrop.height * scaleY),
+      }
+
+      if (backgroundImageSize) {
+        adjustedCrop.width = Math.min(adjustedCrop.width, backgroundImageSize.width - adjustedCrop.x)
+        adjustedCrop.height = Math.min(adjustedCrop.height, backgroundImageSize.height - adjustedCrop.y)
+        adjustedCrop.width = Math.max(1, adjustedCrop.width)
+        adjustedCrop.height = Math.max(1, adjustedCrop.height)
+      }
+
+      let outputWidth = Math.max(1, Math.round(adjustedCrop.width))
+      let outputHeight = Math.max(1, Math.round(adjustedCrop.height))
+
+      if (Math.max(outputWidth, outputHeight) > MAX_BACKGROUND_CROP_DIMENSION) {
+        const scale = MAX_BACKGROUND_CROP_DIMENSION / Math.max(outputWidth, outputHeight)
+        outputWidth = Math.max(1, Math.round(outputWidth * scale))
+        outputHeight = Math.max(1, Math.round(outputHeight * scale))
+      }
+
+      // Since we're already working with WebP, crop directly without recompression
+      const blob = await createCroppedBlob(
+        backgroundCropSource.url,
+        {
+          x: adjustedCrop.x,
+          y: adjustedCrop.y,
+          width: adjustedCrop.width,
+          height: adjustedCrop.height,
+        },
+        { width: outputWidth, height: outputHeight },
+        0.92, // Same quality as compressForUpload
+        'image/webp' // Output as WebP to match display format
+      )
+
+      const croppedFile = new File([blob], `background-${Date.now()}.webp`, {
+        type: 'image/webp',
+        lastModified: Date.now(),
+      })
+
+      // Apply directly since we're already in WebP format
+      await applyBackgroundFile(croppedFile)
+      setBackgroundCropSource(null)
+    } catch (error) {
+      setBackgroundCropError(error instanceof Error ? error.message : 'Failed to crop image')
+    } finally {
+      setBackgroundSaving(false)
+    }
+  }, [applyBackgroundFile, backgroundCropSource, backgroundCompletedCrop, backgroundImageDisplaySize, backgroundImageSize, backgroundZoom])
+
+  const handleBackgroundCropCancel = useCallback(() => {
+    setBackgroundCropSource(null)
+    setBackgroundCropError(null)
+    setBackgroundSaving(false)
+  }, [])
 
   const handleBackgroundClear = useCallback(() => {
     const api = excalidrawApiRef.current
@@ -1322,11 +1591,79 @@ const WhiteboardCanvas = forwardRef<WhiteboardCanvasHandle, ExcalidrawWhiteboard
     }, LOCAL_ORIGIN)
   }, [])
 
+  const renderTopRightUI = useCallback(
+    () => (
+      <div className="flex items-center gap-2">
+        <div className="flex items-center gap-1 rounded-full border border-slate-200 bg-white/95 px-2 py-1 text-[11px] font-medium text-slate-700 shadow-sm backdrop-blur">
+          <button
+            type="button"
+            className="rounded-full px-2 py-1 transition hover:bg-slate-100"
+            onClick={() => setBackgroundPickerOpen(true)}
+            aria-label="Set background image"
+          >
+            Background
+          </button>
+          <button
+            type="button"
+            className="rounded-full px-2 py-1 transition hover:bg-slate-100"
+            onClick={() => setBackgroundFitMode((prev) => (prev === 'width' ? 'contain' : 'width'))}
+            aria-label={backgroundFitMode === 'width' ? 'Show full image' : 'Fit to width'}
+          >
+            {backgroundFitMode === 'width' ? 'Show full' : 'Fit width'}
+          </button>
+          <button
+            type="button"
+            className="rounded-full px-2 py-1 transition hover:bg-slate-100 disabled:cursor-not-allowed disabled:text-slate-300"
+            onClick={handleBackgroundClear}
+            aria-label="Clear background image"
+            disabled={!hasBackground}
+          >
+            Clear
+          </button>
+          <button
+            type="button"
+            className="rounded-full px-2 py-1 transition hover:bg-slate-100"
+            onClick={() => setViewModeEnabled((prev) => !prev)}
+            aria-pressed={viewModeEnabled}
+            aria-label={viewModeEnabled ? 'Switch to draw mode' : 'Switch to view mode'}
+          >
+            {viewModeEnabled ? 'Draw' : 'View'}
+          </button>
+        </div>
+        {backgroundInfo && (
+          <div className="relative group">
+            <button
+              type="button"
+              className="flex h-7 w-7 items-center justify-center rounded-full border border-slate-200 bg-white/95 text-[11px] font-semibold text-slate-700 shadow-sm backdrop-blur"
+              aria-label="Background info"
+            >
+              i
+            </button>
+            <div className="pointer-events-none absolute right-0 top-full mt-2 w-[240px] rounded-lg bg-white/95 px-2 py-1 text-[11px] text-slate-700 shadow-sm backdrop-blur opacity-0 transition-opacity group-hover:opacity-100">
+              <div className="truncate font-semibold" title={backgroundInfo.name}>
+                {backgroundInfo.name}
+              </div>
+              {backgroundInfo.originalSizeBytes !== undefined && backgroundInfo.convertedSizeBytes !== undefined ? (
+                <div className="text-[10px] text-slate-500">
+                  {formatBytes(backgroundInfo.originalSizeBytes)} {backgroundInfo.originalType || 'image/*'} {'->'}{' '}
+                  {formatBytes(backgroundInfo.convertedSizeBytes)} {backgroundInfo.convertedType || 'image/webp'}
+                </div>
+              ) : (
+                <div className="text-[10px] text-slate-500">{formatBytes(backgroundInfo.sizeBytes)}</div>
+              )}
+            </div>
+          </div>
+        )}
+      </div>
+    ),
+    [backgroundFitMode, backgroundInfo, handleBackgroundClear, hasBackground, viewModeEnabled],
+  )
+
   useImperativeHandle(
     ref,
     () => ({
       openBackgroundPicker: () => {
-        fileInputRef.current?.click()
+        setBackgroundPickerOpen(true)
       },
       clearBackground: () => {
         handleBackgroundClear()
@@ -1799,59 +2136,246 @@ const WhiteboardCanvas = forwardRef<WhiteboardCanvasHandle, ExcalidrawWhiteboard
   )
 
   return (
-    <section className={`whiteboard-shell flex h-full w-full flex-col ${className || ''}`} aria-label="Collaborative whiteboard">
-      <input
-        ref={fileInputRef}
-        type="file"
-        accept="image/*"
-        onChange={handleImageUpload}
-        className="hidden"
-        aria-hidden="true"
-        tabIndex={-1}
-      />
-      <div ref={boardFrameRef} className="relative min-h-0 flex-1 bg-transparent p-1">
-        <div
-          className="relative h-full w-full overflow-visible rounded-lg bg-white"
-        >
-          {!isSynced ? (
-            <div className="flex h-full w-full items-center justify-center rounded-xl bg-white">
-            <div className="flex items-center gap-3 text-sm text-slate-600" role="status" aria-live="polite">
-              <span className="inline-flex h-4 w-4 animate-spin rounded-full border-2 border-slate-300 border-t-slate-600" />
-              Connecting to Room…
+    <>
+      {backgroundPickerOpen && (
+        <div className="fixed inset-0 z-[80] flex items-center justify-center bg-slate-950/60 px-4" role="dialog" aria-modal="true">
+          <div className="w-full max-w-sm rounded-2xl bg-white p-5 shadow-2xl">
+            <div className="flex items-center justify-between">
+              <h3 className="text-sm font-semibold text-slate-900">Set background image</h3>
+              <button
+                type="button"
+                onClick={() => setBackgroundPickerOpen(false)}
+                className="rounded-full border border-slate-200 px-2 py-1 text-xs text-slate-600"
+              >
+                Close
+              </button>
             </div>
+            <p className="mt-2 text-xs text-slate-500">Choose a source to start cropping.</p>
+            <div className="mt-4 flex flex-col gap-2">
+              <button
+                type="button"
+                onClick={() => {
+                  setBackgroundPickerOpen(false)
+                  setBackgroundCaptureOpen(true)
+                }}
+                className="w-full rounded-lg bg-slate-900 px-4 py-2 text-sm font-semibold text-white"
+              >
+                Camera
+              </button>
+              <button
+                type="button"
+                onClick={() => {
+                  setBackgroundPickerOpen(false)
+                  fileInputRef.current?.click()
+                }}
+                className="w-full rounded-lg border border-slate-200 px-4 py-2 text-sm font-semibold text-slate-700"
+              >
+                Library
+              </button>
             </div>
-          ) : (
-            <Excalidraw
-              excalidrawAPI={(api) => {
-                excalidrawApiRef.current = api
-                registerPointerGuard(api)
-                if (!excalidrawReadyRef.current) {
-                  excalidrawReadyRef.current = true
-                  whiteboardDebugLog('whiteboard:excalidraw:ready', {
-                    boardId,
-                    viewMode: viewModeEnabledRef.current,
-                  })
-                }
-              }}
-              initialData={initialData ?? undefined}
-              viewModeEnabled={viewModeEnabled}
-              zenModeEnabled={false}
-              onChange={handleChange}
-            >
-              <MainMenu>
-                <MainMenu.DefaultItems.LoadScene />
-                <MainMenu.DefaultItems.SaveToActiveFile />
-                <MainMenu.DefaultItems.Export />
-                <MainMenu.DefaultItems.ClearCanvas />
-                <MainMenu.Separator />
-                <MainMenu.DefaultItems.ToggleTheme />
-                <MainMenu.DefaultItems.ChangeCanvasBackground />
-              </MainMenu>
-            </Excalidraw>
-          )}
+          </div>
         </div>
-      </div>
-    </section>
+      )}
+
+      {backgroundCropSource && (
+        <div className="fixed inset-0 z-[90] flex items-stretch justify-center overflow-auto bg-slate-950/70 px-0 py-0 sm:items-center sm:px-6 sm:py-6" role="dialog" aria-modal="true">
+          <div className="flex h-full w-full flex-col rounded-none bg-white shadow-2xl sm:h-[90vh] sm:max-w-5xl sm:rounded-2xl">
+            <div className="flex items-center justify-between border-b border-slate-200 px-5 py-4">
+              <div>
+                <h3 className="text-sm font-semibold text-slate-900">Adjust background</h3>
+                <p className="text-xs text-slate-500">Crop and set the orientation.</p>
+              </div>
+              <button
+                type="button"
+                onClick={handleBackgroundCropCancel}
+                className="rounded-full border border-slate-200 px-3 py-1 text-xs text-slate-600"
+              >
+                Cancel
+              </button>
+            </div>
+            <div className="flex min-h-0 flex-1 flex-col px-5 py-4">
+              <div ref={cropViewportRef} className="relative min-h-0 flex-1 overflow-auto rounded-xl bg-slate-900">
+                <div className="flex min-h-full min-w-full items-center justify-center p-4">
+                  <ReactCrop
+                    crop={backgroundCrop}
+                    onChange={(nextCrop) => setBackgroundCrop(nextCrop)}
+                    onComplete={(crop) => setBackgroundCompletedCrop(crop)}
+                    aspect={backgroundAspectValue}
+                    keepSelection
+                    minWidth={16}
+                    minHeight={16}
+                  >
+                    <img
+                      src={backgroundCropSource.url}
+                      alt="Background crop preview"
+                      onLoad={(event) => {
+                        const image = event.currentTarget
+                        const width = image.naturalWidth || image.width
+                        const height = image.naturalHeight || image.height
+                        const displayWidth = image.clientWidth || image.width
+                        const displayHeight = image.clientHeight || image.height
+                        setBackgroundImageSize({ width, height })
+                        setBackgroundImageDisplaySize({ width: displayWidth, height: displayHeight })
+                        const nextCrop = buildBackgroundCrop(width, height, backgroundAspectValue)
+                        setBackgroundCrop(nextCrop)
+                        setBackgroundCompletedCrop(convertToPixelCrop(nextCrop, width, height))
+                      }}
+                      onPointerDown={onImagePointerDown}
+                      onPointerMove={onImagePointerMove}
+                      onPointerUp={onImagePointerUp}
+                      onPointerCancel={onImagePointerUp}
+                      className="max-h-full max-w-full object-contain cursor-grab"
+                      style={{ transform: `scale(${backgroundZoom})`, transformOrigin: 'center', touchAction: 'none' }}
+                    />
+                  </ReactCrop>
+                </div>
+              </div>
+              <div className="mt-4 flex flex-wrap items-center justify-between gap-3">
+                <div className="flex flex-wrap items-center gap-2">
+                  <button
+                    type="button"
+                    onClick={() => setBackgroundAspect('landscape')}
+                    className={`rounded-full px-3 py-1 text-xs font-semibold ${
+                      backgroundAspect === 'landscape'
+                        ? 'bg-slate-900 text-white'
+                        : 'border border-slate-200 text-slate-600'
+                    }`}
+                  >
+                    Landscape 16:9
+                  </button>
+                  <button
+                    type="button"
+                    onClick={() => setBackgroundAspect('portrait')}
+                    className={`rounded-full px-3 py-1 text-xs font-semibold ${
+                      backgroundAspect === 'portrait'
+                        ? 'bg-slate-900 text-white'
+                        : 'border border-slate-200 text-slate-600'
+                    }`}
+                  >
+                    Portrait 9:16
+                  </button>
+                  <button
+                    type="button"
+                    onClick={() => setBackgroundAspect('free')}
+                    className={`rounded-full px-3 py-1 text-xs font-semibold ${
+                      backgroundAspect === 'free'
+                        ? 'bg-slate-900 text-white'
+                        : 'border border-slate-200 text-slate-600'
+                    }`}
+                  >
+                    Free
+                  </button>
+                </div>
+                <div className="flex items-center gap-3 text-xs text-slate-500">
+                  <label htmlFor="background-zoom" className="whitespace-nowrap">Zoom</label>
+                  <input
+                    id="background-zoom"
+                    type="range"
+                    min={0.5}
+                    max={2}
+                    step={0.05}
+                    value={backgroundZoom}
+                    onChange={(event) => setBackgroundZoom(Number(event.target.value))}
+                    className="w-32"
+                  />
+                  <span>{backgroundZoom.toFixed(2)}x</span>
+                </div>
+                <p className="mt-2 w-full text-xs text-slate-400">Tip: Click or touch and drag the image to pan the crop area when zoomed (or scroll inside the viewport).</p>
+              </div>
+              {backgroundCropError && (
+                <div className="mt-3 rounded-lg bg-red-50 px-3 py-2 text-xs text-red-700">
+                  {backgroundCropError}
+                </div>
+              )}
+            </div>
+            <div className="flex items-center justify-end gap-3 border-t border-slate-200 px-5 py-4">
+              <button
+                type="button"
+                onClick={handleBackgroundCropCancel}
+                className="rounded-lg border border-slate-200 px-4 py-2 text-xs font-semibold text-slate-600"
+              >
+                Cancel
+              </button>
+              <button
+                type="button"
+                onClick={handleBackgroundCropSave}
+                disabled={backgroundSaving}
+                className={`rounded-lg px-4 py-2 text-xs font-semibold text-white ${
+                  backgroundSaving ? 'bg-slate-300' : 'bg-slate-900'
+                }`}
+              >
+                {backgroundSaving ? 'Saving...' : 'Save background'}
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      <LuminaCaptureSession
+        open={backgroundCaptureOpen}
+        collectibleId={null}
+        onClose={() => setBackgroundCaptureOpen(false)}
+        onCaptureSingle={(file) => {
+          setBackgroundCaptureOpen(false)
+          startBackgroundCrop(file)
+        }}
+      />
+
+      <section className={`whiteboard-shell flex h-full w-full flex-col ${className || ''}`} aria-label="Collaborative whiteboard">
+        <input
+          ref={fileInputRef}
+          type="file"
+          accept="image/*,.heic,.heif,.png,.jpg,.jpeg,.webp"
+          onChange={handleBackgroundFilePick}
+          className="hidden"
+          aria-hidden="true"
+          tabIndex={-1}
+        />
+        <div ref={boardFrameRef} className="relative min-h-0 flex-1 bg-transparent p-1">
+          <div
+            className="relative h-full w-full overflow-visible rounded-lg bg-white"
+          >
+            {!isSynced ? (
+              <div className="flex h-full w-full items-center justify-center rounded-xl bg-white">
+                <div className="flex items-center gap-3 text-sm text-slate-600" role="status" aria-live="polite">
+                  <span className="inline-flex h-4 w-4 animate-spin rounded-full border-2 border-slate-300 border-t-slate-600" />
+                  Connecting to Room…
+                </div>
+              </div>
+            ) : (
+              <Excalidraw
+                excalidrawAPI={(api) => {
+                  excalidrawApiRef.current = api
+                  registerPointerGuard(api)
+                  if (!excalidrawReadyRef.current) {
+                    excalidrawReadyRef.current = true
+                    whiteboardDebugLog('whiteboard:excalidraw:ready', {
+                      boardId,
+                      viewMode: viewModeEnabledRef.current,
+                    })
+                  }
+                }}
+                initialData={initialData ?? undefined}
+                viewModeEnabled={viewModeEnabled}
+                zenModeEnabled={false}
+                onChange={handleChange}
+                renderTopRightUI={renderTopRightUI}
+              >
+                <MainMenu>
+                  <MainMenu.DefaultItems.LoadScene />
+                  <MainMenu.DefaultItems.SaveToActiveFile />
+                  <MainMenu.DefaultItems.Export />
+                  <MainMenu.DefaultItems.ClearCanvas />
+                  <MainMenu.Separator />
+                  <MainMenu.DefaultItems.ToggleTheme />
+                  <MainMenu.DefaultItems.ChangeCanvasBackground />
+                </MainMenu>
+              </Excalidraw>
+            )}
+          </div>
+        </div>
+      </section>
+    </>
   )
   },
 )
