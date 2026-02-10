@@ -1244,6 +1244,9 @@ const WhiteboardCanvas = forwardRef<WhiteboardCanvasHandle, ExcalidrawWhiteboard
         }
 
         await Promise.resolve(api.addFiles([fileData]))
+        if (typeof window !== 'undefined') {
+          await new Promise<void>((resolve) => requestAnimationFrame(() => resolve()))
+        }
 
         const imageElement = {
           id: elementId,
@@ -1309,6 +1312,13 @@ const WhiteboardCanvas = forwardRef<WhiteboardCanvasHandle, ExcalidrawWhiteboard
             map.set('backgroundInfo', nextBackgroundInfo)
             map.set('updatedAt', Date.now())
           }, LOCAL_ORIGIN)
+          if (typeof window !== 'undefined') {
+            requestAnimationFrame(() => {
+              applySceneFromYjs()
+            })
+          } else {
+            applySceneFromYjs()
+          }
         }
         whiteboardDebugLog('whiteboard:background:upload:success', {
           boardId,
@@ -1326,7 +1336,7 @@ const WhiteboardCanvas = forwardRef<WhiteboardCanvasHandle, ExcalidrawWhiteboard
         throw error instanceof Error ? error : new Error(message)
       }
     },
-    [backgroundFitMode, boardId, computeBackgroundRect, generateId, loadImageDimensions, readFileAsDataUrl],
+    [applySceneFromYjs, backgroundFitMode, boardId, computeBackgroundRect, generateId, loadImageDimensions, readFileAsDataUrl],
   )
 
   const backgroundAspectValue = useMemo(() => {
