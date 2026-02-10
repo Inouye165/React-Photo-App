@@ -109,6 +109,7 @@ export default function Toolbar({
           Photo App (Backend View)
         </span>
         <button onClick={handleUploadClick}>Select Folder for Upload</button>
+        <button onClick={() => navigate('/games')}>Games</button>
         <button onClick={() => handleViewChange('working')}>View Working</button>
         <button onClick={() => handleViewChange('inprogress')}>View Inprogress</button>
         <button onClick={() => handleViewChange('finished')}>View Finished</button>

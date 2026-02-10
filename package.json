@@ -71,6 +71,8 @@
     "y-websocket": "^1.5.4",
     "yjs": "^13.6.27",
     "zustand": "^5.0.8"
+    ,"chess.js": "^1.0.0",
+    "react-chessboard": "^2.0.0"
   },
   "engines": {
     "node": ">=20.11 <23",
