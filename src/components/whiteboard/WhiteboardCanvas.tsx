@@ -1,6 +1,8 @@
 import { forwardRef, useCallback, useEffect, useImperativeHandle, useMemo, useRef, useState } from 'react'
 import type { ChangeEvent, PointerEvent } from 'react'
 import { Excalidraw, MainMenu } from '@excalidraw/excalidraw'
+import ReactCrop, { centerCrop, convertToPixelCrop, makeAspectCrop, type Crop, type PixelCrop } from 'react-image-crop'
+import 'react-image-crop/dist/ReactCrop.css'
 import type {
   AppState,
   BinaryFileData,
@@ -17,6 +19,7 @@ import { fetchWhiteboardSnapshot, fetchWhiteboardWsToken } from '../../api/white
 import { normalizeHistoryEvents } from '../../realtime/whiteboardReplay'
 import { whiteboardDebugLog } from '../../realtime/whiteboardDebug'
 import { BOARD_ASPECT, computeContainedRect, type ContainedRect } from './whiteboardAspect'
+import LuminaCaptureSession from '../LuminaCaptureSession'
 import { createStrokePersistenceQueue, createStrokeSegmenter } from '../../realtime/whiteboardStrokeQueue'
 import { createWhiteboardYjsProvider } from '../../realtime/whiteboardYjsProvider'
 import type { WhiteboardYjsProvider } from '../../realtime/whiteboardYjsProvider'
@@ -26,6 +29,7 @@ import {
   getWhiteboardSnapshotCache,
   setWhiteboardSnapshotCache,
 } from '../../realtime/whiteboardSnapshotCache'
+import { createCroppedBlob } from '../../utils/avatarCropper'
 import { compressForUpload } from '../../utils/clientImageProcessing'
 
 const DEFAULT_COLOR = '#111827'
@@ -914,6 +918,25 @@ const WhiteboardCanvas = forwardRef<WhiteboardCanvasHandle, ExcalidrawWhiteboard
   const excalidrawReadyRef = useRef(false)
   const idleCommitTimerRef = useRef<number | null>(null)
 
+  const [backgroundPickerOpen, setBackgroundPickerOpen] = useState(false)
+  const [backgroundCaptureOpen, setBackgroundCaptureOpen] = useState(false)
+  const [backgroundCropSource, setBackgroundCropSource] = useState<{ file: File; url: string } | null>(null)
+  const [backgroundCropError, setBackgroundCropError] = useState<string | null>(null)
+  const [backgroundCrop, setBackgroundCrop] = useState<Crop>({ unit: '%', width: 90, height: 90, x: 5, y: 5 })
+  const [backgroundCompletedCrop, setBackgroundCompletedCrop] = useState<PixelCrop | null>(null)
+  const [backgroundImageSize, setBackgroundImageSize] = useState<{ width: number; height: number } | null>(null)
+  const [backgroundZoom, setBackgroundZoom] = useState(1)
+  const [backgroundAspect, setBackgroundAspect] = useState<'landscape' | 'portrait' | 'free'>('landscape')
+  const [backgroundSaving, setBackgroundSaving] = useState(false)
+
+  useEffect(() => {
+    return () => {
+      if (backgroundCropSource) {
+        URL.revokeObjectURL(backgroundCropSource.url)
+      }
+    }
+  }, [backgroundCropSource])
+
   useEffect(() => {
     setViewModeEnabled(mode === 'viewer')
   }, [mode])
@@ -1148,12 +1171,30 @@ const WhiteboardCanvas = forwardRef<WhiteboardCanvasHandle, ExcalidrawWhiteboard
     })
   }, [])
 
-  const handleImageUpload = useCallback(
-    async (event: ChangeEvent<HTMLInputElement>) => {
+  const startBackgroundCrop = useCallback((file: File) => {
+    setBackgroundCropError(null)
+    setBackgroundCrop({ unit: '%', width: 90, height: 90, x: 5, y: 5 })
+    setBackgroundCompletedCrop(null)
+    setBackgroundImageSize(null)
+    setBackgroundZoom(1)
+    setBackgroundAspect('landscape')
+    const url = URL.createObjectURL(file)
+    setBackgroundCropSource({ file, url })
+  }, [])
+
+  const handleBackgroundFilePick = useCallback(
+    (event: ChangeEvent<HTMLInputElement>) => {
       const file = event.target.files?.[0]
       event.target.value = ''
       if (!file) return
+      setBackgroundPickerOpen(false)
+      startBackgroundCrop(file)
+    },
+    [startBackgroundCrop],
+  )
 
+  const applyBackgroundFile = useCallback(
+    async (file: File) => {
       const api = excalidrawApiRef.current
       if (!api) return
 
@@ -1275,6 +1316,76 @@ const WhiteboardCanvas = forwardRef<WhiteboardCanvasHandle, ExcalidrawWhiteboard
     [backgroundFitMode, boardId, computeBackgroundRect, generateId, loadImageDimensions, readFileAsDataUrl],
   )
 
+  const backgroundAspectValue = useMemo(() => {
+    if (backgroundAspect === 'free') return undefined
+    return backgroundAspect === 'landscape' ? 16 / 9 : 9 / 16
+  }, [backgroundAspect])
+
+  const buildBackgroundCrop = useCallback(
+    (imageWidth: number, imageHeight: number, aspect?: number) => {
+      if (!imageWidth || !imageHeight) {
+        return { unit: '%', width: 90, height: 90, x: 5, y: 5 } as Crop
+      }
+      if (aspect) {
+        return centerCrop(
+          makeAspectCrop({ unit: '%', width: 90 }, aspect, imageWidth, imageHeight),
+          imageWidth,
+          imageHeight,
+        )
+      }
+      return centerCrop({ unit: '%', width: 90, height: 90 }, imageWidth, imageHeight)
+    },
+    [],
+  )
+
+  useEffect(() => {
+    if (!backgroundImageSize) return
+    const nextCrop = buildBackgroundCrop(backgroundImageSize.width, backgroundImageSize.height, backgroundAspectValue)
+    setBackgroundCrop(nextCrop)
+    setBackgroundCompletedCrop(convertToPixelCrop(nextCrop, backgroundImageSize.width, backgroundImageSize.height))
+  }, [backgroundAspectValue, backgroundImageSize, buildBackgroundCrop])
+
+  const handleBackgroundCropSave = useCallback(async () => {
+    if (!backgroundCropSource || !backgroundCompletedCrop || backgroundCompletedCrop.width <= 0 || backgroundCompletedCrop.height <= 0) {
+      setBackgroundCropError('Please select a crop area first')
+      return
+    }
+
+    setBackgroundSaving(true)
+    setBackgroundCropError(null)
+
+    try {
+      const outputWidth = Math.max(1, Math.round(backgroundCompletedCrop.width))
+      const outputHeight = Math.max(1, Math.round(backgroundCompletedCrop.height))
+      const blob = await createCroppedBlob(
+        backgroundCropSource.url,
+        {
+          x: backgroundCompletedCrop.x,
+          y: backgroundCompletedCrop.y,
+          width: backgroundCompletedCrop.width,
+          height: backgroundCompletedCrop.height,
+        },
+        { width: outputWidth, height: outputHeight },
+      )
+      const croppedFile = new File([blob], `background-${Date.now()}.jpg`, {
+        type: blob.type || 'image/jpeg',
+        lastModified: Date.now(),
+      })
+      await applyBackgroundFile(croppedFile)
+      setBackgroundCropSource(null)
+    } catch (error) {
+      setBackgroundCropError(error instanceof Error ? error.message : 'Failed to crop image')
+    } finally {
+      setBackgroundSaving(false)
+    }
+  }, [applyBackgroundFile, backgroundCropSource, backgroundCompletedCrop])
+
+  const handleBackgroundCropCancel = useCallback(() => {
+    setBackgroundCropSource(null)
+    setBackgroundCropError(null)
+    setBackgroundSaving(false)
+  }, [])
+
   const handleBackgroundClear = useCallback(() => {
     const api = excalidrawApiRef.current
     if (!api) return
@@ -1326,7 +1437,7 @@ const WhiteboardCanvas = forwardRef<WhiteboardCanvasHandle, ExcalidrawWhiteboard
     ref,
     () => ({
       openBackgroundPicker: () => {
-        fileInputRef.current?.click()
+        setBackgroundPickerOpen(true)
       },
       clearBackground: () => {
         handleBackgroundClear()
@@ -1799,59 +1910,237 @@ const WhiteboardCanvas = forwardRef<WhiteboardCanvasHandle, ExcalidrawWhiteboard
   )
 
   return (
-    <section className={`whiteboard-shell flex h-full w-full flex-col ${className || ''}`} aria-label="Collaborative whiteboard">
-      <input
-        ref={fileInputRef}
-        type="file"
-        accept="image/*"
-        onChange={handleImageUpload}
-        className="hidden"
-        aria-hidden="true"
-        tabIndex={-1}
-      />
-      <div ref={boardFrameRef} className="relative min-h-0 flex-1 bg-transparent p-1">
-        <div
-          className="relative h-full w-full overflow-visible rounded-lg bg-white"
-        >
-          {!isSynced ? (
-            <div className="flex h-full w-full items-center justify-center rounded-xl bg-white">
-            <div className="flex items-center gap-3 text-sm text-slate-600" role="status" aria-live="polite">
-              <span className="inline-flex h-4 w-4 animate-spin rounded-full border-2 border-slate-300 border-t-slate-600" />
-              Connecting to Room…
+    <>
+      {backgroundPickerOpen && (
+        <div className="fixed inset-0 z-[80] flex items-center justify-center bg-slate-950/60 px-4" role="dialog" aria-modal="true">
+          <div className="w-full max-w-sm rounded-2xl bg-white p-5 shadow-2xl">
+            <div className="flex items-center justify-between">
+              <h3 className="text-sm font-semibold text-slate-900">Set background image</h3>
+              <button
+                type="button"
+                onClick={() => setBackgroundPickerOpen(false)}
+                className="rounded-full border border-slate-200 px-2 py-1 text-xs text-slate-600"
+              >
+                Close
+              </button>
             </div>
+            <p className="mt-2 text-xs text-slate-500">Choose a source to start cropping.</p>
+            <div className="mt-4 flex flex-col gap-2">
+              <button
+                type="button"
+                onClick={() => {
+                  setBackgroundPickerOpen(false)
+                  setBackgroundCaptureOpen(true)
+                }}
+                className="w-full rounded-lg bg-slate-900 px-4 py-2 text-sm font-semibold text-white"
+              >
+                Camera
+              </button>
+              <button
+                type="button"
+                onClick={() => {
+                  setBackgroundPickerOpen(false)
+                  fileInputRef.current?.click()
+                }}
+                className="w-full rounded-lg border border-slate-200 px-4 py-2 text-sm font-semibold text-slate-700"
+              >
+                Library
+              </button>
             </div>
-          ) : (
-            <Excalidraw
-              excalidrawAPI={(api) => {
-                excalidrawApiRef.current = api
-                registerPointerGuard(api)
-                if (!excalidrawReadyRef.current) {
-                  excalidrawReadyRef.current = true
-                  whiteboardDebugLog('whiteboard:excalidraw:ready', {
-                    boardId,
-                    viewMode: viewModeEnabledRef.current,
-                  })
-                }
-              }}
-              initialData={initialData ?? undefined}
-              viewModeEnabled={viewModeEnabled}
-              zenModeEnabled={false}
-              onChange={handleChange}
-            >
-              <MainMenu>
-                <MainMenu.DefaultItems.LoadScene />
-                <MainMenu.DefaultItems.SaveToActiveFile />
-                <MainMenu.DefaultItems.Export />
-                <MainMenu.DefaultItems.ClearCanvas />
-                <MainMenu.Separator />
-                <MainMenu.DefaultItems.ToggleTheme />
-                <MainMenu.DefaultItems.ChangeCanvasBackground />
-              </MainMenu>
-            </Excalidraw>
-          )}
+          </div>
         </div>
-      </div>
-    </section>
+      )}
+
+      {backgroundCropSource && (
+        <div className="fixed inset-0 z-[90] flex items-stretch justify-center overflow-auto bg-slate-950/70 px-0 py-0 sm:items-center sm:px-6 sm:py-6" role="dialog" aria-modal="true">
+          <div className="flex h-full w-full flex-col rounded-none bg-white shadow-2xl sm:h-[90vh] sm:max-w-5xl sm:rounded-2xl">
+            <div className="flex items-center justify-between border-b border-slate-200 px-5 py-4">
+              <div>
+                <h3 className="text-sm font-semibold text-slate-900">Adjust background</h3>
+                <p className="text-xs text-slate-500">Crop and set the orientation.</p>
+              </div>
+              <button
+                type="button"
+                onClick={handleBackgroundCropCancel}
+                className="rounded-full border border-slate-200 px-3 py-1 text-xs text-slate-600"
+              >
+                Cancel
+              </button>
+            </div>
+            <div className="flex min-h-0 flex-1 flex-col px-5 py-4">
+              <div className="relative min-h-0 flex-1 overflow-auto rounded-xl bg-slate-900">
+                <div className="flex min-h-full min-w-full items-center justify-center p-4">
+                  <ReactCrop
+                    crop={backgroundCrop}
+                    onChange={(nextCrop) => setBackgroundCrop(nextCrop)}
+                    onComplete={(crop) => setBackgroundCompletedCrop(crop)}
+                    aspect={backgroundAspectValue}
+                    keepSelection
+                    minWidth={16}
+                    minHeight={16}
+                  >
+                    <img
+                      src={backgroundCropSource.url}
+                      alt="Background crop preview"
+                      onLoad={(event) => {
+                        const image = event.currentTarget
+                        const width = image.naturalWidth || image.width
+                        const height = image.naturalHeight || image.height
+                        setBackgroundImageSize({ width, height })
+                        const nextCrop = buildBackgroundCrop(width, height, backgroundAspectValue)
+                        setBackgroundCrop(nextCrop)
+                        setBackgroundCompletedCrop(convertToPixelCrop(nextCrop, width, height))
+                      }}
+                      className="max-h-full max-w-full object-contain"
+                      style={{ transform: `scale(${backgroundZoom})`, transformOrigin: 'center' }}
+                    />
+                  </ReactCrop>
+                </div>
+              </div>
+              <div className="mt-4 flex flex-wrap items-center justify-between gap-3">
+                <div className="flex flex-wrap items-center gap-2">
+                  <button
+                    type="button"
+                    onClick={() => setBackgroundAspect('landscape')}
+                    className={`rounded-full px-3 py-1 text-xs font-semibold ${
+                      backgroundAspect === 'landscape'
+                        ? 'bg-slate-900 text-white'
+                        : 'border border-slate-200 text-slate-600'
+                    }`}
+                  >
+                    Landscape 16:9
+                  </button>
+                  <button
+                    type="button"
+                    onClick={() => setBackgroundAspect('portrait')}
+                    className={`rounded-full px-3 py-1 text-xs font-semibold ${
+                      backgroundAspect === 'portrait'
+                        ? 'bg-slate-900 text-white'
+                        : 'border border-slate-200 text-slate-600'
+                    }`}
+                  >
+                    Portrait 9:16
+                  </button>
+                  <button
+                    type="button"
+                    onClick={() => setBackgroundAspect('free')}
+                    className={`rounded-full px-3 py-1 text-xs font-semibold ${
+                      backgroundAspect === 'free'
+                        ? 'bg-slate-900 text-white'
+                        : 'border border-slate-200 text-slate-600'
+                    }`}
+                  >
+                    Free
+                  </button>
+                </div>
+                <div className="flex items-center gap-3 text-xs text-slate-500">
+                  <label htmlFor="background-zoom" className="whitespace-nowrap">Zoom</label>
+                  <input
+                    id="background-zoom"
+                    type="range"
+                    min={0.5}
+                    max={2}
+                    step={0.05}
+                    value={backgroundZoom}
+                    onChange={(event) => setBackgroundZoom(Number(event.target.value))}
+                    className="w-32"
+                  />
+                  <span>{backgroundZoom.toFixed(2)}x</span>
+                </div>
+              </div>
+              {backgroundCropError && (
+                <div className="mt-3 rounded-lg bg-red-50 px-3 py-2 text-xs text-red-700">
+                  {backgroundCropError}
+                </div>
+              )}
+            </div>
+            <div className="flex items-center justify-end gap-3 border-t border-slate-200 px-5 py-4">
+              <button
+                type="button"
+                onClick={handleBackgroundCropCancel}
+                className="rounded-lg border border-slate-200 px-4 py-2 text-xs font-semibold text-slate-600"
+              >
+                Cancel
+              </button>
+              <button
+                type="button"
+                onClick={handleBackgroundCropSave}
+                disabled={backgroundSaving}
+                className={`rounded-lg px-4 py-2 text-xs font-semibold text-white ${
+                  backgroundSaving ? 'bg-slate-300' : 'bg-slate-900'
+                }`}
+              >
+                {backgroundSaving ? 'Saving...' : 'Save background'}
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      <LuminaCaptureSession
+        open={backgroundCaptureOpen}
+        collectibleId={null}
+        onClose={() => setBackgroundCaptureOpen(false)}
+        onCaptureSingle={(file) => {
+          setBackgroundCaptureOpen(false)
+          startBackgroundCrop(file)
+        }}
+      />
+
+      <section className={`whiteboard-shell flex h-full w-full flex-col ${className || ''}`} aria-label="Collaborative whiteboard">
+        <input
+          ref={fileInputRef}
+          type="file"
+          accept="image/*,.heic,.heif,.png,.jpg,.jpeg,.webp"
+          onChange={handleBackgroundFilePick}
+          className="hidden"
+          aria-hidden="true"
+          tabIndex={-1}
+        />
+        <div ref={boardFrameRef} className="relative min-h-0 flex-1 bg-transparent p-1">
+          <div
+            className="relative h-full w-full overflow-visible rounded-lg bg-white"
+          >
+            {!isSynced ? (
+              <div className="flex h-full w-full items-center justify-center rounded-xl bg-white">
+                <div className="flex items-center gap-3 text-sm text-slate-600" role="status" aria-live="polite">
+                  <span className="inline-flex h-4 w-4 animate-spin rounded-full border-2 border-slate-300 border-t-slate-600" />
+                  Connecting to Room…
+                </div>
+              </div>
+            ) : (
+              <Excalidraw
+                excalidrawAPI={(api) => {
+                  excalidrawApiRef.current = api
+                  registerPointerGuard(api)
+                  if (!excalidrawReadyRef.current) {
+                    excalidrawReadyRef.current = true
+                    whiteboardDebugLog('whiteboard:excalidraw:ready', {
+                      boardId,
+                      viewMode: viewModeEnabledRef.current,
+                    })
+                  }
+                }}
+                initialData={initialData ?? undefined}
+                viewModeEnabled={viewModeEnabled}
+                zenModeEnabled={false}
+                onChange={handleChange}
+              >
+                <MainMenu>
+                  <MainMenu.DefaultItems.LoadScene />
+                  <MainMenu.DefaultItems.SaveToActiveFile />
+                  <MainMenu.DefaultItems.Export />
+                  <MainMenu.DefaultItems.ClearCanvas />
+                  <MainMenu.Separator />
+                  <MainMenu.DefaultItems.ToggleTheme />
+                  <MainMenu.DefaultItems.ChangeCanvasBackground />
+                </MainMenu>
+              </Excalidraw>
+            )}
+          </div>
+        </div>
+      </section>
+    </>
   )
   },
 )

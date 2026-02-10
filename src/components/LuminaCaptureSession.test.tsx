@@ -123,4 +123,36 @@ describe('LuminaCaptureSession', () => {
     rerender(<LuminaCaptureSession open={false} collectibleId="1" onClose={vi.fn()} />);
     expect(stop).toHaveBeenCalled();
   });
+
+  test('single capture calls onCaptureSingle and closes', async () => {
+    const { stream } = createMockStream();
+    const getUserMedia = vi.fn().mockResolvedValue(stream);
+    Object.defineProperty(global.navigator, 'mediaDevices', {
+      value: { getUserMedia },
+      configurable: true,
+    });
+
+    const onCaptureSingle = vi.fn();
+    const onClose = vi.fn();
+
+    render(
+      <LuminaCaptureSession
+        open
+        collectibleId="1"
+        onClose={onClose}
+        onCaptureSingle={onCaptureSingle}
+      />
+    );
+
+    await waitFor(() => expect(getUserMedia).toHaveBeenCalled());
+
+    const video = screen.getByTestId('lumina-capture-video');
+    Object.defineProperty(video, 'videoWidth', { value: 800, configurable: true });
+    Object.defineProperty(video, 'videoHeight', { value: 600, configurable: true });
+
+    fireEvent.click(screen.getByRole('button', { name: /Capture photo/i }));
+
+    await waitFor(() => expect(onCaptureSingle).toHaveBeenCalledTimes(1));
+    expect(onClose).toHaveBeenCalledTimes(1);
+  });
 });

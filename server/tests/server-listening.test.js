@@ -38,6 +38,7 @@ describe('Server listening behavior', () => {
   test('server should NOT listen when NODE_ENV=test', () => {
     // This is the expected behavior - unit tests use supertest which doesn't need listening
     process.env.NODE_ENV = 'test';
+    delete process.env.INTEGRATION_TESTS;
     
     // Load server (it should export app but not start listening)
     const app = require('../server');
@@ -84,7 +85,8 @@ describe('Server listening behavior', () => {
     const serverCode = fs.readFileSync(path.join(__dirname, '../server.ts'), 'utf-8');
     
     // Verify the conditional listening code exists
-    expect(serverCode).toMatch(/if\s*\(\s*process\.env\.NODE_ENV\s*!==\s*['"]test['"]\s*\)/);
+    expect(serverCode).toMatch(/process\.env\.NODE_ENV\s*!==\s*['"]test['"]/);
+    expect(serverCode).toMatch(/process\.env\.INTEGRATION_TESTS\s*===\s*['"]true['"]/);
     expect(serverCode).toMatch(/http\.createServer\s*\(\s*app\s*\)/);
     expect(serverCode).toMatch(/server\.listen\s*\(\s*PORT/);
     

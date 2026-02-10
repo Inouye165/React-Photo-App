@@ -14,6 +14,7 @@ export interface LuminaCaptureSessionProps {
   onUploadComplete?: () => void | Promise<void>;
   onUploadSuccess?: (count: number) => void;
   onFallbackToLibrary?: () => void;
+  onCaptureSingle?: (file: File) => void;
 }
 
 const MAX_CAPTURE_DIMENSION = 1920;
@@ -46,6 +47,7 @@ export default function LuminaCaptureSession({
   onUploadComplete,
   onUploadSuccess,
   onFallbackToLibrary,
+  onCaptureSingle,
 }: LuminaCaptureSessionProps) {
   const videoRef = useRef<HTMLVideoElement | null>(null);
   const streamRef = useRef<MediaStream | null>(null);
@@ -64,6 +66,8 @@ export default function LuminaCaptureSession({
     () => createThumbnailGenerator(thumbnailTimeoutMs),
     [thumbnailTimeoutMs]
   );
+
+  const isSingleCapture = typeof onCaptureSingle === 'function';
 
   const stopStream = useCallback(() => {
     const stream = streamRef.current;
@@ -197,12 +201,20 @@ export default function LuminaCaptureSession({
 
     canvas.toBlob(
       (blob) => {
-        if (!blob) return;
+        if (!blob) {
+          setCameraError('Unable to capture photo. Please try again.');
+          return;
+        }
         const nextIndex = nextIdRef.current + 1;
         nextIdRef.current = nextIndex;
         const timestamp = Date.now();
         const name = `collectible-ref-${timestamp}-${nextIndex}.jpg`;
         const file = new File([blob], name, { type: blob.type || 'image/jpeg' });
+        if (isSingleCapture) {
+          onCaptureSingle?.(file);
+          handleClose();
+          return;
+        }
         const previewUrl = URL.createObjectURL(file);
         const id = `${timestamp}-${nextIndex}`;
         setPhotos((prev) => {
@@ -214,13 +226,22 @@ export default function LuminaCaptureSession({
       'image/jpeg',
       0.92
     );
-  }, []);
+  }, [handleClose, isSingleCapture, onCaptureSingle]);
 
   const handleAddFromLibrary = useCallback((event: React.ChangeEvent<HTMLInputElement>) => {
     const input = event.currentTarget;
     const files = Array.from(input.files || []);
     input.value = '';
     if (files.length === 0) return;
+
+    if (isSingleCapture) {
+      const file = files[0];
+      if (file) {
+        onCaptureSingle?.(file);
+        handleClose();
+      }
+      return;
+    }
 
     const addedIds: string[] = [];
 
@@ -236,7 +257,7 @@ export default function LuminaCaptureSession({
     });
     const lastId = addedIds[addedIds.length - 1];
     setSelectedId(lastId ?? null);
-  }, []);
+  }, [handleClose, isSingleCapture, onCaptureSingle]);
 
   const handleDeletePhoto = useCallback((id: string) => {
     setPhotos((prev) => {
@@ -377,51 +398,55 @@ export default function LuminaCaptureSession({
                 cameraError ? 'bg-white/5 opacity-50' : 'bg-white/10'
               }`}
             />
-            <div className="flex flex-1 items-center gap-2 overflow-x-auto" role="list">
-              {photos.map((photo) => (
-                <div
-                  key={photo.id}
-                  role="listitem"
-                  className={`relative h-12 w-12 flex-shrink-0 overflow-hidden rounded-lg border ${
-                    selectedId === photo.id ? 'border-white' : 'border-slate-700'
-                  }`}
-                  onClick={() => setSelectedId(photo.id)}
-                  onKeyDown={(event) => {
-                    if (event.key === 'Enter') setSelectedId(photo.id);
-                  }}
-                  tabIndex={0}
-                >
-                  <img
-                    src={photo.previewUrl}
-                    alt="Captured thumbnail"
-                    data-testid="capture-thumbnail"
-                    className="h-full w-full object-cover"
-                  />
-                  <button
-                    type="button"
-                    onClick={(event) => {
-                      event.stopPropagation();
-                      handleDeletePhoto(photo.id);
-                    }}
-                    aria-label="Delete captured photo"
-                    className="absolute right-0 top-0 rounded-bl bg-black/70 px-1 text-[10px]"
-                  >
-                    ✕
-                  </button>
+            {!isSingleCapture && (
+              <>
+                <div className="flex flex-1 items-center gap-2 overflow-x-auto" role="list">
+                  {photos.map((photo) => (
+                    <div
+                      key={photo.id}
+                      role="listitem"
+                      className={`relative h-12 w-12 flex-shrink-0 overflow-hidden rounded-lg border ${
+                        selectedId === photo.id ? 'border-white' : 'border-slate-700'
+                      }`}
+                      onClick={() => setSelectedId(photo.id)}
+                      onKeyDown={(event) => {
+                        if (event.key === 'Enter') setSelectedId(photo.id);
+                      }}
+                      tabIndex={0}
+                    >
+                      <img
+                        src={photo.previewUrl}
+                        alt="Captured thumbnail"
+                        data-testid="capture-thumbnail"
+                        className="h-full w-full object-cover"
+                      />
+                      <button
+                        type="button"
+                        onClick={(event) => {
+                          event.stopPropagation();
+                          handleDeletePhoto(photo.id);
+                        }}
+                        aria-label="Delete captured photo"
+                        className="absolute right-0 top-0 rounded-bl bg-black/70 px-1 text-[10px]"
+                      >
+                        ✕
+                      </button>
+                    </div>
+                  ))}
                 </div>
-              ))}
-            </div>
-            <button
-              type="button"
-              onClick={handleUpload}
-              disabled={!hasPhotos}
-              aria-label="Upload captured photos"
-              className={`rounded-full px-4 py-2 text-xs font-semibold ${
-                hasPhotos ? 'bg-white text-slate-900' : 'bg-slate-700 text-slate-400'
-              }`}
-            >
-              Done / Upload
-            </button>
+                <button
+                  type="button"
+                  onClick={handleUpload}
+                  disabled={!hasPhotos}
+                  aria-label="Upload captured photos"
+                  className={`rounded-full px-4 py-2 text-xs font-semibold ${
+                    hasPhotos ? 'bg-white text-slate-900' : 'bg-slate-700 text-slate-400'
+                  }`}
+                >
+                  Done / Upload
+                </button>
+              </>
+            )}
           </div>
 
           <div className="flex items-center justify-between text-xs text-slate-300">
@@ -433,7 +458,7 @@ export default function LuminaCaptureSession({
             >
               Add from library
             </button>
-            <span>{hasPhotos ? `${photos.length} captured` : 'No photos yet'}</span>
+            {!isSingleCapture && <span>{hasPhotos ? `${photos.length} captured` : 'No photos yet'}</span>}
           </div>
         </div>
 

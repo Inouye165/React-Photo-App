@@ -197,6 +197,11 @@ function logVersion() {
 function validateConfig() {
   logVersion();
   logStartupDiagnostics();
+  if (process.env.INTEGRATION_TESTS === 'true' && process.env.NODE_ENV !== 'test') {
+    throw new BootError('[server] FATAL: INTEGRATION_TESTS is only allowed when NODE_ENV=test', {
+      code: 'INVALID_INTEGRATION_TEST_ENV',
+    });
+  }
   validateDatabaseConfig();
   validateAiKeys();
   validateCentralConfig();
