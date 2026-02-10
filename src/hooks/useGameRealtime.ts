@@ -4,7 +4,7 @@ import { supabase } from '../supabaseClient'
 
 type MovePayload = RealtimePostgresChangesPayload<{ [key: string]: unknown }>
 
-export function useGameRealtime(gameId: string | null) {
+export function useGameRealtime(gameId: string | null, refreshToken = 0) {
   const [moves, setMoves] = useState<any[]>([])
   const [loading, setLoading] = useState(false)
   const channelRef = useRef<RealtimeChannel | null>(null)
@@ -65,7 +65,7 @@ export function useGameRealtime(gameId: string | null) {
         try { void ch.unsubscribe(); supabase.removeChannel(ch) } catch { }
       }
     }
-  }, [gameId])
+  }, [gameId, refreshToken])
 
   return { moves, loading }
 }

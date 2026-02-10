@@ -36,7 +36,7 @@ export default function GamesIndex(): React.JSX.Element {
 
   return (
     <div>
-      <h2 className="text-lg font-semibold mb-2">Games</h2>
+      <h2 className="text-lg font-semibold mb-2">Chess</h2>
       <div className="mb-4">
         <button onClick={() => handleCreate()} className="px-3 py-1 bg-slate-700 text-white rounded">New Game (Random Opponent)</button>
       </div>
@@ -55,19 +55,23 @@ export default function GamesIndex(): React.JSX.Element {
       </div>
 
       <div>
-        <h3 className="text-sm font-medium mb-2">Your Games</h3>
-        <ul>
-          {games.map((g) => (
-            <li key={g.id} className="py-2 border-b">
-              <button onClick={() => navigate(`/games/${g.id}`)} className="text-left w-full">
-                <div className="flex justify-between">
-                  <div>{g.type} — {g.status}</div>
-                  <div className="text-xs text-slate-500">{new Date(g.updated_at).toLocaleString()}</div>
-                </div>
-              </button>
-            </li>
-          ))}
-        </ul>
+        <h3 className="text-sm font-medium mb-2">In Progress</h3>
+        {games.filter((g) => g.status === 'active').length ? (
+          <ul>
+            {games.filter((g) => g.status === 'active').map((g) => (
+              <li key={g.id} className="py-2 border-b">
+                <button onClick={() => navigate(`/games/${g.id}`)} className="text-left w-full">
+                  <div className="flex justify-between">
+                    <div>{g.type}</div>
+                    <div className="text-xs text-slate-500">{new Date(g.updated_at).toLocaleString()}</div>
+                  </div>
+                </button>
+              </li>
+            ))}
+          </ul>
+        ) : (
+          <div className="text-sm text-slate-500">No active games.</div>
+        )}
       </div>
     </div>
   )

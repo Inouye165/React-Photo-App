@@ -5,6 +5,10 @@ import { render, screen } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
 import AppHeader from './AppHeader';
 
+vi.mock('../api/games', () => ({
+  listMyGames: vi.fn(async () => ([])),
+}));
+
 const mockRouterState = vi.hoisted(() => ({
   location: {
     pathname: '/gallery',
@@ -147,6 +151,7 @@ describe('AppHeader Component', () => {
     expect(screen.getByTestId('nav-gallery')).toBeInTheDocument();
     expect(screen.getByTestId('nav-edit')).toBeInTheDocument();
     expect(screen.getByTestId('nav-messages')).toBeInTheDocument();
+    expect(screen.getByTestId('nav-games')).toBeInTheDocument();
   });
 
   it('hides Messages tab when username is not set', () => {
