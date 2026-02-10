@@ -1275,7 +1275,7 @@ const WhiteboardCanvas = forwardRef<WhiteboardCanvasHandle, ExcalidrawWhiteboard
           fileId,
           scale: [1, 1],
           crop: null,
-          status: 'pending',
+          status: 'saved',
         } as ExcalidrawElement
 
         api.updateScene({
@@ -1297,7 +1297,14 @@ const WhiteboardCanvas = forwardRef<WhiteboardCanvasHandle, ExcalidrawWhiteboard
         const doc = docRef.current
         const map = mapRef.current
         if (doc && map) {
+          const currentFiles = resolveFiles(map.get('files'))
+          const nextFiles = {
+            ...currentFiles,
+            [fileId]: fileData,
+          } as BinaryFiles
           doc.transact(() => {
+            map.set('elements', [imageElement, ...elementsToKeep])
+            map.set('files', nextFiles)
             map.set('backgroundInfo', nextBackgroundInfo)
             map.set('updatedAt', Date.now())
           }, LOCAL_ORIGIN)
