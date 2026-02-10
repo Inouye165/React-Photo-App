@@ -40,6 +40,7 @@ const MIN_MOVE_DISTANCE = 0.002
 const RATE_LIMIT_BACKOFF_MS = 2000
 const RATE_LIMIT_BACKOFF_INTERVAL_MS = 40
 const MAX_RATE_LIMIT_INTERVAL_MS = 80
+const MAX_BACKGROUND_CROP_DIMENSION = 3072
 
 type WhiteboardCanvasProps = {
   boardId: string
@@ -1307,10 +1308,12 @@ const WhiteboardCanvas = forwardRef<WhiteboardCanvasHandle, ExcalidrawWhiteboard
           elementCount: elementsToKeep.length + 1,
         })
       } catch (error) {
+        const message = error instanceof Error ? error.message : 'Failed to set background image'
         whiteboardDebugLog('whiteboard:background:upload:error', {
           boardId,
-          message: error instanceof Error ? error.message : String(error),
+          message,
         })
+        throw error instanceof Error ? error : new Error(message)
       }
     },
     [backgroundFitMode, boardId, computeBackgroundRect, generateId, loadImageDimensions, readFileAsDataUrl],
@@ -1407,15 +1410,37 @@ const WhiteboardCanvas = forwardRef<WhiteboardCanvasHandle, ExcalidrawWhiteboard
     setBackgroundCropError(null)
 
     try {
-      const outputWidth = Math.max(1, Math.round(backgroundCompletedCrop.width))
-      const outputHeight = Math.max(1, Math.round(backgroundCompletedCrop.height))
+      const zoom = Math.max(0.1, backgroundZoom)
+      const adjustedCrop = {
+        x: Math.max(0, backgroundCompletedCrop.x / zoom),
+        y: Math.max(0, backgroundCompletedCrop.y / zoom),
+        width: Math.max(1, backgroundCompletedCrop.width / zoom),
+        height: Math.max(1, backgroundCompletedCrop.height / zoom),
+      }
+
+      if (backgroundImageSize) {
+        adjustedCrop.width = Math.min(adjustedCrop.width, backgroundImageSize.width - adjustedCrop.x)
+        adjustedCrop.height = Math.min(adjustedCrop.height, backgroundImageSize.height - adjustedCrop.y)
+        adjustedCrop.width = Math.max(1, adjustedCrop.width)
+        adjustedCrop.height = Math.max(1, adjustedCrop.height)
+      }
+
+      let outputWidth = Math.max(1, Math.round(adjustedCrop.width))
+      let outputHeight = Math.max(1, Math.round(adjustedCrop.height))
+
+      if (Math.max(outputWidth, outputHeight) > MAX_BACKGROUND_CROP_DIMENSION) {
+        const scale = MAX_BACKGROUND_CROP_DIMENSION / Math.max(outputWidth, outputHeight)
+        outputWidth = Math.max(1, Math.round(outputWidth * scale))
+        outputHeight = Math.max(1, Math.round(outputHeight * scale))
+      }
+
       const blob = await createCroppedBlob(
         backgroundCropSource.url,
         {
-          x: backgroundCompletedCrop.x,
-          y: backgroundCompletedCrop.y,
-          width: backgroundCompletedCrop.width,
-          height: backgroundCompletedCrop.height,
+          x: adjustedCrop.x,
+          y: adjustedCrop.y,
+          width: adjustedCrop.width,
+          height: adjustedCrop.height,
         },
         { width: outputWidth, height: outputHeight },
       )
@@ -1430,7 +1455,7 @@ const WhiteboardCanvas = forwardRef<WhiteboardCanvasHandle, ExcalidrawWhiteboard
     } finally {
       setBackgroundSaving(false)
     }
-  }, [applyBackgroundFile, backgroundCropSource, backgroundCompletedCrop])
+  }, [applyBackgroundFile, backgroundCropSource, backgroundCompletedCrop, backgroundImageSize, backgroundZoom])
 
   const handleBackgroundCropCancel = useCallback(() => {
     setBackgroundCropSource(null)
