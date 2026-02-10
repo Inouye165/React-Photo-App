@@ -1243,7 +1243,7 @@ const WhiteboardCanvas = forwardRef<WhiteboardCanvasHandle, ExcalidrawWhiteboard
           lastRetrieved: now,
         }
 
-        api.addFiles([fileData])
+        await Promise.resolve(api.addFiles([fileData]))
 
         const imageElement = {
           id: elementId,
@@ -1280,6 +1280,7 @@ const WhiteboardCanvas = forwardRef<WhiteboardCanvasHandle, ExcalidrawWhiteboard
 
         api.updateScene({
           elements: [imageElement, ...elementsToKeep],
+          appState: api.getAppState(),
         })
         setHasBackground(true)
         const nextBackgroundInfo: BackgroundInfo = {
