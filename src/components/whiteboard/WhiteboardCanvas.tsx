@@ -64,6 +64,19 @@ function clamp01(value: number): number {
   return value
 }
 
+function formatBytes(bytes: number): string {
+  if (!Number.isFinite(bytes) || bytes <= 0) return '0 B'
+  const units = ['B', 'KB', 'MB', 'GB']
+  let size = bytes
+  let unitIndex = 0
+  while (size >= 1024 && unitIndex < units.length - 1) {
+    size /= 1024
+    unitIndex += 1
+  }
+  const rounded = size >= 10 || unitIndex === 0 ? Math.round(size) : Math.round(size * 10) / 10
+  return `${rounded} ${units[unitIndex]}`
+}
+
 /**
  * @deprecated Legacy point-stream canvas retained for reference.
  */
@@ -1173,7 +1186,7 @@ const WhiteboardCanvas = forwardRef<WhiteboardCanvasHandle, ExcalidrawWhiteboard
     })
   }, [])
 
-  const startBackgroundCrop = useCallback((file: File) => {
+  const startBackgroundCrop = useCallback(async (file: File) => {
     setBackgroundCropError(null)
     setBackgroundCrop({ unit: '%', width: 90, height: 90, x: 5, y: 5 })
     setBackgroundCompletedCrop(null)
@@ -1181,8 +1194,19 @@ const WhiteboardCanvas = forwardRef<WhiteboardCanvasHandle, ExcalidrawWhiteboard
     setBackgroundImageDisplaySize(null)
     setBackgroundZoom(1)
     setBackgroundAspect('landscape')
-    const url = URL.createObjectURL(file)
-    setBackgroundCropSource({ file, url })
+
+    try {
+      // Compress to WebP first to ensure cropping matches displayed image
+      const compression = await compressForUpload(file)
+      const webpFile = new File([compression.blob], toWebpFileName(file.name), {
+        type: 'image/webp',
+        lastModified: file.lastModified,
+      })
+      const url = URL.createObjectURL(webpFile)
+      setBackgroundCropSource({ file: webpFile, url })
+    } catch (error) {
+      setBackgroundCropError(error instanceof Error ? error.message : 'Failed to prepare image for cropping')
+    }
   }, [])
 
   const handleBackgroundFilePick = useCallback(
@@ -1205,14 +1229,29 @@ const WhiteboardCanvas = forwardRef<WhiteboardCanvasHandle, ExcalidrawWhiteboard
         const originalName = file.name?.trim() || 'Background image'
         const originalType = file.type || 'image/*'
         const originalSizeBytes = file.size
-        const compression = await compressForUpload(file)
-        const convertedName = toWebpFileName(originalName)
-        const convertedType = 'image/webp'
-        const convertedSizeBytes = compression.compressedSize
-        const convertedFile = new File([compression.blob], convertedName, {
-          type: convertedType,
-          lastModified: file.lastModified,
-        })
+
+        let convertedFile: File
+        let convertedType: string
+        let convertedSizeBytes: number
+        let convertedName: string
+        let compression: { blob: Blob; compressedSize: number } | null = null
+
+        // Skip compression if already WebP (e.g., from cropping)
+        if (file.type === 'image/webp') {
+          convertedFile = file
+          convertedType = 'image/webp'
+          convertedSizeBytes = file.size
+          convertedName = originalName
+        } else {
+          compression = await compressForUpload(file)
+          convertedName = toWebpFileName(originalName)
+          convertedType = 'image/webp'
+          convertedSizeBytes = compression.compressedSize
+          convertedFile = new File([compression.blob], convertedName, {
+            type: convertedType,
+            lastModified: file.lastModified,
+          })
+        }
 
         const dataUrl = await readFileAsDataUrl(convertedFile)
         const dimensions = await loadImageDimensions(dataUrl)
@@ -1290,11 +1329,21 @@ const WhiteboardCanvas = forwardRef<WhiteboardCanvasHandle, ExcalidrawWhiteboard
           name: originalName,
           sizeBytes: convertedSizeBytes,
           fileId,
-          originalSizeBytes,
-          originalType,
-          convertedSizeBytes,
-          convertedType,
-          convertedName,
+          ...(file.type === 'image/webp' ? {
+            // For already WebP files (e.g., cropped results), treat as both original and converted
+            originalSizeBytes: originalSizeBytes,
+            originalType: 'image/webp',
+            convertedSizeBytes: originalSizeBytes,
+            convertedType: 'image/webp',
+            convertedName: originalName,
+          } : {
+            // For newly compressed files
+            originalSizeBytes,
+            originalType,
+            convertedSizeBytes,
+            convertedType,
+            convertedName,
+          }),
         }
         setBackgroundInfo(nextBackgroundInfo)
 
@@ -1460,6 +1509,7 @@ const WhiteboardCanvas = forwardRef<WhiteboardCanvasHandle, ExcalidrawWhiteboard
         outputHeight = Math.max(1, Math.round(outputHeight * scale))
       }
 
+      // Since we're already working with WebP, crop directly without recompression
       const blob = await createCroppedBlob(
         backgroundCropSource.url,
         {
@@ -1469,11 +1519,16 @@ const WhiteboardCanvas = forwardRef<WhiteboardCanvasHandle, ExcalidrawWhiteboard
           height: adjustedCrop.height,
         },
         { width: outputWidth, height: outputHeight },
+        0.92, // Same quality as compressForUpload
+        'image/webp' // Output as WebP to match display format
       )
-      const croppedFile = new File([blob], `background-${Date.now()}.jpg`, {
-        type: blob.type || 'image/jpeg',
+
+      const croppedFile = new File([blob], `background-${Date.now()}.webp`, {
+        type: 'image/webp',
         lastModified: Date.now(),
       })
+
+      // Apply directly since we're already in WebP format
       await applyBackgroundFile(croppedFile)
       setBackgroundCropSource(null)
     } catch (error) {
@@ -1535,6 +1590,74 @@ const WhiteboardCanvas = forwardRef<WhiteboardCanvasHandle, ExcalidrawWhiteboard
       map.set('updatedAt', Date.now())
     }, LOCAL_ORIGIN)
   }, [])
+
+  const renderTopRightUI = useCallback(
+    () => (
+      <div className="flex items-center gap-2">
+        <div className="flex items-center gap-1 rounded-full border border-slate-200 bg-white/95 px-2 py-1 text-[11px] font-medium text-slate-700 shadow-sm backdrop-blur">
+          <button
+            type="button"
+            className="rounded-full px-2 py-1 transition hover:bg-slate-100"
+            onClick={() => setBackgroundPickerOpen(true)}
+            aria-label="Set background image"
+          >
+            Background
+          </button>
+          <button
+            type="button"
+            className="rounded-full px-2 py-1 transition hover:bg-slate-100"
+            onClick={() => setBackgroundFitMode((prev) => (prev === 'width' ? 'contain' : 'width'))}
+            aria-label={backgroundFitMode === 'width' ? 'Show full image' : 'Fit to width'}
+          >
+            {backgroundFitMode === 'width' ? 'Show full' : 'Fit width'}
+          </button>
+          <button
+            type="button"
+            className="rounded-full px-2 py-1 transition hover:bg-slate-100 disabled:cursor-not-allowed disabled:text-slate-300"
+            onClick={handleBackgroundClear}
+            aria-label="Clear background image"
+            disabled={!hasBackground}
+          >
+            Clear
+          </button>
+          <button
+            type="button"
+            className="rounded-full px-2 py-1 transition hover:bg-slate-100"
+            onClick={() => setViewModeEnabled((prev) => !prev)}
+            aria-pressed={viewModeEnabled}
+            aria-label={viewModeEnabled ? 'Switch to draw mode' : 'Switch to view mode'}
+          >
+            {viewModeEnabled ? 'Draw' : 'View'}
+          </button>
+        </div>
+        {backgroundInfo && (
+          <div className="relative group">
+            <button
+              type="button"
+              className="flex h-7 w-7 items-center justify-center rounded-full border border-slate-200 bg-white/95 text-[11px] font-semibold text-slate-700 shadow-sm backdrop-blur"
+              aria-label="Background info"
+            >
+              i
+            </button>
+            <div className="pointer-events-none absolute right-0 top-full mt-2 w-[240px] rounded-lg bg-white/95 px-2 py-1 text-[11px] text-slate-700 shadow-sm backdrop-blur opacity-0 transition-opacity group-hover:opacity-100">
+              <div className="truncate font-semibold" title={backgroundInfo.name}>
+                {backgroundInfo.name}
+              </div>
+              {backgroundInfo.originalSizeBytes !== undefined && backgroundInfo.convertedSizeBytes !== undefined ? (
+                <div className="text-[10px] text-slate-500">
+                  {formatBytes(backgroundInfo.originalSizeBytes)} {backgroundInfo.originalType || 'image/*'} {'->'}{' '}
+                  {formatBytes(backgroundInfo.convertedSizeBytes)} {backgroundInfo.convertedType || 'image/webp'}
+                </div>
+              ) : (
+                <div className="text-[10px] text-slate-500">{formatBytes(backgroundInfo.sizeBytes)}</div>
+              )}
+            </div>
+          </div>
+        )}
+      </div>
+    ),
+    [backgroundFitMode, backgroundInfo, handleBackgroundClear, hasBackground, viewModeEnabled],
+  )
 
   useImperativeHandle(
     ref,
@@ -2236,6 +2359,7 @@ const WhiteboardCanvas = forwardRef<WhiteboardCanvasHandle, ExcalidrawWhiteboard
                 viewModeEnabled={viewModeEnabled}
                 zenModeEnabled={false}
                 onChange={handleChange}
+                renderTopRightUI={renderTopRightUI}
               >
                 <MainMenu>
                   <MainMenu.DefaultItems.LoadScene />
