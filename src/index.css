@@ -15,6 +15,23 @@ html, body {
   margin: 0 auto;
 }
 
+.whiteboard-stage {
+  flex: 1;
+  min-height: 0;
+  background: #f8fafc;
+  padding: 16px 88px 16px 24px;
+}
+
+.whiteboard-page {
+  height: 100%;
+  width: 100%;
+  border-radius: 14px;
+  border: 1px solid #e2e8f0;
+  background: #ffffff;
+  box-shadow: 0 24px 40px -28px rgba(15, 23, 42, 0.55);
+  overflow: hidden;
+}
+
 .whiteboard-header {
   padding: 8px 12px;
   border-bottom: 1px solid #e2e8f0;
@@ -48,6 +65,10 @@ html, body {
 }
 
 @media (max-width: 768px) {
+  .whiteboard-stage {
+    padding: 12px;
+  }
+
   .excalidraw-menu-logo,
   .mobile-menu-header .excalidraw-link {
     display: none !important;

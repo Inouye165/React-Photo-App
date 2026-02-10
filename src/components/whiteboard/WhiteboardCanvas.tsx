@@ -2331,9 +2331,10 @@ const WhiteboardCanvas = forwardRef<WhiteboardCanvasHandle, ExcalidrawWhiteboard
           aria-hidden="true"
           tabIndex={-1}
         />
-        <div ref={boardFrameRef} className="relative min-h-0 flex-1 bg-transparent p-1">
+        <div className="whiteboard-stage relative min-h-0 flex-1">
           <div
-            className="relative h-full w-full overflow-visible rounded-lg bg-white"
+            ref={boardFrameRef}
+            className="whiteboard-page relative h-full w-full"
           >
             {!isSynced ? (
               <div className="flex h-full w-full items-center justify-center rounded-xl bg-white">
