@@ -48,6 +48,10 @@ export function useStockfish() {
   const lastFenRef = useRef<string | null>(null)
   const analysisRef = useRef<Map<number, AnalysisEntry>>(new Map())
   const readyRef = useRef(false)
+  const searchingRef = useRef(false)
+  const skillRef = useRef(difficultySettings.Medium.skill)
+  const restartTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null)
+  const restartAttemptsRef = useRef(0)
 
   const [isReady, setIsReady] = useState(false)
   const [difficulty, setDifficultyState] = useState<Difficulty>('Medium')
@@ -61,6 +65,12 @@ export function useStockfish() {
     if (!worker) return
     worker.postMessage(command)
   }, [])
+
+  const stopSearchIfNeeded = useCallback(() => {
+    if (!searchingRef.current) return
+    searchingRef.current = false
+    sendCommand('stop')
+  }, [sendCommand])
 
   const handleInfoLine = useCallback((line: string) => {
     const multipvMatch = line.match(/\bmultipv (\d+)/)
@@ -120,7 +130,7 @@ export function useStockfish() {
 
     if (line === 'uciok') {
       sendCommand('setoption name MultiPV value 3')
-      sendCommand(`setoption name Skill Level value ${settings.skill}`)
+      sendCommand(`setoption name Skill Level value ${skillRef.current}`)
       sendCommand('isready')
       return
     }
@@ -139,29 +149,61 @@ export function useStockfish() {
     if (line.startsWith('bestmove')) {
       const match = line.match(/bestmove ([a-h][1-8][a-h][1-8][qrbn]?)/)
       const bestMove = match?.[1]
+      searchingRef.current = false
       if (bestMove && pendingMoveRef.current) {
         pendingMoveRef.current.resolve(bestMove)
         pendingMoveRef.current = null
       }
     }
-  }, [handleInfoLine, sendCommand, settings.skill])
+  }, [handleInfoLine, sendCommand])
+
+  useEffect(() => {
+    skillRef.current = settings.skill
+  }, [settings.skill])
 
   useEffect(() => {
     // Use the Stockfish JS file directly as the Worker — it auto-initializes
     // the WASM engine and listens for UCI commands via postMessage/onmessage.
     // Do NOT wrap it in a custom worker; the Stockfish script is a complete
     // Web Worker that derives the .wasm path from self.location.
-    const worker = new Worker('/stockfish/stockfish-17.1-lite-single-03e3232.js')
-    workerRef.current = worker
-    worker.onmessage = (event) => handleMessage(event.data)
-    // Send UCI init — Stockfish queues commands until WASM is ready
-    worker.postMessage('uci')
+    const spawnWorker = () => {
+      const worker = new Worker('/stockfish/stockfish-17.1-lite-single-03e3232.js')
+      workerRef.current = worker
+      worker.onmessage = (event) => handleMessage(event.data)
+      worker.onerror = () => {
+        readyRef.current = false
+        setIsReady(false)
+        searchingRef.current = false
+        pendingMoveRef.current?.reject(new Error('Stockfish worker crashed'))
+        pendingMoveRef.current = null
+        if (restartAttemptsRef.current < 2) {
+          restartAttemptsRef.current += 1
+          restartTimerRef.current = setTimeout(() => {
+            spawnWorker()
+          }, 500)
+        }
+      }
+      worker.onmessageerror = () => {
+        readyRef.current = false
+        setIsReady(false)
+      }
+      // Send UCI init — Stockfish queues commands until WASM is ready
+      worker.postMessage('uci')
+    }
+
+    spawnWorker()
 
     return () => {
+      if (restartTimerRef.current) {
+        clearTimeout(restartTimerRef.current)
+        restartTimerRef.current = null
+      }
       pendingMoveRef.current?.reject(new Error('Stockfish worker terminated'))
       pendingMoveRef.current = null
-      worker.postMessage('quit')
-      worker.terminate()
+      if (workerRef.current) {
+        workerRef.current.postMessage('quit')
+        workerRef.current.terminate()
+      }
       workerRef.current = null
     }
   }, [handleMessage])
@@ -177,9 +219,11 @@ export function useStockfish() {
     analysisRef.current.clear()
     setTopMoves([])
     setEvaluation({ score: null, mate: null })
+    stopSearchIfNeeded()
     sendCommand(`position fen ${fen}`)
     sendCommand(`go movetime ${settings.movetime}`)
-  }, [sendCommand, settings.movetime])
+    searchingRef.current = true
+  }, [sendCommand, settings.movetime, stopSearchIfNeeded])
 
   const getEngineMove = useCallback((fen: string) => {
     if (!readyRef.current) return Promise.reject(new Error('Stockfish not ready'))
@@ -189,10 +233,12 @@ export function useStockfish() {
 
     return new Promise<string>((resolve, reject) => {
       pendingMoveRef.current = { resolve, reject }
+      stopSearchIfNeeded()
       sendCommand(`position fen ${fen}`)
       sendCommand(`go movetime ${settings.movetime}`)
+      searchingRef.current = true
     })
-  }, [sendCommand, settings.movetime])
+  }, [sendCommand, settings.movetime, stopSearchIfNeeded])
 
   const setDifficulty = useCallback((level: Difficulty) => {
     setDifficultyState(level)
