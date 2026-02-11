@@ -4,48 +4,58 @@ import { describe, it, expect, vi, beforeEach } from 'vitest'
 import { render, screen, waitFor } from '@testing-library/react'
 import ChessGame from './ChessGame'
 
-let mockGameId = 'game-123'
+const {
+  getMockGameId,
+  setMockGameId,
+  useGameRealtimeMock,
+  fetchGameMock,
+  fetchGameMembersMock,
+  makeMoveMock,
+  restartGameMock,
+} = vi.hoisted(() => {
+  let mockGameId = 'game-123'
+  return {
+    getMockGameId: () => mockGameId,
+    setMockGameId: (value: string) => { mockGameId = value },
+    useGameRealtimeMock: vi.fn(() => ({
+      moves: [
+        { ply: 1, uci: 'e2e4', created_by: 'user-1', created_at: '2026-02-10T00:00:00Z' },
+        { ply: 2, uci: 'e7e5', created_by: 'user-2', created_at: '2026-02-10T00:00:01Z' },
+      ],
+      loading: false,
+    })),
+    fetchGameMock: vi.fn(async () => ({
+      id: 'game-123',
+      type: 'chess',
+      status: 'active',
+      created_by: 'user-1',
+      created_at: '2026-02-10T00:00:00Z',
+      updated_at: '2026-02-10T00:00:00Z',
+      time_control: null,
+      current_fen: 'start',
+      current_turn: 'w',
+      result: null,
+    })),
+    fetchGameMembersMock: vi.fn(async () => ([
+      { user_id: 'user-1', role: 'white', username: 'alice' },
+      { user_id: 'user-2', role: 'black', username: 'bob' },
+    ])),
+    makeMoveMock: vi.fn(async () => ({})),
+    restartGameMock: vi.fn(async () => ({})),
+  }
+})
 
 vi.mock('react-router-dom', () => ({
-  useParams: () => ({ gameId: mockGameId }),
+  useParams: () => ({ gameId: getMockGameId() }),
 }))
 
 vi.mock('../contexts/AuthContext', () => ({
   useAuth: () => ({ user: { id: 'user-1' } }),
 }))
 
-const useGameRealtimeMock = vi.fn(() => ({
-  moves: [
-    { ply: 1, uci: 'e2e4', created_by: 'user-1', created_at: '2026-02-10T00:00:00Z' },
-    { ply: 2, uci: 'e7e5', created_by: 'user-2', created_at: '2026-02-10T00:00:01Z' },
-  ],
-  loading: false,
-}))
-
 vi.mock('../hooks/useGameRealtime', () => ({
   useGameRealtime: useGameRealtimeMock,
 }))
-
-const fetchGameMock = vi.fn(async () => ({
-  id: 'game-123',
-  type: 'chess',
-  status: 'active',
-  created_by: 'user-1',
-  created_at: '2026-02-10T00:00:00Z',
-  updated_at: '2026-02-10T00:00:00Z',
-  time_control: null,
-  current_fen: 'start',
-  current_turn: 'w',
-  result: null,
-}))
-
-const fetchGameMembersMock = vi.fn(async () => ([
-  { user_id: 'user-1', role: 'white', username: 'alice' },
-  { user_id: 'user-2', role: 'black', username: 'bob' },
-]))
-
-const makeMoveMock = vi.fn(async () => ({}))
-const restartGameMock = vi.fn(async () => ({}))
 
 vi.mock('../api/games', () => ({
   fetchGame: fetchGameMock,
@@ -86,7 +96,7 @@ vi.mock('react-chessboard', () => ({
 describe('ChessGame', () => {
   beforeEach(() => {
     vi.clearAllMocks()
-    mockGameId = 'game-123'
+    setMockGameId('game-123')
   })
 
   it('renders the board', () => {
@@ -111,7 +121,7 @@ describe('ChessGame', () => {
   })
 
   it('local mode does not touch Supabase hooks', () => {
-    mockGameId = 'local'
+    setMockGameId('local')
     render(<ChessGame />)
     expect(screen.getByText('Chess (Local)')).toBeInTheDocument()
     expect(useGameRealtimeMock).not.toHaveBeenCalled()
