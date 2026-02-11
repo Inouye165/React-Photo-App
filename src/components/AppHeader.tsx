@@ -10,6 +10,7 @@ import type { LucideIcon } from 'lucide-react';
 import { useUnreadMessages } from '../hooks/useUnreadMessages';
 import NewMessageNotification from './NewMessageNotification';
 import UserMenu from './UserMenu';
+import GamesMenu from './GamesMenu';
 
 /**
  * AppHeader - Mobile-first responsive navigation header
@@ -53,7 +54,6 @@ export default function AppHeader({
   const canUseChat = Boolean((profile as UserProfile | null)?.has_set_username);
   const { unreadCount, unreadByRoom } = useUnreadMessages(user?.id);
   const [dismissedAtUnreadCount, setDismissedAtUnreadCount] = useState<number>(0);
-  const [gamesMenuValue, setGamesMenuValue] = useState('');
   const [games, setGames] = useState<Array<{ id: string; type: string; status: string; members?: Array<{ user_id: string; username: string | null }> }>>([]);
   const [gamesLoading, setGamesLoading] = useState(false);
   
@@ -288,39 +288,12 @@ export default function AppHeader({
           </div>
         )}
 
-        <div className="flex items-center" data-testid="nav-games-wrapper">
-          <label htmlFor="nav-games" className="sr-only">Games</label>
-          <select
-            id="nav-games"
-            data-testid="nav-games"
-            value={gamesMenuValue}
-            onChange={(event) => {
-              const nextValue = event.target.value;
-              if (!nextValue || nextValue.startsWith('__')) return;
-              setGamesMenuValue('');
-              navigate(nextValue);
-            }}
-            className="min-h-[44px] min-w-[120px] px-2 rounded-lg text-xs sm:text-sm font-medium border border-slate-200 bg-white text-slate-700"
-            disabled={!user || gamesLoading}
-          >
-            <option value="">{gamesLoading ? 'Loading games...' : 'Games'}</option>
-            <option value="/games">Chess (Invites)</option>
-            {games.filter((game) => game.status === 'active').length ? (
-              <option value="__header__" disabled>In progress</option>
-            ) : null}
-            {games
-              .filter((game) => game.status === 'active')
-              .map((game) => {
-                const opponent = game.members?.find((member) => member.user_id !== user?.id)?.username || 'Opponent';
-                const typeLabel = game.type ? `${game.type.charAt(0).toUpperCase()}${game.type.slice(1)}` : 'Game';
-                return (
-                  <option key={game.id} value={`/games/${game.id}`}>
-                    {typeLabel} vs {opponent}
-                  </option>
-                );
-              })}
-          </select>
-        </div>
+        <GamesMenu
+          games={games}
+          gamesLoading={gamesLoading}
+          userId={user?.id}
+          disabled={!user}
+        />
         
         {/* Admin link - only visible to admin users */}
         {isAdmin && (

@@ -152,7 +152,7 @@ describe('AppHeader Component', () => {
     expect(screen.getByTestId('nav-gallery')).toBeInTheDocument();
     expect(screen.getByTestId('nav-edit')).toBeInTheDocument();
     expect(screen.getByTestId('nav-messages')).toBeInTheDocument();
-    expect(screen.getByTestId('nav-games')).toBeInTheDocument();
+    expect(screen.getByRole('button', { name: 'Games' })).toBeInTheDocument();
   });
 
   it('hides Messages tab when username is not set', () => {
