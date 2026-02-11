@@ -379,6 +379,7 @@ function OnlineChessGame(): React.JSX.Element {
   const [toastMessage, setToastMessage] = useState<string | null>(null)
   const [toastSeverity, setToastSeverity] = useState<'info' | 'success' | 'warning' | 'error'>('info')
   const [restartLoading, setRestartLoading] = useState(false)
+  const [debugCopied, setDebugCopied] = useState(false)
 
   const loadGameData = useCallback(async () => {
     if (!gameId) return
@@ -468,7 +469,7 @@ function OnlineChessGame(): React.JSX.Element {
   }
 
   const normalizedDisplayFen = displayFen || START_FEN
-  const currentTurn = normalizedDisplayFen.split(' ')[1] || game?.current_turn || null
+  const currentTurn = (normalizedDisplayFen.split(' ')[1] as 'w' | 'b' | undefined) || (game?.current_turn as 'w' | 'b' | null) || null
   const currentUserId = user?.id ?? null
   const currentMember = members.find((member) => member.user_id === currentUserId) ?? null
 
@@ -513,7 +514,9 @@ function OnlineChessGame(): React.JSX.Element {
   const memberCountLabel = `${members.length}/2 players`
   const isAborted = game?.status === 'aborted'
   const isViewingPast = viewPly < moveRows.length
-  const canMove = !isAborted && !isViewingPast
+  const isMember = Boolean(currentMember)
+  const isUserTurn = (currentTurn === 'w' && isCurrentWhite) || (currentTurn === 'b' && isCurrentBlack)
+  const canMove = !isAborted && !isViewingPast && isMember && isUserTurn
 
   const { isReady, topMoves, evaluation, analyzePosition, difficulty, setDifficulty } = useStockfish()
   const opening = useMemo(() => findOpening(buildMovesUci(moveRows)), [moveRows])
@@ -539,7 +542,10 @@ function OnlineChessGame(): React.JSX.Element {
       <div className="mb-4 flex flex-wrap items-center justify-between gap-3">
         <div>
           <h2 className="text-lg font-semibold">Chess</h2>
-          <div className="text-xs text-slate-500">Status: {game?.status ?? 'loading'}</div>
+          <div className="text-xs text-slate-500">
+            Status: {game?.status ?? 'loading'}
+            {currentMember?.role ? ` · You are ${currentMember.role}` : ' · Spectating'}
+          </div>
         </div>
         <button
           onClick={() => { void handleRestartGame() }}
@@ -571,6 +577,16 @@ function OnlineChessGame(): React.JSX.Element {
               </button>
             ) : null}
           </div>
+        </div>
+      ) : null}
+      {!isMember && !loading && !movesLoading ? (
+        <div className="mb-3 rounded-md border border-amber-200 bg-amber-50 px-3 py-2 text-sm text-amber-700">
+          You are signed in but not recognized as a player in this game. The board is read-only until you join.
+          {import.meta.env.DEV ? (
+            <div className="mt-1 text-xs text-amber-700">
+              userId: {currentUserId ?? 'none'} · members: {members.map((m) => `${m.user_id}:${m.role}`).join(', ') || 'none'}
+            </div>
+          ) : null}
         </div>
       ) : null}
       <div className="flex flex-col gap-6 lg:flex-row">
@@ -658,6 +674,36 @@ function OnlineChessGame(): React.JSX.Element {
             ) : null}
           </div>
           <div className="mb-3 text-xs text-slate-500">{memberCountLabel}</div>
+          {import.meta.env.DEV ? (
+            <div className="mb-3 rounded-lg border border-slate-200 bg-slate-50 px-3 py-2 text-xs text-slate-600">
+              <div className="flex items-center justify-between">
+                <span className="font-semibold">Debug</span>
+                <button
+                  type="button"
+                  className="rounded-md border border-slate-200 bg-white px-2 py-0.5 text-[11px] font-semibold text-slate-600"
+                  onClick={() => {
+                    const summary = [
+                      `game=${gameId ?? 'none'}`,
+                      `user=${currentUserId ?? 'none'}`,
+                      `members=${members.length ? members.map((m) => `${m.user_id}:${m.role}`).join(', ') : 'none'}`,
+                      `turn=${currentTurn ?? 'unknown'}`,
+                      `status=${game?.status ?? 'unknown'}`,
+                    ].join(' | ')
+                    void navigator.clipboard?.writeText(summary)
+                    setDebugCopied(true)
+                    setTimeout(() => setDebugCopied(false), 1500)
+                  }}
+                >
+                  {debugCopied ? 'Copied' : 'Copy debug'}
+                </button>
+              </div>
+              <div>game {gameId ?? 'none'}</div>
+              <div>user {currentUserId ?? 'none'}</div>
+              <div>members {members.length ? members.map((m) => `${m.user_id}:${m.role}`).join(', ') : 'none'}</div>
+              <div>turn {currentTurn ?? 'unknown'}</div>
+              <div>status {game?.status ?? 'unknown'}</div>
+            </div>
+          ) : null}
           <div className="mb-4 rounded-lg border border-slate-200 bg-slate-50 px-3 py-2">
             <div className="text-xs font-semibold text-slate-600">Opening</div>
             <div className="text-sm text-slate-800">{opening?.name ?? 'Unknown'}</div>
