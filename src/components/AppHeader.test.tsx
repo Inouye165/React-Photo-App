@@ -7,6 +7,7 @@ import AppHeader from './AppHeader';
 
 vi.mock('../api/games', () => ({
   listMyGames: vi.fn(async () => ([])),
+  listMyGamesWithMembers: vi.fn(async () => ([])),
 }));
 
 const mockRouterState = vi.hoisted(() => ({

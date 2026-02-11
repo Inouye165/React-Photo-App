@@ -9,6 +9,7 @@ import useStore from './store'
 
 vi.mock('./api/games', () => ({
   listMyGames: vi.fn(async () => ([])),
+  listMyGamesWithMembers: vi.fn(async () => ([])),
 }))
 
 vi.mock('./contexts/AuthContext', () => ({

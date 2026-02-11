@@ -165,6 +165,23 @@ if (typeof window !== 'undefined') {
   defineLocalStorage(window)
 }
 
+if (typeof window !== 'undefined' && window.history) {
+  if (typeof window.history.pushState !== 'function') {
+    Object.defineProperty(window.history, 'pushState', {
+      value: vi.fn(),
+      configurable: true,
+      writable: true,
+    })
+  }
+  if (typeof window.history.replaceState !== 'function') {
+    Object.defineProperty(window.history, 'replaceState', {
+      value: vi.fn(),
+      configurable: true,
+      writable: true,
+    })
+  }
+}
+
 // Mock window.showDirectoryPicker for File System Access API tests
 global.showDirectoryPicker = vi.fn()
 
