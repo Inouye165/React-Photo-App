@@ -331,6 +331,33 @@ function useChessDisplay(moveRows: MoveRow[], gameFen: string | null) {
   }
 }
 
+function useChessboardSize(maxSize: number) {
+  const containerRef = useRef<HTMLDivElement | null>(null)
+  const [boardSize, setBoardSize] = useState(maxSize)
+
+  useEffect(() => {
+    const container = containerRef.current
+    if (!container || typeof ResizeObserver === 'undefined') {
+      setBoardSize(maxSize)
+      return
+    }
+
+    const updateSize = () => {
+      const width = container.clientWidth
+      if (!width) return
+      const safeWidth = Math.max(0, width - 8)
+      setBoardSize(Math.min(maxSize, safeWidth))
+    }
+
+    updateSize()
+    const observer = new ResizeObserver(updateSize)
+    observer.observe(container)
+    return () => observer.disconnect()
+  }, [maxSize])
+
+  return { containerRef, boardSize }
+}
+
 export default function ChessGame(): React.JSX.Element {
   const { gameId } = useParams<{ gameId: string }>()
   if (gameId === 'local') {
@@ -396,6 +423,7 @@ function OnlineChessGame(): React.JSX.Element {
     setShowThreats,
     customSquareStyles,
   } = useChessDisplay(moveRows, game?.current_fen ?? null)
+  const { containerRef: boardContainerRef, boardSize } = useChessboardSize(420)
 
   async function onDrop(sourceSquare: Square, targetSquare: Square, currentFen: string) {
     if (!gameId) return false
@@ -593,28 +621,30 @@ function OnlineChessGame(): React.JSX.Element {
               <span className="text-xs text-slate-500">Live</span>
             )}
           </div>
-          <Chessboard
-            position={normalizedDisplayFen}
-            onPieceDrop={(src: Square, dst: Square) => {
-              if (!canMove) return false
-              try {
-                const test = new Chess(normalizedDisplayFen || START_FEN)
-                const move = test.move({ from: src, to: dst, promotion: 'q' })
-                if (!move) return false
-                void onDrop(src, dst, normalizedDisplayFen)
-                return true
-              } catch {
-                return false
-              }
-            }}
-            onSquareClick={(square: Square) => {
-              if (!showLegalMoves) return
-              setSelectedSquare((prev) => (prev === square ? null : square))
-            }}
-            boardWidth={420}
-            arePiecesDraggable={canMove}
-            customSquareStyles={customSquareStyles}
-          />
+          <div ref={boardContainerRef} className="w-full max-w-[420px] self-center">
+            <Chessboard
+              position={normalizedDisplayFen}
+              onPieceDrop={(src: Square, dst: Square) => {
+                if (!canMove) return false
+                try {
+                  const test = new Chess(normalizedDisplayFen || START_FEN)
+                  const move = test.move({ from: src, to: dst, promotion: 'q' })
+                  if (!move) return false
+                  void onDrop(src, dst, normalizedDisplayFen)
+                  return true
+                } catch {
+                  return false
+                }
+              }}
+              onSquareClick={(square: Square) => {
+                if (!showLegalMoves) return
+                setSelectedSquare((prev) => (prev === square ? null : square))
+              }}
+              boardWidth={boardSize}
+              arePiecesDraggable={canMove}
+              customSquareStyles={customSquareStyles}
+            />
+          </div>
           <div className="flex items-center justify-between">
             {renderPlayerLabel(bottomPlayer || null, bottomIsWhite ? currentTurn === 'w' : currentTurn === 'b', bottomFallback)}
           </div>
@@ -724,6 +754,7 @@ function LocalChessGame(): React.JSX.Element {
     setShowThreats,
     customSquareStyles,
   } = useChessDisplay(moveRows, START_FEN)
+  const { containerRef: boardContainerRef, boardSize } = useChessboardSize(420)
 
   const normalizedDisplayFen = displayFen || START_FEN
   const currentTurn = normalizedDisplayFen.split(' ')[1] || 'w'
@@ -918,28 +949,30 @@ function LocalChessGame(): React.JSX.Element {
               <span className="text-xs text-slate-500">Live</span>
             )}
           </div>
-          <Chessboard
-            position={normalizedDisplayFen}
-            onPieceDrop={(src: Square, dst: Square) => {
-              if (!canMove) return false
-              try {
-                const test = new Chess(normalizedDisplayFen || START_FEN)
-                const move = test.move({ from: src, to: dst, promotion: 'q' })
-                if (!move) return false
-                void onDrop(src, dst, normalizedDisplayFen)
-                return true
-              } catch {
-                return false
-              }
-            }}
-            onSquareClick={(square: Square) => {
-              if (!showLegalMoves) return
-              setSelectedSquare((prev) => (prev === square ? null : square))
-            }}
-            boardWidth={420}
-            arePiecesDraggable={canMove}
-            customSquareStyles={customSquareStyles}
-          />
+          <div ref={boardContainerRef} className="w-full max-w-[420px] self-center">
+            <Chessboard
+              position={normalizedDisplayFen}
+              onPieceDrop={(src: Square, dst: Square) => {
+                if (!canMove) return false
+                try {
+                  const test = new Chess(normalizedDisplayFen || START_FEN)
+                  const move = test.move({ from: src, to: dst, promotion: 'q' })
+                  if (!move) return false
+                  void onDrop(src, dst, normalizedDisplayFen)
+                  return true
+                } catch {
+                  return false
+                }
+              }}
+              onSquareClick={(square: Square) => {
+                if (!showLegalMoves) return
+                setSelectedSquare((prev) => (prev === square ? null : square))
+              }}
+              boardWidth={boardSize}
+              arePiecesDraggable={canMove}
+              customSquareStyles={customSquareStyles}
+            />
+          </div>
           <div className="flex items-center justify-between">
             {renderPlayerLabel(bottomPlayer || null, bottomIsWhite ? currentTurn === 'w' : currentTurn === 'b', 'You')}
           </div>

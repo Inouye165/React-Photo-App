@@ -241,11 +241,13 @@ global.fetch = vi.fn().mockImplementation(defaultFetchImpl);
 global.open = vi.fn()
 
 // Mock ResizeObserver which might be used by components
-global.ResizeObserver = vi.fn().mockImplementation(() => ({
-  observe: vi.fn(),
-  unobserve: vi.fn(),
-  disconnect: vi.fn(),
-}))
+class TestResizeObserver {
+  observe() {}
+  unobserve() {}
+  disconnect() {}
+}
+
+globalThis.ResizeObserver = TestResizeObserver as unknown as typeof ResizeObserver
 
 // Mock HTMLCanvasElement.getContext for image processing
 HTMLCanvasElement.prototype.getContext = vi.fn(() => ({
