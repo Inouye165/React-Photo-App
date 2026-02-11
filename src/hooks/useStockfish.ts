@@ -147,7 +147,7 @@ export function useStockfish() {
   }, [handleInfoLine, sendCommand, settings.skill])
 
   useEffect(() => {
-    const worker = new Worker(new URL('../engine/stockfish.worker.ts', import.meta.url), { type: 'module' })
+    const worker = new Worker(new URL('../engine/stockfish.worker.ts', import.meta.url), { type: 'classic' })
     workerRef.current = worker
     worker.onmessage = (event) => handleMessage(event.data)
     worker.postMessage({ type: 'init' })
