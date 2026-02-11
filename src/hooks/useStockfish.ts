@@ -1,6 +1,4 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
-const StockfishUrl = '/stockfish/stockfish-17.1-lite-single-03e3232.js'
-const StockfishWasmUrl = '/stockfish/stockfish-17.1-lite-single-03e3232.wasm'
 
 type Difficulty = 'Easy' | 'Medium' | 'Hard'
 
@@ -152,11 +150,7 @@ export function useStockfish() {
     const worker = new Worker(new URL('../engine/stockfish.worker.ts', import.meta.url), { type: 'classic' })
     workerRef.current = worker
     worker.onmessage = (event) => handleMessage(event.data)
-    worker.postMessage({
-      type: 'init',
-      stockfishUrl: StockfishUrl,
-      stockfishWasmUrl: StockfishWasmUrl,
-    })
+    worker.postMessage({ type: 'init' })
     worker.postMessage({ command: 'uci' })
 
     return () => {

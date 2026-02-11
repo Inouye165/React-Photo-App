@@ -9,21 +9,13 @@ type StockfishFactory = (options?: {
 }) => StockfishEngine
 
 let engine: StockfishEngine | null = null
-let stockfishUrl: string | null = null
-let stockfishWasmUrl: string | null = null
+const STOCKFISH_JS_URL = '/stockfish/stockfish-17.1-lite-single-03e3232.js'
+const STOCKFISH_WASM_URL = '/stockfish/stockfish-17.1-lite-single-03e3232.wasm'
 
 function ensureEngine(): StockfishEngine {
   if (engine) return engine
-  if (!stockfishUrl) {
-    throw new Error('Stockfish URL not provided')
-  }
-  if (!stockfishWasmUrl) {
-    throw new Error('Stockfish WASM URL not provided')
-  }
 
-  const wasmUrl = stockfishWasmUrl
-
-  importScripts(stockfishUrl)
+  importScripts(STOCKFISH_JS_URL)
 
   const factory = (self as unknown as { Stockfish?: StockfishFactory; STOCKFISH?: StockfishFactory }).Stockfish
     ?? (self as unknown as { STOCKFISH?: StockfishFactory }).STOCKFISH
@@ -34,8 +26,8 @@ function ensureEngine(): StockfishEngine {
 
   engine = factory({
     locateFile: (file: string) => {
-      if (file.endsWith('.wasm')) return wasmUrl
-      if (file.endsWith('.wasm.map')) return `${wasmUrl}.map`
+      if (file.endsWith('.wasm')) return STOCKFISH_WASM_URL
+      if (file.endsWith('.wasm.map')) return `${STOCKFISH_WASM_URL}.map`
       return file
     },
   })
@@ -51,12 +43,6 @@ self.onmessage = (event: MessageEvent) => {
   const payload = event.data
 
   if (payload?.type === 'init') {
-    if (typeof payload?.stockfishUrl === 'string') {
-      stockfishUrl = payload.stockfishUrl
-    }
-    if (typeof payload?.stockfishWasmUrl === 'string') {
-      stockfishWasmUrl = payload.stockfishWasmUrl
-    }
     ensureEngine()
     self.postMessage({ type: 'ready' })
     return
