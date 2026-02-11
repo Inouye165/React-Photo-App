@@ -1,26 +1,44 @@
 /// <reference lib="webworker" />
-import StockfishUrl from 'stockfish/src/stockfish-17.1-single-a496a04.js?url'
-
 type StockfishEngine = {
   postMessage: (command: string) => void
   onmessage: ((event: MessageEvent | string) => void) | null
 }
 
+type StockfishFactory = (options?: {
+  locateFile?: (file: string, prefix?: string) => string
+}) => StockfishEngine
+
 let engine: StockfishEngine | null = null
+let stockfishUrl: string | null = null
+let stockfishWasmUrl: string | null = null
 
 function ensureEngine(): StockfishEngine {
   if (engine) return engine
+  if (!stockfishUrl) {
+    throw new Error('Stockfish URL not provided')
+  }
+  if (!stockfishWasmUrl) {
+    throw new Error('Stockfish WASM URL not provided')
+  }
 
-  importScripts(StockfishUrl)
+  const wasmUrl = stockfishWasmUrl
 
-  const factory = (self as unknown as { Stockfish?: () => StockfishEngine; STOCKFISH?: () => StockfishEngine }).Stockfish
-    ?? (self as unknown as { STOCKFISH?: () => StockfishEngine }).STOCKFISH
+  importScripts(stockfishUrl)
+
+  const factory = (self as unknown as { Stockfish?: StockfishFactory; STOCKFISH?: StockfishFactory }).Stockfish
+    ?? (self as unknown as { STOCKFISH?: StockfishFactory }).STOCKFISH
 
   if (typeof factory !== 'function') {
     throw new Error('Stockfish factory not found')
   }
 
-  engine = factory()
+  engine = factory({
+    locateFile: (file: string) => {
+      if (file.endsWith('.wasm')) return wasmUrl
+      if (file.endsWith('.wasm.map')) return `${wasmUrl}.map`
+      return file
+    },
+  })
   engine.onmessage = (event) => {
     const data = typeof event === 'string' ? event : event.data
     self.postMessage(data)
@@ -33,6 +51,12 @@ self.onmessage = (event: MessageEvent) => {
   const payload = event.data
 
   if (payload?.type === 'init') {
+    if (typeof payload?.stockfishUrl === 'string') {
+      stockfishUrl = payload.stockfishUrl
+    }
+    if (typeof payload?.stockfishWasmUrl === 'string') {
+      stockfishWasmUrl = payload.stockfishWasmUrl
+    }
     ensureEngine()
     self.postMessage({ type: 'ready' })
     return
