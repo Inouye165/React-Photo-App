@@ -1,5 +1,5 @@
 /// <reference lib="webworker" />
-import StockfishUrl from 'stockfish/src/stockfish-nnue-16-no-Worker.js?url'
+import StockfishUrl from 'stockfish/src/stockfish-17.1-single-a496a04.js?url'
 
 type StockfishEngine = {
   postMessage: (command: string) => void
