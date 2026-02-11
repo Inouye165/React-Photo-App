@@ -59,7 +59,7 @@ export function useStockfish() {
   const sendCommand = useCallback((command: string) => {
     const worker = workerRef.current
     if (!worker) return
-    worker.postMessage({ command })
+    worker.postMessage(command)
   }, [])
 
   const handleInfoLine = useCallback((line: string) => {
@@ -147,15 +147,20 @@ export function useStockfish() {
   }, [handleInfoLine, sendCommand, settings.skill])
 
   useEffect(() => {
-    const worker = new Worker(new URL('../engine/stockfish.worker.ts', import.meta.url), { type: 'classic' })
+    // Use the Stockfish JS file directly as the Worker — it auto-initializes
+    // the WASM engine and listens for UCI commands via postMessage/onmessage.
+    // Do NOT wrap it in a custom worker; the Stockfish script is a complete
+    // Web Worker that derives the .wasm path from self.location.
+    const worker = new Worker('/stockfish/stockfish-17.1-lite-single-03e3232.js')
     workerRef.current = worker
     worker.onmessage = (event) => handleMessage(event.data)
-    worker.postMessage({ type: 'init' })
-    worker.postMessage({ command: 'uci' })
+    // Send UCI init — Stockfish queues commands until WASM is ready
+    worker.postMessage('uci')
 
     return () => {
       pendingMoveRef.current?.reject(new Error('Stockfish worker terminated'))
       pendingMoveRef.current = null
+      worker.postMessage('quit')
       worker.terminate()
       workerRef.current = null
     }
