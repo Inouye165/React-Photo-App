@@ -35,6 +35,13 @@ declare module 'react' {
   }
 }
 
+declare module '*?url' {
+  const src: string
+  export default src
+}
+
+declare function importScripts(...urls: string[]): void;
+
 // Upload response type from API
 export interface UploadResponse {
   metadata?: {
