@@ -16,6 +16,8 @@ import ConfirmInvitePage from './pages/ConfirmInvitePage';
 import OnboardingPage from './pages/OnboardingPage.tsx';
 import ChatPage from './pages/ChatPage.tsx';
 import ChatPadPage from './pages/ChatPadPage.tsx';
+import GamesIndex from './pages/GamesIndex'
+import ChessGame from './pages/ChessGame'
 import AdminDashboard from './pages/AdminDashboard.tsx';
 import AdminAssessmentHistory from './pages/AdminAssessmentHistory.tsx';
 import AssessmentReviewDetail from './pages/AssessmentReviewDetail.tsx';
@@ -86,6 +88,10 @@ function App() {
               {/* Community chat */}
               <Route path="/chat" element={<ChatPage />} />
               <Route path="/chat/:roomId" element={<ChatPage />} />
+
+              {/* Games */}
+              <Route path="/games" element={<GamesIndex />} />
+              <Route path="/games/:gameId" element={<ChessGame />} />
 
               {/* Photo detail view */}
               <Route path="/photos/:id" element={<PhotoDetailPage />} />

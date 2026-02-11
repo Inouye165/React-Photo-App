@@ -7,6 +7,11 @@ import userEvent from '@testing-library/user-event'
 import Toolbar from './Toolbar'
 import useStore from './store'
 
+vi.mock('./api/games', () => ({
+  listMyGames: vi.fn(async () => ([])),
+  listMyGamesWithMembers: vi.fn(async () => ([])),
+}))
+
 vi.mock('./contexts/AuthContext', () => ({
   useAuth: vi.fn(() => ({
     user: { email: 'tester@example.com' },
@@ -60,6 +65,7 @@ describe('Toolbar Component', () => {
     renderWithRouter(<Toolbar {...mockProps} />)
     
     expect(screen.getByText('Select Folder for Upload')).toBeInTheDocument()
+    expect(screen.getByLabelText('Games')).toBeInTheDocument()
   expect(screen.getByText('View Working')).toBeInTheDocument()
     expect(screen.getByText('View Inprogress')).toBeInTheDocument()
     expect(screen.getByText('View Finished')).toBeInTheDocument()

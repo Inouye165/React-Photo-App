@@ -3,6 +3,7 @@ import { NavLink, useNavigate, useLocation } from 'react-router-dom';
 import type { User } from '@supabase/supabase-js';
 import { useAuth } from '../contexts/AuthContext';
 import type { UserProfile } from '../api';
+import { listMyGamesWithMembers } from '../api/games';
 import useStore from '../store';
 import { ChevronLeft, ChevronRight, Upload, Grid3X3, Edit3, MessageSquare, Shield } from 'lucide-react';
 import type { LucideIcon } from 'lucide-react';
@@ -52,6 +53,9 @@ export default function AppHeader({
   const canUseChat = Boolean((profile as UserProfile | null)?.has_set_username);
   const { unreadCount, unreadByRoom } = useUnreadMessages(user?.id);
   const [dismissedAtUnreadCount, setDismissedAtUnreadCount] = useState<number>(0);
+  const [gamesMenuValue, setGamesMenuValue] = useState('');
+  const [games, setGames] = useState<Array<{ id: string; type: string; status: string; members?: Array<{ user_id: string; username: string | null }> }>>([]);
+  const [gamesLoading, setGamesLoading] = useState(false);
   
   // Check if user has admin role
   const isAdmin = (user as User | null)?.app_metadata?.role === 'admin';
@@ -145,6 +149,40 @@ export default function AppHeader({
       setDismissedAtUnreadCount(otherUnreadCount);
     }
   }, [otherUnreadCount, dismissedAtUnreadCount]);
+
+  useEffect(() => {
+    let isActive = true;
+
+    if (!user) {
+      setGames([]);
+      setGamesLoading(false);
+      return () => {
+        isActive = false;
+      };
+    }
+
+    setGamesLoading(true);
+    listMyGamesWithMembers()
+      .then((data) => {
+        if (isActive) {
+          setGames(Array.isArray(data) ? data : []);
+        }
+      })
+      .catch(() => {
+        if (isActive) {
+          setGames([]);
+        }
+      })
+      .finally(() => {
+        if (isActive) {
+          setGamesLoading(false);
+        }
+      });
+
+    return () => {
+      isActive = false;
+    };
+  }, [user?.id]);
 
   return (
     <>
@@ -249,6 +287,40 @@ export default function AppHeader({
             )}
           </div>
         )}
+
+        <div className="flex items-center" data-testid="nav-games-wrapper">
+          <label htmlFor="nav-games" className="sr-only">Games</label>
+          <select
+            id="nav-games"
+            data-testid="nav-games"
+            value={gamesMenuValue}
+            onChange={(event) => {
+              const nextValue = event.target.value;
+              if (!nextValue || nextValue.startsWith('__')) return;
+              setGamesMenuValue('');
+              navigate(nextValue);
+            }}
+            className="min-h-[44px] min-w-[120px] px-2 rounded-lg text-xs sm:text-sm font-medium border border-slate-200 bg-white text-slate-700"
+            disabled={!user || gamesLoading}
+          >
+            <option value="">{gamesLoading ? 'Loading games...' : 'Games'}</option>
+            <option value="/games">Chess (Invites)</option>
+            {games.filter((game) => game.status === 'active').length ? (
+              <option value="__header__" disabled>In progress</option>
+            ) : null}
+            {games
+              .filter((game) => game.status === 'active')
+              .map((game) => {
+                const opponent = game.members?.find((member) => member.user_id !== user?.id)?.username || 'Opponent';
+                const typeLabel = game.type ? `${game.type.charAt(0).toUpperCase()}${game.type.slice(1)}` : 'Game';
+                return (
+                  <option key={game.id} value={`/games/${game.id}`}>
+                    {typeLabel} vs {opponent}
+                  </option>
+                );
+              })}
+          </select>
+        </div>
         
         {/* Admin link - only visible to admin users */}
         {isAdmin && (
