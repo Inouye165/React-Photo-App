@@ -36,6 +36,14 @@ export function useChatRealtime(
 
   const subscriptionKey = useMemo(() => (normalizedRoomId ? `room:${normalizedRoomId}` : null), [normalizedRoomId])
 
+  const buildRealtimeError = (status: string, err?: { message?: string } | null) => {
+    const message = err?.message || ''
+    if (message.includes('mismatch between server and client bindings for postgres changes')) {
+      return 'Realtime subscription failed due to a Supabase server/client mismatch. Update the Realtime service (or local Supabase stack) to match the client version.'
+    }
+    return message || `Realtime subscription failed: ${status}`
+  }
+
   useEffect(() => {
     if (import.meta.env.DEV) {
       console.log('Attempting Connection to Room:', normalizedRoomId)
@@ -120,7 +128,7 @@ export function useChatRealtime(
             return
           }
           if (status === 'CHANNEL_ERROR' || status === 'TIMED_OUT') {
-            setError(err?.message || `Realtime subscription failed: ${status}`)
+            setError(buildRealtimeError(status, err ?? null))
           }
         })
       } catch (err) {
