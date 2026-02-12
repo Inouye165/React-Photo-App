@@ -48,10 +48,18 @@ export function useGameRealtime(gameId: string | null, refreshToken = 0) {
           setMoves((prev) => {
             const inserted = payload.new as any
             const insertedId = String(inserted.id ?? '')
+
+            // Prefer authoritative PK-based dedupe. If the realtime payload
+            // does not include an `id`, re-sync from the server rather than
+            // attempting a brittle `ply`-based replacement which can mask
+            // restart/reconcile races.
+            if (!insertedId) {
+              void fetchMoves()
+              return prev
+            }
+
             const next = prev.slice()
-            const existingIndex = insertedId
-              ? next.findIndex((move) => String(move.id ?? '') === insertedId)
-              : next.findIndex((move) => Number(move.ply ?? -1) === Number(inserted.ply ?? -2))
+            const existingIndex = next.findIndex((move) => String(move.id ?? '') === insertedId)
 
             if (existingIndex >= 0) {
               next[existingIndex] = inserted
