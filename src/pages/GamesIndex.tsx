@@ -87,7 +87,8 @@ export default function GamesIndex(): React.JSX.Element {
           </button>
         </div>
       ) : null}
-      <div className="mb-4">
+      <div className="mb-4 flex flex-wrap gap-2">
+        <button onClick={() => navigate('/games/local')} className="px-3 py-1 bg-slate-600 text-white rounded">Play vs Computer</button>
         <button onClick={() => handleCreate()} className="px-3 py-1 bg-slate-700 text-white rounded">New Game (Random Opponent)</button>
       </div>
 

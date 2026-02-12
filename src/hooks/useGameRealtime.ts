@@ -64,10 +64,18 @@ export function useGameRealtime(gameId: string | null, refreshToken = 0) {
             if (existingIndex >= 0) {
               next[existingIndex] = inserted
             } else {
-              next.push(inserted)
+              // Binary-search sorted insert by ply to avoid full re-sort
+              const insertPly = Number(inserted.ply ?? 0)
+              let lo = 0
+              let hi = next.length
+              while (lo < hi) {
+                const mid = (lo + hi) >>> 1
+                if ((next[mid].ply || 0) < insertPly) lo = mid + 1
+                else hi = mid
+              }
+              next.splice(lo, 0, inserted)
             }
 
-            next.sort((a, b) => (a.ply || 0) - (b.ply || 0))
             return next
           })
         }
@@ -103,10 +111,18 @@ export function useGameRealtime(gameId: string | null, refreshToken = 0) {
             if (index >= 0) {
               next[index] = updated
             } else {
-              next.push(updated)
+              // Sorted insert by ply
+              const insertPly = Number(updated.ply ?? 0)
+              let lo = 0
+              let hi = next.length
+              while (lo < hi) {
+                const mid = (lo + hi) >>> 1
+                if ((next[mid].ply || 0) < insertPly) lo = mid + 1
+                else hi = mid
+              }
+              next.splice(lo, 0, updated)
             }
 
-            next.sort((a, b) => (a.ply || 0) - (b.ply || 0))
             return next
           })
         }

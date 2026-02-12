@@ -126,7 +126,27 @@ export async function listMyGamesWithMembers(): Promise<GameWithMembers[]> {
 
 export async function createChessGame(opponentUserId: string | null, timeControl: TimeControl | null) {
   const userId = await requireAuthedUserId()
-  const payload: any = { created_by: userId }
+
+  // Attempt transactional creation via RPC to avoid orphan rows
+  const rpcPayload: Record<string, unknown> = {
+    p_created_by: userId,
+    p_opponent_id: opponentUserId ?? null,
+  }
+  if (timeControl) rpcPayload.p_time_control = timeControl
+
+  const { data: rpcGame, error: rpcError } = await supabase.rpc('create_chess_game', rpcPayload)
+
+  if (!rpcError && rpcGame) {
+    notifyGamesChanged()
+    return rpcGame as GameRow
+  }
+
+  // Fallback to non-transactional REST if RPC is unavailable (404 / function not found)
+  const rpcMessage = (rpcError?.message || '').toString()
+  const isRpcMissing = /not found|404|function .* does not exist|could not find/i.test(rpcMessage)
+  if (!isRpcMissing) throw rpcError
+
+  const payload: Record<string, unknown> = { created_by: userId }
   if (timeControl) payload.time_control = timeControl
 
   const { data: game, error: gameError } = await supabase
@@ -142,7 +162,11 @@ export async function createChessGame(opponentUserId: string | null, timeControl
   if (opponentUserId) members.push({ game_id: game.id, user_id: opponentUserId, role: 'black' })
 
   const { error: membersError } = await supabase.from('game_members').insert(members)
-  if (membersError) throw membersError
+  if (membersError) {
+    // Clean up orphan game row on member insert failure
+    await supabase.from('games').delete().eq('id', game.id).then(() => {})
+    throw membersError
+  }
 
   notifyGamesChanged()
 
