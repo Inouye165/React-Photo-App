@@ -167,11 +167,15 @@ describe('ChessGame', () => {
 
     render(<ChessGame />)
 
-    const hintShow = screen.getByRole('button', { name: 'Show' })
+    const hintShow = screen.getByRole('button', { name: 'Show hints' })
     const board = screen.getByTestId('chessboard')
     expect(board).toHaveAttribute('data-custom-squares', '')
 
     await user.click(hintShow)
+
+    // after showing, hover (or click on touch) the first hint to highlight squares
+    const hintItem = await screen.findByRole('button', { name: '1. e4' })
+    await user.hover(hintItem)
 
     await waitFor(() => {
       const highlighted = screen.getByTestId('chessboard').getAttribute('data-custom-squares') || ''

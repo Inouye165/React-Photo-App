@@ -362,29 +362,22 @@ function useChessDisplay(moveRows: MoveRow[], gameFen: string | null, hoveredHin
   }
 }
 
-function TopHintsList({ hintMoves, onShowHint }: { hintMoves: HintMove[]; onShowHint: (uci: string) => void }) {
-  if (!hintMoves.length) {
-    return <div className="text-xs text-slate-500">No hints yet.</div>
-  }
+function TopHintsList({ hintMoves, onHoverOrClick }: { hintMoves: HintMove[]; onHoverOrClick: (uci: string | null) => void }) {
+  if (!hintMoves.length) return <div className="text-xs text-slate-500">No hints yet.</div>
 
   return (
     <ol className="space-y-1 text-sm text-slate-700">
       {hintMoves.map((move, idx) => (
         <li key={`${move.uci}-${idx}`}>
-          <div className="flex items-center justify-between">
-            <div className="text-left">
-              <div className="text-sm text-slate-800">{idx + 1}. {move.san}</div>
-            </div>
-            <div>
-              <button
-                type="button"
-                className="rounded px-2 py-0.5 text-xs font-semibold bg-white border border-slate-200 hover:bg-slate-50"
-                onClick={() => onShowHint(move.uci)}
-              >
-                Show
-              </button>
-            </div>
-          </div>
+          <button
+            type="button"
+            className="w-full rounded px-1 py-0.5 text-left hover:bg-slate-100 focus:bg-slate-100 focus:outline-none"
+            onMouseEnter={() => onHoverOrClick(move.uci)}
+            onMouseLeave={() => onHoverOrClick(null)}
+            onClick={() => onHoverOrClick(move.uci)}
+          >
+            {idx + 1}. {move.san}
+          </button>
         </li>
       ))}
     </ol>
@@ -464,8 +457,10 @@ function OnlineChessGame(): React.JSX.Element {
   const [toastSeverity, setToastSeverity] = useState<'info' | 'success' | 'warning' | 'error'>('info')
   const [restartLoading, setRestartLoading] = useState(false)
   const [debugCopied, setDebugCopied] = useState(false)
-  // active hint shown by clicking "Show"
-  const [activeHintUci, setActiveHintUci] = useState<string | null>(null)
+  // whether hints are currently visible (after clicking the single Show Hints button)
+  const [showHintsVisible, setShowHintsVisible] = useState(false)
+  // which UCI is currently hovered / tapped to highlight squares
+  const [hoveredHintUci, setHoveredHintUci] = useState<string | null>(null)
   const [hintCount, setHintCount] = useState(0)
   const [hintedPlys, setHintedPlys] = useState<number[]>([])
   const lastShownPlyRef = useRef<number | null>(null)
@@ -504,7 +499,8 @@ function OnlineChessGame(): React.JSX.Element {
   // Clear any active hint after the move that the hint was shown for occurs
   useEffect(() => {
     if (lastShownPlyRef.current != null && moveRows.length > lastShownPlyRef.current) {
-      setActiveHintUci(null)
+      setShowHintsVisible(false)
+      setHoveredHintUci(null)
       lastShownPlyRef.current = null
     }
   }, [moveRows.length])
@@ -522,7 +518,7 @@ function OnlineChessGame(): React.JSX.Element {
     showThreats,
     setShowThreats,
     customSquareStyles,
-  } = useChessDisplay(moveRows, game?.current_fen ?? null, activeHintUci)
+  } = useChessDisplay(moveRows, game?.current_fen ?? null, hoveredHintUci)
   const { containerRef: boardContainerRef, boardSize } = useChessboardSize(CHESSBOARD_MAX_SIZE)
 
   async function onDrop(sourceSquare: Square, targetSquare: Square, currentFen: string) {
@@ -799,7 +795,7 @@ function OnlineChessGame(): React.JSX.Element {
               <span className="text-xs text-slate-500">Loading…</span>
             ) : null}
           </div>
-          <div className="mb-3 text-xs text-slate-500">{memberCountLabel}</div>
+            <div className="mb-3 text-xs text-slate-500">{memberCountLabel}</div>
           {import.meta.env.DEV ? (
             <div className="mb-3 rounded-lg border border-slate-200 bg-slate-50 px-3 py-2 text-xs text-slate-600">
               <div className="flex items-center justify-between">
@@ -859,13 +855,25 @@ function OnlineChessGame(): React.JSX.Element {
             </div>
             <div className="mt-3">
               <div className="mb-1 text-xs text-slate-600">Top hints <span className="text-xs text-slate-500">(used: {hintCount})</span></div>
-              <TopHintsList hintMoves={hintMoves} onShowHint={(uci) => {
-                const nextPly = moveRows.length + 1
-                lastShownPlyRef.current = nextPly
-                setActiveHintUci(uci)
-                setHintCount((c) => c + 1)
-                setHintedPlys((prev) => Array.from(new Set([...prev, nextPly])))
-              }} />
+              {!showHintsVisible ? (
+                <div className="flex">
+                  <button
+                    type="button"
+                    className="rounded px-2 py-1 text-xs font-semibold bg-white border border-slate-200 hover:bg-slate-50"
+                    onClick={() => {
+                      const nextPly = moveRows.length + 1
+                      lastShownPlyRef.current = nextPly
+                      setShowHintsVisible(true)
+                      setHintCount((c) => c + 1)
+                      setHintedPlys((prev) => Array.from(new Set([...prev, nextPly])))
+                    }}
+                  >
+                    Show hints
+                  </button>
+                </div>
+              ) : (
+                <TopHintsList hintMoves={hintMoves} onHoverOrClick={(uci) => setHoveredHintUci(uci)} />
+              )}
             </div>
           </div>
           <div className="min-h-0 flex-1 overflow-y-auto">
@@ -930,8 +938,9 @@ function LocalChessGame(): React.JSX.Element {
   const [toastSeverity, setToastSeverity] = useState<'info' | 'success' | 'warning' | 'error'>('info')
   const [engineThinking, setEngineThinking] = useState(false)
   const [pendingEngineFen, setPendingEngineFen] = useState<string | null>(null)
-  // active hint shown by clicking "Show"
-  const [activeHintUci, setActiveHintUci] = useState<string | null>(null)
+  // hint visibility and hover state for local game
+  const [showHintsVisible, setShowHintsVisible] = useState(false)
+  const [hoveredHintUci, setHoveredHintUci] = useState<string | null>(null)
   const [hintCount, setHintCount] = useState(0)
   const [hintedPlys, setHintedPlys] = useState<number[]>([])
   const lastShownPlyRef = useRef<number | null>(null)
@@ -948,7 +957,7 @@ function LocalChessGame(): React.JSX.Element {
     showThreats,
     setShowThreats,
     customSquareStyles,
-  } = useChessDisplay(moveRows, START_FEN, activeHintUci)
+  } = useChessDisplay(moveRows, START_FEN, hoveredHintUci)
   const { containerRef: boardContainerRef, boardSize } = useChessboardSize(CHESSBOARD_MAX_SIZE)
 
   const normalizedDisplayFen = displayFen || START_FEN
@@ -1015,10 +1024,11 @@ function LocalChessGame(): React.JSX.Element {
     void applyEngineMove(fen)
   }, [engineThinking, isReady, pendingEngineFen])
 
-  // Clear any active hint after the move that the hint was shown for occurs
+  // Clear any visible hints after the move that the hints were shown for occurs
   useEffect(() => {
     if (lastShownPlyRef.current != null && moveRows.length > lastShownPlyRef.current) {
-      setActiveHintUci(null)
+      setShowHintsVisible(false)
+      setHoveredHintUci(null)
       lastShownPlyRef.current = null
     }
   }, [moveRows.length])
@@ -1251,13 +1261,25 @@ function LocalChessGame(): React.JSX.Element {
             </div>
             <div className="mt-3">
               <div className="mb-1 text-xs text-slate-600">Top hints <span className="text-xs text-slate-500">(used: {hintCount})</span></div>
-              <TopHintsList hintMoves={hintMoves} onShowHint={(uci) => {
-                const nextPly = moveRows.length + 1
-                lastShownPlyRef.current = nextPly
-                setActiveHintUci(uci)
-                setHintCount((c) => c + 1)
-                setHintedPlys((prev) => Array.from(new Set([...prev, nextPly])))
-              }} />
+              {!showHintsVisible ? (
+                <div className="flex">
+                  <button
+                    type="button"
+                    className="rounded px-2 py-1 text-xs font-semibold bg-white border border-slate-200 hover:bg-slate-50"
+                    onClick={() => {
+                      const nextPly = moveRows.length + 1
+                      lastShownPlyRef.current = nextPly
+                      setShowHintsVisible(true)
+                      setHintCount((c) => c + 1)
+                      setHintedPlys((prev) => Array.from(new Set([...prev, nextPly])))
+                    }}
+                  >
+                    Show hints
+                  </button>
+                </div>
+              ) : (
+                <TopHintsList hintMoves={hintMoves} onHoverOrClick={(uci) => setHoveredHintUci(uci)} />
+              )}
             </div>
           </div>
           <div className="min-h-0 flex-1 overflow-y-auto">
