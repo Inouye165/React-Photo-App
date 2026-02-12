@@ -214,3 +214,5 @@ Current admin sections:
 ## License
 
 **Restricted License.** Free to read and learn from, but you cannot use this commercially or redistribute it without permission. See [LICENSE](LICENSE) for details.
+
+<!-- CI-Trigger: update to re-run CI checks (2026-02-12) -->
