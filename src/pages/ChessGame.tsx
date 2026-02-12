@@ -362,10 +362,8 @@ function useChessDisplay(moveRows: MoveRow[], gameFen: string | null, hoveredHin
   }
 }
 
-function TopHintsList({ hintMoves, onHoverHint }: { hintMoves: HintMove[]; onHoverHint: (uci: string | null) => void }) {
-  if (!hintMoves.length) {
-    return <div className="text-xs text-slate-500">No hints yet.</div>
-  }
+function TopHintsList({ hintMoves, onHoverOrClick }: { hintMoves: HintMove[]; onHoverOrClick: (uci: string | null) => void }) {
+  if (!hintMoves.length) return <div className="text-xs text-slate-500">No hints yet.</div>
 
   return (
     <ol className="space-y-1 text-sm text-slate-700">
@@ -374,10 +372,9 @@ function TopHintsList({ hintMoves, onHoverHint }: { hintMoves: HintMove[]; onHov
           <button
             type="button"
             className="w-full rounded px-1 py-0.5 text-left hover:bg-slate-100 focus:bg-slate-100 focus:outline-none"
-            onMouseEnter={() => onHoverHint(move.uci)}
-            onMouseLeave={() => onHoverHint(null)}
-            onFocus={() => onHoverHint(move.uci)}
-            onBlur={() => onHoverHint(null)}
+            onMouseEnter={() => onHoverOrClick(move.uci)}
+            onMouseLeave={() => onHoverOrClick(null)}
+            onClick={() => onHoverOrClick(move.uci)}
           >
             {idx + 1}. {move.san}
           </button>
@@ -460,7 +457,15 @@ function OnlineChessGame(): React.JSX.Element {
   const [toastSeverity, setToastSeverity] = useState<'info' | 'success' | 'warning' | 'error'>('info')
   const [restartLoading, setRestartLoading] = useState(false)
   const [debugCopied, setDebugCopied] = useState(false)
+  // whether hints are currently visible (after clicking the single Show Hints button)
+  const [showHintsVisible, setShowHintsVisible] = useState(false)
+  // which UCI is currently hovered / tapped to highlight squares
   const [hoveredHintUci, setHoveredHintUci] = useState<string | null>(null)
+  const [hintCount, setHintCount] = useState(0)
+  const [hintedPlys, setHintedPlys] = useState<number[]>([])
+  const lastShownPlyRef = useRef<number | null>(null)
+
+  const moveRows = useMemo(() => (moves ?? []) as MoveRow[], [moves])
 
   const loadGameData = useCallback(async () => {
     if (!gameId) return
@@ -491,7 +496,16 @@ function OnlineChessGame(): React.JSX.Element {
     void loadGameData()
   }, [loadGameData])
 
-  const moveRows = useMemo(() => (moves ?? []) as MoveRow[], [moves])
+  // Clear any active hint after the move that the hint was shown for occurs
+  useEffect(() => {
+    if (lastShownPlyRef.current != null && moveRows.length > lastShownPlyRef.current) {
+      setShowHintsVisible(false)
+      setHoveredHintUci(null)
+      lastShownPlyRef.current = null
+    }
+  }, [moveRows.length])
+
+  
 
   const {
     displayFen,
@@ -781,7 +795,7 @@ function OnlineChessGame(): React.JSX.Element {
               <span className="text-xs text-slate-500">Loading…</span>
             ) : null}
           </div>
-          <div className="mb-3 text-xs text-slate-500">{memberCountLabel}</div>
+            <div className="mb-3 text-xs text-slate-500">{memberCountLabel}</div>
           {import.meta.env.DEV ? (
             <div className="mb-3 rounded-lg border border-slate-200 bg-slate-50 px-3 py-2 text-xs text-slate-600">
               <div className="flex items-center justify-between">
@@ -840,8 +854,26 @@ function OnlineChessGame(): React.JSX.Element {
               </div>
             </div>
             <div className="mt-3">
-              <div className="mb-1 text-xs text-slate-600">Top hints</div>
-              <TopHintsList hintMoves={hintMoves} onHoverHint={setHoveredHintUci} />
+              <div className="mb-1 text-xs text-slate-600">Top hints <span className="text-xs text-slate-500">(used: {hintCount})</span></div>
+              {!showHintsVisible ? (
+                <div className="flex">
+                  <button
+                    type="button"
+                    className="rounded px-2 py-1 text-xs font-semibold bg-white border border-slate-200 hover:bg-slate-50"
+                    onClick={() => {
+                      const nextPly = moveRows.length + 1
+                      lastShownPlyRef.current = nextPly
+                      setShowHintsVisible(true)
+                      setHintCount((c) => c + 1)
+                      setHintedPlys((prev) => Array.from(new Set([...prev, nextPly])))
+                    }}
+                  >
+                    Show hints
+                  </button>
+                </div>
+              ) : (
+                <TopHintsList hintMoves={hintMoves} onHoverOrClick={(uci) => setHoveredHintUci(uci)} />
+              )}
             </div>
           </div>
           <div className="min-h-0 flex-1 overflow-y-auto">
@@ -855,13 +887,33 @@ function OnlineChessGame(): React.JSX.Element {
                   </tr>
                 </thead>
                 <tbody>
-                  {moveHistory.map((row) => (
-                    <tr key={row.moveNumber} className="border-t border-slate-100">
-                      <td className="py-2 pr-2 text-xs text-slate-500">{row.moveNumber}.</td>
-                      <td className="py-2 font-medium">{row.white || ''}</td>
-                      <td className="py-2 font-medium">{row.black || ''}</td>
-                    </tr>
-                  ))}
+                  {moveHistory.map((row) => {
+                    const whitePly = (row.moveNumber * 2) - 1
+                    const blackPly = row.moveNumber * 2
+                    const whiteHint = hintedPlys.includes(whitePly)
+                    const blackHint = hintedPlys.includes(blackPly)
+                    return (
+                      <tr key={row.moveNumber} className="border-t border-slate-100">
+                        <td className="py-2 pr-2 text-xs text-slate-500">{row.moveNumber}.</td>
+                        <td className={`py-2 font-medium ${whiteHint ? 'text-purple-600' : ''}`}>
+                          {row.white ? (
+                            <>
+                              <span>{row.white}</span>
+                              {whiteHint ? <span className="ml-1 text-xs">*</span> : null}
+                            </>
+                          ) : ''}
+                        </td>
+                        <td className={`py-2 font-medium ${blackHint ? 'text-purple-600' : ''}`}>
+                          {row.black ? (
+                            <>
+                              <span>{row.black}</span>
+                              {blackHint ? <span className="ml-1 text-xs">*</span> : null}
+                            </>
+                          ) : ''}
+                        </td>
+                      </tr>
+                    )
+                  })}
                 </tbody>
               </table>
             ) : (
@@ -886,7 +938,12 @@ function LocalChessGame(): React.JSX.Element {
   const [toastSeverity, setToastSeverity] = useState<'info' | 'success' | 'warning' | 'error'>('info')
   const [engineThinking, setEngineThinking] = useState(false)
   const [pendingEngineFen, setPendingEngineFen] = useState<string | null>(null)
+  // hint visibility and hover state for local game
+  const [showHintsVisible, setShowHintsVisible] = useState(false)
   const [hoveredHintUci, setHoveredHintUci] = useState<string | null>(null)
+  const [hintCount, setHintCount] = useState(0)
+  const [hintedPlys, setHintedPlys] = useState<number[]>([])
+  const lastShownPlyRef = useRef<number | null>(null)
 
   const moveRows = useMemo(() => localMoves, [localMoves])
   const {
@@ -966,6 +1023,15 @@ function LocalChessGame(): React.JSX.Element {
     setPendingEngineFen(null)
     void applyEngineMove(fen)
   }, [engineThinking, isReady, pendingEngineFen])
+
+  // Clear any visible hints after the move that the hints were shown for occurs
+  useEffect(() => {
+    if (lastShownPlyRef.current != null && moveRows.length > lastShownPlyRef.current) {
+      setShowHintsVisible(false)
+      setHoveredHintUci(null)
+      lastShownPlyRef.current = null
+    }
+  }, [moveRows.length])
 
   const hintMoves: HintMove[] = useMemo(() => (
     topMoves.map((move) => ({
@@ -1194,8 +1260,26 @@ function LocalChessGame(): React.JSX.Element {
               </div>
             </div>
             <div className="mt-3">
-              <div className="mb-1 text-xs text-slate-600">Top hints</div>
-              <TopHintsList hintMoves={hintMoves} onHoverHint={setHoveredHintUci} />
+              <div className="mb-1 text-xs text-slate-600">Top hints <span className="text-xs text-slate-500">(used: {hintCount})</span></div>
+              {!showHintsVisible ? (
+                <div className="flex">
+                  <button
+                    type="button"
+                    className="rounded px-2 py-1 text-xs font-semibold bg-white border border-slate-200 hover:bg-slate-50"
+                    onClick={() => {
+                      const nextPly = moveRows.length + 1
+                      lastShownPlyRef.current = nextPly
+                      setShowHintsVisible(true)
+                      setHintCount((c) => c + 1)
+                      setHintedPlys((prev) => Array.from(new Set([...prev, nextPly])))
+                    }}
+                  >
+                    Show hints
+                  </button>
+                </div>
+              ) : (
+                <TopHintsList hintMoves={hintMoves} onHoverOrClick={(uci) => setHoveredHintUci(uci)} />
+              )}
             </div>
           </div>
           <div className="min-h-0 flex-1 overflow-y-auto">
@@ -1209,13 +1293,33 @@ function LocalChessGame(): React.JSX.Element {
                   </tr>
                 </thead>
                 <tbody>
-                  {moveHistory.map((row) => (
-                    <tr key={row.moveNumber} className="border-t border-slate-100">
-                      <td className="py-2 pr-2 text-xs text-slate-500">{row.moveNumber}.</td>
-                      <td className="py-2 font-medium">{row.white || ''}</td>
-                      <td className="py-2 font-medium">{row.black || ''}</td>
-                    </tr>
-                  ))}
+                  {moveHistory.map((row) => {
+                    const whitePly = (row.moveNumber * 2) - 1
+                    const blackPly = row.moveNumber * 2
+                    const whiteHint = hintedPlys.includes(whitePly)
+                    const blackHint = hintedPlys.includes(blackPly)
+                    return (
+                      <tr key={row.moveNumber} className="border-t border-slate-100">
+                        <td className="py-2 pr-2 text-xs text-slate-500">{row.moveNumber}.</td>
+                        <td className={`py-2 font-medium ${whiteHint ? 'text-purple-600' : ''}`}>
+                          {row.white ? (
+                            <>
+                              <span>{row.white}</span>
+                              {whiteHint ? <span className="ml-1 text-xs">*</span> : null}
+                            </>
+                          ) : ''}
+                        </td>
+                        <td className={`py-2 font-medium ${blackHint ? 'text-purple-600' : ''}`}>
+                          {row.black ? (
+                            <>
+                              <span>{row.black}</span>
+                              {blackHint ? <span className="ml-1 text-xs">*</span> : null}
+                            </>
+                          ) : ''}
+                        </td>
+                      </tr>
+                    )
+                  })}
                 </tbody>
               </table>
             ) : (

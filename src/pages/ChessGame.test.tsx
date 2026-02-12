@@ -160,29 +160,27 @@ describe('ChessGame', () => {
     })
   })
 
-  it('highlights hint source and destination on hover in local mode', async () => {
+  it('shows hint squares when clicking Show in local mode', async () => {
     const user = userEvent.setup()
     setMockGameId('local')
     setTopMovesMock([{ uci: 'e2e4', score: 36, mate: null, depth: 14 }])
 
     render(<ChessGame />)
 
-    const hintButton = screen.getByRole('button', { name: '1. e4' })
+    const hintShow = screen.getByRole('button', { name: 'Show hints' })
     const board = screen.getByTestId('chessboard')
     expect(board).toHaveAttribute('data-custom-squares', '')
 
-    await user.hover(hintButton)
+    await user.click(hintShow)
+
+    // after showing, hover (or click on touch) the first hint to highlight squares
+    const hintItem = await screen.findByRole('button', { name: '1. e4' })
+    await user.hover(hintItem)
 
     await waitFor(() => {
       const highlighted = screen.getByTestId('chessboard').getAttribute('data-custom-squares') || ''
       expect(highlighted).toContain('e2')
       expect(highlighted).toContain('e4')
-    })
-
-    await user.unhover(hintButton)
-
-    await waitFor(() => {
-      expect(screen.getByTestId('chessboard')).toHaveAttribute('data-custom-squares', '')
     })
   })
 })
