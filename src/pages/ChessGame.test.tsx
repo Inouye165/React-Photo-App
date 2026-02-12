@@ -2,6 +2,7 @@
 import React from 'react'
 import { describe, it, expect, vi, beforeEach } from 'vitest'
 import { render, screen, waitFor } from '@testing-library/react'
+import userEvent from '@testing-library/user-event'
 import ChessGame from './ChessGame'
 
 const {
@@ -13,6 +14,7 @@ const {
   fetchGameMembersMock,
   makeMoveMock,
   restartGameMock,
+  abortGameMock,
 } = vi.hoisted(() => {
   let mockGameId = 'game-123'
   return {
@@ -44,6 +46,7 @@ const {
     ])),
     makeMoveMock: vi.fn(async () => ({})),
     restartGameMock: vi.fn(async () => ({})),
+    abortGameMock: vi.fn(async () => undefined),
   }
 })
 
@@ -65,6 +68,7 @@ vi.mock('../api/games', () => ({
   fetchGameMembers: fetchGameMembersMock,
   makeMove: makeMoveMock,
   restartGame: restartGameMock,
+  abortGame: abortGameMock,
 }))
 
 vi.mock('../hooks/useStockfish', () => ({
@@ -130,5 +134,18 @@ describe('ChessGame', () => {
     expect(useGameRealtimeMock).not.toHaveBeenCalled()
     expect(fetchGameMock).not.toHaveBeenCalled()
     expect(fetchGameMembersMock).not.toHaveBeenCalled()
+  })
+
+  it('quits online game by aborting and navigating to /games', async () => {
+    const user = userEvent.setup()
+    render(<ChessGame />)
+
+    const quitButton = await screen.findByRole('button', { name: 'Quit' })
+    await user.click(quitButton)
+
+    await waitFor(() => {
+      expect(abortGameMock).toHaveBeenCalledWith('game-123')
+      expect(navigateMock).toHaveBeenCalledWith('/games')
+    })
   })
 })
