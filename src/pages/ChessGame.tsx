@@ -362,7 +362,7 @@ function useChessDisplay(moveRows: MoveRow[], gameFen: string | null, hoveredHin
   }
 }
 
-function TopHintsList({ hintMoves, onHoverHint }: { hintMoves: HintMove[]; onHoverHint: (uci: string | null) => void }) {
+function TopHintsList({ hintMoves, onShowHint }: { hintMoves: HintMove[]; onShowHint: (uci: string) => void }) {
   if (!hintMoves.length) {
     return <div className="text-xs text-slate-500">No hints yet.</div>
   }
@@ -371,16 +371,20 @@ function TopHintsList({ hintMoves, onHoverHint }: { hintMoves: HintMove[]; onHov
     <ol className="space-y-1 text-sm text-slate-700">
       {hintMoves.map((move, idx) => (
         <li key={`${move.uci}-${idx}`}>
-          <button
-            type="button"
-            className="w-full rounded px-1 py-0.5 text-left hover:bg-slate-100 focus:bg-slate-100 focus:outline-none"
-            onMouseEnter={() => onHoverHint(move.uci)}
-            onMouseLeave={() => onHoverHint(null)}
-            onFocus={() => onHoverHint(move.uci)}
-            onBlur={() => onHoverHint(null)}
-          >
-            {idx + 1}. {move.san}
-          </button>
+          <div className="flex items-center justify-between">
+            <div className="text-left">
+              <div className="text-sm text-slate-800">{idx + 1}. {move.san}</div>
+            </div>
+            <div>
+              <button
+                type="button"
+                className="rounded px-2 py-0.5 text-xs font-semibold bg-white border border-slate-200 hover:bg-slate-50"
+                onClick={() => onShowHint(move.uci)}
+              >
+                Show
+              </button>
+            </div>
+          </div>
         </li>
       ))}
     </ol>
@@ -460,7 +464,13 @@ function OnlineChessGame(): React.JSX.Element {
   const [toastSeverity, setToastSeverity] = useState<'info' | 'success' | 'warning' | 'error'>('info')
   const [restartLoading, setRestartLoading] = useState(false)
   const [debugCopied, setDebugCopied] = useState(false)
-  const [hoveredHintUci, setHoveredHintUci] = useState<string | null>(null)
+  // active hint shown by clicking "Show"
+  const [activeHintUci, setActiveHintUci] = useState<string | null>(null)
+  const [hintCount, setHintCount] = useState(0)
+  const [hintedPlys, setHintedPlys] = useState<number[]>([])
+  const lastShownPlyRef = useRef<number | null>(null)
+
+  const moveRows = useMemo(() => (moves ?? []) as MoveRow[], [moves])
 
   const loadGameData = useCallback(async () => {
     if (!gameId) return
@@ -491,7 +501,15 @@ function OnlineChessGame(): React.JSX.Element {
     void loadGameData()
   }, [loadGameData])
 
-  const moveRows = useMemo(() => (moves ?? []) as MoveRow[], [moves])
+  // Clear any active hint after the move that the hint was shown for occurs
+  useEffect(() => {
+    if (lastShownPlyRef.current != null && moveRows.length > lastShownPlyRef.current) {
+      setActiveHintUci(null)
+      lastShownPlyRef.current = null
+    }
+  }, [moveRows.length])
+
+  
 
   const {
     displayFen,
@@ -504,7 +522,7 @@ function OnlineChessGame(): React.JSX.Element {
     showThreats,
     setShowThreats,
     customSquareStyles,
-  } = useChessDisplay(moveRows, game?.current_fen ?? null, hoveredHintUci)
+  } = useChessDisplay(moveRows, game?.current_fen ?? null, activeHintUci)
   const { containerRef: boardContainerRef, boardSize } = useChessboardSize(CHESSBOARD_MAX_SIZE)
 
   async function onDrop(sourceSquare: Square, targetSquare: Square, currentFen: string) {
@@ -840,8 +858,14 @@ function OnlineChessGame(): React.JSX.Element {
               </div>
             </div>
             <div className="mt-3">
-              <div className="mb-1 text-xs text-slate-600">Top hints</div>
-              <TopHintsList hintMoves={hintMoves} onHoverHint={setHoveredHintUci} />
+              <div className="mb-1 text-xs text-slate-600">Top hints <span className="text-xs text-slate-500">(used: {hintCount})</span></div>
+              <TopHintsList hintMoves={hintMoves} onShowHint={(uci) => {
+                const nextPly = moveRows.length + 1
+                lastShownPlyRef.current = nextPly
+                setActiveHintUci(uci)
+                setHintCount((c) => c + 1)
+                setHintedPlys((prev) => Array.from(new Set([...prev, nextPly])))
+              }} />
             </div>
           </div>
           <div className="min-h-0 flex-1 overflow-y-auto">
@@ -855,13 +879,33 @@ function OnlineChessGame(): React.JSX.Element {
                   </tr>
                 </thead>
                 <tbody>
-                  {moveHistory.map((row) => (
-                    <tr key={row.moveNumber} className="border-t border-slate-100">
-                      <td className="py-2 pr-2 text-xs text-slate-500">{row.moveNumber}.</td>
-                      <td className="py-2 font-medium">{row.white || ''}</td>
-                      <td className="py-2 font-medium">{row.black || ''}</td>
-                    </tr>
-                  ))}
+                  {moveHistory.map((row) => {
+                    const whitePly = (row.moveNumber * 2) - 1
+                    const blackPly = row.moveNumber * 2
+                    const whiteHint = hintedPlys.includes(whitePly)
+                    const blackHint = hintedPlys.includes(blackPly)
+                    return (
+                      <tr key={row.moveNumber} className="border-t border-slate-100">
+                        <td className="py-2 pr-2 text-xs text-slate-500">{row.moveNumber}.</td>
+                        <td className={`py-2 font-medium ${whiteHint ? 'text-purple-600' : ''}`}>
+                          {row.white ? (
+                            <>
+                              <span>{row.white}</span>
+                              {whiteHint ? <span className="ml-1 text-xs">*</span> : null}
+                            </>
+                          ) : ''}
+                        </td>
+                        <td className={`py-2 font-medium ${blackHint ? 'text-purple-600' : ''}`}>
+                          {row.black ? (
+                            <>
+                              <span>{row.black}</span>
+                              {blackHint ? <span className="ml-1 text-xs">*</span> : null}
+                            </>
+                          ) : ''}
+                        </td>
+                      </tr>
+                    )
+                  })}
                 </tbody>
               </table>
             ) : (
@@ -886,7 +930,11 @@ function LocalChessGame(): React.JSX.Element {
   const [toastSeverity, setToastSeverity] = useState<'info' | 'success' | 'warning' | 'error'>('info')
   const [engineThinking, setEngineThinking] = useState(false)
   const [pendingEngineFen, setPendingEngineFen] = useState<string | null>(null)
-  const [hoveredHintUci, setHoveredHintUci] = useState<string | null>(null)
+  // active hint shown by clicking "Show"
+  const [activeHintUci, setActiveHintUci] = useState<string | null>(null)
+  const [hintCount, setHintCount] = useState(0)
+  const [hintedPlys, setHintedPlys] = useState<number[]>([])
+  const lastShownPlyRef = useRef<number | null>(null)
 
   const moveRows = useMemo(() => localMoves, [localMoves])
   const {
@@ -900,7 +948,7 @@ function LocalChessGame(): React.JSX.Element {
     showThreats,
     setShowThreats,
     customSquareStyles,
-  } = useChessDisplay(moveRows, START_FEN, hoveredHintUci)
+  } = useChessDisplay(moveRows, START_FEN, activeHintUci)
   const { containerRef: boardContainerRef, boardSize } = useChessboardSize(CHESSBOARD_MAX_SIZE)
 
   const normalizedDisplayFen = displayFen || START_FEN
@@ -966,6 +1014,14 @@ function LocalChessGame(): React.JSX.Element {
     setPendingEngineFen(null)
     void applyEngineMove(fen)
   }, [engineThinking, isReady, pendingEngineFen])
+
+  // Clear any active hint after the move that the hint was shown for occurs
+  useEffect(() => {
+    if (lastShownPlyRef.current != null && moveRows.length > lastShownPlyRef.current) {
+      setActiveHintUci(null)
+      lastShownPlyRef.current = null
+    }
+  }, [moveRows.length])
 
   const hintMoves: HintMove[] = useMemo(() => (
     topMoves.map((move) => ({
@@ -1194,8 +1250,14 @@ function LocalChessGame(): React.JSX.Element {
               </div>
             </div>
             <div className="mt-3">
-              <div className="mb-1 text-xs text-slate-600">Top hints</div>
-              <TopHintsList hintMoves={hintMoves} onHoverHint={setHoveredHintUci} />
+              <div className="mb-1 text-xs text-slate-600">Top hints <span className="text-xs text-slate-500">(used: {hintCount})</span></div>
+              <TopHintsList hintMoves={hintMoves} onShowHint={(uci) => {
+                const nextPly = moveRows.length + 1
+                lastShownPlyRef.current = nextPly
+                setActiveHintUci(uci)
+                setHintCount((c) => c + 1)
+                setHintedPlys((prev) => Array.from(new Set([...prev, nextPly])))
+              }} />
             </div>
           </div>
           <div className="min-h-0 flex-1 overflow-y-auto">
@@ -1209,13 +1271,33 @@ function LocalChessGame(): React.JSX.Element {
                   </tr>
                 </thead>
                 <tbody>
-                  {moveHistory.map((row) => (
-                    <tr key={row.moveNumber} className="border-t border-slate-100">
-                      <td className="py-2 pr-2 text-xs text-slate-500">{row.moveNumber}.</td>
-                      <td className="py-2 font-medium">{row.white || ''}</td>
-                      <td className="py-2 font-medium">{row.black || ''}</td>
-                    </tr>
-                  ))}
+                  {moveHistory.map((row) => {
+                    const whitePly = (row.moveNumber * 2) - 1
+                    const blackPly = row.moveNumber * 2
+                    const whiteHint = hintedPlys.includes(whitePly)
+                    const blackHint = hintedPlys.includes(blackPly)
+                    return (
+                      <tr key={row.moveNumber} className="border-t border-slate-100">
+                        <td className="py-2 pr-2 text-xs text-slate-500">{row.moveNumber}.</td>
+                        <td className={`py-2 font-medium ${whiteHint ? 'text-purple-600' : ''}`}>
+                          {row.white ? (
+                            <>
+                              <span>{row.white}</span>
+                              {whiteHint ? <span className="ml-1 text-xs">*</span> : null}
+                            </>
+                          ) : ''}
+                        </td>
+                        <td className={`py-2 font-medium ${blackHint ? 'text-purple-600' : ''}`}>
+                          {row.black ? (
+                            <>
+                              <span>{row.black}</span>
+                              {blackHint ? <span className="ml-1 text-xs">*</span> : null}
+                            </>
+                          ) : ''}
+                        </td>
+                      </tr>
+                    )
+                  })}
                 </tbody>
               </table>
             ) : (
