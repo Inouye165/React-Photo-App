@@ -389,7 +389,7 @@ function TopHintsList({ hintMoves, onHoverHint }: { hintMoves: HintMove[]; onHov
 
 function useChessboardSize(maxSize: number) {
   const containerRef = useRef<HTMLDivElement | null>(null)
-  const [boardSize, setBoardSize] = useState(maxSize)
+  const [boardSize, setBoardSize] = useState(Math.min(maxSize, 400))
 
   useEffect(() => {
     const container = containerRef.current
@@ -401,18 +401,37 @@ function useChessboardSize(maxSize: number) {
     const updateSize = () => {
       const width = container.clientWidth
       const height = container.clientHeight
-      if (!width && !height) return
+      if (!width) return
 
-      const safeWidth = Math.max(0, width - 8)
-      const safeHeight = Math.max(0, height - 8)
-      const limit = safeHeight > 0 ? Math.min(safeWidth || maxSize, safeHeight) : (safeWidth || maxSize)
-      setBoardSize(Math.min(maxSize, limit))
+      const safeWidth = Math.max(0, width - 16)
+
+      // Desktop (lg:flex-1 gives real height from flex) → constrain to
+      // both dimensions so the square board fits.  Mobile/tablet (stacked
+      // layout, natural height) → width only; the board determines its own
+      // height and the parent page scrolls.
+      const isDesktopRow = window.innerWidth >= 1024
+      let limit: number
+
+      if (isDesktopRow && height > 100) {
+        const safeHeight = Math.max(0, height - 16)
+        limit = Math.min(safeWidth, safeHeight)
+      } else {
+        limit = safeWidth
+      }
+
+      const next = Math.max(180, Math.min(maxSize, limit))
+      setBoardSize(next)
     }
 
     updateSize()
     const observer = new ResizeObserver(updateSize)
     observer.observe(container)
-    return () => observer.disconnect()
+
+    window.addEventListener('resize', updateSize)
+    return () => {
+      observer.disconnect()
+      window.removeEventListener('resize', updateSize)
+    }
   }, [maxSize])
 
   return { containerRef, boardSize }
@@ -615,7 +634,7 @@ function OnlineChessGame(): React.JSX.Element {
   ), [normalizedDisplayFen, topMoves])
 
   return (
-    <div className="flex h-full min-h-0 flex-col overflow-hidden rounded-2xl bg-slate-100/80 p-4 shadow-sm">
+    <div className="flex flex-col rounded-2xl bg-slate-100/80 p-4 shadow-sm lg:h-full lg:min-h-0 lg:overflow-hidden">
       <div className="mb-4 flex flex-none flex-wrap items-center justify-between gap-3">
         <div>
           <h2 className="text-lg font-semibold">Chess</h2>
@@ -674,8 +693,8 @@ function OnlineChessGame(): React.JSX.Element {
           ) : null}
         </div>
       ) : null}
-      <div className="flex min-h-0 flex-1 flex-col gap-6 lg:flex-row lg:items-stretch">
-        <div className="flex min-h-0 min-w-0 flex-1 flex-col gap-4 rounded-2xl border border-slate-200 bg-white/80 p-4 shadow-md">
+      <div className="flex flex-col gap-6 lg:min-h-0 lg:flex-1 lg:flex-row lg:items-stretch">
+        <div className="flex flex-col gap-4 rounded-2xl border border-slate-200 bg-white/80 p-4 shadow-md lg:min-h-0 lg:min-w-0 lg:flex-1">
           <div className="flex items-center justify-between">
             {renderPlayerLabel(topPlayer || null, topIsWhite ? currentTurn === 'w' : currentTurn === 'b', topFallback)}
           </div>
@@ -722,8 +741,8 @@ function OnlineChessGame(): React.JSX.Element {
               <span className="text-xs text-slate-500">Live</span>
             )}
           </div>
-          <div ref={boardContainerRef} className="flex min-h-0 flex-1 items-center justify-center">
-            <div className="rounded-xl border border-slate-200 bg-white p-2 shadow-sm" style={{ width: boardSize + 8, maxWidth: '100%' }}>
+          <div ref={boardContainerRef} className="flex w-full items-center justify-center overflow-hidden lg:min-h-0 lg:flex-1">
+            <div className="w-full rounded-xl border border-slate-200 bg-white p-1 shadow-sm" style={{ maxWidth: boardSize + 8 }}>
               <Chessboard
                 position={normalizedDisplayFen}
                 showBoardNotation
@@ -1047,7 +1066,7 @@ function LocalChessGame(): React.JSX.Element {
   }
 
   return (
-    <div className="flex h-full min-h-0 flex-col overflow-hidden rounded-2xl bg-slate-100/80 p-4 shadow-sm">
+    <div className="flex flex-col rounded-2xl bg-slate-100/80 p-4 shadow-sm lg:h-full lg:min-h-0 lg:overflow-hidden">
       <div className="mb-4 flex flex-none flex-wrap items-center justify-between gap-3">
         <div>
           <h2 className="text-lg font-semibold">Chess (Local)</h2>
@@ -1068,8 +1087,8 @@ function LocalChessGame(): React.JSX.Element {
           </button>
         </div>
       </div>
-      <div className="flex min-h-0 flex-1 flex-col gap-6 lg:flex-row lg:items-stretch">
-        <div className="flex min-h-0 min-w-0 flex-1 flex-col gap-4 rounded-2xl border border-slate-200 bg-white/80 p-4 shadow-md">
+      <div className="flex flex-col gap-6 lg:min-h-0 lg:flex-1 lg:flex-row lg:items-stretch">
+        <div className="flex flex-col gap-4 rounded-2xl border border-slate-200 bg-white/80 p-4 shadow-md lg:min-h-0 lg:min-w-0 lg:flex-1">
           <div className="flex items-center justify-between">
             {renderPlayerLabel(topPlayer || null, topIsWhite ? currentTurn === 'w' : currentTurn === 'b', 'Stockfish')}
           </div>
@@ -1109,8 +1128,8 @@ function LocalChessGame(): React.JSX.Element {
               <span className="text-xs text-slate-500">Live</span>
             )}
           </div>
-          <div ref={boardContainerRef} className="flex min-h-0 flex-1 items-center justify-center">
-            <div className="rounded-xl border border-slate-200 bg-white p-2 shadow-sm" style={{ width: boardSize + 8, maxWidth: '100%' }}>
+          <div ref={boardContainerRef} className="flex w-full items-center justify-center overflow-hidden lg:min-h-0 lg:flex-1">
+            <div className="w-full rounded-xl border border-slate-200 bg-white p-1 shadow-sm" style={{ maxWidth: boardSize + 8 }}>
               <Chessboard
                 position={normalizedDisplayFen}
                 showBoardNotation
