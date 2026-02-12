@@ -1,7 +1,7 @@
 // @ts-nocheck
 import React from 'react'
 import { describe, it, expect, vi, beforeEach } from 'vitest'
-import { render, screen, waitFor } from '@testing-library/react'
+import { fireEvent, render, screen, waitFor } from '@testing-library/react'
 import ChessGame from './ChessGame'
 
 const {
@@ -121,6 +121,12 @@ describe('ChessGame', () => {
       expect(screen.getByText('e4')).toBeInTheDocument()
       expect(screen.getByText('e5')).toBeInTheDocument()
     })
+  })
+
+  it('quits online games back to the list', () => {
+    render(<ChessGame />)
+    fireEvent.click(screen.getByRole('button', { name: /quit/i }))
+    expect(navigateMock).toHaveBeenCalledWith('/games')
   })
 
   it('local mode does not touch Supabase hooks', () => {
