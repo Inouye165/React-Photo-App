@@ -1,5 +1,5 @@
 import React, { useCallback, useEffect, useMemo, useRef, useState } from 'react'
-import { useParams } from 'react-router-dom'
+import { useNavigate, useParams } from 'react-router-dom'
 import { Chess } from 'chess.js'
 import type { Square } from 'chess.js'
 import { Chessboard } from 'react-chessboard'
@@ -782,10 +782,12 @@ function OnlineChessGame(): React.JSX.Element {
 
 function LocalChessGame(): React.JSX.Element {
   const { user } = useAuth()
+  const navigate = useNavigate()
   const [localMoves, setLocalMoves] = useState<MoveRow[]>([])
   const [toastMessage, setToastMessage] = useState<string | null>(null)
   const [toastSeverity, setToastSeverity] = useState<'info' | 'success' | 'warning' | 'error'>('info')
   const [engineThinking, setEngineThinking] = useState(false)
+  const [pendingEngineFen, setPendingEngineFen] = useState<string | null>(null)
 
   const moveRows = useMemo(() => localMoves, [localMoves])
   const {
@@ -847,17 +849,24 @@ function LocalChessGame(): React.JSX.Element {
   const isViewingPast = viewPly < moveRows.length
   const canMove = !engineThinking && !isViewingPast
 
-  const { isReady, topMoves, evaluation, analyzePosition, getEngineMove, difficulty, setDifficulty } = useStockfish()
+  const { isReady, topMoves, evaluation, analyzePosition, getEngineMove, cancelPendingMove, difficulty, setDifficulty } = useStockfish()
   const opening = useMemo(() => findOpening(buildMovesUci(moveRows)), [moveRows])
   const evalPercent = useMemo(() => getEvalPercent(evaluation.score), [evaluation.score])
 
   useEffect(() => {
-    if (!isReady) return
+    if (!isReady || engineThinking) return
     const handle = setTimeout(() => {
       analyzePosition(normalizedDisplayFen)
     }, 200)
     return () => clearTimeout(handle)
-  }, [analyzePosition, isReady, normalizedDisplayFen])
+  }, [analyzePosition, engineThinking, isReady, normalizedDisplayFen])
+
+  useEffect(() => {
+    if (!isReady || !pendingEngineFen || engineThinking) return
+    const fen = pendingEngineFen
+    setPendingEngineFen(null)
+    void applyEngineMove(fen)
+  }, [engineThinking, isReady, pendingEngineFen])
 
   const hintMoves = useMemo(() => (
     topMoves.map((move) => ({
@@ -866,8 +875,22 @@ function LocalChessGame(): React.JSX.Element {
     }))
   ), [normalizedDisplayFen, topMoves])
 
+  const truncateMoves = (targetPly: number) => {
+    cancelPendingMove()
+    setPendingEngineFen(null)
+    setEngineThinking(false)
+    setLocalMoves((prev) => prev.slice(0, Math.max(0, targetPly)))
+    setViewPly(Math.max(0, targetPly))
+    setSelectedSquare(null)
+  }
+
   async function applyEngineMove(fen: string) {
-    if (!isReady) return
+    if (!isReady) {
+      setPendingEngineFen(fen)
+      setToastSeverity('info')
+      setToastMessage('Engine is warming up...')
+      return
+    }
     setEngineThinking(true)
     try {
       const bestMove = await getEngineMove(fen)
@@ -897,7 +920,9 @@ function LocalChessGame(): React.JSX.Element {
   }
 
   async function onDrop(sourceSquare: Square, targetSquare: Square, currentFen: string) {
-    if (viewPly !== moveRows.length) return false
+    if (viewPly !== moveRows.length) {
+      truncateMoves(viewPly)
+    }
     if (engineThinking) return false
 
     const c = new Chess(currentFen || START_FEN)
@@ -926,11 +951,19 @@ function LocalChessGame(): React.JSX.Element {
   }
 
   function handleRestartGame() {
-    setLocalMoves([])
-    setViewPly(0)
-    setSelectedSquare(null)
+    truncateMoves(0)
     setToastSeverity('success')
     setToastMessage('Local game restarted')
+  }
+
+  function handleUndoMove() {
+    if (!moveRows.length) return
+    truncateMoves(Math.max(0, viewPly - 1))
+  }
+
+  function handleQuitGame() {
+    truncateMoves(0)
+    navigate('/games')
   }
 
   return (
@@ -940,12 +973,20 @@ function LocalChessGame(): React.JSX.Element {
           <h2 className="text-lg font-semibold">Chess (Local)</h2>
           <div className="text-xs text-slate-500">Status: {engineThinking ? 'thinking' : 'ready'}</div>
         </div>
-        <button
-          onClick={handleRestartGame}
-          className="rounded-md border border-slate-300 bg-white px-3 py-1 text-xs font-semibold text-slate-700"
-        >
-          Restart game
-        </button>
+        <div className="flex items-center gap-2">
+          <button
+            onClick={handleRestartGame}
+            className="rounded-md border border-slate-300 bg-white px-3 py-1 text-xs font-semibold text-slate-700"
+          >
+            Restart
+          </button>
+          <button
+            onClick={handleQuitGame}
+            className="rounded-md border border-slate-200 bg-white px-3 py-1 text-xs font-semibold text-slate-600"
+          >
+            Quit
+          </button>
+        </div>
       </div>
       <div className="flex flex-col gap-6 lg:flex-row">
         <div className="flex flex-col gap-4 rounded-2xl border border-slate-200 bg-white/80 p-4 shadow-md">
@@ -955,18 +996,11 @@ function LocalChessGame(): React.JSX.Element {
           <div className="flex flex-wrap items-center justify-between gap-3 rounded-lg bg-slate-50 px-3 py-2 text-xs text-slate-600">
             <div className="flex items-center gap-2">
               <button
-                onClick={() => setViewPly((prev) => Math.max(0, prev - 1))}
+                onClick={handleUndoMove}
                 disabled={viewPly === 0}
                 className="rounded-md border border-slate-200 bg-white px-2 py-1 text-xs font-semibold text-slate-700 disabled:opacity-50"
               >
                 Undo
-              </button>
-              <button
-                onClick={() => setViewPly((prev) => Math.min(moveRows.length, prev + 1))}
-                disabled={viewPly >= moveRows.length}
-                className="rounded-md border border-slate-200 bg-white px-2 py-1 text-xs font-semibold text-slate-700 disabled:opacity-50"
-              >
-                Redo
               </button>
             </div>
             <div className="flex flex-wrap items-center gap-3">
@@ -1039,7 +1073,7 @@ function LocalChessGame(): React.JSX.Element {
               <span className="text-[11px] text-slate-500">{isReady ? 'ready' : 'loading'}</span>
             </div>
             <div className="mt-2 flex items-center justify-between gap-3">
-              <label className="text-xs text-slate-600">Difficulty</label>
+              <label className="text-xs text-slate-600">Opponent level</label>
               <select
                 value={difficulty}
                 onChange={(event) => setDifficulty(event.target.value as typeof difficulty)}

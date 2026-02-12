@@ -238,75 +238,79 @@ export default function AppHeader({
       {/* Center Section - Navigation Tabs */}
       <nav className="flex-1 min-w-0 flex items-center gap-0.5 sm:gap-1 px-1 sm:px-2 py-1 
                       bg-slate-50 rounded-lg border border-slate-200 
-                      overflow-x-auto scrollbar-hide">
-        <NavTab
-          isActive={isUploadPage}
-          onClick={() => {
-            closePicker('nav-upload');
-            navigate('/upload');
-          }}
-          icon={Upload}
-          label="Upload"
-          testId="nav-upload"
-        />
-        <NavTab
-          isActive={isGalleryPage}
-          onClick={() => {
-            closePicker('nav-gallery');
-            navigate('/gallery');
-          }}
-          icon={Grid3X3}
-          label="Gallery"
-          testId="nav-gallery"
-        />
-        <NavTab
-          isActive={isEditPage}
-          onClick={handleEditClick}
-          icon={Edit3}
-          label="Edit"
-          testId="nav-edit"
-        />
-
-        {canUseChat && (
-          <div className="relative">
-            <NavTabLink
-              to="/chat"
-              onClick={() => {
-                closePicker('nav-messages');
-              }}
-              icon={MessageSquare}
-              label="Messages"
-              testId="nav-messages"
-            />
-            {unreadCount > 0 && (
-              <div className="absolute -top-1 -right-1 w-5 h-5 bg-red-500 rounded-full flex items-center justify-center animate-pulse" data-testid="unread-badge">
-                <span className="text-white text-[10px] font-bold">
-                  {unreadCount > 9 ? '9+' : unreadCount}
-                </span>
-              </div>
-            )}
-          </div>
-        )}
-
-        <GamesMenu
-          games={games}
-          gamesLoading={gamesLoading}
-          userId={user?.id}
-          disabled={!user}
-        />
-        
-        {/* Admin link - only visible to admin users */}
-        {isAdmin && (
-          <NavTabLink
-            to="/admin"
+                      overflow-visible">
+        <div className="flex-1 min-w-0 flex items-center gap-0.5 sm:gap-1 overflow-x-auto scrollbar-hide">
+          <NavTab
+            isActive={isUploadPage}
             onClick={() => {
-              closePicker('nav-admin');
+              closePicker('nav-upload');
+              navigate('/upload');
             }}
-            icon={Shield}
-            label="Admin"
-            testId="nav-admin"
+            icon={Upload}
+            label="Upload"
+            testId="nav-upload"
           />
-        )}
+          <NavTab
+            isActive={isGalleryPage}
+            onClick={() => {
+              closePicker('nav-gallery');
+              navigate('/gallery');
+            }}
+            icon={Grid3X3}
+            label="Gallery"
+            testId="nav-gallery"
+          />
+          <NavTab
+            isActive={isEditPage}
+            onClick={handleEditClick}
+            icon={Edit3}
+            label="Edit"
+            testId="nav-edit"
+          />
+
+          {canUseChat && (
+            <div className="relative">
+              <NavTabLink
+                to="/chat"
+                onClick={() => {
+                  closePicker('nav-messages');
+                }}
+                icon={MessageSquare}
+                label="Messages"
+                testId="nav-messages"
+              />
+              {unreadCount > 0 && (
+                <div className="absolute -top-1 -right-1 w-5 h-5 bg-red-500 rounded-full flex items-center justify-center animate-pulse" data-testid="unread-badge">
+                  <span className="text-white text-[10px] font-bold">
+                    {unreadCount > 9 ? '9+' : unreadCount}
+                  </span>
+                </div>
+              )}
+            </div>
+          )}
+        </div>
+
+        <div className="flex items-center gap-0.5 sm:gap-1 flex-shrink-0">
+          <GamesMenu
+            games={games}
+            gamesLoading={gamesLoading}
+            userId={user?.id}
+            disabled={!user}
+          />
+          
+          {/* Admin link - only visible to admin users */}
+          {isAdmin && (
+            <NavTabLink
+              to="/admin"
+              onClick={() => {
+                closePicker('nav-admin');
+              }}
+              icon={Shield}
+              label="Admin"
+              testId="nav-admin"
+            />
+          )}
+        </div>
       </nav>
 
       {/* Right Section - User Menu */}

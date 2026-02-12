@@ -1,6 +1,6 @@
 import React, { useEffect, useId, useMemo, useRef, useState } from 'react';
 import { useNavigate } from 'react-router-dom';
-import { ChevronDown, Clock, LayoutDashboard, Trophy, UserPlus } from 'lucide-react';
+import { ChevronDown, Clock, Inbox, Play, UserPlus } from 'lucide-react';
 import './GamesMenu.css';
 
 type GameSummary = {
@@ -104,17 +104,27 @@ export default function GamesMenu({ games, gamesLoading, userId, disabled = fals
       >
         <div className="games-menu-section" role="presentation">
           <div className="games-menu-section-header">
-            <Trophy className="games-menu-section-icon" aria-hidden="true" />
-            <span>Quick Access</span>
+            <Play className="games-menu-section-icon" aria-hidden="true" />
+            <span>Start Here</span>
           </div>
+          <button
+            type="button"
+            role="menuitem"
+            className="games-menu-item"
+            onClick={() => handleNavigate('/games/local')}
+            disabled={disabled}
+          >
+            <Play className="games-menu-item-icon" aria-hidden="true" />
+            <span>Play vs computer</span>
+          </button>
           <button
             type="button"
             role="menuitem"
             className="games-menu-item"
             onClick={() => handleNavigate('/games')}
           >
-            <LayoutDashboard className="games-menu-item-icon" aria-hidden="true" />
-            <span>Games Overview</span>
+            <UserPlus className="games-menu-item-icon" aria-hidden="true" />
+            <span>Invite a player</span>
           </button>
         </div>
 
@@ -122,7 +132,7 @@ export default function GamesMenu({ games, gamesLoading, userId, disabled = fals
 
         <div className="games-menu-section" role="presentation">
           <div className="games-menu-section-header">
-            <UserPlus className="games-menu-section-icon" aria-hidden="true" />
+            <Inbox className="games-menu-section-icon" aria-hidden="true" />
             <span>Invitations</span>
             {inviteGames.length > 0 && (
               <span className="games-menu-badge" aria-label={`${inviteGames.length} invites`}>
