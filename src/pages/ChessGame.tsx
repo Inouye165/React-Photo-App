@@ -405,25 +405,8 @@ function useChessboardSize(maxSize: number) {
 
       const safeWidth = Math.max(0, width - 8)
       const safeHeight = Math.max(0, height - 8)
-
-      // Prefer width on narrow/mobile layouts where container height can be
-      // artificially small (leading to tiny boards). If the container height
-      // is very small relative to width, prefer using width so the board fills
-      // available horizontal space. Otherwise constrain by the smaller of the
-      // two dimensions to keep the board square.
-      let limit: number
-      if (safeHeight > 0) {
-        if (safeHeight < safeWidth * 0.7) {
-          limit = safeWidth
-        } else {
-          limit = Math.min(safeWidth || maxSize, safeHeight)
-        }
-      } else {
-        limit = safeWidth || maxSize
-      }
-
-      const final = Math.min(maxSize, Math.max(48, Math.floor(limit)))
-      setBoardSize(final)
+      const limit = safeHeight > 0 ? Math.min(safeWidth || maxSize, safeHeight) : (safeWidth || maxSize)
+      setBoardSize(Math.min(maxSize, limit))
     }
 
     updateSize()
