@@ -15,6 +15,21 @@ Scope reviewed:
 
 ---
 
+## Status Update (implemented)
+
+- [x] Hint UX: single **Show hints** button, visible-through-current-move behavior, hover/tap square highlighting, usage counter, and `*` move marking in history.
+- [x] Performance #3: debounced user search in `GamesIndex` with stale response suppression test coverage.
+- [x] UX #1: board orientation now follows player color (black players see black orientation in online games).
+- [x] UX #3: move history SAN entries are clickable and jump to the selected ply.
+- [x] Correctness fix: local-mode black replies now use FEN-derived ply numbering so black moves reliably appear in move history.
+
+### Newly pulled from findings and implemented this pass
+
+- [x] **UX #1 No board orientation by player color**
+- [x] **UX #3 Move history not directly clickable for jump-to-ply**
+
+---
+
 ## 1) Clearly wrong / correctness risks
 
 1. **Server trusts client-provided `fen_after` without validating legality against prior position** (high)
