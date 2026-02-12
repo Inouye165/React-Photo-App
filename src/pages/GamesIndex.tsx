@@ -1,4 +1,4 @@
-import React, { useEffect, useState } from 'react'
+import React, { useEffect, useRef, useState } from 'react'
 import { useNavigate } from 'react-router-dom'
 import { listMyGames, createChessGame } from '../api/games'
 import { searchUsers } from '../api/chat'
@@ -8,6 +8,8 @@ export default function GamesIndex(): React.JSX.Element {
   const [query, setQuery] = useState('')
   const [results, setResults] = useState<any[]>([])
   const navigate = useNavigate()
+  const searchDebounceRef = useRef<ReturnType<typeof setTimeout> | null>(null)
+  const searchRequestRef = useRef(0)
 
   useEffect(() => {
     async function load() {
@@ -21,12 +23,45 @@ export default function GamesIndex(): React.JSX.Element {
     load()
   }, [])
 
+  useEffect(() => (
+    () => {
+      if (searchDebounceRef.current) {
+        clearTimeout(searchDebounceRef.current)
+        searchDebounceRef.current = null
+      }
+    }
+  ), [])
+
   async function handleSearch(e: React.ChangeEvent<HTMLInputElement>) {
     const v = e.target.value
     setQuery(v)
-    if (!v.trim()) return setResults([])
-    const res = await searchUsers(v)
-    setResults(res)
+    if (searchDebounceRef.current) {
+      clearTimeout(searchDebounceRef.current)
+      searchDebounceRef.current = null
+    }
+    if (!v.trim()) {
+      searchRequestRef.current += 1
+      setResults([])
+      return
+    }
+
+    const requestId = searchRequestRef.current + 1
+    searchRequestRef.current = requestId
+
+    searchDebounceRef.current = setTimeout(() => {
+      void (async () => {
+        try {
+          const res = await searchUsers(v)
+          if (searchRequestRef.current === requestId) {
+            setResults(res)
+          }
+        } catch {
+          if (searchRequestRef.current === requestId) {
+            setResults([])
+          }
+        }
+      })()
+    }, 250)
   }
 
   async function handleCreate(opponentId?: string) {

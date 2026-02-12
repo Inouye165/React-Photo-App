@@ -11,6 +11,22 @@ export function useGameRealtime(gameId: string | null, refreshToken = 0) {
 
   useEffect(() => {
     let cancelled = false
+    const fetchMoves = async () => {
+      if (!gameId) return
+      const { data, error } = await supabase
+        .from('chess_moves')
+        .select('*')
+        .eq('game_id', gameId)
+        .order('ply', { ascending: true })
+
+      if (cancelled) return
+      if (error) {
+        setMoves([])
+      } else {
+        setMoves((data ?? []) as any[])
+      }
+    }
+
     async function run() {
       if (!gameId) {
         setMoves([])
@@ -18,20 +34,8 @@ export function useGameRealtime(gameId: string | null, refreshToken = 0) {
         return
       }
       setLoading(true)
-      const { data, error } = await supabase
-        .from('chess_moves')
-        .select('*')
-        .eq('game_id', gameId)
-        .order('ply', { ascending: true })
-
-      if (!cancelled) {
-        if (error) {
-          setMoves([])
-        } else {
-          setMoves((data ?? []) as any[])
-        }
-        setLoading(false)
-      }
+      await fetchMoves()
+      if (!cancelled) setLoading(false)
 
       const channelName = `game:${gameId}:${Math.random().toString(36).slice(2,8)}`
       const channel = supabase.channel(channelName)
@@ -42,10 +46,76 @@ export function useGameRealtime(gameId: string | null, refreshToken = 0) {
         (payload: MovePayload) => {
           if (!payload.new) return
           setMoves((prev) => {
-            const next = [...prev, payload.new as any]
+            const inserted = payload.new as any
+            const insertedId = String(inserted.id ?? '')
+
+            // Prefer authoritative PK-based dedupe. If the realtime payload
+            // does not include an `id`, re-sync from the server rather than
+            // attempting a brittle `ply`-based replacement which can mask
+            // restart/reconcile races.
+            if (!insertedId) {
+              void fetchMoves()
+              return prev
+            }
+
+            const next = prev.slice()
+            const existingIndex = next.findIndex((move) => String(move.id ?? '') === insertedId)
+
+            if (existingIndex >= 0) {
+              next[existingIndex] = inserted
+            } else {
+              next.push(inserted)
+            }
+
             next.sort((a, b) => (a.ply || 0) - (b.ply || 0))
             return next
           })
+        }
+      )
+      channel.on(
+        'postgres_changes',
+        { event: 'DELETE', schema: 'public', table: 'chess_moves', filter: `game_id=eq.${gameId}` },
+        (payload: MovePayload) => {
+          if (!payload.old) return
+          const deletedOld = payload.old as Record<string, unknown>
+          const deletedId = String(deletedOld.id ?? '')
+          const deletedPly = Number(deletedOld.ply ?? -1)
+          setMoves((prev) => prev.filter((move) => {
+            if (deletedId && String(move.id ?? '') === deletedId) return false
+            if (!deletedId && deletedPly >= 0 && Number(move.ply ?? -1) === deletedPly) return false
+            return true
+          }))
+        }
+      )
+      channel.on(
+        'postgres_changes',
+        { event: 'UPDATE', schema: 'public', table: 'chess_moves', filter: `game_id=eq.${gameId}` },
+        (payload: MovePayload) => {
+          if (!payload.new) return
+          setMoves((prev) => {
+            const updated = payload.new as any
+            const updatedId = String(updated.id ?? '')
+            const next = prev.slice()
+            const index = updatedId
+              ? next.findIndex((move) => String(move.id ?? '') === updatedId)
+              : next.findIndex((move) => Number(move.ply ?? -1) === Number(updated.ply ?? -2))
+
+            if (index >= 0) {
+              next[index] = updated
+            } else {
+              next.push(updated)
+            }
+
+            next.sort((a, b) => (a.ply || 0) - (b.ply || 0))
+            return next
+          })
+        }
+      )
+      channel.on(
+        'postgres_changes',
+        { event: 'UPDATE', schema: 'public', table: 'games', filter: `id=eq.${gameId}` },
+        () => {
+          void fetchMoves()
         }
       )
 
