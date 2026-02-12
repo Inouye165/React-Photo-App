@@ -46,7 +46,19 @@ export function useGameRealtime(gameId: string | null, refreshToken = 0) {
         (payload: MovePayload) => {
           if (!payload.new) return
           setMoves((prev) => {
-            const next = [...prev, payload.new as any]
+            const inserted = payload.new as any
+            const insertedId = String(inserted.id ?? '')
+            const next = prev.slice()
+            const existingIndex = insertedId
+              ? next.findIndex((move) => String(move.id ?? '') === insertedId)
+              : next.findIndex((move) => Number(move.ply ?? -1) === Number(inserted.ply ?? -2))
+
+            if (existingIndex >= 0) {
+              next[existingIndex] = inserted
+            } else {
+              next.push(inserted)
+            }
+
             next.sort((a, b) => (a.ply || 0) - (b.ply || 0))
             return next
           })

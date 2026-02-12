@@ -103,6 +103,22 @@ describe('useGameRealtime', () => {
     })
   })
 
+  it('deduplicates insert events for an existing move id', async () => {
+    const { result } = renderHook(() => useGameRealtime('game-dup'))
+
+    await waitFor(() => {
+      expect(result.current.loading).toBe(false)
+      expect(result.current.moves).toHaveLength(2)
+    })
+
+    await act(async () => {
+      invokeHandler('INSERT', 'chess_moves', { new: { id: 'm2', ply: 2, uci: 'e7e5' } })
+    })
+
+    expect(result.current.moves).toHaveLength(2)
+    expect(result.current.moves.map((m) => m.id)).toEqual(['m1', 'm2'])
+  })
+
   it('subscribes and unsubscribes the channel', async () => {
     const { unmount } = renderHook(() => useGameRealtime('game-2'))
 
