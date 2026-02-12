@@ -94,4 +94,28 @@ describe('GamesIndex', () => {
     })
     expect(screen.queryByText('alex')).not.toBeInTheDocument()
   })
+
+  it('shows load error and retries list fetch', async () => {
+    listMyGamesMock
+      .mockRejectedValueOnce(new Error('network'))
+      .mockResolvedValueOnce([])
+
+    render(<GamesIndex />)
+
+    await act(async () => {
+      await Promise.resolve()
+      await Promise.resolve()
+    })
+
+    expect(screen.getByText('Failed to load games. Please retry.')).toBeInTheDocument()
+
+    fireEvent.click(screen.getByRole('button', { name: 'Retry' }))
+
+    await act(async () => {
+      await Promise.resolve()
+    })
+
+    expect(listMyGamesMock).toHaveBeenCalledTimes(2)
+    expect(screen.queryByText('Failed to load games. Please retry.')).not.toBeInTheDocument()
+  })
 })

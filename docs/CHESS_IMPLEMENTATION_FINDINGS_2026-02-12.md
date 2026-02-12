@@ -17,16 +17,26 @@ Scope reviewed:
 
 ## Status Update (implemented)
 
-- [x] Hint UX: single **Show hints** button, visible-through-current-move behavior, hover/tap square highlighting, usage counter, and `*` move marking in history.
-- [x] Performance #3: debounced user search in `GamesIndex` with stale response suppression test coverage.
-- [x] UX #1: board orientation now follows player color (black players see black orientation in online games).
-- [x] UX #3: move history SAN entries are clickable and jump to the selected ply.
-- [x] Correctness fix: local-mode black replies now use FEN-derived ply numbering so black moves reliably appear in move history.
+<span style="color: green">✔ DONE</span> Hint UX: single **Show hints** button, visible-through-current-move behavior, hover/tap square highlighting, usage counter, and `*` move marking in history.
+
+<span style="color: green">✔ DONE</span> Performance #3: debounced user search in `GamesIndex` with stale response suppression test coverage.
+
+<span style="color: green">✔ DONE</span> UX #1: board orientation now follows player color (black players see black orientation in online games).
+
+<span style="color: green">✔ DONE</span> UX #3: move history SAN entries are clickable and jump to the selected ply.
+
+<span style="color: green">✔ DONE</span> Correctness fix: local-mode black replies now use correct FEN-derived ply numbering so black moves are recorded in turn 1 black (and do not shift to turn 2).
+
+<span style="color: green">✔ DONE</span> Robustness #2.3: Stockfish move requests now enforce watchdog timeout and reject hung moves.
+
+<span style="color: green">✔ DONE</span> Robustness #2.4: Stockfish worker path is env-configurable with safe same-origin `/stockfish/` path validation and secure fallback.
+
+<span style="color: green">✔ DONE</span> Robustness #2.5 (partial): removed silent `GamesIndex` load failure by adding user-visible error + retry action.
 
 ### Newly pulled from findings and implemented this pass
 
-- [x] **UX #1 No board orientation by player color**
-- [x] **UX #3 Move history not directly clickable for jump-to-ply**
+- <span style="color: green">✔ DONE</span> **Robustness #2.4 Hardcoded stockfish worker filename/path is brittle**
+- <span style="color: green">✔ DONE</span> **Robustness #2.5 Silent error swallowing in critical UI flows** (GamesIndex load/retry path)
 
 ---
 

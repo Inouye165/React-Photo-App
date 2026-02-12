@@ -1,5 +1,5 @@
 import { describe, it, expect, vi, beforeEach } from 'vitest'
-import { render, screen, waitFor } from '@testing-library/react'
+import { render, screen, waitFor, within } from '@testing-library/react'
 import userEvent from '@testing-library/user-event'
 import ChessGame from './ChessGame'
 
@@ -229,6 +229,12 @@ describe('ChessGame', () => {
     await waitFor(() => {
       expect(screen.getByText('e4')).toBeInTheDocument()
       expect(screen.getByText('e5')).toBeInTheDocument()
+      expect(screen.queryByText('2.')).not.toBeInTheDocument()
+      const firstRow = screen.getByText('1.').closest('tr')
+      expect(firstRow).toBeTruthy()
+      const rowScope = within(firstRow as HTMLElement)
+      expect(rowScope.getByText('e4')).toBeInTheDocument()
+      expect(rowScope.getByText('e5')).toBeInTheDocument()
     })
   })
 })
