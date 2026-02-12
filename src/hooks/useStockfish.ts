@@ -45,6 +45,7 @@ function normalizeScore(score: number, turn: 'w' | 'b') {
 export function useStockfish() {
   const workerRef = useRef<Worker | null>(null)
   const pendingMoveRef = useRef<PendingMove | null>(null)
+  const pendingMoveTimeoutRef = useRef<ReturnType<typeof setTimeout> | null>(null)
   const lastFenRef = useRef<string | null>(null)
   const analysisRef = useRef<Map<number, AnalysisEntry>>(new Map())
   const readyRef = useRef(false)
@@ -66,6 +67,12 @@ export function useStockfish() {
     worker.postMessage(command)
   }, [])
 
+  const clearPendingMoveTimeout = useCallback(() => {
+    if (!pendingMoveTimeoutRef.current) return
+    clearTimeout(pendingMoveTimeoutRef.current)
+    pendingMoveTimeoutRef.current = null
+  }, [])
+
   const stopSearchIfNeeded = useCallback(() => {
     if (!searchingRef.current) return
     searchingRef.current = false
@@ -74,11 +81,12 @@ export function useStockfish() {
 
   const cancelPendingMove = useCallback(() => {
     stopSearchIfNeeded()
+    clearPendingMoveTimeout()
     if (pendingMoveRef.current) {
       pendingMoveRef.current.reject(new Error('Engine move cancelled'))
       pendingMoveRef.current = null
     }
-  }, [stopSearchIfNeeded])
+  }, [clearPendingMoveTimeout, stopSearchIfNeeded])
 
   const handleInfoLine = useCallback((line: string) => {
     const multipvMatch = line.match(/\bmultipv (\d+)/)
@@ -158,12 +166,13 @@ export function useStockfish() {
       const match = line.match(/bestmove ([a-h][1-8][a-h][1-8][qrbn]?)/)
       const bestMove = match?.[1]
       searchingRef.current = false
+      clearPendingMoveTimeout()
       if (bestMove && pendingMoveRef.current) {
         pendingMoveRef.current.resolve(bestMove)
         pendingMoveRef.current = null
       }
     }
-  }, [handleInfoLine, sendCommand])
+  }, [clearPendingMoveTimeout, handleInfoLine, sendCommand])
 
   useEffect(() => {
     skillRef.current = settings.skill
@@ -182,6 +191,7 @@ export function useStockfish() {
         readyRef.current = false
         setIsReady(false)
         searchingRef.current = false
+        clearPendingMoveTimeout()
         pendingMoveRef.current?.reject(new Error('Stockfish worker crashed'))
         pendingMoveRef.current = null
         if (restartAttemptsRef.current < 2) {
@@ -206,6 +216,7 @@ export function useStockfish() {
         clearTimeout(restartTimerRef.current)
         restartTimerRef.current = null
       }
+      clearPendingMoveTimeout()
       pendingMoveRef.current?.reject(new Error('Stockfish worker terminated'))
       pendingMoveRef.current = null
       if (workerRef.current) {
@@ -214,7 +225,7 @@ export function useStockfish() {
       }
       workerRef.current = null
     }
-  }, [handleMessage])
+  }, [clearPendingMoveTimeout, handleMessage])
 
   useEffect(() => {
     if (!readyRef.current) return
@@ -245,8 +256,18 @@ export function useStockfish() {
       sendCommand(`position fen ${fen}`)
       sendCommand(`go movetime ${settings.movetime}`)
       searchingRef.current = true
+      clearPendingMoveTimeout()
+      const timeoutMs = Math.max(settings.movetime * 6, 3000)
+      pendingMoveTimeoutRef.current = setTimeout(() => {
+        if (!pendingMoveRef.current) return
+        searchingRef.current = false
+        sendCommand('stop')
+        pendingMoveRef.current.reject(new Error('Engine move timeout'))
+        pendingMoveRef.current = null
+        pendingMoveTimeoutRef.current = null
+      }, timeoutMs)
     })
-  }, [sendCommand, settings.movetime, stopSearchIfNeeded])
+  }, [clearPendingMoveTimeout, sendCommand, settings.movetime, stopSearchIfNeeded])
 
   const setDifficulty = useCallback((level: Difficulty) => {
     setDifficultyState(level)
