@@ -33,6 +33,22 @@ const difficultySettings: Record<Difficulty, { movetime: number; skill: number }
   Hard: { movetime: 900, skill: 18 },
 }
 
+const DEFAULT_STOCKFISH_WORKER_PATH = '/stockfish/stockfish-17.1-lite-single-03e3232.js'
+
+function resolveStockfishWorkerPath() {
+  const configuredPath = import.meta.env.VITE_STOCKFISH_WORKER_PATH
+  if (typeof configuredPath !== 'string' || !configuredPath.trim()) {
+    return DEFAULT_STOCKFISH_WORKER_PATH
+  }
+
+  const normalized = configuredPath.trim()
+  if (!normalized.startsWith('/stockfish/')) {
+    return DEFAULT_STOCKFISH_WORKER_PATH
+  }
+
+  return normalized
+}
+
 function clamp(value: number, min: number, max: number) {
   return Math.min(max, Math.max(min, value))
 }
@@ -184,7 +200,7 @@ export function useStockfish() {
     // Do NOT wrap it in a custom worker; the Stockfish script is a complete
     // Web Worker that derives the .wasm path from self.location.
     const spawnWorker = () => {
-      const worker = new Worker('/stockfish/stockfish-17.1-lite-single-03e3232.js')
+      const worker = new Worker(resolveStockfishWorkerPath())
       workerRef.current = worker
       worker.onmessage = (event) => handleMessage(event.data)
       worker.onerror = () => {

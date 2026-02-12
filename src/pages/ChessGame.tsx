@@ -118,7 +118,7 @@ function plyFromFen(fen: string): number {
   const turn = parts[1] as 'w' | 'b' | undefined
   const fullmove = Number(parts[5])
   const moveNumber = Number.isFinite(fullmove) && fullmove > 0 ? fullmove : 1
-  return turn === 'b' ? ((moveNumber - 1) * 2) + 1 : ((moveNumber - 1) * 2) + 2
+  return turn === 'b' ? ((moveNumber - 1) * 2) + 1 : ((moveNumber - 1) * 2)
 }
 
 function getEvalPercent(score: number | null) {

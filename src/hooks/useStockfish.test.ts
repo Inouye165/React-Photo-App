@@ -24,6 +24,7 @@ class MockStockfishWorker {
 describe('useStockfish', () => {
   let workerInstances: MockStockfishWorker[] = []
   let capturedTimeoutCallback: (() => void) | null = null
+  let workerConstructorMock: ReturnType<typeof vi.fn>
 
   beforeEach(() => {
     workerInstances = []
@@ -37,14 +38,12 @@ describe('useStockfish', () => {
     })
     vi.spyOn(globalThis, 'clearTimeout').mockImplementation(() => undefined)
 
-    vi.stubGlobal(
-      'Worker',
-      vi.fn(() => {
-        const worker = new MockStockfishWorker()
-        workerInstances.push(worker)
-        return worker
-      }),
-    )
+    workerConstructorMock = vi.fn(() => {
+      const worker = new MockStockfishWorker()
+      workerInstances.push(worker)
+      return worker
+    })
+    vi.stubGlobal('Worker', workerConstructorMock)
   })
 
   afterEach(() => {
@@ -79,5 +78,19 @@ describe('useStockfish', () => {
     expect(moveError).toBeInstanceOf(Error)
     expect((moveError as Error).message).toBe('Engine move timeout')
     expect(worker.postedCommands).toContain('stop')
+  })
+
+  it('uses configured stockfish worker path when safe', () => {
+    vi.stubEnv('VITE_STOCKFISH_WORKER_PATH', '/stockfish/custom-worker.js')
+    renderHook(() => useStockfish())
+
+    expect(workerConstructorMock).toHaveBeenCalledWith('/stockfish/custom-worker.js')
+  })
+
+  it('falls back to default worker path when configured path is unsafe', () => {
+    vi.stubEnv('VITE_STOCKFISH_WORKER_PATH', 'https://evil.example/worker.js')
+    renderHook(() => useStockfish())
+
+    expect(workerConstructorMock).toHaveBeenCalledWith('/stockfish/stockfish-17.1-lite-single-03e3232.js')
   })
 })

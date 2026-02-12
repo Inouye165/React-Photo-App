@@ -7,20 +7,23 @@ export default function GamesIndex(): React.JSX.Element {
   const [games, setGames] = useState<any[]>([])
   const [query, setQuery] = useState('')
   const [results, setResults] = useState<any[]>([])
+  const [loadError, setLoadError] = useState<string | null>(null)
   const navigate = useNavigate()
   const searchDebounceRef = useRef<ReturnType<typeof setTimeout> | null>(null)
   const searchRequestRef = useRef(0)
 
-  useEffect(() => {
-    async function load() {
-      try {
-        const g = await listMyGames()
-        setGames(g)
-      } catch (err) {
-        // ignore for MVP
-      }
+  const loadGames = async () => {
+    try {
+      const g = await listMyGames()
+      setGames(g)
+      setLoadError(null)
+    } catch {
+      setLoadError('Failed to load games. Please retry.')
     }
-    load()
+  }
+
+  useEffect(() => {
+    void loadGames()
   }, [])
 
   useEffect(() => (
@@ -72,6 +75,18 @@ export default function GamesIndex(): React.JSX.Element {
   return (
     <div>
       <h2 className="text-lg font-semibold mb-2">Chess</h2>
+      {loadError ? (
+        <div className="mb-3 flex items-center justify-between rounded border border-red-200 bg-red-50 px-3 py-2 text-sm text-red-700">
+          <span>{loadError}</span>
+          <button
+            type="button"
+            onClick={() => { void loadGames() }}
+            className="rounded border border-red-200 bg-white px-2 py-1 text-xs font-semibold text-red-700"
+          >
+            Retry
+          </button>
+        </div>
+      ) : null}
       <div className="mb-4">
         <button onClick={() => handleCreate()} className="px-3 py-1 bg-slate-700 text-white rounded">New Game (Random Opponent)</button>
       </div>
