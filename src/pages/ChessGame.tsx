@@ -113,6 +113,14 @@ function formatUciToSan(fen: string, uci: string) {
   }
 }
 
+function plyFromFen(fen: string): number {
+  const parts = fen.split(' ')
+  const turn = parts[1] as 'w' | 'b' | undefined
+  const fullmove = Number(parts[5])
+  const moveNumber = Number.isFinite(fullmove) && fullmove > 0 ? fullmove : 1
+  return turn === 'b' ? ((moveNumber - 1) * 2) + 1 : ((moveNumber - 1) * 2) + 2
+}
+
 function getEvalPercent(score: number | null) {
   if (score === null) return 50
   const clamped = Math.min(9, Math.max(-9, score))
@@ -627,6 +635,7 @@ function OnlineChessGame(): React.JSX.Element {
   const isMember = Boolean(currentMember)
   const isUserTurn = (currentTurn === 'w' && isCurrentWhite) || (currentTurn === 'b' && isCurrentBlack)
   const canMove = !isAborted && !isViewingPast && isMember && isUserTurn
+  const boardOrientation: 'white' | 'black' = isCurrentBlack ? 'black' : 'white'
 
   const { isReady, topMoves, evaluation, analyzePosition, difficulty, setDifficulty } = useStockfish()
   const opening = useMemo(() => findOpening(buildMovesUci(moveRows)), [moveRows])
@@ -759,6 +768,7 @@ function OnlineChessGame(): React.JSX.Element {
             <div className="w-full rounded-xl border border-slate-200 bg-white p-1 shadow-sm" style={{ maxWidth: boardSize + 8 }}>
               <Chessboard
                 position={normalizedDisplayFen}
+                boardOrientation={boardOrientation}
                 showBoardNotation
                 {...CHESSBOARD_THEME}
                 onPieceDrop={(src: Square, dst: Square) => {
@@ -897,18 +907,26 @@ function OnlineChessGame(): React.JSX.Element {
                         <td className="py-2 pr-2 text-xs text-slate-500">{row.moveNumber}.</td>
                         <td className={`py-2 font-medium ${whiteHint ? 'text-purple-600' : ''}`}>
                           {row.white ? (
-                            <>
+                            <button
+                              type="button"
+                              className="rounded px-1 py-0.5 text-left hover:bg-slate-100"
+                              onClick={() => setViewPly(whitePly)}
+                            >
                               <span>{row.white}</span>
                               {whiteHint ? <span className="ml-1 text-xs">*</span> : null}
-                            </>
+                            </button>
                           ) : ''}
                         </td>
                         <td className={`py-2 font-medium ${blackHint ? 'text-purple-600' : ''}`}>
                           {row.black ? (
-                            <>
+                            <button
+                              type="button"
+                              className="rounded px-1 py-0.5 text-left hover:bg-slate-100"
+                              onClick={() => setViewPly(blackPly)}
+                            >
                               <span>{row.black}</span>
                               {blackHint ? <span className="ml-1 text-xs">*</span> : null}
-                            </>
+                            </button>
                           ) : ''}
                         </td>
                       </tr>
@@ -1066,7 +1084,7 @@ function LocalChessGame(): React.JSX.Element {
       const move = chess.move({ from: parsed.from, to: parsed.to, promotion: parsed.promotion })
       if (!move) return
       const fenAfter = chess.fen()
-      const ply = localMoves.length + 1
+      const ply = plyFromFen(fenAfter)
       const row: MoveRow = {
         ply,
         uci: `${move.from}${move.to}${move.promotion ?? ''}`,
@@ -1094,8 +1112,7 @@ function LocalChessGame(): React.JSX.Element {
     const move = c.move({ from: sourceSquare, to: targetSquare, promotion: 'q' })
     if (!move) return false
     const fenAfter = c.fen()
-
-    const ply = moveRows.length + 1
+    const ply = plyFromFen(fenAfter)
     const row: MoveRow = {
       ply,
       uci: `${move.from}${move.to}${move.promotion ?? ''}`,
@@ -1198,6 +1215,7 @@ function LocalChessGame(): React.JSX.Element {
             <div className="w-full rounded-xl border border-slate-200 bg-white p-1 shadow-sm" style={{ maxWidth: boardSize + 8 }}>
               <Chessboard
                 position={normalizedDisplayFen}
+                boardOrientation="white"
                 showBoardNotation
                 {...CHESSBOARD_THEME}
                 onPieceDrop={(src: Square, dst: Square) => {
@@ -1303,18 +1321,26 @@ function LocalChessGame(): React.JSX.Element {
                         <td className="py-2 pr-2 text-xs text-slate-500">{row.moveNumber}.</td>
                         <td className={`py-2 font-medium ${whiteHint ? 'text-purple-600' : ''}`}>
                           {row.white ? (
-                            <>
+                            <button
+                              type="button"
+                              className="rounded px-1 py-0.5 text-left hover:bg-slate-100"
+                              onClick={() => setViewPly(whitePly)}
+                            >
                               <span>{row.white}</span>
                               {whiteHint ? <span className="ml-1 text-xs">*</span> : null}
-                            </>
+                            </button>
                           ) : ''}
                         </td>
                         <td className={`py-2 font-medium ${blackHint ? 'text-purple-600' : ''}`}>
                           {row.black ? (
-                            <>
+                            <button
+                              type="button"
+                              className="rounded px-1 py-0.5 text-left hover:bg-slate-100"
+                              onClick={() => setViewPly(blackPly)}
+                            >
                               <span>{row.black}</span>
                               {blackHint ? <span className="ml-1 text-xs">*</span> : null}
-                            </>
+                            </button>
                           ) : ''}
                         </td>
                       </tr>

@@ -6,6 +6,10 @@ import ChessGame from './ChessGame'
 const {
   getMockGameId,
   setMockGameId,
+  getAuthUserId,
+  setAuthUserId,
+  getEngineMoveUci,
+  setEngineMoveUci,
   navigateMock,
   useGameRealtimeMock,
   fetchGameMock,
@@ -17,10 +21,16 @@ const {
   setTopMovesMock,
 } = vi.hoisted(() => {
   let mockGameId = 'game-123'
+  let authUserId = 'user-1'
+  let engineMoveUci = 'e2e4'
   let topMovesMock = [] as Array<{ uci: string; score: number | null; mate: number | null; depth: number | null }>
   return {
     getMockGameId: () => mockGameId,
     setMockGameId: (value: string) => { mockGameId = value },
+    getAuthUserId: () => authUserId,
+    setAuthUserId: (value: string) => { authUserId = value },
+    getEngineMoveUci: () => engineMoveUci,
+    setEngineMoveUci: (value: string) => { engineMoveUci = value },
     getTopMovesMock: () => topMovesMock,
     setTopMovesMock: (value: Array<{ uci: string; score: number | null; mate: number | null; depth: number | null }>) => {
       topMovesMock = value
@@ -61,7 +71,7 @@ vi.mock('react-router-dom', () => ({
 }))
 
 vi.mock('../contexts/AuthContext', () => ({
-  useAuth: () => ({ user: { id: 'user-1' } }),
+  useAuth: () => ({ user: { id: getAuthUserId() } }),
 }))
 
 vi.mock('../hooks/useGameRealtime', () => ({
@@ -82,7 +92,7 @@ vi.mock('../hooks/useStockfish', () => ({
     topMoves: getTopMovesMock(),
     evaluation: { score: 0, mate: null },
     analyzePosition: vi.fn(),
-    getEngineMove: vi.fn(async () => 'e2e4'),
+    getEngineMove: vi.fn(async () => getEngineMoveUci()),
     difficulty: 'Medium',
     setDifficulty: vi.fn(),
   }),
@@ -102,11 +112,14 @@ vi.mock('../supabaseClient', () => ({
 }))
 
 vi.mock('react-chessboard', () => ({
-  Chessboard: (props: { customSquareStyles?: Record<string, unknown> }) => (
+  Chessboard: (props: { customSquareStyles?: Record<string, unknown>; boardOrientation?: 'white' | 'black'; onPieceDrop?: (src: 'e2', dst: 'e4') => boolean }) => (
     <div
       data-testid="chessboard"
+      data-orientation={props.boardOrientation || 'white'}
       data-custom-squares={Object.keys(props.customSquareStyles ?? {}).sort().join(',')}
-    />
+    >
+      <button type="button" onClick={() => props.onPieceDrop?.('e2', 'e4')}>mock-drop-e2e4</button>
+    </div>
   ),
 }))
 
@@ -114,6 +127,8 @@ describe('ChessGame', () => {
   beforeEach(() => {
     vi.clearAllMocks()
     setMockGameId('game-123')
+    setAuthUserId('user-1')
+    setEngineMoveUci('e2e4')
     setTopMovesMock([])
   })
 
@@ -181,6 +196,39 @@ describe('ChessGame', () => {
       const highlighted = screen.getByTestId('chessboard').getAttribute('data-custom-squares') || ''
       expect(highlighted).toContain('e2')
       expect(highlighted).toContain('e4')
+    })
+  })
+
+  it('orients board for black player in online mode', async () => {
+    setAuthUserId('user-2')
+    render(<ChessGame />)
+
+    await waitFor(() => {
+      expect(screen.getByTestId('chessboard')).toHaveAttribute('data-orientation', 'black')
+    })
+  })
+
+  it('jumps to selected ply when clicking move history SAN', async () => {
+    const user = userEvent.setup()
+    render(<ChessGame />)
+
+    const moveButton = await screen.findByRole('button', { name: 'e4' })
+    await user.click(moveButton)
+
+    expect(screen.getByText('Viewing move 1/2')).toBeInTheDocument()
+  })
+
+  it('records black reply in local move history after white move', async () => {
+    const user = userEvent.setup()
+    setMockGameId('local')
+    setEngineMoveUci('e7e5')
+    render(<ChessGame />)
+
+    await user.click(screen.getByRole('button', { name: 'mock-drop-e2e4' }))
+
+    await waitFor(() => {
+      expect(screen.getByText('e4')).toBeInTheDocument()
+      expect(screen.getByText('e5')).toBeInTheDocument()
     })
   })
 })

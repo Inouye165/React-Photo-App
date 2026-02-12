@@ -23,29 +23,16 @@ vi.mock('../api/chat', () => ({
 }))
 
 describe('GamesIndex', () => {
-  let timeoutId = 0
-  const timeoutCallbacks = new Map<number, () => void>()
-
   beforeEach(() => {
     vi.clearAllMocks()
-    timeoutId = 0
-    timeoutCallbacks.clear()
-
-    vi.spyOn(globalThis, 'setTimeout').mockImplementation((handler: TimerHandler) => {
-      timeoutId += 1
-      if (typeof handler === 'function') {
-        timeoutCallbacks.set(timeoutId, handler as () => void)
-      }
-      return timeoutId as unknown as ReturnType<typeof setTimeout>
-    })
-    vi.spyOn(globalThis, 'clearTimeout').mockImplementation((id?: string | number | ReturnType<typeof setTimeout>) => {
-      timeoutCallbacks.delete(Number(id))
-    })
+    vi.useFakeTimers()
 
     searchUsersMock.mockResolvedValue([])
   })
 
   afterEach(() => {
+    vi.runOnlyPendingTimers()
+    vi.useRealTimers()
     vi.restoreAllMocks()
   })
 
@@ -61,7 +48,7 @@ describe('GamesIndex', () => {
     expect(searchUsersMock).not.toHaveBeenCalled()
 
     await act(async () => {
-      timeoutCallbacks.get(timeoutId)?.()
+      vi.advanceTimersByTime(250)
       await Promise.resolve()
     })
 
@@ -69,8 +56,42 @@ describe('GamesIndex', () => {
     expect(searchUsersMock).toHaveBeenCalledWith('ali')
   })
 
-  it.skip('ignores stale search responses and only shows latest results', async () => {
-    // Flaky in CI/test environment due to timing of mocked timers.
-    // Skipping — will re-enable with a deterministic fake-timers rewrite.
+  it('ignores stale search responses and only shows latest results', async () => {
+    let resolveFirst: (value: Array<{ id: string; username: string | null; avatar_url: string | null }>) => void = () => {}
+    let resolveSecond: (value: Array<{ id: string; username: string | null; avatar_url: string | null }>) => void = () => {}
+
+    searchUsersMock
+      .mockImplementationOnce(() => new Promise((resolve) => { resolveFirst = resolve }))
+      .mockImplementationOnce(() => new Promise((resolve) => { resolveSecond = resolve }))
+
+    render(<GamesIndex />)
+
+    const input = screen.getByPlaceholderText('Search users')
+
+    fireEvent.change(input, { target: { value: 'al' } })
+    await act(async () => {
+      vi.advanceTimersByTime(250)
+      await Promise.resolve()
+    })
+
+    fireEvent.change(input, { target: { value: 'alice' } })
+    await act(async () => {
+      vi.advanceTimersByTime(250)
+      await Promise.resolve()
+    })
+
+    await act(async () => {
+      resolveSecond([{ id: 'new', username: 'alice', avatar_url: null }])
+      await Promise.resolve()
+      await Promise.resolve()
+    })
+    expect(screen.getByText('alice')).toBeInTheDocument()
+
+    await act(async () => {
+      resolveFirst([{ id: 'old', username: 'alex', avatar_url: null }])
+      await Promise.resolve()
+      await Promise.resolve()
+    })
+    expect(screen.queryByText('alex')).not.toBeInTheDocument()
   })
 })
