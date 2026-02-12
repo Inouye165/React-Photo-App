@@ -3,7 +3,7 @@ import { useNavigate, useParams } from 'react-router-dom'
 import { Chess } from 'chess.js'
 import type { Square } from 'chess.js'
 import { Chessboard } from 'react-chessboard'
-import { fetchGame, fetchGameMembers, makeMove, restartGame } from '../api/games'
+import { abortGame, fetchGame, fetchGameMembers, makeMove, restartGame } from '../api/games'
 import Toast from '../components/Toast'
 import type { GameMemberProfile, GameRow } from '../api/games'
 import { supabase } from '../supabaseClient'
@@ -380,6 +380,7 @@ export default function ChessGame(): React.JSX.Element {
 
 function OnlineChessGame(): React.JSX.Element {
   const { gameId } = useParams<{ gameId: string }>()
+  const navigate = useNavigate()
   const { user } = useAuth()
   const [refreshToken, setRefreshToken] = useState(0)
   const { moves, loading: movesLoading } = useGameRealtime(gameId || null, refreshToken)
@@ -480,6 +481,21 @@ function OnlineChessGame(): React.JSX.Element {
     }
   }
 
+  async function handleQuitGame() {
+    if (!gameId) {
+      navigate('/games')
+      return
+    }
+
+    try {
+      await abortGame(gameId)
+    } catch {
+      // Keep navigation resilient even if quit persistence fails.
+    } finally {
+      navigate('/games')
+    }
+  }
+
   const normalizedDisplayFen = displayFen || START_FEN
   const currentTurn = (normalizedDisplayFen.split(' ')[1] as 'w' | 'b' | undefined) || (game?.current_turn as 'w' | 'b' | null) || null
   const currentUserId = user?.id ?? null
@@ -559,13 +575,21 @@ function OnlineChessGame(): React.JSX.Element {
             {currentMember?.role ? ` · You are ${currentMember.role}` : ' · Spectating'}
           </div>
         </div>
-        <button
-          onClick={() => { void handleRestartGame() }}
-          disabled={restartLoading}
-          className="rounded-md border border-slate-300 bg-white px-3 py-1 text-xs font-semibold text-slate-700 disabled:opacity-50"
-        >
-          {restartLoading ? 'Restarting…' : 'Restart game'}
-        </button>
+        <div className="flex items-center gap-2">
+          <button
+            onClick={() => { void handleRestartGame() }}
+            disabled={restartLoading}
+            className="rounded-md border border-slate-300 bg-white px-3 py-1 text-xs font-semibold text-slate-700 disabled:opacity-50"
+          >
+            {restartLoading ? 'Restarting…' : 'Restart game'}
+          </button>
+          <button
+            onClick={() => { void handleQuitGame() }}
+            className="rounded-md border border-slate-200 bg-white px-3 py-1 text-xs font-semibold text-slate-600"
+          >
+            Quit
+          </button>
+        </div>
       </div>
       {error ? (
         <div className="mb-3 flex flex-wrap items-center justify-between gap-3 rounded-md border border-red-200 bg-red-50 px-3 py-2 text-sm text-red-700">

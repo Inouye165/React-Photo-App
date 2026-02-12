@@ -1,5 +1,6 @@
 import { supabase } from '../supabaseClient'
 import { searchUsers } from './chat'
+import { notifyGamesChanged } from '../events/gamesEvents'
 
 async function requireAuthedUserId(): Promise<string> {
   const { data, error } = await supabase.auth.getUser()
@@ -143,6 +144,8 @@ export async function createChessGame(opponentUserId: string | null, timeControl
   const { error: membersError } = await supabase.from('game_members').insert(members)
   if (membersError) throw membersError
 
+  notifyGamesChanged()
+
   return game as GameRow
 }
 
@@ -216,7 +219,10 @@ export async function restartGame(gameId: string) {
   await requireAuthedUserId()
   // Try server-side RPC first
   const { error } = await supabase.rpc('restart_game', { p_game_id: gameId })
-  if (!error) return
+  if (!error) {
+    notifyGamesChanged()
+    return
+  }
 
   // If RPC is not available (404) or fails, attempt a REST fallback.
   const message = (error && (error.message || '')).toString()
@@ -237,7 +243,18 @@ export async function restartGame(gameId: string) {
 
   const { data, error: updErr } = await supabase.from('games').update(payload).eq('id', gameId).select('*').single()
   if (updErr) throw updErr
+  notifyGamesChanged()
   return data as GameRow
+}
+
+export async function abortGame(gameId: string): Promise<void> {
+  await requireAuthedUserId()
+  const { error } = await supabase
+    .from('games')
+    .update({ status: 'aborted', updated_at: new Date().toISOString() })
+    .eq('id', gameId)
+  if (error) throw error
+  notifyGamesChanged()
 }
 
 export { searchUsers }
