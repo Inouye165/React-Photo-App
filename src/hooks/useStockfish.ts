@@ -72,6 +72,14 @@ export function useStockfish() {
     sendCommand('stop')
   }, [sendCommand])
 
+  const cancelPendingMove = useCallback(() => {
+    stopSearchIfNeeded()
+    if (pendingMoveRef.current) {
+      pendingMoveRef.current.reject(new Error('Engine move cancelled'))
+      pendingMoveRef.current = null
+    }
+  }, [stopSearchIfNeeded])
+
   const handleInfoLine = useCallback((line: string) => {
     const multipvMatch = line.match(/\bmultipv (\d+)/)
     const pvMatch = line.match(/\bpv ([a-h][1-8][a-h][1-8][qrbn]?)(?:\s|$)/)
@@ -250,6 +258,7 @@ export function useStockfish() {
     setDifficulty,
     analyzePosition,
     getEngineMove,
+    cancelPendingMove,
     topMoves,
     evaluation,
   }

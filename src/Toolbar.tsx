@@ -6,6 +6,7 @@ import { useAuth } from './contexts/AuthContext';
 import { listMyGamesWithMembers } from './api/games';
 import useStore from './store';
 import type { Photo } from './types/photo';
+import GamesMenu from './components/GamesMenu';
 
 type Severity = 'info' | 'success' | 'warning' | 'error';
 
@@ -36,7 +37,6 @@ export default function Toolbar({
   const { user, logout } = useAuth();
   const navigate: NavigateFunction = useNavigate();
   const isAuthenticated = !!user;
-  const [gamesMenuValue, setGamesMenuValue] = useState('');
   const [games, setGames] = useState<Array<{ id: string; type: string; status: string; members?: Array<{ user_id: string; username: string | null }> }>>([]);
   const [gamesLoading, setGamesLoading] = useState(false);
 
@@ -147,44 +147,12 @@ export default function Toolbar({
           Photo App (Backend View)
         </span>
         <button onClick={handleUploadClick}>Select Folder for Upload</button>
-        <div style={{ display: 'flex', alignItems: 'center', gap: '6px' }}>
-          <label htmlFor="games-menu" style={{ fontSize: '0.9rem' }}>Games</label>
-          <select
-            id="games-menu"
-            value={gamesMenuValue}
-            onChange={(event) => {
-              const nextValue = event.target.value;
-              if (!nextValue || nextValue.startsWith('__')) return;
-              setGamesMenuValue('');
-              navigate(nextValue);
-            }}
-            style={{
-              background: '#1f2937',
-              color: '#fff',
-              border: '1px solid #475569',
-              borderRadius: '6px',
-              padding: '6px 10px',
-            }}
-            disabled={!isAuthenticated || gamesLoading}
-          >
-            <option value="">{gamesLoading ? 'Loading games...' : 'Games'}</option>
-            <option value="/games">Chess (Invites)</option>
-            {games.filter((game) => game.status === 'active').length ? (
-              <option value="__header__" disabled>In progress</option>
-            ) : null}
-            {games
-              .filter((game) => game.status === 'active')
-              .map((game) => {
-                const opponent = game.members?.find((member) => member.user_id !== user?.id)?.username || 'Opponent'
-                const typeLabel = game.type ? `${game.type.charAt(0).toUpperCase()}${game.type.slice(1)}` : 'Game'
-                return (
-                  <option key={game.id} value={`/games/${game.id}`}>
-                    {typeLabel} vs {opponent}
-                  </option>
-                )
-              })}
-          </select>
-        </div>
+        <GamesMenu
+          games={games}
+          gamesLoading={gamesLoading}
+          userId={user?.id}
+          disabled={!isAuthenticated}
+        />
         <button onClick={() => handleViewChange('working')}>View Working</button>
         <button onClick={() => handleViewChange('inprogress')}>View Inprogress</button>
         <button onClick={() => handleViewChange('finished')}>View Finished</button>

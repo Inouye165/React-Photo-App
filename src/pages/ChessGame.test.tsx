@@ -7,6 +7,7 @@ import ChessGame from './ChessGame'
 const {
   getMockGameId,
   setMockGameId,
+  navigateMock,
   useGameRealtimeMock,
   fetchGameMock,
   fetchGameMembersMock,
@@ -17,6 +18,7 @@ const {
   return {
     getMockGameId: () => mockGameId,
     setMockGameId: (value: string) => { mockGameId = value },
+    navigateMock: vi.fn(),
     useGameRealtimeMock: vi.fn(() => ({
       moves: [
         { ply: 1, uci: 'e2e4', created_by: 'user-1', created_at: '2026-02-10T00:00:00Z' },
@@ -47,6 +49,7 @@ const {
 
 vi.mock('react-router-dom', () => ({
   useParams: () => ({ gameId: getMockGameId() }),
+  useNavigate: () => navigateMock,
 }))
 
 vi.mock('../contexts/AuthContext', () => ({

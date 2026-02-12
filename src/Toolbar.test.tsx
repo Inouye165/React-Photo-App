@@ -65,7 +65,7 @@ describe('Toolbar Component', () => {
     renderWithRouter(<Toolbar {...mockProps} />)
     
     expect(screen.getByText('Select Folder for Upload')).toBeInTheDocument()
-    expect(screen.getByLabelText('Games')).toBeInTheDocument()
+    expect(screen.getByRole('button', { name: 'Games' })).toBeInTheDocument()
   expect(screen.getByText('View Working')).toBeInTheDocument()
     expect(screen.getByText('View Inprogress')).toBeInTheDocument()
     expect(screen.getByText('View Finished')).toBeInTheDocument()
