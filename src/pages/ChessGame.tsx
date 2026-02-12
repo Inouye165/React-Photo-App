@@ -26,6 +26,11 @@ type MoveHistoryRow = {
   black: string | null
 }
 
+type HintMove = {
+  uci: string
+  san: string
+}
+
 const START_FEN = 'rnbqkbnr/pppppppp/8/8/8/8/PPPPPPPP/RNBQKBNR w KQkq - 0 1'
 
 const CHESSBOARD_MAX_SIZE = 720
@@ -153,7 +158,7 @@ function buildDisplayFen(moveRows: MoveRow[], gameFen: string | null, viewPly: n
   return chess.fen()
 }
 
-function useChessDisplay(moveRows: MoveRow[], gameFen: string | null) {
+function useChessDisplay(moveRows: MoveRow[], gameFen: string | null, hoveredHintUci: string | null = null) {
   const [boardFen, setBoardFen] = useState<string>(START_FEN)
   const [viewPly, setViewPly] = useState(0)
   const [selectedSquare, setSelectedSquare] = useState<Square | null>(null)
@@ -318,10 +323,28 @@ function useChessDisplay(moveRows: MoveRow[], gameFen: string | null) {
     return styles
   }, [displayFen, showThreats])
 
+  const hintHoverStyles = useMemo(() => {
+    if (!hoveredHintUci) return {}
+    const parsed = parseUciMove(hoveredHintUci)
+    if (!parsed) return {}
+
+    return {
+      [parsed.from]: {
+        backgroundColor: 'color-mix(in srgb, var(--color-purple-500) 24%, transparent)',
+        boxShadow: 'inset 0 0 0 2px color-mix(in srgb, var(--color-purple-500) 62%, transparent)',
+      },
+      [parsed.to]: {
+        backgroundColor: 'color-mix(in srgb, var(--color-purple-500) 30%, transparent)',
+        boxShadow: 'inset 0 0 0 3px color-mix(in srgb, var(--color-purple-500) 70%, transparent)',
+      },
+    } as Record<string, React.CSSProperties>
+  }, [hoveredHintUci])
+
   const customSquareStyles = useMemo(() => ({
     ...threatStyles,
     ...legalMoveStyles,
-  }), [legalMoveStyles, threatStyles])
+    ...hintHoverStyles,
+  }), [hintHoverStyles, legalMoveStyles, threatStyles])
 
   return {
     boardFen,
@@ -337,6 +360,31 @@ function useChessDisplay(moveRows: MoveRow[], gameFen: string | null) {
     setShowThreats,
     customSquareStyles,
   }
+}
+
+function TopHintsList({ hintMoves, onHoverHint }: { hintMoves: HintMove[]; onHoverHint: (uci: string | null) => void }) {
+  if (!hintMoves.length) {
+    return <div className="text-xs text-slate-500">No hints yet.</div>
+  }
+
+  return (
+    <ol className="space-y-1 text-sm text-slate-700">
+      {hintMoves.map((move, idx) => (
+        <li key={`${move.uci}-${idx}`}>
+          <button
+            type="button"
+            className="w-full rounded px-1 py-0.5 text-left hover:bg-slate-100 focus:bg-slate-100 focus:outline-none"
+            onMouseEnter={() => onHoverHint(move.uci)}
+            onMouseLeave={() => onHoverHint(null)}
+            onFocus={() => onHoverHint(move.uci)}
+            onBlur={() => onHoverHint(null)}
+          >
+            {idx + 1}. {move.san}
+          </button>
+        </li>
+      ))}
+    </ol>
+  )
 }
 
 function useChessboardSize(maxSize: number) {
@@ -393,6 +441,7 @@ function OnlineChessGame(): React.JSX.Element {
   const [toastSeverity, setToastSeverity] = useState<'info' | 'success' | 'warning' | 'error'>('info')
   const [restartLoading, setRestartLoading] = useState(false)
   const [debugCopied, setDebugCopied] = useState(false)
+  const [hoveredHintUci, setHoveredHintUci] = useState<string | null>(null)
 
   const loadGameData = useCallback(async () => {
     if (!gameId) return
@@ -436,7 +485,7 @@ function OnlineChessGame(): React.JSX.Element {
     showThreats,
     setShowThreats,
     customSquareStyles,
-  } = useChessDisplay(moveRows, game?.current_fen ?? null)
+  } = useChessDisplay(moveRows, game?.current_fen ?? null, hoveredHintUci)
   const { containerRef: boardContainerRef, boardSize } = useChessboardSize(CHESSBOARD_MAX_SIZE)
 
   async function onDrop(sourceSquare: Square, targetSquare: Square, currentFen: string) {
@@ -558,7 +607,7 @@ function OnlineChessGame(): React.JSX.Element {
     return () => clearTimeout(handle)
   }, [analyzePosition, isReady, normalizedDisplayFen])
 
-  const hintMoves = useMemo(() => (
+  const hintMoves: HintMove[] = useMemo(() => (
     topMoves.map((move) => ({
       ...move,
       san: formatUciToSan(normalizedDisplayFen, move.uci),
@@ -773,17 +822,7 @@ function OnlineChessGame(): React.JSX.Element {
             </div>
             <div className="mt-3">
               <div className="mb-1 text-xs text-slate-600">Top hints</div>
-              {hintMoves.length ? (
-                <ol className="space-y-1 text-sm text-slate-700">
-                  {hintMoves.map((move, idx) => (
-                    <li key={`${move.uci}-${idx}`}>
-                      {idx + 1}. {move.san}
-                    </li>
-                  ))}
-                </ol>
-              ) : (
-                <div className="text-xs text-slate-500">No hints yet.</div>
-              )}
+              <TopHintsList hintMoves={hintMoves} onHoverHint={setHoveredHintUci} />
             </div>
           </div>
           <div className="min-h-0 flex-1 overflow-y-auto">
@@ -828,6 +867,7 @@ function LocalChessGame(): React.JSX.Element {
   const [toastSeverity, setToastSeverity] = useState<'info' | 'success' | 'warning' | 'error'>('info')
   const [engineThinking, setEngineThinking] = useState(false)
   const [pendingEngineFen, setPendingEngineFen] = useState<string | null>(null)
+  const [hoveredHintUci, setHoveredHintUci] = useState<string | null>(null)
 
   const moveRows = useMemo(() => localMoves, [localMoves])
   const {
@@ -841,7 +881,7 @@ function LocalChessGame(): React.JSX.Element {
     showThreats,
     setShowThreats,
     customSquareStyles,
-  } = useChessDisplay(moveRows, START_FEN)
+  } = useChessDisplay(moveRows, START_FEN, hoveredHintUci)
   const { containerRef: boardContainerRef, boardSize } = useChessboardSize(CHESSBOARD_MAX_SIZE)
 
   const normalizedDisplayFen = displayFen || START_FEN
@@ -908,7 +948,7 @@ function LocalChessGame(): React.JSX.Element {
     void applyEngineMove(fen)
   }, [engineThinking, isReady, pendingEngineFen])
 
-  const hintMoves = useMemo(() => (
+  const hintMoves: HintMove[] = useMemo(() => (
     topMoves.map((move) => ({
       ...move,
       san: formatUciToSan(normalizedDisplayFen, move.uci),
@@ -1136,17 +1176,7 @@ function LocalChessGame(): React.JSX.Element {
             </div>
             <div className="mt-3">
               <div className="mb-1 text-xs text-slate-600">Top hints</div>
-              {hintMoves.length ? (
-                <ol className="space-y-1 text-sm text-slate-700">
-                  {hintMoves.map((move, idx) => (
-                    <li key={`${move.uci}-${idx}`}>
-                      {idx + 1}. {move.san}
-                    </li>
-                  ))}
-                </ol>
-              ) : (
-                <div className="text-xs text-slate-500">No hints yet.</div>
-              )}
+              <TopHintsList hintMoves={hintMoves} onHoverHint={setHoveredHintUci} />
             </div>
           </div>
           <div className="min-h-0 flex-1 overflow-y-auto">
