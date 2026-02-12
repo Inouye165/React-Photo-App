@@ -1,5 +1,3 @@
-// @ts-nocheck
-import React from 'react'
 import { describe, it, expect, vi, beforeEach } from 'vitest'
 import { render, screen, waitFor } from '@testing-library/react'
 import userEvent from '@testing-library/user-event'
@@ -15,11 +13,18 @@ const {
   makeMoveMock,
   restartGameMock,
   abortGameMock,
+  getTopMovesMock,
+  setTopMovesMock,
 } = vi.hoisted(() => {
   let mockGameId = 'game-123'
+  let topMovesMock = [] as Array<{ uci: string; score: number | null; mate: number | null; depth: number | null }>
   return {
     getMockGameId: () => mockGameId,
     setMockGameId: (value: string) => { mockGameId = value },
+    getTopMovesMock: () => topMovesMock,
+    setTopMovesMock: (value: Array<{ uci: string; score: number | null; mate: number | null; depth: number | null }>) => {
+      topMovesMock = value
+    },
     navigateMock: vi.fn(),
     useGameRealtimeMock: vi.fn(() => ({
       moves: [
@@ -74,7 +79,7 @@ vi.mock('../api/games', () => ({
 vi.mock('../hooks/useStockfish', () => ({
   useStockfish: () => ({
     isReady: true,
-    topMoves: [],
+    topMoves: getTopMovesMock(),
     evaluation: { score: 0, mate: null },
     analyzePosition: vi.fn(),
     getEngineMove: vi.fn(async () => 'e2e4'),
@@ -97,13 +102,19 @@ vi.mock('../supabaseClient', () => ({
 }))
 
 vi.mock('react-chessboard', () => ({
-  Chessboard: () => <div data-testid="chessboard" />,
+  Chessboard: (props: { customSquareStyles?: Record<string, unknown> }) => (
+    <div
+      data-testid="chessboard"
+      data-custom-squares={Object.keys(props.customSquareStyles ?? {}).sort().join(',')}
+    />
+  ),
 }))
 
 describe('ChessGame', () => {
   beforeEach(() => {
     vi.clearAllMocks()
     setMockGameId('game-123')
+    setTopMovesMock([])
   })
 
   it('renders the board', () => {
@@ -146,6 +157,32 @@ describe('ChessGame', () => {
     await waitFor(() => {
       expect(abortGameMock).toHaveBeenCalledWith('game-123')
       expect(navigateMock).toHaveBeenCalledWith('/games')
+    })
+  })
+
+  it('highlights hint source and destination on hover in local mode', async () => {
+    const user = userEvent.setup()
+    setMockGameId('local')
+    setTopMovesMock([{ uci: 'e2e4', score: 36, mate: null, depth: 14 }])
+
+    render(<ChessGame />)
+
+    const hintButton = screen.getByRole('button', { name: '1. e4' })
+    const board = screen.getByTestId('chessboard')
+    expect(board).toHaveAttribute('data-custom-squares', '')
+
+    await user.hover(hintButton)
+
+    await waitFor(() => {
+      const highlighted = screen.getByTestId('chessboard').getAttribute('data-custom-squares') || ''
+      expect(highlighted).toContain('e2')
+      expect(highlighted).toContain('e4')
+    })
+
+    await user.unhover(hintButton)
+
+    await waitFor(() => {
+      expect(screen.getByTestId('chessboard')).toHaveAttribute('data-custom-squares', '')
     })
   })
 })
