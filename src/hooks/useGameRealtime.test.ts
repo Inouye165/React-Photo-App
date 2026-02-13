@@ -127,8 +127,9 @@ describe('useGameRealtime', () => {
       invokeHandler('UPDATE', 'games', { new: { id: 'game-1' } })
     })
 
+    // After games-update with empty result, guard keeps existing moves
     await waitFor(() => {
-      expect(result.current.moves).toEqual([])
+      expect(result.current.moves.map((m: any) => m.id)).toEqual(['m1'])
     })
   })
 

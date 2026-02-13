@@ -5,15 +5,23 @@ import { supabase } from '../supabaseClient'
 type MovePayload = RealtimePostgresChangesPayload<{ [key: string]: unknown }>
 const REALTIME_FALLBACK_POLL_MS = 60_000
 
-export function useGameRealtime(gameId: string | null, refreshToken = 0) {
+export function useGameRealtime(
+  gameId: string | null,
+  refreshToken = 0,
+  onGameUpdate?: () => void,
+) {
   const [moves, setMoves] = useState<any[]>([])
   const [loading, setLoading] = useState(false)
+  const onGameUpdateRef = useRef(onGameUpdate)
+  onGameUpdateRef.current = onGameUpdate
   const channelRef = useRef<RealtimeChannel | null>(null)
   const reconnectTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null)
   const pollTimerRef = useRef<ReturnType<typeof setInterval> | null>(null)
+  const refetchRef = useRef<() => void>(() => {})
   const reconnectAttemptRef = useRef(0)
   const connectingRef = useRef(false)
   const channelSerialRef = useRef(0)
+  const channelStatusRef = useRef<string | null>(null)
 
   useEffect(() => {
     let cancelled = false
@@ -37,8 +45,12 @@ export function useGameRealtime(gameId: string | null, refreshToken = 0) {
 
     const ensureFallbackPolling = () => {
       if (cancelled || !gameId || pollTimerRef.current) return
+      if (channelStatusRef.current === 'SUBSCRIBED') return
       logDebug('fallback polling enabled', { gameId, intervalMs: REALTIME_FALLBACK_POLL_MS })
       pollTimerRef.current = setInterval(() => {
+        if (typeof document !== 'undefined' && document.visibilityState !== 'visible') {
+          return
+        }
         void fetchMoves('fallback-poll')
       }, REALTIME_FALLBACK_POLL_MS)
     }
@@ -69,10 +81,23 @@ export function useGameRealtime(gameId: string | null, refreshToken = 0) {
       if (error) {
         logDebug('fetch error', { gameId, reason, message: error.message })
         return
-      } else {
-        logDebug('fetch success', { gameId, reason, count: (data ?? []).length })
-        setMoves((data ?? []) as any[])
       }
+
+      const fetched = (data ?? []) as any[]
+      logDebug('fetch success', { gameId, reason, count: fetched.length })
+
+      // Guard: never replace a populated move list with an empty result from a
+      // refetch.  An empty result when we already have moves almost certainly
+      // indicates a transient auth / JWT-refresh / RLS issue.
+      setMoves(prev => {
+        if (prev.length > 0 && fetched.length === 0 && reason !== 'initial') {
+          logDebug('fetch IGNORED: refusing to overwrite populated moves with empty result', {
+            gameId, reason, prevCount: prev.length,
+          })
+          return prev
+        }
+        return fetched
+      })
     }
 
     const scheduleReconnect = () => {
@@ -200,11 +225,14 @@ export function useGameRealtime(gameId: string | null, refreshToken = 0) {
           if (channelSerialRef.current !== channelSerial) return
           logDebug('event UPDATE games', { gameId })
           void fetchMoves('games-update')
+          // Notify caller so they can refresh game state (current_fen, status, etc.)
+          onGameUpdateRef.current?.()
         }
       )
 
       channel.subscribe((status, err) => {
         if (channelSerialRef.current !== channelSerial) return
+        channelStatusRef.current = status
         logDebug('channel status', { gameId, status, err: err?.message })
         if (status === 'SUBSCRIBED') {
           clearPollTimer()
@@ -223,6 +251,9 @@ export function useGameRealtime(gameId: string | null, refreshToken = 0) {
       connectingRef.current = false
     }
 
+    // Expose fetchMoves for imperative callers (e.g. after makeMove)
+    refetchRef.current = () => { void fetchMoves('refetch') }
+
     async function run() {
       if (!gameId) {
         setMoves([])
@@ -233,6 +264,7 @@ export function useGameRealtime(gameId: string | null, refreshToken = 0) {
       clearPollTimer()
       reconnectAttemptRef.current = 0
       connectingRef.current = false
+      channelStatusRef.current = null
       setLoading(true)
       await fetchMoves('initial')
       if (!cancelled) setLoading(false)
@@ -249,5 +281,6 @@ export function useGameRealtime(gameId: string | null, refreshToken = 0) {
     }
   }, [gameId, refreshToken])
 
-  return { moves, loading }
+  const refetch = useRef(() => { refetchRef.current() })
+  return { moves, loading, refetch: refetch.current }
 }
