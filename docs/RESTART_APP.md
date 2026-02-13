@@ -2,12 +2,35 @@
 
 This is a **restart-only** checklist. It assumes the sandbox environment and dependencies are already installed and configured.
 
+## 0) Check local Supabase migrations (recommended)
+
+From the repo root:
+
+- `npm run check:supabase:migrations`
+
+If it reports pending migrations, run:
+
+- `supabase db push --local`
+
 ## 1) Start required services
 
 From the repo root:
 
 - Start Postgres + Redis:
   - `docker-compose up -d db redis`
+
+### One-command startup (recommended)
+
+From the repo root:
+
+- `npm run start:local`
+
+What it does:
+
+- Ensures `supabase start` is running
+- Checks for pending local Supabase migrations
+- Applies migrations automatically (`supabase db push --local --yes`) when needed
+- Starts backend API, worker, and frontend with prefixed logs in one terminal
 
 ## 2) Start backend API
 

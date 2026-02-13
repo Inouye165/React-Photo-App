@@ -89,6 +89,8 @@ const {
   }
 })
 
+let lastOnPieceDrop: ((src: string, dst: string) => boolean) | undefined
+
 vi.mock('react-router-dom', () => ({
   useParams: () => ({ gameId: getMockGameId() }),
   useNavigate: () => navigateMock,
@@ -138,17 +140,20 @@ vi.mock('react-chessboard', () => ({
     boardOrientation?: 'white' | 'black'
     onPieceDrop?: (src: string, dst: string) => boolean
     arePiecesDraggable?: boolean
-  }) => (
-    <div
-      data-testid="chessboard"
-      data-orientation={props.boardOrientation || 'white'}
-      data-custom-squares={Object.keys(props.customSquareStyles ?? {}).sort().join(',')}
-      data-draggable={String(props.arePiecesDraggable ?? true)}
-    >
-      <button type="button" onClick={() => props.onPieceDrop?.('e2', 'e4')}>mock-drop-e2e4</button>
-      <button type="button" onClick={() => props.onPieceDrop?.('a7', 'a8')}>mock-drop-a7a8</button>
-    </div>
-  ),
+  }) => {
+    lastOnPieceDrop = props.onPieceDrop
+    return (
+      <div
+        data-testid="chessboard"
+        data-orientation={props.boardOrientation || 'white'}
+        data-custom-squares={Object.keys(props.customSquareStyles ?? {}).sort().join(',')}
+        data-draggable={String(props.arePiecesDraggable ?? true)}
+      >
+        <button type="button" onClick={() => props.onPieceDrop?.('e2', 'e4')}>mock-drop-e2e4</button>
+        <button type="button" onClick={() => props.onPieceDrop?.('a7', 'a8')}>mock-drop-a7a8</button>
+      </div>
+    )
+  },
 }))
 
 // ─── tests ─────────────────────────────────────────────────────────
@@ -182,6 +187,7 @@ describe('ChessGame regression tests', () => {
     makeMoveMock.mockImplementation(async () => ({}))
     restartGameMock.mockImplementation(async () => ({}))
     abortGameMock.mockImplementation(async () => undefined)
+    lastOnPieceDrop = undefined
     useGameRealtimeMock.mockImplementation(() => ({
       moves: [
         { ply: 1, uci: 'e2e4', created_by: 'user-1', created_at: '2026-02-10T00:00:00Z', fen_after: 'rnbqkbnr/pppppppp/8/8/4P3/8/PPPP1PPP/RNBQKBNR b KQkq e3 0 1' },
@@ -303,6 +309,24 @@ describe('ChessGame regression tests', () => {
 
     await waitFor(() => {
       expect(screen.getByText('Network error')).toBeInTheDocument()
+    })
+  })
+
+  it('does not synchronously acknowledge drop success in online mode', async () => {
+    useGameRealtimeMock.mockReturnValue({ moves: [], loading: false })
+    render(<ChessGame />)
+
+    await waitFor(() => {
+      expect(screen.getByText('alice')).toBeInTheDocument()
+    })
+
+    expect(lastOnPieceDrop).toBeTypeOf('function')
+    const accepted = lastOnPieceDrop?.('e2', 'e4')
+
+    expect(accepted).toBe(false)
+
+    await waitFor(() => {
+      expect(makeMoveMock).toHaveBeenCalledTimes(1)
     })
   })
 

@@ -421,32 +421,71 @@ function useChessDisplay(moveRows: MoveRow[], gameFen: string | null, hoveredHin
 
     threatTimerRef.current = setTimeout(() => {
       const pieceValues: Record<string, number> = { p: 1, n: 3, b: 3, r: 5, q: 9, k: 100 }
-      const withTurn = (fen: string, turn: 'w' | 'b') => {
-        const parts = fen.split(' ')
-        if (parts.length >= 2) {
-          parts[1] = turn
-          return parts.join(' ')
-        }
-        return fen
-      }
-
       const buildAttackMap = (fen: string, turn: 'w' | 'b') => {
-        const chess = new Chess(withTurn(fen, turn))
+        const chess = new Chess(fen)
         const board = chess.board()
         const attacks = new Map<string, Array<string>>()
+
+        const inBounds = (row: number, col: number) => row >= 0 && row < 8 && col >= 0 && col < 8
+        const toSquare = (row: number, col: number) => `${String.fromCharCode(97 + col)}${8 - row}` as Square
+        const addAttack = (row: number, col: number, pieceType: string) => {
+          if (!inBounds(row, col)) return
+          const sq = toSquare(row, col)
+          const list = attacks.get(sq) ?? []
+          list.push(pieceType)
+          attacks.set(sq, list)
+        }
 
         for (let r = 0; r < board.length; r += 1) {
           for (let c = 0; c < board[r].length; c += 1) {
             const piece = board[r][c]
             if (!piece || piece.color !== turn) continue
-            const file = String.fromCharCode(97 + c)
-            const rank = 8 - r
-            const square = `${file}${rank}` as Square
-            const moves = chess.moves({ square, verbose: true }) as Array<{ to: Square; piece: string }>
-            for (const move of moves) {
-              const list = attacks.get(move.to) ?? []
-              list.push(move.piece)
-              attacks.set(move.to, list)
+
+            if (piece.type === 'p') {
+              const dir = piece.color === 'w' ? -1 : 1
+              addAttack(r + dir, c - 1, piece.type)
+              addAttack(r + dir, c + 1, piece.type)
+              continue
+            }
+
+            if (piece.type === 'n') {
+              const knightOffsets = [
+                [-2, -1], [-2, 1], [-1, -2], [-1, 2],
+                [1, -2], [1, 2], [2, -1], [2, 1],
+              ] as const
+              for (const [dr, dc] of knightOffsets) {
+                addAttack(r + dr, c + dc, piece.type)
+              }
+              continue
+            }
+
+            if (piece.type === 'k') {
+              for (let dr = -1; dr <= 1; dr += 1) {
+                for (let dc = -1; dc <= 1; dc += 1) {
+                  if (dr === 0 && dc === 0) continue
+                  addAttack(r + dr, c + dc, piece.type)
+                }
+              }
+              continue
+            }
+
+            const bishopDirs = [[-1, -1], [-1, 1], [1, -1], [1, 1]] as const
+            const rookDirs = [[-1, 0], [1, 0], [0, -1], [0, 1]] as const
+            const dirs = piece.type === 'b'
+              ? bishopDirs
+              : piece.type === 'r'
+                ? rookDirs
+                : [...bishopDirs, ...rookDirs]
+
+            for (const [dr, dc] of dirs) {
+              let nr = r + dr
+              let nc = c + dc
+              while (inBounds(nr, nc)) {
+                addAttack(nr, nc, piece.type)
+                if (board[nr][nc]) break
+                nr += dr
+                nc += dc
+              }
             }
           }
         }
@@ -459,13 +498,6 @@ function useChessDisplay(moveRows: MoveRow[], gameFen: string | null, hoveredHin
       const attacksByBlack = buildAttackMap(displayFen, 'b')
       const styles: Record<string, React.CSSProperties> = {}
 
-      const isDefended = (fen: string, square: Square, color: 'w' | 'b') => {
-        const defender = new Chess(withTurn(fen, color))
-        defender.remove(square)
-        const moves = defender.moves({ verbose: true }) as Array<{ to: string }>
-        return moves.some((move) => move.to === square)
-      }
-
       for (let r = 0; r < board.length; r += 1) {
         for (let c = 0; c < board[r].length; c += 1) {
           const piece = board[r][c]
@@ -477,7 +509,8 @@ function useChessDisplay(moveRows: MoveRow[], gameFen: string | null, hoveredHin
           const attackers = attackedBy.get(square) ?? []
           if (!attackers.length) continue
 
-          const defended = isDefended(displayFen, square, piece.color)
+          const defendedBy = piece.color === 'w' ? attacksByWhite : attacksByBlack
+          const defended = defendedBy.has(square)
           const pieceValue = pieceValues[piece.type] ?? 0
           const minAttacker = Math.min(...attackers.map((type) => pieceValues[type] ?? 0))
           const valueThreat = minAttacker > 0 && minAttacker < pieceValue
@@ -1008,7 +1041,7 @@ function OnlineChessGame(): React.JSX.Element {
                     const move = test.move({ from: src, to: dst })
                     if (!move) return false
                     void onDrop(src, dst, normalizedDisplayFen)
-                    return true
+                    return false
                   } catch {
                     return false
                   }

@@ -91,6 +91,13 @@ If you want to poke around:
 **Local setup:** See the single source of truth in [docs/LOCAL_SANDBOX_SETUP.md](docs/LOCAL_SANDBOX_SETUP.md).
 It includes prerequisites, step-by-step setup, and common fixes.
 
+**One-command local startup (recommended):**
+Assumes dependencies are installed and `server/.env` is valid.
+1. Run: `npm run start:local`
+2. Open the frontend URL shown in the `[web]` logs (`5173` or next free port)
+
+This command ensures Supabase is running, checks/applies local Supabase migrations, and starts backend API + worker + frontend in one terminal.
+
 **Minimal restart (already set up):**
 Assumes dependencies are installed and `server/.env` is valid.
 1. Start services: `docker-compose up -d db redis`

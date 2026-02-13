@@ -33,6 +33,10 @@ Scope reviewed:
 
 <span style="color: green">✔ DONE</span> Robustness #2.5 (partial): removed silent `GamesIndex` load failure by adding user-visible error + retry action.
 
+<span style="color: green">✔ DONE 2026-02-13</span> Correctness #4: online `onPieceDrop` no longer synchronously acknowledges success before async persistence; added regression coverage.
+
+<span style="color: green">✔ DONE 2026-02-13</span> Correctness #2: threat highlighting now uses pseudo-legal attacked-square generation instead of legal-move proxy logic.
+
 ### Newly pulled from findings and implemented this pass
 
 - <span style="color: green">✔ DONE</span> **Robustness #2.4 Hardcoded stockfish worker filename/path is brittle**
@@ -60,7 +64,7 @@ Scope reviewed:
    - Impact: a malicious client can submit illegal board states / cheat while still passing turn-based RLS checks.
    - Improvement: validate move server-side from authoritative previous FEN + UCI (or store only UCI, compute next FEN on server).
 
-2. **Threat highlighting logic is not chess-correct in edge cases** (high)
+2. **Threat highlighting logic is not chess-correct in edge cases** (high) — <span style="color: green">✔ DONE 2026-02-13</span>
    - Evidence: `src/pages/ChessGame.tsx` (`buildAttackMap` around line 247, `isDefended` around line 276).
    - Why wrong: uses legal moves as attack map proxy and `remove(square)` based defense checks; pins/check constraints skew “attacked/defended” semantics.
    - Improvement: use pseudo-legal attack generation or a dedicated attacked-square function.
@@ -70,7 +74,7 @@ Scope reviewed:
    - Impact: opponent-triggered restart (`DELETE chess_moves` + game row update) can leave stale move history until manual refresh.
    - Improvement: subscribe to `DELETE`/`UPDATE` events and/or subscribe to `games` row updates.
 
-4. **`onPieceDrop` returns success before async move persistence completes** (medium-high UX/correctness)
+4. **`onPieceDrop` returns success before async move persistence completes** (medium-high UX/correctness) — <span style="color: green">✔ DONE 2026-02-13</span>
    - Evidence: `src/pages/ChessGame.tsx` lines ~658-664 and ~1054-1060 call `void onDrop(...)` then immediately return `true`.
    - Impact: temporary optimistic board behavior can desync/jitter if server rejects move.
    - Improvement: make drop handling await persistence outcome before confirming drop (or explicit optimistic state + rollback).
