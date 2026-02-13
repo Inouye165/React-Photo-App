@@ -3,6 +3,7 @@ import type { RealtimeChannel, RealtimePostgresChangesPayload } from '@supabase/
 import { supabase } from '../supabaseClient'
 
 type MovePayload = RealtimePostgresChangesPayload<{ [key: string]: unknown }>
+const REALTIME_FALLBACK_POLL_MS = 60_000
 
 export function useGameRealtime(gameId: string | null, refreshToken = 0) {
   const [moves, setMoves] = useState<any[]>([])
@@ -32,6 +33,14 @@ export function useGameRealtime(gameId: string | null, refreshToken = 0) {
       if (!pollTimerRef.current) return
       clearInterval(pollTimerRef.current)
       pollTimerRef.current = null
+    }
+
+    const ensureFallbackPolling = () => {
+      if (cancelled || !gameId || pollTimerRef.current) return
+      logDebug('fallback polling enabled', { gameId, intervalMs: REALTIME_FALLBACK_POLL_MS })
+      pollTimerRef.current = setInterval(() => {
+        void fetchMoves('fallback-poll')
+      }, REALTIME_FALLBACK_POLL_MS)
     }
 
     const cleanupChannel = () => {
@@ -198,12 +207,14 @@ export function useGameRealtime(gameId: string | null, refreshToken = 0) {
         if (channelSerialRef.current !== channelSerial) return
         logDebug('channel status', { gameId, status, err: err?.message })
         if (status === 'SUBSCRIBED') {
+          clearPollTimer()
           reconnectAttemptRef.current = 0
           connectingRef.current = false
           void fetchMoves('subscribed')
           return
         }
         if ((status === 'CHANNEL_ERROR' || status === 'TIMED_OUT' || status === 'CLOSED') && !cancelled) {
+          ensureFallbackPolling()
           connectingRef.current = false
           scheduleReconnect()
         }
@@ -226,10 +237,6 @@ export function useGameRealtime(gameId: string | null, refreshToken = 0) {
       await fetchMoves('initial')
       if (!cancelled) setLoading(false)
       await connectChannel()
-
-      pollTimerRef.current = setInterval(() => {
-        void fetchMoves('interval')
-      }, 3000)
     }
 
     run()

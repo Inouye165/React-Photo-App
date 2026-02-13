@@ -163,6 +163,7 @@ describe('useGameRealtime', () => {
 
   it('reconnects after channel error status', async () => {
     const timeoutSpy = vi.spyOn(globalThis, 'setTimeout')
+    const intervalSpy = vi.spyOn(globalThis, 'setInterval')
     renderHook(() => useGameRealtime('game-reconnect'))
 
     await waitFor(() => {
@@ -175,8 +176,29 @@ describe('useGameRealtime', () => {
 
     const reconnectCall = timeoutSpy.mock.calls.find((call) => Number(call[1]) === 1000)
     expect(reconnectCall).toBeDefined()
+    const fallbackPollCall = intervalSpy.mock.calls.find((call) => Number(call[1]) === 60_000)
+    expect(fallbackPollCall).toBeDefined()
 
     timeoutSpy.mockRestore()
+    intervalSpy.mockRestore()
+  })
+
+  it('does not enable polling after successful subscription', async () => {
+    const intervalSpy = vi.spyOn(globalThis, 'setInterval')
+    renderHook(() => useGameRealtime('game-subscribed'))
+
+    await waitFor(() => {
+      expect(subscribeMock).toHaveBeenCalledTimes(1)
+    })
+
+    await act(async () => {
+      emitSubscribeStatus('SUBSCRIBED')
+    })
+
+    const fallbackPollCall = intervalSpy.mock.calls.find((call) => Number(call[1]) === 60_000)
+    expect(fallbackPollCall).toBeUndefined()
+
+    intervalSpy.mockRestore()
   })
 
   it('keeps existing moves on reconciliation fetch error', async () => {
