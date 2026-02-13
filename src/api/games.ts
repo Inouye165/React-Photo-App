@@ -1,5 +1,6 @@
 import { supabase } from '../supabaseClient'
 import { searchUsers } from './chat'
+import { notifyGamesChanged } from '../events/gamesEvents'
 
 async function requireAuthedUserId(): Promise<string> {
   const { data, error } = await supabase.auth.getUser()
@@ -37,6 +38,32 @@ export type GameMemberProfile = {
 
 export type GameWithMembers = GameRow & {
   members: GameMemberProfile[]
+}
+
+const missingRpcCache = new Set<string>()
+
+type RpcErrorLike = {
+  message?: string
+  details?: string
+  hint?: string
+  code?: string
+  status?: number
+}
+
+function isRpcNotFoundError(error: unknown): boolean {
+  if (!error || typeof error !== 'object') return false
+  const rpcError = error as RpcErrorLike
+  if (rpcError.status === 404) return true
+
+  const code = (rpcError.code || '').toUpperCase()
+  if (code === 'PGRST202' || code === '42883') return true
+
+  const text = [rpcError.message, rpcError.details, rpcError.hint]
+    .filter((value): value is string => typeof value === 'string' && value.length > 0)
+    .join(' ')
+    .toLowerCase()
+
+  return /not found|404|function .* does not exist|could not find|schema cache/i.test(text)
 }
 
 export async function listMyGames(): Promise<GameRow[]> {
@@ -125,7 +152,28 @@ export async function listMyGamesWithMembers(): Promise<GameWithMembers[]> {
 
 export async function createChessGame(opponentUserId: string | null, timeControl: TimeControl | null) {
   const userId = await requireAuthedUserId()
-  const payload: any = { created_by: userId }
+
+  // Attempt transactional creation via RPC to avoid orphan rows
+  const rpcPayload: Record<string, unknown> = {
+    p_created_by: userId,
+    p_opponent_id: opponentUserId ?? null,
+  }
+  if (timeControl) rpcPayload.p_time_control = timeControl
+
+  const createGameRpcName = 'create_chess_game'
+  if (!missingRpcCache.has(createGameRpcName)) {
+    const { data: rpcGame, error: rpcError } = await supabase.rpc(createGameRpcName, rpcPayload)
+
+    if (!rpcError && rpcGame) {
+      notifyGamesChanged()
+      return rpcGame as GameRow
+    }
+
+    if (!isRpcNotFoundError(rpcError)) throw rpcError
+    missingRpcCache.add(createGameRpcName)
+  }
+
+  const payload: Record<string, unknown> = { created_by: userId }
   if (timeControl) payload.time_control = timeControl
 
   const { data: game, error: gameError } = await supabase
@@ -141,7 +189,13 @@ export async function createChessGame(opponentUserId: string | null, timeControl
   if (opponentUserId) members.push({ game_id: game.id, user_id: opponentUserId, role: 'black' })
 
   const { error: membersError } = await supabase.from('game_members').insert(members)
-  if (membersError) throw membersError
+  if (membersError) {
+    // Clean up orphan game row on member insert failure
+    await supabase.from('games').delete().eq('id', game.id).then(() => {})
+    throw membersError
+  }
+
+  notifyGamesChanged()
 
   return game as GameRow
 }
@@ -214,14 +268,16 @@ export async function makeMove(gameId: string, ply: number, uci: string, fenAfte
 
 export async function restartGame(gameId: string) {
   await requireAuthedUserId()
-  // Try server-side RPC first
-  const { error } = await supabase.rpc('restart_game', { p_game_id: gameId })
-  if (!error) return
-
-  // If RPC is not available (404) or fails, attempt a REST fallback.
-  const message = (error && (error.message || '')).toString()
-  const isNotFound = /not found|404|function .* does not exist|could not find/i.test(message)
-  if (!isNotFound) throw error
+  const restartGameRpcName = 'restart_game'
+  if (!missingRpcCache.has(restartGameRpcName)) {
+    const { error } = await supabase.rpc(restartGameRpcName, { p_game_id: gameId })
+    if (!error) {
+      notifyGamesChanged()
+      return
+    }
+    if (!isRpcNotFoundError(error)) throw error
+    missingRpcCache.add(restartGameRpcName)
+  }
 
   // Fallback: delete moves and reset game row via REST. This may be blocked by RLS if RPC is preferred.
   const { error: delErr } = await supabase.from('chess_moves').delete().eq('game_id', gameId)
@@ -237,7 +293,18 @@ export async function restartGame(gameId: string) {
 
   const { data, error: updErr } = await supabase.from('games').update(payload).eq('id', gameId).select('*').single()
   if (updErr) throw updErr
+  notifyGamesChanged()
   return data as GameRow
+}
+
+export async function abortGame(gameId: string): Promise<void> {
+  await requireAuthedUserId()
+  const { error } = await supabase
+    .from('games')
+    .update({ status: 'aborted', updated_at: new Date().toISOString() })
+    .eq('id', gameId)
+  if (error) throw error
+  notifyGamesChanged()
 }
 
 export { searchUsers }

@@ -19,6 +19,13 @@ type PendingMove = {
   reject: (error: Error) => void
 }
 
+type QueuedEngineMove = {
+  fen: string
+  movetime: number
+  resolve: (move: string) => void
+  reject: (error: Error) => void
+}
+
 type AnalysisEntry = {
   multipv: number
   uci: string
@@ -33,6 +40,22 @@ const difficultySettings: Record<Difficulty, { movetime: number; skill: number }
   Hard: { movetime: 900, skill: 18 },
 }
 
+const DEFAULT_STOCKFISH_WORKER_PATH = '/stockfish/stockfish-17.1-lite-single-03e3232.js'
+
+function resolveStockfishWorkerPath() {
+  const configuredPath = import.meta.env.VITE_STOCKFISH_WORKER_PATH
+  if (typeof configuredPath !== 'string' || !configuredPath.trim()) {
+    return DEFAULT_STOCKFISH_WORKER_PATH
+  }
+
+  const normalized = configuredPath.trim()
+  if (!normalized.startsWith('/stockfish/')) {
+    return DEFAULT_STOCKFISH_WORKER_PATH
+  }
+
+  return normalized
+}
+
 function clamp(value: number, min: number, max: number) {
   return Math.min(max, Math.max(min, value))
 }
@@ -42,14 +65,23 @@ function normalizeScore(score: number, turn: 'w' | 'b') {
   return clamp(signed / 100, -9, 9)
 }
 
+function isLikelyValidFen(fen: string) {
+  const fenParts = fen.split(' ')
+  return fenParts.length >= 4 && /^[rnbqkpRNBQKP1-8/]+$/.test(fenParts[0])
+}
+
 export function useStockfish() {
   const workerRef = useRef<Worker | null>(null)
   const pendingMoveRef = useRef<PendingMove | null>(null)
+  const pendingMoveTimeoutRef = useRef<ReturnType<typeof setTimeout> | null>(null)
   const lastFenRef = useRef<string | null>(null)
   const analysisRef = useRef<Map<number, AnalysisEntry>>(new Map())
   const readyRef = useRef(false)
   const searchingRef = useRef(false)
   const skillRef = useRef(difficultySettings.Medium.skill)
+  const movetimeRef = useRef(difficultySettings.Medium.movetime)
+  const queuedAnalysisFenRef = useRef<string | null>(null)
+  const queuedEngineMoveRef = useRef<QueuedEngineMove | null>(null)
   const restartTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null)
   const restartAttemptsRef = useRef(0)
 
@@ -66,19 +98,58 @@ export function useStockfish() {
     worker.postMessage(command)
   }, [])
 
+  const clearPendingMoveTimeout = useCallback(() => {
+    if (!pendingMoveTimeoutRef.current) return
+    clearTimeout(pendingMoveTimeoutRef.current)
+    pendingMoveTimeoutRef.current = null
+  }, [])
+
   const stopSearchIfNeeded = useCallback(() => {
     if (!searchingRef.current) return
-    searchingRef.current = false
     sendCommand('stop')
   }, [sendCommand])
 
   const cancelPendingMove = useCallback(() => {
+    queuedAnalysisFenRef.current = null
+    if (queuedEngineMoveRef.current) {
+      queuedEngineMoveRef.current.reject(new Error('Engine move cancelled'))
+      queuedEngineMoveRef.current = null
+    }
     stopSearchIfNeeded()
+    clearPendingMoveTimeout()
     if (pendingMoveRef.current) {
       pendingMoveRef.current.reject(new Error('Engine move cancelled'))
       pendingMoveRef.current = null
     }
-  }, [stopSearchIfNeeded])
+  }, [clearPendingMoveTimeout, stopSearchIfNeeded])
+
+  const startAnalysisSearch = useCallback((fen: string) => {
+    lastFenRef.current = fen
+    analysisRef.current.clear()
+    setTopMoves([])
+    setEvaluation({ score: null, mate: null })
+    sendCommand(`position fen ${fen}`)
+    sendCommand(`go movetime ${movetimeRef.current}`)
+    searchingRef.current = true
+  }, [sendCommand])
+
+  const startEngineMoveSearch = useCallback((request: QueuedEngineMove) => {
+    pendingMoveRef.current = { resolve: request.resolve, reject: request.reject }
+    lastFenRef.current = request.fen
+    clearPendingMoveTimeout()
+    sendCommand(`position fen ${request.fen}`)
+    sendCommand(`go movetime ${request.movetime}`)
+    searchingRef.current = true
+    const timeoutMs = Math.max(request.movetime * 6, 3000)
+    pendingMoveTimeoutRef.current = setTimeout(() => {
+      if (!pendingMoveRef.current) return
+      searchingRef.current = false
+      sendCommand('stop')
+      pendingMoveRef.current.reject(new Error('Engine move timeout'))
+      pendingMoveRef.current = null
+      pendingMoveTimeoutRef.current = null
+    }, timeoutMs)
+  }, [clearPendingMoveTimeout, sendCommand])
 
   const handleInfoLine = useCallback((line: string) => {
     const multipvMatch = line.match(/\bmultipv (\d+)/)
@@ -158,16 +229,35 @@ export function useStockfish() {
       const match = line.match(/bestmove ([a-h][1-8][a-h][1-8][qrbn]?)/)
       const bestMove = match?.[1]
       searchingRef.current = false
-      if (bestMove && pendingMoveRef.current) {
-        pendingMoveRef.current.resolve(bestMove)
+      clearPendingMoveTimeout()
+      if (pendingMoveRef.current) {
+        if (bestMove) {
+          pendingMoveRef.current.resolve(bestMove)
+        } else {
+          pendingMoveRef.current.reject(new Error('Engine did not return bestmove'))
+        }
         pendingMoveRef.current = null
       }
+
+      if (queuedEngineMoveRef.current) {
+        const request = queuedEngineMoveRef.current
+        queuedEngineMoveRef.current = null
+        startEngineMoveSearch(request)
+        return
+      }
+
+      if (queuedAnalysisFenRef.current) {
+        const fen = queuedAnalysisFenRef.current
+        queuedAnalysisFenRef.current = null
+        startAnalysisSearch(fen)
+      }
     }
-  }, [handleInfoLine, sendCommand])
+  }, [clearPendingMoveTimeout, handleInfoLine, sendCommand, startAnalysisSearch, startEngineMoveSearch])
 
   useEffect(() => {
     skillRef.current = settings.skill
-  }, [settings.skill])
+    movetimeRef.current = settings.movetime
+  }, [settings.movetime, settings.skill])
 
   useEffect(() => {
     // Use the Stockfish JS file directly as the Worker — it auto-initializes
@@ -175,13 +265,19 @@ export function useStockfish() {
     // Do NOT wrap it in a custom worker; the Stockfish script is a complete
     // Web Worker that derives the .wasm path from self.location.
     const spawnWorker = () => {
-      const worker = new Worker('/stockfish/stockfish-17.1-lite-single-03e3232.js')
+      const worker = new Worker(resolveStockfishWorkerPath())
       workerRef.current = worker
       worker.onmessage = (event) => handleMessage(event.data)
       worker.onerror = () => {
         readyRef.current = false
         setIsReady(false)
         searchingRef.current = false
+        queuedAnalysisFenRef.current = null
+        if (queuedEngineMoveRef.current) {
+          queuedEngineMoveRef.current.reject(new Error('Stockfish worker crashed'))
+          queuedEngineMoveRef.current = null
+        }
+        clearPendingMoveTimeout()
         pendingMoveRef.current?.reject(new Error('Stockfish worker crashed'))
         pendingMoveRef.current = null
         if (restartAttemptsRef.current < 2) {
@@ -206,6 +302,12 @@ export function useStockfish() {
         clearTimeout(restartTimerRef.current)
         restartTimerRef.current = null
       }
+      clearPendingMoveTimeout()
+      queuedAnalysisFenRef.current = null
+      if (queuedEngineMoveRef.current) {
+        queuedEngineMoveRef.current.reject(new Error('Stockfish worker terminated'))
+        queuedEngineMoveRef.current = null
+      }
       pendingMoveRef.current?.reject(new Error('Stockfish worker terminated'))
       pendingMoveRef.current = null
       if (workerRef.current) {
@@ -214,7 +316,7 @@ export function useStockfish() {
       }
       workerRef.current = null
     }
-  }, [handleMessage])
+  }, [clearPendingMoveTimeout, handleMessage])
 
   useEffect(() => {
     if (!readyRef.current) return
@@ -223,30 +325,44 @@ export function useStockfish() {
 
   const analyzePosition = useCallback((fen: string) => {
     if (!readyRef.current) return
-    lastFenRef.current = fen
-    analysisRef.current.clear()
-    setTopMoves([])
-    setEvaluation({ score: null, mate: null })
-    stopSearchIfNeeded()
-    sendCommand(`position fen ${fen}`)
-    sendCommand(`go movetime ${settings.movetime}`)
-    searchingRef.current = true
-  }, [sendCommand, settings.movetime, stopSearchIfNeeded])
+    if (!isLikelyValidFen(fen)) return
+    if (pendingMoveRef.current || queuedEngineMoveRef.current) return
+
+    if (searchingRef.current) {
+      queuedAnalysisFenRef.current = fen
+      sendCommand('stop')
+      return
+    }
+
+    startAnalysisSearch(fen)
+  }, [sendCommand, startAnalysisSearch])
 
   const getEngineMove = useCallback((fen: string) => {
     if (!readyRef.current) return Promise.reject(new Error('Stockfish not ready'))
-    if (pendingMoveRef.current) return Promise.reject(new Error('Engine already thinking'))
-
-    lastFenRef.current = fen
+    if (pendingMoveRef.current || queuedEngineMoveRef.current) return Promise.reject(new Error('Engine already thinking'))
+    if (!isLikelyValidFen(fen)) {
+      return Promise.reject(new Error('Invalid FEN'))
+    }
 
     return new Promise<string>((resolve, reject) => {
-      pendingMoveRef.current = { resolve, reject }
-      stopSearchIfNeeded()
-      sendCommand(`position fen ${fen}`)
-      sendCommand(`go movetime ${settings.movetime}`)
-      searchingRef.current = true
+      const request: QueuedEngineMove = {
+        fen,
+        movetime: settings.movetime,
+        resolve,
+        reject,
+      }
+
+      queuedAnalysisFenRef.current = null
+
+      if (searchingRef.current) {
+        queuedEngineMoveRef.current = request
+        sendCommand('stop')
+        return
+      }
+
+      startEngineMoveSearch(request)
     })
-  }, [sendCommand, settings.movetime, stopSearchIfNeeded])
+  }, [sendCommand, settings.movetime, startEngineMoveSearch])
 
   const setDifficulty = useCallback((level: Difficulty) => {
     setDifficultyState(level)

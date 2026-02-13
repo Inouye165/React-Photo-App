@@ -1,23 +1,40 @@
-// @ts-nocheck
-import React from 'react'
 import { describe, it, expect, vi, beforeEach } from 'vitest'
-import { render, screen, waitFor } from '@testing-library/react'
+import { render, screen, waitFor, within } from '@testing-library/react'
+import userEvent from '@testing-library/user-event'
 import ChessGame from './ChessGame'
 
 const {
   getMockGameId,
   setMockGameId,
+  getAuthUserId,
+  setAuthUserId,
+  getEngineMoveUci,
+  setEngineMoveUci,
   navigateMock,
   useGameRealtimeMock,
   fetchGameMock,
   fetchGameMembersMock,
   makeMoveMock,
   restartGameMock,
+  abortGameMock,
+  getTopMovesMock,
+  setTopMovesMock,
 } = vi.hoisted(() => {
   let mockGameId = 'game-123'
+  let authUserId = 'user-1'
+  let engineMoveUci = 'e2e4'
+  let topMovesMock = [] as Array<{ uci: string; score: number | null; mate: number | null; depth: number | null }>
   return {
     getMockGameId: () => mockGameId,
     setMockGameId: (value: string) => { mockGameId = value },
+    getAuthUserId: () => authUserId,
+    setAuthUserId: (value: string) => { authUserId = value },
+    getEngineMoveUci: () => engineMoveUci,
+    setEngineMoveUci: (value: string) => { engineMoveUci = value },
+    getTopMovesMock: () => topMovesMock,
+    setTopMovesMock: (value: Array<{ uci: string; score: number | null; mate: number | null; depth: number | null }>) => {
+      topMovesMock = value
+    },
     navigateMock: vi.fn(),
     useGameRealtimeMock: vi.fn(() => ({
       moves: [
@@ -44,6 +61,7 @@ const {
     ])),
     makeMoveMock: vi.fn(async () => ({})),
     restartGameMock: vi.fn(async () => ({})),
+    abortGameMock: vi.fn(async () => undefined),
   }
 })
 
@@ -53,7 +71,7 @@ vi.mock('react-router-dom', () => ({
 }))
 
 vi.mock('../contexts/AuthContext', () => ({
-  useAuth: () => ({ user: { id: 'user-1' } }),
+  useAuth: () => ({ user: { id: getAuthUserId() } }),
 }))
 
 vi.mock('../hooks/useGameRealtime', () => ({
@@ -65,15 +83,16 @@ vi.mock('../api/games', () => ({
   fetchGameMembers: fetchGameMembersMock,
   makeMove: makeMoveMock,
   restartGame: restartGameMock,
+  abortGame: abortGameMock,
 }))
 
 vi.mock('../hooks/useStockfish', () => ({
   useStockfish: () => ({
     isReady: true,
-    topMoves: [],
+    topMoves: getTopMovesMock(),
     evaluation: { score: 0, mate: null },
     analyzePosition: vi.fn(),
-    getEngineMove: vi.fn(async () => 'e2e4'),
+    getEngineMove: vi.fn(async () => getEngineMoveUci()),
     difficulty: 'Medium',
     setDifficulty: vi.fn(),
   }),
@@ -93,13 +112,24 @@ vi.mock('../supabaseClient', () => ({
 }))
 
 vi.mock('react-chessboard', () => ({
-  Chessboard: () => <div data-testid="chessboard" />,
+  Chessboard: (props: { customSquareStyles?: Record<string, unknown>; boardOrientation?: 'white' | 'black'; onPieceDrop?: (src: 'e2', dst: 'e4') => boolean }) => (
+    <div
+      data-testid="chessboard"
+      data-orientation={props.boardOrientation || 'white'}
+      data-custom-squares={Object.keys(props.customSquareStyles ?? {}).sort().join(',')}
+    >
+      <button type="button" onClick={() => props.onPieceDrop?.('e2', 'e4')}>mock-drop-e2e4</button>
+    </div>
+  ),
 }))
 
 describe('ChessGame', () => {
   beforeEach(() => {
     vi.clearAllMocks()
     setMockGameId('game-123')
+    setAuthUserId('user-1')
+    setEngineMoveUci('e2e4')
+    setTopMovesMock([])
   })
 
   it('renders the board', () => {
@@ -130,5 +160,81 @@ describe('ChessGame', () => {
     expect(useGameRealtimeMock).not.toHaveBeenCalled()
     expect(fetchGameMock).not.toHaveBeenCalled()
     expect(fetchGameMembersMock).not.toHaveBeenCalled()
+  })
+
+  it('quits online game by aborting and navigating to /games', async () => {
+    const user = userEvent.setup()
+    render(<ChessGame />)
+
+    const quitButton = await screen.findByRole('button', { name: 'Quit' })
+    await user.click(quitButton)
+
+    await waitFor(() => {
+      expect(abortGameMock).toHaveBeenCalledWith('game-123')
+      expect(navigateMock).toHaveBeenCalledWith('/games')
+    })
+  })
+
+  it('shows hint squares when clicking Show in local mode', async () => {
+    const user = userEvent.setup()
+    setMockGameId('local')
+    setTopMovesMock([{ uci: 'e2e4', score: 36, mate: null, depth: 14 }])
+
+    render(<ChessGame />)
+
+    const hintShow = screen.getByRole('button', { name: 'Show hints' })
+    const board = screen.getByTestId('chessboard')
+    expect(board).toHaveAttribute('data-custom-squares', '')
+
+    await user.click(hintShow)
+
+    // after showing, hover (or click on touch) the first hint to highlight squares
+    const hintItem = await screen.findByRole('button', { name: '1. e4' })
+    await user.hover(hintItem)
+
+    await waitFor(() => {
+      const highlighted = screen.getByTestId('chessboard').getAttribute('data-custom-squares') || ''
+      expect(highlighted).toContain('e2')
+      expect(highlighted).toContain('e4')
+    })
+  })
+
+  it('orients board for black player in online mode', async () => {
+    setAuthUserId('user-2')
+    render(<ChessGame />)
+
+    await waitFor(() => {
+      expect(screen.getByTestId('chessboard')).toHaveAttribute('data-orientation', 'black')
+    })
+  })
+
+  it('jumps to selected ply when clicking move history SAN', async () => {
+    const user = userEvent.setup()
+    render(<ChessGame />)
+
+    const moveButton = await screen.findByRole('button', { name: 'e4' })
+    await user.click(moveButton)
+
+    expect(screen.getByText('Viewing move 1/2')).toBeInTheDocument()
+  })
+
+  it('records black reply in local move history after white move', async () => {
+    const user = userEvent.setup()
+    setMockGameId('local')
+    setEngineMoveUci('e7e5')
+    render(<ChessGame />)
+
+    await user.click(screen.getByRole('button', { name: 'mock-drop-e2e4' }))
+
+    await waitFor(() => {
+      expect(screen.getByText('e4')).toBeInTheDocument()
+      expect(screen.getByText('e5')).toBeInTheDocument()
+      expect(screen.queryByText('2.')).not.toBeInTheDocument()
+      const firstRow = screen.getByText('1.').closest('tr')
+      expect(firstRow).toBeTruthy()
+      const rowScope = within(firstRow as HTMLElement)
+      expect(rowScope.getByText('e4')).toBeInTheDocument()
+      expect(rowScope.getByText('e5')).toBeInTheDocument()
+    })
   })
 })

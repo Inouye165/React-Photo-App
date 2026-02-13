@@ -3,7 +3,7 @@ import { useNavigate, useParams } from 'react-router-dom'
 import { Chess } from 'chess.js'
 import type { Square } from 'chess.js'
 import { Chessboard } from 'react-chessboard'
-import { fetchGame, fetchGameMembers, makeMove, restartGame } from '../api/games'
+import { abortGame, fetchGame, fetchGameMembers, makeMove, restartGame } from '../api/games'
 import Toast from '../components/Toast'
 import type { GameMemberProfile, GameRow } from '../api/games'
 import { supabase } from '../supabaseClient'
@@ -11,6 +11,25 @@ import { useGameRealtime } from '../hooks/useGameRealtime'
 import { useAuth } from '../contexts/AuthContext'
 import { useStockfish } from '../hooks/useStockfish'
 import { findOpening } from '../data/chessOpenings'
+
+type PromotionPiece = 'q' | 'r' | 'b' | 'n'
+
+type PendingPromotion = {
+  from: Square
+  to: Square
+  fen: string
+}
+
+type GameEndReason =
+  | 'checkmate'
+  | 'stalemate'
+  | 'insufficient'
+  | 'threefold'
+  | 'fifty-move'
+  | 'draw'
+  | 'aborted'
+  | 'resigned'
+  | null
 
 type MoveRow = {
   ply: number
@@ -26,6 +45,11 @@ type MoveHistoryRow = {
   black: string | null
 }
 
+type HintMove = {
+  uci: string
+  san: string
+}
+
 const START_FEN = 'rnbqkbnr/pppppppp/8/8/8/8/PPPPPPPP/RNBQKBNR w KQkq - 0 1'
 
 const CHESSBOARD_MAX_SIZE = 720
@@ -35,6 +59,148 @@ const CHESSBOARD_THEME = {
   customDarkSquareStyle: { backgroundColor: 'var(--color-slate-200)' },
   customBoardStyle: { borderRadius: 10 },
 } as const
+
+const PROMOTION_PIECES: { value: PromotionPiece; label: string; symbol: string }[] = [
+  { value: 'q', label: 'Queen', symbol: '♛' },
+  { value: 'r', label: 'Rook', symbol: '♜' },
+  { value: 'b', label: 'Bishop', symbol: '♝' },
+  { value: 'n', label: 'Knight', symbol: '♞' },
+]
+
+function isPromotionMove(fen: string, from: Square, to: Square): boolean {
+  const chess = new Chess(fen)
+  const moves = chess.moves({ square: from, verbose: true })
+  return moves.some((m) => m.to === to && m.promotion)
+}
+
+function detectGameEnd(fen: string): { isOver: boolean; reason: GameEndReason; winner: 'white' | 'black' | null } {
+  try {
+    const chess = new Chess(fen)
+    if (chess.isCheckmate()) {
+      const winner = chess.turn() === 'w' ? 'black' : 'white'
+      return { isOver: true, reason: 'checkmate', winner }
+    }
+    if (chess.isStalemate()) return { isOver: true, reason: 'stalemate', winner: null }
+    if (chess.isInsufficientMaterial()) return { isOver: true, reason: 'insufficient', winner: null }
+    if (chess.isThreefoldRepetition()) return { isOver: true, reason: 'threefold', winner: null }
+    if (chess.isDraw()) return { isOver: true, reason: 'fifty-move', winner: null }
+    return { isOver: false, reason: null, winner: null }
+  } catch {
+    return { isOver: false, reason: null, winner: null }
+  }
+}
+
+function gameEndMessage(reason: GameEndReason, winner: 'white' | 'black' | null): string {
+  switch (reason) {
+    case 'checkmate': return `Checkmate! ${winner === 'white' ? 'White' : 'Black'} wins.`
+    case 'stalemate': return 'Draw by stalemate.'
+    case 'insufficient': return 'Draw by insufficient material.'
+    case 'threefold': return 'Draw by threefold repetition.'
+    case 'fifty-move': return 'Draw by the fifty-move rule.'
+    case 'draw': return 'Game drawn.'
+    case 'aborted': return 'Game aborted.'
+    case 'resigned': return 'Game ended by resignation.'
+    default: return ''
+  }
+}
+
+function PromotionChooser({ onSelect, onCancel }: { onSelect: (piece: PromotionPiece) => void; onCancel: () => void }) {
+  return (
+    <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/40" onClick={onCancel} role="dialog" aria-label="Choose promotion piece">
+      <div className="rounded-xl bg-white p-4 shadow-2xl" onClick={(e) => e.stopPropagation()}>
+        <div className="mb-3 text-sm font-semibold text-slate-700">Promote pawn to:</div>
+        <div className="flex gap-2">
+          {PROMOTION_PIECES.map((p) => (
+            <button
+              key={p.value}
+              type="button"
+              onClick={() => onSelect(p.value)}
+              className="flex h-14 w-14 flex-col items-center justify-center rounded-lg border border-slate-200 bg-slate-50 text-2xl hover:bg-slate-100 focus:outline-none focus:ring-2 focus:ring-blue-400"
+              aria-label={`Promote to ${p.label}`}
+            >
+              <span>{p.symbol}</span>
+              <span className="text-[10px] text-slate-500">{p.label}</span>
+            </button>
+          ))}
+        </div>
+        <button
+          type="button"
+          onClick={onCancel}
+          className="mt-3 w-full rounded-md border border-slate-200 bg-white px-3 py-1 text-xs font-semibold text-slate-600 hover:bg-slate-50"
+        >
+          Cancel
+        </button>
+      </div>
+    </div>
+  )
+}
+
+function GameEndPanel({ reason, winner, onRestart, onQuit }: { reason: GameEndReason; winner: 'white' | 'black' | null; onRestart?: () => void; onQuit?: () => void }) {
+  if (!reason) return null
+  const msg = gameEndMessage(reason, winner)
+  const isDraw = winner === null && reason !== 'aborted' && reason !== 'resigned'
+  const bgClass = reason === 'aborted' ? 'bg-amber-50 border-amber-200' : isDraw ? 'bg-blue-50 border-blue-200' : 'bg-emerald-50 border-emerald-200'
+  const textClass = reason === 'aborted' ? 'text-amber-800' : isDraw ? 'text-blue-800' : 'text-emerald-800'
+
+  return (
+    <div className={`mb-3 rounded-lg border px-4 py-3 ${bgClass}`} role="status" aria-live="polite">
+      <div className={`text-sm font-semibold ${textClass}`}>{msg}</div>
+      <div className="mt-2 flex gap-2">
+        {onRestart ? (
+          <button
+            type="button"
+            onClick={onRestart}
+            className="rounded-md border border-slate-300 bg-white px-3 py-1 text-xs font-semibold text-slate-700 hover:bg-slate-50"
+          >
+            Play again
+          </button>
+        ) : null}
+        {onQuit ? (
+          <button
+            type="button"
+            onClick={onQuit}
+            className="rounded-md border border-slate-200 bg-white px-3 py-1 text-xs font-semibold text-slate-600 hover:bg-slate-50"
+          >
+            Back to games
+          </button>
+        ) : null}
+      </div>
+    </div>
+  )
+}
+
+function ConfirmDialog({ title, message, confirmLabel, onConfirm, onCancel }: {
+  title: string
+  message: string
+  confirmLabel: string
+  onConfirm: () => void
+  onCancel: () => void
+}) {
+  return (
+    <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/40" onClick={onCancel} role="dialog" aria-label={title}>
+      <div className="max-w-sm rounded-xl bg-white p-5 shadow-2xl" onClick={(e) => e.stopPropagation()}>
+        <div className="mb-2 text-base font-semibold text-slate-800">{title}</div>
+        <div className="mb-4 text-sm text-slate-600">{message}</div>
+        <div className="flex justify-end gap-2">
+          <button
+            type="button"
+            onClick={onCancel}
+            className="rounded-md border border-slate-200 bg-white px-3 py-1.5 text-xs font-semibold text-slate-600 hover:bg-slate-50"
+          >
+            Cancel
+          </button>
+          <button
+            type="button"
+            onClick={onConfirm}
+            className="rounded-md bg-red-600 px-3 py-1.5 text-xs font-semibold text-white hover:bg-red-700"
+          >
+            {confirmLabel}
+          </button>
+        </div>
+      </div>
+    </div>
+  )
+}
 
 type ParsedUci = {
   from: Square
@@ -50,14 +216,16 @@ function parseUciMove(uci: string): ParsedUci | null {
   return { from, to, promotion }
 }
 
+function sortedMoveRows(moveRows: MoveRow[]): MoveRow[] {
+  return moveRows.slice().sort((a, b) => (a.ply || 0) - (b.ply || 0))
+}
+
 function buildMoveHistory(moveRows: MoveRow[]): MoveHistoryRow[] {
   if (!moveRows.length) return []
   const chess = new Chess()
   const history: MoveHistoryRow[] = []
 
-  moveRows
-    .slice()
-    .sort((a, b) => (a.ply || 0) - (b.ply || 0))
+  sortedMoveRows(moveRows)
     .forEach((mv, index) => {
       const parsed = parseUciMove(mv.uci)
       const ply = mv.ply || index + 1
@@ -90,10 +258,7 @@ function buildMoveHistory(moveRows: MoveRow[]): MoveHistoryRow[] {
 }
 
 function buildMovesUci(moveRows: MoveRow[]) {
-  return moveRows
-    .slice()
-    .sort((a, b) => (a.ply || 0) - (b.ply || 0))
-    .map((mv) => mv.uci)
+  return sortedMoveRows(moveRows).map((mv) => mv.uci)
 }
 
 function formatUciToSan(fen: string, uci: string) {
@@ -108,35 +273,42 @@ function formatUciToSan(fen: string, uci: string) {
   }
 }
 
+function plyFromFen(fen: string): number {
+  const parts = fen.split(' ')
+  const turn = parts[1] as 'w' | 'b' | undefined
+  const fullmove = Number(parts[5])
+  const moveNumber = Number.isFinite(fullmove) && fullmove > 0 ? fullmove : 1
+  return turn === 'b' ? ((moveNumber - 1) * 2) + 1 : ((moveNumber - 1) * 2)
+}
+
 function getEvalPercent(score: number | null) {
   if (score === null) return 50
   const clamped = Math.min(9, Math.max(-9, score))
   return ((clamped + 9) / 18) * 100
 }
 
-function buildDisplayFen(moveRows: MoveRow[], gameFen: string | null, viewPly: number) {
-  if (!moveRows.length) {
+function buildDisplayFen(sortedMoves: MoveRow[], gameFen: string | null, viewPly: number) {
+  if (!sortedMoves.length) {
     return gameFen || START_FEN
   }
 
-  const sorted = moveRows.slice().sort((a, b) => (a.ply || 0) - (b.ply || 0))
-  const targetPly = Math.max(0, Math.min(viewPly, sorted.length))
+  const targetPly = Math.max(0, Math.min(viewPly, sortedMoves.length))
 
   if (targetPly === 0) {
     return START_FEN
   }
 
-  const exact = sorted.find((mv) => mv.ply === targetPly && typeof mv.fen_after === 'string' && mv.fen_after.length > 0)
+  const exact = sortedMoves.find((mv) => mv.ply === targetPly && typeof mv.fen_after === 'string' && mv.fen_after.length > 0)
   if (exact?.fen_after) return exact.fen_after
 
-  if (targetPly === sorted.length) {
-    const lastWithFen = [...sorted].reverse().find((mv) => typeof mv.fen_after === 'string' && mv.fen_after.length > 0)
+  if (targetPly === sortedMoves.length) {
+    const lastWithFen = [...sortedMoves].reverse().find((mv) => typeof mv.fen_after === 'string' && mv.fen_after.length > 0)
     if (lastWithFen?.fen_after) return lastWithFen.fen_after
     if (gameFen) return gameFen
   }
 
   const chess = new Chess(START_FEN)
-  for (const mv of sorted) {
+  for (const mv of sortedMoves) {
     if ((mv.ply || 0) > targetPly) break
     const parsed = parseUciMove(mv.uci)
     if (!parsed) continue
@@ -153,7 +325,7 @@ function buildDisplayFen(moveRows: MoveRow[], gameFen: string | null, viewPly: n
   return chess.fen()
 }
 
-function useChessDisplay(moveRows: MoveRow[], gameFen: string | null) {
+function useChessDisplay(moveRows: MoveRow[], gameFen: string | null, hoveredHintUci: string | null = null) {
   const [boardFen, setBoardFen] = useState<string>(START_FEN)
   const [viewPly, setViewPly] = useState(0)
   const [selectedSquare, setSelectedSquare] = useState<Square | null>(null)
@@ -172,21 +344,22 @@ function useChessDisplay(moveRows: MoveRow[], gameFen: string | null) {
     setSelectedSquare(null)
   }, [viewPly])
 
-  const displayFen = useMemo(() => buildDisplayFen(moveRows, gameFen, viewPly), [moveRows, gameFen, viewPly])
+  const sortedMoves = useMemo(() => sortedMoveRows(moveRows), [moveRows])
 
-  const moveHistory = useMemo(() => buildMoveHistory(moveRows), [moveRows])
+  const displayFen = useMemo(() => buildDisplayFen(sortedMoves, gameFen, viewPly), [sortedMoves, gameFen, viewPly])
+
+  const moveHistory = useMemo(() => buildMoveHistory(sortedMoves), [sortedMoves])
 
   useEffect(() => {
     if (moveRows.length) {
-      const sorted = moveRows.slice().sort((a, b) => (a.ply || 0) - (b.ply || 0))
-      const lastWithFen = [...sorted].reverse().find((mv) => typeof mv.fen_after === 'string' && mv.fen_after.length > 0)
+      const lastWithFen = [...sortedMoves].reverse().find((mv) => typeof mv.fen_after === 'string' && mv.fen_after.length > 0)
       if (lastWithFen?.fen_after) {
         setBoardFen(lastWithFen.fen_after)
         return
       }
 
       const chess = new Chess(START_FEN)
-      for (const mv of sorted) {
+      for (const mv of sortedMoves) {
         const parsed = parseUciMove(mv.uci)
         if (!parsed) continue
         try {
@@ -209,7 +382,7 @@ function useChessDisplay(moveRows: MoveRow[], gameFen: string | null) {
     }
 
     setBoardFen(START_FEN)
-  }, [gameFen, moveRows])
+  }, [gameFen, sortedMoves])
 
   useEffect(() => {
     if (!showLegalMoves) setSelectedSquare(null)
@@ -231,97 +404,136 @@ function useChessDisplay(moveRows: MoveRow[], gameFen: string | null) {
     return styles
   }, [displayFen, selectedSquare, showLegalMoves])
 
-  const threatStyles = useMemo(() => {
-    if (!showThreats) return {}
+  // Debounced threat computation to avoid UI lag on mobile/lower-end devices
+  const [threatStyles, setThreatStyles] = useState<Record<string, React.CSSProperties>>({})
+  const threatTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null)
 
-    const pieceValues: Record<string, number> = { p: 1, n: 3, b: 3, r: 5, q: 9, k: 100 }
-    const withTurn = (fen: string, turn: 'w' | 'b') => {
-      const parts = fen.split(' ')
-      if (parts.length >= 2) {
-        parts[1] = turn
-        return parts.join(' ')
-      }
-      return fen
+  useEffect(() => {
+    if (threatTimerRef.current) {
+      clearTimeout(threatTimerRef.current)
+      threatTimerRef.current = null
     }
 
-    const buildAttackMap = (fen: string, turn: 'w' | 'b') => {
-      const chess = new Chess(withTurn(fen, turn))
+    if (!showThreats) {
+      setThreatStyles({})
+      return
+    }
+
+    threatTimerRef.current = setTimeout(() => {
+      const pieceValues: Record<string, number> = { p: 1, n: 3, b: 3, r: 5, q: 9, k: 100 }
+      const withTurn = (fen: string, turn: 'w' | 'b') => {
+        const parts = fen.split(' ')
+        if (parts.length >= 2) {
+          parts[1] = turn
+          return parts.join(' ')
+        }
+        return fen
+      }
+
+      const buildAttackMap = (fen: string, turn: 'w' | 'b') => {
+        const chess = new Chess(withTurn(fen, turn))
+        const board = chess.board()
+        const attacks = new Map<string, Array<string>>()
+
+        for (let r = 0; r < board.length; r += 1) {
+          for (let c = 0; c < board[r].length; c += 1) {
+            const piece = board[r][c]
+            if (!piece || piece.color !== turn) continue
+            const file = String.fromCharCode(97 + c)
+            const rank = 8 - r
+            const square = `${file}${rank}` as Square
+            const moves = chess.moves({ square, verbose: true }) as Array<{ to: Square; piece: string }>
+            for (const move of moves) {
+              const list = attacks.get(move.to) ?? []
+              list.push(move.piece)
+              attacks.set(move.to, list)
+            }
+          }
+        }
+        return attacks
+      }
+
+      const chess = new Chess(displayFen)
       const board = chess.board()
-      const attacks = new Map<string, Array<string>>()
+      const attacksByWhite = buildAttackMap(displayFen, 'w')
+      const attacksByBlack = buildAttackMap(displayFen, 'b')
+      const styles: Record<string, React.CSSProperties> = {}
+
+      const isDefended = (fen: string, square: Square, color: 'w' | 'b') => {
+        const defender = new Chess(withTurn(fen, color))
+        defender.remove(square)
+        const moves = defender.moves({ verbose: true }) as Array<{ to: string }>
+        return moves.some((move) => move.to === square)
+      }
 
       for (let r = 0; r < board.length; r += 1) {
         for (let c = 0; c < board[r].length; c += 1) {
           const piece = board[r][c]
-          if (!piece || piece.color !== turn) continue
+          if (!piece) continue
           const file = String.fromCharCode(97 + c)
           const rank = 8 - r
           const square = `${file}${rank}` as Square
-          const moves = chess.moves({ square, verbose: true }) as Array<{ to: Square; piece: string }>
-          for (const move of moves) {
-            const list = attacks.get(move.to) ?? []
-            list.push(move.piece)
-            attacks.set(move.to, list)
+          const attackedBy = piece.color === 'w' ? attacksByBlack : attacksByWhite
+          const attackers = attackedBy.get(square) ?? []
+          if (!attackers.length) continue
+
+          const defended = isDefended(displayFen, square, piece.color)
+          const pieceValue = pieceValues[piece.type] ?? 0
+          const minAttacker = Math.min(...attackers.map((type) => pieceValues[type] ?? 0))
+          const valueThreat = minAttacker > 0 && minAttacker < pieceValue
+
+          if (valueThreat) {
+            styles[square] = {
+              backgroundColor: 'color-mix(in srgb, var(--color-red-500) 16%, transparent)',
+              boxShadow: 'inset 0 0 0 3px color-mix(in srgb, var(--color-red-500) 65%, transparent)',
+            }
+          } else if (!defended) {
+            styles[square] = {
+              backgroundColor: 'color-mix(in srgb, var(--color-amber-500) 18%, transparent)',
+              boxShadow: 'inset 0 0 0 3px color-mix(in srgb, var(--color-amber-500) 65%, transparent)',
+            }
+          } else {
+            styles[square] = {
+              backgroundColor: 'color-mix(in srgb, var(--color-blue-500) 12%, transparent)',
+              boxShadow: 'inset 0 0 0 2px color-mix(in srgb, var(--color-blue-500) 60%, transparent)',
+            }
           }
         }
       }
-      return attacks
-    }
 
-    const chess = new Chess(displayFen)
-    const board = chess.board()
-    const attacksByWhite = buildAttackMap(displayFen, 'w')
-    const attacksByBlack = buildAttackMap(displayFen, 'b')
-    const styles: Record<string, React.CSSProperties> = {}
+      setThreatStyles(styles)
+    }, 150) // 150ms debounce to prevent jank on rapid position changes
 
-    const isDefended = (fen: string, square: Square, color: 'w' | 'b') => {
-      const defender = new Chess(withTurn(fen, color))
-      defender.remove(square)
-      const moves = defender.moves({ verbose: true }) as Array<{ to: string }>
-      return moves.some((move) => move.to === square)
-    }
-
-    for (let r = 0; r < board.length; r += 1) {
-      for (let c = 0; c < board[r].length; c += 1) {
-        const piece = board[r][c]
-        if (!piece) continue
-        const file = String.fromCharCode(97 + c)
-        const rank = 8 - r
-        const square = `${file}${rank}` as Square
-        const attackedBy = piece.color === 'w' ? attacksByBlack : attacksByWhite
-        const attackers = attackedBy.get(square) ?? []
-        if (!attackers.length) continue
-
-        const defended = isDefended(displayFen, square, piece.color)
-        const pieceValue = pieceValues[piece.type] ?? 0
-        const minAttacker = Math.min(...attackers.map((type) => pieceValues[type] ?? 0))
-        const valueThreat = minAttacker > 0 && minAttacker < pieceValue
-
-        if (valueThreat) {
-          styles[square] = {
-            backgroundColor: 'color-mix(in srgb, var(--color-red-500) 16%, transparent)',
-            boxShadow: 'inset 0 0 0 3px color-mix(in srgb, var(--color-red-500) 65%, transparent)',
-          }
-        } else if (!defended) {
-          styles[square] = {
-            backgroundColor: 'color-mix(in srgb, var(--color-amber-500) 18%, transparent)',
-            boxShadow: 'inset 0 0 0 3px color-mix(in srgb, var(--color-amber-500) 65%, transparent)',
-          }
-        } else {
-          styles[square] = {
-            backgroundColor: 'color-mix(in srgb, var(--color-blue-500) 12%, transparent)',
-            boxShadow: 'inset 0 0 0 2px color-mix(in srgb, var(--color-blue-500) 60%, transparent)',
-          }
-        }
+    return () => {
+      if (threatTimerRef.current) {
+        clearTimeout(threatTimerRef.current)
+        threatTimerRef.current = null
       }
     }
-
-    return styles
   }, [displayFen, showThreats])
+
+  const hintHoverStyles = useMemo(() => {
+    if (!hoveredHintUci) return {}
+    const parsed = parseUciMove(hoveredHintUci)
+    if (!parsed) return {}
+
+    return {
+      [parsed.from]: {
+        backgroundColor: 'color-mix(in srgb, var(--color-purple-500) 24%, transparent)',
+        boxShadow: 'inset 0 0 0 2px color-mix(in srgb, var(--color-purple-500) 62%, transparent)',
+      },
+      [parsed.to]: {
+        backgroundColor: 'color-mix(in srgb, var(--color-purple-500) 30%, transparent)',
+        boxShadow: 'inset 0 0 0 3px color-mix(in srgb, var(--color-purple-500) 70%, transparent)',
+      },
+    } as Record<string, React.CSSProperties>
+  }, [hoveredHintUci])
 
   const customSquareStyles = useMemo(() => ({
     ...threatStyles,
     ...legalMoveStyles,
-  }), [legalMoveStyles, threatStyles])
+    ...hintHoverStyles,
+  }), [hintHoverStyles, legalMoveStyles, threatStyles])
 
   return {
     boardFen,
@@ -339,9 +551,31 @@ function useChessDisplay(moveRows: MoveRow[], gameFen: string | null) {
   }
 }
 
+function TopHintsList({ hintMoves, onHoverOrClick }: { hintMoves: HintMove[]; onHoverOrClick: (uci: string | null) => void }) {
+  if (!hintMoves.length) return <div className="text-xs text-slate-500">No hints yet.</div>
+
+  return (
+    <ol className="space-y-1 text-sm text-slate-700">
+      {hintMoves.map((move, idx) => (
+        <li key={`${move.uci}-${idx}`}>
+          <button
+            type="button"
+            className="w-full rounded px-1 py-0.5 text-left hover:bg-slate-100 focus:bg-slate-100 focus:outline-none"
+            onMouseEnter={() => onHoverOrClick(move.uci)}
+            onMouseLeave={() => onHoverOrClick(null)}
+            onClick={() => onHoverOrClick(move.uci)}
+          >
+            {idx + 1}. {move.san}
+          </button>
+        </li>
+      ))}
+    </ol>
+  )
+}
+
 function useChessboardSize(maxSize: number) {
   const containerRef = useRef<HTMLDivElement | null>(null)
-  const [boardSize, setBoardSize] = useState(maxSize)
+  const [boardSize, setBoardSize] = useState(Math.min(maxSize, 400))
 
   useEffect(() => {
     const container = containerRef.current
@@ -353,18 +587,37 @@ function useChessboardSize(maxSize: number) {
     const updateSize = () => {
       const width = container.clientWidth
       const height = container.clientHeight
-      if (!width && !height) return
+      if (!width) return
 
-      const safeWidth = Math.max(0, width - 8)
-      const safeHeight = Math.max(0, height - 8)
-      const limit = safeHeight > 0 ? Math.min(safeWidth || maxSize, safeHeight) : (safeWidth || maxSize)
-      setBoardSize(Math.min(maxSize, limit))
+      const safeWidth = Math.max(0, width - 16)
+
+      // Desktop (lg:flex-1 gives real height from flex) → constrain to
+      // both dimensions so the square board fits.  Mobile/tablet (stacked
+      // layout, natural height) → width only; the board determines its own
+      // height and the parent page scrolls.
+      const isDesktopRow = window.innerWidth >= 1024
+      let limit: number
+
+      if (isDesktopRow && height > 100) {
+        const safeHeight = Math.max(0, height - 16)
+        limit = Math.min(safeWidth, safeHeight)
+      } else {
+        limit = safeWidth
+      }
+
+      const next = Math.max(180, Math.min(maxSize, limit))
+      setBoardSize(next)
     }
 
     updateSize()
     const observer = new ResizeObserver(updateSize)
     observer.observe(container)
-    return () => observer.disconnect()
+
+    window.addEventListener('resize', updateSize)
+    return () => {
+      observer.disconnect()
+      window.removeEventListener('resize', updateSize)
+    }
   }, [maxSize])
 
   return { containerRef, boardSize }
@@ -380,6 +633,7 @@ export default function ChessGame(): React.JSX.Element {
 
 function OnlineChessGame(): React.JSX.Element {
   const { gameId } = useParams<{ gameId: string }>()
+  const navigate = useNavigate()
   const { user } = useAuth()
   const [refreshToken, setRefreshToken] = useState(0)
   const { moves, loading: movesLoading } = useGameRealtime(gameId || null, refreshToken)
@@ -391,7 +645,24 @@ function OnlineChessGame(): React.JSX.Element {
   const [toastMessage, setToastMessage] = useState<string | null>(null)
   const [toastSeverity, setToastSeverity] = useState<'info' | 'success' | 'warning' | 'error'>('info')
   const [restartLoading, setRestartLoading] = useState(false)
+  const [showRestartConfirm, setShowRestartConfirm] = useState(false)
+  const [pendingPromotion, setPendingPromotion] = useState<PendingPromotion | null>(null)
+  const [optimisticFen, setOptimisticFen] = useState<string | null>(null)
   const [debugCopied, setDebugCopied] = useState(false)
+  // whether hints are currently visible (after clicking the single Show Hints button)
+  const [showHintsVisible, setShowHintsVisible] = useState(false)
+  // which UCI is currently hovered / tapped to highlight squares
+  const [hoveredHintUci, setHoveredHintUci] = useState<string | null>(null)
+  const [hintCount, setHintCount] = useState(0)
+  const [hintedPlys, setHintedPlys] = useState<number[]>([])
+  const lastShownPlyRef = useRef<number | null>(null)
+
+  const moveRows = useMemo(() => (moves ?? []) as MoveRow[], [moves])
+
+  // Clear optimistic FEN once the realtime event delivers the new move
+  useEffect(() => {
+    setOptimisticFen(null)
+  }, [moveRows.length])
 
   const loadGameData = useCallback(async () => {
     if (!gameId) return
@@ -422,7 +693,16 @@ function OnlineChessGame(): React.JSX.Element {
     void loadGameData()
   }, [loadGameData])
 
-  const moveRows = useMemo(() => (moves ?? []) as MoveRow[], [moves])
+  // Clear any active hint after the move that the hint was shown for occurs
+  useEffect(() => {
+    if (lastShownPlyRef.current != null && moveRows.length > lastShownPlyRef.current) {
+      setShowHintsVisible(false)
+      setHoveredHintUci(null)
+      lastShownPlyRef.current = null
+    }
+  }, [moveRows.length])
+
+  
 
   const {
     displayFen,
@@ -435,30 +715,38 @@ function OnlineChessGame(): React.JSX.Element {
     showThreats,
     setShowThreats,
     customSquareStyles,
-  } = useChessDisplay(moveRows, game?.current_fen ?? null)
+  } = useChessDisplay(moveRows, game?.current_fen ?? null, hoveredHintUci)
   const { containerRef: boardContainerRef, boardSize } = useChessboardSize(CHESSBOARD_MAX_SIZE)
 
-  async function onDrop(sourceSquare: Square, targetSquare: Square, currentFen: string) {
+  async function onDrop(sourceSquare: Square, targetSquare: Square, currentFen: string, promotion: PromotionPiece = 'q') {
     if (!gameId) return false
     if (game?.status === 'aborted') return false
     if (viewPly !== moveRows.length) return false
     const c = new Chess(currentFen || START_FEN)
-    const move = c.move({ from: sourceSquare, to: targetSquare, promotion: 'q' })
+    const move = c.move({ from: sourceSquare, to: targetSquare, promotion })
     if (!move) return false
     const fenAfter = c.fen()
+    // Show the new position immediately (optimistic) so the piece doesn't snap back
+    setOptimisticFen(fenAfter)
     try {
       const ply = moveRows.length + 1
       await makeMove(gameId, ply, `${move.from}${move.to}${move.promotion ?? ''}`, fenAfter)
       setViewPly(ply)
       setSelectedSquare(null)
       return true
-    } catch {
+    } catch (err) {
+      // Revert optimistic FEN on failure
+      setOptimisticFen(null)
+      const message = err instanceof Error ? err.message : 'Move failed'
+      setToastSeverity('error')
+      setToastMessage(message)
       return false
     }
   }
 
   async function handleRestartGame() {
     if (!gameId) return
+    setShowRestartConfirm(false)
     setError(null)
     setRestartLoading(true)
     try {
@@ -480,7 +768,22 @@ function OnlineChessGame(): React.JSX.Element {
     }
   }
 
-  const normalizedDisplayFen = displayFen || START_FEN
+  async function handleQuitGame() {
+    if (!gameId) {
+      navigate('/games')
+      return
+    }
+
+    try {
+      await abortGame(gameId)
+    } catch {
+      // Keep navigation resilient even if quit persistence fails.
+    } finally {
+      navigate('/games')
+    }
+  }
+
+  const normalizedDisplayFen = optimisticFen || displayFen || START_FEN
   const currentTurn = (normalizedDisplayFen.split(' ')[1] as 'w' | 'b' | undefined) || (game?.current_turn as 'w' | 'b' | null) || null
   const currentUserId = user?.id ?? null
   const currentMember = members.find((member) => member.user_id === currentUserId) ?? null
@@ -528,7 +831,12 @@ function OnlineChessGame(): React.JSX.Element {
   const isViewingPast = viewPly < moveRows.length
   const isMember = Boolean(currentMember)
   const isUserTurn = (currentTurn === 'w' && isCurrentWhite) || (currentTurn === 'b' && isCurrentBlack)
-  const canMove = !isAborted && !isViewingPast && isMember && isUserTurn
+  const gameEnd = useMemo(() => {
+    if (isAborted) return { isOver: true, reason: 'aborted' as GameEndReason, winner: null }
+    return detectGameEnd(normalizedDisplayFen)
+  }, [isAborted, normalizedDisplayFen])
+  const canMove = !isAborted && !gameEnd.isOver && !isViewingPast && isMember && isUserTurn && !pendingPromotion
+  const boardOrientation: 'white' | 'black' = isCurrentBlack ? 'black' : 'white'
 
   const { isReady, topMoves, evaluation, analyzePosition, difficulty, setDifficulty } = useStockfish()
   const opening = useMemo(() => findOpening(buildMovesUci(moveRows)), [moveRows])
@@ -542,7 +850,7 @@ function OnlineChessGame(): React.JSX.Element {
     return () => clearTimeout(handle)
   }, [analyzePosition, isReady, normalizedDisplayFen])
 
-  const hintMoves = useMemo(() => (
+  const hintMoves: HintMove[] = useMemo(() => (
     topMoves.map((move) => ({
       ...move,
       san: formatUciToSan(normalizedDisplayFen, move.uci),
@@ -550,7 +858,7 @@ function OnlineChessGame(): React.JSX.Element {
   ), [normalizedDisplayFen, topMoves])
 
   return (
-    <div className="flex h-full min-h-0 flex-col overflow-hidden rounded-2xl bg-slate-100/80 p-4 shadow-sm">
+    <div className="flex flex-col rounded-2xl bg-slate-100/80 p-4 shadow-sm lg:h-full lg:min-h-0 lg:overflow-hidden">
       <div className="mb-4 flex flex-none flex-wrap items-center justify-between gap-3">
         <div>
           <h2 className="text-lg font-semibold">Chess</h2>
@@ -559,13 +867,21 @@ function OnlineChessGame(): React.JSX.Element {
             {currentMember?.role ? ` · You are ${currentMember.role}` : ' · Spectating'}
           </div>
         </div>
-        <button
-          onClick={() => { void handleRestartGame() }}
-          disabled={restartLoading}
-          className="rounded-md border border-slate-300 bg-white px-3 py-1 text-xs font-semibold text-slate-700 disabled:opacity-50"
-        >
-          {restartLoading ? 'Restarting…' : 'Restart game'}
-        </button>
+        <div className="flex items-center gap-2">
+          <button
+            onClick={() => setShowRestartConfirm(true)}
+            disabled={restartLoading}
+            className="rounded-md border border-slate-300 bg-white px-3 py-1 text-xs font-semibold text-slate-700 disabled:opacity-50"
+          >
+            {restartLoading ? 'Restarting…' : 'Restart game'}
+          </button>
+          <button
+            onClick={() => { void handleQuitGame() }}
+            className="rounded-md border border-slate-200 bg-white px-3 py-1 text-xs font-semibold text-slate-600"
+          >
+            Quit
+          </button>
+        </div>
       </div>
       {error ? (
         <div className="mb-3 flex flex-wrap items-center justify-between gap-3 rounded-md border border-red-200 bg-red-50 px-3 py-2 text-sm text-red-700">
@@ -601,8 +917,33 @@ function OnlineChessGame(): React.JSX.Element {
           ) : null}
         </div>
       ) : null}
-      <div className="flex min-h-0 flex-1 flex-col gap-6 lg:flex-row lg:items-stretch">
-        <div className="flex min-h-0 min-w-0 flex-1 flex-col gap-4 rounded-2xl border border-slate-200 bg-white/80 p-4 shadow-md">
+      <GameEndPanel
+        reason={gameEnd.reason}
+        winner={gameEnd.winner}
+        onRestart={() => setShowRestartConfirm(true)}
+        onQuit={() => { void handleQuitGame() }}
+      />
+      {showRestartConfirm ? (
+        <ConfirmDialog
+          title="Restart game?"
+          message="This will reset the board and clear all moves. Both players will start over."
+          confirmLabel="Restart"
+          onConfirm={() => { void handleRestartGame() }}
+          onCancel={() => setShowRestartConfirm(false)}
+        />
+      ) : null}
+      {pendingPromotion ? (
+        <PromotionChooser
+          onSelect={(piece) => {
+            const { from, to, fen } = pendingPromotion
+            setPendingPromotion(null)
+            void onDrop(from, to, fen, piece)
+          }}
+          onCancel={() => setPendingPromotion(null)}
+        />
+      ) : null}
+      <div className="flex flex-col gap-6 lg:min-h-0 lg:flex-1 lg:flex-row lg:items-stretch">
+        <div className="flex flex-col gap-4 rounded-2xl border border-slate-200 bg-white/80 p-4 shadow-md lg:min-h-0 lg:min-w-0 lg:flex-1">
           <div className="flex items-center justify-between">
             {renderPlayerLabel(topPlayer || null, topIsWhite ? currentTurn === 'w' : currentTurn === 'b', topFallback)}
           </div>
@@ -649,17 +990,22 @@ function OnlineChessGame(): React.JSX.Element {
               <span className="text-xs text-slate-500">Live</span>
             )}
           </div>
-          <div ref={boardContainerRef} className="flex min-h-0 flex-1 items-center justify-center">
-            <div className="rounded-xl border border-slate-200 bg-white p-2 shadow-sm" style={{ width: boardSize + 8, maxWidth: '100%' }}>
+          <div ref={boardContainerRef} className="flex w-full items-center justify-center overflow-hidden lg:min-h-0 lg:flex-1">
+            <div className="w-full rounded-xl border border-slate-200 bg-white p-1 shadow-sm" style={{ maxWidth: boardSize + 8 }}>
               <Chessboard
                 position={normalizedDisplayFen}
+                boardOrientation={boardOrientation}
                 showBoardNotation
                 {...CHESSBOARD_THEME}
                 onPieceDrop={(src: Square, dst: Square) => {
                   if (!canMove) return false
                   try {
+                    if (isPromotionMove(normalizedDisplayFen, src, dst)) {
+                      setPendingPromotion({ from: src, to: dst, fen: normalizedDisplayFen })
+                      return false
+                    }
                     const test = new Chess(normalizedDisplayFen || START_FEN)
-                    const move = test.move({ from: src, to: dst, promotion: 'q' })
+                    const move = test.move({ from: src, to: dst })
                     if (!move) return false
                     void onDrop(src, dst, normalizedDisplayFen)
                     return true
@@ -689,7 +1035,7 @@ function OnlineChessGame(): React.JSX.Element {
               <span className="text-xs text-slate-500">Loading…</span>
             ) : null}
           </div>
-          <div className="mb-3 text-xs text-slate-500">{memberCountLabel}</div>
+            <div className="mb-3 text-xs text-slate-500">{memberCountLabel}</div>
           {import.meta.env.DEV ? (
             <div className="mb-3 rounded-lg border border-slate-200 bg-slate-50 px-3 py-2 text-xs text-slate-600">
               <div className="flex items-center justify-between">
@@ -748,17 +1094,25 @@ function OnlineChessGame(): React.JSX.Element {
               </div>
             </div>
             <div className="mt-3">
-              <div className="mb-1 text-xs text-slate-600">Top hints</div>
-              {hintMoves.length ? (
-                <ol className="space-y-1 text-sm text-slate-700">
-                  {hintMoves.map((move, idx) => (
-                    <li key={`${move.uci}-${idx}`}>
-                      {idx + 1}. {move.san}
-                    </li>
-                  ))}
-                </ol>
+              <div className="mb-1 text-xs text-slate-600">Top hints <span className="text-xs text-slate-500">(used: {hintCount})</span></div>
+              {!showHintsVisible ? (
+                <div className="flex">
+                  <button
+                    type="button"
+                    className="rounded px-2 py-1 text-xs font-semibold bg-white border border-slate-200 hover:bg-slate-50"
+                    onClick={() => {
+                      const nextPly = moveRows.length + 1
+                      lastShownPlyRef.current = nextPly
+                      setShowHintsVisible(true)
+                      setHintCount((c) => c + 1)
+                      setHintedPlys((prev) => Array.from(new Set([...prev, nextPly])))
+                    }}
+                  >
+                    Show hints
+                  </button>
+                </div>
               ) : (
-                <div className="text-xs text-slate-500">No hints yet.</div>
+                <TopHintsList hintMoves={hintMoves} onHoverOrClick={(uci) => setHoveredHintUci(uci)} />
               )}
             </div>
           </div>
@@ -773,13 +1127,41 @@ function OnlineChessGame(): React.JSX.Element {
                   </tr>
                 </thead>
                 <tbody>
-                  {moveHistory.map((row) => (
-                    <tr key={row.moveNumber} className="border-t border-slate-100">
-                      <td className="py-2 pr-2 text-xs text-slate-500">{row.moveNumber}.</td>
-                      <td className="py-2 font-medium">{row.white || ''}</td>
-                      <td className="py-2 font-medium">{row.black || ''}</td>
-                    </tr>
-                  ))}
+                  {moveHistory.map((row) => {
+                    const whitePly = (row.moveNumber * 2) - 1
+                    const blackPly = row.moveNumber * 2
+                    const whiteHint = hintedPlys.includes(whitePly)
+                    const blackHint = hintedPlys.includes(blackPly)
+                    return (
+                      <tr key={row.moveNumber} className="border-t border-slate-100">
+                        <td className="py-2 pr-2 text-xs text-slate-500">{row.moveNumber}.</td>
+                        <td className={`py-2 font-medium ${whiteHint ? 'text-purple-600' : ''}`}>
+                          {row.white ? (
+                            <button
+                              type="button"
+                              className="rounded px-1 py-0.5 text-left hover:bg-slate-100"
+                              onClick={() => setViewPly(whitePly)}
+                            >
+                              <span>{row.white}</span>
+                              {whiteHint ? <span className="ml-1 text-xs">*</span> : null}
+                            </button>
+                          ) : ''}
+                        </td>
+                        <td className={`py-2 font-medium ${blackHint ? 'text-purple-600' : ''}`}>
+                          {row.black ? (
+                            <button
+                              type="button"
+                              className="rounded px-1 py-0.5 text-left hover:bg-slate-100"
+                              onClick={() => setViewPly(blackPly)}
+                            >
+                              <span>{row.black}</span>
+                              {blackHint ? <span className="ml-1 text-xs">*</span> : null}
+                            </button>
+                          ) : ''}
+                        </td>
+                      </tr>
+                    )
+                  })}
                 </tbody>
               </table>
             ) : (
@@ -804,6 +1186,14 @@ function LocalChessGame(): React.JSX.Element {
   const [toastSeverity, setToastSeverity] = useState<'info' | 'success' | 'warning' | 'error'>('info')
   const [engineThinking, setEngineThinking] = useState(false)
   const [pendingEngineFen, setPendingEngineFen] = useState<string | null>(null)
+  const [pendingPromotion, setPendingPromotion] = useState<PendingPromotion | null>(null)
+  const [showRestartConfirm, setShowRestartConfirm] = useState(false)
+  // hint visibility and hover state for local game
+  const [showHintsVisible, setShowHintsVisible] = useState(false)
+  const [hoveredHintUci, setHoveredHintUci] = useState<string | null>(null)
+  const [hintCount, setHintCount] = useState(0)
+  const [hintedPlys, setHintedPlys] = useState<number[]>([])
+  const lastShownPlyRef = useRef<number | null>(null)
 
   const moveRows = useMemo(() => localMoves, [localMoves])
   const {
@@ -817,7 +1207,7 @@ function LocalChessGame(): React.JSX.Element {
     showThreats,
     setShowThreats,
     customSquareStyles,
-  } = useChessDisplay(moveRows, START_FEN)
+  } = useChessDisplay(moveRows, START_FEN, hoveredHintUci)
   const { containerRef: boardContainerRef, boardSize } = useChessboardSize(CHESSBOARD_MAX_SIZE)
 
   const normalizedDisplayFen = displayFen || START_FEN
@@ -863,7 +1253,8 @@ function LocalChessGame(): React.JSX.Element {
 
   const memberCountLabel = 'Local game'
   const isViewingPast = viewPly < moveRows.length
-  const canMove = !engineThinking && !isViewingPast
+  const gameEnd = useMemo(() => detectGameEnd(normalizedDisplayFen), [normalizedDisplayFen])
+  const canMove = !engineThinking && !isViewingPast && !gameEnd.isOver && !pendingPromotion
 
   const { isReady, topMoves, evaluation, analyzePosition, getEngineMove, cancelPendingMove, difficulty, setDifficulty } = useStockfish()
   const opening = useMemo(() => findOpening(buildMovesUci(moveRows)), [moveRows])
@@ -884,7 +1275,16 @@ function LocalChessGame(): React.JSX.Element {
     void applyEngineMove(fen)
   }, [engineThinking, isReady, pendingEngineFen])
 
-  const hintMoves = useMemo(() => (
+  // Clear any visible hints after the move that the hints were shown for occurs
+  useEffect(() => {
+    if (lastShownPlyRef.current != null && moveRows.length > lastShownPlyRef.current) {
+      setShowHintsVisible(false)
+      setHoveredHintUci(null)
+      lastShownPlyRef.current = null
+    }
+  }, [moveRows.length])
+
+  const hintMoves: HintMove[] = useMemo(() => (
     topMoves.map((move) => ({
       ...move,
       san: formatUciToSan(normalizedDisplayFen, move.uci),
@@ -917,7 +1317,7 @@ function LocalChessGame(): React.JSX.Element {
       const move = chess.move({ from: parsed.from, to: parsed.to, promotion: parsed.promotion })
       if (!move) return
       const fenAfter = chess.fen()
-      const ply = localMoves.length + 1
+      const ply = plyFromFen(fenAfter)
       const row: MoveRow = {
         ply,
         uci: `${move.from}${move.to}${move.promotion ?? ''}`,
@@ -935,18 +1335,17 @@ function LocalChessGame(): React.JSX.Element {
     }
   }
 
-  async function onDrop(sourceSquare: Square, targetSquare: Square, currentFen: string) {
+  async function onDrop(sourceSquare: Square, targetSquare: Square, currentFen: string, promotion: PromotionPiece = 'q') {
     if (viewPly !== moveRows.length) {
       truncateMoves(viewPly)
     }
     if (engineThinking) return false
 
     const c = new Chess(currentFen || START_FEN)
-    const move = c.move({ from: sourceSquare, to: targetSquare, promotion: 'q' })
+    const move = c.move({ from: sourceSquare, to: targetSquare, promotion })
     if (!move) return false
     const fenAfter = c.fen()
-
-    const ply = moveRows.length + 1
+    const ply = plyFromFen(fenAfter)
     const row: MoveRow = {
       ply,
       uci: `${move.from}${move.to}${move.promotion ?? ''}`,
@@ -967,6 +1366,7 @@ function LocalChessGame(): React.JSX.Element {
   }
 
   function handleRestartGame() {
+    setShowRestartConfirm(false)
     truncateMoves(0)
     setToastSeverity('success')
     setToastMessage('Local game restarted')
@@ -983,7 +1383,7 @@ function LocalChessGame(): React.JSX.Element {
   }
 
   return (
-    <div className="flex h-full min-h-0 flex-col overflow-hidden rounded-2xl bg-slate-100/80 p-4 shadow-sm">
+    <div className="flex flex-col rounded-2xl bg-slate-100/80 p-4 shadow-sm lg:h-full lg:min-h-0 lg:overflow-hidden">
       <div className="mb-4 flex flex-none flex-wrap items-center justify-between gap-3">
         <div>
           <h2 className="text-lg font-semibold">Chess (Local)</h2>
@@ -991,7 +1391,7 @@ function LocalChessGame(): React.JSX.Element {
         </div>
         <div className="flex items-center gap-2">
           <button
-            onClick={handleRestartGame}
+            onClick={() => setShowRestartConfirm(true)}
             className="rounded-md border border-slate-300 bg-white px-3 py-1 text-xs font-semibold text-slate-700"
           >
             Restart
@@ -1004,8 +1404,33 @@ function LocalChessGame(): React.JSX.Element {
           </button>
         </div>
       </div>
-      <div className="flex min-h-0 flex-1 flex-col gap-6 lg:flex-row lg:items-stretch">
-        <div className="flex min-h-0 min-w-0 flex-1 flex-col gap-4 rounded-2xl border border-slate-200 bg-white/80 p-4 shadow-md">
+      <GameEndPanel
+        reason={gameEnd.reason}
+        winner={gameEnd.winner}
+        onRestart={() => setShowRestartConfirm(true)}
+        onQuit={handleQuitGame}
+      />
+      {showRestartConfirm ? (
+        <ConfirmDialog
+          title="Restart game?"
+          message="This will reset the board and clear all moves."
+          confirmLabel="Restart"
+          onConfirm={handleRestartGame}
+          onCancel={() => setShowRestartConfirm(false)}
+        />
+      ) : null}
+      {pendingPromotion ? (
+        <PromotionChooser
+          onSelect={(piece) => {
+            const { from, to, fen } = pendingPromotion
+            setPendingPromotion(null)
+            void onDrop(from, to, fen, piece)
+          }}
+          onCancel={() => setPendingPromotion(null)}
+        />
+      ) : null}
+      <div className="flex flex-col gap-6 lg:min-h-0 lg:flex-1 lg:flex-row lg:items-stretch">
+        <div className="flex flex-col gap-4 rounded-2xl border border-slate-200 bg-white/80 p-4 shadow-md lg:min-h-0 lg:min-w-0 lg:flex-1">
           <div className="flex items-center justify-between">
             {renderPlayerLabel(topPlayer || null, topIsWhite ? currentTurn === 'w' : currentTurn === 'b', 'Stockfish')}
           </div>
@@ -1045,17 +1470,22 @@ function LocalChessGame(): React.JSX.Element {
               <span className="text-xs text-slate-500">Live</span>
             )}
           </div>
-          <div ref={boardContainerRef} className="flex min-h-0 flex-1 items-center justify-center">
-            <div className="rounded-xl border border-slate-200 bg-white p-2 shadow-sm" style={{ width: boardSize + 8, maxWidth: '100%' }}>
+          <div ref={boardContainerRef} className="flex w-full items-center justify-center overflow-hidden lg:min-h-0 lg:flex-1">
+            <div className="w-full rounded-xl border border-slate-200 bg-white p-1 shadow-sm" style={{ maxWidth: boardSize + 8 }}>
               <Chessboard
                 position={normalizedDisplayFen}
+                boardOrientation="white"
                 showBoardNotation
                 {...CHESSBOARD_THEME}
                 onPieceDrop={(src: Square, dst: Square) => {
                   if (!canMove) return false
                   try {
+                    if (isPromotionMove(normalizedDisplayFen, src, dst)) {
+                      setPendingPromotion({ from: src, to: dst, fen: normalizedDisplayFen })
+                      return false
+                    }
                     const test = new Chess(normalizedDisplayFen || START_FEN)
-                    const move = test.move({ from: src, to: dst, promotion: 'q' })
+                    const move = test.move({ from: src, to: dst })
                     if (!move) return false
                     void onDrop(src, dst, normalizedDisplayFen)
                     return true
@@ -1111,17 +1541,25 @@ function LocalChessGame(): React.JSX.Element {
               </div>
             </div>
             <div className="mt-3">
-              <div className="mb-1 text-xs text-slate-600">Top hints</div>
-              {hintMoves.length ? (
-                <ol className="space-y-1 text-sm text-slate-700">
-                  {hintMoves.map((move, idx) => (
-                    <li key={`${move.uci}-${idx}`}>
-                      {idx + 1}. {move.san}
-                    </li>
-                  ))}
-                </ol>
+              <div className="mb-1 text-xs text-slate-600">Top hints <span className="text-xs text-slate-500">(used: {hintCount})</span></div>
+              {!showHintsVisible ? (
+                <div className="flex">
+                  <button
+                    type="button"
+                    className="rounded px-2 py-1 text-xs font-semibold bg-white border border-slate-200 hover:bg-slate-50"
+                    onClick={() => {
+                      const nextPly = moveRows.length + 1
+                      lastShownPlyRef.current = nextPly
+                      setShowHintsVisible(true)
+                      setHintCount((c) => c + 1)
+                      setHintedPlys((prev) => Array.from(new Set([...prev, nextPly])))
+                    }}
+                  >
+                    Show hints
+                  </button>
+                </div>
               ) : (
-                <div className="text-xs text-slate-500">No hints yet.</div>
+                <TopHintsList hintMoves={hintMoves} onHoverOrClick={(uci) => setHoveredHintUci(uci)} />
               )}
             </div>
           </div>
@@ -1136,13 +1574,41 @@ function LocalChessGame(): React.JSX.Element {
                   </tr>
                 </thead>
                 <tbody>
-                  {moveHistory.map((row) => (
-                    <tr key={row.moveNumber} className="border-t border-slate-100">
-                      <td className="py-2 pr-2 text-xs text-slate-500">{row.moveNumber}.</td>
-                      <td className="py-2 font-medium">{row.white || ''}</td>
-                      <td className="py-2 font-medium">{row.black || ''}</td>
-                    </tr>
-                  ))}
+                  {moveHistory.map((row) => {
+                    const whitePly = (row.moveNumber * 2) - 1
+                    const blackPly = row.moveNumber * 2
+                    const whiteHint = hintedPlys.includes(whitePly)
+                    const blackHint = hintedPlys.includes(blackPly)
+                    return (
+                      <tr key={row.moveNumber} className="border-t border-slate-100">
+                        <td className="py-2 pr-2 text-xs text-slate-500">{row.moveNumber}.</td>
+                        <td className={`py-2 font-medium ${whiteHint ? 'text-purple-600' : ''}`}>
+                          {row.white ? (
+                            <button
+                              type="button"
+                              className="rounded px-1 py-0.5 text-left hover:bg-slate-100"
+                              onClick={() => setViewPly(whitePly)}
+                            >
+                              <span>{row.white}</span>
+                              {whiteHint ? <span className="ml-1 text-xs">*</span> : null}
+                            </button>
+                          ) : ''}
+                        </td>
+                        <td className={`py-2 font-medium ${blackHint ? 'text-purple-600' : ''}`}>
+                          {row.black ? (
+                            <button
+                              type="button"
+                              className="rounded px-1 py-0.5 text-left hover:bg-slate-100"
+                              onClick={() => setViewPly(blackPly)}
+                            >
+                              <span>{row.black}</span>
+                              {blackHint ? <span className="ml-1 text-xs">*</span> : null}
+                            </button>
+                          ) : ''}
+                        </td>
+                      </tr>
+                    )
+                  })}
                 </tbody>
               </table>
             ) : (

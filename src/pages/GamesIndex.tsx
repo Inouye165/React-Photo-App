@@ -1,4 +1,4 @@
-import React, { useEffect, useState } from 'react'
+import React, { useEffect, useRef, useState } from 'react'
 import { useNavigate } from 'react-router-dom'
 import { listMyGames, createChessGame } from '../api/games'
 import { searchUsers } from '../api/chat'
@@ -7,26 +7,64 @@ export default function GamesIndex(): React.JSX.Element {
   const [games, setGames] = useState<any[]>([])
   const [query, setQuery] = useState('')
   const [results, setResults] = useState<any[]>([])
+  const [loadError, setLoadError] = useState<string | null>(null)
   const navigate = useNavigate()
+  const searchDebounceRef = useRef<ReturnType<typeof setTimeout> | null>(null)
+  const searchRequestRef = useRef(0)
+
+  const loadGames = async () => {
+    try {
+      const g = await listMyGames()
+      setGames(g)
+      setLoadError(null)
+    } catch {
+      setLoadError('Failed to load games. Please retry.')
+    }
+  }
 
   useEffect(() => {
-    async function load() {
-      try {
-        const g = await listMyGames()
-        setGames(g)
-      } catch (err) {
-        // ignore for MVP
+    void loadGames()
+  }, [])
+
+  useEffect(() => (
+    () => {
+      if (searchDebounceRef.current) {
+        clearTimeout(searchDebounceRef.current)
+        searchDebounceRef.current = null
       }
     }
-    load()
-  }, [])
+  ), [])
 
   async function handleSearch(e: React.ChangeEvent<HTMLInputElement>) {
     const v = e.target.value
     setQuery(v)
-    if (!v.trim()) return setResults([])
-    const res = await searchUsers(v)
-    setResults(res)
+    if (searchDebounceRef.current) {
+      clearTimeout(searchDebounceRef.current)
+      searchDebounceRef.current = null
+    }
+    if (!v.trim()) {
+      searchRequestRef.current += 1
+      setResults([])
+      return
+    }
+
+    const requestId = searchRequestRef.current + 1
+    searchRequestRef.current = requestId
+
+    searchDebounceRef.current = setTimeout(() => {
+      void (async () => {
+        try {
+          const res = await searchUsers(v)
+          if (searchRequestRef.current === requestId) {
+            setResults(res)
+          }
+        } catch {
+          if (searchRequestRef.current === requestId) {
+            setResults([])
+          }
+        }
+      })()
+    }, 250)
   }
 
   async function handleCreate(opponentId?: string) {
@@ -37,7 +75,20 @@ export default function GamesIndex(): React.JSX.Element {
   return (
     <div>
       <h2 className="text-lg font-semibold mb-2">Chess</h2>
-      <div className="mb-4">
+      {loadError ? (
+        <div className="mb-3 flex items-center justify-between rounded border border-red-200 bg-red-50 px-3 py-2 text-sm text-red-700">
+          <span>{loadError}</span>
+          <button
+            type="button"
+            onClick={() => { void loadGames() }}
+            className="rounded border border-red-200 bg-white px-2 py-1 text-xs font-semibold text-red-700"
+          >
+            Retry
+          </button>
+        </div>
+      ) : null}
+      <div className="mb-4 flex flex-wrap gap-2">
+        <button onClick={() => navigate('/games/local')} className="px-3 py-1 bg-slate-600 text-white rounded">Play vs Computer</button>
         <button onClick={() => handleCreate()} className="px-3 py-1 bg-slate-700 text-white rounded">New Game (Random Opponent)</button>
       </div>
 

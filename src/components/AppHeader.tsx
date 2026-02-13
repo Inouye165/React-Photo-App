@@ -11,6 +11,7 @@ import { useUnreadMessages } from '../hooks/useUnreadMessages';
 import NewMessageNotification from './NewMessageNotification';
 import UserMenu from './UserMenu';
 import GamesMenu from './GamesMenu';
+import { onGamesChanged } from '../events/gamesEvents';
 
 /**
  * AppHeader - Mobile-first responsive navigation header
@@ -153,6 +154,27 @@ export default function AppHeader({
   useEffect(() => {
     let isActive = true;
 
+    const loadGames = (): void => {
+      setGamesLoading(true);
+      listMyGamesWithMembers()
+        .then((data) => {
+          if (isActive) {
+            const list = Array.isArray(data) ? data : [];
+            setGames(list.filter((game) => game.status?.toLowerCase() !== 'aborted'));
+          }
+        })
+        .catch(() => {
+          if (isActive) {
+            setGames([]);
+          }
+        })
+        .finally(() => {
+          if (isActive) {
+            setGamesLoading(false);
+          }
+        });
+    };
+
     if (!user) {
       setGames([]);
       setGamesLoading(false);
@@ -161,26 +183,15 @@ export default function AppHeader({
       };
     }
 
-    setGamesLoading(true);
-    listMyGamesWithMembers()
-      .then((data) => {
-        if (isActive) {
-          setGames(Array.isArray(data) ? data : []);
-        }
-      })
-      .catch(() => {
-        if (isActive) {
-          setGames([]);
-        }
-      })
-      .finally(() => {
-        if (isActive) {
-          setGamesLoading(false);
-        }
-      });
+    loadGames();
+    const unsubscribe = onGamesChanged(() => {
+      if (!isActive) return;
+      loadGames();
+    });
 
     return () => {
       isActive = false;
+      unsubscribe();
     };
   }, [user?.id]);
 
