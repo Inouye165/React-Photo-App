@@ -8,10 +8,47 @@ export function useGameRealtime(gameId: string | null, refreshToken = 0) {
   const [moves, setMoves] = useState<any[]>([])
   const [loading, setLoading] = useState(false)
   const channelRef = useRef<RealtimeChannel | null>(null)
+  const reconnectTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null)
+  const pollTimerRef = useRef<ReturnType<typeof setInterval> | null>(null)
+  const reconnectAttemptRef = useRef(0)
+  const connectingRef = useRef(false)
+  const channelSerialRef = useRef(0)
 
   useEffect(() => {
     let cancelled = false
-    const fetchMoves = async () => {
+    const logDebug = (...args: unknown[]) => {
+      if (import.meta.env.DEV) {
+        console.debug('[useGameRealtime]', ...args)
+      }
+    }
+
+    const clearReconnectTimer = () => {
+      if (!reconnectTimerRef.current) return
+      clearTimeout(reconnectTimerRef.current)
+      reconnectTimerRef.current = null
+    }
+
+    const clearPollTimer = () => {
+      if (!pollTimerRef.current) return
+      clearInterval(pollTimerRef.current)
+      pollTimerRef.current = null
+    }
+
+    const cleanupChannel = () => {
+      const ch = channelRef.current
+      channelRef.current = null
+      channelSerialRef.current += 1
+      if (ch) {
+        try {
+          void ch.unsubscribe()
+          supabase.removeChannel(ch)
+        } catch {
+          // ignore
+        }
+      }
+    }
+
+    const fetchMoves = async (reason = 'manual') => {
       if (!gameId) return
       const { data, error } = await supabase
         .from('chess_moves')
@@ -21,30 +58,46 @@ export function useGameRealtime(gameId: string | null, refreshToken = 0) {
 
       if (cancelled) return
       if (error) {
-        setMoves([])
+        logDebug('fetch error', { gameId, reason, message: error.message })
+        return
       } else {
+        logDebug('fetch success', { gameId, reason, count: (data ?? []).length })
         setMoves((data ?? []) as any[])
       }
     }
 
-    async function run() {
-      if (!gameId) {
-        setMoves([])
-        setLoading(false)
-        return
-      }
-      setLoading(true)
-      await fetchMoves()
-      if (!cancelled) setLoading(false)
+    const scheduleReconnect = () => {
+      if (cancelled || !gameId || reconnectTimerRef.current || connectingRef.current) return
+      const attempt = reconnectAttemptRef.current
+      const delayMs = Math.min(1000 * (2 ** attempt), 8000)
+      reconnectAttemptRef.current = Math.min(attempt + 1, 4)
+      logDebug('schedule reconnect', { gameId, attempt: attempt + 1, delayMs })
+      reconnectTimerRef.current = setTimeout(() => {
+        reconnectTimerRef.current = null
+        void connectChannel()
+      }, delayMs)
+    }
+
+    const connectChannel = async () => {
+      if (cancelled || !gameId || connectingRef.current) return
+      connectingRef.current = true
+      cleanupChannel()
+      const channelSerial = channelSerialRef.current + 1
+      channelSerialRef.current = channelSerial
 
       const channelName = `game:${gameId}:${Math.random().toString(36).slice(2,8)}`
       const channel = supabase.channel(channelName)
       channelRef.current = channel
+
+      logDebug('channel connect', { channelName, gameId })
+
       channel.on(
         'postgres_changes',
         { event: 'INSERT', schema: 'public', table: 'chess_moves', filter: `game_id=eq.${gameId}` },
         (payload: MovePayload) => {
+          if (channelSerialRef.current !== channelSerial) return
           if (!payload.new) return
+          logDebug('event INSERT', { gameId, payload: payload.new })
           setMoves((prev) => {
             const inserted = payload.new as any
             const insertedId = String(inserted.id ?? '')
@@ -84,7 +137,9 @@ export function useGameRealtime(gameId: string | null, refreshToken = 0) {
         'postgres_changes',
         { event: 'DELETE', schema: 'public', table: 'chess_moves', filter: `game_id=eq.${gameId}` },
         (payload: MovePayload) => {
+          if (channelSerialRef.current !== channelSerial) return
           if (!payload.old) return
+          logDebug('event DELETE', { gameId, payload: payload.old })
           const deletedOld = payload.old as Record<string, unknown>
           const deletedId = String(deletedOld.id ?? '')
           const deletedPly = Number(deletedOld.ply ?? -1)
@@ -99,7 +154,9 @@ export function useGameRealtime(gameId: string | null, refreshToken = 0) {
         'postgres_changes',
         { event: 'UPDATE', schema: 'public', table: 'chess_moves', filter: `game_id=eq.${gameId}` },
         (payload: MovePayload) => {
+          if (channelSerialRef.current !== channelSerial) return
           if (!payload.new) return
+          logDebug('event UPDATE chess_moves', { gameId, payload: payload.new })
           setMoves((prev) => {
             const updated = payload.new as any
             const updatedId = String(updated.id ?? '')
@@ -131,25 +188,57 @@ export function useGameRealtime(gameId: string | null, refreshToken = 0) {
         'postgres_changes',
         { event: 'UPDATE', schema: 'public', table: 'games', filter: `id=eq.${gameId}` },
         () => {
-          void fetchMoves()
+          if (channelSerialRef.current !== channelSerial) return
+          logDebug('event UPDATE games', { gameId })
+          void fetchMoves('games-update')
         }
       )
 
-      channel.subscribe((_, err) => {
-        if (err && !cancelled) {
-          // ignore
+      channel.subscribe((status, err) => {
+        if (channelSerialRef.current !== channelSerial) return
+        logDebug('channel status', { gameId, status, err: err?.message })
+        if (status === 'SUBSCRIBED') {
+          reconnectAttemptRef.current = 0
+          connectingRef.current = false
+          void fetchMoves('subscribed')
+          return
+        }
+        if ((status === 'CHANNEL_ERROR' || status === 'TIMED_OUT' || status === 'CLOSED') && !cancelled) {
+          connectingRef.current = false
+          scheduleReconnect()
         }
       })
+
+      connectingRef.current = false
     }
+
+    async function run() {
+      if (!gameId) {
+        setMoves([])
+        setLoading(false)
+        return
+      }
+      clearReconnectTimer()
+      clearPollTimer()
+      reconnectAttemptRef.current = 0
+      connectingRef.current = false
+      setLoading(true)
+      await fetchMoves('initial')
+      if (!cancelled) setLoading(false)
+      await connectChannel()
+
+      pollTimerRef.current = setInterval(() => {
+        void fetchMoves('interval')
+      }, 3000)
+    }
+
     run()
 
     return () => {
       cancelled = true
-      const ch = channelRef.current
-      channelRef.current = null
-      if (ch) {
-        try { void ch.unsubscribe(); supabase.removeChannel(ch) } catch { }
-      }
+      clearReconnectTimer()
+      clearPollTimer()
+      cleanupChannel()
     }
   }, [gameId, refreshToken])
 

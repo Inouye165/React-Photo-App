@@ -6,11 +6,15 @@ const {
   mockSelectResult,
   registerHandler,
   invokeHandler,
+  emitSubscribeStatus,
+  subscribeCallbacks,
+  resetRealtimeMocks,
   subscribeMock,
   unsubscribeMock,
   removeChannelMock,
 } = vi.hoisted(() => {
   const handlers = new Map<string, (payload: any) => void>()
+  const subscribeCallbacks: Array<(status: string, err?: { message?: string }) => void> = []
 
   const toKey = (event: string, table: string) => `${event}:${table}`
 
@@ -26,10 +30,27 @@ const {
     handler(payload)
   }
 
+  const emitStatus = (status: string, err?: { message?: string }, index?: number) => {
+    const targetIndex = typeof index === 'number' ? index : subscribeCallbacks.length - 1
+    const cb = subscribeCallbacks[targetIndex]
+    if (!cb) {
+      throw new Error(`Missing subscribe callback at index ${targetIndex}`)
+    }
+    cb(status, err)
+  }
+
+  const reset = () => {
+    handlers.clear()
+    subscribeCallbacks.length = 0
+  }
+
   return {
     mockSelectResult: vi.fn(),
     registerHandler: register,
     invokeHandler: invoke,
+    emitSubscribeStatus: emitStatus,
+    subscribeCallbacks,
+    resetRealtimeMocks: reset,
     subscribeMock: vi.fn(),
     unsubscribeMock: vi.fn(),
     removeChannelMock: vi.fn(),
@@ -37,13 +58,20 @@ const {
 })
 
 vi.mock('../supabaseClient', () => {
-  const channel = {
-    on: vi.fn((_event: string, filter: { event: string; table: string }, handler: (payload: any) => void) => {
-      registerHandler(filter, handler)
-      return channel
-    }),
-    subscribe: subscribeMock,
-    unsubscribe: unsubscribeMock,
+  const createChannel = () => {
+    const channel = {
+      on: vi.fn((_event: string, filter: { event: string; table: string }, handler: (payload: any) => void) => {
+        registerHandler(filter, handler)
+        return channel
+      }),
+      subscribe: vi.fn((callback: (status: string, err?: { message?: string }) => void) => {
+        subscribeCallbacks.push(callback)
+        subscribeMock(callback)
+      }),
+      unsubscribe: unsubscribeMock,
+    }
+
+    return channel
   }
 
   const from = vi.fn(() => ({
@@ -57,7 +85,7 @@ vi.mock('../supabaseClient', () => {
   return {
     supabase: {
       from,
-      channel: vi.fn(() => channel),
+      channel: vi.fn(() => createChannel()),
       removeChannel: removeChannelMock,
     },
   }
@@ -66,6 +94,7 @@ vi.mock('../supabaseClient', () => {
 describe('useGameRealtime', () => {
   beforeEach(() => {
     vi.clearAllMocks()
+    resetRealtimeMocks()
     mockSelectResult.mockResolvedValue({
       data: [
         { id: 'm1', ply: 1, uci: 'e2e4' },
@@ -130,5 +159,46 @@ describe('useGameRealtime', () => {
 
     expect(unsubscribeMock).toHaveBeenCalledTimes(1)
     expect(removeChannelMock).toHaveBeenCalledTimes(1)
+  })
+
+  it('reconnects after channel error status', async () => {
+    const timeoutSpy = vi.spyOn(globalThis, 'setTimeout')
+    renderHook(() => useGameRealtime('game-reconnect'))
+
+    await waitFor(() => {
+      expect(subscribeMock).toHaveBeenCalledTimes(1)
+    })
+
+    await act(async () => {
+      emitSubscribeStatus('CHANNEL_ERROR', { message: 'socket down' })
+    })
+
+    const reconnectCall = timeoutSpy.mock.calls.find((call) => Number(call[1]) === 1000)
+    expect(reconnectCall).toBeDefined()
+
+    timeoutSpy.mockRestore()
+  })
+
+  it('keeps existing moves on reconciliation fetch error', async () => {
+    const { result } = renderHook(() => useGameRealtime('game-keep-state'))
+
+    await waitFor(() => {
+      expect(result.current.loading).toBe(false)
+      expect(result.current.moves).toHaveLength(2)
+    })
+
+    mockSelectResult.mockResolvedValueOnce({
+      data: null,
+      error: { message: 'temporary db issue' },
+    })
+
+    await act(async () => {
+      invokeHandler('UPDATE', 'games', { new: { id: 'game-keep-state' } })
+    })
+
+    await waitFor(() => {
+      expect(result.current.moves).toHaveLength(2)
+      expect(result.current.moves.map((m) => m.id)).toEqual(['m1', 'm2'])
+    })
   })
 })
