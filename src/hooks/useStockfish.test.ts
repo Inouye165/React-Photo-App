@@ -93,4 +93,69 @@ describe('useStockfish', () => {
 
     expect(workerConstructorMock).toHaveBeenCalledWith('/stockfish/stockfish-17.1-lite-single-03e3232.js')
   })
+
+  it('queues engine move until an ongoing analysis search stops', async () => {
+    const { result } = renderHook(() => useStockfish())
+    const worker = workerInstances[0]
+
+    act(() => {
+      worker.emit('uciok')
+      worker.emit('readyok')
+    })
+
+    const fenA = '8/8/8/8/8/8/8/8 w - - 0 1'
+    const fenB = '8/8/8/8/8/8/8/8 b - - 0 1'
+
+    act(() => {
+      result.current.analyzePosition(fenA)
+    })
+
+    let resolvedMove: string | null = null
+    const pendingMove = result.current.getEngineMove(fenB).then((move) => {
+      resolvedMove = move
+    })
+
+    expect(worker.postedCommands).toContain('stop')
+    expect(worker.postedCommands).not.toContain(`position fen ${fenB}`)
+
+    act(() => {
+      worker.emit('bestmove e2e4')
+    })
+
+    expect(worker.postedCommands).toContain(`position fen ${fenB}`)
+
+    act(() => {
+      worker.emit('bestmove e7e5')
+    })
+
+    await pendingMove
+    expect(resolvedMove).toBe('e7e5')
+  })
+
+  it('queues the latest analysis fen while search is in progress', () => {
+    const { result } = renderHook(() => useStockfish())
+    const worker = workerInstances[0]
+
+    act(() => {
+      worker.emit('uciok')
+      worker.emit('readyok')
+    })
+
+    const fenA = '8/8/8/8/8/8/8/8 w - - 0 1'
+    const fenB = '8/8/8/8/8/8/8/8 b - - 0 1'
+
+    act(() => {
+      result.current.analyzePosition(fenA)
+      result.current.analyzePosition(fenB)
+    })
+
+    expect(worker.postedCommands).toContain('stop')
+    expect(worker.postedCommands.filter((cmd) => cmd === `position fen ${fenB}`)).toHaveLength(0)
+
+    act(() => {
+      worker.emit('bestmove e2e4')
+    })
+
+    expect(worker.postedCommands).toContain(`position fen ${fenB}`)
+  })
 })

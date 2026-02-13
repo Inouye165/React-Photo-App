@@ -19,6 +19,13 @@ type PendingMove = {
   reject: (error: Error) => void
 }
 
+type QueuedEngineMove = {
+  fen: string
+  movetime: number
+  resolve: (move: string) => void
+  reject: (error: Error) => void
+}
+
 type AnalysisEntry = {
   multipv: number
   uci: string
@@ -58,6 +65,11 @@ function normalizeScore(score: number, turn: 'w' | 'b') {
   return clamp(signed / 100, -9, 9)
 }
 
+function isLikelyValidFen(fen: string) {
+  const fenParts = fen.split(' ')
+  return fenParts.length >= 4 && /^[rnbqkpRNBQKP1-8/]+$/.test(fenParts[0])
+}
+
 export function useStockfish() {
   const workerRef = useRef<Worker | null>(null)
   const pendingMoveRef = useRef<PendingMove | null>(null)
@@ -67,6 +79,9 @@ export function useStockfish() {
   const readyRef = useRef(false)
   const searchingRef = useRef(false)
   const skillRef = useRef(difficultySettings.Medium.skill)
+  const movetimeRef = useRef(difficultySettings.Medium.movetime)
+  const queuedAnalysisFenRef = useRef<string | null>(null)
+  const queuedEngineMoveRef = useRef<QueuedEngineMove | null>(null)
   const restartTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null)
   const restartAttemptsRef = useRef(0)
 
@@ -91,11 +106,15 @@ export function useStockfish() {
 
   const stopSearchIfNeeded = useCallback(() => {
     if (!searchingRef.current) return
-    searchingRef.current = false
     sendCommand('stop')
   }, [sendCommand])
 
   const cancelPendingMove = useCallback(() => {
+    queuedAnalysisFenRef.current = null
+    if (queuedEngineMoveRef.current) {
+      queuedEngineMoveRef.current.reject(new Error('Engine move cancelled'))
+      queuedEngineMoveRef.current = null
+    }
     stopSearchIfNeeded()
     clearPendingMoveTimeout()
     if (pendingMoveRef.current) {
@@ -103,6 +122,34 @@ export function useStockfish() {
       pendingMoveRef.current = null
     }
   }, [clearPendingMoveTimeout, stopSearchIfNeeded])
+
+  const startAnalysisSearch = useCallback((fen: string) => {
+    lastFenRef.current = fen
+    analysisRef.current.clear()
+    setTopMoves([])
+    setEvaluation({ score: null, mate: null })
+    sendCommand(`position fen ${fen}`)
+    sendCommand(`go movetime ${movetimeRef.current}`)
+    searchingRef.current = true
+  }, [sendCommand])
+
+  const startEngineMoveSearch = useCallback((request: QueuedEngineMove) => {
+    pendingMoveRef.current = { resolve: request.resolve, reject: request.reject }
+    lastFenRef.current = request.fen
+    clearPendingMoveTimeout()
+    sendCommand(`position fen ${request.fen}`)
+    sendCommand(`go movetime ${request.movetime}`)
+    searchingRef.current = true
+    const timeoutMs = Math.max(request.movetime * 6, 3000)
+    pendingMoveTimeoutRef.current = setTimeout(() => {
+      if (!pendingMoveRef.current) return
+      searchingRef.current = false
+      sendCommand('stop')
+      pendingMoveRef.current.reject(new Error('Engine move timeout'))
+      pendingMoveRef.current = null
+      pendingMoveTimeoutRef.current = null
+    }, timeoutMs)
+  }, [clearPendingMoveTimeout, sendCommand])
 
   const handleInfoLine = useCallback((line: string) => {
     const multipvMatch = line.match(/\bmultipv (\d+)/)
@@ -183,16 +230,34 @@ export function useStockfish() {
       const bestMove = match?.[1]
       searchingRef.current = false
       clearPendingMoveTimeout()
-      if (bestMove && pendingMoveRef.current) {
-        pendingMoveRef.current.resolve(bestMove)
+      if (pendingMoveRef.current) {
+        if (bestMove) {
+          pendingMoveRef.current.resolve(bestMove)
+        } else {
+          pendingMoveRef.current.reject(new Error('Engine did not return bestmove'))
+        }
         pendingMoveRef.current = null
       }
+
+      if (queuedEngineMoveRef.current) {
+        const request = queuedEngineMoveRef.current
+        queuedEngineMoveRef.current = null
+        startEngineMoveSearch(request)
+        return
+      }
+
+      if (queuedAnalysisFenRef.current) {
+        const fen = queuedAnalysisFenRef.current
+        queuedAnalysisFenRef.current = null
+        startAnalysisSearch(fen)
+      }
     }
-  }, [clearPendingMoveTimeout, handleInfoLine, sendCommand])
+  }, [clearPendingMoveTimeout, handleInfoLine, sendCommand, startAnalysisSearch, startEngineMoveSearch])
 
   useEffect(() => {
     skillRef.current = settings.skill
-  }, [settings.skill])
+    movetimeRef.current = settings.movetime
+  }, [settings.movetime, settings.skill])
 
   useEffect(() => {
     // Use the Stockfish JS file directly as the Worker — it auto-initializes
@@ -207,6 +272,11 @@ export function useStockfish() {
         readyRef.current = false
         setIsReady(false)
         searchingRef.current = false
+        queuedAnalysisFenRef.current = null
+        if (queuedEngineMoveRef.current) {
+          queuedEngineMoveRef.current.reject(new Error('Stockfish worker crashed'))
+          queuedEngineMoveRef.current = null
+        }
         clearPendingMoveTimeout()
         pendingMoveRef.current?.reject(new Error('Stockfish worker crashed'))
         pendingMoveRef.current = null
@@ -233,6 +303,11 @@ export function useStockfish() {
         restartTimerRef.current = null
       }
       clearPendingMoveTimeout()
+      queuedAnalysisFenRef.current = null
+      if (queuedEngineMoveRef.current) {
+        queuedEngineMoveRef.current.reject(new Error('Stockfish worker terminated'))
+        queuedEngineMoveRef.current = null
+      }
       pendingMoveRef.current?.reject(new Error('Stockfish worker terminated'))
       pendingMoveRef.current = null
       if (workerRef.current) {
@@ -250,40 +325,44 @@ export function useStockfish() {
 
   const analyzePosition = useCallback((fen: string) => {
     if (!readyRef.current) return
-    lastFenRef.current = fen
-    analysisRef.current.clear()
-    setTopMoves([])
-    setEvaluation({ score: null, mate: null })
-    stopSearchIfNeeded()
-    sendCommand(`position fen ${fen}`)
-    sendCommand(`go movetime ${settings.movetime}`)
-    searchingRef.current = true
-  }, [sendCommand, settings.movetime, stopSearchIfNeeded])
+    if (!isLikelyValidFen(fen)) return
+    if (pendingMoveRef.current || queuedEngineMoveRef.current) return
+
+    if (searchingRef.current) {
+      queuedAnalysisFenRef.current = fen
+      sendCommand('stop')
+      return
+    }
+
+    startAnalysisSearch(fen)
+  }, [sendCommand, startAnalysisSearch])
 
   const getEngineMove = useCallback((fen: string) => {
     if (!readyRef.current) return Promise.reject(new Error('Stockfish not ready'))
-    if (pendingMoveRef.current) return Promise.reject(new Error('Engine already thinking'))
-
-    lastFenRef.current = fen
+    if (pendingMoveRef.current || queuedEngineMoveRef.current) return Promise.reject(new Error('Engine already thinking'))
+    if (!isLikelyValidFen(fen)) {
+      return Promise.reject(new Error('Invalid FEN'))
+    }
 
     return new Promise<string>((resolve, reject) => {
-      pendingMoveRef.current = { resolve, reject }
-      stopSearchIfNeeded()
-      sendCommand(`position fen ${fen}`)
-      sendCommand(`go movetime ${settings.movetime}`)
-      searchingRef.current = true
-      clearPendingMoveTimeout()
-      const timeoutMs = Math.max(settings.movetime * 6, 3000)
-      pendingMoveTimeoutRef.current = setTimeout(() => {
-        if (!pendingMoveRef.current) return
-        searchingRef.current = false
+      const request: QueuedEngineMove = {
+        fen,
+        movetime: settings.movetime,
+        resolve,
+        reject,
+      }
+
+      queuedAnalysisFenRef.current = null
+
+      if (searchingRef.current) {
+        queuedEngineMoveRef.current = request
         sendCommand('stop')
-        pendingMoveRef.current.reject(new Error('Engine move timeout'))
-        pendingMoveRef.current = null
-        pendingMoveTimeoutRef.current = null
-      }, timeoutMs)
+        return
+      }
+
+      startEngineMoveSearch(request)
     })
-  }, [clearPendingMoveTimeout, sendCommand, settings.movetime, stopSearchIfNeeded])
+  }, [sendCommand, settings.movetime, startEngineMoveSearch])
 
   const setDifficulty = useCallback((level: Difficulty) => {
     setDifficultyState(level)
