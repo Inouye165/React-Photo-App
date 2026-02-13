@@ -647,6 +647,7 @@ function OnlineChessGame(): React.JSX.Element {
   const [restartLoading, setRestartLoading] = useState(false)
   const [showRestartConfirm, setShowRestartConfirm] = useState(false)
   const [pendingPromotion, setPendingPromotion] = useState<PendingPromotion | null>(null)
+  const [optimisticFen, setOptimisticFen] = useState<string | null>(null)
   const [debugCopied, setDebugCopied] = useState(false)
   // whether hints are currently visible (after clicking the single Show Hints button)
   const [showHintsVisible, setShowHintsVisible] = useState(false)
@@ -657,6 +658,11 @@ function OnlineChessGame(): React.JSX.Element {
   const lastShownPlyRef = useRef<number | null>(null)
 
   const moveRows = useMemo(() => (moves ?? []) as MoveRow[], [moves])
+
+  // Clear optimistic FEN once the realtime event delivers the new move
+  useEffect(() => {
+    setOptimisticFen(null)
+  }, [moveRows.length])
 
   const loadGameData = useCallback(async () => {
     if (!gameId) return
@@ -720,6 +726,8 @@ function OnlineChessGame(): React.JSX.Element {
     const move = c.move({ from: sourceSquare, to: targetSquare, promotion })
     if (!move) return false
     const fenAfter = c.fen()
+    // Show the new position immediately (optimistic) so the piece doesn't snap back
+    setOptimisticFen(fenAfter)
     try {
       const ply = moveRows.length + 1
       await makeMove(gameId, ply, `${move.from}${move.to}${move.promotion ?? ''}`, fenAfter)
@@ -727,6 +735,8 @@ function OnlineChessGame(): React.JSX.Element {
       setSelectedSquare(null)
       return true
     } catch (err) {
+      // Revert optimistic FEN on failure
+      setOptimisticFen(null)
       const message = err instanceof Error ? err.message : 'Move failed'
       setToastSeverity('error')
       setToastMessage(message)
@@ -773,7 +783,7 @@ function OnlineChessGame(): React.JSX.Element {
     }
   }
 
-  const normalizedDisplayFen = displayFen || START_FEN
+  const normalizedDisplayFen = optimisticFen || displayFen || START_FEN
   const currentTurn = (normalizedDisplayFen.split(' ')[1] as 'w' | 'b' | undefined) || (game?.current_turn as 'w' | 'b' | null) || null
   const currentUserId = user?.id ?? null
   const currentMember = members.find((member) => member.user_id === currentUserId) ?? null

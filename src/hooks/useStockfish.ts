@@ -250,6 +250,9 @@ export function useStockfish() {
 
   const analyzePosition = useCallback((fen: string) => {
     if (!readyRef.current) return
+    // Guard: skip analysis for obviously invalid FEN strings
+    const fenParts = fen.split(' ')
+    if (fenParts.length < 4 || !/^[rnbqkpRNBQKP1-8/]+$/.test(fenParts[0])) return
     lastFenRef.current = fen
     analysisRef.current.clear()
     setTopMoves([])
@@ -263,6 +266,11 @@ export function useStockfish() {
   const getEngineMove = useCallback((fen: string) => {
     if (!readyRef.current) return Promise.reject(new Error('Stockfish not ready'))
     if (pendingMoveRef.current) return Promise.reject(new Error('Engine already thinking'))
+    // Guard: reject for obviously invalid FEN strings
+    const fenParts = fen.split(' ')
+    if (fenParts.length < 4 || !/^[rnbqkpRNBQKP1-8/]+$/.test(fenParts[0])) {
+      return Promise.reject(new Error('Invalid FEN'))
+    }
 
     lastFenRef.current = fen
 

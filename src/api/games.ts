@@ -40,6 +40,32 @@ export type GameWithMembers = GameRow & {
   members: GameMemberProfile[]
 }
 
+const missingRpcCache = new Set<string>()
+
+type RpcErrorLike = {
+  message?: string
+  details?: string
+  hint?: string
+  code?: string
+  status?: number
+}
+
+function isRpcNotFoundError(error: unknown): boolean {
+  if (!error || typeof error !== 'object') return false
+  const rpcError = error as RpcErrorLike
+  if (rpcError.status === 404) return true
+
+  const code = (rpcError.code || '').toUpperCase()
+  if (code === 'PGRST202' || code === '42883') return true
+
+  const text = [rpcError.message, rpcError.details, rpcError.hint]
+    .filter((value): value is string => typeof value === 'string' && value.length > 0)
+    .join(' ')
+    .toLowerCase()
+
+  return /not found|404|function .* does not exist|could not find|schema cache/i.test(text)
+}
+
 export async function listMyGames(): Promise<GameRow[]> {
   const userId = await requireAuthedUserId()
 
@@ -134,17 +160,18 @@ export async function createChessGame(opponentUserId: string | null, timeControl
   }
   if (timeControl) rpcPayload.p_time_control = timeControl
 
-  const { data: rpcGame, error: rpcError } = await supabase.rpc('create_chess_game', rpcPayload)
+  const createGameRpcName = 'create_chess_game'
+  if (!missingRpcCache.has(createGameRpcName)) {
+    const { data: rpcGame, error: rpcError } = await supabase.rpc(createGameRpcName, rpcPayload)
 
-  if (!rpcError && rpcGame) {
-    notifyGamesChanged()
-    return rpcGame as GameRow
+    if (!rpcError && rpcGame) {
+      notifyGamesChanged()
+      return rpcGame as GameRow
+    }
+
+    if (!isRpcNotFoundError(rpcError)) throw rpcError
+    missingRpcCache.add(createGameRpcName)
   }
-
-  // Fallback to non-transactional REST if RPC is unavailable (404 / function not found)
-  const rpcMessage = (rpcError?.message || '').toString()
-  const isRpcMissing = /not found|404|function .* does not exist|could not find/i.test(rpcMessage)
-  if (!isRpcMissing) throw rpcError
 
   const payload: Record<string, unknown> = { created_by: userId }
   if (timeControl) payload.time_control = timeControl
@@ -241,17 +268,16 @@ export async function makeMove(gameId: string, ply: number, uci: string, fenAfte
 
 export async function restartGame(gameId: string) {
   await requireAuthedUserId()
-  // Try server-side RPC first
-  const { error } = await supabase.rpc('restart_game', { p_game_id: gameId })
-  if (!error) {
-    notifyGamesChanged()
-    return
+  const restartGameRpcName = 'restart_game'
+  if (!missingRpcCache.has(restartGameRpcName)) {
+    const { error } = await supabase.rpc(restartGameRpcName, { p_game_id: gameId })
+    if (!error) {
+      notifyGamesChanged()
+      return
+    }
+    if (!isRpcNotFoundError(error)) throw error
+    missingRpcCache.add(restartGameRpcName)
   }
-
-  // If RPC is not available (404) or fails, attempt a REST fallback.
-  const message = (error && (error.message || '')).toString()
-  const isNotFound = /not found|404|function .* does not exist|could not find/i.test(message)
-  if (!isNotFound) throw error
 
   // Fallback: delete moves and reset game row via REST. This may be blocked by RLS if RPC is preferred.
   const { error: delErr } = await supabase.from('chess_moves').delete().eq('game_id', gameId)
