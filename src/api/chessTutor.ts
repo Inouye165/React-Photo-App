@@ -7,16 +7,24 @@ export type ChessTutorAnalysis = {
   focusAreas: string[]
 }
 
+export type ChessTutorResult = {
+  analysis: ChessTutorAnalysis
+  model: string
+  apiVersion?: string
+}
+
 type AnalyzeChessTutorResponse = {
   success: boolean
   analysis?: ChessTutorAnalysis
+  model?: string
+  apiVersion?: string
   error?: string
 }
 
 export async function analyzeGameForMe(input: {
   fen: string
   moves: string[]
-}): Promise<ChessTutorAnalysis> {
+}): Promise<ChessTutorResult> {
   const headers = await getAuthHeadersAsync(true)
 
   const response = await request<AnalyzeChessTutorResponse>({
@@ -33,5 +41,9 @@ export async function analyzeGameForMe(input: {
     throw new Error(response?.error || 'Failed to analyze game')
   }
 
-  return response.analysis
+  return {
+    analysis: response.analysis,
+    model: response.model || 'gemini',
+    apiVersion: response.apiVersion,
+  }
 }

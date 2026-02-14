@@ -19,6 +19,7 @@ const {
   abortGameMock,
   getTopMovesMock,
   setTopMovesMock,
+  analyzeGameForMeMock,
 } = vi.hoisted(() => {
   let mockGameId = 'game-123'
   let authUserId = 'user-1'
@@ -62,6 +63,15 @@ const {
     makeMoveMock: vi.fn(async () => ({})),
     restartGameMock: vi.fn(async () => ({})),
     abortGameMock: vi.fn(async () => undefined),
+    analyzeGameForMeMock: vi.fn(async () => ({
+      analysis: {
+        positionSummary: 'Equal position with central tension.',
+        hints: ['Develop the kingside pieces.'],
+        focusAreas: ['King safety'],
+      },
+      model: 'gemini-2.0-flash-lite',
+      apiVersion: 'v1',
+    })),
   }
 })
 
@@ -84,6 +94,10 @@ vi.mock('../api/games', () => ({
   makeMove: makeMoveMock,
   restartGame: restartGameMock,
   abortGame: abortGameMock,
+}))
+
+vi.mock('../api/chessTutor', () => ({
+  analyzeGameForMe: analyzeGameForMeMock,
 }))
 
 vi.mock('../hooks/useStockfish', () => ({
@@ -242,6 +256,21 @@ describe('ChessGame', () => {
       const rowScope = within(firstRow as HTMLElement)
       expect(rowScope.getByText('e4')).toBeInTheDocument()
       expect(rowScope.getByText('e5')).toBeInTheDocument()
+    })
+  })
+
+  it('shows the exact tutor model after analyze completes', async () => {
+    const user = userEvent.setup()
+    setMockGameId('local')
+    render(<ChessGame />)
+
+    expect(screen.getByText('gemini')).toBeInTheDocument()
+
+    await user.click(screen.getByRole('button', { name: 'Analyze game for me' }))
+
+    await waitFor(() => {
+      expect(analyzeGameForMeMock).toHaveBeenCalled()
+      expect(screen.getByText('gemini-2.0-flash-lite')).toBeInTheDocument()
     })
   })
 })

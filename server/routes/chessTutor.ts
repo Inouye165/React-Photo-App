@@ -1,5 +1,6 @@
 import { Router, Request } from 'express';
 import { z } from 'zod';
+import { GoogleGenerativeAI } from '@google/generative-ai';
 
 const logger = require('../logger');
 
@@ -19,6 +20,93 @@ type GeminiTutorAnalysis = {
   hints: string[];
   focusAreas: string[];
 };
+
+type GeminiErrorInfo = {
+  statusCode?: number;
+  reason?: string;
+  message: string;
+};
+
+const DEFAULT_TUTOR_MODEL = 'gemini-1.5-flash';
+const TUTOR_FALLBACK_MODELS = ['gemini-1.5-pro', 'gemini-pro'];
+const DEFAULT_API_VERSION = 'v1';
+
+class GeminiTutorError extends Error {
+  details?: GeminiErrorInfo;
+
+  constructor(message: string, details?: GeminiErrorInfo) {
+    super(message);
+    this.name = 'GeminiTutorError';
+    this.details = details;
+  }
+}
+
+function asRecord(value: unknown): Record<string, unknown> | null {
+  if (!value || typeof value !== 'object') {
+    return null;
+  }
+  return value as Record<string, unknown>;
+}
+
+function normalizeModelNameForSdk(model: string): string {
+  return model.trim().replace(/^models\//i, '');
+}
+
+function buildModelCandidates(configuredModel: string): string[] {
+  const models = [normalizeModelNameForSdk(configuredModel || DEFAULT_TUTOR_MODEL), ...TUTOR_FALLBACK_MODELS];
+  return models.filter((model, index) => model && models.indexOf(model) === index);
+}
+
+function extractGeminiErrorInfo(error: unknown): GeminiErrorInfo {
+  const errorRecord = asRecord(error);
+  const nestedError = asRecord(errorRecord?.error);
+  const response = asRecord(errorRecord?.response);
+  const responseData = asRecord(response?.data);
+  const responseError = asRecord(responseData?.error);
+
+  const providerError = responseError || nestedError;
+  const statusCodeValue = providerError?.code ?? errorRecord?.status ?? errorRecord?.statusCode;
+  const statusCode = typeof statusCodeValue === 'number' ? statusCodeValue : undefined;
+
+  const reasonValue = providerError?.status ?? providerError?.reason ?? errorRecord?.code;
+  const reason = typeof reasonValue === 'string' ? reasonValue : undefined;
+
+  const messageValue = providerError?.message ?? errorRecord?.message;
+  const message = typeof messageValue === 'string' && messageValue.trim().length > 0
+    ? messageValue
+    : 'Gemini request failed';
+
+  return {
+    statusCode,
+    reason,
+    message,
+  };
+}
+
+function isModelNotFoundError(errorInfo: GeminiErrorInfo): boolean {
+  const combined = `${errorInfo.reason || ''} ${errorInfo.message}`.toLowerCase();
+  return errorInfo.statusCode === 404 || combined.includes('not found') || combined.includes('not supported');
+}
+
+function createGeminiModelClient(
+  genAI: GoogleGenerativeAI,
+  model: string,
+): { modelClient: ReturnType<GoogleGenerativeAI['getGenerativeModel']>; apiVersionUsed: string } {
+  const preferredApiVersion = (process.env.GEMINI_API_VERSION?.trim() || DEFAULT_API_VERSION).toLowerCase();
+  if (preferredApiVersion === 'v1') {
+    try {
+      const modelClient = genAI.getGenerativeModel({ model, apiVersion: 'v1' } as unknown as { model: string });
+      return { modelClient, apiVersionUsed: 'v1' };
+    } catch {
+      logger.warn('[chess-tutor/analyze] SDK does not accept apiVersion=v1 in model init, using SDK default', {
+        model,
+      });
+    }
+  }
+
+  const modelClient = genAI.getGenerativeModel({ model });
+  return { modelClient, apiVersionUsed: 'sdk-default' };
+}
 
 function parseTutorJson(rawText: string): GeminiTutorAnalysis {
   const trimmed = rawText.trim();
@@ -55,8 +143,9 @@ async function runGeminiTutorAnalysis({
   model: string;
   fen: string;
   moves: string[];
-}): Promise<GeminiTutorAnalysis> {
-  const endpoint = `https://generativelanguage.googleapis.com/v1beta/models/${encodeURIComponent(model)}:generateContent?key=${encodeURIComponent(apiKey)}`;
+}): Promise<{ analysis: GeminiTutorAnalysis; modelUsed: string; apiVersionUsed: string }> {
+  const genAI = new GoogleGenerativeAI(apiKey);
+  const modelCandidates = buildModelCandidates(model);
 
   const prompt = [
     'You are a practical chess tutor for a club-level player.',
@@ -72,38 +161,52 @@ async function runGeminiTutorAnalysis({
     `Recent UCI moves: ${moves.join(' ') || 'none'}`,
   ].join('\n');
 
-  const response = await fetch(endpoint, {
-    method: 'POST',
-    headers: {
-      'Content-Type': 'application/json',
-    },
-    body: JSON.stringify({
-      contents: [{ parts: [{ text: prompt }] }],
-      generationConfig: {
-        temperature: 0.3,
-        maxOutputTokens: 450,
-      },
-    }),
-  });
+  let lastError: GeminiErrorInfo | null = null;
 
-  const payload = await response.json().catch(() => null) as
-    | {
-        candidates?: Array<{ content?: { parts?: Array<{ text?: string }> } }>;
-        error?: { message?: string };
+  for (let index = 0; index < modelCandidates.length; index += 1) {
+    const candidateModel = modelCandidates[index];
+    const isLastCandidate = index === modelCandidates.length - 1;
+
+    try {
+      const { modelClient, apiVersionUsed } = createGeminiModelClient(genAI, candidateModel);
+      const result = await modelClient.generateContent({
+        contents: [{ role: 'user', parts: [{ text: prompt }] }],
+        generationConfig: {
+          temperature: 0.3,
+          maxOutputTokens: 450,
+        },
+      });
+
+      const text = result?.response?.text();
+      if (!text || typeof text !== 'string') {
+        throw new GeminiTutorError('Gemini returned an empty response');
       }
-    | null;
 
-  if (!response.ok) {
-    const message = payload?.error?.message || `Gemini request failed (${response.status})`;
-    throw new Error(message);
+      return {
+        analysis: parseTutorJson(text),
+        modelUsed: candidateModel,
+        apiVersionUsed,
+      };
+    } catch (error) {
+      const errorInfo = extractGeminiErrorInfo(error);
+      lastError = errorInfo;
+
+      logger.warn('[chess-tutor/analyze] Gemini model attempt failed', {
+        model: candidateModel,
+        statusCode: errorInfo.statusCode,
+        reason: errorInfo.reason,
+        message: errorInfo.message,
+      });
+
+      if (!isLastCandidate && isModelNotFoundError(errorInfo)) {
+        continue;
+      }
+
+      throw new GeminiTutorError(errorInfo.message, errorInfo);
+    }
   }
 
-  const text = payload?.candidates?.[0]?.content?.parts?.[0]?.text;
-  if (!text || typeof text !== 'string') {
-    throw new Error('Gemini returned an empty response');
-  }
-
-  return parseTutorJson(text);
+  throw new GeminiTutorError(lastError?.message || 'Gemini analysis failed', lastError || undefined);
 }
 
 export default function createChessTutorRouter(): Router {
@@ -125,10 +228,10 @@ export default function createChessTutorRouter(): Router {
       return res.status(503).json({ success: false, error: 'GEMINI_API_KEY is not configured' });
     }
 
-    const model = process.env.GEMINI_TUTOR_MODEL?.trim() || 'gemini-1.5-flash';
+    const model = process.env.GEMINI_TUTOR_MODEL?.trim() || DEFAULT_TUTOR_MODEL;
 
     try {
-      const analysis = await runGeminiTutorAnalysis({
+      const result = await runGeminiTutorAnalysis({
         apiKey: geminiApiKey,
         model,
         fen: parsed.data.fen,
@@ -137,14 +240,19 @@ export default function createChessTutorRouter(): Router {
 
       return res.json({
         success: true,
-        analysis,
-        model,
+        analysis: result.analysis,
+        model: result.modelUsed,
+        apiVersion: result.apiVersionUsed,
       });
     } catch (error) {
       const message = error instanceof Error ? error.message : 'Chess tutor analysis failed';
+      const geminiDetails = error instanceof GeminiTutorError ? error.details : undefined;
       logger.error('[chess-tutor/analyze] Gemini analysis failed', {
         userId,
         message,
+        statusCode: geminiDetails?.statusCode,
+        reason: geminiDetails?.reason,
+        providerMessage: geminiDetails?.message,
       });
       return res.status(502).json({ success: false, error: 'Failed to analyze position' });
     }
@@ -154,3 +262,10 @@ export default function createChessTutorRouter(): Router {
 }
 
 module.exports = createChessTutorRouter;
+
+export const __testables = {
+  normalizeModelNameForSdk,
+  buildModelCandidates,
+  extractGeminiErrorInfo,
+  isModelNotFoundError,
+};
