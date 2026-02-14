@@ -6,6 +6,9 @@
   "scripts": {
     "dev": "vite",
     "start": "npx tsx server/server.ts",
+    "start:infra": "docker-compose up -d db redis",
+    "start:local": "powershell -ExecutionPolicy Bypass -File ./scripts/start-local.ps1",
+    "stop:local": "powershell -ExecutionPolicy Bypass -File ./scripts/stop-local.ps1",
     "worker": "npm --prefix server run worker",
     "build": "vite build",
     "pretest": "node scripts/validate-keys.cjs && node scripts/repo-hygiene-gps-check.cjs",
