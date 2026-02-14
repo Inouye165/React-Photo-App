@@ -134,6 +134,7 @@ vi.mock('../supabaseClient', () => ({
 
 vi.mock('react-chessboard', () => ({
   Chessboard: (props: {
+    position?: string
     customSquareStyles?: Record<string, unknown>
     boardOrientation?: 'white' | 'black'
     onPieceDrop?: (src: string, dst: string) => boolean
@@ -141,6 +142,7 @@ vi.mock('react-chessboard', () => ({
   }) => (
     <div
       data-testid="chessboard"
+      data-position={props.position || ''}
       data-orientation={props.boardOrientation || 'white'}
       data-custom-squares={Object.keys(props.customSquareStyles ?? {}).sort().join(',')}
       data-draggable={String(props.arePiecesDraggable ?? true)}
@@ -303,6 +305,65 @@ describe('ChessGame regression tests', () => {
 
     await waitFor(() => {
       expect(screen.getByText('Network error')).toBeInTheDocument()
+    })
+  })
+
+  it('recomputes board FEN from move list when realtime payload lacks fen_after', async () => {
+    setGameFen('rnbqkbnr/pppppppp/8/8/8/8/PPPPPPPP/RNBQKBNR w KQkq - 0 1')
+    useGameRealtimeMock.mockReturnValue({
+      moves: [
+        { ply: 1, uci: 'e2e4', created_by: 'user-1', created_at: '2026-02-10T00:00:00Z', fen_after: 'rnbqkbnr/pppppppp/8/8/8/8/PPPPPPPP/RNBQKBNR w KQkq - 0 1' },
+      ],
+      loading: false,
+    })
+
+    render(<ChessGame />)
+
+    await waitFor(() => {
+      const board = screen.getByTestId('chessboard')
+      const fen = board.getAttribute('data-position') || ''
+      expect(fen).toContain('4P3')
+      expect(fen).not.toBe('rnbqkbnr/pppppppp/8/8/8/8/PPPPPPPP/RNBQKBNR w KQkq - 0 1')
+    })
+  })
+
+  it('keeps board in sync when one realtime move row is malformed', async () => {
+    setGameFen('rnbqkbnr/pppppppp/8/8/8/8/PPPPPPPP/RNBQKBNR w KQkq - 0 1')
+    useGameRealtimeMock.mockReturnValue({
+      moves: [
+        { ply: 1, uci: '', created_by: 'user-1', created_at: '2026-02-10T00:00:00Z', fen_after: 'rnbqkbnr/pppppppp/8/8/8/8/PPPPPPPP/RNBQKBNR w KQkq - 0 1' },
+        { ply: 2, uci: 'e2e4', created_by: 'user-1', created_at: '2026-02-10T00:00:01Z', fen_after: 'rnbqkbnr/pppppppp/8/8/8/8/PPPPPPPP/RNBQKBNR w KQkq - 0 1' },
+        { ply: 3, uci: 'e7e6', created_by: 'user-2', created_at: '2026-02-10T00:00:02Z', fen_after: 'rnbqkbnr/pppppppp/8/8/8/8/PPPPPPPP/RNBQKBNR w KQkq - 0 1' },
+      ],
+      loading: false,
+    })
+
+    render(<ChessGame />)
+
+    await waitFor(() => {
+      const fen = screen.getByTestId('chessboard').getAttribute('data-position') || ''
+      expect(fen).toContain('4P3')
+      expect(fen).toContain('4p3')
+    })
+  })
+
+  it('ignores stale fen_after and keeps board aligned with move list', async () => {
+    setGameFen('rnbqkbnr/pppppppp/8/8/8/8/PPPPPPPP/RNBQKBNR w KQkq - 0 1')
+    useGameRealtimeMock.mockReturnValue({
+      moves: [
+        { ply: 1, uci: 'e2e4', created_by: 'user-1', created_at: '2026-02-10T00:00:00Z', fen_after: 'rnbqkbnr/pppppppp/8/8/4P3/8/PPPP1PPP/RNBQKBNR b KQkq - 0 1' },
+        { ply: 2, uci: 'e7e6', created_by: 'user-2', created_at: '2026-02-10T00:00:01Z', fen_after: 'rnbqkbnr/pppppppp/8/8/8/8/PPPPPPPP/RNBQKBNR w KQkq - 0 1' },
+      ],
+      loading: false,
+    })
+
+    render(<ChessGame />)
+
+    await waitFor(() => {
+      const fen = screen.getByTestId('chessboard').getAttribute('data-position') || ''
+      expect(fen).toContain('4P3')
+      expect(fen).toContain('4p3')
+      expect(fen).not.toBe('rnbqkbnr/pppppppp/8/8/8/8/PPPPPPPP/RNBQKBNR w KQkq - 0 1')
     })
   })
 
