@@ -54,11 +54,13 @@ type HintMove = {
 
 function ChessTutorPanel({
   analysis,
+  modelLabel,
   loading,
   error,
   onAnalyze,
 }: {
   analysis: ChessTutorAnalysis | null
+  modelLabel: string
   loading: boolean
   error: string | null
   onAnalyze: () => void
@@ -67,7 +69,7 @@ function ChessTutorPanel({
     <aside className="flex min-h-0 w-full flex-col rounded-2xl border border-slate-200 bg-white/80 p-4 shadow-md lg:w-[360px] lg:shrink-0">
       <div className="mb-3 flex items-center justify-between">
         <div className="text-sm font-semibold text-slate-700">Chess Tutor</div>
-        <span className="text-xs text-slate-500">Gemini</span>
+        <span className="text-xs text-slate-500">{modelLabel}</span>
       </div>
       <div className="mb-4 rounded-lg border border-slate-200 bg-slate-50 px-3 py-2">
         <div className="text-xs font-semibold text-slate-600">Tutor Panel</div>
@@ -678,6 +680,7 @@ function OnlineChessGame(): React.JSX.Element {
   const [tutorLoading, setTutorLoading] = useState(false)
   const [tutorAnalysis, setTutorAnalysis] = useState<ChessTutorAnalysis | null>(null)
   const [tutorError, setTutorError] = useState<string | null>(null)
+  const [tutorModel, setTutorModel] = useState<string>('gemini')
 
   const moveRows = useMemo(() => (moves ?? []) as MoveRow[], [moves])
   const hintedByPly = useMemo(() => {
@@ -913,11 +916,12 @@ function OnlineChessGame(): React.JSX.Element {
     setTutorLoading(true)
     setTutorError(null)
     try {
-      const analysis = await analyzeGameForMe({
+      const result = await analyzeGameForMe({
         fen: normalizedDisplayFen,
         moves: moveRows.map((move) => move.uci),
       })
-      setTutorAnalysis(analysis)
+      setTutorAnalysis(result.analysis)
+      setTutorModel(result.model)
     } catch (error) {
       const message = error instanceof Error ? error.message : 'Failed to analyze game'
       setTutorError(message)
@@ -1283,6 +1287,7 @@ function OnlineChessGame(): React.JSX.Element {
 
         <ChessTutorPanel
           analysis={tutorAnalysis}
+          modelLabel={tutorModel}
           loading={tutorLoading}
           error={tutorError}
           onAnalyze={() => { void handleAnalyzeGameForMe() }}
@@ -1311,6 +1316,7 @@ function LocalChessGame(): React.JSX.Element {
   const [tutorLoading, setTutorLoading] = useState(false)
   const [tutorAnalysis, setTutorAnalysis] = useState<ChessTutorAnalysis | null>(null)
   const [tutorError, setTutorError] = useState<string | null>(null)
+  const [tutorModel, setTutorModel] = useState<string>('gemini')
   const lastShownPlyRef = useRef<number | null>(null)
 
   const moveRows = useMemo(() => localMoves, [localMoves])
@@ -1413,11 +1419,12 @@ function LocalChessGame(): React.JSX.Element {
     setTutorLoading(true)
     setTutorError(null)
     try {
-      const analysis = await analyzeGameForMe({
+      const result = await analyzeGameForMe({
         fen: normalizedDisplayFen,
         moves: moveRows.map((move) => move.uci),
       })
-      setTutorAnalysis(analysis)
+      setTutorAnalysis(result.analysis)
+      setTutorModel(result.model)
     } catch (error) {
       const message = error instanceof Error ? error.message : 'Failed to analyze game'
       setTutorError(message)
@@ -1757,6 +1764,7 @@ function LocalChessGame(): React.JSX.Element {
 
         <ChessTutorPanel
           analysis={tutorAnalysis}
+          modelLabel={tutorModel}
           loading={tutorLoading}
           error={tutorError}
           onAnalyze={() => { void handleAnalyzeGameForMe() }}
