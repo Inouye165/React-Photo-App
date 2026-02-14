@@ -3,10 +3,12 @@ import { z } from 'zod';
 import { GoogleGenerativeAI } from '@google/generative-ai';
 
 const logger = require('../logger');
+const { getOrCreateRequestId } = require('../lib/requestId');
 
 type AuthenticatedRequest = Request & {
   user?: {
     id: string;
+    role?: string;
   };
 };
 
@@ -247,14 +249,37 @@ export default function createChessTutorRouter(): Router {
     } catch (error) {
       const message = error instanceof Error ? error.message : 'Chess tutor analysis failed';
       const geminiDetails = error instanceof GeminiTutorError ? error.details : undefined;
+      const traceId: string = getOrCreateRequestId(req);
+
       logger.error('[chess-tutor/analyze] Gemini analysis failed', {
+        route: 'POST /api/v1/chess-tutor/analyze',
+        traceId,
         userId,
         message,
         statusCode: geminiDetails?.statusCode,
         reason: geminiDetails?.reason,
         providerMessage: geminiDetails?.message,
       });
-      return res.status(502).json({ success: false, error: 'Failed to analyze position' });
+
+      // Admin-gated debug details: only when CHESS_TUTOR_DEBUG_ERRORS=true and user is admin.
+      // Enable temporarily in production to diagnose 502s, then disable.
+      const isAdmin = req.user?.role === 'admin';
+      const debugEnabled = process.env.CHESS_TUTOR_DEBUG_ERRORS === 'true';
+      const responseBody: Record<string, unknown> = {
+        success: false,
+        error: 'Failed to analyze position',
+      };
+
+      if (debugEnabled && isAdmin && geminiDetails) {
+        responseBody.gemini = {
+          statusCode: geminiDetails.statusCode,
+          reason: geminiDetails.reason,
+          message: geminiDetails.message,
+          traceId,
+        };
+      }
+
+      return res.status(502).json(responseBody);
     }
   });
 
