@@ -459,6 +459,10 @@ To whitelist additional frontend URLs (e.g., staging environments, mobile apps):
 - Disallowed origins receive no CORS headers (browser blocks request)
 - No wildcards (`*`) when credentials are enabled (security requirement)
 
+#### Troubleshooting Chess Tutor 502s
+
+Set `CHESS_TUTOR_DEBUG_ERRORS=true` to include Gemini error details (statusCode, reason, message, traceId) in the 502 response body — **admin-only**. Non-admin users always see the generic error. Disable after debugging.
+
 ## 🧪 Testing
 
 ```bash

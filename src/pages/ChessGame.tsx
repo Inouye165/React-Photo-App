@@ -52,7 +52,7 @@ type HintMove = {
   san: string
 }
 
-type TutorTab = 'lesson' | 'analyze'
+type TutorTab = 'lesson' | 'history' | 'analyze'
 
 type ChessLesson = {
   piece: 'Pawn' | 'Knight' | 'Bishop' | 'Rook' | 'Queen' | 'King'
@@ -61,6 +61,15 @@ type ChessLesson = {
   movement: string
   frames: string[]
   highlightSquares: string[]
+}
+
+type ChessHistoryEvent = {
+  period: string
+  title: string
+  summary: string
+  ruleChange: string
+  imageUrl: string
+  imageAlt: string
 }
 
 const CHESS_LESSONS: ChessLesson[] = [
@@ -132,6 +141,81 @@ const CHESS_LESSONS: ChessLesson[] = [
   },
 ]
 
+const CHESS_HISTORY_EVENTS: ChessHistoryEvent[] = [
+  {
+    period: 'c. 600 CE',
+    title: 'Early Chaturanga in India',
+    summary: 'The earliest known ancestor of chess appears in India as chaturanga, representing battlefield strategy with infantry, cavalry, elephants, and chariots.',
+    ruleChange: 'Core idea introduced: a turn-based strategy game with distinct piece roles on an 8×8 board.',
+    imageUrl: '/chess-history/chaturanga.svg',
+    imageAlt: 'Illustration representing early chaturanga gameplay',
+  },
+  {
+    period: 'c. 800–900 CE',
+    title: 'Shatranj in Persia and the Islamic world',
+    summary: 'Chess spreads west and evolves into shatranj, becoming a major intellectual game in Persian and Arabic culture.',
+    ruleChange: 'Terminology and strategy literature mature; slower piece movement leads to long positional games.',
+    imageUrl: '/chess-history/shatranj.svg',
+    imageAlt: 'Illustration representing the shatranj era',
+  },
+  {
+    period: 'c. 1000–1400 CE',
+    title: 'Arrival in medieval Europe',
+    summary: 'Through trade and cultural exchange, chess reaches Europe and becomes popular among nobles, scholars, and clergy.',
+    ruleChange: 'European regional rule variants appear, setting up future standardization.',
+    imageUrl: '/chess-history/medieval-europe.svg',
+    imageAlt: 'Illustration representing medieval European chess',
+  },
+  {
+    period: 'c. 1475 CE',
+    title: 'Birth of modern chess movement',
+    summary: 'A major rules revolution in Europe transforms chess into a faster tactical game.',
+    ruleChange: 'Queen gains full power, bishop gains long diagonals, and modern checkmating attacks become central.',
+    imageUrl: '/chess-history/modern-rules.svg',
+    imageAlt: 'Illustration representing the modern rules revolution',
+  },
+  {
+    period: '1737 CE',
+    title: 'Foundations of modern strategy',
+    summary: 'François-André Danican Philidor publishes influential ideas emphasizing pawn structure and long-term planning.',
+    ruleChange: 'Strategic doctrine expands beyond tactics: “Pawns are the soul of chess.”',
+    imageUrl: '/chess-history/philidor.svg',
+    imageAlt: 'Illustration representing Philidor and strategic theory',
+  },
+  {
+    period: '1851 CE',
+    title: 'First international tournament era',
+    summary: 'London hosts the first major international tournament, launching organized competitive chess globally.',
+    ruleChange: 'Tournament standards, opening theory growth, and broader publication of games.',
+    imageUrl: '/chess-history/london-1851.svg',
+    imageAlt: 'Illustration representing the London 1851 tournament',
+  },
+  {
+    period: '1886 CE',
+    title: 'Official World Championship begins',
+    summary: 'Wilhelm Steinitz and Johannes Zukertort play the first recognized world championship match.',
+    ruleChange: 'A formal world-title lineage starts, shaping elite match play tradition.',
+    imageUrl: '/chess-history/world-championship.svg',
+    imageAlt: 'Illustration representing the start of world championship play',
+  },
+  {
+    period: '1997 CE',
+    title: 'Deep Blue defeats Kasparov',
+    summary: 'IBM’s Deep Blue beats reigning world champion Garry Kasparov in a match, marking a milestone in computer chess.',
+    ruleChange: 'Engine-assisted preparation becomes a permanent part of high-level chess.',
+    imageUrl: '/chess-history/deep-blue.svg',
+    imageAlt: 'Illustration representing the Deep Blue versus Kasparov milestone',
+  },
+  {
+    period: '2017–present',
+    title: 'Neural-network engine age',
+    summary: 'AlphaZero-inspired engines and modern neural analysis influence how players study strategy and creativity.',
+    ruleChange: 'Training shifts toward engine-guided pattern learning and deeper positional understanding.',
+    imageUrl: '/chess-history/neural-era.svg',
+    imageAlt: 'Illustration representing the modern neural engine era',
+  },
+]
+
 function lessonSquareStyles(squares: string[]): Record<string, React.CSSProperties> {
   return squares.reduce<Record<string, React.CSSProperties>>((acc, square) => {
     acc[square] = { background: 'radial-gradient(circle, rgba(59,130,246,0.45) 30%, transparent 32%)' }
@@ -188,6 +272,13 @@ function ChessTutorPanel({
           </button>
           <button
             type="button"
+            onClick={() => setActiveTab('history')}
+            className={`rounded border px-2 py-1 text-xs font-semibold ${activeTab === 'history' ? 'border-blue-300 bg-blue-50 text-blue-700' : 'border-slate-200 bg-white text-slate-600 hover:bg-slate-50'}`}
+          >
+            Chess history
+          </button>
+          <button
+            type="button"
             onClick={() => setActiveTab('analyze')}
             className={`rounded border px-2 py-1 text-xs font-semibold ${activeTab === 'analyze' ? 'border-blue-300 bg-blue-50 text-blue-700' : 'border-slate-200 bg-white text-slate-600 hover:bg-slate-50'}`}
           >
@@ -233,6 +324,27 @@ function ChessTutorPanel({
               </div>
             ) : null}
           </>
+        ) : activeTab === 'history' ? (
+          <div className="space-y-3 text-slate-700">
+            <div className="text-xs font-semibold uppercase tracking-wide text-slate-500">Chess History Timeline</div>
+            <p className="text-sm text-slate-600">Scroll from the earliest mentions of chess through major historical rule and strategy changes.</p>
+            <div className="max-h-[440px] space-y-3 overflow-y-auto pr-1">
+              {CHESS_HISTORY_EVENTS.map((event) => (
+                <article key={`${event.period}-${event.title}`} className="rounded-lg border border-slate-200 bg-slate-50 p-2">
+                  <img
+                    src={event.imageUrl}
+                    alt={event.imageAlt}
+                    loading="lazy"
+                    className="h-28 w-full rounded-md border border-slate-200 object-cover"
+                  />
+                  <div className="mt-2 text-xs font-semibold uppercase tracking-wide text-slate-500">{event.period}</div>
+                  <h4 className="text-sm font-semibold text-slate-700">{event.title}</h4>
+                  <p className="mt-1 text-sm text-slate-600">{event.summary}</p>
+                  <p className="mt-1 text-xs text-slate-500"><span className="font-semibold">Key change:</span> {event.ruleChange}</p>
+                </article>
+              ))}
+            </div>
+          </div>
         ) : (
           <div className="space-y-3 text-slate-700">
             <div className="text-xs font-semibold uppercase tracking-wide text-slate-500">Beginner Lesson</div>

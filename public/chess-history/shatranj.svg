@@ -1,0 +1,13 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="1280" height="720" viewBox="0 0 1280 720" role="img" aria-labelledby="title desc">
+  <title id="title">Shatranj Era</title>
+  <desc id="desc">Illustrative timeline image for Persian and Islamic chess development.</desc>
+  <rect width="1280" height="720" fill="#1f2937"/>
+  <rect x="180" y="100" width="920" height="520" rx="24" fill="#fef3c7"/>
+  <text x="240" y="210" fill="#78350f" font-family="Arial, sans-serif" font-size="50" font-weight="700">c. 800–900 CE · Shatranj</text>
+  <text x="240" y="280" fill="#92400e" font-family="Arial, sans-serif" font-size="30">Chess spreads through Persia and the Islamic world.</text>
+  <text x="240" y="335" fill="#92400e" font-family="Arial, sans-serif" font-size="30">Scholars document strategy and openings.</text>
+  <circle cx="350" cy="470" r="55" fill="#d97706"/>
+  <circle cx="500" cy="470" r="55" fill="#b45309"/>
+  <circle cx="650" cy="470" r="55" fill="#92400e"/>
+  <circle cx="800" cy="470" r="55" fill="#78350f"/>
+</svg>

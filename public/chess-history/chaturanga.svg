@@ -1,0 +1,18 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="1280" height="720" viewBox="0 0 1280 720" role="img" aria-labelledby="title desc">
+  <title id="title">Early Chaturanga</title>
+  <desc id="desc">Illustrative timeline image for the early Indian roots of chess.</desc>
+  <defs>
+    <linearGradient id="bg" x1="0" y1="0" x2="1" y2="1">
+      <stop offset="0%" stop-color="#1e293b"/>
+      <stop offset="100%" stop-color="#0f172a"/>
+    </linearGradient>
+  </defs>
+  <rect width="1280" height="720" fill="url(#bg)"/>
+  <rect x="220" y="120" width="840" height="480" rx="20" fill="#f8fafc" opacity="0.95"/>
+  <text x="260" y="220" fill="#0f172a" font-family="Arial, sans-serif" font-size="48" font-weight="700">c. 600 CE · Chaturanga</text>
+  <text x="260" y="280" fill="#334155" font-family="Arial, sans-serif" font-size="30">Earliest known ancestor of chess in India.</text>
+  <text x="260" y="340" fill="#334155" font-family="Arial, sans-serif" font-size="30">Pieces modeled battlefield roles and strategy.</text>
+  <rect x="260" y="390" width="280" height="150" fill="#e2e8f0" stroke="#94a3b8" stroke-width="4"/>
+  <rect x="540" y="390" width="280" height="150" fill="#cbd5e1" stroke="#94a3b8" stroke-width="4"/>
+  <rect x="820" y="390" width="200" height="150" fill="#e2e8f0" stroke="#94a3b8" stroke-width="4"/>
+</svg>

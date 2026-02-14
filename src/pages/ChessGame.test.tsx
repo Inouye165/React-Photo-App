@@ -295,4 +295,20 @@ describe('ChessGame', () => {
     expect(screen.getByText('Piece value: ≈3 points')).toBeInTheDocument()
     expect(screen.getByText('This demo shows a knight hop from d4 to f5.')).toBeInTheDocument()
   })
+
+  it('shows chess history timeline with scrollable events and images', async () => {
+    const user = userEvent.setup()
+    setMockGameId('local')
+    render(<ChessGame />)
+
+    await user.click(screen.getByRole('button', { name: 'Chess history' }))
+
+    expect(screen.getByText('Chess History Timeline')).toBeInTheDocument()
+    expect(screen.getByText('Early Chaturanga in India')).toBeInTheDocument()
+    expect(screen.getByText('Neural-network engine age')).toBeInTheDocument()
+    expect(screen.getByRole('img', { name: 'Illustration representing early chaturanga gameplay' })).toBeInTheDocument()
+
+    await user.click(screen.getByRole('button', { name: 'Analyze game' }))
+    expect(screen.getByRole('button', { name: 'Analyze game for me' })).toBeInTheDocument()
+  })
 })
