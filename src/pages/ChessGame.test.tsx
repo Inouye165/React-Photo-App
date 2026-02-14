@@ -175,7 +175,7 @@ describe('ChessGame', () => {
     })
   })
 
-  it('shows hint squares when clicking Show in local mode', async () => {
+  it('highlights hint path after showing hints in local mode', async () => {
     const user = userEvent.setup()
     setMockGameId('local')
     setTopMovesMock([{ uci: 'e2e4', score: 36, mate: null, depth: 14 }])
@@ -188,7 +188,6 @@ describe('ChessGame', () => {
 
     await user.click(hintShow)
 
-    // after showing, hover (or click on touch) the first hint to highlight squares
     const hintItem = await screen.findByRole('button', { name: '1. e4' })
     await user.hover(hintItem)
 

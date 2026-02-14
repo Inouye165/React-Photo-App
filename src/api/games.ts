@@ -70,7 +70,6 @@ function isMissingColumnError(error: unknown, columnName: string): boolean {
   if (!error || typeof error !== 'object') return false
   const rpcError = error as RpcErrorLike
   const code = (rpcError.code || '').toUpperCase()
-  if (code === '42703') return true
 
   const text = [rpcError.message, rpcError.details, rpcError.hint]
     .filter((value): value is string => typeof value === 'string' && value.length > 0)
@@ -78,7 +77,10 @@ function isMissingColumnError(error: unknown, columnName: string): boolean {
     .toLowerCase()
 
   const col = columnName.toLowerCase()
-  return text.includes(col) && /column|schema cache|could not find/i.test(text)
+  const referencesColumn = text.includes(col)
+
+  if (code === '42703') return referencesColumn
+  return referencesColumn && /column|schema cache|could not find/i.test(text)
 }
 
 export async function listMyGames(): Promise<GameRow[]> {
@@ -277,7 +279,8 @@ export async function fetchGameMembers(gameId: string): Promise<GameMemberProfil
 export async function makeMove(gameId: string, ply: number, uci: string, fenAfter: string, hintUsed = false) {
   const userId = await requireAuthedUserId()
   const movesTable = supabase.from('chess_moves')
-  const rowWithHint = { game_id: gameId, ply, uci, fen_after: fenAfter, created_by: userId, hint_used: hintUsed }
+  const baseRow = { game_id: gameId, ply, uci, fen_after: fenAfter, created_by: userId }
+  const rowWithHint = { ...baseRow, hint_used: hintUsed }
 
   const firstAttempt = await movesTable.insert(rowWithHint).select('*').single()
   if (!firstAttempt.error) return firstAttempt.data
@@ -286,8 +289,7 @@ export async function makeMove(gameId: string, ply: number, uci: string, fenAfte
     throw firstAttempt.error
   }
 
-  const rowWithoutHint = { game_id: gameId, ply, uci, fen_after: fenAfter, created_by: userId }
-  const fallbackAttempt = await movesTable.insert(rowWithoutHint).select('*').single()
+  const fallbackAttempt = await movesTable.insert(baseRow).select('*').single()
   if (fallbackAttempt.error) throw fallbackAttempt.error
   return fallbackAttempt.data
 }
