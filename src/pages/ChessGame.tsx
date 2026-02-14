@@ -299,15 +299,6 @@ function buildDisplayFen(sortedMoves: MoveRow[], gameFen: string | null, viewPly
     return START_FEN
   }
 
-  const exact = sortedMoves.find((mv) => mv.ply === targetPly && typeof mv.fen_after === 'string' && mv.fen_after.length > 0)
-  if (exact?.fen_after) return exact.fen_after
-
-  if (targetPly === sortedMoves.length) {
-    const lastWithFen = [...sortedMoves].reverse().find((mv) => typeof mv.fen_after === 'string' && mv.fen_after.length > 0)
-    if (lastWithFen?.fen_after) return lastWithFen.fen_after
-    if (gameFen) return gameFen
-  }
-
   const chess = new Chess(START_FEN)
   for (const mv of sortedMoves) {
     if ((mv.ply || 0) > targetPly) break
@@ -320,14 +311,14 @@ function buildDisplayFen(sortedMoves: MoveRow[], gameFen: string | null, viewPly
         promotion: parsed.promotion,
       })
     } catch {
-      // ignore invalid move replay
+      continue
     }
   }
+
   return chess.fen()
 }
 
 function useChessDisplay(moveRows: MoveRow[], gameFen: string | null, hoveredHintUci: string | null = null) {
-  const [boardFen, setBoardFen] = useState<string>(START_FEN)
   const [viewPly, setViewPly] = useState(0)
   const [selectedSquare, setSelectedSquare] = useState<Square | null>(null)
   const [showLegalMoves, setShowLegalMoves] = useState(true)
@@ -350,40 +341,6 @@ function useChessDisplay(moveRows: MoveRow[], gameFen: string | null, hoveredHin
   const displayFen = useMemo(() => buildDisplayFen(sortedMoves, gameFen, viewPly), [sortedMoves, gameFen, viewPly])
 
   const moveHistory = useMemo(() => buildMoveHistory(sortedMoves), [sortedMoves])
-
-  useEffect(() => {
-    if (moveRows.length) {
-      const lastWithFen = [...sortedMoves].reverse().find((mv) => typeof mv.fen_after === 'string' && mv.fen_after.length > 0)
-      if (lastWithFen?.fen_after) {
-        setBoardFen(lastWithFen.fen_after)
-        return
-      }
-
-      const chess = new Chess(START_FEN)
-      for (const mv of sortedMoves) {
-        const parsed = parseUciMove(mv.uci)
-        if (!parsed) continue
-        try {
-          chess.move({
-            from: parsed.from,
-            to: parsed.to,
-            promotion: parsed.promotion,
-          })
-        } catch {
-          // ignore invalid move replay
-        }
-      }
-      setBoardFen(chess.fen())
-      return
-    }
-
-    if (gameFen) {
-      setBoardFen(gameFen)
-      return
-    }
-
-    setBoardFen(START_FEN)
-  }, [gameFen, sortedMoves])
 
   useEffect(() => {
     if (!showLegalMoves) setSelectedSquare(null)
@@ -537,7 +494,6 @@ function useChessDisplay(moveRows: MoveRow[], gameFen: string | null, hoveredHin
   }), [hintHoverStyles, legalMoveStyles, threatStyles])
 
   return {
-    boardFen,
     displayFen,
     moveHistory,
     viewPly,
@@ -637,7 +593,9 @@ function OnlineChessGame(): React.JSX.Element {
   const navigate = useNavigate()
   const { user } = useAuth()
   const [refreshToken, setRefreshToken] = useState(0)
-  const { moves, loading: movesLoading } = useGameRealtime(gameId || null, refreshToken)
+  const loadGameDataRef = useRef<(() => void) | null>(null)
+  const handleGameUpdate = useCallback(() => { loadGameDataRef.current?.() }, [])
+  const { moves, loading: movesLoading, refetch: refetchMoves } = useGameRealtime(gameId || null, refreshToken, handleGameUpdate)
   const [game, setGame] = useState<GameRow | null>(null)
   const [members, setMembers] = useState<GameMemberProfile[]>([])
   const [loading, setLoading] = useState<boolean>(true)
@@ -701,6 +659,7 @@ function OnlineChessGame(): React.JSX.Element {
       setLoading(false)
     }
   }, [gameId])
+  loadGameDataRef.current = () => { void loadGameData() }
 
   useEffect(() => {
     void loadGameData()
@@ -750,6 +709,10 @@ function OnlineChessGame(): React.JSX.Element {
       setHoveredHintUci(null)
       setViewPly(ply)
       setSelectedSquare(null)
+      // Safety-net: ensure we have the move in local state even if the
+      // realtime INSERT event is delayed or missed entirely.
+      refetchMoves()
+      void loadGameData()
       return true
     } catch (err) {
       // Revert optimistic FEN on failure
@@ -803,6 +766,13 @@ function OnlineChessGame(): React.JSX.Element {
   const normalizedDisplayFen = optimisticFen || displayFen || START_FEN
   const currentTurn = (normalizedDisplayFen.split(' ')[1] as 'w' | 'b' | undefined) || (game?.current_turn as 'w' | 'b' | null) || null
   const currentUserId = user?.id ?? null
+  const boardId = `${gameId ?? 'game'}-${currentUserId ?? 'anon'}-online`
+  const fenBoard = normalizedDisplayFen.split(' ')[0] || ''
+  const displayFenBoard = displayFen.split(' ')[0] || ''
+  const optimisticFenBoard = optimisticFen ? (optimisticFen.split(' ')[0] || '') : ''
+  const gameFenBoard = game?.current_fen ? (game.current_fen.split(' ')[0] || '') : ''
+  const lastMoveUci = moveRows.length ? moveRows[moveRows.length - 1].uci : 'none'
+  const moveDigest = moveRows.map((mv) => `${mv.ply ?? '?'}:${mv.uci ?? '?'}`).join(',')
   const currentMember = members.find((member) => member.user_id === currentUserId) ?? null
 
   const whiteMember = members.find((member) => member.role === 'white') ?? null
@@ -854,6 +824,7 @@ function OnlineChessGame(): React.JSX.Element {
   }, [isAborted, normalizedDisplayFen])
   const canMove = !isAborted && !gameEnd.isOver && !isViewingPast && isMember && isUserTurn && !pendingPromotion
   const boardOrientation: 'white' | 'black' = isCurrentBlack ? 'black' : 'white'
+  const boardKey = `${boardId}:${boardOrientation}:${normalizedDisplayFen}`
 
   const { isReady, topMoves, evaluation, analyzePosition, difficulty, setDifficulty } = useStockfish()
   const opening = useMemo(() => findOpening(buildMovesUci(moveRows)), [moveRows])
@@ -1010,6 +981,8 @@ function OnlineChessGame(): React.JSX.Element {
           <div ref={boardContainerRef} className="flex w-full items-center justify-center overflow-hidden lg:min-h-0 lg:flex-1">
             <div className="w-full rounded-xl border border-slate-200 bg-white p-1 shadow-sm" style={{ maxWidth: boardSize + 8 }}>
               <Chessboard
+                id={boardId}
+                key={boardKey}
                 position={normalizedDisplayFen}
                 boardOrientation={boardOrientation}
                 showBoardNotation
@@ -1067,6 +1040,20 @@ function OnlineChessGame(): React.JSX.Element {
                       `members=${members.length ? members.map((m) => `${m.user_id}:${m.role}`).join(', ') : 'none'}`,
                       `turn=${currentTurn ?? 'unknown'}`,
                       `status=${game?.status ?? 'unknown'}`,
+                      `orientation=${boardOrientation}`,
+                      `isUserTurn=${isUserTurn}`,
+                      `canMove=${Boolean(canMove)}`,
+                      `isViewingPast=${Boolean(isViewingPast)}`,
+                      `viewPly=${viewPly}`,
+                      `moves=${moveRows.length}`,
+                      `lastMove=${lastMoveUci}`,
+                      `boardId=${boardId}`,
+                      `boardKey=${boardKey}`,
+                      `fen=${normalizedDisplayFen}`,
+                      `displayFen=${displayFen}`,
+                      `optimisticFen=${optimisticFen ?? 'null'}`,
+                      `gameFen=${game?.current_fen ?? 'null'}`,
+                      `moveDigest=${moveDigest || 'none'}`,
                     ].join(' | ')
                     void navigator.clipboard?.writeText(summary)
                     setDebugCopied(true)
@@ -1081,6 +1068,28 @@ function OnlineChessGame(): React.JSX.Element {
               <div>members {members.length ? members.map((m) => `${m.user_id}:${m.role}`).join(', ') : 'none'}</div>
               <div>turn {currentTurn ?? 'unknown'}</div>
               <div>status {game?.status ?? 'unknown'}</div>
+              <div>orientation {boardOrientation} · userTurn {String(isUserTurn)} · canMove {String(Boolean(canMove))}</div>
+              <div>boardId {boardId.slice(0, 28)}…</div>
+              <div>boardKey {boardKey.slice(0, 36)}…</div>
+              <div className={moveRows.length === 0 ? 'font-bold text-red-600' : ''}>
+                viewPly {viewPly} / moves {moveRows.length}
+              </div>
+              <div>lastMove {lastMoveUci}</div>
+              <div>fen {fenBoard.slice(0, 30)}{fenBoard.length > 30 ? '…' : ''}</div>
+              <div>displayFen {displayFenBoard.slice(0, 26)}{displayFenBoard.length > 26 ? '…' : ''}</div>
+              <div>optimisticFen {optimisticFenBoard ? `${optimisticFenBoard.slice(0, 22)}…` : 'null'}</div>
+              <div>gameFen {gameFenBoard ? `${gameFenBoard.slice(0, 24)}…` : 'null'}</div>
+              <div>moveDigest {moveDigest ? `${moveDigest.slice(0, 42)}${moveDigest.length > 42 ? '…' : ''}` : 'none'}</div>
+              <button
+                type="button"
+                className="mt-1 rounded-md border border-slate-200 bg-white px-2 py-0.5 text-[11px] font-semibold text-slate-600"
+                onClick={() => {
+                  setRefreshToken((prev) => prev + 1)
+                  void loadGameData()
+                }}
+              >
+                Force refresh
+              </button>
             </div>
           ) : null}
           <div className="mb-4 rounded-lg border border-slate-200 bg-slate-50 px-3 py-2">

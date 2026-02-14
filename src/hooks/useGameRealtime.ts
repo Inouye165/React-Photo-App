@@ -4,12 +4,20 @@ import { supabase } from '../supabaseClient'
 
 type MovePayload = RealtimePostgresChangesPayload<{ [key: string]: unknown }>
 
-export function useGameRealtime(gameId: string | null, refreshToken = 0) {
+export function useGameRealtime(
+  gameId: string | null,
+  refreshToken = 0,
+  onGameUpdate?: () => void,
+) {
   const [moves, setMoves] = useState<any[]>([])
   const [loading, setLoading] = useState(false)
+  const onGameUpdateRef = useRef(onGameUpdate)
+  onGameUpdateRef.current = onGameUpdate
   const channelRef = useRef<RealtimeChannel | null>(null)
+  const refetchRef = useRef<() => void>(() => {})
   const connectingRef = useRef(false)
   const channelSerialRef = useRef(0)
+  const channelStatusRef = useRef<string | null>(null)
 
   useEffect(() => {
     let cancelled = false
@@ -18,7 +26,6 @@ export function useGameRealtime(gameId: string | null, refreshToken = 0) {
         console.debug('[useGameRealtime]', ...args)
       }
     }
-
     const cleanupChannel = () => {
       const ch = channelRef.current
       channelRef.current = null
@@ -45,10 +52,23 @@ export function useGameRealtime(gameId: string | null, refreshToken = 0) {
       if (error) {
         logDebug('fetch error', { gameId, reason, message: error.message })
         return
-      } else {
-        logDebug('fetch success', { gameId, reason, count: (data ?? []).length })
-        setMoves((data ?? []) as any[])
       }
+
+      const fetched = (data ?? []) as any[]
+      logDebug('fetch success', { gameId, reason, count: fetched.length })
+
+      // Guard: never replace a populated move list with an empty result from a
+      // refetch.  An empty result when we already have moves almost certainly
+      // indicates a transient auth / JWT-refresh / RLS issue.
+      setMoves(prev => {
+        if (prev.length > 0 && fetched.length === 0 && reason !== 'initial') {
+          logDebug('fetch IGNORED: refusing to overwrite populated moves with empty result', {
+            gameId, reason, prevCount: prev.length,
+          })
+          return prev
+        }
+        return fetched
+      })
     }
 
     const connectChannel = async () => {
@@ -157,8 +177,18 @@ export function useGameRealtime(gameId: string | null, refreshToken = 0) {
           })
         }
       )
+      channel.on(
+        'postgres_changes',
+        { event: 'UPDATE', schema: 'public', table: 'games', filter: `id=eq.${gameId}` },
+        () => {
+          if (channelSerialRef.current !== channelSerial) return
+          logDebug('event UPDATE games', { gameId })
+          onGameUpdateRef.current?.()
+        }
+      )
       channel.subscribe((status, err) => {
         if (channelSerialRef.current !== channelSerial) return
+        channelStatusRef.current = status
         logDebug('channel status', { gameId, status, err: err?.message })
         if (status === 'SUBSCRIBED') {
           connectingRef.current = false
@@ -173,6 +203,9 @@ export function useGameRealtime(gameId: string | null, refreshToken = 0) {
       connectingRef.current = false
     }
 
+    // Expose fetchMoves for imperative callers (e.g. after makeMove)
+    refetchRef.current = () => { void fetchMoves('refetch') }
+
     async function run() {
       if (!gameId) {
         setMoves([])
@@ -180,6 +213,7 @@ export function useGameRealtime(gameId: string | null, refreshToken = 0) {
         return
       }
       connectingRef.current = false
+      channelStatusRef.current = null
       setLoading(true)
       await fetchMoves('initial')
       if (!cancelled) setLoading(false)
@@ -194,5 +228,6 @@ export function useGameRealtime(gameId: string | null, refreshToken = 0) {
     }
   }, [gameId, refreshToken])
 
-  return { moves, loading }
+  const refetch = useRef(() => { refetchRef.current() })
+  return { moves, loading, refetch: refetch.current }
 }
