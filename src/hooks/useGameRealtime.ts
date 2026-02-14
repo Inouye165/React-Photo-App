@@ -3,7 +3,6 @@ import type { RealtimeChannel, RealtimePostgresChangesPayload } from '@supabase/
 import { supabase } from '../supabaseClient'
 
 type MovePayload = RealtimePostgresChangesPayload<{ [key: string]: unknown }>
-const REALTIME_FALLBACK_POLL_MS = 60_000
 
 export function useGameRealtime(
   gameId: string | null,
@@ -15,10 +14,7 @@ export function useGameRealtime(
   const onGameUpdateRef = useRef(onGameUpdate)
   onGameUpdateRef.current = onGameUpdate
   const channelRef = useRef<RealtimeChannel | null>(null)
-  const reconnectTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null)
-  const pollTimerRef = useRef<ReturnType<typeof setInterval> | null>(null)
   const refetchRef = useRef<() => void>(() => {})
-  const reconnectAttemptRef = useRef(0)
   const connectingRef = useRef(false)
   const channelSerialRef = useRef(0)
   const channelStatusRef = useRef<string | null>(null)
@@ -30,31 +26,6 @@ export function useGameRealtime(
         console.debug('[useGameRealtime]', ...args)
       }
     }
-
-    const clearReconnectTimer = () => {
-      if (!reconnectTimerRef.current) return
-      clearTimeout(reconnectTimerRef.current)
-      reconnectTimerRef.current = null
-    }
-
-    const clearPollTimer = () => {
-      if (!pollTimerRef.current) return
-      clearInterval(pollTimerRef.current)
-      pollTimerRef.current = null
-    }
-
-    const ensureFallbackPolling = () => {
-      if (cancelled || !gameId || pollTimerRef.current) return
-      if (channelStatusRef.current === 'SUBSCRIBED') return
-      logDebug('fallback polling enabled', { gameId, intervalMs: REALTIME_FALLBACK_POLL_MS })
-      pollTimerRef.current = setInterval(() => {
-        if (typeof document !== 'undefined' && document.visibilityState !== 'visible') {
-          return
-        }
-        void fetchMoves('fallback-poll')
-      }, REALTIME_FALLBACK_POLL_MS)
-    }
-
     const cleanupChannel = () => {
       const ch = channelRef.current
       channelRef.current = null
@@ -98,18 +69,6 @@ export function useGameRealtime(
         }
         return fetched
       })
-    }
-
-    const scheduleReconnect = () => {
-      if (cancelled || !gameId || reconnectTimerRef.current || connectingRef.current) return
-      const attempt = reconnectAttemptRef.current
-      const delayMs = Math.min(1000 * (2 ** attempt), 8000)
-      reconnectAttemptRef.current = Math.min(attempt + 1, 4)
-      logDebug('schedule reconnect', { gameId, attempt: attempt + 1, delayMs })
-      reconnectTimerRef.current = setTimeout(() => {
-        reconnectTimerRef.current = null
-        void connectChannel()
-      }, delayMs)
     }
 
     const connectChannel = async () => {
@@ -224,27 +183,20 @@ export function useGameRealtime(
         () => {
           if (channelSerialRef.current !== channelSerial) return
           logDebug('event UPDATE games', { gameId })
-          void fetchMoves('games-update')
-          // Notify caller so they can refresh game state (current_fen, status, etc.)
           onGameUpdateRef.current?.()
         }
       )
-
       channel.subscribe((status, err) => {
         if (channelSerialRef.current !== channelSerial) return
         channelStatusRef.current = status
         logDebug('channel status', { gameId, status, err: err?.message })
         if (status === 'SUBSCRIBED') {
-          clearPollTimer()
-          reconnectAttemptRef.current = 0
           connectingRef.current = false
-          void fetchMoves('subscribed')
           return
         }
         if ((status === 'CHANNEL_ERROR' || status === 'TIMED_OUT' || status === 'CLOSED') && !cancelled) {
-          ensureFallbackPolling()
           connectingRef.current = false
-          scheduleReconnect()
+          void connectChannel()
         }
       })
 
@@ -260,9 +212,6 @@ export function useGameRealtime(
         setLoading(false)
         return
       }
-      clearReconnectTimer()
-      clearPollTimer()
-      reconnectAttemptRef.current = 0
       connectingRef.current = false
       channelStatusRef.current = null
       setLoading(true)
@@ -275,8 +224,6 @@ export function useGameRealtime(
 
     return () => {
       cancelled = true
-      clearReconnectTimer()
-      clearPollTimer()
       cleanupChannel()
     }
   }, [gameId, refreshToken])

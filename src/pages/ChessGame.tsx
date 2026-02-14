@@ -37,6 +37,7 @@ type MoveRow = {
   created_by: string
   created_at: string
   fen_after?: string | null
+  hint_used?: boolean | null
 }
 
 type MoveHistoryRow = {
@@ -612,10 +613,22 @@ function OnlineChessGame(): React.JSX.Element {
   // which UCI is currently hovered / tapped to highlight squares
   const [hoveredHintUci, setHoveredHintUci] = useState<string | null>(null)
   const [hintCount, setHintCount] = useState(0)
-  const [hintedPlys, setHintedPlys] = useState<number[]>([])
-  const lastShownPlyRef = useRef<number | null>(null)
+  const [pendingHintPly, setPendingHintPly] = useState<number | null>(null)
 
   const moveRows = useMemo(() => (moves ?? []) as MoveRow[], [moves])
+  const hintedByPly = useMemo(() => {
+    const map = new Map<number, boolean>()
+    for (const move of moveRows) {
+      const ply = Number(move.ply)
+      if (!Number.isFinite(ply)) continue
+      map.set(ply, move.hint_used === true)
+    }
+    return map
+  }, [moveRows])
+
+  useEffect(() => {
+    console.table(moveRows.map((m) => ({ ply: m.ply, uci: m.uci, hinted: m.hint_used })))
+  }, [moveRows])
 
   // Clear optimistic FEN once the realtime event delivers the new move
   useEffect(() => {
@@ -652,12 +665,12 @@ function OnlineChessGame(): React.JSX.Element {
     void loadGameData()
   }, [loadGameData])
 
-  // Clear any active hint after the move that the hint was shown for occurs
+  // Clear active hint UI after any new move arrives from realtime state.
   useEffect(() => {
-    if (lastShownPlyRef.current != null && moveRows.length > lastShownPlyRef.current) {
+    if (moveRows.length > 0) {
       setShowHintsVisible(false)
       setHoveredHintUci(null)
-      lastShownPlyRef.current = null
+      setPendingHintPly(null)
     }
   }, [moveRows.length])
 
@@ -689,7 +702,11 @@ function OnlineChessGame(): React.JSX.Element {
     setOptimisticFen(fenAfter)
     try {
       const ply = moveRows.length + 1
-      await makeMove(gameId, ply, `${move.from}${move.to}${move.promotion ?? ''}`, fenAfter)
+      const hintUsedForPly = pendingHintPly === ply
+      await makeMove(gameId, ply, `${move.from}${move.to}${move.promotion ?? ''}`, fenAfter, hintUsedForPly)
+      setPendingHintPly(null)
+      setShowHintsVisible(false)
+      setHoveredHintUci(null)
       setViewPly(ply)
       setSelectedSquare(null)
       // Safety-net: ensure we have the move in local state even if the
@@ -1108,13 +1125,14 @@ function OnlineChessGame(): React.JSX.Element {
                 <div className="flex">
                   <button
                     type="button"
-                    className="rounded px-2 py-1 text-xs font-semibold bg-white border border-slate-200 hover:bg-slate-50"
+                    className="rounded border border-slate-200 bg-white px-2 py-1 text-xs font-semibold hover:bg-slate-50 disabled:cursor-not-allowed disabled:opacity-50"
+                    disabled={!isUserTurn}
                     onClick={() => {
+                      if (!isUserTurn) return
                       const nextPly = moveRows.length + 1
-                      lastShownPlyRef.current = nextPly
+                      setPendingHintPly(nextPly)
                       setShowHintsVisible(true)
                       setHintCount((c) => c + 1)
-                      setHintedPlys((prev) => Array.from(new Set([...prev, nextPly])))
                     }}
                   >
                     Show hints
@@ -1139,8 +1157,8 @@ function OnlineChessGame(): React.JSX.Element {
                   {moveHistory.map((row) => {
                     const whitePly = (row.moveNumber * 2) - 1
                     const blackPly = row.moveNumber * 2
-                    const whiteHint = hintedPlys.includes(whitePly)
-                    const blackHint = hintedPlys.includes(blackPly)
+                    const whiteHint = hintedByPly.get(whitePly) === true
+                    const blackHint = hintedByPly.get(blackPly) === true
                     return (
                       <tr key={row.moveNumber} className="border-t border-slate-100">
                         <td className="py-2 pr-2 text-xs text-slate-500">{row.moveNumber}.</td>
