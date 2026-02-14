@@ -70,6 +70,7 @@ export function registerRoutes(app: Application, { db, supabase, socketManager, 
   const createCaptureIntentsRouter = require('../routes/captureIntents');
   const createChatRouter = require('../routes/chat');
   const createWhiteboardRouter = require('../routes/whiteboard');
+  const createChessTutorRouter = require('../routes/chessTutor');
 
   const { securityErrorHandler } = require('../middleware/security');
   const { authenticateToken, requireRole } = require('../middleware/auth');
@@ -289,6 +290,16 @@ export function registerRoutes(app: Application, { db, supabase, socketManager, 
   // Chat room purpose/config endpoints (auth required).
   const chatRouter = createChatRouter({ db });
   app.use('/api/v1/chat', authenticateToken, chatRouter);
+
+  // Chess tutor analysis endpoint (auth required, invoked on-demand by UI).
+  const chessTutorRouter = createChessTutorRouter();
+  app.use(
+    '/api/chess-tutor',
+    createLegacyApiDeprecationMiddleware([{ legacyBase: '/api/chess-tutor', successorBase: '/api/v1/chess-tutor' }]),
+    authenticateToken,
+    chessTutorRouter
+  );
+  app.use('/api/v1/chess-tutor', authenticateToken, chessTutorRouter);
 
   // Debug/diagnostic routes require normal authentication.
   // NOTE: Mounted in all environments; additional hardening can be done inside the router
