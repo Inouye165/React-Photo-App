@@ -1,0 +1,11 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="1280" height="720" viewBox="0 0 1280 720" role="img" aria-labelledby="title desc">
+  <title id="title">Medieval Europe</title>
+  <desc id="desc">Illustrative timeline image for chess expansion across medieval Europe.</desc>
+  <rect width="1280" height="720" fill="#0f172a"/>
+  <rect x="140" y="90" width="1000" height="540" rx="22" fill="#e2e8f0"/>
+  <text x="210" y="205" fill="#1e293b" font-family="Arial, sans-serif" font-size="48" font-weight="700">1000–1400 CE · Medieval Europe</text>
+  <text x="210" y="270" fill="#334155" font-family="Arial, sans-serif" font-size="30">Chess enters courts, monasteries, and universities.</text>
+  <text x="210" y="325" fill="#334155" font-family="Arial, sans-serif" font-size="30">Regional rule variants begin to emerge.</text>
+  <rect x="220" y="380" width="700" height="190" fill="#cbd5e1"/>
+  <path d="M220 570 L920 570 L870 620 L170 620 Z" fill="#94a3b8"/>
+</svg>

@@ -77,7 +77,7 @@ describe('chess tutor route', () => {
       .expect(200);
 
     expect(res.body.success).toBe(true);
-    expect(res.body.model).toBe('gemini-1.5-pro');
+    expect(res.body.model).toBe('gemini-2.5-flash');
     expect(res.body.apiVersion).toBe('v1');
 
     expect(mockGetGenerativeModel).toHaveBeenCalledWith(expect.objectContaining({
@@ -86,7 +86,7 @@ describe('chess tutor route', () => {
     }));
 
     expect(mockGetGenerativeModel).toHaveBeenCalledWith(expect.objectContaining({
-      model: 'gemini-1.5-pro',
+      model: 'gemini-2.5-flash',
       apiVersion: 'v1',
     }));
   });

@@ -1,0 +1,10 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="1280" height="720" viewBox="0 0 1280 720" role="img" aria-labelledby="title desc">
+  <title id="title">Philidor Strategy Era</title>
+  <desc id="desc">Illustrative timeline image for Philidor and classical strategic concepts.</desc>
+  <rect width="1280" height="720" fill="#111827"/>
+  <rect x="190" y="110" width="900" height="500" rx="20" fill="#fefce8"/>
+  <text x="250" y="210" fill="#422006" font-family="Arial, sans-serif" font-size="48" font-weight="700">1737 · Philidor and Strategy</text>
+  <text x="250" y="280" fill="#713f12" font-family="Arial, sans-serif" font-size="30">“Pawns are the soul of chess.”</text>
+  <text x="250" y="335" fill="#713f12" font-family="Arial, sans-serif" font-size="30">Planning and structure gain center stage.</text>
+  <rect x="250" y="390" width="760" height="160" fill="#fde68a" stroke="#ca8a04" stroke-width="4"/>
+</svg>

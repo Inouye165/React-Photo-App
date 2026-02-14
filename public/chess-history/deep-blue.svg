@@ -1,0 +1,11 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="1280" height="720" viewBox="0 0 1280 720" role="img" aria-labelledby="title desc">
+  <title id="title">Deep Blue Milestone</title>
+  <desc id="desc">Illustrative timeline image for the 1997 human vs machine milestone.</desc>
+  <rect width="1280" height="720" fill="#0c4a6e"/>
+  <rect x="170" y="95" width="940" height="530" rx="22" fill="#f0f9ff"/>
+  <text x="240" y="205" fill="#075985" font-family="Arial, sans-serif" font-size="48" font-weight="700">1997 · Deep Blue vs Kasparov</text>
+  <text x="240" y="275" fill="#0369a1" font-family="Arial, sans-serif" font-size="30">A computer defeats the reigning world champion.</text>
+  <text x="240" y="330" fill="#0369a1" font-family="Arial, sans-serif" font-size="30">Engine preparation permanently changes training.</text>
+  <rect x="260" y="390" width="360" height="170" fill="#7dd3fc"/>
+  <rect x="660" y="390" width="360" height="170" fill="#38bdf8"/>
+</svg>

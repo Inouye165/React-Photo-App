@@ -1,0 +1,12 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="1280" height="720" viewBox="0 0 1280 720" role="img" aria-labelledby="title desc">
+  <title id="title">World Championship Begins</title>
+  <desc id="desc">Illustrative timeline image for the start of official world championship lineage.</desc>
+  <rect width="1280" height="720" fill="#7c2d12"/>
+  <rect x="170" y="100" width="940" height="520" rx="24" fill="#fff7ed"/>
+  <text x="240" y="210" fill="#9a3412" font-family="Arial, sans-serif" font-size="48" font-weight="700">1886 · World Championship Era</text>
+  <text x="240" y="280" fill="#c2410c" font-family="Arial, sans-serif" font-size="30">Steinitz vs. Zukertort starts official title lineage.</text>
+  <text x="240" y="335" fill="#c2410c" font-family="Arial, sans-serif" font-size="30">Match play becomes the crown jewel of elite chess.</text>
+  <circle cx="350" cy="470" r="70" fill="#fdba74"/>
+  <circle cx="540" cy="470" r="70" fill="#fb923c"/>
+  <circle cx="730" cy="470" r="70" fill="#f97316"/>
+</svg>

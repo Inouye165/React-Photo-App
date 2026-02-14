@@ -1,0 +1,12 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="1280" height="720" viewBox="0 0 1280 720" role="img" aria-labelledby="title desc">
+  <title id="title">London 1851 Tournament</title>
+  <desc id="desc">Illustrative timeline image for the first international chess tournament.</desc>
+  <rect width="1280" height="720" fill="#0b3b2e"/>
+  <rect x="160" y="95" width="960" height="530" rx="24" fill="#ecfdf5"/>
+  <text x="230" y="205" fill="#065f46" font-family="Arial, sans-serif" font-size="48" font-weight="700">1851 · London International Tournament</text>
+  <text x="230" y="275" fill="#047857" font-family="Arial, sans-serif" font-size="30">Organized global competition begins.</text>
+  <text x="230" y="330" fill="#047857" font-family="Arial, sans-serif" font-size="30">Opening theory and published games accelerate.</text>
+  <rect x="230" y="390" width="320" height="170" fill="#34d399"/>
+  <rect x="570" y="390" width="320" height="170" fill="#10b981"/>
+  <rect x="910" y="390" width="120" height="170" fill="#059669"/>
+</svg>

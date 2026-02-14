@@ -29,8 +29,8 @@ type GeminiErrorInfo = {
   message: string;
 };
 
-const DEFAULT_TUTOR_MODEL = 'gemini-1.5-flash';
-const TUTOR_FALLBACK_MODELS = ['gemini-1.5-pro', 'gemini-pro'];
+const DEFAULT_TUTOR_MODEL = 'gemini-2.0-flash';
+const TUTOR_FALLBACK_MODELS = ['gemini-2.5-flash', 'gemini-2.0-flash-lite', 'gemini-1.5-flash', 'gemini-1.5-pro', 'gemini-pro'];
 const DEFAULT_API_VERSION = 'v1';
 
 class GeminiTutorError extends Error {
