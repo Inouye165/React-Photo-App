@@ -272,5 +272,27 @@ describe('ChessGame', () => {
       expect(analyzeGameForMeMock).toHaveBeenCalled()
       expect(screen.getByText('gemini-2.0-flash-lite')).toBeInTheDocument()
     })
+
+    await user.click(screen.getByRole('button', { name: 'How to play' }))
+    expect(screen.getByText('Beginner Lesson')).toBeInTheDocument()
+
+    await user.click(screen.getByRole('button', { name: 'Analyze game' }))
+    expect(screen.getByText('gemini-2.0-flash-lite')).toBeInTheDocument()
+  })
+
+  it('shows beginner lesson flow from pawn to knight', async () => {
+    const user = userEvent.setup()
+    setMockGameId('local')
+    render(<ChessGame />)
+
+    await user.click(screen.getByRole('button', { name: 'How to play' }))
+
+    expect(screen.getByText('Piece value: ≈1 point')).toBeInTheDocument()
+    expect(screen.getByText('This demo shows a first move push from e2 to e4.')).toBeInTheDocument()
+
+    await user.click(screen.getByRole('button', { name: 'Next piece' }))
+
+    expect(screen.getByText('Piece value: ≈3 points')).toBeInTheDocument()
+    expect(screen.getByText('This demo shows a knight hop from d4 to f5.')).toBeInTheDocument()
   })
 })

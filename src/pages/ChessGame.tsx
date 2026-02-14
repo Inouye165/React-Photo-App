@@ -52,6 +52,93 @@ type HintMove = {
   san: string
 }
 
+type TutorTab = 'lesson' | 'analyze'
+
+type ChessLesson = {
+  piece: 'Pawn' | 'Knight' | 'Bishop' | 'Rook' | 'Queen' | 'King'
+  value: string
+  explanation: string
+  movement: string
+  frames: string[]
+  highlightSquares: string[]
+}
+
+const CHESS_LESSONS: ChessLesson[] = [
+  {
+    piece: 'Pawn',
+    value: '≈1 point',
+    explanation: 'Pawns move forward one square. On their first move, they may advance two squares. Pawns capture one square diagonally forward.',
+    movement: 'This demo shows a first move push from e2 to e4.',
+    frames: [
+      '4k3/8/8/8/8/8/4P3/4K3 w - - 0 1',
+      '4k3/8/8/8/4P3/8/8/4K3 w - - 0 1',
+    ],
+    highlightSquares: ['e2', 'e3', 'e4'],
+  },
+  {
+    piece: 'Knight',
+    value: '≈3 points',
+    explanation: 'Knights move in an L-shape: two squares in one direction and then one to the side. Knights can jump over pieces.',
+    movement: 'This demo shows a knight hop from d4 to f5.',
+    frames: [
+      '4k3/8/8/8/3N4/8/8/4K3 w - - 0 1',
+      '4k3/8/8/5N2/8/8/8/4K3 w - - 0 1',
+    ],
+    highlightSquares: ['b3', 'b5', 'c2', 'c6', 'e2', 'e6', 'f3', 'f5'],
+  },
+  {
+    piece: 'Bishop',
+    value: '≈3 points',
+    explanation: 'Bishops move diagonally any number of squares. Each bishop stays on the same color squares for the whole game.',
+    movement: 'This demo shows a bishop sliding from d4 to g7.',
+    frames: [
+      '4k3/8/8/8/3B4/8/8/4K3 w - - 0 1',
+      '4k3/6B1/8/8/8/8/8/4K3 w - - 0 1',
+    ],
+    highlightSquares: ['a1', 'b2', 'c3', 'e5', 'f6', 'g7', 'h8'],
+  },
+  {
+    piece: 'Rook',
+    value: '≈5 points',
+    explanation: 'Rooks move horizontally or vertically any number of squares. Rooks are strongest on open files and ranks.',
+    movement: 'This demo shows a rook lift from d4 to d7.',
+    frames: [
+      '4k3/8/8/8/3R4/8/8/4K3 w - - 0 1',
+      '4k3/3R4/8/8/8/8/8/4K3 w - - 0 1',
+    ],
+    highlightSquares: ['d1', 'd2', 'd3', 'd5', 'd6', 'd7', 'd8', 'a4', 'b4', 'c4', 'e4', 'f4', 'g4', 'h4'],
+  },
+  {
+    piece: 'Queen',
+    value: '≈9 points',
+    explanation: 'The queen combines rook and bishop movement: she can move any number of squares in straight lines or diagonals.',
+    movement: 'This demo shows a queen moving diagonally from d4 to h8.',
+    frames: [
+      '4k3/8/8/8/3Q4/8/8/4K3 w - - 0 1',
+      '4k2Q/8/8/8/8/8/8/4K3 w - - 0 1',
+    ],
+    highlightSquares: ['d1', 'd2', 'd3', 'd5', 'd6', 'd7', 'd8', 'a4', 'b4', 'c4', 'e4', 'f4', 'g4', 'h4', 'a1', 'b2', 'c3', 'e5', 'f6', 'g7', 'h8'],
+  },
+  {
+    piece: 'King',
+    value: 'Priceless',
+    explanation: 'The king moves one square in any direction. Keep your king safe: if it is checkmated, the game ends.',
+    movement: 'This demo shows the king stepping from e2 to f3.',
+    frames: [
+      '4k3/8/8/8/8/8/4K3/8 w - - 0 1',
+      '4k3/8/8/8/8/5K2/8/8 w - - 0 1',
+    ],
+    highlightSquares: ['d1', 'e1', 'f1', 'd2', 'f2', 'd3', 'e3', 'f3'],
+  },
+]
+
+function lessonSquareStyles(squares: string[]): Record<string, React.CSSProperties> {
+  return squares.reduce<Record<string, React.CSSProperties>>((acc, square) => {
+    acc[square] = { background: 'radial-gradient(circle, rgba(59,130,246,0.45) 30%, transparent 32%)' }
+    return acc
+  }, {})
+}
+
 function ChessTutorPanel({
   analysis,
   modelLabel,
@@ -65,6 +152,24 @@ function ChessTutorPanel({
   error: string | null
   onAnalyze: () => void
 }) {
+  const [activeTab, setActiveTab] = useState<TutorTab>('analyze')
+  const [activeLessonIndex, setActiveLessonIndex] = useState(0)
+  const [animationFrame, setAnimationFrame] = useState(0)
+
+  const activeLesson = CHESS_LESSONS[activeLessonIndex]
+
+  useEffect(() => {
+    setAnimationFrame(0)
+  }, [activeLessonIndex])
+
+  useEffect(() => {
+    if (activeTab !== 'lesson') return
+    const timer = window.setInterval(() => {
+      setAnimationFrame((prev) => (prev + 1) % activeLesson.frames.length)
+    }, 1200)
+    return () => window.clearInterval(timer)
+  }, [activeTab, activeLesson.frames.length])
+
   return (
     <aside className="flex min-h-0 w-full flex-col rounded-2xl border border-slate-200 bg-white/80 p-4 shadow-md lg:w-[360px] lg:shrink-0">
       <div className="mb-3 flex items-center justify-between">
@@ -73,42 +178,112 @@ function ChessTutorPanel({
       </div>
       <div className="mb-4 rounded-lg border border-slate-200 bg-slate-50 px-3 py-2">
         <div className="text-xs font-semibold text-slate-600">Tutor Panel</div>
-        <button
-          type="button"
-          onClick={onAnalyze}
-          disabled={loading}
-          className="mt-2 rounded border border-slate-200 bg-white px-2 py-1 text-xs font-semibold hover:bg-slate-50 disabled:cursor-not-allowed disabled:opacity-50"
-        >
-          {loading ? 'Analyzing…' : 'Analyze game for me'}
-        </button>
+        <div className="mt-2 flex gap-2">
+          <button
+            type="button"
+            onClick={() => setActiveTab('lesson')}
+            className={`rounded border px-2 py-1 text-xs font-semibold ${activeTab === 'lesson' ? 'border-blue-300 bg-blue-50 text-blue-700' : 'border-slate-200 bg-white text-slate-600 hover:bg-slate-50'}`}
+          >
+            How to play
+          </button>
+          <button
+            type="button"
+            onClick={() => setActiveTab('analyze')}
+            className={`rounded border px-2 py-1 text-xs font-semibold ${activeTab === 'analyze' ? 'border-blue-300 bg-blue-50 text-blue-700' : 'border-slate-200 bg-white text-slate-600 hover:bg-slate-50'}`}
+          >
+            Analyze game
+          </button>
+        </div>
       </div>
       <div className="min-h-0 flex-1 overflow-y-auto rounded-lg border border-dashed border-slate-200 bg-white px-3 py-2 text-sm">
-        {error ? <div className="text-red-600">{error}</div> : null}
-        {!error && !analysis && !loading ? <div className="text-slate-500">Press “Analyze game for me” to get a position summary, hints, and focus points.</div> : null}
-        {analysis ? (
+        {activeTab === 'analyze' ? (
+          <>
+            <button
+              type="button"
+              onClick={onAnalyze}
+              disabled={loading}
+              className="mb-3 rounded border border-slate-200 bg-white px-2 py-1 text-xs font-semibold hover:bg-slate-50 disabled:cursor-not-allowed disabled:opacity-50"
+            >
+              {loading ? 'Analyzing…' : 'Analyze game for me'}
+            </button>
+            {error ? <div className="text-red-600">{error}</div> : null}
+            {!error && !analysis && !loading ? <div className="text-slate-500">Press “Analyze game for me” to get a position summary, hints, and focus points.</div> : null}
+            {analysis ? (
+              <div className="space-y-3 text-slate-700">
+                <div>
+                  <div className="text-xs font-semibold uppercase tracking-wide text-slate-500">Position Summary</div>
+                  <p className="mt-1 text-sm">{analysis.positionSummary}</p>
+                </div>
+                <div>
+                  <div className="text-xs font-semibold uppercase tracking-wide text-slate-500">Hints</div>
+                  <ul className="mt-1 list-disc pl-5">
+                    {(analysis.hints.length ? analysis.hints : ['No immediate tactical hints detected.']).map((hint) => (
+                      <li key={hint}>{hint}</li>
+                    ))}
+                  </ul>
+                </div>
+                <div>
+                  <div className="text-xs font-semibold uppercase tracking-wide text-slate-500">Focus Points</div>
+                  <ul className="mt-1 list-disc pl-5">
+                    {(analysis.focusAreas.length ? analysis.focusAreas : ['Improve piece activity and king safety.']).map((focus) => (
+                      <li key={focus}>{focus}</li>
+                    ))}
+                  </ul>
+                </div>
+              </div>
+            ) : null}
+          </>
+        ) : (
           <div className="space-y-3 text-slate-700">
-            <div>
-              <div className="text-xs font-semibold uppercase tracking-wide text-slate-500">Position Summary</div>
-              <p className="mt-1 text-sm">{analysis.positionSummary}</p>
+            <div className="text-xs font-semibold uppercase tracking-wide text-slate-500">Beginner Lesson</div>
+            <div className="mx-auto w-full max-w-[250px]">
+              <Chessboard
+                id={`lesson-${activeLesson.piece.toLowerCase()}`}
+                position={activeLesson.frames[animationFrame]}
+                boardWidth={250}
+                arePiecesDraggable={false}
+                customSquareStyles={lessonSquareStyles(activeLesson.highlightSquares)}
+                animationDuration={500}
+              />
             </div>
             <div>
-              <div className="text-xs font-semibold uppercase tracking-wide text-slate-500">Hints</div>
-              <ul className="mt-1 list-disc pl-5">
-                {(analysis.hints.length ? analysis.hints : ['No immediate tactical hints detected.']).map((hint) => (
-                  <li key={hint}>{hint}</li>
-                ))}
-              </ul>
+              <div className="text-sm font-semibold text-slate-700">{activeLesson.piece}</div>
+              <div className="text-xs text-slate-500">Piece value: {activeLesson.value}</div>
+              <p className="mt-1 text-sm">{activeLesson.explanation}</p>
+              <p className="mt-1 text-xs text-slate-500">{activeLesson.movement}</p>
             </div>
-            <div>
-              <div className="text-xs font-semibold uppercase tracking-wide text-slate-500">Focus Points</div>
-              <ul className="mt-1 list-disc pl-5">
-                {(analysis.focusAreas.length ? analysis.focusAreas : ['Improve piece activity and king safety.']).map((focus) => (
-                  <li key={focus}>{focus}</li>
-                ))}
-              </ul>
+            <div className="flex flex-wrap gap-1">
+              {CHESS_LESSONS.map((lesson, index) => (
+                <button
+                  key={lesson.piece}
+                  type="button"
+                  onClick={() => setActiveLessonIndex(index)}
+                  className={`rounded border px-2 py-1 text-xs font-semibold ${index === activeLessonIndex ? 'border-blue-300 bg-blue-50 text-blue-700' : 'border-slate-200 bg-white text-slate-600 hover:bg-slate-50'}`}
+                >
+                  {lesson.piece}
+                </button>
+              ))}
+            </div>
+            <div className="flex gap-2">
+              <button
+                type="button"
+                onClick={() => setActiveLessonIndex((prev) => Math.max(0, prev - 1))}
+                disabled={activeLessonIndex === 0}
+                className="rounded border border-slate-200 bg-white px-2 py-1 text-xs font-semibold text-slate-600 hover:bg-slate-50 disabled:cursor-not-allowed disabled:opacity-50"
+              >
+                Previous piece
+              </button>
+              <button
+                type="button"
+                onClick={() => setActiveLessonIndex((prev) => Math.min(CHESS_LESSONS.length - 1, prev + 1))}
+                disabled={activeLessonIndex === CHESS_LESSONS.length - 1}
+                className="rounded border border-slate-200 bg-white px-2 py-1 text-xs font-semibold text-slate-600 hover:bg-slate-50 disabled:cursor-not-allowed disabled:opacity-50"
+              >
+                Next piece
+              </button>
             </div>
           </div>
-        ) : null}
+        )}
       </div>
     </aside>
   )
