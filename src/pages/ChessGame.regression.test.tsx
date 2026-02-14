@@ -1,6 +1,30 @@
 /**
  * Regression tests for chess findings fixes (2026-02-12).
  *
+    // New test for hint marker rendering
+    it('renders hint marker from persisted move data so both clients can see it', async () => {
+      useGameRealtimeMock.mockReturnValue({
+        moves: [
+          {
+            ply: 1,
+            uci: 'e2e4',
+            created_by: 'user-1',
+            created_at: '2026-02-10T00:00:00Z',
+            fen_after: 'rnbqkbnr/pppppppp/8/8/4P3/8/PPPP1PPP/RNBQKBNR b KQkq - 0 1',
+            hint_used: true,
+          },
+        ],
+        loading: false,
+      })
+
+      render(<ChessGame />)
+
+      await waitFor(() => {
+        expect(screen.getByText('e4')).toBeInTheDocument()
+        expect(screen.getByText('*')).toBeInTheDocument()
+      })
+    })
+
  * Covers:
  *  1. Promotion chooser UI (Correctness #5 / UX #5)
  *  2. Game-end messaging panel (UX #2)
@@ -64,7 +88,7 @@ const {
       moves: [
         { ply: 1, uci: 'e2e4', created_by: 'user-1', created_at: '2026-02-10T00:00:00Z', fen_after: 'rnbqkbnr/pppppppp/8/8/4P3/8/PPPP1PPP/RNBQKBNR b KQkq e3 0 1' },
         { ply: 2, uci: 'e7e5', created_by: 'user-2', created_at: '2026-02-10T00:00:01Z', fen_after: 'rnbqkbnr/pppp1ppp/8/4p3/4P3/8/PPPP1PPP/RNBQKBNR w KQkq e6 0 2' },
-      ],
+      ] as any[],
       loading: false,
     })),
     fetchGameMock: vi.fn(async () => ({
@@ -186,7 +210,7 @@ describe('ChessGame regression tests', () => {
       moves: [
         { ply: 1, uci: 'e2e4', created_by: 'user-1', created_at: '2026-02-10T00:00:00Z', fen_after: 'rnbqkbnr/pppppppp/8/8/4P3/8/PPPP1PPP/RNBQKBNR b KQkq e3 0 1' },
         { ply: 2, uci: 'e7e5', created_by: 'user-2', created_at: '2026-02-10T00:00:01Z', fen_after: 'rnbqkbnr/pppp1ppp/8/4p3/4P3/8/PPPP1PPP/RNBQKBNR w KQkq e6 0 2' },
-      ],
+      ] as any[],
       loading: false,
     }))
   })
@@ -303,6 +327,29 @@ describe('ChessGame regression tests', () => {
 
     await waitFor(() => {
       expect(screen.getByText('Network error')).toBeInTheDocument()
+    })
+  })
+
+  it('renders hint marker from persisted move data so both clients can see it', async () => {
+    useGameRealtimeMock.mockReturnValue({
+      moves: [
+        {
+          ply: 1,
+          uci: 'e2e4',
+          created_by: 'user-1',
+          created_at: '2026-02-10T00:00:00Z',
+          fen_after: 'rnbqkbnr/pppppppp/8/8/4P3/8/PPPP1PPP/RNBQKBNR b KQkq - 0 1',
+          hint_used: true,
+        },
+      ],
+      loading: false,
+    })
+
+    render(<ChessGame />)
+
+    await waitFor(() => {
+      expect(screen.getByText('e4')).toBeInTheDocument()
+      expect(screen.getByText('*')).toBeInTheDocument()
     })
   })
 

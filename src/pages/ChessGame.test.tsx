@@ -218,6 +218,14 @@ describe('ChessGame', () => {
     expect(screen.getByText('Viewing move 1/2')).toBeInTheDocument()
   })
 
+  it('disables online hint button when it is not the current user turn', async () => {
+    setAuthUserId('user-2')
+    render(<ChessGame />)
+
+    const hintButton = await screen.findByRole('button', { name: 'Show hints' })
+    expect(hintButton).toBeDisabled()
+  })
+
   it('records black reply in local move history after white move', async () => {
     const user = userEvent.setup()
     setMockGameId('local')

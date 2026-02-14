@@ -104,7 +104,7 @@ describe('useGameRealtime', () => {
     })
   })
 
-  it('handles delete events and game update refresh', async () => {
+  it('handles delete events from chess_moves realtime stream', async () => {
     const { result } = renderHook(() => useGameRealtime('game-1'))
 
     await waitFor(() => {
@@ -117,19 +117,6 @@ describe('useGameRealtime', () => {
     })
 
     expect(result.current.moves.map((m) => m.id)).toEqual(['m1'])
-
-    mockSelectResult.mockResolvedValueOnce({
-      data: [],
-      error: null,
-    })
-
-    await act(async () => {
-      invokeHandler('UPDATE', 'games', { new: { id: 'game-1' } })
-    })
-
-    await waitFor(() => {
-      expect(result.current.moves).toEqual([])
-    })
   })
 
   it('deduplicates insert events for an existing move id', async () => {
@@ -162,7 +149,6 @@ describe('useGameRealtime', () => {
   })
 
   it('reconnects after channel error status', async () => {
-    const timeoutSpy = vi.spyOn(globalThis, 'setTimeout')
     renderHook(() => useGameRealtime('game-reconnect'))
 
     await waitFor(() => {
@@ -173,32 +159,23 @@ describe('useGameRealtime', () => {
       emitSubscribeStatus('CHANNEL_ERROR', { message: 'socket down' })
     })
 
-    const reconnectCall = timeoutSpy.mock.calls.find((call) => Number(call[1]) === 1000)
-    expect(reconnectCall).toBeDefined()
-
-    timeoutSpy.mockRestore()
+    await waitFor(() => {
+      expect(subscribeMock.mock.calls.length).toBeGreaterThanOrEqual(2)
+    })
   })
 
-  it('keeps existing moves on reconciliation fetch error', async () => {
-    const { result } = renderHook(() => useGameRealtime('game-keep-state'))
+  it('does not refetch on SUBSCRIBED status (websocket-only updates)', async () => {
+    renderHook(() => useGameRealtime('game-subscribed'))
 
     await waitFor(() => {
-      expect(result.current.loading).toBe(false)
-      expect(result.current.moves).toHaveLength(2)
+      expect(subscribeMock).toHaveBeenCalledTimes(1)
     })
 
-    mockSelectResult.mockResolvedValueOnce({
-      data: null,
-      error: { message: 'temporary db issue' },
-    })
-
+    const callsAfterInitial = mockSelectResult.mock.calls.length
     await act(async () => {
-      invokeHandler('UPDATE', 'games', { new: { id: 'game-keep-state' } })
+      emitSubscribeStatus('SUBSCRIBED')
     })
 
-    await waitFor(() => {
-      expect(result.current.moves).toHaveLength(2)
-      expect(result.current.moves.map((m) => m.id)).toEqual(['m1', 'm2'])
-    })
+    expect(mockSelectResult.mock.calls.length).toBe(callsAfterInitial)
   })
 })

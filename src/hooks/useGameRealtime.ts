@@ -8,9 +8,6 @@ export function useGameRealtime(gameId: string | null, refreshToken = 0) {
   const [moves, setMoves] = useState<any[]>([])
   const [loading, setLoading] = useState(false)
   const channelRef = useRef<RealtimeChannel | null>(null)
-  const reconnectTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null)
-  const pollTimerRef = useRef<ReturnType<typeof setInterval> | null>(null)
-  const reconnectAttemptRef = useRef(0)
   const connectingRef = useRef(false)
   const channelSerialRef = useRef(0)
 
@@ -20,18 +17,6 @@ export function useGameRealtime(gameId: string | null, refreshToken = 0) {
       if (import.meta.env.DEV) {
         console.debug('[useGameRealtime]', ...args)
       }
-    }
-
-    const clearReconnectTimer = () => {
-      if (!reconnectTimerRef.current) return
-      clearTimeout(reconnectTimerRef.current)
-      reconnectTimerRef.current = null
-    }
-
-    const clearPollTimer = () => {
-      if (!pollTimerRef.current) return
-      clearInterval(pollTimerRef.current)
-      pollTimerRef.current = null
     }
 
     const cleanupChannel = () => {
@@ -64,18 +49,6 @@ export function useGameRealtime(gameId: string | null, refreshToken = 0) {
         logDebug('fetch success', { gameId, reason, count: (data ?? []).length })
         setMoves((data ?? []) as any[])
       }
-    }
-
-    const scheduleReconnect = () => {
-      if (cancelled || !gameId || reconnectTimerRef.current || connectingRef.current) return
-      const attempt = reconnectAttemptRef.current
-      const delayMs = Math.min(1000 * (2 ** attempt), 8000)
-      reconnectAttemptRef.current = Math.min(attempt + 1, 4)
-      logDebug('schedule reconnect', { gameId, attempt: attempt + 1, delayMs })
-      reconnectTimerRef.current = setTimeout(() => {
-        reconnectTimerRef.current = null
-        void connectChannel()
-      }, delayMs)
     }
 
     const connectChannel = async () => {
@@ -184,28 +157,16 @@ export function useGameRealtime(gameId: string | null, refreshToken = 0) {
           })
         }
       )
-      channel.on(
-        'postgres_changes',
-        { event: 'UPDATE', schema: 'public', table: 'games', filter: `id=eq.${gameId}` },
-        () => {
-          if (channelSerialRef.current !== channelSerial) return
-          logDebug('event UPDATE games', { gameId })
-          void fetchMoves('games-update')
-        }
-      )
-
       channel.subscribe((status, err) => {
         if (channelSerialRef.current !== channelSerial) return
         logDebug('channel status', { gameId, status, err: err?.message })
         if (status === 'SUBSCRIBED') {
-          reconnectAttemptRef.current = 0
           connectingRef.current = false
-          void fetchMoves('subscribed')
           return
         }
         if ((status === 'CHANNEL_ERROR' || status === 'TIMED_OUT' || status === 'CLOSED') && !cancelled) {
           connectingRef.current = false
-          scheduleReconnect()
+          void connectChannel()
         }
       })
 
@@ -218,26 +179,17 @@ export function useGameRealtime(gameId: string | null, refreshToken = 0) {
         setLoading(false)
         return
       }
-      clearReconnectTimer()
-      clearPollTimer()
-      reconnectAttemptRef.current = 0
       connectingRef.current = false
       setLoading(true)
       await fetchMoves('initial')
       if (!cancelled) setLoading(false)
       await connectChannel()
-
-      pollTimerRef.current = setInterval(() => {
-        void fetchMoves('interval')
-      }, 3000)
     }
 
     run()
 
     return () => {
       cancelled = true
-      clearReconnectTimer()
-      clearPollTimer()
       cleanupChannel()
     }
   }, [gameId, refreshToken])
