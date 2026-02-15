@@ -231,6 +231,48 @@ describe('ChessGame', () => {
     expect(screen.getByText('Viewing move 1/2')).toBeInTheDocument()
   })
 
+  it('renders newest move row first in move history', async () => {
+    useGameRealtimeMock.mockReturnValue({
+      moves: [
+        { ply: 1, uci: 'e2e4', created_by: 'user-1', created_at: '2026-02-10T00:00:00Z' },
+        { ply: 2, uci: 'e7e5', created_by: 'user-2', created_at: '2026-02-10T00:00:01Z' },
+        { ply: 3, uci: 'g1f3', created_by: 'user-1', created_at: '2026-02-10T00:00:02Z' },
+        { ply: 4, uci: 'b8c6', created_by: 'user-2', created_at: '2026-02-10T00:00:03Z' },
+      ],
+      loading: false,
+    })
+
+    render(<ChessGame />)
+
+    await waitFor(() => {
+      const table = screen.getByRole('table')
+      const rows = within(table).getAllByRole('row')
+      expect(rows.length).toBeGreaterThan(1)
+      const firstBodyRow = rows[1]
+      const firstRowScope = within(firstBodyRow as HTMLElement)
+      expect(firstRowScope.getByText('2.')).toBeInTheDocument()
+      expect(firstRowScope.getByText('Nf3')).toBeInTheDocument()
+      expect(firstRowScope.getByText('Nc6')).toBeInTheDocument()
+    })
+  })
+
+  it('shows controlled-area overlays only when checkbox is checked', async () => {
+    const user = userEvent.setup()
+    setMockGameId('local')
+    render(<ChessGame />)
+
+    const board = screen.getByTestId('chessboard')
+    expect(board).toHaveAttribute('data-custom-squares', '')
+
+    await user.click(screen.getByRole('checkbox', { name: 'Highlight controlled area' }))
+
+    await waitFor(() => {
+      const highlighted = screen.getByTestId('chessboard').getAttribute('data-custom-squares') || ''
+      expect(highlighted.length).toBeGreaterThan(0)
+      expect(highlighted).toContain('e3')
+    })
+  })
+
   it('disables online hint button when it is not the current user turn', async () => {
     setAuthUserId('user-2')
     render(<ChessGame />)
@@ -274,26 +316,80 @@ describe('ChessGame', () => {
     })
 
     await user.click(screen.getByRole('button', { name: 'How to play' }))
-    expect(screen.getByText('Beginner Lesson')).toBeInTheDocument()
+    expect(screen.getByRole('button', { name: '1) Pieces & movement' })).toBeInTheDocument()
 
     await user.click(screen.getByRole('button', { name: 'Analyze game' }))
     expect(screen.getByText('gemini-2.0-flash-lite')).toBeInTheDocument()
   })
 
-  it('shows beginner lesson flow from pawn to knight', async () => {
+  it('shows pieces sublesson flow from pawn to knight', async () => {
     const user = userEvent.setup()
     setMockGameId('local')
     render(<ChessGame />)
 
     await user.click(screen.getByRole('button', { name: 'How to play' }))
+    await user.click(screen.getByRole('button', { name: '1) Pieces & movement' }))
 
     expect(screen.getByText('Piece value: ≈1 point')).toBeInTheDocument()
-    expect(screen.getByText('This demo shows a first move push from e2 to e4.')).toBeInTheDocument()
+    expect(screen.getByText('Opening example: White plays e4 from the standard starting position.')).toBeInTheDocument()
 
-    await user.click(screen.getByRole('button', { name: 'Next piece' }))
+    await user.click(screen.getByRole('button', { name: 'Knight' }))
 
     expect(screen.getByText('Piece value: ≈3 points')).toBeInTheDocument()
-    expect(screen.getByText('This demo shows a knight hop from d4 to f5.')).toBeInTheDocument()
+    expect(screen.getByText('Real opening sequence: after 1.e4 e5, White develops with 2.Nf3.')).toBeInTheDocument()
+  })
+
+  it('shows board and notation sublesson with algebraic and descriptive mappings', async () => {
+    const user = userEvent.setup()
+    setMockGameId('local')
+    render(<ChessGame />)
+
+    await user.click(screen.getByRole('button', { name: 'How to play' }))
+    await user.click(screen.getByRole('button', { name: '2) Board & notation' }))
+
+    expect(screen.getByText('Board & notation')).toBeInTheDocument()
+    expect(screen.getByText('Older descriptive')).toBeInTheDocument()
+    expect(screen.getByText('Castles KR')).toBeInTheDocument()
+    expect(screen.getByText('Algebraic notation names the destination square. Older descriptive notation uses names like K, QB, and KN files.')).toBeInTheDocument()
+  })
+
+  it('highlights current notation step during guided mini-game', async () => {
+    const user = userEvent.setup()
+    setMockGameId('local')
+    render(<ChessGame />)
+
+    await user.click(screen.getByRole('button', { name: 'How to play' }))
+    await user.click(screen.getByRole('button', { name: '2) Board & notation' }))
+
+    await user.click(screen.getByRole('button', { name: 'Next move' }))
+    expect(screen.getByRole('button', { name: /1\. e4/i })).toHaveAttribute('aria-current', 'step')
+
+    await user.click(screen.getByRole('button', { name: 'Next move' }))
+    expect(screen.getByRole('button', { name: /2\. e5/i })).toHaveAttribute('aria-current', 'step')
+  })
+
+  it('shows attacks sublesson and separate discovered check sublesson', async () => {
+    const user = userEvent.setup()
+    setMockGameId('local')
+    render(<ChessGame />)
+
+    await user.click(screen.getByRole('button', { name: 'How to play' }))
+    await user.click(screen.getByRole('button', { name: '3) Attacks' }))
+
+    expect(screen.getByText('Attacks (fork, discovered, pinned, etc.)')).toBeInTheDocument()
+    expect(screen.getByRole('button', { name: 'Pin' })).toBeInTheDocument()
+    expect(screen.getByRole('button', { name: 'Discovered attack' })).toBeInTheDocument()
+    expect(screen.getByRole('button', { name: 'Fork' })).toBeInTheDocument()
+    expect(screen.getByRole('button', { name: 'Skewer' })).toBeInTheDocument()
+
+    const forkButton = screen.getByRole('button', { name: 'Fork' })
+    await user.click(forkButton)
+    expect(forkButton).toHaveClass('border-blue-300')
+    expect(screen.getByText('One move attacks two or more targets at once.')).toBeInTheDocument()
+
+    await user.click(screen.getByRole('button', { name: '4) Discovered check' }))
+    expect(screen.getAllByText('Discovered check').length).toBeGreaterThan(0)
+    expect(screen.getByText('This is taught right after discovered attacks so students can see the same idea now targeting the king.')).toBeInTheDocument()
   })
 
   it('shows chess history timeline with scrollable events and images', async () => {

@@ -53,6 +53,7 @@ type HintMove = {
 }
 
 type TutorTab = 'lesson' | 'history' | 'analyze'
+type LessonSection = 'pieces' | 'board-notation' | 'attacks' | 'discovered-check'
 
 type ChessLesson = {
   piece: 'Pawn' | 'Knight' | 'Bishop' | 'Rook' | 'Queen' | 'King'
@@ -61,6 +62,35 @@ type ChessLesson = {
   movement: string
   frames: string[]
   highlightSquares: string[]
+}
+
+type NotationGuideRow = {
+  algebraic: string
+  descriptive: string
+  meaning: string
+}
+
+type NotationLineMove = {
+  san: string
+  descriptive: string
+  explanation: string
+  from: Square
+  to: Square
+  focusSquares: string[]
+}
+
+type TacticalPattern = {
+  name: string
+  category: 'Special move' | 'Tactic'
+  explanation: string
+  teachingNote: string
+  san: string
+  descriptive: string
+  frames: string[]
+  highlightSquares: string[]
+  frameHighlights?: string[][]
+  frameArrows?: Array<Array<[Square, Square]>>
+  frameLabels?: string[]
 }
 
 type ChessHistoryEvent = {
@@ -77,67 +107,59 @@ const CHESS_LESSONS: ChessLesson[] = [
     piece: 'Pawn',
     value: '≈1 point',
     explanation: 'Pawns move forward one square. On their first move, they may advance two squares. Pawns capture one square diagonally forward.',
-    movement: 'This demo shows a first move push from e2 to e4.',
-    frames: [
-      '4k3/8/8/8/8/8/4P3/4K3 w - - 0 1',
-      '4k3/8/8/8/4P3/8/8/4K3 w - - 0 1',
-    ],
+    movement: 'Opening example: White plays e4 from the standard starting position.',
+    frames: buildFenFrames('rnbqkbnr/pppppppp/8/8/8/8/PPPPPPPP/RNBQKBNR w KQkq - 0 1', ['e4']),
     highlightSquares: ['e2', 'e3', 'e4'],
   },
   {
     piece: 'Knight',
     value: '≈3 points',
     explanation: 'Knights move in an L-shape: two squares in one direction and then one to the side. Knights can jump over pieces.',
-    movement: 'This demo shows a knight hop from d4 to f5.',
-    frames: [
-      '4k3/8/8/8/3N4/8/8/4K3 w - - 0 1',
-      '4k3/8/8/5N2/8/8/8/4K3 w - - 0 1',
-    ],
-    highlightSquares: ['b3', 'b5', 'c2', 'c6', 'e2', 'e6', 'f3', 'f5'],
+    movement: 'Real opening sequence: after 1.e4 e5, White develops with 2.Nf3.',
+    frames: buildFenFrames('rnbqkbnr/pppp1ppp/8/4p3/4P3/8/PPPP1PPP/RNBQKBNR w KQkq - 0 2', ['Nf3']),
+    highlightSquares: ['g1', 'f3', 'e5'],
   },
   {
     piece: 'Bishop',
     value: '≈3 points',
     explanation: 'Bishops move diagonally any number of squares. Each bishop stays on the same color squares for the whole game.',
-    movement: 'This demo shows a bishop sliding from d4 to g7.',
-    frames: [
-      '4k3/8/8/8/3B4/8/8/4K3 w - - 0 1',
-      '4k3/6B1/8/8/8/8/8/4K3 w - - 0 1',
-    ],
-    highlightSquares: ['a1', 'b2', 'c3', 'e5', 'f6', 'g7', 'h8'],
+    movement: 'Italian-style development: bishop from f1 to c4 to pressure f7.',
+    frames: buildFenFrames('r1bqkbnr/pppp1ppp/2n5/4p3/4P3/5N2/PPPP1PPP/RNBQKB1R w KQkq - 2 3', ['Bc4']),
+    highlightSquares: ['f1', 'e2', 'd3', 'c4', 'f7'],
   },
   {
     piece: 'Rook',
     value: '≈5 points',
     explanation: 'Rooks move horizontally or vertically any number of squares. Rooks are strongest on open files and ranks.',
-    movement: 'This demo shows a rook lift from d4 to d7.',
+    movement: 'Rook power example: rook climbs from a4 to a8 (four squares) to pressure the 8th rank.',
     frames: [
-      '4k3/8/8/8/3R4/8/8/4K3 w - - 0 1',
-      '4k3/3R4/8/8/8/8/8/4K3 w - - 0 1',
+      'r3k2r/1p3ppp/2n5/8/R7/2N5/PP3PPP/4K2R w Kkq - 0 1',
+      'R3k2r/1p3ppp/2n5/8/8/2N5/PP3PPP/4K2R w Kkq - 0 1',
     ],
-    highlightSquares: ['d1', 'd2', 'd3', 'd5', 'd6', 'd7', 'd8', 'a4', 'b4', 'c4', 'e4', 'f4', 'g4', 'h4'],
+    highlightSquares: ['a4', 'a5', 'a6', 'a7', 'a8'],
   },
   {
     piece: 'Queen',
     value: '≈9 points',
     explanation: 'The queen combines rook and bishop movement: she can move any number of squares in straight lines or diagonals.',
-    movement: 'This demo shows a queen moving diagonally from d4 to h8.',
+    movement: 'Queen example from d4: diagonal to g7, back to d4, straight forward to d7, back to d4, then horizontal to h4.',
     frames: [
-      '4k3/8/8/8/3Q4/8/8/4K3 w - - 0 1',
-      '4k2Q/8/8/8/8/8/8/4K3 w - - 0 1',
+      'r3k2r/p1p2p1p/2n5/8/3Q4/2N5/PP3PPP/4K2R w Kkq - 0 1',
+      'r3k2r/p1p2pQp/2n5/8/8/2N5/PP3PPP/4K2R w Kkq - 0 1',
+      'r3k2r/p1p2p1p/2n5/8/3Q4/2N5/PP3PPP/4K2R w Kkq - 0 1',
+      'r3k2r/p1pQ1p1p/2n5/8/8/2N5/PP3PPP/4K2R w Kkq - 0 1',
+      'r3k2r/p1p2p1p/2n5/8/3Q4/2N5/PP3PPP/4K2R w Kkq - 0 1',
+      'r3k2r/p1p2p1p/2n5/8/7Q/2N5/PP3PPP/4K2R w Kkq - 0 1',
     ],
-    highlightSquares: ['d1', 'd2', 'd3', 'd5', 'd6', 'd7', 'd8', 'a4', 'b4', 'c4', 'e4', 'f4', 'g4', 'h4', 'a1', 'b2', 'c3', 'e5', 'f6', 'g7', 'h8'],
+    highlightSquares: ['d4', 'e5', 'f6', 'g7', 'd5', 'd6', 'd7', 'e4', 'f4', 'g4', 'h4'],
   },
   {
     piece: 'King',
     value: 'Priceless',
     explanation: 'The king moves one square in any direction. Keep your king safe: if it is checkmated, the game ends.',
-    movement: 'This demo shows the king stepping from e2 to f3.',
-    frames: [
-      '4k3/8/8/8/8/8/4K3/8 w - - 0 1',
-      '4k3/8/8/8/8/5K2/8/8 w - - 0 1',
-    ],
-    highlightSquares: ['d1', 'e1', 'f1', 'd2', 'f2', 'd3', 'e3', 'f3'],
+    movement: 'Realistic king move: king e2→d3 to step next to and protect the pawn on d4.',
+    frames: buildFenFrames('8/8/3k4/8/3P4/8/4K3/8 w - - 0 1', ['Kd3']),
+    highlightSquares: ['e2', 'd3', 'd4'],
   },
 ]
 
@@ -223,6 +245,180 @@ function lessonSquareStyles(squares: string[]): Record<string, React.CSSProperti
   }, {})
 }
 
+function buildFenFrames(startFen: string, sanMoves: string[]): string[] {
+  const chess = new Chess(startFen)
+  const frames: string[] = [startFen]
+  for (const san of sanMoves) {
+    try {
+      const played = chess.move(san)
+      if (!played) break
+      frames.push(chess.fen())
+    } catch {
+      break
+    }
+  }
+  return frames
+}
+
+const NOTATION_GUIDE_ROWS: NotationGuideRow[] = [
+  { algebraic: 'e4', descriptive: 'P-K4', meaning: 'Pawn goes to e4 (King-file 4th rank).' },
+  { algebraic: 'Nf3', descriptive: 'N-KB3', meaning: 'Knight develops to f3 (King-Bishop 3rd rank).' },
+  { algebraic: 'Bb5+', descriptive: 'B-N5+', meaning: 'Bishop to b5 giving check.' },
+  { algebraic: 'O-O', descriptive: 'Castles KR', meaning: 'King-side castling.' },
+  { algebraic: 'O-O-O', descriptive: 'Castles QR', meaning: 'Queen-side castling.' },
+  { algebraic: 'exd5', descriptive: 'PxQ4', meaning: 'Pawn from e-file captures on d5.' },
+]
+
+const NOTATION_LINE_MOVES: NotationLineMove[] = [
+  { san: 'e4', descriptive: 'P-K4', explanation: 'White claims central space with a two-square pawn advance.', from: 'e2', to: 'e4', focusSquares: ['e2', 'e4'] },
+  { san: 'e5', descriptive: 'P-K4', explanation: 'Black mirrors to contest the center.', from: 'e7', to: 'e5', focusSquares: ['e7', 'e5'] },
+  { san: 'Nf3', descriptive: 'N-KB3', explanation: 'White develops and attacks e5.', from: 'g1', to: 'f3', focusSquares: ['g1', 'f3', 'e5'] },
+  { san: 'Nc6', descriptive: 'N-QB3', explanation: 'Black develops and protects e5.', from: 'b8', to: 'c6', focusSquares: ['b8', 'c6', 'e5'] },
+  { san: 'Bc4', descriptive: 'B-B4', explanation: 'White targets f7, a common tactical focal point.', from: 'f1', to: 'c4', focusSquares: ['f1', 'c4', 'f7'] },
+  { san: 'Bc5', descriptive: 'B-B4', explanation: 'Black copies development and eyes f2.', from: 'f8', to: 'c5', focusSquares: ['f8', 'c5', 'f2'] },
+  { san: 'c3', descriptive: 'P-QB3', explanation: 'White prepares d4 to challenge the center.', from: 'c2', to: 'c3', focusSquares: ['c2', 'c3', 'd4'] },
+  { san: 'Nf6', descriptive: 'N-KB3', explanation: 'Black develops with pressure on e4.', from: 'g8', to: 'f6', focusSquares: ['g8', 'f6', 'e4'] },
+  { san: 'd4', descriptive: 'P-Q4', explanation: 'White strikes the center and opens lines.', from: 'd2', to: 'd4', focusSquares: ['d2', 'd4', 'e5'] },
+  { san: 'exd4', descriptive: 'PxQ4', explanation: 'Black captures to reduce white center space.', from: 'e5', to: 'd4', focusSquares: ['e5', 'd4'] },
+  { san: 'cxd4', descriptive: 'PxQ4', explanation: 'White recaptures and restores a strong center.', from: 'c3', to: 'd4', focusSquares: ['c3', 'd4'] },
+]
+
+const NOTATION_LINE_FRAMES = buildFenFrames('rnbqkbnr/pppppppp/8/8/8/8/PPPPPPPP/RNBQKBNR w KQkq - 0 1', NOTATION_LINE_MOVES.map((m) => m.san))
+
+const ATTACK_PATTERNS: TacticalPattern[] = [
+  {
+    name: 'Pin',
+    category: 'Tactic',
+    explanation: 'A pinned piece cannot move without exposing a more valuable piece.',
+    teachingNote: 'Bishop pins the knight to the queen. If the knight moves, bishop wins the queen.',
+    san: 'Bg5, ...Ne4, Bxd8',
+    descriptive: 'B-N5, ...N-K4, BxQ',
+    frames: [
+      'r2q2k1/ppp2ppp/5n2/3p4/3P4/4B3/PPP2PPP/4R1K1 w - - 0 1',
+      'r2q2k1/ppp2ppp/5n2/3p2B1/3P4/8/PPP2PPP/4R1K1 b - - 0 1',
+      'r2q2k1/ppp2ppp/8/3p2B1/3Pn3/8/PPP2PPP/4R1K1 w - - 0 2',
+      'r2B2k1/ppp2ppp/8/3p4/3Pn3/8/PPP2PPP/4R1K1 b - - 0 2',
+    ],
+    highlightSquares: ['g5', 'f6', 'd8', 'e4'],
+    frameHighlights: [
+      ['e3', 'f6', 'd8'],
+      ['g5', 'f6', 'd8'],
+      ['g5', 'e4', 'd8'],
+      ['g5', 'd8'],
+    ],
+    frameArrows: [
+      [['e3', 'g5']],
+      [['g5', 'f6'], ['f6', 'd8']],
+      [['f6', 'e4'], ['g5', 'd8']],
+      [['g5', 'd8']],
+    ],
+    frameLabels: ['Prepared position', 'Pin created', 'Pinned knight moves', 'Bishop captures queen'],
+  },
+  {
+    name: 'Discovered attack',
+    category: 'Tactic',
+    explanation: 'One piece moves, revealing an attack by a piece behind it.',
+    teachingNote: 'From a game-like middlegame: knight checks the king and uncovers bishop attack on the queen.',
+    san: 'Nf7+, Bxg7',
+    descriptive: 'N-KB7+, BxQ',
+    frames: [
+      'r6k/6q1/3p4/4N3/8/2B2N2/PP3PPP/R5K1 w - - 0 1',
+      'r6k/5Nq1/3p4/8/8/2B2N2/PP3PPP/R5K1 b - - 0 1',
+      'r6k/5NB1/3p4/8/8/5N2/PP3PPP/R5K1 b - - 0 1',
+    ],
+    highlightSquares: ['c3', 'e5', 'f7', 'g7', 'h8'],
+    frameHighlights: [
+      ['c3', 'e5', 'g7', 'h8'],
+      ['f7', 'h8', 'g7', 'c3'],
+      ['g7'],
+    ],
+    frameArrows: [
+      [['c3', 'g7'], ['e5', 'f7']],
+      [['e5', 'f7'], ['c3', 'g7']],
+      [['c3', 'g7']],
+    ],
+    frameLabels: ['Prepared position', 'Knight check + discovered line', 'Bishop captures queen'],
+  },
+  {
+    name: 'Fork',
+    category: 'Tactic',
+    explanation: 'One move attacks two or more targets at once.',
+    teachingNote: 'Knight checks the king and then wins material by taking the rook.',
+    san: 'Nc7+, ...Kd8, Nxa8',
+    descriptive: 'N-QB7+, ...K-Q1, NxR',
+    frames: [
+      'r3k2r/pp1n1ppp/2p5/1N1p4/3P4/2P5/PP3PPP/R3K2R w KQkq - 0 1',
+      'r3k2r/ppNn1ppp/2p5/3p4/3P4/2P5/PP3PPP/R3K2R b KQkq - 1 1',
+      'N2k3r/pp1n1ppp/2p5/3p4/3P4/2P5/PP3PPP/R3K2R b KQ - 0 2',
+    ],
+    highlightSquares: ['b5', 'c7', 'e8', 'a8'],
+    frameHighlights: [
+      ['b5', 'c7', 'a8', 'e8'],
+      ['c7', 'e8', 'a8'],
+      ['a8'],
+    ],
+    frameArrows: [
+      [['b5', 'c7']],
+      [['c7', 'e8'], ['c7', 'a8']],
+      [['c7', 'a8']],
+    ],
+    frameLabels: ['Prepared position', 'Fork check', 'Knight captures rook'],
+  },
+  {
+    name: 'Skewer',
+    category: 'Tactic',
+    explanation: 'A long-range piece attacks a valuable piece, forcing it to move and exposing a less valuable piece behind it.',
+    teachingNote: 'Rook skewers king and queen on the e-file; after king moves, rook wins the queen.',
+    san: 'Re1+, ...Kf6, Rxe8',
+    descriptive: 'R-K1+, ...K-B6, RxQ',
+    frames: [
+      '4q3/4k3/3p4/8/2B5/8/5PPP/5RK1 w - - 0 1',
+      '4q3/4k3/3p4/8/2B5/8/5PPP/4R1K1 b - - 0 1',
+      '4q3/8/3p1k2/8/2B5/8/5PPP/4R1K1 w - - 1 2',
+      '4R3/8/3p1k2/8/2B5/8/5PPP/6K1 b - - 0 2',
+    ],
+    highlightSquares: ['f1', 'e1', 'e7', 'e8', 'f6'],
+    frameHighlights: [
+      ['f1', 'e7', 'e8'],
+      ['e1', 'e7', 'e8'],
+      ['e1', 'f6', 'e8'],
+      ['e8'],
+    ],
+    frameArrows: [
+      [['f1', 'e1']],
+      [['e1', 'e7'], ['e7', 'e8']],
+      [['e7', 'f6'], ['e1', 'e8']],
+      [['e1', 'e8']],
+    ],
+    frameLabels: ['Prepared position', 'Skewer check', 'King moves', 'Rook captures queen'],
+  },
+]
+
+const DISCOVERED_CHECK_PATTERN: TacticalPattern = {
+  name: 'Discovered check',
+  category: 'Tactic',
+  explanation: 'A moved piece reveals an attack on the king from a piece behind it.',
+  teachingNote: 'Bishop moves off the e-file and the rook behind it gives check to the king on e8.',
+  san: 'Bb5+',
+  descriptive: 'B-N5+',
+  frames: buildFenFrames('4k3/8/8/8/8/8/4B3/4R1K1 w - - 0 1', ['Bb5+']),
+  highlightSquares: ['e1', 'e8', 'e2', 'b5'],
+  frameArrows: [[['e2', 'b5'], ['e1', 'e8']], [['e1', 'e8']]],
+  frameLabels: ['Setup', 'Discovered check delivered'],
+}
+
+const LESSON_SECTIONS: Array<{ id: LessonSection; label: string }> = [
+  { id: 'pieces', label: '1) Pieces & movement' },
+  { id: 'board-notation', label: '2) Board & notation' },
+  { id: 'attacks', label: '3) Attacks' },
+  { id: 'discovered-check', label: '4) Discovered check' },
+]
+
+const RANK_REFERENCE: string[] = ['1', '2', '3', '4', '5', '6', '7', '8']
+const FILE_REFERENCE: string[] = ['a', 'b', 'c', 'd', 'e', 'f', 'g', 'h']
+const RANK_DEMO_SQUARES: string[] = ['a2', 'b2', 'c2', 'd2', 'e2', 'f2', 'g2', 'h2']
+const FILE_DEMO_SQUARES: string[] = ['e1', 'e2', 'e3', 'e4', 'e5', 'e6', 'e7', 'e8']
+
 function ChessTutorPanel({
   analysis,
   modelLabel,
@@ -239,12 +435,48 @@ function ChessTutorPanel({
   const [activeTab, setActiveTab] = useState<TutorTab>('analyze')
   const [activeLessonIndex, setActiveLessonIndex] = useState(0)
   const [animationFrame, setAnimationFrame] = useState(0)
+  const [activeLessonSection, setActiveLessonSection] = useState<LessonSection>('pieces')
+  const [notationPly, setNotationPly] = useState(0)
+  const [notationAutoplay, setNotationAutoplay] = useState(true)
+  const [notationFocus, setNotationFocus] = useState<'rank' | 'file' | 'move'>('rank')
+  const [activePatternIndex, setActivePatternIndex] = useState(0)
+  const [patternFrame, setPatternFrame] = useState(0)
+  const [patternAutoplay, setPatternAutoplay] = useState(true)
+  const [discoveredCheckFrame, setDiscoveredCheckFrame] = useState(0)
+  const [discoveredCheckAutoplay, setDiscoveredCheckAutoplay] = useState(true)
 
   const activeLesson = CHESS_LESSONS[activeLessonIndex]
+  const activePattern = ATTACK_PATTERNS[activePatternIndex]
+  const activeNotationMove = notationPly > 0 ? NOTATION_LINE_MOVES[notationPly - 1] : null
+  const notationFrame = NOTATION_LINE_FRAMES[Math.min(notationPly, NOTATION_LINE_FRAMES.length - 1)]
+  const patternCurrentHighlights = activePattern.frameHighlights?.[patternFrame] ?? activePattern.highlightSquares
+  const patternCurrentArrows = activePattern.frameArrows?.[patternFrame] ?? []
+  const discoveredCheckCurrentArrows = DISCOVERED_CHECK_PATTERN.frameArrows?.[discoveredCheckFrame] ?? []
+  const notationTargetSquare: Square = (notationFocus === 'move' && activeNotationMove ? activeNotationMove.to : 'e2') as Square
+  const notationTargetFile = notationTargetSquare[0] as string
+  const notationTargetRank = notationTargetSquare[1] as string
+  const notationTargetFileIndex = FILE_REFERENCE.indexOf(notationTargetFile)
+  const notationTargetRankNumber = Number(notationTargetRank)
+  const notationTargetX = notationTargetFileIndex >= 0 ? (notationTargetFileIndex + 0.5) * 31.25 : 125
+  const notationTargetY = notationTargetRankNumber > 0 ? (8 - notationTargetRankNumber + 0.5) * 31.25 : 125
+
+  const notationBoardHighlights = useMemo(() => {
+    if (notationFocus === 'rank') return RANK_DEMO_SQUARES
+    if (notationFocus === 'file') return FILE_DEMO_SQUARES
+    return activeNotationMove?.focusSquares ?? []
+  }, [notationFocus, activeNotationMove])
 
   useEffect(() => {
     setAnimationFrame(0)
   }, [activeLessonIndex])
+
+  useEffect(() => {
+    setPatternFrame(0)
+  }, [activePatternIndex])
+
+  useEffect(() => {
+    setDiscoveredCheckFrame(0)
+  }, [activeLessonSection])
 
   useEffect(() => {
     if (activeTab !== 'lesson') return
@@ -253,6 +485,47 @@ function ChessTutorPanel({
     }, 1200)
     return () => window.clearInterval(timer)
   }, [activeTab, activeLesson.frames.length])
+
+  useEffect(() => {
+    if (activeTab !== 'lesson' || !notationAutoplay) return
+    if (activeLessonSection !== 'board-notation') return
+    const timer = window.setInterval(() => {
+      setNotationFocus((currentFocus) => {
+        if (currentFocus === 'rank') return 'file'
+        if (currentFocus === 'file') {
+          setNotationPly(1)
+          return 'move'
+        }
+
+        let completed = false
+        setNotationPly((currentPly) => {
+          if (currentPly >= NOTATION_LINE_MOVES.length) {
+            completed = true
+            return 0
+          }
+          return currentPly + 1
+        })
+        return completed ? 'rank' : 'move'
+      })
+    }, 1700)
+    return () => window.clearInterval(timer)
+  }, [activeTab, notationAutoplay, activeLessonSection])
+
+  useEffect(() => {
+    if (activeTab !== 'lesson' || activeLessonSection !== 'attacks' || !patternAutoplay) return
+    const timer = window.setInterval(() => {
+      setPatternFrame((prev) => (prev + 1) % activePattern.frames.length)
+    }, 1600)
+    return () => window.clearInterval(timer)
+  }, [activeTab, activeLessonSection, patternAutoplay, activePattern.frames.length])
+
+  useEffect(() => {
+    if (activeTab !== 'lesson' || activeLessonSection !== 'discovered-check' || !discoveredCheckAutoplay) return
+    const timer = window.setInterval(() => {
+      setDiscoveredCheckFrame((prev) => (prev + 1) % DISCOVERED_CHECK_PATTERN.frames.length)
+    }, 1700)
+    return () => window.clearInterval(timer)
+  }, [activeTab, activeLessonSection, discoveredCheckAutoplay])
 
   return (
     <aside className="flex min-h-0 w-full flex-col rounded-2xl border border-slate-200 bg-white/80 p-4 shadow-md lg:w-[360px] lg:shrink-0">
@@ -286,7 +559,7 @@ function ChessTutorPanel({
           </button>
         </div>
       </div>
-      <div className="min-h-0 flex-1 overflow-y-auto rounded-lg border border-dashed border-slate-200 bg-white px-3 py-2 text-sm">
+      <div className="min-h-0 flex-1 rounded-lg border border-dashed border-slate-200 bg-white px-3 py-2 text-sm">
         {activeTab === 'analyze' ? (
           <>
             <button
@@ -346,53 +619,311 @@ function ChessTutorPanel({
             </div>
           </div>
         ) : (
-          <div className="space-y-3 text-slate-700">
-            <div className="text-xs font-semibold uppercase tracking-wide text-slate-500">Beginner Lesson</div>
-            <div className="mx-auto w-full max-w-[250px]">
-              <Chessboard
-                id={`lesson-${activeLesson.piece.toLowerCase()}`}
-                position={activeLesson.frames[animationFrame]}
-                boardWidth={250}
-                arePiecesDraggable={false}
-                customSquareStyles={lessonSquareStyles(activeLesson.highlightSquares)}
-                animationDuration={500}
-              />
+          <div className="flex h-full min-h-0 flex-col gap-2 text-slate-700">
+            <div className="text-xs font-semibold uppercase tracking-wide text-slate-500">How to play</div>
+            <div className="overflow-x-auto pb-1">
+              <div className="inline-flex min-w-max gap-1">
+                {LESSON_SECTIONS.map((section) => (
+                  <button
+                    key={section.id}
+                    type="button"
+                    onClick={() => setActiveLessonSection(section.id)}
+                    className={`shrink-0 whitespace-nowrap rounded border px-2 py-1 text-xs font-semibold ${activeLessonSection === section.id ? 'border-blue-300 bg-blue-50 text-blue-700' : 'border-slate-200 bg-white text-slate-600 hover:bg-slate-50'}`}
+                  >
+                    {section.label}
+                  </button>
+                ))}
+              </div>
             </div>
-            <div>
-              <div className="text-sm font-semibold text-slate-700">{activeLesson.piece}</div>
-              <div className="text-xs text-slate-500">Piece value: {activeLesson.value}</div>
-              <p className="mt-1 text-sm">{activeLesson.explanation}</p>
-              <p className="mt-1 text-xs text-slate-500">{activeLesson.movement}</p>
+
+            <div className="flex-none rounded-lg border border-slate-200 bg-slate-50 p-2">
+              <div className="relative mx-auto w-full max-w-[250px]">
+                <Chessboard
+                  id={`lesson-main-${activeLessonSection}`}
+                  position={
+                    activeLessonSection === 'pieces'
+                      ? activeLesson.frames[animationFrame]
+                      : activeLessonSection === 'board-notation'
+                        ? notationFrame
+                        : activeLessonSection === 'attacks'
+                          ? activePattern.frames[patternFrame]
+                          : DISCOVERED_CHECK_PATTERN.frames[discoveredCheckFrame]
+                  }
+                  boardWidth={250}
+                  showBoardNotation
+                  arePiecesDraggable={false}
+                  customArrows={
+                    activeLessonSection === 'attacks'
+                      ? patternCurrentArrows
+                      : activeLessonSection === 'discovered-check'
+                        ? discoveredCheckCurrentArrows
+                        : []
+                  }
+                  customSquareStyles={
+                    activeLessonSection === 'pieces'
+                      ? lessonSquareStyles(activeLesson.highlightSquares)
+                      : activeLessonSection === 'board-notation'
+                        ? lessonSquareStyles(notationBoardHighlights)
+                        : activeLessonSection === 'attacks'
+                          ? lessonSquareStyles(patternCurrentHighlights)
+                          : lessonSquareStyles(DISCOVERED_CHECK_PATTERN.highlightSquares)
+                  }
+                  animationDuration={500}
+                />
+                {activeLessonSection === 'board-notation' ? (
+                  <>
+                    <svg className="pointer-events-none absolute left-0 top-0 h-[250px] w-[250px]" viewBox="0 0 250 250" aria-hidden="true">
+                      <line x1={notationTargetX} y1={250} x2={notationTargetX} y2={notationTargetY} stroke="rgba(37,99,235,0.85)" strokeWidth="2" />
+                      <line x1={0} y1={notationTargetY} x2={notationTargetX} y2={notationTargetY} stroke="rgba(37,99,235,0.85)" strokeWidth="2" />
+                      <circle cx={notationTargetX} cy={notationTargetY} r="5" fill="rgba(37,99,235,0.9)" />
+                    </svg>
+                    <div className="pointer-events-none absolute -left-8 top-0 h-[250px] w-6">
+                      {[...RANK_REFERENCE].reverse().map((rank, idx) => (
+                        <div key={rank} className="absolute left-0 flex h-[31.25px] w-6 items-center justify-center" style={{ top: `${idx * 31.25}px` }}>
+                          <span className={`text-sm font-bold ${rank === notationTargetRank ? 'text-blue-700 [text-shadow:0_0_8px_rgba(37,99,235,0.6)]' : 'text-slate-500'}`}>
+                            {rank}
+                          </span>
+                        </div>
+                      ))}
+                    </div>
+                    <div className="pointer-events-none absolute -bottom-7 left-0 grid w-[250px] grid-cols-8">
+                      {FILE_REFERENCE.map((file) => (
+                        <div key={file} className="flex items-center justify-center">
+                          <span className={`text-sm font-bold ${file === notationTargetFile ? 'text-blue-700 [text-shadow:0_0_8px_rgba(37,99,235,0.6)]' : 'text-slate-500'}`}>
+                            {file}
+                          </span>
+                        </div>
+                      ))}
+                    </div>
+                  </>
+                ) : null}
+                {activeLessonSection === 'board-notation' && notationFocus === 'move' && activeNotationMove ? (
+                  <div className="pointer-events-none absolute bottom-3 left-1/2 -translate-x-1/2 rounded border border-white/40 bg-slate-900/50 px-3 py-1 text-sm font-semibold text-white">
+                    {activeNotationMove.from} → {activeNotationMove.to}
+                  </div>
+                ) : null}
+              </div>
             </div>
-            <div className="flex flex-wrap gap-1">
-              {CHESS_LESSONS.map((lesson, index) => (
-                <button
-                  key={lesson.piece}
-                  type="button"
-                  onClick={() => setActiveLessonIndex(index)}
-                  className={`rounded border px-2 py-1 text-xs font-semibold ${index === activeLessonIndex ? 'border-blue-300 bg-blue-50 text-blue-700' : 'border-slate-200 bg-white text-slate-600 hover:bg-slate-50'}`}
-                >
-                  {lesson.piece}
-                </button>
-              ))}
-            </div>
-            <div className="flex gap-2">
-              <button
-                type="button"
-                onClick={() => setActiveLessonIndex((prev) => Math.max(0, prev - 1))}
-                disabled={activeLessonIndex === 0}
-                className="rounded border border-slate-200 bg-white px-2 py-1 text-xs font-semibold text-slate-600 hover:bg-slate-50 disabled:cursor-not-allowed disabled:opacity-50"
-              >
-                Previous piece
-              </button>
-              <button
-                type="button"
-                onClick={() => setActiveLessonIndex((prev) => Math.min(CHESS_LESSONS.length - 1, prev + 1))}
-                disabled={activeLessonIndex === CHESS_LESSONS.length - 1}
-                className="rounded border border-slate-200 bg-white px-2 py-1 text-xs font-semibold text-slate-600 hover:bg-slate-50 disabled:cursor-not-allowed disabled:opacity-50"
-              >
-                Next piece
-              </button>
+
+            <div className="min-h-0 flex-1 overflow-y-auto rounded-lg border border-slate-200 bg-white p-2">
+              {activeLessonSection === 'pieces' ? (
+                <div className="space-y-2">
+                  <div className="text-xs font-semibold uppercase tracking-wide text-slate-500">Pieces & movement</div>
+                  <p className="text-xs text-slate-600">These examples use full-board positions from realistic openings/endgames instead of isolated single-piece boards.</p>
+                  <div className="overflow-x-auto pb-1">
+                    <div className="inline-flex min-w-max gap-1">
+                      {CHESS_LESSONS.map((lesson, index) => (
+                        <button
+                          key={lesson.piece}
+                          type="button"
+                          onClick={() => setActiveLessonIndex(index)}
+                          className={`shrink-0 whitespace-nowrap rounded border px-2 py-1 text-xs font-semibold ${index === activeLessonIndex ? 'border-blue-300 bg-blue-50 text-blue-700' : 'border-slate-200 bg-white text-slate-600 hover:bg-slate-50'}`}
+                        >
+                          {lesson.piece}
+                        </button>
+                      ))}
+                    </div>
+                  </div>
+                  <div>
+                    <div className="text-sm font-semibold text-slate-700">{activeLesson.piece}</div>
+                    <div className="text-xs text-slate-500">Piece value: {activeLesson.value}</div>
+                    <p className="mt-1 text-sm">{activeLesson.explanation}</p>
+                    <p className="mt-1 text-xs text-slate-500">{activeLesson.movement}</p>
+                  </div>
+                </div>
+              ) : activeLessonSection === 'board-notation' ? (
+                <div className="space-y-2">
+                  <div className="flex items-center justify-between gap-2">
+                    <div className="text-xs font-semibold uppercase tracking-wide text-slate-500">Board & notation</div>
+                    <button
+                      type="button"
+                      onClick={() => setNotationAutoplay((prev) => !prev)}
+                      className="rounded border border-slate-200 bg-white px-2 py-1 text-[11px] font-semibold text-slate-600 hover:bg-slate-50"
+                    >
+                      {notationAutoplay ? 'Pause autoplay' : 'Start autoplay'}
+                    </button>
+                  </div>
+                  <div className="flex flex-wrap gap-1">
+                    <button
+                      type="button"
+                      onClick={() => setNotationFocus('rank')}
+                      className={`rounded border px-2 py-1 text-xs font-semibold ${notationFocus === 'rank' ? 'border-blue-300 bg-blue-50 text-blue-700' : 'border-slate-200 bg-white text-slate-600 hover:bg-slate-50'}`}
+                    >
+                      Ranks (1–8)
+                    </button>
+                    <button
+                      type="button"
+                      onClick={() => setNotationFocus('file')}
+                      className={`rounded border px-2 py-1 text-xs font-semibold ${notationFocus === 'file' ? 'border-blue-300 bg-blue-50 text-blue-700' : 'border-slate-200 bg-white text-slate-600 hover:bg-slate-50'}`}
+                    >
+                      Files (a–h)
+                    </button>
+                    <button
+                      type="button"
+                      onClick={() => setNotationFocus('move')}
+                      className={`rounded border px-2 py-1 text-xs font-semibold ${notationFocus === 'move' ? 'border-blue-300 bg-blue-50 text-blue-700' : 'border-slate-200 bg-white text-slate-600 hover:bg-slate-50'}`}
+                    >
+                      Move coordinates
+                    </button>
+                  </div>
+                  {notationFocus === 'rank' ? <p className="text-sm font-semibold text-slate-700">Ranks are the row numbers 1–8. Follow the glowing number on the board edge to the target square.</p> : null}
+                  {notationFocus === 'file' ? <p className="text-sm font-semibold text-slate-700">Files are the column letters a–h. Follow the glowing letter on the board edge to the target square.</p> : null}
+                  {notationFocus === 'move' ? <p className="text-sm font-semibold text-slate-700">When a move appears, read source → target (example: e2 → e4) and trace the guide line to the square.</p> : null}
+                  <p className="text-xs text-slate-600">Algebraic notation names the destination square. Older descriptive notation uses names like K, QB, and KN files.</p>
+                  <div className="overflow-hidden rounded border border-slate-200 bg-white">
+                    <table className="w-full text-left text-xs">
+                      <thead className="bg-slate-50 text-slate-500">
+                        <tr>
+                          <th className="px-2 py-1 font-semibold">Algebraic</th>
+                          <th className="px-2 py-1 font-semibold">Older descriptive</th>
+                          <th className="px-2 py-1 font-semibold">Meaning</th>
+                        </tr>
+                      </thead>
+                      <tbody>
+                        {NOTATION_GUIDE_ROWS.map((row) => (
+                          <tr key={`${row.algebraic}-${row.descriptive}`} className="border-t border-slate-100 text-slate-700">
+                            <td className="px-2 py-1 font-semibold">{row.algebraic}</td>
+                            <td className="px-2 py-1">{row.descriptive}</td>
+                            <td className="px-2 py-1 text-slate-600">{row.meaning}</td>
+                          </tr>
+                        ))}
+                      </tbody>
+                    </table>
+                  </div>
+                  <div className="flex items-center gap-2">
+                    <button
+                      type="button"
+                      onClick={() => setNotationPly((prev) => Math.max(0, prev - 1))}
+                      disabled={notationPly === 0}
+                      className="rounded border border-slate-200 bg-white px-2 py-1 text-xs font-semibold text-slate-600 hover:bg-slate-50 disabled:cursor-not-allowed disabled:opacity-50"
+                    >
+                      Previous move
+                    </button>
+                    <button
+                      type="button"
+                      onClick={() => setNotationPly((prev) => Math.min(NOTATION_LINE_MOVES.length, prev + 1))}
+                      disabled={notationPly === NOTATION_LINE_MOVES.length}
+                      className="rounded border border-slate-200 bg-white px-2 py-1 text-xs font-semibold text-slate-600 hover:bg-slate-50 disabled:cursor-not-allowed disabled:opacity-50"
+                    >
+                      Next move
+                    </button>
+                    <span className="text-[11px] text-slate-500">Move {notationPly}/{NOTATION_LINE_MOVES.length}</span>
+                  </div>
+                  <div className="max-h-40 space-y-1 overflow-y-auto pr-1">
+                    {NOTATION_LINE_MOVES.map((move, index) => {
+                      const isActive = index + 1 === notationPly
+                      const isPast = index + 1 < notationPly
+                      return (
+                        <button
+                          key={`${index + 1}-${move.san}`}
+                          type="button"
+                          onClick={() => setNotationPly(index + 1)}
+                          aria-current={isActive ? 'step' : undefined}
+                          className={`w-full rounded border px-2 py-1 text-left text-xs ${isActive ? 'border-blue-300 bg-blue-50 text-blue-700' : isPast ? 'border-emerald-200 bg-emerald-50 text-emerald-700' : 'border-slate-200 bg-white text-slate-600 hover:bg-slate-50'}`}
+                        >
+                          <span className="font-semibold">{index + 1}. {move.san}</span>
+                          <span className="ml-2 text-[11px]">({move.descriptive})</span>
+                          <div className="mt-0.5 text-[11px] text-slate-500">{move.explanation}</div>
+                        </button>
+                      )
+                    })}
+                  </div>
+                </div>
+              ) : activeLessonSection === 'attacks' ? (
+                <div className="space-y-2">
+                  <div className="flex items-center justify-between gap-2">
+                    <div className="text-xs font-semibold uppercase tracking-wide text-slate-500">Attacks (fork, discovered, pinned, etc.)</div>
+                    <button
+                      type="button"
+                      onClick={() => setPatternAutoplay((prev) => !prev)}
+                      className="rounded border border-slate-200 bg-white px-2 py-1 text-[11px] font-semibold text-slate-600 hover:bg-slate-50"
+                    >
+                      {patternAutoplay ? 'Pause autoplay' : 'Start autoplay'}
+                    </button>
+                  </div>
+                  <p className="text-xs text-slate-600">Use the pattern buttons to cycle through common tactical motifs.</p>
+                  <div className="overflow-x-auto pb-1">
+                    <div className="inline-flex min-w-max gap-1">
+                      {ATTACK_PATTERNS.map((pattern, index) => (
+                        <button
+                          key={pattern.name}
+                          type="button"
+                          onClick={() => setActivePatternIndex(index)}
+                          className={`shrink-0 whitespace-nowrap rounded border px-2 py-1 text-xs font-semibold ${index === activePatternIndex ? 'border-blue-300 bg-blue-50 text-blue-700' : 'border-slate-200 bg-white text-slate-600 hover:bg-slate-50'}`}
+                        >
+                          {pattern.name}
+                        </button>
+                      ))}
+                    </div>
+                  </div>
+                  <div className="flex items-center gap-2">
+                    <button
+                      type="button"
+                      onClick={() => setPatternFrame(0)}
+                      disabled={patternFrame === 0}
+                      className="rounded border border-slate-200 bg-white px-2 py-1 text-xs font-semibold text-slate-600 hover:bg-slate-50 disabled:cursor-not-allowed disabled:opacity-50"
+                    >
+                      Show setup
+                    </button>
+                    <button
+                      type="button"
+                      onClick={() => setPatternFrame(activePattern.frames.length - 1)}
+                      disabled={patternFrame === activePattern.frames.length - 1}
+                      className="rounded border border-slate-200 bg-white px-2 py-1 text-xs font-semibold text-slate-600 hover:bg-slate-50 disabled:cursor-not-allowed disabled:opacity-50"
+                    >
+                      Show key idea
+                    </button>
+                    <span className="text-[11px] text-slate-500">Frame {patternFrame + 1}/{activePattern.frames.length}</span>
+                  </div>
+                  <div className="rounded border border-slate-200 bg-slate-50 p-2">
+                    <div className="text-xs font-semibold text-slate-700">{activePattern.name}</div>
+                    <p className="mt-1 text-[11px] text-slate-500">{activePattern.frameLabels?.[patternFrame] ?? `Frame ${patternFrame + 1}`}</p>
+                    <p className="mt-1 text-xs text-slate-600">{activePattern.explanation}</p>
+                    <p className="mt-1 text-xs text-slate-600"><span className="font-semibold">What to notice:</span> {activePattern.teachingNote}</p>
+                    <p className="mt-1 text-xs text-slate-600"><span className="font-semibold">Notation:</span> {activePattern.san} | {activePattern.descriptive}</p>
+                  </div>
+                </div>
+              ) : (
+                <div className="space-y-2">
+                  <div className="flex items-center justify-between gap-2">
+                    <div className="text-xs font-semibold uppercase tracking-wide text-slate-500">Discovered check</div>
+                    <button
+                      type="button"
+                      onClick={() => setDiscoveredCheckAutoplay((prev) => !prev)}
+                      className="rounded border border-slate-200 bg-white px-2 py-1 text-[11px] font-semibold text-slate-600 hover:bg-slate-50"
+                    >
+                      {discoveredCheckAutoplay ? 'Pause autoplay' : 'Start autoplay'}
+                    </button>
+                  </div>
+                  <p className="text-xs text-slate-600">This is taught right after discovered attacks so students can see the same idea now targeting the king.</p>
+                  <div className="flex items-center gap-2">
+                    <button
+                      type="button"
+                      onClick={() => setDiscoveredCheckFrame(0)}
+                      disabled={discoveredCheckFrame === 0}
+                      className="rounded border border-slate-200 bg-white px-2 py-1 text-xs font-semibold text-slate-600 hover:bg-slate-50 disabled:cursor-not-allowed disabled:opacity-50"
+                    >
+                      Show setup
+                    </button>
+                    <button
+                      type="button"
+                      onClick={() => setDiscoveredCheckFrame(DISCOVERED_CHECK_PATTERN.frames.length - 1)}
+                      disabled={discoveredCheckFrame === DISCOVERED_CHECK_PATTERN.frames.length - 1}
+                      className="rounded border border-slate-200 bg-white px-2 py-1 text-xs font-semibold text-slate-600 hover:bg-slate-50 disabled:cursor-not-allowed disabled:opacity-50"
+                    >
+                      Show discovered check
+                    </button>
+                    <span className="text-[11px] text-slate-500">Frame {discoveredCheckFrame + 1}/{DISCOVERED_CHECK_PATTERN.frames.length}</span>
+                  </div>
+                  <div className="rounded border border-slate-200 bg-slate-50 p-2">
+                    <div className="text-xs font-semibold text-slate-700">{DISCOVERED_CHECK_PATTERN.name}</div>
+                    <p className="mt-1 text-[11px] text-slate-500">{DISCOVERED_CHECK_PATTERN.frameLabels?.[discoveredCheckFrame] ?? `Frame ${discoveredCheckFrame + 1}`}</p>
+                    <p className="mt-1 text-xs text-slate-600">{DISCOVERED_CHECK_PATTERN.explanation}</p>
+                    <p className="mt-1 text-xs text-slate-600"><span className="font-semibold">What to notice:</span> {DISCOVERED_CHECK_PATTERN.teachingNote}</p>
+                    <p className="mt-1 text-xs text-slate-600"><span className="font-semibold">Notation:</span> {DISCOVERED_CHECK_PATTERN.san} | {DISCOVERED_CHECK_PATTERN.descriptive}</p>
+                  </div>
+                </div>
+              )}
             </div>
           </div>
         )}
@@ -673,6 +1204,7 @@ function useChessDisplay(moveRows: MoveRow[], gameFen: string | null, hoveredHin
   const [selectedSquare, setSelectedSquare] = useState<Square | null>(null)
   const [showLegalMoves, setShowLegalMoves] = useState(true)
   const [showThreats, setShowThreats] = useState(false)
+  const [showControlledArea, setShowControlledArea] = useState(false)
   const lastMoveCountRef = useRef(0)
 
   useEffect(() => {
@@ -711,6 +1243,103 @@ function useChessDisplay(moveRows: MoveRow[], gameFen: string | null, hoveredHin
     }
     return styles
   }, [displayFen, selectedSquare, showLegalMoves])
+
+  const controlledAreaStyles = useMemo(() => {
+    if (!showControlledArea) return {}
+
+    const chess = new Chess(displayFen)
+    const board = chess.board()
+    const whiteControlled = new Set<string>()
+    const blackControlled = new Set<string>()
+
+    const inBounds = (row: number, col: number) => row >= 0 && row < 8 && col >= 0 && col < 8
+    const toSquare = (row: number, col: number): Square => `${String.fromCharCode(97 + col)}${8 - row}` as Square
+    const addControl = (set: Set<string>, row: number, col: number) => {
+      if (inBounds(row, col)) set.add(toSquare(row, col))
+    }
+
+    const stepControl = (
+      set: Set<string>,
+      row: number,
+      col: number,
+      directions: Array<[number, number]>,
+      maxSteps: number,
+    ) => {
+      for (const [dr, dc] of directions) {
+        let nextRow = row + dr
+        let nextCol = col + dc
+        let steps = 0
+        while (inBounds(nextRow, nextCol) && steps < maxSteps) {
+          set.add(toSquare(nextRow, nextCol))
+          if (board[nextRow][nextCol]) break
+          nextRow += dr
+          nextCol += dc
+          steps += 1
+        }
+      }
+    }
+
+    for (let row = 0; row < board.length; row += 1) {
+      for (let col = 0; col < board[row].length; col += 1) {
+        const piece = board[row][col]
+        if (!piece) continue
+
+        const controlled = piece.color === 'w' ? whiteControlled : blackControlled
+
+        switch (piece.type) {
+          case 'p': {
+            const dir = piece.color === 'w' ? -1 : 1
+            addControl(controlled, row + dir, col - 1)
+            addControl(controlled, row + dir, col + 1)
+            break
+          }
+          case 'n':
+            for (const [dr, dc] of [[-2, -1], [-2, 1], [-1, -2], [-1, 2], [1, -2], [1, 2], [2, -1], [2, 1]] as Array<[number, number]>) {
+              addControl(controlled, row + dr, col + dc)
+            }
+            break
+          case 'b':
+            stepControl(controlled, row, col, [[-1, -1], [-1, 1], [1, -1], [1, 1]], 8)
+            break
+          case 'r':
+            stepControl(controlled, row, col, [[-1, 0], [1, 0], [0, -1], [0, 1]], 8)
+            break
+          case 'q':
+            stepControl(controlled, row, col, [[-1, -1], [-1, 1], [1, -1], [1, 1], [-1, 0], [1, 0], [0, -1], [0, 1]], 8)
+            break
+          case 'k':
+            stepControl(controlled, row, col, [[-1, -1], [-1, 1], [1, -1], [1, 1], [-1, 0], [1, 0], [0, -1], [0, 1]], 1)
+            break
+          default:
+            break
+        }
+      }
+    }
+
+    const styles: Record<string, React.CSSProperties> = {}
+    const allSquares = new Set<string>([...whiteControlled, ...blackControlled])
+    for (const square of allSquares) {
+      const white = whiteControlled.has(square)
+      const black = blackControlled.has(square)
+      if (white && black) {
+        styles[square] = {
+          backgroundColor: 'color-mix(in srgb, var(--color-purple-500) 16%, transparent)',
+          boxShadow: 'inset 0 0 0 2px color-mix(in srgb, var(--color-purple-500) 45%, transparent)',
+        }
+      } else if (white) {
+        styles[square] = {
+          backgroundColor: 'color-mix(in srgb, var(--color-blue-500) 10%, transparent)',
+          boxShadow: 'inset 0 0 0 1px color-mix(in srgb, var(--color-blue-500) 45%, transparent)',
+        }
+      } else {
+        styles[square] = {
+          backgroundColor: 'color-mix(in srgb, var(--color-red-500) 10%, transparent)',
+          boxShadow: 'inset 0 0 0 1px color-mix(in srgb, var(--color-red-500) 45%, transparent)',
+        }
+      }
+    }
+    return styles
+  }, [displayFen, showControlledArea])
 
   // Debounced threat computation to avoid UI lag on mobile/lower-end devices
   const [threatStyles, setThreatStyles] = useState<Record<string, React.CSSProperties>>({})
@@ -838,10 +1467,11 @@ function useChessDisplay(moveRows: MoveRow[], gameFen: string | null, hoveredHin
   }, [hoveredHintUci])
 
   const customSquareStyles = useMemo(() => ({
+    ...controlledAreaStyles,
     ...threatStyles,
     ...legalMoveStyles,
     ...hintHoverStyles,
-  }), [hintHoverStyles, legalMoveStyles, threatStyles])
+  }), [controlledAreaStyles, hintHoverStyles, legalMoveStyles, threatStyles])
 
   return {
     displayFen,
@@ -854,6 +1484,8 @@ function useChessDisplay(moveRows: MoveRow[], gameFen: string | null, hoveredHin
     setShowLegalMoves,
     showThreats,
     setShowThreats,
+    showControlledArea,
+    setShowControlledArea,
     customSquareStyles,
   }
 }
@@ -1040,8 +1672,11 @@ function OnlineChessGame(): React.JSX.Element {
     setShowLegalMoves,
     showThreats,
     setShowThreats,
+    showControlledArea,
+    setShowControlledArea,
     customSquareStyles,
   } = useChessDisplay(moveRows, game?.current_fen ?? null, hoveredHintUci)
+  const moveHistoryRowsNewestFirst = useMemo(() => [...moveHistory].reverse(), [moveHistory])
   const { containerRef: boardContainerRef, boardSize } = useChessboardSize(CHESSBOARD_MAX_SIZE)
 
   async function onDrop(sourceSquare: Square, targetSquare: Square, currentFen: string, promotion: PromotionPiece = 'q') {
@@ -1343,6 +1978,15 @@ function OnlineChessGame(): React.JSX.Element {
                 />
                 Highlight threats
               </label>
+              <label className="flex items-center gap-2">
+                <input
+                  type="checkbox"
+                  checked={showControlledArea}
+                  onChange={(event) => setShowControlledArea(event.target.checked)}
+                  className="h-4 w-4"
+                />
+                Highlight controlled area
+              </label>
             </div>
             {isViewingPast ? (
               <span className="text-xs text-slate-500">Viewing move {viewPly}/{moveRows.length}</span>
@@ -1516,7 +2160,7 @@ function OnlineChessGame(): React.JSX.Element {
             </div>
           </div>
           <div className="min-h-0 flex-1 overflow-y-auto">
-            {moveHistory.length ? (
+            {moveHistoryRowsNewestFirst.length ? (
               <table className="w-full text-left text-sm text-slate-700">
                 <thead className="sticky top-0 bg-white">
                   <tr className="text-xs uppercase text-slate-500">
@@ -1526,7 +2170,7 @@ function OnlineChessGame(): React.JSX.Element {
                   </tr>
                 </thead>
                 <tbody>
-                  {moveHistory.map((row) => {
+                  {moveHistoryRowsNewestFirst.map((row) => {
                     const whitePly = (row.moveNumber * 2) - 1
                     const blackPly = row.moveNumber * 2
                     const whiteHint = hintedByPly.get(whitePly) === true
@@ -1617,8 +2261,11 @@ function LocalChessGame(): React.JSX.Element {
     setShowLegalMoves,
     showThreats,
     setShowThreats,
+    showControlledArea,
+    setShowControlledArea,
     customSquareStyles,
   } = useChessDisplay(moveRows, START_FEN, hoveredHintUci)
+  const moveHistoryRowsNewestFirst = useMemo(() => [...moveHistory].reverse(), [moveHistory])
   const { containerRef: boardContainerRef, boardSize } = useChessboardSize(CHESSBOARD_MAX_SIZE)
 
   const normalizedDisplayFen = displayFen || START_FEN
@@ -1892,6 +2539,15 @@ function LocalChessGame(): React.JSX.Element {
                 />
                 Highlight threats
               </label>
+              <label className="flex items-center gap-2">
+                <input
+                  type="checkbox"
+                  checked={showControlledArea}
+                  onChange={(event) => setShowControlledArea(event.target.checked)}
+                  className="h-4 w-4"
+                />
+                Highlight controlled area
+              </label>
             </div>
             {isViewingPast ? (
               <span className="text-xs text-slate-500">Viewing move {viewPly}/{moveRows.length}</span>
@@ -1993,7 +2649,7 @@ function LocalChessGame(): React.JSX.Element {
             </div>
           </div>
           <div className="min-h-0 flex-1 overflow-y-auto">
-            {moveHistory.length ? (
+            {moveHistoryRowsNewestFirst.length ? (
               <table className="w-full text-left text-sm text-slate-700">
                 <thead className="sticky top-0 bg-white">
                   <tr className="text-xs uppercase text-slate-500">
@@ -2003,7 +2659,7 @@ function LocalChessGame(): React.JSX.Element {
                   </tr>
                 </thead>
                 <tbody>
-                  {moveHistory.map((row) => {
+                  {moveHistoryRowsNewestFirst.map((row) => {
                     const whitePly = (row.moveNumber * 2) - 1
                     const blackPly = row.moveNumber * 2
                     const whiteHint = hintedPlys.includes(whitePly)
