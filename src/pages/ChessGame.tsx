@@ -673,6 +673,7 @@ function useChessDisplay(moveRows: MoveRow[], gameFen: string | null, hoveredHin
   const [selectedSquare, setSelectedSquare] = useState<Square | null>(null)
   const [showLegalMoves, setShowLegalMoves] = useState(true)
   const [showThreats, setShowThreats] = useState(false)
+  const [showControlledArea, setShowControlledArea] = useState(false)
   const lastMoveCountRef = useRef(0)
 
   useEffect(() => {
@@ -711,6 +712,103 @@ function useChessDisplay(moveRows: MoveRow[], gameFen: string | null, hoveredHin
     }
     return styles
   }, [displayFen, selectedSquare, showLegalMoves])
+
+  const controlledAreaStyles = useMemo(() => {
+    if (!showControlledArea) return {}
+
+    const chess = new Chess(displayFen)
+    const board = chess.board()
+    const whiteControlled = new Set<string>()
+    const blackControlled = new Set<string>()
+
+    const inBounds = (row: number, col: number) => row >= 0 && row < 8 && col >= 0 && col < 8
+    const toSquare = (row: number, col: number): Square => `${String.fromCharCode(97 + col)}${8 - row}` as Square
+    const addControl = (set: Set<string>, row: number, col: number) => {
+      if (inBounds(row, col)) set.add(toSquare(row, col))
+    }
+
+    const stepControl = (
+      set: Set<string>,
+      row: number,
+      col: number,
+      directions: Array<[number, number]>,
+      maxSteps: number,
+    ) => {
+      for (const [dr, dc] of directions) {
+        let nextRow = row + dr
+        let nextCol = col + dc
+        let steps = 0
+        while (inBounds(nextRow, nextCol) && steps < maxSteps) {
+          set.add(toSquare(nextRow, nextCol))
+          if (board[nextRow][nextCol]) break
+          nextRow += dr
+          nextCol += dc
+          steps += 1
+        }
+      }
+    }
+
+    for (let row = 0; row < board.length; row += 1) {
+      for (let col = 0; col < board[row].length; col += 1) {
+        const piece = board[row][col]
+        if (!piece) continue
+
+        const controlled = piece.color === 'w' ? whiteControlled : blackControlled
+
+        switch (piece.type) {
+          case 'p': {
+            const dir = piece.color === 'w' ? -1 : 1
+            addControl(controlled, row + dir, col - 1)
+            addControl(controlled, row + dir, col + 1)
+            break
+          }
+          case 'n':
+            for (const [dr, dc] of [[-2, -1], [-2, 1], [-1, -2], [-1, 2], [1, -2], [1, 2], [2, -1], [2, 1]] as Array<[number, number]>) {
+              addControl(controlled, row + dr, col + dc)
+            }
+            break
+          case 'b':
+            stepControl(controlled, row, col, [[-1, -1], [-1, 1], [1, -1], [1, 1]], 8)
+            break
+          case 'r':
+            stepControl(controlled, row, col, [[-1, 0], [1, 0], [0, -1], [0, 1]], 8)
+            break
+          case 'q':
+            stepControl(controlled, row, col, [[-1, -1], [-1, 1], [1, -1], [1, 1], [-1, 0], [1, 0], [0, -1], [0, 1]], 8)
+            break
+          case 'k':
+            stepControl(controlled, row, col, [[-1, -1], [-1, 1], [1, -1], [1, 1], [-1, 0], [1, 0], [0, -1], [0, 1]], 1)
+            break
+          default:
+            break
+        }
+      }
+    }
+
+    const styles: Record<string, React.CSSProperties> = {}
+    const allSquares = new Set<string>([...whiteControlled, ...blackControlled])
+    for (const square of allSquares) {
+      const white = whiteControlled.has(square)
+      const black = blackControlled.has(square)
+      if (white && black) {
+        styles[square] = {
+          backgroundColor: 'color-mix(in srgb, var(--color-purple-500) 16%, transparent)',
+          boxShadow: 'inset 0 0 0 2px color-mix(in srgb, var(--color-purple-500) 45%, transparent)',
+        }
+      } else if (white) {
+        styles[square] = {
+          backgroundColor: 'color-mix(in srgb, var(--color-blue-500) 10%, transparent)',
+          boxShadow: 'inset 0 0 0 1px color-mix(in srgb, var(--color-blue-500) 45%, transparent)',
+        }
+      } else {
+        styles[square] = {
+          backgroundColor: 'color-mix(in srgb, var(--color-red-500) 10%, transparent)',
+          boxShadow: 'inset 0 0 0 1px color-mix(in srgb, var(--color-red-500) 45%, transparent)',
+        }
+      }
+    }
+    return styles
+  }, [displayFen, showControlledArea])
 
   // Debounced threat computation to avoid UI lag on mobile/lower-end devices
   const [threatStyles, setThreatStyles] = useState<Record<string, React.CSSProperties>>({})
@@ -838,10 +936,11 @@ function useChessDisplay(moveRows: MoveRow[], gameFen: string | null, hoveredHin
   }, [hoveredHintUci])
 
   const customSquareStyles = useMemo(() => ({
+    ...controlledAreaStyles,
     ...threatStyles,
     ...legalMoveStyles,
     ...hintHoverStyles,
-  }), [hintHoverStyles, legalMoveStyles, threatStyles])
+  }), [controlledAreaStyles, hintHoverStyles, legalMoveStyles, threatStyles])
 
   return {
     displayFen,
@@ -854,6 +953,8 @@ function useChessDisplay(moveRows: MoveRow[], gameFen: string | null, hoveredHin
     setShowLegalMoves,
     showThreats,
     setShowThreats,
+    showControlledArea,
+    setShowControlledArea,
     customSquareStyles,
   }
 }
@@ -1040,8 +1141,11 @@ function OnlineChessGame(): React.JSX.Element {
     setShowLegalMoves,
     showThreats,
     setShowThreats,
+    showControlledArea,
+    setShowControlledArea,
     customSquareStyles,
   } = useChessDisplay(moveRows, game?.current_fen ?? null, hoveredHintUci)
+  const moveHistoryRowsNewestFirst = useMemo(() => [...moveHistory].reverse(), [moveHistory])
   const { containerRef: boardContainerRef, boardSize } = useChessboardSize(CHESSBOARD_MAX_SIZE)
 
   async function onDrop(sourceSquare: Square, targetSquare: Square, currentFen: string, promotion: PromotionPiece = 'q') {
@@ -1343,6 +1447,15 @@ function OnlineChessGame(): React.JSX.Element {
                 />
                 Highlight threats
               </label>
+              <label className="flex items-center gap-2">
+                <input
+                  type="checkbox"
+                  checked={showControlledArea}
+                  onChange={(event) => setShowControlledArea(event.target.checked)}
+                  className="h-4 w-4"
+                />
+                Highlight controlled area
+              </label>
             </div>
             {isViewingPast ? (
               <span className="text-xs text-slate-500">Viewing move {viewPly}/{moveRows.length}</span>
@@ -1516,7 +1629,7 @@ function OnlineChessGame(): React.JSX.Element {
             </div>
           </div>
           <div className="min-h-0 flex-1 overflow-y-auto">
-            {moveHistory.length ? (
+            {moveHistoryRowsNewestFirst.length ? (
               <table className="w-full text-left text-sm text-slate-700">
                 <thead className="sticky top-0 bg-white">
                   <tr className="text-xs uppercase text-slate-500">
@@ -1526,7 +1639,7 @@ function OnlineChessGame(): React.JSX.Element {
                   </tr>
                 </thead>
                 <tbody>
-                  {moveHistory.map((row) => {
+                  {moveHistoryRowsNewestFirst.map((row) => {
                     const whitePly = (row.moveNumber * 2) - 1
                     const blackPly = row.moveNumber * 2
                     const whiteHint = hintedByPly.get(whitePly) === true
@@ -1617,8 +1730,11 @@ function LocalChessGame(): React.JSX.Element {
     setShowLegalMoves,
     showThreats,
     setShowThreats,
+    showControlledArea,
+    setShowControlledArea,
     customSquareStyles,
   } = useChessDisplay(moveRows, START_FEN, hoveredHintUci)
+  const moveHistoryRowsNewestFirst = useMemo(() => [...moveHistory].reverse(), [moveHistory])
   const { containerRef: boardContainerRef, boardSize } = useChessboardSize(CHESSBOARD_MAX_SIZE)
 
   const normalizedDisplayFen = displayFen || START_FEN
@@ -1892,6 +2008,15 @@ function LocalChessGame(): React.JSX.Element {
                 />
                 Highlight threats
               </label>
+              <label className="flex items-center gap-2">
+                <input
+                  type="checkbox"
+                  checked={showControlledArea}
+                  onChange={(event) => setShowControlledArea(event.target.checked)}
+                  className="h-4 w-4"
+                />
+                Highlight controlled area
+              </label>
             </div>
             {isViewingPast ? (
               <span className="text-xs text-slate-500">Viewing move {viewPly}/{moveRows.length}</span>
@@ -1993,7 +2118,7 @@ function LocalChessGame(): React.JSX.Element {
             </div>
           </div>
           <div className="min-h-0 flex-1 overflow-y-auto">
-            {moveHistory.length ? (
+            {moveHistoryRowsNewestFirst.length ? (
               <table className="w-full text-left text-sm text-slate-700">
                 <thead className="sticky top-0 bg-white">
                   <tr className="text-xs uppercase text-slate-500">
@@ -2003,7 +2128,7 @@ function LocalChessGame(): React.JSX.Element {
                   </tr>
                 </thead>
                 <tbody>
-                  {moveHistory.map((row) => {
+                  {moveHistoryRowsNewestFirst.map((row) => {
                     const whitePly = (row.moveNumber * 2) - 1
                     const blackPly = row.moveNumber * 2
                     const whiteHint = hintedPlys.includes(whitePly)

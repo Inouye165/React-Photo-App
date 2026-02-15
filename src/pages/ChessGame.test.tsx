@@ -231,6 +231,48 @@ describe('ChessGame', () => {
     expect(screen.getByText('Viewing move 1/2')).toBeInTheDocument()
   })
 
+  it('renders newest move row first in move history', async () => {
+    useGameRealtimeMock.mockReturnValue({
+      moves: [
+        { ply: 1, uci: 'e2e4', created_by: 'user-1', created_at: '2026-02-10T00:00:00Z' },
+        { ply: 2, uci: 'e7e5', created_by: 'user-2', created_at: '2026-02-10T00:00:01Z' },
+        { ply: 3, uci: 'g1f3', created_by: 'user-1', created_at: '2026-02-10T00:00:02Z' },
+        { ply: 4, uci: 'b8c6', created_by: 'user-2', created_at: '2026-02-10T00:00:03Z' },
+      ],
+      loading: false,
+    })
+
+    render(<ChessGame />)
+
+    await waitFor(() => {
+      const table = screen.getByRole('table')
+      const rows = within(table).getAllByRole('row')
+      expect(rows.length).toBeGreaterThan(1)
+      const firstBodyRow = rows[1]
+      const firstRowScope = within(firstBodyRow as HTMLElement)
+      expect(firstRowScope.getByText('2.')).toBeInTheDocument()
+      expect(firstRowScope.getByText('Nf3')).toBeInTheDocument()
+      expect(firstRowScope.getByText('Nc6')).toBeInTheDocument()
+    })
+  })
+
+  it('shows controlled-area overlays only when checkbox is checked', async () => {
+    const user = userEvent.setup()
+    setMockGameId('local')
+    render(<ChessGame />)
+
+    const board = screen.getByTestId('chessboard')
+    expect(board).toHaveAttribute('data-custom-squares', '')
+
+    await user.click(screen.getByRole('checkbox', { name: 'Highlight controlled area' }))
+
+    await waitFor(() => {
+      const highlighted = screen.getByTestId('chessboard').getAttribute('data-custom-squares') || ''
+      expect(highlighted.length).toBeGreaterThan(0)
+      expect(highlighted).toContain('e3')
+    })
+  })
+
   it('disables online hint button when it is not the current user turn', async () => {
     setAuthUserId('user-2')
     render(<ChessGame />)
