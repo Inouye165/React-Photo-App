@@ -93,11 +93,21 @@ It includes prerequisites, step-by-step setup, and common fixes.
 
 **Minimal restart (already set up):**
 Assumes dependencies are installed and `server/.env` is valid.
-1. Start services: `docker-compose up -d db redis`
-2. Backend API: `npm --prefix server start`
-3. Worker: `npm run worker`
-4. Frontend: `npm run dev`
+1. Start services first: `docker-compose up -d db redis`
+2. Backend API (terminal 1): `npm --prefix server start`
+3. Worker (terminal 2): `npm run worker`
+4. Frontend (terminal 3): `npm run dev`
 5. Quick checks: http://127.0.0.1:3001/health and http://localhost:5173/
+
+**Robust one-command startup (Windows/PowerShell):**
+- `npm run start:local`
+- This command starts Docker `db` + `redis`, waits for readiness, then opens 3 terminals for API, worker, and frontend.
+- Re-running `start:local` first closes existing Lumina API/Worker/Frontend terminals so you don't accumulate duplicates.
+- If the worker fails to connect to Redis, ensure `REDIS_URL=redis://localhost:6379` in `server/.env`.
+
+**One-command shutdown (Windows/PowerShell):**
+- `npm run stop:local`
+- This closes the API/worker/frontend terminals opened by `start:local` and stops Docker `db` + `redis`.
 
 If anything fails, see [docs/RESTART_APP.md](docs/RESTART_APP.md) for focused restart troubleshooting.
 
@@ -106,7 +116,7 @@ If anything fails, see [docs/RESTART_APP.md](docs/RESTART_APP.md) for focused re
 **Heads up:**
 *   You need the worker running or thumbnails won't happen.
 *   If Google Maps keys are missing, POI lookups are skipped.
-*   The backend needs an OpenAI key to start (unless you're in test mode).
+*   OpenAI key is only required when `AI_ENABLED=true`.
 *   Media delivery redirects are controlled by `MEDIA_REDIRECT_ENABLED` in [server/.env.example](server/.env.example) to offload image bytes to storage/CDN.
 *   **HITL Collectibles UI:** Set `VITE_ENABLE_COLLECTIBLES_UI=true` in your frontend `.env` to enable the Human-in-the-Loop collectible identification workflow. This provides a modal UI for reviewing and confirming AI-identified collectibles before continuing the analysis pipeline.
 *   **Restart guard (optional):** The client compares a server-provided per-process `bootId` (from `/api/meta`) against `sessionStorage` to force a re-login only when the backend process restarts. `buildId` is still exposed for diagnostics, but is not used to log users out.

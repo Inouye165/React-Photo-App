@@ -2,6 +2,18 @@
 
 This is a **restart-only** checklist. It assumes the sandbox environment and dependencies are already installed and configured.
 
+## Fast path (Windows)
+
+From repo root:
+
+- `npm run start:local`
+
+This starts Docker services, waits for readiness, and opens separate terminals for API, worker, and frontend.
+
+To stop everything started by the fast path:
+
+- `npm run stop:local`
+
 ## 1) Start required services
 
 From the repo root:
@@ -11,7 +23,7 @@ From the repo root:
 
 ## 2) Start backend API
 
-From the repo root (new terminal):
+From the repo root (**terminal 1**):
 
 - `npm --prefix server start`
 
@@ -19,13 +31,13 @@ Expected: API health at http://127.0.0.1:3001/health
 
 ## 3) Start background worker
 
-From the repo root (new terminal):
+From the repo root (**terminal 2**):
 
 - `npm run worker`
 
 ## 4) Start frontend
 
-From the repo root (new terminal):
+From the repo root (**terminal 3**):
 
 - `npm run dev`
 
