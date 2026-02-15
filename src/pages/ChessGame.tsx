@@ -1169,6 +1169,16 @@ function getEvalPercent(score: number | null) {
   return ((clamped + 9) / 18) * 100
 }
 
+function skillLevelToEloLabel(skillLevel: number) {
+  if (skillLevel <= 0) return '~800-900 (Beginner)'
+  if (skillLevel <= 4) return '~1000-1200 (Novice)'
+  if (skillLevel <= 8) return '~1300-1500 (Club)'
+  if (skillLevel <= 12) return '~1600-1800 (Advanced Club)'
+  if (skillLevel <= 16) return '~1900-2200 (Expert)'
+  if (skillLevel <= 19) return '~2300-2500 (Master)'
+  return 'Grandmaster'
+}
+
 function buildDisplayFen(sortedMoves: MoveRow[], gameFen: string | null, viewPly: number) {
   if (!sortedMoves.length) {
     return gameFen || START_FEN
@@ -1815,7 +1825,7 @@ function OnlineChessGame(): React.JSX.Element {
   const boardOrientation: 'white' | 'black' = isCurrentBlack ? 'black' : 'white'
   const boardKey = `${boardId}:${boardOrientation}:${normalizedDisplayFen}`
 
-  const { isReady, topMoves, evaluation, analyzePosition, difficulty, setDifficulty } = useStockfish()
+  const { isReady, topMoves, evaluation, analyzePosition, skillLevel, setSkillLevel } = useStockfish()
   const opening = useMemo(() => findOpening(buildMovesUci(moveRows)), [moveRows])
   const evalPercent = useMemo(() => getEvalPercent(evaluation.score), [evaluation.score])
 
@@ -2117,17 +2127,27 @@ function OnlineChessGame(): React.JSX.Element {
               <div className="text-xs font-semibold text-slate-600">Engine</div>
               <span className="text-[11px] text-slate-500">{isReady ? 'ready' : 'loading'}</span>
             </div>
-            <div className="mt-2 flex items-center justify-between gap-3">
-              <label className="text-xs text-slate-600">Difficulty</label>
-              <select
-                value={difficulty}
-                onChange={(event) => setDifficulty(event.target.value as typeof difficulty)}
-                className="rounded-md border border-slate-200 bg-white px-2 py-1 text-xs"
-              >
-                <option value="Easy">Easy</option>
-                <option value="Medium">Medium</option>
-                <option value="Hard">Hard</option>
-              </select>
+            <div className="mt-2">
+              <div className="mb-1 flex items-center justify-between gap-3">
+                <label htmlFor="online-engine-skill" className="text-xs text-slate-600">Opponent skill</label>
+                <span className="text-xs font-semibold text-slate-700">Level {skillLevel}</span>
+              </div>
+              <input
+                id="online-engine-skill"
+                type="range"
+                min={0}
+                max={20}
+                step={1}
+                value={skillLevel}
+                onChange={(event) => setSkillLevel(Number(event.target.value))}
+                aria-label="Stockfish opponent skill level"
+                className="w-full"
+              />
+              <div className="mt-1 flex items-center justify-between text-[11px] text-slate-500">
+                <span>0 · ~800-900</span>
+                <span>20 · Grandmaster</span>
+              </div>
+              <div className="mt-1 text-xs text-slate-600">Approximate Elo: {skillLevelToEloLabel(skillLevel)}</div>
             </div>
             <div className="mt-3">
               <div className="mb-1 text-xs text-slate-600">Evaluation</div>
@@ -2314,7 +2334,7 @@ function LocalChessGame(): React.JSX.Element {
   const gameEnd = useMemo(() => detectGameEnd(normalizedDisplayFen), [normalizedDisplayFen])
   const canMove = !engineThinking && !isViewingPast && !gameEnd.isOver && !pendingPromotion
 
-  const { isReady, topMoves, evaluation, analyzePosition, getEngineMove, cancelPendingMove, difficulty, setDifficulty } = useStockfish()
+  const { isReady, topMoves, evaluation, analyzePosition, getEngineMove, cancelPendingMove, skillLevel, setSkillLevel } = useStockfish()
   const opening = useMemo(() => findOpening(buildMovesUci(moveRows)), [moveRows])
   const evalPercent = useMemo(() => getEvalPercent(evaluation.score), [evaluation.score])
 
@@ -2607,17 +2627,27 @@ function LocalChessGame(): React.JSX.Element {
               <div className="text-xs font-semibold text-slate-600">Engine</div>
               <span className="text-[11px] text-slate-500">{isReady ? 'ready' : 'loading'}</span>
             </div>
-            <div className="mt-2 flex items-center justify-between gap-3">
-              <label className="text-xs text-slate-600">Opponent level</label>
-              <select
-                value={difficulty}
-                onChange={(event) => setDifficulty(event.target.value as typeof difficulty)}
-                className="rounded-md border border-slate-200 bg-white px-2 py-1 text-xs"
-              >
-                <option value="Easy">Easy</option>
-                <option value="Medium">Medium</option>
-                <option value="Hard">Hard</option>
-              </select>
+            <div className="mt-2">
+              <div className="mb-1 flex items-center justify-between gap-3">
+                <label htmlFor="local-engine-skill" className="text-xs text-slate-600">Opponent skill</label>
+                <span className="text-xs font-semibold text-slate-700">Level {skillLevel}</span>
+              </div>
+              <input
+                id="local-engine-skill"
+                type="range"
+                min={0}
+                max={20}
+                step={1}
+                value={skillLevel}
+                onChange={(event) => setSkillLevel(Number(event.target.value))}
+                aria-label="Stockfish local opponent skill level"
+                className="w-full"
+              />
+              <div className="mt-1 flex items-center justify-between text-[11px] text-slate-500">
+                <span>0 · ~800-900</span>
+                <span>20 · Grandmaster</span>
+              </div>
+              <div className="mt-1 text-xs text-slate-600">Approximate Elo: {skillLevelToEloLabel(skillLevel)}</div>
             </div>
             <div className="mt-3">
               <div className="mb-1 text-xs text-slate-600">Evaluation</div>

@@ -158,4 +158,55 @@ describe('useStockfish', () => {
 
     expect(worker.postedCommands).toContain(`position fen ${fenB}`)
   })
+
+  it('sends Skill Level UCI command on init and when updated', () => {
+    const { result } = renderHook(() => useStockfish())
+    const worker = workerInstances[0]
+
+    act(() => {
+      worker.emit('uciok')
+      worker.emit('readyok')
+    })
+
+    expect(worker.postedCommands).toContain('setoption name Skill Level value 10')
+
+    act(() => {
+      result.current.setSkillLevel(3)
+    })
+
+    expect(worker.postedCommands).toContain('setoption name Skill Level value 3')
+  })
+
+  it('can select MultiPV #4 move for low-skill blunder behavior', async () => {
+    vi.spyOn(Math, 'random')
+      .mockReturnValueOnce(0)
+      .mockReturnValueOnce(0)
+
+    const { result } = renderHook(() => useStockfish())
+    const worker = workerInstances[0]
+
+    act(() => {
+      worker.emit('uciok')
+      worker.emit('readyok')
+      result.current.setSkillLevel(0)
+    })
+
+    const fen = '8/8/8/8/8/8/8/8 b - - 0 1'
+
+    let selectedMove: string | null = null
+    const pendingMove = result.current.getEngineMove(fen).then((move) => {
+      selectedMove = move
+    })
+
+    act(() => {
+      worker.emit('info depth 12 multipv 1 score cp 50 pv e7e5')
+      worker.emit('info depth 12 multipv 2 score cp 10 pv d7d5')
+      worker.emit('info depth 12 multipv 3 score cp 5 pv g8f6')
+      worker.emit('info depth 12 multipv 4 score cp -25 pv a7a6')
+      worker.emit('bestmove e7e5')
+    })
+
+    await pendingMove
+    expect(selectedMove).toBe('a7a6')
+  })
 })
