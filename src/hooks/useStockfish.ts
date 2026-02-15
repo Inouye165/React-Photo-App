@@ -1,6 +1,4 @@
-import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
-
-type Difficulty = 'Easy' | 'Medium' | 'Hard'
+import { useCallback, useEffect, useRef, useState } from 'react'
 
 type TopMove = {
   uci: string
@@ -34,11 +32,14 @@ type AnalysisEntry = {
   depth: number | null
 }
 
-const difficultySettings: Record<Difficulty, { movetime: number; skill: number }> = {
-  Easy: { movetime: 200, skill: 6 },
-  Medium: { movetime: 500, skill: 12 },
-  Hard: { movetime: 900, skill: 18 },
-}
+const MIN_SKILL_LEVEL = 0
+const MAX_SKILL_LEVEL = 20
+const DEFAULT_SKILL_LEVEL = 10
+const TOP_HINT_COUNT = 3
+const ENGINE_MULTIPV = 4
+const LOW_SKILL_BLUNDER_THRESHOLD = 5
+const LEVEL_ZERO_MIN_DELAY_MS = 1000
+const LEVEL_ZERO_MAX_DELAY_MS = 2000
 
 const DEFAULT_STOCKFISH_WORKER_PATH = '/stockfish/stockfish-17.1-lite-single-03e3232.js'
 
@@ -60,6 +61,46 @@ function clamp(value: number, min: number, max: number) {
   return Math.min(max, Math.max(min, value))
 }
 
+function clampSkillLevel(skillLevel: number) {
+  return clamp(Math.round(skillLevel), MIN_SKILL_LEVEL, MAX_SKILL_LEVEL)
+}
+
+function getAnalysisMovetime(skillLevel: number) {
+  const normalizedSkill = clampSkillLevel(skillLevel)
+  // perf: Keep analysis bounded so rapid board updates do not choke the worker.
+  return clamp(240 + (normalizedSkill * 20), 240, 700)
+}
+
+function getEngineMovetime(skillLevel: number) {
+  const normalizedSkill = clampSkillLevel(skillLevel)
+  if (normalizedSkill === 0) {
+    const jitter = Math.random() * (LEVEL_ZERO_MAX_DELAY_MS - LEVEL_ZERO_MIN_DELAY_MS)
+    return Math.round(LEVEL_ZERO_MIN_DELAY_MS + jitter)
+  }
+  return clamp(320 + (normalizedSkill * 30), 320, 1100)
+}
+
+function getBlunderChance(skillLevel: number) {
+  const normalizedSkill = clampSkillLevel(skillLevel)
+  if (normalizedSkill >= LOW_SKILL_BLUNDER_THRESHOLD) return 0
+  // Level 0 => 15%, Level 4 => 3%.
+  return (LOW_SKILL_BLUNDER_THRESHOLD - normalizedSkill) * 0.03
+}
+
+function selectHumanizedMove(bestMove: string | null, analysisEntries: AnalysisEntry[], skillLevel: number, roll: number) {
+  if (!bestMove) return null
+  const blunderChance = getBlunderChance(skillLevel)
+  if (blunderChance <= 0 || roll >= blunderChance) {
+    return bestMove
+  }
+
+  const candidate = analysisEntries
+    .sort((a, b) => a.multipv - b.multipv)
+    .find((entry) => entry.multipv === ENGINE_MULTIPV)
+
+  return candidate?.uci ?? bestMove
+}
+
 function normalizeScore(score: number, turn: 'w' | 'b') {
   const signed = turn === 'b' ? -score : score
   return clamp(signed / 100, -9, 9)
@@ -78,19 +119,17 @@ export function useStockfish() {
   const analysisRef = useRef<Map<number, AnalysisEntry>>(new Map())
   const readyRef = useRef(false)
   const searchingRef = useRef(false)
-  const skillRef = useRef(difficultySettings.Medium.skill)
-  const movetimeRef = useRef(difficultySettings.Medium.movetime)
+  const skillLevelRef = useRef(DEFAULT_SKILL_LEVEL)
+  const analysisMovetimeRef = useRef(getAnalysisMovetime(DEFAULT_SKILL_LEVEL))
   const queuedAnalysisFenRef = useRef<string | null>(null)
   const queuedEngineMoveRef = useRef<QueuedEngineMove | null>(null)
   const restartTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null)
   const restartAttemptsRef = useRef(0)
 
   const [isReady, setIsReady] = useState(false)
-  const [difficulty, setDifficultyState] = useState<Difficulty>('Medium')
+  const [skillLevel, setSkillLevelState] = useState(DEFAULT_SKILL_LEVEL)
   const [topMoves, setTopMoves] = useState<TopMove[]>([])
   const [evaluation, setEvaluation] = useState<EngineEval>({ score: null, mate: null })
-
-  const settings = useMemo(() => difficultySettings[difficulty], [difficulty])
 
   const sendCommand = useCallback((command: string) => {
     const worker = workerRef.current
@@ -129,7 +168,7 @@ export function useStockfish() {
     setTopMoves([])
     setEvaluation({ score: null, mate: null })
     sendCommand(`position fen ${fen}`)
-    sendCommand(`go movetime ${movetimeRef.current}`)
+    sendCommand(`go movetime ${analysisMovetimeRef.current}`)
     searchingRef.current = true
   }, [sendCommand])
 
@@ -176,7 +215,7 @@ export function useStockfish() {
 
     const entries = [...analysisRef.current.values()]
       .sort((a, b) => a.multipv - b.multipv)
-      .slice(0, 3)
+      .slice(0, TOP_HINT_COUNT)
 
     const normalizedTopMoves = entries.map((entry) => ({
       uci: entry.uci,
@@ -208,8 +247,9 @@ export function useStockfish() {
     const line = typeof raw === 'string' ? raw : String(raw)
 
     if (line === 'uciok') {
-      sendCommand('setoption name MultiPV value 3')
-      sendCommand(`setoption name Skill Level value ${skillRef.current}`)
+      // perf: MultiPV is capped at 4 to enable occasional low-skill blunders without worker lag.
+      sendCommand(`setoption name MultiPV value ${ENGINE_MULTIPV}`)
+      sendCommand(`setoption name Skill Level value ${skillLevelRef.current}`)
       sendCommand('isready')
       return
     }
@@ -226,13 +266,21 @@ export function useStockfish() {
     }
 
     if (line.startsWith('bestmove')) {
-      const match = line.match(/bestmove ([a-h][1-8][a-h][1-8][qrbn]?)/)
-      const bestMove = match?.[1]
+      const match = line.match(/bestmove (\S+)/)
+      const token = match?.[1] ?? null
+      const bestMove = token && /^[a-h][1-8][a-h][1-8][qrbn]?$/.test(token) ? token : null
       searchingRef.current = false
       clearPendingMoveTimeout()
       if (pendingMoveRef.current) {
-        if (bestMove) {
-          pendingMoveRef.current.resolve(bestMove)
+        const selectedMove = selectHumanizedMove(
+          bestMove,
+          [...analysisRef.current.values()],
+          skillLevelRef.current,
+          Math.random(),
+        )
+
+        if (selectedMove) {
+          pendingMoveRef.current.resolve(selectedMove)
         } else {
           pendingMoveRef.current.reject(new Error('Engine did not return bestmove'))
         }
@@ -253,11 +301,6 @@ export function useStockfish() {
       }
     }
   }, [clearPendingMoveTimeout, handleInfoLine, sendCommand, startAnalysisSearch, startEngineMoveSearch])
-
-  useEffect(() => {
-    skillRef.current = settings.skill
-    movetimeRef.current = settings.movetime
-  }, [settings.movetime, settings.skill])
 
   useEffect(() => {
     // Use the Stockfish JS file directly as the Worker — it auto-initializes
@@ -320,8 +363,14 @@ export function useStockfish() {
 
   useEffect(() => {
     if (!readyRef.current) return
-    sendCommand(`setoption name Skill Level value ${settings.skill}`)
-  }, [sendCommand, settings.skill])
+    sendCommand(`setoption name Skill Level value ${skillLevel}`)
+  }, [sendCommand, skillLevel])
+
+  useEffect(() => {
+    const normalizedSkill = clampSkillLevel(skillLevel)
+    skillLevelRef.current = normalizedSkill
+    analysisMovetimeRef.current = getAnalysisMovetime(normalizedSkill)
+  }, [skillLevel])
 
   const analyzePosition = useCallback((fen: string) => {
     if (!readyRef.current) return
@@ -347,7 +396,7 @@ export function useStockfish() {
     return new Promise<string>((resolve, reject) => {
       const request: QueuedEngineMove = {
         fen,
-        movetime: settings.movetime,
+        movetime: getEngineMovetime(skillLevelRef.current),
         resolve,
         reject,
       }
@@ -362,16 +411,16 @@ export function useStockfish() {
 
       startEngineMoveSearch(request)
     })
-  }, [sendCommand, settings.movetime, startEngineMoveSearch])
+  }, [sendCommand, startEngineMoveSearch])
 
-  const setDifficulty = useCallback((level: Difficulty) => {
-    setDifficultyState(level)
+  const setSkillLevel = useCallback((level: number) => {
+    setSkillLevelState(clampSkillLevel(level))
   }, [])
 
   return {
     isReady,
-    difficulty,
-    setDifficulty,
+    skillLevel,
+    setSkillLevel,
     analyzePosition,
     getEngineMove,
     cancelPendingMove,

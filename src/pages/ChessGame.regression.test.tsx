@@ -142,8 +142,8 @@ vi.mock('../hooks/useStockfish', () => ({
     analyzePosition: vi.fn(),
     getEngineMove: vi.fn(async () => getEngineMoveUci()),
     cancelPendingMove: vi.fn(),
-    difficulty: 'Medium',
-    setDifficulty: vi.fn(),
+    skillLevel: 10,
+    setSkillLevel: vi.fn(),
   }),
 }))
 
