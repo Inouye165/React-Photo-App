@@ -23,6 +23,7 @@ const {
   analyzeGameForMeMock,
   ensureStoryAudioMock,
   getStoryAudioSetupStatusMock,
+  preloadStoryAudioManifestMock,
   getDocumentMock,
   speechSpeakMock,
   speechCancelMock,
@@ -131,6 +132,7 @@ const {
       bucket: { exists: true, isPublic: true, publicReadProbe: 'ok' },
       warnings: [],
     })),
+    preloadStoryAudioManifestMock: vi.fn(async () => undefined),
     getDocumentMock,
     speechSpeakMock,
     speechCancelMock,
@@ -172,6 +174,7 @@ vi.mock('../api/chessTutor', () => ({
   analyzeGameForMe: analyzeGameForMeMock,
   ensureStoryAudio: ensureStoryAudioMock,
   getStoryAudioSetupStatus: getStoryAudioSetupStatusMock,
+  preloadStoryAudioManifest: preloadStoryAudioManifestMock,
 }))
 
 vi.mock('../hooks/useStockfish', () => ({

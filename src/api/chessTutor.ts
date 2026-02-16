@@ -33,6 +33,24 @@ export type StoryAudioSetupStatus = {
   warnings: string[]
 }
 
+type StoryAudioManifestEntry = {
+  page: number
+  hash: string
+  objectPath?: string
+  url?: string
+  wordCount?: number
+}
+
+type StoryAudioManifest = {
+  storySlug: string
+  voice?: string
+  cacheVersion: string
+  bucket?: string
+  totalPages: number
+  generatedAt?: string
+  entries: StoryAudioManifestEntry[]
+}
+
 type AnalyzeChessTutorResponse = {
   success: boolean
   analysis?: ChessTutorAnalysis
@@ -62,6 +80,210 @@ type StoryAudioSetupStatusResponse = {
   }
   warnings?: string[]
   error?: string
+}
+
+const STORY_AUDIO_CACHE_VERSION = 'v2'
+const STORY_AUDIO_BUCKET = 'story-audio'
+const STORY_AUDIO_URL_CACHE_STORAGE_KEY = 'story-audio-url-cache-v1'
+const STORY_AUDIO_URL_CACHE_MAX_ENTRIES = 200
+
+type StoryAudioUrlCacheEntry = {
+  url: string
+  updatedAt: number
+}
+
+const storyAudioUrlMemoryCache = new Map<string, StoryAudioUrlCacheEntry>()
+const storyAudioManifestPromiseBySlug = new Map<string, Promise<StoryAudioManifest | null>>()
+
+function normalizeNarrationText(text: string): string {
+  return String(text || '')
+    .replace(/\r\n/g, '\n')
+    .replace(/\s+/g, ' ')
+    .trim()
+}
+
+async function sha256Hex(value: string): Promise<string> {
+  const encoder = new TextEncoder()
+  const bytes = encoder.encode(value)
+  const digestBuffer = await globalThis.crypto.subtle.digest('SHA-256', bytes)
+  const digestArray = Array.from(new Uint8Array(digestBuffer))
+  return digestArray.map((entry) => entry.toString(16).padStart(2, '0')).join('')
+}
+
+async function buildStoryAudioContentHash(input: { text: string; totalPages: number; voice: 'shimmer' | string }): Promise<string> {
+  const payload = JSON.stringify({
+    version: STORY_AUDIO_CACHE_VERSION,
+    text: normalizeNarrationText(input.text),
+    totalPages: Number(input.totalPages || 1),
+    voice: String(input.voice || 'shimmer'),
+  })
+
+  const hash = await sha256Hex(payload)
+  return hash.slice(0, 16)
+}
+
+async function buildStoryAudioObjectPath(input: {
+  storySlug: string
+  page: number
+  text: string
+  totalPages: number
+  voice: 'shimmer' | string
+}): Promise<{ objectPath: string; hash: string }> {
+  const hash = await buildStoryAudioContentHash({
+    text: input.text,
+    totalPages: input.totalPages,
+    voice: input.voice,
+  })
+  return {
+    hash,
+    objectPath: `${input.storySlug}/${STORY_AUDIO_CACHE_VERSION}/page-${input.page}-${hash}.mp3`,
+  }
+}
+
+function getSupabaseBaseUrl(): string | null {
+  const viteBase = String(import.meta.env.VITE_SUPABASE_URL || '').trim()
+  if (viteBase) return viteBase.replace(/\/$/, '')
+  return null
+}
+
+function buildStoryAudioPublicUrlFromObjectPath(objectPath: string): string | null {
+  const supabaseBase = getSupabaseBaseUrl()
+  if (!supabaseBase) return null
+  return `${supabaseBase}/storage/v1/object/public/${STORY_AUDIO_BUCKET}/${objectPath}`
+}
+
+function getStoryAudioUrlCacheSnapshotFromStorage(): Record<string, StoryAudioUrlCacheEntry> {
+  if (typeof window === 'undefined') return {}
+  try {
+    const rawValue = window.localStorage.getItem(STORY_AUDIO_URL_CACHE_STORAGE_KEY)
+    if (!rawValue) return {}
+    const parsed = JSON.parse(rawValue) as Record<string, StoryAudioUrlCacheEntry>
+    return parsed && typeof parsed === 'object' ? parsed : {}
+  } catch {
+    return {}
+  }
+}
+
+function saveStoryAudioUrlCacheSnapshotToStorage(snapshot: Record<string, StoryAudioUrlCacheEntry>): void {
+  if (typeof window === 'undefined') return
+  try {
+    const entries = Object.entries(snapshot)
+      .sort((left, right) => (right[1]?.updatedAt || 0) - (left[1]?.updatedAt || 0))
+      .slice(0, STORY_AUDIO_URL_CACHE_MAX_ENTRIES)
+
+    const compactSnapshot: Record<string, StoryAudioUrlCacheEntry> = {}
+    for (const [key, value] of entries) {
+      if (!value?.url) continue
+      compactSnapshot[key] = {
+        url: value.url,
+        updatedAt: Number(value.updatedAt || Date.now()),
+      }
+    }
+
+    window.localStorage.setItem(STORY_AUDIO_URL_CACHE_STORAGE_KEY, JSON.stringify(compactSnapshot))
+  } catch {
+    // Ignore storage write failures.
+  }
+}
+
+function readStoryAudioCachedUrl(cacheKey: string): string | null {
+  const inMemory = storyAudioUrlMemoryCache.get(cacheKey)
+  if (inMemory?.url) return inMemory.url
+
+  const storageSnapshot = getStoryAudioUrlCacheSnapshotFromStorage()
+  const fromStorage = storageSnapshot[cacheKey]
+  if (!fromStorage?.url) return null
+
+  storyAudioUrlMemoryCache.set(cacheKey, {
+    url: fromStorage.url,
+    updatedAt: Number(fromStorage.updatedAt || Date.now()),
+  })
+
+  return fromStorage.url
+}
+
+function writeStoryAudioCachedUrl(cacheKey: string, url: string): void {
+  const normalizedUrl = String(url || '').trim()
+  if (!normalizedUrl) return
+
+  const nextEntry: StoryAudioUrlCacheEntry = {
+    url: normalizedUrl,
+    updatedAt: Date.now(),
+  }
+
+  storyAudioUrlMemoryCache.set(cacheKey, nextEntry)
+
+  const snapshot = getStoryAudioUrlCacheSnapshotFromStorage()
+  snapshot[cacheKey] = nextEntry
+  saveStoryAudioUrlCacheSnapshotToStorage(snapshot)
+}
+
+async function loadStoryAudioManifest(storySlug: string): Promise<StoryAudioManifest | null> {
+  const normalizedStorySlug = String(storySlug || '').trim()
+  if (!normalizedStorySlug) return null
+
+  const existing = storyAudioManifestPromiseBySlug.get(normalizedStorySlug)
+  if (existing) return existing
+
+  const loader = (async () => {
+    try {
+      const response = await fetch(`/chess-story/${normalizedStorySlug}.audio-manifest.json`, {
+        method: 'GET',
+        cache: 'force-cache',
+      })
+      if (!response.ok) return null
+      const parsed = (await response.json()) as StoryAudioManifest
+      if (!parsed || typeof parsed !== 'object' || !Array.isArray(parsed.entries)) return null
+      return parsed
+    } catch {
+      return null
+    }
+  })()
+
+  storyAudioManifestPromiseBySlug.set(normalizedStorySlug, loader)
+  return loader
+}
+
+async function urlLooksReachable(url: string): Promise<boolean> {
+  if (!url) return false
+
+  try {
+    const response = await fetch(url, { method: 'HEAD', cache: 'no-store' })
+    return response.ok
+  } catch {
+    return false
+  }
+}
+
+async function resolvePrecomputedStoryAudioUrl(input: {
+  storySlug: string
+  page: number
+  hash: string
+  objectPath: string
+}): Promise<string | null> {
+  const manifest = await loadStoryAudioManifest(input.storySlug)
+
+  const manifestEntry = manifest?.entries?.find((entry) => entry.page === input.page && entry.hash === input.hash)
+  const candidateObjectPath = manifestEntry?.objectPath || input.objectPath
+  const candidateUrl = manifestEntry?.url || buildStoryAudioPublicUrlFromObjectPath(candidateObjectPath)
+  if (!candidateUrl) return null
+
+  const reachable = await urlLooksReachable(candidateUrl)
+  if (!reachable) return null
+
+  return candidateUrl
+}
+
+export async function preloadStoryAudioManifest(storySlug: 'architect-of-squares'): Promise<void> {
+  await loadStoryAudioManifest(storySlug)
+}
+
+export function __resetStoryAudioCacheForTests(): void {
+  storyAudioUrlMemoryCache.clear()
+  storyAudioManifestPromiseBySlug.clear()
+  if (typeof window !== 'undefined') {
+    window.localStorage.removeItem(STORY_AUDIO_URL_CACHE_STORAGE_KEY)
+  }
 }
 
 export async function analyzeGameForMe(input: {
@@ -98,6 +320,39 @@ export async function ensureStoryAudio(input: {
   text: string
   voice?: 'shimmer'
 }): Promise<EnsureStoryAudioResult> {
+  const voice = input.voice || 'shimmer'
+  const { objectPath, hash } = await buildStoryAudioObjectPath({
+    storySlug: input.storySlug,
+    page: input.page,
+    text: input.text,
+    totalPages: input.totalPages,
+    voice,
+  })
+
+  const localCacheKey = `${input.storySlug}|${objectPath}`
+  const cachedUrl = readStoryAudioCachedUrl(localCacheKey)
+  if (cachedUrl) {
+    return {
+      cached: true,
+      url: cachedUrl,
+    }
+  }
+
+  const precomputedUrl = await resolvePrecomputedStoryAudioUrl({
+    storySlug: input.storySlug,
+    page: input.page,
+    hash,
+    objectPath,
+  })
+
+  if (precomputedUrl) {
+    writeStoryAudioCachedUrl(localCacheKey, precomputedUrl)
+    return {
+      cached: true,
+      url: precomputedUrl,
+    }
+  }
+
   let response: EnsureStoryAudioResponse
   try {
     response = await request<EnsureStoryAudioResponse>({
@@ -108,7 +363,7 @@ export async function ensureStoryAudio(input: {
         page: input.page,
         totalPages: input.totalPages,
         text: input.text,
-        voice: input.voice || 'shimmer',
+        voice,
       },
     })
   } catch (error) {
@@ -121,7 +376,7 @@ export async function ensureStoryAudio(input: {
           page: input.page,
           totalPages: input.totalPages,
           text: input.text,
-          voice: input.voice || 'shimmer',
+          voice,
         },
       })
     } else {
@@ -132,6 +387,8 @@ export async function ensureStoryAudio(input: {
   if (!response?.success || !response.url) {
     throw new Error(response?.error || 'Failed to prepare story audio')
   }
+
+  writeStoryAudioCachedUrl(localCacheKey, response.url)
 
   return {
     cached: Boolean(response.cached),
