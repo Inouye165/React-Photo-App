@@ -443,6 +443,33 @@ function base64ToBlobUrl(base64Value: string): string {
   return URL.createObjectURL(audioBlob)
 }
 
+async function getStoryPdfPreflightError(pdfUrl: string): Promise<string | null> {
+  try {
+    let response = await fetch(pdfUrl, { method: 'HEAD', cache: 'no-store' })
+    if (response.status === 405 || response.status === 501) {
+      response = await fetch(pdfUrl, { method: 'GET', cache: 'no-store' })
+    }
+
+    if (!response.ok) {
+      return `Story PDF is not reachable (${response.status}). Verify VITE_CHESS_STORY_PDF_URL or deploy the file at ${pdfUrl}.`
+    }
+
+    const contentType = String(response.headers.get('content-type') || '').toLowerCase()
+    if (contentType.includes('text/html')) {
+      return `Story PDF URL returned HTML instead of PDF (${pdfUrl}). Check deploy rewrites/static hosting for this file.`
+    }
+
+    if (contentType && !contentType.includes('application/pdf') && !contentType.includes('application/octet-stream')) {
+      return `Story PDF URL returned unexpected content type (${contentType}). Expected application/pdf at ${pdfUrl}.`
+    }
+
+    return null
+  } catch {
+    // Network/CORS probe failures can be inconclusive; defer to pdf.js loader for final verdict.
+    return null
+  }
+}
+
 function getHighlightStyle(tone: StoryHighlightTone | undefined): React.CSSProperties {
   const colorByTone: Record<StoryHighlightTone, string> = {
     yellow: 'rgba(250, 204, 21, 0.62)',
@@ -840,26 +867,37 @@ function ChessStoryModal({
     setRenderedPageSize({ width: 0, height: 0 })
     pageTextCacheRef.current.clear()
 
-    const loadingTask = getDocument({ url: pdfUrl })
-    loadingTask.promise
-      .then((documentProxy) => {
+    let loadingTask: ReturnType<typeof getDocument> | null = null
+
+    void (async () => {
+      const preflightError = await getStoryPdfPreflightError(pdfUrl)
+      if (cancelled) return
+      if (preflightError) {
+        setLoadError(preflightError)
+        setIsLoadingDocument(false)
+        return
+      }
+
+      loadingTask = getDocument({ url: pdfUrl })
+
+      try {
+        const documentProxy = await loadingTask.promise
         if (cancelled) return
         setPdfDocument(documentProxy)
         setTotalPages(Math.max(1, documentProxy.numPages || 1))
-      })
-      .catch(() => {
+      } catch {
         if (cancelled) return
-        setLoadError('Unable to load story PDF. Check the story URL and try again.')
-      })
-      .finally(() => {
+        setLoadError(`Unable to load story PDF from ${pdfUrl}. Check VITE_CHESS_STORY_PDF_URL and static hosting.`)
+      } finally {
         if (cancelled) return
         setIsLoadingDocument(false)
-      })
+      }
+    })()
 
     return () => {
       cancelled = true
       try {
-        loadingTask.destroy()
+        loadingTask?.destroy()
       } catch {}
       stopNarration()
     }

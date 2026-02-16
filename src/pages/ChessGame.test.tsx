@@ -260,10 +260,18 @@ describe('ChessGame', () => {
     setMockPdfPageText(2, 'Story page 2')
 
     const fetchMock = vi.fn(async (_input: RequestInfo | URL, init?: RequestInit) => {
-      if (init?.method === 'HEAD') {
-        return { ok: false } as Response
+      if (init?.method === 'HEAD' || init?.method === 'GET') {
+        return {
+          ok: true,
+          status: 200,
+          headers: {
+            get: (name: string) => (name.toLowerCase() === 'content-type' ? 'application/pdf' : null),
+          },
+          json: async () => ({}),
+          text: async () => '',
+        } as unknown as Response
       }
-      return { ok: true, json: async () => ({}) } as Response
+      return { ok: true, status: 200, json: async () => ({}) } as Response
     })
     vi.stubGlobal('fetch', fetchMock)
 
