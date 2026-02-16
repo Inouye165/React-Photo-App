@@ -67,16 +67,16 @@ export default function DisclaimerModal({ onAccept, onDeny, isAccepting = false 
         {/* Scrollable Content Body */}
         <div className="px-6 py-6 space-y-5 overflow-y-auto">
           <p className="text-slate-600 text-sm leading-relaxed">
-            Welcome! You are accessing a <strong className="text-slate-900">beta version</strong> of this application.
+            Welcome! You're joining a beta version of our family hub — for sharing photos, planning gatherings, learning together, and playing games.
           </p>
 
           {/* --- Existing Sections: AI, Security, Warning --- */}
           <div className="flex gap-4 p-4 bg-amber-50 border border-amber-200 rounded-2xl">
             <Sparkles className="w-5 h-5 text-amber-600 flex-shrink-0 mt-0.5" />
             <div>
-              <h3 className="font-semibold text-amber-900 mb-1">AI &amp; Metadata</h3>
+              <h3 className="font-semibold text-amber-900 mb-1">Smart Organization &amp; Features</h3>
               <p className="text-sm text-amber-800">
-                We use AI to analyze your photos for scenery, location, and appraisals. This generates metadata to help organize your library. This data is stored securely to power search and mapping features.
+                We analyze photos to surface helpful information — for example, likely locations, scenery tags, and suggested albums. This metadata helps keep your family library organized and improves search, maps, and sharing suggestions. Processed data is stored securely to power these convenience features.
               </p>
             </div>
           </div>
@@ -101,7 +101,7 @@ export default function DisclaimerModal({ onAccept, onDeny, isAccepting = false 
           {/* Acknowledgment Section */}
           <div className="pt-4 border-t border-slate-200">
             <p className="text-sm text-slate-600 mb-4">
-              By accepting, you acknowledge that you have read and understood these terms and agree to use this experimental software at your own risk.
+              By accepting, you confirm that you've read these notes and agree to use this beta release. Your consent enables features like shared albums, event planning, and in-app helpers.
             </p>
             {/* Checkbox */}
             <label className="flex items-start gap-3 cursor-pointer group">
@@ -113,7 +113,7 @@ export default function DisclaimerModal({ onAccept, onDeny, isAccepting = false 
                 disabled={isAccepting}
               />
               <span className="text-sm font-medium text-slate-700 group-hover:text-slate-900 select-none">
-                I have read and understood the terms above, and I accept the risks of using this experimental software.
+                I have read and understand the notes above, and I accept the risks of using this beta release.
               </span>
             </label>
           </div>
