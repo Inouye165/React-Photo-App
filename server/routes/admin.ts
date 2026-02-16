@@ -56,6 +56,7 @@ interface UserActivityRow {
   user_id: string;
   action: string;
   metadata: Record<string, unknown> | null;
+  username?: string | null;
   created_at: string;
 }
 
@@ -635,7 +636,15 @@ function createAdminRouter({ db }: { db: any }): Router {
       }
 
       let query = db('user_activity_log')
-        .select('id', 'user_id', 'action', 'metadata', 'created_at');
+        .leftJoin('users as u', 'user_activity_log.user_id', 'u.id')
+        .select(
+          'user_activity_log.id',
+          'user_activity_log.user_id',
+          'user_activity_log.action',
+          'user_activity_log.metadata',
+          'user_activity_log.created_at',
+          'u.username'
+        );
 
       if (action) {
         query = query.where('action', action);

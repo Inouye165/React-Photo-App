@@ -469,7 +469,16 @@ function createAdminRouter({ db }) {
         return res.status(400).json({ success: false, error: 'Invalid user_id filter' });
       }
 
-      let query = db('user_activity_log').select('id', 'user_id', 'action', 'metadata', 'created_at');
+      let query = db('user_activity_log')
+        .leftJoin('users as u', 'user_activity_log.user_id', 'u.id')
+        .select(
+          'user_activity_log.id',
+          'user_activity_log.user_id',
+          'user_activity_log.action',
+          'user_activity_log.metadata',
+          'user_activity_log.created_at',
+          'u.username'
+        );
 
       if (action) {
         query = query.where('action', action);

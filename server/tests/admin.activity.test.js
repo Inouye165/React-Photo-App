@@ -57,6 +57,9 @@ const createMockDb = () => {
   const mockFn = jest.fn((tableName) => {
     if (tableName === 'user_activity_log') {
       const chain = {
+        leftJoin: jest.fn(function () {
+          return this;
+        }),
         where: jest.fn(function () {
           return this;
         }),
@@ -78,6 +81,7 @@ const createMockDb = () => {
             {
               id: 'log-1',
               user_id: 'user-1',
+              username: 'test_user',
               action: 'sign_in',
               metadata: { source: 'test' },
               created_at: new Date().toISOString(),

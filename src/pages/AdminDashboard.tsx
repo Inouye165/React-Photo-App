@@ -126,6 +126,7 @@ interface AccessRequestsResponse {
 interface AdminActivityLog {
   id: string;
   user_id: string;
+  username?: string | null;
   action: string;
   metadata: Record<string, unknown> | null;
   created_at: string;
@@ -143,6 +144,18 @@ interface ActivityResponse {
 type TabType = 'invites' | 'suggestions' | 'comments' | 'feedback' | 'activity' | 'access-requests';
 
 const EMAIL_REGEX = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
+
+function formatActivityAction(action: string): string {
+  return String(action || '')
+    .split('_')
+    .filter(Boolean)
+    .map((part) => part.charAt(0).toUpperCase() + part.slice(1))
+    .join(' ');
+}
+
+function hasNonEmptyMetadata(metadata: Record<string, unknown> | null | undefined): boolean {
+  return Boolean(metadata && typeof metadata === 'object' && Object.keys(metadata).length > 0);
+}
 
 export default function AdminDashboard() {
   const { user } = useAuth();
@@ -1043,40 +1056,45 @@ export default function AdminDashboard() {
                     <p>No activity logs found</p>
                   </div>
                 ) : (
-                  <div className="space-y-4">
+                  <div className="rounded-lg border border-gray-200 divide-y divide-gray-200 bg-white">
                     {activityLogs.map((log) => (
-                      <div key={log.id} className="bg-gray-50 rounded-lg p-4 border border-gray-200">
-                        <div className="flex items-start justify-between mb-3 gap-4">
-                          <div className="min-w-0">
-                            <h3 className="font-medium text-gray-900 truncate">{log.action}</h3>
-                            <p className="text-sm text-gray-500 break-all">
-                              User: {log.user_id}
+                      <details key={log.id} className="group">
+                        <summary className="list-none cursor-pointer px-4 py-3 hover:bg-gray-50">
+                          <div className="flex items-center justify-between gap-4">
+                            <p className="text-sm text-gray-900 truncate">
+                              <span className="font-medium">{log.username || log.user_id}</span>
+                              <span className="text-gray-500"> • </span>
+                              <span>{formatActivityAction(log.action)}</span>
+                              <span className="text-gray-500"> • </span>
+                              <span className="text-gray-600">{new Date(log.created_at).toLocaleString()}</span>
                             </p>
-                            <p className="text-xs text-gray-500 mt-1">
-                              {new Date(log.created_at).toLocaleString()}
-                            </p>
+                            <span className="text-xs text-gray-500">Details</span>
+                          </div>
+                        </summary>
+
+                        <div className="px-4 pb-4 pt-1 bg-gray-50 border-t border-gray-200">
+                          <div className="grid grid-cols-1 gap-2 text-xs text-gray-700 mb-3">
+                            <div className="break-all"><span className="font-medium">User ID:</span> {log.user_id}</div>
+                            <div><span className="font-medium">Action:</span> {log.action}</div>
+                            <div><span className="font-medium">Time:</span> {new Date(log.created_at).toLocaleString()}</div>
                           </div>
 
-                          <span className="px-3 py-1 bg-blue-100 text-blue-800 text-xs font-medium rounded-full">
-                            Activity
-                          </span>
-                        </div>
-
-                        {log.metadata != null && (
                           <div className="bg-white rounded border border-gray-200 p-3">
                             <p className="text-xs font-medium text-gray-700 mb-2">Metadata:</p>
-                            <pre className="text-xs text-gray-600 overflow-x-auto">
-                              {typeof log.metadata === 'string'
-                                ? log.metadata
-                                : JSON.stringify(log.metadata, null, 2)}
-                            </pre>
+                            {hasNonEmptyMetadata(log.metadata) ? (
+                              <pre className="text-xs text-gray-600 overflow-x-auto">
+                                {JSON.stringify(log.metadata, null, 2)}
+                              </pre>
+                            ) : (
+                              <p className="text-xs text-gray-500">No metadata captured for this event.</p>
+                            )}
                           </div>
-                        )}
-                      </div>
+                        </div>
+                      </details>
                     ))}
 
                     {activityLogs.length < activityTotal && (
-                      <div className="pt-2">
+                      <div className="p-3">
                         <button
                           onClick={() => fetchActivity({ offset: activityOffset, append: true })}
                           disabled={activityLoading}
