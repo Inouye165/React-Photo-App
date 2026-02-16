@@ -766,7 +766,7 @@ function ChessStoryModal({
     setTotalPages(1)
     pageTextCacheRef.current.clear()
 
-    const loadingTask = getDocument({ url: pdfUrl })
+    let loadingTask: ReturnType<typeof getDocument> | null = null
 
     void (async () => {
       const preflightError = await getStoryPdfPreflightError(pdfUrl)
@@ -774,32 +774,29 @@ function ChessStoryModal({
       if (preflightError) {
         setLoadError(preflightError)
         setIsLoadingDocument(false)
-        try {
-          loadingTask.destroy()
-        } catch {}
         return
       }
 
-      loadingTask.promise
-        .then((documentProxy) => {
-          if (cancelled) return
-          setPdfDocument(documentProxy)
-          setTotalPages(Math.max(1, documentProxy.numPages || 1))
-        })
-        .catch(() => {
-          if (cancelled) return
-          setLoadError(`Unable to load story PDF from ${pdfUrl}. Check VITE_CHESS_STORY_PDF_URL and static hosting.`)
-        })
-        .finally(() => {
-          if (cancelled) return
-          setIsLoadingDocument(false)
-        })
+      loadingTask = getDocument({ url: pdfUrl })
+
+      try {
+        const documentProxy = await loadingTask.promise
+        if (cancelled) return
+        setPdfDocument(documentProxy)
+        setTotalPages(Math.max(1, documentProxy.numPages || 1))
+      } catch {
+        if (cancelled) return
+        setLoadError(`Unable to load story PDF from ${pdfUrl}. Check VITE_CHESS_STORY_PDF_URL and static hosting.`)
+      } finally {
+        if (cancelled) return
+        setIsLoadingDocument(false)
+      }
     })()
 
     return () => {
       cancelled = true
       try {
-        loadingTask.destroy()
+        loadingTask?.destroy()
       } catch {}
       stopNarration()
     }
