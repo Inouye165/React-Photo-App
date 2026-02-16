@@ -10,16 +10,20 @@ export function getApiBaseUrl(): string {
     // Fallback for unusual test environments
   }
 
-  if (!base || base.trim() === '') {
-    if (typeof window !== 'undefined' && window.location && window.location.hostname) {
-      const protocol = window.location.protocol === 'https:' ? 'https' : 'http';
-      base = `${protocol}://${window.location.hostname}:3001`;
-    } else {
-      base = 'http://localhost:3001';
+  const normalized = base.trim();
+  if (!normalized) {
+    if (typeof window !== 'undefined') {
+      // Intentionally prefer same-origin relative API calls when env vars are unset.
+      // This avoids accidental production fallback to hostname:3001 and works with
+      // Vite dev proxy when VITE_API_URL is intentionally left blank.
+      return '';
     }
+
+    // Non-browser fallback for tests/SSR-style execution.
+    return 'http://localhost:3001';
   }
 
-  return base.endsWith('/') ? base.slice(0, -1) : base;
+  return normalized.endsWith('/') ? normalized.slice(0, -1) : normalized;
 }
 
 export function buildApiUrl(path: string): string {
