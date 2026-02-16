@@ -3,8 +3,11 @@ import { useNavigate, useParams } from 'react-router-dom'
 import { Chess } from 'chess.js'
 import type { Square } from 'chess.js'
 import { Chessboard } from 'react-chessboard'
+import { getDocument, GlobalWorkerOptions, type PDFDocumentProxy } from 'pdfjs-dist'
+import pdfWorkerUrl from 'pdfjs-dist/build/pdf.worker.min.mjs?url'
 import { abortGame, fetchGame, fetchGameMembers, makeMove, restartGame } from '../api/games'
-import { analyzeGameForMe, type ChessTutorAnalysis } from '../api/chessTutor'
+import { analyzeGameForMe, ensureStoryAudio, getStoryAudioSetupStatus, type ChessTutorAnalysis } from '../api/chessTutor'
+import { createDirectorScriptForPage, type StoryDirectorAction, type StoryHighlightTone } from '../data/storyTimeline'
 import Toast from '../components/Toast'
 import type { GameMemberProfile, GameRow } from '../api/games'
 import { supabase } from '../supabaseClient'
@@ -418,6 +421,768 @@ const RANK_REFERENCE: string[] = ['1', '2', '3', '4', '5', '6', '7', '8']
 const FILE_REFERENCE: string[] = ['a', 'b', 'c', 'd', 'e', 'f', 'g', 'h']
 const RANK_DEMO_SQUARES: string[] = ['a2', 'b2', 'c2', 'd2', 'e2', 'f2', 'g2', 'h2']
 const FILE_DEMO_SQUARES: string[] = ['e1', 'e2', 'e3', 'e4', 'e5', 'e6', 'e7', 'e8']
+const DEFAULT_CHESS_STORY_PDF_URL = '/chess-story/architect-of-squares.pdf'
+const CHESS_STORY_PDF_URL = String(import.meta.env.VITE_CHESS_STORY_PDF_URL || DEFAULT_CHESS_STORY_PDF_URL).trim() || DEFAULT_CHESS_STORY_PDF_URL
+const STORY_MANUAL_NARRATION_STORAGE_KEY = 'chess-story-manual-narration'
+const STORY_AUDIO_SLUG = 'architect-of-squares'
+const STORY_DIRECTOR_SYNC_INTERVAL_MS = 250
+
+if (typeof window !== 'undefined') {
+  GlobalWorkerOptions.workerSrc = pdfWorkerUrl
+}
+
+function base64ToBlobUrl(base64Value: string): string {
+  const binaryString = atob(base64Value)
+  const bytes = new Uint8Array(binaryString.length)
+  for (let index = 0; index < binaryString.length; index += 1) {
+    bytes[index] = binaryString.charCodeAt(index)
+  }
+  const audioBlob = new Blob([bytes], { type: 'audio/mpeg' })
+  return URL.createObjectURL(audioBlob)
+}
+
+function getHighlightStyle(tone: StoryHighlightTone | undefined): React.CSSProperties {
+  const colorByTone: Record<StoryHighlightTone, string> = {
+    yellow: 'rgba(250, 204, 21, 0.62)',
+    blue: 'rgba(59, 130, 246, 0.62)',
+    royal: 'rgba(168, 85, 247, 0.62)',
+    red: 'rgba(239, 68, 68, 0.62)',
+  }
+
+  const fill = colorByTone[tone || 'yellow']
+  return {
+    background: `radial-gradient(circle, ${fill} 32%, transparent 34%)`,
+    animation: 'shimmer 1.35s ease-in-out infinite',
+  }
+}
+
+function formatAudioTime(seconds: number): string {
+  if (!Number.isFinite(seconds) || seconds < 0) return '0:00'
+  const totalSeconds = Math.floor(seconds)
+  const mins = Math.floor(totalSeconds / 60)
+  const secs = totalSeconds % 60
+  return `${mins}:${String(secs).padStart(2, '0')}`
+}
+
+function isUciLikeMove(move: string): boolean {
+  return /^[a-h][1-8][a-h][1-8][qrbn]?$/i.test(move.trim())
+}
+
+function playScriptMove(chess: Chess, rawMove: string): boolean {
+  const normalized = rawMove.trim()
+  if (!normalized) return false
+
+  if (isUciLikeMove(normalized)) {
+    const from = normalized.slice(0, 2) as Square
+    const to = normalized.slice(2, 4) as Square
+    const promotionRaw = normalized.slice(4, 5).toLowerCase()
+    const promotion = promotionRaw && ['q', 'r', 'b', 'n'].includes(promotionRaw)
+      ? (promotionRaw as PromotionPiece)
+      : undefined
+
+    const moveResult = chess.move({ from, to, promotion })
+    return Boolean(moveResult)
+  }
+
+  const moveResult = chess.move(normalized)
+  return Boolean(moveResult)
+}
+
+type DirectorResolvedState = {
+  chess: Chess
+  styles: Record<string, React.CSSProperties>
+  label: string | null
+  lastIndex: number
+}
+
+function resolveDirectorStateAtTime(actions: StoryDirectorAction[], timeSeconds: number): DirectorResolvedState {
+  let chess = new Chess()
+  let styles: Record<string, React.CSSProperties> = {}
+  let label: string | null = null
+  let lastIndex = -1
+
+  for (let index = 0; index < actions.length; index += 1) {
+    const action = actions[index]
+    if (action.timestamp > timeSeconds) break
+
+    if (action.type === 'BOARD_STATE') {
+      try {
+        chess = new Chess(action.fen)
+        styles = {}
+      } catch {
+        // Ignore invalid FEN and continue.
+      }
+    }
+
+    if (action.type === 'MOVE') {
+      playScriptMove(chess, action.move)
+    }
+
+    if (action.type === 'HIGHLIGHT') {
+      styles = action.squares.reduce<Record<string, React.CSSProperties>>((accumulator, square) => {
+        accumulator[square] = getHighlightStyle(action.tone)
+        return accumulator
+      }, {})
+    }
+
+    label = action.label
+    lastIndex = index
+  }
+
+  return {
+    chess,
+    styles,
+    label,
+    lastIndex,
+  }
+}
+
+function ChessStoryModal({
+  open,
+  onClose,
+  pdfUrl,
+}: {
+  open: boolean
+  onClose: () => void
+  pdfUrl: string
+}) {
+  const canvasRef = useRef<HTMLCanvasElement | null>(null)
+  const pageContainerRef = useRef<HTMLDivElement | null>(null)
+  const narrationTokenRef = useRef(0)
+  const pageTextCacheRef = useRef<Map<number, string>>(new Map())
+  const activeAudioRef = useRef<HTMLAudioElement | null>(null)
+  const activeAudioObjectUrlRef = useRef<string | null>(null)
+  const storyChessRef = useRef(new Chess())
+  const pageActionsRef = useRef<StoryDirectorAction[]>([])
+  const lastTriggeredActionIndexRef = useRef<number>(-1)
+  const lastDirectorSyncAtRef = useRef<number>(0)
+  const lastAudioTimeRef = useRef<number>(0)
+  const preservePausedAudioRef = useRef(false)
+  const pausedAudioPageRef = useRef<number | null>(null)
+
+  const [pdfDocument, setPdfDocument] = useState<PDFDocumentProxy | null>(null)
+  const [isLoadingDocument, setIsLoadingDocument] = useState(false)
+  const [loadError, setLoadError] = useState<string | null>(null)
+  const [totalPages, setTotalPages] = useState(1)
+  const [currentPage, setCurrentPage] = useState(1)
+  const [isNarrating, setIsNarrating] = useState(false)
+  const [autoTurnPages, setAutoTurnPages] = useState(true)
+  const [manualNarration, setManualNarration] = useState('')
+  const [audioSetupWarnings, setAudioSetupWarnings] = useState<string[]>([])
+  const [boardPosition, setBoardPosition] = useState(() => new Chess().fen())
+  const [customSquareStyles, setCustomSquareStyles] = useState<Record<string, React.CSSProperties>>({})
+  const [activeActionLabel, setActiveActionLabel] = useState<string | null>(null)
+  const [audioCurrentTime, setAudioCurrentTime] = useState(0)
+  const [audioDuration, setAudioDuration] = useState(0)
+
+  const manualNarrationPages = useMemo(
+    () => manualNarration
+      .split(/\n\s*---+\s*\n/g)
+      .map((pageText) => pageText.trim()),
+    [manualNarration],
+  )
+
+  const stopActiveAudio = useCallback(() => {
+    const activeAudio = activeAudioRef.current
+    if (activeAudio) {
+      activeAudio.onended = null
+      activeAudio.onerror = null
+      activeAudio.pause()
+      activeAudio.src = ''
+      activeAudioRef.current = null
+    }
+
+    if (activeAudioObjectUrlRef.current) {
+      URL.revokeObjectURL(activeAudioObjectUrlRef.current)
+      activeAudioObjectUrlRef.current = null
+    }
+  }, [])
+
+  const stopNarration = useCallback(() => {
+    preservePausedAudioRef.current = false
+    pausedAudioPageRef.current = null
+    setIsNarrating(false)
+    setAudioCurrentTime(0)
+    setAudioDuration(0)
+    stopActiveAudio()
+  }, [stopActiveAudio])
+
+  const handleNarrationToggle = useCallback(() => {
+    if (isNarrating) {
+      const activeAudio = activeAudioRef.current
+      if (activeAudio) {
+        preservePausedAudioRef.current = true
+        pausedAudioPageRef.current = currentPage
+        activeAudio.pause()
+        setAudioCurrentTime(activeAudio.currentTime)
+      }
+      setIsNarrating(false)
+      return
+    }
+
+    setIsNarrating(true)
+  }, [isNarrating, currentPage])
+
+  const resetDirectorForPage = useCallback((pageNumber: number) => {
+    const actions = createDirectorScriptForPage(pageNumber)
+    pageActionsRef.current = actions
+    lastTriggeredActionIndexRef.current = -1
+    lastDirectorSyncAtRef.current = 0
+    lastAudioTimeRef.current = 0
+    setCustomSquareStyles({})
+    setActiveActionLabel(null)
+    setAudioCurrentTime(0)
+    setAudioDuration(0)
+
+    const firstBoardState = actions.find((action) => action.type === 'BOARD_STATE')
+    const freshChess = firstBoardState?.type === 'BOARD_STATE'
+      ? new Chess(firstBoardState.fen)
+      : new Chess()
+
+    storyChessRef.current = freshChess
+    setBoardPosition(freshChess.fen())
+  }, [])
+
+  const getPageText = useCallback(async (pageNumber: number): Promise<string> => {
+    if (!pdfDocument) return ''
+    if (pageTextCacheRef.current.has(pageNumber)) {
+      return pageTextCacheRef.current.get(pageNumber) || ''
+    }
+
+    const page = await pdfDocument.getPage(pageNumber)
+    const textContent = await page.getTextContent()
+    const text = textContent.items
+      .map((item) => ('str' in item ? item.str : ''))
+      .join(' ')
+      .replace(/\s+/g, ' ')
+      .trim()
+
+    pageTextCacheRef.current.set(pageNumber, text)
+    return text
+  }, [pdfDocument])
+
+  const getNarrationTextForPage = useCallback(async (pageNumber: number): Promise<string> => {
+    const extractedText = await getPageText(pageNumber)
+    if (extractedText.length > 0) return extractedText
+
+    const manualPageText = manualNarrationPages[pageNumber - 1]
+    if (manualPageText && manualPageText.length > 0) return manualPageText
+
+    if (manualNarrationPages.length === 1 && manualNarrationPages[0]) {
+      return manualNarrationPages[0]
+    }
+
+    return ''
+  }, [getPageText, manualNarrationPages])
+
+  useEffect(() => {
+    if (typeof window === 'undefined') return
+    const savedNarration = window.localStorage.getItem(STORY_MANUAL_NARRATION_STORAGE_KEY)
+    if (savedNarration) {
+      setManualNarration(savedNarration)
+    }
+  }, [])
+
+  useEffect(() => {
+    if (typeof window === 'undefined') return
+    if (!manualNarration.trim()) {
+      window.localStorage.removeItem(STORY_MANUAL_NARRATION_STORAGE_KEY)
+      return
+    }
+    window.localStorage.setItem(STORY_MANUAL_NARRATION_STORAGE_KEY, manualNarration)
+  }, [manualNarration])
+
+  useEffect(() => {
+    if (!open) return
+    let cancelled = false
+
+    void getStoryAudioSetupStatus()
+      .then((status) => {
+        if (cancelled) return
+        setAudioSetupWarnings(status.warnings)
+      })
+      .catch((error) => {
+        if (cancelled) return
+        setAudioSetupWarnings([error instanceof Error ? error.message : 'Unable to verify story-audio setup'])
+      })
+
+    return () => {
+      cancelled = true
+    }
+  }, [open])
+
+  useEffect(() => {
+    if (!open) return
+    if (pausedAudioPageRef.current != null && pausedAudioPageRef.current !== currentPage) {
+      preservePausedAudioRef.current = false
+      pausedAudioPageRef.current = null
+      stopActiveAudio()
+    }
+    resetDirectorForPage(currentPage)
+  }, [open, currentPage, resetDirectorForPage, stopActiveAudio])
+
+  useEffect(() => {
+    if (!open) {
+      stopNarration()
+      setPdfDocument(null)
+      setLoadError(null)
+      setCurrentPage(1)
+      setTotalPages(1)
+      resetDirectorForPage(1)
+      return
+    }
+
+    let cancelled = false
+    setIsLoadingDocument(true)
+    setLoadError(null)
+    setCurrentPage(1)
+    setTotalPages(1)
+    pageTextCacheRef.current.clear()
+
+    const loadingTask = getDocument({ url: pdfUrl })
+    loadingTask.promise
+      .then((documentProxy) => {
+        if (cancelled) return
+        setPdfDocument(documentProxy)
+        setTotalPages(Math.max(1, documentProxy.numPages || 1))
+      })
+      .catch(() => {
+        if (cancelled) return
+        setLoadError('Unable to load story PDF. Check the story URL and try again.')
+      })
+      .finally(() => {
+        if (cancelled) return
+        setIsLoadingDocument(false)
+      })
+
+    return () => {
+      cancelled = true
+      try {
+        loadingTask.destroy()
+      } catch {}
+      stopNarration()
+    }
+  }, [open, pdfUrl, stopNarration, resetDirectorForPage])
+
+  useEffect(() => {
+    if (!open || !pdfDocument) return
+    let cancelled = false
+
+    const renderPage = async () => {
+      try {
+        const page = await pdfDocument.getPage(currentPage)
+        if (cancelled) return
+
+        const canvas = canvasRef.current
+        const container = pageContainerRef.current
+        if (!canvas || !container) return
+
+        const context = canvas.getContext('2d')
+        if (!context) return
+
+        const baseViewport = page.getViewport({ scale: 1 })
+        const containerWidth = Math.max(300, container.clientWidth - 16)
+        const containerHeight = Math.max(240, container.clientHeight - 16)
+        const widthScale = containerWidth / baseViewport.width
+        const heightScale = containerHeight / baseViewport.height
+        const scale = Math.max(0.2, Math.min(widthScale, heightScale))
+        const viewport = page.getViewport({ scale })
+
+        canvas.width = Math.floor(viewport.width)
+        canvas.height = Math.floor(viewport.height)
+
+        const renderTask = page.render({
+          canvas,
+          canvasContext: context,
+          viewport,
+        })
+        await renderTask.promise
+      } catch {
+        if (!cancelled) {
+          setLoadError('Unable to render this page of the story.')
+        }
+      }
+    }
+
+    void renderPage()
+    return () => {
+      cancelled = true
+    }
+  }, [open, pdfDocument, currentPage])
+
+  useEffect(() => {
+    if (!open || !isNarrating || !pdfDocument) return
+
+    let cancelled = false
+    let removeAudioListeners: (() => void) | null = null
+    const narrationToken = narrationTokenRef.current + 1
+    narrationTokenRef.current = narrationToken
+
+    const canResumePausedAudio = Boolean(
+      activeAudioRef.current
+      && preservePausedAudioRef.current
+      && pausedAudioPageRef.current === currentPage
+      && activeAudioRef.current.src,
+    )
+
+    if (!canResumePausedAudio) {
+      stopActiveAudio()
+      resetDirectorForPage(currentPage)
+    }
+
+    preservePausedAudioRef.current = false
+
+    const playPageAudio = async () => {
+      const bindAudioEvents = (audio: HTMLAudioElement) => {
+        const onEnded = () => {
+          if (cancelled || narrationTokenRef.current !== narrationToken) return
+          if (!autoTurnPages) return
+
+          if (currentPage >= totalPages) {
+            setIsNarrating(false)
+            return
+          }
+
+          setCurrentPage((previousPage) => Math.min(totalPages, previousPage + 1))
+        }
+        const onError = () => {
+          if (!cancelled) {
+            setIsNarrating(false)
+            setLoadError('Audio playback failed for this page.')
+          }
+        }
+
+        const onSeeked = () => {
+          const resolved = resolveDirectorStateAtTime(pageActionsRef.current, audio.currentTime)
+          storyChessRef.current = resolved.chess
+          setBoardPosition(resolved.chess.fen())
+          setCustomSquareStyles(resolved.styles)
+          setActiveActionLabel(resolved.label)
+          lastTriggeredActionIndexRef.current = resolved.lastIndex
+          lastAudioTimeRef.current = audio.currentTime
+        }
+
+        const onLoadedMetadata = () => {
+          setAudioDuration(Number.isFinite(audio.duration) ? audio.duration : 0)
+        }
+
+        const onTimeUpdate = () => {
+          if (cancelled || narrationTokenRef.current !== narrationToken) return
+          const now = Date.now()
+          if (now - lastDirectorSyncAtRef.current < STORY_DIRECTOR_SYNC_INTERVAL_MS) return
+          lastDirectorSyncAtRef.current = now
+          setAudioCurrentTime(audio.currentTime)
+
+          const actions = pageActionsRef.current
+          if (!actions.length) return
+
+          if (audio.currentTime + 0.01 < lastAudioTimeRef.current) {
+            const resolved = resolveDirectorStateAtTime(actions, audio.currentTime)
+            storyChessRef.current = resolved.chess
+            setBoardPosition(resolved.chess.fen())
+            setCustomSquareStyles(resolved.styles)
+            setActiveActionLabel(resolved.label)
+            lastTriggeredActionIndexRef.current = resolved.lastIndex
+            lastAudioTimeRef.current = audio.currentTime
+
+            if (resolved.lastIndex >= 0) {
+              const lastAction = actions[resolved.lastIndex]
+              console.log('[story/director] Replayed action after backward seek', {
+                label: lastAction.label,
+                actionTimestamp: lastAction.timestamp,
+                audioTime: Number(audio.currentTime.toFixed(2)),
+                page: currentPage,
+              })
+            }
+            return
+          }
+
+          for (let index = lastTriggeredActionIndexRef.current + 1; index < actions.length; index += 1) {
+            const action = actions[index]
+            if (audio.currentTime < action.timestamp) break
+
+            if (action.type === 'MOVE') {
+              try {
+                const moved = playScriptMove(storyChessRef.current, action.move)
+                if (moved) {
+                  setBoardPosition(storyChessRef.current.fen())
+                }
+              } catch {
+                // Ignore invalid scripted move and continue.
+              }
+            }
+
+            if (action.type === 'HIGHLIGHT') {
+              const styles = action.squares.reduce<Record<string, React.CSSProperties>>((accumulator, square) => {
+                accumulator[square] = getHighlightStyle(action.tone)
+                return accumulator
+              }, {})
+              setCustomSquareStyles(styles)
+            }
+
+            if (action.type === 'BOARD_STATE') {
+              try {
+                const forcedBoard = new Chess(action.fen)
+                storyChessRef.current = forcedBoard
+                setBoardPosition(forcedBoard.fen())
+              } catch {
+                // Ignore invalid scripted board state and continue.
+              }
+            }
+
+            setActiveActionLabel(action.label)
+            lastTriggeredActionIndexRef.current = index
+            console.log('[story/director] Executed action', {
+              label: action.label,
+              actionTimestamp: action.timestamp,
+              audioTime: Number(audio.currentTime.toFixed(2)),
+              page: currentPage,
+            })
+          }
+
+          lastAudioTimeRef.current = audio.currentTime
+        }
+
+        audio.addEventListener('ended', onEnded)
+        audio.addEventListener('error', onError)
+        audio.addEventListener('loadedmetadata', onLoadedMetadata)
+        audio.addEventListener('seeked', onSeeked)
+        audio.addEventListener('timeupdate', onTimeUpdate)
+
+        if (Number.isFinite(audio.duration)) {
+          setAudioDuration(audio.duration)
+        }
+
+        return () => {
+          audio.removeEventListener('ended', onEnded)
+          audio.removeEventListener('error', onError)
+          audio.removeEventListener('loadedmetadata', onLoadedMetadata)
+          audio.removeEventListener('seeked', onSeeked)
+          audio.removeEventListener('timeupdate', onTimeUpdate)
+        }
+      }
+
+      if (canResumePausedAudio && activeAudioRef.current) {
+        const audio = activeAudioRef.current
+        removeAudioListeners = bindAudioEvents(audio)
+        try {
+          await audio.play()
+        } catch {
+          if (!cancelled) {
+            setIsNarrating(false)
+            setLoadError('Audio playback was blocked. Click play again to continue narration.')
+          }
+        }
+        return
+      }
+
+      const text = await getNarrationTextForPage(currentPage)
+      if (cancelled || narrationTokenRef.current !== narrationToken) return
+
+      if (!text) {
+        setIsNarrating(false)
+        setLoadError('No readable PDF text found. Paste story text below (split pages with ---) to enable narration.')
+        return
+      }
+
+      setLoadError(null)
+      let audioSourceUrl = ''
+      let createdObjectUrl: string | null = null
+
+      try {
+        const ensuredAudio = await ensureStoryAudio({
+          storySlug: STORY_AUDIO_SLUG,
+          page: currentPage,
+          totalPages,
+          text,
+          voice: 'shimmer',
+        })
+
+        if (ensuredAudio.audioBase64 && ensuredAudio.audioBase64.length > 0) {
+          createdObjectUrl = base64ToBlobUrl(ensuredAudio.audioBase64)
+          audioSourceUrl = createdObjectUrl
+        } else if (ensuredAudio.url) {
+          audioSourceUrl = ensuredAudio.url
+        }
+      } catch (error) {
+        if (cancelled || narrationTokenRef.current !== narrationToken) return
+        setIsNarrating(false)
+        setLoadError(error instanceof Error ? error.message : 'Failed to generate story audio')
+        return
+      }
+
+      if (!audioSourceUrl) {
+        setIsNarrating(false)
+        setLoadError('Unable to resolve a story audio URL for this page.')
+        return
+      }
+
+      const audio = new Audio(audioSourceUrl)
+      activeAudioRef.current = audio
+      if (createdObjectUrl) {
+        activeAudioObjectUrlRef.current = createdObjectUrl
+      }
+
+      removeAudioListeners = bindAudioEvents(audio)
+
+      try {
+        await audio.play()
+      } catch {
+        if (!cancelled) {
+          setIsNarrating(false)
+          setLoadError('Audio playback was blocked. Click play again to continue narration.')
+        }
+      }
+    }
+
+    void playPageAudio()
+
+    return () => {
+      cancelled = true
+      removeAudioListeners?.()
+      if (preservePausedAudioRef.current && pausedAudioPageRef.current === currentPage) {
+        return
+      }
+      stopActiveAudio()
+    }
+  }, [
+    open,
+    isNarrating,
+    pdfDocument,
+    currentPage,
+    totalPages,
+    autoTurnPages,
+    getNarrationTextForPage,
+    stopActiveAudio,
+    resetDirectorForPage,
+  ])
+
+  useEffect(() => {
+    if (!open) return
+    const onEscape = (event: KeyboardEvent) => {
+      if (event.key === 'Escape') {
+        stopNarration()
+        onClose()
+      }
+    }
+    window.addEventListener('keydown', onEscape)
+    return () => window.removeEventListener('keydown', onEscape)
+  }, [open, onClose, stopNarration])
+
+  if (!open) return null
+
+  return (
+    <div className="fixed inset-0 z-[60] flex items-center justify-center bg-black/45 p-4" onClick={() => { stopNarration(); onClose() }} role="dialog" aria-modal="true" aria-label="Chess story modal">
+      <div className="flex h-[88vh] w-[92vw] min-h-[460px] min-w-[340px] max-w-[1500px] flex-col rounded-2xl border border-slate-200 bg-white p-3 shadow-2xl" onClick={(event) => event.stopPropagation()}>
+        <div className="mb-2 flex items-center justify-between gap-2">
+          <div>
+            <div className="text-sm font-semibold text-slate-700">The Architect of Squares</div>
+            <div className="text-xs text-slate-500">Story mode with read-aloud and automatic page turning</div>
+          </div>
+          <button
+            type="button"
+            onClick={() => { stopNarration(); onClose() }}
+            className="rounded border border-slate-200 bg-white px-2 py-1 text-xs font-semibold text-slate-600 hover:bg-slate-50"
+          >
+            Close
+          </button>
+        </div>
+
+        <div className="mb-2 flex flex-wrap items-center gap-2">
+          <button
+            type="button"
+            onClick={() => setCurrentPage((previousPage) => Math.max(1, previousPage - 1))}
+            disabled={currentPage <= 1}
+            className="rounded border border-slate-200 bg-white px-2 py-1 text-xs font-semibold text-slate-600 hover:bg-slate-50 disabled:cursor-not-allowed disabled:opacity-50"
+          >
+            Previous page
+          </button>
+          <button
+            type="button"
+            onClick={() => setCurrentPage((previousPage) => Math.min(totalPages, previousPage + 1))}
+            disabled={currentPage >= totalPages}
+            className="rounded border border-slate-200 bg-white px-2 py-1 text-xs font-semibold text-slate-600 hover:bg-slate-50 disabled:cursor-not-allowed disabled:opacity-50"
+          >
+            Next page
+          </button>
+          <button
+            type="button"
+            onClick={handleNarrationToggle}
+            disabled={isLoadingDocument || !!loadError || !pdfDocument}
+            className="rounded border border-blue-200 bg-blue-50 px-2 py-1 text-xs font-semibold text-blue-700 hover:bg-blue-100 disabled:cursor-not-allowed disabled:opacity-50"
+          >
+            {isNarrating ? 'Pause narration' : 'Play narration'}
+          </button>
+          <button
+            type="button"
+            onClick={() => setAutoTurnPages((previousState) => !previousState)}
+            className="rounded border border-slate-200 bg-white px-2 py-1 text-xs font-semibold text-slate-600 hover:bg-slate-50"
+          >
+            {autoTurnPages ? 'Auto-turn: on' : 'Auto-turn: off'}
+          </button>
+          <span className="text-xs text-slate-500">Page {currentPage}/{totalPages}</span>
+          <span className="text-xs text-slate-500">Audio {formatAudioTime(audioCurrentTime)} / {formatAudioTime(audioDuration)}</span>
+        </div>
+
+        {audioSetupWarnings.length > 0 ? (
+          <div className="mb-2 rounded border border-amber-200 bg-amber-50 px-2 py-1 text-xs text-amber-800">
+            <div className="font-semibold">Story audio setup warning</div>
+            <ul className="mt-1 list-disc pl-4">
+              {audioSetupWarnings.map((warning) => (
+                <li key={warning}>{warning}</li>
+              ))}
+            </ul>
+          </div>
+        ) : null}
+
+        <div className="min-h-0 flex-1">
+          <div className="grid h-full min-h-0 gap-2 lg:grid-cols-[minmax(0,1fr)_280px]">
+            <div ref={pageContainerRef} className="min-h-0 overflow-hidden rounded-lg border border-slate-200 bg-slate-50 p-2">
+              {isLoadingDocument ? <div className="text-sm text-slate-600">Loading story PDF…</div> : null}
+              {loadError ? <div className="text-sm text-red-600">{loadError}</div> : null}
+              {!isLoadingDocument && !loadError ? <canvas ref={canvasRef} className="mx-auto block max-h-full max-w-full" /> : null}
+            </div>
+
+            <div className="rounded-lg border border-slate-200 bg-white p-2">
+              <div className="mb-2 text-xs font-semibold text-slate-600">Story board timeline</div>
+              <div className="mx-auto w-[240px]">
+                <Chessboard
+                  id={`story-board-${currentPage}`}
+                  position={boardPosition}
+                  boardOrientation="white"
+                  arePiecesDraggable={false}
+                  showBoardNotation={false}
+                  customSquareStyles={customSquareStyles}
+                  animationDuration={500}
+                  boardWidth={240}
+                  {...CHESSBOARD_THEME}
+                />
+              </div>
+              <div className="mt-2 text-[11px] text-slate-600">{activeActionLabel ? `Last cue: ${activeActionLabel}` : 'Waiting for cue...'}</div>
+            </div>
+          </div>
+        </div>
+
+        <div className="mt-2 rounded-lg border border-slate-200 bg-white p-2">
+          <label htmlFor="manual-story-narration" className="mb-1 block text-xs font-semibold text-slate-600">
+            Manual narration (for image-only PDFs)
+          </label>
+          <textarea
+            id="manual-story-narration"
+            value={manualNarration}
+            onChange={(event) => {
+              setLoadError(null)
+              setManualNarration(event.target.value)
+            }}
+            rows={3}
+            placeholder="Paste story text here. Use a line with --- between pages."
+            className="w-full rounded border border-slate-200 px-2 py-1 text-xs text-slate-700"
+          />
+        </div>
+      </div>
+    </div>
+  )
+}
 
 function ChessTutorPanel({
   analysis,
@@ -444,6 +1209,7 @@ function ChessTutorPanel({
   const [patternAutoplay, setPatternAutoplay] = useState(true)
   const [discoveredCheckFrame, setDiscoveredCheckFrame] = useState(0)
   const [discoveredCheckAutoplay, setDiscoveredCheckAutoplay] = useState(true)
+  const [storyModalOpen, setStoryModalOpen] = useState(false)
 
   const activeLesson = CHESS_LESSONS[activeLessonIndex]
   const activePattern = ATTACK_PATTERNS[activePatternIndex]
@@ -528,7 +1294,8 @@ function ChessTutorPanel({
   }, [activeTab, activeLessonSection, discoveredCheckAutoplay])
 
   return (
-    <aside className="flex min-h-0 w-full flex-col rounded-2xl border border-slate-200 bg-white/80 p-4 shadow-md lg:w-[360px] lg:shrink-0">
+    <>
+      <aside className="flex min-h-0 w-full flex-col rounded-2xl border border-slate-200 bg-white/80 p-4 shadow-md lg:w-[360px] lg:shrink-0">
       <div className="mb-3 flex items-center justify-between">
         <div className="text-sm font-semibold text-slate-700">Chess Tutor</div>
         <span className="text-xs text-slate-500">{modelLabel}</span>
@@ -620,7 +1387,16 @@ function ChessTutorPanel({
           </div>
         ) : (
           <div className="flex h-full min-h-0 flex-col gap-2 text-slate-700">
-            <div className="text-xs font-semibold uppercase tracking-wide text-slate-500">How to play</div>
+            <div className="flex items-center justify-between gap-2">
+              <div className="text-xs font-semibold uppercase tracking-wide text-slate-500">How to play</div>
+              <button
+                type="button"
+                onClick={() => setStoryModalOpen(true)}
+                className="rounded border border-slate-200 bg-white px-2 py-1 text-xs font-semibold text-slate-600 hover:bg-slate-50"
+              >
+                Story mode
+              </button>
+            </div>
             <div className="overflow-x-auto pb-1">
               <div className="inline-flex min-w-max gap-1">
                 {LESSON_SECTIONS.map((section) => (
@@ -928,7 +1704,9 @@ function ChessTutorPanel({
           </div>
         )}
       </div>
-    </aside>
+      </aside>
+      <ChessStoryModal open={storyModalOpen} onClose={() => setStoryModalOpen(false)} pdfUrl={CHESS_STORY_PDF_URL} />
+    </>
   )
 }
 
