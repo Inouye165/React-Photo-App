@@ -65,6 +65,62 @@ type StoryAudioEnsureRequest = Request & {
   storyAudioEnsureContext?: StoryAudioEnsureContext;
 };
 
+type StoryAudioTelemetry = {
+  startedAtIso: string;
+  ensureRequests: number;
+  cacheHits: number;
+  cacheMisses: number;
+  generationRateLimited: number;
+  generationDisabled: number;
+  generationAttempts: number;
+  generationSuccess: number;
+  generationFailure: number;
+  openAiCalls: number;
+  lastEventAtIso: string | null;
+};
+
+const storyAudioTelemetry: StoryAudioTelemetry = {
+  startedAtIso: new Date().toISOString(),
+  ensureRequests: 0,
+  cacheHits: 0,
+  cacheMisses: 0,
+  generationRateLimited: 0,
+  generationDisabled: 0,
+  generationAttempts: 0,
+  generationSuccess: 0,
+  generationFailure: 0,
+  openAiCalls: 0,
+  lastEventAtIso: null,
+};
+
+function markStoryAudioEvent(): void {
+  storyAudioTelemetry.lastEventAtIso = new Date().toISOString();
+}
+
+function isTruthyValue(value: string): boolean {
+  return ['1', 'true', 'yes', 'on'].includes(value);
+}
+
+function isFalsyValue(value: string): boolean {
+  return ['0', 'false', 'no', 'off'].includes(value);
+}
+
+function isStoryAudioRuntimeGenerationAllowed(): boolean {
+  const configured = String(process.env.STORY_AUDIO_ALLOW_RUNTIME_GENERATION || '').trim().toLowerCase();
+  if (configured && isTruthyValue(configured)) return true;
+  if (configured && isFalsyValue(configured)) return false;
+
+  // Production defaults to precomputed-only mode unless explicitly opted in.
+  return process.env.NODE_ENV !== 'production';
+}
+
+function getStoryAudioTelemetrySnapshot() {
+  return {
+    ...storyAudioTelemetry,
+    runtimeGenerationAllowed: isStoryAudioRuntimeGenerationAllowed(),
+  };
+}
+
 function normalizeSupabasePublicBaseUrl(): string | null {
   const base = (process.env.SUPABASE_URL || process.env.VITE_SUPABASE_URL || '').trim();
   if (!base) return null;
@@ -181,6 +237,19 @@ function createStoryAudioGenerationRateLimiter() {
     store: getRateLimitStore(),
     standardHeaders: true,
     legacyHeaders: false,
+    handler: (req: Request, res: Response) => {
+      storyAudioTelemetry.generationRateLimited += 1;
+      markStoryAudioEvent();
+      logger.warn('[public/story-audio] Generation rate limited', {
+        ip: req.ip,
+        page: (req as StoryAudioEnsureRequest).storyAudioEnsureContext?.page,
+        totals: getStoryAudioTelemetrySnapshot(),
+      });
+      return res.status(429).json({
+        success: false,
+        error: 'Too many story-audio generation requests. Please try again later.',
+      });
+    },
     message: {
       success: false,
       error: 'Too many story-audio generation requests. Please try again later.',
@@ -325,6 +394,9 @@ function createPublicRouter({ db }: { db: any }): Router {
   );
 
   const prepareStoryAudioEnsure = async (req: Request, res: Response, next: NextFunction) => {
+    storyAudioTelemetry.ensureRequests += 1;
+    markStoryAudioEvent();
+
     const parsed = StoryAudioEnsureBodySchema.safeParse(req.body || {});
     if (!parsed.success) {
       return res.status(400).json({
@@ -365,6 +437,14 @@ function createPublicRouter({ db }: { db: any }): Router {
     try {
       const { error: existingError } = await supabase.storage.from(STORY_AUDIO_BUCKET).download(objectPath);
       if (!existingError) {
+        storyAudioTelemetry.cacheHits += 1;
+        markStoryAudioEvent();
+        logger.info('[public/story-audio] Cache hit', {
+          page,
+          ip: req.ip,
+          objectPath,
+          totals: getStoryAudioTelemetrySnapshot(),
+        });
         return res.json({
           success: true,
           cached: true,
@@ -386,6 +466,31 @@ function createPublicRouter({ db }: { db: any }): Router {
         error: error instanceof Error ? error.message : String(error),
       });
     }
+
+    storyAudioTelemetry.cacheMisses += 1;
+    markStoryAudioEvent();
+
+    if (!isStoryAudioRuntimeGenerationAllowed()) {
+      storyAudioTelemetry.generationDisabled += 1;
+      markStoryAudioEvent();
+      logger.warn('[public/story-audio] Runtime generation disabled on cache miss', {
+        page,
+        ip: req.ip,
+        objectPath,
+        totals: getStoryAudioTelemetrySnapshot(),
+      });
+      return res.status(503).json({
+        success: false,
+        error: 'Story audio is not precomputed for this page/content. Runtime generation is disabled.',
+      });
+    }
+
+    logger.info('[public/story-audio] Cache miss; generation required', {
+      page,
+      ip: req.ip,
+      objectPath,
+      totals: getStoryAudioTelemetrySnapshot(),
+    });
 
     (req as StoryAudioEnsureRequest).storyAudioEnsureContext = {
       page,
@@ -410,7 +515,12 @@ function createPublicRouter({ db }: { db: any }): Router {
 
     const { page, text, voice, objectPath, publicUrl } = ensureContext;
 
+    storyAudioTelemetry.generationAttempts += 1;
+    markStoryAudioEvent();
+
     if (!openai?.audio?.speech?.create || typeof openai.audio.speech.create !== 'function') {
+      storyAudioTelemetry.generationFailure += 1;
+      markStoryAudioEvent();
       return res.status(503).json({
         success: false,
         error: 'OpenAI TTS is not available on server',
@@ -418,6 +528,8 @@ function createPublicRouter({ db }: { db: any }): Router {
     }
 
     try {
+      storyAudioTelemetry.openAiCalls += 1;
+      markStoryAudioEvent();
       const ttsResponse = await openai.audio.speech.create({
         model: 'tts-1',
         voice,
@@ -449,6 +561,15 @@ function createPublicRouter({ db }: { db: any }): Router {
         }
       }
 
+      storyAudioTelemetry.generationSuccess += 1;
+      markStoryAudioEvent();
+      logger.info('[public/story-audio] Generation success', {
+        page,
+        ip: req.ip,
+        objectPath,
+        totals: getStoryAudioTelemetrySnapshot(),
+      });
+
       return res.json({
         success: true,
         cached: false,
@@ -456,10 +577,13 @@ function createPublicRouter({ db }: { db: any }): Router {
         audioBase64: audioBuffer.toString('base64'),
       });
     } catch (error) {
+      storyAudioTelemetry.generationFailure += 1;
+      markStoryAudioEvent();
       logger.error('[public/story-audio] TTS generation failed', {
         page,
         objectPath,
         error: error instanceof Error ? error.message : String(error),
+        totals: getStoryAudioTelemetrySnapshot(),
       });
       return res.status(502).json({
         success: false,
@@ -536,6 +660,13 @@ function createPublicRouter({ db }: { db: any }): Router {
     };
 
     return res.json(response);
+  });
+
+  router.get('/story-audio/metrics', (_req: Request, res: Response) => {
+    return res.json({
+      success: true,
+      metrics: getStoryAudioTelemetrySnapshot(),
+    });
   });
 
   return router;

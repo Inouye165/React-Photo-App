@@ -87,6 +87,15 @@ const STORY_AUDIO_BUCKET = 'story-audio'
 const STORY_AUDIO_URL_CACHE_STORAGE_KEY = 'story-audio-url-cache-v1'
 const STORY_AUDIO_URL_CACHE_MAX_ENTRIES = 200
 
+type StoryAudioClientMetrics = {
+  ensureApiCalls: number
+  localCacheHits: number
+  precomputedHits: number
+  precomputedMisses: number
+  manifestLoads: number
+  manifestLoadFailures: number
+}
+
 type StoryAudioUrlCacheEntry = {
   url: string
   updatedAt: number
@@ -94,6 +103,33 @@ type StoryAudioUrlCacheEntry = {
 
 const storyAudioUrlMemoryCache = new Map<string, StoryAudioUrlCacheEntry>()
 const storyAudioManifestPromiseBySlug = new Map<string, Promise<StoryAudioManifest | null>>()
+const storyAudioClientMetrics: StoryAudioClientMetrics = {
+  ensureApiCalls: 0,
+  localCacheHits: 0,
+  precomputedHits: 0,
+  precomputedMisses: 0,
+  manifestLoads: 0,
+  manifestLoadFailures: 0,
+}
+let forcedPrecomputedOnlyModeForTests: boolean | null = null
+
+function isTruthyEnvValue(value: string): boolean {
+  return ['1', 'true', 'yes', 'on'].includes(value)
+}
+
+function isFalsyEnvValue(value: string): boolean {
+  return ['0', 'false', 'no', 'off'].includes(value)
+}
+
+function isStoryAudioPrecomputedOnlyMode(): boolean {
+  if (forcedPrecomputedOnlyModeForTests != null) return forcedPrecomputedOnlyModeForTests
+
+  const configured = String(import.meta.env.VITE_STORY_AUDIO_PRECOMPUTED_ONLY || '').trim().toLowerCase()
+  if (configured && isTruthyEnvValue(configured)) return true
+  if (configured && isFalsyEnvValue(configured)) return false
+
+  return Boolean(import.meta.env.PROD)
+}
 
 function normalizeNarrationText(text: string): string {
   return String(text || '')
@@ -227,15 +263,23 @@ async function loadStoryAudioManifest(storySlug: string): Promise<StoryAudioMani
 
   const loader = (async () => {
     try {
+      storyAudioClientMetrics.manifestLoads += 1
       const response = await fetch(`/chess-story/${normalizedStorySlug}.audio-manifest.json`, {
         method: 'GET',
         cache: 'force-cache',
       })
-      if (!response.ok) return null
+      if (!response.ok) {
+        storyAudioClientMetrics.manifestLoadFailures += 1
+        return null
+      }
       const parsed = (await response.json()) as StoryAudioManifest
-      if (!parsed || typeof parsed !== 'object' || !Array.isArray(parsed.entries)) return null
+      if (!parsed || typeof parsed !== 'object' || !Array.isArray(parsed.entries)) {
+        storyAudioClientMetrics.manifestLoadFailures += 1
+        return null
+      }
       return parsed
     } catch {
+      storyAudioClientMetrics.manifestLoadFailures += 1
       return null
     }
   })()
@@ -281,6 +325,13 @@ export async function preloadStoryAudioManifest(storySlug: 'architect-of-squares
 export function __resetStoryAudioCacheForTests(): void {
   storyAudioUrlMemoryCache.clear()
   storyAudioManifestPromiseBySlug.clear()
+  storyAudioClientMetrics.ensureApiCalls = 0
+  storyAudioClientMetrics.localCacheHits = 0
+  storyAudioClientMetrics.precomputedHits = 0
+  storyAudioClientMetrics.precomputedMisses = 0
+  storyAudioClientMetrics.manifestLoads = 0
+  storyAudioClientMetrics.manifestLoadFailures = 0
+  forcedPrecomputedOnlyModeForTests = null
   if (typeof window !== 'undefined') {
     window.localStorage.removeItem(STORY_AUDIO_URL_CACHE_STORAGE_KEY)
   }
@@ -332,6 +383,7 @@ export async function ensureStoryAudio(input: {
   const localCacheKey = `${input.storySlug}|${objectPath}`
   const cachedUrl = readStoryAudioCachedUrl(localCacheKey)
   if (cachedUrl) {
+    storyAudioClientMetrics.localCacheHits += 1
     return {
       cached: true,
       url: cachedUrl,
@@ -346,6 +398,7 @@ export async function ensureStoryAudio(input: {
   })
 
   if (precomputedUrl) {
+    storyAudioClientMetrics.precomputedHits += 1
     writeStoryAudioCachedUrl(localCacheKey, precomputedUrl)
     return {
       cached: true,
@@ -353,8 +406,20 @@ export async function ensureStoryAudio(input: {
     }
   }
 
+  storyAudioClientMetrics.precomputedMisses += 1
+
+  if (isStoryAudioPrecomputedOnlyMode()) {
+    throw new Error('Story audio is not precomputed for this page/content. Runtime generation is disabled.')
+  }
+
   let response: EnsureStoryAudioResponse
   try {
+    storyAudioClientMetrics.ensureApiCalls += 1
+    console.info('[story-audio/client] ensure API fallback call', {
+      ensureApiCalls: storyAudioClientMetrics.ensureApiCalls,
+      page: input.page,
+      storySlug: input.storySlug,
+    })
     response = await request<EnsureStoryAudioResponse>({
       path: '/api/v1/public/story-audio/ensure',
       method: 'POST',
@@ -424,4 +489,19 @@ export async function getStoryAudioSetupStatus(): Promise<StoryAudioSetupStatus>
     bucket: response.bucket,
     warnings: response.warnings || [],
   }
+}
+
+export function getStoryAudioClientMetrics(): StoryAudioClientMetrics {
+  return {
+    ensureApiCalls: storyAudioClientMetrics.ensureApiCalls,
+    localCacheHits: storyAudioClientMetrics.localCacheHits,
+    precomputedHits: storyAudioClientMetrics.precomputedHits,
+    precomputedMisses: storyAudioClientMetrics.precomputedMisses,
+    manifestLoads: storyAudioClientMetrics.manifestLoads,
+    manifestLoadFailures: storyAudioClientMetrics.manifestLoadFailures,
+  }
+}
+
+export function __setStoryAudioPrecomputedOnlyModeForTests(value: boolean | null): void {
+  forcedPrecomputedOnlyModeForTests = value
 }

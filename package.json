@@ -10,6 +10,8 @@
     "start:local": "powershell -ExecutionPolicy Bypass -File ./scripts/start-local.ps1",
     "stop:local": "powershell -ExecutionPolicy Bypass -File ./scripts/stop-local.ps1",
     "story:precompute-audio-manifest": "node scripts/precompute-story-audio-manifest.mjs",
+    "story:precompute-audio-assets": "node scripts/precompute-story-audio-manifest.mjs --upload --generate-missing",
+    "story:verify-precomputed-audio": "node scripts/precompute-story-audio-manifest.mjs --upload --fail-on-missing",
     "worker": "npm --prefix server run worker",
     "build": "vite build",
     "pretest": "node scripts/validate-keys.cjs && node scripts/repo-hygiene-gps-check.cjs",

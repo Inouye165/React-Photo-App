@@ -217,6 +217,25 @@ Current admin sections:
 *   [Project Status & Deep Dive](docs/STATUS.md)
 *   [Security Checklist](docs/SECURITY_CODING_MAINTENANCE.md)
 
+## Story Audio (Precomputed)
+
+Story mode narration supports a precomputed workflow so production can run without runtime OpenAI generation.
+
+- Generate/update manifest only:
+    - `npm run story:precompute-audio-manifest`
+- Generate and upload missing page MP3s to Supabase:
+    - `npm run story:precompute-audio-assets`
+- Verify all manifest entries already exist in Supabase (fails on missing):
+    - `npm run story:verify-precomputed-audio`
+
+Runtime policy:
+- In production, runtime generation is disabled by default on server cache misses.
+- Opt in (if needed) with `STORY_AUDIO_ALLOW_RUNTIME_GENERATION=true`.
+- Client precomputed-only mode defaults to production; override with `VITE_STORY_AUDIO_PRECOMPUTED_ONLY=false`.
+
+Operational visibility:
+- Story-audio telemetry endpoint: `GET /api/public/story-audio/metrics`
+
 ## Technical Debt
 
 *   [TypeScript refactor candidates](typescript-refactor-candidates.md)

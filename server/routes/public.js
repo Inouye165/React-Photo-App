@@ -23,6 +23,46 @@ const StoryAudioEnsureBodySchema = z.object({
 	voice: z.literal('shimmer').optional(),
 });
 
+const storyAudioTelemetry = {
+	startedAtIso: new Date().toISOString(),
+	ensureRequests: 0,
+	cacheHits: 0,
+	cacheMisses: 0,
+	generationRateLimited: 0,
+	generationDisabled: 0,
+	generationAttempts: 0,
+	generationSuccess: 0,
+	generationFailure: 0,
+	openAiCalls: 0,
+	lastEventAtIso: null,
+};
+
+function markStoryAudioEvent() {
+	storyAudioTelemetry.lastEventAtIso = new Date().toISOString();
+}
+
+function isTruthyValue(value) {
+	return ['1', 'true', 'yes', 'on'].includes(value);
+}
+
+function isFalsyValue(value) {
+	return ['0', 'false', 'no', 'off'].includes(value);
+}
+
+function isStoryAudioRuntimeGenerationAllowed() {
+	const configured = String(process.env.STORY_AUDIO_ALLOW_RUNTIME_GENERATION || '').trim().toLowerCase();
+	if (configured && isTruthyValue(configured)) return true;
+	if (configured && isFalsyValue(configured)) return false;
+	return process.env.NODE_ENV !== 'production';
+}
+
+function getStoryAudioTelemetrySnapshot() {
+	return {
+		...storyAudioTelemetry,
+		runtimeGenerationAllowed: isStoryAudioRuntimeGenerationAllowed(),
+	};
+}
+
 function normalizeSupabasePublicBaseUrl() {
 	const base = String(process.env.SUPABASE_URL || process.env.VITE_SUPABASE_URL || '').trim();
 	if (!base) return null;
@@ -123,17 +163,38 @@ async function ensureStoryAudioBucketReady() {
 	}
 }
 
-function createStoryAudioRateLimiter() {
+function createStoryAudioGenerationRateLimiter() {
 	const isProduction = process.env.NODE_ENV === 'production';
+	const defaultMax = isProduction ? 30 : 120;
+	const configuredMax = Number(process.env.STORY_AUDIO_GENERATION_LIMIT_MAX || defaultMax);
+	const max = Number.isFinite(configuredMax) && configuredMax > 0 ? Math.floor(configuredMax) : defaultMax;
+
+	const defaultWindowMs = 60 * 60 * 1000;
+	const configuredWindowMs = Number(process.env.STORY_AUDIO_GENERATION_LIMIT_WINDOW_MS || defaultWindowMs);
+	const windowMs = Number.isFinite(configuredWindowMs) && configuredWindowMs > 0 ? Math.floor(configuredWindowMs) : defaultWindowMs;
+
 	return rateLimit({
-		windowMs: 60 * 60 * 1000,
-		max: isProduction ? 30 : 120,
+		windowMs,
+		max,
 		store: getRateLimitStore(),
 		standardHeaders: true,
 		legacyHeaders: false,
+		handler: (req, res) => {
+			storyAudioTelemetry.generationRateLimited += 1;
+			markStoryAudioEvent();
+			logger.warn('[public/story-audio] Generation rate limited', {
+				ip: req.ip,
+				page: req.storyAudioEnsureContext?.page,
+				totals: getStoryAudioTelemetrySnapshot(),
+			});
+			return res.status(429).json({
+				success: false,
+				error: 'Too many story-audio generation requests. Please try again later.',
+			});
+		},
 		message: {
 			success: false,
-			error: 'Too many story-audio requests. Please try again later.',
+			error: 'Too many story-audio generation requests. Please try again later.',
 		},
 	});
 }
@@ -183,7 +244,7 @@ const contactValidation = [
 function createPublicRouter({ db } = {}) {
 	const router = express.Router();
 	const contactLimiter = createContactRateLimiter();
-	const storyAudioLimiter = createStoryAudioRateLimiter();
+	const storyAudioGenerationLimiter = createStoryAudioGenerationRateLimiter();
 
 	router.post('/contact', contactLimiter, contactValidation, async (req, res) => {
 		try {
@@ -235,7 +296,10 @@ function createPublicRouter({ db } = {}) {
 		}
 	});
 
-	router.post('/story-audio/ensure', storyAudioLimiter, async (req, res) => {
+	const prepareStoryAudioEnsure = async (req, res, next) => {
+		storyAudioTelemetry.ensureRequests += 1;
+		markStoryAudioEvent();
+
 		const parsed = StoryAudioEnsureBodySchema.safeParse(req.body || {});
 		if (!parsed.success) {
 			return res.status(400).json({ success: false, error: 'Invalid story audio request payload' });
@@ -267,6 +331,14 @@ function createPublicRouter({ db } = {}) {
 		try {
 			const { error: existingError } = await supabase.storage.from(STORY_AUDIO_BUCKET).download(objectPath);
 			if (!existingError) {
+				storyAudioTelemetry.cacheHits += 1;
+				markStoryAudioEvent();
+				logger.info('[public/story-audio] Cache hit', {
+					page,
+					ip: req.ip,
+					objectPath,
+					totals: getStoryAudioTelemetrySnapshot(),
+				});
 				return res.json({ success: true, cached: true, url: publicUrl });
 			}
 			if (!isNotFoundError(existingError)) {
@@ -276,11 +348,66 @@ function createPublicRouter({ db } = {}) {
 			logger.warn('[public/story-audio] Cache check threw; attempting generation', { page, objectPath, error: error instanceof Error ? error.message : String(error) });
 		}
 
+		storyAudioTelemetry.cacheMisses += 1;
+		markStoryAudioEvent();
+
+		if (!isStoryAudioRuntimeGenerationAllowed()) {
+			storyAudioTelemetry.generationDisabled += 1;
+			markStoryAudioEvent();
+			logger.warn('[public/story-audio] Runtime generation disabled on cache miss', {
+				page,
+				ip: req.ip,
+				objectPath,
+				totals: getStoryAudioTelemetrySnapshot(),
+			});
+			return res.status(503).json({
+				success: false,
+				error: 'Story audio is not precomputed for this page/content. Runtime generation is disabled.',
+			});
+		}
+
+		logger.info('[public/story-audio] Cache miss; generation required', {
+			page,
+			ip: req.ip,
+			objectPath,
+			totals: getStoryAudioTelemetrySnapshot(),
+		});
+
+		req.storyAudioEnsureContext = {
+			page,
+			text,
+			voice,
+			totalPages,
+			objectPath,
+			publicUrl,
+		};
+
+		return next();
+	};
+
+	router.post('/story-audio/ensure', prepareStoryAudioEnsure, storyAudioGenerationLimiter, async (req, res) => {
+		const ensureContext = req.storyAudioEnsureContext;
+		if (!ensureContext) {
+			return res.status(500).json({
+				success: false,
+				error: 'Story-audio request context missing',
+			});
+		}
+
+		const { page, text, voice, objectPath, publicUrl } = ensureContext;
+
+		storyAudioTelemetry.generationAttempts += 1;
+		markStoryAudioEvent();
+
 		if (!openai?.audio?.speech?.create || typeof openai.audio.speech.create !== 'function') {
+			storyAudioTelemetry.generationFailure += 1;
+			markStoryAudioEvent();
 			return res.status(503).json({ success: false, error: 'OpenAI TTS is not available on server' });
 		}
 
 		try {
+			storyAudioTelemetry.openAiCalls += 1;
+			markStoryAudioEvent();
 			const ttsResponse = await openai.audio.speech.create({
 				model: 'tts-1',
 				voice,
@@ -305,6 +432,15 @@ function createPublicRouter({ db } = {}) {
 				}
 			}
 
+			storyAudioTelemetry.generationSuccess += 1;
+			markStoryAudioEvent();
+			logger.info('[public/story-audio] Generation success', {
+				page,
+				ip: req.ip,
+				objectPath,
+				totals: getStoryAudioTelemetrySnapshot(),
+			});
+
 			return res.json({
 				success: true,
 				cached: false,
@@ -312,10 +448,13 @@ function createPublicRouter({ db } = {}) {
 				audioBase64: audioBuffer.toString('base64'),
 			});
 		} catch (error) {
+			storyAudioTelemetry.generationFailure += 1;
+			markStoryAudioEvent();
 			logger.error('[public/story-audio] TTS generation failed', {
 				page,
 				objectPath,
 				error: error instanceof Error ? error.message : String(error),
+				totals: getStoryAudioTelemetrySnapshot(),
 			});
 			return res.status(502).json({ success: false, error: 'Failed to generate story audio' });
 		}
@@ -380,6 +519,13 @@ function createPublicRouter({ db } = {}) {
 				publicReadProbe,
 			},
 			warnings,
+		});
+	});
+
+	router.get('/story-audio/metrics', (_req, res) => {
+		return res.json({
+			success: true,
+			metrics: getStoryAudioTelemetrySnapshot(),
 		});
 	});
 
