@@ -25,6 +25,41 @@ function Wait-ForHealthyContainer {
   throw "Timed out waiting for container '$ContainerName' to become healthy/running."
 }
 
+function Ensure-DockerAvailable {
+  if (-not (Get-Command docker -ErrorAction SilentlyContinue)) {
+    throw "Docker CLI not found. Install Docker Desktop and ensure 'docker' is on PATH."
+  }
+
+  $previousErrorAction = $ErrorActionPreference
+  try {
+    $ErrorActionPreference = 'Continue'
+    docker info 1>$null 2>$null
+  } finally {
+    $ErrorActionPreference = $previousErrorAction
+  }
+
+  if ($LASTEXITCODE -ne 0) {
+    throw "Docker daemon is not running. Start Docker Desktop, wait until it is fully started, then re-run 'npm run start:local'."
+  }
+}
+
+function Invoke-DockerCompose {
+  param([string[]]$Args)
+
+  docker compose version *> $null
+  if ($LASTEXITCODE -eq 0) {
+    & docker compose @Args
+    return
+  }
+
+  if (Get-Command docker-compose -ErrorAction SilentlyContinue) {
+    & docker-compose @Args
+    return
+  }
+
+  throw "Neither 'docker compose' nor 'docker-compose' is available. Install/enable Docker Compose and try again."
+}
+
 function Start-AppTerminal {
   param(
     [string]$Title,
@@ -103,38 +138,49 @@ function Close-ExistingAppTerminals {
   }
 }
 
-$repoRoot = (Resolve-Path "$PSScriptRoot\..").Path
-Set-Location $repoRoot
+try {
+  $repoRoot = (Resolve-Path "$PSScriptRoot\..").Path
+  Set-Location $repoRoot
 
-$appTerminalTitles = @('Lumina API', 'Lumina Worker', 'Lumina Frontend')
-Write-Step "Cleaning up existing app terminals before startup..."
-Close-ExistingAppTerminals -Titles $appTerminalTitles -RepoRoot $repoRoot
+  $appTerminalTitles = @('Lumina API', 'Lumina Worker', 'Lumina Frontend')
+  Write-Step "Cleaning up existing app terminals before startup..."
+  Close-ExistingAppTerminals -Titles $appTerminalTitles -RepoRoot $repoRoot
 
-Write-Step "Starting required Docker services (db + redis)..."
-docker-compose up -d db redis
+  Write-Step "Checking Docker availability..."
+  Ensure-DockerAvailable
 
-Write-Step "Waiting for containers to become ready..."
-Wait-ForHealthyContainer -ContainerName 'photo-app-postgres'
-Wait-ForHealthyContainer -ContainerName 'photo-app-redis'
-
-$serverEnvPath = Join-Path $repoRoot 'server/.env'
-if (Test-Path $serverEnvPath) {
-  $redisLine = Select-String -Path $serverEnvPath -Pattern '^REDIS_URL=' -SimpleMatch:$false | Select-Object -First 1
-  if ($redisLine -and $redisLine.Line -notmatch 'redis://localhost:6379') {
-    Write-Host "[start-local] Warning: server/.env REDIS_URL is '$($redisLine.Line.Substring(10))'." -ForegroundColor Yellow
-    Write-Host "[start-local] Docker Redis is mapped to redis://localhost:6379. Update server/.env if worker fails." -ForegroundColor Yellow
+  Write-Step "Starting required Docker services (db + redis)..."
+  Invoke-DockerCompose -Args @('up', '-d', 'db', 'redis')
+  if ($LASTEXITCODE -ne 0) {
+    throw "Failed to start Docker services. Check Docker Desktop status and container logs, then re-run start:local."
   }
+
+  Write-Step "Waiting for containers to become ready..."
+  Wait-ForHealthyContainer -ContainerName 'photo-app-postgres'
+  Wait-ForHealthyContainer -ContainerName 'photo-app-redis'
+
+  $serverEnvPath = Join-Path $repoRoot 'server/.env'
+  if (Test-Path $serverEnvPath) {
+    $redisLine = Select-String -Path $serverEnvPath -Pattern '^REDIS_URL=' -SimpleMatch:$false | Select-Object -First 1
+    if ($redisLine -and $redisLine.Line -notmatch 'redis://localhost:6379') {
+      Write-Host "[start-local] Warning: server/.env REDIS_URL is '$($redisLine.Line.Substring(10))'." -ForegroundColor Yellow
+      Write-Host "[start-local] Docker Redis is mapped to redis://localhost:6379. Update server/.env if worker fails." -ForegroundColor Yellow
+    }
+  }
+
+  Write-Step "Opening backend terminal..."
+  Start-AppTerminal -Title 'Lumina API' -Command 'npm --prefix server start' -RepoRoot $repoRoot
+
+  Write-Step "Opening worker terminal..."
+  Start-AppTerminal -Title 'Lumina Worker' -Command 'npm run worker' -RepoRoot $repoRoot
+
+  Write-Step "Opening frontend terminal..."
+  Start-AppTerminal -Title 'Lumina Frontend' -Command 'npm run dev' -RepoRoot $repoRoot
+
+  Write-Step "Startup initiated."
+  Write-Host "[start-local] API health: http://127.0.0.1:3001/health" -ForegroundColor Green
+  Write-Host "[start-local] Frontend:  http://localhost:5173/" -ForegroundColor Green
+} catch {
+  Write-Host "[start-local] ERROR: $($_.Exception.Message)" -ForegroundColor Red
+  exit 1
 }
-
-Write-Step "Opening backend terminal..."
-Start-AppTerminal -Title 'Lumina API' -Command 'npm --prefix server start' -RepoRoot $repoRoot
-
-Write-Step "Opening worker terminal..."
-Start-AppTerminal -Title 'Lumina Worker' -Command 'npm run worker' -RepoRoot $repoRoot
-
-Write-Step "Opening frontend terminal..."
-Start-AppTerminal -Title 'Lumina Frontend' -Command 'npm run dev' -RepoRoot $repoRoot
-
-Write-Step "Startup initiated."
-Write-Host "[start-local] API health: http://127.0.0.1:3001/health" -ForegroundColor Green
-Write-Host "[start-local] Frontend:  http://localhost:5173/" -ForegroundColor Green
