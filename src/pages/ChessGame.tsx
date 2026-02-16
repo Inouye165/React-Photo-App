@@ -423,6 +423,7 @@ const RANK_DEMO_SQUARES: string[] = ['a2', 'b2', 'c2', 'd2', 'e2', 'f2', 'g2', '
 const FILE_DEMO_SQUARES: string[] = ['e1', 'e2', 'e3', 'e4', 'e5', 'e6', 'e7', 'e8']
 const DEFAULT_CHESS_STORY_PDF_URL = '/chess-story/architect-of-squares.pdf'
 const CHESS_STORY_PDF_URL = String(import.meta.env.VITE_CHESS_STORY_PDF_URL || DEFAULT_CHESS_STORY_PDF_URL).trim() || DEFAULT_CHESS_STORY_PDF_URL
+const CHESS_STORY_TTS_VOICE = 'shimmer'
 const STORY_MANUAL_NARRATION_STORAGE_KEY = 'chess-story-manual-narration'
 const STORY_AUDIO_SLUG = 'architect-of-squares'
 const STORY_DIRECTOR_SYNC_INTERVAL_MS = 250
@@ -462,6 +463,26 @@ function formatAudioTime(seconds: number): string {
   const mins = Math.floor(totalSeconds / 60)
   const secs = totalSeconds % 60
   return `${mins}:${String(secs).padStart(2, '0')}`
+}
+
+function splitManualNarrationIntoPages(rawNarration: string): string[] {
+  return rawNarration
+    .split(/\n\s*---+\s*\n/g)
+    .map((pageText) => pageText.trim())
+    .filter((pageText) => pageText.length > 0)
+}
+
+function resolveNarrationTextForPage(pageNumber: number, extractedText: string, manualNarrationPages: string[]): string {
+  const normalizedExtractedText = extractedText.replace(/\s+/g, ' ').trim()
+  if (normalizedExtractedText.length > 0) return normalizedExtractedText
+
+  const exactPageManualText = manualNarrationPages[pageNumber - 1]
+  if (exactPageManualText && exactPageManualText.length > 0) return exactPageManualText
+
+  const firstManualText = manualNarrationPages[0]
+  if (firstManualText && firstManualText.length > 0) return firstManualText
+
+  return ''
 }
 
 function isUciLikeMove(move: string): boolean {
@@ -575,12 +596,7 @@ function ChessStoryModal({
   const [audioCurrentTime, setAudioCurrentTime] = useState(0)
   const [audioDuration, setAudioDuration] = useState(0)
 
-  const manualNarrationPages = useMemo(
-    () => manualNarration
-      .split(/\n\s*---+\s*\n/g)
-      .map((pageText) => pageText.trim()),
-    [manualNarration],
-  )
+  const manualNarrationPages = useMemo(() => splitManualNarrationIntoPages(manualNarration), [manualNarration])
 
   const stopActiveAudio = useCallback(() => {
     const activeAudio = activeAudioRef.current
@@ -654,8 +670,6 @@ function ChessStoryModal({
     const text = textContent.items
       .map((item) => ('str' in item ? item.str : ''))
       .join(' ')
-      .replace(/\s+/g, ' ')
-      .trim()
 
     pageTextCacheRef.current.set(pageNumber, text)
     return text
@@ -663,16 +677,7 @@ function ChessStoryModal({
 
   const getNarrationTextForPage = useCallback(async (pageNumber: number): Promise<string> => {
     const extractedText = await getPageText(pageNumber)
-    if (extractedText.length > 0) return extractedText
-
-    const manualPageText = manualNarrationPages[pageNumber - 1]
-    if (manualPageText && manualPageText.length > 0) return manualPageText
-
-    if (manualNarrationPages.length === 1 && manualNarrationPages[0]) {
-      return manualNarrationPages[0]
-    }
-
-    return ''
+    return resolveNarrationTextForPage(pageNumber, extractedText, manualNarrationPages)
   }, [getPageText, manualNarrationPages])
 
   useEffect(() => {
@@ -995,7 +1000,7 @@ function ChessStoryModal({
           page: currentPage,
           totalPages,
           text,
-          voice: 'shimmer',
+          voice: CHESS_STORY_TTS_VOICE,
         })
 
         if (ensuredAudio.audioBase64 && ensuredAudio.audioBase64.length > 0) {
