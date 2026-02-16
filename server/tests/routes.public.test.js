@@ -16,6 +16,16 @@ const express = require('express');
 // Create mock functions at module scope so they can be referenced in tests
 const mockInsert = jest.fn();
 const mockReturning = jest.fn();
+const mockOpenAiSpeechCreate = jest.fn();
+const mockListBuckets = jest.fn();
+const mockCreateBucket = jest.fn();
+const mockUpdateBucket = jest.fn();
+const mockDownload = jest.fn();
+const mockUpload = jest.fn();
+
+const mockStorageObjects = new Set();
+let mockBucketExists = false;
+let mockBucketPublic = false;
 
 // Create a mock database function
 const createMockDb = () => {
@@ -50,6 +60,32 @@ jest.mock('../logger', () => ({
   fatal: jest.fn()
 }));
 
+jest.mock('../services/sms', () => ({
+  sendAdminAlert: jest.fn(),
+}));
+
+jest.mock('../ai/openaiClient', () => ({
+  openai: {
+    audio: {
+      speech: {
+        create: mockOpenAiSpeechCreate,
+      },
+    },
+  },
+}));
+
+jest.mock('../lib/supabaseClient', () => ({
+  storage: {
+    listBuckets: mockListBuckets,
+    createBucket: mockCreateBucket,
+    updateBucket: mockUpdateBucket,
+    from: () => ({
+      download: mockDownload,
+      upload: mockUpload,
+    }),
+  },
+}));
+
 // Create an isolated test app with just the public router
 function createTestApp() {
   const app = express();
@@ -80,6 +116,48 @@ describe('Public API Routes', () => {
   beforeEach(() => {
     jest.clearAllMocks();
     app = createTestApp();
+
+    mockStorageObjects.clear();
+    mockBucketExists = false;
+    mockBucketPublic = false;
+
+    mockListBuckets.mockImplementation(async () => ({
+      data: mockBucketExists ? [{ name: 'story-audio', public: mockBucketPublic }] : [],
+      error: null,
+    }));
+
+    mockCreateBucket.mockImplementation(async (_bucketName, options) => {
+      mockBucketExists = true;
+      mockBucketPublic = Boolean(options?.public);
+      return { data: { name: 'story-audio' }, error: null };
+    });
+
+    mockUpdateBucket.mockImplementation(async (_bucketName, options) => {
+      mockBucketExists = true;
+      if (typeof options?.public === 'boolean') {
+        mockBucketPublic = options.public;
+      }
+      return { data: { name: 'story-audio' }, error: null };
+    });
+
+    mockDownload.mockImplementation(async (objectPath) => {
+      if (mockStorageObjects.has(objectPath)) {
+        return { data: Buffer.from('cached-audio'), error: null };
+      }
+      return { data: null, error: { message: 'Not found', statusCode: 404 } };
+    });
+
+    mockUpload.mockImplementation(async (objectPath) => {
+      if (!mockBucketExists) {
+        return { data: null, error: { message: 'Bucket not found', statusCode: 404 } };
+      }
+      mockStorageObjects.add(objectPath);
+      return { data: { path: objectPath }, error: null };
+    });
+
+    mockOpenAiSpeechCreate.mockImplementation(async ({ input }) => ({
+      arrayBuffer: async () => Uint8Array.from(Buffer.from(`audio:${input}`)).buffer,
+    }));
     
     // Setup default successful insert mock
     mockReturning.mockResolvedValue([{
@@ -372,6 +450,76 @@ describe('Public API Routes', () => {
           })
           .expect(200);
       }
+    });
+  });
+
+  describe('POST /api/public/story-audio/ensure', () => {
+    const basePayload = {
+      storySlug: 'architect-of-squares',
+      page: 1,
+      totalPages: 2,
+      text: 'Once upon a chessboard.',
+      voice: 'shimmer',
+    };
+
+    it('reuses cached audio when page text and totalPages are unchanged', async () => {
+      const first = await request(app)
+        .post('/api/public/story-audio/ensure')
+        .send(basePayload)
+        .expect(200);
+
+      expect(first.body.success).toBe(true);
+      expect(first.body.cached).toBe(false);
+
+      const second = await request(app)
+        .post('/api/public/story-audio/ensure')
+        .send(basePayload)
+        .expect(200);
+
+      expect(second.body.success).toBe(true);
+      expect(second.body.cached).toBe(true);
+      expect(second.body.url).toBe(first.body.url);
+      expect(mockOpenAiSpeechCreate).toHaveBeenCalledTimes(1);
+    });
+
+    it('regenerates audio when page text changes', async () => {
+      const first = await request(app)
+        .post('/api/public/story-audio/ensure')
+        .send(basePayload)
+        .expect(200);
+
+      const second = await request(app)
+        .post('/api/public/story-audio/ensure')
+        .send({
+          ...basePayload,
+          text: 'Once upon a chessboard. The text changed.',
+        })
+        .expect(200);
+
+      expect(first.body.success).toBe(true);
+      expect(second.body.success).toBe(true);
+      expect(first.body.url).not.toBe(second.body.url);
+      expect(mockOpenAiSpeechCreate).toHaveBeenCalledTimes(2);
+    });
+
+    it('regenerates audio when totalPages changes', async () => {
+      const first = await request(app)
+        .post('/api/public/story-audio/ensure')
+        .send(basePayload)
+        .expect(200);
+
+      const second = await request(app)
+        .post('/api/public/story-audio/ensure')
+        .send({
+          ...basePayload,
+          totalPages: 3,
+        })
+        .expect(200);
+
+      expect(first.body.success).toBe(true);
+      expect(second.body.success).toBe(true);
+      expect(first.body.url).not.toBe(second.body.url);
+      expect(mockOpenAiSpeechCreate).toHaveBeenCalledTimes(2);
     });
   });
 });

@@ -1,6 +1,7 @@
 import { describe, it, expect, vi, beforeEach } from 'vitest'
 import { render, screen, waitFor, within } from '@testing-library/react'
 import userEvent from '@testing-library/user-event'
+import { Chess } from 'chess.js'
 import ChessGame from './ChessGame'
 
 const {
@@ -20,11 +21,46 @@ const {
   getTopMovesMock,
   setTopMovesMock,
   analyzeGameForMeMock,
+  ensureStoryAudioMock,
+  getStoryAudioSetupStatusMock,
+  getDocumentMock,
+  speechSpeakMock,
+  speechCancelMock,
+  getMockVoices,
+  setMockVoices,
+  setMockPdfPageText,
+  setMockPdfNumPages,
 } = vi.hoisted(() => {
   let mockGameId = 'game-123'
   let authUserId = 'user-1'
   let engineMoveUci = 'e2e4'
   let topMovesMock = [] as Array<{ uci: string; score: number | null; mate: number | null; depth: number | null }>
+  let mockPdfNumPages = 2
+  const mockPdfPageText: Record<number, string> = {
+    1: 'Story page 1',
+    2: 'Story page 2',
+  }
+
+  const getDocumentMock = vi.fn(() => ({
+    promise: Promise.resolve({
+      numPages: mockPdfNumPages,
+      getPage: vi.fn(async (pageNumber: number) => ({
+        getTextContent: vi.fn(async () => ({
+          items: mockPdfPageText[pageNumber] ? [{ str: mockPdfPageText[pageNumber] }] : [],
+        })),
+        getViewport: vi.fn(({ scale }: { scale: number }) => ({ width: 600 * scale, height: 800 * scale })),
+        render: vi.fn(() => ({
+          promise: Promise.resolve(),
+        })),
+      })),
+    }),
+    destroy: vi.fn(),
+  }))
+
+  const speechSpeakMock = vi.fn()
+  const speechCancelMock = vi.fn()
+  let mockVoices: Array<{ name: string; lang: string }> = []
+
   return {
     getMockGameId: () => mockGameId,
     setMockGameId: (value: string) => { mockGameId = value },
@@ -72,6 +108,29 @@ const {
       model: 'gemini-2.0-flash-lite',
       apiVersion: 'v1',
     })),
+    ensureStoryAudioMock: vi.fn(async ({ page }: { page: number }) => ({
+      cached: false,
+      url: `https://project.supabase.co/storage/v1/object/public/story-audio/architect-of-squares/page-${page}.mp3`,
+      audioBase64: 'ZmFrZS1hdWRpbw==',
+    })),
+    getStoryAudioSetupStatusMock: vi.fn(async () => ({
+      configured: { supabaseUrl: true, openAiTts: true },
+      bucket: { exists: true, isPublic: true, publicReadProbe: 'ok' },
+      warnings: [],
+    })),
+    getDocumentMock,
+    speechSpeakMock,
+    speechCancelMock,
+    getMockVoices: () => mockVoices,
+    setMockVoices: (voices: Array<{ name: string; lang: string }>) => {
+      mockVoices = voices
+    },
+    setMockPdfPageText: (pageNumber: number, text: string) => {
+      mockPdfPageText[pageNumber] = text
+    },
+    setMockPdfNumPages: (value: number) => {
+      mockPdfNumPages = value
+    },
   }
 })
 
@@ -98,6 +157,8 @@ vi.mock('../api/games', () => ({
 
 vi.mock('../api/chessTutor', () => ({
   analyzeGameForMe: analyzeGameForMeMock,
+  ensureStoryAudio: ensureStoryAudioMock,
+  getStoryAudioSetupStatus: getStoryAudioSetupStatusMock,
 }))
 
 vi.mock('../hooks/useStockfish', () => ({
@@ -125,10 +186,16 @@ vi.mock('../supabaseClient', () => ({
   },
 }))
 
+vi.mock('pdfjs-dist', () => ({
+  getDocument: getDocumentMock,
+  GlobalWorkerOptions: { workerSrc: '' },
+}))
+
 vi.mock('react-chessboard', () => ({
-  Chessboard: (props: { customSquareStyles?: Record<string, unknown>; boardOrientation?: 'white' | 'black'; onPieceDrop?: (src: 'e2', dst: 'e4') => boolean }) => (
+  Chessboard: (props: { id?: string; position?: string; customSquareStyles?: Record<string, unknown>; boardOrientation?: 'white' | 'black'; onPieceDrop?: (src: 'e2', dst: 'e4') => boolean }) => (
     <div
-      data-testid="chessboard"
+      data-testid={props.id?.startsWith('story-board-') ? 'story-chessboard' : 'chessboard'}
+      data-position={props.position || ''}
       data-orientation={props.boardOrientation || 'white'}
       data-custom-squares={Object.keys(props.customSquareStyles ?? {}).sort().join(',')}
     >
@@ -144,6 +211,79 @@ describe('ChessGame', () => {
     setAuthUserId('user-1')
     setEngineMoveUci('e2e4')
     setTopMovesMock([])
+
+    class MockSpeechSynthesisUtterance {
+      text: string
+      rate = 1
+      pitch = 1
+      volume = 1
+      lang = 'en-US'
+      voice: { name: string; lang: string } | null = null
+      onend: (() => void) | null = null
+      onerror: (() => void) | null = null
+
+      constructor(text: string) {
+        this.text = text
+      }
+    }
+
+    Object.defineProperty(window, 'speechSynthesis', {
+      configurable: true,
+      value: {
+        speak: speechSpeakMock,
+        cancel: speechCancelMock,
+        getVoices: () => getMockVoices(),
+      },
+    })
+
+    Object.defineProperty(window, 'SpeechSynthesisUtterance', {
+      configurable: true,
+      value: MockSpeechSynthesisUtterance,
+    })
+
+    setMockVoices([])
+    setMockPdfNumPages(2)
+    setMockPdfPageText(1, 'Story page 1')
+    setMockPdfPageText(2, 'Story page 2')
+
+    const fetchMock = vi.fn(async (_input: RequestInfo | URL, init?: RequestInit) => {
+      if (init?.method === 'HEAD') {
+        return { ok: false } as Response
+      }
+      return { ok: true, json: async () => ({}) } as Response
+    })
+    vi.stubGlobal('fetch', fetchMock)
+
+    class MockAudio {
+      static instances: MockAudio[] = []
+      src = ''
+      currentTime = 0
+      pause = vi.fn()
+      play = vi.fn(async () => undefined)
+      private listeners: Record<string, Array<() => void>> = {}
+
+      constructor(src?: string) {
+        if (src) this.src = src
+        MockAudio.instances.push(this)
+      }
+
+      addEventListener(eventName: string, handler: () => void) {
+        if (!this.listeners[eventName]) this.listeners[eventName] = []
+        this.listeners[eventName].push(handler)
+      }
+
+      removeEventListener(eventName: string, handler: () => void) {
+        this.listeners[eventName] = (this.listeners[eventName] || []).filter((entry) => entry !== handler)
+      }
+
+      emit(eventName: string) {
+        for (const handler of this.listeners[eventName] || []) {
+          handler()
+        }
+      }
+    }
+
+    vi.stubGlobal('Audio', MockAudio as unknown as typeof Audio)
   })
 
   it('renders the board', () => {
@@ -406,5 +546,141 @@ describe('ChessGame', () => {
 
     await user.click(screen.getByRole('button', { name: 'Analyze game' }))
     expect(screen.getByRole('button', { name: 'Analyze game for me' })).toBeInTheDocument()
+  })
+
+  it('opens the story modal from Story mode and loads the PDF', async () => {
+    const user = userEvent.setup()
+    setMockGameId('local')
+    render(<ChessGame />)
+
+    await user.click(screen.getByRole('button', { name: 'How to play' }))
+    await user.click(screen.getByRole('button', { name: 'Story mode' }))
+
+    expect(screen.getByRole('dialog', { name: 'Chess story modal' })).toBeInTheDocument()
+    expect(screen.getByText('The Architect of Squares')).toBeInTheDocument()
+
+    await waitFor(() => {
+      expect(getDocumentMock).toHaveBeenCalled()
+      expect(screen.getByText('Page 1/2')).toBeInTheDocument()
+    })
+  })
+
+  it('generates/plays cached audio and auto-turns to the next page on audio end', async () => {
+    const user = userEvent.setup()
+    setMockGameId('local')
+    render(<ChessGame />)
+
+    await user.click(screen.getByRole('button', { name: 'How to play' }))
+    await user.click(screen.getByRole('button', { name: 'Story mode' }))
+    const playButton = await screen.findByRole('button', { name: 'Play narration' })
+
+    await user.click(playButton)
+
+    await waitFor(() => {
+      expect(ensureStoryAudioMock).toHaveBeenCalledTimes(1)
+    })
+
+    const audioClass = (globalThis as any).Audio as { instances: Array<{ emit: (eventName: string) => void }> }
+    audioClass.instances[0]?.emit('ended')
+
+    await waitFor(() => {
+      expect(screen.getByText('Page 2/2')).toBeInTheDocument()
+      expect(ensureStoryAudioMock.mock.calls.length).toBeGreaterThan(1)
+    })
+  })
+
+  it('stops the previous audio stream when page changes during narration', async () => {
+    const user = userEvent.setup()
+    setMockGameId('local')
+
+    render(<ChessGame />)
+
+    await user.click(screen.getByRole('button', { name: 'How to play' }))
+    await user.click(screen.getByRole('button', { name: 'Story mode' }))
+    await user.click(await screen.findByRole('button', { name: 'Play narration' }))
+
+    await waitFor(() => {
+      expect(ensureStoryAudioMock).toHaveBeenCalledTimes(1)
+    })
+
+    const audioClass = (globalThis as any).Audio as { instances: Array<{ pause: ReturnType<typeof vi.fn> }> }
+    const firstAudio = audioClass.instances[0]
+
+    await user.click(screen.getByRole('button', { name: 'Next page' }))
+
+    await waitFor(() => {
+      expect(firstAudio.pause).toHaveBeenCalled()
+      expect(ensureStoryAudioMock.mock.calls.length).toBeGreaterThan(1)
+    })
+  })
+
+  it('uses manual narration when PDF page text is unavailable', async () => {
+    const user = userEvent.setup()
+    setMockGameId('local')
+    setMockPdfPageText(1, '')
+    setMockPdfPageText(2, '')
+
+    render(<ChessGame />)
+
+    await user.click(screen.getByRole('button', { name: 'How to play' }))
+    await user.click(screen.getByRole('button', { name: 'Story mode' }))
+    const narrationField = await screen.findByLabelText('Manual narration (for image-only PDFs)')
+    await user.type(narrationField, 'Once upon a chessboard.\n---\nThe end.')
+    await user.click(screen.getByRole('button', { name: 'Play narration' }))
+
+    await waitFor(() => {
+      expect(ensureStoryAudioMock).toHaveBeenCalledTimes(1)
+    })
+
+    const firstEnsureCall = ensureStoryAudioMock.mock.calls[0]?.[0] as { text?: string } | undefined
+    expect(firstEnsureCall?.text).toContain('Once upon a chessboard.')
+  })
+
+  it('syncs story timeline cues and preserves board position before any move cue', async () => {
+    const user = userEvent.setup()
+    setMockGameId('local')
+    setMockPdfNumPages(8)
+    setMockPdfPageText(3, 'Timeline page three text')
+    setMockPdfPageText(4, 'Timeline page four text')
+
+    render(<ChessGame />)
+
+    await user.click(screen.getByRole('button', { name: 'How to play' }))
+    await user.click(screen.getByRole('button', { name: 'Story mode' }))
+
+    await user.click(screen.getByRole('button', { name: 'Next page' }))
+    await user.click(screen.getByRole('button', { name: 'Next page' }))
+    expect(screen.getByText('Page 3/8')).toBeInTheDocument()
+
+    await user.click(screen.getByRole('button', { name: 'Play narration' }))
+
+    await waitFor(() => {
+      expect(ensureStoryAudioMock).toHaveBeenCalled()
+    })
+
+    const audioClass = (globalThis as any).Audio as { instances: Array<{ currentTime: number; emit: (eventName: string) => void }> }
+    const pageThreeAudio = audioClass.instances[0]
+
+    const storyBoard = screen.getByTestId('story-chessboard')
+    const initialFen = storyBoard.getAttribute('data-position')
+
+    pageThreeAudio.currentTime = 12.3
+    pageThreeAudio.emit('timeupdate')
+
+    const expectedChess = new Chess()
+    const expectedFen = expectedChess.fen()
+
+    await waitFor(() => {
+      expect(screen.getByText('Last cue: White on Right')).toBeInTheDocument()
+      expect(screen.getByTestId('story-chessboard')).toHaveAttribute('data-position', expectedFen)
+      expect(screen.getByTestId('story-chessboard').getAttribute('data-position')).toBe(initialFen)
+    })
+
+    await user.click(screen.getByRole('button', { name: 'Next page' }))
+
+    await waitFor(() => {
+      expect(screen.getByText('Page 4/8')).toBeInTheDocument()
+      expect(screen.getByText('Waiting for cue...')).toBeInTheDocument()
+    })
   })
 })
