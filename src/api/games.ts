@@ -1,6 +1,7 @@
 import { supabase } from '../supabaseClient'
 import { searchUsers } from './chat'
 import { notifyGamesChanged } from '../events/gamesEvents'
+import { logActivity } from './activity'
 
 async function requireAuthedUserId(): Promise<string> {
   const { data, error } = await supabase.auth.getUser()
@@ -283,7 +284,11 @@ export async function makeMove(gameId: string, ply: number, uci: string, fenAfte
   const rowWithHint = { ...baseRow, hint_used: hintUsed }
 
   const firstAttempt = await movesTable.insert(rowWithHint).select('*').single()
-  if (!firstAttempt.error) return firstAttempt.data
+  if (!firstAttempt.error) {
+    // Log game_played activity on successful move (fire-and-forget)
+    logActivity('game_played', { gameId, ply })
+    return firstAttempt.data
+  }
 
   if (!isMissingColumnError(firstAttempt.error, 'hint_used')) {
     throw firstAttempt.error
@@ -291,6 +296,8 @@ export async function makeMove(gameId: string, ply: number, uci: string, fenAfte
 
   const fallbackAttempt = await movesTable.insert(baseRow).select('*').single()
   if (fallbackAttempt.error) throw fallbackAttempt.error
+  // Log game_played activity on fallback successful move (fire-and-forget)
+  logActivity('game_played', { gameId, ply })
   return fallbackAttempt.data
 }
 

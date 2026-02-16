@@ -3,6 +3,7 @@ import type { ChatMessage, ChatRoom, ChatRoomMetadata, ChatRoomType } from '../t
 import { supabase } from '../supabaseClient'
 import { API_BASE_URL, request } from './httpClient'
 import { getAuthHeadersAsync } from './auth'
+import { logActivity } from './activity'
 
 type PhotoId = Photo['id']
 
@@ -285,6 +286,10 @@ export async function sendMessage(roomId: string, content: string, photoId?: Pho
 
   if (error) throw error
   if (!data) throw new Error('Failed to send message')
+
+  // Log message_sent activity (fire-and-forget)
+  logActivity('message_sent', { roomId })
+
   return data as ChatMessage
 }
 

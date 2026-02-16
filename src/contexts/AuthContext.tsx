@@ -8,6 +8,7 @@ import useStore from '../store'
 import { API_BASE_URL } from '../config/apiConfig'
 import { setAuthToken } from '../api'
 import type { UserProfile } from '../api'
+import { logActivity } from '../api/activity'
 import { authDebug } from '../utils/authDebug'
 
 declare global {
@@ -415,6 +416,9 @@ export function AuthProvider({ children }: { children: ReactNode }): ReactNode {
 
       authDebug('login:success', { userId: data.user?.id ?? null })
 
+      // Log sign-in activity (fire-and-forget)
+      logActivity('sign_in')
+
       // Allow onAuthStateChange to work again
       loginInProgressRef.current = false
 
@@ -523,6 +527,9 @@ export function AuthProvider({ children }: { children: ReactNode }): ReactNode {
       const { data, error } = await supabase.auth.updateUser({ password: newPassword })
       if (error) throw error
 
+      // Log password change activity (fire-and-forget)
+      logActivity('password_change')
+
       // Just to be safe: refresh the token cache.
       // Supabase may or may not return a session directly from updateUser depending on server settings.
       const sessionFromUpdate = (data as unknown as { session?: Session | null }).session
@@ -572,6 +579,10 @@ export function AuthProvider({ children }: { children: ReactNode }): ReactNode {
   const logout = async (): Promise<void> => {
     try {
       authDebug('logout:start')
+
+      // Log sign-out activity before clearing token (fire-and-forget)
+      await logActivity('sign_out').catch(() => {})
+
       // Clear Bearer token from the api module
       setAuthToken(null)
 
@@ -641,6 +652,9 @@ export function AuthProvider({ children }: { children: ReactNode }): ReactNode {
       if (!updated) {
         return { success: false, error: 'Failed to update profile' }
       }
+
+      // Log username set activity (fire-and-forget)
+      logActivity('username_set', { username: nextUsername })
 
       setProfile(updated)
       lastProfileUserIdRef.current = updated.id
