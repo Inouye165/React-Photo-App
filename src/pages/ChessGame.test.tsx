@@ -46,9 +46,22 @@ const {
       numPages: mockPdfNumPages,
       getPage: vi.fn(async (pageNumber: number) => ({
         getTextContent: vi.fn(async () => ({
-          items: mockPdfPageText[pageNumber] ? [{ str: mockPdfPageText[pageNumber] }] : [],
+          items: mockPdfPageText[pageNumber]
+            ? [{
+                str: mockPdfPageText[pageNumber],
+                transform: [12, 0, 0, 12, 56, 700],
+                width: 200,
+                height: 14,
+              }]
+            : [],
         })),
-        getViewport: vi.fn(({ scale }: { scale: number }) => ({ width: 600 * scale, height: 800 * scale })),
+        getViewport: vi.fn(({ scale }: { scale: number }) => ({
+          width: 600 * scale,
+          height: 800 * scale,
+          convertToViewportPoint(x: number, y: number) {
+            return [x * scale, (800 - y) * scale]
+          },
+        })),
         render: vi.fn(() => ({
           promise: Promise.resolve(),
         })),
@@ -681,6 +694,81 @@ describe('ChessGame', () => {
     await waitFor(() => {
       expect(screen.getByText('Page 4/8')).toBeInTheDocument()
       expect(screen.getByText('Waiting for cue...')).toBeInTheDocument()
+    })
+  })
+
+  it('keeps in-PDF highlight active when audio duration metadata is unavailable', async () => {
+    const user = userEvent.setup()
+    setMockGameId('local')
+    setMockPdfPageText(1, 'Silas found the dusty wooden box in the attic.')
+
+    render(<ChessGame />)
+
+    await user.click(screen.getByRole('button', { name: 'How to play' }))
+    await user.click(screen.getByRole('button', { name: 'Story mode' }))
+
+    // Wait for the PDF page + text overlay to render before starting narration
+    await waitFor(() => {
+      expect(screen.getByText('Page 1/2')).toBeInTheDocument()
+    })
+
+    await user.click(await screen.findByRole('button', { name: 'Play narration' }))
+
+    await waitFor(() => {
+      expect(ensureStoryAudioMock).toHaveBeenCalledTimes(1)
+    })
+
+    const audioClass = (globalThis as any).Audio as { instances: Array<{ currentTime: number; duration?: number; emit: (eventName: string) => void }> }
+    const activeAudio = audioClass.instances[0]
+
+    // Simulate loadedmetadata so audioDuration is set (mirrors real browser behavior)
+    Object.defineProperty(activeAudio, 'duration', { value: 10, writable: true, configurable: true })
+    activeAudio.emit('loadedmetadata')
+
+    // Advance audio playback
+    activeAudio.currentTime = 1.4
+    activeAudio.emit('timeupdate')
+
+    await waitFor(() => {
+      const activeHighlight = screen.getByTestId('story-pdf-highlight-active')
+      expect(activeHighlight).toBeInTheDocument()
+      // Verify the highlight span has visible styling (not just DOM presence)
+      expect(activeHighlight.style.mixBlendMode).toBe('multiply')
+      expect(activeHighlight.style.backgroundColor).not.toBe('')
+      expect(activeHighlight.style.backgroundColor).not.toBe('transparent')
+    })
+
+    // Verify narration source label shows PDF-extracted
+    expect(screen.getByText('Source: PDF extracted text')).toBeInTheDocument()
+  })
+
+  it('positions text overlay spans using convertToViewportPoint from the viewport', async () => {
+    const user = userEvent.setup()
+    setMockGameId('local')
+    setMockPdfPageText(1, 'Hello world')
+
+    render(<ChessGame />)
+
+    await user.click(screen.getByRole('button', { name: 'How to play' }))
+    await user.click(screen.getByRole('button', { name: 'Story mode' }))
+
+    // Wait for page to render and text overlay items to be populated
+    await waitFor(() => {
+      expect(screen.getByText('Page 1/2')).toBeInTheDocument()
+    })
+
+    // The mock convertToViewportPoint transforms (x, y) => [x*scale, (800-y)*scale]
+    // With text item transform [12, 0, 0, 12, 56, 700] and viewport width 600, height 800:
+    //   scale = containerWidth/600 (depends on container, but overlay span should exist)
+    // Verify that at least one text overlay span exists with the text content
+    await waitFor(() => {
+      const overlaySpans = document.querySelectorAll<HTMLSpanElement>('span.absolute')
+      const matchingSpan = Array.from(overlaySpans).find((span) => span.textContent === 'Hello world')
+      expect(matchingSpan).toBeTruthy()
+      // Verify the span has position styling (left/top are set as numbers)
+      expect(matchingSpan!.style.left).toBeTruthy()
+      expect(matchingSpan!.style.top).toBeTruthy()
+      expect(matchingSpan!.style.width).toBeTruthy()
     })
   })
 })

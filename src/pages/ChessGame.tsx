@@ -426,6 +426,7 @@ const CHESS_STORY_PDF_URL = String(import.meta.env.VITE_CHESS_STORY_PDF_URL || D
 const CHESS_STORY_TTS_VOICE = 'shimmer'
 const STORY_MANUAL_NARRATION_STORAGE_KEY = 'chess-story-manual-narration'
 const STORY_AUDIO_SLUG = 'architect-of-squares'
+const NARRATION_FALLBACK_WORDS_PER_SECOND = 2.7
 const STORY_DIRECTOR_SYNC_INTERVAL_MS = 250
 
 if (typeof window !== 'undefined') {
@@ -651,9 +652,15 @@ function ChessStoryModal({
     [activeNarrationText],
   )
   const activeNarrationWordIndex = useMemo(() => {
-    if (!isNarrating || audioDuration <= 0 || narrationWords.length === 0) return -1
-    const progress = Math.min(1, Math.max(0, audioCurrentTime / audioDuration))
-    return Math.min(narrationWords.length - 1, Math.floor(progress * narrationWords.length))
+    if (!isNarrating || narrationWords.length === 0) return -1
+
+    if (audioDuration > 0 && Number.isFinite(audioDuration)) {
+      const progress = Math.min(1, Math.max(0, audioCurrentTime / audioDuration))
+      return Math.min(narrationWords.length - 1, Math.floor(progress * narrationWords.length))
+    }
+
+    const fallbackIndex = Math.floor(Math.max(0, audioCurrentTime) * NARRATION_FALLBACK_WORDS_PER_SECOND)
+    return Math.min(narrationWords.length - 1, fallbackIndex)
   }, [isNarrating, audioCurrentTime, audioDuration, narrationWords.length])
   const shouldHighlightOnPdf = activeNarrationSource === 'pdf-extracted' && activeNarrationWordIndex >= 0
 
@@ -940,61 +947,70 @@ function ChessStoryModal({
         })
         await renderTask.promise
 
-        const textContent = await page.getTextContent()
-        const convertToViewportPoint = (viewport as unknown as { convertToViewportPoint?: (x: number, y: number) => number[] }).convertToViewportPoint
-        let runningWordIndex = 0
-        const overlayItems = textContent.items
-          .map((item, index) => {
-            if (!('str' in item)) return null
+        try {
+          const textContent = await page.getTextContent()
+          const viewportAny = viewport as unknown as { convertToViewportPoint?: (x: number, y: number) => number[] }
+          let runningWordIndex = 0
+          const overlayItems = textContent.items
+            .map((item, index) => {
+              if (!('str' in item)) return null
 
-            const normalizedText = item.str.replace(/\s+/g, ' ').trim()
-            if (!normalizedText) return null
+              const normalizedText = item.str.replace(/\s+/g, ' ').trim()
+              if (!normalizedText) return null
 
-            const words = normalizedText.split(/\s+/).filter((word) => word.length > 0)
-            if (words.length === 0) return null
+              const words = normalizedText.split(/\s+/).filter((word) => word.length > 0)
+              if (words.length === 0) return null
 
-            const transform = Array.isArray((item as { transform?: unknown }).transform)
-              ? ((item as { transform: number[] }).transform)
-              : null
-            const rawX = transform?.[4] ?? 0
-            const rawY = transform?.[5] ?? 0
+              const transform = Array.isArray((item as { transform?: unknown }).transform)
+                ? ((item as { transform: number[] }).transform)
+                : null
+              const rawX = transform?.[4] ?? 0
+              const rawY = transform?.[5] ?? 0
 
-            const convertedPoint = typeof convertToViewportPoint === 'function'
-              ? convertToViewportPoint(rawX, rawY)
-              : [rawX * scale, rawY * scale]
-            const left = Number(convertedPoint[0] ?? 0)
-            const baselineY = Number(convertedPoint[1] ?? 0)
+              const convertedPoint = typeof viewportAny.convertToViewportPoint === 'function'
+                ? viewportAny.convertToViewportPoint(rawX, rawY)
+                : [rawX * scale, rawY * scale]
+              const left = Number(convertedPoint[0] ?? 0)
+              const baselineY = Number(convertedPoint[1] ?? 0)
 
-            const itemHeight = typeof (item as { height?: unknown }).height === 'number'
-              ? Math.abs((item as { height: number }).height * scale)
-              : 16
-            const widthFromItem = typeof (item as { width?: unknown }).width === 'number'
-              ? Math.abs((item as { width: number }).width * scale)
-              : 0
-            const widthFromText = Math.max(8, normalizedText.length * Math.max(10, itemHeight) * 0.42)
-            const width = Math.max(1, widthFromItem || widthFromText)
-            const height = Math.max(1, itemHeight)
-            const top = Math.max(0, baselineY - height)
+              const itemHeight = typeof (item as { height?: unknown }).height === 'number'
+                ? Math.abs((item as { height: number }).height * scale)
+                : 16
+              const widthFromItem = typeof (item as { width?: unknown }).width === 'number'
+                ? Math.abs((item as { width: number }).width * scale)
+                : 0
+              const widthFromText = Math.max(8, normalizedText.length * Math.max(10, itemHeight) * 0.42)
+              const width = Math.max(1, widthFromItem || widthFromText)
+              const height = Math.max(1, itemHeight)
+              const top = Math.max(0, baselineY - height)
 
-            const startWordIndex = runningWordIndex
-            const endWordIndex = runningWordIndex + words.length - 1
-            runningWordIndex += words.length
+              const startWordIndex = runningWordIndex
+              const endWordIndex = runningWordIndex + words.length - 1
+              runningWordIndex += words.length
 
-            return {
-              key: `${currentPage}-${index}-${Math.round(left)}-${Math.round(top)}`,
-              text: normalizedText,
-              left,
-              top,
-              width,
-              height,
-              fontSize: Math.max(10, height),
-              startWordIndex,
-              endWordIndex,
-            } as PdfTextOverlayItem
-          })
-          .filter((item): item is PdfTextOverlayItem => Boolean(item))
+              return {
+                key: `${currentPage}-${index}-${Math.round(left)}-${Math.round(top)}`,
+                text: normalizedText,
+                left,
+                top,
+                width,
+                height,
+                fontSize: Math.max(10, height),
+                startWordIndex,
+                endWordIndex,
+              } as PdfTextOverlayItem
+            })
+            .filter((item): item is PdfTextOverlayItem => Boolean(item))
 
-        setPageTextOverlayItems(overlayItems)
+          if (!cancelled) {
+            setPageTextOverlayItems(overlayItems)
+          }
+        } catch (overlayErr) {
+          console.warn('[story/text-overlay] Failed to extract text overlay items:', overlayErr)
+          if (!cancelled) {
+            setPageTextOverlayItems([])
+          }
+        }
       } catch {
         if (!cancelled) {
           setLoadError('Unable to render this page of the story.')
@@ -1365,17 +1381,21 @@ function ChessStoryModal({
                         return (
                           <span
                             key={item.key}
+                            data-testid={isActiveWord ? 'story-pdf-highlight-active' : undefined}
                             className={isActiveWord ? 'absolute rounded' : 'absolute'}
                             style={{
                               left: item.left,
                               top: item.top,
                               width: item.width,
                               height: item.height,
+                              display: 'block',
                               fontSize: item.fontSize,
                               lineHeight: 1,
                               color: 'transparent',
-                              backgroundColor: isActiveWord ? 'rgba(191, 219, 254, 0.68)' : 'transparent',
+                              backgroundColor: isActiveWord ? 'rgba(191, 219, 254, 0.60)' : 'transparent',
                               mixBlendMode: isActiveWord ? 'multiply' : 'normal',
+                              boxShadow: isActiveWord ? 'inset 0 -1.5px 0 rgba(59, 130, 246, 0.58)' : 'none',
+                              zIndex: isActiveWord ? 2 : 1,
                               whiteSpace: 'pre',
                             }}
                           >
