@@ -7,7 +7,7 @@
 
 'use strict';
 
-import express, { Request, Response, Router } from 'express';
+import express, { NextFunction, Request, Response, Router } from 'express';
 import rateLimit from 'express-rate-limit';
 import { body, validationResult } from 'express-validator';
 import { z } from 'zod';
@@ -50,6 +50,19 @@ type StoryAudioStatusResponse = {
     publicReadProbe: 'ok' | 'forbidden' | 'unreachable' | 'unknown';
   };
   warnings: string[];
+};
+
+type StoryAudioEnsureContext = {
+  page: number;
+  text: string;
+  voice: 'shimmer' | string;
+  totalPages: number;
+  objectPath: string;
+  publicUrl: string;
+};
+
+type StoryAudioEnsureRequest = Request & {
+  storyAudioEnsureContext?: StoryAudioEnsureContext;
 };
 
 function normalizeSupabasePublicBaseUrl(): string | null {
@@ -152,17 +165,25 @@ async function ensureStoryAudioBucketReady(): Promise<{ ok: boolean; reason?: st
   }
 }
 
-function createStoryAudioRateLimiter() {
+function createStoryAudioGenerationRateLimiter() {
   const isProduction = process.env.NODE_ENV === 'production';
+  const defaultMax = isProduction ? 30 : 120;
+  const configuredMax = Number(process.env.STORY_AUDIO_GENERATION_LIMIT_MAX || defaultMax);
+  const max = Number.isFinite(configuredMax) && configuredMax > 0 ? Math.floor(configuredMax) : defaultMax;
+
+  const defaultWindowMs = 60 * 60 * 1000;
+  const configuredWindowMs = Number(process.env.STORY_AUDIO_GENERATION_LIMIT_WINDOW_MS || defaultWindowMs);
+  const windowMs = Number.isFinite(configuredWindowMs) && configuredWindowMs > 0 ? Math.floor(configuredWindowMs) : defaultWindowMs;
+
   return rateLimit({
-    windowMs: 60 * 60 * 1000,
-    max: isProduction ? 30 : 120,
+    windowMs,
+    max,
     store: getRateLimitStore(),
     standardHeaders: true,
     legacyHeaders: false,
     message: {
       success: false,
-      error: 'Too many story-audio requests. Please try again later.',
+      error: 'Too many story-audio generation requests. Please try again later.',
     },
   });
 }
@@ -236,7 +257,7 @@ function createPublicRouter({ db }: { db: any }): Router {
 
   // Apply rate limiting to contact endpoint
   const contactLimiter = createContactRateLimiter();
-  const storyAudioLimiter = createStoryAudioRateLimiter();
+  const storyAudioGenerationLimiter = createStoryAudioGenerationRateLimiter();
 
   /**
    * POST /contact
@@ -303,7 +324,7 @@ function createPublicRouter({ db }: { db: any }): Router {
     }
   );
 
-  router.post('/story-audio/ensure', storyAudioLimiter, async (req: Request, res: Response) => {
+  const prepareStoryAudioEnsure = async (req: Request, res: Response, next: NextFunction) => {
     const parsed = StoryAudioEnsureBodySchema.safeParse(req.body || {});
     if (!parsed.success) {
       return res.status(400).json({
@@ -365,6 +386,29 @@ function createPublicRouter({ db }: { db: any }): Router {
         error: error instanceof Error ? error.message : String(error),
       });
     }
+
+    (req as StoryAudioEnsureRequest).storyAudioEnsureContext = {
+      page,
+      text,
+      voice,
+      totalPages,
+      objectPath,
+      publicUrl,
+    };
+
+    return next();
+  };
+
+  router.post('/story-audio/ensure', prepareStoryAudioEnsure, storyAudioGenerationLimiter, async (req: Request, res: Response) => {
+    const ensureContext = (req as StoryAudioEnsureRequest).storyAudioEnsureContext;
+    if (!ensureContext) {
+      return res.status(500).json({
+        success: false,
+        error: 'Story-audio request context missing',
+      });
+    }
+
+    const { page, text, voice, objectPath, publicUrl } = ensureContext;
 
     if (!openai?.audio?.speech?.create || typeof openai.audio.speech.create !== 'function') {
       return res.status(503).json({

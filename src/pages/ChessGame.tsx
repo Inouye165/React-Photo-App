@@ -6,7 +6,7 @@ import { Chessboard } from 'react-chessboard'
 import { getDocument, GlobalWorkerOptions, type PDFDocumentProxy } from 'pdfjs-dist'
 import pdfWorkerUrl from 'pdfjs-dist/build/pdf.worker.min.mjs?url'
 import { abortGame, fetchGame, fetchGameMembers, makeMove, restartGame } from '../api/games'
-import { analyzeGameForMe, ensureStoryAudio, getStoryAudioSetupStatus, type ChessTutorAnalysis } from '../api/chessTutor'
+import { analyzeGameForMe, ensureStoryAudio, getStoryAudioSetupStatus, preloadStoryAudioManifest, type ChessTutorAnalysis } from '../api/chessTutor'
 import { createDirectorScriptForPage, type StoryDirectorAction, type StoryHighlightTone } from '../data/storyTimeline'
 import Toast from '../components/Toast'
 import type { GameMemberProfile, GameRow } from '../api/games'
@@ -820,6 +820,10 @@ function ChessStoryModal({
   useEffect(() => {
     if (!open) return
     let cancelled = false
+
+    void preloadStoryAudioManifest(STORY_AUDIO_SLUG).catch(() => {
+      // Manifest preloading is opportunistic; runtime ensure fallback remains authoritative.
+    })
 
     void getStoryAudioSetupStatus()
       .then((status) => {
