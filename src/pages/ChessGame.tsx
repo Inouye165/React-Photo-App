@@ -423,8 +423,10 @@ const RANK_DEMO_SQUARES: string[] = ['a2', 'b2', 'c2', 'd2', 'e2', 'f2', 'g2', '
 const FILE_DEMO_SQUARES: string[] = ['e1', 'e2', 'e3', 'e4', 'e5', 'e6', 'e7', 'e8']
 const DEFAULT_CHESS_STORY_PDF_URL = '/chess-story/architect-of-squares.pdf'
 const CHESS_STORY_PDF_URL = String(import.meta.env.VITE_CHESS_STORY_PDF_URL || DEFAULT_CHESS_STORY_PDF_URL).trim() || DEFAULT_CHESS_STORY_PDF_URL
+const CHESS_STORY_TTS_VOICE = 'shimmer'
 const STORY_MANUAL_NARRATION_STORAGE_KEY = 'chess-story-manual-narration'
 const STORY_AUDIO_SLUG = 'architect-of-squares'
+const NARRATION_FALLBACK_WORDS_PER_SECOND = 2.7
 const STORY_DIRECTOR_SYNC_INTERVAL_MS = 250
 
 if (typeof window !== 'undefined') {
@@ -489,6 +491,70 @@ function formatAudioTime(seconds: number): string {
   const mins = Math.floor(totalSeconds / 60)
   const secs = totalSeconds % 60
   return `${mins}:${String(secs).padStart(2, '0')}`
+}
+
+function splitManualNarrationIntoPages(rawNarration: string): string[] {
+  return rawNarration
+    .split(/\n\s*---+\s*\n/g)
+    .map((pageText) => pageText.trim())
+    .filter((pageText) => pageText.length > 0)
+}
+
+type NarrationSource = 'pdf-extracted' | 'manual-page' | 'manual-fallback' | 'none'
+
+type NarrationResolution = {
+  text: string
+  source: NarrationSource
+}
+
+type PdfTextOverlayItem = {
+  key: string
+  text: string
+  left: number
+  top: number
+  width: number
+  height: number
+  fontSize: number
+  startWordIndex: number
+  endWordIndex: number
+}
+
+function resolveNarrationForPage(pageNumber: number, extractedText: string, manualNarrationPages: string[]): NarrationResolution {
+  const normalizedExtractedText = extractedText.replace(/\s+/g, ' ').trim()
+  if (normalizedExtractedText.length > 0) {
+    return {
+      text: normalizedExtractedText,
+      source: 'pdf-extracted',
+    }
+  }
+
+  const exactPageManualText = manualNarrationPages[pageNumber - 1]
+  if (exactPageManualText && exactPageManualText.length > 0) {
+    return {
+      text: exactPageManualText,
+      source: 'manual-page',
+    }
+  }
+
+  const firstManualText = manualNarrationPages[0]
+  if (firstManualText && firstManualText.length > 0) {
+    return {
+      text: firstManualText,
+      source: 'manual-fallback',
+    }
+  }
+
+  return {
+    text: '',
+    source: 'none',
+  }
+}
+
+function narrationSourceLabel(source: NarrationSource): string {
+  if (source === 'pdf-extracted') return 'PDF extracted text'
+  if (source === 'manual-page') return 'Manual narration (matching page)'
+  if (source === 'manual-fallback') return 'Manual narration (first block fallback)'
+  return 'No narration source'
 }
 
 function isUciLikeMove(move: string): boolean {
@@ -601,13 +667,29 @@ function ChessStoryModal({
   const [activeActionLabel, setActiveActionLabel] = useState<string | null>(null)
   const [audioCurrentTime, setAudioCurrentTime] = useState(0)
   const [audioDuration, setAudioDuration] = useState(0)
+  const [activeNarrationText, setActiveNarrationText] = useState('')
+  const [activeNarrationSource, setActiveNarrationSource] = useState<NarrationSource>('none')
+  const [pageTextOverlayItems, setPageTextOverlayItems] = useState<PdfTextOverlayItem[]>([])
+  const [renderedPageSize, setRenderedPageSize] = useState({ width: 0, height: 0 })
+  const [hasExtractablePdfText, setHasExtractablePdfText] = useState<boolean | null>(null)
 
-  const manualNarrationPages = useMemo(
-    () => manualNarration
-      .split(/\n\s*---+\s*\n/g)
-      .map((pageText) => pageText.trim()),
-    [manualNarration],
+  const manualNarrationPages = useMemo(() => splitManualNarrationIntoPages(manualNarration), [manualNarration])
+  const narrationWords = useMemo(
+    () => activeNarrationText.split(/\s+/).map((word) => word.trim()).filter((word) => word.length > 0),
+    [activeNarrationText],
   )
+  const activeNarrationWordIndex = useMemo(() => {
+    if (!isNarrating || narrationWords.length === 0) return -1
+
+    if (audioDuration > 0 && Number.isFinite(audioDuration)) {
+      const progress = Math.min(1, Math.max(0, audioCurrentTime / audioDuration))
+      return Math.min(narrationWords.length - 1, Math.floor(progress * narrationWords.length))
+    }
+
+    const fallbackIndex = Math.floor(Math.max(0, audioCurrentTime) * NARRATION_FALLBACK_WORDS_PER_SECOND)
+    return Math.min(narrationWords.length - 1, fallbackIndex)
+  }, [isNarrating, audioCurrentTime, audioDuration, narrationWords.length])
+  const shouldHighlightOnPdf = activeNarrationSource === 'pdf-extracted' && activeNarrationWordIndex >= 0
 
   const stopActiveAudio = useCallback(() => {
     const activeAudio = activeAudioRef.current
@@ -631,6 +713,8 @@ function ChessStoryModal({
     setIsNarrating(false)
     setAudioCurrentTime(0)
     setAudioDuration(0)
+    setActiveNarrationText('')
+    setActiveNarrationSource('none')
     stopActiveAudio()
   }, [stopActiveAudio])
 
@@ -681,26 +765,40 @@ function ChessStoryModal({
     const text = textContent.items
       .map((item) => ('str' in item ? item.str : ''))
       .join(' ')
-      .replace(/\s+/g, ' ')
-      .trim()
 
     pageTextCacheRef.current.set(pageNumber, text)
     return text
   }, [pdfDocument])
 
-  const getNarrationTextForPage = useCallback(async (pageNumber: number): Promise<string> => {
+  const getNarrationForPage = useCallback(async (pageNumber: number): Promise<NarrationResolution> => {
     const extractedText = await getPageText(pageNumber)
-    if (extractedText.length > 0) return extractedText
+    return resolveNarrationForPage(pageNumber, extractedText, manualNarrationPages)
+  }, [getPageText, manualNarrationPages])
 
-    const manualPageText = manualNarrationPages[pageNumber - 1]
-    if (manualPageText && manualPageText.length > 0) return manualPageText
-
-    if (manualNarrationPages.length === 1 && manualNarrationPages[0]) {
-      return manualNarrationPages[0]
+  const findNarrationStartingAtPage = useCallback(async (pageNumber: number): Promise<{ pageNumber: number; narration: NarrationResolution }> => {
+    const currentPageNarration = await getNarrationForPage(pageNumber)
+    if (currentPageNarration.text.length > 0 || pageNumber >= totalPages) {
+      return {
+        pageNumber,
+        narration: currentPageNarration,
+      }
     }
 
-    return ''
-  }, [getPageText, manualNarrationPages])
+    for (let candidatePage = pageNumber + 1; candidatePage <= totalPages; candidatePage += 1) {
+      const candidateNarration = await getNarrationForPage(candidatePage)
+      if (candidateNarration.source === 'pdf-extracted' && candidateNarration.text.length > 0) {
+        return {
+          pageNumber: candidatePage,
+          narration: candidateNarration,
+        }
+      }
+    }
+
+    return {
+      pageNumber,
+      narration: currentPageNarration,
+    }
+  }, [getNarrationForPage, totalPages])
 
   useEffect(() => {
     if (typeof window === 'undefined') return
@@ -764,6 +862,9 @@ function ChessStoryModal({
     setLoadError(null)
     setCurrentPage(1)
     setTotalPages(1)
+    setHasExtractablePdfText(null)
+    setPageTextOverlayItems([])
+    setRenderedPageSize({ width: 0, height: 0 })
     pageTextCacheRef.current.clear()
 
     let loadingTask: ReturnType<typeof getDocument> | null = null
@@ -803,6 +904,53 @@ function ChessStoryModal({
   }, [open, pdfUrl, stopNarration, resetDirectorForPage])
 
   useEffect(() => {
+    if (!open || !pdfDocument) {
+      setHasExtractablePdfText(null)
+      return
+    }
+
+    let cancelled = false
+
+    const detectPdfText = async () => {
+      setHasExtractablePdfText(null)
+
+      try {
+        const pageCount = Math.max(1, pdfDocument.numPages || 1)
+        for (let pageNumber = 1; pageNumber <= pageCount; pageNumber += 1) {
+          const page = await pdfDocument.getPage(pageNumber)
+          if (cancelled) return
+
+          const textContent = await page.getTextContent()
+          const text = textContent.items
+            .map((item) => ('str' in item ? item.str : ''))
+            .join(' ')
+            .replace(/\s+/g, ' ')
+            .trim()
+
+          if (text.length > 0) {
+            setHasExtractablePdfText(true)
+            return
+          }
+        }
+
+        if (!cancelled) {
+          setHasExtractablePdfText(false)
+        }
+      } catch {
+        if (!cancelled) {
+          setHasExtractablePdfText(false)
+        }
+      }
+    }
+
+    void detectPdfText()
+
+    return () => {
+      cancelled = true
+    }
+  }, [open, pdfDocument])
+
+  useEffect(() => {
     if (!open || !pdfDocument) return
     let cancelled = false
 
@@ -828,6 +976,7 @@ function ChessStoryModal({
 
         canvas.width = Math.floor(viewport.width)
         canvas.height = Math.floor(viewport.height)
+        setRenderedPageSize({ width: canvas.width, height: canvas.height })
 
         const renderTask = page.render({
           canvas,
@@ -835,9 +984,75 @@ function ChessStoryModal({
           viewport,
         })
         await renderTask.promise
+
+        try {
+          const textContent = await page.getTextContent()
+          const viewportAny = viewport as unknown as { convertToViewportPoint?: (x: number, y: number) => number[] }
+          let runningWordIndex = 0
+          const overlayItems = textContent.items
+            .map((item, index) => {
+              if (!('str' in item)) return null
+
+              const normalizedText = item.str.replace(/\s+/g, ' ').trim()
+              if (!normalizedText) return null
+
+              const words = normalizedText.split(/\s+/).filter((word) => word.length > 0)
+              if (words.length === 0) return null
+
+              const transform = Array.isArray((item as { transform?: unknown }).transform)
+                ? ((item as { transform: number[] }).transform)
+                : null
+              const rawX = transform?.[4] ?? 0
+              const rawY = transform?.[5] ?? 0
+
+              const convertedPoint = typeof viewportAny.convertToViewportPoint === 'function'
+                ? viewportAny.convertToViewportPoint(rawX, rawY)
+                : [rawX * scale, rawY * scale]
+              const left = Number(convertedPoint[0] ?? 0)
+              const baselineY = Number(convertedPoint[1] ?? 0)
+
+              const itemHeight = typeof (item as { height?: unknown }).height === 'number'
+                ? Math.abs((item as { height: number }).height * scale)
+                : 16
+              const widthFromItem = typeof (item as { width?: unknown }).width === 'number'
+                ? Math.abs((item as { width: number }).width * scale)
+                : 0
+              const widthFromText = Math.max(8, normalizedText.length * Math.max(10, itemHeight) * 0.42)
+              const width = Math.max(1, widthFromItem || widthFromText)
+              const height = Math.max(1, itemHeight)
+              const top = Math.max(0, baselineY - height)
+
+              const startWordIndex = runningWordIndex
+              const endWordIndex = runningWordIndex + words.length - 1
+              runningWordIndex += words.length
+
+              return {
+                key: `${currentPage}-${index}-${Math.round(left)}-${Math.round(top)}`,
+                text: normalizedText,
+                left,
+                top,
+                width,
+                height,
+                fontSize: Math.max(10, height),
+                startWordIndex,
+                endWordIndex,
+              } as PdfTextOverlayItem
+            })
+            .filter((item): item is PdfTextOverlayItem => Boolean(item))
+
+          if (!cancelled) {
+            setPageTextOverlayItems(overlayItems)
+          }
+        } catch (overlayErr) {
+          console.warn('[story/text-overlay] Failed to extract text overlay items:', overlayErr)
+          if (!cancelled) {
+            setPageTextOverlayItems([])
+          }
+        }
       } catch {
         if (!cancelled) {
           setLoadError('Unable to render this page of the story.')
+          setPageTextOverlayItems([])
         }
       }
     }
@@ -1014,15 +1229,27 @@ function ChessStoryModal({
         return
       }
 
-      const text = await getNarrationTextForPage(currentPage)
+      const narrationResult = await findNarrationStartingAtPage(currentPage)
       if (cancelled || narrationTokenRef.current !== narrationToken) return
+
+      if (narrationResult.pageNumber !== currentPage) {
+        setCurrentPage(narrationResult.pageNumber)
+        return
+      }
+
+      const narration = narrationResult.narration
+      const text = narration.text
+      if (cancelled || narrationTokenRef.current !== narrationToken) return
+      setActiveNarrationSource(narration.source)
 
       if (!text) {
         setIsNarrating(false)
+        setActiveNarrationText('')
         setLoadError('No readable PDF text found. Paste story text below (split pages with ---) to enable narration.')
         return
       }
 
+      setActiveNarrationText(text)
       setLoadError(null)
       let audioSourceUrl = ''
       let createdObjectUrl: string | null = null
@@ -1033,7 +1260,7 @@ function ChessStoryModal({
           page: currentPage,
           totalPages,
           text,
-          voice: 'shimmer',
+          voice: CHESS_STORY_TTS_VOICE,
         })
 
         if (ensuredAudio.audioBase64 && ensuredAudio.audioBase64.length > 0) {
@@ -1090,7 +1317,7 @@ function ChessStoryModal({
     currentPage,
     totalPages,
     autoTurnPages,
-    getNarrationTextForPage,
+    findNarrationStartingAtPage,
     stopActiveAudio,
     resetDirectorForPage,
   ])
@@ -1160,6 +1387,7 @@ function ChessStoryModal({
           </button>
           <span className="text-xs text-slate-500">Page {currentPage}/{totalPages}</span>
           <span className="text-xs text-slate-500">Audio {formatAudioTime(audioCurrentTime)} / {formatAudioTime(audioDuration)}</span>
+          <span className="text-xs text-slate-500">Source: {narrationSourceLabel(activeNarrationSource)}</span>
         </div>
 
         {audioSetupWarnings.length > 0 ? (
@@ -1178,7 +1406,45 @@ function ChessStoryModal({
             <div ref={pageContainerRef} className="min-h-0 overflow-hidden rounded-lg border border-slate-200 bg-slate-50 p-2">
               {isLoadingDocument ? <div className="text-sm text-slate-600">Loading story PDF…</div> : null}
               {loadError ? <div className="text-sm text-red-600">{loadError}</div> : null}
-              {!isLoadingDocument && !loadError ? <canvas ref={canvasRef} className="mx-auto block max-h-full max-w-full" /> : null}
+              {!isLoadingDocument && !loadError ? (
+                <div className="relative mx-auto block" style={{ width: renderedPageSize.width || undefined, height: renderedPageSize.height || undefined }}>
+                  <canvas ref={canvasRef} className="block max-h-full max-w-full" />
+                  {pageTextOverlayItems.length > 0 ? (
+                    <div className="pointer-events-none absolute inset-0">
+                      {pageTextOverlayItems.map((item) => {
+                        const isActiveWord = shouldHighlightOnPdf
+                          && activeNarrationWordIndex >= item.startWordIndex
+                          && activeNarrationWordIndex <= item.endWordIndex
+
+                        return (
+                          <span
+                            key={item.key}
+                            data-testid={isActiveWord ? 'story-pdf-highlight-active' : undefined}
+                            className={isActiveWord ? 'absolute rounded' : 'absolute'}
+                            style={{
+                              left: item.left,
+                              top: item.top,
+                              width: item.width,
+                              height: item.height,
+                              display: 'block',
+                              fontSize: item.fontSize,
+                              lineHeight: 1,
+                              color: 'transparent',
+                              backgroundColor: isActiveWord ? 'rgba(191, 219, 254, 0.60)' : 'transparent',
+                              mixBlendMode: isActiveWord ? 'multiply' : 'normal',
+                              boxShadow: isActiveWord ? 'inset 0 -1.5px 0 rgba(59, 130, 246, 0.58)' : 'none',
+                              zIndex: isActiveWord ? 2 : 1,
+                              whiteSpace: 'pre',
+                            }}
+                          >
+                            {item.text}
+                          </span>
+                        )
+                      })}
+                    </div>
+                  ) : null}
+                </div>
+              ) : null}
             </div>
 
             <div className="rounded-lg border border-slate-200 bg-white p-2">
@@ -1201,22 +1467,24 @@ function ChessStoryModal({
           </div>
         </div>
 
-        <div className="mt-2 rounded-lg border border-slate-200 bg-white p-2">
-          <label htmlFor="manual-story-narration" className="mb-1 block text-xs font-semibold text-slate-600">
-            Manual narration (for image-only PDFs)
-          </label>
-          <textarea
-            id="manual-story-narration"
-            value={manualNarration}
-            onChange={(event) => {
-              setLoadError(null)
-              setManualNarration(event.target.value)
-            }}
-            rows={3}
-            placeholder="Paste story text here. Use a line with --- between pages."
-            className="w-full rounded border border-slate-200 px-2 py-1 text-xs text-slate-700"
-          />
-        </div>
+        {hasExtractablePdfText === false ? (
+          <div className="mt-2 rounded-lg border border-slate-200 bg-white p-2">
+            <label htmlFor="manual-story-narration" className="mb-1 block text-xs font-semibold text-slate-600">
+              Manual narration (for image-only PDFs)
+            </label>
+            <textarea
+              id="manual-story-narration"
+              value={manualNarration}
+              onChange={(event) => {
+                setLoadError(null)
+                setManualNarration(event.target.value)
+              }}
+              rows={3}
+              placeholder="Paste story text here. Use a line with --- between pages."
+              className="w-full rounded border border-slate-200 px-2 py-1 text-xs text-slate-700"
+            />
+          </div>
+        ) : null}
       </div>
     </div>
   )
