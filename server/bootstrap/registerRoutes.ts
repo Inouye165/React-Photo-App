@@ -71,6 +71,7 @@ export function registerRoutes(app: Application, { db, supabase, socketManager, 
   const createChatRouter = require('../routes/chat');
   const createWhiteboardRouter = require('../routes/whiteboard');
   const createChessTutorRouter = require('../routes/chessTutor');
+  const createActivityRouter = require('../routes/activity');
 
   const { securityErrorHandler } = require('../middleware/security');
   const { authenticateToken, requireRole } = require('../middleware/auth');
@@ -300,6 +301,16 @@ export function registerRoutes(app: Application, { db, supabase, socketManager, 
     chessTutorRouter
   );
   app.use('/api/v1/chess-tutor', authenticateToken, chessTutorRouter);
+
+  // User activity logging (auth required).
+  const activityRouter = createActivityRouter({ db });
+  app.use(
+    '/api/activity',
+    createLegacyApiDeprecationMiddleware([{ legacyBase: '/api/activity', successorBase: '/api/v1/activity' }]),
+    authenticateToken,
+    activityRouter
+  );
+  app.use('/api/v1/activity', authenticateToken, activityRouter);
 
   // Debug/diagnostic routes require normal authentication.
   // NOTE: Mounted in all environments; additional hardening can be done inside the router

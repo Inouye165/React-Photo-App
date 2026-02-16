@@ -51,6 +51,14 @@ interface AccessRequestRow {
   updated_at: string;
 }
 
+interface UserActivityRow {
+  id: string;
+  user_id: string;
+  action: string;
+  metadata: Record<string, unknown> | null;
+  created_at: string;
+}
+
 interface AuthenticatedRequest extends Request {
   // Express request properties (explicit here to satisfy server-side type-checking)
   body: any;
@@ -576,6 +584,89 @@ function createAdminRouter({ db }: { db: any }): Router {
     } catch (err) {
       // SECURITY: Avoid logging tainted strings from req.query or feedback contents.
       console.error('[admin] Feedback error:', err);
+      return res.status(500).json({ success: false, error: 'Internal server error' });
+    }
+  });
+
+  /**
+   * GET /api/admin/activity
+   *
+   * Fetch user activity log entries for admin auditing.
+   *
+   * Query parameters:
+   * - limit: Number of records to return (default: 50, max: 200)
+   * - offset: Pagination offset (default: 0)
+   * - action: Optional action filter
+   * - user_id: Optional user ID filter
+   */
+  router.get('/activity', async (req: AuthenticatedRequest, res: Response) => {
+    try {
+      if (!ensureAdmin(req, res)) return;
+
+      const limitResult = parsePaginationInt(req.query.limit, 50, { min: 0, max: 200 });
+      if (limitResult.type === 'error') {
+        return res.status(400).json({ success: false, error: limitResult.error });
+      }
+
+      const offsetResult = parsePaginationInt(req.query.offset, 0, { min: 0 });
+      if (offsetResult.type === 'error') {
+        return res.status(400).json({ success: false, error: offsetResult.error });
+      }
+
+      const limit = limitResult.value;
+      const offset = offsetResult.value;
+      const rawAction = req.query.action;
+      const rawUserId = req.query.user_id;
+
+      const action = typeof rawAction === 'string' && rawAction.trim().length > 0
+        ? rawAction.trim().toLowerCase()
+        : null;
+
+      const userId = typeof rawUserId === 'string' && rawUserId.trim().length > 0
+        ? rawUserId.trim()
+        : null;
+
+      if (action && (action.length > 50 || !/^[a-z0-9_]+$/i.test(action))) {
+        return res.status(400).json({ success: false, error: 'Invalid action filter' });
+      }
+
+      if (userId && userId.length > 64) {
+        return res.status(400).json({ success: false, error: 'Invalid user_id filter' });
+      }
+
+      let query = db('user_activity_log')
+        .select('id', 'user_id', 'action', 'metadata', 'created_at');
+
+      if (action) {
+        query = query.where('action', action);
+      }
+
+      if (userId) {
+        query = query.where('user_id', userId);
+      }
+
+      const result = await query.orderBy('created_at', 'desc').limit(limit).offset(offset);
+
+      let countQuery = db('user_activity_log');
+      if (action) {
+        countQuery = countQuery.where('action', action);
+      }
+      if (userId) {
+        countQuery = countQuery.where('user_id', userId);
+      }
+
+      const countResult = await countQuery.count('* as total');
+      const total = parseInt(countResult[0]?.total || '0', 10);
+
+      return res.json({
+        success: true,
+        data: result as UserActivityRow[],
+        total,
+        limit,
+        offset,
+      });
+    } catch (err) {
+      console.error('[admin] Activity error:', err);
       return res.status(500).json({ success: false, error: 'Internal server error' });
     }
   });

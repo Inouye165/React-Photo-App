@@ -1,6 +1,7 @@
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useCallback } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { useAuth } from '../contexts/AuthContext';
+import { useActivityTracker } from '../hooks/useActivityTracker';
 import LandingPage from '../pages/LandingPage';
 import DisclaimerModal from '../components/DisclaimerModal';
 
@@ -10,6 +11,17 @@ interface AuthWrapperProps {
 const AuthWrapper = ({ children }: AuthWrapperProps) => {
   const { user, loading, authReady, logout } = useAuth();
   const navigate = useNavigate();
+
+  // --- Activity tracking & inactivity auto-logout ---
+  const handleInactivityLogout = useCallback(async () => {
+    await logout();
+    navigate('/');
+  }, [logout, navigate]);
+
+  useActivityTracker({
+    isAuthenticated: Boolean(user && authReady),
+    onInactivityLogout: handleInactivityLogout,
+  });
 
   // Initialize state based on current hash to prevent rendering children during invite redirect
   const [isInviteRedirecting, setIsInviteRedirecting] = useState(() => {

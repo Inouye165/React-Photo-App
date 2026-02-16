@@ -45,6 +45,11 @@ const replaceHostInConnectionString = (connectionString, newHost) => {
   }
 };
 
+const stripSslModeParam = (connectionString) => {
+  if (!connectionString) return connectionString;
+  return String(connectionString).replace(/[?&]sslmode=[^&]+/gi, '');
+};
+
 const isEnvFalse = (name) => {
   const raw = process.env[name];
   if (raw === undefined || raw === null) return false;
@@ -122,13 +127,15 @@ const createPostgresConfig = (env) => {
       ? process.env.SUPABASE_DB_URL_MIGRATIONS
       : (process.env.SUPABASE_DB_URL || process.env.DATABASE_URL);
 
+  const sanitizedConnectionString = stripSslModeParam(connectionString);
+
   const baseConnection = {
     // Prefer SUPABASE_DB_URL (pooler) over DATABASE_URL (direct) in dev/test
     // because the pooler endpoint (port 6543) is often more reliable.
     //
     // For production migrations/DDL, you may want to provide a direct URL via
     // SUPABASE_DB_URL_MIGRATIONS to avoid PgBouncer/transaction quirks.
-    connectionString,
+    connectionString: sanitizedConnectionString,
     ssl: getSslConfig(env),
     // Keepalive settings to prevent connection drops
     keepAlive: true,
@@ -143,7 +150,7 @@ const createPostgresConfig = (env) => {
           const replicaConnectionString = replaceHostInConnectionString(connectionString, host);
           return {
             ...baseConnection,
-            connectionString: replicaConnectionString,
+            connectionString: stripSslModeParam(replicaConnectionString),
             ssl: baseConnection.ssl ? { ...baseConnection.ssl } : baseConnection.ssl
           };
         })
