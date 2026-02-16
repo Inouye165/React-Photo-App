@@ -78,3 +78,30 @@ describe('AdminDashboard - Access requests tab', () => {
     expect(call.method).toBe('GET');
   });
 });
+
+describe('AdminDashboard - Activity tab', () => {
+  beforeEach(() => {
+    requestMock.mockReset();
+    mockAuthState = { user: { app_metadata: { role: 'admin' } } };
+  });
+
+  it('fetches activity logs when clicked', async () => {
+    requestMock.mockResolvedValue({ success: true, data: [], total: 0, limit: 50, offset: 0 });
+
+    render(
+      <MemoryRouter>
+        <AdminDashboard />
+      </MemoryRouter>
+    );
+
+    fireEvent.click(screen.getByText('Activity Log'));
+
+    await waitFor(() => {
+      expect(requestMock).toHaveBeenCalled();
+    });
+
+    const call = requestMock.mock.calls.find(Boolean)?.[0];
+    expect(call.path).toBe('/api/admin/activity');
+    expect(call.method).toBe('GET');
+  });
+});

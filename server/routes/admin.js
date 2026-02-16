@@ -431,6 +431,81 @@ function createAdminRouter({ db }) {
   });
 
   /**
+   * GET /api/admin/activity
+   *
+   * Fetch user activity logs for admin auditing.
+   *
+   * Query parameters:
+   * - limit: Number of records to return (default: 50, max: 200)
+   * - offset: Pagination offset (default: 0)
+   * - action: Optional action filter
+   * - user_id: Optional user id filter
+   */
+  router.get('/activity', async (req, res) => {
+    try {
+      if (!ensureAdmin(req, res)) return;
+
+      const limit = Math.min(parseInt(req.query.limit, 10) || 50, 200);
+      const offset = Math.max(parseInt(req.query.offset, 10) || 0, 0);
+
+      const rawAction = req.query.action;
+      const rawUserId = req.query.user_id;
+
+      const action =
+        typeof rawAction === 'string' && rawAction.trim().length > 0
+          ? rawAction.trim().toLowerCase()
+          : null;
+
+      const userId =
+        typeof rawUserId === 'string' && rawUserId.trim().length > 0
+          ? rawUserId.trim()
+          : null;
+
+      if (action && (action.length > 50 || !/^[a-z0-9_]+$/i.test(action))) {
+        return res.status(400).json({ success: false, error: 'Invalid action filter' });
+      }
+
+      if (userId && userId.length > 64) {
+        return res.status(400).json({ success: false, error: 'Invalid user_id filter' });
+      }
+
+      let query = db('user_activity_log').select('id', 'user_id', 'action', 'metadata', 'created_at');
+
+      if (action) {
+        query = query.where('action', action);
+      }
+
+      if (userId) {
+        query = query.where('user_id', userId);
+      }
+
+      const result = await query.orderBy('created_at', 'desc').limit(limit).offset(offset);
+
+      let countQuery = db('user_activity_log');
+      if (action) {
+        countQuery = countQuery.where('action', action);
+      }
+      if (userId) {
+        countQuery = countQuery.where('user_id', userId);
+      }
+
+      const countResult = await countQuery.count('* as total');
+      const total = parseInt(countResult[0]?.total || '0', 10);
+
+      return res.json({
+        success: true,
+        data: result,
+        total,
+        limit,
+        offset,
+      });
+    } catch (err) {
+      console.error('[admin] Activity error:', err);
+      return res.status(500).json({ success: false, error: 'Internal server error' });
+    }
+  });
+
+  /**
    * GET /api/admin/access-requests
    *
    * Fetch access request submissions from the public contact form.

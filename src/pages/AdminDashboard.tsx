@@ -15,7 +15,7 @@
 import React, { useState, useEffect } from 'react';
 import { useAuth } from '../contexts/AuthContext';
 import { Link } from 'react-router-dom';
-import { Users, Sparkles, Mail, CheckCircle, XCircle, AlertCircle, MessageSquare, Inbox, Trash2 } from 'lucide-react';
+import { Users, Sparkles, Mail, CheckCircle, XCircle, AlertCircle, MessageSquare, Inbox, Trash2, History } from 'lucide-react';
 import { getAuthHeadersAsync } from '../api/auth';
 import { request } from '../api/httpClient';
 
@@ -123,7 +123,24 @@ interface AccessRequestsResponse {
   error?: string;
 }
 
-type TabType = 'invites' | 'suggestions' | 'comments' | 'feedback' | 'access-requests';
+interface AdminActivityLog {
+  id: string;
+  user_id: string;
+  action: string;
+  metadata: Record<string, unknown> | null;
+  created_at: string;
+}
+
+interface ActivityResponse {
+  success: boolean;
+  data?: AdminActivityLog[];
+  total?: number;
+  limit?: number;
+  offset?: number;
+  error?: string;
+}
+
+type TabType = 'invites' | 'suggestions' | 'comments' | 'feedback' | 'activity' | 'access-requests';
 
 const EMAIL_REGEX = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
 
@@ -163,6 +180,14 @@ export default function AdminDashboard() {
   const [feedbackOffset, setFeedbackOffset] = useState(0);
   const feedbackLimit = 50;
 
+  // Activity tab state
+  const [activityLogs, setActivityLogs] = useState<AdminActivityLog[]>([]);
+  const [activityLoading, setActivityLoading] = useState(false);
+  const [activityError, setActivityError] = useState<string | null>(null);
+  const [activityTotal, setActivityTotal] = useState(0);
+  const [activityOffset, setActivityOffset] = useState(0);
+  const activityLimit = 50;
+
   // Access requests tab state
   const [accessRequests, setAccessRequests] = useState<AccessRequest[]>([]);
   const [accessRequestsLoading, setAccessRequestsLoading] = useState(false);
@@ -184,10 +209,49 @@ export default function AdminDashboard() {
     if (activeTab === 'feedback') {
       fetchFeedback({ offset: 0, append: false });
     }
+    if (activeTab === 'activity') {
+      fetchActivity({ offset: 0, append: false });
+    }
     if (activeTab === 'access-requests') {
       fetchAccessRequests({ offset: 0, append: false });
     }
   }, [activeTab, stateFilter, reviewedFilter, feedbackStatusFilter]);
+
+  const fetchActivity = async ({ offset, append }: { offset: number; append: boolean }) => {
+    setActivityLoading(true);
+    setActivityError(null);
+
+    try {
+      const headers = await getAuthHeadersAsync(false);
+
+      const query: Record<string, string> = {
+        limit: String(activityLimit),
+        offset: String(offset),
+      };
+
+      const data = await request<ActivityResponse>({
+        path: '/api/admin/activity',
+        method: 'GET',
+        query,
+        headers,
+      });
+
+      if (!data.success) {
+        throw new Error(data.error || 'Failed to fetch activity logs');
+      }
+
+      const rows = data.data || [];
+      setActivityLogs(prev => (append ? [...prev, ...rows] : rows));
+      setActivityTotal(data.total || 0);
+      setActivityOffset((data.offset || offset) + (data.limit || activityLimit));
+    } catch (err) {
+      const message = err instanceof Error ? err.message : 'Failed to load activity logs';
+      setActivityError(message);
+      console.error('[admin] Fetch activity error:', err);
+    } finally {
+      setActivityLoading(false);
+    }
+  };
 
   const fetchAccessRequests = async ({ offset, append }: { offset: number; append: boolean }) => {
     setAccessRequestsLoading(true);
@@ -556,6 +620,19 @@ export default function AdminDashboard() {
               >
                 <Inbox size={18} />
                 <span>Access Requests</span>
+              </button>
+              <button
+                onClick={() => setActiveTab('activity')}
+                className={`
+                  flex items-center gap-2 px-6 py-4 text-sm font-medium border-b-2 transition-colors
+                  ${activeTab === 'activity'
+                    ? 'border-blue-500 text-blue-600'
+                    : 'border-transparent text-gray-500 hover:text-gray-700 hover:border-gray-300'
+                  }
+                `}
+              >
+                <History size={18} />
+                <span>Activity Log</span>
               </button>
             </nav>
           </div>
@@ -930,6 +1007,82 @@ export default function AdminDashboard() {
                           className="px-4 py-2 rounded-lg bg-blue-600 text-white hover:bg-blue-700 disabled:opacity-50 disabled:cursor-not-allowed"
                         >
                           {feedbackLoading ? 'Loading…' : 'Load more'}
+                        </button>
+                      </div>
+                    )}
+                  </div>
+                )}
+              </div>
+            )}
+
+            {/* Activity Tab */}
+            {activeTab === 'activity' && (
+              <div>
+                <div className="flex items-center justify-between mb-6">
+                  <div>
+                    <h2 className="text-xl font-semibold text-gray-900">User Activity Log</h2>
+                    <p className="text-sm text-gray-600 mt-1">
+                      {activityTotal} log entr{activityTotal === 1 ? 'y' : 'ies'}
+                    </p>
+                  </div>
+                </div>
+
+                {activityLoading && activityLogs.length === 0 ? (
+                  <div className="text-center py-12">
+                    <div className="inline-block animate-spin rounded-full h-8 w-8 border-4 border-gray-300 border-t-blue-600"></div>
+                    <p className="mt-4 text-gray-600">Loading activity logs...</p>
+                  </div>
+                ) : activityError ? (
+                  <div className="bg-red-50 border border-red-200 rounded-lg p-4 text-red-800">
+                    <p className="font-medium">Error loading activity logs</p>
+                    <p className="text-sm mt-1">{activityError}</p>
+                  </div>
+                ) : activityLogs.length === 0 ? (
+                  <div className="text-center py-12 text-gray-500">
+                    <History className="mx-auto h-12 w-12 mb-4 opacity-50" />
+                    <p>No activity logs found</p>
+                  </div>
+                ) : (
+                  <div className="space-y-4">
+                    {activityLogs.map((log) => (
+                      <div key={log.id} className="bg-gray-50 rounded-lg p-4 border border-gray-200">
+                        <div className="flex items-start justify-between mb-3 gap-4">
+                          <div className="min-w-0">
+                            <h3 className="font-medium text-gray-900 truncate">{log.action}</h3>
+                            <p className="text-sm text-gray-500 break-all">
+                              User: {log.user_id}
+                            </p>
+                            <p className="text-xs text-gray-500 mt-1">
+                              {new Date(log.created_at).toLocaleString()}
+                            </p>
+                          </div>
+
+                          <span className="px-3 py-1 bg-blue-100 text-blue-800 text-xs font-medium rounded-full">
+                            Activity
+                          </span>
+                        </div>
+
+                        {log.metadata != null && (
+                          <div className="bg-white rounded border border-gray-200 p-3">
+                            <p className="text-xs font-medium text-gray-700 mb-2">Metadata:</p>
+                            <pre className="text-xs text-gray-600 overflow-x-auto">
+                              {typeof log.metadata === 'string'
+                                ? log.metadata
+                                : JSON.stringify(log.metadata, null, 2)}
+                            </pre>
+                          </div>
+                        )}
+                      </div>
+                    ))}
+
+                    {activityLogs.length < activityTotal && (
+                      <div className="pt-2">
+                        <button
+                          onClick={() => fetchActivity({ offset: activityOffset, append: true })}
+                          disabled={activityLoading}
+                          className="px-4 py-2 rounded-lg bg-blue-600 text-white hover:bg-blue-700 disabled:opacity-50 disabled:cursor-not-allowed"
+                        >
+                          {activityLoading ? 'Loading…' : 'Load more'}
                         </button>
                       </div>
                     )}
