@@ -22,7 +22,12 @@ vi.mock('./httpClient', () => ({
   API_BASE_URL: 'https://api.example.test',
 }))
 
-import { __resetStoryAudioCacheForTests, ensureStoryAudio } from './chessTutor'
+import {
+  __resetStoryAudioCacheForTests,
+  __setStoryAudioPrecomputedOnlyModeForTests,
+  ensureStoryAudio,
+  getStoryAudioClientMetrics,
+} from './chessTutor'
 
 async function computeStoryAudioHash(input: { text: string; totalPages: number; voice: string }) {
   const payload = JSON.stringify({
@@ -43,6 +48,7 @@ describe('chessTutor.ensureStoryAudio', () => {
     __resetStoryAudioCacheForTests()
 
     vi.stubGlobal('fetch', vi.fn(async () => ({ ok: false, status: 404 } as Response)))
+    __setStoryAudioPrecomputedOnlyModeForTests(null)
   })
 
   it('memoizes ensured audio URLs and skips repeat API calls for same narration payload', async () => {
@@ -161,5 +167,21 @@ describe('chessTutor.ensureStoryAudio', () => {
 
     expect(result.url).toBe('https://api.example.test/generated/page-1.mp3')
     expect(requestMock).toHaveBeenCalledTimes(1)
+    expect(getStoryAudioClientMetrics().ensureApiCalls).toBe(1)
+  })
+
+  it('does not call ensure API when precomputed-only mode is enabled', async () => {
+    __setStoryAudioPrecomputedOnlyModeForTests(true)
+
+    await expect(ensureStoryAudio({
+      storySlug: 'architect-of-squares',
+      page: 1,
+      totalPages: 8,
+      text: 'No precomputed file exists for this test text',
+      voice: 'shimmer',
+    })).rejects.toThrow('Runtime generation is disabled')
+
+    expect(requestMock).not.toHaveBeenCalled()
+    expect(getStoryAudioClientMetrics().ensureApiCalls).toBe(0)
   })
 })

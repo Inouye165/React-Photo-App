@@ -522,6 +522,55 @@ describe('Public API Routes', () => {
       expect(mockOpenAiSpeechCreate).toHaveBeenCalledTimes(2);
     });
 
+    it('blocks runtime generation in production by default on cache miss', async () => {
+      const originalNodeEnv = process.env.NODE_ENV;
+      const originalAllowRuntimeGeneration = process.env.STORY_AUDIO_ALLOW_RUNTIME_GENERATION;
+
+      process.env.NODE_ENV = 'production';
+      delete process.env.STORY_AUDIO_ALLOW_RUNTIME_GENERATION;
+      app = createTestApp();
+
+      try {
+        const response = await request(app)
+          .post('/api/public/story-audio/ensure')
+          .send(basePayload)
+          .expect(503);
+
+        expect(response.body.success).toBe(false);
+        expect(String(response.body.error || '')).toContain('Runtime generation is disabled');
+        expect(mockOpenAiSpeechCreate).toHaveBeenCalledTimes(0);
+      } finally {
+        process.env.NODE_ENV = originalNodeEnv;
+        if (originalAllowRuntimeGeneration === undefined) {
+          delete process.env.STORY_AUDIO_ALLOW_RUNTIME_GENERATION;
+        } else {
+          process.env.STORY_AUDIO_ALLOW_RUNTIME_GENERATION = originalAllowRuntimeGeneration;
+        }
+        app = createTestApp();
+      }
+    });
+
+    it('exposes story-audio telemetry counters via metrics endpoint', async () => {
+      await request(app)
+        .post('/api/public/story-audio/ensure')
+        .send(basePayload)
+        .expect(200);
+
+      const metricsResponse = await request(app)
+        .get('/api/public/story-audio/metrics')
+        .expect(200);
+
+      expect(metricsResponse.body.success).toBe(true);
+      expect(metricsResponse.body.metrics).toEqual(expect.objectContaining({
+        ensureRequests: expect.any(Number),
+        cacheHits: expect.any(Number),
+        cacheMisses: expect.any(Number),
+        generationAttempts: expect.any(Number),
+        openAiCalls: expect.any(Number),
+        runtimeGenerationAllowed: expect.any(Boolean),
+      }));
+    });
+
   });
 });
 
