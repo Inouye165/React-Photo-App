@@ -493,6 +493,20 @@ function formatAudioTime(seconds: number): string {
   return `${mins}:${String(secs).padStart(2, '0')}`
 }
 
+function getSeekSecondsForWordIndex(
+  wordIndex: number,
+  totalWords: number,
+  audioDurationSeconds: number,
+  preRollSeconds = 0.08,
+): number | null {
+  if (!Number.isFinite(wordIndex) || !Number.isFinite(totalWords) || totalWords <= 0) return null
+  if (!Number.isFinite(audioDurationSeconds) || audioDurationSeconds <= 0) return null
+
+  const clampedWordIndex = Math.min(totalWords - 1, Math.max(0, Math.floor(wordIndex)))
+  const targetSeconds = (clampedWordIndex / totalWords) * audioDurationSeconds
+  return Math.max(0, targetSeconds - preRollSeconds)
+}
+
 function splitManualNarrationIntoPages(rawNarration: string): string[] {
   return rawNarration
     .split(/\n\s*---+\s*\n/g)
@@ -690,6 +704,28 @@ function ChessStoryModal({
     return Math.min(narrationWords.length - 1, fallbackIndex)
   }, [isNarrating, audioCurrentTime, audioDuration, narrationWords.length])
   const shouldHighlightOnPdf = activeNarrationSource === 'pdf-extracted' && activeNarrationWordIndex >= 0
+
+  const seekNarrationToWordIndex = useCallback((wordIndex: number) => {
+    const activeAudio = activeAudioRef.current
+    if (!activeAudio) return
+
+    const resolvedDuration = Number.isFinite(audioDuration) && audioDuration > 0
+      ? audioDuration
+      : Number.isFinite(activeAudio.duration) && activeAudio.duration > 0
+        ? activeAudio.duration
+        : 0
+
+    const seekSeconds = getSeekSecondsForWordIndex(wordIndex, narrationWords.length, resolvedDuration)
+    if (seekSeconds === null) return
+
+    const wasPaused = activeAudio.paused
+    activeAudio.currentTime = seekSeconds
+    setAudioCurrentTime(seekSeconds)
+
+    if (!wasPaused && isNarrating) {
+      void activeAudio.play().catch(() => undefined)
+    }
+  }, [audioDuration, isNarrating, narrationWords.length])
 
   const stopActiveAudio = useCallback(() => {
     const activeAudio = activeAudioRef.current
@@ -1420,11 +1456,33 @@ function ChessStoryModal({
                           && activeNarrationWordIndex >= item.startWordIndex
                           && activeNarrationWordIndex <= item.endWordIndex
 
+                        const wordsInItem = item.text.split(/\s+/).map((word) => word.trim()).filter((word) => word.length > 0)
+
                         return (
                           <span
                             key={item.key}
                             data-testid={isActiveWord ? 'story-pdf-highlight-active' : undefined}
                             className={isActiveWord ? 'absolute rounded' : 'absolute'}
+                            role="button"
+                            tabIndex={0}
+                            onClick={(event) => {
+                              if (wordsInItem.length <= 1) {
+                                seekNarrationToWordIndex(item.startWordIndex)
+                                return
+                              }
+
+                              const rect = event.currentTarget.getBoundingClientRect()
+                              const relativeX = Math.max(0, Math.min(rect.width, event.clientX - rect.left))
+                              const ratio = rect.width > 0 ? relativeX / rect.width : 0
+                              const offset = Math.min(wordsInItem.length - 1, Math.max(0, Math.floor(ratio * wordsInItem.length)))
+                              const wordIndex = Math.min(item.endWordIndex, item.startWordIndex + offset)
+                              seekNarrationToWordIndex(wordIndex)
+                            }}
+                            onKeyDown={(event) => {
+                              if (event.key !== 'Enter' && event.key !== ' ') return
+                              event.preventDefault()
+                              seekNarrationToWordIndex(item.startWordIndex)
+                            }}
                             style={{
                               left: item.left,
                               top: item.top,
@@ -1439,6 +1497,7 @@ function ChessStoryModal({
                               boxShadow: isActiveWord ? 'inset 0 -1.5px 0 rgba(59, 130, 246, 0.58)' : 'none',
                               zIndex: isActiveWord ? 2 : 1,
                               whiteSpace: 'pre',
+                              pointerEvents: 'auto',
                             }}
                           >
                             {item.text}
