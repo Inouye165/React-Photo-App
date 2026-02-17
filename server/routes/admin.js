@@ -481,21 +481,132 @@ function createAdminRouter({ db }) {
 
       const result = await query.orderBy('created_at', 'desc').limit(limit).offset(offset);
 
+      const toMetadataObject = (value) => {
+        if (!value) return {};
+        if (typeof value === 'object' && !Array.isArray(value)) return value;
+        if (typeof value === 'string') {
+          try {
+            const parsed = JSON.parse(value);
+            if (parsed && typeof parsed === 'object' && !Array.isArray(parsed)) {
+              return parsed;
+            }
+          } catch {
+            return {};
+          }
+        }
+        return {};
+      };
+
+      const summarizeActivity = (activityAction, metadata) => {
+        switch (activityAction) {
+          case 'sign_in':
+            return 'Signed in';
+          case 'sign_out':
+            return 'Signed out';
+          case 'password_change':
+            return 'Changed password';
+          case 'username_set':
+            return metadata?.username ? `Set username to ${metadata.username}` : 'Updated username';
+          case 'message_sent':
+            return metadata?.roomId ? `Sent chat message in room ${metadata.roomId}` : 'Sent chat message';
+          case 'game_played':
+            return metadata?.gameId ? `Played chess move in game ${metadata.gameId}` : 'Played chess move';
+          case 'page_view': {
+            const page = typeof metadata?.page === 'string' ? metadata.page : '';
+            if (page === 'photos' || page === 'gallery') return 'Viewed images';
+            if (page === 'messages') return 'Opened chat';
+            if (page === 'games') return 'Opened chess';
+            return page ? `Viewed ${page}` : 'Viewed page';
+          }
+          case 'auto_logout_inactive':
+            return 'Auto-logged out due to inactivity';
+          default:
+            return String(activityAction || 'activity').replace(/_/g, ' ');
+        }
+      };
+
+      const UUID_REGEX = /^[0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i;
+      const idsToResolve = [...new Set(
+        result
+          .map((row) => {
+            const metadata = toMetadataObject(row.metadata);
+            if (typeof metadata.actor_email === 'string' && metadata.actor_email.trim()) {
+              return null;
+            }
+            return typeof row.user_id === 'string' && UUID_REGEX.test(row.user_id) ? row.user_id : null;
+          })
+          .filter(Boolean)
+      )];
+
+      const actorById = new Map();
+      if (supabaseAdmin && idsToResolve.length > 0) {
+        await Promise.all(idsToResolve.map(async (id) => {
+          try {
+            const { data, error } = await supabaseAdmin.auth.admin.getUserById(id);
+            if (error || !data?.user) return;
+
+            actorById.set(id, {
+              email: typeof data.user.email === 'string' ? data.user.email : null,
+              username: typeof data.user.user_metadata?.username === 'string'
+                ? data.user.user_metadata.username
+                : null,
+            });
+          } catch {
+            // Best-effort enrichment only.
+          }
+        }));
+      }
+
+      const enriched = result.map((row) => {
+        const metadata = toMetadataObject(row.metadata);
+        const lookedUp = actorById.get(row.user_id) || {};
+        const actorEmail = (typeof metadata.actor_email === 'string' && metadata.actor_email.trim())
+          ? metadata.actor_email
+          : lookedUp.email || null;
+        const actorUsername = (typeof metadata.actor_username === 'string' && metadata.actor_username.trim())
+          ? metadata.actor_username
+          : lookedUp.username || null;
+        const actorLabel = actorEmail || actorUsername || row.user_id;
+
+        return {
+          ...row,
+          metadata,
+          actor_email: actorEmail,
+          actor_username: actorUsername,
+          actor_label: actorLabel,
+          summary: summarizeActivity(row.action, metadata),
+        };
+      });
+
       let countQuery = db('user_activity_log');
+      let distinctUsersQuery = db('user_activity_log');
       if (action) {
         countQuery = countQuery.where('action', action);
+        distinctUsersQuery = distinctUsersQuery.where('action', action);
       }
       if (userId) {
         countQuery = countQuery.where('user_id', userId);
+        distinctUsersQuery = distinctUsersQuery.where('user_id', userId);
       }
 
       const countResult = await countQuery.count('* as total');
       const total = parseInt(countResult[0]?.total || '0', 10);
 
+      let totalUsers = 0;
+      try {
+        if (typeof distinctUsersQuery?.countDistinct === 'function') {
+          const distinctUsersResult = await distinctUsersQuery.countDistinct('user_id as total_users');
+          totalUsers = parseInt(distinctUsersResult?.[0]?.total_users || '0', 10);
+        }
+      } catch {
+        totalUsers = 0;
+      }
+
       return res.json({
         success: true,
-        data: result,
+        data: enriched,
         total,
+        totalUsers,
         limit,
         offset,
       });

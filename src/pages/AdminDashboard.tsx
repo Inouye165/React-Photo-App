@@ -129,12 +129,17 @@ interface AdminActivityLog {
   action: string;
   metadata: Record<string, unknown> | null;
   created_at: string;
+  actor_email?: string | null;
+  actor_username?: string | null;
+  actor_label?: string;
+  summary?: string;
 }
 
 interface ActivityResponse {
   success: boolean;
   data?: AdminActivityLog[];
   total?: number;
+  totalUsers?: number;
   limit?: number;
   offset?: number;
   error?: string;
@@ -143,6 +148,14 @@ interface ActivityResponse {
 type TabType = 'invites' | 'suggestions' | 'comments' | 'feedback' | 'activity' | 'access-requests';
 
 const EMAIL_REGEX = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
+
+function formatActivityAction(action: string): string {
+  if (!action) return 'Activity';
+  return action
+    .split('_')
+    .map(part => (part ? part[0].toUpperCase() + part.slice(1) : part))
+    .join(' ');
+}
 
 export default function AdminDashboard() {
   const { user } = useAuth();
@@ -185,6 +198,7 @@ export default function AdminDashboard() {
   const [activityLoading, setActivityLoading] = useState(false);
   const [activityError, setActivityError] = useState<string | null>(null);
   const [activityTotal, setActivityTotal] = useState(0);
+  const [activityTotalUsers, setActivityTotalUsers] = useState(0);
   const [activityOffset, setActivityOffset] = useState(0);
   const activityLimit = 50;
 
@@ -243,6 +257,7 @@ export default function AdminDashboard() {
       const rows = data.data || [];
       setActivityLogs(prev => (append ? [...prev, ...rows] : rows));
       setActivityTotal(data.total || 0);
+      setActivityTotalUsers(data.totalUsers || 0);
       setActivityOffset((data.offset || offset) + (data.limit || activityLimit));
     } catch (err) {
       const message = err instanceof Error ? err.message : 'Failed to load activity logs';
@@ -1022,7 +1037,7 @@ export default function AdminDashboard() {
                   <div>
                     <h2 className="text-xl font-semibold text-gray-900">User Activity Log</h2>
                     <p className="text-sm text-gray-600 mt-1">
-                      {activityTotal} log entr{activityTotal === 1 ? 'y' : 'ies'}
+                      {activityTotal} log entr{activityTotal === 1 ? 'y' : 'ies'} across {activityTotalUsers} user{activityTotalUsers === 1 ? '' : 's'}
                     </p>
                   </div>
                 </div>
@@ -1043,35 +1058,19 @@ export default function AdminDashboard() {
                     <p>No activity logs found</p>
                   </div>
                 ) : (
-                  <div className="space-y-4">
+                  <div className="bg-gray-50 rounded-lg border border-gray-200 divide-y divide-gray-200">
                     {activityLogs.map((log) => (
-                      <div key={log.id} className="bg-gray-50 rounded-lg p-4 border border-gray-200">
-                        <div className="flex items-start justify-between mb-3 gap-4">
-                          <div className="min-w-0">
-                            <h3 className="font-medium text-gray-900 truncate">{log.action}</h3>
-                            <p className="text-sm text-gray-500 break-all">
-                              User: {log.user_id}
-                            </p>
-                            <p className="text-xs text-gray-500 mt-1">
-                              {new Date(log.created_at).toLocaleString()}
-                            </p>
-                          </div>
-
-                          <span className="px-3 py-1 bg-blue-100 text-blue-800 text-xs font-medium rounded-full">
-                            Activity
-                          </span>
-                        </div>
-
-                        {log.metadata != null && (
-                          <div className="bg-white rounded border border-gray-200 p-3">
-                            <p className="text-xs font-medium text-gray-700 mb-2">Metadata:</p>
-                            <pre className="text-xs text-gray-600 overflow-x-auto">
-                              {typeof log.metadata === 'string'
-                                ? log.metadata
-                                : JSON.stringify(log.metadata, null, 2)}
-                            </pre>
-                          </div>
-                        )}
+                      <div key={log.id} className="px-4 py-3 text-sm text-gray-800">
+                        <span className="text-gray-500 mr-2">
+                          {new Date(log.created_at).toLocaleString()}
+                        </span>
+                        <span className="mr-2">•</span>
+                        <span className="font-medium mr-2 break-all">
+                          {log.actor_label || log.actor_email || log.actor_username || log.user_id}
+                        </span>
+                        <span className="text-gray-700">
+                          {log.summary || formatActivityAction(log.action)}
+                        </span>
                       </div>
                     ))}
 

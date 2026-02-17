@@ -25,6 +25,30 @@ function Wait-ForHealthyContainer {
   throw "Timed out waiting for container '$ContainerName' to become healthy/running."
 }
 
+function Wait-ForHttpEndpoint {
+  param(
+    [Parameter(Mandatory = $true)][string]$Url,
+    [int]$MaxAttempts = 60,
+    [int]$DelaySeconds = 2
+  )
+
+  for ($attempt = 1; $attempt -le $MaxAttempts; $attempt++) {
+    try {
+      $response = Invoke-WebRequest -Uri $Url -UseBasicParsing -TimeoutSec 3
+      if ($response.StatusCode -ge 200 -and $response.StatusCode -lt 500) {
+        Write-Step "$Url is reachable (HTTP $($response.StatusCode))"
+        return
+      }
+    } catch {
+      # keep waiting
+    }
+
+    Start-Sleep -Seconds $DelaySeconds
+  }
+
+  throw "Timed out waiting for endpoint '$Url' to become reachable."
+}
+
 function Ensure-DockerAvailable {
   if (-not (Get-Command docker -ErrorAction SilentlyContinue)) {
     throw "Docker CLI not found. Install Docker Desktop and ensure 'docker' is on PATH."
@@ -38,22 +62,51 @@ function Ensure-DockerAvailable {
     $ErrorActionPreference = $previousErrorAction
   }
 
-  if ($LASTEXITCODE -ne 0) {
-    throw "Docker daemon is not running. Start Docker Desktop, wait until it is fully started, then re-run 'npm run start:local'."
+  if ($LASTEXITCODE -eq 0) {
+    return
   }
+
+  $dockerDesktopExe = Join-Path $Env:ProgramFiles 'Docker\Docker\Docker Desktop.exe'
+  if (-not (Test-Path $dockerDesktopExe)) {
+    throw "Docker daemon is not running and Docker Desktop was not found at '$dockerDesktopExe'. Start Docker Desktop manually, wait until it is ready, then re-run 'npm run start:local'."
+  }
+
+  Write-Step "Docker daemon is not running. Attempting to start Docker Desktop..."
+  Start-Process -FilePath $dockerDesktopExe | Out-Null
+
+  $maxAttempts = 60
+  $delaySeconds = 2
+  for ($attempt = 1; $attempt -le $maxAttempts; $attempt++) {
+    $previousErrorAction = $ErrorActionPreference
+    try {
+      $ErrorActionPreference = 'Continue'
+      docker info 1>$null 2>$null
+    } finally {
+      $ErrorActionPreference = $previousErrorAction
+    }
+
+    if ($LASTEXITCODE -eq 0) {
+      Write-Step "Docker daemon is ready"
+      return
+    }
+
+    Start-Sleep -Seconds $delaySeconds
+  }
+
+  throw "Docker daemon did not become ready in time. Open Docker Desktop, wait for it to fully start, then re-run 'npm run start:local'."
 }
 
 function Invoke-DockerCompose {
-  param([string[]]$Args)
+  param([string[]]$ComposeArgs)
 
   docker compose version *> $null
   if ($LASTEXITCODE -eq 0) {
-    & docker compose @Args
+    & docker @('compose') @ComposeArgs
     return
   }
 
   if (Get-Command docker-compose -ErrorAction SilentlyContinue) {
-    & docker-compose @Args
+    & docker-compose @ComposeArgs
     return
   }
 
@@ -68,10 +121,16 @@ function Start-AppTerminal {
   )
 
   $escapedRoot = $RepoRoot.Replace("'", "''")
-  $escapedCommand = $Command.Replace("'", "''")
-  $psCommand = "Set-Location '$escapedRoot'; `$host.UI.RawUI.WindowTitle = '$Title'; $escapedCommand"
+  $escapedTitle = $Title.Replace("'", "''")
+  $escapedCommand = $Command.Replace("`r`n", "`n")
+  $scriptToRun = @"
+Set-Location '$escapedRoot'
+`$host.UI.RawUI.WindowTitle = '$escapedTitle'
+$escapedCommand
+"@
+  $encoded = [Convert]::ToBase64String([Text.Encoding]::Unicode.GetBytes($scriptToRun))
 
-  Start-Process powershell -ArgumentList @('-NoExit', '-ExecutionPolicy', 'Bypass', '-Command', $psCommand) | Out-Null
+  Start-Process powershell -ArgumentList @('-NoExit', '-ExecutionPolicy', 'Bypass', '-EncodedCommand', $encoded) | Out-Null
 }
 
 function Close-ExistingAppTerminals {
@@ -150,7 +209,7 @@ try {
   Ensure-DockerAvailable
 
   Write-Step "Starting required Docker services (db + redis)..."
-  Invoke-DockerCompose -Args @('up', '-d', 'db', 'redis')
+  Invoke-DockerCompose -ComposeArgs @('up', '-d', 'db', 'redis')
   if ($LASTEXITCODE -ne 0) {
     throw "Failed to start Docker services. Check Docker Desktop status and container logs, then re-run start:local."
   }
@@ -162,20 +221,42 @@ try {
   $serverEnvPath = Join-Path $repoRoot 'server/.env'
   if (Test-Path $serverEnvPath) {
     $redisLine = Select-String -Path $serverEnvPath -Pattern '^REDIS_URL=' -SimpleMatch:$false | Select-Object -First 1
+    $dbLine = Select-String -Path $serverEnvPath -Pattern '^SUPABASE_DB_URL=' -SimpleMatch:$false | Select-Object -First 1
     if ($redisLine -and $redisLine.Line -notmatch 'redis://localhost:6379') {
       Write-Host "[start-local] Warning: server/.env REDIS_URL is '$($redisLine.Line.Substring(10))'." -ForegroundColor Yellow
       Write-Host "[start-local] Docker Redis is mapped to redis://localhost:6379. Update server/.env if worker fails." -ForegroundColor Yellow
     }
+    if ($dbLine -and $dbLine.Line -notmatch '@(localhost|127\.0\.0\.1):5432/') {
+      Write-Host "[start-local] Warning: server/.env SUPABASE_DB_URL is '$($dbLine.Line.Substring(16))'." -ForegroundColor Yellow
+      Write-Host "[start-local] start:local will override DB env to local Docker Postgres (127.0.0.1:5432) for this session." -ForegroundColor Yellow
+    }
+  }
+
+  $localDbUrl = 'postgresql://photoapp:photoapp_dev@127.0.0.1:5432/photoapp'
+  $localRedisUrl = 'redis://localhost:6379'
+  $forceLocalDockerDb = ($Env:START_LOCAL_FORCE_DOCKER_DB -eq 'true')
+  $serverEnvPrefix = ''
+  if ($forceLocalDockerDb) {
+    Write-Step "START_LOCAL_FORCE_DOCKER_DB=true -> forcing backend/worker to Docker Postgres + Redis"
+    $serverEnvPrefix = "`$env:SUPABASE_DB_URL='$localDbUrl'; `$env:SUPABASE_DB_URL_MIGRATIONS='$localDbUrl'; `$env:DB_SSL_DISABLED='true'; `$env:REDIS_URL='$localRedisUrl';"
+  } else {
+    Write-Step "Using DB/Redis from environment files (no forced override)."
   }
 
   Write-Step "Opening backend terminal..."
-  Start-AppTerminal -Title 'Lumina API' -Command 'npm --prefix server start' -RepoRoot $repoRoot
+  Start-AppTerminal -Title 'Lumina API' -Command "$serverEnvPrefix npm --prefix server start" -RepoRoot $repoRoot
 
   Write-Step "Opening worker terminal..."
-  Start-AppTerminal -Title 'Lumina Worker' -Command 'npm run worker' -RepoRoot $repoRoot
+  Start-AppTerminal -Title 'Lumina Worker' -Command "$serverEnvPrefix npm run worker" -RepoRoot $repoRoot
 
   Write-Step "Opening frontend terminal..."
   Start-AppTerminal -Title 'Lumina Frontend' -Command 'npm run dev' -RepoRoot $repoRoot
+
+  Write-Step "Waiting for API readiness..."
+  Wait-ForHttpEndpoint -Url 'http://127.0.0.1:3001/health' -MaxAttempts 90 -DelaySeconds 2
+
+  Write-Step "Waiting for frontend readiness..."
+  Wait-ForHttpEndpoint -Url 'http://localhost:5173/' -MaxAttempts 90 -DelaySeconds 2
 
   Write-Step "Startup initiated."
   Write-Host "[start-local] API health: http://127.0.0.1:3001/health" -ForegroundColor Green

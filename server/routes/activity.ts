@@ -25,7 +25,7 @@ const ALLOWED_ACTIONS = new Set([
 ]);
 
 type AuthenticatedRequest = Request & {
-  user?: { id: string; role?: string };
+  user?: { id: string; role?: string; email?: string; username?: string };
 };
 
 export default function createActivityRouter({ db }: { db: Knex }) {
@@ -57,8 +57,14 @@ export default function createActivityRouter({ db }: { db: Knex }) {
         });
       }
 
-      const safeMetadata =
+      const clientMetadata =
         metadata && typeof metadata === 'object' && !Array.isArray(metadata) ? metadata : {};
+
+      const safeMetadata = {
+        ...clientMetadata,
+        actor_email: typeof req.user?.email === 'string' ? req.user.email : undefined,
+        actor_username: typeof req.user?.username === 'string' ? req.user.username : undefined,
+      };
 
       const ipRaw = req.ip || req.socket?.remoteAddress || null;
       const ipAddress = ipRaw ? String(ipRaw).slice(0, 45) : null;

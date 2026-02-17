@@ -20,6 +20,7 @@ const ACTIVITY_EVENTS: (keyof WindowEventMap)[] = [
  */
 function classifyPage(pathname: string): string | null {
   if (pathname.startsWith('/gallery')) return 'gallery'
+  if (pathname.startsWith('/photos') || pathname.startsWith('/collectibles/photos')) return 'photos'
   if (pathname.startsWith('/chat')) return 'messages'
   if (pathname.startsWith('/games')) return 'games'
   return null
