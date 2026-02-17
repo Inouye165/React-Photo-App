@@ -591,8 +591,16 @@ function createAdminRouter({ db }) {
 
       const countResult = await countQuery.count('* as total');
       const total = parseInt(countResult[0]?.total || '0', 10);
-      const distinctUsersResult = await distinctUsersQuery.countDistinct('user_id as total_users');
-      const totalUsers = parseInt(distinctUsersResult[0]?.total_users || '0', 10);
+
+      let totalUsers = 0;
+      try {
+        if (typeof distinctUsersQuery?.countDistinct === 'function') {
+          const distinctUsersResult = await distinctUsersQuery.countDistinct('user_id as total_users');
+          totalUsers = parseInt(distinctUsersResult?.[0]?.total_users || '0', 10);
+        }
+      } catch {
+        totalUsers = 0;
+      }
 
       return res.json({
         success: true,
