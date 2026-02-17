@@ -68,6 +68,15 @@ describe('useActivityTracker', () => {
     expect(mockedLogActivity).toHaveBeenCalledWith('page_view', { page: 'games' })
   })
 
+  it('logs page_view when navigating to photo detail routes', () => {
+    const onInactivityLogout = vi.fn()
+    renderHook(() => useActivityTracker({ isAuthenticated: true, onInactivityLogout }), {
+      wrapper: createWrapper(['/photos/123']),
+    })
+
+    expect(mockedLogActivity).toHaveBeenCalledWith('page_view', { page: 'photos' })
+  })
+
   it('does not log page_view for untracked routes', () => {
     const onInactivityLogout = vi.fn()
     renderHook(() => useActivityTracker({ isAuthenticated: true, onInactivityLogout }), {

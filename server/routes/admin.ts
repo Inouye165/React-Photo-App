@@ -57,6 +57,10 @@ interface UserActivityRow {
   action: string;
   metadata: Record<string, unknown> | null;
   created_at: string;
+  actor_email?: string | null;
+  actor_username?: string | null;
+  actor_label?: string;
+  summary?: string;
 }
 
 interface AuthenticatedRequest extends Request {
@@ -647,21 +651,144 @@ function createAdminRouter({ db }: { db: any }): Router {
 
       const result = await query.orderBy('created_at', 'desc').limit(limit).offset(offset);
 
+      const toMetadataObject = (value: unknown): Record<string, unknown> => {
+        if (!value) return {};
+        if (typeof value === 'object' && !Array.isArray(value)) {
+          return value as Record<string, unknown>;
+        }
+        if (typeof value === 'string') {
+          try {
+            const parsed = JSON.parse(value);
+            if (parsed && typeof parsed === 'object' && !Array.isArray(parsed)) {
+              return parsed as Record<string, unknown>;
+            }
+          } catch {
+            return {};
+          }
+        }
+        return {};
+      };
+
+      const summarizeActivity = (activityAction: string, metadata: Record<string, unknown>): string => {
+        switch (activityAction) {
+          case 'sign_in':
+            return 'Signed in';
+          case 'sign_out':
+            return 'Signed out';
+          case 'password_change':
+            return 'Changed password';
+          case 'username_set':
+            return typeof metadata.username === 'string'
+              ? `Set username to ${metadata.username}`
+              : 'Updated username';
+          case 'message_sent':
+            return typeof metadata.roomId === 'string'
+              ? `Sent chat message in room ${metadata.roomId}`
+              : 'Sent chat message';
+          case 'game_played':
+            return typeof metadata.gameId === 'string'
+              ? `Played chess move in game ${metadata.gameId}`
+              : 'Played chess move';
+          case 'page_view': {
+            const page = typeof metadata.page === 'string' ? metadata.page : '';
+            if (page === 'photos' || page === 'gallery') return 'Viewed images';
+            if (page === 'messages') return 'Opened chat';
+            if (page === 'games') return 'Opened chess';
+            return page ? `Viewed ${page}` : 'Viewed page';
+          }
+          case 'auto_logout_inactive':
+            return 'Auto-logged out due to inactivity';
+          default:
+            return String(activityAction || 'activity').replace(/_/g, ' ');
+        }
+      };
+
+      const uuidRegex = /^[0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i;
+      const idsToResolve = [
+        ...new Set(
+          (result as UserActivityRow[])
+            .map((row) => {
+              const metadata = toMetadataObject(row.metadata);
+              const actorEmail = metadata.actor_email;
+              if (typeof actorEmail === 'string' && actorEmail.trim().length > 0) {
+                return null;
+              }
+              return typeof row.user_id === 'string' && uuidRegex.test(row.user_id) ? row.user_id : null;
+            })
+            .filter((value): value is string => Boolean(value))
+        )
+      ];
+
+      const actorById = new Map<string, { email: string | null; username: string | null }>();
+      if (supabaseAdmin && idsToResolve.length > 0) {
+        await Promise.all(
+          idsToResolve.map(async (id) => {
+            try {
+              const { data, error } = await supabaseAdmin.auth.admin.getUserById(id);
+              if (error || !data?.user) return;
+
+              actorById.set(id, {
+                email: typeof data.user.email === 'string' ? data.user.email : null,
+                username:
+                  typeof data.user.user_metadata?.username === 'string'
+                    ? data.user.user_metadata.username
+                    : null,
+              });
+            } catch {
+              // Best-effort enrichment only.
+            }
+          })
+        );
+      }
+
+      const enriched: UserActivityRow[] = (result as UserActivityRow[]).map((row) => {
+        const metadata = toMetadataObject(row.metadata);
+        const lookedUp = actorById.get(row.user_id);
+
+        const metadataActorEmail = metadata.actor_email;
+        const metadataActorUsername = metadata.actor_username;
+
+        const actorEmail =
+          typeof metadataActorEmail === 'string' && metadataActorEmail.trim().length > 0
+            ? metadataActorEmail
+            : lookedUp?.email || null;
+
+        const actorUsername =
+          typeof metadataActorUsername === 'string' && metadataActorUsername.trim().length > 0
+            ? metadataActorUsername
+            : lookedUp?.username || null;
+
+        return {
+          ...row,
+          metadata,
+          actor_email: actorEmail,
+          actor_username: actorUsername,
+          actor_label: actorEmail || actorUsername || row.user_id,
+          summary: summarizeActivity(row.action, metadata),
+        };
+      });
+
       let countQuery = db('user_activity_log');
+      let distinctUsersQuery = db('user_activity_log');
       if (action) {
         countQuery = countQuery.where('action', action);
+        distinctUsersQuery = distinctUsersQuery.where('action', action);
       }
       if (userId) {
         countQuery = countQuery.where('user_id', userId);
+        distinctUsersQuery = distinctUsersQuery.where('user_id', userId);
       }
 
       const countResult = await countQuery.count('* as total');
       const total = parseInt(countResult[0]?.total || '0', 10);
+      const distinctUsersResult = await distinctUsersQuery.countDistinct('user_id as total_users');
+      const totalUsers = parseInt(distinctUsersResult[0]?.total_users || '0', 10);
 
       return res.json({
         success: true,
-        data: result as UserActivityRow[],
+        data: enriched,
         total,
+        totalUsers,
         limit,
         offset,
       });
