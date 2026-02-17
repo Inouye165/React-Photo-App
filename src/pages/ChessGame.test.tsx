@@ -782,4 +782,43 @@ describe('ChessGame', () => {
       expect(matchingSpan!.style.width).toBeTruthy()
     })
   })
+
+  it('seeks narration when clicking/pressing Enter on story word and keeps paused state', async () => {
+    const user = userEvent.setup()
+    setMockGameId('local')
+    setMockPdfPageText(1, 'Silas found the dusty wooden box in the attic.')
+
+    render(<ChessGame />)
+
+    await user.click(screen.getByRole('button', { name: 'How to play' }))
+    await user.click(screen.getByRole('button', { name: 'Story mode' }))
+    await user.click(await screen.findByRole('button', { name: 'Play narration' }))
+
+    await waitFor(() => {
+      expect(ensureStoryAudioMock).toHaveBeenCalledTimes(1)
+    })
+
+    const audioClass = (globalThis as any).Audio as { instances: Array<{ currentTime: number; duration?: number; paused?: boolean; play: ReturnType<typeof vi.fn>; emit: (eventName: string) => void }> }
+    const activeAudio = audioClass.instances[0]
+
+    Object.defineProperty(activeAudio, 'duration', { value: 10, writable: true, configurable: true })
+    Object.defineProperty(activeAudio, 'paused', { value: true, writable: true, configurable: true })
+    activeAudio.emit('loadedmetadata')
+    activeAudio.currentTime = 6
+    activeAudio.play.mockClear()
+
+    const wordButton = await screen.findByRole('button', { name: /Silas found the dusty wooden box in the attic\./i })
+    await user.click(wordButton)
+
+    expect(activeAudio.currentTime).toBe(0)
+    expect(activeAudio.play).not.toHaveBeenCalled()
+
+    Object.defineProperty(activeAudio, 'paused', { value: false, writable: true, configurable: true })
+    activeAudio.currentTime = 6
+    wordButton.focus()
+    await user.keyboard('{Enter}')
+
+    expect(activeAudio.currentTime).toBe(0)
+    expect(activeAudio.play).toHaveBeenCalled()
+  })
 })
