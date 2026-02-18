@@ -173,7 +173,7 @@ export async function getPhotoStatus(): Promise<PhotoStatusResponse> {
   try {
     const headers = await getHeadersForGetRequestAsync()
     return await request<PhotoStatusResponse>({
-      path: '/photos/status',
+      path: '/api/v1/photos/status',
       headers,
       timeoutMs: 10000,
     })

@@ -1,4 +1,4 @@
-import { useEffect, useState, useCallback } from 'react'
+import { useEffect, useState, useCallback, useRef } from 'react'
 import { supabase } from '../supabaseClient'
 
 export interface UseUnreadMessagesResult {
@@ -7,6 +7,23 @@ export interface UseUnreadMessagesResult {
   hasUnread: boolean
   loading: boolean
   refresh: () => void
+}
+
+type PostgrestLikeError = {
+  code?: string | null
+  message?: string | null
+}
+
+type RoomMembershipRow = {
+  room_id: string
+  last_read_at?: string | null
+}
+
+function isMissingLastReadAtColumnError(error: unknown): boolean {
+  const candidate = error as PostgrestLikeError | null
+  const code = candidate?.code ?? ''
+  const message = (candidate?.message ?? '').toLowerCase()
+  return code === '42703' || message.includes('last_read_at')
 }
 
 /**
@@ -18,6 +35,7 @@ export function useUnreadMessages(userId: string | null | undefined): UseUnreadM
   const [unreadByRoom, setUnreadByRoom] = useState<Record<string, number>>({})
   const [loading, setLoading] = useState<boolean>(true)
   const [trigger, setTrigger] = useState(0)
+  const warnedMissingColumnRef = useRef(false)
 
   const refresh = useCallback(() => {
     setTrigger((prev) => prev + 1)
@@ -38,12 +56,34 @@ export function useUnreadMessages(userId: string | null | undefined): UseUnreadM
         setLoading(true)
 
         // 1. Get all rooms and their last_read_at for this user
-        const { data: memberships, error: memError } = await supabase
+        const { data: membershipsRaw, error: memError } = await supabase
           .from('room_members')
           .select('room_id, last_read_at')
           .eq('user_id', userId)
 
-        if (memError) throw memError
+        let memberships = (membershipsRaw ?? []) as RoomMembershipRow[]
+        let supportsLastReadAt = true
+
+        if (memError) {
+          if (isMissingLastReadAtColumnError(memError)) {
+            supportsLastReadAt = false
+            const { data: fallbackMemberships, error: fallbackError } = await supabase
+              .from('room_members')
+              .select('room_id')
+              .eq('user_id', userId)
+
+            if (fallbackError) throw fallbackError
+            memberships = (fallbackMemberships ?? []) as RoomMembershipRow[]
+
+            if (import.meta.env.DEV && !warnedMissingColumnRef.current) {
+              warnedMissingColumnRef.current = true
+              console.warn('[useUnreadMessages] room_members.last_read_at is missing. Returning unread=0 until migration is applied.')
+            }
+          } else {
+            throw memError
+          }
+        }
+
         if (!memberships || memberships.length === 0) {
           if (!cancelled) {
             setUnreadCount(0)
@@ -53,8 +93,17 @@ export function useUnreadMessages(userId: string | null | undefined): UseUnreadM
           return
         }
 
+        if (!supportsLastReadAt) {
+          if (!cancelled) {
+            setUnreadCount(0)
+            setUnreadByRoom({})
+            setLoading(false)
+          }
+          return
+        }
+
         // 2. Find the oldest last_read_at to minimize the query range
-        const timestamps = memberships.map((m) => new Date(m.last_read_at).getTime())
+        const timestamps = memberships.map((m) => new Date(m.last_read_at ?? 0).getTime())
         const minTimestamp = Math.min(...timestamps)
         const minDateISO = new Date(minTimestamp).toISOString()
         const roomIds = memberships.map((m) => m.room_id)
@@ -72,7 +121,7 @@ export function useUnreadMessages(userId: string | null | undefined): UseUnreadM
 
         // 4. Filter and count per room
         const byRoom = new Map<string, number>()
-        const lastReadMap = new Map(memberships.map((m) => [m.room_id, new Date(m.last_read_at).getTime()]))
+        const lastReadMap = new Map(memberships.map((m) => [m.room_id, new Date(m.last_read_at ?? 0).getTime()]))
 
         messages?.forEach((msg) => {
           const msgTime = new Date(msg.created_at).getTime()

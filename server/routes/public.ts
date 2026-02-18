@@ -177,10 +177,14 @@ async function ensureStoryAudioBucketReady(): Promise<{ ok: boolean; reason?: st
     return { ok: false, reason: 'Supabase storage client is unavailable' };
   }
 
+  if (typeof supabase.storage.listBuckets !== 'function') {
+    return { ok: true, reason: 'Supabase storage client cannot list buckets in current configuration' };
+  }
+
   try {
     const { data, error } = await supabase.storage.listBuckets();
     if (error) {
-      return { ok: false, reason: `Unable to list buckets: ${error.message || String(error)}` };
+      return { ok: true, reason: `Unable to list buckets: ${error.message || String(error)}` };
     }
 
     const existing = Array.isArray(data)
@@ -217,8 +221,24 @@ async function ensureStoryAudioBucketReady(): Promise<{ ok: boolean; reason?: st
 
     return { ok: true };
   } catch (error) {
-    return { ok: false, reason: error instanceof Error ? error.message : String(error) };
+    return { ok: true, reason: error instanceof Error ? error.message : String(error) };
   }
+}
+
+async function resolveStoryAudioClientUrl(objectPath: string, fallbackPublicUrl: string): Promise<string> {
+  try {
+    const storage = supabase?.storage?.from?.(STORY_AUDIO_BUCKET);
+    if (storage && typeof storage.createSignedUrl === 'function') {
+      const { data, error } = await storage.createSignedUrl(objectPath, 60 * 60);
+      if (!error && data?.signedUrl) {
+        return data.signedUrl;
+      }
+    }
+  } catch {
+    // Fall back to public URL when signed URL cannot be created.
+  }
+
+  return fallbackPublicUrl;
 }
 
 function createStoryAudioGenerationRateLimiter() {
@@ -422,6 +442,13 @@ function createPublicRouter({ db }: { db: any }): Router {
         error: 'Story audio bucket setup failed',
       });
     }
+    if (ensuredBucket.reason) {
+      logger.warn('[public/story-audio] Bucket readiness check degraded; continuing', {
+        page,
+        bucket: STORY_AUDIO_BUCKET,
+        reason: ensuredBucket.reason,
+      });
+    }
 
     let publicUrl: string;
     try {
@@ -435,7 +462,7 @@ function createPublicRouter({ db }: { db: any }): Router {
     }
 
     try {
-      const { error: existingError } = await supabase.storage.from(STORY_AUDIO_BUCKET).download(objectPath);
+      const { data: existingData, error: existingError } = await supabase.storage.from(STORY_AUDIO_BUCKET).download(objectPath);
       if (!existingError) {
         storyAudioTelemetry.cacheHits += 1;
         markStoryAudioEvent();
@@ -445,10 +472,21 @@ function createPublicRouter({ db }: { db: any }): Router {
           objectPath,
           totals: getStoryAudioTelemetrySnapshot(),
         });
+        const clientUrl = await resolveStoryAudioClientUrl(objectPath, publicUrl);
+        let cachedAudioBase64: string | undefined;
+        try {
+          if (existingData && typeof (existingData as { arrayBuffer?: unknown }).arrayBuffer === 'function') {
+            const audioArrayBuffer = await (existingData as Blob).arrayBuffer();
+            cachedAudioBase64 = Buffer.from(audioArrayBuffer).toString('base64');
+          }
+        } catch {
+          // Best-effort: fall back to URL playback when buffer conversion fails.
+        }
         return res.json({
           success: true,
           cached: true,
-          url: publicUrl,
+          url: clientUrl,
+          audioBase64: cachedAudioBase64,
         });
       }
 
@@ -570,10 +608,11 @@ function createPublicRouter({ db }: { db: any }): Router {
         totals: getStoryAudioTelemetrySnapshot(),
       });
 
+      const clientUrl = await resolveStoryAudioClientUrl(objectPath, publicUrl);
       return res.json({
         success: true,
         cached: false,
-        url: publicUrl,
+        url: clientUrl,
         audioBase64: audioBuffer.toString('base64'),
       });
     } catch (error) {
@@ -618,13 +657,20 @@ function createPublicRouter({ db }: { db: any }): Router {
           if (!bucket) warnings.push(`Bucket ${STORY_AUDIO_BUCKET} does not exist.`);
           if (bucket && bucketIsPublic === false) warnings.push(`Bucket ${STORY_AUDIO_BUCKET} exists but is not public.`);
         } else {
-          warnings.push(`Unable to verify bucket ${STORY_AUDIO_BUCKET} via listBuckets.`);
+          logger.warn('[public/story-audio] Unable to verify bucket via listBuckets', {
+            bucket: STORY_AUDIO_BUCKET,
+            error: error?.message || String(error),
+          });
         }
       } catch {
-        warnings.push(`Unable to verify bucket ${STORY_AUDIO_BUCKET}.`);
+        logger.warn('[public/story-audio] Bucket verification threw', {
+          bucket: STORY_AUDIO_BUCKET,
+        });
       }
     } else {
-      warnings.push('Supabase client cannot list buckets in current configuration.');
+      logger.warn('[public/story-audio] Supabase client cannot list buckets in current configuration', {
+        bucket: STORY_AUDIO_BUCKET,
+      });
     }
 
     if (hasSupabaseUrl) {

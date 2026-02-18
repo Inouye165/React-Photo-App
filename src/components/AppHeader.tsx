@@ -60,6 +60,7 @@ export default function AppHeader({
   const isGalleryPage = location.pathname === '/gallery' || location.pathname === '/';
   const isEditPage = /^\/photos\/[^/]+\/edit$/.test(location.pathname);
   const isUploadPage = location.pathname === '/upload';
+  const isGamesPage = /^\/games(?:\/|$)/.test(location.pathname);
 
   const currentPhotoId = ((): string | null => {
     const match = location.pathname.match(/^\/photos\/([^/]+)(?:\/edit)?$/);
@@ -265,15 +266,15 @@ export default function AppHeader({
             className={({ isActive }) => `
               flex items-center justify-center gap-1.5
               min-w-[44px] min-h-[44px] px-2 sm:px-3
-              rounded-lg text-xs sm:text-sm font-medium
+              rounded-lg text-xs sm:text-sm font-medium border
               transition-all duration-150 touch-manipulation
               ${isActive
-                ? 'bg-slate-900 text-white'
-                : 'bg-transparent text-slate-500 hover:bg-slate-100 active:bg-slate-200'
+                ? 'bg-white text-indigo-700 border-indigo-500'
+                : 'bg-white text-slate-600 border-indigo-200 hover:border-indigo-300 hover:bg-indigo-50/40 active:bg-indigo-50'
               }
             `}
           >
-            <Gamepad2 size={16} className="flex-shrink-0 text-indigo-500" />
+            <Gamepad2 size={16} className={`flex-shrink-0 ${isGamesPage ? 'text-indigo-700' : 'text-indigo-600'}`} />
             <span className="hidden md:inline">Games</span>
           </NavLink>
           

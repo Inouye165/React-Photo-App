@@ -49,6 +49,90 @@ function Wait-ForHttpEndpoint {
   throw "Timed out waiting for endpoint '$Url' to become reachable."
 }
 
+function Get-EnvValueFromFile {
+  param(
+    [string]$Path,
+    [string]$Name
+  )
+
+  if (-not (Test-Path $Path)) {
+    return $null
+  }
+
+  $line = Select-String -Path $Path -Pattern "^$Name=(.*)$" -SimpleMatch:$false | Select-Object -First 1
+  if (-not $line) {
+    return $null
+  }
+
+  return $line.Matches[0].Groups[1].Value.Trim()
+}
+
+function Ensure-LocalSupabase {
+  param([string]$RepoRoot)
+
+  $rootEnv = Join-Path $RepoRoot '.env'
+  $serverEnv = Join-Path $RepoRoot 'server/.env'
+
+  $viteSupabaseUrl = Get-EnvValueFromFile -Path $rootEnv -Name 'VITE_SUPABASE_URL'
+  $serverSupabaseUrl = Get-EnvValueFromFile -Path $serverEnv -Name 'SUPABASE_URL'
+
+  $targetUrl = $null
+  if ($viteSupabaseUrl) {
+    $targetUrl = $viteSupabaseUrl
+  } elseif ($serverSupabaseUrl) {
+    $targetUrl = $serverSupabaseUrl
+  }
+
+  if (-not $targetUrl) {
+    return
+  }
+
+  if ($targetUrl -notmatch '^https?://(127\.0\.0\.1|localhost):54321/?$') {
+    return
+  }
+
+  $healthUrl = 'http://127.0.0.1:54321/auth/v1/health'
+  try {
+    $probe = Invoke-WebRequest -Uri $healthUrl -UseBasicParsing -TimeoutSec 3
+    if ($probe.StatusCode -ge 200 -and $probe.StatusCode -lt 500) {
+      Write-Step "Local Supabase is reachable at $healthUrl"
+      return
+    }
+  } catch {
+    # start local supabase below
+  }
+
+  if (-not (Get-Command supabase -ErrorAction SilentlyContinue)) {
+    Write-Host "[start-local] Warning: local Supabase URL is configured but Supabase CLI is not installed." -ForegroundColor Yellow
+    Write-Host "[start-local] Install Supabase CLI or update VITE_SUPABASE_URL/SUPABASE_URL to a reachable endpoint." -ForegroundColor Yellow
+    return
+  }
+
+  Write-Step "Local Supabase endpoint is down; starting Supabase local stack..."
+  & supabase start
+  if ($LASTEXITCODE -ne 0) {
+    Write-Host "[start-local] Supabase start failed; attempting self-heal for stale containers..." -ForegroundColor Yellow
+    & supabase stop --no-backup | Out-Null
+
+    $stale = docker ps -a --format "{{.Names}}" | Select-String -Pattern '^supabase_'
+    if ($stale) {
+      $staleNames = $stale | ForEach-Object { $_.Line.Trim() }
+      if ($staleNames.Count -gt 0) {
+        docker rm -f $staleNames | Out-Null
+        Write-Step "Removed stale Supabase containers"
+      }
+    }
+
+    & supabase start
+    if ($LASTEXITCODE -ne 0) {
+      throw "Failed to start local Supabase after self-heal. Run 'supabase start --debug' and fix startup errors, then retry."
+    }
+  }
+
+  Write-Step "Waiting for local Supabase auth health endpoint..."
+  Wait-ForHttpEndpoint -Url $healthUrl -MaxAttempts 120 -DelaySeconds 2
+}
+
 function Ensure-DockerAvailable {
   if (-not (Get-Command docker -ErrorAction SilentlyContinue)) {
     throw "Docker CLI not found. Install Docker Desktop and ensure 'docker' is on PATH."
@@ -208,6 +292,9 @@ try {
   Write-Step "Checking Docker availability..."
   Ensure-DockerAvailable
 
+  Write-Step "Checking local Supabase availability..."
+  Ensure-LocalSupabase -RepoRoot $repoRoot
+
   Write-Step "Starting required Docker services (db + redis)..."
   Invoke-DockerCompose -ComposeArgs @('up', '-d', 'db', 'redis')
   if ($LASTEXITCODE -ne 0) {
@@ -227,8 +314,8 @@ try {
       Write-Host "[start-local] Docker Redis is mapped to redis://localhost:6379. Update server/.env if worker fails." -ForegroundColor Yellow
     }
     if ($dbLine -and $dbLine.Line -notmatch '@(localhost|127\.0\.0\.1):5432/') {
-      Write-Host "[start-local] Warning: server/.env SUPABASE_DB_URL is '$($dbLine.Line.Substring(16))'." -ForegroundColor Yellow
-      Write-Host "[start-local] start:local will override DB env to local Docker Postgres (127.0.0.1:5432) for this session." -ForegroundColor Yellow
+      Write-Host "[start-local] Notice: server/.env SUPABASE_DB_URL is '$($dbLine.Line.Substring(16))'." -ForegroundColor Yellow
+      Write-Host "[start-local] Using DB/Redis from environment files by default (no DB override)." -ForegroundColor Yellow
     }
   }
 

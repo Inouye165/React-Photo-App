@@ -97,7 +97,7 @@ export default function GamesIndex(): React.JSX.Element {
         <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
           <button
             type="button"
-            onClick={() => navigate('/story')}
+            onClick={() => navigate('/games/local')}
             className="w-full min-h-[48px] rounded-lg bg-amber-50 flex items-center gap-3 p-4 md:p-6 text-left"
           >
             <div className="flex-shrink-0">
@@ -111,7 +111,7 @@ export default function GamesIndex(): React.JSX.Element {
 
           <button
             type="button"
-            onClick={() => navigate('/lessons')}
+            onClick={() => navigate('/games/local')}
             className="w-full min-h-[48px] rounded-lg bg-green-50 flex items-center gap-3 p-4 md:p-6 text-left"
           >
             <div className="flex-shrink-0">
