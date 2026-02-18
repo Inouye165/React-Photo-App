@@ -325,12 +325,17 @@ async function authenticateToken(req, res, next) {
       return res.status(403).json({ success: false, error: 'Invalid token' });
     }
 
+    const safeEmail = typeof user.email === 'string' ? user.email : '';
+    const fallbackUsername = safeEmail.includes('@')
+      ? safeEmail.split('@')[0]
+      : (typeof user.id === 'string' && user.id.length >= 8 ? `user_${user.id.slice(0, 8)}` : 'user');
+
     // Map Supabase user to app user structure
     req.user = {
       id: user.id,
-      email: user.email,
+      email: safeEmail,
       // Use metadata for username/role if available, otherwise fallback
-      username: user.user_metadata?.username || user.email.split('@')[0],
+      username: user.user_metadata?.username || fallbackUsername,
       // SECURITY: Use app_metadata for role (server-controlled, not client-writable)
       // app_metadata can only be modified via Service Role Key
       role: user.app_metadata?.role || 'user'

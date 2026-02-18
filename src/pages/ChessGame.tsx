@@ -428,6 +428,23 @@ const STORY_MANUAL_NARRATION_STORAGE_KEY = 'chess-story-manual-narration'
 const STORY_AUDIO_SLUG = 'architect-of-squares'
 const NARRATION_FALLBACK_WORDS_PER_SECOND = 2.7
 const STORY_DIRECTOR_SYNC_INTERVAL_MS = 250
+const STORY_STALL_RECOVERY_DELAY_MS = 2000
+const STORY_PROGRESS_STORAGE_PREFIX = 'chess-story-progress'
+const STORY_PROGRESS_STORAGE_VERSION = 1
+
+type WakeLockSentinelLike = {
+  released: boolean
+  release: () => Promise<void>
+  addEventListener?: (type: 'release', listener: () => void, options?: AddEventListenerOptions | boolean) => void
+}
+
+type StoryProgressSnapshot = {
+  version: number
+  storyId: string
+  page: number
+  currentTime: number
+  updatedAt: string
+}
 
 if (typeof window !== 'undefined') {
   GlobalWorkerOptions.workerSrc = pdfWorkerUrl
@@ -666,6 +683,14 @@ function ChessStoryModal({
   const lastAudioTimeRef = useRef<number>(0)
   const preservePausedAudioRef = useRef(false)
   const pausedAudioPageRef = useRef<number | null>(null)
+  const wakeLockRef = useRef<WakeLockSentinelLike | null>(null)
+  const wakeLockRequestInFlightRef = useRef<Promise<void> | null>(null)
+  const watchdogTimerRef = useRef<ReturnType<typeof setInterval> | null>(null)
+  const stallRecoveryTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null)
+  const stallRecoveryInFlightRef = useRef(false)
+  const resumePromptedRef = useRef(false)
+  const pendingResumeRef = useRef<{ page: number; currentTime: number } | null>(null)
+  const lastPersistedProgressRef = useRef<{ page: number; timeBucket: number } | null>(null)
 
   const [pdfDocument, setPdfDocument] = useState<PDFDocumentProxy | null>(null)
   const [isLoadingDocument, setIsLoadingDocument] = useState(false)
@@ -688,6 +713,11 @@ function ChessStoryModal({
   const [hasExtractablePdfText, setHasExtractablePdfText] = useState<boolean | null>(null)
 
   const manualNarrationPages = useMemo(() => splitManualNarrationIntoPages(manualNarration), [manualNarration])
+  const storyProgressStorageKey = useMemo(
+    () => `${STORY_PROGRESS_STORAGE_PREFIX}:${STORY_AUDIO_SLUG}:${pdfUrl}`,
+    [pdfUrl],
+  )
+  const storyProgressId = useMemo(() => `${STORY_AUDIO_SLUG}:${pdfUrl}`, [pdfUrl])
   const narrationWords = useMemo(
     () => activeNarrationText.split(/\s+/).map((word) => word.trim()).filter((word) => word.length > 0),
     [activeNarrationText],
@@ -743,16 +773,221 @@ function ChessStoryModal({
     }
   }, [])
 
+  const clearStallRecoveryTimer = useCallback(() => {
+    if (!stallRecoveryTimerRef.current) return
+    clearTimeout(stallRecoveryTimerRef.current)
+    stallRecoveryTimerRef.current = null
+  }, [])
+
+  const releaseWakeLock = useCallback(async () => {
+    const sentinel = wakeLockRef.current
+    wakeLockRef.current = null
+    if (!sentinel) return
+    try {
+      await sentinel.release()
+    } catch {
+      // Ignore wake lock release failures.
+    }
+  }, [])
+
+  const acquireWakeLock = useCallback(async () => {
+    if (typeof document === 'undefined' || typeof navigator === 'undefined') return
+    if (document.visibilityState !== 'visible') return
+    if (!open || !isNarrating) return
+    if (wakeLockRef.current && !wakeLockRef.current.released) return
+    if (wakeLockRequestInFlightRef.current) {
+      await wakeLockRequestInFlightRef.current
+      return
+    }
+
+    const requestWakeLock = async () => {
+      try {
+        const nav = navigator as Navigator & {
+          wakeLock?: {
+            request: (type: 'screen') => Promise<WakeLockSentinelLike>
+          }
+        }
+        if (!nav.wakeLock || typeof nav.wakeLock.request !== 'function') return
+
+        const sentinel = await nav.wakeLock.request('screen')
+        wakeLockRef.current = sentinel
+        sentinel.addEventListener?.('release', () => {
+          if (wakeLockRef.current === sentinel) {
+            wakeLockRef.current = null
+          }
+        })
+      } catch {
+        // Ignore wake lock acquisition failures; narration can continue without it.
+      }
+    }
+
+    wakeLockRequestInFlightRef.current = requestWakeLock().finally(() => {
+      wakeLockRequestInFlightRef.current = null
+    })
+    await wakeLockRequestInFlightRef.current
+  }, [open, isNarrating])
+
+  const syncDirectorToTime = useCallback((timeSeconds: number, force = false) => {
+    if (!Number.isFinite(timeSeconds) || timeSeconds < 0) return
+
+    if (!force) {
+      const now = Date.now()
+      if (now - lastDirectorSyncAtRef.current < STORY_DIRECTOR_SYNC_INTERVAL_MS) return
+      lastDirectorSyncAtRef.current = now
+    }
+
+    setAudioCurrentTime(timeSeconds)
+    const actions = pageActionsRef.current
+    if (!actions.length) {
+      lastAudioTimeRef.current = timeSeconds
+      return
+    }
+
+    if (timeSeconds + 0.01 < lastAudioTimeRef.current) {
+      const resolved = resolveDirectorStateAtTime(actions, timeSeconds)
+      storyChessRef.current = resolved.chess
+      setBoardPosition(resolved.chess.fen())
+      setCustomSquareStyles(resolved.styles)
+      setActiveActionLabel(resolved.label)
+      lastTriggeredActionIndexRef.current = resolved.lastIndex
+      lastAudioTimeRef.current = timeSeconds
+      return
+    }
+
+    for (let index = lastTriggeredActionIndexRef.current + 1; index < actions.length; index += 1) {
+      const action = actions[index]
+      if (timeSeconds < action.timestamp) break
+
+      if (action.type === 'MOVE') {
+        try {
+          const moved = playScriptMove(storyChessRef.current, action.move)
+          if (moved) {
+            setBoardPosition(storyChessRef.current.fen())
+          }
+        } catch {
+          // Ignore invalid scripted move and continue.
+        }
+      }
+
+      if (action.type === 'HIGHLIGHT') {
+        const styles = action.squares.reduce<Record<string, React.CSSProperties>>((accumulator, square) => {
+          accumulator[square] = getHighlightStyle(action.tone)
+          return accumulator
+        }, {})
+        setCustomSquareStyles(styles)
+      }
+
+      if (action.type === 'BOARD_STATE') {
+        try {
+          const forcedBoard = new Chess(action.fen)
+          storyChessRef.current = forcedBoard
+          setBoardPosition(forcedBoard.fen())
+        } catch {
+          // Ignore invalid scripted board state and continue.
+        }
+      }
+
+      setActiveActionLabel(action.label)
+      lastTriggeredActionIndexRef.current = index
+    }
+
+    lastAudioTimeRef.current = timeSeconds
+  }, [])
+
+  const applyPendingResumeToAudio = useCallback((audio: HTMLAudioElement, pageNumber: number) => {
+    const pending = pendingResumeRef.current
+    if (!pending || pending.page !== pageNumber) return
+    if (!Number.isFinite(pending.currentTime) || pending.currentTime <= 0) {
+      pendingResumeRef.current = null
+      return
+    }
+
+    const applyCurrentTime = () => {
+      try {
+        audio.currentTime = pending.currentTime
+      } catch {
+        return
+      }
+      syncDirectorToTime(pending.currentTime, true)
+      pendingResumeRef.current = null
+    }
+
+    if (audio.readyState >= 1) {
+      applyCurrentTime()
+      return
+    }
+
+    audio.addEventListener('loadedmetadata', applyCurrentTime, { once: true })
+  }, [syncDirectorToTime])
+
+  const recoverFromAudioStall = useCallback(async (audio: HTMLAudioElement, reason: string) => {
+    if (stallRecoveryInFlightRef.current) return
+    if (!isNarrating || audio.paused) return
+
+    stallRecoveryInFlightRef.current = true
+    const resumeTime = Number.isFinite(audio.currentTime) ? audio.currentTime : 0
+
+    try {
+      audio.load()
+    } catch {
+      // Ignore reload failures and still attempt play.
+    }
+
+    if (resumeTime > 0) {
+      const seekToResumePoint = () => {
+        try {
+          audio.currentTime = Math.max(0, resumeTime - 0.05)
+        } catch {
+          // Ignore seek failures.
+        }
+      }
+      audio.addEventListener('loadedmetadata', seekToResumePoint, { once: true })
+    }
+
+    try {
+      await audio.play()
+      if (import.meta.env.DEV) {
+        console.info('[story-audio/modal] stall-recovery-succeeded', {
+          reason,
+          resumeTime,
+        })
+      }
+    } catch (error) {
+      if (import.meta.env.DEV) {
+        console.info('[story-audio/modal] stall-recovery-failed', {
+          reason,
+          resumeTime,
+          errorName: (error as { name?: unknown })?.name,
+          errorMessage: (error as { message?: unknown })?.message,
+        })
+      }
+    } finally {
+      stallRecoveryInFlightRef.current = false
+    }
+  }, [isNarrating])
+
+  const scheduleAudioStallRecovery = useCallback((audio: HTMLAudioElement, reason: string) => {
+    clearStallRecoveryTimer()
+    if (!isNarrating || audio.paused) return
+    stallRecoveryTimerRef.current = setTimeout(() => {
+      stallRecoveryTimerRef.current = null
+      if (!isNarrating || audio.paused) return
+      void recoverFromAudioStall(audio, reason)
+    }, STORY_STALL_RECOVERY_DELAY_MS)
+  }, [clearStallRecoveryTimer, isNarrating, recoverFromAudioStall])
+
   const stopNarration = useCallback(() => {
     preservePausedAudioRef.current = false
     pausedAudioPageRef.current = null
+    clearStallRecoveryTimer()
     setIsNarrating(false)
     setAudioCurrentTime(0)
     setAudioDuration(0)
     setActiveNarrationText('')
     setActiveNarrationSource('none')
+    void releaseWakeLock()
     stopActiveAudio()
-  }, [stopActiveAudio])
+  }, [clearStallRecoveryTimer, releaseWakeLock, stopActiveAudio])
 
   const primeNarrationPlayback = useCallback(() => {
     if (typeof window === 'undefined') return
@@ -898,6 +1133,133 @@ function ChessStoryModal({
     }
     window.localStorage.setItem(STORY_MANUAL_NARRATION_STORAGE_KEY, manualNarration)
   }, [manualNarration])
+
+  useEffect(() => {
+    if (!open) {
+      resumePromptedRef.current = false
+      return
+    }
+    if (!pdfDocument) return
+    if (resumePromptedRef.current) return
+
+    resumePromptedRef.current = true
+
+    let rawSnapshot: string | null = null
+    try {
+      rawSnapshot = window.localStorage.getItem(storyProgressStorageKey)
+    } catch {
+      rawSnapshot = null
+    }
+    if (!rawSnapshot) return
+
+    let parsed: StoryProgressSnapshot | null = null
+    try {
+      parsed = JSON.parse(rawSnapshot) as StoryProgressSnapshot
+    } catch {
+      parsed = null
+    }
+    if (!parsed || parsed.version !== STORY_PROGRESS_STORAGE_VERSION) return
+    if (parsed.storyId !== storyProgressId) return
+
+    const targetPage = Math.min(totalPages, Math.max(1, Number(parsed.page) || 1))
+    const targetTime = Math.max(0, Number(parsed.currentTime) || 0)
+    if (targetPage <= 1 && targetTime < 1) return
+
+    let shouldResume = false
+    try {
+      shouldResume = typeof window.confirm === 'function'
+        ? window.confirm(`Resume narration from page ${targetPage} at ${formatAudioTime(targetTime)}?`)
+        : false
+    } catch {
+      shouldResume = false
+    }
+
+    if (!shouldResume) return
+
+    pendingResumeRef.current = {
+      page: targetPage,
+      currentTime: targetTime,
+    }
+    setCurrentPage(targetPage)
+    setAudioCurrentTime(targetTime)
+    syncDirectorToTime(targetTime, true)
+  }, [open, pdfDocument, storyProgressStorageKey, storyProgressId, totalPages, syncDirectorToTime])
+
+  useEffect(() => {
+    if (!open) return
+
+    const timeBucket = Math.floor(Math.max(0, audioCurrentTime) * 4)
+    const lastPersisted = lastPersistedProgressRef.current
+    if (lastPersisted && lastPersisted.page === currentPage && lastPersisted.timeBucket === timeBucket) {
+      return
+    }
+
+    const snapshot: StoryProgressSnapshot = {
+      version: STORY_PROGRESS_STORAGE_VERSION,
+      storyId: storyProgressId,
+      page: currentPage,
+      currentTime: Math.max(0, audioCurrentTime),
+      updatedAt: new Date().toISOString(),
+    }
+
+    try {
+      window.localStorage.setItem(storyProgressStorageKey, JSON.stringify(snapshot))
+      lastPersistedProgressRef.current = {
+        page: currentPage,
+        timeBucket,
+      }
+    } catch {
+      // Ignore storage write failures.
+    }
+  }, [open, currentPage, audioCurrentTime, storyProgressStorageKey, storyProgressId])
+
+  useEffect(() => {
+    if (!open || !isNarrating) {
+      void releaseWakeLock()
+      return
+    }
+
+    void acquireWakeLock()
+  }, [open, isNarrating, acquireWakeLock, releaseWakeLock])
+
+  useEffect(() => {
+    if (typeof document === 'undefined') return
+
+    const handleVisibilityChange = () => {
+      if (!open || !isNarrating) return
+      if (document.visibilityState === 'visible') {
+        void acquireWakeLock()
+      }
+    }
+
+    document.addEventListener('visibilitychange', handleVisibilityChange)
+    return () => {
+      document.removeEventListener('visibilitychange', handleVisibilityChange)
+    }
+  }, [open, isNarrating, acquireWakeLock])
+
+  useEffect(() => {
+    if (watchdogTimerRef.current) {
+      clearInterval(watchdogTimerRef.current)
+      watchdogTimerRef.current = null
+    }
+
+    if (!open || !isNarrating) return
+
+    const tick = () => {
+      const audio = activeAudioRef.current
+      if (!audio || audio.paused) return
+      syncDirectorToTime(audio.currentTime, true)
+    }
+
+    watchdogTimerRef.current = setInterval(tick, STORY_DIRECTOR_SYNC_INTERVAL_MS)
+    return () => {
+      if (watchdogTimerRef.current) {
+        clearInterval(watchdogTimerRef.current)
+        watchdogTimerRef.current = null
+      }
+    }
+  }, [open, isNarrating, syncDirectorToTime])
 
   useEffect(() => {
     if (!open) return
@@ -1175,6 +1537,7 @@ function ChessStoryModal({
       logStoryAudio('play-page-audio-start')
       const bindAudioEvents = (audio: HTMLAudioElement) => {
         const onEnded = () => {
+          clearStallRecoveryTimer()
           if (cancelled || narrationTokenRef.current !== narrationToken) return
           if (!autoTurnPages) return
 
@@ -1186,6 +1549,7 @@ function ChessStoryModal({
           setCurrentPage((previousPage) => Math.min(totalPages, previousPage + 1))
         }
         const onError = () => {
+          clearStallRecoveryTimer()
           const mediaError = audio.error
           logStoryAudio('audio-element-error', {
             mediaErrorCode: mediaError?.code,
@@ -1201,13 +1565,7 @@ function ChessStoryModal({
         }
 
         const onSeeked = () => {
-          const resolved = resolveDirectorStateAtTime(pageActionsRef.current, audio.currentTime)
-          storyChessRef.current = resolved.chess
-          setBoardPosition(resolved.chess.fen())
-          setCustomSquareStyles(resolved.styles)
-          setActiveActionLabel(resolved.label)
-          lastTriggeredActionIndexRef.current = resolved.lastIndex
-          lastAudioTimeRef.current = audio.currentTime
+          syncDirectorToTime(audio.currentTime, true)
         }
 
         const onLoadedMetadata = () => {
@@ -1219,6 +1577,7 @@ function ChessStoryModal({
         }
 
         const onCanPlay = () => {
+          clearStallRecoveryTimer()
           logStoryAudio('audio-canplay', {
             currentSrc: audio.currentSrc,
             readyState: audio.readyState,
@@ -1230,83 +1589,33 @@ function ChessStoryModal({
             currentSrc: audio.currentSrc,
             networkState: audio.networkState,
           })
+          scheduleAudioStallRecovery(audio, 'stalled')
+        }
+
+        const onWaiting = () => {
+          logStoryAudio('audio-waiting', {
+            currentSrc: audio.currentSrc,
+            networkState: audio.networkState,
+          })
+          scheduleAudioStallRecovery(audio, 'waiting')
+        }
+
+        const onSuspend = () => {
+          logStoryAudio('audio-suspend', {
+            currentSrc: audio.currentSrc,
+            networkState: audio.networkState,
+          })
+          scheduleAudioStallRecovery(audio, 'suspend')
+        }
+
+        const onPlaying = () => {
+          clearStallRecoveryTimer()
         }
 
         const onTimeUpdate = () => {
           if (cancelled || narrationTokenRef.current !== narrationToken) return
-          const now = Date.now()
-          if (now - lastDirectorSyncAtRef.current < STORY_DIRECTOR_SYNC_INTERVAL_MS) return
-          lastDirectorSyncAtRef.current = now
-          setAudioCurrentTime(audio.currentTime)
-
-          const actions = pageActionsRef.current
-          if (!actions.length) return
-
-          if (audio.currentTime + 0.01 < lastAudioTimeRef.current) {
-            const resolved = resolveDirectorStateAtTime(actions, audio.currentTime)
-            storyChessRef.current = resolved.chess
-            setBoardPosition(resolved.chess.fen())
-            setCustomSquareStyles(resolved.styles)
-            setActiveActionLabel(resolved.label)
-            lastTriggeredActionIndexRef.current = resolved.lastIndex
-            lastAudioTimeRef.current = audio.currentTime
-
-            if (resolved.lastIndex >= 0) {
-              const lastAction = actions[resolved.lastIndex]
-              console.log('[story/director] Replayed action after backward seek', {
-                label: lastAction.label,
-                actionTimestamp: lastAction.timestamp,
-                audioTime: Number(audio.currentTime.toFixed(2)),
-                page: currentPage,
-              })
-            }
-            return
-          }
-
-          for (let index = lastTriggeredActionIndexRef.current + 1; index < actions.length; index += 1) {
-            const action = actions[index]
-            if (audio.currentTime < action.timestamp) break
-
-            if (action.type === 'MOVE') {
-              try {
-                const moved = playScriptMove(storyChessRef.current, action.move)
-                if (moved) {
-                  setBoardPosition(storyChessRef.current.fen())
-                }
-              } catch {
-                // Ignore invalid scripted move and continue.
-              }
-            }
-
-            if (action.type === 'HIGHLIGHT') {
-              const styles = action.squares.reduce<Record<string, React.CSSProperties>>((accumulator, square) => {
-                accumulator[square] = getHighlightStyle(action.tone)
-                return accumulator
-              }, {})
-              setCustomSquareStyles(styles)
-            }
-
-            if (action.type === 'BOARD_STATE') {
-              try {
-                const forcedBoard = new Chess(action.fen)
-                storyChessRef.current = forcedBoard
-                setBoardPosition(forcedBoard.fen())
-              } catch {
-                // Ignore invalid scripted board state and continue.
-              }
-            }
-
-            setActiveActionLabel(action.label)
-            lastTriggeredActionIndexRef.current = index
-            console.log('[story/director] Executed action', {
-              label: action.label,
-              actionTimestamp: action.timestamp,
-              audioTime: Number(audio.currentTime.toFixed(2)),
-              page: currentPage,
-            })
-          }
-
-          lastAudioTimeRef.current = audio.currentTime
+          clearStallRecoveryTimer()
+          syncDirectorToTime(audio.currentTime)
         }
 
         audio.addEventListener('ended', onEnded)
@@ -1316,6 +1625,9 @@ function ChessStoryModal({
         audio.addEventListener('timeupdate', onTimeUpdate)
         audio.addEventListener('canplay', onCanPlay)
         audio.addEventListener('stalled', onStalled)
+        audio.addEventListener('waiting', onWaiting)
+        audio.addEventListener('suspend', onSuspend)
+        audio.addEventListener('playing', onPlaying)
 
         if (Number.isFinite(audio.duration)) {
           setAudioDuration(audio.duration)
@@ -1329,6 +1641,9 @@ function ChessStoryModal({
           audio.removeEventListener('timeupdate', onTimeUpdate)
           audio.removeEventListener('canplay', onCanPlay)
           audio.removeEventListener('stalled', onStalled)
+          audio.removeEventListener('waiting', onWaiting)
+          audio.removeEventListener('suspend', onSuspend)
+          audio.removeEventListener('playing', onPlaying)
         }
       }
 
@@ -1339,6 +1654,7 @@ function ChessStoryModal({
           currentTime: audio.currentTime,
         })
         removeAudioListeners = bindAudioEvents(audio)
+        applyPendingResumeToAudio(audio, currentPage)
         try {
           await audio.play()
           logStoryAudio('resume-play-succeeded')
@@ -1433,6 +1749,7 @@ function ChessStoryModal({
       }
 
       removeAudioListeners = bindAudioEvents(audio)
+      applyPendingResumeToAudio(audio, currentPage)
 
       try {
         await audio.play()
@@ -1457,6 +1774,7 @@ function ChessStoryModal({
     return () => {
       cancelled = true
       removeAudioListeners?.()
+      clearStallRecoveryTimer()
       if (preservePausedAudioRef.current && pausedAudioPageRef.current === currentPage) {
         return
       }
@@ -1472,9 +1790,24 @@ function ChessStoryModal({
     findNarrationStartingAtPage,
     stopActiveAudio,
     resetDirectorForPage,
+    syncDirectorToTime,
     getAudioPlayErrorMessage,
     logStoryAudio,
+    applyPendingResumeToAudio,
+    scheduleAudioStallRecovery,
+    clearStallRecoveryTimer,
   ])
+
+  useEffect(() => {
+    return () => {
+      if (watchdogTimerRef.current) {
+        clearInterval(watchdogTimerRef.current)
+        watchdogTimerRef.current = null
+      }
+      clearStallRecoveryTimer()
+      void releaseWakeLock()
+    }
+  }, [clearStallRecoveryTimer, releaseWakeLock])
 
   useEffect(() => {
     if (!open) return
