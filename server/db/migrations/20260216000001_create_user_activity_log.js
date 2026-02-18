@@ -10,11 +10,29 @@ exports.up = async function up(knex) {
   const hasTable = await knex.schema.hasTable('user_activity_log');
   if (hasTable) return;
 
+  const client = String(knex?.client?.config?.client || '').toLowerCase();
+  const isSqlite = client.includes('sqlite');
+
   await knex.schema.createTable('user_activity_log', (table) => {
-    table.uuid('id').primary().defaultTo(knex.raw('gen_random_uuid()'));
+    if (isSqlite) {
+      table
+        .uuid('id')
+        .primary()
+        .defaultTo(
+          knex.raw(
+            "(lower(hex(randomblob(4))) || '-' || lower(hex(randomblob(2))) || '-4' || substr(lower(hex(randomblob(2))),2) || '-' || substr('89ab',abs(random()) % 4 + 1,1) || substr(lower(hex(randomblob(2))),2) || '-' || lower(hex(randomblob(6))))"
+          )
+        );
+    } else {
+      table.uuid('id').primary().defaultTo(knex.raw('gen_random_uuid()'));
+    }
     table.uuid('user_id').notNullable().index();
     table.string('action', 50).notNullable().index();
-    table.jsonb('metadata').defaultTo('{}');
+    if (isSqlite) {
+      table.json('metadata').defaultTo('{}');
+    } else {
+      table.jsonb('metadata').defaultTo('{}');
+    }
     table.string('ip_address', 45).nullable();
     table.text('user_agent').nullable();
     table.timestamp('created_at').defaultTo(knex.fn.now()).notNullable();
