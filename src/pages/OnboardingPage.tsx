@@ -202,6 +202,7 @@ export default function OnboardingPage() {
                 id="password"
                 type="password"
                 required
+                autoComplete="new-password"
                 className="w-full px-3 py-2 border border-gray-300 rounded-md focus:ring-2 focus:ring-indigo-500 focus:border-transparent"
                 value={password}
                 onChange={(e) => setPassword(e.target.value)}
@@ -218,6 +219,7 @@ export default function OnboardingPage() {
                 id="confirm-password"
                 type="password"
                 required
+                autoComplete="new-password"
                 className="w-full px-3 py-2 border border-gray-300 rounded-md focus:ring-2 focus:ring-indigo-500 focus:border-transparent"
                 value={confirmPassword}
                 onChange={(e) => setConfirmPassword(e.target.value)}

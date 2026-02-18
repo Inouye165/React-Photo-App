@@ -301,6 +301,7 @@ export default function SettingsPage() {
               <input
                 id="new-password"
                 type="password"
+                autoComplete="new-password"
                 value={newPassword}
                 onChange={(e) => setNewPassword(e.target.value)}
                 className="w-full px-3 py-2 border border-gray-300 rounded-md"
@@ -316,6 +317,7 @@ export default function SettingsPage() {
               <input
                 id="confirm-new-password"
                 type="password"
+                autoComplete="new-password"
                 value={confirmNewPassword}
                 onChange={(e) => setConfirmNewPassword(e.target.value)}
                 className="w-full px-3 py-2 border border-gray-300 rounded-md"
