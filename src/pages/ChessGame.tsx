@@ -676,6 +676,9 @@ function ChessStoryModal({
   const pageTextCacheRef = useRef<Map<number, string>>(new Map())
   const activeAudioRef = useRef<HTMLAudioElement | null>(null)
   const activeAudioObjectUrlRef = useRef<string | null>(null)
+  const activeSpeechUtteranceRef = useRef<SpeechSynthesisUtterance | null>(null)
+  const speechTimerRef = useRef<ReturnType<typeof setInterval> | null>(null)
+  const speechStartMsRef = useRef<number>(0)
   const storyChessRef = useRef(new Chess())
   const pageActionsRef = useRef<StoryDirectorAction[]>([])
   const lastTriggeredActionIndexRef = useRef<number>(-1)
@@ -706,6 +709,7 @@ function ChessStoryModal({
   const [activeActionLabel, setActiveActionLabel] = useState<string | null>(null)
   const [audioCurrentTime, setAudioCurrentTime] = useState(0)
   const [audioDuration, setAudioDuration] = useState(0)
+  const [usingBrowserNarration, setUsingBrowserNarration] = useState(false)
   const [activeNarrationText, setActiveNarrationText] = useState('')
   const [activeNarrationSource, setActiveNarrationSource] = useState<NarrationSource>('none')
   const [pageTextOverlayItems, setPageTextOverlayItems] = useState<PdfTextOverlayItem[]>([])
@@ -976,6 +980,88 @@ function ChessStoryModal({
     }, STORY_STALL_RECOVERY_DELAY_MS)
   }, [clearStallRecoveryTimer, isNarrating, recoverFromAudioStall])
 
+  const clearSpeechTimer = useCallback(() => {
+    if (!speechTimerRef.current) return
+    clearInterval(speechTimerRef.current)
+    speechTimerRef.current = null
+  }, [])
+
+  const stopSpeechNarration = useCallback(() => {
+    clearSpeechTimer()
+    speechStartMsRef.current = 0
+    activeSpeechUtteranceRef.current = null
+
+    if (typeof window !== 'undefined' && window.speechSynthesis && typeof window.speechSynthesis.cancel === 'function') {
+      try {
+        window.speechSynthesis.cancel()
+      } catch {
+        // Ignore cancellation failures.
+      }
+    }
+  }, [clearSpeechTimer])
+
+  const startSpeechNarration = useCallback((input: {
+    text: string
+    onEnd: () => void
+    onError: () => void
+  }): boolean => {
+    if (typeof window === 'undefined') return false
+    const synth = window.speechSynthesis
+    const UtteranceCtor = window.SpeechSynthesisUtterance
+    if (!synth || typeof synth.speak !== 'function' || !UtteranceCtor) return false
+
+    stopSpeechNarration()
+
+    const utterance = new UtteranceCtor(input.text)
+    utterance.rate = 1
+    utterance.pitch = 1
+    utterance.volume = 1
+    utterance.lang = 'en-US'
+
+    const voices = typeof synth.getVoices === 'function' ? synth.getVoices() : []
+    const preferredVoice = voices.find((voice) => String(voice.lang || '').toLowerCase().startsWith('en'))
+    if (preferredVoice) {
+      utterance.voice = preferredVoice
+      utterance.lang = preferredVoice.lang || utterance.lang
+    }
+
+    const wordCount = input.text.split(/\s+/).map((word) => word.trim()).filter((word) => word.length > 0).length
+    const estimatedDurationSeconds = Math.max(1, wordCount / NARRATION_FALLBACK_WORDS_PER_SECOND)
+    setAudioDuration(estimatedDurationSeconds)
+
+    utterance.onend = () => {
+      clearSpeechTimer()
+      speechStartMsRef.current = 0
+      activeSpeechUtteranceRef.current = null
+      input.onEnd()
+    }
+
+    utterance.onerror = () => {
+      clearSpeechTimer()
+      speechStartMsRef.current = 0
+      activeSpeechUtteranceRef.current = null
+      input.onError()
+    }
+
+    activeSpeechUtteranceRef.current = utterance
+    speechStartMsRef.current = Date.now()
+
+    speechTimerRef.current = setInterval(() => {
+      const elapsedSeconds = Math.max(0, (Date.now() - speechStartMsRef.current) / 1000)
+      syncDirectorToTime(elapsedSeconds, true)
+    }, STORY_DIRECTOR_SYNC_INTERVAL_MS)
+
+    try {
+      synth.speak(utterance)
+      return true
+    } catch {
+      clearSpeechTimer()
+      speechStartMsRef.current = 0
+      activeSpeechUtteranceRef.current = null
+      return false
+    }
+  }, [clearSpeechTimer, stopSpeechNarration, syncDirectorToTime])
+
   const stopNarration = useCallback(() => {
     preservePausedAudioRef.current = false
     pausedAudioPageRef.current = null
@@ -983,11 +1069,13 @@ function ChessStoryModal({
     setIsNarrating(false)
     setAudioCurrentTime(0)
     setAudioDuration(0)
+    setUsingBrowserNarration(false)
     setActiveNarrationText('')
     setActiveNarrationSource('none')
     void releaseWakeLock()
+    stopSpeechNarration()
     stopActiveAudio()
-  }, [clearStallRecoveryTimer, releaseWakeLock, stopActiveAudio])
+  }, [clearStallRecoveryTimer, releaseWakeLock, stopActiveAudio, stopSpeechNarration])
 
   const primeNarrationPlayback = useCallback(() => {
     if (typeof window === 'undefined') return
@@ -1041,6 +1129,9 @@ function ChessStoryModal({
         activeAudio.pause()
         setAudioCurrentTime(activeAudio.currentTime)
       }
+      if (activeSpeechUtteranceRef.current) {
+        stopSpeechNarration()
+      }
       setIsNarrating(false)
       logStoryAudio('pause-clicked')
       return
@@ -1049,7 +1140,7 @@ function ChessStoryModal({
     primeNarrationPlayback()
     logStoryAudio('play-clicked')
     setIsNarrating(true)
-  }, [isNarrating, currentPage, primeNarrationPlayback, logStoryAudio])
+  }, [isNarrating, currentPage, primeNarrationPlayback, logStoryAudio, stopSpeechNarration])
 
   const resetDirectorForPage = useCallback((pageNumber: number) => {
     const actions = createDirectorScriptForPage(pageNumber)
@@ -1290,9 +1381,10 @@ function ChessStoryModal({
       preservePausedAudioRef.current = false
       pausedAudioPageRef.current = null
       stopActiveAudio()
+      stopSpeechNarration()
     }
     resetDirectorForPage(currentPage)
-  }, [open, currentPage, resetDirectorForPage, stopActiveAudio])
+  }, [open, currentPage, resetDirectorForPage, stopActiveAudio, stopSpeechNarration])
 
   useEffect(() => {
     if (!open) {
@@ -1528,6 +1620,7 @@ function ChessStoryModal({
 
     if (!canResumePausedAudio) {
       stopActiveAudio()
+      stopSpeechNarration()
       resetDirectorForPage(currentPage)
     }
 
@@ -1692,6 +1785,7 @@ function ChessStoryModal({
       }
 
       setActiveNarrationText(text)
+      setUsingBrowserNarration(false)
       setLoadError(null)
       let audioSourceUrl = ''
       let createdObjectUrl: string | null = null
@@ -1727,6 +1821,46 @@ function ChessStoryModal({
           errorMessage: (error as { message?: unknown })?.message,
         })
         if (cancelled || narrationTokenRef.current !== narrationToken) return
+
+        const maybeStatus = Number((error as { status?: unknown })?.status || 0)
+        const maybeMessage = String((error as { message?: unknown })?.message || '').toLowerCase()
+        const isTtsUnavailable =
+          maybeStatus === 503
+          || maybeMessage.includes('tts is not available')
+          || maybeMessage.includes('openai tts is not available')
+
+        if (isTtsUnavailable) {
+          const startedSpeechFallback = startSpeechNarration({
+            text,
+            onEnd: () => {
+              if (cancelled || narrationTokenRef.current !== narrationToken) return
+              if (!autoTurnPages) return
+              if (currentPage >= totalPages) {
+                setIsNarrating(false)
+                return
+              }
+              setCurrentPage((previousPage) => Math.min(totalPages, previousPage + 1))
+            },
+            onError: () => {
+              if (cancelled || narrationTokenRef.current !== narrationToken) return
+              setIsNarrating(false)
+              setLoadError('Browser narration failed for this page.')
+            },
+          })
+
+          if (startedSpeechFallback) {
+            setUsingBrowserNarration(true)
+            setLoadError(null)
+            return
+          }
+
+          setUsingBrowserNarration(false)
+          setIsNarrating(false)
+          setLoadError('Browser speech narration is unavailable on this device.')
+          return
+        }
+
+        setUsingBrowserNarration(false)
         setIsNarrating(false)
         setLoadError(error instanceof Error ? error.message : 'Failed to generate story audio')
         return
@@ -1750,6 +1884,7 @@ function ChessStoryModal({
 
       removeAudioListeners = bindAudioEvents(audio)
       applyPendingResumeToAudio(audio, currentPage)
+      setUsingBrowserNarration(false)
 
       try {
         await audio.play()
@@ -1778,6 +1913,7 @@ function ChessStoryModal({
       if (preservePausedAudioRef.current && pausedAudioPageRef.current === currentPage) {
         return
       }
+      stopSpeechNarration()
       stopActiveAudio()
     }
   }, [
@@ -1796,6 +1932,8 @@ function ChessStoryModal({
     applyPendingResumeToAudio,
     scheduleAudioStallRecovery,
     clearStallRecoveryTimer,
+    startSpeechNarration,
+    stopSpeechNarration,
   ])
 
   useEffect(() => {
@@ -1804,10 +1942,11 @@ function ChessStoryModal({
         clearInterval(watchdogTimerRef.current)
         watchdogTimerRef.current = null
       }
+      stopSpeechNarration()
       clearStallRecoveryTimer()
       void releaseWakeLock()
     }
-  }, [clearStallRecoveryTimer, releaseWakeLock])
+  }, [clearStallRecoveryTimer, releaseWakeLock, stopSpeechNarration])
 
   useEffect(() => {
     if (!open) return
@@ -1875,6 +2014,7 @@ function ChessStoryModal({
           <span className="text-xs text-slate-500">Page {currentPage}/{totalPages}</span>
           <span className="text-xs text-slate-500">Audio {formatAudioTime(audioCurrentTime)} / {formatAudioTime(audioDuration)}</span>
           <span className="text-xs text-slate-500">Source: {narrationSourceLabel(activeNarrationSource)}</span>
+          {usingBrowserNarration ? <span className="text-xs text-slate-500">Using browser narration</span> : null}
         </div>
 
         {audioSetupWarnings.length > 0 ? (

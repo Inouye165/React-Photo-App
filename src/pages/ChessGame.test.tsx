@@ -3,6 +3,7 @@ import { render, screen, waitFor, within } from '@testing-library/react'
 import userEvent from '@testing-library/user-event'
 import { Chess } from 'chess.js'
 import ChessGame from './ChessGame'
+import { ApiError } from '../api/httpClient'
 
 const {
   getMockGameId,
@@ -636,6 +637,61 @@ describe('ChessGame', () => {
       expect(firstAudio.pause).toHaveBeenCalled()
       expect(ensureStoryAudioMock.mock.calls.length).toBeGreaterThan(1)
     })
+  })
+
+  it('falls back to browser narration when server TTS is unavailable (503)', async () => {
+    const user = userEvent.setup()
+    setMockGameId('local')
+    ensureStoryAudioMock.mockRejectedValueOnce(new ApiError('OpenAI TTS is not available on server', { status: 503 }))
+
+    render(<ChessGame />)
+
+    await user.click(screen.getByRole('button', { name: 'How to play' }))
+    await user.click(screen.getByRole('button', { name: 'Story mode' }))
+    await user.click(await screen.findByRole('button', { name: 'Play narration' }))
+
+    await waitFor(() => {
+      expect(speechSpeakMock).toHaveBeenCalledTimes(1)
+    })
+
+    expect(screen.queryByText('OpenAI TTS is not available on server')).not.toBeInTheDocument()
+    expect(screen.getByText('Using browser narration')).toBeInTheDocument()
+  })
+
+  it('advances story cues using speech fallback virtual clock', async () => {
+    vi.useFakeTimers()
+    try {
+      const user = userEvent.setup({ advanceTimers: vi.advanceTimersByTime })
+      setMockGameId('local')
+      setMockPdfNumPages(8)
+      setMockPdfPageText(3, 'Timeline page three text')
+      setMockPdfPageText(4, 'Timeline page four text')
+      ensureStoryAudioMock.mockRejectedValue(new ApiError('OpenAI TTS is not available on server', { status: 503 }))
+
+      render(<ChessGame />)
+
+      await user.click(screen.getByRole('button', { name: 'How to play' }))
+      await user.click(screen.getByRole('button', { name: 'Story mode' }))
+
+      await user.click(screen.getByRole('button', { name: 'Next page' }))
+      await user.click(screen.getByRole('button', { name: 'Next page' }))
+      expect(screen.getByText('Page 3/8')).toBeInTheDocument()
+      expect(screen.getByText('Waiting for cue...')).toBeInTheDocument()
+
+      await user.click(screen.getByRole('button', { name: 'Play narration' }))
+
+      await waitFor(() => {
+        expect(speechSpeakMock).toHaveBeenCalled()
+      })
+
+      await vi.advanceTimersByTimeAsync(13000)
+
+      await waitFor(() => {
+        expect(screen.queryByText('Waiting for cue...')).not.toBeInTheDocument()
+      })
+    } finally {
+      vi.useRealTimers()
+    }
   })
 
   it('uses manual narration when PDF page text is unavailable', async () => {
