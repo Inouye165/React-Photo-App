@@ -262,6 +262,7 @@ export default function AppHeader({
           <NavLink
             to="/games"
             data-testid="nav-games"
+            aria-label="Games"
             onClick={() => { closePicker('nav-games'); }}
             className={({ isActive }) => `
               flex items-center justify-center gap-1.5
