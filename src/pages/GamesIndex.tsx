@@ -22,7 +22,7 @@ export default function GamesIndex(): React.JSX.Element {
   const [games, setGames] = useState<any[]>([])
   const [query, setQuery] = useState('')
   const [results, setResults] = useState<any[]>([])
-  // loadError state removed; errors will surface via UI toast/logging where needed
+  const [loadError, setLoadError] = useState<string | null>(null)
   const navigate = useNavigate()
   const searchDebounceRef = useRef<ReturnType<typeof setTimeout> | null>(null)
   const searchRequestRef = useRef(0)
@@ -31,8 +31,9 @@ export default function GamesIndex(): React.JSX.Element {
     try {
       const g = await listMyGames()
       setGames(Array.isArray(g) ? g : [])
+      setLoadError(null)
     } catch {
-      // no-op: keep games empty on error
+      setLoadError('Failed to load games. Please retry.')
     }
   }
 
@@ -91,6 +92,19 @@ export default function GamesIndex(): React.JSX.Element {
 
   return (
     <div className="space-y-6 px-4">
+      {loadError ? (
+        <div className="mb-3 flex items-center justify-between rounded border border-red-200 bg-red-50 px-3 py-2 text-sm text-red-700">
+          <span>{loadError}</span>
+          <button
+            type="button"
+            onClick={() => { void loadGames() }}
+            className="rounded border border-red-200 bg-white px-2 py-1 text-xs font-semibold text-red-700"
+          >
+            Retry
+          </button>
+        </div>
+      ) : null}
+
       {/* Discovery section */}
       <section>
         <h2 className="text-lg font-semibold mb-3">Discovery</h2>
