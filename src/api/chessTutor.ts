@@ -131,6 +131,11 @@ function isStoryAudioPrecomputedOnlyMode(): boolean {
   return Boolean(import.meta.env.PROD)
 }
 
+function logStoryAudioClient(event: string, details?: Record<string, unknown>): void {
+  if (!import.meta.env.DEV) return
+  console.info(`[story-audio/client] ${event}`, details || {})
+}
+
 function normalizeNarrationText(text: string): string {
   return String(text || '')
     .replace(/\r\n/g, '\n')
@@ -188,6 +193,30 @@ function buildStoryAudioPublicUrlFromObjectPath(objectPath: string): string | nu
   return `${supabaseBase}/storage/v1/object/public/${STORY_AUDIO_BUCKET}/${objectPath}`
 }
 
+function getStoryAudioCacheNamespace(): string {
+  const supabaseBase = getSupabaseBaseUrl()
+  if (!supabaseBase) return 'default'
+  try {
+    return new URL(supabaseBase).origin.toLowerCase()
+  } catch {
+    return supabaseBase.toLowerCase()
+  }
+}
+
+function isCompatibleStoryAudioUrl(url: string): boolean {
+  const supabaseBase = getSupabaseBaseUrl()
+  if (!supabaseBase) return true
+
+  try {
+    const expectedOrigin = new URL(supabaseBase).origin.toLowerCase()
+    const candidate = new URL(String(url || '').trim())
+    if (candidate.protocol === 'blob:') return true
+    return candidate.origin.toLowerCase() === expectedOrigin
+  } catch {
+    return false
+  }
+}
+
 function getStoryAudioUrlCacheSnapshotFromStorage(): Record<string, StoryAudioUrlCacheEntry> {
   if (typeof window === 'undefined') return {}
   try {
@@ -224,11 +253,36 @@ function saveStoryAudioUrlCacheSnapshotToStorage(snapshot: Record<string, StoryA
 
 function readStoryAudioCachedUrl(cacheKey: string): string | null {
   const inMemory = storyAudioUrlMemoryCache.get(cacheKey)
-  if (inMemory?.url) return inMemory.url
+  if (inMemory?.url) {
+    if (isEphemeralStoryAudioUrl(inMemory.url)) {
+      logStoryAudioClient('cache-drop-ephemeral-memory-url', { cacheKey })
+      storyAudioUrlMemoryCache.delete(cacheKey)
+    } else if (!isCompatibleStoryAudioUrl(inMemory.url)) {
+      logStoryAudioClient('cache-drop-incompatible-memory-url', { cacheKey, urlPreview: inMemory.url.slice(0, 120) })
+      storyAudioUrlMemoryCache.delete(cacheKey)
+    } else {
+      logStoryAudioClient('cache-hit-memory-url', { cacheKey })
+      return inMemory.url
+    }
+  }
 
   const storageSnapshot = getStoryAudioUrlCacheSnapshotFromStorage()
   const fromStorage = storageSnapshot[cacheKey]
   if (!fromStorage?.url) return null
+
+  if (isEphemeralStoryAudioUrl(fromStorage.url)) {
+    logStoryAudioClient('cache-drop-ephemeral-storage-url', { cacheKey })
+    delete storageSnapshot[cacheKey]
+    saveStoryAudioUrlCacheSnapshotToStorage(storageSnapshot)
+    return null
+  }
+
+  if (!isCompatibleStoryAudioUrl(fromStorage.url)) {
+    logStoryAudioClient('cache-drop-incompatible-storage-url', { cacheKey, urlPreview: fromStorage.url.slice(0, 120) })
+    delete storageSnapshot[cacheKey]
+    saveStoryAudioUrlCacheSnapshotToStorage(storageSnapshot)
+    return null
+  }
 
   storyAudioUrlMemoryCache.set(cacheKey, {
     url: fromStorage.url,
@@ -242,6 +296,16 @@ function writeStoryAudioCachedUrl(cacheKey: string, url: string): void {
   const normalizedUrl = String(url || '').trim()
   if (!normalizedUrl) return
 
+  if (isEphemeralStoryAudioUrl(normalizedUrl)) {
+    logStoryAudioClient('cache-skip-ephemeral-url', { cacheKey })
+    return
+  }
+
+  if (!isCompatibleStoryAudioUrl(normalizedUrl)) {
+    logStoryAudioClient('cache-skip-incompatible-url', { cacheKey, urlPreview: normalizedUrl.slice(0, 120) })
+    return
+  }
+
   const nextEntry: StoryAudioUrlCacheEntry = {
     url: normalizedUrl,
     updatedAt: Date.now(),
@@ -252,6 +316,22 @@ function writeStoryAudioCachedUrl(cacheKey: string, url: string): void {
   const snapshot = getStoryAudioUrlCacheSnapshotFromStorage()
   snapshot[cacheKey] = nextEntry
   saveStoryAudioUrlCacheSnapshotToStorage(snapshot)
+}
+
+function isEphemeralStoryAudioUrl(url: string): boolean {
+  const normalizedUrl = String(url || '').trim()
+  if (!normalizedUrl) return false
+
+  try {
+    const parsed = new URL(normalizedUrl)
+    const keys = Array.from(parsed.searchParams.keys()).map((key) => key.toLowerCase())
+    if (keys.length === 0) return false
+    if (keys.includes('token') || keys.includes('expires') || keys.includes('signature')) return true
+    if (keys.some((key) => key.startsWith('x-amz-'))) return true
+    return true
+  } catch {
+    return normalizedUrl.includes('?')
+  }
 }
 
 async function loadStoryAudioManifest(storySlug: string): Promise<StoryAudioManifest | null> {
@@ -309,10 +389,30 @@ async function resolvePrecomputedStoryAudioUrl(input: {
 
   const manifestEntry = manifest?.entries?.find((entry) => entry.page === input.page && entry.hash === input.hash)
   const candidateObjectPath = manifestEntry?.objectPath || input.objectPath
-  const candidateUrl = manifestEntry?.url || buildStoryAudioPublicUrlFromObjectPath(candidateObjectPath)
+  const manifestUrl = manifestEntry?.url
+  const fallbackUrl = buildStoryAudioPublicUrlFromObjectPath(candidateObjectPath)
+  const candidateUrl = manifestUrl && isCompatibleStoryAudioUrl(manifestUrl) ? manifestUrl : fallbackUrl
+  if (manifestUrl && !isCompatibleStoryAudioUrl(manifestUrl)) {
+    logStoryAudioClient('precomputed-ignore-incompatible-manifest-url', {
+      page: input.page,
+      manifestUrlPreview: manifestUrl.slice(0, 120),
+    })
+  }
+  logStoryAudioClient('precomputed-candidate', {
+    page: input.page,
+    hasManifest: Boolean(manifest),
+    hasManifestEntry: Boolean(manifestEntry),
+    candidateObjectPath,
+    candidateUrlPreview: String(candidateUrl || '').slice(0, 160),
+  })
   if (!candidateUrl) return null
 
   const reachable = await urlLooksReachable(candidateUrl)
+  logStoryAudioClient('precomputed-reachability', {
+    page: input.page,
+    reachable,
+    candidateUrlPreview: String(candidateUrl || '').slice(0, 160),
+  })
   if (!reachable) return null
 
   return candidateUrl
@@ -380,10 +480,15 @@ export async function ensureStoryAudio(input: {
     voice,
   })
 
-  const localCacheKey = `${input.storySlug}|${objectPath}`
+  const localCacheKey = `${getStoryAudioCacheNamespace()}|${input.storySlug}|${objectPath}`
   const cachedUrl = readStoryAudioCachedUrl(localCacheKey)
   if (cachedUrl) {
     storyAudioClientMetrics.localCacheHits += 1
+    logStoryAudioClient('ensure-return-cached-url', {
+      page: input.page,
+      objectPath,
+      localCacheKey,
+    })
     return {
       cached: true,
       url: cachedUrl,
@@ -399,6 +504,11 @@ export async function ensureStoryAudio(input: {
 
   if (precomputedUrl) {
     storyAudioClientMetrics.precomputedHits += 1
+    logStoryAudioClient('ensure-return-precomputed-url', {
+      page: input.page,
+      objectPath,
+      localCacheKey,
+    })
     writeStoryAudioCachedUrl(localCacheKey, precomputedUrl)
     return {
       cached: true,
@@ -409,6 +519,10 @@ export async function ensureStoryAudio(input: {
   storyAudioClientMetrics.precomputedMisses += 1
 
   if (isStoryAudioPrecomputedOnlyMode()) {
+    logStoryAudioClient('ensure-precomputed-only-miss', {
+      page: input.page,
+      objectPath,
+    })
     throw new Error('Story audio is not precomputed for this page/content. Runtime generation is disabled.')
   }
 
@@ -450,8 +564,20 @@ export async function ensureStoryAudio(input: {
   }
 
   if (!response?.success || !response.url) {
+    logStoryAudioClient('ensure-api-failed', {
+      page: input.page,
+      objectPath,
+      error: response?.error || 'Failed to prepare story audio',
+    })
     throw new Error(response?.error || 'Failed to prepare story audio')
   }
+
+  logStoryAudioClient('ensure-api-success', {
+    page: input.page,
+    objectPath,
+    cached: Boolean(response.cached),
+    hasAudioBase64: Boolean(response.audioBase64 && response.audioBase64.length > 0),
+  })
 
   writeStoryAudioCachedUrl(localCacheKey, response.url)
 

@@ -79,4 +79,59 @@ describe('useUnreadMessages', () => {
       roomB: 1,
     })
   })
+
+  it('returns zero unread when room_members.last_read_at is missing', async () => {
+    const userId = 'user1'
+    let roomMembersSelectCalls = 0
+
+    const fromMock = vi.fn().mockImplementation((table) => {
+      if (table === 'room_members') {
+        return {
+          select: vi.fn().mockReturnThis(),
+          eq: vi.fn().mockImplementation(() => {
+            roomMembersSelectCalls += 1
+            if (roomMembersSelectCalls === 1) {
+              return Promise.resolve({
+                data: null,
+                error: { code: '42703', message: 'column room_members.last_read_at does not exist' },
+              })
+            }
+
+            return Promise.resolve({
+              data: [{ room_id: 'roomA' }],
+              error: null,
+            })
+          }),
+        }
+      }
+
+      if (table === 'messages') {
+        return {
+          select: vi.fn().mockReturnThis(),
+          in: vi.fn().mockReturnThis(),
+          neq: vi.fn().mockReturnThis(),
+          gt: vi.fn().mockResolvedValue({ data: [], error: null }),
+        }
+      }
+
+      return { select: vi.fn() }
+    })
+
+    // @ts-ignore
+    supabase.from.mockImplementation(fromMock)
+
+    const channelMock = {
+      on: vi.fn().mockReturnThis(),
+      subscribe: vi.fn(),
+    }
+    // @ts-ignore
+    supabase.channel.mockReturnValue(channelMock)
+
+    const { result } = renderHook(() => useUnreadMessages(userId))
+
+    await waitFor(() => expect(result.current.loading).toBe(false))
+
+    expect(result.current.unreadCount).toBe(0)
+    expect(result.current.unreadByRoom).toEqual({})
+  })
 })

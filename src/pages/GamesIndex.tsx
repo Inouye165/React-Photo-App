@@ -2,6 +2,21 @@ import React, { useEffect, useRef, useState } from 'react'
 import { useNavigate } from 'react-router-dom'
 import { listMyGames, createChessGame } from '../api/games'
 import { searchUsers } from '../api/chat'
+import { Sparkles, BookOpen, Play, UserPlus, Clock, Inbox } from 'lucide-react'
+
+const inviteStatuses = new Set(['waiting', 'invited', 'pending'])
+const activeStatuses = new Set(['active', 'in_progress', 'inprogress'])
+
+function getOpponentName(game: any, userId?: string | null): string {
+  const fallback = 'Opponent'
+  if (!userId) return fallback
+  return game.members?.find((m: any) => m.user_id !== userId)?.username || fallback
+}
+
+function formatGameLabel(game: any, userId?: string | null): string {
+  const typeLabel = game.type ? `${game.type.charAt(0).toUpperCase()}${game.type.slice(1)}` : 'Game'
+  return `${typeLabel} vs ${getOpponentName(game, userId)}`
+}
 
 export default function GamesIndex(): React.JSX.Element {
   const [games, setGames] = useState<any[]>([])
@@ -15,7 +30,7 @@ export default function GamesIndex(): React.JSX.Element {
   const loadGames = async () => {
     try {
       const g = await listMyGames()
-      setGames(g)
+      setGames(Array.isArray(g) ? g : [])
       setLoadError(null)
     } catch {
       setLoadError('Failed to load games. Please retry.')
@@ -72,9 +87,11 @@ export default function GamesIndex(): React.JSX.Element {
     navigate(`/games/${game.id}`)
   }
 
+  const inviteGames = games.filter((g) => inviteStatuses.has((g.status || '').toLowerCase()))
+  const activeGames = games.filter((g) => activeStatuses.has((g.status || '').toLowerCase()))
+
   return (
-    <div>
-      <h2 className="text-lg font-semibold mb-2">Chess</h2>
+    <div className="space-y-6 px-4">
       {loadError ? (
         <div className="mb-3 flex items-center justify-between rounded border border-red-200 bg-red-50 px-3 py-2 text-sm text-red-700">
           <span>{loadError}</span>
@@ -87,35 +104,127 @@ export default function GamesIndex(): React.JSX.Element {
           </button>
         </div>
       ) : null}
-      <div className="mb-4 flex flex-wrap gap-2">
-        <button onClick={() => navigate('/games/local')} className="px-3 py-1 bg-slate-600 text-white rounded">Play vs Computer</button>
-        <button onClick={() => handleCreate()} className="px-3 py-1 bg-slate-700 text-white rounded">New Game (Random Opponent)</button>
-      </div>
 
-      <div className="mb-4">
-        <label className="block text-xs text-slate-600">Invite by username</label>
-        <input value={query} onChange={handleSearch} className="border p-2 rounded w-64" placeholder="Search users" />
-        <div>
+      {/* Discovery section */}
+      <section>
+        <h2 className="text-lg font-semibold mb-3">Discovery</h2>
+        <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+          <button
+            type="button"
+            onClick={() => navigate('/games/local')}
+            className="w-full min-h-[48px] rounded-lg bg-amber-50 flex items-center gap-3 p-4 md:p-6 text-left"
+          >
+            <div className="flex-shrink-0">
+              <Sparkles size={28} className="text-amber-500" />
+            </div>
+            <div>
+              <div className="font-semibold">Start Story Mode</div>
+              <div className="text-sm text-slate-600">Narrative-driven challenges and tutorials</div>
+            </div>
+          </button>
+
+          <button
+            type="button"
+            onClick={() => navigate('/games/local')}
+            className="w-full min-h-[48px] rounded-lg bg-green-50 flex items-center gap-3 p-4 md:p-6 text-left"
+          >
+            <div className="flex-shrink-0">
+              <BookOpen size={28} className="text-green-500" />
+            </div>
+            <div>
+              <div className="font-semibold">View Lessons</div>
+              <div className="text-sm text-slate-600">Short tutorials and practice puzzles</div>
+            </div>
+          </button>
+        </div>
+      </section>
+
+      {/* Quick Play */}
+      <section>
+        <h3 className="text-lg font-semibold mb-3">Quick Play</h3>
+        <div className="flex flex-col gap-3">
+          <button
+            type="button"
+            onClick={() => navigate('/games/local')}
+            className="w-full min-h-[48px] rounded-lg bg-slate-800 text-white flex items-center justify-center gap-2 px-4 py-3"
+          >
+            <Play size={18} />
+            <span className="font-medium">Play vs computer</span>
+          </button>
+
+          <button
+            type="button"
+            onClick={() => navigate('/games')}
+            className="w-full min-h-[48px] rounded-lg bg-indigo-50 text-indigo-700 flex items-center justify-center gap-2 px-4 py-3"
+          >
+            <UserPlus size={18} />
+            <span className="font-medium">Invite a player</span>
+          </button>
+        </div>
+      </section>
+
+      {/* Invite form (existing) */}
+      <section>
+        <label className="block text-xs text-slate-600 mb-2">Invite by username</label>
+        <div className="flex flex-col md:flex-row gap-2">
+          <input value={query} onChange={handleSearch} className="border rounded-md p-2 flex-1" placeholder="Search users" />
+        </div>
+        <div className="mt-2 space-y-2">
           {results.map((r) => (
             <div key={r.id} className="flex items-center gap-2">
-              <span>{r.username || r.id}</span>
-              <button onClick={() => handleCreate(r.id)} className="px-2 py-1 bg-indigo-600 text-white rounded text-sm">Invite</button>
+              <span className="flex-1">{r.username || r.id}</span>
+              <button onClick={() => void handleCreate(r.id)} className="px-3 py-1 bg-indigo-600 text-white rounded text-sm">Invite</button>
             </div>
           ))}
         </div>
-      </div>
+      </section>
 
-      <div>
-        <h3 className="text-sm font-medium mb-2">In Progress</h3>
-        {games.filter((g) => g.status === 'active').length ? (
-          <ul>
-            {games.filter((g) => g.status === 'active').map((g) => (
-              <li key={g.id} className="py-2 border-b">
-                <button onClick={() => navigate(`/games/${g.id}`)} className="text-left w-full">
-                  <div className="flex justify-between">
-                    <div>{g.type}</div>
-                    <div className="text-xs text-slate-500">{new Date(g.updated_at).toLocaleString()}</div>
+      {/* Lists: Invitations & In Progress */}
+      <section>
+        <h3 className="text-sm font-medium mb-2">Invitations</h3>
+        {inviteGames.length ? (
+          <ul className="space-y-2">
+            {inviteGames.map((g) => (
+              <li key={g.id}>
+                <button
+                  onClick={() => navigate(`/games/${g.id}`)}
+                  className="w-full text-left rounded-md p-3 bg-white border border-slate-100 flex items-center justify-between"
+                >
+                  <div className="flex items-center gap-3">
+                    <Inbox size={18} />
+                    <div>
+                      <div className="font-medium">{formatGameLabel(g)}</div>
+                      <div className="text-xs text-slate-500">{g.type}</div>
+                    </div>
                   </div>
+                  <div className="text-xs text-slate-500">{g.updated_at ? new Date(g.updated_at).toLocaleString() : ''}</div>
+                </button>
+              </li>
+            ))}
+          </ul>
+        ) : (
+          <div className="text-sm text-slate-500">No invitations.</div>
+        )}
+      </section>
+
+      <section>
+        <h3 className="text-sm font-medium mb-2">In Progress</h3>
+        {activeGames.length ? (
+          <ul className="space-y-2">
+            {activeGames.map((g) => (
+              <li key={g.id}>
+                <button
+                  onClick={() => navigate(`/games/${g.id}`)}
+                  className="w-full text-left rounded-md p-3 bg-white border border-slate-100 flex items-center justify-between"
+                >
+                  <div className="flex items-center gap-3">
+                    <Clock size={18} />
+                    <div>
+                      <div className="font-medium">{formatGameLabel(g)}</div>
+                      <div className="text-xs text-slate-500">{g.type}</div>
+                    </div>
+                  </div>
+                  <div className="text-xs text-slate-500">{g.updated_at ? new Date(g.updated_at).toLocaleString() : ''}</div>
                 </button>
               </li>
             ))}
@@ -123,7 +232,7 @@ export default function GamesIndex(): React.JSX.Element {
         ) : (
           <div className="text-sm text-slate-500">No active games.</div>
         )}
-      </div>
+      </section>
     </div>
   )
 }

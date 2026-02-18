@@ -754,6 +754,49 @@ function ChessStoryModal({
     stopActiveAudio()
   }, [stopActiveAudio])
 
+  const primeNarrationPlayback = useCallback(() => {
+    if (typeof window === 'undefined') return
+
+    const AudioContextCtor = window.AudioContext
+      || (window as Window & { webkitAudioContext?: typeof AudioContext }).webkitAudioContext
+
+    if (!AudioContextCtor) return
+
+    try {
+      const context = new AudioContextCtor()
+      if (context.state === 'suspended') {
+        void context.resume().catch(() => {
+          // Ignore unlock failures; playback flow handles retries.
+        })
+      }
+      // Close immediately to avoid leaking contexts.
+      void context.close().catch(() => {
+        // Ignore cleanup failures.
+      })
+    } catch {
+      // Ignore unlock failures; playback flow handles retries.
+    }
+  }, [])
+
+  const logStoryAudio = useCallback((event: string, details?: Record<string, unknown>) => {
+    if (!import.meta.env.DEV) return
+    const payload = details || {}
+    console.info(`[story-audio/modal] ${event}`, {
+      page: currentPage,
+      totalPages,
+      isNarrating,
+      ...payload,
+    })
+  }, [currentPage, totalPages, isNarrating])
+
+  const getAudioPlayErrorMessage = useCallback((error: unknown): string => {
+    const name = String((error as { name?: unknown })?.name || '')
+    if (name === 'NotAllowedError') {
+      return 'Audio playback was blocked. Click play again to continue narration.'
+    }
+    return 'Audio playback failed for this page.'
+  }, [])
+
   const handleNarrationToggle = useCallback(() => {
     if (isNarrating) {
       const activeAudio = activeAudioRef.current
@@ -764,11 +807,14 @@ function ChessStoryModal({
         setAudioCurrentTime(activeAudio.currentTime)
       }
       setIsNarrating(false)
+      logStoryAudio('pause-clicked')
       return
     }
 
+    primeNarrationPlayback()
+    logStoryAudio('play-clicked')
     setIsNarrating(true)
-  }, [isNarrating, currentPage])
+  }, [isNarrating, currentPage, primeNarrationPlayback, logStoryAudio])
 
   const resetDirectorForPage = useCallback((pageNumber: number) => {
     const actions = createDirectorScriptForPage(pageNumber)
@@ -1126,6 +1172,7 @@ function ChessStoryModal({
     preservePausedAudioRef.current = false
 
     const playPageAudio = async () => {
+      logStoryAudio('play-page-audio-start')
       const bindAudioEvents = (audio: HTMLAudioElement) => {
         const onEnded = () => {
           if (cancelled || narrationTokenRef.current !== narrationToken) return
@@ -1139,6 +1186,14 @@ function ChessStoryModal({
           setCurrentPage((previousPage) => Math.min(totalPages, previousPage + 1))
         }
         const onError = () => {
+          const mediaError = audio.error
+          logStoryAudio('audio-element-error', {
+            mediaErrorCode: mediaError?.code,
+            mediaErrorMessage: mediaError?.message,
+            networkState: audio.networkState,
+            readyState: audio.readyState,
+            currentSrc: audio.currentSrc,
+          })
           if (!cancelled) {
             setIsNarrating(false)
             setLoadError('Audio playback failed for this page.')
@@ -1156,7 +1211,25 @@ function ChessStoryModal({
         }
 
         const onLoadedMetadata = () => {
+          logStoryAudio('audio-loaded-metadata', {
+            duration: Number.isFinite(audio.duration) ? audio.duration : null,
+            currentSrc: audio.currentSrc,
+          })
           setAudioDuration(Number.isFinite(audio.duration) ? audio.duration : 0)
+        }
+
+        const onCanPlay = () => {
+          logStoryAudio('audio-canplay', {
+            currentSrc: audio.currentSrc,
+            readyState: audio.readyState,
+          })
+        }
+
+        const onStalled = () => {
+          logStoryAudio('audio-stalled', {
+            currentSrc: audio.currentSrc,
+            networkState: audio.networkState,
+          })
         }
 
         const onTimeUpdate = () => {
@@ -1241,6 +1314,8 @@ function ChessStoryModal({
         audio.addEventListener('loadedmetadata', onLoadedMetadata)
         audio.addEventListener('seeked', onSeeked)
         audio.addEventListener('timeupdate', onTimeUpdate)
+        audio.addEventListener('canplay', onCanPlay)
+        audio.addEventListener('stalled', onStalled)
 
         if (Number.isFinite(audio.duration)) {
           setAudioDuration(audio.duration)
@@ -1252,18 +1327,29 @@ function ChessStoryModal({
           audio.removeEventListener('loadedmetadata', onLoadedMetadata)
           audio.removeEventListener('seeked', onSeeked)
           audio.removeEventListener('timeupdate', onTimeUpdate)
+          audio.removeEventListener('canplay', onCanPlay)
+          audio.removeEventListener('stalled', onStalled)
         }
       }
 
       if (canResumePausedAudio && activeAudioRef.current) {
         const audio = activeAudioRef.current
+        logStoryAudio('resuming-paused-audio', {
+          currentSrc: audio.currentSrc,
+          currentTime: audio.currentTime,
+        })
         removeAudioListeners = bindAudioEvents(audio)
         try {
           await audio.play()
-        } catch {
+          logStoryAudio('resume-play-succeeded')
+        } catch (error) {
+          logStoryAudio('resume-play-failed', {
+            errorName: (error as { name?: unknown })?.name,
+            errorMessage: (error as { message?: unknown })?.message,
+          })
           if (!cancelled) {
             setIsNarrating(false)
-            setLoadError('Audio playback was blocked. Click play again to continue narration.')
+            setLoadError(getAudioPlayErrorMessage(error))
           }
         }
         return
@@ -1295,12 +1381,22 @@ function ChessStoryModal({
       let createdObjectUrl: string | null = null
 
       try {
+        logStoryAudio('ensure-story-audio-request', {
+          source: narration.source,
+          textLength: text.length,
+        })
         const ensuredAudio = await ensureStoryAudio({
           storySlug: STORY_AUDIO_SLUG,
           page: currentPage,
           totalPages,
           text,
           voice: CHESS_STORY_TTS_VOICE,
+        })
+
+        logStoryAudio('ensure-story-audio-response', {
+          cached: ensuredAudio.cached,
+          hasUrl: Boolean(ensuredAudio.url),
+          hasAudioBase64: Boolean(ensuredAudio.audioBase64 && ensuredAudio.audioBase64.length > 0),
         })
 
         if (ensuredAudio.audioBase64 && ensuredAudio.audioBase64.length > 0) {
@@ -1310,6 +1406,10 @@ function ChessStoryModal({
           audioSourceUrl = ensuredAudio.url
         }
       } catch (error) {
+        logStoryAudio('ensure-story-audio-failed', {
+          errorName: (error as { name?: unknown })?.name,
+          errorMessage: (error as { message?: unknown })?.message,
+        })
         if (cancelled || narrationTokenRef.current !== narrationToken) return
         setIsNarrating(false)
         setLoadError(error instanceof Error ? error.message : 'Failed to generate story audio')
@@ -1323,6 +1423,10 @@ function ChessStoryModal({
       }
 
       const audio = new Audio(audioSourceUrl)
+      logStoryAudio('audio-instance-created', {
+        audioSourceKind: createdObjectUrl ? 'blob' : 'url',
+        audioSourcePreview: audioSourceUrl.slice(0, 160),
+      })
       activeAudioRef.current = audio
       if (createdObjectUrl) {
         activeAudioObjectUrlRef.current = createdObjectUrl
@@ -1332,10 +1436,18 @@ function ChessStoryModal({
 
       try {
         await audio.play()
-      } catch {
+        logStoryAudio('play-succeeded')
+      } catch (error) {
+        logStoryAudio('play-failed', {
+          errorName: (error as { name?: unknown })?.name,
+          errorMessage: (error as { message?: unknown })?.message,
+          currentSrc: audio.currentSrc,
+          readyState: audio.readyState,
+          networkState: audio.networkState,
+        })
         if (!cancelled) {
           setIsNarrating(false)
-          setLoadError('Audio playback was blocked. Click play again to continue narration.')
+          setLoadError(getAudioPlayErrorMessage(error))
         }
       }
     }
@@ -1360,6 +1472,8 @@ function ChessStoryModal({
     findNarrationStartingAtPage,
     stopActiveAudio,
     resetDirectorForPage,
+    getAudioPlayErrorMessage,
+    logStoryAudio,
   ])
 
   useEffect(() => {

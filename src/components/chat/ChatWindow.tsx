@@ -66,6 +66,18 @@ type DashboardCardProps = {
   children: ReactNode
 }
 
+type PostgrestLikeError = {
+  code?: string | null
+  message?: string | null
+}
+
+function isMissingLastReadAtColumnError(error: unknown): boolean {
+  const candidate = error as PostgrestLikeError | null
+  const code = candidate?.code ?? ''
+  const message = (candidate?.message ?? '').toLowerCase()
+  return code === '42703' || message.includes('last_read_at')
+}
+
 function formatTime(iso: string): string {
   const d = new Date(iso)
   if (Number.isNaN(d.getTime())) return ''
@@ -124,6 +136,7 @@ export default function ChatWindow({ roomId, showIdentityGate, mode = 'workspace
 
   const markReadTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null)
   const lastMarkReadAtRef = useRef<number>(0)
+  const warnedMissingLastReadColumnRef = useRef<boolean>(false)
 
   useEffect(() => {
     setMemberIds([])
@@ -242,7 +255,16 @@ export default function ChatWindow({ roomId, showIdentityGate, mode = 'workspace
             .eq('room_id', roomId)
             .eq('user_id', user.id)
 
-          if (error) throw error
+          if (error) {
+            if (isMissingLastReadAtColumnError(error)) {
+              if (import.meta.env.DEV && !warnedMissingLastReadColumnRef.current) {
+                warnedMissingLastReadColumnRef.current = true
+                console.warn('[ChatWindow] room_members.last_read_at is missing. Skipping mark-read update.')
+              }
+              return
+            }
+            throw error
+          }
         } catch (err) {
           if (import.meta.env.DEV) console.error(`[ChatWindow] Failed to mark read (${reason}):`, err)
         }

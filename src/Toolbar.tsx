@@ -1,12 +1,12 @@
-import React, { useEffect, useState } from 'react';
+import React from 'react';
 import { useNavigate } from 'react-router-dom';
 import type { NavigateFunction } from 'react-router-dom';
 import type { User } from '@supabase/supabase-js';
 import { useAuth } from './contexts/AuthContext';
-import { listMyGamesWithMembers } from './api/games';
+// games API previously used by toolbar; dashboard now handles games UI
 import useStore from './store';
 import type { Photo } from './types/photo';
-import GamesMenu from './components/GamesMenu';
+// GamesMenu UI moved to a dedicated dashboard page; render a simple navigation button instead.
 
 type Severity = 'info' | 'success' | 'warning' | 'error';
 
@@ -37,8 +37,7 @@ export default function Toolbar({
   const { user, logout } = useAuth();
   const navigate: NavigateFunction = useNavigate();
   const isAuthenticated = !!user;
-  const [games, setGames] = useState<Array<{ id: string; type: string; status: string; members?: Array<{ user_id: string; username: string | null }> }>>([]);
-  const [gamesLoading, setGamesLoading] = useState(false);
+  // Games listing removed from toolbar. Interactive games UI moved to games dashboard.
 
   // Connect to store
   const setView = useStore((state) => state.setView);
@@ -87,39 +86,7 @@ export default function Toolbar({
   const typedUser = user as User | null;
   const severityStyle = sevStyles[toolbarSeverity] ?? sevStyles.info;
 
-  useEffect(() => {
-    let isActive = true;
-
-    if (!isAuthenticated) {
-      setGames([]);
-      setGamesLoading(false);
-      return () => {
-        isActive = false;
-      };
-    }
-
-    setGamesLoading(true);
-    listMyGamesWithMembers()
-      .then((data) => {
-        if (isActive) {
-          setGames(Array.isArray(data) ? data : []);
-        }
-      })
-      .catch(() => {
-        if (isActive) {
-          setGames([]);
-        }
-      })
-      .finally(() => {
-        if (isActive) {
-          setGamesLoading(false);
-        }
-      });
-
-    return () => {
-      isActive = false;
-    };
-  }, [isAuthenticated]);
+  // toolbar no longer fetches games
 
   return (
     <nav
@@ -147,12 +114,7 @@ export default function Toolbar({
           Photo App (Backend View)
         </span>
         <button onClick={handleUploadClick}>Select Folder for Upload</button>
-        <GamesMenu
-          games={games}
-          gamesLoading={gamesLoading}
-          userId={user?.id}
-          disabled={!isAuthenticated}
-        />
+        <button onClick={() => navigate('/games')} style={{ padding: '8px 12px', borderRadius: 6, background: '#1f2937', color: '#fff', border: 'none' }}>Games</button>
         <button onClick={() => handleViewChange('working')}>View Working</button>
         <button onClick={() => handleViewChange('inprogress')}>View Inprogress</button>
         <button onClick={() => handleViewChange('finished')}>View Finished</button>

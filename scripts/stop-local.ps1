@@ -29,6 +29,39 @@ function Stop-ProcessWithRetry {
   return $false
 }
 
+function Test-DockerAvailable {
+  if (-not (Get-Command docker -ErrorAction SilentlyContinue)) {
+    return $false
+  }
+
+  $previousErrorAction = $ErrorActionPreference
+  try {
+    $ErrorActionPreference = 'Continue'
+    docker info 1>$null 2>$null
+  } finally {
+    $ErrorActionPreference = $previousErrorAction
+  }
+
+  return ($LASTEXITCODE -eq 0)
+}
+
+function Invoke-DockerCompose {
+  param([string[]]$ComposeArgs)
+
+  docker compose version *> $null
+  if ($LASTEXITCODE -eq 0) {
+    & docker @('compose') @ComposeArgs
+    return
+  }
+
+  if (Get-Command docker-compose -ErrorAction SilentlyContinue) {
+    & docker-compose @ComposeArgs
+    return
+  }
+
+  throw "Neither 'docker compose' nor 'docker-compose' is available."
+}
+
 $repoRoot = (Resolve-Path "$PSScriptRoot\..").Path
 Set-Location $repoRoot
 $repoRootEscaped = [Regex]::Escape($repoRoot)
@@ -118,6 +151,14 @@ foreach ($port in $appPorts) {
 }
 
 Write-Step "Stopping Docker services (db + redis)..."
-docker-compose stop db redis | Out-Null
+if (Test-DockerAvailable) {
+  try {
+    Invoke-DockerCompose -ComposeArgs @('stop', 'db', 'redis') | Out-Null
+  } catch {
+    Write-Host "[stop-local] Warning: Could not stop Docker services: $($_.Exception.Message)" -ForegroundColor Yellow
+  }
+} else {
+  Write-Host "[stop-local] Docker daemon not available; skipping container stop." -ForegroundColor Yellow
+}
 
 Write-Step "Shutdown complete. Closed terminals: $closedCount, stopped processes: $killedCount"
