@@ -9,6 +9,50 @@
       "destination": "https://web-production-d709f.up.railway.app/api/$1"
     },
     {
+      "source": "/photos/(.*)",
+      "destination": "https://web-production-d709f.up.railway.app/photos/$1"
+    },
+    {
+      "source": "/upload/(.*)",
+      "destination": "https://web-production-d709f.up.railway.app/upload/$1"
+    },
+    {
+      "source": "/upload",
+      "destination": "https://web-production-d709f.up.railway.app/upload"
+    },
+    {
+      "source": "/privilege/(.*)",
+      "destination": "https://web-production-d709f.up.railway.app/privilege/$1"
+    },
+    {
+      "source": "/privilege",
+      "destination": "https://web-production-d709f.up.railway.app/privilege"
+    },
+    {
+      "source": "/events/(.*)",
+      "destination": "https://web-production-d709f.up.railway.app/events/$1"
+    },
+    {
+      "source": "/display/(.*)",
+      "destination": "https://web-production-d709f.up.railway.app/display/$1"
+    },
+    {
+      "source": "/capture-intents/(.*)",
+      "destination": "https://web-production-d709f.up.railway.app/capture-intents/$1"
+    },
+    {
+      "source": "/collectibles/(.*)",
+      "destination": "https://web-production-d709f.up.railway.app/collectibles/$1"
+    },
+    {
+      "source": "/save-captioned-image",
+      "destination": "https://web-production-d709f.up.railway.app/save-captioned-image"
+    },
+    {
+      "source": "/health",
+      "destination": "https://web-production-d709f.up.railway.app/health"
+    },
+    {
       "source": "/(.*)",
       "destination": "/"
     }

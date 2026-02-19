@@ -63,6 +63,16 @@ async function getCsrfToken(): Promise<string> {
       })
 
       if (!res.ok) {
+        // --- DEBUG: CSRF proxy diagnostics (remove when confirmed working) ---
+        const _csrfCt = res.headers?.get?.('content-type') || ''
+        if (_csrfCt.includes('text/html')) {
+          console.warn('[CSRF][PROXY-DEBUG] CSRF endpoint returned HTML — /csrf may not be proxied to backend', {
+            status: res.status,
+            contentType: _csrfCt,
+          })
+        }
+        // --- END DEBUG ---
+
         // Preserve auth-error behavior even when the CSRF bootstrap endpoint is blocked.
         if (res.status === 401 || res.status === 403) {
           throw new ApiError('Authentication failed', { status: res.status, code: 'AUTH_ERROR' })
@@ -473,6 +483,27 @@ export async function request<T>(options: RequestOptions): Promise<T> {
 
   try {
     response = await limiter(doFetch)
+
+    // --- DEBUG: Proxy routing diagnostics (remove when confirmed working) ---
+    const _dbgContentType = response.headers?.get?.('content-type') || ''
+    const _dbgIsHtml = _dbgContentType.includes('text/html')
+    const _dbgExpectsJson = !url.includes('/display/') && !url.includes('/health')
+    if (_dbgIsHtml && _dbgExpectsJson) {
+      console.warn('[HTTP][PROXY-DEBUG] Response is text/html but expected JSON — route may not be proxied to backend', {
+        url,
+        method,
+        status: response.status,
+        contentType: _dbgContentType,
+      })
+    } else {
+      console.info('[HTTP][PROXY-DEBUG] Request completed', {
+        url,
+        method,
+        status: response.status,
+        contentType: _dbgContentType,
+      })
+    }
+    // --- END DEBUG ---
 
     // If we get a CSRF-looking 403, clear cached token and retry once.
     if (!response.ok && response.status === 403 && isUnsafeMethod(method.toUpperCase())) {

@@ -1,4 +1,4 @@
-import { beforeEach, describe, expect, it, vi } from 'vitest'
+import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 
 const { requestMock } = vi.hoisted(() => ({
   requestMock: vi.fn(),
@@ -43,12 +43,21 @@ async function computeStoryAudioHash(input: { text: string; totalPages: number; 
 }
 
 describe('chessTutor.ensureStoryAudio', () => {
+  const savedSupabaseUrl = import.meta.env.VITE_SUPABASE_URL
+
   beforeEach(() => {
     vi.clearAllMocks()
     __resetStoryAudioCacheForTests()
 
+    // Prevent local VITE_SUPABASE_URL from leaking into URL-compatibility checks
+    import.meta.env.VITE_SUPABASE_URL = ''
+
     vi.stubGlobal('fetch', vi.fn(async () => ({ ok: false, status: 404 } as Response)))
     __setStoryAudioPrecomputedOnlyModeForTests(null)
+  })
+
+  afterEach(() => {
+    import.meta.env.VITE_SUPABASE_URL = savedSupabaseUrl
   })
 
   it('memoizes ensured audio URLs and skips repeat API calls for same narration payload', async () => {
