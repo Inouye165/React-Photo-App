@@ -1,0 +1,18 @@
+﻿{
+    "repoRoot":  "C:\\Users\\inouy\\photo-app",
+    "startedAt":  "2026-02-19T12:55:55.2792521-08:00",
+    "terminals":  [
+                      {
+                          "pid":  49376,
+                          "title":  "Lumina API"
+                      },
+                      {
+                          "pid":  26500,
+                          "title":  "Lumina Worker"
+                      },
+                      {
+                          "pid":  50432,
+                          "title":  "Lumina Frontend"
+                      }
+                  ]
+}
