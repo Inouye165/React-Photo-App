@@ -501,7 +501,31 @@ export function AuthProvider({ children }: { children: ReactNode }): ReactNode {
         password,
       })
 
-      if (error) throw error
+      if (error) {
+        // Comprehensive login error diagnostics
+        const errAny = error as unknown as Record<string, unknown>
+        console.error('[auth-diag] signInWithPassword FAILED', {
+          message: error.message,
+          name: error.name,
+          status: errAny.status,
+          statusCode: errAny.statusCode,
+          code: errAny.code,
+          errorKeys: Object.keys(errAny),
+        })
+
+        // Check if Supabase returned HTML instead of JSON (proxy misconfiguration)
+        if (error.message?.includes('<html') || error.message?.includes('<!DOCTYPE')) {
+          console.error('[auth-diag] Supabase auth endpoint returned HTML — likely a proxy/rewrite issue')
+        }
+
+        // Log the Supabase URL for cross-reference
+        try {
+          const url = import.meta.env.VITE_SUPABASE_URL || '(unset)';
+          console.error(`[auth-diag] VITE_SUPABASE_URL used for this request: ${url}`);
+        } catch { /* ignore */ }
+
+        throw error
+      }
 
       // Clear any previous auth message on successful login
       setAuthMessage(null)
@@ -532,13 +556,22 @@ export function AuthProvider({ children }: { children: ReactNode }): ReactNode {
       loginInProgressRef.current = false
       authDebug('login:error', { message: getErrorMessage(err) })
       if (isInvalidLoginCredentialsError(err)) {
-        if (import.meta.env.DEV) {
-          console.info('Login validation: invalid credentials for provided email')
-        }
+        // Log detailed diagnostics to help pinpoint the cause
+        console.error('[auth-diag] LOGIN REJECTED by Supabase. Possible causes:')
+        console.error('[auth-diag]   1. Wrong VITE_SUPABASE_URL (pointing at wrong project)')
+        console.error('[auth-diag]   2. Anon key does not match the Supabase project')
+        console.error('[auth-diag]   3. Supabase project is paused (free tier auto-pauses)')
+        console.error('[auth-diag]   4. User does not exist in this Supabase project')
+        console.error('[auth-diag]   5. Wrong password')
+        try {
+          console.error(`[auth-diag] VITE_SUPABASE_URL = ${import.meta.env.VITE_SUPABASE_URL || '(unset)'}`)
+          console.error(`[auth-diag] Check /api/meta/auth-diag for server-side Supabase config`)
+        } catch { /* ignore */ }
+
         return {
           success: false,
           error:
-            'Invalid email or password. If this account was created in a different Supabase project/environment, sign in there or reset your password here.',
+            'Invalid email or password. Please check your credentials and try again.',
         }
       }
       console.error('Login error:', err)

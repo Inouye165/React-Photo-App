@@ -27,17 +27,43 @@ function createThrowingProxy(message: string): SupabaseClient {
   return new Proxy({}, handler) as unknown as SupabaseClient;
 }
 
-// --- DEV-only: sanitized environment diagnostics ---
-if (import.meta.env.DEV) {
-  try {
-    const hostname = supabaseUrl ? new URL(supabaseUrl).hostname : '(empty)';
-    const apiBase = (import.meta.env.VITE_API_URL || import.meta.env.VITE_API_BASE_URL)
-      ? String(import.meta.env.VITE_API_URL || import.meta.env.VITE_API_BASE_URL)
-      : '(same-origin)';
-    console.info(`[env] supabase host=${hostname} apiBase=${apiBase}`);
-  } catch {
-    console.info('[env] supabase host=(invalid URL) apiBase=(unknown)');
-  }
+// ---------------------------------------------------------------------------
+// Sanitized diagnostics — safe for production (no secrets/PII).
+// Logs the Supabase URL and a key fingerprint so we can quickly confirm which
+// project the build is pointing at without leaking the full anon key.
+// ---------------------------------------------------------------------------
+function keyFingerprint(key: string | undefined): string {
+  if (!key) return '(empty)';
+  if (key.length < 20) return `len=${key.length}`;
+  return `${key.slice(0, 8)}…${key.slice(-4)} (len=${key.length})`;
+}
+
+try {
+  const host = supabaseUrl ? new URL(supabaseUrl).hostname : '(empty)';
+  const apiBase = (import.meta.env.VITE_API_URL || import.meta.env.VITE_API_BASE_URL)
+    ? String(import.meta.env.VITE_API_URL || import.meta.env.VITE_API_BASE_URL)
+    : '(same-origin)';
+  console.info(
+    `[env] supabase url=${supabaseUrl} host=${host} anonKey=${keyFingerprint(supabaseAnonKey)} apiBase=${apiBase} mode=${import.meta.env.MODE}`,
+  );
+} catch {
+  console.info('[env] supabase url=(invalid) anonKey=(unknown)');
+}
+
+// One-time Supabase reachability probe (runs in browser only)
+if (typeof window !== 'undefined' && supabaseUrl) {
+  fetch(`${supabaseUrl}/auth/v1/`, { method: 'GET' })
+    .then((res) => {
+      console.info(`[env] supabase reachability probe: status=${res.status} ok=${res.ok}`);
+      if (!res.ok) {
+        console.warn(
+          `[env] Supabase project may be paused or URL is wrong (status ${res.status}).`,
+        );
+      }
+    })
+    .catch((err) => {
+      console.error('[env] supabase reachability probe FAILED (network error):', err?.message ?? err);
+    });
 }
 
 export const supabase: SupabaseClient =
