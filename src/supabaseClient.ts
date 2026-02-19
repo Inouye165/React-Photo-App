@@ -1,5 +1,6 @@
 import { createClient, type SupabaseClient } from '@supabase/supabase-js';
 import { env } from './env';
+import { isDiagEnabled, diagLog } from './utils/diag';
 
 // Prefer explicit Vite env, fallback to loaded env shim
 const supabaseUrl =
@@ -40,7 +41,48 @@ if (import.meta.env.DEV) {
   }
 }
 
+// --- Diagnostic mode: app startup log (works in all modes when ?diag=1) ---
+try {
+  const _sbHost = supabaseUrl ? new URL(supabaseUrl).hostname : '(empty)';
+  const _apiRaw = (typeof import.meta !== 'undefined' && (import.meta.env?.VITE_API_URL || import.meta.env?.VITE_API_BASE_URL)) || '';
+  const _apiMode = _apiRaw ? new URL(_apiRaw).hostname : 'same-origin';
+  diagLog('startup', {
+    mode: import.meta.env.MODE,
+    origin: typeof window !== 'undefined' ? window.location.origin : '(ssr)',
+    supabaseHost: _sbHost,
+    apiMode: _apiMode,
+  });
+} catch {
+  diagLog('startup', { error: 'failed to resolve env URLs' });
+}
+
 export const supabase: SupabaseClient =
   !supabaseUrl || !supabaseAnonKey
     ? createThrowingProxy(missingMessage)
     : createClient(supabaseUrl, supabaseAnonKey);
+
+// --- Diagnostic: GoTrue settings probe (only when ?diag=1) ---
+// Supabase GoTrue exposes /auth/v1/settings publicly.
+// This tells us the auth provider config, password requirements, etc.
+// Useful for detecting if the project is paused or the URL is wrong.
+if (isDiagEnabled() && supabaseUrl) {
+  void (async () => {
+    try {
+      const res = await fetch(`${supabaseUrl}/auth/v1/settings`);
+      if (res.ok) {
+        const settings = await res.json() as Record<string, unknown>;
+        // Log only safe, non-secret fields
+        diagLog('gotrue:settings', {
+          external: settings.external,
+          disable_signup: settings.disable_signup,
+          mailer_autoconfirm: settings.mailer_autoconfirm,
+          password_min_length: (settings as Record<string, unknown>).password_min_length,
+        });
+      } else {
+        diagLog('gotrue:settings', { status: res.status, hint: res.status === 0 ? 'project may be paused' : 'unexpected' });
+      }
+    } catch (err) {
+      diagLog('gotrue:settings:error', { message: (err as Error).message });
+    }
+  })();
+}
