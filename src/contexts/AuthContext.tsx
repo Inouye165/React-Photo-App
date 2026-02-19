@@ -363,8 +363,20 @@ export function AuthProvider({ children }: { children: ReactNode }): ReactNode {
     }
 
     // Normal Supabase auth flow
+    // --- DEBUG: Auth diagnostics (remove when confirmed working) ---
+    console.info('[AUTH-DEBUG] Starting Supabase auth init flow');
+    // --- END DEBUG ---
     getSessionSingleflight()
       .then(async (currentSession: Session | null) => {
+        // --- DEBUG: Auth diagnostics (remove when confirmed working) ---
+        console.info('[AUTH-DEBUG] getSession result', {
+          hasSession: Boolean(currentSession),
+          hasToken: Boolean(currentSession?.access_token),
+          expiresAt: currentSession?.expires_at ?? null,
+          userId: currentSession?.user?.id ?? null,
+          tokenLength: currentSession?.access_token?.length ?? 0,
+        });
+        // --- END DEBUG ---
         authDebug('init:getSessionSingleflight', {
           hasSession: Boolean(currentSession),
           hasToken: Boolean(currentSession?.access_token),
@@ -460,10 +472,39 @@ export function AuthProvider({ children }: { children: ReactNode }): ReactNode {
         return { success: false, error: 'Email is required' }
       }
 
+      // --- DEBUG: Auth diagnostics (remove when confirmed working) ---
+      console.info('[AUTH-DEBUG] signInWithPassword attempt', {
+        emailLength: normalizedEmail.length,
+        emailDomain: normalizedEmail.split('@')[1] || '(no domain)',
+        passwordLength: password?.length ?? 0,
+      });
+      // --- END DEBUG ---
+
       const { data, error } = await supabase.auth.signInWithPassword({
         email: normalizedEmail,
         password,
       })
+
+      // --- DEBUG: Auth diagnostics (remove when confirmed working) ---
+      if (error) {
+        console.error('[AUTH-DEBUG] signInWithPassword FAILED', {
+          message: error.message,
+          status: (error as any).status,
+          code: (error as any).code,
+          name: error.name,
+          // Log the full error shape without PII
+          errorKeys: Object.keys(error),
+        });
+      } else {
+        console.info('[AUTH-DEBUG] signInWithPassword OK', {
+          hasSession: Boolean(data.session),
+          hasUser: Boolean(data.user),
+          hasAccessToken: Boolean(data.session?.access_token),
+          tokenLength: data.session?.access_token?.length ?? 0,
+          userId: data.user?.id ?? '(none)',
+        });
+      }
+      // --- END DEBUG ---
 
       if (error) throw error
 
