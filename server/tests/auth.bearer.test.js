@@ -130,6 +130,30 @@ describe('Bearer Token Authentication - Primary Auth Method', () => {
 
       expect(response.body.user.role).toBe('user');
     });
+
+    it('should not throw when Supabase user email is missing', async () => {
+      mockGetUser.mockResolvedValue({
+        data: {
+          user: {
+            ...testUser,
+            id: '11111111-2222-4333-8444-555555555555',
+            email: null,
+            user_metadata: {}
+          }
+        },
+        error: null
+      });
+
+      const response = await request(app)
+        .get('/api/test/protected')
+        .set('Authorization', 'Bearer valid-jwt-token')
+        .expect(200);
+
+      expect(response.body.success).toBe(true);
+      expect(response.body.user.id).toBe('11111111-2222-4333-8444-555555555555');
+      expect(response.body.user.email).toBe('');
+      expect(response.body.user.username).toBe('user_11111111');
+    });
   });
 
   describe('Missing Authorization Header', () => {

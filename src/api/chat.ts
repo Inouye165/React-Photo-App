@@ -7,6 +7,24 @@ import { logActivity } from './activity'
 
 type PhotoId = Photo['id']
 
+function mapChatInsertError(err: unknown, fallback: string): Error {
+  const message = err && typeof err === 'object' && 'message' in err
+    ? String((err as { message?: unknown }).message || '')
+    : ''
+  const code = err && typeof err === 'object' && 'code' in err
+    ? String((err as { code?: unknown }).code || '')
+    : ''
+
+  const isRoomsRlsInsertFailure =
+    code === '42501' && message.toLowerCase().includes('row-level security policy')
+
+  if (isRoomsRlsInsertFailure) {
+    return new Error('Chat room creation is blocked by database policy (RLS). Apply chat migrations or update local rooms_insert policy for development.')
+  }
+
+  return new Error(message || fallback)
+}
+
 // --- Community Chat ---
 
 async function requireAuthedUserId(): Promise<string> {
@@ -144,7 +162,7 @@ export async function getOrCreateRoom(otherUserId: string): Promise<ChatRoom> {
     .select('id, name, is_group, created_at, type, metadata')
     .single()
 
-  if (roomError) throw roomError
+  if (roomError) throw mapChatInsertError(roomError, 'Failed to create room')
   if (!room) throw new Error('Failed to create room')
 
   const { error: selfMemberError } = await supabase
@@ -175,7 +193,7 @@ export async function createGroupRoom(name: string, memberIds: string[]): Promis
     .select('id, name, is_group, created_at, type, metadata')
     .single()
 
-  if (roomError) throw roomError
+  if (roomError) throw mapChatInsertError(roomError, 'Failed to create group room')
   if (!room) throw new Error('Failed to create group room')
 
   const { error: selfMemberError } = await supabase

@@ -1,0 +1,42 @@
+name: Story Audio Precompute
+
+on:
+  workflow_dispatch:
+  push:
+    branches: [ main ]
+    paths:
+      - public/chess-story/**
+      - scripts/precompute-story-audio-manifest.mjs
+      - package.json
+      - package-lock.json
+
+permissions:
+  contents: read
+
+jobs:
+  precompute-story-audio:
+    runs-on: ubuntu-latest
+    env:
+      HUSKY: 0
+      AI_ENABLED: true
+      OPENAI_API_KEY: ${{ secrets.OPENAI_API_KEY }}
+      SUPABASE_URL: ${{ secrets.SUPABASE_URL }}
+      SUPABASE_SERVICE_ROLE_KEY: ${{ secrets.SUPABASE_SERVICE_ROLE_KEY }}
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
+      - name: Use Node.js 20
+        uses: actions/setup-node@v4
+        with:
+          node-version: 20
+          cache: npm
+
+      - name: Install dependencies
+        run: npm ci --no-audit --no-fund
+
+      - name: Precompute and upload story audio assets
+        run: npm run story:precompute-audio-assets
+
+      - name: Verify precomputed story audio assets
+        run: npm run story:verify-precomputed-audio

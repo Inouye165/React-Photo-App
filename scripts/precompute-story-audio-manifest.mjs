@@ -140,6 +140,18 @@ async function objectExists(objectPath) {
   const { error } = await supabase.storage.from(STORY_AUDIO_BUCKET).download(objectPath)
   if (!error) return true
   if (isNotFoundError(error)) return false
+
+  const publicUrl = buildStoryAudioPublicUrl(objectPath)
+  if (publicUrl && typeof fetch === 'function') {
+    try {
+      const response = await fetch(publicUrl, { method: 'HEAD', cache: 'no-store' })
+      if (response.status === 400 || response.status === 404) return false
+      if (response.ok) return true
+    } catch {
+      // Fall through to throw with original storage error details.
+    }
+  }
+
   throw new Error(`Unable to check object ${objectPath}: ${error.message || String(error)}`)
 }
 

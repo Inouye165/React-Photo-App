@@ -1,5 +1,32 @@
 $ErrorActionPreference = 'Stop'
 
+function Get-LocalRuntimeStatePath {
+  param([string]$RepoRoot)
+  return Join-Path $RepoRoot '.local-runtime-state.json'
+}
+
+function Read-LocalRuntimeState {
+  param([string]$StatePath)
+
+  if (-not (Test-Path $StatePath)) {
+    return $null
+  }
+
+  try {
+    return Get-Content -Path $StatePath -Raw | ConvertFrom-Json
+  } catch {
+    return $null
+  }
+}
+
+function Remove-LocalRuntimeState {
+  param([string]$StatePath)
+
+  if (Test-Path $StatePath) {
+    Remove-Item -Path $StatePath -Force -ErrorAction SilentlyContinue
+  }
+}
+
 function Write-Step {
   param([string]$Message)
   Write-Host "[stop-local] $Message" -ForegroundColor Cyan
@@ -65,11 +92,37 @@ function Invoke-DockerCompose {
 $repoRoot = (Resolve-Path "$PSScriptRoot\..").Path
 Set-Location $repoRoot
 $repoRootEscaped = [Regex]::Escape($repoRoot)
+$runtimeStatePath = Get-LocalRuntimeStatePath -RepoRoot $repoRoot
 
 $targetTitles = @('Lumina API', 'Lumina Worker', 'Lumina Frontend')
 $closedCount = 0
 $killedCount = 0
 $handledPowerShellIds = New-Object System.Collections.Generic.HashSet[int]
+
+# 0) Stop exactly tracked terminals from prior start-local run.
+$state = Read-LocalRuntimeState -StatePath $runtimeStatePath
+if ($state -and $state.terminals) {
+  foreach ($terminal in $state.terminals) {
+    $trackedPid = 0
+    try {
+      $trackedPid = [int]$terminal.pid
+    } catch {
+      $trackedPid = 0
+    }
+
+    if ($trackedPid -le 0) {
+      continue
+    }
+
+    if (Stop-ProcessWithRetry -ProcessId $trackedPid -Description "tracked terminal '$($terminal.title)'" -Force) {
+      Write-Step "Closed tracked terminal: $($terminal.title)"
+      $closedCount++
+      [void]$handledPowerShellIds.Add([int]$trackedPid)
+    }
+  }
+
+  Remove-LocalRuntimeState -StatePath $runtimeStatePath
+}
 
 # 1) Close external PowerShell windows opened by start-local (title-based)
 $psWindowProcesses = Get-Process -Name powershell,pwsh -ErrorAction SilentlyContinue |

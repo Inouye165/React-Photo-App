@@ -10,11 +10,43 @@ const tokenListeners = new Set<(token: string | null) => void>()
 type AuthTokenState = 'unknown' | 'set' | 'cleared'
 let _authTokenState: AuthTokenState = 'unknown'
 
+function isLikelyJwt(token: string | null | undefined): boolean {
+  if (!token || typeof token !== 'string') return false
+  const trimmed = token.trim()
+  if (!trimmed) return false
+  const parts = trimmed.split('.')
+  if (parts.length !== 3) return false
+  return parts.every((part) => part.length > 0)
+}
+
+function shouldAllowNonJwtTokenForCurrentMode(): boolean {
+  try {
+    return import.meta.env?.MODE === 'test'
+  } catch {
+    return false
+  }
+}
+
+function shouldUseBearerToken(token: string | null | undefined): boolean {
+  if (!token || typeof token !== 'string') return false
+  if (isLikelyJwt(token)) return true
+  return shouldAllowNonJwtTokenForCurrentMode()
+}
+
 function canAttemptSessionRefresh(): boolean {
   return _authTokenState !== 'cleared'
 }
 
 export function setAuthToken(token: string | null): void {
+  const rawToken = token
+  if (rawToken && !shouldUseBearerToken(rawToken)) {
+    authDebug('token:reject_malformed', {
+      tokenPreview: rawToken.slice(0, 16),
+      length: rawToken.length,
+    })
+    token = null
+  }
+
   if (_cachedAccessToken === token) return
   const prevState = _authTokenState
   _cachedAccessToken = token
@@ -46,8 +78,10 @@ export function getAccessToken(): string | null {
 
 export function getHeadersForGetRequest(): Record<string, string> | undefined {
   const headers: Record<string, string> = {}
-  if (_cachedAccessToken) {
+  if (shouldUseBearerToken(_cachedAccessToken)) {
     headers.Authorization = `Bearer ${_cachedAccessToken}`
+  } else if (_cachedAccessToken) {
+    setAuthToken(null)
   }
   if (typeof window !== 'undefined' && (window as any).__E2E_MODE__) {
     headers['X-E2E-User-ID'] = '11111111-1111-4111-8111-111111111111'
@@ -57,8 +91,10 @@ export function getHeadersForGetRequest(): Record<string, string> | undefined {
 
 export async function getHeadersForGetRequestAsync(): Promise<Record<string, string> | undefined> {
   const headers: Record<string, string> = {}
-  if (_cachedAccessToken) {
+  if (shouldUseBearerToken(_cachedAccessToken)) {
     headers.Authorization = `Bearer ${_cachedAccessToken}`
+  } else if (_cachedAccessToken) {
+    setAuthToken(null)
   }
 
   if (typeof window !== 'undefined' && (window as any).__E2E_MODE__) {
@@ -78,7 +114,7 @@ export async function getHeadersForGetRequestAsync(): Promise<Record<string, str
     authDebug('headers:get:refresh_attempt')
     const session = await getSessionSingleflight()
     const token = session?.access_token ?? null
-    if (token) {
+    if (shouldUseBearerToken(token)) {
       setAuthToken(token)
       authDebug('headers:get:refresh_success', { hasToken: true })
       headers.Authorization = `Bearer ${token}`
@@ -102,8 +138,10 @@ export function getAuthHeaders(includeContentType = true): Record<string, string
   if (includeContentType) {
     headers['Content-Type'] = 'application/json'
   }
-  if (_cachedAccessToken) {
+  if (shouldUseBearerToken(_cachedAccessToken)) {
     headers['Authorization'] = `Bearer ${_cachedAccessToken}`
+  } else if (_cachedAccessToken) {
+    setAuthToken(null)
   }
   // E2E Bypass: Add header if in E2E mode
   if (typeof window !== 'undefined' && (window as any).__E2E_MODE__) {
@@ -133,7 +171,7 @@ export async function getAuthHeadersAsync(includeContentType = true): Promise<Re
     authDebug('headers:auth:refresh_attempt')
     const session = await getSessionSingleflight()
     const token = session?.access_token ?? null
-    if (token) {
+    if (shouldUseBearerToken(token)) {
       headers['Authorization'] = `Bearer ${token}`
       setAuthToken(token)
       authDebug('headers:auth:refresh_success', { hasToken: true })

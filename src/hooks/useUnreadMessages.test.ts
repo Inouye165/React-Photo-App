@@ -134,4 +134,59 @@ describe('useUnreadMessages', () => {
     expect(result.current.unreadCount).toBe(0)
     expect(result.current.unreadByRoom).toEqual({})
   })
+
+  it('returns zero unread when PostgREST schema cache reports missing last_read_at column', async () => {
+    const userId = 'user1'
+    let roomMembersSelectCalls = 0
+
+    const fromMock = vi.fn().mockImplementation((table) => {
+      if (table === 'room_members') {
+        return {
+          select: vi.fn().mockReturnThis(),
+          eq: vi.fn().mockImplementation(() => {
+            roomMembersSelectCalls += 1
+            if (roomMembersSelectCalls === 1) {
+              return Promise.resolve({
+                data: null,
+                error: { code: 'PGRST204', message: "Could not find the 'last_read_at' column of 'room_members' in the schema cache" },
+              })
+            }
+
+            return Promise.resolve({
+              data: [{ room_id: 'roomA' }],
+              error: null,
+            })
+          }),
+        }
+      }
+
+      if (table === 'messages') {
+        return {
+          select: vi.fn().mockReturnThis(),
+          in: vi.fn().mockReturnThis(),
+          neq: vi.fn().mockReturnThis(),
+          gt: vi.fn().mockResolvedValue({ data: [], error: null }),
+        }
+      }
+
+      return { select: vi.fn() }
+    })
+
+    // @ts-ignore
+    supabase.from.mockImplementation(fromMock)
+
+    const channelMock = {
+      on: vi.fn().mockReturnThis(),
+      subscribe: vi.fn(),
+    }
+    // @ts-ignore
+    supabase.channel.mockReturnValue(channelMock)
+
+    const { result } = renderHook(() => useUnreadMessages(userId))
+
+    await waitFor(() => expect(result.current.loading).toBe(false))
+
+    expect(result.current.unreadCount).toBe(0)
+    expect(result.current.unreadByRoom).toEqual({})
+  })
 })

@@ -221,6 +221,10 @@ Current admin sections:
 
 Story mode narration supports a precomputed workflow so production can run without runtime OpenAI generation.
 
+Recommended production pipeline (run once in CI/deploy, not per user request):
+- `npm run story:precompute-audio-assets`
+- Requires CI/deploy env vars: `OPENAI_API_KEY`, `AI_ENABLED=true`, `SUPABASE_URL`, `SUPABASE_SERVICE_ROLE_KEY`
+
 - Generate/update manifest only:
     - `npm run story:precompute-audio-manifest`
 - Generate and upload missing page MP3s to Supabase:
@@ -229,9 +233,9 @@ Story mode narration supports a precomputed workflow so production can run witho
     - `npm run story:verify-precomputed-audio`
 
 Runtime policy:
-- In production, runtime generation is disabled by default on server cache misses.
-- Opt in (if needed) with `STORY_AUDIO_ALLOW_RUNTIME_GENERATION=true`.
-- Client precomputed-only mode defaults to production; override with `VITE_STORY_AUDIO_PRECOMPUTED_ONLY=false`.
+- Set `VITE_STORY_AUDIO_PRECOMPUTED_ONLY=true` in production builds to prevent client fallback to runtime ensure.
+- Set `STORY_AUDIO_ALLOW_RUNTIME_GENERATION=false` in production server env.
+- Runtime generation can stay enabled in local development when needed.
 
 Operational visibility:
 - Story-audio telemetry endpoint: `GET /api/public/story-audio/metrics`

@@ -1,8 +1,9 @@
-import { describe, it, expect, vi, beforeEach } from 'vitest'
-import { render, screen, waitFor, within } from '@testing-library/react'
+import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest'
+import { render, screen, waitFor, within, fireEvent } from '@testing-library/react'
 import userEvent from '@testing-library/user-event'
 import { Chess } from 'chess.js'
 import ChessGame from './ChessGame'
+import { ApiError } from '../api/httpClient'
 
 const {
   getMockGameId,
@@ -23,6 +24,7 @@ const {
   analyzeGameForMeMock,
   ensureStoryAudioMock,
   getStoryAudioSetupStatusMock,
+  isStoryAudioPrecomputedOnlyModeEnabledMock,
   preloadStoryAudioManifestMock,
   getDocumentMock,
   speechSpeakMock,
@@ -132,6 +134,7 @@ const {
       bucket: { exists: true, isPublic: true, publicReadProbe: 'ok' },
       warnings: [],
     })),
+    isStoryAudioPrecomputedOnlyModeEnabledMock: vi.fn(() => false),
     preloadStoryAudioManifestMock: vi.fn(async () => undefined),
     getDocumentMock,
     speechSpeakMock,
@@ -174,6 +177,7 @@ vi.mock('../api/chessTutor', () => ({
   analyzeGameForMe: analyzeGameForMeMock,
   ensureStoryAudio: ensureStoryAudioMock,
   getStoryAudioSetupStatus: getStoryAudioSetupStatusMock,
+  isStoryAudioPrecomputedOnlyModeEnabled: isStoryAudioPrecomputedOnlyModeEnabledMock,
   preloadStoryAudioManifest: preloadStoryAudioManifestMock,
 }))
 
@@ -308,6 +312,11 @@ describe('ChessGame', () => {
     }
 
     vi.stubGlobal('Audio', MockAudio as unknown as typeof Audio)
+  })
+
+  afterEach(() => {
+    vi.useRealTimers()
+    vi.unstubAllGlobals()
   })
 
   it('renders the board', () => {
@@ -636,6 +645,61 @@ describe('ChessGame', () => {
       expect(firstAudio.pause).toHaveBeenCalled()
       expect(ensureStoryAudioMock.mock.calls.length).toBeGreaterThan(1)
     })
+  })
+
+  it('falls back to browser narration when server TTS is unavailable (503)', async () => {
+    const user = userEvent.setup()
+    setMockGameId('local')
+    ensureStoryAudioMock.mockRejectedValueOnce(new ApiError('OpenAI TTS is not available on server', { status: 503 }))
+
+    render(<ChessGame />)
+
+    await user.click(screen.getByRole('button', { name: 'How to play' }))
+    await user.click(screen.getByRole('button', { name: 'Story mode' }))
+    await user.click(await screen.findByRole('button', { name: 'Play narration' }))
+
+    await waitFor(() => {
+      expect(speechSpeakMock).toHaveBeenCalledTimes(1)
+    })
+
+    expect(screen.queryByText('OpenAI TTS is not available on server')).not.toBeInTheDocument()
+    expect(screen.getByText('Using browser narration')).toBeInTheDocument()
+  })
+
+  it('advances story cues using speech fallback virtual clock', async () => {
+    const user = userEvent.setup()
+    setMockGameId('local')
+    setMockPdfNumPages(8)
+    setMockPdfPageText(3, 'Timeline page three text')
+    setMockPdfPageText(4, 'Timeline page four text')
+    ensureStoryAudioMock.mockRejectedValue(new ApiError('OpenAI TTS is not available on server', { status: 503 }))
+
+    render(<ChessGame />)
+
+    await user.click(screen.getByRole('button', { name: 'How to play' }))
+    await user.click(screen.getByRole('button', { name: 'Story mode' }))
+
+    await user.click(screen.getByRole('button', { name: 'Next page' }))
+    await user.click(screen.getByRole('button', { name: 'Next page' }))
+
+    await waitFor(() => {
+      expect(screen.getByText('Page 3/8')).toBeInTheDocument()
+      expect(screen.getByText('Waiting for cue...')).toBeInTheDocument()
+    })
+
+    vi.useFakeTimers()
+    try {
+      fireEvent.click(screen.getByRole('button', { name: 'Play narration' }))
+
+      await vi.advanceTimersByTimeAsync(0)
+      expect(speechSpeakMock).toHaveBeenCalled()
+
+      await vi.advanceTimersByTimeAsync(13000)
+
+      expect(screen.queryByText('Waiting for cue...')).not.toBeInTheDocument()
+    } finally {
+      vi.useRealTimers()
+    }
   })
 
   it('uses manual narration when PDF page text is unavailable', async () => {

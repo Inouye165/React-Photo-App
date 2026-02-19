@@ -56,6 +56,8 @@ const mockSetAuthToken = vi.fn()
 
 const mockUpdateUser = vi.fn()
 const mockGetSession = vi.fn()
+const mockSignOut = vi.fn().mockResolvedValue({ error: null })
+const mockRealtimeSetAuth = vi.fn().mockResolvedValue(undefined)
 const mockOnAuthStateChange = vi.fn((_callback?: unknown) => ({
   data: {
     subscription: {
@@ -78,7 +80,10 @@ vi.mock('../supabaseClient', () => ({
       getSession: () => mockGetSession(),
       updateUser: (payload: unknown) => mockUpdateUser(payload),
       onAuthStateChange: (callback: unknown) => mockOnAuthStateChange(callback),
-      signOut: vi.fn().mockResolvedValue({ error: null }),
+      signOut: () => mockSignOut(),
+    },
+    realtime: {
+      setAuth: (...args: unknown[]) => mockRealtimeSetAuth(...args),
     },
   },
 }))
@@ -86,6 +91,8 @@ vi.mock('../supabaseClient', () => ({
 describe('AuthContext.updatePassword', () => {
   beforeEach(() => {
     vi.clearAllMocks()
+    mockSignOut.mockResolvedValue({ error: null })
+    mockRealtimeSetAuth.mockResolvedValue(undefined)
 
     // Initial provider mount session
     mockGetSession.mockResolvedValueOnce({
@@ -142,6 +149,7 @@ describe('AuthContext.updatePassword', () => {
 
     await waitFor(() => {
       expect(mockSetAuthToken).toHaveBeenLastCalledWith('new-token')
+      expect(mockRealtimeSetAuth).toHaveBeenLastCalledWith('new-token')
     })
   })
 
@@ -185,6 +193,84 @@ describe('AuthContext.updatePassword', () => {
     })
 
     expect(await screen.findByText('Bad Request')).toBeInTheDocument()
+  })
+
+  it('does not sign out on non-auth validation errors (e.g., same password)', async () => {
+    vi.doUnmock('../contexts/AuthContext')
+    const { AuthProvider, useAuth } = await import('../contexts/AuthContext')
+
+    mockUpdateUser.mockRejectedValueOnce({
+      message: 'New password should be different from the old password.',
+      status: 422,
+    })
+
+    function Harness() {
+      const { updatePassword } = useAuth()
+      const [result, setResult] = React.useState<string>('')
+
+      return (
+        <div>
+          <button
+            type="button"
+            onClick={async () => {
+              const res = await updatePassword('newpass1')
+              setResult(res.success ? 'ok' : res.error)
+            }}
+          >
+            Update
+          </button>
+          {result ? <div>{result}</div> : null}
+        </div>
+      )
+    }
+
+    render(
+      <AuthProvider>
+        <Harness />
+      </AuthProvider>,
+    )
+
+    await screen.findByRole('button', { name: 'Update' })
+    fireEvent.click(screen.getByRole('button', { name: 'Update' }))
+
+    expect(await screen.findByText('New password should be different from the old password.')).toBeInTheDocument()
+    expect(mockSignOut).not.toHaveBeenCalled()
+  })
+
+  it('signs out and clears token on auth/session errors', async () => {
+    vi.doUnmock('../contexts/AuthContext')
+    const { AuthProvider, useAuth } = await import('../contexts/AuthContext')
+
+    mockUpdateUser.mockRejectedValueOnce({
+      message: 'Auth session missing!',
+      status: 401,
+      code: 'AUTH_ERROR',
+    })
+
+    function Harness() {
+      const { updatePassword } = useAuth()
+
+      return (
+        <button type="button" onClick={() => updatePassword('newpass1')}>
+          Update
+        </button>
+      )
+    }
+
+    render(
+      <AuthProvider>
+        <Harness />
+      </AuthProvider>,
+    )
+
+    await screen.findByRole('button', { name: 'Update' })
+    fireEvent.click(screen.getByRole('button', { name: 'Update' }))
+
+    await waitFor(() => {
+      expect(mockSignOut).toHaveBeenCalledTimes(1)
+      expect(mockSetAuthToken).toHaveBeenCalledWith(null)
+      expect(mockRealtimeSetAuth).toHaveBeenCalled()
+    })
   })
 })
 
