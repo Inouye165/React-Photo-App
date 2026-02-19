@@ -14,7 +14,7 @@ interface ContactFormState {
   buildContribution: string;
 }
 
-const API_BASE_URL = import.meta.env.VITE_API_URL || 'http://localhost:3001';
+const API_BASE_URL = import.meta.env.VITE_API_URL || '';
 
 const fetchCsrfToken = async (): Promise<string> => {
   // If running in Vite dev mode, the backend may have CSRF disabled —
