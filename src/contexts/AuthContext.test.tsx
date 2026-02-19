@@ -317,3 +317,99 @@ describe('AuthContext profile fetching', () => {
     })
   })
 })
+
+describe('AuthContext invalid refresh token handling', () => {
+  beforeEach(() => {
+    vi.clearAllMocks()
+    mockSignOut.mockResolvedValue({ error: null })
+    mockRealtimeSetAuth.mockResolvedValue(undefined)
+  })
+
+  afterEach(async () => {
+    // Reset the module-level flag in supabaseSession between tests
+    const { clearInvalidRefreshTokenFlag } = await import('../lib/supabaseSession')
+    clearInvalidRefreshTokenFlag()
+  })
+
+  it('resets auth state and shows session-expired message when refresh token is invalid', async () => {
+    // Simulate getSession returning an error (Supabase SDK returns { data, error })
+    // The getSessionSingleflight layer throws when error is truthy, then catches
+    // invalid-refresh-token errors and returns null with the flag set.
+    mockGetSession.mockResolvedValueOnce({
+      data: { session: null },
+      error: { message: 'Invalid Refresh Token: Refresh Token Not Found', status: 400 },
+    })
+
+    vi.doUnmock('../contexts/AuthContext')
+    const { AuthProvider, useAuth } = await import('../contexts/AuthContext')
+
+    function Harness() {
+      const { user, authReady, authMessage, clearAuthMessage } = useAuth()
+      return (
+        <div>
+          <div data-testid="user">{user ? user.id : 'none'}</div>
+          <div data-testid="ready">{String(authReady)}</div>
+          {authMessage && (
+            <div data-testid="message">
+              {authMessage}
+              <button type="button" onClick={clearAuthMessage}>Dismiss</button>
+            </div>
+          )}
+        </div>
+      )
+    }
+
+    render(
+      <AuthProvider>
+        <Harness />
+      </AuthProvider>,
+    )
+
+    // Should show user-friendly session expired message
+    await waitFor(() => {
+      expect(screen.getByTestId('message')).toHaveTextContent('Your session expired. Please sign in again.')
+    })
+
+    // Auth state should be cleared
+    expect(screen.getByTestId('user')).toHaveTextContent('none')
+    expect(screen.getByTestId('ready')).toHaveTextContent('false')
+
+    // setAuthToken should have been called with null
+    expect(mockSetAuthToken).toHaveBeenCalledWith(null)
+
+    // User can dismiss the message
+    fireEvent.click(screen.getByRole('button', { name: 'Dismiss' }))
+    await waitFor(() => {
+      expect(screen.queryByTestId('message')).not.toBeInTheDocument()
+    })
+  })
+
+  it('does not show session-expired message on successful init', async () => {
+    mockGetSession.mockResolvedValueOnce({
+      data: {
+        session: {
+          access_token: 'valid-token',
+          user: { id: 'user-1' },
+        },
+      },
+    })
+
+    vi.doUnmock('../contexts/AuthContext')
+    const { AuthProvider, useAuth } = await import('../contexts/AuthContext')
+
+    function Harness() {
+      const { authMessage } = useAuth()
+      return <div data-testid="message">{authMessage ?? 'no-message'}</div>
+    }
+
+    render(
+      <AuthProvider>
+        <Harness />
+      </AuthProvider>,
+    )
+
+    await waitFor(() => {
+      expect(screen.getByTestId('message')).toHaveTextContent('no-message')
+    })
+  })
+})

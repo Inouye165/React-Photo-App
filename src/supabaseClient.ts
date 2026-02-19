@@ -27,14 +27,18 @@ function createThrowingProxy(message: string): SupabaseClient {
   return new Proxy({}, handler) as unknown as SupabaseClient;
 }
 
-// --- DEBUG: Auth diagnostics (remove when confirmed working) ---
-console.info('[AUTH-DEBUG] Supabase client init', {
-  supabaseUrl: supabaseUrl ? `${supabaseUrl.slice(0, 30)}...` : '(empty)',
-  anonKeyPresent: Boolean(supabaseAnonKey),
-  anonKeyLength: supabaseAnonKey?.length ?? 0,
-  anonKeyPrefix: supabaseAnonKey ? supabaseAnonKey.slice(0, 20) + '...' : '(empty)',
-});
-// --- END DEBUG ---
+// --- DEV-only: sanitized environment diagnostics ---
+if (import.meta.env.DEV) {
+  try {
+    const hostname = supabaseUrl ? new URL(supabaseUrl).hostname : '(empty)';
+    const apiBase = (import.meta.env.VITE_API_URL || import.meta.env.VITE_API_BASE_URL)
+      ? String(import.meta.env.VITE_API_URL || import.meta.env.VITE_API_BASE_URL)
+      : '(same-origin)';
+    console.info(`[env] supabase host=${hostname} apiBase=${apiBase}`);
+  } catch {
+    console.info('[env] supabase host=(invalid URL) apiBase=(unknown)');
+  }
+}
 
 export const supabase: SupabaseClient =
   !supabaseUrl || !supabaseAnonKey

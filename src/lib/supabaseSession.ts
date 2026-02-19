@@ -5,6 +5,17 @@ import { authDebug } from '../utils/authDebug'
 
 let inFlight: Promise<Session | null> | null = null
 
+/**
+ * Set to `true` when getSessionSingleflight encounters an invalid refresh token
+ * and auto-signs out. AuthContext reads this flag to show a user-facing message.
+ */
+export let lastSessionWasInvalidRefreshToken = false
+
+/** Reset the flag (e.g. after AuthContext has consumed it). */
+export function clearInvalidRefreshTokenFlag(): void {
+  lastSessionWasInvalidRefreshToken = false
+}
+
 function getErrorMessage(err: unknown): string {
   if (typeof err === 'string') return err
   if (err instanceof Error) return err.message
@@ -44,6 +55,7 @@ export async function getSessionSingleflight(): Promise<Session | null> {
         authDebug('getSessionSingleflight:invalid_refresh_token', {
           message: getErrorMessage(err),
         })
+        lastSessionWasInvalidRefreshToken = true
         try {
           await supabase.auth.signOut()
         } catch {
