@@ -8,6 +8,8 @@ import { ApiError } from '../api/httpClient'
 const {
   getMockGameId,
   setMockGameId,
+  getLocationSearch,
+  setLocationSearch,
   getAuthUserId,
   setAuthUserId,
   getEngineMoveUci,
@@ -35,6 +37,7 @@ const {
   setMockPdfNumPages,
 } = vi.hoisted(() => {
   let mockGameId = 'game-123'
+  let locationSearch = ''
   let authUserId = 'user-1'
   let engineMoveUci = 'e2e4'
   let topMovesMock = [] as Array<{ uci: string; score: number | null; mate: number | null; depth: number | null }>
@@ -80,6 +83,8 @@ const {
   return {
     getMockGameId: () => mockGameId,
     setMockGameId: (value: string) => { mockGameId = value },
+    getLocationSearch: () => locationSearch,
+    setLocationSearch: (value: string) => { locationSearch = value },
     getAuthUserId: () => authUserId,
     setAuthUserId: (value: string) => { authUserId = value },
     getEngineMoveUci: () => engineMoveUci,
@@ -155,6 +160,7 @@ const {
 vi.mock('react-router-dom', () => ({
   useParams: () => ({ gameId: getMockGameId() }),
   useNavigate: () => navigateMock,
+  useLocation: () => ({ search: getLocationSearch() }),
 }))
 
 vi.mock('../contexts/AuthContext', () => ({
@@ -228,6 +234,7 @@ describe('ChessGame', () => {
   beforeEach(() => {
     vi.clearAllMocks()
     setMockGameId('game-123')
+    setLocationSearch('')
     setAuthUserId('user-1')
     setEngineMoveUci('e2e4')
     setTopMovesMock([])
@@ -347,6 +354,28 @@ describe('ChessGame', () => {
     expect(useGameRealtimeMock).not.toHaveBeenCalled()
     expect(fetchGameMock).not.toHaveBeenCalled()
     expect(fetchGameMembersMock).not.toHaveBeenCalled()
+  })
+
+  it.each([
+    ['?tab=lesson', 'How to play'],
+    ['?tab=history', 'Chess history'],
+    ['?tab=analyze', 'Analyze game'],
+  ])('initializes tutor tab from %s', async (search, activeTabLabel) => {
+    setLocationSearch(search)
+    render(<ChessGame />)
+
+    await waitFor(() => {
+      expect(screen.getByRole('button', { name: activeTabLabel })).toHaveAttribute('aria-pressed', 'true')
+    })
+  })
+
+  it('falls back to analyze tab when query param is invalid', async () => {
+    setLocationSearch('?tab=bogus')
+    render(<ChessGame />)
+
+    await waitFor(() => {
+      expect(screen.getByRole('button', { name: 'Analyze game' })).toHaveAttribute('aria-pressed', 'true')
+    })
   })
 
   it('quits online game by aborting and navigating to /games', async () => {

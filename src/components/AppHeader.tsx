@@ -4,11 +4,12 @@ import type { User } from '@supabase/supabase-js';
 import { useAuth } from '../contexts/AuthContext';
 import type { UserProfile } from '../api';
 import useStore from '../store';
-import { ChevronLeft, ChevronRight, Upload, Grid3X3, Edit3, MessageSquare, Shield, Gamepad2 } from 'lucide-react';
+import { ChevronLeft, ChevronRight, Upload, Grid3X3, Edit3, MessageSquare, Shield } from 'lucide-react';
 import type { LucideIcon } from 'lucide-react';
 import { useUnreadMessages } from '../hooks/useUnreadMessages';
 import NewMessageNotification from './NewMessageNotification';
 import UserMenu from './UserMenu';
+import GamesMenu from './nav/GamesMenu';
 
 /**
  * AppHeader - Mobile-first responsive navigation header
@@ -259,25 +260,11 @@ export default function AppHeader({
         </div>
 
         <div className="flex items-center gap-0.5 sm:gap-1 flex-shrink-0">
-          <NavLink
-            to="/games"
-            data-testid="nav-games"
-            aria-label="Games"
-            onClick={() => { closePicker('nav-games'); }}
-            className={({ isActive }) => `
-              flex items-center justify-center gap-1.5
-              min-w-[44px] min-h-[44px] px-2 sm:px-3
-              rounded-lg text-xs sm:text-sm font-medium border
-              transition-all duration-150 touch-manipulation
-              ${isActive
-                ? 'bg-white text-indigo-700 border-indigo-500'
-                : 'bg-white text-slate-600 border-indigo-200 hover:border-indigo-300 hover:bg-indigo-50/40 active:bg-indigo-50'
-              }
-            `}
-          >
-            <Gamepad2 size={16} className={`flex-shrink-0 ${isGamesPage ? 'text-indigo-700' : 'text-indigo-600'}`} />
-            <span className="hidden md:inline">Games</span>
-          </NavLink>
+          <GamesMenu
+            navigate={navigate}
+            closePicker={closePicker}
+            isGamesPage={isGamesPage}
+          />
           
           {/* Admin link - only visible to admin users */}
           {isAdmin && (

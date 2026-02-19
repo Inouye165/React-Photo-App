@@ -27,9 +27,11 @@ const mockUnreadState = vi.hoisted(() => ({
   },
 }));
 
+const navigateMock = vi.hoisted(() => vi.fn());
+
 // Mock dependencies
 vi.mock('react-router-dom', () => ({
-  useNavigate: () => vi.fn(),
+  useNavigate: () => navigateMock,
   useLocation: () => mockRouterState.location,
   NavLink: ({ to, className, children, ...rest }) => {
     const computedClassName = typeof className === 'function' ? className({ isActive: false }) : className;
@@ -78,6 +80,7 @@ vi.mock('./NewMessageNotification', () => ({
 describe('AppHeader Component', () => {
   beforeEach(() => {
     vi.clearAllMocks();
+    navigateMock.mockReset();
     authState.user = { email: 'test@example.com' };
     authState.profile = { username: 'tester', has_set_username: true };
 
@@ -152,7 +155,23 @@ describe('AppHeader Component', () => {
     expect(screen.getByTestId('nav-gallery')).toBeInTheDocument();
     expect(screen.getByTestId('nav-edit')).toBeInTheDocument();
     expect(screen.getByTestId('nav-messages')).toBeInTheDocument();
-    expect(screen.getByRole('link', { name: 'Games' })).toBeInTheDocument();
+    expect(screen.getByRole('button', { name: 'Games' })).toBeInTheDocument();
+  });
+
+  it('opens Games menu and navigates to chess app shell', async () => {
+    const user = userEvent.setup();
+    render(<AppHeader />);
+
+    await user.click(screen.getByRole('button', { name: 'Games' }));
+
+    expect(screen.getByRole('menu', { name: 'Games menu' })).toBeInTheDocument();
+    expect(screen.getByRole('menuitem', { name: 'Chess Open Chess app shell' })).toBeInTheDocument();
+
+    const disabledEntry = screen.getByRole('menuitem', { name: 'More games coming soon New game modes are in progress.' });
+    expect(disabledEntry).toHaveAttribute('aria-disabled', 'true');
+
+    await user.click(screen.getByRole('menuitem', { name: 'Chess Open Chess app shell' }));
+    expect(navigateMock).toHaveBeenCalledWith('/games/chess');
   });
 
   it('hides Messages tab when username is not set', () => {

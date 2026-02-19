@@ -1,5 +1,5 @@
 import React, { useCallback, useEffect, useMemo, useRef, useState } from 'react'
-import { useNavigate, useParams } from 'react-router-dom'
+import { useLocation, useNavigate, useParams } from 'react-router-dom'
 import { Chess } from 'chess.js'
 import type { Square } from 'chess.js'
 import { Chessboard } from 'react-chessboard'
@@ -103,6 +103,14 @@ type ChessHistoryEvent = {
   ruleChange: string
   imageUrl: string
   imageAlt: string
+}
+
+function parseInitialTutorTab(search: string): TutorTab | undefined {
+  const value = new URLSearchParams(search).get('tab')
+  if (value === 'analyze' || value === 'lesson' || value === 'history') {
+    return value
+  }
+  return undefined
 }
 
 const CHESS_LESSONS: ChessLesson[] = [
@@ -2196,14 +2204,16 @@ function ChessTutorPanel({
   loading,
   error,
   onAnalyze,
+  initialTab,
 }: {
   analysis: ChessTutorAnalysis | null
   modelLabel: string
   loading: boolean
   error: string | null
   onAnalyze: () => void
+  initialTab?: TutorTab
 }) {
-  const [activeTab, setActiveTab] = useState<TutorTab>('analyze')
+  const [activeTab, setActiveTab] = useState<TutorTab>(() => initialTab ?? 'analyze')
   const [activeLessonIndex, setActiveLessonIndex] = useState(0)
   const [animationFrame, setAnimationFrame] = useState(0)
   const [activeLessonSection, setActiveLessonSection] = useState<LessonSection>('pieces')
@@ -2312,6 +2322,7 @@ function ChessTutorPanel({
           <button
             type="button"
             onClick={() => setActiveTab('lesson')}
+            aria-pressed={activeTab === 'lesson'}
             className={`rounded border px-2 py-1 text-xs font-semibold ${activeTab === 'lesson' ? 'border-blue-300 bg-blue-50 text-blue-700' : 'border-slate-200 bg-white text-slate-600 hover:bg-slate-50'}`}
           >
             How to play
@@ -2319,6 +2330,7 @@ function ChessTutorPanel({
           <button
             type="button"
             onClick={() => setActiveTab('history')}
+            aria-pressed={activeTab === 'history'}
             className={`rounded border px-2 py-1 text-xs font-semibold ${activeTab === 'history' ? 'border-blue-300 bg-blue-50 text-blue-700' : 'border-slate-200 bg-white text-slate-600 hover:bg-slate-50'}`}
           >
             Chess history
@@ -2326,6 +2338,7 @@ function ChessTutorPanel({
           <button
             type="button"
             onClick={() => setActiveTab('analyze')}
+            aria-pressed={activeTab === 'analyze'}
             className={`rounded border px-2 py-1 text-xs font-semibold ${activeTab === 'analyze' ? 'border-blue-300 bg-blue-50 text-blue-700' : 'border-slate-200 bg-white text-slate-600 hover:bg-slate-50'}`}
           >
             Analyze game
@@ -3358,13 +3371,16 @@ function useChessboardSize(maxSize: number) {
 
 export default function ChessGame(): React.JSX.Element {
   const { gameId } = useParams<{ gameId: string }>()
+  const location = useLocation()
+  const initialTutorTab = useMemo(() => parseInitialTutorTab(location.search), [location.search])
+
   if (gameId === 'local') {
-    return <LocalChessGame />
+    return <LocalChessGame initialTutorTab={initialTutorTab} />
   }
-  return <OnlineChessGame />
+  return <OnlineChessGame initialTutorTab={initialTutorTab} />
 }
 
-function OnlineChessGame(): React.JSX.Element {
+function OnlineChessGame({ initialTutorTab }: { initialTutorTab?: TutorTab }): React.JSX.Element {
   const { gameId } = useParams<{ gameId: string }>()
   const navigate = useNavigate()
   const { user } = useAuth()
@@ -4026,6 +4042,7 @@ function OnlineChessGame(): React.JSX.Element {
           loading={tutorLoading}
           error={tutorError}
           onAnalyze={() => { void handleAnalyzeGameForMe() }}
+          initialTab={initialTutorTab}
         />
       </div>
       <Toast message={toastMessage} severity={toastSeverity} onClose={() => setToastMessage(null)} />
@@ -4033,7 +4050,7 @@ function OnlineChessGame(): React.JSX.Element {
   )
 }
 
-function LocalChessGame(): React.JSX.Element {
+function LocalChessGame({ initialTutorTab }: { initialTutorTab?: TutorTab }): React.JSX.Element {
   const { user } = useAuth()
   const navigate = useNavigate()
   const [localMoves, setLocalMoves] = useState<MoveRow[]>([])
@@ -4525,6 +4542,7 @@ function LocalChessGame(): React.JSX.Element {
           loading={tutorLoading}
           error={tutorError}
           onAnalyze={() => { void handleAnalyzeGameForMe() }}
+          initialTab={initialTutorTab}
         />
       </div>
       <Toast message={toastMessage} severity={toastSeverity} onClose={() => setToastMessage(null)} />
