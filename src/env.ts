@@ -1,8 +1,8 @@
 // Frontend environment variable checks
-// In development we allow an empty `VITE_API_URL` so the app can use relative
-// URLs and rely on the Vite dev-server proxy (this enables httpOnly cookies
-// to work during local development). In production we still fail-fast when
-// required variables are missing.
+// Both dev and production allow an empty `VITE_API_URL` so the app can use
+// same-origin relative URLs. In dev this relies on the Vite dev-server proxy;
+// in production it relies on Vercel rewrite rules that forward /api/* and
+// /csrf to the Railway backend.
 
 type RequiredEnvKey = 'VITE_SUPABASE_URL' | 'VITE_SUPABASE_ANON_KEY';
 
@@ -19,10 +19,8 @@ const apiUrl = readOptionalString('VITE_API_URL') || readOptionalString('VITE_AP
 const required: ReadonlyArray<RequiredEnvKey> = ['VITE_SUPABASE_URL', 'VITE_SUPABASE_ANON_KEY'];
 const isProduction = readOptionalString('MODE') === 'production';
 
-// In production, require an API URL to be set
-if (isProduction && !apiUrl) {
-  throw new Error('Missing required environment variable: VITE_API_URL. Add it to your .env (root) or Vite env file.');
-}
+// In production, an empty VITE_API_URL is valid — it means "use same-origin"
+// (works with Vercel proxy rewrites that forward /api/* and /csrf to Railway).
 
 for (const key of required) {
   if (isProduction) {

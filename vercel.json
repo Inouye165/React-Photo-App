@@ -1,6 +1,10 @@
 {
   "rewrites": [
     {
+      "source": "/csrf",
+      "destination": "https://web-production-d709f.up.railway.app/csrf"
+    },
+    {
       "source": "/api/(.*)",
       "destination": "https://web-production-d709f.up.railway.app/api/$1"
     },
