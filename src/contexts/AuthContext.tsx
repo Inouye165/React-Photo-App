@@ -3,7 +3,7 @@ import type { ReactNode } from 'react'
 import type { Session, User } from '@supabase/supabase-js'
 
 import { supabase } from '../supabaseClient'
-import { getSessionSingleflight } from '../lib/supabaseSession'
+import { getSessionSingleflight, lastSessionWasInvalidRefreshToken, clearInvalidRefreshTokenFlag } from '../lib/supabaseSession'
 import useStore from '../store'
 import { API_BASE_URL } from '../config/apiConfig'
 import { setAuthToken } from '../api'
@@ -60,6 +60,9 @@ export interface AuthContextValue {
 
   resetPassword: (email: string) => Promise<AuthActionResult<{ data: unknown }>>
   updatePassword: (newPassword: string) => Promise<AuthActionResult>
+  /** User-facing auth message (e.g. "session expired") to show in the UI */
+  authMessage: string | null
+  clearAuthMessage: () => void
 }
 
 const defaultPreferences: UserPreferences = { gradingScales: {} }
@@ -115,6 +118,14 @@ function normalizeEmailForAuth(email: string): string {
 function isInvalidLoginCredentialsError(err: unknown): boolean {
   const message = getErrorMessage(err).toLowerCase()
   return message.includes('invalid login credentials')
+}
+
+function isInvalidRefreshTokenError(err: unknown): boolean {
+  const message = getErrorMessage(err).toLowerCase()
+  return (
+    message.includes('invalid refresh token')
+    || message.includes('refresh token not found')
+  )
 }
 
 function isBenignLogoutError(err: unknown): boolean {
@@ -276,6 +287,10 @@ export function AuthProvider({ children }: { children: ReactNode }): ReactNode {
   // Track if a login is in progress to prevent onAuthStateChange from racing
   const loginInProgressRef = useRef<boolean>(false)
 
+  // User-facing auth message (e.g. expired session)
+  const [authMessage, setAuthMessage] = useState<string | null>(null)
+  const clearAuthMessage = () => setAuthMessage(null)
+
   // Track if we're in E2E test mode
   const isE2ERef = useRef<boolean>(false)
 
@@ -363,20 +378,8 @@ export function AuthProvider({ children }: { children: ReactNode }): ReactNode {
     }
 
     // Normal Supabase auth flow
-    // --- DEBUG: Auth diagnostics (remove when confirmed working) ---
-    console.info('[AUTH-DEBUG] Starting Supabase auth init flow');
-    // --- END DEBUG ---
     getSessionSingleflight()
       .then(async (currentSession: Session | null) => {
-        // --- DEBUG: Auth diagnostics (remove when confirmed working) ---
-        console.info('[AUTH-DEBUG] getSession result', {
-          hasSession: Boolean(currentSession),
-          hasToken: Boolean(currentSession?.access_token),
-          expiresAt: currentSession?.expires_at ?? null,
-          userId: currentSession?.user?.id ?? null,
-          tokenLength: currentSession?.access_token?.length ?? 0,
-        });
-        // --- END DEBUG ---
         authDebug('init:getSessionSingleflight', {
           hasSession: Boolean(currentSession),
           hasToken: Boolean(currentSession?.access_token),
@@ -396,9 +399,29 @@ export function AuthProvider({ children }: { children: ReactNode }): ReactNode {
         }
         setSession(currentSession)
         setUser(currentSession?.user ?? null)
+
+        // If getSessionSingleflight consumed an invalid-refresh-token error,
+        // it returned null but set a flag so we can show a friendly message.
+        if (!currentSession && lastSessionWasInvalidRefreshToken) {
+          clearInvalidRefreshTokenFlag()
+          setAuthToken(null)
+          syncRealtimeAuthToken()
+          setAuthReady(false)
+          setAuthMessage('Your session expired. Please sign in again.')
+        }
       })
       .catch((error: unknown) => {
         authDebug('init:error', { message: getErrorMessage(error) })
+        if (isInvalidRefreshTokenError(error)) {
+          // Stale refresh token — reset auth state and prompt re-login
+          setSession(null)
+          setUser(null)
+          setAuthToken(null)
+          syncRealtimeAuthToken()
+          setAuthReady(false)
+          setAuthMessage('Your session expired. Please sign in again.')
+          return
+        }
         console.error('Auth session initialization error:', error)
         setSession(null)
         setUser(null)
@@ -438,6 +461,7 @@ export function AuthProvider({ children }: { children: ReactNode }): ReactNode {
         setAuthToken(null)
         syncRealtimeAuthToken()
         setAuthReady(false)
+        setAuthMessage('Your session expired. Please sign in again.')
         // Clear photo store to prevent stale data fetches
         useStore.getState().setPhotos([])
         return
@@ -472,41 +496,15 @@ export function AuthProvider({ children }: { children: ReactNode }): ReactNode {
         return { success: false, error: 'Email is required' }
       }
 
-      // --- DEBUG: Auth diagnostics (remove when confirmed working) ---
-      console.info('[AUTH-DEBUG] signInWithPassword attempt', {
-        emailLength: normalizedEmail.length,
-        emailDomain: normalizedEmail.split('@')[1] || '(no domain)',
-        passwordLength: password?.length ?? 0,
-      });
-      // --- END DEBUG ---
-
       const { data, error } = await supabase.auth.signInWithPassword({
         email: normalizedEmail,
         password,
       })
 
-      // --- DEBUG: Auth diagnostics (remove when confirmed working) ---
-      if (error) {
-        console.error('[AUTH-DEBUG] signInWithPassword FAILED', {
-          message: error.message,
-          status: (error as any).status,
-          code: (error as any).code,
-          name: error.name,
-          // Log the full error shape without PII
-          errorKeys: Object.keys(error),
-        });
-      } else {
-        console.info('[AUTH-DEBUG] signInWithPassword OK', {
-          hasSession: Boolean(data.session),
-          hasUser: Boolean(data.user),
-          hasAccessToken: Boolean(data.session?.access_token),
-          tokenLength: data.session?.access_token?.length ?? 0,
-          userId: data.user?.id ?? '(none)',
-        });
-      }
-      // --- END DEBUG ---
-
       if (error) throw error
+
+      // Clear any previous auth message on successful login
+      setAuthMessage(null)
 
       // Set Bearer token in the api module BEFORE updating state
       // This makes sure the token is ready for any API calls that happen right after login.
@@ -846,6 +844,8 @@ export function AuthProvider({ children }: { children: ReactNode }): ReactNode {
     verifyPhoneOtp,
     resetPassword,
     updatePassword,
+    authMessage,
+    clearAuthMessage,
   }
 
   // CRITICAL: Block rendering until auth state is initialized
