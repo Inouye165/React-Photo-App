@@ -1,5 +1,6 @@
 import { API_BASE_URL as CENTRAL_API_BASE_URL } from '../config/apiConfig'
 import { getAuthHeadersFromProvider } from './authHeaderProvider'
+import { isDiagEnabled, diagId, diagLog } from '../utils/diag'
 
 export const API_BASE_URL = CENTRAL_API_BASE_URL
 
@@ -386,6 +387,11 @@ export async function request<T>(options: RequestOptions): Promise<T> {
       // Non-fatal - continue without Authorization header
     }
 
+    // Attach X-Diag-Id correlation header when diagnostic mode is enabled
+    if (isDiagEnabled()) {
+      headersObj['X-Diag-Id'] = diagId();
+    }
+
     // Detect dev mode via Vite's import.meta.env.DEV. In development the
     // backend may have CSRF disabled (local dev convenience) so skip the
     // CSRF bootstrap and header injection entirely to avoid aborting.
@@ -504,6 +510,29 @@ export async function request<T>(options: RequestOptions): Promise<T> {
       })
     }
     // --- END DEBUG ---
+
+    // --- Diagnostic: HTML-sniff logging when diag enabled ---
+    if (isDiagEnabled()) {
+      const _ct = response.headers?.get?.('content-type') || '';
+      const _isHtml = _ct.includes('text/html');
+      const _pathSegment = url.replace(/^https?:\/\/[^/]+/, '').split('?')[0];
+      if (!response.ok || _isHtml) {
+        let bodyPrefix: string | undefined;
+        if (_isHtml) {
+          try {
+            const clone = response.clone();
+            const text = await clone.text();
+            bodyPrefix = text.slice(0, 30);
+          } catch { /* ignore */ }
+        }
+        diagLog('http:sniff', {
+          path: _pathSegment,
+          status: response.status,
+          ct: _ct,
+          ...(bodyPrefix !== undefined ? { bodyPrefix } : {}),
+        });
+      }
+    }
 
     // If we get a CSRF-looking 403, clear cached token and retry once.
     if (!response.ok && response.status === 403 && isUnsafeMethod(method.toUpperCase())) {

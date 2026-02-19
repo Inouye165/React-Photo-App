@@ -10,6 +10,7 @@ import { setAuthToken } from '../api'
 import type { UserProfile } from '../api'
 import { logActivity } from '../api/activity'
 import { authDebug } from '../utils/authDebug'
+import { diagLog } from '../utils/diag'
 
 declare global {
   interface Window {
@@ -451,6 +452,19 @@ export function AuthProvider({ children }: { children: ReactNode }): ReactNode {
         userId: nextSession?.user?.id ?? null,
       })
 
+      // Diagnostic timeline logging (when ?diag=1)
+      {
+        const expMin = nextSession?.expires_at
+          ? Math.round((nextSession.expires_at - Date.now() / 1000) / 60)
+          : null;
+        diagLog('auth:event', {
+          event,
+          session: Boolean(nextSession),
+          expMin,
+          uid: nextSession?.user?.id?.slice(0, 8) ?? null,
+        });
+      }
+
       if ((event === 'TOKEN_REFRESHED' || event === 'SIGNED_OUT') && !nextSession) {
         authDebug('onAuthStateChange:session_lost', { event })
         if (import.meta.env.DEV) {
@@ -496,6 +510,8 @@ export function AuthProvider({ children }: { children: ReactNode }): ReactNode {
         return { success: false, error: 'Email is required' }
       }
 
+      diagLog('login:start')
+
       const { data, error } = await supabase.auth.signInWithPassword({
         email: normalizedEmail,
         password,
@@ -531,6 +547,19 @@ export function AuthProvider({ children }: { children: ReactNode }): ReactNode {
     } catch (err) {
       loginInProgressRef.current = false
       authDebug('login:error', { message: getErrorMessage(err) })
+
+      // Diagnostic logging (no credentials, no email)
+      {
+        const e = err as { name?: string; status?: number; code?: string; message?: string; __isAuthError?: boolean };
+        diagLog('login:error', {
+          name: e?.name,
+          status: e?.status,
+          code: e?.code,
+          message: e?.message,
+          isAuthError: Boolean(e?.__isAuthError),
+        });
+      }
+
       if (isInvalidLoginCredentialsError(err)) {
         if (import.meta.env.DEV) {
           console.info('Login validation: invalid credentials for provided email')
