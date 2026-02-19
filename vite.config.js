@@ -28,8 +28,54 @@ export default defineConfig(({ mode }) => {
         secure: false,
         rewrite: (path) => path,
       },
-      // Optional: proxy CSRF and other top-level endpoints if used directly
       '/csrf': {
+        target: 'http://localhost:3001',
+        changeOrigin: true,
+        secure: false,
+      },
+      '/photos': {
+        target: 'http://localhost:3001',
+        changeOrigin: true,
+        secure: false,
+      },
+      '/upload': {
+        target: 'http://localhost:3001',
+        changeOrigin: true,
+        secure: false,
+      },
+      '/privilege': {
+        target: 'http://localhost:3001',
+        changeOrigin: true,
+        secure: false,
+      },
+      '/events': {
+        target: 'http://localhost:3001',
+        changeOrigin: true,
+        secure: false,
+        // SSE/WebSocket support
+        ws: true,
+      },
+      '/display': {
+        target: 'http://localhost:3001',
+        changeOrigin: true,
+        secure: false,
+      },
+      '/capture-intents': {
+        target: 'http://localhost:3001',
+        changeOrigin: true,
+        secure: false,
+      },
+      '/collectibles': {
+        target: 'http://localhost:3001',
+        changeOrigin: true,
+        secure: false,
+      },
+      '/save-captioned-image': {
+        target: 'http://localhost:3001',
+        changeOrigin: true,
+        secure: false,
+      },
+      '/health': {
         target: 'http://localhost:3001',
         changeOrigin: true,
         secure: false,
