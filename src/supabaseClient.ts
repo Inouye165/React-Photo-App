@@ -27,6 +27,15 @@ function createThrowingProxy(message: string): SupabaseClient {
   return new Proxy({}, handler) as unknown as SupabaseClient;
 }
 
+// --- DEBUG: Auth diagnostics (remove when confirmed working) ---
+console.info('[AUTH-DEBUG] Supabase client init', {
+  supabaseUrl: supabaseUrl ? `${supabaseUrl.slice(0, 30)}...` : '(empty)',
+  anonKeyPresent: Boolean(supabaseAnonKey),
+  anonKeyLength: supabaseAnonKey?.length ?? 0,
+  anonKeyPrefix: supabaseAnonKey ? supabaseAnonKey.slice(0, 20) + '...' : '(empty)',
+});
+// --- END DEBUG ---
+
 export const supabase: SupabaseClient =
   !supabaseUrl || !supabaseAnonKey
     ? createThrowingProxy(missingMessage)
