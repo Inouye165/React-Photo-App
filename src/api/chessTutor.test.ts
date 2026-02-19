@@ -78,12 +78,12 @@ describe('chessTutor.ensureStoryAudio', () => {
     expect(requestMock).not.toHaveBeenCalled()
   })
 
-  it('uses a matching precomputed manifest URL when available and reachable', async () => {
+  it('uses a matching precomputed manifest URL when available', async () => {
     const text = 'Silas found the dusty wooden box in the attic.'
     const hash = await computeStoryAudioHash({ text, totalPages: 8, voice: 'shimmer' })
     const precomputedUrl = 'https://cdn.example.test/story-audio/precomputed-page-1.mp3'
 
-    const fetchMock = vi.fn(async (input: RequestInfo | URL, init?: RequestInit) => {
+    const fetchMock = vi.fn(async (input: RequestInfo | URL) => {
       const url = String(input)
       if (url.includes('/chess-story/architect-of-squares.audio-manifest.json')) {
         return {
@@ -97,10 +97,6 @@ describe('chessTutor.ensureStoryAudio', () => {
             entries: [{ page: 1, hash, url: precomputedUrl }],
           }),
         } as Response
-      }
-
-      if (url === precomputedUrl && init?.method === 'HEAD') {
-        return { ok: true, status: 200 } as Response
       }
 
       return { ok: false, status: 404 } as Response
@@ -121,12 +117,11 @@ describe('chessTutor.ensureStoryAudio', () => {
     expect(requestMock).not.toHaveBeenCalled()
   })
 
-  it('falls back to ensure API when precomputed manifest URL is not reachable', async () => {
+  it('falls back to ensure API when no usable precomputed URL can be resolved', async () => {
     const text = 'A different narration text for fallback test.'
     const hash = await computeStoryAudioHash({ text, totalPages: 8, voice: 'shimmer' })
-    const unreachableUrl = 'https://cdn.example.test/story-audio/unreachable-page-1.mp3'
 
-    const fetchMock = vi.fn(async (input: RequestInfo | URL, init?: RequestInit) => {
+    const fetchMock = vi.fn(async (input: RequestInfo | URL) => {
       const url = String(input)
       if (url.includes('/chess-story/architect-of-squares.audio-manifest.json')) {
         return {
@@ -137,13 +132,9 @@ describe('chessTutor.ensureStoryAudio', () => {
             voice: 'shimmer',
             cacheVersion: 'v2',
             totalPages: 8,
-            entries: [{ page: 1, hash, url: unreachableUrl }],
+            entries: [{ page: 1, hash }],
           }),
         } as Response
-      }
-
-      if (url === unreachableUrl && init?.method === 'HEAD') {
-        return { ok: false, status: 404 } as Response
       }
 
       return { ok: false, status: 404 } as Response
@@ -179,9 +170,10 @@ describe('chessTutor.ensureStoryAudio', () => {
       totalPages: 8,
       text: 'No precomputed file exists for this test text',
       voice: 'shimmer',
-    })).rejects.toThrow('Runtime generation is disabled')
+    })).rejects.toThrow('Ask an admin to run `npm run story:precompute-audio-assets`')
 
     expect(requestMock).not.toHaveBeenCalled()
     expect(getStoryAudioClientMetrics().ensureApiCalls).toBe(0)
   })
+
 })

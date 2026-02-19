@@ -174,7 +174,49 @@ function createUsersRouter({ db }) {
         .first();
 
       if (existing) {
-        return res.status(409).json({ success: false, error: 'Username is already taken' });
+        let staleDeletedAccount = false;
+        let staleCheckCompleted = false;
+
+        try {
+          if (supabase?.auth?.admin && typeof supabase.auth.admin.getUserById === 'function') {
+            const { data, error } = await supabase.auth.admin.getUserById(existing.id);
+            const authUser = data?.user;
+
+            if (!authUser) {
+              const code = Number(error?.status || error?.statusCode || 0);
+              const msg = String(error?.message || '').toLowerCase();
+              if (!error || code === 404 || msg.includes('not found') || msg.includes('user not found')) {
+                staleDeletedAccount = true;
+                staleCheckCompleted = true;
+              } else if (authUser) {
+                staleCheckCompleted = true;
+              }
+            } else {
+              staleCheckCompleted = true;
+            }
+          }
+        } catch {
+          // Best effort only; fall back to preserving current uniqueness behavior.
+        }
+
+        if (!staleCheckCompleted) {
+          try {
+            const authRow = await db('auth.users')
+              .select('id')
+              .where({ id: existing.id })
+              .first();
+            staleDeletedAccount = !authRow;
+            staleCheckCompleted = true;
+          } catch {
+            // Some DB roles may not have access to auth schema; preserve conflict behavior.
+          }
+        }
+
+        if (staleDeletedAccount) {
+          await db('users').where({ id: existing.id }).del();
+        } else {
+          return res.status(409).json({ success: false, error: 'Username is already taken' });
+        }
       }
 
       // Upsert profile update.

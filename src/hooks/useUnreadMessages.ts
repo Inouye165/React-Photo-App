@@ -21,9 +21,15 @@ type RoomMembershipRow = {
 
 function isMissingLastReadAtColumnError(error: unknown): boolean {
   const candidate = error as PostgrestLikeError | null
-  const code = candidate?.code ?? ''
+  const code = String(candidate?.code ?? '').toUpperCase()
   const message = (candidate?.message ?? '').toLowerCase()
-  return code === '42703' || message.includes('last_read_at')
+  return (
+    code === '42703'
+    || code === 'PGRST204'
+    || message.includes('last_read_at')
+    || (message.includes('column') && message.includes('room_members') && message.includes('does not exist'))
+    || (message.includes('could not find') && message.includes('last_read_at'))
+  )
 }
 
 /**

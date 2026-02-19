@@ -8,10 +8,20 @@ import dotenv from 'dotenv';
 // in tests by setting process.env beforehand.
 if (!process.env.__SERVER_ENV_LOADED) {
   try {
-    // Prefer the server/.env file next to this loader.
+    // Prefer local overrides first.
+    // Load order (first existing file wins):
+    // 1) server/.env.local
+    // 2) repo/.env.local (when running from server/dist)
+    // 3) server/.env
+    // 4) repo/.env
     // When running compiled output (server/dist), this loader lives in dist/, so
-    // fall back to ../.env.
-    const candidatePaths = [path.join(__dirname, '.env'), path.join(__dirname, '..', '.env')];
+    // we also check one level up.
+    const candidatePaths = [
+      path.join(__dirname, '.env.local'),
+      path.join(__dirname, '..', '.env.local'),
+      path.join(__dirname, '.env'),
+      path.join(__dirname, '..', '.env'),
+    ];
     const envPath = candidatePaths.find((candidate) => fs.existsSync(candidate)) ?? candidatePaths[0];
     dotenv.config({ path: envPath });
     // Mark as loaded so subsequent requires are no-ops

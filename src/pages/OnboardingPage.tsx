@@ -106,7 +106,14 @@ export default function OnboardingPage() {
 
     try {
       const pwResult = await updatePassword(password)
-      if (!pwResult.success) throw new Error(pwResult.error || 'Failed to update password')
+      const passwordError = String(pwResult.error || '')
+      const isSamePasswordValidation =
+        passwordError.toLowerCase().includes('different from the old password')
+        || passwordError.toLowerCase().includes('new password should be different')
+
+      if (!pwResult.success && !(needsUsername && isSamePasswordValidation)) {
+        throw new Error(passwordError || 'Failed to update password')
+      }
 
       if (needsUsername) {
         const profileResult = await updateProfile(normalizedUsername)
@@ -208,6 +215,7 @@ export default function OnboardingPage() {
                 disabled={submitting}
                 minLength={PASSWORD_MIN_LEN}
               />
+              <p className="mt-1 text-xs text-gray-500">Use a password different from your current one.</p>
             </div>
 
             <div>

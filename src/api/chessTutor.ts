@@ -86,6 +86,7 @@ const STORY_AUDIO_CACHE_VERSION = 'v2'
 const STORY_AUDIO_BUCKET = 'story-audio'
 const STORY_AUDIO_URL_CACHE_STORAGE_KEY = 'story-audio-url-cache-v1'
 const STORY_AUDIO_URL_CACHE_MAX_ENTRIES = 200
+const STORY_AUDIO_MAX_TEXT_LENGTH = 10000
 
 type StoryAudioClientMetrics = {
   ensureApiCalls: number
@@ -131,6 +132,10 @@ function isStoryAudioPrecomputedOnlyMode(): boolean {
   return Boolean(import.meta.env.PROD)
 }
 
+export function isStoryAudioPrecomputedOnlyModeEnabled(): boolean {
+  return isStoryAudioPrecomputedOnlyMode()
+}
+
 function logStoryAudioClient(event: string, details?: Record<string, unknown>): void {
   if (!import.meta.env.DEV) return
   console.info(`[story-audio/client] ${event}`, details || {})
@@ -141,6 +146,12 @@ function normalizeNarrationText(text: string): string {
     .replace(/\r\n/g, '\n')
     .replace(/\s+/g, ' ')
     .trim()
+}
+
+function normalizeAndClampNarrationText(text: string): string {
+  const normalized = normalizeNarrationText(text)
+  if (normalized.length <= STORY_AUDIO_MAX_TEXT_LENGTH) return normalized
+  return normalized.slice(0, STORY_AUDIO_MAX_TEXT_LENGTH).trim()
 }
 
 async function sha256Hex(value: string): Promise<string> {
@@ -318,6 +329,37 @@ function writeStoryAudioCachedUrl(cacheKey: string, url: string): void {
   saveStoryAudioUrlCacheSnapshotToStorage(snapshot)
 }
 
+function deleteStoryAudioCachedUrl(cacheKey: string): void {
+  storyAudioUrlMemoryCache.delete(cacheKey)
+
+  const snapshot = getStoryAudioUrlCacheSnapshotFromStorage()
+  if (snapshot[cacheKey]) {
+    delete snapshot[cacheKey]
+    saveStoryAudioUrlCacheSnapshotToStorage(snapshot)
+  }
+}
+
+function isStoryAudioPublicStorageUrl(url: string): boolean {
+  const normalizedUrl = String(url || '').trim().toLowerCase()
+  return normalizedUrl.includes('/storage/v1/object/public/story-audio/')
+}
+
+async function isLikelyMissingStoryAudioUrl(url: string): Promise<boolean> {
+  if (typeof fetch !== 'function') return false
+  if (!isStoryAudioPublicStorageUrl(url)) return false
+
+  try {
+    const response = await fetch(url, {
+      method: 'HEAD',
+      cache: 'no-store',
+    })
+
+    return response.status === 400 || response.status === 404
+  } catch {
+    return false
+  }
+}
+
 function isEphemeralStoryAudioUrl(url: string): boolean {
   const normalizedUrl = String(url || '').trim()
   if (!normalizedUrl) return false
@@ -368,17 +410,6 @@ async function loadStoryAudioManifest(storySlug: string): Promise<StoryAudioMani
   return loader
 }
 
-async function urlLooksReachable(url: string): Promise<boolean> {
-  if (!url) return false
-
-  try {
-    const response = await fetch(url, { method: 'HEAD', cache: 'no-store' })
-    return response.ok
-  } catch {
-    return false
-  }
-}
-
 async function resolvePrecomputedStoryAudioUrl(input: {
   storySlug: string
   page: number
@@ -388,6 +419,15 @@ async function resolvePrecomputedStoryAudioUrl(input: {
   const manifest = await loadStoryAudioManifest(input.storySlug)
 
   const manifestEntry = manifest?.entries?.find((entry) => entry.page === input.page && entry.hash === input.hash)
+  if (!manifestEntry) {
+    logStoryAudioClient('precomputed-miss-no-manifest-entry', {
+      page: input.page,
+      hash: input.hash,
+      hasManifest: Boolean(manifest),
+    })
+    return null
+  }
+
   const candidateObjectPath = manifestEntry?.objectPath || input.objectPath
   const manifestUrl = manifestEntry?.url
   const fallbackUrl = buildStoryAudioPublicUrlFromObjectPath(candidateObjectPath)
@@ -407,13 +447,15 @@ async function resolvePrecomputedStoryAudioUrl(input: {
   })
   if (!candidateUrl) return null
 
-  const reachable = await urlLooksReachable(candidateUrl)
-  logStoryAudioClient('precomputed-reachability', {
-    page: input.page,
-    reachable,
-    candidateUrlPreview: String(candidateUrl || '').slice(0, 160),
-  })
-  if (!reachable) return null
+  const isMissingCandidateUrl = await isLikelyMissingStoryAudioUrl(candidateUrl)
+  if (isMissingCandidateUrl) {
+    logStoryAudioClient('precomputed-candidate-missing', {
+      page: input.page,
+      candidateObjectPath,
+      candidateUrlPreview: candidateUrl.slice(0, 160),
+    })
+    return null
+  }
 
   return candidateUrl
 }
@@ -472,10 +514,11 @@ export async function ensureStoryAudio(input: {
   voice?: 'shimmer'
 }): Promise<EnsureStoryAudioResult> {
   const voice = input.voice || 'shimmer'
+  const normalizedNarrationText = normalizeAndClampNarrationText(input.text)
   const { objectPath, hash } = await buildStoryAudioObjectPath({
     storySlug: input.storySlug,
     page: input.page,
-    text: input.text,
+    text: normalizedNarrationText,
     totalPages: input.totalPages,
     voice,
   })
@@ -483,6 +526,15 @@ export async function ensureStoryAudio(input: {
   const localCacheKey = `${getStoryAudioCacheNamespace()}|${input.storySlug}|${objectPath}`
   const cachedUrl = readStoryAudioCachedUrl(localCacheKey)
   if (cachedUrl) {
+    const isMissingCachedUrl = await isLikelyMissingStoryAudioUrl(cachedUrl)
+    if (isMissingCachedUrl) {
+      logStoryAudioClient('cache-drop-missing-url', {
+        page: input.page,
+        objectPath,
+        localCacheKey,
+      })
+      deleteStoryAudioCachedUrl(localCacheKey)
+    } else {
     storyAudioClientMetrics.localCacheHits += 1
     logStoryAudioClient('ensure-return-cached-url', {
       page: input.page,
@@ -492,6 +544,7 @@ export async function ensureStoryAudio(input: {
     return {
       cached: true,
       url: cachedUrl,
+    }
     }
   }
 
@@ -523,7 +576,7 @@ export async function ensureStoryAudio(input: {
       page: input.page,
       objectPath,
     })
-    throw new Error('Story audio is not precomputed for this page/content. Runtime generation is disabled.')
+    throw new Error('Precomputed story audio is missing for this page. Ask an admin to run `npm run story:precompute-audio-assets` and redeploy.')
   }
 
   let response: EnsureStoryAudioResponse
@@ -541,7 +594,7 @@ export async function ensureStoryAudio(input: {
         storySlug: input.storySlug,
         page: input.page,
         totalPages: input.totalPages,
-        text: input.text,
+        text: normalizedNarrationText,
         voice,
       },
     })
@@ -554,7 +607,7 @@ export async function ensureStoryAudio(input: {
           storySlug: input.storySlug,
           page: input.page,
           totalPages: input.totalPages,
-          text: input.text,
+          text: normalizedNarrationText,
           voice,
         },
       })

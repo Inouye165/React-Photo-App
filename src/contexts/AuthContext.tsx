@@ -80,6 +80,60 @@ function getErrorMessage(err: unknown): string {
   return String(err)
 }
 
+function shouldClearAuthStateAfterPasswordError(err: unknown): boolean {
+  if (!err || typeof err !== 'object') return false
+
+  const statusRaw = 'status' in err ? (err as { status?: unknown }).status : undefined
+  const status = typeof statusRaw === 'number' ? statusRaw : Number(statusRaw)
+  if (status === 401 || status === 403) return true
+
+  const code = 'code' in err ? String((err as { code?: unknown }).code || '').toUpperCase() : ''
+  if (code === 'AUTH_ERROR') return true
+
+  const message = getErrorMessage(err).toLowerCase()
+  return (
+    message.includes('auth session missing')
+    || message.includes('invalid refresh token')
+    || message.includes('refresh token not found')
+    || message.includes('jwt')
+    || message.includes('token has expired')
+  )
+}
+
+function isExpectedPasswordValidationError(err: unknown): boolean {
+  const message = getErrorMessage(err).toLowerCase()
+  return (
+    message.includes('new password should be different')
+    || message.includes('different from the old password')
+  )
+}
+
+function normalizeEmailForAuth(email: string): string {
+  return String(email || '').trim().toLowerCase()
+}
+
+function isInvalidLoginCredentialsError(err: unknown): boolean {
+  const message = getErrorMessage(err).toLowerCase()
+  return message.includes('invalid login credentials')
+}
+
+function isBenignLogoutError(err: unknown): boolean {
+  const message = getErrorMessage(err).toLowerCase()
+  return (
+    message.includes('auth session missing')
+    || message.includes('session missing')
+    || message.includes('authsessionmissingerror')
+  )
+}
+
+function syncRealtimeAuthToken(token?: string | null): void {
+  void Promise.resolve(supabase.realtime.setAuth(token)).catch((err) => {
+    if (import.meta.env.DEV) {
+      console.debug('[AuthContext] Failed to sync realtime auth token:', getErrorMessage(err))
+    }
+  })
+}
+
 /**
  * Fetch user preferences from the backend
  * Now uses Bearer token auth via getAuthHeaders() in the api module
@@ -292,10 +346,11 @@ export function AuthProvider({ children }: { children: ReactNode }): ReactNode {
             console.log('AuthContext E2E User:', e2eUser);
             // E2E test mode - bypass Supabase auth
             isE2ERef.current = true
-            setAuthToken('e2e-test-token')
+            setAuthToken(null)
+            syncRealtimeAuthToken()
             setAuthReady(true)
             setUser(e2eUser)
-            setSession({ user: e2eUser, access_token: 'e2e-test-token' })
+            setSession({ user: e2eUser, access_token: '' })
             setLoading(false)
             return
           }
@@ -319,6 +374,7 @@ export function AuthProvider({ children }: { children: ReactNode }): ReactNode {
         if (currentSession?.access_token) {
           // Set token in the api module for Bearer auth
           setAuthToken(currentSession.access_token)
+          syncRealtimeAuthToken(currentSession.access_token)
           setAuthReady(true)
 
           // Phase 1: Establish httpOnly cookie session (best-effort, once per session).
@@ -368,6 +424,7 @@ export function AuthProvider({ children }: { children: ReactNode }): ReactNode {
         setSession(null)
         setUser(null)
         setAuthToken(null)
+        syncRealtimeAuthToken()
         setAuthReady(false)
         // Clear photo store to prevent stale data fetches
         useStore.getState().setPhotos([])
@@ -376,10 +433,12 @@ export function AuthProvider({ children }: { children: ReactNode }): ReactNode {
 
       if (nextSession?.access_token) {
         setAuthToken(nextSession.access_token)
+        syncRealtimeAuthToken(nextSession.access_token)
         setAuthReady(true)
         // Token is now cached for Bearer auth - no cookie sync needed
       } else {
         setAuthToken(null)
+        syncRealtimeAuthToken()
         setAuthReady(false)
       }
 
@@ -395,8 +454,14 @@ export function AuthProvider({ children }: { children: ReactNode }): ReactNode {
       // Prevent onAuthStateChange from racing with us
       loginInProgressRef.current = true
 
+      const normalizedEmail = normalizeEmailForAuth(email)
+      if (!normalizedEmail) {
+        loginInProgressRef.current = false
+        return { success: false, error: 'Email is required' }
+      }
+
       const { data, error } = await supabase.auth.signInWithPassword({
-        email,
+        email: normalizedEmail,
         password,
       })
 
@@ -406,6 +471,7 @@ export function AuthProvider({ children }: { children: ReactNode }): ReactNode {
       // This makes sure the token is ready for any API calls that happen right after login.
       if (data.session?.access_token) {
         setAuthToken(data.session.access_token)
+        syncRealtimeAuthToken(data.session.access_token)
         // Token is now cached for Bearer auth - no cookie sync needed
         setAuthReady(true)
       }
@@ -426,6 +492,16 @@ export function AuthProvider({ children }: { children: ReactNode }): ReactNode {
     } catch (err) {
       loginInProgressRef.current = false
       authDebug('login:error', { message: getErrorMessage(err) })
+      if (isInvalidLoginCredentialsError(err)) {
+        if (import.meta.env.DEV) {
+          console.info('Login validation: invalid credentials for provided email')
+        }
+        return {
+          success: false,
+          error:
+            'Invalid email or password. If this account was created in a different Supabase project/environment, sign in there or reset your password here.',
+        }
+      }
       console.error('Login error:', err)
       return { success: false, error: getErrorMessage(err) }
     }
@@ -457,6 +533,7 @@ export function AuthProvider({ children }: { children: ReactNode }): ReactNode {
       if (data.session) {
         if (data.session.access_token) {
           setAuthToken(data.session.access_token)
+          syncRealtimeAuthToken(data.session.access_token)
           setAuthReady(true)
         }
         setSession(data.session)
@@ -537,6 +614,7 @@ export function AuthProvider({ children }: { children: ReactNode }): ReactNode {
 
       if (accessTokenFromUpdate) {
         setAuthToken(accessTokenFromUpdate)
+        syncRealtimeAuthToken(accessTokenFromUpdate)
         setAuthReady(true)
         setSession(sessionFromUpdate)
         setUser(sessionFromUpdate.user)
@@ -548,6 +626,7 @@ export function AuthProvider({ children }: { children: ReactNode }): ReactNode {
       if (!sessionFromGet?.access_token) {
         // If we can't confirm a valid session after password update, force cleanup.
         setAuthToken(null)
+        syncRealtimeAuthToken()
         setAuthReady(false)
         setSession(null)
         setUser(null)
@@ -555,23 +634,33 @@ export function AuthProvider({ children }: { children: ReactNode }): ReactNode {
       }
 
       setAuthToken(sessionFromGet.access_token)
+      syncRealtimeAuthToken(sessionFromGet.access_token)
       setAuthReady(true)
       setSession(sessionFromGet)
       setUser(sessionFromGet.user)
 
       return { success: true }
     } catch (err) {
-      console.error('Update password error:', err)
-      // Defense in depth: clear app auth state/token cache on failure to avoid stale-token use.
-      try {
-        await supabase.auth.signOut()
-      } catch {
-        // ignore
+      if (isExpectedPasswordValidationError(err)) {
+        if (import.meta.env.DEV) {
+          console.info('Update password validation:', getErrorMessage(err))
+        }
+      } else {
+        console.error('Update password error:', err)
       }
-      setAuthToken(null)
-      setAuthReady(false)
-      setSession(null)
-      setUser(null)
+      if (shouldClearAuthStateAfterPasswordError(err)) {
+        // Defense in depth: clear app auth state/token cache when the auth session is invalid.
+        try {
+          await supabase.auth.signOut()
+        } catch {
+          // ignore
+        }
+        setAuthToken(null)
+        syncRealtimeAuthToken()
+        setAuthReady(false)
+        setSession(null)
+        setUser(null)
+      }
       return { success: false, error: getErrorMessage(err) }
     }
   }
@@ -583,19 +672,31 @@ export function AuthProvider({ children }: { children: ReactNode }): ReactNode {
       // Log sign-out activity before clearing token (fire-and-forget)
       await logActivity('sign_out').catch(() => {})
 
-      // Clear Bearer token from the api module
+      // Clear local auth state immediately to stop authenticated polling/UI effects.
       setAuthToken(null)
-
-      const { error } = await supabase.auth.signOut()
-      if (error) throw error
+      syncRealtimeAuthToken()
+      setAuthReady(false)
       setUser(null)
       setSession(null)
-      setAuthReady(false)
       setPreferences({ ...defaultPreferences })
       // Clear photo store to prevent stale data
       useStore.getState().setPhotos([])
+
+      // Best-effort sign out in Supabase auth client.
+      // `local` avoids global revoke calls that can fail with 403 when session is already absent.
+      const { error } = await supabase.auth.signOut({ scope: 'local' })
+      if (error && !isBenignLogoutError(error)) throw error
+
       authDebug('logout:success')
     } catch (err) {
+      if (isBenignLogoutError(err)) {
+        authDebug('logout:benign', { message: getErrorMessage(err) })
+        if (import.meta.env.DEV) {
+          console.info('Logout completed with no active session to revoke')
+        }
+        return
+      }
+
       authDebug('logout:error', { message: getErrorMessage(err) })
       console.error('Logout error:', err)
     }

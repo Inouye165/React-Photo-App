@@ -1,5 +1,74 @@
 $ErrorActionPreference = 'Stop'
 
+function Get-LocalRuntimeStatePath {
+  param([string]$RepoRoot)
+  return Join-Path $RepoRoot '.local-runtime-state.json'
+}
+
+function Read-LocalRuntimeState {
+  param([string]$StatePath)
+
+  if (-not (Test-Path $StatePath)) {
+    return $null
+  }
+
+  try {
+    return Get-Content -Path $StatePath -Raw | ConvertFrom-Json
+  } catch {
+    return $null
+  }
+}
+
+function Write-LocalRuntimeState {
+  param(
+    [string]$StatePath,
+    [object]$State
+  )
+
+  $json = $State | ConvertTo-Json -Depth 6
+  Set-Content -Path $StatePath -Value $json -Encoding UTF8
+}
+
+function Remove-LocalRuntimeState {
+  param([string]$StatePath)
+
+  if (Test-Path $StatePath) {
+    Remove-Item -Path $StatePath -Force -ErrorAction SilentlyContinue
+  }
+}
+
+function Stop-TrackedRuntimeTerminals {
+  param([string]$StatePath)
+
+  $state = Read-LocalRuntimeState -StatePath $StatePath
+  if (-not $state -or -not $state.terminals) {
+    return
+  }
+
+  foreach ($terminal in $state.terminals) {
+    $pidValue = 0
+    try {
+      $pidValue = [int]$terminal.pid
+    } catch {
+      $pidValue = 0
+    }
+
+    if ($pidValue -le 0) {
+      continue
+    }
+
+    try {
+      $proc = Get-Process -Id $pidValue -ErrorAction Stop
+      Stop-Process -Id $proc.Id -Force -ErrorAction Stop
+      Write-Step "Stopped tracked terminal PID $pidValue ($($terminal.title))"
+    } catch {
+      # Ignore stale/missing process IDs.
+    }
+  }
+
+  Remove-LocalRuntimeState -StatePath $StatePath
+}
+
 function Write-Step {
   param([string]$Message)
   Write-Host "[start-local] $Message" -ForegroundColor Cyan
@@ -214,7 +283,9 @@ $escapedCommand
 "@
   $encoded = [Convert]::ToBase64String([Text.Encoding]::Unicode.GetBytes($scriptToRun))
 
-  Start-Process powershell -ArgumentList @('-NoExit', '-ExecutionPolicy', 'Bypass', '-EncodedCommand', $encoded) | Out-Null
+  $shellExe = if (Get-Command pwsh -ErrorAction SilentlyContinue) { 'pwsh' } else { 'powershell' }
+  $process = Start-Process $shellExe -ArgumentList @('-NoExit', '-ExecutionPolicy', 'Bypass', '-EncodedCommand', $encoded) -PassThru
+  return $process
 }
 
 function Close-ExistingAppTerminals {
@@ -226,7 +297,7 @@ function Close-ExistingAppTerminals {
   $repoRootEscaped = [Regex]::Escape($RepoRoot)
   $handledIds = New-Object System.Collections.Generic.HashSet[int]
 
-  $existing = Get-Process -Name powershell -ErrorAction SilentlyContinue |
+  $existing = Get-Process -Name powershell,pwsh -ErrorAction SilentlyContinue |
     Where-Object { $_.MainWindowTitle -and ($Titles -contains $_.MainWindowTitle) }
 
   foreach ($process in $existing) {
@@ -239,7 +310,7 @@ function Close-ExistingAppTerminals {
     }
   }
 
-  $candidateProcesses = Get-CimInstance Win32_Process -Filter "Name = 'powershell.exe'"
+  $candidateProcesses = Get-CimInstance Win32_Process | Where-Object { $_.Name -match 'powershell.exe|pwsh.exe' }
   foreach ($process in $candidateProcesses) {
     if ($handledIds.Contains([int]$process.ProcessId)) {
       continue
@@ -263,7 +334,7 @@ function Close-ExistingAppTerminals {
   }
 
   $processMatchPattern = 'server\.ts|dist\\server\.js|dist/worker\.js|worker\.ts|\bvite\b|npm --prefix server start|npm run worker|npm run dev'
-  $candidateNames = @('node.exe', 'npm.cmd', 'cmd.exe', 'powershell.exe')
+  $candidateNames = @('node.exe', 'npm.cmd', 'cmd.exe', 'powershell.exe', 'pwsh.exe')
   $repoProcesses = Get-CimInstance Win32_Process | Where-Object {
     ($candidateNames -contains $_.Name) -and
     $_.CommandLine -and
@@ -283,9 +354,13 @@ function Close-ExistingAppTerminals {
 
 try {
   $repoRoot = (Resolve-Path "$PSScriptRoot\..").Path
+  $runtimeStatePath = Get-LocalRuntimeStatePath -RepoRoot $repoRoot
   Set-Location $repoRoot
 
   $appTerminalTitles = @('Lumina API', 'Lumina Worker', 'Lumina Frontend')
+  Write-Step "Stopping any tracked local runtime terminals..."
+  Stop-TrackedRuntimeTerminals -StatePath $runtimeStatePath
+
   Write-Step "Cleaning up existing app terminals before startup..."
   Close-ExistingAppTerminals -Titles $appTerminalTitles -RepoRoot $repoRoot
 
@@ -321,23 +396,39 @@ try {
 
   $localDbUrl = 'postgresql://photoapp:photoapp_dev@127.0.0.1:5432/photoapp'
   $localRedisUrl = 'redis://localhost:6379'
-  $forceLocalDockerDb = ($Env:START_LOCAL_FORCE_DOCKER_DB -eq 'true')
+  $forceLocalDockerDb = $true
+  if ($Env:START_LOCAL_FORCE_DOCKER_DB -eq 'false' -or $Env:START_LOCAL_USE_ENV -eq 'true') {
+    $forceLocalDockerDb = $false
+  }
+  if ($Env:START_LOCAL_FORCE_DOCKER_DB -eq 'true') {
+    $forceLocalDockerDb = $true
+  }
   $serverEnvPrefix = ''
   if ($forceLocalDockerDb) {
-    Write-Step "START_LOCAL_FORCE_DOCKER_DB=true -> forcing backend/worker to Docker Postgres + Redis"
-    $serverEnvPrefix = "`$env:SUPABASE_DB_URL='$localDbUrl'; `$env:SUPABASE_DB_URL_MIGRATIONS='$localDbUrl'; `$env:DB_SSL_DISABLED='true'; `$env:REDIS_URL='$localRedisUrl';"
+    Write-Step "Using local Docker Postgres + Redis for backend/worker (set START_LOCAL_USE_ENV=true to disable)."
+    $serverEnvPrefix = "`$env:SUPABASE_DB_URL='$localDbUrl'; `$env:SUPABASE_DB_URL_MIGRATIONS='$localDbUrl'; `$env:DATABASE_URL='$localDbUrl'; `$env:DB_SSL_DISABLED='true'; `$env:REDIS_URL='$localRedisUrl';"
   } else {
-    Write-Step "Using DB/Redis from environment files (no forced override)."
+    Write-Step "Using DB/Redis from environment files (START_LOCAL_USE_ENV=true)."
   }
 
   Write-Step "Opening backend terminal..."
-  Start-AppTerminal -Title 'Lumina API' -Command "$serverEnvPrefix npm --prefix server start" -RepoRoot $repoRoot
+  $apiTerminal = Start-AppTerminal -Title 'Lumina API' -Command "$serverEnvPrefix npm --prefix server start" -RepoRoot $repoRoot
 
   Write-Step "Opening worker terminal..."
-  Start-AppTerminal -Title 'Lumina Worker' -Command "$serverEnvPrefix npm run worker" -RepoRoot $repoRoot
+  $workerTerminal = Start-AppTerminal -Title 'Lumina Worker' -Command "$serverEnvPrefix npm run worker" -RepoRoot $repoRoot
 
   Write-Step "Opening frontend terminal..."
-  Start-AppTerminal -Title 'Lumina Frontend' -Command 'npm run dev' -RepoRoot $repoRoot
+  $frontendTerminal = Start-AppTerminal -Title 'Lumina Frontend' -Command 'npm run dev' -RepoRoot $repoRoot
+
+  Write-LocalRuntimeState -StatePath $runtimeStatePath -State @{
+    startedAt = (Get-Date).ToString('o')
+    repoRoot = $repoRoot
+    terminals = @(
+      @{ title = 'Lumina API'; pid = $apiTerminal.Id },
+      @{ title = 'Lumina Worker'; pid = $workerTerminal.Id },
+      @{ title = 'Lumina Frontend'; pid = $frontendTerminal.Id }
+    )
+  }
 
   Write-Step "Waiting for API readiness..."
   Wait-ForHttpEndpoint -Url 'http://127.0.0.1:3001/health' -MaxAttempts 90 -DelaySeconds 2

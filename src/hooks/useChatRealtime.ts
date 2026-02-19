@@ -45,7 +45,7 @@ export function useChatRealtime(
   }
 
   useEffect(() => {
-    if (import.meta.env.DEV) {
+    if (import.meta.env.DEV && normalizedRoomId && userId) {
       console.log('Attempting Connection to Room:', normalizedRoomId)
       console.log('Attempting to subscribe to room:', normalizedRoomId)
     }
