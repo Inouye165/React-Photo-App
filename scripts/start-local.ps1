@@ -202,6 +202,43 @@ function Ensure-LocalSupabase {
   Wait-ForHttpEndpoint -Url $healthUrl -MaxAttempts 120 -DelaySeconds 2
 }
 
+function Get-LocalSupabaseDbUrl {
+  param([string]$RepoRoot)
+
+  if (-not (Get-Command supabase -ErrorAction SilentlyContinue)) {
+    return $null
+  }
+
+  try {
+    Push-Location $RepoRoot
+    $statusJson = & supabase status --output json 2>$null
+    if ($LASTEXITCODE -ne 0 -or -not $statusJson) {
+      return $null
+    }
+
+    $status = $statusJson | ConvertFrom-Json
+    if (-not $status) {
+      return $null
+    }
+
+    $dbUrlProp = $status.PSObject.Properties['DB_URL']
+    if ($dbUrlProp -and $dbUrlProp.Value) {
+      return [string]$dbUrlProp.Value
+    }
+
+    $dbUrlLegacyProp = $status.PSObject.Properties['DB URL']
+    if ($dbUrlLegacyProp -and $dbUrlLegacyProp.Value) {
+      return [string]$dbUrlLegacyProp.Value
+    }
+
+    return $null
+  } catch {
+    return $null
+  } finally {
+    Pop-Location
+  }
+}
+
 function Ensure-DockerAvailable {
   if (-not (Get-Command docker -ErrorAction SilentlyContinue)) {
     throw "Docker CLI not found. Install Docker Desktop and ensure 'docker' is on PATH."
@@ -395,8 +432,12 @@ try {
   }
 
   $localDbUrl = 'postgresql://photoapp:photoapp_dev@127.0.0.1:5432/photoapp'
+  $localSupabaseDbUrl = Get-LocalSupabaseDbUrl -RepoRoot $repoRoot
   $localRedisUrl = 'redis://localhost:6379'
   $forceLocalDockerDb = $true
+  if ($localSupabaseDbUrl) {
+    $forceLocalDockerDb = $false
+  }
   if ($Env:START_LOCAL_FORCE_DOCKER_DB -eq 'false' -or $Env:START_LOCAL_USE_ENV -eq 'true') {
     $forceLocalDockerDb = $false
   }
@@ -407,6 +448,9 @@ try {
   if ($forceLocalDockerDb) {
     Write-Step "Using local Docker Postgres + Redis for backend/worker (set START_LOCAL_USE_ENV=true to disable)."
     $serverEnvPrefix = "`$env:SUPABASE_DB_URL='$localDbUrl'; `$env:SUPABASE_DB_URL_MIGRATIONS='$localDbUrl'; `$env:DATABASE_URL='$localDbUrl'; `$env:DB_SSL_DISABLED='true'; `$env:REDIS_URL='$localRedisUrl';"
+  } elseif ($localSupabaseDbUrl) {
+    Write-Step "Using local Supabase Postgres from 'supabase status' + local Redis for backend/worker."
+    $serverEnvPrefix = "`$env:SUPABASE_DB_URL='$localSupabaseDbUrl'; `$env:SUPABASE_DB_URL_MIGRATIONS='$localSupabaseDbUrl'; `$env:DATABASE_URL='$localSupabaseDbUrl'; `$env:DB_SSL_DISABLED='true'; `$env:REDIS_URL='$localRedisUrl';"
   } else {
     Write-Step "Using DB/Redis from environment files (START_LOCAL_USE_ENV=true)."
   }
@@ -431,7 +475,7 @@ try {
   }
 
   Write-Step "Waiting for API readiness..."
-  Wait-ForHttpEndpoint -Url 'http://127.0.0.1:3001/health' -MaxAttempts 90 -DelaySeconds 2
+  Wait-ForHttpEndpoint -Url 'http://127.0.0.1:3001/health' -MaxAttempts 180 -DelaySeconds 2
 
   Write-Step "Waiting for frontend readiness..."
   Wait-ForHttpEndpoint -Url 'http://localhost:5173/' -MaxAttempts 90 -DelaySeconds 2
