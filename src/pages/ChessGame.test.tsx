@@ -359,22 +359,35 @@ describe('ChessGame', () => {
   it.each([
     ['?tab=lesson', 'How to play'],
     ['?tab=history', 'Chess history'],
-    ['?tab=analyze', 'Analyze game'],
   ])('initializes tutor tab from %s', async (search, activeTabLabel) => {
     setLocationSearch(search)
     render(<ChessGame />)
+    await userEvent.setup().click(screen.getByRole('button', { name: 'Open game menu' }))
 
     await waitFor(() => {
       expect(screen.getByRole('button', { name: activeTabLabel })).toHaveAttribute('aria-pressed', 'true')
     })
   })
 
-  it('falls back to analyze tab when query param is invalid', async () => {
-    setLocationSearch('?tab=bogus')
+  it('routes ?tab=analyze into drawer-based analysis actions', async () => {
+    setLocationSearch('?tab=analyze')
     render(<ChessGame />)
 
+    await userEvent.setup().click(screen.getByRole('button', { name: 'Open game menu' }))
+
     await waitFor(() => {
-      expect(screen.getByRole('button', { name: 'Analyze game' })).toHaveAttribute('aria-pressed', 'true')
+      expect(screen.getByRole('button', { name: 'Analyze game' })).toBeInTheDocument()
+      expect(screen.getByRole('button', { name: 'Analyze game for me' })).toBeInTheDocument()
+    })
+  })
+
+  it('falls back to history tab when query param is invalid', async () => {
+    setLocationSearch('?tab=bogus')
+    render(<ChessGame />)
+    await userEvent.setup().click(screen.getByRole('button', { name: 'Open game menu' }))
+
+    await waitFor(() => {
+      expect(screen.getByRole('button', { name: 'Chess history' })).toHaveAttribute('aria-pressed', 'true')
     })
   })
 
@@ -530,6 +543,8 @@ describe('ChessGame', () => {
     setMockGameId('local')
     render(<ChessGame />)
 
+    await user.click(screen.getByRole('button', { name: 'Open game menu' }))
+
     expect(screen.getByText('gemini')).toBeInTheDocument()
 
     await user.click(screen.getByRole('button', { name: 'Analyze game for me' }))
@@ -541,8 +556,6 @@ describe('ChessGame', () => {
 
     await user.click(screen.getByRole('button', { name: 'How to play' }))
     expect(screen.getByRole('button', { name: '1) Pieces & movement' })).toBeInTheDocument()
-
-    await user.click(screen.getByRole('button', { name: 'Analyze game' }))
     expect(screen.getByText('gemini-2.0-flash-lite')).toBeInTheDocument()
   })
 

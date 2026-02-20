@@ -2284,6 +2284,7 @@ function ChessTutorPanel({
   openStoryOnLoad,
   fullscreen,
   initialStoryId,
+  allowAnalyzeTab = true,
 }: {
   analysis: ChessTutorAnalysis | null
   modelLabel: string
@@ -2294,8 +2295,14 @@ function ChessTutorPanel({
   openStoryOnLoad?: boolean
   fullscreen?: boolean
   initialStoryId?: string
+  allowAnalyzeTab?: boolean
 }) {
-  const [activeTab, setActiveTab] = useState<TutorTab>(() => initialTab ?? 'analyze')
+  const [activeTab, setActiveTab] = useState<TutorTab>(() => {
+    const defaultTab: TutorTab = allowAnalyzeTab ? 'lesson' : 'history'
+    const requested = initialTab ?? defaultTab
+    if (!allowAnalyzeTab && requested === 'analyze') return 'history'
+    return requested
+  })
   const [activeLessonIndex, setActiveLessonIndex] = useState(0)
   const [animationFrame, setAnimationFrame] = useState(0)
   const [activeLessonSection, setActiveLessonSection] = useState<LessonSection>('pieces')
@@ -2336,9 +2343,19 @@ function ChessTutorPanel({
   }, [notationFocus, activeNotationMove])
 
   useEffect(() => {
+    if (!allowAnalyzeTab && activeTab === 'analyze') {
+      setActiveTab('history')
+    }
+  }, [activeTab, allowAnalyzeTab])
+
+  useEffect(() => {
     if (!initialTab) return
+    if (!allowAnalyzeTab && initialTab === 'analyze') {
+      setActiveTab('history')
+      return
+    }
     setActiveTab(initialTab)
-  }, [initialTab])
+  }, [allowAnalyzeTab, initialTab])
 
   useEffect(() => {
     if (!initialStoryId) return
@@ -2439,18 +2456,20 @@ function ChessTutorPanel({
           >
             Chess history
           </button>
-          <button
-            type="button"
-            onClick={() => setActiveTab('analyze')}
-            aria-pressed={activeTab === 'analyze'}
-            className={`rounded border px-2 py-1 text-xs font-semibold ${activeTab === 'analyze' ? 'border-blue-300 bg-blue-50 text-blue-700' : 'border-slate-200 bg-white text-slate-600 hover:bg-slate-50'}`}
-          >
-            Analyze game
-          </button>
+          {allowAnalyzeTab ? (
+            <button
+              type="button"
+              onClick={() => setActiveTab('analyze')}
+              aria-pressed={activeTab === 'analyze'}
+              className={`rounded border px-2 py-1 text-xs font-semibold ${activeTab === 'analyze' ? 'border-blue-300 bg-blue-50 text-blue-700' : 'border-slate-200 bg-white text-slate-600 hover:bg-slate-50'}`}
+            >
+              Analyze game
+            </button>
+          ) : null}
         </div>
       </div>
       <div className="min-h-0 flex-1 rounded-lg border border-dashed border-slate-200 bg-white px-3 py-2 text-sm">
-        {activeTab === 'analyze' ? (
+        {activeTab === 'analyze' && allowAnalyzeTab ? (
           <>
             <button
               type="button"
@@ -2855,10 +2874,61 @@ const START_FEN = 'rnbqkbnr/pppppppp/8/8/8/8/PPPPPPPP/RNBQKBNR w KQkq - 0 1'
 
 const CHESSBOARD_MAX_SIZE = 1200
 
+type CustomPieceProps = {
+  squareWidth: number
+  isDragging: boolean
+}
+
+function createWoodPiece(glyph: string, color: string) {
+  return function WoodPiece({ squareWidth, isDragging }: CustomPieceProps): React.JSX.Element {
+    const fontSize = Math.max(22, squareWidth * 0.72)
+    return (
+      <div
+        style={{
+          width: squareWidth,
+          height: squareWidth,
+          display: 'grid',
+          placeItems: 'center',
+          fontSize,
+          lineHeight: 1,
+          color,
+          textShadow: color === '#f7f0dc'
+            ? '0 1px 0 rgba(60,45,30,0.5), 0 2px 4px rgba(60,45,30,0.3)'
+            : '0 1px 0 rgba(0,0,0,0.2), 0 2px 4px rgba(60,35,20,0.35)',
+          opacity: isDragging ? 0.78 : 1,
+          userSelect: 'none',
+          WebkitUserSelect: 'none',
+        }}
+      >
+        {glyph}
+      </div>
+    )
+  }
+}
+
+const WOOD_CHESS_PIECES = {
+  wK: createWoodPiece('♔', '#f7f0dc'),
+  wQ: createWoodPiece('♕', '#f7f0dc'),
+  wR: createWoodPiece('♖', '#f7f0dc'),
+  wB: createWoodPiece('♗', '#f7f0dc'),
+  wN: createWoodPiece('♘', '#f7f0dc'),
+  wP: createWoodPiece('♙', '#f7f0dc'),
+  bK: createWoodPiece('♚', '#6e4427'),
+  bQ: createWoodPiece('♛', '#6e4427'),
+  bR: createWoodPiece('♜', '#6e4427'),
+  bB: createWoodPiece('♝', '#6e4427'),
+  bN: createWoodPiece('♞', '#6e4427'),
+  bP: createWoodPiece('♟', '#6e4427'),
+} as const
+
 const CHESSBOARD_THEME = {
-  customLightSquareStyle: { backgroundColor: 'var(--color-slate-50)' },
-  customDarkSquareStyle: { backgroundColor: 'var(--color-slate-200)' },
-  customBoardStyle: { borderRadius: 10 },
+  customLightSquareStyle: { backgroundColor: '#f1dfc2' },
+  customDarkSquareStyle: { backgroundColor: '#9b6a43' },
+  customBoardStyle: {
+    borderRadius: 10,
+    boxShadow: 'inset 0 0 0 1px rgba(60,42,28,0.35), 0 10px 28px rgba(45,28,16,0.2)',
+  },
+  customPieces: WOOD_CHESS_PIECES,
 } as const
 
 const PROMOTION_PIECES: { value: PromotionPiece; label: string; symbol: string }[] = [
@@ -4162,6 +4232,44 @@ function OnlineChessGame({
               )}
             </div>
           </div>
+          <div className="mb-4 rounded-lg border border-slate-200 bg-slate-50 px-3 py-2">
+            <div className="mb-2 flex items-center justify-between">
+              <div className="text-xs font-semibold text-slate-600">Game analysis</div>
+              <span className="text-[11px] text-slate-500">{tutorModel}</span>
+            </div>
+            <button
+              type="button"
+              onClick={() => { void handleAnalyzeGameForMe() }}
+              disabled={tutorLoading}
+              className="mb-2 mr-2 rounded border border-slate-200 bg-white px-2 py-1 text-xs font-semibold text-slate-700 hover:bg-slate-50 disabled:opacity-50"
+            >
+              Analyze game
+            </button>
+            <button
+              type="button"
+              onClick={() => { void handleAnalyzeGameForMe() }}
+              disabled={tutorLoading}
+              className="mb-2 rounded border border-slate-200 bg-white px-2 py-1 text-xs font-semibold text-slate-700 hover:bg-slate-50 disabled:opacity-50"
+            >
+              {tutorLoading ? 'Analyzing…' : 'Analyze game for me'}
+            </button>
+            {tutorError ? <div className="text-xs text-red-600">{tutorError}</div> : null}
+            {!tutorError && !tutorAnalysis && !tutorLoading ? (
+              <div className="text-xs text-slate-500">Run analysis from the menu to review hints without covering the board.</div>
+            ) : null}
+            {tutorAnalysis ? (
+              <div className="space-y-2 text-xs text-slate-700">
+                <p>{tutorAnalysis.positionSummary}</p>
+                {tutorAnalysis.hints.length ? (
+                  <ul className="list-disc pl-4">
+                    {tutorAnalysis.hints.slice(0, 3).map((hint) => (
+                      <li key={hint}>{hint}</li>
+                    ))}
+                  </ul>
+                ) : null}
+              </div>
+            ) : null}
+          </div>
           <div className="min-h-0 flex-1 overflow-y-auto">
             {moveHistoryRowsNewestFirst.length ? (
               <table className="w-full text-left text-sm text-slate-700">
@@ -4217,19 +4325,21 @@ function OnlineChessGame({
           <div className="mt-4 text-xs text-slate-500">
             Game: {gameId}
           </div>
+          <div className="mt-4">
+            <ChessTutorPanel
+              analysis={tutorAnalysis}
+              modelLabel=""
+              loading={tutorLoading}
+              error={tutorError}
+              onAnalyze={() => { void handleAnalyzeGameForMe() }}
+              initialTab={initialTutorTab}
+              openStoryOnLoad={openStoryOnLoad}
+              fullscreen={false}
+              initialStoryId={initialStoryId}
+              allowAnalyzeTab={false}
+            />
+          </div>
         </aside>
-
-        <ChessTutorPanel
-          analysis={tutorAnalysis}
-          modelLabel={tutorModel}
-          loading={tutorLoading}
-          error={tutorError}
-          onAnalyze={() => { void handleAnalyzeGameForMe() }}
-          initialTab={initialTutorTab}
-          openStoryOnLoad={openStoryOnLoad}
-          fullscreen={tutorialFullscreenMode}
-          initialStoryId={initialStoryId}
-        />
       </div>
       <Toast message={toastMessage} severity={toastSeverity} onClose={() => setToastMessage(null)} />
     </div>
@@ -4711,6 +4821,44 @@ function LocalChessGame({
               )}
             </div>
           </div>
+          <div className="mb-4 rounded-lg border border-slate-200 bg-slate-50 px-3 py-2">
+            <div className="mb-2 flex items-center justify-between">
+              <div className="text-xs font-semibold text-slate-600">Game analysis</div>
+              <span className="text-[11px] text-slate-500">{tutorModel}</span>
+            </div>
+            <button
+              type="button"
+              onClick={() => { void handleAnalyzeGameForMe() }}
+              disabled={tutorLoading}
+              className="mb-2 mr-2 rounded border border-slate-200 bg-white px-2 py-1 text-xs font-semibold text-slate-700 hover:bg-slate-50 disabled:opacity-50"
+            >
+              Analyze game
+            </button>
+            <button
+              type="button"
+              onClick={() => { void handleAnalyzeGameForMe() }}
+              disabled={tutorLoading}
+              className="mb-2 rounded border border-slate-200 bg-white px-2 py-1 text-xs font-semibold text-slate-700 hover:bg-slate-50 disabled:opacity-50"
+            >
+              {tutorLoading ? 'Analyzing…' : 'Analyze game for me'}
+            </button>
+            {tutorError ? <div className="text-xs text-red-600">{tutorError}</div> : null}
+            {!tutorError && !tutorAnalysis && !tutorLoading ? (
+              <div className="text-xs text-slate-500">Run analysis from the menu to review hints without covering the board.</div>
+            ) : null}
+            {tutorAnalysis ? (
+              <div className="space-y-2 text-xs text-slate-700">
+                <p>{tutorAnalysis.positionSummary}</p>
+                {tutorAnalysis.hints.length ? (
+                  <ul className="list-disc pl-4">
+                    {tutorAnalysis.hints.slice(0, 3).map((hint) => (
+                      <li key={hint}>{hint}</li>
+                    ))}
+                  </ul>
+                ) : null}
+              </div>
+            ) : null}
+          </div>
           <div className="min-h-0 flex-1 overflow-y-auto">
             {moveHistoryRowsNewestFirst.length ? (
               <table className="w-full text-left text-sm text-slate-700">
@@ -4766,19 +4914,21 @@ function LocalChessGame({
           <div className="mt-4 text-xs text-slate-500">
             Game: local
           </div>
+          <div className="mt-4">
+            <ChessTutorPanel
+              analysis={tutorAnalysis}
+              modelLabel=""
+              loading={tutorLoading}
+              error={tutorError}
+              onAnalyze={() => { void handleAnalyzeGameForMe() }}
+              initialTab={initialTutorTab}
+              openStoryOnLoad={openStoryOnLoad}
+              fullscreen={false}
+              initialStoryId={initialStoryId}
+              allowAnalyzeTab={false}
+            />
+          </div>
         </aside>
-
-        <ChessTutorPanel
-          analysis={tutorAnalysis}
-          modelLabel={tutorModel}
-          loading={tutorLoading}
-          error={tutorError}
-          onAnalyze={() => { void handleAnalyzeGameForMe() }}
-          initialTab={initialTutorTab}
-          openStoryOnLoad={openStoryOnLoad}
-          fullscreen={tutorialFullscreenMode}
-          initialStoryId={initialStoryId}
-        />
       </div>
       <Toast message={toastMessage} severity={toastSeverity} onClose={() => setToastMessage(null)} />
     </div>
