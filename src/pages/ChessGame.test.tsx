@@ -378,6 +378,28 @@ describe('ChessGame', () => {
     })
   })
 
+  it('opens story modal immediately when tutorial story query flag is present', async () => {
+    setMockGameId('local')
+    setLocationSearch('?tab=lesson&tutor=1&story=1&storyId=architect-of-squares')
+    render(<ChessGame />)
+
+    await waitFor(() => {
+      expect(screen.getByRole('dialog', { name: 'Chess story modal' })).toBeInTheDocument()
+    })
+  })
+
+  it('renders tutor in fullscreen mode when tutor query flag is present', async () => {
+    setMockGameId('local')
+    setLocationSearch('?tab=lesson&tutor=1')
+    render(<ChessGame />)
+
+    await waitFor(() => {
+      expect(screen.getByText('Chess Tutor')).toBeInTheDocument()
+      expect(screen.getByRole('combobox', { name: 'Choose story' })).toBeInTheDocument()
+      expect(screen.getByRole('button', { name: 'Story mode' })).toBeInTheDocument()
+    })
+  })
+
   it('quits online game by aborting and navigating to /games', async () => {
     const user = userEvent.setup()
     render(<ChessGame />)
@@ -618,8 +640,9 @@ describe('ChessGame', () => {
     await user.click(screen.getByRole('button', { name: 'How to play' }))
     await user.click(screen.getByRole('button', { name: 'Story mode' }))
 
-    expect(screen.getByRole('dialog', { name: 'Chess story modal' })).toBeInTheDocument()
-    expect(screen.getByText('The Architect of Squares')).toBeInTheDocument()
+    const storyDialog = screen.getByRole('dialog', { name: 'Chess story modal' })
+    expect(storyDialog).toBeInTheDocument()
+    expect(within(storyDialog).getByText('The Architect of Squares')).toBeInTheDocument()
 
     await waitFor(() => {
       expect(getDocumentMock).toHaveBeenCalled()

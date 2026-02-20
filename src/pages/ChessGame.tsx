@@ -113,6 +113,62 @@ function parseInitialTutorTab(search: string): TutorTab | undefined {
   return undefined
 }
 
+function shouldOpenStoryMode(search: string): boolean {
+  const value = new URLSearchParams(search).get('story')
+  return value === '1' || value === 'true'
+}
+
+function shouldOpenTutorFullscreen(search: string): boolean {
+  const value = new URLSearchParams(search).get('tutor')
+  return value === '1' || value === 'true'
+}
+
+function parseInitialStoryId(search: string): string | undefined {
+  const value = new URLSearchParams(search).get('storyId')
+  return value?.trim() || undefined
+}
+
+function ChessModeSwitcher({
+  activeMode,
+  onComputer,
+  onHuman,
+  onTutorials,
+}: {
+  activeMode: 'computer' | 'human' | 'tutorials'
+  onComputer: () => void
+  onHuman: () => void
+  onTutorials: () => void
+}): React.JSX.Element {
+  return (
+    <div className="flex w-full flex-wrap items-center gap-2" role="group" aria-label="Chess mode switcher">
+      <button
+        type="button"
+        onClick={onComputer}
+        aria-pressed={activeMode === 'computer'}
+        className={`rounded-md border px-3 py-1.5 text-xs font-semibold ${activeMode === 'computer' ? 'border-indigo-300 bg-indigo-50 text-indigo-700' : 'border-slate-200 bg-white text-slate-700 hover:bg-slate-50'}`}
+      >
+        Play vs Computer
+      </button>
+      <button
+        type="button"
+        onClick={onHuman}
+        aria-pressed={activeMode === 'human'}
+        className={`rounded-md border px-3 py-1.5 text-xs font-semibold ${activeMode === 'human' ? 'border-indigo-300 bg-indigo-50 text-indigo-700' : 'border-slate-200 bg-white text-slate-700 hover:bg-slate-50'}`}
+      >
+        Play vs Opponent (Invite)
+      </button>
+      <button
+        type="button"
+        onClick={onTutorials}
+        aria-pressed={activeMode === 'tutorials'}
+        className={`rounded-md border px-3 py-1.5 text-xs font-semibold ${activeMode === 'tutorials' ? 'border-indigo-300 bg-indigo-50 text-indigo-700' : 'border-slate-200 bg-white text-slate-700 hover:bg-slate-50'}`}
+      >
+        Tutorials
+      </button>
+    </div>
+  )
+}
+
 const CHESS_LESSONS: ChessLesson[] = [
   {
     piece: 'Pawn',
@@ -430,10 +486,26 @@ const FILE_REFERENCE: string[] = ['a', 'b', 'c', 'd', 'e', 'f', 'g', 'h']
 const RANK_DEMO_SQUARES: string[] = ['a2', 'b2', 'c2', 'd2', 'e2', 'f2', 'g2', 'h2']
 const FILE_DEMO_SQUARES: string[] = ['e1', 'e2', 'e3', 'e4', 'e5', 'e6', 'e7', 'e8']
 const DEFAULT_CHESS_STORY_PDF_URL = '/chess-story/architect-of-squares.pdf'
-const CHESS_STORY_PDF_URL = String(import.meta.env.VITE_CHESS_STORY_PDF_URL || DEFAULT_CHESS_STORY_PDF_URL).trim() || DEFAULT_CHESS_STORY_PDF_URL
 const CHESS_STORY_TTS_VOICE = 'shimmer'
 const STORY_MANUAL_NARRATION_STORAGE_KEY = 'chess-story-manual-narration'
-const STORY_AUDIO_SLUG = 'architect-of-squares'
+type ChessStoryAudioSlug = Parameters<typeof preloadStoryAudioManifest>[0]
+type ChessStoryOption = {
+  id: string
+  title: string
+  pdfUrl: string
+  audioSlug: ChessStoryAudioSlug
+}
+
+const CHESS_STORIES: ChessStoryOption[] = [
+  {
+    id: 'architect-of-squares',
+    title: 'The Architect of Squares',
+    pdfUrl: String(import.meta.env.VITE_CHESS_STORY_PDF_URL || DEFAULT_CHESS_STORY_PDF_URL).trim() || DEFAULT_CHESS_STORY_PDF_URL,
+    audioSlug: 'architect-of-squares',
+  },
+]
+
+const DEFAULT_CHESS_STORY_ID = CHESS_STORIES[0]?.id || 'architect-of-squares'
 const NARRATION_FALLBACK_WORDS_PER_SECOND = 2.7
 const STORY_DIRECTOR_SYNC_INTERVAL_MS = 250
 const STORY_STALL_RECOVERY_DELAY_MS = 2000
@@ -673,10 +745,14 @@ function ChessStoryModal({
   open,
   onClose,
   pdfUrl,
+  storyTitle,
+  storyAudioSlug,
 }: {
   open: boolean
   onClose: () => void
   pdfUrl: string
+  storyTitle: string
+  storyAudioSlug: ChessStoryAudioSlug
 }) {
   const canvasRef = useRef<HTMLCanvasElement | null>(null)
   const pageContainerRef = useRef<HTMLDivElement | null>(null)
@@ -727,10 +803,10 @@ function ChessStoryModal({
 
   const manualNarrationPages = useMemo(() => splitManualNarrationIntoPages(manualNarration), [manualNarration])
   const storyProgressStorageKey = useMemo(
-    () => `${STORY_PROGRESS_STORAGE_PREFIX}:${STORY_AUDIO_SLUG}:${pdfUrl}`,
-    [pdfUrl],
+    () => `${STORY_PROGRESS_STORAGE_PREFIX}:${storyAudioSlug}:${pdfUrl}`,
+    [pdfUrl, storyAudioSlug],
   )
-  const storyProgressId = useMemo(() => `${STORY_AUDIO_SLUG}:${pdfUrl}`, [pdfUrl])
+  const storyProgressId = useMemo(() => `${storyAudioSlug}:${pdfUrl}`, [pdfUrl, storyAudioSlug])
   const narrationWords = useMemo(
     () => activeNarrationText.split(/\s+/).map((word) => word.trim()).filter((word) => word.length > 0),
     [activeNarrationText],
@@ -1365,7 +1441,7 @@ function ChessStoryModal({
     if (!open) return
     let cancelled = false
 
-    void preloadStoryAudioManifest(STORY_AUDIO_SLUG).catch(() => {
+    void preloadStoryAudioManifest(storyAudioSlug).catch(() => {
       // Manifest preloading is opportunistic; runtime ensure fallback remains authoritative.
     })
 
@@ -1382,7 +1458,7 @@ function ChessStoryModal({
     return () => {
       cancelled = true
     }
-  }, [open])
+  }, [open, storyAudioSlug])
 
   useEffect(() => {
     if (!open) return
@@ -1868,7 +1944,7 @@ function ChessStoryModal({
           textLength: text.length,
         })
         const ensuredAudio = await ensureStoryAudio({
-          storySlug: STORY_AUDIO_SLUG,
+          storySlug: storyAudioSlug,
           page: currentPage,
           totalPages,
           text,
@@ -2021,11 +2097,11 @@ function ChessStoryModal({
   if (!open) return null
 
   return (
-    <div className="fixed inset-0 z-[60] flex items-center justify-center bg-black/45 p-4" onClick={() => { stopNarration(); onClose() }} role="dialog" aria-modal="true" aria-label="Chess story modal">
-      <div className="flex h-[88vh] w-[92vw] min-h-[460px] min-w-[340px] max-w-[1500px] flex-col rounded-2xl border border-slate-200 bg-white p-3 shadow-2xl" onClick={(event) => event.stopPropagation()}>
+    <div className="fixed inset-0 z-[70] bg-black/60" onClick={() => { stopNarration(); onClose() }} role="dialog" aria-modal="true" aria-label="Chess story modal">
+      <div className="flex h-[100dvh] w-full flex-col border-0 bg-white p-3 shadow-2xl sm:p-4" onClick={(event) => event.stopPropagation()}>
         <div className="mb-2 flex items-center justify-between gap-2">
           <div>
-            <div className="text-sm font-semibold text-slate-700">The Architect of Squares</div>
+            <div className="text-sm font-semibold text-slate-700">{storyTitle}</div>
             <div className="text-xs text-slate-500">Story mode with read-aloud and automatic page turning</div>
           </div>
           <button
@@ -2205,6 +2281,9 @@ function ChessTutorPanel({
   error,
   onAnalyze,
   initialTab,
+  openStoryOnLoad,
+  fullscreen,
+  initialStoryId,
 }: {
   analysis: ChessTutorAnalysis | null
   modelLabel: string
@@ -2212,6 +2291,9 @@ function ChessTutorPanel({
   error: string | null
   onAnalyze: () => void
   initialTab?: TutorTab
+  openStoryOnLoad?: boolean
+  fullscreen?: boolean
+  initialStoryId?: string
 }) {
   const [activeTab, setActiveTab] = useState<TutorTab>(() => initialTab ?? 'analyze')
   const [activeLessonIndex, setActiveLessonIndex] = useState(0)
@@ -2226,8 +2308,13 @@ function ChessTutorPanel({
   const [discoveredCheckFrame, setDiscoveredCheckFrame] = useState(0)
   const [discoveredCheckAutoplay, setDiscoveredCheckAutoplay] = useState(true)
   const [storyModalOpen, setStoryModalOpen] = useState(false)
+  const [activeStoryId, setActiveStoryId] = useState<string>(() => {
+    const found = CHESS_STORIES.some((story) => story.id === initialStoryId)
+    return found && initialStoryId ? initialStoryId : DEFAULT_CHESS_STORY_ID
+  })
 
   const activeLesson = CHESS_LESSONS[activeLessonIndex]
+  const activeStory = CHESS_STORIES.find((story) => story.id === activeStoryId) ?? CHESS_STORIES[0]
   const activePattern = ATTACK_PATTERNS[activePatternIndex]
   const activeNotationMove = notationPly > 0 ? NOTATION_LINE_MOVES[notationPly - 1] : null
   const notationFrame = NOTATION_LINE_FRAMES[Math.min(notationPly, NOTATION_LINE_FRAMES.length - 1)]
@@ -2247,6 +2334,23 @@ function ChessTutorPanel({
     if (notationFocus === 'file') return FILE_DEMO_SQUARES
     return activeNotationMove?.focusSquares ?? []
   }, [notationFocus, activeNotationMove])
+
+  useEffect(() => {
+    if (!initialTab) return
+    setActiveTab(initialTab)
+  }, [initialTab])
+
+  useEffect(() => {
+    if (!initialStoryId) return
+    if (!CHESS_STORIES.some((story) => story.id === initialStoryId)) return
+    setActiveStoryId(initialStoryId)
+  }, [initialStoryId])
+
+  useEffect(() => {
+    if (!openStoryOnLoad) return
+    setActiveTab('lesson')
+    setStoryModalOpen(true)
+  }, [openStoryOnLoad])
 
   useEffect(() => {
     setAnimationFrame(0)
@@ -2311,7 +2415,7 @@ function ChessTutorPanel({
 
   return (
     <>
-      <aside className="flex min-h-0 w-full flex-col rounded-2xl border border-slate-200 bg-white/80 p-4 shadow-md lg:w-[360px] lg:shrink-0">
+      <aside className={`flex min-h-0 w-full flex-col rounded-2xl border border-slate-200 bg-white/80 p-4 shadow-md ${fullscreen ? 'h-full lg:w-full' : 'lg:w-[360px] lg:shrink-0'}`}>
       <div className="mb-3 flex items-center justify-between">
         <div className="text-sm font-semibold text-slate-700">Chess Tutor</div>
         <span className="text-xs text-slate-500">{modelLabel}</span>
@@ -2408,13 +2512,25 @@ function ChessTutorPanel({
           <div className="flex h-full min-h-0 flex-col gap-2 text-slate-700">
             <div className="flex items-center justify-between gap-2">
               <div className="text-xs font-semibold uppercase tracking-wide text-slate-500">How to play</div>
-              <button
-                type="button"
-                onClick={() => setStoryModalOpen(true)}
-                className="rounded border border-slate-200 bg-white px-2 py-1 text-xs font-semibold text-slate-600 hover:bg-slate-50"
-              >
-                Story mode
-              </button>
+              <div className="flex items-center gap-2">
+                <select
+                  value={activeStory.id}
+                  onChange={(event) => setActiveStoryId(event.target.value)}
+                  className="rounded border border-slate-200 bg-white px-2 py-1 text-xs font-semibold text-slate-600"
+                  aria-label="Choose story"
+                >
+                  {CHESS_STORIES.map((story) => (
+                    <option key={story.id} value={story.id}>{story.title}</option>
+                  ))}
+                </select>
+                <button
+                  type="button"
+                  onClick={() => setStoryModalOpen(true)}
+                  className="rounded border border-slate-200 bg-white px-2 py-1 text-xs font-semibold text-slate-600 hover:bg-slate-50"
+                >
+                  Story mode
+                </button>
+              </div>
             </div>
             <div className="overflow-x-auto pb-1">
               <div className="inline-flex min-w-max gap-1">
@@ -2724,7 +2840,13 @@ function ChessTutorPanel({
         )}
       </div>
       </aside>
-      <ChessStoryModal open={storyModalOpen} onClose={() => setStoryModalOpen(false)} pdfUrl={CHESS_STORY_PDF_URL} />
+      <ChessStoryModal
+        open={storyModalOpen}
+        onClose={() => setStoryModalOpen(false)}
+        pdfUrl={activeStory.pdfUrl}
+        storyTitle={activeStory.title}
+        storyAudioSlug={activeStory.audioSlug}
+      />
     </>
   )
 }
@@ -3373,14 +3495,41 @@ export default function ChessGame(): React.JSX.Element {
   const { gameId } = useParams<{ gameId: string }>()
   const location = useLocation()
   const initialTutorTab = useMemo(() => parseInitialTutorTab(location.search), [location.search])
+  const openStoryOnLoad = useMemo(() => shouldOpenStoryMode(location.search), [location.search])
+  const openTutorFullscreen = useMemo(() => shouldOpenTutorFullscreen(location.search), [location.search])
+  const initialStoryId = useMemo(() => parseInitialStoryId(location.search), [location.search])
 
   if (gameId === 'local') {
-    return <LocalChessGame initialTutorTab={initialTutorTab} />
+    return (
+      <LocalChessGame
+        initialTutorTab={initialTutorTab}
+        openStoryOnLoad={openStoryOnLoad}
+        openTutorFullscreen={openTutorFullscreen}
+        initialStoryId={initialStoryId}
+      />
+    )
   }
-  return <OnlineChessGame initialTutorTab={initialTutorTab} />
+  return (
+    <OnlineChessGame
+      initialTutorTab={initialTutorTab}
+      openStoryOnLoad={openStoryOnLoad}
+      openTutorFullscreen={openTutorFullscreen}
+      initialStoryId={initialStoryId}
+    />
+  )
 }
 
-function OnlineChessGame({ initialTutorTab }: { initialTutorTab?: TutorTab }): React.JSX.Element {
+function OnlineChessGame({
+  initialTutorTab,
+  openStoryOnLoad,
+  openTutorFullscreen,
+  initialStoryId,
+}: {
+  initialTutorTab?: TutorTab
+  openStoryOnLoad?: boolean
+  openTutorFullscreen?: boolean
+  initialStoryId?: string
+}): React.JSX.Element {
   const { gameId } = useParams<{ gameId: string }>()
   const navigate = useNavigate()
   const { user } = useAuth()
@@ -3621,6 +3770,7 @@ function OnlineChessGame({ initialTutorTab }: { initialTutorTab?: TutorTab }): R
     if (isAborted) return { isOver: true, reason: 'aborted' as GameEndReason, winner: null }
     return detectGameEnd(normalizedDisplayFen)
   }, [isAborted, normalizedDisplayFen])
+  const tutorialFullscreenMode = Boolean(openTutorFullscreen && initialTutorTab === 'lesson')
   const canMove = !isAborted && !gameEnd.isOver && !isViewingPast && isMember && isUserTurn && !pendingPromotion
   const boardOrientation: 'white' | 'black' = isCurrentBlack ? 'black' : 'white'
   const boardKey = `${boardId}:${boardOrientation}:${normalizedDisplayFen}`
@@ -3663,14 +3813,20 @@ function OnlineChessGame({ initialTutorTab }: { initialTutorTab?: TutorTab }): R
   }, [moveRows, normalizedDisplayFen])
 
   return (
-    <div className="flex flex-col rounded-2xl bg-slate-100/80 p-4 shadow-sm lg:h-full lg:min-h-0 lg:overflow-hidden">
+    <div className="flex h-full min-h-[100dvh] flex-col rounded-none bg-slate-100/90 p-3 shadow-sm sm:p-4 lg:min-h-0 lg:overflow-hidden">
       <div className="mb-4 flex flex-none flex-wrap items-center justify-between gap-3">
-        <div>
+        <div className="flex min-w-0 flex-1 flex-col gap-2">
           <h2 className="text-lg font-semibold">Chess</h2>
           <div className="text-xs text-slate-500">
             Status: {game?.status ?? 'loading'}
             {currentMember?.role ? ` · You are ${currentMember.role}` : ' · Spectating'}
           </div>
+          <ChessModeSwitcher
+            activeMode="human"
+            onComputer={() => navigate('/games/local?tab=analyze')}
+            onHuman={() => navigate('/games')}
+            onTutorials={() => navigate('/games/local?tab=lesson&tutor=1&story=1&storyId=architect-of-squares')}
+          />
         </div>
         <div className="flex items-center gap-2">
           <button
@@ -3747,8 +3903,8 @@ function OnlineChessGame({ initialTutorTab }: { initialTutorTab?: TutorTab }): R
           onCancel={() => setPendingPromotion(null)}
         />
       ) : null}
-      <div className="flex flex-col gap-6 lg:min-h-0 lg:flex-1 lg:flex-row lg:items-stretch">
-        <div className="flex flex-col gap-4 rounded-2xl border border-slate-200 bg-white/80 p-4 shadow-md lg:min-h-0 lg:min-w-0 lg:flex-1">
+      <div className={`flex flex-col gap-6 lg:min-h-0 lg:flex-1 lg:flex-row lg:items-stretch ${tutorialFullscreenMode ? 'gap-0' : ''}`}>
+        <div className={`${tutorialFullscreenMode ? 'hidden' : 'flex'} flex-col gap-4 rounded-2xl border border-slate-200 bg-white/80 p-4 shadow-md lg:min-h-0 lg:min-w-0 lg:flex-1`}>
           <div className="flex items-center justify-between">
             {renderPlayerLabel(topPlayer || null, topIsWhite ? currentTurn === 'w' : currentTurn === 'b', topFallback)}
           </div>
@@ -3844,7 +4000,7 @@ function OnlineChessGame({ initialTutorTab }: { initialTutorTab?: TutorTab }): R
           </div>
         </div>
 
-        <aside className="flex min-h-0 w-full flex-col rounded-2xl border border-slate-200 bg-white/80 p-4 shadow-md lg:w-[360px] lg:shrink-0">
+        <aside className={`${tutorialFullscreenMode ? 'hidden' : 'flex'} min-h-0 w-full flex-col rounded-2xl border border-slate-200 bg-white/80 p-4 shadow-md lg:w-[360px] lg:shrink-0`}>
           <div className="mb-3 flex items-center justify-between">
             <div className="text-sm font-semibold text-slate-700">Move History</div>
             {loading || movesLoading ? (
@@ -4043,6 +4199,9 @@ function OnlineChessGame({ initialTutorTab }: { initialTutorTab?: TutorTab }): R
           error={tutorError}
           onAnalyze={() => { void handleAnalyzeGameForMe() }}
           initialTab={initialTutorTab}
+          openStoryOnLoad={openStoryOnLoad}
+          fullscreen={tutorialFullscreenMode}
+          initialStoryId={initialStoryId}
         />
       </div>
       <Toast message={toastMessage} severity={toastSeverity} onClose={() => setToastMessage(null)} />
@@ -4050,7 +4209,17 @@ function OnlineChessGame({ initialTutorTab }: { initialTutorTab?: TutorTab }): R
   )
 }
 
-function LocalChessGame({ initialTutorTab }: { initialTutorTab?: TutorTab }): React.JSX.Element {
+function LocalChessGame({
+  initialTutorTab,
+  openStoryOnLoad,
+  openTutorFullscreen,
+  initialStoryId,
+}: {
+  initialTutorTab?: TutorTab
+  openStoryOnLoad?: boolean
+  openTutorFullscreen?: boolean
+  initialStoryId?: string
+}): React.JSX.Element {
   const { user } = useAuth()
   const navigate = useNavigate()
   const [localMoves, setLocalMoves] = useState<MoveRow[]>([])
@@ -4279,12 +4448,20 @@ function LocalChessGame({ initialTutorTab }: { initialTutorTab?: TutorTab }): Re
     navigate('/games')
   }
 
+  const tutorialFullscreenMode = Boolean(openTutorFullscreen && initialTutorTab === 'lesson')
+
   return (
-    <div className="flex flex-col rounded-2xl bg-slate-100/80 p-4 shadow-sm lg:h-full lg:min-h-0 lg:overflow-hidden">
+    <div className="flex h-full min-h-[100dvh] flex-col rounded-none bg-slate-100/90 p-3 shadow-sm sm:p-4 lg:min-h-0 lg:overflow-hidden">
       <div className="mb-4 flex flex-none flex-wrap items-center justify-between gap-3">
-        <div>
+        <div className="flex min-w-0 flex-1 flex-col gap-2">
           <h2 className="text-lg font-semibold">Chess (Local)</h2>
           <div className="text-xs text-slate-500">Status: {engineThinking ? 'thinking' : 'ready'}</div>
+          <ChessModeSwitcher
+            activeMode="computer"
+            onComputer={() => navigate('/games/local?tab=analyze')}
+            onHuman={() => navigate('/games')}
+            onTutorials={() => navigate('/games/local?tab=lesson&tutor=1&story=1&storyId=architect-of-squares')}
+          />
         </div>
         <div className="flex items-center gap-2">
           <button
@@ -4326,8 +4503,8 @@ function LocalChessGame({ initialTutorTab }: { initialTutorTab?: TutorTab }): Re
           onCancel={() => setPendingPromotion(null)}
         />
       ) : null}
-      <div className="flex flex-col gap-6 lg:min-h-0 lg:flex-1 lg:flex-row lg:items-stretch">
-        <div className="flex flex-col gap-4 rounded-2xl border border-slate-200 bg-white/80 p-4 shadow-md lg:min-h-0 lg:min-w-0 lg:flex-1">
+      <div className={`flex flex-col gap-6 lg:min-h-0 lg:flex-1 lg:flex-row lg:items-stretch ${tutorialFullscreenMode ? 'gap-0' : ''}`}>
+        <div className={`${tutorialFullscreenMode ? 'hidden' : 'flex'} flex-col gap-4 rounded-2xl border border-slate-200 bg-white/80 p-4 shadow-md lg:min-h-0 lg:min-w-0 lg:flex-1`}>
           <div className="flex items-center justify-between">
             {renderPlayerLabel(topPlayer || null, topIsWhite ? currentTurn === 'w' : currentTurn === 'b', 'Stockfish')}
           </div>
@@ -4414,7 +4591,7 @@ function LocalChessGame({ initialTutorTab }: { initialTutorTab?: TutorTab }): Re
           </div>
         </div>
 
-        <aside className="flex min-h-0 w-full flex-col rounded-2xl border border-slate-200 bg-white/80 p-4 shadow-md lg:w-[360px] lg:shrink-0">
+        <aside className={`${tutorialFullscreenMode ? 'hidden' : 'flex'} min-h-0 w-full flex-col rounded-2xl border border-slate-200 bg-white/80 p-4 shadow-md lg:w-[360px] lg:shrink-0`}>
           <div className="mb-3 flex items-center justify-between">
             <div className="text-sm font-semibold text-slate-700">Move History</div>
           </div>
@@ -4543,6 +4720,9 @@ function LocalChessGame({ initialTutorTab }: { initialTutorTab?: TutorTab }): Re
           error={tutorError}
           onAnalyze={() => { void handleAnalyzeGameForMe() }}
           initialTab={initialTutorTab}
+          openStoryOnLoad={openStoryOnLoad}
+          fullscreen={tutorialFullscreenMode}
+          initialStoryId={initialStoryId}
         />
       </div>
       <Toast message={toastMessage} severity={toastSeverity} onClose={() => setToastMessage(null)} />

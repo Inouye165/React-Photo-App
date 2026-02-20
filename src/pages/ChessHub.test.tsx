@@ -1,22 +1,14 @@
 import { describe, it, expect, vi, beforeEach } from 'vitest'
-import { render, screen, waitFor } from '@testing-library/react'
+import { render, screen } from '@testing-library/react'
 import userEvent from '@testing-library/user-event'
 import ChessHub from './ChessHub'
 
-const { navigateMock, createGameAndOpenTutorTabMock } = vi.hoisted(() => ({
+const { navigateMock } = vi.hoisted(() => ({
   navigateMock: vi.fn(),
-  createGameAndOpenTutorTabMock: vi.fn(async (navigate: (path: string) => void, tab: string) => {
-    navigate(`/games/test-game?tab=${tab}`)
-    return 'test-game'
-  }),
 }))
 
 vi.mock('react-router-dom', () => ({
   useNavigate: () => navigateMock,
-}))
-
-vi.mock('../features/chess/navigation', () => ({
-  createGameAndOpenTutorTab: createGameAndOpenTutorTabMock,
 }))
 
 describe('ChessHub', () => {
@@ -43,9 +35,6 @@ describe('ChessHub', () => {
     expect(navigateMock).toHaveBeenCalledWith('/games')
 
     await user.click(screen.getByRole('button', { name: /Tutorials/i }))
-    await waitFor(() => {
-      expect(createGameAndOpenTutorTabMock).toHaveBeenCalledWith(navigateMock, 'lesson')
-    })
-    expect(navigateMock).toHaveBeenCalledWith('/games/test-game?tab=lesson')
+    expect(navigateMock).toHaveBeenCalledWith('/games/local?tab=lesson&tutor=1&story=1&storyId=architect-of-squares')
   })
 })

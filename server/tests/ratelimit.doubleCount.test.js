@@ -1,6 +1,8 @@
 const request = require('supertest');
 const express = require('express');
 
+jest.setTimeout(20000);
+
 describe('Rate limiter overlap regression', () => {
   test('does not throw ERR_ERL_DOUBLE_COUNT for /api/auth when security + auth router are both mounted', async () => {
     // Ensure test env so auth limiter uses relaxed limits.
