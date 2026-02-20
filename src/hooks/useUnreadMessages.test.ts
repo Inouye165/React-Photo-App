@@ -1,18 +1,37 @@
-import { describe, it, expect, vi, beforeEach } from 'vitest'
+import { describe, it, expect, vi, beforeEach, beforeAll } from 'vitest'
 import { renderHook, waitFor } from '@testing-library/react'
-import { useUnreadMessages } from './useUnreadMessages'
-import { supabase } from '../supabaseClient'
 
-vi.mock('../supabaseClient', () => ({
-  supabase: {
-    from: vi.fn(),
-    channel: vi.fn(),
-    removeChannel: vi.fn(),
-  },
-}))
+let useUnreadMessages: (userId: string | null | undefined) => {
+  unreadCount: number
+  unreadByRoom: Record<string, number>
+  hasUnread: boolean
+  loading: boolean
+  refresh: () => void
+}
+
+let supabase: any
+
+beforeAll(async () => {
+  vi.resetModules()
+
+  vi.doMock('../supabaseClient', () => ({
+    supabase: {
+      from: vi.fn(),
+      channel: vi.fn(),
+      removeChannel: vi.fn(),
+    },
+  }))
+
+  const hookModule = await import('./useUnreadMessages')
+  const clientModule = await import('../supabaseClient')
+
+  useUnreadMessages = hookModule.useUnreadMessages
+  supabase = clientModule.supabase
+})
 
 describe('useUnreadMessages', () => {
   beforeEach(() => {
+    vi.useRealTimers()
     vi.clearAllMocks()
   })
 

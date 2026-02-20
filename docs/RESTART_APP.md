@@ -52,3 +52,18 @@ Expected: Frontend at http://localhost:5173/
 
 - If the backend fails prestart checks, verify DB/Redis are running and `server/.env` is valid.
 - If the worker can’t connect to Redis, ensure `REDIS_URL=redis://localhost:6379` in `server/.env`.
+
+## Startup Robustness Log
+
+- **2026-02-20 12:13:43 -08:00 (Windows, monitored run)**
+  - Backend startup/migration issue observed previously: `role "authenticated" does not exist` during policy migration.
+  - Fix applied in migration file to remove hard dependency on role-specific `TO authenticated` clauses.
+  - Result after fix: backend, frontend, and worker started; health endpoints returned `200`.
+
+- **2026-02-20 12:17:44 -08:00 (Laptop, operator feedback validation)**
+  - Tracking correction: startup robustness notes belong in this dedicated file (not README).
+  - Observed process issue: worker was already running in an earlier terminal that was not being actively monitored, and an additional frontend instance was started.
+  - Expected operator behavior for robust startup checks:
+    1. Verify existing listeners/processes before starting new services.
+    2. Prefer `npm run stop:local` before a fresh validation pass to avoid duplicate frontend/backend/worker instances.
+    3. Treat Vite port changes (`5173` -> `5174`) as normal when an instance is already running, and confirm which instance is intended for the test pass.
