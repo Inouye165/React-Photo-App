@@ -100,6 +100,10 @@ If chat messages only appear after refresh, apply these fixes in order:
 ```sql
 ALTER PUBLICATION supabase_realtime ADD TABLE public.messages;
 ALTER PUBLICATION supabase_realtime ADD TABLE public.room_members;
+ALTER PUBLICATION supabase_realtime ADD TABLE public.rooms;
+ALTER PUBLICATION supabase_realtime ADD TABLE public.chess_moves;
+ALTER PUBLICATION supabase_realtime ADD TABLE public.games;
+ALTER PUBLICATION supabase_realtime ADD TABLE public.game_members;
 ```
 
 2. If realtime logs show RLS errors, disable RLS for local dev (messages + room_members):
@@ -120,6 +124,106 @@ select pg_notify('pgrst','reload schema');
 ```bash
 docker restart supabase_realtime_photo-app
 ```
+
+### Incident log — 2026-02-20 17:40 local
+
+Observed repeated regression after local restart:
+
+- Chat room creation failed with `403` on `POST /rest/v1/rooms?...` under RLS.
+- `room_members.last_read_at` was missing, causing `400` on unread queries.
+- Chat started working after policy/schema fixes, but chess remained refresh-only:
+  - new games did not appear instantly in **My Games**
+  - moves did not appear instantly for the other account
+
+Root causes confirmed in local logs/state:
+
+- `supabase_realtime` publication contained only `chess_moves` at one point (chat tables missing).
+- FORCE RLS was enabled on `rooms`, `room_members`, and `messages` during failure windows.
+- `rooms_select_member` policy did not include `created_by = auth.uid()` in the active DB policy.
+- Game index UI had no realtime subscription and relied on manual refresh paths.
+
+Fixes applied (push-only, no periodic polling):
+
+1. DB hotfix + migration alignment:
+	- ensured `room_members.last_read_at` exists
+	- set `rooms_select_member` to allow creator reads (`created_by = auth.uid() OR is_room_member(id)`)
+	- set chat tables to `NO FORCE ROW LEVEL SECURITY` (RLS remains enabled)
+2. Realtime publication now includes:
+	- `public.messages`
+	- `public.room_members`
+	- `public.rooms`
+	- `public.chess_moves`
+3. Realtime service restarted (`supabase_realtime_photo-app`) after publication update.
+4. Frontend `GamesIndex` now subscribes to realtime game events and reloads by event only (no `setInterval` polling).
+
+Bandwidth policy for this project:
+
+- Use event-driven updates only for chess/chat multiplayer paths.
+- Do not add timed polling loops for move propagation or game list freshness.
+
+## Best first steps (chat/game realtime regression)
+
+When chat or chess updates only appear after refresh, run these steps first in this exact order.
+
+1. Confirm app is pointing to local Supabase gateway:
+
+```bash
+supabase status
+docker ps --format "table {{.Names}}\t{{.Ports}}" | findstr supabase_kong
+```
+
+2. Confirm realtime publication includes all required tables:
+
+```sql
+select schemaname, tablename
+from pg_publication_tables
+where pubname = 'supabase_realtime' and schemaname = 'public'
+order by tablename;
+```
+
+Expected table set:
+
+- `messages`
+- `room_members`
+- `rooms`
+- `chess_moves`
+- `games`
+- `game_members`
+
+3. Confirm RLS mode is safe for realtime apply on multiplayer tables:
+
+```sql
+select c.relname as table_name, c.relrowsecurity as rls_enabled, c.relforcerowsecurity as force_rls
+from pg_class c
+join pg_namespace n on n.oid = c.relnamespace
+where n.nspname = 'public'
+	and c.relname in ('rooms','room_members','messages','games','game_members','chess_moves')
+order by c.relname;
+```
+
+Expected: `rls_enabled = true`, `force_rls = false`.
+
+4. Restart realtime container (no frontend/backend restart needed for this step):
+
+```bash
+docker restart supabase_realtime_photo-app
+```
+
+5. Hard refresh both browser tabs and retest with two accounts:
+
+- Create/invite game -> opponent should see it without refresh.
+- Make move -> opponent board should update without refresh.
+
+6. If still failing, check logs before changing code:
+
+```bash
+docker logs --since 10m supabase_realtime_photo-app
+docker logs --since 10m supabase_kong_photo-app
+```
+
+Note: A permanent migration now enforces publication membership for chat and games tables:
+
+- `supabase/migrations/20260220181500_add_missing_realtime_publications_for_games_and_chat.sql`
 
 ---
 
@@ -164,7 +268,7 @@ If your laptop worked yesterday but stops after today’s changes, check:
 - **Port drift**: `supabase status` may show different ports (update `.env` + `server/.env`).
 - **Old auth tokens**: clear browser storage and re-sign in after DB reset.
 - **Missing migrations**: if `last_read_at` errors appear, run `supabase db push`.
-- **Realtime publication empty**: verify `supabase_realtime` contains `messages` + `room_members`.
+- **Realtime publication empty**: verify `supabase_realtime` contains `messages`, `room_members`, `rooms`, `chess_moves`, `games`, and `game_members`.
 - **Realtime blocked by RLS**: apply the local dev RLS disable for `messages` + `room_members`.
 
 Additional guidance for the laptop:
@@ -172,13 +276,13 @@ Additional guidance for the laptop:
 - Test before changing anything. If it still works, keep its config.
 - If it fails, the highest-probability culprit is stale auth (clear browser LocalStorage `sb-` keys).
 - Verify the Kong port via `docker ps` (look for `supabase_kong_<project>` and use that port).
-- Confirm realtime publication includes `messages` + `room_members`.
+- Confirm realtime publication includes `messages`, `room_members`, `rooms`, `chess_moves`, `games`, and `game_members`.
 
 Troubleshooting priority:
 
 1. Clear LocalStorage `sb-` keys.
 2. Check Kong port via `docker ps` and update `.env` + `server/.env` if it drifted.
-3. Verify realtime publication includes `messages` and `room_members`.
+3. Verify realtime publication includes `messages`, `room_members`, `rooms`, `chess_moves`, `games`, and `game_members`.
 
 If the laptop uses a separate stack name, confirm you are pointing to the correct Kong/DB containers and not mixing ports from the desktop.
 

@@ -14,6 +14,7 @@
     "pretest": "node scripts/validate-keys.js",
     "test": "jest",
     "test:db": "node scripts/test-db-connection.js",
+    "test:realtime:db": "node scripts/verify-supabase-realtime-setup.js",
     "verify:env": "node scripts/verify-env.js",
     "verify:migrations": "node scripts/check-migrations.js",
     "db:migrate": "knex migrate:latest --knexfile knexfile.js",

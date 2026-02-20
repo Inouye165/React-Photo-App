@@ -181,7 +181,8 @@ function Ensure-LocalSupabase {
   & supabase start
   if ($LASTEXITCODE -ne 0) {
     Write-Host "[start-local] Supabase start failed; attempting self-heal for stale containers..." -ForegroundColor Yellow
-    & supabase stop --no-backup | Out-Null
+    # Use 'stop' without --no-backup to preserve local DB volumes (user data).
+    & supabase stop | Out-Null
 
     $stale = docker ps -a --format "{{.Names}}" | Select-String -Pattern '^supabase_'
     if ($stale) {

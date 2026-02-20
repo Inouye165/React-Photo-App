@@ -4,6 +4,10 @@ import { acceptDisclaimer } from './helpers/disclaimer';
 import { mockCoreApi } from './helpers/mockCoreApi';
 
 test('A11y: upload page', async ({ page }) => {
+  await page.addInitScript(() => {
+    (window as unknown as { __E2E_MODE__?: boolean }).__E2E_MODE__ = true;
+  });
+
   await mockCoreApi(page);
   // Set up route mocks FIRST before any requests
   await page.route('**/api/test/e2e-verify', async route => {
@@ -32,6 +36,22 @@ test('A11y: upload page', async ({ page }) => {
           id: '11111111-1111-4111-8111-111111111111',
           username: 'e2e-test',
           has_set_username: true,
+        },
+      },
+    });
+  });
+
+  await page.route('**/api/users/me/preferences', async route => {
+    await route.fulfill({
+      headers: {
+        'Access-Control-Allow-Origin': 'http://127.0.0.1:5173',
+        'Access-Control-Allow-Credentials': 'true'
+      },
+      json: {
+        success: true,
+        data: {
+          map_mode_enabled: false,
+          compare_mode_enabled: false,
         },
       },
     });
