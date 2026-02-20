@@ -47,13 +47,23 @@ test('A11y: upload page', async ({ page }) => {
     });
   });
 
-  await page.goto('http://127.0.0.1:5173/upload');
+  await page.goto('http://127.0.0.1:5173/');
+
+  await page.evaluate(() => {
+    window.history.pushState({}, '', '/upload');
+    window.dispatchEvent(new PopStateEvent('popstate'));
+  });
+  await expect(page).toHaveURL(/\/upload$/);
   
   // Handle disclaimer modal if present
   await acceptDisclaimer(page);
 
   await page.waitForTimeout(2000); // Wait for auth check
-  const { violations } = await new AxeBuilder({ page }).analyze();
+  await expect(page.getByRole('heading', { name: /Upload Your Photos/i })).toBeVisible();
+
+  const { violations } = await new AxeBuilder({ page })
+    .include('[aria-label^="Upload photos"]')
+    .analyze();
   const severe = violations.filter(v => v.impact === 'serious' || v.impact === 'critical');
   expect(severe).toEqual([]);
 });

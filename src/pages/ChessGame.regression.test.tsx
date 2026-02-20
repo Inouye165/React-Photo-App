@@ -116,6 +116,7 @@ const {
 vi.mock('react-router-dom', () => ({
   useParams: () => ({ gameId: getMockGameId() }),
   useNavigate: () => navigateMock,
+  useLocation: () => ({ search: '' }),
 }))
 
 vi.mock('../contexts/AuthContext', () => ({

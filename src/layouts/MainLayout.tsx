@@ -124,6 +124,7 @@ export default function MainLayout(): React.ReactElement {
   const statusMessage = dependencyWarning || toolbarMessage || banner?.message;
   const bannerSeverity: Severity = (banner as BannerState | null)?.severity ?? 'info';
   const isChatRoute = location.pathname.startsWith('/chat');
+  const isChessImmersiveRoute = /^\/games\/(?:chess|[^/]+)$/.test(location.pathname);
 
   return (
     <div
@@ -135,45 +136,47 @@ export default function MainLayout(): React.ReactElement {
         left: 0,
         right: 0,
         bottom: 0,
-        paddingTop: '52px', // Match AppHeader height
+        paddingTop: isChessImmersiveRoute ? 0 : '52px',
         backgroundColor: '#cbd5e1', // Slate-300 to match EditPage background
         color: '#1e293b', // Slate-800 for high contrast text
       }}
     >
-      <AppHeader 
-        rightContent={statusMessage ? (
-          <div 
-            style={{ 
-              display: 'flex', 
-              alignItems: 'center', 
-              gap: '8px',
-              padding: '6px 12px',
-              borderRadius: '9999px',
-              fontSize: '12px',
-              fontWeight: 500,
-              backgroundColor: dependencyWarning ? '#fef3c7' : (bannerSeverity === 'error' ? '#fef2f2' : '#f0fdf4'),
-              color: dependencyWarning ? '#92400e' : (bannerSeverity === 'error' ? '#b91c1c' : '#16a34a'),
-            }}
-          >
-            <span>{statusMessage}</span>
-            {!dependencyWarning && (
-              <button 
-                onClick={() => { setToolbarMessage(''); setBanner({ message: '' }); }}
-                style={{ 
-                  background: 'none', 
-                  border: 'none', 
-                  cursor: 'pointer', 
-                  fontSize: '14px',
-                  color: 'inherit',
-                  padding: '0 4px',
-                }}
-              >
-                ×
-              </button>
-            )}
-          </div>
-        ) : null}
-      />
+      {!isChessImmersiveRoute ? (
+        <AppHeader 
+          rightContent={statusMessage ? (
+            <div 
+              style={{ 
+                display: 'flex', 
+                alignItems: 'center', 
+                gap: '8px',
+                padding: '6px 12px',
+                borderRadius: '9999px',
+                fontSize: '12px',
+                fontWeight: 500,
+                backgroundColor: dependencyWarning ? '#fef3c7' : (bannerSeverity === 'error' ? '#fef2f2' : '#f0fdf4'),
+                color: dependencyWarning ? '#92400e' : (bannerSeverity === 'error' ? '#b91c1c' : '#16a34a'),
+              }}
+            >
+              <span>{statusMessage}</span>
+              {!dependencyWarning && (
+                <button 
+                  onClick={() => { setToolbarMessage(''); setBanner({ message: '' }); }}
+                  style={{ 
+                    background: 'none', 
+                    border: 'none', 
+                    cursor: 'pointer', 
+                    fontSize: '14px',
+                    color: 'inherit',
+                    padding: '0 4px',
+                  }}
+                >
+                  ×
+                </button>
+              )}
+            </div>
+          ) : null}
+        />
+      ) : null}
 
       <div aria-live="polite" className="sr-only">
         {toolbarMessage}
@@ -181,8 +184,8 @@ export default function MainLayout(): React.ReactElement {
 
       {/* Main content area with consistent padding */}
       <div
-        className={`flex-1 ${isChatRoute ? 'overflow-hidden' : 'overflow-auto'}`}
-        style={isChatRoute ? undefined : { padding: '16px' }}
+        className={`flex-1 ${isChatRoute || isChessImmersiveRoute ? 'overflow-hidden' : 'overflow-auto'}`}
+        style={isChatRoute || isChessImmersiveRoute ? undefined : { padding: '16px' }}
       >
         <Outlet context={{ 
           aiDependenciesReady, 
@@ -191,7 +194,7 @@ export default function MainLayout(): React.ReactElement {
         } satisfies MainLayoutOutletContext} />
       </div>
 
-      <UploadTray />
+      {!isChessImmersiveRoute ? <UploadTray /> : null}
     </div>
   );
 }
