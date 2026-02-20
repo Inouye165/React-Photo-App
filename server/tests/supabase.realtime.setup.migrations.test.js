@@ -9,7 +9,7 @@ function read(relativePath) {
 
 describe('supabase realtime migration contracts', () => {
   test('publication migration keeps required realtime tables', () => {
-    const sql = read('..\\supabase\\migrations\\20260220181500_add_missing_realtime_publications_for_games_and_chat.sql');
+    const sql = read(path.join('..', 'supabase', 'migrations', '20260220181500_add_missing_realtime_publications_for_games_and_chat.sql'));
 
     const requiredTables = [
       'public.messages',
@@ -26,7 +26,7 @@ describe('supabase realtime migration contracts', () => {
   });
 
   test('chat hardening migration preserves realtime-safe RLS defaults', () => {
-    const js = read('db\\migrations\\20260220164500_fix_chat_rooms_select_creator_and_last_read_at.js');
+    const js = read(path.join('db', 'migrations', '20260220164500_fix_chat_rooms_select_creator_and_last_read_at.js'));
 
     expect(js).toContain('NO FORCE ROW LEVEL SECURITY');
     expect(js).toContain('created_by = auth.uid()');
