@@ -2,6 +2,9 @@ import React, { useEffect, useRef, useState } from 'react'
 import { useNavigate } from 'react-router-dom'
 import { listMyGames, createChessGame } from '../api/games'
 import { searchUsers } from '../api/chat'
+import { supabase } from '../supabaseClient'
+import { useAuth } from '../contexts/AuthContext'
+import { onGamesChanged } from '../events/gamesEvents'
 import { Sparkles, BookOpen, Play, UserPlus, Clock, Inbox } from 'lucide-react'
 
 const inviteStatuses = new Set(['waiting', 'invited', 'pending'])
@@ -19,6 +22,7 @@ function formatGameLabel(game: any, userId?: string | null): string {
 }
 
 export default function GamesIndex(): React.JSX.Element {
+  const { user } = useAuth()
   const [games, setGames] = useState<any[]>([])
   const [query, setQuery] = useState('')
   const [results, setResults] = useState<any[]>([])
@@ -26,20 +30,91 @@ export default function GamesIndex(): React.JSX.Element {
   const navigate = useNavigate()
   const searchDebounceRef = useRef<ReturnType<typeof setTimeout> | null>(null)
   const searchRequestRef = useRef(0)
+  const loadInFlightRef = useRef(false)
+  const pendingLoadRef = useRef(false)
+  const gameIdsRef = useRef<Set<string>>(new Set())
 
   const loadGames = async () => {
+    if (loadInFlightRef.current) {
+      pendingLoadRef.current = true
+      return
+    }
+    loadInFlightRef.current = true
     try {
       const g = await listMyGames()
-      setGames(Array.isArray(g) ? g : [])
+      const nextGames = Array.isArray(g) ? g : []
+      setGames(nextGames)
+      gameIdsRef.current = new Set(nextGames.map((game) => String(game?.id || '')).filter(Boolean))
       setLoadError(null)
     } catch {
       setLoadError('Failed to load games. Please retry.')
+    } finally {
+      loadInFlightRef.current = false
+      if (pendingLoadRef.current) {
+        pendingLoadRef.current = false
+        void loadGames()
+      }
     }
   }
 
   useEffect(() => {
     void loadGames()
   }, [])
+
+  useEffect(() => {
+    const offGamesChanged = onGamesChanged(() => {
+      void loadGames()
+    })
+
+    const userId = user?.id
+    if (!userId) {
+      return () => {
+        offGamesChanged()
+      }
+    }
+
+    const channel = supabase
+      .channel(`games-index:${userId}:${Math.random().toString(36).slice(2, 8)}`)
+      .on(
+        'postgres_changes',
+        { event: '*', schema: 'public', table: 'game_members', filter: `user_id=eq.${userId}` },
+        () => {
+          void loadGames()
+        }
+      )
+      .on(
+        'postgres_changes',
+        { event: '*', schema: 'public', table: 'games' },
+        (payload: { new?: { id?: string | null }; old?: { id?: string | null } }) => {
+          const gameId = payload?.new?.id || payload?.old?.id
+          if (!gameId) return
+          if (gameIdsRef.current.has(String(gameId))) {
+            void loadGames()
+          }
+        }
+      )
+      .on(
+        'postgres_changes',
+        { event: '*', schema: 'public', table: 'chess_moves' },
+        (payload: { new?: { game_id?: string | null }; old?: { game_id?: string | null } }) => {
+          const gameId = payload?.new?.game_id || payload?.old?.game_id
+          if (!gameId) return
+          if (gameIdsRef.current.has(String(gameId))) {
+            void loadGames()
+          }
+        }
+      )
+      .subscribe()
+
+    return () => {
+      offGamesChanged()
+      try {
+        void channel.unsubscribe()
+        supabase.removeChannel(channel)
+      } catch {
+      }
+    }
+  }, [user?.id])
 
   useEffect(() => (
     () => {
