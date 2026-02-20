@@ -2853,7 +2853,7 @@ function ChessTutorPanel({
 
 const START_FEN = 'rnbqkbnr/pppppppp/8/8/8/8/PPPPPPPP/RNBQKBNR w KQkq - 0 1'
 
-const CHESSBOARD_MAX_SIZE = 720
+const CHESSBOARD_MAX_SIZE = 1200
 
 const CHESSBOARD_THEME = {
   customLightSquareStyle: { backgroundColor: 'var(--color-slate-50)' },
@@ -3559,6 +3559,7 @@ function OnlineChessGame({
   const [tutorAnalysis, setTutorAnalysis] = useState<ChessTutorAnalysis | null>(null)
   const [tutorError, setTutorError] = useState<string | null>(null)
   const [tutorModel, setTutorModel] = useState<string>('gemini')
+  const [isMenuOpen, setIsMenuOpen] = useState(false)
 
   const moveRows = useMemo(() => (moves ?? []) as MoveRow[], [moves])
   const hintedByPly = useMemo(() => {
@@ -3813,37 +3814,20 @@ function OnlineChessGame({
   }, [moveRows, normalizedDisplayFen])
 
   return (
-    <div className="flex h-full min-h-[100dvh] flex-col rounded-none bg-slate-100/90 p-3 shadow-sm sm:p-4 lg:min-h-0 lg:overflow-hidden">
-      <div className="mb-4 flex flex-none flex-wrap items-center justify-between gap-3">
-        <div className="flex min-w-0 flex-1 flex-col gap-2">
-          <h2 className="text-lg font-semibold">Chess</h2>
-          <div className="text-xs text-slate-500">
-            Status: {game?.status ?? 'loading'}
-            {currentMember?.role ? ` · You are ${currentMember.role}` : ' · Spectating'}
-          </div>
-          <ChessModeSwitcher
-            activeMode="human"
-            onComputer={() => navigate('/games/local?tab=analyze')}
-            onHuman={() => navigate('/games')}
-            onTutorials={() => navigate('/games/local?tab=lesson&tutor=1&story=1&storyId=architect-of-squares')}
-          />
-        </div>
-        <div className="flex items-center gap-2">
+    <div className="relative flex h-[100dvh] overflow-hidden rounded-none bg-slate-100/90 p-2 shadow-sm sm:p-3">
+      <div className="flex min-h-0 w-full flex-1 flex-col">
+        <div className="mb-2 flex flex-none items-center justify-between gap-3">
+          <h2 className="text-base font-semibold sm:text-lg">Chess</h2>
           <button
-            onClick={() => setShowRestartConfirm(true)}
-            disabled={restartLoading}
-            className="rounded-md border border-slate-300 bg-white px-3 py-1 text-xs font-semibold text-slate-700 disabled:opacity-50"
+            type="button"
+            aria-label={isMenuOpen ? 'Close game menu' : 'Open game menu'}
+            aria-expanded={isMenuOpen}
+            onClick={() => setIsMenuOpen((prev) => !prev)}
+            className="inline-flex h-9 w-9 items-center justify-center rounded-md border border-slate-300 bg-white text-slate-700 shadow-sm"
           >
-            {restartLoading ? 'Restarting…' : 'Restart game'}
-          </button>
-          <button
-            onClick={() => { void handleQuitGame() }}
-            className="rounded-md border border-slate-200 bg-white px-3 py-1 text-xs font-semibold text-slate-600"
-          >
-            Quit
+            ☰
           </button>
         </div>
-      </div>
       {error ? (
         <div className="mb-3 flex flex-wrap items-center justify-between gap-3 rounded-md border border-red-200 bg-red-50 px-3 py-2 text-sm text-red-700">
           <span>{error}</span>
@@ -3903,65 +3887,21 @@ function OnlineChessGame({
           onCancel={() => setPendingPromotion(null)}
         />
       ) : null}
-      <div className={`flex flex-col gap-6 lg:min-h-0 lg:flex-1 lg:flex-row lg:items-stretch ${tutorialFullscreenMode ? 'gap-0' : ''}`}>
-        <div className={`${tutorialFullscreenMode ? 'hidden' : 'flex'} flex-col gap-4 rounded-2xl border border-slate-200 bg-white/80 p-4 shadow-md lg:min-h-0 lg:min-w-0 lg:flex-1`}>
+      {isMenuOpen ? (
+        <button
+          type="button"
+          aria-label="Close game menu overlay"
+          onClick={() => setIsMenuOpen(false)}
+          className="absolute inset-0 z-20 bg-slate-900/25"
+        />
+      ) : null}
+      <div className={`flex min-h-0 flex-1 flex-col ${tutorialFullscreenMode ? 'gap-0' : ''}`}>
+        <div className={`${tutorialFullscreenMode ? 'hidden' : 'flex'} min-h-0 flex-1 flex-col rounded-xl border border-slate-200/80 bg-white/80 p-2 shadow-sm sm:p-3`}>
           <div className="flex items-center justify-between">
             {renderPlayerLabel(topPlayer || null, topIsWhite ? currentTurn === 'w' : currentTurn === 'b', topFallback)}
           </div>
-          <div className="flex flex-wrap items-center justify-between gap-3 rounded-lg bg-slate-50 px-3 py-2 text-xs text-slate-600">
-            <div className="flex items-center gap-2">
-              <button
-                onClick={() => setViewPly((prev) => Math.max(0, prev - 1))}
-                disabled={viewPly === 0}
-                className="rounded-md border border-slate-200 bg-white px-2 py-1 text-xs font-semibold text-slate-700 disabled:opacity-50"
-              >
-                Undo
-              </button>
-              <button
-                onClick={() => setViewPly((prev) => Math.min(moveRows.length, prev + 1))}
-                disabled={viewPly >= moveRows.length}
-                className="rounded-md border border-slate-200 bg-white px-2 py-1 text-xs font-semibold text-slate-700 disabled:opacity-50"
-              >
-                Redo
-              </button>
-            </div>
-            <div className="flex flex-wrap items-center gap-3">
-              <label className="flex items-center gap-2">
-                <input
-                  type="checkbox"
-                  checked={showLegalMoves}
-                  onChange={(event) => setShowLegalMoves(event.target.checked)}
-                  className="h-4 w-4"
-                />
-                Show legal moves
-              </label>
-              <label className="flex items-center gap-2">
-                <input
-                  type="checkbox"
-                  checked={showThreats}
-                  onChange={(event) => setShowThreats(event.target.checked)}
-                  className="h-4 w-4"
-                />
-                Highlight threats
-              </label>
-              <label className="flex items-center gap-2">
-                <input
-                  type="checkbox"
-                  checked={showControlledArea}
-                  onChange={(event) => setShowControlledArea(event.target.checked)}
-                  className="h-4 w-4"
-                />
-                Highlight controlled area
-              </label>
-            </div>
-            {isViewingPast ? (
-              <span className="text-xs text-slate-500">Viewing move {viewPly}/{moveRows.length}</span>
-            ) : (
-              <span className="text-xs text-slate-500">Live</span>
-            )}
-          </div>
-          <div ref={boardContainerRef} className="flex w-full items-center justify-center overflow-hidden lg:min-h-0 lg:flex-1">
-            <div className="w-full rounded-xl border border-slate-200 bg-white p-1 shadow-sm" style={{ maxWidth: boardSize + 8 }}>
+          <div ref={boardContainerRef} className="flex min-h-0 w-full flex-1 items-center justify-center overflow-hidden">
+            <div className="w-full ring-1 ring-slate-200 shadow-sm" style={{ maxWidth: boardSize + 2 }}>
               <Chessboard
                 id={boardId}
                 key={boardKey}
@@ -4000,7 +3940,94 @@ function OnlineChessGame({
           </div>
         </div>
 
-        <aside className={`${tutorialFullscreenMode ? 'hidden' : 'flex'} min-h-0 w-full flex-col rounded-2xl border border-slate-200 bg-white/80 p-4 shadow-md lg:w-[360px] lg:shrink-0`}>
+        <aside className={`${tutorialFullscreenMode ? 'hidden' : 'flex'} fixed inset-y-0 right-0 z-30 w-[min(22rem,92vw)] flex-col overflow-y-auto border-l border-slate-200 bg-white p-4 shadow-xl transition-transform duration-200 ${isMenuOpen ? 'translate-x-0' : 'translate-x-full'} sm:w-[360px]`}>
+          <div className="mb-3 flex items-center justify-between">
+            <div className="text-sm font-semibold text-slate-700">Game menu</div>
+            <button
+              type="button"
+              onClick={() => setIsMenuOpen(false)}
+              className="rounded-md border border-slate-200 bg-white px-2 py-1 text-xs font-semibold text-slate-600"
+            >
+              Close
+            </button>
+          </div>
+          <div className="mb-3 text-xs text-slate-500">
+            Status: {game?.status ?? 'loading'}
+            {currentMember?.role ? ` · You are ${currentMember.role}` : ' · Spectating'}
+          </div>
+          <div className="mb-3">
+            <ChessModeSwitcher
+              activeMode="human"
+              onComputer={() => navigate('/games/local?tab=analyze')}
+              onHuman={() => navigate('/games')}
+              onTutorials={() => navigate('/games/local?tab=lesson&tutor=1&story=1&storyId=architect-of-squares')}
+            />
+          </div>
+          <div className="mb-3 flex items-center gap-2">
+            <button
+              onClick={() => setShowRestartConfirm(true)}
+              disabled={restartLoading}
+              className="rounded-md border border-slate-300 bg-white px-3 py-1 text-xs font-semibold text-slate-700 disabled:opacity-50"
+            >
+              {restartLoading ? 'Restarting…' : 'Restart game'}
+            </button>
+            <button
+              onClick={() => { void handleQuitGame() }}
+              className="rounded-md border border-slate-200 bg-white px-3 py-1 text-xs font-semibold text-slate-600"
+            >
+              Quit
+            </button>
+          </div>
+          <div className="mb-3 rounded-lg bg-slate-50 px-3 py-2 text-xs text-slate-600">
+            <div className="mb-2 flex items-center gap-2">
+              <button
+                onClick={() => setViewPly((prev) => Math.max(0, prev - 1))}
+                disabled={viewPly === 0}
+                className="rounded-md border border-slate-200 bg-white px-2 py-1 text-xs font-semibold text-slate-700 disabled:opacity-50"
+              >
+                Undo
+              </button>
+              <button
+                onClick={() => setViewPly((prev) => Math.min(moveRows.length, prev + 1))}
+                disabled={viewPly >= moveRows.length}
+                className="rounded-md border border-slate-200 bg-white px-2 py-1 text-xs font-semibold text-slate-700 disabled:opacity-50"
+              >
+                Redo
+              </button>
+            </div>
+            <div className="flex flex-col gap-2">
+              <label className="flex items-center gap-2">
+                <input
+                  type="checkbox"
+                  checked={showLegalMoves}
+                  onChange={(event) => setShowLegalMoves(event.target.checked)}
+                  className="h-4 w-4"
+                />
+                Show legal moves
+              </label>
+              <label className="flex items-center gap-2">
+                <input
+                  type="checkbox"
+                  checked={showThreats}
+                  onChange={(event) => setShowThreats(event.target.checked)}
+                  className="h-4 w-4"
+                />
+                Highlight threats
+              </label>
+              <label className="flex items-center gap-2">
+                <input
+                  type="checkbox"
+                  checked={showControlledArea}
+                  onChange={(event) => setShowControlledArea(event.target.checked)}
+                  className="h-4 w-4"
+                />
+                Highlight controlled area
+              </label>
+            </div>
+            <div className="mt-2 text-xs text-slate-500">
+              {isViewingPast ? `Viewing move ${viewPly}/${moveRows.length}` : 'Live'}
+            </div>
+          </div>
           <div className="mb-3 flex items-center justify-between">
             <div className="text-sm font-semibold text-slate-700">Move History</div>
             {loading || movesLoading ? (
@@ -4206,6 +4233,7 @@ function OnlineChessGame({
       </div>
       <Toast message={toastMessage} severity={toastSeverity} onClose={() => setToastMessage(null)} />
     </div>
+    </div>
   )
 }
 
@@ -4239,6 +4267,7 @@ function LocalChessGame({
   const [tutorError, setTutorError] = useState<string | null>(null)
   const [tutorModel, setTutorModel] = useState<string>('gemini')
   const lastShownPlyRef = useRef<number | null>(null)
+  const [isMenuOpen, setIsMenuOpen] = useState(false)
 
   const moveRows = useMemo(() => localMoves, [localMoves])
   const {
@@ -4451,33 +4480,20 @@ function LocalChessGame({
   const tutorialFullscreenMode = Boolean(openTutorFullscreen && initialTutorTab === 'lesson')
 
   return (
-    <div className="flex h-full min-h-[100dvh] flex-col rounded-none bg-slate-100/90 p-3 shadow-sm sm:p-4 lg:min-h-0 lg:overflow-hidden">
-      <div className="mb-4 flex flex-none flex-wrap items-center justify-between gap-3">
-        <div className="flex min-w-0 flex-1 flex-col gap-2">
-          <h2 className="text-lg font-semibold">Chess (Local)</h2>
-          <div className="text-xs text-slate-500">Status: {engineThinking ? 'thinking' : 'ready'}</div>
-          <ChessModeSwitcher
-            activeMode="computer"
-            onComputer={() => navigate('/games/local?tab=analyze')}
-            onHuman={() => navigate('/games')}
-            onTutorials={() => navigate('/games/local?tab=lesson&tutor=1&story=1&storyId=architect-of-squares')}
-          />
-        </div>
-        <div className="flex items-center gap-2">
+    <div className="relative flex h-[100dvh] overflow-hidden rounded-none bg-slate-100/90 p-2 shadow-sm sm:p-3">
+      <div className="flex min-h-0 w-full flex-1 flex-col">
+        <div className="mb-2 flex flex-none items-center justify-between gap-3">
+          <h2 className="text-base font-semibold sm:text-lg">Chess (Local)</h2>
           <button
-            onClick={() => setShowRestartConfirm(true)}
-            className="rounded-md border border-slate-300 bg-white px-3 py-1 text-xs font-semibold text-slate-700"
+            type="button"
+            aria-label={isMenuOpen ? 'Close game menu' : 'Open game menu'}
+            aria-expanded={isMenuOpen}
+            onClick={() => setIsMenuOpen((prev) => !prev)}
+            className="inline-flex h-9 w-9 items-center justify-center rounded-md border border-slate-300 bg-white text-slate-700 shadow-sm"
           >
-            Restart
-          </button>
-          <button
-            onClick={handleQuitGame}
-            className="rounded-md border border-slate-200 bg-white px-3 py-1 text-xs font-semibold text-slate-600"
-          >
-            Quit
+            ☰
           </button>
         </div>
-      </div>
       <GameEndPanel
         reason={gameEnd.reason}
         winner={gameEnd.winner}
@@ -4503,58 +4519,21 @@ function LocalChessGame({
           onCancel={() => setPendingPromotion(null)}
         />
       ) : null}
-      <div className={`flex flex-col gap-6 lg:min-h-0 lg:flex-1 lg:flex-row lg:items-stretch ${tutorialFullscreenMode ? 'gap-0' : ''}`}>
-        <div className={`${tutorialFullscreenMode ? 'hidden' : 'flex'} flex-col gap-4 rounded-2xl border border-slate-200 bg-white/80 p-4 shadow-md lg:min-h-0 lg:min-w-0 lg:flex-1`}>
+      {isMenuOpen ? (
+        <button
+          type="button"
+          aria-label="Close game menu overlay"
+          onClick={() => setIsMenuOpen(false)}
+          className="absolute inset-0 z-20 bg-slate-900/25"
+        />
+      ) : null}
+      <div className={`flex min-h-0 flex-1 flex-col ${tutorialFullscreenMode ? 'gap-0' : ''}`}>
+        <div className={`${tutorialFullscreenMode ? 'hidden' : 'flex'} min-h-0 flex-1 flex-col rounded-xl border border-slate-200/80 bg-white/80 p-2 shadow-sm sm:p-3`}>
           <div className="flex items-center justify-between">
             {renderPlayerLabel(topPlayer || null, topIsWhite ? currentTurn === 'w' : currentTurn === 'b', 'Stockfish')}
           </div>
-          <div className="flex flex-wrap items-center justify-between gap-3 rounded-lg bg-slate-50 px-3 py-2 text-xs text-slate-600">
-            <div className="flex items-center gap-2">
-              <button
-                onClick={handleUndoMove}
-                disabled={viewPly === 0}
-                className="rounded-md border border-slate-200 bg-white px-2 py-1 text-xs font-semibold text-slate-700 disabled:opacity-50"
-              >
-                Undo
-              </button>
-            </div>
-            <div className="flex flex-wrap items-center gap-3">
-              <label className="flex items-center gap-2">
-                <input
-                  type="checkbox"
-                  checked={showLegalMoves}
-                  onChange={(event) => setShowLegalMoves(event.target.checked)}
-                  className="h-4 w-4"
-                />
-                Show legal moves
-              </label>
-              <label className="flex items-center gap-2">
-                <input
-                  type="checkbox"
-                  checked={showThreats}
-                  onChange={(event) => setShowThreats(event.target.checked)}
-                  className="h-4 w-4"
-                />
-                Highlight threats
-              </label>
-              <label className="flex items-center gap-2">
-                <input
-                  type="checkbox"
-                  checked={showControlledArea}
-                  onChange={(event) => setShowControlledArea(event.target.checked)}
-                  className="h-4 w-4"
-                />
-                Highlight controlled area
-              </label>
-            </div>
-            {isViewingPast ? (
-              <span className="text-xs text-slate-500">Viewing move {viewPly}/{moveRows.length}</span>
-            ) : (
-              <span className="text-xs text-slate-500">Live</span>
-            )}
-          </div>
-          <div ref={boardContainerRef} className="flex w-full items-center justify-center overflow-hidden lg:min-h-0 lg:flex-1">
-            <div className="w-full rounded-xl border border-slate-200 bg-white p-1 shadow-sm" style={{ maxWidth: boardSize + 8 }}>
+          <div ref={boardContainerRef} className="flex min-h-0 w-full flex-1 items-center justify-center overflow-hidden">
+            <div className="w-full ring-1 ring-slate-200 shadow-sm" style={{ maxWidth: boardSize + 2 }}>
               <Chessboard
                 position={normalizedDisplayFen}
                 boardOrientation="white"
@@ -4591,7 +4570,83 @@ function LocalChessGame({
           </div>
         </div>
 
-        <aside className={`${tutorialFullscreenMode ? 'hidden' : 'flex'} min-h-0 w-full flex-col rounded-2xl border border-slate-200 bg-white/80 p-4 shadow-md lg:w-[360px] lg:shrink-0`}>
+        <aside className={`${tutorialFullscreenMode ? 'hidden' : 'flex'} fixed inset-y-0 right-0 z-30 w-[min(22rem,92vw)] flex-col overflow-y-auto border-l border-slate-200 bg-white p-4 shadow-xl transition-transform duration-200 ${isMenuOpen ? 'translate-x-0' : 'translate-x-full'} sm:w-[360px]`}>
+          <div className="mb-3 flex items-center justify-between">
+            <div className="text-sm font-semibold text-slate-700">Game menu</div>
+            <button
+              type="button"
+              onClick={() => setIsMenuOpen(false)}
+              className="rounded-md border border-slate-200 bg-white px-2 py-1 text-xs font-semibold text-slate-600"
+            >
+              Close
+            </button>
+          </div>
+          <div className="mb-3 text-xs text-slate-500">Status: {engineThinking ? 'thinking' : 'ready'}</div>
+          <div className="mb-3">
+            <ChessModeSwitcher
+              activeMode="computer"
+              onComputer={() => navigate('/games/local?tab=analyze')}
+              onHuman={() => navigate('/games')}
+              onTutorials={() => navigate('/games/local?tab=lesson&tutor=1&story=1&storyId=architect-of-squares')}
+            />
+          </div>
+          <div className="mb-3 flex items-center gap-2">
+            <button
+              onClick={() => setShowRestartConfirm(true)}
+              className="rounded-md border border-slate-300 bg-white px-3 py-1 text-xs font-semibold text-slate-700"
+            >
+              Restart
+            </button>
+            <button
+              onClick={handleQuitGame}
+              className="rounded-md border border-slate-200 bg-white px-3 py-1 text-xs font-semibold text-slate-600"
+            >
+              Quit
+            </button>
+          </div>
+          <div className="mb-3 rounded-lg bg-slate-50 px-3 py-2 text-xs text-slate-600">
+            <div className="mb-2 flex items-center gap-2">
+              <button
+                onClick={handleUndoMove}
+                disabled={viewPly === 0}
+                className="rounded-md border border-slate-200 bg-white px-2 py-1 text-xs font-semibold text-slate-700 disabled:opacity-50"
+              >
+                Undo
+              </button>
+            </div>
+            <div className="flex flex-col gap-2">
+              <label className="flex items-center gap-2">
+                <input
+                  type="checkbox"
+                  checked={showLegalMoves}
+                  onChange={(event) => setShowLegalMoves(event.target.checked)}
+                  className="h-4 w-4"
+                />
+                Show legal moves
+              </label>
+              <label className="flex items-center gap-2">
+                <input
+                  type="checkbox"
+                  checked={showThreats}
+                  onChange={(event) => setShowThreats(event.target.checked)}
+                  className="h-4 w-4"
+                />
+                Highlight threats
+              </label>
+              <label className="flex items-center gap-2">
+                <input
+                  type="checkbox"
+                  checked={showControlledArea}
+                  onChange={(event) => setShowControlledArea(event.target.checked)}
+                  className="h-4 w-4"
+                />
+                Highlight controlled area
+              </label>
+            </div>
+            <div className="mt-2 text-xs text-slate-500">
+              {isViewingPast ? `Viewing move ${viewPly}/${moveRows.length}` : 'Live'}
+            </div>
+          </div>
           <div className="mb-3 flex items-center justify-between">
             <div className="text-sm font-semibold text-slate-700">Move History</div>
           </div>
@@ -4726,6 +4781,7 @@ function LocalChessGame({
         />
       </div>
       <Toast message={toastMessage} severity={toastSeverity} onClose={() => setToastMessage(null)} />
+    </div>
     </div>
   )
 }
