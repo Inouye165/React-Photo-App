@@ -95,7 +95,7 @@ describe('SmartRouter Component', () => {
       expect(mockGetPhotoStatus).not.toHaveBeenCalled();
     });
 
-    it('Case A: redirects to /upload when user has no photos (total: 0)', async () => {
+    it('Case A: redirects to /gallery when user has no photos (total: 0)', async () => {
       // Mock API response: no photos
       mockGetPhotoStatus.mockResolvedValueOnce({
         success: true,
@@ -116,7 +116,7 @@ describe('SmartRouter Component', () => {
 
       // Wait for navigation
       await waitFor(() => {
-        expect(mockNavigate).toHaveBeenCalledWith('/upload', { replace: true });
+        expect(mockNavigate).toHaveBeenCalledWith('/gallery', { replace: true });
       });
     });
 
@@ -235,7 +235,7 @@ describe('SmartRouter Component', () => {
   });
 
   describe('Error Handling', () => {
-    it('redirects to /upload on API error as safe fallback', async () => {
+    it('redirects to /gallery on API error as safe fallback', async () => {
       // Mock API error
       mockGetPhotoStatus.mockRejectedValueOnce(new Error('Network error'));
 
@@ -247,7 +247,7 @@ describe('SmartRouter Component', () => {
 
       // Wait for error handling and fallback navigation
       await waitFor(() => {
-        expect(mockNavigate).toHaveBeenCalledWith('/upload', { replace: true });
+        expect(mockNavigate).toHaveBeenCalledWith('/gallery', { replace: true });
       }, { timeout: 3000 });
     });
 
@@ -268,9 +268,9 @@ describe('SmartRouter Component', () => {
         </TestWrapper>
       );
 
-      // Should still navigate (to upload as fallback)
+      // Should still navigate (to gallery as fallback)
       await waitFor(() => {
-        expect(mockNavigate).toHaveBeenCalledWith('/upload', { replace: true });
+        expect(mockNavigate).toHaveBeenCalledWith('/gallery', { replace: true });
       });
     });
   });
