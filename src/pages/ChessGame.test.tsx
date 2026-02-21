@@ -326,6 +326,22 @@ describe('ChessGame', () => {
     vi.unstubAllGlobals()
   })
 
+  const openMenuTab = async (user: ReturnType<typeof userEvent.setup>, tabName: string) => {
+    const directTabButton = screen.queryByRole('button', { name: tabName })
+    if (directTabButton) {
+      await user.click(directTabButton)
+      return
+    }
+    await user.click(screen.getByRole('button', { name: 'Open game menu' }))
+    await user.click(screen.getByRole('button', { name: tabName }))
+  }
+
+  const getTutorAnalyzeTabButton = () => {
+    const analyzeButtons = screen.getAllByRole('button', { name: 'Analyze game' })
+    const tutorTabButton = analyzeButtons.find((button) => button.hasAttribute('aria-pressed'))
+    return tutorTabButton ?? analyzeButtons[0]
+  }
+
   it('renders the board', () => {
     render(<ChessGame />)
     expect(screen.getByTestId('chessboard')).toBeInTheDocument()
@@ -360,9 +376,9 @@ describe('ChessGame', () => {
     ['?tab=lesson', 'How to play'],
     ['?tab=history', 'Chess history'],
   ])('initializes tutor tab from %s', async (search, activeTabLabel) => {
-    setLocationSearch(search)
+    setMockGameId('local')
+    setLocationSearch(`${search}&tutor=1`)
     render(<ChessGame />)
-    await userEvent.setup().click(screen.getByRole('button', { name: 'Open game menu' }))
 
     await waitFor(() => {
       expect(screen.getByRole('button', { name: activeTabLabel })).toHaveAttribute('aria-pressed', 'true')
@@ -370,24 +386,24 @@ describe('ChessGame', () => {
   })
 
   it('routes ?tab=analyze into drawer-based analysis actions', async () => {
-    setLocationSearch('?tab=analyze')
+    setMockGameId('local')
+    setLocationSearch('?tab=analyze&tutor=1')
     render(<ChessGame />)
 
-    await userEvent.setup().click(screen.getByRole('button', { name: 'Open game menu' }))
-
     await waitFor(() => {
-      expect(screen.getByRole('button', { name: 'Analyze game' })).toBeInTheDocument()
+      expect(getTutorAnalyzeTabButton()).toHaveAttribute('aria-pressed', 'true')
       expect(screen.getByRole('button', { name: 'Analyze game for me' })).toBeInTheDocument()
     })
   })
 
-  it('falls back to history tab when query param is invalid', async () => {
-    setLocationSearch('?tab=bogus')
+  it('falls back safely when query param is invalid', async () => {
+    setMockGameId('local')
+    setLocationSearch('?tab=bogus&tutor=1')
     render(<ChessGame />)
-    await userEvent.setup().click(screen.getByRole('button', { name: 'Open game menu' }))
 
     await waitFor(() => {
-      expect(screen.getByRole('button', { name: 'Chess history' })).toHaveAttribute('aria-pressed', 'true')
+      expect(screen.getByRole('button', { name: 'Open game menu' })).toBeInTheDocument()
+      expect(screen.getByText('Chess (Local)')).toBeInTheDocument()
     })
   })
 
@@ -541,12 +557,12 @@ describe('ChessGame', () => {
   it('shows the exact tutor model after analyze completes', async () => {
     const user = userEvent.setup()
     setMockGameId('local')
+    setLocationSearch('?tab=lesson&tutor=1')
     render(<ChessGame />)
-
-    await user.click(screen.getByRole('button', { name: 'Open game menu' }))
 
     expect(screen.getByText('gemini')).toBeInTheDocument()
 
+    await user.click(getTutorAnalyzeTabButton())
     await user.click(screen.getByRole('button', { name: 'Analyze game for me' }))
 
     await waitFor(() => {
@@ -554,7 +570,7 @@ describe('ChessGame', () => {
       expect(screen.getByText('gemini-2.0-flash-lite')).toBeInTheDocument()
     })
 
-    await user.click(screen.getByRole('button', { name: 'How to play' }))
+    await openMenuTab(user, 'How to play')
     expect(screen.getByRole('button', { name: '1) Pieces & movement' })).toBeInTheDocument()
     expect(screen.getByText('gemini-2.0-flash-lite')).toBeInTheDocument()
   })
@@ -562,9 +578,10 @@ describe('ChessGame', () => {
   it('shows pieces sublesson flow from pawn to knight', async () => {
     const user = userEvent.setup()
     setMockGameId('local')
+    setLocationSearch('?tab=lesson&tutor=1')
     render(<ChessGame />)
 
-    await user.click(screen.getByRole('button', { name: 'How to play' }))
+    await openMenuTab(user, 'How to play')
     await user.click(screen.getByRole('button', { name: '1) Pieces & movement' }))
 
     expect(screen.getByText('Piece value: ≈1 point')).toBeInTheDocument()
@@ -579,9 +596,10 @@ describe('ChessGame', () => {
   it('shows board and notation sublesson with algebraic and descriptive mappings', async () => {
     const user = userEvent.setup()
     setMockGameId('local')
+    setLocationSearch('?tab=lesson&tutor=1')
     render(<ChessGame />)
 
-    await user.click(screen.getByRole('button', { name: 'How to play' }))
+    await openMenuTab(user, 'How to play')
     await user.click(screen.getByRole('button', { name: '2) Board & notation' }))
 
     expect(screen.getByText('Board & notation')).toBeInTheDocument()
@@ -593,9 +611,10 @@ describe('ChessGame', () => {
   it('highlights current notation step during guided mini-game', async () => {
     const user = userEvent.setup()
     setMockGameId('local')
+    setLocationSearch('?tab=lesson&tutor=1')
     render(<ChessGame />)
 
-    await user.click(screen.getByRole('button', { name: 'How to play' }))
+    await openMenuTab(user, 'How to play')
     await user.click(screen.getByRole('button', { name: '2) Board & notation' }))
 
     await user.click(screen.getByRole('button', { name: 'Next move' }))
@@ -608,9 +627,10 @@ describe('ChessGame', () => {
   it('shows attacks sublesson and separate discovered check sublesson', async () => {
     const user = userEvent.setup()
     setMockGameId('local')
+    setLocationSearch('?tab=lesson&tutor=1')
     render(<ChessGame />)
 
-    await user.click(screen.getByRole('button', { name: 'How to play' }))
+    await openMenuTab(user, 'How to play')
     await user.click(screen.getByRole('button', { name: '3) Attacks' }))
 
     expect(screen.getByText('Attacks (fork, discovered, pinned, etc.)')).toBeInTheDocument()
@@ -632,25 +652,27 @@ describe('ChessGame', () => {
   it('shows chess history timeline with scrollable events and images', async () => {
     const user = userEvent.setup()
     setMockGameId('local')
+    setLocationSearch('?tab=lesson&tutor=1')
     render(<ChessGame />)
 
-    await user.click(screen.getByRole('button', { name: 'Chess history' }))
+    await openMenuTab(user, 'Chess history')
 
     expect(screen.getByText('Chess History Timeline')).toBeInTheDocument()
     expect(screen.getByText('Early Chaturanga in India')).toBeInTheDocument()
     expect(screen.getByText('Neural-network engine age')).toBeInTheDocument()
     expect(screen.getByRole('img', { name: 'Illustration representing early chaturanga gameplay' })).toBeInTheDocument()
 
-    await user.click(screen.getByRole('button', { name: 'Analyze game' }))
+    await user.click(getTutorAnalyzeTabButton())
     expect(screen.getByRole('button', { name: 'Analyze game for me' })).toBeInTheDocument()
   })
 
   it('opens the story modal from Story mode and loads the PDF', async () => {
     const user = userEvent.setup()
     setMockGameId('local')
+    setLocationSearch('?tab=lesson&tutor=1')
     render(<ChessGame />)
 
-    await user.click(screen.getByRole('button', { name: 'How to play' }))
+    await openMenuTab(user, 'How to play')
     await user.click(screen.getByRole('button', { name: 'Story mode' }))
 
     const storyDialog = screen.getByRole('dialog', { name: 'Chess story modal' })
@@ -666,9 +688,10 @@ describe('ChessGame', () => {
   it('generates/plays cached audio and auto-turns to the next page on audio end', async () => {
     const user = userEvent.setup()
     setMockGameId('local')
+    setLocationSearch('?tab=lesson&tutor=1')
     render(<ChessGame />)
 
-    await user.click(screen.getByRole('button', { name: 'How to play' }))
+    await openMenuTab(user, 'How to play')
     await user.click(screen.getByRole('button', { name: 'Story mode' }))
     const playButton = await screen.findByRole('button', { name: 'Play narration' })
 
@@ -690,10 +713,11 @@ describe('ChessGame', () => {
   it('stops the previous audio stream when page changes during narration', async () => {
     const user = userEvent.setup()
     setMockGameId('local')
+    setLocationSearch('?tab=lesson&tutor=1')
 
     render(<ChessGame />)
 
-    await user.click(screen.getByRole('button', { name: 'How to play' }))
+    await openMenuTab(user, 'How to play')
     await user.click(screen.getByRole('button', { name: 'Story mode' }))
     await user.click(await screen.findByRole('button', { name: 'Play narration' }))
 
@@ -715,11 +739,12 @@ describe('ChessGame', () => {
   it('falls back to browser narration when server TTS is unavailable (503)', async () => {
     const user = userEvent.setup()
     setMockGameId('local')
+    setLocationSearch('?tab=lesson&tutor=1')
     ensureStoryAudioMock.mockRejectedValueOnce(new ApiError('OpenAI TTS is not available on server', { status: 503 }))
 
     render(<ChessGame />)
 
-    await user.click(screen.getByRole('button', { name: 'How to play' }))
+    await openMenuTab(user, 'How to play')
     await user.click(screen.getByRole('button', { name: 'Story mode' }))
     await user.click(await screen.findByRole('button', { name: 'Play narration' }))
 
@@ -734,6 +759,7 @@ describe('ChessGame', () => {
   it('advances story cues using speech fallback virtual clock', async () => {
     const user = userEvent.setup()
     setMockGameId('local')
+    setLocationSearch('?tab=lesson&tutor=1')
     setMockPdfNumPages(8)
     setMockPdfPageText(3, 'Timeline page three text')
     setMockPdfPageText(4, 'Timeline page four text')
@@ -741,7 +767,7 @@ describe('ChessGame', () => {
 
     render(<ChessGame />)
 
-    await user.click(screen.getByRole('button', { name: 'How to play' }))
+    await openMenuTab(user, 'How to play')
     await user.click(screen.getByRole('button', { name: 'Story mode' }))
 
     await user.click(screen.getByRole('button', { name: 'Next page' }))
@@ -770,12 +796,13 @@ describe('ChessGame', () => {
   it('uses manual narration when PDF page text is unavailable', async () => {
     const user = userEvent.setup()
     setMockGameId('local')
+    setLocationSearch('?tab=lesson&tutor=1')
     setMockPdfPageText(1, '')
     setMockPdfPageText(2, '')
 
     render(<ChessGame />)
 
-    await user.click(screen.getByRole('button', { name: 'How to play' }))
+    await openMenuTab(user, 'How to play')
     await user.click(screen.getByRole('button', { name: 'Story mode' }))
     const narrationField = await screen.findByLabelText('Manual narration (for image-only PDFs)')
     await user.type(narrationField, 'Once upon a chessboard.\n---\nThe end.')
@@ -792,13 +819,14 @@ describe('ChessGame', () => {
   it('syncs story timeline cues and preserves board position before any move cue', async () => {
     const user = userEvent.setup()
     setMockGameId('local')
+    setLocationSearch('?tab=lesson&tutor=1')
     setMockPdfNumPages(8)
     setMockPdfPageText(3, 'Timeline page three text')
     setMockPdfPageText(4, 'Timeline page four text')
 
     render(<ChessGame />)
 
-    await user.click(screen.getByRole('button', { name: 'How to play' }))
+    await openMenuTab(user, 'How to play')
     await user.click(screen.getByRole('button', { name: 'Story mode' }))
 
     await user.click(screen.getByRole('button', { name: 'Next page' }))
@@ -840,11 +868,12 @@ describe('ChessGame', () => {
   it('keeps in-PDF highlight active when audio duration metadata is unavailable', async () => {
     const user = userEvent.setup()
     setMockGameId('local')
+    setLocationSearch('?tab=lesson&tutor=1')
     setMockPdfPageText(1, 'Silas found the dusty wooden box in the attic.')
 
     render(<ChessGame />)
 
-    await user.click(screen.getByRole('button', { name: 'How to play' }))
+    await openMenuTab(user, 'How to play')
     await user.click(screen.getByRole('button', { name: 'Story mode' }))
 
     // Wait for the PDF page + text overlay to render before starting narration
@@ -885,11 +914,12 @@ describe('ChessGame', () => {
   it('positions text overlay spans using convertToViewportPoint from the viewport', async () => {
     const user = userEvent.setup()
     setMockGameId('local')
+    setLocationSearch('?tab=lesson&tutor=1')
     setMockPdfPageText(1, 'Hello world')
 
     render(<ChessGame />)
 
-    await user.click(screen.getByRole('button', { name: 'How to play' }))
+    await openMenuTab(user, 'How to play')
     await user.click(screen.getByRole('button', { name: 'Story mode' }))
 
     // Wait for page to render and text overlay items to be populated
@@ -915,11 +945,12 @@ describe('ChessGame', () => {
   it('seeks narration when clicking/pressing Enter on story word and keeps paused state', async () => {
     const user = userEvent.setup()
     setMockGameId('local')
+    setLocationSearch('?tab=lesson&tutor=1')
     setMockPdfPageText(1, 'Silas found the dusty wooden box in the attic.')
 
     render(<ChessGame />)
 
-    await user.click(screen.getByRole('button', { name: 'How to play' }))
+    await openMenuTab(user, 'How to play')
     await user.click(screen.getByRole('button', { name: 'Story mode' }))
     await user.click(await screen.findByRole('button', { name: 'Play narration' }))
 
