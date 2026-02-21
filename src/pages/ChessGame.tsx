@@ -2944,6 +2944,14 @@ function InlineAnalysisResult({
 const START_FEN = 'rnbqkbnr/pppppppp/8/8/8/8/PPPPPPPP/RNBQKBNR w KQkq - 0 1'
 
 const CHESSBOARD_MAX_SIZE = 1200
+const CHESS_INSTALL_HINT_DISMISSED_KEY = 'chess:ios-install-hint-dismissed:v1'
+const IOS_INSTALL_DEMO_VIDEO_PATH = '/assets/pwa/install-ios.mp4'
+const ANDROID_INSTALL_DEMO_VIDEO_PATH = '/assets/pwa/install-android.mp4'
+
+type BeforeInstallPromptEvent = Event & {
+  prompt: () => Promise<void>
+  userChoice: Promise<{ outcome: 'accepted' | 'dismissed'; platform: string }>
+}
 
 type CustomPieceProps = {
   squareWidth: number
@@ -3594,19 +3602,10 @@ function useChessboardSize(maxSize: number) {
 
       const safeWidth = Math.max(0, width - 16)
 
-      // Desktop (lg:flex-1 gives real height from flex) → constrain to
-      // both dimensions so the square board fits.  Mobile/tablet (stacked
-      // layout, natural height) → width only; the board determines its own
-      // height and the parent page scrolls.
-      const isDesktopRow = window.innerWidth >= 1024 || window.matchMedia('(orientation: landscape)').matches
-      let limit: number
-
-      if (isDesktopRow && height > 100) {
-        const safeHeight = Math.max(0, height - 16)
-        limit = Math.min(safeWidth, safeHeight)
-      } else {
-        limit = safeWidth
-      }
+      // Constrain by both dimensions whenever possible so the square board
+      // never gets clipped on mobile browsers with dynamic address bars.
+      const safeHeight = Math.max(0, height - 16)
+      const limit = safeHeight > 0 ? Math.min(safeWidth, safeHeight) : safeWidth
 
       const next = Math.max(180, Math.min(maxSize, limit))
       setBoardSize(next)
@@ -3624,6 +3623,238 @@ function useChessboardSize(maxSize: number) {
   }, [maxSize])
 
   return { containerRef, boardSize }
+}
+
+function isStandaloneDisplayMode(): boolean {
+  if (typeof window === 'undefined') return false
+  const mediaStandalone = typeof window.matchMedia === 'function' && window.matchMedia('(display-mode: standalone)').matches
+  const iosStandalone = typeof window.navigator !== 'undefined' && Boolean((window.navigator as Navigator & { standalone?: boolean }).standalone)
+  return mediaStandalone || iosStandalone
+}
+
+function isIosDevice(): boolean {
+  if (typeof navigator === 'undefined') return false
+  const userAgent = navigator.userAgent || ''
+  const isClassicIos = /iPhone|iPad|iPod/i.test(userAgent)
+  const isIpadDesktopMode = navigator.platform === 'MacIntel' && navigator.maxTouchPoints > 1
+  return isClassicIos || isIpadDesktopMode
+}
+
+function isAndroidDevice(): boolean {
+  if (typeof navigator === 'undefined') return false
+  const userAgent = navigator.userAgent || ''
+  return /Android/i.test(userAgent)
+}
+
+function detectInstallHintPlatform(): 'ios' | 'android' | null {
+  if (isIosDevice()) return 'ios'
+  if (isAndroidDevice()) return 'android'
+  return null
+}
+
+function useChessInstallHint() {
+  const [showInstallHint, setShowInstallHint] = useState(false)
+  const [platform, setPlatform] = useState<'ios' | 'android' | null>(null)
+  const [deferredInstallPrompt, setDeferredInstallPrompt] = useState<BeforeInstallPromptEvent | null>(null)
+
+  useEffect(() => {
+    if (typeof window === 'undefined') return
+    const detectedPlatform = detectInstallHintPlatform()
+    if (!detectedPlatform) return
+    if (isStandaloneDisplayMode()) return
+
+    const dismissed = window.localStorage.getItem(CHESS_INSTALL_HINT_DISMISSED_KEY) === '1'
+    setPlatform(detectedPlatform)
+    if (!dismissed) {
+      setShowInstallHint(true)
+    }
+  }, [])
+
+  useEffect(() => {
+    if (typeof window === 'undefined') return
+    const onBeforeInstallPrompt = (event: Event) => {
+      event.preventDefault()
+      setDeferredInstallPrompt(event as BeforeInstallPromptEvent)
+    }
+
+    const onAppInstalled = () => {
+      setDeferredInstallPrompt(null)
+      setShowInstallHint(false)
+    }
+
+    window.addEventListener('beforeinstallprompt', onBeforeInstallPrompt)
+    window.addEventListener('appinstalled', onAppInstalled)
+
+    return () => {
+      window.removeEventListener('beforeinstallprompt', onBeforeInstallPrompt)
+      window.removeEventListener('appinstalled', onAppInstalled)
+    }
+  }, [])
+
+  const dismissInstallHint = useCallback(() => {
+    setShowInstallHint(false)
+    if (typeof window !== 'undefined') {
+      window.localStorage.setItem(CHESS_INSTALL_HINT_DISMISSED_KEY, '1')
+    }
+  }, [])
+
+  const triggerAndroidInstall = useCallback(async () => {
+    if (!deferredInstallPrompt) return
+    await deferredInstallPrompt.prompt()
+    try {
+      await deferredInstallPrompt.userChoice
+    } finally {
+      setDeferredInstallPrompt(null)
+    }
+  }, [deferredInstallPrompt])
+
+  return {
+    showInstallHint,
+    dismissInstallHint,
+    platform,
+    canTriggerAndroidInstall: platform === 'android' && deferredInstallPrompt !== null,
+    triggerAndroidInstall,
+  }
+}
+
+function InstallDemoModal({
+  platform,
+  canTriggerAndroidInstall,
+  onTriggerAndroidInstall,
+  onClose,
+}: {
+  platform: 'ios' | 'android'
+  canTriggerAndroidInstall: boolean
+  onTriggerAndroidInstall: () => Promise<void>
+  onClose: () => void
+}) {
+  const [videoFailed, setVideoFailed] = useState(false)
+  const [androidInstallPending, setAndroidInstallPending] = useState(false)
+  const videoPath = platform === 'ios' ? IOS_INSTALL_DEMO_VIDEO_PATH : ANDROID_INSTALL_DEMO_VIDEO_PATH
+
+  return (
+    <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/45 px-4" onClick={onClose} role="dialog" aria-label="Install app demo">
+      <div className="w-full max-w-md rounded-xl bg-white p-4 shadow-2xl" onClick={(event) => event.stopPropagation()}>
+        <div className="mb-2 flex items-center justify-between">
+          <h3 className="text-sm font-semibold text-slate-800">
+            {platform === 'ios' ? 'Install on iPhone' : 'Install on Android'}
+          </h3>
+          <button
+            type="button"
+            onClick={onClose}
+            className="rounded border border-slate-200 bg-white px-2 py-1 text-xs font-semibold text-slate-700"
+          >
+            Close
+          </button>
+        </div>
+
+        {!videoFailed ? (
+          <video
+            className="mb-3 w-full rounded-lg border border-slate-200"
+            src={videoPath}
+            autoPlay
+            loop
+            muted
+            playsInline
+            controls
+            onError={() => setVideoFailed(true)}
+          />
+        ) : (
+          <div className="mb-3 rounded-lg border border-amber-200 bg-amber-50 px-3 py-2 text-xs text-amber-800">
+            Demo video not found at <code>{videoPath}</code>. Add that file to <code>public/assets/pwa/</code>.
+          </div>
+        )}
+
+        <ol className="list-decimal space-y-1 pl-4 text-xs text-slate-600">
+          {platform === 'ios' ? (
+            <>
+              <li>Tap Share in Safari.</li>
+              <li>Tap Add to Home Screen.</li>
+              <li>Open the app from the new Home Screen icon.</li>
+            </>
+          ) : (
+            <>
+              <li>Tap the browser menu (⋮).</li>
+              <li>Tap Install app or Add to Home screen.</li>
+              <li>Open the installed app from your launcher.</li>
+            </>
+          )}
+        </ol>
+        {platform === 'android' ? (
+          <div className="mt-3">
+            <button
+              type="button"
+              disabled={!canTriggerAndroidInstall || androidInstallPending}
+              onClick={() => {
+                setAndroidInstallPending(true)
+                void onTriggerAndroidInstall().finally(() => setAndroidInstallPending(false))
+              }}
+              className="rounded border border-emerald-300 bg-emerald-50 px-3 py-1 text-xs font-semibold text-emerald-700 disabled:cursor-not-allowed disabled:opacity-60"
+            >
+              {androidInstallPending ? 'Opening install prompt…' : 'Install app now'}
+            </button>
+            {!canTriggerAndroidInstall ? (
+              <p className="mt-1 text-[11px] text-slate-500">
+                Install prompt not yet available. Try after a few seconds on Chrome/Edge Android.
+              </p>
+            ) : null}
+          </div>
+        ) : null}
+      </div>
+    </div>
+  )
+}
+
+function ChessInstallHint({
+  platform,
+  canTriggerAndroidInstall,
+  onTriggerAndroidInstall,
+  onDismiss,
+}: {
+  platform: 'ios' | 'android'
+  canTriggerAndroidInstall: boolean
+  onTriggerAndroidInstall: () => Promise<void>
+  onDismiss: () => void
+}) {
+  const [showDemo, setShowDemo] = useState(false)
+
+  const title = platform === 'ios' ? 'For full-screen play on iPhone' : 'For app-like play on Android'
+  const body = platform === 'ios'
+    ? 'Open Share and tap Add to Home Screen, then launch from the Home Screen icon.'
+    : 'Use browser menu to install/add to Home Screen, then launch from your installed app icon.'
+
+  return (
+    <>
+      <div className="mb-3 rounded-lg border border-amber-200 bg-amber-50 px-3 py-2 text-xs text-amber-800">
+        <div className="font-semibold">{title}</div>
+        <p className="mt-1">{body}</p>
+        <div className="mt-2 flex items-center gap-2">
+          <button
+            type="button"
+            onClick={() => setShowDemo(true)}
+            className="rounded border border-amber-300 bg-white px-2 py-1 text-[11px] font-semibold text-amber-800"
+          >
+            Watch 10s demo
+          </button>
+          <button
+            type="button"
+            onClick={onDismiss}
+            className="rounded border border-amber-300 bg-white px-2 py-1 text-[11px] font-semibold text-amber-800"
+          >
+            Dismiss
+          </button>
+        </div>
+      </div>
+      {showDemo ? (
+        <InstallDemoModal
+          platform={platform}
+          canTriggerAndroidInstall={canTriggerAndroidInstall}
+          onTriggerAndroidInstall={onTriggerAndroidInstall}
+          onClose={() => setShowDemo(false)}
+        />
+      ) : null}
+    </>
+  )
 }
 
 export default function ChessGame(): React.JSX.Element {
@@ -3693,6 +3924,13 @@ function OnlineChessGame({
   const [tutorError, setTutorError] = useState<string | null>(null)
   const [tutorModel, setTutorModel] = useState<string>('gemini')
   const [isMenuOpen, setIsMenuOpen] = useState(false)
+  const {
+    showInstallHint,
+    dismissInstallHint,
+    platform: installPlatform,
+    canTriggerAndroidInstall,
+    triggerAndroidInstall,
+  } = useChessInstallHint()
 
   const moveRows = useMemo(() => (moves ?? []) as MoveRow[], [moves])
   const woodTexturePieces = useWoodTexturePieceSet()
@@ -3991,6 +4229,14 @@ function OnlineChessGame({
             Quit game
           </button>
         </div>
+      ) : null}
+      {showInstallHint && installPlatform ? (
+        <ChessInstallHint
+          platform={installPlatform}
+          canTriggerAndroidInstall={canTriggerAndroidInstall}
+          onTriggerAndroidInstall={triggerAndroidInstall}
+          onDismiss={dismissInstallHint}
+        />
       ) : null}
       {error ? (
         <div className="mb-3 flex flex-wrap items-center justify-between gap-3 rounded-md border border-red-200 bg-red-50 px-3 py-2 text-sm text-red-700">
@@ -4346,6 +4592,13 @@ function LocalChessGame({
   const [tutorModel, setTutorModel] = useState<string>('gemini')
   const lastShownPlyRef = useRef<number | null>(null)
   const [isMenuOpen, setIsMenuOpen] = useState(false)
+  const {
+    showInstallHint,
+    dismissInstallHint,
+    platform: installPlatform,
+    canTriggerAndroidInstall,
+    triggerAndroidInstall,
+  } = useChessInstallHint()
 
   const moveRows = useMemo(() => localMoves, [localMoves])
   const woodTexturePieces = useWoodTexturePieceSet()
@@ -4615,6 +4868,14 @@ function LocalChessGame({
             Quit game
           </button>
         </div>
+      ) : null}
+      {showInstallHint && installPlatform ? (
+        <ChessInstallHint
+          platform={installPlatform}
+          canTriggerAndroidInstall={canTriggerAndroidInstall}
+          onTriggerAndroidInstall={triggerAndroidInstall}
+          onDismiss={dismissInstallHint}
+        />
       ) : null}
       <GameEndPanel
         reason={gameEnd.reason}

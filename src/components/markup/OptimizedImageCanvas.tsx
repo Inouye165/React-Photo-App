@@ -34,7 +34,20 @@ export default function OptimizedImageCanvas({
     const ctx = canvas.getContext('2d', { alpha: false, willReadFrequently: false })
     if (!ctx) return
 
-    const img = new Image()
+    const imageFactory = globalThis.Image as unknown as {
+      new (): HTMLImageElement
+      (): HTMLImageElement
+    }
+    let img: HTMLImageElement
+    try {
+      img = new imageFactory()
+    } catch {
+      try {
+        img = imageFactory()
+      } catch {
+        img = document.createElement('img')
+      }
+    }
     img.onload = () => {
       ctx.imageSmoothingEnabled = true
       ctx.imageSmoothingQuality = 'high'

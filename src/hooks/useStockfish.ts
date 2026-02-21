@@ -308,7 +308,16 @@ export function useStockfish() {
     // Do NOT wrap it in a custom worker; the Stockfish script is a complete
     // Web Worker that derives the .wasm path from self.location.
     const spawnWorker = () => {
-      const worker = new Worker(resolveStockfishWorkerPath())
+      const workerFactory = globalThis.Worker as unknown as {
+        new (url: string): Worker
+        (url: string): Worker
+      }
+      let worker: Worker
+      try {
+        worker = new workerFactory(resolveStockfishWorkerPath())
+      } catch {
+        worker = workerFactory(resolveStockfishWorkerPath())
+      }
       workerRef.current = worker
       worker.onmessage = (event) => handleMessage(event.data)
       worker.onerror = () => {
