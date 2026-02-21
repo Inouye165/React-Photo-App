@@ -136,7 +136,10 @@ export default function MainLayout(): React.ReactElement {
         left: 0,
         right: 0,
         bottom: 0,
-        paddingTop: isChessImmersiveRoute ? 0 : '52px',
+        paddingTop: isChessImmersiveRoute ? 'env(safe-area-inset-top)' : 'calc(52px + env(safe-area-inset-top))',
+        paddingBottom: 'env(safe-area-inset-bottom)',
+        paddingLeft: 'calc(env(safe-area-inset-left) + 4px)',
+        paddingRight: 'calc(env(safe-area-inset-right) + 4px)',
         backgroundColor: '#cbd5e1', // Slate-300 to match EditPage background
         color: '#1e293b', // Slate-800 for high contrast text
       }}
@@ -185,7 +188,7 @@ export default function MainLayout(): React.ReactElement {
       {/* Main content area with consistent padding */}
       <div
         className={`flex-1 ${isChatRoute || isChessImmersiveRoute ? 'overflow-hidden' : 'overflow-auto'}`}
-        style={isChatRoute || isChessImmersiveRoute ? undefined : { padding: '16px' }}
+        style={isChatRoute || isChessImmersiveRoute ? undefined : { padding: '12px' }}
       >
         <Outlet context={{ 
           aiDependenciesReady, 

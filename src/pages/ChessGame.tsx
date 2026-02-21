@@ -2059,7 +2059,7 @@ function ChessStoryModal({
 
   return (
     <div className="fixed inset-0 z-[70] bg-black/60" onClick={() => { stopNarration(); onClose() }} role="dialog" aria-modal="true" aria-label="Chess story modal">
-      <div className="flex h-[100dvh] w-full flex-col border-0 bg-white p-3 shadow-2xl sm:p-4" onClick={(event) => event.stopPropagation()}>
+      <div className="flex h-[100dvh] w-full flex-col border-0 bg-white p-3 shadow-2xl sm:p-4" style={CHESS_SAFE_AREA_STYLE} onClick={(event) => event.stopPropagation()}>
         <div className="mb-2 flex items-center justify-between gap-2">
           <div>
             <div className="text-sm font-semibold text-slate-700">{storyTitle}</div>
@@ -2947,6 +2947,12 @@ const CHESSBOARD_MAX_SIZE = 1200
 const CHESS_INSTALL_HINT_DISMISSED_KEY = 'chess:ios-install-hint-dismissed:v1'
 const IOS_INSTALL_DEMO_VIDEO_PATH = '/assets/pwa/install-ios.mp4'
 const ANDROID_INSTALL_DEMO_VIDEO_PATH = '/assets/pwa/install-android.mp4'
+const CHESS_SAFE_AREA_STYLE: React.CSSProperties = {
+  paddingTop: 'calc(env(safe-area-inset-top) + 8px)',
+  paddingBottom: 'calc(env(safe-area-inset-bottom) + 8px)',
+  paddingLeft: 'calc(env(safe-area-inset-left) + 8px)',
+  paddingRight: 'calc(env(safe-area-inset-right) + 8px)',
+}
 
 type BeforeInstallPromptEvent = Event & {
   prompt: () => Promise<void>
@@ -4176,7 +4182,7 @@ function OnlineChessGame({
   }, [moveRows, normalizedDisplayFen])
 
   return (
-    <div className="relative flex h-[100dvh] overflow-hidden rounded-none bg-slate-100/90 p-2 shadow-sm sm:p-3">
+    <div className="relative flex h-[100dvh] overflow-hidden rounded-none bg-slate-100/90 p-2 shadow-sm sm:p-3" style={CHESS_SAFE_AREA_STYLE}>
       <div className="flex min-h-0 w-full flex-1 flex-col">
         <div className="mb-2 flex flex-none items-center justify-between gap-3">
           <h2 className="text-base font-semibold sm:text-lg">Chess</h2>
@@ -4837,7 +4843,7 @@ function LocalChessGame({
   const tutorialFullscreenMode = Boolean(openTutorFullscreen)
 
   return (
-    <div className="relative flex h-[100dvh] overflow-hidden rounded-none bg-slate-100/90 p-2 shadow-sm sm:p-3">
+    <div className="relative flex h-[100dvh] overflow-hidden rounded-none bg-slate-100/90 p-2 shadow-sm sm:p-3" style={CHESS_SAFE_AREA_STYLE}>
       <div className="flex min-h-0 w-full flex-1 flex-col">
         <div className="mb-2 flex flex-none items-center justify-between gap-3">
           <h2 className="text-base font-semibold sm:text-lg">Chess (Local)</h2>

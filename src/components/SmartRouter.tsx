@@ -44,9 +44,9 @@ function isPhotoStatusResult(value: unknown): value is PhotoStatusResult {
  * This component runs on the root path (/) and determines the appropriate
  * landing page based on the user's photo data state:
  *
- * 1. No photos → /upload (clear call to action)
+ * 1. No photos → /gallery
  * 2. Has any photos → /gallery
- * 3. Default fallback → /upload
+ * 3. Default fallback → /gallery
  *
  * Security:
  * - Only runs for authenticated users (relies on AuthWrapper)
@@ -109,8 +109,8 @@ export default function SmartRouter() {
         if (cancelled) return;
         if (!isPhotoStatusResult(result)) throw new Error('Invalid API response');
 
-        // Determine the best route based on photo counts
-        const targetPath = result.total === 0 ? '/upload' : '/gallery';
+        // Keep startup destination consistent for app-like UX.
+        const targetPath = '/gallery';
 
         setStatus('redirecting');
         navigate(targetPath, { replace: true });
@@ -120,10 +120,10 @@ export default function SmartRouter() {
         setErrorMessage(getErrorMessage(err));
         setStatus('error');
 
-        // On error, redirect to upload as safe fallback after a brief delay
+        // On error, redirect to gallery as safe fallback after a brief delay
         setTimeout(() => {
           if (!cancelled) {
-            navigate('/upload', { replace: true });
+            navigate('/gallery', { replace: true });
           }
         }, 1500);
       }
@@ -190,7 +190,7 @@ export default function SmartRouter() {
       >
         <div style={{ color: '#ef4444', fontSize: '24px' }}>⚠️</div>
         <p style={{ color: '#64748b', fontSize: '14px' }}>{errorMessage || 'Something went wrong'}</p>
-        <p style={{ color: '#94a3b8', fontSize: '12px' }}>Redirecting to upload page...</p>
+        <p style={{ color: '#94a3b8', fontSize: '12px' }}>Redirecting to gallery...</p>
       </div>
     );
   }
