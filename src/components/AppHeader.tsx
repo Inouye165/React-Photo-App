@@ -175,7 +175,7 @@ export default function AppHeader({
       <nav className="flex-1 min-w-0 flex items-center gap-0.5 sm:gap-1 px-1 sm:px-2 py-1 
                       bg-slate-50 rounded-lg border border-slate-200 
                       overflow-visible">
-        <div className="flex-1 min-w-0 flex items-center gap-0.5 sm:gap-1 overflow-x-auto scrollbar-hide">
+        <div className="flex-1 min-w-0 flex items-center gap-0.5 sm:gap-1 overflow-visible">
           {canUseChat && (
             <div className="relative">
               <NavTabLink
