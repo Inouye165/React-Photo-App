@@ -4,6 +4,7 @@
   "version": "0.0.0",
   "type": "module",
   "scripts": {
+    "predev": "node scripts/ensure-local-supabase-ready.cjs",
     "dev": "vite",
     "start": "npx tsx server/server.ts",
     "start:infra": "docker-compose up -d db redis",

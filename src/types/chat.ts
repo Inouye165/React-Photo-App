@@ -52,7 +52,7 @@ export interface RoomMember {
   is_owner?: boolean
 }
 
-export type MessageId = number
+export type MessageId = string
 
 export interface ChatMessage {
   id: MessageId

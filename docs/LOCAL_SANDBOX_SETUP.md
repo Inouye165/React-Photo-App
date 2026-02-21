@@ -114,3 +114,80 @@ If you run the local Supabase stack, the dashboard (Studio) is available here:
 - Supabase Studio: http://localhost:54323/
 
 See [docs/LOCAL_SUPABASE.md](docs/LOCAL_SUPABASE.md) for the full local Supabase setup steps.
+---
+
+## Incident Log
+
+### 2026-02-21 — Chat messages silently disappear after every send
+
+**Symptom:**
+- Chat send appeared to succeed (`sendMessage` returned an id, DB row confirmed present).
+- No messages ever appeared in the chat UI — on first load or after send.
+- Realtime subscription confirmed SUBSCRIBED. No JS errors.
+- `useChatRealtime` logs showed `rowCount=3 → MAPPED 0 messages`.
+
+**Root cause:**
+`src/types/chat.ts` declared `MessageId = number`. The `messages` table uses UUID (`gen_random_uuid()`) primary keys — strings like `2d155999-e877-4ea8-bdb9-e2f75c9c6132`. The `asChatMessage()` validator called `Number('2d155999...')` which is `NaN`, so it returned `null` for every single row — both on initial DB fetch and on every Realtime INSERT event. Zero messages ever entered React state.
+
+**Why it wasn't caught immediately:**
+The type mismatch is invisible at runtime without schema-aware logging. Previous debugging focused on credential issues (wrong anon key, wrong JWT secret, wrong DB URL) which were also real bugs. After credentials were fixed, messages began reaching the DB — but the display still failed due to this unrelated mapping bug. The mapping layer had no log output until comprehensive tracing was added, at which point `MAPPED 0 messages` was immediately obvious.
+
+**The schema was NOT altered.** The DB was always correct (UUID PKs). The TypeScript type was wrong. Fix was pure frontend code:
+- `src/types/chat.ts`: `MessageId = number` → `MessageId = string`
+- `src/utils/chatUtils.ts` `asChatMessage()`: validate `id` as a non-empty string instead of `toFiniteNumber()`
+- `src/utils/chatUtils.ts` `sortMessages()`: tie-breaker changed from `a.id - b.id` (arithmetic, breaks on strings) to lexicographic comparison
+
+**Files changed:** `src/types/chat.ts`, `src/utils/chatUtils.ts`
+
+**Diagnosis shortcut for future:** If messages reach the DB (confirm with `docker exec supabase_db_photo-app psql -U postgres -d postgres -c "SELECT id, content FROM messages ORDER BY created_at DESC LIMIT 5;"`) but the UI shows nothing, add this one log line immediately:
+```ts
+console.log('[DEBUG] mapped', (data ?? []).map(asChatMessage))
+```
+If it logs all `null`, the issue is in `asChatMessage()` — check that the type of `id` in `ChatMessage` matches what the DB actually returns (UUID string vs integer).
+
+**One-shot triage pack (capture this on first pass next time):**
+Collect these in one attempt before changing code:
+1. **Send-path proof**
+   - `onSend` click log (roomId, draft, sending)
+   - `sendMessage` start + success/error (including inserted `id`)
+2. **DB proof**
+   - `SELECT id, room_id, sender_id, content, created_at FROM public.messages ORDER BY created_at DESC LIMIT 5;`
+3. **Fetch mapping proof**
+   - `FETCH result: rowCount=<n>`
+   - `MAPPED <n> messages`
+   - One sample row shape (`typeof id`, `typeof created_at`, etc.)
+4. **Realtime proof**
+   - Subscription status (`SUBSCRIBED`)
+   - Realtime payload sample + result of `asChatMessage(payload.new)`
+5. **Schema/type proof**
+   - Confirm DB id type: `SELECT data_type FROM information_schema.columns WHERE table_schema='public' AND table_name='messages' AND column_name='id';`
+   - Compare to TS type in `src/types/chat.ts` (`MessageId`)
+
+If steps 1-4 show: **send success + DB row exists + fetch rowCount > 0 + mapped 0**, this points directly to a mapping/type mismatch (not RLS, not migrations, not transport).
+
+---
+
+### 2026-02-21 — Local vs Production schema drift (RESOLVED)
+
+**Initial concern:** A ChatGPT session compared an older local schema snapshot to production and found 10+ differences (missing tables, conflicting RLS/realtime settings).
+
+**Actual verified state (checked 2026-02-21 after `supabase stop/start`):**
+Local and production are **identical** — 17 tables, matching RLS and realtime settings on every table.
+
+The differences described in ChatGPT were from a stale local DB that pre-dated migrations `20260220120000` through `20260220181500`. After those migrations ran on restart, the schemas fully converged.
+
+**Verification query** (run against local Supabase to confirm schema parity):
+```sql
+SELECT t.table_name, c.relrowsecurity AS rls_enabled,
+  CASE WHEN pr.tablename IS NOT NULL THEN true ELSE false END AS realtime_enabled
+FROM information_schema.tables t
+JOIN pg_class c ON c.relname = t.table_name
+JOIN pg_namespace n ON n.oid = c.relnamespace AND n.nspname = 'public'
+LEFT JOIN pg_publication_tables pr 
+  ON pr.tablename = t.table_name AND pr.pubname = 'supabase_realtime'
+WHERE t.table_schema = 'public' AND t.table_type = 'BASE TABLE'
+ORDER BY t.table_name;
+```
+Expected result: 17 rows, all matching production's table list and RLS/realtime flags.
+
+**Golden rule going forward:** Every schema change goes through a migration file — no manual Supabase dashboard edits. Use `supabase db diff` after any manual change to capture it as a migration immediately.

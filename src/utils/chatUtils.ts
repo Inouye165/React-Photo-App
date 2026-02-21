@@ -5,8 +5,8 @@ export function sortMessages(messages: readonly ChatMessage[]): ChatMessage[] {
     const at = Date.parse(a.created_at)
     const bt = Date.parse(b.created_at)
     if (Number.isFinite(at) && Number.isFinite(bt) && at !== bt) return at - bt
-    // Tie-breaker: numeric id
-    return a.id - b.id
+    // Tie-breaker: lexicographic uuid
+    return a.id < b.id ? -1 : a.id > b.id ? 1 : 0
   })
 }
 
@@ -28,7 +28,7 @@ export function asChatMessage(row: unknown): ChatMessage | null {
     return Number.isFinite(n) ? n : null
   }
 
-  const id = toFiniteNumber(r.id)
+  const id = typeof r.id === 'string' && r.id.length > 0 ? r.id : null
   const rawPhotoId = r.photo_id
   const photo_id = rawPhotoId == null ? null : toFiniteNumber(rawPhotoId)
 

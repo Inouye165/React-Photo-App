@@ -506,10 +506,12 @@ export default function ChatWindow({ roomId, showIdentityGate, mode = 'workspace
   }
 
   async function onSend(): Promise<void> {
-    if (!roomId) return
+    console.log('[onSend] CLICK roomId=', roomId, 'draft=', JSON.stringify(draft).substring(0, 50), 'sending=', sending)
+    if (!roomId) { console.warn('[onSend] ABORT — roomId is null'); return }
     const trimmed = draft.trim()
-    if (!trimmed && selectedPhotoId == null) return
+    if (!trimmed && selectedPhotoId == null) { console.warn('[onSend] ABORT — empty draft and no photo'); return }
 
+    console.log('[onSend] PROCEEDING to send trimmed=', JSON.stringify(trimmed).substring(0, 50))
     // Best-effort: stop typing indicator as soon as user submits.
     handleInputSubmit()
 
@@ -517,12 +519,15 @@ export default function ChatWindow({ roomId, showIdentityGate, mode = 'workspace
       setSending(true)
       setSendError(null)
       const sent = await sendMessage(roomId, trimmed, selectedPhotoId)
+      console.log('[onSend] sendMessage resolved, calling upsertLocalMessage id=', sent.id)
       upsertLocalMessage(sent)
       setDraft('')
       setSelectedPhotoId(null)
       setPickerOpen(false)
+      console.log('[onSend] DONE — message upserted into local state')
     } catch (err) {
       const message = err instanceof Error ? err.message : String(err)
+      console.error('[onSend] SEND FAILED — error shown to user:', message, 'full error:', err)
       setSendError(message)
     } finally {
       setSending(false)
@@ -545,15 +550,18 @@ export default function ChatWindow({ roomId, showIdentityGate, mode = 'workspace
     if (user?.id && message.sender_id === user.id) {
       return profile?.username?.trim() || 'You'
     }
-    return memberDirectory[message.sender_id]?.trim() || 'Unknown'
+    const profileRow = memberProfiles[message.sender_id]
+    const username = profileRow?.username ?? memberDirectory[message.sender_id]
+    return (username ?? 'Unknown').trim()
   }
 
   const memberDisplay = useMemo(() => {
     if (!memberIds.length) return []
     return memberIds.map((id) => {
+      const profileRow = memberProfiles[id]
       const label = user?.id && id === user.id
         ? profile?.username?.trim() || 'You'
-        : memberDirectory[id]?.trim() || 'Unknown'
+        : (profileRow?.username ?? memberDirectory[id] ?? 'Unknown').trim()
       return {
         id,
         label,

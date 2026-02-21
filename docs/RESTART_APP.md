@@ -53,17 +53,45 @@ Expected: Frontend at http://localhost:5173/
 - If the backend fails prestart checks, verify DB/Redis are running and `server/.env` is valid.
 - If the worker can’t connect to Redis, ensure `REDIS_URL=redis://localhost:6379` in `server/.env`.
 
-## Startup Robustness Log
+## Startup Tracking Log
 
-- **2026-02-20 12:13:43 -08:00 (Windows, monitored run)**
-  - Backend startup/migration issue observed previously: `role "authenticated" does not exist` during policy migration.
-  - Fix applied in migration file to remove hard dependency on role-specific `TO authenticated` clauses.
-  - Result after fix: backend, frontend, and worker started; health endpoints returned `200`.
+### 2026-02-21 05:26:54 -08:00 — Desktop session
 
-- **2026-02-20 12:17:44 -08:00 (Laptop, operator feedback validation)**
-  - Tracking correction: startup robustness notes belong in this dedicated file (not README).
-  - Observed process issue: worker was already running in an earlier terminal that was not being actively monitored, and an additional frontend instance was started.
-  - Expected operator behavior for robust startup checks:
-    1. Verify existing listeners/processes before starting new services.
-    2. Prefer `npm run stop:local` before a fresh validation pass to avoid duplicate frontend/backend/worker instances.
-    3. Treat Vite port changes (`5173` -> `5174`) as normal when an instance is already running, and confirm which instance is intended for the test pass.
+- **Environment:** Desktop (Windows)
+- **Branch:** `main`
+- **HEAD:** `1a6d651`
+- **Latest merged PR on main at time of session:** `#677` (`Merge pull request #677 from Inouye165/feat/chess-moves-panel-responsive`)
+
+#### Issues observed today
+
+1. **Git sync blocked on pull**
+  - **Symptom:** `git pull origin main` aborted because local edits would be overwritten.
+  - **Resolution:** Stashed local changes (`git stash push -u`), then pulled with fast-forward.
+
+2. **Frontend auth failures at startup**
+  - **Symptom:** Browser repeatedly showed `ERR_CONNECTION_REFUSED` for `127.0.0.1:54321/auth/v1/token`.
+  - **Resolution:** Started local Supabase and verified auth endpoint health before app login flow.
+
+3. **Supabase restart conflict**
+  - **Symptom:** `supabase start` failed with container name conflict (`supabase_vector_photo-app`).
+  - **Resolution:** Ran self-heal flow: `supabase stop --no-backup`, removed stale `supabase_*` containers, restarted Supabase.
+
+4. **Backend migration failed with `schema "auth" does not exist`**
+  - **Symptom:** Server startup migration (`20260220164500_fix_chat_rooms_select_creator_and_last_read_at.js`) failed.
+  - **Cause:** Backend was pointed to local Docker Postgres (`:5432`) instead of local Supabase Postgres (`:54330`) during that run.
+  - **Resolution:** Restarted backend with DB env overrides targeting `postgresql://postgres:postgres@127.0.0.1:54330/postgres`; migration applied successfully.
+
+5. **Wrong-version notes cleanup request**
+  - **Symptom:** Prior comments/results from wrong code context needed removal.
+  - **Resolution:** Removed stale startup notes from this file and reran clean startup validation.
+
+#### Preventive hardening kept
+
+- Added frontend preflight guard script: `scripts/ensure-local-supabase-ready.cjs`.
+- Added `predev` hook in root `package.json` so `npm run dev` checks local Supabase auth health and starts Supabase if needed.
+
+#### End state (verified)
+
+- Supabase auth health reachable: `http://127.0.0.1:54321/auth/v1/health`
+- Backend health reachable: `http://127.0.0.1:3001/health`
+- Frontend reachable: `http://localhost:5173/`

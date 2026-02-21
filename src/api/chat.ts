@@ -88,18 +88,23 @@ export async function searchUsers(query: string): Promise<UserSearchResult[]> {
 
 export async function fetchRooms(): Promise<ChatRoom[]> {
   const userId = await requireAuthedUserId()
+  console.log('[fetchRooms] START userId=', userId)
 
   const { data: memberRows, error: membersError } = await supabase
     .from('room_members')
     .select('room_id')
     .eq('user_id', userId)
 
-  if (membersError) throw membersError
+  if (membersError) {
+    console.error('[fetchRooms] room_members SELECT error:', membersError)
+    throw membersError
+  }
 
   const roomIds = (memberRows ?? [])
     .map((r) => (r as { room_id?: unknown }).room_id)
     .filter((id): id is string => typeof id === 'string')
 
+  console.log('[fetchRooms] memberRows=', memberRows?.length, 'roomIds=', roomIds)
   if (roomIds.length === 0) return []
 
   const uniqueRoomIds = [...new Set(roomIds)]
@@ -109,9 +114,13 @@ export async function fetchRooms(): Promise<ChatRoom[]> {
     .select('id, name, is_group, created_at, type, metadata')
     .in('id', uniqueRoomIds)
 
-  if (roomsError) throw roomsError
+  if (roomsError) {
+    console.error('[fetchRooms] rooms SELECT error:', roomsError)
+    throw roomsError
+  }
 
   const typedRooms = (rooms ?? []).filter((r): r is ChatRoom => Boolean(r && typeof (r as ChatRoom).id === 'string'))
+  console.log('[fetchRooms] DONE rooms=', typedRooms.map(r => ({ id: r.id, name: r.name })))
   return typedRooms.sort((a, b) => Date.parse(b.created_at) - Date.parse(a.created_at))
 }
 
@@ -120,63 +129,19 @@ export async function getOrCreateRoom(otherUserId: string): Promise<ChatRoom> {
   if (!otherUserId) throw new Error('Missing otherUserId')
   if (otherUserId === userId) throw new Error('Cannot create a direct message room with yourself')
 
-  const [{ data: mine, error: mineError }, { data: theirs, error: theirsError }] = await Promise.all([
-    supabase.from('room_members').select('room_id').eq('user_id', userId),
-    supabase.from('room_members').select('room_id').eq('user_id', otherUserId),
-  ])
+  const headers = await getAuthHeadersAsync(true)
+  const response = await request<{ success: true; room: ChatRoom }>({
+    path: '/api/v1/chat/rooms/direct',
+    method: 'POST',
+    headers,
+    body: { otherUserId },
+  })
 
-  if (mineError) throw mineError
-  if (theirsError) throw theirsError
-
-  const myRoomIds = new Set(
-    (mine ?? [])
-      .map((r) => (r as { room_id?: unknown }).room_id)
-      .filter((id): id is string => typeof id === 'string'),
-  )
-
-  const commonRoomIds = (theirs ?? [])
-    .map((r) => (r as { room_id?: unknown }).room_id)
-    .filter((id): id is string => typeof id === 'string' && myRoomIds.has(id))
-
-  if (commonRoomIds.length) {
-    const uniqueCommon = [...new Set(commonRoomIds)]
-
-    const { data: rooms, error: roomsError } = await supabase
-      .from('rooms')
-      .select('id, name, is_group, created_at, type, metadata')
-      .in('id', uniqueCommon)
-      .eq('is_group', false)
-
-    if (roomsError) throw roomsError
-
-    const candidates = (rooms ?? []) as ChatRoom[]
-    if (candidates.length) {
-      candidates.sort((a, b) => Date.parse(b.created_at) - Date.parse(a.created_at))
-      return candidates[0]
-    }
+  if (!response?.success || !response.room) {
+    throw new Error('Failed to create room')
   }
 
-  const { data: room, error: roomError } = await supabase
-    .from('rooms')
-    .insert({ name: null, is_group: false, created_by: userId })
-    .select('id, name, is_group, created_at, type, metadata')
-    .single()
-
-  if (roomError) throw mapChatInsertError(roomError, 'Failed to create room')
-  if (!room) throw new Error('Failed to create room')
-
-  const { error: selfMemberError } = await supabase
-    .from('room_members')
-    .insert({ room_id: (room as ChatRoom).id, user_id: userId, is_owner: true })
-
-  if (selfMemberError) throw selfMemberError
-
-  const { error: otherMemberError } = await supabase
-    .from('room_members')
-    .insert({ room_id: (room as ChatRoom).id, user_id: otherUserId })
-
-  if (otherMemberError) throw otherMemberError
-  return room as ChatRoom
+  return response.room
 }
 
 export async function createGroupRoom(name: string, memberIds: string[]): Promise<ChatRoom> {
@@ -289,21 +254,37 @@ export async function setRoomOwner(roomId: string, userId: string, isOwner: bool
 }
 
 export async function sendMessage(roomId: string, content: string, photoId?: PhotoId | null): Promise<ChatMessage> {
-  const userId = await requireAuthedUserId()
+  console.log('[sendMessage] START roomId=', roomId, 'contentLen=', content?.length)
+  let userId: string
+  try {
+    userId = await requireAuthedUserId()
+    console.log('[sendMessage] authed as userId=', userId)
+  } catch (authErr) {
+    console.error('[sendMessage] AUTH FAILED:', authErr)
+    throw authErr
+  }
   if (!roomId) throw new Error('Missing roomId')
 
   const trimmed = content.trim()
   const hasPhoto = photoId != null && photoId !== ''
   if (!trimmed && !hasPhoto) throw new Error('Message content is empty')
 
+  console.log('[sendMessage] calling supabase insert room=', roomId, 'sender=', userId, 'content=', JSON.stringify(trimmed).substring(0, 40))
   const { data, error } = await supabase
     .from('messages')
     .insert({ room_id: roomId, sender_id: userId, content: trimmed, photo_id: hasPhoto ? photoId : null })
     .select('id, room_id, sender_id, content, photo_id, created_at')
     .single()
 
-  if (error) throw error
-  if (!data) throw new Error('Failed to send message')
+  if (error) {
+    console.error('[sendMessage] supabase INSERT ERROR code=', error.code, 'msg=', error.message, 'details=', error.details, 'hint=', error.hint)
+    throw error
+  }
+  if (!data) {
+    console.error('[sendMessage] INSERT returned no data (null)')
+    throw new Error('Failed to send message')
+  }
+  console.log('[sendMessage] SUCCESS id=', (data as ChatMessage).id)
 
   // Log message_sent activity (fire-and-forget)
   logActivity('message_sent', { roomId })

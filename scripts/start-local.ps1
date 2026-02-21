@@ -136,7 +136,7 @@ function Get-EnvValueFromFile {
   return $line.Matches[0].Groups[1].Value.Trim()
 }
 
-function Ensure-LocalSupabase {
+function Initialize-LocalSupabase {
   param([string]$RepoRoot)
 
   $rootEnv = Join-Path $RepoRoot '.env'
@@ -240,7 +240,7 @@ function Get-LocalSupabaseDbUrl {
   }
 }
 
-function Ensure-DockerAvailable {
+function Test-DockerAvailable {
   if (-not (Get-Command docker -ErrorAction SilentlyContinue)) {
     throw "Docker CLI not found. Install Docker Desktop and ensure 'docker' is on PATH."
   }
@@ -403,10 +403,10 @@ try {
   Close-ExistingAppTerminals -Titles $appTerminalTitles -RepoRoot $repoRoot
 
   Write-Step "Checking Docker availability..."
-  Ensure-DockerAvailable
+  Test-DockerAvailable
 
   Write-Step "Checking local Supabase availability..."
-  Ensure-LocalSupabase -RepoRoot $repoRoot
+  Initialize-LocalSupabase -RepoRoot $repoRoot
 
   Write-Step "Starting required Docker services (db + redis)..."
   Invoke-DockerCompose -ComposeArgs @('up', '-d', 'db', 'redis')
