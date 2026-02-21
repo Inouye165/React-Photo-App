@@ -250,7 +250,7 @@ describe('ChessGame regression tests', () => {
     await user.click(screen.getByRole('button', { name: 'Resign' }))
     await waitFor(() => {
       expect(abortGameMock).toHaveBeenCalledWith('game-123')
-      expect(navigateMock).toHaveBeenCalledWith('/games')
+      expect(navigateMock).toHaveBeenCalledWith('/games/chess')
     })
     expect(restartGameMock).not.toHaveBeenCalled()
   })
@@ -263,7 +263,7 @@ describe('ChessGame regression tests', () => {
     await user.click(screen.getByRole('button', { name: 'Exit' }))
 
     await waitFor(() => {
-      expect(navigateMock).toHaveBeenCalledWith('/games')
+      expect(navigateMock).toHaveBeenCalledWith('/games/chess')
     })
     expect(restartGameMock).not.toHaveBeenCalled()
   })
