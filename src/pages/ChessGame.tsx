@@ -14,7 +14,6 @@ import { supabase } from '../supabaseClient'
 import { useGameRealtime } from '../hooks/useGameRealtime'
 import { useAuth } from '../contexts/AuthContext'
 import { useStockfish } from '../hooks/useStockfish'
-import { findOpening } from '../data/chessOpenings'
 
 type PromotionPiece = 'q' | 'r' | 'b' | 'n'
 
@@ -126,47 +125,6 @@ function shouldOpenTutorFullscreen(search: string): boolean {
 function parseInitialStoryId(search: string): string | undefined {
   const value = new URLSearchParams(search).get('storyId')
   return value?.trim() || undefined
-}
-
-function ChessModeSwitcher({
-  activeMode,
-  onComputer,
-  onHuman,
-  onTutorials,
-}: {
-  activeMode: 'computer' | 'human' | 'tutorials'
-  onComputer: () => void
-  onHuman: () => void
-  onTutorials: () => void
-}): React.JSX.Element {
-  return (
-    <div className="flex w-full flex-wrap items-center gap-2" role="group" aria-label="Chess mode switcher">
-      <button
-        type="button"
-        onClick={onComputer}
-        aria-pressed={activeMode === 'computer'}
-        className={`rounded-md border px-3 py-1.5 text-xs font-semibold ${activeMode === 'computer' ? 'border-indigo-300 bg-indigo-50 text-indigo-700' : 'border-slate-200 bg-white text-slate-700 hover:bg-slate-50'}`}
-      >
-        Play vs Computer
-      </button>
-      <button
-        type="button"
-        onClick={onHuman}
-        aria-pressed={activeMode === 'human'}
-        className={`rounded-md border px-3 py-1.5 text-xs font-semibold ${activeMode === 'human' ? 'border-indigo-300 bg-indigo-50 text-indigo-700' : 'border-slate-200 bg-white text-slate-700 hover:bg-slate-50'}`}
-      >
-        Play vs Opponent (Invite)
-      </button>
-      <button
-        type="button"
-        onClick={onTutorials}
-        aria-pressed={activeMode === 'tutorials'}
-        className={`rounded-md border px-3 py-1.5 text-xs font-semibold ${activeMode === 'tutorials' ? 'border-indigo-300 bg-indigo-50 text-indigo-700' : 'border-slate-200 bg-white text-slate-700 hover:bg-slate-50'}`}
-      >
-        Tutorials
-      </button>
-    </div>
-  )
 }
 
 const CHESS_LESSONS: ChessLesson[] = [
@@ -3146,10 +3104,6 @@ function buildMoveHistory(moveRows: MoveRow[]): MoveHistoryRow[] {
   return history
 }
 
-function buildMovesUci(moveRows: MoveRow[]) {
-  return sortedMoveRows(moveRows).map((mv) => mv.uci)
-}
-
 function formatUciToSan(fen: string, uci: string) {
   const parsed = parseUciMove(uci)
   if (!parsed) return uci
@@ -3168,22 +3122,6 @@ function plyFromFen(fen: string): number {
   const fullmove = Number(parts[5])
   const moveNumber = Number.isFinite(fullmove) && fullmove > 0 ? fullmove : 1
   return turn === 'b' ? ((moveNumber - 1) * 2) + 1 : ((moveNumber - 1) * 2)
-}
-
-function getEvalPercent(score: number | null) {
-  if (score === null) return 50
-  const clamped = Math.min(9, Math.max(-9, score))
-  return ((clamped + 9) / 18) * 100
-}
-
-function skillLevelToEloLabel(skillLevel: number) {
-  if (skillLevel <= 0) return '~800-900 (Beginner)'
-  if (skillLevel <= 4) return '~1000-1200 (Novice)'
-  if (skillLevel <= 8) return '~1300-1500 (Club)'
-  if (skillLevel <= 12) return '~1600-1800 (Advanced Club)'
-  if (skillLevel <= 16) return '~1900-2200 (Expert)'
-  if (skillLevel <= 19) return '~2300-2500 (Master)'
-  return 'Grandmaster'
 }
 
 function buildDisplayFen(sortedMoves: MoveRow[], gameFen: string | null, viewPly: number) {
@@ -3551,7 +3489,7 @@ function useChessboardSize(maxSize: number) {
       // both dimensions so the square board fits.  Mobile/tablet (stacked
       // layout, natural height) → width only; the board determines its own
       // height and the parent page scrolls.
-      const isDesktopRow = window.innerWidth >= 1024
+      const isDesktopRow = window.innerWidth >= 1024 || window.matchMedia('(orientation: landscape)').matches
       let limit: number
 
       if (isDesktopRow && height > 100) {
@@ -3632,11 +3570,9 @@ function OnlineChessGame({
   const [authError, setAuthError] = useState<boolean>(false)
   const [toastMessage, setToastMessage] = useState<string | null>(null)
   const [toastSeverity, setToastSeverity] = useState<'info' | 'success' | 'warning' | 'error'>('info')
-  const [restartLoading, setRestartLoading] = useState(false)
   const [showRestartConfirm, setShowRestartConfirm] = useState(false)
   const [pendingPromotion, setPendingPromotion] = useState<PendingPromotion | null>(null)
   const [optimisticFen, setOptimisticFen] = useState<string | null>(null)
-  const [debugCopied, setDebugCopied] = useState(false)
   // whether hints are currently visible (after clicking the single Show Hints button)
   const [showHintsVisible, setShowHintsVisible] = useState(false)
   // which UCI is currently hovered / tapped to highlight squares
@@ -3762,7 +3698,6 @@ function OnlineChessGame({
     if (!gameId) return
     setShowRestartConfirm(false)
     setError(null)
-    setRestartLoading(true)
     try {
       const maybeGame = await restartGame(gameId)
       setViewPly(0)
@@ -3777,8 +3712,6 @@ function OnlineChessGame({
       setError(message)
       setToastSeverity('error')
       setToastMessage(message)
-    } finally {
-      setRestartLoading(false)
     }
   }
 
@@ -3801,12 +3734,6 @@ function OnlineChessGame({
   const currentTurn = (normalizedDisplayFen.split(' ')[1] as 'w' | 'b' | undefined) || (game?.current_turn as 'w' | 'b' | null) || null
   const currentUserId = user?.id ?? null
   const boardId = `${gameId ?? 'game'}-${currentUserId ?? 'anon'}-online`
-  const fenBoard = normalizedDisplayFen.split(' ')[0] || ''
-  const displayFenBoard = displayFen.split(' ')[0] || ''
-  const optimisticFenBoard = optimisticFen ? (optimisticFen.split(' ')[0] || '') : ''
-  const gameFenBoard = game?.current_fen ? (game.current_fen.split(' ')[0] || '') : ''
-  const lastMoveUci = moveRows.length ? moveRows[moveRows.length - 1].uci : 'none'
-  const moveDigest = moveRows.map((mv) => `${mv.ply ?? '?'}:${mv.uci ?? '?'}`).join(',')
   const currentMember = members.find((member) => member.user_id === currentUserId) ?? null
 
   const whiteMember = members.find((member) => member.role === 'white') ?? null
@@ -3861,9 +3788,7 @@ function OnlineChessGame({
   const boardOrientation: 'white' | 'black' = isCurrentBlack ? 'black' : 'white'
   const boardKey = `${boardId}:${boardOrientation}:${normalizedDisplayFen}`
 
-  const { isReady, topMoves, evaluation, analyzePosition, skillLevel, setSkillLevel } = useStockfish()
-  const opening = useMemo(() => findOpening(buildMovesUci(moveRows)), [moveRows])
-  const evalPercent = useMemo(() => getEvalPercent(evaluation.score), [evaluation.score])
+  const { isReady, topMoves, analyzePosition } = useStockfish()
 
   useEffect(() => {
     if (!isReady) return
@@ -4062,7 +3987,7 @@ function OnlineChessGame({
           </div>
         </div>
 
-        <aside className={`${tutorialFullscreenMode ? 'hidden' : 'flex'} min-h-0 w-full shrink-0 flex-col overflow-y-auto rounded-xl border border-slate-200 bg-white p-4 shadow-sm landscape:w-[360px] landscape:max-w-[44vw] lg:w-[380px]`}>
+        <aside className={`${tutorialFullscreenMode ? 'hidden' : 'flex'} min-h-0 w-full shrink-0 flex-col overflow-y-auto rounded-xl border border-slate-200 bg-white p-4 shadow-sm max-h-[42dvh] landscape:h-full landscape:max-h-none landscape:w-[360px] landscape:max-w-[44vw] lg:w-[380px]`}>
           <div className="mb-3 flex items-center justify-between">
             <div className="text-sm font-semibold text-slate-700">Moves & controls</div>
             <button
@@ -4074,24 +3999,51 @@ function OnlineChessGame({
             </button>
           </div>
           <div className="mb-3 text-xs text-slate-500">
-            Status: {game?.status ?? 'loading'}
-            {currentMember?.role ? ` · You are ${currentMember.role}` : ' · Spectating'}
+            Status: {game?.status ?? 'loading'} · {currentMember?.role ? `You are ${currentMember.role}` : 'Spectating'}
           </div>
-          <div className="mb-3">
-            <ChessModeSwitcher
-              activeMode="human"
-              onComputer={() => navigate('/games/local?tab=analyze')}
-              onHuman={() => navigate('/games')}
-              onTutorials={() => navigate('/games/local?tab=lesson&tutor=1&story=1&storyId=architect-of-squares')}
-            />
-          </div>
-          <div className="mb-3 flex items-center gap-2">
+          <div className="mb-3 flex flex-wrap items-center gap-2">
             <button
-              onClick={() => setShowRestartConfirm(true)}
-              disabled={restartLoading}
+              type="button"
+              onClick={() => { void handleAnalyzeGameForMe() }}
+              disabled={tutorLoading}
               className="rounded-md border border-slate-300 bg-white px-3 py-1 text-xs font-semibold text-slate-700 disabled:opacity-50"
             >
-              {restartLoading ? 'Restarting…' : 'Restart game'}
+              {tutorLoading ? 'Analyzing…' : 'Analyze game'}
+            </button>
+            <button
+              onClick={() => setViewPly((prev) => Math.max(0, prev - 1))}
+              disabled={viewPly === 0}
+              className="rounded-md border border-slate-200 bg-white px-2 py-1 text-xs font-semibold text-slate-700 disabled:opacity-50"
+            >
+              Undo
+            </button>
+            <button
+              onClick={() => setViewPly((prev) => Math.min(moveRows.length, prev + 1))}
+              disabled={viewPly >= moveRows.length}
+              className="rounded-md border border-slate-200 bg-white px-2 py-1 text-xs font-semibold text-slate-700 disabled:opacity-50"
+            >
+              Redo
+            </button>
+            <button
+              type="button"
+              onClick={() => {
+                try {
+                  localStorage.setItem(`chess:save:${gameId ?? 'online'}`, JSON.stringify({
+                    savedAt: new Date().toISOString(),
+                    gameId,
+                    fen: normalizedDisplayFen,
+                    moves: moveRows,
+                  }))
+                  setToastSeverity('success')
+                  setToastMessage('Game saved locally')
+                } catch {
+                  setToastSeverity('error')
+                  setToastMessage('Failed to save game locally')
+                }
+              }}
+              className="rounded-md border border-slate-200 bg-white px-2 py-1 text-xs font-semibold text-slate-700"
+            >
+              Save game
             </button>
             <button
               onClick={() => { void handleQuitGame() }}
@@ -4099,24 +4051,16 @@ function OnlineChessGame({
             >
               Resign
             </button>
+            <button
+              type="button"
+              onClick={() => navigate('/games')}
+              className="rounded-md border border-slate-200 bg-white px-3 py-1 text-xs font-semibold text-slate-600"
+            >
+              Exit
+            </button>
           </div>
           <div className="mb-3 rounded-lg bg-slate-50 px-3 py-2 text-xs text-slate-600">
-            <div className="mb-2 flex items-center gap-2">
-              <button
-                onClick={() => setViewPly((prev) => Math.max(0, prev - 1))}
-                disabled={viewPly === 0}
-                className="rounded-md border border-slate-200 bg-white px-2 py-1 text-xs font-semibold text-slate-700 disabled:opacity-50"
-              >
-                Undo
-              </button>
-              <button
-                onClick={() => setViewPly((prev) => Math.min(moveRows.length, prev + 1))}
-                disabled={viewPly >= moveRows.length}
-                className="rounded-md border border-slate-200 bg-white px-2 py-1 text-xs font-semibold text-slate-700 disabled:opacity-50"
-              >
-                Redo
-              </button>
-            </div>
+            <div className="mb-2 text-xs font-semibold text-slate-600">Hint + board overlays</div>
             <div className="flex flex-col gap-2">
               <label className="flex items-center gap-2">
                 <input
@@ -4149,117 +4093,6 @@ function OnlineChessGame({
             <div className="mt-2 text-xs text-slate-500">
               {isViewingPast ? `Viewing move ${viewPly}/${moveRows.length}` : 'Live'}
             </div>
-          </div>
-          <div className="mb-3 flex items-center justify-between">
-            <div className="text-sm font-semibold text-slate-700">Move History</div>
-            {loading || movesLoading ? (
-              <span className="text-xs text-slate-500">Loading…</span>
-            ) : null}
-          </div>
-            <div className="mb-3 text-xs text-slate-500">{memberCountLabel}</div>
-          {import.meta.env.DEV ? (
-            <div className="mb-3 rounded-lg border border-slate-200 bg-slate-50 px-3 py-2 text-xs text-slate-600">
-              <div className="flex items-center justify-between">
-                <span className="font-semibold">Debug</span>
-                <button
-                  type="button"
-                  className="rounded-md border border-slate-200 bg-white px-2 py-0.5 text-[11px] font-semibold text-slate-600"
-                  onClick={() => {
-                    const summary = [
-                      `game=${gameId ?? 'none'}`,
-                      `user=${currentUserId ?? 'none'}`,
-                      `members=${members.length ? members.map((m) => `${m.user_id}:${m.role}`).join(', ') : 'none'}`,
-                      `turn=${currentTurn ?? 'unknown'}`,
-                      `status=${game?.status ?? 'unknown'}`,
-                      `orientation=${boardOrientation}`,
-                      `isUserTurn=${isUserTurn}`,
-                      `canMove=${Boolean(canMove)}`,
-                      `isViewingPast=${Boolean(isViewingPast)}`,
-                      `viewPly=${viewPly}`,
-                      `moves=${moveRows.length}`,
-                      `lastMove=${lastMoveUci}`,
-                      `boardId=${boardId}`,
-                      `boardKey=${boardKey}`,
-                      `fen=${normalizedDisplayFen}`,
-                      `displayFen=${displayFen}`,
-                      `optimisticFen=${optimisticFen ?? 'null'}`,
-                      `gameFen=${game?.current_fen ?? 'null'}`,
-                      `moveDigest=${moveDigest || 'none'}`,
-                    ].join(' | ')
-                    void navigator.clipboard?.writeText(summary)
-                    setDebugCopied(true)
-                    setTimeout(() => setDebugCopied(false), 1500)
-                  }}
-                >
-                  {debugCopied ? 'Copied' : 'Copy debug'}
-                </button>
-              </div>
-              <div>game {gameId ?? 'none'}</div>
-              <div>user {currentUserId ?? 'none'}</div>
-              <div>members {members.length ? members.map((m) => `${m.user_id}:${m.role}`).join(', ') : 'none'}</div>
-              <div>turn {currentTurn ?? 'unknown'}</div>
-              <div>status {game?.status ?? 'unknown'}</div>
-              <div>orientation {boardOrientation} · userTurn {String(isUserTurn)} · canMove {String(Boolean(canMove))}</div>
-              <div>boardId {boardId.slice(0, 28)}…</div>
-              <div>boardKey {boardKey.slice(0, 36)}…</div>
-              <div className={moveRows.length === 0 ? 'font-bold text-red-600' : ''}>
-                viewPly {viewPly} / moves {moveRows.length}
-              </div>
-              <div>lastMove {lastMoveUci}</div>
-              <div>fen {fenBoard.slice(0, 30)}{fenBoard.length > 30 ? '…' : ''}</div>
-              <div>displayFen {displayFenBoard.slice(0, 26)}{displayFenBoard.length > 26 ? '…' : ''}</div>
-              <div>optimisticFen {optimisticFenBoard ? `${optimisticFenBoard.slice(0, 22)}…` : 'null'}</div>
-              <div>gameFen {gameFenBoard ? `${gameFenBoard.slice(0, 24)}…` : 'null'}</div>
-              <div>moveDigest {moveDigest ? `${moveDigest.slice(0, 42)}${moveDigest.length > 42 ? '…' : ''}` : 'none'}</div>
-              <button
-                type="button"
-                className="mt-1 rounded-md border border-slate-200 bg-white px-2 py-0.5 text-[11px] font-semibold text-slate-600"
-                onClick={() => {
-                  setRefreshToken((prev) => prev + 1)
-                  void loadGameData()
-                }}
-              >
-                Force refresh
-              </button>
-            </div>
-          ) : null}
-          <div className="mb-4 rounded-lg border border-slate-200 bg-slate-50 px-3 py-2">
-            <div className="text-xs font-semibold text-slate-600">Opening</div>
-            <div className="text-sm text-slate-800">{opening?.name ?? 'Unknown'}</div>
-          </div>
-          <div className="mb-4 rounded-lg border border-slate-200 bg-slate-50 px-3 py-2">
-            <div className="flex items-center justify-between">
-              <div className="text-xs font-semibold text-slate-600">Engine</div>
-              <span className="text-[11px] text-slate-500">{isReady ? 'ready' : 'loading'}</span>
-            </div>
-            <div className="mt-2">
-              <div className="mb-1 flex items-center justify-between gap-3">
-                <label htmlFor="online-engine-skill" className="text-xs text-slate-600">Opponent skill</label>
-                <span className="text-xs font-semibold text-slate-700">Level {skillLevel}</span>
-              </div>
-              <input
-                id="online-engine-skill"
-                type="range"
-                min={0}
-                max={20}
-                step={1}
-                value={skillLevel}
-                onChange={(event) => setSkillLevel(Number(event.target.value))}
-                aria-label="Stockfish opponent skill level"
-                className="w-full"
-              />
-              <div className="mt-1 flex items-center justify-between text-[11px] text-slate-500">
-                <span>0 · ~800-900</span>
-                <span>20 · Grandmaster</span>
-              </div>
-              <div className="mt-1 text-xs text-slate-600">Approximate Elo: {skillLevelToEloLabel(skillLevel)}</div>
-            </div>
-            <div className="mt-3">
-              <div className="mb-1 text-xs text-slate-600">Evaluation</div>
-              <div className="h-2 w-full rounded-full bg-slate-200">
-                <div className="h-2 rounded-full bg-emerald-500" style={{ width: `${evalPercent}%` }} />
-              </div>
-            </div>
             <div className="mt-3">
               <div className="mb-1 text-xs text-slate-600">Top hints <span className="text-xs text-slate-500">(used: {hintCount})</span></div>
               {!showHintsVisible ? (
@@ -4284,44 +4117,14 @@ function OnlineChessGame({
               )}
             </div>
           </div>
-          <div className="mb-4 rounded-lg border border-slate-200 bg-slate-50 px-3 py-2">
-            <div className="mb-2 flex items-center justify-between">
-              <div className="text-xs font-semibold text-slate-600">Game analysis</div>
-              <span className="text-[11px] text-slate-500">{tutorModel}</span>
-            </div>
-            <button
-              type="button"
-              onClick={() => { void handleAnalyzeGameForMe() }}
-              disabled={tutorLoading}
-              className="mb-2 mr-2 rounded border border-slate-200 bg-white px-2 py-1 text-xs font-semibold text-slate-700 hover:bg-slate-50 disabled:opacity-50"
-            >
-              Analyze game
-            </button>
-            <button
-              type="button"
-              onClick={() => { void handleAnalyzeGameForMe() }}
-              disabled={tutorLoading}
-              className="mb-2 rounded border border-slate-200 bg-white px-2 py-1 text-xs font-semibold text-slate-700 hover:bg-slate-50 disabled:opacity-50"
-            >
-              {tutorLoading ? 'Analyzing…' : 'Analyze game for me'}
-            </button>
-            {tutorError ? <div className="text-xs text-red-600">{tutorError}</div> : null}
-            {!tutorError && !tutorAnalysis && !tutorLoading ? (
-              <div className="text-xs text-slate-500">Run analysis from the menu to review hints without covering the board.</div>
-            ) : null}
-            {tutorAnalysis ? (
-              <div className="space-y-2 text-xs text-slate-700">
-                <p>{tutorAnalysis.positionSummary}</p>
-                {tutorAnalysis.hints.length ? (
-                  <ul className="list-disc pl-4">
-                    {tutorAnalysis.hints.slice(0, 3).map((hint) => (
-                      <li key={hint}>{hint}</li>
-                    ))}
-                  </ul>
-                ) : null}
-              </div>
+          <div className="mb-3 flex items-center justify-between">
+            <div className="text-sm font-semibold text-slate-700">Move History</div>
+            {loading || movesLoading ? (
+              <span className="text-xs text-slate-500">Loading…</span>
             ) : null}
           </div>
+            <div className="mb-3 text-xs text-slate-500">{memberCountLabel}</div>
+
           <div className="min-h-0 flex-1 overflow-y-auto">
             {moveHistoryRowsNewestFirst.length ? (
               <table className="w-full text-left text-sm text-slate-700">
@@ -4377,22 +4180,7 @@ function OnlineChessGame({
           <div className="mt-4 text-xs text-slate-500">
             Game: {gameId}
           </div>
-          {!tutorialFullscreenMode ? (
-            <div className="mt-4">
-              <ChessTutorPanel
-                analysis={tutorAnalysis}
-                modelLabel=""
-                loading={tutorLoading}
-                error={tutorError}
-                onAnalyze={() => { void handleAnalyzeGameForMe() }}
-                initialTab={initialTutorTab}
-                openStoryOnLoad={openStoryOnLoad}
-                fullscreen={false}
-                initialStoryId={initialStoryId}
-                allowAnalyzeTab={false}
-              />
-            </div>
-          ) : null}
+
         </aside>
         {tutorialFullscreenMode ? (
           <div className="min-h-0 flex-1 rounded-xl border border-slate-200 bg-white p-2 sm:p-3">
@@ -4513,9 +4301,7 @@ function LocalChessGame({
   const gameEnd = useMemo(() => detectGameEnd(normalizedDisplayFen), [normalizedDisplayFen])
   const canMove = !engineThinking && !isViewingPast && !gameEnd.isOver && !pendingPromotion
 
-  const { isReady, topMoves, evaluation, analyzePosition, getEngineMove, cancelPendingMove, skillLevel, setSkillLevel } = useStockfish()
-  const opening = useMemo(() => findOpening(buildMovesUci(moveRows)), [moveRows])
-  const evalPercent = useMemo(() => getEvalPercent(evaluation.score), [evaluation.score])
+  const { isReady, topMoves, analyzePosition, getEngineMove, cancelPendingMove } = useStockfish()
 
   useEffect(() => {
     if (!isReady || engineThinking) return
@@ -4787,7 +4573,7 @@ function LocalChessGame({
           </div>
         </div>
 
-        <aside className={`${tutorialFullscreenMode ? 'hidden' : 'flex'} min-h-0 w-full shrink-0 flex-col overflow-y-auto rounded-xl border border-slate-200 bg-white p-4 shadow-sm landscape:w-[360px] landscape:max-w-[44vw] lg:w-[380px]`}>
+        <aside className={`${tutorialFullscreenMode ? 'hidden' : 'flex'} min-h-0 w-full shrink-0 flex-col overflow-y-auto rounded-xl border border-slate-200 bg-white p-4 shadow-sm max-h-[42dvh] landscape:h-full landscape:max-h-none landscape:w-[360px] landscape:max-w-[44vw] lg:w-[380px]`}>
           <div className="mb-3 flex items-center justify-between">
             <div className="text-sm font-semibold text-slate-700">Moves & controls</div>
             <button
@@ -4799,20 +4585,48 @@ function LocalChessGame({
             </button>
           </div>
           <div className="mb-3 text-xs text-slate-500">Status: {engineThinking ? 'thinking' : 'ready'}</div>
-          <div className="mb-3">
-            <ChessModeSwitcher
-              activeMode="computer"
-              onComputer={() => navigate('/games/local?tab=analyze')}
-              onHuman={() => navigate('/games')}
-              onTutorials={() => navigate('/games/local?tab=lesson&tutor=1&story=1&storyId=architect-of-squares')}
-            />
-          </div>
-          <div className="mb-3 flex items-center gap-2">
+          <div className="mb-3 flex flex-wrap items-center gap-2">
             <button
-              onClick={() => setShowRestartConfirm(true)}
-              className="rounded-md border border-slate-300 bg-white px-3 py-1 text-xs font-semibold text-slate-700"
+              type="button"
+              onClick={() => { void handleAnalyzeGameForMe() }}
+              disabled={tutorLoading}
+              className="rounded-md border border-slate-300 bg-white px-3 py-1 text-xs font-semibold text-slate-700 disabled:opacity-50"
             >
-              Restart
+              {tutorLoading ? 'Analyzing…' : 'Analyze game'}
+            </button>
+            <button
+              onClick={handleUndoMove}
+              disabled={viewPly === 0}
+              className="rounded-md border border-slate-200 bg-white px-2 py-1 text-xs font-semibold text-slate-700 disabled:opacity-50"
+            >
+              Undo
+            </button>
+            <button
+              onClick={() => setViewPly((prev) => Math.min(moveRows.length, prev + 1))}
+              disabled={viewPly >= moveRows.length}
+              className="rounded-md border border-slate-200 bg-white px-2 py-1 text-xs font-semibold text-slate-700 disabled:opacity-50"
+            >
+              Redo
+            </button>
+            <button
+              type="button"
+              onClick={() => {
+                try {
+                  localStorage.setItem('chess:save:local', JSON.stringify({
+                    savedAt: new Date().toISOString(),
+                    fen: normalizedDisplayFen,
+                    moves: moveRows,
+                  }))
+                  setToastSeverity('success')
+                  setToastMessage('Game saved locally')
+                } catch {
+                  setToastSeverity('error')
+                  setToastMessage('Failed to save game locally')
+                }
+              }}
+              className="rounded-md border border-slate-200 bg-white px-2 py-1 text-xs font-semibold text-slate-700"
+            >
+              Save game
             </button>
             <button
               onClick={handleQuitGame}
@@ -4820,17 +4634,16 @@ function LocalChessGame({
             >
               Resign
             </button>
+            <button
+              type="button"
+              onClick={() => navigate('/games')}
+              className="rounded-md border border-slate-200 bg-white px-3 py-1 text-xs font-semibold text-slate-600"
+            >
+              Exit
+            </button>
           </div>
           <div className="mb-3 rounded-lg bg-slate-50 px-3 py-2 text-xs text-slate-600">
-            <div className="mb-2 flex items-center gap-2">
-              <button
-                onClick={handleUndoMove}
-                disabled={viewPly === 0}
-                className="rounded-md border border-slate-200 bg-white px-2 py-1 text-xs font-semibold text-slate-700 disabled:opacity-50"
-              >
-                Undo
-              </button>
-            </div>
+            <div className="mb-2 text-xs font-semibold text-slate-600">Hint + board overlays</div>
             <div className="flex flex-col gap-2">
               <label className="flex items-center gap-2">
                 <input
@@ -4863,48 +4676,6 @@ function LocalChessGame({
             <div className="mt-2 text-xs text-slate-500">
               {isViewingPast ? `Viewing move ${viewPly}/${moveRows.length}` : 'Live'}
             </div>
-          </div>
-          <div className="mb-3 flex items-center justify-between">
-            <div className="text-sm font-semibold text-slate-700">Move History</div>
-          </div>
-          <div className="mb-3 text-xs text-slate-500">{memberCountLabel}</div>
-          <div className="mb-4 rounded-lg border border-slate-200 bg-slate-50 px-3 py-2">
-            <div className="text-xs font-semibold text-slate-600">Opening</div>
-            <div className="text-sm text-slate-800">{opening?.name ?? 'Unknown'}</div>
-          </div>
-          <div className="mb-4 rounded-lg border border-slate-200 bg-slate-50 px-3 py-2">
-            <div className="flex items-center justify-between">
-              <div className="text-xs font-semibold text-slate-600">Engine</div>
-              <span className="text-[11px] text-slate-500">{isReady ? 'ready' : 'loading'}</span>
-            </div>
-            <div className="mt-2">
-              <div className="mb-1 flex items-center justify-between gap-3">
-                <label htmlFor="local-engine-skill" className="text-xs text-slate-600">Opponent skill</label>
-                <span className="text-xs font-semibold text-slate-700">Level {skillLevel}</span>
-              </div>
-              <input
-                id="local-engine-skill"
-                type="range"
-                min={0}
-                max={20}
-                step={1}
-                value={skillLevel}
-                onChange={(event) => setSkillLevel(Number(event.target.value))}
-                aria-label="Stockfish local opponent skill level"
-                className="w-full"
-              />
-              <div className="mt-1 flex items-center justify-between text-[11px] text-slate-500">
-                <span>0 · ~800-900</span>
-                <span>20 · Grandmaster</span>
-              </div>
-              <div className="mt-1 text-xs text-slate-600">Approximate Elo: {skillLevelToEloLabel(skillLevel)}</div>
-            </div>
-            <div className="mt-3">
-              <div className="mb-1 text-xs text-slate-600">Evaluation</div>
-              <div className="h-2 w-full rounded-full bg-slate-200">
-                <div className="h-2 rounded-full bg-emerald-500" style={{ width: `${evalPercent}%` }} />
-              </div>
-            </div>
             <div className="mt-3">
               <div className="mb-1 text-xs text-slate-600">Top hints <span className="text-xs text-slate-500">(used: {hintCount})</span></div>
               {!showHintsVisible ? (
@@ -4928,44 +4699,11 @@ function LocalChessGame({
               )}
             </div>
           </div>
-          <div className="mb-4 rounded-lg border border-slate-200 bg-slate-50 px-3 py-2">
-            <div className="mb-2 flex items-center justify-between">
-              <div className="text-xs font-semibold text-slate-600">Game analysis</div>
-              <span className="text-[11px] text-slate-500">{tutorModel}</span>
-            </div>
-            <button
-              type="button"
-              onClick={() => { void handleAnalyzeGameForMe() }}
-              disabled={tutorLoading}
-              className="mb-2 mr-2 rounded border border-slate-200 bg-white px-2 py-1 text-xs font-semibold text-slate-700 hover:bg-slate-50 disabled:opacity-50"
-            >
-              Analyze game
-            </button>
-            <button
-              type="button"
-              onClick={() => { void handleAnalyzeGameForMe() }}
-              disabled={tutorLoading}
-              className="mb-2 rounded border border-slate-200 bg-white px-2 py-1 text-xs font-semibold text-slate-700 hover:bg-slate-50 disabled:opacity-50"
-            >
-              {tutorLoading ? 'Analyzing…' : 'Analyze game for me'}
-            </button>
-            {tutorError ? <div className="text-xs text-red-600">{tutorError}</div> : null}
-            {!tutorError && !tutorAnalysis && !tutorLoading ? (
-              <div className="text-xs text-slate-500">Run analysis from the menu to review hints without covering the board.</div>
-            ) : null}
-            {tutorAnalysis ? (
-              <div className="space-y-2 text-xs text-slate-700">
-                <p>{tutorAnalysis.positionSummary}</p>
-                {tutorAnalysis.hints.length ? (
-                  <ul className="list-disc pl-4">
-                    {tutorAnalysis.hints.slice(0, 3).map((hint) => (
-                      <li key={hint}>{hint}</li>
-                    ))}
-                  </ul>
-                ) : null}
-              </div>
-            ) : null}
+          <div className="mb-3 flex items-center justify-between">
+            <div className="text-sm font-semibold text-slate-700">Move History</div>
           </div>
+          <div className="mb-3 text-xs text-slate-500">{memberCountLabel}</div>
+
           <div className="min-h-0 flex-1 overflow-y-auto">
             {moveHistoryRowsNewestFirst.length ? (
               <table className="w-full text-left text-sm text-slate-700">
@@ -5021,22 +4759,7 @@ function LocalChessGame({
           <div className="mt-4 text-xs text-slate-500">
             Game: local
           </div>
-          {!tutorialFullscreenMode ? (
-            <div className="mt-4">
-              <ChessTutorPanel
-                analysis={tutorAnalysis}
-                modelLabel=""
-                loading={tutorLoading}
-                error={tutorError}
-                onAnalyze={() => { void handleAnalyzeGameForMe() }}
-                initialTab={initialTutorTab}
-                openStoryOnLoad={openStoryOnLoad}
-                fullscreen={false}
-                initialStoryId={initialStoryId}
-                allowAnalyzeTab={false}
-              />
-            </div>
-          ) : null}
+
         </aside>
         {tutorialFullscreenMode ? (
           <div className="min-h-0 flex-1 rounded-xl border border-slate-200 bg-white p-2 sm:p-3">
