@@ -4077,6 +4077,10 @@ function OnlineChessGame({
     }
   }
 
+  function handleGoHome() {
+    navigate('/')
+  }
+
   const normalizedDisplayFen = optimisticFen || displayFen || START_FEN
   const currentTurn = (normalizedDisplayFen.split(' ')[1] as 'w' | 'b' | undefined) || (game?.current_turn as 'w' | 'b' | null) || null
   const currentUserId = user?.id ?? null
@@ -4193,6 +4197,13 @@ function OnlineChessGame({
                 >
                   Quit
                 </button>
+                <button
+                  type="button"
+                  onClick={handleGoHome}
+                  className="rounded-md border border-slate-300 bg-white px-3 py-1.5 text-xs font-semibold text-slate-700"
+                >
+                  Home
+                </button>
               </>
             ) : null}
             <button
@@ -4224,9 +4235,19 @@ function OnlineChessGame({
               setIsMenuOpen(false)
               void handleQuitGame()
             }}
-            className="w-full rounded px-2 py-1.5 text-left text-sm font-medium text-slate-700 hover:bg-slate-100"
+            className="mb-1 w-full rounded px-2 py-1.5 text-left text-sm font-medium text-slate-700 hover:bg-slate-100"
           >
             Quit game
+          </button>
+          <button
+            type="button"
+            onClick={() => {
+              setIsMenuOpen(false)
+              handleGoHome()
+            }}
+            className="w-full rounded px-2 py-1.5 text-left text-sm font-medium text-slate-700 hover:bg-slate-100"
+          >
+            Home page
           </button>
         </div>
       ) : null}
@@ -4808,6 +4829,11 @@ function LocalChessGame({
     navigate('/games/chess')
   }
 
+  function handleGoHome() {
+    truncateMoves(0)
+    navigate('/')
+  }
+
   const tutorialFullscreenMode = Boolean(openTutorFullscreen)
 
   return (
@@ -4831,6 +4857,13 @@ function LocalChessGame({
                   className="rounded-md border border-slate-300 bg-white px-3 py-1.5 text-xs font-semibold text-slate-700"
                 >
                   Quit
+                </button>
+                <button
+                  type="button"
+                  onClick={handleGoHome}
+                  className="rounded-md border border-slate-300 bg-white px-3 py-1.5 text-xs font-semibold text-slate-700"
+                >
+                  Home
                 </button>
               </>
             ) : null}
@@ -4863,9 +4896,19 @@ function LocalChessGame({
               setIsMenuOpen(false)
               handleQuitGame()
             }}
-            className="w-full rounded px-2 py-1.5 text-left text-sm font-medium text-slate-700 hover:bg-slate-100"
+            className="mb-1 w-full rounded px-2 py-1.5 text-left text-sm font-medium text-slate-700 hover:bg-slate-100"
           >
             Quit game
+          </button>
+          <button
+            type="button"
+            onClick={() => {
+              setIsMenuOpen(false)
+              handleGoHome()
+            }}
+            className="w-full rounded px-2 py-1.5 text-left text-sm font-medium text-slate-700 hover:bg-slate-100"
+          >
+            Home page
           </button>
         </div>
       ) : null}
