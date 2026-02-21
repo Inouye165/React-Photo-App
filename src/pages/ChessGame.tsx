@@ -811,6 +811,7 @@ function ChessStoryModal({
     () => activeNarrationText.split(/\s+/).map((word) => word.trim()).filter((word) => word.length > 0),
     [activeNarrationText],
   )
+  const woodTexturePieces = useWoodTexturePieceSet()
   const activeNarrationWordIndex = useMemo(() => {
     if (!isNarrating || narrationWords.length === 0) return -1
 
@@ -2238,6 +2239,7 @@ function ChessStoryModal({
                   id={`story-board-${currentPage}`}
                   position={boardPosition}
                   boardOrientation="white"
+                  customPieces={woodTexturePieces}
                   arePiecesDraggable={false}
                   showBoardNotation={false}
                   customSquareStyles={customSquareStyles}
@@ -2284,6 +2286,7 @@ function ChessTutorPanel({
   openStoryOnLoad,
   fullscreen,
   initialStoryId,
+  allowAnalyzeTab = true,
 }: {
   analysis: ChessTutorAnalysis | null
   modelLabel: string
@@ -2294,8 +2297,14 @@ function ChessTutorPanel({
   openStoryOnLoad?: boolean
   fullscreen?: boolean
   initialStoryId?: string
+  allowAnalyzeTab?: boolean
 }) {
-  const [activeTab, setActiveTab] = useState<TutorTab>(() => initialTab ?? 'analyze')
+  const [activeTab, setActiveTab] = useState<TutorTab>(() => {
+    const defaultTab: TutorTab = allowAnalyzeTab ? 'lesson' : 'history'
+    const requested = initialTab ?? defaultTab
+    if (!allowAnalyzeTab && requested === 'analyze') return 'history'
+    return requested
+  })
   const [activeLessonIndex, setActiveLessonIndex] = useState(0)
   const [animationFrame, setAnimationFrame] = useState(0)
   const [activeLessonSection, setActiveLessonSection] = useState<LessonSection>('pieces')
@@ -2328,6 +2337,7 @@ function ChessTutorPanel({
   const notationTargetRankNumber = Number(notationTargetRank)
   const notationTargetX = notationTargetFileIndex >= 0 ? (notationTargetFileIndex + 0.5) * 31.25 : 125
   const notationTargetY = notationTargetRankNumber > 0 ? (8 - notationTargetRankNumber + 0.5) * 31.25 : 125
+  const woodTexturePieces = useWoodTexturePieceSet()
 
   const notationBoardHighlights = useMemo(() => {
     if (notationFocus === 'rank') return RANK_DEMO_SQUARES
@@ -2336,9 +2346,19 @@ function ChessTutorPanel({
   }, [notationFocus, activeNotationMove])
 
   useEffect(() => {
+    if (!allowAnalyzeTab && activeTab === 'analyze') {
+      setActiveTab('history')
+    }
+  }, [activeTab, allowAnalyzeTab])
+
+  useEffect(() => {
     if (!initialTab) return
+    if (!allowAnalyzeTab && initialTab === 'analyze') {
+      setActiveTab('history')
+      return
+    }
     setActiveTab(initialTab)
-  }, [initialTab])
+  }, [allowAnalyzeTab, initialTab])
 
   useEffect(() => {
     if (!initialStoryId) return
@@ -2439,18 +2459,20 @@ function ChessTutorPanel({
           >
             Chess history
           </button>
-          <button
-            type="button"
-            onClick={() => setActiveTab('analyze')}
-            aria-pressed={activeTab === 'analyze'}
-            className={`rounded border px-2 py-1 text-xs font-semibold ${activeTab === 'analyze' ? 'border-blue-300 bg-blue-50 text-blue-700' : 'border-slate-200 bg-white text-slate-600 hover:bg-slate-50'}`}
-          >
-            Analyze game
-          </button>
+          {allowAnalyzeTab ? (
+            <button
+              type="button"
+              onClick={() => setActiveTab('analyze')}
+              aria-pressed={activeTab === 'analyze'}
+              className={`rounded border px-2 py-1 text-xs font-semibold ${activeTab === 'analyze' ? 'border-blue-300 bg-blue-50 text-blue-700' : 'border-slate-200 bg-white text-slate-600 hover:bg-slate-50'}`}
+            >
+              Analyze game
+            </button>
+          ) : null}
         </div>
       </div>
       <div className="min-h-0 flex-1 rounded-lg border border-dashed border-slate-200 bg-white px-3 py-2 text-sm">
-        {activeTab === 'analyze' ? (
+        {activeTab === 'analyze' && allowAnalyzeTab ? (
           <>
             <button
               type="button"
@@ -2561,6 +2583,7 @@ function ChessTutorPanel({
                           : DISCOVERED_CHECK_PATTERN.frames[discoveredCheckFrame]
                   }
                   boardWidth={250}
+                  customPieces={woodTexturePieces}
                   showBoardNotation
                   arePiecesDraggable={false}
                   customArrows={
@@ -2853,12 +2876,77 @@ function ChessTutorPanel({
 
 const START_FEN = 'rnbqkbnr/pppppppp/8/8/8/8/PPPPPPPP/RNBQKBNR w KQkq - 0 1'
 
-const CHESSBOARD_MAX_SIZE = 720
+const CHESSBOARD_MAX_SIZE = 1200
+
+type CustomPieceProps = {
+  squareWidth: number
+  isDragging: boolean
+}
+
+type ChessPieceCode = 'wP' | 'wN' | 'wB' | 'wR' | 'wQ' | 'wK' | 'bP' | 'bN' | 'bB' | 'bR' | 'bQ' | 'bK'
+
+const WOOD_TEXTURE_SVG_ASSETS: Record<ChessPieceCode, string> = {
+  wP: 'https://upload.wikimedia.org/wikipedia/commons/4/45/Chess_plt45.svg',
+  wN: 'https://upload.wikimedia.org/wikipedia/commons/7/70/Chess_nlt45.svg',
+  wB: 'https://upload.wikimedia.org/wikipedia/commons/b/b1/Chess_blt45.svg',
+  wR: 'https://upload.wikimedia.org/wikipedia/commons/7/72/Chess_rlt45.svg',
+  wQ: 'https://upload.wikimedia.org/wikipedia/commons/1/15/Chess_qlt45.svg',
+  wK: 'https://upload.wikimedia.org/wikipedia/commons/4/42/Chess_klt45.svg',
+  bP: 'https://upload.wikimedia.org/wikipedia/commons/c/c7/Chess_pdt45.svg',
+  bN: 'https://upload.wikimedia.org/wikipedia/commons/e/ef/Chess_ndt45.svg',
+  bB: 'https://upload.wikimedia.org/wikipedia/commons/9/98/Chess_bdt45.svg',
+  bR: 'https://upload.wikimedia.org/wikipedia/commons/f/ff/Chess_rdt45.svg',
+  bQ: 'https://upload.wikimedia.org/wikipedia/commons/4/47/Chess_qdt45.svg',
+  bK: 'https://upload.wikimedia.org/wikipedia/commons/f/f0/Chess_kdt45.svg',
+}
+
+function useWoodTexturePieceSet() {
+  return useMemo(() => {
+    const createPieceRenderer = (pieceCode: ChessPieceCode) => {
+      const src = WOOD_TEXTURE_SVG_ASSETS[pieceCode]
+      return function WoodTexturePiece({ squareWidth, isDragging }: CustomPieceProps): React.JSX.Element {
+        return (
+          <img
+            src={src}
+            alt=""
+            draggable={false}
+            style={{
+              width: squareWidth,
+              height: squareWidth,
+              opacity: isDragging ? 0.82 : 1,
+              userSelect: 'none',
+              WebkitUserSelect: 'none',
+              pointerEvents: 'none',
+            }}
+          />
+        )
+      }
+    }
+
+    return {
+      wP: createPieceRenderer('wP'),
+      wN: createPieceRenderer('wN'),
+      wB: createPieceRenderer('wB'),
+      wR: createPieceRenderer('wR'),
+      wQ: createPieceRenderer('wQ'),
+      wK: createPieceRenderer('wK'),
+      bP: createPieceRenderer('bP'),
+      bN: createPieceRenderer('bN'),
+      bB: createPieceRenderer('bB'),
+      bR: createPieceRenderer('bR'),
+      bQ: createPieceRenderer('bQ'),
+      bK: createPieceRenderer('bK'),
+    }
+  }, [])
+}
 
 const CHESSBOARD_THEME = {
-  customLightSquareStyle: { backgroundColor: 'var(--color-slate-50)' },
-  customDarkSquareStyle: { backgroundColor: 'var(--color-slate-200)' },
-  customBoardStyle: { borderRadius: 10 },
+  customLightSquareStyle: { backgroundColor: '#f1dfc2' },
+  customDarkSquareStyle: { backgroundColor: '#9b6a43' },
+  customBoardStyle: {
+    borderRadius: 10,
+    boxShadow: 'inset 0 0 0 1px rgba(60,42,28,0.35), 0 10px 28px rgba(45,28,16,0.2)',
+  },
 } as const
 
 const PROMOTION_PIECES: { value: PromotionPiece; label: string; symbol: string }[] = [
@@ -3559,8 +3647,10 @@ function OnlineChessGame({
   const [tutorAnalysis, setTutorAnalysis] = useState<ChessTutorAnalysis | null>(null)
   const [tutorError, setTutorError] = useState<string | null>(null)
   const [tutorModel, setTutorModel] = useState<string>('gemini')
+  const [isMenuOpen, setIsMenuOpen] = useState(false)
 
   const moveRows = useMemo(() => (moves ?? []) as MoveRow[], [moves])
+  const woodTexturePieces = useWoodTexturePieceSet()
   const hintedByPly = useMemo(() => {
     const map = new Map<number, boolean>()
     for (const move of moveRows) {
@@ -3569,10 +3659,6 @@ function OnlineChessGame({
       map.set(ply, move.hint_used === true)
     }
     return map
-  }, [moveRows])
-
-  useEffect(() => {
-    console.table(moveRows.map((m) => ({ ply: m.ply, uci: m.uci, hinted: m.hint_used })))
   }, [moveRows])
 
   // Clear optimistic FEN once the realtime event delivers the new move
@@ -3770,7 +3856,7 @@ function OnlineChessGame({
     if (isAborted) return { isOver: true, reason: 'aborted' as GameEndReason, winner: null }
     return detectGameEnd(normalizedDisplayFen)
   }, [isAborted, normalizedDisplayFen])
-  const tutorialFullscreenMode = Boolean(openTutorFullscreen && initialTutorTab === 'lesson')
+  const tutorialFullscreenMode = Boolean(openTutorFullscreen)
   const canMove = !isAborted && !gameEnd.isOver && !isViewingPast && isMember && isUserTurn && !pendingPromotion
   const boardOrientation: 'white' | 'black' = isCurrentBlack ? 'black' : 'white'
   const boardKey = `${boardId}:${boardOrientation}:${normalizedDisplayFen}`
@@ -3813,37 +3899,64 @@ function OnlineChessGame({
   }, [moveRows, normalizedDisplayFen])
 
   return (
-    <div className="flex h-full min-h-[100dvh] flex-col rounded-none bg-slate-100/90 p-3 shadow-sm sm:p-4 lg:min-h-0 lg:overflow-hidden">
-      <div className="mb-4 flex flex-none flex-wrap items-center justify-between gap-3">
-        <div className="flex min-w-0 flex-1 flex-col gap-2">
-          <h2 className="text-lg font-semibold">Chess</h2>
-          <div className="text-xs text-slate-500">
-            Status: {game?.status ?? 'loading'}
-            {currentMember?.role ? ` · You are ${currentMember.role}` : ' · Spectating'}
+    <div className="relative flex h-[100dvh] overflow-hidden rounded-none bg-slate-100/90 p-2 shadow-sm sm:p-3">
+      <div className="flex min-h-0 w-full flex-1 flex-col">
+        <div className="mb-2 flex flex-none items-center justify-between gap-3">
+          <h2 className="text-base font-semibold sm:text-lg">Chess</h2>
+          <div className="flex items-center gap-2">
+            {tutorialFullscreenMode ? (
+              <>
+                <button
+                  type="button"
+                  onClick={() => navigate(-1)}
+                  className="rounded-md border border-slate-300 bg-white px-3 py-1.5 text-xs font-semibold text-slate-700"
+                >
+                  Back
+                </button>
+                <button
+                  type="button"
+                  onClick={() => { void handleQuitGame() }}
+                  className="rounded-md border border-slate-300 bg-white px-3 py-1.5 text-xs font-semibold text-slate-700"
+                >
+                  Quit
+                </button>
+              </>
+            ) : null}
+            <button
+              type="button"
+              aria-label={isMenuOpen ? 'Close game menu' : 'Open game menu'}
+              aria-expanded={isMenuOpen}
+              onClick={() => setIsMenuOpen((prev) => !prev)}
+              className="inline-flex h-9 w-9 items-center justify-center rounded-md border border-slate-300 bg-white text-slate-700 shadow-sm"
+            >
+              ☰
+            </button>
           </div>
-          <ChessModeSwitcher
-            activeMode="human"
-            onComputer={() => navigate('/games/local?tab=analyze')}
-            onHuman={() => navigate('/games')}
-            onTutorials={() => navigate('/games/local?tab=lesson&tutor=1&story=1&storyId=architect-of-squares')}
-          />
         </div>
-        <div className="flex items-center gap-2">
+      {isMenuOpen ? (
+        <div className="absolute right-2 top-14 z-40 w-44 rounded-lg border border-slate-200 bg-white p-2 shadow-lg sm:right-3 sm:top-16">
           <button
-            onClick={() => setShowRestartConfirm(true)}
-            disabled={restartLoading}
-            className="rounded-md border border-slate-300 bg-white px-3 py-1 text-xs font-semibold text-slate-700 disabled:opacity-50"
+            type="button"
+            onClick={() => {
+              setIsMenuOpen(false)
+              navigate(-1)
+            }}
+            className="mb-1 w-full rounded px-2 py-1.5 text-left text-sm font-medium text-slate-700 hover:bg-slate-100"
           >
-            {restartLoading ? 'Restarting…' : 'Restart game'}
+            Back
           </button>
           <button
-            onClick={() => { void handleQuitGame() }}
-            className="rounded-md border border-slate-200 bg-white px-3 py-1 text-xs font-semibold text-slate-600"
+            type="button"
+            onClick={() => {
+              setIsMenuOpen(false)
+              void handleQuitGame()
+            }}
+            className="w-full rounded px-2 py-1.5 text-left text-sm font-medium text-slate-700 hover:bg-slate-100"
           >
-            Quit
+            Quit game
           </button>
         </div>
-      </div>
+      ) : null}
       {error ? (
         <div className="mb-3 flex flex-wrap items-center justify-between gap-3 rounded-md border border-red-200 bg-red-50 px-3 py-2 text-sm text-red-700">
           <span>{error}</span>
@@ -3903,70 +4016,19 @@ function OnlineChessGame({
           onCancel={() => setPendingPromotion(null)}
         />
       ) : null}
-      <div className={`flex flex-col gap-6 lg:min-h-0 lg:flex-1 lg:flex-row lg:items-stretch ${tutorialFullscreenMode ? 'gap-0' : ''}`}>
-        <div className={`${tutorialFullscreenMode ? 'hidden' : 'flex'} flex-col gap-4 rounded-2xl border border-slate-200 bg-white/80 p-4 shadow-md lg:min-h-0 lg:min-w-0 lg:flex-1`}>
+      <div className={`flex min-h-0 flex-1 flex-col ${tutorialFullscreenMode ? 'gap-0' : 'gap-2 landscape:flex-row lg:flex-row'}`}>
+        <div className={`${tutorialFullscreenMode ? 'hidden' : 'flex'} min-h-0 min-w-0 flex-1 flex-col rounded-xl border border-slate-200/80 bg-white/80 p-2 shadow-sm sm:p-3`}>
           <div className="flex items-center justify-between">
             {renderPlayerLabel(topPlayer || null, topIsWhite ? currentTurn === 'w' : currentTurn === 'b', topFallback)}
           </div>
-          <div className="flex flex-wrap items-center justify-between gap-3 rounded-lg bg-slate-50 px-3 py-2 text-xs text-slate-600">
-            <div className="flex items-center gap-2">
-              <button
-                onClick={() => setViewPly((prev) => Math.max(0, prev - 1))}
-                disabled={viewPly === 0}
-                className="rounded-md border border-slate-200 bg-white px-2 py-1 text-xs font-semibold text-slate-700 disabled:opacity-50"
-              >
-                Undo
-              </button>
-              <button
-                onClick={() => setViewPly((prev) => Math.min(moveRows.length, prev + 1))}
-                disabled={viewPly >= moveRows.length}
-                className="rounded-md border border-slate-200 bg-white px-2 py-1 text-xs font-semibold text-slate-700 disabled:opacity-50"
-              >
-                Redo
-              </button>
-            </div>
-            <div className="flex flex-wrap items-center gap-3">
-              <label className="flex items-center gap-2">
-                <input
-                  type="checkbox"
-                  checked={showLegalMoves}
-                  onChange={(event) => setShowLegalMoves(event.target.checked)}
-                  className="h-4 w-4"
-                />
-                Show legal moves
-              </label>
-              <label className="flex items-center gap-2">
-                <input
-                  type="checkbox"
-                  checked={showThreats}
-                  onChange={(event) => setShowThreats(event.target.checked)}
-                  className="h-4 w-4"
-                />
-                Highlight threats
-              </label>
-              <label className="flex items-center gap-2">
-                <input
-                  type="checkbox"
-                  checked={showControlledArea}
-                  onChange={(event) => setShowControlledArea(event.target.checked)}
-                  className="h-4 w-4"
-                />
-                Highlight controlled area
-              </label>
-            </div>
-            {isViewingPast ? (
-              <span className="text-xs text-slate-500">Viewing move {viewPly}/{moveRows.length}</span>
-            ) : (
-              <span className="text-xs text-slate-500">Live</span>
-            )}
-          </div>
-          <div ref={boardContainerRef} className="flex w-full items-center justify-center overflow-hidden lg:min-h-0 lg:flex-1">
-            <div className="w-full rounded-xl border border-slate-200 bg-white p-1 shadow-sm" style={{ maxWidth: boardSize + 8 }}>
+          <div ref={boardContainerRef} className="flex min-h-0 w-full flex-1 items-center justify-center overflow-hidden">
+            <div className="w-full ring-1 ring-slate-200 shadow-sm" style={{ maxWidth: boardSize + 2 }}>
               <Chessboard
                 id={boardId}
                 key={boardKey}
                 position={normalizedDisplayFen}
                 boardOrientation={boardOrientation}
+                customPieces={woodTexturePieces}
                 showBoardNotation
                 {...CHESSBOARD_THEME}
                 onPieceDrop={(src: Square, dst: Square) => {
@@ -4000,7 +4062,94 @@ function OnlineChessGame({
           </div>
         </div>
 
-        <aside className={`${tutorialFullscreenMode ? 'hidden' : 'flex'} min-h-0 w-full flex-col rounded-2xl border border-slate-200 bg-white/80 p-4 shadow-md lg:w-[360px] lg:shrink-0`}>
+        <aside className={`${tutorialFullscreenMode ? 'hidden' : 'flex'} min-h-0 w-full shrink-0 flex-col overflow-y-auto rounded-xl border border-slate-200 bg-white p-4 shadow-sm landscape:w-[360px] landscape:max-w-[44vw] lg:w-[380px]`}>
+          <div className="mb-3 flex items-center justify-between">
+            <div className="text-sm font-semibold text-slate-700">Moves & controls</div>
+            <button
+              type="button"
+              onClick={() => setIsMenuOpen((prev) => !prev)}
+              className="rounded-md border border-slate-200 bg-white px-2 py-1 text-xs font-semibold text-slate-600"
+            >
+              {isMenuOpen ? 'Docked' : 'Dock'}
+            </button>
+          </div>
+          <div className="mb-3 text-xs text-slate-500">
+            Status: {game?.status ?? 'loading'}
+            {currentMember?.role ? ` · You are ${currentMember.role}` : ' · Spectating'}
+          </div>
+          <div className="mb-3">
+            <ChessModeSwitcher
+              activeMode="human"
+              onComputer={() => navigate('/games/local?tab=analyze')}
+              onHuman={() => navigate('/games')}
+              onTutorials={() => navigate('/games/local?tab=lesson&tutor=1&story=1&storyId=architect-of-squares')}
+            />
+          </div>
+          <div className="mb-3 flex items-center gap-2">
+            <button
+              onClick={() => setShowRestartConfirm(true)}
+              disabled={restartLoading}
+              className="rounded-md border border-slate-300 bg-white px-3 py-1 text-xs font-semibold text-slate-700 disabled:opacity-50"
+            >
+              {restartLoading ? 'Restarting…' : 'Restart game'}
+            </button>
+            <button
+              onClick={() => { void handleQuitGame() }}
+              className="rounded-md border border-slate-200 bg-white px-3 py-1 text-xs font-semibold text-slate-600"
+            >
+              Resign
+            </button>
+          </div>
+          <div className="mb-3 rounded-lg bg-slate-50 px-3 py-2 text-xs text-slate-600">
+            <div className="mb-2 flex items-center gap-2">
+              <button
+                onClick={() => setViewPly((prev) => Math.max(0, prev - 1))}
+                disabled={viewPly === 0}
+                className="rounded-md border border-slate-200 bg-white px-2 py-1 text-xs font-semibold text-slate-700 disabled:opacity-50"
+              >
+                Undo
+              </button>
+              <button
+                onClick={() => setViewPly((prev) => Math.min(moveRows.length, prev + 1))}
+                disabled={viewPly >= moveRows.length}
+                className="rounded-md border border-slate-200 bg-white px-2 py-1 text-xs font-semibold text-slate-700 disabled:opacity-50"
+              >
+                Redo
+              </button>
+            </div>
+            <div className="flex flex-col gap-2">
+              <label className="flex items-center gap-2">
+                <input
+                  type="checkbox"
+                  checked={showLegalMoves}
+                  onChange={(event) => setShowLegalMoves(event.target.checked)}
+                  className="h-4 w-4"
+                />
+                Show legal moves
+              </label>
+              <label className="flex items-center gap-2">
+                <input
+                  type="checkbox"
+                  checked={showThreats}
+                  onChange={(event) => setShowThreats(event.target.checked)}
+                  className="h-4 w-4"
+                />
+                Highlight threats
+              </label>
+              <label className="flex items-center gap-2">
+                <input
+                  type="checkbox"
+                  checked={showControlledArea}
+                  onChange={(event) => setShowControlledArea(event.target.checked)}
+                  className="h-4 w-4"
+                />
+                Highlight controlled area
+              </label>
+            </div>
+            <div className="mt-2 text-xs text-slate-500">
+              {isViewingPast ? `Viewing move ${viewPly}/${moveRows.length}` : 'Live'}
+            </div>
+          </div>
           <div className="mb-3 flex items-center justify-between">
             <div className="text-sm font-semibold text-slate-700">Move History</div>
             {loading || movesLoading ? (
@@ -4135,6 +4284,44 @@ function OnlineChessGame({
               )}
             </div>
           </div>
+          <div className="mb-4 rounded-lg border border-slate-200 bg-slate-50 px-3 py-2">
+            <div className="mb-2 flex items-center justify-between">
+              <div className="text-xs font-semibold text-slate-600">Game analysis</div>
+              <span className="text-[11px] text-slate-500">{tutorModel}</span>
+            </div>
+            <button
+              type="button"
+              onClick={() => { void handleAnalyzeGameForMe() }}
+              disabled={tutorLoading}
+              className="mb-2 mr-2 rounded border border-slate-200 bg-white px-2 py-1 text-xs font-semibold text-slate-700 hover:bg-slate-50 disabled:opacity-50"
+            >
+              Analyze game
+            </button>
+            <button
+              type="button"
+              onClick={() => { void handleAnalyzeGameForMe() }}
+              disabled={tutorLoading}
+              className="mb-2 rounded border border-slate-200 bg-white px-2 py-1 text-xs font-semibold text-slate-700 hover:bg-slate-50 disabled:opacity-50"
+            >
+              {tutorLoading ? 'Analyzing…' : 'Analyze game for me'}
+            </button>
+            {tutorError ? <div className="text-xs text-red-600">{tutorError}</div> : null}
+            {!tutorError && !tutorAnalysis && !tutorLoading ? (
+              <div className="text-xs text-slate-500">Run analysis from the menu to review hints without covering the board.</div>
+            ) : null}
+            {tutorAnalysis ? (
+              <div className="space-y-2 text-xs text-slate-700">
+                <p>{tutorAnalysis.positionSummary}</p>
+                {tutorAnalysis.hints.length ? (
+                  <ul className="list-disc pl-4">
+                    {tutorAnalysis.hints.slice(0, 3).map((hint) => (
+                      <li key={hint}>{hint}</li>
+                    ))}
+                  </ul>
+                ) : null}
+              </div>
+            ) : null}
+          </div>
           <div className="min-h-0 flex-1 overflow-y-auto">
             {moveHistoryRowsNewestFirst.length ? (
               <table className="w-full text-left text-sm text-slate-700">
@@ -4190,21 +4377,41 @@ function OnlineChessGame({
           <div className="mt-4 text-xs text-slate-500">
             Game: {gameId}
           </div>
+          {!tutorialFullscreenMode ? (
+            <div className="mt-4">
+              <ChessTutorPanel
+                analysis={tutorAnalysis}
+                modelLabel=""
+                loading={tutorLoading}
+                error={tutorError}
+                onAnalyze={() => { void handleAnalyzeGameForMe() }}
+                initialTab={initialTutorTab}
+                openStoryOnLoad={openStoryOnLoad}
+                fullscreen={false}
+                initialStoryId={initialStoryId}
+                allowAnalyzeTab={false}
+              />
+            </div>
+          ) : null}
         </aside>
-
-        <ChessTutorPanel
-          analysis={tutorAnalysis}
-          modelLabel={tutorModel}
-          loading={tutorLoading}
-          error={tutorError}
-          onAnalyze={() => { void handleAnalyzeGameForMe() }}
-          initialTab={initialTutorTab}
-          openStoryOnLoad={openStoryOnLoad}
-          fullscreen={tutorialFullscreenMode}
-          initialStoryId={initialStoryId}
-        />
+        {tutorialFullscreenMode ? (
+          <div className="min-h-0 flex-1 rounded-xl border border-slate-200 bg-white p-2 sm:p-3">
+            <ChessTutorPanel
+              analysis={tutorAnalysis}
+              modelLabel={tutorModel}
+              loading={tutorLoading}
+              error={tutorError}
+              onAnalyze={() => { void handleAnalyzeGameForMe() }}
+              initialTab={initialTutorTab}
+              openStoryOnLoad={openStoryOnLoad}
+              fullscreen
+              initialStoryId={initialStoryId}
+            />
+          </div>
+        ) : null}
       </div>
       <Toast message={toastMessage} severity={toastSeverity} onClose={() => setToastMessage(null)} />
+    </div>
     </div>
   )
 }
@@ -4239,8 +4446,10 @@ function LocalChessGame({
   const [tutorError, setTutorError] = useState<string | null>(null)
   const [tutorModel, setTutorModel] = useState<string>('gemini')
   const lastShownPlyRef = useRef<number | null>(null)
+  const [isMenuOpen, setIsMenuOpen] = useState(false)
 
   const moveRows = useMemo(() => localMoves, [localMoves])
+  const woodTexturePieces = useWoodTexturePieceSet()
   const {
     displayFen,
     moveHistory,
@@ -4448,36 +4657,67 @@ function LocalChessGame({
     navigate('/games')
   }
 
-  const tutorialFullscreenMode = Boolean(openTutorFullscreen && initialTutorTab === 'lesson')
+  const tutorialFullscreenMode = Boolean(openTutorFullscreen)
 
   return (
-    <div className="flex h-full min-h-[100dvh] flex-col rounded-none bg-slate-100/90 p-3 shadow-sm sm:p-4 lg:min-h-0 lg:overflow-hidden">
-      <div className="mb-4 flex flex-none flex-wrap items-center justify-between gap-3">
-        <div className="flex min-w-0 flex-1 flex-col gap-2">
-          <h2 className="text-lg font-semibold">Chess (Local)</h2>
-          <div className="text-xs text-slate-500">Status: {engineThinking ? 'thinking' : 'ready'}</div>
-          <ChessModeSwitcher
-            activeMode="computer"
-            onComputer={() => navigate('/games/local?tab=analyze')}
-            onHuman={() => navigate('/games')}
-            onTutorials={() => navigate('/games/local?tab=lesson&tutor=1&story=1&storyId=architect-of-squares')}
-          />
+    <div className="relative flex h-[100dvh] overflow-hidden rounded-none bg-slate-100/90 p-2 shadow-sm sm:p-3">
+      <div className="flex min-h-0 w-full flex-1 flex-col">
+        <div className="mb-2 flex flex-none items-center justify-between gap-3">
+          <h2 className="text-base font-semibold sm:text-lg">Chess (Local)</h2>
+          <div className="flex items-center gap-2">
+            {tutorialFullscreenMode ? (
+              <>
+                <button
+                  type="button"
+                  onClick={() => navigate(-1)}
+                  className="rounded-md border border-slate-300 bg-white px-3 py-1.5 text-xs font-semibold text-slate-700"
+                >
+                  Back
+                </button>
+                <button
+                  type="button"
+                  onClick={handleQuitGame}
+                  className="rounded-md border border-slate-300 bg-white px-3 py-1.5 text-xs font-semibold text-slate-700"
+                >
+                  Quit
+                </button>
+              </>
+            ) : null}
+            <button
+              type="button"
+              aria-label={isMenuOpen ? 'Close game menu' : 'Open game menu'}
+              aria-expanded={isMenuOpen}
+              onClick={() => setIsMenuOpen((prev) => !prev)}
+              className="inline-flex h-9 w-9 items-center justify-center rounded-md border border-slate-300 bg-white text-slate-700 shadow-sm"
+            >
+              ☰
+            </button>
+          </div>
         </div>
-        <div className="flex items-center gap-2">
+      {isMenuOpen ? (
+        <div className="absolute right-2 top-14 z-40 w-44 rounded-lg border border-slate-200 bg-white p-2 shadow-lg sm:right-3 sm:top-16">
           <button
-            onClick={() => setShowRestartConfirm(true)}
-            className="rounded-md border border-slate-300 bg-white px-3 py-1 text-xs font-semibold text-slate-700"
+            type="button"
+            onClick={() => {
+              setIsMenuOpen(false)
+              navigate(-1)
+            }}
+            className="mb-1 w-full rounded px-2 py-1.5 text-left text-sm font-medium text-slate-700 hover:bg-slate-100"
           >
-            Restart
+            Back
           </button>
           <button
-            onClick={handleQuitGame}
-            className="rounded-md border border-slate-200 bg-white px-3 py-1 text-xs font-semibold text-slate-600"
+            type="button"
+            onClick={() => {
+              setIsMenuOpen(false)
+              handleQuitGame()
+            }}
+            className="w-full rounded px-2 py-1.5 text-left text-sm font-medium text-slate-700 hover:bg-slate-100"
           >
-            Quit
+            Quit game
           </button>
         </div>
-      </div>
+      ) : null}
       <GameEndPanel
         reason={gameEnd.reason}
         winner={gameEnd.winner}
@@ -4503,61 +4743,17 @@ function LocalChessGame({
           onCancel={() => setPendingPromotion(null)}
         />
       ) : null}
-      <div className={`flex flex-col gap-6 lg:min-h-0 lg:flex-1 lg:flex-row lg:items-stretch ${tutorialFullscreenMode ? 'gap-0' : ''}`}>
-        <div className={`${tutorialFullscreenMode ? 'hidden' : 'flex'} flex-col gap-4 rounded-2xl border border-slate-200 bg-white/80 p-4 shadow-md lg:min-h-0 lg:min-w-0 lg:flex-1`}>
+      <div className={`flex min-h-0 flex-1 flex-col ${tutorialFullscreenMode ? 'gap-0' : 'gap-2 landscape:flex-row lg:flex-row'}`}>
+        <div className={`${tutorialFullscreenMode ? 'hidden' : 'flex'} min-h-0 min-w-0 flex-1 flex-col rounded-xl border border-slate-200/80 bg-white/80 p-2 shadow-sm sm:p-3`}>
           <div className="flex items-center justify-between">
             {renderPlayerLabel(topPlayer || null, topIsWhite ? currentTurn === 'w' : currentTurn === 'b', 'Stockfish')}
           </div>
-          <div className="flex flex-wrap items-center justify-between gap-3 rounded-lg bg-slate-50 px-3 py-2 text-xs text-slate-600">
-            <div className="flex items-center gap-2">
-              <button
-                onClick={handleUndoMove}
-                disabled={viewPly === 0}
-                className="rounded-md border border-slate-200 bg-white px-2 py-1 text-xs font-semibold text-slate-700 disabled:opacity-50"
-              >
-                Undo
-              </button>
-            </div>
-            <div className="flex flex-wrap items-center gap-3">
-              <label className="flex items-center gap-2">
-                <input
-                  type="checkbox"
-                  checked={showLegalMoves}
-                  onChange={(event) => setShowLegalMoves(event.target.checked)}
-                  className="h-4 w-4"
-                />
-                Show legal moves
-              </label>
-              <label className="flex items-center gap-2">
-                <input
-                  type="checkbox"
-                  checked={showThreats}
-                  onChange={(event) => setShowThreats(event.target.checked)}
-                  className="h-4 w-4"
-                />
-                Highlight threats
-              </label>
-              <label className="flex items-center gap-2">
-                <input
-                  type="checkbox"
-                  checked={showControlledArea}
-                  onChange={(event) => setShowControlledArea(event.target.checked)}
-                  className="h-4 w-4"
-                />
-                Highlight controlled area
-              </label>
-            </div>
-            {isViewingPast ? (
-              <span className="text-xs text-slate-500">Viewing move {viewPly}/{moveRows.length}</span>
-            ) : (
-              <span className="text-xs text-slate-500">Live</span>
-            )}
-          </div>
-          <div ref={boardContainerRef} className="flex w-full items-center justify-center overflow-hidden lg:min-h-0 lg:flex-1">
-            <div className="w-full rounded-xl border border-slate-200 bg-white p-1 shadow-sm" style={{ maxWidth: boardSize + 8 }}>
+          <div ref={boardContainerRef} className="flex min-h-0 w-full flex-1 items-center justify-center overflow-hidden">
+            <div className="w-full ring-1 ring-slate-200 shadow-sm" style={{ maxWidth: boardSize + 2 }}>
               <Chessboard
                 position={normalizedDisplayFen}
                 boardOrientation="white"
+                customPieces={woodTexturePieces}
                 showBoardNotation
                 {...CHESSBOARD_THEME}
                 onPieceDrop={(src: Square, dst: Square) => {
@@ -4591,7 +4787,83 @@ function LocalChessGame({
           </div>
         </div>
 
-        <aside className={`${tutorialFullscreenMode ? 'hidden' : 'flex'} min-h-0 w-full flex-col rounded-2xl border border-slate-200 bg-white/80 p-4 shadow-md lg:w-[360px] lg:shrink-0`}>
+        <aside className={`${tutorialFullscreenMode ? 'hidden' : 'flex'} min-h-0 w-full shrink-0 flex-col overflow-y-auto rounded-xl border border-slate-200 bg-white p-4 shadow-sm landscape:w-[360px] landscape:max-w-[44vw] lg:w-[380px]`}>
+          <div className="mb-3 flex items-center justify-between">
+            <div className="text-sm font-semibold text-slate-700">Moves & controls</div>
+            <button
+              type="button"
+              onClick={() => setIsMenuOpen((prev) => !prev)}
+              className="rounded-md border border-slate-200 bg-white px-2 py-1 text-xs font-semibold text-slate-600"
+            >
+              {isMenuOpen ? 'Docked' : 'Dock'}
+            </button>
+          </div>
+          <div className="mb-3 text-xs text-slate-500">Status: {engineThinking ? 'thinking' : 'ready'}</div>
+          <div className="mb-3">
+            <ChessModeSwitcher
+              activeMode="computer"
+              onComputer={() => navigate('/games/local?tab=analyze')}
+              onHuman={() => navigate('/games')}
+              onTutorials={() => navigate('/games/local?tab=lesson&tutor=1&story=1&storyId=architect-of-squares')}
+            />
+          </div>
+          <div className="mb-3 flex items-center gap-2">
+            <button
+              onClick={() => setShowRestartConfirm(true)}
+              className="rounded-md border border-slate-300 bg-white px-3 py-1 text-xs font-semibold text-slate-700"
+            >
+              Restart
+            </button>
+            <button
+              onClick={handleQuitGame}
+              className="rounded-md border border-slate-200 bg-white px-3 py-1 text-xs font-semibold text-slate-600"
+            >
+              Resign
+            </button>
+          </div>
+          <div className="mb-3 rounded-lg bg-slate-50 px-3 py-2 text-xs text-slate-600">
+            <div className="mb-2 flex items-center gap-2">
+              <button
+                onClick={handleUndoMove}
+                disabled={viewPly === 0}
+                className="rounded-md border border-slate-200 bg-white px-2 py-1 text-xs font-semibold text-slate-700 disabled:opacity-50"
+              >
+                Undo
+              </button>
+            </div>
+            <div className="flex flex-col gap-2">
+              <label className="flex items-center gap-2">
+                <input
+                  type="checkbox"
+                  checked={showLegalMoves}
+                  onChange={(event) => setShowLegalMoves(event.target.checked)}
+                  className="h-4 w-4"
+                />
+                Show legal moves
+              </label>
+              <label className="flex items-center gap-2">
+                <input
+                  type="checkbox"
+                  checked={showThreats}
+                  onChange={(event) => setShowThreats(event.target.checked)}
+                  className="h-4 w-4"
+                />
+                Highlight threats
+              </label>
+              <label className="flex items-center gap-2">
+                <input
+                  type="checkbox"
+                  checked={showControlledArea}
+                  onChange={(event) => setShowControlledArea(event.target.checked)}
+                  className="h-4 w-4"
+                />
+                Highlight controlled area
+              </label>
+            </div>
+            <div className="mt-2 text-xs text-slate-500">
+              {isViewingPast ? `Viewing move ${viewPly}/${moveRows.length}` : 'Live'}
+            </div>
+          </div>
           <div className="mb-3 flex items-center justify-between">
             <div className="text-sm font-semibold text-slate-700">Move History</div>
           </div>
@@ -4656,6 +4928,44 @@ function LocalChessGame({
               )}
             </div>
           </div>
+          <div className="mb-4 rounded-lg border border-slate-200 bg-slate-50 px-3 py-2">
+            <div className="mb-2 flex items-center justify-between">
+              <div className="text-xs font-semibold text-slate-600">Game analysis</div>
+              <span className="text-[11px] text-slate-500">{tutorModel}</span>
+            </div>
+            <button
+              type="button"
+              onClick={() => { void handleAnalyzeGameForMe() }}
+              disabled={tutorLoading}
+              className="mb-2 mr-2 rounded border border-slate-200 bg-white px-2 py-1 text-xs font-semibold text-slate-700 hover:bg-slate-50 disabled:opacity-50"
+            >
+              Analyze game
+            </button>
+            <button
+              type="button"
+              onClick={() => { void handleAnalyzeGameForMe() }}
+              disabled={tutorLoading}
+              className="mb-2 rounded border border-slate-200 bg-white px-2 py-1 text-xs font-semibold text-slate-700 hover:bg-slate-50 disabled:opacity-50"
+            >
+              {tutorLoading ? 'Analyzing…' : 'Analyze game for me'}
+            </button>
+            {tutorError ? <div className="text-xs text-red-600">{tutorError}</div> : null}
+            {!tutorError && !tutorAnalysis && !tutorLoading ? (
+              <div className="text-xs text-slate-500">Run analysis from the menu to review hints without covering the board.</div>
+            ) : null}
+            {tutorAnalysis ? (
+              <div className="space-y-2 text-xs text-slate-700">
+                <p>{tutorAnalysis.positionSummary}</p>
+                {tutorAnalysis.hints.length ? (
+                  <ul className="list-disc pl-4">
+                    {tutorAnalysis.hints.slice(0, 3).map((hint) => (
+                      <li key={hint}>{hint}</li>
+                    ))}
+                  </ul>
+                ) : null}
+              </div>
+            ) : null}
+          </div>
           <div className="min-h-0 flex-1 overflow-y-auto">
             {moveHistoryRowsNewestFirst.length ? (
               <table className="w-full text-left text-sm text-slate-700">
@@ -4711,21 +5021,41 @@ function LocalChessGame({
           <div className="mt-4 text-xs text-slate-500">
             Game: local
           </div>
+          {!tutorialFullscreenMode ? (
+            <div className="mt-4">
+              <ChessTutorPanel
+                analysis={tutorAnalysis}
+                modelLabel=""
+                loading={tutorLoading}
+                error={tutorError}
+                onAnalyze={() => { void handleAnalyzeGameForMe() }}
+                initialTab={initialTutorTab}
+                openStoryOnLoad={openStoryOnLoad}
+                fullscreen={false}
+                initialStoryId={initialStoryId}
+                allowAnalyzeTab={false}
+              />
+            </div>
+          ) : null}
         </aside>
-
-        <ChessTutorPanel
-          analysis={tutorAnalysis}
-          modelLabel={tutorModel}
-          loading={tutorLoading}
-          error={tutorError}
-          onAnalyze={() => { void handleAnalyzeGameForMe() }}
-          initialTab={initialTutorTab}
-          openStoryOnLoad={openStoryOnLoad}
-          fullscreen={tutorialFullscreenMode}
-          initialStoryId={initialStoryId}
-        />
+        {tutorialFullscreenMode ? (
+          <div className="min-h-0 flex-1 rounded-xl border border-slate-200 bg-white p-2 sm:p-3">
+            <ChessTutorPanel
+              analysis={tutorAnalysis}
+              modelLabel={tutorModel}
+              loading={tutorLoading}
+              error={tutorError}
+              onAnalyze={() => { void handleAnalyzeGameForMe() }}
+              initialTab={initialTutorTab}
+              openStoryOnLoad={openStoryOnLoad}
+              fullscreen
+              initialStoryId={initialStoryId}
+            />
+          </div>
+        ) : null}
       </div>
       <Toast message={toastMessage} severity={toastSeverity} onClose={() => setToastMessage(null)} />
+    </div>
     </div>
   )
 }

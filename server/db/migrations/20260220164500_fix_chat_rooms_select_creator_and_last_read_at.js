@@ -34,7 +34,7 @@ exports.up = async function up(knex) {
   await knex.raw('DROP POLICY IF EXISTS "rooms_select_member" ON public.rooms;');
   await knex.raw(`
     CREATE POLICY "rooms_select_member" ON public.rooms
-    FOR SELECT TO authenticated
+    FOR SELECT
     USING (
       auth.uid() IS NOT NULL
       AND (
@@ -47,7 +47,7 @@ exports.up = async function up(knex) {
   await knex.raw('DROP POLICY IF EXISTS "Allow members to view messages" ON public.messages;');
   await knex.raw(`
     CREATE POLICY "Allow members to view messages" ON public.messages
-    FOR SELECT TO authenticated
+    FOR SELECT
     USING (
       auth.uid() IS NOT NULL
       AND public.is_room_member(room_id)
@@ -57,7 +57,7 @@ exports.up = async function up(knex) {
   await knex.raw('DROP POLICY IF EXISTS "Allow members to send messages" ON public.messages;');
   await knex.raw(`
     CREATE POLICY "Allow members to send messages" ON public.messages
-    FOR INSERT TO authenticated
+    FOR INSERT
     WITH CHECK (
       auth.uid() IS NOT NULL
       AND sender_id = auth.uid()
@@ -74,7 +74,7 @@ exports.down = async function down(knex) {
   await knex.raw('DROP POLICY IF EXISTS "rooms_select_member" ON public.rooms;');
   await knex.raw(`
     CREATE POLICY "rooms_select_member" ON public.rooms
-    FOR SELECT TO authenticated
+    FOR SELECT
     USING (
       auth.uid() IS NOT NULL
       AND public.is_room_member(id)

@@ -219,6 +219,27 @@ describe('ChessGame regression tests', () => {
   })
 
   // ── Fix #6: Restart requires confirmation ─────────────────────
+  it('keeps moves panel visible in online mode', async () => {
+    const user = userEvent.setup()
+    render(<ChessGame />)
+
+    const menuToggle = screen.getByRole('button', { name: 'Open game menu' })
+    expect(menuToggle).toHaveAttribute('aria-expanded', 'false')
+
+    const panel = screen.getByText('Moves & controls').closest('aside')
+    expect(panel).toBeInTheDocument()
+    expect(panel?.className).not.toContain('translate-x-full')
+    expect(panel?.className).not.toContain('translate-x-0')
+
+    await user.click(menuToggle)
+    expect(menuToggle).toHaveAttribute('aria-expanded', 'true')
+    expect(panel).toBeInTheDocument()
+
+    await user.click(screen.getByRole('button', { name: 'Close game menu' }))
+    expect(menuToggle).toHaveAttribute('aria-expanded', 'false')
+    expect(panel).toBeInTheDocument()
+  })
+
   it('shows confirmation dialog before restarting online game', async () => {
     const user = userEvent.setup()
     render(<ChessGame />)
@@ -255,6 +276,24 @@ describe('ChessGame regression tests', () => {
   })
 
   // ── Fix #6: Restart confirmation in local mode ────────────────
+  it('keeps moves panel visible in local mode', async () => {
+    const user = userEvent.setup()
+    setMockGameId('local')
+    render(<ChessGame />)
+
+    const menuToggle = screen.getByRole('button', { name: 'Open game menu' })
+    expect(menuToggle).toHaveAttribute('aria-expanded', 'false')
+
+    const panel = screen.getByText('Moves & controls').closest('aside')
+    expect(panel).toBeInTheDocument()
+    expect(panel?.className).not.toContain('translate-x-full')
+    expect(panel?.className).not.toContain('translate-x-0')
+
+    await user.click(menuToggle)
+    expect(menuToggle).toHaveAttribute('aria-expanded', 'true')
+    expect(panel).toBeInTheDocument()
+  })
+
   it('shows confirmation dialog before restarting local game', async () => {
     const user = userEvent.setup()
     setMockGameId('local')

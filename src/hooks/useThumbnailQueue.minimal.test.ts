@@ -15,6 +15,7 @@ let getThumbnail;
 let saveThumbnail;
 
 beforeAll(async () => {
+  vi.resetModules();
   // Set up mocks BEFORE dynamic imports
   vi.doMock('heic2any', () => ({ default: vi.fn() }));
   vi.doMock('heic-to', () => ({ heicTo: vi.fn() }));
@@ -47,6 +48,7 @@ beforeAll(async () => {
 
 describe('useThumbnailQueue Hook', () => {
   beforeEach(() => {
+    vi.useRealTimers();
     vi.clearAllMocks();
     
     // Setup mock implementations
