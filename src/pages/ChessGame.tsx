@@ -811,6 +811,7 @@ function ChessStoryModal({
     () => activeNarrationText.split(/\s+/).map((word) => word.trim()).filter((word) => word.length > 0),
     [activeNarrationText],
   )
+  const woodTexturePieces = useWoodTexturePieceSet()
   const activeNarrationWordIndex = useMemo(() => {
     if (!isNarrating || narrationWords.length === 0) return -1
 
@@ -2238,6 +2239,7 @@ function ChessStoryModal({
                   id={`story-board-${currentPage}`}
                   position={boardPosition}
                   boardOrientation="white"
+                  customPieces={woodTexturePieces}
                   arePiecesDraggable={false}
                   showBoardNotation={false}
                   customSquareStyles={customSquareStyles}
@@ -2335,6 +2337,7 @@ function ChessTutorPanel({
   const notationTargetRankNumber = Number(notationTargetRank)
   const notationTargetX = notationTargetFileIndex >= 0 ? (notationTargetFileIndex + 0.5) * 31.25 : 125
   const notationTargetY = notationTargetRankNumber > 0 ? (8 - notationTargetRankNumber + 0.5) * 31.25 : 125
+  const woodTexturePieces = useWoodTexturePieceSet()
 
   const notationBoardHighlights = useMemo(() => {
     if (notationFocus === 'rank') return RANK_DEMO_SQUARES
@@ -2580,6 +2583,7 @@ function ChessTutorPanel({
                           : DISCOVERED_CHECK_PATTERN.frames[discoveredCheckFrame]
                   }
                   boardWidth={250}
+                  customPieces={woodTexturePieces}
                   showBoardNotation
                   arePiecesDraggable={false}
                   customArrows={
@@ -2879,47 +2883,62 @@ type CustomPieceProps = {
   isDragging: boolean
 }
 
-function createWoodPiece(glyph: string, color: string) {
-  return function WoodPiece({ squareWidth, isDragging }: CustomPieceProps): React.JSX.Element {
-    const fontSize = Math.max(22, squareWidth * 0.72)
-    return (
-      <div
-        style={{
-          width: squareWidth,
-          height: squareWidth,
-          display: 'grid',
-          placeItems: 'center',
-          fontSize,
-          lineHeight: 1,
-          color,
-          textShadow: color === '#f7f0dc'
-            ? '0 1px 0 rgba(60,45,30,0.5), 0 2px 4px rgba(60,45,30,0.3)'
-            : '0 1px 0 rgba(0,0,0,0.2), 0 2px 4px rgba(60,35,20,0.35)',
-          opacity: isDragging ? 0.78 : 1,
-          userSelect: 'none',
-          WebkitUserSelect: 'none',
-        }}
-      >
-        {glyph}
-      </div>
-    )
-  }
+type ChessPieceCode = 'wP' | 'wN' | 'wB' | 'wR' | 'wQ' | 'wK' | 'bP' | 'bN' | 'bB' | 'bR' | 'bQ' | 'bK'
+
+const WOOD_TEXTURE_SVG_ASSETS: Record<ChessPieceCode, string> = {
+  wP: 'https://upload.wikimedia.org/wikipedia/commons/4/45/Chess_plt45.svg',
+  wN: 'https://upload.wikimedia.org/wikipedia/commons/7/70/Chess_nlt45.svg',
+  wB: 'https://upload.wikimedia.org/wikipedia/commons/b/b1/Chess_blt45.svg',
+  wR: 'https://upload.wikimedia.org/wikipedia/commons/7/72/Chess_rlt45.svg',
+  wQ: 'https://upload.wikimedia.org/wikipedia/commons/1/15/Chess_qlt45.svg',
+  wK: 'https://upload.wikimedia.org/wikipedia/commons/4/42/Chess_klt45.svg',
+  bP: 'https://upload.wikimedia.org/wikipedia/commons/c/c7/Chess_pdt45.svg',
+  bN: 'https://upload.wikimedia.org/wikipedia/commons/e/ef/Chess_ndt45.svg',
+  bB: 'https://upload.wikimedia.org/wikipedia/commons/9/98/Chess_bdt45.svg',
+  bR: 'https://upload.wikimedia.org/wikipedia/commons/f/ff/Chess_rdt45.svg',
+  bQ: 'https://upload.wikimedia.org/wikipedia/commons/4/47/Chess_qdt45.svg',
+  bK: 'https://upload.wikimedia.org/wikipedia/commons/f/f0/Chess_kdt45.svg',
 }
 
-const WOOD_CHESS_PIECES = {
-  wK: createWoodPiece('♔', '#f7f0dc'),
-  wQ: createWoodPiece('♕', '#f7f0dc'),
-  wR: createWoodPiece('♖', '#f7f0dc'),
-  wB: createWoodPiece('♗', '#f7f0dc'),
-  wN: createWoodPiece('♘', '#f7f0dc'),
-  wP: createWoodPiece('♙', '#f7f0dc'),
-  bK: createWoodPiece('♚', '#6e4427'),
-  bQ: createWoodPiece('♛', '#6e4427'),
-  bR: createWoodPiece('♜', '#6e4427'),
-  bB: createWoodPiece('♝', '#6e4427'),
-  bN: createWoodPiece('♞', '#6e4427'),
-  bP: createWoodPiece('♟', '#6e4427'),
-} as const
+function useWoodTexturePieceSet() {
+  return useMemo(() => {
+    const createPieceRenderer = (pieceCode: ChessPieceCode) => {
+      const src = WOOD_TEXTURE_SVG_ASSETS[pieceCode]
+      return function WoodTexturePiece({ squareWidth, isDragging }: CustomPieceProps): React.JSX.Element {
+        return (
+          <img
+            src={src}
+            alt=""
+            draggable={false}
+            style={{
+              width: squareWidth,
+              height: squareWidth,
+              opacity: isDragging ? 0.82 : 1,
+              userSelect: 'none',
+              WebkitUserSelect: 'none',
+              pointerEvents: 'none',
+            }}
+          />
+        )
+      }
+    }
+
+    return {
+      wP: createPieceRenderer('wP'),
+      wN: createPieceRenderer('wN'),
+      wB: createPieceRenderer('wB'),
+      wR: createPieceRenderer('wR'),
+      wQ: createPieceRenderer('wQ'),
+      wK: createPieceRenderer('wK'),
+      bP: createPieceRenderer('bP'),
+      bN: createPieceRenderer('bN'),
+      bB: createPieceRenderer('bB'),
+      bR: createPieceRenderer('bR'),
+      bQ: createPieceRenderer('bQ'),
+      bK: createPieceRenderer('bK'),
+    }
+  }, [])
+}
 
 const CHESSBOARD_THEME = {
   customLightSquareStyle: { backgroundColor: '#f1dfc2' },
@@ -2928,7 +2947,6 @@ const CHESSBOARD_THEME = {
     borderRadius: 10,
     boxShadow: 'inset 0 0 0 1px rgba(60,42,28,0.35), 0 10px 28px rgba(45,28,16,0.2)',
   },
-  customPieces: WOOD_CHESS_PIECES,
 } as const
 
 const PROMOTION_PIECES: { value: PromotionPiece; label: string; symbol: string }[] = [
@@ -3632,6 +3650,7 @@ function OnlineChessGame({
   const [isMenuOpen, setIsMenuOpen] = useState(false)
 
   const moveRows = useMemo(() => (moves ?? []) as MoveRow[], [moves])
+  const woodTexturePieces = useWoodTexturePieceSet()
   const hintedByPly = useMemo(() => {
     const map = new Map<number, boolean>()
     for (const move of moveRows) {
@@ -3640,10 +3659,6 @@ function OnlineChessGame({
       map.set(ply, move.hint_used === true)
     }
     return map
-  }, [moveRows])
-
-  useEffect(() => {
-    console.table(moveRows.map((m) => ({ ply: m.ply, uci: m.uci, hinted: m.hint_used })))
   }, [moveRows])
 
   // Clear optimistic FEN once the realtime event delivers the new move
@@ -3841,7 +3856,7 @@ function OnlineChessGame({
     if (isAborted) return { isOver: true, reason: 'aborted' as GameEndReason, winner: null }
     return detectGameEnd(normalizedDisplayFen)
   }, [isAborted, normalizedDisplayFen])
-  const tutorialFullscreenMode = Boolean(openTutorFullscreen && initialTutorTab === 'lesson')
+  const tutorialFullscreenMode = Boolean(openTutorFullscreen)
   const canMove = !isAborted && !gameEnd.isOver && !isViewingPast && isMember && isUserTurn && !pendingPromotion
   const boardOrientation: 'white' | 'black' = isCurrentBlack ? 'black' : 'white'
   const boardKey = `${boardId}:${boardOrientation}:${normalizedDisplayFen}`
@@ -3977,6 +3992,7 @@ function OnlineChessGame({
                 key={boardKey}
                 position={normalizedDisplayFen}
                 boardOrientation={boardOrientation}
+                customPieces={woodTexturePieces}
                 showBoardNotation
                 {...CHESSBOARD_THEME}
                 onPieceDrop={(src: Square, dst: Square) => {
@@ -4325,21 +4341,38 @@ function OnlineChessGame({
           <div className="mt-4 text-xs text-slate-500">
             Game: {gameId}
           </div>
-          <div className="mt-4">
+          {!tutorialFullscreenMode ? (
+            <div className="mt-4">
+              <ChessTutorPanel
+                analysis={tutorAnalysis}
+                modelLabel=""
+                loading={tutorLoading}
+                error={tutorError}
+                onAnalyze={() => { void handleAnalyzeGameForMe() }}
+                initialTab={initialTutorTab}
+                openStoryOnLoad={openStoryOnLoad}
+                fullscreen={false}
+                initialStoryId={initialStoryId}
+                allowAnalyzeTab={false}
+              />
+            </div>
+          ) : null}
+        </aside>
+        {tutorialFullscreenMode ? (
+          <div className="min-h-0 flex-1 rounded-xl border border-slate-200 bg-white p-2 sm:p-3">
             <ChessTutorPanel
               analysis={tutorAnalysis}
-              modelLabel=""
+              modelLabel={tutorModel}
               loading={tutorLoading}
               error={tutorError}
               onAnalyze={() => { void handleAnalyzeGameForMe() }}
               initialTab={initialTutorTab}
               openStoryOnLoad={openStoryOnLoad}
-              fullscreen={false}
+              fullscreen
               initialStoryId={initialStoryId}
-              allowAnalyzeTab={false}
             />
           </div>
-        </aside>
+        ) : null}
       </div>
       <Toast message={toastMessage} severity={toastSeverity} onClose={() => setToastMessage(null)} />
     </div>
@@ -4380,6 +4413,7 @@ function LocalChessGame({
   const [isMenuOpen, setIsMenuOpen] = useState(false)
 
   const moveRows = useMemo(() => localMoves, [localMoves])
+  const woodTexturePieces = useWoodTexturePieceSet()
   const {
     displayFen,
     moveHistory,
@@ -4587,7 +4621,7 @@ function LocalChessGame({
     navigate('/games')
   }
 
-  const tutorialFullscreenMode = Boolean(openTutorFullscreen && initialTutorTab === 'lesson')
+  const tutorialFullscreenMode = Boolean(openTutorFullscreen)
 
   return (
     <div className="relative flex h-[100dvh] overflow-hidden rounded-none bg-slate-100/90 p-2 shadow-sm sm:p-3">
@@ -4647,6 +4681,7 @@ function LocalChessGame({
               <Chessboard
                 position={normalizedDisplayFen}
                 boardOrientation="white"
+                customPieces={woodTexturePieces}
                 showBoardNotation
                 {...CHESSBOARD_THEME}
                 onPieceDrop={(src: Square, dst: Square) => {
@@ -4914,21 +4949,38 @@ function LocalChessGame({
           <div className="mt-4 text-xs text-slate-500">
             Game: local
           </div>
-          <div className="mt-4">
+          {!tutorialFullscreenMode ? (
+            <div className="mt-4">
+              <ChessTutorPanel
+                analysis={tutorAnalysis}
+                modelLabel=""
+                loading={tutorLoading}
+                error={tutorError}
+                onAnalyze={() => { void handleAnalyzeGameForMe() }}
+                initialTab={initialTutorTab}
+                openStoryOnLoad={openStoryOnLoad}
+                fullscreen={false}
+                initialStoryId={initialStoryId}
+                allowAnalyzeTab={false}
+              />
+            </div>
+          ) : null}
+        </aside>
+        {tutorialFullscreenMode ? (
+          <div className="min-h-0 flex-1 rounded-xl border border-slate-200 bg-white p-2 sm:p-3">
             <ChessTutorPanel
               analysis={tutorAnalysis}
-              modelLabel=""
+              modelLabel={tutorModel}
               loading={tutorLoading}
               error={tutorError}
               onAnalyze={() => { void handleAnalyzeGameForMe() }}
               initialTab={initialTutorTab}
               openStoryOnLoad={openStoryOnLoad}
-              fullscreen={false}
+              fullscreen
               initialStoryId={initialStoryId}
-              allowAnalyzeTab={false}
             />
           </div>
-        </aside>
+        ) : null}
       </div>
       <Toast message={toastMessage} severity={toastSeverity} onClose={() => setToastMessage(null)} />
     </div>

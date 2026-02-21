@@ -346,7 +346,9 @@ function createPublicRouter({ db }: { db: any }): Router {
 
   // Apply rate limiting to contact endpoint
   const contactLimiter = createContactRateLimiter();
-  const storyAudioGenerationLimiter = createStoryAudioGenerationRateLimiter();
+  const storyAudioGenerationLimiter = process.env.NODE_ENV === 'production'
+    ? createStoryAudioGenerationRateLimiter()
+    : ((_req: Request, _res: Response, next: NextFunction) => next());
 
   /**
    * POST /contact

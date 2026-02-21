@@ -350,11 +350,35 @@ async function isLikelyMissingStoryAudioUrl(url: string): Promise<boolean> {
 
   try {
     const response = await fetch(url, {
-      method: 'HEAD',
+      method: 'GET',
+      headers: {
+        Range: 'bytes=0-1',
+      },
       cache: 'no-store',
     })
 
-    return response.status === 400 || response.status === 404
+    if (response.status === 400 || response.status === 404) {
+      return true
+    }
+
+    if (!response.ok && response.status !== 206 && response.status !== 416) {
+      return true
+    }
+
+    const contentType = String(response.headers.get('content-type') || '').toLowerCase()
+    if (!contentType) {
+      return false
+    }
+
+    if (contentType.includes('audio/') || contentType.includes('application/octet-stream')) {
+      return false
+    }
+
+    if (contentType.includes('application/json') || contentType.includes('text/html') || contentType.includes('text/plain')) {
+      return true
+    }
+
+    return false
   } catch {
     return false
   }
@@ -446,17 +470,6 @@ async function resolvePrecomputedStoryAudioUrl(input: {
     candidateUrlPreview: String(candidateUrl || '').slice(0, 160),
   })
   if (!candidateUrl) return null
-
-  const isMissingCandidateUrl = await isLikelyMissingStoryAudioUrl(candidateUrl)
-  if (isMissingCandidateUrl) {
-    logStoryAudioClient('precomputed-candidate-missing', {
-      page: input.page,
-      candidateObjectPath,
-      candidateUrlPreview: candidateUrl.slice(0, 160),
-    })
-    return null
-  }
-
   return candidateUrl
 }
 
@@ -556,6 +569,14 @@ export async function ensureStoryAudio(input: {
   })
 
   if (precomputedUrl) {
+    const isMissingPrecomputedUrl = await isLikelyMissingStoryAudioUrl(precomputedUrl)
+    if (isMissingPrecomputedUrl) {
+      logStoryAudioClient('precomputed-candidate-missing', {
+        page: input.page,
+        objectPath,
+        localCacheKey,
+      })
+    } else {
     storyAudioClientMetrics.precomputedHits += 1
     logStoryAudioClient('ensure-return-precomputed-url', {
       page: input.page,
@@ -566,6 +587,7 @@ export async function ensureStoryAudio(input: {
     return {
       cached: true,
       url: precomputedUrl,
+    }
     }
   }
 
