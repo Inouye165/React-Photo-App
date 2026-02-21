@@ -9,7 +9,20 @@ export const AVATAR_OUTPUT_SIZE = 512
 
 function createImage(url: string): Promise<HTMLImageElement> {
   return new Promise((resolve, reject) => {
-    const image = new Image()
+    const imageFactory = globalThis.Image as unknown as {
+      new (): HTMLImageElement
+      (): HTMLImageElement
+    }
+    let image: HTMLImageElement
+    try {
+      image = new imageFactory()
+    } catch {
+      try {
+        image = imageFactory()
+      } catch {
+        image = document.createElement('img')
+      }
+    }
     image.crossOrigin = 'anonymous'
     image.onload = () => resolve(image)
     image.onerror = (error) => reject(error)

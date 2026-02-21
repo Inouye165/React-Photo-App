@@ -135,6 +135,35 @@ vi.mock('react-konva', () => ({
   Text: ({ text, ...props }) => React.createElement('div', { 'data-testid': 'konva-text', ...props }, text),
 }))
 
+vi.mock('@excalidraw/excalidraw', () => {
+  const Excalidraw = ({ children, excalidrawAPI, ...props }) => {
+    if (typeof excalidrawAPI === 'function') {
+      excalidrawAPI({
+        getSceneElements: () => [],
+        getAppState: () => ({}),
+        updateScene: vi.fn(),
+        addFiles: vi.fn(),
+      })
+    }
+    return React.createElement('div', { 'data-testid': 'excalidraw', ...props }, children)
+  }
+
+  const menuItem = () => React.createElement('button', { type: 'button' })
+  const Separator = () => React.createElement('hr')
+  const MainMenu = ({ children }) => React.createElement('div', { 'data-testid': 'excalidraw-main-menu' }, children)
+  MainMenu.DefaultItems = {
+    LoadScene: menuItem,
+    SaveToActiveFile: menuItem,
+    Export: menuItem,
+    ClearCanvas: menuItem,
+    ToggleTheme: menuItem,
+    ChangeCanvasBackground: menuItem,
+  }
+  MainMenu.Separator = Separator
+
+  return { Excalidraw, MainMenu }
+})
+
 // Mock localStorage
 const localStorageMock = {
   getItem: vi.fn((key) => {

@@ -62,7 +62,20 @@ async function loadSourceImage(file: File): Promise<{ image: HTMLImageElement | 
   }
 
   return new Promise((resolve, reject) => {
-    const img = new Image()
+    const imageFactory = globalThis.Image as unknown as {
+      new (): HTMLImageElement
+      (): HTMLImageElement
+    }
+    let img: HTMLImageElement
+    try {
+      img = new imageFactory()
+    } catch {
+      try {
+        img = imageFactory()
+      } catch {
+        img = document.createElement('img')
+      }
+    }
     const url = URL.createObjectURL(file)
     let revoked = false
 
