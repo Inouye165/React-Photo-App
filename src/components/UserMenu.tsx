@@ -1,5 +1,5 @@
 import { useState, useRef, useEffect } from 'react';
-import { LogOut, MessageSquareText, Settings, ChevronDown } from 'lucide-react';
+import { LogOut, MessageSquareText, Settings, ChevronDown, Grid3X3, Edit3 } from 'lucide-react';
 import { useAuth } from '../contexts/AuthContext';
 import FeedbackModal from './FeedbackModal';
 import UserSettingsModal from './UserSettingsModal';
@@ -16,7 +16,12 @@ import { FRONTEND_BUILD_TIMESTAMP, FRONTEND_VERSION } from '../version';
  * 
  * Fat Finger Rule: All touch targets ≥ 44x44px
  */
-export default function UserMenu() {
+interface UserMenuProps {
+  onOpenGallery?: () => void;
+  onOpenEdit?: () => void;
+}
+
+export default function UserMenu({ onOpenGallery, onOpenEdit }: UserMenuProps) {
   const { user, logout, profile } = useAuth();
   const [isOpen, setIsOpen] = useState(false);
   const [showFeedbackModal, setShowFeedbackModal] = useState(false);
@@ -117,6 +122,16 @@ export default function UserMenu() {
     setShowSettingsModal(true);
   };
 
+  const handleGallery = () => {
+    setIsOpen(false);
+    onOpenGallery?.();
+  };
+
+  const handleEdit = () => {
+    setIsOpen(false);
+    onOpenEdit?.();
+  };
+
   if (!user) return null;
 
   return (
@@ -188,6 +203,30 @@ export default function UserMenu() {
 
             {/* Menu Items */}
             <div className="py-1">
+              <button
+                onClick={handleGallery}
+                data-testid="user-menu-gallery"
+                role="menuitem"
+                className="w-full flex items-center gap-3 px-4 py-3
+                           text-sm text-slate-700 hover:bg-slate-50
+                           transition-colors touch-manipulation"
+              >
+                <Grid3X3 size={18} className="text-slate-400" />
+                Gallery
+              </button>
+
+              <button
+                onClick={handleEdit}
+                data-testid="user-menu-edit"
+                role="menuitem"
+                className="w-full flex items-center gap-3 px-4 py-3
+                           text-sm text-slate-700 hover:bg-slate-50
+                           transition-colors touch-manipulation"
+              >
+                <Edit3 size={18} className="text-slate-400" />
+                Edit
+              </button>
+
               <button
                 onClick={handleFeedback}
                 data-testid="user-menu-feedback"

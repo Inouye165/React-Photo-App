@@ -34,9 +34,12 @@ vi.mock('react-router-dom', () => ({
   useNavigate: () => navigateMock,
   useLocation: () => mockRouterState.location,
   NavLink: ({ to, className, children, ...rest }) => {
-    const computedClassName = typeof className === 'function' ? className({ isActive: false }) : className;
+    const pathname = mockRouterState.location.pathname || '';
+    const target = String(to || '');
+    const isActive = pathname === target || pathname.startsWith(`${target}/`);
+    const computedClassName = typeof className === 'function' ? className({ isActive }) : className;
     return (
-      <a href={to} className={computedClassName} {...rest}>
+      <a href={to} className={computedClassName} aria-current={isActive ? 'page' : undefined} {...rest}>
         {children}
       </a>
     );
@@ -150,12 +153,14 @@ describe('AppHeader Component', () => {
   it('renders navigation tabs with icons', () => {
     render(<AppHeader />);
     
-    // Check all navigation tabs exist
-    expect(screen.getByTestId('nav-upload')).toBeInTheDocument();
-    expect(screen.getByTestId('nav-gallery')).toBeInTheDocument();
-    expect(screen.getByTestId('nav-edit')).toBeInTheDocument();
+    // Primary nav keeps Messages + Games visible
     expect(screen.getByTestId('nav-messages')).toBeInTheDocument();
     expect(screen.getByRole('button', { name: 'Games' })).toBeInTheDocument();
+
+    // Gallery/Edit are now in account dropdown, not primary nav
+    expect(screen.queryByTestId('nav-gallery')).not.toBeInTheDocument();
+    expect(screen.queryByTestId('nav-edit')).not.toBeInTheDocument();
+    expect(screen.queryByTestId('nav-upload')).not.toBeInTheDocument();
   });
 
   it('opens Games menu and navigates to chess app shell', async () => {
@@ -206,10 +211,8 @@ describe('AppHeader Component', () => {
       render(<AppHeader />);
       
       const navButtons = [
-        screen.getByTestId('nav-upload'),
-        screen.getByTestId('nav-gallery'),
-        screen.getByTestId('nav-edit'),
         screen.getByTestId('nav-messages'),
+        screen.getByTestId('nav-games'),
       ];
       
       navButtons.forEach((button) => {
@@ -245,8 +248,8 @@ describe('AppHeader Component', () => {
       render(<AppHeader />);
       
       // Check that labels use responsive classes
-      const uploadButton = screen.getByTestId('nav-upload');
-      const labelSpan = uploadButton.querySelector('span');
+      const messagesButton = screen.getByTestId('nav-messages');
+      const labelSpan = messagesButton.querySelector('span');
       
       // Labels should have hidden md:inline classes
       expect(labelSpan?.className).toMatch(/hidden\s+md:inline/);
@@ -310,19 +313,20 @@ describe('AppHeader Component', () => {
   });
 
   describe('Active State Indicators', () => {
-    it('marks current view as active with aria-current', () => {
+    it('marks messages view as active with aria-current', () => {
+      mockRouterState.location.pathname = '/chat';
       render(<AppHeader />);
       
-      // Based on mock location (/gallery), Gallery should be active
-      const galleryButton = screen.getByTestId('nav-gallery');
-      expect(galleryButton).toHaveAttribute('aria-current', 'page');
+      const messagesButton = screen.getByTestId('nav-messages');
+      expect(messagesButton).toHaveAttribute('aria-current', 'page');
     });
 
-    it('inactive tabs do not have aria-current', () => {
+    it('messages is inactive outside chat routes', () => {
+      mockRouterState.location.pathname = '/gallery';
       render(<AppHeader />);
       
-      const uploadButton = screen.getByTestId('nav-upload');
-      expect(uploadButton).not.toHaveAttribute('aria-current');
+      const messagesButton = screen.getByTestId('nav-messages');
+      expect(messagesButton).not.toHaveAttribute('aria-current');
     });
   });
 
