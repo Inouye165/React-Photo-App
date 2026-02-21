@@ -104,6 +104,8 @@ type ChessHistoryEvent = {
   imageAlt: string
 }
 
+const TUTOR_STORY_HINT_SEEN_KEY = 'chess:tutorial-story-hint-seen:v1'
+
 function parseInitialTutorTab(search: string): TutorTab | undefined {
   const value = new URLSearchParams(search).get('tab')
   if (value === 'analyze' || value === 'lesson' || value === 'history') {
@@ -2275,6 +2277,7 @@ function ChessTutorPanel({
   const [discoveredCheckFrame, setDiscoveredCheckFrame] = useState(0)
   const [discoveredCheckAutoplay, setDiscoveredCheckAutoplay] = useState(true)
   const [storyModalOpen, setStoryModalOpen] = useState(false)
+  const [showStoryHint, setShowStoryHint] = useState(false)
   const [activeStoryId, setActiveStoryId] = useState<string>(() => {
     const found = CHESS_STORIES.some((story) => story.id === initialStoryId)
     return found && initialStoryId ? initialStoryId : DEFAULT_CHESS_STORY_ID
@@ -2329,6 +2332,26 @@ function ChessTutorPanel({
     setActiveTab('lesson')
     setStoryModalOpen(true)
   }, [openStoryOnLoad])
+
+  useEffect(() => {
+    if (activeTab !== 'lesson') {
+      setShowStoryHint(false)
+      return
+    }
+    try {
+      setShowStoryHint(localStorage.getItem(TUTOR_STORY_HINT_SEEN_KEY) !== '1')
+    } catch {
+      setShowStoryHint(true)
+    }
+  }, [activeTab])
+
+  const dismissStoryHint = useCallback(() => {
+    setShowStoryHint(false)
+    try {
+      localStorage.setItem(TUTOR_STORY_HINT_SEEN_KEY, '1')
+    } catch {
+    }
+  }, [])
 
   useEffect(() => {
     setAnimationFrame(0)
@@ -2503,13 +2526,43 @@ function ChessTutorPanel({
                     <option key={story.id} value={story.id}>{story.title}</option>
                   ))}
                 </select>
-                <button
-                  type="button"
-                  onClick={() => setStoryModalOpen(true)}
-                  className="rounded border border-slate-200 bg-white px-2 py-1 text-xs font-semibold text-slate-600 hover:bg-slate-50"
-                >
-                  Story mode
-                </button>
+                <div className="relative">
+                  <button
+                    type="button"
+                    onClick={() => {
+                      dismissStoryHint()
+                      setStoryModalOpen(true)
+                    }}
+                    className="rounded border border-slate-200 bg-white px-2 py-1 text-xs font-semibold text-slate-600 hover:bg-slate-50"
+                  >
+                    Story mode
+                  </button>
+                  {showStoryHint ? (
+                    <div className="absolute right-0 top-full z-20 mt-2 w-64 animate-pulse rounded-lg border border-fuchsia-200 bg-gradient-to-r from-fuchsia-50 via-amber-50 to-cyan-50 p-2 text-xs text-slate-700 shadow-lg">
+                      <div className="font-semibold text-fuchsia-700">New here? Try Story mode ✨</div>
+                      <p className="mt-1 text-slate-600">Start with tutorials, then open Story mode for guided chapters.</p>
+                      <div className="mt-2 flex items-center justify-end gap-2">
+                        <button
+                          type="button"
+                          onClick={dismissStoryHint}
+                          className="rounded border border-slate-200 bg-white px-2 py-1 font-semibold text-slate-600"
+                        >
+                          Dismiss
+                        </button>
+                        <button
+                          type="button"
+                          onClick={() => {
+                            dismissStoryHint()
+                            setStoryModalOpen(true)
+                          }}
+                          className="rounded border border-fuchsia-300 bg-fuchsia-100 px-2 py-1 font-semibold text-fuchsia-700"
+                        >
+                          Open story
+                        </button>
+                      </div>
+                    </div>
+                  ) : null}
+                </div>
               </div>
             </div>
             <div className="overflow-x-auto pb-1">
@@ -2829,6 +2882,62 @@ function ChessTutorPanel({
         storyAudioSlug={activeStory.audioSlug}
       />
     </>
+  )
+}
+
+function InlineAnalysisResult({
+  loading,
+  error,
+  analysis,
+  modelLabel,
+}: {
+  loading: boolean
+  error: string | null
+  analysis: ChessTutorAnalysis | null
+  modelLabel: string
+}) {
+  if (!loading && !error && !analysis) {
+    return (
+      <div className="mb-3 rounded-lg border border-slate-200 bg-slate-50 px-3 py-2 text-xs text-slate-600">
+        <div className="text-xs font-semibold text-slate-600">Analysis</div>
+        <div className="mt-1 text-slate-500">Run Analyze game to get a position summary, hints, and focus points.</div>
+      </div>
+    )
+  }
+
+  if (loading) {
+    return (
+      <div className="mb-3 rounded-lg border border-blue-200 bg-blue-50 px-3 py-2 text-xs text-blue-700">
+        <div className="text-xs font-semibold">Analysis</div>
+        <div className="mt-1">Analyzing current position…</div>
+      </div>
+    )
+  }
+
+  if (error) {
+    return (
+      <div className="mb-3 rounded-lg border border-red-200 bg-red-50 px-3 py-2 text-xs text-red-700">
+        <div className="text-xs font-semibold">Analysis failed</div>
+        <div className="mt-1">{error}</div>
+      </div>
+    )
+  }
+
+  return (
+    <div className="mb-3 rounded-lg border border-slate-200 bg-slate-50 px-3 py-2 text-xs text-slate-700">
+      <div className="flex items-center justify-between gap-2">
+        <div className="text-xs font-semibold text-slate-700">Analysis</div>
+        <span className="text-[11px] text-slate-500">{modelLabel}</span>
+      </div>
+      <div className="mt-1 text-slate-600">{analysis?.positionSummary}</div>
+      {analysis?.hints?.length ? (
+        <ul className="mt-2 list-disc pl-4 text-slate-600">
+          {analysis.hints.slice(0, 2).map((hint) => (
+            <li key={hint}>{hint}</li>
+          ))}
+        </ul>
+      ) : null}
+    </div>
   )
 }
 
@@ -3717,7 +3826,7 @@ function OnlineChessGame({
 
   async function handleQuitGame() {
     if (!gameId) {
-      navigate('/games')
+      navigate('/games/chess')
       return
     }
 
@@ -3726,7 +3835,7 @@ function OnlineChessGame({
     } catch {
       // Keep navigation resilient even if quit persistence fails.
     } finally {
-      navigate('/games')
+      navigate('/games/chess')
     }
   }
 
@@ -3808,6 +3917,7 @@ function OnlineChessGame({
   const handleAnalyzeGameForMe = useCallback(async () => {
     setTutorLoading(true)
     setTutorError(null)
+    setTutorAnalysis(null)
     try {
       const result = await analyzeGameForMe({
         fen: normalizedDisplayFen,
@@ -4053,12 +4163,13 @@ function OnlineChessGame({
             </button>
             <button
               type="button"
-              onClick={() => navigate('/games')}
+              onClick={() => navigate('/games/chess')}
               className="rounded-md border border-slate-200 bg-white px-3 py-1 text-xs font-semibold text-slate-600"
             >
               Exit
             </button>
           </div>
+          <InlineAnalysisResult loading={tutorLoading} error={tutorError} analysis={tutorAnalysis} modelLabel={tutorModel} />
           <div className="mb-3 rounded-lg bg-slate-50 px-3 py-2 text-xs text-slate-600">
             <div className="mb-2 text-xs font-semibold text-slate-600">Hint + board overlays</div>
             <div className="flex flex-col gap-2">
@@ -4301,7 +4412,7 @@ function LocalChessGame({
   const gameEnd = useMemo(() => detectGameEnd(normalizedDisplayFen), [normalizedDisplayFen])
   const canMove = !engineThinking && !isViewingPast && !gameEnd.isOver && !pendingPromotion
 
-  const { isReady, topMoves, analyzePosition, getEngineMove, cancelPendingMove } = useStockfish()
+  const { isReady, topMoves, analyzePosition, getEngineMove, cancelPendingMove, skillLevel, setSkillLevel } = useStockfish()
 
   useEffect(() => {
     if (!isReady || engineThinking) return
@@ -4337,6 +4448,7 @@ function LocalChessGame({
   const handleAnalyzeGameForMe = useCallback(async () => {
     setTutorLoading(true)
     setTutorError(null)
+    setTutorAnalysis(null)
     try {
       const result = await analyzeGameForMe({
         fen: normalizedDisplayFen,
@@ -4440,7 +4552,7 @@ function LocalChessGame({
 
   function handleQuitGame() {
     truncateMoves(0)
-    navigate('/games')
+    navigate('/games/chess')
   }
 
   const tutorialFullscreenMode = Boolean(openTutorFullscreen)
@@ -4636,11 +4748,28 @@ function LocalChessGame({
             </button>
             <button
               type="button"
-              onClick={() => navigate('/games')}
+              onClick={() => navigate('/games/chess')}
               className="rounded-md border border-slate-200 bg-white px-3 py-1 text-xs font-semibold text-slate-600"
             >
               Exit
             </button>
+          </div>
+          <InlineAnalysisResult loading={tutorLoading} error={tutorError} analysis={tutorAnalysis} modelLabel={tutorModel} />
+          <div className="mb-3 rounded-lg border border-slate-200 bg-slate-50 px-3 py-2 text-xs text-slate-600">
+            <div className="mb-2 flex items-center justify-between">
+              <span className="text-xs font-semibold text-slate-600">Computer level</span>
+              <span className="rounded bg-white px-2 py-0.5 text-xs font-semibold text-slate-700">{skillLevel}</span>
+            </div>
+            <input
+              type="range"
+              min={0}
+              max={20}
+              step={1}
+              value={skillLevel}
+              onChange={(event) => setSkillLevel(Number(event.target.value))}
+              className="w-full"
+              aria-label="Computer level"
+            />
           </div>
           <div className="mb-3 rounded-lg bg-slate-50 px-3 py-2 text-xs text-slate-600">
             <div className="mb-2 text-xs font-semibold text-slate-600">Hint + board overlays</div>

@@ -40,7 +40,7 @@ export default function ChessHub(): React.JSX.Element {
 
           <button
             type="button"
-            onClick={() => navigate('/games/local?tab=lesson&tutor=1&story=1&storyId=architect-of-squares')}
+            onClick={() => navigate('/games/local?tab=lesson&tutor=1&storyId=architect-of-squares')}
             className="flex min-h-[180px] flex-col items-start justify-between rounded-2xl border border-indigo-400/50 bg-slate-800 p-5 text-left shadow-sm hover:border-indigo-300"
           >
             <BookOpen size={22} className="text-indigo-300" />

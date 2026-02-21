@@ -429,7 +429,7 @@ describe('ChessGame', () => {
     })
   })
 
-  it('quits online game by aborting and navigating to /games', async () => {
+  it('quits online game by aborting and navigating to /games/chess', async () => {
     const user = userEvent.setup()
     render(<ChessGame />)
 
@@ -438,7 +438,20 @@ describe('ChessGame', () => {
 
     await waitFor(() => {
       expect(abortGameMock).toHaveBeenCalledWith('game-123')
-      expect(navigateMock).toHaveBeenCalledWith('/games')
+      expect(navigateMock).toHaveBeenCalledWith('/games/chess')
+    })
+  })
+
+  it('shows inline analysis results in local sidebar after Analyze game', async () => {
+    const user = userEvent.setup()
+    setMockGameId('local')
+    render(<ChessGame />)
+
+    await user.click(screen.getByRole('button', { name: 'Analyze game' }))
+
+    await waitFor(() => {
+      expect(screen.getByText('Equal position with central tension.')).toBeInTheDocument()
+      expect(screen.getByText('Develop the kingside pieces.')).toBeInTheDocument()
     })
   })
 
@@ -567,12 +580,12 @@ describe('ChessGame', () => {
 
     await waitFor(() => {
       expect(analyzeGameForMeMock).toHaveBeenCalled()
-      expect(screen.getByText('gemini-2.0-flash-lite')).toBeInTheDocument()
+      expect(screen.getAllByText('gemini-2.0-flash-lite').length).toBeGreaterThan(0)
     })
 
     await openMenuTab(user, 'How to play')
     expect(screen.getByRole('button', { name: '1) Pieces & movement' })).toBeInTheDocument()
-    expect(screen.getByText('gemini-2.0-flash-lite')).toBeInTheDocument()
+    expect(screen.getAllByText('gemini-2.0-flash-lite').length).toBeGreaterThan(0)
   })
 
   it('shows pieces sublesson flow from pawn to knight', async () => {

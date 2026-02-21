@@ -122,6 +122,15 @@ If anything fails, see [docs/RESTART_APP.md](docs/RESTART_APP.md) for focused re
 *   **Restart guard (optional):** The client compares a server-provided per-process `bootId` (from `/api/meta`) against `sessionStorage` to force a re-login only when the backend process restarts. `buildId` is still exposed for diagnostics, but is not used to log users out.
 *   Ongoing cleanup targets: [TypeScript refactor candidates](typescript-refactor-candidates.md)
 
+### Mobile full-screen app mode (no browser bar)
+
+To get a native-app feel on mobile, launch Lumina as an installed web app:
+
+- Android (Chrome): open Lumina, tap browser menu, choose **Install app** / **Add to Home screen**, then launch from the home-screen icon.
+- iOS (Safari): open Lumina, tap **Share** → **Add to Home Screen**, then launch from the home-screen icon.
+
+When launched this way, Lumina uses standalone display mode and hides the regular browser address bar.
+
 ## Debugging
 
 ### Whiteboard debug logging (scoped)

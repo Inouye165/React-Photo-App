@@ -5,7 +5,7 @@ import { searchUsers } from '../api/chat'
 import { supabase } from '../supabaseClient'
 import { useAuth } from '../contexts/AuthContext'
 import { onGamesChanged } from '../events/gamesEvents'
-import { Sparkles, BookOpen, Play, UserPlus, Clock, Inbox } from 'lucide-react'
+import { UserPlus, Clock, Inbox, X } from 'lucide-react'
 
 const inviteStatuses = new Set(['waiting', 'invited', 'pending'])
 const activeStatuses = new Set(['active', 'in_progress', 'inprogress'])
@@ -162,152 +162,101 @@ export default function GamesIndex(): React.JSX.Element {
     navigate(`/games/${game.id}`)
   }
 
+  function handleClose() {
+    if (window.history.length > 1) {
+      navigate(-1)
+      return
+    }
+    navigate('/games/chess')
+  }
+
   const inviteGames = games.filter((g) => inviteStatuses.has((g.status || '').toLowerCase()))
   const activeGames = games.filter((g) => activeStatuses.has((g.status || '').toLowerCase()))
+  const openGames = [...inviteGames, ...activeGames]
 
   return (
-    <div className="space-y-6 px-4">
-      {loadError ? (
-        <div className="mb-3 flex items-center justify-between rounded border border-red-200 bg-red-50 px-3 py-2 text-sm text-red-700">
-          <span>{loadError}</span>
+    <div className="fixed inset-0 z-40 flex items-start justify-center bg-slate-900/35 px-4 py-6 sm:items-center">
+      <div className="w-full max-w-3xl rounded-2xl border border-slate-200 bg-white p-4 shadow-xl sm:p-5">
+        <div className="mb-4 flex items-center justify-between gap-3">
+          <div>
+            <h2 className="text-lg font-semibold text-slate-800">Play vs opponent</h2>
+            <p className="text-sm text-slate-500">Pick a player or resume an in-progress game.</p>
+          </div>
           <button
             type="button"
-            onClick={() => { void loadGames() }}
-            className="rounded border border-red-200 bg-white px-2 py-1 text-xs font-semibold text-red-700"
+            onClick={handleClose}
+            className="inline-flex h-8 w-8 items-center justify-center rounded-md border border-slate-200 bg-white text-slate-600 hover:bg-slate-50"
+            aria-label="Close"
           >
-            Retry
+            <X size={16} />
           </button>
         </div>
-      ) : null}
 
-      {/* Discovery section */}
-      <section>
-        <h2 className="text-lg font-semibold mb-3">Discovery</h2>
-        <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-          <button
-            type="button"
-            onClick={() => navigate('/games/local')}
-            className="w-full min-h-[48px] rounded-lg bg-amber-50 flex items-center gap-3 p-4 md:p-6 text-left"
-          >
-            <div className="flex-shrink-0">
-              <Sparkles size={28} className="text-amber-500" />
+        {loadError ? (
+          <div className="mb-3 flex items-center justify-between rounded border border-red-200 bg-red-50 px-3 py-2 text-sm text-red-700">
+            <span>{loadError}</span>
+            <button
+              type="button"
+              onClick={() => { void loadGames() }}
+              className="rounded border border-red-200 bg-white px-2 py-1 text-xs font-semibold text-red-700"
+            >
+              Retry
+            </button>
+          </div>
+        ) : null}
+
+        <section className="mb-4 rounded-xl border border-slate-200 bg-slate-50 p-3">
+          <label className="mb-2 block text-xs font-semibold uppercase tracking-wide text-slate-500">Pick a player</label>
+          <div className="flex flex-col gap-2">
+            <input value={query} onChange={handleSearch} className="w-full rounded-md border border-slate-200 bg-white p-2" placeholder="Search users" />
+            <div className="max-h-40 space-y-2 overflow-y-auto pr-1">
+              {results.length ? results.map((r) => (
+                <div key={r.id} className="flex items-center gap-2 rounded-md border border-slate-200 bg-white px-2 py-1.5">
+                  <span className="flex-1 text-sm text-slate-700">{r.username || r.id}</span>
+                  <button onClick={() => void handleCreate(r.id)} className="inline-flex items-center gap-1 rounded-md border border-indigo-200 bg-indigo-50 px-2 py-1 text-xs font-semibold text-indigo-700">
+                    <UserPlus size={14} />
+                    Invite
+                  </button>
+                </div>
+              )) : (
+                <div className="text-xs text-slate-500">Search by username to invite a player.</div>
+              )}
             </div>
-            <div>
-              <div className="font-semibold">Start Story Mode</div>
-              <div className="text-sm text-slate-600">Narrative-driven challenges and tutorials</div>
-            </div>
-          </button>
+          </div>
+        </section>
 
-          <button
-            type="button"
-            onClick={() => navigate('/games/local')}
-            className="w-full min-h-[48px] rounded-lg bg-green-50 flex items-center gap-3 p-4 md:p-6 text-left"
-          >
-            <div className="flex-shrink-0">
-              <BookOpen size={28} className="text-green-500" />
-            </div>
-            <div>
-              <div className="font-semibold">View Lessons</div>
-              <div className="text-sm text-slate-600">Short tutorials and practice puzzles</div>
-            </div>
-          </button>
-        </div>
-      </section>
-
-      {/* Quick Play */}
-      <section>
-        <h3 className="text-lg font-semibold mb-3">Quick Play</h3>
-        <div className="flex flex-col gap-3">
-          <button
-            type="button"
-            onClick={() => navigate('/games/local')}
-            className="w-full min-h-[48px] rounded-lg bg-slate-800 text-white flex items-center justify-center gap-2 px-4 py-3"
-          >
-            <Play size={18} />
-            <span className="font-medium">Play vs computer</span>
-          </button>
-
-          <button
-            type="button"
-            onClick={() => navigate('/games')}
-            className="w-full min-h-[48px] rounded-lg bg-indigo-50 text-indigo-700 flex items-center justify-center gap-2 px-4 py-3"
-          >
-            <UserPlus size={18} />
-            <span className="font-medium">Invite a player</span>
-          </button>
-        </div>
-      </section>
-
-      {/* Invite form (existing) */}
-      <section>
-        <label className="block text-xs text-slate-600 mb-2">Invite by username</label>
-        <div className="flex flex-col md:flex-row gap-2">
-          <input value={query} onChange={handleSearch} className="border rounded-md p-2 flex-1" placeholder="Search users" />
-        </div>
-        <div className="mt-2 space-y-2">
-          {results.map((r) => (
-            <div key={r.id} className="flex items-center gap-2">
-              <span className="flex-1">{r.username || r.id}</span>
-              <button onClick={() => void handleCreate(r.id)} className="px-3 py-1 bg-indigo-600 text-white rounded text-sm">Invite</button>
-            </div>
-          ))}
-        </div>
-      </section>
-
-      {/* Lists: Invitations & In Progress */}
-      <section>
-        <h3 className="text-sm font-medium mb-2">Invitations</h3>
-        {inviteGames.length ? (
-          <ul className="space-y-2">
-            {inviteGames.map((g) => (
-              <li key={g.id}>
-                <button
-                  onClick={() => navigate(`/games/${g.id}`)}
-                  className="w-full text-left rounded-md p-3 bg-white border border-slate-100 flex items-center justify-between"
-                >
-                  <div className="flex items-center gap-3">
-                    <Inbox size={18} />
-                    <div>
-                      <div className="font-medium">{formatGameLabel(g)}</div>
-                      <div className="text-xs text-slate-500">{g.type}</div>
-                    </div>
-                  </div>
-                  <div className="text-xs text-slate-500">{g.updated_at ? new Date(g.updated_at).toLocaleString() : ''}</div>
-                </button>
-              </li>
-            ))}
-          </ul>
-        ) : (
-          <div className="text-sm text-slate-500">No invitations.</div>
-        )}
-      </section>
-
-      <section>
-        <h3 className="text-sm font-medium mb-2">In Progress</h3>
-        {activeGames.length ? (
-          <ul className="space-y-2">
-            {activeGames.map((g) => (
-              <li key={g.id}>
-                <button
-                  onClick={() => navigate(`/games/${g.id}`)}
-                  className="w-full text-left rounded-md p-3 bg-white border border-slate-100 flex items-center justify-between"
-                >
-                  <div className="flex items-center gap-3">
-                    <Clock size={18} />
-                    <div>
-                      <div className="font-medium">{formatGameLabel(g)}</div>
-                      <div className="text-xs text-slate-500">{g.type}</div>
-                    </div>
-                  </div>
-                  <div className="text-xs text-slate-500">{g.updated_at ? new Date(g.updated_at).toLocaleString() : ''}</div>
-                </button>
-              </li>
-            ))}
-          </ul>
-        ) : (
-          <div className="text-sm text-slate-500">No active games.</div>
-        )}
-      </section>
+        <section>
+          <h3 className="mb-2 text-xs font-semibold uppercase tracking-wide text-slate-500">In-progress games</h3>
+          {openGames.length ? (
+            <ul className="space-y-2">
+              {openGames.map((g) => {
+                const isInvite = inviteStatuses.has((g.status || '').toLowerCase())
+                return (
+                  <li key={g.id}>
+                    <button
+                      onClick={() => navigate(`/games/${g.id}`)}
+                      className="w-full rounded-lg border border-slate-200 bg-white p-3 text-left hover:bg-slate-50"
+                    >
+                      <div className="flex items-center justify-between gap-3">
+                        <div className="flex items-center gap-2">
+                          {isInvite ? <Inbox size={16} className="text-slate-500" /> : <Clock size={16} className="text-slate-500" />}
+                          <div>
+                            <div className="font-medium text-slate-800">{formatGameLabel(g, user?.id)}</div>
+                            <div className="text-xs text-slate-500">{isInvite ? 'Invitation' : 'In progress'}</div>
+                          </div>
+                        </div>
+                        <div className="text-xs text-slate-500">{g.updated_at ? new Date(g.updated_at).toLocaleString() : ''}</div>
+                      </div>
+                    </button>
+                  </li>
+                )
+              })}
+            </ul>
+          ) : (
+            <div className="rounded-md border border-dashed border-slate-200 bg-slate-50 px-3 py-4 text-sm text-slate-500">No in-progress games yet.</div>
+          )}
+        </section>
+      </div>
     </div>
   )
 }

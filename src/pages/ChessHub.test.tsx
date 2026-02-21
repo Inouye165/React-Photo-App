@@ -35,6 +35,6 @@ describe('ChessHub', () => {
     expect(navigateMock).toHaveBeenCalledWith('/games')
 
     await user.click(screen.getByRole('button', { name: /Tutorials/i }))
-    expect(navigateMock).toHaveBeenCalledWith('/games/local?tab=lesson&tutor=1&story=1&storyId=architect-of-squares')
+    expect(navigateMock).toHaveBeenCalledWith('/games/local?tab=lesson&tutor=1&storyId=architect-of-squares')
   })
 })
