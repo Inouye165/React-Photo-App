@@ -240,39 +240,32 @@ describe('ChessGame regression tests', () => {
     expect(panel).toBeInTheDocument()
   })
 
-  it('shows confirmation dialog before restarting online game', async () => {
+  it('does not expose restart controls in online mode', async () => {
     const user = userEvent.setup()
     render(<ChessGame />)
 
-    const restartBtn = await screen.findByRole('button', { name: 'Restart game' })
-    await user.click(restartBtn)
+    expect(screen.queryByRole('button', { name: 'Restart game' })).not.toBeInTheDocument()
+    expect(screen.queryByRole('button', { name: 'Restart' })).not.toBeInTheDocument()
 
-    // Confirmation dialog should appear
-    expect(screen.getByText('Restart game?')).toBeInTheDocument()
-    expect(screen.getByText(/reset the board/i)).toBeInTheDocument()
-
-    // Cancel should dismiss
-    const cancelBtn = screen.getByRole('button', { name: 'Cancel' })
-    await user.click(cancelBtn)
-    expect(screen.queryByText('Restart game?')).not.toBeInTheDocument()
-
-    // restartGame should NOT have been called
+    await user.click(screen.getByRole('button', { name: 'Resign' }))
+    await waitFor(() => {
+      expect(abortGameMock).toHaveBeenCalledWith('game-123')
+      expect(navigateMock).toHaveBeenCalledWith('/games')
+    })
     expect(restartGameMock).not.toHaveBeenCalled()
   })
 
-  it('confirms restart and calls restartGame', async () => {
+  it('exits local game with Exit control', async () => {
     const user = userEvent.setup()
+    setMockGameId('local')
     render(<ChessGame />)
 
-    const restartBtn = await screen.findByRole('button', { name: 'Restart game' })
-    await user.click(restartBtn)
-
-    const confirmBtn = screen.getByRole('button', { name: 'Restart' })
-    await user.click(confirmBtn)
+    await user.click(screen.getByRole('button', { name: 'Exit' }))
 
     await waitFor(() => {
-      expect(restartGameMock).toHaveBeenCalledWith('game-123')
+      expect(navigateMock).toHaveBeenCalledWith('/games')
     })
+    expect(restartGameMock).not.toHaveBeenCalled()
   })
 
   // ── Fix #6: Restart confirmation in local mode ────────────────
@@ -294,15 +287,12 @@ describe('ChessGame regression tests', () => {
     expect(panel).toBeInTheDocument()
   })
 
-  it('shows confirmation dialog before restarting local game', async () => {
-    const user = userEvent.setup()
+  it('does not expose restart controls in local mode', async () => {
     setMockGameId('local')
     render(<ChessGame />)
 
-    const restartBtn = screen.getByRole('button', { name: 'Restart' })
-    await user.click(restartBtn)
-
-    expect(screen.getByText('Restart game?')).toBeInTheDocument()
+    expect(screen.queryByRole('button', { name: 'Restart game' })).not.toBeInTheDocument()
+    expect(screen.queryByRole('button', { name: 'Restart' })).not.toBeInTheDocument()
   })
 
   // ── Fix #5: Game-end messaging when game is aborted ───────────
