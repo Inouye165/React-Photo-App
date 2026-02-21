@@ -417,7 +417,7 @@ describe('ChessGame', () => {
     const user = userEvent.setup()
     render(<ChessGame />)
 
-    const quitButton = await screen.findByRole('button', { name: 'Quit' })
+    const quitButton = await screen.findByRole('button', { name: 'Resign' })
     await user.click(quitButton)
 
     await waitFor(() => {

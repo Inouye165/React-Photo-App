@@ -219,23 +219,25 @@ describe('ChessGame regression tests', () => {
   })
 
   // ── Fix #6: Restart requires confirmation ─────────────────────
-  it('toggles the game menu drawer in online mode', async () => {
+  it('keeps moves panel visible in online mode', async () => {
     const user = userEvent.setup()
     render(<ChessGame />)
 
     const menuToggle = screen.getByRole('button', { name: 'Open game menu' })
     expect(menuToggle).toHaveAttribute('aria-expanded', 'false')
 
-    const drawer = screen.getByText('Game menu').closest('aside')
-    expect(drawer?.className).toContain('translate-x-full')
+    const panel = screen.getByText('Moves & controls').closest('aside')
+    expect(panel).toBeInTheDocument()
+    expect(panel?.className).not.toContain('translate-x-full')
+    expect(panel?.className).not.toContain('translate-x-0')
 
     await user.click(menuToggle)
     expect(menuToggle).toHaveAttribute('aria-expanded', 'true')
-    expect(drawer?.className).toContain('translate-x-0')
+    expect(panel).toBeInTheDocument()
 
-    await user.click(screen.getByRole('button', { name: 'Close' }))
+    await user.click(screen.getByRole('button', { name: 'Close game menu' }))
     expect(menuToggle).toHaveAttribute('aria-expanded', 'false')
-    expect(drawer?.className).toContain('translate-x-full')
+    expect(panel).toBeInTheDocument()
   })
 
   it('shows confirmation dialog before restarting online game', async () => {
@@ -274,7 +276,7 @@ describe('ChessGame regression tests', () => {
   })
 
   // ── Fix #6: Restart confirmation in local mode ────────────────
-  it('toggles the game menu drawer in local mode', async () => {
+  it('keeps moves panel visible in local mode', async () => {
     const user = userEvent.setup()
     setMockGameId('local')
     render(<ChessGame />)
@@ -282,12 +284,14 @@ describe('ChessGame regression tests', () => {
     const menuToggle = screen.getByRole('button', { name: 'Open game menu' })
     expect(menuToggle).toHaveAttribute('aria-expanded', 'false')
 
-    const drawer = screen.getByText('Game menu').closest('aside')
-    expect(drawer?.className).toContain('translate-x-full')
+    const panel = screen.getByText('Moves & controls').closest('aside')
+    expect(panel).toBeInTheDocument()
+    expect(panel?.className).not.toContain('translate-x-full')
+    expect(panel?.className).not.toContain('translate-x-0')
 
     await user.click(menuToggle)
     expect(menuToggle).toHaveAttribute('aria-expanded', 'true')
-    expect(drawer?.className).toContain('translate-x-0')
+    expect(panel).toBeInTheDocument()
   })
 
   it('shows confirmation dialog before restarting local game', async () => {

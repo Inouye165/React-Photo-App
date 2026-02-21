@@ -3903,16 +3903,60 @@ function OnlineChessGame({
       <div className="flex min-h-0 w-full flex-1 flex-col">
         <div className="mb-2 flex flex-none items-center justify-between gap-3">
           <h2 className="text-base font-semibold sm:text-lg">Chess</h2>
+          <div className="flex items-center gap-2">
+            {tutorialFullscreenMode ? (
+              <>
+                <button
+                  type="button"
+                  onClick={() => navigate(-1)}
+                  className="rounded-md border border-slate-300 bg-white px-3 py-1.5 text-xs font-semibold text-slate-700"
+                >
+                  Back
+                </button>
+                <button
+                  type="button"
+                  onClick={() => { void handleQuitGame() }}
+                  className="rounded-md border border-slate-300 bg-white px-3 py-1.5 text-xs font-semibold text-slate-700"
+                >
+                  Quit
+                </button>
+              </>
+            ) : null}
+            <button
+              type="button"
+              aria-label={isMenuOpen ? 'Close game menu' : 'Open game menu'}
+              aria-expanded={isMenuOpen}
+              onClick={() => setIsMenuOpen((prev) => !prev)}
+              className="inline-flex h-9 w-9 items-center justify-center rounded-md border border-slate-300 bg-white text-slate-700 shadow-sm"
+            >
+              ☰
+            </button>
+          </div>
+        </div>
+      {isMenuOpen ? (
+        <div className="absolute right-2 top-14 z-40 w-44 rounded-lg border border-slate-200 bg-white p-2 shadow-lg sm:right-3 sm:top-16">
           <button
             type="button"
-            aria-label={isMenuOpen ? 'Close game menu' : 'Open game menu'}
-            aria-expanded={isMenuOpen}
-            onClick={() => setIsMenuOpen((prev) => !prev)}
-            className="inline-flex h-9 w-9 items-center justify-center rounded-md border border-slate-300 bg-white text-slate-700 shadow-sm"
+            onClick={() => {
+              setIsMenuOpen(false)
+              navigate(-1)
+            }}
+            className="mb-1 w-full rounded px-2 py-1.5 text-left text-sm font-medium text-slate-700 hover:bg-slate-100"
           >
-            ☰
+            Back
+          </button>
+          <button
+            type="button"
+            onClick={() => {
+              setIsMenuOpen(false)
+              void handleQuitGame()
+            }}
+            className="w-full rounded px-2 py-1.5 text-left text-sm font-medium text-slate-700 hover:bg-slate-100"
+          >
+            Quit game
           </button>
         </div>
+      ) : null}
       {error ? (
         <div className="mb-3 flex flex-wrap items-center justify-between gap-3 rounded-md border border-red-200 bg-red-50 px-3 py-2 text-sm text-red-700">
           <span>{error}</span>
@@ -3972,16 +4016,8 @@ function OnlineChessGame({
           onCancel={() => setPendingPromotion(null)}
         />
       ) : null}
-      {isMenuOpen ? (
-        <button
-          type="button"
-          aria-label="Close game menu overlay"
-          onClick={() => setIsMenuOpen(false)}
-          className="absolute inset-0 z-20 bg-slate-900/25"
-        />
-      ) : null}
-      <div className={`flex min-h-0 flex-1 flex-col ${tutorialFullscreenMode ? 'gap-0' : ''}`}>
-        <div className={`${tutorialFullscreenMode ? 'hidden' : 'flex'} min-h-0 flex-1 flex-col rounded-xl border border-slate-200/80 bg-white/80 p-2 shadow-sm sm:p-3`}>
+      <div className={`flex min-h-0 flex-1 flex-col ${tutorialFullscreenMode ? 'gap-0' : 'gap-2 landscape:flex-row lg:flex-row'}`}>
+        <div className={`${tutorialFullscreenMode ? 'hidden' : 'flex'} min-h-0 min-w-0 flex-1 flex-col rounded-xl border border-slate-200/80 bg-white/80 p-2 shadow-sm sm:p-3`}>
           <div className="flex items-center justify-between">
             {renderPlayerLabel(topPlayer || null, topIsWhite ? currentTurn === 'w' : currentTurn === 'b', topFallback)}
           </div>
@@ -4026,15 +4062,15 @@ function OnlineChessGame({
           </div>
         </div>
 
-        <aside className={`${tutorialFullscreenMode ? 'hidden' : 'flex'} fixed inset-y-0 right-0 z-30 w-[min(22rem,92vw)] flex-col overflow-y-auto border-l border-slate-200 bg-white p-4 shadow-xl transition-transform duration-200 ${isMenuOpen ? 'translate-x-0' : 'translate-x-full'} sm:w-[360px]`}>
+        <aside className={`${tutorialFullscreenMode ? 'hidden' : 'flex'} min-h-0 w-full shrink-0 flex-col overflow-y-auto rounded-xl border border-slate-200 bg-white p-4 shadow-sm landscape:w-[360px] landscape:max-w-[44vw] lg:w-[380px]`}>
           <div className="mb-3 flex items-center justify-between">
-            <div className="text-sm font-semibold text-slate-700">Game menu</div>
+            <div className="text-sm font-semibold text-slate-700">Moves & controls</div>
             <button
               type="button"
-              onClick={() => setIsMenuOpen(false)}
+              onClick={() => setIsMenuOpen((prev) => !prev)}
               className="rounded-md border border-slate-200 bg-white px-2 py-1 text-xs font-semibold text-slate-600"
             >
-              Close
+              {isMenuOpen ? 'Docked' : 'Dock'}
             </button>
           </div>
           <div className="mb-3 text-xs text-slate-500">
@@ -4061,7 +4097,7 @@ function OnlineChessGame({
               onClick={() => { void handleQuitGame() }}
               className="rounded-md border border-slate-200 bg-white px-3 py-1 text-xs font-semibold text-slate-600"
             >
-              Quit
+              Resign
             </button>
           </div>
           <div className="mb-3 rounded-lg bg-slate-50 px-3 py-2 text-xs text-slate-600">
@@ -4628,16 +4664,60 @@ function LocalChessGame({
       <div className="flex min-h-0 w-full flex-1 flex-col">
         <div className="mb-2 flex flex-none items-center justify-between gap-3">
           <h2 className="text-base font-semibold sm:text-lg">Chess (Local)</h2>
+          <div className="flex items-center gap-2">
+            {tutorialFullscreenMode ? (
+              <>
+                <button
+                  type="button"
+                  onClick={() => navigate(-1)}
+                  className="rounded-md border border-slate-300 bg-white px-3 py-1.5 text-xs font-semibold text-slate-700"
+                >
+                  Back
+                </button>
+                <button
+                  type="button"
+                  onClick={handleQuitGame}
+                  className="rounded-md border border-slate-300 bg-white px-3 py-1.5 text-xs font-semibold text-slate-700"
+                >
+                  Quit
+                </button>
+              </>
+            ) : null}
+            <button
+              type="button"
+              aria-label={isMenuOpen ? 'Close game menu' : 'Open game menu'}
+              aria-expanded={isMenuOpen}
+              onClick={() => setIsMenuOpen((prev) => !prev)}
+              className="inline-flex h-9 w-9 items-center justify-center rounded-md border border-slate-300 bg-white text-slate-700 shadow-sm"
+            >
+              ☰
+            </button>
+          </div>
+        </div>
+      {isMenuOpen ? (
+        <div className="absolute right-2 top-14 z-40 w-44 rounded-lg border border-slate-200 bg-white p-2 shadow-lg sm:right-3 sm:top-16">
           <button
             type="button"
-            aria-label={isMenuOpen ? 'Close game menu' : 'Open game menu'}
-            aria-expanded={isMenuOpen}
-            onClick={() => setIsMenuOpen((prev) => !prev)}
-            className="inline-flex h-9 w-9 items-center justify-center rounded-md border border-slate-300 bg-white text-slate-700 shadow-sm"
+            onClick={() => {
+              setIsMenuOpen(false)
+              navigate(-1)
+            }}
+            className="mb-1 w-full rounded px-2 py-1.5 text-left text-sm font-medium text-slate-700 hover:bg-slate-100"
           >
-            ☰
+            Back
+          </button>
+          <button
+            type="button"
+            onClick={() => {
+              setIsMenuOpen(false)
+              handleQuitGame()
+            }}
+            className="w-full rounded px-2 py-1.5 text-left text-sm font-medium text-slate-700 hover:bg-slate-100"
+          >
+            Quit game
           </button>
         </div>
+      ) : null}
       <GameEndPanel
         reason={gameEnd.reason}
         winner={gameEnd.winner}
@@ -4663,16 +4743,8 @@ function LocalChessGame({
           onCancel={() => setPendingPromotion(null)}
         />
       ) : null}
-      {isMenuOpen ? (
-        <button
-          type="button"
-          aria-label="Close game menu overlay"
-          onClick={() => setIsMenuOpen(false)}
-          className="absolute inset-0 z-20 bg-slate-900/25"
-        />
-      ) : null}
-      <div className={`flex min-h-0 flex-1 flex-col ${tutorialFullscreenMode ? 'gap-0' : ''}`}>
-        <div className={`${tutorialFullscreenMode ? 'hidden' : 'flex'} min-h-0 flex-1 flex-col rounded-xl border border-slate-200/80 bg-white/80 p-2 shadow-sm sm:p-3`}>
+      <div className={`flex min-h-0 flex-1 flex-col ${tutorialFullscreenMode ? 'gap-0' : 'gap-2 landscape:flex-row lg:flex-row'}`}>
+        <div className={`${tutorialFullscreenMode ? 'hidden' : 'flex'} min-h-0 min-w-0 flex-1 flex-col rounded-xl border border-slate-200/80 bg-white/80 p-2 shadow-sm sm:p-3`}>
           <div className="flex items-center justify-between">
             {renderPlayerLabel(topPlayer || null, topIsWhite ? currentTurn === 'w' : currentTurn === 'b', 'Stockfish')}
           </div>
@@ -4715,15 +4787,15 @@ function LocalChessGame({
           </div>
         </div>
 
-        <aside className={`${tutorialFullscreenMode ? 'hidden' : 'flex'} fixed inset-y-0 right-0 z-30 w-[min(22rem,92vw)] flex-col overflow-y-auto border-l border-slate-200 bg-white p-4 shadow-xl transition-transform duration-200 ${isMenuOpen ? 'translate-x-0' : 'translate-x-full'} sm:w-[360px]`}>
+        <aside className={`${tutorialFullscreenMode ? 'hidden' : 'flex'} min-h-0 w-full shrink-0 flex-col overflow-y-auto rounded-xl border border-slate-200 bg-white p-4 shadow-sm landscape:w-[360px] landscape:max-w-[44vw] lg:w-[380px]`}>
           <div className="mb-3 flex items-center justify-between">
-            <div className="text-sm font-semibold text-slate-700">Game menu</div>
+            <div className="text-sm font-semibold text-slate-700">Moves & controls</div>
             <button
               type="button"
-              onClick={() => setIsMenuOpen(false)}
+              onClick={() => setIsMenuOpen((prev) => !prev)}
               className="rounded-md border border-slate-200 bg-white px-2 py-1 text-xs font-semibold text-slate-600"
             >
-              Close
+              {isMenuOpen ? 'Docked' : 'Dock'}
             </button>
           </div>
           <div className="mb-3 text-xs text-slate-500">Status: {engineThinking ? 'thinking' : 'ready'}</div>
@@ -4746,7 +4818,7 @@ function LocalChessGame({
               onClick={handleQuitGame}
               className="rounded-md border border-slate-200 bg-white px-3 py-1 text-xs font-semibold text-slate-600"
             >
-              Quit
+              Resign
             </button>
           </div>
           <div className="mb-3 rounded-lg bg-slate-50 px-3 py-2 text-xs text-slate-600">
