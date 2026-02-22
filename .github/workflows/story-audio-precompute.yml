@@ -54,6 +54,9 @@ jobs:
       - name: Install dependencies
         run: npm ci --no-audit --no-fund
 
+      - name: Install server dependencies
+        run: npm ci --no-audit --no-fund --prefix server
+
       - name: Precompute and upload story audio assets to production Supabase
         run: npm run story:precompute-audio-assets
 
