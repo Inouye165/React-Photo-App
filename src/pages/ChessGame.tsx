@@ -529,15 +529,21 @@ async function getStoryPdfPreflightError(pdfUrl: string): Promise<string | null>
   }
 }
 
-function getHighlightStyle(tone: StoryHighlightTone | undefined): React.CSSProperties {
-  const styleByTone: Record<StoryHighlightTone, { fill: string; ring: string; glow: string }> = {
+type StoryHighlightPreference = 'scripted' | StoryHighlightTone | 'neon'
+type StoryHighlightBorderPreference = 'black' | 'white' | 'yellow' | 'blue' | 'royal' | 'red' | 'neon'
+
+function getHighlightStyle(
+  tone: StoryHighlightTone | 'neon' | undefined,
+  borderPreference: StoryHighlightBorderPreference,
+): React.CSSProperties {
+  const styleByTone: Record<StoryHighlightTone | 'neon', { fill: string; ring: string; glow: string }> = {
     yellow: {
       fill: 'rgba(250, 204, 21, 0.86)',
       ring: 'rgba(120, 53, 15, 0.96)',
       glow: 'rgba(250, 204, 21, 0.95)',
     },
     blue: {
-      fill: 'rgba(56, 189, 248, 0.84)',
+      fill: 'rgba(125, 211, 252, 0.86)',
       ring: 'rgba(12, 74, 110, 0.96)',
       glow: 'rgba(56, 189, 248, 0.9)',
     },
@@ -551,24 +557,38 @@ function getHighlightStyle(tone: StoryHighlightTone | undefined): React.CSSPrope
       ring: 'rgba(127, 29, 29, 0.96)',
       glow: 'rgba(248, 113, 113, 0.9)',
     },
+    neon: {
+      fill: 'rgba(34, 211, 238, 0.9)',
+      ring: 'rgba(6, 182, 212, 0.98)',
+      glow: 'rgba(34, 211, 238, 0.98)',
+    },
+  }
+
+  const borderByPreference: Record<StoryHighlightBorderPreference, string> = {
+    black: 'rgba(0, 0, 0, 0.98)',
+    white: 'rgba(255, 255, 255, 0.98)',
+    yellow: 'rgba(250, 204, 21, 0.98)',
+    blue: 'rgba(56, 189, 248, 0.98)',
+    royal: 'rgba(217, 70, 239, 0.98)',
+    red: 'rgba(248, 113, 113, 0.98)',
+    neon: 'rgba(34, 211, 238, 0.99)',
   }
 
   const resolved = styleByTone[tone || 'yellow']
+  const resolvedBorder = borderByPreference[borderPreference]
   return {
     backgroundColor: resolved.fill,
-    boxShadow: `inset 0 0 0 3px ${resolved.ring}, inset 0 0 0 1px rgba(255, 255, 255, 0.85), 0 0 16px ${resolved.glow}`,
+    boxShadow: `inset 0 0 0 4px ${resolvedBorder || resolved.ring}, inset 0 0 0 1px rgba(255, 255, 255, 0.85), 0 0 16px ${resolved.glow}`,
     borderRadius: 2,
     filter: 'saturate(1.22) contrast(1.14)',
     animation: 'shimmer 1.35s ease-in-out infinite',
   }
 }
 
-type StoryHighlightPreference = 'scripted' | StoryHighlightTone
-
 function resolveStoryHighlightTone(
   actionTone: StoryHighlightTone | undefined,
   preference: StoryHighlightPreference,
-): StoryHighlightTone | undefined {
+): StoryHighlightTone | 'neon' | undefined {
   if (preference === 'scripted') return actionTone
   return preference
 }
@@ -694,6 +714,7 @@ function resolveDirectorStateAtTime(
   actions: StoryDirectorAction[],
   timeSeconds: number,
   highlightPreference: StoryHighlightPreference = 'scripted',
+  borderPreference: StoryHighlightBorderPreference = 'black',
 ): DirectorResolvedState {
   let chess = new Chess()
   let styles: Record<string, React.CSSProperties> = {}
@@ -719,7 +740,10 @@ function resolveDirectorStateAtTime(
 
     if (action.type === 'HIGHLIGHT') {
       styles = action.squares.reduce<Record<string, React.CSSProperties>>((accumulator, square) => {
-        accumulator[square] = getHighlightStyle(resolveStoryHighlightTone(action.tone, highlightPreference))
+        accumulator[square] = getHighlightStyle(
+          resolveStoryHighlightTone(action.tone, highlightPreference),
+          borderPreference,
+        )
         return accumulator
       }, {})
     }
@@ -785,7 +809,8 @@ function ChessStoryModal({
   const [autoTurnPages, setAutoTurnPages] = useState(true)
   const [manualNarration, setManualNarration] = useState('')
   const [audioSetupWarnings, setAudioSetupWarnings] = useState<string[]>([])
-  const [storyHighlightPreference, setStoryHighlightPreference] = useState<StoryHighlightPreference>('scripted')
+  const [storyHighlightPreference, setStoryHighlightPreference] = useState<StoryHighlightPreference>('blue')
+  const [storyHighlightBorderPreference, setStoryHighlightBorderPreference] = useState<StoryHighlightBorderPreference>('black')
   const [boardPosition, setBoardPosition] = useState(() => new Chess().fen())
   const [customSquareStyles, setCustomSquareStyles] = useState<Record<string, React.CSSProperties>>({})
   const [activeActionLabel, setActiveActionLabel] = useState<string | null>(null)
@@ -798,6 +823,8 @@ function ChessStoryModal({
   const [renderedPageSize, setRenderedPageSize] = useState({ width: 0, height: 0 })
   const [hasExtractablePdfText, setHasExtractablePdfText] = useState<boolean | null>(null)
   const isStoryAudioPrecomputedOnly = isStoryAudioPrecomputedOnlyModeEnabled()
+  const storyHighlightPreferenceRef = useRef<StoryHighlightPreference>('blue')
+  const storyHighlightBorderPreferenceRef = useRef<StoryHighlightBorderPreference>('black')
 
   const manualNarrationPages = useMemo(() => splitManualNarrationIntoPages(manualNarration), [manualNarration])
   const storyProgressStorageKey = useMemo(
@@ -932,7 +959,12 @@ function ChessStoryModal({
     }
 
     if (timeSeconds + 0.01 < lastAudioTimeRef.current) {
-      const resolved = resolveDirectorStateAtTime(actions, timeSeconds, storyHighlightPreference)
+      const resolved = resolveDirectorStateAtTime(
+        actions,
+        timeSeconds,
+        storyHighlightPreferenceRef.current,
+        storyHighlightBorderPreferenceRef.current,
+      )
       storyChessRef.current = resolved.chess
       setBoardPosition(resolved.chess.fen())
       setCustomSquareStyles(resolved.styles)
@@ -959,7 +991,10 @@ function ChessStoryModal({
 
       if (action.type === 'HIGHLIGHT') {
         const styles = action.squares.reduce<Record<string, React.CSSProperties>>((accumulator, square) => {
-          accumulator[square] = getHighlightStyle(resolveStoryHighlightTone(action.tone, storyHighlightPreference))
+          accumulator[square] = getHighlightStyle(
+            resolveStoryHighlightTone(action.tone, storyHighlightPreferenceRef.current),
+            storyHighlightBorderPreferenceRef.current,
+          )
           return accumulator
         }, {})
         setCustomSquareStyles(styles)
@@ -980,7 +1015,21 @@ function ChessStoryModal({
     }
 
     lastAudioTimeRef.current = timeSeconds
-  }, [storyHighlightPreference])
+  }, [])
+
+  useEffect(() => {
+    storyHighlightPreferenceRef.current = storyHighlightPreference
+    if (open) {
+      syncDirectorToTime(lastAudioTimeRef.current, true)
+    }
+  }, [storyHighlightPreference, open, syncDirectorToTime])
+
+  useEffect(() => {
+    storyHighlightBorderPreferenceRef.current = storyHighlightBorderPreference
+    if (open) {
+      syncDirectorToTime(lastAudioTimeRef.current, true)
+    }
+  }, [storyHighlightBorderPreference, open, syncDirectorToTime])
 
   const applyPendingResumeToAudio = useCallback((audio: HTMLAudioElement, pageNumber: number) => {
     const pending = pendingResumeRef.current
@@ -2257,6 +2306,24 @@ function ChessStoryModal({
               <option value="royal">Magenta</option>
               <option value="red">Red</option>
               <option value="yellow">Yellow</option>
+              <option value="neon">Neon</option>
+            </select>
+          </label>
+          <label className="flex items-center gap-1 text-xs text-slate-600">
+            Border
+            <select
+              value={storyHighlightBorderPreference}
+              onChange={(event) => setStoryHighlightBorderPreference(event.target.value as StoryHighlightBorderPreference)}
+              className="rounded border border-slate-200 bg-white px-2 py-1 text-xs font-semibold text-slate-600"
+              aria-label="Story highlight border color"
+            >
+              <option value="black">Black</option>
+              <option value="white">White</option>
+              <option value="blue">Blue</option>
+              <option value="royal">Magenta</option>
+              <option value="red">Red</option>
+              <option value="yellow">Yellow</option>
+              <option value="neon">Neon</option>
             </select>
           </label>
           <span className="text-xs text-slate-500">Page {currentPage}/{totalPages}</span>
