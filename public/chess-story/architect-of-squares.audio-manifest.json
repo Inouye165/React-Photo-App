@@ -4,13 +4,13 @@
   "cacheVersion": "v2",
   "bucket": "story-audio",
   "totalPages": 11,
-  "generatedAt": "2026-02-22T16:45:47.348Z",
+  "generatedAt": "2026-02-22T19:44:38.982Z",
   "entries": [
     {
       "page": 1,
       "hash": "054a18972a3ec1f4",
       "objectPath": "architect-of-squares/v2/page-1-054a18972a3ec1f4.mp3",
-      "url": "http://127.0.0.1:54321/storage/v1/object/public/story-audio/architect-of-squares/v2/page-1-054a18972a3ec1f4.mp3",
+      "url": "https://xcidibfijzyoyliyclug.supabase.co/storage/v1/object/public/story-audio/architect-of-squares/v2/page-1-054a18972a3ec1f4.mp3",
       "wordCount": 0,
       "availability": "empty-text-skip"
     },
@@ -18,7 +18,7 @@
       "page": 2,
       "hash": "3b869ec890e15ab0",
       "objectPath": "architect-of-squares/v2/page-2-3b869ec890e15ab0.mp3",
-      "url": "http://127.0.0.1:54321/storage/v1/object/public/story-audio/architect-of-squares/v2/page-2-3b869ec890e15ab0.mp3",
+      "url": "https://xcidibfijzyoyliyclug.supabase.co/storage/v1/object/public/story-audio/architect-of-squares/v2/page-2-3b869ec890e15ab0.mp3",
       "wordCount": 86,
       "availability": "existing"
     },
@@ -26,7 +26,7 @@
       "page": 3,
       "hash": "027d52e1e5f2d732",
       "objectPath": "architect-of-squares/v2/page-3-027d52e1e5f2d732.mp3",
-      "url": "http://127.0.0.1:54321/storage/v1/object/public/story-audio/architect-of-squares/v2/page-3-027d52e1e5f2d732.mp3",
+      "url": "https://xcidibfijzyoyliyclug.supabase.co/storage/v1/object/public/story-audio/architect-of-squares/v2/page-3-027d52e1e5f2d732.mp3",
       "wordCount": 88,
       "availability": "existing"
     },
@@ -34,7 +34,7 @@
       "page": 4,
       "hash": "5703698d91680cd7",
       "objectPath": "architect-of-squares/v2/page-4-5703698d91680cd7.mp3",
-      "url": "http://127.0.0.1:54321/storage/v1/object/public/story-audio/architect-of-squares/v2/page-4-5703698d91680cd7.mp3",
+      "url": "https://xcidibfijzyoyliyclug.supabase.co/storage/v1/object/public/story-audio/architect-of-squares/v2/page-4-5703698d91680cd7.mp3",
       "wordCount": 70,
       "availability": "existing"
     },
@@ -42,7 +42,7 @@
       "page": 5,
       "hash": "5d825bd064500346",
       "objectPath": "architect-of-squares/v2/page-5-5d825bd064500346.mp3",
-      "url": "http://127.0.0.1:54321/storage/v1/object/public/story-audio/architect-of-squares/v2/page-5-5d825bd064500346.mp3",
+      "url": "https://xcidibfijzyoyliyclug.supabase.co/storage/v1/object/public/story-audio/architect-of-squares/v2/page-5-5d825bd064500346.mp3",
       "wordCount": 85,
       "availability": "existing"
     },
@@ -50,7 +50,7 @@
       "page": 6,
       "hash": "a053f4f615b1a5cf",
       "objectPath": "architect-of-squares/v2/page-6-a053f4f615b1a5cf.mp3",
-      "url": "http://127.0.0.1:54321/storage/v1/object/public/story-audio/architect-of-squares/v2/page-6-a053f4f615b1a5cf.mp3",
+      "url": "https://xcidibfijzyoyliyclug.supabase.co/storage/v1/object/public/story-audio/architect-of-squares/v2/page-6-a053f4f615b1a5cf.mp3",
       "wordCount": 75,
       "availability": "existing"
     },
@@ -58,7 +58,7 @@
       "page": 7,
       "hash": "3709b41328febbb4",
       "objectPath": "architect-of-squares/v2/page-7-3709b41328febbb4.mp3",
-      "url": "http://127.0.0.1:54321/storage/v1/object/public/story-audio/architect-of-squares/v2/page-7-3709b41328febbb4.mp3",
+      "url": "https://xcidibfijzyoyliyclug.supabase.co/storage/v1/object/public/story-audio/architect-of-squares/v2/page-7-3709b41328febbb4.mp3",
       "wordCount": 91,
       "availability": "existing"
     },
@@ -66,7 +66,7 @@
       "page": 8,
       "hash": "38e07a4693e292ed",
       "objectPath": "architect-of-squares/v2/page-8-38e07a4693e292ed.mp3",
-      "url": "http://127.0.0.1:54321/storage/v1/object/public/story-audio/architect-of-squares/v2/page-8-38e07a4693e292ed.mp3",
+      "url": "https://xcidibfijzyoyliyclug.supabase.co/storage/v1/object/public/story-audio/architect-of-squares/v2/page-8-38e07a4693e292ed.mp3",
       "wordCount": 82,
       "availability": "existing"
     },
@@ -74,7 +74,7 @@
       "page": 9,
       "hash": "6b76e287da7c597e",
       "objectPath": "architect-of-squares/v2/page-9-6b76e287da7c597e.mp3",
-      "url": "http://127.0.0.1:54321/storage/v1/object/public/story-audio/architect-of-squares/v2/page-9-6b76e287da7c597e.mp3",
+      "url": "https://xcidibfijzyoyliyclug.supabase.co/storage/v1/object/public/story-audio/architect-of-squares/v2/page-9-6b76e287da7c597e.mp3",
       "wordCount": 90,
       "availability": "existing"
     },
@@ -82,7 +82,7 @@
       "page": 10,
       "hash": "8c63a58d26c72d43",
       "objectPath": "architect-of-squares/v2/page-10-8c63a58d26c72d43.mp3",
-      "url": "http://127.0.0.1:54321/storage/v1/object/public/story-audio/architect-of-squares/v2/page-10-8c63a58d26c72d43.mp3",
+      "url": "https://xcidibfijzyoyliyclug.supabase.co/storage/v1/object/public/story-audio/architect-of-squares/v2/page-10-8c63a58d26c72d43.mp3",
       "wordCount": 78,
       "availability": "existing"
     },
@@ -90,7 +90,7 @@
       "page": 11,
       "hash": "2dd5202cca3d0824",
       "objectPath": "architect-of-squares/v2/page-11-2dd5202cca3d0824.mp3",
-      "url": "http://127.0.0.1:54321/storage/v1/object/public/story-audio/architect-of-squares/v2/page-11-2dd5202cca3d0824.mp3",
+      "url": "https://xcidibfijzyoyliyclug.supabase.co/storage/v1/object/public/story-audio/architect-of-squares/v2/page-11-2dd5202cca3d0824.mp3",
       "wordCount": 84,
       "availability": "existing"
     }
