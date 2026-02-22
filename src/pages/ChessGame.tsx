@@ -472,6 +472,7 @@ const STORY_STALL_RECOVERY_DELAY_MS = 2000
 const STORY_PROGRESS_STORAGE_PREFIX = 'chess-story-progress'
 const STORY_PROGRESS_STORAGE_VERSION = 1
 const STORY_PDF_MOBILE_SCALE_BOOST = 1.22
+const STORY_AUDIO_PAGE_CACHE_MAX_ENTRIES = 64
 
 type WakeLockSentinelLike = {
   released: boolean
@@ -529,16 +530,35 @@ async function getStoryPdfPreflightError(pdfUrl: string): Promise<string | null>
 }
 
 function getHighlightStyle(tone: StoryHighlightTone | undefined): React.CSSProperties {
-  const colorByTone: Record<StoryHighlightTone, string> = {
-    yellow: 'rgba(250, 204, 21, 0.62)',
-    blue: 'rgba(59, 130, 246, 0.62)',
-    royal: 'rgba(168, 85, 247, 0.62)',
-    red: 'rgba(239, 68, 68, 0.62)',
+  const styleByTone: Record<StoryHighlightTone, { fill: string; ring: string; glow: string }> = {
+    yellow: {
+      fill: 'rgba(250, 204, 21, 0.86)',
+      ring: 'rgba(120, 53, 15, 0.96)',
+      glow: 'rgba(250, 204, 21, 0.95)',
+    },
+    blue: {
+      fill: 'rgba(56, 189, 248, 0.84)',
+      ring: 'rgba(12, 74, 110, 0.96)',
+      glow: 'rgba(56, 189, 248, 0.9)',
+    },
+    royal: {
+      fill: 'rgba(217, 70, 239, 0.84)',
+      ring: 'rgba(112, 26, 117, 0.96)',
+      glow: 'rgba(217, 70, 239, 0.9)',
+    },
+    red: {
+      fill: 'rgba(248, 113, 113, 0.84)',
+      ring: 'rgba(127, 29, 29, 0.96)',
+      glow: 'rgba(248, 113, 113, 0.9)',
+    },
   }
 
-  const fill = colorByTone[tone || 'yellow']
+  const resolved = styleByTone[tone || 'yellow']
   return {
-    background: `radial-gradient(circle, ${fill} 32%, transparent 34%)`,
+    backgroundColor: resolved.fill,
+    boxShadow: `inset 0 0 0 3px ${resolved.ring}, inset 0 0 0 1px rgba(255, 255, 255, 0.85), 0 0 16px ${resolved.glow}`,
+    borderRadius: 2,
+    filter: 'saturate(1.22) contrast(1.14)',
     animation: 'shimmer 1.35s ease-in-out infinite',
   }
 }
@@ -750,6 +770,7 @@ function ChessStoryModal({
   const watchdogTimerRef = useRef<ReturnType<typeof setInterval> | null>(null)
   const stallRecoveryTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null)
   const prefetchedStoryAudioKeysRef = useRef<Set<string>>(new Set())
+  const storyAudioPageCacheRef = useRef<Map<string, Awaited<ReturnType<typeof ensureStoryAudio>>>>(new Map())
   const stallRecoveryInFlightRef = useRef(false)
   const resumePromptedRef = useRef(false)
   const pendingResumeRef = useRef<{ page: number; currentTime: number } | null>(null)
@@ -1285,6 +1306,13 @@ function ChessStoryModal({
     }
 
     const prefetchCacheKey = `${storyAudioSlug}:${pageNumber}:${prefetchText}`
+    if (storyAudioPageCacheRef.current.has(prefetchCacheKey)) {
+      logStoryAudio('prefetch-skip-cached-result', {
+        prefetchPage: pageNumber,
+      })
+      return
+    }
+
     if (prefetchedStoryAudioKeysRef.current.has(prefetchCacheKey)) {
       logStoryAudio('prefetch-skip-already-prefetched', {
         prefetchPage: pageNumber,
@@ -1307,6 +1335,15 @@ function ChessStoryModal({
         text: prefetchText,
         voice: CHESS_STORY_TTS_VOICE,
       })
+
+      storyAudioPageCacheRef.current.delete(prefetchCacheKey)
+      storyAudioPageCacheRef.current.set(prefetchCacheKey, prefetchedAudio)
+      if (storyAudioPageCacheRef.current.size > STORY_AUDIO_PAGE_CACHE_MAX_ENTRIES) {
+        const oldestKey = storyAudioPageCacheRef.current.keys().next().value
+        if (oldestKey) {
+          storyAudioPageCacheRef.current.delete(oldestKey)
+        }
+      }
 
       logStoryAudio('prefetch-success', {
         prefetchPage: pageNumber,
@@ -1505,6 +1542,7 @@ function ChessStoryModal({
     if (!open) {
       stopNarration()
       prefetchedStoryAudioKeysRef.current.clear()
+      storyAudioPageCacheRef.current.clear()
       setPdfDocument(null)
       setLoadError(null)
       setCurrentPage(1)
@@ -1522,6 +1560,8 @@ function ChessStoryModal({
     setPageTextOverlayItems([])
     setRenderedPageSize({ width: 0, height: 0 })
     pageTextCacheRef.current.clear()
+    prefetchedStoryAudioKeysRef.current.clear()
+    storyAudioPageCacheRef.current.clear()
 
     let loadingTask: ReturnType<typeof getDocument> | null = null
 
@@ -1970,19 +2010,39 @@ function ChessStoryModal({
 
       let audioSourceUrl = ''
       let createdObjectUrl: string | null = null
+      const pageAudioCacheKey = `${storyAudioSlug}:${currentPage}:${text}`
 
       try {
-        logStoryAudio('ensure-story-audio-request', {
-          source: narration.source,
-          textLength: text.length,
-        })
-        const ensuredAudio = await ensureStoryAudio({
-          storySlug: storyAudioSlug,
-          page: currentPage,
-          totalPages,
-          text,
-          voice: CHESS_STORY_TTS_VOICE,
-        })
+        let ensuredAudio = storyAudioPageCacheRef.current.get(pageAudioCacheKey)
+
+        if (!ensuredAudio) {
+          logStoryAudio('ensure-story-audio-request', {
+            source: narration.source,
+            textLength: text.length,
+          })
+          ensuredAudio = await ensureStoryAudio({
+            storySlug: storyAudioSlug,
+            page: currentPage,
+            totalPages,
+            text,
+            voice: CHESS_STORY_TTS_VOICE,
+          })
+
+          storyAudioPageCacheRef.current.delete(pageAudioCacheKey)
+          storyAudioPageCacheRef.current.set(pageAudioCacheKey, ensuredAudio)
+          if (storyAudioPageCacheRef.current.size > STORY_AUDIO_PAGE_CACHE_MAX_ENTRIES) {
+            const oldestKey = storyAudioPageCacheRef.current.keys().next().value
+            if (oldestKey) {
+              storyAudioPageCacheRef.current.delete(oldestKey)
+            }
+          }
+        } else {
+          logStoryAudio('ensure-story-audio-skip-reused-cache', {
+            source: ensuredAudio.source,
+            cached: ensuredAudio.cached,
+            textLength: text.length,
+          })
+        }
 
         logStoryAudio('ensure-story-audio-response', {
           cached: ensuredAudio.cached,
