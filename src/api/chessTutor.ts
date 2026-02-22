@@ -18,6 +18,7 @@ export type EnsureStoryAudioResult = {
   cached: boolean
   url: string
   audioBase64?: string
+  source: 'local-cache' | 'precomputed-manifest' | 'server-cache' | 'runtime-generated'
 }
 
 export type StoryAudioSetupStatus = {
@@ -64,6 +65,7 @@ type EnsureStoryAudioResponse = {
   cached?: boolean
   url?: string
   audioBase64?: string
+  source?: 'server-cache' | 'runtime-generated'
   error?: string
 }
 
@@ -137,7 +139,6 @@ export function isStoryAudioPrecomputedOnlyModeEnabled(): boolean {
 }
 
 function logStoryAudioClient(event: string, details?: Record<string, unknown>): void {
-  if (!import.meta.env.DEV) return
   console.info(`[story-audio/client] ${event}`, details || {})
 }
 
@@ -557,6 +558,7 @@ export async function ensureStoryAudio(input: {
     return {
       cached: true,
       url: cachedUrl,
+      source: 'local-cache',
     }
     }
   }
@@ -587,6 +589,7 @@ export async function ensureStoryAudio(input: {
     return {
       cached: true,
       url: precomputedUrl,
+      source: 'precomputed-manifest',
     }
     }
   }
@@ -660,6 +663,7 @@ export async function ensureStoryAudio(input: {
     cached: Boolean(response.cached),
     url: response.url,
     audioBase64: response.audioBase64,
+    source: response.source || (response.cached ? 'server-cache' : 'runtime-generated'),
   }
 }
 

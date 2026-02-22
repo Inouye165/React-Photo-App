@@ -487,6 +487,7 @@ function createPublicRouter({ db }: { db: any }): Router {
         return res.json({
           success: true,
           cached: true,
+          source: 'server-cache',
           url: clientUrl,
           audioBase64: cachedAudioBase64,
         });
@@ -614,6 +615,7 @@ function createPublicRouter({ db }: { db: any }): Router {
       return res.json({
         success: true,
         cached: false,
+        source: 'runtime-generated',
         url: clientUrl,
         audioBase64: audioBuffer.toString('base64'),
       });

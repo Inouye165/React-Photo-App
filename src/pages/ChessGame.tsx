@@ -471,6 +471,7 @@ const STORY_DIRECTOR_SYNC_INTERVAL_MS = 250
 const STORY_STALL_RECOVERY_DELAY_MS = 2000
 const STORY_PROGRESS_STORAGE_PREFIX = 'chess-story-progress'
 const STORY_PROGRESS_STORAGE_VERSION = 1
+const STORY_PDF_MOBILE_SCALE_BOOST = 1.22
 
 type WakeLockSentinelLike = {
   released: boolean
@@ -540,6 +541,16 @@ function getHighlightStyle(tone: StoryHighlightTone | undefined): React.CSSPrope
     background: `radial-gradient(circle, ${fill} 32%, transparent 34%)`,
     animation: 'shimmer 1.35s ease-in-out infinite',
   }
+}
+
+type StoryHighlightPreference = 'scripted' | StoryHighlightTone
+
+function resolveStoryHighlightTone(
+  actionTone: StoryHighlightTone | undefined,
+  preference: StoryHighlightPreference,
+): StoryHighlightTone | undefined {
+  if (preference === 'scripted') return actionTone
+  return preference
 }
 
 function formatAudioTime(seconds: number): string {
@@ -659,7 +670,11 @@ type DirectorResolvedState = {
   lastIndex: number
 }
 
-function resolveDirectorStateAtTime(actions: StoryDirectorAction[], timeSeconds: number): DirectorResolvedState {
+function resolveDirectorStateAtTime(
+  actions: StoryDirectorAction[],
+  timeSeconds: number,
+  highlightPreference: StoryHighlightPreference = 'scripted',
+): DirectorResolvedState {
   let chess = new Chess()
   let styles: Record<string, React.CSSProperties> = {}
   let label: string | null = null
@@ -684,7 +699,7 @@ function resolveDirectorStateAtTime(actions: StoryDirectorAction[], timeSeconds:
 
     if (action.type === 'HIGHLIGHT') {
       styles = action.squares.reduce<Record<string, React.CSSProperties>>((accumulator, square) => {
-        accumulator[square] = getHighlightStyle(action.tone)
+        accumulator[square] = getHighlightStyle(resolveStoryHighlightTone(action.tone, highlightPreference))
         return accumulator
       }, {})
     }
@@ -734,6 +749,7 @@ function ChessStoryModal({
   const wakeLockRequestInFlightRef = useRef<Promise<void> | null>(null)
   const watchdogTimerRef = useRef<ReturnType<typeof setInterval> | null>(null)
   const stallRecoveryTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null)
+  const prefetchedStoryAudioKeysRef = useRef<Set<string>>(new Set())
   const stallRecoveryInFlightRef = useRef(false)
   const resumePromptedRef = useRef(false)
   const pendingResumeRef = useRef<{ page: number; currentTime: number } | null>(null)
@@ -748,6 +764,7 @@ function ChessStoryModal({
   const [autoTurnPages, setAutoTurnPages] = useState(true)
   const [manualNarration, setManualNarration] = useState('')
   const [audioSetupWarnings, setAudioSetupWarnings] = useState<string[]>([])
+  const [storyHighlightPreference, setStoryHighlightPreference] = useState<StoryHighlightPreference>('scripted')
   const [boardPosition, setBoardPosition] = useState(() => new Chess().fen())
   const [customSquareStyles, setCustomSquareStyles] = useState<Record<string, React.CSSProperties>>({})
   const [activeActionLabel, setActiveActionLabel] = useState<string | null>(null)
@@ -894,7 +911,7 @@ function ChessStoryModal({
     }
 
     if (timeSeconds + 0.01 < lastAudioTimeRef.current) {
-      const resolved = resolveDirectorStateAtTime(actions, timeSeconds)
+      const resolved = resolveDirectorStateAtTime(actions, timeSeconds, storyHighlightPreference)
       storyChessRef.current = resolved.chess
       setBoardPosition(resolved.chess.fen())
       setCustomSquareStyles(resolved.styles)
@@ -921,7 +938,7 @@ function ChessStoryModal({
 
       if (action.type === 'HIGHLIGHT') {
         const styles = action.squares.reduce<Record<string, React.CSSProperties>>((accumulator, square) => {
-          accumulator[square] = getHighlightStyle(action.tone)
+          accumulator[square] = getHighlightStyle(resolveStoryHighlightTone(action.tone, storyHighlightPreference))
           return accumulator
         }, {})
         setCustomSquareStyles(styles)
@@ -942,7 +959,7 @@ function ChessStoryModal({
     }
 
     lastAudioTimeRef.current = timeSeconds
-  }, [])
+  }, [storyHighlightPreference])
 
   const applyPendingResumeToAudio = useCallback((audio: HTMLAudioElement, pageNumber: number) => {
     const pending = pendingResumeRef.current
@@ -1148,7 +1165,6 @@ function ChessStoryModal({
   }, [])
 
   const logStoryAudio = useCallback((event: string, details?: Record<string, unknown>) => {
-    if (!import.meta.env.DEV) return
     const payload = details || {}
     console.info(`[story-audio/modal] ${event}`, {
       page: currentPage,
@@ -1253,6 +1269,59 @@ function ChessStoryModal({
       narration: currentPageNarration,
     }
   }, [getNarrationForPage, totalPages])
+
+  const prefetchNarrationAudioForPage = useCallback(async (pageNumber: number) => {
+    if (!open || !pdfDocument) return
+    if (pageNumber <= 0 || pageNumber > totalPages) return
+
+    const narration = await getNarrationForPage(pageNumber)
+    const prefetchText = narration.text
+    if (!prefetchText) {
+      logStoryAudio('prefetch-skip-no-text', {
+        prefetchPage: pageNumber,
+        source: narration.source,
+      })
+      return
+    }
+
+    const prefetchCacheKey = `${storyAudioSlug}:${pageNumber}:${prefetchText}`
+    if (prefetchedStoryAudioKeysRef.current.has(prefetchCacheKey)) {
+      logStoryAudio('prefetch-skip-already-prefetched', {
+        prefetchPage: pageNumber,
+      })
+      return
+    }
+
+    prefetchedStoryAudioKeysRef.current.add(prefetchCacheKey)
+    logStoryAudio('prefetch-start', {
+      prefetchPage: pageNumber,
+      source: narration.source,
+      textLength: prefetchText.length,
+    })
+
+    try {
+      const prefetchedAudio = await ensureStoryAudio({
+        storySlug: storyAudioSlug,
+        page: pageNumber,
+        totalPages,
+        text: prefetchText,
+        voice: CHESS_STORY_TTS_VOICE,
+      })
+
+      logStoryAudio('prefetch-success', {
+        prefetchPage: pageNumber,
+        cached: prefetchedAudio.cached,
+        source: prefetchedAudio.source,
+      })
+    } catch (error) {
+      prefetchedStoryAudioKeysRef.current.delete(prefetchCacheKey)
+      logStoryAudio('prefetch-failed', {
+        prefetchPage: pageNumber,
+        errorName: (error as { name?: unknown })?.name,
+        errorMessage: (error as { message?: unknown })?.message,
+      })
+    }
+  }, [open, pdfDocument, totalPages, getNarrationForPage, logStoryAudio, storyAudioSlug])
 
   useEffect(() => {
     if (typeof window === 'undefined') return
@@ -1435,6 +1504,7 @@ function ChessStoryModal({
   useEffect(() => {
     if (!open) {
       stopNarration()
+      prefetchedStoryAudioKeysRef.current.clear()
       setPdfDocument(null)
       setLoadError(null)
       setCurrentPage(1)
@@ -1557,7 +1627,9 @@ function ChessStoryModal({
         const containerHeight = Math.max(240, container.clientHeight - 16)
         const widthScale = containerWidth / baseViewport.width
         const heightScale = containerHeight / baseViewport.height
-        const scale = Math.max(0.2, Math.min(widthScale, heightScale))
+        const isNarrowViewport = typeof window !== 'undefined' && window.innerWidth <= 640
+        const mobileScaleBoost = isNarrowViewport ? STORY_PDF_MOBILE_SCALE_BOOST : 1
+        const scale = Math.max(0.2, Math.min(widthScale, heightScale) * mobileScaleBoost)
         const viewport = page.getViewport({ scale })
 
         canvas.width = Math.floor(viewport.width)
@@ -1914,6 +1986,8 @@ function ChessStoryModal({
 
         logStoryAudio('ensure-story-audio-response', {
           cached: ensuredAudio.cached,
+          source: ensuredAudio.source,
+          playbackMode: ensuredAudio.source === 'runtime-generated' ? 'generated-now' : 'loaded-existing',
           hasUrl: Boolean(ensuredAudio.url),
           hasAudioBase64: Boolean(ensuredAudio.audioBase64 && ensuredAudio.audioBase64.length > 0),
         })
@@ -1972,6 +2046,9 @@ function ChessStoryModal({
       try {
         await audio.play()
         logStoryAudio('play-succeeded')
+        if (autoTurnPages && currentPage < totalPages) {
+          void prefetchNarrationAudioForPage(currentPage + 1)
+        }
       } catch (error) {
         logStoryAudio('play-failed', {
           errorName: (error as { name?: unknown })?.name,
@@ -2028,6 +2105,7 @@ function ChessStoryModal({
     clearStallRecoveryTimer,
     startSpeechNarration,
     stopSpeechNarration,
+    prefetchNarrationAudioForPage,
     isStoryAudioPrecomputedOnly,
   ])
 
@@ -2106,6 +2184,21 @@ function ChessStoryModal({
           >
             {autoTurnPages ? 'Auto-turn: on' : 'Auto-turn: off'}
           </button>
+          <label className="flex items-center gap-1 text-xs text-slate-600">
+            Highlight
+            <select
+              value={storyHighlightPreference}
+              onChange={(event) => setStoryHighlightPreference(event.target.value as StoryHighlightPreference)}
+              className="rounded border border-slate-200 bg-white px-2 py-1 text-xs font-semibold text-slate-600"
+              aria-label="Story highlight color"
+            >
+              <option value="scripted">Scripted</option>
+              <option value="blue">Blue</option>
+              <option value="royal">Magenta</option>
+              <option value="red">Red</option>
+              <option value="yellow">Yellow</option>
+            </select>
+          </label>
           <span className="text-xs text-slate-500">Page {currentPage}/{totalPages}</span>
           <span className="text-xs text-slate-500">Audio {formatAudioTime(audioCurrentTime)} / {formatAudioTime(audioDuration)}</span>
           <span className="text-xs text-slate-500">Source: {narrationSourceLabel(activeNarrationSource)}</span>
@@ -2125,7 +2218,7 @@ function ChessStoryModal({
 
         <div className="min-h-0 flex-1">
           <div className="grid h-full min-h-0 gap-2 lg:grid-cols-[minmax(0,1fr)_280px]">
-            <div ref={pageContainerRef} className="min-h-0 overflow-hidden rounded-lg border border-slate-200 bg-slate-50 p-2">
+            <div ref={pageContainerRef} className="min-h-0 overflow-auto rounded-lg border border-slate-200 bg-slate-50 p-2">
               {isLoadingDocument ? <div className="text-sm text-slate-600">Loading story PDF…</div> : null}
               {loadError ? <div className="text-sm text-red-600">{loadError}</div> : null}
               {!isLoadingDocument && !loadError ? (
