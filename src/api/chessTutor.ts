@@ -411,9 +411,12 @@ async function loadStoryAudioManifest(storySlug: string): Promise<StoryAudioMani
   const loader = (async () => {
     try {
       storyAudioClientMetrics.manifestLoads += 1
-      const response = await fetch(`/chess-story/${normalizedStorySlug}.audio-manifest.json`, {
+      const manifestUrl = new URL(`/chess-story/${normalizedStorySlug}.audio-manifest.json`, window.location.origin)
+      manifestUrl.searchParams.set('v', String(Date.now()))
+
+      const response = await fetch(manifestUrl.toString(), {
         method: 'GET',
-        cache: 'force-cache',
+        cache: 'no-store',
       })
       if (!response.ok) {
         storyAudioClientMetrics.manifestLoadFailures += 1
