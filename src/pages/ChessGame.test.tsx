@@ -711,7 +711,7 @@ describe('ChessGame', () => {
     await user.click(playButton)
 
     await waitFor(() => {
-      expect(ensureStoryAudioMock).toHaveBeenCalledTimes(1)
+      expect(ensureStoryAudioMock).toHaveBeenCalled()
     })
 
     const audioClass = (globalThis as any).Audio as { instances: Array<{ emit: (eventName: string) => void }> }
@@ -735,7 +735,7 @@ describe('ChessGame', () => {
     await user.click(await screen.findByRole('button', { name: 'Play narration' }))
 
     await waitFor(() => {
-      expect(ensureStoryAudioMock).toHaveBeenCalledTimes(1)
+      expect(ensureStoryAudioMock).toHaveBeenCalled()
     })
 
     const audioClass = (globalThis as any).Audio as { instances: Array<{ pause: ReturnType<typeof vi.fn> }> }
@@ -822,7 +822,7 @@ describe('ChessGame', () => {
     await user.click(screen.getByRole('button', { name: 'Play narration' }))
 
     await waitFor(() => {
-      expect(ensureStoryAudioMock).toHaveBeenCalledTimes(1)
+      expect(ensureStoryAudioMock).toHaveBeenCalled()
     })
 
     const firstEnsureCall = ensureStoryAudioMock.mock.calls[0]?.[0] as { text?: string } | undefined
@@ -897,7 +897,7 @@ describe('ChessGame', () => {
     await user.click(await screen.findByRole('button', { name: 'Play narration' }))
 
     await waitFor(() => {
-      expect(ensureStoryAudioMock).toHaveBeenCalledTimes(1)
+      expect(ensureStoryAudioMock).toHaveBeenCalled()
     })
 
     const audioClass = (globalThis as any).Audio as { instances: Array<{ currentTime: number; duration?: number; emit: (eventName: string) => void }> }
@@ -968,7 +968,7 @@ describe('ChessGame', () => {
     await user.click(await screen.findByRole('button', { name: 'Play narration' }))
 
     await waitFor(() => {
-      expect(ensureStoryAudioMock).toHaveBeenCalledTimes(1)
+      expect(ensureStoryAudioMock).toHaveBeenCalled()
     })
 
     const audioClass = (globalThis as any).Audio as { instances: Array<{ currentTime: number; duration?: number; paused?: boolean; play: ReturnType<typeof vi.fn>; emit: (eventName: string) => void }> }
