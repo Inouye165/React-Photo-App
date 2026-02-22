@@ -1698,9 +1698,22 @@ function ChessStoryModal({
   useEffect(() => {
     if (!open || !pdfDocument) return
     let cancelled = false
+    let activeRenderTask: { cancel?: () => void; promise: Promise<unknown> } | null = null
 
     const renderPage = async () => {
+      const maxPage = Math.max(1, pdfDocument.numPages || 1)
+      if (currentPage > maxPage) {
+        if (!cancelled) {
+          setCurrentPage(maxPage)
+        }
+        return
+      }
+
       try {
+        if (!cancelled) {
+          setLoadError(null)
+        }
+
         const page = await pdfDocument.getPage(currentPage)
         if (cancelled) return
 
@@ -1725,12 +1738,13 @@ function ChessStoryModal({
         canvas.height = Math.floor(viewport.height)
         setRenderedPageSize({ width: canvas.width, height: canvas.height })
 
-        const renderTask = page.render({
+        activeRenderTask = page.render({
           canvas,
           canvasContext: context,
           viewport,
         })
-        await renderTask.promise
+        await activeRenderTask.promise
+        activeRenderTask = null
 
         try {
           const textContent = await page.getTextContent()
@@ -1796,7 +1810,36 @@ function ChessStoryModal({
             setPageTextOverlayItems([])
           }
         }
-      } catch {
+      } catch (error) {
+        activeRenderTask = null
+        if (cancelled) return
+
+        const errorName = String((error as { name?: unknown })?.name ?? '')
+        const errorMessage = String((error as { message?: unknown })?.message ?? '')
+        const isCancelledRender = errorName === 'RenderingCancelledException'
+          || /cancelled|canceled/i.test(errorMessage)
+          || /same canvas/i.test(errorMessage)
+
+        if (isCancelledRender) {
+          return
+        }
+
+        const invalidPageMatch = /Invalid page request/i.test(errorMessage)
+        if (invalidPageMatch) {
+          const fallbackPage = Math.max(1, Math.min(currentPage, Math.max(1, pdfDocument.numPages || 1)))
+          if (fallbackPage !== currentPage) {
+            setCurrentPage(fallbackPage)
+            return
+          }
+        }
+
+        console.warn('[story/pdf-render] Failed to render page', {
+          page: currentPage,
+          totalPages: Math.max(1, pdfDocument.numPages || 1),
+          errorName,
+          errorMessage,
+        })
+
         if (!cancelled) {
           setLoadError('Unable to render this page of the story.')
           setPageTextOverlayItems([])
@@ -1807,6 +1850,10 @@ function ChessStoryModal({
     void renderPage()
     return () => {
       cancelled = true
+      try {
+        activeRenderTask?.cancel?.()
+      } catch {}
+      activeRenderTask = null
     }
   }, [open, pdfDocument, currentPage])
 
