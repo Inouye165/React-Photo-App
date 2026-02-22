@@ -5,26 +5,45 @@ on:
   push:
     branches: [ main ]
     paths:
-      - public/chess-story/**
+      - public/chess-story/*.pdf
       - scripts/precompute-story-audio-manifest.mjs
       - package.json
       - package-lock.json
 
 permissions:
-  contents: read
+  contents: write
 
 jobs:
   precompute-story-audio:
     runs-on: ubuntu-latest
     env:
       HUSKY: 0
-      AI_ENABLED: true
+      AI_ENABLED: "true"
       OPENAI_API_KEY: ${{ secrets.OPENAI_API_KEY }}
       SUPABASE_URL: ${{ secrets.SUPABASE_URL }}
+      VITE_SUPABASE_URL: ${{ secrets.SUPABASE_URL }}
       SUPABASE_SERVICE_ROLE_KEY: ${{ secrets.SUPABASE_SERVICE_ROLE_KEY }}
     steps:
+      - name: Validate required secrets
+        run: |
+          if [ -z "$SUPABASE_URL" ]; then
+            echo "::error::SUPABASE_URL secret is not set. Go to Settings > Secrets and add it."
+            exit 1
+          fi
+          if [ -z "$SUPABASE_SERVICE_ROLE_KEY" ]; then
+            echo "::error::SUPABASE_SERVICE_ROLE_KEY secret is not set. Go to Settings > Secrets and add it."
+            exit 1
+          fi
+          if [ -z "$OPENAI_API_KEY" ]; then
+            echo "::error::OPENAI_API_KEY secret is not set. Go to Settings > Secrets and add it."
+            exit 1
+          fi
+          echo "All required secrets are present."
+
       - name: Checkout repository
         uses: actions/checkout@v4
+        with:
+          token: ${{ secrets.GITHUB_TOKEN }}
 
       - name: Use Node.js 20
         uses: actions/setup-node@v4
@@ -35,8 +54,20 @@ jobs:
       - name: Install dependencies
         run: npm ci --no-audit --no-fund
 
-      - name: Precompute and upload story audio assets
+      - name: Precompute and upload story audio assets to production Supabase
         run: npm run story:precompute-audio-assets
 
-      - name: Verify precomputed story audio assets
+      - name: Verify all precomputed story audio assets exist in production
         run: npm run story:verify-precomputed-audio
+
+      - name: Commit updated manifest (if changed)
+        run: |
+          git config user.name "github-actions[bot]"
+          git config user.email "github-actions[bot]@users.noreply.github.com"
+          git add public/chess-story/architect-of-squares.audio-manifest.json
+          if git diff --cached --quiet; then
+            echo "Manifest unchanged, nothing to commit."
+          else
+            git commit -m "chore(story-audio): regenerate manifest with production URLs [skip ci]"
+            git push
+          fi
