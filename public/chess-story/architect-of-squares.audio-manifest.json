@@ -3,87 +3,95 @@
   "voice": "shimmer",
   "cacheVersion": "v2",
   "bucket": "story-audio",
-  "totalPages": 10,
-  "generatedAt": "2026-02-19T00:34:06.937Z",
+  "totalPages": 11,
+  "generatedAt": "2026-02-22T16:45:47.348Z",
   "entries": [
     {
       "page": 1,
-      "hash": "f865f32eb2703c65",
-      "objectPath": "architect-of-squares/v2/page-1-f865f32eb2703c65.mp3",
-      "url": "http://127.0.0.1:54321/storage/v1/object/public/story-audio/architect-of-squares/v2/page-1-f865f32eb2703c65.mp3",
+      "hash": "054a18972a3ec1f4",
+      "objectPath": "architect-of-squares/v2/page-1-054a18972a3ec1f4.mp3",
+      "url": "http://127.0.0.1:54321/storage/v1/object/public/story-audio/architect-of-squares/v2/page-1-054a18972a3ec1f4.mp3",
       "wordCount": 0,
       "availability": "empty-text-skip"
     },
     {
       "page": 2,
-      "hash": "f796c4e857f49e85",
-      "objectPath": "architect-of-squares/v2/page-2-f796c4e857f49e85.mp3",
-      "url": "http://127.0.0.1:54321/storage/v1/object/public/story-audio/architect-of-squares/v2/page-2-f796c4e857f49e85.mp3",
-      "wordCount": 84,
+      "hash": "3b869ec890e15ab0",
+      "objectPath": "architect-of-squares/v2/page-2-3b869ec890e15ab0.mp3",
+      "url": "http://127.0.0.1:54321/storage/v1/object/public/story-audio/architect-of-squares/v2/page-2-3b869ec890e15ab0.mp3",
+      "wordCount": 86,
       "availability": "existing"
     },
     {
       "page": 3,
-      "hash": "946dc8010a221426",
-      "objectPath": "architect-of-squares/v2/page-3-946dc8010a221426.mp3",
-      "url": "http://127.0.0.1:54321/storage/v1/object/public/story-audio/architect-of-squares/v2/page-3-946dc8010a221426.mp3",
-      "wordCount": 87,
+      "hash": "027d52e1e5f2d732",
+      "objectPath": "architect-of-squares/v2/page-3-027d52e1e5f2d732.mp3",
+      "url": "http://127.0.0.1:54321/storage/v1/object/public/story-audio/architect-of-squares/v2/page-3-027d52e1e5f2d732.mp3",
+      "wordCount": 88,
       "availability": "existing"
     },
     {
       "page": 4,
-      "hash": "ad5dc118e82c3bc8",
-      "objectPath": "architect-of-squares/v2/page-4-ad5dc118e82c3bc8.mp3",
-      "url": "http://127.0.0.1:54321/storage/v1/object/public/story-audio/architect-of-squares/v2/page-4-ad5dc118e82c3bc8.mp3",
+      "hash": "5703698d91680cd7",
+      "objectPath": "architect-of-squares/v2/page-4-5703698d91680cd7.mp3",
+      "url": "http://127.0.0.1:54321/storage/v1/object/public/story-audio/architect-of-squares/v2/page-4-5703698d91680cd7.mp3",
       "wordCount": 70,
       "availability": "existing"
     },
     {
       "page": 5,
-      "hash": "a538b129d295dc10",
-      "objectPath": "architect-of-squares/v2/page-5-a538b129d295dc10.mp3",
-      "url": "http://127.0.0.1:54321/storage/v1/object/public/story-audio/architect-of-squares/v2/page-5-a538b129d295dc10.mp3",
+      "hash": "5d825bd064500346",
+      "objectPath": "architect-of-squares/v2/page-5-5d825bd064500346.mp3",
+      "url": "http://127.0.0.1:54321/storage/v1/object/public/story-audio/architect-of-squares/v2/page-5-5d825bd064500346.mp3",
       "wordCount": 85,
       "availability": "existing"
     },
     {
       "page": 6,
-      "hash": "a3325e05db4897e9",
-      "objectPath": "architect-of-squares/v2/page-6-a3325e05db4897e9.mp3",
-      "url": "http://127.0.0.1:54321/storage/v1/object/public/story-audio/architect-of-squares/v2/page-6-a3325e05db4897e9.mp3",
+      "hash": "a053f4f615b1a5cf",
+      "objectPath": "architect-of-squares/v2/page-6-a053f4f615b1a5cf.mp3",
+      "url": "http://127.0.0.1:54321/storage/v1/object/public/story-audio/architect-of-squares/v2/page-6-a053f4f615b1a5cf.mp3",
       "wordCount": 75,
       "availability": "existing"
     },
     {
       "page": 7,
-      "hash": "afc13a9f4fe3bbda",
-      "objectPath": "architect-of-squares/v2/page-7-afc13a9f4fe3bbda.mp3",
-      "url": "http://127.0.0.1:54321/storage/v1/object/public/story-audio/architect-of-squares/v2/page-7-afc13a9f4fe3bbda.mp3",
+      "hash": "3709b41328febbb4",
+      "objectPath": "architect-of-squares/v2/page-7-3709b41328febbb4.mp3",
+      "url": "http://127.0.0.1:54321/storage/v1/object/public/story-audio/architect-of-squares/v2/page-7-3709b41328febbb4.mp3",
       "wordCount": 91,
       "availability": "existing"
     },
     {
       "page": 8,
-      "hash": "515c21ece0e0122e",
-      "objectPath": "architect-of-squares/v2/page-8-515c21ece0e0122e.mp3",
-      "url": "http://127.0.0.1:54321/storage/v1/object/public/story-audio/architect-of-squares/v2/page-8-515c21ece0e0122e.mp3",
+      "hash": "38e07a4693e292ed",
+      "objectPath": "architect-of-squares/v2/page-8-38e07a4693e292ed.mp3",
+      "url": "http://127.0.0.1:54321/storage/v1/object/public/story-audio/architect-of-squares/v2/page-8-38e07a4693e292ed.mp3",
       "wordCount": 82,
       "availability": "existing"
     },
     {
       "page": 9,
-      "hash": "acbd13413c97dadc",
-      "objectPath": "architect-of-squares/v2/page-9-acbd13413c97dadc.mp3",
-      "url": "http://127.0.0.1:54321/storage/v1/object/public/story-audio/architect-of-squares/v2/page-9-acbd13413c97dadc.mp3",
-      "wordCount": 91,
+      "hash": "6b76e287da7c597e",
+      "objectPath": "architect-of-squares/v2/page-9-6b76e287da7c597e.mp3",
+      "url": "http://127.0.0.1:54321/storage/v1/object/public/story-audio/architect-of-squares/v2/page-9-6b76e287da7c597e.mp3",
+      "wordCount": 90,
       "availability": "existing"
     },
     {
       "page": 10,
-      "hash": "8348a4460f546aca",
-      "objectPath": "architect-of-squares/v2/page-10-8348a4460f546aca.mp3",
-      "url": "http://127.0.0.1:54321/storage/v1/object/public/story-audio/architect-of-squares/v2/page-10-8348a4460f546aca.mp3",
-      "wordCount": 85,
+      "hash": "8c63a58d26c72d43",
+      "objectPath": "architect-of-squares/v2/page-10-8c63a58d26c72d43.mp3",
+      "url": "http://127.0.0.1:54321/storage/v1/object/public/story-audio/architect-of-squares/v2/page-10-8c63a58d26c72d43.mp3",
+      "wordCount": 78,
+      "availability": "existing"
+    },
+    {
+      "page": 11,
+      "hash": "2dd5202cca3d0824",
+      "objectPath": "architect-of-squares/v2/page-11-2dd5202cca3d0824.mp3",
+      "url": "http://127.0.0.1:54321/storage/v1/object/public/story-audio/architect-of-squares/v2/page-11-2dd5202cca3d0824.mp3",
+      "wordCount": 84,
       "availability": "existing"
     }
   ]
