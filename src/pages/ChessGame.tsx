@@ -472,6 +472,7 @@ const STORY_STALL_RECOVERY_DELAY_MS = 2000
 const STORY_PROGRESS_STORAGE_PREFIX = 'chess-story-progress'
 const STORY_PROGRESS_STORAGE_VERSION = 1
 const STORY_PDF_MOBILE_SCALE_BOOST = 1.22
+const STORY_AUDIO_PAGE_CACHE_MAX_ENTRIES = 64
 
 type WakeLockSentinelLike = {
   released: boolean
@@ -528,27 +529,66 @@ async function getStoryPdfPreflightError(pdfUrl: string): Promise<string | null>
   }
 }
 
-function getHighlightStyle(tone: StoryHighlightTone | undefined): React.CSSProperties {
-  const colorByTone: Record<StoryHighlightTone, string> = {
-    yellow: 'rgba(250, 204, 21, 0.62)',
-    blue: 'rgba(59, 130, 246, 0.62)',
-    royal: 'rgba(168, 85, 247, 0.62)',
-    red: 'rgba(239, 68, 68, 0.62)',
+type StoryHighlightPreference = 'scripted' | StoryHighlightTone | 'neon'
+type StoryHighlightBorderPreference = 'black' | 'white' | 'yellow' | 'blue' | 'royal' | 'red' | 'neon'
+
+function getHighlightStyle(
+  tone: StoryHighlightTone | 'neon' | undefined,
+  borderPreference: StoryHighlightBorderPreference,
+): React.CSSProperties {
+  const styleByTone: Record<StoryHighlightTone | 'neon', { fill: string; ring: string; glow: string }> = {
+    yellow: {
+      fill: 'rgba(250, 204, 21, 0.86)',
+      ring: 'rgba(120, 53, 15, 0.96)',
+      glow: 'rgba(250, 204, 21, 0.95)',
+    },
+    blue: {
+      fill: 'rgba(125, 211, 252, 0.86)',
+      ring: 'rgba(12, 74, 110, 0.96)',
+      glow: 'rgba(56, 189, 248, 0.9)',
+    },
+    royal: {
+      fill: 'rgba(217, 70, 239, 0.84)',
+      ring: 'rgba(112, 26, 117, 0.96)',
+      glow: 'rgba(217, 70, 239, 0.9)',
+    },
+    red: {
+      fill: 'rgba(248, 113, 113, 0.84)',
+      ring: 'rgba(127, 29, 29, 0.96)',
+      glow: 'rgba(248, 113, 113, 0.9)',
+    },
+    neon: {
+      fill: 'rgba(34, 211, 238, 0.9)',
+      ring: 'rgba(6, 182, 212, 0.98)',
+      glow: 'rgba(34, 211, 238, 0.98)',
+    },
   }
 
-  const fill = colorByTone[tone || 'yellow']
+  const borderByPreference: Record<StoryHighlightBorderPreference, string> = {
+    black: 'rgba(0, 0, 0, 0.98)',
+    white: 'rgba(255, 255, 255, 0.98)',
+    yellow: 'rgba(250, 204, 21, 0.98)',
+    blue: 'rgba(56, 189, 248, 0.98)',
+    royal: 'rgba(217, 70, 239, 0.98)',
+    red: 'rgba(248, 113, 113, 0.98)',
+    neon: 'rgba(34, 211, 238, 0.99)',
+  }
+
+  const resolved = styleByTone[tone || 'yellow']
+  const resolvedBorder = borderByPreference[borderPreference]
   return {
-    background: `radial-gradient(circle, ${fill} 32%, transparent 34%)`,
+    backgroundColor: resolved.fill,
+    boxShadow: `inset 0 0 0 4px ${resolvedBorder || resolved.ring}, inset 0 0 0 1px rgba(255, 255, 255, 0.85), 0 0 16px ${resolved.glow}`,
+    borderRadius: 2,
+    filter: 'saturate(1.22) contrast(1.14)',
     animation: 'shimmer 1.35s ease-in-out infinite',
   }
 }
 
-type StoryHighlightPreference = 'scripted' | StoryHighlightTone
-
 function resolveStoryHighlightTone(
   actionTone: StoryHighlightTone | undefined,
   preference: StoryHighlightPreference,
-): StoryHighlightTone | undefined {
+): StoryHighlightTone | 'neon' | undefined {
   if (preference === 'scripted') return actionTone
   return preference
 }
@@ -674,6 +714,7 @@ function resolveDirectorStateAtTime(
   actions: StoryDirectorAction[],
   timeSeconds: number,
   highlightPreference: StoryHighlightPreference = 'scripted',
+  borderPreference: StoryHighlightBorderPreference = 'black',
 ): DirectorResolvedState {
   let chess = new Chess()
   let styles: Record<string, React.CSSProperties> = {}
@@ -699,7 +740,10 @@ function resolveDirectorStateAtTime(
 
     if (action.type === 'HIGHLIGHT') {
       styles = action.squares.reduce<Record<string, React.CSSProperties>>((accumulator, square) => {
-        accumulator[square] = getHighlightStyle(resolveStoryHighlightTone(action.tone, highlightPreference))
+        accumulator[square] = getHighlightStyle(
+          resolveStoryHighlightTone(action.tone, highlightPreference),
+          borderPreference,
+        )
         return accumulator
       }, {})
     }
@@ -750,6 +794,7 @@ function ChessStoryModal({
   const watchdogTimerRef = useRef<ReturnType<typeof setInterval> | null>(null)
   const stallRecoveryTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null)
   const prefetchedStoryAudioKeysRef = useRef<Set<string>>(new Set())
+  const storyAudioPageCacheRef = useRef<Map<string, Awaited<ReturnType<typeof ensureStoryAudio>>>>(new Map())
   const stallRecoveryInFlightRef = useRef(false)
   const resumePromptedRef = useRef(false)
   const pendingResumeRef = useRef<{ page: number; currentTime: number } | null>(null)
@@ -764,7 +809,8 @@ function ChessStoryModal({
   const [autoTurnPages, setAutoTurnPages] = useState(true)
   const [manualNarration, setManualNarration] = useState('')
   const [audioSetupWarnings, setAudioSetupWarnings] = useState<string[]>([])
-  const [storyHighlightPreference, setStoryHighlightPreference] = useState<StoryHighlightPreference>('scripted')
+  const [storyHighlightPreference, setStoryHighlightPreference] = useState<StoryHighlightPreference>('blue')
+  const [storyHighlightBorderPreference, setStoryHighlightBorderPreference] = useState<StoryHighlightBorderPreference>('black')
   const [boardPosition, setBoardPosition] = useState(() => new Chess().fen())
   const [customSquareStyles, setCustomSquareStyles] = useState<Record<string, React.CSSProperties>>({})
   const [activeActionLabel, setActiveActionLabel] = useState<string | null>(null)
@@ -777,6 +823,8 @@ function ChessStoryModal({
   const [renderedPageSize, setRenderedPageSize] = useState({ width: 0, height: 0 })
   const [hasExtractablePdfText, setHasExtractablePdfText] = useState<boolean | null>(null)
   const isStoryAudioPrecomputedOnly = isStoryAudioPrecomputedOnlyModeEnabled()
+  const storyHighlightPreferenceRef = useRef<StoryHighlightPreference>('blue')
+  const storyHighlightBorderPreferenceRef = useRef<StoryHighlightBorderPreference>('black')
 
   const manualNarrationPages = useMemo(() => splitManualNarrationIntoPages(manualNarration), [manualNarration])
   const storyProgressStorageKey = useMemo(
@@ -911,7 +959,12 @@ function ChessStoryModal({
     }
 
     if (timeSeconds + 0.01 < lastAudioTimeRef.current) {
-      const resolved = resolveDirectorStateAtTime(actions, timeSeconds, storyHighlightPreference)
+      const resolved = resolveDirectorStateAtTime(
+        actions,
+        timeSeconds,
+        storyHighlightPreferenceRef.current,
+        storyHighlightBorderPreferenceRef.current,
+      )
       storyChessRef.current = resolved.chess
       setBoardPosition(resolved.chess.fen())
       setCustomSquareStyles(resolved.styles)
@@ -938,7 +991,10 @@ function ChessStoryModal({
 
       if (action.type === 'HIGHLIGHT') {
         const styles = action.squares.reduce<Record<string, React.CSSProperties>>((accumulator, square) => {
-          accumulator[square] = getHighlightStyle(resolveStoryHighlightTone(action.tone, storyHighlightPreference))
+          accumulator[square] = getHighlightStyle(
+            resolveStoryHighlightTone(action.tone, storyHighlightPreferenceRef.current),
+            storyHighlightBorderPreferenceRef.current,
+          )
           return accumulator
         }, {})
         setCustomSquareStyles(styles)
@@ -959,7 +1015,21 @@ function ChessStoryModal({
     }
 
     lastAudioTimeRef.current = timeSeconds
-  }, [storyHighlightPreference])
+  }, [])
+
+  useEffect(() => {
+    storyHighlightPreferenceRef.current = storyHighlightPreference
+    if (open) {
+      syncDirectorToTime(lastAudioTimeRef.current, true)
+    }
+  }, [storyHighlightPreference, open, syncDirectorToTime])
+
+  useEffect(() => {
+    storyHighlightBorderPreferenceRef.current = storyHighlightBorderPreference
+    if (open) {
+      syncDirectorToTime(lastAudioTimeRef.current, true)
+    }
+  }, [storyHighlightBorderPreference, open, syncDirectorToTime])
 
   const applyPendingResumeToAudio = useCallback((audio: HTMLAudioElement, pageNumber: number) => {
     const pending = pendingResumeRef.current
@@ -1285,6 +1355,13 @@ function ChessStoryModal({
     }
 
     const prefetchCacheKey = `${storyAudioSlug}:${pageNumber}:${prefetchText}`
+    if (storyAudioPageCacheRef.current.has(prefetchCacheKey)) {
+      logStoryAudio('prefetch-skip-cached-result', {
+        prefetchPage: pageNumber,
+      })
+      return
+    }
+
     if (prefetchedStoryAudioKeysRef.current.has(prefetchCacheKey)) {
       logStoryAudio('prefetch-skip-already-prefetched', {
         prefetchPage: pageNumber,
@@ -1307,6 +1384,15 @@ function ChessStoryModal({
         text: prefetchText,
         voice: CHESS_STORY_TTS_VOICE,
       })
+
+      storyAudioPageCacheRef.current.delete(prefetchCacheKey)
+      storyAudioPageCacheRef.current.set(prefetchCacheKey, prefetchedAudio)
+      if (storyAudioPageCacheRef.current.size > STORY_AUDIO_PAGE_CACHE_MAX_ENTRIES) {
+        const oldestKey = storyAudioPageCacheRef.current.keys().next().value
+        if (oldestKey) {
+          storyAudioPageCacheRef.current.delete(oldestKey)
+        }
+      }
 
       logStoryAudio('prefetch-success', {
         prefetchPage: pageNumber,
@@ -1505,6 +1591,7 @@ function ChessStoryModal({
     if (!open) {
       stopNarration()
       prefetchedStoryAudioKeysRef.current.clear()
+      storyAudioPageCacheRef.current.clear()
       setPdfDocument(null)
       setLoadError(null)
       setCurrentPage(1)
@@ -1522,6 +1609,8 @@ function ChessStoryModal({
     setPageTextOverlayItems([])
     setRenderedPageSize({ width: 0, height: 0 })
     pageTextCacheRef.current.clear()
+    prefetchedStoryAudioKeysRef.current.clear()
+    storyAudioPageCacheRef.current.clear()
 
     let loadingTask: ReturnType<typeof getDocument> | null = null
 
@@ -1609,9 +1698,22 @@ function ChessStoryModal({
   useEffect(() => {
     if (!open || !pdfDocument) return
     let cancelled = false
+    let activeRenderTask: { cancel?: () => void; promise: Promise<unknown> } | null = null
 
     const renderPage = async () => {
+      const maxPage = Math.max(1, pdfDocument.numPages || 1)
+      if (currentPage > maxPage) {
+        if (!cancelled) {
+          setCurrentPage(maxPage)
+        }
+        return
+      }
+
       try {
+        if (!cancelled) {
+          setLoadError(null)
+        }
+
         const page = await pdfDocument.getPage(currentPage)
         if (cancelled) return
 
@@ -1636,12 +1738,13 @@ function ChessStoryModal({
         canvas.height = Math.floor(viewport.height)
         setRenderedPageSize({ width: canvas.width, height: canvas.height })
 
-        const renderTask = page.render({
+        activeRenderTask = page.render({
           canvas,
           canvasContext: context,
           viewport,
         })
-        await renderTask.promise
+        await activeRenderTask.promise
+        activeRenderTask = null
 
         try {
           const textContent = await page.getTextContent()
@@ -1707,7 +1810,36 @@ function ChessStoryModal({
             setPageTextOverlayItems([])
           }
         }
-      } catch {
+      } catch (error) {
+        activeRenderTask = null
+        if (cancelled) return
+
+        const errorName = String((error as { name?: unknown })?.name ?? '')
+        const errorMessage = String((error as { message?: unknown })?.message ?? '')
+        const isCancelledRender = errorName === 'RenderingCancelledException'
+          || /cancelled|canceled/i.test(errorMessage)
+          || /same canvas/i.test(errorMessage)
+
+        if (isCancelledRender) {
+          return
+        }
+
+        const invalidPageMatch = /Invalid page request/i.test(errorMessage)
+        if (invalidPageMatch) {
+          const fallbackPage = Math.max(1, Math.min(currentPage, Math.max(1, pdfDocument.numPages || 1)))
+          if (fallbackPage !== currentPage) {
+            setCurrentPage(fallbackPage)
+            return
+          }
+        }
+
+        console.warn('[story/pdf-render] Failed to render page', {
+          page: currentPage,
+          totalPages: Math.max(1, pdfDocument.numPages || 1),
+          errorName,
+          errorMessage,
+        })
+
         if (!cancelled) {
           setLoadError('Unable to render this page of the story.')
           setPageTextOverlayItems([])
@@ -1718,6 +1850,10 @@ function ChessStoryModal({
     void renderPage()
     return () => {
       cancelled = true
+      try {
+        activeRenderTask?.cancel?.()
+      } catch {}
+      activeRenderTask = null
     }
   }, [open, pdfDocument, currentPage])
 
@@ -1970,19 +2106,39 @@ function ChessStoryModal({
 
       let audioSourceUrl = ''
       let createdObjectUrl: string | null = null
+      const pageAudioCacheKey = `${storyAudioSlug}:${currentPage}:${text}`
 
       try {
-        logStoryAudio('ensure-story-audio-request', {
-          source: narration.source,
-          textLength: text.length,
-        })
-        const ensuredAudio = await ensureStoryAudio({
-          storySlug: storyAudioSlug,
-          page: currentPage,
-          totalPages,
-          text,
-          voice: CHESS_STORY_TTS_VOICE,
-        })
+        let ensuredAudio = storyAudioPageCacheRef.current.get(pageAudioCacheKey)
+
+        if (!ensuredAudio) {
+          logStoryAudio('ensure-story-audio-request', {
+            source: narration.source,
+            textLength: text.length,
+          })
+          ensuredAudio = await ensureStoryAudio({
+            storySlug: storyAudioSlug,
+            page: currentPage,
+            totalPages,
+            text,
+            voice: CHESS_STORY_TTS_VOICE,
+          })
+
+          storyAudioPageCacheRef.current.delete(pageAudioCacheKey)
+          storyAudioPageCacheRef.current.set(pageAudioCacheKey, ensuredAudio)
+          if (storyAudioPageCacheRef.current.size > STORY_AUDIO_PAGE_CACHE_MAX_ENTRIES) {
+            const oldestKey = storyAudioPageCacheRef.current.keys().next().value
+            if (oldestKey) {
+              storyAudioPageCacheRef.current.delete(oldestKey)
+            }
+          }
+        } else {
+          logStoryAudio('ensure-story-audio-skip-reused-cache', {
+            source: ensuredAudio.source,
+            cached: ensuredAudio.cached,
+            textLength: text.length,
+          })
+        }
 
         logStoryAudio('ensure-story-audio-response', {
           cached: ensuredAudio.cached,
@@ -2197,6 +2353,24 @@ function ChessStoryModal({
               <option value="royal">Magenta</option>
               <option value="red">Red</option>
               <option value="yellow">Yellow</option>
+              <option value="neon">Neon</option>
+            </select>
+          </label>
+          <label className="flex items-center gap-1 text-xs text-slate-600">
+            Border
+            <select
+              value={storyHighlightBorderPreference}
+              onChange={(event) => setStoryHighlightBorderPreference(event.target.value as StoryHighlightBorderPreference)}
+              className="rounded border border-slate-200 bg-white px-2 py-1 text-xs font-semibold text-slate-600"
+              aria-label="Story highlight border color"
+            >
+              <option value="black">Black</option>
+              <option value="white">White</option>
+              <option value="blue">Blue</option>
+              <option value="royal">Magenta</option>
+              <option value="red">Red</option>
+              <option value="yellow">Yellow</option>
+              <option value="neon">Neon</option>
             </select>
           </label>
           <span className="text-xs text-slate-500">Page {currentPage}/{totalPages}</span>
