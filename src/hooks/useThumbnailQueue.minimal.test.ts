@@ -1,64 +1,61 @@
 // @ts-nocheck
-/**
- * useThumbnailQueue Hook Tests
- * 
- * Uses dynamic imports with vi.doMock to prevent heavy WASM deps from loading
- */
+import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest';
+import { renderHook, act } from '@testing-library/react';
 
-import { describe, it, expect, vi, beforeEach, beforeAll } from 'vitest';
-import { renderHook, waitFor } from '@testing-library/react';
+vi.mock('../utils/clientImageProcessing', () => ({
+  generateClientThumbnail: vi.fn(),
+}));
 
-// Store module references after dynamic import
-let useThumbnailQueue;
-let generateClientThumbnail;
-let getThumbnail;
-let saveThumbnail;
+vi.mock('../utils/thumbnailCache', () => ({
+  getThumbnail: vi.fn(),
+  saveThumbnail: vi.fn(),
+}));
 
-beforeAll(async () => {
-  vi.resetModules();
-  // Set up mocks BEFORE dynamic imports
-  vi.doMock('heic2any', () => ({ default: vi.fn() }));
-  vi.doMock('heic-to', () => ({ heicTo: vi.fn() }));
-  vi.doMock('idb-keyval', () => ({
-    get: vi.fn(),
-    set: vi.fn(), 
-    del: vi.fn(),
-    createStore: vi.fn(() => ({})),
-  }));
+import { generateClientThumbnail } from '../utils/clientImageProcessing';
+import { getThumbnail, saveThumbnail } from '../utils/thumbnailCache';
+import { useThumbnailQueue } from './useThumbnailQueue';
 
-  vi.doMock('../utils/clientImageProcessing', () => ({
-    generateClientThumbnail: vi.fn(),
-  }));
+function createMockFile(name: string) {
+  return {
+    name,
+    type: 'image/jpeg',
+    size: 1024,
+    lastModified: Date.now(),
+    slice: () => new Blob(['test'], { type: 'image/jpeg' }),
+  };
+}
 
-  vi.doMock('../utils/thumbnailCache', () => ({
-    getThumbnail: vi.fn(),
-    saveThumbnail: vi.fn(),
-  }));
+async function flushQueue(batchInterval = 20) {
+  await act(async () => {
+    await Promise.resolve();
+    await Promise.resolve();
+  });
 
-  // Now dynamically import with mocks active
-  const imageProcessing = await import('../utils/clientImageProcessing');
-  const thumbnailCache = await import('../utils/thumbnailCache');
-  const hookModule = await import('./useThumbnailQueue');
+  await act(async () => {
+    vi.advanceTimersByTime(batchInterval + 20);
+  });
 
-  generateClientThumbnail = imageProcessing.generateClientThumbnail;
-  getThumbnail = thumbnailCache.getThumbnail;
-  saveThumbnail = thumbnailCache.saveThumbnail;
-  useThumbnailQueue = hookModule.useThumbnailQueue;
-});
+  await act(async () => {
+    await Promise.resolve();
+  });
+}
 
 describe('useThumbnailQueue Hook', () => {
   beforeEach(() => {
-    vi.useRealTimers();
     vi.clearAllMocks();
-    
-    // Setup mock implementations
+    vi.useFakeTimers();
+
     getThumbnail.mockResolvedValue(null);
     saveThumbnail.mockResolvedValue(undefined);
-    generateClientThumbnail.mockResolvedValue(new Blob(['test'], { type: 'image/jpeg' }));
-    
-    // Mock URL functions
-    URL.createObjectURL = vi.fn(() => `blob:http://localhost/${Math.random()}`);
-    URL.revokeObjectURL = vi.fn();
+    generateClientThumbnail.mockResolvedValue(new Blob(['thumb'], { type: 'image/jpeg' }));
+
+    global.URL.createObjectURL = vi.fn((blob: Blob) => `blob:${blob.size}:${Math.random()}`);
+    global.URL.revokeObjectURL = vi.fn();
+  });
+
+  afterEach(() => {
+    vi.runOnlyPendingTimers();
+    vi.useRealTimers();
   });
 
   it('should handle empty array', () => {
@@ -73,19 +70,15 @@ describe('useThumbnailQueue Hook', () => {
   });
 
   it('should process files and complete', async () => {
-    const files = [
-      { name: 'test1.jpg', type: 'image/jpeg', size: 1024, lastModified: Date.now() },
-      { name: 'test2.jpg', type: 'image/jpeg', size: 1024, lastModified: Date.now() },
-    ];
+    const files = [createMockFile('test1.jpg'), createMockFile('test2.jpg')];
 
-    const { result } = renderHook(() => useThumbnailQueue(files, { batchInterval: 20 }));
+    const { result } = renderHook(() => useThumbnailQueue(files, { batchInterval: 20, concurrency: 2 }));
 
     expect(result.current.progress.total).toBe(2);
 
-    await waitFor(() => {
-      expect(result.current.progress.completed).toBe(2);
-    }, { timeout: 3000 });
+    await flushQueue(20);
 
+    expect(result.current.progress.completed).toBe(2);
     expect(result.current.thumbnails.size).toBe(2);
     expect(result.current.isComplete).toBe(true);
   });
@@ -93,29 +86,25 @@ describe('useThumbnailQueue Hook', () => {
   it('should handle failures gracefully', async () => {
     generateClientThumbnail.mockRejectedValue(new Error('Failed'));
 
-    const files = [{ name: 'fail.jpg', type: 'image/jpeg', size: 1024, lastModified: Date.now() }];
-
+    const files = [createMockFile('fail.jpg')];
     const { result } = renderHook(() => useThumbnailQueue(files, { batchInterval: 20 }));
 
-    await waitFor(() => {
-      expect(result.current.progress.completed).toBe(1);
-    }, { timeout: 3000 });
+    await flushQueue(20);
 
+    expect(result.current.progress.completed).toBe(1);
     expect(result.current.progress.failed).toBe(1);
     expect(result.current.thumbnails.size).toBe(0);
   });
 
   it('should revoke URLs on unmount', async () => {
-    const revokedUrls = [];
-    URL.revokeObjectURL = vi.fn((url) => revokedUrls.push(url));
+    const revokedUrls: string[] = [];
+    global.URL.revokeObjectURL = vi.fn((url: string) => revokedUrls.push(url));
 
-    const files = [{ name: 'cleanup.jpg', type: 'image/jpeg', size: 1024, lastModified: Date.now() }];
-
+    const files = [createMockFile('cleanup.jpg')];
     const { result, unmount } = renderHook(() => useThumbnailQueue(files, { batchInterval: 20 }));
 
-    await waitFor(() => {
-      expect(result.current.progress.completed).toBe(1);
-    }, { timeout: 3000 });
+    await flushQueue(20);
+    expect(result.current.progress.completed).toBe(1);
 
     unmount();
 

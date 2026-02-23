@@ -484,6 +484,11 @@ afterEach(() => {
   
   // Clear all timers
   vi.clearAllTimers();
+
+  // Restore real timers to prevent fake-timer mode leaking into subsequent tests.
+  // Some test files intentionally use fake timers and rely on per-test restoration,
+  // but this global guard keeps full-suite execution deterministic.
+  vi.useRealTimers();
   
   // Force garbage collection if available (won't work in all envs, but helps when it does)
   if (global.gc) {

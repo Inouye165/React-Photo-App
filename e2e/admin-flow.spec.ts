@@ -255,9 +255,12 @@ test.describe('Admin Navigation Integration', () => {
     await loginAsUser(page, 'admin');
     await page.goto('/admin');
 
-    // Click gallery nav link
-    const galleryNavLink = page.getByTestId('nav-gallery');
-    await galleryNavLink.click();
+    // Open user menu and navigate to gallery
+    const userMenuTrigger = page.getByTestId('user-menu-trigger');
+    await userMenuTrigger.click();
+
+    const galleryMenuItem = page.getByTestId('user-menu-gallery');
+    await galleryMenuItem.click();
 
     // Should navigate back to gallery
     await expect(page).toHaveURL('/gallery');

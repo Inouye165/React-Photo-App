@@ -1,9 +1,10 @@
 name: Story Audio Precompute
 
-on:
+"on":
   workflow_dispatch:
   push:
-    branches: [ main ]
+    branches:
+      - main
     paths:
       - public/chess-story/*.pdf
       - scripts/precompute-story-audio-manifest.mjs

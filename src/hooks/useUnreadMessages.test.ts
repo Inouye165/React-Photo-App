@@ -1,38 +1,45 @@
-import { describe, it, expect, vi, beforeEach, beforeAll } from 'vitest'
-import { renderHook, waitFor } from '@testing-library/react'
+import { describe, it, expect, vi, beforeEach } from 'vitest'
+import { renderHook, act } from '@testing-library/react'
 
-let useUnreadMessages: (userId: string | null | undefined) => {
-  unreadCount: number
-  unreadByRoom: Record<string, number>
-  hasUnread: boolean
-  loading: boolean
-  refresh: () => void
+vi.mock('../supabaseClient', () => ({
+  supabase: {
+    from: vi.fn(),
+    channel: vi.fn(),
+    removeChannel: vi.fn(),
+  },
+}))
+
+import { useUnreadMessages } from './useUnreadMessages'
+import { supabase } from '../supabaseClient'
+
+type MockSupabase = {
+  from: ReturnType<typeof vi.fn>
+  channel: ReturnType<typeof vi.fn>
+  removeChannel: ReturnType<typeof vi.fn>
 }
 
-let supabase: any
+const mockedSupabase = supabase as unknown as MockSupabase
 
-beforeAll(async () => {
-  vi.resetModules()
-
-  vi.doMock('../supabaseClient', () => ({
-    supabase: {
-      from: vi.fn(),
-      channel: vi.fn(),
-      removeChannel: vi.fn(),
-    },
-  }))
-
-  const hookModule = await import('./useUnreadMessages')
-  const clientModule = await import('../supabaseClient')
-
-  useUnreadMessages = hookModule.useUnreadMessages
-  supabase = clientModule.supabase
-})
+async function flushAsyncWork() {
+  await act(async () => {
+    await Promise.resolve()
+    await Promise.resolve()
+    await Promise.resolve()
+  })
+}
 
 describe('useUnreadMessages', () => {
   beforeEach(() => {
     vi.useRealTimers()
     vi.clearAllMocks()
+
+    const channelMock = {
+      on: vi.fn().mockReturnThis(),
+      subscribe: vi.fn().mockReturnValue({}),
+    }
+
+    mockedSupabase.channel.mockReturnValue(channelMock)
+    mockedSupabase.removeChannel.mockImplementation(() => undefined)
   })
 
   it('calculates unread count correctly based on last_read_at', async () => {
@@ -77,19 +84,12 @@ describe('useUnreadMessages', () => {
       return { select: vi.fn() }
     })
     
-    // @ts-ignore
-    supabase.from.mockImplementation(fromMock)
-
-    const channelMock = {
-      on: vi.fn().mockReturnThis(),
-      subscribe: vi.fn(),
-    }
-    // @ts-ignore
-    supabase.channel.mockReturnValue(channelMock)
+    mockedSupabase.from.mockImplementation(fromMock)
 
     const { result } = renderHook(() => useUnreadMessages(userId))
 
-    await waitFor(() => expect(result.current.loading).toBe(false))
+    await flushAsyncWork()
+    expect(result.current.loading).toBe(false)
 
     // Expected unread: Message 1 (roomA) and Message 3 (roomB) -> total 2
     expect(result.current.unreadCount).toBe(2)
@@ -136,19 +136,12 @@ describe('useUnreadMessages', () => {
       return { select: vi.fn() }
     })
 
-    // @ts-ignore
-    supabase.from.mockImplementation(fromMock)
-
-    const channelMock = {
-      on: vi.fn().mockReturnThis(),
-      subscribe: vi.fn(),
-    }
-    // @ts-ignore
-    supabase.channel.mockReturnValue(channelMock)
+    mockedSupabase.from.mockImplementation(fromMock)
 
     const { result } = renderHook(() => useUnreadMessages(userId))
 
-    await waitFor(() => expect(result.current.loading).toBe(false))
+    await flushAsyncWork()
+    expect(result.current.loading).toBe(false)
 
     expect(result.current.unreadCount).toBe(0)
     expect(result.current.unreadByRoom).toEqual({})
@@ -191,19 +184,12 @@ describe('useUnreadMessages', () => {
       return { select: vi.fn() }
     })
 
-    // @ts-ignore
-    supabase.from.mockImplementation(fromMock)
-
-    const channelMock = {
-      on: vi.fn().mockReturnThis(),
-      subscribe: vi.fn(),
-    }
-    // @ts-ignore
-    supabase.channel.mockReturnValue(channelMock)
+    mockedSupabase.from.mockImplementation(fromMock)
 
     const { result } = renderHook(() => useUnreadMessages(userId))
 
-    await waitFor(() => expect(result.current.loading).toBe(false))
+    await flushAsyncWork()
+    expect(result.current.loading).toBe(false)
 
     expect(result.current.unreadCount).toBe(0)
     expect(result.current.unreadByRoom).toEqual({})
