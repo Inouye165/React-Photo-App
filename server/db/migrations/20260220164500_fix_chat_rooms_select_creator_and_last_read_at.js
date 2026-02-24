@@ -12,6 +12,36 @@ exports.up = async function up(knex) {
   await knex.raw('ALTER TABLE public.messages NO FORCE ROW LEVEL SECURITY;');
 
   await knex.raw(`
+    CREATE OR REPLACE FUNCTION public.request_user_id()
+    RETURNS uuid
+    LANGUAGE plpgsql
+    STABLE
+    AS $$
+    DECLARE
+      claim_sub text;
+      auth_uid_text text;
+    BEGIN
+      claim_sub := nullif(current_setting('request.jwt.claim.sub', true), '');
+      IF claim_sub IS NOT NULL THEN
+        RETURN claim_sub::uuid;
+      END IF;
+
+      BEGIN
+        EXECUTE 'SELECT auth.uid()::text' INTO auth_uid_text;
+        IF auth_uid_text IS NOT NULL AND auth_uid_text <> '' THEN
+          RETURN auth_uid_text::uuid;
+        END IF;
+      EXCEPTION
+        WHEN SQLSTATE '3F000' OR SQLSTATE '42883' THEN
+          RETURN NULL;
+      END;
+
+      RETURN NULL;
+    END;
+    $$;
+  `);
+
+  await knex.raw(`
     CREATE OR REPLACE FUNCTION public.is_room_member(p_room_id uuid)
     RETURNS boolean
     LANGUAGE plpgsql
@@ -23,7 +53,7 @@ exports.up = async function up(knex) {
         SELECT 1
         FROM public.room_members rm
         WHERE rm.room_id = p_room_id
-          AND rm.user_id = auth.uid()
+          AND rm.user_id = public.request_user_id()
       );
     END;
     $$;
@@ -36,9 +66,9 @@ exports.up = async function up(knex) {
     CREATE POLICY "rooms_select_member" ON public.rooms
     FOR SELECT
     USING (
-      auth.uid() IS NOT NULL
+      public.request_user_id() IS NOT NULL
       AND (
-        created_by = auth.uid()
+        created_by = public.request_user_id()
         OR public.is_room_member(id)
       )
     );
@@ -49,7 +79,7 @@ exports.up = async function up(knex) {
     CREATE POLICY "Allow members to view messages" ON public.messages
     FOR SELECT
     USING (
-      auth.uid() IS NOT NULL
+      public.request_user_id() IS NOT NULL
       AND public.is_room_member(room_id)
     );
   `);
@@ -59,8 +89,8 @@ exports.up = async function up(knex) {
     CREATE POLICY "Allow members to send messages" ON public.messages
     FOR INSERT
     WITH CHECK (
-      auth.uid() IS NOT NULL
-      AND sender_id = auth.uid()
+      public.request_user_id() IS NOT NULL
+      AND sender_id = public.request_user_id()
       AND public.is_room_member(room_id)
     );
   `);
@@ -76,7 +106,7 @@ exports.down = async function down(knex) {
     CREATE POLICY "rooms_select_member" ON public.rooms
     FOR SELECT
     USING (
-      auth.uid() IS NOT NULL
+      public.request_user_id() IS NOT NULL
       AND public.is_room_member(id)
     );
   `);
@@ -87,12 +117,12 @@ exports.down = async function down(knex) {
     CREATE POLICY "Allow members to view messages" ON public.messages
     FOR SELECT
     USING (
-      auth.uid() IS NOT NULL
+      public.request_user_id() IS NOT NULL
       AND EXISTS (
         SELECT 1
         FROM public.room_members rm
         WHERE rm.room_id = messages.room_id
-          AND rm.user_id = auth.uid()
+          AND rm.user_id = public.request_user_id()
       )
     );
   `);
@@ -100,13 +130,13 @@ exports.down = async function down(knex) {
     CREATE POLICY "Allow members to send messages" ON public.messages
     FOR INSERT
     WITH CHECK (
-      auth.uid() IS NOT NULL
-      AND sender_id = auth.uid()
+      public.request_user_id() IS NOT NULL
+      AND sender_id = public.request_user_id()
       AND EXISTS (
         SELECT 1
         FROM public.room_members rm
         WHERE rm.room_id = messages.room_id
-          AND rm.user_id = auth.uid()
+          AND rm.user_id = public.request_user_id()
       )
     );
   `);
@@ -128,7 +158,7 @@ exports.down = async function down(knex) {
         SELECT 1
         FROM public.room_members rm
         WHERE rm.room_id = p_room_id
-          AND rm.user_id = auth.uid()
+          AND rm.user_id = public.request_user_id()
       );
     END;
     $$;

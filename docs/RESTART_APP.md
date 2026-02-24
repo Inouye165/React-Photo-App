@@ -81,3 +81,16 @@ Expected: Frontend at http://localhost:5173/
     1. Verify existing listeners/processes before starting new services.
     2. Prefer `npm run stop:local` before a fresh validation pass to avoid duplicate frontend/backend/worker instances.
     3. Treat Vite port changes (`5173` -> `5174`) as normal when an instance is already running, and confirm which instance is intended for the test pass.
+
+- **2026-02-24 05:53:40 -08:00 (DESKTOP-0UN2H9U, monitored backend restart)**
+  - Process used: ran monitored migration pipeline from repo root: `npm --prefix server run build; node server/dist/scripts/check-migrations.js; node server/dist/scripts/run-migrations.js`.
+  - Migration status:
+    1. Build completed successfully.
+    2. Pre-flight DB connection test returned `OK`.
+    3. Migration check matched files on disk.
+    4. Runtime migration execution reported `No pending migrations`.
+  - Backend startup verification:
+    - Started backend in monitored terminal using `npm --prefix server start`.
+    - Startup logs showed server boot on port `3001` and DB verification complete.
+    - Health check `http://127.0.0.1:3001/health` returned HTTP `200` with `{"status":"ok",...}`.
+  - Outcome: backend startup passed in monitored session.
