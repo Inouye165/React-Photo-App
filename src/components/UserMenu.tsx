@@ -17,11 +17,11 @@ import { FRONTEND_BUILD_TIMESTAMP, FRONTEND_VERSION } from '../version';
  * Fat Finger Rule: All touch targets ≥ 44x44px
  */
 interface UserMenuProps {
-  onOpenGallery?: () => void;
+  onOpenPhotos?: () => void;
   onOpenEdit?: () => void;
 }
 
-export default function UserMenu({ onOpenGallery, onOpenEdit }: UserMenuProps) {
+export default function UserMenu({ onOpenPhotos, onOpenEdit }: UserMenuProps) {
   const { user, logout, profile } = useAuth();
   const [isOpen, setIsOpen] = useState(false);
   const [showFeedbackModal, setShowFeedbackModal] = useState(false);
@@ -122,9 +122,9 @@ export default function UserMenu({ onOpenGallery, onOpenEdit }: UserMenuProps) {
     setShowSettingsModal(true);
   };
 
-  const handleGallery = () => {
+  const handlePhotos = () => {
     setIsOpen(false);
-    onOpenGallery?.();
+    onOpenPhotos?.();
   };
 
   const handleEdit = () => {
@@ -204,7 +204,7 @@ export default function UserMenu({ onOpenGallery, onOpenEdit }: UserMenuProps) {
             {/* Menu Items */}
             <div className="py-1">
               <button
-                onClick={handleGallery}
+                onClick={handlePhotos}
                 data-testid="user-menu-gallery"
                 role="menuitem"
                 className="w-full flex items-center gap-3 px-4 py-3
@@ -212,7 +212,7 @@ export default function UserMenu({ onOpenGallery, onOpenEdit }: UserMenuProps) {
                            transition-colors touch-manipulation"
               >
                 <Grid3X3 size={18} className="text-slate-400" />
-                Gallery
+                Photos
               </button>
 
               <button

@@ -2,7 +2,6 @@ import { useState, useEffect } from 'react'
 import { useAuth } from './contexts/AuthContext'
 import { API_BASE_URL } from './api'
 import useStore from './store'
-import AppHeader from './components/AppHeader'
 import { useProtectedImageBlobUrl } from './hooks/useProtectedImageBlobUrl'
 import { useLockBodyScroll } from './hooks/useLockBodyScroll'
 import { COLLECTIBLES_UI_ENABLED } from './config/featureFlags'
@@ -260,9 +259,9 @@ export default function EditPage({ photo, onClose: _onClose, onSave, onRecheckAI
         isProcessing={recheckingAI}
       />
 
-      {/* Consistent App Header */}
-      <AppHeader 
-        rightContent={
+      {/* Main App Window / Card */}
+      <div className={shellStyles.mainCard}>
+        <div className={shellStyles.topActions}>
           <EditHeaderActions
             isPolling={isPolling}
             recheckingAI={recheckingAI}
@@ -271,11 +270,8 @@ export default function EditPage({ photo, onClose: _onClose, onSave, onRecheckAI
             onRecheckClick={handleRecheckAi}
             onSaveClick={handleSave}
           />
-        }
-      />
+        </div>
 
-      {/* Main App Window / Card */}
-      <div className={shellStyles.mainCard}>
         {/* Main Content Grid */}
         <main 
           className="flex-1 overflow-hidden flex flex-col lg:flex-row"

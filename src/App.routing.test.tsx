@@ -7,6 +7,7 @@ import { AuthProvider } from './contexts/AuthContext';
 import AuthWrapper from './layouts/AuthWrapper';
 import MainLayout from './layouts/MainLayout';
 import PhotoGalleryPage from './pages/PhotoGalleryPage';
+import HomePage from './pages/HomePage';
 import PhotoDetailPage from './pages/PhotoDetailPage.tsx';
 import PhotoEditPage from './pages/PhotoEditPage.tsx';
 import GlobalErrorBoundary from './components/GlobalErrorBoundary';
@@ -105,7 +106,7 @@ describe('Routing Implementation Tests', () => {
   });
 
   describe('Route Rendering', () => {
-    it('renders PhotoGalleryPage (PhotoTable) at root path /', async () => {
+    it('renders HomePage at root path /', async () => {
       render(
         <AuthProvider>
           <GlobalErrorBoundary>
@@ -113,7 +114,7 @@ describe('Routing Implementation Tests', () => {
               <AuthWrapper>
                 <Routes>
                   <Route element={<MainLayout />}>
-                    <Route index element={<PhotoGalleryPage />} />
+                    <Route index element={<HomePage />} />
                   </Route>
                 </Routes>
               </AuthWrapper>
@@ -122,11 +123,8 @@ describe('Routing Implementation Tests', () => {
         </AuthProvider>
       );
 
-      // Wait for the gallery to render
       await waitFor(() => {
-        // PhotoTable should have some identifiable content
-        // Since we mocked the photos, the table should exist
-        expect(document.body.textContent).toBeTruthy();
+        expect(screen.getByRole('heading', { name: 'Home' })).toBeInTheDocument();
       });
     });
 
@@ -269,7 +267,7 @@ describe('Routing Implementation Tests', () => {
   });
 
   describe('Route Integration', () => {
-    it('renders MainLayout with Toolbar for all routes', async () => {
+    it('renders MainLayout shell for home route', async () => {
       render(
         <AuthProvider>
           <GlobalErrorBoundary>
@@ -277,7 +275,7 @@ describe('Routing Implementation Tests', () => {
               <AuthWrapper>
                 <Routes>
                   <Route element={<MainLayout />}>
-                    <Route index element={<PhotoGalleryPage />} />
+                    <Route index element={<HomePage />} />
                   </Route>
                 </Routes>
               </AuthWrapper>
@@ -287,9 +285,7 @@ describe('Routing Implementation Tests', () => {
       );
 
       await waitFor(() => {
-        // Toolbar should be present
-        const toolbar = screen.getByRole('navigation', { name: 'Main toolbar' });
-        expect(toolbar).toBeInTheDocument();
+        expect(screen.getByRole('heading', { name: 'Home' })).toBeInTheDocument();
       });
     });
 

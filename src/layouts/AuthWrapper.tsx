@@ -200,7 +200,7 @@ const AuthWrapper = ({ children }: AuthWrapperProps) => {
   }
 
   // Authenticated user interface - now just renders the app content
-  // User info and logout are handled in the main Toolbar component
+  // User info and logout are handled in dedicated screens/menus
   return <div className="min-h-screen bg-gray-100">{children}</div>;
 };
 

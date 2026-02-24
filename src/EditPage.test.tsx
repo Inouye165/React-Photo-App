@@ -26,11 +26,6 @@ vi.mock('./contexts/AuthContext', () => ({
   useAuth: vi.fn()
 }))
 
-// Mock AppHeader to avoid router/store coupling in this test suite
-vi.mock('./components/AppHeader.tsx', () => ({
-  default: ({ rightContent }: any) => React.createElement('div', { 'data-testid': 'app-header' }, rightContent)
-}))
-
 // Mock the store to return a photo when selectors are applied
 // Phase 3: Extended to support dynamic polling state for tests
 let mockStoreState: any = {

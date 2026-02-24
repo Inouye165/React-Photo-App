@@ -244,13 +244,13 @@ const PhotoUploadForm: React.FC<PhotoUploadFormProps> = ({
 
     window.addEventListener('keydown', onKey);
 
-    // Position panel relative to toolbar only in modal mode
+    // Position panel relative to app shell only in modal mode
     if (!isStandalonePage) {
       try {
-        const toolbar = document.querySelector('[aria-label="Main toolbar"]');
-        if (toolbar && panelRef.current) {
-          const rect = toolbar.getBoundingClientRect();
-          const topPx = Math.ceil(rect.bottom + 8);
+        const appShell = document.querySelector('#main-app-container');
+        if (appShell && panelRef.current) {
+          const rect = appShell.getBoundingClientRect();
+          const topPx = Math.ceil(rect.top + 16);
           panelRef.current.style.position = 'absolute';
           panelRef.current.style.left = '16px';
           panelRef.current.style.right = '16px';

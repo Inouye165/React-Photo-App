@@ -61,13 +61,6 @@ vi.mock('./PhotoGallery', () => ({
   )
 }))
 
-vi.mock('./Toolbar', () => ({
-  default: () => React.createElement('nav', { 
-    'aria-label': 'Main toolbar',
-    'data-testid': 'toolbar'
-  }, 'Toolbar')
-}))
-
 vi.mock('./components/PhotoTable', () => ({
   default: () => React.createElement('div', { 'data-testid': 'photo-table' }, 'Photo Table')
 }))
@@ -195,7 +188,7 @@ describe('App Component - Smoke Tests', () => {
   it('renders without crashing', async () => {
     render(<App />)
     await waitFor(() => {
-      expect(screen.getByRole('navigation', { name: 'Main toolbar' })).toBeInTheDocument()
+      expect(screen.getByTestId('photo-gallery')).toBeInTheDocument()
     }, { timeout: 3000 })
   })
 

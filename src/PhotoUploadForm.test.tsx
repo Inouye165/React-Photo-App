@@ -300,11 +300,10 @@ describe('PhotoUploadForm Component', () => {
     expect(dialog).toHaveAttribute('tabIndex', '-1')
   })
 
-  it('positions modal below toolbar', () => {
+  it('positions modal within app shell', () => {
     render(<PhotoUploadForm {...mockProps} />)
     
-    // Should have called querySelector to find toolbar
-    expect(document.querySelector).toHaveBeenCalledWith('[aria-label="Main toolbar"]')
+    expect(document.querySelector).toHaveBeenCalledWith('#main-app-container')
   })
 
   it('handles upload errors gracefully', async () => {
