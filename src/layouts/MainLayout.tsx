@@ -124,6 +124,11 @@ export default function MainLayout(): React.ReactElement {
   const bannerSeverity: Severity = (banner as BannerState | null)?.severity ?? 'info';
   const isChatRoute = location.pathname.startsWith('/chat');
   const isChessImmersiveRoute = /^\/games\/(?:chess|[^/]+)$/.test(location.pathname);
+  const contentOverflowClass = isChatRoute
+    ? 'overflow-hidden'
+    : isChessImmersiveRoute
+      ? 'overflow-auto lg:overflow-hidden'
+      : 'overflow-auto';
 
   return (
     <div
@@ -173,7 +178,7 @@ export default function MainLayout(): React.ReactElement {
 
       {/* Main content area with consistent padding */}
       <div
-        className={`flex-1 ${isChatRoute || isChessImmersiveRoute ? 'overflow-hidden' : 'overflow-auto'}`}
+        className={`flex-1 ${contentOverflowClass}`}
         style={isChatRoute || isChessImmersiveRoute ? undefined : { padding: '12px' }}
       >
         <Outlet context={{ 

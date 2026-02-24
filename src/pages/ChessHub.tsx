@@ -153,8 +153,8 @@ export default function ChessHub(): React.JSX.Element {
   ] as const
 
   return (
-    <section className="flex h-full min-h-[100dvh] w-full flex-col bg-slate-900 px-4 pb-6 pt-6 text-slate-100 sm:px-6 lg:px-8">
-      <div className="mx-auto flex w-full max-w-6xl flex-1 flex-col gap-5 sm:gap-6">
+    <section className="flex h-full min-h-[100dvh] w-full flex-col bg-slate-900 px-3 pb-4 pt-4 text-slate-100 sm:px-6 sm:pb-6 sm:pt-6 lg:px-8">
+      <div className="mx-auto flex w-full max-w-6xl flex-col gap-4 sm:gap-6">
         <div className="flex items-center justify-start">
           <button
             type="button"
@@ -167,12 +167,12 @@ export default function ChessHub(): React.JSX.Element {
           </button>
         </div>
 
-        <header className="rounded-2xl border border-slate-700 bg-slate-800/80 p-5">
-          <h1 className="text-3xl font-bold tracking-tight text-white sm:text-4xl">Chess</h1>
+        <header className="rounded-2xl border border-slate-700 bg-slate-800/80 p-4 sm:p-5">
+          <h1 className="text-2xl font-bold tracking-tight text-white sm:text-4xl">Chess</h1>
           <p className="mt-2 max-w-3xl text-sm text-slate-200 sm:text-base">Pick a mode and jump in. Continue your latest game, launch a new match, or open tutorials in a clean fullscreen flow.</p>
         </header>
 
-        <section className="rounded-2xl border border-indigo-400/50 bg-slate-800/80 p-5">
+        <section className="rounded-2xl border border-indigo-400/50 bg-slate-800/80 p-4 sm:p-5">
           <div className="mb-4 flex items-center justify-between gap-3">
             <h2 className="text-xl font-semibold text-white">Quick start</h2>
             <Clock3 size={18} className="text-indigo-200" aria-hidden="true" />
@@ -280,21 +280,21 @@ export default function ChessHub(): React.JSX.Element {
           )}
         </section>
 
-        <div className="grid flex-1 grid-cols-1 gap-4 md:grid-cols-3">
+        <div className="grid grid-cols-1 gap-3 sm:gap-4 md:grid-cols-3">
           {modeCards.map((card) => {
             const Icon = card.icon
 
             return (
-              <article key={card.key} className="flex min-h-[260px] flex-col rounded-2xl border border-indigo-400/50 bg-slate-800 p-5 shadow-sm transition hover:border-indigo-300">
+              <article key={card.key} className="flex flex-col rounded-2xl border border-indigo-400/50 bg-slate-800 p-4 shadow-sm transition hover:border-indigo-300 sm:min-h-[260px] sm:p-5">
                 <div className="flex items-start gap-3">
                   <Icon size={22} className="mt-0.5 text-indigo-300" aria-hidden="true" />
                   <div>
                     <h2 className="text-lg font-semibold text-white">{card.title}</h2>
-                    <p className="mt-1 text-sm text-slate-300">{card.description}</p>
+                    <p className="mt-1 hidden text-sm text-slate-300 sm:block">{card.description}</p>
                   </div>
                 </div>
 
-                <ul className="mt-4 space-y-2 text-sm text-slate-200">
+                <ul className="mt-3 hidden space-y-2 text-sm text-slate-200 sm:mt-4 sm:block">
                   {card.bullets.map((bullet) => (
                     <li key={bullet} className="flex items-start gap-2">
                       <span className="mt-1 h-1.5 w-1.5 rounded-full bg-indigo-300" aria-hidden="true" />
@@ -303,7 +303,7 @@ export default function ChessHub(): React.JSX.Element {
                   ))}
                 </ul>
 
-                <div className="mt-auto pt-5">
+                <div className="mt-3 sm:mt-auto sm:pt-5">
                   <button
                     type="button"
                     onClick={card.onClick}
