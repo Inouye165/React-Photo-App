@@ -59,7 +59,7 @@ export default function GamesMenu({
       description: 'Open Chess app shell',
       onSelect: () => {
         closePicker('nav-games-chess')
-        navigate('/games/chess')
+        navigate('/chess')
       },
     },
     {

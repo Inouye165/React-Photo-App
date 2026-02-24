@@ -1,5 +1,5 @@
 import { useState, useRef, useEffect } from 'react';
-import { LogOut, MessageSquareText, Settings, ChevronDown, Grid3X3, Edit3 } from 'lucide-react';
+import { LogOut, MessageSquareText, Settings, ChevronDown, Grid3X3, Edit3, Shield } from 'lucide-react';
 import { useAuth } from '../contexts/AuthContext';
 import FeedbackModal from './FeedbackModal';
 import UserSettingsModal from './UserSettingsModal';
@@ -19,9 +19,10 @@ import { FRONTEND_BUILD_TIMESTAMP, FRONTEND_VERSION } from '../version';
 interface UserMenuProps {
   onOpenPhotos?: () => void;
   onOpenEdit?: () => void;
+  onOpenAdmin?: () => void;
 }
 
-export default function UserMenu({ onOpenPhotos, onOpenEdit }: UserMenuProps) {
+export default function UserMenu({ onOpenPhotos, onOpenEdit, onOpenAdmin }: UserMenuProps) {
   const { user, logout, profile } = useAuth();
   const [isOpen, setIsOpen] = useState(false);
   const [showFeedbackModal, setShowFeedbackModal] = useState(false);
@@ -130,6 +131,11 @@ export default function UserMenu({ onOpenPhotos, onOpenEdit }: UserMenuProps) {
   const handleEdit = () => {
     setIsOpen(false);
     onOpenEdit?.();
+  };
+
+  const handleAdmin = () => {
+    setIsOpen(false);
+    onOpenAdmin?.();
   };
 
   if (!user) return null;
@@ -250,6 +256,20 @@ export default function UserMenu({ onOpenPhotos, onOpenEdit }: UserMenuProps) {
                 <Settings size={18} className="text-slate-400" />
                 Settings
               </button>
+
+              {isAdmin && onOpenAdmin && (
+                <button
+                  onClick={handleAdmin}
+                  data-testid="user-menu-admin"
+                  role="menuitem"
+                  className="w-full flex items-center gap-3 px-4 py-3
+                           text-sm text-slate-700 hover:bg-slate-50
+                           transition-colors touch-manipulation"
+                >
+                  <Shield size={18} className="text-slate-400" />
+                  Admin Dashboard
+                </button>
+              )}
             </div>
 
             {/* About */}

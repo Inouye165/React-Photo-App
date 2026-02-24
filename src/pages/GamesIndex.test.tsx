@@ -255,7 +255,7 @@ describe('GamesIndex', () => {
     expect(subscribeMock).toHaveBeenCalled()
   })
 
-  it('renders Back to Chess and navigates to /games/chess', async () => {
+  it('renders Back to Chess and navigates to /chess', async () => {
     render(<GamesIndex />)
 
     await act(async () => {
@@ -264,7 +264,7 @@ describe('GamesIndex', () => {
     })
 
     fireEvent.click(screen.getByRole('button', { name: 'Back to Chess' }))
-    expect(navigateMock).toHaveBeenCalledWith('/games/chess')
+    expect(navigateMock).toHaveBeenCalledWith('/chess')
   })
 
   it('shows Continue for selected open game and navigates on click', async () => {
@@ -332,4 +332,5 @@ describe('GamesIndex', () => {
     expect(aliceGameButton).toHaveAttribute('aria-pressed', 'true')
     expect(screen.getByRole('heading', { name: 'vs Alice' })).toBeInTheDocument()
   })
+
 })
