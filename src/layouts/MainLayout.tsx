@@ -1,6 +1,5 @@
 import React, { useState, useEffect } from 'react';
 import { Outlet, useLocation } from 'react-router-dom';
-import AppHeader from '../components/AppHeader';
 import UploadTray from '../components/uploads/UploadTray';
 import useStore from '../store';
 import { getDependencyStatus } from '../api';
@@ -136,7 +135,7 @@ export default function MainLayout(): React.ReactElement {
         left: 0,
         right: 0,
         bottom: 0,
-        paddingTop: isChessImmersiveRoute ? 'env(safe-area-inset-top)' : 'calc(52px + env(safe-area-inset-top))',
+        paddingTop: 'env(safe-area-inset-top)',
         paddingBottom: 'env(safe-area-inset-bottom)',
         paddingLeft: 'calc(env(safe-area-inset-left) + 4px)',
         paddingRight: 'calc(env(safe-area-inset-right) + 4px)',
@@ -144,46 +143,33 @@ export default function MainLayout(): React.ReactElement {
         color: '#1e293b', // Slate-800 for high contrast text
       }}
     >
-      {!isChessImmersiveRoute ? (
-        <AppHeader 
-          rightContent={statusMessage ? (
-            <div 
-              style={{ 
-                display: 'flex', 
-                alignItems: 'center', 
-                gap: '8px',
-                padding: '6px 12px',
-                borderRadius: '9999px',
-                fontSize: '12px',
-                fontWeight: 500,
-                backgroundColor: dependencyWarning ? '#fef3c7' : (bannerSeverity === 'error' ? '#fef2f2' : '#f0fdf4'),
-                color: dependencyWarning ? '#92400e' : (bannerSeverity === 'error' ? '#b91c1c' : '#16a34a'),
-              }}
-            >
-              <span>{statusMessage}</span>
-              {!dependencyWarning && (
-                <button 
-                  onClick={() => { setToolbarMessage(''); setBanner({ message: '' }); }}
-                  style={{ 
-                    background: 'none', 
-                    border: 'none', 
-                    cursor: 'pointer', 
-                    fontSize: '14px',
-                    color: 'inherit',
-                    padding: '0 4px',
-                  }}
-                >
-                  ×
-                </button>
-              )}
-            </div>
-          ) : null}
-        />
-      ) : null}
-
       <div aria-live="polite" className="sr-only">
         {toolbarMessage}
       </div>
+
+      {!isChessImmersiveRoute && statusMessage ? (
+        <div
+          className="mx-3 mt-2 rounded-xl border px-3 py-2 text-sm"
+          style={{
+            backgroundColor: dependencyWarning ? '#fef3c7' : (bannerSeverity === 'error' ? '#fef2f2' : '#f0fdf4'),
+            borderColor: dependencyWarning ? '#fcd34d' : (bannerSeverity === 'error' ? '#fecaca' : '#86efac'),
+            color: dependencyWarning ? '#92400e' : (bannerSeverity === 'error' ? '#b91c1c' : '#166534'),
+          }}
+        >
+          <div className="flex items-center justify-between gap-2">
+            <span>{statusMessage}</span>
+            {!dependencyWarning ? (
+              <button
+                onClick={() => { setToolbarMessage(''); setBanner({ message: '' }); }}
+                className="rounded px-2 py-0.5 text-xs font-semibold"
+                style={{ color: 'inherit' }}
+              >
+                Dismiss
+              </button>
+            ) : null}
+          </div>
+        </div>
+      ) : null}
 
       {/* Main content area with consistent padding */}
       <div

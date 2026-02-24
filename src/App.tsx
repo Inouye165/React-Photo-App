@@ -1,10 +1,10 @@
 import { useEffect } from 'react';
-import { BrowserRouter, Routes, Route } from 'react-router-dom';
+import { BrowserRouter, Navigate, Routes, Route } from 'react-router-dom';
 import { logGlobalError } from './utils/globalLog';
 import GlobalErrorBoundary from './components/GlobalErrorBoundary';
 import MainLayout from './layouts/MainLayout';
-import SmartRouter from './components/SmartRouter.tsx';
 import IdentityGate from './components/IdentityGate.tsx';
+import HomePage from './pages/HomePage';
 import PhotoGalleryPage from './pages/PhotoGalleryPage';
 import PhotoDetailPage from './pages/PhotoDetailPage.tsx';
 import PhotoEditPage from './pages/PhotoEditPage.tsx';
@@ -34,7 +34,7 @@ declare global {
  * App - Root component with routing and error boundary
  *
  * Route structure:
- * - / : SmartRouter (determines initial landing based on photo state)
+ * - / : Home page
  * - /gallery : PhotoGalleryPage (unified gallery)
  * - /upload : Dedicated upload page
  * - /photos/:id : Photo detail view (read-only)
@@ -69,8 +69,7 @@ function App() {
           <Route element={<AuthWrapper><IdentityGate /></AuthWrapper>}>
             <Route path="/chat/:roomId/pad" element={<ChatPadPage />} />
             <Route element={<MainLayout />}>
-              {/* Smart Router - determines initial landing page based on photo state */}
-              <Route index element={<SmartRouter />} />
+              <Route index element={<HomePage />} />
 
               {/* Unified gallery view */}
               <Route path="/gallery" element={<PhotoGalleryPage />} />
@@ -104,8 +103,8 @@ function App() {
               {/* Collectible detail view (main + reference carousel) */}
               <Route path="/collectibles/photos/:id" element={<CollectiblePhotoPage />} />
 
-              {/* Catch-all redirect to SmartRouter */}
-              <Route path="*" element={<SmartRouter />} />
+              {/* Catch-all redirect to Home */}
+              <Route path="*" element={<Navigate to="/" replace />} />
             </Route>
           </Route>
         </Routes>

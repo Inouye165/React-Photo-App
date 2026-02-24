@@ -55,6 +55,20 @@ Expected: Frontend at http://localhost:5173/
 
 ## Startup Robustness Log
 
+- **2026-02-23 18:15:16 -08:00 (Windows, autonomous README flow validation)**
+  - Process used: `npm run stop:local` then `npm run start:local` from repo root (README robust one-command startup).
+  - Startup issues observed:
+    1. `stop:local` reported tracked Lumina PIDs that could not be stopped in this shell session.
+    2. Docker daemon was initially not running.
+    3. Local Supabase reported stale startup state (`supabase start is already running`, container not ready).
+  - Recovery/fix:
+    - `start:local` auto-started Docker Desktop, waited for daemon readiness, and performed Supabase self-heal/start.
+    - Script then launched API/worker/frontend terminals and waited for API readiness.
+  - Verification results:
+    - `http://127.0.0.1:3001/health` returned HTTP `200` with `{"status":"ok",...}`.
+    - `http://localhost:5173/` returned HTTP `200` and served Vite app HTML.
+  - Outcome: startup passed with no manual intervention required.
+
 - **2026-02-20 12:13:43 -08:00 (Windows, monitored run)**
   - Backend startup/migration issue observed previously: `role "authenticated" does not exist` during policy migration.
   - Fix applied in migration file to remove hard dependency on role-specific `TO authenticated` clauses.
