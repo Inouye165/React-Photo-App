@@ -1,9 +1,212 @@
+@import url("https://fonts.googleapis.com/css2?family=Cinzel:wght@500;600;700&family=Source+Sans+3:wght@400;500;600;700&display=swap");
 @import "tailwindcss";
 @import "./styles/tokens.css";
+
+@theme {
+  --font-display: "Cinzel", serif;
+  --font-body: "Source Sans 3", sans-serif;
+
+  --color-chess-bg: #17110e;
+  --color-chess-surface: #221917;
+  --color-chess-surfaceSoft: #2c201d;
+  --color-chess-text: #f3ece4;
+  --color-chess-muted: #c6b4a4;
+  --color-chess-accent: #c9822b;
+  --color-chess-accentSoft: #e7b274;
+  --color-chess-turn: #d89a3d;
+
+  --shadow-chess-card: 0 18px 40px -22px rgba(0, 0, 0, 0.85), 0 8px 20px -16px rgba(0, 0, 0, 0.75);
+}
 
 /* UI: slightly smaller base font for denser list view */
 html, body {
   font-size: 13px;
+}
+
+@keyframes pageEnterFade {
+  from {
+    opacity: 0;
+    transform: translateY(8px);
+  }
+  to {
+    opacity: 1;
+    transform: translateY(0);
+  }
+}
+
+.page-enter-fade {
+  animation: pageEnterFade 220ms ease-out;
+}
+
+html,
+body,
+#root {
+  background-color: var(--color-chess-bg);
+  color: var(--color-chess-text);
+  font-family: var(--font-body);
+}
+
+.bg-white,
+.bg-gray-50,
+.bg-slate-50,
+.bg-slate-100,
+.bg-slate-200,
+.bg-slate-700,
+.bg-slate-800,
+.bg-slate-900,
+.bg-slate-900\/50,
+.bg-slate-900\/60,
+.bg-slate-900\/70,
+.bg-slate-900\/80,
+.bg-slate-900\/90 {
+  background-color: var(--color-chess-surface) !important;
+}
+
+.bg-gray-100,
+.bg-gray-200,
+.bg-slate-300 {
+  background-color: var(--color-chess-surfaceSoft) !important;
+}
+
+.text-gray-900,
+.text-slate-900,
+.text-gray-800,
+.text-slate-800,
+.text-gray-700,
+.text-slate-700,
+.text-gray-600,
+.text-slate-600,
+.text-gray-500,
+.text-slate-500 {
+  color: var(--color-chess-text) !important;
+}
+
+.text-gray-400,
+.text-slate-400 {
+  color: var(--color-chess-muted) !important;
+}
+
+.text-indigo-50,
+.text-indigo-100,
+.text-indigo-200,
+.text-indigo-300,
+.text-indigo-400,
+.text-indigo-500,
+.text-blue-50,
+.text-blue-100,
+.text-blue-200,
+.text-blue-300,
+.text-blue-400,
+.text-blue-500 {
+  color: var(--color-chess-accentSoft) !important;
+}
+
+.border-gray-100,
+.border-gray-200,
+.border-gray-300,
+.border-slate-100,
+.border-slate-200,
+.border-slate-300,
+.border-slate-400,
+.border-slate-500,
+.border-slate-600,
+.border-slate-700,
+.border-indigo-200,
+.border-indigo-300,
+.border-indigo-400,
+.border-indigo-500,
+.border-blue-200,
+.border-blue-300,
+.border-blue-400,
+.border-blue-500 {
+  border-color: rgb(255 255 255 / 0.12) !important;
+}
+
+.bg-indigo-500,
+.bg-indigo-600,
+.bg-blue-500,
+.bg-blue-600,
+.bg-indigo-500\/10,
+.bg-indigo-500\/15,
+.bg-indigo-500\/20,
+.bg-indigo-500\/30,
+.bg-blue-500\/10,
+.bg-blue-500\/20,
+.bg-blue-500\/30 {
+  background-color: color-mix(in oklab, var(--color-chess-accent) 28%, transparent) !important;
+}
+
+.hover\:bg-slate-50:hover,
+.hover\:bg-slate-100:hover,
+.hover\:bg-slate-200:hover,
+.hover\:bg-slate-800:hover,
+.hover\:bg-slate-900:hover,
+.hover\:bg-indigo-500\/30:hover,
+.hover\:bg-indigo-500\/20:hover,
+.hover\:bg-blue-500\/30:hover,
+.hover\:bg-blue-500\/20:hover {
+  background-color: var(--color-chess-surfaceSoft) !important;
+}
+
+.active\:bg-slate-100:active,
+.active\:bg-slate-200:active,
+.active\:bg-slate-800:active,
+.active\:bg-slate-900:active {
+  background-color: var(--color-chess-surface) !important;
+}
+
+a,
+a:visited {
+  color: var(--color-chess-accentSoft);
+}
+
+a:hover {
+  color: var(--color-chess-text);
+}
+
+.shadow,
+.shadow-sm,
+.shadow-md,
+.shadow-lg,
+.shadow-xl,
+.shadow-2xl {
+  box-shadow: var(--shadow-chess-card) !important;
+}
+
+.chess-local-theme .bg-white,
+.chess-local-theme .bg-slate-50,
+.chess-local-theme .bg-slate-100,
+.chess-local-theme .bg-slate-100\/90,
+.chess-local-theme .bg-white\/80 {
+  background-color: var(--color-chess-surface) !important;
+}
+
+.chess-local-theme .border-slate-200,
+.chess-local-theme .border-slate-200\/80,
+.chess-local-theme .border-slate-300 {
+  border-color: rgb(255 255 255 / 0.12) !important;
+}
+
+.chess-local-theme button {
+  background: var(--color-chess-surfaceSoft);
+  color: var(--color-chess-text);
+  border-color: rgb(255 255 255 / 0.14);
+}
+
+.chess-local-theme button:hover {
+  background: var(--color-chess-surface);
+}
+
+.chess-local-theme button:disabled {
+  opacity: 0.5;
+}
+
+.chess-local-theme button.bg-red-600,
+.chess-local-theme button.bg-red-500,
+.chess-local-theme .border-red-200 {
+  background: rgb(190 24 93 / 0.85) !important;
+  color: #fff !important;
+  border-color: rgb(190 24 93 / 0.7) !important;
 }
 
 /* ========================================

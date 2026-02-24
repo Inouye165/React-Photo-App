@@ -3,9 +3,9 @@ import { Chessboard } from 'react-chessboard'
 import type { TutorBoardRenderState } from './types'
 
 const classes = {
-  shell: 'rounded-2xl border border-slate-700 bg-slate-900/70 p-3 sm:p-4',
+  shell: 'rounded-2xl border border-slate-700 bg-slate-900/70 p-1.5 sm:p-3',
   boardWrap: 'mx-auto w-full max-w-[620px]',
-  note: 'mt-3 text-xs text-slate-400',
+  note: 'mt-1 hidden text-xs text-slate-400 sm:block',
 } as const
 
 export default function TutorBoard({

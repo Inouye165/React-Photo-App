@@ -336,12 +336,6 @@ describe('ChessGame', () => {
     await user.click(screen.getByRole('button', { name: tabName }))
   }
 
-  const getTutorAnalyzeTabButton = () => {
-    const analyzeButtons = screen.getAllByRole('button', { name: 'Analyze game' })
-    const tutorTabButton = analyzeButtons.find((button) => button.hasAttribute('aria-pressed'))
-    return tutorTabButton ?? analyzeButtons[0]
-  }
-
   it('renders the board', () => {
     render(<ChessGame />)
     expect(screen.getByTestId('chessboard')).toBeInTheDocument()
@@ -394,14 +388,15 @@ describe('ChessGame', () => {
     })
   })
 
-  it('routes ?tab=analyze into drawer-based analysis actions', async () => {
+  it('routes ?tab=analyze to history when analyze tab is disabled in tutor fullscreen', async () => {
     setMockGameId('local')
     setLocationSearch('?tab=analyze&tutor=1')
     render(<ChessGame />)
 
     await waitFor(() => {
-      expect(getTutorAnalyzeTabButton()).toHaveAttribute('aria-pressed', 'true')
-      expect(screen.getByRole('button', { name: 'Analyze game for me' })).toBeInTheDocument()
+      const tutorSidebar = screen.getByTestId('tutor-sidebar')
+      expect(within(tutorSidebar).getByRole('button', { name: 'Chess history' })).toHaveAttribute('aria-pressed', 'true')
+      expect(within(tutorSidebar).queryByRole('button', { name: 'Analyze game' })).not.toBeInTheDocument()
     })
   })
 
@@ -596,8 +591,7 @@ describe('ChessGame', () => {
 
     expect(screen.getByText('gemini')).toBeInTheDocument()
 
-    await user.click(getTutorAnalyzeTabButton())
-    await user.click(screen.getByRole('button', { name: 'Analyze game for me' }))
+    await user.click(screen.getByRole('button', { name: 'Analyze game' }))
 
     await waitFor(() => {
       expect(analyzeGameForMeMock).toHaveBeenCalled()
@@ -691,13 +685,17 @@ describe('ChessGame', () => {
 
     await openMenuTab(user, 'Chess history')
 
+    expect(screen.getByRole('dialog', { name: 'Chess history window' })).toBeInTheDocument()
     expect(screen.getByText('Chess History Timeline')).toBeInTheDocument()
     expect(screen.getByText('Early Chaturanga in India')).toBeInTheDocument()
     expect(screen.getByText('Neural-network engine age')).toBeInTheDocument()
     expect(screen.getByRole('img', { name: 'Illustration representing early chaturanga gameplay' })).toBeInTheDocument()
 
-    await user.click(getTutorAnalyzeTabButton())
-    expect(screen.getByRole('button', { name: 'Analyze game for me' })).toBeInTheDocument()
+    const tutorSidebar = screen.getByTestId('tutor-sidebar')
+    const historyWindow = screen.getByRole('dialog', { name: 'Chess history window' })
+    expect(within(tutorSidebar).queryByRole('button', { name: 'Analyze game' })).not.toBeInTheDocument()
+    await user.click(within(historyWindow).getByRole('button', { name: 'Back' }))
+    expect(screen.getByRole('button', { name: 'Story mode' })).toBeInTheDocument()
   })
 
   it('opens the story modal from Story mode and loads the PDF', async () => {

@@ -1,6 +1,8 @@
 import React, { useCallback, useEffect, useMemo, useState } from 'react'
 import { useNavigate } from 'react-router-dom'
-import { ArrowLeft, Bot, BookOpen, Clock3, Users } from 'lucide-react'
+import { formatDistanceToNow } from 'date-fns'
+import { motion, useReducedMotion } from 'framer-motion'
+import { ArrowLeft, Bot, BookOpen, ChevronRight, History, Users } from 'lucide-react'
 import { listMyGamesWithMembers, type GameWithMembers } from '../api/games'
 import { onGamesChanged } from '../events/gamesEvents'
 import { useAuth } from '../contexts/AuthContext'
@@ -31,11 +33,11 @@ function byUpdatedDesc(a: GameWithMembers, b: GameWithMembers): number {
   return getTimestamp(b.updated_at) - getTimestamp(a.updated_at)
 }
 
-function formatUpdatedAt(value: string | null | undefined): string {
-  if (!value) return 'Unknown'
+function formatRelative(value: string | null | undefined): string {
+  if (!value) return 'Recently'
   const date = new Date(value)
-  if (Number.isNaN(date.getTime())) return 'Unknown'
-  return date.toLocaleString()
+  if (Number.isNaN(date.getTime())) return 'Recently'
+  return formatDistanceToNow(date, { addSuffix: true })
 }
 
 function getOpponentLabel(game: GameWithMembers, currentUserId?: string, currentUsername?: string): string {
@@ -54,9 +56,11 @@ function getOpponentLabel(game: GameWithMembers, currentUserId?: string, current
 export default function ChessHub(): React.JSX.Element {
   const { user, profile } = useAuth()
   const navigate = useNavigate()
+  const prefersReducedMotion = useReducedMotion()
   const [games, setGames] = useState<GameWithMembers[]>([])
   const [isLoading, setIsLoading] = useState(true)
   const [loadError, setLoadError] = useState<string | null>(null)
+  const [isHistoryOpen, setIsHistoryOpen] = useState(false)
 
   const loadGames = useCallback(async (showLoading: boolean) => {
     if (showLoading) setIsLoading(true)
@@ -101,223 +105,265 @@ export default function ChessHub(): React.JSX.Element {
     }
   }, [loadGames])
 
-  const openGames = useMemo(() => (
+  // Human decision: API does not expose turn-owner, so the top active match is treated as the actionable "Your Turn" hero target.
+  const activeGames = useMemo(() => (
     games
-      .filter((game) => isOpenStatus(game.status))
+      .filter((game) => activeStatuses.has(normalizeStatus(game.status)))
       .sort(byUpdatedDesc)
   ), [games])
 
-  const continueGame = openGames[0] ?? null
+  const singleActiveGame = activeGames[0] ?? null
 
-  const recentGames = useMemo(() => {
-    const openFirst = [...openGames]
-    const allByRecent = [...games].sort(byUpdatedDesc)
-    const merged = [...openFirst, ...allByRecent]
-    const seen = new Set<string>()
+  const heroState = useMemo<'hasActiveGame' | 'hasMultipleActiveGames' | 'noActiveGame'>(() => {
+    if (activeGames.length === 1) return 'hasActiveGame'
+    if (activeGames.length >= 2) return 'hasMultipleActiveGames'
+    return 'noActiveGame'
+  }, [activeGames.length])
 
-    return merged.filter((game) => {
-      if (!game?.id || seen.has(game.id)) return false
-      seen.add(game.id)
-      return true
-    }).slice(0, 3)
-  }, [games, openGames])
+  const historyGames = useMemo(() => {
+    const activeIds = new Set(activeGames.map((game) => game.id))
+    return games
+      .filter((game) => game?.id && !activeIds.has(game.id) && isOpenStatus(game.status))
+      .sort(byUpdatedDesc)
+      .slice(0, 8)
+  }, [activeGames, games])
 
-  const modeCards = [
+  const modeItems = [
     {
       key: 'local',
-      title: 'Play vs Computer',
-      description: 'Start a local match with engine support and analysis tools.',
-      bullets: ['Live board analysis', 'Practice with instant retries', 'Use tutor-ready board state'],
-      ctaLabel: 'Start game',
+      title: 'Play Computer',
+      description: 'Sharpen openings with immediate feedback and rematch speed.',
+      chips: ['Engine Support', 'Practice Scenarios', 'Instant Rematch'],
       onClick: () => navigate('/games/local?tab=analyze'),
       icon: Bot,
     },
     {
       key: 'invite',
-      title: 'Play vs Opponent (Invite)',
-      description: 'Open your games dashboard to invite another player.',
-      bullets: ['Send and manage invites', 'Resume active matches', 'Track game status in one place'],
-      ctaLabel: 'Open games dashboard',
+      title: 'Play a Friend',
+      description: 'Set up a serious match and keep momentum across turns.',
+      chips: ['Invite Match', 'Live Opponent', 'Match Continuity'],
       onClick: () => navigate('/games'),
       icon: Users,
     },
     {
       key: 'tutorials',
-      title: 'Tutorials',
-      description: 'Open the local chess tutor in fullscreen mode.',
-      bullets: ['Guided lessons', 'Story-based chapters', 'Built-in practice transitions'],
-      ctaLabel: 'Open tutor',
+      title: 'Learn Chess',
+      description: 'Build pattern recognition with guided lessons and stories.',
+      chips: ['Guided Lessons', 'Story Chapters', 'Focused Drills'],
       onClick: () => navigate('/games/local?tab=lesson&tutor=1&storyId=architect-of-squares'),
       icon: BookOpen,
     },
   ] as const
 
   return (
-    <section className="flex h-full min-h-[100dvh] w-full flex-col bg-slate-900 px-3 pb-4 pt-4 text-slate-100 sm:px-6 sm:pb-6 sm:pt-6 lg:px-8">
-      <div className="mx-auto flex w-full max-w-6xl flex-col gap-4 sm:gap-6">
-        <div className="flex items-center justify-start">
+    <motion.main
+      className="min-h-[100dvh] bg-chess-bg font-body text-chess-text"
+      initial={prefersReducedMotion ? undefined : { opacity: 0, y: 10 }}
+      animate={prefersReducedMotion ? undefined : { opacity: 1, y: 0 }}
+      transition={prefersReducedMotion ? undefined : { duration: 0.34, ease: [0.22, 1, 0.36, 1] }}
+    >
+      <header className="sticky top-0 z-50 h-14 border-b border-white/10 bg-chess-bg/90 backdrop-blur">
+        <nav className="mx-auto flex h-14 w-full max-w-6xl items-center justify-between px-3 sm:px-5 lg:px-6" aria-label="Chess header navigation">
           <button
             type="button"
             onClick={() => navigate('/')}
-            className="inline-flex min-h-11 items-center gap-2 rounded-lg border border-slate-600 bg-slate-800/70 px-3 py-2 text-sm font-medium text-slate-100 transition hover:border-slate-500 hover:bg-slate-800 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-indigo-300 focus-visible:ring-offset-2 focus-visible:ring-offset-slate-900"
             aria-label="Back to Home"
+            className="inline-flex h-10 w-10 items-center justify-center rounded-full bg-chess-surface text-chess-text shadow-chess-card ring-1 ring-white/5 transition hover:bg-chess-surfaceSoft active:bg-chess-surfaceSoft focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-chess-accentSoft focus-visible:ring-offset-2 focus-visible:ring-offset-chess-bg"
           >
-            <ArrowLeft size={16} aria-hidden="true" />
-            Back to Home
+            <ArrowLeft size={18} aria-hidden="true" />
           </button>
-        </div>
+          <h1 className="font-display text-xl tracking-wide text-chess-text">Chess</h1>
+          <div className="w-10" aria-hidden="true" />
+        </nav>
+      </header>
 
-        <header className="rounded-2xl border border-slate-700 bg-slate-800/80 p-4 sm:p-5">
-          <h1 className="text-2xl font-bold tracking-tight text-white sm:text-4xl">Chess</h1>
-          <p className="mt-2 max-w-3xl text-sm text-slate-200 sm:text-base">Pick a mode and jump in. Continue your latest game, launch a new match, or open tutorials in a clean fullscreen flow.</p>
-        </header>
-
-        <section className="rounded-2xl border border-indigo-400/50 bg-slate-800/80 p-4 sm:p-5">
-          <div className="mb-4 flex items-center justify-between gap-3">
-            <h2 className="text-xl font-semibold text-white">Quick start</h2>
-            <Clock3 size={18} className="text-indigo-200" aria-hidden="true" />
-          </div>
+      <div className="mx-auto flex w-full max-w-6xl flex-col gap-5 px-3 pb-8 pt-4 sm:px-5 lg:gap-7 lg:px-6 lg:pt-6">
+        <section className="rounded-2xl bg-chess-surface px-4 py-4 shadow-chess-card ring-1 ring-white/5 sm:px-5 sm:py-5" aria-labelledby="chess-hero-title">
+          <h2 id="chess-hero-title" className="font-display text-2xl text-chess-text sm:text-3xl">Match Table</h2>
+          <p className="mt-1 text-sm text-chess-muted">Find the right seat quickly and keep your rhythm between turns.</p>
 
           {isLoading ? (
-            <div className="grid grid-cols-1 gap-4 lg:grid-cols-3">
-              <div className="lg:col-span-2">
-                <div className="h-36 animate-pulse rounded-xl border border-slate-700 bg-slate-700/50" aria-label="Loading quick start" />
-              </div>
-              <div className="h-36 animate-pulse rounded-xl border border-slate-700 bg-slate-700/50" aria-label="Loading recent games" />
+            <div className="mt-4 h-28 rounded-xl bg-chess-surfaceSoft/70 ring-1 ring-white/5" aria-label="Loading matches" />
+          ) : loadError ? (
+            <div className="mt-4 rounded-xl bg-red-400/10 p-3 text-sm text-red-100 ring-1 ring-red-200/25" role="status" aria-live="polite">
+              <p>{loadError}</p>
+              <button
+                type="button"
+                onClick={() => { void loadGames(true) }}
+                className="mt-3 inline-flex min-h-11 items-center justify-center rounded-lg border border-white/20 px-3 py-2 text-sm font-semibold text-chess-text transition hover:bg-white/10 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-chess-accentSoft focus-visible:ring-offset-2 focus-visible:ring-offset-chess-bg"
+              >
+                Try Again
+              </button>
             </div>
-          ) : (
-            <div className="grid grid-cols-1 gap-4 lg:grid-cols-3">
-              <div className="rounded-xl border border-slate-600 bg-slate-900/60 p-4 lg:col-span-2">
-                {loadError ? (
-                  <div className="rounded-lg border border-red-400/40 bg-red-500/10 p-3 text-sm text-red-100" role="status" aria-live="polite">
-                    <p>{loadError}</p>
-                    <button
-                      type="button"
-                      onClick={() => { void loadGames(true) }}
-                      className="mt-3 inline-flex min-h-10 items-center rounded-md border border-red-300/40 bg-red-500/20 px-3 py-2 text-sm font-medium text-red-50 transition hover:bg-red-500/30 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-red-200 focus-visible:ring-offset-2 focus-visible:ring-offset-slate-900"
-                    >
-                      Retry
-                    </button>
-                  </div>
-                ) : continueGame ? (
-                  <div className="space-y-3">
-                    <div>
-                      <p className="text-xs font-semibold uppercase tracking-wide text-indigo-200">Continue</p>
-                      <h3 className="mt-1 text-lg font-semibold text-white">vs {getOpponentLabel(continueGame, user?.id, profile?.username || user?.email || '')}</h3>
-                      <p className="mt-1 text-sm text-slate-300">Last updated {formatUpdatedAt(continueGame.updated_at)}</p>
-                    </div>
-                    <span className="inline-flex rounded-full border border-indigo-300/50 bg-indigo-500/10 px-2.5 py-1 text-xs font-semibold text-indigo-100">
-                      {isInviteStatus(continueGame.status) ? 'Invitation' : 'In progress'}
-                    </span>
-                    <div className="flex flex-wrap gap-2 pt-1">
+          ) : heroState === 'hasActiveGame' && singleActiveGame ? (
+            <article className="mt-4 rounded-2xl bg-chess-surfaceSoft p-4 shadow-chess-card ring-1 ring-white/5 sm:p-5" aria-label="Resume match">
+              <p className="text-xs font-semibold uppercase tracking-wide text-chess-accentSoft">Resume Match</p>
+              <h3 className="mt-1 font-display text-2xl text-chess-text">vs {getOpponentLabel(singleActiveGame, user?.id, profile?.username || user?.email || '')}</h3>
+              <p className="mt-1 text-sm text-chess-muted">Last move {formatRelative(singleActiveGame.updated_at)}</p>
+              <div className="mt-4 flex items-center gap-3">
+                <motion.span
+                  className="inline-flex items-center rounded-full bg-chess-turn/30 px-2.5 py-1 text-xs font-semibold text-amber-100"
+                  animate={prefersReducedMotion ? undefined : { opacity: [1, 0.76, 1], scale: [1, 1.02, 1] }}
+                  transition={prefersReducedMotion ? undefined : { duration: 2.2, repeat: Infinity, ease: 'easeInOut' }}
+                >
+                  Your Turn
+                </motion.span>
+              </div>
+              <button
+                type="button"
+                onClick={() => navigate(`/games/${singleActiveGame.id}`)}
+                className="mt-4 inline-flex min-h-11 items-center justify-center rounded-lg bg-chess-accent px-4 py-2 text-sm font-semibold text-black shadow-chess-card transition hover:bg-chess-accentSoft focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-chess-accentSoft focus-visible:ring-offset-2 focus-visible:ring-offset-chess-bg"
+              >
+                Continue Game
+              </button>
+            </article>
+          ) : heroState === 'hasMultipleActiveGames' ? (
+            <section className="mt-4" aria-label="Active matches">
+              <div className="mb-2 flex items-center justify-between">
+                <h3 className="font-display text-xl text-chess-text">Active Matches</h3>
+                <span className="text-xs text-chess-muted">{activeGames.length} ongoing</span>
+              </div>
+              <div className="-mx-1 overflow-x-auto pb-2">
+                <ul className="flex min-w-full gap-3 px-1">
+                  {activeGames.map((game) => (
+                    <li key={game.id} className="w-[15.75rem] shrink-0 rounded-xl bg-chess-surfaceSoft p-3 shadow-chess-card ring-1 ring-white/5">
+                      <p className="font-display text-lg text-chess-text">vs {getOpponentLabel(game, user?.id, profile?.username || user?.email || '')}</p>
+                      <p className="mt-1 text-xs text-chess-muted">Updated {formatRelative(game.updated_at)}</p>
+                      <span className="mt-2 inline-flex rounded-full bg-amber-500/25 px-2 py-0.5 text-[11px] font-semibold text-amber-100">
+                        In Progress
+                      </span>
                       <button
                         type="button"
-                        onClick={() => navigate(`/games/${continueGame.id}`)}
-                        className="inline-flex min-h-11 items-center rounded-md border border-indigo-300/60 bg-indigo-500/20 px-3 py-2 text-sm font-semibold text-indigo-50 transition hover:bg-indigo-500/30 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-indigo-200 focus-visible:ring-offset-2 focus-visible:ring-offset-slate-900"
+                        onClick={() => navigate(`/games/${game.id}`)}
+                        className="mt-3 inline-flex min-h-10 items-center justify-center rounded-md bg-chess-accent px-3 py-2 text-xs font-semibold text-black transition hover:bg-chess-accentSoft focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-chess-accentSoft focus-visible:ring-offset-2 focus-visible:ring-offset-chess-bg"
                       >
                         Continue
                       </button>
-                      <button
-                        type="button"
-                        onClick={() => navigate('/games')}
-                        className="inline-flex min-h-11 items-center rounded-md border border-slate-500 bg-slate-800 px-3 py-2 text-sm font-medium text-slate-100 transition hover:border-slate-400 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-indigo-200 focus-visible:ring-offset-2 focus-visible:ring-offset-slate-900"
-                      >
-                        View all games
-                      </button>
-                    </div>
-                  </div>
-                ) : (
-                  <div className="space-y-3">
-                    <div>
-                      <p className="text-xs font-semibold uppercase tracking-wide text-indigo-200">Start something</p>
-                      <h3 className="mt-1 text-lg font-semibold text-white">No open games yet</h3>
-                      <p className="mt-1 text-sm text-slate-300">Launch a quick local match or invite an opponent to begin.</p>
-                    </div>
-                    <div className="flex flex-wrap gap-2 pt-1">
-                      <button
-                        type="button"
-                        onClick={() => navigate('/games/local?tab=analyze')}
-                        className="inline-flex min-h-11 items-center rounded-md border border-indigo-300/60 bg-indigo-500/20 px-3 py-2 text-sm font-semibold text-indigo-50 transition hover:bg-indigo-500/30 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-indigo-200 focus-visible:ring-offset-2 focus-visible:ring-offset-slate-900"
-                      >
-                        Play vs Computer
-                      </button>
-                      <button
-                        type="button"
-                        onClick={() => navigate('/games')}
-                        className="inline-flex min-h-11 items-center rounded-md border border-slate-500 bg-slate-800 px-3 py-2 text-sm font-medium text-slate-100 transition hover:border-slate-400 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-indigo-200 focus-visible:ring-offset-2 focus-visible:ring-offset-slate-900"
-                      >
-                        Invite opponent
-                      </button>
-                    </div>
-                  </div>
-                )}
-              </div>
-
-              <div className="rounded-xl border border-slate-600 bg-slate-900/60 p-4">
-                <h3 className="text-sm font-semibold uppercase tracking-wide text-slate-200">Recent</h3>
-                {loadError ? (
-                  <p className="mt-3 text-sm text-slate-300">Recent games are unavailable while loading fails.</p>
-                ) : recentGames.length ? (
-                  <div className="mt-3 space-y-2">
-                    {recentGames.map((game) => (
-                      <button
-                        key={game.id}
-                        type="button"
-                        onClick={() => navigate(`/games/${game.id}`)}
-                        className="w-full rounded-lg border border-slate-600 bg-slate-800/80 px-3 py-2 text-left transition hover:border-indigo-300/70 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-indigo-200 focus-visible:ring-offset-2 focus-visible:ring-offset-slate-900"
-                        aria-label={`Open recent game ${getOpponentLabel(game, user?.id, profile?.username || user?.email || '')}`}
-                      >
-                        <p className="text-sm font-medium text-slate-100">vs {getOpponentLabel(game, user?.id, profile?.username || user?.email || '')}</p>
-                        <p className="mt-0.5 text-xs text-slate-300">{isInviteStatus(game.status) ? 'Invitation' : 'In progress'} • {formatUpdatedAt(game.updated_at)}</p>
-                      </button>
-                    ))}
-                  </div>
-                ) : (
-                  <p className="mt-3 text-sm text-slate-300">No recent games yet.</p>
-                )}
-              </div>
-            </div>
-          )}
-        </section>
-
-        <div className="grid grid-cols-1 gap-3 sm:gap-4 md:grid-cols-3">
-          {modeCards.map((card) => {
-            const Icon = card.icon
-
-            return (
-              <article key={card.key} className="flex flex-col rounded-2xl border border-indigo-400/50 bg-slate-800 p-4 shadow-sm transition hover:border-indigo-300 sm:min-h-[260px] sm:p-5">
-                <div className="flex items-start gap-3">
-                  <Icon size={22} className="mt-0.5 text-indigo-300" aria-hidden="true" />
-                  <div>
-                    <h2 className="text-lg font-semibold text-white">{card.title}</h2>
-                    <p className="mt-1 hidden text-sm text-slate-300 sm:block">{card.description}</p>
-                  </div>
-                </div>
-
-                <ul className="mt-3 hidden space-y-2 text-sm text-slate-200 sm:mt-4 sm:block">
-                  {card.bullets.map((bullet) => (
-                    <li key={bullet} className="flex items-start gap-2">
-                      <span className="mt-1 h-1.5 w-1.5 rounded-full bg-indigo-300" aria-hidden="true" />
-                      <span>{bullet}</span>
                     </li>
                   ))}
                 </ul>
+              </div>
+            </section>
+          ) : (
+            <section className="mt-4" aria-label="Choose how to play">
+              <h3 className="font-display text-xl text-chess-text">How do you want to play?</h3>
+              <div className="mt-3 grid grid-cols-1 gap-3 sm:grid-cols-2">
+                <button
+                  type="button"
+                  onClick={() => navigate('/games/local?tab=analyze')}
+                  className="inline-flex min-h-11 items-center justify-center rounded-lg bg-chess-surfaceSoft px-4 py-3 text-sm font-semibold text-chess-text shadow-chess-card ring-1 ring-white/5 transition hover:bg-chess-surface focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-chess-accentSoft focus-visible:ring-offset-2 focus-visible:ring-offset-chess-bg"
+                >
+                  Play Computer
+                </button>
+                <button
+                  type="button"
+                  onClick={() => navigate('/games')}
+                  className="inline-flex min-h-11 items-center justify-center rounded-lg bg-chess-surfaceSoft px-4 py-3 text-sm font-semibold text-chess-text shadow-chess-card ring-1 ring-white/5 transition hover:bg-chess-surface focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-chess-accentSoft focus-visible:ring-offset-2 focus-visible:ring-offset-chess-bg"
+                >
+                  Play a Friend
+                </button>
+              </div>
+            </section>
+          )}
+        </section>
 
-                <div className="mt-3 sm:mt-auto sm:pt-5">
+        <section aria-labelledby="chess-modes-title">
+          <div className="mb-2 flex items-end justify-between">
+            <h2 id="chess-modes-title" className="font-display text-2xl text-chess-text">Modes</h2>
+            <p className="text-xs text-chess-muted">Choose your focus</p>
+          </div>
+
+          <ul className="lg:hidden">
+            {modeItems.map((mode) => {
+              const Icon = mode.icon
+              return (
+                <li key={`mobile-${mode.key}`} className="mt-2 first:mt-0">
                   <button
                     type="button"
-                    onClick={card.onClick}
-                    className="inline-flex min-h-11 w-full items-center justify-center rounded-md border border-indigo-300/60 bg-indigo-500/20 px-3 py-2 text-sm font-semibold text-indigo-50 transition hover:bg-indigo-500/30 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-indigo-200 focus-visible:ring-offset-2 focus-visible:ring-offset-slate-900"
-                    aria-label={card.ctaLabel}
+                    onClick={mode.onClick}
+                    className="flex min-h-11 w-full items-center gap-3 rounded-xl bg-chess-surface px-3 py-2 text-left shadow-chess-card ring-1 ring-white/5 transition hover:bg-chess-surfaceSoft active:bg-chess-surfaceSoft focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-chess-accentSoft focus-visible:ring-offset-2 focus-visible:ring-offset-chess-bg"
                   >
-                    {card.ctaLabel}
+                    <Icon size={18} className="text-chess-accentSoft" aria-hidden="true" />
+                    <div className="min-w-0 flex-1">
+                      <p className="truncate font-semibold text-chess-text">{mode.title}</p>
+                      <p className="truncate text-xs text-chess-muted">{mode.description}</p>
+                    </div>
+                    <ChevronRight size={16} className="text-chess-muted" aria-hidden="true" />
                   </button>
-                </div>
-              </article>
-            )
-          })}
-        </div>
+                </li>
+              )
+            })}
+          </ul>
+
+          <div className="hidden gap-4 lg:grid lg:grid-cols-3">
+            {modeItems.map((mode) => {
+              const Icon = mode.icon
+              return (
+                <article key={mode.key} className="rounded-2xl bg-chess-surface p-5 shadow-chess-card ring-1 ring-white/5">
+                  <div className="flex items-center gap-3">
+                    <div className="rounded-lg bg-chess-surfaceSoft p-2 ring-1 ring-white/5">
+                      <Icon size={20} className="text-chess-accentSoft" aria-hidden="true" />
+                    </div>
+                    <h3 className="font-display text-2xl text-chess-text">{mode.title}</h3>
+                  </div>
+                  <p className="mt-3 text-sm text-chess-muted">{mode.description}</p>
+                  <div className="mt-4 flex flex-wrap gap-2">
+                    {mode.chips.map((chip) => (
+                      <span key={chip} className="rounded-full bg-white/10 px-2.5 py-1 text-xs font-semibold text-chess-text">
+                        {chip}
+                      </span>
+                    ))}
+                  </div>
+                  <button
+                    type="button"
+                    onClick={mode.onClick}
+                    className="mt-5 inline-flex min-h-11 items-center justify-center rounded-lg bg-chess-accent px-4 py-2 text-sm font-semibold text-black transition hover:bg-chess-accentSoft focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-chess-accentSoft focus-visible:ring-offset-2 focus-visible:ring-offset-chess-bg"
+                  >
+                    {mode.title}
+                  </button>
+                </article>
+              )
+            })}
+          </div>
+        </section>
+
+        <section aria-label="Match history" className="pt-1">
+          <button
+            type="button"
+            onClick={() => setIsHistoryOpen((prev) => !prev)}
+            className="inline-flex items-center gap-2 text-sm font-semibold text-chess-accentSoft underline-offset-4 transition hover:text-chess-text hover:underline focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-chess-accentSoft focus-visible:ring-offset-2 focus-visible:ring-offset-chess-bg"
+          >
+            <History size={14} aria-hidden="true" />
+            {isHistoryOpen ? 'Hide History' : 'View History'}
+          </button>
+
+          {isHistoryOpen ? (
+            <div className="mt-3 rounded-2xl bg-chess-surface p-4 shadow-chess-card ring-1 ring-white/5">
+              {historyGames.length ? (
+                <ul className="space-y-2">
+                  {historyGames.map((game) => (
+                    <li key={game.id}>
+                      <button
+                        type="button"
+                        onClick={() => navigate(`/games/${game.id}`)}
+                        className="w-full rounded-lg bg-chess-surfaceSoft px-3 py-2 text-left ring-1 ring-white/5 transition hover:bg-chess-surface focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-chess-accentSoft focus-visible:ring-offset-2 focus-visible:ring-offset-chess-bg"
+                        aria-label={`Open game versus ${getOpponentLabel(game, user?.id, profile?.username || user?.email || '')}`}
+                      >
+                        <p className="text-sm font-semibold text-chess-text">vs {getOpponentLabel(game, user?.id, profile?.username || user?.email || '')}</p>
+                        <p className="text-xs text-chess-muted">
+                          {isInviteStatus(game.status) ? 'Invitation' : 'In progress'} · {formatRelative(game.updated_at)}
+                        </p>
+                      </button>
+                    </li>
+                  ))}
+                </ul>
+              ) : (
+                <p className="text-sm text-chess-muted">No history yet. Your finished and archived matches will appear here.</p>
+              )}
+            </div>
+          ) : null}
+        </section>
       </div>
-    </section>
+    </motion.main>
   )
 }

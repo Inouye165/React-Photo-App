@@ -19,7 +19,7 @@ import type {
 const TUTOR_STORY_HINT_SEEN_KEY = 'chess:tutorial-story-hint-seen:v1'
 
 const classes = {
-  root: 'grid min-h-0 flex-1 grid-cols-1 gap-4 lg:grid-cols-[minmax(0,1fr)_380px]',
+  root: 'grid min-h-0 flex-1 grid-cols-1 gap-2 lg:gap-4 lg:grid-cols-[minmax(0,1fr)_380px]',
 } as const
 
 export default function ChessTutorStudio({
@@ -115,7 +115,20 @@ export default function ChessTutorStudio({
   useEffect(() => {
     const measure = () => {
       const width = boardStageRef.current?.clientWidth ?? 0
-      const next = Math.max(320, Math.min(620, Math.floor(width || 540)))
+      const viewportWidth = typeof window !== 'undefined' ? window.innerWidth : 0
+      const viewportHeight = typeof window !== 'undefined' ? window.innerHeight : 0
+      const widthBasedLimit = Math.floor(width || 540)
+
+      const isCompactViewport = viewportWidth > 0 && viewportWidth < 960
+      const mobileHeightCap = viewportHeight > 0
+        ? Math.max(300, Math.floor(viewportHeight * 0.43))
+        : 460
+
+      const compactCap = isCompactViewport
+        ? Math.min(520, mobileHeightCap)
+        : 620
+
+      const next = Math.max(300, Math.min(compactCap, widthBasedLimit))
       setBoardWidth((current) => (current === next ? current : next))
     }
 
