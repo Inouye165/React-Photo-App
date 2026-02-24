@@ -142,15 +142,15 @@ export default function GamesMenu({
         `}
       >
         <Gamepad2 size={16} className={`flex-shrink-0 ${isGamesPage ? 'text-indigo-700' : 'text-indigo-600'}`} />
-        <span className="hidden md:inline">Games</span>
-        <ChevronDown size={14} className={`hidden md:inline transition-transform ${isOpen ? 'rotate-180' : ''}`} />
+        <span className="inline">Games</span>
+        <ChevronDown size={14} className={`inline transition-transform ${isOpen ? 'rotate-180' : ''}`} />
       </button>
 
       {isOpen ? (
         <div
           role="menu"
           aria-label="Games menu"
-          className="absolute right-0 top-full z-50 mt-1 w-64 rounded-lg border border-slate-200 bg-white p-1.5 shadow-lg"
+          className="absolute right-0 top-full z-50 mt-1 w-[min(20rem,calc(100vw-1rem))] rounded-lg border border-slate-200 bg-white p-1.5 shadow-lg"
         >
           {items.map((item) => (
             <GamesMenuItem key={item.id} item={item} onClose={() => setIsOpen(false)} />

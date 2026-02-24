@@ -144,7 +144,7 @@ export default function UserMenu({ onOpenPhotos, onOpenEdit }: UserMenuProps) {
           aria-expanded={isOpen}
           aria-haspopup="true"
           aria-label="User menu"
-          className="flex items-center gap-1.5 min-h-[44px] px-2 sm:px-3
+          className="flex items-center gap-2 min-h-[44px] px-2 sm:px-3
                      rounded-lg border border-slate-200 bg-white
                      text-slate-600 text-xs sm:text-sm font-medium
                      hover:bg-slate-50 hover:border-slate-300
@@ -161,7 +161,7 @@ export default function UserMenu({ onOpenPhotos, onOpenEdit }: UserMenuProps) {
           </div>
           
           {/* Username - hidden on mobile */}
-          <span className="hidden md:block max-w-[80px] truncate">
+          <span className="hidden sm:block max-w-[88px] truncate">
             {displayName}
           </span>
           
@@ -185,7 +185,7 @@ export default function UserMenu({ onOpenPhotos, onOpenEdit }: UserMenuProps) {
         {/* Dropdown Menu */}
         {isOpen && (
           <div 
-            className="absolute right-0 top-full mt-1 w-56 py-1
+            className="absolute right-0 top-full mt-1 w-[min(16rem,calc(100vw-1rem))] py-1
                        bg-white rounded-lg shadow-lg border border-slate-200
                        z-50 animate-in fade-in slide-in-from-top-2 duration-150"
             role="menu"
