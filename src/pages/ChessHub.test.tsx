@@ -85,11 +85,11 @@ describe('ChessHub', () => {
     expect(navigateMock).toHaveBeenCalledWith('/games/local?tab=analyze')
   })
 
-  it('routes Play vs Opponent CTA to games dashboard', async () => {
+  it('routes Play a Friend CTA to games dashboard', async () => {
     const user = userEvent.setup()
     render(<ChessHub />)
 
-    await user.click(screen.getByRole('button', { name: 'View History' }))
+    await user.click(screen.getByRole('button', { name: 'Play a Friend' }))
 
     expect(navigateMock).toHaveBeenCalledWith('/games')
   })
@@ -113,7 +113,7 @@ describe('ChessHub', () => {
 
     expect(await screen.findByText('Unable to load your recent chess games right now.')).toBeInTheDocument()
 
-    await user.click(screen.getByRole('button', { name: 'Retry' }))
+    await user.click(screen.getByRole('button', { name: 'Try Again' }))
 
     await waitFor(() => {
       expect(listMyGamesWithMembersMock).toHaveBeenCalledTimes(2)
