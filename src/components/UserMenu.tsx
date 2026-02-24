@@ -20,9 +20,10 @@ interface UserMenuProps {
   onOpenPhotos?: () => void;
   onOpenEdit?: () => void;
   onOpenAdmin?: () => void;
+  theme?: 'light' | 'dark';
 }
 
-export default function UserMenu({ onOpenPhotos, onOpenEdit, onOpenAdmin }: UserMenuProps) {
+export default function UserMenu({ onOpenPhotos, onOpenEdit, onOpenAdmin, theme = 'light' }: UserMenuProps) {
   const { user, logout, profile } = useAuth();
   const [isOpen, setIsOpen] = useState(false);
   const [showFeedbackModal, setShowFeedbackModal] = useState(false);
@@ -40,6 +41,7 @@ export default function UserMenu({ onOpenPhotos, onOpenEdit, onOpenAdmin }: User
   const displayName = profile?.username || 'User';
   const initial = displayName.charAt(0).toUpperCase();
   const avatarUrl = profile?.avatar_url || null;
+  const isDark = theme === 'dark';
 
   // Close menu when clicking outside
   useEffect(() => {
@@ -150,15 +152,16 @@ export default function UserMenu({ onOpenPhotos, onOpenEdit, onOpenAdmin }: User
           aria-expanded={isOpen}
           aria-haspopup="true"
           aria-label="User menu"
-          className="flex items-center gap-2 min-h-[44px] px-2 sm:px-3
-                     rounded-lg border border-slate-200 bg-white
-                     text-slate-600 text-xs sm:text-sm font-medium
-                     hover:bg-slate-50 hover:border-slate-300
-                     active:bg-slate-100 transition-all touch-manipulation"
+          className={`flex items-center gap-2 min-h-[44px] px-2 sm:px-3
+                     rounded-lg border text-xs sm:text-sm font-medium
+                     ${isDark
+                       ? 'border-slate-600 bg-slate-800/80 text-slate-200 hover:bg-slate-800 hover:border-slate-500'
+                       : 'border-slate-200 bg-white text-slate-600 hover:bg-slate-50 hover:border-slate-300'
+                     }
+                     active:bg-slate-100 transition-all touch-manipulation`}
         >
           {/* Avatar */}
-          <div className="w-7 h-7 rounded-full bg-slate-200 flex items-center justify-center
-                          text-xs font-semibold text-slate-600 overflow-hidden">
+          <div className={`w-7 h-7 rounded-full flex items-center justify-center text-xs font-semibold overflow-hidden ${isDark ? 'bg-slate-700 text-slate-100' : 'bg-slate-200 text-slate-600'}`}>
             {avatarUrl ? (
               <img src={avatarUrl} alt="User avatar" className="w-full h-full object-cover" />
             ) : (
@@ -174,7 +177,7 @@ export default function UserMenu({ onOpenPhotos, onOpenEdit, onOpenAdmin }: User
           {/* Admin badge */}
           {isAdmin && (
             <span 
-              className="hidden sm:inline px-2 py-0.5 bg-purple-100 text-purple-700 text-[10px] font-semibold rounded-full"
+              className={`hidden sm:inline px-2 py-0.5 text-[10px] font-semibold rounded-full ${isDark ? 'bg-purple-500/20 text-purple-200' : 'bg-purple-100 text-purple-700'}`}
               title="Administrator"
             >
               ADMIN
@@ -184,25 +187,26 @@ export default function UserMenu({ onOpenPhotos, onOpenEdit, onOpenAdmin }: User
           {/* Chevron indicator */}
           <ChevronDown 
             size={14} 
-            className={`text-slate-400 transition-transform ${isOpen ? 'rotate-180' : ''}`}
+            className={`${isDark ? 'text-slate-300' : 'text-slate-400'} transition-transform ${isOpen ? 'rotate-180' : ''}`}
           />
         </button>
 
         {/* Dropdown Menu */}
         {isOpen && (
           <div 
-            className="absolute right-0 top-full mt-1 w-[min(16rem,calc(100vw-1rem))] py-1
-                       bg-white rounded-lg shadow-lg border border-slate-200
-                       z-50 animate-in fade-in slide-in-from-top-2 duration-150"
+            className={`absolute right-0 top-full mt-1 w-[min(16rem,calc(100vw-1rem))] py-1
+                       rounded-lg shadow-lg border
+                       ${isDark ? 'bg-slate-900 border-slate-600' : 'bg-white border-slate-200'}
+                       z-50 animate-in fade-in slide-in-from-top-2 duration-150`}
             role="menu"
             aria-orientation="vertical"
           >
             {/* User info header */}
-            <div className="px-4 py-3 border-b border-slate-100">
-              <p className="text-sm font-medium text-slate-900 truncate">
+            <div className={`px-4 py-3 border-b ${isDark ? 'border-slate-700' : 'border-slate-100'}`}>
+              <p className={`text-sm font-medium truncate ${isDark ? 'text-slate-100' : 'text-slate-900'}`}>
                 {displayName}
               </p>
-              <p className="text-xs text-slate-500 truncate">
+              <p className={`text-xs truncate ${isDark ? 'text-slate-400' : 'text-slate-500'}`}>
                 {user.email}
               </p>
             </div>
@@ -213,11 +217,11 @@ export default function UserMenu({ onOpenPhotos, onOpenEdit, onOpenAdmin }: User
                 onClick={handlePhotos}
                 data-testid="user-menu-gallery"
                 role="menuitem"
-                className="w-full flex items-center gap-3 px-4 py-3
-                           text-sm text-slate-700 hover:bg-slate-50
-                           transition-colors touch-manipulation"
+                className={`w-full flex items-center gap-3 px-4 py-3
+                           text-sm ${isDark ? 'text-slate-200 hover:bg-slate-800' : 'text-slate-700 hover:bg-slate-50'}
+                           transition-colors touch-manipulation`}
               >
-                <Grid3X3 size={18} className="text-slate-400" />
+                <Grid3X3 size={18} className={isDark ? 'text-slate-400' : 'text-slate-400'} />
                 Photos
               </button>
 
@@ -225,9 +229,9 @@ export default function UserMenu({ onOpenPhotos, onOpenEdit, onOpenAdmin }: User
                 onClick={handleEdit}
                 data-testid="user-menu-edit"
                 role="menuitem"
-                className="w-full flex items-center gap-3 px-4 py-3
-                           text-sm text-slate-700 hover:bg-slate-50
-                           transition-colors touch-manipulation"
+                className={`w-full flex items-center gap-3 px-4 py-3
+                           text-sm ${isDark ? 'text-slate-200 hover:bg-slate-800' : 'text-slate-700 hover:bg-slate-50'}
+                           transition-colors touch-manipulation`}
               >
                 <Edit3 size={18} className="text-slate-400" />
                 Edit
@@ -237,9 +241,9 @@ export default function UserMenu({ onOpenPhotos, onOpenEdit, onOpenAdmin }: User
                 onClick={handleFeedback}
                 data-testid="user-menu-feedback"
                 role="menuitem"
-                className="w-full flex items-center gap-3 px-4 py-3
-                           text-sm text-slate-700 hover:bg-slate-50
-                           transition-colors touch-manipulation"
+                className={`w-full flex items-center gap-3 px-4 py-3
+                           text-sm ${isDark ? 'text-slate-200 hover:bg-slate-800' : 'text-slate-700 hover:bg-slate-50'}
+                           transition-colors touch-manipulation`}
               >
                 <MessageSquareText size={18} className="text-slate-400" />
                 Send Feedback
@@ -249,9 +253,9 @@ export default function UserMenu({ onOpenPhotos, onOpenEdit, onOpenAdmin }: User
                 onClick={handleSettings}
                 data-testid="user-menu-settings"
                 role="menuitem"
-                className="w-full flex items-center gap-3 px-4 py-3
-                           text-sm text-slate-700 hover:bg-slate-50
-                           transition-colors touch-manipulation"
+                className={`w-full flex items-center gap-3 px-4 py-3
+                           text-sm ${isDark ? 'text-slate-200 hover:bg-slate-800' : 'text-slate-700 hover:bg-slate-50'}
+                           transition-colors touch-manipulation`}
               >
                 <Settings size={18} className="text-slate-400" />
                 Settings
@@ -262,9 +266,9 @@ export default function UserMenu({ onOpenPhotos, onOpenEdit, onOpenAdmin }: User
                   onClick={handleAdmin}
                   data-testid="user-menu-admin"
                   role="menuitem"
-                  className="w-full flex items-center gap-3 px-4 py-3
-                           text-sm text-slate-700 hover:bg-slate-50
-                           transition-colors touch-manipulation"
+                  className={`w-full flex items-center gap-3 px-4 py-3
+                           text-sm ${isDark ? 'text-slate-200 hover:bg-slate-800' : 'text-slate-700 hover:bg-slate-50'}
+                           transition-colors touch-manipulation`}
                 >
                   <Shield size={18} className="text-slate-400" />
                   Admin Dashboard
@@ -273,29 +277,29 @@ export default function UserMenu({ onOpenPhotos, onOpenEdit, onOpenAdmin }: User
             </div>
 
             {/* About */}
-            <div className="border-t border-slate-100 px-4 py-3">
-              <p className="text-xs font-semibold uppercase tracking-wide text-slate-400">About</p>
-              <div className="mt-2 space-y-1 text-xs text-slate-600">
+            <div className={`border-t px-4 py-3 ${isDark ? 'border-slate-700' : 'border-slate-100'}`}>
+              <p className={`text-xs font-semibold uppercase tracking-wide ${isDark ? 'text-slate-400' : 'text-slate-400'}`}>About</p>
+              <div className={`mt-2 space-y-1 text-xs ${isDark ? 'text-slate-300' : 'text-slate-600'}`}>
                 <div className="flex items-center justify-between gap-2">
-                  <span className="text-slate-500">Frontend</span>
-                  <span className="font-medium text-slate-700">{FRONTEND_VERSION}</span>
+                  <span className={isDark ? 'text-slate-400' : 'text-slate-500'}>Frontend</span>
+                  <span className={isDark ? 'font-medium text-slate-100' : 'font-medium text-slate-700'}>{FRONTEND_VERSION}</span>
                 </div>
                 <div className="flex items-center justify-between gap-2">
-                  <span className="text-slate-500">Frontend Time</span>
-                  <span className="font-medium text-slate-700">{FRONTEND_BUILD_TIMESTAMP}</span>
+                  <span className={isDark ? 'text-slate-400' : 'text-slate-500'}>Frontend Time</span>
+                  <span className={isDark ? 'font-medium text-slate-100' : 'font-medium text-slate-700'}>{FRONTEND_BUILD_TIMESTAMP}</span>
                 </div>
                 <div className="flex items-center justify-between gap-2">
-                  <span className="text-slate-500">Backend</span>
-                  <span className="font-medium text-slate-700">{aboutInfo?.backendVersion || '—'}</span>
+                  <span className={isDark ? 'text-slate-400' : 'text-slate-500'}>Backend</span>
+                  <span className={isDark ? 'font-medium text-slate-100' : 'font-medium text-slate-700'}>{aboutInfo?.backendVersion || '—'}</span>
                 </div>
                 <div className="flex items-center justify-between gap-2">
-                  <span className="text-slate-500">Backend Time</span>
-                  <span className="font-medium text-slate-700">{aboutInfo?.backendTimestamp || '—'}</span>
+                  <span className={isDark ? 'text-slate-400' : 'text-slate-500'}>Backend Time</span>
+                  <span className={isDark ? 'font-medium text-slate-100' : 'font-medium text-slate-700'}>{aboutInfo?.backendTimestamp || '—'}</span>
                 </div>
                 {aboutInfo?.backendCommit && (
                   <div className="flex items-center justify-between gap-2">
-                    <span className="text-slate-500">Backend Commit</span>
-                    <span className="font-medium text-slate-700">{aboutInfo.backendCommit}</span>
+                    <span className={isDark ? 'text-slate-400' : 'text-slate-500'}>Backend Commit</span>
+                    <span className={isDark ? 'font-medium text-slate-100' : 'font-medium text-slate-700'}>{aboutInfo.backendCommit}</span>
                   </div>
                 )}
                 {aboutError && (
@@ -305,14 +309,14 @@ export default function UserMenu({ onOpenPhotos, onOpenEdit, onOpenAdmin }: User
             </div>
 
             {/* Logout */}
-            <div className="border-t border-slate-100 py-1">
+            <div className={`border-t py-1 ${isDark ? 'border-slate-700' : 'border-slate-100'}`}>
               <button
                 onClick={handleLogout}
                 data-testid="user-menu-logout"
                 role="menuitem"
-                className="w-full flex items-center gap-3 px-4 py-3
-                           text-sm text-red-600 hover:bg-red-50
-                           transition-colors touch-manipulation"
+                className={`w-full flex items-center gap-3 px-4 py-3
+                           text-sm text-red-500 ${isDark ? 'hover:bg-red-500/10' : 'hover:bg-red-50'}
+                           transition-colors touch-manipulation`}
               >
                 <LogOut size={18} />
                 Sign Out

@@ -142,6 +142,7 @@ export default function HomePage(): React.JSX.Element {
               </div>
               <div className="shrink-0">
                 <UserMenu
+                  theme="dark"
                   onOpenPhotos={() => navigate('/gallery')}
                   onOpenEdit={() => navigate('/upload')}
                   onOpenAdmin={user?.app_metadata?.role === 'admin' ? () => navigate('/admin') : undefined}
