@@ -372,6 +372,15 @@ describe('ChessGame', () => {
     expect(fetchGameMembersMock).not.toHaveBeenCalled()
   })
 
+  it('navigates back to chess hub from local mode', async () => {
+    const user = userEvent.setup()
+    setMockGameId('local')
+    render(<ChessGame />)
+
+    await user.click(screen.getByRole('button', { name: 'Back to Chess' }))
+    expect(navigateMock).toHaveBeenCalledWith('/games/chess')
+  })
+
   it.each([
     ['?tab=lesson', 'How to play'],
     ['?tab=history', 'Chess history'],
@@ -426,6 +435,18 @@ describe('ChessGame', () => {
       expect(screen.getByText('Chess Tutor')).toBeInTheDocument()
       expect(screen.getByRole('combobox', { name: 'Choose story' })).toBeInTheDocument()
       expect(screen.getByRole('button', { name: 'Story mode' })).toBeInTheDocument()
+    })
+  })
+
+  it('renders tutor studio board and sidebar in fullscreen tutor mode', async () => {
+    setMockGameId('local')
+    setLocationSearch('?tab=lesson&tutor=1')
+    render(<ChessGame />)
+
+    await waitFor(() => {
+      expect(screen.getByTestId('tutor-studio')).toBeInTheDocument()
+      expect(screen.getByTestId('tutor-board')).toBeInTheDocument()
+      expect(screen.getByTestId('tutor-sidebar')).toBeInTheDocument()
     })
   })
 
@@ -654,7 +675,7 @@ describe('ChessGame', () => {
 
     const forkButton = screen.getByRole('button', { name: 'Fork' })
     await user.click(forkButton)
-    expect(forkButton).toHaveClass('border-blue-300')
+    expect(forkButton).toHaveClass('border-indigo-300/60')
     expect(screen.getByText('One move attacks two or more targets at once.')).toBeInTheDocument()
 
     await user.click(screen.getByRole('button', { name: '4) Discovered check' }))
