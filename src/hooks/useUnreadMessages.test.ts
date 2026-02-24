@@ -1,4 +1,4 @@
-import { describe, it, expect, vi, beforeEach, beforeAll } from 'vitest'
+import { describe, it, expect, vi, beforeEach } from 'vitest'
 import { renderHook, waitFor } from '@testing-library/react'
 
 let useUnreadMessages: (userId: string | null | undefined) => {
@@ -11,28 +11,25 @@ let useUnreadMessages: (userId: string | null | undefined) => {
 
 let supabase: any
 
-beforeAll(async () => {
-  vi.resetModules()
-
-  vi.doMock('../supabaseClient', () => ({
-    supabase: {
-      from: vi.fn(),
-      channel: vi.fn(),
-      removeChannel: vi.fn(),
-    },
-  }))
-
-  const hookModule = await import('./useUnreadMessages')
-  const clientModule = await import('../supabaseClient')
-
-  useUnreadMessages = hookModule.useUnreadMessages
-  supabase = clientModule.supabase
-})
+vi.mock('../supabaseClient', () => ({
+  supabase: {
+    from: vi.fn(),
+    channel: vi.fn(),
+    removeChannel: vi.fn(),
+  },
+}))
 
 describe('useUnreadMessages', () => {
-  beforeEach(() => {
+  beforeEach(async () => {
     vi.useRealTimers()
     vi.clearAllMocks()
+    vi.resetModules()
+
+    const hookModule = await import('./useUnreadMessages')
+    const clientModule = await import('../supabaseClient')
+
+    useUnreadMessages = hookModule.useUnreadMessages
+    supabase = clientModule.supabase
   })
 
   it('calculates unread count correctly based on last_read_at', async () => {

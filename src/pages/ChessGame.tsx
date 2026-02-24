@@ -8,6 +8,7 @@ import pdfWorkerUrl from 'pdfjs-dist/build/pdf.worker.min.mjs?url'
 import { abortGame, fetchGame, fetchGameMembers, makeMove, restartGame } from '../api/games'
 import { analyzeGameForMe, ensureStoryAudio, getStoryAudioSetupStatus, isStoryAudioPrecomputedOnlyModeEnabled, preloadStoryAudioManifest, type ChessTutorAnalysis } from '../api/chessTutor'
 import { createDirectorScriptForPage, type StoryDirectorAction, type StoryHighlightTone } from '../data/storyTimeline'
+import ChessTutorStudio from '../components/chess/tutor/ChessTutorStudio'
 import Toast from '../components/Toast'
 import type { GameMemberProfile, GameRow } from '../api/games'
 import { supabase } from '../supabaseClient'
@@ -103,8 +104,6 @@ type ChessHistoryEvent = {
   imageUrl: string
   imageAlt: string
 }
-
-const TUTOR_STORY_HINT_SEEN_KEY = 'chess:tutorial-story-hint-seen:v1'
 
 function parseInitialTutorTab(search: string): TutorTab | undefined {
   const value = new URLSearchParams(search).get('tab')
@@ -465,7 +464,6 @@ const CHESS_STORIES: ChessStoryOption[] = [
   },
 ]
 
-const DEFAULT_CHESS_STORY_ID = CHESS_STORIES[0]?.id || 'architect-of-squares'
 const NARRATION_FALLBACK_WORDS_PER_SECOND = 2.7
 const STORY_DIRECTOR_SYNC_INTERVAL_MS = 250
 const STORY_STALL_RECOVERY_DELAY_MS = 2000
@@ -2503,671 +2501,28 @@ function ChessStoryModal({
   )
 }
 
-function ChessTutorPanel({
-  analysis,
-  modelLabel,
-  loading,
-  error,
-  onAnalyze,
-  initialTab,
-  openStoryOnLoad,
-  fullscreen,
-  initialStoryId,
-  allowAnalyzeTab = true,
-}: {
-  analysis: ChessTutorAnalysis | null
-  modelLabel: string
-  loading: boolean
-  error: string | null
-  onAnalyze: () => void
-  initialTab?: TutorTab
-  openStoryOnLoad?: boolean
-  fullscreen?: boolean
-  initialStoryId?: string
-  allowAnalyzeTab?: boolean
-}) {
-  const [activeTab, setActiveTab] = useState<TutorTab>(() => {
-    const defaultTab: TutorTab = allowAnalyzeTab ? 'lesson' : 'history'
-    const requested = initialTab ?? defaultTab
-    if (!allowAnalyzeTab && requested === 'analyze') return 'history'
-    return requested
-  })
-  const [activeLessonIndex, setActiveLessonIndex] = useState(0)
-  const [animationFrame, setAnimationFrame] = useState(0)
-  const [activeLessonSection, setActiveLessonSection] = useState<LessonSection>('pieces')
-  const [notationPly, setNotationPly] = useState(0)
-  const [notationAutoplay, setNotationAutoplay] = useState(true)
-  const [notationFocus, setNotationFocus] = useState<'rank' | 'file' | 'move'>('rank')
-  const [activePatternIndex, setActivePatternIndex] = useState(0)
-  const [patternFrame, setPatternFrame] = useState(0)
-  const [patternAutoplay, setPatternAutoplay] = useState(true)
-  const [discoveredCheckFrame, setDiscoveredCheckFrame] = useState(0)
-  const [discoveredCheckAutoplay, setDiscoveredCheckAutoplay] = useState(true)
-  const [storyModalOpen, setStoryModalOpen] = useState(false)
-  const [showStoryHint, setShowStoryHint] = useState(false)
-  const [activeStoryId, setActiveStoryId] = useState<string>(() => {
-    const found = CHESS_STORIES.some((story) => story.id === initialStoryId)
-    return found && initialStoryId ? initialStoryId : DEFAULT_CHESS_STORY_ID
-  })
-
-  const activeLesson = CHESS_LESSONS[activeLessonIndex]
-  const activeStory = CHESS_STORIES.find((story) => story.id === activeStoryId) ?? CHESS_STORIES[0]
-  const activePattern = ATTACK_PATTERNS[activePatternIndex]
-  const activeNotationMove = notationPly > 0 ? NOTATION_LINE_MOVES[notationPly - 1] : null
-  const notationFrame = NOTATION_LINE_FRAMES[Math.min(notationPly, NOTATION_LINE_FRAMES.length - 1)]
-  const patternCurrentHighlights = activePattern.frameHighlights?.[patternFrame] ?? activePattern.highlightSquares
-  const patternCurrentArrows = activePattern.frameArrows?.[patternFrame] ?? []
-  const discoveredCheckCurrentArrows = DISCOVERED_CHECK_PATTERN.frameArrows?.[discoveredCheckFrame] ?? []
-  const notationTargetSquare: Square = (notationFocus === 'move' && activeNotationMove ? activeNotationMove.to : 'e2') as Square
-  const notationTargetFile = notationTargetSquare[0] as string
-  const notationTargetRank = notationTargetSquare[1] as string
-  const notationTargetFileIndex = FILE_REFERENCE.indexOf(notationTargetFile)
-  const notationTargetRankNumber = Number(notationTargetRank)
-  const notationTargetX = notationTargetFileIndex >= 0 ? (notationTargetFileIndex + 0.5) * 31.25 : 125
-  const notationTargetY = notationTargetRankNumber > 0 ? (8 - notationTargetRankNumber + 0.5) * 31.25 : 125
-  const woodTexturePieces = useWoodTexturePieceSet()
-
-  const notationBoardHighlights = useMemo(() => {
-    if (notationFocus === 'rank') return RANK_DEMO_SQUARES
-    if (notationFocus === 'file') return FILE_DEMO_SQUARES
-    return activeNotationMove?.focusSquares ?? []
-  }, [notationFocus, activeNotationMove])
-
-  useEffect(() => {
-    if (!allowAnalyzeTab && activeTab === 'analyze') {
-      setActiveTab('history')
-    }
-  }, [activeTab, allowAnalyzeTab])
-
-  useEffect(() => {
-    if (!initialTab) return
-    if (!allowAnalyzeTab && initialTab === 'analyze') {
-      setActiveTab('history')
-      return
-    }
-    setActiveTab(initialTab)
-  }, [allowAnalyzeTab, initialTab])
-
-  useEffect(() => {
-    if (!initialStoryId) return
-    if (!CHESS_STORIES.some((story) => story.id === initialStoryId)) return
-    setActiveStoryId(initialStoryId)
-  }, [initialStoryId])
-
-  useEffect(() => {
-    if (!openStoryOnLoad) return
-    setActiveTab('lesson')
-    setStoryModalOpen(true)
-  }, [openStoryOnLoad])
-
-  useEffect(() => {
-    if (activeTab !== 'lesson') {
-      setShowStoryHint(false)
-      return
-    }
-    try {
-      setShowStoryHint(localStorage.getItem(TUTOR_STORY_HINT_SEEN_KEY) !== '1')
-    } catch {
-      setShowStoryHint(true)
-    }
-  }, [activeTab])
-
-  const dismissStoryHint = useCallback(() => {
-    setShowStoryHint(false)
-    try {
-      localStorage.setItem(TUTOR_STORY_HINT_SEEN_KEY, '1')
-    } catch {
-    }
-  }, [])
-
-  useEffect(() => {
-    setAnimationFrame(0)
-  }, [activeLessonIndex])
-
-  useEffect(() => {
-    setPatternFrame(0)
-  }, [activePatternIndex])
-
-  useEffect(() => {
-    setDiscoveredCheckFrame(0)
-  }, [activeLessonSection])
-
-  useEffect(() => {
-    if (activeTab !== 'lesson') return
-    const timer = window.setInterval(() => {
-      setAnimationFrame((prev) => (prev + 1) % activeLesson.frames.length)
-    }, 1200)
-    return () => window.clearInterval(timer)
-  }, [activeTab, activeLesson.frames.length])
-
-  useEffect(() => {
-    if (activeTab !== 'lesson' || !notationAutoplay) return
-    if (activeLessonSection !== 'board-notation') return
-    const timer = window.setInterval(() => {
-      setNotationFocus((currentFocus) => {
-        if (currentFocus === 'rank') return 'file'
-        if (currentFocus === 'file') {
-          setNotationPly(1)
-          return 'move'
-        }
-
-        let completed = false
-        setNotationPly((currentPly) => {
-          if (currentPly >= NOTATION_LINE_MOVES.length) {
-            completed = true
-            return 0
-          }
-          return currentPly + 1
-        })
-        return completed ? 'rank' : 'move'
-      })
-    }, 1700)
-    return () => window.clearInterval(timer)
-  }, [activeTab, notationAutoplay, activeLessonSection])
-
-  useEffect(() => {
-    if (activeTab !== 'lesson' || activeLessonSection !== 'attacks' || !patternAutoplay) return
-    const timer = window.setInterval(() => {
-      setPatternFrame((prev) => (prev + 1) % activePattern.frames.length)
-    }, 1600)
-    return () => window.clearInterval(timer)
-  }, [activeTab, activeLessonSection, patternAutoplay, activePattern.frames.length])
-
-  useEffect(() => {
-    if (activeTab !== 'lesson' || activeLessonSection !== 'discovered-check' || !discoveredCheckAutoplay) return
-    const timer = window.setInterval(() => {
-      setDiscoveredCheckFrame((prev) => (prev + 1) % DISCOVERED_CHECK_PATTERN.frames.length)
-    }, 1700)
-    return () => window.clearInterval(timer)
-  }, [activeTab, activeLessonSection, discoveredCheckAutoplay])
-
-  return (
-    <>
-      <aside className={`flex min-h-0 w-full flex-col rounded-2xl border border-slate-200 bg-white/80 p-4 shadow-md ${fullscreen ? 'h-full lg:w-full' : 'lg:w-[360px] lg:shrink-0'}`}>
-      <div className="mb-3 flex items-center justify-between">
-        <div className="text-sm font-semibold text-slate-700">Chess Tutor</div>
-        <span className="text-xs text-slate-500">{modelLabel}</span>
-      </div>
-      <div className="mb-4 rounded-lg border border-slate-200 bg-slate-50 px-3 py-2">
-        <div className="text-xs font-semibold text-slate-600">Tutor Panel</div>
-        <div className="mt-2 flex gap-2">
-          <button
-            type="button"
-            onClick={() => setActiveTab('lesson')}
-            aria-pressed={activeTab === 'lesson'}
-            className={`rounded border px-2 py-1 text-xs font-semibold ${activeTab === 'lesson' ? 'border-blue-300 bg-blue-50 text-blue-700' : 'border-slate-200 bg-white text-slate-600 hover:bg-slate-50'}`}
-          >
-            How to play
-          </button>
-          <button
-            type="button"
-            onClick={() => setActiveTab('history')}
-            aria-pressed={activeTab === 'history'}
-            className={`rounded border px-2 py-1 text-xs font-semibold ${activeTab === 'history' ? 'border-blue-300 bg-blue-50 text-blue-700' : 'border-slate-200 bg-white text-slate-600 hover:bg-slate-50'}`}
-          >
-            Chess history
-          </button>
-          {allowAnalyzeTab ? (
-            <button
-              type="button"
-              onClick={() => setActiveTab('analyze')}
-              aria-pressed={activeTab === 'analyze'}
-              className={`rounded border px-2 py-1 text-xs font-semibold ${activeTab === 'analyze' ? 'border-blue-300 bg-blue-50 text-blue-700' : 'border-slate-200 bg-white text-slate-600 hover:bg-slate-50'}`}
-            >
-              Analyze game
-            </button>
-          ) : null}
-        </div>
-      </div>
-      <div className="min-h-0 flex-1 rounded-lg border border-dashed border-slate-200 bg-white px-3 py-2 text-sm">
-        {activeTab === 'analyze' && allowAnalyzeTab ? (
-          <>
-            <button
-              type="button"
-              onClick={onAnalyze}
-              disabled={loading}
-              className="mb-3 rounded border border-slate-200 bg-white px-2 py-1 text-xs font-semibold hover:bg-slate-50 disabled:cursor-not-allowed disabled:opacity-50"
-            >
-              {loading ? 'Analyzing…' : 'Analyze game for me'}
-            </button>
-            {error ? <div className="text-red-600">{error}</div> : null}
-            {!error && !analysis && !loading ? <div className="text-slate-500">Press “Analyze game for me” to get a position summary, hints, and focus points.</div> : null}
-            {analysis ? (
-              <div className="space-y-3 text-slate-700">
-                <div>
-                  <div className="text-xs font-semibold uppercase tracking-wide text-slate-500">Position Summary</div>
-                  <p className="mt-1 text-sm">{analysis.positionSummary}</p>
-                </div>
-                <div>
-                  <div className="text-xs font-semibold uppercase tracking-wide text-slate-500">Hints</div>
-                  <ul className="mt-1 list-disc pl-5">
-                    {(analysis.hints.length ? analysis.hints : ['No immediate tactical hints detected.']).map((hint) => (
-                      <li key={hint}>{hint}</li>
-                    ))}
-                  </ul>
-                </div>
-                <div>
-                  <div className="text-xs font-semibold uppercase tracking-wide text-slate-500">Focus Points</div>
-                  <ul className="mt-1 list-disc pl-5">
-                    {(analysis.focusAreas.length ? analysis.focusAreas : ['Improve piece activity and king safety.']).map((focus) => (
-                      <li key={focus}>{focus}</li>
-                    ))}
-                  </ul>
-                </div>
-              </div>
-            ) : null}
-          </>
-        ) : activeTab === 'history' ? (
-          <div className="space-y-3 text-slate-700">
-            <div className="text-xs font-semibold uppercase tracking-wide text-slate-500">Chess History Timeline</div>
-            <p className="text-sm text-slate-600">Scroll from the earliest mentions of chess through major historical rule and strategy changes.</p>
-            <div className="max-h-[440px] space-y-3 overflow-y-auto pr-1">
-              {CHESS_HISTORY_EVENTS.map((event) => (
-                <article key={`${event.period}-${event.title}`} className="rounded-lg border border-slate-200 bg-slate-50 p-2">
-                  <img
-                    src={event.imageUrl}
-                    alt={event.imageAlt}
-                    loading="lazy"
-                    className="h-28 w-full rounded-md border border-slate-200 object-cover"
-                  />
-                  <div className="mt-2 text-xs font-semibold uppercase tracking-wide text-slate-500">{event.period}</div>
-                  <h4 className="text-sm font-semibold text-slate-700">{event.title}</h4>
-                  <p className="mt-1 text-sm text-slate-600">{event.summary}</p>
-                  <p className="mt-1 text-xs text-slate-500"><span className="font-semibold">Key change:</span> {event.ruleChange}</p>
-                </article>
-              ))}
-            </div>
-          </div>
-        ) : (
-          <div className="flex h-full min-h-0 flex-col gap-2 text-slate-700">
-            <div className="flex items-center justify-between gap-2">
-              <div className="text-xs font-semibold uppercase tracking-wide text-slate-500">How to play</div>
-              <div className="flex items-center gap-2">
-                <select
-                  value={activeStory.id}
-                  onChange={(event) => setActiveStoryId(event.target.value)}
-                  className="rounded border border-slate-200 bg-white px-2 py-1 text-xs font-semibold text-slate-600"
-                  aria-label="Choose story"
-                >
-                  {CHESS_STORIES.map((story) => (
-                    <option key={story.id} value={story.id}>{story.title}</option>
-                  ))}
-                </select>
-                <div className="relative">
-                  <button
-                    type="button"
-                    onClick={() => {
-                      dismissStoryHint()
-                      setStoryModalOpen(true)
-                    }}
-                    className="rounded border border-slate-200 bg-white px-2 py-1 text-xs font-semibold text-slate-600 hover:bg-slate-50"
-                  >
-                    Story mode
-                  </button>
-                  {showStoryHint ? (
-                    <div className="absolute right-0 top-full z-20 mt-2 w-64 animate-pulse rounded-lg border border-fuchsia-200 bg-gradient-to-r from-fuchsia-50 via-amber-50 to-cyan-50 p-2 text-xs text-slate-700 shadow-lg">
-                      <div className="font-semibold text-fuchsia-700">New here? Try Story mode ✨</div>
-                      <p className="mt-1 text-slate-600">Start with tutorials, then open Story mode for guided chapters.</p>
-                      <div className="mt-2 flex items-center justify-end gap-2">
-                        <button
-                          type="button"
-                          onClick={dismissStoryHint}
-                          className="rounded border border-slate-200 bg-white px-2 py-1 font-semibold text-slate-600"
-                        >
-                          Dismiss
-                        </button>
-                        <button
-                          type="button"
-                          onClick={() => {
-                            dismissStoryHint()
-                            setStoryModalOpen(true)
-                          }}
-                          className="rounded border border-fuchsia-300 bg-fuchsia-100 px-2 py-1 font-semibold text-fuchsia-700"
-                        >
-                          Open story
-                        </button>
-                      </div>
-                    </div>
-                  ) : null}
-                </div>
-              </div>
-            </div>
-            <div className="overflow-x-auto pb-1">
-              <div className="inline-flex min-w-max gap-1">
-                {LESSON_SECTIONS.map((section) => (
-                  <button
-                    key={section.id}
-                    type="button"
-                    onClick={() => setActiveLessonSection(section.id)}
-                    className={`shrink-0 whitespace-nowrap rounded border px-2 py-1 text-xs font-semibold ${activeLessonSection === section.id ? 'border-blue-300 bg-blue-50 text-blue-700' : 'border-slate-200 bg-white text-slate-600 hover:bg-slate-50'}`}
-                  >
-                    {section.label}
-                  </button>
-                ))}
-              </div>
-            </div>
-
-            <div className="flex-none rounded-lg border border-slate-200 bg-slate-50 p-2">
-              <div className="relative mx-auto w-full max-w-[250px]">
-                <Chessboard
-                  id={`lesson-main-${activeLessonSection}`}
-                  position={
-                    activeLessonSection === 'pieces'
-                      ? activeLesson.frames[animationFrame]
-                      : activeLessonSection === 'board-notation'
-                        ? notationFrame
-                        : activeLessonSection === 'attacks'
-                          ? activePattern.frames[patternFrame]
-                          : DISCOVERED_CHECK_PATTERN.frames[discoveredCheckFrame]
-                  }
-                  boardWidth={250}
-                  customPieces={woodTexturePieces}
-                  showBoardNotation
-                  arePiecesDraggable={false}
-                  customArrows={
-                    activeLessonSection === 'attacks'
-                      ? patternCurrentArrows
-                      : activeLessonSection === 'discovered-check'
-                        ? discoveredCheckCurrentArrows
-                        : []
-                  }
-                  customSquareStyles={
-                    activeLessonSection === 'pieces'
-                      ? lessonSquareStyles(activeLesson.highlightSquares)
-                      : activeLessonSection === 'board-notation'
-                        ? lessonSquareStyles(notationBoardHighlights)
-                        : activeLessonSection === 'attacks'
-                          ? lessonSquareStyles(patternCurrentHighlights)
-                          : lessonSquareStyles(DISCOVERED_CHECK_PATTERN.highlightSquares)
-                  }
-                  animationDuration={500}
-                />
-                {activeLessonSection === 'board-notation' ? (
-                  <>
-                    <svg className="pointer-events-none absolute left-0 top-0 h-[250px] w-[250px]" viewBox="0 0 250 250" aria-hidden="true">
-                      <line x1={notationTargetX} y1={250} x2={notationTargetX} y2={notationTargetY} stroke="rgba(37,99,235,0.85)" strokeWidth="2" />
-                      <line x1={0} y1={notationTargetY} x2={notationTargetX} y2={notationTargetY} stroke="rgba(37,99,235,0.85)" strokeWidth="2" />
-                      <circle cx={notationTargetX} cy={notationTargetY} r="5" fill="rgba(37,99,235,0.9)" />
-                    </svg>
-                    <div className="pointer-events-none absolute -left-8 top-0 h-[250px] w-6">
-                      {[...RANK_REFERENCE].reverse().map((rank, idx) => (
-                        <div key={rank} className="absolute left-0 flex h-[31.25px] w-6 items-center justify-center" style={{ top: `${idx * 31.25}px` }}>
-                          <span className={`text-sm font-bold ${rank === notationTargetRank ? 'text-blue-700 [text-shadow:0_0_8px_rgba(37,99,235,0.6)]' : 'text-slate-500'}`}>
-                            {rank}
-                          </span>
-                        </div>
-                      ))}
-                    </div>
-                    <div className="pointer-events-none absolute -bottom-7 left-0 grid w-[250px] grid-cols-8">
-                      {FILE_REFERENCE.map((file) => (
-                        <div key={file} className="flex items-center justify-center">
-                          <span className={`text-sm font-bold ${file === notationTargetFile ? 'text-blue-700 [text-shadow:0_0_8px_rgba(37,99,235,0.6)]' : 'text-slate-500'}`}>
-                            {file}
-                          </span>
-                        </div>
-                      ))}
-                    </div>
-                  </>
-                ) : null}
-                {activeLessonSection === 'board-notation' && notationFocus === 'move' && activeNotationMove ? (
-                  <div className="pointer-events-none absolute bottom-3 left-1/2 -translate-x-1/2 rounded border border-white/40 bg-slate-900/50 px-3 py-1 text-sm font-semibold text-white">
-                    {activeNotationMove.from} → {activeNotationMove.to}
-                  </div>
-                ) : null}
-              </div>
-            </div>
-
-            <div className="min-h-0 flex-1 overflow-y-auto rounded-lg border border-slate-200 bg-white p-2">
-              {activeLessonSection === 'pieces' ? (
-                <div className="space-y-2">
-                  <div className="text-xs font-semibold uppercase tracking-wide text-slate-500">Pieces & movement</div>
-                  <p className="text-xs text-slate-600">These examples use full-board positions from realistic openings/endgames instead of isolated single-piece boards.</p>
-                  <div className="overflow-x-auto pb-1">
-                    <div className="inline-flex min-w-max gap-1">
-                      {CHESS_LESSONS.map((lesson, index) => (
-                        <button
-                          key={lesson.piece}
-                          type="button"
-                          onClick={() => setActiveLessonIndex(index)}
-                          className={`shrink-0 whitespace-nowrap rounded border px-2 py-1 text-xs font-semibold ${index === activeLessonIndex ? 'border-blue-300 bg-blue-50 text-blue-700' : 'border-slate-200 bg-white text-slate-600 hover:bg-slate-50'}`}
-                        >
-                          {lesson.piece}
-                        </button>
-                      ))}
-                    </div>
-                  </div>
-                  <div>
-                    <div className="text-sm font-semibold text-slate-700">{activeLesson.piece}</div>
-                    <div className="text-xs text-slate-500">Piece value: {activeLesson.value}</div>
-                    <p className="mt-1 text-sm">{activeLesson.explanation}</p>
-                    <p className="mt-1 text-xs text-slate-500">{activeLesson.movement}</p>
-                  </div>
-                </div>
-              ) : activeLessonSection === 'board-notation' ? (
-                <div className="space-y-2">
-                  <div className="flex items-center justify-between gap-2">
-                    <div className="text-xs font-semibold uppercase tracking-wide text-slate-500">Board & notation</div>
-                    <button
-                      type="button"
-                      onClick={() => setNotationAutoplay((prev) => !prev)}
-                      className="rounded border border-slate-200 bg-white px-2 py-1 text-[11px] font-semibold text-slate-600 hover:bg-slate-50"
-                    >
-                      {notationAutoplay ? 'Pause autoplay' : 'Start autoplay'}
-                    </button>
-                  </div>
-                  <div className="flex flex-wrap gap-1">
-                    <button
-                      type="button"
-                      onClick={() => setNotationFocus('rank')}
-                      className={`rounded border px-2 py-1 text-xs font-semibold ${notationFocus === 'rank' ? 'border-blue-300 bg-blue-50 text-blue-700' : 'border-slate-200 bg-white text-slate-600 hover:bg-slate-50'}`}
-                    >
-                      Ranks (1–8)
-                    </button>
-                    <button
-                      type="button"
-                      onClick={() => setNotationFocus('file')}
-                      className={`rounded border px-2 py-1 text-xs font-semibold ${notationFocus === 'file' ? 'border-blue-300 bg-blue-50 text-blue-700' : 'border-slate-200 bg-white text-slate-600 hover:bg-slate-50'}`}
-                    >
-                      Files (a–h)
-                    </button>
-                    <button
-                      type="button"
-                      onClick={() => setNotationFocus('move')}
-                      className={`rounded border px-2 py-1 text-xs font-semibold ${notationFocus === 'move' ? 'border-blue-300 bg-blue-50 text-blue-700' : 'border-slate-200 bg-white text-slate-600 hover:bg-slate-50'}`}
-                    >
-                      Move coordinates
-                    </button>
-                  </div>
-                  {notationFocus === 'rank' ? <p className="text-sm font-semibold text-slate-700">Ranks are the row numbers 1–8. Follow the glowing number on the board edge to the target square.</p> : null}
-                  {notationFocus === 'file' ? <p className="text-sm font-semibold text-slate-700">Files are the column letters a–h. Follow the glowing letter on the board edge to the target square.</p> : null}
-                  {notationFocus === 'move' ? <p className="text-sm font-semibold text-slate-700">When a move appears, read source → target (example: e2 → e4) and trace the guide line to the square.</p> : null}
-                  <p className="text-xs text-slate-600">Algebraic notation names the destination square. Older descriptive notation uses names like K, QB, and KN files.</p>
-                  <div className="overflow-hidden rounded border border-slate-200 bg-white">
-                    <table className="w-full text-left text-xs">
-                      <thead className="bg-slate-50 text-slate-500">
-                        <tr>
-                          <th className="px-2 py-1 font-semibold">Algebraic</th>
-                          <th className="px-2 py-1 font-semibold">Older descriptive</th>
-                          <th className="px-2 py-1 font-semibold">Meaning</th>
-                        </tr>
-                      </thead>
-                      <tbody>
-                        {NOTATION_GUIDE_ROWS.map((row) => (
-                          <tr key={`${row.algebraic}-${row.descriptive}`} className="border-t border-slate-100 text-slate-700">
-                            <td className="px-2 py-1 font-semibold">{row.algebraic}</td>
-                            <td className="px-2 py-1">{row.descriptive}</td>
-                            <td className="px-2 py-1 text-slate-600">{row.meaning}</td>
-                          </tr>
-                        ))}
-                      </tbody>
-                    </table>
-                  </div>
-                  <div className="flex items-center gap-2">
-                    <button
-                      type="button"
-                      onClick={() => setNotationPly((prev) => Math.max(0, prev - 1))}
-                      disabled={notationPly === 0}
-                      className="rounded border border-slate-200 bg-white px-2 py-1 text-xs font-semibold text-slate-600 hover:bg-slate-50 disabled:cursor-not-allowed disabled:opacity-50"
-                    >
-                      Previous move
-                    </button>
-                    <button
-                      type="button"
-                      onClick={() => setNotationPly((prev) => Math.min(NOTATION_LINE_MOVES.length, prev + 1))}
-                      disabled={notationPly === NOTATION_LINE_MOVES.length}
-                      className="rounded border border-slate-200 bg-white px-2 py-1 text-xs font-semibold text-slate-600 hover:bg-slate-50 disabled:cursor-not-allowed disabled:opacity-50"
-                    >
-                      Next move
-                    </button>
-                    <span className="text-[11px] text-slate-500">Move {notationPly}/{NOTATION_LINE_MOVES.length}</span>
-                  </div>
-                  <div className="max-h-40 space-y-1 overflow-y-auto pr-1">
-                    {NOTATION_LINE_MOVES.map((move, index) => {
-                      const isActive = index + 1 === notationPly
-                      const isPast = index + 1 < notationPly
-                      return (
-                        <button
-                          key={`${index + 1}-${move.san}`}
-                          type="button"
-                          onClick={() => setNotationPly(index + 1)}
-                          aria-current={isActive ? 'step' : undefined}
-                          className={`w-full rounded border px-2 py-1 text-left text-xs ${isActive ? 'border-blue-300 bg-blue-50 text-blue-700' : isPast ? 'border-emerald-200 bg-emerald-50 text-emerald-700' : 'border-slate-200 bg-white text-slate-600 hover:bg-slate-50'}`}
-                        >
-                          <span className="font-semibold">{index + 1}. {move.san}</span>
-                          <span className="ml-2 text-[11px]">({move.descriptive})</span>
-                          <div className="mt-0.5 text-[11px] text-slate-500">{move.explanation}</div>
-                        </button>
-                      )
-                    })}
-                  </div>
-                </div>
-              ) : activeLessonSection === 'attacks' ? (
-                <div className="space-y-2">
-                  <div className="flex items-center justify-between gap-2">
-                    <div className="text-xs font-semibold uppercase tracking-wide text-slate-500">Attacks (fork, discovered, pinned, etc.)</div>
-                    <button
-                      type="button"
-                      onClick={() => setPatternAutoplay((prev) => !prev)}
-                      className="rounded border border-slate-200 bg-white px-2 py-1 text-[11px] font-semibold text-slate-600 hover:bg-slate-50"
-                    >
-                      {patternAutoplay ? 'Pause autoplay' : 'Start autoplay'}
-                    </button>
-                  </div>
-                  <p className="text-xs text-slate-600">Use the pattern buttons to cycle through common tactical motifs.</p>
-                  <div className="overflow-x-auto pb-1">
-                    <div className="inline-flex min-w-max gap-1">
-                      {ATTACK_PATTERNS.map((pattern, index) => (
-                        <button
-                          key={pattern.name}
-                          type="button"
-                          onClick={() => setActivePatternIndex(index)}
-                          className={`shrink-0 whitespace-nowrap rounded border px-2 py-1 text-xs font-semibold ${index === activePatternIndex ? 'border-blue-300 bg-blue-50 text-blue-700' : 'border-slate-200 bg-white text-slate-600 hover:bg-slate-50'}`}
-                        >
-                          {pattern.name}
-                        </button>
-                      ))}
-                    </div>
-                  </div>
-                  <div className="flex items-center gap-2">
-                    <button
-                      type="button"
-                      onClick={() => setPatternFrame(0)}
-                      disabled={patternFrame === 0}
-                      className="rounded border border-slate-200 bg-white px-2 py-1 text-xs font-semibold text-slate-600 hover:bg-slate-50 disabled:cursor-not-allowed disabled:opacity-50"
-                    >
-                      Show setup
-                    </button>
-                    <button
-                      type="button"
-                      onClick={() => setPatternFrame(activePattern.frames.length - 1)}
-                      disabled={patternFrame === activePattern.frames.length - 1}
-                      className="rounded border border-slate-200 bg-white px-2 py-1 text-xs font-semibold text-slate-600 hover:bg-slate-50 disabled:cursor-not-allowed disabled:opacity-50"
-                    >
-                      Show key idea
-                    </button>
-                    <span className="text-[11px] text-slate-500">Frame {patternFrame + 1}/{activePattern.frames.length}</span>
-                  </div>
-                  <div className="rounded border border-slate-200 bg-slate-50 p-2">
-                    <div className="text-xs font-semibold text-slate-700">{activePattern.name}</div>
-                    <p className="mt-1 text-[11px] text-slate-500">{activePattern.frameLabels?.[patternFrame] ?? `Frame ${patternFrame + 1}`}</p>
-                    <p className="mt-1 text-xs text-slate-600">{activePattern.explanation}</p>
-                    <p className="mt-1 text-xs text-slate-600"><span className="font-semibold">What to notice:</span> {activePattern.teachingNote}</p>
-                    <p className="mt-1 text-xs text-slate-600"><span className="font-semibold">Notation:</span> {activePattern.san} | {activePattern.descriptive}</p>
-                  </div>
-                </div>
-              ) : (
-                <div className="space-y-2">
-                  <div className="flex items-center justify-between gap-2">
-                    <div className="text-xs font-semibold uppercase tracking-wide text-slate-500">Discovered check</div>
-                    <button
-                      type="button"
-                      onClick={() => setDiscoveredCheckAutoplay((prev) => !prev)}
-                      className="rounded border border-slate-200 bg-white px-2 py-1 text-[11px] font-semibold text-slate-600 hover:bg-slate-50"
-                    >
-                      {discoveredCheckAutoplay ? 'Pause autoplay' : 'Start autoplay'}
-                    </button>
-                  </div>
-                  <p className="text-xs text-slate-600">This is taught right after discovered attacks so students can see the same idea now targeting the king.</p>
-                  <div className="flex items-center gap-2">
-                    <button
-                      type="button"
-                      onClick={() => setDiscoveredCheckFrame(0)}
-                      disabled={discoveredCheckFrame === 0}
-                      className="rounded border border-slate-200 bg-white px-2 py-1 text-xs font-semibold text-slate-600 hover:bg-slate-50 disabled:cursor-not-allowed disabled:opacity-50"
-                    >
-                      Show setup
-                    </button>
-                    <button
-                      type="button"
-                      onClick={() => setDiscoveredCheckFrame(DISCOVERED_CHECK_PATTERN.frames.length - 1)}
-                      disabled={discoveredCheckFrame === DISCOVERED_CHECK_PATTERN.frames.length - 1}
-                      className="rounded border border-slate-200 bg-white px-2 py-1 text-xs font-semibold text-slate-600 hover:bg-slate-50 disabled:cursor-not-allowed disabled:opacity-50"
-                    >
-                      Show discovered check
-                    </button>
-                    <span className="text-[11px] text-slate-500">Frame {discoveredCheckFrame + 1}/{DISCOVERED_CHECK_PATTERN.frames.length}</span>
-                  </div>
-                  <div className="rounded border border-slate-200 bg-slate-50 p-2">
-                    <div className="text-xs font-semibold text-slate-700">{DISCOVERED_CHECK_PATTERN.name}</div>
-                    <p className="mt-1 text-[11px] text-slate-500">{DISCOVERED_CHECK_PATTERN.frameLabels?.[discoveredCheckFrame] ?? `Frame ${discoveredCheckFrame + 1}`}</p>
-                    <p className="mt-1 text-xs text-slate-600">{DISCOVERED_CHECK_PATTERN.explanation}</p>
-                    <p className="mt-1 text-xs text-slate-600"><span className="font-semibold">What to notice:</span> {DISCOVERED_CHECK_PATTERN.teachingNote}</p>
-                    <p className="mt-1 text-xs text-slate-600"><span className="font-semibold">Notation:</span> {DISCOVERED_CHECK_PATTERN.san} | {DISCOVERED_CHECK_PATTERN.descriptive}</p>
-                  </div>
-                </div>
-              )}
-            </div>
-          </div>
-        )}
-      </div>
-      </aside>
-      <ChessStoryModal
-        open={storyModalOpen}
-        onClose={() => setStoryModalOpen(false)}
-        pdfUrl={activeStory.pdfUrl}
-        storyTitle={activeStory.title}
-        storyAudioSlug={activeStory.audioSlug}
-      />
-    </>
-  )
-}
-
 function InlineAnalysisResult({
   loading,
   error,
   analysis,
   modelLabel,
+  tone = 'light',
 }: {
   loading: boolean
   error: string | null
   analysis: ChessTutorAnalysis | null
   modelLabel: string
+  tone?: 'light' | 'dark'
 }) {
+  const baseClass = tone === 'dark'
+    ? 'mb-3 rounded-lg border border-slate-700 bg-slate-900/60 px-3 py-2 text-xs text-slate-200'
+    : 'mb-3 rounded-lg border border-slate-200 bg-slate-50 px-3 py-2 text-xs text-slate-700'
+
   if (!loading && !error && !analysis) {
     return (
-      <div className="mb-3 rounded-lg border border-slate-200 bg-slate-50 px-3 py-2 text-xs text-slate-600">
-        <div className="text-xs font-semibold text-slate-600">Analysis</div>
-        <div className="mt-1 text-slate-500">Run Analyze game to get a position summary, hints, and focus points.</div>
+      <div className={baseClass}>
+        <div className={`text-xs font-semibold ${tone === 'dark' ? 'text-slate-100' : 'text-slate-600'}`}>Analysis</div>
+        <div className={`mt-1 ${tone === 'dark' ? 'text-slate-300' : 'text-slate-500'}`}>Run Analyze game to get a position summary, hints, and focus points.</div>
       </div>
     )
   }
@@ -3191,14 +2546,14 @@ function InlineAnalysisResult({
   }
 
   return (
-    <div className="mb-3 rounded-lg border border-slate-200 bg-slate-50 px-3 py-2 text-xs text-slate-700">
+    <div className={baseClass}>
       <div className="flex items-center justify-between gap-2">
-        <div className="text-xs font-semibold text-slate-700">Analysis</div>
-        <span className="text-[11px] text-slate-500">{modelLabel}</span>
+        <div className={`text-xs font-semibold ${tone === 'dark' ? 'text-slate-100' : 'text-slate-700'}`}>Analysis</div>
+        <span className={`text-[11px] ${tone === 'dark' ? 'text-slate-400' : 'text-slate-500'}`}>{modelLabel}</span>
       </div>
-      <div className="mt-1 text-slate-600">{analysis?.positionSummary}</div>
+      <div className={`mt-1 ${tone === 'dark' ? 'text-slate-300' : 'text-slate-600'}`}>{analysis?.positionSummary}</div>
       {analysis?.hints?.length ? (
-        <ul className="mt-2 list-disc pl-4 text-slate-600">
+        <ul className={`mt-2 list-disc pl-4 ${tone === 'dark' ? 'text-slate-300' : 'text-slate-600'}`}>
           {analysis.hints.slice(0, 2).map((hint) => (
             <li key={hint}>{hint}</li>
           ))}
@@ -4834,8 +4189,8 @@ function OnlineChessGame({
 
         </aside>
         {tutorialFullscreenMode ? (
-          <div className="min-h-0 flex-1 rounded-xl border border-slate-200 bg-white p-2 sm:p-3">
-            <ChessTutorPanel
+          <div className="min-h-0 flex-1 rounded-2xl border border-slate-700 bg-slate-800/70 p-3 sm:p-4">
+            <ChessTutorStudio
               analysis={tutorAnalysis}
               modelLabel={tutorModel}
               loading={tutorLoading}
@@ -4843,8 +4198,32 @@ function OnlineChessGame({
               onAnalyze={() => { void handleAnalyzeGameForMe() }}
               initialTab={initialTutorTab}
               openStoryOnLoad={openStoryOnLoad}
-              fullscreen
               initialStoryId={initialStoryId}
+              stories={CHESS_STORIES}
+              lessons={CHESS_LESSONS}
+              lessonSections={LESSON_SECTIONS}
+              historyEvents={CHESS_HISTORY_EVENTS}
+              notationMoves={NOTATION_LINE_MOVES}
+              notationFrames={NOTATION_LINE_FRAMES}
+              notationGuideRows={NOTATION_GUIDE_ROWS}
+              rankReference={RANK_REFERENCE}
+              fileReference={FILE_REFERENCE}
+              rankDemoSquares={RANK_DEMO_SQUARES}
+              fileDemoSquares={FILE_DEMO_SQUARES}
+              attackPatterns={ATTACK_PATTERNS}
+              discoveredCheckPattern={DISCOVERED_CHECK_PATTERN}
+              lessonSquareStyles={lessonSquareStyles}
+              customPieces={woodTexturePieces}
+              storyModalComponent={({ open, onClose, pdfUrl, storyTitle, storyAudioSlug }) => (
+                <ChessStoryModal
+                  open={open}
+                  onClose={onClose}
+                  pdfUrl={pdfUrl}
+                  storyTitle={storyTitle}
+                  storyAudioSlug={storyAudioSlug as ChessStoryAudioSlug}
+                />
+              )}
+              onPractice={() => navigate('/games/local?tab=analyze')}
             />
           </div>
         ) : null}
@@ -4931,21 +4310,26 @@ function LocalChessGame({
   const topIsWhite = topPlayer?.role === 'white'
   const bottomIsWhite = bottomPlayer?.role === 'white'
 
+  const focusRingClass = 'focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-indigo-400 focus-visible:ring-offset-2 focus-visible:ring-offset-slate-900'
+  const primaryActionClass = `rounded-md border border-indigo-300/60 bg-indigo-500/20 px-3 py-1.5 text-xs font-semibold text-indigo-50 transition hover:bg-indigo-500/30 disabled:cursor-not-allowed disabled:opacity-50 ${focusRingClass}`
+  const secondaryActionClass = `rounded-md border border-slate-600 bg-slate-900/40 px-3 py-1.5 text-xs font-semibold text-slate-100 transition hover:border-slate-500 hover:bg-slate-800/80 disabled:cursor-not-allowed disabled:opacity-50 ${focusRingClass}`
+  const ghostActionClass = `rounded-md border border-slate-600 bg-slate-800/50 px-2 py-1 text-xs font-semibold text-slate-200 transition hover:bg-slate-700/80 ${focusRingClass}`
+
   const renderPlayerLabel = (label: GameMemberProfile | null, isTurn: boolean, fallback: string) => {
     const role = label?.role
     const displayName = label?.username || fallback
     const roleLabel = role === 'white' ? 'White' : role === 'black' ? 'Black' : role || 'Player'
     const roleBadgeClass = role === 'white'
-      ? 'bg-slate-100 text-slate-700'
+      ? 'bg-slate-100 text-slate-800'
       : role === 'black'
-        ? 'bg-slate-800 text-white'
-        : 'bg-slate-200 text-slate-600'
+        ? 'border border-slate-700 bg-slate-900 text-slate-100'
+        : 'bg-slate-700 text-slate-100'
 
     return (
       <div className="flex items-center justify-between gap-4">
         <div className="flex items-center gap-3">
-          <span className={`h-3 w-3 rounded-full ${isTurn ? 'bg-emerald-500' : 'bg-slate-300'}`} aria-hidden="true" />
-          <span className="text-lg font-semibold text-slate-800">{displayName}</span>
+          <span className={`h-3 w-3 rounded-full ${isTurn ? 'bg-emerald-500' : 'bg-slate-600'}`} aria-hidden="true" />
+          <span className="text-lg font-semibold text-slate-100">{displayName}</span>
         </div>
         <span className={`rounded-full px-2.5 py-1 text-xs font-semibold uppercase tracking-wide ${roleBadgeClass}`}>
           {roleLabel}
@@ -5110,31 +4494,40 @@ function LocalChessGame({
   const tutorialFullscreenMode = Boolean(openTutorFullscreen)
 
   return (
-    <div className="relative flex h-[100dvh] overflow-hidden rounded-none bg-slate-100/90 p-2 shadow-sm sm:p-3" style={CHESS_SAFE_AREA_STYLE}>
+    <div className="relative flex h-[100dvh] overflow-hidden rounded-none bg-slate-900 p-2 text-slate-100 shadow-sm sm:p-3" style={CHESS_SAFE_AREA_STYLE}>
       <div className="flex min-h-0 w-full flex-1 flex-col">
-        <div className="mb-2 flex flex-none items-center justify-between gap-3">
-          <h2 className="text-base font-semibold sm:text-lg">Chess (Local)</h2>
+        <div className="mb-2 flex flex-none items-center justify-between gap-3 rounded-2xl border border-slate-700 bg-slate-800/80 p-3">
+          <div className="flex items-center gap-3">
+            <button
+              type="button"
+              onClick={() => navigate('/games/chess')}
+              className={`rounded-md border border-slate-700 bg-slate-900/40 px-3 py-1.5 text-xs font-semibold text-slate-200 transition hover:bg-slate-800 ${focusRingClass}`}
+            >
+              Back to Chess
+            </button>
+            <h2 className="text-base font-semibold text-slate-100 sm:text-lg">Chess (Local)</h2>
+          </div>
           <div className="flex items-center gap-2">
             {tutorialFullscreenMode ? (
               <>
                 <button
                   type="button"
                   onClick={() => navigate(-1)}
-                  className="rounded-md border border-slate-300 bg-white px-3 py-1.5 text-xs font-semibold text-slate-700"
+                  className={secondaryActionClass}
                 >
                   Back
                 </button>
                 <button
                   type="button"
                   onClick={handleQuitGame}
-                  className="rounded-md border border-slate-300 bg-white px-3 py-1.5 text-xs font-semibold text-slate-700"
+                  className={secondaryActionClass}
                 >
                   Quit
                 </button>
                 <button
                   type="button"
                   onClick={handleGoHome}
-                  className="rounded-md border border-slate-300 bg-white px-3 py-1.5 text-xs font-semibold text-slate-700"
+                  className={secondaryActionClass}
                 >
                   Home
                 </button>
@@ -5145,21 +4538,21 @@ function LocalChessGame({
               aria-label={isMenuOpen ? 'Close game menu' : 'Open game menu'}
               aria-expanded={isMenuOpen}
               onClick={() => setIsMenuOpen((prev) => !prev)}
-              className="inline-flex h-9 w-9 items-center justify-center rounded-md border border-slate-300 bg-white text-slate-700 shadow-sm"
+              className={`inline-flex h-9 w-9 items-center justify-center rounded-md border border-slate-700 bg-slate-900/40 text-slate-200 shadow-sm transition hover:bg-slate-800 ${focusRingClass}`}
             >
               ☰
             </button>
           </div>
         </div>
       {isMenuOpen ? (
-        <div className="absolute right-2 top-14 z-40 w-44 rounded-lg border border-slate-200 bg-white p-2 shadow-lg sm:right-3 sm:top-16">
+        <div className="absolute right-2 top-14 z-40 w-44 rounded-lg border border-slate-700 bg-slate-900 p-2 shadow-lg sm:right-3 sm:top-16">
           <button
             type="button"
             onClick={() => {
               setIsMenuOpen(false)
               navigate(-1)
             }}
-            className="mb-1 w-full rounded px-2 py-1.5 text-left text-sm font-medium text-slate-700 hover:bg-slate-100"
+            className={`mb-1 w-full rounded px-2 py-1.5 text-left text-sm font-medium text-slate-100 hover:bg-slate-800 ${focusRingClass}`}
           >
             Back
           </button>
@@ -5169,7 +4562,7 @@ function LocalChessGame({
               setIsMenuOpen(false)
               handleQuitGame()
             }}
-            className="mb-1 w-full rounded px-2 py-1.5 text-left text-sm font-medium text-slate-700 hover:bg-slate-100"
+            className={`mb-1 w-full rounded px-2 py-1.5 text-left text-sm font-medium text-slate-100 hover:bg-slate-800 ${focusRingClass}`}
           >
             Quit game
           </button>
@@ -5179,7 +4572,7 @@ function LocalChessGame({
               setIsMenuOpen(false)
               handleGoHome()
             }}
-            className="w-full rounded px-2 py-1.5 text-left text-sm font-medium text-slate-700 hover:bg-slate-100"
+            className={`w-full rounded px-2 py-1.5 text-left text-sm font-medium text-slate-100 hover:bg-slate-800 ${focusRingClass}`}
           >
             Home page
           </button>
@@ -5219,12 +4612,12 @@ function LocalChessGame({
         />
       ) : null}
       <div className={`flex min-h-0 flex-1 flex-col ${tutorialFullscreenMode ? 'gap-0' : 'gap-2 landscape:flex-row lg:flex-row'}`}>
-        <div className={`${tutorialFullscreenMode ? 'hidden' : 'flex'} min-h-0 min-w-0 flex-1 flex-col rounded-xl border border-slate-200/80 bg-white/80 p-2 shadow-sm sm:p-3`}>
+        <div className={`${tutorialFullscreenMode ? 'hidden' : 'flex'} min-h-0 min-w-0 flex-1 flex-col rounded-2xl border border-slate-700 bg-slate-800/70 p-3 shadow-sm sm:p-4`}>
           <div className="flex items-center justify-between">
             {renderPlayerLabel(topPlayer || null, topIsWhite ? currentTurn === 'w' : currentTurn === 'b', 'Stockfish')}
           </div>
           <div ref={boardContainerRef} className="flex min-h-0 w-full flex-1 items-center justify-center overflow-hidden">
-            <div className="w-full ring-1 ring-slate-200 shadow-sm" style={{ maxWidth: boardSize + 2 }}>
+            <div className="w-full ring-1 ring-slate-700 shadow-sm" style={{ maxWidth: boardSize + 2 }}>
               <Chessboard
                 position={normalizedDisplayFen}
                 boardOrientation="white"
@@ -5262,38 +4655,38 @@ function LocalChessGame({
           </div>
         </div>
 
-        <aside className={`${tutorialFullscreenMode ? 'hidden' : 'flex'} min-h-0 w-full shrink-0 flex-col overflow-y-auto rounded-xl border border-slate-200 bg-white p-4 shadow-sm max-h-[42dvh] landscape:h-full landscape:max-h-none landscape:w-[360px] landscape:max-w-[44vw] lg:w-[380px]`}>
+        <aside className={`${tutorialFullscreenMode ? 'hidden' : 'flex'} min-h-0 w-full shrink-0 flex-col overflow-y-auto rounded-2xl border border-slate-700 bg-slate-800/70 p-4 text-slate-100 shadow-sm max-h-[42dvh] landscape:h-full landscape:max-h-none landscape:w-[360px] landscape:max-w-[44vw] lg:w-[380px]`}>
           <div className="mb-3 flex items-center justify-between">
-            <div className="text-sm font-semibold text-slate-700">Moves & controls</div>
+            <div className="text-sm font-semibold text-slate-100">Moves & controls</div>
             <button
               type="button"
               onClick={() => setIsMenuOpen((prev) => !prev)}
-              className="rounded-md border border-slate-200 bg-white px-2 py-1 text-xs font-semibold text-slate-600"
+              className={ghostActionClass}
             >
               {isMenuOpen ? 'Docked' : 'Dock'}
             </button>
           </div>
-          <div className="mb-3 text-xs text-slate-500">Status: {engineThinking ? 'thinking' : 'ready'}</div>
+          <div className="mb-3 text-xs text-slate-300">Status: {engineThinking ? 'thinking' : 'ready'}</div>
           <div className="mb-3 flex flex-wrap items-center gap-2">
             <button
               type="button"
               onClick={() => { void handleAnalyzeGameForMe() }}
               disabled={tutorLoading}
-              className="rounded-md border border-slate-300 bg-white px-3 py-1 text-xs font-semibold text-slate-700 disabled:opacity-50"
+              className={primaryActionClass}
             >
               {tutorLoading ? 'Analyzing…' : 'Analyze game'}
             </button>
             <button
               onClick={handleUndoMove}
               disabled={viewPly === 0}
-              className="rounded-md border border-slate-200 bg-white px-2 py-1 text-xs font-semibold text-slate-700 disabled:opacity-50"
+              className={secondaryActionClass}
             >
               Undo
             </button>
             <button
               onClick={() => setViewPly((prev) => Math.min(moveRows.length, prev + 1))}
               disabled={viewPly >= moveRows.length}
-              className="rounded-md border border-slate-200 bg-white px-2 py-1 text-xs font-semibold text-slate-700 disabled:opacity-50"
+              className={secondaryActionClass}
             >
               Redo
             </button>
@@ -5313,29 +4706,29 @@ function LocalChessGame({
                   setToastMessage('Failed to save game locally')
                 }
               }}
-              className="rounded-md border border-slate-200 bg-white px-2 py-1 text-xs font-semibold text-slate-700"
+              className={secondaryActionClass}
             >
               Save game
             </button>
             <button
               onClick={handleQuitGame}
-              className="rounded-md border border-slate-200 bg-white px-3 py-1 text-xs font-semibold text-slate-600"
+              className={secondaryActionClass}
             >
               Resign
             </button>
             <button
               type="button"
               onClick={() => navigate('/games/chess')}
-              className="rounded-md border border-slate-200 bg-white px-3 py-1 text-xs font-semibold text-slate-600"
+              className={secondaryActionClass}
             >
               Exit
             </button>
           </div>
-          <InlineAnalysisResult loading={tutorLoading} error={tutorError} analysis={tutorAnalysis} modelLabel={tutorModel} />
-          <div className="mb-3 rounded-lg border border-slate-200 bg-slate-50 px-3 py-2 text-xs text-slate-600">
+          <InlineAnalysisResult loading={tutorLoading} error={tutorError} analysis={tutorAnalysis} modelLabel={tutorModel} tone="dark" />
+          <div className="mb-3 rounded-lg border border-slate-700 bg-slate-900/60 px-3 py-2 text-xs text-slate-200">
             <div className="mb-2 flex items-center justify-between">
-              <span className="text-xs font-semibold text-slate-600">Computer level</span>
-              <span className="rounded bg-white px-2 py-0.5 text-xs font-semibold text-slate-700">{skillLevel}</span>
+              <span className="text-xs font-semibold text-slate-100">Computer level</span>
+              <span className="rounded bg-slate-800 px-2 py-0.5 text-xs font-semibold text-slate-100">{skillLevel}</span>
             </div>
             <input
               type="range"
@@ -5344,51 +4737,51 @@ function LocalChessGame({
               step={1}
               value={skillLevel}
               onChange={(event) => setSkillLevel(Number(event.target.value))}
-              className="w-full"
+              className="w-full accent-indigo-400"
               aria-label="Computer level"
             />
           </div>
-          <div className="mb-3 rounded-lg bg-slate-50 px-3 py-2 text-xs text-slate-600">
-            <div className="mb-2 text-xs font-semibold text-slate-600">Hint + board overlays</div>
+          <div className="mb-3 rounded-lg border border-slate-700 bg-slate-900/60 px-3 py-2 text-xs text-slate-200">
+            <div className="mb-2 text-xs font-semibold text-slate-100">Hint + board overlays</div>
             <div className="flex flex-col gap-2">
-              <label className="flex items-center gap-2">
+              <label className="flex items-center gap-2 text-slate-200">
                 <input
                   type="checkbox"
                   checked={showLegalMoves}
                   onChange={(event) => setShowLegalMoves(event.target.checked)}
-                  className="h-4 w-4"
+                  className="h-4 w-4 accent-indigo-400"
                 />
                 Show legal moves
               </label>
-              <label className="flex items-center gap-2">
+              <label className="flex items-center gap-2 text-slate-200">
                 <input
                   type="checkbox"
                   checked={showThreats}
                   onChange={(event) => setShowThreats(event.target.checked)}
-                  className="h-4 w-4"
+                  className="h-4 w-4 accent-indigo-400"
                 />
                 Highlight threats
               </label>
-              <label className="flex items-center gap-2">
+              <label className="flex items-center gap-2 text-slate-200">
                 <input
                   type="checkbox"
                   checked={showControlledArea}
                   onChange={(event) => setShowControlledArea(event.target.checked)}
-                  className="h-4 w-4"
+                  className="h-4 w-4 accent-indigo-400"
                 />
                 Highlight controlled area
               </label>
             </div>
-            <div className="mt-2 text-xs text-slate-500">
+            <div className="mt-2 text-xs text-slate-300">
               {isViewingPast ? `Viewing move ${viewPly}/${moveRows.length}` : 'Live'}
             </div>
             <div className="mt-3">
-              <div className="mb-1 text-xs text-slate-600">Top hints <span className="text-xs text-slate-500">(used: {hintCount})</span></div>
+              <div className="mb-1 text-xs text-slate-200">Top hints <span className="text-xs text-slate-400">(used: {hintCount})</span></div>
               {!showHintsVisible ? (
                 <div className="flex">
                   <button
                     type="button"
-                    className="rounded px-2 py-1 text-xs font-semibold bg-white border border-slate-200 hover:bg-slate-50"
+                    className={secondaryActionClass}
                     onClick={() => {
                       const nextPly = moveRows.length + 1
                       lastShownPlyRef.current = nextPly
@@ -5406,15 +4799,15 @@ function LocalChessGame({
             </div>
           </div>
           <div className="mb-3 flex items-center justify-between">
-            <div className="text-sm font-semibold text-slate-700">Move History</div>
+            <div className="text-sm font-semibold text-slate-100">Move History</div>
           </div>
-          <div className="mb-3 text-xs text-slate-500">{memberCountLabel}</div>
+          <div className="mb-3 text-xs text-slate-300">{memberCountLabel}</div>
 
           <div className="min-h-0 flex-1 overflow-y-auto">
             {moveHistoryRowsNewestFirst.length ? (
-              <table className="w-full text-left text-sm text-slate-700">
-                <thead className="sticky top-0 bg-white">
-                  <tr className="text-xs uppercase text-slate-500">
+              <table className="w-full text-left text-sm text-slate-200">
+                <thead className="sticky top-0 bg-slate-800/90">
+                  <tr className="text-xs uppercase text-slate-300">
                     <th className="w-10 py-2">#</th>
                     <th className="py-2">White</th>
                     <th className="py-2">Black</th>
@@ -5427,13 +4820,13 @@ function LocalChessGame({
                     const whiteHint = hintedPlys.includes(whitePly)
                     const blackHint = hintedPlys.includes(blackPly)
                     return (
-                      <tr key={row.moveNumber} className="border-t border-slate-100">
-                        <td className="py-2 pr-2 text-xs text-slate-500">{row.moveNumber}.</td>
-                        <td className={`py-2 font-medium ${whiteHint ? 'text-purple-600' : ''}`}>
+                      <tr key={row.moveNumber} className="border-t border-slate-700">
+                        <td className="py-2 pr-2 text-xs text-slate-400">{row.moveNumber}.</td>
+                        <td className={`py-2 font-medium ${whiteHint ? 'text-purple-300' : ''}`}>
                           {row.white ? (
                             <button
                               type="button"
-                              className="rounded px-1 py-0.5 text-left hover:bg-slate-100"
+                              className={`rounded px-1 py-0.5 text-left hover:bg-slate-700/70 ${focusRingClass}`}
                               onClick={() => setViewPly(whitePly)}
                             >
                               <span>{row.white}</span>
@@ -5441,11 +4834,11 @@ function LocalChessGame({
                             </button>
                           ) : ''}
                         </td>
-                        <td className={`py-2 font-medium ${blackHint ? 'text-purple-600' : ''}`}>
+                        <td className={`py-2 font-medium ${blackHint ? 'text-purple-300' : ''}`}>
                           {row.black ? (
                             <button
                               type="button"
-                              className="rounded px-1 py-0.5 text-left hover:bg-slate-100"
+                              className={`rounded px-1 py-0.5 text-left hover:bg-slate-700/70 ${focusRingClass}`}
                               onClick={() => setViewPly(blackPly)}
                             >
                               <span>{row.black}</span>
@@ -5459,17 +4852,17 @@ function LocalChessGame({
                 </tbody>
               </table>
             ) : (
-              <div className="text-sm text-slate-500">No moves yet.</div>
+              <div className="text-sm text-slate-300">No moves yet.</div>
             )}
           </div>
-          <div className="mt-4 text-xs text-slate-500">
+          <div className="mt-4 text-xs text-slate-300">
             Game: local
           </div>
 
         </aside>
         {tutorialFullscreenMode ? (
-          <div className="min-h-0 flex-1 rounded-xl border border-slate-200 bg-white p-2 sm:p-3">
-            <ChessTutorPanel
+          <div className="min-h-0 flex-1 rounded-2xl border border-slate-700 bg-slate-800/70 p-3 sm:p-4">
+            <ChessTutorStudio
               analysis={tutorAnalysis}
               modelLabel={tutorModel}
               loading={tutorLoading}
@@ -5477,8 +4870,32 @@ function LocalChessGame({
               onAnalyze={() => { void handleAnalyzeGameForMe() }}
               initialTab={initialTutorTab}
               openStoryOnLoad={openStoryOnLoad}
-              fullscreen
               initialStoryId={initialStoryId}
+              stories={CHESS_STORIES}
+              lessons={CHESS_LESSONS}
+              lessonSections={LESSON_SECTIONS}
+              historyEvents={CHESS_HISTORY_EVENTS}
+              notationMoves={NOTATION_LINE_MOVES}
+              notationFrames={NOTATION_LINE_FRAMES}
+              notationGuideRows={NOTATION_GUIDE_ROWS}
+              rankReference={RANK_REFERENCE}
+              fileReference={FILE_REFERENCE}
+              rankDemoSquares={RANK_DEMO_SQUARES}
+              fileDemoSquares={FILE_DEMO_SQUARES}
+              attackPatterns={ATTACK_PATTERNS}
+              discoveredCheckPattern={DISCOVERED_CHECK_PATTERN}
+              lessonSquareStyles={lessonSquareStyles}
+              customPieces={woodTexturePieces}
+              storyModalComponent={({ open, onClose, pdfUrl, storyTitle, storyAudioSlug }) => (
+                <ChessStoryModal
+                  open={open}
+                  onClose={onClose}
+                  pdfUrl={pdfUrl}
+                  storyTitle={storyTitle}
+                  storyAudioSlug={storyAudioSlug as ChessStoryAudioSlug}
+                />
+              )}
+              onPractice={() => navigate('/games/local?tab=analyze')}
             />
           </div>
         ) : null}

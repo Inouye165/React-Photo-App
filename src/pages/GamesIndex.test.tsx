@@ -2,9 +2,48 @@ import { act, fireEvent, render, screen } from '@testing-library/react'
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 import GamesIndex from './GamesIndex'
 
+type MockGame = {
+  id: string
+  type: string
+  status: string
+  created_by: string
+  created_at: string
+  updated_at: string
+  time_control: null
+  current_fen: string
+  current_turn: string | null
+  result: null
+  members: Array<{ user_id: string; role: string; username: string | null }>
+}
+
+function makeGame(overrides: Partial<MockGame> = {}): MockGame {
+  const base: MockGame = {
+    id: 'g-1',
+    type: 'chess',
+    status: 'active',
+    created_by: 'user-1',
+    created_at: '2026-02-23T10:00:00.000Z',
+    updated_at: '2026-02-23T10:00:00.000Z',
+    time_control: null,
+    current_fen: 'start',
+    current_turn: 'white',
+    result: null,
+    members: [
+      { user_id: 'user-1', role: 'white', username: 'me' },
+      { user_id: 'user-2', role: 'black', username: 'opponent' },
+    ],
+  }
+
+  return {
+    ...base,
+    ...overrides,
+    members: overrides.members ?? base.members,
+  }
+}
+
 const {
   navigateMock,
-  listMyGamesMock,
+  listMyGamesWithMembersMock,
   createChessGameMock,
   searchUsersMock,
   removeChannelMock,
@@ -42,7 +81,7 @@ const {
 
   return {
     navigateMock: vi.fn(),
-    listMyGamesMock: vi.fn(async () => []),
+    listMyGamesWithMembersMock: vi.fn<() => Promise<MockGame[]>>(async () => []),
     createChessGameMock: vi.fn(async () => ({ id: 'new-game' })),
     searchUsersMock: vi.fn(),
     removeChannelMock: vi.fn(),
@@ -78,8 +117,14 @@ vi.mock('../events/gamesEvents', () => ({
 }))
 
 vi.mock('../api/games', () => ({
-  listMyGames: listMyGamesMock,
+  listMyGamesWithMembers: listMyGamesWithMembersMock,
   createChessGame: createChessGameMock,
+}))
+
+vi.mock('react-chessboard', () => ({
+  Chessboard: ({ position, boardOrientation }: { position?: string; boardOrientation?: 'white' | 'black' }) => (
+    <div data-testid="chessboard" data-position={position} data-orientation={boardOrientation} />
+  ),
 }))
 
 vi.mock('../api/chat', () => ({
@@ -103,7 +148,7 @@ describe('GamesIndex', () => {
   it('debounces user search requests', async () => {
     render(<GamesIndex />)
 
-    const input = screen.getByPlaceholderText('Search users')
+    const input = screen.getByLabelText('Search by username')
 
     fireEvent.change(input, { target: { value: 'a' } })
     fireEvent.change(input, { target: { value: 'al' } })
@@ -130,7 +175,7 @@ describe('GamesIndex', () => {
 
     render(<GamesIndex />)
 
-    const input = screen.getByPlaceholderText('Search users')
+    const input = screen.getByLabelText('Search by username')
 
     fireEvent.change(input, { target: { value: 'al' } })
     await act(async () => {
@@ -160,7 +205,7 @@ describe('GamesIndex', () => {
   })
 
   it('shows load error and retries list fetch', async () => {
-    listMyGamesMock
+    listMyGamesWithMembersMock
       .mockRejectedValueOnce(new Error('network'))
       .mockResolvedValueOnce([])
 
@@ -179,14 +224,14 @@ describe('GamesIndex', () => {
       await Promise.resolve()
     })
 
-    expect(listMyGamesMock).toHaveBeenCalledTimes(2)
+    expect(listMyGamesWithMembersMock).toHaveBeenCalledTimes(2)
     expect(screen.queryByText('Failed to load games. Please retry.')).not.toBeInTheDocument()
   })
 
   it('refreshes game list from realtime events without interval polling', async () => {
-    listMyGamesMock
+    listMyGamesWithMembersMock
       .mockResolvedValueOnce([])
-      .mockResolvedValueOnce([{ id: 'g1', status: 'waiting', type: 'chess', members: [] }] as any)
+      .mockResolvedValueOnce([makeGame({ id: 'g1', status: 'waiting', members: [] })])
 
     const setIntervalSpy = vi.spyOn(globalThis, 'setInterval')
 
@@ -197,7 +242,7 @@ describe('GamesIndex', () => {
       await Promise.resolve()
     })
 
-    expect(listMyGamesMock).toHaveBeenCalledTimes(1)
+    expect(listMyGamesWithMembersMock).toHaveBeenCalledTimes(1)
 
     await act(async () => {
       emitRealtime('game_members', 'INSERT', { new: { user_id: 'user-1', game_id: 'g1' } })
@@ -205,8 +250,86 @@ describe('GamesIndex', () => {
       await Promise.resolve()
     })
 
-    expect(listMyGamesMock).toHaveBeenCalledTimes(2)
+    expect(listMyGamesWithMembersMock).toHaveBeenCalledTimes(2)
     expect(setIntervalSpy).not.toHaveBeenCalled()
     expect(subscribeMock).toHaveBeenCalled()
+  })
+
+  it('renders Back to Chess and navigates to /games/chess', async () => {
+    render(<GamesIndex />)
+
+    await act(async () => {
+      await Promise.resolve()
+      await Promise.resolve()
+    })
+
+    fireEvent.click(screen.getByRole('button', { name: 'Back to Chess' }))
+    expect(navigateMock).toHaveBeenCalledWith('/games/chess')
+  })
+
+  it('shows Continue for selected open game and navigates on click', async () => {
+    listMyGamesWithMembersMock.mockResolvedValueOnce([
+      makeGame({
+        id: 'g-open',
+        status: 'active',
+        updated_at: '2026-02-23T12:00:00.000Z',
+        current_fen: '4k3/8/8/8/8/8/8/4K3 w - - 0 1',
+        members: [
+          { user_id: 'user-1', role: 'white', username: 'me' },
+          { user_id: 'user-2', role: 'black', username: 'alice' },
+        ],
+      }),
+    ])
+
+    render(<GamesIndex />)
+
+    await act(async () => {
+      await Promise.resolve()
+      await Promise.resolve()
+    })
+
+    expect(screen.getByRole('button', { name: 'Continue' })).toBeInTheDocument()
+    expect(screen.getByTestId('chessboard')).toHaveAttribute('data-position', '4k3/8/8/8/8/8/8/4K3 w - - 0 1')
+
+    fireEvent.click(screen.getByRole('button', { name: 'Continue' }))
+    expect(navigateMock).toHaveBeenCalledWith('/games/g-open')
+  })
+
+  it('selects a match from list before opening and updates stage details', async () => {
+    listMyGamesWithMembersMock.mockResolvedValueOnce([
+      makeGame({
+        id: 'g-alice',
+        status: 'active',
+        updated_at: '2026-02-23T10:00:00.000Z',
+        members: [
+          { user_id: 'user-1', role: 'white', username: 'me' },
+          { user_id: 'user-2', role: 'black', username: 'Alice' },
+        ],
+      }),
+      makeGame({
+        id: 'g-bob',
+        status: 'active',
+        updated_at: '2026-02-23T12:00:00.000Z',
+        members: [
+          { user_id: 'user-1', role: 'white', username: 'me' },
+          { user_id: 'user-3', role: 'black', username: 'Bob' },
+        ],
+      }),
+    ])
+
+    render(<GamesIndex />)
+
+    await act(async () => {
+      await Promise.resolve()
+      await Promise.resolve()
+    })
+
+    expect(screen.getByRole('heading', { name: 'vs Bob' })).toBeInTheDocument()
+
+    const aliceGameButton = screen.getByRole('button', { name: /Chess vs Alice/i })
+    fireEvent.click(aliceGameButton)
+
+    expect(aliceGameButton).toHaveAttribute('aria-pressed', 'true')
+    expect(screen.getByRole('heading', { name: 'vs Alice' })).toBeInTheDocument()
   })
 })
