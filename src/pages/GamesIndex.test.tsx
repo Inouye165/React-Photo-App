@@ -148,6 +148,12 @@ describe('GamesIndex', () => {
   it('debounces user search requests', async () => {
     render(<GamesIndex />)
 
+    const inviteButtons = screen.getAllByRole('button', { name: 'Invite player' })
+    fireEvent.click(inviteButtons[0])
+    await act(async () => {
+      await Promise.resolve()
+    })
+
     const input = screen.getByLabelText('Search by username')
 
     fireEvent.change(input, { target: { value: 'a' } })
@@ -174,6 +180,12 @@ describe('GamesIndex', () => {
       .mockImplementationOnce(() => new Promise((resolve) => { resolveSecond = resolve }))
 
     render(<GamesIndex />)
+
+    const inviteButtons = screen.getAllByRole('button', { name: 'Invite player' })
+    fireEvent.click(inviteButtons[0])
+    await act(async () => {
+      await Promise.resolve()
+    })
 
     const input = screen.getByLabelText('Search by username')
 
@@ -287,6 +299,11 @@ describe('GamesIndex', () => {
       await Promise.resolve()
       await Promise.resolve()
     })
+    const currentButtons = screen.getAllByRole('button', { name: 'Current games' })
+    fireEvent.click(currentButtons[0])
+    await act(async () => {
+      await Promise.resolve()
+    })
 
     expect(screen.getByRole('button', { name: 'Continue' })).toBeInTheDocument()
     expect(screen.getByTestId('chessboard')).toHaveAttribute('data-position', '4k3/8/8/8/8/8/8/4K3 w - - 0 1')
@@ -321,6 +338,12 @@ describe('GamesIndex', () => {
 
     await act(async () => {
       await Promise.resolve()
+      await Promise.resolve()
+    })
+
+    const currentButtons2 = screen.getAllByRole('button', { name: 'Current games' })
+    fireEvent.click(currentButtons2[0])
+    await act(async () => {
       await Promise.resolve()
     })
 

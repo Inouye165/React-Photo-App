@@ -7,6 +7,14 @@ import { supabase } from '../supabaseClient'
 import { useAuth } from '../contexts/AuthContext'
 import { onGamesChanged } from '../events/gamesEvents'
 import { ArrowLeft, Clock, Inbox, UserPlus } from 'lucide-react'
+import {
+  PREMIUM_BUTTON_PRIMARY,
+  PREMIUM_BUTTON_SECONDARY,
+  PREMIUM_PAGE_CONTAINER,
+  PREMIUM_PAGE_SHELL,
+  PREMIUM_SURFACE,
+  PREMIUM_SURFACE_PADDED,
+} from '../styles/ui'
 
 const inviteStatuses = new Set(['waiting', 'invited', 'pending'])
 const activeStatuses = new Set(['active', 'in_progress', 'inprogress'])
@@ -59,6 +67,7 @@ export default function GamesIndex(): React.JSX.Element {
   const { user } = useAuth()
   const [games, setGames] = useState<GameWithMembers[]>([])
   const [selectedGameId, setSelectedGameId] = useState<string | null>(null)
+  const [activePanel, setActivePanel] = useState<'home' | 'invite' | 'current'>('home')
   const [query, setQuery] = useState('')
   const [results, setResults] = useState<Array<{ id: string; username: string | null }>>([])
   const [loadError, setLoadError] = useState<string | null>(null)
@@ -222,6 +231,7 @@ export default function GamesIndex(): React.JSX.Element {
   }
 
   function focusInviteInput() {
+    setActivePanel('invite')
     inviteInputRef.current?.focus()
   }
 
@@ -237,33 +247,51 @@ export default function GamesIndex(): React.JSX.Element {
   const boardPosition = selectedGame?.current_fen?.trim() ? selectedGame.current_fen : 'start'
   const hasOpenGames = openGames.length > 0
 
+  useEffect(() => {
+    if (activePanel !== 'invite') return
+    const timer = window.setTimeout(() => {
+      inviteInputRef.current?.focus()
+    }, 0)
+    return () => window.clearTimeout(timer)
+  }, [activePanel])
+
   return (
-    <section className="flex min-h-[100dvh] w-full flex-col bg-slate-900 px-4 pb-6 pt-6 text-slate-100 sm:px-6 lg:px-8">
-      <div className="mx-auto flex w-full max-w-6xl flex-1 flex-col gap-4 sm:gap-5">
-        <header className="rounded-2xl border border-slate-700 bg-slate-800/70 p-4 sm:p-5">
+    <section className={`${PREMIUM_PAGE_SHELL} flex h-[100dvh] w-full flex-col overflow-hidden`}>
+      <div className={`${PREMIUM_PAGE_CONTAINER} flex min-h-0 w-full max-w-6xl flex-1 flex-col gap-4 sm:gap-5`}>
+        <header className={PREMIUM_SURFACE_PADDED}>
           <div className="flex flex-wrap items-start justify-between gap-3">
             <div className="space-y-2">
               <button
                 type="button"
                 onClick={() => navigate('/chess')}
-                className="inline-flex min-h-10 items-center gap-2 rounded-lg border border-slate-600 bg-slate-900/60 px-3 py-2 text-sm font-medium text-slate-100 transition hover:border-slate-500 hover:bg-slate-900 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-indigo-300 focus-visible:ring-offset-2 focus-visible:ring-offset-slate-900"
+                className={`${PREMIUM_BUTTON_SECONDARY} min-h-10 gap-2 text-sm`}
               >
                 <ArrowLeft size={16} aria-hidden="true" />
                 Back to Chess
               </button>
               <div>
                 <h1 className="text-2xl font-bold tracking-tight text-white sm:text-3xl">Play vs Opponent</h1>
-                <p className="mt-1 text-sm text-slate-300 sm:text-base">Invite challengers, preview live positions, and continue your current match instantly.</p>
+                <p className="mt-1 text-sm text-slate-300 sm:text-base">Choose one action, work in a full-screen view, then go back.</p>
               </div>
             </div>
-            <button
-              type="button"
-              onClick={() => selectedGame && navigate(`/games/${selectedGame.id}`)}
-              disabled={!selectedGame}
-              className="inline-flex min-h-10 items-center rounded-lg border border-indigo-300/50 bg-indigo-500/20 px-3 py-2 text-sm font-semibold text-indigo-50 transition hover:bg-indigo-500/30 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-indigo-200 focus-visible:ring-offset-2 focus-visible:ring-offset-slate-900 disabled:cursor-not-allowed disabled:opacity-40"
-            >
-              Open selected game
-            </button>
+            <div className="flex flex-wrap items-center gap-2">
+              <button
+                type="button"
+                onClick={() => setActivePanel('invite')}
+                className={`${PREMIUM_BUTTON_PRIMARY} min-h-10 gap-2 text-sm`}
+              >
+                <UserPlus size={15} aria-hidden="true" />
+                Invite player
+              </button>
+              <button
+                type="button"
+                onClick={() => setActivePanel('current')}
+                className={`${PREMIUM_BUTTON_SECONDARY} min-h-10 gap-2 text-sm`}
+              >
+                <Clock size={15} aria-hidden="true" />
+                Current games
+              </button>
+            </div>
           </div>
         </header>
 
@@ -280,138 +308,168 @@ export default function GamesIndex(): React.JSX.Element {
           </div>
         ) : null}
 
-        <div className="grid grid-cols-1 gap-4 lg:grid-cols-[minmax(0,1fr)_360px]">
-          <section className="rounded-2xl border border-slate-700 bg-slate-800/70 p-4 sm:p-5">
-            <div className="space-y-4">
-              <div className="rounded-xl border border-slate-700 bg-slate-900/70 p-3 sm:p-4">
-                <div ref={boardStageRef} className="mx-auto w-full max-w-[560px]" aria-label="Selected game board preview">
-                  <Chessboard
-                    id="games-index-preview-board"
-                    position={boardPosition}
-                    boardWidth={boardSize}
-                    boardOrientation={boardOrientation}
-                    arePiecesDraggable={false}
+        <div className={`${PREMIUM_SURFACE} min-h-0 flex-1 p-4 sm:p-5`}>
+          {activePanel === 'home' ? (
+            <div className="flex h-full flex-col justify-center gap-4">
+              <button
+                type="button"
+                onClick={() => setActivePanel('invite')}
+                className={`${PREMIUM_BUTTON_PRIMARY} min-h-12 w-full text-base sm:text-lg`}
+              >
+                Invite player
+              </button>
+              <button
+                type="button"
+                onClick={() => setActivePanel('current')}
+                className={`${PREMIUM_BUTTON_SECONDARY} min-h-12 w-full text-base sm:text-lg`}
+              >
+                Current games
+              </button>
+            </div>
+          ) : null}
+
+          {activePanel === 'invite' ? (
+            <div className="flex h-full min-h-0 flex-col">
+              <div className="mb-3 flex items-center justify-between gap-2">
+                <h2 className="text-base font-semibold text-white">Invite a player</h2>
+                <button type="button" onClick={() => setActivePanel('home')} className={PREMIUM_BUTTON_SECONDARY}>Back</button>
+              </div>
+              <div className="min-h-0 flex-1 rounded-xl border border-slate-700 bg-slate-900/60 p-3 sm:p-4">
+                <div className="flex h-full min-h-0 flex-col gap-2">
+                  <label htmlFor="invite-search" className="sr-only">Search by username</label>
+                  <input
+                    id="invite-search"
+                    ref={inviteInputRef}
+                    value={query}
+                    onChange={handleSearch}
+                    className="w-full rounded-lg border border-slate-600 bg-slate-900 px-3 py-2 text-sm text-slate-100 placeholder:text-slate-400 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-indigo-300"
+                    placeholder="Search by username…"
                   />
+                  <div className="min-h-0 flex-1 space-y-2 overflow-y-auto pr-1">
+                    {results.length ? results.map((r) => (
+                      <div key={r.id} className="flex items-center gap-2 rounded-lg border border-slate-700 bg-slate-800/80 px-2.5 py-2">
+                        <span className="flex-1 text-sm text-slate-100">{r.username || r.id}</span>
+                        <button
+                          type="button"
+                          onClick={() => { void handleCreate(r.id) }}
+                          className={`${PREMIUM_BUTTON_PRIMARY} min-h-9 gap-1 px-2.5 py-1.5 text-xs`}
+                        >
+                          <UserPlus size={14} aria-hidden="true" />
+                          Invite
+                        </button>
+                      </div>
+                    )) : (
+                      <p className="text-xs text-slate-400">Search by username to send a direct chess invite.</p>
+                    )}
+                  </div>
                 </div>
               </div>
-
-              {hasOpenGames && selectedGame ? (
-                <div className="space-y-3 rounded-xl border border-slate-700 bg-slate-900/60 p-4">
-                  <div className="flex flex-wrap items-center justify-between gap-2">
-                    <h2 className="text-lg font-semibold text-white">vs {getOpponentName(selectedGame, user?.id)}</h2>
-                    <span className="inline-flex rounded-full border border-indigo-300/40 bg-indigo-500/10 px-2.5 py-1 text-xs font-semibold text-indigo-100">
-                      {getStatusLabel(selectedGame.status)}
-                    </span>
-                  </div>
-                  <p className="text-sm text-slate-300">Last updated {formatUpdatedAt(selectedGame.updated_at)}</p>
-                  <button
-                    type="button"
-                    onClick={() => navigate(`/games/${selectedGame.id}`)}
-                    className="inline-flex min-h-11 items-center rounded-lg border border-indigo-300/60 bg-indigo-500/20 px-4 py-2 text-sm font-semibold text-indigo-50 transition hover:bg-indigo-500/30 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-indigo-200 focus-visible:ring-offset-2 focus-visible:ring-offset-slate-900"
-                  >
-                    Continue
-                  </button>
-                </div>
-              ) : (
-                <div className="space-y-3 rounded-xl border border-dashed border-slate-600 bg-slate-900/55 p-4">
-                  <h2 className="text-lg font-semibold text-white">No open matches yet</h2>
-                  <p className="text-sm text-slate-300">Send an invite to start a game and your board preview will appear here.</p>
-                  <button
-                    type="button"
-                    onClick={focusInviteInput}
-                    className="inline-flex min-h-11 items-center rounded-lg border border-indigo-300/60 bg-indigo-500/20 px-4 py-2 text-sm font-semibold text-indigo-50 transition hover:bg-indigo-500/30 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-indigo-200 focus-visible:ring-offset-2 focus-visible:ring-offset-slate-900"
-                  >
-                    Invite a player
-                  </button>
-                </div>
-              )}
             </div>
-          </section>
+          ) : null}
 
-          <aside className="space-y-4 rounded-2xl border border-slate-700 bg-slate-800/70 p-4 sm:p-5">
-            <section className="rounded-xl border border-slate-700 bg-slate-900/60 p-3 sm:p-4">
-              <h2 className="text-sm font-semibold uppercase tracking-wide text-slate-200">Invite a player</h2>
-              <div className="mt-3 space-y-2">
-                <label htmlFor="invite-search" className="sr-only">Search by username</label>
-                <input
-                  id="invite-search"
-                  ref={inviteInputRef}
-                  value={query}
-                  onChange={handleSearch}
-                  className="w-full rounded-lg border border-slate-600 bg-slate-900 px-3 py-2 text-sm text-slate-100 placeholder:text-slate-400 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-indigo-300"
-                  placeholder="Search by username…"
-                />
-                <div className="max-h-52 space-y-2 overflow-y-auto pr-1">
-                  {results.length ? results.map((r) => (
-                    <div key={r.id} className="flex items-center gap-2 rounded-lg border border-slate-700 bg-slate-800/80 px-2.5 py-2">
-                      <span className="flex-1 text-sm text-slate-100">{r.username || r.id}</span>
+          {activePanel === 'current' ? (
+            <div className="flex h-full min-h-0 flex-col">
+              <div className="mb-3 flex items-center justify-between gap-2">
+                <h2 className="text-base font-semibold text-white">Current games</h2>
+                <button type="button" onClick={() => setActivePanel('home')} className={PREMIUM_BUTTON_SECONDARY}>Back</button>
+              </div>
+
+              <div className="min-h-0 flex-1 overflow-y-auto">
+                <div className="space-y-3">
+                  <div className="rounded-xl border border-slate-700 bg-slate-900/70 p-3 sm:p-4">
+                    <div ref={boardStageRef} className="mx-auto w-full max-w-[560px]" aria-label="Selected game board preview">
+                      <Chessboard
+                        id="games-index-preview-board"
+                        position={boardPosition}
+                        boardWidth={boardSize}
+                        boardOrientation={boardOrientation}
+                        arePiecesDraggable={false}
+                      />
+                    </div>
+                  </div>
+
+                  {hasOpenGames && selectedGame ? (
+                    <div className="space-y-3 rounded-xl border border-slate-700 bg-slate-900/60 p-4">
+                      <div className="flex flex-wrap items-center justify-between gap-2">
+                        <h3 className="text-lg font-semibold text-white">vs {getOpponentName(selectedGame, user?.id)}</h3>
+                        <span className="inline-flex rounded-full border border-indigo-300/40 bg-indigo-500/10 px-2.5 py-1 text-xs font-semibold text-indigo-100">
+                          {getStatusLabel(selectedGame.status)}
+                        </span>
+                      </div>
+                      <p className="text-sm text-slate-300">Last updated {formatUpdatedAt(selectedGame.updated_at)}</p>
                       <button
                         type="button"
-                        onClick={() => { void handleCreate(r.id) }}
-                        className="inline-flex min-h-9 items-center gap-1 rounded-md border border-indigo-300/50 bg-indigo-500/20 px-2.5 py-1.5 text-xs font-semibold text-indigo-50 transition hover:bg-indigo-500/30 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-indigo-200 focus-visible:ring-offset-2 focus-visible:ring-offset-slate-900"
+                        onClick={() => navigate(`/games/${selectedGame.id}`)}
+                        className={PREMIUM_BUTTON_PRIMARY}
                       >
-                        <UserPlus size={14} aria-hidden="true" />
-                        Invite
+                        Continue
                       </button>
                     </div>
-                  )) : (
-                    <p className="text-xs text-slate-400">Search by username to send a direct chess invite.</p>
+                  ) : (
+                    <div className="space-y-3 rounded-xl border border-dashed border-slate-600 bg-slate-900/55 p-4">
+                      <h3 className="text-lg font-semibold text-white">No open matches yet</h3>
+                      <p className="text-sm text-slate-300">Send an invite to start a game.</p>
+                      <button
+                        type="button"
+                        onClick={focusInviteInput}
+                        className={PREMIUM_BUTTON_PRIMARY}
+                      >
+                        Invite a player
+                      </button>
+                    </div>
                   )}
+
+                  <section className="rounded-xl border border-slate-700 bg-slate-900/60 p-3 sm:p-4">
+                    <h3 className="text-sm font-semibold uppercase tracking-wide text-slate-200">Your matches</h3>
+                    {openGames.length ? (
+                      <ul className="mt-3 space-y-2">
+                        {openGames.map((game) => {
+                          const isInvite = inviteStatuses.has(normalizeStatus(game.status))
+                          const isSelected = selectedGameId === game.id
+                          return (
+                            <li key={game.id}>
+                              <div className={`flex items-start gap-2 rounded-lg border p-2 transition ${isSelected
+                                ? 'border-indigo-300/70 bg-indigo-500/15'
+                                : 'border-slate-700 bg-slate-800/80'}`}
+                              >
+                                <button
+                                  type="button"
+                                  onClick={() => setSelectedGameId(game.id)}
+                                  aria-pressed={isSelected}
+                                  aria-current={isSelected ? 'true' : undefined}
+                                  className="flex-1 rounded-md p-1 text-left transition hover:bg-slate-700/30 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-indigo-200 focus-visible:ring-offset-2 focus-visible:ring-offset-slate-900"
+                                >
+                                  <div className="flex items-center gap-2">
+                                    {isInvite ? <Inbox size={16} className="text-slate-300" aria-hidden="true" /> : <Clock size={16} className="text-slate-300" aria-hidden="true" />}
+                                    <div>
+                                      <div className="text-sm font-medium text-slate-100">{formatGameLabel(game, user?.id)}</div>
+                                      <div className="text-xs text-slate-300">{isInvite ? 'Invitation' : 'In progress'}</div>
+                                    </div>
+                                  </div>
+                                  <p className="mt-2 text-xs text-slate-400">Updated {formatUpdatedAt(game.updated_at)}</p>
+                                </button>
+                                <button
+                                  type="button"
+                                  onClick={() => navigate(`/games/${game.id}`)}
+                                  className={`${PREMIUM_BUTTON_SECONDARY} min-h-8 self-center px-2 py-1 text-xs`}
+                                >
+                                  Open
+                                </button>
+                              </div>
+                            </li>
+                          )
+                        })}
+                      </ul>
+                    ) : (
+                      <div className="mt-3 rounded-lg border border-dashed border-slate-600 bg-slate-900/50 px-3 py-4 text-sm text-slate-300">
+                        No invitations or active games yet.
+                      </div>
+                    )}
+                  </section>
                 </div>
               </div>
-            </section>
-
-            <section className="rounded-xl border border-slate-700 bg-slate-900/60 p-3 sm:p-4">
-              <h2 className="text-sm font-semibold uppercase tracking-wide text-slate-200">Your matches</h2>
-              {openGames.length ? (
-                <ul className="mt-3 space-y-2">
-                  {openGames.map((game) => {
-                    const isInvite = inviteStatuses.has(normalizeStatus(game.status))
-                    const isSelected = selectedGameId === game.id
-                    return (
-                      <li key={game.id}>
-                        <div className={`flex items-start gap-2 rounded-lg border p-2 transition ${isSelected
-                          ? 'border-indigo-300/70 bg-indigo-500/15'
-                          : 'border-slate-700 bg-slate-800/80'}`}
-                        >
-                          <button
-                            type="button"
-                            onClick={() => setSelectedGameId(game.id)}
-                            aria-pressed={isSelected}
-                            aria-current={isSelected ? 'true' : undefined}
-                            className="flex-1 rounded-md p-1 text-left transition hover:bg-slate-700/30 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-indigo-200 focus-visible:ring-offset-2 focus-visible:ring-offset-slate-900"
-                          >
-                            <div className="flex items-start justify-between gap-3">
-                            <div className="flex items-center gap-2">
-                              {isInvite ? <Inbox size={16} className="text-slate-300" aria-hidden="true" /> : <Clock size={16} className="text-slate-300" aria-hidden="true" />}
-                              <div>
-                                <div className="text-sm font-medium text-slate-100">{formatGameLabel(game, user?.id)}</div>
-                                <div className="text-xs text-slate-300">{isInvite ? 'Invitation' : 'In progress'}</div>
-                              </div>
-                            </div>
-                            </div>
-                            <p className="mt-2 text-xs text-slate-400">Updated {formatUpdatedAt(game.updated_at)}</p>
-                          </button>
-                          <button
-                            type="button"
-                            onClick={() => navigate(`/games/${game.id}`)}
-                            className="inline-flex min-h-8 items-center self-center rounded-md border border-slate-500 bg-slate-900 px-2 py-1 text-xs font-semibold text-slate-100 transition hover:border-slate-400 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-indigo-200 focus-visible:ring-offset-2 focus-visible:ring-offset-slate-900"
-                          >
-                            Open
-                          </button>
-                        </div>
-                      </li>
-                    )
-                  })}
-                </ul>
-              ) : (
-                <div className="mt-3 rounded-lg border border-dashed border-slate-600 bg-slate-900/50 px-3 py-4 text-sm text-slate-300">
-                  No invitations or active games yet.
-                </div>
-              )}
-            </section>
-
-          </aside>
+            </div>
+          ) : null}
         </div>
       </div>
     </section>

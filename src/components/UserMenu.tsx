@@ -145,51 +145,65 @@ export default function UserMenu({ onOpenPhotos, onOpenEdit, onOpenAdmin, theme 
   return (
     <>
       <div className="relative" ref={menuRef}>
-        {/* Trigger Button - User Avatar */}
-        <button
-          onClick={() => setIsOpen(!isOpen)}
-          data-testid="user-menu-trigger"
-          aria-expanded={isOpen}
-          aria-haspopup="true"
-          aria-label="User menu"
-          className={`flex items-center gap-2 min-h-[44px] px-2 sm:px-3
+        <div className="flex items-center gap-2">
+          {isAdmin && onOpenAdmin ? (
+            <button
+              onClick={handleAdmin}
+              data-testid="user-menu-admin-quick"
+              aria-label="Open admin dashboard"
+              className={`inline-flex min-h-[44px] items-center gap-2 rounded-lg border px-3 text-xs font-semibold sm:text-sm
+                     ${isDark
+                       ? 'border-indigo-300/60 bg-indigo-500/20 text-indigo-50 hover:bg-indigo-500/30'
+                       : 'border-indigo-200 bg-indigo-50 text-indigo-700 hover:bg-indigo-100'
+                     }
+                     transition-all touch-manipulation`}
+            >
+              <Shield size={16} />
+              <span className="hidden sm:inline">Admin</span>
+            </button>
+          ) : null}
+
+          <button
+            onClick={() => setIsOpen(!isOpen)}
+            data-testid="user-menu-trigger"
+            aria-expanded={isOpen}
+            aria-haspopup="true"
+            aria-label="User menu"
+            className={`flex items-center gap-2 min-h-[44px] px-2 sm:px-3
                      rounded-lg border text-xs sm:text-sm font-medium
                      ${isDark
                        ? 'border-slate-600 bg-slate-800/80 text-slate-200 hover:bg-slate-800 hover:border-slate-500'
                        : 'border-slate-200 bg-white text-slate-600 hover:bg-slate-50 hover:border-slate-300'
                      }
                      active:bg-slate-100 transition-all touch-manipulation`}
-        >
-          {/* Avatar */}
-          <div className={`w-7 h-7 rounded-full flex items-center justify-center text-xs font-semibold overflow-hidden ${isDark ? 'bg-slate-700 text-slate-100' : 'bg-slate-200 text-slate-600'}`}>
-            {avatarUrl ? (
-              <img src={avatarUrl} alt="User avatar" className="w-full h-full object-cover" />
-            ) : (
-              initial
-            )}
-          </div>
-          
-          {/* Username - hidden on mobile */}
-          <span className="hidden sm:block max-w-[88px] truncate">
-            {displayName}
-          </span>
-          
-          {/* Admin badge */}
-          {isAdmin && (
-            <span 
-              className={`hidden sm:inline px-2 py-0.5 text-[10px] font-semibold rounded-full ${isDark ? 'bg-purple-500/20 text-purple-200' : 'bg-purple-100 text-purple-700'}`}
-              title="Administrator"
-            >
-              ADMIN
+          >
+            <div className={`w-7 h-7 rounded-full flex items-center justify-center text-xs font-semibold overflow-hidden ${isDark ? 'bg-slate-700 text-slate-100' : 'bg-slate-200 text-slate-600'}`}>
+              {avatarUrl ? (
+                <img src={avatarUrl} alt="User avatar" className="w-full h-full object-cover" />
+              ) : (
+                initial
+              )}
+            </div>
+
+            <span className="hidden sm:block max-w-[88px] truncate">
+              {displayName}
             </span>
-          )}
-          
-          {/* Chevron indicator */}
-          <ChevronDown 
-            size={14} 
-            className={`${isDark ? 'text-slate-300' : 'text-slate-400'} transition-transform ${isOpen ? 'rotate-180' : ''}`}
-          />
-        </button>
+
+            {isAdmin && (
+              <span
+                className={`hidden sm:inline px-2 py-0.5 text-[10px] font-semibold rounded-full ${isDark ? 'bg-purple-500/20 text-purple-200' : 'bg-purple-100 text-purple-700'}`}
+                title="Administrator"
+              >
+                ADMIN
+              </span>
+            )}
+
+            <ChevronDown
+              size={14}
+              className={`${isDark ? 'text-slate-300' : 'text-slate-400'} transition-transform ${isOpen ? 'rotate-180' : ''}`}
+            />
+          </button>
+        </div>
 
         {/* Dropdown Menu */}
         {isOpen && (

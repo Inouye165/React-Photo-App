@@ -1,8 +1,10 @@
 import { useEffect, useMemo, useState } from 'react'
-import { Link } from 'react-router-dom'
+import { Link, useNavigate } from 'react-router-dom'
 import { request, ApiError } from '../api/httpClient'
 import { getAuthHeadersAsync } from '../api/auth'
 import { useAuth } from '../contexts/AuthContext'
+import { PREMIUM_PAGE_CONTAINER, PREMIUM_PAGE_SHELL, PREMIUM_SURFACE } from '../styles/ui'
+import { navigateWithTransition } from '../utils/navigateWithTransition'
 
 type AssessmentStatus = 'pending_review' | 'confirmed' | 'rejected'
 
@@ -59,6 +61,7 @@ function formatDate(value: string | null): string {
 }
 
 export default function AdminAssessmentHistory() {
+  const navigate = useNavigate()
   const { user } = useAuth()
   const isAdmin = useMemo(() => user?.app_metadata?.role === 'admin', [user])
 
@@ -183,38 +186,43 @@ export default function AdminAssessmentHistory() {
 
   if (!isAdmin) {
     return (
-      <div className="max-w-5xl mx-auto p-6">
-        <h1 className="text-2xl font-semibold mb-2">Admin Assessments</h1>
-        <p className="text-gray-600">You do not have permission to view this page.</p>
+      <div className={PREMIUM_PAGE_SHELL}>
+        <div className={`${PREMIUM_PAGE_CONTAINER} page-enter-fade`}>
+          <div className="mx-auto max-w-5xl rounded-2xl border border-slate-700 bg-slate-800/70 p-6">
+            <h1 className="mb-2 text-2xl font-semibold text-white">Admin Assessments</h1>
+            <p className="text-slate-300">You do not have permission to view this page.</p>
+          </div>
+        </div>
       </div>
     )
   }
 
   return (
-    <div className="max-w-6xl mx-auto p-6">
+    <div className={PREMIUM_PAGE_SHELL}>
+      <div className={`${PREMIUM_PAGE_CONTAINER} page-enter-fade`}>
       <div className="flex items-center justify-between mb-4">
-        <h1 className="text-2xl font-semibold">Admin Assessments</h1>
+        <h1 className="text-2xl font-semibold text-white">Admin Assessments</h1>
         <div className="flex items-center gap-2">
           <button
             onClick={load}
             disabled={loading}
-            className="px-3 py-2 rounded border border-gray-300 text-gray-700 hover:bg-gray-50 disabled:opacity-50"
+            className="rounded-md border border-slate-500 bg-slate-800 px-3 py-2 text-slate-100 hover:border-slate-400 disabled:opacity-50"
           >
             Refresh
           </button>
           <button
             onClick={triggerNewAssessment}
             disabled={triggering}
-            className="px-3 py-2 rounded bg-blue-600 text-white hover:bg-blue-700 disabled:opacity-50"
+            className="rounded-md border border-indigo-300/60 bg-indigo-500/20 px-3 py-2 font-semibold text-indigo-50 hover:bg-indigo-500/30 disabled:opacity-50"
           >
             {triggering ? 'Triggering…' : 'Trigger New Assessment'}
           </button>
         </div>
       </div>
 
-      <div className="mb-6 border border-gray-200 rounded p-4">
-        <h2 className="text-lg font-medium mb-2">Add External Assessment</h2>
-        <p className="text-sm text-gray-600 mb-3">
+      <div className={`${PREMIUM_SURFACE} mb-6 p-4`}>
+        <h2 className="mb-2 text-lg font-medium text-white">Add External Assessment</h2>
+        <p className="mb-3 text-sm text-slate-300">
           Paste a review result from ChatGPT/Gemini (or other LLM). Optionally include the numeric grade.
         </p>
         <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
@@ -280,7 +288,7 @@ export default function AdminAssessmentHistory() {
 
       {error ? <div className="mb-4 p-3 rounded border border-red-200 bg-red-50 text-red-700">{error}</div> : null}
 
-      <div className="overflow-x-auto border border-gray-200 rounded">
+      <div className={`${PREMIUM_SURFACE} overflow-x-auto`}>
         <table className="min-w-full text-sm">
           <thead className="bg-gray-50 text-left">
             <tr>
@@ -334,7 +342,11 @@ export default function AdminAssessmentHistory() {
                   <td className="p-3 text-gray-700">{r.reviewer_id || '-'}</td>
                   <td className="p-3">
                     <Link
-                      className="text-blue-600 hover:underline"
+                      className="text-indigo-200 hover:text-indigo-100 hover:underline"
+                      onClick={(e) => {
+                        e.preventDefault()
+                        navigateWithTransition(navigate, `/admin/assessments/${encodeURIComponent(r.id)}`)
+                      }}
                       to={`/admin/assessments/${encodeURIComponent(r.id)}`}
                     >
                       Review
@@ -347,8 +359,9 @@ export default function AdminAssessmentHistory() {
         </table>
       </div>
 
-      <div className="mt-4 text-sm text-gray-600">
+      <div className="mt-4 text-sm text-slate-300">
         Showing latest 50 assessments.
+      </div>
       </div>
     </div>
   )

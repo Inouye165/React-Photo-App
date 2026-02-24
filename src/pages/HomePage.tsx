@@ -4,7 +4,10 @@ import { getPhotoStatus } from '../api'
 import { request } from '../api/httpClient'
 import UserMenu from '../components/UserMenu'
 import { useAuth } from '../contexts/AuthContext'
+import { navigateWithTransition } from '../utils/navigateWithTransition'
 import {
+  PREMIUM_BUTTON_PRIMARY,
+  PREMIUM_BUTTON_SECONDARY,
   PREMIUM_FOCUS_RING,
   PREMIUM_PAGE_CONTAINER,
   PREMIUM_PAGE_SHELL,
@@ -127,6 +130,7 @@ export default function HomePage(): React.JSX.Element {
 
   const selectedGame = GAME_CATALOG.find((game) => game.id === selectedGameId)
   const canOpenSelectedGame = !!(selectedGame && selectedGame.available && selectedGame.path)
+  const openAdmin = () => navigateWithTransition(navigate, '/admin')
 
   return (
     <main className={PREMIUM_PAGE_SHELL}>
@@ -145,7 +149,7 @@ export default function HomePage(): React.JSX.Element {
                   theme="dark"
                   onOpenPhotos={() => navigate('/gallery')}
                   onOpenEdit={() => navigate('/upload')}
-                  onOpenAdmin={user?.app_metadata?.role === 'admin' ? () => navigate('/admin') : undefined}
+                  onOpenAdmin={user?.app_metadata?.role === 'admin' ? openAdmin : undefined}
                 />
               </div>
             </div>
@@ -153,14 +157,14 @@ export default function HomePage(): React.JSX.Element {
               <button
                 type="button"
                 onClick={() => navigate('/chat')}
-                className={`inline-flex min-h-11 items-center rounded-md border border-indigo-300/60 bg-indigo-500/20 px-3 py-2 text-sm font-semibold text-indigo-50 transition hover:bg-indigo-500/30 ${PREMIUM_FOCUS_RING}`}
+                className={PREMIUM_BUTTON_SECONDARY}
               >
                 Open Messages
               </button>
               <button
                 type="button"
                 onClick={() => navigate('/chess')}
-                className={`inline-flex min-h-11 items-center rounded-md border border-slate-500 bg-slate-800 px-3 py-2 text-sm font-medium text-slate-100 transition hover:border-slate-400 ${PREMIUM_FOCUS_RING}`}
+                className={PREMIUM_BUTTON_SECONDARY}
               >
                 Open Chess Hub
               </button>
@@ -178,14 +182,14 @@ export default function HomePage(): React.JSX.Element {
                   <button
                     type="button"
                     onClick={() => navigate('/chat')}
-                    className={`inline-flex min-h-11 items-center rounded-md border border-indigo-300/60 bg-indigo-500/20 px-3 py-2 text-sm font-semibold text-indigo-50 transition hover:bg-indigo-500/30 ${PREMIUM_FOCUS_RING}`}
+                    className={PREMIUM_BUTTON_SECONDARY}
                   >
                     Open Messages
                   </button>
                   <button
                     type="button"
                     onClick={() => navigate('/chess')}
-                    className={`inline-flex min-h-11 items-center rounded-md border border-slate-500 bg-slate-800 px-3 py-2 text-sm font-medium text-slate-100 transition hover:border-slate-400 ${PREMIUM_FOCUS_RING}`}
+                    className={PREMIUM_BUTTON_SECONDARY}
                   >
                     Open Chess Hub
                   </button>
@@ -199,7 +203,7 @@ export default function HomePage(): React.JSX.Element {
                   <button
                     type="button"
                     onClick={() => navigate('/gallery')}
-                    className={`mt-2 inline-flex min-h-10 items-center rounded-md border border-slate-600 bg-slate-900/60 px-3 py-2 text-xs font-semibold text-slate-100 transition hover:border-slate-500 ${PREMIUM_FOCUS_RING}`}
+                    className={`${PREMIUM_BUTTON_SECONDARY} mt-2 min-h-10 text-xs`}
                   >
                     Open Experimental Photos
                   </button>
@@ -219,7 +223,7 @@ export default function HomePage(): React.JSX.Element {
               <button
                 type="button"
                 onClick={() => navigate('/chat')}
-                className={`mt-4 inline-flex min-h-11 items-center rounded-md border border-slate-500 bg-slate-800 px-3 py-2 text-sm font-medium text-slate-100 transition hover:border-slate-400 ${PREMIUM_FOCUS_RING}`}
+                className={`${PREMIUM_BUTTON_SECONDARY} mt-4`}
               >
                 Open Messages
               </button>
@@ -263,7 +267,7 @@ export default function HomePage(): React.JSX.Element {
                       }
                     }}
                     disabled={!canOpenSelectedGame}
-                    className={`inline-flex min-h-11 items-center rounded-md border border-slate-500 bg-slate-800 px-3 py-2 text-sm font-medium text-slate-100 transition hover:border-slate-400 disabled:cursor-not-allowed disabled:opacity-50 ${PREMIUM_FOCUS_RING}`}
+                    className={`${PREMIUM_BUTTON_SECONDARY} disabled:cursor-not-allowed disabled:opacity-50`}
                   >
                     Open selected game
                   </button>
@@ -284,7 +288,7 @@ export default function HomePage(): React.JSX.Element {
                 <button
                   type="submit"
                   disabled={suggestionSubmitting}
-                  className={`inline-flex min-h-10 items-center rounded-md border border-indigo-300/60 bg-indigo-500/20 px-3 py-2 text-xs font-semibold text-indigo-50 transition hover:bg-indigo-500/30 disabled:cursor-not-allowed disabled:opacity-50 ${PREMIUM_FOCUS_RING}`}
+                  className={`${PREMIUM_BUTTON_PRIMARY} min-h-10 text-xs disabled:cursor-not-allowed disabled:opacity-50`}
                 >
                   {suggestionSubmitting ? 'Submitting…' : 'Submit suggestion'}
                 </button>
@@ -310,7 +314,7 @@ export default function HomePage(): React.JSX.Element {
               <button
                 type="button"
                 onClick={() => navigate('/gallery')}
-                className={`mt-4 inline-flex min-h-11 items-center rounded-md border border-slate-500 bg-slate-800 px-3 py-2 text-sm font-medium text-slate-100 transition hover:border-slate-400 ${PREMIUM_FOCUS_RING}`}
+                className={`${PREMIUM_BUTTON_SECONDARY} mt-4`}
               >
                 Open Experimental Photos
               </button>

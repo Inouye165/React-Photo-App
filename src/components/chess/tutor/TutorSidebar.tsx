@@ -1,4 +1,4 @@
-import React from 'react'
+import React, { useEffect, useState } from 'react'
 import type { ChessTutorAnalysis } from '../../../api/chessTutor'
 import AnalyzePanel from './AnalyzePanel'
 import HistoryPanel from './HistoryPanel'
@@ -7,7 +7,7 @@ import TutorTabs from './TutorTabs'
 import type { TutorTab, ChessLesson, NotationGuideRow, NotationLineMove, TacticalPattern, ChessHistoryEvent, ChessStory, LessonSectionOption, LessonSection } from './types'
 
 const classes = {
-  root: 'rounded-2xl border border-slate-700 bg-slate-800/70 p-4',
+  root: 'flex min-h-0 flex-col rounded-2xl border border-slate-700 bg-slate-800/70 p-3 sm:p-4',
   header: 'mb-3 flex items-start justify-between gap-3',
   title: 'text-lg font-semibold text-white',
   model: 'text-xs text-slate-300',
@@ -60,62 +60,123 @@ export default function TutorSidebar(props: {
   setDiscoveredCheckFrame: (value: number) => void
   discoveredCheckPattern: TacticalPattern
 }): React.JSX.Element {
+  const [historyWindowOpen, setHistoryWindowOpen] = useState(false)
+
+  useEffect(() => {
+    if (props.activeTab === 'history') {
+      setHistoryWindowOpen(true)
+    }
+  }, [props.activeTab])
+
   return (
-    <aside data-testid="tutor-sidebar" className={classes.root}>
-      <div className={classes.header}>
-        <div>
-          <h2 className={classes.title}>Chess Tutor</h2>
-          <div className={classes.model}>{props.modelLabel}</div>
+    <>
+      <aside data-testid="tutor-sidebar" className={classes.root}>
+        <div className={classes.header}>
+          <div>
+            <h2 className={classes.title}>Chess Tutor</h2>
+            <div className={classes.model}>{props.modelLabel}</div>
+          </div>
+          <button type="button" onClick={props.onPractice} className={classes.cta}>Practice this</button>
         </div>
-        <button type="button" onClick={props.onPractice} className={classes.cta}>Practice this</button>
-      </div>
 
-      <div className="mb-3">
-        <TutorTabs activeTab={props.activeTab} allowAnalyzeTab={props.allowAnalyzeTab} onChange={props.onTabChange} />
-      </div>
+        <div className="mb-3">
+          <TutorTabs activeTab={props.activeTab} allowAnalyzeTab={props.allowAnalyzeTab} onChange={props.onTabChange} />
+        </div>
 
-      {props.activeTab === 'analyze' && props.allowAnalyzeTab ? (
-        <AnalyzePanel loading={props.loading} error={props.error} analysis={props.analysis} onAnalyze={props.onAnalyze} />
-      ) : props.activeTab === 'history' ? (
-        <HistoryPanel events={props.historyEvents} />
-      ) : (
-        <LessonPanel
-          activeLessonSection={props.activeLessonSection}
-          setActiveLessonSection={props.setActiveLessonSection}
-          lessonSections={props.lessonSections}
-          stories={props.stories}
-          activeStoryId={props.activeStoryId}
-          setActiveStoryId={props.setActiveStoryId}
-          onOpenStory={props.onOpenStory}
-          showStoryHint={props.showStoryHint}
-          onDismissStoryHint={props.onDismissStoryHint}
-          activeLesson={props.activeLesson}
-          activeLessonIndex={props.activeLessonIndex}
-          setActiveLessonIndex={props.setActiveLessonIndex}
-          lessons={props.lessons}
-          notationAutoplay={props.notationAutoplay}
-          setNotationAutoplay={props.setNotationAutoplay}
-          notationFocus={props.notationFocus}
-          setNotationFocus={props.setNotationFocus}
-          notationPly={props.notationPly}
-          setNotationPly={props.setNotationPly}
-          notationMoves={props.notationMoves}
-          notationGuideRows={props.notationGuideRows}
-          patternAutoplay={props.patternAutoplay}
-          setPatternAutoplay={props.setPatternAutoplay}
-          patterns={props.patterns}
-          activePatternIndex={props.activePatternIndex}
-          setActivePatternIndex={props.setActivePatternIndex}
-          patternFrame={props.patternFrame}
-          setPatternFrame={props.setPatternFrame}
-          activePattern={props.activePattern}
-          discoveredCheckAutoplay={props.discoveredCheckAutoplay}
-          setDiscoveredCheckAutoplay={props.setDiscoveredCheckAutoplay}
-          discoveredCheckFrame={props.discoveredCheckFrame}
-          setDiscoveredCheckFrame={props.setDiscoveredCheckFrame}
-          discoveredCheckPattern={props.discoveredCheckPattern}
-        />
-      )}
-    </aside>
+        <div className="min-h-0 flex-1 overflow-y-auto">
+          {props.activeTab === 'analyze' && props.allowAnalyzeTab ? (
+            <AnalyzePanel loading={props.loading} error={props.error} analysis={props.analysis} onAnalyze={props.onAnalyze} />
+          ) : props.activeTab === 'history' ? (
+            <div className="rounded-2xl border border-slate-700 bg-slate-900/60 p-4">
+              <div className="text-xs font-semibold uppercase tracking-wide text-slate-400">Chess History</div>
+              <p className="mt-1 text-sm text-slate-300">History opens in a full-screen window for app-like reading.</p>
+              <div className="mt-3 flex items-center gap-2">
+                <button
+                  type="button"
+                  onClick={() => setHistoryWindowOpen(true)}
+                  className="inline-flex min-h-9 items-center rounded-md border border-slate-600 bg-slate-900 px-2.5 py-1.5 text-xs font-semibold text-slate-100 transition hover:border-slate-500"
+                >
+                  Open history window
+                </button>
+                <button
+                  type="button"
+                  onClick={() => props.onTabChange('lesson')}
+                  className="inline-flex min-h-9 items-center rounded-md border border-slate-600 bg-slate-900 px-2.5 py-1.5 text-xs font-semibold text-slate-100 transition hover:border-slate-500"
+                >
+                  Back to lesson
+                </button>
+              </div>
+            </div>
+          ) : (
+            <LessonPanel
+              activeLessonSection={props.activeLessonSection}
+              setActiveLessonSection={props.setActiveLessonSection}
+              lessonSections={props.lessonSections}
+              stories={props.stories}
+              activeStoryId={props.activeStoryId}
+              setActiveStoryId={props.setActiveStoryId}
+              onOpenStory={props.onOpenStory}
+              showStoryHint={props.showStoryHint}
+              onDismissStoryHint={props.onDismissStoryHint}
+              activeLesson={props.activeLesson}
+              activeLessonIndex={props.activeLessonIndex}
+              setActiveLessonIndex={props.setActiveLessonIndex}
+              lessons={props.lessons}
+              notationAutoplay={props.notationAutoplay}
+              setNotationAutoplay={props.setNotationAutoplay}
+              notationFocus={props.notationFocus}
+              setNotationFocus={props.setNotationFocus}
+              notationPly={props.notationPly}
+              setNotationPly={props.setNotationPly}
+              notationMoves={props.notationMoves}
+              notationGuideRows={props.notationGuideRows}
+              patternAutoplay={props.patternAutoplay}
+              setPatternAutoplay={props.setPatternAutoplay}
+              patterns={props.patterns}
+              activePatternIndex={props.activePatternIndex}
+              setActivePatternIndex={props.setActivePatternIndex}
+              patternFrame={props.patternFrame}
+              setPatternFrame={props.setPatternFrame}
+              activePattern={props.activePattern}
+              discoveredCheckAutoplay={props.discoveredCheckAutoplay}
+              setDiscoveredCheckAutoplay={props.setDiscoveredCheckAutoplay}
+              discoveredCheckFrame={props.discoveredCheckFrame}
+              setDiscoveredCheckFrame={props.setDiscoveredCheckFrame}
+              discoveredCheckPattern={props.discoveredCheckPattern}
+            />
+          )}
+        </div>
+      </aside>
+
+      {historyWindowOpen ? (
+        <div className="fixed inset-0 z-[85] flex flex-col bg-slate-950/92 p-3 sm:p-4" role="dialog" aria-modal="true" aria-label="Chess history window">
+          <div className="mb-3 flex items-center justify-between gap-2">
+            <div className="text-sm font-semibold text-slate-100">Chess history</div>
+            <div className="flex items-center gap-2">
+              <button
+                type="button"
+                onClick={() => {
+                  setHistoryWindowOpen(false)
+                  props.onTabChange('lesson')
+                }}
+                className="inline-flex min-h-9 items-center rounded-md border border-slate-600 bg-slate-900 px-2.5 py-1.5 text-xs font-semibold text-slate-100 transition hover:border-slate-500"
+              >
+                Back
+              </button>
+              <button
+                type="button"
+                onClick={() => setHistoryWindowOpen(false)}
+                className="inline-flex min-h-9 items-center rounded-md border border-slate-600 bg-slate-900 px-2.5 py-1.5 text-xs font-semibold text-slate-100 transition hover:border-slate-500"
+              >
+                Close
+              </button>
+            </div>
+          </div>
+          <div className="min-h-0 flex-1 overflow-y-auto">
+            <HistoryPanel events={props.historyEvents} />
+          </div>
+        </div>
+      ) : null}
+    </>
   )
 }

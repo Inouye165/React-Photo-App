@@ -815,6 +815,8 @@ function ChessStoryModal({
   const [audioCurrentTime, setAudioCurrentTime] = useState(0)
   const [audioDuration, setAudioDuration] = useState(0)
   const [usingBrowserNarration, setUsingBrowserNarration] = useState(false)
+  const [showTimelinePanel, setShowTimelinePanel] = useState(true)
+  const [timelineBoardWidth, setTimelineBoardWidth] = useState(240)
   const [activeNarrationText, setActiveNarrationText] = useState('')
   const [activeNarrationSource, setActiveNarrationSource] = useState<NarrationSource>('none')
   const [pageTextOverlayItems, setPageTextOverlayItems] = useState<PdfTextOverlayItem[]>([])
@@ -2277,6 +2279,25 @@ function ChessStoryModal({
 
   useEffect(() => {
     if (!open) return
+    const getTimelineBoardWidth = () => {
+      if (typeof window === 'undefined') return 260
+      const maxByViewport = Math.max(200, window.innerWidth - 64)
+      return Math.min(320, maxByViewport)
+    }
+
+    setShowTimelinePanel(true)
+    setTimelineBoardWidth(getTimelineBoardWidth())
+
+    const onResize = () => {
+      setTimelineBoardWidth(getTimelineBoardWidth())
+    }
+
+    window.addEventListener('resize', onResize)
+    return () => window.removeEventListener('resize', onResize)
+  }, [open])
+
+  useEffect(() => {
+    if (!open) return
     const onEscape = (event: KeyboardEvent) => {
       if (event.key === 'Escape') {
         stopNarration()
@@ -2291,7 +2312,7 @@ function ChessStoryModal({
 
   return (
     <div className="fixed inset-0 z-[70] bg-black/60" onClick={() => { stopNarration(); onClose() }} role="dialog" aria-modal="true" aria-label="Chess story modal">
-      <div className="flex h-[100dvh] w-full flex-col border-0 bg-white p-3 shadow-2xl sm:p-4" style={CHESS_SAFE_AREA_STYLE} onClick={(event) => event.stopPropagation()}>
+      <div className="flex h-[100dvh] w-full flex-col overflow-hidden border-0 bg-white p-3 shadow-2xl sm:p-4" style={CHESS_SAFE_AREA_STYLE} onClick={(event) => event.stopPropagation()}>
         <div className="mb-2 flex items-center justify-between gap-2">
           <div>
             <div className="text-sm font-semibold text-slate-700">{storyTitle}</div>
@@ -2337,6 +2358,13 @@ function ChessStoryModal({
             className="rounded border border-slate-200 bg-white px-2 py-1 text-xs font-semibold text-slate-600 hover:bg-slate-50"
           >
             {autoTurnPages ? 'Auto-turn: on' : 'Auto-turn: off'}
+          </button>
+          <button
+            type="button"
+            onClick={() => setShowTimelinePanel((previousState) => !previousState)}
+            className="rounded border border-slate-200 bg-white px-2 py-1 text-xs font-semibold text-slate-600 hover:bg-slate-50 sm:hidden"
+          >
+            {showTimelinePanel ? 'Hide timeline' : 'Show timeline'}
           </button>
           <label className="flex items-center gap-1 text-xs text-slate-600">
             Highlight
@@ -2389,8 +2417,29 @@ function ChessStoryModal({
         ) : null}
 
         <div className="min-h-0 flex-1">
-          <div className="grid h-full min-h-0 gap-2 lg:grid-cols-[minmax(0,1fr)_280px]">
-            <div ref={pageContainerRef} className="min-h-0 overflow-auto rounded-lg border border-slate-200 bg-slate-50 p-2">
+          <div className="grid h-full min-h-0 grid-rows-[auto_minmax(0,1fr)] gap-2 lg:grid-cols-[minmax(0,1fr)_320px] lg:grid-rows-1">
+            <div className={`${showTimelinePanel ? 'order-1 block' : 'order-1 hidden'} rounded-lg border border-slate-200 bg-white p-1.5 sm:p-2 lg:order-2 lg:block`}>
+              <div className="mb-1 text-xs font-semibold text-slate-600">Story board timeline</div>
+              <div className="mx-auto flex w-full justify-center">
+                <div className="overflow-hidden rounded-xl ring-1 ring-slate-200 shadow-sm" style={{ width: timelineBoardWidth }}>
+                  <Chessboard
+                    id={`story-board-${currentPage}`}
+                    position={boardPosition}
+                    boardOrientation="white"
+                    customPieces={woodTexturePieces}
+                    arePiecesDraggable={false}
+                    showBoardNotation={false}
+                    customSquareStyles={customSquareStyles}
+                    animationDuration={500}
+                    boardWidth={timelineBoardWidth}
+                    {...CHESSBOARD_THEME}
+                  />
+                </div>
+              </div>
+              <div className="mt-1 text-[11px] text-slate-600">{activeActionLabel ? `Last cue: ${activeActionLabel}` : 'Waiting for cue...'}</div>
+            </div>
+
+            <div ref={pageContainerRef} className="order-2 min-h-0 overflow-auto rounded-lg border border-slate-200 bg-slate-50 p-1.5 sm:p-2 lg:order-1">
               {isLoadingDocument ? <div className="text-sm text-slate-600">Loading story PDF…</div> : null}
               {loadError ? <div className="text-sm text-red-600">{loadError}</div> : null}
               {!isLoadingDocument && !loadError ? (
@@ -2455,25 +2504,6 @@ function ChessStoryModal({
                   ) : null}
                 </div>
               ) : null}
-            </div>
-
-            <div className="rounded-lg border border-slate-200 bg-white p-2">
-              <div className="mb-2 text-xs font-semibold text-slate-600">Story board timeline</div>
-              <div className="mx-auto w-[240px]">
-                <Chessboard
-                  id={`story-board-${currentPage}`}
-                  position={boardPosition}
-                  boardOrientation="white"
-                  customPieces={woodTexturePieces}
-                  arePiecesDraggable={false}
-                  showBoardNotation={false}
-                  customSquareStyles={customSquareStyles}
-                  animationDuration={500}
-                  boardWidth={240}
-                  {...CHESSBOARD_THEME}
-                />
-              </div>
-              <div className="mt-2 text-[11px] text-slate-600">{activeActionLabel ? `Last cue: ${activeActionLabel}` : 'Waiting for cue...'}</div>
             </div>
           </div>
         </div>
@@ -2570,6 +2600,7 @@ const CHESS_INSTALL_HINT_DISMISSED_KEY = 'chess:ios-install-hint-dismissed:v1'
 const IOS_INSTALL_DEMO_VIDEO_PATH = '/assets/pwa/install-ios.mp4'
 const ANDROID_INSTALL_DEMO_VIDEO_PATH = '/assets/pwa/install-android.mp4'
 const CHESS_SAFE_AREA_STYLE: React.CSSProperties = {
+  boxSizing: 'border-box',
   paddingTop: 'calc(env(safe-area-inset-top) + 8px)',
   paddingBottom: 'calc(env(safe-area-inset-bottom) + 8px)',
   paddingLeft: 'calc(env(safe-area-inset-left) + 8px)',
@@ -3453,24 +3484,26 @@ function ChessInstallHint({
 
   return (
     <>
-      <div className="mb-3 rounded-lg border border-amber-200 bg-amber-50 px-3 py-2 text-xs text-amber-800">
-        <div className="font-semibold">{title}</div>
-        <p className="mt-1">{body}</p>
-        <div className="mt-2 flex items-center gap-2">
-          <button
-            type="button"
-            onClick={() => setShowDemo(true)}
-            className="rounded border border-amber-300 bg-white px-2 py-1 text-[11px] font-semibold text-amber-800"
-          >
-            Watch 10s demo
-          </button>
-          <button
-            type="button"
-            onClick={onDismiss}
-            className="rounded border border-amber-300 bg-white px-2 py-1 text-[11px] font-semibold text-amber-800"
-          >
-            Dismiss
-          </button>
+      <div className="fixed inset-0 z-[80] flex items-center justify-center bg-black/55 px-4" role="dialog" aria-modal="true" aria-label="Install app hint">
+        <div className="w-full max-w-sm rounded-xl border border-amber-300 bg-amber-50 px-4 py-3 text-xs text-amber-900 shadow-2xl">
+          <div className="font-semibold">{title}</div>
+          <p className="mt-1">{body}</p>
+          <div className="mt-3 flex items-center gap-2">
+            <button
+              type="button"
+              onClick={() => setShowDemo(true)}
+              className="rounded border border-amber-300 bg-white px-2 py-1 text-[11px] font-semibold text-amber-800"
+            >
+              Watch 10s demo
+            </button>
+            <button
+              type="button"
+              onClick={onDismiss}
+              className="rounded border border-amber-300 bg-white px-2 py-1 text-[11px] font-semibold text-amber-800"
+            >
+              Dismiss
+            </button>
+          </div>
         </div>
       </div>
       {showDemo ? (
@@ -3804,7 +3837,7 @@ function OnlineChessGame({
   }, [moveRows, normalizedDisplayFen])
 
   return (
-    <div className="relative flex h-[100dvh] overflow-hidden rounded-none bg-slate-100/90 p-2 shadow-sm sm:p-3" style={CHESS_SAFE_AREA_STYLE}>
+    <div className="chess-local-theme relative flex h-[100dvh] overflow-hidden rounded-none bg-chess-bg p-2 shadow-chess-card sm:p-3" style={CHESS_SAFE_AREA_STYLE}>
       <div className="flex min-h-0 w-full flex-1 flex-col">
         <div className="mb-2 flex flex-none items-center justify-between gap-3">
           <h2 className="text-base font-semibold sm:text-lg">Chess</h2>
@@ -4199,6 +4232,7 @@ function OnlineChessGame({
               initialTab={initialTutorTab}
               openStoryOnLoad={openStoryOnLoad}
               initialStoryId={initialStoryId}
+              allowAnalyzeTab={!tutorialFullscreenMode}
               stories={CHESS_STORIES}
               lessons={CHESS_LESSONS}
               lessonSections={LESSON_SECTIONS}
@@ -4496,7 +4530,7 @@ function LocalChessGame({
   return (
     <div className="relative flex h-[100dvh] overflow-hidden rounded-none bg-slate-900 p-2 text-slate-100 shadow-sm sm:p-3" style={CHESS_SAFE_AREA_STYLE}>
       <div className="flex min-h-0 w-full flex-1 flex-col">
-        <div className="mb-2 flex flex-none items-center justify-between gap-3 rounded-2xl border border-slate-700 bg-slate-800/80 p-3">
+        <div className={`flex flex-none items-center justify-between gap-3 rounded-2xl border border-slate-700 bg-slate-800/80 ${tutorialFullscreenMode ? 'mb-1.5 p-2' : 'mb-2 p-3'}`}>
           <div className="flex items-center gap-3">
             <button
               type="button"
@@ -4861,7 +4895,7 @@ function LocalChessGame({
 
         </aside>
         {tutorialFullscreenMode ? (
-          <div className="min-h-0 flex-1 rounded-2xl border border-slate-700 bg-slate-800/70 p-3 sm:p-4">
+          <div className="min-h-0 flex-1 rounded-2xl border border-slate-700 bg-slate-800/70 p-2 sm:p-3">
             <ChessTutorStudio
               analysis={tutorAnalysis}
               modelLabel={tutorModel}
@@ -4871,6 +4905,7 @@ function LocalChessGame({
               initialTab={initialTutorTab}
               openStoryOnLoad={openStoryOnLoad}
               initialStoryId={initialStoryId}
+              allowAnalyzeTab={!tutorialFullscreenMode}
               stories={CHESS_STORIES}
               lessons={CHESS_LESSONS}
               lessonSections={LESSON_SECTIONS}

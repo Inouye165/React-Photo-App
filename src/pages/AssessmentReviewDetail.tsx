@@ -3,6 +3,8 @@ import { Link, useNavigate, useParams } from 'react-router-dom'
 import { request, ApiError } from '../api/httpClient'
 import { getAuthHeadersAsync } from '../api/auth'
 import { useAuth } from '../contexts/AuthContext'
+import { PREMIUM_PAGE_CONTAINER, PREMIUM_PAGE_SHELL, PREMIUM_SURFACE } from '../styles/ui'
+import { navigateWithTransition } from '../utils/navigateWithTransition'
 
 type AssessmentStatus = 'pending_review' | 'confirmed' | 'rejected'
 
@@ -121,7 +123,7 @@ export default function AssessmentReviewDetail() {
       })
       if (!json?.success) throw new Error(json?.error || 'Failed to save decision')
 
-      navigate('/admin/assessments')
+      navigateWithTransition(navigate, '/admin/assessments')
     } catch (e) {
       const msg = e instanceof ApiError ? e.message : (e as Error)?.message
       setError(msg || 'Failed to save')
@@ -138,20 +140,32 @@ export default function AssessmentReviewDetail() {
 
   if (!isAdmin) {
     return (
-      <div className="max-w-6xl mx-auto p-6">
-        <h1 className="text-2xl font-semibold mb-2">Assessment Review</h1>
-        <p className="text-gray-600">You do not have permission to view this page.</p>
+      <div className={PREMIUM_PAGE_SHELL}>
+        <div className={`${PREMIUM_PAGE_CONTAINER} page-enter-fade`}>
+          <div className="mx-auto max-w-6xl rounded-2xl border border-slate-700 bg-slate-800/70 p-6">
+            <h1 className="mb-2 text-2xl font-semibold text-white">Assessment Review</h1>
+            <p className="text-slate-300">You do not have permission to view this page.</p>
+          </div>
+        </div>
       </div>
     )
   }
 
   return (
-    <div className="max-w-6xl mx-auto p-6 pb-28">
+    <div className={PREMIUM_PAGE_SHELL}>
+      <div className={`${PREMIUM_PAGE_CONTAINER} page-enter-fade pb-28`}>
       <div className="flex items-center justify-between mb-4">
         <div>
-          <h1 className="text-2xl font-semibold">Assessment Review</h1>
-          <div className="text-sm text-gray-600">
-            <Link to="/admin/assessments" className="text-blue-600 hover:underline">
+          <h1 className="text-2xl font-semibold text-white">Assessment Review</h1>
+          <div className="text-sm text-slate-300">
+            <Link
+              to="/admin/assessments"
+              className="text-indigo-200 hover:text-indigo-100 hover:underline"
+              onClick={(e) => {
+                e.preventDefault()
+                navigateWithTransition(navigate, '/admin/assessments')
+              }}
+            >
               Back to history
             </Link>
           </div>
@@ -159,7 +173,7 @@ export default function AssessmentReviewDetail() {
         <button
           onClick={load}
           disabled={loading}
-          className="px-3 py-2 rounded border border-gray-300 text-gray-700 hover:bg-gray-50 disabled:opacity-50"
+          className="rounded-md border border-slate-500 bg-slate-800 px-3 py-2 text-slate-100 hover:border-slate-400 disabled:opacity-50"
         >
           Refresh
         </button>
@@ -173,7 +187,7 @@ export default function AssessmentReviewDetail() {
         <div className="text-gray-600">No assessment loaded.</div>
       ) : (
         <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-          <div className="border border-gray-200 rounded p-4">
+          <div className={`${PREMIUM_SURFACE} p-4`}>
             <div className="flex items-center justify-between mb-2">
               <h2 className="text-lg font-medium">AI Analysis</h2>
               <span className="text-xs text-gray-600">Status: {row.status}</span>
@@ -217,7 +231,7 @@ export default function AssessmentReviewDetail() {
             </div>
           </div>
 
-          <div className="border border-gray-200 rounded p-4">
+          <div className={`${PREMIUM_SURFACE} p-4`}>
             <h2 className="text-lg font-medium mb-2">Trace Log</h2>
             <div className="text-sm text-gray-700 mb-2">Exact prompt captured for this run:</div>
             <pre className="text-xs bg-gray-50 border border-gray-200 rounded p-2 overflow-auto whitespace-pre-wrap">
@@ -238,23 +252,24 @@ export default function AssessmentReviewDetail() {
         />
       </div>
 
-      <div className="fixed left-0 right-0 bottom-0 border-t border-gray-200 bg-white">
-        <div className="max-w-6xl mx-auto p-4 flex items-center justify-end gap-2">
+      <div className="fixed bottom-0 left-0 right-0 border-t border-slate-700 bg-slate-900/95 backdrop-blur">
+        <div className="mx-auto flex max-w-6xl items-center justify-end gap-2 p-4">
           <button
             onClick={() => submit('rejected')}
             disabled={saving || !row || row.status !== 'pending_review'}
-            className="px-4 py-2 rounded border border-red-300 text-red-700 hover:bg-red-50 disabled:opacity-50"
+            className="rounded-md border border-red-300/70 px-4 py-2 text-red-200 hover:bg-red-500/10 disabled:opacity-50"
           >
             Reject
           </button>
           <button
             onClick={() => submit('confirmed')}
             disabled={saving || !row || row.status !== 'pending_review'}
-            className="px-4 py-2 rounded bg-green-600 text-white hover:bg-green-700 disabled:opacity-50"
+            className="rounded-md border border-emerald-300/70 bg-emerald-500/20 px-4 py-2 font-semibold text-emerald-100 hover:bg-emerald-500/30 disabled:opacity-50"
           >
             Confirm
           </button>
         </div>
+      </div>
       </div>
     </div>
   )

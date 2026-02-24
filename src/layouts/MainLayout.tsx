@@ -132,7 +132,7 @@ export default function MainLayout(): React.ReactElement {
 
   return (
     <div
-      className="flex flex-col"
+      className="flex flex-col font-body"
       id="main-app-container"
       style={{
         position: 'fixed',
@@ -144,8 +144,8 @@ export default function MainLayout(): React.ReactElement {
         paddingBottom: 'env(safe-area-inset-bottom)',
         paddingLeft: 'calc(env(safe-area-inset-left) + 4px)',
         paddingRight: 'calc(env(safe-area-inset-right) + 4px)',
-        backgroundColor: '#cbd5e1', // Slate-300 to match EditPage background
-        color: '#1e293b', // Slate-800 for high contrast text
+        backgroundColor: '#17110e',
+        color: '#f3ece4',
       }}
     >
       <div aria-live="polite" className="sr-only">
