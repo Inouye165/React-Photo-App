@@ -90,6 +90,7 @@ function App() {
               <Route path="/chat/:roomId" element={<ChatPage />} />
 
               {/* Games */}
+              <Route path="/chess" element={<ChessHub />} />
               <Route path="/games" element={<GamesIndex />} />
               <Route path="/games/chess" element={<ChessHub />} />
               <Route path="/games/:gameId" element={<ChessGame />} />

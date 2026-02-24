@@ -559,12 +559,21 @@ export default function AdminDashboard() {
             <h1 className="text-3xl font-bold text-gray-900 mb-2">Admin Dashboard</h1>
             <p className="text-gray-600">Manage users and review AI-generated content</p>
           </div>
-          <Link
-            to="/admin/assessments"
-            className="px-3 py-2 rounded bg-blue-600 text-white hover:bg-blue-700"
-          >
-            Assessments
-          </Link>
+          <div className="flex items-center gap-2">
+            <button
+              type="button"
+              onClick={() => setActiveTab('feedback')}
+              className="px-3 py-2 rounded bg-slate-700 text-white hover:bg-slate-800"
+            >
+              View Game Suggestions
+            </button>
+            <Link
+              to="/admin/assessments"
+              className="px-3 py-2 rounded bg-blue-600 text-white hover:bg-blue-700"
+            >
+              Assessments
+            </Link>
+          </div>
         </div>
 
         {/* Tabs */}

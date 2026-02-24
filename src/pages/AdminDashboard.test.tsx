@@ -50,6 +50,26 @@ describe('AdminDashboard - Feedback tab', () => {
     expect(call.path).toBe('/api/admin/feedback');
     expect(call.method).toBe('GET');
   });
+
+  it('opens game suggestions quick link and fetches feedback', async () => {
+    requestMock.mockResolvedValue({ success: true, data: [], total: 0, limit: 50, offset: 0 });
+
+    render(
+      <MemoryRouter>
+        <AdminDashboard />
+      </MemoryRouter>
+    );
+
+    fireEvent.click(screen.getByRole('button', { name: 'View Game Suggestions' }));
+
+    await waitFor(() => {
+      expect(requestMock).toHaveBeenCalled();
+    });
+
+    const call = requestMock.mock.calls.find(Boolean)?.[0];
+    expect(call.path).toBe('/api/admin/feedback');
+    expect(call.method).toBe('GET');
+  });
 });
 
 describe('AdminDashboard - Access requests tab', () => {

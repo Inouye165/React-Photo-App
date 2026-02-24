@@ -245,7 +245,7 @@ export default function GamesIndex(): React.JSX.Element {
             <div className="space-y-2">
               <button
                 type="button"
-                onClick={() => navigate('/games/chess')}
+                onClick={() => navigate('/chess')}
                 className="inline-flex min-h-10 items-center gap-2 rounded-lg border border-slate-600 bg-slate-900/60 px-3 py-2 text-sm font-medium text-slate-100 transition hover:border-slate-500 hover:bg-slate-900 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-indigo-300 focus-visible:ring-offset-2 focus-visible:ring-offset-slate-900"
               >
                 <ArrowLeft size={16} aria-hidden="true" />
@@ -410,6 +410,7 @@ export default function GamesIndex(): React.JSX.Element {
                 </div>
               )}
             </section>
+
           </aside>
         </div>
       </div>
