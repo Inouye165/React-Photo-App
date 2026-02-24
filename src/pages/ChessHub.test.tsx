@@ -37,9 +37,9 @@ describe('ChessHub', () => {
     render(<ChessHub />)
 
     expect(screen.getByRole('heading', { name: 'Chess' })).toBeInTheDocument()
-    expect(screen.getByRole('button', { name: 'Start game' })).toBeInTheDocument()
-    expect(screen.getByRole('button', { name: 'Open games dashboard' })).toBeInTheDocument()
-    expect(screen.getByRole('button', { name: 'Open tutor' })).toBeInTheDocument()
+    expect(screen.getByRole('button', { name: 'Play Computer' })).toBeInTheDocument()
+    expect(screen.getByRole('button', { name: 'Play a Friend' })).toBeInTheDocument()
+    expect(screen.getByRole('button', { name: 'Learn Chess' })).toBeInTheDocument()
 
     await waitFor(() => {
       expect(listMyGamesWithMembersMock).toHaveBeenCalledTimes(1)
@@ -69,7 +69,7 @@ describe('ChessHub', () => {
     const user = userEvent.setup()
     render(<ChessHub />)
 
-    const continueButton = await screen.findByRole('button', { name: 'Continue' })
+    const continueButton = await screen.findByRole('button', { name: 'Continue Game' })
     await user.click(continueButton)
 
     expect(navigateMock).toHaveBeenCalledWith('/games/g-2')
@@ -79,7 +79,7 @@ describe('ChessHub', () => {
     const user = userEvent.setup()
     render(<ChessHub />)
 
-    const quickStartButton = await screen.findByRole('button', { name: 'Play vs Computer' })
+    const quickStartButton = await screen.findByRole('button', { name: 'Play Computer' })
     await user.click(quickStartButton)
 
     expect(navigateMock).toHaveBeenCalledWith('/games/local?tab=analyze')
@@ -89,7 +89,7 @@ describe('ChessHub', () => {
     const user = userEvent.setup()
     render(<ChessHub />)
 
-    await user.click(screen.getByRole('button', { name: 'Open games dashboard' }))
+    await user.click(screen.getByRole('button', { name: 'View History' }))
 
     expect(navigateMock).toHaveBeenCalledWith('/games')
   })
@@ -98,7 +98,7 @@ describe('ChessHub', () => {
     const user = userEvent.setup()
     render(<ChessHub />)
 
-    await user.click(screen.getByRole('button', { name: 'Open tutor' }))
+    await user.click(screen.getByRole('button', { name: 'Learn Chess' }))
 
     expect(navigateMock).toHaveBeenCalledWith('/games/local?tab=lesson&tutor=1&storyId=architect-of-squares')
   })
