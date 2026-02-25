@@ -14,7 +14,7 @@ const modeItems = [
     title: 'Play Computer',
     description: 'Practice against the computer.',
     chips: ['Engine'],
-    imageSrc: '/chess-hub/play-computer.svg',
+    imageSrc: '/chess-hub/human_vs_computer_chess.webp',
     imageAlt: 'Play computer artwork',
     onClick: vi.fn(),
     icon: Bot,
