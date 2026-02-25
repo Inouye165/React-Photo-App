@@ -3985,7 +3985,7 @@ function OnlineChessGame({
             {renderPlayerLabel(topPlayer || null, topIsWhite ? currentTurn === 'w' : currentTurn === 'b', topFallback)}
           </div>
           <div ref={boardContainerRef} className="flex min-h-0 w-full flex-1 items-center justify-center overflow-hidden">
-            <div className="w-full ring-1 ring-slate-200 shadow-sm" style={{ maxWidth: boardSize + 2 }}>
+            <div className="mx-auto overflow-hidden rounded-xl ring-1 ring-slate-200 shadow-sm" style={{ width: boardSize }}>
               <Chessboard
                 id={boardId}
                 key={boardKey}
@@ -4651,7 +4651,7 @@ function LocalChessGame({
             {renderPlayerLabel(topPlayer || null, topIsWhite ? currentTurn === 'w' : currentTurn === 'b', 'Stockfish')}
           </div>
           <div ref={boardContainerRef} className="flex min-h-0 w-full flex-1 items-center justify-center overflow-hidden">
-            <div className="w-full ring-1 ring-slate-700 shadow-sm" style={{ maxWidth: boardSize + 2 }}>
+            <div className="mx-auto overflow-hidden rounded-xl ring-1 ring-slate-700 shadow-sm" style={{ width: boardSize }}>
               <Chessboard
                 position={normalizedDisplayFen}
                 boardOrientation="white"

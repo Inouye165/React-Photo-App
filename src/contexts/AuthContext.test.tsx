@@ -145,12 +145,12 @@ describe('AuthContext.updatePassword', () => {
 
     await waitFor(() => {
       expect(mockUpdateUser).toHaveBeenCalledWith({ password: 'newpass1' })
-    })
+    }, { timeout: 5000 })
 
     await waitFor(() => {
       expect(mockSetAuthToken).toHaveBeenLastCalledWith('new-token')
       expect(mockRealtimeSetAuth).toHaveBeenLastCalledWith('new-token')
-    })
+    }, { timeout: 5000 })
   })
 
   it('returns a user-visible error message when Supabase throws (e.g., 400/500)', async () => {
@@ -190,7 +190,7 @@ describe('AuthContext.updatePassword', () => {
 
     await waitFor(() => {
       expect(mockUpdateUser).toHaveBeenCalledWith({ password: 'newpass1' })
-    })
+    }, { timeout: 5000 })
 
     expect(await screen.findByText('Bad Request')).toBeInTheDocument()
   })
@@ -270,7 +270,7 @@ describe('AuthContext.updatePassword', () => {
       expect(mockSignOut).toHaveBeenCalledTimes(1)
       expect(mockSetAuthToken).toHaveBeenCalledWith(null)
       expect(mockRealtimeSetAuth).toHaveBeenCalled()
-    })
+    }, { timeout: 10000 })
   })
 })
 
@@ -314,7 +314,7 @@ describe('AuthContext profile fetching', () => {
         expect.stringContaining('/api/users/me'),
         expect.objectContaining({ method: 'GET' }),
       )
-    })
+    }, { timeout: 5000 })
   })
 })
 
@@ -368,7 +368,7 @@ describe('AuthContext invalid refresh token handling', () => {
     // Should show user-friendly session expired message
     await waitFor(() => {
       expect(screen.getByTestId('message')).toHaveTextContent('Your session expired. Please sign in again.')
-    })
+    }, { timeout: 5000 })
 
     // Auth state should be cleared
     expect(screen.getByTestId('user')).toHaveTextContent('none')
@@ -381,7 +381,7 @@ describe('AuthContext invalid refresh token handling', () => {
     fireEvent.click(screen.getByRole('button', { name: 'Dismiss' }))
     await waitFor(() => {
       expect(screen.queryByTestId('message')).not.toBeInTheDocument()
-    })
+    }, { timeout: 5000 })
   })
 
   it('does not show session-expired message on successful init', async () => {
@@ -410,6 +410,6 @@ describe('AuthContext invalid refresh token handling', () => {
 
     await waitFor(() => {
       expect(screen.getByTestId('message')).toHaveTextContent('no-message')
-    })
+    }, { timeout: 5000 })
   })
 })

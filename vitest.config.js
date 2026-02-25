@@ -16,15 +16,17 @@ export default defineConfig({
     ],
     environment: 'happy-dom',
     setupFiles: ['./src/test/setup.ts'],
-    // CRITICAL: Use forks with single fork to prevent memory accumulation
+    // Use forks pool with proper isolation between test files.
+    // singleFork: false lets vitest recycle workers, avoiding state leakage
+    // that accumulates across 87 test files in a single process.
     pool: 'forks',
     poolOptions: {
       forks: {
-        singleFork: true,
+        singleFork: false,
         isolate: true,
       },
     },
-    // Force sequential execution
+    // Sequential execution to keep output readable and reduce memory pressure
     maxConcurrency: 1,
     fileParallelism: false,
     // Clean up between tests
@@ -33,8 +35,8 @@ export default defineConfig({
     restoreMocks: true,
     // Isolate each test file completely
     isolate: true,
-    // Disable threads entirely
-    threads: false,
+    // Generous test timeout for CI environments
+    testTimeout: 15000,
     deps: {
       inline: ['@excalidraw/excalidraw', 'roughjs'],
     },

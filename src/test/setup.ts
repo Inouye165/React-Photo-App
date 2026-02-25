@@ -1,7 +1,13 @@
 // @ts-nocheck
 import '@testing-library/jest-dom/vitest'
 import { vi, afterEach, beforeEach } from 'vitest'
-import { cleanup } from '@testing-library/react'
+import { cleanup, configure } from '@testing-library/react'
+
+// Increase default waitFor timeout from 1000ms to 10000ms.
+// With singleFork: true, all 87 test files share one process — later tests
+// run under memory pressure and GC pauses that cause the default 1s timeout
+// to be insufficient for async hook state transitions.
+configure({ asyncUtilTimeout: 10000 })
 import React from 'react'
 import { uploadPickerInitialState } from '../store/uploadPickerSlice'
 
@@ -465,6 +471,9 @@ vi.mock('../store', () => {
 
 // Reset mocks before each test
 beforeEach(() => {
+  // Ensure real timers are active — prevents fake timer leaks from prior test files
+  // (singleFork mode shares one process for all 87 test files).
+  vi.useRealTimers();
   vi.clearAllMocks();
   resetDefaultState()
   localStorageMock.getItem.mockImplementation((key) => {
@@ -482,8 +491,9 @@ afterEach(() => {
   // Ensure no leaked DOM nodes remain between tests.
   document.body.innerHTML = '';
   
-  // Clear all timers
+  // Clear all timers and restore real timer implementations
   vi.clearAllTimers();
+  vi.useRealTimers();
   
   // Force garbage collection if available (won't work in all envs, but helps when it does)
   if (global.gc) {

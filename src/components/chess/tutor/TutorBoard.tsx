@@ -4,7 +4,7 @@ import type { TutorBoardRenderState } from './types'
 
 const classes = {
   shell: 'rounded-2xl border border-slate-700 bg-slate-900/70 p-1.5 sm:p-3',
-  boardWrap: 'mx-auto w-full max-w-[620px]',
+  boardWrap: 'mx-auto flex w-full justify-center',
   note: 'mt-1 hidden text-xs text-slate-400 sm:block',
 } as const
 
@@ -17,14 +17,16 @@ export default function TutorBoard({
   boardWidth: number
   customPieces: Record<string, (props: { squareWidth: number; isDragging: boolean }) => React.JSX.Element>
 }): React.JSX.Element {
+  const safeBoardWidth = Number.isFinite(boardWidth) ? Math.max(180, Math.floor(boardWidth)) : 300
+
   return (
     <section data-testid="tutor-board" className={classes.shell}>
       <div className={classes.boardWrap}>
-        <div className="relative">
+        <div className="relative overflow-hidden rounded-xl ring-1 ring-slate-700 shadow-sm" style={{ width: safeBoardWidth }}>
           <Chessboard
             id="lesson-main-studio"
             position={boardState.position}
-            boardWidth={boardWidth}
+            boardWidth={safeBoardWidth}
             customPieces={customPieces}
             showBoardNotation
             arePiecesDraggable={false}

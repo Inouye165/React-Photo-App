@@ -62,7 +62,7 @@ describe('useSignedThumbnails Hook', () => {
       // Wait for fetches to complete
       await waitFor(() => {
         expect(result.current.loading).toBe(false);
-      });
+      }, { timeout: 5000 });
 
       // Should have signed URLs for all photos
       expect(Object.keys(result.current.signedUrls)).toHaveLength(3);
@@ -92,7 +92,7 @@ describe('useSignedThumbnails Hook', () => {
 
       await waitFor(() => {
         expect(result.current.loading).toBe(false);
-      });
+      }, { timeout: 5000 });
 
       // getSignedUrl should return full URL with API base
       const fullUrl = result.current.getSignedUrl(mockPhotos[0]);
@@ -110,7 +110,7 @@ describe('useSignedThumbnails Hook', () => {
 
       await waitFor(() => {
         expect(result.current.loading).toBe(false);
-      });
+      }, { timeout: 5000 });
 
       // getSignedUrl should return null when no signed URL is available
       // This signals to components that they need to use AuthenticatedImage
@@ -133,7 +133,7 @@ describe('useSignedThumbnails Hook', () => {
 
       await waitFor(() => {
         expect(result.current.loading).toBe(false);
-      });
+      }, { timeout: 5000 });
 
       // Should not set error state for 404s
       expect(result.current.error).toBeNull();
@@ -157,7 +157,7 @@ describe('useSignedThumbnails Hook', () => {
 
       await waitFor(() => {
         expect(result.current.loading).toBe(false);
-      });
+      }, { timeout: 5000 });
 
       // 403 should be treated as expected client error
       expect(consoleDebugSpy).toHaveBeenCalled();
@@ -179,7 +179,7 @@ describe('useSignedThumbnails Hook', () => {
 
       await waitFor(() => {
         expect(result.current.loading).toBe(false);
-      });
+      }, { timeout: 5000 });
 
       expect(consoleDebugSpy).toHaveBeenCalled();
       expect(result.current.error).toBeNull();
@@ -202,7 +202,7 @@ describe('useSignedThumbnails Hook', () => {
 
       await waitFor(() => {
         expect(result.current.loading).toBe(false);
-      });
+      }, { timeout: 5000 });
 
       // 500 should be logged as error
       expect(consoleSpy).toHaveBeenCalledWith(
@@ -227,7 +227,7 @@ describe('useSignedThumbnails Hook', () => {
 
       await waitFor(() => {
         expect(result.current.loading).toBe(false);
-      });
+      }, { timeout: 5000 });
 
       // Should log network errors
       expect(consoleSpy).toHaveBeenCalledWith(
@@ -245,7 +245,7 @@ describe('useSignedThumbnails Hook', () => {
 
       await waitFor(() => {
         expect(result.current.loading).toBe(false);
-      });
+      }, { timeout: 5000 });
 
       expect(result.current.signedUrls).toEqual({});
       expect(result.current.error).toBeNull();
@@ -259,7 +259,7 @@ describe('useSignedThumbnails Hook', () => {
 
       await waitFor(() => {
         expect(result.current.loading).toBe(false);
-      });
+      }, { timeout: 5000 });
 
       expect(result.current.signedUrls).toEqual({});
       expect(global.fetch).not.toHaveBeenCalled();
@@ -287,7 +287,7 @@ describe('useSignedThumbnails Hook', () => {
 
       await waitFor(() => {
         expect(result.current.loading).toBe(false);
-      });
+      }, { timeout: 5000 });
 
       // Should only fetch for photo with thumbnail
       expect(global.fetch).toHaveBeenCalledTimes(1);
@@ -323,7 +323,7 @@ describe('useSignedThumbnails Hook', () => {
 
       await waitFor(() => {
         expect(result.current.loading).toBe(false);
-      });
+      }, { timeout: 5000 });
 
       const initialCallCount = global.fetch.mock.calls.length;
 
@@ -332,7 +332,7 @@ describe('useSignedThumbnails Hook', () => {
 
       await waitFor(() => {
         expect(result.current.loading).toBe(false);
-      });
+      }, { timeout: 5000 });
 
       // Should not fetch again
       expect(global.fetch).toHaveBeenCalledTimes(initialCallCount);

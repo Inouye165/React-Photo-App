@@ -1,3 +1,10 @@
+param(
+  [switch]$SkipInstall,
+  [switch]$SkipBuild,
+  [switch]$SkipMigrations,
+  [int]$MonitorSeconds = 45
+)
+
 $ErrorActionPreference = 'Stop'
 
 function Get-LocalRuntimeStatePath {
@@ -72,6 +79,249 @@ function Stop-TrackedRuntimeTerminals {
 function Write-Step {
   param([string]$Message)
   Write-Host "[start-local] $Message" -ForegroundColor Cyan
+}
+
+function Initialize-StartLocalLogging {
+  param([string]$RepoRoot)
+
+  $logDir = Join-Path $RepoRoot 'logs'
+  if (-not (Test-Path $logDir)) {
+    New-Item -Path $logDir -ItemType Directory -Force | Out-Null
+  }
+
+  $script:StartLocalRunId = [guid]::NewGuid().ToString('N')
+  $script:StartLocalHostName = [System.Net.Dns]::GetHostName()
+  $script:StartLocalLogPath = Join-Path $logDir 'start-local-runs.jsonl'
+}
+
+function Write-StartLocalLog {
+  param(
+    [string]$Status,
+    [string]$Stage,
+    [string]$Message,
+    [string]$Issue = '',
+    [string]$Fix = ''
+  )
+
+  if (-not $script:StartLocalLogPath) {
+    return
+  }
+
+  $entry = [ordered]@{
+    timestamp = (Get-Date).ToString('o')
+    host = $script:StartLocalHostName
+    runId = $script:StartLocalRunId
+    status = $Status
+    stage = $Stage
+    message = $Message
+    issue = $Issue
+    fix = $Fix
+  }
+
+  Add-Content -Path $script:StartLocalLogPath -Value ($entry | ConvertTo-Json -Compress) -Encoding UTF8
+}
+
+function Get-FailureFixHint {
+  param([string]$ErrorMessage)
+
+  if ($ErrorMessage -match 'Docker|docker') {
+    return 'Open Docker Desktop, wait until engine is healthy, then re-run npm run start:local.'
+  }
+
+  if ($ErrorMessage -match 'npm|dependencies|install') {
+    return 'Run npm install at repo root and npm --prefix server install, then retry startup.'
+  }
+
+  if ($ErrorMessage -match 'migration|knex|database|DB') {
+    return 'Verify SUPABASE_DB_URL(_MIGRATIONS) and DB connectivity, then run npm --prefix server run verify:migrations and retry.'
+  }
+
+  if ($ErrorMessage -match 'health|reachable|Timed out') {
+    return 'Check API/Frontend terminal output and container logs, fix the root error, then run npm run start:local again.'
+  }
+
+  return 'Review the terminal output for the failing step and resolve the underlying error before retrying.'
+}
+
+function Test-NodeModulesNeedsInstall {
+  param([string]$ProjectPath)
+
+  $nodeModulesPath = Join-Path $ProjectPath 'node_modules'
+  if (-not (Test-Path $nodeModulesPath)) {
+    return $true
+  }
+
+  $lockPath = Join-Path $ProjectPath 'package-lock.json'
+  if (-not (Test-Path $lockPath)) {
+    return $false
+  }
+
+  $nodeModulesMtime = (Get-Item $nodeModulesPath).LastWriteTimeUtc
+  $lockMtime = (Get-Item $lockPath).LastWriteTimeUtc
+  return ($lockMtime -gt $nodeModulesMtime)
+}
+
+function Ensure-NpmDependencies {
+  param(
+    [string]$RepoRoot,
+    [switch]$SkipInstall
+  )
+
+  if ($SkipInstall) {
+    Write-Step 'Skipping dependency install checks (SkipInstall requested).'
+    return
+  }
+
+  if (-not (Get-Command npm -ErrorAction SilentlyContinue)) {
+    throw 'npm not found on PATH. Install Node.js 20+ and npm 10+.'
+  }
+
+  $rootNeedsInstall = Test-NodeModulesNeedsInstall -ProjectPath $RepoRoot
+  $serverPath = Join-Path $RepoRoot 'server'
+  $serverNeedsInstall = Test-NodeModulesNeedsInstall -ProjectPath $serverPath
+
+  if ($rootNeedsInstall) {
+    Write-Step 'Installing/updating root dependencies...'
+    & npm install
+    if ($LASTEXITCODE -ne 0) {
+      throw 'Root dependency install failed.'
+    }
+  } else {
+    Write-Step 'Root dependencies already present.'
+  }
+
+  if ($serverNeedsInstall) {
+    Write-Step 'Installing/updating server dependencies...'
+    & npm --prefix server install
+    if ($LASTEXITCODE -ne 0) {
+      throw 'Server dependency install failed.'
+    }
+  } else {
+    Write-Step 'Server dependencies already present.'
+  }
+}
+
+function Ensure-ServerBuildArtifacts {
+  param(
+    [switch]$SkipBuild
+  )
+
+  if ($SkipBuild) {
+    Write-Step 'Skipping server build step (SkipBuild requested).'
+    return
+  }
+
+  Write-Step 'Building server artifacts for API/worker startup...'
+  & npm --prefix server run build
+  if ($LASTEXITCODE -ne 0) {
+    throw 'Server build failed.'
+  }
+}
+
+function Ensure-DatabaseMigrations {
+  param(
+    [switch]$SkipMigrations
+  )
+
+  if ($SkipMigrations) {
+    Write-Step 'Skipping migration checks (SkipMigrations requested).'
+    return
+  }
+
+  Write-Step 'Verifying migration state...'
+  & npm --prefix server run verify:migrations
+  if ($LASTEXITCODE -ne 0) {
+    throw 'Migration verification failed.'
+  }
+
+  Write-Step 'Applying pending migrations (if any)...'
+  & node server/scripts/run-migrations.js
+  if ($LASTEXITCODE -ne 0) {
+    throw 'Running migrations failed.'
+  }
+}
+
+function Test-ProcessAlive {
+  param([int]$ProcessId)
+
+  if ($ProcessId -le 0) {
+    return $false
+  }
+
+  try {
+    Get-Process -Id $ProcessId -ErrorAction Stop | Out-Null
+    return $true
+  } catch {
+    return $false
+  }
+}
+
+function Test-LogHasErrorPattern {
+  param([string]$LogPath)
+
+  if (-not (Test-Path $LogPath)) {
+    return $false
+  }
+
+  $tail = Get-Content -Path $LogPath -Tail 200 -ErrorAction SilentlyContinue
+  if (-not $tail) {
+    return $false
+  }
+
+  $hardFailurePattern = '(^\[start-local\]\s*ERROR:|\bUnhandledPromiseRejection\b|\bEADDRINUSE\b|\bECONNREFUSED\b|\bECONNRESET\b|\bFAILED:|\bMigration verification failed\b|\bRunning migrations failed\b|\bTypeError:\b|\bReferenceError:\b|\bSyntaxError:\b)'
+  $benignPattern = '(disabling tracing to prevent network errors|Optional env missing; some features may be disabled|GOOGLE_MAPS_API_KEY is missing|POI lookups disabled)'
+
+  foreach ($line in $tail) {
+    if ($line -match $benignPattern) {
+      continue
+    }
+    if ($line -match $hardFailurePattern) {
+      return $true
+    }
+  }
+
+  return $false
+}
+
+function Monitor-StartupProcesses {
+  param(
+    [int]$ApiPid,
+    [int]$WorkerPid,
+    [int]$FrontendPid,
+    [string]$ApiLogPath,
+    [string]$WorkerLogPath,
+    [string]$FrontendLogPath,
+    [int]$DurationSeconds = 45
+  )
+
+  Write-Step "Monitoring API/Worker/Frontend processes for $DurationSeconds seconds..."
+  $deadline = (Get-Date).AddSeconds($DurationSeconds)
+
+  while ((Get-Date) -lt $deadline) {
+    if (-not (Test-ProcessAlive -ProcessId $ApiPid)) {
+      throw 'API process exited during startup monitoring window.'
+    }
+    if (-not (Test-ProcessAlive -ProcessId $WorkerPid)) {
+      throw 'Worker process exited during startup monitoring window.'
+    }
+    if (-not (Test-ProcessAlive -ProcessId $FrontendPid)) {
+      throw 'Frontend process exited during startup monitoring window.'
+    }
+
+    if (Test-LogHasErrorPattern -LogPath $ApiLogPath) {
+      throw "API log indicates an error. Review: $ApiLogPath"
+    }
+    if (Test-LogHasErrorPattern -LogPath $WorkerLogPath) {
+      throw "Worker log indicates an error. Review: $WorkerLogPath"
+    }
+    if (Test-LogHasErrorPattern -LogPath $FrontendLogPath) {
+      throw "Frontend log indicates an error. Review: $FrontendLogPath"
+    }
+
+    Start-Sleep -Seconds 3
+  }
+
+  Write-Step 'Startup monitoring window passed with no detected stuck/error signals.'
 }
 
 function Wait-ForHealthyContainer {
@@ -394,6 +644,8 @@ try {
   $repoRoot = (Resolve-Path "$PSScriptRoot\..").Path
   $runtimeStatePath = Get-LocalRuntimeStatePath -RepoRoot $repoRoot
   Set-Location $repoRoot
+  Initialize-StartLocalLogging -RepoRoot $repoRoot
+  Write-StartLocalLog -Status 'info' -Stage 'start' -Message 'start-local run started'
 
   $appTerminalTitles = @('Lumina API', 'Lumina Worker', 'Lumina Frontend')
   Write-Step "Stopping any tracked local runtime terminals..."
@@ -448,26 +700,59 @@ try {
   $serverEnvPrefix = ''
   if ($forceLocalDockerDb) {
     Write-Step "Using local Docker Postgres + Redis for backend/worker (set START_LOCAL_USE_ENV=true to disable)."
+    $env:SUPABASE_DB_URL = $localDbUrl
+    $env:SUPABASE_DB_URL_MIGRATIONS = $localDbUrl
+    $env:DATABASE_URL = $localDbUrl
+    $env:DB_SSL_DISABLED = 'true'
+    $env:REDIS_URL = $localRedisUrl
     $serverEnvPrefix = "`$env:SUPABASE_DB_URL='$localDbUrl'; `$env:SUPABASE_DB_URL_MIGRATIONS='$localDbUrl'; `$env:DATABASE_URL='$localDbUrl'; `$env:DB_SSL_DISABLED='true'; `$env:REDIS_URL='$localRedisUrl';"
   } elseif ($localSupabaseDbUrl) {
     Write-Step "Using local Supabase Postgres from 'supabase status' + local Redis for backend/worker."
+    $env:SUPABASE_DB_URL = $localSupabaseDbUrl
+    $env:SUPABASE_DB_URL_MIGRATIONS = $localSupabaseDbUrl
+    $env:DATABASE_URL = $localSupabaseDbUrl
+    $env:DB_SSL_DISABLED = 'true'
+    $env:REDIS_URL = $localRedisUrl
     $serverEnvPrefix = "`$env:SUPABASE_DB_URL='$localSupabaseDbUrl'; `$env:SUPABASE_DB_URL_MIGRATIONS='$localSupabaseDbUrl'; `$env:DATABASE_URL='$localSupabaseDbUrl'; `$env:DB_SSL_DISABLED='true'; `$env:REDIS_URL='$localRedisUrl';"
   } else {
     Write-Step "Using DB/Redis from environment files (START_LOCAL_USE_ENV=true)."
   }
 
+  Write-Step 'Running preflight dependency/install checks...'
+  Ensure-NpmDependencies -RepoRoot $repoRoot -SkipInstall:$SkipInstall
+
+  Write-Step 'Running preflight server build...'
+  Ensure-ServerBuildArtifacts -SkipBuild:$SkipBuild
+
+  Write-Step 'Running preflight migration checks...'
+  Ensure-DatabaseMigrations -SkipMigrations:$SkipMigrations
+
+  $runtimeLogDir = Join-Path $repoRoot 'logs/local-runtime'
+  if (-not (Test-Path $runtimeLogDir)) {
+    New-Item -Path $runtimeLogDir -ItemType Directory -Force | Out-Null
+  }
+  $runStamp = (Get-Date).ToString('yyyyMMdd-HHmmss')
+  $apiLogPath = Join-Path $runtimeLogDir "api-$runStamp.log"
+  $workerLogPath = Join-Path $runtimeLogDir "worker-$runStamp.log"
+  $frontendLogPath = Join-Path $runtimeLogDir "frontend-$runStamp.log"
+
   Write-Step "Opening backend terminal..."
-  $apiTerminal = Start-AppTerminal -Title 'Lumina API' -Command "$serverEnvPrefix npm --prefix server start" -RepoRoot $repoRoot
+  $apiTerminal = Start-AppTerminal -Title 'Lumina API' -Command "$serverEnvPrefix npm --prefix server start *>&1 | Tee-Object -FilePath '$apiLogPath' -Append" -RepoRoot $repoRoot
 
   Write-Step "Opening worker terminal..."
-  $workerTerminal = Start-AppTerminal -Title 'Lumina Worker' -Command "$serverEnvPrefix npm run worker" -RepoRoot $repoRoot
+  $workerTerminal = Start-AppTerminal -Title 'Lumina Worker' -Command "$serverEnvPrefix npm run worker *>&1 | Tee-Object -FilePath '$workerLogPath' -Append" -RepoRoot $repoRoot
 
   Write-Step "Opening frontend terminal..."
-  $frontendTerminal = Start-AppTerminal -Title 'Lumina Frontend' -Command 'npm run dev' -RepoRoot $repoRoot
+  $frontendTerminal = Start-AppTerminal -Title 'Lumina Frontend' -Command "npm run dev *>&1 | Tee-Object -FilePath '$frontendLogPath' -Append" -RepoRoot $repoRoot
 
   Write-LocalRuntimeState -StatePath $runtimeStatePath -State @{
     startedAt = (Get-Date).ToString('o')
     repoRoot = $repoRoot
+    logs = @{
+      api = $apiLogPath
+      worker = $workerLogPath
+      frontend = $frontendLogPath
+    }
     terminals = @(
       @{ title = 'Lumina API'; pid = $apiTerminal.Id },
       @{ title = 'Lumina Worker'; pid = $workerTerminal.Id },
@@ -481,10 +766,20 @@ try {
   Write-Step "Waiting for frontend readiness..."
   Wait-ForHttpEndpoint -Url 'http://localhost:5173/' -MaxAttempts 90 -DelaySeconds 2
 
+  Monitor-StartupProcesses -ApiPid $apiTerminal.Id -WorkerPid $workerTerminal.Id -FrontendPid $frontendTerminal.Id -ApiLogPath $apiLogPath -WorkerLogPath $workerLogPath -FrontendLogPath $frontendLogPath -DurationSeconds $MonitorSeconds
+
   Write-Step "Startup initiated."
   Write-Host "[start-local] API health: http://127.0.0.1:3001/health" -ForegroundColor Green
   Write-Host "[start-local] Frontend:  http://localhost:5173/" -ForegroundColor Green
+  Write-Host "[start-local] Run log:   $script:StartLocalLogPath" -ForegroundColor Green
+  Write-StartLocalLog -Status 'success' -Stage 'completed' -Message 'Startup completed and monitoring passed'
 } catch {
-  Write-Host "[start-local] ERROR: $($_.Exception.Message)" -ForegroundColor Red
+  $errMsg = $_.Exception.Message
+  $fixHint = Get-FailureFixHint -ErrorMessage $errMsg
+  Write-Host "[start-local] ERROR: $errMsg" -ForegroundColor Red
+  Write-Host "[start-local] Suggested fix: $fixHint" -ForegroundColor Yellow
+  Write-Host "[start-local] Host: $script:StartLocalHostName | Timestamp: $((Get-Date).ToString('o'))" -ForegroundColor Yellow
+  Write-Host "[start-local] Run log: $script:StartLocalLogPath" -ForegroundColor Yellow
+  Write-StartLocalLog -Status 'failure' -Stage 'failed' -Message 'Startup failed' -Issue $errMsg -Fix $fixHint
   exit 1
 }

@@ -21,9 +21,16 @@ interface UserMenuProps {
   onOpenEdit?: () => void;
   onOpenAdmin?: () => void;
   theme?: 'light' | 'dark';
+  showAdminQuickAction?: boolean;
 }
 
-export default function UserMenu({ onOpenPhotos, onOpenEdit, onOpenAdmin, theme = 'light' }: UserMenuProps) {
+export default function UserMenu({
+  onOpenPhotos,
+  onOpenEdit,
+  onOpenAdmin,
+  theme = 'light',
+  showAdminQuickAction = true,
+}: UserMenuProps) {
   const { user, logout, profile } = useAuth();
   const [isOpen, setIsOpen] = useState(false);
   const [showFeedbackModal, setShowFeedbackModal] = useState(false);
@@ -146,7 +153,7 @@ export default function UserMenu({ onOpenPhotos, onOpenEdit, onOpenAdmin, theme 
     <>
       <div className="relative" ref={menuRef}>
         <div className="flex items-center gap-2">
-          {isAdmin && onOpenAdmin ? (
+          {isAdmin && onOpenAdmin && showAdminQuickAction ? (
             <button
               onClick={handleAdmin}
               data-testid="user-menu-admin-quick"
