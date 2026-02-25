@@ -123,8 +123,11 @@ export default function MainLayout(): React.ReactElement {
   const statusMessage = dependencyWarning || toolbarMessage || banner?.message;
   const bannerSeverity: Severity = (banner as BannerState | null)?.severity ?? 'info';
   const isChatRoute = location.pathname.startsWith('/chat');
+  const isHomeRoute = location.pathname === '/';
   const isChessImmersiveRoute = /^\/games\/(?:chess|[^/]+)$/.test(location.pathname);
-  const contentOverflowClass = isChatRoute
+  const contentOverflowClass = isHomeRoute
+    ? 'overflow-hidden'
+    : isChatRoute
     ? 'overflow-hidden'
     : isChessImmersiveRoute
       ? 'overflow-auto lg:overflow-hidden'
@@ -179,7 +182,7 @@ export default function MainLayout(): React.ReactElement {
       {/* Main content area with consistent padding */}
       <div
         className={`flex-1 ${contentOverflowClass}`}
-        style={isChatRoute || isChessImmersiveRoute ? undefined : { padding: '12px' }}
+        style={isChatRoute || isChessImmersiveRoute || isHomeRoute ? undefined : { padding: '12px' }}
       >
         <Outlet context={{ 
           aiDependenciesReady, 

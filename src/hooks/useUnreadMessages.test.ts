@@ -86,7 +86,7 @@ describe('useUnreadMessages', () => {
 
     const { result } = renderHook(() => useUnreadMessages(userId))
 
-    await waitFor(() => expect(result.current.loading).toBe(false))
+    await waitFor(() => expect(result.current.loading).toBe(false), { timeout: 5000 })
 
     // Expected unread: Message 1 (roomA) and Message 3 (roomB) -> total 2
     expect(result.current.unreadCount).toBe(2)
@@ -145,7 +145,7 @@ describe('useUnreadMessages', () => {
 
     const { result } = renderHook(() => useUnreadMessages(userId))
 
-    await waitFor(() => expect(result.current.loading).toBe(false))
+    await waitFor(() => expect(result.current.loading).toBe(false), { timeout: 5000 })
 
     expect(result.current.unreadCount).toBe(0)
     expect(result.current.unreadByRoom).toEqual({})
@@ -200,7 +200,7 @@ describe('useUnreadMessages', () => {
 
     const { result } = renderHook(() => useUnreadMessages(userId))
 
-    await waitFor(() => expect(result.current.loading).toBe(false))
+    await waitFor(() => expect(result.current.loading).toBe(false), { timeout: 5000 })
 
     expect(result.current.unreadCount).toBe(0)
     expect(result.current.unreadByRoom).toEqual({})

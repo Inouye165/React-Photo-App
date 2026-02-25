@@ -55,6 +55,51 @@ Expected: Frontend at http://localhost:5173/
 
 ## Startup Robustness Log
 
+- **2026-02-24 13:21:11 -08:00 (Windows, host: RONS-COMPUTER, README startup validation)**
+  - Process used: `npm run start:local` from repo root (README robust one-command startup).
+  - Startup behavior observed:
+    1. Script auto-healed a stale local Supabase startup state after detecting `supabase start is already running` with a non-ready container.
+    2. Dependency/build/migration preflight checks completed and API/worker/frontend terminals were launched automatically.
+    3. Monitoring window passed with no detected stuck/error signals.
+  - Verification results:
+    - `http://127.0.0.1:3001/health` returned HTTP `200`.
+    - `http://localhost:5173/` returned HTTP `200`.
+  - Outcome: startup passed smoothly (no manual fix required).
+
+- **2026-02-24 08:40:01 -08:00 (Windows, host: RONS-COMPUTER, monitored cold-start validation)**
+  - Process used: `npm run stop:local` then `npm run start:local` from repo root.
+  - Startup behavior observed:
+    1. `stop:local` could not stop previously tracked Lumina terminals and reported Docker daemon unavailable for container stop.
+    2. `start:local` auto-started Docker Desktop, performed Supabase stale-container self-heal, then completed startup preflight checks.
+  - Verification results:
+    - `http://127.0.0.1:3001/health` returned HTTP `200`.
+    - `http://localhost:5173/` returned HTTP `200`.
+    - Monitoring window completed with no detected stuck/error signals.
+  - Troubleshooting required: none (self-heal path completed automatically; no manual fix applied).
+  - Outcome: startup passed.
+
+- **2026-02-24 06:50:24 -08:00 (Windows, host: Rons-Computer, monitored `start:local` hardening validation)**
+  - Process used: switched to `main`, synced with `origin/main`, removed non-`main` branches locally/remotely, then executed `npm run start:local`.
+  - Startup checks exercised by script:
+    1. Docker availability and daemon auto-start/wait.
+    2. Local Supabase reachability/start self-heal path.
+    3. Dependency install preflight (`npm install`, `npm --prefix server install` when needed).
+    4. Server build preflight (`npm --prefix server run build`).
+    5. Migration verify/apply preflight (`npm --prefix server run verify:migrations`, `node server/scripts/run-migrations.js`).
+    6. Post-start process + endpoint monitoring window.
+  - Issues observed during first pass:
+    1. Startup monitor produced a false positive by matching benign log text (`disabling tracing to prevent network errors`).
+  - Fix applied:
+    - Tightened log failure pattern matching in `scripts/start-local.ps1` to ignore known benign warning lines and only fail on hard error signatures.
+  - Verification results after fix:
+    - `http://127.0.0.1:3001/health` returned HTTP `200`.
+    - `http://localhost:5173/` returned HTTP `200`.
+    - Monitoring window completed without process exits or hard-error matches.
+  - Structured run log:
+    - `logs/start-local-runs.jsonl`
+    - Contains host + ISO timestamp + status + issue/fix fields for each run.
+  - Outcome: startup passed after one monitor-pattern correction.
+
 - **2026-02-23 18:15:16 -08:00 (Windows, autonomous README flow validation)**
   - Process used: `npm run stop:local` then `npm run start:local` from repo root (README robust one-command startup).
   - Startup issues observed:
