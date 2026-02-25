@@ -19,6 +19,7 @@ import ChatPadPage from './pages/ChatPadPage.tsx';
 import GamesIndex from './pages/GamesIndex'
 import ChessGame from './pages/ChessGame'
 import ChessHub from './pages/ChessHub'
+import ChessGotwReplayPage from './pages/ChessGotwReplayPage'
 import AdminDashboard from './pages/AdminDashboard.tsx';
 import AdminAssessmentHistory from './pages/AdminAssessmentHistory.tsx';
 import AssessmentReviewDetail from './pages/AssessmentReviewDetail.tsx';
@@ -93,6 +94,7 @@ function App() {
               <Route path="/chess" element={<ChessHub />} />
               <Route path="/games" element={<GamesIndex />} />
               <Route path="/games/chess" element={<ChessHub />} />
+              <Route path="/games/chess/gotw/:slug" element={<ChessGotwReplayPage />} />
               <Route path="/games/:gameId" element={<ChessGame />} />
 
               {/* Photo detail view */}

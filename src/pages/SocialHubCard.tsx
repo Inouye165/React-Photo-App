@@ -1,4 +1,4 @@
-import React, { useMemo, useState } from 'react'
+import React, { useEffect, useMemo, useRef, useState } from 'react'
 
 type SocialTab = 'messages' | 'requests'
 
@@ -30,11 +30,59 @@ const requestItems: GameRequest[] = [
 
 export default function SocialHubCard(): React.JSX.Element {
   const [activeTab, setActiveTab] = useState<SocialTab>('messages')
+  const [focusPanelOnChange, setFocusPanelOnChange] = useState(false)
+  const tabPanelRef = useRef<HTMLDivElement | null>(null)
 
   const counts = useMemo(() => ({
     messages: messageItems.length,
     requests: requestItems.length,
   }), [])
+
+  const tabOrder: SocialTab[] = ['messages', 'requests']
+
+  useEffect(() => {
+    if (!focusPanelOnChange) return
+    tabPanelRef.current?.focus()
+    setFocusPanelOnChange(false)
+  }, [activeTab, focusPanelOnChange])
+
+  const handleTabClick = (tab: SocialTab) => {
+    setActiveTab(tab)
+    setFocusPanelOnChange(false)
+  }
+
+  const handleTabKeyDown = (event: React.KeyboardEvent<HTMLButtonElement>, currentTab: SocialTab) => {
+    const currentIndex = tabOrder.indexOf(currentTab)
+    if (currentIndex < 0) return
+
+    const switchTo = (nextTab: SocialTab) => {
+      setActiveTab(nextTab)
+      setFocusPanelOnChange(true)
+    }
+
+    if (event.key === 'ArrowRight') {
+      event.preventDefault()
+      switchTo(tabOrder[(currentIndex + 1) % tabOrder.length])
+      return
+    }
+
+    if (event.key === 'ArrowLeft') {
+      event.preventDefault()
+      switchTo(tabOrder[(currentIndex - 1 + tabOrder.length) % tabOrder.length])
+      return
+    }
+
+    if (event.key === 'Home') {
+      event.preventDefault()
+      switchTo(tabOrder[0])
+      return
+    }
+
+    if (event.key === 'End') {
+      event.preventDefault()
+      switchTo(tabOrder[tabOrder.length - 1])
+    }
+  }
 
   return (
     <section className="flex min-h-0 flex-col rounded-2xl bg-chess-surface p-4 shadow-chess-card ring-1 ring-white/10" aria-labelledby="social-hub-heading">
@@ -49,7 +97,9 @@ export default function SocialHubCard(): React.JSX.Element {
           aria-selected={activeTab === 'messages'}
           aria-controls="social-messages-panel"
           id="social-messages-tab"
-          onClick={() => setActiveTab('messages')}
+          tabIndex={activeTab === 'messages' ? 0 : -1}
+          onClick={() => handleTabClick('messages')}
+          onKeyDown={(event) => handleTabKeyDown(event, 'messages')}
           className={`inline-flex min-h-11 items-center gap-2 rounded-lg px-3 py-2 text-sm font-semibold transition focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-chess-accentSoft focus-visible:ring-offset-2 focus-visible:ring-offset-chess-bg ${
             activeTab === 'messages' ? 'bg-chess-accent text-black' : 'text-chess-text hover:bg-white/10'
           }`}
@@ -65,7 +115,9 @@ export default function SocialHubCard(): React.JSX.Element {
           aria-selected={activeTab === 'requests'}
           aria-controls="social-requests-panel"
           id="social-requests-tab"
-          onClick={() => setActiveTab('requests')}
+          tabIndex={activeTab === 'requests' ? 0 : -1}
+          onClick={() => handleTabClick('requests')}
+          onKeyDown={(event) => handleTabKeyDown(event, 'requests')}
           className={`inline-flex min-h-11 items-center gap-2 rounded-lg px-3 py-2 text-sm font-semibold transition focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-chess-accentSoft focus-visible:ring-offset-2 focus-visible:ring-offset-chess-bg ${
             activeTab === 'requests' ? 'bg-chess-accent text-black' : 'text-chess-text hover:bg-white/10'
           }`}
@@ -79,19 +131,34 @@ export default function SocialHubCard(): React.JSX.Element {
 
       <div className="mt-3 min-h-0 flex-1 overflow-y-auto pr-1">
         {activeTab === 'messages' ? (
-          <ul id="social-messages-panel" role="tabpanel" aria-labelledby="social-messages-tab" className="space-y-2">
+          <div
+            ref={tabPanelRef}
+            id="social-messages-panel"
+            role="tabpanel"
+            aria-labelledby="social-messages-tab"
+            tabIndex={0}
+          >
+            <ul className="space-y-2">
             {messageItems.map((message) => (
               <li key={message.id} className="rounded-xl bg-chess-surfaceSoft p-3 ring-1 ring-white/10">
                 <div className="flex items-start justify-between gap-2">
                   <p className="text-sm font-semibold text-chess-text">{message.sender}</p>
                   <span className="text-xs font-medium text-chess-muted">{message.time}</span>
                 </div>
-                <p className="mt-1 text-sm font-medium text-chess-text/90">{message.snippet}</p>
+                <p className="mt-1 text-base font-medium leading-relaxed text-chess-text/90">{message.snippet}</p>
               </li>
             ))}
-          </ul>
+            </ul>
+          </div>
         ) : (
-          <ul id="social-requests-panel" role="tabpanel" aria-labelledby="social-requests-tab" className="space-y-2">
+          <div
+            ref={tabPanelRef}
+            id="social-requests-panel"
+            role="tabpanel"
+            aria-labelledby="social-requests-tab"
+            tabIndex={0}
+          >
+            <ul className="space-y-2">
             {requestItems.map((request) => (
               <li key={request.id} className="rounded-xl bg-chess-surfaceSoft p-3 ring-1 ring-white/10">
                 <div className="flex items-start justify-between gap-2">
@@ -119,7 +186,8 @@ export default function SocialHubCard(): React.JSX.Element {
                 </div>
               </li>
             ))}
-          </ul>
+            </ul>
+          </div>
         )}
       </div>
     </section>

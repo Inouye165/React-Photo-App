@@ -19,7 +19,7 @@ import type {
 const TUTOR_STORY_HINT_SEEN_KEY = 'chess:tutorial-story-hint-seen:v1'
 
 const classes = {
-  root: 'grid min-h-0 flex-1 grid-cols-1 gap-2 lg:gap-4 lg:grid-cols-[minmax(0,1fr)_380px]',
+  root: 'grid min-h-0 flex-1 grid-cols-1 gap-2 lg:gap-4 lg:grid-cols-[minmax(0,1fr)_minmax(360px,34vw)] xl:grid-cols-[minmax(0,1fr)_minmax(420px,32vw)] 2xl:grid-cols-[minmax(0,1fr)_minmax(480px,30vw)]',
 } as const
 
 export default function ChessTutorStudio({

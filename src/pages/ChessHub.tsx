@@ -92,6 +92,8 @@ type ModeItem = {
   title: string
   description: string
   chips: string[]
+  imageSrc: string
+  imageAlt: string
   onClick: () => void
   icon: LucideIcon
 }
@@ -178,6 +180,8 @@ export default function ChessHub(): React.JSX.Element {
       title: 'Play Computer',
       description: 'Sharpen openings with immediate feedback and rematch speed.',
       chips: ['Engine Support', 'Practice Scenarios', 'Instant Rematch'],
+      imageSrc: '/chess-hub/play-computer.svg',
+      imageAlt: 'Chess board training setup artwork',
       onClick: () => navigate('/games/local?tab=analyze'),
       icon: Bot,
     },
@@ -186,6 +190,8 @@ export default function ChessHub(): React.JSX.Element {
       title: 'Play a Friend',
       description: 'Set up a serious match and keep momentum across turns.',
       chips: ['Invite Match', 'Live Opponent', 'Match Continuity'],
+      imageSrc: '/chess-hub/play-friend.svg',
+      imageAlt: 'Two players preparing for a chess match',
       onClick: () => navigate('/games'),
       icon: Users,
     },
@@ -194,6 +200,8 @@ export default function ChessHub(): React.JSX.Element {
       title: 'Learn Chess',
       description: 'Build pattern recognition with guided lessons and stories.',
       chips: ['Guided Lessons', 'Story Chapters', 'Focused Drills'],
+      imageSrc: '/chess-hub/learn-chess.svg',
+      imageAlt: 'Chess lesson notebook and study board',
       onClick: () => navigate('/games/local?tab=lesson&tutor=1&storyId=architect-of-squares'),
       icon: BookOpen,
     },
@@ -204,9 +212,16 @@ export default function ChessHub(): React.JSX.Element {
     getOpponentLabel(game, user?.id, currentUsername)
   ), [currentUsername, user?.id])
 
+  const pageClassName = isDesktop
+    ? 'flex h-[100dvh] flex-col overflow-hidden bg-chess-bg font-body text-chess-text'
+    : 'min-h-[100dvh] bg-chess-bg font-body text-chess-text'
+
   return (
     <motion.main
-      className="min-h-[100dvh] bg-chess-bg font-body text-chess-text"
+      id="chess-hub-main-content"
+      data-testid="chess-hub-root"
+      tabIndex={-1}
+      className={pageClassName}
       initial={prefersReducedMotion ? undefined : { opacity: 0, y: 10 }}
       animate={prefersReducedMotion ? undefined : { opacity: 1, y: 0 }}
       transition={prefersReducedMotion ? undefined : { duration: 0.34, ease: [0.22, 1, 0.36, 1] }}

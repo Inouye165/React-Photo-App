@@ -77,9 +77,13 @@ describe('ChessHub', () => {
 
     render(<ChessHub />)
 
-    expect(screen.getByRole('heading', { name: 'Choose a mode' })).toBeInTheDocument()
-    expect(screen.getByRole('heading', { name: 'Social Hub' })).toBeInTheDocument()
+    expect(screen.getByRole('heading', { name: 'Play Computer' })).toBeInTheDocument()
+    expect(screen.getByRole('heading', { name: 'Play a Friend' })).toBeInTheDocument()
+    expect(screen.getByRole('heading', { name: 'Learn Chess' })).toBeInTheDocument()
     expect(screen.getByRole('heading', { name: 'Greatest Games of All Time' })).toBeInTheDocument()
+    expect(screen.queryByRole('heading', { name: 'Choose a mode' })).not.toBeInTheDocument()
+    expect(screen.queryByRole('heading', { name: 'Continue' })).not.toBeInTheDocument()
+    expect(screen.queryByRole('heading', { name: 'Recent' })).not.toBeInTheDocument()
     expect(screen.queryByRole('heading', { name: 'Match Table' })).not.toBeInTheDocument()
 
     await waitFor(() => {
