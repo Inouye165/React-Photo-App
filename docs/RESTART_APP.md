@@ -55,6 +55,25 @@ Expected: Frontend at http://localhost:5173/
 
 ## Startup Robustness Log
 
+- **2026-02-25 05:24:37 -08:00 (Windows, host: DESKTOP-0UN2H9U, monitored startup with troubleshooting)**
+  - Process used: `npm run start:local` from repo root (README robust one-command startup).
+  - Startup issues observed during troubleshooting pass:
+    1. Preflight dependency step intermittently failed in PowerShell with `Unknown command: "pm"`.
+    2. npm warning output on stderr (`ERESOLVE`) was treated as a terminating PowerShell error under `$ErrorActionPreference = 'Stop'`.
+    3. Migration preflight initially failed (`schema "auth" does not exist`) when Docker Postgres override (`127.0.0.1:5432`) was used instead of local Supabase Postgres.
+  - Fixes applied:
+    1. Hardened npm invocation in `scripts/start-local.ps1` to prefer `npm.cmd` on Windows and use a resilient helper for preflight npm commands.
+    2. Updated npm helper to run with temporary `ErrorActionPreference='Continue'` and fail only on non-zero exit codes.
+    3. Updated DB selection logic to prefer local Supabase DB URL (`127.0.0.1:54330`) when available before forcing Docker DB override.
+  - Verification results after fixes:
+    - `http://127.0.0.1:3001/health` returned HTTP `200`.
+    - `http://localhost:5173/` returned HTTP `200`.
+    - Monitoring window completed with no detected stuck/error signals.
+  - Structured run log:
+    - `logs/start-local-runs.jsonl`
+    - Contains host + ISO timestamp + status + issue/fix fields for each run.
+  - Outcome: startup passed after troubleshooting and script hardening.
+
 - **2026-02-24 13:21:11 -08:00 (Windows, host: RONS-COMPUTER, README startup validation)**
   - Process used: `npm run start:local` from repo root (README robust one-command startup).
   - Startup behavior observed:
