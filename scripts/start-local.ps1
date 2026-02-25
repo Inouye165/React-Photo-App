@@ -161,6 +161,63 @@ function Test-NodeModulesNeedsInstall {
   return ($lockMtime -gt $nodeModulesMtime)
 }
 
+function Get-NpmExecutable {
+  if (Get-Command npm.cmd -ErrorAction SilentlyContinue) {
+    return 'npm.cmd'
+  }
+
+  if (Get-Command npm -ErrorAction SilentlyContinue) {
+    return 'npm'
+  }
+
+  throw 'npm not found on PATH. Install Node.js 20+ and npm 10+.'
+}
+
+function Invoke-NpmCommand {
+  param(
+    [string[]]$Arguments,
+    [string]$WorkingDirectory,
+    [int]$MaxAttempts = 2
+  )
+
+  $npmExe = Get-NpmExecutable
+  $invocationLabel = "$npmExe $($Arguments -join ' ')"
+
+  for ($attempt = 1; $attempt -le $MaxAttempts; $attempt++) {
+    if ($WorkingDirectory) {
+      Push-Location $WorkingDirectory
+    }
+
+    $commandOutput = @()
+    $previousErrorAction = $ErrorActionPreference
+    try {
+      $ErrorActionPreference = 'Continue'
+      $commandOutput = & $npmExe @Arguments 2>&1
+      $exitCode = $LASTEXITCODE
+    } finally {
+      $ErrorActionPreference = $previousErrorAction
+      if ($WorkingDirectory) {
+        Pop-Location
+      }
+    }
+
+    if ($exitCode -eq 0) {
+      return
+    }
+
+    $outputText = ($commandOutput | ForEach-Object { $_.ToString() }) -join "`n"
+    $looksLikeCommandParseIssue = $outputText -match 'Unknown command:\s*"?pm"?'
+
+    if ($attempt -lt $MaxAttempts -and $looksLikeCommandParseIssue) {
+      Write-Host "[start-local] npm command parse anomaly detected ('$invocationLabel'). Retrying..." -ForegroundColor Yellow
+      Start-Sleep -Seconds 1
+      continue
+    }
+
+    throw "Command failed ($invocationLabel). Exit code: $exitCode"
+  }
+}
+
 function Ensure-NpmDependencies {
   param(
     [string]$RepoRoot,
@@ -182,20 +239,14 @@ function Ensure-NpmDependencies {
 
   if ($rootNeedsInstall) {
     Write-Step 'Installing/updating root dependencies...'
-    & npm install
-    if ($LASTEXITCODE -ne 0) {
-      throw 'Root dependency install failed.'
-    }
+    Invoke-NpmCommand -Arguments @('install') -WorkingDirectory $RepoRoot
   } else {
     Write-Step 'Root dependencies already present.'
   }
 
   if ($serverNeedsInstall) {
     Write-Step 'Installing/updating server dependencies...'
-    & npm --prefix server install
-    if ($LASTEXITCODE -ne 0) {
-      throw 'Server dependency install failed.'
-    }
+    Invoke-NpmCommand -Arguments @('--prefix', 'server', 'install') -WorkingDirectory $RepoRoot
   } else {
     Write-Step 'Server dependencies already present.'
   }
@@ -212,10 +263,7 @@ function Ensure-ServerBuildArtifacts {
   }
 
   Write-Step 'Building server artifacts for API/worker startup...'
-  & npm --prefix server run build
-  if ($LASTEXITCODE -ne 0) {
-    throw 'Server build failed.'
-  }
+  Invoke-NpmCommand -Arguments @('--prefix', 'server', 'run', 'build') -WorkingDirectory (Resolve-Path "$PSScriptRoot\..").Path
 }
 
 function Ensure-DatabaseMigrations {
@@ -229,10 +277,7 @@ function Ensure-DatabaseMigrations {
   }
 
   Write-Step 'Verifying migration state...'
-  & npm --prefix server run verify:migrations
-  if ($LASTEXITCODE -ne 0) {
-    throw 'Migration verification failed.'
-  }
+  Invoke-NpmCommand -Arguments @('--prefix', 'server', 'run', 'verify:migrations') -WorkingDirectory (Resolve-Path "$PSScriptRoot\..").Path
 
   Write-Step 'Applying pending migrations (if any)...'
   & node server/scripts/run-migrations.js
@@ -490,6 +535,22 @@ function Get-LocalSupabaseDbUrl {
   }
 }
 
+function Get-ConfiguredLocalSupabaseDbUrl {
+  param([string]$RepoRoot)
+
+  $serverEnv = Join-Path $RepoRoot 'server/.env'
+  $configured = Get-EnvValueFromFile -Path $serverEnv -Name 'SUPABASE_DB_URL'
+  if (-not $configured) {
+    return $null
+  }
+
+  if ($configured -match '@(127\.0\.0\.1|localhost):54330/') {
+    return $configured
+  }
+
+  return $null
+}
+
 function Ensure-DockerAvailable {
   if (-not (Get-Command docker -ErrorAction SilentlyContinue)) {
     throw "Docker CLI not found. Install Docker Desktop and ensure 'docker' is on PATH."
@@ -686,6 +747,9 @@ try {
 
   $localDbUrl = 'postgresql://photoapp:photoapp_dev@127.0.0.1:5432/photoapp'
   $localSupabaseDbUrl = Get-LocalSupabaseDbUrl -RepoRoot $repoRoot
+  if (-not $localSupabaseDbUrl) {
+    $localSupabaseDbUrl = Get-ConfiguredLocalSupabaseDbUrl -RepoRoot $repoRoot
+  }
   $localRedisUrl = 'redis://localhost:6379'
   $forceLocalDockerDb = $true
   if ($localSupabaseDbUrl) {

@@ -8,6 +8,10 @@ vi.mock('../api/games', () => ({
   listMyGamesWithMembers: vi.fn(async () => ([])),
 }))
 
+vi.mock('react-chessboard', () => ({
+  Chessboard: () => <div data-testid="greatest-games-board" />,
+}))
+
 const authState = vi.hoisted(() => ({
   user: { id: 'user-1', email: 'player@example.com' },
   profile: { username: 'player1' },
@@ -25,12 +29,76 @@ vi.mock('react-router-dom', () => ({
   useNavigate: () => navigateMock,
 }))
 
+function setViewport(width: number): void {
+  Object.defineProperty(window, 'innerWidth', {
+    configurable: true,
+    writable: true,
+    value: width,
+  })
+}
+
+function installMatchMediaMock(): void {
+  Object.defineProperty(window, 'matchMedia', {
+    configurable: true,
+    writable: true,
+    value: vi.fn((query: string) => {
+      const minWidthMatch = query.match(/min-width:\s*(\d+)px/)
+      const minWidth = minWidthMatch ? Number(minWidthMatch[1]) : 0
+      const matches = query.includes('prefers-reduced-motion')
+        ? false
+        : window.innerWidth >= minWidth
+
+      return {
+        matches,
+        media: query,
+        onchange: null,
+        addEventListener: vi.fn(),
+        removeEventListener: vi.fn(),
+        addListener: vi.fn(),
+        removeListener: vi.fn(),
+        dispatchEvent: vi.fn(),
+      } as unknown as MediaQueryList
+    }),
+  })
+}
+
 describe('ChessHub', () => {
   const listMyGamesWithMembersMock = vi.mocked(listMyGamesWithMembers)
 
   beforeEach(() => {
     vi.clearAllMocks()
+    setViewport(390)
+    installMatchMediaMock()
     listMyGamesWithMembersMock.mockResolvedValue([])
+  })
+
+  it('renders desktop modules at 1280px', async () => {
+    setViewport(1280)
+
+    render(<ChessHub />)
+
+    expect(screen.getByRole('heading', { name: 'Choose a mode' })).toBeInTheDocument()
+    expect(screen.getByRole('heading', { name: 'Social Hub' })).toBeInTheDocument()
+    expect(screen.getByRole('heading', { name: 'Greatest Games of All Time' })).toBeInTheDocument()
+    expect(screen.queryByRole('heading', { name: 'Match Table' })).not.toBeInTheDocument()
+
+    await waitFor(() => {
+      expect(listMyGamesWithMembersMock).toHaveBeenCalledTimes(1)
+    })
+  })
+
+  it('renders mobile layout and hides desktop-only modules on small screens', async () => {
+    setViewport(375)
+
+    render(<ChessHub />)
+
+    expect(screen.getByRole('heading', { name: 'Match Table' })).toBeInTheDocument()
+    expect(screen.queryByRole('heading', { name: 'Social Hub' })).not.toBeInTheDocument()
+    expect(screen.queryByRole('heading', { name: 'Greatest Games of All Time' })).not.toBeInTheDocument()
+
+    await waitFor(() => {
+      expect(listMyGamesWithMembersMock).toHaveBeenCalledTimes(1)
+    })
   })
 
   it('renders Chess title and the three mode CTAs', async () => {
