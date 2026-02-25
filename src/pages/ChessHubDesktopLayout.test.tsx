@@ -14,7 +14,7 @@ const modeItems = [
     title: 'Play Computer',
     description: 'Practice against the computer.',
     chips: ['Engine'],
-    imageSrc: 'C:\\Users\\inouy\\Downloads\\human_vs_computer_chess.webp',
+    imageSrc: '/chess-hub/human_vs_computer_chess.webp',
     imageAlt: 'Play computer artwork',
     onClick: vi.fn(),
     icon: Bot,
