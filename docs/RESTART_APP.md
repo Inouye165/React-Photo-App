@@ -55,6 +55,36 @@ Expected: Frontend at http://localhost:5173/
 
 ## Startup Robustness Log
 
+- **2026-02-25 08:34:58 -08:00 (Windows, host: Rons-Computer, monitored startup validation)**
+  - Process used: `npm run start:local` from repo root (README robust one-command startup).
+  - Startup behavior observed:
+    1. Script auto-started/validated Docker daemon readiness and confirmed local Supabase health endpoint reachability.
+    2. Preflight dependency/build/migration checks completed, then API/worker/frontend terminals were launched.
+    3. Monitoring window completed with no detected stuck/error signals.
+  - Verification results:
+    - `http://127.0.0.1:3001/health` returned HTTP `200`.
+    - `http://localhost:5173/` returned HTTP `200`.
+  - Structured run log:
+    - `logs/start-local-runs.jsonl`
+    - Success record: timestamp `2026-02-25T08:34:58.6575066-08:00`, host `Rons-Computer`, status `success`.
+  - Outcome: startup passed with no troubleshooting required.
+
+- **2026-02-25 06:57:56 -08:00 (Windows, host: Rons-Computer, monitored startup validation)**
+  - Process used: `npm run start:local` from repo root (README robust one-command startup).
+  - Startup behavior observed:
+    1. Script handled local runtime preflight checks and launched API/worker/frontend terminals.
+    2. Monitoring window completed with no detected stuck/error signals.
+  - Verification results:
+    - `http://127.0.0.1:3001/health` returned HTTP `200`.
+    - `http://localhost:5173/` returned HTTP `200`.
+  - Hardening applied to `scripts/start-local.ps1`:
+    1. Added resilient host detection fallback (`DNS hostname` -> `COMPUTERNAME` -> `unknown-host`).
+    2. Added retry-based JSONL append logic for `logs/start-local-runs.jsonl` to tolerate transient file-lock contention.
+  - Structured run log:
+    - `logs/start-local-runs.jsonl`
+    - Contains host + ISO timestamp + status + issue/fix fields for each run.
+  - Outcome: startup passed with no troubleshooting required.
+
 - **2026-02-25 05:24:37 -08:00 (Windows, host: DESKTOP-0UN2H9U, monitored startup with troubleshooting)**
   - Process used: `npm run start:local` from repo root (README robust one-command startup).
   - Startup issues observed during troubleshooting pass:

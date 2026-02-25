@@ -44,7 +44,7 @@ self.addEventListener('fetch', (event) => {
 
     try {
       const networkResponse = await fetch(request)
-      if (url.pathname.startsWith('/assets/') || url.pathname.startsWith('/icons/')) {
+      if (url.pathname.startsWith('/assets/') || url.pathname.startsWith('/icons/') || url.pathname.startsWith('/chess-hub/')) {
         const cache = await caches.open(CACHE_NAME)
         cache.put(request, networkResponse.clone())
       }

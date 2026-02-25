@@ -90,7 +90,22 @@ function Initialize-StartLocalLogging {
   }
 
   $script:StartLocalRunId = [guid]::NewGuid().ToString('N')
-  $script:StartLocalHostName = [System.Net.Dns]::GetHostName()
+  $hostName = ''
+  try {
+    $hostName = [System.Net.Dns]::GetHostName()
+  } catch {
+    $hostName = ''
+  }
+
+  if ([string]::IsNullOrWhiteSpace($hostName)) {
+    $hostName = $env:COMPUTERNAME
+  }
+
+  if ([string]::IsNullOrWhiteSpace($hostName)) {
+    $hostName = 'unknown-host'
+  }
+
+  $script:StartLocalHostName = $hostName
   $script:StartLocalLogPath = Join-Path $logDir 'start-local-runs.jsonl'
 }
 
@@ -118,7 +133,21 @@ function Write-StartLocalLog {
     fix = $Fix
   }
 
-  Add-Content -Path $script:StartLocalLogPath -Value ($entry | ConvertTo-Json -Compress) -Encoding UTF8
+  $jsonLine = $entry | ConvertTo-Json -Compress
+  $maxAttempts = 3
+  for ($attempt = 1; $attempt -le $maxAttempts; $attempt++) {
+    try {
+      Add-Content -Path $script:StartLocalLogPath -Value $jsonLine -Encoding UTF8
+      return
+    } catch {
+      if ($attempt -ge $maxAttempts) {
+        Write-Host "[start-local] Warning: unable to append run log after $maxAttempts attempts: $($_.Exception.Message)" -ForegroundColor Yellow
+        return
+      }
+
+      Start-Sleep -Milliseconds 200
+    }
+  }
 }
 
 function Get-FailureFixHint {
