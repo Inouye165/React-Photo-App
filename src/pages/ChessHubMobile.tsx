@@ -452,53 +452,75 @@ export default function ChessHubMobile({
           </section>
         ) : (
           shouldShowContinueTile ? (
-            <section
-              data-testid="chess-mobile-continue-tile"
-              className="rounded-[var(--chess-hub-radius-card)] bg-[var(--chess-hub-color-surface)] px-[var(--chess-hub-space-3)] py-[var(--chess-hub-space-2)] shadow-[var(--chess-hub-shadow)] ring-1 ring-[var(--chess-hub-color-border)]"
-              aria-labelledby="chess-hero-title"
-            >
-              <h2 id="chess-hero-title" className="flex items-center gap-2 text-[length:var(--chess-hub-type-body)] font-semibold leading-tight text-[var(--chess-hub-color-text-primary)]">
-                <span className="line-clamp-1 break-words">Continue your game with {heroOpponentLabel}</span>
-                <span
-                  data-testid="chess-mobile-continue-avatar"
-                  aria-hidden="true"
-                  className="inline-flex h-8 w-8 shrink-0 items-center justify-center rounded-full bg-[var(--chess-hub-color-surface-soft)] text-[11px] font-bold uppercase text-[var(--chess-hub-color-text-primary)] ring-1 ring-white/20"
+            <div data-testid="chess-mobile-hero-card">
+              <section
+                data-testid="chess-mobile-continue-tile"
+                className="rounded-[var(--chess-hub-radius-card)] bg-[var(--chess-hub-color-surface)] px-[var(--chess-hub-space-3)] py-[var(--chess-hub-space-2)] shadow-[var(--chess-hub-shadow)] ring-1 ring-[var(--chess-hub-color-border)]"
+                aria-labelledby="chess-hero-title"
+              >
+                <h2 id="chess-hero-title" className="flex items-center gap-2 text-[length:var(--chess-hub-type-body)] font-semibold leading-tight text-[var(--chess-hub-color-text-primary)]">
+                  <span className="line-clamp-1 break-words">Continue your game with {heroOpponentLabel}</span>
+                  <span
+                    data-testid="chess-mobile-continue-avatar"
+                    aria-hidden="true"
+                    className="inline-flex h-8 w-8 shrink-0 items-center justify-center rounded-full bg-[var(--chess-hub-color-surface-soft)] text-[11px] font-bold uppercase text-[var(--chess-hub-color-text-primary)] ring-1 ring-white/20"
+                  >
+                    {opponentMember?.avatar_url ? (
+                      <img
+                        src={opponentMember.avatar_url}
+                        alt=""
+                        className="h-full w-full rounded-full object-cover"
+                      />
+                    ) : heroAvatarOverride && heroAvatarOverride.trim() ? (
+                      <img
+                        src={heroAvatarOverride.trim()}
+                        alt=""
+                        className="h-full w-full rounded-full object-cover"
+                      />
+                    ) : heroOpponentInitials ? <span>{heroOpponentInitials}</span> : <UserCircle2 size={16} />}
+                  </span>
+                </h2>
+
+                <p className={`mt-1 text-[length:var(--chess-hub-type-label)] text-[var(--chess-hub-color-text-secondary)] ${prefersReducedMotion ? '' : 'motion-safe:animate-pulse'}`}>
+                  {getHeroTurnLabel(heroGame)} • Last move {getSafeRelativeTime(heroGame?.updated_at)}
+                </p>
+
+                <button
+                  type="button"
+                  onClick={() => {
+                    if (heroGame?.id) {
+                      onOpenGame(heroGame.id)
+                    }
+                  }}
+                  disabled={!canContinueGame}
+                  aria-disabled={!canContinueGame}
+                  className={`${mobilePrimaryActionClass} mt-2 w-full`}
                 >
-                  {opponentMember?.avatar_url ? (
-                    <img
-                      src={opponentMember.avatar_url}
-                      alt=""
-                      className="h-full w-full rounded-full object-cover"
-                    />
-                  ) : heroAvatarOverride && heroAvatarOverride.trim() ? (
-                    <img
-                      src={heroAvatarOverride.trim()}
-                      alt=""
-                      className="h-full w-full rounded-full object-cover"
-                    />
-                  ) : heroOpponentInitials ? <span>{heroOpponentInitials}</span> : <UserCircle2 size={16} />}
-                </span>
-              </h2>
-
-              <p className={`mt-1 text-[length:var(--chess-hub-type-label)] text-[var(--chess-hub-color-text-secondary)] ${prefersReducedMotion ? '' : 'motion-safe:animate-pulse'}`}>
-                {getHeroTurnLabel(heroGame)} • Last move {getSafeRelativeTime(heroGame?.updated_at)}
-              </p>
-
+                  Continue game
+                </button>
+              </section>
+            </div>
+          ) : (
+            <section
+              data-testid="chess-mobile-hero-card"
+              className="rounded-[var(--chess-hub-radius-card)] bg-[var(--chess-hub-color-surface)] px-[var(--chess-hub-space-3)] py-[var(--chess-hub-space-3)] shadow-[var(--chess-hub-shadow)] ring-1 ring-[var(--chess-hub-color-border)]"
+              aria-labelledby="chess-hero-empty-title"
+            >
+              <h2 id="chess-hero-empty-title" className="text-[length:var(--chess-hub-type-section)] font-semibold text-[var(--chess-hub-color-text-primary)]">Start your next game</h2>
+              <p className="mt-1 text-[length:var(--chess-hub-type-body)] text-[var(--chess-hub-color-text-secondary)]">No active matches yet. Launch a quick game to get moving.</p>
               <button
                 type="button"
                 onClick={() => {
-                  if (heroGame?.id) {
-                    onOpenGame(heroGame.id)
+                  if (mobileModes[0]) {
+                    onOpenMode(mobileModes[0].onClick)
                   }
                 }}
-                disabled={!canContinueGame}
-                aria-disabled={!canContinueGame}
                 className={`${mobilePrimaryActionClass} mt-2 w-full`}
               >
-                Continue game
+                Play Computer
               </button>
             </section>
-          ) : null
+          )
         )}
 
         <section aria-label="Game modes" className="pt-0">
