@@ -2,10 +2,11 @@ import { describe, it, expect, vi, beforeEach } from 'vitest'
 import { render, screen, waitFor, within } from '@testing-library/react'
 import userEvent from '@testing-library/user-event'
 import ChessHub from './ChessHub'
-import { listMyGamesWithMembers } from '../api/games'
+import { fetchGameMembers, listMyGamesWithMembers } from '../api/games'
 
 vi.mock('../api/games', () => ({
   listMyGamesWithMembers: vi.fn(async () => ([])),
+  fetchGameMembers: vi.fn(async () => ([])),
 }))
 
 vi.mock('react-chessboard', () => ({
@@ -67,6 +68,7 @@ function installMatchMediaMock(): void {
 
 describe('ChessHub', () => {
   const listMyGamesWithMembersMock = vi.mocked(listMyGamesWithMembers)
+  const fetchGameMembersMock = vi.mocked(fetchGameMembers)
 
   beforeEach(() => {
     vi.clearAllMocks()
@@ -75,6 +77,7 @@ describe('ChessHub', () => {
     setViewport(390)
     installMatchMediaMock()
     listMyGamesWithMembersMock.mockResolvedValue([])
+    fetchGameMembersMock.mockResolvedValue([])
   })
 
   it('renders desktop modules at 1280px', async () => {

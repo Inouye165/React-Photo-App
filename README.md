@@ -109,7 +109,7 @@ Assumes dependencies are installed and `server/.env` is valid.
 - `npm run stop:local`
 - This closes the API/worker/frontend terminals opened by `start:local` and stops Docker `db` + `redis`.
 
-If anything fails, see [docs/RESTART_APP.md](docs/RESTART_APP.md) for focused restart troubleshooting.
+If anything fails, see [docs/LOCAL_STARTUP_AND_RESTART.md](docs/LOCAL_STARTUP_AND_RESTART.md) for focused restart troubleshooting.
 
 **Local Supabase:** See [docs/LOCAL_SUPABASE.md](docs/LOCAL_SUPABASE.md) for dashboard setup.
 

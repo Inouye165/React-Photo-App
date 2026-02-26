@@ -277,6 +277,7 @@ export default function ChessHub(): React.JSX.Element {
           onOpenGotw={(slug) => navigate(`/games/chess/gotw/${slug}`)}
           onToggleHistory={() => setIsHistoryOpen((prev) => !prev)}
           isAuthenticated={isAuthenticated}
+          currentUserId={user?.id ?? null}
           accountDisplayName={accountLabel}
           accountInitials={accountInitials}
           onOpenSignIn={() => navigate('/login')}

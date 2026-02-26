@@ -5,15 +5,6 @@ import { request } from '../api/httpClient'
 import UserMenu from '../components/UserMenu'
 import { useAuth } from '../contexts/AuthContext'
 import { navigateWithTransition } from '../utils/navigateWithTransition'
-import {
-  PREMIUM_BUTTON_PRIMARY,
-  PREMIUM_BUTTON_SECONDARY,
-  PREMIUM_FOCUS_RING,
-  PREMIUM_PAGE_CONTAINER,
-  PREMIUM_PAGE_SHELL,
-  PREMIUM_SURFACE,
-  PREMIUM_SURFACE_PADDED,
-} from '../styles/ui'
 
 type HomeLoadState = {
   loading: boolean
@@ -202,15 +193,40 @@ export default function HomePage(): React.JSX.Element {
 
   const openAdmin = () => navigateWithTransition(navigate, '/admin')
 
+  const homeDesignTokens = {
+    '--chess-hub-space-1': '4px',
+    '--chess-hub-space-2': '8px',
+    '--chess-hub-space-3': '12px',
+    '--chess-hub-space-4': '16px',
+    '--chess-hub-space-5': '20px',
+    '--chess-hub-space-6': '24px',
+    '--chess-hub-type-body': '0.875rem',
+    '--chess-hub-color-bg': '#0b1220',
+    '--chess-hub-color-surface': '#1e293b',
+    '--chess-hub-color-surface-soft': '#273449',
+    '--chess-hub-color-text-primary': '#f8fafc',
+    '--chess-hub-color-text-secondary': '#cbd5e1',
+    '--chess-hub-color-accent': '#e7ba53',
+    '--chess-hub-color-accent-text': '#1a1305',
+    '--chess-hub-color-border': 'rgba(255, 255, 255, 0.14)',
+    '--chess-hub-shadow': '0 10px 24px rgba(2, 6, 23, 0.32)',
+    '--chess-hub-radius-card': '14px',
+    '--chess-hub-radius-button': '10px',
+  } as React.CSSProperties
+
+  const homePrimaryActionClass = 'inline-flex min-h-11 items-center justify-center rounded-[var(--chess-hub-radius-button)] bg-[var(--chess-hub-color-accent)] px-[var(--chess-hub-space-4)] py-[var(--chess-hub-space-2)] text-[length:var(--chess-hub-type-body)] font-semibold text-[var(--chess-hub-color-accent-text)] transition hover:brightness-[1.06] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[var(--chess-hub-color-accent)] focus-visible:ring-offset-2 focus-visible:ring-offset-[var(--chess-hub-color-bg)] disabled:cursor-not-allowed disabled:opacity-60'
+  const homeSecondaryActionClass = 'inline-flex min-h-11 items-center justify-center rounded-[var(--chess-hub-radius-button)] border border-[var(--chess-hub-color-border)] bg-[var(--chess-hub-color-surface-soft)] px-[var(--chess-hub-space-4)] py-[var(--chess-hub-space-2)] text-[length:var(--chess-hub-type-body)] font-semibold text-[var(--chess-hub-color-text-primary)] transition hover:bg-[var(--chess-hub-color-surface)] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[var(--chess-hub-color-accent)] focus-visible:ring-offset-2 focus-visible:ring-offset-[var(--chess-hub-color-bg)] disabled:cursor-not-allowed disabled:opacity-55'
+  const homeCardClass = 'rounded-[var(--chess-hub-radius-card)] bg-[var(--chess-hub-color-surface)] shadow-[var(--chess-hub-shadow)] ring-1 ring-[var(--chess-hub-color-border)]'
+
   return (
-    <main className={`${PREMIUM_PAGE_SHELL} h-[100dvh] overflow-hidden`}>
-      <div className={`${PREMIUM_PAGE_CONTAINER} h-full overflow-hidden py-3 sm:py-3`}>
+    <main className="h-[100dvh] overflow-hidden bg-[var(--chess-hub-color-bg)]" style={homeDesignTokens}>
+      <div className="mx-auto h-full w-full max-w-6xl overflow-hidden px-[var(--chess-hub-space-3)] py-[var(--chess-hub-space-3)] sm:px-[var(--chess-hub-space-4)]">
         <div className="flex h-full min-h-0 flex-col gap-2.5 sm:gap-3">
-          <section className={PREMIUM_SURFACE_PADDED} aria-labelledby="home-hero-title">
+          <section className={`${homeCardClass} px-[var(--chess-hub-space-3)] py-[var(--chess-hub-space-3)]`} aria-labelledby="home-hero-title">
             <div className="flex flex-wrap items-start justify-between gap-3">
               <div>
-                <h1 id="home-hero-title" className="text-2xl font-bold tracking-tight text-white sm:text-3xl">Home</h1>
-                <p className="mt-1 text-sm text-slate-200">
+                <h1 id="home-hero-title" className="font-display text-2xl font-bold tracking-tight text-[var(--chess-hub-color-text-primary)] sm:text-3xl">Home</h1>
+                <p className="mt-1 text-sm text-[var(--chess-hub-color-text-secondary)]">
                   Continue where you left off, then explore all core actions below.
                 </p>
               </div>
@@ -225,22 +241,22 @@ export default function HomePage(): React.JSX.Element {
               </div>
             </div>
 
-            <div className="mt-2 rounded-xl border border-slate-700 bg-slate-900/50 p-3 sm:p-3">
-              <p className="text-xs font-semibold uppercase tracking-wide text-slate-300">Primary action</p>
-              <h2 className="mt-1 text-lg font-semibold text-white">{continueAction.label}</h2>
-              <p className="mt-1 text-sm text-slate-300">{continueAction.description}</p>
+            <div className="mt-2 rounded-[var(--chess-hub-radius-card)] border border-[var(--chess-hub-color-border)] bg-[var(--chess-hub-color-surface-soft)] p-3 sm:p-3">
+              <p className="text-xs font-semibold uppercase tracking-wide text-[var(--chess-hub-color-text-secondary)]">Primary action</p>
+              <h2 className="mt-1 text-lg font-semibold text-[var(--chess-hub-color-text-primary)]">{continueAction.label}</h2>
+              <p className="mt-1 text-sm text-[var(--chess-hub-color-text-secondary)]">{continueAction.description}</p>
               <div className="mt-2 flex flex-wrap gap-2">
                 <button
                   type="button"
                   onClick={() => handleNavigate(continueAction.path)}
-                  className={PREMIUM_BUTTON_PRIMARY}
+                  className={homePrimaryActionClass}
                 >
                   {continueAction.label}
                 </button>
                 <button
                   type="button"
                   onClick={focusActionsGrid}
-                  className={PREMIUM_BUTTON_SECONDARY}
+                  className={homeSecondaryActionClass}
                 >
                   {isMobileLayout ? 'Open launcher' : 'Browse actions'}
                 </button>
@@ -249,35 +265,35 @@ export default function HomePage(): React.JSX.Element {
           </section>
 
           {isMobileLayout ? (
-            <section id="home-actions-grid" tabIndex={-1} aria-label="Home actions" className={`${PREMIUM_SURFACE} p-3`}>
-              <h2 className="text-base font-semibold text-white">Launcher</h2>
-              <p className="mt-1 text-xs text-slate-300">Open one area at a time.</p>
+            <section id="home-actions-grid" tabIndex={-1} aria-label="Home actions" className={`${homeCardClass} p-3`}>
+              <h2 className="text-base font-semibold text-[var(--chess-hub-color-text-primary)]">Launcher</h2>
+              <p className="mt-1 text-xs text-[var(--chess-hub-color-text-secondary)]">Open one area at a time.</p>
               <div className="mt-3 grid grid-cols-2 gap-2">
                 <button
                   type="button"
                   onClick={() => handleNavigate('/chat')}
-                  className={PREMIUM_BUTTON_SECONDARY}
+                  className={homeSecondaryActionClass}
                 >
                   Messages
                 </button>
                 <button
                   type="button"
                   onClick={() => setMobilePanel('games')}
-                  className={PREMIUM_BUTTON_SECONDARY}
+                  className={homeSecondaryActionClass}
                 >
                   Games
                 </button>
                 <button
                   type="button"
                   onClick={() => setMobilePanel('labs')}
-                  className={PREMIUM_BUTTON_SECONDARY}
+                  className={homeSecondaryActionClass}
                 >
                   Labs
                 </button>
                 <button
                   type="button"
                   onClick={() => setMobilePanel('feedback')}
-                  className={PREMIUM_BUTTON_SECONDARY}
+                  className={homeSecondaryActionClass}
                 >
                   Suggest Game
                 </button>
@@ -292,31 +308,31 @@ export default function HomePage(): React.JSX.Element {
             aria-label="Home actions"
             className="grid min-h-0 flex-1 grid-cols-1 gap-2.5 overflow-hidden outline-none md:grid-cols-2"
           >
-            <article className={`${PREMIUM_SURFACE} min-h-0 p-3.5 sm:p-4`} aria-labelledby="home-messages-title">
-              <h2 id="home-messages-title" className="text-base font-semibold text-white sm:text-lg">Messages</h2>
-              <p className="mt-1 text-sm text-slate-300">Chat in rooms and stay synced with unread indicators.</p>
+            <article className={`${homeCardClass} min-h-0 p-3.5 sm:p-4`} aria-labelledby="home-messages-title">
+              <h2 id="home-messages-title" className="text-base font-semibold text-[var(--chess-hub-color-text-primary)] sm:text-lg">Messages</h2>
+              <p className="mt-1 text-sm text-[var(--chess-hub-color-text-secondary)]">Chat in rooms and stay synced with unread indicators.</p>
               <button
                 type="button"
                 onClick={() => handleNavigate('/chat')}
-                className={PREMIUM_BUTTON_SECONDARY}
+                className={homeSecondaryActionClass}
               >
                 Open Messages
               </button>
             </article>
 
-            <article className={`${PREMIUM_SURFACE} min-h-0 p-3.5 sm:p-4`} aria-labelledby="home-games-title">
-              <h2 id="home-games-title" className="text-base font-semibold text-white sm:text-lg">Games</h2>
-              <p className="mt-1 text-sm text-slate-300">Choose an available game below.</p>
-              <ul className="mt-2 space-y-1.5 text-sm text-slate-200" aria-label="Games catalog">
+            <article className={`${homeCardClass} min-h-0 p-3.5 sm:p-4`} aria-labelledby="home-games-title">
+              <h2 id="home-games-title" className="text-base font-semibold text-[var(--chess-hub-color-text-primary)] sm:text-lg">Games</h2>
+              <p className="mt-1 text-sm text-[var(--chess-hub-color-text-secondary)]">Choose an available game below.</p>
+              <ul className="mt-2 space-y-1.5 text-sm text-[var(--chess-hub-color-text-secondary)]" aria-label="Games catalog">
                 {GAME_CATALOG.map((game) => (
-                  <li key={game.id} className="rounded-lg border border-slate-700 bg-slate-900/50 px-3 py-2">
+                  <li key={game.id} className="rounded-lg border border-[var(--chess-hub-color-border)] bg-[var(--chess-hub-color-surface-soft)] px-3 py-2">
                     <div className="flex flex-wrap items-start justify-between gap-2">
                       <div>
-                        <p className="font-medium text-slate-100">{game.label}</p>
-                        <p className="mt-1 text-xs text-slate-300">{game.description}</p>
+                        <p className="font-medium text-[var(--chess-hub-color-text-primary)]">{game.label}</p>
+                        <p className="mt-1 text-xs text-[var(--chess-hub-color-text-secondary)]">{game.description}</p>
                       </div>
                       <span
-                        className={`rounded px-2 py-0.5 text-xs font-semibold ${game.status === 'available' ? 'bg-emerald-500/20 text-emerald-300' : 'bg-slate-700 text-slate-300'}`}
+                        className={`rounded px-2 py-0.5 text-xs font-semibold ${game.status === 'available' ? 'bg-[var(--chess-hub-color-accent)]/20 text-[var(--chess-hub-color-accent)]' : 'bg-[var(--chess-hub-color-border)] text-[var(--chess-hub-color-text-secondary)]'}`}
                       >
                         {game.status === 'available' ? 'Available' : 'Coming soon'}
                       </span>
@@ -326,7 +342,7 @@ export default function HomePage(): React.JSX.Element {
                         <button
                           type="button"
                           onClick={() => handleNavigate(game.path as ContinueActionMeta['path'])}
-                          className={`${PREMIUM_BUTTON_SECONDARY} min-h-10 text-xs`}
+                          className={`${homeSecondaryActionClass} min-h-10 text-xs`}
                         >
                           Open {game.label}
                         </button>
@@ -334,7 +350,7 @@ export default function HomePage(): React.JSX.Element {
                         <button
                           type="button"
                           disabled
-                          className={`${PREMIUM_BUTTON_SECONDARY} min-h-10 text-xs disabled:cursor-not-allowed disabled:opacity-55`}
+                          className={`${homeSecondaryActionClass} min-h-10 text-xs disabled:cursor-not-allowed disabled:opacity-55`}
                           aria-label={`${game.label} coming soon`}
                         >
                           Coming soon
@@ -346,26 +362,26 @@ export default function HomePage(): React.JSX.Element {
               </ul>
             </article>
 
-            <article className={`${PREMIUM_SURFACE} min-h-0 p-3.5 sm:p-4`} aria-labelledby="home-labs-title">
-              <h2 id="home-labs-title" className="text-base font-semibold text-white sm:text-lg">Labs</h2>
-              <p className="mt-1 text-sm text-slate-300">Labs: early features you can try.</p>
-              <p className="mt-2 text-xs text-slate-300">
+            <article className={`${homeCardClass} min-h-0 p-3.5 sm:p-4`} aria-labelledby="home-labs-title">
+              <h2 id="home-labs-title" className="text-base font-semibold text-[var(--chess-hub-color-text-primary)] sm:text-lg">Labs</h2>
+              <p className="mt-1 text-sm text-[var(--chess-hub-color-text-secondary)]">Labs: early features you can try.</p>
+              <p className="mt-2 text-xs text-[var(--chess-hub-color-text-secondary)]">
                 {state.loading ? 'Checking photo workspace status…' : `${state.totalPhotos} item${state.totalPhotos === 1 ? '' : 's'} in photos`}
               </p>
               <button
                 type="button"
                 onClick={() => handleNavigate('/gallery')}
-                className={`${PREMIUM_BUTTON_SECONDARY} mt-3`}
+                className={`${homeSecondaryActionClass} mt-3`}
               >
                 Open Experimental Photos
               </button>
             </article>
 
-            <article className={`${PREMIUM_SURFACE} min-h-0 p-3.5 sm:p-4`} aria-labelledby="home-feedback-title">
-              <h2 id="home-feedback-title" className="text-base font-semibold text-white sm:text-lg">Feedback</h2>
-              <p className="mt-1 text-sm text-slate-300">Tell us what game you want next.</p>
+            <article className={`${homeCardClass} min-h-0 p-3.5 sm:p-4`} aria-labelledby="home-feedback-title">
+              <h2 id="home-feedback-title" className="text-base font-semibold text-[var(--chess-hub-color-text-primary)] sm:text-lg">Feedback</h2>
+              <p className="mt-1 text-sm text-[var(--chess-hub-color-text-secondary)]">Tell us what game you want next.</p>
               <form className="mt-2 space-y-2" onSubmit={handleSuggestionSubmit}>
-                <label htmlFor="home-game-suggestion" className="text-xs font-semibold uppercase tracking-wide text-slate-300">Suggest a game</label>
+                <label htmlFor="home-game-suggestion" className="text-xs font-semibold uppercase tracking-wide text-[var(--chess-hub-color-text-secondary)]">Suggest a game</label>
                 <textarea
                   id="home-game-suggestion"
                   value={gameSuggestion}
@@ -373,12 +389,12 @@ export default function HomePage(): React.JSX.Element {
                   rows={1}
                   maxLength={1000}
                   placeholder="Example: Add cooperative trivia with room-based teams."
-                  className={`w-full rounded-lg border border-slate-600 bg-slate-900 px-3 py-2 text-sm text-slate-100 placeholder:text-slate-400 ${PREMIUM_FOCUS_RING}`}
+                  className="w-full rounded-lg border border-[var(--chess-hub-color-border)] bg-[var(--chess-hub-color-surface-soft)] px-3 py-2 text-sm text-[var(--chess-hub-color-text-primary)] placeholder:text-[var(--chess-hub-color-text-secondary)] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[var(--chess-hub-color-accent)] focus-visible:ring-offset-2 focus-visible:ring-offset-[var(--chess-hub-color-bg)]"
                 />
                 <button
                   type="submit"
                   disabled={suggestionSubmitting}
-                  className={`${PREMIUM_BUTTON_SECONDARY} min-h-10 text-xs disabled:cursor-not-allowed disabled:opacity-50`}
+                  className={`${homeSecondaryActionClass} min-h-10 text-xs disabled:cursor-not-allowed disabled:opacity-50`}
                 >
                   {suggestionSubmitting ? 'Submitting…' : 'Suggest a Game'}
                 </button>
@@ -397,23 +413,23 @@ export default function HomePage(): React.JSX.Element {
           ) : null}
 
           {isMobileLayout && mobilePanel ? (
-            <section className="fixed inset-0 z-40 animate-in fade-in slide-in-from-right-2 duration-200 bg-chess-bg px-3 pb-3 pt-3">
+            <section className="fixed inset-0 z-40 animate-in fade-in slide-in-from-right-2 duration-200 bg-[var(--chess-hub-color-bg)] px-3 pb-3 pt-3">
               <div className="mx-auto flex h-full w-full max-w-6xl flex-col gap-3">
-                <div className="flex items-center justify-between rounded-xl border border-slate-700 bg-slate-900/70 px-3 py-2">
+                <div className="flex items-center justify-between rounded-[var(--chess-hub-radius-card)] border border-[var(--chess-hub-color-border)] bg-[var(--chess-hub-color-surface)] px-3 py-2 shadow-[var(--chess-hub-shadow)]">
                   <button
                     type="button"
                     onClick={() => setMobilePanel(null)}
-                    className={PREMIUM_BUTTON_SECONDARY}
+                    className={homeSecondaryActionClass}
                   >
                     Back
                   </button>
-                  <h2 className="text-sm font-semibold text-white">
+                  <h2 className="text-sm font-semibold text-[var(--chess-hub-color-text-primary)]">
                     {mobilePanel === 'games' ? 'Games' : mobilePanel === 'labs' ? 'Labs' : 'Feedback'}
                   </h2>
                 </div>
 
                 {mobilePanel === 'games' ? (
-                  <article className={`${PREMIUM_SURFACE} flex-1 p-4`} aria-label="Games panel">
+                  <article className={`${homeCardClass} flex-1 p-4`} aria-label="Games panel">
                     <ul className="space-y-2 text-sm text-slate-200" aria-label="Games catalog">
                       {GAME_CATALOG.map((game) => (
                         <li key={game.id} className="rounded-lg border border-slate-700 bg-slate-900/50 px-3 py-3">
@@ -433,7 +449,7 @@ export default function HomePage(): React.JSX.Element {
                               <button
                                 type="button"
                                 onClick={() => handleNavigate(game.path as ContinueActionMeta['path'])}
-                                className={`${PREMIUM_BUTTON_SECONDARY} min-h-10 text-xs`}
+                                className={`${homeSecondaryActionClass} min-h-10 text-xs`}
                               >
                                 Open {game.label}
                               </button>
@@ -441,7 +457,7 @@ export default function HomePage(): React.JSX.Element {
                               <button
                                 type="button"
                                 disabled
-                                className={`${PREMIUM_BUTTON_SECONDARY} min-h-10 text-xs disabled:cursor-not-allowed disabled:opacity-55`}
+                                className={`${homeSecondaryActionClass} min-h-10 text-xs disabled:cursor-not-allowed disabled:opacity-55`}
                                 aria-label={`${game.label} coming soon`}
                               >
                                 Coming soon
@@ -455,15 +471,15 @@ export default function HomePage(): React.JSX.Element {
                 ) : null}
 
                 {mobilePanel === 'labs' ? (
-                  <article className={`${PREMIUM_SURFACE} flex-1 p-4`} aria-label="Labs panel">
-                    <p className="text-sm text-slate-300">Labs: early features you can try.</p>
-                    <p className="mt-2 text-xs text-slate-300">
+                  <article className={`${homeCardClass} flex-1 p-4`} aria-label="Labs panel">
+                    <p className="text-sm text-[var(--chess-hub-color-text-secondary)]">Labs: early features you can try.</p>
+                    <p className="mt-2 text-xs text-[var(--chess-hub-color-text-secondary)]">
                       {state.loading ? 'Checking photo workspace status…' : `${state.totalPhotos} item${state.totalPhotos === 1 ? '' : 's'} in photos`}
                     </p>
                     <button
                       type="button"
                       onClick={() => handleNavigate('/gallery')}
-                      className={`${PREMIUM_BUTTON_SECONDARY} mt-3`}
+                      className={`${homeSecondaryActionClass} mt-3`}
                     >
                       Open Experimental Photos
                     </button>
@@ -471,10 +487,10 @@ export default function HomePage(): React.JSX.Element {
                 ) : null}
 
                 {mobilePanel === 'feedback' ? (
-                  <article className={`${PREMIUM_SURFACE} flex-1 p-4`} aria-label="Feedback panel">
-                    <p className="text-sm text-slate-300">Tell us what game you want next.</p>
+                  <article className={`${homeCardClass} flex-1 p-4`} aria-label="Feedback panel">
+                    <p className="text-sm text-[var(--chess-hub-color-text-secondary)]">Tell us what game you want next.</p>
                     <form className="mt-3 space-y-2" onSubmit={handleSuggestionSubmit}>
-                      <label htmlFor="home-game-suggestion-mobile" className="text-xs font-semibold uppercase tracking-wide text-slate-300">Suggest a game</label>
+                      <label htmlFor="home-game-suggestion-mobile" className="text-xs font-semibold uppercase tracking-wide text-[var(--chess-hub-color-text-secondary)]">Suggest a game</label>
                       <textarea
                         id="home-game-suggestion-mobile"
                         value={gameSuggestion}
@@ -482,12 +498,12 @@ export default function HomePage(): React.JSX.Element {
                         rows={3}
                         maxLength={1000}
                         placeholder="Example: Add cooperative trivia with room-based teams."
-                        className={`w-full rounded-lg border border-slate-600 bg-slate-900 px-3 py-2 text-sm text-slate-100 placeholder:text-slate-400 ${PREMIUM_FOCUS_RING}`}
+                        className="w-full rounded-lg border border-[var(--chess-hub-color-border)] bg-[var(--chess-hub-color-surface-soft)] px-3 py-2 text-sm text-[var(--chess-hub-color-text-primary)] placeholder:text-[var(--chess-hub-color-text-secondary)] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[var(--chess-hub-color-accent)] focus-visible:ring-offset-2 focus-visible:ring-offset-[var(--chess-hub-color-bg)]"
                       />
                       <button
                         type="submit"
                         disabled={suggestionSubmitting}
-                        className={`${PREMIUM_BUTTON_SECONDARY} min-h-10 text-xs disabled:cursor-not-allowed disabled:opacity-50`}
+                        className={`${homeSecondaryActionClass} min-h-10 text-xs disabled:cursor-not-allowed disabled:opacity-50`}
                       >
                         {suggestionSubmitting ? 'Submitting…' : 'Suggest a Game'}
                       </button>
