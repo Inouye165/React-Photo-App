@@ -8,6 +8,77 @@ const CORS_HEADERS = {
 }
 
 export async function mockCoreApi(page: Page): Promise<void> {
+  await page.route('**/api/users/me', async (route: Route) => {
+    const method = route.request().method()
+    if (method === 'OPTIONS') {
+      return route.fulfill({ status: 204, headers: CORS_HEADERS, body: '' })
+    }
+    if (method !== 'GET') {
+      return route.fulfill({ status: 405, headers: CORS_HEADERS, body: '' })
+    }
+    return route.fulfill({
+      status: 200,
+      contentType: 'application/json',
+      headers: CORS_HEADERS,
+      body: JSON.stringify({
+        success: true,
+        data: {
+          id: 'e2e-user',
+          username: 'e2e-test',
+          has_set_username: true,
+        },
+      }),
+    })
+  })
+
+  await page.route('**/api/users/me/preferences', async (route: Route) => {
+    const method = route.request().method()
+    if (method === 'OPTIONS') {
+      return route.fulfill({ status: 204, headers: CORS_HEADERS, body: '' })
+    }
+    if (method !== 'GET') {
+      return route.fulfill({ status: 405, headers: CORS_HEADERS, body: '' })
+    }
+    return route.fulfill({
+      status: 200,
+      contentType: 'application/json',
+      headers: CORS_HEADERS,
+      body: JSON.stringify({ success: true, preferences: {} }),
+    })
+  })
+
+  await page.route('**/api/v1/photos/status', async (route: Route) => {
+    const method = route.request().method()
+    if (method === 'OPTIONS') {
+      return route.fulfill({ status: 204, headers: CORS_HEADERS, body: '' })
+    }
+    if (method !== 'GET') {
+      return route.fulfill({ status: 405, headers: CORS_HEADERS, body: '' })
+    }
+    return route.fulfill({
+      status: 200,
+      contentType: 'application/json',
+      headers: CORS_HEADERS,
+      body: JSON.stringify({ success: true, photos: [] }),
+    })
+  })
+
+  await page.route('**/api/v1/activity', async (route: Route) => {
+    const method = route.request().method()
+    if (method === 'OPTIONS') {
+      return route.fulfill({ status: 204, headers: CORS_HEADERS, body: '' })
+    }
+    if (method !== 'POST') {
+      return route.fulfill({ status: 405, headers: CORS_HEADERS, body: '' })
+    }
+    return route.fulfill({
+      status: 200,
+      contentType: 'application/json',
+      headers: CORS_HEADERS,
+      body: JSON.stringify({ success: true }),
+    })
+  })
+
   await page.route('**/photos/dependencies', async (route: Route) => {
     const method = route.request().method()
     if (method === 'OPTIONS') {

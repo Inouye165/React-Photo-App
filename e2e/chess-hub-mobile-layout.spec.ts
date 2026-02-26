@@ -294,7 +294,7 @@ async function assertMobileNoScroll(page: Page): Promise<void> {
 }
 
 async function assertModesVisibleAndTappable(page: Page): Promise<void> {
-  const modesRegion = page.getByRole('region', { name: 'Modes' })
+  const modesRegion = page.getByRole('region', { name: 'Game modes' })
   const playComputer = modesRegion.getByRole('button', { name: /Play Computer/i })
   const playFriend = modesRegion.getByRole('button', { name: /Play a Friend/i })
   const learnChess = modesRegion.getByRole('button', { name: /Learn Chess/i })
@@ -379,6 +379,8 @@ for (const viewport of MOBILE_VIEWPORTS) {
       await assertModesVisibleAndTappable(page)
       await assertMobileNoScroll(page)
 
+      await expect(page.getByText('Modes')).toHaveCount(0)
+      await expect(page.getByText('Choose your focus')).toHaveCount(0)
       await expect(page.getByText(/VS TEST/i)).toHaveCount(0)
 
       if (scenario.gotwState === 'missing') {

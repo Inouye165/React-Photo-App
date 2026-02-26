@@ -1,5 +1,5 @@
 import { describe, it, expect, vi, beforeEach } from 'vitest'
-import { render, screen, waitFor } from '@testing-library/react'
+import { render, screen, waitFor, within } from '@testing-library/react'
 import userEvent from '@testing-library/user-event'
 import ChessHub from './ChessHub'
 import { listMyGamesWithMembers } from '../api/games'
@@ -101,7 +101,7 @@ describe('ChessHub', () => {
 
     render(<ChessHub />)
 
-    expect(screen.getByRole('heading', { name: 'Match Table' })).toBeInTheDocument()
+    expect(screen.getByRole('region', { name: 'Loading hero' })).toBeInTheDocument()
     expect(screen.queryByRole('heading', { name: 'Social Hub' })).not.toBeInTheDocument()
     expect(screen.queryByRole('heading', { name: 'Greatest Games of All Time' })).not.toBeInTheDocument()
 
@@ -161,11 +161,13 @@ describe('ChessHub', () => {
 
   it('renders Chess title and the three mode CTAs', async () => {
     render(<ChessHub />)
+    const modesRegion = screen.getByRole('region', { name: 'Game modes' })
+    const modeScope = within(modesRegion)
 
     expect(screen.getByRole('heading', { name: 'Chess' })).toBeInTheDocument()
-    expect(screen.getByRole('button', { name: 'Play Computer' })).toBeInTheDocument()
-    expect(screen.getByRole('button', { name: 'Play a Friend' })).toBeInTheDocument()
-    expect(screen.getByRole('button', { name: 'Learn Chess' })).toBeInTheDocument()
+    expect(modeScope.getAllByRole('button', { name: /Play Computer/i }).length).toBeGreaterThan(0)
+    expect(modeScope.getAllByRole('button', { name: /Play a Friend/i }).length).toBeGreaterThan(0)
+    expect(modeScope.getAllByRole('button', { name: /Learn Chess/i }).length).toBeGreaterThan(0)
 
     await waitFor(() => {
       expect(listMyGamesWithMembersMock).toHaveBeenCalledTimes(1)
@@ -194,8 +196,9 @@ describe('ChessHub', () => {
 
     const user = userEvent.setup()
     render(<ChessHub />)
+    const heroCard = await screen.findByTestId('chess-mobile-hero-card')
 
-    const continueButton = await screen.findByRole('button', { name: 'Continue Game' })
+    const continueButton = within(heroCard).getByRole('button', { name: /Continue game/i })
     await user.click(continueButton)
 
     expect(navigateMock).toHaveBeenCalledWith('/games/g-2')
@@ -204,8 +207,9 @@ describe('ChessHub', () => {
   it('shows Play vs Computer quick start when no open games and navigates', async () => {
     const user = userEvent.setup()
     render(<ChessHub />)
+    const heroCard = await screen.findByTestId('chess-mobile-hero-card')
 
-    const quickStartButton = await screen.findByRole('button', { name: 'Play Computer' })
+    const quickStartButton = within(heroCard).getByRole('button', { name: 'Play Computer' })
     await user.click(quickStartButton)
 
     expect(navigateMock).toHaveBeenCalledWith('/games/local?tab=analyze')
@@ -237,9 +241,9 @@ describe('ChessHub', () => {
     const user = userEvent.setup()
     render(<ChessHub />)
 
-    expect(await screen.findByText('Unable to load your recent chess games right now.')).toBeInTheDocument()
+    expect(await screen.findByText('Unable to load active game.')).toBeInTheDocument()
 
-    await user.click(screen.getByRole('button', { name: 'Try Again' }))
+    await user.click(screen.getByRole('button', { name: 'Retry' }))
 
     await waitFor(() => {
       expect(listMyGamesWithMembersMock).toHaveBeenCalledTimes(2)

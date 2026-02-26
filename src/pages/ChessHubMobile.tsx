@@ -290,11 +290,7 @@ export default function ChessHubMobile({
           </section>
         )}
 
-        <section aria-labelledby="chess-modes-title">
-          <div className="mb-1.5 flex items-end justify-between">
-            <h2 id="chess-modes-title" className="font-display text-[length:var(--chess-hub-type-display)] leading-tight text-[var(--chess-hub-color-text-primary)]">Modes</h2>
-            <p className="text-[length:var(--chess-hub-type-label)] text-[var(--chess-hub-color-text-secondary)]">Choose your focus</p>
-          </div>
+        <section aria-label="Game modes" className="pt-[var(--chess-hub-space-1)]">
 
           <ul className="space-y-2 lg:hidden">
             {mobileModes.map((mode) => {

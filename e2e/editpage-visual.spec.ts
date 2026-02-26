@@ -49,6 +49,11 @@ async function goToEditFromGallery(page: Page, options?: { cardIndex?: number })
 
   await page.getByTestId('photo-detail-edit').click();
   await page.waitForURL(/\/photos\/\d+\/edit/, { timeout: 10000 });
+
+  const dismissBanner = page.getByRole('button', { name: /dismiss/i });
+  if (await dismissBanner.count()) {
+    await dismissBanner.first().click({ timeout: 2000 }).catch(() => {});
+  }
 }
 
 // Mock data
@@ -139,6 +144,13 @@ test.describe('EditPage Visual Regression (Frontend-Only)', () => {
     // Set E2E mode flag BEFORE app loads
     await page.addInitScript(() => {
       window.__E2E_MODE__ = true;
+      window.addEventListener(
+        'auth:session-expired',
+        (event) => {
+          event.stopImmediatePropagation();
+        },
+        true,
+      );
       console.log('[E2E] E2E mode enabled');
     });
 
@@ -159,6 +171,7 @@ test.describe('EditPage Visual Regression (Frontend-Only)', () => {
       // Only intercept API-ish paths
       const isApi = 
         pathname.startsWith('/api/') ||
+        pathname === '/csrf' ||
         pathname === '/photos' ||
         pathname === '/photos/dependencies' ||
         pathname === '/privilege' ||
@@ -194,6 +207,11 @@ test.describe('EditPage Visual Regression (Frontend-Only)', () => {
         return fulfill({ success: true, user: mockUser });
       }
 
+      // 1a. CSRF bootstrap for unsafe requests (e.g. activity logging)
+      if (pathname === '/csrf') {
+        return fulfill({ csrfToken: 'e2e-csrf-token' });
+      }
+
       // 2. Dependencies endpoint
       if (pathname === '/photos/dependencies') {
         return fulfill({ success: true, dependencies: { aiQueue: true } });
@@ -220,6 +238,17 @@ test.describe('EditPage Visual Regression (Frontend-Only)', () => {
               user_id: 'e2e-user',
             },
           });
+        }
+        return fulfill({}, 405);
+      }
+
+      // 2c. Activity logging (fire-and-forget in app)
+      if (pathname === '/api/v1/activity') {
+        if (method === 'POST') {
+          return fulfill({ success: true });
+        }
+        if (method === 'GET') {
+          return fulfill({ success: true, data: [] });
         }
         return fulfill({}, 405);
       }
