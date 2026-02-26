@@ -12,7 +12,10 @@ vi.mock('react-chessboard', () => ({
   Chessboard: () => <div data-testid="greatest-games-board" />,
 }))
 
-const authState = vi.hoisted(() => ({
+const authState = vi.hoisted<{
+  user: { id: string; email: string } | null
+  profile: { username: string } | null
+}>(() => ({
   user: { id: 'user-1', email: 'player@example.com' },
   profile: { username: 'player1' },
 }))
@@ -67,6 +70,8 @@ describe('ChessHub', () => {
 
   beforeEach(() => {
     vi.clearAllMocks()
+    authState.user = { id: 'user-1', email: 'player@example.com' }
+    authState.profile = { username: 'player1' }
     setViewport(390)
     installMatchMediaMock()
     listMyGamesWithMembersMock.mockResolvedValue([])
@@ -103,6 +108,55 @@ describe('ChessHub', () => {
     await waitFor(() => {
       expect(listMyGamesWithMembersMock).toHaveBeenCalledTimes(1)
     })
+  })
+
+  it('renders mobile mode artwork and opens game of the week', async () => {
+    setViewport(375)
+    const user = userEvent.setup()
+
+    render(<ChessHub />)
+
+    expect(screen.getByRole('img', { name: 'Chess board training setup artwork' })).toBeInTheDocument()
+    expect(screen.getByRole('img', { name: 'Two players preparing for a chess match' })).toBeInTheDocument()
+    expect(screen.getByRole('img', { name: 'Chess lesson notebook and study board' })).toBeInTheDocument()
+
+    expect(screen.getByRole('button', { name: 'Watch full game' })).toBeInTheDocument()
+    expect(screen.queryByRole('button', { name: 'Open' })).not.toBeInTheDocument()
+
+    await user.click(screen.getByRole('button', { name: 'Watch full game' }))
+
+    expect(navigateMock).toHaveBeenCalledWith('/games/chess/gotw/byrne-vs-fischer-1956')
+  })
+
+  it('renders logged-in indicator in chess header', () => {
+    setViewport(375)
+
+    render(<ChessHub />)
+
+    expect(screen.getByRole('button', { name: 'Account menu for player1' })).toBeInTheDocument()
+    expect(screen.getByText('player1')).toBeInTheDocument()
+  })
+
+  it('renders sign-in indicator when auth user is missing', async () => {
+    setViewport(375)
+    authState.user = null
+    authState.profile = null
+    const user = userEvent.setup()
+
+    render(<ChessHub />)
+
+    const signInButton = screen.getByRole('button', { name: 'Sign in' })
+    expect(signInButton).toBeInTheDocument()
+    await user.click(signInButton)
+    expect(navigateMock).toHaveBeenCalledWith('/login')
+  })
+
+  it('keeps modes row chevron icons rendered', () => {
+    setViewport(375)
+    render(<ChessHub />)
+
+    const chevrons = document.querySelectorAll('svg.lucide-chevron-right')
+    expect(chevrons).toHaveLength(3)
   })
 
   it('renders Chess title and the three mode CTAs', async () => {

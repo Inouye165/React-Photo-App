@@ -2,6 +2,7 @@ import React from 'react'
 import { ArrowLeft, type LucideIcon } from 'lucide-react'
 import type { GameWithMembers } from '../api/games'
 import GreatestGamesCard from './GreatestGamesCard'
+import ChessHeaderAccountIndicator from './ChessHeaderAccountIndicator'
 
 const clampTwoLines: React.CSSProperties = {
   display: '-webkit-box',
@@ -56,6 +57,10 @@ type ChessHubDesktopLayoutProps = {
   isInviteStatus: (status: string | null | undefined) => boolean
   onOpenHome: () => void
   onOpenGame: (gameId: string) => void
+  isAuthenticated: boolean
+  accountDisplayName: string
+  accountInitials: string
+  onOpenSignIn: () => void
 }
 
 export default function ChessHubDesktopLayout({
@@ -71,6 +76,10 @@ export default function ChessHubDesktopLayout({
   isInviteStatus,
   onOpenHome,
   onOpenGame,
+  isAuthenticated,
+  accountDisplayName,
+  accountInitials,
+  onOpenSignIn,
 }: ChessHubDesktopLayoutProps): React.JSX.Element {
   const friendQueue = [...activeGames, ...historyGames]
     .filter((game, index, collection) => game.id && collection.findIndex((row) => row.id === game.id) === index)
@@ -117,7 +126,12 @@ export default function ChessHubDesktopLayout({
             </button>
           </div>
           <h1 className="font-display text-2xl text-chess-text">Chess Hub</h1>
-          <div className="w-10" aria-hidden="true" />
+          <ChessHeaderAccountIndicator
+            isAuthenticated={isAuthenticated}
+            displayName={accountDisplayName}
+            initials={accountInitials}
+            onSignIn={onOpenSignIn}
+          />
         </nav>
       </header>
 
