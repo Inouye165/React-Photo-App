@@ -1,8 +1,9 @@
 import React from 'react'
-import { ArrowLeft, ChevronRight, History } from 'lucide-react'
+import { ArrowLeft, ChevronRight, History, UserCircle2 } from 'lucide-react'
 import type { LucideIcon } from 'lucide-react'
-import { DEFAULT_GOTW_SLUG, getGotwEntry } from '../data/chessGotw'
-import type { GameWithMembers } from '../api/games'
+import { Chessboard } from 'react-chessboard'
+import { DEFAULT_GOTW_SLUG, getFenAtPly, getGotwEntry } from '../data/chessGotw'
+import { fetchGameMembers, type GameMemberProfile, type GameWithMembers } from '../api/games'
 import ChessHeaderAccountIndicator from './ChessHeaderAccountIndicator'
 
 type ModeItem = {
@@ -37,6 +38,7 @@ type ChessHubMobileProps = {
   onOpenGotw: (slug: string) => void
   onToggleHistory: () => void
   isAuthenticated: boolean
+  currentUserId: string | null
   accountDisplayName: string
   accountInitials: string
   onOpenSignIn: () => void
@@ -62,10 +64,12 @@ export default function ChessHubMobile({
   onOpenGotw,
   onToggleHistory,
   isAuthenticated,
+  currentUserId,
   accountDisplayName,
   accountInitials,
   onOpenSignIn,
 }: ChessHubMobileProps): React.JSX.Element {
+  const debugPrefix = '[ChessHubMobile]'
   const isE2eMode = typeof window !== 'undefined' && Boolean((window as Window & { __E2E_MODE__?: boolean }).__E2E_MODE__)
 
   const getE2eHeroState = (): 'auto' | 'active' | 'empty' | 'error' | 'loading' => {
@@ -95,6 +99,10 @@ export default function ChessHubMobile({
   const hasActiveMatch = heroState === 'hasActiveGame' || heroState === 'hasMultipleActiveGames'
   const heroGame = singleActiveGame
   void activeGames
+  const [gotwBoardWidth, setGotwBoardWidth] = React.useState<number>(280)
+  const [gotwPreviewPly, setGotwPreviewPly] = React.useState<number>(0)
+  const [heroMembersFromGame, setHeroMembersFromGame] = React.useState<GameMemberProfile[]>([])
+  const gotwBoardContainerRef = React.useRef<HTMLDivElement | null>(null)
   const heroOpponentOverride = isE2eMode && typeof window !== 'undefined'
     ? window.localStorage.getItem('chessHubHeroOpponent')
     : null
@@ -103,6 +111,9 @@ export default function ChessHubMobile({
     : null
   const heroTurnOverride = isE2eMode && typeof window !== 'undefined'
     ? window.localStorage.getItem('chessHubHeroTurn')
+    : null
+  const heroAvatarOverride = isE2eMode && typeof window !== 'undefined'
+    ? window.localStorage.getItem('chessHubHeroAvatar')
     : null
 
   const effectiveIsLoading = e2eHeroState === 'loading' ? true : isLoading
@@ -117,12 +128,146 @@ export default function ChessHubMobile({
       ? false
       : hasActiveMatch
 
+  const gotwStartPly = React.useMemo(() => {
+    if (!safeGotwEntry) return 0
+    return Math.max(1, safeGotwEntry.moves.length - 4)
+  }, [safeGotwEntry])
+
+  const gotwEndPly = React.useMemo(() => {
+    if (!safeGotwEntry) return 0
+    return safeGotwEntry.moves.length
+  }, [safeGotwEntry])
+
+  React.useEffect(() => {
+    if (typeof window === 'undefined') return undefined
+
+    const updateBoardWidth = () => {
+      const rectWidth = gotwBoardContainerRef.current?.getBoundingClientRect().width ?? 0
+      const widthFromContainer = Math.floor(rectWidth)
+      if (!widthFromContainer) {
+        const fallback = Math.max(126, Math.min(window.innerWidth - 104, Math.floor(window.innerHeight * 0.24), 240))
+        setGotwBoardWidth(fallback)
+        return
+      }
+      setGotwBoardWidth(Math.max(126, widthFromContainer))
+    }
+
+    updateBoardWidth()
+
+    const observer = new ResizeObserver(() => {
+      updateBoardWidth()
+    })
+
+    if (gotwBoardContainerRef.current) {
+      observer.observe(gotwBoardContainerRef.current)
+    }
+
+    window.addEventListener('resize', updateBoardWidth)
+
+    return () => {
+      observer.disconnect()
+      window.removeEventListener('resize', updateBoardWidth)
+    }
+  }, [safeGotwEntry])
+
+  React.useEffect(() => {
+    if (!safeGotwEntry) {
+      setGotwPreviewPly(0)
+      return
+    }
+    setGotwPreviewPly(prefersReducedMotion ? gotwEndPly : gotwStartPly)
+  }, [gotwEndPly, gotwStartPly, prefersReducedMotion, safeGotwEntry])
+
+  React.useEffect(() => {
+    if (!safeGotwEntry || prefersReducedMotion || gotwStartPly <= 0 || gotwEndPly <= 0) return undefined
+
+    const timer = window.setInterval(() => {
+      setGotwPreviewPly((prev) => {
+        if (prev >= gotwEndPly || prev < gotwStartPly) return gotwStartPly
+        return prev + 1
+      })
+    }, 850)
+
+    return () => window.clearInterval(timer)
+  }, [gotwEndPly, gotwStartPly, prefersReducedMotion, safeGotwEntry])
+
+  const gotwPosition = React.useMemo(() => {
+    if (!safeGotwEntry) return 'start'
+    const effectivePly = gotwPreviewPly > 0 ? gotwPreviewPly : gotwEndPly
+    return getFenAtPly(safeGotwEntry.moves, effectivePly)
+  }, [gotwEndPly, gotwPreviewPly, safeGotwEntry])
+
+  const isLikelyComputerGame = (game: GameWithMembers | null): boolean => {
+    if (!game) return false
+    const typeLabel = (game.type || '').toLowerCase()
+    if (typeLabel.includes('local') || typeLabel.includes('computer') || game.created_by === 'stockfish') return true
+    return game.members.length <= 1
+  }
+
+  const isPlaceholderLabel = (value: string): boolean => {
+    const normalized = value.trim().toLowerCase()
+    return normalized === 'opponent'
+      || normalized === 'unknown player'
+      || normalized === 'player'
+  }
+
+  const hasMeaningfulLabel = (value: string | null | undefined): value is string => {
+    if (typeof value !== 'string') return false
+    const normalized = value.trim()
+    if (!normalized) return false
+    return !isPlaceholderLabel(normalized)
+  }
+
+  const normalizedAccountDisplayName = accountDisplayName.trim().toLowerCase()
+
+  const activeHeroMembers = heroMembersFromGame.length ? heroMembersFromGame : (heroGame?.members ?? [])
+
+  const opponentMember = React.useMemo(() => {
+    if (!activeHeroMembers.length) return null
+    if (currentUserId) {
+      return activeHeroMembers.find((member) => member.user_id !== currentUserId) ?? null
+    }
+    const nonSelfByName = activeHeroMembers.find((member) => {
+      const username = member.username?.trim().toLowerCase()
+      return Boolean(username && username !== normalizedAccountDisplayName)
+    })
+    if (nonSelfByName) return nonSelfByName
+
+    const bestNamed = activeHeroMembers.find((member) => hasMeaningfulLabel(member.username))
+    if (bestNamed) return bestNamed
+
+    return activeHeroMembers[0] ?? null
+  }, [activeHeroMembers, currentUserId, normalizedAccountDisplayName])
+
   const getSafeOpponentLabel = (game: GameWithMembers | null): string => {
-    if (heroOpponentOverride && heroOpponentOverride.trim()) return heroOpponentOverride.trim()
-    if (!game) return 'Opponent'
+    if (heroOpponentOverride !== null) {
+      const overridden = heroOpponentOverride.trim()
+      if (hasMeaningfulLabel(overridden)) {
+        return overridden
+      }
+      return isLikelyComputerGame(game) ? 'Computer' : 'Player'
+    }
+
+    const memberUsername = opponentMember?.username?.trim()
+    if (hasMeaningfulLabel(memberUsername)) {
+      return memberUsername
+    }
+
+    if (!game) return 'Player'
     const value = getOpponentLabel(game)?.trim()
-    if (!value || value.toLowerCase() === 'test') return 'Opponent'
-    return value
+    if (hasMeaningfulLabel(value)) {
+      return value
+    }
+
+    return isLikelyComputerGame(game) ? 'Computer' : 'Player'
+  }
+
+  const getAvatarInitials = (name: string): string => {
+    const cleaned = name.trim()
+    if (!cleaned) return ''
+    const parts = cleaned.split(/\s+/).filter(Boolean)
+    if (parts.length >= 2) return `${parts[0][0]}${parts[1][0]}`.toUpperCase()
+    return cleaned.slice(0, 2).toUpperCase()
   }
 
   const getSafeRelativeTime = (value: string | null | undefined): string => {
@@ -144,6 +289,72 @@ export default function ChessHubMobile({
   }
 
   const canContinueGame = Boolean(heroGame?.id) || e2eHeroState === 'active'
+  const shouldShowContinueTile = effectiveHasActiveMatch && canContinueGame
+
+  React.useEffect(() => {
+    console.info(debugPrefix, 'Mobile chess hub state', {
+      heroState,
+      effectiveHasActiveMatch,
+      heroGameId: heroGame?.id ?? null,
+      currentUserId,
+      accountDisplayName,
+      isE2eMode,
+    })
+  }, [accountDisplayName, currentUserId, debugPrefix, effectiveHasActiveMatch, heroGame?.id, heroState, isE2eMode])
+
+  React.useEffect(() => {
+    if (!heroGame?.id || !shouldShowContinueTile) {
+      setHeroMembersFromGame([])
+      return
+    }
+
+    console.info(debugPrefix, 'Fetching members for continue tile', {
+      gameId: heroGame.id,
+      currentUserId,
+      heroMembersFromListCount: heroGame.members.length,
+    })
+
+    let isCancelled = false
+    void fetchGameMembers(heroGame.id)
+      .then((rows) => {
+        if (!isCancelled) {
+          setHeroMembersFromGame(Array.isArray(rows) ? rows : [])
+          console.info(debugPrefix, 'Fetched game members for continue tile', {
+            gameId: heroGame.id,
+            count: Array.isArray(rows) ? rows.length : 0,
+            usernames: Array.isArray(rows) ? rows.map((row) => row.username ?? null) : [],
+          })
+        }
+      })
+      .catch((error: unknown) => {
+        if (!isCancelled) {
+          console.warn(debugPrefix, 'Failed fetching members for continue tile; preserving list snapshot', {
+            gameId: heroGame.id,
+            error: error instanceof Error ? error.message : String(error),
+          })
+        }
+      })
+
+    return () => {
+      isCancelled = true
+    }
+  }, [currentUserId, heroGame?.id, shouldShowContinueTile])
+
+  const heroOpponentLabel = getSafeOpponentLabel(heroGame)
+  const heroOpponentInitials = getAvatarInitials(heroOpponentLabel)
+
+  React.useEffect(() => {
+    if (!shouldShowContinueTile) return
+    console.info(debugPrefix, 'Continue tile opponent resolution', {
+      gameId: heroGame?.id ?? null,
+      currentUserId,
+      accountDisplayName,
+      listMembers: heroGame?.members?.map((member) => ({ user_id: member.user_id, username: member.username ?? null })) ?? [],
+      fetchedMembers: heroMembersFromGame.map((member) => ({ user_id: member.user_id, username: member.username ?? null })),
+      resolvedOpponent: heroOpponentLabel,
+      usedFetchedMembers: heroMembersFromGame.length > 0,
+    })
+  }, [accountDisplayName, currentUserId, heroGame?.id, heroGame?.members, heroMembersFromGame, heroOpponentLabel, shouldShowContinueTile])
 
   const getMobileModeSubtitle = (title: string): string => {
     if (title === 'Play Computer') return 'Fast practice with instant feedback.'
@@ -200,7 +411,7 @@ export default function ChessHubMobile({
         </nav>
       </header>
 
-      <div className="mx-auto flex w-full max-w-6xl flex-col gap-[var(--chess-hub-space-3)] px-[var(--chess-hub-space-4)] pb-[var(--chess-hub-space-3)] pt-[var(--chess-hub-space-2)] sm:px-5 lg:gap-7 lg:px-6 lg:pt-6" style={mobileDesignTokens}>
+      <div className="mx-auto flex w-full max-w-6xl flex-col gap-[var(--chess-hub-space-2)] px-[var(--chess-hub-space-4)] pb-[var(--chess-hub-space-1)] pt-[var(--chess-hub-space-1)] sm:px-5 lg:gap-7 lg:px-6 lg:pt-6" style={mobileDesignTokens}>
         {effectiveIsLoading ? (
           <section data-testid="chess-mobile-hero-loading" className="rounded-[var(--chess-hub-radius-card)] bg-[var(--chess-hub-color-surface)] px-[var(--chess-hub-space-3)] py-[var(--chess-hub-space-3)] shadow-[var(--chess-hub-shadow)] ring-1 ring-[var(--chess-hub-color-border)]" aria-label="Loading hero">
             <div className="h-4 w-40 rounded bg-chess-surfaceSoft/80" aria-hidden="true" />
@@ -240,59 +451,59 @@ export default function ChessHubMobile({
             </div>
           </section>
         ) : (
-          <section
-            data-testid="chess-mobile-hero-card"
-            className="rounded-[var(--chess-hub-radius-card)] bg-[var(--chess-hub-color-surface)] px-[var(--chess-hub-space-3)] py-[var(--chess-hub-space-3)] shadow-[var(--chess-hub-shadow)] ring-1 ring-[var(--chess-hub-color-border)]"
-            aria-labelledby="chess-hero-title"
-          >
-            <h2 id="chess-hero-title" className="font-display text-[length:var(--chess-hub-type-display)] leading-tight text-[var(--chess-hub-color-text-primary)]">
-              {effectiveHasActiveMatch ? 'Continue your game' : 'Start a game'}
-            </h2>
+          shouldShowContinueTile ? (
+            <section
+              data-testid="chess-mobile-continue-tile"
+              className="rounded-[var(--chess-hub-radius-card)] bg-[var(--chess-hub-color-surface)] px-[var(--chess-hub-space-3)] py-[var(--chess-hub-space-2)] shadow-[var(--chess-hub-shadow)] ring-1 ring-[var(--chess-hub-color-border)]"
+              aria-labelledby="chess-hero-title"
+            >
+              <h2 id="chess-hero-title" className="flex items-center gap-2 text-[length:var(--chess-hub-type-body)] font-semibold leading-tight text-[var(--chess-hub-color-text-primary)]">
+                <span className="line-clamp-1 break-words">Continue your game with {heroOpponentLabel}</span>
+                <span
+                  data-testid="chess-mobile-continue-avatar"
+                  aria-hidden="true"
+                  className="inline-flex h-8 w-8 shrink-0 items-center justify-center rounded-full bg-[var(--chess-hub-color-surface-soft)] text-[11px] font-bold uppercase text-[var(--chess-hub-color-text-primary)] ring-1 ring-white/20"
+                >
+                  {opponentMember?.avatar_url ? (
+                    <img
+                      src={opponentMember.avatar_url}
+                      alt=""
+                      className="h-full w-full rounded-full object-cover"
+                    />
+                  ) : heroAvatarOverride && heroAvatarOverride.trim() ? (
+                    <img
+                      src={heroAvatarOverride.trim()}
+                      alt=""
+                      className="h-full w-full rounded-full object-cover"
+                    />
+                  ) : heroOpponentInitials ? <span>{heroOpponentInitials}</span> : <UserCircle2 size={16} />}
+                </span>
+              </h2>
 
-            {effectiveHasActiveMatch ? (
-              <>
-                <p className="mt-0.5 line-clamp-1 break-words text-[length:var(--chess-hub-type-body)] font-semibold text-[var(--chess-hub-color-text-primary)]">vs {getSafeOpponentLabel(heroGame)}</p>
-                <p className={`mt-0.5 text-[length:var(--chess-hub-type-body)] text-[var(--chess-hub-color-text-secondary)] ${prefersReducedMotion ? '' : 'motion-safe:animate-pulse'}`}>
-                  {getHeroTurnLabel(heroGame)} • Last move {getSafeRelativeTime(heroGame?.updated_at)}
-                </p>
-                <button
-                  type="button"
-                  onClick={() => {
-                    if (heroGame?.id) {
-                      onOpenGame(heroGame.id)
-                    }
-                  }}
-                  disabled={!canContinueGame}
-                  aria-disabled={!canContinueGame}
-                  className={`${mobilePrimaryActionClass} mt-2 w-full sm:w-auto`}
-                >
-                  Continue game
-                </button>
-              </>
-            ) : (
-              <>
-                <p className="mt-0.5 text-[length:var(--chess-hub-type-body)] text-[var(--chess-hub-color-text-secondary)]">Pick a mode to begin.</p>
-                <button
-                  type="button"
-                  onClick={() => {
-                    if (mobileModes[0] && mobileModes[0].isAvailable !== false) {
-                      onOpenMode(mobileModes[0].onClick)
-                    }
-                  }}
-                  disabled={mobileModes[0]?.isAvailable === false}
-                  aria-disabled={mobileModes[0]?.isAvailable === false}
-                  className={`${mobilePrimaryActionClass} mt-2 w-full sm:w-auto`}
-                >
-                  Play Computer
-                </button>
-              </>
-            )}
-          </section>
+              <p className={`mt-1 text-[length:var(--chess-hub-type-label)] text-[var(--chess-hub-color-text-secondary)] ${prefersReducedMotion ? '' : 'motion-safe:animate-pulse'}`}>
+                {getHeroTurnLabel(heroGame)} • Last move {getSafeRelativeTime(heroGame?.updated_at)}
+              </p>
+
+              <button
+                type="button"
+                onClick={() => {
+                  if (heroGame?.id) {
+                    onOpenGame(heroGame.id)
+                  }
+                }}
+                disabled={!canContinueGame}
+                aria-disabled={!canContinueGame}
+                className={`${mobilePrimaryActionClass} mt-2 w-full`}
+              >
+                Continue game
+              </button>
+            </section>
+          ) : null
         )}
 
-        <section aria-label="Game modes" className="pt-[var(--chess-hub-space-1)]">
+        <section aria-label="Game modes" className="pt-0">
 
-          <ul className="space-y-2 lg:hidden">
+          <ul className="space-y-1.5 lg:hidden">
             {mobileModes.map((mode) => {
               const isDisabled = mode.isAvailable === false
               return (
@@ -306,7 +517,7 @@ export default function ChessHubMobile({
                     }}
                     disabled={isDisabled}
                     aria-disabled={isDisabled}
-                    className={`flex min-h-14 w-full items-center gap-[var(--chess-hub-space-2)] rounded-[var(--chess-hub-radius-card)] px-[var(--chess-hub-space-2)] py-[var(--chess-hub-space-2)] text-left shadow-[var(--chess-hub-shadow)] ring-1 transition focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[var(--chess-hub-color-accent)] focus-visible:ring-offset-2 focus-visible:ring-offset-[var(--chess-hub-color-bg)] ${
+                    className={`flex min-h-12 w-full items-center gap-[var(--chess-hub-space-2)] rounded-[var(--chess-hub-radius-card)] px-[var(--chess-hub-space-2)] py-[var(--chess-hub-space-1)] text-left shadow-[var(--chess-hub-shadow)] ring-1 transition focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[var(--chess-hub-color-accent)] focus-visible:ring-offset-2 focus-visible:ring-offset-[var(--chess-hub-color-bg)] ${
                       isDisabled
                         ? 'cursor-not-allowed bg-[var(--chess-hub-color-surface-soft)] text-[var(--chess-hub-color-text-secondary)] opacity-70 ring-[var(--chess-hub-color-border)]'
                         : 'bg-[var(--chess-hub-color-surface)] ring-[var(--chess-hub-color-border)] hover:bg-[var(--chess-hub-color-surface-soft)] active:bg-[var(--chess-hub-color-surface-soft)]'
@@ -348,7 +559,7 @@ export default function ChessHubMobile({
               </button>
             </article>
           ) : safeGotwEntry ? (
-            <article className="mt-2 rounded-[var(--chess-hub-radius-card)] bg-[var(--chess-hub-color-surface)] px-[var(--chess-hub-space-3)] py-[var(--chess-hub-space-2)] shadow-[var(--chess-hub-shadow)] ring-1 ring-[var(--chess-hub-color-border)]" aria-labelledby="chess-gotw-title">
+            <article className="mt-1 rounded-[var(--chess-hub-radius-card)] bg-[var(--chess-hub-color-surface)] px-[var(--chess-hub-space-3)] py-[var(--chess-hub-space-1)] shadow-[var(--chess-hub-shadow)] ring-1 ring-[var(--chess-hub-color-border)]" aria-labelledby="chess-gotw-title">
               <div className="min-w-0">
                 <div className="min-w-0">
                   <p className="text-[length:var(--chess-hub-type-label)] font-semibold uppercase tracking-wide text-[var(--chess-hub-color-accent)]">Game of the Week</p>
@@ -357,10 +568,28 @@ export default function ChessHubMobile({
                 </div>
               </div>
               <p className="mt-1 line-clamp-1 break-words text-[length:var(--chess-hub-type-label)] text-[var(--chess-hub-color-text-secondary)]">{safeGotwEntry.subtitle}</p>
+
+              <div
+                data-testid="gotw-mobile-preview-board"
+                ref={gotwBoardContainerRef}
+                className="mt-1 mx-auto aspect-square w-full max-w-[clamp(126px,26vh,260px)] overflow-hidden rounded-lg bg-[var(--chess-hub-color-surface-soft)] ring-1 ring-white/10"
+                aria-label="Game of the Week board preview"
+              >
+                <Chessboard
+                  id="chess-mobile-gotw-preview-board"
+                  position={gotwPosition}
+                  areArrowsAllowed={false}
+                  arePiecesDraggable={false}
+                  animationDuration={prefersReducedMotion ? 0 : 180}
+                  boardWidth={gotwBoardWidth}
+                  customBoardStyle={{ borderRadius: '0.5rem', overflow: 'hidden' }}
+                />
+              </div>
+
               <button
                 type="button"
                 onClick={() => onOpenGotw(safeGotwEntry.slug)}
-                className={`${mobilePrimaryActionClass} mt-2 w-full sm:w-auto`}
+                className={`${mobilePrimaryActionClass} mt-2 w-full`}
               >
                 Watch full game
               </button>

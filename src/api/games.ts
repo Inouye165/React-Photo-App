@@ -35,6 +35,7 @@ export type GameMemberProfile = {
   user_id: string
   role: 'white' | 'black' | string
   username: string | null
+  avatar_url?: string | null
 }
 
 export type GameWithMembers = GameRow & {
@@ -133,29 +134,55 @@ export async function listMyGamesWithMembers(): Promise<GameWithMembers[]> {
   const memberList = (memberRows ?? []) as Array<{ game_id?: unknown; role?: unknown; user_id?: unknown }>
   const userIds = memberList.map((row) => row.user_id).filter((id): id is string => typeof id === 'string')
   const uniqueUserIds = [...new Set(userIds)]
+  const membersByGame = new Map<string, GameMemberProfile[]>()
 
   const userMap = new Map<string, string | null>()
   if (uniqueUserIds.length) {
     const { data: users, error: usersError } = await supabase
       .from('users')
-      .select('id, username')
+      .select('id, username, avatar_url')
       .in('id', uniqueUserIds)
 
     if (usersError) throw usersError
 
-    for (const row of (users ?? []) as Array<{ id?: unknown; username?: unknown }>) {
+    const usersRows = (users ?? []) as Array<{ id?: unknown; username?: unknown; avatar_url?: unknown }>
+    for (const row of usersRows) {
       if (typeof row.id !== 'string') continue
       userMap.set(row.id, typeof row.username === 'string' ? row.username : null)
     }
+
+    const avatarMap = new Map<string, string | null>()
+    for (const row of usersRows) {
+      if (typeof row.id !== 'string') continue
+      avatarMap.set(row.id, typeof row.avatar_url === 'string' ? row.avatar_url : null)
+    }
+
+    for (const row of memberList) {
+      if (typeof row.game_id !== 'string' || typeof row.user_id !== 'string') continue
+      const member: GameMemberProfile = {
+        user_id: row.user_id,
+        role: typeof row.role === 'string' ? row.role : 'player',
+        username: userMap.get(row.user_id) ?? null,
+        avatar_url: avatarMap.get(row.user_id) ?? null,
+      }
+      const list = membersByGame.get(row.game_id) ?? []
+      list.push(member)
+      membersByGame.set(row.game_id, list)
+    }
+
+    return games.map((game) => ({
+      ...game,
+      members: membersByGame.get(game.id) ?? [],
+    }))
   }
 
-  const membersByGame = new Map<string, GameMemberProfile[]>()
   for (const row of memberList) {
     if (typeof row.game_id !== 'string' || typeof row.user_id !== 'string') continue
     const member: GameMemberProfile = {
       user_id: row.user_id,
       role: typeof row.role === 'string' ? row.role : 'player',
       username: userMap.get(row.user_id) ?? null,
+      avatar_url: null,
     }
     const list = membersByGame.get(row.game_id) ?? []
     list.push(member)
@@ -257,15 +284,17 @@ export async function fetchGameMembers(gameId: string): Promise<GameMemberProfil
 
   const { data: users, error: usersError } = await supabase
     .from('users')
-    .select('id, username')
+    .select('id, username, avatar_url')
     .in('id', uniqueIds)
 
   if (usersError) throw usersError
 
   const userMap = new Map<string, string | null>()
-  for (const row of (users ?? []) as Array<{ id?: unknown; username?: unknown }>) {
+  const avatarMap = new Map<string, string | null>()
+  for (const row of (users ?? []) as Array<{ id?: unknown; username?: unknown; avatar_url?: unknown }>) {
     if (typeof row.id !== 'string') continue
     userMap.set(row.id, typeof row.username === 'string' ? row.username : null)
+    avatarMap.set(row.id, typeof row.avatar_url === 'string' ? row.avatar_url : null)
   }
 
   return memberRows
@@ -274,6 +303,7 @@ export async function fetchGameMembers(gameId: string): Promise<GameMemberProfil
       user_id: row.user_id,
       role: row.role,
       username: userMap.get(row.user_id) ?? null,
+      avatar_url: avatarMap.get(row.user_id) ?? null,
     }))
 }
 

@@ -16,10 +16,10 @@ const OPPONENT_ID = '22222222-2222-4222-8222-222222222222'
 
 type ChessMobileScenario = {
   name: string
-  activeMatch: 'short' | 'longMissingFields' | 'none'
-  gotwState: 'ready' | 'missing' | 'error'
-  expectedHeroCta: 'Continue game' | 'Play Computer'
-  expectedHeroEnabled: boolean
+  activeMatch: 'inProgress' | 'none'
+  gotwState: 'ready'
+  opponentName: string
+  opponentAvatar: 'present' | 'missing'
 }
 
 function sixDaysAgoIso(): string {
@@ -30,17 +30,27 @@ async function setupChessHubMobilePage(page: Page, scenario: ChessMobileScenario
   await mockCoreApi(page)
 
   const heroState = scenario.activeMatch === 'none' ? 'empty' : 'active'
-  const heroOpponent = scenario.activeMatch === 'longMissingFields'
-    ? 'Grandmaster-Opponent-Name-With-Extra-Long-Text-For-Robustness-Checks'
-    : 'Alice'
-  const heroLastMove = scenario.activeMatch === 'longMissingFields' ? '' : '6 days ago'
-  const heroTurn = scenario.activeMatch === 'longMissingFields' ? '' : 'Your turn'
+  const heroOpponent = scenario.activeMatch === 'inProgress' ? scenario.opponentName : null
+  const heroAvatar = scenario.activeMatch === 'inProgress' && scenario.opponentAvatar === 'present'
+    ? 'https://example.com/avatar-alice.png'
+    : null
+  const heroLastMove = scenario.activeMatch === 'none' ? '' : '6 days ago'
+  const heroTurn = scenario.activeMatch === 'none' ? '' : 'Your turn'
 
-  await page.addInitScript(({ userId, gotwState, heroState, heroOpponent, heroLastMove, heroTurn }) => {
+  await page.addInitScript(({ userId, gotwState, heroState, heroOpponent, heroAvatar, heroLastMove, heroTurn }) => {
     ;(window as Window & { __E2E_MODE__?: boolean }).__E2E_MODE__ = true
     window.localStorage.setItem('chessHubGotwState', gotwState)
     window.localStorage.setItem('chessHubHeroState', heroState)
-    window.localStorage.setItem('chessHubHeroOpponent', heroOpponent)
+    if (heroOpponent) {
+      window.localStorage.setItem('chessHubHeroOpponent', heroOpponent)
+    } else {
+      window.localStorage.removeItem('chessHubHeroOpponent')
+    }
+    if (heroAvatar) {
+      window.localStorage.setItem('chessHubHeroAvatar', heroAvatar)
+    } else {
+      window.localStorage.removeItem('chessHubHeroAvatar')
+    }
     window.localStorage.setItem('chessHubHeroLastMove', heroLastMove)
     window.localStorage.setItem('chessHubHeroTurn', heroTurn)
 
@@ -67,6 +77,7 @@ async function setupChessHubMobilePage(page: Page, scenario: ChessMobileScenario
     gotwState: scenario.gotwState,
     heroState,
     heroOpponent,
+    heroAvatar,
     heroLastMove,
     heroTurn,
   })
@@ -170,8 +181,8 @@ async function setupChessHubMobilePage(page: Page, scenario: ChessMobileScenario
     const url = new URL(route.request().url())
     const select = url.searchParams.get('select') || ''
     const hasActiveMatch = scenario.activeMatch !== 'none'
-    const gameUpdatedAt = scenario.activeMatch === 'longMissingFields' ? null : sixDaysAgoIso()
-    const gameCurrentTurn = scenario.activeMatch === 'longMissingFields' ? null : 'w'
+    const gameUpdatedAt = sixDaysAgoIso()
+    const gameCurrentTurn = 'w'
 
     if (select.includes('game:games(')) {
       if (!hasActiveMatch) {
@@ -236,17 +247,16 @@ async function setupChessHubMobilePage(page: Page, scenario: ChessMobileScenario
       return route.fulfill({ status: 405, headers: CORS_HEADERS, body: '' })
     }
 
-    const opponentUsername = scenario.activeMatch === 'longMissingFields'
-      ? 'Grandmaster-Opponent-Name-With-Extra-Long-Text-For-Robustness-Checks'
-      : 'Alice'
+    const opponentUsername = scenario.opponentName
+    const opponentAvatarUrl = scenario.opponentAvatar === 'present' ? 'https://example.com/avatar-alice.png' : null
 
     return route.fulfill({
       status: 200,
       contentType: 'application/json',
       headers: CORS_HEADERS,
       body: JSON.stringify([
-        { id: TEST_USER_ID, username: 'e2e-test' },
-        { id: OPPONENT_ID, username: opponentUsername },
+        { id: TEST_USER_ID, username: 'e2e-test', avatar_url: null },
+        { id: OPPONENT_ID, username: opponentUsername, avatar_url: opponentAvatarUrl },
       ]),
     })
   })
@@ -316,6 +326,61 @@ async function assertModesVisibleAndTappable(page: Page): Promise<void> {
   expect(rowsMeetTapTarget).toBe(true)
 }
 
+async function assertGotwBoardPreviewSquare(page: Page): Promise<void> {
+  const boardPreview = page.getByTestId('gotw-mobile-preview-board')
+  await expect(boardPreview).toBeVisible()
+
+  const dimensions = await boardPreview.evaluate((element) => {
+    const rect = element.getBoundingClientRect()
+    return { width: rect.width, height: rect.height }
+  })
+
+  expect(Math.abs(dimensions.width - dimensions.height)).toBeLessThanOrEqual(2)
+}
+
+async function assertNoPlaceholderStrings(page: Page): Promise<void> {
+  const pageText = await page.locator('body').innerText()
+  expect(pageText).not.toContain('vs Opponent')
+  expect(pageText).not.toContain('vs Player')
+  expect(pageText).not.toContain('Unknown player')
+}
+
+async function assertCtaParity(page: Page): Promise<void> {
+  const continueButton = page.getByRole('button', { name: 'Continue game' }).first()
+  const watchButton = page.getByRole('button', { name: 'Watch full game' }).first()
+
+  await expect(continueButton).toBeVisible()
+  await expect(watchButton).toBeVisible()
+
+  const classNameContinue = await continueButton.getAttribute('class')
+  const classNameWatch = await watchButton.getAttribute('class')
+  expect(classNameContinue).toBe(classNameWatch)
+
+  const geometry = await page.evaluate(() => {
+    const allButtons = Array.from(document.querySelectorAll('button'))
+    const continueEl = allButtons.find((button) => button.textContent?.trim() === 'Continue game')
+    const watchEl = allButtons.find((button) => button.textContent?.trim() === 'Watch full game')
+    if (!(continueEl instanceof HTMLElement) || !(watchEl instanceof HTMLElement)) {
+      return null
+    }
+    const continueRect = continueEl.getBoundingClientRect()
+    const watchRect = watchEl.getBoundingClientRect()
+    const continueStyle = window.getComputedStyle(continueEl)
+    const watchStyle = window.getComputedStyle(watchEl)
+    return {
+      continueHeight: continueRect.height,
+      watchHeight: watchRect.height,
+      continueRadius: continueStyle.borderRadius,
+      watchRadius: watchStyle.borderRadius,
+    }
+  })
+
+  expect(geometry).not.toBeNull()
+  if (!geometry) return
+  expect(Math.abs(geometry.continueHeight - geometry.watchHeight)).toBeLessThanOrEqual(1)
+  expect(geometry.continueRadius).toBe(geometry.watchRadius)
+}
+
 const MOBILE_VIEWPORTS = [
   { width: 390, height: 844 },
   { width: 375, height: 812 },
@@ -324,39 +389,25 @@ const MOBILE_VIEWPORTS = [
 
 const SCENARIOS: ChessMobileScenario[] = [
   {
-    name: 'active short opponent',
-    activeMatch: 'short',
+    name: 'with in-progress match and avatar',
+    activeMatch: 'inProgress',
     gotwState: 'ready',
-    expectedHeroCta: 'Continue game',
-    expectedHeroEnabled: true,
+    opponentName: 'Alice',
+    opponentAvatar: 'present',
   },
   {
-    name: 'active long opponent and missing lastMove',
-    activeMatch: 'longMissingFields',
+    name: 'with in-progress match and initials fallback',
+    activeMatch: 'inProgress',
     gotwState: 'ready',
-    expectedHeroCta: 'Continue game',
-    expectedHeroEnabled: true,
+    opponentName: 'Bobby',
+    opponentAvatar: 'missing',
   },
   {
-    name: 'empty no active match',
+    name: 'without in-progress match',
     activeMatch: 'none',
     gotwState: 'ready',
-    expectedHeroCta: 'Play Computer',
-    expectedHeroEnabled: true,
-  },
-  {
-    name: 'gotw missing',
-    activeMatch: 'short',
-    gotwState: 'missing',
-    expectedHeroCta: 'Continue game',
-    expectedHeroEnabled: true,
-  },
-  {
-    name: 'gotw error',
-    activeMatch: 'short',
-    gotwState: 'error',
-    expectedHeroCta: 'Continue game',
-    expectedHeroEnabled: true,
+    opponentName: 'Unused',
+    opponentAvatar: 'missing',
   },
 ]
 
@@ -366,31 +417,51 @@ for (const viewport of MOBILE_VIEWPORTS) {
       await page.setViewportSize({ width: viewport.width, height: viewport.height })
       await setupChessHubMobilePage(page, scenario)
 
-      const heroCard = page.getByTestId('chess-mobile-hero-card')
-      await expect(heroCard).toBeVisible()
-      const heroCta = heroCard.getByRole('button', { name: scenario.expectedHeroCta })
-      await expect(heroCta).toBeVisible()
-      if (scenario.expectedHeroEnabled) {
-        await expect(heroCta).toBeEnabled()
+      const continueTile = page.getByTestId('chess-mobile-continue-tile')
+
+      if (scenario.activeMatch === 'inProgress') {
+        await expect(continueTile).toBeVisible()
+        const continueCta = continueTile.getByRole('button', { name: 'Continue game' })
+        await expect(continueCta).toBeVisible()
+        await expect(continueCta).toBeEnabled()
+        await assertCtaParity(page)
+
+        const opponentRowText = await continueTile.innerText()
+        expect(opponentRowText).not.toContain('Opponent')
+        expect(opponentRowText).not.toContain('VS TEST')
+        expect(opponentRowText).not.toContain('Unknown player')
+        expect(opponentRowText).toContain(scenario.opponentName)
+
+        const avatar = page.getByTestId('chess-mobile-continue-avatar')
+        await expect(avatar).toBeVisible()
+        const avatarState = await avatar.evaluate((element) => {
+          const image = element.querySelector('img')
+          const text = (element.textContent || '').trim()
+          const hasInitials = text.length >= 1
+          const hasIcon = element.querySelector('svg') !== null
+          return {
+            hasImage: image !== null,
+            hasFallback: hasInitials || hasIcon,
+          }
+        })
+        if (scenario.opponentAvatar === 'present') {
+          expect(avatarState.hasImage).toBe(true)
+        } else {
+          expect(avatarState.hasFallback).toBe(true)
+        }
       } else {
-        await expect(heroCta).toBeDisabled()
+        await expect(continueTile).toHaveCount(0)
+        await expect(page.getByRole('button', { name: 'Continue game' })).toHaveCount(0)
       }
 
+      await assertGotwBoardPreviewSquare(page)
       await assertModesVisibleAndTappable(page)
       await assertMobileNoScroll(page)
+      await assertNoPlaceholderStrings(page)
 
       await expect(page.getByText('Modes')).toHaveCount(0)
       await expect(page.getByText('Choose your focus')).toHaveCount(0)
-      await expect(page.getByText(/VS TEST/i)).toHaveCount(0)
-
-      if (scenario.gotwState === 'missing') {
-        await expect(page.getByText('Game of the week is unavailable.')).toBeVisible()
-        await expect(page.getByRole('button', { name: 'Watch full game' })).toHaveCount(0)
-      }
-
-      if (scenario.gotwState === 'error') {
-        await expect(page.getByText('Unable to load game of the week.')).toBeVisible()
-      }
+      await expect(page.getByRole('button', { name: 'Watch full game' })).toBeVisible()
     })
   }
 }

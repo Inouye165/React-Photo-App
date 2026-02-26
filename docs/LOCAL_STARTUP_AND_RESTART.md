@@ -1,6 +1,6 @@
-# Restarting the App (Local Sandbox)
+# Local Startup and Restart (Sandbox)
 
-This is a **restart-only** checklist. It assumes the sandbox environment and dependencies are already installed and configured.
+This guide covers both **startup** and **restart** for the local sandbox. It assumes the environment and dependencies are already installed and configured.
 
 ## Fast path (Windows)
 
@@ -54,6 +54,20 @@ Expected: Frontend at http://localhost:5173/
 - If the worker can’t connect to Redis, ensure `REDIS_URL=redis://localhost:6379` in `server/.env`.
 
 ## Startup Robustness Log
+
+- **2026-02-26 12:39:43 -08:00 (Windows, host: Rons-Computer, monitored startup validation)**
+  - Process used: `npm run start:local` from repo root (README robust one-command startup).
+  - Startup behavior observed:
+    1. Docker daemon was initially not running; the script auto-started Docker Desktop and continued after daemon readiness.
+    2. Local Supabase auth health endpoint was initially down; `supabase start` reported an already-running stale state and the script self-heal path restored readiness.
+    3. Preflight dependency/build/migration checks completed (`[migrations] No pending migrations`), then API/worker/frontend terminals launched and the 45-second monitoring window passed.
+  - Verification results:
+    - `http://127.0.0.1:3001/health` returned HTTP `200`.
+    - `http://localhost:5173/` returned HTTP `200`.
+  - Structured run log:
+    - `logs/start-local-runs.jsonl`
+    - Success record: timestamp `2026-02-26T12:39:02.4768586-08:00`, host `Rons-Computer`, status `success`.
+  - Outcome: startup passed with no manual troubleshooting required.
 
 - **2026-02-26 08:36:59 -08:00 (Windows, host: Rons-Computer, monitored startup validation)**
   - Process used: `npm run start:local` from repo root (README robust one-command startup).
