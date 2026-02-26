@@ -54,6 +54,10 @@ describe('ChessHubDesktopLayout', () => {
         isInviteStatus={() => false}
         onOpenHome={vi.fn()}
         onOpenGame={vi.fn()}
+        isAuthenticated
+        accountDisplayName="player1"
+        accountInitials="P"
+        onOpenSignIn={vi.fn()}
       />,
     )
 
