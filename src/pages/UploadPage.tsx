@@ -305,6 +305,7 @@ export default function UploadPage() {
     maxWidth: '500px',
     padding: '48px',
     background: '#ffffff',
+    color: '#1e293b',
     borderRadius: '16px',
     boxShadow: '0 4px 24px rgba(0, 0, 0, 0.08)',
     border: '1px solid #e2e8f0',
@@ -539,7 +540,12 @@ export default function UploadPage() {
           <div style={{ marginTop: '24px' }}>
             <button
               onClick={handleClose}
-              className="min-h-[44px] inline-flex items-center justify-center px-2 text-sm text-slate-500 underline"
+              className="min-h-[44px] inline-flex items-center justify-center px-3 text-sm"
+              style={{
+                color: '#f8fafc',
+                backgroundColor: '#1e293b',
+                borderRadius: '8px',
+              }}
             >
               Go to Gallery →
             </button>

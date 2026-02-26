@@ -238,8 +238,8 @@ test.describe('Map Component', () => {
     // Wait for auth check and page to stabilize
     await page.waitForTimeout(2000);
 
-    // Ensure auth has settled (prevents racing photo fetch expectations)
-    await expect(page.getByText('e2e-test', { exact: true })).toBeVisible({ timeout: 10000 });
+    // Ensure gallery UI has settled before photo interactions
+    await expect(page.getByRole('searchbox', { name: /search photos/i })).toBeVisible({ timeout: 10000 });
 
     // Wait for photo cards to render and open the detail view
     await expect(page.getByTestId('photo-card').first()).toBeVisible({ timeout: 15000 });

@@ -178,11 +178,8 @@ test('E2E smoke: login → upload → view', async ({ page }) => {
   // Handle disclaimer modal if present
   await acceptDisclaimer(page);
 
-  // Wait for auth check to complete
-  await page.waitForTimeout(2000);
-  
-  // Check for authenticated elements - user menu trigger
-  await expect(page.getByTestId('user-menu-trigger')).toBeVisible({ timeout: 10000 });
+  // Wait for the gallery shell to be ready.
+  await expect(page.getByRole('searchbox', { name: 'Search photos' })).toBeVisible({ timeout: 10000 });
 
   // New primary flow: Gallery -> Detail -> Edit
   await expect(page.getByTestId('photo-card').first()).toBeVisible({ timeout: 15000 });
