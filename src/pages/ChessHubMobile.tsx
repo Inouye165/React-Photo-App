@@ -1,5 +1,4 @@
 import React from 'react'
-import { motion } from 'framer-motion'
 import { ArrowLeft, ChevronRight, History } from 'lucide-react'
 import type { LucideIcon } from 'lucide-react'
 import { DEFAULT_GOTW_SLUG, getGotwEntry } from '../data/chessGotw'
@@ -67,20 +66,46 @@ export default function ChessHubMobile({
   onOpenSignIn,
 }: ChessHubMobileProps): React.JSX.Element {
   const gotwEntry = getGotwEntry(DEFAULT_GOTW_SLUG)
+  const mobileDesignTokens = {
+    '--chess-hub-space-1': '4px',
+    '--chess-hub-space-2': '8px',
+    '--chess-hub-space-3': '12px',
+    '--chess-hub-space-4': '16px',
+    '--chess-hub-space-5': '20px',
+    '--chess-hub-space-6': '24px',
+    '--chess-hub-type-display': '1.5rem',
+    '--chess-hub-type-section': '1.25rem',
+    '--chess-hub-type-body': '0.875rem',
+    '--chess-hub-type-label': '0.75rem',
+    '--chess-hub-color-bg': '#0b1220',
+    '--chess-hub-color-surface': '#1e293b',
+    '--chess-hub-color-surface-soft': '#273449',
+    '--chess-hub-color-text-primary': '#f8fafc',
+    '--chess-hub-color-text-secondary': '#cbd5e1',
+    '--chess-hub-color-accent': '#e7ba53',
+    '--chess-hub-color-accent-text': '#1a1305',
+    '--chess-hub-color-border': 'rgba(255, 255, 255, 0.14)',
+    '--chess-hub-shadow': '0 10px 24px rgba(2, 6, 23, 0.32)',
+    '--chess-hub-radius-card': '14px',
+    '--chess-hub-radius-button': '10px',
+    '--chess-mode-thumb': 'clamp(48px, 7vw, 56px)',
+  } as React.CSSProperties
+
+  const mobilePrimaryActionClass = 'inline-flex min-h-11 items-center justify-center rounded-[var(--chess-hub-radius-button)] bg-[var(--chess-hub-color-accent)] px-[var(--chess-hub-space-4)] py-[var(--chess-hub-space-2)] text-[length:var(--chess-hub-type-body)] font-semibold text-[var(--chess-hub-color-accent-text)] transition hover:brightness-[1.06] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[var(--chess-hub-color-accent)] focus-visible:ring-offset-2 focus-visible:ring-offset-[var(--chess-hub-color-bg)] disabled:cursor-not-allowed disabled:opacity-60'
 
   return (
     <>
       <header className="sticky top-0 z-50 h-14 border-b border-white/10 bg-chess-bg/90 backdrop-blur">
-        <nav className="mx-auto flex h-14 w-full max-w-6xl items-center justify-between px-3 sm:px-5 lg:px-6" aria-label="Chess header navigation">
+        <nav className="mx-auto flex h-14 w-full max-w-6xl items-center justify-between px-[var(--chess-hub-space-4)] sm:px-5 lg:px-6" aria-label="Chess header navigation" style={mobileDesignTokens}>
           <button
             type="button"
             onClick={onOpenHome}
             aria-label="Back to Home"
-            className="inline-flex h-10 w-10 items-center justify-center rounded-full bg-chess-surface text-chess-text shadow-chess-card ring-1 ring-white/5 transition hover:bg-chess-surfaceSoft active:bg-chess-surfaceSoft focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-chess-accentSoft focus-visible:ring-offset-2 focus-visible:ring-offset-chess-bg"
+            className="inline-flex h-11 w-11 items-center justify-center rounded-full bg-[var(--chess-hub-color-surface)] text-[var(--chess-hub-color-text-primary)] ring-1 ring-[var(--chess-hub-color-border)] transition hover:bg-[var(--chess-hub-color-surface-soft)] active:bg-[var(--chess-hub-color-surface-soft)] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[var(--chess-hub-color-accent)] focus-visible:ring-offset-2 focus-visible:ring-offset-[var(--chess-hub-color-bg)]"
           >
             <ArrowLeft size={18} aria-hidden="true" />
           </button>
-          <h1 className="font-display text-xl tracking-wide text-chess-text">Chess</h1>
+          <h1 className="font-display text-[length:var(--chess-hub-type-section)] tracking-wide text-[var(--chess-hub-color-text-primary)]">Chess</h1>
           <ChessHeaderAccountIndicator
             isAuthenticated={isAuthenticated}
             displayName={accountDisplayName}
@@ -90,42 +115,42 @@ export default function ChessHubMobile({
         </nav>
       </header>
 
-      <div className="mx-auto flex w-full max-w-6xl flex-col gap-4 px-3 pb-5 pt-4 sm:px-5 lg:gap-7 lg:px-6 lg:pt-6">
-        <section className="rounded-2xl bg-chess-surface px-4 py-4 shadow-chess-card ring-1 ring-white/5 sm:px-5 sm:py-5" aria-labelledby="chess-hero-title">
-          <h2 id="chess-hero-title" className="font-display text-2xl text-chess-text sm:text-3xl">Match Table</h2>
-          <p className="mt-1 text-sm text-chess-muted">Find the right seat quickly and keep your rhythm between turns.</p>
+      <div className="mx-auto flex w-full max-w-6xl flex-col gap-4 px-[var(--chess-hub-space-4)] pb-5 pt-4 sm:px-5 lg:gap-7 lg:px-6 lg:pt-6" style={mobileDesignTokens}>
+        <section className="rounded-[var(--chess-hub-radius-card)] bg-[var(--chess-hub-color-surface)] px-[var(--chess-hub-space-3)] py-[var(--chess-hub-space-3)] shadow-[var(--chess-hub-shadow)] ring-1 ring-[var(--chess-hub-color-border)] sm:px-5 sm:py-5" aria-labelledby="chess-hero-title">
+          <h2 id="chess-hero-title" className="font-display text-[length:var(--chess-hub-type-display)] leading-tight text-[var(--chess-hub-color-text-primary)] sm:text-3xl">Match Table</h2>
+          <p className="mt-1 text-[length:var(--chess-hub-type-body)] text-[var(--chess-hub-color-text-secondary)]">Find the right seat quickly and keep your rhythm between turns.</p>
 
           {isLoading ? (
             <div className="mt-4 h-28 rounded-xl bg-chess-surfaceSoft/70 ring-1 ring-white/5" aria-label="Loading matches" />
           ) : loadError ? (
-            <div className="mt-4 rounded-xl bg-red-400/10 p-3 text-sm text-red-100 ring-1 ring-red-200/25" role="status" aria-live="polite">
+            <div className="mt-4 rounded-xl bg-red-400/10 p-3 text-[length:var(--chess-hub-type-body)] text-red-100 ring-1 ring-red-200/25" role="status" aria-live="polite">
               <p>{loadError}</p>
               <button
                 type="button"
                 onClick={onRetry}
-                className="mt-3 inline-flex min-h-11 items-center justify-center rounded-lg border border-white/20 px-3 py-2 text-sm font-semibold text-chess-text transition hover:bg-white/10 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-chess-accentSoft focus-visible:ring-offset-2 focus-visible:ring-offset-chess-bg"
+                className="mt-3 inline-flex min-h-11 items-center justify-center rounded-[var(--chess-hub-radius-button)] border border-white/20 px-[var(--chess-hub-space-3)] py-[var(--chess-hub-space-2)] text-[length:var(--chess-hub-type-body)] font-semibold text-[var(--chess-hub-color-text-primary)] transition hover:bg-white/10 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[var(--chess-hub-color-accent)] focus-visible:ring-offset-2 focus-visible:ring-offset-[var(--chess-hub-color-bg)]"
               >
                 Try Again
               </button>
             </div>
           ) : heroState === 'hasActiveGame' && singleActiveGame ? (
-            <article className="mt-4 rounded-2xl bg-chess-surfaceSoft p-4 shadow-chess-card ring-1 ring-white/5 sm:p-5" aria-label="Resume match">
-              <p className="text-xs font-semibold uppercase tracking-wide text-chess-accentSoft">Resume Match</p>
-              <h3 className="mt-1 font-display text-2xl text-chess-text">vs {getOpponentLabel(singleActiveGame)}</h3>
-              <p className="mt-1 text-sm text-chess-muted">Last move {formatRelative(singleActiveGame.updated_at)}</p>
-              <div className="mt-4 flex items-center gap-3">
-                <motion.span
-                  className="inline-flex items-center rounded-full bg-chess-turn/30 px-2.5 py-1 text-xs font-semibold text-amber-100"
-                  animate={prefersReducedMotion ? undefined : { opacity: [1, 0.76, 1], scale: [1, 1.02, 1] }}
-                  transition={prefersReducedMotion ? undefined : { duration: 2.2, repeat: Infinity, ease: 'easeInOut' }}
-                >
-                  Your Turn
-                </motion.span>
+            <article
+              data-testid="chess-mobile-resume-card"
+              className="mt-3 rounded-[var(--chess-hub-radius-card)] bg-[var(--chess-hub-color-surface-soft)] px-[var(--chess-hub-space-3)] py-[var(--chess-hub-space-3)] shadow-[var(--chess-hub-shadow)] ring-1 ring-[var(--chess-hub-color-border)]"
+              aria-label="Resume match"
+            >
+              <p className="text-[length:var(--chess-hub-type-label)] font-semibold uppercase tracking-wide text-[var(--chess-hub-color-accent)]">Resume Match</p>
+              <h3 className="mt-1 font-display text-[length:var(--chess-hub-type-section)] leading-tight text-[var(--chess-hub-color-text-primary)]">VS {getOpponentLabel(singleActiveGame)}</h3>
+              <div className="mt-2 flex flex-wrap items-center gap-2">
+                <span className="inline-flex items-center rounded-full bg-amber-500/15 px-2 py-0.5 text-[length:var(--chess-hub-type-label)] font-semibold text-amber-100" aria-label="Current turn status">
+                  Your turn
+                </span>
+                <p className={`text-[length:var(--chess-hub-type-body)] text-[var(--chess-hub-color-text-secondary)] ${prefersReducedMotion ? '' : 'motion-safe:animate-pulse'}`}>Last move {formatRelative(singleActiveGame.updated_at)}</p>
               </div>
               <button
                 type="button"
                 onClick={() => onOpenGame(singleActiveGame.id)}
-                className="mt-4 inline-flex min-h-11 items-center justify-center rounded-lg bg-chess-accent px-4 py-2 text-sm font-semibold text-black shadow-chess-card transition hover:bg-chess-accentSoft focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-chess-accentSoft focus-visible:ring-offset-2 focus-visible:ring-offset-chess-bg"
+                className={`${mobilePrimaryActionClass} mt-3 w-full sm:w-auto`}
               >
                 Continue Game
               </button>
@@ -182,8 +207,8 @@ export default function ChessHubMobile({
 
         <section aria-labelledby="chess-modes-title">
           <div className="mb-2 flex items-end justify-between">
-            <h2 id="chess-modes-title" className="font-display text-2xl text-chess-text">Modes</h2>
-            <p className="text-xs text-chess-muted">Choose your focus</p>
+            <h2 id="chess-modes-title" className="font-display text-[length:var(--chess-hub-type-display)] leading-tight text-[var(--chess-hub-color-text-primary)]">Modes</h2>
+            <p className="text-[length:var(--chess-hub-type-label)] text-[var(--chess-hub-color-text-secondary)]">Choose your focus</p>
           </div>
 
           <ul className="lg:hidden">
@@ -193,9 +218,9 @@ export default function ChessHubMobile({
                   <button
                     type="button"
                     onClick={() => onOpenMode(mode.onClick)}
-                    className="flex min-h-14 w-full items-center gap-3 rounded-xl bg-chess-surface px-3 py-2.5 text-left shadow-chess-card ring-1 ring-white/5 transition hover:bg-chess-surfaceSoft active:bg-chess-surfaceSoft focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-chess-accentSoft focus-visible:ring-offset-2 focus-visible:ring-offset-chess-bg"
+                    className="flex min-h-14 w-full items-center gap-[var(--chess-hub-space-3)] rounded-[var(--chess-hub-radius-card)] bg-[var(--chess-hub-color-surface)] px-[var(--chess-hub-space-3)] py-[var(--chess-hub-space-2)] text-left shadow-[var(--chess-hub-shadow)] ring-1 ring-[var(--chess-hub-color-border)] transition hover:bg-[var(--chess-hub-color-surface-soft)] active:bg-[var(--chess-hub-color-surface-soft)] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[var(--chess-hub-color-accent)] focus-visible:ring-offset-2 focus-visible:ring-offset-[var(--chess-hub-color-bg)]"
                   >
-                    <div className="h-11 w-14 shrink-0 overflow-hidden rounded-lg bg-chess-surfaceSoft ring-1 ring-white/10">
+                    <div data-testid="chess-mobile-mode-thumb" className="h-[var(--chess-mode-thumb)] w-[var(--chess-mode-thumb)] shrink-0 overflow-hidden rounded-lg bg-[var(--chess-hub-color-surface-soft)] ring-1 ring-white/20 shadow-[inset_0_0_0_1px_rgba(255,255,255,0.06)]">
                       <img
                         src={mode.imageSrc}
                         alt={mode.imageAlt}
@@ -204,10 +229,10 @@ export default function ChessHubMobile({
                       />
                     </div>
                     <div className="min-w-0 flex-1">
-                      <p className="truncate font-semibold text-chess-text">{mode.title}</p>
-                      <p className="truncate text-xs text-chess-muted">{mode.description}</p>
+                      <p className="truncate text-[length:var(--chess-hub-type-body)] font-semibold text-[var(--chess-hub-color-text-primary)]">{mode.title}</p>
+                      <p className="truncate text-[length:var(--chess-hub-type-label)] text-[var(--chess-hub-color-text-secondary)]">{mode.description}</p>
                     </div>
-                    <ChevronRight size={16} className="text-chess-muted" aria-hidden="true" />
+                    <ChevronRight size={16} className="text-[var(--chess-hub-color-text-secondary)]" aria-hidden="true" />
                   </button>
                 </li>
               )
@@ -215,22 +240,22 @@ export default function ChessHubMobile({
           </ul>
 
           {gotwEntry ? (
-            <article className="mt-3 rounded-xl bg-chess-surface p-3 shadow-chess-card ring-1 ring-white/5" aria-labelledby="chess-gotw-title">
+            <article className="mt-3 rounded-[var(--chess-hub-radius-card)] bg-[var(--chess-hub-color-surface)] p-[var(--chess-hub-space-3)] shadow-[var(--chess-hub-shadow)] ring-1 ring-[var(--chess-hub-color-border)]" aria-labelledby="chess-gotw-title">
               <div className="flex items-start justify-between gap-3">
                 <div className="min-w-0">
-                  <p className="text-[11px] font-semibold uppercase tracking-wide text-chess-accentSoft">Game of the Week</p>
-                  <h3 id="chess-gotw-title" className="truncate font-display text-base text-chess-text">{gotwEntry.playersLabel}</h3>
-                  <p className="truncate text-xs text-chess-muted">{gotwEntry.event} · {gotwEntry.year}</p>
+                  <p className="text-[length:var(--chess-hub-type-label)] font-semibold uppercase tracking-wide text-[var(--chess-hub-color-accent)]">Game of the Week</p>
+                  <h3 id="chess-gotw-title" className="truncate font-display text-[length:var(--chess-hub-type-section)] text-[var(--chess-hub-color-text-primary)]">{gotwEntry.playersLabel}</h3>
+                  <p className="truncate text-[length:var(--chess-hub-type-label)] text-[var(--chess-hub-color-text-secondary)]">{gotwEntry.event} · {gotwEntry.year}</p>
                 </div>
                 <button
                   type="button"
                   onClick={() => onOpenGotw(gotwEntry.slug)}
-                  className="inline-flex min-h-9 items-center justify-center rounded-md bg-chess-accent px-3 py-1.5 text-xs font-semibold text-black transition hover:bg-chess-accentSoft focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-chess-accentSoft focus-visible:ring-offset-2 focus-visible:ring-offset-chess-bg"
+                  className={mobilePrimaryActionClass}
                 >
                   Watch full game
                 </button>
               </div>
-              <p className="mt-2 line-clamp-2 text-xs text-chess-text/90">{gotwEntry.subtitle}</p>
+              <p className="mt-2 line-clamp-2 text-[length:var(--chess-hub-type-label)] text-[var(--chess-hub-color-text-secondary)]">{gotwEntry.subtitle}</p>
             </article>
           ) : null}
 
@@ -270,7 +295,7 @@ export default function ChessHubMobile({
           <button
             type="button"
             onClick={onToggleHistory}
-            className="inline-flex items-center gap-2 text-sm font-semibold text-chess-accentSoft underline-offset-4 transition hover:text-chess-text hover:underline focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-chess-accentSoft focus-visible:ring-offset-2 focus-visible:ring-offset-chess-bg"
+            className="inline-flex min-h-11 items-center gap-2 text-[length:var(--chess-hub-type-body)] font-semibold text-[var(--chess-hub-color-accent)] underline-offset-4 transition hover:text-[var(--chess-hub-color-text-primary)] hover:underline focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[var(--chess-hub-color-accent)] focus-visible:ring-offset-2 focus-visible:ring-offset-[var(--chess-hub-color-bg)]"
           >
             <History size={14} aria-hidden="true" />
             {isHistoryOpen ? 'Hide History' : 'View History'}
