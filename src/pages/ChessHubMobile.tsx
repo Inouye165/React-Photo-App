@@ -4,6 +4,7 @@ import { ArrowLeft, ChevronRight, History } from 'lucide-react'
 import type { LucideIcon } from 'lucide-react'
 import { DEFAULT_GOTW_SLUG, getGotwEntry } from '../data/chessGotw'
 import type { GameWithMembers } from '../api/games'
+import ChessHeaderAccountIndicator from './ChessHeaderAccountIndicator'
 
 type ModeItem = {
   key: string
@@ -35,6 +36,10 @@ type ChessHubMobileProps = {
   onOpenGame: (gameId: string) => void
   onOpenGotw: (slug: string) => void
   onToggleHistory: () => void
+  isAuthenticated: boolean
+  accountDisplayName: string
+  accountInitials: string
+  onOpenSignIn: () => void
 }
 
 export default function ChessHubMobile({
@@ -56,6 +61,10 @@ export default function ChessHubMobile({
   onOpenGame,
   onOpenGotw,
   onToggleHistory,
+  isAuthenticated,
+  accountDisplayName,
+  accountInitials,
+  onOpenSignIn,
 }: ChessHubMobileProps): React.JSX.Element {
   const gotwEntry = getGotwEntry(DEFAULT_GOTW_SLUG)
 
@@ -72,7 +81,12 @@ export default function ChessHubMobile({
             <ArrowLeft size={18} aria-hidden="true" />
           </button>
           <h1 className="font-display text-xl tracking-wide text-chess-text">Chess</h1>
-          <div className="w-10" aria-hidden="true" />
+          <ChessHeaderAccountIndicator
+            isAuthenticated={isAuthenticated}
+            displayName={accountDisplayName}
+            initials={accountInitials}
+            onSignIn={onOpenSignIn}
+          />
         </nav>
       </header>
 
@@ -213,7 +227,7 @@ export default function ChessHubMobile({
                   onClick={() => onOpenGotw(gotwEntry.slug)}
                   className="inline-flex min-h-9 items-center justify-center rounded-md bg-chess-accent px-3 py-1.5 text-xs font-semibold text-black transition hover:bg-chess-accentSoft focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-chess-accentSoft focus-visible:ring-offset-2 focus-visible:ring-offset-chess-bg"
                 >
-                  Open
+                  Watch full game
                 </button>
               </div>
               <p className="mt-2 line-clamp-2 text-xs text-chess-text/90">{gotwEntry.subtitle}</p>

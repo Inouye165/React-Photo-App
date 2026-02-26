@@ -98,6 +98,14 @@ type ModeItem = {
   icon: LucideIcon
 }
 
+function getInitials(value: string): string {
+  const cleaned = value.trim()
+  if (!cleaned) return 'U'
+  const parts = cleaned.split(/\s+/).filter(Boolean)
+  if (parts.length >= 2) return `${parts[0][0]}${parts[1][0]}`.toUpperCase()
+  return cleaned.slice(0, 2).toUpperCase()
+}
+
 export default function ChessHub(): React.JSX.Element {
   const { user, profile } = useAuth()
   const navigate = useNavigate()
@@ -208,6 +216,9 @@ export default function ChessHub(): React.JSX.Element {
   ]
 
   const currentUsername = profile?.username || user?.email || ''
+  const accountLabel = profile?.username || user?.email?.split('@')[0] || 'User'
+  const accountInitials = getInitials(accountLabel)
+  const isAuthenticated = Boolean(user)
   const getOpponentLabelForCurrentUser = useCallback((game: GameWithMembers) => (
     getOpponentLabel(game, user?.id, currentUsername)
   ), [currentUsername, user?.id])
@@ -240,6 +251,10 @@ export default function ChessHub(): React.JSX.Element {
           isInviteStatus={isInviteStatus}
           onOpenHome={() => navigate('/')}
           onOpenGame={(gameId) => navigate(`/games/${gameId}`)}
+          isAuthenticated={isAuthenticated}
+          accountDisplayName={accountLabel}
+          accountInitials={accountInitials}
+          onOpenSignIn={() => navigate('/login')}
         />
       ) : (
         <ChessHubMobile
@@ -261,6 +276,10 @@ export default function ChessHub(): React.JSX.Element {
           onOpenGame={(gameId) => navigate(`/games/${gameId}`)}
           onOpenGotw={(slug) => navigate(`/games/chess/gotw/${slug}`)}
           onToggleHistory={() => setIsHistoryOpen((prev) => !prev)}
+          isAuthenticated={isAuthenticated}
+          accountDisplayName={accountLabel}
+          accountInitials={accountInitials}
+          onOpenSignIn={() => navigate('/login')}
         />
       )}
     </motion.main>
