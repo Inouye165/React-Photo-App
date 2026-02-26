@@ -105,6 +105,21 @@ describe('ChessHub', () => {
     })
   })
 
+  it('renders mobile mode artwork and opens game of the week', async () => {
+    setViewport(375)
+    const user = userEvent.setup()
+
+    render(<ChessHub />)
+
+    expect(screen.getByRole('img', { name: 'Chess board training setup artwork' })).toBeInTheDocument()
+    expect(screen.getByRole('img', { name: 'Two players preparing for a chess match' })).toBeInTheDocument()
+    expect(screen.getByRole('img', { name: 'Chess lesson notebook and study board' })).toBeInTheDocument()
+
+    await user.click(screen.getByRole('button', { name: 'Open' }))
+
+    expect(navigateMock).toHaveBeenCalledWith('/games/chess/gotw/byrne-vs-fischer-1956')
+  })
+
   it('renders Chess title and the three mode CTAs', async () => {
     render(<ChessHub />)
 

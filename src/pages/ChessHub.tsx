@@ -259,6 +259,7 @@ export default function ChessHub(): React.JSX.Element {
           onOpenHome={() => navigate('/')}
           onOpenMode={(callback) => callback()}
           onOpenGame={(gameId) => navigate(`/games/${gameId}`)}
+          onOpenGotw={(slug) => navigate(`/games/chess/gotw/${slug}`)}
           onToggleHistory={() => setIsHistoryOpen((prev) => !prev)}
         />
       )}

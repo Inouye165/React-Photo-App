@@ -2,6 +2,7 @@ import React from 'react'
 import { motion } from 'framer-motion'
 import { ArrowLeft, ChevronRight, History } from 'lucide-react'
 import type { LucideIcon } from 'lucide-react'
+import { DEFAULT_GOTW_SLUG, getGotwEntry } from '../data/chessGotw'
 import type { GameWithMembers } from '../api/games'
 
 type ModeItem = {
@@ -9,6 +10,8 @@ type ModeItem = {
   title: string
   description: string
   chips: string[]
+  imageSrc: string
+  imageAlt: string
   onClick: () => void
   icon: LucideIcon
 }
@@ -30,6 +33,7 @@ type ChessHubMobileProps = {
   onOpenHome: () => void
   onOpenMode: (callback: () => void) => void
   onOpenGame: (gameId: string) => void
+  onOpenGotw: (slug: string) => void
   onToggleHistory: () => void
 }
 
@@ -50,8 +54,11 @@ export default function ChessHubMobile({
   onOpenHome,
   onOpenMode,
   onOpenGame,
+  onOpenGotw,
   onToggleHistory,
 }: ChessHubMobileProps): React.JSX.Element {
+  const gotwEntry = getGotwEntry(DEFAULT_GOTW_SLUG)
+
   return (
     <>
       <header className="sticky top-0 z-50 h-14 border-b border-white/10 bg-chess-bg/90 backdrop-blur">
@@ -69,7 +76,7 @@ export default function ChessHubMobile({
         </nav>
       </header>
 
-      <div className="mx-auto flex w-full max-w-6xl flex-col gap-5 px-3 pb-8 pt-4 sm:px-5 lg:gap-7 lg:px-6 lg:pt-6">
+      <div className="mx-auto flex w-full max-w-6xl flex-col gap-4 px-3 pb-5 pt-4 sm:px-5 lg:gap-7 lg:px-6 lg:pt-6">
         <section className="rounded-2xl bg-chess-surface px-4 py-4 shadow-chess-card ring-1 ring-white/5 sm:px-5 sm:py-5" aria-labelledby="chess-hero-title">
           <h2 id="chess-hero-title" className="font-display text-2xl text-chess-text sm:text-3xl">Match Table</h2>
           <p className="mt-1 text-sm text-chess-muted">Find the right seat quickly and keep your rhythm between turns.</p>
@@ -167,15 +174,21 @@ export default function ChessHubMobile({
 
           <ul className="lg:hidden">
             {modeItems.map((mode) => {
-              const Icon = mode.icon
               return (
                 <li key={`mobile-${mode.key}`} className="mt-2 first:mt-0">
                   <button
                     type="button"
                     onClick={() => onOpenMode(mode.onClick)}
-                    className="flex min-h-11 w-full items-center gap-3 rounded-xl bg-chess-surface px-3 py-2 text-left shadow-chess-card ring-1 ring-white/5 transition hover:bg-chess-surfaceSoft active:bg-chess-surfaceSoft focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-chess-accentSoft focus-visible:ring-offset-2 focus-visible:ring-offset-chess-bg"
+                    className="flex min-h-14 w-full items-center gap-3 rounded-xl bg-chess-surface px-3 py-2.5 text-left shadow-chess-card ring-1 ring-white/5 transition hover:bg-chess-surfaceSoft active:bg-chess-surfaceSoft focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-chess-accentSoft focus-visible:ring-offset-2 focus-visible:ring-offset-chess-bg"
                   >
-                    <Icon size={18} className="text-chess-accentSoft" aria-hidden />
+                    <div className="h-11 w-14 shrink-0 overflow-hidden rounded-lg bg-chess-surfaceSoft ring-1 ring-white/10">
+                      <img
+                        src={mode.imageSrc}
+                        alt={mode.imageAlt}
+                        className="h-full w-full object-cover object-center"
+                        loading="lazy"
+                      />
+                    </div>
                     <div className="min-w-0 flex-1">
                       <p className="truncate font-semibold text-chess-text">{mode.title}</p>
                       <p className="truncate text-xs text-chess-muted">{mode.description}</p>
@@ -186,6 +199,26 @@ export default function ChessHubMobile({
               )
             })}
           </ul>
+
+          {gotwEntry ? (
+            <article className="mt-3 rounded-xl bg-chess-surface p-3 shadow-chess-card ring-1 ring-white/5" aria-labelledby="chess-gotw-title">
+              <div className="flex items-start justify-between gap-3">
+                <div className="min-w-0">
+                  <p className="text-[11px] font-semibold uppercase tracking-wide text-chess-accentSoft">Game of the Week</p>
+                  <h3 id="chess-gotw-title" className="truncate font-display text-base text-chess-text">{gotwEntry.playersLabel}</h3>
+                  <p className="truncate text-xs text-chess-muted">{gotwEntry.event} · {gotwEntry.year}</p>
+                </div>
+                <button
+                  type="button"
+                  onClick={() => onOpenGotw(gotwEntry.slug)}
+                  className="inline-flex min-h-9 items-center justify-center rounded-md bg-chess-accent px-3 py-1.5 text-xs font-semibold text-black transition hover:bg-chess-accentSoft focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-chess-accentSoft focus-visible:ring-offset-2 focus-visible:ring-offset-chess-bg"
+                >
+                  Open
+                </button>
+              </div>
+              <p className="mt-2 line-clamp-2 text-xs text-chess-text/90">{gotwEntry.subtitle}</p>
+            </article>
+          ) : null}
 
           <div className="hidden gap-4 lg:grid lg:grid-cols-3">
             {modeItems.map((mode) => {
