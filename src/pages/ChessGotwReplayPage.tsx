@@ -1,18 +1,19 @@
-import React, { useEffect, useMemo, useRef, useState } from 'react'
+import React, { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import { useNavigate, useParams } from 'react-router-dom'
 import { Chessboard } from 'react-chessboard'
 import { useReducedMotion } from 'framer-motion'
 import { ArrowLeft, List, Pause, Play, SkipBack, SkipForward, X } from 'lucide-react'
-import { getFenAtPly, getGotwEntry, type ReplayPly } from '../data/chessGotw'
+import { getFenAtPly, getDestSquareAtPly, getGotwEntry, type ReplayPly } from '../data/chessGotw'
+import { AnalysisTab, GotwChaptersRail, GotwCurrentInsightPanel, GotwBoardInsightPopup } from '../components/chess/gotw'
 
 function formatRating(rating?: string | null): string {
   const normalized = (rating || '').trim()
   return normalized.length ? normalized : '—'
 }
 
-type TabKey = 'moves' | 'story' | 'players'
+type TabKey = 'moves' | 'analysis' | 'story' | 'players'
 
-const TAB_ORDER: TabKey[] = ['moves', 'story', 'players']
+const TAB_ORDER: TabKey[] = ['moves', 'analysis', 'story', 'players']
 
 function getNextTab(current: TabKey, direction: 'prev' | 'next'): TabKey {
   const currentIndex = TAB_ORDER.indexOf(current)
@@ -23,11 +24,6 @@ function getNextTab(current: TabKey, direction: 'prev' | 'next'): TabKey {
 
 function clampBoardSize(value: number): number {
   return Math.max(280, Math.min(720, value))
-}
-
-function safeMoveComment(move: ReplayPly | null): string {
-  const text = (move?.comment || '').trim()
-  return text.length ? text : 'Select an annotated move to see commentary.'
 }
 
 type DetailsPanelProps = {
@@ -51,7 +47,7 @@ function GotwDetailsPanel({
   onSelectPly,
   movesListRef,
 }: DetailsPanelProps): React.JSX.Element {
-  const baseTabClass = 'min-h-11 rounded-lg px-3 py-2 text-sm font-semibold transition focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-chess-accentSoft focus-visible:ring-offset-2 focus-visible:ring-offset-chess-bg'
+  const baseTabClass = 'min-h-11 rounded-lg px-2 py-2 text-sm font-semibold transition focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-chess-accentSoft focus-visible:ring-offset-2 focus-visible:ring-offset-chess-bg'
 
   const renderMoves = () => (
     <div className="flex min-h-0 flex-1 flex-col">
@@ -127,6 +123,18 @@ function GotwDetailsPanel({
     </div>
   )
 
+  const renderAnalysis = () => {
+    const analysisByPly = entry.analysis?.byPly ?? {}
+    return (
+      <AnalysisTab
+        moves={entry.moves}
+        analysisByPly={analysisByPly}
+        currentPly={currentPly}
+        onSelectPly={onSelectPly}
+      />
+    )
+  }
+
   const tabPanelId = `${panelIdPrefix}-panel-${activeTab}`
 
   return (
@@ -134,11 +142,11 @@ function GotwDetailsPanel({
       <div
         role="tablist"
         aria-label="Game details tabs"
-        className="grid grid-cols-3 gap-2"
+        className="grid grid-cols-4 gap-1.5"
       >
         {TAB_ORDER.map((tab) => {
           const selected = activeTab === tab
-          const label = tab === 'moves' ? 'Moves' : tab === 'story' ? 'Story' : 'Players'
+          const label = tab === 'moves' ? 'Moves' : tab === 'analysis' ? 'Analysis' : tab === 'story' ? 'Story' : 'Players'
           return (
             <button
               key={tab}
@@ -161,7 +169,7 @@ function GotwDetailsPanel({
                   onChangeTab('moves')
                 } else if (event.key === 'End') {
                   event.preventDefault()
-                  onChangeTab('players')
+                  onChangeTab(TAB_ORDER[TAB_ORDER.length - 1])
                 }
               }}
               className={`${baseTabClass} ${selected ? 'bg-chess-accent text-black' : 'bg-chess-surfaceSoft text-chess-text hover:bg-white/10'}`}
@@ -179,6 +187,7 @@ function GotwDetailsPanel({
         className="mt-3 flex min-h-0 flex-1 flex-col"
       >
         {activeTab === 'moves' ? renderMoves() : null}
+        {activeTab === 'analysis' ? renderAnalysis() : null}
         {activeTab === 'story' ? renderStory() : null}
         {activeTab === 'players' ? renderPlayers() : null}
       </section>
@@ -198,6 +207,8 @@ export default function ChessGotwReplayPage(): React.JSX.Element {
   const [desktopTab, setDesktopTab] = useState<TabKey>('moves')
   const [mobilePanelTab, setMobilePanelTab] = useState<TabKey>('moves')
   const [isMobilePanelOpen, setIsMobilePanelOpen] = useState(false)
+  const [isGuidedMode, setIsGuidedMode] = useState(false)
+  const [lastPausedChapterPly, setLastPausedChapterPly] = useState<number | null>(null)
 
   const boardFrameRef = useRef<HTMLDivElement | null>(null)
   const desktopMovesListRef = useRef<HTMLOListElement | null>(null)
@@ -228,15 +239,17 @@ export default function ChessGotwReplayPage(): React.JSX.Element {
     setIsPlaying(!prefersReducedMotion)
   }, [prefersReducedMotion])
 
-  useEffect(() => {
-    if (!isPlaying || !entry || currentPly >= entry.moves.length) return undefined
+  // Popup visibility — dismissed per-ply, auto-reappears on next interesting ply
+  const [popupDismissedPly, setPopupDismissedPly] = useState<number | null>(null)
+  const showPopup = popupDismissedPly !== currentPly
 
-    const timer = window.setTimeout(() => {
-      setCurrentPly((prev) => Math.min(prev + 1, entry.moves.length))
-    }, 1400)
+  const handlePopupDismiss = useCallback(() => {
+    setPopupDismissedPly(currentPly)
+  }, [currentPly])
 
-    return () => window.clearTimeout(timer)
-  }, [currentPly, entry, isPlaying])
+  const handlePopupPause = useCallback(() => {
+    setIsPlaying(false)
+  }, [])
 
   useEffect(() => {
     const boardFrame = boardFrameRef.current
@@ -298,6 +311,73 @@ export default function ChessGotwReplayPage(): React.JSX.Element {
     return entry.moves[currentPly - 1] ?? null
   }, [currentPly, entry])
 
+  const chapters = entry?.analysis?.chapters ?? []
+  const chapterPlySet = useMemo(() => new Set(chapters.map((c) => c.ply)), [chapters])
+
+  // Autoplay timer — 2s for standard moves, 4s for annotated plies
+  useEffect(() => {
+    if (!isPlaying || !entry || currentPly >= entry.moves.length) return undefined
+
+    const BASE_STEP_MS = 2000
+    const ANNOTATED_STEP_MS = 4000
+    const isAnnotatedPly = Boolean(entry.analysis?.byPly[currentPly]) || chapterPlySet.has(currentPly)
+    const delay = isAnnotatedPly ? ANNOTATED_STEP_MS : BASE_STEP_MS
+
+    const timer = window.setTimeout(() => {
+      setCurrentPly((prev) => Math.min(prev + 1, entry.moves.length))
+    }, delay)
+
+    return () => window.clearTimeout(timer)
+  }, [currentPly, entry, isPlaying, chapterPlySet])
+
+  const currentAnalysis = entry?.analysis?.byPly[currentPly]
+  const activeChapter = chapters.find((c) => c.ply === currentPly) ?? null
+
+  // Destination square for popup anchoring and highlight pulse
+  const destSquare = useMemo(() => {
+    if (!entry || currentPly <= 0) return null
+    return getDestSquareAtPly(entry.moves, currentPly)
+  }, [entry, currentPly])
+
+  // Subtle outline pulse on the destination square for annotated moves
+  const squareHighlightStyles = useMemo<Record<string, React.CSSProperties>>(() => {
+    const isAnnotated = Boolean(currentAnalysis) || Boolean(activeChapter)
+    if (!isAnnotated || !destSquare || prefersReducedMotion) return {}
+    return {
+      [destSquare]: {
+        boxShadow: 'inset 0 0 0 3px rgba(255,255,255,0.45)',
+        borderRadius: '2px',
+        animation: 'gotw-square-pulse 700ms ease-out',
+      },
+    }
+  }, [currentAnalysis, activeChapter, destSquare, prefersReducedMotion])
+
+  // Raw comment text for the current move (empty string if none)
+  const moveCommentText = (currentMove?.comment || '').trim()
+
+  // Single-line summary for the compact "Now:" indicator on narrow layouts
+  const insightOneLiner = currentAnalysis
+    ? `${currentAnalysis.symbol} ${currentAnalysis.short}`
+    : moveCommentText || null
+
+  // Pause autoplay at chapter plies in guided mode (avoid re-pausing on scrub-back)
+  useEffect(() => {
+    if (!isGuidedMode || !isPlaying) return
+    if (chapterPlySet.has(currentPly) && lastPausedChapterPly !== currentPly) {
+      setIsPlaying(false)
+      setLastPausedChapterPly(currentPly)
+    }
+  }, [currentPly, isGuidedMode, isPlaying, chapterPlySet, lastPausedChapterPly])
+
+  const handleCoachContinue = useCallback(() => {
+    setIsPlaying(true)
+  }, [])
+
+  const handleJumpToPly = useCallback((ply: number) => {
+    setCurrentPly(ply)
+    setIsPlaying(false)
+  }, [])
+
   useEffect(() => {
     if (currentPly <= 0) return
 
@@ -349,16 +429,34 @@ export default function ChessGotwReplayPage(): React.JSX.Element {
       </header>
 
       <div className="mx-auto grid h-full min-h-0 w-full max-w-[1680px] grid-cols-1 gap-3 px-4 pb-3 pt-3 sm:px-6 xl:px-10 lg:grid-cols-[minmax(0,1fr)_380px]">
-        <section className="grid min-h-0 grid-rows-[auto_minmax(0,1fr)_auto_auto] gap-2 overflow-hidden rounded-2xl bg-chess-surface p-2 ring-1 ring-white/10">
+        {/* Board column: stable 3-row grid — header / board / controls. No variable-height content. */}
+        <section className="grid min-h-0 grid-rows-[auto_minmax(0,1fr)_auto] gap-2 overflow-hidden rounded-2xl bg-chess-surface p-2 ring-1 ring-white/10">
           <div className="rounded-xl bg-chess-surfaceSoft px-3 py-2 ring-1 ring-white/10">
             <p className="text-xs font-semibold uppercase tracking-wide text-chess-accentSoft">Game of the Week</p>
             <h2 className="mt-1 font-display text-lg text-chess-text">{entry.playersLabel}</h2>
             <p className="mt-1 text-sm text-chess-text/80" data-testid="gotw-player-white">White: {entry.white.name} ({formatRating(entry.white.rating)})</p>
             <p className="mt-0.5 text-sm text-chess-text/80" data-testid="gotw-player-black">Black: {entry.black.name} ({formatRating(entry.black.rating)})</p>
+            {/* Compact "Now:" insight for mobile/narrow — clamped to 1 line, never changes tile height */}
+            {insightOneLiner ? (
+              <p className="mt-1 line-clamp-1 text-xs text-chess-text/60 xl:hidden" data-testid="gotw-now-line">
+                <span className="font-semibold text-chess-accentSoft">Now:</span>{' '}{insightOneLiner}
+              </p>
+            ) : null}
           </div>
 
-          <div ref={boardFrameRef} className="flex min-h-0 items-center justify-center rounded-xl bg-chess-surfaceSoft p-2 ring-1 ring-white/10">
-            <div data-testid="gotw-full-board" className="overflow-hidden rounded-lg ring-1 ring-white/10" style={{ width: `${boardSize}px`, height: `${boardSize}px` }}>
+          <div
+            ref={boardFrameRef}
+            data-testid="gotw-board-frame"
+            className="flex min-h-0 items-center justify-center rounded-xl bg-chess-surfaceSoft p-2 ring-1 ring-white/10"
+            onPointerDown={(e) => {
+              // Click outside popup → dismiss it
+              if (!(e.target as HTMLElement).closest('[data-testid="gotw-board-insight-popup"]')) {
+                handlePopupDismiss()
+              }
+            }}
+          >
+            {/* Board wrapper: relative + overflow-visible so popup can sit above/below without reflow */}
+            <div data-testid="gotw-full-board" className="relative overflow-visible rounded-lg ring-1 ring-white/10" style={{ width: `${boardSize}px`, height: `${boardSize}px` }}>
               <Chessboard
                 id="gotw-full-board"
                 position={position}
@@ -366,7 +464,21 @@ export default function ChessGotwReplayPage(): React.JSX.Element {
                 boardWidth={boardSize}
                 areArrowsAllowed={false}
                 customBoardStyle={{ borderRadius: '0.5rem', overflow: 'hidden' }}
+                customSquareStyles={squareHighlightStyles}
               />
+              {showPopup ? (
+                <GotwBoardInsightPopup
+                  currentPly={currentPly}
+                  san={currentMove?.san}
+                  analysis={currentAnalysis}
+                  chapter={activeChapter ?? undefined}
+                  isPlaying={isPlaying}
+                  destSquare={destSquare}
+                  boardSizePx={boardSize}
+                  onRequestPause={handlePopupPause}
+                  onDismiss={handlePopupDismiss}
+                />
+              ) : null}
             </div>
           </div>
 
@@ -425,6 +537,28 @@ export default function ChessGotwReplayPage(): React.JSX.Element {
               <span data-testid="gotw-full-ply" className="ml-auto text-xs font-semibold text-chess-text/80">Ply {currentPly}/{entry.moves.length}</span>
             </div>
 
+            {chapters.length > 0 ? (
+              <div className="mt-2 flex items-center gap-2">
+                <GotwChaptersRail
+                  chapters={chapters}
+                  currentPly={currentPly}
+                  onJumpTo={handleJumpToPly}
+                />
+                <label className="ml-auto flex shrink-0 cursor-pointer items-center gap-1.5">
+                  <span className="text-[10px] font-bold uppercase tracking-widest text-chess-text/50">Guided</span>
+                  <input
+                    type="checkbox"
+                    checked={isGuidedMode}
+                    onChange={(ev) => {
+                      setIsGuidedMode(ev.target.checked)
+                      if (!ev.target.checked) setLastPausedChapterPly(null)
+                    }}
+                    className="h-4 w-4 rounded accent-chess-accent focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-chess-accentSoft"
+                  />
+                </label>
+              </div>
+            ) : null}
+
             <label htmlFor="gotw-replay-slider" className="mt-3 block text-xs font-semibold text-chess-text/80">Replay progress</label>
             <input
               id="gotw-replay-slider"
@@ -439,14 +573,20 @@ export default function ChessGotwReplayPage(): React.JSX.Element {
               className="mt-1 w-full accent-chess-accent focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-chess-accentSoft focus-visible:ring-offset-2 focus-visible:ring-offset-chess-bg"
             />
           </div>
-
-          <article className="rounded-xl bg-chess-surfaceSoft px-3 py-2 ring-1 ring-white/10">
-            <h3 className="font-display text-base text-chess-text">Move Commentary</h3>
-            <p className="mt-1 text-xs leading-relaxed text-chess-text/85">{safeMoveComment(currentMove)}</p>
-          </article>
         </section>
 
-        <aside data-testid="gotw-moves-rail" className="hidden min-h-0 flex-col rounded-2xl bg-chess-surface p-3 ring-1 ring-white/10 lg:flex" aria-label="Game details" >
+        <aside data-testid="gotw-moves-rail" className="hidden min-h-0 flex-col gap-3 rounded-2xl bg-chess-surface p-3 ring-1 ring-white/10 lg:flex" aria-label="Game details" >
+          {/* Insight panel — stable height, internal scroll, replaces old commentary article */}
+          <GotwCurrentInsightPanel
+            currentPly={currentPly}
+            currentMoveSan={currentMove?.san ?? null}
+            analysis={currentAnalysis}
+            activeChapter={activeChapter}
+            isGuidedMode={isGuidedMode}
+            moveComment={moveCommentText}
+            prefersReducedMotion={prefersReducedMotion}
+            onCoachContinue={handleCoachContinue}
+          />
           <div data-testid="gotw-side-panel" className="flex min-h-0 flex-1 flex-col">
             <GotwDetailsPanel
               entry={entry}

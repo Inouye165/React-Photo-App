@@ -55,6 +55,20 @@ Expected: Frontend at http://localhost:5173/
 
 ## Startup Robustness Log
 
+- **2026-02-27 08:14:24 -08:00 (Windows, host: Rons-Computer, monitored startup validation)**
+  - Process used: `npm run start:local` from repo root (README robust one-command startup).
+  - Startup behavior observed:
+    1. Docker daemon was initially not running; the script auto-started Docker Desktop and continued after daemon readiness.
+    2. Local Supabase auth health endpoint was initially down; `supabase start` reported an already-running stale state and the script self-heal path restored readiness.
+    3. Preflight dependency/build/migration checks completed (`[migrations] No pending migrations`), then API/worker/frontend terminals launched and the 45-second monitoring window passed.
+  - Verification results:
+    - `http://127.0.0.1:3001/health` returned HTTP `200`.
+    - `http://localhost:5173/` returned HTTP `200`.
+  - Structured run log:
+    - `logs/start-local-runs.jsonl`
+    - Success record: timestamp `2026-02-27T08:14:05.6896914-08:00`, host `Rons-Computer`, status `success`.
+  - Outcome: startup passed with no manual troubleshooting required.
+
 - **2026-02-26 17:47:40 -08:00 (Windows, host: Rons-Computer, monitored startup validation)**
   - Process used: `npm run start:local` from repo root (README robust one-command startup).
   - Startup behavior observed:
