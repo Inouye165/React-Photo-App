@@ -9,6 +9,7 @@ export type ReplayPly = {
 export type GotwPlayerMeta = {
   name: string
   rating?: string | null
+  bio?: string
 }
 
 export type GotwEntry = {
@@ -16,6 +17,7 @@ export type GotwEntry = {
   title: string
   subtitle: string
   description: string
+  narrative: string[]
   event: string
   year: string
   result: string
@@ -158,6 +160,11 @@ export const GOTW_ENTRIES: Record<string, GotwEntry> = {
     title: 'Greatest Games of All Time',
     subtitle: 'The Game of the Century — Byrne vs Fischer (1956)',
     description: 'The Game of the Century is widely studied because it shows a young Bobby Fischer (playing Black) intuitively grasping complex positional sacrifices that even the world’s top players at the time struggled to calculate.',
+    narrative: [
+      'This classic begins as a practical fight for central control, but the position shifts the moment Fischer strikes with ...Na4 and a sequence of dynamic sacrifices. Rather than defending material, he prioritizes initiative, development, and king safety.',
+      'The turning point arrives with 17...Be6, where Fischer offers his queen to unleash a coordinated attack. Byrne accepts, but Black’s minor pieces and rooks take over with forcing checks, tactical forks, and relentless tempo gains.',
+      'What makes this game timeless is not only tactical brilliance, but strategic clarity: every sacrifice serves activity and coordination. It remains one of the best demonstrations of converting initiative into a decisive attack.',
+    ],
     event: 'Rosenwald Memorial',
     year: '1956',
     result: '0–1',
@@ -165,10 +172,12 @@ export const GOTW_ENTRIES: Record<string, GotwEntry> = {
     white: {
       name: 'Donald Byrne',
       rating: null,
+      bio: 'American International Master and respected teacher known for clear positional play. Byrne was a major U.S. chess figure in the 1950s and helped mentor a generation of competitive players.',
     },
     black: {
       name: 'Robert James Fischer',
       rating: null,
+      bio: 'American chess prodigy who became one of the strongest players in history. At just 13, Fischer produced this game, a landmark of tactical imagination and attacking precision.',
     },
     previewRange: {
       startPly: 21,
