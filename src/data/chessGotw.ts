@@ -1,4 +1,8 @@
 import { Chess } from 'chess.js'
+import type { GotwAnalysisPack } from './chessGotw.types'
+
+export type { PlyClassification, PlySymbol, PlyAnalysis, GotwChapter, GotwAnalysisPack } from './chessGotw.types'
+export { CLASSIFICATION_LABELS, CLASSIFICATION_COLORS } from './chessGotw.types'
 
 export type ReplayPly = {
   san: string
@@ -29,6 +33,7 @@ export type GotwEntry = {
     endPly: number
   }
   moves: ReplayPly[]
+  analysis?: GotwAnalysisPack
 }
 
 const BYRNE_FISCHER_MOVES: ReplayPly[] = [
@@ -154,6 +159,158 @@ const BYRNE_FISCHER_MOVES: ReplayPly[] = [
 
 export const DEFAULT_GOTW_SLUG = 'byrne-vs-fischer-1956'
 
+const BYRNE_FISCHER_ANALYSIS: GotwAnalysisPack = {
+  byPly: {
+    11: {
+      ply: 11,
+      classification: 'inaccuracy',
+      symbol: '?!',
+      short: 'Early queen sortie',
+      detail: 'Qb3 develops the queen early, inviting Black to gain tempo with ...dxc4.',
+    },
+    20: {
+      ply: 20,
+      classification: 'good',
+      symbol: '!',
+      short: 'Pins the knight',
+      detail: 'Bg4 pins the Nf3 to the queen and increases pressure on the center.',
+    },
+    21: {
+      ply: 21,
+      classification: 'inaccuracy',
+      symbol: '?!',
+      short: 'Wastes tempo',
+      detail: 'Bg5 moves the bishop again while the king remains in the center. Fischer immediately exploits the loss of coordination.',
+    },
+    22: {
+      ply: 22,
+      classification: 'brilliant',
+      symbol: '!!',
+      short: 'Knight thunderbolt',
+      detail: 'Na4! offers the knight. If 23.Nxa4, ...Nxe4 attacks the queen and bishop, winning material with advantage.',
+    },
+    26: {
+      ply: 26,
+      classification: 'great',
+      symbol: '!',
+      short: 'Central strike',
+      detail: 'Fischer ignores the hanging knight and captures in the center, prioritizing initiative.',
+    },
+    30: {
+      ply: 30,
+      classification: 'great',
+      symbol: '!',
+      short: 'Dismantles the center',
+      detail: 'Another sacrifice. Fischer systematically destroys the white pawn structure.',
+    },
+    32: {
+      ply: 32,
+      classification: 'best',
+      symbol: '!',
+      short: 'Check forces king move',
+      detail: 'Rfe8+ forces the white king to vacate the back rank, setting up the combination.',
+    },
+    33: {
+      ply: 33,
+      classification: 'blunder',
+      symbol: '??',
+      short: 'Loses by force',
+      detail: 'Kf1 walks into a devastating combination. Be2 was required to block the check and maintain coordination.',
+      bestMoveSan: 'Be2',
+    },
+    34: {
+      ply: 34,
+      classification: 'brilliant',
+      symbol: '!!',
+      short: 'Queen sacrifice',
+      detail: 'Be6!! offers the queen. If Bxb6, the windmill begins: Bxc4+ starts an unstoppable sequence of discovery checks winning massive material.',
+    },
+    35: {
+      ply: 35,
+      classification: 'mistake',
+      symbol: '?',
+      short: 'Accepts the poison',
+      detail: 'Bxb6 walks into the windmill. Declining was also difficult, but this loses by force.',
+    },
+    46: {
+      ply: 46,
+      classification: 'best',
+      symbol: '!',
+      short: 'Windmill complete',
+      detail: 'axb6 ends the discovery sequence. Fischer emerges with two rooks, two bishops, and a knight versus the queen — a crushing material edge.',
+    },
+    50: {
+      ply: 50,
+      classification: 'great',
+      symbol: '!',
+      short: 'Wins the rook',
+      detail: 'Nxd1 picks up the rook. Black now has overwhelming material to convert.',
+    },
+    70: {
+      ply: 70,
+      classification: 'best',
+      symbol: '!',
+      short: 'Mating net tightens',
+      detail: 'Bc5+ continues forcing the king into a mating net. White has no defense.',
+    },
+    82: {
+      ply: 82,
+      classification: 'brilliant',
+      symbol: '!!',
+      short: 'Checkmate',
+      detail: 'Rc2# — the final move. A fitting conclusion to one of the greatest games ever played.',
+    },
+  },
+  chapters: [
+    {
+      ply: 21,
+      title: 'The Inaccuracy',
+      prompt: 'White just played Bg5 — moving the same piece twice. How should Black respond?',
+      choices: [
+        { san: 'Na4', correct: true },
+        { san: 'h6' },
+        { san: 'Be6' },
+      ],
+      revealText: 'Na4! exploits White\'s loss of tempo. If Nxa4, then Nxe4 wins material with a double attack.',
+    },
+    {
+      ply: 33,
+      title: 'The Blunder',
+      prompt: 'White is in check after Rfe8+. Which king move should White choose?',
+      choices: [
+        { san: 'Be2', correct: true },
+        { san: 'Kf1' },
+        { san: 'Kd2' },
+      ],
+      revealText: 'Be2 blocks the check and keeps the position difficult but playable. Kf1 loses to the legendary queen sacrifice.',
+    },
+    {
+      ply: 34,
+      title: 'The Queen Sacrifice',
+      prompt: 'Fischer plays Be6 — offering his queen. Why is this so strong?',
+      revealText: 'If White captures the queen with Bxb6, Fischer unleashes a windmill: Bxc4+ followed by discovery checks that win back massive material.',
+    },
+    {
+      ply: 36,
+      title: 'The Windmill Begins',
+      prompt: 'Bxc4+ starts a series of discovered checks. Watch the pieces fall.',
+      revealText: 'The knight bounces between squares delivering discovered checks from the bishop, picking up white pieces on every bounce.',
+    },
+    {
+      ply: 46,
+      title: 'Material Count',
+      prompt: 'The windmill is over. Count the material — who stands better?',
+      revealText: 'Black has two rooks, two bishops, and a knight against White\'s queen. The material advantage is decisive.',
+    },
+    {
+      ply: 82,
+      title: 'Checkmate',
+      prompt: 'Rc2# — the Game of the Century concludes.',
+      revealText: 'A 13-year-old Bobby Fischer delivered one of the most celebrated victories in chess history.',
+    },
+  ],
+}
+
 export const GOTW_ENTRIES: Record<string, GotwEntry> = {
   [DEFAULT_GOTW_SLUG]: {
     slug: DEFAULT_GOTW_SLUG,
@@ -184,6 +341,7 @@ export const GOTW_ENTRIES: Record<string, GotwEntry> = {
       endPly: 30,
     },
     moves: BYRNE_FISCHER_MOVES,
+    analysis: BYRNE_FISCHER_ANALYSIS,
   },
 }
 
@@ -200,4 +358,19 @@ export function getFenAtPly(moves: ReplayPly[], plyCount: number): string {
   }
 
   return game.fen()
+}
+
+/** Replay moves up to `plyCount` and return the destination square of the last move. */
+export function getDestSquareAtPly(moves: ReplayPly[], plyCount: number): string | null {
+  if (plyCount <= 0) return null
+  const game = new Chess()
+  let lastTo: string | null = null
+
+  for (let index = 0; index < plyCount; index += 1) {
+    const result = game.move(moves[index].san)
+    if (!result) break
+    lastTo = result.to
+  }
+
+  return lastTo
 }
