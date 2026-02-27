@@ -2,7 +2,7 @@ import React, { useEffect, useMemo, useRef, useState } from 'react'
 import { useNavigate, useParams } from 'react-router-dom'
 import { Chessboard } from 'react-chessboard'
 import { useReducedMotion } from 'framer-motion'
-import { ArrowLeft, List, ListX, Pause, Play, SkipBack, SkipForward } from 'lucide-react'
+import { ArrowLeft, List, Pause, Play, SkipBack, SkipForward, X } from 'lucide-react'
 import { getFenAtPly, getGotwEntry, type ReplayPly } from '../data/chessGotw'
 
 function formatRating(rating?: string | null): string {
@@ -10,16 +10,198 @@ function formatRating(rating?: string | null): string {
   return normalized.length ? normalized : '—'
 }
 
+type TabKey = 'moves' | 'story' | 'players'
+
+const TAB_ORDER: TabKey[] = ['moves', 'story', 'players']
+
+function getNextTab(current: TabKey, direction: 'prev' | 'next'): TabKey {
+  const currentIndex = TAB_ORDER.indexOf(current)
+  if (currentIndex < 0) return 'moves'
+  if (direction === 'next') return TAB_ORDER[(currentIndex + 1) % TAB_ORDER.length]
+  return TAB_ORDER[(currentIndex - 1 + TAB_ORDER.length) % TAB_ORDER.length]
+}
+
+function clampBoardSize(value: number): number {
+  return Math.max(280, Math.min(720, value))
+}
+
+function safeMoveComment(move: ReplayPly | null): string {
+  const text = (move?.comment || '').trim()
+  return text.length ? text : 'Select an annotated move to see commentary.'
+}
+
+type DetailsPanelProps = {
+  entry: NonNullable<ReturnType<typeof getGotwEntry>>
+  notationRows: Array<{ moveNumber: number; white: ReplayPly | null; black: ReplayPly | null }>
+  currentPly: number
+  activeTab: TabKey
+  panelIdPrefix: string
+  onChangeTab: (tab: TabKey) => void
+  onSelectPly: (ply: number) => void
+  movesListRef: React.RefObject<HTMLOListElement | null>
+}
+
+function GotwDetailsPanel({
+  entry,
+  notationRows,
+  currentPly,
+  activeTab,
+  panelIdPrefix,
+  onChangeTab,
+  onSelectPly,
+  movesListRef,
+}: DetailsPanelProps): React.JSX.Element {
+  const baseTabClass = 'min-h-11 rounded-lg px-3 py-2 text-sm font-semibold transition focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-chess-accentSoft focus-visible:ring-offset-2 focus-visible:ring-offset-chess-bg'
+
+  const renderMoves = () => (
+    <div className="flex min-h-0 flex-1 flex-col">
+      <div className="sticky top-0 z-10 grid grid-cols-[44px_minmax(0,1fr)_minmax(0,1fr)] rounded-md border border-white/10 bg-chess-surfaceSoft px-2 py-2 text-xs font-bold uppercase tracking-wide text-chess-text/80">
+        <span>#</span>
+        <span className="border-l border-white/10 pl-3">White</span>
+        <span className="border-l border-white/10 pl-3">Black</span>
+      </div>
+      <ol ref={movesListRef} data-testid="gotw-moves-list" className="mt-2 min-h-0 flex-1 overflow-y-auto pr-1">
+        {notationRows.map((row) => {
+          const whiteCurrent = row.white?.ply === currentPly
+          const blackCurrent = row.black?.ply === currentPly
+          return (
+            <li key={row.moveNumber} className="grid grid-cols-[44px_minmax(0,1fr)_minmax(0,1fr)] border-b border-white/10 text-sm">
+              <span className="flex min-h-11 items-center px-2 text-chess-text/75">{row.moveNumber}.</span>
+              {row.white ? (
+                <button
+                  type="button"
+                  data-gotw-ply={row.white.ply}
+                  onClick={() => onSelectPly(row.white!.ply)}
+                  aria-current={whiteCurrent ? 'step' : undefined}
+                  className={`border-l border-white/10 px-3 py-2 text-left transition focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-chess-accentSoft focus-visible:ring-offset-1 focus-visible:ring-offset-chess-bg ${
+                    whiteCurrent ? 'bg-chess-accent/20 font-semibold text-chess-accentSoft' : 'min-h-11 text-chess-text/85 hover:bg-white/5'
+                  }`}
+                >
+                  {row.white.san}
+                </button>
+              ) : <span className="min-h-11 border-l border-white/10 px-3 py-2" aria-hidden="true" />}
+
+              {row.black ? (
+                <button
+                  type="button"
+                  data-gotw-ply={row.black.ply}
+                  onClick={() => onSelectPly(row.black!.ply)}
+                  aria-current={blackCurrent ? 'step' : undefined}
+                  className={`border-l border-white/10 px-3 py-2 text-left transition focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-chess-accentSoft focus-visible:ring-offset-1 focus-visible:ring-offset-chess-bg ${
+                    blackCurrent ? 'bg-chess-accent/20 font-semibold text-chess-accentSoft' : 'min-h-11 text-chess-text/85 hover:bg-white/5'
+                  }`}
+                >
+                  {row.black.san}
+                </button>
+              ) : <span className="min-h-11 border-l border-white/10 px-3 py-2" aria-hidden="true" />}
+            </li>
+          )
+        })}
+      </ol>
+    </div>
+  )
+
+  const renderStory = () => (
+    <div className="min-h-0 flex-1 space-y-3 overflow-y-auto pr-1 text-sm leading-relaxed text-chess-text/85">
+      <p>{entry.description}</p>
+      {entry.narrative.map((paragraph) => (
+        <p key={paragraph}>{paragraph}</p>
+      ))}
+    </div>
+  )
+
+  const renderPlayers = () => (
+    <div className="min-h-0 flex-1 space-y-3 overflow-y-auto pr-1">
+      <article className="rounded-lg bg-chess-surfaceSoft p-3 ring-1 ring-white/10">
+        <p className="text-xs font-semibold uppercase tracking-wide text-chess-accentSoft/90">White</p>
+        <h3 className="mt-1 font-display text-base text-chess-text">{entry.white.name}</h3>
+        <p className="text-xs text-chess-text/75">Rating: {formatRating(entry.white.rating)}</p>
+        <p className="mt-2 text-sm leading-relaxed text-chess-text/85">{entry.white.bio || 'Biography unavailable.'}</p>
+      </article>
+      <article className="rounded-lg bg-chess-surfaceSoft p-3 ring-1 ring-white/10">
+        <p className="text-xs font-semibold uppercase tracking-wide text-chess-accentSoft/90">Black</p>
+        <h3 className="mt-1 font-display text-base text-chess-text">{entry.black.name}</h3>
+        <p className="text-xs text-chess-text/75">Rating: {formatRating(entry.black.rating)}</p>
+        <p className="mt-2 text-sm leading-relaxed text-chess-text/85">{entry.black.bio || 'Biography unavailable.'}</p>
+      </article>
+    </div>
+  )
+
+  const tabPanelId = `${panelIdPrefix}-panel-${activeTab}`
+
+  return (
+    <>
+      <div
+        role="tablist"
+        aria-label="Game details tabs"
+        className="grid grid-cols-3 gap-2"
+      >
+        {TAB_ORDER.map((tab) => {
+          const selected = activeTab === tab
+          const label = tab === 'moves' ? 'Moves' : tab === 'story' ? 'Story' : 'Players'
+          return (
+            <button
+              key={tab}
+              id={`${panelIdPrefix}-tab-${tab}`}
+              type="button"
+              role="tab"
+              aria-selected={selected}
+              aria-controls={`${panelIdPrefix}-panel-${tab}`}
+              tabIndex={selected ? 0 : -1}
+              onClick={() => onChangeTab(tab)}
+              onKeyDown={(event) => {
+                if (event.key === 'ArrowRight') {
+                  event.preventDefault()
+                  onChangeTab(getNextTab(activeTab, 'next'))
+                } else if (event.key === 'ArrowLeft') {
+                  event.preventDefault()
+                  onChangeTab(getNextTab(activeTab, 'prev'))
+                } else if (event.key === 'Home') {
+                  event.preventDefault()
+                  onChangeTab('moves')
+                } else if (event.key === 'End') {
+                  event.preventDefault()
+                  onChangeTab('players')
+                }
+              }}
+              className={`${baseTabClass} ${selected ? 'bg-chess-accent text-black' : 'bg-chess-surfaceSoft text-chess-text hover:bg-white/10'}`}
+            >
+              {label}
+            </button>
+          )
+        })}
+      </div>
+
+      <section
+        id={tabPanelId}
+        role="tabpanel"
+        aria-labelledby={`${panelIdPrefix}-tab-${activeTab}`}
+        className="mt-3 flex min-h-0 flex-1 flex-col"
+      >
+        {activeTab === 'moves' ? renderMoves() : null}
+        {activeTab === 'story' ? renderStory() : null}
+        {activeTab === 'players' ? renderPlayers() : null}
+      </section>
+    </>
+  )
+}
+
 export default function ChessGotwReplayPage(): React.JSX.Element {
   const navigate = useNavigate()
   const { slug = '' } = useParams()
   const prefersReducedMotion = useReducedMotion()
   const entry = getGotwEntry(slug)
+
   const [currentPly, setCurrentPly] = useState(0)
   const [isPlaying, setIsPlaying] = useState(!prefersReducedMotion)
-  const [showMoves, setShowMoves] = useState(() => (typeof window !== 'undefined' ? window.innerWidth >= 1280 : true))
   const [boardSize, setBoardSize] = useState(560)
+  const [desktopTab, setDesktopTab] = useState<TabKey>('moves')
+  const [mobilePanelTab, setMobilePanelTab] = useState<TabKey>('moves')
+  const [isMobilePanelOpen, setIsMobilePanelOpen] = useState(false)
+
   const boardFrameRef = useRef<HTMLDivElement | null>(null)
+  const desktopMovesListRef = useRef<HTMLOListElement | null>(null)
+  const mobileMovesListRef = useRef<HTMLOListElement | null>(null)
 
   useEffect(() => {
     if (!entry) {
@@ -30,13 +212,17 @@ export default function ChessGotwReplayPage(): React.JSX.Element {
   useEffect(() => {
     const handleKeyDown = (event: KeyboardEvent) => {
       if (event.key === 'Escape') {
+        if (isMobilePanelOpen) {
+          setIsMobilePanelOpen(false)
+          return
+        }
         navigate('/games/chess')
       }
     }
 
     window.addEventListener('keydown', handleKeyDown)
     return () => window.removeEventListener('keydown', handleKeyDown)
-  }, [navigate])
+  }, [isMobilePanelOpen, navigate])
 
   useEffect(() => {
     setIsPlaying(!prefersReducedMotion)
@@ -60,10 +246,11 @@ export default function ChessGotwReplayPage(): React.JSX.Element {
 
     const updateSize = () => {
       frame = 0
-      const next = Math.floor(Math.min(boardFrame.clientWidth - 16, boardFrame.clientHeight - 16))
-      if (next > 0) {
-        setBoardSize((prev) => (prev === next ? prev : next))
-      }
+      const available = Math.min(boardFrame.clientWidth - 16, boardFrame.clientHeight - 16)
+      if (available <= 0) return
+
+      const next = clampBoardSize(Math.floor(available))
+      setBoardSize((prev) => (prev === next ? prev : next))
     }
 
     updateSize()
@@ -84,7 +271,7 @@ export default function ChessGotwReplayPage(): React.JSX.Element {
       if (frame) window.cancelAnimationFrame(frame)
       observer.disconnect()
     }
-  }, [showMoves])
+  }, [])
 
   const notationRows = useMemo(() => {
     if (!entry) return []
@@ -106,6 +293,23 @@ export default function ChessGotwReplayPage(): React.JSX.Element {
     return getFenAtPly(entry.moves, currentPly)
   }, [currentPly, entry])
 
+  const currentMove = useMemo(() => {
+    if (!entry || currentPly <= 0) return null
+    return entry.moves[currentPly - 1] ?? null
+  }, [currentPly, entry])
+
+  useEffect(() => {
+    if (currentPly <= 0) return
+
+    const desktopButton = desktopMovesListRef.current?.querySelector<HTMLButtonElement>(`button[data-gotw-ply="${currentPly}"]`)
+    if (desktopButton) desktopButton.scrollIntoView({ block: 'nearest' })
+
+    if (isMobilePanelOpen && mobilePanelTab === 'moves') {
+      const mobileButton = mobileMovesListRef.current?.querySelector<HTMLButtonElement>(`button[data-gotw-ply="${currentPly}"]`)
+      if (mobileButton) mobileButton.scrollIntoView({ block: 'nearest' })
+    }
+  }, [currentPly, isMobilePanelOpen, mobilePanelTab])
+
   if (!entry) return <></>
 
   const isAtStart = currentPly <= 0
@@ -114,7 +318,7 @@ export default function ChessGotwReplayPage(): React.JSX.Element {
   return (
     <main data-testid="gotw-full-root" className="flex h-[100dvh] flex-col overflow-hidden bg-chess-bg text-chess-text">
       <header className="h-14 shrink-0 border-b border-white/10 bg-chess-bg/90 backdrop-blur">
-        <div className="mx-auto flex h-14 w-full max-w-[1680px] items-center justify-between px-6 xl:px-10">
+        <div className="mx-auto flex h-14 w-full max-w-[1680px] items-center justify-between gap-3 px-4 sm:px-6 xl:px-10">
           <button
             type="button"
             onClick={() => navigate('/games/chess')}
@@ -125,23 +329,32 @@ export default function ChessGotwReplayPage(): React.JSX.Element {
             Back
           </button>
 
-          <h1 className="font-display text-xl">{entry.subtitle}</h1>
+          <h1 className="min-w-0 truncate font-display text-base sm:text-lg lg:text-xl">{entry.subtitle}</h1>
 
           <button
             type="button"
-            onClick={() => setShowMoves((prev) => !prev)}
-            aria-label={showMoves ? 'Hide move list' : 'Show move list'}
-            className="inline-flex h-10 w-10 items-center justify-center rounded-lg border border-white/20 transition hover:bg-white/10 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-chess-accentSoft focus-visible:ring-offset-2 focus-visible:ring-offset-chess-bg"
+            onClick={() => setIsMobilePanelOpen(true)}
+            aria-label="Open details panel"
+            className="inline-flex min-h-10 items-center justify-center gap-2 rounded-lg border border-white/20 px-3 py-2 text-sm font-semibold transition hover:bg-white/10 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-chess-accentSoft focus-visible:ring-offset-2 focus-visible:ring-offset-chess-bg lg:hidden"
           >
-            {showMoves ? <ListX size={16} aria-hidden="true" /> : <List size={16} aria-hidden="true" />}
+            <List size={16} aria-hidden="true" />
+            Moves
           </button>
+
+          <div className="hidden text-right lg:block">
+            <p className="text-xs uppercase tracking-wide text-chess-text/70">{entry.event} · {entry.year}</p>
+            <p className="text-sm font-semibold text-chess-accentSoft">{entry.result}</p>
+          </div>
         </div>
       </header>
 
-      <div className="mx-auto grid h-full min-h-0 w-full max-w-[1680px] grid-cols-1 gap-4 px-6 pb-4 pt-4 xl:px-10" style={{ gridTemplateColumns: showMoves ? 'minmax(0,1fr) 240px' : 'minmax(0,1fr)' }}>
-        <section className="grid min-h-0 grid-rows-[auto_minmax(0,1fr)_auto] gap-3 rounded-2xl bg-chess-surface p-3 ring-1 ring-white/10">
-          <div data-testid="gotw-player-black" style={{ width: `${boardSize}px` }} className="justify-self-center rounded-lg bg-chess-surfaceSoft px-3 py-2 text-sm font-semibold ring-1 ring-white/10">
-            Black: {entry.black.name} ({formatRating(entry.black.rating)})
+      <div className="mx-auto grid h-full min-h-0 w-full max-w-[1680px] grid-cols-1 gap-3 px-4 pb-3 pt-3 sm:px-6 xl:px-10 lg:grid-cols-[minmax(0,1fr)_380px]">
+        <section className="grid min-h-0 grid-rows-[auto_minmax(0,1fr)_auto_auto] gap-2 overflow-hidden rounded-2xl bg-chess-surface p-2 ring-1 ring-white/10">
+          <div className="rounded-xl bg-chess-surfaceSoft px-3 py-2 ring-1 ring-white/10">
+            <p className="text-xs font-semibold uppercase tracking-wide text-chess-accentSoft">Game of the Week</p>
+            <h2 className="mt-1 font-display text-lg text-chess-text">{entry.playersLabel}</h2>
+            <p className="mt-1 text-sm text-chess-text/80" data-testid="gotw-player-white">White: {entry.white.name} ({formatRating(entry.white.rating)})</p>
+            <p className="mt-0.5 text-sm text-chess-text/80" data-testid="gotw-player-black">Black: {entry.black.name} ({formatRating(entry.black.rating)})</p>
           </div>
 
           <div ref={boardFrameRef} className="flex min-h-0 items-center justify-center rounded-xl bg-chess-surfaceSoft p-2 ring-1 ring-white/10">
@@ -157,12 +370,8 @@ export default function ChessGotwReplayPage(): React.JSX.Element {
             </div>
           </div>
 
-          <div data-testid="gotw-player-white" style={{ width: `${boardSize}px` }} className="justify-self-center rounded-lg bg-chess-surfaceSoft px-3 py-2 text-sm font-semibold ring-1 ring-white/10">
-            White: {entry.white.name} ({formatRating(entry.white.rating)})
-          </div>
-
-          <div className="justify-self-center rounded-xl bg-chess-surfaceSoft p-3 ring-1 ring-white/10" style={{ width: `${boardSize}px` }}>
-            <div className="flex items-center gap-2">
+          <div className="rounded-xl bg-chess-surfaceSoft p-2.5 ring-1 ring-white/10">
+            <div className="flex flex-wrap items-center gap-2">
               <button
                 type="button"
                 onClick={() => {
@@ -171,9 +380,9 @@ export default function ChessGotwReplayPage(): React.JSX.Element {
                 }}
                 aria-label="Previous move"
                 disabled={isAtStart}
-                className="inline-flex h-10 w-10 items-center justify-center rounded-lg border border-white/20 transition hover:bg-white/10 disabled:cursor-not-allowed disabled:opacity-45 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-chess-accentSoft focus-visible:ring-offset-2 focus-visible:ring-offset-chess-bg"
+                className="inline-flex h-11 w-11 items-center justify-center rounded-lg border border-white/20 transition hover:bg-white/10 disabled:cursor-not-allowed disabled:opacity-45 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-chess-accentSoft focus-visible:ring-offset-2 focus-visible:ring-offset-chess-bg"
               >
-                <SkipBack size={16} aria-hidden="true" />
+                <SkipBack size={18} aria-hidden="true" />
               </button>
               <button
                 type="button"
@@ -186,9 +395,9 @@ export default function ChessGotwReplayPage(): React.JSX.Element {
                   setIsPlaying((prev) => !prev)
                 }}
                 aria-label={isPlaying ? 'Pause replay' : 'Play replay'}
-                className="inline-flex h-10 w-10 items-center justify-center rounded-lg bg-chess-accent text-black transition hover:bg-chess-accentSoft focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-chess-accentSoft focus-visible:ring-offset-2 focus-visible:ring-offset-chess-bg"
+                className="inline-flex h-11 w-11 items-center justify-center rounded-lg bg-chess-accent text-black transition hover:bg-chess-accentSoft focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-chess-accentSoft focus-visible:ring-offset-2 focus-visible:ring-offset-chess-bg"
               >
-                {isPlaying ? <Pause size={16} aria-hidden="true" /> : <Play size={16} aria-hidden="true" />}
+                {isPlaying ? <Pause size={18} aria-hidden="true" /> : <Play size={18} aria-hidden="true" />}
               </button>
               <button
                 type="button"
@@ -198,9 +407,9 @@ export default function ChessGotwReplayPage(): React.JSX.Element {
                 }}
                 aria-label="Next move"
                 disabled={isAtEnd}
-                className="inline-flex h-10 w-10 items-center justify-center rounded-lg border border-white/20 transition hover:bg-white/10 disabled:cursor-not-allowed disabled:opacity-45 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-chess-accentSoft focus-visible:ring-offset-2 focus-visible:ring-offset-chess-bg"
+                className="inline-flex h-11 w-11 items-center justify-center rounded-lg border border-white/20 transition hover:bg-white/10 disabled:cursor-not-allowed disabled:opacity-45 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-chess-accentSoft focus-visible:ring-offset-2 focus-visible:ring-offset-chess-bg"
               >
-                <SkipForward size={16} aria-hidden="true" />
+                <SkipForward size={18} aria-hidden="true" />
               </button>
               <button
                 type="button"
@@ -209,7 +418,7 @@ export default function ChessGotwReplayPage(): React.JSX.Element {
                   setIsPlaying(!prefersReducedMotion)
                 }}
                 aria-label="Restart replay"
-                className="ml-2 inline-flex min-h-10 items-center justify-center rounded-lg border border-white/20 px-3 py-2 text-xs font-semibold transition hover:bg-white/10 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-chess-accentSoft focus-visible:ring-offset-2 focus-visible:ring-offset-chess-bg"
+                className="inline-flex min-h-11 items-center justify-center rounded-lg border border-white/20 px-3 py-2 text-sm font-semibold transition hover:bg-white/10 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-chess-accentSoft focus-visible:ring-offset-2 focus-visible:ring-offset-chess-bg"
               >
                 Restart
               </button>
@@ -230,61 +439,77 @@ export default function ChessGotwReplayPage(): React.JSX.Element {
               className="mt-1 w-full accent-chess-accent focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-chess-accentSoft focus-visible:ring-offset-2 focus-visible:ring-offset-chess-bg"
             />
           </div>
+
+          <article className="rounded-xl bg-chess-surfaceSoft px-3 py-2 ring-1 ring-white/10">
+            <h3 className="font-display text-base text-chess-text">Move Commentary</h3>
+            <p className="mt-1 text-xs leading-relaxed text-chess-text/85">{safeMoveComment(currentMove)}</p>
+          </article>
         </section>
 
-        {showMoves ? (
-          <aside data-testid="gotw-moves-rail" className="flex min-h-0 flex-col rounded-2xl bg-chess-surface p-2 ring-1 ring-white/10">
-            <div className="grid grid-cols-[34px_minmax(0,1fr)_minmax(0,1fr)] rounded-md border border-white/10 bg-chess-surfaceSoft px-1 py-1 text-[11px] font-bold text-chess-text/85">
-              <span>#</span>
-              <span className="border-l border-white/10 pl-2 text-center">W</span>
-              <span className="border-l border-white/10 pl-2 text-center">B</span>
+        <aside data-testid="gotw-moves-rail" className="hidden min-h-0 flex-col rounded-2xl bg-chess-surface p-3 ring-1 ring-white/10 lg:flex" aria-label="Game details" >
+          <div data-testid="gotw-side-panel" className="flex min-h-0 flex-1 flex-col">
+            <GotwDetailsPanel
+              entry={entry}
+              notationRows={notationRows}
+              currentPly={currentPly}
+              activeTab={desktopTab}
+              panelIdPrefix="gotw-desktop"
+              onChangeTab={setDesktopTab}
+              onSelectPly={(ply) => {
+                setCurrentPly(ply)
+                setIsPlaying(false)
+              }}
+              movesListRef={desktopMovesListRef}
+            />
+          </div>
+        </aside>
+      </div>
+
+      {isMobilePanelOpen ? (
+        <div className="fixed inset-0 z-[70] flex lg:hidden" aria-hidden={false}>
+          <button
+            type="button"
+            aria-label="Close details panel"
+            onClick={() => setIsMobilePanelOpen(false)}
+            className="absolute inset-0 bg-black/60"
+          />
+          <section
+            role="dialog"
+            aria-modal="true"
+            aria-labelledby="gotw-mobile-panel-title"
+            data-testid="gotw-mobile-sheet"
+            className="relative mt-auto flex h-[78dvh] w-full flex-col rounded-t-2xl border border-white/10 bg-chess-surface p-3 shadow-2xl"
+          >
+            <div className="mb-3 flex items-center justify-between gap-3">
+              <h2 id="gotw-mobile-panel-title" className="font-display text-lg text-chess-text">Game details</h2>
+              <button
+                type="button"
+                onClick={() => setIsMobilePanelOpen(false)}
+                aria-label="Close details panel"
+                className="inline-flex h-10 w-10 items-center justify-center rounded-lg border border-white/20 transition hover:bg-white/10 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-chess-accentSoft focus-visible:ring-offset-2 focus-visible:ring-offset-chess-bg"
+              >
+                <X size={16} aria-hidden="true" />
+              </button>
             </div>
 
-            <ol className="mt-1 min-h-0 flex-1 overflow-y-auto">
-              {notationRows.map((row) => {
-                const whiteCurrent = row.white?.ply === currentPly
-                const blackCurrent = row.black?.ply === currentPly
-                return (
-                  <li key={row.moveNumber} className="grid grid-cols-[34px_minmax(0,1fr)_minmax(0,1fr)] border-b border-white/10 text-xs">
-                    <span className="flex items-center px-1.5 py-1.5 text-chess-text/80">{row.moveNumber}.</span>
-                    {row.white ? (
-                      <button
-                        type="button"
-                        onClick={() => {
-                          setCurrentPly(row.white!.ply)
-                          setIsPlaying(false)
-                        }}
-                        aria-current={whiteCurrent ? 'step' : undefined}
-                        className={`border-l border-white/10 px-2 py-1.5 text-left transition focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-chess-accentSoft focus-visible:ring-offset-1 focus-visible:ring-offset-chess-bg ${
-                          whiteCurrent ? 'bg-chess-accent/15 text-chess-accentSoft' : 'text-chess-text/82 hover:bg-white/5'
-                        }`}
-                      >
-                        {row.white.san}
-                      </button>
-                    ) : <span className="border-l border-white/10 px-2 py-1.5" aria-hidden="true" />}
-
-                    {row.black ? (
-                      <button
-                        type="button"
-                        onClick={() => {
-                          setCurrentPly(row.black!.ply)
-                          setIsPlaying(false)
-                        }}
-                        aria-current={blackCurrent ? 'step' : undefined}
-                        className={`border-l border-white/10 px-2 py-1.5 text-left transition focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-chess-accentSoft focus-visible:ring-offset-1 focus-visible:ring-offset-chess-bg ${
-                          blackCurrent ? 'bg-chess-accent/15 text-chess-accentSoft' : 'text-chess-text/82 hover:bg-white/5'
-                        }`}
-                      >
-                        {row.black.san}
-                      </button>
-                    ) : <span className="border-l border-white/10 px-2 py-1.5" aria-hidden="true" />}
-                  </li>
-                )
-              })}
-            </ol>
-          </aside>
-        ) : null}
-      </div>
+            <div className="min-h-0 flex-1">
+              <GotwDetailsPanel
+                entry={entry}
+                notationRows={notationRows}
+                currentPly={currentPly}
+                activeTab={mobilePanelTab}
+                panelIdPrefix="gotw-mobile"
+                onChangeTab={setMobilePanelTab}
+                onSelectPly={(ply) => {
+                  setCurrentPly(ply)
+                  setIsPlaying(false)
+                }}
+                movesListRef={mobileMovesListRef}
+              />
+            </div>
+          </section>
+        </div>
+      ) : null}
     </main>
   )
 }
