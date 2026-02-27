@@ -55,6 +55,20 @@ Expected: Frontend at http://localhost:5173/
 
 ## Startup Robustness Log
 
+- **2026-02-27 05:01:25 -08:00 (Windows, host: DESKTOP-0UN2H9U, monitored startup validation)**
+  - Process used: `npm run start:local` from repo root (README robust one-command startup).
+  - Startup behavior observed:
+    1. Docker daemon was initially not running; the script auto-started Docker Desktop and continued after daemon readiness.
+    2. Local Supabase was reachable at `http://127.0.0.1:54321/auth/v1/health` and Docker services (`db`, `redis`) were already running/healthy.
+    3. Preflight dependency/build/migration checks completed (`[migrations] No pending migrations`), API/worker/frontend terminals launched, and the 45-second monitoring window passed.
+  - Verification results:
+    - `http://127.0.0.1:3001/health` returned HTTP `200`.
+    - `http://localhost:5173/` returned HTTP `200`.
+  - Structured run log:
+    - `logs/start-local-runs.jsonl`
+    - Success record: timestamp `2026-02-27T05:01:25.3756195-08:00`, host `DESKTOP-0UN2H9U`, status `success`.
+  - Outcome: startup passed with no manual troubleshooting required.
+
 - **2026-02-26 17:47:40 -08:00 (Windows, host: Rons-Computer, monitored startup validation)**
   - Process used: `npm run start:local` from repo root (README robust one-command startup).
   - Startup behavior observed:
