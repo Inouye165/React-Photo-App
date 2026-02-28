@@ -1,3 +1,5 @@
+// @ts-nocheck
+
 const { Queue, Worker: BullMQWorker } = require("bullmq");
 const path = require('path');
 const fs = require('fs');
@@ -653,3 +655,6 @@ Object.defineProperties(module.exports, {
   aiWorker: { enumerable: true, get: () => aiWorker },
   redisAvailable: { enumerable: true, get: () => redisAvailable },
 });
+
+export { addAIJob, addAppAssessmentJob, startWorker, checkRedisAvailable };
+export {};

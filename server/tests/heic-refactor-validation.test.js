@@ -39,8 +39,8 @@ describe('HEIC Refactor Validation', () => {
   });
 
   test('should validate that ImageMagick code is removed', () => {
-    const imageJsPath = path.join(__dirname, '..', 'media', 'image.js');
-    const content = fs.readFileSync(imageJsPath, 'utf8');
+    const imageTsPath = path.join(__dirname, '..', 'media', 'image.ts');
+    const content = fs.readFileSync(imageTsPath, 'utf8');
     
     // Check that ImageMagick-related code is removed
     expect(content).not.toContain('magick');

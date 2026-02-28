@@ -122,7 +122,7 @@ export async function processPhotoAI(
   const ext = path.extname(filename).toLowerCase();
   logger.debug(`[AI Debug] [processPhotoAI] Starting for filename: ${filename}`);
   if (ext === '.heic' || ext === '.heif') {
-    imageBuffer = await convertHeicToJpegBuffer(fileBuffer, 95);
+    imageBuffer = (await convertHeicToJpegBuffer(fileBuffer, 95)) as Buffer;
     imageMime = 'image/jpeg';
     if (allowDevDebug && process.env.NODE_ENV !== 'production') {
       try {

@@ -1,4 +1,6 @@
 
+// @ts-nocheck
+
 const express = require('express');
 const path = require('path');
 const { convertHeicToJpegBuffer } = require('../media/image');

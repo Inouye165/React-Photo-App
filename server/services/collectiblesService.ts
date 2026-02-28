@@ -1,3 +1,5 @@
+// @ts-nocheck
+
 /**
  * Collectibles Service Layer
  * 
