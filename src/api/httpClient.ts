@@ -208,12 +208,8 @@ const apiMetrics: ApiMetrics = { totals: { calls: 0 }, limiters: {} }
 export function __resetApiLimiter(): void {
   apiMetrics.totals.calls = 0
   apiMetrics.limiters = {}
-  // We can't easily reset the closure state of existing limiters (active, queue).
-  // But we can expose a way to reset them if we refactor createLimiter.
-  // For now, let's just hope tests don't exhaust concurrency.
-  // Actually, if active count leaks, tests will fail.
-  // Let's make createLimiter use the global apiMetrics state for active count?
-  // No, active is per limiter instance.
+  // Existing limiter closures (active/queue) are not reset here.
+  // Test cleanup is handled via the test-only global reset hook in createLimiter().
 }
 
 function createLimiter(maxConcurrency = 6, name = 'default') {
@@ -566,9 +562,7 @@ export async function request<T>(options: RequestOptions): Promise<T> {
     throw new ApiError(errorMessage, { status: response.status, details: errorDetails })
   }
 
-  // If T is void or unknown, we might just return true or empty object?
-  // But usually we expect JSON.
-  // Some endpoints return empty body.
+  // Some endpoints intentionally return an empty body.
   if (response.status === 204) {
     return {} as T
   }
@@ -576,9 +570,7 @@ export async function request<T>(options: RequestOptions): Promise<T> {
   try {
     return (await response.json()) as T
   } catch {
-    // If JSON parsing fails, maybe it's text?
-    // But we promised T.
-    // For now, assume JSON unless T is string.
+    // Preserve the generic contract when a success response has a non-JSON body.
     return {} as T
   }
 }

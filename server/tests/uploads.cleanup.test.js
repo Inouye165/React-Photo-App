@@ -39,7 +39,7 @@ jest.mock('../media/image', () => ({
 jest.mock('multer', () => {
   const multerMock = jest.fn(() => ({
     single: jest.fn(() => (req, res, next) => {
-      // Require modules inside to be safe
+      // Require modules inside the factory to avoid hoist-order issues.
       const path = require('path');
       const os = require('os');
       const tempPath = path.join(os.tmpdir(), 'test-cleanup-upload.tmp');

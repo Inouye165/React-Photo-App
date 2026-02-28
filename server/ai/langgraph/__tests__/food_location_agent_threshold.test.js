@@ -49,7 +49,7 @@ describe('food_location_agent match threshold', () => {
 
   state.__overrideNearby = stubbedNearby;
   const result = await food_location_agent(state);
-  // As a dumb finder, the agent returns the list and does not pick a best candidate
+  // The agent returns candidate listings and does not set a best candidate.
   expect(result.nearby_food_places).toBeTruthy();
   expect(result.nearby_food_places.length).toBe(2);
   expect(result.best_restaurant_candidate).toBeNull();

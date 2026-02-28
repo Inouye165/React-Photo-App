@@ -241,7 +241,7 @@ describe('Display Endpoint with HEIC Support', () => {
         .set('Authorization', `Bearer ${validToken}`);
 
       expect(convertHeicToJpegBuffer).not.toHaveBeenCalled();
-      // JPG files should still have image/jpeg content-type, just not from conversion
+      // JPG responses should remain image/jpeg and bypass HEIC conversion.
       expect(response.headers['content-type']).toBe('image/jpeg');
     });
   });

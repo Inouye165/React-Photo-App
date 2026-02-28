@@ -98,20 +98,15 @@ const AuthWrapper = ({ children }: AuthWrapperProps) => {
           headers,
         });
         
-        // Check if the user record has terms_accepted_at
-        // Note: This endpoint returns preferences, but we need to check the users table
-        // Let's make a dedicated call or check if the backend returns this info
+        // TODO: replace with a dedicated terms-acceptance field from the backend.
         
-        // For now, we'll check via the user metadata if available
-        // Or we need to add this to the preferences endpoint response
-        
-        // Temporary: Check localStorage as fallback (will be replaced by DB check)
+        // Temporary fallback: rely on localStorage until terms acceptance is exposed by API.
         const userId = String((user as any)?.id ?? '');
         const localAcceptance = localStorage.getItem(`terms_accepted_${userId}`);
         setTermsAccepted(!!localAcceptance);
       } catch (error) {
         console.error('Failed to check terms acceptance:', error);
-        // On error, assume terms not accepted to be safe
+        // Fail closed on read errors and require explicit acceptance.
         setTermsAccepted(false);
       } finally {
         setCheckingTerms(false);
@@ -199,8 +194,7 @@ const AuthWrapper = ({ children }: AuthWrapperProps) => {
     return <DisclaimerModal onAccept={handleAcceptTerms} onDeny={handleDecline} isAccepting={isAccepting} />;
   }
 
-  // Authenticated user interface - now just renders the app content
-  // User info and logout are handled in dedicated screens/menus
+  // Authenticated shell renders children; account controls live in dedicated UI.
   return <div className="min-h-screen bg-gray-100">{children}</div>;
 };
 
