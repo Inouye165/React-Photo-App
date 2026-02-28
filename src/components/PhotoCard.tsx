@@ -127,7 +127,7 @@ export default function PhotoCard({
   const smallThumbnail = photo.smallThumbnailUrl ?? photo.smallThumbnail ?? null;
   const mediumThumbnail = photo.thumbnailUrl ?? photo.thumbnail ?? null;
 
-  // Check if this photo was just uploaded and needs transition spinner
+  // Track newly uploaded photos that should display a transition spinner.
   const isJustUploaded = useStore((state) => state.justUploadedPhotoIds.has(photo.id));
   const removeJustUploadedMark = useStore((state) => state.removeJustUploadedMark);
 
@@ -137,7 +137,7 @@ export default function PhotoCard({
   const fileSize = formatFileSize(photo.file_size);
   const access = formatAccessLevel(accessLevel);
 
-  // Remove just-uploaded mark when photo transitions away from 'working' state
+  // Clear the transition marker once the photo leaves the 'working' state.
   useEffect(() => {
     if (isJustUploaded && photo.state !== 'working') {
       removeJustUploadedMark(photo.id);
@@ -157,7 +157,7 @@ export default function PhotoCard({
   const canWrite =
     !!accessLevel && (accessLevel.includes('W') || accessLevel.toLowerCase().includes('write'));
 
-  // Disable interaction for uploading photos or just-uploaded photos still in 'working' state
+  // Disable interaction while uploads are active or in post-upload transition.
   const isUploading = photo.state === 'uploading' || !!photo.isTemporary;
   const isTransitioning = isJustUploaded && photo.state === 'working';
   const showTransitionSpinner = isTransitioning;
@@ -360,7 +360,7 @@ export default function PhotoCard({
           </div>
         )}
 
-        {/* Transition Spinner - for just-uploaded photos still in 'working' state */}
+        {/* Transition spinner for post-upload photos still in the 'working' state. */}
         {showTransitionSpinner && !isUploading && (
           <div className="absolute inset-0 bg-indigo-900/60 flex items-center justify-center backdrop-blur-sm">
             <div className="text-center">

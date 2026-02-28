@@ -496,7 +496,7 @@ describe('AI Contract Layer - Sprint 2', () => {
 
       expect(result.collectibleResult.status).toBe('success');
       
-      // Verify cleanData has just values
+      // cleanData should contain normalized scalar values only.
       expect(result.collectibleResult.collectibleData.cleanData.specifics.pattern).toBe('Butterprint');
       expect(result.collectibleResult.collectibleData.cleanData.specifics.color).toBe('Turquoise');
       expect(result.collectibleResult.collectibleData.cleanData.specifics.year).toBe('1958');

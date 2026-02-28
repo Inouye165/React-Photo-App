@@ -143,14 +143,13 @@ export default function UploadPage() {
         const photos = (response && response.photos) || [];
         useStore.getState().setPhotos(photos);
         
-        // Mark just-uploaded photos and start polling for state transitions
-        // Only poll if AI analysis was requested (classification !== 'none')
+        // Mark post-upload items and start polling for processing state transitions.
+        // Poll only when AI analysis is requested (classification !== 'none').
         uploadedPhotoIds.forEach((photoId) => {
-          // Only show transition spinner and poll if AI analysis is requested
-          // For 'none' classification, photo stays in 'working' state with no processing
+          // For 'none', keep the photo in 'working' without transition polling.
           if (analysisType !== 'none') {
             markPhotoAsJustUploaded(photoId);
-            // Start polling to catch the transition from 'working' to 'inprogress' to 'finished'
+            // Observe backend transitions: working -> inprogress -> finished.
             startAiPolling(photoId, { intervalMs: 1000, maxIntervalMs: 5000 });
           }
         });

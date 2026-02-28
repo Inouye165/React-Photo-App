@@ -38,13 +38,10 @@ async function verifyMigrations(retryAttempt = 0) {
 
   const knexfile = require('../knexfile');
   
-  // IMPORTANT: Use the same environment selection logic as server/db/index.js
-  // Previously, this script had "auto-detect" logic that switched to 'production'
-  // config when SUPABASE_DB_URL was present, even in development. This caused
-    // SSL/connection failures because production config expects strict SSL with
-    // CA certificates, while the backend uses relaxed SSL in development.
-  //
-  // The fix: Always respect NODE_ENV, just like db/index.js does.
+  // Keep environment selection aligned with server/db/index.js.
+  // Earlier auto-detection promoted some development runs to 'production'
+  // when SUPABASE_DB_URL was present, which caused SSL configuration mismatches.
+  // Respect NODE_ENV directly to preserve parity with the runtime server path.
   const isTestRuntime = process.env.NODE_ENV === 'test' || typeof process.env.JEST_WORKER_ID !== 'undefined';
 
   let env;

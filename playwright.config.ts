@@ -10,7 +10,7 @@ export default defineConfig({
   retries: 1,
   use: {
     headless: true,
-    baseURL: 'http://127.0.0.1:5173'
+    baseURL: 'http://127.0.0.1:4173'
   },
   webServer: [
     {
@@ -31,16 +31,18 @@ export default defineConfig({
     },
     {
       // Frontend
-      command: 'npm run dev -- --mode e2e',
-      url: 'http://127.0.0.1:5173',
+      command: 'npm run dev -- --mode e2e --port 4173 --strictPort',
+      url: 'http://127.0.0.1:4173',
       reuseExistingServer: !process.env.CI, // Reuse locally, fresh in CI
       timeout: 120_000,
       env: {
         VITE_E2E: 'true',
-        VITE_API_URL: 'http://127.0.0.1:3001',
+        // Use same-origin API calls via Vite proxy to avoid CORS mismatches when
+        // Playwright runs frontend on a non-default port.
+        VITE_API_URL: '',
         // Provide a deterministic Supabase base URL so Playwright can mock chat traffic.
         // This avoids requiring real Supabase credentials for E2E tests.
-        VITE_SUPABASE_URL: 'http://127.0.0.1:5173/__supabase',
+        VITE_SUPABASE_URL: 'http://127.0.0.1:4173/__supabase',
         VITE_SUPABASE_ANON_KEY: 'e2e-anon-key',
       }
     }

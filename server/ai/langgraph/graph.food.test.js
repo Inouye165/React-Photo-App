@@ -23,7 +23,7 @@ describe('food nodes behavior', () => {
     const result = await __testing.food_location_agent(state);
     expect(result.nearby_food_places).toBeTruthy();
     expect(result.nearby_food_places.length).toBe(2);
-    // As a dumb finder, the location agent should not choose a best candidate
+    // The location agent should not select a best candidate in this mode.
     expect(result.best_restaurant_candidate).toBeNull();
   });
 
