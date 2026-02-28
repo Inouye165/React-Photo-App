@@ -148,7 +148,7 @@ async function loadHeicTo(): Promise<HeicToConverter> {
 function isHeicFile(file: File | Blob | null | undefined): boolean {
   if (!file) return false;
   
-  // Check if this is a File (has name property) or just a Blob
+  // Treat input as File when name metadata exists; otherwise handle as Blob.
   const name = (file as File).name?.toLowerCase() || '';
   const type = file.type?.toLowerCase() || '';
   
@@ -438,12 +438,12 @@ export async function generateClientThumbnail(
     let sourceBlob: Blob = file;
     let isHeic = isHeicFile(file);
 
-    // If not identified as HEIC by name/type, check content for magic numbers
+    // If name/type checks are inconclusive, inspect file signatures.
     // This handles HEIC files incorrectly named as .JPG (common with iOS exports)
     if (!isHeic) {
       if (isSupportedImageType(file)) {
         try {
-          // Read into a fresh buffer to check magic numbers
+          // Read a fresh buffer for signature inspection.
           const arrayBuffer = await file.arrayBuffer();
           const arr = new Uint8Array(arrayBuffer).subarray(0, 12);
 

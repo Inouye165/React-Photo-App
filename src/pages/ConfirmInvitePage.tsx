@@ -72,7 +72,7 @@ export default function ConfirmInvitePage() {
         }
       }
     } catch {
-      // If it's not a valid URL, just pass it through.
+      // Preserve the normalized URL when verification-type parsing fails.
     }
 
     return url.toString();

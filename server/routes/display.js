@@ -198,8 +198,7 @@ module.exports = function createDisplayRouter({ db }) {
         });
       }
       
-      // Signature cryptographically verified - this proves the request originated from our server
-      // Safe to proceed without user session
+      // Signature verification succeeded; allow signed access without session context.
       req.user = null; // No user context for signed URLs
       return next();
     }
@@ -348,9 +347,9 @@ module.exports = function createDisplayRouter({ db }) {
         }
       }
 
-      // TEMP fallback:
-      // If the original is HEIC/HEIF and display_path is missing, we still do legacy
-      // request-time conversion for now. Remove once worker coverage is complete.
+      // Transitional fallback:
+      // If original media is HEIC/HEIF and display_path is missing,
+      // perform request-time conversion until worker coverage is complete.
 
       // Stream bytes (raw=1, redirect failure, or HEIC display asset) from the effective path.
       const { data, error } = await supabase.storage.from('photos').download(effectiveStoragePath);
@@ -582,9 +581,9 @@ module.exports = function createDisplayRouter({ db }) {
         }
       }
 
-      // TEMP fallback:
-      // If the original is HEIC/HEIF and display_path is missing, we still do legacy
-      // request-time conversion for now. Remove once worker coverage is complete.
+      // Transitional fallback:
+      // If original media is HEIC/HEIF and display_path is missing,
+      // perform request-time conversion until worker coverage is complete.
 
       const { data, error } = await supabase.storage.from('photos').download(effectiveStoragePath);
 

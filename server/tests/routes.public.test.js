@@ -86,7 +86,7 @@ jest.mock('../lib/supabaseClient', () => ({
   },
 }));
 
-// Create an isolated test app with just the public router
+// Create an isolated test app with only the public router mounted.
 function createTestApp() {
   const app = express();
   app.set('trust proxy', 1);
@@ -439,7 +439,7 @@ describe('Public API Routes', () => {
     // Note: Full rate limit exhaustion testing requires more requests than practical
     // in unit tests. Integration tests should cover actual rate limit enforcement.
     it('should allow requests within rate limit (test mode uses 100 limit)', async () => {
-      // In test mode, limit is 100. We just verify a few requests work.
+      // Test mode uses a higher limit (100); this validates nominal request flow.
       for (let i = 0; i < 3; i++) {
         await request(app)
           .post('/api/public/contact')
