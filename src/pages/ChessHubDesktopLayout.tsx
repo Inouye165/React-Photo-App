@@ -68,7 +68,7 @@ export default function ChessHubDesktopLayout({
   loadError,
   onRetry,
   modeItems,
-  singleActiveGame,
+  singleActiveGame: _singleActiveGame,
   activeGames,
   historyGames,
   getOpponentLabel,
