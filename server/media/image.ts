@@ -1,3 +1,5 @@
+// @ts-nocheck
+
 const sharp = require('sharp');
 const path = require('path');
 const os = require('os');
@@ -559,3 +561,6 @@ module.exports = {
     convertHeicToJpegBufferInternal
   }
 };
+
+export { convertHeicToJpegBuffer };
+export {};

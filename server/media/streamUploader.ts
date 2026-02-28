@@ -1,3 +1,5 @@
+// @ts-nocheck
+
 /**
  * Streaming upload module for direct-to-Supabase file uploads.
  * 

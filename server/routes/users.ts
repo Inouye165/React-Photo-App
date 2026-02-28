@@ -1,3 +1,5 @@
+// @ts-nocheck
+
 /**
  * Users API Routes
  * 

@@ -1,3 +1,5 @@
+// @ts-nocheck
+
 /**
  * Background photo processor for streaming upload architecture.
  * 

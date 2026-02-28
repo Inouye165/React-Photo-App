@@ -1,7 +1,7 @@
 /**
  * Worker process entry point.
  *
- * Starts the AI worker by delegating to `server/queue/index.js` which
+ * Starts the AI worker by delegating to `server/queue/index.ts` which
  * lazily initializes the Redis connection and BullMQ worker. Keeps the
  * process alive and attempts a graceful shutdown on SIGINT.
  *
