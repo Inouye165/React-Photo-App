@@ -71,7 +71,7 @@ export interface StoreState extends UploadPickerSlice {
   // running store-level HTTP polling loops to prevent duplicate network traffic.
   // Spinner state is still represented by pollingPhotoIds.
   photoEventsStreamingActive: boolean
-  // Track photos that just finished uploading and are transitioning from 'working' to 'inprogress'
+  // Track photos in post-upload transition from 'working' to 'inprogress'.
   justUploadedPhotoIds: Set<Photo['id']>
   pendingUploads: PendingPhoto[]
   backgroundUploads: BackgroundUploadEntry[]
@@ -399,7 +399,7 @@ const useStore = create<StoreState>((set, get) => ({
       backgroundUploads: (state.backgroundUploads || []).filter((u) => u.id !== id),
     })),
 
-  // Just-uploaded photo tracking - marks photos that need transition spinner
+  // Post-upload tracking for photos that should display the transition spinner.
   markPhotoAsJustUploaded: (id: Photo['id']) =>
     set((state) => {
       const newSet = new Set(state.justUploadedPhotoIds)

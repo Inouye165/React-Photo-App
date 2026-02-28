@@ -675,7 +675,7 @@ export function AuthProvider({ children }: { children: ReactNode }): ReactNode {
       // Log password change activity (fire-and-forget)
       logActivity('password_change')
 
-      // Just to be safe: refresh the token cache.
+      // Refresh token state after password update.
       // Supabase may or may not return a session directly from updateUser depending on server settings.
       const sessionFromUpdate = (data as unknown as { session?: Session | null }).session
       const accessTokenFromUpdate = sessionFromUpdate?.access_token

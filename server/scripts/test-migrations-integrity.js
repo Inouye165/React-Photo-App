@@ -43,7 +43,7 @@ async function run() {
     console.log('\n⬇️  Running migrate:rollback (all)...');
     // Rollback until we are at the beginning
     // Note: knex.migrate.rollback() rolls back one batch. We might need a loop or force all.
-    // For simplicity, we'll just rollback the last batch, which should be all of them if we just ran latest.
+    // Roll back the latest batch; immediately after migrate:latest this should contain all applied migrations.
     await db.migrate.rollback(null, true); 
     console.log('✅ Rollback complete.');
 

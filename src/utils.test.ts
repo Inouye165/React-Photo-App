@@ -51,7 +51,7 @@ describe('Utility Functions', () => {
       const result = extractDateFromFilename('IMG_20230501_123456.jpg')
       expect(result).toBeInstanceOf(Date)
       expect(result?.getFullYear()).toBe(2023)
-      // Just verify it's a valid date, don't worry about exact month/day due to timezone issues
+      // Validate date construction without asserting month/day (timezone-sensitive).
       expect(result?.getTime()).toBeGreaterThan(0)
     })
 

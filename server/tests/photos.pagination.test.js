@@ -327,7 +327,7 @@ describe('GET /photos pagination', () => {
     test('should enforce user scoping with cursor', async () => {
       // This test verifies that cursor from one user cannot leak data from another user
       // In E2E test mode, we can't easily create multiple valid users
-      // So we test the principle: cursor is just a pagination bookmark, user_id filtering is always enforced
+      // Validate the contract: cursor is pagination state only; user_id scoping remains authoritative.
       
       // Get first page
       const firstPage = await request(app)

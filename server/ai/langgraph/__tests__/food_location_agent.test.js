@@ -45,7 +45,7 @@ describe('food_location_agent', () => {
     // Inject fake nearbyFoodPlaces via override
   state.__overrideNearby = stubbedNearby;
   const result = await food_location_agent(state);
-  // location agent is a dumb finder: it should return the array and not pick a best candidate
+  // The location agent should return candidates only and leave best-candidate selection unset.
   expect(result.nearby_food_places).toBeTruthy();
   expect(result.nearby_food_places.length).toBe(2);
   expect(result.best_restaurant_candidate).toBeNull();

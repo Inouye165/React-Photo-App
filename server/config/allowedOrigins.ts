@@ -94,7 +94,7 @@ function addSingleOriginWithWwwVariants(origins, rawOrigin) {
     withUrl.hostname = `www.${hostname}`;
     origins.add(withUrl.origin);
   } catch {
-    // If it's not a valid URL, just keep the normalized value.
+    // If parsing fails, retain the normalized origin as-is.
   }
 }
 
