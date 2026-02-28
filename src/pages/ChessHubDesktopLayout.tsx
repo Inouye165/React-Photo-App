@@ -93,7 +93,12 @@ export default function ChessHubDesktopLayout({
     hasLessonProgress = false
   }
 
-  const hasComputerResume = Boolean(singleActiveGame)
+  let hasComputerResume = false
+  try {
+    hasComputerResume = typeof window !== 'undefined' && Boolean(window.localStorage.getItem('chess:save:local'))
+  } catch {
+    hasComputerResume = false
+  }
   const hasFriendMatch = friendQueue.length > 0
 
   return (
@@ -155,11 +160,6 @@ export default function ChessHubDesktopLayout({
                   : (hasLessonProgress ? 'Continue lesson' : 'Browse lessons')
 
               const handlePrimaryAction = () => {
-                if (mode.key === 'local' && singleActiveGame) {
-                  onOpenGame(singleActiveGame.id)
-                  return
-                }
-
                 if (mode.key === 'invite' && friendQueue[0]) {
                   onOpenGame(friendQueue[0].id)
                   return
@@ -193,13 +193,13 @@ export default function ChessHubDesktopLayout({
 
                   {mode.key === 'local' ? (
                     <div className="mt-3 space-y-1.5" data-testid="play-computer-status">
-                      {singleActiveGame ? (
+                      {hasComputerResume ? (
                         <>
-                          <StatusRow tone="active" label="Active" detail={`vs ${getOpponentLabel(singleActiveGame)}`} />
-                          <StatusRow tone="neutral" label="Last played" detail={formatRelative(singleActiveGame.updated_at)} />
+                          <StatusRow tone="active" label="Saved" detail="vs Computer" />
+                          <StatusRow tone="neutral" label="Status" detail="Resume your local game" />
                         </>
                       ) : (
-                        <StatusRow tone="neutral" label="Last played" detail="No active game yet" />
+                        <StatusRow tone="neutral" label="Last played" detail="No saved game yet" />
                       )}
                     </div>
                   ) : null}
