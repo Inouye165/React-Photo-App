@@ -305,6 +305,14 @@ export async function sendMessage(roomId: string, content: string, photoId?: Pho
   if (error) throw error
   if (!data) throw new Error('Failed to send message')
 
+  if (import.meta.env.DEV) {
+    try {
+      console.log('[api/chat] sendMessage inserted', { roomId, userId, data })
+    } catch {
+      // ignore
+    }
+  }
+
   // Log message_sent activity (fire-and-forget)
   logActivity('message_sent', { roomId })
 

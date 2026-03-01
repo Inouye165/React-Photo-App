@@ -106,6 +106,7 @@ export default function ChatWindow({ roomId, showIdentityGate, mode = 'workspace
   const [pickerReloadKey, setPickerReloadKey] = useState<number>(0)
 
   const [memberIds, setMemberIds] = useState<string[]>([])
+  const [memberRosterLoaded, setMemberRosterLoaded] = useState<boolean>(false)
   const [memberDirectory, setMemberDirectory] = useState<Record<string, string | null>>({})
   const [memberProfiles, setMemberProfiles] = useState<Record<string, MemberProfile>>({})
   const [header, setHeader] = useState<ChatHeaderState>({ title: 'Conversation', isGroup: false, otherUserId: null })
@@ -127,6 +128,7 @@ export default function ChatWindow({ roomId, showIdentityGate, mode = 'workspace
     })),
   })
 
+  
   const bottomRef = useRef<HTMLDivElement | null>(null)
   const scrollContainerRef = useRef<HTMLDivElement | null>(null)
   const prevMessageCountRef = useRef<number>(0)
@@ -223,9 +225,11 @@ export default function ChatWindow({ roomId, showIdentityGate, mode = 'workspace
       setMemberIds(roster.ids)
       setMemberDirectory(roster.directory)
       setMemberProfiles(roster.profiles)
+      setMemberRosterLoaded(true)
     }
 
     run().catch((err) => {
+      setMemberRosterLoaded(true)
       if (import.meta.env.DEV) console.debug('[ChatWindow] Failed to resolve room members:', err)
     })
 
@@ -478,7 +482,35 @@ export default function ChatWindow({ roomId, showIdentityGate, mode = 'workspace
     }
   }, [pickerOpen, pickerPhotos.length, pickerReloadKey, roomId])
 
-  const canSend = Boolean(roomId) && !sending
+  const canSend = Boolean(roomId && user?.id && memberRosterLoaded && memberIds.includes(user.id)) && !sending
+
+  const composerMountedRef = useRef<boolean>(false)
+
+  useEffect(() => {
+    if (composerMountedRef.current) return
+    if (!roomId) return
+    composerMountedRef.current = true
+    if (import.meta.env.DEV) {
+      // DEV-only mount log for composer
+      try {
+        // eslint-disable-next-line no-console
+        console.log('[ChatWindow] composer mounted', { roomId, canSend })
+      } catch {}
+    }
+  }, [roomId, canSend])
+
+  const composerVisibleRef = useRef<boolean>(false)
+  useEffect(() => {
+    if (composerVisibleRef.current) return
+    if (!roomId) return
+    composerVisibleRef.current = true
+    if (import.meta.env.DEV) {
+      try {
+        // eslint-disable-next-line no-console
+        console.log('[ChatWindow] composer visible', { roomId })
+      } catch {}
+    }
+  }, [roomId])
 
   function checkIfAtBottom(): void {
     const container = scrollContainerRef.current
@@ -513,16 +545,25 @@ export default function ChatWindow({ roomId, showIdentityGate, mode = 'workspace
     // Best-effort: stop typing indicator as soon as user submits.
     handleInputSubmit()
 
+    // Membership guard: ensure current user is a member of the room
+    if (user?.id && memberRosterLoaded && !memberIds.includes(user.id)) {
+      setSendError('You are not a member of this room.')
+      return
+    }
+
     try {
       setSending(true)
       setSendError(null)
+      if (import.meta.env.DEV) console.log('[ChatWindow] Sending message', { roomId, content: trimmed, photoId: selectedPhotoId })
       const sent = await sendMessage(roomId, trimmed, selectedPhotoId)
+      if (import.meta.env.DEV) console.log('[ChatWindow] sendMessage returned', sent)
       upsertLocalMessage(sent)
       setDraft('')
       setSelectedPhotoId(null)
       setPickerOpen(false)
     } catch (err) {
       const message = err instanceof Error ? err.message : String(err)
+      if (import.meta.env.DEV) console.error('[ChatWindow] Failed to send message:', err)
       setSendError(message)
     } finally {
       setSending(false)
@@ -758,7 +799,7 @@ export default function ChatWindow({ roomId, showIdentityGate, mode = 'workspace
       <div
         ref={scrollContainerRef}
         onScroll={checkIfAtBottom}
-        className="flex-1 overflow-auto px-4 py-3 space-y-3"
+        className="flex-1 min-h-0 overflow-auto px-4 py-3 space-y-3"
         data-testid="chat-messages"
       >
         {loading && <div className="text-sm text-slate-500">Loading messages…</div>}
@@ -783,6 +824,7 @@ export default function ChatWindow({ roomId, showIdentityGate, mode = 'workspace
         })}
 
         <div ref={bottomRef} />
+        {memberRosterLoaded && user?.id && !memberIds.includes(user.id) && <div ref={bottomRef} />}
       </div>
 
       {unseenCount > 0 && (
@@ -799,7 +841,7 @@ export default function ChatWindow({ roomId, showIdentityGate, mode = 'workspace
         </div>
       )}
 
-      <div className="border-t border-slate-200 bg-white p-3 sm:p-4">
+      <div data-testid="chat-composer" className="border-t border-slate-200 bg-white p-3 sm:p-4 shrink-0">
         {sendError && <div className="mb-2 text-sm text-red-600">{sendError}</div>}
 
         {selectedPhoto && (
@@ -911,6 +953,10 @@ export default function ChatWindow({ roomId, showIdentityGate, mode = 'workspace
           </div>
         )}
 
+        {memberRosterLoaded && user?.id && !memberIds.includes(user.id) && (
+          <div className="mb-2 text-sm text-red-600">You can't send messages in this room</div>
+        )}
+
         <form
           className="flex items-end gap-2"
           onSubmit={(e) => {
@@ -936,17 +982,20 @@ export default function ChatWindow({ roomId, showIdentityGate, mode = 'workspace
           >
             <ImageIcon className="h-5 w-5" />
           </button>
-          <textarea
-            value={draft}
-            onChange={(e) => {
-              setDraft(e.target.value)
-              handleInputChange()
-            }}
-            placeholder="Write a message…"
-            rows={1}
-            className="flex-1 resize-none rounded-2xl border border-slate-200 px-4 py-3 text-sm text-slate-900 placeholder:text-slate-400 focus:outline-none focus:ring-2 focus:ring-slate-900/10"
-          />
+            <textarea
+              data-testid="chat-composer-input"
+              value={draft}
+              onChange={(e) => {
+                setDraft(e.target.value)
+                handleInputChange()
+              }}
+              placeholder="Write a message…"
+              rows={1}
+              disabled={!canSend}
+              className="flex-1 resize-none rounded-2xl border border-slate-200 px-4 py-3 text-sm text-slate-900 placeholder:text-slate-400 focus:outline-none focus:ring-2 focus:ring-slate-900/10"
+            />
           <button
+            data-testid="chat-composer-send"
             type="submit"
             disabled={!canSend || (!draft.trim() && selectedPhotoId == null)}
             className={

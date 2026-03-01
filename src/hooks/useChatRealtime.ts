@@ -89,6 +89,11 @@ export function useChatRealtime(
         }
 
         const initial = (data ?? []).map(asChatMessage).filter((m): m is ChatMessage => Boolean(m))
+        if (import.meta.env.DEV) {
+          try {
+            console.log('[useChatRealtime] initial fetch', { roomId: normalizedRoomId, count: (initial ?? []).length })
+          } catch {}
+        }
         if (!cancelled) setMessages(sortMessages(initial))
 
         // Realtime subscription
@@ -111,6 +116,11 @@ export function useChatRealtime(
 
             const normalized = asChatMessage(payload.new)
             if (!normalized) return
+            if (import.meta.env.DEV) {
+              try {
+                console.log('[useChatRealtime] INSERT event', { roomId: normalizedRoomId, messageId: normalized.id })
+              } catch {}
+            }
             setMessages((prev) => upsertMessage(prev, normalized))
           },
         )

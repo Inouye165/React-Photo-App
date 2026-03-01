@@ -37,7 +37,7 @@ export default function ChatBubble({ message, roomId, isOwn, senderLabel, timest
           </p>
         ) : null}
 
-        {typeof message.photo_id === 'number' ? <ChatPhotoAttachment roomId={roomId} photoId={message.photo_id} /> : null}
+        {typeof message.photo_id === 'string' ? <ChatPhotoAttachment roomId={roomId} photoId={message.photo_id} /> : null}
       </div>
     </div>
   )

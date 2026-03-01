@@ -5,7 +5,7 @@ import { toUrl } from '../../utils/toUrl'
 
 export interface ChatPhotoAttachmentProps {
   roomId: string
-  photoId: number
+  photoId: string
 }
 
 export default function ChatPhotoAttachment({ roomId, photoId }: ChatPhotoAttachmentProps) {
