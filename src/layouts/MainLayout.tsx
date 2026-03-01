@@ -137,6 +137,7 @@ export default function MainLayout(): React.ReactElement {
     <div
       className="flex flex-col font-body"
       id="main-app-container"
+      data-theme={isChatRoute ? 'chat' : 'chess'}
       style={{
         position: 'fixed',
         top: 0,
@@ -147,8 +148,9 @@ export default function MainLayout(): React.ReactElement {
         paddingBottom: 'env(safe-area-inset-bottom)',
         paddingLeft: 'calc(env(safe-area-inset-left) + 4px)',
         paddingRight: 'calc(env(safe-area-inset-right) + 4px)',
-        backgroundColor: '#17110e',
-        color: '#f3ece4',
+        ...(isChatRoute
+          ? {}
+          : { backgroundColor: '#17110e', color: '#f3ece4' }),
       }}
     >
       <div aria-live="polite" className="sr-only">

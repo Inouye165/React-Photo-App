@@ -47,9 +47,18 @@ html, body {
 html,
 body,
 #root {
+  font-family: var(--font-body);
+}
+
+/* Theme-specific root-level colors applied to the app container */
+#main-app-container[data-theme="chess"] {
   background-color: var(--color-chess-bg);
   color: var(--color-chess-text);
-  font-family: var(--font-body);
+}
+
+#main-app-container[data-theme="chat"] {
+  background-color: #f8fafc;
+  color: #0f172a;
 }
 
 .bg-white,
@@ -64,16 +73,10 @@ body,
 .bg-slate-900\/60,
 .bg-slate-900\/70,
 .bg-slate-900\/80,
-.bg-slate-900\/90 {
-  background-color: var(--color-chess-surface) !important;
-}
-
+.bg-slate-900\/90,
 .bg-gray-100,
 .bg-gray-200,
-.bg-slate-300 {
-  background-color: var(--color-chess-surfaceSoft) !important;
-}
-
+.bg-slate-300,
 .text-gray-900,
 .text-slate-900,
 .text-gray-800,
@@ -83,15 +86,9 @@ body,
 .text-gray-600,
 .text-slate-600,
 .text-gray-500,
-.text-slate-500 {
-  color: var(--color-chess-text) !important;
-}
-
+.text-slate-500,
 .text-gray-400,
-.text-slate-400 {
-  color: var(--color-chess-muted) !important;
-}
-
+.text-slate-400,
 .text-indigo-50,
 .text-indigo-100,
 .text-indigo-200,
@@ -103,10 +100,7 @@ body,
 .text-blue-200,
 .text-blue-300,
 .text-blue-400,
-.text-blue-500 {
-  color: var(--color-chess-accentSoft) !important;
-}
-
+.text-blue-500,
 .border-gray-100,
 .border-gray-200,
 .border-gray-300,
@@ -124,10 +118,7 @@ body,
 .border-blue-200,
 .border-blue-300,
 .border-blue-400,
-.border-blue-500 {
-  border-color: rgb(255 255 255 / 0.12) !important;
-}
-
+.border-blue-500,
 .bg-indigo-500,
 .bg-indigo-600,
 .bg-blue-500,
@@ -138,10 +129,7 @@ body,
 .bg-indigo-500\/30,
 .bg-blue-500\/10,
 .bg-blue-500\/20,
-.bg-blue-500\/30 {
-  background-color: color-mix(in oklab, var(--color-chess-accent) 28%, transparent) !important;
-}
-
+.bg-blue-500\/30,
 .hover\:bg-slate-50:hover,
 .hover\:bg-slate-100:hover,
 .hover\:bg-slate-200:hover,
@@ -150,32 +138,147 @@ body,
 .hover\:bg-indigo-500\/30:hover,
 .hover\:bg-indigo-500\/20:hover,
 .hover\:bg-blue-500\/30:hover,
-.hover\:bg-blue-500\/20:hover {
-  background-color: var(--color-chess-surfaceSoft) !important;
-}
-
+.hover\:bg-blue-500\/20:hover,
 .active\:bg-slate-100:active,
 .active\:bg-slate-200:active,
 .active\:bg-slate-800:active,
-.active\:bg-slate-900:active {
-  background-color: var(--color-chess-surface) !important;
-}
-
+.active\:bg-slate-900:active,
 a,
-a:visited {
-  color: var(--color-chess-accentSoft);
-}
-
-a:hover {
-  color: var(--color-chess-text);
-}
-
+a:visited,
+a:hover,
 .shadow,
 .shadow-sm,
 .shadow-md,
 .shadow-lg,
 .shadow-xl,
 .shadow-2xl {
+  /* Chess-only overrides */
+}
+
+#main-app-container[data-theme="chess"] .bg-white,
+#main-app-container[data-theme="chess"] .bg-gray-50,
+#main-app-container[data-theme="chess"] .bg-slate-50,
+#main-app-container[data-theme="chess"] .bg-slate-100,
+#main-app-container[data-theme="chess"] .bg-slate-200,
+#main-app-container[data-theme="chess"] .bg-slate-700,
+#main-app-container[data-theme="chess"] .bg-slate-800,
+#main-app-container[data-theme="chess"] .bg-slate-900,
+#main-app-container[data-theme="chess"] .bg-slate-900\/50,
+#main-app-container[data-theme="chess"] .bg-slate-900\/60,
+#main-app-container[data-theme="chess"] .bg-slate-900\/70,
+#main-app-container[data-theme="chess"] .bg-slate-900\/80,
+#main-app-container[data-theme="chess"] .bg-slate-900\/90 {
+  background-color: var(--color-chess-surface) !important;
+}
+
+#main-app-container[data-theme="chess"] .bg-gray-100,
+#main-app-container[data-theme="chess"] .bg-gray-200,
+#main-app-container[data-theme="chess"] .bg-slate-300 {
+  background-color: var(--color-chess-surfaceSoft) !important;
+}
+
+#main-app-container[data-theme="chess"] .text-gray-900,
+#main-app-container[data-theme="chess"] .text-slate-900,
+#main-app-container[data-theme="chess"] .text-gray-800,
+#main-app-container[data-theme="chess"] .text-slate-800,
+#main-app-container[data-theme="chess"] .text-gray-700,
+#main-app-container[data-theme="chess"] .text-slate-700,
+#main-app-container[data-theme="chess"] .text-gray-600,
+#main-app-container[data-theme="chess"] .text-slate-600,
+#main-app-container[data-theme="chess"] .text-gray-500,
+#main-app-container[data-theme="chess"] .text-slate-500 {
+  color: var(--color-chess-text) !important;
+}
+
+#main-app-container[data-theme="chess"] .text-gray-400,
+#main-app-container[data-theme="chess"] .text-slate-400 {
+  color: var(--color-chess-muted) !important;
+}
+
+#main-app-container[data-theme="chess"] .text-indigo-50,
+#main-app-container[data-theme="chess"] .text-indigo-100,
+#main-app-container[data-theme="chess"] .text-indigo-200,
+#main-app-container[data-theme="chess"] .text-indigo-300,
+#main-app-container[data-theme="chess"] .text-indigo-400,
+#main-app-container[data-theme="chess"] .text-indigo-500,
+#main-app-container[data-theme="chess"] .text-blue-50,
+#main-app-container[data-theme="chess"] .text-blue-100,
+#main-app-container[data-theme="chess"] .text-blue-200,
+#main-app-container[data-theme="chess"] .text-blue-300,
+#main-app-container[data-theme="chess"] .text-blue-400,
+#main-app-container[data-theme="chess"] .text-blue-500 {
+  color: var(--color-chess-accentSoft) !important;
+}
+
+#main-app-container[data-theme="chess"] .border-gray-100,
+#main-app-container[data-theme="chess"] .border-gray-200,
+#main-app-container[data-theme="chess"] .border-gray-300,
+#main-app-container[data-theme="chess"] .border-slate-100,
+#main-app-container[data-theme="chess"] .border-slate-200,
+#main-app-container[data-theme="chess"] .border-slate-300,
+#main-app-container[data-theme="chess"] .border-slate-400,
+#main-app-container[data-theme="chess"] .border-slate-500,
+#main-app-container[data-theme="chess"] .border-slate-600,
+#main-app-container[data-theme="chess"] .border-slate-700,
+#main-app-container[data-theme="chess"] .border-indigo-200,
+#main-app-container[data-theme="chess"] .border-indigo-300,
+#main-app-container[data-theme="chess"] .border-indigo-400,
+#main-app-container[data-theme="chess"] .border-indigo-500,
+#main-app-container[data-theme="chess"] .border-blue-200,
+#main-app-container[data-theme="chess"] .border-blue-300,
+#main-app-container[data-theme="chess"] .border-blue-400,
+#main-app-container[data-theme="chess"] .border-blue-500 {
+  border-color: rgb(255 255 255 / 0.12) !important;
+}
+
+#main-app-container[data-theme="chess"] .bg-indigo-500,
+#main-app-container[data-theme="chess"] .bg-indigo-600,
+#main-app-container[data-theme="chess"] .bg-blue-500,
+#main-app-container[data-theme="chess"] .bg-blue-600,
+#main-app-container[data-theme="chess"] .bg-indigo-500\/10,
+#main-app-container[data-theme="chess"] .bg-indigo-500\/15,
+#main-app-container[data-theme="chess"] .bg-indigo-500\/20,
+#main-app-container[data-theme="chess"] .bg-indigo-500\/30,
+#main-app-container[data-theme="chess"] .bg-blue-500\/10,
+#main-app-container[data-theme="chess"] .bg-blue-500\/20,
+#main-app-container[data-theme="chess"] .bg-blue-500\/30 {
+  background-color: color-mix(in oklab, var(--color-chess-accent) 28%, transparent) !important;
+}
+
+#main-app-container[data-theme="chess"] .hover\:bg-slate-50:hover,
+#main-app-container[data-theme="chess"] .hover\:bg-slate-100:hover,
+#main-app-container[data-theme="chess"] .hover\:bg-slate-200:hover,
+#main-app-container[data-theme="chess"] .hover\:bg-slate-800:hover,
+#main-app-container[data-theme="chess"] .hover\:bg-slate-900:hover,
+#main-app-container[data-theme="chess"] .hover\:bg-indigo-500\/30:hover,
+#main-app-container[data-theme="chess"] .hover\:bg-indigo-500\/20:hover,
+#main-app-container[data-theme="chess"] .hover\:bg-blue-500\/30:hover,
+#main-app-container[data-theme="chess"] .hover\:bg-blue-500\/20:hover {
+  background-color: var(--color-chess-surfaceSoft) !important;
+}
+
+#main-app-container[data-theme="chess"] .active\:bg-slate-100:active,
+#main-app-container[data-theme="chess"] .active\:bg-slate-200:active,
+#main-app-container[data-theme="chess"] .active\:bg-slate-800:active,
+#main-app-container[data-theme="chess"] .active\:bg-slate-900:active {
+  background-color: var(--color-chess-surface) !important;
+}
+
+#main-app-container[data-theme="chess"] a,
+#main-app-container[data-theme="chess"] a:visited {
+  color: var(--color-chess-accentSoft);
+}
+
+#main-app-container[data-theme="chess"] a:hover {
+  color: var(--color-chess-text);
+}
+
+#main-app-container[data-theme="chess"] .shadow,
+#main-app-container[data-theme="chess"] .shadow-sm,
+#main-app-container[data-theme="chess"] .shadow-md,
+#main-app-container[data-theme="chess"] .shadow-lg,
+#main-app-container[data-theme="chess"] .shadow-xl,
+#main-app-container[data-theme="chess"] .shadow-2xl {
   box-shadow: var(--shadow-chess-card) !important;
 }
 
