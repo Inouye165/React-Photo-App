@@ -799,7 +799,7 @@ export default function ChatWindow({ roomId, showIdentityGate, mode = 'workspace
       <div
         ref={scrollContainerRef}
         onScroll={checkIfAtBottom}
-        className="flex-1 overflow-auto px-4 py-3 space-y-3"
+        className="flex-1 min-h-0 overflow-auto px-4 py-3 space-y-3"
         data-testid="chat-messages"
       >
         {loading && <div className="text-sm text-slate-500">Loading messages…</div>}
@@ -841,7 +841,7 @@ export default function ChatWindow({ roomId, showIdentityGate, mode = 'workspace
         </div>
       )}
 
-      <div data-testid="chat-composer" className="shrink-0 border-t border-slate-200 bg-white p-3 sm:p-4">
+      <div data-testid="chat-composer" className="border-t border-slate-200 bg-white p-3 sm:p-4 shrink-0">
         {sendError && <div className="mb-2 text-sm text-red-600">{sendError}</div>}
 
         {selectedPhoto && (
@@ -982,17 +982,20 @@ export default function ChatWindow({ roomId, showIdentityGate, mode = 'workspace
           >
             <ImageIcon className="h-5 w-5" />
           </button>
-          <textarea
-            value={draft}
-            onChange={(e) => {
-              setDraft(e.target.value)
-              handleInputChange()
-            }}
-            placeholder="Write a message…"
-            rows={1}
-            className="flex-1 resize-none rounded-2xl border border-slate-200 px-4 py-3 text-sm text-slate-900 placeholder:text-slate-400 focus:outline-none focus:ring-2 focus:ring-slate-900/10"
-          />
+            <textarea
+              data-testid="chat-composer-input"
+              value={draft}
+              onChange={(e) => {
+                setDraft(e.target.value)
+                handleInputChange()
+              }}
+              placeholder="Write a message…"
+              rows={1}
+              disabled={!canSend}
+              className="flex-1 resize-none rounded-2xl border border-slate-200 px-4 py-3 text-sm text-slate-900 placeholder:text-slate-400 focus:outline-none focus:ring-2 focus:ring-slate-900/10"
+            />
           <button
+            data-testid="chat-composer-send"
             type="submit"
             disabled={!canSend || (!draft.trim() && selectedPhotoId == null)}
             className={
