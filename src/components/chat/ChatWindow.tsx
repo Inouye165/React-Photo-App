@@ -1005,34 +1005,35 @@ export default function ChatWindow({ roomId, showIdentityGate, mode = 'workspace
 
   return (
     <div className="grid h-full min-h-0 grid-cols-1 md:grid-cols-[minmax(0,1fr)_minmax(0,360px)]">
-      <section
-        className="flex flex-col h-full min-h-0 border-r border-slate-200"
-        aria-label={isCollaboration ? 'Collaboration board' : 'Potluck board'}
-      >
-        <div className="flex-1 min-h-0 overflow-auto">
-          {isCollaboration ? (
-            <WhiteboardViewer boardId={roomId} className="h-full" />
-          ) : roomType === 'potluck' ? (
-            <PotluckWidget
-              metadata={roomMetadata}
-              currentUserId={user?.id ?? null}
-              memberDirectory={memberDirectory}
-              memberProfiles={memberProfiles}
-              ownerIds={ownerIdSet}
-              onUpdate={async (newMeta) => handlePatchRoom({ metadata: newMeta })}
-              showLocationMap={false}
-            />
-          ) : (
-            <div className="h-full flex items-center justify-center text-sm text-slate-500">
-              Potluck board will appear in potluck rooms.
-            </div>
-          )}
-        </div>
-      </section>
+      {/* Left widget column: show only for collaboration or potluck rooms */}
+      {(isCollaboration || roomType === 'potluck') && (
+        <section
+          className="flex flex-col h-full min-h-0 border-r border-slate-200"
+          aria-label={isCollaboration ? 'Collaboration board' : 'Potluck board'}
+        >
+          <div className="flex-1 min-h-0 overflow-auto">
+            {isCollaboration ? (
+              <WhiteboardViewer boardId={roomId} className="h-full" />
+            ) : (
+              // roomType === 'potluck'
+              <PotluckWidget
+                metadata={roomMetadata}
+                currentUserId={user?.id ?? null}
+                memberDirectory={memberDirectory}
+                memberProfiles={memberProfiles}
+                ownerIds={ownerIdSet}
+                onUpdate={async (newMeta) => handlePatchRoom({ metadata: newMeta })}
+                showLocationMap={false}
+              />
+            )}
+          </div>
+        </section>
+      )}
 
-      <section className="relative h-full min-h-0" aria-label={isCollaboration ? 'Pad mode' : 'Location map'}>
-        <div className="h-full overflow-auto">
-          {isCollaboration ? (
+      {/* Right widget column: show pad mode for collaboration, and location map only when coordinates exist */}
+      {isCollaboration && (
+        <section className="relative h-full min-h-0" aria-label="Pad mode">
+          <div className="h-full overflow-auto">
             <DashboardCard title="Pad mode">
               <div className="space-y-3 text-sm text-slate-600">
                 <p>Open pad mode on a phone or tablet to draw. Strokes appear here live.</p>
@@ -1046,27 +1047,27 @@ export default function ChatWindow({ roomId, showIdentityGate, mode = 'workspace
                 <div className="text-xs text-slate-500">Tip: keep the pad screen awake while drawing.</div>
               </div>
             </DashboardCard>
-          ) : (
+          </div>
+        </section>
+      )}
+
+      {roomType === 'potluck' && hasLatLng && (
+        <section className="relative h-full min-h-0" aria-label="Location map">
+          <div className="h-full overflow-auto">
             <DashboardCard title="Location">
-              {hasLatLng ? (
-                <div className="rounded-xl overflow-hidden border border-slate-200">
-                  <div className="aspect-video w-full relative">
-                    <LocationMapPanel photo={mapPhoto} />
-                  </div>
-                  <div className="flex items-center gap-2 px-3 py-2 text-xs text-slate-600 border-t border-slate-200">
-                    <MapPin className="h-3 w-3 text-slate-500" />
-                    <span className="truncate">{addressLabel ?? 'Address pending'}</span>
-                  </div>
+              <div className="rounded-xl overflow-hidden border border-slate-200">
+                <div className="aspect-video w-full relative">
+                  <LocationMapPanel photo={mapPhoto} />
                 </div>
-              ) : (
-                <div className="rounded-xl border border-dashed border-slate-200 p-4 text-xs text-slate-500 text-center">
-                  Location map will appear once coordinates are added.
+                <div className="flex items-center gap-2 px-3 py-2 text-xs text-slate-600 border-t border-slate-200">
+                  <MapPin className="h-3 w-3 text-slate-500" />
+                  <span className="truncate">{addressLabel ?? 'Address pending'}</span>
                 </div>
-              )}
+              </div>
             </DashboardCard>
-          )}
-        </div>
-      </section>
+          </div>
+        </section>
+      )}
     </div>
   )
 }

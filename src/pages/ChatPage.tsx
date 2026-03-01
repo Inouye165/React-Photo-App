@@ -73,7 +73,7 @@ export default function ChatPage() {
             key={user?.id ?? 'anon'}
             roomId={roomId}
             showIdentityGate={isJoiningRoom}
-            mode="workspace"
+            mode={roomId ? 'conversation' : 'workspace'}
           />
         </div>
 
