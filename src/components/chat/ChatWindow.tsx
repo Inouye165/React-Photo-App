@@ -106,6 +106,7 @@ export default function ChatWindow({ roomId, showIdentityGate, mode = 'workspace
   const [pickerReloadKey, setPickerReloadKey] = useState<number>(0)
 
   const [memberIds, setMemberIds] = useState<string[]>([])
+  const [memberRosterLoaded, setMemberRosterLoaded] = useState<boolean>(false)
   const [memberDirectory, setMemberDirectory] = useState<Record<string, string | null>>({})
   const [memberProfiles, setMemberProfiles] = useState<Record<string, MemberProfile>>({})
   const [header, setHeader] = useState<ChatHeaderState>({ title: 'Conversation', isGroup: false, otherUserId: null })
@@ -223,9 +224,11 @@ export default function ChatWindow({ roomId, showIdentityGate, mode = 'workspace
       setMemberIds(roster.ids)
       setMemberDirectory(roster.directory)
       setMemberProfiles(roster.profiles)
+      setMemberRosterLoaded(true)
     }
 
     run().catch((err) => {
+      setMemberRosterLoaded(true)
       if (import.meta.env.DEV) console.debug('[ChatWindow] Failed to resolve room members:', err)
     })
 
@@ -478,7 +481,7 @@ export default function ChatWindow({ roomId, showIdentityGate, mode = 'workspace
     }
   }, [pickerOpen, pickerPhotos.length, pickerReloadKey, roomId])
 
-  const canSend = Boolean(roomId) && !sending
+  const canSend = Boolean(roomId && user?.id && memberRosterLoaded && memberIds.includes(user.id)) && !sending
 
   function checkIfAtBottom(): void {
     const container = scrollContainerRef.current
@@ -513,16 +516,25 @@ export default function ChatWindow({ roomId, showIdentityGate, mode = 'workspace
     // Best-effort: stop typing indicator as soon as user submits.
     handleInputSubmit()
 
+    // Membership guard: ensure current user is a member of the room
+    if (user?.id && memberRosterLoaded && !memberIds.includes(user.id)) {
+      setSendError('You are not a member of this room.')
+      return
+    }
+
     try {
       setSending(true)
       setSendError(null)
+      if (import.meta.env.DEV) console.log('[ChatWindow] Sending message', { roomId, content: trimmed, photoId: selectedPhotoId })
       const sent = await sendMessage(roomId, trimmed, selectedPhotoId)
+      if (import.meta.env.DEV) console.log('[ChatWindow] sendMessage returned', sent)
       upsertLocalMessage(sent)
       setDraft('')
       setSelectedPhotoId(null)
       setPickerOpen(false)
     } catch (err) {
       const message = err instanceof Error ? err.message : String(err)
+      if (import.meta.env.DEV) console.error('[ChatWindow] Failed to send message:', err)
       setSendError(message)
     } finally {
       setSending(false)
@@ -783,6 +795,9 @@ export default function ChatWindow({ roomId, showIdentityGate, mode = 'workspace
         })}
 
         <div ref={bottomRef} />
+        {memberRosterLoaded && user?.id && !memberIds.includes(user.id) && (
+          <div className="text-sm text-red-600">You are not a member of this room.</div>
+        )}
       </div>
 
       {unseenCount > 0 && (
