@@ -835,7 +835,7 @@ export default function ChatWindow({ roomId, showIdentityGate, mode = 'workspace
       <div
         ref={scrollContainerRef}
         onScroll={checkIfAtBottom}
-        className="flex-1 min-h-0 overflow-auto px-4 py-3 space-y-3"
+        className="flex-1 min-h-0 overflow-auto px-4 py-3"
         data-testid="chat-messages"
       >
         {loading && <div className="text-sm text-slate-500">Loading messages…</div>}
@@ -845,8 +845,13 @@ export default function ChatWindow({ roomId, showIdentityGate, mode = 'workspace
           <div className="text-sm text-slate-500">No messages yet. Say hi.</div>
         )}
 
-        {messages.map((m) => {
+        {messages.map((m, idx) => {
           const isOwn = Boolean(user?.id) && m.sender_id === user?.id
+          const prev = idx > 0 ? messages[idx - 1] : null
+          const isGroupedWithPrev = Boolean(prev && prev.sender_id === m.sender_id)
+          const showSenderLabel = !isGroupedWithPrev
+          const avatarUrl = !isOwn && memberProfiles[m.sender_id]?.avatarUrl ? memberProfiles[m.sender_id].avatarUrl : null
+
           return (
             <ChatBubble
               key={m.id}
@@ -855,6 +860,9 @@ export default function ChatWindow({ roomId, showIdentityGate, mode = 'workspace
               isOwn={isOwn}
               senderLabel={getSenderLabel(m)}
               timestampLabel={formatTime(m.created_at)}
+              isGroupedWithPrev={isGroupedWithPrev}
+              showSenderLabel={showSenderLabel}
+              avatarUrl={avatarUrl}
             />
           )
         })}
