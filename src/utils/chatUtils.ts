@@ -5,8 +5,7 @@ export function sortMessages(messages: readonly ChatMessage[]): ChatMessage[] {
     const at = Date.parse(a.created_at)
     const bt = Date.parse(b.created_at)
     if (Number.isFinite(at) && Number.isFinite(bt) && at !== bt) return at - bt
-    // Tie-breaker: numeric id
-    return a.id - b.id
+    return a.id.localeCompare(b.id)
   })
 }
 
@@ -20,30 +19,58 @@ export function upsertMessage(existing: readonly ChatMessage[], incoming: ChatMe
 }
 
 export function asChatMessage(row: unknown): ChatMessage | null {
-  if (!row || typeof row !== 'object') return null
-  const r = row as Record<string, unknown>
-
-  const toFiniteNumber = (v: unknown): number | null => {
-    const n = typeof v === 'number' ? v : typeof v === 'string' ? Number(v) : NaN
-    return Number.isFinite(n) ? n : null
+  const logDrop = (reason: string, sample?: Record<string, unknown>) => {
+    if (!import.meta.env.DEV) return
+    try {
+      console.warn('[chatUtils] Dropping invalid chat row', {
+        reason,
+        sample: sample
+          ? {
+              id: sample.id,
+              idType: typeof sample.id,
+              room_id: sample.room_id,
+              sender_id: sample.sender_id,
+              created_at: sample.created_at,
+            }
+          : null,
+      })
+    } catch {
+      // ignore
+    }
   }
 
-  const id = toFiniteNumber(r.id)
-  const rawPhotoId = r.photo_id
-  const photo_id = rawPhotoId == null ? null : toFiniteNumber(rawPhotoId)
+  if (!row || typeof row !== 'object') {
+    logDrop('row is not an object')
+    return null
+  }
+  const r = row as Record<string, unknown>
 
-  if (id == null) return null
+  if (typeof r.id !== 'string' || !r.id.trim()) {
+    logDrop('id is missing or not a UUID string', r)
+    return null
+  }
 
-  if (typeof r.room_id !== 'string') return null
-  if (typeof r.sender_id !== 'string') return null
-  if (typeof r.content !== 'string') return null
-  if (typeof r.created_at !== 'string') return null
+  if (typeof r.room_id !== 'string') {
+    logDrop('room_id is missing or invalid', r)
+    return null
+  }
+  if (typeof r.sender_id !== 'string') {
+    logDrop('sender_id is missing or invalid', r)
+    return null
+  }
+  if (typeof r.content !== 'string') {
+    logDrop('content is missing or invalid', r)
+    return null
+  }
+  if (typeof r.created_at !== 'string') {
+    logDrop('created_at is missing or invalid', r)
+    return null
+  }
 
-  // Treat non-finite numeric photo IDs as absent.
-  const normalizedPhotoId = photo_id != null && photo_id > 0 ? photo_id : null
+  const normalizedPhotoId = r.photo_id == null ? null : typeof r.photo_id === 'string' && r.photo_id.trim() ? r.photo_id : null
 
   return {
-    id,
+    id: r.id,
     room_id: r.room_id,
     sender_id: r.sender_id,
     content: r.content,

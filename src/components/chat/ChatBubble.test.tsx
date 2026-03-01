@@ -20,11 +20,11 @@ describe('ChatBubble', () => {
         senderLabel="Someone"
         timestampLabel="12:00"
         message={{
-          id: 1,
+          id: '11111111-1111-4111-8111-111111111111',
           room_id: 'room-1',
           sender_id: '11111111-1111-4111-8111-111111111111',
           content: '',
-          photo_id: 42,
+          photo_id: '22222222-2222-4222-8222-222222222222',
           created_at: new Date().toISOString(),
         }}
       />,
