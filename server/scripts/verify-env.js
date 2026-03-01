@@ -50,7 +50,7 @@ async function verifyEnv() {
   if (process.env.DATABASE_URL) {
     console.log('\nTesting Database Connection...');
     
-    // Mimic knexfile.js logic for SSL
+    // Mimic knexfile.ts logic for SSL
     const isSupabase = process.env.DATABASE_URL.includes('supabase');
     const sslConfig = isSupabase ? { rejectUnauthorized: false } : false;
 

@@ -83,7 +83,7 @@ async function main() {
         const stack = (new Error()).stack || '';
         let caller = 'unknown';
         try {
-          const m = stack.split('\n').find(l => l.includes('graph.js')) || stack.split('\n')[2] || '';
+          const m = stack.split('\n').find(l => l.includes('graph.ts')) || stack.split('\n')[2] || '';
           const match = String(m).match(/at (.*?) \(/);
           if (match) caller = match[1];
         } catch (_) { void _; }
@@ -149,15 +149,15 @@ async function main() {
   // Load compiled LangGraph app
   let appModule;
   try {
-    appModule = require(path.join(__dirname, 'graph.js'));
+    appModule = require(path.join(__dirname, 'graph.ts'));
   } catch (err) {
-    console.error(JSON.stringify({ type: 'final', error: 'Failed to require graph.js: ' + String(err && err.message ? err.message : err) }));
+    console.error(JSON.stringify({ type: 'final', error: 'Failed to require graph.ts: ' + String(err && err.message ? err.message : err) }));
     process.exit(3);
   }
 
   const app = appModule && appModule.app;
   if (!app) {
-    console.error(JSON.stringify({ type: 'final', error: 'graph.js did not export compiled app' }));
+    console.error(JSON.stringify({ type: 'final', error: 'graph.ts did not export compiled app' }));
     process.exit(3);
   }
 

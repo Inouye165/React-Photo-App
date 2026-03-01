@@ -12,7 +12,7 @@ jest.mock('@supabase/supabase-js', () => {
 });
 
 // Mock the database connection
-jest.mock('../db/index.js', () => {
+jest.mock('../db/index.ts', () => {
   return require('./__mocks__/knex');
 });
 
