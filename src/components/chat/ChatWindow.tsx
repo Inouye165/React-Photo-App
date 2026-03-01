@@ -499,6 +499,19 @@ export default function ChatWindow({ roomId, showIdentityGate, mode = 'workspace
     }
   }, [roomId, canSend])
 
+  const composerVisibleRef = useRef<boolean>(false)
+  useEffect(() => {
+    if (composerVisibleRef.current) return
+    if (!roomId) return
+    composerVisibleRef.current = true
+    if (import.meta.env.DEV) {
+      try {
+        // eslint-disable-next-line no-console
+        console.log('[ChatWindow] composer visible', { roomId })
+      } catch {}
+    }
+  }, [roomId])
+
   function checkIfAtBottom(): void {
     const container = scrollContainerRef.current
     if (!container) return
@@ -828,7 +841,7 @@ export default function ChatWindow({ roomId, showIdentityGate, mode = 'workspace
         </div>
       )}
 
-      <div className="border-t border-slate-200 bg-white p-3 sm:p-4">
+      <div data-testid="chat-composer" className="shrink-0 border-t border-slate-200 bg-white p-3 sm:p-4">
         {sendError && <div className="mb-2 text-sm text-red-600">{sendError}</div>}
 
         {selectedPhoto && (
