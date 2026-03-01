@@ -57,18 +57,34 @@ export default function ChatPage() {
         <div className="text-xs font-medium text-slate-500">Messages</div>
       </div>
 
-      <div className="relative grid min-h-0 flex-1 overflow-hidden grid-cols-1 lg:grid-cols-[minmax(320px,420px)_minmax(0,1fr)]">
-        <ChatSidebar
-          selectedRoomId={roomId}
-          onSelectRoom={onSelectRoom}
-          showIdentityGate={isJoiningRoom}
-        />
-        <ChatWindow
-          key={user?.id ?? 'anon'}
-          roomId={roomId}
-          showIdentityGate={isJoiningRoom}
-          mode="workspace"
-        />
+      <div className="relative min-h-0 flex-1 overflow-hidden">
+        {/* Sidebar: hidden on small screens when a room is open; visible on lg+ always */}
+        <div className={roomId ? 'hidden lg:block' : 'block lg:block'}>
+          <ChatSidebar
+            selectedRoomId={roomId}
+            onSelectRoom={onSelectRoom}
+            showIdentityGate={isJoiningRoom}
+          />
+        </div>
+
+        {/* ChatWindow: workspace on lg+; on small screens show conversation only when roomId present */}
+        <div className="hidden lg:block">
+          <ChatWindow
+            key={user?.id ?? 'anon'}
+            roomId={roomId}
+            showIdentityGate={isJoiningRoom}
+            mode="workspace"
+          />
+        </div>
+
+        <div className={roomId ? 'block lg:hidden' : 'hidden'}>
+          <ChatWindow
+            key={`conv-${user?.id ?? 'anon'}`}
+            roomId={roomId}
+            showIdentityGate={isJoiningRoom}
+            mode="conversation"
+          />
+        </div>
       </div>
     </div>
   )

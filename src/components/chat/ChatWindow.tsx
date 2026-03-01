@@ -686,11 +686,7 @@ export default function ChatWindow({ roomId, showIdentityGate, mode = 'workspace
 
   if (!roomId) {
     return (
-      <div
-        className={`grid h-full min-h-0 grid-cols-1 ${
-          isConversationMode ? '' : 'md:grid-cols-[minmax(0,1fr)_minmax(0,420px)]'
-        }`}
-      >
+      <div className="h-full min-h-0">
         <section
           className="flex flex-col h-full min-h-0 border-r border-slate-200"
           aria-label="Chat window"
@@ -705,14 +701,6 @@ export default function ChatWindow({ roomId, showIdentityGate, mode = 'workspace
             </div>
           </div>
         </section>
-
-        {!isConversationMode && (
-          <section className="relative h-full min-h-0" aria-label="Dashboard widgets">
-            <div className="h-full flex items-center justify-center text-sm text-slate-500">
-              Pick a room to see planning widgets.
-            </div>
-          </section>
-        )}
       </div>
     )
   }
