@@ -25,9 +25,9 @@ async function verifyDbSsl() {
   // Load knexfile configuration
   let knexConfig;
   try {
-    knexConfig = require('../knexfile.js');
+    knexConfig = require('../knexfile.ts');
   } catch (error) {
-    console.error('✗ Failed to load knexfile.js:', error.message);
+    console.error('✗ Failed to load knexfile.ts:', error.message);
     process.exit(1);
   }
 

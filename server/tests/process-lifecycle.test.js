@@ -125,8 +125,8 @@ describe('Process Lifecycle - Uncaught Exception Handling', () => {
     expect(serverCode).toMatch(/registerProcessHandlers\s*\(/);
   });
 
-  test('bootstrap/registerProcessHandlers.js should have proper uncaughtException handler', () => {
-    const handlerPath = path.join(__dirname, '..', 'bootstrap', 'registerProcessHandlers.js');
+  test('bootstrap/registerProcessHandlers.ts should have proper uncaughtException handler', () => {
+    const handlerPath = path.join(__dirname, '..', 'bootstrap', 'registerProcessHandlers.ts');
     const handlerCode = fs.readFileSync(handlerPath, 'utf-8');
 
     // Should have an uncaughtException handler

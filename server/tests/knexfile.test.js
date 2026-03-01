@@ -1,5 +1,5 @@
 /**
- * Unit tests for knexfile.js SSL configuration
+ * Unit tests for knexfile.ts SSL configuration
  * Verifies strict SSL enforcement in production and flexibility in development
  */
 
@@ -44,12 +44,12 @@ const loadKnexfile = () => {
   jest.resetModules();
   let loaded = null;
   jest.isolateModules(() => {
-    loaded = require('../knexfile.js');
+    loaded = require('../knexfile.ts');
   });
   return loaded;
 };
 
-describe('knexfile.js SSL configuration', () => {
+describe('knexfile.ts SSL configuration', () => {
   let envSnapshot;
 
   beforeEach(() => {
@@ -136,7 +136,7 @@ describe('knexfile.js SSL configuration', () => {
       let loadError = null;
       jest.isolateModules(() => {
         try {
-          require('../knexfile.js');
+          require('../knexfile.ts');
         } catch (e) {
           loadError = e;
         }
@@ -175,7 +175,7 @@ describe('knexfile.js SSL configuration', () => {
       let loadError = null;
       jest.isolateModules(() => {
         try {
-          require('../knexfile.js');
+          require('../knexfile.ts');
         } catch (e) {
           loadError = e;
         }

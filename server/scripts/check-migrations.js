@@ -38,7 +38,7 @@ async function verifyMigrations(retryAttempt = 0) {
 
   const knexfile = require('../knexfile');
   
-  // Keep environment selection aligned with server/db/index.js.
+  // Keep environment selection aligned with server/db/index.ts.
   // Earlier auto-detection promoted some development runs to 'production'
   // when SUPABASE_DB_URL was present, which caused SSL configuration mismatches.
   // Respect NODE_ENV directly to preserve parity with the runtime server path.
@@ -48,7 +48,7 @@ async function verifyMigrations(retryAttempt = 0) {
   if (isTestRuntime) {
     env = 'test';
   } else {
-    // Match db/index.js: use NODE_ENV directly, defaulting to 'development'
+    // Match db/index.ts: use NODE_ENV directly, defaulting to 'development'
     env = process.env.NODE_ENV || 'development';
   }
 
@@ -68,7 +68,7 @@ async function verifyMigrations(retryAttempt = 0) {
     }
   }
 
-  // Handle SSL configuration for PostgreSQL - match db/index.js behavior exactly
+  // Handle SSL configuration for PostgreSQL - match db/index.ts behavior exactly
   // This ensures the migration script connects the same way the server does.
   if (cfg.client === 'pg') {
     const envIsDev = env === 'development' || process.env.NODE_ENV === 'development';
@@ -203,7 +203,7 @@ function diagnoseConnectionError(err) {
     lines.push(`  💡 Check firewall rules and network connectivity`);
   } else if (err.message?.includes('SSL') || err.message?.includes('certificate')) {
     lines.push(`  ❌ SSL/TLS error: ${err.message}`);
-    lines.push(`  💡 Check SSL configuration in knexfile.js`);
+    lines.push(`  💡 Check SSL configuration in knexfile.ts`);
   } else if (err.message?.includes('password') || err.message?.includes('authentication')) {
     lines.push(`  ❌ Authentication failed: ${err.message}`);
     lines.push(`  💡 Check database credentials in .env`);

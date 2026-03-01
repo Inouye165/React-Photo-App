@@ -8,10 +8,10 @@
  * relaxed SSL for local Docker containers.
  * 
  * What we're testing:
- * 1. knexfile.js production config has strict SSL (rejectUnauthorized: true)
+ * 1. knexfile.ts production config has strict SSL (rejectUnauthorized: true)
  * 2. Production config includes CA certificate
  * 3. Development/test configs allow self-signed certs (for local Docker)
- * 4. db/index.js properly handles SSL configuration
+ * 4. db/index.ts properly handles SSL configuration
  */
 
 const knexfile = require('../knexfile');
@@ -19,7 +19,7 @@ const knex = require('knex');
 
 describe('Supabase SSL Configuration (Regression Test)', () => {
   
-  describe('knexfile.js production config', () => {
+  describe('knexfile.ts production config', () => {
     
     test('production config exists', () => {
       expect(knexfile.production).toBeDefined();
@@ -74,7 +74,7 @@ describe('Supabase SSL Configuration (Regression Test)', () => {
     });
   });
 
-  describe('db/index.js SSL handling', () => {
+  describe('db/index.ts SSL handling', () => {
     
     test('can create knex instance with production config without throwing', () => {
       const cfg = { ...knexfile.production };

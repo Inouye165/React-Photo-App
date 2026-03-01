@@ -93,11 +93,11 @@ describe('Server listening behavior', () => {
     // This ensures the pattern remains in place
   });
 
-  test('PostgreSQL configuration should be required in db/index.js', () => {
-    // Verify that db/index.js requires DATABASE_URL or SUPABASE_DB_URL
+  test('PostgreSQL configuration should be required in db/index.ts', () => {
+    // Verify that db/index.ts requires DATABASE_URL or SUPABASE_DB_URL
     const fs = require('fs');
     const path = require('path');
-    const dbCode = fs.readFileSync(path.join(__dirname, '../db/index.js'), 'utf-8');
+    const dbCode = fs.readFileSync(path.join(__dirname, '../db/index.ts'), 'utf-8');
     
     // Should validate that DATABASE_URL or SUPABASE_DB_URL is present
     expect(dbCode).toMatch(/DATABASE_URL.*SUPABASE_DB_URL/);
@@ -105,10 +105,10 @@ describe('Server listening behavior', () => {
   });
 
   test('knexfile should use PostgreSQL for all environments', () => {
-    // Verify that knexfile.js uses PostgreSQL config for all environments
+    // Verify that knexfile.ts uses PostgreSQL config for all environments
     const fs = require('fs');
     const path = require('path');
-    const knexfileCode = fs.readFileSync(path.join(__dirname, '../knexfile.js'), 'utf-8');
+    const knexfileCode = fs.readFileSync(path.join(__dirname, '../knexfile.ts'), 'utf-8');
     
     // Should define PostgreSQL config factory for all environments
     expect(knexfileCode).toMatch(/client:\s*['"]pg['"]/);

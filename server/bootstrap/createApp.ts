@@ -57,3 +57,4 @@ function createApp(options: CreateAppOptions = {}) {
 module.exports = {
   createApp,
 };
+export {};

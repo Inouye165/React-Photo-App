@@ -1,4 +1,4 @@
-const db = require('knex')(require('./knexfile.js').development);
+const db = require('knex')(require('./knexfile.ts').development);
 const { downloadFromStorage } = require('./media/backgroundProcessor');
 const exifr = require('exifr');
 
