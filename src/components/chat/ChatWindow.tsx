@@ -10,6 +10,7 @@ import {
   Settings,
   Users,
   X,
+  Info,
 } from 'lucide-react'
 
 import { API_BASE_URL, getAccessToken, getPhotos, patchChatRoom, sendMessage, leaveOrDeleteRoom } from '../../api'
@@ -25,6 +26,7 @@ import AuthenticatedImage from '../AuthenticatedImage'
 import ChatBubble from './ChatBubble'
 import ChatMembersModal from './ChatMembersModal'
 import ChatSettingsModal from './ChatSettingsModal'
+import ChatRoomInfoPanel from './ChatRoomInfoPanel'
 import PotluckWidget from './widgets/PotluckWidget'
 import LocationMapPanel from '../LocationMapPanel'
 import { IdentityGateInline, useIdentityGateStatus } from '../IdentityGate'
@@ -115,6 +117,7 @@ export default function ChatWindow({ roomId, showIdentityGate, mode = 'workspace
   const [createdBy, setCreatedBy] = useState<string | null>(null)
   const [isSettingsOpen, setIsSettingsOpen] = useState<boolean>(false)
   const [isMembersOpen, setIsMembersOpen] = useState<boolean>(false)
+  const [isRoomInfoOpen, setIsRoomInfoOpen] = useState<boolean>(false)
   const navigate = useNavigate()
 
   // Typing indicator hook (best-effort; no UI crash if Realtime unavailable)
@@ -409,6 +412,11 @@ export default function ChatWindow({ roomId, showIdentityGate, mode = 'workspace
     setIsAtBottom(true)
     setIsMembersOpen(false)
     prevMessageCountRef.current = 0
+  }, [roomId])
+
+  useEffect(() => {
+    // Close room info when switching rooms
+    setIsRoomInfoOpen(false)
   }, [roomId])
 
   useEffect(() => {
@@ -801,6 +809,14 @@ export default function ChatWindow({ roomId, showIdentityGate, mode = 'workspace
                 <Users className="h-4 w-4" />
               </button>
             )}
+            <button
+              type="button"
+              onClick={() => setIsRoomInfoOpen((v) => !v)}
+              className="inline-flex items-center justify-center h-9 w-9 rounded-xl text-slate-600 hover:bg-slate-100"
+              aria-label="Room info"
+            >
+              <Info className="h-4 w-4" />
+            </button>
             {canEditSettings && (
               <button
                 type="button"
@@ -1081,6 +1097,16 @@ export default function ChatWindow({ roomId, showIdentityGate, mode = 'workspace
           }}
         />
       )}
+      <ChatRoomInfoPanel
+        isOpen={isRoomInfoOpen}
+        onClose={() => setIsRoomInfoOpen(false)}
+        roomId={roomId}
+        title="Room info"
+        members={membersForModal}
+        roomType={roomType}
+        metadata={roomMetadata}
+        createdBy={createdBy}
+      />
     </section>
   )
 
