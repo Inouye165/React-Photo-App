@@ -128,6 +128,7 @@ export default function ChatWindow({ roomId, showIdentityGate, mode = 'workspace
     })),
   })
 
+  
   const bottomRef = useRef<HTMLDivElement | null>(null)
   const scrollContainerRef = useRef<HTMLDivElement | null>(null)
   const prevMessageCountRef = useRef<number>(0)
@@ -483,6 +484,21 @@ export default function ChatWindow({ roomId, showIdentityGate, mode = 'workspace
 
   const canSend = Boolean(roomId && user?.id && memberRosterLoaded && memberIds.includes(user.id)) && !sending
 
+  const composerMountedRef = useRef<boolean>(false)
+
+  useEffect(() => {
+    if (composerMountedRef.current) return
+    if (!roomId) return
+    composerMountedRef.current = true
+    if (import.meta.env.DEV) {
+      // DEV-only mount log for composer
+      try {
+        // eslint-disable-next-line no-console
+        console.log('[ChatWindow] composer mounted', { roomId, canSend })
+      } catch {}
+    }
+  }, [roomId, canSend])
+
   function checkIfAtBottom(): void {
     const container = scrollContainerRef.current
     if (!container) return
@@ -795,9 +811,7 @@ export default function ChatWindow({ roomId, showIdentityGate, mode = 'workspace
         })}
 
         <div ref={bottomRef} />
-        {memberRosterLoaded && user?.id && !memberIds.includes(user.id) && (
-          <div className="text-sm text-red-600">You are not a member of this room.</div>
-        )}
+        {memberRosterLoaded && user?.id && !memberIds.includes(user.id) && <div ref={bottomRef} />}
       </div>
 
       {unseenCount > 0 && (
@@ -924,6 +938,10 @@ export default function ChatWindow({ roomId, showIdentityGate, mode = 'workspace
               )}
             </div>
           </div>
+        )}
+
+        {memberRosterLoaded && user?.id && !memberIds.includes(user.id) && (
+          <div className="mb-2 text-sm text-red-600">You can't send messages in this room</div>
         )}
 
         <form
