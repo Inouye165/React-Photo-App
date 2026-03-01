@@ -57,9 +57,9 @@ export default function ChatPage() {
         <div className="text-xs font-medium text-slate-500">Messages</div>
       </div>
 
-      <div className="relative min-h-0 flex-1 overflow-hidden">
+      <div className="relative min-h-0 flex-1 overflow-hidden lg:grid lg:grid-cols-[320px_minmax(0,1fr)]">
         {/* Sidebar: hidden on small screens when a room is open; visible on lg+ always */}
-        <div className={roomId ? 'hidden lg:block' : 'block lg:block'}>
+        <div className={roomId ? 'hidden lg:block h-full min-h-0' : 'block lg:block h-full min-h-0'}>
           <ChatSidebar
             selectedRoomId={roomId}
             onSelectRoom={onSelectRoom}
@@ -68,7 +68,7 @@ export default function ChatPage() {
         </div>
 
         {/* ChatWindow: workspace on lg+; on small screens show conversation only when roomId present */}
-        <div className="hidden lg:block">
+        <div className="hidden lg:block h-full min-h-0">
           <ChatWindow
             key={user?.id ?? 'anon'}
             roomId={roomId}
@@ -77,7 +77,7 @@ export default function ChatPage() {
           />
         </div>
 
-        <div className={roomId ? 'block lg:hidden' : 'hidden'}>
+        <div className={roomId ? 'block lg:hidden h-full min-h-0' : 'hidden'}>
           <ChatWindow
             key={`conv-${user?.id ?? 'anon'}`}
             roomId={roomId}
