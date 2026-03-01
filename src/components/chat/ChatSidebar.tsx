@@ -1,13 +1,12 @@
 import { useEffect, useMemo, useRef, useState } from 'react'
 
-import { ChevronsLeft, ChevronsRight, SquarePen, X } from 'lucide-react'
+import { SquarePen, X } from 'lucide-react'
 
 import { createGroupRoom, fetchRooms, getOrCreateRoom, searchUsers, type UserSearchResult } from '../../api'
 import { supabase } from '../../supabaseClient'
 import type { ChatRoom } from '../../types/chat'
 import { useAuth } from '../../contexts/AuthContext'
 import { usePresence } from '../../hooks/usePresence'
-import ChatWindow from './ChatWindow'
 
 export interface ChatSidebarProps {
   selectedRoomId: string | null
@@ -34,14 +33,11 @@ function formatRoomTitle(room: ChatRoom, otherUsername: string | null): string {
   return 'Group chat'
 }
 
-export default function ChatSidebar({
-  selectedRoomId,
-  onSelectRoom,
-  showIdentityGate = false,
-}: ChatSidebarProps) {
+export default function ChatSidebar(props: ChatSidebarProps) {
+  const { selectedRoomId, onSelectRoom } = props
   const { user } = useAuth()
   const { isUserOnline } = usePresence(user?.id)
-  const [viewMode, setViewMode] = useState<'list' | 'chat'>(selectedRoomId ? 'chat' : 'list')
+  
 
   const [roomState, setRoomState] = useState<RoomListState>({ status: 'loading' })
   const [roomToOtherUsername, setRoomToOtherUsername] = useState<Record<string, string | null>>({})
@@ -58,11 +54,7 @@ export default function ChatSidebar({
   const [creatingRoom, setCreatingRoom] = useState<boolean>(false)
   const searchInputRef = useRef<HTMLInputElement | null>(null)
 
-  useEffect(() => {
-    if (!selectedRoomId) {
-      setViewMode('list')
-    }
-  }, [selectedRoomId])
+  
 
   useEffect(() => {
     let cancelled = false
@@ -322,7 +314,6 @@ export default function ChatSidebar({
       setUserSearchError(null)
       const room = await createGroupRoom(groupName, selectedUsers.map((u) => u.id))
       onSelectRoom(room.id)
-      setViewMode('chat')
       setIsDiscoveryOpen(false)
     } catch (err) {
       const message = err instanceof Error ? err.message : String(err)
@@ -339,7 +330,6 @@ export default function ChatSidebar({
 
   const handleSelectRoom = (roomId: string) => {
     onSelectRoom(roomId)
-    setViewMode('chat')
   }
 
   return (
@@ -350,67 +340,36 @@ export default function ChatSidebar({
       <div className="border-b border-slate-200 p-4">
         <div className="flex items-center gap-3 justify-between">
           <div className="flex items-center gap-3">
-            <button
-              type="button"
-              onClick={() => setViewMode('list')}
-              className={`shrink-0 inline-flex items-center justify-center h-8 w-8 rounded-lg text-slate-600 hover:bg-slate-100 ${
-                viewMode === 'list' ? 'bg-slate-100' : ''
-              }`}
-              aria-label="Show chat list"
-              aria-pressed={viewMode === 'list'}
-            >
-              <ChevronsLeft className="h-4 w-4" />
-            </button>
-            <button
-              type="button"
-              onClick={() => setViewMode('chat')}
-              className={`shrink-0 inline-flex items-center justify-center h-8 w-8 rounded-lg text-slate-600 hover:bg-slate-100 ${
-                viewMode === 'chat' ? 'bg-slate-100' : ''
-              }`}
-              aria-label="Open chat"
-              aria-pressed={viewMode === 'chat'}
-            >
-              <ChevronsRight className="h-4 w-4" />
-            </button>
             <div className="min-w-0">
-              <h2 className="text-sm font-semibold text-slate-900">
-                {viewMode === 'chat' ? 'Conversation' : 'Chats'}
-              </h2>
-              <p className="mt-1 text-xs text-slate-500">
-                {viewMode === 'chat' ? 'Message thread' : 'Your recent conversations'}
-              </p>
+              <h2 className="text-sm font-semibold text-slate-900">Chats</h2>
+              <p className="mt-1 text-xs text-slate-500">Your recent conversations</p>
             </div>
           </div>
 
-          {viewMode === 'list' && (
-            <button
-              type="button"
-              onClick={() => setIsDiscoveryOpen(true)}
-              className="shrink-0 rounded-xl border border-slate-200 bg-white p-2 text-slate-700 hover:bg-slate-50"
-              aria-label="New message"
-              data-testid="chat-new-message"
-            >
-              <SquarePen className="h-4 w-4" />
-            </button>
-          )}
+          <button
+            type="button"
+            onClick={() => setIsDiscoveryOpen(true)}
+            className="shrink-0 rounded-xl border border-slate-200 bg-white p-2 text-slate-700 hover:bg-slate-50"
+            aria-label="New message"
+            data-testid="chat-new-message"
+          >
+            <SquarePen className="h-4 w-4" />
+          </button>
         </div>
 
-        {viewMode === 'list' && (
-          <div className="mt-3">
-            <input
-              type="search"
-              value={searchText}
-              onChange={(e) => setSearchText(e.target.value)}
-              placeholder="Search"
-              aria-label="Search chats"
-              className="w-full rounded-xl border border-slate-200 bg-white px-3 py-2 text-sm text-slate-900 placeholder:text-slate-400 focus:outline-none focus:ring-2 focus:ring-slate-900/10"
-            />
-          </div>
-        )}
+        <div className="mt-3">
+          <input
+            type="search"
+            value={searchText}
+            onChange={(e) => setSearchText(e.target.value)}
+            placeholder="Search"
+            aria-label="Search chats"
+            className="w-full rounded-xl border border-slate-200 bg-white px-3 py-2 text-sm text-slate-900 placeholder:text-slate-400 focus:outline-none focus:ring-2 focus:ring-slate-900/10"
+          />
+        </div>
       </div>
 
-      {viewMode === 'list' && (
-        <div className="p-2 flex-1 min-h-0 overflow-auto">
+      <div className="p-2 flex-1 min-h-0 overflow-auto">
         {roomState.status === 'loading' && (
           <div className="p-3 text-sm text-slate-500">Loading conversations…</div>
         )}
@@ -475,14 +434,8 @@ export default function ChatSidebar({
             })}
           </ul>
         )}
-        </div>
-      )}
 
-      {viewMode === 'chat' && (
-        <div className="flex-1 min-h-0 overflow-hidden">
-          <ChatWindow roomId={selectedRoomId} showIdentityGate={showIdentityGate} mode="conversation" />
         </div>
-      )}
 
       {isDiscoveryOpen && (
         <div
