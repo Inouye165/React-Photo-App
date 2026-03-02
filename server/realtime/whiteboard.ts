@@ -762,20 +762,31 @@ export function createWhiteboardYjsServer({
     const boardId = parsed.data;
 
     const wsTokenRaw = url.searchParams.get('ws_token') || '';
+    const tokenParamRaw = url.searchParams.get('token') || url.searchParams.get('access_token') || '';
     const wsToken = wsTokenRaw.trim();
+    const tokenParam = tokenParamRaw.trim();
     let auth: { ok: boolean; status?: number; error?: string; userId?: string } | null = null;
 
     if (wsToken) {
+      // Prefer explicit ws_token query param (ticket issued by /ws-token endpoint)
       const consumed = consumeWhiteboardWsToken({ token: wsToken, boardId });
       if (consumed.ok) {
         auth = { ok: true, userId: consumed.userId };
       } else {
         auth = { ok: false, status: 401, error: 'Unauthorized' };
       }
+    } else if (tokenParam) {
+      // Backwards-compat: clients may include the ws ticket in the `token` param.
+      // Try to consume it as a ws ticket first; if that fails, fall back to bearer auth.
+      const consumed = consumeWhiteboardWsToken({ token: tokenParam, boardId });
+      if (consumed.ok) {
+        auth = { ok: true, userId: consumed.userId };
+      } else {
+        auth = await authenticateUpgrade(req, tokenParam);
+      }
     } else {
-      const tokenRaw = url.searchParams.get('token') || url.searchParams.get('access_token') || '';
-      const token = tokenRaw.trim();
-      auth = await authenticateUpgrade(req, token);
+      // No token provided; will be handled by authenticateUpgrade (which will 401)
+      auth = await authenticateUpgrade(req, '');
     }
 
     if (!auth.ok || !auth.userId) {
