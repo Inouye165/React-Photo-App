@@ -1,29 +1,3 @@
-const path = require('path');
-
-// Minimal JS build of knexfile.ts for CI/tests that expect a compiled output
-// This file provides sane defaults for development/test/production and avoids
-// requiring TypeScript tooling during test runs.
-const migrationsDir = path.join(__dirname, '..', 'db', 'migrations');
-
-module.exports = {
-  development: {
-    client: 'pg',
-    connection: process.env.SUPABASE_DB_URL || process.env.DATABASE_URL || null,
-    migrations: { directory: migrationsDir }
-  },
-  test: {
-    // Tests mock this config in many CI runs; provide an in-memory sqlite
-    // default to keep verification lightweight when not overridden by tests.
-    client: 'sqlite3',
-    connection: { filename: ':memory:' },
-    migrations: { directory: process.env.TEST_MIGRATIONS_DIR || migrationsDir }
-  },
-  production: {
-    client: 'pg',
-    connection: process.env.SUPABASE_DB_URL || process.env.DATABASE_URL || null,
-    migrations: { directory: migrationsDir }
-  }
-};
 // @ts-nocheck
 // server/knexfile.ts
 require('./env');

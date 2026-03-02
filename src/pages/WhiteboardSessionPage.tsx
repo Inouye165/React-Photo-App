@@ -70,7 +70,13 @@ export default function WhiteboardSessionPage(): React.JSX.Element {
       </div>
 
       <div className="h-[calc(100dvh-56px)]">
-        <WhiteboardPad boardId={boardId} className="h-full" />
+        <WhiteboardPad
+          boardId={boardId}
+          className="h-full"
+          onAccessDenied={() => {
+            setAccessState('denied')
+          }}
+        />
       </div>
     </div>
   )

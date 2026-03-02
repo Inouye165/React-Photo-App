@@ -6,6 +6,7 @@ import { promisify } from 'util';
 import { z } from 'zod';
 import { validateRequest } from '../validation/validateRequest';
 import { createWhiteboardWsToken } from '../realtime/whiteboardWsTokens';
+const supabase = require('../lib/supabaseClient');
 
 const gzipAsync = promisify(gzip);
 const BOARD_ID_MAX_LENGTH = 64;
@@ -56,7 +57,36 @@ function normalizeNumber(value: number | string): number | null {
 
 async function isMember(db: Knex, boardId: string, userId: string): Promise<boolean> {
   const row = await db('room_members').where({ room_id: boardId, user_id: userId }).first();
-  return Boolean(row);
+  if (row) return true;
+
+  if (process.env.NODE_ENV === 'test') return false;
+
+  try {
+    const { data, error } = await supabase
+      .from('room_members')
+      .select('room_id')
+      .eq('room_id', boardId)
+      .eq('user_id', userId)
+      .maybeSingle();
+
+    if (error) {
+      console.warn('[WB-HTTP] membership-fallback query failed', {
+        boardId,
+        userId,
+        code: error.code,
+        message: error.message,
+      });
+      return false;
+    }
+
+    const matched = Boolean(data?.room_id);
+    if (matched) {
+      console.log('[WB-HTTP] membership-fallback matched', { boardId, userId });
+    }
+    return matched;
+  } catch {
+    return false;
+  }
 }
 
 async function fetchHistory(db: Knex, boardId: string): Promise<{ events: WhiteboardEventRow[]; cursor: HistoryCursor }> {

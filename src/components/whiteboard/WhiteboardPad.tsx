@@ -7,6 +7,7 @@ type BackgroundFitMode = 'width' | 'contain'
 type WhiteboardPadProps = {
   boardId: string
   className?: string
+  onAccessDenied?: () => void
   onViewModeChange?: (enabled: boolean) => void
   onBackgroundFitModeChange?: (mode: BackgroundFitMode) => void
   onHasBackgroundChange?: (hasBackground: boolean) => void
@@ -18,6 +19,7 @@ const WhiteboardPad = forwardRef<WhiteboardCanvasHandle, WhiteboardPadProps>(
     {
       boardId,
       className,
+      onAccessDenied,
       onViewModeChange,
       onBackgroundFitModeChange,
       onHasBackgroundChange,
@@ -46,6 +48,7 @@ const WhiteboardPad = forwardRef<WhiteboardCanvasHandle, WhiteboardPadProps>(
             token={token}
             mode="pad"
             className="h-full"
+            onAccessDenied={onAccessDenied}
             onViewModeChange={(enabled) => {
               onViewModeChange?.(enabled)
             }}

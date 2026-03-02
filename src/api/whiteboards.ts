@@ -2,6 +2,18 @@ import { supabase } from '../supabaseClient'
 import type { ChatRoom } from '../types/chat'
 import { fetchRooms } from './chat'
 
+const whiteboardMembershipLogOnce = new Set<string>()
+
+function wbMembershipLogOnce(level: 'info' | 'warn', key: string, message: string, details: Record<string, unknown>) {
+  if (whiteboardMembershipLogOnce.has(key)) return
+  whiteboardMembershipLogOnce.add(key)
+  if (level === 'warn') {
+    console.warn(message, details)
+    return
+  }
+  console.info(message, details)
+}
+
 export type EnsureWhiteboardMembershipResult = {
   ok: true
 } | {
@@ -89,7 +101,7 @@ export async function ensureWhiteboardMembership(boardId: string): Promise<Ensur
     return { ok: false, reason: 'unknown' }
   }
 
-  console.info('[WB-CLIENT] membership-check:start', { boardId, userId })
+  wbMembershipLogOnce('info', `membership-check:start:${boardId}:${userId}`, '[WB-CLIENT] membership-check:start', { boardId, userId })
 
   const { data: existing, error: existingError } = await supabase
     .from('room_members')
@@ -99,7 +111,7 @@ export async function ensureWhiteboardMembership(boardId: string): Promise<Ensur
     .maybeSingle()
 
   if (existingError) {
-    console.warn('[WB-CLIENT] membership-check:query-failed', {
+    wbMembershipLogOnce('warn', `membership-check:query-failed:${boardId}:${userId}:${existingError.code ?? 'unknown'}`, '[WB-CLIENT] membership-check:query-failed', {
       boardId,
       userId,
       code: existingError.code,
@@ -109,21 +121,21 @@ export async function ensureWhiteboardMembership(boardId: string): Promise<Ensur
   }
 
   if (existing?.room_id) {
-    console.info('[WB-CLIENT] membership-check:exists', { boardId, userId })
+    wbMembershipLogOnce('info', `membership-check:exists:${boardId}:${userId}`, '[WB-CLIENT] membership-check:exists', { boardId, userId })
     return { ok: true }
   }
 
-  console.info('[WB-CLIENT] membership-insert:attempt', { boardId, userId, isOwner: true })
+  wbMembershipLogOnce('info', `membership-insert:attempt:${boardId}:${userId}:owner`, '[WB-CLIENT] membership-insert:attempt', { boardId, userId, isOwner: true })
   const { error: ownerInsertError } = await supabase
     .from('room_members')
     .insert({ room_id: boardId, user_id: userId, is_owner: true })
 
   if (!ownerInsertError || isUniqueViolation(ownerInsertError)) {
-    console.info('[WB-CLIENT] membership-insert:success', { boardId, userId, isOwner: true })
+    wbMembershipLogOnce('info', `membership-insert:success:${boardId}:${userId}:owner`, '[WB-CLIENT] membership-insert:success', { boardId, userId, isOwner: true })
     return { ok: true }
   }
 
-  console.warn('[WB-CLIENT] membership-insert-failed', {
+  wbMembershipLogOnce('warn', `membership-insert-failed:${boardId}:${userId}:owner:${ownerInsertError.code ?? 'unknown'}`, '[WB-CLIENT] membership-insert-failed', {
     boardId,
     userId,
     isOwner: true,
@@ -131,17 +143,17 @@ export async function ensureWhiteboardMembership(boardId: string): Promise<Ensur
     message: ownerInsertError.message,
   })
 
-  console.info('[WB-CLIENT] membership-insert:retry', { boardId, userId, isOwner: false })
+  wbMembershipLogOnce('info', `membership-insert:retry:${boardId}:${userId}:member`, '[WB-CLIENT] membership-insert:retry', { boardId, userId, isOwner: false })
   const { error: memberInsertError } = await supabase
     .from('room_members')
     .insert({ room_id: boardId, user_id: userId, is_owner: false })
 
   if (!memberInsertError || isUniqueViolation(memberInsertError)) {
-    console.info('[WB-CLIENT] membership-insert:success', { boardId, userId, isOwner: false })
+    wbMembershipLogOnce('info', `membership-insert:success:${boardId}:${userId}:member`, '[WB-CLIENT] membership-insert:success', { boardId, userId, isOwner: false })
     return { ok: true }
   }
 
-  console.warn('[WB-CLIENT] membership-insert-failed', {
+  wbMembershipLogOnce('warn', `membership-insert-failed:${boardId}:${userId}:member:${memberInsertError.code ?? 'unknown'}`, '[WB-CLIENT] membership-insert-failed', {
     boardId,
     userId,
     isOwner: false,
