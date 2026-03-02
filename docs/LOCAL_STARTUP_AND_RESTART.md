@@ -55,6 +55,17 @@ Expected: Frontend at http://localhost:5173/
 
 ## Startup Robustness Log
 
+- **2026-03-02 13:17:03 -08:00 (Windows, host: RONS-COMPUTER, monitored startup validation)**
+  - Process used: `npm run start:local` from repo root (one-command startup path).
+  - Startup behavior observed:
+    1. Script completed full preflight sequence (Docker/Supabase readiness, dependency install, server build, migration verify/apply).
+    2. API, worker, and frontend terminals were launched automatically.
+    3. 45-second monitoring window passed with no detected stuck/error signals.
+  - Verification results:
+    - `http://127.0.0.1:3001/health` returned HTTP `200`.
+    - `http://localhost:5173/` returned HTTP `200`.
+  - Outcome: startup passed successfully.
+
 - **2026-03-02 07:00:54 -08:00 (Windows, host: Rons-Computer, monitored startup validation)**
   - Process used: `npm run start:local` from repo root (README robust one-command startup).
   - Startup behavior observed:

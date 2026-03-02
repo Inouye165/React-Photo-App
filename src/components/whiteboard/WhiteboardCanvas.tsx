@@ -696,6 +696,7 @@ type ExcalidrawWhiteboardCanvasProps = {
   token: string | null
   mode: 'viewer' | 'pad'
   className?: string
+  onAccessDenied?: () => void
   onViewModeChange?: (enabled: boolean) => void
   onBackgroundFitModeChange?: (mode: BackgroundFitMode) => void
   onHasBackgroundChange?: (hasBackground: boolean) => void
@@ -899,6 +900,7 @@ const WhiteboardCanvas = forwardRef<WhiteboardCanvasHandle, ExcalidrawWhiteboard
       token,
       mode,
       className,
+      onAccessDenied,
       onViewModeChange,
       onBackgroundFitModeChange,
       onHasBackgroundChange,
@@ -2019,17 +2021,38 @@ const WhiteboardCanvas = forwardRef<WhiteboardCanvasHandle, ExcalidrawWhiteboard
         const ticket = await fetchWhiteboardWsToken({ boardId, token, signal: controller.signal })
         startProvider(ticket.token)
       } catch (error) {
+        const errorName = error instanceof Error ? error.name : ''
+        const errorMessage = error instanceof Error ? error.message : String(error)
+        const isAbort = errorName === 'AbortError' || errorMessage.toLowerCase().includes('aborted')
+        if (isAbort || canceled) {
+          return
+        }
+
         if (error instanceof ApiError) {
-          wbClientLogOnce('warn', `provider-ticket-error:${boardId}:${error.status ?? 'unknown'}`, '[WB-CLIENT] ws-ticket fetch failed; starting provider without ws ticket', {
+          wbClientLogOnce('warn', `provider-ticket-error:${boardId}:${error.status ?? 'unknown'}`, '[WB-CLIENT] ws-ticket fetch failed', {
             boardId,
             status: error.status ?? 'unknown',
           })
+
+          if (error.status === 401 || error.status === 403 || error.status === 404) {
+            wbClientLogOnce('warn', `provider-access-denied:${boardId}:${error.status}`, '[WB-CLIENT] whiteboard access denied; skipping websocket connect', {
+              boardId,
+              status: error.status,
+            })
+            setIsSynced(false)
+            onAccessDenied?.()
+            return
+          }
         } else {
-          wbClientLogOnce('warn', `provider-ticket-error:${boardId}:unknown`, '[WB-CLIENT] ws-ticket fetch failed; starting provider without ws ticket', {
+          wbClientLogOnce('warn', `provider-ticket-error:${boardId}:unknown`, '[WB-CLIENT] ws-ticket fetch failed', {
             boardId,
             error: error instanceof Error ? error.message : String(error),
           })
         }
+
+        wbClientLogOnce('warn', `provider-ticket-fallback:${boardId}`, '[WB-CLIENT] starting provider without ws ticket (fallback)', {
+          boardId,
+        })
         startProvider()
       }
     }
@@ -2041,7 +2064,7 @@ const WhiteboardCanvas = forwardRef<WhiteboardCanvasHandle, ExcalidrawWhiteboard
       controller.abort()
       cleanupProvider?.()
     }
-  }, [applySceneFromYjs, boardId, token, updateAwarenessState])
+  }, [applySceneFromYjs, boardId, onAccessDenied, token, updateAwarenessState])
 
   useEffect(() => {
     return () => {

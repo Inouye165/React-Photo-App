@@ -4,6 +4,7 @@ import type { Knex } from 'knex';
 import { WebSocketServer } from 'ws';
 import * as Y from 'yjs';
 import { consumeWhiteboardWsToken } from './whiteboardWsTokens';
+const supabase = require('../lib/supabaseClient');
 
 const BOARD_ID_MAX_LENGTH = 64;
 const STROKE_ID_MAX_LENGTH = 64;
@@ -192,7 +193,35 @@ function shouldRateLimit(state: RateState | undefined, now: number) {
 
 async function isMember(db: WhiteboardDb, boardId: string, userId: string): Promise<boolean> {
   const row = await db('room_members').where({ room_id: boardId, user_id: userId }).first();
-  return Boolean(row);
+  if (row) return true;
+
+  if (process.env.NODE_ENV === 'test') return false;
+
+  try {
+    const { data, error } = await supabase
+      .from('room_members')
+      .select('room_id')
+      .eq('room_id', boardId)
+      .eq('user_id', userId)
+      .maybeSingle();
+
+    if (error) {
+      wbDebugLog('membership:fallback:error', {
+        boardId,
+        userId,
+        code: error.code,
+      });
+      return false;
+    }
+
+    const matched = Boolean(data?.room_id);
+    if (matched) {
+      wbDebugLog('membership:fallback:matched', { boardId, userId });
+    }
+    return matched;
+  } catch {
+    return false;
+  }
 }
 
 
