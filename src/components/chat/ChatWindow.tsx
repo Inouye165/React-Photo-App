@@ -134,6 +134,7 @@ export default function ChatWindow({ roomId, showIdentityGate, mode = 'workspace
   
   const bottomRef = useRef<HTMLDivElement | null>(null)
   const scrollContainerRef = useRef<HTMLDivElement | null>(null)
+  const pickerCloseRef = useRef<HTMLButtonElement | null>(null)
   const prevMessageCountRef = useRef<number>(0)
   
   const [isAtBottom, setIsAtBottom] = useState<boolean>(true)
@@ -498,13 +499,6 @@ export default function ChatWindow({ roomId, showIdentityGate, mode = 'workspace
     if (composerMountedRef.current) return
     if (!roomId) return
     composerMountedRef.current = true
-    if (import.meta.env.DEV) {
-      // DEV-only mount log for composer
-      try {
-        // eslint-disable-next-line no-console
-        console.log('[ChatWindow] composer mounted', { roomId, canSend })
-      } catch {}
-    }
   }, [roomId, canSend])
 
   const composerVisibleRef = useRef<boolean>(false)
@@ -512,13 +506,16 @@ export default function ChatWindow({ roomId, showIdentityGate, mode = 'workspace
     if (composerVisibleRef.current) return
     if (!roomId) return
     composerVisibleRef.current = true
-    if (import.meta.env.DEV) {
+  }, [roomId])
+
+  useEffect(() => {
+    if (pickerOpen) {
+      // Focus the close button in the picker when it opens for keyboard users
       try {
-        // eslint-disable-next-line no-console
-        console.log('[ChatWindow] composer visible', { roomId })
+        pickerCloseRef.current?.focus()
       } catch {}
     }
-  }, [roomId])
+  }, [pickerOpen])
 
   function checkIfAtBottom(): void {
     const container = scrollContainerRef.current
@@ -803,7 +800,7 @@ export default function ChatWindow({ roomId, showIdentityGate, mode = 'workspace
               <button
                 type="button"
                 onClick={() => setIsMembersOpen(true)}
-                className="inline-flex items-center justify-center h-9 w-9 rounded-xl text-slate-600 hover:bg-slate-100"
+                className="inline-flex items-center justify-center h-9 w-9 rounded-xl text-slate-600 hover:bg-slate-100 focus:outline-none focus:ring-2 focus:ring-slate-900/10 transition-colors duration-150"
                 aria-label="Manage members"
               >
                 <Users className="h-4 w-4" />
@@ -812,7 +809,7 @@ export default function ChatWindow({ roomId, showIdentityGate, mode = 'workspace
             <button
               type="button"
               onClick={() => setIsRoomInfoOpen((v) => !v)}
-              className="inline-flex items-center justify-center h-9 w-9 rounded-xl text-slate-600 hover:bg-slate-100"
+              className="inline-flex items-center justify-center h-9 w-9 rounded-xl text-slate-600 hover:bg-slate-100 focus:outline-none focus:ring-2 focus:ring-slate-900/10 transition-colors duration-150"
               aria-label="Room info"
             >
               <Info className="h-4 w-4" />
@@ -821,7 +818,7 @@ export default function ChatWindow({ roomId, showIdentityGate, mode = 'workspace
               <button
                 type="button"
                 onClick={() => setIsSettingsOpen(true)}
-                className="inline-flex items-center justify-center h-9 w-9 rounded-xl text-slate-600 hover:bg-slate-100"
+                className="inline-flex items-center justify-center h-9 w-9 rounded-xl text-slate-600 hover:bg-slate-100 focus:outline-none focus:ring-2 focus:ring-slate-900/10 transition-colors duration-150"
                 aria-label="Chat settings"
               >
                 <Settings className="h-4 w-4" />
@@ -829,7 +826,7 @@ export default function ChatWindow({ roomId, showIdentityGate, mode = 'workspace
             )}
           </div>
         </div>
-        <div className="mt-1 text-xs text-slate-500 truncate" aria-label="Chat members">
+        <div className="mt-1 text-xs text-slate-600 truncate" aria-label="Chat members">
           {memberDisplay.length > 0 ? (
             <span>
               Members:{' '}
@@ -914,7 +911,7 @@ export default function ChatWindow({ roomId, showIdentityGate, mode = 'workspace
             <button
               type="button"
               onClick={() => setSelectedPhotoId(null)}
-              className="inline-flex items-center justify-center rounded-xl p-2 text-slate-600 hover:bg-slate-100"
+              className="inline-flex items-center justify-center rounded-xl p-2 text-slate-600 hover:bg-slate-100 focus:outline-none focus:ring-2 focus:ring-slate-900/10 transition-colors duration-150"
               aria-label="Remove attached photo"
             >
               <X className="h-4 w-4" />
@@ -934,8 +931,9 @@ export default function ChatWindow({ roomId, showIdentityGate, mode = 'workspace
                 <div className="text-sm font-semibold text-slate-900">Select a photo</div>
                 <button
                   type="button"
+                  ref={pickerCloseRef}
                   onClick={() => setPickerOpen(false)}
-                  className="inline-flex items-center justify-center rounded-xl p-2 text-slate-600 hover:bg-slate-100"
+                  className="inline-flex items-center justify-center rounded-xl p-2 text-slate-600 hover:bg-slate-100 focus:outline-none focus:ring-2 focus:ring-slate-900/10 transition-colors duration-150"
                   aria-label="Close photo picker"
                 >
                   <X className="h-4 w-4" />
@@ -984,8 +982,8 @@ export default function ChatWindow({ roomId, showIdentityGate, mode = 'workspace
                         }}
                         className={
                           isSelected
-                            ? 'relative aspect-square w-full rounded-xl border-2 border-slate-900 overflow-hidden'
-                            : 'relative aspect-square w-full rounded-xl border border-slate-200 overflow-hidden hover:border-slate-400'
+                            ? 'relative aspect-square w-full rounded-xl border-2 border-slate-900 overflow-hidden focus:outline-none focus:ring-2 focus:ring-slate-900/10 transition-colors duration-150'
+                            : 'relative aspect-square w-full rounded-xl border border-slate-200 overflow-hidden hover:border-slate-400 focus:outline-none focus:ring-2 focus:ring-slate-900/10 transition-colors duration-150'
                         }
                         aria-label={`Attach photo ${p.id}`}
                       >
@@ -1029,13 +1027,14 @@ export default function ChatWindow({ roomId, showIdentityGate, mode = 'workspace
                 return next
               })
             }}
-            className="inline-flex items-center justify-center h-10 w-10 rounded-2xl bg-slate-100 text-slate-700 hover:bg-slate-200 disabled:bg-slate-200 disabled:text-slate-500 disabled:cursor-not-allowed focus:outline-none focus:ring-2 focus:ring-slate-900/10"
+            className="inline-flex items-center justify-center h-10 w-10 rounded-2xl bg-slate-100 text-slate-700 hover:bg-slate-200 disabled:bg-slate-200 disabled:text-slate-500 disabled:cursor-not-allowed focus:outline-none focus:ring-2 focus:ring-slate-900/10 transition-colors duration-150"
             aria-label="Attach photo"
           >
             <ImageIcon className="h-5 w-5" />
           </button>
           <textarea
             data-testid="chat-composer-input"
+            aria-label="Message input"
             value={draft}
             onChange={(e) => {
               setDraft(e.target.value)
@@ -1053,7 +1052,7 @@ export default function ChatWindow({ roomId, showIdentityGate, mode = 'workspace
             className={
               !canSend || (!draft.trim() && selectedPhotoId == null)
                 ? 'px-4 py-3 rounded-2xl bg-slate-200 text-slate-500 text-sm font-semibold cursor-not-allowed'
-                : 'px-4 py-3 rounded-2xl bg-slate-900 text-white text-sm font-semibold hover:bg-slate-800 focus:outline-none focus:ring-2 focus:ring-slate-900/10'
+                : 'px-4 py-3 rounded-2xl bg-slate-900 text-white text-sm font-semibold hover:bg-slate-800 focus:outline-none focus:ring-2 focus:ring-slate-900/10 transition-colors duration-150'
             }
           >
             {sending ? 'Sending…' : 'Send'}
