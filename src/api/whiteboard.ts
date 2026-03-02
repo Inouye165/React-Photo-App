@@ -1,5 +1,13 @@
-import { request } from './httpClient'
+import { ApiError, request } from './httpClient'
 import type { WhiteboardHistoryResponse, WhiteboardSnapshotResponse } from '../types/whiteboard'
+
+const whiteboardApiLogOnceKeys = new Set<string>()
+
+function wbApiWarnOnce(key: string, message: string, details: Record<string, unknown>) {
+  if (whiteboardApiLogOnceKeys.has(key)) return
+  whiteboardApiLogOnceKeys.add(key)
+  console.warn(message, details)
+}
 
 export async function fetchWhiteboardHistory(options: {
   boardId: string
@@ -50,10 +58,45 @@ export async function fetchWhiteboardWsToken(options: {
     Authorization: `Bearer ${token}`,
   }
 
-  return request<{ token: string; expiresInMs: number }>({
-    path: `/api/whiteboard/${encodeURIComponent(boardId)}/ws-token`,
-    method: 'POST',
-    headers,
-    signal,
-  })
+  const path = `/api/whiteboard/${encodeURIComponent(boardId)}/ws-token`
+
+  try {
+    return await request<{ token: string; expiresInMs: number }>({
+      path,
+      method: 'POST',
+      headers,
+      signal,
+    })
+  } catch (error) {
+    if (error instanceof ApiError) {
+      const details = error.details as { requestId?: unknown; request_id?: unknown } | undefined
+      const requestId =
+        typeof details?.requestId === 'string'
+          ? details.requestId
+          : typeof details?.request_id === 'string'
+            ? details.request_id
+            : undefined
+
+      wbApiWarnOnce(
+        `ws-token-fail:${boardId}:${error.status ?? 'unknown'}`,
+        '[WB-CLIENT] ws-token request failed',
+        {
+          boardId,
+          path,
+          status: error.status ?? 'unknown',
+          requestId: requestId ?? null,
+        },
+      )
+
+      if (error.status === 404) {
+        wbApiWarnOnce(
+          `ws-token-404:${boardId}`,
+          '[WB-CLIENT] ws-token 404. Likely not a member (whiteboard endpoints return 404 for non-members).',
+          { boardId, path },
+        )
+      }
+    }
+
+    throw error
+  }
 }

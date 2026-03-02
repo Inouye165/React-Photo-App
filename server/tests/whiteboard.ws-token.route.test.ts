@@ -63,9 +63,9 @@ describe('whiteboard ws-token route', () => {
 
     const res = await request(app).post(`/api/whiteboard/${boardId}/ws-token`)
     expect(res.status).toBe(200)
-    expect(res.body).toHaveProperty('token')
+    expect(res.body.success).toBe(true)
     expect(typeof res.body.token).toBe('string')
-    expect(res.body).toHaveProperty('expiresInMs')
+    expect(res.body.token.length).toBeGreaterThan(0)
     expect(typeof res.body.expiresInMs).toBe('number')
   })
 

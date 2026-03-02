@@ -130,6 +130,7 @@ module.exports = function createWhiteboardRouter({ db }: { db: Knex }) {
 
     const allowed = await isMember(db, boardId, userId);
     if (!allowed) {
+      console.warn('[WB-HTTP] not-member', { boardId, userId });
       res.status(404).json({ success: false, error: 'Not found' });
       return null;
     }
@@ -175,6 +176,11 @@ module.exports = function createWhiteboardRouter({ db }: { db: Knex }) {
     validateRequest({ params: BoardIdParamsSchema }),
     async (req: AuthenticatedRequest, res: Response) => {
       try {
+        console.log('[WB-HTTP] ws-token request', {
+          boardId: req.validated?.params?.boardId,
+          userId: req.user?.id,
+          path: req.originalUrl,
+        });
         const boardId = await handleRequest(req, res);
         if (!boardId) return undefined;
         const userId = req.user?.id ? String(req.user.id) : '';

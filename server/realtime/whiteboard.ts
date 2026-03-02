@@ -735,8 +735,17 @@ export function createWhiteboardYjsServer({
     });
   };
 
+  const logUpgradeReject = (reason: string, meta: Record<string, unknown>) => {
+    logger?.warn?.('[whiteboard] WS upgrade rejected', { reason, ...meta });
+    if (!logger?.warn) {
+      console.warn('[whiteboard] WS upgrade rejected', { reason, ...meta });
+    }
+    wbDebugLog('upgrade:rejected', { reason, ...meta });
+  };
+
   const handleUpgrade = async (req: IncomingMessage, socket: any, head: Buffer) => {
     if (isRealtimeDisabled()) {
+      logUpgradeReject('realtime_disabled', { path: req.url || '' });
       writeHttpResponse(socket, 503, 'Real-time events disabled');
       return;
     }
@@ -744,6 +753,7 @@ export function createWhiteboardYjsServer({
     const url = new URL(req.url || '/', 'http://localhost');
     const origin = req.headers.origin ? String(req.headers.origin) : '';
     if (origin && !isOriginAllowed(origin)) {
+      logUpgradeReject('origin_rejected', { path: url.pathname, hasOrigin: true });
       try {
         metrics?.incRealtimeDisconnectReason?.('origin_reject');
       } catch {
@@ -756,6 +766,7 @@ export function createWhiteboardYjsServer({
     const boardIdRaw = extractBoardIdFromPath(url.pathname);
     const parsed = BoardIdSchema.safeParse(boardIdRaw);
     if (!parsed.success) {
+      logUpgradeReject('invalid_board_id', { path: url.pathname, boardIdPresent: Boolean(boardIdRaw) });
       writeHttpResponse(socket, 404, 'Whiteboard room not found');
       return;
     }
@@ -773,6 +784,12 @@ export function createWhiteboardYjsServer({
       if (consumed.ok) {
         auth = { ok: true, userId: consumed.userId };
       } else {
+        logUpgradeReject('ws_token_invalid_or_expired', {
+          path: url.pathname,
+          boardId,
+          wsTokenPresent: true,
+          tokenParamPresent: Boolean(tokenParam),
+        });
         auth = { ok: false, status: 401, error: 'Unauthorized' };
       }
     } else if (tokenParam) {
@@ -790,6 +807,13 @@ export function createWhiteboardYjsServer({
     }
 
     if (!auth.ok || !auth.userId) {
+      logUpgradeReject('auth_failed', {
+        path: url.pathname,
+        boardId,
+        status: auth.status || 401,
+        wsTokenPresent: Boolean(wsToken),
+        tokenParamPresent: Boolean(tokenParam),
+      });
       try {
         metrics?.incRealtimeDisconnectReason?.('auth_fail');
       } catch {
@@ -801,6 +825,7 @@ export function createWhiteboardYjsServer({
 
     const allowed = await isMember(db as unknown as WhiteboardDb, boardId, auth.userId);
     if (!allowed) {
+      logUpgradeReject('not_member', { path: url.pathname, boardId, userId: auth.userId });
       writeHttpResponse(socket, 403, 'Forbidden');
       return;
     }
