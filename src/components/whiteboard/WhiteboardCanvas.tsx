@@ -697,6 +697,7 @@ type ExcalidrawWhiteboardCanvasProps = {
   mode: 'viewer' | 'pad'
   className?: string
   onAccessDenied?: () => void
+  onRealtimeStatusChange?: (status: WhiteboardRealtimeStatus) => void
   onViewModeChange?: (enabled: boolean) => void
   onBackgroundFitModeChange?: (mode: BackgroundFitMode) => void
   onHasBackgroundChange?: (hasBackground: boolean) => void
@@ -721,6 +722,8 @@ export type BackgroundInfo = {
   convertedType?: string
   convertedName?: string
 }
+
+export type WhiteboardRealtimeStatus = 'connected' | 'connecting' | 'offline'
 
 export type WhiteboardCanvasHandle = {
   openBackgroundPicker: () => void
@@ -901,6 +904,7 @@ const WhiteboardCanvas = forwardRef<WhiteboardCanvasHandle, ExcalidrawWhiteboard
       mode,
       className,
       onAccessDenied,
+      onRealtimeStatusChange,
       onViewModeChange,
       onBackgroundFitModeChange,
       onHasBackgroundChange,
@@ -946,6 +950,7 @@ const WhiteboardCanvas = forwardRef<WhiteboardCanvasHandle, ExcalidrawWhiteboard
   const pointerGuardCleanupRef = useRef<(() => void) | null>(null)
   const excalidrawReadyRef = useRef(false)
   const idleCommitTimerRef = useRef<number | null>(null)
+  const lastRealtimeStatusRef = useRef<WhiteboardRealtimeStatus | null>(null)
 
   const [backgroundPickerOpen, setBackgroundPickerOpen] = useState(false)
   const [backgroundCaptureOpen, setBackgroundCaptureOpen] = useState(false)
@@ -958,6 +963,16 @@ const WhiteboardCanvas = forwardRef<WhiteboardCanvasHandle, ExcalidrawWhiteboard
   const [backgroundZoom, setBackgroundZoom] = useState(1)
   const [backgroundAspect, setBackgroundAspect] = useState<'landscape' | 'portrait' | 'free'>('landscape')
   const [backgroundSaving, setBackgroundSaving] = useState(false)
+  const onAccessDeniedRef = useRef(onAccessDenied)
+  const onRealtimeStatusChangeRef = useRef(onRealtimeStatusChange)
+
+  useEffect(() => {
+    onAccessDeniedRef.current = onAccessDenied
+  }, [onAccessDenied])
+
+  useEffect(() => {
+    onRealtimeStatusChangeRef.current = onRealtimeStatusChange
+  }, [onRealtimeStatusChange])
 
   useEffect(() => {
     return () => {
@@ -976,6 +991,26 @@ const WhiteboardCanvas = forwardRef<WhiteboardCanvasHandle, ExcalidrawWhiteboard
       setIsSynced(false)
     }
   }, [token])
+
+  const emitRealtimeStatus = useCallback((status: WhiteboardRealtimeStatus) => {
+    if (lastRealtimeStatusRef.current === status) return
+    lastRealtimeStatusRef.current = status
+    onRealtimeStatusChangeRef.current?.(status)
+  }, [])
+
+  useEffect(() => {
+    if (!token) {
+      emitRealtimeStatus('offline')
+      return
+    }
+
+    if (!isSynced) {
+      emitRealtimeStatus('connecting')
+      return
+    }
+
+    emitRealtimeStatus('connected')
+  }, [emitRealtimeStatus, isSynced, token])
 
   useEffect(() => {
     whiteboardDebugLog('whiteboard:mount', { boardId, mode })
@@ -1931,6 +1966,7 @@ const WhiteboardCanvas = forwardRef<WhiteboardCanvasHandle, ExcalidrawWhiteboard
 
   useEffect(() => {
     if (!token) {
+      emitRealtimeStatus('offline')
       return
     }
 
@@ -1953,6 +1989,8 @@ const WhiteboardCanvas = forwardRef<WhiteboardCanvasHandle, ExcalidrawWhiteboard
         wsTicketFetched: Boolean(wsToken),
       })
 
+      emitRealtimeStatus('connecting')
+
       const provider = createWhiteboardYjsProvider({
         apiBaseUrl: API_BASE_URL,
         boardId,
@@ -1963,6 +2001,14 @@ const WhiteboardCanvas = forwardRef<WhiteboardCanvasHandle, ExcalidrawWhiteboard
             boardId,
             status,
           })
+          if (status === 'connected') {
+            wbClientLogOnce('info', `wb-rt-status:${boardId}:connected`, '[WB-RT] status connected', { boardId })
+            emitRealtimeStatus('connected')
+            return
+          }
+
+          wbClientLogOnce('info', `wb-rt-status:${boardId}:disconnected`, '[WB-RT] status disconnected', { boardId })
+          emitRealtimeStatus('offline')
         },
       })
 
@@ -2033,6 +2079,10 @@ const WhiteboardCanvas = forwardRef<WhiteboardCanvasHandle, ExcalidrawWhiteboard
             boardId,
             status: error.status ?? 'unknown',
           })
+          wbClientLogOnce('warn', `wb-rt-token-fetch-failed:${boardId}:${error.status ?? 'unknown'}`, '[WB-RT] token-fetch-failed', {
+            boardId,
+            status: error.status ?? 'unknown',
+          })
 
           if (error.status === 401 || error.status === 403 || error.status === 404) {
             wbClientLogOnce('warn', `provider-access-denied:${boardId}:${error.status}`, '[WB-CLIENT] whiteboard access denied; skipping websocket connect', {
@@ -2040,7 +2090,8 @@ const WhiteboardCanvas = forwardRef<WhiteboardCanvasHandle, ExcalidrawWhiteboard
               status: error.status,
             })
             setIsSynced(false)
-            onAccessDenied?.()
+            emitRealtimeStatus('offline')
+            onAccessDeniedRef.current?.()
             return
           }
         } else {
@@ -2064,7 +2115,7 @@ const WhiteboardCanvas = forwardRef<WhiteboardCanvasHandle, ExcalidrawWhiteboard
       controller.abort()
       cleanupProvider?.()
     }
-  }, [applySceneFromYjs, boardId, onAccessDenied, token, updateAwarenessState])
+  }, [applySceneFromYjs, boardId, emitRealtimeStatus, token, updateAwarenessState])
 
   useEffect(() => {
     return () => {

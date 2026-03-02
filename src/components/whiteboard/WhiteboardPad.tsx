@@ -8,6 +8,7 @@ type WhiteboardPadProps = {
   boardId: string
   className?: string
   onAccessDenied?: () => void
+  onRealtimeStatusChange?: (status: 'connected' | 'connecting' | 'offline') => void
   onViewModeChange?: (enabled: boolean) => void
   onBackgroundFitModeChange?: (mode: BackgroundFitMode) => void
   onHasBackgroundChange?: (hasBackground: boolean) => void
@@ -20,6 +21,7 @@ const WhiteboardPad = forwardRef<WhiteboardCanvasHandle, WhiteboardPadProps>(
       boardId,
       className,
       onAccessDenied,
+      onRealtimeStatusChange,
       onViewModeChange,
       onBackgroundFitModeChange,
       onHasBackgroundChange,
@@ -49,6 +51,7 @@ const WhiteboardPad = forwardRef<WhiteboardCanvasHandle, WhiteboardPadProps>(
             mode="pad"
             className="h-full"
             onAccessDenied={onAccessDenied}
+            onRealtimeStatusChange={onRealtimeStatusChange}
             onViewModeChange={(enabled) => {
               onViewModeChange?.(enabled)
             }}

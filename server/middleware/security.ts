@@ -99,6 +99,16 @@ function configureSecurity(app) {
   });
 
   // API rate limiting (more strict for API endpoints)
+  const isLoopbackIp = (ip) => {
+    if (!ip || typeof ip !== 'string') return false;
+    const normalized = ip.trim().toLowerCase();
+    return (
+      normalized === '127.0.0.1' ||
+      normalized === '::1' ||
+      normalized === '::ffff:127.0.0.1'
+    );
+  };
+
   const apiLimiter = rateLimit({
     windowMs: 15 * 60 * 1000, // 15 minutes
     max: 1000, // Limit API calls per IP
@@ -112,11 +122,18 @@ function configureSecurity(app) {
     skip: (req) => {
       const originalPath = String(req.originalUrl || req.url || req.path || '').split('?')[0];
 
+      // Build metadata is low-risk and can be polled by clients for version checks.
+      if (originalPath === '/api/meta') return true;
+
       // These subrouters apply their own, endpoint-specific limiters.
       // Skip here to avoid overlap/double counting.
       if (originalPath === '/api/auth' || originalPath.startsWith('/api/auth/')) return true;
       if (originalPath === '/api/public' || originalPath.startsWith('/api/public/')) return true;
       if (originalPath === '/api/test' || originalPath.startsWith('/api/test/')) return true;
+
+      // In local development, avoid locking out loopback traffic during StrictMode
+      // double-invocation and hot-reload bursts.
+      if (process.env.NODE_ENV === 'development' && isLoopbackIp(req.ip)) return true;
 
       return false;
     },

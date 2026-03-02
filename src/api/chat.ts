@@ -58,6 +58,13 @@ export type UserSearchResult = {
   avatar_url: string | null
 }
 
+export type RoomMemberDetails = {
+  user_id: string
+  username: string | null
+  avatar_url: string | null
+  is_owner: boolean
+}
+
 export async function searchUsers(query: string): Promise<UserSearchResult[]> {
   const q = query.trim()
   if (!q) return []
@@ -226,6 +233,61 @@ export async function addRoomMember(roomId: string, userId: string): Promise<voi
     const message = error.message || 'Unable to leave this chat.'
     throw new Error(message)
   }
+}
+
+export async function listRoomMembers(roomId: string): Promise<RoomMemberDetails[]> {
+  await requireAuthedUserId()
+  if (!roomId) throw new Error('Missing roomId')
+
+  const { data: members, error: membersError } = await supabase
+    .from('room_members')
+    .select('user_id, is_owner')
+    .eq('room_id', roomId)
+
+  if (membersError) {
+    const message = membersError.message || 'Unable to load room members.'
+    throw new Error(message)
+  }
+
+  const memberRows = (members ?? []) as Array<{ user_id?: unknown; is_owner?: unknown }>
+  const memberMap = new Map<string, { is_owner: boolean }>()
+  for (const row of memberRows) {
+    if (typeof row.user_id !== 'string') continue
+    memberMap.set(row.user_id, { is_owner: Boolean(row.is_owner) })
+  }
+
+  const memberIds = [...memberMap.keys()]
+  if (!memberIds.length) return []
+
+  const { data: users, error: usersError } = await supabase
+    .from('users')
+    .select('id, username, avatar_url')
+    .in('id', memberIds)
+
+  if (usersError) {
+    const message = usersError.message || 'Unable to load room members.'
+    throw new Error(message)
+  }
+
+  const userRows = (users ?? []) as Array<{ id?: unknown; username?: unknown; avatar_url?: unknown }>
+  const byUserId = new Map<string, { username: string | null; avatar_url: string | null }>()
+  for (const row of userRows) {
+    if (typeof row.id !== 'string') continue
+    byUserId.set(row.id, {
+      username: typeof row.username === 'string' ? row.username : null,
+      avatar_url: typeof row.avatar_url === 'string' ? row.avatar_url : null,
+    })
+  }
+
+  return memberIds.map((userId) => {
+    const user = byUserId.get(userId)
+    return {
+      user_id: userId,
+      username: user?.username ?? null,
+      avatar_url: user?.avatar_url ?? null,
+      is_owner: memberMap.get(userId)?.is_owner ?? false,
+    }
+  })
 }
 
 export async function removeRoomMember(roomId: string, userId: string): Promise<void> {
