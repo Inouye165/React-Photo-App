@@ -5,6 +5,7 @@ import { MemoryRouter, Route, Routes } from 'react-router-dom'
 import WhiteboardSessionPage from './WhiteboardSessionPage'
 
 const ensureWhiteboardMembershipMock = vi.fn()
+const createWhiteboardInviteMock = vi.fn()
 const listRoomMembersMock = vi.fn()
 const searchUsersMock = vi.fn()
 const addRoomMemberMock = vi.fn()
@@ -15,6 +16,7 @@ let roomCreatedBy = 'owner-1'
 
 vi.mock('../api/whiteboards', () => ({
   ensureWhiteboardMembership: (...args: unknown[]) => ensureWhiteboardMembershipMock(...args),
+  createWhiteboardInvite: (...args: unknown[]) => createWhiteboardInviteMock(...args),
 }))
 
 vi.mock('../api/chat', () => ({
@@ -69,6 +71,7 @@ describe('WhiteboardSessionPage', () => {
     roomCreatedBy = 'owner-1'
 
     ensureWhiteboardMembershipMock.mockResolvedValue({ ok: true })
+    createWhiteboardInviteMock.mockResolvedValue({ joinUrl: 'http://localhost/whiteboards/join/token-123', expiresAt: new Date(Date.now() + 3600_000).toISOString() })
     listRoomMembersMock.mockResolvedValue([
       { user_id: 'user-1', username: 'Ari', avatar_url: null, is_owner: false },
       { user_id: 'user-2', username: 'Blair', avatar_url: null, is_owner: false },
@@ -102,5 +105,13 @@ describe('WhiteboardSessionPage', () => {
     })
 
     infoSpy.mockRestore()
+  })
+
+  it('shows Create join link button for owner', async () => {
+    roomCreatedBy = 'user-1'
+
+    renderPage()
+
+    expect(await screen.findByRole('button', { name: 'Create join link' })).toBeInTheDocument()
   })
 })

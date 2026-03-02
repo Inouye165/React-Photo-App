@@ -1,7 +1,7 @@
 import React, { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import { useNavigate, useParams } from 'react-router-dom'
 import WhiteboardPad from '../components/whiteboard/WhiteboardPad'
-import { ensureWhiteboardMembership } from '../api/whiteboards'
+import { createWhiteboardInvite, ensureWhiteboardMembership } from '../api/whiteboards'
 import { addRoomMember, listRoomMembers, searchUsers, type UserSearchResult } from '../api/chat'
 import { useAuth } from '../contexts/AuthContext'
 import { supabase } from '../supabaseClient'
@@ -41,6 +41,8 @@ export default function WhiteboardSessionPage(): React.JSX.Element {
   const [inviteOpen, setInviteOpen] = useState(false)
   const [isOwner, setIsOwner] = useState(false)
   const [inviteNotice, setInviteNotice] = useState<string | null>(null)
+  const [joinLinkNotice, setJoinLinkNotice] = useState<{ tone: 'success' | 'error'; message: string } | null>(null)
+  const [isCreatingJoinLink, setIsCreatingJoinLink] = useState(false)
   const [realtimeStatus, setRealtimeStatus] = useState<RealtimeStatus>('connecting')
   const inviteDeniedLoggedRef = useRef(false)
 
@@ -177,6 +179,49 @@ export default function WhiteboardSessionPage(): React.JSX.Element {
     return searchUsers(query)
   }, [])
 
+  const handleCreateJoinLink = useCallback(async () => {
+    if (!isOwner) {
+      setJoinLinkNotice({ tone: 'error', message: 'Only the owner can create a join link.' })
+      return
+    }
+
+    setIsCreatingJoinLink(true)
+    setJoinLinkNotice(null)
+
+    try {
+      const result = await createWhiteboardInvite(boardId)
+      let copied = false
+
+      if (typeof navigator !== 'undefined' && navigator.clipboard?.writeText) {
+        try {
+          await navigator.clipboard.writeText(result.joinUrl)
+          copied = true
+        } catch {
+          copied = false
+        }
+      }
+
+      const expiresLabel = new Date(result.expiresAt).toLocaleString()
+      setJoinLinkNotice({
+        tone: 'success',
+        message: copied
+          ? `Join link copied to clipboard. Expires ${expiresLabel}.`
+          : `Join link created. Expires ${expiresLabel}.`,
+      })
+    } catch (error) {
+      const details = getSafeErrorDetails(error)
+      console.warn('[WB-JOIN] create-link-failed', {
+        boardId,
+        code: details.code,
+        status: details.status,
+        message: details.message,
+      })
+      setJoinLinkNotice({ tone: 'error', message: details.message || 'Unable to create join link.' })
+    } finally {
+      setIsCreatingJoinLink(false)
+    }
+  }, [boardId, isOwner])
+
   if (accessState === 'checking') {
     return (
       <div className="h-[100dvh] w-full bg-white p-4">
@@ -217,6 +262,17 @@ export default function WhiteboardSessionPage(): React.JSX.Element {
             >
               Invite
             </button>
+            {isOwner && (
+              <button
+                onClick={() => {
+                  void handleCreateJoinLink()
+                }}
+                className="rounded border px-2 py-1"
+                disabled={isCreatingJoinLink}
+              >
+                {isCreatingJoinLink ? 'Creating…' : 'Create join link'}
+              </button>
+            )}
             <button
               onClick={() => {
                 try {
@@ -236,6 +292,18 @@ export default function WhiteboardSessionPage(): React.JSX.Element {
       {inviteNotice && (
         <div className="border-b border-amber-200 bg-amber-50 px-3 py-2 text-sm text-amber-800">
           {inviteNotice}
+        </div>
+      )}
+
+      {joinLinkNotice && (
+        <div
+          className={`border-b px-3 py-2 text-sm ${
+            joinLinkNotice.tone === 'success'
+              ? 'border-emerald-200 bg-emerald-50 text-emerald-800'
+              : 'border-rose-200 bg-rose-50 text-rose-800'
+          }`}
+        >
+          {joinLinkNotice.message}
         </div>
       )}
 

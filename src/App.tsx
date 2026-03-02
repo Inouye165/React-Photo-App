@@ -22,6 +22,7 @@ import ChessHub from './pages/ChessHub'
 import ChessGotwReplayPage from './pages/ChessGotwReplayPage'
 import WhiteboardsHubPage from './pages/WhiteboardsHubPage'
 import WhiteboardSessionPage from './pages/WhiteboardSessionPage'
+import WhiteboardJoinPage from './pages/WhiteboardJoinPage'
 import AdminDashboard from './pages/AdminDashboard.tsx';
 import AdminAssessmentHistory from './pages/AdminAssessmentHistory.tsx';
 import AssessmentReviewDetail from './pages/AssessmentReviewDetail.tsx';
@@ -101,6 +102,7 @@ function App() {
 
               {/* Whiteboards */}
               <Route path="/whiteboards" element={<WhiteboardsHubPage />} />
+              <Route path="/whiteboards/join/:token" element={<WhiteboardJoinPage />} />
               <Route path="/whiteboards/:boardId" element={<WhiteboardSessionPage />} />
 
               {/* Photo detail view */}
