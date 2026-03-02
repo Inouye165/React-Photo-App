@@ -17,7 +17,7 @@ const loadCa = () => {
   if (!p) return undefined;
   try {
     return fs.readFileSync(p, 'utf8');
-  } catch (e) {
+  } catch {
     return undefined;
   }
 };
