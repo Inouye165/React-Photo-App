@@ -963,6 +963,16 @@ const WhiteboardCanvas = forwardRef<WhiteboardCanvasHandle, ExcalidrawWhiteboard
   const [backgroundZoom, setBackgroundZoom] = useState(1)
   const [backgroundAspect, setBackgroundAspect] = useState<'landscape' | 'portrait' | 'free'>('landscape')
   const [backgroundSaving, setBackgroundSaving] = useState(false)
+  const onAccessDeniedRef = useRef(onAccessDenied)
+  const onRealtimeStatusChangeRef = useRef(onRealtimeStatusChange)
+
+  useEffect(() => {
+    onAccessDeniedRef.current = onAccessDenied
+  }, [onAccessDenied])
+
+  useEffect(() => {
+    onRealtimeStatusChangeRef.current = onRealtimeStatusChange
+  }, [onRealtimeStatusChange])
 
   useEffect(() => {
     return () => {
@@ -985,8 +995,8 @@ const WhiteboardCanvas = forwardRef<WhiteboardCanvasHandle, ExcalidrawWhiteboard
   const emitRealtimeStatus = useCallback((status: WhiteboardRealtimeStatus) => {
     if (lastRealtimeStatusRef.current === status) return
     lastRealtimeStatusRef.current = status
-    onRealtimeStatusChange?.(status)
-  }, [onRealtimeStatusChange])
+    onRealtimeStatusChangeRef.current?.(status)
+  }, [])
 
   useEffect(() => {
     if (!token) {
@@ -2081,7 +2091,7 @@ const WhiteboardCanvas = forwardRef<WhiteboardCanvasHandle, ExcalidrawWhiteboard
             })
             setIsSynced(false)
             emitRealtimeStatus('offline')
-            onAccessDenied?.()
+            onAccessDeniedRef.current?.()
             return
           }
         } else {
@@ -2105,7 +2115,7 @@ const WhiteboardCanvas = forwardRef<WhiteboardCanvasHandle, ExcalidrawWhiteboard
       controller.abort()
       cleanupProvider?.()
     }
-  }, [applySceneFromYjs, boardId, emitRealtimeStatus, onAccessDenied, token, updateAwarenessState])
+  }, [applySceneFromYjs, boardId, emitRealtimeStatus, token, updateAwarenessState])
 
   useEffect(() => {
     return () => {
