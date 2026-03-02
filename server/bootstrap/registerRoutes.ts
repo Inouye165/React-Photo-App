@@ -225,6 +225,13 @@ export function registerRoutes(app: Application, { db, supabase, socketManager, 
     whiteboardRouter
   );
   app.use('/api/v1/whiteboard', authenticateToken, whiteboardRouter);
+  app.use(
+    '/api/whiteboards',
+    createLegacyApiDeprecationMiddleware([{ legacyBase: '/api/whiteboards', successorBase: '/api/v1/whiteboards' }]),
+    authenticateToken,
+    whiteboardRouter
+  );
+  app.use('/api/v1/whiteboards', authenticateToken, whiteboardRouter);
 
   const captureIntentsRouter = createCaptureIntentsRouter({ db, socketManager });
   app.use(

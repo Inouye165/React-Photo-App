@@ -1,6 +1,7 @@
 import type { Request, Response } from 'express';
 import express from 'express';
 import type { Knex } from 'knex';
+import { createHash, randomBytes } from 'crypto';
 import { gzip } from 'zlib';
 import { promisify } from 'util';
 import { z } from 'zod';
@@ -11,9 +12,16 @@ const supabase = require('../lib/supabaseClient');
 const gzipAsync = promisify(gzip);
 const BOARD_ID_MAX_LENGTH = 64;
 const MAX_HISTORY_EVENTS = 5000;
+const JOIN_INVITE_EXPIRY_DAYS = 7;
+const JOIN_INVITE_DEFAULT_MAX_USES = 1;
+const JOIN_INVITE_TOKEN_BYTES = 32;
 
 const BoardIdParamsSchema = z.object({
   boardId: z.string().uuid().max(BOARD_ID_MAX_LENGTH),
+});
+
+const JoinInviteBodySchema = z.object({
+  token: z.string().min(1).max(2048),
 });
 
 type AuthenticatedRequest = Request & {
@@ -23,6 +31,9 @@ type AuthenticatedRequest = Request & {
   validated?: {
     params?: {
       boardId: string;
+    };
+    body?: {
+      token: string;
     };
   };
 };
@@ -45,6 +56,16 @@ type HistoryCursor = {
   lastTs: string | null;
 };
 
+type WhiteboardInviteRow = {
+  id: string;
+  room_id: string;
+  token_hash: string;
+  expires_at: string | Date;
+  max_uses: number | string;
+  uses: number | string;
+  revoked_at: string | Date | null;
+};
+
 function normalizeSeq(value: number | string): number | null {
   const seq = typeof value === 'string' ? Number(value) : value;
   return Number.isFinite(seq) ? Number(seq) : null;
@@ -53,6 +74,50 @@ function normalizeSeq(value: number | string): number | null {
 function normalizeNumber(value: number | string): number | null {
   const num = typeof value === 'string' ? Number(value) : value;
   return Number.isFinite(num) ? Number(num) : null;
+}
+
+function hashInviteToken(rawToken: string): string {
+  return createHash('sha256').update(rawToken).digest('hex');
+}
+
+function makeInviteToken(): string {
+  return randomBytes(JOIN_INVITE_TOKEN_BYTES).toString('base64url');
+}
+
+function toAffectedRows(value: unknown): number {
+  if (typeof value === 'number') return value;
+  if (typeof value === 'bigint') return Number(value);
+  if (Array.isArray(value)) return value.length;
+  return 0;
+}
+
+function getJoinInviteFailureReason(invite: WhiteboardInviteRow | null):
+  | 'invalid_token'
+  | 'revoked'
+  | 'expired'
+  | 'used_up'
+  | null {
+  if (!invite) return 'invalid_token';
+  if (invite.revoked_at) return 'revoked';
+
+  const expiresAt = new Date(invite.expires_at);
+  if (!Number.isFinite(expiresAt.getTime()) || expiresAt.getTime() <= Date.now()) return 'expired';
+
+  const uses = normalizeNumber(invite.uses);
+  const maxUses = normalizeNumber(invite.max_uses);
+  if (uses === null || maxUses === null || uses >= maxUses) return 'used_up';
+
+  return null;
+}
+
+async function isBoardOwner(db: Knex, boardId: string, userId: string): Promise<boolean> {
+  const ownerMembership = await db('room_members')
+    .where({ room_id: boardId, user_id: userId, is_owner: true })
+    .first();
+  if (ownerMembership) return true;
+
+  const room = await db('rooms').select('created_by').where({ id: boardId }).first();
+  return Boolean(room && String((room as { created_by?: unknown }).created_by ?? '') === userId);
 }
 
 async function isMember(db: Knex, boardId: string, userId: string): Promise<boolean> {
@@ -196,6 +261,132 @@ module.exports = function createWhiteboardRouter({ db }: { db: Knex }) {
 
         return res.json(payload);
       } catch {
+        return res.status(500).json({ success: false, error: 'Internal server error' });
+      }
+    }
+  );
+
+  router.post(
+    '/:boardId/invites',
+    validateRequest({ params: BoardIdParamsSchema }),
+    async (req: AuthenticatedRequest, res: Response) => {
+      try {
+        const userId = req.user?.id ? String(req.user.id) : null;
+        if (!userId) {
+          return res.status(401).json({ success: false, error: 'Unauthorized' });
+        }
+
+        const boardId = req.validated?.params?.boardId;
+        if (!boardId) {
+          return res.status(400).json({ success: false, error: 'Invalid request' });
+        }
+
+        const owner = await isBoardOwner(db, boardId, userId);
+        if (!owner) {
+          return res.status(403).json({ success: false, error: 'Forbidden' });
+        }
+
+        const rawToken = makeInviteToken();
+        const tokenHash = hashInviteToken(rawToken);
+        const expiresAt = new Date(Date.now() + JOIN_INVITE_EXPIRY_DAYS * 24 * 60 * 60 * 1000);
+
+        await db('whiteboard_invites').insert({
+          room_id: boardId,
+          token_hash: tokenHash,
+          created_by: userId,
+          expires_at: expiresAt,
+          max_uses: JOIN_INVITE_DEFAULT_MAX_USES,
+          uses: 0,
+        });
+
+        const host = req.get('host');
+        const origin = host ? `${req.protocol}://${host}` : '';
+        const joinPath = `/whiteboards/join/${rawToken}`;
+        const joinUrl = origin ? `${origin}${joinPath}` : joinPath;
+
+        console.info('[WB-JOIN] invite-created', {
+          boardId,
+          userId,
+          expiresAt: expiresAt.toISOString(),
+        });
+
+        return res.status(201).json({ joinUrl, expiresAt: expiresAt.toISOString() });
+      } catch {
+        return res.status(500).json({ success: false, error: 'Internal server error' });
+      }
+    }
+  );
+
+  router.post(
+    '/join',
+    validateRequest({ body: JoinInviteBodySchema }),
+    async (req: AuthenticatedRequest, res: Response) => {
+      const userId = req.user?.id ? String(req.user.id) : null;
+      if (!userId) {
+        return res.status(401).json({ success: false, error: 'Unauthorized' });
+      }
+
+      const token = req.validated?.body?.token;
+      if (!token) {
+        return res.status(400).json({ success: false, error: 'Invalid request', reason: 'invalid_token' });
+      }
+
+      try {
+        const tokenHash = hashInviteToken(token);
+        const invite = (await db<WhiteboardInviteRow>('whiteboard_invites')
+          .where({ token_hash: tokenHash })
+          .first()) ?? null;
+
+        const validationReason = getJoinInviteFailureReason(invite);
+        if (validationReason) {
+          console.info('[WB-JOIN] join-attempt', {
+            ok: false,
+            reason: validationReason,
+            userId,
+            tokenLength: token.length,
+          });
+          return res.status(400).json({ success: false, error: 'Join link is not valid', reason: validationReason });
+        }
+
+        const updateResult = await db('whiteboard_invites')
+          .where({ id: invite.id })
+          .whereNull('revoked_at')
+          .andWhere('expires_at', '>', db.fn.now())
+          .andWhereRaw('uses < max_uses')
+          .increment('uses', 1);
+
+        if (toAffectedRows(updateResult) < 1) {
+          console.info('[WB-JOIN] join-attempt', {
+            ok: false,
+            reason: 'used_up',
+            userId,
+            roomId: invite.room_id,
+            tokenLength: token.length,
+          });
+          return res.status(400).json({ success: false, error: 'Join link is no longer usable', reason: 'used_up' });
+        }
+
+        await db('room_members')
+          .insert({ room_id: invite.room_id, user_id: userId, is_owner: false })
+          .onConflict(['room_id', 'user_id'])
+          .ignore();
+
+        console.info('[WB-JOIN] join-attempt', {
+          ok: true,
+          reason: null,
+          roomId: invite.room_id,
+          userId,
+          tokenLength: token.length,
+        });
+
+        return res.status(200).json({ roomId: invite.room_id });
+      } catch {
+        console.info('[WB-JOIN] join-attempt', {
+          ok: false,
+          reason: 'unknown',
+          userId,
+          tokenLength: token.length,
+        });
         return res.status(500).json({ success: false, error: 'Internal server error' });
       }
     }

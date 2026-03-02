@@ -1,6 +1,7 @@
 import { supabase } from '../supabaseClient'
 import type { ChatRoom } from '../types/chat'
 import { fetchRooms } from './chat'
+import { ApiError, request } from './httpClient'
 
 const whiteboardMembershipLogOnce = new Set<string>()
 
@@ -19,6 +20,23 @@ export type EnsureWhiteboardMembershipResult = {
 } | {
   ok: false
   reason: 'not_member' | 'rls' | 'unknown'
+}
+
+export type CreateWhiteboardInviteResult = {
+  joinUrl: string
+  expiresAt: string
+}
+
+export type JoinWhiteboardByTokenResult = {
+  roomId: string
+}
+
+const whiteboardJoinLogOnce = new Set<string>()
+
+function wbJoinLogOnce(key: string, details: Record<string, unknown>) {
+  if (whiteboardJoinLogOnce.has(key)) return
+  whiteboardJoinLogOnce.add(key)
+  console.warn('[WB-JOIN] join-failed', details)
 }
 
 function isRlsOrPolicyError(error: { code?: string; message?: string } | null | undefined): boolean {
@@ -166,6 +184,40 @@ export async function ensureWhiteboardMembership(boardId: string): Promise<Ensur
   }
 
   return { ok: false, reason: 'not_member' }
+}
+
+export async function createWhiteboardInvite(boardId: string): Promise<CreateWhiteboardInviteResult> {
+  if (!boardId) throw new Error('Missing board id')
+
+  return request<CreateWhiteboardInviteResult>({
+    path: `/api/whiteboards/${boardId}/invites`,
+    method: 'POST',
+  })
+}
+
+export async function joinWhiteboardByToken(token: string): Promise<JoinWhiteboardByTokenResult> {
+  const trimmed = token.trim()
+  if (!trimmed) {
+    throw new Error('Join token is required')
+  }
+
+  try {
+    return await request<JoinWhiteboardByTokenResult>({
+      path: '/api/whiteboards/join',
+      method: 'POST',
+      body: { token: trimmed },
+    })
+  } catch (error) {
+    if (error instanceof ApiError) {
+      const details = error.details as { reason?: unknown } | undefined
+      const reason = typeof details?.reason === 'string' ? details.reason : 'unknown'
+      wbJoinLogOnce(`join-failed:${error.status ?? 'unknown'}:${reason}`, {
+        status: error.status ?? null,
+        reason,
+      })
+    }
+    throw error
+  }
 }
 
 export default {}
