@@ -55,6 +55,21 @@ Expected: Frontend at http://localhost:5173/
 
 ## Startup Robustness Log
 
+- **2026-03-02 07:00:54 -08:00 (Windows, host: Rons-Computer, monitored startup validation)**
+  - Process used: `npm run start:local` from repo root (README robust one-command startup).
+  - Startup behavior observed:
+    1. First pass failed during preflight migration verification (`npm --prefix server run verify:migrations`) with `MODULE_NOT_FOUND` for `../knexfile`.
+    2. Second pass failed during migration apply (`node scripts/run-migrations.js`) with `Cannot find module '.../server/knexfile'`.
+    3. Third pass completed preflight checks, launched API/worker/frontend terminals, and passed the 45-second monitoring window.
+  - Fixes applied:
+    1. Updated `server/scripts/check-migrations.js` to resolve knex config from `knexfile.js`, `dist/knexfile.js`, or `knexfile.ts` (with `tsx` loader fallback).
+    2. Updated `server/scripts/run-migrations.js` with the same resilient knexfile resolution logic.
+  - Verification results after fixes:
+    - `http://127.0.0.1:3001/health` returned HTTP `200`.
+    - `http://localhost:5173/` returned HTTP `200`.
+    - Structured run log shows success: timestamp `2026-03-02T07:00:54.4203531-08:00`, host `Rons-Computer`, status `success`.
+  - Outcome: startup passed successfully after applying the migration script compatibility fixes.
+
 - **2026-02-28 05:20:02 -08:00 (Windows, host: DESKTOP-0UN2H9U, monitored startup validation)**
   - Process used: `npm run start:local` from repo root (README robust one-command startup).
   - Startup behavior observed:

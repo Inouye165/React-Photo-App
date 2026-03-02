@@ -242,7 +242,11 @@ export default function ChatSidebar(props: ChatSidebarProps) {
     }
   }, [roomState, user?.id])
 
-  const rooms = useMemo(() => (roomState.status === 'ready' ? roomState.rooms : []), [roomState])
+  const rooms = useMemo(() => {
+    const all = roomState.status === 'ready' ? roomState.rooms : []
+    // Hide whiteboards from chat sidebar
+    return all.filter((r) => (r.type as unknown as string) !== 'whiteboard')
+  }, [roomState])
 
   const roomIdToSearchKey = useMemo(() => {
     const map: Record<string, string> = {}
