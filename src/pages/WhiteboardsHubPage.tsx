@@ -7,6 +7,7 @@ export default function WhiteboardsHubPage(): React.JSX.Element {
   const navigate = useNavigate()
   const [boards, setBoards] = useState<ChatRoom[]>([])
   const [loading, setLoading] = useState(true)
+  const [createError, setCreateError] = useState<string | null>(null)
 
   useEffect(() => {
     let cancelled = false
@@ -27,8 +28,14 @@ export default function WhiteboardsHubPage(): React.JSX.Element {
   }, [])
 
   async function handleCreate() {
-    const room = await createWhiteboard()
-    navigate(`/whiteboards/${room.id}`)
+    setCreateError(null)
+    try {
+      const room = await createWhiteboard()
+      navigate(`/whiteboards/${room.id}`)
+    } catch (error) {
+      const message = error instanceof Error ? error.message : 'Unable to create whiteboard'
+      setCreateError(message)
+    }
   }
 
   return (
@@ -40,6 +47,7 @@ export default function WhiteboardsHubPage(): React.JSX.Element {
         </div>
 
         <div className="mt-4">
+          {createError && <div className="mb-2 rounded border border-rose-200 bg-rose-50 px-3 py-2 text-sm text-rose-700">{createError}</div>}
           {loading && <div>Loading…</div>}
           {!loading && boards.length === 0 && <div>No whiteboards yet.</div>}
           {!loading && boards.length > 0 && (

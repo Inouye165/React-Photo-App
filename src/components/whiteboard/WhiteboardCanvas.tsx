@@ -31,6 +31,7 @@ import {
 } from '../../realtime/whiteboardSnapshotCache'
 import { createCroppedBlob } from '../../utils/avatarCropper'
 import { compressForUpload } from '../../utils/clientImageProcessing'
+import { ApiError } from '../../api/httpClient'
 
 const DEFAULT_COLOR = '#111827'
 const DEFAULT_WIDTH = 2
@@ -41,6 +42,18 @@ const RATE_LIMIT_BACKOFF_MS = 2000
 const RATE_LIMIT_BACKOFF_INTERVAL_MS = 40
 const MAX_RATE_LIMIT_INTERVAL_MS = 80
 const MAX_BACKGROUND_CROP_DIMENSION = 3072
+
+const whiteboardClientLogOnceKeys = new Set<string>()
+
+function wbClientLogOnce(level: 'info' | 'warn', key: string, message: string, details: Record<string, unknown>) {
+  if (whiteboardClientLogOnceKeys.has(key)) return
+  whiteboardClientLogOnceKeys.add(key)
+  if (level === 'warn') {
+    console.warn(message, details)
+    return
+  }
+  console.info(message, details)
+}
 
 type WhiteboardCanvasProps = {
   boardId: string
@@ -1923,15 +1936,32 @@ const WhiteboardCanvas = forwardRef<WhiteboardCanvasHandle, ExcalidrawWhiteboard
     let cleanupProvider: (() => void) | null = null
     const controller = new AbortController()
 
+    wbClientLogOnce('info', `provider-init:${boardId}`, '[WB-CLIENT] provider init', {
+      boardId,
+      apiBaseUrl: API_BASE_URL,
+      tokenLen: token.length,
+    })
+
     const startProvider = (wsToken?: string) => {
       if (canceled) return
       setIsSynced(false)
+
+      wbClientLogOnce('info', `provider-ticket:${boardId}:${wsToken ? 'yes' : 'no'}`, '[WB-CLIENT] ws-ticket fetch result', {
+        boardId,
+        wsTicketFetched: Boolean(wsToken),
+      })
 
       const provider = createWhiteboardYjsProvider({
         apiBaseUrl: API_BASE_URL,
         boardId,
         token,
         wsToken,
+        onStatus: (status) => {
+          wbClientLogOnce('info', `provider-status:${boardId}:${status}`, '[WB-CLIENT] provider status', {
+            boardId,
+            status,
+          })
+        },
       })
 
       docRef.current = provider.doc
@@ -1988,7 +2018,18 @@ const WhiteboardCanvas = forwardRef<WhiteboardCanvasHandle, ExcalidrawWhiteboard
       try {
         const ticket = await fetchWhiteboardWsToken({ boardId, token, signal: controller.signal })
         startProvider(ticket.token)
-      } catch {
+      } catch (error) {
+        if (error instanceof ApiError) {
+          wbClientLogOnce('warn', `provider-ticket-error:${boardId}:${error.status ?? 'unknown'}`, '[WB-CLIENT] ws-ticket fetch failed; starting provider without ws ticket', {
+            boardId,
+            status: error.status ?? 'unknown',
+          })
+        } else {
+          wbClientLogOnce('warn', `provider-ticket-error:${boardId}:unknown`, '[WB-CLIENT] ws-ticket fetch failed; starting provider without ws ticket', {
+            boardId,
+            error: error instanceof Error ? error.message : String(error),
+          })
+        }
         startProvider()
       }
     }
