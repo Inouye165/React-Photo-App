@@ -36,7 +36,7 @@ async function verifyMigrations(retryAttempt = 0) {
     return { skipped: true };
   }
 
-  const knexfile = require('../knexfile');
+  const knexfile = loadKnexfile();
   
   // Keep environment selection aligned with server/db/index.ts.
   // Earlier auto-detection promoted some development runs to 'production'
@@ -180,6 +180,34 @@ async function verifyMigrations(retryAttempt = 0) {
     
     throw err;
   }
+}
+
+function loadKnexfile() {
+  const rootDir = path.resolve(__dirname, '..');
+  const candidateJsPaths = [
+    path.join(rootDir, 'knexfile.js'),
+    path.join(rootDir, 'dist', 'knexfile.js')
+  ];
+
+  for (const jsPath of candidateJsPaths) {
+    if (fs.existsSync(jsPath)) {
+      return require(jsPath);
+    }
+  }
+
+  const tsPath = path.join(rootDir, 'knexfile.ts');
+  if (fs.existsSync(tsPath)) {
+    try {
+      require('tsx/cjs');
+      return require(tsPath);
+    } catch {
+      throw new Error(
+        '[verify:migrations] knexfile.ts detected but could not be loaded. Run npm --prefix server run build or ensure tsx is installed.'
+      );
+    }
+  }
+
+  throw new Error('[verify:migrations] knex config not found. Expected server/knexfile.js, server/dist/knexfile.js, or server/knexfile.ts');
 }
 
 /**

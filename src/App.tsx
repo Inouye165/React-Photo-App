@@ -20,6 +20,8 @@ import GamesIndex from './pages/GamesIndex'
 import ChessGame from './pages/ChessGame'
 import ChessHub from './pages/ChessHub'
 import ChessGotwReplayPage from './pages/ChessGotwReplayPage'
+import WhiteboardsHubPage from './pages/WhiteboardsHubPage'
+import WhiteboardSessionPage from './pages/WhiteboardSessionPage'
 import AdminDashboard from './pages/AdminDashboard.tsx';
 import AdminAssessmentHistory from './pages/AdminAssessmentHistory.tsx';
 import AssessmentReviewDetail from './pages/AssessmentReviewDetail.tsx';
@@ -96,6 +98,10 @@ function App() {
               <Route path="/games/chess" element={<ChessHub />} />
               <Route path="/games/chess/gotw/:slug" element={<ChessGotwReplayPage />} />
               <Route path="/games/:gameId" element={<ChessGame />} />
+
+              {/* Whiteboards */}
+              <Route path="/whiteboards" element={<WhiteboardsHubPage />} />
+              <Route path="/whiteboards/:boardId" element={<WhiteboardSessionPage />} />
 
               {/* Photo detail view */}
               <Route path="/photos/:id" element={<PhotoDetailPage />} />

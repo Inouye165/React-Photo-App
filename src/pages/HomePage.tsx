@@ -278,6 +278,13 @@ export default function HomePage(): React.JSX.Element {
                 </button>
                 <button
                   type="button"
+                  onClick={() => navigate('/whiteboards')}
+                  className={homeSecondaryActionClass}
+                >
+                  Whiteboard
+                </button>
+                <button
+                  type="button"
                   onClick={() => setMobilePanel('games')}
                   className={homeSecondaryActionClass}
                 >
@@ -360,6 +367,18 @@ export default function HomePage(): React.JSX.Element {
                   </li>
                 ))}
               </ul>
+            </article>
+
+            <article className={`${homeCardClass} min-h-0 p-3.5 sm:p-4`} aria-labelledby="home-whiteboards-title">
+              <h2 id="home-whiteboards-title" className="text-base font-semibold text-[var(--chess-hub-color-text-primary)] sm:text-lg">Whiteboards</h2>
+              <p className="mt-1 text-sm text-[var(--chess-hub-color-text-secondary)]">Create and join collaborative whiteboards.</p>
+              <button
+                type="button"
+                onClick={() => navigate('/whiteboards')}
+                className={homeSecondaryActionClass}
+              >
+                Open Whiteboards
+              </button>
             </article>
 
             <article className={`${homeCardClass} min-h-0 p-3.5 sm:p-4`} aria-labelledby="home-labs-title">

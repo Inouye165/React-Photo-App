@@ -7,6 +7,7 @@
  * keep the DB schema in sync without requiring an interactive shell.
  */
 
+const fs = require('fs');
 const path = require('path');
 
 // Ensure server/.env is loaded (no-op in Railway where vars come from the platform).
@@ -27,7 +28,7 @@ async function runMigrations() {
   }
 
   const knex = require('knex');
-  const knexfile = require(path.join(__dirname, '..', 'knexfile'));
+  const knexfile = loadKnexfile();
 
   const env = resolveKnexEnv();
   const cfg = knexfile[env];
@@ -49,6 +50,34 @@ async function runMigrations() {
   } finally {
     await db.destroy();
   }
+}
+
+function loadKnexfile() {
+  const rootDir = path.resolve(__dirname, '..');
+  const candidateJsPaths = [
+    path.join(rootDir, 'knexfile.js'),
+    path.join(rootDir, 'dist', 'knexfile.js')
+  ];
+
+  for (const jsPath of candidateJsPaths) {
+    if (fs.existsSync(jsPath)) {
+      return require(jsPath);
+    }
+  }
+
+  const tsPath = path.join(rootDir, 'knexfile.ts');
+  if (fs.existsSync(tsPath)) {
+    try {
+      require('tsx/cjs');
+      return require(tsPath);
+    } catch {
+      throw new Error(
+        '[migrations] knexfile.ts detected but could not be loaded. Run npm --prefix server run build or ensure tsx is installed.'
+      );
+    }
+  }
+
+  throw new Error('[migrations] knex config not found. Expected server/knexfile.js, server/dist/knexfile.js, or server/knexfile.ts');
 }
 
 if (require.main === module) {
