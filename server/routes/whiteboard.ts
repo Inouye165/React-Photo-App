@@ -108,6 +108,22 @@ function isInviteRoomForeignKeyError(error: unknown): boolean {
   return typeof dbError.message === 'string' && dbError.message.includes('whiteboard_invites_room_id_foreign');
 }
 
+function isRoomMemberUserForeignKeyError(error: unknown): boolean {
+  if (!error || typeof error !== 'object') return false;
+
+  const dbError = error as {
+    code?: string;
+    constraint?: string;
+    message?: string;
+  };
+
+  if (dbError.code === '23503' && dbError.constraint === 'room_members_user_id_foreign') {
+    return true;
+  }
+
+  return typeof dbError.message === 'string' && dbError.message.includes('room_members_user_id_foreign');
+}
+
 async function hydrateMissingRoomForInvite(db: Knex, boardId: string, userId: string): Promise<boolean> {
   try {
     const { data: roomData, error: roomErr } = await supabase
@@ -557,10 +573,40 @@ module.exports = function createWhiteboardRouter({ db }: { db: Knex }) {
           return res.status(400).json({ success: false, error: 'Join link is no longer usable', reason: 'used_up' });
         }
 
-        await db('room_members')
-          .insert({ room_id: invite.room_id, user_id: userId, is_owner: false })
-          .onConflict(['room_id', 'user_id'])
-          .ignore();
+        try {
+          await db('room_members')
+            .insert({ room_id: invite.room_id, user_id: userId, is_owner: false })
+            .onConflict(['room_id', 'user_id'])
+            .ignore();
+        } catch (membershipError) {
+          if (!isRoomMemberUserForeignKeyError(membershipError)) {
+            throw membershipError;
+          }
+
+          console.warn('[WB-JOIN] join-membership-local-fk-user-missing', {
+            roomId: invite.room_id,
+            userId,
+          });
+
+          const { error: supabaseMembershipError } = await supabase
+            .from('room_members')
+            .insert({ room_id: invite.room_id, user_id: userId, is_owner: false });
+
+          if (supabaseMembershipError && supabaseMembershipError.code !== '23505') {
+            console.warn('[WB-JOIN] join-membership-supabase-fallback-failed', {
+              roomId: invite.room_id,
+              userId,
+              code: supabaseMembershipError.code,
+              message: supabaseMembershipError.message,
+            });
+            throw membershipError;
+          }
+
+          console.info('[WB-JOIN] join-membership-supabase-fallback-success', {
+            roomId: invite.room_id,
+            userId,
+          });
+        }
 
         console.info('[WB-JOIN] join-attempt', {
           ok: true,

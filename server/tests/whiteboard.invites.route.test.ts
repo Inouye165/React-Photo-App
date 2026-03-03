@@ -11,8 +11,12 @@ const mockEq = jest.fn(function eq() {
 const mockSelect = jest.fn(function select() {
   return { eq: mockEq }
 })
+const mockSupabaseInsert = jest.fn(async () => ({ error: null }))
 const mockFrom = jest.fn(function from() {
-  return { select: mockSelect }
+  return {
+    select: mockSelect,
+    insert: mockSupabaseInsert,
+  }
 })
 
 jest.mock('../lib/supabaseClient', () => ({
@@ -77,6 +81,7 @@ function createMockDb(state: MockDbState) {
       const query = {
         _where: {} as Record<string, unknown>,
         _insertRow: null as RoomMemberRow | null,
+        _forceUserFkError: false,
         where: jest.fn(function where(conditions: Record<string, unknown>) {
           Object.assign(query._where, conditions)
           return query
@@ -91,11 +96,23 @@ function createMockDb(state: MockDbState) {
         }),
         insert: jest.fn(function insert(row: RoomMemberRow) {
           query._insertRow = row
+          if (row.user_id === 'force-fk-user-missing') {
+            query._forceUserFkError = true
+          }
           return query
         }),
         onConflict: jest.fn().mockReturnThis(),
         ignore: jest.fn(async () => {
           if (!query._insertRow) return
+          if (query._forceUserFkError) {
+            const error = new Error('insert or update on table "room_members" violates foreign key constraint "room_members_user_id_foreign"') as Error & {
+              code?: string
+              constraint?: string
+            }
+            error.code = '23503'
+            error.constraint = 'room_members_user_id_foreign'
+            throw error
+          }
           const roomExists = state.rooms.some((room) => room.id === query._insertRow?.room_id)
           if (!roomExists) {
             const error = new Error('insert or update on table "room_members" violates foreign key constraint "room_members_room_id_foreign"') as Error & {
@@ -230,6 +247,8 @@ describe('whiteboard invites routes', () => {
     mockFrom.mockClear()
     mockSelect.mockClear()
     mockEq.mockClear()
+    mockSupabaseInsert.mockReset()
+    mockSupabaseInsert.mockResolvedValue({ error: null })
   })
 
   test('owner can create invite', async () => {
@@ -372,6 +391,29 @@ describe('whiteboard invites routes', () => {
     const member = state.roomMembers.find((row) => row.room_id === boardId && row.user_id === 'invitee-2')
     expect(member).toBeTruthy()
     expect(member?.is_owner).toBe(false)
+  })
+
+  test('join falls back to supabase membership when local user FK is missing', async () => {
+    const state: MockDbState = {
+      rooms: [{ id: boardId, created_by: 'owner-1' }],
+      roomMembers: [{ room_id: boardId, user_id: 'owner-1', is_owner: true }],
+      invites: [],
+    }
+    const app = createTestApp(createMockDb(state))
+
+    const createRes = await request(app)
+      .post(`/api/whiteboards/${boardId}/invites`)
+      .set('x-test-user-id', 'owner-1')
+
+    const token = new URL(createRes.body.joinUrl).searchParams.get('token') || ''
+    const joinRes = await request(app)
+      .post('/api/whiteboards/join')
+      .set('x-test-user-id', 'force-fk-user-missing')
+      .send({ token })
+
+    expect(joinRes.status).toBe(200)
+    expect(joinRes.body.roomId).toBe(boardId)
+    expect(mockSupabaseInsert).toHaveBeenCalled()
   })
 
   test('token cannot be used after max_uses is reached', async () => {
