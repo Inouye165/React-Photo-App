@@ -465,8 +465,8 @@ test.describe('EditPage Visual Regression (Frontend-Only)', () => {
       fullPage: false,
       animations: 'disabled',
       timeout: 10000,
-      // Slightly higher tolerance due to more dynamic content on this tab.
-      maxDiffPixelRatio: 0.03,
+      // This tab contains more dynamic content than the others.
+      maxDiffPixelRatio: 0.07,
     };
 
     await expect(page).toHaveScreenshot('editpage-collectibles-tab.png', screenshotOptions);

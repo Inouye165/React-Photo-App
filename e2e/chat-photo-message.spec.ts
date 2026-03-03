@@ -108,6 +108,36 @@ test('E2E chat: renders a photo message (recipient view)', async ({ page }) => {
   await page.route('**/rest/v1/room_members**', async (route) => {
     const method = route.request().method()
     if (method === 'OPTIONS') return route.fulfill({ status: 204, headers: corsHeaders, body: '' })
+
+    if (method === 'GET') {
+      const url = new URL(route.request().url())
+      const userIdEq = url.searchParams.get('user_id')
+      const roomIdEq = url.searchParams.get('room_id')
+
+      if (typeof userIdEq === 'string' && userIdEq.startsWith('eq.')) {
+        const userId = userIdEq.slice('eq.'.length)
+        if (userId === '11111111-1111-4111-8111-111111111111') {
+          return route.fulfill({
+            status: 200,
+            contentType: 'application/json',
+            headers: corsHeaders,
+            body: JSON.stringify([{ room_id: room.id, user_id: userId, is_owner: false }]),
+          })
+        }
+      }
+
+      if (typeof roomIdEq === 'string' && roomIdEq.startsWith('eq.')) {
+        return route.fulfill({
+          status: 200,
+          contentType: 'application/json',
+          headers: corsHeaders,
+          body: JSON.stringify([{ user_id: '22222222-2222-4222-8222-222222222222' }]),
+        })
+      }
+
+      return route.fulfill({ status: 200, contentType: 'application/json', headers: corsHeaders, body: JSON.stringify([]) })
+    }
+
     return route.fulfill({ status: 200, contentType: 'application/json', headers: corsHeaders, body: JSON.stringify([]) })
   })
 
@@ -120,11 +150,11 @@ test('E2E chat: renders a photo message (recipient view)', async ({ page }) => {
 
     if (method === 'GET') {
       const message = {
-        id: 1,
+        id: 'msg-1',
         room_id: room.id,
         sender_id: '22222222-2222-4222-8222-222222222222',
         content: '',
-        photo_id: 101,
+        photo_id: '101',
         created_at: new Date().toISOString(),
       }
       return route.fulfill({
@@ -167,7 +197,7 @@ test('E2E chat: renders a photo message (recipient view)', async ({ page }) => {
   await acceptDisclaimer(page)
 
   await expect(page.getByTestId('chat-page')).toBeVisible({ timeout: 10_000 })
-  await expect(page.getByTestId('chat-messages')).toBeVisible({ timeout: 10_000 })
+  await expect(page.getByTestId('chat-messages').first()).toBeVisible({ timeout: 10_000 })
 
   // A photo bubble should render an image element after AuthenticatedImage loads
   await expect(page.locator('img[alt="Shared photo"]').first()).toBeVisible({ timeout: 10_000 })

@@ -10,19 +10,22 @@ export default defineConfig({
   retries: 1,
   use: {
     headless: true,
-    baseURL: 'http://127.0.0.1:4173'
+    baseURL: 'http://127.0.0.1:5173'
   },
   webServer: [
     {
       // Backend API (used by E2E login helpers and UI fetches)
       command: 'npm --prefix server run start:e2e',
       url: 'http://127.0.0.1:3001/health',
-      reuseExistingServer: !process.env.CI,
+      // Always start an isolated E2E backend with E2E-specific env settings.
+      reuseExistingServer: false,
       timeout: 120_000,
       env: {
         // Required to enable /api/test/* routes used by Playwright login helpers.
         // The server-side gate also forces these routes off in production.
         E2E_ROUTES_ENABLED: 'true',
+        // Ensure CORS allows the Playwright frontend origin used below.
+        CORS_ORIGIN: 'http://127.0.0.1:4173,http://localhost:4173,http://127.0.0.1:5173,http://localhost:5173',
         // Use local Docker Postgres for E2E runs (see docker-compose.yml).
         SUPABASE_DB_URL: 'postgresql://photoapp:photoapp_dev@127.0.0.1:5432/photoapp',
         SUPABASE_DB_URL_MIGRATIONS: 'postgresql://photoapp:photoapp_dev@127.0.0.1:5432/photoapp',
@@ -31,9 +34,10 @@ export default defineConfig({
     },
     {
       // Frontend
-      command: 'npm run dev -- --mode e2e --port 4173 --strictPort',
-      url: 'http://127.0.0.1:4173',
-      reuseExistingServer: !process.env.CI, // Reuse locally, fresh in CI
+      command: 'npm run dev -- --mode e2e --port 5173 --strictPort',
+      url: 'http://127.0.0.1:5173',
+      // Always start isolated frontend for deterministic E2E behavior.
+      reuseExistingServer: false,
       timeout: 120_000,
       env: {
         VITE_E2E: 'true',
