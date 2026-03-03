@@ -1,5 +1,5 @@
 import React, { useEffect, useState } from 'react'
-import { Link, useNavigate, useParams } from 'react-router-dom'
+import { Link, useNavigate, useParams, useLocation } from 'react-router-dom'
 import { joinWhiteboardByToken } from '../api/whiteboards'
 import { ApiError } from '../api/httpClient'
 
@@ -21,7 +21,11 @@ function getJoinErrorMessage(error: unknown): string {
 }
 
 export default function WhiteboardJoinPage(): React.JSX.Element {
-  const { token } = useParams()
+  const { token: tokenFromPath } = useParams()
+  const location = useLocation()
+  // token can be provided as path param (/whiteboards/join/:token) or
+  // as a query param (/?token=...) when using board-specific deep links.
+  const token = tokenFromPath || new URLSearchParams(location.search).get('token') || undefined
   const navigate = useNavigate()
   const [errorMessage, setErrorMessage] = useState<string | null>(null)
 
