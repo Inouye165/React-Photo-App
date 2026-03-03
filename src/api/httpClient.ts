@@ -75,7 +75,9 @@ async function getCsrfToken(): Promise<string> {
         // --- END DEBUG ---
 
         // Preserve auth-error behavior even when the CSRF bootstrap endpoint is blocked.
-        if (res.status === 401 || res.status === 403) {
+        // Note: treat 401 as authentication failure; 403 can mean authorization (not expired session),
+        // so we do NOT treat 403 as 'session-expired' here.
+        if (res.status === 401) {
           throw new ApiError('Authentication failed', { status: res.status, code: 'AUTH_ERROR' })
         }
 
@@ -282,8 +284,11 @@ export function getApiMetrics(): ApiMetrics {
 // --- Auth Error Handling ---
 export function handleAuthError(response: Response | null): boolean {
   if (!response) return false
-  if (response.status === 401 || response.status === 403) {
-    console.error(`[HTTP] Auth Error detected (${response.status}). Dispatching session-expired event.`)
+  // Only dispatch session-expired for 401 Unauthorized. A 403 Forbidden often
+  // represents an authorization failure (user lacks permission) and should not
+  // be treated as an expired session.
+  if (response.status === 401) {
+    console.error(`[HTTP] Auth Error detected (401). Dispatching session-expired event.`)
     try {
       window.dispatchEvent(
         new CustomEvent('auth:session-expired', {
@@ -416,7 +421,9 @@ export async function request<T>(options: RequestOptions): Promise<T> {
             const token = await getCsrfToken()
             headersObj['X-CSRF-Token'] = token
           } catch (err) {
-            if (err instanceof ApiError && (err.status === 401 || err.status === 403)) {
+            if (err instanceof ApiError && err.status === 401) {
+              // Only treat 401 as session-expired. 403 may indicate lack of permission,
+              // which should not force a global session expiry handling.
               handleAuthError(({ status: err.status } as unknown) as Response)
               throw err
             }

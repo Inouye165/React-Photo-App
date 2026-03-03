@@ -59,3 +59,20 @@ export type WhiteboardHistoryResponse = {
 }
 
 export type WhiteboardSnapshotResponse = WhiteboardHistoryResponse
+
+export type WhiteboardHubUser = {
+  id: string
+  username: string | null
+  avatar_url: string | null
+}
+
+export type WhiteboardHubItem = {
+  id: string
+  name: string | null
+  created_at: string
+  updated_at: string
+  type?: string | null
+  metadata?: unknown
+  owner: WhiteboardHubUser | null
+  participants: WhiteboardHubUser[]
+}

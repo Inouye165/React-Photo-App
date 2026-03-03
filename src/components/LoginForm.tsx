@@ -62,7 +62,7 @@ const LoginForm: React.FC<LoginFormProps> = ({ onSwitchToRegister }) => {
 
   if (showForgotPassword) {
     return (
-      <div className="min-h-screen flex flex-col items-center justify-center bg-gradient-to-br from-blue-50 to-indigo-100 py-12 px-4 sm:px-6 lg:px-8">
+      <div className="w-full flex flex-col items-center justify-center bg-gradient-to-br from-blue-50 to-indigo-100 py-6 px-4 sm:px-6 lg:px-8 rounded-xl">
         <div className="max-w-md w-full bg-white rounded-2xl shadow-xl p-8 space-y-8 border border-gray-100">
           <div className="flex flex-col items-center">
             <svg className="h-12 w-12 text-indigo-500 mb-2" fill="none" viewBox="0 0 24 24" stroke="currentColor">
@@ -135,7 +135,7 @@ const LoginForm: React.FC<LoginFormProps> = ({ onSwitchToRegister }) => {
   }
 
   return (
-    <div className="min-h-screen flex items-center justify-center bg-gray-50 p-4">
+    <div className="w-full flex items-center justify-center bg-gray-50 p-4 rounded-xl">
       <div className="w-full max-w-md bg-white rounded-lg shadow-lg p-8">
         <div className="mb-6">
           <h1 className="text-2xl font-bold text-gray-900 mb-2">Sign in to Photo App</h1>

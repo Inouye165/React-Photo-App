@@ -534,16 +534,12 @@ describe('api - handleAuthError', () => {
     // CRITICAL: Verify reload was NOT called
     expect(reloadSpy).not.toHaveBeenCalled();
     
-    // Verify custom event was dispatched instead
-    expect(dispatchEventSpy).toHaveBeenCalled();
-    
+    // Verify custom event was NOT dispatched for 403 (authorization failure is not session expiry)
     const eventCalls = dispatchEventSpy.mock.calls;
     const authEvent = eventCalls.find(call => 
       call[0] instanceof CustomEvent && call[0].type === 'auth:session-expired'
     );
-    
-    expect(authEvent).toBeDefined();
-    expect(authEvent[0].detail).toEqual({ status: 403 });
+    expect(authEvent).toBeUndefined();
   });
 
   it('should allow normal operations on 200 success', async () => {
@@ -687,12 +683,12 @@ describe('api - API functions with auth error handling', () => {
     // Should return undefined when auth error is handled
     expect(result).toBeUndefined();
     
-    // Should dispatch auth event
+    // Should NOT dispatch auth event for 403
     const eventCalls = dispatchEventSpy.mock.calls;
     const authEvent = eventCalls.find(call => 
       call[0] instanceof CustomEvent && call[0].type === 'auth:session-expired'
     );
-    expect(authEvent).toBeDefined();
+    expect(authEvent).toBeUndefined();
   });
 
   it('fetchCollectibles should handle 401 gracefully', async () => {
