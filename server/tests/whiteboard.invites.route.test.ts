@@ -4,6 +4,21 @@ import { createHash } from 'crypto'
 import express, { type NextFunction, type Request, type Response } from 'express'
 import request from 'supertest'
 
+const mockMaybeSingle = jest.fn(async () => ({ data: null, error: null }))
+const mockEq = jest.fn(function eq() {
+  return { maybeSingle: mockMaybeSingle }
+})
+const mockSelect = jest.fn(function select() {
+  return { eq: mockEq }
+})
+const mockFrom = jest.fn(function from() {
+  return { select: mockSelect }
+})
+
+jest.mock('../lib/supabaseClient', () => ({
+  from: mockFrom,
+}))
+
 const createWhiteboardRouter = require('../routes/whiteboard')
 
 type RoomRow = { id: string; created_by: string }
@@ -32,6 +47,7 @@ function createMockDb(state: MockDbState) {
     if (tableName === 'rooms') {
       const query = {
         _where: {} as Record<string, unknown>,
+        _insertRow: null as { id: string } | null,
         select: jest.fn().mockReturnThis(),
         where: jest.fn(function where(conditions: Record<string, unknown>) {
           Object.assign(query._where, conditions)
@@ -40,6 +56,18 @@ function createMockDb(state: MockDbState) {
         first: jest.fn(async () => {
           const row = state.rooms.find((room) => room.id === query._where.id)
           return row ?? null
+        }),
+        insert: jest.fn(function insert(row: { id: string }) {
+          query._insertRow = row
+          return query
+        }),
+        onConflict: jest.fn().mockReturnThis(),
+        ignore: jest.fn(async () => {
+          if (!query._insertRow) return
+          const exists = state.rooms.some((room) => room.id === query._insertRow?.id)
+          if (!exists) {
+            state.rooms.push({ id: query._insertRow.id, created_by: 'hydrated-owner' })
+          }
         }),
       }
       return query
@@ -186,6 +214,14 @@ function createTestApp(db: ReturnType<typeof createMockDb>) {
 describe('whiteboard invites routes', () => {
   const boardId = '11111111-1111-4111-8111-111111111111'
 
+  beforeEach(() => {
+    mockMaybeSingle.mockReset()
+    mockMaybeSingle.mockResolvedValue({ data: null, error: null })
+    mockFrom.mockClear()
+    mockSelect.mockClear()
+    mockEq.mockClear()
+  })
+
   test('owner can create invite', async () => {
     const state: MockDbState = {
       rooms: [{ id: boardId, created_by: 'owner-1' }],
@@ -200,7 +236,8 @@ describe('whiteboard invites routes', () => {
 
     expect(res.status).toBe(201)
     expect(typeof res.body.joinUrl).toBe('string')
-    expect(res.body.joinUrl).toContain('/whiteboards/join/')
+    expect(res.body.joinUrl).toContain(`/whiteboards/${boardId}/join`)
+    expect(res.body.joinUrl).toContain('token=')
     expect(typeof res.body.expiresAt).toBe('string')
     expect(state.invites).toHaveLength(1)
     expect(state.invites[0].token_hash).not.toContain('/whiteboards/join/')
@@ -224,6 +261,46 @@ describe('whiteboard invites routes', () => {
     expect(state.invites).toHaveLength(0)
   })
 
+  test('invite creation returns 404 when room row is missing', async () => {
+    const state: MockDbState = {
+      rooms: [],
+      roomMembers: [{ room_id: boardId, user_id: 'owner-1', is_owner: true }],
+      invites: [],
+    }
+    const app = createTestApp(createMockDb(state))
+
+    const res = await request(app)
+      .post(`/api/whiteboards/${boardId}/invites`)
+      .set('x-test-user-id', 'owner-1')
+
+    expect(res.status).toBe(404)
+    expect(res.body.reason).toBe('room_not_found')
+    expect(state.invites).toHaveLength(0)
+  })
+
+  test('invite creation hydrates room from supabase and succeeds', async () => {
+    mockMaybeSingle.mockResolvedValueOnce({
+      data: { id: boardId },
+      error: null,
+    })
+
+    const state: MockDbState = {
+      rooms: [],
+      roomMembers: [{ room_id: boardId, user_id: 'owner-1', is_owner: true }],
+      invites: [],
+    }
+    const app = createTestApp(createMockDb(state))
+
+    const res = await request(app)
+      .post(`/api/whiteboards/${boardId}/invites`)
+      .set('x-test-user-id', 'owner-1')
+
+    expect(res.status).toBe(201)
+    expect(typeof res.body.joinUrl).toBe('string')
+    expect(state.rooms.some((room) => room.id === boardId)).toBe(true)
+    expect(state.invites).toHaveLength(1)
+  })
+
   test('invitee can join and becomes a member', async () => {
     const state: MockDbState = {
       rooms: [{ id: boardId, created_by: 'owner-1' }],
@@ -236,7 +313,7 @@ describe('whiteboard invites routes', () => {
       .post(`/api/whiteboards/${boardId}/invites`)
       .set('x-test-user-id', 'owner-1')
 
-    const token = String(createRes.body.joinUrl).split('/').pop()
+    const token = new URL(createRes.body.joinUrl).searchParams.get('token') || ''
     const joinRes = await request(app)
       .post('/api/whiteboards/join')
       .set('x-test-user-id', 'invitee-2')
@@ -262,7 +339,7 @@ describe('whiteboard invites routes', () => {
       .post(`/api/whiteboards/${boardId}/invites`)
       .set('x-test-user-id', 'owner-1')
 
-    const token = String(createRes.body.joinUrl).split('/').pop()
+    const token = new URL(createRes.body.joinUrl).searchParams.get('token') || ''
 
     const firstJoin = await request(app)
       .post('/api/whiteboards/join')

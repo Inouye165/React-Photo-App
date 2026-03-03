@@ -1,5 +1,6 @@
 import { supabase } from '../supabaseClient'
 import type { ChatRoom } from '../types/chat'
+import type { WhiteboardHubItem } from '../types/whiteboard'
 import { fetchRooms } from './chat'
 import { ApiError, request } from './httpClient'
 
@@ -62,9 +63,77 @@ export async function requireAuthedUserId(): Promise<string> {
   return id
 }
 
-export async function listMyWhiteboards(): Promise<ChatRoom[]> {
-  const rooms = await fetchRooms()
-  return rooms.filter((r) => (r.type as unknown as string) === 'whiteboard')
+export async function listMyWhiteboards(): Promise<WhiteboardHubItem[]> {
+  try {
+    // Prefer backend authoritative hub list which includes owner and participants
+    const hub = await request<WhiteboardHubItem[]>({ path: '/api/whiteboards', method: 'GET' })
+    // If backend returned no rooms (common in local dev when server DB differs from Supabase),
+    // fallback to Supabase client-side listing so users still see rooms.
+    if (!hub || hub.length === 0) {
+      const rooms = await fetchRooms()
+      const whiteboards = rooms.filter((r) => (r.type as unknown as string) === 'whiteboard')
+      if (whiteboards.length > 0) {
+        return whiteboards.map((r) => ({
+          id: r.id,
+          name: r.name ?? null,
+          created_at: r.created_at,
+          updated_at: (r as any).updated_at ?? r.created_at,
+          type: r.type ?? null,
+          metadata: (r as any).metadata ?? null,
+          owner: null,
+          participants: [],
+        }))
+      }
+    }
+    return hub
+  } catch (err) {
+    // Fallback to legacy client-side supabase fetch when backend is unavailable
+    const rooms = await fetchRooms()
+    return rooms
+      .filter((r) => (r.type as unknown as string) === 'whiteboard')
+      .map((r) => ({
+        id: r.id,
+        name: r.name ?? null,
+        created_at: r.created_at,
+        updated_at: (r as any).updated_at ?? r.created_at,
+        type: r.type ?? null,
+        metadata: (r as any).metadata ?? null,
+        owner: null,
+        participants: [],
+      }))
+  }
+}
+
+export async function deleteWhiteboard(boardId: string): Promise<void> {
+  if (!boardId) throw new Error('Missing board id')
+  try {
+    await request<void>({ path: `/api/whiteboards/${boardId}`, method: 'DELETE' })
+  } catch (err) {
+    // Fallback for local dev: try Supabase RPC that will delete or leave depending on ownership
+    try {
+      const { leaveOrDeleteRoom } = await import('./chat')
+      await leaveOrDeleteRoom(boardId)
+      return
+    } catch (e) {
+      throw err
+    }
+  }
+}
+
+export async function leaveWhiteboard(boardId: string): Promise<void> {
+  if (!boardId) throw new Error('Missing board id')
+  try {
+    await request<void>({ path: `/api/whiteboards/${boardId}/leave`, method: 'DELETE' })
+  } catch (err) {
+    // If server-side leave not available, fall back to Supabase client quit
+    try {
+      const { quitRoom } = await import('./chat')
+      await quitRoom(boardId)
+      return
+    } catch (e) {
+      throw err
+    }
+  }
 }
 
 export async function createWhiteboard(title?: string): Promise<ChatRoom> {

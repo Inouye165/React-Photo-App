@@ -91,6 +91,68 @@ function toAffectedRows(value: unknown): number {
   return 0;
 }
 
+function isInviteRoomForeignKeyError(error: unknown): boolean {
+  if (!error || typeof error !== 'object') return false;
+
+  const dbError = error as {
+    code?: string;
+    constraint?: string;
+    message?: string;
+  };
+
+  if (dbError.code === '23503' && dbError.constraint === 'whiteboard_invites_room_id_foreign') {
+    return true;
+  }
+
+  return typeof dbError.message === 'string' && dbError.message.includes('whiteboard_invites_room_id_foreign');
+}
+
+async function hydrateMissingRoomForInvite(db: Knex, boardId: string, userId: string): Promise<boolean> {
+  try {
+    const { data: roomData, error: roomErr } = await supabase
+      .from('rooms')
+      .select('id')
+      .eq('id', boardId)
+      .maybeSingle();
+
+    if (roomErr) {
+      console.warn('[WB-JOIN] invite-room-hydrate:supabase-query-failed', {
+        boardId,
+        userId,
+        code: roomErr.code,
+        message: roomErr.message,
+      });
+      return false;
+    }
+
+    const roomId = String((roomData as { id?: unknown } | null)?.id ?? '');
+    if (!roomId) {
+      console.warn('[WB-JOIN] invite-room-hydrate:supabase-room-missing', { boardId, userId });
+      return false;
+    }
+
+    await db('rooms')
+      .insert({ id: roomId })
+      .onConflict('id')
+      .ignore();
+
+    await db('room_members')
+      .insert({ room_id: roomId, user_id: userId, is_owner: true })
+      .onConflict(['room_id', 'user_id'])
+      .ignore();
+
+    console.info('[WB-JOIN] invite-room-hydrate:success', { boardId, userId });
+    return true;
+  } catch (error) {
+    console.warn('[WB-JOIN] invite-room-hydrate:error', {
+      boardId,
+      userId,
+      message: error instanceof Error ? error.message : String(error),
+    });
+    return false;
+  }
+}
+
 function getJoinInviteFailureReason(invite: WhiteboardInviteRow | null):
   | 'invalid_token'
   | 'revoked'
@@ -325,6 +387,22 @@ module.exports = function createWhiteboardRouter({ db }: { db: Knex }) {
           return res.status(403).json({ success: false, error: 'Forbidden' });
         }
 
+        let room = await db('rooms').select('id').where({ id: boardId }).first();
+        if (!room) {
+          console.warn('[WB-JOIN] invite-create-room-missing', { boardId, userId, source: 'primary_db' });
+
+          const hydrated = await hydrateMissingRoomForInvite(db, boardId, userId);
+          if (!hydrated) {
+            return res.status(404).json({ success: false, error: 'Not found', reason: 'room_not_found' });
+          }
+
+          room = await db('rooms').select('id').where({ id: boardId }).first();
+          if (!room) {
+            console.warn('[WB-JOIN] invite-create-room-missing-after-hydrate', { boardId, userId });
+            return res.status(404).json({ success: false, error: 'Not found', reason: 'room_not_found' });
+          }
+        }
+
         const rawToken = makeInviteToken();
         const tokenHash = hashInviteToken(rawToken);
         const expiresAt = new Date(Date.now() + JOIN_INVITE_EXPIRY_DAYS * 24 * 60 * 60 * 1000);
@@ -338,10 +416,15 @@ module.exports = function createWhiteboardRouter({ db }: { db: Knex }) {
           uses: 0,
         });
 
-        const host = req.get('host');
-        const origin = host ? `${req.protocol}://${host}` : '';
-        const joinPath = `/whiteboards/join/${rawToken}`;
-        const joinUrl = origin ? `${origin}${joinPath}` : joinPath;
+        // Construct a frontend URL so opening the link in a browser navigates
+        // to the React app which will attach the user's auth token and call
+        // the backend API properly. Prefer `Origin` header, then env override,
+        // then fall back to request host.
+        const frontendOrigin = req.get('origin') || process.env.FRONTEND_URL || (req.get('host') ? `${req.protocol}://${req.get('host')}` : '');
+        const joinPath = `/whiteboards/${boardId}/join`;
+        const joinUrl = frontendOrigin
+          ? `${frontendOrigin}${joinPath}?token=${encodeURIComponent(rawToken)}`
+          : `${joinPath}?token=${encodeURIComponent(rawToken)}`;
 
         console.info('[WB-JOIN] invite-created', {
           boardId,
@@ -350,7 +433,12 @@ module.exports = function createWhiteboardRouter({ db }: { db: Knex }) {
         });
 
         return res.status(201).json({ joinUrl, expiresAt: expiresAt.toISOString() });
-      } catch {
+      } catch (error) {
+        if (isInviteRoomForeignKeyError(error)) {
+          console.warn('[WB-JOIN] invite-create-fk-room-missing', { boardId: req.validated?.params?.boardId, userId: req.user?.id });
+          return res.status(404).json({ success: false, error: 'Not found', reason: 'room_not_found' });
+        }
+
         return res.status(500).json({ success: false, error: 'Internal server error' });
       }
     }
@@ -486,5 +574,161 @@ module.exports = function createWhiteboardRouter({ db }: { db: Knex }) {
     }
   );
 
+  // Hub list: return rooms the authenticated user is a member of, including owner details and participants
+  router.get('/', async (req: AuthenticatedRequest, res: Response) => {
+    try {
+      console.log('[WB-HUB] GET /api/whiteboards called', { path: req.path, user: req.user && typeof req.user.id === 'string' ? req.user.id : null });
+      const userId = req.user?.id ? String(req.user.id) : null;
+      if (!userId) return res.status(401).json({ success: false, error: 'Unauthorized' });
+
+      const memberRows = await db('room_members').select('room_id').where({ user_id: userId });
+      const roomIds = Array.from(new Set((memberRows ?? []).map((r: any) => String((r as Record<string, unknown>).room_id)).filter(Boolean)));
+      if (!roomIds.length) return res.json([]);
+
+      // Fetch rooms in one query
+      const rooms = await db('rooms')
+        .select('id', 'name', 'is_group', 'created_at', 'updated_at', 'type', 'metadata', 'created_by')
+        .whereIn('id', roomIds as string[]);
+
+      // Fetch all members for these rooms in one query to avoid N+1
+      const allMembers = await db('room_members').select('room_id', 'user_id', 'is_owner').whereIn('room_id', roomIds as string[]);
+      const userIds = Array.from(new Set(allMembers.map((m: any) => String(m.user_id))));
+
+      // Fetch user profiles for participants
+      const users = userIds.length
+        ? await db('users').select('id', 'username', 'avatar_url').whereIn('id', userIds as string[])
+        : [];
+
+      const usersById = new Map<string, { id: string; username: string | null; avatar_url: string | null }>();
+      for (const u of users as Array<{ id?: unknown; username?: unknown; avatar_url?: unknown }>) {
+        if (typeof u.id !== 'string') continue;
+        usersById.set(u.id, { id: u.id, username: typeof u.username === 'string' ? u.username : null, avatar_url: typeof u.avatar_url === 'string' ? u.avatar_url : null });
+      }
+
+      const membersByRoom = new Map<string, Array<{ user_id: string; is_owner: boolean }>>();
+      for (const m of allMembers as Array<{ room_id?: unknown; user_id?: unknown; is_owner?: unknown }>) {
+        if (typeof m.room_id !== 'string' || typeof m.user_id !== 'string') continue;
+        const list = membersByRoom.get(m.room_id) ?? [];
+        list.push({ user_id: m.user_id, is_owner: Boolean(m.is_owner) });
+        membersByRoom.set(m.room_id, list);
+      }
+
+      const hubItems = (rooms as Array<any>)
+        .map((r) => {
+          const roomId = String(r.id);
+          const members = membersByRoom.get(roomId) ?? [];
+          // Determine owner: prefer explicit is_owner flag, fall back to created_by
+          const ownerMember = members.find((m) => m.is_owner) ?? null;
+          const ownerId = ownerMember ? ownerMember.user_id : (typeof r.created_by === 'string' ? r.created_by : null);
+          const ownerProfile = ownerId ? usersById.get(ownerId) ?? { id: ownerId, username: null, avatar_url: null } : null;
+
+          const participants = members
+            .map((m) => {
+              const profile = usersById.get(m.user_id) ?? { id: m.user_id, username: null, avatar_url: null };
+              return { id: m.user_id, username: profile.username, avatar_url: profile.avatar_url };
+            })
+            .filter(Boolean);
+
+          return {
+            id: roomId,
+            name: typeof r.name === 'string' ? r.name : null,
+            created_at: r.created_at,
+            updated_at: r.updated_at ?? r.created_at,
+            type: r.type,
+            metadata: r.metadata ?? null,
+            owner: ownerProfile ? { id: ownerProfile.id, username: ownerProfile.username, avatar_url: ownerProfile.avatar_url } : null,
+            participants,
+          };
+        })
+        // newest first
+        .sort((a, b) => Date.parse(b.updated_at || b.created_at) - Date.parse(a.updated_at || a.created_at));
+
+      return res.json(hubItems);
+    } catch (err) {
+      console.error('[WB-HUB] list failed', { error: err });
+      return res.status(500).json({ success: false, error: 'Internal server error' });
+    }
+  });
+
+  // DELETE: delete a whiteboard (owner only)
+  router.delete('/:boardId', validateRequest({ params: BoardIdParamsSchema }), async (req: AuthenticatedRequest, res: Response) => {
+    try {
+      console.log('[WB-HTTP] DELETE /api/whiteboards/:boardId called', { path: req.path, user: req.user && typeof req.user.id === 'string' ? req.user.id : null });
+      const userId = req.user?.id ? String(req.user.id) : null;
+      if (!userId) return res.status(401).json({ success: false, error: 'Unauthorized' });
+
+      const boardId = req.validated?.params?.boardId;
+      if (!boardId) return res.status(400).json({ success: false, error: 'Invalid request' });
+
+      const owner = await isBoardOwner(db, boardId, userId);
+      if (!owner) return res.status(403).json({ success: false, error: 'Forbidden' });
+
+      // perform clean delete in transaction
+      await db.transaction(async (trx) => {
+        await trx('whiteboard_events').where({ board_id: boardId }).del();
+        await trx('whiteboard_invites').where({ room_id: boardId }).del();
+        await trx('room_members').where({ room_id: boardId }).del();
+        await trx('rooms').where({ id: boardId }).del();
+      });
+
+      return res.status(204).send();
+    } catch (err) {
+      console.error('[WB-HTTP] delete failed', { error: err });
+      return res.status(500).json({ success: false, error: 'Internal server error' });
+    }
+  });
+
+  // DELETE: leave a whiteboard (remove own membership)
+  router.delete('/:boardId/leave', validateRequest({ params: BoardIdParamsSchema }), async (req: AuthenticatedRequest, res: Response) => {
+    try {
+      console.log('[WB-HTTP] DELETE /api/whiteboards/:boardId/leave called', { path: req.path, user: req.user && typeof req.user.id === 'string' ? req.user.id : null });
+      const userId = req.user?.id ? String(req.user.id) : null;
+      if (!userId) return res.status(401).json({ success: false, error: 'Unauthorized' });
+
+      const boardId = req.validated?.params?.boardId;
+      if (!boardId) return res.status(400).json({ success: false, error: 'Invalid request' });
+
+      const existing = await db('room_members').where({ room_id: boardId, user_id: userId }).first();
+      if (!existing) {
+        // If membership isn't in primary DB, attempt Supabase fallback to support eventual-consistency dev setups.
+        if (process.env.NODE_ENV === 'test') {
+          return res.status(404).json({ success: false, error: 'Not found' });
+        }
+
+        try {
+          const { data: deleted, error: delErr } = await supabase
+            .from('room_members')
+            .delete()
+            .eq('room_id', boardId)
+            .eq('user_id', userId);
+
+          if (delErr) {
+            console.warn('[WB-HTTP] leave:supabase-delete-failed', { boardId, userId, code: delErr.code, message: delErr.message });
+            return res.status(404).json({ success: false, error: 'Not found' });
+          }
+
+          // Treat as idempotent: whether Supabase deleted rows or not,
+          // respond success to make leave safe to call repeatedly.
+          if (Array.isArray(deleted) && deleted.length > 0) {
+            console.log('[WB-HTTP] leave:supabase-deleted', { boardId, userId, count: deleted.length });
+          } else {
+            console.log('[WB-HTTP] leave:supabase-no-op', { boardId, userId });
+          }
+          return res.status(200).json({ success: true });
+        } catch (e) {
+          console.error('[WB-HTTP] leave:supabase-fallback-error', { boardId, userId, error: e });
+          return res.status(500).json({ success: false, error: 'Internal server error' });
+        }
+      }
+
+      await db('room_members').where({ room_id: boardId, user_id: userId }).del();
+      return res.status(200).json({ success: true });
+    } catch (err) {
+      console.error('[WB-HTTP] leave failed', { error: err });
+      return res.status(500).json({ success: false, error: 'Internal server error' });
+    }
+  });
+
   return router;
 };
+
