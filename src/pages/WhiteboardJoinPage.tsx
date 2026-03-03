@@ -28,6 +28,7 @@ export default function WhiteboardJoinPage(): React.JSX.Element {
   const token = tokenFromPath || new URLSearchParams(location.search).get('token') || undefined
   const navigate = useNavigate()
   const [errorMessage, setErrorMessage] = useState<string | null>(null)
+  const joiningRef = React.useRef(false)
 
   useEffect(() => {
     let cancelled = false
@@ -38,6 +39,8 @@ export default function WhiteboardJoinPage(): React.JSX.Element {
     }
 
     ;(async () => {
+      if (joiningRef.current) return
+      joiningRef.current = true
       try {
         const { roomId } = await joinWhiteboardByToken(token)
         if (cancelled) return
@@ -45,6 +48,8 @@ export default function WhiteboardJoinPage(): React.JSX.Element {
       } catch (error) {
         if (cancelled) return
         setErrorMessage(getJoinErrorMessage(error))
+      } finally {
+        joiningRef.current = false
       }
     })()
 
