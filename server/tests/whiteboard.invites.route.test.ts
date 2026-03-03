@@ -96,6 +96,16 @@ function createMockDb(state: MockDbState) {
         onConflict: jest.fn().mockReturnThis(),
         ignore: jest.fn(async () => {
           if (!query._insertRow) return
+          const roomExists = state.rooms.some((room) => room.id === query._insertRow?.room_id)
+          if (!roomExists) {
+            const error = new Error('insert or update on table "room_members" violates foreign key constraint "room_members_room_id_foreign"') as Error & {
+              code?: string
+              constraint?: string
+            }
+            error.code = '23503'
+            error.constraint = 'room_members_room_id_foreign'
+            throw error
+          }
           const exists = state.roomMembers.some(
             (member) => member.room_id === query._insertRow?.room_id && member.user_id === query._insertRow?.user_id,
           )
@@ -299,6 +309,43 @@ describe('whiteboard invites routes', () => {
     expect(typeof res.body.joinUrl).toBe('string')
     expect(state.rooms.some((room) => room.id === boardId)).toBe(true)
     expect(state.invites).toHaveLength(1)
+  })
+
+  test('join hydrates missing room from supabase and succeeds', async () => {
+    const rawToken = 'valid-token-value'
+    const tokenHash = createHash('sha256').update(rawToken).digest('hex')
+
+    mockMaybeSingle.mockResolvedValueOnce({
+      data: { id: boardId, created_by: 'owner-1' },
+      error: null,
+    })
+
+    const state: MockDbState = {
+      rooms: [],
+      roomMembers: [],
+      invites: [
+        {
+          id: 'invite-active',
+          room_id: boardId,
+          token_hash: tokenHash,
+          created_by: 'owner-1',
+          expires_at: new Date(Date.now() + 60_000).toISOString(),
+          max_uses: 1,
+          uses: 0,
+          revoked_at: null,
+        },
+      ],
+    }
+    const app = createTestApp(createMockDb(state))
+
+    const res = await request(app)
+      .post('/api/whiteboards/join')
+      .set('x-test-user-id', 'invitee-2')
+      .send({ token: rawToken })
+
+    expect(res.status).toBe(200)
+    expect(res.body.roomId).toBe(boardId)
+    expect(state.rooms.some((room) => room.id === boardId)).toBe(true)
   })
 
   test('invitee can join and becomes a member', async () => {

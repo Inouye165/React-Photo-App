@@ -60,6 +60,7 @@ type WhiteboardInviteRow = {
   id: string;
   room_id: string;
   token_hash: string;
+  created_by: string;
   expires_at: string | Date;
   max_uses: number | string;
   uses: number | string;
@@ -147,6 +148,55 @@ async function hydrateMissingRoomForInvite(db: Knex, boardId: string, userId: st
     console.warn('[WB-JOIN] invite-room-hydrate:error', {
       boardId,
       userId,
+      message: error instanceof Error ? error.message : String(error),
+    });
+    return false;
+  }
+}
+
+async function hydrateMissingRoomForJoin(db: Knex, boardId: string, inviteCreatedBy: string | null): Promise<boolean> {
+  try {
+    const { data: roomData, error: roomErr } = await supabase
+      .from('rooms')
+      .select('id,created_by')
+      .eq('id', boardId)
+      .maybeSingle();
+
+    if (roomErr) {
+      console.warn('[WB-JOIN] join-room-hydrate:supabase-query-failed', {
+        boardId,
+        code: roomErr.code,
+        message: roomErr.message,
+      });
+      return false;
+    }
+
+    const roomId = String((roomData as { id?: unknown } | null)?.id ?? '');
+    if (!roomId) {
+      console.warn('[WB-JOIN] join-room-hydrate:supabase-room-missing', { boardId });
+      return false;
+    }
+
+    const createdByFromRoom = String((roomData as { created_by?: unknown } | null)?.created_by ?? '');
+    const createdBy = createdByFromRoom || (inviteCreatedBy ?? '');
+
+    const roomInsert: { id: string; created_by?: string } = { id: roomId };
+    if (createdBy) roomInsert.created_by = createdBy;
+
+    await db('rooms').insert(roomInsert).onConflict('id').ignore();
+
+    if (createdBy) {
+      await db('room_members')
+        .insert({ room_id: roomId, user_id: createdBy, is_owner: true })
+        .onConflict(['room_id', 'user_id'])
+        .ignore();
+    }
+
+    console.info('[WB-JOIN] join-room-hydrate:success', { boardId });
+    return true;
+  } catch (error) {
+    console.warn('[WB-JOIN] join-room-hydrate:error', {
+      boardId,
       message: error instanceof Error ? error.message : String(error),
     });
     return false;
@@ -473,6 +523,20 @@ module.exports = function createWhiteboardRouter({ db }: { db: Knex }) {
             tokenLength: token.length,
           });
           return res.status(400).json({ success: false, error: 'Join link is not valid', reason: validationReason });
+        }
+
+        let room = await db('rooms').select('id').where({ id: invite.room_id }).first();
+        if (!room) {
+          console.warn('[WB-JOIN] join-room-missing', { roomId: invite.room_id, userId });
+          const hydrated = await hydrateMissingRoomForJoin(db, invite.room_id, invite.created_by ?? null);
+          if (!hydrated) {
+            return res.status(404).json({ success: false, error: 'Not found', reason: 'room_not_found' });
+          }
+
+          room = await db('rooms').select('id').where({ id: invite.room_id }).first();
+          if (!room) {
+            return res.status(404).json({ success: false, error: 'Not found', reason: 'room_not_found' });
+          }
         }
 
         const updateResult = await db('whiteboard_invites')
