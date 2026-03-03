@@ -208,6 +208,22 @@ describe('whiteboard invites routes', () => {
     expect(state.invites[0].max_uses).toBe(1)
   })
 
+  test('non-owner cannot create invite (403)', async () => {
+    const state: MockDbState = {
+      rooms: [{ id: boardId, created_by: 'owner-1' }],
+      roomMembers: [{ room_id: boardId, user_id: 'owner-1', is_owner: true }],
+      invites: [],
+    }
+    const app = createTestApp(createMockDb(state))
+
+    const res = await request(app)
+      .post(`/api/whiteboards/${boardId}/invites`)
+      .set('x-test-user-id', 'not-owner')
+
+    expect(res.status).toBe(403)
+    expect(state.invites).toHaveLength(0)
+  })
+
   test('invitee can join and becomes a member', async () => {
     const state: MockDbState = {
       rooms: [{ id: boardId, created_by: 'owner-1' }],

@@ -216,7 +216,12 @@ export default function WhiteboardSessionPage(): React.JSX.Element {
         status: details.status,
         message: details.message,
       })
-      setJoinLinkNotice({ tone: 'error', message: details.message || 'Unable to create join link.' })
+      // If backend explicitly returns 403, surface a clearer UX message for non-owners.
+      if (details.status === 403) {
+        setJoinLinkNotice({ tone: 'error', message: 'Only the owner can create a join link for this board.' })
+      } else {
+        setJoinLinkNotice({ tone: 'error', message: details.message || 'Unable to create join link.' })
+      }
     } finally {
       setIsCreatingJoinLink(false)
     }

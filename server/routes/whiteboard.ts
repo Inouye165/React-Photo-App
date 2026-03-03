@@ -117,7 +117,46 @@ async function isBoardOwner(db: Knex, boardId: string, userId: string): Promise<
   if (ownerMembership) return true;
 
   const room = await db('rooms').select('created_by').where({ id: boardId }).first();
-  return Boolean(room && String((room as { created_by?: unknown }).created_by ?? '') === userId);
+  if (room && String((room as { created_by?: unknown }).created_by ?? '') === userId) return true;
+
+  // If we reach here, Knex didn't confirm ownership. In non-test env, fall back to Supabase
+  // to tolerate eventual consistency between databases.
+  if (process.env.NODE_ENV === 'test') return false;
+
+  try {
+    const { data: memberData, error: memberErr } = await supabase
+      .from('room_members')
+      .select('is_owner')
+      .eq('room_id', boardId)
+      .eq('user_id', userId)
+      .maybeSingle();
+
+    if (memberErr) {
+      console.warn('[WB-HTTP] owner-check:fallback:member-query-failed', { boardId, userId, code: memberErr.code, message: memberErr.message });
+    } else if (memberData && (memberData as { is_owner?: unknown }).is_owner === true) {
+      console.log('[WB-HTTP] owner-check:fallback', { boardId, userId, matched: true, reason: 'member_owner' });
+      return true;
+    }
+
+    const { data: roomData, error: roomErr } = await supabase
+      .from('rooms')
+      .select('created_by')
+      .eq('id', boardId)
+      .maybeSingle();
+
+    if (roomErr) {
+      console.warn('[WB-HTTP] owner-check:fallback:room-query-failed', { boardId, userId, code: roomErr.code, message: roomErr.message });
+    } else if (roomData && String((roomData as { created_by?: unknown }).created_by ?? '') === userId) {
+      console.log('[WB-HTTP] owner-check:fallback', { boardId, userId, matched: true, reason: 'created_by' });
+      return true;
+    }
+
+    console.log('[WB-HTTP] owner-check:fallback', { boardId, userId, matched: false, reason: 'none' });
+    return false;
+  } catch (e) {
+    console.warn('[WB-HTTP] owner-check:fallback:error', { boardId, userId });
+    return false;
+  }
 }
 
 async function isMember(db: Knex, boardId: string, userId: string): Promise<boolean> {
