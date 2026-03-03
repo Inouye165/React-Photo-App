@@ -532,6 +532,20 @@ module.exports = function createWhiteboardRouter({ db }: { db: Knex }) {
 
         const validationReason = getJoinInviteFailureReason(invite);
         if (validationReason) {
+          if (validationReason === 'used_up' && invite) {
+            const alreadyMember = await isMember(db, invite.room_id, userId);
+            if (alreadyMember) {
+              console.info('[WB-JOIN] join-attempt', {
+                ok: true,
+                reason: 'already_joined',
+                roomId: invite.room_id,
+                userId,
+                tokenLength: token.length,
+              });
+              return res.status(200).json({ roomId: invite.room_id });
+            }
+          }
+
           console.info('[WB-JOIN] join-attempt', {
             ok: false,
             reason: validationReason,

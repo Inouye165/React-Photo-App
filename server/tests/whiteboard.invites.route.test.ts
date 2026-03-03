@@ -444,6 +444,34 @@ describe('whiteboard invites routes', () => {
     expect(secondJoin.body.reason).toBe('used_up')
   })
 
+  test('re-joining with same used token succeeds if user is already a member', async () => {
+    const state: MockDbState = {
+      rooms: [{ id: boardId, created_by: 'owner-1' }],
+      roomMembers: [{ room_id: boardId, user_id: 'owner-1', is_owner: true }],
+      invites: [],
+    }
+    const app = createTestApp(createMockDb(state))
+
+    const createRes = await request(app)
+      .post(`/api/whiteboards/${boardId}/invites`)
+      .set('x-test-user-id', 'owner-1')
+
+    const token = new URL(createRes.body.joinUrl).searchParams.get('token') || ''
+
+    const firstJoin = await request(app)
+      .post('/api/whiteboards/join')
+      .set('x-test-user-id', 'invitee-2')
+      .send({ token })
+    expect(firstJoin.status).toBe(200)
+
+    const retryJoin = await request(app)
+      .post('/api/whiteboards/join')
+      .set('x-test-user-id', 'invitee-2')
+      .send({ token })
+    expect(retryJoin.status).toBe(200)
+    expect(retryJoin.body.roomId).toBe(boardId)
+  })
+
   test('expired token fails', async () => {
     const rawToken = 'expired-token-value'
     const tokenHash = createHash('sha256').update(rawToken).digest('hex')
