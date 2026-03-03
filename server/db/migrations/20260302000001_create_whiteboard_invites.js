@@ -3,11 +3,17 @@
  */
 
 exports.up = async function up(knex) {
+  const client = knex.client.config.client;
+  const isPg = client === 'pg' || client === 'postgresql';
   const hasTable = await knex.schema.hasTable('whiteboard_invites');
   if (hasTable) return;
 
   await knex.schema.createTable('whiteboard_invites', (table) => {
-    table.uuid('id').primary().defaultTo(knex.raw('gen_random_uuid()'));
+    if (isPg) {
+      table.uuid('id').primary().defaultTo(knex.raw('gen_random_uuid()'));
+    } else {
+      table.uuid('id').primary();
+    }
     table.uuid('room_id').notNullable().references('id').inTable('rooms').onDelete('CASCADE');
     table.text('token_hash').notNullable().unique();
     table.uuid('created_by').notNullable();

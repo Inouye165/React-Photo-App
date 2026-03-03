@@ -45,7 +45,7 @@ async function loginAsUser(page, role: 'admin' | 'user' = 'user') {  page.on('co
   await page.route('**/api/users/me', async (route) => {
     await route.fulfill({
       headers: {
-        'Access-Control-Allow-Origin': 'http://127.0.0.1:5173',
+        'Access-Control-Allow-Origin': 'http://127.0.0.1:4173',
         'Access-Control-Allow-Credentials': 'true',
       },
       json: {
@@ -62,7 +62,7 @@ async function loginAsUser(page, role: 'admin' | 'user' = 'user') {  page.on('co
   await page.route('**/api/users/accept-terms', async (route) => {
     await route.fulfill({
       headers: {
-        'Access-Control-Allow-Origin': 'http://127.0.0.1:5173',
+        'Access-Control-Allow-Origin': 'http://127.0.0.1:4173',
         'Access-Control-Allow-Credentials': 'true',
       },
       json: { success: true, data: { terms_accepted_at: new Date().toISOString() } },
