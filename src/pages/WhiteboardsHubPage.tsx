@@ -5,16 +5,8 @@ import { ArrowLeft, Plus, Users } from 'lucide-react'
 import { listMyWhiteboards, createWhiteboard } from '../api/whiteboards'
 import { listRoomMembers, RoomMemberDetails } from '../api/chat'
 import Avatar from '../components/Avatar'
-import ChessHeaderAccountIndicator from './ChessHeaderAccountIndicator'
+import ChessUserMenu from '../components/ChessUserMenu'
 import { useAuth } from '../contexts/AuthContext'
-
-function getInitials(value: string): string {
-  const cleaned = value.trim()
-  if (!cleaned) return 'U'
-  const parts = cleaned.split(/\s+/).filter(Boolean)
-  if (parts.length >= 2) return `${parts[0][0]}${parts[1][0]}`.toUpperCase()
-  return cleaned.slice(0, 2).toUpperCase()
-}
 
 function useDesktopLayout(): boolean {
   const [isDesktop, setIsDesktop] = useState(() => {
@@ -52,7 +44,7 @@ export default function WhiteboardsHubPage(): React.JSX.Element {
   const navigate = useNavigate()
   const [boards, setBoards] = useState<any[]>([])
   const [membersByBoard, setMembersByBoard] = useState<Record<string, RoomMemberDetails[]>>({})
-  const { profile, user } = useAuth()
+  const { profile } = useAuth()
   const [loading, setLoading] = useState(true)
   const [createError, setCreateError] = useState<string | null>(null)
   const prefersReducedMotion = useReducedMotion()
@@ -106,12 +98,6 @@ export default function WhiteboardsHubPage(): React.JSX.Element {
     }
   }
 
-  
-
-  const accountLabel = profile?.username || user?.email?.split('@')[0] || 'User'
-  const accountInitials = getInitials(accountLabel)
-  const isAuthenticated = Boolean(user)
-
   const pageClassName = isDesktop
     ? 'flex h-[100dvh] flex-col overflow-hidden bg-chess-bg font-body text-chess-text'
     : 'min-h-[100dvh] bg-chess-bg font-body text-chess-text'
@@ -146,11 +132,11 @@ export default function WhiteboardsHubPage(): React.JSX.Element {
                 <Plus className="w-4 h-4" />
                 Create Whiteboard
               </button>
-              <ChessHeaderAccountIndicator
-                isAuthenticated={isAuthenticated}
-                displayName={accountLabel}
-                initials={accountInitials}
-                onSignIn={() => navigate('/login')}
+              <ChessUserMenu
+                onOpenPhotos={() => navigate('/photos')}
+                onOpenEdit={() => navigate('/edit')}
+                onOpenAdmin={() => navigate('/admin')}
+                showAdminQuickAction={false}
               />
             </div>
           </div>
@@ -244,11 +230,11 @@ export default function WhiteboardsHubPage(): React.JSX.Element {
               </button>
               <h1 className="text-xl font-semibold font-display">Whiteboards</h1>
             </div>
-            <ChessHeaderAccountIndicator
-              isAuthenticated={isAuthenticated}
-              displayName={accountLabel}
-              initials={accountInitials}
-              onSignIn={() => navigate('/login')}
+            <ChessUserMenu
+              onOpenPhotos={() => navigate('/photos')}
+              onOpenEdit={() => navigate('/edit')}
+              onOpenAdmin={() => navigate('/admin')}
+              showAdminQuickAction={false}
             />
           </div>
 
