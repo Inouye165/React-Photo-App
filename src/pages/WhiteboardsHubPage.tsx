@@ -359,9 +359,10 @@ export default function WhiteboardsHubPage(): React.JSX.Element {
               && Number.isFinite(event.x)
               && Number.isFinite(event.y),
           )
+          const excalidrawElements = Array.isArray(snapshot.excalidrawElements) ? snapshot.excalidrawElements : []
           // Debug: show normalized / drawable counts
           // eslint-disable-next-line no-console
-          console.log('[WB-THUMB] events counts', { boardId, normalized: events.length, drawable: drawableEvents.length })
+          console.log('[WB-THUMB] events counts', { boardId, normalized: events.length, drawable: drawableEvents.length, excalidraw: excalidrawElements.length })
 
           if (drawableEvents.length > 0) {
             emptySnapshotAttemptsRef.current = 0
@@ -441,6 +442,125 @@ export default function WhiteboardsHubPage(): React.JSX.Element {
                 activeStrokes.delete(strokeKey)
               }
             }
+            if (!cancelled) {
+              setIsLoading(false)
+              setHasLoaded(true)
+            }
+            return
+          } else if (excalidrawElements.length > 0) {
+            // Render Excalidraw elements on the thumbnail canvas
+            emptySnapshotAttemptsRef.current = 0
+
+            // Calculate bounding box of all elements
+            let minX = Infinity
+            let maxX = -Infinity
+            let minY = Infinity
+            let maxY = -Infinity
+
+            for (const el of excalidrawElements) {
+              const elMinX = el.x
+              const elMinY = el.y
+              let elMaxX = el.x + (el.width || 0)
+              let elMaxY = el.y + (el.height || 0)
+
+              // For freedraw/line elements, extend bounds by points
+              if (Array.isArray(el.points)) {
+                for (const pt of el.points) {
+                  if (Array.isArray(pt) && pt.length >= 2) {
+                    const px = el.x + pt[0]
+                    const py = el.y + pt[1]
+                    if (px < minX) minX = px
+                    if (px > maxX) maxX = px
+                    if (py < minY) minY = py
+                    if (py > maxY) maxY = py
+                  }
+                }
+              }
+
+              if (elMinX < minX) minX = elMinX
+              if (elMaxX > maxX) maxX = elMaxX
+              if (elMinY < minY) minY = elMinY
+              if (elMaxY > maxY) maxY = elMaxY
+            }
+
+            const padding = 10
+            const spanX = Math.max(1, maxX - minX)
+            const spanY = Math.max(1, maxY - minY)
+            const scaleX = (canvas.width - padding * 2) / spanX
+            const scaleY = (canvas.height - padding * 2) / spanY
+            const scale = Math.min(scaleX, scaleY)
+
+            const toCanvas = (x: number, y: number) => ({
+              x: padding + (x - minX) * scale,
+              y: padding + (y - minY) * scale,
+            })
+
+            ctx.lineCap = 'round'
+            ctx.lineJoin = 'round'
+
+            for (const el of excalidrawElements) {
+              const color = el.strokeColor || '#000000'
+              const lineWidth = Math.max(1, (el.strokeWidth || 2) * scale)
+              const opacity = typeof el.opacity === 'number' ? el.opacity / 100 : 1
+              ctx.globalAlpha = opacity
+              ctx.strokeStyle = color
+              ctx.lineWidth = lineWidth
+
+              if ((el.type === 'freedraw' || el.type === 'line' || el.type === 'arrow') && Array.isArray(el.points) && el.points.length >= 2) {
+                ctx.beginPath()
+                const first = toCanvas(el.x + el.points[0][0], el.y + el.points[0][1])
+                ctx.moveTo(first.x, first.y)
+                for (let i = 1; i < el.points.length; i++) {
+                  const pt = el.points[i]
+                  if (Array.isArray(pt) && pt.length >= 2) {
+                    const cp = toCanvas(el.x + pt[0], el.y + pt[1])
+                    ctx.lineTo(cp.x, cp.y)
+                  }
+                }
+                ctx.stroke()
+              } else if (el.type === 'rectangle') {
+                const tl = toCanvas(el.x, el.y)
+                const w = el.width * scale
+                const h = el.height * scale
+                if (el.backgroundColor && el.backgroundColor !== 'transparent') {
+                  ctx.fillStyle = el.backgroundColor
+                  ctx.fillRect(tl.x, tl.y, w, h)
+                }
+                ctx.strokeRect(tl.x, tl.y, w, h)
+              } else if (el.type === 'ellipse') {
+                const cx = el.x + el.width / 2
+                const cy = el.y + el.height / 2
+                const center = toCanvas(cx, cy)
+                const rx = (el.width / 2) * scale
+                const ry = (el.height / 2) * scale
+                ctx.beginPath()
+                ctx.ellipse(center.x, center.y, Math.abs(rx), Math.abs(ry), 0, 0, Math.PI * 2)
+                if (el.backgroundColor && el.backgroundColor !== 'transparent') {
+                  ctx.fillStyle = el.backgroundColor
+                  ctx.fill()
+                }
+                ctx.stroke()
+              } else if (el.type === 'diamond') {
+                const tl = toCanvas(el.x, el.y)
+                const w = el.width * scale
+                const h = el.height * scale
+                ctx.beginPath()
+                ctx.moveTo(tl.x + w / 2, tl.y)
+                ctx.lineTo(tl.x + w, tl.y + h / 2)
+                ctx.lineTo(tl.x + w / 2, tl.y + h)
+                ctx.lineTo(tl.x, tl.y + h / 2)
+                ctx.closePath()
+                if (el.backgroundColor && el.backgroundColor !== 'transparent') {
+                  ctx.fillStyle = el.backgroundColor
+                  ctx.fill()
+                }
+                ctx.stroke()
+              }
+              // Skip text and image elements for thumbnail
+            }
+
+            ctx.globalAlpha = 1
+
             if (!cancelled) {
               setIsLoading(false)
               setHasLoaded(true)
