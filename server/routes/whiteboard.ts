@@ -5,6 +5,7 @@ import { createHash, randomBytes } from 'crypto';
 import { gzip } from 'zlib';
 import { promisify } from 'util';
 import { z } from 'zod';
+import * as Y from 'yjs';
 import { validateRequest } from '../validation/validateRequest';
 import { createWhiteboardWsToken } from '../realtime/whiteboardWsTokens';
 const supabase = require('../lib/supabaseClient');
@@ -345,6 +346,90 @@ function shouldGzip(req: Request): boolean {
   if (!header || typeof header !== 'string') return false;
   return header.includes('gzip');
 }
+
+const WHITEBOARD_DOC_TABLE = 'whiteboard_documents';
+
+type ExcalidrawSnapshotElement = {
+  id: string;
+  type: string;
+  x: number;
+  y: number;
+  width: number;
+  height: number;
+  angle?: number;
+  strokeColor?: string;
+  strokeWidth?: number;
+  backgroundColor?: string;
+  fillStyle?: string;
+  opacity?: number;
+  points?: number[][];
+  isDeleted?: boolean;
+  customData?: Record<string, unknown>;
+};
+
+function toUpdateBuffer(value: Buffer | Uint8Array | string | null): Uint8Array {
+  if (!value) return new Uint8Array(0);
+  if (value instanceof Uint8Array) return value;
+  if (Buffer.isBuffer(value)) return new Uint8Array(value.buffer, value.byteOffset, value.byteLength);
+  // base64 string fallback
+  const buf = Buffer.from(value, 'base64');
+  return new Uint8Array(buf.buffer, buf.byteOffset, buf.byteLength);
+}
+
+async function fetchExcalidrawElements(db: Knex, boardId: string): Promise<ExcalidrawSnapshotElement[] | null> {
+  try {
+    const hasTable = await db.schema.hasTable(WHITEBOARD_DOC_TABLE);
+    if (!hasTable) return null;
+
+    const row = await db(WHITEBOARD_DOC_TABLE)
+      .select('ydoc')
+      .where({ board_id: boardId })
+      .first();
+    if (!row || !row.ydoc) return null;
+
+    const update = toUpdateBuffer(row.ydoc);
+    if (update.length === 0) return null;
+
+    const doc = new Y.Doc();
+    Y.applyUpdate(doc, update);
+    const map = doc.getMap('excalidraw');
+    const rawElements = map.get('elements');
+    doc.destroy();
+
+    if (!Array.isArray(rawElements)) return null;
+
+    // Filter to visible, non-deleted elements with valid coordinates
+    return rawElements
+      .filter((el: any) => {
+        if (!el || typeof el !== 'object') return false;
+        if (el.isDeleted) return false;
+        if (typeof el.type !== 'string') return false;
+        if (typeof el.x !== 'number' || typeof el.y !== 'number') return false;
+        return true;
+      })
+      .map((el: any): ExcalidrawSnapshotElement => ({
+        id: String(el.id || ''),
+        type: el.type,
+        x: el.x,
+        y: el.y,
+        width: typeof el.width === 'number' ? el.width : 0,
+        height: typeof el.height === 'number' ? el.height : 0,
+        angle: typeof el.angle === 'number' ? el.angle : undefined,
+        strokeColor: typeof el.strokeColor === 'string' ? el.strokeColor : undefined,
+        strokeWidth: typeof el.strokeWidth === 'number' ? el.strokeWidth : undefined,
+        backgroundColor: typeof el.backgroundColor === 'string' ? el.backgroundColor : undefined,
+        fillStyle: typeof el.fillStyle === 'string' ? el.fillStyle : undefined,
+        opacity: typeof el.opacity === 'number' ? el.opacity : undefined,
+        points: Array.isArray(el.points) ? el.points : undefined,
+        isDeleted: false,
+        customData: typeof el.customData === 'object' && el.customData ? el.customData : undefined,
+      }));
+  } catch (err) {
+    console.warn('[WB-HTTP] fetchExcalidrawElements error', { boardId, error: err instanceof Error ? err.message : String(err) });
+    return null;
+  }
+}
+
 module.exports = function createWhiteboardRouter({ db }: { db: Knex }) {
   if (!db) throw new Error('db is required');
 
@@ -374,7 +459,18 @@ module.exports = function createWhiteboardRouter({ db }: { db: Knex }) {
         };
       })
       .filter((evt): evt is NonNullable<typeof evt> => Boolean(evt));
-    return { boardId, events: mapped, cursor };
+
+    // If no legacy stroke events, try to read from the Yjs document
+    let excalidrawElements: ExcalidrawSnapshotElement[] | undefined;
+    if (mapped.length === 0) {
+      const elements = await fetchExcalidrawElements(db, boardId);
+      if (elements && elements.length > 0) {
+        excalidrawElements = elements;
+        console.log('[WB-HTTP] excalidraw elements from ydoc', { boardId, count: elements.length });
+      }
+    }
+
+    return { boardId, events: mapped, cursor, excalidrawElements };
   };
 
   const handleRequest = async (req: AuthenticatedRequest, res: Response): Promise<string | null> => {

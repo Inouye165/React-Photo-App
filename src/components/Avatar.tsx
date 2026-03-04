@@ -6,9 +6,10 @@ type AvatarProps = {
   username?: string | null
   size?: number
   className?: string
+  loading?: 'lazy' | 'eager'
 }
 
-export default function Avatar({ src, username, size = 28, className = '' }: AvatarProps): React.JSX.Element {
+export default function Avatar({ src, username, size = 28, className = '', loading = 'eager' }: AvatarProps): React.JSX.Element {
   const [errored, setErrored] = useState(false)
   const initials = username ? String(username).charAt(0).toUpperCase() : ''
 
@@ -41,7 +42,7 @@ export default function Avatar({ src, username, size = 28, className = '' }: Ava
     <img
       src={finalSrc}
       alt={username ?? 'Member'}
-      loading="lazy"
+      loading={loading}
       onError={() => setErrored(true)}
       style={{ width: size, height: size }}
       className={`rounded-full border object-cover ${className}`}

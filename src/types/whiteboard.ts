@@ -58,7 +58,27 @@ export type WhiteboardHistoryResponse = {
   cursor: WhiteboardHistoryCursor
 }
 
-export type WhiteboardSnapshotResponse = WhiteboardHistoryResponse
+export type ExcalidrawSnapshotElement = {
+  id: string
+  type: string
+  x: number
+  y: number
+  width: number
+  height: number
+  angle?: number
+  strokeColor?: string
+  strokeWidth?: number
+  backgroundColor?: string
+  fillStyle?: string
+  opacity?: number
+  points?: number[][]
+  isDeleted?: boolean
+  customData?: Record<string, unknown>
+}
+
+export type WhiteboardSnapshotResponse = WhiteboardHistoryResponse & {
+  excalidrawElements?: ExcalidrawSnapshotElement[]
+}
 
 export type WhiteboardHubUser = {
   id: string
