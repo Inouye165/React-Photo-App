@@ -3,8 +3,12 @@
  */
 
 exports.up = async function up(knex) {
-  const client = knex.client.config.client;
+  const client = knex.client?.config?.client;
   const isPg = client === 'pg' || client === 'postgresql';
+
+  if (isPg) {
+    await knex.raw('CREATE EXTENSION IF NOT EXISTS "pgcrypto"');
+  }
   const hasTable = await knex.schema.hasTable('whiteboard_invites');
   if (hasTable) return;
 

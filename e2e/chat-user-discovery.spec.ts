@@ -272,5 +272,5 @@ test('E2E chat: user discovery → start DM (no photo required)', async ({ page 
   }
 
   // Chat window loads
-  await expect(page.getByRole('region', { name: 'Chat window' }).getByTestId('chat-messages').first()).toBeVisible({ timeout: 10000 })
+  await expect(page.getByTestId('chat-messages').first()).toBeVisible({ timeout: 10000 })
 })

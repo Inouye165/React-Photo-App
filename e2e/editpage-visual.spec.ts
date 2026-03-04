@@ -461,13 +461,13 @@ test.describe('EditPage Visual Regression (Frontend-Only)', () => {
     // Stabilize before screenshot
     await stabilizeForScreenshot(page);
 
-    const screenshotOptions: any = {
+        const screenshotOptions: any = {
       fullPage: false,
       animations: 'disabled',
       timeout: 10000,
       // Slightly higher tolerance due to more dynamic content on this tab.
       maxDiffPixelRatio: 0.07,
-    };
+        };
 
     await expect(page).toHaveScreenshot('editpage-collectibles-tab.png', screenshotOptions);
   });
