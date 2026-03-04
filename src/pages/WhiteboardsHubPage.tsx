@@ -240,35 +240,33 @@ export default function WhiteboardsHubPage(): React.JSX.Element {
         <div className="p-4 border-t border-[#222]">
           <div className="flex items-center justify-between">
             {/* Title */}
-            <div className="flex items-center justify-between group">
-              {editingBoardId === board.id ? (
-                <input
-                  type="text"
-                  value={editingTitle}
-                  onChange={(e) => setEditingTitle(e.target.value)}
-                  onKeyDown={(e) => {
-                    if (e.key === 'Enter') {
-                      handleTitleSave(board.id)
-                    } else if (e.key === 'Escape') {
-                      handleTitleCancel()
-                    }
-                  }}
-                  onBlur={() => handleTitleSave(board.id)}
-                  className="flex-1 text-sm font-medium text-white bg-transparent border-b border-[#444] outline-none"
-                  autoFocus
-                />
-              ) : (
-                <div 
-                  className="flex items-center gap-2 flex-1 cursor-text"
-                  onClick={() => handleTitleEdit(board.id, board.name || 'Whiteboard')}
-                >
-                  <h3 className="font-medium text-white text-sm truncate">
-                    {board.name || (isPlaceholder ? 'Example Board' : 'Whiteboard')}
-                  </h3>
-                  <Edit3 className="w-3 h-3 text-[#666] opacity-0 group-hover:opacity-[0.4] transition-opacity" />
-                </div>
-              )}
-            </div>
+            {editingBoardId === board.id ? (
+              <input
+                type="text"
+                value={editingTitle}
+                onChange={(e) => setEditingTitle(e.target.value)}
+                onKeyDown={(e) => {
+                  if (e.key === 'Enter') {
+                    handleTitleSave(board.id)
+                  } else if (e.key === 'Escape') {
+                    handleTitleCancel()
+                  }
+                }}
+                onBlur={() => handleTitleSave(board.id)}
+                className="flex-1 text-sm font-medium text-white bg-transparent border-b border-[#444] outline-none"
+                autoFocus
+              />
+            ) : (
+              <div 
+                className="flex items-center gap-2 flex-1 cursor-text group"
+                onClick={() => handleTitleEdit(board.id, board.name || 'Whiteboard')}
+              >
+                <h3 className="font-medium text-white text-sm truncate">
+                  {board.name || (isPlaceholder ? 'Example Board' : 'Whiteboard')}
+                </h3>
+                <Edit3 className="w-3 h-3 text-[#666] opacity-0 group-hover:opacity-[0.4] transition-opacity" />
+              </div>
+            )}
             
             {/* Timestamp */}
             {!isPlaceholder && (
