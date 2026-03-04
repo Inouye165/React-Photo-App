@@ -1,7 +1,7 @@
 import React, { useEffect, useState, useMemo, useRef } from 'react'
 import { useNavigate } from 'react-router-dom'
 import { motion, useReducedMotion } from 'framer-motion'
-import { ArrowLeft, Plus, Search, MoreVertical, Clock } from 'lucide-react'
+import { ArrowLeft, Plus, Search, MoreVertical, Clock, Edit3 } from 'lucide-react'
 import { listMyWhiteboards, createWhiteboard } from '../api/whiteboards'
 import { fetchWhiteboardSnapshot } from '../api/whiteboard'
 import { listRoomMembers, RoomMemberDetails } from '../api/chat'
@@ -53,6 +53,8 @@ export default function WhiteboardsHubPage(): React.JSX.Element {
   const [createError, setCreateError] = useState<string | null>(null)
   const [searchQuery, setSearchQuery] = useState('')
   const [activeTab, setActiveTab] = useState<'recent' | 'all'>('all')
+  const [editingBoardId, setEditingBoardId] = useState<string | null>(null)
+  const [editingTitle, setEditingTitle] = useState('')
   const prefersReducedMotion = useReducedMotion()
   const isDesktop = useDesktopLayout()
 
@@ -154,6 +156,24 @@ export default function WhiteboardsHubPage(): React.JSX.Element {
     return date.toLocaleDateString()
   }
 
+  // Handle inline title editing
+  const handleTitleEdit = (boardId: string, currentTitle: string) => {
+    setEditingBoardId(boardId)
+    setEditingTitle(currentTitle || 'Whiteboard')
+  }
+
+  const handleTitleSave = async (boardId: string) => {
+    // TODO: Implement API call to update board name
+    console.log('Saving new title:', boardId, editingTitle)
+    setEditingBoardId(null)
+    setEditingTitle('')
+  }
+
+  const handleTitleCancel = () => {
+    setEditingBoardId(null)
+    setEditingTitle('')
+  }
+
   // Whiteboard Card Component
   const WhiteboardCard = ({ board, index, isPlaceholder = false }: { board: any; index: number; isPlaceholder?: boolean }) => {
     const gradient = getBoardGradient(board.name || 'Whiteboard')
@@ -170,24 +190,26 @@ export default function WhiteboardsHubPage(): React.JSX.Element {
           ease: [0.22, 1, 0.36, 1]
         }}
         whileHover={{ 
-          y: -2,
-          boxShadow: '0 8px 40px rgba(0, 0, 0, 0.6)',
+          y: -3,
+          boxShadow: '0 12px 40px rgba(0, 0, 0, 0.5)',
           borderColor: '#444',
-          transition: { duration: 0.2 }
+          transition: { duration: 0.2, ease: 'easeOut' }
         }}
         onClick={() => !isPlaceholder && navigate(`/whiteboards/${board.id}`)}
-        className={`relative bg-[#1A1A1A] border border-[#2a2a2a] rounded-xl overflow-hidden transition-all duration-200 ${
+        className={`relative bg-[#1A1A1A] border border-[#252525] rounded-xl overflow-hidden transition-all duration-200 ${
           isPlaceholder ? 'cursor-default' : 'cursor-pointer'
         }`}
         style={{
           boxShadow: '0 4px 24px rgba(0, 0, 0, 0.4)',
-          border: '1px solid #2a2a2a'
+          border: '1px solid #252525'
         }}
       >
         {/* Thumbnail Area */}
         {!isPlaceholder ? (
           <div className="relative">
-            <WhiteboardThumbnail boardId={board.id} boardName={board.name || 'Whiteboard'} />
+            <div className="border border-[#e5e5e5] rounded-[4px] overflow-hidden m-3">
+              <WhiteboardThumbnail boardId={board.id} boardName={board.name || 'Whiteboard'} />
+            </div>
             {/* Context Menu */}
             <button
               onClick={(e) => {
@@ -218,9 +240,35 @@ export default function WhiteboardsHubPage(): React.JSX.Element {
         <div className="p-4 border-t border-[#222]">
           <div className="flex items-center justify-between">
             {/* Title */}
-            <h3 className="font-medium text-white text-sm truncate flex-1">
-              {board.name || (isPlaceholder ? 'Example Board' : 'Whiteboard')}
-            </h3>
+            <div className="flex items-center justify-between group">
+              {editingBoardId === board.id ? (
+                <input
+                  type="text"
+                  value={editingTitle}
+                  onChange={(e) => setEditingTitle(e.target.value)}
+                  onKeyDown={(e) => {
+                    if (e.key === 'Enter') {
+                      handleTitleSave(board.id)
+                    } else if (e.key === 'Escape') {
+                      handleTitleCancel()
+                    }
+                  }}
+                  onBlur={() => handleTitleSave(board.id)}
+                  className="flex-1 text-sm font-medium text-white bg-transparent border-b border-[#444] outline-none"
+                  autoFocus
+                />
+              ) : (
+                <div 
+                  className="flex items-center gap-2 flex-1 cursor-text"
+                  onClick={() => handleTitleEdit(board.id, board.name || 'Whiteboard')}
+                >
+                  <h3 className="font-medium text-white text-sm truncate">
+                    {board.name || (isPlaceholder ? 'Example Board' : 'Whiteboard')}
+                  </h3>
+                  <Edit3 className="w-3 h-3 text-[#666] opacity-0 group-hover:opacity-100 transition-opacity" />
+                </div>
+              )}
+            </div>
             
             {/* Timestamp */}
             {!isPlaceholder && (
@@ -775,7 +823,15 @@ export default function WhiteboardsHubPage(): React.JSX.Element {
       </div>
 
       {/* Content */}
-      <div className="flex-1 overflow-auto">
+      <div className="flex-1 overflow-auto relative">
+        {/* Bottom gradient glow */}
+        <div 
+          className="absolute bottom-0 left-0 right-0 h-96 pointer-events-none"
+          style={{
+            background: 'radial-gradient(ellipse at 50% 100%, #1a1400 0%, transparent 60%)'
+          }}
+        />
+        
         {createError && (
           <div className="mx-6 mb-4 rounded-lg border border-red-500/30 bg-red-500/10 px-4 py-3 text-sm text-red-300">
             {createError}
